@@ -101,4 +101,15 @@ describe('runEvaluation', () => {
       /skill file not found/,
     );
   });
+
+  it('dry-run: meta includes traceability fields', async () => {
+    const { report } = await runEvaluation({
+      samplesPath: SAMPLES_PATH,
+      skillDir: SKILL_DIR,
+      variants: ['v1', 'v2'],
+      dryRun: true,
+    });
+    // dry-run still has model info
+    assert.ok(report.model);
+  });
 });

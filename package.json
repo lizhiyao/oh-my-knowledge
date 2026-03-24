@@ -1,6 +1,6 @@
 {
   "name": "oh-my-knowledge",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Knowledge artifact evaluation toolkit — benchmark your skills with objective data",
   "type": "module",
   "bin": {
@@ -26,5 +26,10 @@
     "claude"
   ],
   "author": "lizhiyao",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "ajv": "^8.18.0",
+    "js-yaml": "^4.1.1",
+    "simple-statistics": "^7.8.9"
+  }
 }

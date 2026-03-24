@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runAssertions, grade } from '../lib/grader.mjs';
+import { runAssertions, grade, validateJsonSchema } from '../lib/grader.mjs';
 
 describe('runAssertions', () => {
   it('contains: passes when substring is present', () => {
@@ -111,6 +111,218 @@ describe('runAssertions', () => {
     ]);
     assert.equal(result.details[0].weight, 1);
   });
+
+  // --- New assertion types (F4) ---
+
+  it('json_valid: passes for valid JSON', () => {
+    const result = runAssertions('{"key": "value"}', [
+      { type: 'json_valid', weight: 1 },
+    ]);
+    assert.equal(result.passed, 1);
+  });
+
+  it('json_valid: fails for invalid JSON', () => {
+    const result = runAssertions('not json', [
+      { type: 'json_valid', weight: 1 },
+    ]);
+    assert.equal(result.passed, 0);
+  });
+
+  it('json_schema: passes when data matches schema', () => {
+    const result = runAssertions('{"name": "Alice", "age": 30}', [
+      {
+        type: 'json_schema',
+        schema: {
+          type: 'object',
+          required: ['name', 'age'],
+          properties: {
+            name: { type: 'string' },
+            age: { type: 'number', minimum: 0 },
+          },
+        },
+        weight: 1,
+      },
+    ]);
+    assert.equal(result.passed, 1);
+  });
+
+  it('json_schema: fails when data does not match schema', () => {
+    const result = runAssertions('{"name": 123}', [
+      {
+        type: 'json_schema',
+        schema: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+        },
+        weight: 1,
+      },
+    ]);
+    assert.equal(result.passed, 0);
+  });
+
+  it('starts_with: case insensitive', () => {
+    const result = runAssertions('Hello World', [
+      { type: 'starts_with', value: 'hello', weight: 1 },
+    ]);
+    assert.equal(result.passed, 1);
+  });
+
+  it('starts_with: fails when not matching', () => {
+    const result = runAssertions('World Hello', [
+      { type: 'starts_with', value: 'hello', weight: 1 },
+    ]);
+    assert.equal(result.passed, 0);
+  });
+
+  it('ends_with: case insensitive', () => {
+    const result = runAssertions('Hello World', [
+      { type: 'ends_with', value: 'world', weight: 1 },
+    ]);
+    assert.equal(result.passed, 1);
+  });
+
+  it('equals: exact match after trim', () => {
+    const result = runAssertions('  hello  ', [
+      { type: 'equals', value: 'hello', weight: 1 },
+    ]);
+    assert.equal(result.passed, 1);
+  });
+
+  it('equals: fails on mismatch', () => {
+    const result = runAssertions('hello world', [
+      { type: 'equals', value: 'hello', weight: 1 },
+    ]);
+    assert.equal(result.passed, 0);
+  });
+
+  it('not_equals: passes on mismatch', () => {
+    const result = runAssertions('hello world', [
+      { type: 'not_equals', value: 'hello', weight: 1 },
+    ]);
+    assert.equal(result.passed, 1);
+  });
+
+  it('word_count_min: passes when enough words', () => {
+    const result = runAssertions('one two three four five', [
+      { type: 'word_count_min', value: 3, weight: 1 },
+    ]);
+    assert.equal(result.passed, 1);
+  });
+
+  it('word_count_min: fails when too few words', () => {
+    const result = runAssertions('one two', [
+      { type: 'word_count_min', value: 3, weight: 1 },
+    ]);
+    assert.equal(result.passed, 0);
+  });
+
+  it('word_count_max: passes when few enough words', () => {
+    const result = runAssertions('one two', [
+      { type: 'word_count_max', value: 3, weight: 1 },
+    ]);
+    assert.equal(result.passed, 1);
+  });
+
+  it('word_count_max: fails when too many words', () => {
+    const result = runAssertions('one two three four', [
+      { type: 'word_count_max', value: 3, weight: 1 },
+    ]);
+    assert.equal(result.passed, 0);
+  });
+
+  it('contains_all: passes when all values present', () => {
+    const result = runAssertions('SQL injection XSS vulnerability', [
+      { type: 'contains_all', values: ['SQL', 'XSS'], weight: 1 },
+    ]);
+    assert.equal(result.passed, 1);
+  });
+
+  it('contains_all: fails when one value missing', () => {
+    const result = runAssertions('SQL injection found', [
+      { type: 'contains_all', values: ['SQL', 'XSS'], weight: 1 },
+    ]);
+    assert.equal(result.passed, 0);
+  });
+
+  it('contains_any: passes when at least one value present', () => {
+    const result = runAssertions('SQL injection found', [
+      { type: 'contains_any', values: ['SQL', 'XSS'], weight: 1 },
+    ]);
+    assert.equal(result.passed, 1);
+  });
+
+  it('contains_any: fails when no values present', () => {
+    const result = runAssertions('Everything is fine', [
+      { type: 'contains_any', values: ['SQL', 'XSS'], weight: 1 },
+    ]);
+    assert.equal(result.passed, 0);
+  });
+
+  it('cost_max: passes when cost within budget', () => {
+    const result = runAssertions('output', [
+      { type: 'cost_max', value: 0.01, weight: 1 },
+    ], { costUSD: 0.005 });
+    assert.equal(result.passed, 1);
+  });
+
+  it('cost_max: fails when cost exceeds budget', () => {
+    const result = runAssertions('output', [
+      { type: 'cost_max', value: 0.01, weight: 1 },
+    ], { costUSD: 0.02 });
+    assert.equal(result.passed, 0);
+  });
+
+  it('latency_max: passes when fast enough', () => {
+    const result = runAssertions('output', [
+      { type: 'latency_max', value: 5000, weight: 1 },
+    ], { durationMs: 3000 });
+    assert.equal(result.passed, 1);
+  });
+
+  it('latency_max: fails when too slow', () => {
+    const result = runAssertions('output', [
+      { type: 'latency_max', value: 5000, weight: 1 },
+    ], { durationMs: 8000 });
+    assert.equal(result.passed, 0);
+  });
+});
+
+describe('validateJsonSchema', () => {
+  it('validates type: string', () => {
+    assert.equal(validateJsonSchema('hello', { type: 'string' }), true);
+    assert.equal(validateJsonSchema(123, { type: 'string' }), false);
+  });
+
+  it('validates type: integer', () => {
+    assert.equal(validateJsonSchema(42, { type: 'integer' }), true);
+    assert.equal(validateJsonSchema(3.14, { type: 'integer' }), false);
+  });
+
+  it('validates required fields', () => {
+    assert.equal(validateJsonSchema({ a: 1, b: 2 }, { type: 'object', required: ['a', 'b'] }), true);
+    assert.equal(validateJsonSchema({ a: 1 }, { type: 'object', required: ['a', 'b'] }), false);
+  });
+
+  it('validates array items', () => {
+    assert.equal(validateJsonSchema([1, 2, 3], { type: 'array', items: { type: 'number' } }), true);
+    assert.equal(validateJsonSchema([1, 'two'], { type: 'array', items: { type: 'number' } }), false);
+  });
+
+  it('validates enum', () => {
+    assert.equal(validateJsonSchema('a', { enum: ['a', 'b'] }), true);
+    assert.equal(validateJsonSchema('c', { enum: ['a', 'b'] }), false);
+  });
+
+  it('validates string constraints', () => {
+    assert.equal(validateJsonSchema('abc', { type: 'string', minLength: 2, maxLength: 5 }), true);
+    assert.equal(validateJsonSchema('a', { type: 'string', minLength: 2 }), false);
+    assert.equal(validateJsonSchema('abcdef', { type: 'string', maxLength: 5 }), false);
+  });
+
+  it('validates number constraints', () => {
+    assert.equal(validateJsonSchema(5, { type: 'number', minimum: 1, maximum: 10 }), true);
+    assert.equal(validateJsonSchema(0, { type: 'number', minimum: 1 }), false);
+  });
 });
 
 describe('grade', () => {
@@ -217,5 +429,71 @@ describe('grade', () => {
       judgeModel: 'haiku',
     });
     assert.equal(result.compositeScore, 0);
+  });
+
+  it('custom assertion: calls external JS function', async () => {
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+
+    const result = await grade({
+      output: 'Found SQL injection and SQL bypass',
+      sample: {
+        prompt: 'Review code',
+        assertions: [
+          { type: 'custom', fn: 'fixtures/custom-assertion.mjs', keyword: 'SQL', minCount: 2, weight: 1 },
+        ],
+      },
+      executor: async () => ({ ok: true, output: '{}', costUSD: 0 }),
+      judgeModel: 'haiku',
+      samplesDir: join(__dirname),
+    });
+    assert.equal(result.assertions.passed, 1);
+    assert.equal(result.assertions.details[0].passed, true);
+  });
+
+  it('semantic_similarity: uses LLM judge', async () => {
+    const mockExecutor = async () => ({
+      ok: true,
+      output: '{"score": 4, "reason": "Very similar"}',
+      costUSD: 0.001,
+    });
+
+    const result = await grade({
+      output: 'SQL injection vulnerability found',
+      sample: {
+        prompt: 'Review code',
+        assertions: [
+          { type: 'semantic_similarity', reference: 'SQL injection detected', threshold: 3, weight: 1 },
+        ],
+      },
+      executor: mockExecutor,
+      judgeModel: 'haiku',
+    });
+    assert.equal(result.assertions.passed, 1);
+    assert.equal(result.assertions.details[0].passed, true);
+  });
+
+  it('mixed sync + async assertions: merged correctly', async () => {
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+
+    const result = await grade({
+      output: 'SQL injection found, use parameterized queries',
+      sample: {
+        prompt: 'Review code',
+        assertions: [
+          { type: 'contains', value: 'SQL', weight: 1 },
+          { type: 'custom', fn: 'fixtures/custom-assertion.mjs', keyword: 'SQL', minCount: 1, weight: 1 },
+        ],
+      },
+      executor: async () => ({ ok: true, output: '{}', costUSD: 0 }),
+      judgeModel: 'haiku',
+      samplesDir: join(__dirname),
+    });
+    assert.equal(result.assertions.passed, 2);
+    assert.equal(result.assertions.total, 2);
+    assert.equal(result.assertions.score, 5); // both pass
   });
 });

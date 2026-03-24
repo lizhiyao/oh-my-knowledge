@@ -13,6 +13,7 @@ oh-my-knowledge — Knowledge artifact evaluation toolkit
 Usage:
   omk bench run [options]     Run an evaluation
   omk bench report [options]  Start the report server
+  omk bench ci [options]      Run evaluation and exit with pass/fail code
   omk bench init [dir]        Scaffold a new eval project
 
 Options for "bench run":
@@ -24,7 +25,14 @@ Options for "bench run":
   --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
   --no-judge             Skip LLM judging
   --dry-run              Preview tasks without executing
+  --blind                Blind A/B mode: hide variant names in report
+  --concurrency <n>      Number of parallel tasks (default: 1)
+  --repeat <n>           Run evaluation N times for variance analysis (default: 1)
   --executor <name>      Executor to use (default: claude)
+
+Options for "bench ci":
+  (same as "bench run", plus:)
+  --threshold <number>   Minimum composite score to pass (default: 3.5)
 
 Options for "bench report":
   --port <number>        Server port (default: 7799)
@@ -65,8 +73,11 @@ async function main() {
     case 'init':
       await handleInit(rest);
       break;
+    case 'ci':
+      await handleCi(rest);
+      break;
     default:
-      console.error(`Unknown command: bench ${command}. Use "run", "report", or "init".`);
+      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", or "init".`);
       process.exit(1);
   }
 }
@@ -83,15 +94,26 @@ async function handleRun(argv) {
       'output-dir':  { type: 'string', default: DEFAULT_REPORTS_DIR },
       'no-judge':    { type: 'boolean', default: false },
       'dry-run':     { type: 'boolean', default: false },
+      blind:         { type: 'boolean', default: false },
+      concurrency:   { type: 'string', default: '1' },
+      repeat:        { type: 'string', default: '1' },
       executor:      { type: 'string', default: 'claude' },
     },
     strict: false,
   });
 
-  const { runEvaluation } = await import('./lib/runner.mjs');
+  const { runEvaluation, runMultiple } = await import('./lib/runner.mjs');
+  const { existsSync } = await import('node:fs');
+
+  // Auto-detect YAML if default JSON not found
+  let samplesFile = values.samples;
+  if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
+    if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
+    else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
+  }
 
   const config = {
-    samplesPath: resolve(values.samples),
+    samplesPath: resolve(samplesFile),
     skillDir: resolve(values['skill-dir']),
     variants: values.variants.split(',').map((v) => v.trim()).filter(Boolean),
     model: values.model,
@@ -99,6 +121,8 @@ async function handleRun(argv) {
     outputDir: resolve(values['output-dir']),
     noJudge: values['no-judge'],
     dryRun: values['dry-run'],
+    blind: values.blind,
+    concurrency: Math.max(1, Number(values.concurrency) || 1),
     executorName: values.executor,
     onProgress({ phase, completed, total, sample_id, variant, durationMs, inputTokens, outputTokens, costUSD, score }) {
       if (phase === 'start') {
@@ -112,7 +136,25 @@ async function handleRun(argv) {
   };
 
   try {
-    const { report, filePath } = await runEvaluation(config);
+    const repeatCount = Math.max(1, Number(values.repeat) || 1);
+    let report, filePath;
+
+    if (repeatCount > 1) {
+      const result = await runMultiple({
+        ...config,
+        repeat: repeatCount,
+        onRepeatProgress({ run, total }) {
+          process.stderr.write(`\n=== Run ${run}/${total} ===\n`);
+        },
+      });
+      report = result.report;
+      filePath = null;
+    } else {
+      const result = await runEvaluation(config);
+      report = result.report;
+      filePath = result.filePath;
+    }
+
     console.log(JSON.stringify(report, null, 2));
     if (filePath) {
       process.stderr.write(`\nReport saved to: ${filePath}\n`);
@@ -166,6 +208,77 @@ async function handleInit(argv) {
   console.log('  1. Edit eval-samples.json to add your test cases');
   console.log('  2. Edit skills/v1.md and skills/v2.md with your skill versions');
   console.log('  3. Run: omk bench run --variants v1,v2');
+}
+
+async function handleCi(argv) {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      samples:       { type: 'string', default: 'eval-samples.json' },
+      'skill-dir':   { type: 'string', default: 'skills' },
+      variants:      { type: 'string', default: 'v1,v2' },
+      model:         { type: 'string', default: 'sonnet' },
+      'judge-model': { type: 'string', default: 'haiku' },
+      'output-dir':  { type: 'string', default: DEFAULT_REPORTS_DIR },
+      'no-judge':    { type: 'boolean', default: false },
+      'dry-run':     { type: 'boolean', default: false },
+      concurrency:   { type: 'string', default: '1' },
+      executor:      { type: 'string', default: 'claude' },
+      threshold:     { type: 'string', default: '3.5' },
+    },
+    strict: false,
+  });
+
+  const { runEvaluation } = await import('./lib/runner.mjs');
+  const { existsSync } = await import('node:fs');
+
+  let samplesFile = values.samples;
+  if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
+    if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
+    else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
+  }
+
+  const variantList = values.variants.split(',').map((v) => v.trim()).filter(Boolean);
+
+  try {
+    const { report } = await runEvaluation({
+      samplesPath: resolve(samplesFile),
+      skillDir: resolve(values['skill-dir']),
+      variants: variantList,
+      model: values.model,
+      judgeModel: values['judge-model'],
+      outputDir: resolve(values['output-dir']),
+      noJudge: values['no-judge'],
+      dryRun: values['dry-run'],
+      concurrency: Math.max(1, Number(values.concurrency) || 1),
+      executorName: values.executor,
+      onProgress({ phase, completed, total, sample_id, variant }) {
+        if (phase === 'start') {
+          process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ...\n`);
+        }
+      },
+    });
+
+    const threshold = Number(values.threshold);
+    let allPass = true;
+
+    if (report.dryRun) {
+      console.log('CI dry-run: no scores to check');
+      process.exit(0);
+    }
+
+    for (const [variant, stats] of Object.entries(report.summary || {})) {
+      const score = stats.avgCompositeScore ?? 0;
+      const status = score >= threshold ? 'PASS' : 'FAIL';
+      console.log(`${status}: ${variant} score=${score.toFixed(2)} threshold=${threshold}`);
+      if (score < threshold) allPass = false;
+    }
+
+    process.exit(allPass ? 0 : 1);
+  } catch (err) {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  }
 }
 
 main();
