@@ -205,6 +205,119 @@ export default function(output, { sample, assertion }) {
 
 在样本中引用：`{ "type": "custom", "fn": "my-assertion.mjs" }`。`fn` 路径相对于样本文件所在目录解析。
 
+## 报告示例
+
+运行 `omk bench run --variants v1,v2` 后，工具输出 JSON 报告（同时保存到 `~/.oh-my-knowledge/reports/`）：
+
+```json
+{
+  "id": "2026-03-24T15-30-45-v1-v2",
+  "meta": {
+    "variants": ["v1", "v2"],
+    "model": "sonnet",
+    "judgeModel": "haiku",
+    "executor": "claude",
+    "sampleCount": 3,
+    "taskCount": 6,
+    "totalCostUSD": 0.0234,
+    "timestamp": "2026-03-24T15:30:45.000Z",
+    "cliVersion": "0.3.0",
+    "nodeVersion": "v22.0.0",
+    "skillHashes": { "v1": "a1b2c3d4e5f6", "v2": "f6e5d4c3b2a1" }
+  },
+  "summary": {
+    "v1": {
+      "totalSamples": 3,
+      "successCount": 3,
+      "errorCount": 0,
+      "avgCompositeScore": 3.67,
+      "avgAssertionScore": 3.0,
+      "avgLlmScore": 4.33,
+      "avgDurationMs": 2500,
+      "avgTotalTokens": 1850,
+      "totalCostUSD": 0.0112
+    },
+    "v2": {
+      "totalSamples": 3,
+      "successCount": 3,
+      "errorCount": 0,
+      "avgCompositeScore": 4.5,
+      "avgAssertionScore": 5.0,
+      "avgLlmScore": 4.0,
+      "avgDurationMs": 2800,
+      "avgTotalTokens": 2100,
+      "totalCostUSD": 0.0122
+    }
+  },
+  "results": [
+    {
+      "sample_id": "s001",
+      "variants": {
+        "v1": {
+          "ok": true,
+          "compositeScore": 3.5,
+          "assertions": {
+            "passed": 1,
+            "total": 2,
+            "score": 3.0,
+            "details": [
+              { "type": "contains", "value": "SQL injection", "weight": 1, "passed": true },
+              { "type": "contains", "value": "parameterized", "weight": 1, "passed": false }
+            ]
+          },
+          "llmScore": 4,
+          "llmReason": "识别了漏洞但未提供完整修复方案",
+          "durationMs": 2300,
+          "inputTokens": 850,
+          "outputTokens": 1200,
+          "totalTokens": 2050,
+          "costUSD": 0.0038,
+          "outputPreview": "这段代码存在 SQL 注入漏洞..."
+        },
+        "v2": {
+          "ok": true,
+          "compositeScore": 4.5,
+          "assertions": {
+            "passed": 2,
+            "total": 2,
+            "score": 5.0,
+            "details": [
+              { "type": "contains", "value": "SQL injection", "weight": 1, "passed": true },
+              { "type": "contains", "value": "parameterized", "weight": 1, "passed": true }
+            ]
+          },
+          "llmScore": 4,
+          "llmReason": "分析全面，提供了可直接使用的修复代码",
+          "durationMs": 2600,
+          "inputTokens": 900,
+          "outputTokens": 1400,
+          "totalTokens": 2300,
+          "costUSD": 0.0042,
+          "outputPreview": "## 安全问题：SQL 注入\n\n该代码存在注入漏洞..."
+        }
+      }
+    }
+  ],
+  "analysis": {
+    "insights": [
+      {
+        "type": "uniform_scores",
+        "severity": "info",
+        "message": "1/3 个样本在各变体间分差 < 0.5，区分度较低"
+      }
+    ],
+    "suggestions": []
+  }
+}
+```
+
+**如何阅读报告：**
+
+- **`summary`** 快速对比 — 本例中 v2 得分更高（4.5 vs 3.67），因为它通过了更多断言
+- **`results`** 逐样本详情 — 可以看到每个断言的通过/失败及原因
+- **`analysis`** 自动发现模式 — 这里提示有一个样本各变体分数接近
+- 运行 `omk bench report` 后访问 `http://127.0.0.1:7799/run/{id}` 查看 HTML 版本
+
 ## CLI 参考
 
 ### `omk bench run`
