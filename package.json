@@ -1,0 +1,30 @@
+{
+  "name": "oh-my-knowledge",
+  "version": "0.1.0",
+  "description": "Knowledge artifact evaluation toolkit — benchmark your skills with objective data",
+  "type": "module",
+  "bin": {
+    "omk": "cli.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "cli.mjs",
+    "lib/",
+    "examples/"
+  ],
+  "scripts": {
+    "test": "node --test 'test/*.mjs'"
+  },
+  "keywords": [
+    "knowledge-engineering",
+    "skill-evaluation",
+    "benchmark",
+    "llm",
+    "ai",
+    "claude"
+  ],
+  "author": "lizhiyao",
+  "license": "MIT"
+}
