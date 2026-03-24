@@ -2,6 +2,8 @@
 
 Knowledge artifact evaluation toolkit — benchmark your skills with objective data.
 
+English | [中文](./README.zh-CN.md)
+
 **Fixed model, variable knowledge artifact, data speaks.**
 
 ## Why
