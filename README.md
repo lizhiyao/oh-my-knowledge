@@ -44,7 +44,10 @@ eval-samples.json     skills/v1.md     skills/v2.md
          └──────┬──────┘              └──────┬──────┘
                 │                            │
          ┌──────▼──────┐              ┌──────▼──────┐
-         │  claude -p  │              │  claude -p  │
+         │  Executor   │              │  Executor   │
+         │ claude      │              │ claude      │
+         │ openai      │              │ openai      │
+         │ gemini      │              │ gemini      │
          └──────┬──────┘              └──────┬──────┘
                 │                            │
          ┌──────▼──────────────────────▼──────┐
@@ -65,6 +68,8 @@ eval-samples.json     skills/v1.md     skills/v2.md
 ## Eval Sample Format
 
 Supports both JSON and YAML (`eval-samples.json`, `eval-samples.yaml`, `eval-samples.yml`).
+
+The file contains an array of sample objects. Each sample represents one test case for evaluating a skill.
 
 ```json
 [
@@ -89,14 +94,71 @@ Supports both JSON and YAML (`eval-samples.json`, `eval-samples.yaml`, `eval-sam
 ]
 ```
 
+### Field Reference
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `sample_id` | `string` | **Yes** | Unique identifier for the sample (e.g., `"s001"`). Used in reports and analysis to reference this test case. |
+| `prompt` | `string` | **Yes** | The user prompt sent to the model. This is the task or question the model should answer. |
+| `context` | `string` | No | Additional context appended to the prompt (e.g., code snippet, document text). If provided, it is wrapped in a code block and concatenated after `prompt`. |
+| `rubric` | `string` | No | Natural language scoring criteria for the LLM judge. The judge model reads this rubric and scores the output 1-5. Use when you need semantic/qualitative evaluation. |
+| `assertions` | `array` | No | List of deterministic and async checks applied to the model output. Each assertion is an object with a `type` field (see [Assertion Types](#assertion-types)). |
+| `assertions[].type` | `string` | **Yes** | The assertion type (e.g., `"contains"`, `"json_valid"`, `"custom"`). See full list below. |
+| `assertions[].value` | `string\|number` | Varies | The value to check against. Required for `contains`, `starts_with`, `equals`, `min_length`, `cost_max`, etc. |
+| `assertions[].values` | `array` | Varies | Array of strings. Required for `contains_all` and `contains_any`. |
+| `assertions[].pattern` | `string` | Varies | Regex pattern. Required for `regex` type. |
+| `assertions[].flags` | `string` | No | Regex flags (default: `"i"`). Only used with `regex` type. |
+| `assertions[].schema` | `object` | Varies | JSON Schema object. Required for `json_schema` type. Validated via [ajv](https://ajv.js.org/) (full JSON Schema spec). |
+| `assertions[].reference` | `string` | Varies | Reference text for semantic comparison. Required for `semantic_similarity` type. |
+| `assertions[].threshold` | `number` | No | Minimum score (1-5) to consider a semantic similarity match passing. Default: `3`. |
+| `assertions[].fn` | `string` | Varies | Path to a `.mjs` file exporting the check function. Required for `custom` type. Resolved relative to the samples file directory. |
+| `assertions[].weight` | `number` | No | Weight of this assertion in the composite score calculation. Default: `1`. Higher weight = more influence on the final assertion score. |
+| `dimensions` | `object` | No | Key-value map for multi-dimensional LLM scoring. Each key is a dimension name (e.g., `"security"`), and the value is the rubric text the LLM judge uses to score that dimension (1-5). Scores are averaged into a single LLM score. |
+
+**Scoring priority:** If both `assertions` and `rubric`/`dimensions` are present, the composite score is a 50/50 weighted average. If only one is present, that score is used directly. If none are present, the score is 0.
+
+**Prompt construction:** The final prompt sent to the model is: `prompt` alone if no `context`, or `prompt + "\n\n```\n" + context + "\n```"` if `context` is provided.
+
 ### Grading Strategy
 
-| Criteria | Method | When |
-|----------|--------|------|
-| `assertions` | Deterministic + custom | Always — fast, reliable |
-| `rubric` | LLM judge (1-5 score) | When nuance matters |
-| `dimensions` | Per-dimension LLM scoring | When multi-faceted quality matters |
-| Both | Weighted composite (50/50) | Best of both worlds |
+Each sample can use up to three grading methods. They can be used alone or combined.
+
+#### 1. Assertions (deterministic scoring)
+
+Assertions are rule-based checks that run locally without any LLM calls (except `semantic_similarity` and `custom`). Each assertion produces a **pass/fail** result.
+
+**How the assertion score is calculated:**
+
+1. Each assertion has a `weight` (default: 1)
+2. Sum the weights of all passing assertions → `passedWeight`
+3. Sum the weights of all assertions → `totalWeight`
+4. Compute ratio: `passedWeight / totalWeight` (0.0 ~ 1.0)
+5. Normalize to 1-5 scale: **`score = 1 + ratio × 4`**
+
+Example: 3 assertions (weight 1 each), 2 pass → ratio = 2/3 → score = 1 + 2.67 = **3.67**
+
+#### 2. Rubric (single LLM judge)
+
+A judge model (default: `haiku`, configurable via `--judge-model`) reads the model output and scores it against the rubric text. Returns an integer score from **1** (fail) to **5** (excellent) with a brief reason.
+
+Only one of `rubric` or `dimensions` should be used per sample. If both are present, `dimensions` takes priority.
+
+#### 3. Dimensions (multi-dimensional LLM judge)
+
+Each dimension is scored independently by the judge model (1-5). The dimension scores are **averaged** to produce a single LLM score.
+
+Example: `security: 5`, `actionability: 3` → LLM score = **(5 + 3) / 2 = 4.0**
+
+#### Composite Score
+
+| What's present | Composite score formula |
+|----------------|----------------------|
+| Assertions only | `assertionScore` |
+| LLM only (rubric or dimensions) | `llmScore` |
+| Both | `(assertionScore + llmScore) / 2` |
+| Neither | `0` |
+
+All scores are on a **1-5 scale**. A score of 0 means no grading criteria were defined.
 
 ### Assertion Types
 
@@ -228,6 +290,33 @@ The HTML report includes star rating (1-5) and comment forms for each sample-var
 ### Traceability
 
 Reports include `cliVersion`, `nodeVersion`, and `skillHashes` (SHA-256 of each skill file) in metadata for reproducibility.
+
+## Executors
+
+Use `--executor` to select which model provider to use.
+
+| Executor | CLI Tool | Default Model | Auth |
+|----------|----------|---------------|------|
+| `claude` | `claude -p` | `sonnet` | Claude Max plan or API key |
+| `openai` | `openai api chat.completions.create` | `gpt-4o` | `OPENAI_API_KEY` env var |
+| `gemini` | `gemini` (stdin pipe) | Default Gemini model | Google account or `GOOGLE_API_KEY` |
+
+```bash
+# Use OpenAI
+omk bench run --executor openai --model gpt-4o --variants v1,v2
+
+# Use Gemini
+omk bench run --executor gemini --model gemini-2.5-pro --variants v1,v2
+
+# Compare the same skill across providers (run separately, compare reports)
+omk bench run --executor claude --model sonnet --variants v1,v2
+omk bench run --executor openai --model gpt-4o --variants v1,v2
+```
+
+**Prerequisites:**
+- **claude**: Install [Claude Code](https://claude.ai/code) and authenticate
+- **openai**: `pip install openai` and set `OPENAI_API_KEY`
+- **gemini**: `npm i -g @google/gemini-cli` and authenticate with Google
 
 ## Environment Variables
 
