@@ -126,11 +126,11 @@ async function handleRun(argv) {
     executorName: values.executor,
     onProgress({ phase, completed, total, sample_id, variant, durationMs, inputTokens, outputTokens, costUSD, score }) {
       if (phase === 'start') {
-        process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ...`);
+        process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ⏳ 执行中...\n`);
       } else {
         const costInfo = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
         const scoreInfo = typeof score === 'number' ? ` score=${score}` : '';
-        process.stderr.write(` ${durationMs}ms ${inputTokens}+${outputTokens}tok${costInfo}${scoreInfo}\n`);
+        process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ✓ ${durationMs}ms ${inputTokens}+${outputTokens}tok${costInfo}${scoreInfo}\n`);
       }
     },
   };
@@ -157,7 +157,8 @@ async function handleRun(argv) {
 
     console.log(JSON.stringify(report, null, 2));
     if (filePath) {
-      process.stderr.write(`\nReport saved to: ${filePath}\n`);
+      process.stderr.write('\n✅ 评测完成\n');
+      process.stderr.write(`📄 Report saved to: ${filePath}\n`);
 
       // Auto-start report server
       const { createReportServer } = await import('./lib/report-server.mjs');
@@ -166,9 +167,15 @@ async function handleRun(argv) {
       });
       const serverUrl = await server.start();
       const reportUrl = `${serverUrl}/run/${report.id}`;
-      process.stderr.write(`Report server running at ${serverUrl}\n`);
-      process.stderr.write(`View report: ${reportUrl}\n`);
-      process.stderr.write('Press Ctrl+C to stop\n');
+      process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
+      process.stderr.write(`👉 View report: ${reportUrl}\n`);
+      process.stderr.write('\nPress Ctrl+C to stop the server\n');
+
+      // Auto-open report in browser
+      const { platform } = await import('node:os');
+      const openCmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
+      const { execFile: execFileCb } = await import('node:child_process');
+      execFileCb(openCmd, [reportUrl], () => {});
     }
   } catch (err) {
     console.error(`Error: ${err.message}`);
