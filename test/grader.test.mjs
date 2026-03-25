@@ -497,3 +497,77 @@ describe('grade', () => {
     assert.equal(result.assertions.score, 5); // both pass
   });
 });
+
+describe('grade cost accumulation', () => {
+  it('accumulates dimensions judge cost', async () => {
+    let callCount = 0;
+    const mockExecutor = async () => {
+      callCount++;
+      return {
+        ok: true,
+        output: `{"score": ${callCount + 2}, "reason": "dim ${callCount}"}`,
+        costUSD: 0.01,
+      };
+    };
+
+    const result = await grade({
+      output: 'Found SQL injection',
+      sample: {
+        prompt: 'Review code',
+        dimensions: {
+          security: 'Check security',
+          perf: 'Check performance',
+        },
+      },
+      executor: mockExecutor,
+      judgeModel: 'haiku',
+    });
+    // 2 dimensions × $0.01 each = $0.02
+    assert.equal(result.judgeCostUSD, 0.02);
+  });
+
+  it('accumulates rubric judge cost', async () => {
+    const mockExecutor = async () => ({
+      ok: true,
+      output: '{"score": 4, "reason": "Good"}',
+      costUSD: 0.005,
+    });
+
+    const result = await grade({
+      output: 'Found issue',
+      sample: { prompt: 'Review', rubric: 'Find bugs' },
+      executor: mockExecutor,
+      judgeModel: 'haiku',
+    });
+    assert.equal(result.judgeCostUSD, 0.005);
+  });
+
+  it('accumulates async assertion cost + dimensions cost', async () => {
+    let callCount = 0;
+    const mockExecutor = async () => {
+      callCount++;
+      return {
+        ok: true,
+        output: `{"score": 4, "reason": "ok"}`,
+        costUSD: 0.01,
+      };
+    };
+
+    const result = await grade({
+      output: 'SQL injection found',
+      sample: {
+        prompt: 'Review',
+        assertions: [
+          { type: 'semantic_similarity', reference: 'SQL injection', threshold: 3, weight: 1 },
+        ],
+        dimensions: {
+          security: 'Check security',
+        },
+      },
+      executor: mockExecutor,
+      judgeModel: 'haiku',
+    });
+    // 1 semantic_similarity ($0.01) + 1 dimension ($0.01) = $0.02
+    assert.equal(result.judgeCostUSD, 0.02);
+  });
+});

@@ -15,7 +15,9 @@
     "examples/"
   ],
   "scripts": {
-    "test": "node --test 'test/*.mjs'"
+    "lint": "eslint 'lib/**/*.mjs' 'cli.mjs' 'test/**/*.mjs'",
+    "test": "node --test 'test/*.mjs'",
+    "ci": "yarn lint && yarn test"
   },
   "keywords": [
     "knowledge-engineering",
@@ -38,5 +40,8 @@
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org"
+  },
+  "devDependencies": {
+    "eslint": "^10.1.0"
   }
 }

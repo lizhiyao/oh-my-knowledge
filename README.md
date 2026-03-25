@@ -280,3 +280,18 @@ omk bench run --variants my-skill-a,my-skill-b
 - Node.js >= 20
 - `claude` CLI（用于默认执行器和 LLM 评委，安装方式见 [Claude Code](https://claude.ai/code)）
   - 使用其他执行器（openai/gemini/script）且加 `--no-judge` 时可不装
+
+## 安全说明
+
+本工具设计用于**本地可信环境**（开发机、CI 流水线）。以下功能会执行本地代码，请确保输入来源可信：
+
+| 功能 | 风险说明 | 适用范围 |
+|------|----------|----------|
+| **自定义断言** (`custom`) | 动态加载并执行用户指定的 `.mjs` 文件 | 仅使用自己编写或审查过的断言文件 |
+| **Script 执行器** | 执行 skill 目录下的脚本 | 仅评测自己或团队的 skill |
+| **eval-samples.json** | 断言配置中可引用外部文件路径 | 不要使用不可信来源的样本文件 |
+
+**建议：**
+- 不要在公网服务中暴露 `omk bench report` 服务（无认证）
+- 不要用不可信的第三方 eval-samples 文件
+- 自定义断言有 30 秒执行超时，但无沙箱隔离
