@@ -133,7 +133,7 @@ function defaultOnProgress({ phase, completed, total, sample_id, variant, durati
   } else {
     const costInfo = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
     const scoreInfo = typeof score === 'number' ? ` score=${score}` : '';
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ✓ ${durationMs}ms ${inputTokens}+${outputTokens}tok${costInfo}${scoreInfo}\n`);
+    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ✓ ${durationMs}ms ${inputTokens}+${outputTokens} tokens${costInfo}${scoreInfo}\n`);
   }
 }
 

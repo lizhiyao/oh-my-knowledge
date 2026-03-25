@@ -2,7 +2,7 @@
   {
     "sample_id": "error-resolution-hook-permission",
     "prompt": "提炼以下对话内容，分类并生成结构化记忆文档",
-    "context": "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"我在 Claude Code 里配置 Stop hook 后报 Permission denied，帮我修。\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"我先检查 hook 脚本权限和 shebang。\"}}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"脚本路径没问题，就是执行时报错。\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"问题是脚本没有执行权限。解决方式是给脚本加 +x，并确认文件首行有正确的 shebang。\"}}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"修完以后 hook 可以正常跑了。\"}}",
+    "context": "用户：我在 Claude Code 里配置 Stop hook 后报 Permission denied，帮我修。\n助手：我先检查 hook 脚本权限和 shebang。\n用户：脚本路径没问题，就是执行时报错。\n助手：问题是脚本没有执行权限。解决方式是给脚本加 +x，并确认文件首行有正确的 shebang。\n用户：修完以后 hook 可以正常跑了。",
     "rubric": "应正确识别为错误排查类（error_resolution 或 troubleshooting），提取权限问题的诊断和修复过程，输出结构化 markdown",
     "assertions": [
       { "type": "regex", "pattern": "error.resolution|troubleshooting|错误|排查", "weight": 2 },
@@ -19,7 +19,7 @@
   {
     "sample_id": "user-preference-no-nested-bullets",
     "prompt": "提炼以下对话内容，分类并生成结构化记忆文档",
-    "context": "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"以后给我的最终说明不要用嵌套 bullet，保持简单平铺。\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"收到，我会用平铺列表或短段落，不再使用嵌套 bullet。\"}}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"对，文件列表太长时也别写成 changelog。\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"我会把说明压缩成结果导向的高层概述。\"}}",
+    "context": "用户：以后给我的最终说明不要用嵌套 bullet，保持简单平铺。\n助手：收到，我会用平铺列表或短段落，不再使用嵌套 bullet。\n用户：对，文件列表太长时也别写成 changelog。\n助手：我会把说明压缩成结果导向的高层概述。",
     "rubric": "应正确识别为用户偏好类（user_preference 或 general），提取用户的格式化偏好",
     "assertions": [
       { "type": "regex", "pattern": "user.preference|general|偏好|通用", "weight": 2 },
@@ -35,7 +35,7 @@
   {
     "sample_id": "workflow-read-before-edit",
     "prompt": "提炼以下对话内容，分类并生成结构化记忆文档",
-    "context": "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"改这个 bug，但先别急着写代码。\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"我先用 rg 找相关文件，再读关键实现，确认上下文后再改。\"}}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"对，先看清楚现有逻辑，再动手。\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"已经定位到入口文件和依赖路径，接下来按最小改动原则修复。\"}}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"这种流程以后都按这个来。\"}}",
+    "context": "用户：改这个 bug，但先别急着写代码。\n助手：我先用 rg 找相关文件，再读关键实现，确认上下文后再改。\n用户：对，先看清楚现有逻辑，再动手。\n助手：已经定位到入口文件和依赖路径，接下来按最小改动原则修复。\n用户：这种流程以后都按这个来。",
     "rubric": "应正确识别为工作流模式类（workflow_pattern 或 workflow），提取先读后改的工作流程",
     "assertions": [
       { "type": "regex", "pattern": "workflow|工作流", "weight": 2 },
@@ -52,7 +52,7 @@
   {
     "sample_id": "debugging-repro-then-log",
     "prompt": "提炼以下对话内容，分类并生成结构化记忆文档",
-    "context": "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"这个接口偶发返回空数据，先别猜，帮我排查。\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"我会先稳定复现，再加最小日志，确认是上游没返回还是本地解析丢了。\"}}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"好，先定位问题层级。\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"复现后发现上游响应正常，空数据出在本地过滤条件过严。\"}}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"这个排查方法值得记一下。\"}}",
+    "context": "用户：这个接口偶发返回空数据，先别猜，帮我排查。\n助手：我会先稳定复现，再加最小日志，确认是上游没返回还是本地解析丢了。\n用户：好，先定位问题层级。\n助手：复现后发现上游响应正常，空数据出在本地过滤条件过严。\n用户：这个排查方法值得记一下。",
     "rubric": "应正确识别为调试方法类（debugging_method 或 troubleshooting），提取先复现再加日志的调试方法论",
     "assertions": [
       { "type": "regex", "pattern": "debug|troubleshoot|调试|排查", "weight": 2 },
@@ -69,7 +69,7 @@
   {
     "sample_id": "project-convention-apply-patch",
     "prompt": "提炼以下对话内容，分类并生成结构化记忆文档",
-    "context": "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"这个仓库改文件统一用 apply_patch，不要直接 cat 覆盖。\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"明白，这个项目的手工编辑我会统一通过 apply_patch 完成。\"}}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"对，bulk format 可以例外，但手工改动都按这个规范。\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"已记录为项目约定。\"}}",
+    "context": "用户：这个仓库改文件统一用 apply_patch，不要直接 cat 覆盖。\n助手：明白，这个项目的手工编辑我会统一通过 apply_patch 完成。\n用户：对，bulk format 可以例外，但手工改动都按这个规范。\n助手：已记录为项目约定。",
     "rubric": "应正确识别为项目约定类（project_convention 或 project），提取 apply_patch 使用规范",
     "assertions": [
       { "type": "regex", "pattern": "project.convention|project|项目", "weight": 2 },
@@ -85,10 +85,10 @@
   {
     "sample_id": "skip-low-signal-small-talk",
     "prompt": "提炼以下对话内容，分类并生成结构化记忆文档",
-    "context": "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"今天先不写代码了，随便聊聊。\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"可以，你最近更想做产品还是做工具？\"}}\n{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"还没想好，就是有点累。\"}}\n{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"那先休息一下，等状态好一点再继续。\"}}",
+    "context": "用户：今天先不写代码了，随便聊聊。\n助手：可以，你最近更想做产品还是做工具？\n用户：还没想好，就是有点累。\n助手：那先休息一下，等状态好一点再继续。",
     "rubric": "这是闲聊对话，不应存储。如果 skill 正确识别为低信号对话并跳过/拒绝存储，得高分",
     "assertions": [
-      { "type": "regex", "pattern": "skip|跳过|不存储|should_store.*false|低信号|no reusable", "weight": 3 },
+      { "type": "regex", "pattern": "skip|跳过|不存储|should_store.*false|低信号|no reusable|不值得|无需", "weight": 3 },
       { "type": "max_length", "value": 500, "weight": 1 }
     ],
     "dimensions": {
