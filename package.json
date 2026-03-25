@@ -25,6 +25,10 @@
     "ai",
     "claude"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:insurance-future/oh-my-knowledge.git"
+  },
   "author": "lizhiyao",
   "license": "MIT",
   "dependencies": {
