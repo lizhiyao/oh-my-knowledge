@@ -47,7 +47,7 @@ describe('scriptExecutor', () => {
     writeFileSync(join(skillDir, 'eval.sh'), '#!/bin/bash\necho "# Test Output"\necho "Content from: $1"');
 
     const exec = createExecutor('script');
-    const result = await exec({ model: null, system: skillDir, prompt: 'test input data' });
+    const result = await exec({ model: null, skillPath: skillDir, prompt: 'test input data' });
 
     assert.equal(result.ok, true);
     assert.ok(result.output.includes('# Test Output'));
@@ -66,7 +66,7 @@ describe('scriptExecutor', () => {
     ].join('\n'));
 
     const exec = createExecutor('script');
-    const result = await exec({ model: null, system: skillDir, prompt: 'test' });
+    const result = await exec({ model: null, skillPath: skillDir, prompt: 'test' });
 
     assert.equal(result.ok, true);
     assert.equal(result.inputTokens, 150);
@@ -78,9 +78,9 @@ describe('scriptExecutor', () => {
 
   it('returns error when skill directory is missing', async () => {
     const exec = createExecutor('script');
-    const result = await exec({ model: null, system: null, prompt: 'test' });
+    const result = await exec({ model: null, skillPath: null, prompt: 'test' });
 
     assert.equal(result.ok, false);
-    assert.ok(result.error.includes('skill directory'));
+    assert.ok(result.error.includes('skillPath'));
   });
 });
