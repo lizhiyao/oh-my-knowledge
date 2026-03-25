@@ -1,12 +1,2 @@
-logs/
-npm-debug.log
 node_modules/
-coverage/
-.idea/
-run/
 .DS_Store
-*.swp
-dist
-*-lock.yaml
-*-lock.json
-.tshy*

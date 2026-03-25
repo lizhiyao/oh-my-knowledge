@@ -1,74 +1,35 @@
 {
   "name": "oh-my-knowledge",
-  "version": "1.0.0",
-  "description": "",
-  "dependencies": {},
-  "devDependencies": {
-    "@arethetypeswrong/cli": "^0.15.3",
-    "@eggjs/tsconfig": "^1.3.3",
-    "@types/mocha": "^10.0.1",
-    "@types/node": "^20.6.3",
-    "egg-bin": "^6.5.2",
-    "eslint": "^8.49.0",
-    "eslint-config-egg": "^14.0.0",
-    "tshy": "^1.1.1",
-    "tshy-after": "^1.0.0",
-    "typescript": "^5.2.2",
-    "@ali/ci": "4"
+  "version": "0.3.0",
+  "description": "Knowledge artifact evaluation toolkit — benchmark your skills with objective data",
+  "type": "module",
+  "bin": {
+    "omk": "cli.mjs"
   },
   "engines": {
-    "node": ">=18.19.0"
+    "node": ">=20"
   },
-  "npm": {
-    "mode": "npm"
-  },
-  "scripts": {
-    "lint": "eslint src test --ext .ts",
-    "pretest": "npm run lint -- --fix && npm run prepublishOnly",
-    "test": "npm run test-local",
-    "test-local": "egg-bin test",
-    "cov": "egg-bin cov",
-    "preci": "npm run prepublishOnly",
-    "ci": "npm run lint && npm run cov && attw --pack",
-    "prepublishOnly": "tshy && tshy-after"
-  },
-  "ci": {
-    "versions": "18.19.0, 18, 20, 22",
-    "cr": true
-  },
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/insurance-future/oh-my-knowledge"
-  },
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org"
-  },
-  "author": "lizhiyao.lzy",
-  "license": "MIT",
   "files": [
-    "dist",
-    "src"
+    "cli.mjs",
+    "lib/",
+    "examples/"
   ],
-  "type": "module",
-  "tshy": {
-    "exports": {
-      "./package.json": "./package.json",
-      ".": "./src/index.ts"
-    }
+  "scripts": {
+    "test": "node --test 'test/*.mjs'"
   },
-  "exports": {
-    "./package.json": "./package.json",
-    ".": {
-      "import": {
-        "types": "./dist/esm/index.d.ts",
-        "default": "./dist/esm/index.js"
-      },
-      "require": {
-        "types": "./dist/commonjs/index.d.ts",
-        "default": "./dist/commonjs/index.js"
-      }
-    }
-  },
-  "types": "./dist/commonjs/index.d.ts",
-  "yuyanId": "180020010101338900"
+  "keywords": [
+    "knowledge-engineering",
+    "skill-evaluation",
+    "benchmark",
+    "llm",
+    "ai",
+    "claude"
+  ],
+  "author": "lizhiyao",
+  "license": "MIT",
+  "dependencies": {
+    "ajv": "^8.18.0",
+    "js-yaml": "^4.1.1",
+    "simple-statistics": "^7.8.9"
+  }
 }
