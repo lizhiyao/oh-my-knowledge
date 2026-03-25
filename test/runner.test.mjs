@@ -98,7 +98,7 @@ describe('runEvaluation', () => {
         skillDir: SKILL_DIR,
         variants: ['v1', 'v99_nonexistent'],
       }),
-      /skill file not found/,
+      /skill not found/,
     );
   });
 

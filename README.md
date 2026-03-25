@@ -18,6 +18,10 @@ npm i oh-my-knowledge -g
 omk bench init my-eval
 cd my-eval
 
+# 把要对比的 skill 放到 skills/ 目录
+# 方式一：直接放 .md 文件（skills/v1.md, skills/v2.md）
+# 方式二：放完整 skill 目录（skills/my-skill-v1/SKILL.md, ...）
+
 # 预览评测计划
 omk bench run --dry-run
 
@@ -25,12 +29,27 @@ omk bench run --dry-run
 omk bench run --variants v1,v2
 ```
 
+## 特性
+
+| 特性 | 说明 |
+|------|------|
+| **18 种断言** | 包含子串、正则、JSON Schema、语义相似度、自定义函数等 |
+| **四维评估** | 质量、成本、效率、稳定性四个维度对比 |
+| **多执行器** | 支持 Claude / OpenAI / Gemini CLI 及脚本类 Skill |
+| **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
+| **并行执行** | `--concurrency N` 并行 N 个任务 |
+| **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
+| **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本样本 |
+| **人工反馈** | HTML 报告中提交星级评分和备注 |
+| **可追溯性** | 报告含 CLI 版本、Node 版本、skill 文件哈希 |
+| **中英切换** | HTML 报告右上角一键切换语言 |
+
 ## 工作原理
 
 ```
 eval-samples.json       skills/
-                        ├── v1.md (或 v1/ 目录)
-                        └── v2.md (或 v2/ 目录)
+                        ├── v1.md 或 v1/SKILL.md
+                        └── v2.md 或 v2/SKILL.md
        │                    │
        └────────┬───────────┘
                 │
@@ -217,45 +236,37 @@ omk bench init [目录]    # 生成评测项目脚手架
 
 | 执行器 | 适用场景 | 说明 |
 |--------|----------|------|
-| `claude` | Skill 是 system prompt | 通过 `claude -p` 调用模型 |
+| `claude` | 默认 | 通过 `claude -p` 调用模型 |
 | `openai` | 跨厂商对比 | 通过 `openai api` CLI 调用 |
 | `gemini` | 跨厂商对比 | 通过 `gemini` CLI 调用 |
-| `script` | Skill 是完整脚本流水线 | 自动检测入口脚本并执行 |
 
-### Script 执行器
+### Skill 目录结构
 
-用于端到端评测脚本类 skill（如包含 Python 处理流程的 skill 目录）：
+工具支持两种 skill 布局，可混用：
 
-```bash
-omk bench run --executor script \
-  --skill-dir ./skills \
-  --variants my-skill-v1,my-skill-v2
+```
+skills/
+├── v1.md                    # 方式一：直接放 .md 文件
+└── my-skill/                # 方式二：完整 skill 目录
+    ├── SKILL.md             #   工具自动读取此文件作为 system prompt
+    ├── config.json
+    └── scripts/
 ```
 
-**工作方式：**
-1. `--variants` 对应 `--skill-dir` 下的子目录名
-2. 自动检测入口：优先 `eval.sh`，否则探测 `scripts/*.py`
-3. 自动识别调用方式（stdin JSON 或 CLI 参数）
-4. 将 transcript 写入临时文件传给脚本
-5. 捕获输出 markdown 进行评分
+`--variants` 指定的名称对应 `skills/` 下的文件名（不含 `.md`）或子目录名。
+
+```bash
+# 评测两个 .md 文件
+omk bench run --variants v1,v2
+
+# 评测两个 skill 目录（自动读取各目录下的 SKILL.md）
+omk bench run --variants my-skill-a,my-skill-b
+```
 
 **前置要求：**
 - **claude**：安装 [Claude Code](https://claude.ai/code) 并认证
 - **openai**：`pip install openai` 并设置 `OPENAI_API_KEY`
 - **gemini**：`npm i -g @google/gemini-cli` 并认证
-- **script**：确保 skill 脚本的依赖已安装（工具会自动检测并提示缺失依赖）
-
-## 特性
-
-| 特性 | 说明 |
-|------|------|
-| **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
-| **并行执行** | `--concurrency N` 并行 N 个任务 |
-| **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
-| **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本样本 |
-| **人工反馈** | HTML 报告中提交星级评分和备注 |
-| **可追溯性** | 报告含 CLI 版本、Node 版本、skill 文件哈希 |
-| **中英切换** | HTML 报告右上角一键切换语言 |
 
 ## 环境变量
 
