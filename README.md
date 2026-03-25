@@ -1,448 +1,271 @@
 # oh-my-knowledge
 
-Knowledge artifact evaluation toolkit — benchmark your skills with objective data.
+知识载体评测工具 — 用客观数据衡量你的 skill 质量。
 
-English | [中文](./README.zh-CN.md)
+**固定模型，只变知识载体，数据说话。**
 
-**Fixed model, variable knowledge artifact, data speaks.**
+## 为什么需要这个工具
 
-## Why
+做知识工程的团队会产出大量 skill（系统提示词、知识包、规则集等）。当被问到"v2 比 v1 好在哪"时，需要客观数据而非主观判断。`oh-my-knowledge` 通过控制变量实验解决这个问题：相同模型、相同测试样本，只改变知识载体。
 
-Teams building AI skills (system prompts, knowledge packages, rule sets) need objective data to prove v2 is better than v1. `oh-my-knowledge` runs controlled experiments: same model, same test cases, only the knowledge artifact changes.
-
-## Quick Start
+## 快速开始
 
 ```bash
-# Install globally
-npm i -g oh-my-knowledge
+# 安装
+npm i oh-my-knowledge -g
 
-# Scaffold a new eval project
+# 生成评测项目脚手架
 omk bench init my-eval
 cd my-eval
 
-# Preview the evaluation plan
+# 预览评测计划
 omk bench run --dry-run
 
-# Run the evaluation
+# 运行评测（自动打开报告页面）
 omk bench run --variants v1,v2
-
-# View the report
-omk bench report
-# Open http://127.0.0.1:7799
 ```
 
-## How It Works
+## 工作原理
 
 ```
-eval-samples.json     skills/v1.md     skills/v2.md
-       │                    │                │
-       └────────┬───────────┘                │
-                │                            │
-         ┌──────▼──────┐              ┌──────▼──────┐
-         │  sample +   │              │  sample +   │
-         │  skill v1   │              │  skill v2   │
-         └──────┬──────┘              └──────┬──────┘
-                │                            │
-         ┌──────▼──────┐              ┌──────▼──────┐
-         │  Executor   │              │  Executor   │
-         │ claude      │              │ claude      │
-         │ openai      │              │ openai      │
-         │ gemini      │              │ gemini      │
-         └──────┬──────┘              └──────┬──────┘
-                │                            │
-         ┌──────▼──────────────────────▼──────┐
-         │          Grading                    │
-         │  ┌─────────────┐ ┌──────────────┐  │
-         │  │ Assertions  │ │ LLM Judge    │  │
-         │  │ (18 types)  │ │ (rubric or   │  │
-         │  │             │ │  dimensions) │  │
-         │  └─────────────┘ └──────────────┘  │
-         └──────────────────┬─────────────────┘
-                            │
-                  ┌─────────▼─────────┐
-                  │  Report + Analysis │
-                  │  (JSON/HTML)       │
-                  └───────────────────┘
+eval-samples.json       skills/
+                        ├── v1.md (或 v1/ 目录)
+                        └── v2.md (或 v2/ 目录)
+       │                    │
+       └────────┬───────────┘
+                │
+    ┌───────────▼───────────┐
+    │  交错调度 + 并发执行    │
+    │  s1-v1 → s1-v2 → ...  │
+    └───────────┬───────────┘
+                │
+    ┌───────────▼───────────┐
+    │      执行器             │
+    │  claude / openai /     │
+    │  gemini / script       │
+    └───────────┬───────────┘
+                │
+    ┌───────────▼───────────┐
+    │        评分            │
+    │  断言检查 (18 种)      │
+    │  LLM 评委 (rubric /   │
+    │           dimensions)  │
+    └───────────┬───────────┘
+                │
+    ┌───────────▼───────────┐
+    │  报告 + 自动分析       │
+    │  四维评估：质量 / 成本  │
+    │  / 效率 / 稳定性       │
+    │  (JSON + HTML)         │
+    └───────────────────────┘
 ```
 
-## Eval Sample Format
+## 评测样本格式
 
-Supports both JSON and YAML (`eval-samples.json`, `eval-samples.yaml`, `eval-samples.yml`).
-
-The file contains an array of sample objects. Each sample represents one test case for evaluating a skill.
+支持 JSON 和 YAML（`eval-samples.json`、`eval-samples.yaml`、`eval-samples.yml`）。
 
 ```json
 [
   {
     "sample_id": "s001",
-    "prompt": "Review this code",
+    "prompt": "审查这段代码的安全性",
     "context": "function auth(u, p) { db.query('SELECT * FROM users WHERE name=' + u); }",
-    "rubric": "Should identify SQL injection and suggest parameterized queries",
+    "rubric": "应识别 SQL 注入风险并建议参数化查询",
     "assertions": [
-      { "type": "contains", "value": "SQL injection", "weight": 1 },
-      { "type": "contains", "value": "parameterized", "weight": 1 },
-      { "type": "not_contains", "value": "looks good", "weight": 0.5 },
-      { "type": "json_valid" },
-      { "type": "cost_max", "value": 0.01 },
-      { "type": "custom", "fn": "my-assertion.mjs", "weight": 1 }
+      { "type": "contains", "value": "SQL 注入", "weight": 1 },
+      { "type": "contains", "value": "参数化", "weight": 1 },
+      { "type": "not_contains", "value": "没有问题", "weight": 0.5 }
     ],
     "dimensions": {
-      "security": "Should identify injection vulnerability",
-      "actionability": "Should provide concrete fix with code"
+      "security": "是否识别出注入漏洞",
+      "actionability": "是否给出可直接使用的修复代码"
     }
   }
 ]
 ```
 
-### Field Reference
+### 字段说明
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `sample_id` | `string` | **Yes** | Unique identifier for the sample (e.g., `"s001"`). Used in reports and analysis to reference this test case. |
-| `prompt` | `string` | **Yes** | The user prompt sent to the model. This is the task or question the model should answer. |
-| `context` | `string` | No | Additional context appended to the prompt (e.g., code snippet, document text). If provided, it is wrapped in a code block and concatenated after `prompt`. |
-| `rubric` | `string` | No | Natural language scoring criteria for the LLM judge. The judge model reads this rubric and scores the output 1-5. Use when you need semantic/qualitative evaluation. |
-| `assertions` | `array` | No | List of deterministic and async checks applied to the model output. Each assertion is an object with a `type` field (see [Assertion Types](#assertion-types)). |
-| `assertions[].type` | `string` | **Yes** | The assertion type (e.g., `"contains"`, `"json_valid"`, `"custom"`). See full list below. |
-| `assertions[].value` | `string\|number` | Varies | The value to check against. Required for `contains`, `starts_with`, `equals`, `min_length`, `cost_max`, etc. |
-| `assertions[].values` | `array` | Varies | Array of strings. Required for `contains_all` and `contains_any`. |
-| `assertions[].pattern` | `string` | Varies | Regex pattern. Required for `regex` type. |
-| `assertions[].flags` | `string` | No | Regex flags (default: `"i"`). Only used with `regex` type. |
-| `assertions[].schema` | `object` | Varies | JSON Schema object. Required for `json_schema` type. Validated via [ajv](https://ajv.js.org/) (full JSON Schema spec). |
-| `assertions[].reference` | `string` | Varies | Reference text for semantic comparison. Required for `semantic_similarity` type. |
-| `assertions[].threshold` | `number` | No | Minimum score (1-5) to consider a semantic similarity match passing. Default: `3`. |
-| `assertions[].fn` | `string` | Varies | Path to a `.mjs` file exporting the check function. Required for `custom` type. Resolved relative to the samples file directory. |
-| `assertions[].weight` | `number` | No | Weight of this assertion in the composite score calculation. Default: `1`. Higher weight = more influence on the final assertion score. |
-| `dimensions` | `object` | No | Key-value map for multi-dimensional LLM scoring. Each key is a dimension name (e.g., `"security"`), and the value is the rubric text the LLM judge uses to score that dimension (1-5). Scores are averaged into a single LLM score. |
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `sample_id` | `string` | **是** | 样本唯一标识 |
+| `prompt` | `string` | **是** | 发送给模型的用户提示词 |
+| `context` | `string` | 否 | 附加上下文（代码片段等），会被包裹在代码块中拼接到 prompt 后 |
+| `rubric` | `string` | 否 | LLM 评委的评分标准（1-5 分） |
+| `assertions` | `array` | 否 | 断言检查列表，详见[断言类型](#断言类型) |
+| `assertions[].type` | `string` | **是** | 断言类型 |
+| `assertions[].value` | `string\|number` | 视类型 | 检查值（`contains`、`min_length`、`cost_max` 等必填） |
+| `assertions[].values` | `array` | 视类型 | 字符串数组（`contains_all`、`contains_any` 必填） |
+| `assertions[].pattern` | `string` | 视类型 | 正则表达式（`regex` 必填） |
+| `assertions[].flags` | `string` | 否 | 正则标志（默认 `"i"`） |
+| `assertions[].schema` | `object` | 视类型 | JSON Schema 对象（`json_schema` 必填，基于 [ajv](https://ajv.js.org/)） |
+| `assertions[].reference` | `string` | 视类型 | 参考文本（`semantic_similarity` 必填） |
+| `assertions[].threshold` | `number` | 否 | 语义相似度通过阈值（默认 3） |
+| `assertions[].fn` | `string` | 视类型 | 自定义断言 JS 文件路径（`custom` 必填） |
+| `assertions[].weight` | `number` | 否 | 权重（默认 1） |
+| `dimensions` | `object` | 否 | 多维度评分，key 为维度名，value 为评分标准文本 |
 
-**Scoring priority:** If both `assertions` and `rubric`/`dimensions` are present, the composite score is a 50/50 weighted average. If only one is present, that score is used directly. If none are present, the score is 0.
+### 评分策略
 
-**Prompt construction:** The final prompt sent to the model is: `prompt` alone if no `context`, or `prompt + "\n\n```\n" + context + "\n```"` if `context` is provided.
+#### 1. 断言评分
 
-### Grading Strategy
+基于规则的本地检查，每个断言产生通过/失败结果。
 
-Each sample can use up to three grading methods. They can be used alone or combined.
+**计算方式：**
+- 通过率 = 通过断言的权重之和 / 总权重（0~1）
+- 分数 = 1 + 通过率 × 4（映射到 1~5 分）
+- 示例：3 个断言（权重各 1），2 个通过 → 通过率 = 2/3 → 分数 = 1 + 0.67 × 4 = **3.67**
 
-#### 1. Assertions (deterministic scoring)
+#### 2. Rubric / Dimensions 评分
 
-Assertions are rule-based checks that run locally without any LLM calls (except `semantic_similarity` and `custom`). Each assertion produces a **pass/fail** result.
+评委模型（默认 `haiku`）按标准打 1-5 分。`dimensions` 模式下各维度独立评分后取平均。
 
-**How the assertion score is calculated:**
+#### 3. 综合分数
 
-1. Each assertion has a `weight` (default: 1)
-2. Sum the weights of all passing assertions → `passedWeight`
-3. Sum the weights of all assertions → `totalWeight`
-4. Compute ratio: `passedWeight / totalWeight` (0.0 ~ 1.0)
-5. Normalize to 1-5 scale: **`score = 1 + ratio × 4`**
+| 条件 | 公式 |
+|------|------|
+| 仅断言 | `assertionScore` |
+| 仅 LLM | `llmScore` |
+| 两者都有 | `(assertionScore + llmScore) / 2` |
+| 都没有 | `0` |
 
-Example: 3 assertions (weight 1 each), 2 pass → ratio = 2/3 → score = 1 + 2.67 = **3.67**
+### 断言类型
 
-#### 2. Rubric (single LLM judge)
+**确定性断言（18 种）：**
 
-A judge model (default: `haiku`, configurable via `--judge-model`) reads the model output and scores it against the rubric text. Returns an integer score from **1** (fail) to **5** (excellent) with a brief reason.
+| 类型 | 说明 |
+|------|------|
+| `contains` / `not_contains` | 包含/不包含子串 |
+| `regex` | 正则匹配 |
+| `min_length` / `max_length` | 长度范围 |
+| `json_valid` / `json_schema` | JSON 校验 |
+| `starts_with` / `ends_with` | 前缀/后缀匹配 |
+| `equals` / `not_equals` | 精确匹配 |
+| `word_count_min` / `word_count_max` | 词数范围 |
+| `contains_all` / `contains_any` | 多值匹配 |
+| `cost_max` / `latency_max` | 成本/延迟限制 |
+| `semantic_similarity` | LLM 语义相似度 |
+| `custom` | 自定义 JS 函数（30s 超时） |
 
-Only one of `rubric` or `dimensions` should be used per sample. If both are present, `dimensions` takes priority.
-
-#### 3. Dimensions (multi-dimensional LLM judge)
-
-Each dimension is scored independently by the judge model (1-5). The dimension scores are **averaged** to produce a single LLM score.
-
-Example: `security: 5`, `actionability: 3` → LLM score = **(5 + 3) / 2 = 4.0**
-
-#### Composite Score
-
-| What's present | Composite score formula |
-|----------------|----------------------|
-| Assertions only | `assertionScore` |
-| LLM only (rubric or dimensions) | `llmScore` |
-| Both | `(assertionScore + llmScore) / 2` |
-| Neither | `0` |
-
-All scores are on a **1-5 scale**. A score of 0 means no grading criteria were defined.
-
-### Assertion Types
-
-**Deterministic (sync, no LLM):**
-
-| Type | Fields | Description |
-|------|--------|-------------|
-| `contains` | `value`, `weight` | Output contains substring (case-insensitive) |
-| `not_contains` | `value`, `weight` | Output does NOT contain substring |
-| `regex` | `pattern`, `flags`, `weight` | Output matches regex |
-| `min_length` | `value`, `weight` | Output length >= value |
-| `max_length` | `value`, `weight` | Output length <= value |
-| `json_valid` | `weight` | Output is valid JSON |
-| `json_schema` | `schema`, `weight` | Output matches JSON Schema (full spec via ajv) |
-| `starts_with` | `value`, `weight` | Output starts with string (case-insensitive) |
-| `ends_with` | `value`, `weight` | Output ends with string (case-insensitive) |
-| `equals` | `value`, `weight` | Output exactly equals value (after trim) |
-| `not_equals` | `value`, `weight` | Output does not equal value (after trim) |
-| `word_count_min` | `value`, `weight` | Word count >= value |
-| `word_count_max` | `value`, `weight` | Word count <= value |
-| `contains_all` | `values`, `weight` | Output contains ALL substrings |
-| `contains_any` | `values`, `weight` | Output contains at least one substring |
-| `cost_max` | `value`, `weight` | Execution cost (USD) <= value |
-| `latency_max` | `value`, `weight` | Execution latency (ms) <= value |
-
-**Async (LLM-based):**
-
-| Type | Fields | Description |
-|------|--------|-------------|
-| `semantic_similarity` | `reference`, `threshold`, `weight` | LLM judges similarity to reference text (threshold default: 3) |
-| `custom` | `fn`, `weight` | Load external JS function (see below) |
-
-### Custom Assertions
-
-Create a `.mjs` file that exports a function:
+### 自定义断言
 
 ```js
 // my-assertion.mjs
 export default function(output, { sample, assertion }) {
-  const hasKeyword = output.includes('SQL');
-  return { pass: hasKeyword, message: 'Checked for SQL keyword' };
+  return { pass: output.includes('SQL'), message: '检查了 SQL 关键字' };
 }
 ```
 
-Reference it in your sample: `{ "type": "custom", "fn": "my-assertion.mjs" }`. The `fn` path is resolved relative to the samples file directory.
+## 四维评估指标
 
-## Report Example
+评测报告从四个维度展示结果：
 
-After running `omk bench run --variants v1,v2`, the tool outputs a JSON report (also saved to `~/.oh-my-knowledge/reports/`):
+| 维度 | 指标 | 说明 |
+|------|------|------|
+| 📊 **质量** | 综合分数、断言分、LLM 评分、min/max | 基于断言和 LLM 评委的综合评分 |
+| 💰 **成本** | 总成本、输入/输出 Token 数 | 基于 Token 消耗和模型定价的 API 费用 |
+| ⚡ **效率** | 平均延迟 (ms) | 从发送请求到收到完整响应的端到端耗时 |
+| 🛡️ **稳定性** | 成功率 (%) | 模型调用成功率，失败包括超时、API 错误等 |
 
-```json
-{
-  "id": "2026-03-24T15-30-45-v1-v2",
-  "meta": {
-    "variants": ["v1", "v2"],
-    "model": "sonnet",
-    "judgeModel": "haiku",
-    "executor": "claude",
-    "sampleCount": 3,
-    "taskCount": 6,
-    "totalCostUSD": 0.0234,
-    "timestamp": "2026-03-24T15:30:45.000Z",
-    "cliVersion": "0.3.0",
-    "nodeVersion": "v22.0.0",
-    "skillHashes": { "v1": "a1b2c3d4e5f6", "v2": "f6e5d4c3b2a1" }
-  },
-  "summary": {
-    "v1": {
-      "totalSamples": 3,
-      "successCount": 3,
-      "errorCount": 0,
-      "avgCompositeScore": 3.67,
-      "avgAssertionScore": 3.0,
-      "avgLlmScore": 4.33,
-      "avgDurationMs": 2500,
-      "avgTotalTokens": 1850,
-      "totalCostUSD": 0.0112
-    },
-    "v2": {
-      "totalSamples": 3,
-      "successCount": 3,
-      "errorCount": 0,
-      "avgCompositeScore": 4.5,
-      "avgAssertionScore": 5.0,
-      "avgLlmScore": 4.0,
-      "avgDurationMs": 2800,
-      "avgTotalTokens": 2100,
-      "totalCostUSD": 0.0122
-    }
-  },
-  "results": [
-    {
-      "sample_id": "s001",
-      "variants": {
-        "v1": {
-          "ok": true,
-          "compositeScore": 3.5,
-          "assertions": {
-            "passed": 1,
-            "total": 2,
-            "score": 3.0,
-            "details": [
-              { "type": "contains", "value": "SQL injection", "weight": 1, "passed": true },
-              { "type": "contains", "value": "parameterized", "weight": 1, "passed": false }
-            ]
-          },
-          "llmScore": 4,
-          "llmReason": "Identified the vulnerability but did not provide a complete fix",
-          "durationMs": 2300,
-          "inputTokens": 850,
-          "outputTokens": 1200,
-          "totalTokens": 2050,
-          "costUSD": 0.0038,
-          "outputPreview": "This code has a SQL injection vulnerability..."
-        },
-        "v2": {
-          "ok": true,
-          "compositeScore": 4.5,
-          "assertions": {
-            "passed": 2,
-            "total": 2,
-            "score": 5.0,
-            "details": [
-              { "type": "contains", "value": "SQL injection", "weight": 1, "passed": true },
-              { "type": "contains", "value": "parameterized", "weight": 1, "passed": true }
-            ]
-          },
-          "llmScore": 4,
-          "llmReason": "Thorough analysis with actionable fix code",
-          "durationMs": 2600,
-          "inputTokens": 900,
-          "outputTokens": 1400,
-          "totalTokens": 2300,
-          "costUSD": 0.0042,
-          "outputPreview": "## Security Issue: SQL Injection\n\nThe code is vulnerable..."
-        }
-      }
-    }
-  ],
-  "analysis": {
-    "insights": [
-      {
-        "type": "uniform_scores",
-        "severity": "info",
-        "message": "1/3 samples show score difference < 0.5 between variants"
-      }
-    ],
-    "suggestions": []
-  }
-}
-```
-
-**Reading the report:**
-
-- **`summary`** gives a quick comparison — in this example, v2 scores higher (4.5 vs 3.67) because it passes more assertions
-- **`results`** shows per-sample detail — you can see exactly which assertions passed/failed and why
-- **`analysis`** flags patterns — here it notes one sample has similar scores across variants
-- View the HTML version at `http://127.0.0.1:7799/run/{id}` after running `omk bench report`
-
-## CLI Reference
+## CLI 参考
 
 ### `omk bench run`
 
 ```bash
-omk bench run [options]
+omk bench run [选项]
 
-Options:
-  --samples <path>       Sample file (default: eval-samples.json, auto-detects .yaml/.yml)
-  --skill-dir <path>     Skill directory (default: skills)
-  --variants <v1,v2>     Variant names (default: v1,v2)
-  --model <name>         Model under test (default: sonnet)
-  --judge-model <name>   Judge model (default: haiku)
-  --output-dir <path>    Output directory (default: ~/.oh-my-knowledge/reports/)
-  --no-judge             Skip LLM judging
-  --dry-run              Preview only
-  --blind                Blind A/B mode: hide variant names in report
-  --concurrency <n>      Number of parallel tasks (default: 1)
-  --repeat <n>           Run evaluation N times for variance analysis (default: 1)
-  --executor <name>      Executor (default: claude)
+选项：
+  --samples <路径>       样本文件（默认：eval-samples.json，自动检测 .yaml/.yml）
+  --skill-dir <路径>     skill 目录（默认：skills）
+  --variants <v1,v2>     变体名称（默认：v1,v2）
+  --model <名称>         被测模型（默认：sonnet）
+  --judge-model <名称>   评委模型（默认：haiku）
+  --output-dir <路径>    输出目录（默认：~/.oh-my-knowledge/reports/）
+  --no-judge             跳过 LLM 评分
+  --dry-run              仅预览
+  --blind                盲测模式
+  --concurrency <n>      并行任务数（默认：1）
+  --repeat <n>           重复 N 次做方差分析（默认：1）
+  --executor <名称>      执行器（默认：claude）
 ```
 
 ### `omk bench ci`
 
-Run evaluation in CI and exit with pass/fail code.
+在自动化流水线中运行评测。评分达标则退出码为 0（通过），否则为 1（失败），可直接用于卡点判断。
 
 ```bash
-omk bench ci [options]
-
-Options:
-  (same as "bench run", plus:)
-  --threshold <number>   Minimum composite score to pass (default: 3.5)
+omk bench ci [选项]
+  --threshold <数值>     达标的最低综合分数（默认：3.5）
 ```
-
-Exit code 0 = all variants pass, 1 = at least one variant below threshold.
 
 ### `omk bench report`
 
-```bash
-omk bench report [options]
+启动报告服务，浏览历史报告、提交反馈、删除报告。
 
-Options:
-  --port <number>        Server port (default: 7799)
-  --reports-dir <path>   Reports directory (default: ~/.oh-my-knowledge/reports/)
+```bash
+omk bench report [选项]
+  --port <端口号>        服务端口（默认：7799）
 ```
 
 ### `omk bench init`
 
 ```bash
-omk bench init [dir]    # Scaffold a new eval project
+omk bench init [目录]    # 生成评测项目脚手架
 ```
 
-## Features
+## 执行器
 
-### Blind A/B Testing
+| 执行器 | 适用场景 | 说明 |
+|--------|----------|------|
+| `claude` | Skill 是 system prompt | 通过 `claude -p` 调用模型 |
+| `openai` | 跨厂商对比 | 通过 `openai api` CLI 调用 |
+| `gemini` | 跨厂商对比 | 通过 `gemini` CLI 调用 |
+| `script` | Skill 是完整脚本流水线 | 自动检测入口脚本并执行 |
 
-Use `--blind` to hide variant names in reports. Variants are randomly labeled as "Variant A", "Variant B", etc. A reveal button in the HTML report shows the mapping.
+### Script 执行器
 
-### Parallel Execution
-
-Use `--concurrency N` to run N tasks in parallel. Tasks maintain interleaved scheduling order to reduce time bias.
-
-### Multi-run Variance Analysis
-
-Use `--repeat N` to run the evaluation N times. The report includes:
-- Per-variant mean, standard deviation, 95% confidence interval
-- Pairwise Welch's t-test between variants (significance at p < 0.05)
-
-### Auto-analysis
-
-After each evaluation, the toolkit automatically detects:
-- **Low-discrimination assertions**: assertions with identical results across all variants
-- **Uniform scores**: samples where variants score within 0.5 of each other
-- **All-pass / all-fail**: assertions that may be too loose or too strict
-- **High-cost samples**: samples with disproportionately high cost
-
-Insights and suggestions are shown in the HTML report.
-
-### Human Feedback
-
-The HTML report includes star rating (1-5) and comment forms for each sample-variant pair. Feedback is persisted to the report JSON via `POST /api/run/:id/feedback`.
-
-### Traceability
-
-Reports include `cliVersion`, `nodeVersion`, and `skillHashes` (SHA-256 of each skill file) in metadata for reproducibility.
-
-## Executors
-
-Use `--executor` to select which model provider to use.
-
-| Executor | CLI Tool | Default Model | Auth |
-|----------|----------|---------------|------|
-| `claude` | `claude -p` | `sonnet` | Claude Max plan or API key |
-| `openai` | `openai api chat.completions.create` | `gpt-4o` | `OPENAI_API_KEY` env var |
-| `gemini` | `gemini` (stdin pipe) | Default Gemini model | Google account or `GOOGLE_API_KEY` |
+用于端到端评测脚本类 skill（如包含 Python 处理流程的 skill 目录）：
 
 ```bash
-# Use OpenAI
-omk bench run --executor openai --model gpt-4o --variants v1,v2
-
-# Use Gemini
-omk bench run --executor gemini --model gemini-2.5-pro --variants v1,v2
-
-# Compare the same skill across providers (run separately, compare reports)
-omk bench run --executor claude --model sonnet --variants v1,v2
-omk bench run --executor openai --model gpt-4o --variants v1,v2
+omk bench run --executor script \
+  --skill-dir ./skills \
+  --variants my-skill-v1,my-skill-v2
 ```
 
-**Prerequisites:**
-- **claude**: Install [Claude Code](https://claude.ai/code) and authenticate
-- **openai**: `pip install openai` and set `OPENAI_API_KEY`
-- **gemini**: `npm i -g @google/gemini-cli` and authenticate with Google
+**工作方式：**
+1. `--variants` 对应 `--skill-dir` 下的子目录名
+2. 自动检测入口：优先 `eval.sh`，否则探测 `scripts/*.py`
+3. 自动识别调用方式（stdin JSON 或 CLI 参数）
+4. 将 transcript 写入临时文件传给脚本
+5. 捕获输出 markdown 进行评分
 
-## Environment Variables
+**前置要求：**
+- **claude**：安装 [Claude Code](https://claude.ai/code) 并认证
+- **openai**：`pip install openai` 并设置 `OPENAI_API_KEY`
+- **gemini**：`npm i -g @google/gemini-cli` 并认证
+- **script**：确保 skill 脚本的依赖已安装（工具会自动检测并提示缺失依赖）
 
-| Variable | Description |
-|----------|-------------|
-| `CCV_PROXY_URL` | Route requests through cc-viewer proxy for real-time visualization |
-| `OMK_BENCH_PORT` | Report server port (default: 7799) |
+## 特性
 
-## Requirements
+| 特性 | 说明 |
+|------|------|
+| **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
+| **并行执行** | `--concurrency N` 并行 N 个任务 |
+| **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
+| **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本样本 |
+| **人工反馈** | HTML 报告中提交星级评分和备注 |
+| **可追溯性** | 报告含 CLI 版本、Node 版本、skill 文件哈希 |
+| **中英切换** | HTML 报告右上角一键切换语言 |
+
+## 环境变量
+
+| 变量 | 说明 |
+|------|------|
+| `CCV_PROXY_URL` | 将请求代理到 cc-viewer，实时可视化评测流量 |
+| `OMK_BENCH_PORT` | 报告服务端口（默认：7799） |
+
+## 系统要求
 
 - Node.js >= 20
-- `claude` CLI installed and authenticated (Max plan works, no API key needed)
-
-## License
-
-MIT
+- `claude` CLI（用于默认执行器和 LLM 评委，安装方式见 [Claude Code](https://claude.ai/code)）
+  - 使用其他执行器（openai/gemini/script）且加 `--no-judge` 时可不装
