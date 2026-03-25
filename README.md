@@ -35,7 +35,7 @@ omk bench run --variants v1,v2
 |------|------|
 | **18 种断言** | 包含子串、正则、JSON Schema、语义相似度、自定义函数等 |
 | **四维评估** | 质量、成本、效率、稳定性四个维度对比 |
-| **多执行器** | 支持 Claude / OpenAI / Gemini CLI 及脚本类 Skill |
+| **多执行器** | 支持 Claude / OpenAI / Gemini CLI |
 | **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
 | **并行执行** | `--concurrency N` 并行 N 个任务 |
 | **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
@@ -61,7 +61,7 @@ eval-samples.json       skills/
     ┌───────────▼───────────┐
     │      执行器             │
     │  claude / openai /     │
-    │  gemini / script       │
+    │  gemini               │
     └───────────┬───────────┘
                 │
     ┌───────────▼───────────┐
@@ -255,7 +255,6 @@ skills/
 
 工具按 `--variants` 名称查找：先找 `skills/{name}.md`，再找 `skills/{name}/SKILL.md`。两种方式都是把文件内容作为 system prompt 发给模型。
 
-> **注意**：`script` 执行器模式下，variants 必须是目录（包含可执行脚本），不支持 `.md` 文件。
 
 ```bash
 # 评测两个 .md 文件
@@ -281,7 +280,7 @@ omk bench run --variants my-skill-a,my-skill-b
 
 - Node.js >= 20
 - `claude` CLI（用于默认执行器和 LLM 评委，安装方式见 [Claude Code](https://claude.ai/code)）
-  - 使用其他执行器（openai/gemini/script）且加 `--no-judge` 时可不装
+  - 使用其他执行器（openai/gemini）且加 `--no-judge` 时可不装
 
 ## 安全说明
 
@@ -290,7 +289,6 @@ omk bench run --variants my-skill-a,my-skill-b
 | 功能 | 风险说明 | 适用范围 |
 |------|----------|----------|
 | **自定义断言** (`custom`) | 动态加载并执行用户指定的 `.mjs` 文件 | 仅使用自己编写或审查过的断言文件 |
-| **Script 执行器** | 执行 skill 目录下的脚本 | 仅评测自己或团队的 skill |
 | **eval-samples.json** | 断言配置中可引用外部文件路径 | 不要使用不可信来源的样本文件 |
 
 **建议：**

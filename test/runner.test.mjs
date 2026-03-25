@@ -175,48 +175,16 @@ describe('runEvaluation credibility', () => {
     }
   });
 
-  it('concurrency progress: started count appears before completed count', async () => {
+  it('dry-run: task count correct for multiple variants', async () => {
     await writeMockSamples();
     try {
-      const progressEvents = [];
-      // Use script executor with a trivial eval.sh to test real execution + progress
-      const { mkdirSync: mkd, writeFileSync: wf } = (await import('node:fs'));
-      const { tmpdir } = (await import('node:os'));
-      const skillDir = join(tmpdir(), `omk-test-progress-${Date.now()}`);
-      mkd(join(skillDir, 'v1'), { recursive: true });
-      mkd(join(skillDir, 'v2'), { recursive: true });
-      wf(join(skillDir, 'v1', 'eval.sh'), '#!/bin/bash\necho "output v1"');
-      wf(join(skillDir, 'v2', 'eval.sh'), '#!/bin/bash\necho "output v2"');
-
-      await runEvaluation({
+      const { report } = await runEvaluation({
         samplesPath: MOCK_SAMPLES_PATH,
-        skillDir,
+        skillDir: SKILL_DIR,
         variants: ['v1', 'v2'],
-        noJudge: true,
-        outputDir: null,
-        executorName: 'script',
-        concurrency: 2,
-        onProgress(evt) {
-          progressEvents.push({ phase: evt.phase, completed: evt.completed });
-        },
+        dryRun: true,
       });
-
-      // Verify we got both start and done events
-      const starts = progressEvents.filter((e) => e.phase === 'start');
-      const dones = progressEvents.filter((e) => e.phase === 'done');
-      assert.equal(starts.length, 4); // 2 samples × 2 variants
-      assert.equal(dones.length, 4);
-
-      // Done completed counts must be monotonically non-decreasing
-      for (let i = 1; i < dones.length; i++) {
-        assert.ok(dones[i].completed >= dones[i - 1].completed,
-          `completed count went backwards: ${dones[i].completed} < ${dones[i - 1].completed}`);
-      }
-
-      // Final done must have completed = total
-      assert.equal(dones[dones.length - 1].completed, 4);
-
-      (await import('node:fs')).rmSync(skillDir, { recursive: true, force: true });
+      assert.equal(report.totalTasks, 4); // 2 samples × 2 variants
     } finally {
       await cleanMockSamples();
     }
