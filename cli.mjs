@@ -158,7 +158,17 @@ async function handleRun(argv) {
     console.log(JSON.stringify(report, null, 2));
     if (filePath) {
       process.stderr.write(`\nReport saved to: ${filePath}\n`);
-      process.stderr.write(`View at: http://127.0.0.1:${values.port || 7799}/run/${report.id}\n`);
+
+      // Auto-start report server
+      const { createReportServer } = await import('./lib/report-server.mjs');
+      const server = createReportServer({
+        reportsDir: resolve(values['output-dir']),
+      });
+      const serverUrl = await server.start();
+      const reportUrl = `${serverUrl}/run/${report.id}`;
+      process.stderr.write(`Report server running at ${serverUrl}\n`);
+      process.stderr.write(`View report: ${reportUrl}\n`);
+      process.stderr.write('Press Ctrl+C to stop\n');
     }
   } catch (err) {
     console.error(`Error: ${err.message}`);
@@ -182,8 +192,8 @@ async function handleReport(argv) {
     reportsDir: resolve(values['reports-dir']),
   });
 
-  await server.start();
-  console.log(`Report server running at http://127.0.0.1:${values.port}`);
+  const url = await server.start();
+  console.log(`Report server running at ${url}`);
   console.log('Press Ctrl+C to stop');
 }
 
