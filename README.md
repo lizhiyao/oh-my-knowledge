@@ -242,18 +242,20 @@ omk bench init [目录]    # 生成评测项目脚手架
 
 ### Skill 目录结构
 
-工具支持两种 skill 布局，可混用：
+默认执行器（claude/openai/gemini）支持两种 skill 布局，同一次评测中可混用：
 
 ```
 skills/
 ├── v1.md                    # 方式一：直接放 .md 文件
 └── my-skill/                # 方式二：完整 skill 目录
     ├── SKILL.md             #   工具自动读取此文件作为 system prompt
-    ├── config.json
+    ├── config.json          #   其他文件不参与评测，仅保留完整性
     └── scripts/
 ```
 
-`--variants` 指定的名称对应 `skills/` 下的文件名（不含 `.md`）或子目录名。
+工具按 `--variants` 名称查找：先找 `skills/{name}.md`，再找 `skills/{name}/SKILL.md`。两种方式都是把文件内容作为 system prompt 发给模型。
+
+> **注意**：`script` 执行器模式下，variants 必须是目录（包含可执行脚本），不支持 `.md` 文件。
 
 ```bash
 # 评测两个 .md 文件

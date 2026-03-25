@@ -35,7 +35,7 @@ export default [
       'no-duplicate-case': 'error',
       'no-empty': 'warn',
       'no-unreachable': 'error',
-      'eqeqeq': ['warn', 'always'],
+      'eqeqeq': ['warn', 'always', { null: 'ignore' }],
     },
   },
   {

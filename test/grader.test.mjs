@@ -543,9 +543,7 @@ describe('grade cost accumulation', () => {
   });
 
   it('accumulates async assertion cost + dimensions cost', async () => {
-    let callCount = 0;
     const mockExecutor = async () => {
-      callCount++;
       return {
         ok: true,
         output: `{"score": 4, "reason": "ok"}`,

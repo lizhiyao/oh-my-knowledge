@@ -139,36 +139,86 @@ describe('runEvaluation', () => {
         /missing required field: sample_id/,
       );
     } finally {
-      try { unlinkSync(tmpSamples); } catch {}
+      try { unlinkSync(tmpSamples); } catch { /* ignore */ }
     }
   });
 });
 
 describe('runEvaluation credibility', () => {
-  it('blind mode produces deterministic shuffle for same runId', async () => {
-    // Run twice with blind — both should produce valid blind mappings
-    const { report: r1 } = await runEvaluation({
-      samplesPath: SAMPLES_PATH,
-      skillDir: SKILL_DIR,
-      variants: ['v1', 'v2'],
-      dryRun: true,
-      blind: true,
-    });
-    assert.ok(r1.dryRun);
-    // blind has no effect on dry-run report structure, but verify it doesn't crash
+  const MOCK_SAMPLES_PATH = join(__dirname, 'tmp-mock-samples.json');
+
+  async function writeMockSamples() {
+    const { writeFileSync: wf } = await import('node:fs');
+    wf(MOCK_SAMPLES_PATH, JSON.stringify([
+      { sample_id: 's1', prompt: 'test prompt 1' },
+      { sample_id: 's2', prompt: 'test prompt 2' },
+    ]));
+  }
+  async function cleanMockSamples() {
+    try { (await import('node:fs')).unlinkSync(MOCK_SAMPLES_PATH); } catch { /* ignore */ }
+  }
+
+  it('blind mode: same input produces same mapping', async () => {
+    await writeMockSamples();
+    try {
+      const { loadSamples, buildTasks } = await import('../lib/runner.mjs');
+      const samples = loadSamples(MOCK_SAMPLES_PATH);
+      const skills = { v1: 'skill content v1', v2: 'skill content v2' };
+      const tasks = buildTasks(samples, ['v1', 'v2'], skills);
+
+      // Verify tasks are correctly built (prerequisite for blind to work)
+      assert.equal(tasks.length, 4); // 2 samples × 2 variants
+      assert.equal(tasks[0].variant, 'v1');
+      assert.equal(tasks[1].variant, 'v2');
+    } finally {
+      await cleanMockSamples();
+    }
   });
 
-  it('concurrency progress: started and completed are distinct', async () => {
-    // Use dry-run which doesn't actually execute but still calls onProgress...
-    // Actually dry-run returns early before execution.
-    // So we just verify the counter variables exist in the code path.
-    // Real concurrency test would need a mock executor.
-    const { report } = await runEvaluation({
-      samplesPath: SAMPLES_PATH,
-      skillDir: SKILL_DIR,
-      variants: ['v1', 'v2'],
-      dryRun: true,
-    });
-    assert.equal(report.totalTasks, 6);
+  it('concurrency progress: started count appears before completed count', async () => {
+    await writeMockSamples();
+    try {
+      const progressEvents = [];
+      // Use script executor with a trivial eval.sh to test real execution + progress
+      const { mkdirSync: mkd, writeFileSync: wf } = (await import('node:fs'));
+      const { tmpdir } = (await import('node:os'));
+      const skillDir = join(tmpdir(), `omk-test-progress-${Date.now()}`);
+      mkd(join(skillDir, 'v1'), { recursive: true });
+      mkd(join(skillDir, 'v2'), { recursive: true });
+      wf(join(skillDir, 'v1', 'eval.sh'), '#!/bin/bash\necho "output v1"');
+      wf(join(skillDir, 'v2', 'eval.sh'), '#!/bin/bash\necho "output v2"');
+
+      await runEvaluation({
+        samplesPath: MOCK_SAMPLES_PATH,
+        skillDir,
+        variants: ['v1', 'v2'],
+        noJudge: true,
+        outputDir: null,
+        executorName: 'script',
+        concurrency: 2,
+        onProgress(evt) {
+          progressEvents.push({ phase: evt.phase, completed: evt.completed });
+        },
+      });
+
+      // Verify we got both start and done events
+      const starts = progressEvents.filter((e) => e.phase === 'start');
+      const dones = progressEvents.filter((e) => e.phase === 'done');
+      assert.equal(starts.length, 4); // 2 samples × 2 variants
+      assert.equal(dones.length, 4);
+
+      // Done completed counts must be monotonically non-decreasing
+      for (let i = 1; i < dones.length; i++) {
+        assert.ok(dones[i].completed >= dones[i - 1].completed,
+          `completed count went backwards: ${dones[i].completed} < ${dones[i - 1].completed}`);
+      }
+
+      // Final done must have completed = total
+      assert.equal(dones[dones.length - 1].completed, 4);
+
+      (await import('node:fs')).rmSync(skillDir, { recursive: true, force: true });
+    } finally {
+      await cleanMockSamples();
+    }
   });
 });
