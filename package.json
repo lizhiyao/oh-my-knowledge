@@ -1,6 +1,6 @@
 {
   "name": "oh-my-knowledge",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Knowledge artifact evaluation toolkit — benchmark your skills with objective data",
   "type": "module",
   "bin": {
@@ -15,7 +15,9 @@
     "examples/"
   ],
   "scripts": {
-    "test": "node --test 'test/*.mjs'"
+    "lint": "eslint 'lib/**/*.mjs' 'cli.mjs' 'test/**/*.mjs'",
+    "test": "node --test 'test/*.mjs'",
+    "ci": "yarn lint && yarn test"
   },
   "keywords": [
     "knowledge-engineering",
@@ -25,11 +27,21 @@
     "ai",
     "claude"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:insurance-future/oh-my-knowledge.git"
+  },
   "author": "lizhiyao",
   "license": "MIT",
   "dependencies": {
     "ajv": "^8.18.0",
     "js-yaml": "^4.1.1",
     "simple-statistics": "^7.8.9"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "devDependencies": {
+    "eslint": "^10.1.0"
   }
 }

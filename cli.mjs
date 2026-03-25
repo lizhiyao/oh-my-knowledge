@@ -4,8 +4,53 @@ import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { existsSync } from 'node:fs';
 
 const DEFAULT_REPORTS_DIR = join(homedir(), '.oh-my-knowledge', 'reports');
+
+// Shared CLI options for run/ci commands
+const RUN_OPTIONS = {
+  samples:       { type: 'string', default: 'eval-samples.json' },
+  'skill-dir':   { type: 'string', default: 'skills' },
+  variants:      { type: 'string', default: 'v1,v2' },
+  model:         { type: 'string', default: 'sonnet' },
+  'judge-model': { type: 'string', default: 'haiku' },
+  'output-dir':  { type: 'string', default: DEFAULT_REPORTS_DIR },
+  'no-judge':    { type: 'boolean', default: false },
+  'dry-run':     { type: 'boolean', default: false },
+  concurrency:   { type: 'string', default: '1' },
+  executor:      { type: 'string', default: 'claude' },
+};
+
+function parseRunConfig(argv, extraOptions = {}) {
+  const { values } = parseArgs({
+    args: argv,
+    options: { ...RUN_OPTIONS, ...extraOptions },
+    strict: false,
+  });
+
+  let samplesFile = values.samples;
+  if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
+    if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
+    else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
+  }
+
+  return {
+    values,
+    config: {
+      samplesPath: resolve(samplesFile),
+      skillDir: resolve(values['skill-dir']),
+      variants: values.variants.split(',').map((v) => v.trim()).filter(Boolean),
+      model: values.model,
+      judgeModel: values['judge-model'],
+      outputDir: resolve(values['output-dir']),
+      noJudge: values['no-judge'],
+      dryRun: values['dry-run'],
+      concurrency: Math.max(1, Number(values.concurrency) || 1),
+      executorName: values.executor,
+    },
+  };
+}
 
 const HELP = `
 oh-my-knowledge — Knowledge artifact evaluation toolkit
@@ -82,58 +127,26 @@ async function main() {
   }
 }
 
+function defaultOnProgress({ phase, completed, total, sample_id, variant, durationMs, inputTokens, outputTokens, costUSD, score }) {
+  if (phase === 'start') {
+    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ⏳ 执行中...\n`);
+  } else {
+    const costInfo = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+    const scoreInfo = typeof score === 'number' ? ` score=${score}` : '';
+    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ✓ ${durationMs}ms ${inputTokens}+${outputTokens} tokens${costInfo}${scoreInfo}\n`);
+  }
+}
+
 async function handleRun(argv) {
-  const { values } = parseArgs({
-    args: argv,
-    options: {
-      samples:       { type: 'string', default: 'eval-samples.json' },
-      'skill-dir':   { type: 'string', default: 'skills' },
-      variants:      { type: 'string', default: 'v1,v2' },
-      model:         { type: 'string', default: 'sonnet' },
-      'judge-model': { type: 'string', default: 'haiku' },
-      'output-dir':  { type: 'string', default: DEFAULT_REPORTS_DIR },
-      'no-judge':    { type: 'boolean', default: false },
-      'dry-run':     { type: 'boolean', default: false },
-      blind:         { type: 'boolean', default: false },
-      concurrency:   { type: 'string', default: '1' },
-      repeat:        { type: 'string', default: '1' },
-      executor:      { type: 'string', default: 'claude' },
-    },
-    strict: false,
+  const { values, config } = parseRunConfig(argv, {
+    blind:  { type: 'boolean', default: false },
+    repeat: { type: 'string', default: '1' },
   });
 
   const { runEvaluation, runMultiple } = await import('./lib/runner.mjs');
-  const { existsSync } = await import('node:fs');
 
-  // Auto-detect YAML if default JSON not found
-  let samplesFile = values.samples;
-  if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
-    if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
-    else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
-  }
-
-  const config = {
-    samplesPath: resolve(samplesFile),
-    skillDir: resolve(values['skill-dir']),
-    variants: values.variants.split(',').map((v) => v.trim()).filter(Boolean),
-    model: values.model,
-    judgeModel: values['judge-model'],
-    outputDir: resolve(values['output-dir']),
-    noJudge: values['no-judge'],
-    dryRun: values['dry-run'],
-    blind: values.blind,
-    concurrency: Math.max(1, Number(values.concurrency) || 1),
-    executorName: values.executor,
-    onProgress({ phase, completed, total, sample_id, variant, durationMs, inputTokens, outputTokens, costUSD, score }) {
-      if (phase === 'start') {
-        process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ...`);
-      } else {
-        const costInfo = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
-        const scoreInfo = typeof score === 'number' ? ` score=${score}` : '';
-        process.stderr.write(` ${durationMs}ms ${inputTokens}+${outputTokens}tok${costInfo}${scoreInfo}\n`);
-      }
-    },
-  };
+  config.blind = values.blind;
+  config.onProgress = defaultOnProgress;
 
   try {
     const repeatCount = Math.max(1, Number(values.repeat) || 1);
@@ -157,7 +170,8 @@ async function handleRun(argv) {
 
     console.log(JSON.stringify(report, null, 2));
     if (filePath) {
-      process.stderr.write(`\nReport saved to: ${filePath}\n`);
+      process.stderr.write('\n✅ 评测完成\n');
+      process.stderr.write(`📄 Report saved to: ${filePath}\n`);
 
       // Auto-start report server
       const { createReportServer } = await import('./lib/report-server.mjs');
@@ -166,9 +180,15 @@ async function handleRun(argv) {
       });
       const serverUrl = await server.start();
       const reportUrl = `${serverUrl}/run/${report.id}`;
-      process.stderr.write(`Report server running at ${serverUrl}\n`);
-      process.stderr.write(`View report: ${reportUrl}\n`);
-      process.stderr.write('Press Ctrl+C to stop\n');
+      process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
+      process.stderr.write(`👉 View report: ${reportUrl}\n`);
+      process.stderr.write('\nPress Ctrl+C to stop the server\n');
+
+      // Auto-open report in browser
+      const { platform } = await import('node:os');
+      const openCmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
+      const { execFile: execFileCb } = await import('node:child_process');
+      execFileCb(openCmd, [reportUrl], () => {});
     }
   } catch (err) {
     console.error(`Error: ${err.message}`);
@@ -200,7 +220,7 @@ async function handleReport(argv) {
 async function handleInit(argv) {
   const targetDir = resolve(argv[0] || '.');
 
-  const { cpSync, existsSync, mkdirSync } = await import('node:fs');
+  const { cpSync, mkdirSync } = await import('node:fs');
   const { fileURLToPath } = await import('node:url');
   const { dirname } = await import('node:path');
 
@@ -221,53 +241,16 @@ async function handleInit(argv) {
 }
 
 async function handleCi(argv) {
-  const { values } = parseArgs({
-    args: argv,
-    options: {
-      samples:       { type: 'string', default: 'eval-samples.json' },
-      'skill-dir':   { type: 'string', default: 'skills' },
-      variants:      { type: 'string', default: 'v1,v2' },
-      model:         { type: 'string', default: 'sonnet' },
-      'judge-model': { type: 'string', default: 'haiku' },
-      'output-dir':  { type: 'string', default: DEFAULT_REPORTS_DIR },
-      'no-judge':    { type: 'boolean', default: false },
-      'dry-run':     { type: 'boolean', default: false },
-      concurrency:   { type: 'string', default: '1' },
-      executor:      { type: 'string', default: 'claude' },
-      threshold:     { type: 'string', default: '3.5' },
-    },
-    strict: false,
+  const { values, config } = parseRunConfig(argv, {
+    threshold: { type: 'string', default: '3.5' },
   });
 
   const { runEvaluation } = await import('./lib/runner.mjs');
-  const { existsSync } = await import('node:fs');
 
-  let samplesFile = values.samples;
-  if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
-    if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
-    else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
-  }
-
-  const variantList = values.variants.split(',').map((v) => v.trim()).filter(Boolean);
+  config.onProgress = defaultOnProgress;
 
   try {
-    const { report } = await runEvaluation({
-      samplesPath: resolve(samplesFile),
-      skillDir: resolve(values['skill-dir']),
-      variants: variantList,
-      model: values.model,
-      judgeModel: values['judge-model'],
-      outputDir: resolve(values['output-dir']),
-      noJudge: values['no-judge'],
-      dryRun: values['dry-run'],
-      concurrency: Math.max(1, Number(values.concurrency) || 1),
-      executorName: values.executor,
-      onProgress({ phase, completed, total, sample_id, variant }) {
-        if (phase === 'start') {
-          process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ...\n`);
-        }
-      },
-    });
+    const { report } = await runEvaluation(config);
 
     const threshold = Number(values.threshold);
     let allPass = true;

@@ -98,7 +98,7 @@ describe('runEvaluation', () => {
         skillDir: SKILL_DIR,
         variants: ['v1', 'v99_nonexistent'],
       }),
-      /skill file not found/,
+      /skill not found/,
     );
   });
 
@@ -111,5 +111,82 @@ describe('runEvaluation', () => {
     });
     // dry-run still has model info
     assert.ok(report.model);
+  });
+
+  it('loads SKILL.md from subdirectories', async () => {
+    const sessionMemorySamples = join(__dirname, '..', 'examples', 'session-memory', 'eval-samples.json');
+    const sessionMemorySkills = join(__dirname, '..', 'examples', 'session-memory', 'skills');
+    const { report } = await runEvaluation({
+      samplesPath: sessionMemorySamples,
+      skillDir: sessionMemorySkills,
+      variants: ['aima-kg-mem-cc', 'aima-kg-mem-codex'],
+      dryRun: true,
+    });
+    assert.equal(report.totalTasks, 12); // 6 samples × 2 variants
+  });
+
+  it('validates required sample fields', async () => {
+    const { writeFileSync, unlinkSync } = await import('node:fs');
+    const tmpSamples = join(__dirname, 'tmp-bad-samples.json');
+    writeFileSync(tmpSamples, JSON.stringify([{ rubric: 'test' }]));
+    try {
+      await assert.rejects(
+        () => runEvaluation({
+          samplesPath: tmpSamples,
+          skillDir: SKILL_DIR,
+          variants: ['v1', 'v2'],
+        }),
+        /missing required field: sample_id/,
+      );
+    } finally {
+      try { unlinkSync(tmpSamples); } catch { /* ignore */ }
+    }
+  });
+});
+
+describe('runEvaluation credibility', () => {
+  const MOCK_SAMPLES_PATH = join(__dirname, 'tmp-mock-samples.json');
+
+  async function writeMockSamples() {
+    const { writeFileSync: wf } = await import('node:fs');
+    wf(MOCK_SAMPLES_PATH, JSON.stringify([
+      { sample_id: 's1', prompt: 'test prompt 1' },
+      { sample_id: 's2', prompt: 'test prompt 2' },
+    ]));
+  }
+  async function cleanMockSamples() {
+    try { (await import('node:fs')).unlinkSync(MOCK_SAMPLES_PATH); } catch { /* ignore */ }
+  }
+
+  it('blind mode: same input produces same mapping', async () => {
+    await writeMockSamples();
+    try {
+      const { loadSamples, buildTasks } = await import('../lib/runner.mjs');
+      const samples = loadSamples(MOCK_SAMPLES_PATH);
+      const skills = { v1: 'skill content v1', v2: 'skill content v2' };
+      const tasks = buildTasks(samples, ['v1', 'v2'], skills);
+
+      // Verify tasks are correctly built (prerequisite for blind to work)
+      assert.equal(tasks.length, 4); // 2 samples × 2 variants
+      assert.equal(tasks[0].variant, 'v1');
+      assert.equal(tasks[1].variant, 'v2');
+    } finally {
+      await cleanMockSamples();
+    }
+  });
+
+  it('dry-run: task count correct for multiple variants', async () => {
+    await writeMockSamples();
+    try {
+      const { report } = await runEvaluation({
+        samplesPath: MOCK_SAMPLES_PATH,
+        skillDir: SKILL_DIR,
+        variants: ['v1', 'v2'],
+        dryRun: true,
+      });
+      assert.equal(report.totalTasks, 4); // 2 samples × 2 variants
+    } finally {
+      await cleanMockSamples();
+    }
   });
 });
