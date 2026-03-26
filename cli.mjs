@@ -97,6 +97,7 @@ Options for "bench ci":
 Options for "bench report":
   --port <number>        Server port (default: 7799)
   --reports-dir <path>   Reports directory (default: ~/.oh-my-knowledge/reports/)
+  --export <id>          Export report as standalone HTML file
 
 Options for "bench gen-samples":
   --each                 Generate for all skills missing eval-samples
@@ -112,6 +113,7 @@ Examples:
   omk bench run --each
   omk bench run --dry-run
   omk bench report --port 8080
+  omk bench report --export v1-vs-v2-20260326-1832
   omk bench init my-eval
   omk bench gen-samples skills/my-skill.md
   omk bench gen-samples --each
@@ -263,9 +265,28 @@ async function handleReport(argv) {
     options: {
       port:          { type: 'string', default: '7799' },
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+      export:        { type: 'string' },
     },
     strict: false,
   });
+
+  if (values.export) {
+    const { createFileStore } = await import('./lib/report-store.mjs');
+    const { renderRunDetail, renderEachRunDetail } = await import('./lib/html-renderer.mjs');
+    const { writeFileSync } = await import('node:fs');
+    const store = createFileStore(resolve(values['reports-dir']));
+    const report = await store.get(values.export);
+    if (!report) {
+      console.error(`Report not found: ${values.export}`);
+      process.exit(1);
+    }
+    const html = report.each ? renderEachRunDetail(report) : renderRunDetail(report);
+    const outPath = resolve(`${values.export}.html`);
+    writeFileSync(outPath, html);
+    console.log(`Exported to: ${outPath}`);
+    console.log('Open in browser, or Ctrl+P to save as PDF');
+    return;
+  }
 
   const { createReportServer } = await import('./lib/report-server.mjs');
   const server = createReportServer({
