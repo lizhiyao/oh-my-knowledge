@@ -65,6 +65,7 @@ Options for "bench run":
   --samples <path>       Sample file (default: eval-samples.json)
   --skill-dir <path>     Skill definitions directory (default: skills)
   --variants <v1,v2>     Comma-separated variant names (default: v1,v2)
+                         Use "baseline" for no-skill comparison
   --model <name>         Model under test (default: sonnet)
   --judge-model <name>   Judge model (default: haiku)
   --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
@@ -85,6 +86,7 @@ Options for "bench report":
 
 Examples:
   omk bench run --variants v1,v2
+  omk bench run --variants baseline,my-skill
   omk bench run --dry-run
   omk bench report --port 8080
   omk bench init my-eval

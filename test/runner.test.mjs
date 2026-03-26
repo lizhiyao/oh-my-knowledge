@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runEvaluation } from '../lib/runner.mjs';
+import { runEvaluation, loadSkills, buildTasks } from '../lib/runner.mjs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
@@ -141,6 +141,40 @@ describe('runEvaluation', () => {
     } finally {
       try { unlinkSync(tmpSamples); } catch { /* ignore */ }
     }
+  });
+});
+
+describe('baseline variant', () => {
+  it('loadSkills: baseline returns null without file lookup', () => {
+    const skills = loadSkills(SKILL_DIR, ['baseline', 'v1']);
+    assert.equal(skills.baseline, null);
+    assert.equal(typeof skills.v1, 'string');
+    assert.ok(skills.v1.length > 0);
+  });
+
+  it('loadSkills: baseline-only does not need skill dir', () => {
+    const skills = loadSkills('/nonexistent/dir', ['baseline']);
+    assert.deepEqual(skills, { baseline: null });
+  });
+
+  it('buildTasks: baseline variant has null skillContent', () => {
+    const samples = [{ sample_id: 's1', prompt: 'hello' }];
+    const skills = { baseline: null, v1: 'system prompt' };
+    const tasks = buildTasks(samples, ['baseline', 'v1'], skills);
+    assert.equal(tasks.length, 2);
+    assert.equal(tasks[0].skillContent, null);
+    assert.equal(tasks[1].skillContent, 'system prompt');
+  });
+
+  it('dry-run: baseline variant included in task schedule', async () => {
+    const { report } = await runEvaluation({
+      samplesPath: SAMPLES_PATH,
+      skillDir: SKILL_DIR,
+      variants: ['baseline', 'v1'],
+      dryRun: true,
+    });
+    assert.equal(report.totalTasks, 6); // 3 samples × 2 variants
+    assert.deepEqual(report.variants, ['baseline', 'v1']);
   });
 });
 

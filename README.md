@@ -196,7 +196,7 @@ omk bench run [选项]
 选项：
   --samples <路径>       样本文件（默认：eval-samples.json，自动检测 .yaml/.yml）
   --skill-dir <路径>     skill 目录（默认：skills）
-  --variants <v1,v2>     变体名称（默认：v1,v2）
+  --variants <v1,v2>     变体名称（默认：v1,v2），使用 "baseline" 表示无 skill 对照
   --model <名称>         被测模型（默认：sonnet）
   --judge-model <名称>   评委模型（默认：haiku）
   --output-dir <路径>    输出目录（默认：~/.oh-my-knowledge/reports/）
@@ -253,7 +253,7 @@ skills/
     └── scripts/
 ```
 
-工具按 `--variants` 名称查找：先找 `skills/{name}.md`，再找 `skills/{name}/SKILL.md`。两种方式都是把文件内容作为 system prompt 发给模型。
+工具按 `--variants` 名称查找：先找 `skills/{name}.md`，再找 `skills/{name}/SKILL.md`。两种方式都是把文件内容作为 system prompt 发给模型。特殊值 `baseline` 表示不使用任何 skill（无 system prompt），适用于对比"有 skill"和"无 skill"的效果差异。
 
 
 ```bash
@@ -262,6 +262,9 @@ omk bench run --variants v1,v2
 
 # 评测两个 skill 目录（自动读取各目录下的 SKILL.md）
 omk bench run --variants my-skill-a,my-skill-b
+
+# 对比无 skill 和有 skill 的效果差异
+omk bench run --variants baseline,my-skill
 ```
 
 **前置要求：**
