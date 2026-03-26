@@ -178,6 +178,44 @@ describe('baseline variant', () => {
   });
 });
 
+describe('git: variant', () => {
+  it('loadSkills: git:name loads skill from HEAD', () => {
+    const skills = loadSkills(SKILL_DIR, ['git:v1']);
+    assert.equal(typeof skills['git:v1'], 'string');
+    assert.ok(skills['git:v1'].length > 0);
+  });
+
+  it('loadSkills: git:ref:name loads skill from specific commit', () => {
+    const skills = loadSkills(SKILL_DIR, ['git:HEAD:v1']);
+    assert.equal(typeof skills['git:HEAD:v1'], 'string');
+    assert.ok(skills['git:HEAD:v1'].length > 0);
+  });
+
+  it('loadSkills: git:name throws on missing skill', () => {
+    assert.throws(
+      () => loadSkills(SKILL_DIR, ['git:nonexistent']),
+      /skill not found in git HEAD/,
+    );
+  });
+
+  it('loadSkills: git:name and file variant can coexist', () => {
+    const skills = loadSkills(SKILL_DIR, ['git:v1', 'v2']);
+    assert.equal(typeof skills['git:v1'], 'string');
+    assert.equal(typeof skills['v2'], 'string');
+  });
+
+  it('dry-run: git variant included in task schedule', async () => {
+    const { report } = await runEvaluation({
+      samplesPath: SAMPLES_PATH,
+      skillDir: SKILL_DIR,
+      variants: ['git:v1', 'v1'],
+      dryRun: true,
+    });
+    assert.equal(report.totalTasks, 6);
+    assert.deepEqual(report.variants, ['git:v1', 'v1']);
+  });
+});
+
 describe('runEvaluation credibility', () => {
   const MOCK_SAMPLES_PATH = join(__dirname, 'tmp-mock-samples.json');
 
