@@ -114,15 +114,15 @@ describe('runEvaluation', () => {
   });
 
   it('loads SKILL.md from subdirectories', async () => {
-    const sessionMemorySamples = join(__dirname, '..', 'examples', 'session-memory', 'eval-samples.json');
-    const sessionMemorySkills = join(__dirname, '..', 'examples', 'session-memory', 'skills');
+    const classifierSamples = join(__dirname, '..', 'examples', 'multi-skills', 'skills', 'classifier', 'eval-samples.json');
+    const multiSkillsDir = join(__dirname, '..', 'examples', 'multi-skills', 'skills');
     const { report } = await runEvaluation({
-      samplesPath: sessionMemorySamples,
-      skillDir: sessionMemorySkills,
-      variants: ['aima-kg-mem-cc', 'aima-kg-mem-codex'],
+      samplesPath: classifierSamples,
+      skillDir: multiSkillsDir,
+      variants: ['classifier'],
       dryRun: true,
     });
-    assert.equal(report.totalTasks, 12); // 6 samples × 2 variants
+    assert.equal(report.totalTasks, 2); // 2 samples × 1 variant
   });
 
   it('validates required sample fields', async () => {
@@ -152,10 +152,9 @@ describe('discoverVariants', () => {
   });
 
   it('discovers subdirectories with SKILL.md', () => {
-    const sessionMemorySkills = join(__dirname, '..', 'examples', 'session-memory', 'skills');
-    const variants = discoverVariants(sessionMemorySkills);
-    assert.ok(variants.includes('aima-kg-mem-cc'));
-    assert.ok(variants.includes('aima-kg-mem-codex'));
+    const multiSkillsDir = join(__dirname, '..', 'examples', 'multi-skills', 'skills');
+    const variants = discoverVariants(multiSkillsDir);
+    assert.ok(variants.includes('classifier'));
   });
 
   it('returns sorted variants', () => {

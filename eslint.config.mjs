@@ -39,6 +39,6 @@ export default [
     },
   },
   {
-    ignores: ['node_modules/', 'examples/session-memory/skills/'],
+    ignores: ['node_modules/'],
   },
 ];

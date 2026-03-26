@@ -1,0 +1,22 @@
+[
+  {
+    "sample_id": "cls001",
+    "prompt": "请分类以下文本",
+    "context": "苹果公司今日发布了新款 MacBook Pro，搭载 M4 芯片，性能较上一代提升 40%，售价 14999 元起。",
+    "rubric": "应识别为科技类，提及产品发布相关关键词",
+    "assertions": [
+      { "type": "regex", "pattern": "科技|技术|数码", "weight": 1 },
+      { "type": "regex", "pattern": "高|中", "weight": 0.5 }
+    ]
+  },
+  {
+    "sample_id": "cls002",
+    "prompt": "请分类以下文本",
+    "context": "央行宣布下调存款准备金率 0.5 个百分点，释放长期资金约 1 万亿元，旨在支持实体经济发展。",
+    "rubric": "应识别为财经类，提及货币政策相关内容",
+    "assertions": [
+      { "type": "regex", "pattern": "财经|金融|经济", "weight": 1 },
+      { "type": "contains", "value": "央行", "weight": 0.5 }
+    ]
+  }
+]

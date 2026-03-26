@@ -1,6 +1,0 @@
-{
-  "session_id": "test-session-aima-kg-mem",
-  "cwd": "/Users/jiangziyue/Desktop/AIMA/ai-dev-kit/packages/aima-skill",
-  "transcript_path": "/Users/jiangziyue/Desktop/AIMA/ai-dev-kit/packages/aima-skill/.claude/skills/aima-kg-mem-codex/testdata/sample-transcript.jsonl",
-  "hook_event_name": "Stop"
-}
