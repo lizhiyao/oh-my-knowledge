@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runEvaluation, loadSkills, buildTasks } from '../lib/runner.mjs';
+import { runEvaluation, loadSkills, buildTasks, discoverVariants } from '../lib/runner.mjs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
@@ -144,6 +144,45 @@ describe('runEvaluation', () => {
   });
 });
 
+describe('discoverVariants', () => {
+  it('discovers .md files as variants', () => {
+    const variants = discoverVariants(SKILL_DIR);
+    assert.ok(variants.includes('v1'));
+    assert.ok(variants.includes('v2'));
+  });
+
+  it('discovers subdirectories with SKILL.md', () => {
+    const sessionMemorySkills = join(__dirname, '..', 'examples', 'session-memory', 'skills');
+    const variants = discoverVariants(sessionMemorySkills);
+    assert.ok(variants.includes('aima-kg-mem-cc'));
+    assert.ok(variants.includes('aima-kg-mem-codex'));
+  });
+
+  it('returns sorted variants', () => {
+    const variants = discoverVariants(SKILL_DIR);
+    const sorted = [...variants].filter(v => v !== 'baseline').sort();
+    assert.deepEqual(variants.filter(v => v !== 'baseline'), sorted);
+  });
+
+  it('adds baseline when only one skill found', async () => {
+    const { mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const tmpDir = join(__dirname, 'tmp-single-skill');
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(join(tmpDir, 'only.md'), 'test skill');
+    try {
+      const variants = discoverVariants(tmpDir);
+      assert.deepEqual(variants, ['baseline', 'only']);
+    } finally {
+      rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  it('returns empty for nonexistent directory', () => {
+    const variants = discoverVariants('/nonexistent/dir');
+    assert.deepEqual(variants, []);
+  });
+});
+
 describe('baseline variant', () => {
   it('loadSkills: baseline returns null without file lookup', () => {
     const skills = loadSkills(SKILL_DIR, ['baseline', 'v1']);
@@ -213,6 +252,40 @@ describe('git: variant', () => {
     });
     assert.equal(report.totalTasks, 6);
     assert.deepEqual(report.variants, ['git:v1', 'v1']);
+  });
+});
+
+describe('file path variant', () => {
+  const v1Path = join(SKILL_DIR, 'v1.md');
+  const v2Path = join(SKILL_DIR, 'v2.md');
+
+  it('loadSkills: loads skill from file path', () => {
+    const skills = loadSkills(SKILL_DIR, [v1Path]);
+    assert.equal(typeof skills[v1Path], 'string');
+    assert.ok(skills[v1Path].length > 0);
+  });
+
+  it('loadSkills: file path and name variant can coexist', () => {
+    const skills = loadSkills(SKILL_DIR, [v1Path, 'v2']);
+    assert.equal(typeof skills[v1Path], 'string');
+    assert.equal(typeof skills['v2'], 'string');
+  });
+
+  it('loadSkills: throws on missing file path', () => {
+    assert.throws(
+      () => loadSkills(SKILL_DIR, ['/nonexistent/skill.md']),
+      /skill file not found/,
+    );
+  });
+
+  it('dry-run: file path variant in task schedule', async () => {
+    const { report } = await runEvaluation({
+      samplesPath: SAMPLES_PATH,
+      skillDir: SKILL_DIR,
+      variants: [v1Path, v2Path],
+      dryRun: true,
+    });
+    assert.equal(report.totalTasks, 6);
   });
 });
 

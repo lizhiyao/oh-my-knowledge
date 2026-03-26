@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { discoverVariants } from './lib/runner.mjs';
 
 const DEFAULT_REPORTS_DIR = join(homedir(), '.oh-my-knowledge', 'reports');
 
@@ -12,7 +13,7 @@ const DEFAULT_REPORTS_DIR = join(homedir(), '.oh-my-knowledge', 'reports');
 const RUN_OPTIONS = {
   samples:       { type: 'string', default: 'eval-samples.json' },
   'skill-dir':   { type: 'string', default: 'skills' },
-  variants:      { type: 'string', default: 'v1,v2' },
+  variants:      { type: 'string' },
   model:         { type: 'string', default: 'sonnet' },
   'judge-model': { type: 'string', default: 'haiku' },
   'output-dir':  { type: 'string', default: DEFAULT_REPORTS_DIR },
@@ -35,12 +36,17 @@ function parseRunConfig(argv, extraOptions = {}) {
     else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
   }
 
+  const skillDir = resolve(values['skill-dir']);
+  const variants = values.variants
+    ? values.variants.split(',').map((v) => v.trim()).filter(Boolean)
+    : discoverVariants(skillDir);
+
   return {
     values,
     config: {
       samplesPath: resolve(samplesFile),
-      skillDir: resolve(values['skill-dir']),
-      variants: values.variants.split(',').map((v) => v.trim()).filter(Boolean),
+      skillDir,
+      variants,
       model: values.model,
       judgeModel: values['judge-model'],
       outputDir: resolve(values['output-dir']),
@@ -64,10 +70,11 @@ Usage:
 Options for "bench run":
   --samples <path>       Sample file (default: eval-samples.json)
   --skill-dir <path>     Skill definitions directory (default: skills)
-  --variants <v1,v2>     Comma-separated variant names (default: v1,v2)
+  --variants <v1,v2>     Comma-separated variant names (auto-detected from skill-dir)
                          Use "baseline" for no-skill comparison
                          Use "git:name" to load skill from last commit
                          Use "git:ref:name" to load from specific commit
+                         Use path with "/" to load from file directly
   --model <name>         Model under test (default: sonnet)
   --judge-model <name>   Judge model (default: haiku)
   --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
@@ -90,6 +97,7 @@ Examples:
   omk bench run --variants v1,v2
   omk bench run --variants baseline,my-skill
   omk bench run --variants git:my-skill,my-skill
+  omk bench run --variants ./old-skill.md,./new-skill.md
   omk bench run --dry-run
   omk bench report --port 8080
   omk bench init my-eval

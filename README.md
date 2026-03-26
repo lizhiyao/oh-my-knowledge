@@ -21,12 +21,13 @@ cd my-eval
 # 把要对比的 skill 放到 skills/ 目录
 # 方式一：直接放 .md 文件（skills/v1.md, skills/v2.md）
 # 方式二：放完整 skill 目录（skills/my-skill-v1/SKILL.md, ...）
+# 只放一个 skill 也行，会自动加 baseline 对照
 
 # 预览评测计划
 omk bench run --dry-run
 
-# 运行评测（自动打开报告页面）
-omk bench run --variants v1,v2
+# 运行评测（自动发现 skills/ 目录下的所有 skill）
+omk bench run
 ```
 
 ## 特性
@@ -196,7 +197,10 @@ omk bench run [选项]
 选项：
   --samples <路径>       样本文件（默认：eval-samples.json，自动检测 .yaml/.yml）
   --skill-dir <路径>     skill 目录（默认：skills）
-  --variants <v1,v2>     变体名称（默认：v1,v2），支持 "baseline"（无 skill 对照）和 "git:name"（从 git 历史读取）
+  --variants <a,b>       变体名称，不指定时自动从 skill 目录发现
+                         只有一个 skill 时自动加 baseline 对照
+                         特殊值：baseline（无 skill）、git:name（git 历史版本）、
+                         git:ref:name（指定 commit）、含 / 的路径（直接读取文件）
   --model <名称>         被测模型（默认：sonnet）
   --judge-model <名称>   评委模型（默认：haiku）
   --output-dir <路径>    输出目录（默认：~/.oh-my-knowledge/reports/）
@@ -253,24 +257,33 @@ skills/
     └── scripts/
 ```
 
-工具按 `--variants` 名称查找：先找 `skills/{name}.md`，再找 `skills/{name}/SKILL.md`。两种方式都是把文件内容作为 system prompt 发给模型。特殊值 `baseline` 表示不使用任何 skill（无 system prompt），适用于对比"有 skill"和"无 skill"的效果差异。使用 `git:` 前缀可从 git 历史读取旧版本 skill，适用于迭代后对比新旧版本。
+**Variant 解析规则：**
 
+| 格式 | 含义 |
+|------|------|
+| `name` | 从 skill 目录查找 `name.md` 或 `name/SKILL.md` |
+| `baseline` | 无 skill 对照（不使用 system prompt） |
+| `git:name` | 从 git HEAD 读取 skill 的上次提交版本 |
+| `git:ref:name` | 从 git 指定 commit 读取 |
+| `./path/to/file.md` | 含 `/` 的路径，直接读取文件 |
+
+不指定 `--variants` 时，自动扫描 skill 目录下的所有 `.md` 文件和含 `SKILL.md` 的子目录。只有一个 skill 时自动加 `baseline` 作为对照。
 
 ```bash
-# 评测两个 .md 文件
-omk bench run --variants v1,v2
+# 自动发现 skills/ 下所有 skill
+omk bench run
 
-# 评测两个 skill 目录（自动读取各目录下的 SKILL.md）
-omk bench run --variants my-skill-a,my-skill-b
+# 显式指定两个变体
+omk bench run --variants v1,v2
 
 # 对比无 skill 和有 skill 的效果差异
 omk bench run --variants baseline,my-skill
 
-# 对比 git 上次提交的版本 vs 当前版本
+# 对比修改前后（旧版本从 git 历史读取）
 omk bench run --variants git:my-skill,my-skill
 
-# 对比指定 commit 的版本 vs 当前版本
-omk bench run --variants git:abc123:my-skill,my-skill
+# 直接指定文件路径
+omk bench run --variants ./old-skill.md,./new-skill.md
 ```
 
 **前置要求：**
