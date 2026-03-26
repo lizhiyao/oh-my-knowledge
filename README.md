@@ -239,6 +239,29 @@ omk bench run --each
 omk bench run --each --dry-run
 ```
 
+### `omk bench gen-samples`（生成测评用例）
+
+读取 skill 内容，通过 LLM 自动生成 eval-samples。生成后请审查编辑再跑评测。
+
+```bash
+# 为指定 skill 生成测试集（输出到 eval-samples.json）
+omk bench gen-samples skills/my-skill.md
+
+# 为 skills/ 下所有缺少测试集的 skill 批量生成
+omk bench gen-samples --each
+
+# 指定生成数量
+omk bench gen-samples skills/my-skill.md --count 10
+```
+
+选项：
+```
+  --each                 为所有缺少 eval-samples 的 skill 批量生成
+  --count <n>            每个 skill 生成的样本数（默认：5）
+  --model <名称>         生成用的模型（默认：sonnet）
+  --skill-dir <路径>     skill 目录（默认：skills），配合 --each 使用
+```
+
 ### `omk bench ci`
 
 在自动化流水线中运行评测。评分达标则退出码为 0（通过），否则为 1（失败），可直接用于卡点判断。

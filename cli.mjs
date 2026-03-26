@@ -67,8 +67,10 @@ Usage:
   omk bench report [options]  Start the report server
   omk bench ci [options]      Run evaluation and exit with pass/fail code
   omk bench init [dir]        Scaffold a new eval project
+  omk bench gen-samples [skill]  Generate eval-samples from skill content
 
 Options for "bench run":
+
   --samples <path>       Sample file (default: eval-samples.json)
   --skill-dir <path>     Skill definitions directory (default: skills)
   --variants <v1,v2>     Comma-separated variant names (auto-detected from skill-dir)
@@ -96,6 +98,12 @@ Options for "bench report":
   --port <number>        Server port (default: 7799)
   --reports-dir <path>   Reports directory (default: ~/.oh-my-knowledge/reports/)
 
+Options for "bench gen-samples":
+  --each                 Generate for all skills missing eval-samples
+  --count <n>            Number of samples to generate per skill (default: 5)
+  --model <name>         Model for generation (default: sonnet)
+  --skill-dir <path>     Skill directory (default: skills), used with --each
+
 Examples:
   omk bench run --variants v1,v2
   omk bench run --variants baseline,my-skill
@@ -105,6 +113,8 @@ Examples:
   omk bench run --dry-run
   omk bench report --port 8080
   omk bench init my-eval
+  omk bench gen-samples skills/my-skill.md
+  omk bench gen-samples --each
 `.trim();
 
 async function main() {
@@ -138,8 +148,11 @@ async function main() {
     case 'ci':
       await handleCi(rest);
       break;
+    case 'gen-samples':
+      await handleGenSamples(rest);
+      break;
     default:
-      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", or "init".`);
+      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", or "gen-samples".`);
       process.exit(1);
   }
 }
@@ -286,6 +299,112 @@ async function handleInit(argv) {
   console.log('  1. Edit eval-samples.json to add your test cases');
   console.log('  2. Edit skills/v1.md and skills/v2.md with your skill versions');
   console.log('  3. Run: omk bench run --variants v1,v2');
+}
+
+async function handleGenSamples(argv) {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      each:        { type: 'boolean', default: false },
+      count:       { type: 'string', default: '5' },
+      model:       { type: 'string', default: 'sonnet' },
+      'skill-dir': { type: 'string', default: 'skills' },
+    },
+    strict: false,
+    allowPositionals: true,
+  });
+
+  const { generateSamples } = await import('./lib/generator.mjs');
+  const { readFileSync, writeFileSync } = await import('node:fs');
+  const count = Math.max(1, Number(values.count) || 5);
+  const model = values.model;
+
+  if (values.each) {
+    // Batch mode: generate for all skills missing eval-samples
+    const { discoverVariants } = await import('./lib/runner.mjs');
+    const skillDir = resolve(values['skill-dir']);
+    if (!existsSync(skillDir)) {
+      console.error(`Skill directory not found: ${skillDir}`);
+      process.exit(1);
+    }
+
+    const { readdirSync, statSync } = await import('node:fs');
+    const entries = readdirSync(skillDir);
+    let generated = 0;
+
+    for (const entry of entries) {
+      let name, skillPath, samplesPath;
+      const fullPath = join(skillDir, entry);
+
+      if (entry.endsWith('.md') && !entry.endsWith('.eval-samples.json')) {
+        name = entry.slice(0, -3);
+        skillPath = fullPath;
+        samplesPath = join(skillDir, `${name}.eval-samples.json`);
+      } else if (statSync(fullPath).isDirectory()) {
+        const skillMd = join(fullPath, 'SKILL.md');
+        if (!existsSync(skillMd)) continue;
+        name = entry;
+        skillPath = skillMd;
+        samplesPath = join(fullPath, 'eval-samples.json');
+      } else {
+        continue;
+      }
+
+      if (existsSync(samplesPath)) {
+        process.stderr.write(`⏭️  ${name}: eval-samples 已存在，跳过\n`);
+        continue;
+      }
+
+      process.stderr.write(`🔄 ${name}: 正在生成 ${count} 个测试样本...\n`);
+      try {
+        const skillContent = readFileSync(skillPath, 'utf-8');
+        const { samples, costUSD } = await generateSamples({ skillContent, count, model });
+        writeFileSync(samplesPath, JSON.stringify(samples, null, 2));
+        process.stderr.write(`✅ ${name}: 已生成 ${samples.length} 个样本 → ${samplesPath} (${costUSD > 0 ? `$${costUSD.toFixed(4)}` : ''})\n`);
+        generated++;
+      } catch (err) {
+        process.stderr.write(`❌ ${name}: ${err.message}\n`);
+      }
+    }
+
+    if (generated === 0) {
+      console.log('没有需要生成的 eval-samples（所有 skill 已有配对文件）');
+    } else {
+      console.log(`\n共生成 ${generated} 份 eval-samples，请审查后运行: omk bench run --each`);
+    }
+  } else {
+    // Single skill mode
+    const skillPath = argv.find((a) => !a.startsWith('-'));
+    if (!skillPath) {
+      console.error('请指定 skill 文件路径，例如: omk bench gen-samples skills/my-skill.md');
+      process.exit(1);
+    }
+
+    const resolvedPath = resolve(skillPath);
+    if (!existsSync(resolvedPath)) {
+      console.error(`Skill file not found: ${resolvedPath}`);
+      process.exit(1);
+    }
+
+    const skillContent = readFileSync(resolvedPath, 'utf-8');
+    const outputPath = resolve('eval-samples.json');
+
+    if (existsSync(outputPath)) {
+      console.error(`eval-samples.json 已存在。如需覆盖请先删除。`);
+      process.exit(1);
+    }
+
+    process.stderr.write(`🔄 正在生成 ${count} 个测试样本...\n`);
+    try {
+      const { samples, costUSD } = await generateSamples({ skillContent, count, model });
+      writeFileSync(outputPath, JSON.stringify(samples, null, 2));
+      process.stderr.write(`✅ 已生成 ${samples.length} 个样本 → ${outputPath} (${costUSD > 0 ? `$${costUSD.toFixed(4)}` : ''})\n`);
+      console.log('\n请审查生成的测试样本后运行: omk bench run');
+    } catch (err) {
+      console.error(`生成失败: ${err.message}`);
+      process.exit(1);
+    }
+  }
 }
 
 async function handleCi(argv) {
