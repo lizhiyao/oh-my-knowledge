@@ -1,0 +1,22 @@
+[
+  {
+    "sample_id": "tr001",
+    "prompt": "请将以下中文翻译为英文",
+    "context": "这款产品在用户体验方面做了大量优化，使得操作流程更加顺畅。",
+    "rubric": "翻译应准确自然，使用地道英语表达",
+    "assertions": [
+      { "type": "regex", "pattern": "user experience|UX", "flags": "i", "weight": 1 },
+      { "type": "not_contains", "value": "中文", "weight": 0.5 }
+    ]
+  },
+  {
+    "sample_id": "tr002",
+    "prompt": "请将以下英文翻译为中文",
+    "context": "The deployment pipeline automatically runs unit tests, integration tests, and security scans before pushing to production.",
+    "rubric": "翻译应准确流畅，保留技术术语",
+    "assertions": [
+      { "type": "regex", "pattern": "部署|流水线|pipeline", "weight": 1 },
+      { "type": "regex", "pattern": "单元测试|集成测试", "weight": 1 }
+    ]
+  }
+]

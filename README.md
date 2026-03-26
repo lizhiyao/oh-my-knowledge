@@ -210,6 +210,33 @@ omk bench run [选项]
   --concurrency <n>      并行任务数（默认：1）
   --repeat <n>           重复 N 次做方差分析（默认：1）
   --executor <名称>      执行器（默认：claude）
+  --each                 批量评测：每个 skill 独立和 baseline 对比
+                         需要每个 skill 配对 {name}.eval-samples.json
+```
+
+### `omk bench run --each`（批量评测）
+
+当 skills/ 下放了多个**独立的** skill 时，使用 `--each` 逐个评测，每个 skill 独立和 baseline 对比，生成一份合并报告。
+
+```
+skills/
+├── asset.md                       ← skill 文件
+├── asset.eval-samples.json        ← 配对的测试集
+├── home.md
+├── home.eval-samples.json
+└── product/                       ← 目录格式也支持
+    ├── SKILL.md
+    └── eval-samples.json
+```
+
+配对规则：
+- `{name}.md` → 查找同目录下的 `{name}.eval-samples.json`
+- `{name}/SKILL.md` → 查找 `{name}/eval-samples.json`
+- 没有配对 eval-samples 的 skill 会被跳过并打印警告
+
+```bash
+omk bench run --each
+omk bench run --each --dry-run
 ```
 
 ### `omk bench ci`

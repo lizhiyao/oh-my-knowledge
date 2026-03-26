@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runEvaluation, loadSkills, buildTasks, discoverVariants } from '../lib/runner.mjs';
+import { runEvaluation, loadSkills, buildTasks, discoverVariants, discoverEachSkills, runEachEvaluation } from '../lib/runner.mjs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
@@ -286,6 +286,83 @@ describe('file path variant', () => {
       dryRun: true,
     });
     assert.equal(report.totalTasks, 6);
+  });
+});
+
+describe('discoverEachSkills', () => {
+  const MULTI_SKILLS_DIR = join(__dirname, '..', 'examples', 'multi-skills', 'skills');
+
+  it('discovers skills with paired eval-samples', () => {
+    const skills = discoverEachSkills(MULTI_SKILLS_DIR);
+    assert.ok(skills.length >= 2);
+    const names = skills.map((s) => s.name);
+    assert.ok(names.includes('summarizer'));
+    assert.ok(names.includes('translator'));
+  });
+
+  it('each entry has name, skillPath, samplesPath', () => {
+    const skills = discoverEachSkills(MULTI_SKILLS_DIR);
+    for (const sk of skills) {
+      assert.ok(sk.name);
+      assert.ok(sk.skillPath);
+      assert.ok(sk.samplesPath);
+    }
+  });
+
+  it('returns sorted by name', () => {
+    const skills = discoverEachSkills(MULTI_SKILLS_DIR);
+    const names = skills.map((s) => s.name);
+    assert.deepEqual(names, [...names].sort());
+  });
+
+  it('skips skills without paired eval-samples', async () => {
+    const { mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const tmpDir = join(__dirname, 'tmp-each-skills');
+    mkdirSync(tmpDir, { recursive: true });
+    writeFileSync(join(tmpDir, 'has-pair.md'), 'skill content');
+    writeFileSync(join(tmpDir, 'has-pair.eval-samples.json'), JSON.stringify([{ sample_id: 's1', prompt: 'test' }]));
+    writeFileSync(join(tmpDir, 'no-pair.md'), 'skill content');
+    try {
+      const skills = discoverEachSkills(tmpDir);
+      assert.equal(skills.length, 1);
+      assert.equal(skills[0].name, 'has-pair');
+    } finally {
+      rmSync(tmpDir, { recursive: true });
+    }
+  });
+
+  it('returns empty for nonexistent directory', () => {
+    const skills = discoverEachSkills('/nonexistent/dir');
+    assert.deepEqual(skills, []);
+  });
+});
+
+describe('runEachEvaluation', () => {
+  const MULTI_SKILLS_DIR = join(__dirname, '..', 'examples', 'multi-skills', 'skills');
+
+  it('dry-run: returns correct structure', async () => {
+    const { report } = await runEachEvaluation({
+      skillDir: MULTI_SKILLS_DIR,
+      dryRun: true,
+    });
+    assert.equal(report.dryRun, true);
+    assert.equal(report.each, true);
+    assert.ok(report.totalSkills >= 2);
+    assert.ok(report.skills.length >= 2);
+    for (const sk of report.skills) {
+      assert.ok(sk.name);
+      assert.ok(sk.sampleCount > 0);
+      assert.equal(sk.taskCount, sk.sampleCount * 2);
+    }
+  });
+
+  it('dry-run: totalTasks is sum of all skill tasks', async () => {
+    const { report } = await runEachEvaluation({
+      skillDir: MULTI_SKILLS_DIR,
+      dryRun: true,
+    });
+    const expectedTotal = report.skills.reduce((s, sk) => s + sk.taskCount, 0);
+    assert.equal(report.totalTasks, expectedTotal);
   });
 });
 

@@ -21,6 +21,7 @@ const RUN_OPTIONS = {
   'dry-run':     { type: 'boolean', default: false },
   concurrency:   { type: 'string', default: '1' },
   executor:      { type: 'string', default: 'claude' },
+  each:          { type: 'boolean', default: false },
 };
 
 function parseRunConfig(argv, extraOptions = {}) {
@@ -84,6 +85,8 @@ Options for "bench run":
   --concurrency <n>      Number of parallel tasks (default: 1)
   --repeat <n>           Run evaluation N times for variance analysis (default: 1)
   --executor <name>      Executor to use (default: claude)
+  --each                 Evaluate each skill independently against baseline
+                         Requires {name}.eval-samples.json paired with each skill
 
 Options for "bench ci":
   (same as "bench run", plus:)
@@ -98,6 +101,7 @@ Examples:
   omk bench run --variants baseline,my-skill
   omk bench run --variants git:my-skill,my-skill
   omk bench run --variants ./old-skill.md,./new-skill.md
+  omk bench run --each
   omk bench run --dry-run
   omk bench report --port 8080
   omk bench init my-eval
@@ -156,12 +160,43 @@ async function handleRun(argv) {
     repeat: { type: 'string', default: '1' },
   });
 
-  const { runEvaluation, runMultiple } = await import('./lib/runner.mjs');
+  const { runEvaluation, runMultiple, runEachEvaluation } = await import('./lib/runner.mjs');
 
   config.blind = values.blind;
   config.onProgress = defaultOnProgress;
 
   try {
+    // --each mode: evaluate each skill independently
+    if (values.each) {
+      const { report, filePath } = await runEachEvaluation({
+        ...config,
+        onSkillProgress({ phase, skill, current, total }) {
+          if (phase === 'start') {
+            process.stderr.write(`\n=== [${current}/${total}] Skill: ${skill} ===\n`);
+          }
+        },
+      });
+      console.log(JSON.stringify(report, null, 2));
+      if (filePath) {
+        process.stderr.write('\n✅ 批量评测完成\n');
+        process.stderr.write(`📄 Report saved to: ${filePath}\n`);
+
+        const { createReportServer } = await import('./lib/report-server.mjs');
+        const server = createReportServer({ reportsDir: resolve(values['output-dir']) });
+        const serverUrl = await server.start();
+        const reportUrl = `${serverUrl}/run/${report.id}`;
+        process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
+        process.stderr.write(`👉 View report: ${reportUrl}\n`);
+        process.stderr.write('\nPress Ctrl+C to stop the server\n');
+
+        const { platform } = await import('node:os');
+        const openCmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
+        const { execFile: execFileCb } = await import('node:child_process');
+        execFileCb(openCmd, [reportUrl], () => {});
+      }
+      return;
+    }
+
     const repeatCount = Math.max(1, Number(values.repeat) || 1);
     let report, filePath;
 
