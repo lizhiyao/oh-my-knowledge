@@ -1,0 +1,46 @@
+[
+  {
+    "sample_id": "cs001",
+    "prompt": "我三天前买的耳机，今天发现左耳没声音了，怎么办？",
+    "rubric": "应先共情用户体验，提供退换货或维修方案，说明处理流程和时效",
+    "assertions": [
+      { "type": "regex", "pattern": "理解|抱歉|不便", "weight": 1 },
+      { "type": "regex", "pattern": "退换|退货|换货|维修|售后", "weight": 1 },
+      { "type": "not_contains", "value": "你自己", "weight": 0.5 }
+    ],
+    "dimensions": {
+      "empathy": "是否在开头表达了对用户遭遇的理解和共情",
+      "solution": "是否提供了具体可操作的解决方案和步骤"
+    }
+  },
+  {
+    "sample_id": "cs002",
+    "prompt": "我的订单显示已签收，但我没收到包裹，快递员也联系不上！",
+    "rubric": "应安抚情绪，提供包裹追踪和补发/退款方案，主动说明处理时效",
+    "assertions": [
+      { "type": "regex", "pattern": "理解|着急|担心|抱歉", "weight": 1 },
+      { "type": "regex", "pattern": "核实|查询|追踪|快递", "weight": 1 },
+      { "type": "regex", "pattern": "补发|退款|赔偿", "weight": 0.5 },
+      { "type": "regex", "pattern": "\\d+.*[天小时工作日]", "weight": 0.5 }
+    ],
+    "dimensions": {
+      "empathy": "是否安抚了用户的焦急情绪",
+      "solution": "是否给出了具体的处理流程和预计时效"
+    }
+  },
+  {
+    "sample_id": "cs003",
+    "prompt": "你们的会员自动续费了，我根本不知道！要求立刻退款！",
+    "rubric": "应理解用户不满，解释退款政策，提供退款操作和关闭自动续费的步骤",
+    "assertions": [
+      { "type": "regex", "pattern": "理解|抱歉|不好意思", "weight": 1 },
+      { "type": "regex", "pattern": "退款|退费", "weight": 1 },
+      { "type": "regex", "pattern": "自动续费|关闭|取消", "weight": 0.5 },
+      { "type": "not_contains", "value": "不能退", "weight": 0.5 }
+    ],
+    "dimensions": {
+      "empathy": "是否化解了用户的不满情绪，避免对立",
+      "solution": "是否同时解决了退款和关闭自动续费两个诉求"
+    }
+  }
+]
