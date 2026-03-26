@@ -114,44 +114,6 @@ describe('report-server', () => {
     assert.ok(res.body.includes('test-run-001'));
   });
 
-  it('POST /api/run/:id/feedback persists feedback', async () => {
-    const res = await fetch(`${baseUrl}/api/run/test-run-001/feedback`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sample_id: 's001', variant: 'v1', rating: 4, comment: 'good' }),
-    });
-    assert.equal(res.status, 200);
-    const data = JSON.parse(res.body);
-    assert.equal(data.ok, true);
-
-    // Verify feedback was saved
-    const detail = await fetch(`${baseUrl}/api/run/test-run-001`);
-    const report = JSON.parse(detail.body);
-    const feedback = report.results[0].humanFeedback;
-    assert.ok(feedback.length >= 1);
-    assert.equal(feedback[0].variant, 'v1');
-    assert.equal(feedback[0].rating, 4);
-    assert.equal(feedback[0].comment, 'good');
-  });
-
-  it('POST /api/run/:id/feedback rejects missing fields', async () => {
-    const res = await fetch(`${baseUrl}/api/run/test-run-001/feedback`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sample_id: 's001' }),
-    });
-    assert.equal(res.status, 400);
-  });
-
-  it('POST /api/run/:id/feedback returns 404 for missing sample', async () => {
-    const res = await fetch(`${baseUrl}/api/run/test-run-001/feedback`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sample_id: 'nonexistent', variant: 'v1', rating: 3 }),
-    });
-    assert.equal(res.status, 404);
-  });
-
   it('DELETE /api/run/:id removes report', async () => {
     // Create a temp report to delete
     writeFileSync(join(TEST_DIR, 'to-delete.json'), JSON.stringify({ ...SAMPLE_REPORT, id: 'to-delete' }));

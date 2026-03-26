@@ -7,13 +7,10 @@ describe('generateSamples', () => {
     assert.equal(typeof generateSamples, 'function');
   });
 
-  it('throws on empty skill content with mock', async () => {
-    // This test verifies error handling — actual LLM call would be needed for full test
-    // We test that the function exists and has the right signature
+  it('throws on invalid executor', async () => {
     await assert.rejects(
-      () => generateSamples({ skillContent: '', count: 1, executorName: 'claude' }),
-      // Will throw because empty prompt or executor failure
-      (err) => err instanceof Error,
+      () => generateSamples({ skillContent: 'test', count: 1, executorName: 'nonexistent' }),
+      /Unknown executor/,
     );
   });
 });

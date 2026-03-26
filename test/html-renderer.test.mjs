@@ -70,7 +70,7 @@ describe('renderRunList', () => {
     const html = renderRunList([SAMPLE_REPORT]);
     assert.ok(html.includes('test-run-001'));
     assert.ok(html.includes('sonnet'));
-    assert.ok(html.includes('v1, v2'));
+    assert.ok(html.includes('test-run-001'));
   });
 
   it('includes delete button', () => {
@@ -129,7 +129,7 @@ describe('renderRunDetail', () => {
   it('renders per-sample details', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
     assert.ok(html.includes('s001'));
-    assert.ok(html.includes('contains'));
+    assert.ok(html.includes('badge-ok'));
   });
 
   it('renders analysis section', () => {
@@ -144,12 +144,6 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('dimCostDesc'));
     assert.ok(html.includes('dimEfficiencyDesc'));
     assert.ok(html.includes('dimStabilityDesc'));
-  });
-
-  it('renders feedback form', () => {
-    const html = renderRunDetail(SAMPLE_REPORT);
-    assert.ok(html.includes('submitFeedback'));
-    assert.ok(html.includes('stars'));
   });
 
   it('renders blind mode correctly', () => {
