@@ -80,6 +80,18 @@ omk bench ci [选项]
   --threshold <数值>     达标分数（默认：3.5）
 ```
 
+## eval-samples 字段参考
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `sample_id` | 是 | 唯一标识 |
+| `prompt` | 是 | 用户提示词 |
+| `context` | 否 | 附加上下文（代码片段等） |
+| `cwd` | 否 | executor 工作目录，用于指定目标仓库路径 |
+| `rubric` | 否 | LLM 评分标准 |
+| `assertions` | 否 | 断言数组 |
+| `dimensions` | 否 | 多维度评分 { 维度名: 评分标准 } |
+
 ## omk bench init
 
 生成评测项目脚手架。

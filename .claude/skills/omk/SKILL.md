@@ -130,6 +130,21 @@ v2 比 v1 更好：
 
 列出每个 skill 的 baseline 分 vs skill 分和提升幅度，高亮表现最好和最差的 skill。
 
+## 指定工作目录（cwd）
+
+当评测用例需要模型读取特定仓库的代码时，可在 sample 中设置 `cwd` 字段：
+
+```yaml
+- sample_id: task-001
+  prompt: "实现用户登录功能，要求支持手机号和邮箱两种方式"
+  cwd: "/path/to/target-repo"
+  assertions:
+    - type: contains_all
+      values: ["auth.ts", "login.tsx"]
+```
+
+`cwd` 会作为 executor 的工作目录，`claude -p` 将在该目录下运行，能自动读取仓库代码。适用于"给一个任务 query，断言应该修改哪些文件"的 A/B 评测场景。
+
 ## 注意事项
 
 - 评测需要调用 LLM，会产生费用。运行前告知用户预估成本（样本数 × 变体数 × 约 $0.01-0.05/次）
