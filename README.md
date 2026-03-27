@@ -122,7 +122,7 @@ eval-samples.json       skills/
 |------|------|------|------|
 | `sample_id` | `string` | **是** | 样本唯一标识 |
 | `prompt` | `string` | **是** | 发送给模型的用户提示词 |
-| `context` | `string` | 否 | 附加上下文（代码片段等），会被包裹在代码块中拼接到 prompt 后 |
+| `context` | `string` | 否 | 附加上下文（代码片段等），会被包裹在代码块中拼接到 prompt 后。也支持 URL，运行时自动抓取内容 |
 | `rubric` | `string` | 否 | LLM 评委的评分标准（1-5 分） |
 | `assertions` | `array` | 否 | 断言检查列表，详见[断言类型](#断言类型) |
 | `assertions[].type` | `string` | **是** | 断言类型 |
@@ -136,6 +136,19 @@ eval-samples.json       skills/
 | `assertions[].fn` | `string` | 视类型 | 自定义断言 JS 文件路径（`custom` 必填） |
 | `assertions[].weight` | `number` | 否 | 权重（默认 1） |
 | `dimensions` | `object` | 否 | 多维度评分，key 为维度名，value 为评分标准文本 |
+
+### URL 自动抓取
+
+`prompt` 和 `context` 中的 URL 会在评测前自动抓取内容并内联到文本中。适用于引用在线文档、API 文档等场景：
+
+```json
+{
+  "sample_id": "s001",
+  "prompt": "请根据以下 PRD 文档生成测试用例：https://wiki.example.com/prd/feature-x"
+}
+```
+
+运行时，URL 会被替换为实际文档内容。如果 URL 需要认证访问，请确保命令行环境已配置好网络访问（如 VPN、代理、cookie 等）。抓取失败时会显示具体 URL 和解决方案，评测终止。
 
 ### 评分策略
 
@@ -220,6 +233,7 @@ omk bench run [选项]
   --dry-run              仅预览
   --blind                盲测模式
   --concurrency <n>      并行任务数（默认：1）
+  --timeout <秒>         单个任务的执行器超时时间（默认：120）
   --repeat <n>           重复 N 次做方差分析（默认：1）
   --executor <名称>      执行器（默认：claude）
   --each                 批量评测：每个 skill 独立和 baseline 对比

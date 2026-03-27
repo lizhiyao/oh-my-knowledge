@@ -14,6 +14,7 @@ omk bench run [选项]
   --model <名称>         被测模型（默认：sonnet）
   --judge-model <名称>   评委模型（默认：haiku）
   --concurrency <n>      并行任务数（默认：1）
+  --timeout <秒>         单个任务的执行器超时时间（默认：120）
   --no-judge             跳过 LLM 评分
   --dry-run              仅预览任务计划
   --blind                盲测模式
