@@ -30,6 +30,18 @@ omk bench run --dry-run
 omk bench run
 ```
 
+## 在 Claude Code 中使用
+
+安装 omk 后，在 Claude Code 中直接用自然语言交互：
+
+```
+/omk eval              # 评测当前项目的 skill
+/omk evolve            # 自动迭代改进 skill
+/omk gen-samples       # 生成测试用例
+```
+
+或直接说"帮我评测 v1 和 v2 的差异"、"改进一下这个 skill"，omk skill 会自动理解意图并调用对应命令。
+
 ## 特性
 
 | 特性 | 说明 |
