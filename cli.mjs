@@ -20,6 +20,7 @@ const RUN_OPTIONS = {
   'no-judge':    { type: 'boolean', default: false },
   'dry-run':     { type: 'boolean', default: false },
   concurrency:   { type: 'string', default: '1' },
+  timeout:       { type: 'string', default: '120' },
   executor:      { type: 'string', default: 'claude' },
   each:          { type: 'boolean', default: false },
 };
@@ -54,6 +55,7 @@ function parseRunConfig(argv, extraOptions = {}) {
       noJudge: values['no-judge'],
       dryRun: values['dry-run'],
       concurrency: Math.max(1, Number(values.concurrency) || 1),
+      timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
       executorName: values.executor,
     },
   };
@@ -86,6 +88,7 @@ Options for "bench run":
   --dry-run              Preview tasks without executing
   --blind                Blind A/B mode: hide variant names in report
   --concurrency <n>      Number of parallel tasks (default: 1)
+  --timeout <seconds>    Executor timeout per task in seconds (default: 120)
   --repeat <n>           Run evaluation N times for variance analysis (default: 1)
   --executor <name>      Executor to use (default: claude)
   --each                 Evaluate each skill independently against baseline
@@ -114,6 +117,7 @@ Options for "bench evolve":
   --judge-model <name>   Judge model (default: haiku)
   --improve-model <name> Model for generating improvements (default: sonnet)
   --concurrency <n>      Parallel eval tasks (default: 1)
+  --timeout <seconds>    Executor timeout per task in seconds (default: 120)
   --executor <name>      Executor to use (default: claude)
 
 Examples:
@@ -472,6 +476,7 @@ async function handleEvolve(argv) {
       'judge-model':   { type: 'string', default: 'haiku' },
       'improve-model': { type: 'string', default: 'sonnet' },
       concurrency:     { type: 'string', default: '1' },
+      timeout:         { type: 'string', default: '120' },
       executor:        { type: 'string', default: 'claude' },
     },
     strict: false,
@@ -505,6 +510,7 @@ async function handleEvolve(argv) {
       improveModel: values['improve-model'],
       executorName: values.executor,
       concurrency: Math.max(1, Number(values.concurrency) || 1),
+      timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
       onProgress: defaultOnProgress,
       onRoundProgress({ round, totalRounds, phase, score, delta, accepted, costUSD, error }) {
         if (phase === 'baseline') {
