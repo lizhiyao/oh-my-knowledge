@@ -119,7 +119,25 @@ Examples:
   omk bench gen-samples --each
 `.trim();
 
+async function checkUpdate() {
+  try {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const pkg = JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf-8'));
+    const registry = pkg.publishConfig?.registry || 'https://registry.npmjs.org';
+    const res = await fetch(`${registry}/${pkg.name}/latest`, { signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.version && data.version !== pkg.version) {
+      process.stderr.write(`\n💡 新版本可用: ${pkg.version} → ${data.version}，运行 npm update ${pkg.name} -g 更新\n\n`);
+    }
+  } catch { /* 静默失败，不影响正常使用 */ }
+}
+
 async function main() {
+  checkUpdate();
   const [domain, command, ...rest] = process.argv.slice(2);
 
   if (!domain || domain === '--help' || domain === '-h') {
