@@ -262,6 +262,28 @@ omk bench gen-samples skills/my-skill.md --count 10
   --skill-dir <路径>     skill 目录（默认：skills），配合 --each 使用
 ```
 
+### `omk bench evolve`（自我循环改进）
+
+让 AI 自动迭代 skill：评测 → 分析弱点 → LLM 改进 → 再评测 → 分数涨了留、没涨扔 → 重复。
+
+```bash
+# 基本用法：迭代 5 轮
+omk bench evolve skills/my-skill.md
+
+# 指定轮数和目标分数
+omk bench evolve skills/my-skill.md --rounds 10 --target 4.5
+```
+
+选项：
+```
+  --rounds <n>           最大迭代轮数（默认：5）
+  --target <分数>        目标分数，达到即停
+  --samples <路径>       样本文件（默认：eval-samples.json）
+  --improve-model <名称> 改进用模型（默认：sonnet）
+```
+
+每轮产出保存在 `skills/evolve/` 目录（`my-skill.r0.md`、`my-skill.r1.md`...），可以 diff 查看 AI 改了什么。最佳版本自动写回原始文件。
+
 ### `omk bench ci`
 
 在自动化流水线中运行评测。评分达标则退出码为 0（通过），否则为 1（失败），可直接用于卡点判断。

@@ -68,6 +68,7 @@ Usage:
   omk bench ci [options]      Run evaluation and exit with pass/fail code
   omk bench init [dir]        Scaffold a new eval project
   omk bench gen-samples [skill]  Generate eval-samples from skill content
+  omk bench evolve <skill>       Self-improve a skill through iterative evaluation
 
 Options for "bench run":
 
@@ -105,6 +106,16 @@ Options for "bench gen-samples":
   --model <name>         Model for generation (default: sonnet)
   --skill-dir <path>     Skill directory (default: skills), used with --each
 
+Options for "bench evolve":
+  --rounds <n>           Maximum evolution rounds (default: 5)
+  --target <score>       Stop early when score reaches this threshold
+  --samples <path>       Sample file (default: eval-samples.json)
+  --model <name>         Model under test (default: sonnet)
+  --judge-model <name>   Judge model (default: haiku)
+  --improve-model <name> Model for generating improvements (default: sonnet)
+  --concurrency <n>      Parallel eval tasks (default: 1)
+  --executor <name>      Executor to use (default: claude)
+
 Examples:
   omk bench run --variants v1,v2
   omk bench run --variants baseline,my-skill
@@ -117,6 +128,7 @@ Examples:
   omk bench init my-eval
   omk bench gen-samples skills/my-skill.md
   omk bench gen-samples --each
+  omk bench evolve skills/my-skill.md --rounds 5
 `.trim();
 
 async function checkUpdate() {
@@ -171,8 +183,11 @@ async function main() {
     case 'gen-samples':
       await handleGenSamples(rest);
       break;
+    case 'evolve':
+      await handleEvolve(rest);
+      break;
     default:
-      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", or "gen-samples".`);
+      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", or "evolve".`);
       process.exit(1);
   }
 }
@@ -443,6 +458,76 @@ async function handleGenSamples(argv) {
       console.error(`生成失败: ${err.message}`);
       process.exit(1);
     }
+  }
+}
+
+async function handleEvolve(argv) {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      rounds:          { type: 'string', default: '5' },
+      target:          { type: 'string' },
+      samples:         { type: 'string', default: 'eval-samples.json' },
+      model:           { type: 'string', default: 'sonnet' },
+      'judge-model':   { type: 'string', default: 'haiku' },
+      'improve-model': { type: 'string', default: 'sonnet' },
+      concurrency:     { type: 'string', default: '1' },
+      executor:        { type: 'string', default: 'claude' },
+    },
+    strict: false,
+    allowPositionals: true,
+  });
+
+  const skillPath = argv.find((a) => !a.startsWith('-'));
+  if (!skillPath) {
+    console.error('请指定 skill 文件路径，例如: omk bench evolve skills/my-skill.md');
+    process.exit(1);
+  }
+
+  let samplesFile = values.samples;
+  if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
+    if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
+    else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
+  }
+
+  const { evolveSkill } = await import('./lib/evolver.mjs');
+
+  process.stderr.write(`\n=== Evolution: ${skillPath} ===\n`);
+
+  try {
+    const result = await evolveSkill({
+      skillPath: resolve(skillPath),
+      samplesPath: resolve(samplesFile),
+      rounds: Math.max(1, Number(values.rounds) || 5),
+      target: values.target ? Number(values.target) : null,
+      model: values.model,
+      judgeModel: values['judge-model'],
+      improveModel: values['improve-model'],
+      executorName: values.executor,
+      concurrency: Math.max(1, Number(values.concurrency) || 1),
+      onProgress: defaultOnProgress,
+      onRoundProgress({ round, totalRounds, phase, score, delta, accepted, costUSD, error }) {
+        if (phase === 'baseline') {
+          process.stderr.write(`Round 0 (baseline): score=${score.toFixed(2)} ($${costUSD.toFixed(4)})\n`);
+        } else if (phase === 'error') {
+          process.stderr.write(`Round ${round}: ✗ 改进生成失败: ${error}\n`);
+        } else if (phase === 'done') {
+          const deltaStr = delta >= 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2);
+          const status = accepted ? '✓ ACCEPT' : '✗ REJECT';
+          process.stderr.write(`Round ${round}: score=${score.toFixed(2)} (${deltaStr}) ${status} ($${costUSD.toFixed(4)})\n`);
+        }
+      },
+    });
+
+    const improvement = result.startScore > 0 ? ((result.finalScore - result.startScore) / result.startScore * 100).toFixed(1) : '0';
+    process.stderr.write(`\n✅ ${result.startScore.toFixed(2)} → ${result.finalScore.toFixed(2)} (+${improvement}%) | ${result.totalRounds} 轮 | $${result.totalCostUSD.toFixed(4)}\n`);
+    process.stderr.write(`Best: ${result.bestSkillPath} → ${resolve(skillPath)}\n`);
+    process.stderr.write(`所有版本保存在: ${join(resolve(skillPath, '..'), 'evolve')}/\n`);
+
+    console.log(JSON.stringify(result, null, 2));
+  } catch (err) {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
   }
 }
 
