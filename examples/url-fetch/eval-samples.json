@@ -1,0 +1,29 @@
+[
+  {
+    "sample_id": "summarize-readme",
+    "prompt": "请总结以下项目的主要功能和特点：https://raw.githubusercontent.com/anthropics/claude-code/main/README.md",
+    "rubric": "应准确概括项目核心功能，语言简洁",
+    "assertions": [
+      { "type": "contains", "value": "Claude", "weight": 1 },
+      { "type": "min_length", "value": 100, "weight": 0.5 }
+    ]
+  },
+  {
+    "sample_id": "analyze-api-doc",
+    "prompt": "分析以下 API 文档，列出所有可用的接口：https://raw.githubusercontent.com/anthropics/anthropic-cookbook/main/misc/prompt_caching.ipynb",
+    "rubric": "应识别出文档中的 API 调用方式和参数",
+    "assertions": [
+      { "type": "contains", "value": "API", "weight": 1 }
+    ]
+  },
+  {
+    "sample_id": "with-context-fallback",
+    "prompt": "审查以下代码的安全问题",
+    "context": "function login(user, pass) {\n  return db.query(`SELECT * FROM users WHERE name='${user}'`);\n}",
+    "rubric": "应识别 SQL 注入风险",
+    "assertions": [
+      { "type": "contains", "value": "SQL", "weight": 1 },
+      { "type": "contains", "value": "注入", "weight": 1 }
+    ]
+  }
+]
