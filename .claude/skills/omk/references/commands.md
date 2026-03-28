@@ -16,11 +16,13 @@ omk bench run [选项]
   --concurrency <n>      并行任务数（默认：1）
   --timeout <秒>         单个任务的执行器超时时间（默认：120）
   --no-judge             跳过 LLM 评分
+  --no-cache             禁用结果缓存
   --dry-run              仅预览任务计划
   --blind                盲测模式
   --repeat <n>           重复 N 次做方差分析
   --each                 批量模式：每个 skill 独立和 baseline 对比
-  --executor <名称>      执行器（默认：claude）
+  --executor <名称>      执行器：claude, openai, gemini, anthropic-api, openai-api,
+                         或任意 shell 命令（如 "python my_provider.py"）
 ```
 
 Variant 特殊值：

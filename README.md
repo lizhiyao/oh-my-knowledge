@@ -230,12 +230,13 @@ omk bench run [选项]
   --judge-model <名称>   评委模型（默认：haiku）
   --output-dir <路径>    输出目录（默认：~/.oh-my-knowledge/reports/）
   --no-judge             跳过 LLM 评分
+  --no-cache             禁用结果缓存（默认开启，相同输入自动复用）
   --dry-run              仅预览
   --blind                盲测模式
   --concurrency <n>      并行任务数（默认：1）
   --timeout <秒>         单个任务的执行器超时时间（默认：120）
   --repeat <n>           重复 N 次做方差分析（默认：1）
-  --executor <名称>      执行器（默认：claude）
+  --executor <名称>      执行器（默认：claude），支持自定义命令
   --each                 批量评测：每个 skill 独立和 baseline 对比
                          需要每个 skill 配对 {name}.eval-samples.json
 ```
@@ -336,11 +337,32 @@ omk bench init [目录]    # 生成评测项目脚手架
 
 ## 执行器
 
+### 内置执行器
+
 | 执行器 | 适用场景 | 说明 |
 |--------|----------|------|
-| `claude` | 默认 | 通过 `claude -p` 调用模型 |
+| `claude` | 默认 | 通过 `claude -p` 调用 Claude CLI |
 | `openai` | 跨厂商对比 | 通过 `openai api` CLI 调用 |
 | `gemini` | 跨厂商对比 | 通过 `gemini` CLI 调用 |
+| `anthropic-api` | 无需 CLI | 直接调用 Anthropic HTTP API（需 `ANTHROPIC_API_KEY`） |
+| `openai-api` | 无需 CLI | 直接调用 OpenAI HTTP API（需 `OPENAI_API_KEY`） |
+
+API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL`。
+
+### 自定义执行器
+
+任何 shell 命令都可以作为执行器，通过 stdin/stdout JSON 协议通信：
+
+```bash
+omk bench run --executor "python my_provider.py"
+omk bench run --executor "./my-executor.sh"
+```
+
+**协议约定：**
+- **输入**（stdin）：JSON `{"model":"...","system":"...","prompt":"..."}`
+- **输出**（stdout）：JSON `{"output":"模型回复","inputTokens":0,"outputTokens":0,"costUSD":0}`
+- stdout 中只需返回有值的字段，其余默认为 0；也可以直接输出纯文本（不解析 token/成本）
+- 非零退出码视为执行失败
 
 ### Skill 目录结构
 
@@ -386,7 +408,9 @@ omk bench run --variants ./old-skill.md,./new-skill.md
 
 **前置要求：**
 - **claude**：安装 [Claude Code](https://claude.ai/code) 并认证
+- **anthropic-api**：设置 `ANTHROPIC_API_KEY` 环境变量
 - **openai**：`pip install openai` 并设置 `OPENAI_API_KEY`
+- **openai-api**：设置 `OPENAI_API_KEY` 环境变量
 - **gemini**：`npm i -g @google/gemini-cli` 并认证
 
 ## 环境变量

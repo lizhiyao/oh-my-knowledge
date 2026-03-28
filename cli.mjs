@@ -18,6 +18,7 @@ const RUN_OPTIONS = {
   'judge-model': { type: 'string', default: 'haiku' },
   'output-dir':  { type: 'string', default: DEFAULT_REPORTS_DIR },
   'no-judge':    { type: 'boolean', default: false },
+  'no-cache':    { type: 'boolean', default: false },
   'dry-run':     { type: 'boolean', default: false },
   concurrency:   { type: 'string', default: '1' },
   timeout:       { type: 'string', default: '120' },
@@ -53,6 +54,7 @@ function parseRunConfig(argv, extraOptions = {}) {
       judgeModel: values['judge-model'],
       outputDir: resolve(values['output-dir']),
       noJudge: values['no-judge'],
+      noCache: values['no-cache'],
       dryRun: values['dry-run'],
       concurrency: Math.max(1, Number(values.concurrency) || 1),
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
@@ -85,12 +87,14 @@ Options for "bench run":
   --judge-model <name>   Judge model (default: haiku)
   --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
   --no-judge             Skip LLM judging
+  --no-cache             Disable result caching
   --dry-run              Preview tasks without executing
   --blind                Blind A/B mode: hide variant names in report
   --concurrency <n>      Number of parallel tasks (default: 1)
   --timeout <seconds>    Executor timeout per task in seconds (default: 120)
   --repeat <n>           Run evaluation N times for variance analysis (default: 1)
-  --executor <name>      Executor to use (default: claude)
+  --executor <name>      Executor: claude, openai, gemini, anthropic-api, openai-api,
+                         or any shell command (e.g. "python my_provider.py")
   --each                 Evaluate each skill independently against baseline
                          Requires {name}.eval-samples.json paired with each skill
 

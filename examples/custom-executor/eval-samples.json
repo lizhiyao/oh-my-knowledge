@@ -1,0 +1,16 @@
+[
+  {
+    "sample_id": "s001",
+    "prompt": "What is 2 + 2?",
+    "assertions": [
+      { "type": "contains", "value": "4", "weight": 1 }
+    ]
+  },
+  {
+    "sample_id": "s002",
+    "prompt": "Say hello in Chinese",
+    "assertions": [
+      { "type": "contains", "value": "你好", "weight": 1 }
+    ]
+  }
+]
