@@ -79,6 +79,8 @@ omk bench evolve skills/my-skill.md --rounds 5
 omk bench evolve skills/my-skill.md --rounds 10 --target 4.5
 ```
 
+**重要：evolve 必须在前台运行（不要用 `run_in_background`）。** 原因：evolve 自带实时进度输出，每个 sample 执行时会打印 `[1/5] s001/... ⏳ 执行中...`，每轮完成会打印 `Round N: score=... ✓ ACCEPT / ✗ REJECT`。前台运行时用户能实时看到这些进度，无需手动询问。设置足够长的 timeout（建议 600000ms）以确保命令不会中途超时。
+
 ### 生成测试用例
 
 ```bash
