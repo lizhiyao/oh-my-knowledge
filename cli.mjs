@@ -106,6 +106,7 @@ Options for "bench report":
   --port <number>        Server port (default: 7799)
   --reports-dir <path>   Reports directory (default: ~/.oh-my-knowledge/reports/)
   --export <id>          Export report as standalone HTML file
+  --dev                  Dev mode: auto-restart on lib/ file changes
 
 Options for "bench gen-samples":
   --each                 Generate for all skills missing eval-samples
@@ -307,9 +308,22 @@ async function handleReport(argv) {
       port:          { type: 'string', default: '7799' },
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       export:        { type: 'string' },
+      dev:           { type: 'boolean', default: false },
     },
     strict: false,
   });
+
+  // Dev mode: restart server on file changes via node --watch
+  if (values.dev && !process.env.__OMK_DEV_CHILD) {
+    const { spawn } = await import('node:child_process');
+    const { fileURLToPath } = await import('node:url');
+    const cliPath = fileURLToPath(import.meta.url);
+    const libDir = resolve(cliPath, '..', 'lib');
+    const args = ['--watch-path', libDir, cliPath, 'bench', 'report', '--port', values.port, '--reports-dir', values['reports-dir']];
+    const child = spawn(process.execPath, args, { stdio: 'inherit', env: { ...process.env, __OMK_DEV_CHILD: '1' } });
+    child.on('exit', (code) => process.exit(code || 0));
+    return;
+  }
 
   if (values.export) {
     const { createFileStore } = await import('./lib/report-store.mjs');
