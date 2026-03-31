@@ -24,6 +24,7 @@ const RUN_OPTIONS = {
   timeout:       { type: 'string', default: '120' },
   executor:      { type: 'string', default: 'claude' },
   each:          { type: 'boolean', default: false },
+  'skip-preflight': { type: 'boolean', default: false },
 };
 
 function parseRunConfig(argv, extraOptions = {}) {
@@ -59,6 +60,7 @@ function parseRunConfig(argv, extraOptions = {}) {
       concurrency: Math.max(1, Number(values.concurrency) || 1),
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
       executorName: values.executor,
+      skipPreflight: values['skip-preflight'],
     },
   };
 }
@@ -207,6 +209,10 @@ async function main() {
 }
 
 function defaultOnProgress({ phase, completed, total, sample_id, variant, durationMs, inputTokens, outputTokens, costUSD, score }) {
+  if (phase === 'preflight') {
+    process.stderr.write('⏳ 预检模型连通性...\n');
+    return;
+  }
   if (phase === 'start') {
     process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ⏳ 执行中...\n`);
   } else {
