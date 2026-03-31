@@ -72,6 +72,7 @@ Usage:
   omk bench ci [options]      Run evaluation and exit with pass/fail code
   omk bench init [dir]        Scaffold a new eval project
   omk bench gen-samples [skill]  Generate eval-samples from skill content
+  omk bench diff <id1> <id2>      Compare two evaluation reports
   omk bench evolve <skill>       Self-improve a skill through iterative evaluation
 
 Options for "bench run":
@@ -137,6 +138,7 @@ Examples:
   omk bench init my-eval
   omk bench gen-samples skills/my-skill.md
   omk bench gen-samples --each
+  omk bench diff <report-id-1> <report-id-2>
   omk bench evolve skills/my-skill.md --rounds 5
 `.trim();
 
@@ -194,6 +196,9 @@ async function main() {
       break;
     case 'evolve':
       await handleEvolve(rest);
+      break;
+    case 'diff':
+      await handleDiff(rest);
       break;
     default:
       console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", or "evolve".`);
@@ -587,6 +592,65 @@ async function handleCi(argv) {
     console.error(`Error: ${err.message}`);
     process.exit(1);
   }
+}
+
+async function handleDiff(argv) {
+  if (argv.length < 2) {
+    console.error('Usage: omk bench diff <report-id-1> <report-id-2>');
+    process.exit(1);
+  }
+
+  const { createFileStore } = await import('./lib/report-store.mjs');
+  const store = createFileStore(resolve(DEFAULT_REPORTS_DIR));
+
+  const [id1, id2] = argv;
+  const r1 = await store.get(id1);
+  const r2 = await store.get(id2);
+
+  if (!r1) { console.error(`Report not found: ${id1}`); process.exit(1); }
+  if (!r2) { console.error(`Report not found: ${id2}`); process.exit(1); }
+
+  console.log(`\n  Diff: ${id1} → ${id2}\n`);
+
+  // Git info
+  const g1 = r1.meta?.gitInfo;
+  const g2 = r2.meta?.gitInfo;
+  if (g1 || g2) {
+    console.log(`  Git:  ${g1?.commitShort || '?'}${g1?.dirty ? '*' : ''} (${g1?.branch || '?'}) → ${g2?.commitShort || '?'}${g2?.dirty ? '*' : ''} (${g2?.branch || '?'})`);
+  }
+
+  // Per-variant comparison
+  const variants = [...new Set([...(r1.meta?.variants || []), ...(r2.meta?.variants || [])])];
+  for (const v of variants) {
+    const s1 = r1.summary?.[v];
+    const s2 = r2.summary?.[v];
+    if (!s1 && !s2) continue;
+
+    console.log(`\n  [${v}]`);
+
+    const score1 = s1?.avgCompositeScore ?? '-';
+    const score2 = s2?.avgCompositeScore ?? '-';
+    const scoreDelta = typeof score1 === 'number' && typeof score2 === 'number' ? ` (${score2 > score1 ? '+' : ''}${(score2 - score1).toFixed(2)})` : '';
+    console.log(`    Score:   ${score1} → ${score2}${scoreDelta}`);
+
+    const turns1 = s1?.avgNumTurns ?? '-';
+    const turns2 = s2?.avgNumTurns ?? '-';
+    console.log(`    Turns:   ${turns1} → ${turns2}`);
+
+    const cost1 = s1?.avgCostPerSample ?? 0;
+    const cost2 = s2?.avgCostPerSample ?? 0;
+    const costPct = cost1 > 0 ? ` (${cost2 > cost1 ? '+' : ''}${(((cost2 - cost1) / cost1) * 100).toFixed(0)}%)` : '';
+    console.log(`    Cost:    $${cost1.toFixed(4)} → $${cost2.toFixed(4)}${costPct}`);
+
+    // Skill hash change
+    const h1 = r1.meta?.skillHashes?.[v];
+    const h2 = r2.meta?.skillHashes?.[v];
+    if (h1 && h2 && h1 !== h2) {
+      console.log(`    Skill:   ${h1.slice(0, 8)} → ${h2.slice(0, 8)} (changed)`);
+    }
+  }
+
+  console.log('');
 }
 
 main();

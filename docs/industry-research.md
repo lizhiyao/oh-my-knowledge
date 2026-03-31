@@ -376,4 +376,92 @@ HTML 报告           自定义断言             方差分析               tra
 
 ---
 
-*最后更新：2026-03-24*
+## 九、v0.7 进展与实战洞察（2026-03-31 更新）
+
+### 9.1 v0.1 → v0.7 已完成的规划项
+
+| 原规划 | 状态 | 实现版本 |
+|--------|:----:|----------|
+| 扩展断言类型（15+） | ✅ | 20+ 种，含 `contains_all`, `contains_any`, `json_valid`, `json_schema`, `semantic_similarity`, `custom`, `turns_max` 等 |
+| 盲测 A/B | ✅ | `--blind` 模式，确定性 shuffle |
+| 自动分析 | ✅ | 低区分度检测、分数均匀性、全通过/全失败、高成本样本 |
+| 自定义断言 | ✅ | `custom` 类型，加载外部 JS 函数 |
+| 并行执行 | ✅ | `--concurrency N` |
+| 方差分析 | ✅ | `--repeat N` + Welch's t-test + 95% CI |
+| 成本/延迟断言 | ✅ | `cost_max`, `latency_max`, `turns_max` |
+| CI 集成 | ✅ | `omk bench ci --threshold` |
+| 可溯源性 | ✅ | skill content hash + model/executor 版本记录 |
+| YAML 配置 | ✅ | eval-samples 支持 YAML 格式 |
+| 自动进化 | ✅ | `omk bench evolve` 迭代改进 skill |
+
+### 9.2 实战洞察：导航型 Skill 评测案例
+
+在评测 aima-knowledge-skill（一个导航/索引型 Skill）时发现的关键问题：
+
+**问题**：baseline（无 Skill）的 Claude executor 能自主搜索项目文件，找到与 Skill 相同的信息，导致断言无法区分变体差异。
+
+**发现**：
+1. **"低区分度断言"不一定是断言的问题** — 对于导航型 Skill，其价值不是"独有知识"而是"可靠导航"，表现为更少轮次、更低成本、更稳定的分数
+2. **效率维度是被忽视的评测维度** — 原 composite score 只看 assertions + LLM judge，未纳入 numTurns、cost 等效率指标
+3. **稳定性比平均分更重要** — baseline 分数 1~5 波动，SKILL 稳定在 4.5~5.0，但原报告无法体现这一差异
+4. **方差分析是定论工具** — `--repeat 3` 的 t 检验（t=-13.36, significant=true）给出了统计显著的结论
+
+**已实施的改进**：
+
+| 改进 | 文件 | 效果 |
+|------|------|------|
+| 低区分度断言分级 | `analyzer.mjs` | 区分"都通过"（info）和"都失败"（warning），建议更精准 |
+| 效率指标纳入 summary | `schema.mjs` | 新增 `avgNumTurns`、`avgCostPerSample` |
+| 效率对比 insight | `analyzer.mjs` | 自动检测轮次和成本差异，如"减少 1.8 轮（↓36%），成本降低 33%" |
+| 稳定性评级 | `schema.mjs` + `summary.mjs` | 新增 `scoreCV`（变异系数），报告展示分数范围 + CV |
+| `--repeat` 自动建议 | `analyzer.mjs` | 检测高分差时建议用 `--repeat 3` 获取方差数据 |
+| composite score 效率维度 | `grader.mjs` | 效率断言（`cost_max`/`latency_max`/`turns_max`）独立计入 composite |
+| gen-samples 提示词优化 | `generator.mjs` | 引导生成检测文档独有细节的断言 |
+| 报告时间排序 | `report-store.mjs` | 按 `meta.timestamp` 降序 |
+| 累计成本展示 | `html-renderer.mjs` | 列表页展示所有评测的总花费 |
+| dev 热更新模式 | `cli.mjs` | `--dev` 模式，文件变更自动重启 report server |
+
+### 9.3 下一阶段方向（v0.8+）
+
+基于行业最新动态和实战经验，建议优先级：
+
+#### P0 — 可追溯性深化
+
+| 方向 | 说明 | 行业参考 |
+|------|------|----------|
+| **Skill 版本 diff** | 对比两个版本的评测结果，可视化分数变化 | Braintrust experiment comparison |
+| **git commit 关联** | 评测结果自动关联到触发它的 commit | Braintrust traceability |
+| **趋势图** | 同一 Skill 随时间的分数曲线 | Braintrust + Langfuse dashboard |
+
+#### P1 — CI/CD 生态
+
+| 方向 | 说明 | 行业参考 |
+|------|------|----------|
+| **GitHub Action 模板** | 一行配置，PR 触发评测，评论回复结果 | Promptfoo CI integration |
+| **评测门禁** | 分数低于阈值阻止合并 | Braintrust CI gates |
+
+#### P2 — 评测深度
+
+| 方向 | 说明 | 行业参考 |
+|------|------|----------|
+| **人工校准层** | 报告页面支持人工打分，校准 LLM 评委偏差 | 行业建议 10% 抽检率 |
+| **对抗性评测** | 自动生成对抗样本，测试 Skill 边界行为 | Promptfoo red teaming（50+ plugins） |
+| **多模型对比** | 同一 Skill 在不同模型上的表现 + 性价比帕累托图 | Promptfoo multi-provider |
+
+#### P3 — 护城河强化
+
+| 方向 | 说明 |
+|------|------|
+| **evolve 多目标优化** | 同时优化质量、效率、成本，而非单一分数 |
+| **evolve 轨迹可视化** | 展示每轮进化的决策和效果 |
+
+### 9.4 行业动态更新
+
+- **Promptfoo 被 OpenAI 收购**（2026-03-16），保持开源，红队测试成为评测标配
+- **Braintrust 融资 $80M**（2026-02），$800M 估值，全链路追踪是核心卖点
+- **LLM-as-Judge 校准**成为共识：系统性低估边缘案例错误，10% 人工抽检是最佳实践
+- **可追溯性**被认为是 2026 年最有效评测栈的首要特征
+
+---
+
+*最后更新：2026-03-31*
