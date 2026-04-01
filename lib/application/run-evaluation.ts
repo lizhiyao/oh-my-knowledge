@@ -9,10 +9,15 @@ import { discoverEachSkills, resolveEvaluands } from '../skill-loader.js';
 import { buildTasksFromEvaluands } from '../task-planner.js';
 import {
   buildEvaluationRequest,
+  createFailedJob,
   createEvaluationRun,
+  createQueuedJob,
   createSucceededJob,
   finalizeEvaluationRun,
+  markJobRunning,
+  failEvaluationRun,
 } from '../evaluation-job.js';
+import { createFileJobStore, DEFAULT_JOBS_DIR } from '../job-store.js';
 import {
   DEFAULT_OUTPUT_DIR,
   executeTasks,
@@ -31,6 +36,7 @@ import type {
   VarianceData,
   McpServers,
   ExecutorFn,
+  JobStore,
 } from '../types.js';
 import type { ProgressCallback, PersistableReport } from '../evaluation-core.js';
 
@@ -72,6 +78,8 @@ export interface RunEvaluationOptions {
   noCache?: boolean;
   executorName?: string;
   judgeExecutorName?: string;
+  jobStore?: JobStore | null;
+  persistJob?: boolean;
   onProgress?: ProgressCallback | null;
   skipPreflight?: boolean;
   mcpConfig?: string;
@@ -94,6 +102,8 @@ export async function runEvaluation({
   noCache = false,
   executorName = 'claude',
   judgeExecutorName,
+  jobStore = null,
+  persistJob = true,
   onProgress = null,
   skipPreflight = false,
   mcpConfig,
@@ -166,64 +176,84 @@ export async function runEvaluation({
   const runId = generateRunId(variantNames);
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
-  if (!skipPreflight) {
-    if (onProgress) onProgress({ phase: 'preflight' });
-    await preflight(executor, model);
-    if (!noJudge) await preflight(judgeExecutor, judgeModel);
+  const jobId = `job-${runId}`;
+  const resolvedJobStore = persistJob ? (jobStore ?? createFileJobStore(DEFAULT_JOBS_DIR)) : null;
+  const queuedJob = createQueuedJob({ jobId, request, createdAt });
+  if (resolvedJobStore) await resolvedJobStore.save(jobId, queuedJob);
+  const runningJob = markJobRunning(queuedJob, runId, startedAt);
+  if (resolvedJobStore) await resolvedJobStore.save(jobId, runningJob);
+  try {
+    if (!skipPreflight) {
+      if (onProgress) onProgress({ phase: 'preflight', jobId });
+      await preflight(executor, model);
+      if (!noJudge) await preflight(judgeExecutor, judgeModel);
+    }
+
+    const { results, totalCostUSD } = await executeTasks({
+      tasks,
+      executor,
+      judgeExecutor,
+      model,
+      judgeModel,
+      noJudge,
+      samplesPath,
+      concurrency,
+      timeoutMs,
+      noCache,
+      verbose,
+      onProgress,
+    });
+
+    const finishedAt = new Date().toISOString();
+    const run = finalizeEvaluationRun(initialRun, finishedAt);
+    const job = createSucceededJob({
+      jobId,
+      runId,
+      reportId: runId,
+      request,
+      createdAt,
+      startedAt,
+      finishedAt,
+    });
+    const report = aggregateReport({
+      runId,
+      variants: variantNames,
+      model,
+      judgeModel,
+      noJudge,
+      executorName,
+      samples,
+      tasks,
+      results,
+      totalCostUSD,
+      evaluands: resolvedEvaluands,
+      request,
+      run,
+      job,
+    });
+    report.analysis = analyzeResults(report);
+
+    if (blind) {
+      applyBlindMode(report, variantNames, `${variantNames.join(',')}:${samplesPath}`);
+    }
+
+    await stopAllServers();
+
+    const filePath = persistReport(report, outputDir);
+    if (resolvedJobStore) await resolvedJobStore.save(jobId, job);
+    return { report, filePath };
+  } catch (err: unknown) {
+    const finishedAt = new Date().toISOString();
+    const failedJob = createFailedJob({
+      job: { ...runningJob, runId, startedAt, finishedAt: undefined },
+      error: err instanceof Error ? err.message : String(err),
+      finishedAt,
+    });
+    void failEvaluationRun(initialRun, finishedAt);
+    if (resolvedJobStore) await resolvedJobStore.save(jobId, failedJob);
+    await stopAllServers();
+    throw err;
   }
-
-  const { results, totalCostUSD } = await executeTasks({
-    tasks,
-    executor,
-    judgeExecutor,
-    model,
-    judgeModel,
-    noJudge,
-    samplesPath,
-    concurrency,
-    timeoutMs,
-    noCache,
-    verbose,
-    onProgress,
-  });
-
-  const finishedAt = new Date().toISOString();
-  const run = finalizeEvaluationRun(initialRun, finishedAt);
-  const job = createSucceededJob({
-    jobId: `job-${runId}`,
-    runId,
-    reportId: runId,
-    request,
-    createdAt,
-    startedAt,
-    finishedAt,
-  });
-  const report = aggregateReport({
-    runId,
-    variants: variantNames,
-    model,
-    judgeModel,
-    noJudge,
-    executorName,
-    samples,
-    tasks,
-    results,
-    totalCostUSD,
-    evaluands: resolvedEvaluands,
-    request,
-    run,
-    job,
-  });
-  report.analysis = analyzeResults(report);
-
-  if (blind) {
-    applyBlindMode(report, variantNames, `${variantNames.join(',')}:${samplesPath}`);
-  }
-
-  await stopAllServers();
-
-  const filePath = persistReport(report, outputDir);
-  return { report, filePath };
 }
 
 interface DryRunEachSkill {
@@ -263,6 +293,8 @@ export interface RunEachEvaluationOptions {
   timeoutMs?: number;
   executorName?: string;
   judgeExecutorName?: string;
+  jobStore?: JobStore | null;
+  persistJob?: boolean;
   onProgress?: ProgressCallback | null;
   onSkillProgress?: ((info: SkillProgressInfo) => void) | null;
   skipPreflight?: boolean;
@@ -299,6 +331,8 @@ export async function runEachEvaluation({
   timeoutMs,
   executorName = 'claude',
   judgeExecutorName,
+  jobStore = null,
+  persistJob = true,
   onProgress = null,
   onSkillProgress = null,
   skipPreflight = false,
@@ -362,6 +396,8 @@ export async function runEachEvaluation({
       timeoutMs,
       executorName,
       judgeExecutorName,
+      jobStore: null,
+      persistJob: false,
       onProgress,
       skipPreflight: skipPreflight || i > 0,
       mcpConfig,
@@ -415,6 +451,40 @@ export async function runEachEvaluation({
   };
 
   const runId = generateRunId(['each']);
+  const request = buildEvaluationRequest({
+    samplesPath: '',
+    skillDir,
+    evaluands: skillEntries.map((entry) => ({
+      name: entry.name,
+      kind: 'skill',
+      source: 'file-path',
+      content: null,
+      locator: entry.skillPath,
+    })),
+    model,
+    judgeModel: noJudge ? null : judgeModel,
+    executor: executorName,
+    judgeExecutor: judgeExecutorName || executorName,
+    noJudge,
+    concurrency,
+    timeoutMs,
+    noCache: false,
+    dryRun,
+    blind: false,
+  });
+  const createdAt = new Date().toISOString();
+  const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
+  const finishedAt = new Date().toISOString();
+  const run = finalizeEvaluationRun(initialRun, finishedAt);
+  const job = createSucceededJob({
+    jobId: `job-${runId}`,
+    runId,
+    reportId: runId,
+    request,
+    createdAt,
+    startedAt,
+    finishedAt,
+  });
   const combinedReport: PersistableReport & Record<string, unknown> = {
     id: runId,
     each: true,
@@ -424,12 +494,17 @@ export async function runEachEvaluation({
       executor: executorName,
       totalCostUSD: Number(totalCostUSD.toFixed(6)),
       timestamp: new Date().toISOString(),
+      request,
+      run,
+      job,
     },
     overview,
     skills: skillResults,
   };
 
   const filePath = persistReport(combinedReport, outputDir);
+  const resolvedJobStore = persistJob ? (jobStore ?? createFileJobStore(DEFAULT_JOBS_DIR)) : null;
+  if (resolvedJobStore) await resolvedJobStore.save(job.jobId, job);
   return { report: combinedReport as unknown as Report, filePath };
 }
 

@@ -7,6 +7,7 @@ import http from 'node:http';
 import { createReportServer } from '../lib/report-server.js';
 
 const TEST_DIR = join(tmpdir(), `omk-test-reports-${Date.now()}`);
+const JOBS_DIR = join(tmpdir(), `omk-test-jobs-${Date.now()}`);
 
 const SAMPLE_REPORT = {
   id: 'test-run-001',
@@ -33,6 +34,30 @@ const SAMPLE_REPORT = {
       },
     },
   ],
+};
+
+const SAMPLE_JOB = {
+  jobId: 'job-test-run-001',
+  status: 'succeeded',
+  createdAt: '2026-03-25T10:00:00.000Z',
+  startedAt: '2026-03-25T10:00:01.000Z',
+  finishedAt: '2026-03-25T10:00:02.000Z',
+  request: {
+    samplesPath: 'eval-samples.json',
+    skillDir: 'skills',
+    evaluands: [],
+    model: 'sonnet',
+    judgeModel: 'haiku',
+    executor: 'claude',
+    judgeExecutor: 'claude',
+    noJudge: false,
+    concurrency: 1,
+    noCache: false,
+    dryRun: false,
+    blind: false,
+  },
+  runId: 'test-run-001',
+  resultReportId: 'test-run-001',
 };
 
 interface FetchResponse {
@@ -67,14 +92,17 @@ describe('report-server', () => {
 
   before(async () => {
     mkdirSync(TEST_DIR, { recursive: true });
+    mkdirSync(JOBS_DIR, { recursive: true });
     writeFileSync(join(TEST_DIR, 'test-run-001.json'), JSON.stringify(SAMPLE_REPORT, null, 2));
-    server = createReportServer({ reportsDir: TEST_DIR });
+    writeFileSync(join(JOBS_DIR, 'job-test-run-001.json'), JSON.stringify(SAMPLE_JOB, null, 2));
+    server = createReportServer({ reportsDir: TEST_DIR, jobsDir: JOBS_DIR });
     baseUrl = await server.start();
   });
 
   after(async () => {
     await server.stop();
     rmSync(TEST_DIR, { recursive: true, force: true });
+    rmSync(JOBS_DIR, { recursive: true, force: true });
   });
 
   it('GET /health returns ok', async () => {
@@ -91,6 +119,23 @@ describe('report-server', () => {
     assert.ok(Array.isArray(data));
     assert.equal(data.length, 1);
     assert.equal(data[0].id, 'test-run-001');
+  });
+
+  it('GET /api/jobs returns job list', async () => {
+    const res = await fetch(`${baseUrl}/api/jobs`);
+    assert.equal(res.status, 200);
+    const data = JSON.parse(res.body);
+    assert.ok(Array.isArray(data));
+    assert.equal(data.length, 1);
+    assert.equal(data[0].jobId, 'job-test-run-001');
+  });
+
+  it('GET /api/job/:id returns job detail', async () => {
+    const res = await fetch(`${baseUrl}/api/job/job-test-run-001`);
+    assert.equal(res.status, 200);
+    const data = JSON.parse(res.body);
+    assert.equal(data.jobId, 'job-test-run-001');
+    assert.equal(data.resultReportId, 'test-run-001');
   });
 
   it('GET /api/run/:id returns run detail', async () => {

@@ -3,9 +3,11 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { renderRunList, renderRunDetail, renderEachRunDetail, renderTrendsPage } from './html-renderer.js';
+import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
 import { createFileStore } from './report-store.js';
+import { queryJob, queryJobList } from './query-jobs.js';
 import { queryRun, queryRunList, queryTrend } from './query-reports.js';
-import type { ReportStore } from './types.js';
+import type { JobStore, ReportStore } from './types.js';
 import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;
@@ -14,7 +16,9 @@ const DEFAULT_REPORTS_DIR = join(homedir(), '.oh-my-knowledge', 'reports');
 interface ReportServerOptions {
   port?: number;
   reportsDir?: string;
+  jobsDir?: string;
   store?: ReportStore;
+  jobStore?: JobStore;
 }
 
 interface ReportServer {
@@ -27,12 +31,13 @@ function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, store }: ReportServerOptions = {}): ReportServer {
+export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, jobsDir = DEFAULT_JOBS_DIR, store, jobStore }: ReportServerOptions = {}): ReportServer {
   let server: Server | null = null;
   let serverUrl: string | null = null;
 
   // Use provided store or default to file store
   const reportStore: ReportStore = store || createFileStore(reportsDir);
+  const resolvedJobStore: JobStore = jobStore || createFileJobStore(jobsDir);
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
@@ -57,6 +62,26 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, sto
         const runs = await queryRunList(reportStore);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(runs));
+        return;
+      }
+
+      if (path === '/api/jobs') {
+        const jobs = await queryJobList(resolvedJobStore);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(jobs));
+        return;
+      }
+
+      const jobApiMatch = path.match(/^\/api\/job\/(.+)$/);
+      if (jobApiMatch) {
+        const job = await queryJob(resolvedJobStore, decodeURIComponent(jobApiMatch[1]));
+        if (!job) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'job not found' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(job));
         return;
       }
 
@@ -133,6 +158,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, sto
   async function start(): Promise<string> {
     if (server) return serverUrl!;
     if (!existsSync(reportsDir)) mkdirSync(reportsDir, { recursive: true });
+    if (!existsSync(jobsDir)) mkdirSync(jobsDir, { recursive: true });
 
     const p = port || Number(process.env.OMK_BENCH_PORT || DEFAULT_PORT);
     const host = '127.0.0.1';

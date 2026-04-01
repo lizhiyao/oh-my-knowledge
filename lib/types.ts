@@ -89,18 +89,18 @@ export type EvaluationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' 
 export interface EvaluationRun {
   runId: string;
   startedAt: string;
-  finishedAt: string;
-  status: Extract<EvaluationJobStatus, 'succeeded' | 'failed' | 'cancelled'>;
+  finishedAt?: string;
+  status: Extract<EvaluationJobStatus, 'running' | 'succeeded' | 'failed' | 'cancelled'>;
 }
 
 export interface EvaluationJob {
   jobId: string;
   status: EvaluationJobStatus;
   createdAt: string;
-  startedAt: string;
-  finishedAt: string;
+  startedAt?: string;
+  finishedAt?: string;
   request: EvaluationRequest;
-  runId: string;
+  runId?: string;
   resultReportId?: string;
   error?: string;
 }
@@ -306,6 +306,15 @@ export interface ReportStore {
   exists(id: string): Promise<boolean>;
   findByVariant(variantName: string): Promise<Report[]>;
   findBySkillHash(hash: string): Promise<Report[]>;
+}
+
+export interface JobStore {
+  list(): Promise<EvaluationJob[]>;
+  get(id: string): Promise<EvaluationJob | null>;
+  save(id: string, job: EvaluationJob): Promise<void>;
+  update(id: string, mutator: (job: EvaluationJob) => EvaluationJob): Promise<EvaluationJob | null>;
+  remove(id: string): Promise<boolean>;
+  exists(id: string): Promise<boolean>;
 }
 
 // For renderer functions that accept partial report-like objects

@@ -56,8 +56,7 @@ export function createEvaluationRun(runId: string, startedAt: string = nowIso())
     run: {
       runId,
       startedAt,
-      finishedAt: startedAt,
-      status: 'succeeded',
+      status: 'running',
     },
   };
 }
@@ -67,6 +66,40 @@ export function finalizeEvaluationRun(run: EvaluationRun, finishedAt: string = n
     ...run,
     finishedAt,
     status: 'succeeded',
+  };
+}
+
+export function failEvaluationRun(run: EvaluationRun, finishedAt: string = nowIso()): EvaluationRun {
+  return {
+    ...run,
+    finishedAt,
+    status: 'failed',
+  };
+}
+
+export function createQueuedJob({
+  jobId,
+  request,
+  createdAt = nowIso(),
+}: {
+  jobId: string;
+  request: EvaluationRequest;
+  createdAt?: string;
+}): EvaluationJob {
+  return {
+    jobId,
+    status: 'queued',
+    createdAt,
+    request,
+  };
+}
+
+export function markJobRunning(job: EvaluationJob, runId: string, startedAt: string = nowIso()): EvaluationJob {
+  return {
+    ...job,
+    status: 'running',
+    runId,
+    startedAt,
   };
 }
 
@@ -96,5 +129,22 @@ export function createSucceededJob({
     request,
     runId,
     resultReportId: reportId,
+  };
+}
+
+export function createFailedJob({
+  job,
+  error,
+  finishedAt = nowIso(),
+}: {
+  job: EvaluationJob;
+  error: string;
+  finishedAt?: string;
+}): EvaluationJob {
+  return {
+    ...job,
+    status: 'failed',
+    finishedAt,
+    error,
   };
 }
