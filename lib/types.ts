@@ -1,0 +1,251 @@
+export interface ExecResult {
+  ok: boolean;
+  output: string | null;
+  durationMs: number;
+  durationApiMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  costUSD: number;
+  stopReason: string;
+  numTurns: number;
+  error?: string;
+  cached?: boolean;
+}
+
+export interface ExecutorInput {
+  model: string;
+  system?: string | null;
+  prompt: string;
+  cwd?: string | null;
+  timeoutMs?: number;
+  verbose?: boolean;
+}
+
+export type ExecutorFn = (input: ExecutorInput) => Promise<ExecResult>;
+
+export interface Assertion {
+  type: string;
+  value?: string | number;
+  values?: string[];
+  pattern?: string;
+  flags?: string;
+  schema?: Record<string, unknown>;
+  weight?: number;
+  fn?: string;
+  reference?: string;
+  threshold?: number;
+}
+
+export interface Sample {
+  sample_id: string;
+  prompt: string;
+  context?: string;
+  cwd?: string;
+  rubric?: string;
+  assertions?: Assertion[];
+  dimensions?: Record<string, string>;
+  [key: string]: unknown;  // allow extra fields like mutated prompt/context from URL resolution
+}
+
+export interface Task {
+  sample_id: string;
+  variant: string;
+  prompt: string;
+  rubric: string | null;
+  assertions: Assertion[] | null;
+  dimensions: Record<string, string> | null;
+  skillContent: string | null;
+  cwd: string | null;
+  _sample: Sample;
+}
+
+export interface AssertionDetail {
+  type: string;
+  value: string | number;
+  weight: number;
+  passed: boolean;
+  message?: string;
+}
+
+export interface AssertionResults {
+  passed: number;
+  total: number;
+  score: number;
+  details: AssertionDetail[];
+  judgeCostUSD?: number;
+}
+
+export interface DimensionResult {
+  score: number;
+  reason: string;
+  judgeCostUSD?: number;
+}
+
+export interface GradeResult {
+  compositeScore: number;
+  assertions?: AssertionResults;
+  llmScore?: number;
+  llmReason?: string;
+  dimensions?: Record<string, DimensionResult>;
+  judgeCostUSD?: number;
+}
+
+export interface VariantResult {
+  ok: boolean;
+  durationMs: number;
+  durationApiMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  execCostUSD: number;
+  judgeCostUSD: number;
+  costUSD: number;
+  numTurns: number;
+  error?: string;
+  compositeScore?: number;
+  assertions?: AssertionResults;
+  llmScore?: number;
+  llmReason?: string;
+  dimensions?: Record<string, DimensionResult>;
+  outputPreview: string | null;
+}
+
+export interface VariantSummary {
+  totalSamples: number;
+  successCount: number;
+  errorCount: number;
+  errorRate: number;
+  avgDurationMs: number;
+  avgInputTokens: number;
+  avgOutputTokens: number;
+  avgTotalTokens: number;
+  totalCostUSD: number;
+  avgCostPerSample: number;
+  avgNumTurns: number;
+  avgCompositeScore?: number;
+  minCompositeScore?: number;
+  maxCompositeScore?: number;
+  scoreStddev?: number;
+  scoreCV?: number;
+  avgAssertionScore?: number;
+  avgLlmScore?: number;
+  minLlmScore?: number;
+  maxLlmScore?: number;
+}
+
+export interface GitInfo {
+  commit: string;
+  commitShort: string;
+  branch: string;
+  dirty: boolean;
+}
+
+export interface ReportMeta {
+  variants: string[];
+  model: string;
+  judgeModel: string | null;
+  executor: string;
+  sampleCount: number;
+  taskCount: number;
+  totalCostUSD: number;
+  timestamp: string;
+  cliVersion: string;
+  nodeVersion: string;
+  skillHashes: Record<string, string>;
+  gitInfo?: GitInfo | null;
+  blind?: boolean;
+  blindMap?: Record<string, string>;
+}
+
+export interface ResultEntry {
+  sample_id: string;
+  variants: Record<string, VariantResult>;
+}
+
+export interface Report {
+  id: string;
+  meta: ReportMeta;
+  summary: Record<string, VariantSummary>;
+  results: ResultEntry[];
+  analysis?: AnalysisResult;
+  variance?: VarianceData;
+  each?: boolean;
+  overview?: {
+    totalSkills: number;
+    totalSamples: number;
+    totalCostUSD: number;
+    skills: Array<{
+      name: string;
+      baselineScore: number | null;
+      skillScore: number | null;
+      improvement: string;
+    }>;
+  };
+  skills?: Array<{
+    name: string;
+    sampleCount: number;
+    skillHash: string | null;
+    summary: Record<string, VariantSummary>;
+    results: ResultEntry[];
+  }>;
+}
+
+export interface Insight {
+  type: string;
+  severity: 'error' | 'warning' | 'info';
+  message: string;
+  details: unknown;
+}
+
+export interface AnalysisResult {
+  insights: Insight[];
+  suggestions: string[];
+}
+
+export interface VarianceData {
+  runs: number;
+  perVariant: Record<string, { scores: number[]; mean: number; lower: number; upper: number; stddev: number }>;
+  comparisons: Array<{ a: string; b: string; tStatistic: number; df: number; significant: boolean }>;
+}
+
+export interface McpFetchTool {
+  name: string;
+  urlParam?: string;
+  urlTransform?: { regex: string; params: Record<string, string> };
+  contentExtract?: string;
+}
+
+export interface McpServerDef {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  urlPatterns: string[];
+  fetchTool: McpFetchTool;
+}
+
+export type McpServers = Record<string, McpServerDef>;
+
+export interface ExecutorCache {
+  get(key: string): ExecResult | null;
+  set(key: string, value: ExecResult): void;
+  save(): void;
+  size(): number;
+}
+
+export interface ReportStore {
+  list(): Promise<Report[]>;
+  get(id: string): Promise<Report | null>;
+  save(id: string, report: Report): Promise<void>;
+  update(id: string, mutator: (report: Report) => void): Promise<Report | null>;
+  remove(id: string): Promise<boolean>;
+  exists(id: string): Promise<boolean>;
+  findByVariant(variantName: string): Promise<Report[]>;
+  findBySkillHash(hash: string): Promise<Report[]>;
+}
+
+// For renderer functions that accept partial report-like objects
+export type Lang = 'zh' | 'en';

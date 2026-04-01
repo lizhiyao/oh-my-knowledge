@@ -1,44 +1,17 @@
-export default [
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  ...tseslint.configs.recommended,
   {
-    files: ['**/*.mjs'],
-    languageOptions: {
-      ecmaVersion: 2022,
-      sourceType: 'module',
-      globals: {
-        console: 'readonly',
-        process: 'readonly',
-        setTimeout: 'readonly',
-        URL: 'readonly',
-        Math: 'readonly',
-        Date: 'readonly',
-        JSON: 'readonly',
-        Promise: 'readonly',
-        Array: 'readonly',
-        Object: 'readonly',
-        Number: 'readonly',
-        String: 'readonly',
-        Map: 'readonly',
-        Set: 'readonly',
-        Infinity: 'readonly',
-        parseInt: 'readonly',
-        parseFloat: 'readonly',
-        isNaN: 'readonly',
-        encodeURIComponent: 'readonly',
-        decodeURIComponent: 'readonly',
-      },
-    },
+    files: ['**/*.ts'],
     rules: {
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
-      'no-undef': 'error',
-      'no-constant-condition': 'warn',
-      'no-debugger': 'error',
-      'no-duplicate-case': 'error',
-      'no-empty': 'warn',
-      'no-unreachable': 'error',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'warn',
       'eqeqeq': ['warn', 'always', { null: 'ignore' }],
+      'no-debugger': 'error',
     },
   },
   {
-    ignores: ['node_modules/'],
+    ignores: ['node_modules/', 'dist/', 'test/fixtures/'],
   },
-];
+);

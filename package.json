@@ -4,20 +4,22 @@
   "description": "Knowledge artifact evaluation toolkit — benchmark your skills with objective data",
   "type": "module",
   "bin": {
-    "omk": "cli.mjs"
+    "omk": "dist/cli.js"
   },
   "engines": {
     "node": ">=20"
   },
   "files": [
-    "cli.mjs",
-    "lib/",
+    "dist/",
     "examples/"
   ],
   "scripts": {
-    "lint": "eslint 'lib/**/*.mjs' 'cli.mjs' 'test/**/*.mjs'",
-    "test": "node --test 'test/*.mjs'",
-    "ci": "yarn lint && yarn test"
+    "build": "tsc",
+    "postbuild": "node -e \"const fs=require('fs'),f='dist/cli.js',c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!'))fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)\"",
+    "lint": "eslint 'lib/**/*.ts' 'cli.ts' 'test/**/*.ts'",
+    "test": "tsc && node --test 'dist/test/*.test.js'",
+    "ci": "yarn lint && yarn test",
+    "prepublishOnly": "yarn build"
   },
   "keywords": [
     "knowledge-engineering",
@@ -44,6 +46,10 @@
     "registry": "https://registry.npmjs.org"
   },
   "devDependencies": {
-    "eslint": "^10.1.0"
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^25.5.0",
+    "eslint": "^10.1.0",
+    "typescript": "^6.0.2",
+    "typescript-eslint": "^8.58.0"
   }
 }
