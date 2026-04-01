@@ -413,6 +413,48 @@ omk bench run --variants ./old-skill.md,./new-skill.md
 - **openai-api**：设置 `OPENAI_API_KEY` 环境变量
 - **gemini**：`npm i -g @google/gemini-cli` 并认证
 
+### 常见模型配置示例
+
+**没有 Claude？** 大多数国产模型（GLM、通义千问、Moonshot、DeepSeek 等）都兼容 OpenAI API 格式，可以直接使用 `openai-api` 执行器：
+
+```bash
+# GLM（智谱）
+export OPENAI_API_KEY="你的智谱 API Key"
+export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
+omk bench run --executor openai-api --model glm-4-plus \
+  --judge-model glm-4-plus --no-cache
+
+# 通义千问
+export OPENAI_API_KEY="你的通义 API Key"
+export OPENAI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+omk bench run --executor openai-api --model qwen-plus \
+  --judge-model qwen-plus
+
+# DeepSeek
+export OPENAI_API_KEY="你的 DeepSeek API Key"
+export OPENAI_BASE_URL="https://api.deepseek.com"
+omk bench run --executor openai-api --model deepseek-chat \
+  --judge-model deepseek-chat
+
+# Moonshot（Kimi）
+export OPENAI_API_KEY="你的 Moonshot API Key"
+export OPENAI_BASE_URL="https://api.moonshot.cn/v1"
+omk bench run --executor openai-api --model moonshot-v1-8k \
+  --judge-model moonshot-v1-8k
+```
+
+**Ollama 本地模型：**
+
+```bash
+omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
+  --model llama3 --no-judge
+```
+
+**关于评委模型：**
+- `--judge-model` 指定 LLM 评委使用的模型，默认 `haiku`（需 Claude CLI）
+- 如果你没有 Claude，用 `--judge-model` 指向你可用的模型（需和 `--executor` 配合）
+- 加 `--no-judge` 可跳过 LLM 评委，仅使用断言评分
+
 ## 环境变量
 
 | 变量 | 说明 |
