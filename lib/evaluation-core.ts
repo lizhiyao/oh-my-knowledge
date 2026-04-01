@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createCache, cacheKey } from './cache.js';
 import { buildVariantResult, buildVariantSummary } from './schema.js';
 import { grade } from './grader.js';
+import { resolveExecutionStrategy } from './execution-strategy.js';
 
 import type {
   EvaluandSpec,
@@ -98,13 +99,15 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
       onProgress({ phase: 'start', completed: idx, total, sample_id: task.sample_id, variant: task.variant });
     }
 
+    const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose);
+
     let execResult: ExecResult;
-    const key = cacheKey(model, task.skillContent ?? '', task.prompt);
+    const key = cacheKey(model, executionPlan.cacheSystem, executionPlan.input.prompt);
     const cached = cache?.get(key);
     if (cached) {
       execResult = { ...cached, cached: true };
     } else {
-      execResult = await executor({ model, system: task.skillContent, prompt: task.prompt, cwd: task.cwd, timeoutMs, verbose });
+      execResult = await executor(executionPlan.input);
       if (cache && execResult.ok) cache.set(key, execResult);
     }
     totalCostUSD += execResult.costUSD;
@@ -112,6 +115,7 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
     if (verbose && onProgress) {
       onProgress({
         phase: 'exec_done',
+        strategy: executionPlan.strategy,
         completed: idx,
         total,
         sample_id: task.sample_id,
@@ -131,6 +135,7 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
         if (verbose && onProgress) {
           onProgress({
             phase: 'grading',
+            strategy: executionPlan.strategy,
             completed: idx,
             total,
             sample_id: task.sample_id,
@@ -153,6 +158,7 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
     if (onProgress) {
       onProgress({
         phase: 'done',
+        strategy: executionPlan.strategy,
         completed,
         total,
         sample_id: task.sample_id,

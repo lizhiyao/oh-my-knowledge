@@ -61,6 +61,13 @@ export interface EvaluandSpec {
   metadata?: Record<string, unknown>;
 }
 
+export type ExecutionStrategyKind =
+  | 'baseline'
+  | 'system-prompt'
+  | 'user-prompt'
+  | 'agent-session'
+  | 'workflow-session';
+
 export interface Task {
   sample_id: string;
   variant: string;
