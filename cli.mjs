@@ -26,6 +26,7 @@ const RUN_OPTIONS = {
   'judge-executor': { type: 'string' },
   each:          { type: 'boolean', default: false },
   'skip-preflight': { type: 'boolean', default: false },
+  verbose:        { type: 'boolean', default: false },
 };
 
 function parseRunConfig(argv, extraOptions = {}) {
@@ -63,6 +64,7 @@ function parseRunConfig(argv, extraOptions = {}) {
       executorName: values.executor,
       judgeExecutorName: values['judge-executor'] || values.executor,
       skipPreflight: values['skip-preflight'],
+      verbose: values.verbose,
     },
   };
 }
@@ -104,6 +106,7 @@ Options for "bench run":
   --each                 Evaluate each skill independently against baseline
                          Requires {name}.eval-samples.json paired with each skill
   --skip-preflight       Skip model connectivity check before evaluation
+  --verbose              Print detailed progress for each sample (exec result, grading phases)
 
 Options for "bench ci":
   (same as "bench run", plus:)
@@ -212,13 +215,25 @@ async function main() {
   }
 }
 
-function defaultOnProgress({ phase, completed, total, sample_id, variant, durationMs, inputTokens, outputTokens, costUSD, score }) {
+function defaultOnProgress({ phase, completed, total, sample_id, variant, durationMs, inputTokens, outputTokens, costUSD, score, outputPreview, judgePhase, judgeDim }) {
   if (phase === 'preflight') {
     process.stderr.write('⏳ 预检模型连通性...\n');
     return;
   }
   if (phase === 'start') {
     process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ⏳ 执行中...\n`);
+  } else if (phase === 'exec_done') {
+    const costInfo = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 执行完成 ${durationMs}ms ${inputTokens}+${outputTokens} tokens${costInfo}\n`);
+    if (outputPreview) {
+      process.stderr.write(`  输出预览: ${outputPreview.slice(0, 150).replace(/\n/g, ' ')}\n`);
+    }
+  } else if (phase === 'grading') {
+    const dimInfo = judgeDim ? ` [${judgeDim}]` : '';
+    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 评审中${dimInfo}...\n`);
+  } else if (phase === 'judge_done') {
+    const dimInfo = judgeDim ? ` [${judgeDim}]` : '';
+    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 评审完成${dimInfo} score=${score}\n`);
   } else {
     const costInfo = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
     const scoreInfo = typeof score === 'number' ? ` score=${score}` : '';
