@@ -24,9 +24,9 @@ describe('analyzeResults', () => {
       ],
     };
     const analysis = analyzeResults(report);
-    const lowDisc = analysis.insights.find((i) => i.type === 'low_discrimination_assertion');
+    const lowDisc = analysis.insights.find((i) => i.type === 'low_discrimination_all_passed');
     assert.ok(lowDisc);
-    assert.equal(lowDisc.severity, 'warning');
+    assert.equal(lowDisc.severity, 'info');
   });
 
   it('detects uniform scores', () => {
