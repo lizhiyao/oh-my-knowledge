@@ -40,12 +40,16 @@ const SAMPLE_JOB = {
   jobId: 'job-test-run-001',
   status: 'succeeded',
   createdAt: '2026-03-25T10:00:00.000Z',
+  updatedAt: '2026-03-25T10:00:02.000Z',
   startedAt: '2026-03-25T10:00:01.000Z',
   finishedAt: '2026-03-25T10:00:02.000Z',
   request: {
     samplesPath: 'eval-samples.json',
     skillDir: 'skills',
     evaluands: [],
+    project: 'alpha',
+    owner: 'lizhiyao',
+    tags: ['smoke', 'nightly'],
     model: 'sonnet',
     judgeModel: 'haiku',
     executor: 'claude',
@@ -60,6 +64,35 @@ const SAMPLE_JOB = {
   resultReportId: 'test-run-001',
 };
 
+const FAILED_JOB = {
+  jobId: 'job-test-run-002',
+  status: 'failed',
+  createdAt: '2026-03-25T11:00:00.000Z',
+  updatedAt: '2026-03-25T11:00:03.000Z',
+  startedAt: '2026-03-25T11:00:01.000Z',
+  finishedAt: '2026-03-25T11:00:03.000Z',
+  request: {
+    samplesPath: 'eval-samples-2.json',
+    skillDir: 'skills',
+    evaluands: [],
+    project: 'beta',
+    owner: 'other-user',
+    tags: ['regression'],
+    model: 'sonnet',
+    judgeModel: 'haiku',
+    executor: 'claude',
+    judgeExecutor: 'claude',
+    noJudge: false,
+    concurrency: 1,
+    noCache: false,
+    dryRun: false,
+    blind: false,
+  },
+  runId: 'test-run-002',
+  error: 'skill not found',
+  errorCategory: 'user',
+};
+
 interface FetchResponse {
   status: number;
   body: string;
@@ -72,7 +105,7 @@ function fetch(url: string, options: { method?: string; headers?: Record<string,
     const req = http.request({
       hostname: parsed.hostname,
       port: parsed.port,
-      path: parsed.pathname,
+      path: `${parsed.pathname}${parsed.search}`,
       method: options.method || 'GET',
       headers: options.headers || {},
     }, (res) => {
@@ -95,6 +128,7 @@ describe('report-server', () => {
     mkdirSync(JOBS_DIR, { recursive: true });
     writeFileSync(join(TEST_DIR, 'test-run-001.json'), JSON.stringify(SAMPLE_REPORT, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-001.json'), JSON.stringify(SAMPLE_JOB, null, 2));
+    writeFileSync(join(JOBS_DIR, 'job-test-run-002.json'), JSON.stringify(FAILED_JOB, null, 2));
     server = createReportServer({ reportsDir: TEST_DIR, jobsDir: JOBS_DIR });
     baseUrl = await server.start();
   });
@@ -126,8 +160,8 @@ describe('report-server', () => {
     assert.equal(res.status, 200);
     const data = JSON.parse(res.body);
     assert.ok(Array.isArray(data));
-    assert.equal(data.length, 1);
-    assert.equal(data[0].jobId, 'job-test-run-001');
+    assert.equal(data.length, 2);
+    assert.deepEqual(data.map((job: { jobId: string }) => job.jobId).sort(), ['job-test-run-001', 'job-test-run-002']);
   });
 
   it('GET /api/job/:id returns job detail', async () => {
@@ -136,6 +170,22 @@ describe('report-server', () => {
     const data = JSON.parse(res.body);
     assert.equal(data.jobId, 'job-test-run-001');
     assert.equal(data.resultReportId, 'test-run-001');
+  });
+
+  it('GET /api/jobs supports filtering by status', async () => {
+    const res = await fetch(`${baseUrl}/api/jobs?status=failed`);
+    assert.equal(res.status, 200);
+    const data = JSON.parse(res.body);
+    assert.equal(data.length, 1);
+    assert.equal(data[0].jobId, 'job-test-run-002');
+  });
+
+  it('GET /api/jobs supports filtering by project and tag', async () => {
+    const res = await fetch(`${baseUrl}/api/jobs?project=alpha&tag=nightly`);
+    assert.equal(res.status, 200);
+    const data = JSON.parse(res.body);
+    assert.equal(data.length, 1);
+    assert.equal(data[0].jobId, 'job-test-run-001');
   });
 
   it('GET /api/run/:id returns run detail', async () => {

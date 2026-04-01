@@ -66,7 +66,15 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, job
       }
 
       if (path === '/api/jobs') {
-        const jobs = await queryJobList(resolvedJobStore);
+        const limitParam = parsed.searchParams.get('limit');
+        const jobs = await queryJobList(resolvedJobStore, {
+          status: parsed.searchParams.get('status') || undefined,
+          reportId: parsed.searchParams.get('reportId') || undefined,
+          project: parsed.searchParams.get('project') || undefined,
+          owner: parsed.searchParams.get('owner') || undefined,
+          tag: parsed.searchParams.get('tag') || undefined,
+          limit: limitParam ? Number(limitParam) : undefined,
+        });
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(jobs));
         return;

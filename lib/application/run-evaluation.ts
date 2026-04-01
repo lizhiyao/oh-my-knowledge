@@ -70,6 +70,9 @@ export interface RunEvaluationOptions {
   model?: string;
   judgeModel?: string;
   outputDir?: string | null;
+  project?: string;
+  owner?: string;
+  tags?: string[];
   noJudge?: boolean;
   dryRun?: boolean;
   blind?: boolean;
@@ -94,6 +97,9 @@ export async function runEvaluation({
   model = DEFAULT_MODEL,
   judgeModel = JUDGE_MODEL,
   outputDir = DEFAULT_OUTPUT_DIR,
+  project,
+  owner,
+  tags,
   noJudge = false,
   dryRun = false,
   blind = false,
@@ -125,6 +131,9 @@ export async function runEvaluation({
     noCache,
     dryRun,
     blind,
+    project,
+    owner,
+    tags,
   });
 
   if (!dryRun) {
@@ -287,6 +296,9 @@ export interface RunEachEvaluationOptions {
   model?: string;
   judgeModel?: string;
   outputDir?: string | null;
+  project?: string;
+  owner?: string;
+  tags?: string[];
   noJudge?: boolean;
   dryRun?: boolean;
   concurrency?: number;
@@ -325,6 +337,9 @@ export async function runEachEvaluation({
   model = DEFAULT_MODEL,
   judgeModel = JUDGE_MODEL,
   outputDir = DEFAULT_OUTPUT_DIR,
+  project,
+  owner,
+  tags,
   noJudge = false,
   dryRun = false,
   concurrency = 1,
@@ -471,6 +486,9 @@ export async function runEachEvaluation({
     noCache: false,
     dryRun,
     blind: false,
+    project,
+    owner,
+    tags,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);

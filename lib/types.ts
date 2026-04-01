@@ -72,6 +72,9 @@ export interface EvaluationRequest {
   samplesPath: string;
   skillDir: string;
   evaluands: EvaluandSpec[];
+  project?: string;
+  owner?: string;
+  tags?: string[];
   model: string;
   judgeModel: string | null;
   executor: string;
@@ -85,6 +88,7 @@ export interface EvaluationRequest {
 }
 
 export type EvaluationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type EvaluationErrorCategory = 'user' | 'executor' | 'judge' | 'system';
 
 export interface EvaluationRun {
   runId: string;
@@ -97,12 +101,14 @@ export interface EvaluationJob {
   jobId: string;
   status: EvaluationJobStatus;
   createdAt: string;
+  updatedAt?: string;
   startedAt?: string;
   finishedAt?: string;
   request: EvaluationRequest;
   runId?: string;
   resultReportId?: string;
   error?: string;
+  errorCategory?: EvaluationErrorCategory;
 }
 
 export interface Task {

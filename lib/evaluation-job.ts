@@ -1,4 +1,4 @@
-import type { EvaluandSpec, EvaluationJob, EvaluationRequest, EvaluationRun } from './types.js';
+import type { EvaluandSpec, EvaluationErrorCategory, EvaluationJob, EvaluationRequest, EvaluationRun } from './types.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -18,6 +18,9 @@ export function buildEvaluationRequest({
   noCache,
   dryRun,
   blind,
+  project,
+  owner,
+  tags,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -32,6 +35,9 @@ export function buildEvaluationRequest({
   noCache: boolean;
   dryRun: boolean;
   blind: boolean;
+  project?: string;
+  owner?: string;
+  tags?: string[];
 }): EvaluationRequest {
   return {
     samplesPath,
@@ -47,6 +53,9 @@ export function buildEvaluationRequest({
     noCache,
     dryRun,
     blind,
+    project,
+    owner,
+    tags,
   };
 }
 
@@ -90,6 +99,7 @@ export function createQueuedJob({
     jobId,
     status: 'queued',
     createdAt,
+    updatedAt: createdAt,
     request,
   };
 }
@@ -100,6 +110,7 @@ export function markJobRunning(job: EvaluationJob, runId: string, startedAt: str
     status: 'running',
     runId,
     startedAt,
+    updatedAt: startedAt,
   };
 }
 
@@ -126,25 +137,60 @@ export function createSucceededJob({
     createdAt,
     startedAt,
     finishedAt,
+    updatedAt: finishedAt,
     request,
     runId,
     resultReportId: reportId,
   };
 }
 
+export function classifyEvaluationError(error: string): EvaluationErrorCategory {
+  const normalized = error.toLowerCase();
+  if (
+    normalized.includes('missing required field')
+    || normalized.includes('invalid samples file')
+    || normalized.includes('skill not found')
+    || normalized.includes('samples file')
+    || normalized.includes('未发现任何 skill')
+  ) {
+    return 'user';
+  }
+  if (
+    normalized.includes('judge')
+    || normalized.includes('semantic_similarity')
+    || normalized.includes('failed to parse judge response')
+  ) {
+    return 'judge';
+  }
+  if (
+    normalized.includes('timed out')
+    || normalized.includes('api request timed out')
+    || normalized.includes('execution timed out')
+    || normalized.includes('mcp')
+    || normalized.includes('network')
+  ) {
+    return 'executor';
+  }
+  return 'system';
+}
+
 export function createFailedJob({
   job,
   error,
+  errorCategory = classifyEvaluationError(error),
   finishedAt = nowIso(),
 }: {
   job: EvaluationJob;
   error: string;
+  errorCategory?: EvaluationErrorCategory;
   finishedAt?: string;
 }): EvaluationJob {
   return {
     ...job,
     status: 'failed',
     finishedAt,
+    updatedAt: finishedAt,
     error,
+    errorCategory,
   };
 }
