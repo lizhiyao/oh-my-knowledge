@@ -26,6 +26,7 @@ const RUN_OPTIONS = {
   'judge-executor': { type: 'string' },
   each:          { type: 'boolean', default: false },
   'skip-preflight': { type: 'boolean', default: false },
+  'mcp-config':  { type: 'string' },
 };
 
 function parseRunConfig(argv, extraOptions = {}) {
@@ -63,6 +64,7 @@ function parseRunConfig(argv, extraOptions = {}) {
       executorName: values.executor,
       judgeExecutorName: values['judge-executor'] || values.executor,
       skipPreflight: values['skip-preflight'],
+      mcpConfig: values['mcp-config'],
     },
   };
 }
@@ -104,6 +106,8 @@ Options for "bench run":
   --each                 Evaluate each skill independently against baseline
                          Requires {name}.eval-samples.json paired with each skill
   --skip-preflight       Skip model connectivity check before evaluation
+  --mcp-config <path>    MCP config file for URL fetching via MCP servers
+                         (default: .mcp.json in current directory)
 
 Options for "bench ci":
   (same as "bench run", plus:)
