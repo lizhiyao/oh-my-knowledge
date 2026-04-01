@@ -451,8 +451,9 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
 ```
 
 **关于评委模型：**
-- `--judge-model` 指定 LLM 评委使用的模型，默认 `haiku`（需 Claude CLI）
-- 如果你没有 Claude，用 `--judge-model` 指向你可用的模型（需和 `--executor` 配合）
+- `--judge-model` 指定 LLM 评委使用的模型，默认 `haiku`
+- `--judge-executor` 指定评委使用的执行器（默认与 `--executor` 相同）
+- 如果你没有 Claude，用 `--judge-executor` 和 `--judge-model` 指向你可用的模型
 - 加 `--no-judge` 可跳过 LLM 评委，仅使用断言评分
 
 ## 环境变量

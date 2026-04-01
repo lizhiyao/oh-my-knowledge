@@ -23,6 +23,7 @@ const RUN_OPTIONS = {
   concurrency:   { type: 'string', default: '1' },
   timeout:       { type: 'string', default: '120' },
   executor:      { type: 'string', default: 'claude' },
+  'judge-executor': { type: 'string' },
   each:          { type: 'boolean', default: false },
   'skip-preflight': { type: 'boolean', default: false },
 };
@@ -60,6 +61,7 @@ function parseRunConfig(argv, extraOptions = {}) {
       concurrency: Math.max(1, Number(values.concurrency) || 1),
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
       executorName: values.executor,
+      judgeExecutorName: values['judge-executor'] || values.executor,
       skipPreflight: values['skip-preflight'],
     },
   };
@@ -98,8 +100,10 @@ Options for "bench run":
   --repeat <n>           Run evaluation N times for variance analysis (default: 1)
   --executor <name>      Executor: claude, openai, gemini, anthropic-api, openai-api,
                          or any shell command (e.g. "python my_provider.py")
+  --judge-executor <name> Executor for LLM judge (default: same as --executor)
   --each                 Evaluate each skill independently against baseline
                          Requires {name}.eval-samples.json paired with each skill
+  --skip-preflight       Skip model connectivity check before evaluation
 
 Options for "bench ci":
   (same as "bench run", plus:)
