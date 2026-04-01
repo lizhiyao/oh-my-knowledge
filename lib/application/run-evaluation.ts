@@ -8,6 +8,12 @@ import { loadSamples } from '../load-samples.js';
 import { discoverEachSkills, resolveEvaluands } from '../skill-loader.js';
 import { buildTasksFromEvaluands } from '../task-planner.js';
 import {
+  buildEvaluationRequest,
+  createEvaluationRun,
+  createSucceededJob,
+  finalizeEvaluationRun,
+} from '../evaluation-job.js';
+import {
   DEFAULT_OUTPUT_DIR,
   executeTasks,
   aggregateReport,
@@ -95,6 +101,21 @@ export async function runEvaluation({
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const samples = loadSamples(samplesPath);
   const resolvedEvaluands = evaluands || resolveEvaluands(resolve(skillDir), variants);
+  const request = buildEvaluationRequest({
+    samplesPath,
+    skillDir,
+    evaluands: resolvedEvaluands,
+    model,
+    judgeModel: noJudge ? null : judgeModel,
+    executor: executorName,
+    judgeExecutor: judgeExecutorName || executorName,
+    noJudge,
+    concurrency,
+    timeoutMs,
+    noCache,
+    dryRun,
+    blind,
+  });
 
   if (!dryRun) {
     const mcpServers: McpServers | null = loadMcpConfig(mcpConfig);
@@ -142,6 +163,9 @@ export async function runEvaluation({
 
   const executor: ExecutorFn = createExecutor(executorName);
   const judgeExecutor: ExecutorFn = createExecutor(judgeExecutorName || executorName);
+  const runId = generateRunId(variantNames);
+  const createdAt = new Date().toISOString();
+  const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
   if (!skipPreflight) {
     if (onProgress) onProgress({ phase: 'preflight' });
     await preflight(executor, model);
@@ -163,8 +187,33 @@ export async function runEvaluation({
     onProgress,
   });
 
-  const runId = generateRunId(variantNames);
-  const report = aggregateReport({ runId, variants: variantNames, model, judgeModel, noJudge, executorName, samples, tasks, results, totalCostUSD, evaluands: resolvedEvaluands });
+  const finishedAt = new Date().toISOString();
+  const run = finalizeEvaluationRun(initialRun, finishedAt);
+  const job = createSucceededJob({
+    jobId: `job-${runId}`,
+    runId,
+    reportId: runId,
+    request,
+    createdAt,
+    startedAt,
+    finishedAt,
+  });
+  const report = aggregateReport({
+    runId,
+    variants: variantNames,
+    model,
+    judgeModel,
+    noJudge,
+    executorName,
+    samples,
+    tasks,
+    results,
+    totalCostUSD,
+    evaluands: resolvedEvaluands,
+    request,
+    run,
+    job,
+  });
   report.analysis = analyzeResults(report);
 
   if (blind) {

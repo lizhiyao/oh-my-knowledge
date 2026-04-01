@@ -68,6 +68,43 @@ export type ExecutionStrategyKind =
   | 'agent-session'
   | 'workflow-session';
 
+export interface EvaluationRequest {
+  samplesPath: string;
+  skillDir: string;
+  evaluands: EvaluandSpec[];
+  model: string;
+  judgeModel: string | null;
+  executor: string;
+  judgeExecutor?: string | null;
+  noJudge: boolean;
+  concurrency: number;
+  timeoutMs?: number;
+  noCache: boolean;
+  dryRun: boolean;
+  blind: boolean;
+}
+
+export type EvaluationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+export interface EvaluationRun {
+  runId: string;
+  startedAt: string;
+  finishedAt: string;
+  status: Extract<EvaluationJobStatus, 'succeeded' | 'failed' | 'cancelled'>;
+}
+
+export interface EvaluationJob {
+  jobId: string;
+  status: EvaluationJobStatus;
+  createdAt: string;
+  startedAt: string;
+  finishedAt: string;
+  request: EvaluationRequest;
+  runId: string;
+  resultReportId?: string;
+  error?: string;
+}
+
 export interface Task {
   sample_id: string;
   variant: string;
@@ -177,6 +214,9 @@ export interface ReportMeta {
   nodeVersion: string;
   skillHashes: Record<string, string>;
   evaluandHashes?: Record<string, string>;
+  request?: EvaluationRequest;
+  run?: EvaluationRun;
+  job?: EvaluationJob;
   gitInfo?: GitInfo | null;
   blind?: boolean;
   blindMap?: Record<string, string>;

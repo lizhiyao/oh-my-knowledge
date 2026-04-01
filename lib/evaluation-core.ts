@@ -21,6 +21,9 @@ import type {
   GradeResult,
   ExecutorCache,
   GitInfo,
+  EvaluationJob,
+  EvaluationRequest,
+  EvaluationRun,
 } from './types.js';
 
 export type ProgressCallback = (info: Record<string, unknown>) => void;
@@ -194,9 +197,12 @@ interface AggregateReportOptions {
   results: Record<string, Record<string, VariantResult>>;
   totalCostUSD: number;
   evaluands: EvaluandSpec[];
+  request?: EvaluationRequest;
+  run?: EvaluationRun;
+  job?: EvaluationJob;
 }
 
-export function aggregateReport({ runId, variants, model, judgeModel, noJudge, executorName, samples, tasks, results, totalCostUSD, evaluands }: AggregateReportOptions): Report {
+export function aggregateReport({ runId, variants, model, judgeModel, noJudge, executorName, samples, tasks, results, totalCostUSD, evaluands, request, run, job }: AggregateReportOptions): Report {
   const summary: Record<string, VariantSummary> = {};
   for (const variant of variants) {
     const entries = Object.values(results).map((r) => r[variant]).filter(Boolean);
@@ -222,6 +228,9 @@ export function aggregateReport({ runId, variants, model, judgeModel, noJudge, e
       nodeVersion: process.version,
       skillHashes: evaluandHashes,
       evaluandHashes,
+      request,
+      run,
+      job,
       gitInfo: getGitInfo(),
     },
     summary,
