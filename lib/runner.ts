@@ -1,18 +1,23 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { resolve, join, dirname, relative } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { resolve, join, dirname } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from './executor.js';
 import { grade } from './grader.js';
-import { parseYaml } from './yaml-parser.js';
 import { analyzeResults } from './analyzer.js';
 import { confidenceInterval, tTest } from './statistics.js';
 import { buildVariantResult, buildVariantSummary } from './schema.js';
 import { resolveUrls } from './url-fetcher.js';
 import { loadMcpConfig, resolveMcpUrls, stopAllServers } from './mcp-resolver.js';
 import { createCache, cacheKey } from './cache.js';
+import { loadSamples } from './load-samples.js';
+import { discoverEachSkills, loadSkills } from './skill-loader.js';
+import { buildTasks } from './task-planner.js';
+export { loadSamples } from './load-samples.js';
+export { discoverVariants, discoverEachSkills, loadSkills } from './skill-loader.js';
+export { buildTasks } from './task-planner.js';
 
 import type {
   ExecResult,
@@ -50,19 +55,6 @@ function hashString(str: string): string {
 
 const DEFAULT_OUTPUT_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
 
-function gitShowFile(ref: string, filePath: string): string | null {
-  try {
-    return execFileSync('git', ['show', `${ref}:${filePath}`], { encoding: 'utf-8' }).trim();
-  } catch {
-    return null;
-  }
-}
-
-function getGitRelativePath(absolutePath: string): string {
-  const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf-8' }).trim();
-  return relative(gitRoot, absolutePath);
-}
-
 function getGitInfo(): GitInfo | null {
   try {
     const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim();
@@ -72,174 +64,6 @@ function getGitInfo(): GitInfo | null {
   } catch {
     return null;
   }
-}
-
-// ---------------------------------------------------------------------------
-// Phase 1: Load samples
-// ---------------------------------------------------------------------------
-
-export function loadSamples(samplesPath: string): Sample[] {
-  const rawContent = readFileSync(resolve(samplesPath), 'utf-8');
-  const samples: Sample[] = samplesPath.endsWith('.yaml') || samplesPath.endsWith('.yml')
-    ? parseYaml(rawContent)
-    : JSON.parse(rawContent);
-  if (!Array.isArray(samples) || samples.length === 0) {
-    throw new Error(`invalid samples file: ${samplesPath}`);
-  }
-  for (const [i, s] of samples.entries()) {
-    if (!s.sample_id) throw new Error(`samples[${i}] missing required field: sample_id`);
-    if (!s.prompt) throw new Error(`samples[${i}] (${s.sample_id}) missing required field: prompt`);
-  }
-  return samples;
-}
-
-// ---------------------------------------------------------------------------
-// Phase 2a: Discover variants from skill directory
-// ---------------------------------------------------------------------------
-
-export function discoverVariants(skillDir: string): string[] {
-  if (!existsSync(skillDir)) return [];
-  const entries = readdirSync(skillDir);
-  const variants: string[] = [];
-  for (const entry of entries) {
-    if (entry.endsWith('.md')) {
-      variants.push(entry.slice(0, -3));
-    } else {
-      const skillMd = join(skillDir, entry, 'SKILL.md');
-      if (statSync(join(skillDir, entry)).isDirectory() && existsSync(skillMd)) {
-        variants.push(entry);
-      }
-    }
-  }
-  variants.sort();
-  if (variants.length === 1) {
-    variants.unshift('baseline');
-  }
-  return variants;
-}
-
-// ---------------------------------------------------------------------------
-// Phase 2a-2: Discover independent skills with paired eval-samples (--each mode)
-// ---------------------------------------------------------------------------
-
-export function discoverEachSkills(skillDir: string): Array<{ name: string; skillPath: string; samplesPath: string }> {
-  if (!existsSync(skillDir)) return [];
-  const entries = readdirSync(skillDir);
-  const skills: Array<{ name: string; skillPath: string; samplesPath: string }> = [];
-  const warned: string[] = [];
-
-  for (const entry of entries) {
-    const mdMatch = entry.endsWith('.md') && !entry.endsWith('.eval-samples.json');
-    if (mdMatch) {
-      const name = entry.slice(0, -3);
-      const samplesPath = join(skillDir, `${name}.eval-samples.json`);
-      if (existsSync(samplesPath)) {
-        skills.push({ name, skillPath: join(skillDir, entry), samplesPath });
-      } else {
-        warned.push(name);
-      }
-    } else if (statSync(join(skillDir, entry)).isDirectory()) {
-      const skillMd = join(skillDir, entry, 'SKILL.md');
-      const samplesPath = join(skillDir, entry, 'eval-samples.json');
-      if (existsSync(skillMd) && existsSync(samplesPath)) {
-        skills.push({ name: entry, skillPath: skillMd, samplesPath });
-      } else if (existsSync(skillMd)) {
-        warned.push(entry);
-      }
-    }
-  }
-
-  for (const name of warned) {
-    process.stderr.write(`⚠️  跳过 ${name}：未找到配对的 eval-samples\n`);
-  }
-
-  skills.sort((a, b) => a.name.localeCompare(b.name));
-  return skills;
-}
-
-// ---------------------------------------------------------------------------
-// Phase 2b: Load skills
-// ---------------------------------------------------------------------------
-
-export function loadSkills(skillDir: string, variants: string[]): Record<string, string | null> {
-  const skills: Record<string, string | null> = {};
-  let gitRelDir: string | null = null;
-
-  for (const v of variants) {
-    if (v === 'baseline') {
-      skills[v] = null;
-      continue;
-    }
-
-    if (v.startsWith('git:')) {
-      const parts = v.slice(4).split(':');
-      let ref: string;
-      let name: string;
-      if (parts.length === 1) {
-        ref = 'HEAD';
-        name = parts[0];
-      } else {
-        ref = parts[0];
-        name = parts.slice(1).join(':');
-      }
-      if (!gitRelDir) gitRelDir = getGitRelativePath(skillDir);
-      const content = gitShowFile(ref, join(gitRelDir, name + '.md'))
-        || gitShowFile(ref, join(gitRelDir, name, 'SKILL.md'));
-      if (!content) {
-        throw new Error(`skill not found in git ${ref}: ${name}.md or ${name}/SKILL.md`);
-      }
-      skills[v] = content;
-      continue;
-    }
-
-    if (v.includes('/')) {
-      const filePath = resolve(v);
-      if (!existsSync(filePath)) {
-        throw new Error(`skill file not found: ${filePath}`);
-      }
-      skills[v] = readFileSync(filePath, 'utf-8').trim();
-      continue;
-    }
-
-    const mdPath = join(skillDir, v + '.md');
-    const dirSkillPath = join(skillDir, v, 'SKILL.md');
-    if (existsSync(mdPath)) {
-      skills[v] = readFileSync(mdPath, 'utf-8').trim();
-    } else if (existsSync(dirSkillPath)) {
-      skills[v] = readFileSync(dirSkillPath, 'utf-8').trim();
-    } else {
-      throw new Error(`skill not found: ${mdPath} or ${dirSkillPath}`);
-    }
-  }
-
-  return skills;
-}
-
-// ---------------------------------------------------------------------------
-// Phase 3: Build tasks
-// ---------------------------------------------------------------------------
-
-export function buildTasks(samples: Sample[], variants: string[], skills: Record<string, string | null>): Task[] {
-  const tasks: Task[] = [];
-  for (const sample of samples) {
-    for (const variant of variants) {
-      const userPrompt = sample.context
-        ? `${sample.prompt}\n\n\`\`\`\n${sample.context}\n\`\`\``
-        : sample.prompt;
-      tasks.push({
-        sample_id: sample.sample_id,
-        variant,
-        prompt: userPrompt,
-        rubric: sample.rubric || null,
-        assertions: sample.assertions || null,
-        dimensions: sample.dimensions || null,
-        skillContent: skills[variant] || null,
-        cwd: sample.cwd || null,
-        _sample: sample,
-      });
-    }
-  }
-  return tasks;
 }
 
 // ---------------------------------------------------------------------------
