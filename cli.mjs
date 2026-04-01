@@ -26,6 +26,7 @@ const RUN_OPTIONS = {
   'judge-executor': { type: 'string' },
   each:          { type: 'boolean', default: false },
   'skip-preflight': { type: 'boolean', default: false },
+  'no-serve':      { type: 'boolean', default: false },
   verbose:        { type: 'boolean', default: false },
 };
 
@@ -268,18 +269,20 @@ async function handleRun(argv) {
         process.stderr.write('\n✅ 批量评测完成\n');
         process.stderr.write(`📄 Report saved to: ${filePath}\n`);
 
-        const { createReportServer } = await import('./lib/report-server.mjs');
-        const server = createReportServer({ reportsDir: resolve(values['output-dir']) });
-        const serverUrl = await server.start();
-        const reportUrl = `${serverUrl}/run/${report.id}`;
-        process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
-        process.stderr.write(`👉 View report: ${reportUrl}\n`);
-        process.stderr.write('\nPress Ctrl+C to stop the server\n');
+        if (!values['no-serve']) {
+          const { createReportServer } = await import('./lib/report-server.mjs');
+          const server = createReportServer({ reportsDir: resolve(values['output-dir']) });
+          const serverUrl = await server.start();
+          const reportUrl = `${serverUrl}/run/${report.id}`;
+          process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
+          process.stderr.write(`👉 View report: ${reportUrl}\n`);
+          process.stderr.write('\nPress Ctrl+C to stop the server\n');
 
-        const { platform } = await import('node:os');
-        const openCmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
-        const { execFile: execFileCb } = await import('node:child_process');
-        execFileCb(openCmd, [reportUrl], () => {});
+          const { platform } = await import('node:os');
+          const openCmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
+          const { execFile: execFileCb } = await import('node:child_process');
+          execFileCb(openCmd, [reportUrl], () => {});
+        }
       }
       return;
     }
@@ -308,22 +311,24 @@ async function handleRun(argv) {
       process.stderr.write('\n✅ 评测完成\n');
       process.stderr.write(`📄 Report saved to: ${filePath}\n`);
 
-      // Auto-start report server
-      const { createReportServer } = await import('./lib/report-server.mjs');
-      const server = createReportServer({
-        reportsDir: resolve(values['output-dir']),
-      });
-      const serverUrl = await server.start();
-      const reportUrl = `${serverUrl}/run/${report.id}`;
-      process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
-      process.stderr.write(`👉 View report: ${reportUrl}\n`);
-      process.stderr.write('\nPress Ctrl+C to stop the server\n');
+      if (!values['no-serve']) {
+        // Auto-start report server
+        const { createReportServer } = await import('./lib/report-server.mjs');
+        const server = createReportServer({
+          reportsDir: resolve(values['output-dir']),
+        });
+        const serverUrl = await server.start();
+        const reportUrl = `${serverUrl}/run/${report.id}`;
+        process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
+        process.stderr.write(`👉 View report: ${reportUrl}\n`);
+        process.stderr.write('\nPress Ctrl+C to stop the server\n');
 
-      // Auto-open report in browser
-      const { platform } = await import('node:os');
-      const openCmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
-      const { execFile: execFileCb } = await import('node:child_process');
-      execFileCb(openCmd, [reportUrl], () => {});
+        // Auto-open report in browser
+        const { platform } = await import('node:os');
+        const openCmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
+        const { execFile: execFileCb } = await import('node:child_process');
+        execFileCb(openCmd, [reportUrl], () => {});
+      }
     }
   } catch (err) {
     console.error(`Error: ${err.message}`);
