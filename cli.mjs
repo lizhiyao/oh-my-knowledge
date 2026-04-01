@@ -27,6 +27,8 @@ const RUN_OPTIONS = {
   each:          { type: 'boolean', default: false },
   'skip-preflight': { type: 'boolean', default: false },
   'mcp-config':  { type: 'string' },
+  'no-serve':      { type: 'boolean', default: false },
+  verbose:        { type: 'boolean', default: false },
 };
 
 function parseRunConfig(argv, extraOptions = {}) {
@@ -65,6 +67,7 @@ function parseRunConfig(argv, extraOptions = {}) {
       judgeExecutorName: values['judge-executor'] || values.executor,
       skipPreflight: values['skip-preflight'],
       mcpConfig: values['mcp-config'],
+      verbose: values.verbose,
     },
   };
 }
@@ -108,6 +111,8 @@ Options for "bench run":
   --skip-preflight       Skip model connectivity check before evaluation
   --mcp-config <path>    MCP config file for URL fetching via MCP servers
                          (default: .mcp.json in current directory)
+  --no-serve             Skip auto-starting report server after evaluation
+  --verbose              Print detailed progress for each sample (exec result, grading phases)
 
 Options for "bench ci":
   (same as "bench run", plus:)
@@ -216,13 +221,25 @@ async function main() {
   }
 }
 
-function defaultOnProgress({ phase, completed, total, sample_id, variant, durationMs, inputTokens, outputTokens, costUSD, score }) {
+function defaultOnProgress({ phase, completed, total, sample_id, variant, durationMs, inputTokens, outputTokens, costUSD, score, outputPreview, judgePhase, judgeDim }) {
   if (phase === 'preflight') {
     process.stderr.write('⏳ 预检模型连通性...\n');
     return;
   }
   if (phase === 'start') {
     process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ⏳ 执行中...\n`);
+  } else if (phase === 'exec_done') {
+    const costInfo = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 执行完成 ${durationMs}ms ${inputTokens}+${outputTokens} tokens${costInfo}\n`);
+    if (outputPreview) {
+      process.stderr.write(`  输出预览: ${outputPreview.slice(0, 150).replace(/\n/g, ' ')}\n`);
+    }
+  } else if (phase === 'grading') {
+    const dimInfo = judgeDim ? ` [${judgeDim}]` : '';
+    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 评审中${dimInfo}...\n`);
+  } else if (phase === 'judge_done') {
+    const dimInfo = judgeDim ? ` [${judgeDim}]` : '';
+    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 评审完成${dimInfo} score=${score}\n`);
   } else {
     const costInfo = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
     const scoreInfo = typeof score === 'number' ? ` score=${score}` : '';
@@ -257,18 +274,20 @@ async function handleRun(argv) {
         process.stderr.write('\n✅ 批量评测完成\n');
         process.stderr.write(`📄 Report saved to: ${filePath}\n`);
 
-        const { createReportServer } = await import('./lib/report-server.mjs');
-        const server = createReportServer({ reportsDir: resolve(values['output-dir']) });
-        const serverUrl = await server.start();
-        const reportUrl = `${serverUrl}/run/${report.id}`;
-        process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
-        process.stderr.write(`👉 View report: ${reportUrl}\n`);
-        process.stderr.write('\nPress Ctrl+C to stop the server\n');
+        if (!values['no-serve']) {
+          const { createReportServer } = await import('./lib/report-server.mjs');
+          const server = createReportServer({ reportsDir: resolve(values['output-dir']) });
+          const serverUrl = await server.start();
+          const reportUrl = `${serverUrl}/run/${report.id}`;
+          process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
+          process.stderr.write(`👉 View report: ${reportUrl}\n`);
+          process.stderr.write('\nPress Ctrl+C to stop the server\n');
 
-        const { platform } = await import('node:os');
-        const openCmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
-        const { execFile: execFileCb } = await import('node:child_process');
-        execFileCb(openCmd, [reportUrl], () => {});
+          const { platform } = await import('node:os');
+          const openCmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
+          const { execFile: execFileCb } = await import('node:child_process');
+          execFileCb(openCmd, [reportUrl], () => {});
+        }
       }
       return;
     }
@@ -297,22 +316,24 @@ async function handleRun(argv) {
       process.stderr.write('\n✅ 评测完成\n');
       process.stderr.write(`📄 Report saved to: ${filePath}\n`);
 
-      // Auto-start report server
-      const { createReportServer } = await import('./lib/report-server.mjs');
-      const server = createReportServer({
-        reportsDir: resolve(values['output-dir']),
-      });
-      const serverUrl = await server.start();
-      const reportUrl = `${serverUrl}/run/${report.id}`;
-      process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
-      process.stderr.write(`👉 View report: ${reportUrl}\n`);
-      process.stderr.write('\nPress Ctrl+C to stop the server\n');
+      if (!values['no-serve']) {
+        // Auto-start report server
+        const { createReportServer } = await import('./lib/report-server.mjs');
+        const server = createReportServer({
+          reportsDir: resolve(values['output-dir']),
+        });
+        const serverUrl = await server.start();
+        const reportUrl = `${serverUrl}/run/${report.id}`;
+        process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
+        process.stderr.write(`👉 View report: ${reportUrl}\n`);
+        process.stderr.write('\nPress Ctrl+C to stop the server\n');
 
-      // Auto-open report in browser
-      const { platform } = await import('node:os');
-      const openCmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
-      const { execFile: execFileCb } = await import('node:child_process');
-      execFileCb(openCmd, [reportUrl], () => {});
+        // Auto-open report in browser
+        const { platform } = await import('node:os');
+        const openCmd = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
+        const { execFile: execFileCb } = await import('node:child_process');
+        execFileCb(openCmd, [reportUrl], () => {});
+      }
     }
   } catch (err) {
     console.error(`Error: ${err.message}`);

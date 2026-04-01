@@ -23,10 +23,8 @@ describe('createExecutor', () => {
     assert.equal(typeof exec, 'function');
   });
 
-  it('throws on unknown executor', () => {
-    assert.throws(
-      () => createExecutor('unknown'),
-      /Unknown executor.*Available: claude, openai, gemini/,
-    );
+  it('falls back to script executor for unknown name', () => {
+    const executor = createExecutor('echo hello');
+    assert.equal(typeof executor, 'function');
   });
 });

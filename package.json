@@ -34,6 +34,7 @@
   "author": "lizhiyao",
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.89",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "ajv": "^8.18.0",
     "js-yaml": "^4.1.1",
