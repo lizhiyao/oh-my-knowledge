@@ -23,6 +23,17 @@ interface FetchResult {
   isLoginPage?: boolean;
 }
 
+interface NetworkErrorLike {
+  cause?: { code?: string };
+  code?: string;
+  name?: string;
+  message?: string;
+}
+
+function asNetworkError(err: unknown): NetworkErrorLike {
+  return typeof err === 'object' && err !== null ? err as NetworkErrorLike : {};
+}
+
 /**
  * Resolve all URLs found in sample prompts and contexts.
  * Mutates samples in-place: each URL is replaced with URL + fetched content.
@@ -87,7 +98,10 @@ export async function resolveUrls(samples: Sample[]): Promise<void> {
     if (!result.ok) continue;
     const replacement = `${url}\n\n---\n${result.content}\n---`;
     for (const { sample, field } of urlMap.get(url)!) {
-      (sample as any)[field] = ((sample as any)[field] as string).replace(url, replacement);
+      const current = sample[field];
+      if (typeof current === 'string') {
+        sample[field] = current.replace(url, replacement);
+      }
     }
   }
 }
@@ -106,7 +120,7 @@ async function fetchUrl(url: string): Promise<FetchResult> {
       },
       redirect: 'follow',
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       ok: false,
       statusCode: 0,
@@ -191,13 +205,14 @@ function detectLoginPage(content: string): string | null {
 /**
  * Map network errors to user-friendly messages.
  */
-function networkErrorMessage(err: any): string {
-  const code = err.cause?.code || err.code || '';
+function networkErrorMessage(err: unknown): string {
+  const details = asNetworkError(err);
+  const code = details.cause?.code || details.code || '';
   if (code === 'ENOTFOUND') return '域名无法解析，请检查 URL 是否正确';
   if (code === 'ECONNREFUSED') return '连接被拒绝，请检查网络或代理配置';
   if (code === 'ECONNRESET') return '连接被重置，请检查网络';
-  if (err.name === 'TimeoutError' || code === 'ABORT_ERR') return `请求超时 (${FETCH_TIMEOUT_MS / 1000}s)`;
-  return err.message || 'unknown network error';
+  if (details.name === 'TimeoutError' || code === 'ABORT_ERR') return `请求超时 (${FETCH_TIMEOUT_MS / 1000}s)`;
+  return details.message || 'unknown network error';
 }
 
 /**

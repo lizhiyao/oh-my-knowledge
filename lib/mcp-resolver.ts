@@ -39,7 +39,6 @@ import type { Sample, McpServers, McpServerDef, McpFetchTool } from './types.js'
 
 // Reuse the same URL regex from url-fetcher.mjs
 const URL_REGEX = /https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/g;
-const MCP_CONNECT_TIMEOUT_MS = 30_000;
 const MCP_CALL_TIMEOUT_MS = 30_000;
 
 /** Active MCP client connections — keyed by server name. */
@@ -49,6 +48,35 @@ interface FetchResult {
   ok: boolean;
   content?: string;
   error?: string;
+}
+
+interface ToolContentItem {
+  type?: string;
+  text?: string;
+}
+
+interface ToolCallResultLike {
+  content?: ToolContentItem[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function isMcpServerDef(value: unknown): value is McpServerDef {
+  if (!isRecord(value)) return false;
+  return typeof value.command === 'string'
+    && Array.isArray(value.urlPatterns)
+    && isRecord(value.fetchTool)
+    && typeof value.fetchTool.name === 'string';
+}
+
+function asToolCallResult(value: unknown): ToolCallResultLike {
+  return isRecord(value) ? value as ToolCallResultLike : {};
 }
 
 // ---------------------------------------------------------------------------
@@ -64,22 +92,20 @@ export function loadMcpConfig(configPath?: string): McpServers | null {
   const filePath = configPath ? resolve(configPath) : resolve('.mcp.json');
   if (!existsSync(filePath)) return null;
 
-  let raw: any;
+  let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(filePath, 'utf-8'));
-  } catch (err: any) {
-    process.stderr.write(`⚠ MCP 配置文件解析失败: ${filePath}\n  ${err.message}\n`);
+  } catch (err: unknown) {
+    process.stderr.write(`⚠ MCP 配置文件解析失败: ${filePath}\n  ${getErrorMessage(err)}\n`);
     return null;
   }
 
-  const servers = raw.mcpServers || raw.servers || {};
+  if (!isRecord(raw)) return null;
+  const serverDefs = isRecord(raw.mcpServers) ? raw.mcpServers : isRecord(raw.servers) ? raw.servers : {};
   const eligible: McpServers = {};
 
-  for (const [name, def] of Object.entries(servers) as Array<[string, any]>) {
-    if (
-      Array.isArray(def.urlPatterns) && def.urlPatterns.length > 0 &&
-      def.fetchTool && def.fetchTool.name
-    ) {
+  for (const [name, def] of Object.entries(serverDefs)) {
+    if (isMcpServerDef(def) && def.urlPatterns.length > 0) {
       eligible[name] = def;
     }
   }
@@ -92,7 +118,7 @@ export function loadMcpConfig(configPath?: string): McpServers | null {
  * Resolve URLs in samples via MCP servers.
  * Mutates samples in-place — same contract as url-fetcher's resolveUrls().
  */
-export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers): Promise<void> {
+export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers | null): Promise<void> {
   if (!mcpServers) return;
 
   // 1. Collect unique URLs and track which sample/field they belong to
@@ -169,7 +195,8 @@ export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers):
     if (!result.ok) continue;
     const replacement = `${url}\n\n---\n${result.content}\n---`;
     for (const { sample, field } of urlMap.get(url)!) {
-      (sample as any)[field] = ((sample as any)[field] as string).replace(url, replacement);
+      const current = typeof sample[field] === 'string' ? sample[field] : '';
+      sample[field] = current.replace(url, replacement);
     }
   }
 
@@ -186,8 +213,8 @@ export async function stopAllServers(): Promise<void> {
   const promises: Promise<void>[] = [];
   for (const [name, client] of activeClients) {
     promises.push(
-      client.close().catch((err: any) => {
-        process.stderr.write(`⚠ MCP server "${name}" 关闭异常: ${err.message}\n`);
+      client.close().catch((err: unknown) => {
+        process.stderr.write(`⚠ MCP server "${name}" 关闭异常: ${getErrorMessage(err)}\n`);
       }),
     );
   }
@@ -229,16 +256,17 @@ function extractContent(rawText: string, contentExtract?: string): string {
   try {
     const json = JSON.parse(rawText);
     const fields = contentExtract.split('.');
-    let value: any = json;
+    let value: unknown = json;
     for (const field of fields) {
-      if (value == null) break;
+      if (!isRecord(value)) {
+        value = undefined;
+        break;
+      }
       value = value[field];
     }
     if (typeof value === 'string' && value.length > 0) return value;
-    // If extracted field is an object, stringify it
     if (value != null && typeof value === 'object') return JSON.stringify(value);
   } catch {
-    // JSON parse failed, return raw
   }
   return rawText;
 }
@@ -274,8 +302,8 @@ async function fetchFromServer(serverName: string, serverDef: McpServerDef, urls
   let client: Client;
   try {
     client = await getOrStartClient(serverName, serverDef);
-  } catch (err: any) {
-    const msg = `MCP server "${serverName}" 启动失败: ${err.message}`;
+  } catch (err: unknown) {
+    const msg = `MCP server "${serverName}" 启动失败: ${getErrorMessage(err)}`;
     for (const url of urls) {
       resultMap.set(url, { ok: false, error: msg });
     }
@@ -297,11 +325,9 @@ async function fetchFromServer(serverName: string, serverDef: McpServerDef, urls
         undefined,
         { timeout: MCP_CALL_TIMEOUT_MS },
       );
-
-      // MCP tool result: { content: [{ type: 'text', text: '...' }, ...] }
-      const textParts = ((result as any).content || [])
-        .filter((c: any) => c.type === 'text')
-        .map((c: any) => c.text);
+      const textParts = (asToolCallResult(result).content ?? [])
+        .filter((item) => item.type === 'text' && typeof item.text === 'string')
+        .map((item) => item.text as string);
 
       if (textParts.length === 0) {
         resultMap.set(url, { ok: false, error: 'MCP tool 返回了空内容' });
@@ -310,8 +336,8 @@ async function fetchFromServer(serverName: string, serverDef: McpServerDef, urls
         const content = extractContent(rawContent, fetchTool.contentExtract);
         resultMap.set(url, { ok: true, content });
       }
-    } catch (err: any) {
-      resultMap.set(url, { ok: false, error: `tool "${toolName}" 调用失败: ${err.message}` });
+    } catch (err: unknown) {
+      resultMap.set(url, { ok: false, error: `tool "${toolName}" 调用失败: ${getErrorMessage(err)}` });
     }
   });
 

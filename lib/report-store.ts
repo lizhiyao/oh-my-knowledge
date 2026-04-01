@@ -101,8 +101,9 @@ export function createFileStore(dir: string): ReportStore {
     try {
       await unlink(join(dir, `${id}.json`));
       return true;
-    } catch (err: any) {
-      if (err.code === 'ENOENT') return false;
+    } catch (err: unknown) {
+      const fsError = err as NodeJS.ErrnoException;
+      if (fsError.code === 'ENOENT') return false;
       throw err;
     }
   }

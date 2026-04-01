@@ -1,11 +1,48 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { runEvaluation, loadSkills, buildTasks, discoverVariants, discoverEachSkills, runEachEvaluation } from '../lib/runner.js';
-
-// Helper: dry-run reports have a different shape than Report; cast to any for property access
-type AnyReport = any;
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+interface DryRunTask {
+  sample_id: string;
+  variant: string;
+  hasRubric: boolean;
+  hasAssertions: boolean;
+  hasDimensions: boolean;
+}
+
+interface DryRunReport {
+  dryRun: true;
+  totalTasks: number;
+  variants: string[];
+  executor: string;
+  model?: string;
+  judgeModel?: string;
+  tasks: DryRunTask[];
+}
+
+interface EachDryRunSkill {
+  name: string;
+  sampleCount: number;
+  taskCount: number;
+}
+
+interface EachDryRunReport {
+  dryRun: true;
+  each: true;
+  totalSkills: number;
+  totalTasks: number;
+  skills: EachDryRunSkill[];
+}
+
+function asDryRunReport(value: unknown): DryRunReport {
+  return value as DryRunReport;
+}
+
+function asEachDryRunReport(value: unknown): EachDryRunReport {
+  return value as EachDryRunReport;
+}
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SAMPLES_PATH = join(__dirname, '..', '..', 'examples', 'code-review', 'eval-samples.json');
@@ -13,12 +50,13 @@ const SKILL_DIR = join(__dirname, '..', '..', 'examples', 'code-review', 'skills
 
 describe('runEvaluation', () => {
   it('dry-run: returns correct task schedule', async () => {
-    const { report }: any = await runEvaluation({
+    const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
       variants: ['v1', 'v2'],
       dryRun: true,
     });
+    const report = asDryRunReport(result.report);
 
     assert.equal(report.dryRun, true);
     assert.equal(report.totalTasks, 6); // 3 samples × 2 variants
@@ -27,12 +65,13 @@ describe('runEvaluation', () => {
   });
 
   it('dry-run: interleaved scheduling order', async () => {
-    const { report }: any = await runEvaluation({
+    const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
       variants: ['v1', 'v2'],
       dryRun: true,
     });
+    const report = asDryRunReport(result.report);
 
     const schedule = report.tasks.map((t: { sample_id: string; variant: string }) => `${t.sample_id}-${t.variant}`);
     assert.deepEqual(schedule, [
@@ -43,12 +82,13 @@ describe('runEvaluation', () => {
   });
 
   it('dry-run: reports assertion and dimension presence', async () => {
-    const { report }: any = await runEvaluation({
+    const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
       variants: ['v1', 'v2'],
       dryRun: true,
     });
+    const report = asDryRunReport(result.report);
 
     for (const task of report.tasks) {
       assert.equal(task.hasRubric, true);
@@ -58,18 +98,19 @@ describe('runEvaluation', () => {
   });
 
   it('dry-run: supports 3+ variants', async () => {
-    const { report }: any = await runEvaluation({
+    const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
       variants: ['v1', 'v2'],
       dryRun: true,
     });
+    const report = asDryRunReport(result.report);
 
     assert.equal(report.totalTasks, 6);
   });
 
   it('dry-run: custom model and judge model', async () => {
-    const { report }: any = await runEvaluation({
+    const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
       variants: ['v1', 'v2'],
@@ -77,6 +118,7 @@ describe('runEvaluation', () => {
       judgeModel: 'sonnet',
       dryRun: true,
     });
+    const report = asDryRunReport(result.report);
 
     assert.equal(report.model, 'opus');
     assert.equal(report.judgeModel, 'sonnet');
@@ -105,12 +147,13 @@ describe('runEvaluation', () => {
   });
 
   it('dry-run: meta includes traceability fields', async () => {
-    const { report }: any = await runEvaluation({
+    const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
       variants: ['v1', 'v2'],
       dryRun: true,
     });
+    const report = asDryRunReport(result.report);
     // dry-run still has model info
     assert.ok(report.model);
   });
@@ -118,12 +161,13 @@ describe('runEvaluation', () => {
   it('loads SKILL.md from subdirectories', async () => {
     const classifierSamples = join(__dirname, '..', '..', 'examples', 'multi-skills', 'skills', 'classifier', 'eval-samples.json');
     const multiSkillsDir = join(__dirname, '..', '..', 'examples', 'multi-skills', 'skills');
-    const { report }: any = await runEvaluation({
+    const result = await runEvaluation({
       samplesPath: classifierSamples,
       skillDir: multiSkillsDir,
       variants: ['classifier'],
       dryRun: true,
     });
+    const report = asDryRunReport(result.report);
     assert.equal(report.totalTasks, 2); // 2 samples × 1 variant
   });
 
@@ -207,12 +251,13 @@ describe('baseline variant', () => {
   });
 
   it('dry-run: baseline variant included in task schedule', async () => {
-    const { report }: any = await runEvaluation({
+    const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
       variants: ['baseline', 'v1'],
       dryRun: true,
     });
+    const report = asDryRunReport(result.report);
     assert.equal(report.totalTasks, 6); // 3 samples × 2 variants
     assert.deepEqual(report.variants, ['baseline', 'v1']);
   });
@@ -245,12 +290,13 @@ describe('git: variant', () => {
   });
 
   it('dry-run: git variant included in task schedule', async () => {
-    const { report }: any = await runEvaluation({
+    const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
       variants: ['git:v1', 'v1'],
       dryRun: true,
     });
+    const report = asDryRunReport(result.report);
     assert.equal(report.totalTasks, 6);
     assert.deepEqual(report.variants, ['git:v1', 'v1']);
   });
@@ -280,12 +326,13 @@ describe('file path variant', () => {
   });
 
   it('dry-run: file path variant in task schedule', async () => {
-    const { report }: any = await runEvaluation({
+    const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
       variants: [v1Path, v2Path],
       dryRun: true,
     });
+    const report = asDryRunReport(result.report);
     assert.equal(report.totalTasks, 6);
   });
 });
@@ -342,10 +389,11 @@ describe('runEachEvaluation', () => {
   const MULTI_SKILLS_DIR = join(__dirname, '..', '..', 'examples', 'multi-skills', 'skills');
 
   it('dry-run: returns correct structure', async () => {
-    const { report }: any = await runEachEvaluation({
+    const result = await runEachEvaluation({
       skillDir: MULTI_SKILLS_DIR,
       dryRun: true,
     });
+    const report = asEachDryRunReport(result.report);
     assert.equal(report.dryRun, true);
     assert.equal(report.each, true);
     assert.ok(report.totalSkills >= 2);
@@ -358,10 +406,11 @@ describe('runEachEvaluation', () => {
   });
 
   it('dry-run: totalTasks is sum of all skill tasks', async () => {
-    const { report }: any = await runEachEvaluation({
+    const result = await runEachEvaluation({
       skillDir: MULTI_SKILLS_DIR,
       dryRun: true,
     });
+    const report = asEachDryRunReport(result.report);
     const expectedTotal = report.skills.reduce((s: number, sk: { taskCount: number }) => s + sk.taskCount, 0);
     assert.equal(report.totalTasks, expectedTotal);
   });
@@ -401,12 +450,13 @@ describe('runEvaluation credibility', () => {
   it('dry-run: task count correct for multiple variants', async () => {
     await writeMockSamples();
     try {
-      const { report }: any = await runEvaluation({
+      const result = await runEvaluation({
         samplesPath: MOCK_SAMPLES_PATH,
         skillDir: SKILL_DIR,
         variants: ['v1', 'v2'],
         dryRun: true,
       });
+      const report = asDryRunReport(result.report);
       assert.equal(report.totalTasks, 4); // 2 samples × 2 variants
     } finally {
       await cleanMockSamples();

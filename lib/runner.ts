@@ -22,14 +22,11 @@ import type {
   Report,
   VariantResult,
   VariantSummary,
-  ReportMeta,
   GradeResult,
   McpServers,
   ExecutorCache,
-  Assertion,
-  ResultEntry,
-  AnalysisResult,
   GitInfo,
+  VarianceData,
 } from './types.js';
 
 type ProgressCallback = (info: Record<string, unknown>) => void;
@@ -187,7 +184,7 @@ export function loadSkills(skillDir: string, variants: string[]): Record<string,
       }
       if (!gitRelDir) gitRelDir = getGitRelativePath(skillDir);
       const content = gitShowFile(ref, join(gitRelDir, name + '.md'))
-                   || gitShowFile(ref, join(gitRelDir, name, 'SKILL.md'));
+        || gitShowFile(ref, join(gitRelDir, name, 'SKILL.md'));
       if (!content) {
         throw new Error(`skill not found in git ${ref}: ${name}.md or ${name}/SKILL.md`);
       }
@@ -441,10 +438,14 @@ function applyBlindMode(report: Report, variants: string[], blindSeed: string): 
 // Phase 7: Persist
 // ---------------------------------------------------------------------------
 
-function persistReport(report: Report | Record<string, unknown>, outputDir: string | null): string | null {
+interface PersistableReport {
+  id: string;
+}
+
+function persistReport(report: PersistableReport, outputDir: string | null): string | null {
   if (!outputDir) return null;
   if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
-  const filePath = join(outputDir, `${(report as any).id}.json`);
+  const filePath = join(outputDir, `${report.id}.json`);
   writeFileSync(filePath, JSON.stringify(report, null, 2));
   return filePath;
 }
@@ -810,7 +811,7 @@ export async function runEachEvaluation({
 
   // Build combined report
   const runId = generateRunId(['each']);
-  const combinedReport: Record<string, unknown> = {
+  const combinedReport: PersistableReport & Record<string, unknown> = {
     id: runId,
     each: true,
     meta: {
@@ -850,7 +851,7 @@ interface RunMultipleOptions extends RunEvaluationOptions {
   onRepeatProgress?: ((info: { run: number; total: number }) => void) | null;
 }
 
-export async function runMultiple({ repeat = 1, onRepeatProgress, ...config }: RunMultipleOptions): Promise<{ report: Report; aggregated: any; filePath: string | null }> {
+export async function runMultiple({ repeat = 1, onRepeatProgress, ...config }: RunMultipleOptions): Promise<{ report: Report; aggregated: VarianceData | null; filePath: string | null }> {
   const runs: Report[] = [];
   for (let i = 0; i < repeat; i++) {
     if (onRepeatProgress) onRepeatProgress({ run: i + 1, total: repeat });

@@ -12,11 +12,111 @@ export const JUDGE_MODEL = 'haiku';
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_BUFFER = 10 * 1024 * 1024;
 
-// Lazy-loaded SDK import — resolved on first use
-let _sdkQuery: ((opts: any) => AsyncIterable<any>) | null = null;
-async function getSdkQuery(): Promise<(opts: any) => AsyncIterable<any>> {
+interface TokenUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+interface ClaudeCliResponse {
+  is_error?: boolean;
+  duration_ms?: number;
+  duration_api_ms?: number;
+  usage?: TokenUsage;
+  total_cost_usd?: number;
+  result?: string;
+  stop_reason?: string;
+  num_turns?: number;
+}
+
+interface OpenAiUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+}
+
+interface OpenAiResponse {
+  usage?: OpenAiUsage;
+  choices?: Array<{ message?: { content?: string }; finish_reason?: string }>;
+  error?: { message?: string };
+}
+
+interface GeminiResponse {
+  response?: string;
+  stats?: { inputTokens?: number; outputTokens?: number };
+}
+
+interface AnthropicResponse {
+  usage?: TokenUsage;
+  content?: Array<{ text?: string }>;
+  stop_reason?: string;
+  error?: { message?: string };
+}
+
+interface ClaudeSdkQueryOptions {
+  model?: string;
+  systemPrompt?: string;
+  cwd: string;
+  permissionMode: 'bypassPermissions';
+  allowDangerouslySkipPermissions: true;
+  abortController: AbortController;
+  env: NodeJS.ProcessEnv;
+}
+
+interface ClaudeSdkQueryInput {
+  prompt: string;
+  options: ClaudeSdkQueryOptions;
+}
+
+interface ClaudeSdkBaseMessage {
+  type: string;
+}
+
+interface ClaudeSdkResultMessage extends ClaudeSdkBaseMessage {
+  type: 'result';
+  result?: string;
+  usage?: TokenUsage;
+  total_cost_usd?: number;
+  duration_api_ms?: number;
+  duration_ms?: number;
+  num_turns?: number;
+  subtype?: string;
+  errors?: string[];
+}
+
+interface ClaudeSdkModule {
+  query: (opts: ClaudeSdkQueryInput) => AsyncIterable<ClaudeSdkBaseMessage>;
+}
+
+interface ExecutorErrorLike {
+  message?: string;
+  name?: string;
+  killed?: boolean;
+  stdout?: string;
+}
+
+function asErrorLike(err: unknown): ExecutorErrorLike {
+  return typeof err === 'object' && err !== null ? err as ExecutorErrorLike : {};
+}
+
+function errorMessage(err: unknown, fallback: string = 'unknown error'): string {
+  const details = asErrorLike(err);
+  return details.message || fallback;
+}
+
+function parseJson<T>(content: string): T {
+  return JSON.parse(content) as T;
+}
+
+function isClaudeSdkResultMessage(message: ClaudeSdkBaseMessage): message is ClaudeSdkResultMessage {
+  return message.type === 'result';
+}
+
+let _sdkQuery: ClaudeSdkModule['query'] | null = null;
+async function getSdkQuery(): Promise<ClaudeSdkModule['query']> {
   if (!_sdkQuery) {
-    const sdk: any = await import('@anthropic-ai/claude-agent-sdk');
+    const sdk = await import('@anthropic-ai/claude-agent-sdk') as ClaudeSdkModule;
     _sdkQuery = sdk.query;
   }
   return _sdkQuery!;
@@ -80,7 +180,7 @@ async function claudeExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_
       ...(cwd && { cwd }),
     });
     const durationMs = Date.now() - start;
-    const data = JSON.parse(stdout);
+    const data = parseJson<ClaudeCliResponse>(stdout);
     const usage = data.usage || {};
     return {
       ok: !data.is_error,
@@ -95,9 +195,10 @@ async function claudeExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_
       stopReason: data.stop_reason || 'unknown',
       numTurns: data.num_turns || 1,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     const durationMs = Date.now() - start;
-    if (err.killed) {
+    const details = asErrorLike(err);
+    if (details.killed) {
       return {
         ok: false,
         error: `execution timed out after ${timeoutMs / 1000}s`,
@@ -113,11 +214,11 @@ async function claudeExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_
         numTurns: 0,
       };
     }
-    let parsed: any = null;
-    try { parsed = JSON.parse(err.stdout || ''); } catch { /* cleanup best-effort */ }
+    let parsed: ClaudeCliResponse | null = null;
+    try { parsed = parseJson<ClaudeCliResponse>(details.stdout || ''); } catch {}
     return {
       ok: false,
-      error: parsed?.result || err.message || 'unknown error',
+      error: parsed?.result || errorMessage(err),
       durationMs,
       durationApiMs: 0,
       inputTokens: parsed?.usage?.input_tokens || 0,
@@ -148,7 +249,7 @@ async function claudeSdkExecutor({ model, system, prompt, cwd, timeoutMs = DEFAU
     ? { ...process.env, ANTHROPIC_BASE_URL: proxyUrl }
     : { ...process.env };
 
-  const messages: any[] = [];
+  const messages: ClaudeSdkBaseMessage[] = [];
 
   try {
     const query = await getSdkQuery();
@@ -165,10 +266,10 @@ async function claudeSdkExecutor({ model, system, prompt, cwd, timeoutMs = DEFAU
       },
     });
 
-    let resultMsgs: any[] = [];
+    const resultMsgs: ClaudeSdkResultMessage[] = [];
     for await (const msg of stream) {
       messages.push(msg);
-      if (msg.type === 'result') resultMsgs.push(msg);
+      if (isClaudeSdkResultMessage(msg)) resultMsgs.push(msg);
     }
 
     clearTimeout(timer);
@@ -251,18 +352,19 @@ async function claudeSdkExecutor({ model, system, prompt, cwd, timeoutMs = DEFAU
       stopReason: 'end',
       numTurns: totalNumTurns,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     clearTimeout(timer);
     const durationMs = Date.now() - start;
-    const isAbort = err.name === 'AbortError';
+    const details = asErrorLike(err);
+    const isAbort = details.name === 'AbortError';
     if (isAbort) {
       process.stderr.write(`[omk] claude-sdk executor: timed out after ${timeoutMs / 1000}s\n`);
     } else {
-      process.stderr.write(`[omk] claude-sdk executor error: ${err.message}\n`);
+      process.stderr.write(`[omk] claude-sdk executor error: ${errorMessage(err)}\n`);
     }
     return {
       ok: false,
-      error: isAbort ? `execution timed out after ${timeoutMs / 1000}s` : err.message,
+      error: isAbort ? `execution timed out after ${timeoutMs / 1000}s` : errorMessage(err),
       durationMs, durationApiMs: 0,
       inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
       costUSD: 0, output: null,
@@ -295,7 +397,7 @@ async function openaiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEO
       env: { ...process.env },
     });
     const durationMs = Date.now() - start;
-    const data = JSON.parse(stdout);
+    const data = parseJson<OpenAiResponse>(stdout);
     const usage = data.usage || {};
     const content = data.choices?.[0]?.message?.content || '';
     const finishReason = data.choices?.[0]?.finish_reason || 'unknown';
@@ -313,9 +415,10 @@ async function openaiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEO
       stopReason: finishReason,
       numTurns: 1,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     const durationMs = Date.now() - start;
-    if (err.killed) {
+    const details = asErrorLike(err);
+    if (details.killed) {
       return {
         ok: false,
         error: `execution timed out after ${timeoutMs / 1000}s`,
@@ -331,11 +434,11 @@ async function openaiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEO
         numTurns: 0,
       };
     }
-    let parsed: any = null;
-    try { parsed = JSON.parse(err.stdout || ''); } catch { /* cleanup best-effort */ }
+    let parsed: OpenAiResponse | null = null;
+    try { parsed = parseJson<OpenAiResponse>(details.stdout || ''); } catch {}
     return {
       ok: false,
-      error: parsed?.error?.message || err.message || 'unknown error',
+      error: parsed?.error?.message || errorMessage(err),
       durationMs,
       durationApiMs: 0,
       inputTokens: 0,
@@ -400,7 +503,7 @@ async function geminiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEO
     let inputTokens = 0;
     let outputTokens = 0;
     try {
-      const data = JSON.parse(output);
+      const data = parseJson<GeminiResponse>(output);
       if (data.response) text = data.response;
       if (data.stats) {
         inputTokens = data.stats.inputTokens || 0;
@@ -424,11 +527,11 @@ async function geminiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEO
       stopReason: 'end',
       numTurns: 1,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     const durationMs = Date.now() - start;
     return {
       ok: false,
-      error: err.message || 'unknown error',
+      error: errorMessage(err),
       durationMs,
       durationApiMs: 0,
       inputTokens: 0,
@@ -526,7 +629,12 @@ async function anthropicApiExecutor({ model, system, prompt, timeoutMs = DEFAULT
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY 环境变量未设置');
 
   const baseUrl = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
-  const reqBody: any = {
+  const reqBody: {
+    model: string;
+    max_tokens: number;
+    messages: Array<{ role: 'user'; content: string }>;
+    system?: string;
+  } = {
     model: model || 'claude-sonnet-4-5-20250514',
     max_tokens: 8192,
     messages: [{ role: 'user', content: prompt }],
@@ -541,7 +649,7 @@ async function anthropicApiExecutor({ model, system, prompt, timeoutMs = DEFAULT
       body: JSON.stringify(reqBody),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    const data: any = await res.json();
+    const data = await res.json() as AnthropicResponse;
     const durationMs = Date.now() - start;
 
     if (!res.ok) {
@@ -550,15 +658,16 @@ async function anthropicApiExecutor({ model, system, prompt, timeoutMs = DEFAULT
 
     const usage = data.usage || {};
     return {
-      ok: true, output: data.content?.map((c: any) => c.text).join('') || '', durationMs, durationApiMs: 0,
+      ok: true, output: data.content?.map((c) => c.text || '').join('') || '', durationMs, durationApiMs: 0,
       inputTokens: usage.input_tokens || 0, outputTokens: usage.output_tokens || 0,
       cacheReadTokens: usage.cache_read_input_tokens || 0, cacheCreationTokens: usage.cache_creation_input_tokens || 0,
       costUSD: 0, stopReason: data.stop_reason || 'end_turn', numTurns: 1,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     const durationMs = Date.now() - start;
-    const stopReason = err.name === 'TimeoutError' ? 'timeout' : 'error';
-    const error = err.name === 'TimeoutError' ? `API request timed out after ${timeoutMs / 1000}s` : (err.message || 'unknown error');
+    const details = asErrorLike(err);
+    const stopReason = details.name === 'TimeoutError' ? 'timeout' : 'error';
+    const error = details.name === 'TimeoutError' ? `API request timed out after ${timeoutMs / 1000}s` : errorMessage(err);
     return { ok: false, error, durationMs, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, costUSD: 0, output: null, stopReason, numTurns: 0 };
   }
 }
@@ -585,7 +694,7 @@ async function openaiApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TI
       body: JSON.stringify({ model: model || 'gpt-4o', messages }),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    const data: any = await res.json();
+    const data = await res.json() as OpenAiResponse;
     const durationMs = Date.now() - start;
 
     if (!res.ok) {
@@ -599,10 +708,11 @@ async function openaiApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TI
       cacheReadTokens: usage.prompt_tokens_details?.cached_tokens || 0, cacheCreationTokens: 0,
       costUSD: 0, stopReason: data.choices?.[0]?.finish_reason || 'unknown', numTurns: 1,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     const durationMs = Date.now() - start;
-    const stopReason = err.name === 'TimeoutError' ? 'timeout' : 'error';
-    const error = err.name === 'TimeoutError' ? `API request timed out after ${timeoutMs / 1000}s` : (err.message || 'unknown error');
+    const details = asErrorLike(err);
+    const stopReason = details.name === 'TimeoutError' ? 'timeout' : 'error';
+    const error = details.name === 'TimeoutError' ? `API request timed out after ${timeoutMs / 1000}s` : errorMessage(err);
     return { ok: false, error, durationMs, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, costUSD: 0, output: null, stopReason, numTurns: 0 };
   }
 }

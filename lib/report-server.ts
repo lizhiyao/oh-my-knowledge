@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { renderRunList, renderRunDetail, renderEachRunDetail, renderTrendsPage } from './html-renderer.js';
 import { createFileStore } from './report-store.js';
-import type { ReportStore, Report } from './types.js';
+import type { ReportStore, ReportMeta, VariantSummary } from './types.js';
 import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;
@@ -20,6 +20,21 @@ interface ReportServer {
   start(): Promise<string>;
   stop(): Promise<void>;
   getUrl(): string | null;
+}
+
+interface TrendPoint {
+  reportId: string;
+  timestamp: string;
+  avgCompositeScore: number | null;
+  avgNumTurns: number | null;
+  avgCostPerSample: number | null;
+  skillHash: string | null;
+  gitCommitShort: string | null;
+  gitBranch: string | null;
+}
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, store }: ReportServerOptions = {}): ReportServer {
@@ -87,17 +102,18 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, sto
       if (trendsApiMatch) {
         const variantName = decodeURIComponent(trendsApiMatch[1]);
         const runs = await reportStore.findByVariant(variantName);
-        const points = runs.map((r) => {
-          const s = r.summary?.[variantName] || {} as any;
+        const points: TrendPoint[] = runs.map((r) => {
+          const s: Partial<VariantSummary> = r.summary?.[variantName] || {};
+          const meta: ReportMeta = r.meta;
           return {
             reportId: r.id,
-            timestamp: r.meta?.timestamp,
+            timestamp: meta.timestamp,
             avgCompositeScore: s.avgCompositeScore ?? null,
             avgNumTurns: s.avgNumTurns ?? null,
             avgCostPerSample: s.avgCostPerSample ?? null,
-            skillHash: r.meta?.skillHashes?.[variantName] || null,
-            gitCommitShort: r.meta?.gitInfo?.commitShort || null,
-            gitBranch: r.meta?.gitInfo?.branch || null,
+            skillHash: meta.skillHashes?.[variantName] || null,
+            gitCommitShort: meta.gitInfo?.commitShort || null,
+            gitBranch: meta.gitInfo?.branch || null,
           };
         });
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -132,9 +148,9 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, sto
 
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Not Found');
-    } catch (err: any) {
+    } catch (err: unknown) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: err.message }));
+      res.end(JSON.stringify({ error: getErrorMessage(err) }));
     }
   }
 
@@ -159,8 +175,8 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, sto
       let isOmk = false;
       try {
         const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
-        const data: any = await res.json();
-        isOmk = data?.service === 'omk-bench';
+        const data = await res.json() as { service?: string };
+        isOmk = data.service === 'omk-bench';
       } catch { /* not reachable or not omk */ }
 
       if (isOmk) {

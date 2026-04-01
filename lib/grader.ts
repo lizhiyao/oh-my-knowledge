@@ -32,6 +32,28 @@ interface GradeOptions {
   samplesDir?: string;
 }
 
+interface JudgeResponse {
+  score?: number | string;
+  reason?: string;
+}
+
+interface CustomAssertionModule {
+  default?: CustomAssertionFn;
+  check?: CustomAssertionFn;
+}
+
+interface CustomAssertionResult {
+  pass?: boolean;
+  message?: string;
+}
+
+type CustomAssertionFn = (output: string, context: { sample: Sample; assertion: Assertion }) =>
+  Promise<CustomAssertionResult> | CustomAssertionResult;
+
+function getErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 /**
  * Grade a model output against a sample's criteria.
  */
@@ -283,7 +305,7 @@ async function runAsyncAssertions(output: string, assertions: Assertion[], { exe
         try {
           const jsonMatch = result.output!.trim().match(/\{[\s\S]*\}/);
           if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
+            const parsed = JSON.parse(jsonMatch[0]) as JudgeResponse;
             const score = Number(parsed.score) || 0;
             const threshold = assertion.threshold ?? 3;
             passed = score >= threshold;
@@ -291,25 +313,26 @@ async function runAsyncAssertions(output: string, assertions: Assertion[], { exe
           } else {
             process.stderr.write(`[omk] semantic_similarity judge returned non-JSON: ${result.output!.slice(0, 100)}\n`);
           }
-        } catch (parseErr: any) {
-          process.stderr.write(`[omk] semantic_similarity judge parse error: ${parseErr.message}\n`);
+        } catch (parseErr: unknown) {
+          process.stderr.write(`[omk] semantic_similarity judge parse error: ${getErrorMessage(parseErr)}\n`);
         }
       }
     } else if (assertion.type === 'custom') {
       try {
         const fnPath = resolve(samplesDir, assertion.fn!);
-        const mod: any = await import(fnPath);
+        const mod = await import(fnPath) as CustomAssertionModule;
         const fn = mod.default || mod.check;
+        if (!fn) throw new Error('custom assertion module must export default or check');
         // Timeout custom assertion at 30 seconds
-        const result: any = await Promise.race([
+        const result = await Promise.race<CustomAssertionResult>([
           fn(output, { sample, assertion }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error(`custom assertion timed out (${CUSTOM_ASSERTION_TIMEOUT_MS / 1000}s)`)), CUSTOM_ASSERTION_TIMEOUT_MS)),
+          new Promise<CustomAssertionResult>((_, reject) => setTimeout(() => reject(new Error(`custom assertion timed out (${CUSTOM_ASSERTION_TIMEOUT_MS / 1000}s)`)), CUSTOM_ASSERTION_TIMEOUT_MS)),
         ]);
         passed = Boolean(result.pass);
         message = result.message || '';
-      } catch (err: any) {
+      } catch (err: unknown) {
         passed = false;
-        message = `custom assertion error: ${err.message}`;
+        message = `custom assertion error: ${getErrorMessage(err)}`;
       }
     }
 
@@ -376,14 +399,14 @@ async function llmJudge({ output, rubric, prompt, executor, model }: LlmJudgeOpt
       process.stderr.write(`[omk] LLM judge returned non-JSON: ${text.slice(0, 100)}\n`);
       return { score: 0, reason: 'judge returned non-JSON', judgeCostUSD: result.costUSD };
     }
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonMatch[0]) as JudgeResponse;
     return {
       score: Number(parsed.score) || 0,
       reason: String(parsed.reason || ''),
       judgeCostUSD: result.costUSD,
     };
-  } catch (parseErr: any) {
-    process.stderr.write(`[omk] LLM judge parse error: ${parseErr.message}\n`);
+  } catch (parseErr: unknown) {
+    process.stderr.write(`[omk] LLM judge parse error: ${getErrorMessage(parseErr)}\n`);
     return { score: 0, reason: 'failed to parse judge response', judgeCostUSD: result.costUSD };
   }
 }

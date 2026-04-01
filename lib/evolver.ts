@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, join, dirname, basename } from 'node:path';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from './executor.js';
 import { runEvaluation } from './runner.js';
-import type { Report, VariantResult } from './types.js';
+import type { Report } from './types.js';
 
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。你的任务是分析评测结果中的薄弱环节，针对性地改进 skill（系统提示词），使其在评测中获得更高的分数。
 
@@ -79,6 +79,21 @@ function parseImprovedSkill(output: string): string {
   return content;
 }
 
+export interface EvolveProgressInfo {
+  [key: string]: unknown;
+}
+
+export interface EvolveRoundProgressInfo {
+  round: number;
+  totalRounds: number;
+  phase: string;
+  score?: number;
+  delta?: number;
+  accepted?: boolean;
+  costUSD?: number;
+  error?: string;
+}
+
 interface EvolveOptions {
   skillPath: string;
   samplesPath: string;
@@ -90,8 +105,8 @@ interface EvolveOptions {
   executorName?: string;
   concurrency?: number;
   timeoutMs?: number;
-  onProgress?: ((progress: any) => void) | null;
-  onRoundProgress?: ((progress: any) => void) | null;
+  onProgress?: ((progress: EvolveProgressInfo) => void) | null;
+  onRoundProgress?: ((progress: EvolveRoundProgressInfo) => void) | null;
 }
 
 interface TrajectoryEntry {
@@ -102,7 +117,7 @@ interface TrajectoryEntry {
   costUSD: number;
 }
 
-interface EvolveResult {
+export interface EvolveResult {
   startScore: number;
   finalScore: number;
   bestRound: number;
@@ -241,7 +256,7 @@ interface EvaluateOptions {
   executorName: string;
   concurrency: number;
   timeoutMs?: number;
-  onProgress: ((progress: any) => void) | null;
+  onProgress: ((progress: EvolveProgressInfo) => void) | null;
 }
 
 async function evaluate(skillFilePath: string, { samplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, onProgress }: EvaluateOptions): Promise<Report> {

@@ -2,7 +2,7 @@
  * Auto-analysis: detect patterns and generate insights from evaluation results.
  */
 
-import type { Report, ResultEntry, Insight, AnalysisResult, VariantSummary } from './types.js';
+import type { Report, ResultEntry, Insight, AnalysisResult } from './types.js';
 
 /**
  * Analyze an evaluation report and produce insights + suggestions.

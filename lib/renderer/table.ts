@@ -1,8 +1,8 @@
 import { e, fmtNum, delta } from './helpers.js';
 import { t } from './i18n.js';
-import type { Lang, ResultEntry, Report } from '../types.js';
+import type { Lang, ResultEntry } from '../types.js';
 
-export function renderSampleTable(variants: string[], results: ResultEntry[], report: { meta: { variants: string[] } }, lang: Lang): string {
+export function renderSampleTable(variants: string[], results: ResultEntry[], lang: Lang): string {
   const headerCols = variants.map((v) =>
     `<th>${e(v)} <span data-i18n="scoreCol">${t('scoreCol', lang)}</span></th><th>${e(v)} <span data-i18n="tokensCol">${t('tokensCol', lang)}</span></th><th>${e(v)} <span data-i18n="msCol">${t('msCol', lang)}</span></th>`
   ).join('');

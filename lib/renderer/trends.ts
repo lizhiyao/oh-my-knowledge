@@ -1,6 +1,6 @@
-import { e, fmtCost, fmtLocalTime, COLORS } from './helpers.js';
+import { e, fmtCost, fmtLocalTime } from './helpers.js';
 import { t } from './i18n.js';
-import type { Lang, Report } from '../types.js';
+import type { Lang, Report, ReportMeta, VariantSummary } from '../types.js';
 
 interface ChartPoint {
   timestamp: string;
@@ -76,8 +76,8 @@ function renderChart(points: ChartPoint[]): string {
  */
 function renderTable(variantName: string, runs: Report[], lang: Lang): string {
   const rows = runs.map((r) => {
-    const s = r.summary?.[variantName] || {} as any;
-    const m = r.meta || {} as any;
+    const s: Partial<VariantSummary> = r.summary?.[variantName] || {};
+    const m: ReportMeta = r.meta;
     const hash: string = m.skillHashes?.[variantName] || '-';
     const git = m.gitInfo;
     const commitCell = git ? `${e(git.commitShort)}${git.dirty ? '*' : ''}` : '-';

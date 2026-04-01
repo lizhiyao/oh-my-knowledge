@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractWeakSamples, buildImprovementPrompt, evolveSkill } from '../lib/evolver.js';
+import type { Report } from '../lib/types.js';
+
+function toReport(value: unknown): Report {
+  return value as Report;
+}
 
 describe('extractWeakSamples', () => {
   const mockReport = {
@@ -12,25 +17,25 @@ describe('extractWeakSamples', () => {
   };
 
   it('returns samples sorted by score ascending', () => {
-    const weak = extractWeakSamples(mockReport as any, 'skill');
+    const weak = extractWeakSamples(toReport(mockReport), 'skill');
     assert.equal(weak[0].sample_id, 's002');
     assert.equal(weak[1].sample_id, 's003');
     assert.equal(weak[2].sample_id, 's001');
   });
 
   it('respects count limit', () => {
-    const weak = extractWeakSamples(mockReport as any, 'skill', 2);
+    const weak = extractWeakSamples(toReport(mockReport), 'skill', 2);
     assert.equal(weak.length, 2);
   });
 
   it('includes failed assertions', () => {
-    const weak = extractWeakSamples(mockReport as any, 'skill');
+    const weak = extractWeakSamples(toReport(mockReport), 'skill');
     assert.equal(weak[0].failedAssertions.length, 1);
     assert.ok(weak[0].failedAssertions[0].includes('contains'));
   });
 
   it('includes dimension scores', () => {
-    const weak = extractWeakSamples(mockReport as any, 'skill');
+    const weak = extractWeakSamples(toReport(mockReport), 'skill');
     const s003 = weak.find((s: { sample_id: string }) => s.sample_id === 's003');
     assert.equal(s003!.dimensions!.security, 3);
     assert.equal(s003!.dimensions!.actionability, 4);

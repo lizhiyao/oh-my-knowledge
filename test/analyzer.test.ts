@@ -1,11 +1,16 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { analyzeResults } from '../lib/analyzer.js';
+import type { Report } from '../lib/types.js';
+
+function toReport(value: unknown): Report {
+  return value as Report;
+}
 
 describe('analyzeResults', () => {
   it('returns empty insights for empty results', () => {
     const report = { meta: { variants: ['v1', 'v2'] }, results: [] };
-    const analysis = analyzeResults(report as any);
+    const analysis = analyzeResults(toReport(report));
     assert.equal(analysis.insights.length, 0);
     assert.equal(analysis.suggestions.length, 0);
   });
@@ -23,7 +28,7 @@ describe('analyzeResults', () => {
         },
       ],
     };
-    const analysis = analyzeResults(report as any);
+    const analysis = analyzeResults(toReport(report));
     const lowDisc = analysis.insights.find((i) => i.type === 'low_discrimination_all_passed');
     assert.ok(lowDisc);
     assert.equal(lowDisc!.severity, 'info');
@@ -42,7 +47,7 @@ describe('analyzeResults', () => {
         },
       ],
     };
-    const analysis = analyzeResults(report as any);
+    const analysis = analyzeResults(toReport(report));
     const uniform = analysis.insights.find((i) => i.type === 'uniform_scores');
     assert.ok(uniform);
   });
@@ -60,7 +65,7 @@ describe('analyzeResults', () => {
         },
       ],
     };
-    const analysis = analyzeResults(report as any);
+    const analysis = analyzeResults(toReport(report));
     const uniform = analysis.insights.find((i) => i.type === 'uniform_scores');
     assert.equal(uniform, undefined);
   });
@@ -78,7 +83,7 @@ describe('analyzeResults', () => {
         },
       ],
     };
-    const analysis = analyzeResults(report as any);
+    const analysis = analyzeResults(toReport(report));
     const allPass = analysis.insights.find((i) => i.type === 'all_pass');
     assert.ok(allPass);
     assert.equal(allPass!.severity, 'warning');
@@ -97,7 +102,7 @@ describe('analyzeResults', () => {
         },
       ],
     };
-    const analysis = analyzeResults(report as any);
+    const analysis = analyzeResults(toReport(report));
     const allFail = analysis.insights.find((i) => i.type === 'all_fail');
     assert.ok(allFail);
     assert.equal(allFail!.severity, 'error');
@@ -109,7 +114,7 @@ describe('analyzeResults', () => {
       results: [], // Need 2+ variants for analysis
     };
     // With < 2 variants, should return empty
-    const analysis = analyzeResults(report as any);
+    const analysis = analyzeResults(toReport(report));
     assert.equal(analysis.insights.length, 0);
   });
 
@@ -122,7 +127,7 @@ describe('analyzeResults', () => {
         { sample_id: 's003', variants: { v1: { costUSD: 0.05 }, v2: { costUSD: 0.05 } } },
       ],
     };
-    const analysis = analyzeResults(report as any);
+    const analysis = analyzeResults(toReport(report));
     const highCost = analysis.insights.find((i) => i.type === 'high_cost_sample');
     assert.ok(highCost);
     assert.ok((highCost!.details as Array<{ sample_id: string }>).some((d) => d.sample_id === 's003'));

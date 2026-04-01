@@ -1,7 +1,7 @@
-import { describe, it, mock, beforeEach } from 'node:test';
+import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { loadMcpConfig, resolveMcpUrls, stopAllServers } from '../lib/mcp-resolver.js';
-import { writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { McpServers } from '../lib/types.js';
@@ -101,7 +101,7 @@ describe('loadMcpConfig', () => {
 describe('resolveMcpUrls', () => {
   it('无 mcpServers 时直接返回，不修改 samples', async () => {
     const samples = [{ sample_id: 's1', prompt: 'hello https://docs.example.com/doc1' }];
-    await resolveMcpUrls(samples, null as any);
+    await resolveMcpUrls(samples, null);
     assert.equal(samples[0].prompt, 'hello https://docs.example.com/doc1');
   });
 

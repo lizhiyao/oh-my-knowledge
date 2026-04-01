@@ -1,7 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { runAssertions, grade, validateJsonSchema } from '../lib/grader.js';
-import type { ExecResult } from '../lib/types.js';
+import type { ExecResult, ExecutorFn } from '../lib/types.js';
+
+const unusedExecutor: ExecutorFn = async () => {
+  throw new Error('executor should not be called in this test');
+};
 
 describe('runAssertions', () => {
   it('contains: passes when substring is present', () => {
@@ -338,7 +342,7 @@ describe('grade', () => {
           { type: 'contains', value: 'parameterized', weight: 1 },
         ],
       },
-      executor: null as any, // no LLM calls
+      executor: unusedExecutor,
       judgeModel: 'haiku',
     });
     assert.equal(result.assertions!.passed, 2);
@@ -454,7 +458,7 @@ describe('grade', () => {
     const result = await grade({
       output: 'Some output',
       sample: { sample_id: 'test', prompt: 'Do something' },
-      executor: null as any,
+      executor: unusedExecutor,
       judgeModel: 'haiku',
     });
     assert.equal(result.compositeScore, 0);

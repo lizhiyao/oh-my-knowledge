@@ -35,7 +35,7 @@ interface RunConfig {
   mcpConfig: string | undefined;
   verbose: boolean | undefined;
   blind?: boolean | undefined;
-  onProgress?: ((info: any) => void) | null;
+  onProgress?: ((info: Record<string, unknown>) => void) | null;
 }
 
 interface ProgressInfo {
@@ -53,8 +53,6 @@ interface ProgressInfo {
   judgePhase?: string;
   judgeDim?: string;
 }
-
-type ProgressCallback = (info: ProgressInfo) => void;
 
 interface SkillProgressInfo {
   phase: string;
@@ -88,8 +86,24 @@ interface ReportServer {
   start: () => Promise<string>;
 }
 
-// EvolveResult is imported dynamically from evolver; use any to avoid type conflicts
-type EvolveResult = any;
+interface TrajectoryEntry {
+  round: number;
+  score: number;
+  delta: number;
+  accepted: boolean;
+  costUSD: number;
+}
+
+interface EvolveResult {
+  startScore: number;
+  finalScore: number;
+  bestRound: number;
+  totalRounds: number;
+  totalCostUSD: number;
+  trajectory: TrajectoryEntry[];
+  bestSkillPath: string;
+  allVersions: string[];
+}
 
 interface GenerateSamplesResult {
   samples: unknown[];
@@ -109,24 +123,24 @@ const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports
 
 // Shared CLI options for run/ci commands
 const RUN_OPTIONS: ParseArgsConfig['options'] = {
-  samples:       { type: 'string', default: 'eval-samples.json' },
-  'skill-dir':   { type: 'string', default: 'skills' },
-  variants:      { type: 'string' },
-  model:         { type: 'string', default: 'sonnet' },
+  samples: { type: 'string', default: 'eval-samples.json' },
+  'skill-dir': { type: 'string', default: 'skills' },
+  variants: { type: 'string' },
+  model: { type: 'string', default: 'sonnet' },
   'judge-model': { type: 'string', default: 'haiku' },
-  'output-dir':  { type: 'string', default: DEFAULT_REPORTS_DIR },
-  'no-judge':    { type: 'boolean', default: false },
-  'no-cache':    { type: 'boolean', default: false },
-  'dry-run':     { type: 'boolean', default: false },
-  concurrency:   { type: 'string', default: '1' },
-  timeout:       { type: 'string', default: '120' },
-  executor:      { type: 'string', default: 'claude' },
+  'output-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+  'no-judge': { type: 'boolean', default: false },
+  'no-cache': { type: 'boolean', default: false },
+  'dry-run': { type: 'boolean', default: false },
+  concurrency: { type: 'string', default: '1' },
+  timeout: { type: 'string', default: '120' },
+  executor: { type: 'string', default: 'claude' },
   'judge-executor': { type: 'string' },
-  each:          { type: 'boolean', default: false },
+  each: { type: 'boolean', default: false },
   'skip-preflight': { type: 'boolean', default: false },
-  'mcp-config':  { type: 'string' },
-  'no-serve':      { type: 'boolean', default: false },
-  verbose:        { type: 'boolean', default: false },
+  'mcp-config': { type: 'string' },
+  'no-serve': { type: 'boolean', default: false },
+  verbose: { type: 'boolean', default: false },
 };
 
 // ---------------------------------------------------------------------------
@@ -389,14 +403,14 @@ function defaultOnProgress({
 
 async function handleRun(argv: string[]): Promise<void> {
   const { values, config } = parseRunConfig(argv, {
-    blind:  { type: 'boolean', default: false },
+    blind: { type: 'boolean', default: false },
     repeat: { type: 'string', default: '1' },
   });
 
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./lib/runner.js');
 
   config.blind = values.blind as boolean | undefined;
-  config.onProgress = defaultOnProgress;
+  config.onProgress = defaultOnProgress as unknown as ((info: Record<string, unknown>) => void);
 
   try {
     // --each mode: evaluate each skill independently
@@ -426,7 +440,7 @@ async function handleRun(argv: string[]): Promise<void> {
           const { platform } = await import('node:os');
           const openCmd: string = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
           const { execFile: execFileCb } = await import('node:child_process');
-          execFileCb(openCmd, [reportUrl], () => {});
+          execFileCb(openCmd, [reportUrl], () => { });
         }
       }
       return;
@@ -473,7 +487,7 @@ async function handleRun(argv: string[]): Promise<void> {
         const { platform } = await import('node:os');
         const openCmd: string = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
         const { execFile: execFileCb } = await import('node:child_process');
-        execFileCb(openCmd, [reportUrl], () => {});
+        execFileCb(openCmd, [reportUrl], () => { });
       }
     }
   } catch (err: unknown) {
@@ -490,10 +504,10 @@ async function handleReport(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv,
     options: {
-      port:          { type: 'string', default: '7799' },
+      port: { type: 'string', default: '7799' },
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
-      export:        { type: 'string' },
-      dev:           { type: 'boolean', default: false },
+      export: { type: 'string' },
+      dev: { type: 'boolean', default: false },
     },
     strict: false,
   });
@@ -581,9 +595,9 @@ async function handleGenSamples(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv,
     options: {
-      each:        { type: 'boolean', default: false },
-      count:       { type: 'string', default: '5' },
-      model:       { type: 'string', default: 'sonnet' },
+      each: { type: 'boolean', default: false },
+      count: { type: 'string', default: '5' },
+      model: { type: 'string', default: 'sonnet' },
       'skill-dir': { type: 'string', default: 'skills' },
     },
     strict: false,
@@ -597,7 +611,6 @@ async function handleGenSamples(argv: string[]): Promise<void> {
 
   if (values.each) {
     // Batch mode: generate for all skills missing eval-samples
-    const { discoverVariants: discoverVariantsDynamic } = await import('./lib/runner.js');
     const skillDir: string = resolve(values['skill-dir'] as string);
     if (!existsSync(skillDir)) {
       console.error(`Skill directory not found: ${skillDir}`);
@@ -695,15 +708,15 @@ async function handleEvolve(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv,
     options: {
-      rounds:          { type: 'string', default: '5' },
-      target:          { type: 'string' },
-      samples:         { type: 'string', default: 'eval-samples.json' },
-      model:           { type: 'string', default: 'sonnet' },
-      'judge-model':   { type: 'string', default: 'haiku' },
+      rounds: { type: 'string', default: '5' },
+      target: { type: 'string' },
+      samples: { type: 'string', default: 'eval-samples.json' },
+      model: { type: 'string', default: 'sonnet' },
+      'judge-model': { type: 'string', default: 'haiku' },
       'improve-model': { type: 'string', default: 'sonnet' },
-      concurrency:     { type: 'string', default: '1' },
-      timeout:         { type: 'string', default: '120' },
-      executor:        { type: 'string', default: 'claude' },
+      concurrency: { type: 'string', default: '1' },
+      timeout: { type: 'string', default: '120' },
+      executor: { type: 'string', default: 'claude' },
     },
     strict: false,
     allowPositionals: true,
@@ -737,8 +750,8 @@ async function handleEvolve(argv: string[]): Promise<void> {
       executorName: values.executor as string,
       concurrency: Math.max(1, Number(values.concurrency) || 1),
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
-      onProgress: defaultOnProgress,
-      onRoundProgress({ round, totalRounds, phase, score, delta, accepted, costUSD, error }: RoundProgressInfo): void {
+      onProgress: defaultOnProgress as unknown as ((info: Record<string, unknown>) => void),
+      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, error }: RoundProgressInfo): void {
         if (phase === 'baseline') {
           process.stderr.write(`Round 0 (baseline): score=${score!.toFixed(2)} ($${costUSD!.toFixed(4)})\n`);
         } else if (phase === 'error') {
@@ -776,7 +789,7 @@ async function handleCi(argv: string[]): Promise<void> {
 
   const { runEvaluation } = await import('./lib/runner.js');
 
-  config.onProgress = defaultOnProgress;
+  config.onProgress = defaultOnProgress as unknown as ((info: Record<string, unknown>) => void);
 
   try {
     const { report } = (await runEvaluation(config)) as EvalResult;

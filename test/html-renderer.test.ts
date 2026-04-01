@@ -1,9 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { renderRunList, renderRunDetail } from '../lib/html-renderer.js';
-import type { Lang } from '../lib/types.js';
+import type { Lang, Report } from '../lib/types.js';
 
-const SAMPLE_REPORT: any = {
+const SAMPLE_REPORT: Report = {
   id: 'test-run-001',
   meta: {
     variants: ['v1', 'v2'],
@@ -14,6 +14,9 @@ const SAMPLE_REPORT: any = {
     taskCount: 4,
     totalCostUSD: 0.05,
     timestamp: '2026-03-25T10:00:00.000Z',
+    cliVersion: 'test',
+    nodeVersion: process.version,
+    skillHashes: { v1: 'hash-v1', v2: 'hash-v2' },
   },
   summary: {
     v1: {
@@ -22,6 +25,8 @@ const SAMPLE_REPORT: any = {
       avgAssertionScore: 4.2, avgLlmScore: 3.8, minLlmScore: 3, maxLlmScore: 4.5,
       avgDurationMs: 2000, avgInputTokens: 100, avgOutputTokens: 500, avgTotalTokens: 600,
       totalCostUSD: 0.025,
+      avgCostPerSample: 0.0125,
+      avgNumTurns: 1,
     },
     v2: {
       totalSamples: 2, successCount: 2, errorCount: 0, errorRate: 0,
@@ -29,6 +34,8 @@ const SAMPLE_REPORT: any = {
       avgAssertionScore: 5.0, avgLlmScore: 4.6, minLlmScore: 4, maxLlmScore: 5,
       avgDurationMs: 3000, avgInputTokens: 120, avgOutputTokens: 600, avgTotalTokens: 720,
       totalCostUSD: 0.025,
+      avgCostPerSample: 0.0125,
+      avgNumTurns: 1,
     },
   },
   results: [
@@ -36,26 +43,30 @@ const SAMPLE_REPORT: any = {
       sample_id: 's001',
       variants: {
         v1: {
-          ok: true, compositeScore: 4.0, durationMs: 2000, totalTokens: 600,
-          assertions: { passed: 2, total: 2, score: 5, details: [
-            { type: 'contains', value: 'SQL', weight: 1, passed: true },
-            { type: 'min_length', value: 50, weight: 1, passed: true },
-          ] },
+          ok: true, compositeScore: 4.0, durationMs: 2000, durationApiMs: 0, inputTokens: 100, outputTokens: 500, totalTokens: 600, cacheReadTokens: 0, cacheCreationTokens: 0, execCostUSD: 0.01, judgeCostUSD: 0.0025, costUSD: 0.0125, numTurns: 1, outputPreview: 'preview',
+          assertions: {
+            passed: 2, total: 2, score: 5, details: [
+              { type: 'contains', value: 'SQL', weight: 1, passed: true },
+              { type: 'min_length', value: 50, weight: 1, passed: true },
+            ]
+          },
           llmScore: 3, llmReason: 'Decent analysis',
         },
         v2: {
-          ok: true, compositeScore: 4.5, durationMs: 2500, totalTokens: 700,
-          assertions: { passed: 2, total: 2, score: 5, details: [
-            { type: 'contains', value: 'SQL', weight: 1, passed: true },
-            { type: 'min_length', value: 50, weight: 1, passed: true },
-          ] },
+          ok: true, compositeScore: 4.5, durationMs: 2500, durationApiMs: 0, inputTokens: 120, outputTokens: 580, totalTokens: 700, cacheReadTokens: 0, cacheCreationTokens: 0, execCostUSD: 0.01, judgeCostUSD: 0.0025, costUSD: 0.0125, numTurns: 1, outputPreview: 'preview',
+          assertions: {
+            passed: 2, total: 2, score: 5, details: [
+              { type: 'contains', value: 'SQL', weight: 1, passed: true },
+              { type: 'min_length', value: 50, weight: 1, passed: true },
+            ]
+          },
           llmScore: 4, llmReason: 'Thorough review',
         },
       },
     },
   ],
   analysis: {
-    insights: [{ type: 'uniform_scores', severity: 'info', message: 'Scores are similar' }],
+    insights: [{ type: 'uniform_scores', severity: 'info', message: 'Scores are similar', details: [] }],
     suggestions: ['Add harder tests'],
   },
 };

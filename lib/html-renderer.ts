@@ -9,7 +9,11 @@ import { renderSummaryCards } from './renderer/summary.js';
 import { renderAnalysis } from './renderer/analysis.js';
 import { renderSampleTable } from './renderer/table.js';
 import { renderTrendsBody } from './renderer/trends.js';
-import type { Report, Lang, VariantSummary, ResultEntry, AnalysisResult } from './types.js';
+import type { Report, Lang } from './types.js';
+
+type EachOverview = NonNullable<Report['overview']>;
+type EachOverviewSkill = EachOverview['skills'][number];
+type EachSkillReport = NonNullable<Report['skills']>[number];
 
 export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string {
   if (!runs || runs.length === 0) {
@@ -23,25 +27,25 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
   }
 
   const rows = runs.map((run) => {
-    const m = run.meta || {} as any;
+    const m = run.meta;
     const hasScores = Object.values(run.summary || {}).some((s) =>
       typeof s.avgCompositeScore === 'number' || typeof s.avgLlmScore === 'number'
     );
     const scoreCol = hasScores
       ? Object.entries(run.summary || {}).map(([v, s]) => {
-          const score = s.avgCompositeScore ?? s.avgLlmScore ?? null;
-          if (score == null) return `<span style="color:var(--text-muted)">${e(v)}: -</span>`;
-          const color = score >= 4 ? 'var(--green)' : score >= 3 ? 'var(--yellow)' : 'var(--red)';
-          const barW = Math.round((score / 5) * 100);
-          return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">` +
-            `<span title="${e(v)}" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">${e(v)}</span>` +
-            `<div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0">` +
-            `<div style="width:${barW}%;height:100%;background:${color};border-radius:3px"></div></div>` +
-            `<span style="font-size:12px;font-weight:600;color:${color};min-width:24px">${score}</span></div>`;
-        }).join('')
+        const score = s.avgCompositeScore ?? s.avgLlmScore ?? null;
+        if (score == null) return `<span style="color:var(--text-muted)">${e(v)}: -</span>`;
+        const color = score >= 4 ? 'var(--green)' : score >= 3 ? 'var(--yellow)' : 'var(--red)';
+        const barW = Math.round((score / 5) * 100);
+        return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">` +
+          `<span title="${e(v)}" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">${e(v)}</span>` +
+          `<div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0">` +
+          `<div style="width:${barW}%;height:100%;background:${color};border-radius:3px"></div></div>` +
+          `<span style="font-size:12px;font-weight:600;color:${color};min-width:24px">${score}</span></div>`;
+      }).join('')
       : '<div style="color:var(--text-faint);font-size:0.6875rem;text-align:center">no score</div>';
     return `<tr>
-      <td><a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e((m.variants || []).join(' vs '))}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : e(run.id)}</span></a></td>
+      <td><a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e((m.variants || []).join(' vs '))}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : e(run.id)}</span></a></td>
       <td>${e(m.model || '-')}</td>
       <td>${m.sampleCount || 0}</td>
       <td>${scoreCol}</td>
@@ -130,13 +134,13 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     `, lang);
   }
 
-  const m = report.meta || {} as any;
+  const m = report.meta;
   const variants = m.variants || [];
   const summary = report.summary || {};
   const results = report.results || [];
 
   const cards = renderSummaryCards(variants, summary, lang);
-  const sampleTable = renderSampleTable(variants, results, report, lang);
+  const sampleTable = renderSampleTable(variants, results, lang);
 
   return layout(`OMK Bench - ${report.id}`, `
     <main>
@@ -154,7 +158,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     <div style="margin:12px 0">
       <button onclick="document.getElementById('blind-reveal').style.display=document.getElementById('blind-reveal').style.display==='none'?'block':'none'" data-i18n="revealBlind">${t('revealBlind', lang)}</button>
       <div id="blind-reveal" style="display:none;margin-top:8px;padding:12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)" role="region" aria-label="Blind variant mapping">
-        ${Object.entries(m.blindMap || {}).map(([label, real]: [string, any]) => `<div style="font-size:13px;color:var(--text-secondary)"><strong>Variant ${e(label)}</strong> → ${e(real)}</div>`).join('')}
+        ${Object.entries(m.blindMap || {}).map(([label, real]) => `<div style="font-size:13px;color:var(--text-secondary)"><strong>Variant ${e(label)}</strong> → ${e(real)}</div>`).join('')}
       </div>
     </div>` : ''}
 
@@ -178,12 +182,12 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
     `, lang);
   }
 
-  const m = report.meta || {} as any;
-  const overview = report.overview || {} as any;
-  const skills = report.skills || [];
+  const m = report.meta;
+  const overview: EachOverview | null = report.overview || null;
+  const skills: EachSkillReport[] = report.skills || [];
 
   // Overview table
-  const overviewRows = (overview.skills || []).map((sk: any) => {
+  const overviewRows = (overview?.skills || []).map((sk: EachOverviewSkill) => {
     const bs = typeof sk.baselineScore === 'number' ? sk.baselineScore.toFixed(2) : '-';
     const ss = typeof sk.skillScore === 'number' ? sk.skillScore.toFixed(2) : '-';
     const imp = sk.improvement || '-';
@@ -201,7 +205,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
     const variants = ['baseline', 'skill'];
     const summary = sk.summary || {};
     const cards = renderSummaryCards(variants, summary, lang);
-    const sampleTable = renderSampleTable(variants, sk.results, { meta: { variants } } as any, lang);
+    const sampleTable = renderSampleTable(variants, sk.results, lang);
 
     return `
       <section id="skill-${e(sk.name)}" style="margin-top:36px;padding-top:20px;border-top:1px solid var(--border)">
@@ -226,7 +230,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
 
     <section>
     <h2>${t('eachOverview', lang)}</h2>
-    <p style="font-size:13px;color:var(--text-muted)">${overview.totalSkills || 0} ${t('eachSkills', lang)} &middot; ${overview.totalSamples || 0} ${t('eachSamples', lang)} &middot; ${fmtCost(overview.totalCostUSD)}</p>
+    <p style="font-size:13px;color:var(--text-muted)">${overview?.totalSkills || 0} ${t('eachSkills', lang)} &middot; ${overview?.totalSamples || 0} ${t('eachSamples', lang)} &middot; ${fmtCost(overview?.totalCostUSD || 0)}</p>
     <div class="table-wrap">
     <table>
       <thead><tr>
