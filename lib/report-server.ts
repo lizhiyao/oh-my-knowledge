@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { renderRunList, renderRunDetail, renderEachRunDetail, renderTrendsPage } from './html-renderer.js';
 import { createFileStore } from './report-store.js';
-import type { ReportStore, ReportMeta, VariantSummary } from './types.js';
+import { queryRun, queryRunList, queryTrend } from './query-reports.js';
+import type { ReportStore } from './types.js';
 import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;
@@ -20,17 +21,6 @@ interface ReportServer {
   start(): Promise<string>;
   stop(): Promise<void>;
   getUrl(): string | null;
-}
-
-interface TrendPoint {
-  reportId: string;
-  timestamp: string;
-  avgCompositeScore: number | null;
-  avgNumTurns: number | null;
-  avgCostPerSample: number | null;
-  skillHash: string | null;
-  gitCommitShort: string | null;
-  gitBranch: string | null;
 }
 
 function getErrorMessage(err: unknown): string {
@@ -64,7 +54,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, sto
       }
 
       if (path === '/api/runs') {
-        const runs = (await reportStore.list()).map((r) => ({ id: r.id, meta: r.meta, summary: r.summary }));
+        const runs = await queryRunList(reportStore);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(runs));
         return;
@@ -86,7 +76,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, sto
           return;
         }
 
-        const run = await reportStore.get(id);
+        const run = await queryRun(reportStore, id);
         if (!run) {
           res.writeHead(404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'run not found' }));
@@ -101,23 +91,9 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, sto
       const trendsApiMatch = path.match(/^\/api\/trends\/(.+)$/);
       if (trendsApiMatch) {
         const variantName = decodeURIComponent(trendsApiMatch[1]);
-        const runs = await reportStore.findByVariant(variantName);
-        const points: TrendPoint[] = runs.map((r) => {
-          const s: Partial<VariantSummary> = r.summary?.[variantName] || {};
-          const meta: ReportMeta = r.meta;
-          return {
-            reportId: r.id,
-            timestamp: meta.timestamp,
-            avgCompositeScore: s.avgCompositeScore ?? null,
-            avgNumTurns: s.avgNumTurns ?? null,
-            avgCostPerSample: s.avgCostPerSample ?? null,
-            skillHash: meta.skillHashes?.[variantName] || null,
-            gitCommitShort: meta.gitInfo?.commitShort || null,
-            gitBranch: meta.gitInfo?.branch || null,
-          };
-        });
+        const trend = await queryTrend(reportStore, variantName);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ variant: variantName, points }));
+        res.end(JSON.stringify({ variant: trend.variant, points: trend.points }));
         return;
       }
 
@@ -125,15 +101,15 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, sto
       const trendsPageMatch = path.match(/^\/trends\/(.+)$/);
       if (trendsPageMatch) {
         const variantName = decodeURIComponent(trendsPageMatch[1]);
-        const runs = await reportStore.findByVariant(variantName);
+        const trend = await queryTrend(reportStore, variantName);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderTrendsPage(variantName, runs));
+        res.end(renderTrendsPage(variantName, trend.runs));
         return;
       }
 
       const runPageMatch = path.match(/^\/run\/(.+)$/);
       if (runPageMatch) {
-        const run = await reportStore.get(decodeURIComponent(runPageMatch[1]));
+        const run = await queryRun(reportStore, decodeURIComponent(runPageMatch[1]));
         res.writeHead(run ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(run?.each ? renderEachRunDetail(run) : renderRunDetail(run));
         return;
