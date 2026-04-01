@@ -9,6 +9,7 @@ import { buildVariantResult, buildVariantSummary } from './schema.js';
 import { grade } from './grader.js';
 
 import type {
+  EvaluandSpec,
   ExecResult,
   ExecutorFn,
   Sample,
@@ -186,15 +187,19 @@ interface AggregateReportOptions {
   tasks: Task[];
   results: Record<string, Record<string, VariantResult>>;
   totalCostUSD: number;
-  skills: Record<string, string | null>;
+  evaluands: EvaluandSpec[];
 }
 
-export function aggregateReport({ runId, variants, model, judgeModel, noJudge, executorName, samples, tasks, results, totalCostUSD, skills }: AggregateReportOptions): Report {
+export function aggregateReport({ runId, variants, model, judgeModel, noJudge, executorName, samples, tasks, results, totalCostUSD, evaluands }: AggregateReportOptions): Report {
   const summary: Record<string, VariantSummary> = {};
   for (const variant of variants) {
     const entries = Object.values(results).map((r) => r[variant]).filter(Boolean);
     summary[variant] = buildVariantSummary(entries);
   }
+
+  const evaluandHashes = Object.fromEntries(
+    evaluands.map((evaluand) => [evaluand.name, evaluand.content ? hashString(evaluand.content) : 'no-skill']),
+  );
 
   return {
     id: runId,
@@ -209,9 +214,8 @@ export function aggregateReport({ runId, variants, model, judgeModel, noJudge, e
       timestamp: new Date().toISOString(),
       cliVersion: PKG.version,
       nodeVersion: process.version,
-      skillHashes: Object.fromEntries(
-        Object.entries(skills).map(([name, content]) => [name, content ? hashString(content) : 'no-skill']),
-      ),
+      skillHashes: evaluandHashes,
+      evaluandHashes,
       gitInfo: getGitInfo(),
     },
     summary,

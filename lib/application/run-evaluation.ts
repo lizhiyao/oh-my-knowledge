@@ -5,8 +5,8 @@ import { confidenceInterval, tTest } from '../statistics.js';
 import { resolveUrls } from '../url-fetcher.js';
 import { loadMcpConfig, resolveMcpUrls, stopAllServers } from '../mcp-resolver.js';
 import { loadSamples } from '../load-samples.js';
-import { discoverEachSkills, loadSkills } from '../skill-loader.js';
-import { buildTasks } from '../task-planner.js';
+import { discoverEachSkills, resolveEvaluands } from '../skill-loader.js';
+import { buildTasksFromEvaluands } from '../task-planner.js';
 import {
   DEFAULT_OUTPUT_DIR,
   executeTasks,
@@ -19,6 +19,7 @@ import {
 
 import type {
   Report,
+  EvaluandSpec,
   VariantResult,
   VariantSummary,
   VarianceData,
@@ -53,6 +54,7 @@ export interface RunEvaluationOptions {
   samplesPath: string;
   skillDir: string;
   variants?: string[];
+  evaluands?: EvaluandSpec[];
   model?: string;
   judgeModel?: string;
   outputDir?: string | null;
@@ -74,6 +76,7 @@ export async function runEvaluation({
   samplesPath,
   skillDir,
   variants = ['v1', 'v2'],
+  evaluands,
   model = DEFAULT_MODEL,
   judgeModel = JUDGE_MODEL,
   outputDir = DEFAULT_OUTPUT_DIR,
@@ -91,7 +94,7 @@ export async function runEvaluation({
   verbose = false,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const samples = loadSamples(samplesPath);
-  const skills = dryRun ? {} : loadSkills(resolve(skillDir), variants);
+  const resolvedEvaluands = evaluands || resolveEvaluands(resolve(skillDir), variants);
 
   if (!dryRun) {
     const mcpServers: McpServers | null = loadMcpConfig(mcpConfig);
@@ -101,7 +104,7 @@ export async function runEvaluation({
     await resolveUrls(samples);
   }
 
-  if (variants.length === 0) {
+  if (resolvedEvaluands.length === 0) {
     throw new Error(
       `未发现任何 skill 变体。请检查：\n`
       + `  1. skill 目录是否存在：${resolve(skillDir)}\n`
@@ -109,7 +112,8 @@ export async function runEvaluation({
       + `  3. 或通过 --variants 显式指定变体`,
     );
   }
-  const tasks = buildTasks(samples, variants, skills);
+  const tasks = buildTasksFromEvaluands(samples, resolvedEvaluands);
+  const variantNames = resolvedEvaluands.map((evaluand) => evaluand.name);
 
   if (dryRun) {
     return {
@@ -117,7 +121,7 @@ export async function runEvaluation({
         dryRun: true,
         model,
         judgeModel,
-        variants,
+        variants: variantNames,
         executor: executorName,
         samplesPath,
         skillDir,
@@ -159,12 +163,12 @@ export async function runEvaluation({
     onProgress,
   });
 
-  const runId = generateRunId(variants);
-  const report = aggregateReport({ runId, variants, model, judgeModel, noJudge, executorName, samples, tasks, results, totalCostUSD, skills });
+  const runId = generateRunId(variantNames);
+  const report = aggregateReport({ runId, variants: variantNames, model, judgeModel, noJudge, executorName, samples, tasks, results, totalCostUSD, evaluands: resolvedEvaluands });
   report.analysis = analyzeResults(report);
 
   if (blind) {
-    applyBlindMode(report, variants, `${variants.join(',')}:${samplesPath}`);
+    applyBlindMode(report, variantNames, `${variantNames.join(',')}:${samplesPath}`);
   }
 
   await stopAllServers();
@@ -293,10 +297,14 @@ export async function runEachEvaluation({
       onSkillProgress({ phase: 'start', skill: entry.name, current: i + 1, total: skillEntries.length });
     }
 
+    const skillEvaluands = resolveEvaluands(resolve(skillDir), ['baseline', entry.skillPath]).map((evaluand) => (
+      evaluand.name === entry.skillPath ? { ...evaluand, name: 'skill' } : evaluand
+    ));
+
     const { report } = await runEvaluation({
       samplesPath: entry.samplesPath,
       skillDir,
-      variants: ['baseline', entry.skillPath],
+      evaluands: skillEvaluands,
       model,
       judgeModel,
       outputDir: null,
@@ -311,7 +319,7 @@ export async function runEachEvaluation({
       verbose,
     });
 
-    const variantKey = entry.skillPath;
+    const variantKey = 'skill';
     const fullReport = report as Report;
     const skillSummary = fullReport.summary[variantKey] || {};
     const skillHash = fullReport.meta.skillHashes?.[variantKey] || '';

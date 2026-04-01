@@ -49,9 +49,22 @@ export interface Sample {
   [key: string]: unknown;  // allow extra fields like mutated prompt/context from URL resolution
 }
 
+export type EvaluandKind = 'baseline' | 'skill' | 'prompt' | 'agent' | 'workflow';
+
+export interface EvaluandSpec {
+  name: string;
+  kind: EvaluandKind;
+  source: 'baseline' | 'variant-name' | 'file-path' | 'git' | 'inline' | 'custom';
+  content: string | null;
+  locator?: string;
+  ref?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface Task {
   sample_id: string;
   variant: string;
+  evaluand: EvaluandSpec;
   prompt: string;
   rubric: string | null;
   assertions: Assertion[] | null;
@@ -156,6 +169,7 @@ export interface ReportMeta {
   cliVersion: string;
   nodeVersion: string;
   skillHashes: Record<string, string>;
+  evaluandHashes?: Record<string, string>;
   gitInfo?: GitInfo | null;
   blind?: boolean;
   blindMap?: Record<string, string>;

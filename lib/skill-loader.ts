@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import type { EvaluandSpec } from './types.js';
 
 function gitShowFile(ref: string, filePath: string): string | null {
   try {
@@ -83,12 +84,21 @@ export function discoverEachSkills(skillDir: string): Array<{ name: string; skil
 }
 
 export function loadSkills(skillDir: string, variants: string[]): Record<string, string | null> {
-  const skills: Record<string, string | null> = {};
+  return Object.fromEntries(resolveEvaluands(skillDir, variants).map((evaluand) => [evaluand.name, evaluand.content]));
+}
+
+export function resolveEvaluands(skillDir: string, variants: string[]): EvaluandSpec[] {
+  const evaluands: EvaluandSpec[] = [];
   let gitRelDir: string | null = null;
 
   for (const variant of variants) {
     if (variant === 'baseline') {
-      skills[variant] = null;
+      evaluands.push({
+        name: variant,
+        kind: 'baseline',
+        source: 'baseline',
+        content: null,
+      });
       continue;
     }
 
@@ -109,7 +119,14 @@ export function loadSkills(skillDir: string, variants: string[]): Record<string,
       if (!content) {
         throw new Error(`skill not found in git ${ref}: ${name}.md or ${name}/SKILL.md`);
       }
-      skills[variant] = content;
+      evaluands.push({
+        name: variant,
+        kind: 'skill',
+        source: 'git',
+        content,
+        locator: name,
+        ref,
+      });
       continue;
     }
 
@@ -118,20 +135,38 @@ export function loadSkills(skillDir: string, variants: string[]): Record<string,
       if (!existsSync(filePath)) {
         throw new Error(`skill file not found: ${filePath}`);
       }
-      skills[variant] = readFileSync(filePath, 'utf-8').trim();
+      evaluands.push({
+        name: variant,
+        kind: 'skill',
+        source: 'file-path',
+        content: readFileSync(filePath, 'utf-8').trim(),
+        locator: filePath,
+      });
       continue;
     }
 
     const mdPath = join(skillDir, `${variant}.md`);
     const dirSkillPath = join(skillDir, variant, 'SKILL.md');
     if (existsSync(mdPath)) {
-      skills[variant] = readFileSync(mdPath, 'utf-8').trim();
+      evaluands.push({
+        name: variant,
+        kind: 'skill',
+        source: 'variant-name',
+        content: readFileSync(mdPath, 'utf-8').trim(),
+        locator: mdPath,
+      });
     } else if (existsSync(dirSkillPath)) {
-      skills[variant] = readFileSync(dirSkillPath, 'utf-8').trim();
+      evaluands.push({
+        name: variant,
+        kind: 'skill',
+        source: 'variant-name',
+        content: readFileSync(dirSkillPath, 'utf-8').trim(),
+        locator: dirSkillPath,
+      });
     } else {
       throw new Error(`skill not found: ${mdPath} or ${dirSkillPath}`);
     }
   }
 
-  return skills;
+  return evaluands;
 }
