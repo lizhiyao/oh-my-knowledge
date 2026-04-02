@@ -48,7 +48,8 @@ omk bench run
 |------|------|
 | **18 种断言** | 包含子串、正则、JSON Schema、语义相似度、自定义函数等 |
 | **四维评估** | 质量、成本、效率、稳定性四个维度对比 |
-| **多执行器** | 支持 Claude / OpenAI / Gemini CLI |
+| **多执行器** | 支持 Claude CLI / Claude SDK / OpenAI / Gemini 及自定义命令 |
+| **MCP URL 获取** | 通过 MCP Server 获取私有 URL 内容（如文档） |
 | **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
 | **并行执行** | `--concurrency N` 并行 N 个任务 |
 | **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
@@ -67,14 +68,21 @@ eval-samples.json       skills/
        └────────┬───────────┘
                 │
     ┌───────────▼───────────┐
+    │  URL 内容获取          │
+    │  MCP Server → HTTP    │
+    │  (docs等私有文档)       │
+    └───────────┬───────────┘
+                │
+    ┌───────────▼───────────┐
     │  交错调度 + 并发执行    │
     │  s1-v1 → s1-v2 → ...  │
     └───────────┬───────────┘
                 │
     ┌───────────▼───────────┐
     │      执行器             │
-    │  claude / openai /     │
-    │  gemini               │
+    │  claude / claude-sdk / │
+    │  openai / gemini /     │
+    │  anthropic-api / 自定义 │
     └───────────┬───────────┘
                 │
     ┌───────────▼───────────┐
@@ -148,7 +156,31 @@ eval-samples.json       skills/
 }
 ```
 
-运行时，URL 会被替换为实际文档内容。如果 URL 需要认证访问，请确保命令行环境已配置好网络访问（如 VPN、代理、cookie 等）。抓取失败时会显示具体 URL 和解决方案，评测终止。
+运行时，URL 会被替换为实际文档内容。获取顺序：先通过 MCP Server 获取匹配的 URL（如私有docs），再通过 HTTP 获取剩余 URL。MCP 已成功的 URL 不会重复 HTTP 抓取。
+
+**私有 URL（如文档）**：在项目目录放一个 `.mcp.json` 配置文件，或通过 `--mcp-config` 指定路径：
+
+```json
+{
+  "mcpServers": {
+    "yuque": {
+      "command": "~/./",
+      "args": ["-t", "STREAMABLE_HTTP", "https://mcpgw.../example-mcp-server"],
+      "urlPatterns": ["docs.example.com"],
+      "fetchTool": {
+        "name": "fetch_doc",
+        "urlTransform": {
+          "regex": "yuque\\.antfin\\.com/([^/]+/[^/]+)/([^/?#]+)",
+          "params": { "namespace": "$1", "slug": "$2" }
+        },
+        "contentExtract": "data.body"
+      }
+    }
+  }
+}
+```
+
+**公网 URL**：直接 HTTP 获取，如果需要认证请确保命令行环境已配置好网络访问（VPN、代理等）。
 
 ### 评分策略
 
@@ -237,6 +269,11 @@ omk bench run [选项]
   --timeout <秒>         单个任务的执行器超时时间（默认：120）
   --repeat <n>           重复 N 次做方差分析（默认：1）
   --executor <名称>      执行器（默认：claude），支持自定义命令
+  --skip-preflight       跳过评测前的模型连通性检查
+  --mcp-config <路径>    MCP 配置文件，用于通过 MCP Server 获取私有 URL 内容
+                         （默认：当前目录的 .mcp.json）
+  --no-serve             评测完成后不自动启动报告服务
+  --verbose              打印每个样本的详细执行结果（耗时、tokens、输出预览）
   --each                 批量评测：每个 skill 独立和 baseline 对比
                          需要每个 skill 配对 {name}.eval-samples.json
 ```
@@ -342,6 +379,7 @@ omk bench init [目录]    # 生成评测项目脚手架
 | 执行器 | 适用场景 | 说明 |
 |--------|----------|------|
 | `claude` | 默认 | 通过 `claude -p` 调用 Claude CLI |
+| `claude-sdk` | 结构化输出 | 通过 Claude Agent SDK 调用，无 stdout 解析，避免 buffer 截断 |
 | `openai` | 跨厂商对比 | 通过 `openai api` CLI 调用 |
 | `gemini` | 跨厂商对比 | 通过 `gemini` CLI 调用 |
 | `anthropic-api` | 无需 CLI | 直接调用 Anthropic HTTP API（需 `ANTHROPIC_API_KEY`） |
@@ -408,6 +446,7 @@ omk bench run --variants ./old-skill.md,./new-skill.md
 
 **前置要求：**
 - **claude**：安装 [Claude Code](https://claude.ai/code) 并认证
+- **claude-sdk**：安装 [Claude Code](https://claude.ai/code) 并认证（使用 Agent SDK，无需 CLI stdout 解析）
 - **anthropic-api**：设置 `ANTHROPIC_API_KEY` 环境变量
 - **openai**：`pip install openai` 并设置 `OPENAI_API_KEY`
 - **openai-api**：设置 `OPENAI_API_KEY` 环境变量
