@@ -117,7 +117,7 @@ export function resolveEvaluands(skillDir: string, variants: string[]): Evaluand
       const content = gitShowFile(ref, join(gitRelDir, `${name}.md`))
         || gitShowFile(ref, join(gitRelDir, name, 'SKILL.md'));
       if (!content) {
-        throw new Error(`skill not found in git ${ref}: ${name}.md or ${name}/SKILL.md`);
+        throw new Error(`skill 在 git ${ref} 中未找到: ${name}.md 或 ${name}/SKILL.md`);
       }
       evaluands.push({
         name: variant,
@@ -133,7 +133,7 @@ export function resolveEvaluands(skillDir: string, variants: string[]): Evaluand
     if (variant.includes('/')) {
       const filePath = resolve(variant);
       if (!existsSync(filePath)) {
-        throw new Error(`skill file not found: ${filePath}`);
+        throw new Error(`skill 文件未找到: ${filePath}`);
       }
       evaluands.push({
         name: variant,
@@ -164,7 +164,7 @@ export function resolveEvaluands(skillDir: string, variants: string[]): Evaluand
         locator: dirSkillPath,
       });
     } else {
-      throw new Error(`skill not found: ${mdPath} or ${dirSkillPath}`);
+      throw new Error(`skill 未找到: ${mdPath} 或 ${dirSkillPath}`);
     }
   }
 

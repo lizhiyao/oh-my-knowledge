@@ -142,7 +142,7 @@ describe('runEvaluation', () => {
         skillDir: SKILL_DIR,
         variants: ['v1', 'v99_nonexistent'],
       }),
-      /skill not found/,
+      /skill 未找到/,
     );
   });
 
@@ -182,7 +182,7 @@ describe('runEvaluation', () => {
           skillDir: SKILL_DIR,
           variants: ['v1', 'v2'],
         }),
-        /missing required field: sample_id/,
+        /缺少必填字段: sample_id/,
       );
     } finally {
       try { unlinkSync(tmpSamples); } catch { /* ignore */ }
@@ -279,7 +279,7 @@ describe('git: variant', () => {
   it('loadSkills: git:name throws on missing skill', () => {
     assert.throws(
       () => loadSkills(SKILL_DIR, ['git:nonexistent']),
-      /skill not found in git HEAD/,
+      /skill 在 git HEAD 中未找到/,
     );
   });
 
@@ -321,7 +321,7 @@ describe('file path variant', () => {
   it('loadSkills: throws on missing file path', () => {
     assert.throws(
       () => loadSkills(SKILL_DIR, ['/nonexistent/skill.md']),
-      /skill file not found/,
+      /skill 文件未找到/,
     );
   });
 

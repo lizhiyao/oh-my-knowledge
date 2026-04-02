@@ -38,7 +38,7 @@ import type {
   ExecutorFn,
   JobStore,
 } from '../types.js';
-import type { ProgressCallback, PersistableReport } from '../evaluation-core.js';
+import type { ProgressCallback } from '../evaluation-core.js';
 
 interface DryRunTask {
   sample_id: string;
@@ -50,15 +50,18 @@ interface DryRunTask {
   hasSystem: boolean;
 }
 
-export interface DryRunReport {
+interface DryRunBase {
   dryRun: true;
   model: string;
   judgeModel: string;
-  variants: string[];
   executor: string;
-  samplesPath: string;
   skillDir: string;
   totalTasks: number;
+}
+
+export interface DryRunReport extends DryRunBase {
+  variants: string[];
+  samplesPath: string;
   tasks: DryRunTask[];
 }
 
@@ -272,15 +275,9 @@ interface DryRunEachSkill {
   taskCount: number;
 }
 
-export interface DryRunEachReport {
-  dryRun: true;
+export interface DryRunEachReport extends DryRunBase {
   each: true;
-  model: string;
-  judgeModel: string;
-  executor: string;
-  skillDir: string;
   totalSkills: number;
-  totalTasks: number;
   skills: DryRunEachSkill[];
 }
 
@@ -319,10 +316,7 @@ interface SkillResult {
   skillHash: string;
   samplesPath: string;
   sampleCount: number;
-  summary: {
-    baseline: VariantSummary | Record<string, never>;
-    skill: VariantSummary | Record<string, never>;
-  };
+  summary: Record<string, VariantSummary>;
   results: Array<{
     sample_id: string;
     variants: {
@@ -356,7 +350,7 @@ export async function runEachEvaluation({
 }: RunEachEvaluationOptions): Promise<{ report: Report | DryRunEachReport; filePath: string | null }> {
   const skillEntries = discoverEachSkills(resolve(skillDir));
   if (skillEntries.length === 0) {
-    throw new Error(`No skills with paired eval-samples found in: ${skillDir}`);
+    throw new Error(`未发现带配对 eval-samples 的 skill：${skillDir}`);
   }
 
   if (dryRun) {
@@ -430,8 +424,8 @@ export async function runEachEvaluation({
       samplesPath: entry.samplesPath,
       sampleCount: fullReport.meta.sampleCount,
       summary: {
-        baseline: fullReport.summary.baseline || {},
-        skill: skillSummary,
+        baseline: fullReport.summary.baseline || ({} as VariantSummary),
+        skill: skillSummary as VariantSummary,
       },
       results: fullReport.results.map((result) => ({
         sample_id: result.sample_id,
@@ -454,14 +448,16 @@ export async function runEachEvaluation({
     totalSamples: skillResults.reduce((sum, skill) => sum + skill.sampleCount, 0),
     totalCostUSD: Number(totalCostUSD.toFixed(6)),
     skills: skillResults.map((skill) => {
-      const baselineScore = (skill.summary.baseline as VariantSummary)?.avgCompositeScore ?? (skill.summary.baseline as VariantSummary)?.avgLlmScore ?? null;
-      const skillScore = (skill.summary.skill as VariantSummary)?.avgCompositeScore ?? (skill.summary.skill as VariantSummary)?.avgLlmScore ?? null;
+      const bs = skill.summary.baseline;
+      const ss = skill.summary.skill;
+      const baselineScore = bs?.avgCompositeScore ?? bs?.avgLlmScore ?? null;
+      const skillScore = ss?.avgCompositeScore ?? ss?.avgLlmScore ?? null;
       let improvement: string | null = null;
       if (typeof baselineScore === 'number' && typeof skillScore === 'number' && baselineScore > 0) {
         improvement = `${((skillScore - baselineScore) / baselineScore * 100).toFixed(0)}%`;
         if (skillScore >= baselineScore) improvement = `+${improvement}`;
       }
-      return { name: skill.name, baselineScore, skillScore, improvement };
+      return { name: skill.name, baselineScore, skillScore, improvement: improvement ?? '-' };
     }),
   };
 
@@ -503,19 +499,31 @@ export async function runEachEvaluation({
     startedAt,
     finishedAt,
   });
-  const combinedReport: PersistableReport & Record<string, unknown> = {
+  const allVariantNames = skillEntries.map((entry) => entry.name);
+  const totalSampleCount = skillResults.reduce((sum, skill) => sum + skill.sampleCount, 0);
+  const combinedReport: Report = {
     id: runId,
     each: true,
     meta: {
+      variants: allVariantNames,
       model,
       judgeModel: noJudge ? null : judgeModel,
       executor: executorName,
+      sampleCount: totalSampleCount,
+      taskCount: totalSampleCount * 2, // baseline + skill per sample
       totalCostUSD: Number(totalCostUSD.toFixed(6)),
       timestamp: new Date().toISOString(),
+      cliVersion: '',  // populated by individual runs
+      nodeVersion: process.version,
+      skillHashes: Object.fromEntries(
+        skillResults.map((skill) => [skill.name, skill.skillHash || 'no-skill']),
+      ),
       request,
       run,
       job,
     },
+    summary: {},
+    results: [],
     overview,
     skills: skillResults,
   };
@@ -523,7 +531,7 @@ export async function runEachEvaluation({
   const filePath = persistReport(combinedReport, outputDir);
   const resolvedJobStore = persistJob ? (jobStore ?? createFileJobStore(DEFAULT_JOBS_DIR)) : null;
   if (resolvedJobStore) await resolvedJobStore.save(job.jobId, job);
-  return { report: combinedReport as unknown as Report, filePath };
+  return { report: combinedReport, filePath };
 }
 
 export interface RunMultipleOptions extends RunEvaluationOptions {
@@ -533,9 +541,16 @@ export interface RunMultipleOptions extends RunEvaluationOptions {
 
 export async function runMultiple({ repeat = 1, onRepeatProgress, ...config }: RunMultipleOptions): Promise<{ report: Report; aggregated: VarianceData | null; filePath: string | null }> {
   const runs: Report[] = [];
+  const savedOutputDir = config.outputDir;
   for (let i = 0; i < repeat; i++) {
     if (onRepeatProgress) onRepeatProgress({ run: i + 1, total: repeat });
-    const { report } = await runEvaluation(config);
+    // Only persist the last run's report; intermediate runs skip persistence and job tracking
+    const isLast = i === repeat - 1;
+    const { report } = await runEvaluation({
+      ...config,
+      outputDir: isLast ? savedOutputDir : null,
+      persistJob: isLast,
+    });
     runs.push(report as Report);
   }
 

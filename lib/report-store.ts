@@ -8,21 +8,22 @@ import { readdir, readFile, writeFile, unlink, access, mkdir, rename } from 'nod
 import { join } from 'node:path';
 import type { Report, ReportStore } from './types.js';
 
-// Per-id in-memory mutex for safe read-modify-write
-const locks = new Map<string, Promise<unknown>>();
+// Per-id in-memory mutex for safe read-modify-write.
+// Uses a queue to avoid the race window between checking and acquiring the lock.
+const locks = new Map<string, Promise<void>>();
 
 async function withLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
-  while (locks.get(id)) {
-    await locks.get(id);
-  }
-  let resolve!: () => void;
-  const promise = new Promise<void>((r) => { resolve = r; });
-  locks.set(id, promise);
+  // Chain onto any existing lock for this id, so requests are serialized
+  const prev = locks.get(id) ?? Promise.resolve();
+  let releaseLock!: () => void;
+  const next = new Promise<void>((r) => { releaseLock = r; });
+  locks.set(id, next);
+  await prev;
   try {
     return await fn();
   } finally {
     locks.delete(id);
-    resolve();
+    releaseLock();
   }
 }
 

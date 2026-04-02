@@ -10,12 +10,12 @@ export function loadSamples(samplesPath: string): Sample[] {
     : JSON.parse(rawContent) as Sample[];
 
   if (!Array.isArray(samples) || samples.length === 0) {
-    throw new Error(`invalid samples file: ${samplesPath}`);
+    throw new Error(`无效的样本文件: ${samplesPath}`);
   }
 
   for (const [i, sample] of samples.entries()) {
-    if (!sample.sample_id) throw new Error(`samples[${i}] missing required field: sample_id`);
-    if (!sample.prompt) throw new Error(`samples[${i}] (${sample.sample_id}) missing required field: prompt`);
+    if (!sample.sample_id) throw new Error(`samples[${i}] 缺少必填字段: sample_id`);
+    if (!sample.prompt) throw new Error(`samples[${i}] (${sample.sample_id}) 缺少必填字段: prompt`);
   }
 
   return samples;

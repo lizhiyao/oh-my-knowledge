@@ -26,7 +26,59 @@ import type {
   EvaluationRun,
 } from './types.js';
 
-export type ProgressCallback = (info: Record<string, unknown>) => void;
+export interface ProgressStart {
+  phase: 'start';
+  completed: number;
+  total: number;
+  sample_id: string;
+  variant: string;
+}
+
+export interface ProgressExecDone {
+  phase: 'exec_done';
+  strategy: string;
+  completed: number;
+  total: number;
+  sample_id: string;
+  variant: string;
+  durationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUSD: number;
+  outputPreview: string | null;
+}
+
+export interface ProgressGrading {
+  phase: 'grading';
+  strategy: string;
+  completed: number;
+  total: number;
+  sample_id: string;
+  variant: string;
+}
+
+export interface ProgressDone {
+  phase: 'done';
+  strategy: string;
+  completed: number;
+  total: number;
+  sample_id: string;
+  variant: string;
+  durationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  costUSD: number;
+  score?: number;
+}
+
+export interface ProgressPreflight {
+  phase: 'preflight';
+  jobId?: string;
+}
+
+export type ProgressInfo = ProgressStart | ProgressExecDone | ProgressGrading | ProgressDone | ProgressPreflight;
+
+export type ProgressCallback = (info: ProgressInfo) => void;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -178,9 +230,12 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
     results[task.sample_id][task.variant] = buildVariantResult(execResult, gradeResult);
   }
 
-  await runWithConcurrency(tasks, concurrency, executeTask);
-
-  if (cache) cache.save();
+  try {
+    await runWithConcurrency(tasks, concurrency, executeTask);
+  } finally {
+    // Persist cache even on partial failure to preserve successful results
+    if (cache) cache.save();
+  }
 
   return { results, totalCostUSD };
 }

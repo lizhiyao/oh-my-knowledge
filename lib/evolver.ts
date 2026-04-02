@@ -3,6 +3,7 @@ import { resolve, join, dirname, basename } from 'node:path';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from './executor.js';
 import { runEvaluation } from './runner.js';
 import type { Report } from './types.js';
+import type { ProgressCallback } from './evaluation-core.js';
 
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。你的任务是分析评测结果中的薄弱环节，针对性地改进 skill（系统提示词），使其在评测中获得更高的分数。
 
@@ -79,9 +80,8 @@ function parseImprovedSkill(output: string): string {
   return content;
 }
 
-export interface EvolveProgressInfo {
-  [key: string]: unknown;
-}
+/** @deprecated Use ProgressCallback from evaluation-core.ts */
+export type EvolveProgressInfo = Parameters<ProgressCallback>[0];
 
 export interface EvolveRoundProgressInfo {
   round: number;
@@ -105,7 +105,7 @@ interface EvolveOptions {
   executorName?: string;
   concurrency?: number;
   timeoutMs?: number;
-  onProgress?: ((progress: EvolveProgressInfo) => void) | null;
+  onProgress?: ProgressCallback | null;
   onRoundProgress?: ((progress: EvolveRoundProgressInfo) => void) | null;
 }
 
@@ -148,8 +148,8 @@ export async function evolveSkill({
   const skillName = basename(absSkillPath, '.md');
   const evolveDir = join(skillDir, 'evolve');
 
-  if (!existsSync(absSkillPath)) throw new Error(`Skill not found: ${absSkillPath}`);
-  if (!existsSync(absSamplesPath)) throw new Error(`Samples not found: ${absSamplesPath}`);
+  if (!existsSync(absSkillPath)) throw new Error(`skill 文件未找到: ${absSkillPath}`);
+  if (!existsSync(absSamplesPath)) throw new Error(`样本文件未找到: ${absSamplesPath}`);
   mkdirSync(evolveDir, { recursive: true });
 
   // Save original as r0

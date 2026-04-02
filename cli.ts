@@ -12,6 +12,7 @@ import type {
   GitInfo,
   ReportStore,
 } from './lib/types.js';
+import type { ProgressInfo as ProgressInfoFromLib, ProgressCallback } from './lib/evaluation-core.js';
 
 // ---------------------------------------------------------------------------
 // Local types (CLI-specific, not shared with lib/)
@@ -35,21 +36,24 @@ interface RunConfig {
   mcpConfig: string | undefined;
   verbose: boolean | undefined;
   blind?: boolean | undefined;
-  onProgress?: ((info: Record<string, unknown>) => void) | null;
+  onProgress?: ProgressCallback | null;
 }
 
+// CLI progress info — superset of all possible fields from ProgressInfo union members
 interface ProgressInfo {
   phase: string;
   completed?: number;
   total?: number;
   sample_id?: string;
   variant?: string;
+  strategy?: string;
   durationMs?: number;
   inputTokens?: number;
   outputTokens?: number;
   costUSD?: number;
   score?: number;
-  outputPreview?: string;
+  outputPreview?: string | null;
+  jobId?: string;
   judgePhase?: string;
   judgeDim?: string;
 }
@@ -410,7 +414,7 @@ async function handleRun(argv: string[]): Promise<void> {
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./lib/runner.js');
 
   config.blind = values.blind as boolean | undefined;
-  config.onProgress = defaultOnProgress as unknown as ((info: Record<string, unknown>) => void);
+  config.onProgress = defaultOnProgress as unknown as ProgressCallback;
 
   try {
     // --each mode: evaluate each skill independently
@@ -750,7 +754,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
       executorName: values.executor as string,
       concurrency: Math.max(1, Number(values.concurrency) || 1),
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
-      onProgress: defaultOnProgress as unknown as ((info: Record<string, unknown>) => void),
+      onProgress: defaultOnProgress as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, error }: RoundProgressInfo): void {
         if (phase === 'baseline') {
           process.stderr.write(`Round 0 (baseline): score=${score!.toFixed(2)} ($${costUSD!.toFixed(4)})\n`);
@@ -789,7 +793,7 @@ async function handleCi(argv: string[]): Promise<void> {
 
   const { runEvaluation } = await import('./lib/runner.js');
 
-  config.onProgress = defaultOnProgress as unknown as ((info: Record<string, unknown>) => void);
+  config.onProgress = defaultOnProgress as unknown as ProgressCallback;
 
   try {
     const { report } = (await runEvaluation(config)) as EvalResult;
