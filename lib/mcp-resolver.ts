@@ -118,8 +118,9 @@ export function loadMcpConfig(configPath?: string): McpServers | null {
  * Resolve URLs in samples via MCP servers.
  * Mutates samples in-place — same contract as url-fetcher's resolveUrls().
  */
-export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers | null): Promise<void> {
-  if (!mcpServers) return;
+export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers | null): Promise<Set<string>> {
+  const resolved = new Set<string>();
+  if (!mcpServers) return resolved;
 
   // 1. Collect unique URLs and track which sample/field they belong to
   const urlMap = new Map<string, Array<{ sample: Sample; field: string }>>(); // url -> [{sample, field}]
@@ -135,7 +136,7 @@ export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers |
       }
     }
   }
-  if (urlMap.size === 0) return;
+  if (urlMap.size === 0) return resolved;
 
   // 2. Match URLs to MCP servers by urlPatterns
   const serverUrlGroups = new Map<string, string[]>(); // serverName -> [url]
@@ -152,7 +153,7 @@ export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers |
     }
   }
 
-  if (matchedUrls.size === 0) return;
+  if (matchedUrls.size === 0) return resolved;
 
   process.stderr.write(
     `ℹ MCP: ${matchedUrls.size} 个 URL 匹配到 MCP Server，正在获取内容:\n`,
@@ -193,6 +194,7 @@ export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers |
   const successCount = [...fetched.values()].filter((r) => r.ok).length;
   for (const [url, result] of fetched) {
     if (!result.ok) continue;
+    resolved.add(url);
     const replacement = `${url}\n\n---\n${result.content}\n---`;
     for (const { sample, field } of urlMap.get(url)!) {
       const current = typeof sample[field] === 'string' ? sample[field] : '';
@@ -203,6 +205,8 @@ export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers |
   if (successCount > 0) {
     process.stderr.write(`✓ MCP: 成功获取 ${successCount} 个 URL 的内容\n\n`);
   }
+
+  return resolved;
 }
 
 /**

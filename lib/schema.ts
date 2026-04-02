@@ -57,6 +57,8 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
     avgOutputTokens: ok.length > 0 ? Math.round(ok.reduce((s, e) => s + e.outputTokens, 0) / ok.length) : 0,
     avgTotalTokens: ok.length > 0 ? Math.round(ok.reduce((s, e) => s + e.totalTokens, 0) / ok.length) : 0,
     totalCostUSD: ok.reduce((s, e) => s + (e.costUSD || 0), 0),
+    totalExecCostUSD: ok.reduce((s, e) => s + (e.execCostUSD || 0), 0),
+    totalJudgeCostUSD: ok.reduce((s, e) => s + (e.judgeCostUSD || 0), 0),
     avgCostPerSample: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.costUSD || 0), 0) / ok.length).toFixed(6)) : 0,
     avgNumTurns: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.numTurns || 0), 0) / ok.length).toFixed(1)) : 0,
     ...(compositeScores.length > 0 && {

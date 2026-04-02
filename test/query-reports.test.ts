@@ -15,6 +15,8 @@ function makeReport(id: string, variant: string, timestamp: string, avgScore: nu
       avgOutputTokens: 200,
       avgTotalTokens: 300,
       totalCostUSD: 0.1,
+      totalExecCostUSD: 0.08,
+      totalJudgeCostUSD: 0.02,
       avgCostPerSample: 0.05,
       avgNumTurns: 1,
       avgCompositeScore: avgScore,

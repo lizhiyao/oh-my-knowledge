@@ -187,6 +187,8 @@ export interface VariantSummary {
   avgOutputTokens: number;
   avgTotalTokens: number;
   totalCostUSD: number;
+  totalExecCostUSD: number;
+  totalJudgeCostUSD: number;
   avgCostPerSample: number;
   avgNumTurns: number;
   avgCompositeScore?: number;

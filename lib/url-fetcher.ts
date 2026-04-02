@@ -37,8 +37,10 @@ function asNetworkError(err: unknown): NetworkErrorLike {
 /**
  * Resolve all URLs found in sample prompts and contexts.
  * Mutates samples in-place: each URL is replaced with URL + fetched content.
+ *
+ * @param skipUrls - URLs already resolved (e.g. by MCP), will be skipped
  */
-export async function resolveUrls(samples: Sample[]): Promise<void> {
+export async function resolveUrls(samples: Sample[], skipUrls?: Set<string>): Promise<void> {
   // 1. Collect all unique URLs across all samples, tracking which sample they belong to
   const urlMap = new Map<string, Array<{ sample: Sample; field: string }>>(); // url -> [{sample, field}]
   for (const sample of samples) {
@@ -48,6 +50,7 @@ export async function resolveUrls(samples: Sample[]): Promise<void> {
       const matches = text.match(URL_REGEX);
       if (!matches) continue;
       for (const url of matches) {
+        if (skipUrls?.has(url)) continue;
         if (!urlMap.has(url)) urlMap.set(url, []);
         urlMap.get(url)!.push({ sample, field });
       }

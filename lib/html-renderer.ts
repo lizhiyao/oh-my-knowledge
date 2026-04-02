@@ -49,13 +49,13 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
       <td>${e(m.model || '-')}</td>
       <td>${m.sampleCount || 0}</td>
       <td>${scoreCol}</td>
-      <td>${fmtCost(m.totalCostUSD)}</td>
+      <td>${fmtCost(Object.values(run.summary || {}).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0))}</td>
       <td><button onclick="deleteRun('${e(run.id)}',this)" class="btn-danger" data-i18n="deleteBtnText">${t('deleteBtnText', lang)}</button></td>
     </tr>`;
   }).join('');
 
   const runCount = lang === 'zh' ? `${runs.length} 次评测` : `${runs.length} runs`;
-  const totalCost = runs.reduce((s, r) => s + (r.meta?.totalCostUSD || 0), 0);
+  const totalCost = runs.reduce((s, r) => s + Object.values(r.summary || {}).reduce((sv, v) => sv + (v.totalExecCostUSD || 0), 0), 0);
   const costLabel = lang === 'zh' ? `累计 ${fmtCost(totalCost)}` : `Total ${fmtCost(totalCost)}`;
 
   // Collect variants with ≥2 reports for trend links
@@ -141,6 +141,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
 
   const cards = renderSummaryCards(variants, summary, lang);
   const sampleTable = renderSampleTable(variants, results, lang);
+  const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
 
   return layout(`OMK Bench - ${report.id}`, `
     <main>
@@ -150,7 +151,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
       <span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
-      <span class="meta-tag">${t('cost', lang)}: ${fmtCost(m.totalCostUSD)}</span>
+      <span class="meta-tag">${t('cost', lang)}: ${fmtCost(totalExecCost)}</span>
       ${m.gitInfo ? `<span class="meta-tag">commit: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
       ${m.blind ? `<span class="meta-tag" style="color:var(--green)" data-i18n="blindLabel">${t('blindLabel', lang)}</span>` : ''}
     </div>
@@ -230,6 +231,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
 
     <section>
     <h2>${t('eachOverview', lang)}</h2>
+
     <p style="font-size:13px;color:var(--text-muted)">${overview?.totalSkills || 0} ${t('eachSkills', lang)} &middot; ${overview?.totalSamples || 0} ${t('eachSamples', lang)} &middot; ${fmtCost(overview?.totalCostUSD || 0)}</p>
     <div class="table-wrap">
     <table>

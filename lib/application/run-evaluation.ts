@@ -141,10 +141,8 @@ export async function runEvaluation({
 
   if (!dryRun) {
     const mcpServers: McpServers | null = loadMcpConfig(mcpConfig);
-    if (mcpServers) {
-      await resolveMcpUrls(samples, mcpServers);
-    }
-    await resolveUrls(samples);
+    const mcpResolved = mcpServers ? await resolveMcpUrls(samples, mcpServers) : new Set<string>();
+    await resolveUrls(samples, mcpResolved);
   }
 
   if (resolvedEvaluands.length === 0) {

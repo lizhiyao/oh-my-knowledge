@@ -25,6 +25,8 @@ const SAMPLE_REPORT: Report = {
       avgAssertionScore: 4.2, avgLlmScore: 3.8, minLlmScore: 3, maxLlmScore: 4.5,
       avgDurationMs: 2000, avgInputTokens: 100, avgOutputTokens: 500, avgTotalTokens: 600,
       totalCostUSD: 0.025,
+      totalExecCostUSD: 0.020,
+      totalJudgeCostUSD: 0.005,
       avgCostPerSample: 0.0125,
       avgNumTurns: 1,
     },
@@ -34,6 +36,8 @@ const SAMPLE_REPORT: Report = {
       avgAssertionScore: 5.0, avgLlmScore: 4.6, minLlmScore: 4, maxLlmScore: 5,
       avgDurationMs: 3000, avgInputTokens: 120, avgOutputTokens: 600, avgTotalTokens: 720,
       totalCostUSD: 0.025,
+      totalExecCostUSD: 0.018,
+      totalJudgeCostUSD: 0.007,
       avgCostPerSample: 0.0125,
       avgNumTurns: 1,
     },
@@ -117,16 +121,17 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('4.8'));
   });
 
-  it('renders cost data when available', () => {
+  it('renders exec cost (not total cost)', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
-    assert.ok(html.includes('$0.0250'));
+    // Should show exec cost ($0.0200 for v1), not total cost ($0.0250)
+    assert.ok(html.includes('$0.0200'));
   });
 
   it('renders N/A for zero cost data', () => {
     const zeroCostReport = JSON.parse(JSON.stringify(SAMPLE_REPORT));
-    zeroCostReport.summary.v1.totalCostUSD = 0;
+    zeroCostReport.summary.v1.totalExecCostUSD = 0;
     zeroCostReport.summary.v1.avgTotalTokens = 0;
-    zeroCostReport.summary.v2.totalCostUSD = 0;
+    zeroCostReport.summary.v2.totalExecCostUSD = 0;
     zeroCostReport.summary.v2.avgTotalTokens = 0;
     const html = renderRunDetail(zeroCostReport);
     assert.ok(html.includes('N/A'));

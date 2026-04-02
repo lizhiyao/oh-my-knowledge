@@ -27,10 +27,11 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     const qualityHint = qualityTip ? `<span class="hint" tabindex="0" aria-label="${e(qualityTip)}">?<span class="hint-tip">${e(qualityTip)}</span></span>` : '';
     const qualityCell = `<td class="summary-cell"><div class="summary-value summary-value-primary">${score}${qualityHint}</div></td>`;
 
-    // Cost
-    const hasCost = (s.totalCostUSD || 0) > 0 || (s.avgTotalTokens || 0) > 0;
+    // Cost — only show execution cost (judge cost is tool overhead, not skill cost)
+    const execCost = s.totalExecCostUSD || 0;
+    const hasCost = execCost > 0 || (s.avgTotalTokens || 0) > 0;
     const costCell = hasCost
-      ? `<td class="summary-cell"><div class="summary-value">${fmtCost(s.totalCostUSD)}</div><div class="summary-detail">${fmtNum(s.avgTotalTokens)} tokens/${t('tokPerReq', lang).replace('tokens/', '')}</div></td>`
+      ? `<td class="summary-cell"><div class="summary-value">${fmtCost(execCost)}</div><div class="summary-detail">${fmtNum(s.avgTotalTokens)} tokens/${t('tokPerReq', lang).replace('tokens/', '')}</div></td>`
       : `<td class="summary-cell"><span style="color:var(--text-muted)">N/A</span></td>`;
 
     // Efficiency
