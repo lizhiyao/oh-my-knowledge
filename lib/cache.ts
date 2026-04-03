@@ -50,9 +50,9 @@ export function createCache(cacheDir: string): ExecutorCache {
   };
 }
 
-export function cacheKey(model: string, system: string, prompt: string): string {
+export function cacheKey(model: string, system: string, prompt: string, cwd?: string | null): string {
   return createHash('sha256')
-    .update(`${model || ''}\n${system || ''}\n${prompt || ''}`)
+    .update(`${model || ''}\n${system || ''}\n${prompt || ''}\n${cwd || ''}`)
     .digest('hex')
     .slice(0, 16);
 }

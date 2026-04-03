@@ -157,7 +157,7 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
     const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose);
 
     let execResult: ExecResult;
-    const key = cacheKey(model, executionPlan.cacheSystem, executionPlan.input.prompt);
+    const key = cacheKey(model, executionPlan.cacheSystem, executionPlan.input.prompt, executionPlan.input.cwd);
     const cached = cache?.get(key);
     if (cached) {
       execResult = { ...cached, cached: true };

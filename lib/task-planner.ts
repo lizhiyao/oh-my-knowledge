@@ -28,7 +28,7 @@ export function buildTasksFromEvaluands(samples: Sample[], evaluands: EvaluandSp
         assertions: sample.assertions || null,
         dimensions: sample.dimensions || null,
         skillContent: evaluand.content,
-        cwd: sample.cwd || null,
+        cwd: evaluand.cwd || sample.cwd || null,
         _sample: sample,
       });
     }

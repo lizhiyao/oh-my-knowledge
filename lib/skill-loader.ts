@@ -87,23 +87,36 @@ export function loadSkills(skillDir: string, variants: string[]): Record<string,
   return Object.fromEntries(resolveEvaluands(skillDir, variants).map((evaluand) => [evaluand.name, evaluand.content]));
 }
 
+/**
+ * Parse variant string, extracting optional cwd suffix.
+ * Format: "name@/path/to/cwd" or just "name"
+ */
+function parseVariantCwd(variant: string): { name: string; cwd?: string } {
+  const atIdx = variant.indexOf('@');
+  if (atIdx === -1) return { name: variant };
+  return { name: variant.slice(0, atIdx), cwd: variant.slice(atIdx + 1) };
+}
+
 export function resolveEvaluands(skillDir: string, variants: string[]): EvaluandSpec[] {
   const evaluands: EvaluandSpec[] = [];
   let gitRelDir: string | null = null;
 
-  for (const variant of variants) {
-    if (variant === 'baseline') {
+  for (const rawVariant of variants) {
+    const { name: variantName, cwd: variantCwd } = parseVariantCwd(rawVariant);
+
+    if (variantName === 'baseline') {
       evaluands.push({
-        name: variant,
+        name: variantName,
         kind: 'baseline',
         source: 'baseline',
         content: null,
+        cwd: variantCwd,
       });
       continue;
     }
 
-    if (variant.startsWith('git:')) {
-      const parts = variant.slice(4).split(':');
+    if (variantName.startsWith('git:')) {
+      const parts = variantName.slice(4).split(':');
       let ref: string;
       let name: string;
       if (parts.length === 1) {
@@ -120,48 +133,61 @@ export function resolveEvaluands(skillDir: string, variants: string[]): Evaluand
         throw new Error(`skill 在 git ${ref} 中未找到: ${name}.md 或 ${name}/SKILL.md`);
       }
       evaluands.push({
-        name: variant,
+        name: variantName,
         kind: 'skill',
         source: 'git',
         content,
         locator: name,
         ref,
+        cwd: variantCwd,
       });
       continue;
     }
 
-    if (variant.includes('/')) {
-      const filePath = resolve(variant);
+    if (variantName.includes('/')) {
+      const filePath = resolve(variantName);
       if (!existsSync(filePath)) {
         throw new Error(`skill 文件未找到: ${filePath}`);
       }
       evaluands.push({
-        name: variant,
+        name: variantName,
         kind: 'skill',
         source: 'file-path',
         content: readFileSync(filePath, 'utf-8').trim(),
         locator: filePath,
+        cwd: variantCwd,
       });
       continue;
     }
 
-    const mdPath = join(skillDir, `${variant}.md`);
-    const dirSkillPath = join(skillDir, variant, 'SKILL.md');
+    const mdPath = join(skillDir, `${variantName}.md`);
+    const dirSkillPath = join(skillDir, variantName, 'SKILL.md');
     if (existsSync(mdPath)) {
       evaluands.push({
-        name: variant,
+        name: variantName,
         kind: 'skill',
         source: 'variant-name',
         content: readFileSync(mdPath, 'utf-8').trim(),
         locator: mdPath,
+        cwd: variantCwd,
       });
     } else if (existsSync(dirSkillPath)) {
       evaluands.push({
-        name: variant,
+        name: variantName,
         kind: 'skill',
         source: 'variant-name',
         content: readFileSync(dirSkillPath, 'utf-8').trim(),
         locator: dirSkillPath,
+        cwd: variantCwd,
+      });
+    } else if (variantCwd) {
+      // Has @cwd but no matching skill file — treat as cwd-only variant (no system prompt)
+      evaluands.push({
+        name: variantName,
+        kind: 'baseline',
+        source: 'custom',
+        content: null,
+        cwd: variantCwd,
       });
     } else {
       throw new Error(`skill 未找到: ${mdPath} 或 ${dirSkillPath}`);

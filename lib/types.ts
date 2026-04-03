@@ -58,6 +58,7 @@ export interface EvaluandSpec {
   content: string | null;
   locator?: string;
   ref?: string;
+  cwd?: string;
   metadata?: Record<string, unknown>;
 }
 
