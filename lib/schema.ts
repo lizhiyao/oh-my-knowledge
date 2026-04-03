@@ -68,7 +68,7 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
     successCount: ok.length,
     errorCount,
     errorRate: entries.length > 0 ? Number((errorCount / entries.length * 100).toFixed(1)) : 0,
-    avgDurationMs: ok.length > 0 ? Math.round(ok.reduce((s, e) => s + e.durationMs, 0) / ok.length) : 0,
+    avgDurationMs: ok.length > 0 ? Math.round(ok.reduce((s, e) => s + (e.timing?.totalMs || e.durationMs), 0) / ok.length) : 0,
     avgInputTokens: ok.length > 0 ? Math.round(ok.reduce((s, e) => s + e.inputTokens, 0) / ok.length) : 0,
     avgOutputTokens: ok.length > 0 ? Math.round(ok.reduce((s, e) => s + e.outputTokens, 0) / ok.length) : 0,
     avgTotalTokens: ok.length > 0 ? Math.round(ok.reduce((s, e) => s + e.totalTokens, 0) / ok.length) : 0,
