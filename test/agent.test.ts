@@ -242,6 +242,27 @@ describe('agent assertions', () => {
     assert.equal(result.passed, 0);
   });
 
+  it('tool_input_contains: passes when tool input matches', () => {
+    const result = runAssertions('output', [
+      { type: 'tool_input_contains', value: 'Read:a.ts' },
+    ], { toolCalls });
+    assert.equal(result.passed, 1);
+  });
+
+  it('tool_input_contains: fails when tool input does not match', () => {
+    const result = runAssertions('output', [
+      { type: 'tool_input_contains', value: 'Read:nonexistent.ts' },
+    ], { toolCalls });
+    assert.equal(result.passed, 0);
+  });
+
+  it('tool_input_contains: case insensitive', () => {
+    const result = runAssertions('output', [
+      { type: 'tool_input_contains', value: 'read:A.TS' },
+    ], { toolCalls });
+    assert.equal(result.passed, 1);
+  });
+
   it('turns_min: passes when enough turns', () => {
     const result = runAssertions('output', [
       { type: 'turns_min', value: 2 },

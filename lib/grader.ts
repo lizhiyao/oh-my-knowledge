@@ -253,6 +253,20 @@ export function runAssertions(output: string, assertions: Assertion[], context: 
         }
         break;
       }
+      case 'tool_input_contains': {
+        // Assert that a specific tool was called with input containing a string
+        // value = "toolName:expectedInputContent"
+        const sep2 = String(assertion.value).indexOf(':');
+        if (sep2 > 0) {
+          const targetTool2 = String(assertion.value).slice(0, sep2).toLowerCase();
+          const expected2 = String(assertion.value).slice(sep2 + 1).toLowerCase();
+          passed = toolCalls.some((tc) =>
+            tc.tool.toLowerCase() === targetTool2 &&
+            JSON.stringify(tc.input || '').toLowerCase().includes(expected2),
+          );
+        }
+        break;
+      }
       default:
         passed = false;
     }

@@ -11,7 +11,7 @@
       { "type": "not_contains", "value": "请确认", "weight": 1 },
       { "type": "not_contains", "value": "需要你澄清", "weight": 1 },
       { "type": "tools_called", "values": ["Read"], "weight": 1 },
-      { "type": "tool_output_contains", "value": "Read:domain-principles", "weight": 1 },
+      { "type": "tool_input_contains", "value": "Read:domain-principles", "weight": 1 },
       { "type": "tools_count_min", "value": 2, "weight": 0.5 },
       { "type": "tools_count_max", "value": 12, "weight": 0.5 },
       { "type": "turns_max", "value": 20, "weight": 0.5 }
@@ -32,8 +32,8 @@
       { "type": "not_contains", "value": "请问", "weight": 1 },
       { "type": "not_contains", "value": "请确认", "weight": 1 },
       { "type": "tools_called", "values": ["Read"], "weight": 1 },
-      { "type": "tool_output_contains", "value": "Read:domain-principles", "weight": 1 },
-      { "type": "tool_output_contains", "value": "Read:solution-design-principles", "weight": 1 },
+      { "type": "tool_input_contains", "value": "Read:domain-principles", "weight": 1 },
+      { "type": "tool_input_contains", "value": "Read:solution-design-principles", "weight": 1 },
       { "type": "tools_count_min", "value": 3, "weight": 0.5 },
       { "type": "tools_count_max", "value": 15, "weight": 0.5 }
     ],
@@ -52,12 +52,14 @@
       { "type": "contains", "value": "方案", "weight": 1 },
       { "type": "regex", "pattern": "样式|渲染|模式", "weight": 0.5 },
       { "type": "not_contains", "value": "请问", "weight": 1 },
+      { "type": "not_contains", "value": "请确认", "weight": 1 },
       { "type": "tools_called", "values": ["Read"], "weight": 1 },
-      { "type": "tool_output_contains", "value": "Read:domain-principles", "weight": 1 },
-      { "type": "tools_count_min", "value": 3, "weight": 0.5 }
+      { "type": "tool_input_contains", "value": "Read:domain-principles", "weight": 1 },
+      { "type": "tool_input_contains", "value": "Read:design.md", "weight": 0.5 },
+      { "type": "tools_count_min", "value": 4, "weight": 0.5 }
     ],
     "dimensions": {
-      "exception_rule": "是否识别到这是'扩展已有能力'场景（被保人已有3种样式）？是否触发了例外规则进入 Step 3 代码分析？是否读了被保人相关的代码或 design.md？",
+      "exception_rule": "是否识别到这是'扩展已有能力'场景（被保人已有3种样式）？是否触发了例外规则进入 Step 3 代码分析？是否读了被保人相关的 design.md 或代码？",
       "code_analysis_quality": "代码分析是否限定在具体目录（而非全局搜索）？是否理解了已有的条件分支模型（3种样式的切换逻辑）？新样式方案是否建立在已有分支模型之上？",
       "output_quality": "方案是否包含组件定义？是否明确了新样式与已有样式的关系？是否标注了域外依赖（如后端配置）？"
     }
