@@ -1,4 +1,4 @@
-import { e, fmtNum, fmtCost, COLORS } from './helpers.js';
+import { e, fmtNum, fmtCost, fmtDuration, COLORS } from './helpers.js';
 import { t } from './i18n.js';
 import type { Lang, VariantSummary } from '../types.js';
 
@@ -42,7 +42,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       effDetails.push(`${s.avgToolCalls} tools/req${srPct}`);
     }
     const effDetail = effDetails.length > 0 ? `<div class="summary-detail">${effDetails.join(' · ')}</div>` : '';
-    const effCell = `<td class="summary-cell"><div class="summary-value">${fmtNum(s.avgDurationMs)}<span class="summary-unit">ms</span></div>${effDetail}</td>`;
+    const effCell = `<td class="summary-cell"><div class="summary-value">${fmtDuration(s.avgDurationMs)}</div>${effDetail}</td>`;
 
     // Stability: primary = score range, detail = success rate + CV
     const total = s.totalSamples || 0;

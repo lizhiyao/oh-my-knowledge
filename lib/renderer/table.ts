@@ -1,4 +1,4 @@
-import { e, fmtNum, delta } from './helpers.js';
+import { e, fmtNum, fmtDuration, delta } from './helpers.js';
 import { t } from './i18n.js';
 import type { Lang, ResultEntry, TurnInfo, ToolCallInfo } from '../types.js';
 
@@ -122,7 +122,7 @@ export function renderSampleTable(variants: string[], results: ResultEntry[], la
       const tokenDelta = i > 0 && firstV ? delta(firstV.totalTokens, d.totalTokens, true) : '';
       const msDelta = i > 0 && firstV ? delta(firstV.durationMs, d.durationMs, true) : '';
 
-      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}${toolHtml}${timingHtml}${traceHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtNum(d.durationMs)}${msDelta}</td>`;
+      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}${toolHtml}${timingHtml}${traceHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtDuration(d.durationMs)}${msDelta}</td>`;
     }).join('');
 
     return `<tr><td><strong>${e(r.sample_id)}</strong></td>${cols}</tr>`;

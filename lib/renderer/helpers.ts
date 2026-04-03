@@ -11,6 +11,15 @@ export function fmtNum(n: number | undefined | null, digits: number = 0): string
   return Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: digits });
 }
 
+export function fmtDuration(ms: number | undefined | null): string {
+  const v = Number(ms || 0);
+  if (v < 1000) return `${v}ms`;
+  if (v < 60000) return `${(v / 1000).toFixed(1)}s`;
+  const min = Math.floor(v / 60000);
+  const sec = Math.round((v % 60000) / 1000);
+  return sec > 0 ? `${min}m${sec}s` : `${min}m`;
+}
+
 export function fmtCost(usd: number | undefined | null): string {
   return `$${Number(usd || 0).toFixed(4)}`;
 }
