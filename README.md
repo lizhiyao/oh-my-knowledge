@@ -189,6 +189,7 @@ eval-samples.json       skills/
 基于规则的本地检查，每个断言产生通过/失败结果。
 
 **计算方式：**
+
 - 通过率 = 通过断言的权重之和 / 总权重（0~1）
 - 分数 = 1 + 通过率 × 4（映射到 1~5 分）
 - 示例：3 个断言（权重各 1），2 个通过 → 通过率 = 2/3 → 分数 = 1 + 0.67 × 4 = **3.67**
@@ -294,6 +295,7 @@ skills/
 ```
 
 配对规则：
+
 - `{name}.md` → 查找同目录下的 `{name}.eval-samples.json`
 - `{name}/SKILL.md` → 查找 `{name}/eval-samples.json`
 - 没有配对 eval-samples 的 skill 会被跳过并打印警告
@@ -319,6 +321,7 @@ omk bench gen-samples skills/my-skill.md --count 10
 ```
 
 选项：
+
 ```
   --each                 为所有缺少 eval-samples 的 skill 批量生成
   --count <n>            每个 skill 生成的样本数（默认：5）
@@ -339,6 +342,7 @@ omk bench evolve skills/my-skill.md --rounds 10 --target 4.5
 ```
 
 选项：
+
 ```
   --rounds <n>           最大迭代轮数（默认：5）
   --target <分数>        目标分数，达到即停
@@ -397,6 +401,7 @@ omk bench run --executor "./my-executor.sh"
 ```
 
 **协议约定：**
+
 - **输入**（stdin）：JSON `{"model":"...","system":"...","prompt":"..."}`
 - **输出**（stdout）：JSON `{"output":"模型回复","inputTokens":0,"outputTokens":0,"costUSD":0}`
 - stdout 中只需返回有值的字段，其余默认为 0；也可以直接输出纯文本（不解析 token/成本）
@@ -421,9 +426,11 @@ skills/
 |------|------|
 | `name` | 从 skill 目录查找 `name.md` 或 `name/SKILL.md` |
 | `baseline` | 无 skill 对照（不使用 system prompt） |
+| `baseline@/path/to/project` | 无 system prompt，但在指定项目目录运行，适合测试项目自带 `CLAUDE.md` / skills |
 | `git:name` | 从 git HEAD 读取 skill 的上次提交版本 |
 | `git:ref:name` | 从 git 指定 commit 读取 |
 | `./path/to/file.md` | 含 `/` 的路径，直接读取文件 |
+| `variant@/path/to/project` | 给任意变体附加运行目录，支持 `name@cwd`、`git:name@cwd`、`/file.md@cwd` |
 
 不指定 `--variants` 时，自动扫描 skill 目录下的所有 `.md` 文件和含 `SKILL.md` 的子目录。只有一个 skill 时自动加 `baseline` 作为对照。
 
@@ -437,6 +444,12 @@ omk bench run --variants v1,v2
 # 对比无 skill 和有 skill 的效果差异
 omk bench run --variants baseline,my-skill
 
+# 在项目目录里跑 baseline，复用 Claude Code 自动加载的 CLAUDE.md / skills
+omk bench run --variants baseline@/Projects/workspace
+
+# 对比“项目知识环境”与“显式 skill 注入”
+omk bench run --variants baseline@/Projects/workspace,/Projects/workspace/.claude/skills/prd/SKILL.md@/Projects/workspace
+
 # 对比修改前后（旧版本从 git 历史读取）
 omk bench run --variants git:my-skill,my-skill
 
@@ -445,12 +458,95 @@ omk bench run --variants ./old-skill.md,./new-skill.md
 ```
 
 **前置要求：**
+
 - **claude**：安装 [Claude Code](https://claude.ai/code) 并认证
 - **claude-sdk**：安装 [Claude Code](https://claude.ai/code) 并认证（使用 Agent SDK，无需 CLI stdout 解析）
 - **anthropic-api**：设置 `ANTHROPIC_API_KEY` 环境变量
 - **openai**：`pip install openai` 并设置 `OPENAI_API_KEY`
 - **openai-api**：设置 `OPENAI_API_KEY` 环境变量
 - **gemini**：`npm i -g @google/gemini-cli` 并认证
+
+### Agent 评测与项目知识环境
+
+当执行器使用 `claude-sdk` 时，OMK 现在已经支持第一版 agent-aware evaluation：
+
+- 自动抽取 turns / toolCalls trace
+- 支持基于工具调用行为的断言
+- 支持在指定 `cwd` 下运行，让 Claude Code 自动加载项目内的 `CLAUDE.md`、skills 和本地知识环境
+
+#### 推荐执行器
+
+```bash
+omk bench run --executor claude-sdk
+```
+
+#### 支持的 agent 相关断言
+
+| 断言 | 含义 |
+|------|------|
+| `tools_called` | 必须调用指定工具 |
+| `tools_not_called` | 禁止调用指定工具 |
+| `tools_count_min` / `tools_count_max` | 工具调用次数上下界 |
+| `tool_output_contains` | 指定工具输出必须包含关键内容 |
+| `turns_min` / `turns_max` | 交互轮次上下界 |
+
+#### 三种常见对照组
+
+**1. 裸模型 baseline**
+
+不注入 system prompt，也不进入带知识的项目目录。
+
+```bash
+omk bench run \
+  --executor claude-sdk \
+  --variants baseline
+```
+
+**2. 项目知识环境 baseline**
+
+不注入 system prompt，但在项目目录运行。适合验证 Claude Code 自动加载的 `CLAUDE.md` / skills 是否已经能显著提升结果。
+
+```bash
+omk bench run \
+  --executor claude-sdk \
+  --variants baseline@/Projects/workspace
+```
+
+**3. 显式 skill 注入**
+
+直接把某个外部 `SKILL.md` 作为变体注入，同时保留项目目录上下文。适合对比“项目知识环境”与“显式单 skill 注入”之间的差异。
+
+```bash
+omk bench run \
+  --executor claude-sdk \
+  --variants /Projects/workspace/.claude/skills/prd/SKILL.md@/Projects/workspace
+```
+
+#### 推荐的第一轮对照设计
+
+对于 PRD / 复杂业务知识场景，建议先从下面两组开始：
+
+```bash
+omk bench run \
+  --executor claude-sdk \
+  --samples skills/evaluate-review/eval-samples.yaml \
+  --variants baseline,/Projects/workspace/.claude/skills/prd/SKILL.md@/Projects/workspace
+```
+
+如果你想证明“项目目录中的知识沉淀本身”是否有效，再加第三组：
+
+```bash
+omk bench run \
+  --executor claude-sdk \
+  --samples skills/evaluate-review/eval-samples.yaml \
+  --variants baseline,baseline@/Projects/workspace,/Projects/workspace/.claude/skills/prd/SKILL.md@/Projects/workspace
+```
+
+#### 设计建议
+
+- **先用 `--dry-run`**：确认样本、variant 和 `cwd` 被正确解析
+- **项目级知识对照必须区分 `cwd`**：相同 prompt 在不同项目目录下会走不同知识环境
+- **优先先跑 PRD 场景**：相比 Coding，更容易验证知识完整性、影响面识别和业务正确性
 
 ### 常见模型配置示例
 
@@ -490,6 +586,7 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
 ```
 
 **关于评委模型：**
+
 - `--judge-model` 指定 LLM 评委使用的模型，默认 `haiku`
 - `--judge-executor` 指定评委使用的执行器（默认与 `--executor` 相同）
 - 如果你没有 Claude，用 `--judge-executor` 和 `--judge-model` 指向你可用的模型
@@ -518,6 +615,7 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
 | **eval-samples.json** | 断言配置中可引用外部文件路径 | 不要使用不可信来源的样本文件 |
 
 **建议：**
+
 - 不要在公网服务中暴露 `omk bench report` 服务（无认证）
 - 不要用不可信的第三方 eval-samples 文件
 - 自定义断言有 30 秒执行超时，但无沙箱隔离

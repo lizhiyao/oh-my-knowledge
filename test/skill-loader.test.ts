@@ -33,4 +33,20 @@ describe('resolveEvaluands', () => {
     assert.equal(evaluands[1].kind, 'skill');
     assert.equal(evaluands[2].kind, 'skill');
   });
+
+  it('baseline@cwd 产生带 cwd 的 baseline evaluand', () => {
+    const evaluands = resolveEvaluands(SKILL_DIR, ['baseline@/tmp/project-a']);
+    assert.equal(evaluands.length, 1);
+    assert.equal(evaluands[0].kind, 'baseline');
+    assert.equal(evaluands[0].cwd, '/tmp/project-a');
+  });
+
+  it('unknown@cwd 作为 cwd-only baseline evaluand', () => {
+    const evaluands = resolveEvaluands(SKILL_DIR, ['project-env@/tmp/project-b']);
+    assert.equal(evaluands.length, 1);
+    assert.equal(evaluands[0].name, 'project-env');
+    assert.equal(evaluands[0].kind, 'baseline');
+    assert.equal(evaluands[0].content, null);
+    assert.equal(evaluands[0].cwd, '/tmp/project-b');
+  });
 });

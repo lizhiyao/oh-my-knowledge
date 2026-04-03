@@ -1,6 +1,6 @@
 {
   "name": "oh-my-knowledge",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Knowledge artifact evaluation toolkit — benchmark your skills with objective data",
   "type": "module",
   "bin": {
