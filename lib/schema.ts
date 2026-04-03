@@ -3,7 +3,27 @@
  * Single source of truth for object structures used across runner, renderer, and server.
  */
 
-import type { ExecResult, GradeResult, VariantResult, VariantSummary } from './types.js';
+import type { ExecResult, GradeResult, VariantResult, VariantSummary, TurnInfo, ToolCallInfo } from './types.js';
+
+const MAX_TURN_CONTENT = 2000;
+const MAX_TOOL_OUTPUT = 1000;
+
+function truncateTurns(turns: TurnInfo[]): TurnInfo[] {
+  return turns.map((t) => ({
+    ...t,
+    content: t.content.length > MAX_TURN_CONTENT ? t.content.slice(0, MAX_TURN_CONTENT) + '…' : t.content,
+    ...(t.toolCalls && { toolCalls: truncateToolCalls(t.toolCalls) }),
+  }));
+}
+
+function truncateToolCalls(toolCalls: ToolCallInfo[]): ToolCallInfo[] {
+  return toolCalls.map((tc) => ({
+    ...tc,
+    output: typeof tc.output === 'string' && tc.output.length > MAX_TOOL_OUTPUT
+      ? tc.output.slice(0, MAX_TOOL_OUTPUT) + '…'
+      : tc.output,
+  }));
+}
 
 /**
  * Build a VariantResult from execution and grading results.
@@ -47,8 +67,8 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     }),
     outputPreview: execResult.output ? execResult.output.slice(0, 200) : null,
     ...(execResult.output && { fullOutput: execResult.output }),
-    ...(execResult.turns && execResult.turns.length > 0 && { turns: execResult.turns }),
-    ...(execResult.toolCalls && execResult.toolCalls.length > 0 && { toolCalls: execResult.toolCalls }),
+    ...(execResult.turns && execResult.turns.length > 0 && { turns: truncateTurns(execResult.turns) }),
+    ...(execResult.toolCalls && execResult.toolCalls.length > 0 && { toolCalls: truncateToolCalls(execResult.toolCalls) }),
     timing: { execMs, gradeMs, totalMs: execMs + gradeMs },
   };
 }
