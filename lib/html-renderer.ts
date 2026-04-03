@@ -2,7 +2,7 @@
  * HTML report renderer — orchestrates sub-modules.
  */
 
-import { e, fmtCost } from './renderer/helpers.js';
+import { e, fmtCost, fmtDuration } from './renderer/helpers.js';
 import { DEFAULT_LANG, t } from './renderer/i18n.js';
 import { layout } from './renderer/layout.js';
 import { renderSummaryCards } from './renderer/summary.js';
@@ -53,6 +53,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
       <td>${m.sampleCount || 0}</td>
       <td>${scoreCol}</td>
       <td>${fmtCost(Object.values(run.summary || {}).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0))}</td>
+      <td>${fmtDuration(Object.values(run.summary || {}).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0))}</td>
       <td><button onclick="deleteRun('${e(run.id)}',this)" class="btn-danger" data-i18n="deleteBtnText">${t('deleteBtnText', lang)}</button></td>
     </tr>`;
   }).join('');
@@ -92,6 +93,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
         <th data-i18n="samples">${t('samples', lang)}</th>
         <th data-i18n="score">${t('score', lang)}</th>
         <th data-i18n="cost">${t('cost', lang)}</th>
+        <th>${lang === 'zh' ? '耗时' : 'Duration'}</th>
         <th></th>
       </tr></thead>
       <tbody>${rows}</tbody>
@@ -145,6 +147,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const cards = renderSummaryCards(variants, summary, lang);
   const sampleTable = renderSampleTable(variants, results, lang);
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
+  const totalDurationMs = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
 
   return layout(`OMK Bench - ${report.id}`, `
     <main>
@@ -155,6 +158,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       <span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
       <span class="meta-tag">${t('cost', lang)}: ${fmtCost(totalExecCost)}</span>
+      <span class="meta-tag">${lang === 'zh' ? '耗时' : 'duration'}: ${fmtDuration(totalDurationMs)}</span>
       ${m.gitInfo ? `<span class="meta-tag">commit: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
       ${m.blind ? `<span class="meta-tag" style="color:var(--green)" data-i18n="blindLabel">${t('blindLabel', lang)}</span>` : ''}
     </div>
