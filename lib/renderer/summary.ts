@@ -41,8 +41,11 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       const srPct = s.toolSuccessRate != null ? ` (${(s.toolSuccessRate * 100).toFixed(0)}% OK)` : '';
       effDetails.push(`${s.avgToolCalls} tools/req${srPct}`);
     }
+    const totalDurationMs = (s.avgDurationMs || 0) * (s.successCount || 0);
+    if (totalDurationMs > 0) effDetails.push(`${lang === 'zh' ? '总计' : 'total'} ${fmtDuration(totalDurationMs)}`);
     const effDetail = effDetails.length > 0 ? `<div class="summary-detail">${effDetails.join(' · ')}</div>` : '';
-    const effCell = `<td class="summary-cell"><div class="summary-value">${fmtDuration(s.avgDurationMs)}</div>${effDetail}</td>`;
+    const avgLabel = lang === 'zh' ? '均' : 'avg';
+    const effCell = `<td class="summary-cell"><div class="summary-value">${fmtDuration(s.avgDurationMs)}<span class="summary-unit">/${avgLabel}</span></div>${effDetail}</td>`;
 
     // Stability: primary = score range, detail = success rate + CV
     const total = s.totalSamples || 0;
