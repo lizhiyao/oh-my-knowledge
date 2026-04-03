@@ -25,6 +25,11 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     judgeCostUSD,
     costUSD: execCostUSD + judgeCostUSD, // Total = execution + grading
     numTurns: execResult.numTurns,
+    ...(execResult.toolCalls && execResult.toolCalls.length > 0 && {
+      numToolCalls: execResult.toolCalls.length,
+      toolSuccessRate: Number((execResult.toolCalls.filter((tc) => tc.success).length / execResult.toolCalls.length).toFixed(2)),
+      toolNames: [...new Set(execResult.toolCalls.map((tc) => tc.tool))],
+    }),
     ...(execResult.error && { error: execResult.error }),
     ...(gradeResult && {
       compositeScore: gradeResult.compositeScore,
@@ -61,6 +66,23 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
     totalJudgeCostUSD: ok.reduce((s, e) => s + (e.judgeCostUSD || 0), 0),
     avgCostPerSample: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.costUSD || 0), 0) / ok.length).toFixed(6)) : 0,
     avgNumTurns: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.numTurns || 0), 0) / ok.length).toFixed(1)) : 0,
+    ...(() => {
+      const withTools = ok.filter((e) => typeof e.numToolCalls === 'number' && e.numToolCalls! > 0);
+      if (withTools.length === 0) return {};
+      const totalToolCalls = withTools.reduce((s, e) => s + (e.numToolCalls || 0), 0);
+      const avgSuccessRate = withTools.reduce((s, e) => s + (e.toolSuccessRate || 0), 0) / withTools.length;
+      const dist: Record<string, number> = {};
+      for (const e of withTools) {
+        for (const name of (e.toolNames || [])) {
+          dist[name] = (dist[name] || 0) + 1;
+        }
+      }
+      return {
+        avgToolCalls: Number((totalToolCalls / withTools.length).toFixed(1)),
+        toolSuccessRate: Number(avgSuccessRate.toFixed(2)),
+        toolDistribution: dist,
+      };
+    })(),
     ...(compositeScores.length > 0 && {
       avgCompositeScore: Number((compositeScores.reduce((s, v) => s + v, 0) / compositeScores.length).toFixed(2)),
       minCompositeScore: Number(Math.min(...compositeScores).toFixed(2)),

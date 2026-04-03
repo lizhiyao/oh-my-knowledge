@@ -869,6 +869,16 @@ async function handleDiff(argv: string[]): Promise<void> {
     const turns2: number | string = s2?.avgNumTurns ?? '-';
     console.log(`    Turns:   ${turns1} → ${turns2}`);
 
+    // Tool calls comparison (agent metrics)
+    if (s1?.avgToolCalls != null || s2?.avgToolCalls != null) {
+      const tc1: number | string = s1?.avgToolCalls ?? '-';
+      const tc2: number | string = s2?.avgToolCalls ?? '-';
+      console.log(`    Tools:   ${tc1} → ${tc2}`);
+      const sr1 = s1?.toolSuccessRate != null ? `${(s1.toolSuccessRate * 100).toFixed(0)}%` : '-';
+      const sr2 = s2?.toolSuccessRate != null ? `${(s2.toolSuccessRate * 100).toFixed(0)}%` : '-';
+      console.log(`    ToolOK:  ${sr1} → ${sr2}`);
+    }
+
     const cost1: number = s1?.avgCostPerSample ?? 0;
     const cost2: number = s2?.avgCostPerSample ?? 0;
     const costPct: string = cost1 > 0 ? ` (${cost2 > cost1 ? '+' : ''}${(((cost2 - cost1) / cost1) * 100).toFixed(0)}%)` : '';

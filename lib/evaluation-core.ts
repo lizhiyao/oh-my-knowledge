@@ -202,7 +202,7 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
           sample: task._sample,
           executor: judgeExecutor,
           judgeModel,
-          execMetrics: { costUSD: execResult.costUSD, durationMs: execResult.durationMs, numTurns: execResult.numTurns },
+          execMetrics: { costUSD: execResult.costUSD, durationMs: execResult.durationMs, numTurns: execResult.numTurns, toolCalls: execResult.toolCalls, turns: execResult.turns },
           samplesDir: dirname(resolve(samplesPath)),
         });
         if (gradeResult.judgeCostUSD) totalCostUSD += gradeResult.judgeCostUSD;

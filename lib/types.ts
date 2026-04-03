@@ -1,3 +1,16 @@
+export interface ToolCallInfo {
+  tool: string;
+  input: unknown;
+  output: unknown;
+  success: boolean;
+}
+
+export interface TurnInfo {
+  role: 'assistant' | 'tool';
+  content: string;
+  toolCalls?: ToolCallInfo[];
+}
+
 export interface ExecResult {
   ok: boolean;
   output: string | null;
@@ -12,6 +25,8 @@ export interface ExecResult {
   numTurns: number;
   error?: string;
   cached?: boolean;
+  turns?: TurnInfo[];
+  toolCalls?: ToolCallInfo[];
 }
 
 export interface ExecutorInput {
@@ -46,6 +61,8 @@ export interface Sample {
   rubric?: string;
   assertions?: Assertion[];
   dimensions?: Record<string, string>;
+  allowedTools?: string[];
+  expectedTools?: string[];
   [key: string]: unknown;  // allow extra fields like mutated prompt/context from URL resolution
 }
 
@@ -169,6 +186,9 @@ export interface VariantResult {
   judgeCostUSD: number;
   costUSD: number;
   numTurns: number;
+  numToolCalls?: number;
+  toolSuccessRate?: number;
+  toolNames?: string[];
   error?: string;
   compositeScore?: number;
   assertions?: AssertionResults;
@@ -192,6 +212,9 @@ export interface VariantSummary {
   totalJudgeCostUSD: number;
   avgCostPerSample: number;
   avgNumTurns: number;
+  avgToolCalls?: number;
+  toolSuccessRate?: number;
+  toolDistribution?: Record<string, number>;
   avgCompositeScore?: number;
   minCompositeScore?: number;
   maxCompositeScore?: number;

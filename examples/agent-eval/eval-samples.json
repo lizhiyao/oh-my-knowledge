@@ -1,0 +1,49 @@
+[
+  {
+    "sample_id": "agent-001",
+    "prompt": "查看当前目录下 package.json 的 name 和 version 字段，告诉我项目名称和版本号。",
+    "rubric": "应正确报告 name 和 version，评估执行效率",
+    "assertions": [
+      { "type": "contains", "value": "oh-my-knowledge", "weight": 1 },
+      { "type": "regex", "pattern": "0\\.\\d+\\.\\d+", "weight": 1 },
+      { "type": "tools_count_min", "value": 1, "weight": 0.5 },
+      { "type": "tools_count_max", "value": 5, "weight": 0.5 }
+    ],
+    "dimensions": {
+      "accuracy": "是否准确报告了 name 和 version",
+      "execution_efficiency": "是否用最少的步骤完成任务，有无多余的工具调用"
+    }
+  },
+  {
+    "sample_id": "agent-002",
+    "prompt": "找到 lib/grader.ts 文件中所有的断言类型（assertion type），列出完整清单。直接从源码提取。",
+    "rubric": "应读取 grader.ts 源码，从 switch-case 中提取所有断言类型",
+    "assertions": [
+      { "type": "contains", "value": "contains", "weight": 1 },
+      { "type": "contains", "value": "regex", "weight": 1 },
+      { "type": "contains", "value": "tools_called", "weight": 1 },
+      { "type": "tools_count_min", "value": 1, "weight": 0.5 },
+      { "type": "tools_count_max", "value": 6, "weight": 0.5 }
+    ],
+    "dimensions": {
+      "completeness": "是否列出了所有断言类型，没有遗漏",
+      "execution_efficiency": "是否用最少的步骤完成任务"
+    }
+  },
+  {
+    "sample_id": "agent-003",
+    "prompt": "分析 lib/executor.ts 中有多少种 executor 实现，每种的名称和认证方式（环境变量）是什么。输出为 markdown 表格。",
+    "rubric": "应读取 executor.ts，识别所有 executor 类型并准确列出认证方式",
+    "assertions": [
+      { "type": "contains", "value": "claude-sdk", "weight": 1 },
+      { "type": "contains", "value": "anthropic-api", "weight": 1 },
+      { "type": "contains", "value": "ANTHROPIC_API_KEY", "weight": 1 },
+      { "type": "regex", "pattern": "\\|.*\\|.*\\|", "weight": 0.5 },
+      { "type": "tools_count_min", "value": 1, "weight": 0.5 }
+    ],
+    "dimensions": {
+      "completeness": "是否覆盖了所有 executor 类型",
+      "accuracy": "认证方式是否准确"
+    }
+  }
+]

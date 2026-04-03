@@ -32,7 +32,10 @@ export function analyzeResults(report: Report): AnalysisResult {
   // 5. Efficiency gap (turns & cost)
   detectEfficiencyGap(report, variants, insights, suggestions);
 
-  // 6. Suggest --repeat when score variance is high and no repeat data
+  // 6. Agent tool usage patterns
+  detectToolPatterns(report, variants, insights, suggestions);
+
+  // 7. Suggest --repeat when score variance is high and no repeat data
   detectNeedRepeat(report, results, variants, insights, suggestions);
 
   return { insights, suggestions };
@@ -234,6 +237,49 @@ function detectEfficiencyGap(report: Report, variants: string[], insights: Insig
         details: { baseline: variants[0], variant: variants[i], baseTurns, otherTurns, baseCost, otherCost },
       });
       suggestions.push(`${variants[i]} 在效率维度与 ${variants[0]} 存在显著差异，这对导航型 Skill 是重要的价值体现`);
+    }
+  }
+}
+
+function detectToolPatterns(report: Report, variants: string[], insights: Insight[], suggestions: string[]): void {
+  const summary = report.summary || {};
+  const hasTools = variants.some((v) => summary[v]?.avgToolCalls != null && summary[v].avgToolCalls! > 0);
+  if (!hasTools) return;
+
+  for (let i = 0; i < variants.length; i++) {
+    const v = variants[i];
+    const s = summary[v];
+    if (!s) continue;
+
+    // Low tool success rate
+    if (s.toolSuccessRate != null && s.toolSuccessRate < 0.8 && s.avgToolCalls != null && s.avgToolCalls > 0) {
+      insights.push({
+        type: 'low_tool_success_rate',
+        severity: 'warning',
+        message: `${v} 的工具调用成功率仅 ${(s.toolSuccessRate * 100).toFixed(0)}%，可能存在工具选择或参数问题`,
+        details: { variant: v, toolSuccessRate: s.toolSuccessRate, avgToolCalls: s.avgToolCalls },
+      });
+      suggestions.push(`检查 ${v} 的工具调用失败模式，考虑在 skill 中增加工具使用指导`);
+    }
+  }
+
+  // Compare tool counts between variants
+  if (variants.length >= 2) {
+    const base = summary[variants[0]];
+    for (let i = 1; i < variants.length; i++) {
+      const other = summary[variants[i]];
+      if (!base?.avgToolCalls || !other?.avgToolCalls) continue;
+      const diff = other.avgToolCalls - base.avgToolCalls;
+      if (Math.abs(diff) > 2) {
+        insights.push({
+          type: 'tool_count_gap',
+          severity: 'info',
+          message: diff > 0
+            ? `${variants[i]} 平均多调用 ${diff.toFixed(1)} 次工具（${other.avgToolCalls} vs ${base.avgToolCalls}）`
+            : `${variants[i]} 平均少调用 ${Math.abs(diff).toFixed(1)} 次工具（${other.avgToolCalls} vs ${base.avgToolCalls}）`,
+          details: { baseline: variants[0], variant: variants[i], baseTools: base.avgToolCalls, otherTools: other.avgToolCalls },
+        });
+      }
     }
   }
 }

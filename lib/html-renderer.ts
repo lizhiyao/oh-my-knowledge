@@ -7,6 +7,7 @@ import { DEFAULT_LANG, t } from './renderer/i18n.js';
 import { layout } from './renderer/layout.js';
 import { renderSummaryCards } from './renderer/summary.js';
 import { renderAnalysis } from './renderer/analysis.js';
+import { renderAgentOverview } from './renderer/agent-overview.js';
 import { renderSampleTable } from './renderer/table.js';
 import { renderTrendsBody } from './renderer/trends.js';
 import type { Report, Lang } from './types.js';
@@ -44,8 +45,10 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
           `<span style="font-size:12px;font-weight:600;color:${color};min-width:24px">${score}</span></div>`;
       }).join('')
       : '<div style="color:var(--text-faint);font-size:0.6875rem;text-align:center">no score</div>';
+    const isAgent = Object.values(run.summary || {}).some((s) => s.avgToolCalls != null && s.avgToolCalls > 0);
+    const agentBadge = isAgent ? `<span style="display:inline-block;font-size:10px;padding:1px 6px;margin-left:6px;border-radius:3px;background:var(--accent);color:#fff;vertical-align:middle">${t('agentLabel', lang)}</span>` : '';
     return `<tr>
-      <td><a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e((m.variants || []).join(' vs '))}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : e(run.id)}</span></a></td>
+      <td><a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e((m.variants || []).join(' vs '))}${agentBadge}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : e(run.id)}</span></a></td>
       <td>${e(m.model || '-')}</td>
       <td>${m.sampleCount || 0}</td>
       <td>${scoreCol}</td>
@@ -164,6 +167,8 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     </div>` : ''}
 
     <section>${cards}</section>
+
+    ${renderAgentOverview(variants, summary, lang)}
 
     ${renderAnalysis(report.analysis, lang)}
 

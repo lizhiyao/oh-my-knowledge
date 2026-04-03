@@ -35,8 +35,14 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       : `<td class="summary-cell"><span style="color:var(--text-muted)">N/A</span></td>`;
 
     // Efficiency
-    const turnsDetail = (s.avgNumTurns || 0) > 0 ? `<div class="summary-detail">${s.avgNumTurns} ${t('turnsPerReq', lang)}</div>` : '';
-    const effCell = `<td class="summary-cell"><div class="summary-value">${fmtNum(s.avgDurationMs)}<span class="summary-unit">ms</span></div>${turnsDetail}</td>`;
+    const effDetails: string[] = [];
+    if ((s.avgNumTurns || 0) > 0) effDetails.push(`${s.avgNumTurns} ${t('turnsPerReq', lang)}`);
+    if (s.avgToolCalls != null && s.avgToolCalls > 0) {
+      const srPct = s.toolSuccessRate != null ? ` (${(s.toolSuccessRate * 100).toFixed(0)}% OK)` : '';
+      effDetails.push(`${s.avgToolCalls} tools/req${srPct}`);
+    }
+    const effDetail = effDetails.length > 0 ? `<div class="summary-detail">${effDetails.join(' · ')}</div>` : '';
+    const effCell = `<td class="summary-cell"><div class="summary-value">${fmtNum(s.avgDurationMs)}<span class="summary-unit">ms</span></div>${effDetail}</td>`;
 
     // Stability: primary = score range, detail = success rate + CV
     const total = s.totalSamples || 0;

@@ -46,11 +46,21 @@ export function renderSampleTable(variants: string[], results: ResultEntry[], la
         ? `<br><span style="font-size:11px;color:var(--text-muted)">${e(d.llmReason?.slice(0, 80))}</span>`
         : '';
 
+      // Agent tool call summary
+      let toolHtml = '';
+      if (d.numToolCalls != null && d.numToolCalls > 0) {
+        const srColor = (d.toolSuccessRate ?? 1) >= 0.8 ? 'var(--green)' : 'var(--red)';
+        const srText = d.toolSuccessRate != null ? `${(d.toolSuccessRate * 100).toFixed(0)}%` : '-';
+        const toolList = (d.toolNames || []).join(', ');
+        const toolTip = toolList ? ` title="${e(toolList)}"` : '';
+        toolHtml = `<div style="font-size:11px;margin-top:2px;color:var(--text-muted)"${toolTip}>🔧 ${d.numToolCalls} calls · <span style="color:${srColor}">${srText} OK</span></div>`;
+      }
+
       const firstV = r.variants?.[variants[0]];
       const tokenDelta = i > 0 && firstV ? delta(firstV.totalTokens, d.totalTokens, true) : '';
       const msDelta = i > 0 && firstV ? delta(firstV.durationMs, d.durationMs, true) : '';
 
-      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtNum(d.durationMs)}${msDelta}</td>`;
+      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}${toolHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtNum(d.durationMs)}${msDelta}</td>`;
     }).join('');
 
     return `<tr><td><strong>${e(r.sample_id)}</strong></td>${cols}</tr>`;

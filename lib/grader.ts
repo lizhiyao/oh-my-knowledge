@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import _Ajv from 'ajv';
 // ajv CJS interop: default export wrapping
 const Ajv = _Ajv.default ?? _Ajv;
-import type { Assertion, AssertionResults, AssertionDetail, GradeResult, DimensionResult, ExecutorFn, Sample } from './types.js';
+import type { Assertion, AssertionResults, AssertionDetail, GradeResult, DimensionResult, ExecutorFn, Sample, ToolCallInfo, TurnInfo } from './types.js';
 
 // Async assertion types that need LLM or dynamic imports
 const ASYNC_ASSERTION_TYPES = new Set(['semantic_similarity', 'custom']);
@@ -28,7 +28,7 @@ interface GradeOptions {
   sample: Sample;
   executor: ExecutorFn;
   judgeModel: string;
-  execMetrics?: { costUSD?: number; durationMs?: number; numTurns?: number };
+  execMetrics?: { costUSD?: number; durationMs?: number; numTurns?: number; toolCalls?: ToolCallInfo[]; turns?: TurnInfo[] };
   samplesDir?: string;
 }
 
@@ -73,7 +73,7 @@ export async function grade({ output, sample, executor, judgeModel, execMetrics 
   const asyncAssertions = allAssertions.filter((a) => ASYNC_ASSERTION_TYPES.has(a.type));
 
   if (syncAssertions.length > 0) {
-    results.assertions = runAssertions(output, syncAssertions, execMetrics);
+    results.assertions = runAssertions(output, syncAssertions, { ...execMetrics });
   }
 
   // 1b. Async assertions (custom JS, semantic_similarity)
@@ -102,6 +102,9 @@ export async function grade({ output, sample, executor, judgeModel, execMetrics 
   }
 
   // 2. LLM scoring
+  // Build execution trace summary for agent-aware judging
+  const traceSummary = buildTraceSummary(execMetrics.turns, execMetrics.toolCalls);
+
   if (sample.dimensions && Object.keys(sample.dimensions).length > 0) {
     // Multi-dimensional scoring
     results.dimensions = {};
@@ -112,6 +115,7 @@ export async function grade({ output, sample, executor, judgeModel, execMetrics 
         prompt: sample.prompt,
         executor,
         model: judgeModel,
+        traceSummary,
       });
     }
     const dimValues = Object.values(results.dimensions);
@@ -130,6 +134,7 @@ export async function grade({ output, sample, executor, judgeModel, execMetrics 
       prompt: sample.prompt,
       executor,
       model: judgeModel,
+      traceSummary,
     });
     results.llmScore = judge.score;
     results.llmReason = judge.reason;
@@ -146,9 +151,11 @@ export async function grade({ output, sample, executor, judgeModel, execMetrics 
  * Run deterministic assertions against output text.
  * Pure function — no async, no LLM calls.
  */
-export function runAssertions(output: string, assertions: Assertion[], context: { costUSD?: number; durationMs?: number; numTurns?: number } = {}): AssertionResults {
+export function runAssertions(output: string, assertions: Assertion[], context: { costUSD?: number; durationMs?: number; numTurns?: number; toolCalls?: ToolCallInfo[] } = {}): AssertionResults {
   const outputLower = output.toLowerCase();
   const details: AssertionDetail[] = [];
+  const toolCalls = context.toolCalls || [];
+  const toolNames = toolCalls.map((tc) => tc.tool.toLowerCase());
 
   for (const assertion of assertions) {
     const weight = assertion.weight ?? 1;
@@ -215,6 +222,37 @@ export function runAssertions(output: string, assertions: Assertion[], context: 
       case 'turns_max':
         passed = (context.numTurns ?? Infinity) <= (assertion.value as number);
         break;
+      case 'turns_min':
+        passed = (context.numTurns ?? 0) >= (assertion.value as number);
+        break;
+      case 'tools_called':
+        // Assert that specific tools were called (values = expected tool names)
+        passed = (assertion.values || []).every((v) => toolNames.includes(String(v).toLowerCase()));
+        break;
+      case 'tools_not_called':
+        // Assert that specific tools were NOT called
+        passed = (assertion.values || []).every((v) => !toolNames.includes(String(v).toLowerCase()));
+        break;
+      case 'tools_count_max':
+        passed = toolCalls.length <= (assertion.value as number);
+        break;
+      case 'tools_count_min':
+        passed = toolCalls.length >= (assertion.value as number);
+        break;
+      case 'tool_output_contains': {
+        // Assert that a specific tool's output contains a string
+        // value = "toolName:expectedContent"
+        const sep = String(assertion.value).indexOf(':');
+        if (sep > 0) {
+          const targetTool = String(assertion.value).slice(0, sep).toLowerCase();
+          const expected = String(assertion.value).slice(sep + 1).toLowerCase();
+          passed = toolCalls.some((tc) =>
+            tc.tool.toLowerCase() === targetTool &&
+            String(tc.output || '').toLowerCase().includes(expected),
+          );
+        }
+        break;
+      }
       default:
         passed = false;
     }
@@ -354,18 +392,68 @@ async function runAsyncAssertions(output: string, assertions: Assertion[], { exe
   return { passed: passedCount, total: details.length, score, details, judgeCostUSD: asyncCostUSD };
 }
 
+/**
+ * Build a concise summary of agent execution trace for LLM judge context.
+ */
+function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]): string | null {
+  if ((!turns || turns.length === 0) && (!toolCalls || toolCalls.length === 0)) return null;
+
+  const lines: string[] = [];
+
+  if (toolCalls && toolCalls.length > 0) {
+    lines.push(`共调用 ${toolCalls.length} 个工具：`);
+    const successCount = toolCalls.filter((tc) => tc.success).length;
+    lines.push(`  成功 ${successCount}/${toolCalls.length}`);
+
+    // Tool distribution
+    const dist: Record<string, number> = {};
+    for (const tc of toolCalls) {
+      dist[tc.tool] = (dist[tc.tool] || 0) + 1;
+    }
+    lines.push(`  工具分布：${Object.entries(dist).map(([k, v]) => `${k}(${v})`).join(', ')}`);
+  }
+
+  if (turns && turns.length > 0) {
+    lines.push('');
+    lines.push('执行轨迹摘要：');
+    // Only include first 10 turns to keep prompt concise
+    const maxTurns = Math.min(turns.length, 10);
+    for (let i = 0; i < maxTurns; i++) {
+      const t = turns[i];
+      const preview = t.content.slice(0, 100) + (t.content.length > 100 ? '...' : '');
+      if (t.role === 'assistant' && t.toolCalls?.length) {
+        lines.push(`  [${i + 1}] assistant: 调用 ${t.toolCalls.map((tc) => tc.tool).join(', ')}`);
+      } else if (t.role === 'tool') {
+        lines.push(`  [${i + 1}] tool: ${preview}`);
+      } else {
+        lines.push(`  [${i + 1}] ${t.role}: ${preview}`);
+      }
+    }
+    if (turns.length > maxTurns) {
+      lines.push(`  ... 还有 ${turns.length - maxTurns} 步`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 interface LlmJudgeOptions {
   output: string;
   rubric: string;
   prompt: string;
   executor: ExecutorFn;
   model: string;
+  traceSummary?: string | null;
 }
 
 /**
  * LLM judge: ask a model to score output against a rubric.
  */
-async function llmJudge({ output, rubric, prompt, executor, model }: LlmJudgeOptions): Promise<DimensionResult> {
+async function llmJudge({ output, rubric, prompt, executor, model, traceSummary }: LlmJudgeOptions): Promise<DimensionResult> {
+  const traceSection = traceSummary
+    ? ['', '## Agent 执行过程', traceSummary, '', '请同时考虑执行过程的合理性（工具选择、步骤效率、错误恢复）。']
+    : [];
+
   const judgePrompt = [
     '请对以下 AI 输出进行质量评分。',
     '',
@@ -377,6 +465,7 @@ async function llmJudge({ output, rubric, prompt, executor, model }: LlmJudgeOpt
     '',
     '## AI 输出',
     output,
+    ...traceSection,
     '',
     '请返回 JSON（不要包含 markdown 代码块标记）：',
     '{"score": <1-5的整数>, "reason": "<简短理由>"}',
@@ -432,7 +521,7 @@ function computeComposite(results: CompositeInput): number {
   const hasLlm = typeof results.llmScore === 'number' && results.llmScore > 0;
 
   // Check if there are efficiency assertions mixed into the assertion results
-  const EFFICIENCY_TYPES = new Set(['cost_max', 'latency_max', 'turns_max']);
+  const EFFICIENCY_TYPES = new Set(['cost_max', 'latency_max', 'turns_max', 'turns_min', 'tools_count_max', 'tools_count_min']);
   let efficiencyScore: number | null = null;
   let contentScore: number | null = null;
 

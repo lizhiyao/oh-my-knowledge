@@ -3,7 +3,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
-import type { ExecResult, ExecutorInput, ExecutorFn } from './types.js';
+import type { ExecResult, ExecutorInput, ExecutorFn, TurnInfo, ToolCallInfo } from './types.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -71,6 +71,21 @@ interface ClaudeSdkQueryInput {
 
 interface ClaudeSdkBaseMessage {
   type: string;
+  // Fields present on assistant messages
+  message?: {
+    role?: string;
+    content?: Array<{
+      type: string;
+      text?: string;
+      id?: string;
+      name?: string;
+      input?: unknown;
+    }>;
+  };
+  // Fields present on tool_result messages
+  tool_use_id?: string;
+  content?: string | Array<{ type: string; text?: string }>;
+  is_error?: boolean;
 }
 
 interface ClaudeSdkResultMessage extends ClaudeSdkBaseMessage {
@@ -111,6 +126,99 @@ function parseJson<T>(content: string): T {
 
 function isClaudeSdkResultMessage(message: ClaudeSdkBaseMessage): message is ClaudeSdkResultMessage {
   return message.type === 'result';
+}
+
+/**
+ * Extract structured turns and tool calls from claude-sdk message stream.
+ *
+ * claude-sdk message types:
+ *   - type:"assistant" + message.content[{type:"tool_use"}] → agent calls a tool
+ *   - type:"assistant" + message.content[{type:"text"}]     → agent text response
+ *   - type:"user"      + message.content[{type:"tool_result"}] → tool execution result
+ *   - type:"result"    → final result (skipped)
+ *   - type:"system"/"rate_limit_event" → metadata (skipped)
+ */
+function extractAgentTrace(messages: ClaudeSdkBaseMessage[]): { turns: TurnInfo[]; toolCalls: ToolCallInfo[] } {
+  const turns: TurnInfo[] = [];
+  const toolCalls: ToolCallInfo[] = [];
+  const pendingToolUse = new Map<string, { tool: string; input: unknown }>();
+
+  for (const msg of messages) {
+    if (msg.type === 'result' || msg.type === 'system' || msg.type === 'rate_limit_event') continue;
+
+    const content = msg.message?.content;
+    if (!Array.isArray(content)) continue;
+
+    // Assistant message — may contain text and/or tool_use blocks
+    if (msg.type === 'assistant') {
+      const textParts: string[] = [];
+      const turnToolCalls: ToolCallInfo[] = [];
+
+      for (const block of content) {
+        if (block.type === 'text' && block.text) {
+          textParts.push(block.text);
+        } else if (block.type === 'tool_use' && block.name) {
+          pendingToolUse.set(block.id || '', { tool: block.name, input: block.input });
+          turnToolCalls.push({ tool: block.name, input: block.input, output: null, success: true });
+        }
+        // skip "thinking" blocks
+      }
+
+      if (textParts.length > 0 || turnToolCalls.length > 0) {
+        turns.push({
+          role: 'assistant',
+          content: textParts.join('\n'),
+          ...(turnToolCalls.length > 0 && { toolCalls: turnToolCalls }),
+        });
+      }
+    }
+
+    // User message with tool_result — this is the tool execution output
+    if (msg.type === 'user') {
+      for (const block of content) {
+        if (block.type !== 'tool_result') continue;
+        const toolUseId = (block as unknown as { tool_use_id?: string }).tool_use_id || '';
+        const pending = pendingToolUse.get(toolUseId);
+        const isError = (block as unknown as { is_error?: boolean }).is_error || false;
+
+        // Extract text from tool result content
+        const resultContent = (block as unknown as { content?: string | Array<{ type: string; text?: string }> }).content;
+        const outputText = typeof resultContent === 'string'
+          ? resultContent
+          : Array.isArray(resultContent)
+            ? resultContent.map((c) => c.text || '').join('')
+            : '';
+
+        const tc: ToolCallInfo = {
+          tool: pending?.tool || 'unknown',
+          input: pending?.input || null,
+          output: outputText.slice(0, 500),
+          success: !isError,
+        };
+        toolCalls.push(tc);
+
+        // Update placeholder in last assistant turn
+        if (pending) {
+          for (let i = turns.length - 1; i >= 0; i--) {
+            const turn = turns[i];
+            if (turn.role === 'assistant' && turn.toolCalls) {
+              const placeholder = turn.toolCalls.find((t) => t.tool === pending.tool && t.output === null);
+              if (placeholder) {
+                placeholder.output = tc.output;
+                placeholder.success = !isError;
+                break;
+              }
+            }
+          }
+        }
+
+        turns.push({ role: 'tool', content: outputText.slice(0, 500) });
+        pendingToolUse.delete(toolUseId);
+      }
+    }
+  }
+
+  return { turns, toolCalls };
 }
 
 let _sdkQuery: ClaudeSdkModule['query'] | null = null;
@@ -321,6 +429,9 @@ async function claudeSdkExecutor({ model, system, prompt, cwd, timeoutMs = DEFAU
 
     const durationMs = resultMsgs[resultMsgs.length - 1].duration_ms || (Date.now() - start);
 
+    // Extract agent trace from intermediate messages
+    const trace = extractAgentTrace(messages);
+
     // Error subtypes: error_max_turns, error_during_execution, error_max_budget_usd, etc.
     if (lastSubtype !== 'success') {
       const lastErr = resultMsgs[resultMsgs.length - 1];
@@ -336,6 +447,8 @@ async function claudeSdkExecutor({ model, system, prompt, cwd, timeoutMs = DEFAU
         cacheCreationTokens: totalCacheCreationTokens,
         costUSD: totalCostUSD,
         output: null, stopReason: 'error', numTurns: totalNumTurns,
+        ...(trace.turns.length > 0 && { turns: trace.turns }),
+        ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
       };
     }
 
@@ -351,6 +464,8 @@ async function claudeSdkExecutor({ model, system, prompt, cwd, timeoutMs = DEFAU
       output,
       stopReason: 'end',
       numTurns: totalNumTurns,
+      ...(trace.turns.length > 0 && { turns: trace.turns }),
+      ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
     };
   } catch (err: unknown) {
     clearTimeout(timer);
