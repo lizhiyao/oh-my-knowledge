@@ -2,20 +2,15 @@ import { e, fmtNum, fmtDuration, delta } from './helpers.js';
 import { t } from './i18n.js';
 import type { Lang, ResultEntry, TurnInfo, ToolCallInfo } from '../types.js';
 
-function fmtMs(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1)}s`;
-}
-
 function renderTrace(turns: TurnInfo[], toolCalls: ToolCallInfo[] | undefined, timing: { execMs: number; gradeMs: number; totalMs: number } | undefined, fullOutput: string | undefined, id: string, lang: Lang): string {
   if (!turns || turns.length === 0) return '';
 
   const timingHtml = timing
-    ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">${t('traceExecMs', lang)} ${fmtMs(timing.execMs)} · ${t('traceGradeMs', lang)} ${fmtMs(timing.gradeMs)} · ${t('traceTotalMs', lang)} ${fmtMs(timing.totalMs)}</div>`
+    ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">${t('traceExecMs', lang)} ${fmtDuration(timing.execMs)} · ${t('traceGradeMs', lang)} ${fmtDuration(timing.gradeMs)} · ${t('traceTotalMs', lang)} ${fmtDuration(timing.totalMs)}</div>`
     : '';
 
   const steps = turns.map((turn, i) => {
-    const durTag = turn.durationMs ? `<span style="color:var(--text-muted);font-size:10px;margin-left:6px">${fmtMs(turn.durationMs)}</span>` : '';
+    const durTag = turn.durationMs ? `<span style="color:var(--text-muted);font-size:10px;margin-left:6px">${fmtDuration(turn.durationMs)}</span>` : '';
 
     if (turn.role === 'assistant') {
       const toolTags = (turn.toolCalls || []).map((tc) => {
@@ -115,14 +110,16 @@ export function renderSampleTable(variants: string[], results: ResultEntry[], la
 
       // Timing summary
       const timingHtml = d.timing
-        ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">${t('traceExecMs', lang)} ${fmtMs(d.timing.execMs)} · ${t('traceGradeMs', lang)} ${fmtMs(d.timing.gradeMs)}</div>`
+        ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">${t('traceExecMs', lang)} ${fmtDuration(d.timing.execMs)} · ${t('traceGradeMs', lang)} ${fmtDuration(d.timing.gradeMs)}</div>`
         : '';
 
       const firstV = r.variants?.[variants[0]];
+      const totalMs = d.timing?.totalMs || d.durationMs;
+      const firstTotalMs = firstV?.timing?.totalMs || firstV?.durationMs || 0;
       const tokenDelta = i > 0 && firstV ? delta(firstV.totalTokens, d.totalTokens, true) : '';
-      const msDelta = i > 0 && firstV ? delta(firstV.durationMs, d.durationMs, true) : '';
+      const msDelta = i > 0 && firstTotalMs ? delta(firstTotalMs, totalMs, true) : '';
 
-      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}${toolHtml}${timingHtml}${traceHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtDuration(d.durationMs)}${msDelta}</td>`;
+      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}${toolHtml}${timingHtml}${traceHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtDuration(totalMs)}${msDelta}</td>`;
     }).join('');
 
     return `<tr><td><strong>${e(r.sample_id)}</strong></td>${cols}</tr>`;
