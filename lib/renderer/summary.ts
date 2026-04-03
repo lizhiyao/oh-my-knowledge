@@ -44,7 +44,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     const totalDurationMs = (s.avgDurationMs || 0) * (s.successCount || 0);
     if (totalDurationMs > 0) effDetails.push(`${lang === 'zh' ? '总计' : 'total'} ${fmtDuration(totalDurationMs)}`);
     const effDetail = effDetails.length > 0 ? `<div class="summary-detail">${effDetails.join(' · ')}</div>` : '';
-    const avgLabel = lang === 'zh' ? '均' : 'avg';
+    const avgLabel = lang === 'zh' ? '次' : 'req';
     const effCell = `<td class="summary-cell"><div class="summary-value">${fmtDuration(s.avgDurationMs)}<span class="summary-unit">/${avgLabel}</span></div>${effDetail}</td>`;
 
     // Stability: primary = score range, detail = success rate + CV
