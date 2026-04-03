@@ -9,6 +9,7 @@ export interface TurnInfo {
   role: 'assistant' | 'tool';
   content: string;
   toolCalls?: ToolCallInfo[];
+  durationMs?: number;
 }
 
 export interface ExecResult {
@@ -196,6 +197,10 @@ export interface VariantResult {
   llmReason?: string;
   dimensions?: Record<string, DimensionResult>;
   outputPreview: string | null;
+  fullOutput?: string;
+  turns?: TurnInfo[];
+  toolCalls?: ToolCallInfo[];
+  timing?: { execMs: number; gradeMs: number; totalMs: number };
 }
 
 export interface VariantSummary {

@@ -138,12 +138,15 @@ function isClaudeSdkResultMessage(message: ClaudeSdkBaseMessage): message is Cla
  *   - type:"result"    → final result (skipped)
  *   - type:"system"/"rate_limit_event" → metadata (skipped)
  */
-export function extractAgentTrace(messages: ClaudeSdkBaseMessage[]): { turns: TurnInfo[]; toolCalls: ToolCallInfo[] } {
+export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?: number[]): { turns: TurnInfo[]; toolCalls: ToolCallInfo[] } {
   const turns: TurnInfo[] = [];
   const toolCalls: ToolCallInfo[] = [];
   const pendingToolUse = new Map<string, { tool: string; input: unknown }>();
+  let lastTurnTs = timestamps?.[0] || 0;
 
-  for (const msg of messages) {
+  for (let msgIdx = 0; msgIdx < messages.length; msgIdx++) {
+    const msg = messages[msgIdx];
+    const msgTs = timestamps?.[msgIdx] || 0;
     if (msg.type === 'result' || msg.type === 'system' || msg.type === 'rate_limit_event') continue;
 
     const content = msg.message?.content;
@@ -165,11 +168,14 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[]): { turns: Tu
       }
 
       if (textParts.length > 0 || turnToolCalls.length > 0) {
+        const dur = msgTs && lastTurnTs ? msgTs - lastTurnTs : undefined;
         turns.push({
           role: 'assistant',
           content: textParts.join('\n'),
           ...(turnToolCalls.length > 0 && { toolCalls: turnToolCalls }),
+          ...(dur != null && dur > 0 && { durationMs: dur }),
         });
+        if (msgTs) lastTurnTs = msgTs;
       }
     }
 
@@ -212,7 +218,13 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[]): { turns: Tu
           }
         }
 
-        turns.push({ role: 'tool', content: outputText.slice(0, 500) });
+        const toolDur = msgTs && lastTurnTs ? msgTs - lastTurnTs : undefined;
+        turns.push({
+          role: 'tool',
+          content: outputText.slice(0, 500),
+          ...(toolDur != null && toolDur > 0 && { durationMs: toolDur }),
+        });
+        if (msgTs) lastTurnTs = msgTs;
         pendingToolUse.delete(toolUseId);
       }
     }
@@ -358,6 +370,7 @@ async function claudeSdkExecutor({ model, system, prompt, cwd, timeoutMs = DEFAU
     : { ...process.env };
 
   const messages: ClaudeSdkBaseMessage[] = [];
+  const messageTimestamps: number[] = [];
 
   try {
     const query = await getSdkQuery();
@@ -377,6 +390,7 @@ async function claudeSdkExecutor({ model, system, prompt, cwd, timeoutMs = DEFAU
     const resultMsgs: ClaudeSdkResultMessage[] = [];
     for await (const msg of stream) {
       messages.push(msg);
+      messageTimestamps.push(Date.now());
       if (isClaudeSdkResultMessage(msg)) resultMsgs.push(msg);
     }
 
@@ -430,7 +444,7 @@ async function claudeSdkExecutor({ model, system, prompt, cwd, timeoutMs = DEFAU
     const durationMs = resultMsgs[resultMsgs.length - 1].duration_ms || (Date.now() - start);
 
     // Extract agent trace from intermediate messages
-    const trace = extractAgentTrace(messages);
+    const trace = extractAgentTrace(messages, messageTimestamps);
 
     // Error subtypes: error_max_turns, error_during_execution, error_max_budget_usd, etc.
     if (lastSubtype !== 'success') {

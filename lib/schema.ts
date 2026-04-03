@@ -8,9 +8,16 @@ import type { ExecResult, GradeResult, VariantResult, VariantSummary } from './t
 /**
  * Build a VariantResult from execution and grading results.
  */
-export function buildVariantResult(execResult: ExecResult, gradeResult: GradeResult | null): VariantResult {
+interface BuildVariantOptions {
+  execMs?: number;
+  gradeMs?: number;
+}
+
+export function buildVariantResult(execResult: ExecResult, gradeResult: GradeResult | null, options?: BuildVariantOptions): VariantResult {
   const execCostUSD = execResult.costUSD || 0;
   const judgeCostUSD = gradeResult?.judgeCostUSD || 0;
+  const execMs = options?.execMs || execResult.durationMs;
+  const gradeMs = options?.gradeMs || 0;
 
   return {
     ok: execResult.ok,
@@ -39,6 +46,10 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
       ...(gradeResult.dimensions && { dimensions: gradeResult.dimensions }),
     }),
     outputPreview: execResult.output ? execResult.output.slice(0, 200) : null,
+    ...(execResult.output && { fullOutput: execResult.output }),
+    ...(execResult.turns && execResult.turns.length > 0 && { turns: execResult.turns }),
+    ...(execResult.toolCalls && execResult.toolCalls.length > 0 && { toolCalls: execResult.toolCalls }),
+    timing: { execMs, gradeMs, totalMs: execMs + gradeMs },
   };
 }
 

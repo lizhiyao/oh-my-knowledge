@@ -1,6 +1,59 @@
 import { e, fmtNum, delta } from './helpers.js';
 import { t } from './i18n.js';
-import type { Lang, ResultEntry } from '../types.js';
+import type { Lang, ResultEntry, TurnInfo, ToolCallInfo } from '../types.js';
+
+function fmtMs(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function renderTrace(turns: TurnInfo[], toolCalls: ToolCallInfo[] | undefined, timing: { execMs: number; gradeMs: number; totalMs: number } | undefined, fullOutput: string | undefined, id: string, lang: Lang): string {
+  if (!turns || turns.length === 0) return '';
+
+  const timingHtml = timing
+    ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">${t('traceExecMs', lang)} ${fmtMs(timing.execMs)} · ${t('traceGradeMs', lang)} ${fmtMs(timing.gradeMs)} · ${t('traceTotalMs', lang)} ${fmtMs(timing.totalMs)}</div>`
+    : '';
+
+  const steps = turns.map((turn, i) => {
+    const durTag = turn.durationMs ? `<span style="color:var(--text-muted);font-size:10px;margin-left:6px">${fmtMs(turn.durationMs)}</span>` : '';
+
+    if (turn.role === 'assistant') {
+      const toolTags = (turn.toolCalls || []).map((tc) => {
+        const statusColor = tc.success ? 'var(--green)' : 'var(--red)';
+        const inputPreview = typeof tc.input === 'string' ? tc.input.slice(0, 80) : JSON.stringify(tc.input || '').slice(0, 80);
+        return `<div style="margin:2px 0 2px 16px;font-size:11px"><span style="color:${statusColor}">●</span> <strong>${e(tc.tool)}</strong> <span style="color:var(--text-muted)">${e(inputPreview)}</span></div>`;
+      }).join('');
+      const textPreview = turn.content ? `<div style="font-size:11px;color:var(--text-secondary);margin-left:16px;white-space:pre-wrap;max-height:60px;overflow:hidden">${e(turn.content.slice(0, 200))}</div>` : '';
+      return `<div style="margin:4px 0;padding:4px 0;border-left:2px solid var(--accent)">
+        <div style="font-size:11px;padding-left:8px"><span style="color:var(--accent);font-weight:600">[${i + 1}] ${t('traceAssistant', lang)}</span>${durTag}</div>
+        ${toolTags}${textPreview}
+      </div>`;
+    }
+    // tool result
+    const statusIcon = turn.content.length > 0 ? '✓' : '✗';
+    return `<div style="margin:4px 0;padding:4px 0;border-left:2px solid var(--border)">
+      <div style="font-size:11px;padding-left:8px"><span style="color:var(--text-muted)">[${i + 1}] ${t('traceTool', lang)} ${statusIcon}</span>${durTag}</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-left:16px;white-space:pre-wrap;max-height:40px;overflow:hidden">${e(turn.content.slice(0, 200))}</div>
+    </div>`;
+  }).join('');
+
+  const outputBtn = fullOutput
+    ? `<button onclick="document.getElementById('modal-${id}').style.display='flex'" style="font-size:11px;margin-top:4px;padding:2px 8px;cursor:pointer;background:var(--bg-surface);color:var(--accent);border:1px solid var(--border);border-radius:var(--radius)">${t('traceFullOutput', lang)}</button>
+       <div id="modal-${id}" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
+         <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);max-width:800px;max-height:80vh;overflow:auto;padding:20px;margin:20px;width:90%">
+           <div style="display:flex;justify-content:space-between;margin-bottom:12px"><strong>${t('traceFullOutput', lang)}</strong><button onclick="this.closest('[id^=modal]').style.display='none'" style="cursor:pointer;background:none;border:none;color:var(--text-muted);font-size:16px">✕</button></div>
+           <pre style="font-size:12px;white-space:pre-wrap;word-break:break-word;color:var(--text-primary)">${e(fullOutput)}</pre>
+         </div>
+       </div>`
+    : '';
+
+  return `<details style="margin-top:6px">
+    <summary style="font-size:11px;color:var(--accent);cursor:pointer">${t('traceToggle', lang)} (${turns.length} steps)</summary>
+    <div style="margin-top:4px;padding:8px;background:var(--bg-surface);border-radius:var(--radius);max-height:400px;overflow-y:auto">
+      ${timingHtml}${steps}${outputBtn}
+    </div>
+  </details>`;
+}
 
 export function renderSampleTable(variants: string[], results: ResultEntry[], lang: Lang): string {
   const headerCols = variants.map((v) =>
@@ -56,11 +109,20 @@ export function renderSampleTable(variants: string[], results: ResultEntry[], la
         toolHtml = `<div style="font-size:11px;margin-top:2px;color:var(--text-muted)"${toolTip}>🔧 ${d.numToolCalls} calls · <span style="color:${srColor}">${srText} OK</span></div>`;
       }
 
+      // Execution trace (expandable)
+      const traceId = `trace-${r.sample_id}-${v}`.replace(/[^a-zA-Z0-9-]/g, '_');
+      const traceHtml = d.turns ? renderTrace(d.turns, d.toolCalls, d.timing, d.fullOutput, traceId, lang) : '';
+
+      // Timing summary
+      const timingHtml = d.timing
+        ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">${t('traceExecMs', lang)} ${fmtMs(d.timing.execMs)} · ${t('traceGradeMs', lang)} ${fmtMs(d.timing.gradeMs)}</div>`
+        : '';
+
       const firstV = r.variants?.[variants[0]];
       const tokenDelta = i > 0 && firstV ? delta(firstV.totalTokens, d.totalTokens, true) : '';
       const msDelta = i > 0 && firstV ? delta(firstV.durationMs, d.durationMs, true) : '';
 
-      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}${toolHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtNum(d.durationMs)}${msDelta}</td>`;
+      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}${toolHtml}${timingHtml}${traceHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtNum(d.durationMs)}${msDelta}</td>`;
     }).join('');
 
     return `<tr><td><strong>${e(r.sample_id)}</strong></td>${cols}</tr>`;

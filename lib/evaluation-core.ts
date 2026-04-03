@@ -159,12 +159,14 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
     let execResult: ExecResult;
     const key = cacheKey(model, executionPlan.cacheSystem, executionPlan.input.prompt, executionPlan.input.cwd);
     const cached = cache?.get(key);
+    const execStart = Date.now();
     if (cached) {
       execResult = { ...cached, cached: true };
     } else {
       execResult = await executor(executionPlan.input);
       if (cache && execResult.ok) cache.set(key, execResult);
     }
+    const execMs = Date.now() - execStart;
     totalCostUSD += execResult.costUSD;
 
     if (verbose && onProgress) {
@@ -184,6 +186,7 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
     }
 
     let gradeResult: GradeResult | null = null;
+    let gradeMs = 0;
     if (execResult.ok && !noJudge) {
       const hasGradingCriteria = task.rubric || task.assertions?.length || (task.dimensions && Object.keys(task.dimensions).length);
       if (hasGradingCriteria) {
@@ -197,6 +200,7 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
             variant: task.variant,
           });
         }
+        const gradeStart = Date.now();
         gradeResult = await grade({
           output: execResult.output!,
           sample: task._sample,
@@ -205,6 +209,7 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
           execMetrics: { costUSD: execResult.costUSD, durationMs: execResult.durationMs, numTurns: execResult.numTurns, toolCalls: execResult.toolCalls, turns: execResult.turns },
           samplesDir: dirname(resolve(samplesPath)),
         });
+        gradeMs = Date.now() - gradeStart;
         if (gradeResult.judgeCostUSD) totalCostUSD += gradeResult.judgeCostUSD;
       }
     }
@@ -227,7 +232,7 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
     }
 
     if (!results[task.sample_id]) results[task.sample_id] = {};
-    results[task.sample_id][task.variant] = buildVariantResult(execResult, gradeResult);
+    results[task.sample_id][task.variant] = buildVariantResult(execResult, gradeResult, { execMs, gradeMs });
   }
 
   try {
