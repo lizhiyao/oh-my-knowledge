@@ -395,7 +395,7 @@ async function runAsyncAssertions(output: string, assertions: Assertion[], { exe
 /**
  * Build a concise summary of agent execution trace for LLM judge context.
  */
-function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]): string | null {
+export function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]): string | null {
   if ((!turns || turns.length === 0) && (!toolCalls || toolCalls.length === 0)) return null;
 
   const lines: string[] = [];

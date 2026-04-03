@@ -138,7 +138,7 @@ function isClaudeSdkResultMessage(message: ClaudeSdkBaseMessage): message is Cla
  *   - type:"result"    → final result (skipped)
  *   - type:"system"/"rate_limit_event" → metadata (skipped)
  */
-function extractAgentTrace(messages: ClaudeSdkBaseMessage[]): { turns: TurnInfo[]; toolCalls: ToolCallInfo[] } {
+export function extractAgentTrace(messages: ClaudeSdkBaseMessage[]): { turns: TurnInfo[]; toolCalls: ToolCallInfo[] } {
   const turns: TurnInfo[] = [];
   const toolCalls: ToolCallInfo[] = [];
   const pendingToolUse = new Map<string, { tool: string; input: unknown }>();
