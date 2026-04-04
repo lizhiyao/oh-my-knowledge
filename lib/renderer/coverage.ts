@@ -33,8 +33,25 @@ export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage
         </div>`;
       }).join('');
 
-    const uncoveredHint = cov.uncoveredFiles.length > 0
-      ? `<div style="font-size:11px;color:var(--text-muted);margin-top:8px">${lang === 'zh' ? '建议为以下文件补充测试样本：' : 'Consider adding test samples for:'} ${cov.uncoveredFiles.map((f) => `<code>${e(f)}</code>`).join(', ')}</div>`
+    // Group uncovered files by type for actionable hints
+    const uncoveredByType: Record<string, string[]> = {};
+    for (const entry of cov.entries.filter((en) => !en.accessed)) {
+      const cat = entry.path.startsWith('repos/') ? 'code' : entry.type;
+      (uncoveredByType[cat] = uncoveredByType[cat] || []).push(entry.path);
+    }
+    const hintLines: string[] = [];
+    const typeLabels: Record<string, string> = lang === 'zh'
+      ? { principle: '原则文件', semantic: '语义索引', design: '设计文档', code: '代码路径', script: '脚本工具', other: '其他知识' }
+      : { principle: 'Principles', semantic: 'Semantic index', design: 'Design docs', code: 'Code paths', script: 'Scripts', other: 'Other' };
+    for (const [type, files] of Object.entries(uncoveredByType)) {
+      const label = typeLabels[type] || type;
+      hintLines.push(`<strong>${label}</strong>（${files.length}）：${files.slice(0, 3).map((f) => `<code>${e(f)}</code>`).join(', ')}${files.length > 3 ? ` +${files.length - 3}` : ''}`);
+    }
+    const uncoveredHint = hintLines.length > 0
+      ? `<div style="font-size:11px;color:var(--text-muted);margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
+          <div style="margin-bottom:4px">${lang === 'zh' ? '💡 建议从以下维度补充测试用例：' : '💡 Consider adding test cases for:'}</div>
+          ${hintLines.map((l) => `<div style="margin:2px 0">${l}</div>`).join('')}
+        </div>`
       : '';
 
     return `<div style="flex:1;min-width:280px;padding:16px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)">
@@ -51,11 +68,15 @@ export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage
     </div>`;
   }).join('');
 
-  const title = lang === 'zh' ? '知识覆盖率' : 'Knowledge Coverage';
+  const title = lang === 'zh' ? '测评用例知识覆盖率' : 'Test Case Knowledge Coverage';
+  const desc = lang === 'zh'
+    ? '当前测试用例触及了 artifact 知识域中多少文件。覆盖率低说明需要补充测试样本，而非知识本身不完整。'
+    : 'How much of the artifact\'s knowledge domain was exercised by current test cases. Low coverage suggests more test samples are needed.';
 
   return `
     <section style="margin-top:24px">
       <h2>${title}</h2>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${desc}</p>
       <div style="display:flex;gap:16px;flex-wrap:wrap">
         ${variantSections}
       </div>
