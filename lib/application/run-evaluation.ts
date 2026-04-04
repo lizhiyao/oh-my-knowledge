@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executor.js';
 import { analyzeResults } from '../analyzer.js';
+import { computeReportCoverage } from '../coverage-analyzer.js';
 import { confidenceInterval, tTest } from '../statistics.js';
 import { resolveUrls } from '../url-fetcher.js';
 import { loadMcpConfig, resolveMcpUrls, stopAllServers } from '../mcp-resolver.js';
@@ -256,6 +257,17 @@ export async function runEvaluation({
       job,
     });
     report.analysis = analyzeResults(report);
+
+    // Compute knowledge coverage if any variant has tool call data
+    const hasToolData = Object.values(results).some((r) => Object.values(r).some((vr) => vr.toolCalls && vr.toolCalls.length > 0));
+    if (hasToolData) {
+      const artifactContents = Object.fromEntries(resolvedArtifacts.map((a) => [a.name, a.content]));
+      const artifactCwds = Object.fromEntries(resolvedArtifacts.map((a) => [a.name, a.cwd || null]));
+      const coverage = computeReportCoverage(report, artifactContents, artifactCwds);
+      if (Object.keys(coverage).length > 0) {
+        report.analysis!.coverage = coverage;
+      }
+    }
 
     if (blind) {
       applyBlindMode(report, variantNames, `${variantNames.join(',')}:${samplesPath}`);
