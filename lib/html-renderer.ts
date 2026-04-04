@@ -148,6 +148,36 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const sampleTable = renderSampleTable(variants, results, lang);
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
   const totalDurationMs = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
+  const variantConfigRows = (m.variantConfigs || []).map((config) => {
+    const runtimeContext = config.cwd || (lang === 'zh' ? '默认' : 'default');
+    return `<tr>
+      <td>${e(config.variant)}</td>
+      <td>${e(config.experimentRole)}</td>
+      <td>${e(config.artifactKind)}</td>
+      <td>${e(config.artifactSource)}</td>
+      <td>${e(config.executionStrategy)}</td>
+      <td>${e(runtimeContext)}</td>
+    </tr>`;
+  }).join('');
+  const variantConfigSection = variantConfigRows ? `
+    <section style="margin:20px 0">
+      <h2>${t('variantConfig', lang)}</h2>
+      <p style="font-size:13px;color:var(--text-muted)">${t('variantConfigDesc', lang)}</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>${t('variants', lang)}</th>
+            <th>${t('variantRole', lang)}</th>
+            <th>${t('variantArtifactKind', lang)}</th>
+            <th>${t('variantArtifactSource', lang)}</th>
+            <th>${t('variantExecutionStrategy', lang)}</th>
+            <th>${t('variantRuntimeContext', lang)}</th>
+          </tr></thead>
+          <tbody>${variantConfigRows}</tbody>
+        </table>
+      </div>
+    </section>
+  ` : '';
 
   return layout(`OMK Bench - ${report.id}`, `
     <main>
@@ -171,6 +201,8 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     </div>` : ''}
 
     <section>${cards}</section>
+
+    ${variantConfigSection}
 
     ${renderAgentOverview(variants, summary, lang)}
 

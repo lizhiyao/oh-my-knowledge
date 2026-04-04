@@ -80,6 +80,20 @@ export interface Artifact {
   metadata?: Record<string, unknown>;
 }
 
+export type ExperimentRole = 'baseline' | 'runtime-context-only' | 'artifact-injection';
+
+export interface VariantConfig {
+  variant: string;
+  artifactKind: ArtifactKind;
+  artifactSource: Artifact['source'];
+  executionStrategy: ExecutionStrategyKind;
+  experimentRole: ExperimentRole;
+  hasArtifactContent: boolean;
+  cwd: string | null;
+  locator?: string;
+  ref?: string;
+}
+
 export type ExecutionStrategyKind =
   | 'baseline'
   | 'system-prompt'
@@ -250,6 +264,7 @@ export interface ReportMeta {
   cliVersion: string;
   nodeVersion: string;
   artifactHashes: Record<string, string>;
+  variantConfigs?: VariantConfig[];
   request?: EvaluationRequest;
   run?: EvaluationRun;
   job?: EvaluationJob;

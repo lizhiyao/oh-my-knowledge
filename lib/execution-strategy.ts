@@ -1,4 +1,4 @@
-import type { ExecutionStrategyKind, ExecutorInput, Task } from './types.js';
+import type { Artifact, ExecutionStrategyKind, ExecutorInput, ExperimentRole, Task, VariantConfig } from './types.js';
 
 export interface ExecutionPlan {
   strategy: ExecutionStrategyKind;
@@ -9,6 +9,42 @@ export interface ExecutionPlan {
 function combineUserPrompt(prefix: string | null, prompt: string): string {
   if (!prefix) return prompt;
   return `${prefix}\n\n${prompt}`;
+}
+
+export function resolveArtifactExecutionStrategy(artifact: Artifact): ExecutionStrategyKind {
+  switch (artifact.kind) {
+    case 'baseline':
+      return 'baseline';
+    case 'prompt':
+      return 'user-prompt';
+    case 'agent':
+      return 'agent-session';
+    case 'workflow':
+      return 'workflow-session';
+    case 'skill':
+    default:
+      return 'system-prompt';
+  }
+}
+
+export function resolveExperimentRole(artifact: Artifact): ExperimentRole {
+  if (artifact.kind === 'baseline' && !artifact.cwd) return 'baseline';
+  if (artifact.kind === 'baseline' && artifact.cwd) return 'runtime-context-only';
+  return 'artifact-injection';
+}
+
+export function buildVariantConfig(artifact: Artifact): VariantConfig {
+  return {
+    variant: artifact.name,
+    artifactKind: artifact.kind,
+    artifactSource: artifact.source,
+    executionStrategy: resolveArtifactExecutionStrategy(artifact),
+    experimentRole: resolveExperimentRole(artifact),
+    hasArtifactContent: Boolean(artifact.content),
+    cwd: artifact.cwd || null,
+    locator: artifact.locator,
+    ref: artifact.ref,
+  };
 }
 
 export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: number, verbose?: boolean): ExecutionPlan {
@@ -22,7 +58,7 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
   switch (task.artifact.kind) {
     case 'baseline':
       return {
-        strategy: 'baseline',
+        strategy: resolveArtifactExecutionStrategy(task.artifact),
         cacheSystem: '',
         input: {
           ...baseInput,
@@ -32,7 +68,7 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
       };
     case 'prompt':
       return {
-        strategy: 'user-prompt',
+        strategy: resolveArtifactExecutionStrategy(task.artifact),
         cacheSystem: '',
         input: {
           ...baseInput,
@@ -42,7 +78,7 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
       };
     case 'agent':
       return {
-        strategy: 'agent-session',
+        strategy: resolveArtifactExecutionStrategy(task.artifact),
         cacheSystem: task.artifact.content ?? '',
         input: {
           ...baseInput,
@@ -52,7 +88,7 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
       };
     case 'workflow':
       return {
-        strategy: 'workflow-session',
+        strategy: resolveArtifactExecutionStrategy(task.artifact),
         cacheSystem: task.artifact.content ?? '',
         input: {
           ...baseInput,
@@ -63,7 +99,7 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
     case 'skill':
     default:
       return {
-        strategy: 'system-prompt',
+        strategy: resolveArtifactExecutionStrategy(task.artifact),
         cacheSystem: task.artifact.content ?? '',
         input: {
           ...baseInput,

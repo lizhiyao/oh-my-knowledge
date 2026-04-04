@@ -17,6 +17,10 @@ const SAMPLE_REPORT: Report = {
     cliVersion: 'test',
     nodeVersion: process.version,
     artifactHashes: { v1: 'hash-v1', v2: 'hash-v2' },
+    variantConfigs: [
+      { variant: 'v1', artifactKind: 'skill', artifactSource: 'variant-name', executionStrategy: 'system-prompt', experimentRole: 'artifact-injection', hasArtifactContent: true, cwd: null },
+      { variant: 'v2', artifactKind: 'baseline', artifactSource: 'custom', executionStrategy: 'baseline', experimentRole: 'runtime-context-only', hasArtifactContent: false, cwd: '/tmp/project-a' },
+    ],
   },
   summary: {
     v1: {
@@ -153,6 +157,13 @@ describe('renderRunDetail', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
     assert.ok(html.includes('Scores are similar'));
     assert.ok(html.includes('Add harder tests'));
+  });
+
+  it('renders variant configuration section', () => {
+    const html = renderRunDetail(SAMPLE_REPORT);
+    assert.ok(html.includes('实验配置'));
+    assert.ok(html.includes('artifact-injection'));
+    assert.ok(html.includes('/tmp/project-a'));
   });
 
   it('renders dimension descriptions', () => {

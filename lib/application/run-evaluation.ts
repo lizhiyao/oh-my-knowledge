@@ -7,6 +7,7 @@ import { loadMcpConfig, resolveMcpUrls, stopAllServers } from '../mcp-resolver.j
 import { loadSamples } from '../load-samples.js';
 import { discoverEachSkills, resolveArtifacts } from '../skill-loader.js';
 import { buildTasksFromArtifacts } from '../task-planner.js';
+import { buildVariantConfig } from '../execution-strategy.js';
 import {
   buildEvaluationRequest,
   createFailedJob,
@@ -43,6 +44,11 @@ import type { ProgressCallback } from '../evaluation-core.js';
 interface DryRunTask {
   sample_id: string;
   variant: string;
+  artifactKind: Artifact['kind'];
+  artifactSource: Artifact['source'];
+  executionStrategy: string;
+  experimentRole: string;
+  cwd: string | null;
   promptPreview: string;
   hasRubric: boolean;
   hasAssertions: boolean;
@@ -167,15 +173,23 @@ export async function runEvaluation({
         samplesPath,
         skillDir,
         totalTasks: tasks.length,
-        tasks: tasks.map((task) => ({
-          sample_id: task.sample_id,
-          variant: task.variant,
-          promptPreview: task.prompt.slice(0, 100),
-          hasRubric: Boolean(task.rubric),
-          hasAssertions: Boolean(task.assertions?.length),
-          hasDimensions: Boolean(task.dimensions && Object.keys(task.dimensions).length),
-          hasSystem: Boolean(task.artifactContent),
-        })),
+        tasks: tasks.map((task) => {
+          const config = buildVariantConfig(task.artifact);
+          return {
+            sample_id: task.sample_id,
+            variant: task.variant,
+            artifactKind: task.artifact.kind,
+            artifactSource: task.artifact.source,
+            executionStrategy: config.executionStrategy,
+            experimentRole: config.experimentRole,
+            cwd: task.cwd,
+            promptPreview: task.prompt.slice(0, 100),
+            hasRubric: Boolean(task.rubric),
+            hasAssertions: Boolean(task.assertions?.length),
+            hasDimensions: Boolean(task.dimensions && Object.keys(task.dimensions).length),
+            hasSystem: Boolean(task.artifactContent),
+          };
+        }),
       },
       filePath: null,
     };

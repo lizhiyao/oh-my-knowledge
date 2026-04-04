@@ -7,6 +7,11 @@ import { fileURLToPath } from 'node:url';
 interface DryRunTask {
   sample_id: string;
   variant: string;
+  artifactKind: string;
+  artifactSource: string;
+  executionStrategy: string;
+  experimentRole: string;
+  cwd: string | null;
   hasRubric: boolean;
   hasAssertions: boolean;
   hasDimensions: boolean;
@@ -156,6 +161,23 @@ describe('runEvaluation', () => {
     const report = asDryRunReport(result.report);
     // dry-run still has model info
     assert.ok(report.model);
+  });
+
+  it('dry-run: includes artifact/runtime context semantics', async () => {
+    const result = await runEvaluation({
+      samplesPath: SAMPLES_PATH,
+      skillDir: SKILL_DIR,
+      variants: ['baseline', 'project-env@/tmp/project-a', 'v1'],
+      dryRun: true,
+    });
+    const report = asDryRunReport(result.report);
+    const baselineTask = report.tasks.find((task) => task.variant === 'baseline');
+    const projectEnvTask = report.tasks.find((task) => task.variant === 'project-env');
+    const artifactTask = report.tasks.find((task) => task.variant === 'v1');
+    assert.equal(baselineTask?.experimentRole, 'baseline');
+    assert.equal(projectEnvTask?.experimentRole, 'runtime-context-only');
+    assert.equal(projectEnvTask?.cwd, '/tmp/project-a');
+    assert.equal(artifactTask?.executionStrategy, 'system-prompt');
   });
 
   it('loads SKILL.md from subdirectories', async () => {

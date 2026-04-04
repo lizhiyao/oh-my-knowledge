@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createCache, cacheKey } from './cache.js';
 import { buildVariantResult, buildVariantSummary } from './schema.js';
 import { grade } from './grader.js';
-import { resolveExecutionStrategy } from './execution-strategy.js';
+import { buildVariantConfig, resolveExecutionStrategy } from './execution-strategy.js';
 
 import type {
   Artifact,
@@ -287,6 +287,7 @@ export function aggregateReport({ runId, variants, model, judgeModel, noJudge, e
       cliVersion: PKG.version,
       nodeVersion: process.version,
       artifactHashes,
+      variantConfigs: artifacts.map(buildVariantConfig),
       request,
       run,
       job,
