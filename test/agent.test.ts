@@ -434,11 +434,42 @@ describe('analyzer agent insights', () => {
         baseline: { avgNumTurns: 1, totalSamples: 2, successCount: 2 },
         'project-env': { avgNumTurns: 3, avgToolCalls: 2, traceCoverageRate: 0.5, totalSamples: 2, successCount: 2 },
       },
-      results: [{ sample_id: 's1', variants: { baseline: { compositeScore: 3 }, 'project-env': { compositeScore: 4 } } }],
+      results: [{
+        sample_id: 's1',
+        variants: {
+          baseline: { compositeScore: 3, assertions: { passed: 0, total: 1, score: 1, details: [{ type: 'tools_called', value: 'Read', weight: 1, passed: false }] } },
+          'project-env': { compositeScore: 4, assertions: { passed: 1, total: 1, score: 5, details: [{ type: 'tools_called', value: 'Read', weight: 1, passed: true }] } },
+        },
+      }],
     });
     const analysis = analyzeResults(report);
     const integrityGap = analysis.insights.find((i) => i.type === 'trace_integrity_gap');
     assert.ok(integrityGap, 'should detect trace integrity gap');
+  });
+
+  it('detects tool permission errors separately from generic tool failures', () => {
+    const report = toReport({
+      meta: { variants: ['baseline', 'project-env'] },
+      summary: {
+        baseline: { avgToolCalls: 2, toolSuccessRate: 0.5, totalSamples: 1, successCount: 1 },
+        'project-env': { avgToolCalls: 2, toolSuccessRate: 1, totalSamples: 1, successCount: 1 },
+      },
+      results: [{
+        sample_id: 's1',
+        variants: {
+          baseline: {
+            compositeScore: 2,
+            toolCalls: [
+              { tool: 'Glob', input: { pattern: '**/*' }, output: 'spawn rg EACCES', success: false },
+            ],
+          },
+          'project-env': { compositeScore: 4 },
+        },
+      }],
+    });
+    const analysis = analyzeResults(report);
+    const permissionIssue = analysis.insights.find((i) => i.type === 'tool_permission_error');
+    assert.ok(permissionIssue, 'should detect tool permission error');
   });
 
   it('detects low agent assertion discrimination', () => {
@@ -452,6 +483,23 @@ describe('analyzer agent insights', () => {
       results: [
         {
           sample_id: 's1',
+          variants: {
+            baseline: { assertions: { passed: 1, total: 2, score: 3, details: [
+              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+              { type: 'turns_max', value: 3, weight: 1, passed: false },
+            ] } },
+            'project-env': { assertions: { passed: 1, total: 2, score: 3, details: [
+              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+              { type: 'turns_max', value: 3, weight: 1, passed: false },
+            ] } },
+            skill: { assertions: { passed: 1, total: 2, score: 3, details: [
+              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+              { type: 'turns_max', value: 3, weight: 1, passed: false },
+            ] } },
+          },
+        },
+        {
+          sample_id: 's2',
           variants: {
             baseline: { assertions: { passed: 1, total: 2, score: 3, details: [
               { type: 'tools_called', value: 'Read', weight: 1, passed: true },
@@ -500,11 +548,54 @@ describe('analyzer agent insights', () => {
             ] } },
           },
         },
+        {
+          sample_id: 's2',
+          variants: {
+            baseline: { assertions: { passed: 0, total: 2, score: 1, details: [
+              { type: 'tools_called', value: 'Read', weight: 1, passed: false },
+              { type: 'turns_max', value: 3, weight: 1, passed: false },
+            ] } },
+            'project-env': { assertions: { passed: 1, total: 2, score: 3, details: [
+              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+              { type: 'turns_max', value: 3, weight: 1, passed: false },
+            ] } },
+            skill: { assertions: { passed: 2, total: 2, score: 5, details: [
+              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+              { type: 'turns_max', value: 3, weight: 1, passed: true },
+            ] } },
+          },
+        },
       ],
     });
     const analysis = analyzeResults(report);
     const healthyDiscrimination = analysis.insights.find((i) => i.type === 'agent_assertion_discrimination_ok');
     assert.ok(healthyDiscrimination, 'should detect healthy agent assertion discrimination');
+  });
+
+  it('skips agent assertion discrimination for lightweight runtime-marker checks', () => {
+    const report = toReport({
+      meta: { variants: ['baseline', 'project-env'] },
+      summary: {
+        baseline: { totalSamples: 2, successCount: 2 },
+        'project-env': { totalSamples: 2, successCount: 2 },
+      },
+      results: [{
+        sample_id: 's1',
+        variants: {
+          baseline: { assertions: { passed: 1, total: 2, score: 3, details: [
+            { type: 'contains', value: 'OMK_RUNTIME', weight: 1, passed: false },
+            { type: 'turns_max', value: 4, weight: 1, passed: true },
+          ] } },
+          'project-env': { assertions: { passed: 2, total: 2, score: 5, details: [
+            { type: 'contains', value: 'OMK_RUNTIME', weight: 1, passed: true },
+            { type: 'turns_max', value: 4, weight: 1, passed: true },
+          ] } },
+        },
+      }],
+    });
+    const analysis = analyzeResults(report);
+    assert.equal(analysis.insights.some((i) => i.type === 'agent_assertion_discrimination_low'), false);
+    assert.equal(analysis.insights.some((i) => i.type === 'trace_integrity_gap'), false);
   });
 
   it('no agent insights when no tool data', () => {

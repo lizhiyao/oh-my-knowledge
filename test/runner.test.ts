@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { runEvaluation, loadSkills, buildTasks, discoverVariants, discoverEachSkills, runEachEvaluation } from '../lib/runner.js';
+import { generateRunId } from '../lib/evaluation-core.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -322,6 +323,14 @@ describe('baseline variant', () => {
     const report = asDryRunReport(result.report);
     assert.equal(report.totalTasks, 6); // 3 samples × 2 variants
     assert.deepEqual(report.variants, ['baseline', 'v1']);
+  });
+});
+
+describe('generateRunId', () => {
+  it('sanitizes file-path variants for filesystem-safe ids', () => {
+    const runId = generateRunId(['baseline', 'examples/agent-eval/skills/v1.md@examples/code-review']);
+    assert.doesNotMatch(runId, /[\\/]/);
+    assert.match(runId, /examples-agent-eval-skills-v1\.md@examples-code-review/);
   });
 });
 

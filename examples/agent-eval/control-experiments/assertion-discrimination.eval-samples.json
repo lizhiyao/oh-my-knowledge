@@ -1,32 +1,69 @@
 [
   {
     "sample_id": "assertion-001",
-    "prompt": "读取当前项目中的 skills/v1.md 第一行，并说明你是否真的读过该文件。",
-    "rubric": "应通过真实工具读取文件，再返回首行内容。baseline、runtime-context-only、artifact-injection 三组在工具路径上应能拉开差异。",
+    "prompt": "只允许读取当前工作目录下的 ./skills/runtime-context-check.md。不要搜索整个仓库，不要使用 Glob。如果文件存在，输出 `RUNTIME:<第一行>`；如果不存在，输出 `NO_FILE_IN_CWD`。第一行是随机 runtime token，必须原样返回。",
+    "rubric": "这条样本要让三组变体在输出与工具路径上拉开差异：baseline 应更容易输出 NO_FILE_IN_CWD，runtime-context-only 应输出随机 runtime token，artifact-injection 应在此基础上更受控。",
     "assertions": [
-      { "type": "tools_called", "value": "Read", "weight": 1 },
-      { "type": "tool_input_contains", "value": "skills/v1.md", "weight": 1 },
-      { "type": "turns_min", "value": 2, "weight": 0.5 },
-      { "type": "turns_max", "value": 6, "weight": 0.5 }
+      {
+        "type": "tools_called",
+        "values": [
+          "Read"
+        ],
+        "weight": 1
+      },
+      {
+        "type": "tool_output_contains",
+        "value": "Read:OMK_RUNTIME_CODE_REVIEW_7F3D",
+        "weight": 1
+      },
+      {
+        "type": "turns_min",
+        "value": 2,
+        "weight": 0.5
+      },
+      {
+        "type": "turns_max",
+        "value": 4,
+        "weight": 0.5
+      }
     ],
     "dimensions": {
-      "discrimination": "断言是否能区分三组变体的工具路径差异",
-      "groundedness": "是否通过实际读取证明回答来自文件而不是猜测"
+      "discrimination": "断言是否能把 baseline 与 runtime-context-only / artifact-injection 拉开",
+      "groundedness": "是否只基于当前 cwd 下的文件而不是全仓搜索"
     }
   },
   {
     "sample_id": "assertion-002",
-    "prompt": "读取当前项目中的 skills/v1.md，返回第一行和文件总行数。不要附加无关说明。",
-    "rubric": "应稳定触发与文件读取相关的工具断言，并尽量减少无关探索。",
+    "prompt": "读取当前工作目录下的 ./skills/runtime-context-check.md，并只输出一行结果。第一行是随机 runtime token。不要搜索整个仓库，不要解释。",
+    "rubric": "artifact-injection 组应更稳定地产出 artifact 特征标记；runtime-context-only 组应读到正确文件但不一定有 artifact 标记；baseline 应更容易失败。",
     "assertions": [
-      { "type": "tools_called", "value": "Read", "weight": 1 },
-      { "type": "tool_input_contains", "value": "skills/v1.md", "weight": 1 },
-      { "type": "tools_count_max", "value": 4, "weight": 0.5 },
-      { "type": "turns_max", "value": 6, "weight": 0.5 }
+      {
+        "type": "tools_called",
+        "values": [
+          "Read",
+          "Bash"
+        ],
+        "weight": 1
+      },
+      {
+        "type": "tool_output_contains",
+        "value": "Read:OMK_RUNTIME_CODE_REVIEW_7F3D",
+        "weight": 1
+      },
+      {
+        "type": "tool_input_contains",
+        "value": "Bash:wc -l",
+        "weight": 1
+      },
+      {
+        "type": "turns_min",
+        "value": 3,
+        "weight": 0.5
+      }
     ],
     "dimensions": {
-      "assertion_usefulness": "这些 agent 断言是否能稳定测出差异",
-      "efficiency": "是否避免无关工具调用"
+      "assertion_usefulness": "这些断言是否能把 artifact-injection 单独识别出来",
+      "efficiency": "是否避免无关搜索与提问"
     }
   }
 ]

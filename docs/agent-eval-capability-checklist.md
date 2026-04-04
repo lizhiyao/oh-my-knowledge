@@ -22,6 +22,11 @@
 - 先把语义、对照组、trace、断言、报告解释性打稳
 - 等这把尺子稳定之后，再去扩更复杂的新能力
 
+如果要直接开跑第一轮验收，配套执行顺序见：
+
+- [agent-eval-first-acceptance-runbook.md](file:///Users/lizhiyao/Documents/oh-my-knowledge/docs/agent-eval-first-acceptance-runbook.md)
+- [agent-eval-acceptance-record-template.md](file:///Users/lizhiyao/Documents/oh-my-knowledge/docs/agent-eval-acceptance-record-template.md)
+
 ---
 
 ## 二、验收目标
@@ -229,7 +234,7 @@ baseline
 omk bench run \
   --executor claude-sdk \
   --samples examples/agent-eval/control-experiments/artifact-injection.eval-samples.json \
-  --variants baseline,examples/agent-eval/skills/v1.md@examples/code-review
+  --variants baseline,examples/agent-eval/control-experiments/skills/strict-reader.md@examples/code-review
 ```
 
 #### 样本建议
@@ -275,7 +280,7 @@ project-env@/path/to/project
 omk bench run \
   --executor claude-sdk \
   --samples examples/agent-eval/control-experiments/assertion-discrimination.eval-samples.json \
-  --variants baseline,project-env@examples/code-review,examples/agent-eval/skills/v1.md@examples/code-review
+  --variants baseline,project-env@examples/code-review,examples/agent-eval/control-experiments/skills/strict-reader.md@examples/code-review
 ```
 
 #### 样本建议

@@ -1,54 +1,59 @@
 [
   {
     "sample_id": "env-001",
-    "prompt": "读取当前项目根目录与 skills 目录，说明当前项目有哪些可直接评测的 artifact。不要猜测，必须基于实际读取结果回答。",
-    "rubric": "应先读取目录或文件，再基于当前 cwd 中的实际内容回答；不同 cwd 下回答应出现可解释差异。",
+    "prompt": "只允许读取当前工作目录下的 ./skills/runtime-context-check.md 第一行，并原样输出第一行里的 runtime token。不要搜索整个仓库，不要使用 Glob。如果文件不存在，直接输出 NO_FILE_IN_CWD。",
+    "rubric": "应直接基于当前 cwd 访问 ./skills/runtime-context-check.md。runtime-context-only 组应读到随机 runtime token，baseline 应无法稳定命中当前工作目录下的目标文件。",
     "assertions": [
       {
-        "type": "tools_count_min",
-        "value": 1,
+        "type": "contains",
+        "value": "OMK_RUNTIME",
         "weight": 1
       },
       {
-        "type": "turns_min",
-        "value": 2,
+        "type": "not_contains",
+        "value": "NO_FILE_IN_CWD",
         "weight": 1
       },
       {
         "type": "turns_max",
-        "value": 8,
+        "value": 4,
         "weight": 0.5
       }
     ],
     "dimensions": {
-      "groundedness": "是否明确基于当前项目实际文件回答，而不是泛化猜测",
-      "runtime_context_sensitivity": "切换到不同 cwd 时，回答内容是否出现合理差异"
+      "groundedness": "是否直接基于当前 cwd 下的目标文件回答，而不是全仓搜索",
+      "runtime_context_sensitivity": "切换 cwd 后是否命中不同 runtime marker"
     }
   },
   {
     "sample_id": "env-002",
-    "prompt": "读取当前项目中的一个 artifact 文件，给出该文件的相对路径和第一行内容。",
-    "rubric": "应读取当前 cwd 下真实存在的 artifact 文件，并返回路径与首行文本。",
+    "prompt": "读取当前工作目录下的 ./skills/runtime-context-check.md，最终只输出 `RUNTIME:<第一行>`。第一行可能是随机 token，必须原样返回。不要解释。如果文件不存在，直接输出 NO_FILE_IN_CWD。",
+    "rubric": "应只基于当前工作目录中的目标文件输出随机 runtime marker。不同 cwd 下应输出不同 marker；baseline 不应伪造结果。",
     "assertions": [
       {
-        "type": "tools_called",
-        "value": "Read",
+        "type": "contains",
+        "value": "RUNTIME:OMK_RUNTIME",
         "weight": 1
       },
       {
-        "type": "tools_count_min",
-        "value": 1,
+        "type": "not_contains",
+        "value": "NO_FILE_IN_CWD",
         "weight": 0.5
       },
       {
         "type": "turns_min",
         "value": 2,
         "weight": 0.5
+      },
+      {
+        "type": "turns_max",
+        "value": 4,
+        "weight": 0.5
       }
     ],
     "dimensions": {
-      "traceability": "是否能从 trace 解释它读了哪个文件",
-      "runtime_context_sensitivity": "切换 cwd 后是否会指向不同文件"
+      "traceability": "是否能从 trace 解释它直接读取了当前 cwd 下的目标文件",
+      "runtime_context_sensitivity": "切换 cwd 后是否输出不同 runtime marker"
     }
   }
 ]

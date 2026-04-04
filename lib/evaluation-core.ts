@@ -355,7 +355,9 @@ export function generateRunId(variants: string[]): string {
   const pad = (n: number): string => String(n).padStart(2, '0');
   const date = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
   const time = `${pad(d.getHours())}${pad(d.getMinutes())}`;
-  const vs = variants.join('-vs-');
+  const vs = variants
+    .map((variant) => variant.replaceAll(/[\\/:]/g, '-').replaceAll(/[^a-zA-Z0-9._@-]/g, '_'))
+    .join('-vs-');
   return `${vs}-${date}-${time}`;
 }
 

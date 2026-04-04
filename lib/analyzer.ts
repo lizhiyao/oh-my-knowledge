@@ -35,13 +35,16 @@ export function analyzeResults(report: Report): AnalysisResult {
   // 6. Agent tool usage patterns
   detectToolPatterns(report, variants, insights, suggestions);
 
-  // 7. Trace integrity
+  // 7. Tooling / permission issues
+  detectToolPermissionIssues(results, variants, insights, suggestions);
+
+  // 8. Trace integrity
   detectTraceIntegrity(report, variants, insights, suggestions);
 
-  // 8. Agent assertion discrimination
+  // 9. Agent assertion discrimination
   detectAgentAssertionDiscrimination(results, variants, insights, suggestions);
 
-  // 9. Suggest --repeat when score variance is high and no repeat data
+  // 10. Suggest --repeat when score variance is high and no repeat data
   detectNeedRepeat(report, results, variants, insights, suggestions);
 
   return { insights, suggestions };
@@ -57,6 +60,28 @@ const AGENT_ASSERTION_TYPES = new Set([
   'turns_min',
   'turns_max',
 ]);
+
+const TRACE_HEAVY_AGENT_ASSERTION_TYPES = new Set([
+  'tools_called',
+  'tools_not_called',
+  'tool_input_contains',
+  'tool_output_contains',
+  'tools_count_min',
+  'tools_count_max',
+]);
+
+function collectAgentAssertionTypes(results: ResultEntry[], variants: string[]): Set<string> {
+  const types = new Set<string>();
+  for (const result of results) {
+    const details = result.variants?.[variants[0]]?.assertions?.details || [];
+    for (const detail of details) {
+      if (AGENT_ASSERTION_TYPES.has(detail.type)) {
+        types.add(detail.type);
+      }
+    }
+  }
+  return types;
+}
 
 function detectLowDiscrimination(results: ResultEntry[], variants: string[], insights: Insight[], suggestions: string[]): void {
   // For each sample, check if all variants have the same assertion pass/fail pattern
@@ -301,13 +326,47 @@ function detectToolPatterns(report: Report, variants: string[], insights: Insigh
   }
 }
 
+function detectToolPermissionIssues(results: ResultEntry[], variants: string[], insights: Insight[], suggestions: string[]): void {
+  const permissionErrors: Array<{ variant: string; tool: string; sample_id: string; output: string }> = [];
+
+  for (const result of results) {
+    for (const variant of variants) {
+      const calls = result.variants?.[variant]?.toolCalls || [];
+      for (const call of calls) {
+        if (call.success) continue;
+        const output = String(call.output || '');
+        if (/EACCES|permission denied/i.test(output)) {
+          permissionErrors.push({
+            variant,
+            tool: call.tool,
+            sample_id: result.sample_id,
+            output: output.slice(0, 200),
+          });
+        }
+      }
+    }
+  }
+
+  if (permissionErrors.length === 0) return;
+
+  insights.push({
+    type: 'tool_permission_error',
+    severity: 'warning',
+    message: `检测到 ${permissionErrors.length} 次工具权限错误，实验结论可能被环境问题污染`,
+    details: permissionErrors.slice(0, 10),
+  });
+  suggestions.push('先处理工具权限错误，再解读 agent 分数差异；若是 Glob/rg 权限问题，优先避免在控制实验中依赖该工具');
+}
+
 function detectTraceIntegrity(report: Report, variants: string[], insights: Insight[], suggestions: string[]): void {
   const summary = report.summary || {};
+  const agentAssertionTypes = collectAgentAssertionTypes(report.results || [], variants);
+  const needsTraceHeavyCoverage = [...agentAssertionTypes].some((type) => TRACE_HEAVY_AGENT_ASSERTION_TYPES.has(type));
   const hasAgentLikeData = variants.some((variant) => {
     const stats = summary[variant];
     return Boolean(stats?.avgToolCalls || stats?.avgNumTurns > 1);
   });
-  if (!hasAgentLikeData) return;
+  if (!hasAgentLikeData || !needsTraceHeavyCoverage) return;
 
   const weakCoverage = variants
     .map((variant) => ({
@@ -331,6 +390,10 @@ function detectTraceIntegrity(report: Report, variants: string[], insights: Insi
 }
 
 function detectAgentAssertionDiscrimination(results: ResultEntry[], variants: string[], insights: Insight[], suggestions: string[]): void {
+  const assertionTypes = collectAgentAssertionTypes(results, variants);
+  const hasTraceHeavyAssertions = [...assertionTypes].some((type) => TRACE_HEAVY_AGENT_ASSERTION_TYPES.has(type));
+  if (!hasTraceHeavyAssertions) return;
+
   const evaluated: Array<{ sample_id: string; type: string; value: string | number; pattern: string }> = [];
   let discriminative = 0;
   let allPass = 0;
@@ -367,7 +430,7 @@ function detectAgentAssertionDiscrimination(results: ResultEntry[], variants: st
     }
   }
 
-  if (evaluated.length === 0) return;
+  if (evaluated.length < 4) return;
 
   const discriminationRate = Number((discriminative / evaluated.length).toFixed(2));
   if (discriminationRate < 0.3) {
