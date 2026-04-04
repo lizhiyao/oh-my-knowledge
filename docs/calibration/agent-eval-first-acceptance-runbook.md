@@ -226,7 +226,7 @@ omk bench run --dry-run \
 
 直接复制这里的模板：
 
-- [agent-eval-acceptance-record-template.md](file:///Users/lizhiyao/Documents/oh-my-knowledge/docs/agent-eval-acceptance-record-template.md)
+- [agent-eval-acceptance-record-template.md](./agent-eval-acceptance-record-template.md)
 
 ### 5. 最终放行标准
 

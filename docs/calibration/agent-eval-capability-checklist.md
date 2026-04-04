@@ -24,8 +24,8 @@
 
 如果要直接开跑第一轮验收，配套执行顺序见：
 
-- [agent-eval-first-acceptance-runbook.md](file:///Users/lizhiyao/Documents/oh-my-knowledge/docs/agent-eval-first-acceptance-runbook.md)
-- [agent-eval-acceptance-record-template.md](file:///Users/lizhiyao/Documents/oh-my-knowledge/docs/agent-eval-acceptance-record-template.md)
+- [agent-eval-first-acceptance-runbook.md](./agent-eval-first-acceptance-runbook.md)
+- [agent-eval-acceptance-record-template.md](./agent-eval-acceptance-record-template.md)
 
 ---
 
