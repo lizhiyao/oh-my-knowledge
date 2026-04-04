@@ -8,6 +8,7 @@ import { layout } from './renderer/layout.js';
 import { renderSummaryCards } from './renderer/summary.js';
 import { renderAnalysis } from './renderer/analysis.js';
 import { renderAgentOverview } from './renderer/agent-overview.js';
+import { renderCoverageSection } from './renderer/coverage.js';
 import { renderSampleTable } from './renderer/table.js';
 import { renderTrendsBody } from './renderer/trends.js';
 import type { Report, Lang } from './types.js';
@@ -207,6 +208,8 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     ${renderAgentOverview(variants, summary, lang)}
 
     ${renderAnalysis(report.analysis, lang)}
+
+    ${renderCoverageSection(report.analysis?.coverage, lang)}
 
     <section>${sampleTable}</section>
 

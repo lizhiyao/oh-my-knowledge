@@ -321,9 +321,28 @@ export interface Insight {
   details: unknown;
 }
 
+export interface KnowledgeCoverageEntry {
+  path: string;
+  type: string;
+  accessed: boolean;
+  accessCount: number;
+  lineCount?: number;
+}
+
+export interface KnowledgeCoverage {
+  entries: KnowledgeCoverageEntry[];
+  filesCovered: number;
+  filesTotal: number;
+  fileCoverageRate: number;
+  uncoveredFiles: string[];
+  grepPatternsUsed: number;
+  overallRate: number;
+}
+
 export interface AnalysisResult {
   insights: Insight[];
   suggestions: string[];
+  coverage?: Record<string, KnowledgeCoverage>;
 }
 
 export interface VarianceData {
