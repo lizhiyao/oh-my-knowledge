@@ -128,29 +128,56 @@ export function buildKnowledgeIndex(cwd: string): KnowledgeIndex {
 
 /**
  * Build a knowledge index from both artifact references and directory scanning.
+ *
+ * Strategy:
+ * - If artifact content is provided, use its referenced paths as the primary boundary.
+ *   Only scan .claude/knowledge/ (shared principles/indexes), not other skills.
+ * - If no artifact content, fall back to full directory scan.
  */
 export function buildFullKnowledgeIndex(artifactContent: string | null, cwd: string | null): KnowledgeIndex {
   const entriesMap = new Map<string, KnowledgeEntry>();
 
-  // 1. Scan directories if cwd is provided
-  if (cwd) {
-    const dirIndex = buildKnowledgeIndex(cwd);
-    for (const entry of dirIndex.entries) {
-      entriesMap.set(entry.path, entry);
-    }
-  }
-
-  // 2. Add paths referenced in artifact content (may include files outside scanned dirs)
   if (artifactContent) {
+    // Artifact-scoped: only scan .claude/knowledge/ (shared knowledge, not other skills)
+    if (cwd) {
+      const knowledgeDir = join(cwd, '.claude', 'knowledge');
+      for (const entry of scanKnowledgeDir(knowledgeDir, '.claude/knowledge')) {
+        entriesMap.set(entry.path, entry);
+      }
+      // Also check CLAUDE.md
+      const claudeMd = join(cwd, 'CLAUDE.md');
+      if (existsSync(claudeMd)) {
+        let lineCount: number | undefined;
+        try { lineCount = readFileSync(claudeMd, 'utf-8').split('\n').length; } catch { /* skip */ }
+        entriesMap.set('CLAUDE.md', { path: 'CLAUDE.md', type: 'principle', lineCount });
+      }
+    }
+
+    // Add paths explicitly referenced in artifact content
     const refPaths = extractReferencedPaths(artifactContent);
     for (const path of refPaths) {
       if (!entriesMap.has(path)) {
-        // Check if any existing entry matches by filename
         const existing = [...entriesMap.values()].find((e) => e.path.endsWith('/' + path) || e.path === path);
         if (!existing) {
-          entriesMap.set(path, { path, type: classifyEntry(path) });
+          // Resolve line count if cwd is available
+          let lineCount: number | undefined;
+          if (cwd) {
+            const fullPath = resolve(cwd, path);
+            try {
+              if (existsSync(fullPath) && statSync(fullPath).isFile()) {
+                lineCount = readFileSync(fullPath, 'utf-8').split('\n').length;
+              }
+            } catch { /* skip */ }
+          }
+          entriesMap.set(path, { path, type: classifyEntry(path), lineCount });
         }
       }
+    }
+  } else if (cwd) {
+    // No artifact content: fall back to full directory scan
+    const dirIndex = buildKnowledgeIndex(cwd);
+    for (const entry of dirIndex.entries) {
+      entriesMap.set(entry.path, entry);
     }
   }
 
