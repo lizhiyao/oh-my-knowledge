@@ -1,12 +1,12 @@
 # oh-my-knowledge
 
-知识载体评测工具 — 用客观数据衡量你的 skill 质量。
+知识载体评测工具 — 用客观数据衡量你的 artifact 质量。
 
 **固定模型，只变知识载体，数据说话。**
 
 ## 为什么需要这个工具
 
-做知识工程的团队会产出大量 skill（系统提示词、知识包、规则集等）。当被问到"v2 比 v1 好在哪"时，需要客观数据而非主观判断。`oh-my-knowledge` 通过控制变量实验解决这个问题：相同模型、相同测试样本，只改变知识载体。
+做知识工程的团队会产出大量知识载体（当前常见是 skill，也包括 prompt、agent、workflow 等）。当被问到"v2 比 v1 好在哪"时，需要客观数据而非主观判断。`oh-my-knowledge` 通过控制变量实验解决这个问题：相同模型、相同测试样本，只改变知识载体。
 
 ## 快速开始
 
@@ -18,15 +18,15 @@ npm i oh-my-knowledge -g
 omk bench init my-eval
 cd my-eval
 
-# 把要对比的 skill 放到 skills/ 目录
+# 把要对比的 artifact 放到 skills/ 目录
 # 方式一：直接放 .md 文件（skills/v1.md, skills/v2.md）
-# 方式二：放完整 skill 目录（skills/my-skill-v1/SKILL.md, ...）
-# 只放一个 skill 也行，会自动加 baseline 对照
+# 方式二：放完整 artifact 目录（skills/my-skill-v1/SKILL.md, ...）
+# 只放一个 artifact 也行，会自动加 baseline 对照
 
 # 预览评测计划
 omk bench run --dry-run
 
-# 运行评测（自动发现 skills/ 目录下的所有 skill）
+# 运行评测（自动发现 skills/ 目录下的所有 artifact）
 omk bench run
 ```
 
@@ -35,12 +35,12 @@ omk bench run
 安装 omk 后，在 Claude Code 中直接用自然语言交互：
 
 ```
-/omk eval              # 评测当前项目的 skill
-/omk evolve            # 自动迭代改进 skill
+/omk eval              # 评测当前项目的 artifact
+/omk evolve            # 自动迭代改进 artifact
 /omk gen-samples       # 生成测试用例
 ```
 
-或直接说"帮我评测 v1 和 v2 的差异"、"改进一下这个 skill"，omk skill 会自动理解意图并调用对应命令。
+或直接说"帮我评测 v1 和 v2 的差异"、"改进一下这个 artifact"，omk 会自动理解意图并调用对应命令。
 
 ## 特性
 
@@ -55,7 +55,7 @@ omk bench run
 | **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
 | **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本样本 |
 | **人工反馈** | HTML 报告中提交星级评分和备注 |
-| **可追溯性** | 报告含 CLI 版本、Node 版本、skill 文件哈希 |
+| **可追溯性** | 报告含 CLI 版本、Node 版本、artifact 哈希 |
 | **中英切换** | HTML 报告右上角一键切换语言 |
 
 ## 工作原理
@@ -254,10 +254,10 @@ omk bench run [选项]
 
 选项：
   --samples <路径>       样本文件（默认：eval-samples.json，自动检测 .yaml/.yml）
-  --skill-dir <路径>     skill 目录（默认：skills）
-  --variants <a,b>       变体名称，不指定时自动从 skill 目录发现
-                         只有一个 skill 时自动加 baseline 对照
-                         特殊值：baseline（无 skill）、git:name（git 历史版本）、
+  --skill-dir <路径>     artifact 目录（参数名沿用历史写法，默认：skills）
+  --variants <a,b>       变体名称，不指定时自动从 artifact 目录发现
+                         只有一个 artifact 时自动加 baseline 对照
+                         特殊值：baseline（空 artifact）、git:name（git 历史版本）、
                          git:ref:name（指定 commit）、含 / 的路径（直接读取文件）
   --model <名称>         被测模型（默认：sonnet）
   --judge-model <名称>   评委模型（默认：haiku）
@@ -275,17 +275,17 @@ omk bench run [选项]
                          （默认：当前目录的 .mcp.json）
   --no-serve             评测完成后不自动启动报告服务
   --verbose              打印每个样本的详细执行结果（耗时、tokens、输出预览）
-  --each                 批量评测：每个 skill 独立和 baseline 对比
-                         需要每个 skill 配对 {name}.eval-samples.json
+  --each                 批量评测：每个 artifact 独立和 baseline 对比
+                         需要每个 artifact 配对 {name}.eval-samples.json
 ```
 
 ### `omk bench run --each`（批量评测）
 
-当 skills/ 下放了多个**独立的** skill 时，使用 `--each` 逐个评测，每个 skill 独立和 baseline 对比，生成一份合并报告。
+当 skills/ 下放了多个**独立的** artifact 时，使用 `--each` 逐个评测，每个 artifact 独立和 baseline 对比，生成一份合并报告。
 
 ```
 skills/
-├── asset.md                       ← skill 文件
+├── asset.md                       ← artifact 文件
 ├── asset.eval-samples.json        ← 配对的测试集
 ├── home.md
 ├── home.eval-samples.json
@@ -298,7 +298,7 @@ skills/
 
 - `{name}.md` → 查找同目录下的 `{name}.eval-samples.json`
 - `{name}/SKILL.md` → 查找 `{name}/eval-samples.json`
-- 没有配对 eval-samples 的 skill 会被跳过并打印警告
+- 没有配对 eval-samples 的 artifact 会被跳过并打印警告
 
 ```bash
 omk bench run --each
@@ -307,13 +307,13 @@ omk bench run --each --dry-run
 
 ### `omk bench gen-samples`（生成测评用例）
 
-读取 skill 内容，通过 LLM 自动生成 eval-samples。生成后请审查编辑再跑评测。
+读取 artifact 内容，通过 LLM 自动生成 eval-samples。生成后请审查编辑再跑评测。
 
 ```bash
-# 为指定 skill 生成测试集（输出到 eval-samples.json）
+# 为指定 artifact 生成测试集（输出到 eval-samples.json）
 omk bench gen-samples skills/my-skill.md
 
-# 为 skills/ 下所有缺少测试集的 skill 批量生成
+# 为 skills/ 下所有缺少测试集的 artifact 批量生成
 omk bench gen-samples --each
 
 # 指定生成数量
@@ -323,15 +323,15 @@ omk bench gen-samples skills/my-skill.md --count 10
 选项：
 
 ```
-  --each                 为所有缺少 eval-samples 的 skill 批量生成
-  --count <n>            每个 skill 生成的样本数（默认：5）
+  --each                 为所有缺少 eval-samples 的 artifact 批量生成
+  --count <n>            每个 artifact 生成的样本数（默认：5）
   --model <名称>         生成用的模型（默认：sonnet）
-  --skill-dir <路径>     skill 目录（默认：skills），配合 --each 使用
+  --skill-dir <路径>     artifact 目录（参数名沿用历史写法，默认：skills），配合 --each 使用
 ```
 
 ### `omk bench evolve`（自我循环改进）
 
-让 AI 自动迭代 skill：评测 → 分析弱点 → LLM 改进 → 再评测 → 分数涨了留、没涨扔 → 重复。
+让 AI 自动迭代 artifact：评测 → 分析弱点 → LLM 改进 → 再评测 → 分数涨了留、没涨扔 → 重复。
 
 ```bash
 # 基本用法：迭代 5 轮
@@ -407,14 +407,14 @@ omk bench run --executor "./my-executor.sh"
 - stdout 中只需返回有值的字段，其余默认为 0；也可以直接输出纯文本（不解析 token/成本）
 - 非零退出码视为执行失败
 
-### Skill 目录结构
+### Artifact 目录结构
 
-默认执行器（claude/openai/gemini）支持两种 skill 布局，同一次评测中可混用：
+默认执行器（claude/openai/gemini）支持两种 artifact 布局，同一次评测中可混用：
 
 ```
 skills/
 ├── v1.md                    # 方式一：直接放 .md 文件
-└── my-skill/                # 方式二：完整 skill 目录
+└── my-skill/                # 方式二：完整 artifact 目录
     ├── SKILL.md             #   工具自动读取此文件作为 system prompt
     ├── config.json          #   其他文件不参与评测，仅保留完整性
     └── scripts/
@@ -422,33 +422,35 @@ skills/
 
 **Variant 解析规则：**
 
+`variant` 是实验分组表达式。解析之后，OMK 会得到一个 `artifact` 与可选的 `runtime context`（当前主要是 `cwd`）。
+
 | 格式 | 含义 |
 |------|------|
-| `name` | 从 skill 目录查找 `name.md` 或 `name/SKILL.md` |
-| `baseline` | 无 skill 对照（不使用 system prompt） |
-| `baseline@/path/to/project` | 无 system prompt，但在指定项目目录运行，适合测试项目自带 `CLAUDE.md` / skills |
-| `git:name` | 从 git HEAD 读取 skill 的上次提交版本 |
-| `git:ref:name` | 从 git 指定 commit 读取 |
-| `./path/to/file.md` | 含 `/` 的路径，直接读取文件 |
+| `name` | 从 artifact 目录查找 `name.md` 或 `name/SKILL.md`，解析为一个 artifact |
+| `baseline` | 空 artifact，不使用 system prompt；可直接理解为“什么都没有” |
+| `project-env@/path/to/project` | 空 artifact，但在指定项目目录运行，用于单独观察项目级 runtime context |
+| `git:name` | 从 git HEAD 读取一个 artifact 的上次提交版本 |
+| `git:ref:name` | 从 git 指定 commit 读取一个 artifact |
+| `./path/to/file.md` | 含 `/` 的路径，直接读取文件作为 artifact |
 | `variant@/path/to/project` | 给任意变体附加运行目录，支持 `name@cwd`、`git:name@cwd`、`/file.md@cwd` |
 
-不指定 `--variants` 时，自动扫描 skill 目录下的所有 `.md` 文件和含 `SKILL.md` 的子目录。只有一个 skill 时自动加 `baseline` 作为对照。
+不指定 `--variants` 时，自动扫描 artifact 目录下的所有 `.md` 文件和含 `SKILL.md` 的子目录。只有一个 artifact 时自动加 `baseline` 作为对照。
 
 ```bash
-# 自动发现 skills/ 下所有 skill
+# 自动发现 skills/ 下所有 artifact
 omk bench run
 
 # 显式指定两个变体
 omk bench run --variants v1,v2
 
-# 对比无 skill 和有 skill 的效果差异
+# 对比空 artifact 和显式 artifact 的效果差异
 omk bench run --variants baseline,my-skill
 
-# 在项目目录里跑 baseline，复用 Claude Code 自动加载的 CLAUDE.md / skills
-omk bench run --variants baseline@/Projects/workspace
+# 推荐用自描述标签单独观察项目级 runtime context 的影响
+omk bench run --variants project-env@/Projects/workspace
 
-# 对比“项目知识环境”与“显式 skill 注入”
-omk bench run --variants baseline@/Projects/workspace,/Projects/workspace/.claude/skills/prd/SKILL.md@/Projects/workspace
+# 对比“项目级 runtime context”与“显式 artifact 注入”
+omk bench run --variants project-env@/Projects/workspace,/Projects/workspace/.claude/skills/prd/SKILL.md@/Projects/workspace
 
 # 对比修改前后（旧版本从 git 历史读取）
 omk bench run --variants git:my-skill,my-skill
@@ -466,13 +468,21 @@ omk bench run --variants ./old-skill.md,./new-skill.md
 - **openai-api**：设置 `OPENAI_API_KEY` 环境变量
 - **gemini**：`npm i -g @google/gemini-cli` 并认证
 
-### Agent 评测与项目知识环境
+### Agent 评测与项目级 Runtime Context
 
-当执行器使用 `claude-sdk` 时，OMK 现在已经支持第一版 agent-aware evaluation：
+当执行器使用 `claude-sdk` 时，OMK 现在已经支持第一版 agent-aware evaluation。
+
+这里建议把几个概念分开理解：
+
+- `artifact`：被评测对象，例如 baseline、skill、prompt、agent
+- `variant`：CLI 里的实验分组表达式
+- `runtime context`：运行时上下文，当前主要是 `cwd`；在项目型 agent 场景下，它就包含项目目录、`CLAUDE.md`、本地 skills 等会影响行为的环境因素
+
+在 OMK 里，`agent` 不是所有对象的总称，`skill` 也不是所有对象的总称。更稳妥的说法是：你在比较不同 artifact 在不同 runtime context 下的表现。
 
 - 自动抽取 turns / toolCalls trace
 - 支持基于工具调用行为的断言
-- 支持在指定 `cwd` 下运行，让 Claude Code 自动加载项目内的 `CLAUDE.md`、skills 和本地知识环境
+- 支持在指定 `cwd` 下运行，让 Claude Code 自动加载项目内的 `CLAUDE.md`、skills 和本地 runtime context
 
 #### 推荐执行器
 
@@ -502,19 +512,19 @@ omk bench run \
   --variants baseline
 ```
 
-**2. 项目知识环境 baseline**
+**2. 空 artifact + 项目级 runtime context**
 
-不注入 system prompt，但在项目目录运行。适合验证 Claude Code 自动加载的 `CLAUDE.md` / skills 是否已经能显著提升结果。
+不注入 system prompt，但在项目目录运行。它不是严格意义上的“裸 baseline”，而是“空 artifact + 项目级 runtime context”。
 
 ```bash
 omk bench run \
   --executor claude-sdk \
-  --variants baseline@/Projects/workspace
+  --variants project-env@/Projects/workspace
 ```
 
-**3. 显式 skill 注入**
+**3. 显式 artifact 注入**
 
-直接把某个外部 `SKILL.md` 作为变体注入，同时保留项目目录上下文。适合对比“项目知识环境”与“显式单 skill 注入”之间的差异。
+直接把某个外部 `SKILL.md` 作为 artifact 注入，同时保留项目目录上下文。适合对比“项目级 runtime context”与“显式单 artifact 注入”之间的差异。
 
 ```bash
 omk bench run \
@@ -539,13 +549,13 @@ omk bench run \
 omk bench run \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
-  --variants baseline,baseline@/Projects/workspace,/Projects/workspace/.claude/skills/prd/SKILL.md@/Projects/workspace
+  --variants baseline,project-env@/Projects/workspace,/Projects/workspace/.claude/skills/prd/SKILL.md@/Projects/workspace
 ```
 
 #### 设计建议
 
 - **先用 `--dry-run`**：确认样本、variant 和 `cwd` 被正确解析
-- **项目级知识对照必须区分 `cwd`**：相同 prompt 在不同项目目录下会走不同知识环境
+- **项目级对照必须区分 `cwd`**：相同 prompt 在不同项目目录下会走不同 runtime context
 - **优先先跑 PRD 场景**：相比 Coding，更容易验证知识完整性、影响面识别和业务正确性
 
 ### 常见模型配置示例

@@ -1,8 +1,8 @@
-# 你的 Skill 改了之后，真的变好了吗？
+# 你的知识载体改了之后，真的变好了吗？
 
 ## 一个常被忽视的致命缺陷
 
-做 AI 应用和知识工程的同学，大概率都经历过这种折磨：精心调优了一版 Skill（或系统提示词、规则集等知识载体），用几个 Case 测试了一下觉得“好像变聪明了”，然后满怀信心地推上线。
+做 AI 应用和知识工程的同学，大概率都经历过这种折磨：精心调优了一版知识载体（当前常见是 Skill，也包括系统提示词、规则集等），用几个 Case 测试了一下觉得“好像变聪明了”，然后满怀信心地推上线。
 
 但你怎么确定它**真的**变好了？
 
@@ -10,11 +10,11 @@
 - 上次改完你也是这么觉得的，结果线上直接翻车了？
 - 你说效果好了，Leader 问“好了多少”，你怎么拿数据证明？
 
-**靠直觉判断 Skill 质量，就像不写测试用例就直接发布核心代码一样，是在给线上业务埋雷。**
+**靠直觉判断知识载体质量，就像不写测试用例就直接发布核心代码一样，是在给线上业务埋雷。**
 
-## 假如 Skill 也有单元测试？
+## 假如知识载体也有单元测试？
 
-想象一下：如果你有一个工具，能像跑单元测试一样评测 Skill 的质量——固定测试集，固定模型，只控制 Skill 变量，最后用精准的量化分数告诉你：**到底好没好，好了多少。**
+想象一下：如果你有一个工具，能像跑单元测试一样评测知识载体的质量——固定测试集，固定模型，只控制 artifact 变量，最后用精准的量化分数告诉你：**到底好没好，好了多少。**
 
 这就是 [oh-my-knowledge](https://npmjs.com/packages/oh-my-knowledge/meta) 诞生的意义。
 
@@ -30,7 +30,7 @@ npm i oh-my-knowledge -g
 omk bench init my-eval
 cd my-eval
 
-# 放入你的 skill/prompt，一键运行评测
+# 放入你的 artifact，一键运行评测
 omk bench run
 ```
 
@@ -38,7 +38,7 @@ omk bench run
 
 ### 📊 真实场景：数据驱动的决策
 
-假设你正在维护一个客服话术 Skill。
+假设你正在维护一个客服话术 artifact。
 
 **v1（基础版）：**
 > “你是一个客服代表。请回答用户的问题。”
@@ -69,7 +69,7 @@ omk bench run --variants v1,v2
 工具不仅支持简单的 AB 对比，还完美契合日常开发流：
 
 - **场景一：0 → 1 价值验证**
-  写了第一个 Skill，想知道到底有没有用？
+  写了第一个 artifact，想知道到底有没有用？
 
   ```bash
   omk bench run --variants baseline,my-skill
@@ -87,19 +87,19 @@ omk bench run --variants v1,v2
   *(自动读取 Git 历史版本进行对比，告别手动备份)*
 
 - **场景三：项目批量体检**
-  团队维护了 10 个不同的 Skill，想一次性全量回归测试？
+  团队维护了 10 个不同的 artifact，想一次性全量回归测试？
 
   ```bash
   omk bench run --each
   ```
 
-  *(每个 Skill 独立与 baseline 对比，生成聚合体检报告)*
+  *(每个 artifact 独立与 baseline 对比，生成聚合体检报告)*
 
-## 🚀 更进一步：让 AI 自己进化 Skill
+## 🚀 更进一步：让 AI 自己进化 Artifact
 
-解决了“怎么衡量”的问题后，我们迎来了最终极的痛点：**调优 Skill 本身是一项极其枯燥的体力活。**
+解决了“怎么衡量”的问题后，我们迎来了最终极的痛点：**调优 artifact 本身是一项极其枯燥的体力活。**
 
-借鉴 Karpathy 的 `autoresearch` 核心理念：**让 AI 在闭环中自我改进。** 我们将这个机制引入了 Skill 工程：
+借鉴 Karpathy 的 `autoresearch` 核心理念：**让 AI 在闭环中自我改进。** 我们将这个机制引入了知识载体工程：
 
 ```bash
 omk bench evolve skills/my-skill.md --rounds 5
@@ -107,19 +107,19 @@ omk bench evolve skills/my-skill.md --rounds 5
 
 敲下回车，接下来发生的事情宛如魔法：
 
-1. 工具评测当前 Skill，获取 Baseline 分数。
-2. 提取低分 Bad Case 的反馈，**喂给大模型，让它自行诊断并修改 Skill 内容**。
+1. 工具评测当前 artifact，获取 Baseline 分数。
+2. 提取低分 Bad Case 的反馈，**喂给大模型，让它自行诊断并修改 artifact 内容**。
 3. 自动使用新版本重新跑评测。
 4. 分数涨了 → 合并保留；分数降了 → 自动回滚。
 5. 循环迭代 N 轮。
 
-**AI 自己改 Skill，自己打分，自己进化——全过程数据驱动，彻底解放人力。**
+**AI 自己改 artifact，自己打分，自己进化——全过程数据驱动，彻底解放人力。**
 
 ## 🤖 Claude Code 深度集成
 
 如果你是 Claude Code 的重度用户，甚至不需要记忆任何 CLI 命令。
 
-只需一次性导入 Skill：
+只需一次性导入 OMK 对应的 Claude Code skill：
 
 ```bash
 cp -r $(npm root -g)/oh-my-knowledge/.claude/skills/omk ~/.claude/skills/
@@ -134,7 +134,7 @@ cp -r $(npm root -g)/oh-my-knowledge/.claude/skills/omk ~/.claude/skills/
 
 ## 💡 结语
 
-**代码不能没有测试就上线，Skill 也是。**
+**代码不能没有测试就上线，知识载体也是。**
 
 花 3 分钟跑一次评测，让数据告诉你这次的改动究竟是“画龙点睛”还是“画蛇添足”。
 

@@ -91,7 +91,7 @@
 | 声明式 JSON/YAML 定义评测 | Promptfoo（不做 agent）、**omk** |
 | Agent 执行轨迹捕获 + 过程评分 | agentevals、AgentEvals、DeepEval、**omk（今天刚做完）** |
 | Agent 过程 + 结果 + 成本 + 效率一站式 | **只有 omk** |
-| 零侵入（不改业务代码） | agentevals（要 OTel）、**omk（只要 skill 文件）** |
+| 零侵入（不改业务代码） | agentevals（要 OTel）、**omk（只要 artifact 文件）** |
 | 支持多 executor（Claude/GPT/Gemini） | **只有 omk** |
 | Git 版本对比（`git:ref`） | **只有 omk** |
 
@@ -99,11 +99,11 @@
 
 omk 不是"又一个 agent 评测框架"。它是：
 
-**Prompt 工程的质量基础设施。**
+**知识载体工程的质量基础设施。**
 
-- 输入：一个 skill（系统提示词）+ 一组测试样本
+- 输入：一个 artifact（常见可以是 skill / prompt / agent 配置）+ 一组测试样本
 - 输出：可量化的质量报告（分数、成本、效率、工具使用、趋势）
-- 工作流：改 prompt → `omk bench run` → 看数据 → 再改
+- 工作流：改 artifact → `omk bench run` → 看数据 → 再改
 
 这个工作流在整个开源社区中是独一无二的。
 
@@ -122,12 +122,12 @@ omk 不是"又一个 agent 评测框架"。它是：
 
 ## 四、omk 的差异化壁垒
 
-1. **场景深度**：深入 skill/prompt 工程迭代的日常，不是通用框架
+1. **场景深度**：深入知识载体工程迭代的日常，不是通用框架
 2. **极低门槛**：写 JSON/YAML + 一条命令，不需要部署平台、不需要改代码、不需要 OTel
 3. **多 executor**：同一套测试跑 Claude/GPT/Gemini，跨模型对比
 4. **Git 原生**：`git:ref` 对比历史版本，和代码工作流无缝
 5. **全维度**：质量 + 成本 + 效率 + 稳定性 + 工具使用，一份报告全覆盖
-6. **内部场景**：内部真实 skill 工程经验沉淀，不是空想的抽象框架
+6. **内部场景**：内部真实知识载体工程经验沉淀，不是空想的抽象框架
 
 ---
 

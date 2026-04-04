@@ -7,12 +7,12 @@ function mockTask(kind: string, content: string | null = 'skill content'): Task 
   return {
     sample_id: 's1',
     variant: 'test',
-    evaluand: { name: 'test', kind: kind as any, source: 'custom', content },
+    artifact: { name: 'test', kind: kind as Task['artifact']['kind'], source: 'custom', content },
     prompt: 'user prompt',
     rubric: null,
     assertions: null,
     dimensions: null,
-    skillContent: content,
+    artifactContent: content,
     cwd: null,
     _sample: { sample_id: 's1', prompt: 'user prompt' },
   };
@@ -26,7 +26,7 @@ describe('resolveExecutionStrategy', () => {
     assert.equal(plan.input.prompt, 'user prompt');
   });
 
-  it('skill: strategy 为 system-prompt，system 为 evaluand.content', () => {
+  it('skill: strategy 为 system-prompt，system 为 artifact.content', () => {
     const plan = resolveExecutionStrategy(mockTask('skill', 'my skill'), 'sonnet');
     assert.equal(plan.strategy, 'system-prompt');
     assert.equal(plan.input.system, 'my skill');

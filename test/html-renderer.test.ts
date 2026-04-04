@@ -16,7 +16,7 @@ const SAMPLE_REPORT: Report = {
     timestamp: '2026-03-25T10:00:00.000Z',
     cliVersion: 'test',
     nodeVersion: process.version,
-    skillHashes: { v1: 'hash-v1', v2: 'hash-v2' },
+    artifactHashes: { v1: 'hash-v1', v2: 'hash-v2' },
   },
   summary: {
     v1: {

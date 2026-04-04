@@ -5,7 +5,7 @@ import type { Lang, Report, ReportMeta, VariantSummary } from '../types.js';
 interface ChartPoint {
   timestamp: string;
   score: number | null;
-  skillHash: string | null;
+  artifactHash: string | null;
 }
 
 /**
@@ -37,14 +37,14 @@ function renderChart(points: ChartPoint[]): string {
   // Data line
   const linePoints = points.map((p, i) => `${toX(i)},${toY(p.score ?? 0)}`).join(' ');
 
-  // Dots + skillHash change markers
+  // Dots + artifactHash change markers
   const dots: string[] = [];
   let prevHash: string | null = null;
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
     const cx = toX(i);
     const cy = toY(p.score ?? 0);
-    const hashChanged = prevHash && p.skillHash && p.skillHash !== prevHash;
+    const hashChanged = prevHash && p.artifactHash && p.artifactHash !== prevHash;
 
     // Vertical line on skill hash change
     if (hashChanged) {
@@ -61,7 +61,7 @@ function renderChart(points: ChartPoint[]): string {
       dots.push(`<text x="${cx}" y="${H - 8}" text-anchor="middle" fill="var(--text-muted)" font-size="10">${label}</text>`);
     }
 
-    prevHash = p.skillHash;
+    prevHash = p.artifactHash;
   }
 
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:auto;display:block;margin:16px 0">
@@ -78,7 +78,7 @@ function renderTable(variantName: string, runs: Report[], lang: Lang): string {
   const rows = runs.map((r) => {
     const s: Partial<VariantSummary> = r.summary?.[variantName] || {};
     const m: ReportMeta = r.meta;
-    const hash: string = m.skillHashes?.[variantName] || '-';
+    const hash: string = m.artifactHashes?.[variantName] || '-';
     const git = m.gitInfo;
     const commitCell = git ? `${e(git.commitShort)}${git.dirty ? '*' : ''}` : '-';
     const branchCell = git ? e(git.branch) : '-';
@@ -102,7 +102,7 @@ function renderTable(variantName: string, runs: Report[], lang: Lang): string {
         <th>${t('score', lang)}</th>
         <th>${t('avgTurns', lang)}</th>
         <th>${t('cost', lang)}</th>
-        <th>Skill Hash</th>
+        <th>Artifact Hash</th>
         <th>Commit</th>
         <th>Branch</th>
       </tr></thead>
@@ -121,7 +121,7 @@ export function renderTrendsBody(variantName: string, runs: Report[], lang: Lang
   const points: ChartPoint[] = sorted.map((r) => ({
     timestamp: r.meta?.timestamp,
     score: r.summary?.[variantName]?.avgCompositeScore ?? null,
-    skillHash: r.meta?.skillHashes?.[variantName] || null,
+    artifactHash: r.meta?.artifactHashes?.[variantName] || null,
   })).filter((p): p is ChartPoint & { score: number } => p.score != null);
 
   const chart = renderChart(points);

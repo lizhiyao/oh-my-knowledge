@@ -5,8 +5,8 @@ import { confidenceInterval, tTest } from '../statistics.js';
 import { resolveUrls } from '../url-fetcher.js';
 import { loadMcpConfig, resolveMcpUrls, stopAllServers } from '../mcp-resolver.js';
 import { loadSamples } from '../load-samples.js';
-import { discoverEachSkills, resolveEvaluands } from '../skill-loader.js';
-import { buildTasksFromEvaluands } from '../task-planner.js';
+import { discoverEachSkills, resolveArtifacts } from '../skill-loader.js';
+import { buildTasksFromArtifacts } from '../task-planner.js';
 import {
   buildEvaluationRequest,
   createFailedJob,
@@ -30,7 +30,7 @@ import {
 
 import type {
   Report,
-  EvaluandSpec,
+  Artifact,
   VariantResult,
   VariantSummary,
   VarianceData,
@@ -69,7 +69,7 @@ export interface RunEvaluationOptions {
   samplesPath: string;
   skillDir: string;
   variants?: string[];
-  evaluands?: EvaluandSpec[];
+  artifacts?: Artifact[];
   model?: string;
   judgeModel?: string;
   outputDir?: string | null;
@@ -96,7 +96,7 @@ export async function runEvaluation({
   samplesPath,
   skillDir,
   variants = ['v1', 'v2'],
-  evaluands,
+  artifacts,
   model = DEFAULT_MODEL,
   judgeModel = JUDGE_MODEL,
   outputDir = DEFAULT_OUTPUT_DIR,
@@ -119,11 +119,11 @@ export async function runEvaluation({
   verbose = false,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const samples = loadSamples(samplesPath);
-  const resolvedEvaluands = evaluands || resolveEvaluands(resolve(skillDir), variants);
+  const resolvedArtifacts = artifacts || resolveArtifacts(resolve(skillDir), variants);
   const request = buildEvaluationRequest({
     samplesPath,
     skillDir,
-    evaluands: resolvedEvaluands,
+    artifacts: resolvedArtifacts,
     model,
     judgeModel: noJudge ? null : judgeModel,
     executor: executorName,
@@ -145,7 +145,7 @@ export async function runEvaluation({
     await resolveUrls(samples, mcpResolved);
   }
 
-  if (resolvedEvaluands.length === 0) {
+  if (resolvedArtifacts.length === 0) {
     throw new Error(
       `未发现任何 skill 变体。请检查：\n`
       + `  1. skill 目录是否存在：${resolve(skillDir)}\n`
@@ -153,8 +153,8 @@ export async function runEvaluation({
       + `  3. 或通过 --variants 显式指定变体`,
     );
   }
-  const tasks = buildTasksFromEvaluands(samples, resolvedEvaluands);
-  const variantNames = resolvedEvaluands.map((evaluand) => evaluand.name);
+  const tasks = buildTasksFromArtifacts(samples, resolvedArtifacts);
+  const variantNames = resolvedArtifacts.map((artifact) => artifact.name);
 
   if (dryRun) {
     return {
@@ -174,7 +174,7 @@ export async function runEvaluation({
           hasRubric: Boolean(task.rubric),
           hasAssertions: Boolean(task.assertions?.length),
           hasDimensions: Boolean(task.dimensions && Object.keys(task.dimensions).length),
-          hasSystem: Boolean(task.skillContent),
+          hasSystem: Boolean(task.artifactContent),
         })),
       },
       filePath: null,
@@ -236,7 +236,7 @@ export async function runEvaluation({
       tasks,
       results,
       totalCostUSD,
-      evaluands: resolvedEvaluands,
+      artifacts: resolvedArtifacts,
       request,
       run,
       job,
@@ -311,7 +311,7 @@ export interface RunEachEvaluationOptions {
 
 interface SkillResult {
   name: string;
-  skillHash: string;
+  artifactHash: string;
   samplesPath: string;
   sampleCount: number;
   summary: Record<string, VariantSummary>;
@@ -387,14 +387,14 @@ export async function runEachEvaluation({
       onSkillProgress({ phase: 'start', skill: entry.name, current: i + 1, total: skillEntries.length });
     }
 
-    const skillEvaluands = resolveEvaluands(resolve(skillDir), ['baseline', entry.skillPath]).map((evaluand) => (
-      evaluand.name === entry.skillPath ? { ...evaluand, name: 'skill' } : evaluand
+    const skillArtifacts = resolveArtifacts(resolve(skillDir), ['baseline', entry.skillPath]).map((artifact) => (
+      artifact.name === entry.skillPath ? { ...artifact, name: 'skill' } : artifact
     ));
 
     const { report } = await runEvaluation({
       samplesPath: entry.samplesPath,
       skillDir,
-      evaluands: skillEvaluands,
+      artifacts: skillArtifacts,
       model,
       judgeModel,
       outputDir: null,
@@ -414,11 +414,11 @@ export async function runEachEvaluation({
     const variantKey = 'skill';
     const fullReport = report as Report;
     const skillSummary = fullReport.summary[variantKey] || {};
-    const skillHash = fullReport.meta.skillHashes?.[variantKey] || '';
+    const artifactHash = fullReport.meta.artifactHashes?.[variantKey] || '';
 
     skillResults.push({
       name: entry.name,
-      skillHash,
+      artifactHash,
       samplesPath: entry.samplesPath,
       sampleCount: fullReport.meta.sampleCount,
       summary: {
@@ -463,7 +463,7 @@ export async function runEachEvaluation({
   const request = buildEvaluationRequest({
     samplesPath: '',
     skillDir,
-    evaluands: skillEntries.map((entry) => ({
+    artifacts: skillEntries.map((entry) => ({
       name: entry.name,
       kind: 'skill',
       source: 'file-path',
@@ -513,8 +513,8 @@ export async function runEachEvaluation({
       timestamp: new Date().toISOString(),
       cliVersion: '',  // populated by individual runs
       nodeVersion: process.version,
-      skillHashes: Object.fromEntries(
-        skillResults.map((skill) => [skill.name, skill.skillHash || 'no-skill']),
+      artifactHashes: Object.fromEntries(
+        skillResults.map((skill) => [skill.name, skill.artifactHash || 'no-skill']),
       ),
       request,
       run,

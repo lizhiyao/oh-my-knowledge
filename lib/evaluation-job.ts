@@ -1,4 +1,4 @@
-import type { EvaluandSpec, EvaluationErrorCategory, EvaluationJob, EvaluationRequest, EvaluationRun } from './types.js';
+import type { Artifact, EvaluationErrorCategory, EvaluationJob, EvaluationRequest, EvaluationRun } from './types.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -7,7 +7,7 @@ function nowIso(): string {
 export function buildEvaluationRequest({
   samplesPath,
   skillDir,
-  evaluands,
+  artifacts,
   model,
   judgeModel,
   executor,
@@ -24,7 +24,7 @@ export function buildEvaluationRequest({
 }: {
   samplesPath: string;
   skillDir: string;
-  evaluands: EvaluandSpec[];
+  artifacts: Artifact[];
   model: string;
   judgeModel: string | null;
   executor: string;
@@ -42,7 +42,7 @@ export function buildEvaluationRequest({
   return {
     samplesPath,
     skillDir,
-    evaluands,
+    artifacts,
     model,
     judgeModel,
     executor,

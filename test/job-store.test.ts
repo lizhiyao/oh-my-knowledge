@@ -9,7 +9,7 @@ import type { EvaluationJob, EvaluationRequest, JobStore } from '../lib/types.js
 const mockRequest: EvaluationRequest = {
   samplesPath: '/tmp/s.json',
   skillDir: '/tmp/skills',
-  evaluands: [],
+  artifacts: [],
   model: 'sonnet',
   judgeModel: 'haiku',
   executor: 'claude',

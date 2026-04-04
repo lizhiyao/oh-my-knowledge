@@ -12,7 +12,7 @@ export interface TrendPoint {
   avgCompositeScore: number | null;
   avgNumTurns: number | null;
   avgCostPerSample: number | null;
-  skillHash: string | null;
+  artifactHash: string | null;
   gitCommitShort: string | null;
   gitBranch: string | null;
 }
@@ -46,7 +46,7 @@ export async function queryTrend(reportStore: ReportStore, variantName: string):
       avgCompositeScore: summary.avgCompositeScore ?? null,
       avgNumTurns: summary.avgNumTurns ?? null,
       avgCostPerSample: summary.avgCostPerSample ?? null,
-      skillHash: meta.skillHashes?.[variantName] || meta.evaluandHashes?.[variantName] || null,
+      artifactHash: meta.artifactHashes?.[variantName] || null,
       gitCommitShort: meta.gitInfo?.commitShort || null,
       gitBranch: meta.gitInfo?.branch || null,
     };

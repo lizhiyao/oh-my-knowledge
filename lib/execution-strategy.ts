@@ -19,7 +19,7 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
     verbose,
   };
 
-  switch (task.evaluand.kind) {
+  switch (task.artifact.kind) {
     case 'baseline':
       return {
         strategy: 'baseline',
@@ -37,26 +37,26 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
         input: {
           ...baseInput,
           system: null,
-          prompt: combineUserPrompt(task.evaluand.content, task.prompt),
+          prompt: combineUserPrompt(task.artifact.content, task.prompt),
         },
       };
     case 'agent':
       return {
         strategy: 'agent-session',
-        cacheSystem: task.evaluand.content ?? '',
+        cacheSystem: task.artifact.content ?? '',
         input: {
           ...baseInput,
-          system: task.evaluand.content,
+          system: task.artifact.content,
           prompt: task.prompt,
         },
       };
     case 'workflow':
       return {
         strategy: 'workflow-session',
-        cacheSystem: task.evaluand.content ?? '',
+        cacheSystem: task.artifact.content ?? '',
         input: {
           ...baseInput,
-          system: task.evaluand.content,
+          system: task.artifact.content,
           prompt: task.prompt,
         },
       };
@@ -64,10 +64,10 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
     default:
       return {
         strategy: 'system-prompt',
-        cacheSystem: task.evaluand.content ?? '',
+        cacheSystem: task.artifact.content ?? '',
         input: {
           ...baseInput,
-          system: task.evaluand.content,
+          system: task.artifact.content,
           prompt: task.prompt,
         },
       };

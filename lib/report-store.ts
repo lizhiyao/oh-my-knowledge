@@ -123,13 +123,13 @@ export function createFileStore(dir: string): ReportStore {
     return all.filter((r) => r.meta?.variants?.includes(variantName));
   }
 
-  async function findBySkillHash(hash: string): Promise<Report[]> {
+  async function findByArtifactHash(hash: string): Promise<Report[]> {
     const all = await list();
     return all.filter((r) => {
-      const hashes = r.meta?.skillHashes || {};
+      const hashes = r.meta?.artifactHashes || {};
       return Object.values(hashes).includes(hash);
     });
   }
 
-  return { list, get, save, update, remove, exists, findByVariant, findBySkillHash };
+  return { list, get, save, update, remove, exists, findByVariant, findByArtifactHash };
 }

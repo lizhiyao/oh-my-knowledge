@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import type { EvaluandSpec } from './types.js';
+import type { Artifact } from './types.js';
 
 function gitShowFile(ref: string, filePath: string): string | null {
   try {
@@ -84,7 +84,7 @@ export function discoverEachSkills(skillDir: string): Array<{ name: string; skil
 }
 
 export function loadSkills(skillDir: string, variants: string[]): Record<string, string | null> {
-  return Object.fromEntries(resolveEvaluands(skillDir, variants).map((evaluand) => [evaluand.name, evaluand.content]));
+  return Object.fromEntries(resolveArtifacts(skillDir, variants).map((artifact) => [artifact.name, artifact.content]));
 }
 
 /**
@@ -97,15 +97,19 @@ function parseVariantCwd(variant: string): { name: string; cwd?: string } {
   return { name: variant.slice(0, atIdx), cwd: variant.slice(atIdx + 1) };
 }
 
-export function resolveEvaluands(skillDir: string, variants: string[]): EvaluandSpec[] {
-  const evaluands: EvaluandSpec[] = [];
+export function resolveArtifacts(skillDir: string, variants: string[]): Artifact[] {
+  const artifacts: Artifact[] = [];
   let gitRelDir: string | null = null;
 
   for (const rawVariant of variants) {
     const { name: variantName, cwd: variantCwd } = parseVariantCwd(rawVariant);
 
+    if (variantName === 'baseline' && variantCwd) {
+      throw new Error('baseline 不能绑定 cwd。若要表达项目级 runtime context，请使用自定义标签，例如 project-env@/path/to/project');
+    }
+
     if (variantName === 'baseline') {
-      evaluands.push({
+      artifacts.push({
         name: variantName,
         kind: 'baseline',
         source: 'baseline',
@@ -132,7 +136,7 @@ export function resolveEvaluands(skillDir: string, variants: string[]): Evaluand
       if (!content) {
         throw new Error(`skill 在 git ${ref} 中未找到: ${name}.md 或 ${name}/SKILL.md`);
       }
-      evaluands.push({
+      artifacts.push({
         name: variantName,
         kind: 'skill',
         source: 'git',
@@ -149,7 +153,7 @@ export function resolveEvaluands(skillDir: string, variants: string[]): Evaluand
       if (!existsSync(filePath)) {
         throw new Error(`skill 文件未找到: ${filePath}`);
       }
-      evaluands.push({
+      artifacts.push({
         name: variantName,
         kind: 'skill',
         source: 'file-path',
@@ -163,7 +167,7 @@ export function resolveEvaluands(skillDir: string, variants: string[]): Evaluand
     const mdPath = join(skillDir, `${variantName}.md`);
     const dirSkillPath = join(skillDir, variantName, 'SKILL.md');
     if (existsSync(mdPath)) {
-      evaluands.push({
+      artifacts.push({
         name: variantName,
         kind: 'skill',
         source: 'variant-name',
@@ -172,7 +176,7 @@ export function resolveEvaluands(skillDir: string, variants: string[]): Evaluand
         cwd: variantCwd,
       });
     } else if (existsSync(dirSkillPath)) {
-      evaluands.push({
+      artifacts.push({
         name: variantName,
         kind: 'skill',
         source: 'variant-name',
@@ -181,8 +185,7 @@ export function resolveEvaluands(skillDir: string, variants: string[]): Evaluand
         cwd: variantCwd,
       });
     } else if (variantCwd) {
-      // Has @cwd but no matching skill file — treat as cwd-only variant (no system prompt)
-      evaluands.push({
+      artifacts.push({
         name: variantName,
         kind: 'baseline',
         source: 'custom',
@@ -194,5 +197,5 @@ export function resolveEvaluands(skillDir: string, variants: string[]): Evaluand
     }
   }
 
-  return evaluands;
+  return artifacts;
 }

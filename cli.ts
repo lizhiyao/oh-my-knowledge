@@ -12,7 +12,7 @@ import type {
   GitInfo,
   ReportStore,
 } from './lib/types.js';
-import type { ProgressInfo as ProgressInfoFromLib, ProgressCallback } from './lib/evaluation-core.js';
+import type { ProgressCallback } from './lib/evaluation-core.js';
 
 // ---------------------------------------------------------------------------
 // Local types (CLI-specific, not shared with lib/)
@@ -215,11 +215,12 @@ Options for "bench run":
 
   --samples <path>       Sample file (default: eval-samples.json)
   --skill-dir <path>     Skill definitions directory (default: skills)
-  --variants <v1,v2>     Comma-separated variant names (auto-detected from skill-dir)
-                         Use "baseline" for no-skill comparison
-                         Use "git:name" to load skill from last commit
+  --variants <v1,v2>     Comma-separated variant expressions (auto-detected from skill-dir)
+                         Each variant resolves to an artifact and optional runtime context
+                         Use "baseline" for baseline artifact comparison
+                         Use "git:name" to load artifact from last commit
                          Use "git:ref:name" to load from specific commit
-                         Use path with "/" to load from file directly
+                         Use path with "/" to load artifact from file directly
   --model <name>         Model under test (default: sonnet)
   --judge-model <name>   Judge model (default: haiku)
   --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
@@ -885,8 +886,8 @@ async function handleDiff(argv: string[]): Promise<void> {
     console.log(`    Cost:    $${cost1.toFixed(4)} → $${cost2.toFixed(4)}${costPct}`);
 
     // Skill hash change
-    const h1: string | undefined = r1!.meta?.skillHashes?.[v];
-    const h2: string | undefined = r2!.meta?.skillHashes?.[v];
+    const h1: string | undefined = r1!.meta?.artifactHashes?.[v];
+    const h2: string | undefined = r2!.meta?.artifactHashes?.[v];
     if (h1 && h2 && h1 !== h2) {
       console.log(`    Skill:   ${h1.slice(0, 8)} → ${h2.slice(0, 8)} (changed)`);
     }

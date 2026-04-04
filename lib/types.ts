@@ -67,11 +67,11 @@ export interface Sample {
   [key: string]: unknown;  // allow extra fields like mutated prompt/context from URL resolution
 }
 
-export type EvaluandKind = 'baseline' | 'skill' | 'prompt' | 'agent' | 'workflow';
+export type ArtifactKind = 'baseline' | 'skill' | 'prompt' | 'agent' | 'workflow';
 
-export interface EvaluandSpec {
+export interface Artifact {
   name: string;
-  kind: EvaluandKind;
+  kind: ArtifactKind;
   source: 'baseline' | 'variant-name' | 'file-path' | 'git' | 'inline' | 'custom';
   content: string | null;
   locator?: string;
@@ -90,7 +90,7 @@ export type ExecutionStrategyKind =
 export interface EvaluationRequest {
   samplesPath: string;
   skillDir: string;
-  evaluands: EvaluandSpec[];
+  artifacts: Artifact[];
   project?: string;
   owner?: string;
   tags?: string[];
@@ -133,12 +133,12 @@ export interface EvaluationJob {
 export interface Task {
   sample_id: string;
   variant: string;
-  evaluand: EvaluandSpec;
+  artifact: Artifact;
   prompt: string;
   rubric: string | null;
   assertions: Assertion[] | null;
   dimensions: Record<string, string> | null;
-  skillContent: string | null;
+  artifactContent: string | null;
   cwd: string | null;
   _sample: Sample;
 }
@@ -249,8 +249,7 @@ export interface ReportMeta {
   timestamp: string;
   cliVersion: string;
   nodeVersion: string;
-  skillHashes: Record<string, string>;
-  evaluandHashes?: Record<string, string>;
+  artifactHashes: Record<string, string>;
   request?: EvaluationRequest;
   run?: EvaluationRun;
   job?: EvaluationJob;
@@ -286,7 +285,7 @@ export interface Report {
   skills?: Array<{
     name: string;
     sampleCount: number;
-    skillHash: string | null;
+    artifactHash: string | null;
     summary: Record<string, VariantSummary>;
     results: ResultEntry[];
   }>;
@@ -342,7 +341,7 @@ export interface ReportStore {
   remove(id: string): Promise<boolean>;
   exists(id: string): Promise<boolean>;
   findByVariant(variantName: string): Promise<Report[]>;
-  findBySkillHash(hash: string): Promise<Report[]>;
+  findByArtifactHash(hash: string): Promise<Report[]>;
 }
 
 export interface JobStore {

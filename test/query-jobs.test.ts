@@ -7,7 +7,7 @@ function makeRequest(overrides: Partial<EvaluationRequest> = {}): EvaluationRequ
   return {
     samplesPath: '/tmp/s.json',
     skillDir: '/tmp/skills',
-    evaluands: [],
+    artifacts: [],
     model: 'sonnet',
     judgeModel: 'haiku',
     executor: 'claude',
@@ -36,7 +36,7 @@ function createMockStore(jobs: EvaluationJob[]): JobStore {
   return {
     list: async () => [...jobs].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     get: async (id: string) => map.get(id) ?? null,
-    save: async () => {},
+    save: async () => { },
     update: async () => null,
     remove: async () => false,
     exists: async (id: string) => map.has(id),

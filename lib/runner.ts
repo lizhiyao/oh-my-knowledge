@@ -1,6 +1,6 @@
 export { loadSamples } from './load-samples.js';
-export { discoverVariants, discoverEachSkills, loadSkills, resolveEvaluands } from './skill-loader.js';
-export { buildTasks, buildTasksFromEvaluands } from './task-planner.js';
+export { discoverVariants, discoverEachSkills, loadSkills, resolveArtifacts } from './skill-loader.js';
+export { buildTasks, buildTasksFromArtifacts } from './task-planner.js';
 export {
   runEvaluation,
   runEachEvaluation,

@@ -35,7 +35,7 @@ function makeReport(id: string, variant: string, timestamp: string, avgScore: nu
       timestamp,
       cliVersion: '0.8.1',
       nodeVersion: '20.0.0',
-      skillHashes: { [variant]: 'abc123' },
+      artifactHashes: { [variant]: 'abc123' },
     },
     summary,
     results: [],
@@ -52,7 +52,7 @@ function createMockReportStore(reports: Report[]): ReportStore {
     remove: async () => false,
     exists: async (id: string) => map.has(id),
     findByVariant: async (name: string) => reports.filter((r) => r.meta.variants.includes(name)),
-    findBySkillHash: async (hash: string) => reports.filter((r) => Object.values(r.meta.skillHashes).includes(hash)),
+    findByArtifactHash: async (hash: string) => reports.filter((r) => Object.values(r.meta.artifactHashes).includes(hash)),
   };
 }
 

@@ -241,13 +241,13 @@ describe('baseline variant', () => {
     assert.deepEqual(skills, { baseline: null });
   });
 
-  it('buildTasks: baseline variant has null skillContent', () => {
+  it('buildTasks: baseline variant has null artifactContent', () => {
     const samples = [{ sample_id: 's1', prompt: 'hello' }];
     const skills: Record<string, string | null> = { baseline: null, v1: 'system prompt' };
     const tasks = buildTasks(samples, ['baseline', 'v1'], skills);
     assert.equal(tasks.length, 2);
-    assert.equal(tasks[0].skillContent, null);
-    assert.equal(tasks[1].skillContent, 'system prompt');
+    assert.equal(tasks[0].artifactContent, null);
+    assert.equal(tasks[1].artifactContent, 'system prompt');
   });
 
   it('dry-run: baseline variant included in task schedule', async () => {

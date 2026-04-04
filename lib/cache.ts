@@ -34,8 +34,9 @@ export function createCache(cacheDir: string): ExecutorCache {
     },
 
     set(key: string, value: ExecResult): void {
-      // Strip trace data from cache — it's large and agent results shouldn't be cached anyway
-      const { turns: _t, toolCalls: _tc, ...cacheable } = value;
+      const cacheable = { ...value };
+      delete cacheable.turns;
+      delete cacheable.toolCalls;
       store[key] = cacheable;
       dirty = true;
     },

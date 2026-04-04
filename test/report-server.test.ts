@@ -46,7 +46,7 @@ const SAMPLE_JOB = {
   request: {
     samplesPath: 'eval-samples.json',
     skillDir: 'skills',
-    evaluands: [],
+    artifacts: [],
     project: 'alpha',
     owner: 'lizhiyao',
     tags: ['smoke', 'nightly'],
@@ -74,7 +74,7 @@ const FAILED_JOB = {
   request: {
     samplesPath: 'eval-samples-2.json',
     skillDir: 'skills',
-    evaluands: [],
+    artifacts: [],
     project: 'beta',
     owner: 'other-user',
     tags: ['regression'],

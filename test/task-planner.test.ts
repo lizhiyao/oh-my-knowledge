@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTasks, buildTasksFromEvaluands } from '../lib/task-planner.js';
-import type { EvaluandSpec, Sample } from '../lib/types.js';
+import { buildTasks, buildTasksFromArtifacts } from '../lib/task-planner.js';
+import type { Artifact, Sample } from '../lib/types.js';
 
 const makeSample = (id: string, prompt: string, context?: string): Sample => ({
   sample_id: id,
@@ -21,12 +21,12 @@ describe('buildTasks', () => {
     assert.equal(tasks[1].variant, 'v1');
   });
 
-  it('baseline variant 的 skillContent 为 null', () => {
+  it('baseline variant 的 artifactContent 为 null', () => {
     const samples = [makeSample('s1', 'p1')];
     const tasks = buildTasks(samples, ['baseline', 'v1'], { baseline: null, v1: 'content' });
     const baseline = tasks.find((t) => t.variant === 'baseline')!;
-    assert.equal(baseline.skillContent, null);
-    assert.equal(baseline.evaluand.kind, 'baseline');
+    assert.equal(baseline.artifactContent, null);
+    assert.equal(baseline.artifact.kind, 'baseline');
   });
 
   it('空输入返回空数组', () => {
@@ -35,30 +35,30 @@ describe('buildTasks', () => {
   });
 });
 
-describe('buildTasksFromEvaluands', () => {
-  it('使用 evaluand specs 创建任务', () => {
+describe('buildTasksFromArtifacts', () => {
+  it('使用 artifact specs 创建任务', () => {
     const samples = [makeSample('s1', 'hello')];
-    const evaluands: EvaluandSpec[] = [
+    const artifacts: Artifact[] = [
       { name: 'test', kind: 'skill', source: 'variant-name', content: 'my skill' },
     ];
-    const tasks = buildTasksFromEvaluands(samples, evaluands);
+    const tasks = buildTasksFromArtifacts(samples, artifacts);
     assert.equal(tasks.length, 1);
-    assert.equal(tasks[0].evaluand.kind, 'skill');
-    assert.equal(tasks[0].skillContent, 'my skill');
+    assert.equal(tasks[0].artifact.kind, 'skill');
+    assert.equal(tasks[0].artifactContent, 'my skill');
   });
 
   it('有 context 时拼接到 prompt', () => {
     const samples = [makeSample('s1', 'review this', 'code here')];
-    const evaluands: EvaluandSpec[] = [
+    const artifacts: Artifact[] = [
       { name: 'v1', kind: 'skill', source: 'variant-name', content: null },
     ];
-    const tasks = buildTasksFromEvaluands(samples, evaluands);
+    const tasks = buildTasksFromArtifacts(samples, artifacts);
     assert.ok(tasks[0].prompt.includes('review this'));
     assert.ok(tasks[0].prompt.includes('code here'));
     assert.ok(tasks[0].prompt.includes('```'));
   });
 
   it('空输入返回空数组', () => {
-    assert.deepEqual(buildTasksFromEvaluands([], []), []);
+    assert.deepEqual(buildTasksFromArtifacts([], []), []);
   });
 });

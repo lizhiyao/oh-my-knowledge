@@ -16,7 +16,7 @@ import type { EvaluationRequest } from '../lib/types.js';
 const mockRequest: EvaluationRequest = {
   samplesPath: '/tmp/samples.json',
   skillDir: '/tmp/skills',
-  evaluands: [],
+  artifacts: [],
   model: 'sonnet',
   judgeModel: 'haiku',
   executor: 'claude',
@@ -32,7 +32,7 @@ describe('buildEvaluationRequest', () => {
     const req = buildEvaluationRequest({
       samplesPath: '/a.json',
       skillDir: '/skills',
-      evaluands: [],
+      artifacts: [],
       model: 'sonnet',
       judgeModel: 'haiku',
       executor: 'claude',

@@ -220,7 +220,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
     return `
       <section id="skill-${e(sk.name)}" style="margin-top:36px;padding-top:20px;border-top:1px solid var(--border)">
         <h2>${e(sk.name)}</h2>
-        <p style="font-size:12px;color:var(--text-muted)">${t('samples', lang)}: ${sk.sampleCount} &middot; Hash: ${e(sk.skillHash || '-')}</p>
+        <p style="font-size:12px;color:var(--text-muted)">${t('samples', lang)}: ${sk.sampleCount} &middot; Hash: ${e(sk.artifactHash || '-')}</p>
         ${cards}
         ${sampleTable}
       </section>
