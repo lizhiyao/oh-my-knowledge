@@ -1,0 +1,31 @@
+[
+  {
+    "sample_id": "artifact-001",
+    "prompt": "读取当前项目中的 skills/v1.md，说明这个 artifact 要求的执行流程，并给出文件总行数。",
+    "rubric": "应先定位并读取 skills/v1.md，再总结执行流程。显式 artifact 注入组应比 baseline 更稳定地遵循固定工具路径和输出约束。",
+    "assertions": [
+      { "type": "tools_called", "value": "Read", "weight": 1 },
+      { "type": "tool_input_contains", "value": "skills/v1.md", "weight": 1 },
+      { "type": "tools_count_min", "value": 1, "weight": 0.5 },
+      { "type": "turns_min", "value": 2, "weight": 0.5 }
+    ],
+    "dimensions": {
+      "artifact_following": "显式 artifact 注入后，行为是否更稳定地遵循要求",
+      "tool_path": "是否先定位再读取目标文件，而不是凭空作答"
+    }
+  },
+  {
+    "sample_id": "artifact-002",
+    "prompt": "读取当前项目中的 skills/v1.md，列出其中要求必须执行的步骤，并保持回答简洁。",
+    "rubric": "应从源码/文件中提取明确步骤，而不是泛泛总结。显式 artifact 注入组应更容易形成稳定输出格式。",
+    "assertions": [
+      { "type": "tools_called", "value": "Read", "weight": 1 },
+      { "type": "tool_input_contains", "value": "skills/v1.md", "weight": 1 },
+      { "type": "turns_max", "value": 6, "weight": 0.5 }
+    ],
+    "dimensions": {
+      "completeness": "是否覆盖文件中的关键步骤",
+      "discipline": "是否遵守清晰且受控的执行路径"
+    }
+  }
+]

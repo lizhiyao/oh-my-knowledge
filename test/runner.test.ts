@@ -52,6 +52,8 @@ function asEachDryRunReport(value: unknown): EachDryRunReport {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SAMPLES_PATH = join(__dirname, '..', '..', 'examples', 'code-review', 'eval-samples.json');
 const SKILL_DIR = join(__dirname, '..', '..', 'examples', 'code-review', 'skills');
+const AGENT_CONTROL_DIR = join(__dirname, '..', '..', 'examples', 'agent-eval', 'control-experiments');
+const AGENT_SKILL_DIR = join(__dirname, '..', '..', 'examples', 'agent-eval', 'skills');
 
 describe('runEvaluation', () => {
   it('dry-run: returns correct task schedule', async () => {
@@ -209,6 +211,44 @@ describe('runEvaluation', () => {
     } finally {
       try { unlinkSync(tmpSamples); } catch { /* ignore */ }
     }
+  });
+
+  it('loads env-isolation control template in dry-run', async () => {
+    const result = await runEvaluation({
+      samplesPath: join(AGENT_CONTROL_DIR, 'env-isolation.eval-samples.json'),
+      skillDir: AGENT_SKILL_DIR,
+      variants: ['baseline', 'project-a-env@/tmp/project-a', 'project-b-env@/tmp/project-b'],
+      dryRun: true,
+    });
+    const report = asDryRunReport(result.report);
+    assert.equal(report.totalTasks, 6);
+    assert.ok(report.tasks.some((task) => task.experimentRole === 'runtime-context-only'));
+  });
+
+  it('loads artifact-injection control template in dry-run', async () => {
+    const result = await runEvaluation({
+      samplesPath: join(AGENT_CONTROL_DIR, 'artifact-injection.eval-samples.json'),
+      skillDir: AGENT_SKILL_DIR,
+      variants: ['baseline', 'v1@/tmp/project-a'],
+      dryRun: true,
+    });
+    const report = asDryRunReport(result.report);
+    const injected = report.tasks.find((task) => task.variant === 'v1');
+    assert.equal(report.totalTasks, 4);
+    assert.equal(injected?.experimentRole, 'artifact-injection');
+    assert.equal(injected?.cwd, '/tmp/project-a');
+  });
+
+  it('loads assertion-discrimination control template in dry-run', async () => {
+    const result = await runEvaluation({
+      samplesPath: join(AGENT_CONTROL_DIR, 'assertion-discrimination.eval-samples.json'),
+      skillDir: AGENT_SKILL_DIR,
+      variants: ['baseline', 'project-env@/tmp/project-a', 'v1@/tmp/project-a'],
+      dryRun: true,
+    });
+    const report = asDryRunReport(result.report);
+    assert.equal(report.totalTasks, 6);
+    assert.ok(report.tasks.every((task) => task.hasAssertions));
   });
 });
 

@@ -1,0 +1,32 @@
+[
+  {
+    "sample_id": "assertion-001",
+    "prompt": "读取当前项目中的 skills/v1.md 第一行，并说明你是否真的读过该文件。",
+    "rubric": "应通过真实工具读取文件，再返回首行内容。baseline、runtime-context-only、artifact-injection 三组在工具路径上应能拉开差异。",
+    "assertions": [
+      { "type": "tools_called", "value": "Read", "weight": 1 },
+      { "type": "tool_input_contains", "value": "skills/v1.md", "weight": 1 },
+      { "type": "turns_min", "value": 2, "weight": 0.5 },
+      { "type": "turns_max", "value": 6, "weight": 0.5 }
+    ],
+    "dimensions": {
+      "discrimination": "断言是否能区分三组变体的工具路径差异",
+      "groundedness": "是否通过实际读取证明回答来自文件而不是猜测"
+    }
+  },
+  {
+    "sample_id": "assertion-002",
+    "prompt": "读取当前项目中的 skills/v1.md，返回第一行和文件总行数。不要附加无关说明。",
+    "rubric": "应稳定触发与文件读取相关的工具断言，并尽量减少无关探索。",
+    "assertions": [
+      { "type": "tools_called", "value": "Read", "weight": 1 },
+      { "type": "tool_input_contains", "value": "skills/v1.md", "weight": 1 },
+      { "type": "tools_count_max", "value": 4, "weight": 0.5 },
+      { "type": "turns_max", "value": 6, "weight": 0.5 }
+    ],
+    "dimensions": {
+      "assertion_usefulness": "这些 agent 断言是否能稳定测出差异",
+      "efficiency": "是否避免无关工具调用"
+    }
+  }
+]

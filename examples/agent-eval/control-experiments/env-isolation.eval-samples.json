@@ -1,0 +1,54 @@
+[
+  {
+    "sample_id": "env-001",
+    "prompt": "读取当前项目根目录与 skills 目录，说明当前项目有哪些可直接评测的 artifact。不要猜测，必须基于实际读取结果回答。",
+    "rubric": "应先读取目录或文件，再基于当前 cwd 中的实际内容回答；不同 cwd 下回答应出现可解释差异。",
+    "assertions": [
+      {
+        "type": "tools_count_min",
+        "value": 1,
+        "weight": 1
+      },
+      {
+        "type": "turns_min",
+        "value": 2,
+        "weight": 1
+      },
+      {
+        "type": "turns_max",
+        "value": 8,
+        "weight": 0.5
+      }
+    ],
+    "dimensions": {
+      "groundedness": "是否明确基于当前项目实际文件回答，而不是泛化猜测",
+      "runtime_context_sensitivity": "切换到不同 cwd 时，回答内容是否出现合理差异"
+    }
+  },
+  {
+    "sample_id": "env-002",
+    "prompt": "读取当前项目中的一个 artifact 文件，给出该文件的相对路径和第一行内容。",
+    "rubric": "应读取当前 cwd 下真实存在的 artifact 文件，并返回路径与首行文本。",
+    "assertions": [
+      {
+        "type": "tools_called",
+        "value": "Read",
+        "weight": 1
+      },
+      {
+        "type": "tools_count_min",
+        "value": 1,
+        "weight": 0.5
+      },
+      {
+        "type": "turns_min",
+        "value": 2,
+        "weight": 0.5
+      }
+    ],
+    "dimensions": {
+      "traceability": "是否能从 trace 解释它读了哪个文件",
+      "runtime_context_sensitivity": "切换 cwd 后是否会指向不同文件"
+    }
+  }
+]

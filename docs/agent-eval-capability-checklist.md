@@ -178,6 +178,15 @@ project-a-env@/path/to/project-a
 project-b-env@/path/to/project-b
 ```
 
+**仓库内可直接复用的模板：**
+
+```bash
+omk bench run \
+  --executor claude-sdk \
+  --samples examples/agent-eval/control-experiments/env-isolation.eval-samples.json \
+  --variants baseline,project-a-env@examples/code-review,project-b-env@examples/prd-agent
+```
+
 #### 样本建议
 
 选 2~3 条明显依赖项目级 runtime context 的问题：
@@ -212,6 +221,15 @@ project-b-env@/path/to/project-b
 baseline
 /path/to/SKILL.md
 /path/to/SKILL.md@/path/to/project
+```
+
+**仓库内可直接复用的模板：**
+
+```bash
+omk bench run \
+  --executor claude-sdk \
+  --samples examples/agent-eval/control-experiments/artifact-injection.eval-samples.json \
+  --variants baseline,examples/agent-eval/skills/v1.md@examples/code-review
 ```
 
 #### 样本建议
@@ -251,6 +269,15 @@ project-env@/path/to/project
 /path/to/SKILL.md@/path/to/project
 ```
 
+**仓库内可直接复用的模板：**
+
+```bash
+omk bench run \
+  --executor claude-sdk \
+  --samples examples/agent-eval/control-experiments/assertion-discrimination.eval-samples.json \
+  --variants baseline,project-env@examples/code-review,examples/agent-eval/skills/v1.md@examples/code-review
+```
+
 #### 样本建议
 
 只用 2~3 条，但要求每条都能明确区分：
@@ -263,7 +290,7 @@ project-env@/path/to/project
 #### 看什么
 
 - 哪些断言所有组都过
-- 哪些断言只有 knowledge/artifact 组能过
+- 哪些断言只有 runtime-context-only / artifact-injection 组能过
 - 哪些断言设计过严，导致全部失败
 
 #### 通过标准
