@@ -306,6 +306,7 @@ describe('buildTraceSummary', () => {
     const result = buildTraceSummary([], toolCalls)!;
     assert.ok(result.includes('3 个工具'));
     assert.ok(result.includes('2/3'));
+    assert.ok(result.includes('失败 1/3'));
     assert.ok(result.includes('Read(2)'));
     assert.ok(result.includes('Bash(1)'));
   });
@@ -318,6 +319,7 @@ describe('buildTraceSummary', () => {
     ];
     const result = buildTraceSummary(turns, [])!;
     assert.ok(result.includes('执行轨迹摘要'));
+    assert.ok(result.includes('共 3 步'));
     assert.ok(result.includes('Read'));
     assert.ok(result.includes('tool:'));
   });
@@ -342,7 +344,9 @@ describe('schema agent metrics', () => {
   it('buildVariantResult includes agent metrics', () => {
     const vr = buildVariantResult(baseExecResult, null);
     assert.equal(vr.numToolCalls, 3);
+    assert.equal(vr.numToolFailures, 1);
     assert.equal(vr.toolSuccessRate, 0.67);
+    assert.equal(vr.traceCoverage, 0.75);
     assert.deepEqual(vr.toolNames, ['Read', 'Bash']);
   });
 
@@ -355,14 +359,23 @@ describe('schema agent metrics', () => {
 
   it('buildVariantSummary aggregates agent metrics', () => {
     const entries = [
-      buildVariantResult(baseExecResult, null),
+      buildVariantResult({ ...baseExecResult, turns: [
+        { role: 'assistant', content: 'read', toolCalls: [{ tool: 'Read', input: {}, output: 'data', success: true }] },
+        { role: 'tool', content: 'data' },
+        { role: 'assistant', content: 'answer' },
+      ] }, null),
       buildVariantResult({ ...baseExecResult, toolCalls: [
         { tool: 'Glob', input: {}, output: 'files', success: true },
+      ], turns: [
+        { role: 'assistant', content: 'glob', toolCalls: [{ tool: 'Glob', input: {}, output: 'files', success: true }] },
+        { role: 'tool', content: 'files' },
       ] }, null),
     ];
     const summary = buildVariantSummary(entries);
     assert.equal(summary.avgToolCalls, 2); // (3+1)/2
+    assert.equal(summary.avgToolFailures, 0.5);
     assert.ok(summary.toolSuccessRate! > 0);
+    assert.ok(summary.traceCoverageRate! > 0);
     assert.ok(summary.toolDistribution!['Read'] > 0);
     assert.ok(summary.toolDistribution!['Glob'] > 0);
   });
@@ -412,6 +425,86 @@ describe('analyzer agent insights', () => {
     const analysis = analyzeResults(report);
     const gap = analysis.insights.find((i) => i.type === 'tool_count_gap');
     assert.ok(gap, 'should detect tool count gap');
+  });
+
+  it('detects trace integrity gap', () => {
+    const report = toReport({
+      meta: { variants: ['baseline', 'project-env'] },
+      summary: {
+        baseline: { avgNumTurns: 1, totalSamples: 2, successCount: 2 },
+        'project-env': { avgNumTurns: 3, avgToolCalls: 2, traceCoverageRate: 0.5, totalSamples: 2, successCount: 2 },
+      },
+      results: [{ sample_id: 's1', variants: { baseline: { compositeScore: 3 }, 'project-env': { compositeScore: 4 } } }],
+    });
+    const analysis = analyzeResults(report);
+    const integrityGap = analysis.insights.find((i) => i.type === 'trace_integrity_gap');
+    assert.ok(integrityGap, 'should detect trace integrity gap');
+  });
+
+  it('detects low agent assertion discrimination', () => {
+    const report = toReport({
+      meta: { variants: ['baseline', 'project-env', 'skill'] },
+      summary: {
+        baseline: { totalSamples: 2, successCount: 2 },
+        'project-env': { totalSamples: 2, successCount: 2 },
+        skill: { totalSamples: 2, successCount: 2 },
+      },
+      results: [
+        {
+          sample_id: 's1',
+          variants: {
+            baseline: { assertions: { passed: 1, total: 2, score: 3, details: [
+              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+              { type: 'turns_max', value: 3, weight: 1, passed: false },
+            ] } },
+            'project-env': { assertions: { passed: 1, total: 2, score: 3, details: [
+              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+              { type: 'turns_max', value: 3, weight: 1, passed: false },
+            ] } },
+            skill: { assertions: { passed: 1, total: 2, score: 3, details: [
+              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+              { type: 'turns_max', value: 3, weight: 1, passed: false },
+            ] } },
+          },
+        },
+      ],
+    });
+    const analysis = analyzeResults(report);
+    const lowDiscrimination = analysis.insights.find((i) => i.type === 'agent_assertion_discrimination_low');
+    assert.ok(lowDiscrimination, 'should detect low agent assertion discrimination');
+  });
+
+  it('detects when agent assertion discrimination is healthy', () => {
+    const report = toReport({
+      meta: { variants: ['baseline', 'project-env', 'skill'] },
+      summary: {
+        baseline: { totalSamples: 2, successCount: 2 },
+        'project-env': { totalSamples: 2, successCount: 2 },
+        skill: { totalSamples: 2, successCount: 2 },
+      },
+      results: [
+        {
+          sample_id: 's1',
+          variants: {
+            baseline: { assertions: { passed: 0, total: 2, score: 1, details: [
+              { type: 'tools_called', value: 'Read', weight: 1, passed: false },
+              { type: 'turns_max', value: 3, weight: 1, passed: false },
+            ] } },
+            'project-env': { assertions: { passed: 1, total: 2, score: 3, details: [
+              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+              { type: 'turns_max', value: 3, weight: 1, passed: false },
+            ] } },
+            skill: { assertions: { passed: 2, total: 2, score: 5, details: [
+              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+              { type: 'turns_max', value: 3, weight: 1, passed: true },
+            ] } },
+          },
+        },
+      ],
+    });
+    const analysis = analyzeResults(report);
+    const healthyDiscrimination = analysis.insights.find((i) => i.type === 'agent_assertion_discrimination_ok');
+    assert.ok(healthyDiscrimination, 'should detect healthy agent assertion discrimination');
   });
 
   it('no agent insights when no tool data', () => {

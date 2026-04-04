@@ -201,9 +201,13 @@ export interface VariantResult {
   judgeCostUSD: number;
   costUSD: number;
   numTurns: number;
+  assistantTurns?: number;
+  toolTurns?: number;
   numToolCalls?: number;
+  numToolFailures?: number;
   toolSuccessRate?: number;
   toolNames?: string[];
+  traceCoverage?: number;
   error?: string;
   compositeScore?: number;
   assertions?: AssertionResults;
@@ -231,9 +235,13 @@ export interface VariantSummary {
   totalJudgeCostUSD: number;
   avgCostPerSample: number;
   avgNumTurns: number;
+  avgAssistantTurns?: number;
+  avgToolTurns?: number;
   avgToolCalls?: number;
+  avgToolFailures?: number;
   toolSuccessRate?: number;
   toolDistribution?: Record<string, number>;
+  traceCoverageRate?: number;
   avgCompositeScore?: number;
   minCompositeScore?: number;
   maxCompositeScore?: number;

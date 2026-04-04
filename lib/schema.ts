@@ -38,6 +38,16 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
   const judgeCostUSD = gradeResult?.judgeCostUSD || 0;
   const execMs = options?.execMs || execResult.durationMs;
   const gradeMs = options?.gradeMs || 0;
+  const assistantTurns = execResult.turns?.filter((turn) => turn.role === 'assistant').length;
+  const toolTurns = execResult.turns?.filter((turn) => turn.role === 'tool').length;
+  const numToolFailures = execResult.toolCalls?.filter((tc) => !tc.success).length;
+  const traceSignals = [
+    execResult.turns && execResult.turns.length > 0,
+    execResult.toolCalls && execResult.toolCalls.length > 0,
+    Boolean(execResult.output),
+    Boolean(execMs > 0),
+  ];
+  const traceCoverage = Number((traceSignals.filter(Boolean).length / traceSignals.length).toFixed(2));
 
   return {
     ok: execResult.ok,
@@ -52,11 +62,15 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     judgeCostUSD,
     costUSD: execCostUSD + judgeCostUSD, // Total = execution + grading
     numTurns: execResult.numTurns,
+    ...(assistantTurns != null && { assistantTurns }),
+    ...(toolTurns != null && { toolTurns }),
     ...(execResult.toolCalls && execResult.toolCalls.length > 0 && {
       numToolCalls: execResult.toolCalls.length,
+      numToolFailures,
       toolSuccessRate: Number((execResult.toolCalls.filter((tc) => tc.success).length / execResult.toolCalls.length).toFixed(2)),
       toolNames: [...new Set(execResult.toolCalls.map((tc) => tc.tool))],
     }),
+    traceCoverage,
     ...(execResult.error && { error: execResult.error }),
     ...(gradeResult && {
       compositeScore: gradeResult.compositeScore,
@@ -98,6 +112,15 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
     avgCostPerSample: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.costUSD || 0), 0) / ok.length).toFixed(6)) : 0,
     avgNumTurns: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.numTurns || 0), 0) / ok.length).toFixed(1)) : 0,
     ...(() => {
+      const withTrace = ok.filter((e) => e.traceCoverage != null);
+      if (withTrace.length === 0) return {};
+      return {
+        avgAssistantTurns: Number((withTrace.reduce((s, e) => s + (e.assistantTurns || 0), 0) / withTrace.length).toFixed(1)),
+        avgToolTurns: Number((withTrace.reduce((s, e) => s + (e.toolTurns || 0), 0) / withTrace.length).toFixed(1)),
+        traceCoverageRate: Number((withTrace.reduce((s, e) => s + (e.traceCoverage || 0), 0) / withTrace.length).toFixed(2)),
+      };
+    })(),
+    ...(() => {
       const withTools = ok.filter((e) => typeof e.numToolCalls === 'number' && e.numToolCalls! > 0);
       if (withTools.length === 0) return {};
       const totalToolCalls = withTools.reduce((s, e) => s + (e.numToolCalls || 0), 0);
@@ -110,6 +133,7 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
       }
       return {
         avgToolCalls: Number((totalToolCalls / withTools.length).toFixed(1)),
+        avgToolFailures: Number((withTools.reduce((s, e) => s + (e.numToolFailures || 0), 0) / withTools.length).toFixed(1)),
         toolSuccessRate: Number(avgSuccessRate.toFixed(2)),
         toolDistribution: dist,
       };

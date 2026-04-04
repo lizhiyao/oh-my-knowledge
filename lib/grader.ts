@@ -417,7 +417,11 @@ export function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]
   if (toolCalls && toolCalls.length > 0) {
     lines.push(`共调用 ${toolCalls.length} 个工具：`);
     const successCount = toolCalls.filter((tc) => tc.success).length;
+    const failureCount = toolCalls.length - successCount;
     lines.push(`  成功 ${successCount}/${toolCalls.length}`);
+    if (failureCount > 0) {
+      lines.push(`  失败 ${failureCount}/${toolCalls.length}`);
+    }
 
     // Tool distribution
     const dist: Record<string, number> = {};
@@ -425,11 +429,18 @@ export function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]
       dist[tc.tool] = (dist[tc.tool] || 0) + 1;
     }
     lines.push(`  工具分布：${Object.entries(dist).map(([k, v]) => `${k}(${v})`).join(', ')}`);
+    const failedTools = toolCalls.filter((tc) => !tc.success).map((tc) => tc.tool);
+    if (failedTools.length > 0) {
+      lines.push(`  失败工具：${[...new Set(failedTools)].join(', ')}`);
+    }
   }
 
   if (turns && turns.length > 0) {
     lines.push('');
     lines.push('执行轨迹摘要：');
+    const assistantTurns = turns.filter((turn) => turn.role === 'assistant').length;
+    const toolTurns = turns.filter((turn) => turn.role === 'tool').length;
+    lines.push(`  共 ${turns.length} 步（assistant ${assistantTurns} / tool ${toolTurns}）`);
     // Only include first 10 turns to keep prompt concise
     const maxTurns = Math.min(turns.length, 10);
     for (let i = 0; i < maxTurns; i++) {

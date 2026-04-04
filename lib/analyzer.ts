@@ -35,11 +35,28 @@ export function analyzeResults(report: Report): AnalysisResult {
   // 6. Agent tool usage patterns
   detectToolPatterns(report, variants, insights, suggestions);
 
-  // 7. Suggest --repeat when score variance is high and no repeat data
+  // 7. Trace integrity
+  detectTraceIntegrity(report, variants, insights, suggestions);
+
+  // 8. Agent assertion discrimination
+  detectAgentAssertionDiscrimination(results, variants, insights, suggestions);
+
+  // 9. Suggest --repeat when score variance is high and no repeat data
   detectNeedRepeat(report, results, variants, insights, suggestions);
 
   return { insights, suggestions };
 }
+
+const AGENT_ASSERTION_TYPES = new Set([
+  'tools_called',
+  'tools_not_called',
+  'tool_input_contains',
+  'tool_output_contains',
+  'tools_count_min',
+  'tools_count_max',
+  'turns_min',
+  'turns_max',
+]);
 
 function detectLowDiscrimination(results: ResultEntry[], variants: string[], insights: Insight[], suggestions: string[]): void {
   // For each sample, check if all variants have the same assertion pass/fail pattern
@@ -281,6 +298,104 @@ function detectToolPatterns(report: Report, variants: string[], insights: Insigh
         });
       }
     }
+  }
+}
+
+function detectTraceIntegrity(report: Report, variants: string[], insights: Insight[], suggestions: string[]): void {
+  const summary = report.summary || {};
+  const hasAgentLikeData = variants.some((variant) => {
+    const stats = summary[variant];
+    return Boolean(stats?.avgToolCalls || stats?.avgNumTurns > 1);
+  });
+  if (!hasAgentLikeData) return;
+
+  const weakCoverage = variants
+    .map((variant) => ({
+      variant,
+      traceCoverageRate: summary[variant]?.traceCoverageRate ?? 0,
+      avgAssistantTurns: summary[variant]?.avgAssistantTurns ?? 0,
+      avgToolTurns: summary[variant]?.avgToolTurns ?? 0,
+      avgToolFailures: summary[variant]?.avgToolFailures ?? 0,
+    }))
+    .filter((item) => item.traceCoverageRate < 0.75);
+
+  if (weakCoverage.length > 0) {
+    insights.push({
+      type: 'trace_integrity_gap',
+      severity: 'warning',
+      message: `${weakCoverage.length} 个 variant 的 trace 覆盖率低于 75%，报告可能不足以解释 agent 行为差异`,
+      details: weakCoverage,
+    });
+    suggestions.push('优先补齐 turns、toolCalls、timing、full output 的采集与落盘，确保报告能解释工具路径和错误恢复过程');
+  }
+}
+
+function detectAgentAssertionDiscrimination(results: ResultEntry[], variants: string[], insights: Insight[], suggestions: string[]): void {
+  const evaluated: Array<{ sample_id: string; type: string; value: string | number; pattern: string }> = [];
+  let discriminative = 0;
+  let allPass = 0;
+  let allFail = 0;
+
+  for (const result of results) {
+    const firstDetails = result.variants?.[variants[0]]?.assertions?.details;
+    if (!firstDetails) continue;
+
+    for (let index = 0; index < firstDetails.length; index++) {
+      const first = firstDetails[index];
+      if (!AGENT_ASSERTION_TYPES.has(first.type)) continue;
+
+      const states: boolean[] = [];
+      for (const variant of variants) {
+        const detail = result.variants?.[variant]?.assertions?.details?.[index];
+        if (!detail) continue;
+        states.push(detail.passed);
+      }
+      if (states.length < 2) continue;
+
+      const pattern = states.map((state) => (state ? 'T' : 'F')).join('/');
+      evaluated.push({
+        sample_id: result.sample_id,
+        type: first.type,
+        value: first.value,
+        pattern,
+      });
+
+      const unique = new Set(states);
+      if (unique.size > 1) discriminative++;
+      else if (states.every(Boolean)) allPass++;
+      else allFail++;
+    }
+  }
+
+  if (evaluated.length === 0) return;
+
+  const discriminationRate = Number((discriminative / evaluated.length).toFixed(2));
+  if (discriminationRate < 0.3) {
+    insights.push({
+      type: 'agent_assertion_discrimination_low',
+      severity: 'warning',
+      message: `agent 断言区分度偏低，只有 ${(discriminationRate * 100).toFixed(0)}% 的断言真正拉开了变体差异`,
+      details: {
+        total: evaluated.length,
+        discriminative,
+        allPass,
+        allFail,
+        examples: evaluated.slice(0, 10),
+      },
+    });
+    suggestions.push('重写 agent 断言时，优先约束工具路径、关键文件读取和 turns 上限，避免大量“全过”或“全挂”的弱断言');
+  } else {
+    insights.push({
+      type: 'agent_assertion_discrimination_ok',
+      severity: 'info',
+      message: `agent 断言区分度达标，${(discriminationRate * 100).toFixed(0)}% 的断言能区分变体差异`,
+      details: {
+        total: evaluated.length,
+        discriminative,
+        allPass,
+        allFail,
+      },
+    });
   }
 }
 
