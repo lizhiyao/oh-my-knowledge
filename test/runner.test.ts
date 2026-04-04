@@ -37,9 +37,9 @@ interface EachDryRunSkill {
 interface EachDryRunReport {
   dryRun: true;
   each: true;
-  totalSkills: number;
+  totalArtifacts: number;
   totalTasks: number;
-  skills: EachDryRunSkill[];
+  artifacts: EachDryRunSkill[];
 }
 
 function asDryRunReport(value: unknown): DryRunReport {
@@ -467,9 +467,9 @@ describe('runEachEvaluation', () => {
     const report = asEachDryRunReport(result.report);
     assert.equal(report.dryRun, true);
     assert.equal(report.each, true);
-    assert.ok(report.totalSkills >= 2);
-    assert.ok(report.skills.length >= 2);
-    for (const sk of report.skills) {
+    assert.ok(report.totalArtifacts >= 2);
+    assert.ok(report.artifacts.length >= 2);
+    for (const sk of report.artifacts) {
       assert.ok(sk.name);
       assert.ok(sk.sampleCount > 0);
       assert.equal(sk.taskCount, sk.sampleCount * 2);
@@ -482,7 +482,7 @@ describe('runEachEvaluation', () => {
       dryRun: true,
     });
     const report = asEachDryRunReport(result.report);
-    const expectedTotal = report.skills.reduce((s: number, sk: { taskCount: number }) => s + sk.taskCount, 0);
+    const expectedTotal = report.artifacts.reduce((s: number, sk: { taskCount: number }) => s + sk.taskCount, 0);
     assert.equal(report.totalTasks, expectedTotal);
   });
 });

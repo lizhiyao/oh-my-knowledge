@@ -13,8 +13,8 @@ import { renderTrendsBody } from './renderer/trends.js';
 import type { Report, Lang } from './types.js';
 
 type EachOverview = NonNullable<Report['overview']>;
-type EachOverviewSkill = EachOverview['skills'][number];
-type EachSkillReport = NonNullable<Report['skills']>[number];
+type EachOverviewArtifact = EachOverview['artifacts'][number];
+type EachArtifactReport = NonNullable<Report['artifacts']>[number];
 
 export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string {
   if (!runs || runs.length === 0) {
@@ -226,12 +226,12 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
 
   const m = report.meta;
   const overview: EachOverview | null = report.overview || null;
-  const skills: EachSkillReport[] = report.skills || [];
+  const eachArtifacts: EachArtifactReport[] = report.artifacts || [];
 
   // Overview table
-  const overviewRows = (overview?.skills || []).map((sk: EachOverviewSkill) => {
+  const overviewRows = (overview?.artifacts || []).map((sk: EachOverviewArtifact) => {
     const bs = typeof sk.baselineScore === 'number' ? sk.baselineScore.toFixed(2) : '-';
-    const ss = typeof sk.skillScore === 'number' ? sk.skillScore.toFixed(2) : '-';
+    const ss = typeof sk.artifactScore === 'number' ? sk.artifactScore.toFixed(2) : '-';
     const imp = sk.improvement || '-';
     const impColor = imp.startsWith('+') ? 'var(--green)' : imp.startsWith('-') ? 'var(--red)' : 'var(--text-muted)';
     return `<tr>
@@ -242,8 +242,8 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
     </tr>`;
   }).join('');
 
-  // Per-skill detail sections
-  const skillSections = skills.map((sk) => {
+  // Per-artifact detail sections
+  const skillSections = eachArtifacts.map((sk) => {
     const variants = ['baseline', 'skill'];
     const summary = sk.summary || {};
     const cards = renderSummaryCards(variants, summary, lang);
@@ -273,7 +273,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
     <section>
     <h2>${t('eachOverview', lang)}</h2>
 
-    <p style="font-size:13px;color:var(--text-muted)">${overview?.totalSkills || 0} ${t('eachSkills', lang)} &middot; ${overview?.totalSamples || 0} ${t('eachSamples', lang)} &middot; ${fmtCost(overview?.totalCostUSD || 0)}</p>
+    <p style="font-size:13px;color:var(--text-muted)">${overview?.totalArtifacts || 0} ${t('eachSkills', lang)} &middot; ${overview?.totalSamples || 0} ${t('eachSamples', lang)} &middot; ${fmtCost(overview?.totalCostUSD || 0)}</p>
     <div class="table-wrap">
     <table>
       <thead><tr>

@@ -295,17 +295,17 @@ export interface Report {
   variance?: VarianceData;
   each?: boolean;
   overview?: {
-    totalSkills: number;
+    totalArtifacts: number;
     totalSamples: number;
     totalCostUSD: number;
-    skills: Array<{
+    artifacts: Array<{
       name: string;
       baselineScore: number | null;
-      skillScore: number | null;
+      artifactScore: number | null;
       improvement: string;
     }>;
   };
-  skills?: Array<{
+  artifacts?: Array<{
     name: string;
     sampleCount: number;
     artifactHash: string | null;

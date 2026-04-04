@@ -289,8 +289,8 @@ interface DryRunEachSkill {
 
 export interface DryRunEachReport extends DryRunBase {
   each: true;
-  totalSkills: number;
-  skills: DryRunEachSkill[];
+  totalArtifacts: number;
+  artifacts: DryRunEachSkill[];
 }
 
 export interface SkillProgressInfo {
@@ -384,9 +384,9 @@ export async function runEachEvaluation({
         judgeModel,
         executor: executorName,
         skillDir,
-        totalSkills: drySkills.length,
+        totalArtifacts: drySkills.length,
         totalTasks: drySkills.reduce((sum, skill) => sum + skill.taskCount, 0),
-        skills: drySkills,
+        artifacts: drySkills,
       },
       filePath: null,
     };
@@ -456,20 +456,20 @@ export async function runEachEvaluation({
   }
 
   const overview = {
-    totalSkills: skillResults.length,
+    totalArtifacts: skillResults.length,
     totalSamples: skillResults.reduce((sum, skill) => sum + skill.sampleCount, 0),
     totalCostUSD: Number(totalCostUSD.toFixed(6)),
-    skills: skillResults.map((skill) => {
+    artifacts: skillResults.map((skill) => {
       const bs = skill.summary.baseline;
       const ss = skill.summary.skill;
       const baselineScore = bs?.avgCompositeScore ?? bs?.avgLlmScore ?? null;
-      const skillScore = ss?.avgCompositeScore ?? ss?.avgLlmScore ?? null;
+      const artifactScore = ss?.avgCompositeScore ?? ss?.avgLlmScore ?? null;
       let improvement: string | null = null;
-      if (typeof baselineScore === 'number' && typeof skillScore === 'number' && baselineScore > 0) {
-        improvement = `${((skillScore - baselineScore) / baselineScore * 100).toFixed(0)}%`;
-        if (skillScore >= baselineScore) improvement = `+${improvement}`;
+      if (typeof baselineScore === 'number' && typeof artifactScore === 'number' && baselineScore > 0) {
+        improvement = `${((artifactScore - baselineScore) / baselineScore * 100).toFixed(0)}%`;
+        if (artifactScore >= baselineScore) improvement = `+${improvement}`;
       }
-      return { name: skill.name, baselineScore, skillScore, improvement: improvement ?? '-' };
+      return { name: skill.name, baselineScore, artifactScore, improvement: improvement ?? '-' };
     }),
   };
 
@@ -537,7 +537,7 @@ export async function runEachEvaluation({
     summary: {},
     results: [],
     overview,
-    skills: skillResults,
+    artifacts: skillResults,
   };
 
   const filePath = persistReport(combinedReport, outputDir);
