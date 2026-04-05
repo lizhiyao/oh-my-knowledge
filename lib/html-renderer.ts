@@ -2,7 +2,7 @@
  * HTML report renderer — orchestrates sub-modules.
  */
 
-import { e, fmtCost, fmtDuration } from './renderer/helpers.js';
+import { e, fmtCost, fmtDuration, COLORS } from './renderer/helpers.js';
 import { DEFAULT_LANG, t } from './renderer/i18n.js';
 import { layout } from './renderer/layout.js';
 import { renderSummaryCards } from './renderer/summary.js';
@@ -162,7 +162,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     en: { baseline: 'None', 'system-prompt': 'System prompt', 'user-prompt': 'User prompt', 'agent-session': 'Agent session', 'workflow-session': 'Workflow session' },
   };
 
-  const variantConfigRows = (m.variantConfigs || []).map((config) => {
+  const variantConfigRows = (m.variantConfigs || []).map((config, i) => {
     const expTypeRaw = config.experimentType || (config as unknown as Record<string, unknown>).experimentRole || '-';
     const expType = (typeLabels[lang] || typeLabels.en)[String(expTypeRaw)] || expTypeRaw;
     const source = config.artifactKind === 'baseline'
@@ -173,8 +173,13 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     const runtimeContext = cwdRaw
       ? cwdRaw.replace(/.*\/Projects\//, '').replace(/.*\/Documents\//, '').replace(/\/Users\/[^/]+\//, '~/')
       : (lang === 'zh' ? '默认' : 'default');
+    const color = COLORS[i % COLORS.length];
+    const isControl = config.artifactKind === 'baseline' || String(expTypeRaw) === 'runtime-context-only' || String(expTypeRaw) === 'baseline';
+    const groupLabel = isControl
+      ? `<span style="font-size:10px;color:var(--text-muted);margin-left:4px">${lang === 'zh' ? '对照' : 'control'}</span>`
+      : `<span style="font-size:10px;color:var(--accent);margin-left:4px">${lang === 'zh' ? '实验' : 'test'}</span>`;
     return `<tr>
-      <td>${e(config.variant)}</td>
+      <td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(config.variant)}</strong>${groupLabel}</td>
       <td>${e(expType)}</td>
       <td>${e(config.artifactKind)}</td>
       <td>${e(source)}</td>
@@ -183,9 +188,16 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     </tr>`;
   }).join('');
   const configModalId = 'guide-variant-config';
+  const controlCount = (m.variantConfigs || []).filter((c) => c.artifactKind === 'baseline' || String(c.experimentType || (c as unknown as Record<string, unknown>).experimentRole) === 'runtime-context-only').length;
+  const testCount = (m.variantConfigs || []).length - controlCount;
+  const experimentSummary = lang === 'zh'
+    ? `${m.sampleCount} 个样本 × ${variants.length} 组实验（${controlCount} 对照 + ${testCount} 实验）`
+    : `${m.sampleCount} samples × ${variants.length} variants (${controlCount} control + ${testCount} test)`;
+
   const variantConfigSection = variantConfigRows ? `
     <section style="margin:20px 0">
       <h2 style="display:flex;align-items:center;gap:4px">${t('variantConfig', lang)} <span class="hint hint-click" tabindex="0" onclick="document.getElementById('${configModalId}').style.display='flex'" aria-label="${e(t('variantConfigDesc', lang))}">?</span></h2>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">${experimentSummary}</p>
       <div class="table-wrap">
         <table>
           <thead><tr>

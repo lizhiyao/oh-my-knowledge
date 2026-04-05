@@ -46,7 +46,9 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       if (s.avgLlmScore != null) { layeredDetailParts.push(`${t('llmJudge', lang)}: ${s.avgLlmScore}`); hintParts.push(`${t('llmJudge', lang)}: ${s.avgLlmScore}`); }
     }
 
-    const qualityCell = `<td class="summary-cell"><div class="summary-value summary-value-primary">${score}</div><div class="summary-detail">${layeredDetailParts.join(' · ')}</div></td>`;
+    const scoreNum = typeof score === 'number' ? score : 0;
+    const scoreColor = scoreNum >= 4 ? 'var(--green)' : scoreNum >= 3 ? 'var(--yellow)' : scoreNum > 0 ? 'var(--red)' : 'var(--text-primary)';
+    const qualityCell = `<td class="summary-cell"><div class="summary-value summary-value-primary" style="color:${scoreColor}">${score}</div><div class="summary-detail">${layeredDetailParts.join(' · ')}</div></td>`;
 
     // Cost — only show execution cost (judge cost is tool overhead, not skill cost)
     const execCost = s.totalExecCostUSD || 0;
