@@ -5,6 +5,10 @@
 
 import type { ExecResult, GradeResult, VariantResult, VariantSummary, TurnInfo, ToolCallInfo } from './types.js';
 
+function ratioToScore(ratio: number): number {
+  return Number((1 + ratio * 4).toFixed(2));
+}
+
 const MAX_TURN_CONTENT = 2000;
 const MAX_TOOL_OUTPUT = 1000;
 
@@ -31,6 +35,7 @@ function truncateToolCalls(toolCalls: ToolCallInfo[]): ToolCallInfo[] {
 interface BuildVariantOptions {
   execMs?: number;
   gradeMs?: number;
+  factCheck?: { verifiedCount: number; totalCount: number; verifiedRate: number; claims: Array<{ type: string; value: string; verified: boolean; evidence?: string }> };
 }
 
 export function buildVariantResult(execResult: ExecResult, gradeResult: GradeResult | null, options?: BuildVariantOptions): VariantResult {
@@ -72,14 +77,33 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     }),
     traceCoverage,
     ...(execResult.error && { error: execResult.error }),
-    ...(gradeResult && {
-      compositeScore: gradeResult.compositeScore,
-      ...(gradeResult.layeredScores && { layeredScores: gradeResult.layeredScores }),
-      ...(gradeResult.assertions && { assertions: gradeResult.assertions }),
-      ...(gradeResult.llmScore != null && { llmScore: gradeResult.llmScore }),
-      ...(gradeResult.llmReason && { llmReason: gradeResult.llmReason }),
-      ...(gradeResult.dimensions && { dimensions: gradeResult.dimensions }),
-    }),
+    ...(gradeResult && (() => {
+      // Integrate fact check into layered scores
+      let layeredScores = gradeResult.layeredScores ? { ...gradeResult.layeredScores } : undefined;
+      let compositeScore = gradeResult.compositeScore;
+
+      if (options?.factCheck && options.factCheck.totalCount > 0 && layeredScores) {
+        const hardScore = ratioToScore(options.factCheck.verifiedRate);
+        const assertionFact = layeredScores.factScore;
+        // Combine: assertion fact + hard verification
+        layeredScores.factScore = assertionFact != null
+          ? Number(((assertionFact + hardScore) / 2).toFixed(2))
+          : hardScore;
+        // Recompute composite from updated layers
+        const scores = [layeredScores.factScore, layeredScores.behaviorScore, layeredScores.qualityScore].filter((s): s is number => s != null && s > 0);
+        compositeScore = scores.length > 0 ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)) : compositeScore;
+      }
+
+      return {
+        compositeScore,
+        ...(layeredScores && { layeredScores }),
+        ...(gradeResult.assertions && { assertions: gradeResult.assertions }),
+        ...(gradeResult.llmScore != null && { llmScore: gradeResult.llmScore }),
+        ...(gradeResult.llmReason && { llmReason: gradeResult.llmReason }),
+        ...(gradeResult.dimensions && { dimensions: gradeResult.dimensions }),
+      };
+    })()),
+    ...(options?.factCheck && options.factCheck.totalCount > 0 && { factCheck: options.factCheck }),
     outputPreview: execResult.output ? execResult.output.slice(0, 200) : null,
     ...(execResult.output && { fullOutput: execResult.output }),
     ...(execResult.turns && execResult.turns.length > 0 && { turns: truncateTurns(execResult.turns) }),
@@ -143,10 +167,12 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
       const factScores = ok.map((e) => e.layeredScores?.factScore).filter((s): s is number => s != null && s > 0);
       const behaviorScores = ok.map((e) => e.layeredScores?.behaviorScore).filter((s): s is number => s != null && s > 0);
       const qualityScores = ok.map((e) => e.layeredScores?.qualityScore).filter((s): s is number => s != null && s > 0);
+      const factVerifiedRates = ok.map((e) => e.factCheck?.verifiedRate).filter((r): r is number => r != null);
       return {
         ...(factScores.length > 0 && { avgFactScore: Number((factScores.reduce((a, b) => a + b, 0) / factScores.length).toFixed(2)) }),
         ...(behaviorScores.length > 0 && { avgBehaviorScore: Number((behaviorScores.reduce((a, b) => a + b, 0) / behaviorScores.length).toFixed(2)) }),
         ...(qualityScores.length > 0 && { avgQualityScore: Number((qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length).toFixed(2)) }),
+        ...(factVerifiedRates.length > 0 && { avgFactVerifiedRate: Number((factVerifiedRates.reduce((a, b) => a + b, 0) / factVerifiedRates.length).toFixed(2)) }),
       };
     })(),
     ...(compositeScores.length > 0 && {

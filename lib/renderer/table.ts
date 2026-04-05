@@ -76,6 +76,14 @@ export function renderSampleTable(variants: string[], results: ResultEntry[], la
         if (badges.length > 0) layeredHtml = `<div class="dim-scores">${badges.join('')}</div>`;
       }
 
+      // Fact check badge
+      let factCheckHtml = '';
+      if (d.factCheck && d.factCheck.totalCount > 0) {
+        const fc = d.factCheck;
+        const fcColor = fc.verifiedRate >= 0.8 ? 'var(--green)' : fc.verifiedRate >= 0.5 ? 'var(--yellow)' : 'var(--red)';
+        factCheckHtml = `<div style="font-size:11px;margin-top:2px"><span style="color:${fcColor}">${lang === 'zh' ? '事实验证' : 'Verified'} ${fc.verifiedCount}/${fc.totalCount}</span></div>`;
+      }
+
       const errorHtml = !d.ok && d.error
         ? `<br><span class="error-detail">${e(d.error)}</span>`
         : '';
@@ -130,7 +138,7 @@ export function renderSampleTable(variants: string[], results: ResultEntry[], la
       const tokenDelta = i > 0 && firstV ? delta(firstV.totalTokens, d.totalTokens, true) : '';
       const msDelta = i > 0 && firstTotalMs ? delta(firstTotalMs, totalMs, true) : '';
 
-      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${layeredHtml}${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}${toolHtml}${timingHtml}${traceHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtDuration(totalMs)}${msDelta}</td>`;
+      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${layeredHtml}${factCheckHtml}${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}${toolHtml}${timingHtml}${traceHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtDuration(totalMs)}${msDelta}</td>`;
     }).join('');
 
     return `<tr><td><strong>${e(r.sample_id)}</strong></td>${cols}</tr>`;

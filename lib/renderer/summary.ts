@@ -34,6 +34,11 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       layeredDetailParts.push(`<span>${behaviorLabel}: ${s.avgBehaviorScore}</span>`);
       hintParts.push(`${behaviorLabel}: ${s.avgBehaviorScore}`);
     }
+    if (s.avgFactVerifiedRate != null) {
+      const pct = Math.round(s.avgFactVerifiedRate * 100);
+      layeredDetailParts.push(`<span>${lang === 'zh' ? '事实验证' : 'Verified'}: ${pct}%</span>`);
+      hintParts.push(`${lang === 'zh' ? '事实验证' : 'Verified'}: ${pct}%`);
+    }
     if (s.avgQualityScore != null) {
       layeredDetailParts.push(`<span>${qualityLabel}: ${s.avgQualityScore}</span>`);
       hintParts.push(`${qualityLabel}: ${s.avgQualityScore}`);

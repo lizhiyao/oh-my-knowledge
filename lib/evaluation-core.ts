@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { createCache, cacheKey } from './cache.js';
 import { buildVariantResult, buildVariantSummary } from './schema.js';
 import { grade } from './grader.js';
+import { checkFacts } from './fact-checker.js';
+import type { FactCheckResult } from './fact-checker.js';
 import { buildVariantConfig, resolveExecutionStrategy } from './execution-strategy.js';
 
 import type {
@@ -231,8 +233,14 @@ export async function executeTasks({ tasks, executor, judgeExecutor, model, judg
       });
     }
 
+    // Fact check — verify file paths in agent output
+    let factCheck: FactCheckResult | undefined;
+    if (execResult.ok && execResult.output && task.cwd) {
+      factCheck = checkFacts(execResult.output, resolve(task.cwd));
+    }
+
     if (!results[task.sample_id]) results[task.sample_id] = {};
-    results[task.sample_id][task.variant] = buildVariantResult(execResult, gradeResult, { execMs, gradeMs });
+    results[task.sample_id][task.variant] = buildVariantResult(execResult, gradeResult, { execMs, gradeMs, factCheck });
   }
 
   try {

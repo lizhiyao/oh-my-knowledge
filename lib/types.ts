@@ -222,6 +222,7 @@ export interface VariantResult {
   llmScore?: number;
   llmReason?: string;
   dimensions?: Record<string, DimensionResult>;
+  factCheck?: { verifiedCount: number; totalCount: number; verifiedRate: number; claims: Array<{ type: string; value: string; verified: boolean; evidence?: string }> };
   outputPreview: string | null;
   fullOutput?: string;
   turns?: TurnInfo[];
@@ -251,6 +252,7 @@ export interface VariantSummary {
   toolDistribution?: Record<string, number>;
   traceCoverageRate?: number;
   avgFactScore?: number;
+  avgFactVerifiedRate?: number;
   avgBehaviorScore?: number;
   avgQualityScore?: number;
   avgCompositeScore?: number;
