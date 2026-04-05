@@ -179,8 +179,15 @@ export interface DimensionResult {
   judgeCostUSD?: number;
 }
 
+export interface LayeredScores {
+  factScore?: number;       // 事实性得分：事实类断言通过率 → 1-5
+  behaviorScore?: number;   // 行为合规得分：行为类断言通过率 → 1-5
+  qualityScore?: number;    // 质量得分：LLM judge 平均分 → 1-5
+}
+
 export interface GradeResult {
   compositeScore: number;
+  layeredScores?: LayeredScores;
   assertions?: AssertionResults;
   llmScore?: number;
   llmReason?: string;
@@ -210,6 +217,7 @@ export interface VariantResult {
   traceCoverage?: number;
   error?: string;
   compositeScore?: number;
+  layeredScores?: LayeredScores;
   assertions?: AssertionResults;
   llmScore?: number;
   llmReason?: string;
@@ -242,6 +250,9 @@ export interface VariantSummary {
   toolSuccessRate?: number;
   toolDistribution?: Record<string, number>;
   traceCoverageRate?: number;
+  avgFactScore?: number;
+  avgBehaviorScore?: number;
+  avgQualityScore?: number;
   avgCompositeScore?: number;
   minCompositeScore?: number;
   maxCompositeScore?: number;

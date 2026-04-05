@@ -65,6 +65,17 @@ export function renderSampleTable(variants: string[], results: ResultEntry[], la
       const scoreClass = !d.ok ? 'badge-err' : hasScore ? 'badge-ok' : 'badge-muted';
       const scoreText = hasScore ? score : (d.ok ? '-' : 'ERR');
 
+      // Layered score badges
+      let layeredHtml = '';
+      if (d.layeredScores) {
+        const ls = d.layeredScores;
+        const badges: string[] = [];
+        if (ls.factScore != null) badges.push(`<span class="dim-tag" title="${lang === 'zh' ? '事实性' : 'Factual'}">${lang === 'zh' ? '事实' : 'F'}:${ls.factScore}</span>`);
+        if (ls.behaviorScore != null) badges.push(`<span class="dim-tag" title="${lang === 'zh' ? '行为合规' : 'Behavioral'}">${lang === 'zh' ? '行为' : 'B'}:${ls.behaviorScore}</span>`);
+        if (ls.qualityScore != null) badges.push(`<span class="dim-tag" title="${lang === 'zh' ? '质量' : 'Quality'}">${lang === 'zh' ? '质量' : 'Q'}:${ls.qualityScore}</span>`);
+        if (badges.length > 0) layeredHtml = `<div class="dim-scores">${badges.join('')}</div>`;
+      }
+
       const errorHtml = !d.ok && d.error
         ? `<br><span class="error-detail">${e(d.error)}</span>`
         : '';
@@ -119,7 +130,7 @@ export function renderSampleTable(variants: string[], results: ResultEntry[], la
       const tokenDelta = i > 0 && firstV ? delta(firstV.totalTokens, d.totalTokens, true) : '';
       const msDelta = i > 0 && firstTotalMs ? delta(firstTotalMs, totalMs, true) : '';
 
-      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}${toolHtml}${timingHtml}${traceHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtDuration(totalMs)}${msDelta}</td>`;
+      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${layeredHtml}${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}${toolHtml}${timingHtml}${traceHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtDuration(totalMs)}${msDelta}</td>`;
     }).join('');
 
     return `<tr><td><strong>${e(r.sample_id)}</strong></td>${cols}</tr>`;

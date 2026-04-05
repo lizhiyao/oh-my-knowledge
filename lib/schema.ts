@@ -74,6 +74,7 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     ...(execResult.error && { error: execResult.error }),
     ...(gradeResult && {
       compositeScore: gradeResult.compositeScore,
+      ...(gradeResult.layeredScores && { layeredScores: gradeResult.layeredScores }),
       ...(gradeResult.assertions && { assertions: gradeResult.assertions }),
       ...(gradeResult.llmScore != null && { llmScore: gradeResult.llmScore }),
       ...(gradeResult.llmReason && { llmReason: gradeResult.llmReason }),
@@ -136,6 +137,16 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
         avgToolFailures: Number((withTools.reduce((s, e) => s + (e.numToolFailures || 0), 0) / withTools.length).toFixed(1)),
         toolSuccessRate: Number(avgSuccessRate.toFixed(2)),
         toolDistribution: dist,
+      };
+    })(),
+    ...(() => {
+      const factScores = ok.map((e) => e.layeredScores?.factScore).filter((s): s is number => s != null && s > 0);
+      const behaviorScores = ok.map((e) => e.layeredScores?.behaviorScore).filter((s): s is number => s != null && s > 0);
+      const qualityScores = ok.map((e) => e.layeredScores?.qualityScore).filter((s): s is number => s != null && s > 0);
+      return {
+        ...(factScores.length > 0 && { avgFactScore: Number((factScores.reduce((a, b) => a + b, 0) / factScores.length).toFixed(2)) }),
+        ...(behaviorScores.length > 0 && { avgBehaviorScore: Number((behaviorScores.reduce((a, b) => a + b, 0) / behaviorScores.length).toFixed(2)) }),
+        ...(qualityScores.length > 0 && { avgQualityScore: Number((qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length).toFixed(2)) }),
       };
     })(),
     ...(compositeScores.length > 0 && {

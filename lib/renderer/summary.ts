@@ -17,15 +17,21 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     const s = summary[v] || {} as VariantSummary;
     const color = COLORS[i % COLORS.length];
 
-    // Quality
+    // Quality — show composite + layered breakdown
     const score = s.avgCompositeScore ?? s.avgLlmScore ?? '-';
     const qualityDetail: string[] = [];
-    if (s.minCompositeScore != null) qualityDetail.push(`${s.minCompositeScore}~${s.maxCompositeScore}`);
-    if (s.avgAssertionScore != null) qualityDetail.push(`${t('assertions', lang)}: ${s.avgAssertionScore}`);
-    if (s.avgLlmScore != null) qualityDetail.push(`${t('llmJudge', lang)}: ${s.avgLlmScore}`);
+    if (s.avgFactScore != null) qualityDetail.push(`${lang === 'zh' ? '事实' : 'Fact'}: ${s.avgFactScore}`);
+    if (s.avgBehaviorScore != null) qualityDetail.push(`${lang === 'zh' ? '行为' : 'Behavior'}: ${s.avgBehaviorScore}`);
+    if (s.avgQualityScore != null) qualityDetail.push(`${lang === 'zh' ? '质量' : 'Quality'}: ${s.avgQualityScore}`);
+    if (qualityDetail.length === 0) {
+      // Fallback to old style if no layered scores
+      if (s.minCompositeScore != null) qualityDetail.push(`${s.minCompositeScore}~${s.maxCompositeScore}`);
+      if (s.avgAssertionScore != null) qualityDetail.push(`${t('assertions', lang)}: ${s.avgAssertionScore}`);
+      if (s.avgLlmScore != null) qualityDetail.push(`${t('llmJudge', lang)}: ${s.avgLlmScore}`);
+    }
     const qualityTip = qualityDetail.length ? qualityDetail.join(' · ') : '';
     const qualityHint = qualityTip ? `<span class="hint" tabindex="0" aria-label="${e(qualityTip)}">?<span class="hint-tip">${e(qualityTip)}</span></span>` : '';
-    const qualityCell = `<td class="summary-cell"><div class="summary-value summary-value-primary">${score}${qualityHint}</div></td>`;
+    const qualityCell = `<td class="summary-cell"><div class="summary-value summary-value-primary">${score}${qualityHint}</div><div class="summary-detail">${qualityDetail.join(' · ')}</div></td>`;
 
     // Cost — only show execution cost (judge cost is tool overhead, not skill cost)
     const execCost = s.totalExecCostUSD || 0;

@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import _Ajv from 'ajv';
 // ajv CJS interop: default export wrapping
 const Ajv = _Ajv.default ?? _Ajv;
-import type { Assertion, AssertionResults, AssertionDetail, GradeResult, DimensionResult, ExecutorFn, Sample, ToolCallInfo, TurnInfo } from './types.js';
+import type { Assertion, AssertionResults, AssertionDetail, GradeResult, LayeredScores, DimensionResult, ExecutorFn, Sample, ToolCallInfo, TurnInfo } from './types.js';
 
 // Async assertion types that need LLM or dynamic imports
 const ASYNC_ASSERTION_TYPES = new Set(['semantic_similarity', 'custom']);
@@ -65,6 +65,7 @@ export async function grade({ output, sample, executor, judgeModel, execMetrics 
     dimensions?: Record<string, DimensionResult>;
     judgeCostUSD?: number;
     compositeScore: number;
+    layeredScores?: LayeredScores;
   } = { compositeScore: 0 };
 
   // 1. Deterministic assertions (pure, no LLM)
@@ -141,8 +142,10 @@ export async function grade({ output, sample, executor, judgeModel, execMetrics 
     results.judgeCostUSD = (results.judgeCostUSD || 0) + (judge.judgeCostUSD || 0);
   }
 
-  // 3. Composite score
-  results.compositeScore = computeComposite(results);
+  // 3. Layered scores + composite
+  const { compositeScore, layeredScores } = computeLayeredScores(results);
+  results.compositeScore = compositeScore;
+  results.layeredScores = layeredScores;
 
   return results;
 }
@@ -525,60 +528,62 @@ async function llmJudge({ output, rubric, prompt, executor, model, traceSummary 
   }
 }
 
+// Assertion type classification for layered scoring
+const BEHAVIORAL_ASSERTION_TYPES = new Set([
+  'tools_called', 'tools_not_called', 'tools_count_min', 'tools_count_max',
+  'turns_min', 'turns_max', 'cost_max', 'latency_max',
+]);
+
+const FACTUAL_ASSERTION_TYPES = new Set([
+  'contains', 'not_contains', 'regex', 'equals', 'not_equals',
+  'starts_with', 'ends_with', 'contains_all', 'contains_any',
+  'min_length', 'max_length', 'word_count_min', 'word_count_max',
+  'json_valid', 'json_schema',
+  'tool_output_contains', 'tool_input_contains',
+]);
+
+function scoreFromDetails(details: AssertionDetail[]): number | null {
+  if (details.length === 0) return null;
+  const totalWeight = details.reduce((s, d) => s + d.weight, 0);
+  const passedWeight = details.filter((d) => d.passed).reduce((s, d) => s + d.weight, 0);
+  return totalWeight > 0 ? ratioToScore(passedWeight / totalWeight) : null;
+}
+
 interface CompositeInput {
   assertions?: AssertionResults;
   llmScore?: number;
 }
 
 /**
- * Compute composite score from assertion and LLM results.
+ * Compute layered scores and composite score.
  *
- * Scoring dimensions (each weighted equally when present):
- * - assertions: deterministic rule checks (1-5)
- * - llmScore: LLM judge evaluation (1-5)
- * - efficiency: from efficiency assertions (cost_max, latency_max, turns_max) if present
+ * Three layers:
+ * - factScore: factual assertions (contains, regex, tool_input_contains, etc.) → "说的对不对"
+ * - behaviorScore: behavioral assertions (tools_called, turns_max, cost_max, etc.) → "做法对不对"
+ * - qualityScore: LLM judge score → "做得好不好"
  *
- * When efficiency assertions exist, they are split out from the main assertion score
- * and treated as a separate dimension to give efficiency proper weight.
+ * compositeScore = weighted average of available layers.
  */
-function computeComposite(results: CompositeInput): number {
-  const hasAssertions = results.assertions && results.assertions.score > 0;
-  const hasLlm = typeof results.llmScore === 'number' && results.llmScore > 0;
+function computeLayeredScores(results: CompositeInput): { compositeScore: number; layeredScores: LayeredScores } {
+  const layered: LayeredScores = {};
 
-  // Check if there are efficiency assertions mixed into the assertion results
-  const EFFICIENCY_TYPES = new Set(['cost_max', 'latency_max', 'turns_max', 'turns_min', 'tools_count_max', 'tools_count_min']);
-  let efficiencyScore: number | null = null;
-  let contentScore: number | null = null;
+  if (results.assertions?.details) {
+    const factDetails = results.assertions.details.filter((d) => FACTUAL_ASSERTION_TYPES.has(d.type));
+    const behaviorDetails = results.assertions.details.filter((d) => BEHAVIORAL_ASSERTION_TYPES.has(d.type));
 
-  if (hasAssertions && results.assertions!.details) {
-    const effDetails = results.assertions!.details.filter((d) => EFFICIENCY_TYPES.has(d.type));
-    const contentDetails = results.assertions!.details.filter((d) => !EFFICIENCY_TYPES.has(d.type));
-
-    if (effDetails.length > 0 && contentDetails.length > 0) {
-      // Split into efficiency and content scores
-      const effWeight = effDetails.reduce((s, d) => s + d.weight, 0);
-      const effPassedWeight = effDetails.filter((d) => d.passed).reduce((s, d) => s + d.weight, 0);
-      efficiencyScore = effWeight > 0 ? ratioToScore(effPassedWeight / effWeight) : null;
-
-      const contentWeight = contentDetails.reduce((s, d) => s + d.weight, 0);
-      const contentPassedWeight = contentDetails.filter((d) => d.passed).reduce((s, d) => s + d.weight, 0);
-      contentScore = contentWeight > 0 ? ratioToScore(contentPassedWeight / contentWeight) : null;
-    }
+    layered.factScore = scoreFromDetails(factDetails) ?? undefined;
+    layered.behaviorScore = scoreFromDetails(behaviorDetails) ?? undefined;
   }
 
-  // Build dimensions array
-  const dimensions: number[] = [];
-  if (efficiencyScore !== null && contentScore !== null) {
-    // Split mode: content assertions + efficiency assertions as separate dimensions
-    dimensions.push(contentScore);
-    if (hasLlm) dimensions.push(results.llmScore!);
-    dimensions.push(efficiencyScore);
-  } else {
-    // Original mode: assertions and LLM as before
-    if (hasAssertions) dimensions.push(results.assertions!.score);
-    if (hasLlm) dimensions.push(results.llmScore!);
+  if (typeof results.llmScore === 'number' && results.llmScore > 0) {
+    layered.qualityScore = results.llmScore;
   }
 
-  if (dimensions.length === 0) return 0;
-  return Number((dimensions.reduce((a, b) => a + b, 0) / dimensions.length).toFixed(2));
+  // Composite = average of available layers
+  const scores = [layered.factScore, layered.behaviorScore, layered.qualityScore].filter((s): s is number => s != null && s > 0);
+  const compositeScore = scores.length > 0
+    ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2))
+    : 0;
+
+  return { compositeScore, layeredScores: layered };
 }
