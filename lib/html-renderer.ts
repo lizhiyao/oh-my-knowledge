@@ -191,7 +191,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const controlCount = (m.variantConfigs || []).filter((c) => c.artifactKind === 'baseline' || String(c.experimentType || (c as unknown as Record<string, unknown>).experimentRole) === 'runtime-context-only').length;
   const testCount = (m.variantConfigs || []).length - controlCount;
   const experimentSummary = lang === 'zh'
-    ? `${m.sampleCount} 个样本 × ${variants.length} 组实验（${controlCount} 对照 + ${testCount} 实验）`
+    ? `${m.sampleCount} 个测评用例 × ${variants.length} 组实验（${controlCount} 对照 + ${testCount} 实验）`
     : `${m.sampleCount} samples × ${variants.length} variants (${controlCount} control + ${testCount} test)`;
 
   const variantConfigSection = variantConfigRows ? `
