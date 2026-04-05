@@ -19,22 +19,41 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
 
     // Quality — show composite + layered breakdown
     const score = s.avgCompositeScore ?? s.avgLlmScore ?? '-';
-    const factTip = lang === 'zh' ? '输出内容中的事实性声明是否正确（关键词匹配、格式校验等）' : 'Are factual claims in the output correct (keyword matching, format validation, etc.)';
-    const behaviorTip = lang === 'zh' ? '执行过程是否合规（工具调用路径、轮次限制、成本约束等）' : 'Is the execution process compliant (tool call paths, turn limits, cost constraints, etc.)';
-    const qualityTip2 = lang === 'zh' ? 'LLM 评委对输出整体质量的主观评分' : 'LLM judge subjective score on overall output quality';
-    const qualityDetail: string[] = [];
-    if (s.avgFactScore != null) qualityDetail.push(`<span title="${e(factTip)}" style="cursor:help;border-bottom:1px dotted var(--text-muted)">${lang === 'zh' ? '事实' : 'Fact'}: ${s.avgFactScore}</span>`);
-    if (s.avgBehaviorScore != null) qualityDetail.push(`<span title="${e(behaviorTip)}" style="cursor:help;border-bottom:1px dotted var(--text-muted)">${lang === 'zh' ? '行为' : 'Behavior'}: ${s.avgBehaviorScore}</span>`);
-    if (s.avgQualityScore != null) qualityDetail.push(`<span title="${e(qualityTip2)}" style="cursor:help;border-bottom:1px dotted var(--text-muted)">${lang === 'zh' ? '质量' : 'Quality'}: ${s.avgQualityScore}</span>`);
-    if (qualityDetail.length === 0) {
-      // Fallback to old style if no layered scores
-      if (s.minCompositeScore != null) qualityDetail.push(`${s.minCompositeScore}~${s.maxCompositeScore}`);
-      if (s.avgAssertionScore != null) qualityDetail.push(`${t('assertions', lang)}: ${s.avgAssertionScore}`);
-      if (s.avgLlmScore != null) qualityDetail.push(`${t('llmJudge', lang)}: ${s.avgLlmScore}`);
+    const factLabel = lang === 'zh' ? '事实' : 'Fact';
+    const behaviorLabel = lang === 'zh' ? '行为' : 'Behavior';
+    const qualityLabel = lang === 'zh' ? '质量' : 'Quality';
+    const factTip = lang === 'zh' ? '输出内容中的事实性声明是否正确（关键词匹配、格式校验等）' : 'Are factual claims in the output correct';
+    const behaviorTip = lang === 'zh' ? '执行过程是否合规（工具调用路径、轮次限制、成本约束等）' : 'Is the execution process compliant';
+    const qualityTip3 = lang === 'zh' ? 'LLM 评委对输出整体质量的主观评分' : 'LLM judge subjective score on overall output quality';
+
+    // Layered detail (HTML for rendering)
+    const layeredDetailParts: string[] = [];
+    // Plain text for hint tooltip
+    const hintParts: string[] = [];
+
+    if (s.avgFactScore != null) {
+      layeredDetailParts.push(`<span title="${e(factTip)}" style="cursor:help;border-bottom:1px dotted var(--text-muted)">${factLabel}: ${s.avgFactScore}</span>`);
+      hintParts.push(`${factLabel}: ${s.avgFactScore}`);
     }
-    const qualityTip = qualityDetail.length ? qualityDetail.join(' · ') : '';
-    const qualityHint = qualityTip ? `<span class="hint" tabindex="0" aria-label="${e(qualityTip)}">?<span class="hint-tip">${e(qualityTip)}</span></span>` : '';
-    const qualityCell = `<td class="summary-cell"><div class="summary-value summary-value-primary">${score}${qualityHint}</div><div class="summary-detail">${qualityDetail.join(' · ')}</div></td>`;
+    if (s.avgBehaviorScore != null) {
+      layeredDetailParts.push(`<span title="${e(behaviorTip)}" style="cursor:help;border-bottom:1px dotted var(--text-muted)">${behaviorLabel}: ${s.avgBehaviorScore}</span>`);
+      hintParts.push(`${behaviorLabel}: ${s.avgBehaviorScore}`);
+    }
+    if (s.avgQualityScore != null) {
+      layeredDetailParts.push(`<span title="${e(qualityTip3)}" style="cursor:help;border-bottom:1px dotted var(--text-muted)">${qualityLabel}: ${s.avgQualityScore}</span>`);
+      hintParts.push(`${qualityLabel}: ${s.avgQualityScore}`);
+    }
+
+    if (layeredDetailParts.length === 0) {
+      // Fallback to old style if no layered scores
+      if (s.minCompositeScore != null) { layeredDetailParts.push(`${s.minCompositeScore}~${s.maxCompositeScore}`); hintParts.push(`${s.minCompositeScore}~${s.maxCompositeScore}`); }
+      if (s.avgAssertionScore != null) { layeredDetailParts.push(`${t('assertions', lang)}: ${s.avgAssertionScore}`); hintParts.push(`${t('assertions', lang)}: ${s.avgAssertionScore}`); }
+      if (s.avgLlmScore != null) { layeredDetailParts.push(`${t('llmJudge', lang)}: ${s.avgLlmScore}`); hintParts.push(`${t('llmJudge', lang)}: ${s.avgLlmScore}`); }
+    }
+
+    const hintText = hintParts.join(' · ');
+    const qualityHint = hintText ? `<span class="hint" tabindex="0" aria-label="${e(hintText)}">?<span class="hint-tip">${e(hintText)}</span></span>` : '';
+    const qualityCell = `<td class="summary-cell"><div class="summary-value summary-value-primary">${score}${qualityHint}</div><div class="summary-detail">${layeredDetailParts.join(' · ')}</div></td>`;
 
     // Cost — only show execution cost (judge cost is tool overhead, not skill cost)
     const execCost = s.totalExecCostUSD || 0;
