@@ -109,8 +109,17 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     return `<tr><td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(v)}</strong></td>${qualityCell}${costCell}${effCell}${stabCell}</tr>`;
   }).join('');
 
+  const guideZh = `<p style="font-size:12px;color:var(--text-muted);margin:8px 0 12px">
+    每行是一个实验分组，四列分别衡量不同维度。<strong>质量</strong>综合了三层评分：事实性（输出内容对不对）、行为（执行路径合不合规）、质量（LLM 评委的主观评分）。<strong>成本</strong>是 API 调用费用。<strong>效率</strong>是单次评测的平均耗时。<strong>稳定性</strong>反映多个样本间分数的波动程度。
+  </p>`;
+  const guideEn = `<p style="font-size:12px;color:var(--text-muted);margin:8px 0 12px">
+    Each row is a variant. Four columns measure different dimensions. <strong>Quality</strong> combines three layers: factual (are claims correct), behavioral (is execution compliant), and quality (LLM judge score). <strong>Cost</strong> is API expense. <strong>Efficiency</strong> is average time per evaluation. <strong>Stability</strong> shows score variance across samples.
+  </p>`;
+  const guide = lang === 'zh' ? guideZh : guideEn;
+
   return `
     <h2 data-i18n="dimQuality">${t('reportTitle', lang) === t('reportTitle', 'zh') ? '四维对比' : 'Comparison'}</h2>
+    ${guide}
     <div class="table-wrap">
     <table class="summary-table">
       <thead>${thead}</thead>
