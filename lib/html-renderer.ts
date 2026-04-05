@@ -150,14 +150,18 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
   const totalDurationMs = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
   const variantConfigRows = (m.variantConfigs || []).map((config) => {
-    const runtimeContext = config.cwd || (lang === 'zh' ? '默认' : 'default');
+    const expType = config.experimentType || (config as unknown as Record<string, unknown>).experimentRole || '-';
+    const cwdRaw = config.cwd || '';
+    const runtimeContext = cwdRaw
+      ? cwdRaw.replace(/.*\/Projects\//, '').replace(/.*\/Documents\//, '').replace(/\/Users\/[^/]+\//, '~/')
+      : (lang === 'zh' ? '默认' : 'default');
     return `<tr>
       <td>${e(config.variant)}</td>
-      <td>${e(config.experimentType)}</td>
+      <td>${e(expType)}</td>
       <td>${e(config.artifactKind)}</td>
       <td>${e(config.artifactSource)}</td>
       <td>${e(config.executionStrategy)}</td>
-      <td>${e(runtimeContext)}</td>
+      <td title="${e(cwdRaw)}">${e(runtimeContext)}</td>
     </tr>`;
   }).join('');
   const configModalId = 'guide-variant-config';
