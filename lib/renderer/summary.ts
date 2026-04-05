@@ -19,10 +19,13 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
 
     // Quality — show composite + layered breakdown
     const score = s.avgCompositeScore ?? s.avgLlmScore ?? '-';
+    const factTip = lang === 'zh' ? '输出内容中的事实性声明是否正确（关键词匹配、格式校验等）' : 'Are factual claims in the output correct (keyword matching, format validation, etc.)';
+    const behaviorTip = lang === 'zh' ? '执行过程是否合规（工具调用路径、轮次限制、成本约束等）' : 'Is the execution process compliant (tool call paths, turn limits, cost constraints, etc.)';
+    const qualityTip2 = lang === 'zh' ? 'LLM 评委对输出整体质量的主观评分' : 'LLM judge subjective score on overall output quality';
     const qualityDetail: string[] = [];
-    if (s.avgFactScore != null) qualityDetail.push(`${lang === 'zh' ? '事实' : 'Fact'}: ${s.avgFactScore}`);
-    if (s.avgBehaviorScore != null) qualityDetail.push(`${lang === 'zh' ? '行为' : 'Behavior'}: ${s.avgBehaviorScore}`);
-    if (s.avgQualityScore != null) qualityDetail.push(`${lang === 'zh' ? '质量' : 'Quality'}: ${s.avgQualityScore}`);
+    if (s.avgFactScore != null) qualityDetail.push(`<span title="${e(factTip)}" style="cursor:help;border-bottom:1px dotted var(--text-muted)">${lang === 'zh' ? '事实' : 'Fact'}: ${s.avgFactScore}</span>`);
+    if (s.avgBehaviorScore != null) qualityDetail.push(`<span title="${e(behaviorTip)}" style="cursor:help;border-bottom:1px dotted var(--text-muted)">${lang === 'zh' ? '行为' : 'Behavior'}: ${s.avgBehaviorScore}</span>`);
+    if (s.avgQualityScore != null) qualityDetail.push(`<span title="${e(qualityTip2)}" style="cursor:help;border-bottom:1px dotted var(--text-muted)">${lang === 'zh' ? '质量' : 'Quality'}: ${s.avgQualityScore}</span>`);
     if (qualityDetail.length === 0) {
       // Fallback to old style if no layered scores
       if (s.minCompositeScore != null) qualityDetail.push(`${s.minCompositeScore}~${s.maxCompositeScore}`);
