@@ -45,7 +45,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     variantConfig: '实验配置',
     variantConfigDesc: '先确认在比较什么，再看分数。这个表用来解释每个 variant 对应的 artifact 与 runtime context。',
     variantType: '实验类型',
-    variantArtifactKind: '制品类型',
+    variantArtifactKind: '知识类型',
     variantArtifactSource: '来源',
     variantExecutionStrategy: '执行策略',
     variantRuntimeContext: '运行环境',
