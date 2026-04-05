@@ -153,7 +153,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     const runtimeContext = config.cwd || (lang === 'zh' ? '默认' : 'default');
     return `<tr>
       <td>${e(config.variant)}</td>
-      <td>${e(config.experimentRole)}</td>
+      <td>${e(config.experimentType)}</td>
       <td>${e(config.artifactKind)}</td>
       <td>${e(config.artifactSource)}</td>
       <td>${e(config.executionStrategy)}</td>

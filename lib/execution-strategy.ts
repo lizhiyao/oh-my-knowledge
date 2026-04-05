@@ -1,4 +1,4 @@
-import type { Artifact, ExecutionStrategyKind, ExecutorInput, ExperimentRole, Task, VariantConfig } from './types.js';
+import type { Artifact, ExecutionStrategyKind, ExecutorInput, ExperimentType, Task, VariantConfig } from './types.js';
 
 export interface ExecutionPlan {
   strategy: ExecutionStrategyKind;
@@ -27,7 +27,7 @@ export function resolveArtifactExecutionStrategy(artifact: Artifact): ExecutionS
   }
 }
 
-export function resolveExperimentRole(artifact: Artifact): ExperimentRole {
+export function resolveExperimentType(artifact: Artifact): ExperimentType {
   if (artifact.kind === 'baseline' && !artifact.cwd) return 'baseline';
   if (artifact.kind === 'baseline' && artifact.cwd) return 'runtime-context-only';
   return 'artifact-injection';
@@ -39,7 +39,7 @@ export function buildVariantConfig(artifact: Artifact): VariantConfig {
     artifactKind: artifact.kind,
     artifactSource: artifact.source,
     executionStrategy: resolveArtifactExecutionStrategy(artifact),
-    experimentRole: resolveExperimentRole(artifact),
+    experimentType: resolveExperimentType(artifact),
     hasArtifactContent: Boolean(artifact.content),
     cwd: artifact.cwd || null,
     locator: artifact.locator,

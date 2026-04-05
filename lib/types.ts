@@ -80,14 +80,14 @@ export interface Artifact {
   metadata?: Record<string, unknown>;
 }
 
-export type ExperimentRole = 'baseline' | 'runtime-context-only' | 'artifact-injection';
+export type ExperimentType = 'baseline' | 'runtime-context-only' | 'artifact-injection';
 
 export interface VariantConfig {
   variant: string;
   artifactKind: ArtifactKind;
   artifactSource: Artifact['source'];
   executionStrategy: ExecutionStrategyKind;
-  experimentRole: ExperimentRole;
+  experimentType: ExperimentType;
   hasArtifactContent: boolean;
   cwd: string | null;
   locator?: string;

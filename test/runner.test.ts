@@ -11,7 +11,7 @@ interface DryRunTask {
   artifactKind: string;
   artifactSource: string;
   executionStrategy: string;
-  experimentRole: string;
+  experimentType: string;
   cwd: string | null;
   hasRubric: boolean;
   hasAssertions: boolean;
@@ -177,8 +177,8 @@ describe('runEvaluation', () => {
     const baselineTask = report.tasks.find((task) => task.variant === 'baseline');
     const projectEnvTask = report.tasks.find((task) => task.variant === 'project-env');
     const artifactTask = report.tasks.find((task) => task.variant === 'v1');
-    assert.equal(baselineTask?.experimentRole, 'baseline');
-    assert.equal(projectEnvTask?.experimentRole, 'runtime-context-only');
+    assert.equal(baselineTask?.experimentType, 'baseline');
+    assert.equal(projectEnvTask?.experimentType, 'runtime-context-only');
     assert.equal(projectEnvTask?.cwd, '/tmp/project-a');
     assert.equal(artifactTask?.executionStrategy, 'system-prompt');
   });
@@ -223,7 +223,7 @@ describe('runEvaluation', () => {
     });
     const report = asDryRunReport(result.report);
     assert.equal(report.totalTasks, 6);
-    assert.ok(report.tasks.some((task) => task.experimentRole === 'runtime-context-only'));
+    assert.ok(report.tasks.some((task) => task.experimentType === 'runtime-context-only'));
   });
 
   it('loads artifact-injection control template in dry-run', async () => {
@@ -236,7 +236,7 @@ describe('runEvaluation', () => {
     const report = asDryRunReport(result.report);
     const injected = report.tasks.find((task) => task.variant === 'v1');
     assert.equal(report.totalTasks, 4);
-    assert.equal(injected?.experimentRole, 'artifact-injection');
+    assert.equal(injected?.experimentType, 'artifact-injection');
     assert.equal(injected?.cwd, '/tmp/project-a');
   });
 

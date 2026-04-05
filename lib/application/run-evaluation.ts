@@ -48,7 +48,7 @@ interface DryRunTask {
   artifactKind: Artifact['kind'];
   artifactSource: Artifact['source'];
   executionStrategy: string;
-  experimentRole: string;
+  experimentType: string;
   cwd: string | null;
   promptPreview: string;
   hasRubric: boolean;
@@ -182,7 +182,7 @@ export async function runEvaluation({
             artifactKind: task.artifact.kind,
             artifactSource: task.artifact.source,
             executionStrategy: config.executionStrategy,
-            experimentRole: config.experimentRole,
+            experimentType: config.experimentType,
             cwd: task.cwd,
             promptPreview: task.prompt.slice(0, 100),
             hasRubric: Boolean(task.rubric),
