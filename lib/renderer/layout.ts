@@ -92,8 +92,8 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .modal-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center}
 .modal-content{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);max-width:600px;max-height:80vh;overflow:auto;padding:24px;margin:20px;width:90%}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.modal-close{cursor:pointer;background:none;border:none;color:var(--text-muted);font-size:18px;padding:4px 8px}
-.modal-close:hover{color:var(--text-primary)}
+.modal-close{cursor:pointer;background:none;border:none;color:var(--text-muted);font-size:18px;padding:8px 12px;border-radius:var(--radius);transition:background 0.15s,color 0.15s}
+.modal-close:hover{color:var(--text-primary);background:var(--bg-surface)}
 .modal-table{width:100%;font-size:13px;margin:12px 0;background:transparent;border:none}
 .modal-table td{padding:6px 0;border:none;background:transparent}
 .modal-table td:first-child{white-space:nowrap;vertical-align:top}

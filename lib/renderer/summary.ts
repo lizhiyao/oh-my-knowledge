@@ -108,10 +108,11 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     : 'Each row is a Variant. Four columns measure different dimensions:';
   const icon = (emoji: string) => `<span aria-hidden="true">${emoji}</span>`;
   const dim = 'style="padding:8px 0 4px;border-top:1px solid var(--border)"';
+  const dimFirst = 'style="padding:4px 0 4px"';
   const sub = 'style="padding:2px 0 2px 28px;font-size:12px;color:var(--text-muted);font-weight:500"';
   const subDesc = 'style="padding:2px 0;font-size:12px"';
   const guideRows = lang === 'zh' ? `
-    <tr><td ${dim}>${icon('📊')} <strong>质量</strong></td><td ${dim}>三层评分的等权平均值（1-5 分），计算公式：(事实 + 行为 + 质量) ÷ 3</td></tr>
+    <tr><td ${dimFirst}>${icon('📊')} <strong>质量</strong></td><td ${dimFirst}>三层评分的等权平均值（1-5 分），计算公式：(事实 + 行为 + 质量) ÷ 3</td></tr>
     <tr><td ${sub}>事实性</td><td ${subDesc}>输出中的事实声明是否正确（关键词匹配、格式校验等断言）</td></tr>
     <tr><td ${sub}>行为合规</td><td ${subDesc}>执行过程是否合规（工具调用路径、轮次限制、成本约束等断言）</td></tr>
     <tr><td ${sub}>质量</td><td ${subDesc}>LLM 评委对输出整体质量的主观评分</td></tr>
@@ -120,7 +121,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     <tr><td ${dim}>${icon('🛡️')} <strong>稳定性</strong></td><td ${dim}>多个样本间分数的波动程度（分数范围、成功率、CV）</td></tr>
     <tr><td ${sub}>CV</td><td ${subDesc}>变异系数 = 标准差 ÷ 平均分。越低越稳定，0% = 所有样本得分一致</td></tr>
   ` : `
-    <tr><td ${dim}>${icon('📊')} <strong>Quality</strong></td><td ${dim}>Equal-weight average of three layers (1-5): (Fact + Behavior + Quality) ÷ 3</td></tr>
+    <tr><td ${dimFirst}>${icon('📊')} <strong>Quality</strong></td><td ${dimFirst}>Equal-weight average of three layers (1-5): (Fact + Behavior + Quality) ÷ 3</td></tr>
     <tr><td ${sub}>Factual</td><td ${subDesc}>Are factual claims correct (keyword matching, format validation assertions)</td></tr>
     <tr><td ${sub}>Behavioral</td><td ${subDesc}>Is execution compliant (tool paths, turn limits, cost constraints)</td></tr>
     <tr><td ${sub}>Quality</td><td ${subDesc}>LLM judge subjective score on output quality</td></tr>
@@ -135,10 +136,10 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     <div id="${guideModalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${guideModalId}-title" onclick="if(event.target===this)this.style.display='none'">
       <div class="modal-content">
         <div class="modal-header">
-          <strong id="${guideModalId}-title" style="font-size:15px">${e(guideTitle)}</strong>
+          <strong id="${guideModalId}-title" style="font-size:1rem">${e(guideTitle)}</strong>
           <button class="modal-close" onclick="document.getElementById('${guideModalId}').style.display='none'" aria-label="${lang === 'zh' ? '关闭' : 'Close'}">✕</button>
         </div>
-        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">${e(guideIntro)}</p>
+        <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 16px">${e(guideIntro)}</p>
         <table class="modal-table"><tbody>${guideRows}</tbody></table>
       </div>
     </div>
