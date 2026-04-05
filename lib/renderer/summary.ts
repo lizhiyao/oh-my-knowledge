@@ -109,7 +109,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   const icon = (emoji: string) => `<span aria-hidden="true">${emoji}</span>`;
   const dim = 'style="padding:8px 0 4px;border-top:1px solid var(--border)"';
   const sub = 'style="padding:2px 0 2px 24px;font-size:12px;color:var(--text-muted)"';
-  const subDesc = 'style="padding:2px 0;font-size:12px;color:var(--text-faint)"';
+  const subDesc = 'style="padding:2px 0;font-size:12px"';
   const guideRows = lang === 'zh' ? `
     <tr><td ${dim}>${icon('📊')} <strong>质量</strong></td><td ${dim}>三层评分的等权平均值（1-5 分），计算公式：(事实 + 行为 + 质量) ÷ 3</td></tr>
     <tr><td ${sub}>事实性</td><td ${subDesc}>输出中的事实声明是否正确（关键词匹配、格式校验等断言）</td></tr>
