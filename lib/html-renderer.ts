@@ -132,7 +132,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
 
 export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG): string {
   if (!report) {
-    return layout('OMK Bench', `
+    return layout(t('title', lang), `
       <main>
       <nav class="nav"><a href="/">${t('backToList', lang)}</a></nav>
       <h1>Run not found</h1>
@@ -180,7 +180,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     </section>
   ` : '';
 
-  return layout(`OMK Bench - ${report.id}`, `
+  return layout(`${report.id}`, `
     <main>
     <nav class="nav"><a href="/" data-i18n="backToList">${t('backToList', lang)}</a></nav>
     <h1>${e(report.id)}</h1>
@@ -219,7 +219,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
 
 export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG): string {
   if (!report) {
-    return layout('OMK Bench', `
+    return layout(t('title', lang), `
       <main>
       <nav class="nav"><a href="/">${t('backToList', lang)}</a></nav>
       <h1>Run not found</h1>
@@ -298,5 +298,5 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
 
 export function renderTrendsPage(variantName: string, runs: Report[], lang: Lang = DEFAULT_LANG): string {
   const body = renderTrendsBody(variantName, runs, lang);
-  return layout(`${variantName} — Trends`, `<main>${body}</main>`, lang);
+  return layout(`${variantName} — ${lang === 'zh' ? '趋势' : 'Trends'}`, `<main>${body}</main>`, lang);
 }
