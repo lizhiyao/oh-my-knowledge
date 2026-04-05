@@ -49,7 +49,12 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
     const isAgent = Object.values(run.summary || {}).some((s) => s.avgToolCalls != null && s.avgToolCalls > 0);
     const agentBadge = isAgent ? `<span style="display:inline-block;font-size:10px;padding:1px 6px;margin-left:6px;border-radius:3px;background:var(--accent);color:#fff;vertical-align:middle">${t('agentLabel', lang)}</span>` : '';
     return `<tr>
-      <td><a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e((m.variants || []).join(' vs '))}${agentBadge}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : e(run.id)}</span></a></td>
+      <td><a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e((m.variants || []).join(' vs '))}${agentBadge}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${(() => {
+        // Extract date/time from report ID: ...-YYYYMMDD-HHmm
+        const idMatch = run.id.match(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+        if (idMatch) return `${idMatch[2]}/${idMatch[3]} ${idMatch[4]}:${idMatch[5]}`;
+        return m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : e(run.id);
+      })()}</span></a></td>
       <td>${e(m.model || '-')}</td>
       <td>${m.sampleCount || 0}</td>
       <td>${scoreCol}</td>
