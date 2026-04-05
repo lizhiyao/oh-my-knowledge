@@ -1,9 +1,9 @@
 import { resolve } from 'node:path';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executor.js';
-import { confidenceInterval, tTest } from '../statistics.js';
 import { discoverEachSkills } from '../skill-loader.js';
 import { DEFAULT_OUTPUT_DIR } from '../evaluation-core.js';
 import { executeEvaluationPipeline } from './evaluation-pipeline.js';
+import { executeVarianceWorkflow } from './variance-workflow.js';
 import {
   buildDryRunEachArtifacts,
   buildDryRunTaskReport,
@@ -14,7 +14,6 @@ import {
 import type {
   Report,
   Artifact,
-  VarianceData,
   ExecutorFn,
   JobStore,
 } from '../types.js';
@@ -273,50 +272,16 @@ export async function runEachEvaluation({
   });
 }
 
-export interface RunMultipleOptions extends RunEvaluationOptions {
-  repeat?: number;
-  onRepeatProgress?: ((info: { run: number; total: number }) => void) | null;
-}
+export type { RunMultipleOptions } from './variance-workflow.js';
 
-export async function runMultiple({ repeat = 1, onRepeatProgress, ...config }: RunMultipleOptions): Promise<{ report: Report; aggregated: VarianceData | null; filePath: string | null }> {
-  const runs: Report[] = [];
-  const savedOutputDir = config.outputDir;
-  for (let i = 0; i < repeat; i++) {
-    if (onRepeatProgress) onRepeatProgress({ run: i + 1, total: repeat });
-    // Only persist the last run's report; intermediate runs skip persistence and job tracking
-    const isLast = i === repeat - 1;
-    const { report } = await runEvaluation({
-      ...config,
-      outputDir: isLast ? savedOutputDir : null,
-      persistJob: isLast,
-    });
-    runs.push(report as Report);
-  }
-
-  if (runs.length === 1) {
-    return { report: runs[0], aggregated: null, filePath: null };
-  }
-
-  const variants = runs[0].meta.variants || [];
-  const perVariant: Record<string, { scores: number[]; mean: number; lower: number; upper: number; stddev: number }> = {};
-  for (const variant of variants) {
-    const scores = runs.map((run) => run.summary?.[variant]?.avgCompositeScore).filter((score): score is number => typeof score === 'number');
-    perVariant[variant] = { scores, ...confidenceInterval(scores) };
-  }
-
-  const comparisons: Array<{ a: string; b: string; tStatistic: number; df: number; significant: boolean }> = [];
-  for (let i = 0; i < variants.length; i++) {
-    for (let j = i + 1; j < variants.length; j++) {
-      comparisons.push({
-        a: variants[i],
-        b: variants[j],
-        ...tTest(perVariant[variants[i]].scores, perVariant[variants[j]].scores),
-      });
-    }
-  }
-
-  const report = runs[runs.length - 1];
-  report.variance = { runs: repeat, perVariant, comparisons };
-
-  return { report, aggregated: report.variance, filePath: null };
+export async function runMultiple({ repeat = 1, onRepeatProgress, ...config }: import('./variance-workflow.js').RunMultipleOptions) {
+  return executeVarianceWorkflow({
+    repeat,
+    onRepeatProgress,
+    config,
+    runEvaluation: async (options) => {
+      const result = await runEvaluation(options);
+      return { report: result.report as Report, filePath: result.filePath };
+    },
+  });
 }
