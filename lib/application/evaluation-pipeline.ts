@@ -1,12 +1,12 @@
 import { stopAllServers } from '../mcp-resolver.js';
+import { executeTasks, preflight } from '../evaluation-execution.js';
+import type { ProgressCallback } from '../evaluation-execution.js';
 import {
   aggregateReport,
-  executeTasks,
   generateRunId,
   persistReport,
-  preflight,
   DEFAULT_OUTPUT_DIR,
-} from '../evaluation-core.js';
+} from '../evaluation-reporting.js';
 import { finalizeEvaluationReport } from './evaluation-report.js';
 import {
   finalizeSuccessfulEvaluationRun,
@@ -22,7 +22,6 @@ import type {
   Sample,
   Task,
 } from '../types.js';
-import type { ProgressCallback } from '../evaluation-core.js';
 
 export interface EvaluationPipelineOptions {
   samplesPath: string;
