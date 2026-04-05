@@ -174,7 +174,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       ? cwdRaw.replace(/.*\/Projects\//, '').replace(/.*\/Documents\//, '').replace(/\/Users\/[^/]+\//, '~/')
       : (lang === 'zh' ? '默认' : 'default');
     const color = COLORS[i % COLORS.length];
-    const isControl = config.artifactKind === 'baseline' || String(expTypeRaw) === 'runtime-context-only' || String(expTypeRaw) === 'baseline';
+    const isControl = config.artifactKind === 'baseline' || String(expTypeRaw) === 'runtime-context-only' || String(expTypeRaw) === 'baseline' || i === 0;
     const groupLabel = isControl
       ? `<span style="font-size:10px;padding:2px 8px;margin-left:8px;border-radius:10px;background:var(--bg-surface);color:var(--text-muted)">${lang === 'zh' ? '对照组' : 'control'}</span>`
       : `<span style="font-size:10px;padding:2px 8px;margin-left:8px;border-radius:10px;background:var(--info-bg);color:var(--accent)">${lang === 'zh' ? '实验组' : 'test'}</span>`;
@@ -188,7 +188,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     </tr>`;
   }).join('');
   const configModalId = 'guide-variant-config';
-  const controlCount = (m.variantConfigs || []).filter((c) => c.artifactKind === 'baseline' || String(c.experimentType || (c as unknown as Record<string, unknown>).experimentRole) === 'runtime-context-only').length;
+  const controlCount = (m.variantConfigs || []).filter((c, idx) => c.artifactKind === 'baseline' || String(c.experimentType || (c as unknown as Record<string, unknown>).experimentRole) === 'runtime-context-only' || idx === 0).length;
   const testCount = (m.variantConfigs || []).length - controlCount;
   const experimentSummary = lang === 'zh'
     ? `${m.sampleCount} 个测评用例 × ${variants.length} 组实验（${controlCount} 对照 + ${testCount} 实验）`
