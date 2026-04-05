@@ -55,7 +55,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
       <td>${scoreCol}</td>
       <td>${fmtCost(Object.values(run.summary || {}).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0))}</td>
       <td>${fmtDuration(Object.values(run.summary || {}).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0))}</td>
-      <td><button onclick="deleteRun('${e(run.id)}',this)" class="btn-danger" data-i18n="deleteBtnText">${t('deleteBtnText', lang)}</button></td>
+      <td style="white-space:nowrap"><button onclick="deleteRun('${e(run.id)}',this)" class="btn-danger" data-i18n="deleteBtnText">${t('deleteBtnText', lang)}</button></td>
     </tr>`;
   }).join('');
 
