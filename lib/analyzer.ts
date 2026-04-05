@@ -47,7 +47,113 @@ export function analyzeResults(report: Report): AnalysisResult {
   // 10. Suggest --repeat when score variance is high and no repeat data
   detectNeedRepeat(report, results, variants, insights, suggestions);
 
-  return { insights, suggestions };
+  const summary = generateSummary(report, variants);
+
+  return { summary, insights, suggestions };
+}
+
+function generateSummary(report: Report, variants: string[]): string | undefined {
+  if (variants.length < 2) return undefined;
+  const summary = report.summary || {};
+
+  // Find control and test groups
+  const configs = report.meta?.variantConfigs || [];
+  const controlVariants = configs
+    .filter((c) => c.artifactKind === 'baseline' || c.experimentType === 'runtime-context-only' || c.experimentType === 'baseline')
+    .map((c) => c.variant);
+  const testVariants = configs
+    .filter((c) => !controlVariants.includes(c.variant))
+    .map((c) => c.variant);
+
+  // Fallback: first variant is control, rest are test
+  const control = controlVariants[0] || variants[0];
+  const test = testVariants[0] || variants[1];
+  if (!test || !control) return undefined;
+
+  const cs = summary[control];
+  const ts = summary[test];
+  if (!cs || !ts) return undefined;
+
+  const parts: string[] = [];
+
+  // Quality comparison
+  const cScore = cs.avgCompositeScore;
+  const tScore = ts.avgCompositeScore;
+  if (cScore != null && tScore != null) {
+    const diff = tScore - cScore;
+    const diffAbs = Math.abs(diff);
+    if (diffAbs < 0.2) {
+      parts.push(`${test} 与 ${control} 质量接近（${tScore} vs ${cScore}）`);
+    } else if (diff > 0) {
+      parts.push(`${test} 质量优于 ${control}（${tScore} vs ${cScore}，+${diff.toFixed(2)}）`);
+    } else {
+      parts.push(`${test} 质量低于 ${control}（${tScore} vs ${cScore}，${diff.toFixed(2)}）`);
+    }
+  }
+
+  // Layered score highlights
+  const tFact = ts.avgFactScore;
+  const cFact = cs.avgFactScore;
+  const tBehavior = ts.avgBehaviorScore;
+  const cBehavior = cs.avgBehaviorScore;
+  const tQuality = ts.avgQualityScore;
+  const cQuality = cs.avgQualityScore;
+
+  const layeredHighlights: string[] = [];
+  if (tFact != null && cFact != null) {
+    if (tFact > cFact) layeredHighlights.push(`事实性更优（${tFact} vs ${cFact}）`);
+    else if (tFact < cFact) layeredHighlights.push(`事实性偏低（${tFact} vs ${cFact}）`);
+  }
+  if (tBehavior != null && cBehavior != null && tBehavior !== cBehavior) {
+    if (tBehavior > cBehavior) layeredHighlights.push(`行为合规更优（${tBehavior} vs ${cBehavior}）`);
+    else layeredHighlights.push(`行为合规偏低（${tBehavior} vs ${cBehavior}）`);
+  }
+  if (tQuality != null && cQuality != null) {
+    if (Math.abs(tQuality - cQuality) < 0.5) layeredHighlights.push(`LLM 评委对两组评价接近（${tQuality} vs ${cQuality}）`);
+    else if (tQuality > cQuality) layeredHighlights.push(`LLM 评委更认可 ${test}（${tQuality} vs ${cQuality}）`);
+    else layeredHighlights.push(`LLM 评委更认可 ${control}（${cQuality} vs ${tQuality}）`);
+  }
+  if (layeredHighlights.length > 0) {
+    parts.push(layeredHighlights.join('；'));
+  }
+
+  // Cost comparison
+  const cCost = cs.avgCostPerSample;
+  const tCost = ts.avgCostPerSample;
+  if (cCost > 0 && tCost > 0) {
+    const costDiffPct = ((tCost - cCost) / cCost * 100).toFixed(0);
+    if (tCost > cCost * 1.1) {
+      parts.push(`成本增加 ${costDiffPct}%（$${tCost.toFixed(4)} vs $${cCost.toFixed(4)}）`);
+    } else if (tCost < cCost * 0.9) {
+      parts.push(`成本降低 ${Math.abs(Number(costDiffPct))}%（$${tCost.toFixed(4)} vs $${cCost.toFixed(4)}）`);
+    }
+  }
+
+  // Efficiency comparison
+  const cDur = cs.avgDurationMs;
+  const tDur = ts.avgDurationMs;
+  if (cDur > 0 && tDur > 0) {
+    const durDiffPct = ((tDur - cDur) / cDur * 100).toFixed(0);
+    if (tDur > cDur * 1.1) {
+      parts.push(`耗时增加 ${durDiffPct}%`);
+    } else if (tDur < cDur * 0.9) {
+      parts.push(`耗时降低 ${Math.abs(Number(durDiffPct))}%`);
+    }
+  }
+
+  // Turns comparison
+  const cTurns = cs.avgNumTurns;
+  const tTurns = ts.avgNumTurns;
+  if (cTurns > 0 && tTurns > 0 && cTurns !== tTurns) {
+    if (tTurns < cTurns) {
+      parts.push(`平均轮次减少（${tTurns} vs ${cTurns}）`);
+    } else {
+      parts.push(`平均轮次增加（${tTurns} vs ${cTurns}）`);
+    }
+  }
+
+  if (parts.length === 0) return undefined;
+  return parts.join('。') + '。';
 }
 
 const AGENT_ASSERTION_TYPES = new Set([

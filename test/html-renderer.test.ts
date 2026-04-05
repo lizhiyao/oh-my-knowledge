@@ -162,7 +162,7 @@ describe('renderRunDetail', () => {
   it('renders variant configuration section', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
     assert.ok(html.includes('实验配置'));
-    assert.ok(html.includes('artifact-injection'));
+    assert.ok(html.includes('知识注入'));
     assert.ok(html.includes('/tmp/project-a'));
   });
 

@@ -63,8 +63,13 @@ export function renderAnalysis(analysis: AnalysisResult | undefined, lang: Lang)
     `;
   }
 
+  const summaryHtml = analysis.summary
+    ? `<div style="padding:12px 16px;margin:8px 0 16px;font-size:14px;line-height:1.7;color:var(--text-primary);background:var(--bg-surface);border-radius:var(--radius);border-left:3px solid var(--accent)">${e(analysis.summary)}</div>`
+    : '';
+
   return `
     <h2 data-i18n="autoAnalysis">${t('autoAnalysis', lang)}</h2>
+    ${summaryHtml}
     ${conclusionsHtml}
     ${issuesTableHtml}
   `;

@@ -351,6 +351,7 @@ export interface KnowledgeCoverage {
 }
 
 export interface AnalysisResult {
+  summary?: string;
   insights: Insight[];
   suggestions: string[];
   coverage?: Record<string, KnowledgeCoverage>;
