@@ -28,8 +28,9 @@ function langToggleButton(lang: Lang): string {
 
 export function layout(title: string, body: string, lang: Lang = DEFAULT_LANG): string {
   const htmlLang = lang === 'zh' ? 'zh-CN' : 'en';
-  return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none"><defs><linearGradient id="a" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="%2360a5fa"/><stop offset="100%" stop-color="%23a78bfa"/></linearGradient></defs><circle cx="60" cy="60" r="56" fill="%230f172a" stroke="%231e293b" stroke-width="1.5"/><path d="M24 60A12 12 0 1 1 36 72" stroke="url(%23a)" stroke-width="3.5" stroke-linecap="round" fill="none"/><path d="M56 72V57Q56 48 61.5 48 67 48 67 57V72M67 57Q67 48 72.5 48 78 48 78 57V72" stroke="%23e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M86 48V72M86 60L96 48M86 60L96 72" stroke="%23e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>')}">
+  const favicon = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none"><defs><linearGradient id="a" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs><circle cx="60" cy="60" r="56" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/><path d="M24 60A12 12 0 1 1 36 72" stroke="url(#a)" stroke-width="3.5" stroke-linecap="round" fill="none"/><path d="M56 72V57Q56 48 61.5 48 67 48 67 57V72M67 57Q67 48 72.5 48 78 48 78 57V72" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M86 48V72M86 60L96 48M86 60L96 72" stroke="#e2e8f0" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>');
+  return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${title}</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">
 <style>
 :root{
   --bg-base:#0f172a;
