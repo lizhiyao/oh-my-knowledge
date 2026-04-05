@@ -201,12 +201,12 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>${t('variants', lang)}</th>
-            <th>${t('variantType', lang)}</th>
-            <th>${t('variantArtifactKind', lang)}</th>
-            <th>${t('variantArtifactSource', lang)}</th>
-            <th>${t('variantExecutionStrategy', lang)}</th>
-            <th>${t('variantRuntimeContext', lang)}</th>
+            <th>🏷️ ${t('variants', lang)}</th>
+            <th>🧪 ${t('variantType', lang)}</th>
+            <th>📦 ${t('variantArtifactKind', lang)}</th>
+            <th>📂 ${t('variantArtifactSource', lang)}</th>
+            <th>⚙️ ${t('variantExecutionStrategy', lang)}</th>
+            <th>🖥️ ${t('variantRuntimeContext', lang)}</th>
           </tr></thead>
           <tbody>${variantConfigRows}</tbody>
         </table>
