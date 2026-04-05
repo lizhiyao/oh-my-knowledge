@@ -2,10 +2,9 @@ import { e } from './helpers.js';
 import { t } from './i18n.js';
 import type { Lang, AnalysisResult, Insight } from '../types.js';
 
-// Part 1: Experiment conclusions (对比发现、实验结论)
+// Part 1: Experiment conclusions — only objective comparison findings
 const CONCLUSION_TYPES = new Set([
-  'efficiency_gap', 'tool_count_gap', 'uniform_scores', 'high_cost_sample',
-  'agent_assertion_discrimination_ok',
+  'efficiency_gap', 'tool_count_gap', 'high_cost_sample',
 ]);
 
 function isConclusion(ins: Insight): boolean {
@@ -28,8 +27,7 @@ export function renderAnalysis(analysis: AnalysisResult | undefined, lang: Lang)
   const conclusionsHtml = conclusions.length > 0 ? `
     <h3 style="font-size:13px;color:var(--text-muted);font-weight:600;margin:12px 0 6px">${conclusionLabel}</h3>
     ${conclusions.map((ins) => {
-      const border = severityBorder[ins.severity] || 'var(--border)';
-      return `<div style="border-left:3px solid ${border};padding:8px 14px;margin:6px 0;font-size:13px;color:var(--text-primary);background:var(--bg-surface);border-radius:var(--radius)">${e(ins.message)}</div>`;
+      return `<div style="border-left:3px solid var(--accent);padding:8px 14px;margin:6px 0;font-size:13px;color:var(--text-primary);background:var(--bg-surface);border-radius:var(--radius)">${e(ins.message)}</div>`;
     }).join('')}
   ` : '';
 
@@ -47,9 +45,8 @@ export function renderAnalysis(analysis: AnalysisResult | undefined, lang: Lang)
     for (let i = 0; i < maxRows; i++) {
       const issue = issues[i];
       const suggestion = safesuggestions[i];
-      const sevColor = issue ? (severityBorder[issue.severity] || 'var(--text-muted)') : 'var(--text-muted)';
       const issueCell = issue
-        ? `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${sevColor};margin-right:6px;vertical-align:middle"></span>${e(issue.message)}`
+        ? e(issue.message)
         : '';
       const suggestCell = suggestion ? e(suggestion) : `<span style="color:var(--text-muted)">—</span>`;
       rows.push(`<tr><td style="vertical-align:top">${issueCell}</td><td style="vertical-align:top">${suggestCell}</td></tr>`);
