@@ -11,7 +11,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     { key: 'dimStability', label: t('dimStability', lang) },
   ];
 
-  const thead = `<tr><th></th>${headerCols.map((c) => `<th data-i18n="${c.key}">${c.label}</th>`).join('')}</tr>`;
+  const thead = `<tr><th>Variant</th>${headerCols.map((c) => `<th data-i18n="${c.key}">${c.label}</th>`).join('')}</tr>`;
 
   const rows = variants.map((v, i) => {
     const s = summary[v] || {} as VariantSummary;

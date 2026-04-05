@@ -5,7 +5,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     title: '评测报告',
     subtitle: '知识载体评测',
     noRuns: '暂无评测记录。运行 <code>omk bench run --variants v1,v2</code> 开始。',
-    runId: '报告名称', variants: '变体', model: '模型', samples: '样本数',
+    runId: '报告名称', variants: 'Variant', model: '模型', samples: '样本数',
     score: '分数', cost: '成本', time: '时间',
     deleteBtnText: '删除', deleteConfirm: '确定删除报告', deleteFail: '删除失败',
     reportTitle: '评测报告', backToList: '← 返回列表',
