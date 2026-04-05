@@ -22,25 +22,20 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     const factLabel = lang === 'zh' ? '事实' : 'Fact';
     const behaviorLabel = lang === 'zh' ? '行为' : 'Behavior';
     const qualityLabel = lang === 'zh' ? '质量' : 'Quality';
-    const factTip = lang === 'zh' ? '输出内容中的事实性声明是否正确（关键词匹配、格式校验等）' : 'Are factual claims in the output correct';
-    const behaviorTip = lang === 'zh' ? '执行过程是否合规（工具调用路径、轮次限制、成本约束等）' : 'Is the execution process compliant';
-    const qualityTip3 = lang === 'zh' ? 'LLM 评委对输出整体质量的主观评分' : 'LLM judge subjective score on overall output quality';
 
-    // Layered detail (HTML for rendering)
     const layeredDetailParts: string[] = [];
-    // Plain text for hint tooltip
     const hintParts: string[] = [];
 
     if (s.avgFactScore != null) {
-      layeredDetailParts.push(`<span title="${e(factTip)}" style="cursor:help;border-bottom:1px dotted var(--text-muted)">${factLabel}: ${s.avgFactScore}</span>`);
+      layeredDetailParts.push(`<span>${factLabel}: ${s.avgFactScore}</span>`);
       hintParts.push(`${factLabel}: ${s.avgFactScore}`);
     }
     if (s.avgBehaviorScore != null) {
-      layeredDetailParts.push(`<span title="${e(behaviorTip)}" style="cursor:help;border-bottom:1px dotted var(--text-muted)">${behaviorLabel}: ${s.avgBehaviorScore}</span>`);
+      layeredDetailParts.push(`<span>${behaviorLabel}: ${s.avgBehaviorScore}</span>`);
       hintParts.push(`${behaviorLabel}: ${s.avgBehaviorScore}`);
     }
     if (s.avgQualityScore != null) {
-      layeredDetailParts.push(`<span title="${e(qualityTip3)}" style="cursor:help;border-bottom:1px dotted var(--text-muted)">${qualityLabel}: ${s.avgQualityScore}</span>`);
+      layeredDetailParts.push(`<span>${qualityLabel}: ${s.avgQualityScore}</span>`);
       hintParts.push(`${qualityLabel}: ${s.avgQualityScore}`);
     }
 
