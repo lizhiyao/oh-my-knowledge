@@ -77,7 +77,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
     .join('');
   const trendsSection = trendLinks ? `<div style="margin:12px 0"><span style="font-size:12px;color:var(--text-muted);margin-right:8px">${lang === 'zh' ? '📈 趋势：' : '📈 Trends:'}</span>${trendLinks}</div>` : '';
 
-  return layout(`${t('title', lang)} — ${runCount}`, `
+  return layout(t('title', lang), `
     <main>
     <h1>${t('title', lang)}</h1>
     <p class="subtitle" data-i18n="subtitle">${t('subtitle', lang)} &middot; ${runCount} &middot; ${costLabel}</p>
