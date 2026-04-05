@@ -93,7 +93,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     stabDetails.push(`${t('successRate', lang)} ${successRate}%`);
     if (s.scoreCV != null) {
       const cvPct = (s.scoreCV * 100).toFixed(0);
-      stabDetails.push(`CV ${cvPct}%`);
+      stabDetails.push(`${lang === 'zh' ? '变异系数' : 'CV'} ${cvPct}%`);
     }
     const stabDetail = `<div class="summary-detail">${stabDetails.join(' · ')}</div>`;
     const stabCell = `<td class="summary-cell"><div class="summary-value" style="color:${stabColor}">${stabValue}</div>${stabDetail}</td>`;
@@ -120,8 +120,10 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     <tr><td ${sub}>质量</td><td ${subDesc}>LLM 评委对输出整体质量的主观评分</td></tr>
     <tr><td ${dim}>${icon('💰')} <strong>成本</strong></td><td ${dimDesc}>API 调用费用（仅执行成本，不含评分成本）</td></tr>
     <tr><td ${dim}>${icon('⚡')} <strong>效率</strong></td><td ${dimDesc}>单次评测的平均耗时，含轮次和工具调用统计</td></tr>
-    <tr><td ${dim}>${icon('🛡️')} <strong>稳定性</strong></td><td ${dimDesc}>多个样本间分数的波动程度（分数范围、成功率、CV）</td></tr>
-    <tr><td ${sub}>CV</td><td ${subDesc}>变异系数 = 标准差 ÷ 平均分。越低越稳定，0% = 所有样本得分一致</td></tr>
+    <tr><td ${dim}>${icon('🛡️')} <strong>稳定性</strong></td><td ${dimDesc}>多个样本间分数的波动程度</td></tr>
+    <tr><td ${sub}>分数范围</td><td ${subDesc}>所有样本中的最低分 ~ 最高分，范围越窄越稳定</td></tr>
+    <tr><td ${sub}>成功率</td><td ${subDesc}>评测任务成功完成的比例，失败包括超时、API 错误等</td></tr>
+    <tr><td ${sub}>变异系数</td><td ${subDesc}>标准差 ÷ 平均分，衡量分数波动程度。越低越稳定，0% = 所有样本得分一致</td></tr>
   ` : `
     <tr><td ${dimFirst}>${icon('📊')} <strong>Quality</strong></td><td ${dimFirstDesc}>Equal-weight average of three layers (1-5): (Fact + Behavior + Quality) ÷ 3</td></tr>
     <tr><td ${sub}>Factual</td><td ${subDesc}>Are factual claims correct (keyword matching, format validation assertions)</td></tr>
@@ -129,7 +131,9 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     <tr><td ${sub}>Quality</td><td ${subDesc}>LLM judge subjective score on output quality</td></tr>
     <tr><td ${dim}>${icon('💰')} <strong>Cost</strong></td><td ${dimDesc}>API expense (execution only, excludes judge cost)</td></tr>
     <tr><td ${dim}>${icon('⚡')} <strong>Efficiency</strong></td><td ${dimDesc}>Average time per evaluation, with turn and tool call stats</td></tr>
-    <tr><td ${dim}>${icon('🛡️')} <strong>Stability</strong></td><td ${dimDesc}>Score variance across samples (range, success rate, CV)</td></tr>
+    <tr><td ${dim}>${icon('🛡️')} <strong>Stability</strong></td><td ${dimDesc}>Score variance across samples</td></tr>
+    <tr><td ${sub}>Score range</td><td ${subDesc}>Min ~ Max score across all samples. Narrower = more stable</td></tr>
+    <tr><td ${sub}>Success rate</td><td ${subDesc}>Percentage of tasks completed successfully (failures include timeouts, API errors)</td></tr>
     <tr><td ${sub}>CV</td><td ${subDesc}>Coefficient of Variation = StdDev ÷ Mean. Lower is more stable, 0% = identical scores</td></tr>
   `;
 
