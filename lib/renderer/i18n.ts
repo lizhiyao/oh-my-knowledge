@@ -46,7 +46,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     variantConfigDesc: '先看清楚在比较什么，再看分数。',
     variantType: '实验类型',
     variantArtifactKind: '知识类型',
-    variantArtifactSource: '来源',
+    variantArtifactSource: '知识来源',
     variantExecutionStrategy: '执行策略',
     variantRuntimeContext: '运行环境',
     switchLang: 'EN',

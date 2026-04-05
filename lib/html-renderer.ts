@@ -210,7 +210,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
           <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>${t('variants', lang)}</strong></td><td style="padding:6px 0;color:var(--text-secondary)">实验分组的名称标签</td></tr>
           <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>${t('variantType', lang)}</strong></td><td style="padding:6px 0;color:var(--text-secondary)">该分组属于哪种实验类型（baseline / 仅运行环境 / artifact 注入）</td></tr>
           <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>知识类型</strong></td><td style="padding:6px 0;color:var(--text-secondary)">被评测对象的类型（skill / agent / workflow / baseline）</td></tr>
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>${t('variantArtifactSource', lang)}</strong></td><td style="padding:6px 0;color:var(--text-secondary)">知识的来源（本地文件 / Git 版本 / 内联）</td></tr>
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>${t('variantArtifactSource', lang)}</strong></td><td style="padding:6px 0;color:var(--text-secondary)">知识从哪里加载（本地文件 / Git 版本 / 内联）</td></tr>
           <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>${t('variantExecutionStrategy', lang)}</strong></td><td style="padding:6px 0;color:var(--text-secondary)">知识如何注入执行（system-prompt / user-prompt / agent-session）</td></tr>
           <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>${t('variantRuntimeContext', lang)}</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Agent 运行的工作目录（影响可访问的文件和工具）</td></tr>
           ` : `
