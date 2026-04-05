@@ -165,7 +165,9 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const variantConfigRows = (m.variantConfigs || []).map((config) => {
     const expTypeRaw = config.experimentType || (config as unknown as Record<string, unknown>).experimentRole || '-';
     const expType = (typeLabels[lang] || typeLabels.en)[String(expTypeRaw)] || expTypeRaw;
-    const source = (sourceLabels[lang] || sourceLabels.en)[config.artifactSource] || config.artifactSource;
+    const source = config.artifactKind === 'baseline'
+      ? (lang === 'zh' ? '无' : 'None')
+      : (sourceLabels[lang] || sourceLabels.en)[config.artifactSource] || config.artifactSource;
     const strategy = (strategyLabels[lang] || strategyLabels.en)[config.executionStrategy] || config.executionStrategy;
     const cwdRaw = config.cwd || '';
     const runtimeContext = cwdRaw
