@@ -57,6 +57,7 @@ export function layout(title: string, body: string, lang: Lang = DEFAULT_LANG): 
   --chart-4:#fb923c;
   --chart-5:#f472b6;
   --chart-6:#fbbf24;
+  --bg-card:#1e293b;
   --radius:8px;
   --radius-lg:12px;
 }
@@ -87,6 +88,16 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 
 /* Hint tooltip */
 .hint{position:relative;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;font-size:10px;font-weight:600;color:var(--text-muted);border:1px solid var(--border-hover);border-radius:50%;cursor:help;margin-left:6px;vertical-align:middle}
+.hint-click{cursor:pointer}
+.modal-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center}
+.modal-content{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);max-width:600px;max-height:80vh;overflow:auto;padding:24px;margin:20px;width:90%}
+.modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.modal-close{cursor:pointer;background:none;border:none;color:var(--text-muted);font-size:18px;padding:4px 8px}
+.modal-close:hover{color:var(--text-primary)}
+.modal-table{width:100%;font-size:13px;margin:12px 0;background:transparent;border:none}
+.modal-table td{padding:6px 0;border:none;background:transparent}
+.modal-table td:first-child{white-space:nowrap;vertical-align:top}
+@media(max-width:480px){.modal-table td{display:block;padding:3px 0}.modal-table td:first-child{font-weight:600}}
 .hint-tip{display:none;position:absolute;bottom:calc(100% + 6px);right:0;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:var(--radius);padding:6px 10px;font-size:11px;font-weight:400;color:var(--text-secondary);white-space:normal;max-width:280px;width:max-content;z-index:10}
 .hint:hover .hint-tip,.hint:focus .hint-tip{display:block}
 .summary-value{font-size:1rem;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
