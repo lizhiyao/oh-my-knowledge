@@ -47,14 +47,14 @@ export function analyzeResults(report: Report): AnalysisResult {
   // 10. Suggest --repeat when score variance is high and no repeat data
   detectNeedRepeat(report, results, variants, insights, suggestions);
 
-  const summary = generateSummary(report, variants);
+  const summary = generateSummary(report, variants, insights);
 
   return { summary, insights, suggestions };
 }
 
-function generateSummary(report: Report, variants: string[]): string | undefined {
+function generateSummary(report: Report, variants: string[], insights: Insight[]): string | undefined {
   if (variants.length < 2) return undefined;
-  const summary = report.summary || {};
+  const stats = report.summary || {};
 
   // Find control and test groups
   const configs = report.meta?.variantConfigs || [];
@@ -62,96 +62,145 @@ function generateSummary(report: Report, variants: string[]): string | undefined
     .filter((c) => c.artifactKind === 'baseline' || c.experimentType === 'runtime-context-only' || c.experimentType === 'baseline')
     .map((c) => c.variant);
 
-  // Control = first explicit control variant, or first variant as fallback
   const control = controlVariants[0] || variants[0];
-  // Test = first variant that is NOT the control
   const test = variants.find((v) => v !== control);
   if (!test || !control) return undefined;
 
-  const cs = summary[control];
-  const ts = summary[test];
+  const cs = stats[control];
+  const ts = stats[test];
   if (!cs || !ts) return undefined;
 
-  // Collect value judgments, not numbers
-  const strengths: string[] = [];
-  const weaknesses: string[] = [];
+  const lines: string[] = [];
 
-  // Quality judgment
+  // ── Section 1: Core verdict ──
   const cScore = cs.avgCompositeScore;
   const tScore = ts.avgCompositeScore;
-  if (cScore != null && tScore != null) {
-    const diff = tScore - cScore;
-    if (diff > 0.3) strengths.push('质量明显优于对照组');
-    else if (diff > 0) strengths.push('质量略优于对照组');
-    else if (diff < -0.3) weaknesses.push('质量低于对照组');
-    else if (diff < 0) weaknesses.push('质量略低于对照组');
-  }
+  const scoreDiff = tScore != null && cScore != null ? tScore - cScore : null;
 
-  // Layered highlights — only mention standouts
-  const tFact = ts.avgFactScore;
-  if (tFact != null && tFact >= 5) strengths.push('事实性满分');
-  else if (tFact != null && tFact < 3) weaknesses.push('事实性偏低');
-
-  const tBehavior = ts.avgBehaviorScore;
-  const cBehavior = cs.avgBehaviorScore;
-  if (tBehavior != null && cBehavior != null && tBehavior > cBehavior + 0.5) strengths.push('行为合规度更高');
-  else if (tBehavior != null && cBehavior != null && tBehavior < cBehavior - 0.5) weaknesses.push('行为合规度偏低');
-
-  const tQuality = ts.avgQualityScore;
-  const cQuality = cs.avgQualityScore;
-  if (tQuality != null && cQuality != null && Math.abs(tQuality - cQuality) < 0.5) {
-    // Not a strength or weakness — neutral
-  } else if (tQuality != null && cQuality != null && tQuality > cQuality) {
-    strengths.push('LLM 评委更认可实验组输出');
-  }
-
-  // Cost
-  const cCost = cs.avgCostPerSample;
-  const tCost = ts.avgCostPerSample;
-  if (cCost > 0 && tCost > 0) {
-    if (tCost > cCost * 1.1) weaknesses.push('成本更高');
-    else if (tCost < cCost * 0.9) strengths.push('成本更低');
-  }
-
-  // Efficiency
-  const cTurns = cs.avgNumTurns;
-  const tTurns = ts.avgNumTurns;
-  if (cTurns > 0 && tTurns > 0) {
-    if (tTurns < cTurns * 0.8) strengths.push('执行轮次更少，路径更高效');
-    else if (tTurns > cTurns * 1.2) weaknesses.push('执行轮次更多');
-  }
-
-  const cDur = cs.avgDurationMs;
-  const tDur = ts.avgDurationMs;
-  if (cDur > 0 && tDur > 0) {
-    if (tDur > cDur * 1.1) weaknesses.push('耗时更长');
-    else if (tDur < cDur * 0.9) strengths.push('耗时更短');
-  }
-
-  // Build conclusion
-  const parts: string[] = [];
-  if (strengths.length > 0) {
-    parts.push(`${test} 的优势：${strengths.join('、')}`);
-  }
-  if (weaknesses.length > 0) {
-    parts.push(`${test} 的不足：${weaknesses.join('、')}`);
-  }
-
-  // Overall verdict
-  if (strengths.length > 0 && weaknesses.length === 0) {
-    parts.push('整体优于对照组');
-  } else if (strengths.length === 0 && weaknesses.length > 0) {
-    parts.push('整体未体现出优势');
-  } else if (strengths.length > 0 && weaknesses.length > 0) {
-    if (strengths.length >= weaknesses.length) {
-      parts.push('整体有价值，建议优化不足项');
+  if (scoreDiff != null && tScore != null && cScore != null) {
+    const absDiff = Math.abs(scoreDiff);
+    if (absDiff < 0.1) {
+      lines.push(`【结论】${test} 与 ${control} 综合得分持平（${tScore.toFixed(2)} vs ${cScore.toFixed(2)}），质量无显著差异。`);
+    } else if (scoreDiff > 0) {
+      const tag = absDiff > 0.3 ? '明显领先' : '略优';
+      lines.push(`【结论】${test} 综合得分 ${tag}（${tScore.toFixed(2)} vs ${cScore.toFixed(2)}，+${scoreDiff.toFixed(2)}）。`);
     } else {
-      parts.push('优势不显著，建议评估投入产出比');
+      const tag = absDiff > 0.3 ? '明显落后' : '略低';
+      lines.push(`【结论】${test} 综合得分 ${tag}（${tScore.toFixed(2)} vs ${cScore.toFixed(2)}，${scoreDiff.toFixed(2)}）。`);
     }
   }
 
-  if (parts.length === 0) return undefined;
-  return parts.join('。') + '。';
+  // ── Section 2: Key differentiators with concrete numbers ──
+  const diffs: string[] = [];
+
+  // Quality sub-scores — only mention when there IS a difference
+  const tFact = ts.avgFactScore;
+  const cFact = cs.avgFactScore;
+  if (tFact != null && cFact != null) {
+    if (tFact === cFact) {
+      // Both same — don't mention (e.g. both 5/5 is not interesting)
+    } else if (tFact > cFact) {
+      diffs.push(`事实性 ${tFact.toFixed(1)} vs ${cFact.toFixed(1)}（↑${(tFact - cFact).toFixed(1)}）`);
+    } else {
+      diffs.push(`事实性 ${tFact.toFixed(1)} vs ${cFact.toFixed(1)}（↓${(cFact - tFact).toFixed(1)}）`);
+    }
+  }
+
+  const tBehavior = ts.avgBehaviorScore;
+  const cBehavior = cs.avgBehaviorScore;
+  if (tBehavior != null && cBehavior != null && Math.abs(tBehavior - cBehavior) > 0.3) {
+    const dir = tBehavior > cBehavior ? '↑' : '↓';
+    diffs.push(`行为合规 ${tBehavior.toFixed(1)} vs ${cBehavior.toFixed(1)}（${dir}${Math.abs(tBehavior - cBehavior).toFixed(1)}）`);
+  }
+
+  const tQuality = ts.avgQualityScore;
+  const cQuality = cs.avgQualityScore;
+  if (tQuality != null && cQuality != null && Math.abs(tQuality - cQuality) >= 0.5) {
+    const dir = tQuality > cQuality ? '↑' : '↓';
+    diffs.push(`LLM 评分 ${tQuality.toFixed(1)} vs ${cQuality.toFixed(1)}（${dir}${Math.abs(tQuality - cQuality).toFixed(1)}）`);
+  }
+
+  // Efficiency — with percentages
+  const cTurns = cs.avgNumTurns;
+  const tTurns = ts.avgNumTurns;
+  if (cTurns > 0 && tTurns > 0 && cTurns !== tTurns) {
+    const pct = Math.abs(((tTurns - cTurns) / cTurns) * 100).toFixed(0);
+    if (tTurns < cTurns) {
+      diffs.push(`轮次 ${tTurns.toFixed(1)} vs ${cTurns.toFixed(1)}（↓${pct}%，路径更高效）`);
+    } else {
+      diffs.push(`轮次 ${tTurns.toFixed(1)} vs ${cTurns.toFixed(1)}（↑${pct}%）`);
+    }
+  }
+
+  // Cost — with percentages
+  const cCost = cs.avgCostPerSample;
+  const tCost = ts.avgCostPerSample;
+  if (cCost > 0 && tCost > 0 && Math.abs(tCost - cCost) / cCost > 0.05) {
+    const pct = Math.abs(((tCost - cCost) / cCost) * 100).toFixed(0);
+    if (tCost < cCost) {
+      diffs.push(`单样本成本 $${tCost.toFixed(4)} vs $${cCost.toFixed(4)}（↓${pct}%）`);
+    } else {
+      diffs.push(`单样本成本 $${tCost.toFixed(4)} vs $${cCost.toFixed(4)}（↑${pct}%）`);
+    }
+  }
+
+  // Duration — with percentages
+  const cDur = cs.avgDurationMs;
+  const tDur = ts.avgDurationMs;
+  if (cDur > 0 && tDur > 0 && Math.abs(tDur - cDur) / cDur > 0.1) {
+    const pct = Math.abs(((tDur - cDur) / cDur) * 100).toFixed(0);
+    const tSec = (tDur / 1000).toFixed(1);
+    const cSec = (cDur / 1000).toFixed(1);
+    if (tDur < cDur) {
+      diffs.push(`耗时 ${tSec}s vs ${cSec}s（↓${pct}%）`);
+    } else {
+      diffs.push(`耗时 ${tSec}s vs ${cSec}s（↑${pct}%）`);
+    }
+  }
+
+  // Tool usage difference
+  const tTools = ts.avgToolCalls;
+  const cTools = cs.avgToolCalls;
+  if (tTools != null && cTools != null && Math.abs(tTools - cTools) > 0.5) {
+    diffs.push(`工具调用 ${tTools.toFixed(1)} vs ${cTools.toFixed(1)} 次`);
+  }
+
+  if (diffs.length > 0) {
+    lines.push(`【关键差异】${diffs.join('；')}。`);
+  }
+
+  // ── Section 3: Synthesis — connect the dots ──
+  const synthesis: string[] = [];
+
+  // Quality-cost tradeoff insight
+  if (scoreDiff != null && cCost > 0 && tCost > 0) {
+    const costRatio = (tCost - cCost) / cCost;
+    if (Math.abs(scoreDiff) < 0.1 && costRatio < -0.15) {
+      synthesis.push(`质量相当但成本显著降低，${test} 是更经济的选择`);
+    } else if (scoreDiff > 0.1 && costRatio > 0.15) {
+      synthesis.push(`质量提升伴随成本上涨，需权衡投入产出比`);
+    } else if (scoreDiff > 0.1 && costRatio <= 0) {
+      synthesis.push(`质量与成本双优，${test} 全面领先`);
+    } else if (scoreDiff < -0.1 && costRatio < -0.15) {
+      synthesis.push(`成本虽降但质量下滑，需评估质量底线是否可接受`);
+    }
+  }
+
+  // Tool success rate concern
+  const tToolSuccess = ts.toolSuccessRate;
+  if (tToolSuccess != null && tToolSuccess < 1 && tToolSuccess >= 0.5) {
+    synthesis.push(`${test} 存在工具调用失败（成功率 ${(tToolSuccess * 100).toFixed(0)}%），可能拉低了得分`);
+  }
+
+  if (synthesis.length > 0) {
+    lines.push(`【综合洞察】${synthesis.join('；')}。`);
+  }
+
+  // Caveats and recommendations are handled by the issues table below,
+  // so the summary focuses only on verdict + differentiators + synthesis.
+
+  if (lines.length === 0) return undefined;
+  return lines.join('\n');
 }
 
 const AGENT_ASSERTION_TYPES = new Set([
