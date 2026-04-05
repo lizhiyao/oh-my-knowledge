@@ -102,29 +102,32 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   }).join('');
 
   const guideModalId = 'guide-four-dims';
-  const guideTitle = lang === 'zh' ? '如何阅读四维对比' : 'How to read this table';
+  const guideTitle = lang === 'zh' ? '如何阅读四维对比？' : 'How to read this table?';
   const guideIntro = lang === 'zh'
     ? '每行是一个实验分组（Variant），四列分别衡量不同维度：'
     : 'Each row is a Variant. Four columns measure different dimensions:';
   const icon = (emoji: string) => `<span aria-hidden="true">${emoji}</span>`;
+  const dim = 'style="padding:8px 0 4px;border-top:1px solid var(--border)"';
+  const sub = 'style="padding:2px 0 2px 24px;font-size:12px;color:var(--text-muted)"';
+  const subDesc = 'style="padding:2px 0;font-size:12px;color:var(--text-faint)"';
   const guideRows = lang === 'zh' ? `
-    <tr><td>${icon('📊')} <strong>质量</strong></td><td>综合三层评分的平均值（1-5 分）</td></tr>
-    <tr><td style="padding-left:20px">事实性</td><td style="color:var(--text-muted)">输出内容中的事实声明是否正确（关键词匹配、格式校验等断言）</td></tr>
-    <tr><td style="padding-left:20px">行为合规</td><td style="color:var(--text-muted)">执行过程是否合规（工具调用路径、轮次限制、成本约束等断言）</td></tr>
-    <tr><td style="padding-left:20px">质量</td><td style="color:var(--text-muted)">LLM 评委对输出整体质量的主观评分</td></tr>
-    <tr><td>${icon('💰')} <strong>成本</strong></td><td>API 调用费用（仅执行成本，不含评分成本）</td></tr>
-    <tr><td>${icon('⚡')} <strong>效率</strong></td><td>单次评测的平均耗时，含轮次和工具调用统计</td></tr>
-    <tr><td>${icon('🛡️')} <strong>稳定性</strong></td><td>多个样本间分数的波动程度（分数范围、成功率、变异系数 CV）</td></tr>
-    <tr><td style="padding-left:20px">CV</td><td style="color:var(--text-muted)">变异系数 = 标准差 ÷ 平均分，衡量分数波动程度。越低越稳定，0% 表示所有样本得分一致</td></tr>
+    <tr><td ${dim}>${icon('📊')} <strong>质量</strong></td><td ${dim}>综合三层评分的平均值（1-5 分）</td></tr>
+    <tr><td ${sub}>事实性</td><td ${subDesc}>输出中的事实声明是否正确（关键词匹配、格式校验等断言）</td></tr>
+    <tr><td ${sub}>行为合规</td><td ${subDesc}>执行过程是否合规（工具调用路径、轮次限制、成本约束等断言）</td></tr>
+    <tr><td ${sub}>质量</td><td ${subDesc}>LLM 评委对输出整体质量的主观评分</td></tr>
+    <tr><td ${dim}>${icon('💰')} <strong>成本</strong></td><td ${dim}>API 调用费用（仅执行成本，不含评分成本）</td></tr>
+    <tr><td ${dim}>${icon('⚡')} <strong>效率</strong></td><td ${dim}>单次评测的平均耗时，含轮次和工具调用统计</td></tr>
+    <tr><td ${dim}>${icon('🛡️')} <strong>稳定性</strong></td><td ${dim}>多个样本间分数的波动程度（分数范围、成功率、CV）</td></tr>
+    <tr><td ${sub}>CV</td><td ${subDesc}>变异系数 = 标准差 ÷ 平均分。越低越稳定，0% = 所有样本得分一致</td></tr>
   ` : `
-    <tr><td>${icon('📊')} <strong>Quality</strong></td><td>Average of three scoring layers (1-5)</td></tr>
-    <tr><td style="padding-left:20px">Factual</td><td style="color:var(--text-muted)">Are factual claims correct (keyword matching, format validation assertions)</td></tr>
-    <tr><td style="padding-left:20px">Behavioral</td><td style="color:var(--text-muted)">Is execution compliant (tool paths, turn limits, cost constraints assertions)</td></tr>
-    <tr><td style="padding-left:20px">Quality</td><td style="color:var(--text-muted)">LLM judge subjective score on output quality</td></tr>
-    <tr><td>${icon('💰')} <strong>Cost</strong></td><td>API expense (execution only, excludes judge cost)</td></tr>
-    <tr><td>${icon('⚡')} <strong>Efficiency</strong></td><td>Average time per evaluation, with turn and tool call stats</td></tr>
-    <tr><td>${icon('🛡️')} <strong>Stability</strong></td><td>Score variance across samples (range, success rate, CV)</td></tr>
-    <tr><td style="padding-left:20px">CV</td><td style="color:var(--text-muted)">Coefficient of Variation = StdDev ÷ Mean. Lower is more stable, 0% means identical scores</td></tr>
+    <tr><td ${dim}>${icon('📊')} <strong>Quality</strong></td><td ${dim}>Average of three scoring layers (1-5)</td></tr>
+    <tr><td ${sub}>Factual</td><td ${subDesc}>Are factual claims correct (keyword matching, format validation assertions)</td></tr>
+    <tr><td ${sub}>Behavioral</td><td ${subDesc}>Is execution compliant (tool paths, turn limits, cost constraints)</td></tr>
+    <tr><td ${sub}>Quality</td><td ${subDesc}>LLM judge subjective score on output quality</td></tr>
+    <tr><td ${dim}>${icon('💰')} <strong>Cost</strong></td><td ${dim}>API expense (execution only, excludes judge cost)</td></tr>
+    <tr><td ${dim}>${icon('⚡')} <strong>Efficiency</strong></td><td ${dim}>Average time per evaluation, with turn and tool call stats</td></tr>
+    <tr><td ${dim}>${icon('🛡️')} <strong>Stability</strong></td><td ${dim}>Score variance across samples (range, success rate, CV)</td></tr>
+    <tr><td ${sub}>CV</td><td ${subDesc}>Coefficient of Variation = StdDev ÷ Mean. Lower is more stable, 0% = identical scores</td></tr>
   `;
 
   return `
