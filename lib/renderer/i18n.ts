@@ -44,7 +44,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     traceTotalMs: '总计',
     variantConfig: '实验配置',
     variantConfigDesc: '先确认在比较什么，再看分数。这个表用来解释每个 variant 对应的 artifact 与 runtime context。',
-    variantRole: '角色',
+    variantRole: '实验类型',
     variantArtifactKind: 'Artifact Kind',
     variantArtifactSource: '来源',
     variantExecutionStrategy: '执行策略',
