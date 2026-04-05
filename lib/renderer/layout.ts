@@ -96,7 +96,7 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .modal-close:hover{color:var(--text-primary);background:var(--bg-surface)}
 .modal-table{width:100%;font-size:13px;margin:12px 0;background:transparent;border:none}
 .modal-table td{padding:6px 0;border:none;background:transparent}
-.modal-table td:first-child{white-space:nowrap;vertical-align:top}
+.modal-table td:first-child{white-space:nowrap;vertical-align:top;min-width:80px;padding-right:12px}
 @media(max-width:480px){.modal-table td{display:block;padding:3px 0}.modal-table td:first-child{font-weight:600}}
 .hint-tip{display:none;position:absolute;bottom:calc(100% + 6px);right:0;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:var(--radius);padding:6px 10px;font-size:11px;font-weight:400;color:var(--text-secondary);white-space:normal;max-width:280px;width:max-content;z-index:10}
 .hint:hover .hint-tip,.hint:focus .hint-tip{display:block}
