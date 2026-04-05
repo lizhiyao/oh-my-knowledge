@@ -123,7 +123,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     <tr><td ${dim}>${icon('🛡️')} <strong>稳定性</strong></td><td ${dimDesc}>多个样本间分数的波动程度</td></tr>
     <tr><td ${sub}>分数范围</td><td ${subDesc}>所有样本中的最低分 ~ 最高分，范围越窄越稳定</td></tr>
     <tr><td ${sub}>成功率</td><td ${subDesc}>评测任务成功完成的比例，失败包括超时、API 错误等</td></tr>
-    <tr><td ${sub}>变异系数</td><td ${subDesc}>标准差 ÷ 平均分，衡量分数波动程度。越低越稳定，0% = 所有样本得分一致</td></tr>
+    <tr><td ${sub}>变异系数</td><td ${subDesc}>质量分数的标准差 ÷ 质量分数的平均值，衡量分数波动程度。越低越稳定，0% = 所有样本得分一致</td></tr>
   ` : `
     <tr><td ${dimFirst}>${icon('📊')} <strong>Quality</strong></td><td ${dimFirstDesc}>Equal-weight average of three layers (1-5): (Fact + Behavior + Quality) ÷ 3</td></tr>
     <tr><td ${sub}>Factual</td><td ${subDesc}>Are factual claims correct (keyword matching, format validation assertions)</td></tr>
