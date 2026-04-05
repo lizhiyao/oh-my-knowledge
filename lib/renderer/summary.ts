@@ -113,7 +113,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   const guideEnText = 'Each row is a variant. Four columns measure different dimensions. Quality combines three layers: factual (are claims correct), behavioral (is execution compliant), and quality (LLM judge score). Cost is API expense. Efficiency is average time per evaluation. Stability shows score variance across samples.';
 
   return `
-    <h2 data-i18n="dimQuality">${t('reportTitle', lang) === t('reportTitle', 'zh') ? '四维对比' : 'Comparison'} <span class="hint" tabindex="0" aria-label="${e(lang === 'zh' ? guideZhText : guideEnText)}">?<span class="hint-tip">${e(lang === 'zh' ? guideZhText : guideEnText)}</span></span></h2>
+    <h2 data-i18n="dimQuality" style="display:flex;align-items:center;gap:8px">${t('reportTitle', lang) === t('reportTitle', 'zh') ? '四维对比' : 'Comparison'} <span class="hint" tabindex="0" aria-label="${e(lang === 'zh' ? guideZhText : guideEnText)}">?<span class="hint-tip">${e(lang === 'zh' ? guideZhText : guideEnText)}</span></span></h2>
     <div class="table-wrap">
     <table class="summary-table">
       <thead>${thead}</thead>
