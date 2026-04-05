@@ -61,12 +61,11 @@ function generateSummary(report: Report, variants: string[]): string | undefined
   const controlVariants = configs
     .filter((c) => c.artifactKind === 'baseline' || c.experimentType === 'runtime-context-only' || c.experimentType === 'baseline')
     .map((c) => c.variant);
-  const testVariants = configs
-    .filter((c) => !controlVariants.includes(c.variant))
-    .map((c) => c.variant);
 
+  // Control = first explicit control variant, or first variant as fallback
   const control = controlVariants[0] || variants[0];
-  const test = testVariants[0] || variants[1];
+  // Test = first variant that is NOT the control
+  const test = variants.find((v) => v !== control);
   if (!test || !control) return undefined;
 
   const cs = summary[control];
