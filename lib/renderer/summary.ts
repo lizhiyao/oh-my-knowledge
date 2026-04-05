@@ -109,11 +109,44 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     return `<tr><td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(v)}</strong></td>${qualityCell}${costCell}${effCell}${stabCell}</tr>`;
   }).join('');
 
-  const guideZhText = '每行是一个实验分组，四列分别衡量不同维度。质量综合了三层评分：事实性（输出内容对不对）、行为（执行路径合不合规）、质量（LLM 评委的主观评分）。成本是 API 调用费用。效率是单次评测的平均耗时。稳定性反映多个样本间分数的波动程度。';
-  const guideEnText = 'Each row is a variant. Four columns measure different dimensions. Quality combines three layers: factual (are claims correct), behavioral (is execution compliant), and quality (LLM judge score). Cost is API expense. Efficiency is average time per evaluation. Stability shows score variance across samples.';
+  const guideModalId = 'guide-four-dims';
+  const guideContent = lang === 'zh' ? `
+    <h3>如何阅读四维对比</h3>
+    <p>每行是一个实验分组（Variant），四列分别衡量不同维度：</p>
+    <table style="width:100%;font-size:13px;margin:12px 0">
+      <tr><td style="padding:6px 0"><strong>📊 质量</strong></td><td style="padding:6px 0">综合三层评分的平均值（1-5 分）</td></tr>
+      <tr><td style="padding:6px 0;padding-left:20px">事实性</td><td style="padding:6px 0;color:var(--text-muted)">输出内容中的事实声明是否正确（关键词匹配、格式校验等断言）</td></tr>
+      <tr><td style="padding:6px 0;padding-left:20px">行为合规</td><td style="padding:6px 0;color:var(--text-muted)">执行过程是否合规（工具调用路径、轮次限制、成本约束等断言）</td></tr>
+      <tr><td style="padding:6px 0;padding-left:20px">质量</td><td style="padding:6px 0;color:var(--text-muted)">LLM 评委对输出整体质量的主观评分</td></tr>
+      <tr><td style="padding:6px 0"><strong>💰 成本</strong></td><td style="padding:6px 0">API 调用费用（仅执行成本，不含评分成本）</td></tr>
+      <tr><td style="padding:6px 0"><strong>⚡ 效率</strong></td><td style="padding:6px 0">单次评测的平均耗时，含轮次和工具调用统计</td></tr>
+      <tr><td style="padding:6px 0"><strong>🛡️ 稳定性</strong></td><td style="padding:6px 0">多个样本间分数的波动程度（分数范围、成功率、变异系数）</td></tr>
+    </table>
+  ` : `
+    <h3>How to read this table</h3>
+    <p>Each row is a Variant. Four columns measure different dimensions:</p>
+    <table style="width:100%;font-size:13px;margin:12px 0">
+      <tr><td style="padding:6px 0"><strong>📊 Quality</strong></td><td style="padding:6px 0">Average of three scoring layers (1-5)</td></tr>
+      <tr><td style="padding:6px 0;padding-left:20px">Factual</td><td style="padding:6px 0;color:var(--text-muted)">Are factual claims correct (keyword matching, format validation assertions)</td></tr>
+      <tr><td style="padding:6px 0;padding-left:20px">Behavioral</td><td style="padding:6px 0;color:var(--text-muted)">Is execution compliant (tool paths, turn limits, cost constraints assertions)</td></tr>
+      <tr><td style="padding:6px 0;padding-left:20px">Quality</td><td style="padding:6px 0;color:var(--text-muted)">LLM judge subjective score on output quality</td></tr>
+      <tr><td style="padding:6px 0"><strong>💰 Cost</strong></td><td style="padding:6px 0">API expense (execution only, excludes judge cost)</td></tr>
+      <tr><td style="padding:6px 0"><strong>⚡ Efficiency</strong></td><td style="padding:6px 0">Average time per evaluation, with turn and tool call stats</td></tr>
+      <tr><td style="padding:6px 0"><strong>🛡️ Stability</strong></td><td style="padding:6px 0">Score variance across samples (range, success rate, CV)</td></tr>
+    </table>
+  `;
 
   return `
-    <h2 data-i18n="dimQuality" style="display:flex;align-items:center;gap:8px">${t('reportTitle', lang) === t('reportTitle', 'zh') ? '四维对比' : 'Comparison'} <span class="hint" tabindex="0" aria-label="${e(lang === 'zh' ? guideZhText : guideEnText)}">?<span class="hint-tip">${e(lang === 'zh' ? guideZhText : guideEnText)}</span></span></h2>
+    <h2 data-i18n="dimQuality" style="display:flex;align-items:center;gap:4px">${t('reportTitle', lang) === t('reportTitle', 'zh') ? '四维对比' : 'Comparison'} <span class="hint" tabindex="0" onclick="document.getElementById('${guideModalId}').style.display='flex'" style="cursor:pointer">?</span></h2>
+    <div id="${guideModalId}" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
+      <div style="background:var(--bg-card,#1e293b);border:1px solid var(--border);border-radius:var(--radius);max-width:600px;max-height:80vh;overflow:auto;padding:24px;margin:20px;width:90%">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong style="font-size:15px">${lang === 'zh' ? '四维对比' : 'Comparison'}</strong>
+          <button onclick="document.getElementById('${guideModalId}').style.display='none'" style="cursor:pointer;background:none;border:none;color:var(--text-muted);font-size:18px">✕</button>
+        </div>
+        ${guideContent}
+      </div>
+    </div>
     <div class="table-wrap">
     <table class="summary-table">
       <thead>${thead}</thead>
