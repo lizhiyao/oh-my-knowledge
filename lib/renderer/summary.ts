@@ -118,7 +118,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   const guide = lang === 'zh' ? guideZh : guideEn;
 
   return `
-    <h2 data-i18n="dimQuality">${t('reportTitle', lang) === t('reportTitle', 'zh') ? '四维对比' : 'Comparison'}</h2>
+    <h2 data-i18n="dimQuality">${t('reportTitle', lang) === t('reportTitle', 'zh') ? '四维对比' : 'Comparison'} <span class="hint" tabindex="0" aria-label="${e(lang === 'zh' ? '质量、成本、效率、稳定性四个维度的对比' : 'Comparison across quality, cost, efficiency and stability')}">?<span class="hint-tip">${e(lang === 'zh' ? '质量、成本、效率、稳定性四个维度的对比' : 'Comparison across quality, cost, efficiency and stability')}</span></span></h2>
     ${guide}
     <div class="table-wrap">
     <table class="summary-table">
