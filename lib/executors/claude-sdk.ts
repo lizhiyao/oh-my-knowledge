@@ -1,0 +1,156 @@
+import { join } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import type { ExecResult, ExecutorInput } from '../types.js';
+import { extractAgentTrace, isClaudeSdkResultMessage } from './claude-sdk-trace.js';
+import type { ClaudeSdkBaseMessage, ClaudeSdkModule, ClaudeSdkResultMessage } from './shared.js';
+import { asErrorLike, DEFAULT_TIMEOUT_MS, errorMessage } from './shared.js';
+
+let sdkQuery: ClaudeSdkModule['query'] | null = null;
+
+async function getSdkQuery(): Promise<ClaudeSdkModule['query']> {
+  if (!sdkQuery) {
+    const sdk = await import('@anthropic-ai/claude-agent-sdk') as ClaudeSdkModule;
+    sdkQuery = sdk.query;
+  }
+  return sdkQuery;
+}
+
+export async function claudeSdkExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, verbose = false }: ExecutorInput): Promise<ExecResult> {
+  const start = Date.now();
+  const abortController = new AbortController();
+  const timer = setTimeout(() => abortController.abort(), timeoutMs);
+
+  const proxyUrl = process.env.CCV_PROXY_URL;
+  const env = proxyUrl
+    ? { ...process.env, ANTHROPIC_BASE_URL: proxyUrl }
+    : { ...process.env };
+
+  const messages: ClaudeSdkBaseMessage[] = [];
+  const messageTimestamps: number[] = [];
+
+  try {
+    const query = await getSdkQuery();
+    const stream = query({
+      prompt,
+      options: {
+        model,
+        systemPrompt: system || undefined,
+        cwd: cwd || process.cwd(),
+        permissionMode: 'bypassPermissions',
+        allowDangerouslySkipPermissions: true,
+        abortController,
+        env,
+      },
+    });
+
+    const resultMsgs: ClaudeSdkResultMessage[] = [];
+    for await (const msg of stream) {
+      messages.push(msg);
+      messageTimestamps.push(Date.now());
+      if (isClaudeSdkResultMessage(msg)) resultMsgs.push(msg as ClaudeSdkResultMessage);
+    }
+
+    clearTimeout(timer);
+
+    if (verbose) {
+      try {
+        const debugDir = join(tmpdir(), 'omk-debug');
+        try { mkdirSync(debugDir, { recursive: true }); } catch { }
+        const debugFile = join(debugDir, `claude-sdk-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.json`);
+        writeFileSync(debugFile, JSON.stringify(messages, null, 2));
+        process.stderr.write(`[omk] debug output → ${debugFile} (${messages.length} messages)\n`);
+      } catch { }
+    }
+
+    if (resultMsgs.length === 0) {
+      const durationMs = Date.now() - start;
+      process.stderr.write(`[omk] claude-sdk executor: no result message received (${messages.length} messages)\n`);
+      return {
+        ok: false, error: 'no result message received',
+        durationMs, durationApiMs: 0,
+        inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+        costUSD: 0, output: null, stopReason: 'error', numTurns: 0,
+      };
+    }
+
+    let output = '';
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let totalCacheReadTokens = 0;
+    let totalCacheCreationTokens = 0;
+    let totalCostUSD = 0;
+    let totalDurationApiMs = 0;
+    let totalNumTurns = 0;
+    let lastSubtype = 'success';
+
+    for (const r of resultMsgs) {
+      output += r.result || '';
+      totalInputTokens += r.usage?.input_tokens || 0;
+      totalOutputTokens += r.usage?.output_tokens || 0;
+      totalCacheReadTokens += r.usage?.cache_read_input_tokens || 0;
+      totalCacheCreationTokens += r.usage?.cache_creation_input_tokens || 0;
+      totalCostUSD += r.total_cost_usd || 0;
+      totalDurationApiMs += r.duration_api_ms || 0;
+      totalNumTurns += r.num_turns || 0;
+      lastSubtype = r.subtype || lastSubtype;
+    }
+
+    const durationMs = resultMsgs[resultMsgs.length - 1].duration_ms || (Date.now() - start);
+    const trace = extractAgentTrace(messages, messageTimestamps);
+
+    if (lastSubtype !== 'success') {
+      const lastErr = resultMsgs[resultMsgs.length - 1];
+      const errMsg = lastErr.errors?.join('; ') || lastErr.subtype;
+      process.stderr.write(`[omk] claude-sdk executor: ${lastErr.subtype}: ${errMsg}\n`);
+      return {
+        ok: false, error: errMsg,
+        durationMs,
+        durationApiMs: totalDurationApiMs,
+        inputTokens: totalInputTokens,
+        outputTokens: totalOutputTokens,
+        cacheReadTokens: totalCacheReadTokens,
+        cacheCreationTokens: totalCacheCreationTokens,
+        costUSD: totalCostUSD,
+        output: null, stopReason: 'error', numTurns: totalNumTurns,
+        ...(trace.turns.length > 0 && { turns: trace.turns }),
+        ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
+      };
+    }
+
+    return {
+      ok: true,
+      durationMs,
+      durationApiMs: totalDurationApiMs,
+      inputTokens: totalInputTokens,
+      outputTokens: totalOutputTokens,
+      cacheReadTokens: totalCacheReadTokens,
+      cacheCreationTokens: totalCacheCreationTokens,
+      costUSD: totalCostUSD,
+      output,
+      stopReason: 'end',
+      numTurns: totalNumTurns,
+      ...(trace.turns.length > 0 && { turns: trace.turns }),
+      ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
+    };
+  } catch (err: unknown) {
+    clearTimeout(timer);
+    const durationMs = Date.now() - start;
+    const details = asErrorLike(err);
+    const isAbort = details.name === 'AbortError';
+    if (isAbort) {
+      process.stderr.write(`[omk] claude-sdk executor: timed out after ${timeoutMs / 1000}s\n`);
+    } else {
+      process.stderr.write(`[omk] claude-sdk executor error: ${errorMessage(err)}\n`);
+    }
+    return {
+      ok: false,
+      error: isAbort ? `execution timed out after ${timeoutMs / 1000}s` : errorMessage(err),
+      durationMs, durationApiMs: 0,
+      inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+      costUSD: 0, output: null,
+      stopReason: isAbort ? 'timeout' : 'error',
+      numTurns: 0,
+    };
+  }
+}

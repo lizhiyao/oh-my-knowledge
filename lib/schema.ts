@@ -79,7 +79,7 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     ...(execResult.error && { error: execResult.error }),
     ...(gradeResult && (() => {
       // Integrate fact check into layered scores
-      let layeredScores = gradeResult.layeredScores ? { ...gradeResult.layeredScores } : undefined;
+      const layeredScores = gradeResult.layeredScores ? { ...gradeResult.layeredScores } : undefined;
       let compositeScore = gradeResult.compositeScore;
 
       if (options?.factCheck && options.factCheck.totalCount > 0 && layeredScores) {

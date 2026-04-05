@@ -47,12 +47,12 @@ export function analyzeResults(report: Report): AnalysisResult {
   // 10. Suggest --repeat when score variance is high and no repeat data
   detectNeedRepeat(report, results, variants, insights, suggestions);
 
-  const summary = generateSummary(report, variants, insights);
+  const summary = generateSummary(report, variants);
 
   return { summary, insights, suggestions };
 }
 
-function generateSummary(report: Report, variants: string[], insights: Insight[]): string | undefined {
+function generateSummary(report: Report, variants: string[]): string | undefined {
   if (variants.length < 2) return undefined;
   const stats = report.summary || {};
 
