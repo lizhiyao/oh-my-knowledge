@@ -160,10 +160,10 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       <td>${e(runtimeContext)}</td>
     </tr>`;
   }).join('');
+  const configModalId = 'guide-variant-config';
   const variantConfigSection = variantConfigRows ? `
     <section style="margin:20px 0">
-      <h2>${t('variantConfig', lang)}</h2>
-      <p style="font-size:13px;color:var(--text-muted)">${t('variantConfigDesc', lang)}</p>
+      <h2 style="display:flex;align-items:center;gap:4px">${t('variantConfig', lang)} <span class="hint hint-click" tabindex="0" onclick="document.getElementById('${configModalId}').style.display='flex'" aria-label="${e(t('variantConfigDesc', lang))}">?</span></h2>
       <div class="table-wrap">
         <table>
           <thead><tr>
@@ -178,6 +178,32 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
         </table>
       </div>
     </section>
+    <div id="${configModalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${configModalId}-title" onclick="if(event.target===this)this.style.display='none'">
+      <div class="modal-content">
+        <div class="modal-header">
+          <strong id="${configModalId}-title" style="font-size:1rem">${lang === 'zh' ? '如何阅读实验配置？' : 'How to read experiment setup?'}</strong>
+          <button class="modal-close" onclick="document.getElementById('${configModalId}').style.display='none'" aria-label="${lang === 'zh' ? '关闭' : 'Close'}">✕</button>
+        </div>
+        <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 16px">${e(t('variantConfigDesc', lang))}</p>
+        <table class="modal-table"><tbody>
+          ${lang === 'zh' ? `
+          <tr><td style="padding:4px 0;color:var(--text-primary)"><strong>${t('variants', lang)}</strong></td><td style="padding:4px 0;color:var(--text-secondary)">实验分组的名称标签</td></tr>
+          <tr><td style="padding:4px 0;color:var(--text-primary)"><strong>${t('variantRole', lang)}</strong></td><td style="padding:4px 0;color:var(--text-secondary)">该分组在实验中的角色（baseline / 仅运行环境 / artifact 注入）</td></tr>
+          <tr><td style="padding:4px 0;color:var(--text-primary)"><strong>Artifact Kind</strong></td><td style="padding:4px 0;color:var(--text-secondary)">被评测对象的类型（skill / agent / workflow / baseline）</td></tr>
+          <tr><td style="padding:4px 0;color:var(--text-primary)"><strong>${t('variantArtifactSource', lang)}</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Artifact 的来源（本地文件 / Git 版本 / 内联）</td></tr>
+          <tr><td style="padding:4px 0;color:var(--text-primary)"><strong>${t('variantExecutionStrategy', lang)}</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Artifact 如何注入执行（system-prompt / user-prompt / agent-session）</td></tr>
+          <tr><td style="padding:4px 0;color:var(--text-primary)"><strong>Runtime Context</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Agent 运行的工作目录（影响可访问的文件和工具）</td></tr>
+          ` : `
+          <tr><td style="padding:4px 0;color:var(--text-primary)"><strong>${t('variants', lang)}</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Name label for this experiment group</td></tr>
+          <tr><td style="padding:4px 0;color:var(--text-primary)"><strong>${t('variantRole', lang)}</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Role in the experiment (baseline / runtime-context-only / artifact-injection)</td></tr>
+          <tr><td style="padding:4px 0;color:var(--text-primary)"><strong>Artifact Kind</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Type of artifact being evaluated (skill / agent / workflow / baseline)</td></tr>
+          <tr><td style="padding:4px 0;color:var(--text-primary)"><strong>${t('variantArtifactSource', lang)}</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Where the artifact comes from (local file / git ref / inline)</td></tr>
+          <tr><td style="padding:4px 0;color:var(--text-primary)"><strong>${t('variantExecutionStrategy', lang)}</strong></td><td style="padding:4px 0;color:var(--text-secondary)">How the artifact is injected (system-prompt / user-prompt / agent-session)</td></tr>
+          <tr><td style="padding:4px 0;color:var(--text-primary)"><strong>Runtime Context</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Working directory the agent runs in (affects accessible files and tools)</td></tr>
+          `}
+        </tbody></table>
+      </div>
+    </div>
   ` : '';
 
   return layout(`${report.id}`, `
