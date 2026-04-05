@@ -149,8 +149,24 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const sampleTable = renderSampleTable(variants, results, lang);
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
   const totalDurationMs = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
+  const sourceLabels: Record<string, Record<string, string>> = {
+    zh: { 'variant-name': '本地文件', 'file-path': '本地文件', git: 'Git 版本', inline: '内联', baseline: '无', custom: '自定义' },
+    en: { 'variant-name': 'Local file', 'file-path': 'Local file', git: 'Git ref', inline: 'Inline', baseline: 'None', custom: 'Custom' },
+  };
+  const typeLabels: Record<string, Record<string, string>> = {
+    zh: { baseline: '基线', 'runtime-context-only': '仅运行环境', 'artifact-injection': '知识注入' },
+    en: { baseline: 'Baseline', 'runtime-context-only': 'Runtime context only', 'artifact-injection': 'Artifact injection' },
+  };
+  const strategyLabels: Record<string, Record<string, string>> = {
+    zh: { baseline: '无注入', 'system-prompt': '系统提示词', 'user-prompt': '用户提示词', 'agent-session': 'Agent 会话', 'workflow-session': '工作流会话' },
+    en: { baseline: 'None', 'system-prompt': 'System prompt', 'user-prompt': 'User prompt', 'agent-session': 'Agent session', 'workflow-session': 'Workflow session' },
+  };
+
   const variantConfigRows = (m.variantConfigs || []).map((config) => {
-    const expType = config.experimentType || (config as unknown as Record<string, unknown>).experimentRole || '-';
+    const expTypeRaw = config.experimentType || (config as unknown as Record<string, unknown>).experimentRole || '-';
+    const expType = (typeLabels[lang] || typeLabels.en)[String(expTypeRaw)] || expTypeRaw;
+    const source = (sourceLabels[lang] || sourceLabels.en)[config.artifactSource] || config.artifactSource;
+    const strategy = (strategyLabels[lang] || strategyLabels.en)[config.executionStrategy] || config.executionStrategy;
     const cwdRaw = config.cwd || '';
     const runtimeContext = cwdRaw
       ? cwdRaw.replace(/.*\/Projects\//, '').replace(/.*\/Documents\//, '').replace(/\/Users\/[^/]+\//, '~/')
@@ -159,8 +175,8 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       <td>${e(config.variant)}</td>
       <td>${e(expType)}</td>
       <td>${e(config.artifactKind)}</td>
-      <td>${e(config.artifactSource)}</td>
-      <td>${e(config.executionStrategy)}</td>
+      <td>${e(source)}</td>
+      <td>${e(strategy)}</td>
       <td title="${e(cwdRaw)}">${e(runtimeContext)}</td>
     </tr>`;
   }).join('');
