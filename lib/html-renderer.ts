@@ -176,8 +176,8 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     const color = COLORS[i % COLORS.length];
     const isControl = config.artifactKind === 'baseline' || String(expTypeRaw) === 'runtime-context-only' || String(expTypeRaw) === 'baseline';
     const groupLabel = isControl
-      ? `<span style="font-size:10px;color:var(--text-muted);margin-left:4px">${lang === 'zh' ? '对照' : 'control'}</span>`
-      : `<span style="font-size:10px;color:var(--accent);margin-left:4px">${lang === 'zh' ? '实验' : 'test'}</span>`;
+      ? `<span style="font-size:10px;padding:1px 6px;margin-left:6px;border-radius:3px;background:var(--bg-elevated);color:var(--text-muted);border:1px solid var(--border)">${lang === 'zh' ? '对照组' : 'control'}</span>`
+      : `<span style="font-size:10px;padding:1px 6px;margin-left:6px;border-radius:3px;background:var(--info-bg);color:var(--accent);border:1px solid var(--accent)">${lang === 'zh' ? '实验组' : 'test'}</span>`;
     return `<tr>
       <td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(config.variant)}</strong>${groupLabel}</td>
       <td>${e(expType)}</td>
