@@ -18,20 +18,10 @@ export function renderAnalysis(analysis: AnalysisResult | undefined, lang: Lang)
 
   const severityBorder: Record<string, string> = { error: 'var(--red)', warning: 'var(--yellow)', info: 'var(--accent)' };
 
-  // Split into two parts
-  const conclusions = (insights || []).filter((ins) => isConclusion(ins));
+  // Issues = everything except conclusions (conclusions are covered by summary)
   const issues = (insights || []).filter((ins) => !isConclusion(ins));
 
-  // Part 1: Experiment conclusions
-  const conclusionLabel = lang === 'zh' ? '实验结论' : 'Findings';
-  const conclusionsHtml = conclusions.length > 0 ? `
-    <h3 style="font-size:13px;color:var(--text-muted);font-weight:600;margin:12px 0 6px">${conclusionLabel}</h3>
-    ${conclusions.map((ins) => {
-      return `<div style="border-left:3px solid var(--accent);padding:8px 14px;margin:6px 0;font-size:13px;color:var(--text-primary);background:var(--bg-surface);border-radius:var(--radius)">${e(ins.message)}</div>`;
-    }).join('')}
-  ` : '';
-
-  // Part 2: Issues + suggestions paired in a table
+  // Issues + suggestions paired in a table
   // Try to pair each issue with a corresponding suggestion (by index)
   const issueLabel = lang === 'zh' ? '问题与建议' : 'Issues & Suggestions';
   const issueColHeader = lang === 'zh' ? '问题' : 'Issue';
@@ -70,7 +60,6 @@ export function renderAnalysis(analysis: AnalysisResult | undefined, lang: Lang)
   return `
     <h2 data-i18n="autoAnalysis">${t('autoAnalysis', lang)}</h2>
     ${summaryHtml}
-    ${conclusionsHtml}
     ${issuesTableHtml}
   `;
 }
