@@ -51,9 +51,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       if (s.avgLlmScore != null) { layeredDetailParts.push(`${t('llmJudge', lang)}: ${s.avgLlmScore}`); hintParts.push(`${t('llmJudge', lang)}: ${s.avgLlmScore}`); }
     }
 
-    const hintText = hintParts.join(' · ');
-    const qualityHint = hintText ? `<span class="hint" tabindex="0" aria-label="${e(hintText)}">?<span class="hint-tip">${e(hintText)}</span></span>` : '';
-    const qualityCell = `<td class="summary-cell"><div class="summary-value summary-value-primary">${score}${qualityHint}</div><div class="summary-detail">${layeredDetailParts.join(' · ')}</div></td>`;
+    const qualityCell = `<td class="summary-cell"><div class="summary-value summary-value-primary">${score}</div><div class="summary-detail">${layeredDetailParts.join(' · ')}</div></td>`;
 
     // Cost — only show execution cost (judge cost is tool overhead, not skill cost)
     const execCost = s.totalExecCostUSD || 0;
@@ -100,8 +98,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     stabDetails.push(`${t('successRate', lang)} ${successRate}%`);
     if (s.scoreCV != null) {
       const cvPct = (s.scoreCV * 100).toFixed(0);
-      const cvHint = `<span class="hint" tabindex="0" aria-label="${e(t('cvDesc', lang))}">?<span class="hint-tip">${e(t('cvDesc', lang))}</span></span>`;
-      stabDetails.push(`CV ${cvPct}%${cvHint}`);
+      stabDetails.push(`CV ${cvPct}%`);
     }
     const stabDetail = `<div class="summary-detail">${stabDetails.join(' · ')}</div>`;
     const stabCell = `<td class="summary-cell"><div class="summary-value" style="color:${stabColor}">${stabValue}</div>${stabDetail}</td>`;
@@ -122,7 +119,8 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     <tr><td style="padding-left:20px">质量</td><td style="color:var(--text-muted)">LLM 评委对输出整体质量的主观评分</td></tr>
     <tr><td>${icon('💰')} <strong>成本</strong></td><td>API 调用费用（仅执行成本，不含评分成本）</td></tr>
     <tr><td>${icon('⚡')} <strong>效率</strong></td><td>单次评测的平均耗时，含轮次和工具调用统计</td></tr>
-    <tr><td>${icon('🛡️')} <strong>稳定性</strong></td><td>多个样本间分数的波动程度（分数范围、成功率、变异系数）</td></tr>
+    <tr><td>${icon('🛡️')} <strong>稳定性</strong></td><td>多个样本间分数的波动程度（分数范围、成功率、变异系数 CV）</td></tr>
+    <tr><td style="padding-left:20px">CV</td><td style="color:var(--text-muted)">变异系数 = 标准差 ÷ 平均分，衡量分数波动程度。越低越稳定，0% 表示所有样本得分一致</td></tr>
   ` : `
     <tr><td>${icon('📊')} <strong>Quality</strong></td><td>Average of three scoring layers (1-5)</td></tr>
     <tr><td style="padding-left:20px">Factual</td><td style="color:var(--text-muted)">Are factual claims correct (keyword matching, format validation assertions)</td></tr>
@@ -131,6 +129,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     <tr><td>${icon('💰')} <strong>Cost</strong></td><td>API expense (execution only, excludes judge cost)</td></tr>
     <tr><td>${icon('⚡')} <strong>Efficiency</strong></td><td>Average time per evaluation, with turn and tool call stats</td></tr>
     <tr><td>${icon('🛡️')} <strong>Stability</strong></td><td>Score variance across samples (range, success rate, CV)</td></tr>
+    <tr><td style="padding-left:20px">CV</td><td style="color:var(--text-muted)">Coefficient of Variation = StdDev ÷ Mean. Lower is more stable, 0% means identical scores</td></tr>
   `;
 
   return `
