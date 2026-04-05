@@ -201,13 +201,13 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       </div>
     </div>` : ''}
 
-    <section>${cards}</section>
-
     ${variantConfigSection}
 
-    ${renderAgentOverview(variants, summary, lang)}
+    <section>${cards}</section>
 
     ${renderAnalysis(report.analysis, lang)}
+
+    ${renderAgentOverview(variants, summary, lang)}
 
     ${renderCoverageSection(report.analysis?.coverage, lang)}
 
