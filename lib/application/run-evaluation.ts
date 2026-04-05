@@ -2,14 +2,14 @@ import { resolve } from 'node:path';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executor.js';
 import { discoverEachSkills } from '../skill-loader.js';
 import { DEFAULT_OUTPUT_DIR } from '../evaluation-core.js';
-import { executeEvaluationPipeline } from './evaluation-pipeline.js';
-import { executeVarianceWorkflow } from './variance-workflow.js';
+import { executeEachEvaluationRuns } from './each-evaluation-workflow.js';
 import {
   buildDryRunEachArtifacts,
   buildDryRunTaskReport,
-  executeEachEvaluationRuns,
   prepareEvaluationRun,
-} from './evaluation-workflows.js';
+} from './evaluation-preparation.js';
+import { executeEvaluationPipeline } from './evaluation-pipeline.js';
+import { executeVarianceWorkflow } from './variance-workflow.js';
 
 import type {
   Report,
