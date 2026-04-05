@@ -108,7 +108,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     : 'Each row is a Variant. Four columns measure different dimensions:';
   const icon = (emoji: string) => `<span aria-hidden="true">${emoji}</span>`;
   const dim = 'style="padding:8px 0 4px;border-top:1px solid var(--border)"';
-  const sub = 'style="padding:2px 0 2px 24px;font-size:12px;color:var(--text-muted)"';
+  const sub = 'style="padding:2px 0 2px 28px;font-size:12px;color:var(--text-muted);font-weight:500"';
   const subDesc = 'style="padding:2px 0;font-size:12px"';
   const guideRows = lang === 'zh' ? `
     <tr><td ${dim}>${icon('📊')} <strong>质量</strong></td><td ${dim}>三层评分的等权平均值（1-5 分），计算公式：(事实 + 行为 + 质量) ÷ 3</td></tr>
