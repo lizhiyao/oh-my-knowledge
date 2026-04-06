@@ -2,9 +2,7 @@
  * HTML report renderer — orchestrates sub-modules.
  */
 
-import { e, fmtCost, fmtDuration, COLORS } from './renderer/helpers.js';
-import { DEFAULT_LANG, t } from './renderer/i18n.js';
-import { layout } from './renderer/layout.js';
+import { e, fmtCost, fmtDuration, COLORS, DEFAULT_LANG, t, layout } from './renderer/layout.js';
 import {
   renderAgentOverview,
   renderAnalysis,

@@ -1,5 +1,4 @@
-import { e, fmtNum, fmtCost, fmtDuration, COLORS } from './helpers.js';
-import { t } from './i18n.js';
+import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import type { AnalysisResult, Insight, KnowledgeCoverage, Lang, VariantSummary } from '../types.js';
 
 export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang): string {

@@ -1,5 +1,4 @@
-import { e, fmtCost, fmtLocalTime } from './helpers.js';
-import { t } from './i18n.js';
+import { e, fmtCost, fmtLocalTime, t } from './layout.js';
 import type { Lang, Report, ReportMeta, VariantSummary } from '../types.js';
 
 interface ChartPoint {

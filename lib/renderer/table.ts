@@ -1,5 +1,4 @@
-import { e, fmtNum, fmtDuration, delta } from './helpers.js';
-import { t } from './i18n.js';
+import { e, fmtNum, fmtDuration, delta, t } from './layout.js';
 import type { Lang, ResultEntry, TurnInfo, ToolCallInfo } from '../types.js';
 
 function renderTrace(turns: TurnInfo[], toolCalls: ToolCallInfo[] | undefined, timing: { execMs: number; gradeMs: number; totalMs: number } | undefined, fullOutput: string | undefined, id: string, lang: Lang): string {
