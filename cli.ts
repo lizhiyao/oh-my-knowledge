@@ -12,7 +12,7 @@ import type {
   GitInfo,
   ReportStore,
 } from './lib/types.js';
-import type { ProgressCallback } from './lib/evaluation-core.js';
+import type { ProgressCallback } from './lib/runner.js';
 
 // ---------------------------------------------------------------------------
 // Local types (CLI-specific, not shared with lib/)

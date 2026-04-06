@@ -1,7 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runEvaluation, loadSkills, buildTasks, discoverVariants, discoverEachSkills, runEachEvaluation } from '../lib/runner.js';
-import { generateRunId } from '../lib/evaluation-core.js';
+import { runEvaluation, loadSkills, buildTasks, discoverVariants, discoverEachSkills, runEachEvaluation, generateRunId } from '../lib/runner.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
