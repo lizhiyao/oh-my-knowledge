@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { createExecutor } from '../lib/executor.js';
+import { createExecutor } from '../lib/runtime/index.js';
 
 describe('createExecutor', () => {
   it('returns a function for claude', () => {

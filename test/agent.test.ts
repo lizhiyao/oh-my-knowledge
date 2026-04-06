@@ -10,7 +10,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractAgentTrace } from '../lib/executor.js';
+import { extractAgentTrace } from '../lib/runtime/index.js';
 import { runAssertions, buildTraceSummary } from '../lib/grader.js';
 import { buildVariantResult, buildVariantSummary } from '../lib/schema.js';
 import { analyzeResults } from '../lib/analyzer.js';

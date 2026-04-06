@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, join, dirname, basename } from 'node:path';
+import { runEvaluation } from './application/index.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from './runtime/index.js';
-import { runEvaluation } from './runner.js';
 import type { ProgressCallback, Report } from './types.js';
 
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。你的任务是分析评测结果中的薄弱环节，针对性地改进 skill（系统提示词），使其在评测中获得更高的分数。

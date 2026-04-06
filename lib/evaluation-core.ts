@@ -1,7 +1,11 @@
 export {
   executeTasks,
   preflight,
-} from './evaluation-execution.js';
+} from './runtime/index.js';
+export {
+  aggregateReport,
+  applyBlindMode,
+} from './domain/index.js';
 export type {
   ProgressCallback,
   ProgressDone,
@@ -12,10 +16,8 @@ export type {
   ProgressStart,
 } from './types.js';
 export {
-  aggregateReport,
-  applyBlindMode,
   DEFAULT_OUTPUT_DIR,
   generateRunId,
   persistReport,
-} from './evaluation-reporting.js';
+} from './infrastructure/index.js';
 export type { PersistableReport } from './evaluation-reporting.js';

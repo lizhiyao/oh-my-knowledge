@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveArtifacts } from '../lib/skill-loader.js';
+import { resolveArtifacts } from '../lib/infrastructure/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = join(__dirname, '..', '..', 'examples', 'code-review', 'skills');

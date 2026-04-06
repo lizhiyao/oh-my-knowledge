@@ -6,5 +6,5 @@ export {
   aggregateReport,
   applyBlindMode,
 } from '../evaluation-reporting.js';
-export { confidenceInterval, tTest } from '../statistics.js';
+export { mean, stddev, confidenceInterval, tTest } from '../statistics.js';
 export { buildTasks, buildTasksFromArtifacts } from '../task-planner.js';
