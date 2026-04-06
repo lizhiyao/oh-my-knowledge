@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildVarianceData } from '../lib/index.js';
+import { buildVarianceData } from '../lib/runner.js';
 import type { Report, VariantSummary } from '../lib/types.js';
 
 function makeReport(id: string, variantScores: Record<string, number>): Report {

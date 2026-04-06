@@ -5,14 +5,14 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { discoverVariants } from './lib/index.js';
+import { discoverVariants } from './lib/runner.js';
 import type {
   Report,
   VariantSummary,
   GitInfo,
   ReportStore,
 } from './lib/types.js';
-import type { ProgressCallback } from './lib/index.js';
+import type { ProgressCallback } from './lib/runner.js';
 
 // ---------------------------------------------------------------------------
 // Local types (CLI-specific, not shared with lib/)

@@ -15,7 +15,7 @@ export {
   runEvaluation,
   runEachEvaluation,
   runMultiple,
-} from './application/index.js';
+} from './application/run-evaluation.js';
 export type {
   DryRunEachReport,
   DryRunReport,
@@ -23,5 +23,5 @@ export type {
   RunEvaluationOptions,
   RunMultipleOptions,
   SkillProgressInfo,
-} from './application/index.js';
+} from './application/run-evaluation.js';
 export type { ProgressCallback } from './types.js';

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, join, dirname, basename } from 'node:path';
-import { runEvaluation } from './application/index.js';
+import { runEvaluation } from './application/run-evaluation.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from './executor.js';
 import type { ProgressCallback, Report } from './types.js';
 
