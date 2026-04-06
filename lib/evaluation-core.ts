@@ -10,7 +10,7 @@ export type {
   ProgressInfo,
   ProgressPreflight,
   ProgressStart,
-} from './evaluation-execution.js';
+} from './types.js';
 export {
   aggregateReport,
   applyBlindMode,

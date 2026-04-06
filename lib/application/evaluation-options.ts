@@ -1,5 +1,4 @@
-import type { ProgressCallback } from '../evaluation-execution.js';
-import type { Artifact, JobStore } from '../types.js';
+import type { Artifact, JobStore, ProgressCallback } from '../types.js';
 
 export interface SkillProgressInfo {
   phase: string;

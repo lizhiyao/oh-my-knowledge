@@ -1,11 +1,10 @@
 import { resolve } from 'node:path';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from '../job-store.js';
 import { DEFAULT_OUTPUT_DIR, persistReport } from '../evaluation-reporting.js';
-import type { ProgressCallback } from '../evaluation-execution.js';
 import { resolveArtifacts } from '../skill-loader.js';
 import { buildEachReport } from './each-evaluation-report.js';
 import type { EachSkillResult } from './each-evaluation-report.js';
-import type { Artifact, JobStore, Report, VariantSummary } from '../types.js';
+import type { Artifact, JobStore, ProgressCallback, Report, VariantSummary } from '../types.js';
 
 interface RunSingleEvaluationOptions {
   samplesPath: string;

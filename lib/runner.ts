@@ -18,4 +18,4 @@ export type {
   RunMultipleOptions,
   SkillProgressInfo,
 } from './application/evaluation-options.js';
-export type { ProgressCallback } from './evaluation-execution.js';
+export type { ProgressCallback } from './types.js';

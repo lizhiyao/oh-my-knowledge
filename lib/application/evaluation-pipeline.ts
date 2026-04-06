@@ -1,6 +1,5 @@
 import { stopAllServers } from '../mcp-resolver.js';
 import { executeTasks, preflight } from '../evaluation-execution.js';
-import type { ProgressCallback } from '../evaluation-execution.js';
 import {
   aggregateReport,
   generateRunId,
@@ -18,6 +17,7 @@ import type {
   Artifact,
   ExecutorFn,
   JobStore,
+  ProgressCallback,
   Report,
   Sample,
   Task,

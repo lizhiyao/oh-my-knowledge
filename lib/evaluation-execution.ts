@@ -9,64 +9,12 @@ import { homedir } from 'node:os';
 import type {
   ExecResult,
   ExecutorFn,
+  ExecutorCache,
+  GradeResult,
+  ProgressCallback,
   Task,
   VariantResult,
-  GradeResult,
-  ExecutorCache,
 } from './types.js';
-
-export interface ProgressStart {
-  phase: 'start';
-  completed: number;
-  total: number;
-  sample_id: string;
-  variant: string;
-}
-
-export interface ProgressExecDone {
-  phase: 'exec_done';
-  strategy: string;
-  completed: number;
-  total: number;
-  sample_id: string;
-  variant: string;
-  durationMs: number;
-  inputTokens: number;
-  outputTokens: number;
-  costUSD: number;
-  outputPreview: string | null;
-}
-
-export interface ProgressGrading {
-  phase: 'grading';
-  strategy: string;
-  completed: number;
-  total: number;
-  sample_id: string;
-  variant: string;
-}
-
-export interface ProgressDone {
-  phase: 'done';
-  strategy: string;
-  completed: number;
-  total: number;
-  sample_id: string;
-  variant: string;
-  durationMs: number;
-  inputTokens: number;
-  outputTokens: number;
-  costUSD: number;
-  score?: number;
-}
-
-export interface ProgressPreflight {
-  phase: 'preflight';
-  jobId?: string;
-}
-
-export type ProgressInfo = ProgressStart | ProgressExecDone | ProgressGrading | ProgressDone | ProgressPreflight;
-export type ProgressCallback = (info: ProgressInfo) => void;
 
 interface ExecuteTasksOptions {
   tasks: Task[];
