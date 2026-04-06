@@ -6,7 +6,7 @@
 
 import { readdir, readFile, writeFile, unlink, access, mkdir, rename } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Report, ReportStore } from './types.js';
+import type { EvaluationJob, JobStore, Report, ReportMeta, ReportStore, VariantSummary } from './types.js';
 
 // Per-id in-memory mutex for safe read-modify-write.
 // Uses a queue to avoid the race window between checking and acquiring the lock.
@@ -132,4 +132,101 @@ export function createFileStore(dir: string): ReportStore {
   }
 
   return { list, get, save, update, remove, exists, findByVariant, findByArtifactHash };
+}
+
+export interface JobQuery {
+  status?: string;
+  reportId?: string;
+  project?: string;
+  owner?: string;
+  tag?: string;
+  limit?: number;
+}
+
+export async function queryJobList(jobStore: JobStore, query: JobQuery = {}): Promise<EvaluationJob[]> {
+  let jobs = await jobStore.list();
+
+  if (query.status) {
+    jobs = jobs.filter((job) => job.status === query.status);
+  }
+  if (query.reportId) {
+    jobs = jobs.filter((job) => job.resultReportId === query.reportId);
+  }
+  if (query.project) {
+    jobs = jobs.filter((job) => job.request.project === query.project);
+  }
+  if (query.owner) {
+    jobs = jobs.filter((job) => job.request.owner === query.owner);
+  }
+  if (query.tag) {
+    jobs = jobs.filter((job) => job.request.tags?.includes(query.tag!));
+  }
+  if (typeof query.limit === 'number' && Number.isFinite(query.limit) && query.limit >= 0) {
+    jobs = jobs.slice(0, query.limit);
+  }
+
+  return jobs;
+}
+
+export async function queryJob(jobStore: JobStore, id: string): Promise<EvaluationJob | null> {
+  return jobStore.get(id);
+}
+
+export interface RunListItem {
+  id: string;
+  meta: ReportMeta;
+  summary: Report['summary'];
+}
+
+export interface TrendPoint {
+  reportId: string;
+  timestamp: string;
+  avgCompositeScore: number | null;
+  avgNumTurns: number | null;
+  avgCostPerSample: number | null;
+  artifactHash: string | null;
+  gitCommitShort: string | null;
+  gitBranch: string | null;
+}
+
+export interface TrendQueryResult {
+  variant: string;
+  points: TrendPoint[];
+  runs: Report[];
+}
+
+export async function queryRunList(reportStore: ReportStore): Promise<RunListItem[]> {
+  return (await reportStore.list()).map((report) => ({
+    id: report.id,
+    meta: report.meta,
+    summary: report.summary,
+  }));
+}
+
+export async function queryRun(reportStore: ReportStore, id: string): Promise<Report | null> {
+  return reportStore.get(id);
+}
+
+export async function queryTrend(reportStore: ReportStore, variantName: string): Promise<TrendQueryResult> {
+  const runs = await reportStore.findByVariant(variantName);
+  const points: TrendPoint[] = runs.map((report) => {
+    const summary: Partial<VariantSummary> = report.summary?.[variantName] || {};
+    const meta: ReportMeta = report.meta;
+    return {
+      reportId: report.id,
+      timestamp: meta.timestamp,
+      avgCompositeScore: summary.avgCompositeScore ?? null,
+      avgNumTurns: summary.avgNumTurns ?? null,
+      avgCostPerSample: summary.avgCostPerSample ?? null,
+      artifactHash: meta.artifactHashes?.[variantName] || null,
+      gitCommitShort: meta.gitInfo?.commitShort || null,
+      gitBranch: meta.gitInfo?.branch || null,
+    };
+  });
+
+  return {
+    variant: variantName,
+    points,
+    runs,
+  };
 }

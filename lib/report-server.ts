@@ -4,9 +4,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { renderRunList, renderRunDetail, renderEachRunDetail, renderTrendsPage } from './html-renderer.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
-import { createFileStore } from './report-store.js';
-import { queryJob, queryJobList } from './query-jobs.js';
-import { queryRun, queryRunList, queryTrend } from './query-reports.js';
+import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
 import type { JobStore, ReportStore } from './types.js';
 import type { AddressInfo } from 'node:net';
 

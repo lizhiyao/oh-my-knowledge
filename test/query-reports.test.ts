@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { queryRunList, queryRun, queryTrend } from '../lib/query-reports.js';
+import { queryRunList, queryRun, queryTrend } from '../lib/report-store.js';
 import type { Report, ReportStore, VariantSummary } from '../lib/types.js';
 
 function makeReport(id: string, variant: string, timestamp: string, avgScore: number | undefined): Report {
@@ -47,7 +47,7 @@ function createMockReportStore(reports: Report[]): ReportStore {
   return {
     list: async () => [...reports],
     get: async (id: string) => map.get(id) ?? null,
-    save: async () => {},
+    save: async () => { },
     update: async () => null,
     remove: async () => false,
     exists: async (id: string) => map.has(id),
