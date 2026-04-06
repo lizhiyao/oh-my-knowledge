@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveExecutionStrategy } from '../../lib/eval-core/execution-strategy.js';
-import type { Task } from '../../lib/types.js';
+import { resolveExecutionStrategy } from '../../src/eval-core/execution-strategy.js';
+import type { Task } from '../../src/types.js';
 
 function mockTask(kind: string, content: string | null = 'skill content'): Task {
   return {

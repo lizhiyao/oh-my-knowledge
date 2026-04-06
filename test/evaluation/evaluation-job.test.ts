@@ -10,8 +10,8 @@ import {
   finalizeEvaluationRun,
   failEvaluationRun,
   classifyEvaluationError,
-} from '../../lib/eval-core/evaluation-job.js';
-import type { EvaluationRequest } from '../../lib/types.js';
+} from '../../src/eval-core/evaluation-job.js';
+import type { EvaluationRequest } from '../../src/types.js';
 
 const mockRequest: EvaluationRequest = {
   samplesPath: '/tmp/samples.json',

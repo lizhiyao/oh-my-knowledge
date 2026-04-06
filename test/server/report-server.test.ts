@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import http from 'node:http';
-import { createReportServer } from '../../lib/server/report-server.js';
+import { createReportServer } from '../../src/server/report-server.js';
 
 const TEST_DIR = join(tmpdir(), `omk-test-reports-${Date.now()}`);
 const JOBS_DIR = join(tmpdir(), `omk-test-jobs-${Date.now()}`);

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { cacheKey } from '../../lib/eval-core/cache.js';
+import { cacheKey } from '../../src/eval-core/cache.js';
 
 describe('cacheKey', () => {
   it('不同 cwd 生成不同缓存键', () => {

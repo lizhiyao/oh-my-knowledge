@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createFileJobStore } from '../../lib/server/job-store.js';
-import type { EvaluationJob, EvaluationRequest, JobStore } from '../../lib/types.js';
+import { createFileJobStore } from '../../src/server/job-store.js';
+import type { EvaluationJob, EvaluationRequest, JobStore } from '../../src/types.js';
 
 const mockRequest: EvaluationRequest = {
   samplesPath: '/tmp/s.json',

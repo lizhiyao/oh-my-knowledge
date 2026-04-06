@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeResults } from '../../lib/analysis/report-diagnostics.js';
-import type { Report } from '../../lib/types.js';
+import { analyzeResults } from '../../src/analysis/report-diagnostics.js';
+import type { Report } from '../../src/types.js';
 
 function toReport(value: unknown): Report {
   return value as Report;

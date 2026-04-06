@@ -1,9 +1,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runEvaluation, runEachEvaluation, buildVarianceData } from '../lib/eval-workflows/run-evaluation.js';
-import { buildTasks } from '../lib/eval-core/task-planner.js';
-import { discoverVariants, discoverEachSkills, loadSkills } from '../lib/inputs/skill-loader.js';
-import { generateRunId } from '../lib/eval-core/evaluation-reporting.js';
+import { runEvaluation, runEachEvaluation, buildVarianceData } from '../src/eval-workflows/run-evaluation.js';
+import { buildTasks } from '../src/eval-core/task-planner.js';
+import { discoverVariants, discoverEachSkills, loadSkills } from '../src/inputs/skill-loader.js';
+import { generateRunId } from '../src/eval-core/evaluation-reporting.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -506,8 +506,8 @@ describe('runEvaluation credibility', () => {
   it('blind mode: same input produces same mapping', async () => {
     await writeMockSamples();
     try {
-      const { loadSamples } = await import('../lib/inputs/load-samples.js');
-      const { buildTasks } = await import('../lib/eval-core/task-planner.js');
+      const { loadSamples } = await import('../src/inputs/load-samples.js');
+      const { buildTasks } = await import('../src/eval-core/task-planner.js');
       const samples = loadSamples(MOCK_SAMPLES_PATH);
       const skills: Record<string, string | null> = { v1: 'skill content v1', v2: 'skill content v2' };
       const tasks = buildTasks(samples, ['v1', 'v2'], skills);

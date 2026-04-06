@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { queryRunList, queryRun, queryTrend } from '../../lib/server/report-store.js';
-import type { Report, ReportStore, VariantSummary } from '../../lib/types.js';
+import { queryRunList, queryRun, queryTrend } from '../../src/server/report-store.js';
+import type { Report, ReportStore, VariantSummary } from '../../src/types.js';
 
 function makeReport(id: string, variant: string, timestamp: string, avgScore: number | undefined): Report {
   const summary: Record<string, VariantSummary> = {

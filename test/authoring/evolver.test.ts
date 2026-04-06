@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractWeakSamples, buildImprovementPrompt, evolveSkill } from '../../lib/authoring/evolver.js';
-import type { Report } from '../../lib/types.js';
+import { extractWeakSamples, buildImprovementPrompt, evolveSkill } from '../../src/authoring/evolver.js';
+import type { Report } from '../../src/types.js';
 
 function toReport(value: unknown): Report {
   return value as Report;

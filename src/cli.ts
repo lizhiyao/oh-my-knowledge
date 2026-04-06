@@ -5,14 +5,14 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { discoverVariants } from './lib/inputs/skill-loader.js';
+import { discoverVariants } from './inputs/skill-loader.js';
 import type {
   Report,
   VariantSummary,
   GitInfo,
   ReportStore,
   ProgressCallback,
-} from './lib/types.js';
+} from './types.js';
 
 // ---------------------------------------------------------------------------
 // Local types (CLI-specific, not shared with lib/)
@@ -412,7 +412,7 @@ async function handleRun(argv: string[]): Promise<void> {
     repeat: { type: 'string', default: '1' },
   });
 
-  const { runEvaluation, runMultiple, runEachEvaluation } = await import('./lib/eval-workflows/run-evaluation.js');
+  const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
 
   config.blind = values.blind as boolean | undefined;
   config.onProgress = defaultOnProgress as unknown as ProgressCallback;
@@ -434,7 +434,7 @@ async function handleRun(argv: string[]): Promise<void> {
         process.stderr.write(`📄 Report saved to: ${filePath}\n`);
 
         if (!values['no-serve']) {
-          const { createReportServer } = await import('./lib/server/report-server.js');
+          const { createReportServer } = await import('./server/report-server.js');
           const server: ReportServer = createReportServer({ reportsDir: resolve(values['output-dir'] as string) });
           const serverUrl: string = await server.start();
           const reportUrl: string = `${serverUrl}/run/${report.id}`;
@@ -478,7 +478,7 @@ async function handleRun(argv: string[]): Promise<void> {
 
       if (!values['no-serve']) {
         // Auto-start report server
-        const { createReportServer } = await import('./lib/server/report-server.js');
+        const { createReportServer } = await import('./server/report-server.js');
         const server: ReportServer = createReportServer({
           reportsDir: resolve(values['output-dir'] as string),
         });
@@ -537,8 +537,8 @@ async function handleReport(argv: string[]): Promise<void> {
   }
 
   if (values.export) {
-    const { createFileStore } = await import('./lib/server/report-store.js');
-    const { renderRunDetail, renderEachRunDetail } = await import('./lib/renderer/html-renderer.js');
+    const { createFileStore } = await import('./server/report-store.js');
+    const { renderRunDetail, renderEachRunDetail } = await import('./renderer/html-renderer.js');
     const { writeFileSync } = await import('node:fs');
     const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
     const report: Report | null = await store.get(values.export as string);
@@ -554,7 +554,7 @@ async function handleReport(argv: string[]): Promise<void> {
     return;
   }
 
-  const { createReportServer } = await import('./lib/server/report-server.js');
+  const { createReportServer } = await import('./server/report-server.js');
   const server: ReportServer = createReportServer({
     port: Number(values.port),
     reportsDir: resolve(values['reports-dir'] as string),
@@ -609,7 +609,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
     allowPositionals: true,
   });
 
-  const { generateSamples } = await import('./lib/authoring/generator.js');
+  const { generateSamples } = await import('./authoring/generator.js');
   const { readFileSync, writeFileSync } = await import('node:fs');
   const count: number = Math.max(1, Number(values.count) || 5);
   const model: string = values.model as string;
@@ -739,7 +739,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
     else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
   }
 
-  const { evolveSkill } = await import('./lib/authoring/evolver.js');
+  const { evolveSkill } = await import('./authoring/evolver.js');
 
   process.stderr.write(`\n=== Evolution: ${skillPath} ===\n`);
 
@@ -792,7 +792,7 @@ async function handleCi(argv: string[]): Promise<void> {
     threshold: { type: 'string', default: '3.5' },
   });
 
-  const { runEvaluation } = await import('./lib/eval-workflows/run-evaluation.js');
+  const { runEvaluation } = await import('./eval-workflows/run-evaluation.js');
 
   config.onProgress = defaultOnProgress as unknown as ProgressCallback;
 
@@ -831,7 +831,7 @@ async function handleDiff(argv: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const { createFileStore } = await import('./lib/server/report-store.js');
+  const { createFileStore } = await import('./server/report-store.js');
   const store: ReportStore = createFileStore(resolve(DEFAULT_REPORTS_DIR));
 
   const [id1, id2]: string[] = argv;

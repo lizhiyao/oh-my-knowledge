@@ -1,10 +1,10 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadMcpConfig, resolveMcpUrls, stopAllServers } from '../../lib/inputs/mcp-resolver.js';
+import { loadMcpConfig, resolveMcpUrls, stopAllServers } from '../../src/inputs/mcp-resolver.js';
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { McpServers } from '../../lib/types.js';
+import type { McpServers } from '../../src/types.js';
 
 describe('loadMcpConfig', () => {
   let tmpDir: string;

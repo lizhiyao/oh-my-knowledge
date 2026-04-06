@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateSamples } from '../../lib/authoring/generator.js';
+import { generateSamples } from '../../src/authoring/generator.js';
 
 describe('generateSamples', () => {
   it('is a function', () => {

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
-const CLI = join(PROJECT_ROOT, 'cli.js');
+const CLI = join(PROJECT_ROOT, 'src', 'cli.js');
 
 describe('CLI', () => {
   it('--help shows usage', async () => {

@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderRunList, renderRunDetail } from '../lib/renderer/html-renderer.js';
-import type { Lang, Report } from '../lib/types.js';
+import { renderRunList, renderRunDetail } from '../src/renderer/html-renderer.js';
+import type { Lang, Report } from '../src/types.js';
 
 const SAMPLE_REPORT: Report = {
   id: 'test-run-001',

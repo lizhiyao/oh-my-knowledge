@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { queryJobList, queryJob } from '../../lib/server/report-store.js';
-import type { EvaluationJob, EvaluationRequest, JobStore } from '../../lib/types.js';
+import { queryJobList, queryJob } from '../../src/server/report-store.js';
+import type { EvaluationJob, EvaluationRequest, JobStore } from '../../src/types.js';
 
 function makeRequest(overrides: Partial<EvaluationRequest> = {}): EvaluationRequest {
   return {

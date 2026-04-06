@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildVarianceData } from '../lib/eval-workflows/run-evaluation.js';
-import type { Report, VariantSummary } from '../lib/types.js';
+import { buildVarianceData } from '../src/eval-workflows/run-evaluation.js';
+import type { Report, VariantSummary } from '../src/types.js';
 
 function makeReport(id: string, variantScores: Record<string, number>): Report {
   return {

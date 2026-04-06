@@ -17,6 +17,13 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": ["cli.ts", "lib/**/*.ts", "test/**/*.ts"],
-  "exclude": ["node_modules", "dist", "test/fixtures/**/*.mjs"]
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "test/fixtures/**/*.mjs"
+  ]
 }

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mean, stddev, confidenceInterval, tTest } from '../../lib/eval-core/statistics.js';
+import { mean, stddev, confidenceInterval, tTest } from '../../src/eval-core/statistics.js';
 
 describe('mean', () => {
   it('computes mean of numbers', () => {
