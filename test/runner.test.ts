@@ -6,6 +6,7 @@ import { discoverVariants, discoverEachSkills, loadSkills } from '../src/inputs/
 import { generateRunId } from '../src/eval-core/evaluation-reporting.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { Report } from '../src/types.js';
 
 interface DryRunTask {
   sample_id: string;
@@ -57,6 +58,9 @@ const SAMPLES_PATH = join(__dirname, '..', '..', 'examples', 'code-review', 'eva
 const SKILL_DIR = join(__dirname, '..', '..', 'examples', 'code-review', 'skills');
 const AGENT_CONTROL_DIR = join(__dirname, '..', '..', 'examples', 'agent-eval', 'control-experiments');
 const AGENT_SKILL_DIR = join(__dirname, '..', '..', 'examples', 'agent-eval', 'skills');
+const CUSTOM_EXECUTOR_SAMPLES = join(__dirname, '..', '..', 'examples', 'custom-executor', 'eval-samples.json');
+const CUSTOM_EXECUTOR_SKILL_DIR = join(__dirname, '..', '..', 'examples', 'custom-executor', 'skills');
+const CUSTOM_EXECUTOR_PATH = join(__dirname, '..', '..', 'examples', 'custom-executor', 'echo-executor.sh');
 
 describe('runEvaluation', () => {
   it('dry-run: returns correct task schedule', async () => {
@@ -252,6 +256,28 @@ describe('runEvaluation', () => {
     const report = asDryRunReport(result.report);
     assert.equal(report.totalTasks, 6);
     assert.ok(report.tasks.every((task) => task.hasAssertions));
+  });
+
+  it('no-judge still keeps deterministic assertion scores', async () => {
+    const result = await runEvaluation({
+      samplesPath: CUSTOM_EXECUTOR_SAMPLES,
+      skillDir: CUSTOM_EXECUTOR_SKILL_DIR,
+      variants: ['baseline', 'v1'],
+      executorName: CUSTOM_EXECUTOR_PATH,
+      noJudge: true,
+      outputDir: null,
+      persistJob: false,
+    });
+    const report = result.report as Report;
+    const baseline = report.results[0]?.variants?.baseline;
+    const v1 = report.results[0]?.variants?.v1;
+    assert.equal(report.meta.judgeModel, null);
+    assert.equal(baseline?.assertions?.total, 1);
+    assert.equal(baseline?.assertions?.passed, 0);
+    assert.equal(baseline?.assertions?.score, 1);
+    assert.equal(v1?.assertions?.total, 1);
+    assert.equal(v1?.assertions?.passed, 0);
+    assert.equal(v1?.assertions?.score, 1);
   });
 });
 

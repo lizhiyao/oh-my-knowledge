@@ -103,7 +103,7 @@ export async function executeTasks({
 
     let gradeResult: GradeResult | null = null;
     let gradeMs = 0;
-    if (execResult.ok && !noJudge) {
+    if (execResult.ok) {
       const hasGradingCriteria = task.rubric || task.assertions?.length || (task.dimensions && Object.keys(task.dimensions).length);
       if (hasGradingCriteria) {
         if (verbose && onProgress) {
@@ -122,6 +122,7 @@ export async function executeTasks({
           sample: task._sample,
           executor: judgeExecutor,
           judgeModel,
+          allowLlmJudge: !noJudge,
           execMetrics: {
             costUSD: execResult.costUSD,
             durationMs: execResult.durationMs,

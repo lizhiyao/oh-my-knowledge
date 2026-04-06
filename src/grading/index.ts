@@ -12,6 +12,7 @@ interface GradeOptions {
   sample: Sample;
   executor: ExecutorFn;
   judgeModel: string;
+  allowLlmJudge?: boolean;
   execMetrics?: { costUSD?: number; durationMs?: number; numTurns?: number; toolCalls?: ToolCallInfo[]; turns?: TurnInfo[] };
   samplesDir?: string;
 }
@@ -19,7 +20,7 @@ interface GradeOptions {
 /**
  * Grade a model output against a sample's criteria.
  */
-export async function grade({ output, sample, executor, judgeModel, execMetrics = {}, samplesDir = '.' }: GradeOptions): Promise<GradeResult> {
+export async function grade({ output, sample, executor, judgeModel, allowLlmJudge = true, execMetrics = {}, samplesDir = '.' }: GradeOptions): Promise<GradeResult> {
   const results: {
     assertions?: AssertionResults;
     llmScore?: number;
@@ -33,7 +34,11 @@ export async function grade({ output, sample, executor, judgeModel, execMetrics 
   // 1. Deterministic assertions (pure, no LLM)
   const allAssertions = sample.assertions || [];
   const syncAssertions = allAssertions.filter((a) => !ASYNC_ASSERTION_TYPES.has(a.type));
-  const asyncAssertions = allAssertions.filter((a) => ASYNC_ASSERTION_TYPES.has(a.type));
+  const asyncAssertions = allAssertions.filter((assertion) => {
+    if (!ASYNC_ASSERTION_TYPES.has(assertion.type)) return false;
+    if (allowLlmJudge) return true;
+    return assertion.type === 'custom';
+  });
 
   if (syncAssertions.length > 0) {
     results.assertions = runAssertions(output, syncAssertions, { ...execMetrics });
@@ -68,7 +73,7 @@ export async function grade({ output, sample, executor, judgeModel, execMetrics 
   // Build execution trace summary for agent-aware judging
   const traceSummary = buildTraceSummary(execMetrics.turns, execMetrics.toolCalls);
 
-  if (sample.dimensions && Object.keys(sample.dimensions).length > 0) {
+  if (allowLlmJudge && sample.dimensions && Object.keys(sample.dimensions).length > 0) {
     // Multi-dimensional scoring
     results.dimensions = {};
     for (const [dim, rubric] of Object.entries(sample.dimensions)) {
@@ -89,7 +94,7 @@ export async function grade({ output, sample, executor, judgeModel, execMetrics 
     // Accumulate judge cost from all dimensions (add to any existing async assertion cost)
     const dimCost = dimValues.reduce((s, d) => s + (d.judgeCostUSD || 0), 0);
     if (dimCost > 0) results.judgeCostUSD = (results.judgeCostUSD || 0) + dimCost;
-  } else if (sample.rubric) {
+  } else if (allowLlmJudge && sample.rubric) {
     // Single rubric scoring
     const judge = await llmJudge({
       output,
