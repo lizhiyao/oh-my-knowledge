@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { loadSamples } from '../lib/infrastructure/index.js';
+import { loadSamples } from '../lib/load-samples.js';
 
 const tmp = (name: string) => join(tmpdir(), `omk-test-${Date.now()}-${name}`);
 

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildTasks, buildTasksFromArtifacts } from '../lib/domain/index.js';
+import { buildTasks, buildTasksFromArtifacts } from '../lib/task-planner.js';
 import type { Artifact, Sample } from '../lib/types.js';
 
 const makeSample = (id: string, prompt: string, context?: string): Sample => ({

@@ -1,6 +1,12 @@
-import { aggregateReport, analyzeResults, applyBlindMode, computeReportCoverage } from '../domain/index.js';
-import { DEFAULT_OUTPUT_DIR, createFileJobStore, DEFAULT_JOBS_DIR, generateRunId, persistReport } from '../infrastructure/index.js';
-import { executeTasks, preflight, stopAllServers } from '../runtime/index.js';
+import { analyzeResults } from '../analyzer.js';
+import { computeReportCoverage } from '../coverage-analyzer.js';
+import { aggregateReport, applyBlindMode, DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../evaluation-reporting.js';
+import { executeTasks, preflight } from '../evaluation-execution.js';
+import {
+  createFileJobStore,
+  DEFAULT_JOBS_DIR,
+} from '../job-store.js';
+import { stopAllServers } from '../mcp-resolver.js';
 import {
   buildEvaluationRequest,
   createFailedJob,

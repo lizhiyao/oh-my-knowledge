@@ -1,7 +1,8 @@
 import { resolve } from 'node:path';
-import { DEFAULT_OUTPUT_DIR, createFileJobStore, DEFAULT_JOBS_DIR, persistReport, resolveArtifacts } from '../infrastructure/index.js';
+import { DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../evaluation-reporting.js';
 import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finalizeEvaluationRun } from '../evaluation-job.js';
-import { generateRunId } from '../infrastructure/index.js';
+import { createFileJobStore, DEFAULT_JOBS_DIR } from '../job-store.js';
+import { resolveArtifacts } from '../skill-loader.js';
 import type { Artifact, JobStore, ProgressCallback, Report, VariantResult, VariantSummary } from '../types.js';
 
 interface RunSingleEvaluationOptions {

@@ -1,13 +1,15 @@
-export { buildTasks, buildTasksFromArtifacts } from './domain/index.js';
+export { buildTasks, buildTasksFromArtifacts } from './task-planner.js';
 export {
   DEFAULT_OUTPUT_DIR,
+  generateRunId,
+} from './evaluation-reporting.js';
+export {
   discoverEachSkills,
   discoverVariants,
-  generateRunId,
-  loadSamples,
   loadSkills,
   resolveArtifacts,
-} from './infrastructure/index.js';
+} from './skill-loader.js';
+export { loadSamples } from './load-samples.js';
 export {
   buildVarianceData,
   runEvaluation,

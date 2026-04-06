@@ -1,7 +1,8 @@
 import { resolve } from 'node:path';
-import { confidenceInterval, tTest } from '../domain/index.js';
-import { DEFAULT_OUTPUT_DIR, discoverEachSkills } from '../infrastructure/index.js';
-import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../runtime/index.js';
+import { DEFAULT_OUTPUT_DIR } from '../evaluation-reporting.js';
+import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executor.js';
+import { discoverEachSkills } from '../skill-loader.js';
+import { confidenceInterval, tTest } from '../statistics.js';
 import { executeEachEvaluationRuns } from './each-evaluation-workflow.js';
 import {
   buildDryRunEachArtifacts,
