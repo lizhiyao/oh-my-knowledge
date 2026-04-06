@@ -1,9 +1,13 @@
 import { resolve } from 'node:path';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executor.js';
 import { DEFAULT_OUTPUT_DIR } from '../evaluation-reporting.js';
-import type { ProgressCallback } from '../evaluation-execution.js';
 import { discoverEachSkills } from '../skill-loader.js';
 import { executeEachEvaluationRuns } from './each-evaluation-workflow.js';
+import type {
+  RunEachEvaluationOptions,
+  RunEvaluationOptions,
+  RunMultipleOptions,
+} from './evaluation-options.js';
 import {
   buildDryRunEachArtifacts,
   buildDryRunTaskReport,
@@ -16,7 +20,6 @@ import type {
   Report,
   Artifact,
   ExecutorFn,
-  JobStore,
 } from '../types.js';
 
 interface DryRunTask {
@@ -47,33 +50,6 @@ export interface DryRunReport extends DryRunBase {
   variants: string[];
   samplesPath: string;
   tasks: DryRunTask[];
-}
-
-export interface RunEvaluationOptions {
-  samplesPath: string;
-  skillDir: string;
-  variants?: string[];
-  artifacts?: Artifact[];
-  model?: string;
-  judgeModel?: string;
-  outputDir?: string | null;
-  project?: string;
-  owner?: string;
-  tags?: string[];
-  noJudge?: boolean;
-  dryRun?: boolean;
-  blind?: boolean;
-  concurrency?: number;
-  timeoutMs?: number;
-  noCache?: boolean;
-  executorName?: string;
-  judgeExecutorName?: string;
-  jobStore?: JobStore | null;
-  persistJob?: boolean;
-  onProgress?: ProgressCallback | null;
-  skipPreflight?: boolean;
-  mcpConfig?: string;
-  verbose?: boolean;
 }
 
 export async function runEvaluation({
@@ -170,36 +146,6 @@ export interface DryRunEachReport extends DryRunBase {
   artifacts: DryRunEachSkill[];
 }
 
-export interface SkillProgressInfo {
-  phase: string;
-  skill: string;
-  current: number;
-  total: number;
-}
-
-export interface RunEachEvaluationOptions {
-  skillDir: string;
-  model?: string;
-  judgeModel?: string;
-  outputDir?: string | null;
-  project?: string;
-  owner?: string;
-  tags?: string[];
-  noJudge?: boolean;
-  dryRun?: boolean;
-  concurrency?: number;
-  timeoutMs?: number;
-  executorName?: string;
-  judgeExecutorName?: string;
-  jobStore?: JobStore | null;
-  persistJob?: boolean;
-  onProgress?: ProgressCallback | null;
-  onSkillProgress?: ((info: SkillProgressInfo) => void) | null;
-  skipPreflight?: boolean;
-  mcpConfig?: string;
-  verbose?: boolean;
-}
-
 export async function runEachEvaluation({
   skillDir,
   model = DEFAULT_MODEL,
@@ -272,9 +218,7 @@ export async function runEachEvaluation({
   });
 }
 
-export type { RunMultipleOptions } from './variance-workflow.js';
-
-export async function runMultiple({ repeat = 1, onRepeatProgress, ...config }: import('./variance-workflow.js').RunMultipleOptions) {
+export async function runMultiple({ repeat = 1, onRepeatProgress, ...config }: RunMultipleOptions) {
   return executeVarianceWorkflow({
     repeat,
     onRepeatProgress,

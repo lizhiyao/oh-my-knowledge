@@ -1,11 +1,6 @@
 import { confidenceInterval, tTest } from '../statistics.js';
 import type { Report, VarianceData } from '../types.js';
-import type { RunEvaluationOptions } from './run-evaluation.js';
-
-export interface RunMultipleOptions extends RunEvaluationOptions {
-  repeat?: number;
-  onRepeatProgress?: ((info: { run: number; total: number }) => void) | null;
-}
+import type { RunEvaluationOptions } from './evaluation-options.js';
 
 export function buildVarianceData(runs: Report[]): VarianceData | null {
   if (runs.length <= 1) {

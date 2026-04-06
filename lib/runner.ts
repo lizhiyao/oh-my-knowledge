@@ -9,8 +9,10 @@ export {
 export type {
   DryRunEachReport,
   DryRunReport,
+} from './application/run-evaluation.js';
+export type {
   RunEachEvaluationOptions,
   RunEvaluationOptions,
   RunMultipleOptions,
   SkillProgressInfo,
-} from './application/run-evaluation.js';
+} from './application/evaluation-options.js';
