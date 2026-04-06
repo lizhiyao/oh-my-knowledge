@@ -5,10 +5,12 @@
 import { e, fmtCost, fmtDuration, COLORS } from './renderer/helpers.js';
 import { DEFAULT_LANG, t } from './renderer/i18n.js';
 import { layout } from './renderer/layout.js';
-import { renderSummaryCards } from './renderer/summary.js';
-import { renderAnalysis } from './renderer/analysis.js';
-import { renderAgentOverview } from './renderer/agent-overview.js';
-import { renderCoverageSection } from './renderer/coverage.js';
+import {
+  renderAgentOverview,
+  renderAnalysis,
+  renderCoverageSection,
+  renderSummaryCards,
+} from './renderer/summary.js';
 import { renderSampleTable } from './renderer/table.js';
 import { renderTrendsBody } from './renderer/trends.js';
 import type { Report, Lang } from './types.js';

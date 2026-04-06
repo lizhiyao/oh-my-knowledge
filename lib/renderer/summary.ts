@@ -1,6 +1,6 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS } from './helpers.js';
 import { t } from './i18n.js';
-import type { Lang, VariantSummary } from '../types.js';
+import type { AnalysisResult, Insight, KnowledgeCoverage, Lang, VariantSummary } from '../types.js';
 
 export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang): string {
   // Build comparison table: variants as rows, dimensions as columns
@@ -162,4 +162,242 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       <tbody>${rows}</tbody>
     </table>
     </div>`;
+}
+
+const CONCLUSION_TYPES = new Set([
+  'efficiency_gap', 'tool_count_gap', 'high_cost_sample',
+]);
+
+function isConclusion(insight: Insight): boolean {
+  return CONCLUSION_TYPES.has(insight.type);
+}
+
+function severityDot(severity: string): string {
+  const color: Record<string, string> = {
+    error: 'var(--red)',
+    warning: 'var(--yellow)',
+    info: 'var(--accent)',
+  };
+  return `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${color[severity] || 'var(--text-muted)'};margin-right:8px;flex-shrink:0;margin-top:6px"></span>`;
+}
+
+function renderSummaryStructured(summary: string): string {
+  const markerRegex = /【([^】]+)】/g;
+  const markers: Array<{ label: string; start: number; contentStart: number }> = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = markerRegex.exec(summary)) !== null) {
+    markers.push({ label: match[1], start: match.index, contentStart: match.index + match[0].length });
+  }
+
+  const sections: Array<{ label: string; content: string }> = [];
+  for (let i = 0; i < markers.length; i++) {
+    const end = i + 1 < markers.length ? markers[i + 1].start : summary.length;
+    sections.push({ label: markers[i].label, content: summary.slice(markers[i].contentStart, end).trim() });
+  }
+
+  if (sections.length === 0) {
+    return `<div style="padding:14px 18px;font-size:13px;line-height:1.8;color:var(--text-secondary);background:var(--bg-surface);border-radius:var(--radius);border:1px solid var(--border)">${e(summary)}</div>`;
+  }
+
+  const sectionHtml = sections.map((section) => `
+      <div style="display:flex;gap:12px;align-items:baseline">
+        <span style="flex-shrink:0;font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:0.03em;min-width:56px">${e(section.label)}</span>
+        <span style="color:var(--text-secondary);font-size:13px;line-height:1.7">${e(section.content)}</span>
+      </div>`).join('');
+
+  return `
+    <div style="padding:14px 18px;background:var(--bg-surface);border-radius:var(--radius);border:1px solid var(--border);display:flex;flex-direction:column;gap:8px">
+      ${sectionHtml}
+    </div>`;
+}
+
+export function renderAnalysis(analysis: AnalysisResult | undefined, lang: Lang): string {
+  if (!analysis) return '';
+  const { insights, suggestions } = analysis;
+  if ((!insights || insights.length === 0) && (!suggestions || suggestions.length === 0)) return '';
+
+  const issues = (insights || []).filter((insight) => !isConclusion(insight));
+  const issueLabel = lang === 'zh' ? '问题与建议' : 'Issues & Suggestions';
+  const safeSuggestions = suggestions || [];
+
+  let issuesHtml = '';
+  if (issues.length > 0 || safeSuggestions.length > 0) {
+    const maxRows = Math.max(issues.length, safeSuggestions.length);
+    const rows: string[] = [];
+    for (let i = 0; i < maxRows; i++) {
+      const issue = issues[i];
+      const suggestion = safeSuggestions[i];
+      const issueContent = issue
+        ? `${severityDot(issue.severity)}<span>${e(issue.message)}</span>`
+        : '';
+      const suggestionContent = suggestion
+        ? e(suggestion)
+        : `<span style="color:var(--text-faint)">—</span>`;
+
+      rows.push(`
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:10px 16px;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:flex-start;color:var(--text-secondary);font-size:12.5px;line-height:1.6">${issueContent}</div>
+          <div style="color:var(--text-muted);font-size:12.5px;line-height:1.6">${suggestionContent}</div>
+        </div>`);
+    }
+
+    issuesHtml = `
+      <div style="margin-top:12px">
+        <h3 style="font-size:12px;color:var(--text-muted);font-weight:600;margin:0 0 8px;letter-spacing:0.03em">${issueLabel}</h3>
+        <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:8px 16px;border-bottom:1px solid var(--border)">
+            <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em">${lang === 'zh' ? '问题' : 'Issue'}</div>
+            <div style="font-size:11px;font-weight:500;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.04em">${lang === 'zh' ? '建议' : 'Suggestion'}</div>
+          </div>
+          ${rows.join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  const summaryHtml = analysis.summary
+    ? renderSummaryStructured(analysis.summary)
+    : '';
+
+  return `
+    <h2 data-i18n="autoAnalysis">${t('autoAnalysis', lang)}</h2>
+    ${summaryHtml}
+    ${issuesHtml}
+  `;
+}
+
+export function renderAgentOverview(variants: string[], summary: Record<string, VariantSummary>, lang: Lang): string {
+  const hasAgentData = variants.some((variant) => summary[variant]?.avgToolCalls != null && summary[variant].avgToolCalls! > 0);
+  if (!hasAgentData) return '';
+
+  const variantCards = variants.map((variant, i) => {
+    const stats = summary[variant];
+    if (!stats) return '';
+    const color = COLORS[i % COLORS.length];
+    const avgTools = stats.avgToolCalls ?? 0;
+    const successRate = stats.toolSuccessRate != null ? `${(stats.toolSuccessRate * 100).toFixed(0)}%` : '-';
+    const successRateColor = (stats.toolSuccessRate ?? 1) >= 0.8 ? 'var(--green)' : 'var(--red)';
+    const turns = stats.avgNumTurns || 0;
+    const distributionEntries = Object.entries(stats.toolDistribution || {}).sort((a, b) => b[1] - a[1]);
+    const maxCount = distributionEntries.length > 0 ? distributionEntries[0][1] : 0;
+    const distributionBars = distributionEntries.map(([tool, count]) => {
+      const pct = maxCount > 0 ? Math.max(8, (count / maxCount) * 100) : 0;
+      return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
+        <span style="font-size:11px;color:var(--text-muted);width:100px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0" title="${e(tool)}">${e(tool)}</span>
+        <div style="flex:1;height:8px;background:var(--bg-surface);border-radius:4px">
+          <div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
+        </div>
+        <span style="font-size:11px;color:var(--text-secondary);min-width:20px">${count}</span>
+      </div>`;
+    }).join('');
+
+    return `<div style="flex:1;min-width:240px;padding:16px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);border-left:3px solid ${color}">
+      <div style="font-weight:600;margin-bottom:12px">${e(variant)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <div>
+          <div style="font-size:11px;color:var(--text-muted)">${t('agentAvgTurns', lang)}</div>
+          <div style="font-size:20px;font-weight:600">${turns}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text-muted)">${t('agentAvgTools', lang)}</div>
+          <div style="font-size:20px;font-weight:600">${avgTools}</div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text-muted)">${t('agentToolSuccess', lang)}</div>
+          <div style="font-size:20px;font-weight:600;color:${successRateColor}">${successRate}</div>
+        </div>
+      </div>
+      ${distributionEntries.length > 0 ? `
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${t('agentToolDist', lang)}</div>
+        ${distributionBars}
+      ` : ''}
+    </div>`;
+  }).join('');
+
+  return `
+    <section style="margin-top:24px">
+      <h2>${t('agentOverview', lang)}</h2>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        ${variantCards}
+      </div>
+    </section>
+  `;
+}
+
+export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage> | undefined, lang: Lang): string {
+  if (!coverage || Object.keys(coverage).length === 0) return '';
+
+  const variantSections = Object.entries(coverage).map(([variant, knowledgeCoverage]) => {
+    if (knowledgeCoverage.filesTotal === 0) return '';
+
+    const pct = Math.round(knowledgeCoverage.fileCoverageRate * 100);
+    const pctColor = pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--yellow)' : 'var(--red)';
+    const barW = Math.max(2, pct);
+
+    const fileRows = knowledgeCoverage.entries
+      .sort((a, b) => (a.accessed === b.accessed ? 0 : a.accessed ? -1 : 1))
+      .map((entry) => {
+        const icon = entry.accessed ? '✓' : '✗';
+        const color = entry.accessed ? 'var(--green)' : 'var(--text-muted)';
+        const countBadge = entry.accessCount > 1
+          ? `<span style="font-size:10px;color:var(--accent);margin-left:4px">×${entry.accessCount}</span>`
+          : '';
+        const lines = entry.lineCount ? `<span style="font-size:10px;color:var(--text-muted);margin-left:4px">${entry.lineCount}L</span>` : '';
+        const typeTag = `<span style="font-size:10px;padding:1px 4px;border-radius:2px;background:var(--bg-surface);color:var(--text-muted);margin-left:4px">${e(entry.type)}</span>`;
+        return `<div style="display:flex;align-items:center;gap:4px;padding:2px 0;font-size:12px">
+          <span style="color:${color};width:16px;text-align:center">${icon}</span>
+          <span style="color:${entry.accessed ? 'var(--text-primary)' : 'var(--text-muted)'};${entry.accessed ? '' : 'text-decoration:line-through;opacity:0.6'}">${e(entry.path)}</span>
+          ${typeTag}${lines}${countBadge}
+        </div>`;
+      }).join('');
+
+    const uncoveredByType: Record<string, string[]> = {};
+    for (const entry of knowledgeCoverage.entries.filter((item) => !item.accessed)) {
+      const category = entry.path.startsWith('repos/') ? 'code' : entry.type;
+      (uncoveredByType[category] = uncoveredByType[category] || []).push(entry.path);
+    }
+    const hintLines: string[] = [];
+    const typeLabels: Record<string, string> = lang === 'zh'
+      ? { principle: '原则文件', semantic: '语义索引', design: '设计文档', code: '代码路径', script: '脚本工具', other: '其他知识' }
+      : { principle: 'Principles', semantic: 'Semantic index', design: 'Design docs', code: 'Code paths', script: 'Scripts', other: 'Other' };
+    for (const [type, files] of Object.entries(uncoveredByType)) {
+      const label = typeLabels[type] || type;
+      hintLines.push(`<strong>${label}</strong>（${files.length}）：${files.slice(0, 3).map((file) => `<code>${e(file)}</code>`).join(', ')}${files.length > 3 ? ` +${files.length - 3}` : ''}`);
+    }
+    const uncoveredHint = hintLines.length > 0
+      ? `<div style="font-size:11px;color:var(--text-muted);margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
+          <div style="margin-bottom:4px">${lang === 'zh' ? '💡 建议从以下维度补充测试用例：' : '💡 Consider adding test cases for:'}</div>
+          ${hintLines.map((line) => `<div style="margin:2px 0">${line}</div>`).join('')}
+        </div>`
+      : '';
+
+    return `<div style="flex:1;min-width:280px;padding:16px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <strong>${e(variant)}</strong>
+        <span style="font-size:20px;font-weight:600;color:${pctColor}">${pct}%</span>
+      </div>
+      <div style="height:8px;background:var(--bg-card);border-radius:4px;margin-bottom:8px">
+        <div style="width:${barW}%;height:100%;background:${pctColor};border-radius:4px"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">${knowledgeCoverage.filesCovered}/${knowledgeCoverage.filesTotal} ${lang === 'zh' ? '文件被访问' : 'files accessed'} · ${knowledgeCoverage.grepPatternsUsed} ${lang === 'zh' ? '次搜索' : 'searches'}</div>
+      ${fileRows}
+      ${uncoveredHint}
+    </div>`;
+  }).join('');
+
+  const title = lang === 'zh' ? '测评用例知识覆盖率' : 'Test Case Knowledge Coverage';
+  const desc = lang === 'zh'
+    ? '当前测试用例触及了 artifact 知识域中多少文件。覆盖率低说明需要补充测试样本，而非知识本身不完整。'
+    : 'How much of the artifact\'s knowledge domain was exercised by current test cases. Low coverage suggests more test samples are needed.';
+
+  return `
+    <section style="margin-top:24px">
+      <h2>${title}</h2>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${desc}</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        ${variantSections}
+      </div>
+    </section>
+  `;
 }

@@ -12,9 +12,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { extractAgentTrace } from '../lib/runtime/index.js';
 import { runAssertions, buildTraceSummary } from '../lib/grader.js';
+import { renderAgentOverview } from '../lib/renderer/summary.js';
 import { buildVariantResult, buildVariantSummary } from '../lib/schema.js';
 import { analyzeResults } from '../lib/analyzer.js';
-import { renderAgentOverview } from '../lib/renderer/agent-overview.js';
 import type { ExecResult, Report, ToolCallInfo, TurnInfo } from '../lib/types.js';
 
 // ---------------------------------------------------------------------------
@@ -359,17 +359,21 @@ describe('schema agent metrics', () => {
 
   it('buildVariantSummary aggregates agent metrics', () => {
     const entries = [
-      buildVariantResult({ ...baseExecResult, turns: [
-        { role: 'assistant', content: 'read', toolCalls: [{ tool: 'Read', input: {}, output: 'data', success: true }] },
-        { role: 'tool', content: 'data' },
-        { role: 'assistant', content: 'answer' },
-      ] }, null),
-      buildVariantResult({ ...baseExecResult, toolCalls: [
-        { tool: 'Glob', input: {}, output: 'files', success: true },
-      ], turns: [
-        { role: 'assistant', content: 'glob', toolCalls: [{ tool: 'Glob', input: {}, output: 'files', success: true }] },
-        { role: 'tool', content: 'files' },
-      ] }, null),
+      buildVariantResult({
+        ...baseExecResult, turns: [
+          { role: 'assistant', content: 'read', toolCalls: [{ tool: 'Read', input: {}, output: 'data', success: true }] },
+          { role: 'tool', content: 'data' },
+          { role: 'assistant', content: 'answer' },
+        ]
+      }, null),
+      buildVariantResult({
+        ...baseExecResult, toolCalls: [
+          { tool: 'Glob', input: {}, output: 'files', success: true },
+        ], turns: [
+          { role: 'assistant', content: 'glob', toolCalls: [{ tool: 'Glob', input: {}, output: 'files', success: true }] },
+          { role: 'tool', content: 'files' },
+        ]
+      }, null),
     ];
     const summary = buildVariantSummary(entries);
     assert.equal(summary.avgToolCalls, 2); // (3+1)/2
@@ -484,35 +488,59 @@ describe('analyzer agent insights', () => {
         {
           sample_id: 's1',
           variants: {
-            baseline: { assertions: { passed: 1, total: 2, score: 3, details: [
-              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
-              { type: 'turns_max', value: 3, weight: 1, passed: false },
-            ] } },
-            'project-env': { assertions: { passed: 1, total: 2, score: 3, details: [
-              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
-              { type: 'turns_max', value: 3, weight: 1, passed: false },
-            ] } },
-            skill: { assertions: { passed: 1, total: 2, score: 3, details: [
-              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
-              { type: 'turns_max', value: 3, weight: 1, passed: false },
-            ] } },
+            baseline: {
+              assertions: {
+                passed: 1, total: 2, score: 3, details: [
+                  { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+                  { type: 'turns_max', value: 3, weight: 1, passed: false },
+                ]
+              }
+            },
+            'project-env': {
+              assertions: {
+                passed: 1, total: 2, score: 3, details: [
+                  { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+                  { type: 'turns_max', value: 3, weight: 1, passed: false },
+                ]
+              }
+            },
+            skill: {
+              assertions: {
+                passed: 1, total: 2, score: 3, details: [
+                  { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+                  { type: 'turns_max', value: 3, weight: 1, passed: false },
+                ]
+              }
+            },
           },
         },
         {
           sample_id: 's2',
           variants: {
-            baseline: { assertions: { passed: 1, total: 2, score: 3, details: [
-              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
-              { type: 'turns_max', value: 3, weight: 1, passed: false },
-            ] } },
-            'project-env': { assertions: { passed: 1, total: 2, score: 3, details: [
-              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
-              { type: 'turns_max', value: 3, weight: 1, passed: false },
-            ] } },
-            skill: { assertions: { passed: 1, total: 2, score: 3, details: [
-              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
-              { type: 'turns_max', value: 3, weight: 1, passed: false },
-            ] } },
+            baseline: {
+              assertions: {
+                passed: 1, total: 2, score: 3, details: [
+                  { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+                  { type: 'turns_max', value: 3, weight: 1, passed: false },
+                ]
+              }
+            },
+            'project-env': {
+              assertions: {
+                passed: 1, total: 2, score: 3, details: [
+                  { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+                  { type: 'turns_max', value: 3, weight: 1, passed: false },
+                ]
+              }
+            },
+            skill: {
+              assertions: {
+                passed: 1, total: 2, score: 3, details: [
+                  { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+                  { type: 'turns_max', value: 3, weight: 1, passed: false },
+                ]
+              }
+            },
           },
         },
       ],
@@ -534,35 +562,59 @@ describe('analyzer agent insights', () => {
         {
           sample_id: 's1',
           variants: {
-            baseline: { assertions: { passed: 0, total: 2, score: 1, details: [
-              { type: 'tools_called', value: 'Read', weight: 1, passed: false },
-              { type: 'turns_max', value: 3, weight: 1, passed: false },
-            ] } },
-            'project-env': { assertions: { passed: 1, total: 2, score: 3, details: [
-              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
-              { type: 'turns_max', value: 3, weight: 1, passed: false },
-            ] } },
-            skill: { assertions: { passed: 2, total: 2, score: 5, details: [
-              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
-              { type: 'turns_max', value: 3, weight: 1, passed: true },
-            ] } },
+            baseline: {
+              assertions: {
+                passed: 0, total: 2, score: 1, details: [
+                  { type: 'tools_called', value: 'Read', weight: 1, passed: false },
+                  { type: 'turns_max', value: 3, weight: 1, passed: false },
+                ]
+              }
+            },
+            'project-env': {
+              assertions: {
+                passed: 1, total: 2, score: 3, details: [
+                  { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+                  { type: 'turns_max', value: 3, weight: 1, passed: false },
+                ]
+              }
+            },
+            skill: {
+              assertions: {
+                passed: 2, total: 2, score: 5, details: [
+                  { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+                  { type: 'turns_max', value: 3, weight: 1, passed: true },
+                ]
+              }
+            },
           },
         },
         {
           sample_id: 's2',
           variants: {
-            baseline: { assertions: { passed: 0, total: 2, score: 1, details: [
-              { type: 'tools_called', value: 'Read', weight: 1, passed: false },
-              { type: 'turns_max', value: 3, weight: 1, passed: false },
-            ] } },
-            'project-env': { assertions: { passed: 1, total: 2, score: 3, details: [
-              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
-              { type: 'turns_max', value: 3, weight: 1, passed: false },
-            ] } },
-            skill: { assertions: { passed: 2, total: 2, score: 5, details: [
-              { type: 'tools_called', value: 'Read', weight: 1, passed: true },
-              { type: 'turns_max', value: 3, weight: 1, passed: true },
-            ] } },
+            baseline: {
+              assertions: {
+                passed: 0, total: 2, score: 1, details: [
+                  { type: 'tools_called', value: 'Read', weight: 1, passed: false },
+                  { type: 'turns_max', value: 3, weight: 1, passed: false },
+                ]
+              }
+            },
+            'project-env': {
+              assertions: {
+                passed: 1, total: 2, score: 3, details: [
+                  { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+                  { type: 'turns_max', value: 3, weight: 1, passed: false },
+                ]
+              }
+            },
+            skill: {
+              assertions: {
+                passed: 2, total: 2, score: 5, details: [
+                  { type: 'tools_called', value: 'Read', weight: 1, passed: true },
+                  { type: 'turns_max', value: 3, weight: 1, passed: true },
+                ]
+              }
+            },
           },
         },
       ],
@@ -582,14 +634,22 @@ describe('analyzer agent insights', () => {
       results: [{
         sample_id: 's1',
         variants: {
-          baseline: { assertions: { passed: 1, total: 2, score: 3, details: [
-            { type: 'contains', value: 'OMK_RUNTIME', weight: 1, passed: false },
-            { type: 'turns_max', value: 4, weight: 1, passed: true },
-          ] } },
-          'project-env': { assertions: { passed: 2, total: 2, score: 5, details: [
-            { type: 'contains', value: 'OMK_RUNTIME', weight: 1, passed: true },
-            { type: 'turns_max', value: 4, weight: 1, passed: true },
-          ] } },
+          baseline: {
+            assertions: {
+              passed: 1, total: 2, score: 3, details: [
+                { type: 'contains', value: 'OMK_RUNTIME', weight: 1, passed: false },
+                { type: 'turns_max', value: 4, weight: 1, passed: true },
+              ]
+            }
+          },
+          'project-env': {
+            assertions: {
+              passed: 2, total: 2, score: 5, details: [
+                { type: 'contains', value: 'OMK_RUNTIME', weight: 1, passed: true },
+                { type: 'turns_max', value: 4, weight: 1, passed: true },
+              ]
+            }
+          },
         },
       }],
     });
