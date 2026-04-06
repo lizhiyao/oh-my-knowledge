@@ -1,25 +1,71 @@
 import { resolve } from 'node:path';
+import { confidenceInterval, tTest } from '../domain/index.js';
 import { DEFAULT_OUTPUT_DIR, discoverEachSkills } from '../infrastructure/index.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../runtime/index.js';
 import { executeEachEvaluationRuns } from './each-evaluation-workflow.js';
-import type {
-  RunEachEvaluationOptions,
-  RunEvaluationOptions,
-  RunMultipleOptions,
-} from './evaluation-options.js';
 import {
   buildDryRunEachArtifacts,
   buildDryRunTaskReport,
   prepareEvaluationRun,
 } from './evaluation-preparation.js';
 import { executeEvaluationPipeline } from './evaluation-pipeline.js';
-import { executeVarianceWorkflow } from './variance-workflow.js';
 
 import type {
-  Report,
   Artifact,
   ExecutorFn,
+  JobStore,
+  ProgressCallback,
+  Report,
+  VarianceData,
 } from '../types.js';
+
+export interface SkillProgressInfo {
+  phase: string;
+  skill: string;
+  current: number;
+  total: number;
+}
+
+interface CommonEvaluationOptions {
+  model?: string;
+  judgeModel?: string;
+  outputDir?: string | null;
+  project?: string;
+  owner?: string;
+  tags?: string[];
+  noJudge?: boolean;
+  concurrency?: number;
+  timeoutMs?: number;
+  executorName?: string;
+  judgeExecutorName?: string;
+  jobStore?: JobStore | null;
+  persistJob?: boolean;
+  onProgress?: ProgressCallback | null;
+  skipPreflight?: boolean;
+  mcpConfig?: string;
+  verbose?: boolean;
+}
+
+export interface RunEvaluationOptions extends CommonEvaluationOptions {
+  samplesPath: string;
+  skillDir: string;
+  variants?: string[];
+  artifacts?: Artifact[];
+  dryRun?: boolean;
+  blind?: boolean;
+  noCache?: boolean;
+}
+
+export interface RunEachEvaluationOptions extends CommonEvaluationOptions {
+  skillDir: string;
+  dryRun?: boolean;
+  onSkillProgress?: ((info: SkillProgressInfo) => void) | null;
+}
+
+export interface RunMultipleOptions extends RunEvaluationOptions {
+  repeat?: number;
+  onRepeatProgress?: ((info: { run: number; total: number }) => void) | null;
+}
 
 interface DryRunTask {
   sample_id: string;
@@ -145,6 +191,34 @@ export interface DryRunEachReport extends DryRunBase {
   artifacts: DryRunEachSkill[];
 }
 
+export function buildVarianceData(runs: Report[]): VarianceData | null {
+  if (runs.length <= 1) {
+    return null;
+  }
+
+  const variants = runs[0].meta.variants || [];
+  const perVariant: Record<string, { scores: number[]; mean: number; lower: number; upper: number; stddev: number }> = {};
+  for (const variant of variants) {
+    const scores = runs
+      .map((run) => run.summary?.[variant]?.avgCompositeScore)
+      .filter((score): score is number => typeof score === 'number');
+    perVariant[variant] = { scores, ...confidenceInterval(scores) };
+  }
+
+  const comparisons: Array<{ a: string; b: string; tStatistic: number; df: number; significant: boolean }> = [];
+  for (let i = 0; i < variants.length; i++) {
+    for (let j = i + 1; j < variants.length; j++) {
+      comparisons.push({
+        a: variants[i],
+        b: variants[j],
+        ...tTest(perVariant[variants[i]].scores, perVariant[variants[j]].scores),
+      });
+    }
+  }
+
+  return { runs: runs.length, perVariant, comparisons };
+}
+
 export async function runEachEvaluation({
   skillDir,
   model = DEFAULT_MODEL,
@@ -218,13 +292,25 @@ export async function runEachEvaluation({
 }
 
 export async function runMultiple({ repeat = 1, onRepeatProgress, ...config }: RunMultipleOptions) {
-  return executeVarianceWorkflow({
-    repeat,
-    onRepeatProgress,
-    config,
-    runEvaluation: async (options) => {
-      const result = await runEvaluation(options);
-      return { report: result.report as Report, filePath: result.filePath };
-    },
-  });
+  const runs: Report[] = [];
+  const savedOutputDir = config.outputDir;
+
+  for (let i = 0; i < repeat; i++) {
+    onRepeatProgress?.({ run: i + 1, total: repeat });
+    const isLast = i === repeat - 1;
+    const { report } = await runEvaluation({
+      ...config,
+      outputDir: isLast ? savedOutputDir : null,
+      persistJob: isLast,
+    });
+    runs.push(report as Report);
+  }
+
+  const report = runs[runs.length - 1];
+  const aggregated = buildVarianceData(runs);
+  if (aggregated) {
+    report.variance = aggregated;
+  }
+
+  return { report, aggregated, filePath: null };
 }

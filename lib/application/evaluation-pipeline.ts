@@ -1,22 +1,180 @@
-import { aggregateReport } from '../domain/index.js';
-import { DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../infrastructure/index.js';
+import { aggregateReport, analyzeResults, applyBlindMode, computeReportCoverage } from '../domain/index.js';
+import { DEFAULT_OUTPUT_DIR, createFileJobStore, DEFAULT_JOBS_DIR, generateRunId, persistReport } from '../infrastructure/index.js';
 import { executeTasks, preflight, stopAllServers } from '../runtime/index.js';
-import { finalizeEvaluationReport } from './evaluation-report.js';
 import {
-  finalizeSuccessfulEvaluationRun,
-  initializeEvaluationRunState,
-  persistFailedEvaluationJob,
-  persistSuccessfulEvaluationJob,
-} from './evaluation-run-state.js';
+  buildEvaluationRequest,
+  createFailedJob,
+  createEvaluationRun,
+  createQueuedJob,
+  createSucceededJob,
+  finalizeEvaluationRun,
+  markJobRunning,
+  failEvaluationRun,
+} from '../evaluation-job.js';
 import type {
   Artifact,
+  EvaluationJob,
+  EvaluationRequest,
+  EvaluationRun,
   ExecutorFn,
   JobStore,
   ProgressCallback,
   Report,
   Sample,
   Task,
+  VariantResult,
 } from '../types.js';
+
+type EvaluationResults = Record<string, Record<string, VariantResult>>;
+
+interface EvaluationRunState {
+  request: EvaluationRequest;
+  runId: string;
+  jobId: string;
+  createdAt: string;
+  startedAt: string;
+  initialRun: EvaluationRun;
+  runningJob: EvaluationJob;
+  resolvedJobStore: JobStore | null;
+}
+
+async function initializeEvaluationRunState({
+  samplesPath,
+  skillDir,
+  artifacts,
+  model,
+  judgeModel,
+  noJudge,
+  executorName,
+  judgeExecutorName,
+  concurrency,
+  timeoutMs,
+  noCache,
+  blind,
+  project,
+  owner,
+  tags,
+  runId,
+  jobStore,
+  persistJob,
+}: {
+  samplesPath: string;
+  skillDir: string;
+  artifacts: Artifact[];
+  model: string;
+  judgeModel: string;
+  noJudge: boolean;
+  executorName: string;
+  judgeExecutorName: string;
+  concurrency: number;
+  timeoutMs?: number;
+  noCache: boolean;
+  blind: boolean;
+  project?: string;
+  owner?: string;
+  tags?: string[];
+  runId: string;
+  jobStore?: JobStore | null;
+  persistJob?: boolean;
+}): Promise<EvaluationRunState> {
+  const request = buildEvaluationRequest({
+    samplesPath,
+    skillDir,
+    artifacts,
+    model,
+    judgeModel: noJudge ? null : judgeModel,
+    executor: executorName,
+    judgeExecutor: judgeExecutorName,
+    noJudge,
+    concurrency,
+    timeoutMs,
+    noCache,
+    dryRun: false,
+    blind,
+    project,
+    owner,
+    tags,
+  });
+  const createdAt = new Date().toISOString();
+  const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
+  const jobId = `job-${runId}`;
+  const resolvedJobStore = persistJob ? (jobStore ?? createFileJobStore(DEFAULT_JOBS_DIR)) : null;
+  const queuedJob = createQueuedJob({ jobId, request, createdAt });
+  if (resolvedJobStore) await resolvedJobStore.save(jobId, queuedJob);
+  const runningJob = markJobRunning(queuedJob, runId, startedAt);
+  if (resolvedJobStore) await resolvedJobStore.save(jobId, runningJob);
+  return { request, runId, jobId, createdAt, startedAt, initialRun, runningJob, resolvedJobStore };
+}
+
+function finalizeSuccessfulRun(state: EvaluationRunState) {
+  const finishedAt = new Date().toISOString();
+  const run = finalizeEvaluationRun(state.initialRun, finishedAt);
+  const job = createSucceededJob({
+    jobId: state.jobId,
+    runId: state.runId,
+    reportId: state.runId,
+    request: state.request,
+    createdAt: state.createdAt,
+    startedAt: state.startedAt,
+    finishedAt,
+  });
+  return { run, job };
+}
+
+async function persistSuccessfulJob(state: EvaluationRunState, job: EvaluationJob): Promise<void> {
+  if (state.resolvedJobStore) {
+    await state.resolvedJobStore.save(state.jobId, job);
+  }
+}
+
+async function persistFailedJob(state: EvaluationRunState, err: unknown): Promise<void> {
+  const finishedAt = new Date().toISOString();
+  const failedJob = createFailedJob({
+    job: { ...state.runningJob, runId: state.runId, startedAt: state.startedAt, finishedAt: undefined },
+    error: err instanceof Error ? err.message : String(err),
+    finishedAt,
+  });
+  void failEvaluationRun(state.initialRun, finishedAt);
+  if (state.resolvedJobStore) {
+    await state.resolvedJobStore.save(state.jobId, failedJob);
+  }
+}
+
+function finalizeEvaluationReport({
+  report,
+  results,
+  artifacts,
+  variantNames,
+  blind,
+  samplesPath,
+}: {
+  report: Report;
+  results: EvaluationResults;
+  artifacts: Artifact[];
+  variantNames: string[];
+  blind: boolean;
+  samplesPath: string;
+}): Report {
+  report.analysis = analyzeResults(report);
+
+  const hasToolData = Object.values(results).some((sampleResults) => (
+    Object.values(sampleResults).some((variantResult) => variantResult.toolCalls && variantResult.toolCalls.length > 0)
+  ));
+  if (hasToolData) {
+    const artifactContents = Object.fromEntries(artifacts.map((artifact) => [artifact.name, artifact.content]));
+    const artifactCwds = Object.fromEntries(artifacts.map((artifact) => [artifact.name, artifact.cwd || null]));
+    const coverage = computeReportCoverage(report, artifactContents, artifactCwds);
+    if (Object.keys(coverage).length > 0) {
+      report.analysis!.coverage = coverage;
+    }
+  }
+
+  if (blind) {
+    applyBlindMode(report, variantNames, `${variantNames.join(',')}:${samplesPath}`);
+  }
+
+  return report;
+}
 
 export interface EvaluationPipelineOptions {
   samplesPath: string;
@@ -117,7 +275,7 @@ export async function executeEvaluationPipeline({
       onProgress,
     });
 
-    const { run, job } = finalizeSuccessfulEvaluationRun(runState);
+    const { run, job } = finalizeSuccessfulRun(runState);
     const report = finalizeEvaluationReport({
       report: aggregateReport({
         runId: runState.runId,
@@ -142,10 +300,10 @@ export async function executeEvaluationPipeline({
       samplesPath,
     });
     const filePath = persistReport(report, outputDir);
-    await persistSuccessfulEvaluationJob(runState, job);
+    await persistSuccessfulJob(runState, job);
     return { report, filePath };
   } catch (err: unknown) {
-    await persistFailedEvaluationJob(runState, err);
+    await persistFailedJob(runState, err);
     throw err;
   } finally {
     await stopAllServers();
