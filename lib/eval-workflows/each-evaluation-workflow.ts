@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/evaluation-reporting.js';
 import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finalizeEvaluationRun } from '../eval-core/evaluation-job.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from '../server/job-store.js';
-import { resolveArtifacts } from '../data-loaders/skill-loader.js';
+import { resolveArtifacts } from '../inputs/skill-loader.js';
 import type { Artifact, JobStore, ProgressCallback, Report, VariantResult, VariantSummary } from '../types.js';
 
 interface RunSingleEvaluationOptions {

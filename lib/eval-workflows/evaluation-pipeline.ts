@@ -6,7 +6,7 @@ import {
   createFileJobStore,
   DEFAULT_JOBS_DIR,
 } from '../server/job-store.js';
-import { stopAllServers } from '../data-loaders/mcp-resolver.js';
+import { stopAllServers } from '../inputs/mcp-resolver.js';
 import {
   buildEvaluationRequest,
   createFailedJob,

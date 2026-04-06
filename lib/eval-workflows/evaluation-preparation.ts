@@ -1,10 +1,10 @@
 import { resolve } from 'node:path';
 import { buildTasksFromArtifacts } from '../eval-core/task-planner.js';
-import { loadSamples } from '../data-loaders/load-samples.js';
-import { resolveArtifacts } from '../data-loaders/skill-loader.js';
+import { loadSamples } from '../inputs/load-samples.js';
+import { resolveArtifacts } from '../inputs/skill-loader.js';
 import { buildVariantConfig } from '../eval-core/execution-strategy.js';
-import { loadMcpConfig, resolveMcpUrls } from '../data-loaders/mcp-resolver.js';
-import { resolveUrls } from '../data-loaders/url-fetcher.js';
+import { loadMcpConfig, resolveMcpUrls } from '../inputs/mcp-resolver.js';
+import { resolveUrls } from '../inputs/url-fetcher.js';
 import type { Artifact, McpServers, Sample, Task } from '../types.js';
 
 export interface PreparedEvaluationRun {

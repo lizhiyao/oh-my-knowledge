@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { discoverVariants } from './lib/data-loaders/skill-loader.js';
+import { discoverVariants } from './lib/inputs/skill-loader.js';
 import type {
   Report,
   VariantSummary,
@@ -609,7 +609,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
     allowPositionals: true,
   });
 
-  const { generateSamples } = await import('./lib/cli/generator.js');
+  const { generateSamples } = await import('./lib/authoring/generator.js');
   const { readFileSync, writeFileSync } = await import('node:fs');
   const count: number = Math.max(1, Number(values.count) || 5);
   const model: string = values.model as string;
@@ -739,7 +739,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
     else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
   }
 
-  const { evolveSkill } = await import('./lib/cli/evolver.js');
+  const { evolveSkill } = await import('./lib/authoring/evolver.js');
 
   process.stderr.write(`\n=== Evolution: ${skillPath} ===\n`);
 

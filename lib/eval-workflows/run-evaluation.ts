@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { DEFAULT_OUTPUT_DIR } from '../eval-core/evaluation-reporting.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
-import { discoverEachSkills } from '../data-loaders/skill-loader.js';
+import { discoverEachSkills } from '../inputs/skill-loader.js';
 import { confidenceInterval, tTest } from '../eval-core/statistics.js';
 import { executeEachEvaluationRuns } from './each-evaluation-workflow.js';
 import {
