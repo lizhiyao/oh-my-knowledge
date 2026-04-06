@@ -1,5 +1,5 @@
 import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finalizeEvaluationRun } from '../evaluation-job.js';
-import { generateRunId } from '../evaluation-reporting.js';
+import { generateRunId } from '../infrastructure/index.js';
 import type { Report, VariantResult, VariantSummary } from '../types.js';
 
 export interface EachSkillResult {

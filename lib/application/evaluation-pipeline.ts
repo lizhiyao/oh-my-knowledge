@@ -1,11 +1,6 @@
-import { stopAllServers } from '../mcp-resolver.js';
-import { executeTasks, preflight } from '../evaluation-execution.js';
-import {
-  aggregateReport,
-  generateRunId,
-  persistReport,
-  DEFAULT_OUTPUT_DIR,
-} from '../evaluation-reporting.js';
+import { aggregateReport } from '../domain/index.js';
+import { DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../infrastructure/index.js';
+import { executeTasks, preflight, stopAllServers } from '../runtime/index.js';
 import { finalizeEvaluationReport } from './evaluation-report.js';
 import {
   finalizeSuccessfulEvaluationRun,

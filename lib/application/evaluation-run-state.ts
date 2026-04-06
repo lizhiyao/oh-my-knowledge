@@ -1,4 +1,4 @@
-import { createFileJobStore, DEFAULT_JOBS_DIR } from '../job-store.js';
+import { createFileJobStore, DEFAULT_JOBS_DIR } from '../infrastructure/index.js';
 import {
   buildEvaluationRequest,
   createFailedJob,

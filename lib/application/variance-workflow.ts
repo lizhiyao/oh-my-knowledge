@@ -1,4 +1,4 @@
-import { confidenceInterval, tTest } from '../statistics.js';
+import { confidenceInterval, tTest } from '../domain/index.js';
 import type { Report, VarianceData } from '../types.js';
 import type { RunEvaluationOptions } from './evaluation-options.js';
 

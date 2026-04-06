@@ -1,7 +1,6 @@
 import { resolve } from 'node:path';
-import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executor.js';
-import { DEFAULT_OUTPUT_DIR } from '../evaluation-reporting.js';
-import { discoverEachSkills } from '../skill-loader.js';
+import { DEFAULT_OUTPUT_DIR, discoverEachSkills } from '../infrastructure/index.js';
+import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../runtime/index.js';
 import { executeEachEvaluationRuns } from './each-evaluation-workflow.js';
 import type {
   RunEachEvaluationOptions,

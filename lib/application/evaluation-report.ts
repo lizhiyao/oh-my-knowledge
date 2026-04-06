@@ -1,6 +1,4 @@
-import { analyzeResults } from '../analyzer.js';
-import { computeReportCoverage } from '../coverage-analyzer.js';
-import { applyBlindMode } from '../evaluation-reporting.js';
+import { analyzeResults, applyBlindMode, computeReportCoverage } from '../domain/index.js';
 import type { Artifact, Report, VariantResult } from '../types.js';
 
 type EvaluationResults = Record<string, Record<string, VariantResult>>;
