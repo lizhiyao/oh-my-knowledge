@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { runAssertions, grade, validateJsonSchema } from '../lib/grader.js';
+import { runAssertions, grade, validateJsonSchema } from '../lib/grading/index.js';
 import type { ExecResult, ExecutorFn } from '../lib/types.js';
 
 const unusedExecutor: ExecutorFn = async () => {

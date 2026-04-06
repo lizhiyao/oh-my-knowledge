@@ -10,11 +10,11 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { extractAgentTrace } from '../lib/executor.js';
-import { runAssertions, buildTraceSummary } from '../lib/grader.js';
+import { extractAgentTrace } from '../lib/executors/index.js';
+import { runAssertions, buildTraceSummary } from '../lib/grading/index.js';
 import { renderAgentOverview } from '../lib/renderer/summary.js';
-import { buildVariantResult, buildVariantSummary } from '../lib/schema.js';
-import { analyzeResults } from '../lib/analyzer.js';
+import { buildVariantResult, buildVariantSummary } from '../lib/eval-core/schema.js';
+import { analyzeResults } from '../lib/analysis/report-diagnostics.js';
 import type { ExecResult, Report, ToolCallInfo, TurnInfo } from '../lib/types.js';
 
 // ---------------------------------------------------------------------------

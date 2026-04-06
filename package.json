@@ -18,7 +18,7 @@
     "typecheck": "tsc --noEmit",
     "postbuild": "node -e \"const fs=require('fs'),f='dist/cli.js',c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!'))fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)\"",
     "lint": "eslint 'lib/**/*.ts' 'cli.ts' 'test/**/*.ts'",
-    "test": "yarn build && node --test 'dist/test/*.test.js'",
+    "test": "yarn build && node --test 'dist/test/**/*.test.js'",
     "ci": "yarn lint && yarn typecheck && yarn test",
     "prepublishOnly": "yarn build"
   },

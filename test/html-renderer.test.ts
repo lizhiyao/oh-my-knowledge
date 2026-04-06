@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { renderRunList, renderRunDetail } from '../lib/html-renderer.js';
+import { renderRunList, renderRunDetail } from '../lib/renderer/html-renderer.js';
 import type { Lang, Report } from '../lib/types.js';
 
 const SAMPLE_REPORT: Report = {
