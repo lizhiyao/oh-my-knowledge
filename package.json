@@ -10,8 +10,7 @@
     "node": ">=20"
   },
   "files": [
-    "dist/",
-    "examples/"
+    "dist/src/"
   ],
   "scripts": {
     "build": "tsc",

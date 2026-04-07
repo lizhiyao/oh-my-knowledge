@@ -569,21 +569,77 @@ async function handleReport(argv: string[]): Promise<void> {
 // handleInit
 // ---------------------------------------------------------------------------
 
+const INIT_SAMPLES = `[
+  {
+    "sample_id": "s001",
+    "prompt": "审查以下代码",
+    "context": "function authenticate(username, password) {\\n  const query = \`SELECT * FROM users WHERE name='\${username}' AND pass='\${password}'\`;\\n  return db.execute(query);\\n}",
+    "rubric": "应识别 SQL 注入风险，建议使用参数化查询",
+    "assertions": [
+      { "type": "contains", "value": "SQL", "weight": 1 },
+      { "type": "contains", "value": "注入", "weight": 1 },
+      { "type": "contains", "value": "参数化", "weight": 0.5 },
+      { "type": "not_contains", "value": "没有问题", "weight": 0.5 }
+    ],
+    "dimensions": {
+      "security": "是否准确识别出 SQL 注入漏洞并说明其危害",
+      "actionability": "是否给出可直接使用的参数化查询修复代码"
+    }
+  },
+  {
+    "sample_id": "s002",
+    "prompt": "审查以下代码",
+    "context": "async function fetchData(url) {\\n  const res = await fetch(url);\\n  const data = await res.json();\\n  return data;\\n}",
+    "rubric": "应指出缺少错误处理（网络异常、非 JSON 响应、HTTP 错误状态码）",
+    "assertions": [
+      { "type": "contains", "value": "错误处理", "weight": 1 },
+      { "type": "regex", "pattern": "try[\\\\s\\\\S]*catch|错误|异常|error", "flags": "i", "weight": 1 },
+      { "type": "contains", "value": "status", "weight": 0.5 }
+    ],
+    "dimensions": {
+      "robustness": "是否指出了所有缺失的错误处理场景",
+      "actionability": "是否给出了完整的 try-catch 修复代码"
+    }
+  },
+  {
+    "sample_id": "s003",
+    "prompt": "审查以下代码",
+    "context": "function renderComment(comment) {\\n  document.getElementById('output').innerHTML = '<p>' + comment + '</p>';\\n}",
+    "rubric": "应识别 XSS 风险，建议使用 textContent 或转义 HTML",
+    "assertions": [
+      { "type": "contains", "value": "XSS", "weight": 1 },
+      { "type": "regex", "pattern": "textContent|转义|escape|sanitize", "flags": "i", "weight": 1 },
+      { "type": "contains", "value": "innerHTML", "weight": 0.5 }
+    ],
+    "dimensions": {
+      "security": "是否准确识别出 XSS 漏洞并说明攻击方式",
+      "actionability": "是否给出使用 textContent 或转义的修复代码"
+    }
+  }
+]
+`;
+
+const INIT_SKILL_V1 = '你是一个代码审查助手。请审查用户提供的代码，指出潜在问题。';
+
+const INIT_SKILL_V2 = `你是一个高级代码审查专家。请从以下维度审查用户提供的代码：
+
+1. 安全性：是否存在注入、XSS、敏感信息泄露等风险
+2. 健壮性：是否有适当的错误处理和边界检查
+3. 可维护性：命名是否清晰、结构是否合理
+4. 性能：是否存在明显的性能瓶颈
+
+对每个维度给出具体的改进建议，并标注严重程度（高/中/低）。
+`;
+
 async function handleInit(argv: string[]): Promise<void> {
   const targetDir: string = resolve(argv[0] || '.');
+  const { writeFileSync, mkdirSync } = await import('node:fs');
 
-  const { cpSync, mkdirSync } = await import('node:fs');
-  const { fileURLToPath } = await import('node:url');
-  const { dirname } = await import('node:path');
+  mkdirSync(join(targetDir, 'skills'), { recursive: true });
+  writeFileSync(join(targetDir, 'eval-samples.json'), INIT_SAMPLES);
+  writeFileSync(join(targetDir, 'skills', 'v1.md'), INIT_SKILL_V1);
+  writeFileSync(join(targetDir, 'skills', 'v2.md'), INIT_SKILL_V2);
 
-  const __dirname: string = dirname(fileURLToPath(import.meta.url));
-  const examplesDir: string = join(__dirname, 'examples', 'code-review');
-
-  if (!existsSync(targetDir)) {
-    mkdirSync(targetDir, { recursive: true });
-  }
-
-  cpSync(examplesDir, targetDir, { recursive: true });
   console.log(`Eval project scaffolded at: ${targetDir}`);
   console.log('');
   console.log('Next steps:');
