@@ -1,7 +1,7 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
-import type { AnalysisResult, Insight, KnowledgeCoverage, Lang, VariantSummary } from '../types.js';
+import type { AnalysisResult, Insight, KnowledgeCoverage, Lang, VarianceData, VariantSummary } from '../types.js';
 
-export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang): string {
+export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang, variance?: VarianceData): string {
   // Build comparison table: variants as rows, dimensions as columns
   const headerCols = [
     { key: 'dimQuality', label: t('dimQuality', lang) },
@@ -14,6 +14,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
 
   const rows = variants.map((v, i) => {
     const s = summary[v] || {} as VariantSummary;
+    const vd = variance?.perVariant[v];
     const color = COLORS[i % COLORS.length];
 
     // Quality — show composite + layered breakdown
@@ -41,6 +42,11 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     if (s.avgQualityScore != null) {
       layeredDetailParts.push(`<span>${qualityLabel}: ${s.avgQualityScore}</span>`);
       hintParts.push(`${qualityLabel}: ${s.avgQualityScore}`);
+    }
+
+    // Append CI from variance data into quality detail
+    if (vd) {
+      layeredDetailParts.push(`<span style="color:var(--text-muted)">95% ${lang === 'zh' ? '置信区间' : 'CI'} [${vd.lower.toFixed(2)}, ${vd.upper.toFixed(2)}]</span>`);
     }
 
     if (layeredDetailParts.length === 0) {
@@ -74,7 +80,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     const avgLabel = lang === 'zh' ? '次' : 'req';
     const effCell = `<td class="summary-cell"><div class="summary-value">${fmtDuration(s.avgDurationMs)}<span class="summary-unit">/${avgLabel}</span></div>${effDetail}</td>`;
 
-    // Stability: primary = score range, detail = success rate + CV
+    // Stability: primary = score range, detail = success rate + CV + variance run scores
     const total = s.totalSamples || 0;
     const successCount = s.successCount || 0;
     const successRate = total > 0 ? Number((successCount / total * 100).toFixed(1)) : 0;
@@ -96,12 +102,15 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     if ((s.errorCount || 0) > 0) {
       stabDetails.push(`<span style="color:var(--red)">${s.errorCount} ${t('errors', lang)}</span>`);
     }
-    stabDetails.push(`${t('successRate', lang)} ${successRate}%`);
     if (s.scoreCV != null) {
       const cvPct = (s.scoreCV * 100).toFixed(0);
       stabDetails.push(`${lang === 'zh' ? '变异系数' : 'CV'} ${cvPct}%`);
     }
-    const stabDetail = `<div class="summary-detail">${stabDetails.join(' · ')}</div>`;
+    if (vd) {
+      stabDetails.push(`${lang === 'zh' ? '跨轮σ' : 'cross-run σ'} ${vd.stddev.toFixed(2)}`);
+    }
+    const stabDetail = stabDetails.length > 0 ? `<div class="summary-detail">${stabDetails.join(' · ')}</div>` : '';
+
     const stabCell = `<td class="summary-cell"><div class="summary-value" style="color:${stabColor}">${stabValue}</div>${stabDetail}</td>`;
 
     return `<tr><td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(v)}</strong></td>${qualityCell}${costCell}${effCell}${stabCell}</tr>`;

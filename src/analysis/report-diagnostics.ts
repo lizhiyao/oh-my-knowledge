@@ -192,6 +192,24 @@ function generateSummary(report: Report, variants: string[]): string | undefined
     synthesis.push(`${test} 存在工具调用失败（成功率 ${(tToolSuccess * 100).toFixed(0)}%），可能拉低了得分`);
   }
 
+  // Variance / significance from --repeat
+  if (report.variance) {
+    const v = report.variance;
+    for (const comp of v.comparisons) {
+      if (comp.a === control && comp.b === test || comp.a === test && comp.b === control) {
+        if (comp.significant) {
+          synthesis.push(`${v.runs} 轮重复评测显示差异具有统计显著性（t=${comp.tStatistic.toFixed(2)}, df=${comp.df.toFixed(1)}, p<0.05）`);
+        } else {
+          synthesis.push(`${v.runs} 轮重复评测未达到统计显著性（t=${comp.tStatistic.toFixed(2)}, df=${comp.df.toFixed(1)}），差异可能源于随机波动`);
+        }
+      }
+    }
+    const testVd = v.perVariant[test];
+    if (testVd) {
+      synthesis.push(`${test} 跨轮 95% 置信区间 [${testVd.lower.toFixed(2)}, ${testVd.upper.toFixed(2)}]`);
+    }
+  }
+
   if (synthesis.length > 0) {
     lines.push(`【综合洞察】${synthesis.join('；')}。`);
   }

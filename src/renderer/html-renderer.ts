@@ -150,7 +150,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const summary = report.summary || {};
   const results = report.results || [];
 
-  const cards = renderSummaryCards(variants, summary, lang);
+  const cards = renderSummaryCards(variants, summary, lang, report.variance);
   const sampleTable = renderSampleTable(variants, results, lang);
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
   const totalDurationMs = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
@@ -189,9 +189,12 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     </tr>`;
   }).join('');
   const configModalId = 'guide-variant-config';
+  const repeatSuffix = report.variance
+    ? (lang === 'zh' ? ` × ${report.variance.runs} 轮` : ` × ${report.variance.runs} runs`)
+    : '';
   const experimentSummary = lang === 'zh'
-    ? `${m.sampleCount} 个测评用例 × ${variants.length} 组实验`
-    : `${m.sampleCount} samples × ${variants.length} variants`;
+    ? `${m.sampleCount} 个测评用例 × ${variants.length} 组实验${repeatSuffix}`
+    : `${m.sampleCount} samples × ${variants.length} variants${repeatSuffix}`;
 
   const variantConfigSection = variantConfigRows ? `
     <section style="margin:20px 0">
