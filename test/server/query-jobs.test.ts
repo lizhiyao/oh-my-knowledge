@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { queryJobList, queryJob } from '../../src/server/report-store.js';
 import type { EvaluationJob, EvaluationRequest, JobStore } from '../../src/types.js';

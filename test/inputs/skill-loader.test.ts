@@ -1,11 +1,11 @@
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveArtifacts } from '../../src/inputs/skill-loader.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SKILL_DIR = join(__dirname, '..', '..', '..', 'examples', 'code-review', 'skills');
+const SKILL_DIR = join(__dirname, '..', '..', 'examples', 'code-review', 'skills');
 
 describe('resolveArtifacts', () => {
   it('baseline 产生 kind 为 baseline 的 artifact', () => {

@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { analyzeResults } from '../../src/analysis/report-diagnostics.js';
 import type { Report } from '../../src/types.js';

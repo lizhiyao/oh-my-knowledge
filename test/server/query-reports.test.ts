@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { queryRunList, queryRun, queryTrend } from '../../src/server/report-store.js';
 import type { Report, ReportStore, VariantSummary } from '../../src/types.js';

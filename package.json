@@ -17,7 +17,7 @@
     "typecheck": "tsc --noEmit",
     "postbuild": "node -e \"const fs=require('fs'),f='dist/src/cli.js',c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!'))fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)\"",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts'",
-    "test": "yarn build && node --test 'dist/test/**/*.test.js'",
+    "test": "vitest run",
     "ci": "yarn lint && yarn typecheck && yarn test",
     "prepublishOnly": "yarn build"
   },
@@ -50,6 +50,7 @@
     "@types/node": "^25.5.0",
     "eslint": "^10.1.0",
     "typescript": "^6.0.2",
-    "typescript-eslint": "^8.58.0"
+    "typescript-eslint": "^8.58.0",
+    "vitest": "^4.1.3"
   }
 }

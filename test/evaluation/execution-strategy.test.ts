@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { resolveExecutionStrategy } from '../../src/eval-core/execution-strategy.js';
 import type { Task } from '../../src/types.js';

@@ -8,7 +8,7 @@
  * - renderer: renderAgentOverview
  */
 
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { extractAgentTrace } from '../src/executors/index.js';
 import { runAssertions, buildTraceSummary } from '../src/grading/index.js';

@@ -1,4 +1,4 @@
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { loadMcpConfig, resolveMcpUrls, stopAllServers } from '../../src/inputs/mcp-resolver.js';
 import { writeFileSync, mkdtempSync } from 'node:fs';

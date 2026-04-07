@@ -1,4 +1,4 @@
-import { describe, it, before, after } from 'node:test';
+import { describe, it, beforeAll, afterAll } from 'vitest';
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -123,7 +123,7 @@ describe('report-server', () => {
   let server: ReturnType<typeof createReportServer>;
   let baseUrl: string;
 
-  before(async () => {
+  beforeAll(async () => {
     mkdirSync(TEST_DIR, { recursive: true });
     mkdirSync(JOBS_DIR, { recursive: true });
     writeFileSync(join(TEST_DIR, 'test-run-001.json'), JSON.stringify(SAMPLE_REPORT, null, 2));
@@ -133,7 +133,7 @@ describe('report-server', () => {
     baseUrl = await server.start();
   });
 
-  after(async () => {
+  afterAll(async () => {
     await server.stop();
     rmSync(TEST_DIR, { recursive: true, force: true });
     rmSync(JOBS_DIR, { recursive: true, force: true });

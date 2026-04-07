@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildTasks, buildTasksFromArtifacts } from '../../src/eval-core/task-planner.js';
 import type { Artifact, Sample } from '../../src/types.js';

@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { renderRunList, renderRunDetail } from '../src/renderer/html-renderer.js';
 import type { Lang, Report } from '../src/types.js';

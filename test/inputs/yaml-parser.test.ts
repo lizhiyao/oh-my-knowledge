@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { parseYaml } from '../../src/inputs/load-samples.js';
 import { readFileSync } from 'node:fs';
@@ -107,7 +107,7 @@ server:
   it('round-trips against JSON example samples', () => {
     // Verify that the parser can handle the shape of our config format
     const jsonSamples = JSON.parse(
-      readFileSync(join(__dirname, '..', '..', '..', 'examples', 'code-review', 'eval-samples.json'), 'utf-8'),
+      readFileSync(join(__dirname, '..', '..', 'examples', 'code-review', 'eval-samples.json'), 'utf-8'),
     );
     // At minimum, verify the JSON has the expected structure
     assert.ok(Array.isArray(jsonSamples));

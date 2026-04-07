@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
-const CLI = join(PROJECT_ROOT, 'src', 'cli.js');
+const CLI = join(PROJECT_ROOT, 'dist', 'src', 'cli.js');
 
 describe('CLI', () => {
   it('--help shows usage', async () => {
@@ -45,8 +45,8 @@ describe('CLI', () => {
   });
 
   it('bench run --dry-run produces valid JSON', async () => {
-    const samplesPath = join(PROJECT_ROOT, '..', 'examples', 'code-review', 'eval-samples.json');
-    const skillDir = join(PROJECT_ROOT, '..', 'examples', 'code-review', 'skills');
+    const samplesPath = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');
+    const skillDir = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
     const { stdout } = await execFileAsync('node', [
       CLI, 'bench', 'run',
       '--dry-run',
