@@ -16,7 +16,7 @@ import type {
   VariantResult,
 } from '../types.js';
 
-interface ExecuteTasksOptions {
+export interface ExecuteTasksOptions {
   tasks: Task[];
   executor: ExecutorFn;
   judgeExecutor: ExecutorFn;
@@ -29,6 +29,10 @@ interface ExecuteTasksOptions {
   noCache: boolean;
   verbose: boolean;
   onProgress?: ProgressCallback | null;
+  /** Max retries per task on failure (default 0 = no retry) */
+  retry?: number;
+  /** Pre-loaded results to skip (for --resume) */
+  existingResults?: Record<string, Record<string, VariantResult>>;
 }
 
 async function runWithConcurrency<T>(tasks: T[], concurrency: number, fn: (task: T) => Promise<void>): Promise<void> {
@@ -40,6 +44,28 @@ async function runWithConcurrency<T>(tasks: T[], concurrency: number, fn: (task:
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, () => worker()));
+}
+
+function makeErrorResult(error: unknown): ExecResult {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    ok: false,
+    output: null,
+    durationMs: 0,
+    durationApiMs: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    costUSD: 0,
+    stopReason: 'error',
+    numTurns: 0,
+    error: message,
+  };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function executeTasks({
@@ -55,16 +81,35 @@ export async function executeTasks({
   noCache,
   verbose,
   onProgress,
-}: ExecuteTasksOptions): Promise<{ results: Record<string, Record<string, VariantResult>>; totalCostUSD: number }> {
+  retry = 0,
+  existingResults,
+}: ExecuteTasksOptions): Promise<{ results: Record<string, Record<string, VariantResult>>; totalCostUSD: number; skipped: number }> {
   const results: Record<string, Record<string, VariantResult>> = {};
   let started = 0;
   let completed = 0;
+  let skipped = 0;
   let totalCostUSD = 0;
+
+  // Seed results from previous run (--resume)
+  if (existingResults) {
+    for (const [sampleId, variants] of Object.entries(existingResults)) {
+      results[sampleId] = { ...variants };
+    }
+  }
 
   const cacheDir = join(homedir(), '.oh-my-knowledge', 'cache');
   const cache: ExecutorCache | null = noCache ? null : createCache(cacheDir);
 
   async function executeTask(task: Task): Promise<void> {
+    // Skip if already have a successful result (--resume)
+    if (existingResults?.[task.sample_id]?.[task.variant]?.ok) {
+      skipped++;
+      started++;
+      completed++;
+      onProgress?.({ phase: 'done', completed, total: tasks.length, sample_id: task.sample_id, variant: task.variant, skipped: true });
+      return;
+    }
+
     started++;
     const idx = started;
     const total = tasks.length;
@@ -79,11 +124,24 @@ export async function executeTasks({
     if (cached) {
       execResult = { ...cached, cached: true };
     } else {
-      execResult = await executor(executionPlan.input);
-      if (cache && execResult.ok) cache.set(key, execResult);
+      // Execute with retry on failure
+      const maxAttempts = 1 + Math.max(0, retry);
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          execResult = await executor(executionPlan.input);
+        } catch (err) {
+          execResult = makeErrorResult(err);
+        }
+        if (execResult!.ok || attempt === maxAttempts) break;
+        // Exponential backoff before retry
+        const backoffMs = Math.min(2 ** (attempt - 1) * 1000, 30000);
+        onProgress?.({ phase: 'retry', completed: idx, total, sample_id: task.sample_id, variant: task.variant, attempt, maxAttempts });
+        await sleep(backoffMs);
+      }
+      if (cache && execResult!.ok) cache.set(key, execResult!);
     }
     const execMs = Date.now() - execStart;
-    totalCostUSD += execResult.costUSD;
+    totalCostUSD += execResult!.costUSD;
 
     if (verbose && onProgress) {
       onProgress({
@@ -93,17 +151,17 @@ export async function executeTasks({
         total,
         sample_id: task.sample_id,
         variant: task.variant,
-        durationMs: execResult.durationMs,
-        inputTokens: execResult.inputTokens,
-        outputTokens: execResult.outputTokens,
-        costUSD: execResult.costUSD,
-        outputPreview: execResult.output ? execResult.output.slice(0, 200) : null,
+        durationMs: execResult!.durationMs,
+        inputTokens: execResult!.inputTokens,
+        outputTokens: execResult!.outputTokens,
+        costUSD: execResult!.costUSD,
+        outputPreview: execResult!.output ? execResult!.output.slice(0, 200) : null,
       });
     }
 
     let gradeResult: GradeResult | null = null;
     let gradeMs = 0;
-    if (execResult.ok) {
+    if (execResult!.ok) {
       const hasGradingCriteria = task.rubric || task.assertions?.length || (task.dimensions && Object.keys(task.dimensions).length);
       if (hasGradingCriteria) {
         if (verbose && onProgress) {
@@ -117,21 +175,27 @@ export async function executeTasks({
           });
         }
         const gradeStart = Date.now();
-        gradeResult = await grade({
-          output: execResult.output!,
-          sample: task._sample,
-          executor: judgeExecutor,
-          judgeModel,
-          allowLlmJudge: !noJudge,
-          execMetrics: {
-            costUSD: execResult.costUSD,
-            durationMs: execResult.durationMs,
-            numTurns: execResult.numTurns,
-            toolCalls: execResult.toolCalls,
-            turns: execResult.turns,
-          },
-          samplesDir: dirname(resolve(samplesPath)),
-        });
+        try {
+          gradeResult = await grade({
+            output: execResult!.output!,
+            sample: task._sample,
+            executor: judgeExecutor,
+            judgeModel,
+            allowLlmJudge: !noJudge,
+            execMetrics: {
+              costUSD: execResult!.costUSD,
+              durationMs: execResult!.durationMs,
+              numTurns: execResult!.numTurns,
+              toolCalls: execResult!.toolCalls,
+              turns: execResult!.turns,
+            },
+            samplesDir: dirname(resolve(samplesPath)),
+          });
+        } catch (err) {
+          gradeResult = { compositeScore: 0 };
+          const msg = err instanceof Error ? err.message : String(err);
+          onProgress?.({ phase: 'error', completed: idx, total, sample_id: task.sample_id, variant: task.variant, error: `评分失败: ${msg}` });
+        }
         gradeMs = Date.now() - gradeStart;
         if (gradeResult.judgeCostUSD) totalCostUSD += gradeResult.judgeCostUSD;
       }
@@ -145,20 +209,20 @@ export async function executeTasks({
       total,
       sample_id: task.sample_id,
       variant: task.variant,
-      durationMs: execResult.durationMs,
-      inputTokens: execResult.inputTokens,
-      outputTokens: execResult.outputTokens,
-      costUSD: execResult.costUSD,
+      durationMs: execResult!.durationMs,
+      inputTokens: execResult!.inputTokens,
+      outputTokens: execResult!.outputTokens,
+      costUSD: execResult!.costUSD,
       score: gradeResult?.compositeScore,
     });
 
     let factCheck: FactCheckResult | undefined;
-    if (execResult.ok && execResult.output && task.cwd) {
-      factCheck = checkFacts(execResult.output, resolve(task.cwd));
+    if (execResult!.ok && execResult!.output && task.cwd) {
+      factCheck = checkFacts(execResult!.output, resolve(task.cwd));
     }
 
     if (!results[task.sample_id]) results[task.sample_id] = {};
-    results[task.sample_id][task.variant] = buildVariantResult(execResult, gradeResult, { execMs, gradeMs, factCheck });
+    results[task.sample_id][task.variant] = buildVariantResult(execResult!, gradeResult, { execMs, gradeMs, factCheck });
   }
 
   try {
@@ -167,7 +231,7 @@ export async function executeTasks({
     if (cache) cache.save();
   }
 
-  return { results, totalCostUSD };
+  return { results, totalCostUSD, skipped };
 }
 
 export async function preflight(executor: ExecutorFn, model: string, timeoutMs: number = 15000): Promise<void> {

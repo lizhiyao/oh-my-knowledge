@@ -55,6 +55,8 @@ export interface RunEvaluationOptions extends CommonEvaluationOptions {
   dryRun?: boolean;
   blind?: boolean;
   noCache?: boolean;
+  retry?: number;
+  resume?: string;
 }
 
 export interface RunEachEvaluationOptions extends CommonEvaluationOptions {
@@ -123,6 +125,8 @@ export async function runEvaluation({
   skipPreflight = false,
   mcpConfig,
   verbose = false,
+  retry = 0,
+  resume,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames } = await prepareEvaluationRun({
     samplesPath,
@@ -146,6 +150,26 @@ export async function runEvaluation({
       }),
       filePath: null,
     };
+  }
+
+  // --resume: load existing report results to skip completed tasks
+  let existingResults: Record<string, Record<string, import('../types.js').VariantResult>> | undefined;
+  if (resume) {
+    const { createFileStore } = await import('../server/report-store.js');
+    const store = createFileStore(resolve(outputDir || DEFAULT_OUTPUT_DIR));
+    const existing = await store.get(resume);
+    if (existing) {
+      existingResults = {};
+      for (const entry of existing.results || []) {
+        existingResults[entry.sample_id] = entry.variants;
+      }
+      if (onProgress) {
+        const count = Object.values(existingResults).reduce((sum, v) => sum + Object.values(v).filter((r) => r.ok).length, 0);
+        process.stderr.write(`\n📂 从报告 ${resume} 恢复了 ${count} 个已完成结果\n`);
+      }
+    } else {
+      process.stderr.write(`\n⚠️  报告 ${resume} 未找到，将从头执行\n`);
+    }
   }
 
   const executor: ExecutorFn = createExecutor(executorName);
@@ -176,6 +200,8 @@ export async function runEvaluation({
     onProgress,
     skipPreflight,
     verbose,
+    retry,
+    existingResults,
   });
 }
 

@@ -177,16 +177,36 @@ export interface ProgressGrading {
 
 export interface ProgressDone {
   phase: 'done';
-  strategy: string;
+  strategy?: string;
   completed: number;
   total: number;
   sample_id: string;
   variant: string;
-  durationMs: number;
-  inputTokens: number;
-  outputTokens: number;
-  costUSD: number;
+  durationMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUSD?: number;
   score?: number;
+  skipped?: boolean;
+}
+
+export interface ProgressRetry {
+  phase: 'retry';
+  completed: number;
+  total: number;
+  sample_id: string;
+  variant: string;
+  attempt: number;
+  maxAttempts: number;
+}
+
+export interface ProgressError {
+  phase: 'error';
+  completed: number;
+  total: number;
+  sample_id: string;
+  variant: string;
+  error: string;
 }
 
 export interface ProgressPreflight {
@@ -194,7 +214,7 @@ export interface ProgressPreflight {
   jobId?: string;
 }
 
-export type ProgressInfo = ProgressStart | ProgressExecDone | ProgressGrading | ProgressDone | ProgressPreflight;
+export type ProgressInfo = ProgressStart | ProgressExecDone | ProgressGrading | ProgressDone | ProgressRetry | ProgressError | ProgressPreflight;
 export type ProgressCallback = (info: ProgressInfo) => void;
 
 export interface Task {

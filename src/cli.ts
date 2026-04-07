@@ -36,6 +36,8 @@ interface RunConfig {
   mcpConfig: string | undefined;
   verbose: boolean | undefined;
   blind?: boolean | undefined;
+  retry?: number;
+  resume?: string;
   onProgress?: ProgressCallback | null;
 }
 
@@ -56,6 +58,10 @@ interface ProgressInfo {
   jobId?: string;
   judgePhase?: string;
   judgeDim?: string;
+  skipped?: boolean;
+  attempt?: number;
+  maxAttempts?: number;
+  error?: string;
 }
 
 interface SkillProgressInfo {
@@ -145,6 +151,8 @@ const RUN_OPTIONS: ParseArgsConfig['options'] = {
   'mcp-config': { type: 'string' },
   'no-serve': { type: 'boolean', default: false },
   verbose: { type: 'boolean', default: false },
+  retry: { type: 'string', default: '0' },
+  resume: { type: 'string' },
 };
 
 // ---------------------------------------------------------------------------
@@ -191,6 +199,8 @@ function parseRunConfig(
       skipPreflight: values['skip-preflight'] as boolean | undefined,
       mcpConfig: values['mcp-config'] as string | undefined,
       verbose: values.verbose as boolean | undefined,
+      retry: Math.max(0, Number(values.retry) || 0),
+      resume: values.resume as string | undefined,
     },
   };
 }
@@ -231,6 +241,8 @@ Options for "bench run":
   --concurrency <n>      Number of parallel tasks (default: 1)
   --timeout <seconds>    Executor timeout per task in seconds (default: 120)
   --repeat <n>           Run evaluation N times for variance analysis (default: 1)
+  --retry <n>            Retry failed tasks up to N times with exponential backoff (default: 0)
+  --resume <report-id>   Resume from a previous report, skipping completed tasks
   --executor <name>      Executor: claude, openai, gemini, anthropic-api, openai-api,
                          or any shell command (e.g. "python my_provider.py")
   --judge-executor <name> Executor for LLM judge (default: same as --executor)
@@ -376,9 +388,21 @@ function defaultOnProgress({
   outputPreview,
   judgePhase: _judgePhase,
   judgeDim,
+  skipped,
+  attempt,
+  maxAttempts,
+  error,
 }: ProgressInfo): void {
   if (phase === 'preflight') {
     process.stderr.write('⏳ 预检模型连通性...\n');
+    return;
+  }
+  if (phase === 'retry') {
+    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 🔄 重试 ${attempt}/${maxAttempts}...\n`);
+    return;
+  }
+  if (phase === 'error') {
+    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ❌ ${error}\n`);
     return;
   }
   if (phase === 'start') {
@@ -395,6 +419,8 @@ function defaultOnProgress({
   } else if (phase === 'judge_done') {
     const dimInfo: string = judgeDim ? ` [${judgeDim}]` : '';
     process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 评审完成${dimInfo} score=${score}\n`);
+  } else if (phase === 'done' && skipped) {
+    if (sample_id) process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ⏭ 已跳过（已有结果）\n`);
   } else {
     const costInfo: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
     const scoreInfo: string = typeof score === 'number' ? ` score=${score}` : '';

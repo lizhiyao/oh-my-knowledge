@@ -208,6 +208,8 @@ export interface EvaluationPipelineOptions {
   onProgress?: ProgressCallback | null;
   skipPreflight?: boolean;
   verbose?: boolean;
+  retry?: number;
+  existingResults?: Record<string, Record<string, VariantResult>>;
 }
 
 export async function executeEvaluationPipeline({
@@ -236,6 +238,8 @@ export async function executeEvaluationPipeline({
   onProgress = null,
   skipPreflight = false,
   verbose = false,
+  retry = 0,
+  existingResults,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -266,7 +270,7 @@ export async function executeEvaluationPipeline({
       if (!noJudge) await preflight(judgeExecutor, judgeModel);
     }
 
-    const { results, totalCostUSD } = await executeTasks({
+    const { results, totalCostUSD, skipped } = await executeTasks({
       tasks,
       executor,
       judgeExecutor,
@@ -279,7 +283,12 @@ export async function executeEvaluationPipeline({
       noCache,
       verbose,
       onProgress,
+      retry,
+      existingResults,
     });
+    if (skipped > 0 && onProgress) {
+      onProgress({ phase: 'done', completed: tasks.length, total: tasks.length, sample_id: '', variant: '', skipped: true });
+    }
 
     const { run, job } = finalizeSuccessfulRun(runState);
     const report = finalizeEvaluationReport({
