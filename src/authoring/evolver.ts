@@ -2,7 +2,9 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { resolve, join, dirname, basename } from 'node:path';
 import { runEvaluation } from '../eval-workflows/run-evaluation.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
-import type { ProgressCallback, Report } from '../types.js';
+import { persistReport, DEFAULT_OUTPUT_DIR, generateRunId } from '../eval-core/evaluation-reporting.js';
+import { analyzeResults } from '../analysis/report-diagnostics.js';
+import type { ProgressCallback, Report, ResultEntry, VariantResult } from '../types.js';
 
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。你的任务是分析评测结果中的薄弱环节，针对性地改进 skill（系统提示词），使其在评测中获得更高的分数。
 
@@ -125,6 +127,79 @@ export interface EvolveResult {
   trajectory: TrajectoryEntry[];
   bestSkillPath: string;
   allVersions: string[];
+  reportId?: string;
+}
+
+export interface RoundReport {
+  round: number;
+  accepted: boolean;
+  report: Report;
+}
+
+export function mergeEvolveReports(roundReports: RoundReport[], skillName: string, totalCostUSD: number): Report {
+  const firstReport = roundReports[0].report;
+
+  // Build variant labels: "round-0", "round-1", "round-2", ...
+  const variantLabels = roundReports.map(({ round }) => `round-${round}`);
+
+  // Build summary: map each variant label to its round's summary
+  const summary: Record<string, Report['summary'][string]> = {};
+  for (let i = 0; i < roundReports.length; i++) {
+    const { report } = roundReports[i];
+    const originalKey = Object.keys(report.summary)[0];
+    summary[variantLabels[i]] = report.summary[originalKey];
+  }
+
+  // Build results: merge per-sample variant data across rounds
+  const sampleIds = firstReport.results.map((r) => r.sample_id);
+  const results: ResultEntry[] = sampleIds.map((sampleId) => {
+    const variants: Record<string, VariantResult> = {};
+    for (let i = 0; i < roundReports.length; i++) {
+      const entry = roundReports[i].report.results.find((r) => r.sample_id === sampleId);
+      if (entry) {
+        const originalKey = Object.keys(entry.variants)[0];
+        variants[variantLabels[i]] = entry.variants[originalKey];
+      }
+    }
+    return { sample_id: sampleId, variants };
+  });
+
+  // Build variantConfigs: collect from each round, relabel variant name; mark round-0 as baseline
+  const variantConfigs = roundReports.flatMap(({ round, report }, i) =>
+    (report.meta.variantConfigs || []).map((cfg) => ({
+      ...cfg,
+      variant: variantLabels[i],
+      ...(round === 0 ? { experimentType: 'baseline' as const, artifactKind: 'baseline' as const, executionStrategy: 'baseline' as const } : {}),
+    })),
+  );
+
+  // Build artifactHashes: collect from each round, relabel key
+  const artifactHashes: Record<string, string> = {};
+  for (let i = 0; i < roundReports.length; i++) {
+    const hashes = roundReports[i].report.meta.artifactHashes || {};
+    const originalKey = Object.keys(hashes)[0];
+    if (originalKey) artifactHashes[variantLabels[i]] = hashes[originalKey];
+  }
+
+  const runId = `evolve-${skillName}-${generateRunId([skillName]).split('-').slice(-2).join('-')}`;
+
+  const report: Report = {
+    id: runId,
+    meta: {
+      ...firstReport.meta,
+      variants: variantLabels,
+      variantConfigs,
+      artifactHashes,
+      totalCostUSD: Number(totalCostUSD.toFixed(6)),
+      timestamp: new Date().toISOString(),
+    },
+    summary,
+    results,
+  };
+
+  report.analysis = analyzeResults(report);
+
+  return report;
 }
 
 export async function evolveSkill({
@@ -162,6 +237,7 @@ export async function evolveSkill({
   let totalCostUSD = 0;
   let consecutiveRejects = 0;
   const trajectory: TrajectoryEntry[] = [];
+  const roundReports: RoundReport[] = [];
 
   // Round 0: baseline evaluation
   const baselineReport = await evaluate(r0Path, {
@@ -173,6 +249,7 @@ export async function evolveSkill({
   totalCostUSD += baselineCost;
 
   trajectory.push({ round: 0, score: bestScore, delta: 0, accepted: true, costUSD: baselineCost });
+  roundReports.push({ round: 0, accepted: true, report: baselineReport });
   if (onRoundProgress) onRoundProgress({ round: 0, totalRounds: rounds, phase: 'baseline', score: bestScore, costUSD: baselineCost });
 
   // Evolution loop
@@ -214,6 +291,7 @@ export async function evolveSkill({
 
     const delta = candidateScore - bestScore;
     const accepted = candidateScore > bestScore;
+    roundReports.push({ round, accepted, report: candidateReport });
 
     if (accepted) {
       currentBest = candidateContent;
@@ -235,6 +313,14 @@ export async function evolveSkill({
   // Write best version back to original file
   writeFileSync(absSkillPath, currentBest);
 
+  // Merge all round reports into one and persist
+  let reportId: string | undefined;
+  if (roundReports.length > 0) {
+    const mergedReport = mergeEvolveReports(roundReports, skillName, totalCostUSD);
+    persistReport(mergedReport, DEFAULT_OUTPUT_DIR);
+    reportId = mergedReport.id;
+  }
+
   return {
     startScore: trajectory[0].score,
     finalScore: bestScore,
@@ -244,6 +330,7 @@ export async function evolveSkill({
     trajectory,
     bestSkillPath: allVersions[bestRound],
     allVersions,
+    reportId,
   };
 }
 

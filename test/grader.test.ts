@@ -480,7 +480,7 @@ describe('grade', () => {
       },
       executor: async (): Promise<ExecResult> => ({ ok: true, output: '{}', costUSD: 0, durationMs: 0, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, stopReason: 'end_turn', numTurns: 1 }),
       judgeModel: 'haiku',
-      samplesDir: join(__dirname, '..', 'test'),
+      samplesDir: __dirname,
     });
     assert.equal(result.assertions!.passed, 1);
     assert.equal(result.assertions!.details[0].passed, true);
@@ -534,7 +534,7 @@ describe('grade', () => {
       },
       executor: async (): Promise<ExecResult> => ({ ok: true, output: '{}', costUSD: 0, durationMs: 0, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, stopReason: 'end_turn', numTurns: 1 }),
       judgeModel: 'haiku',
-      samplesDir: join(__dirname, '..', 'test'),
+      samplesDir: __dirname,
     });
     assert.equal(result.assertions!.passed, 2);
     assert.equal(result.assertions!.total, 2);

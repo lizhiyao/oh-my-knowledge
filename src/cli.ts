@@ -113,6 +113,7 @@ interface EvolveResult {
   trajectory: TrajectoryEntry[];
   bestSkillPath: string;
   allVersions: string[];
+  reportId?: string;
 }
 
 interface GenerateSamplesResult {
@@ -857,6 +858,9 @@ async function handleEvolve(argv: string[]): Promise<void> {
     process.stderr.write(`\n✅ ${result.startScore.toFixed(2)} → ${result.finalScore.toFixed(2)} (+${improvement}%) | ${result.totalRounds} 轮 | $${result.totalCostUSD.toFixed(4)}\n`);
     process.stderr.write(`Best: ${result.bestSkillPath} → ${resolve(skillPath)}\n`);
     process.stderr.write(`所有版本保存在: ${join(resolve(skillPath, '..'), 'evolve')}/\n`);
+    if (result.reportId) {
+      process.stderr.write(`📊 评测报告: omk bench report (ID: ${result.reportId})\n`);
+    }
 
     console.log(JSON.stringify(result, null, 2));
   } catch (err: unknown) {
