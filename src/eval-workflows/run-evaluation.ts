@@ -128,7 +128,7 @@ export async function runEvaluation({
   retry = 0,
   resume,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
-  const { samples, artifacts: resolvedArtifacts, tasks, variantNames } = await prepareEvaluationRun({
+  const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
     skillDir,
     variants,
@@ -202,6 +202,7 @@ export async function runEvaluation({
     verbose,
     retry,
     existingResults,
+    requires,
   });
 }
 

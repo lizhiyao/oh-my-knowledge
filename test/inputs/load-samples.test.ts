@@ -24,7 +24,7 @@ describe('loadSamples', () => {
       { sample_id: 's1', prompt: '你好' },
       { sample_id: 's2', prompt: '世界' },
     ]));
-    const samples = loadSamples(p);
+    const { samples } = loadSamples(p);
     assert.equal(samples.length, 2);
     assert.equal(samples[0].sample_id, 's1');
     assert.equal(samples[1].prompt, '世界');
@@ -34,7 +34,7 @@ describe('loadSamples', () => {
     const p = tmp('samples.yaml');
     cleanups.push(p);
     writeFileSync(p, `- sample_id: y1\n  prompt: hello\n- sample_id: y2\n  prompt: world\n`);
-    const samples = loadSamples(p);
+    const { samples } = loadSamples(p);
     assert.equal(samples.length, 2);
     assert.equal(samples[0].sample_id, 'y1');
     assert.equal(samples[1].prompt, 'world');

@@ -5,6 +5,7 @@ import { resolveArtifacts } from '../inputs/skill-loader.js';
 import { buildVariantConfig } from '../eval-core/execution-strategy.js';
 import { loadMcpConfig, resolveMcpUrls } from '../inputs/mcp-resolver.js';
 import { resolveUrls } from '../inputs/url-fetcher.js';
+import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
 import type { Artifact, McpServers, Sample, Task } from '../types.js';
 
 export interface PreparedEvaluationRun {
@@ -12,6 +13,7 @@ export interface PreparedEvaluationRun {
   artifacts: Artifact[];
   tasks: Task[];
   variantNames: string[];
+  requires?: DependencyRequirements;
 }
 
 export async function prepareEvaluationRun({
@@ -29,7 +31,7 @@ export async function prepareEvaluationRun({
   dryRun: boolean;
   mcpConfig?: string;
 }): Promise<PreparedEvaluationRun> {
-  const samples = loadSamples(samplesPath);
+  const { samples, requires } = loadSamples(samplesPath);
   const resolvedArtifacts = artifacts || resolveArtifacts(resolve(skillDir), variants);
 
   if (!dryRun) {
@@ -55,6 +57,7 @@ export async function prepareEvaluationRun({
     artifacts: resolvedArtifacts,
     tasks,
     variantNames,
+    requires,
   };
 }
 
@@ -106,7 +109,7 @@ export function buildDryRunTaskReport({
 
 export function buildDryRunEachArtifacts(skillEntries: Array<{ name: string; skillPath: string; samplesPath: string }>) {
   const artifacts = skillEntries.map((entry) => {
-    const samples = loadSamples(entry.samplesPath);
+    const { samples } = loadSamples(entry.samplesPath);
     return {
       name: entry.name,
       samplesPath: entry.samplesPath,

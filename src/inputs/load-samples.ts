@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import yaml from 'js-yaml';
 import type { Sample } from '../types.js';
+import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
 
 interface YamlErrorLike {
   mark?: { line: number };
@@ -19,11 +20,37 @@ export function parseYaml(text: string): unknown {
   }
 }
 
-export function loadSamples(samplesPath: string): Sample[] {
+export interface LoadSamplesResult {
+  samples: Sample[];
+  requires?: DependencyRequirements;
+}
+
+/**
+ * Load samples from a JSON or YAML file.
+ *
+ * Supports two formats:
+ * - Array: `[ { sample_id, prompt, ... } ]` (legacy)
+ * - Object wrapper: `{ requires?: { tools, files, env }, samples: [...] }`
+ */
+export function loadSamples(samplesPath: string): LoadSamplesResult {
   const rawContent = readFileSync(resolve(samplesPath), 'utf-8');
-  const samples: Sample[] = samplesPath.endsWith('.yaml') || samplesPath.endsWith('.yml')
-    ? parseYaml(rawContent) as Sample[]
-    : JSON.parse(rawContent) as Sample[];
+  const isYaml = samplesPath.endsWith('.yaml') || samplesPath.endsWith('.yml');
+  const parsed: unknown = isYaml ? parseYaml(rawContent) : JSON.parse(rawContent);
+
+  let samples: Sample[];
+  let requires: DependencyRequirements | undefined;
+
+  if (Array.isArray(parsed)) {
+    // Legacy array format
+    samples = parsed as Sample[];
+  } else if (typeof parsed === 'object' && parsed !== null && 'samples' in parsed) {
+    // Object wrapper format
+    const wrapper = parsed as { samples: Sample[]; requires?: DependencyRequirements };
+    samples = wrapper.samples;
+    requires = wrapper.requires;
+  } else {
+    throw new Error(`无效的样本文件格式: ${samplesPath}（期望数组或包含 samples 字段的对象）`);
+  }
 
   if (!Array.isArray(samples) || samples.length === 0) {
     throw new Error(`无效的样本文件: ${samplesPath}`);
@@ -34,5 +61,5 @@ export function loadSamples(samplesPath: string): Sample[] {
     if (!sample.prompt) throw new Error(`samples[${i}] (${sample.sample_id}) 缺少必填字段: prompt`);
   }
 
-  return samples;
+  return { samples, requires };
 }

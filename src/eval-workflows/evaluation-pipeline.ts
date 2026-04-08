@@ -2,6 +2,8 @@ import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { computeReportCoverage } from '../analysis/coverage-analyzer.js';
 import { aggregateReport, applyBlindMode, DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/evaluation-reporting.js';
 import { executeTasks, preflight } from '../eval-core/evaluation-execution.js';
+import { preflightDependencies, formatDependencyErrors } from '../eval-core/dependency-checker.js';
+import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
 import {
   createFileJobStore,
   DEFAULT_JOBS_DIR,
@@ -210,6 +212,7 @@ export interface EvaluationPipelineOptions {
   verbose?: boolean;
   retry?: number;
   existingResults?: Record<string, Record<string, VariantResult>>;
+  requires?: DependencyRequirements;
 }
 
 export async function executeEvaluationPipeline({
@@ -240,6 +243,7 @@ export async function executeEvaluationPipeline({
   verbose = false,
   retry = 0,
   existingResults,
+  requires,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -268,6 +272,14 @@ export async function executeEvaluationPipeline({
       if (onProgress) onProgress({ phase: 'preflight', jobId: runState.jobId });
       await preflight(executor, model);
       if (!noJudge) await preflight(judgeExecutor, judgeModel);
+
+      // Dependency check: auto-extract from skill contents + merge explicit requires
+      const skillContents = artifacts.map((a) => a.content).filter((c): c is string => typeof c === 'string');
+      const cwd = artifacts.find((a) => a.cwd)?.cwd || skillDir || process.cwd();
+      const depResult = await preflightDependencies(skillContents, samples, cwd, requires);
+      if (!depResult.ok) {
+        throw new Error(formatDependencyErrors(depResult.missing));
+      }
     }
 
     const { results, totalCostUSD, skipped } = await executeTasks({

@@ -534,7 +534,7 @@ describe('runEvaluation credibility', () => {
     try {
       const { loadSamples } = await import('../src/inputs/load-samples.js');
       const { buildTasks } = await import('../src/eval-core/task-planner.js');
-      const samples = loadSamples(MOCK_SAMPLES_PATH);
+      const { samples } = loadSamples(MOCK_SAMPLES_PATH);
       const skills: Record<string, string | null> = { v1: 'skill content v1', v2: 'skill content v2' };
       const tasks = buildTasks(samples, ['v1', 'v2'], skills);
 
