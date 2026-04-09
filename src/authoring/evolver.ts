@@ -24,6 +24,23 @@ interface WeakSample {
   dimensions: Record<string, number> | null;
 }
 
+/**
+ * Read the `name` field from a SKILL.md frontmatter.
+ * Returns null if the file has no frontmatter or no name field.
+ * Used to give evolve reports semantic filenames instead of "evolve-SKILL-xxx".
+ */
+function readSkillName(skillPath: string): string | null {
+  try {
+    const content = readFileSync(skillPath, 'utf-8');
+    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (!match) return null;
+    const nameMatch = match[1].match(/^name:\s*["']?([^"'\r\n]+?)["']?\s*$/m);
+    return nameMatch ? nameMatch[1].trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 export function extractWeakSamples(report: Report, variantKey: string, count: number = 5): WeakSample[] {
   return report.results
     .map((r) => {
@@ -219,7 +236,8 @@ export async function evolveSkill({
   const absSkillPath = resolve(skillPath);
   const absSamplesPath = resolve(samplesPath);
   const skillDir = dirname(absSkillPath);
-  const skillName = basename(absSkillPath, '.md');
+  const fileBaseName = basename(absSkillPath, '.md');
+  const skillName = readSkillName(absSkillPath) ?? (fileBaseName === 'SKILL' ? basename(skillDir) : fileBaseName);
   const evolveDir = join(skillDir, 'evolve');
 
   if (!existsSync(absSkillPath)) throw new Error(`skill 文件未找到: ${absSkillPath}`);
