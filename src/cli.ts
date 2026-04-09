@@ -460,7 +460,7 @@ async function handleRun(argv: string[]): Promise<void> {
         process.stderr.write('\n✅ 批量评测完成\n');
         process.stderr.write(`📄 Report saved to: ${filePath}\n`);
 
-        if (!values['no-serve']) {
+        if (!values['no-serve'] && process.stdout.isTTY) {
           const { createReportServer } = await import('./server/report-server.js');
           const server: ReportServer = createReportServer({ reportsDir: resolve(values['output-dir'] as string) });
           const serverUrl: string = await server.start();
@@ -473,6 +473,9 @@ async function handleRun(argv: string[]): Promise<void> {
           const openCmd: string = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
           const { execFile: execFileCb } = await import('node:child_process');
           execFileCb(openCmd, [reportUrl], () => { });
+        } else if (!values['no-serve']) {
+          process.stderr.write('\n💡 非交互环境，已跳过 report server\n');
+          process.stderr.write(`   查看报告: omk bench report --reports-dir ${resolve(values['output-dir'] as string)}\n`);
         }
       }
       return;
@@ -503,7 +506,7 @@ async function handleRun(argv: string[]): Promise<void> {
       process.stderr.write('\n✅ 评测完成\n');
       process.stderr.write(`📄 Report saved to: ${filePath}\n`);
 
-      if (!values['no-serve']) {
+      if (!values['no-serve'] && process.stdout.isTTY) {
         // Auto-start report server
         const { createReportServer } = await import('./server/report-server.js');
         const server: ReportServer = createReportServer({
@@ -520,6 +523,9 @@ async function handleRun(argv: string[]): Promise<void> {
         const openCmd: string = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
         const { execFile: execFileCb } = await import('node:child_process');
         execFileCb(openCmd, [reportUrl], () => { });
+      } else if (!values['no-serve']) {
+        process.stderr.write('\n💡 非交互环境，已跳过 report server\n');
+        process.stderr.write(`   查看报告: omk bench report --reports-dir ${resolve(values['output-dir'] as string)}\n`);
       }
     }
   } catch (err: unknown) {
