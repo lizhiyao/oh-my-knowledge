@@ -15,6 +15,14 @@ import type { Sample } from '../types.js';
 const URL_REGEX = /https?:\/\/[A-Za-z0-9\-._~:/?#[\]@!$&'()*+,;=%]+/g;
 const FETCH_TIMEOUT_MS = 30_000;
 
+// RFC 2606 / IANA reserved placeholder domains — these are documentation-only
+// and should never be fetched (they don't resolve to real services).
+const PLACEHOLDER_DOMAIN_REGEX = /^https?:\/\/(?:[^/]+\.)?(?:example\.(?:com|org|net)|localhost|test|invalid|example)(?::\d+)?(?:[/?#]|$)/i;
+
+export function isPlaceholderUrl(url: string): boolean {
+  return PLACEHOLDER_DOMAIN_REGEX.test(url);
+}
+
 interface FetchResult {
   ok: boolean;
   content?: string;
@@ -51,6 +59,7 @@ export async function resolveUrls(samples: Sample[], skipUrls?: Set<string>): Pr
       if (!matches) continue;
       for (const url of matches) {
         if (skipUrls?.has(url)) continue;
+        if (isPlaceholderUrl(url)) continue; // RFC 2606 placeholder domains are documentation-only
         if (!urlMap.has(url)) urlMap.set(url, []);
         urlMap.get(url)!.push({ sample, field });
       }

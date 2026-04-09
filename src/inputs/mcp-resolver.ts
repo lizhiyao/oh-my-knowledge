@@ -35,6 +35,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { isPlaceholderUrl } from './url-fetcher.js';
 import type { Sample, McpServers, McpServerDef, McpFetchTool } from '../types.js';
 
 // Reuse the same URL regex from url-fetcher.mjs
@@ -131,6 +132,7 @@ export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers |
       const matches = text.match(URL_REGEX);
       if (!matches) continue;
       for (const url of matches) {
+        if (isPlaceholderUrl(url)) continue; // RFC 2606 placeholder domains are documentation-only
         if (!urlMap.has(url)) urlMap.set(url, []);
         urlMap.get(url)!.push({ sample, field });
       }
