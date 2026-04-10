@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { ExecResult } from '../types.js';
 
@@ -117,6 +119,22 @@ export function errorMessage(err: unknown, fallback: string = 'unknown error'): 
 
 export function parseJson<T>(content: string): T {
   return JSON.parse(content) as T;
+}
+
+export function buildExecEnv(skillDir?: string | null): NodeJS.ProcessEnv {
+  const proxyUrl = process.env.CCV_PROXY_URL || undefined;
+  const env: NodeJS.ProcessEnv = proxyUrl
+    ? { ...process.env, ANTHROPIC_BASE_URL: proxyUrl }
+    : { ...process.env };
+
+  if (skillDir) {
+    const nodeBin = join(skillDir, 'node_modules', '.bin');
+    if (existsSync(nodeBin)) {
+      env.PATH = `${nodeBin}${env.PATH ? ':' + env.PATH : ''}`;
+    }
+  }
+
+  return env;
 }
 
 export function timeoutExecResult(timeoutMs: number, durationMs: number): ExecResult {

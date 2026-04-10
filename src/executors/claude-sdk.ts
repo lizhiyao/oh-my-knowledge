@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import type { ExecResult, ExecutorInput } from '../types.js';
 import { extractAgentTrace, isClaudeSdkResultMessage } from './claude-sdk-trace.js';
 import type { ClaudeSdkBaseMessage, ClaudeSdkModule, ClaudeSdkResultMessage } from './shared.js';
-import { asErrorLike, DEFAULT_TIMEOUT_MS, errorMessage } from './shared.js';
+import { asErrorLike, buildExecEnv, DEFAULT_TIMEOUT_MS, errorMessage } from './shared.js';
 
 let sdkQuery: ClaudeSdkModule['query'] | null = null;
 
@@ -16,15 +16,12 @@ async function getSdkQuery(): Promise<ClaudeSdkModule['query']> {
   return sdkQuery;
 }
 
-export async function claudeSdkExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, verbose = false }: ExecutorInput): Promise<ExecResult> {
+export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, verbose = false }: ExecutorInput): Promise<ExecResult> {
   const start = Date.now();
   const abortController = new AbortController();
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
 
-  const proxyUrl = process.env.CCV_PROXY_URL;
-  const env = proxyUrl
-    ? { ...process.env, ANTHROPIC_BASE_URL: proxyUrl }
-    : { ...process.env };
+  const env = buildExecEnv(skillDir);
 
   const messages: ClaudeSdkBaseMessage[] = [];
   const messageTimestamps: number[] = [];

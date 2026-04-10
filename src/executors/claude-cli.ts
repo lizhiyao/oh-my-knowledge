@@ -1,6 +1,7 @@
 import type { ExecResult, ExecutorInput } from '../types.js';
 import {
   asErrorLike,
+  buildExecEnv,
   ClaudeCliResponse,
   DEFAULT_TIMEOUT_MS,
   errorMessage,
@@ -10,14 +11,11 @@ import {
   timeoutExecResult,
 } from './shared.js';
 
-export async function claudeCliExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {
+export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {
   const args = ['-p', prompt, '--output-format', 'json', '--model', model];
   if (system) args.push('--system-prompt', system);
 
-  const proxyUrl = process.env.CCV_PROXY_URL || undefined;
-  const env = proxyUrl
-    ? { ...process.env, ANTHROPIC_BASE_URL: proxyUrl }
-    : { ...process.env };
+  const env = buildExecEnv(skillDir);
 
   const start = Date.now();
   try {

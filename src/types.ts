@@ -35,6 +35,7 @@ export interface ExecutorInput {
   system?: string | null;
   prompt: string;
   cwd?: string | null;
+  skillDir?: string | null;
   timeoutMs?: number;
   verbose?: boolean;
 }
