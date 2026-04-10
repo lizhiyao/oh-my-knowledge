@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { DEFAULT_OUTPUT_DIR } from '../eval-core/evaluation-reporting.js';
+import { DEFAULT_OUTPUT_DIR, persistReport } from '../eval-core/evaluation-reporting.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
 import { discoverEachSkills } from '../inputs/skill-loader.js';
 import { confidenceInterval, tTest } from '../eval-core/statistics.js';
@@ -336,9 +336,12 @@ export async function runMultiple({ repeat = 1, onRepeatProgress, ...config }: R
 
   const report = runs[runs.length - 1];
   const aggregated = buildVarianceData(runs);
+  let filePath: string | null = null;
   if (aggregated) {
     report.variance = aggregated;
+    // pipeline 内部在 variance 赋值前已写入报告，需要重新写一次以包含方差数据
+    filePath = persistReport(report, savedOutputDir || DEFAULT_OUTPUT_DIR);
   }
 
-  return { report, aggregated, filePath: null };
+  return { report, aggregated, filePath };
 }

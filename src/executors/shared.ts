@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { promisify } from 'node:util';
 import type { ExecResult } from '../types.js';
 
@@ -130,7 +130,7 @@ export function buildExecEnv(skillDir?: string | null): NodeJS.ProcessEnv {
   if (skillDir) {
     const nodeBin = join(skillDir, 'node_modules', '.bin');
     if (existsSync(nodeBin)) {
-      env.PATH = `${nodeBin}${env.PATH ? ':' + env.PATH : ''}`;
+      env.PATH = `${nodeBin}${env.PATH ? delimiter + env.PATH : ''}`;
     }
   }
 

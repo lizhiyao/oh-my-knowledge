@@ -50,13 +50,7 @@ export function buildVariantConfig(artifact: Artifact): VariantConfig {
 
 function extractSkillDir(artifact: Artifact): string | null {
   if (!artifact.locator) return null;
-  const dir = dirname(artifact.locator);
-  // locator 可能是 skills/name/SKILL.md（取 skills/name）或 skills/name.md（取 skills）
-  // 如果是 SKILL.md 路径，skill 目录就是它的父目录
-  if (artifact.locator.endsWith('/SKILL.md') || artifact.locator.endsWith('\\SKILL.md')) {
-    return dir;
-  }
-  return dir;
+  return dirname(artifact.locator);
 }
 
 export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: number, verbose?: boolean): ExecutionPlan {
