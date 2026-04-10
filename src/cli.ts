@@ -811,6 +811,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
       concurrency: { type: 'string', default: '1' },
       timeout: { type: 'string', default: '120' },
       executor: { type: 'string', default: 'claude' },
+      'skip-preflight': { type: 'boolean', default: false },
     },
     strict: false,
     allowPositionals: true,
@@ -844,6 +845,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
       executorName: values.executor as string,
       concurrency: Math.max(1, Number(values.concurrency) || 1),
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
+      skipPreflight: values['skip-preflight'] as boolean,
       onProgress: defaultOnProgress as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, error }: RoundProgressInfo): void {
         if (phase === 'baseline') {

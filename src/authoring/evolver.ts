@@ -123,6 +123,7 @@ interface EvolveOptions {
   executorName?: string;
   concurrency?: number;
   timeoutMs?: number;
+  skipPreflight?: boolean;
   onProgress?: ProgressCallback | null;
   onRoundProgress?: ((progress: EvolveRoundProgressInfo) => void) | null;
 }
@@ -230,6 +231,7 @@ export async function evolveSkill({
   executorName = 'claude',
   concurrency = 1,
   timeoutMs,
+  skipPreflight = false,
   onProgress = null,
   onRoundProgress = null,
 }: EvolveOptions): Promise<EvolveResult> {
@@ -259,7 +261,7 @@ export async function evolveSkill({
 
   // Round 0: baseline evaluation
   const baselineReport = await evaluate(r0Path, {
-    samplesPath: absSamplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, onProgress,
+    samplesPath: absSamplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, skipPreflight, onProgress,
   });
   const baselineVariantKey = Object.keys(baselineReport.summary)[0];
   bestScore = baselineReport.summary[baselineVariantKey]?.avgCompositeScore ?? 0;
@@ -274,7 +276,7 @@ export async function evolveSkill({
   for (let round = 1; round <= rounds; round++) {
     // Extract weak samples from last accepted evaluation
     const lastReport = round === 1 ? baselineReport : await evaluate(allVersions[bestRound], {
-      samplesPath: absSamplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, onProgress,
+      samplesPath: absSamplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, skipPreflight, onProgress,
     });
     const lastVariantKey = Object.keys(lastReport.summary)[0];
     const weakSamples = extractWeakSamples(lastReport, lastVariantKey);
@@ -300,7 +302,7 @@ export async function evolveSkill({
 
     // Evaluate candidate
     const candidateReport = await evaluate(candidatePath, {
-      samplesPath: absSamplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, onProgress,
+      samplesPath: absSamplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, skipPreflight, onProgress,
     });
     const candidateVariantKey = Object.keys(candidateReport.summary)[0];
     const candidateScore = candidateReport.summary[candidateVariantKey]?.avgCompositeScore ?? 0;
@@ -360,10 +362,11 @@ interface EvaluateOptions {
   executorName: string;
   concurrency: number;
   timeoutMs?: number;
+  skipPreflight?: boolean;
   onProgress: ((progress: EvolveProgressInfo) => void) | null;
 }
 
-async function evaluate(skillFilePath: string, { samplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, onProgress }: EvaluateOptions): Promise<Report> {
+async function evaluate(skillFilePath: string, { samplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, skipPreflight, onProgress }: EvaluateOptions): Promise<Report> {
   const { report } = await runEvaluation({
     samplesPath,
     skillDir,
@@ -374,6 +377,7 @@ async function evaluate(skillFilePath: string, { samplesPath, skillDir, model, j
     concurrency,
     timeoutMs,
     executorName,
+    skipPreflight,
     onProgress,
   });
   return report as Report;
