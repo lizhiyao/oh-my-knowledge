@@ -47,8 +47,6 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
       }).join('')
       : '<div style="color:var(--text-faint);font-size:0.6875rem;text-align:center">no score</div>';
     const artifactKinds = new Set((m.variantConfigs || []).map((c) => c.artifactKind).filter((k) => k && k !== 'baseline'));
-    const hasToolCalls = Object.values(run.summary || {}).some((s) => s.avgToolCalls != null && s.avgToolCalls > 0);
-    if (hasToolCalls) artifactKinds.add('agent');
     const badgeStyle = 'display:inline-block;font-size:10px;padding:1px 6px;margin-left:6px;border-radius:3px;background:var(--accent);color:#fff;vertical-align:middle';
     const kindLabelMap: Record<string, string> = { agent: t('agentLabel', lang), skill: t('skillLabel', lang), prompt: t('promptLabel', lang), workflow: t('workflowLabel', lang) };
     const badges = [...artifactKinds].map((k) => kindLabelMap[k]).filter(Boolean).map((label) => `<span style="${badgeStyle}">${label}</span>`).join('');
