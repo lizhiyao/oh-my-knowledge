@@ -46,12 +46,15 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
           `<span style="font-size:12px;font-weight:600;color:${color};min-width:24px">${score}</span></div>`;
       }).join('')
       : '<div style="color:var(--text-faint);font-size:0.6875rem;text-align:center">no score</div>';
+    const artifactKinds = new Set((m.variantConfigs || []).map((c) => c.artifactKind).filter((k) => k && k !== 'baseline'));
     const hasToolCalls = Object.values(run.summary || {}).some((s) => s.avgToolCalls != null && s.avgToolCalls > 0);
-    const hasAgentArtifact = (m.variantConfigs || []).some((c) => c.artifactKind === 'agent');
-    const isAgent = hasToolCalls || hasAgentArtifact;
-    const agentBadge = isAgent ? `<span style="display:inline-block;font-size:10px;padding:1px 6px;margin-left:6px;border-radius:3px;background:var(--accent);color:#fff;vertical-align:middle">${t('agentLabel', lang)}</span>` : '';
+    if (hasToolCalls) artifactKinds.add('agent');
+    const badgeStyle = 'display:inline-block;font-size:10px;padding:1px 6px;margin-left:6px;border-radius:3px;background:var(--accent);color:#fff;vertical-align:middle';
+    const kindLabelMap: Record<string, string> = { agent: t('agentLabel', lang), skill: t('skillLabel', lang), prompt: t('promptLabel', lang), workflow: t('workflowLabel', lang) };
+    const badges = [...artifactKinds].map((k) => kindLabelMap[k]).filter(Boolean).map((label) => `<span style="${badgeStyle}">${label}</span>`).join('');
+
     return `<tr>
-      <td><a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e(run.id)}${agentBadge}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${(() => {
+      <td><a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e(run.id)}${badges}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${(() => {
         // Extract date/time from report ID: ...-YYYYMMDD-HHmm
         const idMatch = run.id.match(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
         if (idMatch) return `${idMatch[2]}/${idMatch[3]} ${idMatch[4]}:${idMatch[5]}`;
