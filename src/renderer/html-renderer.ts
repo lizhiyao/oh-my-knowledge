@@ -46,10 +46,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
           `<span style="font-size:12px;font-weight:600;color:${color};min-width:24px">${score}</span></div>`;
       }).join('')
       : '<div style="color:var(--text-faint);font-size:0.6875rem;text-align:center">no score</div>';
-    const artifactKinds = new Set((m.variantConfigs || []).map((c) => c.artifactKind).filter((k) => k && k !== 'baseline'));
-    const badgeStyle = 'display:inline-block;font-size:10px;padding:1px 6px;margin-left:6px;border-radius:3px;background:var(--accent);color:#fff;vertical-align:middle';
-    const kindLabelMap: Record<string, string> = { agent: t('agentLabel', lang), skill: t('skillLabel', lang), prompt: t('promptLabel', lang), workflow: t('workflowLabel', lang) };
-    const badges = [...artifactKinds].map((k) => kindLabelMap[k]).filter(Boolean).map((label) => `<span style="${badgeStyle}">${label}</span>`).join('');
+    const badges = ''; // TODO: artifact kind 体系完善后，按 kind 显示评测类型标签
 
     return `<tr>
       <td><a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e(run.id)}${badges}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${(() => {
