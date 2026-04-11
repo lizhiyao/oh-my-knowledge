@@ -7,9 +7,9 @@
  */
 
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { execFileSync } from 'node:child_process';
-import type { Sample } from '../types.js';
+import { delimiter, dirname, join, resolve } from 'node:path';
+import { execFileSync, execSync } from 'node:child_process';
+import type { Artifact, Sample } from '../types.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -19,6 +19,7 @@ export interface DependencyRequirements {
   tools?: string[];
   files?: string[];
   env?: string[];
+  preflight?: string[];
 }
 
 export interface DependencyIssue {
@@ -140,13 +141,31 @@ export function extractDependencies(
 // Validation — check if dependencies are available
 // ---------------------------------------------------------------------------
 
-function isToolAvailable(tool: string): boolean {
+function isToolAvailable(tool: string, env?: NodeJS.ProcessEnv): boolean {
   try {
-    execFileSync('which', [tool], { stdio: 'pipe', timeout: 5000 });
+    execFileSync('which', [tool], { stdio: 'pipe', timeout: 5000, env });
     return true;
   } catch {
     return false;
   }
+}
+
+/**
+ * Build an env with skill directories' node_modules/.bin prepended to PATH.
+ */
+function buildPreflightEnv(artifacts?: Artifact[]): NodeJS.ProcessEnv {
+  if (!artifacts) return process.env;
+  const extraPaths: string[] = [];
+  for (const a of artifacts) {
+    if (!a.locator) continue;
+    const dir = dirname(a.locator);
+    const nodeBin = join(dir, 'node_modules', '.bin');
+    if (existsSync(nodeBin)) extraPaths.push(nodeBin);
+  }
+  if (extraPaths.length === 0) return process.env;
+  const env = { ...process.env };
+  env.PATH = [...extraPaths, env.PATH].filter(Boolean).join(delimiter);
+  return env;
 }
 
 /**
@@ -155,12 +174,13 @@ function isToolAvailable(tool: string): boolean {
 export async function checkDependencies(
   deps: DependencyRequirements,
   cwd: string,
+  env?: NodeJS.ProcessEnv,
 ): Promise<DependencyCheckResult> {
   const missing: DependencyIssue[] = [];
 
   // Check CLI tools
   for (const tool of deps.tools || []) {
-    if (!isToolAvailable(tool)) {
+    if (!isToolAvailable(tool, env)) {
       missing.push({
         category: 'tool',
         name: tool,
@@ -204,11 +224,60 @@ function mergeRequirements(a: DependencyRequirements, b?: DependencyRequirements
   const tools = new Set([...(a.tools || []), ...(b.tools || [])]);
   const files = new Set([...(a.files || []), ...(b.files || [])]);
   const env = new Set([...(a.env || []), ...(b.env || [])]);
+  const preflight = new Set([...(a.preflight || []), ...(b.preflight || [])]);
   return {
     tools: tools.size > 0 ? [...tools] : undefined,
     files: files.size > 0 ? [...files] : undefined,
     env: env.size > 0 ? [...env] : undefined,
+    preflight: preflight.size > 0 ? [...preflight] : undefined,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Preflight commands — execute shell commands to verify tool availability
+// ---------------------------------------------------------------------------
+
+const PREFLIGHT_TIMEOUT_MS = 10_000;
+
+/**
+ * Extract preflight commands from artifact metadata (parsed from SKILL.md frontmatter).
+ */
+function extractPreflightFromArtifacts(artifacts: Artifact[]): string[] {
+  const commands: string[] = [];
+  for (const artifact of artifacts) {
+    const pf = artifact.metadata?.preflight;
+    if (Array.isArray(pf)) {
+      for (const cmd of pf) {
+        if (typeof cmd === 'string' && cmd.trim()) commands.push(cmd.trim());
+      }
+    }
+  }
+  return commands;
+}
+
+/**
+ * Run preflight commands and collect failures.
+ */
+function runPreflightCommands(commands: string[], cwd: string, env?: NodeJS.ProcessEnv): DependencyIssue[] {
+  const issues: DependencyIssue[] = [];
+  for (const cmd of commands) {
+    try {
+      execSync(cmd, {
+        cwd,
+        env: env || process.env,
+        stdio: 'pipe',
+        timeout: PREFLIGHT_TIMEOUT_MS,
+      });
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message.split('\n')[0] : 'unknown error';
+      issues.push({
+        category: 'tool',
+        name: cmd,
+        hint: `preflight 命令执行失败: ${detail}`,
+      });
+    }
+  }
+  return issues;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,17 +285,31 @@ function mergeRequirements(a: DependencyRequirements, b?: DependencyRequirements
 // ---------------------------------------------------------------------------
 
 /**
- * Run preflight dependency check: auto-extract + merge explicit requires + validate.
+ * Run preflight dependency check: auto-extract + merge explicit requires + validate + run preflight commands.
  */
 export async function preflightDependencies(
   skillContents: string[],
   samples: Sample[],
   cwd: string,
   explicitRequires?: DependencyRequirements,
+  artifacts?: Artifact[],
 ): Promise<DependencyCheckResult> {
+  const env = buildPreflightEnv(artifacts);
   const autoDetected = extractDependencies(skillContents, samples);
   const merged = mergeRequirements(autoDetected, explicitRequires);
-  return checkDependencies(merged, cwd);
+  const result = await checkDependencies(merged, cwd, env);
+
+  // 合并 preflight 命令：来自 requires + 来自 artifact metadata
+  const artifactPreflight = artifacts ? extractPreflightFromArtifacts(artifacts) : [];
+  const allPreflight = [...new Set([...(merged.preflight || []), ...artifactPreflight])];
+
+  if (allPreflight.length > 0) {
+    const preflightIssues = runPreflightCommands(allPreflight, cwd, env);
+    result.missing.push(...preflightIssues);
+    result.ok = result.ok && preflightIssues.length === 0;
+  }
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------

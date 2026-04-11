@@ -276,7 +276,7 @@ export async function executeEvaluationPipeline({
       // Dependency check: auto-extract from skill contents + merge explicit requires
       const skillContents = artifacts.map((a) => a.content).filter((c): c is string => typeof c === 'string');
       const cwd = artifacts.find((a) => a.cwd)?.cwd || skillDir || process.cwd();
-      const depResult = await preflightDependencies(skillContents, samples, cwd, requires);
+      const depResult = await preflightDependencies(skillContents, samples, cwd, requires, artifacts);
       if (!depResult.ok) {
         throw new Error(formatDependencyErrors(depResult.missing));
       }

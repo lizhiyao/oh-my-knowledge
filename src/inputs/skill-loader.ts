@@ -3,6 +3,33 @@ import { resolve, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type { Artifact } from '../types.js';
 
+function parseFrontmatterPreflight(content: string): string[] | undefined {
+  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!match) return undefined;
+  const frontmatter = match[1];
+  // 解析 preflight 列表：支持 YAML 数组格式
+  // preflight:
+  //   - cmd1
+  //   - cmd2
+  const preflightMatch = frontmatter.match(/^preflight:\s*\r?\n((?:\s+-\s+.+\r?\n?)+)/m);
+  if (preflightMatch) {
+    const items = preflightMatch[1].match(/^\s+-\s+(.+)$/gm);
+    if (items) return items.map(line => line.replace(/^\s+-\s+/, '').trim()).filter(Boolean);
+  }
+  // 单行格式：preflight: ["cmd1", "cmd2"]
+  const inlineMatch = frontmatter.match(/^preflight:\s*\[([^\]]+)\]/m);
+  if (inlineMatch) {
+    return inlineMatch[1].split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+  }
+  return undefined;
+}
+
+function buildMetadata(content: string): Record<string, unknown> | undefined {
+  const preflight = parseFrontmatterPreflight(content);
+  if (!preflight || preflight.length === 0) return undefined;
+  return { preflight };
+}
+
 function gitShowFile(ref: string, filePath: string): string | null {
   try {
     return execFileSync('git', ['show', `${ref}:${filePath}`], { encoding: 'utf-8' }).trim();
@@ -153,13 +180,15 @@ export function resolveArtifacts(skillDir: string, variants: string[]): Artifact
       if (!existsSync(filePath)) {
         throw new Error(`skill 文件未找到: ${filePath}`);
       }
+      const content = readFileSync(filePath, 'utf-8').trim();
       artifacts.push({
         name: variantName,
         kind: 'skill',
         source: 'file-path',
-        content: readFileSync(filePath, 'utf-8').trim(),
+        content,
         locator: filePath,
         cwd: variantCwd,
+        metadata: buildMetadata(content),
       });
       continue;
     }
@@ -167,22 +196,26 @@ export function resolveArtifacts(skillDir: string, variants: string[]): Artifact
     const mdPath = join(skillDir, `${variantName}.md`);
     const dirSkillPath = join(skillDir, variantName, 'SKILL.md');
     if (existsSync(mdPath)) {
+      const content = readFileSync(mdPath, 'utf-8').trim();
       artifacts.push({
         name: variantName,
         kind: 'skill',
         source: 'variant-name',
-        content: readFileSync(mdPath, 'utf-8').trim(),
+        content,
         locator: mdPath,
         cwd: variantCwd,
+        metadata: buildMetadata(content),
       });
     } else if (existsSync(dirSkillPath)) {
+      const content = readFileSync(dirSkillPath, 'utf-8').trim();
       artifacts.push({
         name: variantName,
         kind: 'skill',
         source: 'variant-name',
-        content: readFileSync(dirSkillPath, 'utf-8').trim(),
+        content,
         locator: dirSkillPath,
         cwd: variantCwd,
+        metadata: buildMetadata(content),
       });
     } else if (variantCwd) {
       artifacts.push({
