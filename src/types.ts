@@ -24,6 +24,8 @@ export interface ExecResult {
   costUSD: number;
   stopReason: string;
   numTurns: number;
+  fullNumTurns?: number;
+  numSubAgents?: number;
   error?: string;
   cached?: boolean;
   turns?: TurnInfo[];
@@ -282,6 +284,8 @@ export interface VariantResult {
   judgeCostUSD: number;
   costUSD: number;
   numTurns: number;
+  fullNumTurns?: number;
+  numSubAgents?: number;
   assistantTurns?: number;
   toolTurns?: number;
   numToolCalls?: number;
@@ -318,6 +322,8 @@ export interface VariantSummary {
   totalJudgeCostUSD: number;
   avgCostPerSample: number;
   avgNumTurns: number;
+  avgFullNumTurns?: number;
+  avgNumSubAgents?: number;
   avgAssistantTurns?: number;
   avgToolTurns?: number;
   avgToolCalls?: number;

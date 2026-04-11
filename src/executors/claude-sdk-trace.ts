@@ -5,11 +5,13 @@ export function isClaudeSdkResultMessage(message: ClaudeSdkBaseMessage): boolean
   return message.type === 'result';
 }
 
-export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?: number[]): { turns: TurnInfo[]; toolCalls: ToolCallInfo[] } {
+export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?: number[]): { turns: TurnInfo[]; toolCalls: ToolCallInfo[]; fullNumTurns: number; numSubAgents: number } {
   const turns: TurnInfo[] = [];
   const toolCalls: ToolCallInfo[] = [];
   const pendingToolUse = new Map<string, { tool: string; input: unknown }>();
   let lastTurnTs = timestamps?.[0] || 0;
+  let fullNumTurns = 0;
+  let numSubAgents = 0;
 
   for (let msgIdx = 0; msgIdx < messages.length; msgIdx++) {
     const msg = messages[msgIdx];
@@ -22,15 +24,22 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?:
     if (msg.type === 'assistant') {
       const textParts: string[] = [];
       const turnToolCalls: ToolCallInfo[] = [];
+      let hasNonThinking = false;
 
       for (const block of content) {
         if (block.type === 'text' && block.text) {
           textParts.push(block.text);
+          hasNonThinking = true;
         } else if (block.type === 'tool_use' && block.name) {
           pendingToolUse.set(block.id || '', { tool: block.name, input: block.input });
           turnToolCalls.push({ tool: block.name, input: block.input, output: null, success: true });
+          hasNonThinking = true;
+          if (block.name === 'Agent') numSubAgents++;
+        } else if (block.type !== 'thinking') {
+          hasNonThinking = true;
         }
       }
+      if (hasNonThinking) fullNumTurns++;
 
       if (textParts.length > 0 || turnToolCalls.length > 0) {
         const dur = msgTs && lastTurnTs ? msgTs - lastTurnTs : undefined;
@@ -91,5 +100,5 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?:
     }
   }
 
-  return { turns, toolCalls };
+  return { turns, toolCalls, fullNumTurns, numSubAgents };
 }

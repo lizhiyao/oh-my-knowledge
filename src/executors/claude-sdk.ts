@@ -83,10 +83,21 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
 
     for (const r of resultMsgs) {
       output += r.result || '';
-      totalInputTokens += r.usage?.input_tokens || 0;
-      totalOutputTokens += r.usage?.output_tokens || 0;
-      totalCacheReadTokens += r.usage?.cache_read_input_tokens || 0;
-      totalCacheCreationTokens += r.usage?.cache_creation_input_tokens || 0;
+      // Prefer modelUsage (includes subAgent tokens) over usage (main process only)
+      const modelUsage = (r as unknown as Record<string, unknown>).modelUsage as Record<string, { inputTokens?: number; outputTokens?: number; cacheReadInputTokens?: number; cacheCreationInputTokens?: number }> | undefined;
+      if (modelUsage) {
+        for (const mu of Object.values(modelUsage)) {
+          totalInputTokens += mu.inputTokens || 0;
+          totalOutputTokens += mu.outputTokens || 0;
+          totalCacheReadTokens += mu.cacheReadInputTokens || 0;
+          totalCacheCreationTokens += mu.cacheCreationInputTokens || 0;
+        }
+      } else {
+        totalInputTokens += r.usage?.input_tokens || 0;
+        totalOutputTokens += r.usage?.output_tokens || 0;
+        totalCacheReadTokens += r.usage?.cache_read_input_tokens || 0;
+        totalCacheCreationTokens += r.usage?.cache_creation_input_tokens || 0;
+      }
       totalCostUSD += r.total_cost_usd || 0;
       totalDurationApiMs += r.duration_api_ms || 0;
       totalNumTurns += r.num_turns || 0;
@@ -110,6 +121,8 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
         cacheCreationTokens: totalCacheCreationTokens,
         costUSD: totalCostUSD,
         output: null, stopReason: 'error', numTurns: totalNumTurns,
+        fullNumTurns: trace.fullNumTurns,
+        numSubAgents: trace.numSubAgents,
         ...(trace.turns.length > 0 && { turns: trace.turns }),
         ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
       };
@@ -127,6 +140,8 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
       output,
       stopReason: 'end',
       numTurns: totalNumTurns,
+      fullNumTurns: trace.fullNumTurns,
+      numSubAgents: trace.numSubAgents,
       ...(trace.turns.length > 0 && { turns: trace.turns }),
       ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
     };

@@ -69,7 +69,8 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
 
     // Efficiency
     const effDetails: string[] = [];
-    if ((s.avgNumTurns || 0) > 0) effDetails.push(`${s.avgNumTurns} ${t('turnsPerReq', lang)}`);
+    const displayTurns = s.avgFullNumTurns ?? s.avgNumTurns;
+    if ((displayTurns || 0) > 0) effDetails.push(`${displayTurns} ${t('turnsPerReq', lang)}`);
     if (s.avgToolCalls != null && s.avgToolCalls > 0) {
       const srPct = s.toolSuccessRate != null ? ` (${(s.toolSuccessRate * 100).toFixed(0)}% OK)` : '';
       effDetails.push(`${s.avgToolCalls} tools/req${srPct}`);
@@ -286,7 +287,7 @@ export function renderAgentOverview(variants: string[], summary: Record<string, 
     const avgTools = stats.avgToolCalls ?? 0;
     const successRate = stats.toolSuccessRate != null ? `${(stats.toolSuccessRate * 100).toFixed(0)}%` : '-';
     const successRateColor = (stats.toolSuccessRate ?? 1) >= 0.8 ? 'var(--green)' : 'var(--red)';
-    const turns = stats.avgNumTurns || 0;
+    const turns = stats.avgFullNumTurns ?? stats.avgNumTurns ?? 0;
     const distributionEntries = Object.entries(stats.toolDistribution || {}).sort((a, b) => b[1] - a[1]);
     const maxCount = distributionEntries.length > 0 ? distributionEntries[0][1] : 0;
     const distributionBars = distributionEntries.map(([tool, count]) => {

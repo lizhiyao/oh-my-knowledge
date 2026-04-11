@@ -67,6 +67,8 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     judgeCostUSD,
     costUSD: execCostUSD + judgeCostUSD, // Total = execution + grading
     numTurns: execResult.numTurns,
+    ...(execResult.fullNumTurns != null && { fullNumTurns: execResult.fullNumTurns }),
+    ...(execResult.numSubAgents != null && { numSubAgents: execResult.numSubAgents }),
     ...(assistantTurns != null && { assistantTurns }),
     ...(toolTurns != null && { toolTurns }),
     ...(execResult.toolCalls && execResult.toolCalls.length > 0 && {
@@ -136,6 +138,16 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
     totalJudgeCostUSD: ok.reduce((s, e) => s + (e.judgeCostUSD || 0), 0),
     avgCostPerSample: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.costUSD || 0), 0) / ok.length).toFixed(6)) : 0,
     avgNumTurns: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.numTurns || 0), 0) / ok.length).toFixed(1)) : 0,
+    ...(() => {
+      const withFullTurns = ok.filter((e) => e.fullNumTurns != null);
+      if (withFullTurns.length > 0) {
+        return {
+          avgFullNumTurns: Number((withFullTurns.reduce((s, e) => s + (e.fullNumTurns || 0), 0) / withFullTurns.length).toFixed(1)),
+          avgNumSubAgents: Number((withFullTurns.reduce((s, e) => s + (e.numSubAgents || 0), 0) / withFullTurns.length).toFixed(1)),
+        };
+      }
+      return {};
+    })(),
     ...(() => {
       const withTrace = ok.filter((e) => e.traceCoverage != null);
       if (withTrace.length === 0) return {};

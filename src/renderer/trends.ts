@@ -85,7 +85,7 @@ function renderTable(variantName: string, runs: Report[], lang: Lang): string {
     return `<tr>
       <td><a href="/run/${e(r.id)}">${fmtLocalTime(m.timestamp)}</a></td>
       <td>${s.avgCompositeScore ?? '-'}</td>
-      <td>${s.avgNumTurns ?? '-'}</td>
+      <td>${s.avgFullNumTurns ?? s.avgNumTurns ?? '-'}</td>
       <td>${fmtCost(s.avgCostPerSample)}</td>
       <td><code style="font-size:11px">${e(hash.slice(0, 8))}</code></td>
       <td>${commitCell}</td>
