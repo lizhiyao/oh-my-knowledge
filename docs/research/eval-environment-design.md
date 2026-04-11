@@ -114,10 +114,19 @@ runtime:
 
 | 项目 | 状态 | 说明 |
 |------|------|------|
-| node_modules/.bin PATH 注入 | 已完成 | 201b1c4 — 解决"找不到命令"问题 |
-| CLI preflight 检查框架 | 已有基础 | e6f1224 — 已有 CLI/文件/环境变量检测能力 |
-| CLI 鉴权状态检测 | 待做 | 需要 skill 声明 preflight 检查命令 |
-| 容器化 eval 环境 | 待做 | 长期方案，需要基础设施支持 |
+| node_modules/.bin PATH 注入 | **已完成** | 201b1c4 — 执行器自动把 skill 目录的 node_modules/.bin 加入 PATH |
+| CLI preflight 检查框架 | **已完成** | e6f1224 — 自动从 SKILL.md 提取 CLI/文件/环境变量依赖并验证 |
+| preflight 命令检测 | **已完成** | b926a53 — 支持 SKILL.md frontmatter 和 eval-samples.json 两个入口声明 preflight 命令，评测前执行验证 |
+| preflight PATH 一致性 | **已完成** | b926a53 — preflight 阶段也注入 skill 的 node_modules/.bin，与执行器 PATH 一致 |
+| ��器化 eval 环境 | 待做 | 长期方案，需要基础设施支持 |
+
+短期方案已全部实现。当前 eval 环境检测能力覆盖：
+1. CLI 工具是否在 PATH 中（自动检测）
+2. 引用的文件是否存在（自动检测）
+3. 环境变量是否设置（自动检测）
+4. 自定义验证命令（skill 作者或评测者声明，如鉴权检查）
+
+不可用时在评测前拦截并给出修复指引，而非让模型去诊断环境问题。
 
 ## 参考资料
 
