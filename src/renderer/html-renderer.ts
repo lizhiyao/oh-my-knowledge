@@ -46,7 +46,9 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
           `<span style="font-size:12px;font-weight:600;color:${color};min-width:24px">${score}</span></div>`;
       }).join('')
       : '<div style="color:var(--text-faint);font-size:0.6875rem;text-align:center">no score</div>';
-    const isAgent = Object.values(run.summary || {}).some((s) => s.avgToolCalls != null && s.avgToolCalls > 0);
+    const hasToolCalls = Object.values(run.summary || {}).some((s) => s.avgToolCalls != null && s.avgToolCalls > 0);
+    const hasAgentArtifact = (m.variantConfigs || []).some((c) => c.artifactKind === 'agent');
+    const isAgent = hasToolCalls || hasAgentArtifact;
     const agentBadge = isAgent ? `<span style="display:inline-block;font-size:10px;padding:1px 6px;margin-left:6px;border-radius:3px;background:var(--accent);color:#fff;vertical-align:middle">${t('agentLabel', lang)}</span>` : '';
     return `<tr>
       <td><a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e(run.id)}${agentBadge}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${(() => {
