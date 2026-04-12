@@ -8,6 +8,7 @@ import {
   renderAnalysis,
   renderCoverageSection,
   renderSummaryCards,
+  renderVarianceComparisons,
 } from './summary.js';
 import { renderSampleTable } from './table.js';
 import { renderTrendsBody } from './trends.js';
@@ -266,6 +267,8 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     ${variantConfigSection}
 
     <section>${cards}</section>
+
+    ${renderVarianceComparisons(report.variance, lang)}
 
     ${renderAnalysis(report.analysis, lang)}
 

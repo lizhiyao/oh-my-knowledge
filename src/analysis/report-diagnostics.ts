@@ -197,10 +197,18 @@ function generateSummary(report: Report, variants: string[]): string | undefined
     const v = report.variance;
     for (const comp of v.comparisons) {
       if (comp.a === control && comp.b === test || comp.a === test && comp.b === control) {
+        const es = comp.effectSize;
+        let esText = '';
+        if (es && es.primary !== 'none') {
+          const primaryVal = es.primary === 'g' ? es.hedgesG : es.cohensD;
+          const secondaryLabel = es.primary === 'g' ? 'd' : 'g';
+          const secondaryVal = es.primary === 'g' ? es.cohensD : es.hedgesG;
+          esText = `，效应量 ${es.primary}=${primaryVal.toFixed(2)}（${es.magnitude}，${secondaryLabel}=${secondaryVal.toFixed(2)}）`;
+        }
         if (comp.significant) {
-          synthesis.push(`${v.runs} 轮重复评测显示差异具有统计显著性（t=${comp.tStatistic.toFixed(2)}, df=${comp.df.toFixed(1)}, p<0.05）`);
+          synthesis.push(`${v.runs} 轮重复评测显示差异具有统计显著性（t=${comp.tStatistic.toFixed(2)}, df=${comp.df.toFixed(1)}, p<0.05${esText}）`);
         } else {
-          synthesis.push(`${v.runs} 轮重复评测未达到统计显著性（t=${comp.tStatistic.toFixed(2)}, df=${comp.df.toFixed(1)}），差异可能源于随机波动`);
+          synthesis.push(`${v.runs} 轮重复评测未达到统计显著性（t=${comp.tStatistic.toFixed(2)}, df=${comp.df.toFixed(1)}${esText}），差异可能源于随机波动`);
         }
       }
     }

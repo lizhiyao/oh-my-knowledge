@@ -87,6 +87,81 @@ export function confidenceInterval(arr: number[]): { mean: number; lower: number
  * Requires at least 2 observations per group. Returns non-significant
  * result for insufficient data or zero variance in both groups.
  */
+export interface EffectSizeResult {
+  cohensD: number;
+  hedgesG: number;
+  primary: 'd' | 'g' | 'none';
+  magnitude: 'negligible' | 'small' | 'medium' | 'large' | 'none';
+  pooledStddev: number;
+  n1: number;
+  n2: number;
+}
+
+/**
+ * Effect size for two independent samples.
+ *
+ * Cohen's d:   (mean_a - mean_b) / pooled_stddev
+ * Hedges' g:   J * d, where J = 1 - 3 / (4 * (n1 + n2) - 9)
+ *
+ * Hedges' g corrects Cohen's d's small-sample bias (Hedges 1981) and is
+ * preferred when n1 + n2 < 20. For n1 + n2 >= 20 the correction is < 5%
+ * and Cohen's d is the conventional choice.
+ *
+ * `primary` indicates which to emphasize in UI based on total sample size.
+ * `magnitude` uses standard thresholds (|effect| 0.2 / 0.5 / 0.8) applied
+ * to the primary metric.
+ *
+ * Returns effect 0 with primary 'none' for insufficient data or zero variance.
+ */
+export function effectSize(a: number[], b: number[]): EffectSizeResult {
+  const n1 = a?.length ?? 0;
+  const n2 = b?.length ?? 0;
+
+  if (n1 < 2 || n2 < 2) {
+    return { cohensD: 0, hedgesG: 0, primary: 'none', magnitude: 'none', pooledStddev: 0, n1, n2 };
+  }
+
+  const mA = ss.mean(a);
+  const mB = ss.mean(b);
+  const varA = ss.sampleVariance(a);
+  const varB = ss.sampleVariance(b);
+
+  // Pooled standard deviation (assumes similar variances; acceptable for
+  // effect-size reporting even when Welch's t-test is used for significance)
+  const pooledVar = ((n1 - 1) * varA + (n2 - 1) * varB) / (n1 + n2 - 2);
+  const pooledStddev = Math.sqrt(pooledVar);
+
+  if (pooledStddev === 0) {
+    return { cohensD: 0, hedgesG: 0, primary: 'none', magnitude: 'none', pooledStddev: 0, n1, n2 };
+  }
+
+  const d = (mA - mB) / pooledStddev;
+
+  // Hedges' correction factor J. Denominator guard: 4*(n1+n2)-9 > 0 iff n1+n2 > 2.25,
+  // which is already satisfied by the n1>=2, n2>=2 check above.
+  const J = 1 - 3 / (4 * (n1 + n2) - 9);
+  const g = J * d;
+
+  const totalN = n1 + n2;
+  const primary: 'd' | 'g' = totalN < 20 ? 'g' : 'd';
+  const ref = primary === 'g' ? g : d;
+  const abs = Math.abs(ref);
+  const magnitude: 'negligible' | 'small' | 'medium' | 'large' =
+    abs < 0.2 ? 'negligible' :
+    abs < 0.5 ? 'small' :
+    abs < 0.8 ? 'medium' : 'large';
+
+  return {
+    cohensD: Number(d.toFixed(4)),
+    hedgesG: Number(g.toFixed(4)),
+    primary,
+    magnitude,
+    pooledStddev: Number(pooledStddev.toFixed(4)),
+    n1,
+    n2,
+  };
+}
+
 export function tTest(a: number[], b: number[]): { tStatistic: number; df: number; significant: boolean } {
   // Minimum sample size check
   if (!a || !b || a.length < 2 || b.length < 2) {

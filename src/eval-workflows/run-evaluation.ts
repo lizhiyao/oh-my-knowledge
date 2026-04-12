@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import { DEFAULT_OUTPUT_DIR, persistReport } from '../eval-core/evaluation-reporting.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
 import { discoverEachSkills } from '../inputs/skill-loader.js';
-import { confidenceInterval, tTest } from '../eval-core/statistics.js';
+import { confidenceInterval, tTest, effectSize } from '../eval-core/statistics.js';
 import { executeEachEvaluationRuns } from './each-evaluation-workflow.js';
 import {
   buildDryRunEachArtifacts,
@@ -233,13 +233,22 @@ export function buildVarianceData(runs: Report[]): VarianceData | null {
     perVariant[variant] = { scores, ...confidenceInterval(scores) };
   }
 
-  const comparisons: Array<{ a: string; b: string; tStatistic: number; df: number; significant: boolean }> = [];
+  const comparisons: VarianceData['comparisons'] = [];
   for (let i = 0; i < variants.length; i++) {
     for (let j = i + 1; j < variants.length; j++) {
+      const scoresA = perVariant[variants[i]].scores;
+      const scoresB = perVariant[variants[j]].scores;
+      const t = tTest(scoresA, scoresB);
+      const es = effectSize(scoresA, scoresB);
+      const meanDiff = Number((perVariant[variants[i]].mean - perVariant[variants[j]].mean).toFixed(4));
       comparisons.push({
         a: variants[i],
         b: variants[j],
-        ...tTest(perVariant[variants[i]].scores, perVariant[variants[j]].scores),
+        meanDiff,
+        tStatistic: t.tStatistic,
+        df: t.df,
+        significant: t.significant,
+        effectSize: es,
       });
     }
   }

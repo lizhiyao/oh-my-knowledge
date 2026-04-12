@@ -439,10 +439,30 @@ export interface AnalysisResult {
   coverage?: Record<string, KnowledgeCoverage>;
 }
 
+export interface VarianceEffectSize {
+  cohensD: number;
+  hedgesG: number;
+  primary: 'd' | 'g' | 'none';
+  magnitude: 'negligible' | 'small' | 'medium' | 'large' | 'none';
+  pooledStddev: number;
+  n1: number;
+  n2: number;
+}
+
+export interface VarianceComparison {
+  a: string;
+  b: string;
+  meanDiff: number;
+  tStatistic: number;
+  df: number;
+  significant: boolean;
+  effectSize: VarianceEffectSize;
+}
+
 export interface VarianceData {
   runs: number;
   perVariant: Record<string, { scores: number[]; mean: number; lower: number; upper: number; stddev: number }>;
-  comparisons: Array<{ a: string; b: string; tStatistic: number; df: number; significant: boolean }>;
+  comparisons: VarianceComparison[];
 }
 
 export interface McpFetchTool {

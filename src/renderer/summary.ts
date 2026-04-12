@@ -173,6 +173,190 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     </div>`;
 }
 
+interface DiagnosticEntry {
+  icon: string;
+  text: string;
+  color: string;
+  bg: string;
+}
+
+function buildDiagnostic(comp: VarianceData['comparisons'][number], lang: Lang): DiagnosticEntry {
+  const es = comp.effectSize;
+  if (!es || es.primary === 'none') {
+    return {
+      icon: '—',
+      text: lang === 'zh' ? '数据不足，无法判断' : 'insufficient data',
+      color: 'var(--text-muted)',
+      bg: 'transparent',
+    };
+  }
+  const isStrong = es.magnitude === 'medium' || es.magnitude === 'large';
+  const strongLabelZh = es.magnitude === 'large' ? '大' : '中';
+  const strongLabelEn = es.magnitude;
+
+  if (comp.significant && isStrong) {
+    return {
+      icon: '✓',
+      text: lang === 'zh'
+        ? `显著差异（${strongLabelZh}效应）`
+        : `significant, ${strongLabelEn} effect`,
+      color: 'var(--green)',
+      bg: 'rgba(46, 160, 67, 0.08)',
+    };
+  }
+  if (comp.significant && !isStrong) {
+    return {
+      icon: '⚠',
+      text: lang === 'zh'
+        ? '统计显著但效应微弱，别过度解读'
+        : 'significant but effect is trivial — do not overinterpret',
+      color: 'var(--yellow)',
+      bg: 'rgba(210, 153, 34, 0.08)',
+    };
+  }
+  if (!comp.significant && isStrong) {
+    return {
+      icon: '⚠',
+      text: lang === 'zh'
+        ? `${strongLabelZh}效应但样本不足，建议加大 --repeat`
+        : `${strongLabelEn} effect but underpowered — increase --repeat`,
+      color: 'var(--yellow)',
+      bg: 'rgba(210, 153, 34, 0.08)',
+    };
+  }
+  return {
+    icon: '—',
+    text: lang === 'zh' ? '两变体相当，无实质差异' : 'no meaningful difference',
+    color: 'var(--text-muted)',
+    bg: 'transparent',
+  };
+}
+
+export function renderVarianceComparisons(variance: VarianceData | undefined, lang: Lang): string {
+  if (!variance || !variance.comparisons || variance.comparisons.length === 0) return '';
+
+  const modalId = 'guide-variance-comparisons';
+  const title = lang === 'zh' ? '方差与显著性' : 'Variance & Significance';
+  const guideTitle = lang === 'zh' ? '如何阅读这张表？' : 'How to read this table?';
+  const desc = lang === 'zh'
+    ? `跨 ${variance.runs} 轮重复评测的两两对比。每一行最重要的是最右侧的「诊断」一列——它综合效应量和显著性给出可直接行动的结论。`
+    : `Pairwise comparison across ${variance.runs} repeated runs. The rightmost "diagnostic" column is what matters — it combines effect size and significance into an actionable verdict.`;
+
+  const headerLabels = lang === 'zh'
+    ? ['对比', '差距', '效应量', '显著性', '诊断']
+    : ['Comparison', 'Gap', 'Effect size', 'Significance', 'Diagnostic'];
+
+  const thead = `<tr>${headerLabels.map((h, i) => {
+    // Make the diagnostic column wider
+    const width = i === 4 ? ' style="width:32%"' : '';
+    return `<th${width}>${h}</th>`;
+  }).join('')}</tr>`;
+
+  const rows = variance.comparisons.map((comp) => {
+    // Gap cell: neutral winner + absolute magnitude, no red/green on sign
+    const diffAbs = Math.abs(comp.meanDiff);
+    let gapCell: string;
+    if (diffAbs < 0.005) {
+      gapCell = `<span style="color:var(--text-muted)">${lang === 'zh' ? '持平' : 'tied'}</span>`;
+    } else {
+      const winner = comp.meanDiff > 0 ? comp.a : comp.b;
+      const leadLabel = lang === 'zh' ? '领先' : 'leads by';
+      gapCell = `
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">${lang === 'zh' ? '胜出' : 'winner'}</div>
+        <div><strong>${e(winner)}</strong> <span style="color:var(--text-secondary)">+${diffAbs.toFixed(2)}</span></div>`;
+    }
+
+    // Effect size cell: neutral typography, info hierarchy only (no magnitude coloring)
+    const es = comp.effectSize;
+    let esCell: string;
+    if (!es || es.primary === 'none') {
+      esCell = `<span style="color:var(--text-muted)">N/A</span>`;
+    } else {
+      const primaryVal = es.primary === 'g' ? es.hedgesG : es.cohensD;
+      const secondaryLabel = es.primary === 'g' ? 'd' : 'g';
+      const secondaryVal = es.primary === 'g' ? es.cohensD : es.hedgesG;
+      esCell = `
+        <div><strong>${es.primary}=${Math.abs(primaryVal).toFixed(2)}</strong></div>
+        <div style="font-size:11px;color:var(--text-muted)">${secondaryLabel}=${Math.abs(secondaryVal).toFixed(2)} · n=${es.n1}+${es.n2}</div>`;
+    }
+
+    // Significance cell: keep muted but legible
+    const sigText = comp.significant
+      ? (lang === 'zh' ? '显著 (p<0.05)' : 'significant (p<0.05)')
+      : (lang === 'zh' ? '不显著' : 'not significant');
+    const sigCell = `
+      <div style="color:var(--text-secondary)">${sigText}</div>
+      <div style="font-size:11px;color:var(--text-muted)">t=${comp.tStatistic.toFixed(2)} · df=${comp.df}</div>`;
+
+    // Diagnostic cell: the hero
+    const diag = buildDiagnostic(comp, lang);
+    const diagCell = `
+      <div style="padding:10px 12px;background:${diag.bg};border-left:3px solid ${diag.color};border-radius:4px;line-height:1.5">
+        <strong style="color:${diag.color}">${diag.icon} ${diag.text}</strong>
+      </div>`;
+
+    return `<tr>
+      <td><strong>${e(comp.a)}</strong> <span style="color:var(--text-muted)">vs</span> <strong>${e(comp.b)}</strong></td>
+      <td>${gapCell}</td>
+      <td>${esCell}</td>
+      <td>${sigCell}</td>
+      <td>${diagCell}</td>
+    </tr>`;
+  }).join('');
+
+  const diagRulesZh = `
+    <tr><td colspan="2" style="padding:12px 0 6px;color:var(--text-primary);font-weight:600;border-top:1px solid var(--border)">四象限诊断规则</td></tr>
+    <tr><td style="padding:4px 0;color:var(--green)"><strong>✓ 显著差异（中/大效应）</strong></td><td style="padding:4px 0;color:var(--text-secondary)">差异真实且有实际意义，可以作为结论</td></tr>
+    <tr><td style="padding:4px 0;color:var(--yellow)"><strong>⚠ 显著但效应微弱</strong></td><td style="padding:4px 0;color:var(--text-secondary)">差异真实但太小没实际价值，别过度解读</td></tr>
+    <tr><td style="padding:4px 0;color:var(--yellow)"><strong>⚠ 大效应但样本不足</strong></td><td style="padding:4px 0;color:var(--text-secondary)">差异看起来大，但样本太少撑不起统计显著性——加大 --repeat 再判断</td></tr>
+    <tr><td style="padding:4px 0;color:var(--text-muted)"><strong>— 两变体相当</strong></td><td style="padding:4px 0;color:var(--text-secondary)">差异既不显著又微弱，可视为无差异</td></tr>
+  `;
+  const diagRulesEn = `
+    <tr><td colspan="2" style="padding:12px 0 6px;color:var(--text-primary);font-weight:600;border-top:1px solid var(--border)">Four-quadrant diagnostic rules</td></tr>
+    <tr><td style="padding:4px 0;color:var(--green)"><strong>✓ Significant, medium/large effect</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Real and meaningful — acceptable as a conclusion</td></tr>
+    <tr><td style="padding:4px 0;color:var(--yellow)"><strong>⚠ Significant but trivial effect</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Real but tiny — do not overinterpret</td></tr>
+    <tr><td style="padding:4px 0;color:var(--yellow)"><strong>⚠ Large effect but underpowered</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Gap looks real but n is too small — increase --repeat</td></tr>
+    <tr><td style="padding:4px 0;color:var(--text-muted)"><strong>— No meaningful difference</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Neither significant nor large — treat as equivalent</td></tr>
+  `;
+
+  const guideBody = lang === 'zh' ? `
+    <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>差距</strong></td><td style="padding:6px 0;color:var(--text-secondary)">跨轮均值胜出者及绝对差值（原始单位）。方向用胜出者表达，不用正负号</td></tr>
+    <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>效应量</strong></td><td style="padding:6px 0;color:var(--text-secondary)">差距相对标准差的倍数。阈值：0.2=小，0.5=中，0.8=大</td></tr>
+    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">Hedges' g</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">小样本修正版本，n1+n2&lt;20 时优先</td></tr>
+    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">Cohen's d</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">未修正版本，n1+n2≥20 时是惯例</td></tr>
+    <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>显著性</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Welch's t 检验。回答"差异真不真"，和效应量"差多大"互补</td></tr>
+    ${diagRulesZh}
+  ` : `
+    <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Gap</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Winner and absolute difference in original units. Direction via winner name, not signed value</td></tr>
+    <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Effect size</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Gap in units of standard deviation. Thresholds: 0.2=small, 0.5=medium, 0.8=large</td></tr>
+    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">Hedges' g</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">Small-sample corrected; preferred when n1+n2&lt;20</td></tr>
+    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">Cohen's d</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">Uncorrected; conventional when n1+n2≥20</td></tr>
+    <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Significance</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Welch's t. Answers "is it real"; complementary to effect size's "how big"</td></tr>
+    ${diagRulesEn}
+  `;
+
+  return `
+    <section style="margin-top:24px">
+      <h2 style="display:flex;align-items:center;gap:4px">${title} <span class="hint hint-click" tabindex="0" onclick="document.getElementById('${modalId}').style.display='flex'" aria-label="${e(guideTitle)}">?</span></h2>
+      <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">${desc}</p>
+      <div id="${modalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${modalId}-title" onclick="if(event.target===this)this.style.display='none'">
+        <div class="modal-content">
+          <div class="modal-header">
+            <strong id="${modalId}-title" style="font-size:1rem">${e(guideTitle)}</strong>
+            <button class="modal-close" onclick="document.getElementById('${modalId}').style.display='none'" aria-label="${lang === 'zh' ? '关闭' : 'Close'}">✕</button>
+          </div>
+          <table class="modal-table"><tbody>${guideBody}</tbody></table>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="summary-table">
+          <thead>${thead}</thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
 const CONCLUSION_TYPES = new Set([
   'efficiency_gap', 'tool_count_gap', 'high_cost_sample',
 ]);
