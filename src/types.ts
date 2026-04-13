@@ -449,9 +449,15 @@ export interface VarianceEffectSize {
   n2: number;
 }
 
-export interface VarianceComparison {
-  a: string;
-  b: string;
+export interface VarianceMetric {
+  scores: number[];
+  mean: number;
+  lower: number;
+  upper: number;
+  stddev: number;
+}
+
+export interface VarianceComparisonMetric {
   meanDiff: number;
   tStatistic: number;
   df: number;
@@ -459,9 +465,24 @@ export interface VarianceComparison {
   effectSize: VarianceEffectSize;
 }
 
+// Metric keys for non-quality dimensions tracked in byMetric.
+// Quality stays as legacy flat fields on VarianceComparison / VariantVariance
+// for backward compatibility with historical reports.
+export type VarianceMetricKey = 'cost' | 'efficiency';
+
+export interface VariantVariance extends VarianceMetric {
+  byMetric?: Partial<Record<VarianceMetricKey, VarianceMetric>>;
+}
+
+export interface VarianceComparison extends VarianceComparisonMetric {
+  a: string;
+  b: string;
+  byMetric?: Partial<Record<VarianceMetricKey, VarianceComparisonMetric>>;
+}
+
 export interface VarianceData {
   runs: number;
-  perVariant: Record<string, { scores: number[]; mean: number; lower: number; upper: number; stddev: number }>;
+  perVariant: Record<string, VariantVariance>;
   comparisons: VarianceComparison[];
 }
 

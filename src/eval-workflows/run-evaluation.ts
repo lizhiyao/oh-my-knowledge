@@ -17,7 +17,12 @@ import type {
   JobStore,
   ProgressCallback,
   Report,
+  VarianceComparison,
+  VarianceComparisonMetric,
   VarianceData,
+  VarianceMetric,
+  VariantSummary,
+  VariantVariance,
 } from '../types.js';
 
 export interface SkillProgressInfo {
@@ -219,36 +224,82 @@ export interface DryRunEachReport extends DryRunBase {
   artifacts: DryRunEachSkill[];
 }
 
+// Per-metric score extractors. Each returns undefined when the summary field
+// is missing so the scores array only contains valid numbers.
+const METRIC_EXTRACTORS: Record<'quality' | 'cost' | 'efficiency', (s: VariantSummary | undefined) => number | undefined> = {
+  quality: (s) => s?.avgCompositeScore,
+  cost: (s) => s?.totalExecCostUSD,
+  efficiency: (s) => s?.avgDurationMs,
+};
+
+function buildMetricStats(runs: Report[], variant: string, extractor: (s: VariantSummary | undefined) => number | undefined): VarianceMetric | null {
+  const scores = runs
+    .map((run) => extractor(run.summary?.[variant]))
+    .filter((x): x is number => typeof x === 'number');
+  if (scores.length === 0) return null;
+  return { scores, ...confidenceInterval(scores) };
+}
+
+function buildComparisonMetric(scoresA: number[], scoresB: number[], meanA: number, meanB: number): VarianceComparisonMetric {
+  const t = tTest(scoresA, scoresB);
+  const es = effectSize(scoresA, scoresB);
+  const meanDiff = Number((meanA - meanB).toFixed(4));
+  return {
+    meanDiff,
+    tStatistic: t.tStatistic,
+    df: t.df,
+    significant: t.significant,
+    effectSize: es,
+  };
+}
+
 export function buildVarianceData(runs: Report[]): VarianceData | null {
   if (runs.length <= 1) {
     return null;
   }
 
   const variants = runs[0].meta.variants || [];
-  const perVariant: Record<string, { scores: number[]; mean: number; lower: number; upper: number; stddev: number }> = {};
+  const perVariant: Record<string, VariantVariance> = {};
   for (const variant of variants) {
-    const scores = runs
-      .map((run) => run.summary?.[variant]?.avgCompositeScore)
-      .filter((score): score is number => typeof score === 'number');
-    perVariant[variant] = { scores, ...confidenceInterval(scores) };
+    // Quality lives on the legacy flat fields.
+    const quality = buildMetricStats(runs, variant, METRIC_EXTRACTORS.quality);
+    if (!quality) continue;
+
+    const byMetric: Partial<Record<'cost' | 'efficiency', VarianceMetric>> = {};
+    const cost = buildMetricStats(runs, variant, METRIC_EXTRACTORS.cost);
+    if (cost) byMetric.cost = cost;
+    const efficiency = buildMetricStats(runs, variant, METRIC_EXTRACTORS.efficiency);
+    if (efficiency) byMetric.efficiency = efficiency;
+
+    perVariant[variant] = {
+      ...quality,
+      ...(Object.keys(byMetric).length > 0 ? { byMetric } : {}),
+    };
   }
 
-  const comparisons: VarianceData['comparisons'] = [];
+  const comparisons: VarianceComparison[] = [];
   for (let i = 0; i < variants.length; i++) {
     for (let j = i + 1; j < variants.length; j++) {
-      const scoresA = perVariant[variants[i]].scores;
-      const scoresB = perVariant[variants[j]].scores;
-      const t = tTest(scoresA, scoresB);
-      const es = effectSize(scoresA, scoresB);
-      const meanDiff = Number((perVariant[variants[i]].mean - perVariant[variants[j]].mean).toFixed(4));
+      const vA = perVariant[variants[i]];
+      const vB = perVariant[variants[j]];
+      if (!vA || !vB) continue;
+
+      const qualityComp = buildComparisonMetric(vA.scores, vB.scores, vA.mean, vB.mean);
+
+      const byMetricComp: Partial<Record<'cost' | 'efficiency', VarianceComparisonMetric>> = {};
+      for (const key of ['cost', 'efficiency'] as const) {
+        const mA = vA.byMetric?.[key];
+        const mB = vB.byMetric?.[key];
+        if (mA && mB) {
+          byMetricComp[key] = buildComparisonMetric(mA.scores, mB.scores, mA.mean, mB.mean);
+        }
+      }
+
       comparisons.push({
         a: variants[i],
         b: variants[j],
-        meanDiff,
-        tStatistic: t.tStatistic,
-        df: t.df,
-        significant: t.significant,
-        effectSize: es,
+        ...qualityComp,
+        ...(Object.keys(byMetricComp).length > 0 ? { byMetric: byMetricComp } : {}),
       });
     }
   }

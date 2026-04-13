@@ -158,6 +158,36 @@ export function t(key: string, lang: Lang = DEFAULT_LANG): string {
   return I18N[lang]?.[key] || I18N.en[key] || key;
 }
 
+function globalKeyboardScript(): string {
+  return `
+  <script>
+  // Global modal helpers. openModal/closeModal manage focus so the close
+  // button becomes the first tab stop when a modal opens.
+  window.openModal = function(id) {
+    var modal = document.getElementById(id);
+    if (!modal) return;
+    modal.style.display = 'flex';
+    setTimeout(function() {
+      var closeBtn = modal.querySelector('.modal-close');
+      if (closeBtn) closeBtn.focus();
+    }, 30);
+  };
+  window.closeModal = function(id) {
+    var modal = document.getElementById(id);
+    if (!modal) return;
+    modal.style.display = 'none';
+  };
+  // Global ESC to close any open modal-overlay
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay').forEach(function(m) {
+        if (m.style.display === 'flex') m.style.display = 'none';
+      });
+    }
+  });
+  </script>`;
+}
+
 function langToggleScript(): string {
   return `
   <script>
@@ -187,7 +217,7 @@ export function layout(title: string, body: string, lang: Lang = DEFAULT_LANG): 
   const htmlLang = lang === 'zh' ? 'zh-CN' : 'en';
   const favicon = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs><circle cx="16" cy="16" r="15" fill="#0f172a"/><circle cx="16" cy="16" r="8" stroke="url(#g)" stroke-width="3.5" fill="none"/></svg>');
   return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${title}</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">${globalKeyboardScript()}
 <style>
 :root{
   --bg-base:#0f172a;
@@ -217,6 +247,10 @@ export function layout(title: string, body: string, lang: Lang = DEFAULT_LANG): 
   --bg-card:#1e293b;
   --radius:8px;
   --radius-lg:12px;
+  --fs-micro:11px;
+  --fs-detail:12px;
+  --fs-label:12px;
+  --fs-body:13px;
 }
 *{box-sizing:border-box;margin:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:32px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.5;max-width:1100px;margin:0 auto}
@@ -237,15 +271,58 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .card-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px}
 .card-value{font-size:22px;font-weight:700;margin:2px 0;color:var(--text-primary);font-variant-numeric:tabular-nums}
 .card-sub{font-size:11px;color:var(--text-muted)}
-/* Summary table */
-.summary-table td,.summary-table th{vertical-align:middle;text-align:center}
-.summary-table td:first-child,.summary-table th:first-child{text-align:left}
+/* Summary table — inherits the global center + middle from the base td/th. */
 .summary-cell{min-width:100px}
 .summary-value-primary{font-size:1.375rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
 
-/* Hint tooltip */
+/* Hint tooltip (legacy span-based, kept for hover-only hints) */
 .hint{position:relative;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;font-size:10px;font-weight:600;color:var(--text-muted);border:1px solid var(--border-hover);border-radius:50%;cursor:help;margin-left:6px;vertical-align:middle}
 .hint-click{cursor:pointer}
+
+/* Hint button — accessible, keyboard-focusable replacement for click-to-open-modal hints */
+button.hint-btn{display:inline-flex;align-items:center;justify-content:center;min-width:22px;min-height:22px;padding:3px;font-size:var(--fs-micro);font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border-hover);border-radius:50%;cursor:pointer;margin-left:6px;vertical-align:middle;line-height:1;transition:color 0.15s,border-color 0.15s}
+button.hint-btn:hover{color:var(--text-primary);border-color:var(--text-primary)}
+button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Verdict + detail pattern used in variance & significance cells */
+.verdict-line{color:var(--text-secondary);font-size:var(--fs-body)}
+.detail-line{font-size:var(--fs-detail);color:var(--text-muted);margin-top:2px}
+
+/* Modal glossary layout — grid rows with tree connectors for sub-items */
+.modal-glossary-hint{font-size:var(--fs-detail);color:var(--text-muted);margin:4px 0 14px;font-style:italic}
+.modal-glossary{display:flex;flex-direction:column}
+.modal-glossary-row{display:grid;grid-template-columns:100px 1fr;gap:16px;padding:9px 0;border-bottom:1px solid var(--border)}
+.modal-glossary-row:last-child{border-bottom:none}
+.modal-glossary-label{font-size:var(--fs-body);color:var(--text-primary);font-weight:600}
+.modal-glossary-desc{font-size:var(--fs-detail);color:var(--text-secondary);line-height:1.55}
+.modal-glossary-sub{display:grid;grid-template-columns:86px 1fr;gap:14px;padding:6px 0 6px 28px;position:relative}
+.modal-glossary-sub::before{content:'';position:absolute;left:10px;top:0;bottom:0;width:2px;background:var(--border-hover);border-radius:1px}
+.modal-glossary-sub-label{font-size:var(--fs-detail);color:var(--text-secondary);font-weight:500}
+.modal-glossary-sub-desc{font-size:var(--fs-detail);color:var(--text-muted);line-height:1.55}
+
+/* Modal section divider */
+.modal-section{margin-top:20px;padding-top:16px;border-top:1px solid var(--border-hover)}
+.modal-section-title{font-size:var(--fs-body);font-weight:600;color:var(--text-primary);margin-bottom:10px}
+
+/* Four-quadrant diagnostic rule cards (matches the table's icon+text style) */
+.diag-rules{display:flex;flex-direction:column;gap:8px}
+.diag-rule-row{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:var(--bg-elevated);border-radius:var(--radius);border-left:3px solid var(--border-hover)}
+.diag-rule-row.rule-good{border-left-color:var(--green)}
+.diag-rule-row.rule-warn{border-left-color:var(--yellow)}
+.diag-rule-row.rule-neutral{border-left-color:var(--text-muted)}
+.diag-rule-icon{font-size:15px;flex-shrink:0;line-height:1.4}
+.diag-rule-icon.rule-good{color:var(--green)}
+.diag-rule-icon.rule-warn{color:var(--yellow)}
+.diag-rule-icon.rule-neutral{color:var(--text-muted)}
+.diag-rule-body{flex:1;min-width:0}
+.diag-rule-title{font-size:var(--fs-detail);font-weight:600;color:var(--text-primary);margin-bottom:3px}
+.diag-rule-desc{font-size:var(--fs-detail);color:var(--text-secondary);line-height:1.5}
+.diag-rule-example{font-size:var(--fs-micro);color:var(--text-muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:4px;opacity:0.85}
+
+/* Variance & significance table: all cells use the global center + middle. */
+.variance-table td{padding-top:12px;padding-bottom:12px}
+.variance-table td.diagnostic-cell{min-width:180px}
+.variance-table .diag-faded strong{opacity:0.5;font-weight:500}
 .modal-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center}
 .modal-content{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);max-width:600px;max-height:80vh;overflow:auto;padding:24px;margin:20px;width:90%}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
@@ -266,8 +343,8 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 /* Table */
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:16px 0}
 table{border-collapse:collapse;width:100%;font-size:0.8125rem;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;line-height:1.4}
-th{background:var(--bg-elevated);padding:8px 14px;text-align:left;font-weight:500;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap}
-td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums}
+th{background:var(--bg-elevated);padding:8px 14px;text-align:center;vertical-align:middle;font-weight:500;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(148,163,184,0.04)}
 
@@ -323,6 +400,10 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   h2{font-size:0.875rem}
   .lang-toggle{top:8px;right:8px;padding:4px 10px;font-size:11px}
   button{min-height:44px;padding:8px 14px}
+  /* Override: hint buttons stay compact so they don't dominate mobile layout */
+  button.hint-btn{min-width:28px;min-height:28px;padding:4px}
+  /* Bump detail font so secondary lines are readable on mobile */
+  .detail-line{font-size:var(--fs-label)}
 }
 @media(max-width:480px){
   body{padding:12px}

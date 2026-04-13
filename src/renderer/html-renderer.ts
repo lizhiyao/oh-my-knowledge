@@ -199,7 +199,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
 
   const variantConfigSection = variantConfigRows ? `
     <section style="margin:20px 0">
-      <h2 style="display:flex;align-items:center;gap:4px">${t('variantConfig', lang)} <span class="hint hint-click" tabindex="0" onclick="document.getElementById('${configModalId}').style.display='flex'" aria-label="${e(t('variantConfigDesc', lang))}">?</span></h2>
+      <h2 style="display:flex;align-items:center;gap:4px">${t('variantConfig', lang)} <button type="button" class="hint-btn" onclick="openModal('${configModalId}')" aria-label="${e(t('variantConfigDesc', lang))}" aria-haspopup="dialog">?</button></h2>
       <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">${experimentSummary}</p>
       <div class="table-wrap">
         <table>
@@ -215,11 +215,11 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
         </table>
       </div>
     </section>
-    <div id="${configModalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${configModalId}-title" onclick="if(event.target===this)this.style.display='none'">
+    <div id="${configModalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${configModalId}-title" onclick="if(event.target===this)closeModal('${configModalId}')">
       <div class="modal-content">
         <div class="modal-header">
           <strong id="${configModalId}-title" style="font-size:1rem">${lang === 'zh' ? '如何阅读实验配置？' : 'How to read experiment setup?'}</strong>
-          <button class="modal-close" onclick="document.getElementById('${configModalId}').style.display='none'" aria-label="${lang === 'zh' ? '关闭' : 'Close'}">✕</button>
+          <button type="button" class="modal-close" onclick="closeModal('${configModalId}')" aria-label="${lang === 'zh' ? '关闭' : 'Close'}">✕</button>
         </div>
         <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 16px">${e(t('variantConfigDesc', lang))}</p>
         <table class="modal-table"><tbody>

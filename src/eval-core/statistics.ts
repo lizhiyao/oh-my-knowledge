@@ -29,8 +29,9 @@ export function stddev(arr: number[]): number {
   return ss.sampleStandardDeviation(arr);
 }
 
-// t-distribution critical values for 95% confidence, two-tailed (α/2 = 0.025)
-// Source: standard statistical tables
+// t-distribution critical values for two-tailed tests at p = 0.05, 0.01, 0.001.
+// Source: standard statistical tables. Used both for the significance gate and
+// for bucketed p-value reporting (see pValueCategory below).
 const T_CRITICAL_95: Record<number, number> = {
   1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
   6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
@@ -39,6 +40,50 @@ const T_CRITICAL_95: Record<number, number> = {
   21: 2.080, 22: 2.074, 23: 2.069, 24: 2.064, 25: 2.060,
   26: 2.056, 27: 2.052, 28: 2.048, 29: 2.045, 30: 2.042,
 };
+
+const T_CRITICAL_99: Record<number, number> = {
+  1: 63.657, 2: 9.925, 3: 5.841, 4: 4.604, 5: 4.032,
+  6: 3.707, 7: 3.499, 8: 3.355, 9: 3.250, 10: 3.169,
+  11: 3.106, 12: 3.055, 13: 3.012, 14: 2.977, 15: 2.947,
+  16: 2.921, 17: 2.898, 18: 2.878, 19: 2.861, 20: 2.845,
+  21: 2.831, 22: 2.819, 23: 2.807, 24: 2.797, 25: 2.787,
+  26: 2.779, 27: 2.771, 28: 2.763, 29: 2.756, 30: 2.750,
+};
+
+const T_CRITICAL_999: Record<number, number> = {
+  1: 636.619, 2: 31.599, 3: 12.924, 4: 8.610, 5: 6.869,
+  6: 5.959, 7: 5.408, 8: 5.041, 9: 4.781, 10: 4.587,
+  11: 4.437, 12: 4.318, 13: 4.221, 14: 4.140, 15: 4.073,
+  16: 4.015, 17: 3.965, 18: 3.922, 19: 3.883, 20: 3.850,
+  21: 3.819, 22: 3.792, 23: 3.768, 24: 3.745, 25: 3.725,
+  26: 3.707, 27: 3.690, 28: 3.674, 29: 3.659, 30: 3.646,
+};
+
+export type PValueCategory = '<0.001' | '<0.01' | '<0.05' | '≥0.05';
+
+/**
+ * Bucket a t-statistic into a p-value category by comparing |t| to standard
+ * critical-value tables at α = 0.001 / 0.01 / 0.05 (two-tailed).
+ *
+ * Returns one of four buckets instead of a continuous p value. This avoids
+ * implementing the regularized incomplete beta function for an exact CDF
+ * while still giving readers enough resolution to distinguish
+ * "barely significant" from "strongly significant".
+ *
+ * For df > 30 falls back to the normal-approximation critical values.
+ */
+export function pValueCategory(tStatistic: number, df: number): PValueCategory {
+  if (!Number.isFinite(tStatistic) || df <= 0) return '≥0.05';
+  const absT = Math.abs(tStatistic);
+  const dfKey = Math.min(Math.max(1, Math.floor(df)), 30);
+  const c999 = df > 30 ? 3.291 : (T_CRITICAL_999[dfKey] ?? 3.291);
+  const c99 = df > 30 ? 2.576 : (T_CRITICAL_99[dfKey] ?? 2.576);
+  const c95 = df > 30 ? 1.96 : (T_CRITICAL_95[dfKey] ?? 1.96);
+  if (absT >= c999) return '<0.001';
+  if (absT >= c99) return '<0.01';
+  if (absT >= c95) return '<0.05';
+  return '≥0.05';
+}
 
 /**
  * Get t-distribution critical value for given degrees of freedom (95% CI, two-tailed).

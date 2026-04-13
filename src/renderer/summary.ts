@@ -1,5 +1,6 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
-import type { AnalysisResult, Insight, KnowledgeCoverage, Lang, VarianceData, VariantSummary } from '../types.js';
+import { pValueCategory } from '../eval-core/statistics.js';
+import type { AnalysisResult, Insight, KnowledgeCoverage, Lang, VarianceComparison, VarianceComparisonMetric, VarianceData, VariantSummary } from '../types.js';
 
 export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang, variance?: VarianceData): string {
   // Build comparison table: variants as rows, dimensions as columns.
@@ -149,12 +150,12 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   `;
 
   return `
-    <h2 data-i18n="dimQuality" style="display:flex;align-items:center;gap:4px">${t('reportTitle', lang) === t('reportTitle', 'zh') ? '四维对比' : 'Comparison'} <span class="hint hint-click" tabindex="0" onclick="document.getElementById('${guideModalId}').style.display='flex'" aria-label="${e(guideTitle)}">?</span></h2>
-    <div id="${guideModalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${guideModalId}-title" onclick="if(event.target===this)this.style.display='none'">
+    <h2 data-i18n="dimQuality" style="display:flex;align-items:center;gap:4px">${t('reportTitle', lang) === t('reportTitle', 'zh') ? '四维对比' : 'Comparison'} <button type="button" class="hint-btn" onclick="openModal('${guideModalId}')" aria-label="${e(guideTitle)}" aria-haspopup="dialog">?</button></h2>
+    <div id="${guideModalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${guideModalId}-title" onclick="if(event.target===this)closeModal('${guideModalId}')">
       <div class="modal-content">
         <div class="modal-header">
           <strong id="${guideModalId}-title" style="font-size:1rem">${e(guideTitle)}</strong>
-          <button class="modal-close" onclick="document.getElementById('${guideModalId}').style.display='none'" aria-label="${lang === 'zh' ? '关闭' : 'Close'}">✕</button>
+          <button type="button" class="modal-close" onclick="closeModal('${guideModalId}')" aria-label="${lang === 'zh' ? '关闭' : 'Close'}">✕</button>
         </div>
         <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 16px">${e(guideIntro)}</p>
         <table class="modal-table"><tbody>${guideRows}</tbody></table>
@@ -174,8 +175,13 @@ interface DiagnosticEntry {
   color: string;
 }
 
-function buildDiagnostic(comp: VarianceData['comparisons'][number], lang: Lang): DiagnosticEntry {
-  const es = comp.effectSize;
+function buildDiagnostic(
+  metric: VarianceComparisonMetric,
+  cfg: MetricDisplayConfig,
+  winner: string | null,
+  lang: Lang,
+): DiagnosticEntry {
+  const es = metric.effectSize;
   if (!es || es.primary === 'none') {
     return {
       icon: '—',
@@ -187,16 +193,25 @@ function buildDiagnostic(comp: VarianceData['comparisons'][number], lang: Lang):
   const strongLabelZh = es.magnitude === 'large' ? '大' : '中';
   const strongLabelEn = es.magnitude;
 
-  if (comp.significant && isStrong) {
+  // Direction word bound into the diagnostic text so readers cannot misread
+  // green ✓ as "good for v2" when it actually means "v1 is significantly
+  // cheaper / faster / higher-quality". Each metric uses its own natural verb.
+  const winnerPhrase = winner
+    ? (lang === 'zh'
+        ? `${winner} 显著${cfg.winnerWordZh}`
+        : `${winner} significantly ${cfg.winnerWordEn.replace(' by', '')}`)
+    : '';
+
+  if (metric.significant && isStrong) {
     return {
       icon: '✓',
       text: lang === 'zh'
-        ? `显著差异（${strongLabelZh}效应）`
-        : `significant, ${strongLabelEn} effect`,
+        ? `${winnerPhrase}（${strongLabelZh}差异）`
+        : `${winnerPhrase} (${strongLabelEn} effect)`,
       color: 'var(--green)',
     };
   }
-  if (comp.significant && !isStrong) {
+  if (metric.significant && !isStrong) {
     return {
       icon: '⚠',
       text: lang === 'zh'
@@ -205,12 +220,17 @@ function buildDiagnostic(comp: VarianceData['comparisons'][number], lang: Lang):
       color: 'var(--yellow)',
     };
   }
-  if (!comp.significant && isStrong) {
+  if (!metric.significant && isStrong) {
+    const leadPhrase = winner
+      ? (lang === 'zh'
+          ? `${winner} 看似${cfg.winnerWordZh}但样本不足，建议加大 --repeat`
+          : `${winner} looks ${cfg.winnerWordEn.replace(' by', '')} but underpowered — increase --repeat`)
+      : (lang === 'zh'
+          ? `${strongLabelZh}差异但样本不足，建议加大 --repeat`
+          : `${strongLabelEn} effect but underpowered — increase --repeat`);
     return {
       icon: '⚠',
-      text: lang === 'zh'
-        ? `${strongLabelZh}效应但样本不足，建议加大 --repeat`
-        : `${strongLabelEn} effect but underpowered — increase --repeat`,
+      text: leadPhrase,
       color: 'var(--yellow)',
     };
   }
@@ -221,6 +241,91 @@ function buildDiagnostic(comp: VarianceData['comparisons'][number], lang: Lang):
   };
 }
 
+// Metric-aware formatting config.
+// - `higherIsBetter` drives which variant wins for a given sign of meanDiff.
+// - `winnerWord` is the natural-language verb shown next to the winner.
+// - `showRawEffectSize` is false for metrics where Cohen's d / Hedges' g are
+//   technically computable but uninformative (deterministic raw-unit metrics
+//   where within-group variance is trivial, making d always astronomical).
+//   In that case we show only the magnitude label + n, not the raw numbers.
+// - `showPercent` controls whether the gap cell shows a "X% cheaper/faster"
+//   relative difference as a second detail line.
+interface MetricDisplayConfig {
+  key: 'quality' | 'cost' | 'efficiency';
+  labelZh: string;
+  labelEn: string;
+  higherIsBetter: boolean;
+  winnerWordZh: string;
+  winnerWordEn: string;
+  formatValue: (v: number) => string;
+  showRawEffectSize: boolean;
+  showPercent: boolean;
+  percentWordZh: string;
+  percentWordEn: string;
+}
+
+const METRIC_CONFIGS: MetricDisplayConfig[] = [
+  {
+    key: 'quality',
+    labelZh: '质量',
+    labelEn: 'Quality',
+    higherIsBetter: true,
+    winnerWordZh: '胜出',
+    winnerWordEn: 'wins by',
+    formatValue: (v) => `${v.toFixed(2)} 分`,
+    showRawEffectSize: true,
+    showPercent: true,
+    percentWordZh: '高',
+    percentWordEn: 'higher',
+  },
+  {
+    key: 'cost',
+    labelZh: '成本',
+    labelEn: 'Cost',
+    higherIsBetter: false,
+    winnerWordZh: '更便宜',
+    winnerWordEn: 'cheaper by',
+    formatValue: (v) => `$${v.toFixed(4)}`,
+    showRawEffectSize: true,
+    showPercent: true,
+    percentWordZh: '便宜',
+    percentWordEn: 'cheaper',
+  },
+  {
+    key: 'efficiency',
+    labelZh: '效率',
+    labelEn: 'Efficiency',
+    higherIsBetter: false,
+    winnerWordZh: '更快',
+    winnerWordEn: 'faster by',
+    formatValue: (v) => `${(v / 1000).toFixed(1)}s`,
+    showRawEffectSize: true,
+    showPercent: true,
+    percentWordZh: '快',
+    percentWordEn: 'faster',
+  },
+];
+
+function pickMetricFromComparison(comp: VarianceComparison, key: MetricDisplayConfig['key']): VarianceComparisonMetric | null {
+  if (key === 'quality') {
+    return {
+      meanDiff: comp.meanDiff,
+      tStatistic: comp.tStatistic,
+      df: comp.df,
+      significant: comp.significant,
+      effectSize: comp.effectSize,
+    };
+  }
+  return comp.byMetric?.[key] ?? null;
+}
+
+function getVariantMetricMean(variance: VarianceData, variant: string, key: MetricDisplayConfig['key']): number | null {
+  const v = variance.perVariant[variant];
+  if (!v) return null;
+  if (key === 'quality') return v.mean;
+  return v.byMetric?.[key]?.mean ?? null;
+}
+
 export function renderVarianceComparisons(variance: VarianceData | undefined, lang: Lang): string {
   if (!variance || !variance.comparisons || variance.comparisons.length === 0) return '';
 
@@ -229,140 +334,215 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
   const guideTitle = lang === 'zh' ? '如何阅读这张表？' : 'How to read this table?';
 
   const headerLabels = lang === 'zh'
-    ? ['对比', '差距', '效应量', '显著性', '诊断']
-    : ['Comparison', 'Gap', 'Effect size', 'Significance', 'Diagnostic'];
+    ? ['对比', '维度', '差距', '效应量', '显著性', '诊断']
+    : ['Comparison', 'Metric', 'Gap', 'Effect size', 'Significance', 'Diagnostic'];
 
   const thead = `<tr>${headerLabels.map((h, i) => {
-    // Make the diagnostic column wider
-    const width = i === 4 ? ' style="width:32%"' : '';
-    return `<th${width}>${h}</th>`;
+    const cls = i === 5 ? ' class="diagnostic-cell"' : '';
+    return `<th${cls}>${h}</th>`;
   }).join('')}</tr>`;
 
-  // Shared row typography: verdict line (text-secondary) over detail line (muted).
-  // The three middle columns (gap / effect / significance) all follow this
-  // "conclusion first, numbers second" rhythm for visual parity.
-  const rowStyles = {
-    verdict: 'color:var(--text-secondary)',
-    detail: 'font-size:11px;color:var(--text-muted);margin-top:2px',
-  };
+  const magnitudeZh: Record<string, string> = { negligible: '可忽略', small: '小效应', medium: '中效应', large: '大效应' };
+  const magnitudeEn: Record<string, string> = { negligible: 'negligible', small: 'small effect', medium: 'medium effect', large: 'large effect' };
 
-  const rows = variance.comparisons.map((comp) => {
-    // Gap cell: "v2 领先 / 0.30 分"
-    const diffAbs = Math.abs(comp.meanDiff);
+  // Determine the winning variant for a given metric. Returns null if tied.
+  function pickWinner(metric: VarianceComparisonMetric, cfg: MetricDisplayConfig, a: string, b: string): string | null {
+    const diffAbs = Math.abs(metric.meanDiff);
+    if (diffAbs < 1e-9) return null;
+    const rawHigherVariant = metric.meanDiff > 0 ? a : b;
+    return cfg.higherIsBetter ? rawHigherVariant : (metric.meanDiff > 0 ? b : a);
+  }
+
+  function buildMetricRowCells(
+    metric: VarianceComparisonMetric,
+    cfg: MetricDisplayConfig,
+    a: string,
+    b: string,
+    aMean: number | null,
+    bMean: number | null,
+    fadeDiagnostic: boolean,
+  ): string {
+    // Gap cell — metric-aware direction word + optional relative percent
+    const winner = pickWinner(metric, cfg, a, b);
+    const diffAbs = Math.abs(metric.meanDiff);
     let gapCell: string;
-    if (diffAbs < 0.005) {
-      gapCell = `<div style="${rowStyles.verdict}">${lang === 'zh' ? '持平' : 'tied'}</div>`;
+    if (!winner) {
+      gapCell = `<div class="verdict-line">${lang === 'zh' ? '持平' : 'tied'}</div>`;
     } else {
-      const winner = comp.meanDiff > 0 ? comp.a : comp.b;
-      const leadWord = lang === 'zh' ? '领先' : 'leads';
-      const unit = lang === 'zh' ? ' 分' : ' pts';
+      const winnerWord = lang === 'zh' ? cfg.winnerWordZh : cfg.winnerWordEn;
+
+      const detailParts: string[] = [cfg.formatValue(diffAbs)];
+      if (cfg.showPercent && aMean != null && bMean != null) {
+        const denom = Math.max(Math.abs(aMean), Math.abs(bMean));
+        if (denom > 0) {
+          const pct = (diffAbs / denom) * 100;
+          const pctWord = lang === 'zh' ? cfg.percentWordZh : cfg.percentWordEn;
+          detailParts.push(lang === 'zh' ? `${pctWord} ${pct.toFixed(0)}%` : `${pct.toFixed(0)}% ${pctWord}`);
+        }
+      }
+
       gapCell = `
-        <div style="${rowStyles.verdict}"><strong>${e(winner)}</strong> ${leadWord}</div>
-        <div style="${rowStyles.detail}">${diffAbs.toFixed(2)}${unit}</div>`;
+        <div class="verdict-line"><strong>${e(winner)}</strong> ${winnerWord}</div>
+        <div class="detail-line">${detailParts.join(' · ')}</div>`;
     }
 
-    // Effect size cell: "大效应 / g=1.04 · d=1.30 · n=3+3"
-    const es = comp.effectSize;
+    // Effect size cell
+    const es = metric.effectSize;
     let esCell: string;
     if (!es || es.primary === 'none') {
-      esCell = `<div style="${rowStyles.verdict}">${lang === 'zh' ? '数据不足' : 'insufficient data'}</div>`;
+      esCell = `<div class="verdict-line">${lang === 'zh' ? '数据不足' : 'insufficient data'}</div>`;
     } else {
-      const magnitudeZh: Record<string, string> = {
-        negligible: '可忽略',
-        small: '小效应',
-        medium: '中效应',
-        large: '大效应',
-      };
-      const magnitudeEn: Record<string, string> = {
-        negligible: 'negligible',
-        small: 'small effect',
-        medium: 'medium effect',
-        large: 'large effect',
-      };
       const magnitudeLabel = (lang === 'zh' ? magnitudeZh : magnitudeEn)[es.magnitude] || es.magnitude;
-      const gVal = Math.abs(es.hedgesG).toFixed(2);
-      const dVal = Math.abs(es.cohensD).toFixed(2);
+      const detail = cfg.showRawEffectSize
+        ? `g=${Math.abs(es.hedgesG).toFixed(2)} · d=${Math.abs(es.cohensD).toFixed(2)} · n=${es.n1}+${es.n2}`
+        : `n=${es.n1}+${es.n2}`;
       esCell = `
-        <div style="${rowStyles.verdict}">${magnitudeLabel}</div>
-        <div style="${rowStyles.detail}">g=${gVal} · d=${dVal} · n=${es.n1}+${es.n2}</div>`;
+        <div class="verdict-line">${magnitudeLabel}</div>
+        <div class="detail-line">${detail}</div>`;
     }
 
-    // Significance cell: "不显著 / t=-1.59 · df=3"
-    const sigText = comp.significant
-      ? (lang === 'zh' ? '显著 (p<0.05)' : 'significant (p<0.05)')
+    // Significance cell — uniform binary verdict. Both sides just say
+    // "显著" or "不显著"; the p-value bucket is shown in the detail line
+    // so readers can distinguish "barely significant" from "strongly significant".
+    const sigText = metric.significant
+      ? (lang === 'zh' ? '显著' : 'significant')
       : (lang === 'zh' ? '不显著' : 'not significant');
+    const pBucket = pValueCategory(metric.tStatistic, metric.df);
     const sigCell = `
-      <div style="${rowStyles.verdict}">${sigText}</div>
-      <div style="${rowStyles.detail}">t=${comp.tStatistic.toFixed(2)} · df=${comp.df}</div>`;
+      <div class="verdict-line">${sigText}</div>
+      <div class="detail-line">p${pBucket} · t=${metric.tStatistic.toFixed(2)} · df=${metric.df}</div>`;
 
-    // Diagnostic cell: colored icon + bold colored text. No box chrome —
-    // color and weight alone do the emphasis, keeping visual parity with
-    // the other table cells.
-    const diag = buildDiagnostic(comp, lang);
+    // Diagnostic cell: colored icon + bold colored text with direction bound in.
+    // Visually fade if this diagnostic text is a consecutive duplicate of the row above.
+    const diag = buildDiagnostic(metric, cfg, winner, lang);
+    const fadeClass = fadeDiagnostic ? ' diag-faded' : '';
+    // inline-flex so the td's text-align:center centers the icon+text unit as
+    // a whole (a plain flex div would stretch to fill the cell and align left).
     const diagCell = `
-      <div style="display:flex;align-items:center;gap:6px;line-height:1.5">
+      <div class="diag-cell${fadeClass}" style="display:inline-flex;align-items:center;gap:6px;line-height:1.5;text-align:left">
         <span style="color:${diag.color};font-size:14px;flex-shrink:0">${diag.icon}</span>
         <strong style="color:${diag.color}">${diag.text}</strong>
       </div>`;
 
-    return `<tr>
-      <td><strong>${e(comp.a)}</strong> <span style="color:var(--text-muted)">vs</span> <strong>${e(comp.b)}</strong></td>
+    const metricLabel = lang === 'zh' ? cfg.labelZh : cfg.labelEn;
+    return `
+      <td class="verdict-line">${metricLabel}</td>
       <td>${gapCell}</td>
       <td>${esCell}</td>
       <td>${sigCell}</td>
-      <td>${diagCell}</td>
-    </tr>`;
+      <td class="diagnostic-cell">${diagCell}</td>`;
+  }
+
+  const rows = variance.comparisons.map((comp) => {
+    // Collect available metric rows for this comparison
+    const availableMetrics: Array<{ cfg: MetricDisplayConfig; metric: VarianceComparisonMetric }> = [];
+    for (const cfg of METRIC_CONFIGS) {
+      const m = pickMetricFromComparison(comp, cfg.key);
+      if (m) availableMetrics.push({ cfg, metric: m });
+    }
+    if (availableMetrics.length === 0) return '';
+
+    const rowspan = availableMetrics.length;
+    const comparisonCell = `<td rowspan="${rowspan}" class="verdict-line comparison-cell"><strong>${e(comp.a)}</strong> <span style="color:var(--text-muted)">vs</span> <strong>${e(comp.b)}</strong></td>`;
+
+    // Build all metric rows first so we can detect consecutive duplicate diagnostics
+    // (for visual fade), then emit.
+    const preBuilt = availableMetrics.map((row) => {
+      const winner = pickWinner(row.metric, row.cfg, comp.a, comp.b);
+      const diag = buildDiagnostic(row.metric, row.cfg, winner, lang);
+      return { ...row, diagText: `${diag.icon}|${diag.text}` };
+    });
+    let prevDiagKey = '';
+    return preBuilt.map((row, idx) => {
+      const lead = idx === 0 ? comparisonCell : '';
+      const aMean = getVariantMetricMean(variance!, comp.a, row.cfg.key);
+      const bMean = getVariantMetricMean(variance!, comp.b, row.cfg.key);
+      const fade = idx > 0 && row.diagText === prevDiagKey;
+      prevDiagKey = row.diagText;
+      return `<tr>${lead}${buildMetricRowCells(row.metric, row.cfg, comp.a, comp.b, aMean, bMean, fade)}</tr>`;
+    }).join('');
   }).join('');
 
-  const diagRulesZh = `
-    <tr><td colspan="2" style="padding:12px 0 6px;color:var(--text-primary);font-weight:600;border-top:1px solid var(--border)">四象限诊断规则</td></tr>
-    <tr><td style="padding:4px 0;color:var(--green)"><strong>✓ 显著差异（中/大效应）</strong></td><td style="padding:4px 0;color:var(--text-secondary)">差异真实且有实际意义，可以作为结论</td></tr>
-    <tr><td style="padding:4px 0;color:var(--yellow)"><strong>⚠ 显著但效应微弱</strong></td><td style="padding:4px 0;color:var(--text-secondary)">差异真实但太小没实际价值，别过度解读</td></tr>
-    <tr><td style="padding:4px 0;color:var(--yellow)"><strong>⚠ 大效应但样本不足</strong></td><td style="padding:4px 0;color:var(--text-secondary)">差异看起来大，但样本太少撑不起统计显著性——加大 --repeat 再判断</td></tr>
-    <tr><td style="padding:4px 0;color:var(--text-muted)"><strong>— 两变体相当</strong></td><td style="padding:4px 0;color:var(--text-secondary)">差异既不显著又微弱，可视为无差异</td></tr>
-  `;
-  const diagRulesEn = `
-    <tr><td colspan="2" style="padding:12px 0 6px;color:var(--text-primary);font-weight:600;border-top:1px solid var(--border)">Four-quadrant diagnostic rules</td></tr>
-    <tr><td style="padding:4px 0;color:var(--green)"><strong>✓ Significant, medium/large effect</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Real and meaningful — acceptable as a conclusion</td></tr>
-    <tr><td style="padding:4px 0;color:var(--yellow)"><strong>⚠ Significant but trivial effect</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Real but tiny — do not overinterpret</td></tr>
-    <tr><td style="padding:4px 0;color:var(--yellow)"><strong>⚠ Large effect but underpowered</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Gap looks real but n is too small — increase --repeat</td></tr>
-    <tr><td style="padding:4px 0;color:var(--text-muted)"><strong>— No meaningful difference</strong></td><td style="padding:4px 0;color:var(--text-secondary)">Neither significant nor large — treat as equivalent</td></tr>
-  `;
+  // Glossary rows — structured data instead of a giant HTML string.
+  // Each "row" is either a top-level term or a sub-item under the previous term.
+  interface GlossaryRow { label: string; desc: string; sub?: boolean }
+  const glossaryZh: GlossaryRow[] = [
+    { label: '差距', desc: '跨轮均值胜出者 + 绝对差值（原始单位）' },
+    { label: '效应量', desc: '差距相对标准差的倍数。阈值：0.2=小 / 0.5=中 / 0.8=大' },
+    { label: "Hedges' g", desc: '小样本修正版，n1+n2<20 时优先参考', sub: true },
+    { label: "Cohen's d", desc: '未修正版，n1+n2≥20 时是学术惯例', sub: true },
+    { label: '显著性', desc: 't 检验结论，基于 p<0.05 阈值。回答"差异真不真"，和效应量"差多大"互补' },
+    { label: 'p 值', desc: '假设真的没差异时，观察到当前差距的概率。越小越可信。0.05 只是约定阈值', sub: true },
+    { label: 't 值', desc: '均值差 ÷ 估计误差，需配合 df 和效应量解读，不能单独看', sub: true },
+    { label: 'df 自由度', desc: '≈"有效样本量"。--repeat 3 时通常 2~4；想达到 20+ 需 --repeat 10+', sub: true },
+  ];
+  const glossaryEn: GlossaryRow[] = [
+    { label: 'Gap', desc: 'Cross-run mean winner + absolute difference (raw units)' },
+    { label: 'Effect size', desc: 'Gap measured in standard deviations. Thresholds: 0.2=small / 0.5=medium / 0.8=large' },
+    { label: "Hedges' g", desc: 'Small-sample corrected; preferred when n1+n2<20', sub: true },
+    { label: "Cohen's d", desc: 'Uncorrected; conventional when n1+n2≥20', sub: true },
+    { label: 'Significance', desc: 't-test verdict based on p<0.05 threshold. Complements effect size ("how real" vs "how big")' },
+    { label: 'p value', desc: 'Probability of seeing the current gap if variants were truly identical. Smaller = more confident. 0.05 is a convention', sub: true },
+    { label: 't value', desc: 'Mean diff ÷ estimated error. Must be read alongside df and effect size', sub: true },
+    { label: 'df', desc: '≈"effective sample size". --repeat 3 usually lands at 2~4; df 20+ needs --repeat 10+', sub: true },
+  ];
+  const glossaryRows = lang === 'zh' ? glossaryZh : glossaryEn;
+  const glossaryHtml = glossaryRows.map((r) => {
+    if (r.sub) {
+      return `<div class="modal-glossary-sub"><div class="modal-glossary-sub-label">${e(r.label)}</div><div class="modal-glossary-sub-desc">${e(r.desc)}</div></div>`;
+    }
+    return `<div class="modal-glossary-row"><div class="modal-glossary-label">${e(r.label)}</div><div class="modal-glossary-desc">${e(r.desc)}</div></div>`;
+  }).join('');
 
-  const guideBody = lang === 'zh' ? `
-    <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>差距</strong></td><td style="padding:6px 0;color:var(--text-secondary)">跨轮均值胜出者及绝对差值（原始单位）。方向用胜出者表达，不用正负号</td></tr>
-    <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>效应量</strong></td><td style="padding:6px 0;color:var(--text-secondary)">差距相对标准差的倍数。阈值：0.2=小，0.5=中，0.8=大</td></tr>
-    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">Hedges' g</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">小样本修正版本，n1+n2&lt;20 时优先</td></tr>
-    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">Cohen's d</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">未修正版本，n1+n2≥20 时是惯例</td></tr>
-    <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>显著性</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Welch's t 检验。回答"差异真不真"，和效应量"差多大"互补</td></tr>
-    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">t 值</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">均值差 ÷ 估计误差，绝对值越大越不像巧合。但 t 本身不能单独解读，必须配合 df 和效应量</td></tr>
-    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">df 自由度</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">大致代表"有效样本量"，Welch's t 的 df 由两组的样本数和方差共同决定。df 越大 t 检验越可靠；--repeat 3 时 df 通常落在 2~4 之间，想要 df 到 20+ 一般需要 --repeat 10 以上</td></tr>
-    ${diagRulesZh}
-  ` : `
-    <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Gap</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Winner and absolute difference in original units. Direction via winner name, not signed value</td></tr>
-    <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Effect size</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Gap in units of standard deviation. Thresholds: 0.2=small, 0.5=medium, 0.8=large</td></tr>
-    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">Hedges' g</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">Small-sample corrected; preferred when n1+n2&lt;20</td></tr>
-    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">Cohen's d</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">Uncorrected; conventional when n1+n2≥20</td></tr>
-    <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Significance</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Welch's t. Answers "is it real"; complementary to effect size's "how big"</td></tr>
-    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">t value</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">mean difference ÷ estimated error. Larger magnitude = less likely to be coincidence. Must be read alongside df and effect size, never alone</td></tr>
-    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">df (degrees of freedom)</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">Roughly "effective sample size". In Welch's t, df depends on both samples' sizes and variances. Higher df = more reliable t-test. With --repeat 3 it typically lands at 2~4; reaching df 20+ usually needs --repeat 10 or higher</td></tr>
-    ${diagRulesEn}
-  `;
+  // Four-quadrant diagnostic rules, rendered as card rows matching the table's
+  // "icon + text" visual language instead of colored table text.
+  interface DiagRule { variant: 'good' | 'warn' | 'neutral'; icon: string; title: string; desc: string; example: string }
+  const diagRulesZhData: DiagRule[] = [
+    { variant: 'good', icon: '✓', title: '显著差异（中/大效应）', desc: '差异真实且有实际意义，可作为结论', example: '示例：v1 更便宜 · 显著 · g=1.04' },
+    { variant: 'warn', icon: '⚠', title: '显著但效应微弱', desc: '差异真实但太小没实际价值，别过度解读', example: '示例：p<0.05 但 g≈0.1（--repeat 很大时易出现）' },
+    { variant: 'warn', icon: '⚠', title: '大效应但样本不足', desc: '差距看似大但样本太少，建议加大 --repeat 再判断', example: '示例：v2 胜出 0.30 · g=1.04 · 不显著' },
+    { variant: 'neutral', icon: '—', title: '两变体相当', desc: '既不显著也效应微弱，可视为无差异', example: '示例：Δ≈0 · 不显著 · g<0.2' },
+  ];
+  const diagRulesEnData: DiagRule[] = [
+    { variant: 'good', icon: '✓', title: 'Significant, medium/large effect', desc: 'Real and meaningful — acceptable as a conclusion', example: 'e.g. v1 cheaper · significant · g=1.04' },
+    { variant: 'warn', icon: '⚠', title: 'Significant but trivial effect', desc: 'Real but tiny — do not overinterpret', example: 'e.g. p<0.05 but g≈0.1 (common with large --repeat)' },
+    { variant: 'warn', icon: '⚠', title: 'Large effect but underpowered', desc: 'Gap looks real but sample is too small — increase --repeat', example: 'e.g. v2 leads by 0.30 · g=1.04 · not significant' },
+    { variant: 'neutral', icon: '—', title: 'No meaningful difference', desc: 'Neither significant nor large — treat as equivalent', example: 'e.g. Δ≈0 · not significant · g<0.2' },
+  ];
+  const diagRulesData = lang === 'zh' ? diagRulesZhData : diagRulesEnData;
+  const diagRulesHtml = diagRulesData.map((rule) => `
+    <div class="diag-rule-row rule-${rule.variant}">
+      <span class="diag-rule-icon rule-${rule.variant}">${rule.icon}</span>
+      <div class="diag-rule-body">
+        <div class="diag-rule-title">${e(rule.title)}</div>
+        <div class="diag-rule-desc">${e(rule.desc)}</div>
+        <div class="diag-rule-example">${e(rule.example)}</div>
+      </div>
+    </div>`).join('');
+
+  const orderHint = lang === 'zh' ? '以下按表格列顺序排列' : 'Below follows the table column order';
+  const sectionTitle = lang === 'zh' ? '四象限诊断规则' : 'Four-quadrant diagnostic rules';
+  const closeLabel = lang === 'zh' ? '关闭' : 'Close';
 
   return `
     <section style="margin-top:24px">
-      <h2 style="display:flex;align-items:center;gap:4px">${title} <span class="hint hint-click" tabindex="0" onclick="document.getElementById('${modalId}').style.display='flex'" aria-label="${e(guideTitle)}">?</span></h2>
-      <div id="${modalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${modalId}-title" onclick="if(event.target===this)this.style.display='none'">
+      <h2 style="display:flex;align-items:center;gap:4px">${title} <button type="button" class="hint-btn" onclick="openModal('${modalId}')" aria-label="${e(guideTitle)}" aria-haspopup="dialog">?</button></h2>
+      <div id="${modalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${modalId}-title" onclick="if(event.target===this)closeModal('${modalId}')">
         <div class="modal-content">
           <div class="modal-header">
             <strong id="${modalId}-title" style="font-size:1rem">${e(guideTitle)}</strong>
-            <button class="modal-close" onclick="document.getElementById('${modalId}').style.display='none'" aria-label="${lang === 'zh' ? '关闭' : 'Close'}">✕</button>
+            <button type="button" class="modal-close" onclick="closeModal('${modalId}')" aria-label="${closeLabel}">✕</button>
           </div>
-          <table class="modal-table"><tbody>${guideBody}</tbody></table>
+          <p class="modal-glossary-hint">${e(orderHint)}</p>
+          <div class="modal-glossary">${glossaryHtml}</div>
+          <div class="modal-section">
+            <div class="modal-section-title">${e(sectionTitle)}</div>
+            <div class="diag-rules">${diagRulesHtml}</div>
+          </div>
         </div>
       </div>
       <div class="table-wrap">
-        <table class="summary-table">
+        <table class="summary-table variance-table">
           <thead>${thead}</thead>
           <tbody>${rows}</tbody>
         </table>
