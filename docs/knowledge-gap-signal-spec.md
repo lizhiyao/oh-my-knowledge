@@ -289,8 +289,8 @@ v0.2 将引入 **主动探测**（competency questions）：让 LLM 读知识库
 
 | 中文 | 英文 | 一句话定义 |
 |------|------|-----------|
-| 覆盖率 | coverage | 已知知识被测评集访问过的比例（how much of the knowledge base is exercised by the test samples） |
-| 缺口率 | gap rate | 测评集中触发知识盲区的样本比例（how much unknown territory the test samples bumped into） |
+| 基于测评用例的知识覆盖率 | Test Case Knowledge Coverage | 已知知识被测评用例访问过的比例（how much of the knowledge base is exercised by the test cases） |
+| 基于测评用例的知识缺口 / 缺口率 | Test Case Knowledge Gap / Gap Rate | 测评用例中触发知识盲区的样本比例（how much unknown territory the test cases bumped into） |
 | 缺口信号 | gap signal | 单次"agent 想找而找不到"的具体事件 |
 | 失败搜索 | failed search | Grep / Read / Bash search 工具调用未命中 |
 | 显式标记 | explicit marker | agent 输出文本中的【推断】【知识缺口】等中英文标记 |

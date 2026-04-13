@@ -82,9 +82,20 @@ function renderTable(variantName: string, runs: Report[], lang: Lang): string {
     const commitCell = git ? `${e(git.commitShort)}${git.dirty ? '*' : ''}` : '-';
     const branchCell = git ? e(git.branch) : '-';
 
+    const gapReport = r.analysis?.gapReports?.[variantName];
+    let gapCell: string;
+    if (gapReport && gapReport.sampleCount > 0) {
+      const pct = Math.round(gapReport.gapRate * 100);
+      const color = pct <= 10 ? 'var(--green)' : pct <= 30 ? 'var(--yellow)' : 'var(--red)';
+      gapCell = `<span style="color:${color}">${pct}%</span>`;
+    } else {
+      gapCell = '<span style="color:var(--text-muted)">-</span>';
+    }
+
     return `<tr>
       <td><a href="/run/${e(r.id)}">${fmtLocalTime(m.timestamp)}</a></td>
       <td>${s.avgCompositeScore ?? '-'}</td>
+      <td>${gapCell}</td>
       <td>${s.avgFullNumTurns ?? s.avgNumTurns ?? '-'}</td>
       <td>${fmtCost(s.avgCostPerSample)}</td>
       <td><code style="font-size:11px">${e(hash.slice(0, 8))}</code></td>
@@ -93,12 +104,15 @@ function renderTable(variantName: string, runs: Report[], lang: Lang): string {
     </tr>`;
   }).join('');
 
+  const gapHeader = lang === 'zh' ? '缺口率' : 'Gap rate';
+
   return `
     <div class="table-wrap">
     <table>
       <thead><tr>
         <th>${t('time', lang)}</th>
         <th>${t('score', lang)}</th>
+        <th>${gapHeader}</th>
         <th>${t('avgTurns', lang)}</th>
         <th>${t('cost', lang)}</th>
         <th>Artifact Hash</th>

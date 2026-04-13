@@ -1,6 +1,6 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import { pValueCategory } from '../eval-core/statistics.js';
-import type { AnalysisResult, Insight, KnowledgeCoverage, Lang, VarianceComparison, VarianceComparisonMetric, VarianceData, VariantSummary } from '../types.js';
+import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, VarianceComparison, VarianceComparisonMetric, VarianceData, VariantSummary } from '../types.js';
 
 export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang, variance?: VarianceData): string {
   // Build comparison table: variants as rows, dimensions as columns.
@@ -772,7 +772,7 @@ export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage
     </div>`;
   }).join('');
 
-  const title = lang === 'zh' ? '测评用例知识覆盖率' : 'Test Case Knowledge Coverage';
+  const title = lang === 'zh' ? '基于测评用例的知识覆盖率' : 'Test Case Knowledge Coverage';
   const desc = lang === 'zh'
     ? '当前测试用例触及了 artifact 知识域中多少文件。覆盖率低说明需要补充测试样本，而非知识本身不完整。'
     : 'How much of the artifact\'s knowledge domain was exercised by current test cases. Low coverage suggests more test samples are needed.';
@@ -781,6 +781,103 @@ export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage
     <section style="margin-top:24px">
       <h2>${title}</h2>
       <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">${desc}</p>
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        ${variantSections}
+      </div>
+    </section>
+  `;
+}
+
+/**
+ * Render the knowledge gap section: per-variant gap rate + mandatory test set
+ * watermark + signal classification + inventory of individual signals.
+ * See docs/knowledge-gap-signal-spec.md for the semantics.
+ */
+export function renderGapSection(gapReports: Record<string, GapReport> | undefined, lang: Lang): string {
+  if (!gapReports || Object.keys(gapReports).length === 0) return '';
+
+  const title = lang === 'zh' ? '基于测评用例的知识缺口' : 'Test Case Knowledge Gaps';
+  const desc = lang === 'zh'
+    ? '当前测评用例触发知识盲区的样本比例。和上方的覆盖率一样，本指标反映的是测评用例 × 知识库的交互——不代表知识库的绝对完备性。'
+    : 'Share of samples in the current test case set that bumped into unknown territory. Like coverage above, this metric reflects the interaction between test cases and the knowledge base, not absolute knowledge-base completeness.';
+
+  const signalTypeLabels: Record<GapSignalRef['type'], { zh: string; en: string }> = {
+    failed_search: { zh: '失败搜索', en: 'Failed search' },
+    explicit_marker: { zh: '显式标记', en: 'Explicit marker' },
+    hedging: { zh: '降级措辞', en: 'Hedging language' },
+    repeated_failure: { zh: '连续失败', en: 'Repeated failure' },
+  };
+  const pickLabel = (key: GapSignalRef['type']): string => signalTypeLabels[key][lang === 'zh' ? 'zh' : 'en'];
+
+  const variantSections = Object.entries(gapReports).map(([variant, report]) => {
+    const pct = Math.round(report.gapRate * 100);
+    // Color: lower gap rate is better (inverse of coverage). Gate at 10% / 30%.
+    const pctColor = pct <= 10 ? 'var(--green)' : pct <= 30 ? 'var(--yellow)' : 'var(--red)';
+    const barW = Math.max(2, pct);
+
+    // Watermark (spec §7.1): test set path + sample count + hash + explicit caveat
+    const watermarkBits: string[] = [];
+    if (report.testSetPath) {
+      const basename = report.testSetPath.split('/').pop() || report.testSetPath;
+      watermarkBits.push(`<span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${e(basename)}</span>`);
+    }
+    watermarkBits.push(`n=${report.sampleCount}`);
+    if (report.testSetHash) watermarkBits.push(`sha:${e(report.testSetHash)}`);
+    const watermark = `<div style="font-size:var(--fs-micro);color:var(--text-muted);margin-bottom:8px;font-weight:400">${watermarkBits.join(' · ')}</div>`;
+
+    // Classification: per-type counts
+    const typeBadges = (Object.keys(report.byType) as GapSignalRef['type'][])
+      .filter((key) => report.byType[key] > 0)
+      .map((key) => `<span style="display:inline-block;padding:2px 8px;border-radius:var(--radius);background:var(--bg-card);font-size:var(--fs-micro);color:var(--text-secondary);margin:2px 4px 2px 0">${e(pickLabel(key))} × ${report.byType[key]}</span>`)
+      .join('');
+
+    // Inventory: list of specific signals (cap at 8 to keep the panel compact)
+    const INVENTORY_CAP = 8;
+    const inventory = report.signals.slice(0, INVENTORY_CAP).map((sig) => {
+      const typeLabel = pickLabel(sig.type);
+      const turnPart = sig.turn != null ? ` / ${lang === 'zh' ? '第' : 'turn'} ${sig.turn}${lang === 'zh' ? ' 轮' : ''}` : '';
+      return `<div style="padding:6px 10px;margin:4px 0;background:var(--bg-card);border-left:2px solid var(--border-hover);border-radius:4px;font-size:var(--fs-detail);line-height:1.5">
+        <div style="color:var(--text-muted);font-size:var(--fs-micro);margin-bottom:2px">
+          <strong style="color:var(--text-secondary)">${e(sig.sampleId)}</strong>${turnPart} · ${e(typeLabel)}
+        </div>
+        <div style="color:var(--text-secondary);word-break:break-all">${e(sig.context)}</div>
+      </div>`;
+    }).join('');
+
+    const overflowHint = report.signals.length > INVENTORY_CAP
+      ? `<div style="font-size:var(--fs-micro);color:var(--text-muted);margin-top:6px">${lang === 'zh' ? `还有 ${report.signals.length - INVENTORY_CAP} 条未展示` : `+${report.signals.length - INVENTORY_CAP} more not shown`}</div>`
+      : '';
+
+    const caveat = lang === 'zh'
+      ? '本指标仅反映当前 test set 与知识库的交互，不代表知识库的绝对完备性。'
+      : 'This metric only reflects current test set × knowledge base interaction, not absolute completeness.';
+
+    return `<div style="flex:1;min-width:320px;padding:16px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <strong>${e(variant)}</strong>
+        <span style="font-size:20px;font-weight:600;color:${pctColor}">${pct}%</span>
+      </div>
+      ${watermark}
+      <div style="height:8px;background:var(--bg-card);border-radius:4px;margin-bottom:10px">
+        <div style="width:${barW}%;height:100%;background:${pctColor};border-radius:4px"></div>
+      </div>
+      <div style="font-size:var(--fs-detail);color:var(--text-muted);margin-bottom:10px">
+        ${report.samplesWithGap} / ${report.sampleCount} ${lang === 'zh' ? '样本触发了缺口信号' : 'samples bumped into gaps'}
+      </div>
+      ${typeBadges ? `<div style="margin-bottom:10px">${typeBadges}</div>` : ''}
+      ${inventory ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+        <div style="font-size:var(--fs-micro);color:var(--text-muted);margin-bottom:4px">${lang === 'zh' ? '缺口清单' : 'Gap inventory'}</div>
+        ${inventory}
+        ${overflowHint}
+      </div>` : ''}
+      <div style="font-size:var(--fs-micro);color:var(--text-muted);margin-top:10px;font-style:italic;line-height:1.5">⚠ ${caveat}</div>
+    </div>`;
+  }).join('');
+
+  return `
+    <section style="margin-top:24px">
+      <h2>${title}</h2>
+      <p style="font-size:var(--fs-detail);color:var(--text-muted);margin-bottom:12px">${desc}</p>
       <div style="display:flex;gap:16px;flex-wrap:wrap">
         ${variantSections}
       </div>

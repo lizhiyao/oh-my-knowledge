@@ -16,34 +16,10 @@
  * step-3 work. This module only computes the structured GapReport.
  */
 
-import type { ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types.js';
+import type { GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types.js';
 
-export type GapSignalType = 'failed_search' | 'explicit_marker' | 'hedging' | 'repeated_failure';
-
-export interface GapSignal {
-  sampleId: string;
-  type: GapSignalType;
-  turn?: number;
-  context: string;
-  evidence?: Record<string, unknown>;
-}
-
-export interface GapReport {
-  variant: string;
-  /** Denominator: samples where the variant executed successfully (ok === true). */
-  sampleCount: number;
-  /** Numerator: samples with ≥1 gap signal. */
-  samplesWithGap: number;
-  /** samplesWithGap / sampleCount, 0-1, 4 decimal places. */
-  gapRate: number;
-  /** Test set identity for the mandatory watermark. Filled by caller, nullable at compute time. */
-  testSetPath?: string | null;
-  testSetHash?: string | null;
-  /** Flat list of every signal detected across all samples. */
-  signals: GapSignal[];
-  /** Per-type counts for the classification panel. */
-  byType: Record<GapSignalType, number>;
-}
+export type GapSignalType = GapSignalRef['type'];
+export type GapSignal = GapSignalRef;
 
 // ---------- Pattern tables ----------
 

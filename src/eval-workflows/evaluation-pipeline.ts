@@ -1,5 +1,8 @@
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { computeReportCoverage } from '../analysis/coverage-analyzer.js';
+import { computeReportGapRates } from '../analysis/gap-analyzer.js';
 import { aggregateReport, applyBlindMode, DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/evaluation-reporting.js';
 import { executeTasks, preflight } from '../eval-core/evaluation-execution.js';
 import { preflightDependencies, formatDependencyErrors } from '../eval-core/dependency-checker.js';
@@ -148,6 +151,21 @@ async function persistFailedJob(state: EvaluationRunState, err: unknown): Promis
   }
 }
 
+/**
+ * Compute the mandatory test set watermark hash (spec §7.1). Returns the first
+ * 12 hex chars of SHA-256 over the samples file contents, or null if the file
+ * can't be read.
+ */
+function computeTestSetHash(samplesPath: string): string | null {
+  if (!samplesPath || !existsSync(samplesPath)) return null;
+  try {
+    const content = readFileSync(samplesPath, 'utf-8');
+    return createHash('sha256').update(content).digest('hex').slice(0, 12);
+  } catch {
+    return null;
+  }
+}
+
 function finalizeEvaluationReport({
   report,
   results,
@@ -175,6 +193,21 @@ function finalizeEvaluationReport({
     if (Object.keys(coverage).length > 0) {
       report.analysis!.coverage = coverage;
     }
+  }
+
+  // Gap rate computation runs on every successful report regardless of whether
+  // tool trace data is present — text-based signals (markers, hedging) still
+  // apply. The samples-file SHA is the mandatory watermark required by spec §7.1.
+  const gapReports = computeReportGapRates(report.results, variantNames);
+  if (Object.keys(gapReports).length > 0) {
+    const testSetHash = computeTestSetHash(samplesPath);
+    for (const variant of variantNames) {
+      const gr = gapReports[variant];
+      if (!gr) continue;
+      gr.testSetPath = samplesPath;
+      gr.testSetHash = testSetHash;
+    }
+    report.analysis!.gapReports = gapReports;
   }
 
   if (blind) {

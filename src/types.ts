@@ -437,6 +437,32 @@ export interface AnalysisResult {
   insights: Insight[];
   suggestions: string[];
   coverage?: Record<string, KnowledgeCoverage>;
+  /** Per-variant knowledge gap reports. See docs/knowledge-gap-signal-spec.md */
+  gapReports?: Record<string, GapReport>;
+}
+
+export interface GapSignalRef {
+  sampleId: string;
+  type: 'failed_search' | 'explicit_marker' | 'hedging' | 'repeated_failure';
+  turn?: number;
+  context: string;
+  evidence?: Record<string, unknown>;
+}
+
+export interface GapReport {
+  variant: string;
+  sampleCount: number;
+  samplesWithGap: number;
+  gapRate: number;
+  testSetPath?: string | null;
+  testSetHash?: string | null;
+  signals: GapSignalRef[];
+  byType: {
+    failed_search: number;
+    explicit_marker: number;
+    hedging: number;
+    repeated_failure: number;
+  };
 }
 
 export interface VarianceEffectSize {
