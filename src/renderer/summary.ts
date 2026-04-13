@@ -2,7 +2,11 @@ import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import type { AnalysisResult, Insight, KnowledgeCoverage, Lang, VarianceData, VariantSummary } from '../types.js';
 
 export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang, variance?: VarianceData): string {
-  // Build comparison table: variants as rows, dimensions as columns
+  // Build comparison table: variants as rows, dimensions as columns.
+  // When variance data exists, the quality column shows cross-run means (for
+  // consistency with the Variance & Significance section below). The data
+  // source is inferable from the experiment summary at top + the matching
+  // numbers in the significance section — no redundant per-column labelling.
   const headerCols = [
     { key: 'dimQuality', label: t('dimQuality', lang) },
     { key: 'dimCost', label: t('dimCost', lang) },
@@ -17,8 +21,12 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     const vd = variance?.perVariant[v];
     const color = COLORS[i % COLORS.length];
 
-    // Quality — show composite + layered breakdown
-    const score = s.avgCompositeScore ?? s.avgLlmScore ?? '-';
+    // Quality — show composite + layered breakdown.
+    // When variance exists (--repeat), use the cross-run mean as the source of
+    // truth so this table agrees with the Variance & Significance section below.
+    // Otherwise fall back to the single-run summary aggregate.
+    const crossRunMean = vd?.mean;
+    const score = crossRunMean ?? s.avgCompositeScore ?? s.avgLlmScore ?? '-';
     const factLabel = lang === 'zh' ? '事实' : 'Fact';
     const behaviorLabel = lang === 'zh' ? '行为' : 'Behavior';
     const qualityLabel = lang === 'zh' ? '质量' : 'Quality';
@@ -44,10 +52,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       hintParts.push(`${qualityLabel}: ${s.avgQualityScore}`);
     }
 
-    // Append CI from variance data into quality detail
-    if (vd) {
-      layeredDetailParts.push(`<span style="color:var(--text-muted)">95% ${lang === 'zh' ? '置信区间' : 'CI'} [${vd.lower.toFixed(2)}, ${vd.upper.toFixed(2)}]</span>`);
-    }
+    // Cross-run context is marked once in the column header, not per row.
 
     if (layeredDetailParts.length === 0) {
       // Fallback to old style if no layered scores
@@ -58,7 +63,8 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
 
     const scoreNum = typeof score === 'number' ? score : 0;
     const scoreColor = scoreNum >= 4 ? 'var(--green)' : scoreNum >= 3 ? 'var(--yellow)' : scoreNum > 0 ? 'var(--red)' : 'var(--text-primary)';
-    const qualityCell = `<td class="summary-cell"><div class="summary-value summary-value-primary" style="color:${scoreColor}">${score}</div><div class="summary-detail">${layeredDetailParts.join(' · ')}</div></td>`;
+    const scoreDisplay = typeof score === 'number' ? score.toFixed(2) : score;
+    const qualityCell = `<td class="summary-cell"><div class="summary-value summary-value-primary" style="color:${scoreColor}">${scoreDisplay}</div><div class="summary-detail">${layeredDetailParts.join(' · ')}</div></td>`;
 
     // Cost — only show execution cost (judge cost is tool overhead, not skill cost)
     const execCost = s.totalExecCostUSD || 0;
@@ -81,34 +87,23 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     const avgLabel = lang === 'zh' ? '次' : 'req';
     const effCell = `<td class="summary-cell"><div class="summary-value">${fmtDuration(s.avgDurationMs)}<span class="summary-unit">/${avgLabel}</span></div>${effDetail}</td>`;
 
-    // Stability: primary = score range, detail = success rate + CV + variance run scores
+    // Stability — variant-internal attributes only: success rate + sample-level
+    // score spread. Cross-run dispersion (σ, CV, CI) now lives exclusively in
+    // the Variance & Significance section so that the two tables never
+    // overlap conceptually.
     const total = s.totalSamples || 0;
     const successCount = s.successCount || 0;
     const successRate = total > 0 ? Number((successCount / total * 100).toFixed(1)) : 0;
 
-    let stabValue: string;
-    let stabColor: string;
-    if (s.minCompositeScore != null && s.maxCompositeScore != null) {
-      const spread = s.maxCompositeScore - s.minCompositeScore;
-      stabValue = s.minCompositeScore === s.maxCompositeScore
-        ? `${s.minCompositeScore}`
-        : `${s.minCompositeScore}~${s.maxCompositeScore}`;
-      stabColor = spread <= 0.5 ? 'var(--green)' : spread <= 2 ? 'var(--yellow)' : 'var(--red)';
-    } else {
-      stabValue = `${successRate}%`;
-      stabColor = successRate === 100 ? 'var(--green)' : successRate >= 90 ? 'var(--yellow)' : 'var(--red)';
-    }
+    const stabValue = `${successRate}%`;
+    const stabColor = successRate === 100 ? 'var(--green)' : successRate >= 90 ? 'var(--yellow)' : 'var(--red)';
 
     const stabDetails: string[] = [];
     if ((s.errorCount || 0) > 0) {
       stabDetails.push(`<span style="color:var(--red)">${s.errorCount} ${t('errors', lang)}</span>`);
     }
-    if (s.scoreCV != null) {
-      const cvPct = (s.scoreCV * 100).toFixed(0);
-      stabDetails.push(`${lang === 'zh' ? '变异系数' : 'CV'} ${cvPct}%`);
-    }
-    if (vd) {
-      stabDetails.push(`${lang === 'zh' ? '跨轮σ' : 'cross-run σ'} ${vd.stddev.toFixed(2)}`);
+    if (s.minCompositeScore != null && s.maxCompositeScore != null && s.minCompositeScore !== s.maxCompositeScore) {
+      stabDetails.push(`${lang === 'zh' ? '分数' : 'range'} ${s.minCompositeScore}~${s.maxCompositeScore}`);
     }
     const stabDetail = stabDetails.length > 0 ? `<div class="summary-detail">${stabDetails.join(' · ')}</div>` : '';
 
@@ -136,10 +131,10 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     <tr><td ${sub}>质量</td><td ${subDesc}>LLM 评委对输出整体质量的主观评分</td></tr>
     <tr><td ${dim}>${icon('💰')} <strong>成本</strong></td><td ${dimDesc}>API 调用费用（仅执行成本，不含评分成本）</td></tr>
     <tr><td ${dim}>${icon('⚡')} <strong>效率</strong></td><td ${dimDesc}>单次评测的平均耗时，含轮次和工具调用统计</td></tr>
-    <tr><td ${dim}>${icon('🛡️')} <strong>稳定性</strong></td><td ${dimDesc}>多个样本间分数的波动程度</td></tr>
-    <tr><td ${sub}>分数范围</td><td ${subDesc}>所有样本中的最低分 ~ 最高分，范围越窄越稳定</td></tr>
+    <tr><td ${dim}>${icon('🛡️')} <strong>稳定性</strong></td><td ${dimDesc}>变体在本次评测中的内在稳定性，仅反映样本间表现</td></tr>
     <tr><td ${sub}>成功率</td><td ${subDesc}>评测任务成功完成的比例，失败包括超时、API 错误等</td></tr>
-    <tr><td ${sub}>变异系数</td><td ${subDesc}>质量分数的标准差 ÷ 质量分数的平均值，衡量分数波动程度。越低越稳定，0% = 所有样本得分一致</td></tr>
+    <tr><td ${sub}>分数范围</td><td ${subDesc}>样本间最低分 ~ 最高分，范围越窄越稳定</td></tr>
+    <tr><td style="padding:6px 0 0;color:var(--text-muted);font-size:11px" colspan="2">💡 跨轮方差、置信区间、效应量、显著性等"对比类指标"不在本表，请看下面的「方差与显著性」区块。</td></tr>
   ` : `
     <tr><td ${dimFirst}>${icon('📊')} <strong>Quality</strong></td><td ${dimFirstDesc}>Equal-weight average of three layers (1-5): (Fact + Behavior + Quality) ÷ 3</td></tr>
     <tr><td ${sub}>Factual</td><td ${subDesc}>Are factual claims correct (keyword matching, format validation assertions)</td></tr>
@@ -147,10 +142,10 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     <tr><td ${sub}>Quality</td><td ${subDesc}>LLM judge subjective score on output quality</td></tr>
     <tr><td ${dim}>${icon('💰')} <strong>Cost</strong></td><td ${dimDesc}>API expense (execution only, excludes judge cost)</td></tr>
     <tr><td ${dim}>${icon('⚡')} <strong>Efficiency</strong></td><td ${dimDesc}>Average time per evaluation, with turn and tool call stats</td></tr>
-    <tr><td ${dim}>${icon('🛡️')} <strong>Stability</strong></td><td ${dimDesc}>Score variance across samples</td></tr>
-    <tr><td ${sub}>Score range</td><td ${subDesc}>Min ~ Max score across all samples. Narrower = more stable</td></tr>
+    <tr><td ${dim}>${icon('🛡️')} <strong>Stability</strong></td><td ${dimDesc}>Variant-internal stability across samples, not cross-variant comparison</td></tr>
     <tr><td ${sub}>Success rate</td><td ${subDesc}>Percentage of tasks completed successfully (failures include timeouts, API errors)</td></tr>
-    <tr><td ${sub}>CV</td><td ${subDesc}>Coefficient of Variation = StdDev ÷ Mean. Lower is more stable, 0% = identical scores</td></tr>
+    <tr><td ${sub}>Score range</td><td ${subDesc}>Min ~ Max score across all samples. Narrower = more stable</td></tr>
+    <tr><td style="padding:6px 0 0;color:var(--text-muted);font-size:11px" colspan="2">💡 Cross-run variance, CI, effect size and significance live in the "Variance & Significance" section below — not here.</td></tr>
   `;
 
   return `
@@ -177,7 +172,6 @@ interface DiagnosticEntry {
   icon: string;
   text: string;
   color: string;
-  bg: string;
 }
 
 function buildDiagnostic(comp: VarianceData['comparisons'][number], lang: Lang): DiagnosticEntry {
@@ -187,7 +181,6 @@ function buildDiagnostic(comp: VarianceData['comparisons'][number], lang: Lang):
       icon: '—',
       text: lang === 'zh' ? '数据不足，无法判断' : 'insufficient data',
       color: 'var(--text-muted)',
-      bg: 'transparent',
     };
   }
   const isStrong = es.magnitude === 'medium' || es.magnitude === 'large';
@@ -201,7 +194,6 @@ function buildDiagnostic(comp: VarianceData['comparisons'][number], lang: Lang):
         ? `显著差异（${strongLabelZh}效应）`
         : `significant, ${strongLabelEn} effect`,
       color: 'var(--green)',
-      bg: 'rgba(46, 160, 67, 0.08)',
     };
   }
   if (comp.significant && !isStrong) {
@@ -211,7 +203,6 @@ function buildDiagnostic(comp: VarianceData['comparisons'][number], lang: Lang):
         ? '统计显著但效应微弱，别过度解读'
         : 'significant but effect is trivial — do not overinterpret',
       color: 'var(--yellow)',
-      bg: 'rgba(210, 153, 34, 0.08)',
     };
   }
   if (!comp.significant && isStrong) {
@@ -221,14 +212,12 @@ function buildDiagnostic(comp: VarianceData['comparisons'][number], lang: Lang):
         ? `${strongLabelZh}效应但样本不足，建议加大 --repeat`
         : `${strongLabelEn} effect but underpowered — increase --repeat`,
       color: 'var(--yellow)',
-      bg: 'rgba(210, 153, 34, 0.08)',
     };
   }
   return {
     icon: '—',
     text: lang === 'zh' ? '两变体相当，无实质差异' : 'no meaningful difference',
     color: 'var(--text-muted)',
-    bg: 'transparent',
   };
 }
 
@@ -238,9 +227,6 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
   const modalId = 'guide-variance-comparisons';
   const title = lang === 'zh' ? '方差与显著性' : 'Variance & Significance';
   const guideTitle = lang === 'zh' ? '如何阅读这张表？' : 'How to read this table?';
-  const desc = lang === 'zh'
-    ? `跨 ${variance.runs} 轮重复评测的两两对比。每一行最重要的是最右侧的「诊断」一列——它综合效应量和显著性给出可直接行动的结论。`
-    : `Pairwise comparison across ${variance.runs} repeated runs. The rightmost "diagnostic" column is what matters — it combines effect size and significance into an actionable verdict.`;
 
   const headerLabels = lang === 'zh'
     ? ['对比', '差距', '效应量', '显著性', '诊断']
@@ -252,47 +238,71 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
     return `<th${width}>${h}</th>`;
   }).join('')}</tr>`;
 
+  // Shared row typography: verdict line (text-secondary) over detail line (muted).
+  // The three middle columns (gap / effect / significance) all follow this
+  // "conclusion first, numbers second" rhythm for visual parity.
+  const rowStyles = {
+    verdict: 'color:var(--text-secondary)',
+    detail: 'font-size:11px;color:var(--text-muted);margin-top:2px',
+  };
+
   const rows = variance.comparisons.map((comp) => {
-    // Gap cell: neutral winner + absolute magnitude, no red/green on sign
+    // Gap cell: "v2 领先 / 0.30 分"
     const diffAbs = Math.abs(comp.meanDiff);
     let gapCell: string;
     if (diffAbs < 0.005) {
-      gapCell = `<span style="color:var(--text-muted)">${lang === 'zh' ? '持平' : 'tied'}</span>`;
+      gapCell = `<div style="${rowStyles.verdict}">${lang === 'zh' ? '持平' : 'tied'}</div>`;
     } else {
       const winner = comp.meanDiff > 0 ? comp.a : comp.b;
-      const leadLabel = lang === 'zh' ? '领先' : 'leads by';
+      const leadWord = lang === 'zh' ? '领先' : 'leads';
+      const unit = lang === 'zh' ? ' 分' : ' pts';
       gapCell = `
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:2px">${lang === 'zh' ? '胜出' : 'winner'}</div>
-        <div><strong>${e(winner)}</strong> <span style="color:var(--text-secondary)">+${diffAbs.toFixed(2)}</span></div>`;
+        <div style="${rowStyles.verdict}"><strong>${e(winner)}</strong> ${leadWord}</div>
+        <div style="${rowStyles.detail}">${diffAbs.toFixed(2)}${unit}</div>`;
     }
 
-    // Effect size cell: neutral typography, info hierarchy only (no magnitude coloring)
+    // Effect size cell: "大效应 / g=1.04 · d=1.30 · n=3+3"
     const es = comp.effectSize;
     let esCell: string;
     if (!es || es.primary === 'none') {
-      esCell = `<span style="color:var(--text-muted)">N/A</span>`;
+      esCell = `<div style="${rowStyles.verdict}">${lang === 'zh' ? '数据不足' : 'insufficient data'}</div>`;
     } else {
-      const primaryVal = es.primary === 'g' ? es.hedgesG : es.cohensD;
-      const secondaryLabel = es.primary === 'g' ? 'd' : 'g';
-      const secondaryVal = es.primary === 'g' ? es.cohensD : es.hedgesG;
+      const magnitudeZh: Record<string, string> = {
+        negligible: '可忽略',
+        small: '小效应',
+        medium: '中效应',
+        large: '大效应',
+      };
+      const magnitudeEn: Record<string, string> = {
+        negligible: 'negligible',
+        small: 'small effect',
+        medium: 'medium effect',
+        large: 'large effect',
+      };
+      const magnitudeLabel = (lang === 'zh' ? magnitudeZh : magnitudeEn)[es.magnitude] || es.magnitude;
+      const gVal = Math.abs(es.hedgesG).toFixed(2);
+      const dVal = Math.abs(es.cohensD).toFixed(2);
       esCell = `
-        <div><strong>${es.primary}=${Math.abs(primaryVal).toFixed(2)}</strong></div>
-        <div style="font-size:11px;color:var(--text-muted)">${secondaryLabel}=${Math.abs(secondaryVal).toFixed(2)} · n=${es.n1}+${es.n2}</div>`;
+        <div style="${rowStyles.verdict}">${magnitudeLabel}</div>
+        <div style="${rowStyles.detail}">g=${gVal} · d=${dVal} · n=${es.n1}+${es.n2}</div>`;
     }
 
-    // Significance cell: keep muted but legible
+    // Significance cell: "不显著 / t=-1.59 · df=3"
     const sigText = comp.significant
       ? (lang === 'zh' ? '显著 (p<0.05)' : 'significant (p<0.05)')
       : (lang === 'zh' ? '不显著' : 'not significant');
     const sigCell = `
-      <div style="color:var(--text-secondary)">${sigText}</div>
-      <div style="font-size:11px;color:var(--text-muted)">t=${comp.tStatistic.toFixed(2)} · df=${comp.df}</div>`;
+      <div style="${rowStyles.verdict}">${sigText}</div>
+      <div style="${rowStyles.detail}">t=${comp.tStatistic.toFixed(2)} · df=${comp.df}</div>`;
 
-    // Diagnostic cell: the hero
+    // Diagnostic cell: colored icon + bold colored text. No box chrome —
+    // color and weight alone do the emphasis, keeping visual parity with
+    // the other table cells.
     const diag = buildDiagnostic(comp, lang);
     const diagCell = `
-      <div style="padding:10px 12px;background:${diag.bg};border-left:3px solid ${diag.color};border-radius:4px;line-height:1.5">
-        <strong style="color:${diag.color}">${diag.icon} ${diag.text}</strong>
+      <div style="display:flex;align-items:center;gap:6px;line-height:1.5">
+        <span style="color:${diag.color};font-size:14px;flex-shrink:0">${diag.icon}</span>
+        <strong style="color:${diag.color}">${diag.text}</strong>
       </div>`;
 
     return `<tr>
@@ -325,6 +335,8 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
     <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">Hedges' g</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">小样本修正版本，n1+n2&lt;20 时优先</td></tr>
     <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">Cohen's d</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">未修正版本，n1+n2≥20 时是惯例</td></tr>
     <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>显著性</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Welch's t 检验。回答"差异真不真"，和效应量"差多大"互补</td></tr>
+    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">t 值</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">均值差 ÷ 估计误差，绝对值越大越不像巧合。但 t 本身不能单独解读，必须配合 df 和效应量</td></tr>
+    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">df 自由度</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">大致代表"有效样本量"，Welch's t 的 df 由两组的样本数和方差共同决定。df 越大 t 检验越可靠；--repeat 3 时 df 通常落在 2~4 之间，想要 df 到 20+ 一般需要 --repeat 10 以上</td></tr>
     ${diagRulesZh}
   ` : `
     <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Gap</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Winner and absolute difference in original units. Direction via winner name, not signed value</td></tr>
@@ -332,13 +344,14 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
     <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">Hedges' g</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">Small-sample corrected; preferred when n1+n2&lt;20</td></tr>
     <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">Cohen's d</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">Uncorrected; conventional when n1+n2≥20</td></tr>
     <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Significance</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Welch's t. Answers "is it real"; complementary to effect size's "how big"</td></tr>
+    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">t value</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">mean difference ÷ estimated error. Larger magnitude = less likely to be coincidence. Must be read alongside df and effect size, never alone</td></tr>
+    <tr><td style="padding:6px 0 6px 24px;color:var(--text-secondary);font-size:12px">df (degrees of freedom)</td><td style="padding:6px 0;color:var(--text-muted);font-size:12px">Roughly "effective sample size". In Welch's t, df depends on both samples' sizes and variances. Higher df = more reliable t-test. With --repeat 3 it typically lands at 2~4; reaching df 20+ usually needs --repeat 10 or higher</td></tr>
     ${diagRulesEn}
   `;
 
   return `
     <section style="margin-top:24px">
       <h2 style="display:flex;align-items:center;gap:4px">${title} <span class="hint hint-click" tabindex="0" onclick="document.getElementById('${modalId}').style.display='flex'" aria-label="${e(guideTitle)}">?</span></h2>
-      <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">${desc}</p>
       <div id="${modalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${modalId}-title" onclick="if(event.target===this)this.style.display='none'">
         <div class="modal-content">
           <div class="modal-header">
