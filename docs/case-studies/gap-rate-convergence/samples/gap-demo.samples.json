@@ -18,6 +18,24 @@
         "type": "contains",
         "value": "defaultInsuredCountByRelation 模式根据关系类型指定添加人数",
         "weight": 1
+      },
+      {
+        "type": "tools_called",
+        "value": [
+          "Read",
+          "Grep"
+        ],
+        "weight": 0.8
+      },
+      {
+        "type": "tools_count_min",
+        "value": 3,
+        "weight": 0.6
+      },
+      {
+        "type": "turns_max",
+        "value": 15,
+        "weight": 0.4
       }
     ],
     "metadata": {
@@ -59,6 +77,24 @@
         "type": "contains",
         "value": "最终结果是页面价格更新",
         "weight": 0.5
+      },
+      {
+        "type": "tools_called",
+        "value": [
+          "Read",
+          "Grep"
+        ],
+        "weight": 0.8
+      },
+      {
+        "type": "tools_count_min",
+        "value": 3,
+        "weight": 0.6
+      },
+      {
+        "type": "turns_max",
+        "value": 15,
+        "weight": 0.4
       }
     ],
     "metadata": {
@@ -95,6 +131,24 @@
         "type": "contains",
         "value": "通过 example-app-confirm-appropriateness-insure-evaluate 组件实现",
         "weight": 0.5
+      },
+      {
+        "type": "tools_called",
+        "value": [
+          "Read",
+          "Grep"
+        ],
+        "weight": 0.8
+      },
+      {
+        "type": "tools_count_min",
+        "value": 3,
+        "weight": 0.6
+      },
+      {
+        "type": "turns_max",
+        "value": 15,
+        "weight": 0.4
       }
     ],
     "metadata": {
@@ -131,6 +185,24 @@
         "type": "contains",
         "value": "询价过程中包含 PENDING/ERROR 状态管理",
         "weight": 0.5
+      },
+      {
+        "type": "tools_called",
+        "value": [
+          "Read",
+          "Grep"
+        ],
+        "weight": 0.8
+      },
+      {
+        "type": "tools_count_min",
+        "value": 3,
+        "weight": 0.6
+      },
+      {
+        "type": "turns_max",
+        "value": 15,
+        "weight": 0.4
       }
     ],
     "metadata": {
@@ -162,6 +234,24 @@
         "type": "contains",
         "value": "点击视频封面后跳转到支付宝小程序播放页",
         "weight": 1
+      },
+      {
+        "type": "tools_called",
+        "value": [
+          "Read",
+          "Grep"
+        ],
+        "weight": 0.8
+      },
+      {
+        "type": "tools_count_min",
+        "value": 3,
+        "weight": 0.6
+      },
+      {
+        "type": "turns_max",
+        "value": 15,
+        "weight": 0.4
       }
     ],
     "metadata": {
@@ -193,6 +283,24 @@
         "type": "contains",
         "value": "传入 videoId 参数定位具体视频",
         "weight": 1
+      },
+      {
+        "type": "tools_called",
+        "value": [
+          "Read",
+          "Grep"
+        ],
+        "weight": 0.8
+      },
+      {
+        "type": "tools_count_min",
+        "value": 3,
+        "weight": 0.6
+      },
+      {
+        "type": "turns_max",
+        "value": 15,
+        "weight": 0.4
       }
     ],
     "metadata": {
@@ -229,6 +337,24 @@
         "type": "contains",
         "value": "是连接前端投保流程与后端进阶服务的桥梁",
         "weight": 0.5
+      },
+      {
+        "type": "tools_called",
+        "value": [
+          "Read",
+          "Grep"
+        ],
+        "weight": 0.8
+      },
+      {
+        "type": "tools_count_min",
+        "value": 3,
+        "weight": 0.6
+      },
+      {
+        "type": "turns_max",
+        "value": 15,
+        "weight": 0.4
       }
     ],
     "metadata": {
@@ -265,6 +391,24 @@
         "type": "contains",
         "value": "降低用户决策门槛",
         "weight": 0.5
+      },
+      {
+        "type": "tools_called",
+        "value": [
+          "Read",
+          "Grep"
+        ],
+        "weight": 0.8
+      },
+      {
+        "type": "tools_count_min",
+        "value": 3,
+        "weight": 0.6
+      },
+      {
+        "type": "turns_max",
+        "value": 15,
+        "weight": 0.4
       }
     ],
     "metadata": {

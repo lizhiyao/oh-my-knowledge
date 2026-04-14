@@ -35,22 +35,27 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     const layeredDetailParts: string[] = [];
     const hintParts: string[] = [];
 
-    if (s.avgFactScore != null) {
-      layeredDetailParts.push(`<span>${factLabel}: ${s.avgFactScore}</span>`);
-      hintParts.push(`${factLabel}: ${s.avgFactScore}`);
-    }
-    if (s.avgBehaviorScore != null) {
-      layeredDetailParts.push(`<span>${behaviorLabel}: ${s.avgBehaviorScore}</span>`);
-      hintParts.push(`${behaviorLabel}: ${s.avgBehaviorScore}`);
-    }
+    // Always render 事实/行为/质量 三层，缺数据时用 "—" 占位，让三层构念
+    // 始终可见。避免读者误以为 omk 只测其中一两层——空值本身是个信号：
+    // 当前 sample set 没有对应类别的断言或 judge 输出
+    const hasAnyLayer = s.avgFactScore != null || s.avgBehaviorScore != null || s.avgQualityScore != null;
+    const renderLayer = (label: string, value: number | undefined | null) => {
+      if (value != null) {
+        layeredDetailParts.push(`<span>${label}: ${value}</span>`);
+        hintParts.push(`${label}: ${value}`);
+      } else if (hasAnyLayer) {
+        layeredDetailParts.push(`<span style="color:var(--text-muted)">${label}: —</span>`);
+        hintParts.push(`${label}: —`);
+      }
+    };
+    renderLayer(factLabel, s.avgFactScore);
+    renderLayer(behaviorLabel, s.avgBehaviorScore);
+    renderLayer(qualityLabel, s.avgQualityScore);
+
     if (s.avgFactVerifiedRate != null) {
       const pct = Math.round(s.avgFactVerifiedRate * 100);
       layeredDetailParts.push(`<span>${lang === 'zh' ? '事实验证' : 'Verified'}: ${pct}%</span>`);
       hintParts.push(`${lang === 'zh' ? '事实验证' : 'Verified'}: ${pct}%`);
-    }
-    if (s.avgQualityScore != null) {
-      layeredDetailParts.push(`<span>${qualityLabel}: ${s.avgQualityScore}</span>`);
-      hintParts.push(`${qualityLabel}: ${s.avgQualityScore}`);
     }
 
     // Cross-run context is marked once in the column header, not per row.
