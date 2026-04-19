@@ -6,7 +6,22 @@ import { discoverVariants, discoverEachSkills, loadSkills } from '../src/inputs/
 import { generateRunId } from '../src/eval-core/evaluation-reporting.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Report } from '../src/types.js';
+import type { Report, VariantSpec } from '../src/types.js';
+
+// Test helper: convert a list of variant names into VariantSpec[].
+// First name becomes `control`, the rest become `treatment`—mirrors the
+// historical `variants: [...]` convention used across legacy fixtures.
+function asSpecs(names: string[]): VariantSpec[] {
+  return names.map((name, i) => {
+    const atIdx = name.indexOf('@');
+    const specName = atIdx === -1 ? name : name.slice(0, atIdx);
+    return {
+      name: specName,
+      role: i === 0 ? 'control' : 'treatment',
+      expr: name,
+    };
+  });
+}
 
 interface DryRunTask {
   sample_id: string;
@@ -67,7 +82,7 @@ describe('runEvaluation', () => {
     const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
-      variants: ['v1', 'v2'],
+      variantSpecs: asSpecs(['v1', 'v2']),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -82,7 +97,7 @@ describe('runEvaluation', () => {
     const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
-      variants: ['v1', 'v2'],
+      variantSpecs: asSpecs(['v1', 'v2']),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -99,7 +114,7 @@ describe('runEvaluation', () => {
     const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
-      variants: ['v1', 'v2'],
+      variantSpecs: asSpecs(['v1', 'v2']),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -115,7 +130,7 @@ describe('runEvaluation', () => {
     const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
-      variants: ['v1', 'v2'],
+      variantSpecs: asSpecs(['v1', 'v2']),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -127,7 +142,7 @@ describe('runEvaluation', () => {
     const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
-      variants: ['v1', 'v2'],
+      variantSpecs: asSpecs(['v1', 'v2']),
       model: 'opus',
       judgeModel: 'sonnet',
       dryRun: true,
@@ -143,7 +158,7 @@ describe('runEvaluation', () => {
       () => runEvaluation({
         samplesPath: '/nonexistent/file.json',
         skillDir: SKILL_DIR,
-        variants: ['v1', 'v2'],
+        variantSpecs: asSpecs(['v1', 'v2']),
       }),
       /ENOENT|invalid/,
     );
@@ -154,7 +169,7 @@ describe('runEvaluation', () => {
       () => runEvaluation({
         samplesPath: SAMPLES_PATH,
         skillDir: SKILL_DIR,
-        variants: ['v1', 'v99_nonexistent'],
+        variantSpecs: asSpecs(['v1', 'v99_nonexistent']),
       }),
       /skill 未找到/,
     );
@@ -164,7 +179,7 @@ describe('runEvaluation', () => {
     const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
-      variants: ['v1', 'v2'],
+      variantSpecs: asSpecs(['v1', 'v2']),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -176,7 +191,7 @@ describe('runEvaluation', () => {
     const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
-      variants: ['baseline', 'project-env@/tmp/project-a', 'v1'],
+      variantSpecs: asSpecs(['baseline', 'project-env@/tmp/project-a', 'v1']),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -195,7 +210,7 @@ describe('runEvaluation', () => {
     const result = await runEvaluation({
       samplesPath: classifierSamples,
       skillDir: multiSkillsDir,
-      variants: ['classifier'],
+      variantSpecs: asSpecs(['classifier']),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -211,7 +226,7 @@ describe('runEvaluation', () => {
         () => runEvaluation({
           samplesPath: tmpSamples,
           skillDir: SKILL_DIR,
-          variants: ['v1', 'v2'],
+          variantSpecs: asSpecs(['v1', 'v2']),
         }),
         /缺少必填字段: sample_id/,
       );
@@ -224,7 +239,7 @@ describe('runEvaluation', () => {
     const result = await runEvaluation({
       samplesPath: join(AGENT_CONTROL_DIR, 'env-isolation.eval-samples.json'),
       skillDir: AGENT_SKILL_DIR,
-      variants: ['baseline', 'project-a-env@/tmp/project-a', 'project-b-env@/tmp/project-b'],
+      variantSpecs: asSpecs(['baseline', 'project-a-env@/tmp/project-a', 'project-b-env@/tmp/project-b']),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -236,7 +251,7 @@ describe('runEvaluation', () => {
     const result = await runEvaluation({
       samplesPath: join(AGENT_CONTROL_DIR, 'artifact-injection.eval-samples.json'),
       skillDir: AGENT_SKILL_DIR,
-      variants: ['baseline', 'v1@/tmp/project-a'],
+      variantSpecs: asSpecs(['baseline', 'v1@/tmp/project-a']),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -250,7 +265,7 @@ describe('runEvaluation', () => {
     const result = await runEvaluation({
       samplesPath: join(AGENT_CONTROL_DIR, 'assertion-discrimination.eval-samples.json'),
       skillDir: AGENT_SKILL_DIR,
-      variants: ['baseline', 'project-env@/tmp/project-a', 'v1@/tmp/project-a'],
+      variantSpecs: asSpecs(['baseline', 'project-env@/tmp/project-a', 'v1@/tmp/project-a']),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -262,7 +277,7 @@ describe('runEvaluation', () => {
     const result = await runEvaluation({
       samplesPath: CUSTOM_EXECUTOR_SAMPLES,
       skillDir: CUSTOM_EXECUTOR_SKILL_DIR,
-      variants: ['baseline', 'v1'],
+      variantSpecs: asSpecs(['baseline', 'v1']),
       executorName: CUSTOM_EXECUTOR_PATH,
       noJudge: true,
       outputDir: null,
@@ -345,7 +360,7 @@ describe('baseline variant', () => {
     const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
-      variants: ['baseline', 'v1'],
+      variantSpecs: asSpecs(['baseline', 'v1']),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -392,7 +407,7 @@ describe('git: variant', () => {
     const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
-      variants: ['git:v1', 'v1'],
+      variantSpecs: asSpecs(['git:v1', 'v1']),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -428,7 +443,7 @@ describe('file path variant', () => {
     const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,
       skillDir: SKILL_DIR,
-      variants: [v1Path, v2Path],
+      variantSpecs: asSpecs([v1Path, v2Path]),
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
@@ -553,7 +568,7 @@ describe('runEvaluation credibility', () => {
       const result = await runEvaluation({
         samplesPath: MOCK_SAMPLES_PATH,
         skillDir: SKILL_DIR,
-        variants: ['v1', 'v2'],
+        variantSpecs: asSpecs(['v1', 'v2']),
         dryRun: true,
       });
       const report = asDryRunReport(result.report);

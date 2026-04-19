@@ -107,7 +107,7 @@ export function aggregateReport({
       cliVersion: PKG.version,
       nodeVersion: process.version,
       artifactHashes,
-      variantConfigs: artifacts.map(buildVariantConfig),
+      variantConfigs: artifacts.map((artifact) => buildVariantConfig(artifact)),
       request,
       run,
       job,

@@ -18,8 +18,8 @@ const SAMPLE_REPORT: Report = {
     nodeVersion: process.version,
     artifactHashes: { v1: 'hash-v1', v2: 'hash-v2' },
     variantConfigs: [
-      { variant: 'v1', artifactKind: 'skill', artifactSource: 'variant-name', executionStrategy: 'system-prompt', experimentType: 'artifact-injection', hasArtifactContent: true, cwd: null },
-      { variant: 'v2', artifactKind: 'baseline', artifactSource: 'custom', executionStrategy: 'baseline', experimentType: 'runtime-context-only', hasArtifactContent: false, cwd: '/tmp/project-a' },
+      { variant: 'v1', artifactKind: 'skill', artifactSource: 'variant-name', executionStrategy: 'system-prompt', experimentType: 'artifact-injection', experimentRole: 'treatment', hasArtifactContent: true, cwd: null },
+      { variant: 'v2', artifactKind: 'baseline', artifactSource: 'custom', executionStrategy: 'baseline', experimentType: 'runtime-context-only', experimentRole: 'control', hasArtifactContent: false, cwd: '/tmp/project-a' },
     ],
   },
   summary: {

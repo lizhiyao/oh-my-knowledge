@@ -52,7 +52,8 @@ describe('CLI', () => {
       '--dry-run',
       '--samples', samplesPath,
       '--skill-dir', skillDir,
-      '--variants', 'v1,v2',
+      '--control', 'v1',
+      '--treatment', 'v2',
     ]);
     const report = JSON.parse(stdout);
     assert.equal(report.dryRun, true);

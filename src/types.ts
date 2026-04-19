@@ -80,10 +80,15 @@ export interface Artifact {
   locator?: string;
   ref?: string;
   cwd?: string;
+  // run-time 属性：variant 在当次实验中扮演的角色（由 CLI --control/--treatment 或 eval.yaml 注入）
+  // 不是 artifact 文件的固有属性；同一 artifact 在不同 run 可以扮演不同角色
+  experimentRole?: ExperimentRole;
   metadata?: Record<string, unknown>;
 }
 
 export type ExperimentType = 'baseline' | 'runtime-context-only' | 'artifact-injection';
+
+export type ExperimentRole = 'control' | 'treatment';
 
 export interface VariantConfig {
   variant: string;
@@ -91,6 +96,7 @@ export interface VariantConfig {
   artifactSource: Artifact['source'];
   executionStrategy: ExecutionStrategyKind;
   experimentType: ExperimentType;
+  experimentRole: ExperimentRole;
   hasArtifactContent: boolean;
   cwd: string | null;
   locator?: string;
@@ -103,6 +109,33 @@ export type ExecutionStrategyKind =
   | 'user-prompt'
   | 'agent-session'
   | 'workflow-session';
+
+export interface VariantSpec {
+  name: string;           // variant 显示名，从 expr 提取（parseVariantCwd 后的 name 部分）
+  role: ExperimentRole;
+  expr: string;           // 原始 CLI / config 表达式（含 @cwd、git: 等前缀）
+}
+
+export interface EvalConfigVariant {
+  name: string;
+  role: ExperimentRole;
+  artifact: string;
+  cwd?: string;
+}
+
+export interface EvalConfig {
+  samples: string;
+  executor?: string;
+  model?: string;
+  judgeModel?: string | null;
+  judgeExecutor?: string | null;
+  concurrency?: number;
+  timeoutMs?: number;
+  noCache?: boolean;
+  blind?: boolean;
+  mcpConfig?: string;
+  variants: EvalConfigVariant[];
+}
 
 export interface EvaluationRequest {
   samplesPath: string;

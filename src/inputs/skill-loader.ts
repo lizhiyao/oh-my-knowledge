@@ -115,10 +115,10 @@ export function loadSkills(skillDir: string, variants: string[]): Record<string,
 }
 
 /**
- * Parse variant string, extracting optional cwd suffix.
+ * Parse variant expression, extracting optional cwd suffix.
  * Format: "name@/path/to/cwd" or just "name"
  */
-function parseVariantCwd(variant: string): { name: string; cwd?: string } {
+export function parseVariantCwd(variant: string): { name: string; cwd?: string } {
   const atIdx = variant.indexOf('@');
   if (atIdx === -1) return { name: variant };
   return { name: variant.slice(0, atIdx), cwd: variant.slice(atIdx + 1) };

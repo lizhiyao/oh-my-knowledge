@@ -1,0 +1,193 @@
+import { describe, it } from 'vitest';
+import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { loadEvalConfig, configVariantsToSpecs } from '../src/inputs/eval-config.js';
+
+function makeTmpDir(): string {
+  return mkdtempSync(join(tmpdir(), 'omk-eval-config-'));
+}
+
+function writeYaml(dir: string, name: string, content: string): string {
+  const path = join(dir, name);
+  writeFileSync(path, content);
+  return path;
+}
+
+describe('loadEvalConfig', () => {
+  it('parses a valid yaml config with control + treatment variants', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./samples.json
+executor: claude-sdk
+model: sonnet
+variants:
+  - name: v1
+    role: control
+    artifact: ./v1.md
+  - name: v2
+    role: treatment
+    artifact: ./v2.md
+  - name: v3
+    role: treatment
+    artifact: git:my-skill
+    cwd: ./project
+      `.trim());
+
+      const config = loadEvalConfig(path);
+
+      assert.equal(config.executor, 'claude-sdk');
+      assert.equal(config.model, 'sonnet');
+      assert.equal(config.variants.length, 3);
+      assert.equal(config.variants[0].name, 'v1');
+      assert.equal(config.variants[0].role, 'control');
+      // samples path resolved relative to config directory
+      assert.equal(config.samples, join(dir, 'samples.json'));
+      // ./v1.md resolved against config dir
+      assert.equal(config.variants[0].artifact, join(dir, 'v1.md'));
+      // git: prefix kept as-is
+      assert.equal(config.variants[2].artifact, 'git:my-skill');
+      // cwd resolved against config dir
+      assert.equal(config.variants[2].cwd, join(dir, 'project'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when samples field missing', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+variants:
+  - name: v1
+    role: control
+    artifact: baseline
+      `.trim());
+      assert.throws(() => loadEvalConfig(path), /samples 字段必填/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when variants array is empty', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./samples.json
+variants: []
+      `.trim());
+      assert.throws(() => loadEvalConfig(path), /variants 字段必填/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when variant role is invalid', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./samples.json
+variants:
+  - name: v1
+    role: baseline
+    artifact: ./v1.md
+      `.trim());
+      assert.throws(() => loadEvalConfig(path), /role 必须是 'control' 或 'treatment'/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when variant names are duplicated', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./samples.json
+variants:
+  - name: v1
+    role: control
+    artifact: baseline
+  - name: v1
+    role: treatment
+    artifact: ./v1.md
+      `.trim());
+      assert.throws(() => loadEvalConfig(path), /"v1" 重复/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when --config file does not exist', () => {
+    assert.throws(
+      () => loadEvalConfig('/tmp/omk-nonexistent-config-xyz.yaml'),
+      /--config 指定的文件不存在/,
+    );
+  });
+
+  it('parses a .json config with the same schema as yaml', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.json', JSON.stringify({
+        samples: './samples.json',
+        executor: 'claude-sdk',
+        model: 'sonnet',
+        variants: [
+          { name: 'v1', role: 'control', artifact: 'baseline' },
+          { name: 'v2', role: 'treatment', artifact: './v2.md', cwd: './project' },
+        ],
+      }, null, 2));
+      const config = loadEvalConfig(path);
+      assert.equal(config.executor, 'claude-sdk');
+      assert.equal(config.variants.length, 2);
+      assert.equal(config.variants[0].artifact, 'baseline');
+      assert.equal(config.variants[1].artifact, join(dir, 'v2.md'));
+      assert.equal(config.variants[1].cwd, join(dir, 'project'));
+      assert.equal(config.samples, join(dir, 'samples.json'));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts baseline and git: artifact exprs without resolving as paths', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./samples.json
+variants:
+  - name: bare
+    role: control
+    artifact: baseline
+  - name: pinned
+    role: treatment
+    artifact: git:HEAD:my-skill
+      `.trim());
+      const config = loadEvalConfig(path);
+      assert.equal(config.variants[0].artifact, 'baseline');
+      assert.equal(config.variants[1].artifact, 'git:HEAD:my-skill');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('configVariantsToSpecs', () => {
+  it('merges cwd into expr as name@cwd', () => {
+    const specs = configVariantsToSpecs([
+      { name: 'v1', role: 'control', artifact: 'baseline' },
+      { name: 'v2', role: 'treatment', artifact: './skill.md', cwd: '/tmp/project' },
+    ]);
+    assert.deepEqual(specs, [
+      { name: 'v1', role: 'control', expr: 'baseline' },
+      { name: 'v2', role: 'treatment', expr: './skill.md@/tmp/project' },
+    ]);
+  });
+
+  it('leaves expr untouched when cwd is absent', () => {
+    const specs = configVariantsToSpecs([
+      { name: 'git', role: 'treatment', artifact: 'git:my-skill' },
+    ]);
+    assert.equal(specs[0].expr, 'git:my-skill');
+  });
+});

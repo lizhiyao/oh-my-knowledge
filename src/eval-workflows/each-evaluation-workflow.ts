@@ -216,9 +216,14 @@ export async function executeEachEvaluationRuns({
     const entry = skillEntries[i];
     onSkillProgress?.({ phase: 'start', skill: entry.name, current: i + 1, total: skillEntries.length });
 
-    const skillArtifacts = resolveArtifacts(resolve(skillDir), ['baseline', entry.skillPath]).map((artifact) => (
-      artifact.name === entry.skillPath ? { ...artifact, name: 'skill' } : artifact
-    ));
+    // each mode 的实验结构固定为"baseline (control) vs skill (treatment)"。
+    // 显式在 artifact 上填 experimentRole，下游 buildVariantConfig 直接读取。
+    const skillArtifacts = resolveArtifacts(resolve(skillDir), ['baseline', entry.skillPath]).map((artifact) => {
+      if (artifact.name === entry.skillPath) {
+        return { ...artifact, name: 'skill', experimentRole: 'treatment' as const };
+      }
+      return { ...artifact, experimentRole: 'control' as const };
+    });
     const { report } = await runSingleEvaluation({
       samplesPath: entry.samplesPath,
       skillDir,

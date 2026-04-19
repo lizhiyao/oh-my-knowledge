@@ -21,6 +21,7 @@ import type {
   VarianceComparisonMetric,
   VarianceData,
   VarianceMetric,
+  VariantSpec,
   VariantSummary,
   VariantVariance,
 } from '../types.js';
@@ -55,7 +56,7 @@ interface CommonEvaluationOptions {
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
   samplesPath: string;
   skillDir: string;
-  variants?: string[];
+  variantSpecs?: VariantSpec[];
   artifacts?: Artifact[];
   dryRun?: boolean;
   blind?: boolean;
@@ -82,6 +83,7 @@ interface DryRunTask {
   artifactSource: Artifact['source'];
   executionStrategy: string;
   experimentType: string;
+  experimentRole: string;
   cwd: string | null;
   promptPreview: string;
   hasRubric: boolean;
@@ -108,7 +110,7 @@ export interface DryRunReport extends DryRunBase {
 export async function runEvaluation({
   samplesPath,
   skillDir,
-  variants = ['v1', 'v2'],
+  variantSpecs = [],
   artifacts,
   model = DEFAULT_MODEL,
   judgeModel = JUDGE_MODEL,
@@ -136,7 +138,7 @@ export async function runEvaluation({
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
     skillDir,
-    variants,
+    variantSpecs,
     artifacts,
     dryRun,
     mcpConfig,
