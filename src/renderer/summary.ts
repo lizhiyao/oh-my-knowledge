@@ -852,7 +852,7 @@ export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage
     }
     const uncoveredHint = hintLines.length > 0
       ? `<div style="font-size:11px;color:var(--text-muted);margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
-          <div style="margin-bottom:4px">${lang === 'zh' ? '💡 建议从以下维度补充测试用例：' : '💡 Consider adding test cases for:'}</div>
+          <div style="margin-bottom:4px">${lang === 'zh' ? '💡 以下知识未被任何样本访问,建议补充测试用例覆盖:' : '💡 These knowledge files were not accessed by any sample — consider adding test cases:'}</div>
           ${hintLines.map((line) => `<div style="margin:2px 0">${line}</div>`).join('')}
         </div>`
       : '';
@@ -865,16 +865,16 @@ export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage
       <div style="height:8px;background:var(--bg-card);border-radius:4px;margin-bottom:8px">
         <div style="width:${barW}%;height:100%;background:${pctColor};border-radius:4px"></div>
       </div>
-      <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">${knowledgeCoverage.filesCovered}/${knowledgeCoverage.filesTotal} ${lang === 'zh' ? '文件被访问' : 'files accessed'} · ${knowledgeCoverage.grepPatternsUsed} ${lang === 'zh' ? '次搜索' : 'searches'}</div>
+      <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">${knowledgeCoverage.filesCovered}/${knowledgeCoverage.filesTotal} ${lang === 'zh' ? '个文件被访问' : 'files accessed'} · ${knowledgeCoverage.grepPatternsUsed} ${lang === 'zh' ? '次搜索' : 'searches'}</div>
       ${fileRows}
       ${uncoveredHint}
     </div>`;
   }).join('');
 
-  const title = lang === 'zh' ? '基于测评用例的知识覆盖率' : 'Test Case Knowledge Coverage';
+  const title = lang === 'zh' ? '本次测评的知识使用情况' : 'Knowledge usage in this evaluation';
   const desc = lang === 'zh'
-    ? '当前测试用例触及了 artifact 知识域中多少文件。覆盖率低说明需要补充测试样本，而非知识本身不完整。'
-    : 'How much of the artifact\'s knowledge domain was exercised by current test cases. Low coverage suggests more test samples are needed.';
+    ? '本次测评中，哪些知识没有被使用。数字低说明测试用例没覆盖到的角落多，不是知识库内容缺失——配合下方"本次测评的知识盲区"一起看才完整。'
+    : 'Which knowledge files were NOT exercised by this evaluation. Low coverage means test cases leave KB corners untouched, not that the KB is incomplete. Pair with "knowledge gaps" below for the full picture.';
 
   return `
     <section style="margin-top:24px">
@@ -892,19 +892,228 @@ export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage
  * watermark + signal classification + inventory of individual signals.
  * See docs/knowledge-gap-signal-spec.md for the semantics.
  */
+/**
+ * Combined knowledge-interaction section: coverage + gap side-by-side per variant.
+ *
+ * v0.17 起替代原独立的 renderCoverageSection + renderGapSection。两者都是"测评集
+ * × 知识库交互"的产物(spec §二),分开展示会让读者只看一个指标得出误判结论。合并后
+ * 每个 variant 一张 card,左右两栏并排展示"用了多少"vs"撞了多少",形成完整诊断画像。
+ */
+export function renderKnowledgeInteractionSection(
+  coverage: Record<string, KnowledgeCoverage> | undefined,
+  gapReports: Record<string, GapReport> | undefined,
+  lang: Lang,
+): string {
+  const hasCov = coverage && Object.keys(coverage).length > 0;
+  const hasGap = gapReports && Object.keys(gapReports).length > 0;
+  if (!hasCov && !hasGap) return '';
+
+  const title = lang === 'zh' ? '本次测评：测试用例 × 知识库' : 'This Evaluation: Test Set × Knowledge Base';
+  const desc = lang === 'zh'
+    ? '展示本次测评用例和知识库的交互画像——用到哪些知识（使用情况）· 哪些知识想找但没找到或模型表达不确定（盲区）。'
+    : 'How this test set interacts with the KB — which knowledge was exercised (usage) · which was missed or flagged as uncertain (gaps).';
+  const readHint = lang === 'zh'
+    ? '💡 读表：两者同时高 → 知识库内容有问题（有文件但答不出）· 同时低 → 测试用例太浅（没触到复杂场景）· 使用高 + 盲区低 → 理想但警惕样本驯化'
+    : '💡 Read together: both high → KB content issues (files exist but can\'t answer) · both low → test set too shallow · high use + low gap → ideal, but beware sample-set overfitting';
+
+  // 聚合所有 variant(coverage / gap 任一侧存在即纳入)
+  const allVariants = Array.from(new Set<string>([
+    ...(hasCov ? Object.keys(coverage!) : []),
+    ...(hasGap ? Object.keys(gapReports!) : []),
+  ]));
+
+  const signalTypeLabels: Record<GapSignalRef['type'], { zh: string; en: string }> = {
+    failed_search: { zh: '搜索未命中', en: 'Search miss' },
+    explicit_marker: { zh: '模型标记缺口', en: 'Model-flagged gap' },
+    hedging: { zh: '表达不确定', en: 'Hedging' },
+    repeated_failure: { zh: '反复未命中', en: 'Repeated miss' },
+  };
+  const pickSignalLabel = (key: GapSignalRef['type']): string => signalTypeLabels[key][lang === 'zh' ? 'zh' : 'en'];
+  // severity 按 SIGNAL_WEIGHTS 映射:strong (weight 1.0) → 红色 · weak (0.5) → 灰/黄
+  const signalSeverity: Record<GapSignalRef['type'], 'strong' | 'medium' | 'weak'> = {
+    failed_search: 'strong',
+    repeated_failure: 'strong',
+    explicit_marker: 'medium',
+    hedging: 'weak',
+  };
+
+  const cards = allVariants.map((variant, i) => {
+    const cov = coverage?.[variant];
+    const gap = gapReports?.[variant];
+    const variantColor = COLORS[i % COLORS.length];
+
+    // ─── 左栏:知识使用(coverage)────────────────────────
+    let covInner = '';
+    if (cov && cov.filesTotal > 0) {
+      const pct = Math.round(cov.fileCoverageRate * 100);
+      const pctColor = pct >= 80 ? 'var(--green)' : pct >= 50 ? 'var(--yellow)' : 'var(--red)';
+      const barW = Math.max(2, pct);
+      const barLabel = lang === 'zh' ? '知识使用' : 'Knowledge used';
+      const fileRows = cov.entries
+        .slice()
+        .sort((a, b) => (a.accessed === b.accessed ? 0 : a.accessed ? -1 : 1))
+        .map((entry) => {
+          const icon = entry.accessed ? '✓' : '✗';
+          const color = entry.accessed ? 'var(--green)' : 'var(--text-muted)';
+          const countBadge = entry.accessCount > 1
+            ? `<span style="font-size:10px;color:var(--accent);margin-left:4px">×${entry.accessCount}</span>`
+            : '';
+          const lines = entry.lineCount ? `<span style="font-size:10px;color:var(--text-muted);margin-left:4px">${entry.lineCount}L</span>` : '';
+          const typeTag = `<span style="font-size:10px;padding:1px 4px;border-radius:2px;background:var(--bg-card);color:var(--text-muted);margin-left:4px">${e(entry.type)}</span>`;
+          return `<div style="display:flex;align-items:center;gap:4px;padding:2px 0;font-size:12px">
+            <span style="color:${color};width:16px;text-align:center">${icon}</span>
+            <span style="color:${entry.accessed ? 'var(--text-primary)' : 'var(--text-muted)'};${entry.accessed ? '' : 'text-decoration:line-through;opacity:0.6'};word-break:break-all">${e(entry.path)}</span>
+            ${typeTag}${lines}${countBadge}
+          </div>`;
+        }).join('');
+      const uncoveredByType: Record<string, string[]> = {};
+      for (const entry of cov.entries.filter((item) => !item.accessed)) {
+        const category = entry.path.startsWith('repos/') ? 'code' : entry.type;
+        (uncoveredByType[category] = uncoveredByType[category] || []).push(entry.path);
+      }
+      const typeLabels: Record<string, string> = lang === 'zh'
+        ? { principle: '原则文件', semantic: '语义索引', design: '设计文档', code: '代码路径', script: '脚本工具', other: '其他知识' }
+        : { principle: 'Principles', semantic: 'Semantic index', design: 'Design docs', code: 'Code paths', script: 'Scripts', other: 'Other' };
+      const hintLines: string[] = [];
+      for (const [type, files] of Object.entries(uncoveredByType)) {
+        const label = typeLabels[type] || type;
+        hintLines.push(`<strong>${label}</strong>（${files.length}）：${files.slice(0, 3).map((file) => `<code>${e(file)}</code>`).join(', ')}${files.length > 3 ? ` +${files.length - 3}` : ''}`);
+      }
+      const uncoveredHint = hintLines.length > 0
+        ? `<div style="font-size:11px;color:var(--text-muted);margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
+            <div style="margin-bottom:4px">${lang === 'zh' ? '💡 以下知识未被任何样本访问,建议补充测试用例:' : '💡 These knowledge files were not accessed — consider adding test cases:'}</div>
+            ${hintLines.map((line) => `<div style="margin:2px 0">${line}</div>`).join('')}
+          </div>`
+        : '';
+      const uncoveredCount = cov.filesTotal - cov.filesCovered;
+      const summaryParts = [
+        `${cov.filesCovered} ${lang === 'zh' ? '命中' : 'hit'}`,
+        `${uncoveredCount} ${lang === 'zh' ? '未命中' : 'miss'}`,
+        `${cov.grepPatternsUsed} ${lang === 'zh' ? '次搜索' : 'searches'}`,
+      ].join(' · ');
+      const detailsLabel = lang === 'zh' ? `展开 ${cov.filesTotal} 个文件清单` : `Show all ${cov.filesTotal} files`;
+      covInner = `
+        <div class="ki-col-header">
+          <span class="ki-col-title">${lang === 'zh' ? '知识使用' : 'Knowledge used'}</span>
+          <span class="ki-col-value" style="color:${pctColor}">${pct}%</span>
+        </div>
+        <div class="ki-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${e(barLabel)}">
+          <div class="ki-bar-fill" style="width:${barW}%;background:${pctColor}"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted)">${summaryParts}</div>
+        <details class="ki-details"><summary>${detailsLabel}</summary>
+          ${fileRows}
+          ${uncoveredHint}
+        </details>`;
+    } else {
+      covInner = `<div style="color:var(--text-muted);font-size:12px">${lang === 'zh' ? '知识使用数据不可用' : 'Coverage data unavailable'}</div>`;
+    }
+
+    // ─── 右栏:知识盲区(gap)────────────────────────────
+    let gapInner = '';
+    if (gap) {
+      const pct = Math.round(gap.gapRate * 100);
+      const pctColor = pct <= 10 ? 'var(--green)' : pct <= 30 ? 'var(--yellow)' : 'var(--red)';
+      const barW = Math.max(2, pct);
+      const barLabel = lang === 'zh' ? '知识盲区' : 'Knowledge gaps';
+      const weightedPct = Math.round(gap.weightedGapRate * 100);
+      const softShare = pct - weightedPct;
+      const weightedHint = lang === 'zh'
+        ? (softShare >= 10
+            ? `<strong>实际盲区 ${weightedPct}%</strong> · 另 ${softShare}% 为模型表达不确定(软信号,建议对照清单复核)`
+            : `<strong>实际盲区 ${weightedPct}%</strong> · 主要来自确定的搜索未命中`)
+        : (softShare >= 10
+            ? `<strong>real gaps ${weightedPct}%</strong> · another ${softShare}% is hedging (review list below)`
+            : `<strong>real gaps ${weightedPct}%</strong> · mostly confirmed search misses`);
+
+      const typeBadges = (Object.keys(gap.byType) as GapSignalRef['type'][])
+        .filter((key) => gap.byType[key] > 0)
+        .map((key) => `<span style="display:inline-block;padding:2px 8px;border-radius:var(--radius);background:var(--bg-card);font-size:var(--fs-micro);color:var(--text-secondary);margin:2px 4px 2px 0">${e(pickSignalLabel(key))} × ${gap.byType[key]}</span>`)
+        .join('');
+
+      const INVENTORY_CAP = 6;
+      // inventory 行用 border-left-color 按 signal severity 上色,不再重复标"类型"文字
+      const inventory = gap.signals.slice(0, INVENTORY_CAP).map((sig) => {
+        const severity = signalSeverity[sig.type];
+        const turnPart = sig.turn != null ? ` · ${lang === 'zh' ? '第' : 'turn'} ${sig.turn}${lang === 'zh' ? ' 轮' : ''}` : '';
+        return `<div class="ki-inventory-item" data-severity="${severity}">
+          <div class="ki-inventory-item-meta"><strong style="color:var(--text-secondary)">${e(sig.sampleId)}</strong>${turnPart}</div>
+          <div class="ki-inventory-item-ctx">${e(sig.context)}</div>
+        </div>`;
+      }).join('');
+      const overflowHint = gap.signals.length > INVENTORY_CAP
+        ? `<div style="font-size:var(--fs-micro);color:var(--text-muted);margin-top:6px">${lang === 'zh' ? `另 ${gap.signals.length - INVENTORY_CAP} 条未展示` : `+${gap.signals.length - INVENTORY_CAP} more not shown`}</div>`
+        : '';
+
+      const detailsLabel = lang === 'zh'
+        ? `展开 ${gap.signals.length} 条证据（按严重度上色: 红=确定 / 黄=模型自述 / 灰=犹豫）`
+        : `Show all ${gap.signals.length} evidence items (red=confirmed · yellow=self-flagged · gray=hedging)`;
+      gapInner = `
+        <div class="ki-col-header">
+          <span class="ki-col-title">${lang === 'zh' ? '知识盲区' : 'Knowledge gaps'}</span>
+          <span class="ki-col-value" style="color:${pctColor}">${pct}%</span>
+        </div>
+        <div class="ki-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${e(barLabel)}">
+          <div class="ki-bar-fill" style="width:${barW}%;background:${pctColor}"></div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${gap.samplesWithGap}/${gap.sampleCount} ${lang === 'zh' ? '个样本出现搜索未命中或表达不确定' : 'samples with search miss / hedging'}</div>
+        <div style="font-size:var(--fs-detail);color:var(--text-secondary);margin-bottom:8px">${weightedHint}</div>
+        ${typeBadges ? `<div>${typeBadges}</div>` : ''}
+        ${inventory ? `<details class="ki-details"><summary>${detailsLabel}</summary>
+          ${inventory}
+          ${overflowHint}
+        </details>` : ''}`;
+    } else {
+      gapInner = `<div style="color:var(--text-muted);font-size:12px">${lang === 'zh' ? '知识盲区数据不可用' : 'Gap data unavailable'}</div>`;
+    }
+
+    // ─── Watermark(spec §7.1):test set 标识 ───
+    const watermarkBits: string[] = [];
+    if (gap?.testSetPath) {
+      const basename = gap.testSetPath.split('/').pop() || gap.testSetPath;
+      watermarkBits.push(`<span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${e(basename)}</span>`);
+    }
+    if (gap) watermarkBits.push(`n=${gap.sampleCount}`);
+    if (gap?.testSetHash) watermarkBits.push(`sha:${e(gap.testSetHash)}`);
+    const watermark = watermarkBits.length > 0
+      ? `<div class="ki-card-meta">${watermarkBits.join(' · ')}</div>`
+      : '';
+
+    return `<div class="ki-card" style="border-left:3px solid ${variantColor}">
+      <div class="ki-card-header">
+        <span class="ki-card-title">${e(variant)}</span>
+        ${watermark}
+      </div>
+      <div class="ki-columns">
+        <div class="ki-col">${covInner}</div>
+        <div class="ki-col">${gapInner}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+    <section style="margin-top:28px;padding-top:20px;border-top:1px solid var(--border)">
+      <h2>${title}</h2>
+      <p class="ki-desc">${desc}</p>
+      <div class="ki-desc-hint">${readHint}</div>
+      ${cards}
+    </section>
+  `;
+}
+
 export function renderGapSection(gapReports: Record<string, GapReport> | undefined, lang: Lang): string {
   if (!gapReports || Object.keys(gapReports).length === 0) return '';
 
-  const title = lang === 'zh' ? '基于测评用例的知识缺口' : 'Test Case Knowledge Gaps';
+  const title = lang === 'zh' ? '本次测评的知识盲区' : 'Knowledge gaps in this evaluation';
   const desc = lang === 'zh'
-    ? '当前测评用例触发知识盲区的样本比例。和上方的覆盖率一样，本指标反映的是测评用例 × 知识库的交互——不代表知识库的绝对完备性。'
-    : 'Share of samples in the current test case set that bumped into unknown territory. Like coverage above, this metric reflects the interaction between test cases and the knowledge base, not absolute knowledge-base completeness.';
+    ? '本次测评中，哪些知识想找但没找到、或模型表达不确定。数字高不一定代表知识库不全——也可能是测试用例问的领域知识库未覆盖。'
+    : 'Which knowledge the model tried to find but missed, or expressed uncertainty about. High numbers do not necessarily mean the KB is incomplete — the test set may be asking about areas the KB never covered.';
 
   const signalTypeLabels: Record<GapSignalRef['type'], { zh: string; en: string }> = {
-    failed_search: { zh: '失败搜索', en: 'Failed search' },
-    explicit_marker: { zh: '显式标记', en: 'Explicit marker' },
-    hedging: { zh: '降级措辞', en: 'Hedging language' },
-    repeated_failure: { zh: '连续失败', en: 'Repeated failure' },
+    failed_search: { zh: '搜索未命中', en: 'Search miss' },
+    explicit_marker: { zh: '模型标记缺口', en: 'Model-flagged gap' },
+    hedging: { zh: '表达不确定', en: 'Hedging' },
+    repeated_failure: { zh: '反复未命中', en: 'Repeated miss' },
   };
   const pickLabel = (key: GapSignalRef['type']): string => signalTypeLabels[key][lang === 'zh' ? 'zh' : 'en'];
 
@@ -913,6 +1122,19 @@ export function renderGapSection(gapReports: Record<string, GapReport> | undefin
     // Color: lower gap rate is better (inverse of coverage). Gate at 10% / 30%.
     const pctColor = pct <= 10 ? 'var(--green)' : pct <= 30 ? 'var(--yellow)' : 'var(--red)';
     const barW = Math.max(2, pct);
+
+    // v0.2 加权严重度 (spec §6):weightedGapRate 按样本最强信号权重聚合,总是 ≤ gapRate,
+    // 差值反映"软信号(hedging / explicit_marker)占比"——若差值大,说明 gap_rate 被软信号
+    // 拉高,读者该复核弱信号的真实含义。若差值小,说明信号以硬证据为主,结论可信度高。
+    const weightedPct = Math.round(report.weightedGapRate * 100);
+    const softSignalShare = pct - weightedPct;
+    const weightedHint = lang === 'zh'
+      ? (softSignalShare >= 10
+          ? `<strong>实际盲区 ${weightedPct}%</strong> · 另外 ${softSignalShare}% 为模型表达不确定(软信号,建议对照右侧清单复核)`
+          : `<strong>实际盲区 ${weightedPct}%</strong> · 主要来自确定的搜索未命中`)
+      : (softSignalShare >= 10
+          ? `<strong>real gaps ${weightedPct}%</strong> · another ${softSignalShare}% is hedging (soft signals — review the list on the right)`
+          : `<strong>real gaps ${weightedPct}%</strong> · mostly from confirmed search misses`);
 
     // Watermark (spec §7.1): test set path + sample count + hash + explicit caveat
     const watermarkBits: string[] = [];
@@ -947,9 +1169,7 @@ export function renderGapSection(gapReports: Record<string, GapReport> | undefin
       ? `<div style="font-size:var(--fs-micro);color:var(--text-muted);margin-top:6px">${lang === 'zh' ? `还有 ${report.signals.length - INVENTORY_CAP} 条未展示` : `+${report.signals.length - INVENTORY_CAP} more not shown`}</div>`
       : '';
 
-    const caveat = lang === 'zh'
-      ? '本指标仅反映当前 test set 与知识库的交互，不代表知识库的绝对完备性。'
-      : 'This metric only reflects current test set × knowledge base interaction, not absolute completeness.';
+    // caveat 已从底部移除:副标题已经讲清楚"撞墙多不等于知识库不全"。重复说一遍反而稀释主信号。
 
     return `<div style="flex:1;min-width:320px;padding:16px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -960,16 +1180,16 @@ export function renderGapSection(gapReports: Record<string, GapReport> | undefin
       <div style="height:8px;background:var(--bg-card);border-radius:4px;margin-bottom:10px">
         <div style="width:${barW}%;height:100%;background:${pctColor};border-radius:4px"></div>
       </div>
-      <div style="font-size:var(--fs-detail);color:var(--text-muted);margin-bottom:10px">
-        ${report.samplesWithGap} / ${report.sampleCount} ${lang === 'zh' ? '样本触发了缺口信号' : 'samples bumped into gaps'}
+      <div style="font-size:var(--fs-detail);color:var(--text-muted);margin-bottom:4px">
+        ${report.samplesWithGap} / ${report.sampleCount} ${lang === 'zh' ? '个样本出现搜索未命中或表达不确定' : 'samples with search miss or hedging'}
       </div>
+      <div style="font-size:var(--fs-detail);color:var(--text-secondary);margin-bottom:10px">${weightedHint}</div>
       ${typeBadges ? `<div style="margin-bottom:10px">${typeBadges}</div>` : ''}
       ${inventory ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
-        <div style="font-size:var(--fs-micro);color:var(--text-muted);margin-bottom:4px">${lang === 'zh' ? '缺口清单' : 'Gap inventory'}</div>
+        <div style="font-size:var(--fs-micro);color:var(--text-muted);margin-bottom:4px">${lang === 'zh' ? '具体哪些知识未命中' : 'Missed knowledge inventory'}</div>
         ${inventory}
         ${overflowHint}
       </div>` : ''}
-      <div style="font-size:var(--fs-micro);color:var(--text-muted);margin-top:10px;font-style:italic;line-height:1.5">⚠ ${caveat}</div>
     </div>`;
   }).join('');
 

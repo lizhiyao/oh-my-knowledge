@@ -8,6 +8,22 @@ omk（`oh-my-knowledge`）的版本变更记录。格式参照 [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- **v0.17 工作项 A · 知识缺口信号严重度加权（PR-2 / spec §6）**:`GapSignalRef.weight` 新增必填字段,每个 signal 按类型自带权重——failed_search / repeated_failure 为强证据(权重 1.0),explicit_marker / hedging 为弱信号(权重 0.5)。`GapReport` 新增 `weightedGapRate: number` 指标,按样本最强信号权重聚合,和 `gapRate` 并列展示。
+  - 目的:v0.1 所有四类信号等权聚合,hedging 高假阳率(spec §2.8)会把软信号稀释真信号。v0.2 区分硬证据 vs 软信号,`weightedGapRate ≤ gapRate`,差值反映软信号占比。
+  - UI 改动:gap section 副区增加"加权严重度 X%"提示,差值 ≥ 10% 时明示"软信号占比大,建议复核"。
+  - spec §6 更新:从"v0.1 不选严重度加权"明文改为"v0.2 起引入",加 SIGNAL_WEIGHTS 表与 weightedGapRate 聚合公式。
+  - 测试:+5 case 覆盖 signal weight 字段、weightedGapRate 按样本最强权重聚合、同一样本 max 取权重不累加、全弱信号 gap rate 拉高但 weighted 砍半、空 report 不崩。
+
+- **v0.17 工作项 B · hedging 信号 LLM-assisted 二次判定（spec §四.3）**:新增 `src/analysis/hedging-classifier.ts`。流水线:regex 召回 candidate → LLM 小模型(默认 claude-haiku-4-5)二次判定 → `isUncertainty=false` 的 candidate 直接丢弃, `=true` 的保留并把 verdict 挂到 `GapSignalRef.classifierVerdict`。
+  - 目的:v0.1 hedging 纯 regex 假阳率高——"可能是" / "likely" 在业务推理 / 假设分析里大量误判,稀释 weightedGapRate 信号意义。v0.2 用 LLM 把"知识层面不确定"和"业务可能性 / 礼貌措辞"分开。
+  - 关键约束:cost 上限默认 50 candidate / evaluation(超出截断 + warn);in-memory cache by sentence sha256(同句子不重复调用);失败降级 → `isUncertainty=true` 保守保留(宁可多统计软信号也不丢真信号);batch size 默认 10 条 / 调用。
+  - 类型层:`HedgingVerdict { isUncertainty, confidence, reason }` + `GapSignalRef.classifierVerdict?: HedgingVerdict`(仅 hedging 类型可能有此字段)。
+  - 集成接口:`applyHedgingClassifier(report, executor, opts)` 接收 GapReport + executor 返回过滤后的 report + costUSD;`applyHedgingClassifierToReports(reports, ...)` 批量版串行跑(让 cache hit 在第一批后被复用,避免 rate limit)。computeGapReport 仍 sync,classifier 走异步 post-processing,caller 可选启用。
+  - weight 不变:classifier 通过的 hedging 仍是 0.5(弱信号)。weight 升级到 1.0 需要等到 v0.3 引入 confidence 校准实验。
+  - 测试:+11 case 覆盖 happy path / cache hit / batch 切分 / truncation / exec 失败降级 / parse 失败降级 / 空输入零调用 / 集成层 byType.hedging 重算 / 失败时不丢 signal / 不影响其他 type / 无 hedging 时不调 executor。
+
 ---
 
 ## [0.16.0] - 2026-04-19

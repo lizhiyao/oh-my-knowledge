@@ -16,7 +16,8 @@
  * step-3 work. This module only computes the structured GapReport.
  */
 
-import type { GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types.js';
+import type { ExecutorFn, GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types.js';
+import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
 
 export type GapSignalType = GapSignalRef['type'];
 export type GapSignal = GapSignalRef;
@@ -48,6 +49,27 @@ const HEDGING_PATTERNS: RegExp[] = [
 
 /** Minimum consecutive failed-search count to trigger a repeated_failure signal. */
 const REPEATED_FAILURE_THRESHOLD = 3;
+
+/**
+ * v0.2 severity weights (spec §6).
+ *
+ * Strong (1.0): 硬证据类——agent 工具层真的撞墙了
+ *   - failed_search: Grep/Read 返回空或失败,确定性 miss
+ *   - repeated_failure: 同一类查询连续 ≥3 次失败,已不是偶然
+ *
+ * Weak (0.5): 自我陈述类——依赖模型配合,可能假阳
+ *   - explicit_marker: 依赖 agent 按约定打【推断】等标记,可能漏标
+ *   - hedging: 字符串匹配 "我不确定/可能是"等,假阳率已知较高(spec §2.8)
+ *
+ * Aggregation: 每个样本取其信号的最高权重作"样本严重度",平均到 weightedGapRate。
+ * weightedGapRate ≤ gapRate,差值反映"软信号占比"——读者据此判断结果可信度。
+ */
+export const SIGNAL_WEIGHTS: Record<GapSignalType, number> = {
+  failed_search: 1.0,
+  repeated_failure: 1.0,
+  explicit_marker: 0.5,
+  hedging: 0.5,
+};
 
 // ---------- Signal 1: failed searches ----------
 
@@ -114,6 +136,7 @@ export function extractFailedSearchSignals(toolCalls: ToolCallInfo[]): GapSignal
       type: 'failed_search',
       context,
       evidence: { tool: tc.tool, pattern, path, success: tc.success },
+      weight: SIGNAL_WEIGHTS.failed_search,
     });
   }
   // Dedup consecutive identical signals
@@ -160,6 +183,7 @@ export function extractMarkerSignals(text: string): GapSignal[] {
         type: 'explicit_marker',
         context: snippet.replace(/\s+/g, ' ').trim().slice(0, 160),
         evidence: { marker: match[0] },
+        weight: SIGNAL_WEIGHTS.explicit_marker,
       });
     }
   }
@@ -185,6 +209,7 @@ export function extractHedgingSignals(text: string): GapSignal[] {
       type: 'hedging',
       context: snippet.replace(/\s+/g, ' ').trim().slice(0, 160),
       evidence: { matched: match[0] },
+      weight: SIGNAL_WEIGHTS.hedging,
     }];
   }
   return [];
@@ -222,6 +247,7 @@ export function extractRepeatedFailureSignals(turns: TurnInfo[] | undefined): Ga
             turn: run.startTurn,
             context: `${run.tool}: 连续失败 ≥${REPEATED_FAILURE_THRESHOLD} 次`,
             evidence: { tool: run.tool, count: run.count, startTurn: run.startTurn },
+            weight: SIGNAL_WEIGHTS.repeated_failure,
           });
           emittedForThisRun = true;
         }
@@ -277,6 +303,9 @@ export function extractGapSignalsFromSample(variantResult: VariantResult, sample
 export function computeGapReport(results: ResultEntry[], variant: string): GapReport {
   const signals: GapSignal[] = [];
   const sampleIdsWithGap = new Set<string>();
+  // 每样本取信号中的最强权重,用于 weightedGapRate(v0.2 §6)。
+  // 无信号样本 sampleWeight 隐含为 0,自然不计入 weighted 和。
+  const sampleMaxWeight = new Map<string, number>();
   let sampleCount = 0;
 
   for (const entry of results) {
@@ -288,11 +317,16 @@ export function computeGapReport(results: ResultEntry[], variant: string): GapRe
     if (sampleSignals.length > 0) {
       sampleIdsWithGap.add(entry.sample_id);
       signals.push(...sampleSignals);
+      const maxW = sampleSignals.reduce((m, s) => (s.weight > m ? s.weight : m), 0);
+      sampleMaxWeight.set(entry.sample_id, maxW);
     }
   }
 
   const samplesWithGap = sampleIdsWithGap.size;
   const gapRate = sampleCount > 0 ? Number((samplesWithGap / sampleCount).toFixed(4)) : 0;
+
+  const weightSum = Array.from(sampleMaxWeight.values()).reduce((a, b) => a + b, 0);
+  const weightedGapRate = sampleCount > 0 ? Number((weightSum / sampleCount).toFixed(4)) : 0;
 
   const byType: Record<GapSignalType, number> = {
     failed_search: 0,
@@ -307,6 +341,7 @@ export function computeGapReport(results: ResultEntry[], variant: string): GapRe
     sampleCount,
     samplesWithGap,
     gapRate,
+    weightedGapRate,
     testSetPath: null,
     testSetHash: null,
     signals,
@@ -323,4 +358,113 @@ export function computeReportGapRates(results: ResultEntry[], variants: string[]
     out[v] = computeGapReport(results, v);
   }
   return out;
+}
+
+// ---------- v0.2 hedging classifier integration ----------
+
+/**
+ * 重新计算 GapReport 的衍生字段(samplesWithGap / gapRate / weightedGapRate /
+ * byType),用于 hedging signal 被 classifier 过滤后的二次聚合。
+ * sampleCount 不变(分母:成功执行的样本数,与是否有信号无关)。
+ */
+function recomputeAggregates(report: GapReport): GapReport {
+  const sampleIdsWithGap = new Set<string>();
+  const sampleMaxWeight = new Map<string, number>();
+  const byType: Record<GapSignalType, number> = {
+    failed_search: 0,
+    explicit_marker: 0,
+    hedging: 0,
+    repeated_failure: 0,
+  };
+  for (const s of report.signals) {
+    sampleIdsWithGap.add(s.sampleId);
+    const cur = sampleMaxWeight.get(s.sampleId) ?? 0;
+    if (s.weight > cur) sampleMaxWeight.set(s.sampleId, s.weight);
+    byType[s.type] += 1;
+  }
+  const samplesWithGap = sampleIdsWithGap.size;
+  const gapRate = report.sampleCount > 0
+    ? Number((samplesWithGap / report.sampleCount).toFixed(4))
+    : 0;
+  const weightSum = Array.from(sampleMaxWeight.values()).reduce((a, b) => a + b, 0);
+  const weightedGapRate = report.sampleCount > 0
+    ? Number((weightSum / report.sampleCount).toFixed(4))
+    : 0;
+  return { ...report, samplesWithGap, gapRate, weightedGapRate, byType };
+}
+
+/**
+ * 对一份 GapReport 做 hedging classifier 二次过滤(spec §四.3, v0.2)。
+ * 流程:
+ *   1) 收集 signals 中所有 type='hedging' 的 candidate
+ *   2) 调 classifyHedgingCandidates 拿 verdict
+ *   3) verdict.isUncertainty=false 的 signal 丢弃
+ *   4) verdict.isUncertainty=true 的保留并挂 classifierVerdict
+ *   5) recompute samplesWithGap / gapRate / weightedGapRate / byType
+ *
+ * 失败降级在 classifier 层:单批失败 → 该 batch 全部 isUncertainty=true (保守保留)。
+ * 调用方拿到的 report 永远是合法的,不会因 classifier 失败而崩。
+ */
+export async function applyHedgingClassifier(
+  report: GapReport,
+  executor: ExecutorFn,
+  opts?: ClassifyOptions,
+): Promise<{ report: GapReport; costUSD: number; truncated: boolean }> {
+  const hedgingIndices: number[] = [];
+  const candidates: HedgingCandidate[] = [];
+  for (let i = 0; i < report.signals.length; i++) {
+    const s = report.signals[i];
+    if (s.type !== 'hedging') continue;
+    hedgingIndices.push(i);
+    const matched = (s.evidence?.matched as string | undefined) ?? s.context;
+    candidates.push({
+      sampleId: s.sampleId,
+      sentence: matched,
+      context: s.context,
+    });
+  }
+  if (candidates.length === 0) {
+    return { report, costUSD: 0, truncated: false };
+  }
+
+  const { verdicts, costUSD, truncated } = await classifyHedgingCandidates(candidates, executor, opts);
+
+  // 按 verdict 重组 signals:非 hedging 原样保留,hedging 按 verdict.isUncertainty 过滤 + 挂 verdict
+  const keptHedging = new Set<number>();
+  hedgingIndices.forEach((idx, i) => {
+    if (verdicts[i].isUncertainty) keptHedging.add(idx);
+  });
+  const newSignals: GapSignalRef[] = [];
+  for (let i = 0; i < report.signals.length; i++) {
+    const s = report.signals[i];
+    if (s.type !== 'hedging') {
+      newSignals.push(s);
+      continue;
+    }
+    if (!keptHedging.has(i)) continue; // dropped by classifier
+    const verdictIdx = hedgingIndices.indexOf(i);
+    newSignals.push({ ...s, classifierVerdict: verdicts[verdictIdx] });
+  }
+
+  const next = recomputeAggregates({ ...report, signals: newSignals });
+  return { report: next, costUSD, truncated };
+}
+
+/**
+ * 批量为一组 variant 的 gap reports 跑 classifier。
+ * 串行(不并行)避免 rate limit + 让 cache hit 在第一批后被后续 batch 复用。
+ */
+export async function applyHedgingClassifierToReports(
+  reports: Record<string, GapReport>,
+  executor: ExecutorFn,
+  opts?: ClassifyOptions,
+): Promise<{ reports: Record<string, GapReport>; costUSD: number }> {
+  const out: Record<string, GapReport> = {};
+  let totalCost = 0;
+  for (const [variant, report] of Object.entries(reports)) {
+    const result = await applyHedgingClassifier(report, executor, opts);
+    out[variant] = result.report;
+    totalCost += result.costUSD;
+  }
+  return { reports: out, costUSD: totalCost };
 }

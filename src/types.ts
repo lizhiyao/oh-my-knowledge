@@ -478,12 +478,28 @@ export interface AnalysisResult {
   gapReports?: Record<string, GapReport>;
 }
 
+// v0.2 hedging classifier 的二次判定结果。挂在 GapSignalRef.classifierVerdict 上,
+// 仅 hedging 类型的 signal 会有此字段(其他类型的硬证据不需要二次判定)。
+// classifier 失败降级时 confidence=0 reason 标记 "classifier failed"。
+export interface HedgingVerdict {
+  isUncertainty: boolean;
+  confidence: number;
+  reason: string;
+}
+
 export interface GapSignalRef {
   sampleId: string;
   type: 'failed_search' | 'explicit_marker' | 'hedging' | 'repeated_failure';
   turn?: number;
   context: string;
   evidence?: Record<string, unknown>;
+  // v0.2 严重度加权:信号可信度的权重。强证据(failed_search / repeated_failure)为 1.0,
+  // 弱信号(explicit_marker / hedging,可能有假阳风险)为 0.5。
+  // 聚合到 GapReport.weightedGapRate 时用来区分"硬盲区"和"可能噪声"。
+  weight: number;
+  // v0.2 hedging LLM-assisted 判定。仅 hedging 类型可能有此字段。
+  // 缺失时表示该 signal 没经过 classifier(配置关闭 / 非 hedging 类型)。
+  classifierVerdict?: HedgingVerdict;
 }
 
 export interface GapReport {
@@ -491,6 +507,10 @@ export interface GapReport {
   sampleCount: number;
   samplesWithGap: number;
   gapRate: number;
+  // v0.2 严重度加权 gap rate:每个样本取其信号的最强权重,再按样本均值聚合。
+  // `weightedGapRate ≤ gapRate`,差值反映"弱信号占比"——
+  // 若 raw=30% 但 weighted=15% 意味着一半样本是软信号,该复核。
+  weightedGapRate: number;
   testSetPath?: string | null;
   testSetHash?: string | null;
   signals: GapSignalRef[];
