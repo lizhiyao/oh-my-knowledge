@@ -269,7 +269,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
 
     <section>${cards}</section>
 
-    ${renderVarianceComparisons(report.variance, lang)}
+    ${renderVarianceComparisons(report.variance, lang, Boolean(report.meta.layeredStats))}
 
     ${renderAnalysis(report.analysis, lang)}
 

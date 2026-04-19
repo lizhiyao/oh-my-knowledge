@@ -65,6 +65,7 @@ interface AggregateReportOptions {
   request?: EvaluationRequest;
   run?: EvaluationRun;
   job?: EvaluationJob;
+  layeredStats?: boolean;
 }
 
 export function aggregateReport({
@@ -82,6 +83,7 @@ export function aggregateReport({
   request,
   run,
   job,
+  layeredStats,
 }: AggregateReportOptions): Report {
   const summary: Record<string, VariantSummary> = {};
   for (const variant of variants) {
@@ -112,6 +114,7 @@ export function aggregateReport({
       run,
       job,
       gitInfo: getGitInfo(),
+      ...(layeredStats ? { layeredStats: true } : {}),
     },
     summary,
     results: Object.entries(results).map(([sample_id, variantData]) => ({

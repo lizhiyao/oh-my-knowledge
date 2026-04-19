@@ -61,10 +61,10 @@ export function computeLayeredScores(results: CompositeInput): { compositeScore:
   }
 
   if (typeof results.llmScore === 'number' && results.llmScore > 0) {
-    layered.qualityScore = results.llmScore;
+    layered.judgeScore = results.llmScore;
   }
 
-  const scores = [layered.factScore, layered.behaviorScore, layered.qualityScore].filter((s): s is number => s != null && s > 0);
+  const scores = [layered.factScore, layered.behaviorScore, layered.judgeScore].filter((s): s is number => s != null && s > 0);
   const compositeScore = scores.length > 0 ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)) : 0;
 
   return { compositeScore, layeredScores: layered };

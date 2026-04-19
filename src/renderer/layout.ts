@@ -47,16 +47,19 @@ export const I18N: Record<Lang, Record<string, string>> = {
   zh: {
     title: '评测报告',
     subtitle: '知识载体评测',
-    noRuns: '暂无评测记录。运行 <code>omk bench run --variants v1,v2</code> 开始。',
+    noRuns: '暂无评测记录。运行 <code>omk bench run --control v1 --treatment v2</code> 开始。',
     runId: '报告名称', variants: '实验分组', model: '模型', samples: '样本数',
     score: '分数', cost: '成本', time: '时间',
     deleteBtnText: '删除', deleteConfirm: '确定删除报告', deleteFail: '删除失败',
     reportTitle: '评测报告', backToList: '← 返回列表',
     judge: '评委', executor: '执行器', blindLabel: '盲测', revealBlind: '显示变体对应关系',
-    dimQuality: '📊 质量', dimQualityDesc: '基于断言检查和 LLM 评委的综合评分（1-5 分）',
+    dimFact: '📋 事实', dimFactDesc: '输出的事实声明是否正确（规则可验证：关键词匹配、格式校验等断言）',
+    dimBehavior: '🛠️ 行为', dimBehaviorDesc: '执行过程是否合规（规则可验证：工具调用路径、轮次限制、成本约束等断言）',
+    dimJudge: '💬 LLM 评价', dimJudgeDesc: '请一个 LLM 当评委，读被测模型的输出内容，按预先写好的评分规则（英文 rubric）打 1-5 分。主观但能抓到规则断言判不了的"整体好不好"',
+    dimQuality: '📊 质量', dimQualityDesc: '事实 + 行为 + LLM 评价的等权平均（1-5 分）。UI 已拆出三层平铺展示，composite 字段仅保留在 JSON 数据层',
     dimCost: '💰 成本', dimCostDesc: '基于 Token 消耗量和模型定价计算的 API 调用费用',
     dimEfficiency: '⚡ 效率', dimEfficiencyDesc: 'Skill 从发送请求到模型返回完整响应的端到端耗时',
-    dimStability: '🛡️ 稳定性', dimStabilityDesc: '模型调用的成功率，失败包括超时、API 错误等',
+    dimStability: '🛡️ 稳定性', dimStabilityDesc: '多次运行（--repeat ≥ 2）分数一致性的 CV 变异系数，单轮显示"—"',
     compositeScore: '综合分数', scoreRange: '分数范围',
     assertions: '断言', assertionsDesc: '规则检查得分：通过的断言权重占比映射到 1-5 分',
     llmJudge: 'LLM 评委', llmJudgeDesc: '由评委模型按 rubric 标准打出的 1-5 分',
@@ -100,16 +103,19 @@ export const I18N: Record<Lang, Record<string, string>> = {
   en: {
     title: 'Evaluation Reports',
     subtitle: 'Knowledge Artifact Evaluation',
-    noRuns: 'No evaluation runs yet. Run <code>omk bench run --variants v1,v2</code> to start.',
+    noRuns: 'No evaluation runs yet. Run <code>omk bench run --control v1 --treatment v2</code> to start.',
     runId: 'Report', variants: 'Variant', model: 'Model', samples: 'Samples',
     score: 'Score', cost: 'Cost', time: 'Time',
     deleteBtnText: 'Delete', deleteConfirm: 'Delete report', deleteFail: 'Delete failed',
     reportTitle: 'Evaluation Report', backToList: '← Back to list',
     judge: 'judge', executor: 'executor', blindLabel: 'BLIND', revealBlind: 'Reveal variant mapping',
-    dimQuality: '📊 Quality', dimQualityDesc: 'Composite score (1-5) from assertion checks and LLM judge',
+    dimFact: '📋 Fact', dimFactDesc: 'Are factual claims correct (rule-verified: keyword matching, schema checks, etc.)',
+    dimBehavior: '🛠️ Behavior', dimBehaviorDesc: 'Is execution compliant (rule-verified: tool paths, turn limits, cost constraints)',
+    dimJudge: '💬 LLM judge', dimJudgeDesc: 'A separate LLM acts as judge: reads the tested model output, scores 1-5 against a predefined rubric. Subjective, catches "overall feel" rule-based assertions miss',
+    dimQuality: '📊 Quality', dimQualityDesc: 'Equal-weight average of Fact + Behavior + LLM judge (1-5). UI now splits the three layers into separate columns; composite lives only in JSON data',
     dimCost: '💰 Cost', dimCostDesc: 'API cost calculated from token usage and model pricing',
     dimEfficiency: '⚡ Efficiency', dimEfficiencyDesc: 'End-to-end latency from sending request to receiving full response',
-    dimStability: '🛡️ Stability', dimStabilityDesc: 'Success rate of model calls. Failures include timeouts, API errors, etc.',
+    dimStability: '🛡️ Stability', dimStabilityDesc: 'Coefficient of Variation across runs (--repeat ≥ 2). Single-run shows "—"',
     compositeScore: 'composite score', scoreRange: 'Range',
     assertions: 'Assertions', assertionsDesc: 'Rule-based score: passed assertion weight ratio mapped to 1-5',
     llmJudge: 'LLM Judge', llmJudgeDesc: 'Score (1-5) from judge model based on rubric criteria',
@@ -323,14 +329,26 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .variance-table td{padding-top:12px;padding-bottom:12px}
 .variance-table td.diagnostic-cell{min-width:180px}
 .variance-table .diag-faded strong{opacity:0.5;font-weight:500}
+
+/* Three-layer independent significance breakdown (PR-2).
+   Default collapsed; expands inline under each comparison. */
+.layer-breakdown-row>td{padding:0 !important;background:transparent;border-top:1px dashed var(--border-hover)}
+.layer-breakdown{padding:10px 16px 14px 32px;background:var(--bg-elevated)}
+.layer-breakdown>summary{cursor:pointer;font-size:var(--fs-detail);color:var(--text-muted);padding:4px 0;list-style:revert;user-select:none}
+.layer-breakdown>summary:hover{color:var(--text-secondary)}
+.layer-breakdown[open]>summary{color:var(--text-primary);margin-bottom:8px}
+.layer-sub-table{margin:0;width:100%;font-size:var(--fs-detail)}
+.layer-sub-table td{padding-top:8px;padding-bottom:8px}
 .modal-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center}
-.modal-content{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);max-width:600px;max-height:80vh;overflow:auto;padding:24px;margin:20px;width:90%}
+.modal-content{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);max-width:800px;max-height:80vh;overflow:auto;padding:24px;margin:20px;width:90%}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .modal-close{cursor:pointer;background:none;border:none;color:var(--text-muted);font-size:18px;padding:8px 12px;border-radius:var(--radius);transition:background 0.15s,color 0.15s}
 .modal-close:hover{color:var(--text-primary);background:var(--bg-surface)}
-.modal-table{width:100%;font-size:13px;margin:12px 0;background:transparent;border:none}
-.modal-table td{padding:6px 0;border:none;background:transparent}
-.modal-table td:first-child{white-space:nowrap;vertical-align:top;min-width:80px;padding-right:12px}
+.modal-table{width:100%;font-size:13px;margin:12px 0;background:transparent;border:none;table-layout:auto}
+.modal-table td{padding:6px 0;border:none;background:transparent;word-break:break-word;overflow-wrap:anywhere}
+.modal-table td:first-child{white-space:nowrap;vertical-align:top;min-width:80px;padding-right:16px;word-break:keep-all}
+/* Inline <code> inside modal text — improve readability on dark surfaces */
+.modal-table code,.modal-glossary code,.modal-section code{background:var(--bg-surface);padding:1px 6px;border-radius:3px;font-size:var(--fs-micro);color:var(--text-primary);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 @media(max-width:480px){.modal-table td{display:block;padding:3px 0}.modal-table td:first-child{font-weight:600}}
 .hint-tip{display:none;position:absolute;bottom:calc(100% + 6px);right:0;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:var(--radius);padding:6px 10px;font-size:11px;font-weight:400;color:var(--text-secondary);white-space:normal;max-width:280px;width:max-content;z-index:10}
 .hint:hover .hint-tip,.hint:focus .hint-tip{display:block}

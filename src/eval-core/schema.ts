@@ -92,7 +92,7 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
           ? Number(((assertionFact + hardScore) / 2).toFixed(2))
           : hardScore;
         // Recompute composite from updated layers
-        const scores = [layeredScores.factScore, layeredScores.behaviorScore, layeredScores.qualityScore].filter((s): s is number => s != null && s > 0);
+        const scores = [layeredScores.factScore, layeredScores.behaviorScore, layeredScores.judgeScore].filter((s): s is number => s != null && s > 0);
         compositeScore = scores.length > 0 ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)) : compositeScore;
       }
 
@@ -178,12 +178,12 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
     ...(() => {
       const factScores = ok.map((e) => e.layeredScores?.factScore).filter((s): s is number => s != null && s > 0);
       const behaviorScores = ok.map((e) => e.layeredScores?.behaviorScore).filter((s): s is number => s != null && s > 0);
-      const qualityScores = ok.map((e) => e.layeredScores?.qualityScore).filter((s): s is number => s != null && s > 0);
+      const judgeScores = ok.map((e) => e.layeredScores?.judgeScore).filter((s): s is number => s != null && s > 0);
       const factVerifiedRates = ok.map((e) => e.factCheck?.verifiedRate).filter((r): r is number => r != null);
       return {
         ...(factScores.length > 0 && { avgFactScore: Number((factScores.reduce((a, b) => a + b, 0) / factScores.length).toFixed(2)) }),
         ...(behaviorScores.length > 0 && { avgBehaviorScore: Number((behaviorScores.reduce((a, b) => a + b, 0) / behaviorScores.length).toFixed(2)) }),
-        ...(qualityScores.length > 0 && { avgQualityScore: Number((qualityScores.reduce((a, b) => a + b, 0) / qualityScores.length).toFixed(2)) }),
+        ...(judgeScores.length > 0 && { avgJudgeScore: Number((judgeScores.reduce((a, b) => a + b, 0) / judgeScores.length).toFixed(2)) }),
         ...(factVerifiedRates.length > 0 && { avgFactVerifiedRate: Number((factVerifiedRates.reduce((a, b) => a + b, 0) / factVerifiedRates.length).toFixed(2)) }),
       };
     })(),

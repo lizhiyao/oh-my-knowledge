@@ -26,6 +26,7 @@ const SAMPLE_REPORT: Report = {
     v1: {
       totalSamples: 2, successCount: 2, errorCount: 0, errorRate: 0,
       avgCompositeScore: 4.0, minCompositeScore: 3.5, maxCompositeScore: 4.5,
+      avgFactScore: 4.2, avgBehaviorScore: 4.0, avgJudgeScore: 3.8,
       avgAssertionScore: 4.2, avgLlmScore: 3.8, minLlmScore: 3, maxLlmScore: 4.5,
       avgDurationMs: 2000, avgInputTokens: 100, avgOutputTokens: 500, avgTotalTokens: 600,
       totalCostUSD: 0.025,
@@ -37,6 +38,7 @@ const SAMPLE_REPORT: Report = {
     v2: {
       totalSamples: 2, successCount: 2, errorCount: 0, errorRate: 0,
       avgCompositeScore: 4.8, minCompositeScore: 4.5, maxCompositeScore: 5.0,
+      avgFactScore: 5.0, avgBehaviorScore: 4.8, avgJudgeScore: 4.6,
       avgAssertionScore: 5.0, avgLlmScore: 4.6, minLlmScore: 4, maxLlmScore: 5,
       avgDurationMs: 3000, avgInputTokens: 120, avgOutputTokens: 600, avgTotalTokens: 720,
       totalCostUSD: 0.025,
@@ -111,18 +113,24 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('not found'));
   });
 
-  it('renders four dimensions', () => {
+  it('renders six dimensions (Fact / Behavior / LLM judge / Cost / Efficiency / Stability)', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
-    assert.ok(html.includes('dimQuality'));
+    assert.ok(html.includes('dimFact'));
+    assert.ok(html.includes('dimBehavior'));
+    assert.ok(html.includes('dimJudge'));
     assert.ok(html.includes('dimCost'));
     assert.ok(html.includes('dimEfficiency'));
     assert.ok(html.includes('dimStability'));
   });
 
-  it('renders quality scores', () => {
+  it('renders layer scores (fact / behavior / judge independently)', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
-    assert.ok(html.includes('4')); // composite score
-    assert.ok(html.includes('4.8'));
+    // Fact layer: v1=4.20, v2=5.00
+    assert.ok(html.includes('4.20'));
+    assert.ok(html.includes('5.00'));
+    // Judge layer: v1=3.80, v2=4.60
+    assert.ok(html.includes('3.80'));
+    assert.ok(html.includes('4.60'));
   });
 
   it('renders exec cost (not total cost)', () => {

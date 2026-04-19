@@ -113,11 +113,11 @@ function generateSummary(report: Report, variants: string[]): string | undefined
     diffs.push(`行为合规 ${tBehavior.toFixed(1)} vs ${cBehavior.toFixed(1)}（${dir}${Math.abs(tBehavior - cBehavior).toFixed(1)}）`);
   }
 
-  const tQuality = ts.avgQualityScore;
-  const cQuality = cs.avgQualityScore;
-  if (tQuality != null && cQuality != null && Math.abs(tQuality - cQuality) >= 0.5) {
-    const dir = tQuality > cQuality ? '↑' : '↓';
-    diffs.push(`LLM 评分 ${tQuality.toFixed(1)} vs ${cQuality.toFixed(1)}（${dir}${Math.abs(tQuality - cQuality).toFixed(1)}）`);
+  const tJudge = ts.avgJudgeScore;
+  const cJudge = cs.avgJudgeScore;
+  if (tJudge != null && cJudge != null && Math.abs(tJudge - cJudge) >= 0.5) {
+    const dir = tJudge > cJudge ? '↑' : '↓';
+    diffs.push(`LLM 评价 ${tJudge.toFixed(1)} vs ${cJudge.toFixed(1)}（${dir}${Math.abs(tJudge - cJudge).toFixed(1)}）`);
   }
 
   // Efficiency — with percentages

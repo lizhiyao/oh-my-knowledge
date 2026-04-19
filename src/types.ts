@@ -289,9 +289,9 @@ export interface DimensionResult {
 }
 
 export interface LayeredScores {
-  factScore?: number;       // 事实性得分：事实类断言通过率 → 1-5
-  behaviorScore?: number;   // 行为合规得分：行为类断言通过率 → 1-5
-  qualityScore?: number;    // 质量得分：LLM judge 平均分 → 1-5
+  factScore?: number;       // 事实层得分：事实类断言通过率 → 1-5（客观可验证）
+  behaviorScore?: number;   // 行为层得分：行为类断言通过率 → 1-5（客观可验证）
+  judgeScore?: number;      // LLM 评价得分：LLM judge 基于 rubric 的平均分 → 1-5（主观）
 }
 
 export interface GradeResult {
@@ -367,7 +367,7 @@ export interface VariantSummary {
   avgFactScore?: number;
   avgFactVerifiedRate?: number;
   avgBehaviorScore?: number;
-  avgQualityScore?: number;
+  avgJudgeScore?: number;
   avgCompositeScore?: number;
   minCompositeScore?: number;
   maxCompositeScore?: number;
@@ -405,6 +405,10 @@ export interface ReportMeta {
   gitInfo?: GitInfo | null;
   blind?: boolean;
   blindMap?: Record<string, string>;
+  // When true, HTML report expands the three-layer independent significance breakdown
+  // by default (CLI `--layered-stats`). When false / absent, the breakdown is collapsed
+  // and readers click the <details> summary to expand.
+  layeredStats?: boolean;
 }
 
 export interface ResultEntry {
@@ -525,18 +529,29 @@ export interface VarianceComparisonMetric {
 }
 
 // Metric keys for non-quality dimensions tracked in byMetric.
-// Quality stays as legacy flat fields on VarianceComparison / VariantVariance
-// for backward compatibility with historical reports.
+// The top-level VariantVariance / VarianceComparison flat fields continue to
+// carry composite-score variance for backward compatibility with historical reports.
 export type VarianceMetricKey = 'cost' | 'efficiency';
+
+// Layer keys for the three-layer independent significance tests (v0.16 work item B / PR-2).
+// fact / behavior / judge are independent dimensions of the composite score:
+// - fact: rule-verifiable factual claim assertions
+// - behavior: rule-verifiable execution / tool-call compliance assertions
+// - judge: subjective rubric-based LLM judge score (UI 中文: "LLM 评价")
+// Running t-tests per layer prevents a mixed-signal change (e.g. judge ↑ 0.8,
+// fact ↑ 0.1) from being diluted by the composite aggregate.
+export type VarianceLayerKey = 'fact' | 'behavior' | 'judge';
 
 export interface VariantVariance extends VarianceMetric {
   byMetric?: Partial<Record<VarianceMetricKey, VarianceMetric>>;
+  byLayer?: Partial<Record<VarianceLayerKey, VarianceMetric>>;
 }
 
 export interface VarianceComparison extends VarianceComparisonMetric {
   a: string;
   b: string;
   byMetric?: Partial<Record<VarianceMetricKey, VarianceComparisonMetric>>;
+  byLayer?: Partial<Record<VarianceLayerKey, VarianceComparisonMetric>>;
 }
 
 export interface VarianceData {

@@ -1,15 +1,19 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import { pValueCategory } from '../eval-core/statistics.js';
-import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, VarianceComparison, VarianceComparisonMetric, VarianceData, VariantSummary } from '../types.js';
+import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantSummary } from '../types.js';
 
 export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang, variance?: VarianceData): string {
-  // Build comparison table: variants as rows, dimensions as columns.
-  // When variance data exists, the quality column shows cross-run means (for
-  // consistency with the Variance & Significance section below). The data
-  // source is inferable from the experiment summary at top + the matching
-  // numbers in the significance section — no redundant per-column labelling.
+  // 六维对比表格:事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性。
+  // 前三列(事实/行为/LLM 评价)是 task 级原始指标的 variant 聚合;成本/效率同。
+  // 稳定性是 variant 级散度度量(需 --repeat ≥ 2)。
+  //
+  // composite 合成分 (= (fact + behavior + judge) / 3) 从 v0.16 起不再在此表主视觉呈现,
+  // 仅保留在 report JSON 数据层 + Variance & Significance 表顶层 flat 字段(legacy)。
+  // 理由见 docs/terminology-spec.md 三-6 节:三层独立呈现避免合成分掩盖结构性差异。
   const headerCols = [
-    { key: 'dimQuality', label: t('dimQuality', lang) },
+    { key: 'dimFact', label: t('dimFact', lang) },
+    { key: 'dimBehavior', label: t('dimBehavior', lang) },
+    { key: 'dimJudge', label: t('dimJudge', lang) },
     { key: 'dimCost', label: t('dimCost', lang) },
     { key: 'dimEfficiency', label: t('dimEfficiency', lang) },
     { key: 'dimStability', label: t('dimStability', lang) },
@@ -17,60 +21,38 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
 
   const thead = `<tr><th data-i18n="variants">${t('variants', lang)}</th>${headerCols.map((c) => `<th data-i18n="${c.key}">${c.label}</th>`).join('')}</tr>`;
 
+  // 渲染单层分数 cell(事实/行为/LLM 评价通用)。
+  // 优先读跨 run 均值(byLayer[key].mean),fallback 到 summary 的单 run avg。
+  // 缺数据时显示 "—" + 灰色,让读者明确看到"这一层这批样本/评委没测到",不假装有值。
+  function renderLayerCell(varianceMean: number | undefined, summaryValue: number | undefined, detailHtml = ''): string {
+    const v = varianceMean ?? summaryValue;
+    const hasValue = typeof v === 'number' && v > 0;
+    const color = hasValue
+      ? (v >= 4 ? 'var(--green)' : v >= 3 ? 'var(--yellow)' : 'var(--red)')
+      : 'var(--text-muted)';
+    const display = hasValue ? v.toFixed(2) : '—';
+    return `<td class="summary-cell"><div class="summary-value summary-value-primary" style="color:${color}">${display}</div>${detailHtml}</td>`;
+  }
+
   const rows = variants.map((v, i) => {
     const s = summary[v] || {} as VariantSummary;
     const vd = variance?.perVariant[v];
     const color = COLORS[i % COLORS.length];
 
-    // Quality — show composite + layered breakdown.
-    // When variance exists (--repeat), use the cross-run mean as the source of
-    // truth so this table agrees with the Variance & Significance section below.
-    // Otherwise fall back to the single-run summary aggregate.
-    const crossRunMean = vd?.mean;
-    const score = crossRunMean ?? s.avgCompositeScore ?? s.avgLlmScore ?? '-';
-    const factLabel = lang === 'zh' ? '事实' : 'Fact';
-    const behaviorLabel = lang === 'zh' ? '行为' : 'Behavior';
-    const qualityLabel = lang === 'zh' ? '质量' : 'Quality';
-
-    const layeredDetailParts: string[] = [];
-    const hintParts: string[] = [];
-
-    // Always render 事实/行为/质量 三层，缺数据时用 "—" 占位，让三层构念
-    // 始终可见。避免读者误以为 omk 只测其中一两层——空值本身是个信号：
-    // 当前 sample set 没有对应类别的断言或 judge 输出
-    const hasAnyLayer = s.avgFactScore != null || s.avgBehaviorScore != null || s.avgQualityScore != null;
-    const renderLayer = (label: string, value: number | undefined | null) => {
-      if (value != null) {
-        layeredDetailParts.push(`<span>${label}: ${value}</span>`);
-        hintParts.push(`${label}: ${value}`);
-      } else if (hasAnyLayer) {
-        layeredDetailParts.push(`<span style="color:var(--text-muted)">${label}: —</span>`);
-        hintParts.push(`${label}: —`);
-      }
-    };
-    renderLayer(factLabel, s.avgFactScore);
-    renderLayer(behaviorLabel, s.avgBehaviorScore);
-    renderLayer(qualityLabel, s.avgQualityScore);
-
+    // 事实层 cell(含事实验证率 detail,如果有)
+    const factDetailParts: string[] = [];
     if (s.avgFactVerifiedRate != null) {
       const pct = Math.round(s.avgFactVerifiedRate * 100);
-      layeredDetailParts.push(`<span>${lang === 'zh' ? '事实验证' : 'Verified'}: ${pct}%</span>`);
-      hintParts.push(`${lang === 'zh' ? '事实验证' : 'Verified'}: ${pct}%`);
+      factDetailParts.push(`${lang === 'zh' ? '验证率' : 'Verified'} ${pct}%`);
     }
+    const factDetail = factDetailParts.length > 0 ? `<div class="summary-detail">${factDetailParts.join(' · ')}</div>` : '';
+    const factCell = renderLayerCell(vd?.byLayer?.fact?.mean, s.avgFactScore, factDetail);
 
-    // Cross-run context is marked once in the column header, not per row.
+    // 行为层 cell(暂无 detail,后续可按工具调用成功率之类扩展)
+    const behaviorCell = renderLayerCell(vd?.byLayer?.behavior?.mean, s.avgBehaviorScore);
 
-    if (layeredDetailParts.length === 0) {
-      // Fallback to old style if no layered scores
-      if (s.minCompositeScore != null) { layeredDetailParts.push(`${s.minCompositeScore}~${s.maxCompositeScore}`); hintParts.push(`${s.minCompositeScore}~${s.maxCompositeScore}`); }
-      if (s.avgAssertionScore != null) { layeredDetailParts.push(`${t('assertions', lang)}: ${s.avgAssertionScore}`); hintParts.push(`${t('assertions', lang)}: ${s.avgAssertionScore}`); }
-      if (s.avgLlmScore != null) { layeredDetailParts.push(`${t('llmJudge', lang)}: ${s.avgLlmScore}`); hintParts.push(`${t('llmJudge', lang)}: ${s.avgLlmScore}`); }
-    }
-
-    const scoreNum = typeof score === 'number' ? score : 0;
-    const scoreColor = scoreNum >= 4 ? 'var(--green)' : scoreNum >= 3 ? 'var(--yellow)' : scoreNum > 0 ? 'var(--red)' : 'var(--text-primary)';
-    const scoreDisplay = typeof score === 'number' ? score.toFixed(2) : score;
-    const qualityCell = `<td class="summary-cell"><div class="summary-value summary-value-primary" style="color:${scoreColor}">${scoreDisplay}</div><div class="summary-detail">${layeredDetailParts.join(' · ')}</div></td>`;
+    // LLM 评价层 cell
+    const judgeCell = renderLayerCell(vd?.byLayer?.judge?.mean, s.avgJudgeScore);
 
     // Cost — only show execution cost (judge cost is tool overhead, not skill cost)
     const execCost = s.totalExecCostUSD || 0;
@@ -93,69 +75,106 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     const avgLabel = lang === 'zh' ? '次' : 'req';
     const effCell = `<td class="summary-cell"><div class="summary-value">${fmtDuration(s.avgDurationMs)}<span class="summary-unit">/${avgLabel}</span></div>${effDetail}</td>`;
 
-    // Stability — variant-internal attributes only: success rate + sample-level
-    // score spread. Cross-run dispersion (σ, CV, CI) now lives exclusively in
-    // the Variance & Significance section so that the two tables never
-    // overlap conceptually.
+    // Stability — 多次运行分数一致性（test-retest reliability），统计学定义的稳定性。
+    // 主视觉:白话定性词 + ±σ 直观量级,让读者一眼判断。
+    // 副区:CV (变异系数 = σ / mean) 分两行展示 + 95% CI(置信区间)。
+    // 无 --repeat(variance 缺失) 时主值显示 "—" + 明示需多跑,不虚报 100%——
+    // 符合 omk 叙事底线"诚实交代测不到什么"。
+    //
+    // 跨样本 min~max range 不是稳定性(反映样本难度差异,非 variant 波动),已从此列移除。
+    // 成功率 ≠ 稳定性(执行完成率,不是分数一致性),降级到 < 100% 时的副区 alert。
     const total = s.totalSamples || 0;
     const successCount = s.successCount || 0;
+    const errorCount = s.errorCount || 0;
     const successRate = total > 0 ? Number((successCount / total * 100).toFixed(1)) : 0;
 
-    const stabValue = `${successRate}%`;
-    const stabColor = successRate === 100 ? 'var(--green)' : successRate >= 90 ? 'var(--yellow)' : 'var(--red)';
-
     const stabDetails: string[] = [];
-    if ((s.errorCount || 0) > 0) {
-      stabDetails.push(`<span style="color:var(--red)">${s.errorCount} ${t('errors', lang)}</span>`);
+    let stabValue: string;
+    let stabColor: string;
+
+    if (vd && typeof vd.stddev === 'number' && typeof vd.mean === 'number' && vd.mean !== 0) {
+      const cv = Math.abs(vd.stddev / vd.mean);
+      const cvPct = cv * 100;
+      const sigma = vd.stddev;
+      // 主值用白话定性 + ±σ 直观量级,让非统计背景读者一眼判断。
+      // CV 和 CI 下沉到副区,给懂的人细看。阈值面向 1-5 分数量纲的经验值。
+      let label: string;
+      if (cvPct < 5) {
+        label = lang === 'zh' ? '稳定' : 'Stable';
+        stabColor = 'var(--green)';
+      } else if (cvPct < 15) {
+        label = lang === 'zh' ? '较稳' : 'Moderate';
+        stabColor = 'var(--yellow)';
+      } else {
+        label = lang === 'zh' ? '波动大' : 'Variable';
+        stabColor = 'var(--red)';
+      }
+      stabValue = `${label} · ±${fmtNum(sigma, 2)}`;
+      const ciLo = fmtNum(vd.lower, 2);
+      const ciHi = fmtNum(vd.upper, 2);
+      stabDetails.push(`CV ${cvPct.toFixed(1)}% · 95% CI [${ciLo}, ${ciHi}]`);
+    } else {
+      // No cross-run data → honestly say "not measurable with single run".
+      stabValue = '—';
+      stabColor = 'var(--text-muted)';
+      stabDetails.push(`<span style="color:var(--text-muted)">${lang === 'zh' ? '需 --repeat ≥ 2' : 'needs --repeat ≥ 2'}</span>`);
     }
-    if (s.minCompositeScore != null && s.maxCompositeScore != null && s.minCompositeScore !== s.maxCompositeScore) {
-      stabDetails.push(`${lang === 'zh' ? '分数' : 'range'} ${s.minCompositeScore}~${s.maxCompositeScore}`);
+
+    // Execution-completion alerts:success rate < 100% 时降级到此处,避免和"稳定性"语义混淆。
+    if (errorCount > 0) {
+      stabDetails.unshift(`<span style="color:var(--red)">${successRate}% ${lang === 'zh' ? '完成率' : 'completed'} · ${errorCount} ${t('errors', lang)}</span>`);
     }
-    const stabDetail = stabDetails.length > 0 ? `<div class="summary-detail">${stabDetails.join(' · ')}</div>` : '';
+
+    // 正常情况副区只一行:`CV X.X% · 95% CI [...]`。
+    // 有 alert(成功率 < 100%) 时把 alert 放第一行、CV+CI 放第二行,让异常信息第一眼看到。
+    const stabDetail = stabDetails.length > 0
+      ? stabDetails.map((d) => `<div class="summary-detail">${d}</div>`).join('')
+      : '';
 
     const stabCell = `<td class="summary-cell"><div class="summary-value" style="color:${stabColor}">${stabValue}</div>${stabDetail}</td>`;
 
-    return `<tr><td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(v)}</strong></td>${qualityCell}${costCell}${effCell}${stabCell}</tr>`;
+    return `<tr><td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(v)}</strong></td>${factCell}${behaviorCell}${judgeCell}${costCell}${effCell}${stabCell}</tr>`;
   }).join('');
 
-  const guideModalId = 'guide-four-dims';
-  const guideTitle = lang === 'zh' ? '如何阅读四维对比？' : 'How to read this table?';
+  const guideModalId = 'guide-six-dims';
+  const guideTitle = lang === 'zh' ? '如何阅读六维对比？' : 'How to read this 6-dim comparison?';
   const guideIntro = lang === 'zh'
-    ? '每行是一个实验分组（Variant），四列分别衡量不同维度：'
-    : 'Each row is a Variant. Four columns measure different dimensions:';
+    ? '每行是一个实验分组（Variant），六列分别衡量不同维度：'
+    : 'Each row is a Variant. Six columns measure independent dimensions:';
   const icon = (emoji: string) => `<span aria-hidden="true">${emoji}</span>`;
-  const dim = 'style="padding:8px 0 4px;border-top:1px solid var(--border);color:var(--text-primary)"';
-  const dimDesc = 'style="padding:8px 0 4px;border-top:1px solid var(--border);color:var(--text-secondary)"';
-  const dimFirst = 'style="padding:4px 0 4px;color:var(--text-primary)"';
+  // 维度分隔加粗(border-top 2px),让四维的视觉边界更明显。sub 缩进从 28 收到 22。
+  const dim = 'style="padding:12px 0 4px;border-top:2px solid var(--border);color:var(--text-primary);font-weight:600"';
+  const dimDesc = 'style="padding:12px 0 4px;border-top:2px solid var(--border);color:var(--text-secondary)"';
+  const dimFirst = 'style="padding:4px 0 4px;color:var(--text-primary);font-weight:600"';
   const dimFirstDesc = 'style="padding:4px 0 4px;color:var(--text-secondary)"';
-  const sub = 'style="padding:2px 0 2px 28px;font-size:12px;color:var(--text-secondary);font-weight:500"';
+  const sub = 'style="padding:2px 0 2px 22px;font-size:12px;color:var(--text-secondary);font-weight:500"';
   const subDesc = 'style="padding:2px 0;font-size:12px;color:var(--text-muted)"';
   const guideRows = lang === 'zh' ? `
-    <tr><td ${dimFirst}>${icon('📊')} <strong>质量</strong></td><td ${dimFirstDesc}>三层评分的等权平均值（1-5 分），计算公式：(事实 + 行为 + 质量) ÷ 3</td></tr>
-    <tr><td ${sub}>事实性</td><td ${subDesc}>输出中的事实声明是否正确（关键词匹配、格式校验等断言）</td></tr>
-    <tr><td ${sub}>行为合规</td><td ${subDesc}>执行过程是否合规（工具调用路径、轮次限制、成本约束等断言）</td></tr>
-    <tr><td ${sub}>质量</td><td ${subDesc}>LLM 评委对输出整体质量的主观评分</td></tr>
-    <tr><td ${dim}>${icon('💰')} <strong>成本</strong></td><td ${dimDesc}>API 调用费用（仅执行成本，不含评分成本）</td></tr>
-    <tr><td ${dim}>${icon('⚡')} <strong>效率</strong></td><td ${dimDesc}>单次评测的平均耗时，含轮次和工具调用统计</td></tr>
-    <tr><td ${dim}>${icon('🛡️')} <strong>稳定性</strong></td><td ${dimDesc}>变体在本次评测中的内在稳定性，仅反映样本间表现</td></tr>
-    <tr><td ${sub}>成功率</td><td ${subDesc}>评测任务成功完成的比例，失败包括超时、API 错误等</td></tr>
-    <tr><td ${sub}>分数范围</td><td ${subDesc}>样本间最低分 ~ 最高分，范围越窄越稳定</td></tr>
-    <tr><td style="padding:6px 0 0;color:var(--text-muted);font-size:11px" colspan="2">💡 跨轮方差、置信区间、效应量、显著性等"对比类指标"不在本表，请看下面的「方差与显著性」区块。</td></tr>
+    <tr><td ${dimFirst}>${icon('📋')} <strong>事实</strong></td><td ${dimFirstDesc}>模型的输出说得对不对（事实声明层面）。靠规则断言判：关键词是否出现、JSON 格式是否合法等，答错了直接不给分。</td></tr>
+    <tr><td ${dim}>${icon('🛠️')} <strong>行为</strong></td><td ${dimDesc}>模型做事的过程有没有走对路。靠规则断言判：该调的工具有没有调、有没有超过轮次/成本上限。</td></tr>
+    <tr><td ${dim}>${icon('💬')} <strong>LLM 评价</strong></td><td ${dimDesc}>请一个 LLM 当评委，让它读被测模型的输出内容，按预先写好的评分规则（英文叫 rubric）打个 1-5 分。主观但能抓到规则断言判不了的"整体好不好"——比如回答是否清晰、有没有答非所问。</td></tr>
+    <tr><td ${dim}>${icon('💰')} <strong>成本</strong></td><td ${dimDesc}>跑这次评测花了多少 API 调用费（只算执行成本，评委那个 LLM 的钱不算进来）。</td></tr>
+    <tr><td ${dim}>${icon('⚡')} <strong>效率</strong></td><td ${dimDesc}>一次评测平均跑多久；附带轮次数和工具调用次数。</td></tr>
+    <tr><td ${dim}>${icon('🛡️')} <strong>稳定性</strong></td><td ${dimDesc}>同一份测试跑很多次，分数抖不抖。抖得越少越稳定。<strong>跑一次看不出稳定性</strong>——至少要 <code>--repeat ≥ 2</code>，不然显示"—"。</td></tr>
+    <tr><td ${sub}>稳定 / 较稳 / 波动大</td><td ${subDesc}>分数波动比例 &lt;5% = 稳定 · 5~15% = 一般 · &gt;15% = 波动大</td></tr>
+    <tr><td ${sub}>±σ</td><td ${subDesc}>每次跑出的分数，大概在平均分上下浮动多少。1-5 分数里 ±0.05 几乎不抖、±0.5 抖得很厉害</td></tr>
+    <tr><td ${sub}>CV</td><td ${subDesc}>分数抖动幅度占平均分的比例（例：CV 2% = 分数波动大约是平均分的 2%）</td></tr>
+    <tr><td ${sub}>95% CI</td><td ${subDesc}>如果跑无数次求平均，真实平均分有 95% 概率落在这个范围里——范围越窄，这次测出的均值越可信</td></tr>
   ` : `
-    <tr><td ${dimFirst}>${icon('📊')} <strong>Quality</strong></td><td ${dimFirstDesc}>Equal-weight average of three layers (1-5): (Fact + Behavior + Quality) ÷ 3</td></tr>
-    <tr><td ${sub}>Factual</td><td ${subDesc}>Are factual claims correct (keyword matching, format validation assertions)</td></tr>
-    <tr><td ${sub}>Behavioral</td><td ${subDesc}>Is execution compliant (tool paths, turn limits, cost constraints)</td></tr>
-    <tr><td ${sub}>Quality</td><td ${subDesc}>LLM judge subjective score on output quality</td></tr>
-    <tr><td ${dim}>${icon('💰')} <strong>Cost</strong></td><td ${dimDesc}>API expense (execution only, excludes judge cost)</td></tr>
-    <tr><td ${dim}>${icon('⚡')} <strong>Efficiency</strong></td><td ${dimDesc}>Average time per evaluation, with turn and tool call stats</td></tr>
-    <tr><td ${dim}>${icon('🛡️')} <strong>Stability</strong></td><td ${dimDesc}>Variant-internal stability across samples, not cross-variant comparison</td></tr>
-    <tr><td ${sub}>Success rate</td><td ${subDesc}>Percentage of tasks completed successfully (failures include timeouts, API errors)</td></tr>
-    <tr><td ${sub}>Score range</td><td ${subDesc}>Min ~ Max score across all samples. Narrower = more stable</td></tr>
-    <tr><td style="padding:6px 0 0;color:var(--text-muted);font-size:11px" colspan="2">💡 Cross-run variance, CI, effect size and significance live in the "Variance & Significance" section below — not here.</td></tr>
+    <tr><td ${dimFirst}>${icon('📋')} <strong>Fact</strong></td><td ${dimFirstDesc}>Whether the model's output is factually correct. Checked by rule-based assertions — keyword matches, JSON schema validity, etc. Wrong = zero.</td></tr>
+    <tr><td ${dim}>${icon('🛠️')} <strong>Behavior</strong></td><td ${dimDesc}>Whether the model followed the right process. Checked by rule-based assertions — did it call the expected tools, stay within turn/cost limits.</td></tr>
+    <tr><td ${dim}>${icon('💬')} <strong>LLM judge</strong></td><td ${dimDesc}>A separate LLM acts as judge: it reads the tested model's output and scores it 1-5 against a predefined rubric. Subjective, but catches "overall feel" that rule-based assertions miss — e.g., whether the answer is clear, whether it's on-topic.</td></tr>
+    <tr><td ${dim}>${icon('💰')} <strong>Cost</strong></td><td ${dimDesc}>API cost of this run (execution only — the judge LLM's cost isn't included here).</td></tr>
+    <tr><td ${dim}>${icon('⚡')} <strong>Efficiency</strong></td><td ${dimDesc}>Average time per evaluation, plus turn counts and tool call stats.</td></tr>
+    <tr><td ${dim}>${icon('🛡️')} <strong>Stability</strong></td><td ${dimDesc}>How much the score swings when you repeat the same test. Less swing = more stable. <strong>You can't measure stability from a single run</strong> — need <code>--repeat ≥ 2</code>, otherwise shows "—".</td></tr>
+    <tr><td ${sub}>Stable / Moderate / Variable</td><td ${subDesc}>Score swing as % of mean: &lt;5% = Stable · 5~15% = Moderate · &gt;15% = Variable</td></tr>
+    <tr><td ${sub}>±σ</td><td ${subDesc}>How much each run's score typically swings around the mean. On a 1-5 scale, ±0.05 barely moves, ±0.5 swings a lot</td></tr>
+    <tr><td ${sub}>CV</td><td ${subDesc}>Score swing as a percentage of the mean (e.g., CV 2% = swings are about 2% of the mean)</td></tr>
+    <tr><td ${sub}>95% CI</td><td ${subDesc}>If you ran infinitely many times, the true mean has a 95% chance of falling in this range — narrower = you can trust the measured mean more</td></tr>
   `;
 
   return `
-    <h2 data-i18n="dimQuality" style="display:flex;align-items:center;gap:4px">${t('reportTitle', lang) === t('reportTitle', 'zh') ? '四维对比' : 'Comparison'} <button type="button" class="hint-btn" onclick="openModal('${guideModalId}')" aria-label="${e(guideTitle)}" aria-haspopup="dialog">?</button></h2>
+    <h2 style="display:flex;align-items:center;gap:4px">${lang === 'zh' ? '六维对比' : '6-Dim Comparison'} <button type="button" class="hint-btn" onclick="openModal('${guideModalId}')" aria-label="${e(guideTitle)}" aria-haspopup="dialog">?</button></h2>
     <div id="${guideModalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${guideModalId}-title" onclick="if(event.target===this)closeModal('${guideModalId}')">
       <div class="modal-content">
         <div class="modal-header">
@@ -182,7 +201,7 @@ interface DiagnosticEntry {
 
 function buildDiagnostic(
   metric: VarianceComparisonMetric,
-  cfg: MetricDisplayConfig,
+  cfg: BaseDisplayConfig,
   winner: string | null,
   lang: Lang,
 ): DiagnosticEntry {
@@ -255,8 +274,10 @@ function buildDiagnostic(
 //   In that case we show only the magnitude label + n, not the raw numbers.
 // - `showPercent` controls whether the gap cell shows a "X% cheaper/faster"
 //   relative difference as a second detail line.
-interface MetricDisplayConfig {
-  key: 'quality' | 'cost' | 'efficiency';
+// Display-only fields shared by both metric and layer rows. Extracted so the
+// layer-breakdown sub-table can reuse `buildMetricRowCells` without widening
+// the MetricDisplayConfig.key union (layer keys live in their own namespace).
+interface BaseDisplayConfig {
   labelZh: string;
   labelEn: string;
   higherIsBetter: boolean;
@@ -268,6 +289,19 @@ interface MetricDisplayConfig {
   percentWordZh: string;
   percentWordEn: string;
 }
+
+interface MetricDisplayConfig extends BaseDisplayConfig {
+  key: 'quality' | 'cost' | 'efficiency';
+}
+
+// Three-layer breakdown labels (PR-2). Rendered inside the expandable
+// `<details>` beneath each comparison; composite still lives on the top table.
+// UI 命名:事实 / 行为 / LLM 评价(字段 judge)——前两层规则验证,第三层 LLM 主观评分。
+const LAYER_LABELS: Record<VarianceLayerKey, { zh: string; en: string }> = {
+  fact: { zh: '事实', en: 'Fact' },
+  behavior: { zh: '行为', en: 'Behavior' },
+  judge: { zh: 'LLM 评价', en: 'LLM judge' },
+};
 
 const METRIC_CONFIGS: MetricDisplayConfig[] = [
   {
@@ -331,7 +365,7 @@ function getVariantMetricMean(variance: VarianceData, variant: string, key: Metr
   return v.byMetric?.[key]?.mean ?? null;
 }
 
-export function renderVarianceComparisons(variance: VarianceData | undefined, lang: Lang): string {
+export function renderVarianceComparisons(variance: VarianceData | undefined, lang: Lang, layeredStatsOpen = false): string {
   if (!variance || !variance.comparisons || variance.comparisons.length === 0) return '';
 
   const modalId = 'guide-variance-comparisons';
@@ -351,7 +385,7 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
   const magnitudeEn: Record<string, string> = { negligible: 'negligible', small: 'small effect', medium: 'medium effect', large: 'large effect' };
 
   // Determine the winning variant for a given metric. Returns null if tied.
-  function pickWinner(metric: VarianceComparisonMetric, cfg: MetricDisplayConfig, a: string, b: string): string | null {
+  function pickWinner(metric: VarianceComparisonMetric, cfg: BaseDisplayConfig, a: string, b: string): string | null {
     const diffAbs = Math.abs(metric.meanDiff);
     if (diffAbs < 1e-9) return null;
     const rawHigherVariant = metric.meanDiff > 0 ? a : b;
@@ -360,7 +394,7 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
 
   function buildMetricRowCells(
     metric: VarianceComparisonMetric,
-    cfg: MetricDisplayConfig,
+    cfg: BaseDisplayConfig,
     a: string,
     b: string,
     aMean: number | null,
@@ -438,6 +472,53 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
       <td class="diagnostic-cell">${diagCell}</td>`;
   }
 
+  // Per-layer display config — same shape as composite quality, just re-labeled.
+  // Composite rows live in METRIC_CONFIGS (the outer variance table); layer rows
+  // live inside an expandable <details> and only render when byLayer data exists.
+  function layerCfg(key: VarianceLayerKey): BaseDisplayConfig {
+    const labels = LAYER_LABELS[key];
+    return {
+      labelZh: labels.zh,
+      labelEn: labels.en,
+      higherIsBetter: true,
+      winnerWordZh: '胜出',
+      winnerWordEn: 'wins by',
+      formatValue: (v: number) => lang === 'zh' ? `${v.toFixed(2)} 分` : `${v.toFixed(2)} pts`,
+      showRawEffectSize: true,
+      showPercent: true,
+      percentWordZh: '高',
+      percentWordEn: 'higher',
+    };
+  }
+
+  function renderLayerBreakdown(comp: VarianceComparison): string {
+    if (!comp.byLayer || Object.keys(comp.byLayer).length === 0) return '';
+    const layerRows = (['fact', 'behavior', 'judge'] as const).map((key) => {
+      const m = comp.byLayer?.[key];
+      if (!m) return '';
+      const aMean = variance!.perVariant[comp.a]?.byLayer?.[key]?.mean ?? null;
+      const bMean = variance!.perVariant[comp.b]?.byLayer?.[key]?.mean ?? null;
+      const cfg = layerCfg(key);
+      return `<tr>${buildMetricRowCells(m, cfg, comp.a, comp.b, aMean, bMean, false)}</tr>`;
+    }).filter(Boolean).join('');
+    if (!layerRows) return '';
+    const summaryLabel = lang === 'zh'
+      ? '展开三层独立显著性（fact / behavior / quality）'
+      : 'Show three-layer independent significance';
+    const openAttr = layeredStatsOpen ? ' open' : '';
+    return `
+      <tr class="layer-breakdown-row">
+        <td colspan="6">
+          <details class="layer-breakdown"${openAttr}>
+            <summary>${e(summaryLabel)}</summary>
+            <table class="summary-table variance-table layer-sub-table">
+              <tbody>${layerRows}</tbody>
+            </table>
+          </details>
+        </td>
+      </tr>`;
+  }
+
   const rows = variance.comparisons.map((comp) => {
     // Collect available metric rows for this comparison
     const availableMetrics: Array<{ cfg: MetricDisplayConfig; metric: VarianceComparisonMetric }> = [];
@@ -458,7 +539,7 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
       return { ...row, diagText: `${diag.icon}|${diag.text}` };
     });
     let prevDiagKey = '';
-    return preBuilt.map((row, idx) => {
+    const mainRows = preBuilt.map((row, idx) => {
       const lead = idx === 0 ? comparisonCell : '';
       const aMean = getVariantMetricMean(variance!, comp.a, row.cfg.key);
       const bMean = getVariantMetricMean(variance!, comp.b, row.cfg.key);
@@ -466,6 +547,8 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
       prevDiagKey = row.diagText;
       return `<tr>${lead}${buildMetricRowCells(row.metric, row.cfg, comp.a, comp.b, aMean, bMean, fade)}</tr>`;
     }).join('');
+
+    return mainRows + renderLayerBreakdown(comp);
   }).join('');
 
   // Glossary rows — structured data instead of a giant HTML string.

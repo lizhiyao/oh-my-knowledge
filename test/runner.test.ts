@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { runEvaluation, runEachEvaluation, buildVarianceData } from '../src/eval-workflows/run-evaluation.js';
+import { runEvaluation, runEachEvaluation } from '../src/eval-workflows/run-evaluation.js';
 import { buildTasks } from '../src/eval-core/task-planner.js';
 import { discoverVariants, discoverEachSkills, loadSkills } from '../src/inputs/skill-loader.js';
 import { generateRunId } from '../src/eval-core/evaluation-reporting.js';

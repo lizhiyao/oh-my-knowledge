@@ -41,6 +41,7 @@ interface RunConfig {
   blind?: boolean | undefined;
   retry?: number;
   resume?: string;
+  layeredStats?: boolean;
   onProgress?: ProgressCallback | null;
 }
 
@@ -162,6 +163,7 @@ const RUN_OPTIONS: ParseArgsConfig['options'] = {
   verbose: { type: 'boolean' },
   retry: { type: 'string' },
   resume: { type: 'string' },
+  'layered-stats': { type: 'boolean' },
 };
 
 // ---------------------------------------------------------------------------
@@ -278,6 +280,7 @@ function parseRunConfig(
   const retry = Math.max(0, Number(values.retry ?? 0) || 0);
   const resume = values.resume as string | undefined;
   const blind = (values.blind as boolean | undefined) ?? evalConfig?.blind ?? false;
+  const layeredStats = (values['layered-stats'] as boolean | undefined) ?? false;
 
   return {
     values,
@@ -301,6 +304,7 @@ function parseRunConfig(
       retry,
       resume,
       blind,
+      layeredStats,
     },
   };
 }
@@ -360,6 +364,10 @@ Options for "bench run":
                          (default: .mcp.json in current directory)
   --no-serve             Skip auto-starting report server after evaluation
   --verbose              Print detailed progress for each sample (exec result, grading phases)
+  --layered-stats        Expand the three-layer (fact/behavior/quality) independent
+                         significance breakdown in the HTML report by default.
+                         Without this flag, the breakdown is collapsed behind a
+                         click-to-expand summary under each comparison.
 
 Options for "bench ci":
   (same as "bench run", plus:)
