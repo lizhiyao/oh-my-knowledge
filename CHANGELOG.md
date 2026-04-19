@@ -8,6 +8,14 @@ omk（`oh-my-knowledge`）的版本变更记录。格式参照 [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+
+- **v0.17 工作项 A · 知识缺口信号严重度加权（PR-2 / spec §6）**:`GapSignalRef.weight` 新增必填字段,每个 signal 按类型自带权重——failed_search / repeated_failure 为强证据(权重 1.0),explicit_marker / hedging 为弱信号(权重 0.5)。`GapReport` 新增 `weightedGapRate: number` 指标,按样本最强信号权重聚合,和 `gapRate` 并列展示。
+  - 目的:v0.1 所有四类信号等权聚合,hedging 高假阳率(spec §2.8)会把软信号稀释真信号。v0.2 区分硬证据 vs 软信号,`weightedGapRate ≤ gapRate`,差值反映软信号占比。
+  - UI 改动:gap section 副区增加"加权严重度 X%"提示,差值 ≥ 10% 时明示"软信号占比大,建议复核"。
+  - spec §6 更新:从"v0.1 不选严重度加权"明文改为"v0.2 起引入",加 SIGNAL_WEIGHTS 表与 weightedGapRate 聚合公式。
+  - 测试:+5 case 覆盖 signal weight 字段、weightedGapRate 按样本最强权重聚合、同一样本 max 取权重不累加、全弱信号 gap rate 拉高但 weighted 砍半、空 report 不崩。
+
 ---
 
 ## [0.16.0] - 2026-04-19

@@ -411,4 +411,97 @@ describe('computeGapReport', () => {
     assert.equal(report.testSetPath, null);
     assert.equal(report.testSetHash, null);
   });
+
+  // ---------- v0.2 严重度加权 (SIGNAL_WEIGHTS + weightedGapRate) ----------
+
+  it('v0.2: 每个 signal 自带 weight (strong 1.0 / weak 0.5)', () => {
+    const results: ResultEntry[] = [
+      {
+        sample_id: 's001',
+        variants: {
+          v1: vr({
+            turns: [
+              turn('assistant', '我不确定。【推断】', [
+                tc('Grep', { pattern: 'x' }, '', false),
+              ]),
+            ],
+          }),
+        },
+      },
+    ];
+    const report = computeGapReport(results, 'v1');
+    // 3 signals: failed_search(1.0) + explicit_marker(0.5) + hedging(0.5)
+    const byType = report.signals.reduce((acc, s) => {
+      acc[s.type] = s.weight;
+      return acc;
+    }, {} as Record<string, number>);
+    assert.equal(byType.failed_search, 1.0);
+    assert.equal(byType.explicit_marker, 0.5);
+    assert.equal(byType.hedging, 0.5);
+  });
+
+  it('v0.2: weightedGapRate 按样本最强信号聚合', () => {
+    // 3 个样本:1 个 failed_search(强,权重 1.0)、1 个 hedging(弱,权重 0.5)、1 个无信号
+    // gapRate = 2/3 ≈ 0.6667
+    // weightedGapRate = (1.0 + 0.5 + 0) / 3 ≈ 0.5000
+    const results: ResultEntry[] = [
+      {
+        sample_id: 's001',
+        variants: { v1: vr({ turns: [turn('assistant', '', [tc('Grep', { pattern: 'x' }, '', false)])] }) },
+      },
+      {
+        sample_id: 's002',
+        variants: { v1: vr({ turns: [turn('assistant', '我不确定', [])] }) },
+      },
+      {
+        sample_id: 's003',
+        variants: { v1: vr({ turns: [turn('assistant', 'clean', [])] }) },
+      },
+    ];
+    const report = computeGapReport(results, 'v1');
+    assert.equal(report.gapRate, 0.6667);
+    assert.equal(report.weightedGapRate, 0.5);
+    // 永远 weighted ≤ raw(软信号只会拉低 weight)
+    assert.ok(report.weightedGapRate <= report.gapRate);
+  });
+
+  it('v0.2: 同一样本多信号时取最强权重(不是累加)', () => {
+    // 一个样本同时有 hedging(0.5) + failed_search(1.0) → sample weight = 1.0 而不是 1.5
+    const results: ResultEntry[] = [
+      {
+        sample_id: 's001',
+        variants: {
+          v1: vr({
+            turns: [
+              turn('assistant', '我不确定这个数据来自哪里', [
+                tc('Grep', { pattern: 'missing' }, '', false),
+              ]),
+            ],
+          }),
+        },
+      },
+    ];
+    const report = computeGapReport(results, 'v1');
+    // 样本内聚合取 max(1.0, 0.5) = 1.0
+    assert.equal(report.weightedGapRate, 1.0);
+  });
+
+  it('v0.2: 全弱信号时 weightedGapRate 显著低于 gapRate', () => {
+    // 4 个样本全是 hedging(弱,0.5)
+    // gapRate = 4/4 = 1.0 (100% 触发信号)
+    // weightedGapRate = 4*0.5 / 4 = 0.5 (加权严重度只到 50%)
+    // 读者据此判断:100% 触发率但加权只到一半,大概率是软信号噪声,该复核
+    const results: ResultEntry[] = Array.from({ length: 4 }, (_, i) => ({
+      sample_id: `s${i + 1}`,
+      variants: { v1: vr({ turns: [turn('assistant', '我不确定', [])] }) },
+    }));
+    const report = computeGapReport(results, 'v1');
+    assert.equal(report.gapRate, 1.0);
+    assert.equal(report.weightedGapRate, 0.5);
+  });
+
+  it('v0.2: 空 report 时 weightedGapRate === 0 不崩', () => {
+    const report = computeGapReport([], 'v1');
+    assert.equal(report.weightedGapRate, 0);
+  });
 });

@@ -143,9 +143,37 @@ gap_rate = (含有任意缺口信号的样本数) / (总样本数)
 
 事件粒度（缺口信号总次数 / agent 轮次总数）会被 repeat 多次或轮次特别长的样本主导。一个 agent 跑了 30 轮、其中 20 轮失败 Grep 的样本会把整个评测的 gap rate 拉爆，但实际只反映了一个样本的局部困境。
 
-**为什么不选严重度加权**：
+**严重度加权（v0.2 起）**：
 
-第一版规范不区分信号严重度。所有四类信号在聚合时一律视为"有信号"。未来 v0.2 可以引入加权（强信号 1.0、弱信号 0.5），但 v0.1 的目标是先建立基线。
+v0.1 不区分信号严重度，所有四类一律"有信号"；v0.2 引入加权以区分硬证据和软信号。每个信号按 `SIGNAL_WEIGHTS` 分两档：
+
+| 信号类型 | 权重 | 分档理由 |
+|---------|------|----------|
+| `failed_search` | **1.0**（强） | agent 工具层真的调了 Grep/Read 没命中,确定性 miss |
+| `repeated_failure` | **1.0**（强） | 同一类查询连续 ≥3 次失败,已不是偶然 |
+| `explicit_marker` | 0.5（弱） | 依赖 agent 按约定打【推断】等标记,可能漏标或假装 |
+| `hedging` | 0.5（弱） | 纯字符串匹配,"可能是"这类日常表达会误判(假阳率高,spec §2.8) |
+
+聚合产出 **`weightedGapRate`**（与 `gapRate` 并列，不替代）：
+
+```
+sample_weight(s) = max(signal.weight for signal in s)  // 无信号 = 0
+weightedGapRate = Σ sample_weight / sampleCount
+```
+
+**聚合取 max 不取 sum 的原因**：同一样本里失败搜索 + hedging 同时触发时，sample 严重度由 max 代表（失败搜索已足以判定为盲区），sum 会重复计数软信号。
+
+**两个指标并列使用**：
+
+- `gapRate`：样本触发任意信号的比例（v0.1 原定义，向后兼容）
+- `weightedGapRate`：按严重度加权的样本均值，**永远 ≤ `gapRate`**
+
+差值 `gapRate - weightedGapRate` 反映"软信号占比"：
+
+- 差值 < 10%：信号以硬证据为主，`gapRate` 结论可信
+- 差值 ≥ 10%：软信号占相当比例，`gapRate` 可能被 hedging / 显式标记拉高，建议对照 gap inventory 复核弱信号的真实含义
+
+**水印要求不变**：两个 gap rate 都必须附带 test set 标识（§7.1），不得脱离 test set 报告任何单独数值。
 
 **特殊情况处理**：
 

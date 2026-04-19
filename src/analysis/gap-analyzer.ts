@@ -49,6 +49,27 @@ const HEDGING_PATTERNS: RegExp[] = [
 /** Minimum consecutive failed-search count to trigger a repeated_failure signal. */
 const REPEATED_FAILURE_THRESHOLD = 3;
 
+/**
+ * v0.2 severity weights (spec §6).
+ *
+ * Strong (1.0): 硬证据类——agent 工具层真的撞墙了
+ *   - failed_search: Grep/Read 返回空或失败,确定性 miss
+ *   - repeated_failure: 同一类查询连续 ≥3 次失败,已不是偶然
+ *
+ * Weak (0.5): 自我陈述类——依赖模型配合,可能假阳
+ *   - explicit_marker: 依赖 agent 按约定打【推断】等标记,可能漏标
+ *   - hedging: 字符串匹配 "我不确定/可能是"等,假阳率已知较高(spec §2.8)
+ *
+ * Aggregation: 每个样本取其信号的最高权重作"样本严重度",平均到 weightedGapRate。
+ * weightedGapRate ≤ gapRate,差值反映"软信号占比"——读者据此判断结果可信度。
+ */
+export const SIGNAL_WEIGHTS: Record<GapSignalType, number> = {
+  failed_search: 1.0,
+  repeated_failure: 1.0,
+  explicit_marker: 0.5,
+  hedging: 0.5,
+};
+
 // ---------- Signal 1: failed searches ----------
 
 /**
@@ -114,6 +135,7 @@ export function extractFailedSearchSignals(toolCalls: ToolCallInfo[]): GapSignal
       type: 'failed_search',
       context,
       evidence: { tool: tc.tool, pattern, path, success: tc.success },
+      weight: SIGNAL_WEIGHTS.failed_search,
     });
   }
   // Dedup consecutive identical signals
@@ -160,6 +182,7 @@ export function extractMarkerSignals(text: string): GapSignal[] {
         type: 'explicit_marker',
         context: snippet.replace(/\s+/g, ' ').trim().slice(0, 160),
         evidence: { marker: match[0] },
+        weight: SIGNAL_WEIGHTS.explicit_marker,
       });
     }
   }
@@ -185,6 +208,7 @@ export function extractHedgingSignals(text: string): GapSignal[] {
       type: 'hedging',
       context: snippet.replace(/\s+/g, ' ').trim().slice(0, 160),
       evidence: { matched: match[0] },
+      weight: SIGNAL_WEIGHTS.hedging,
     }];
   }
   return [];
@@ -222,6 +246,7 @@ export function extractRepeatedFailureSignals(turns: TurnInfo[] | undefined): Ga
             turn: run.startTurn,
             context: `${run.tool}: 连续失败 ≥${REPEATED_FAILURE_THRESHOLD} 次`,
             evidence: { tool: run.tool, count: run.count, startTurn: run.startTurn },
+            weight: SIGNAL_WEIGHTS.repeated_failure,
           });
           emittedForThisRun = true;
         }
@@ -277,6 +302,9 @@ export function extractGapSignalsFromSample(variantResult: VariantResult, sample
 export function computeGapReport(results: ResultEntry[], variant: string): GapReport {
   const signals: GapSignal[] = [];
   const sampleIdsWithGap = new Set<string>();
+  // 每样本取信号中的最强权重,用于 weightedGapRate(v0.2 §6)。
+  // 无信号样本 sampleWeight 隐含为 0,自然不计入 weighted 和。
+  const sampleMaxWeight = new Map<string, number>();
   let sampleCount = 0;
 
   for (const entry of results) {
@@ -288,11 +316,16 @@ export function computeGapReport(results: ResultEntry[], variant: string): GapRe
     if (sampleSignals.length > 0) {
       sampleIdsWithGap.add(entry.sample_id);
       signals.push(...sampleSignals);
+      const maxW = sampleSignals.reduce((m, s) => (s.weight > m ? s.weight : m), 0);
+      sampleMaxWeight.set(entry.sample_id, maxW);
     }
   }
 
   const samplesWithGap = sampleIdsWithGap.size;
   const gapRate = sampleCount > 0 ? Number((samplesWithGap / sampleCount).toFixed(4)) : 0;
+
+  const weightSum = Array.from(sampleMaxWeight.values()).reduce((a, b) => a + b, 0);
+  const weightedGapRate = sampleCount > 0 ? Number((weightSum / sampleCount).toFixed(4)) : 0;
 
   const byType: Record<GapSignalType, number> = {
     failed_search: 0,
@@ -307,6 +340,7 @@ export function computeGapReport(results: ResultEntry[], variant: string): GapRe
     sampleCount,
     samplesWithGap,
     gapRate,
+    weightedGapRate,
     testSetPath: null,
     testSetHash: null,
     signals,

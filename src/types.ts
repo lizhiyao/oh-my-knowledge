@@ -484,6 +484,10 @@ export interface GapSignalRef {
   turn?: number;
   context: string;
   evidence?: Record<string, unknown>;
+  // v0.2 严重度加权:信号可信度的权重。强证据(failed_search / repeated_failure)为 1.0,
+  // 弱信号(explicit_marker / hedging,可能有假阳风险)为 0.5。
+  // 聚合到 GapReport.weightedGapRate 时用来区分"硬盲区"和"可能噪声"。
+  weight: number;
 }
 
 export interface GapReport {
@@ -491,6 +495,10 @@ export interface GapReport {
   sampleCount: number;
   samplesWithGap: number;
   gapRate: number;
+  // v0.2 严重度加权 gap rate:每个样本取其信号的最强权重,再按样本均值聚合。
+  // `weightedGapRate ≤ gapRate`,差值反映"弱信号占比"——
+  // 若 raw=30% 但 weighted=15% 意味着一半样本是软信号,该复核。
+  weightedGapRate: number;
   testSetPath?: string | null;
   testSetHash?: string | null;
   signals: GapSignalRef[];

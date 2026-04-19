@@ -328,6 +328,40 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .variance-table td.diagnostic-cell{min-width:180px}
 .variance-table .diag-faded strong{opacity:0.5;font-weight:500}
 
+/* Knowledge Interaction section (v0.17 / A):
+   variant card is the only visual container, two inner columns use a
+   single vertical divider instead of nested bg — compresses hierarchy
+   from 3-4 layers to 2. */
+.ki-card{margin-bottom:10px;padding:12px 14px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)}
+.ki-card-header{display:flex;flex-direction:column;gap:3px;margin-bottom:10px}
+.ki-card-title{font-size:15px;font-weight:600;color:var(--text-primary)}
+.ki-card-meta{font-size:var(--fs-micro);color:var(--text-muted);font-weight:400}
+.ki-columns{display:flex;gap:0;flex-wrap:wrap}
+.ki-col{flex:1;min-width:220px;padding:0 18px}
+.ki-col:first-child{padding-left:0;border-right:1px solid var(--border)}
+.ki-col:last-child{padding-right:0}
+@media(max-width:640px){
+  .ki-col{padding:0;min-width:100%;border-right:none !important}
+  .ki-col+.ki-col{margin-top:16px;padding-top:14px;border-top:1px solid var(--border)}
+}
+.ki-col-header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.ki-col-title{font-size:13px;color:var(--text-secondary);font-weight:500}
+.ki-col-value{font-size:22px;font-weight:600}
+.ki-bar{height:6px;background:var(--bg-card);border-radius:4px;margin-bottom:8px;overflow:hidden}
+.ki-bar-fill{height:100%;border-radius:4px;transition:width 0.2s}
+.ki-inventory-item{padding:6px 10px;margin:4px 0;background:var(--bg-card);border-left:3px solid var(--border-hover);border-radius:4px;font-size:var(--fs-detail);line-height:1.5}
+.ki-inventory-item[data-severity="strong"]{border-left-color:var(--red)}
+.ki-inventory-item[data-severity="medium"]{border-left-color:var(--yellow)}
+.ki-inventory-item[data-severity="weak"]{border-left-color:var(--text-muted)}
+.ki-inventory-item-meta{color:var(--text-muted);font-size:var(--fs-micro);margin-bottom:2px}
+.ki-inventory-item-ctx{color:var(--text-secondary);word-break:break-all}
+.ki-desc{font-size:12px;color:var(--text-muted);margin-bottom:4px;line-height:1.6}
+.ki-desc-hint{font-size:11px;color:var(--text-faint);margin-bottom:12px;line-height:1.5}
+.ki-details{margin-top:8px;padding-top:8px;border-top:1px solid var(--border)}
+.ki-details>summary{cursor:pointer;font-size:var(--fs-micro);color:var(--text-muted);padding:2px 0;list-style:revert;user-select:none;transition:color 0.15s}
+.ki-details>summary:hover{color:var(--text-secondary)}
+.ki-details[open]>summary{color:var(--text-secondary);margin-bottom:6px}
+
 /* Three-layer independent significance breakdown (PR-2).
    Default collapsed; expands inline under each comparison. */
 .layer-breakdown-row>td{padding:0 !important;background:transparent;border-top:1px dashed var(--border-hover)}

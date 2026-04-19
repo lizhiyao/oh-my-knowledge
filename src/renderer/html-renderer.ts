@@ -6,8 +6,7 @@ import { e, fmtCost, fmtDuration, COLORS, DEFAULT_LANG, t, layout } from './layo
 import {
   renderAgentOverview,
   renderAnalysis,
-  renderCoverageSection,
-  renderGapSection,
+  renderKnowledgeInteractionSection,
   renderSummaryCards,
   renderVarianceComparisons,
 } from './summary.js';
@@ -275,9 +274,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
 
     ${renderAgentOverview(variants, summary, lang)}
 
-    ${renderCoverageSection(report.analysis?.coverage, lang)}
-
-    ${renderGapSection(report.analysis?.gapReports, lang)}
+    ${renderKnowledgeInteractionSection(report.analysis?.coverage, report.analysis?.gapReports, lang)}
 
     <section>${sampleTable}</section>
 
