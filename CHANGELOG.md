@@ -8,6 +8,12 @@ omk（`oh-my-knowledge`）的版本变更记录。格式参照 [Keep a Changelog
 
 ## [Unreleased]
 
+---
+
+## [0.17.0] - 2026-04-19
+
+**一句话**:知识缺口信号 v0.2——强证据 / 弱信号按权重分开聚合(weightedGapRate 与 gapRate 并列);hedging 从"regex 假阳 50%+"升级为"regex 召回 + LLM 二次判定";报告把 coverage 和 gap 合并成单 section 并压层减噪(variant card 高度从 ~380px 砍到 ~110px)。工作项 C(competency questions / 主动探测)明确推迟到 v0.18 单独立题。
+
 ### Added
 
 - **v0.17 工作项 A · 知识缺口信号严重度加权（PR-2 / spec §6）**:`GapSignalRef.weight` 新增必填字段,每个 signal 按类型自带权重——failed_search / repeated_failure 为强证据(权重 1.0),explicit_marker / hedging 为弱信号(权重 0.5)。`GapReport` 新增 `weightedGapRate: number` 指标,按样本最强信号权重聚合,和 `gapRate` 并列展示。
