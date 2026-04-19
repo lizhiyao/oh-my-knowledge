@@ -184,9 +184,9 @@
 
 ### 5. 稳定性 = 跨重复运行（test-retest），不是跨样本散度
 
-**稳定性（stability）采用统计学 / psychometrics 的标准定义：test-retest reliability——同一对象在重复运行下的分数一致性。**
+**稳定性（stability）的概念对齐 psychometrics 的 test-retest reliability——同一对象在重复运行下的分数一致性。omk 采用 CV（变异系数，工程领域相对离散度指标）作主指标；它与 psychometrics 严格意义的 test-retest reliability（通常用 ICC 或 Pearson r）不完全等价，不是 psychometrics 标准下的 reliability 测量，而是同类概念下的工程化近似。**
 
-omk 的具体实现：`--repeat N` 让同一 (variant × sample) 跑 N 次，`report.variance.perVariant[v]` 存多次运行的分数序列。稳定性主指标 **CV = σ / mean**（变异系数，无量纲相对散度），副指标 σ + 95% CI。
+omk 的具体实现：`--repeat N` 让同一 (variant × sample) 跑 N 次，`report.variance.perVariant[v]` 存多次运行的分数序列。稳定性主指标 **CV = σ / mean**（变异系数，无量纲相对散度），副指标 σ + 95% CI。阈值 `<5% / 5~15% / >15%` 为 1-5 分数量纲下的内部经验值，不是学术文献引用值。
 
 **什么不是稳定性**：
 
