@@ -212,6 +212,8 @@ omk 的四件独家事每一件都能对外讲清楚：
 
 **case study 跟随版本**：每版发布附一篇短博客/case study（《为什么废了 --variants》《为什么把 compositeScore 挪走》《主动探测 vs 被动收集的 insiop 实证》这类），让外部用户跟得上心智变化。
 
+**CHANGELOG 随 commit 同步**：`CHANGELOG.md` 的 `[Unreleased]` section 要和功能 commit 同步更新——功能合入即追加对应条目（Added / Changed / Removed-BREAKING / Fixed）。发版时把 `[Unreleased]` 改成 `[x.y.z] - YYYY-MM-DD` 并新建空的 `[Unreleased]`。断章追记比 commit 时写累计。
+
 ---
 
 *最后更新：2026-04-19*
