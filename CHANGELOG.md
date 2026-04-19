@@ -8,6 +8,12 @@ omk（`oh-my-knowledge`）的版本变更记录。格式参照 [Keep a Changelog
 
 ## [Unreleased]
 
+---
+
+## [0.16.0] - 2026-04-19
+
+**一句话**:废 composite 主分、立三层独立可观察维度;废 `--variants` 改 experiment role 显式声明;立 `eval.yaml` 为"evaluation as code"主入口;把稳定性从"成功率 / 跨样本 range"修到跨重复运行的 CV;把 bench ci 从守合成分改成三层 all-pass。
+
 ### Added
 
 - **PR-2 三层独立 t 检验**：fact / behavior / judge 三个内部层各自计算 Welch's t-test + Cohen's d + 95% CI，避免"judge 层 +0.8、事实层 +0.1"这类结构性差异被合成分稀释。`VarianceComparison.byLayer` 挂结构化数据，HTML 报告在每个 comparison 下附一个可展开的 `<details>` 子表。
