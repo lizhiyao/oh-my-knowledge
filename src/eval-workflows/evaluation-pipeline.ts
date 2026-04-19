@@ -246,6 +246,7 @@ export interface EvaluationPipelineOptions {
   retry?: number;
   existingResults?: Record<string, Record<string, VariantResult>>;
   requires?: DependencyRequirements;
+  layeredStats?: boolean;
 }
 
 export async function executeEvaluationPipeline({
@@ -277,6 +278,7 @@ export async function executeEvaluationPipeline({
   retry = 0,
   existingResults,
   requires,
+  layeredStats = false,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -352,6 +354,7 @@ export async function executeEvaluationPipeline({
         request: runState.request,
         run,
         job,
+        layeredStats,
       }),
       results,
       artifacts,

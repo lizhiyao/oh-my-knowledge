@@ -370,7 +370,8 @@ async function evaluate(skillFilePath: string, { samplesPath, skillDir, model, j
   const { report } = await runEvaluation({
     samplesPath,
     skillDir,
-    variants: [skillFilePath],
+    // evolve 评测每一轮只跑当前迭代的 skill，没有对照组；标为 treatment。
+    variantSpecs: [{ name: skillFilePath, role: 'treatment', expr: skillFilePath }],
     model,
     judgeModel,
     outputDir: null, // don't persist intermediate reports

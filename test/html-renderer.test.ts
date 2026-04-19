@@ -18,14 +18,15 @@ const SAMPLE_REPORT: Report = {
     nodeVersion: process.version,
     artifactHashes: { v1: 'hash-v1', v2: 'hash-v2' },
     variantConfigs: [
-      { variant: 'v1', artifactKind: 'skill', artifactSource: 'variant-name', executionStrategy: 'system-prompt', experimentType: 'artifact-injection', hasArtifactContent: true, cwd: null },
-      { variant: 'v2', artifactKind: 'baseline', artifactSource: 'custom', executionStrategy: 'baseline', experimentType: 'runtime-context-only', hasArtifactContent: false, cwd: '/tmp/project-a' },
+      { variant: 'v1', artifactKind: 'skill', artifactSource: 'variant-name', executionStrategy: 'system-prompt', experimentType: 'artifact-injection', experimentRole: 'treatment', hasArtifactContent: true, cwd: null },
+      { variant: 'v2', artifactKind: 'baseline', artifactSource: 'custom', executionStrategy: 'baseline', experimentType: 'runtime-context-only', experimentRole: 'control', hasArtifactContent: false, cwd: '/tmp/project-a' },
     ],
   },
   summary: {
     v1: {
       totalSamples: 2, successCount: 2, errorCount: 0, errorRate: 0,
       avgCompositeScore: 4.0, minCompositeScore: 3.5, maxCompositeScore: 4.5,
+      avgFactScore: 4.2, avgBehaviorScore: 4.0, avgJudgeScore: 3.8,
       avgAssertionScore: 4.2, avgLlmScore: 3.8, minLlmScore: 3, maxLlmScore: 4.5,
       avgDurationMs: 2000, avgInputTokens: 100, avgOutputTokens: 500, avgTotalTokens: 600,
       totalCostUSD: 0.025,
@@ -37,6 +38,7 @@ const SAMPLE_REPORT: Report = {
     v2: {
       totalSamples: 2, successCount: 2, errorCount: 0, errorRate: 0,
       avgCompositeScore: 4.8, minCompositeScore: 4.5, maxCompositeScore: 5.0,
+      avgFactScore: 5.0, avgBehaviorScore: 4.8, avgJudgeScore: 4.6,
       avgAssertionScore: 5.0, avgLlmScore: 4.6, minLlmScore: 4, maxLlmScore: 5,
       avgDurationMs: 3000, avgInputTokens: 120, avgOutputTokens: 600, avgTotalTokens: 720,
       totalCostUSD: 0.025,
@@ -111,18 +113,118 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('not found'));
   });
 
-  it('renders four dimensions', () => {
+  it('renders six dimensions (Fact / Behavior / LLM judge / Cost / Efficiency / Stability)', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
-    assert.ok(html.includes('dimQuality'));
-    assert.ok(html.includes('dimCost'));
-    assert.ok(html.includes('dimEfficiency'));
-    assert.ok(html.includes('dimStability'));
+    // 强断言:thead 里必须出现 6 个 dim* i18n key,不是散落在 tooltip 里
+    const thMatches = html.match(/<th data-i18n="dim(Fact|Behavior|Judge|Cost|Efficiency|Stability)"/g);
+    assert.ok(thMatches, 'thead should contain dim* th elements');
+    assert.equal(thMatches.length, 6, `expected 6 dim* <th>, got ${thMatches.length}`);
   });
 
-  it('renders quality scores', () => {
+  it('renders layer scores (fact / behavior / judge independently)', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
-    assert.ok(html.includes('4')); // composite score
-    assert.ok(html.includes('4.8'));
+    // 主表里三层独立 cell 带 primary class;每 variant 3 primary × 2 variant = 6 primary cell
+    const primaryMatches = html.match(/summary-value summary-value-primary/g);
+    assert.ok(primaryMatches, 'primary layer cells should exist');
+    assert.ok(primaryMatches.length >= 6, `expected ≥ 6 primary layer cells, got ${primaryMatches.length}`);
+    // 关键数字应该出现在 primary cell 附近(而非随便 tooltip 里):用 regex 限定上下文
+    assert.match(html, /summary-value-primary[^"]*"[^>]*>4\.20</);  // v1 fact
+    assert.match(html, /summary-value-primary[^"]*"[^>]*>5\.00</);  // v2 fact
+    assert.match(html, /summary-value-primary[^"]*"[^>]*>3\.80</);  // v1 judge
+    assert.match(html, /summary-value-primary[^"]*"[^>]*>4\.60</);  // v2 judge
+  });
+
+  it('stability cell: 单 run (无 variance) 显示 "—" + 引导', () => {
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    // SAMPLE_REPORT 默认无 variance 字段,这正是单 run 场景
+    assert.equal(report.variance, undefined);
+    const html = renderRunDetail(report);
+    // 稳定性主值应该是 "—",副区提示需 --repeat
+    assert.match(html, /需 --repeat ≥ 2/);
+  });
+
+  it('stability cell: 有 variance 数据显示 CV + 白话定性 (稳定/较稳/波动大)', () => {
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    report.variance = {
+      runs: 3,
+      perVariant: {
+        v1: { scores: [4.0, 4.05, 3.95], mean: 4.0, lower: 3.93, upper: 4.07, stddev: 0.04 },
+        v2: { scores: [4.8, 4.82, 4.78], mean: 4.8, lower: 4.76, upper: 4.84, stddev: 0.02 },
+      },
+      comparisons: [],
+    };
+    const html = renderRunDetail(report);
+    // 小抖动 CV < 5% → "稳定" 标签
+    assert.match(html, /稳定/);
+    assert.match(html, /CV \d/);  // CV 数字出现
+    assert.match(html, /95% CI/);
+  });
+
+  it('stability cell: errorCount > 0 时副区显示完成率 alert', () => {
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    report.summary.v1.errorCount = 1;
+    report.summary.v1.successCount = 1;
+    report.summary.v1.totalSamples = 2;
+    const html = renderRunDetail(report);
+    // alert 文案:"X% 完成率 · 1 失败"
+    assert.match(html, /完成率/);
+    assert.match(html, /50%/);
+  });
+
+  it('--layered-stats: <details> is OPEN when report.meta.layeredStats=true (PR-2 穿透测试)', () => {
+    // 构造带 byLayer variance data + layeredStats=true 的 report 验证渲染器读取 meta flag
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    const mkLayer = (mean: number) => ({
+      scores: [mean - 0.1, mean + 0.1], mean, lower: mean - 0.1, upper: mean + 0.1, stddev: 0.1,
+    });
+    const mkComp = () => ({
+      meanDiff: -0.8, tStatistic: -8, df: 2, significant: true,
+      effectSize: { cohensD: -8, hedgesG: -7, primary: 'g' as const, magnitude: 'large' as const, pooledStddev: 0.1, n1: 2, n2: 2 },
+    });
+    report.variance = {
+      runs: 2,
+      perVariant: {
+        v1: { ...mkLayer(4.0), byLayer: { fact: mkLayer(4.2), behavior: mkLayer(4.0), judge: mkLayer(3.8) } },
+        v2: { ...mkLayer(4.8), byLayer: { fact: mkLayer(5.0), behavior: mkLayer(4.8), judge: mkLayer(4.6) } },
+      },
+      comparisons: [{
+        a: 'v1', b: 'v2', ...mkComp(),
+        byLayer: { fact: mkComp(), behavior: mkComp(), judge: mkComp() },
+      }],
+    };
+    report.meta.layeredStats = true;
+
+    const html = renderRunDetail(report);
+    // layer-breakdown <details> 应当带 open 属性,默认展开
+    assert.match(html, /<details class="layer-breakdown" open>/);
+  });
+
+  it('--layered-stats: <details> is COLLAPSED by default (meta.layeredStats absent)', () => {
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    const mkLayer = (mean: number) => ({
+      scores: [mean - 0.1, mean + 0.1], mean, lower: mean - 0.1, upper: mean + 0.1, stddev: 0.1,
+    });
+    const mkComp = () => ({
+      meanDiff: -0.8, tStatistic: -8, df: 2, significant: true,
+      effectSize: { cohensD: -8, hedgesG: -7, primary: 'g' as const, magnitude: 'large' as const, pooledStddev: 0.1, n1: 2, n2: 2 },
+    });
+    report.variance = {
+      runs: 2,
+      perVariant: {
+        v1: { ...mkLayer(4.0), byLayer: { fact: mkLayer(4.2), behavior: mkLayer(4.0), judge: mkLayer(3.8) } },
+        v2: { ...mkLayer(4.8), byLayer: { fact: mkLayer(5.0), behavior: mkLayer(4.8), judge: mkLayer(4.6) } },
+      },
+      comparisons: [{
+        a: 'v1', b: 'v2', ...mkComp(),
+        byLayer: { fact: mkComp(), behavior: mkComp(), judge: mkComp() },
+      }],
+    };
+    // meta.layeredStats 不设置(或显式 false)—— details 应不带 open
+
+    const html = renderRunDetail(report);
+    // <details> 结构存在,但不带 open 属性
+    assert.match(html, /<details class="layer-breakdown">/);
+    assert.doesNotMatch(html, /<details class="layer-breakdown" open>/);
   });
 
   it('renders exec cost (not total cost)', () => {

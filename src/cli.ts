@@ -5,9 +5,12 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { discoverVariants } from './inputs/skill-loader.js';
+import { discoverVariants, parseVariantCwd } from './inputs/skill-loader.js';
+import { loadEvalConfig, configVariantsToSpecs } from './inputs/eval-config.js';
 import type {
+  EvalConfig,
   Report,
+  VariantSpec,
   VariantSummary,
   GitInfo,
   ReportStore,
@@ -21,7 +24,7 @@ import type {
 interface RunConfig {
   samplesPath: string;
   skillDir: string;
-  variants: string[];
+  variantSpecs: VariantSpec[];
   model: string | undefined;
   judgeModel: string | undefined;
   outputDir: string;
@@ -38,6 +41,7 @@ interface RunConfig {
   blind?: boolean | undefined;
   retry?: number;
   resume?: string;
+  layeredStats?: boolean;
   onProgress?: ProgressCallback | null;
 }
 
@@ -132,28 +136,34 @@ interface ParseRunConfigResult {
 
 const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
 
-// Shared CLI options for run/ci commands
+// Shared CLI options for run/ci commands.
+// Defaults are applied inside parseRunConfig (after config-file merge) so that
+// CLI `undefined` can be reliably distinguished from "user passed the default value".
+// Priority order resolved in parseRunConfig: CLI arg > --config file > hard-coded default.
 const RUN_OPTIONS: ParseArgsConfig['options'] = {
-  samples: { type: 'string', default: 'eval-samples.json' },
-  'skill-dir': { type: 'string', default: 'skills' },
-  variants: { type: 'string' },
-  model: { type: 'string', default: 'sonnet' },
-  'judge-model': { type: 'string', default: 'haiku' },
-  'output-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
-  'no-judge': { type: 'boolean', default: false },
-  'no-cache': { type: 'boolean', default: false },
-  'dry-run': { type: 'boolean', default: false },
-  concurrency: { type: 'string', default: '1' },
-  timeout: { type: 'string', default: '120' },
-  executor: { type: 'string', default: 'claude' },
+  samples: { type: 'string' },
+  'skill-dir': { type: 'string' },
+  control: { type: 'string' },
+  treatment: { type: 'string' },
+  config: { type: 'string' },
+  model: { type: 'string' },
+  'judge-model': { type: 'string' },
+  'output-dir': { type: 'string' },
+  'no-judge': { type: 'boolean' },
+  'no-cache': { type: 'boolean' },
+  'dry-run': { type: 'boolean' },
+  concurrency: { type: 'string' },
+  timeout: { type: 'string' },
+  executor: { type: 'string' },
   'judge-executor': { type: 'string' },
-  each: { type: 'boolean', default: false },
-  'skip-preflight': { type: 'boolean', default: false },
+  each: { type: 'boolean' },
+  'skip-preflight': { type: 'boolean' },
   'mcp-config': { type: 'string' },
-  'no-serve': { type: 'boolean', default: false },
-  verbose: { type: 'boolean', default: false },
-  retry: { type: 'string', default: '0' },
+  'no-serve': { type: 'boolean' },
+  verbose: { type: 'boolean' },
+  retry: { type: 'string' },
   resume: { type: 'string' },
+  'layered-stats': { type: 'boolean' },
 };
 
 // ---------------------------------------------------------------------------
@@ -170,38 +180,131 @@ function parseRunConfig(
     strict: false,
   });
 
-  let samplesFile: string = (values.samples as string) ?? 'eval-samples.json';
-  if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
-    if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
-    else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
+  if (values.variants !== undefined) {
+    throw new Error(
+      `--variants 已在 v0.16 废除，请改用 --control <expr> 与 --treatment <v1,v2,...>\n`
+      + `  迁移示例：--variants baseline,my-skill  →  --control baseline --treatment my-skill\n`
+      + `  复杂场景可用 --config eval.yaml（参见 docs/terminology-spec.md）`,
+    );
   }
 
-  const skillDir: string = resolve(values['skill-dir'] as string);
-  const variants: string[] = values.variants
-    ? (values.variants as string).split(',').map((v: string) => v.trim()).filter(Boolean)
-    : discoverVariants(skillDir);
+  // 1) Load --config (if provided). All subsequent fields fall back to it when CLI is silent.
+  const evalConfig: EvalConfig | null = values.config
+    ? loadEvalConfig(values.config as string)
+    : null;
+
+  // 2) Resolve samples path: CLI > config > auto-detect .json/.yaml/.yml in cwd.
+  const cliSamples = values.samples as string | undefined;
+  let samplesFile: string;
+  if (cliSamples) {
+    samplesFile = cliSamples;
+  } else if (evalConfig?.samples) {
+    samplesFile = evalConfig.samples;  // already resolved against config file dir
+  } else {
+    samplesFile = 'eval-samples.json';
+    if (!existsSync(resolve(samplesFile))) {
+      if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
+      else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
+    }
+  }
+
+  const skillDir: string = resolve((values['skill-dir'] as string | undefined) ?? 'skills');
+
+  // 3) Resolve variantSpecs: CLI > config. If neither, error with a helpful hint.
+  const controlExpr = values.control as string | undefined;
+  const treatmentExprs: string[] = values.treatment
+    ? (values.treatment as string).split(',').map((v: string) => v.trim()).filter(Boolean)
+    : [];
+
+  let variantSpecs: VariantSpec[];
+  if (controlExpr || treatmentExprs.length > 0) {
+    // CLI roles present → CLI entirely replaces config.variants (no merging).
+    variantSpecs = [];
+    if (controlExpr) {
+      variantSpecs.push({ name: parseVariantCwd(controlExpr).name, role: 'control', expr: controlExpr });
+    }
+    for (const expr of treatmentExprs) {
+      variantSpecs.push({ name: parseVariantCwd(expr).name, role: 'treatment', expr });
+    }
+  } else if (evalConfig) {
+    variantSpecs = configVariantsToSpecs(evalConfig.variants);
+  } else {
+    const discovered = discoverVariants(skillDir);
+    const hint = discovered.length > 0 ? `\n  skill-dir (${skillDir}) 下发现的候选：${discovered.join(', ')}` : '';
+    throw new Error(
+      `请通过 --control / --treatment 或 --config eval.yaml 声明 variant 角色。\n`
+      + `  示例：omk bench run --control baseline --treatment my-skill${hint}\n`
+      + `  术语见 docs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
+    );
+  }
+
+  const seenNames = new Set<string>();
+  for (const spec of variantSpecs) {
+    if (seenNames.has(spec.name)) {
+      throw new Error(
+        `variant "${spec.name}" 重复出现——同一 variant 不能同时属于 --control 与 --treatment，也不能在 --treatment 中重复。`,
+      );
+    }
+    seenNames.add(spec.name);
+  }
+
+  // 4) Apply CLI > config > hard-coded default for all other fields.
+  const executorName = (values.executor as string | undefined) ?? evalConfig?.executor ?? 'claude';
+  const judgeExecutorName =
+    (values['judge-executor'] as string | undefined) ?? evalConfig?.judgeExecutor ?? executorName;
+  const model = (values.model as string | undefined) ?? evalConfig?.model ?? 'sonnet';
+  const judgeModelRaw =
+    values['judge-model'] !== undefined
+      ? (values['judge-model'] as string | undefined)
+      : evalConfig?.judgeModel ?? 'haiku';
+  const judgeModel = judgeModelRaw ?? 'haiku';
+  const outputDir = resolve((values['output-dir'] as string | undefined) ?? DEFAULT_REPORTS_DIR);
+  const concurrencyRaw =
+    (values.concurrency as string | undefined) !== undefined
+      ? Number(values.concurrency)
+      : evalConfig?.concurrency ?? 1;
+  const concurrency = Math.max(1, Number(concurrencyRaw) || 1);
+  const timeoutSec =
+    (values.timeout as string | undefined) !== undefined
+      ? Number(values.timeout)
+      : evalConfig?.timeoutMs
+        ? evalConfig.timeoutMs / 1000
+        : 120;
+  const timeoutMs = Math.max(1, Number(timeoutSec) || 120) * 1000;
+  const noJudge = (values['no-judge'] as boolean | undefined) ?? false;
+  const noCache = (values['no-cache'] as boolean | undefined) ?? evalConfig?.noCache ?? false;
+  const dryRun = (values['dry-run'] as boolean | undefined) ?? false;
+  const skipPreflight = (values['skip-preflight'] as boolean | undefined) ?? false;
+  const mcpConfig = (values['mcp-config'] as string | undefined) ?? evalConfig?.mcpConfig;
+  const verbose = (values.verbose as boolean | undefined) ?? false;
+  const retry = Math.max(0, Number(values.retry ?? 0) || 0);
+  const resume = values.resume as string | undefined;
+  const blind = (values.blind as boolean | undefined) ?? evalConfig?.blind ?? false;
+  const layeredStats = (values['layered-stats'] as boolean | undefined) ?? false;
 
   return {
     values,
     config: {
       samplesPath: resolve(samplesFile),
       skillDir,
-      variants,
-      model: values.model as string | undefined,
-      judgeModel: values['judge-model'] as string | undefined,
-      outputDir: resolve(values['output-dir'] as string),
-      noJudge: values['no-judge'] as boolean | undefined,
-      noCache: values['no-cache'] as boolean | undefined,
-      dryRun: values['dry-run'] as boolean | undefined,
-      concurrency: Math.max(1, Number(values.concurrency) || 1),
-      timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
-      executorName: values.executor as string | undefined,
-      judgeExecutorName: (values['judge-executor'] || values.executor) as string | undefined,
-      skipPreflight: values['skip-preflight'] as boolean | undefined,
-      mcpConfig: values['mcp-config'] as string | undefined,
-      verbose: values.verbose as boolean | undefined,
-      retry: Math.max(0, Number(values.retry) || 0),
-      resume: values.resume as string | undefined,
+      variantSpecs,
+      model,
+      judgeModel,
+      outputDir,
+      noJudge,
+      noCache,
+      dryRun,
+      concurrency,
+      timeoutMs,
+      executorName,
+      judgeExecutorName,
+      skipPreflight,
+      mcpConfig,
+      verbose,
+      retry,
+      resume,
+      blind,
+      layeredStats,
     },
   };
 }
@@ -226,12 +329,19 @@ Options for "bench run":
 
   --samples <path>       Sample file (default: eval-samples.json)
   --skill-dir <path>     Skill definitions directory (default: skills)
-  --variants <v1,v2>     Comma-separated variant expressions (auto-detected from skill-dir)
-                         Each variant resolves to an artifact and optional runtime context
-                         Use "baseline" for baseline artifact comparison
-                         Use "git:name" to load artifact from last commit
-                         Use "git:ref:name" to load from specific commit
-                         Use path with "/" to load artifact from file directly
+  --control <expr>       Control-group variant expression (experiment role = control)
+  --treatment <v1,v2>    Treatment-group variant expressions (comma-separated; role = treatment)
+                         Each variant expression resolves to an artifact and optional runtime context:
+                           "baseline"       — bare model, no artifact injected
+                           "git:name"       — artifact from last commit
+                           "git:ref:name"   — artifact from specific commit
+                           path with "/"    — artifact from file directly (e.g. ./v1.md)
+                           "name@/cwd"      — attach runtime context / cwd
+                         At least one of --control / --treatment must be provided.
+  --config <path>        YAML/JSON config file (evaluation-as-code).
+                         Declares samples + variants + model + executor in one file.
+                         CLI flags override config fields when both are provided.
+                         Relative paths inside the config are resolved against its directory.
   --model <name>         Model under test (default: sonnet)
   --judge-model <name>   Judge model (default: haiku)
   --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
@@ -254,10 +364,20 @@ Options for "bench run":
                          (default: .mcp.json in current directory)
   --no-serve             Skip auto-starting report server after evaluation
   --verbose              Print detailed progress for each sample (exec result, grading phases)
+  --layered-stats        Expand the three-layer (fact/behavior/judge) independent
+                         significance breakdown in the HTML report by default.
+                         Without this flag, the breakdown is collapsed behind a
+                         click-to-expand summary under each comparison.
 
 Options for "bench ci":
   (same as "bench run", plus:)
-  --threshold <number>   Minimum composite score to pass (default: 3.5)
+  --threshold <number>   Minimum score to pass, applied INDEPENDENTLY to each of
+                         the three layers (fact / behavior / LLM judge). ANY
+                         layer below threshold fails the gate — this prevents
+                         composite averaging from masking a single-layer collapse.
+                         Default: 3.5. If all three layers are absent (no
+                         assertions and no rubric defined in eval-samples), the
+                         gate FAILS with a configuration hint — no composite fallback.
 
 Options for "bench report":
   --port <number>        Server port (default: 7799)
@@ -283,10 +403,13 @@ Options for "bench evolve":
   --executor <name>      Executor to use (default: claude)
 
 Examples:
-  omk bench run --variants v1,v2
-  omk bench run --variants baseline,my-skill
-  omk bench run --variants git:my-skill,my-skill
-  omk bench run --variants ./old-skill.md,./new-skill.md
+  omk bench run --control v1 --treatment v2
+  omk bench run --control baseline --treatment my-skill
+  omk bench run --control git:my-skill --treatment my-skill
+  omk bench run --control ./old-skill.md --treatment ./new-skill.md
+  omk bench run --control baseline --treatment v1,v2,v3
+  omk bench run --config eval.yaml
+  omk bench run --config eval.yaml --model sonnet-4.6   # CLI overrides config
   omk bench run --each
   omk bench run --dry-run
   omk bench report --port 8080
@@ -462,7 +585,7 @@ async function handleRun(argv: string[]): Promise<void> {
 
         if (!values['no-serve'] && process.stdout.isTTY) {
           const { createReportServer } = await import('./server/report-server.js');
-          const server: ReportServer = createReportServer({ reportsDir: resolve(values['output-dir'] as string) });
+          const server: ReportServer = createReportServer({ reportsDir: config.outputDir });
           const serverUrl: string = await server.start();
           const reportUrl: string = `${serverUrl}/run/${report.id}`;
           process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
@@ -475,13 +598,19 @@ async function handleRun(argv: string[]): Promise<void> {
           execFileCb(openCmd, [reportUrl], () => { });
         } else if (!values['no-serve']) {
           process.stderr.write('\n💡 非交互环境，已跳过 report server\n');
-          process.stderr.write(`   查看报告: omk bench report --reports-dir ${resolve(values['output-dir'] as string)}\n`);
+          process.stderr.write(`   查看报告: omk bench report --reports-dir ${config.outputDir}\n`);
         }
       }
       return;
     }
 
-    const repeatCount: number = Math.max(1, Number(values.repeat) || 1);
+    // --repeat 诚实输入校验:非 ≥1 整数时提示并钳到 1,不静默掩盖用户错字/极端输入
+    const repeatRaw = values.repeat as string | undefined;
+    const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : 1;
+    if (repeatRaw !== undefined && (!Number.isFinite(parsedRepeat) || parsedRepeat < 1)) {
+      process.stderr.write(`⚠ --repeat "${repeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次评测执行\n`);
+    }
+    const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
     let report: Report;
     let filePath: string | null;
 
@@ -510,7 +639,7 @@ async function handleRun(argv: string[]): Promise<void> {
         // Auto-start report server
         const { createReportServer } = await import('./server/report-server.js');
         const server: ReportServer = createReportServer({
-          reportsDir: resolve(values['output-dir'] as string),
+          reportsDir: config.outputDir,
         });
         const serverUrl: string = await server.start();
         const reportUrl: string = `${serverUrl}/run/${report.id}`;
@@ -525,7 +654,7 @@ async function handleRun(argv: string[]): Promise<void> {
         execFileCb(openCmd, [reportUrl], () => { });
       } else if (!values['no-serve']) {
         process.stderr.write('\n💡 非交互环境，已跳过 report server\n');
-        process.stderr.write(`   查看报告: omk bench report --reports-dir ${resolve(values['output-dir'] as string)}\n`);
+        process.stderr.write(`   查看报告: omk bench report --reports-dir ${config.outputDir}\n`);
       }
     }
   } catch (err: unknown) {
@@ -678,7 +807,7 @@ async function handleInit(argv: string[]): Promise<void> {
   console.log('Next steps:');
   console.log('  1. Edit eval-samples.json to add your test cases');
   console.log('  2. Edit skills/v1.md and skills/v2.md with your skill versions');
-  console.log('  3. Run: omk bench run --variants v1,v2');
+  console.log('  3. Run: omk bench run --control v1 --treatment v2');
 }
 
 // ---------------------------------------------------------------------------
@@ -894,20 +1023,16 @@ async function handleCi(argv: string[]): Promise<void> {
     const { report } = (await runEvaluation(config)) as EvalResult;
 
     const threshold: number = Number(values.threshold);
-    let allPass: boolean = true;
 
     if ((report as Report & { dryRun?: boolean }).dryRun) {
       console.log('CI dry-run: no scores to check');
       process.exit(0);
     }
 
-    for (const [variant, stats] of Object.entries(report.summary || {})) {
-      const score: number = stats.avgCompositeScore ?? 0;
-      const status: string = score >= threshold ? 'PASS' : 'FAIL';
-      console.log(`${status}: ${variant} score=${score.toFixed(2)} threshold=${threshold}`);
-      if (score < threshold) allPass = false;
-    }
-
+    // three-gate 逻辑抽到 src/eval-core/ci-gates.ts 作纯函数,便于测试;此处只做 IO。
+    const { evaluateCiGates } = await import('./eval-core/ci-gates.js');
+    const { allPass, lines } = evaluateCiGates(report.summary || {}, threshold);
+    for (const line of lines) console.log(line);
     process.exit(allPass ? 0 : 1);
   } catch (err: unknown) {
     console.error(`Error: ${(err as Error).message}`);

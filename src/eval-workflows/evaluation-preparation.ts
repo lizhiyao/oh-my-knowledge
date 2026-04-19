@@ -6,7 +6,7 @@ import { buildVariantConfig } from '../eval-core/execution-strategy.js';
 import { loadMcpConfig, resolveMcpUrls } from '../inputs/mcp-resolver.js';
 import { resolveUrls } from '../inputs/url-fetcher.js';
 import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
-import type { Artifact, McpServers, Sample, Task } from '../types.js';
+import type { Artifact, McpServers, Sample, Task, VariantSpec } from '../types.js';
 
 export interface PreparedEvaluationRun {
   samples: Sample[];
@@ -19,20 +19,32 @@ export interface PreparedEvaluationRun {
 export async function prepareEvaluationRun({
   samplesPath,
   skillDir,
-  variants,
+  variantSpecs,
   artifacts,
   dryRun,
   mcpConfig,
 }: {
   samplesPath: string;
   skillDir: string;
-  variants: string[];
+  variantSpecs: VariantSpec[];
   artifacts?: Artifact[];
   dryRun: boolean;
   mcpConfig?: string;
 }): Promise<PreparedEvaluationRun> {
   const { samples, requires } = loadSamples(samplesPath);
-  const resolvedArtifacts = artifacts || resolveArtifacts(resolve(skillDir), variants);
+
+  // Build expressions from specs (preserving order) and resolve to artifacts.
+  const variantExpressions = variantSpecs.map((spec) => spec.expr);
+  const resolvedArtifacts = artifacts || resolveArtifacts(resolve(skillDir), variantExpressions);
+
+  // Attach experimentRole to each artifact by matching spec.name to artifact.name.
+  const roleByName: Record<string, VariantSpec['role']> = {};
+  for (const spec of variantSpecs) roleByName[spec.name] = spec.role;
+  for (const artifact of resolvedArtifacts) {
+    if (artifact.experimentRole) continue;  // preserve if already set (e.g. each-workflow)
+    const role = roleByName[artifact.name];
+    if (role) artifact.experimentRole = role;
+  }
 
   if (!dryRun) {
     const mcpServers: McpServers | null = loadMcpConfig(mcpConfig);
@@ -42,10 +54,10 @@ export async function prepareEvaluationRun({
 
   if (resolvedArtifacts.length === 0) {
     throw new Error(
-      `未发现任何 skill 变体。请检查：\n`
+      `未发现任何 variant。请检查：\n`
       + `  1. skill 目录是否存在：${resolve(skillDir)}\n`
       + `  2. 目录下是否有 .md 文件或含 SKILL.md 的子目录\n`
-      + `  3. 或通过 --variants 显式指定变体`,
+      + `  3. 通过 --control / --treatment 显式声明 variant 与角色，或用 --config eval.yaml`,
     );
   }
 
@@ -96,6 +108,7 @@ export function buildDryRunTaskReport({
         artifactSource: task.artifact.source,
         executionStrategy: config.executionStrategy,
         experimentType: config.experimentType,
+        experimentRole: config.experimentRole,
         cwd: task.cwd,
         promptPreview: task.prompt.slice(0, 100),
         hasRubric: Boolean(task.rubric),

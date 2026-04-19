@@ -60,11 +60,14 @@ export function computeLayeredScores(results: CompositeInput): { compositeScore:
     layered.behaviorScore = scoreFromDetails(behaviorDetails) ?? undefined;
   }
 
-  if (typeof results.llmScore === 'number' && results.llmScore > 0) {
-    layered.qualityScore = results.llmScore;
+  // 评委打 0 分是"完全不合格"的合法低分,不是缺失——保留进 composite 计算,不做 > 0 gate。
+  // 只排除 undefined(真正缺数据:没配 judge 或打分失败)。fact/behavior 通过 ratioToScore
+  // 产出的分数理论上 ≥ 1,null 判断即可。
+  if (typeof results.llmScore === 'number') {
+    layered.judgeScore = results.llmScore;
   }
 
-  const scores = [layered.factScore, layered.behaviorScore, layered.qualityScore].filter((s): s is number => s != null && s > 0);
+  const scores = [layered.factScore, layered.behaviorScore, layered.judgeScore].filter((s): s is number => s != null);
   const compositeScore = scores.length > 0 ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)) : 0;
 
   return { compositeScore, layeredScores: layered };

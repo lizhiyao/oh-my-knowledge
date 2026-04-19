@@ -20,7 +20,9 @@ import type {
   VarianceComparison,
   VarianceComparisonMetric,
   VarianceData,
+  VarianceLayerKey,
   VarianceMetric,
+  VariantSpec,
   VariantSummary,
   VariantVariance,
 } from '../types.js';
@@ -50,12 +52,16 @@ interface CommonEvaluationOptions {
   skipPreflight?: boolean;
   mcpConfig?: string;
   verbose?: boolean;
+  // When true, HTML report expands the three-layer independent significance
+  // breakdown by default (CLI `--layered-stats`). Written to report.meta.layeredStats
+  // and read by the renderer; does not affect data collection.
+  layeredStats?: boolean;
 }
 
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
   samplesPath: string;
   skillDir: string;
-  variants?: string[];
+  variantSpecs?: VariantSpec[];
   artifacts?: Artifact[];
   dryRun?: boolean;
   blind?: boolean;
@@ -82,6 +88,7 @@ interface DryRunTask {
   artifactSource: Artifact['source'];
   executionStrategy: string;
   experimentType: string;
+  experimentRole: string;
   cwd: string | null;
   promptPreview: string;
   hasRubric: boolean;
@@ -108,7 +115,7 @@ export interface DryRunReport extends DryRunBase {
 export async function runEvaluation({
   samplesPath,
   skillDir,
-  variants = ['v1', 'v2'],
+  variantSpecs = [],
   artifacts,
   model = DEFAULT_MODEL,
   judgeModel = JUDGE_MODEL,
@@ -132,11 +139,12 @@ export async function runEvaluation({
   verbose = false,
   retry = 0,
   resume,
+  layeredStats = false,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
     skillDir,
-    variants,
+    variantSpecs,
     artifacts,
     dryRun,
     mcpConfig,
@@ -208,6 +216,7 @@ export async function runEvaluation({
     retry,
     existingResults,
     requires,
+    layeredStats,
   });
 }
 
@@ -224,12 +233,26 @@ export interface DryRunEachReport extends DryRunBase {
   artifacts: DryRunEachSkill[];
 }
 
-// Per-metric score extractors. Each returns undefined when the summary field
-// is missing so the scores array only contains valid numbers.
-const METRIC_EXTRACTORS: Record<'quality' | 'cost' | 'efficiency', (s: VariantSummary | undefined) => number | undefined> = {
-  quality: (s) => s?.avgCompositeScore,
+// Top-level (composite) extractor: feeds the legacy flat-field variance on
+// VariantVariance / VarianceComparison. Composite lives here for backward
+// compatibility with historical reports; layer-independent stats are attached
+// via byLayer (see LAYER_EXTRACTORS) starting v0.16 work item B / PR-2.
+const COMPOSITE_EXTRACTOR = (s: VariantSummary | undefined): number | undefined => s?.avgCompositeScore;
+
+// Non-quality metric extractors tracked in byMetric (cost + efficiency).
+const METRIC_EXTRACTORS: Record<'cost' | 'efficiency', (s: VariantSummary | undefined) => number | undefined> = {
   cost: (s) => s?.totalExecCostUSD,
   efficiency: (s) => s?.avgDurationMs,
+};
+
+// Three-layer extractors (PR-2): fact / behavior / judge each get their own
+// independent variance + t-test + effect size. Lets "judge ↑ 0.8, fact ↑ 0.1"
+// structural signals surface instead of getting diluted by the composite average.
+// `judge` is the rubric-based LLM judge score (UI 中文: "LLM 评价").
+const LAYER_EXTRACTORS: Record<VarianceLayerKey, (s: VariantSummary | undefined) => number | undefined> = {
+  fact: (s) => s?.avgFactScore,
+  behavior: (s) => s?.avgBehaviorScore,
+  judge: (s) => s?.avgJudgeScore,
 };
 
 function buildMetricStats(runs: Report[], variant: string, extractor: (s: VariantSummary | undefined) => number | undefined): VarianceMetric | null {
@@ -261,9 +284,9 @@ export function buildVarianceData(runs: Report[]): VarianceData | null {
   const variants = runs[0].meta.variants || [];
   const perVariant: Record<string, VariantVariance> = {};
   for (const variant of variants) {
-    // Quality lives on the legacy flat fields.
-    const quality = buildMetricStats(runs, variant, METRIC_EXTRACTORS.quality);
-    if (!quality) continue;
+    // Composite lives on the legacy flat fields.
+    const composite = buildMetricStats(runs, variant, COMPOSITE_EXTRACTOR);
+    if (!composite) continue;
 
     const byMetric: Partial<Record<'cost' | 'efficiency', VarianceMetric>> = {};
     const cost = buildMetricStats(runs, variant, METRIC_EXTRACTORS.cost);
@@ -271,9 +294,17 @@ export function buildVarianceData(runs: Report[]): VarianceData | null {
     const efficiency = buildMetricStats(runs, variant, METRIC_EXTRACTORS.efficiency);
     if (efficiency) byMetric.efficiency = efficiency;
 
+    // Three-layer independent stats (PR-2). Any layer with no data across runs is omitted.
+    const byLayer: Partial<Record<VarianceLayerKey, VarianceMetric>> = {};
+    for (const key of ['fact', 'behavior', 'judge'] as const) {
+      const layerStats = buildMetricStats(runs, variant, LAYER_EXTRACTORS[key]);
+      if (layerStats) byLayer[key] = layerStats;
+    }
+
     perVariant[variant] = {
-      ...quality,
+      ...composite,
       ...(Object.keys(byMetric).length > 0 ? { byMetric } : {}),
+      ...(Object.keys(byLayer).length > 0 ? { byLayer } : {}),
     };
   }
 
@@ -284,7 +315,7 @@ export function buildVarianceData(runs: Report[]): VarianceData | null {
       const vB = perVariant[variants[j]];
       if (!vA || !vB) continue;
 
-      const qualityComp = buildComparisonMetric(vA.scores, vB.scores, vA.mean, vB.mean);
+      const compositeComp = buildComparisonMetric(vA.scores, vB.scores, vA.mean, vB.mean);
 
       const byMetricComp: Partial<Record<'cost' | 'efficiency', VarianceComparisonMetric>> = {};
       for (const key of ['cost', 'efficiency'] as const) {
@@ -295,11 +326,22 @@ export function buildVarianceData(runs: Report[]): VarianceData | null {
         }
       }
 
+      // Three-layer comparison (PR-2). Each layer pair runs its own Welch's t + Cohen's d.
+      const byLayerComp: Partial<Record<VarianceLayerKey, VarianceComparisonMetric>> = {};
+      for (const key of ['fact', 'behavior', 'judge'] as const) {
+        const lA = vA.byLayer?.[key];
+        const lB = vB.byLayer?.[key];
+        if (lA && lB) {
+          byLayerComp[key] = buildComparisonMetric(lA.scores, lB.scores, lA.mean, lB.mean);
+        }
+      }
+
       comparisons.push({
         a: variants[i],
         b: variants[j],
-        ...qualityComp,
+        ...compositeComp,
         ...(Object.keys(byMetricComp).length > 0 ? { byMetric: byMetricComp } : {}),
+        ...(Object.keys(byLayerComp).length > 0 ? { byLayer: byLayerComp } : {}),
       });
     }
   }
