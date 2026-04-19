@@ -37,6 +37,10 @@ omk（`oh-my-knowledge`）的版本变更记录。格式参照 [Keep a Changelog
   - 原因：`quality`（字段名） 与表头 "质量"（composite 合成分 / 基础四维之一）字面重名，读者无法区分 "质量 3.85" 和 "质量层: 4" 是两个不同概念。语义上这一层就是 LLM judge 基于 rubric 的主观评分，命名应如实反映。
   - 影响：旧 report JSON（v0.15 或更早）里的 `qualityScore` / `avgQualityScore` 字段在 v0.16 renderer 下会被当成 undefined；不做向后兼容（0-1 阶段窗口期策略）。重新跑一次 eval 即可。
   - 详见 `docs/terminology-spec.md` 第三节第 6 条。
+- **`bench ci --threshold` 从"守合成分"改"守三层 all-pass"（PR-3 工作项 C）**：门禁语义从 `avgCompositeScore >= threshold` 改为 `avgFactScore >= threshold AND avgBehaviorScore >= threshold AND avgJudgeScore >= threshold`，任一层低于 threshold 即 FAIL。输出格式展示每层分数和破 gate 的层，读者一眼看出是哪一层拉胯。
+  - 原因：composite 合成分均化掩盖结构性差异——`v1→v2 事实 4.5→2.5 但 judge 3→5` 在 composite 上均值不变（3.75），一-gate CI 会通过，但事实层实际崩盘。Three-gate 把这种 case 暴露出来，符合 PR-3 精神。
+  - 影响：老 CI 脚本 `omk bench ci --threshold 3.5` 语义从单-gate 变 three-gate，**通常更严格但信息更丰富**（旧 PASS 的 case 绝大多数仍 PASS，除非靠 layer-averaging 躲过 gate 的 case）。
+  - **不提供 composite fallback**：三层都缺（eval-samples 既没定义断言也没定义 rubric）时直接 FAIL + 引导用户补配置，不偷偷走合成分。符合 0-1 窗口期不做兼容的执行原则与 PR-3"拒绝合成分掩盖"精神。
 - **稳定性语义修正**：四维对比表"稳定性"列主指标从"成功率 %"改为 **CV（变异系数）= σ / mean**，数据来自跨 run 的 `report.variance.perVariant[v]`（需 `--repeat ≥ 2`）。副区显示 `σ + 95% CI`。无 variance 数据时主值显示 `—` + 副区 `需 --repeat ≥ 2`，不再虚报成功率。
   - 原因：v0.15 及更早把"稳定性"主值挂成执行成功率、副值挂成跨样本 min~max 分数范围——两者都不是稳定性。成功率是执行健康度、跨样本 range 反映的是样本难度差异而非 variant 波动。行业共识（psychometrics / Anthropic / OpenAI eval docs / Braintrust / Langfuse）里稳定性 = test-retest reliability，即跨重复运行的分数一致性。
   - 影响：单轮评测（无 `--repeat`）报告不再显示"稳定性 100%"，改为诚实占位"— 需 `--repeat ≥ 2`"；成功率 < 100% 时作为副区 alert 保留。

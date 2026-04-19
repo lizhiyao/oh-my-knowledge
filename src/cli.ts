@@ -371,7 +371,13 @@ Options for "bench run":
 
 Options for "bench ci":
   (same as "bench run", plus:)
-  --threshold <number>   Minimum composite score to pass (default: 3.5)
+  --threshold <number>   Minimum score to pass, applied INDEPENDENTLY to each of
+                         the three layers (fact / behavior / LLM judge). ANY
+                         layer below threshold fails the gate — this prevents
+                         composite averaging from masking a single-layer collapse.
+                         Default: 3.5. If all three layers are absent (no
+                         assertions and no rubric defined in eval-samples), the
+                         gate FAILS with a configuration hint — no composite fallback.
 
 Options for "bench report":
   --port <number>        Server port (default: 7799)
@@ -1018,11 +1024,36 @@ async function handleCi(argv: string[]): Promise<void> {
       process.exit(0);
     }
 
+    // PR-3 three-gate CI: 事实 / 行为 / LLM 评价 三层各自与 threshold 比较,任一层低于
+    // threshold 即 FAIL。这样某一层崩盘会被暴露出来,不会被 composite 合成分均化掩盖。
+    // 三层都缺时(eval-samples 既没断言又没 rubric)直接 FAIL + 引导,不降级到 composite。
     for (const [variant, stats] of Object.entries(report.summary || {})) {
-      const score: number = stats.avgCompositeScore ?? 0;
-      const status: string = score >= threshold ? 'PASS' : 'FAIL';
-      console.log(`${status}: ${variant} score=${score.toFixed(2)} threshold=${threshold}`);
-      if (score < threshold) allPass = false;
+      const layers: Array<{ label: string; value: number | undefined }> = [
+        { label: '事实 / Fact',        value: stats.avgFactScore },
+        { label: '行为 / Behavior',    value: stats.avgBehaviorScore },
+        { label: 'LLM 评价 / judge',   value: stats.avgJudgeScore },
+      ];
+      const present = layers.filter((l) => typeof l.value === 'number');
+
+      if (present.length === 0) {
+        // 没有任何一层分数意味着 eval-samples 既未定义 assertions 也未定义 rubric——
+        // 没数据就没法 gate,诚实报告 FAIL 并引导用户补配置,不偷偷走 composite 兜底。
+        console.log(`FAIL: ${variant} · 无分层评分(fact / behavior / judge 三层均缺数据)。请检查 eval-samples 是否定义了断言(assertions)或 LLM 评委(rubric)`);
+        allPass = false;
+        continue;
+      }
+
+      let variantPass = true;
+      const parts: string[] = [];
+      for (const l of present) {
+        const v = l.value ?? 0;
+        const pass = v >= threshold;
+        if (!pass) variantPass = false;
+        parts.push(`${l.label}=${v.toFixed(2)}${pass ? '' : ' ✗'}`);
+      }
+      const status = variantPass ? 'PASS' : 'FAIL';
+      console.log(`${status}: ${variant} · ${parts.join(' · ')} (threshold=${threshold})`);
+      if (!variantPass) allPass = false;
     }
 
     process.exit(allPass ? 0 : 1);
