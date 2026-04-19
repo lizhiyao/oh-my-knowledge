@@ -92,7 +92,9 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     let stabValue: string;
     let stabColor: string;
 
-    if (vd && typeof vd.stddev === 'number' && typeof vd.mean === 'number' && vd.mean !== 0) {
+    // CV = σ / mean,当 mean 过小(接近 0)时 CV 发散,数值无参考价值——1-5 分数量纲下
+     // mean < 0.5 已属全灭场景,直接降级显示"—"。负 mean(理论上不会出现)也走降级。
+    if (vd && typeof vd.stddev === 'number' && typeof vd.mean === 'number' && vd.mean >= 0.5) {
       const cv = Math.abs(vd.stddev / vd.mean);
       const cvPct = cv * 100;
       const sigma = vd.stddev;
@@ -291,7 +293,10 @@ interface BaseDisplayConfig {
 }
 
 interface MetricDisplayConfig extends BaseDisplayConfig {
-  key: 'quality' | 'cost' | 'efficiency';
+  // 'composite' 指 VarianceComparison 顶层 flat 字段(事实/行为/LLM 评价三层合成分),
+  // 在方差与显著性表里作为"整体"对比行。和 VarianceLayerKey 的 'fact'/'behavior'/'judge'
+  // 是不同层次:三层是 byLayer 独立拆开,composite 是三层平均。两者并存不冲突。
+  key: 'composite' | 'cost' | 'efficiency';
 }
 
 // Three-layer breakdown labels (PR-2). Rendered inside the expandable
@@ -305,7 +310,7 @@ const LAYER_LABELS: Record<VarianceLayerKey, { zh: string; en: string }> = {
 
 const METRIC_CONFIGS: MetricDisplayConfig[] = [
   {
-    key: 'quality',
+    key: 'composite',
     labelZh: '质量',
     labelEn: 'Quality',
     higherIsBetter: true,
@@ -346,7 +351,7 @@ const METRIC_CONFIGS: MetricDisplayConfig[] = [
 ];
 
 function pickMetricFromComparison(comp: VarianceComparison, key: MetricDisplayConfig['key']): VarianceComparisonMetric | null {
-  if (key === 'quality') {
+  if (key === 'composite') {
     return {
       meanDiff: comp.meanDiff,
       tStatistic: comp.tStatistic,
@@ -361,7 +366,7 @@ function pickMetricFromComparison(comp: VarianceComparison, key: MetricDisplayCo
 function getVariantMetricMean(variance: VarianceData, variant: string, key: MetricDisplayConfig['key']): number | null {
   const v = variance.perVariant[variant];
   if (!v) return null;
-  if (key === 'quality') return v.mean;
+  if (key === 'composite') return v.mean;
   return v.byMetric?.[key]?.mean ?? null;
 }
 

@@ -30,6 +30,7 @@ interface DryRunTask {
   artifactSource: string;
   executionStrategy: string;
   experimentType: string;
+  experimentRole: string;
   cwd: string | null;
   hasRubric: boolean;
   hasAssertions: boolean;
@@ -78,6 +79,25 @@ const CUSTOM_EXECUTOR_SKILL_DIR = join(__dirname, '..', 'examples', 'custom-exec
 const CUSTOM_EXECUTOR_PATH = join(__dirname, '..', 'examples', 'custom-executor', 'echo-executor.sh');
 
 describe('runEvaluation', () => {
+  it('dry-run: experimentRole 从 variantSpecs 正确穿透到每个 task (非默认排序)', async () => {
+    // 显式颠倒顺序(v2 在前,v1 在后)+ 自定义 role 分配,验证 experimentRole 来自 spec
+    // 而非 asSpecs 的位置约定或下游 kind 反推。这是 spec"唯一来源"的端到端保护。
+    const result = await runEvaluation({
+      samplesPath: SAMPLES_PATH,
+      skillDir: SKILL_DIR,
+      variantSpecs: [
+        { name: 'v2', role: 'control', expr: 'v2' },
+        { name: 'v1', role: 'treatment', expr: 'v1' },
+      ],
+      dryRun: true,
+    });
+    const report = asDryRunReport(result.report);
+    const v1Task = report.tasks.find((t) => t.variant === 'v1');
+    const v2Task = report.tasks.find((t) => t.variant === 'v2');
+    assert.equal(v1Task?.experimentRole, 'treatment', 'v1 应当保持 spec 指定的 treatment,不被位置/kind 反推覆盖');
+    assert.equal(v2Task?.experimentRole, 'control', 'v2 应当保持 spec 指定的 control');
+  });
+
   it('dry-run: returns correct task schedule', async () => {
     const result = await runEvaluation({
       samplesPath: SAMPLES_PATH,

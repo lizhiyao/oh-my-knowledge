@@ -170,7 +170,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   };
 
   const variantConfigRows = (m.variantConfigs || []).map((config, i) => {
-    const expTypeRaw = config.experimentType || (config as unknown as Record<string, unknown>).experimentRole || '-';
+    const expTypeRaw = config.experimentType || '-';
     const expType = (typeLabels[lang] || typeLabels.en)[String(expTypeRaw)] || expTypeRaw;
     const source = config.artifactKind === 'baseline'
       ? (lang === 'zh' ? '无' : 'None')

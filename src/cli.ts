@@ -604,7 +604,13 @@ async function handleRun(argv: string[]): Promise<void> {
       return;
     }
 
-    const repeatCount: number = Math.max(1, Number(values.repeat) || 1);
+    // --repeat 诚实输入校验:非 ≥1 整数时提示并钳到 1,不静默掩盖用户错字/极端输入
+    const repeatRaw = values.repeat as string | undefined;
+    const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : 1;
+    if (repeatRaw !== undefined && (!Number.isFinite(parsedRepeat) || parsedRepeat < 1)) {
+      process.stderr.write(`⚠ --repeat "${repeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次评测执行\n`);
+    }
+    const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
     let report: Report;
     let filePath: string | null;
 

@@ -71,7 +71,7 @@ export function renderSampleTable(variants: string[], results: ResultEntry[], la
         const badges: string[] = [];
         if (ls.factScore != null) badges.push(`<span class="dim-tag" title="${lang === 'zh' ? '事实：输出中的事实声明是否正确(规则验证)' : 'Fact: Are factual claims correct (rule-verified)'}">${lang === 'zh' ? '事实' : 'F'}:${ls.factScore}</span>`);
         if (ls.behaviorScore != null) badges.push(`<span class="dim-tag" title="${lang === 'zh' ? '行为：执行路径是否符合预期(规则验证)' : 'Behavior: Is execution path compliant (rule-verified)'}">${lang === 'zh' ? '行为' : 'B'}:${ls.behaviorScore}</span>`);
-        if (ls.judgeScore != null) badges.push(`<span class="dim-tag" title="${lang === 'zh' ? 'LLM 评价：LLM judge 基于 rubric 的主观评分' : 'LLM judge: rubric-based subjective score from the LLM judge'}">${lang === 'zh' ? 'LLM 评价' : 'J'}:${ls.judgeScore}</span>`);
+        if (ls.judgeScore != null) badges.push(`<span class="dim-tag" title="${lang === 'zh' ? 'LLM 评价：LLM 评委按预先写好的评分规则（英文叫 rubric）给输出打的主观分' : 'LLM judge: subjective score given by the judge LLM against a predefined rubric (scoring criteria)'}">${lang === 'zh' ? 'LLM 评价' : 'J'}:${ls.judgeScore}</span>`);
         if (badges.length > 0) layeredHtml = `<div class="dim-scores">${badges.join('')}</div>`;
       }
 

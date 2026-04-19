@@ -150,6 +150,66 @@ describe('buildVarianceData — three-layer breakdown (PR-2)', () => {
     assert.equal(comp.byLayer?.judge, undefined);
   });
 
+  it('边界: single variant across multiple runs — perVariant populated, comparisons empty', () => {
+    // 单 variant 跑多次:byLayer 应该有数据(衡量自己的稳定性),但没有 comparison
+    // (C(1,2) = 0)。这是"测稳定性但不做 variant 对比"的合法场景。
+    const runs: Report[] = [
+      makeRun('r1', { v1: { composite: 4.0, fact: 4.0, behavior: 4.0, quality: 4.0 } }),
+      makeRun('r2', { v1: { composite: 4.1, fact: 4.1, behavior: 4.1, quality: 4.1 } }),
+      makeRun('r3', { v1: { composite: 4.2, fact: 4.2, behavior: 4.2, quality: 4.2 } }),
+    ];
+    const data = buildVarianceData(runs);
+    assert.ok(data);
+    assert.ok(data!.perVariant.v1, 'single variant should still populate perVariant');
+    assert.ok(data!.perVariant.v1.byLayer, 'byLayer should still fill');
+    assert.deepEqual(data!.comparisons, [], 'single variant means no pairwise comparisons');
+  });
+
+  it('边界: 3 variant 产生 C(3,2) = 3 comparisons 并带 byLayer', () => {
+    const runs: Report[] = [
+      makeRun('r1', {
+        v1: { composite: 3.0, fact: 3.0, behavior: 3.0, quality: 3.0 },
+        v2: { composite: 4.0, fact: 4.0, behavior: 4.0, quality: 4.0 },
+        v3: { composite: 4.5, fact: 4.5, behavior: 4.5, quality: 4.5 },
+      }),
+      makeRun('r2', {
+        v1: { composite: 3.1, fact: 3.1, behavior: 3.1, quality: 3.1 },
+        v2: { composite: 4.1, fact: 4.1, behavior: 4.1, quality: 4.1 },
+        v3: { composite: 4.6, fact: 4.6, behavior: 4.6, quality: 4.6 },
+      }),
+    ];
+    const data = buildVarianceData(runs);
+    assert.ok(data);
+    assert.equal(data!.comparisons.length, 3, 'C(3,2) = 3 pairwise comparisons');
+    // 每个 comparison 都应该有 byLayer
+    for (const comp of data!.comparisons) {
+      assert.ok(comp.byLayer, `comparison ${comp.a} vs ${comp.b} should have byLayer`);
+      assert.ok(comp.byLayer!.fact);
+      assert.ok(comp.byLayer!.behavior);
+      assert.ok(comp.byLayer!.judge);
+    }
+    // 三对覆盖正确:v1-v2, v1-v3, v2-v3
+    const pairs = data!.comparisons.map((c) => `${c.a}-${c.b}`).sort();
+    assert.deepEqual(pairs, ['v1-v2', 'v1-v3', 'v2-v3']);
+  });
+
+  it('边界: mean = 0 (全 0 分数)不崩,byLayer 输出 stddev=0', () => {
+    // 所有样本 judge=0(评委判全部不合格)。mean=0 是合法数据,不是 NaN。
+    // 这是 "judgeScore > 0 过滤 bias" fix 之后的关键 case:0 分样本应该进聚合,
+    // 最终 byLayer.judge.mean === 0,stddev === 0,不抛异常。
+    const runs: Report[] = [
+      makeRun('r1', { v1: { composite: 2.0, fact: 4.0, behavior: 2.0, quality: 0 } }),
+      makeRun('r2', { v1: { composite: 2.0, fact: 4.0, behavior: 2.0, quality: 0 } }),
+    ];
+    const data = buildVarianceData(runs);
+    assert.ok(data);
+    const judgeStats = data!.perVariant.v1.byLayer?.judge;
+    assert.ok(judgeStats, 'judge layer should be populated (0 is valid score, not missing)');
+    assert.equal(judgeStats!.mean, 0);
+    assert.equal(judgeStats!.stddev, 0);
+    assert.deepEqual(judgeStats!.scores, [0, 0]);
+  });
+
   it('keeps composite (top-level) variance alongside byLayer — both coexist', () => {
     const runs: Report[] = [
       makeRun('r1', { v1: { composite: 3.8, fact: 3.5, behavior: 4.0, quality: 4.0 }, v2: { composite: 4.2, fact: 4.0, behavior: 4.0, quality: 4.6 } }),

@@ -115,22 +115,60 @@ describe('renderRunDetail', () => {
 
   it('renders six dimensions (Fact / Behavior / LLM judge / Cost / Efficiency / Stability)', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
-    assert.ok(html.includes('dimFact'));
-    assert.ok(html.includes('dimBehavior'));
-    assert.ok(html.includes('dimJudge'));
-    assert.ok(html.includes('dimCost'));
-    assert.ok(html.includes('dimEfficiency'));
-    assert.ok(html.includes('dimStability'));
+    // 强断言:thead 里必须出现 6 个 dim* i18n key,不是散落在 tooltip 里
+    const thMatches = html.match(/<th data-i18n="dim(Fact|Behavior|Judge|Cost|Efficiency|Stability)"/g);
+    assert.ok(thMatches, 'thead should contain dim* th elements');
+    assert.equal(thMatches.length, 6, `expected 6 dim* <th>, got ${thMatches.length}`);
   });
 
   it('renders layer scores (fact / behavior / judge independently)', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
-    // Fact layer: v1=4.20, v2=5.00
-    assert.ok(html.includes('4.20'));
-    assert.ok(html.includes('5.00'));
-    // Judge layer: v1=3.80, v2=4.60
-    assert.ok(html.includes('3.80'));
-    assert.ok(html.includes('4.60'));
+    // 主表里三层独立 cell 带 primary class;每 variant 3 primary × 2 variant = 6 primary cell
+    const primaryMatches = html.match(/summary-value summary-value-primary/g);
+    assert.ok(primaryMatches, 'primary layer cells should exist');
+    assert.ok(primaryMatches.length >= 6, `expected ≥ 6 primary layer cells, got ${primaryMatches.length}`);
+    // 关键数字应该出现在 primary cell 附近(而非随便 tooltip 里):用 regex 限定上下文
+    assert.match(html, /summary-value-primary[^"]*"[^>]*>4\.20</);  // v1 fact
+    assert.match(html, /summary-value-primary[^"]*"[^>]*>5\.00</);  // v2 fact
+    assert.match(html, /summary-value-primary[^"]*"[^>]*>3\.80</);  // v1 judge
+    assert.match(html, /summary-value-primary[^"]*"[^>]*>4\.60</);  // v2 judge
+  });
+
+  it('stability cell: 单 run (无 variance) 显示 "—" + 引导', () => {
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    // SAMPLE_REPORT 默认无 variance 字段,这正是单 run 场景
+    assert.equal(report.variance, undefined);
+    const html = renderRunDetail(report);
+    // 稳定性主值应该是 "—",副区提示需 --repeat
+    assert.match(html, /需 --repeat ≥ 2/);
+  });
+
+  it('stability cell: 有 variance 数据显示 CV + 白话定性 (稳定/较稳/波动大)', () => {
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    report.variance = {
+      runs: 3,
+      perVariant: {
+        v1: { scores: [4.0, 4.05, 3.95], mean: 4.0, lower: 3.93, upper: 4.07, stddev: 0.04 },
+        v2: { scores: [4.8, 4.82, 4.78], mean: 4.8, lower: 4.76, upper: 4.84, stddev: 0.02 },
+      },
+      comparisons: [],
+    };
+    const html = renderRunDetail(report);
+    // 小抖动 CV < 5% → "稳定" 标签
+    assert.match(html, /稳定/);
+    assert.match(html, /CV \d/);  // CV 数字出现
+    assert.match(html, /95% CI/);
+  });
+
+  it('stability cell: errorCount > 0 时副区显示完成率 alert', () => {
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    report.summary.v1.errorCount = 1;
+    report.summary.v1.successCount = 1;
+    report.summary.v1.totalSamples = 2;
+    const html = renderRunDetail(report);
+    // alert 文案:"X% 完成率 · 1 失败"
+    assert.match(html, /完成率/);
+    assert.match(html, /50%/);
   });
 
   it('--layered-stats: <details> is OPEN when report.meta.layeredStats=true (PR-2 穿透测试)', () => {
