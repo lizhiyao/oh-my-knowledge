@@ -478,6 +478,15 @@ export interface AnalysisResult {
   gapReports?: Record<string, GapReport>;
 }
 
+// v0.2 hedging classifier 的二次判定结果。挂在 GapSignalRef.classifierVerdict 上,
+// 仅 hedging 类型的 signal 会有此字段(其他类型的硬证据不需要二次判定)。
+// classifier 失败降级时 confidence=0 reason 标记 "classifier failed"。
+export interface HedgingVerdict {
+  isUncertainty: boolean;
+  confidence: number;
+  reason: string;
+}
+
 export interface GapSignalRef {
   sampleId: string;
   type: 'failed_search' | 'explicit_marker' | 'hedging' | 'repeated_failure';
@@ -488,6 +497,9 @@ export interface GapSignalRef {
   // 弱信号(explicit_marker / hedging,可能有假阳风险)为 0.5。
   // 聚合到 GapReport.weightedGapRate 时用来区分"硬盲区"和"可能噪声"。
   weight: number;
+  // v0.2 hedging LLM-assisted 判定。仅 hedging 类型可能有此字段。
+  // 缺失时表示该 signal 没经过 classifier(配置关闭 / 非 hedging 类型)。
+  classifierVerdict?: HedgingVerdict;
 }
 
 export interface GapReport {

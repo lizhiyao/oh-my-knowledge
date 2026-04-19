@@ -16,7 +16,8 @@
  * step-3 work. This module only computes the structured GapReport.
  */
 
-import type { GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types.js';
+import type { ExecutorFn, GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types.js';
+import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
 
 export type GapSignalType = GapSignalRef['type'];
 export type GapSignal = GapSignalRef;
@@ -357,4 +358,113 @@ export function computeReportGapRates(results: ResultEntry[], variants: string[]
     out[v] = computeGapReport(results, v);
   }
   return out;
+}
+
+// ---------- v0.2 hedging classifier integration ----------
+
+/**
+ * 重新计算 GapReport 的衍生字段(samplesWithGap / gapRate / weightedGapRate /
+ * byType),用于 hedging signal 被 classifier 过滤后的二次聚合。
+ * sampleCount 不变(分母:成功执行的样本数,与是否有信号无关)。
+ */
+function recomputeAggregates(report: GapReport): GapReport {
+  const sampleIdsWithGap = new Set<string>();
+  const sampleMaxWeight = new Map<string, number>();
+  const byType: Record<GapSignalType, number> = {
+    failed_search: 0,
+    explicit_marker: 0,
+    hedging: 0,
+    repeated_failure: 0,
+  };
+  for (const s of report.signals) {
+    sampleIdsWithGap.add(s.sampleId);
+    const cur = sampleMaxWeight.get(s.sampleId) ?? 0;
+    if (s.weight > cur) sampleMaxWeight.set(s.sampleId, s.weight);
+    byType[s.type] += 1;
+  }
+  const samplesWithGap = sampleIdsWithGap.size;
+  const gapRate = report.sampleCount > 0
+    ? Number((samplesWithGap / report.sampleCount).toFixed(4))
+    : 0;
+  const weightSum = Array.from(sampleMaxWeight.values()).reduce((a, b) => a + b, 0);
+  const weightedGapRate = report.sampleCount > 0
+    ? Number((weightSum / report.sampleCount).toFixed(4))
+    : 0;
+  return { ...report, samplesWithGap, gapRate, weightedGapRate, byType };
+}
+
+/**
+ * 对一份 GapReport 做 hedging classifier 二次过滤(spec §四.3, v0.2)。
+ * 流程:
+ *   1) 收集 signals 中所有 type='hedging' 的 candidate
+ *   2) 调 classifyHedgingCandidates 拿 verdict
+ *   3) verdict.isUncertainty=false 的 signal 丢弃
+ *   4) verdict.isUncertainty=true 的保留并挂 classifierVerdict
+ *   5) recompute samplesWithGap / gapRate / weightedGapRate / byType
+ *
+ * 失败降级在 classifier 层:单批失败 → 该 batch 全部 isUncertainty=true (保守保留)。
+ * 调用方拿到的 report 永远是合法的,不会因 classifier 失败而崩。
+ */
+export async function applyHedgingClassifier(
+  report: GapReport,
+  executor: ExecutorFn,
+  opts?: ClassifyOptions,
+): Promise<{ report: GapReport; costUSD: number; truncated: boolean }> {
+  const hedgingIndices: number[] = [];
+  const candidates: HedgingCandidate[] = [];
+  for (let i = 0; i < report.signals.length; i++) {
+    const s = report.signals[i];
+    if (s.type !== 'hedging') continue;
+    hedgingIndices.push(i);
+    const matched = (s.evidence?.matched as string | undefined) ?? s.context;
+    candidates.push({
+      sampleId: s.sampleId,
+      sentence: matched,
+      context: s.context,
+    });
+  }
+  if (candidates.length === 0) {
+    return { report, costUSD: 0, truncated: false };
+  }
+
+  const { verdicts, costUSD, truncated } = await classifyHedgingCandidates(candidates, executor, opts);
+
+  // 按 verdict 重组 signals:非 hedging 原样保留,hedging 按 verdict.isUncertainty 过滤 + 挂 verdict
+  const keptHedging = new Set<number>();
+  hedgingIndices.forEach((idx, i) => {
+    if (verdicts[i].isUncertainty) keptHedging.add(idx);
+  });
+  const newSignals: GapSignalRef[] = [];
+  for (let i = 0; i < report.signals.length; i++) {
+    const s = report.signals[i];
+    if (s.type !== 'hedging') {
+      newSignals.push(s);
+      continue;
+    }
+    if (!keptHedging.has(i)) continue; // dropped by classifier
+    const verdictIdx = hedgingIndices.indexOf(i);
+    newSignals.push({ ...s, classifierVerdict: verdicts[verdictIdx] });
+  }
+
+  const next = recomputeAggregates({ ...report, signals: newSignals });
+  return { report: next, costUSD, truncated };
+}
+
+/**
+ * 批量为一组 variant 的 gap reports 跑 classifier。
+ * 串行(不并行)避免 rate limit + 让 cache hit 在第一批后被后续 batch 复用。
+ */
+export async function applyHedgingClassifierToReports(
+  reports: Record<string, GapReport>,
+  executor: ExecutorFn,
+  opts?: ClassifyOptions,
+): Promise<{ reports: Record<string, GapReport>; costUSD: number }> {
+  const out: Record<string, GapReport> = {};
+  let totalCost = 0;
+  for (const [variant, report] of Object.entries(reports)) {
+    const result = await applyHedgingClassifier(report, executor, opts);
+    out[variant] = result.report;
+    totalCost += result.costUSD;
+  }
+  return { reports: out, costUSD: totalCost };
 }

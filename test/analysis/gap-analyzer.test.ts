@@ -8,8 +8,10 @@ import {
   extractRepeatedFailureSignals,
   extractGapSignalsFromSample,
   computeGapReport,
+  applyHedgingClassifier,
 } from '../../src/analysis/gap-analyzer.js';
-import type { ToolCallInfo, TurnInfo, VariantResult, ResultEntry } from '../../src/types.js';
+import { clearHedgingCache } from '../../src/analysis/hedging-classifier.js';
+import type { ExecResult, ExecutorFn, ToolCallInfo, TurnInfo, VariantResult, ResultEntry } from '../../src/types.js';
 
 // ---------- Helpers for building test fixtures ----------
 
@@ -503,5 +505,138 @@ describe('computeGapReport', () => {
   it('v0.2: 空 report 时 weightedGapRate === 0 不崩', () => {
     const report = computeGapReport([], 'v1');
     assert.equal(report.weightedGapRate, 0);
+  });
+});
+
+// ---------- v0.2 hedging classifier 集成 ----------
+
+function makeMockExec(jsonOutput: string, costUSD = 0.001): ExecutorFn {
+  return async (): Promise<ExecResult> => ({
+    ok: true,
+    output: jsonOutput,
+    durationMs: 10,
+    durationApiMs: 10,
+    inputTokens: 100,
+    outputTokens: 50,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    costUSD,
+    stopReason: 'end_turn',
+    numTurns: 1,
+  });
+}
+
+describe('applyHedgingClassifier (v0.2)', () => {
+  it('classifier 剔除假阳 hedging:byType.hedging 减少, gapRate 重算', async () => {
+    clearHedgingCache();
+    // 4 个样本全只有 hedging,classifier 判 2 个真不确定 / 2 个业务推理
+    const results: ResultEntry[] = [
+      { sample_id: 's1', variants: { v1: vr({ turns: [turn('assistant', '我不确定数据库结构', [])] }) } },
+      { sample_id: 's2', variants: { v1: vr({ turns: [turn('assistant', '没有足够信息回答', [])] }) } },
+      { sample_id: 's3', variants: { v1: vr({ turns: [turn('assistant', '需要查证一下', [])] }) } },
+      { sample_id: 's4', variants: { v1: vr({ turns: [turn('assistant', '无法确认这条', [])] }) } },
+    ];
+    const before = computeGapReport(results, 'v1');
+    assert.equal(before.byType.hedging, 4);
+    assert.equal(before.samplesWithGap, 4);
+
+    const verdictJson = JSON.stringify([
+      { id: 1, isUncertainty: true, confidence: 0.9, reason: 'real unsure' },
+      { id: 2, isUncertainty: false, confidence: 0.8, reason: 'business analysis' },
+      { id: 3, isUncertainty: true, confidence: 0.85, reason: 'needs to verify' },
+      { id: 4, isUncertainty: false, confidence: 0.8, reason: 'multi-possibility' },
+    ]);
+    const result = await applyHedgingClassifier(before, makeMockExec(verdictJson));
+    assert.equal(result.report.byType.hedging, 2);
+    assert.equal(result.report.samplesWithGap, 2);
+    assert.equal(result.report.gapRate, 0.5);
+    assert.equal(result.report.weightedGapRate, 0.25);  // 2 个 sample x 0.5 weight / 4
+    assert.ok(result.costUSD > 0);
+    // 保留下的 hedging signal 都挂上了 classifierVerdict
+    for (const s of result.report.signals) {
+      assert.ok(s.classifierVerdict, '保留的 hedging 应有 classifierVerdict');
+      assert.equal(s.classifierVerdict.isUncertainty, true);
+    }
+  });
+
+  it('classifier 失败降级:hedging 全保留, byType / weightedGapRate 不变', async () => {
+    clearHedgingCache();
+    const results: ResultEntry[] = [
+      { sample_id: 's1', variants: { v1: vr({ turns: [turn('assistant', '我不确定', [])] }) } },
+      { sample_id: 's2', variants: { v1: vr({ turns: [turn('assistant', '需要查证', [])] }) } },
+    ];
+    const before = computeGapReport(results, 'v1');
+    const failExec: ExecutorFn = async (): Promise<ExecResult> => ({
+      ok: false,
+      output: null,
+      error: 'rate limited',
+      durationMs: 5,
+      durationApiMs: 5,
+      inputTokens: 0,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      costUSD: 0,
+      stopReason: 'error',
+      numTurns: 0,
+    });
+    const result = await applyHedgingClassifier(before, failExec);
+    assert.equal(result.report.byType.hedging, before.byType.hedging);
+    assert.equal(result.report.weightedGapRate, before.weightedGapRate);
+    // 但保留下的 signal 仍有 classifierVerdict, reason 标 failed (供调试)
+    for (const s of result.report.signals) {
+      assert.match(s.classifierVerdict!.reason, /classifier failed/);
+    }
+  });
+
+  it('不影响其他 type signal:classifier 只过滤 hedging', async () => {
+    clearHedgingCache();
+    // 一个 sample 同时有 failed_search + hedging,classifier 判 hedging 假阳
+    const results: ResultEntry[] = [
+      {
+        sample_id: 's1',
+        variants: {
+          v1: vr({
+            turns: [turn('assistant', '我不确定哪里出错 ' + '#'.repeat(20), [
+              tc('Grep', { pattern: 'foo' }, 'No matches found', true),
+            ])],
+          }),
+        },
+      },
+    ];
+    const before = computeGapReport(results, 'v1');
+    assert.equal(before.byType.failed_search, 1);
+    assert.equal(before.byType.hedging, 1);
+
+    const verdictJson = JSON.stringify([
+      { id: 1, isUncertainty: false, confidence: 0.8, reason: 'business' },
+    ]);
+    const result = await applyHedgingClassifier(before, makeMockExec(verdictJson));
+    // hedging 被剔, failed_search 还在; sample 仍有 gap (failed_search 撑起来)
+    assert.equal(result.report.byType.hedging, 0);
+    assert.equal(result.report.byType.failed_search, 1);
+    assert.equal(result.report.samplesWithGap, 1);
+    // weightedGapRate 用 failed_search 权重 1.0,sample 数 1 → 1.0
+    assert.equal(result.report.weightedGapRate, 1.0);
+  });
+
+  it('无 hedging signal 时直接返回原 report,不调 executor', async () => {
+    clearHedgingCache();
+    const results: ResultEntry[] = [
+      {
+        sample_id: 's1',
+        variants: {
+          v1: vr({ turns: [turn('assistant', '已找到', [tc('Grep', { pattern: 'x' }, '', true)])] }),
+        },
+      },
+    ];
+    const before = computeGapReport(results, 'v1');
+    assert.equal(before.byType.hedging, 0);
+    let called = false;
+    const exec: ExecutorFn = async () => { called = true; throw new Error('should not be called'); };
+    const result = await applyHedgingClassifier(before, exec);
+    assert.equal(called, false);
+    assert.equal(result.costUSD, 0);
+    assert.deepEqual(result.report, before);
   });
 });
