@@ -503,14 +503,20 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
     }).filter(Boolean).join('');
     if (!layerRows) return '';
     const summaryLabel = lang === 'zh'
-      ? '展开三层独立显著性（fact / behavior / quality）'
-      : 'Show three-layer independent significance';
+      ? '展开三层独立显著性（fact / behavior / judge）'
+      : 'Show three-layer independent significance (fact / behavior / judge)';
     const openAttr = layeredStatsOpen ? ' open' : '';
+    // 多重比较 disclaimer:三层独立 t 检验,family-wise error 未矫正;小样本 Cohen's d 不稳。
+    // 不默默修改 significant 判定(避免用户被"自动矫正"误导),而是把判读责任明示交给读者。
+    const disclaimerText = lang === 'zh'
+      ? '⚠ 三层独立检验:p 值未做多重比较矫正(建议按 Bonferroni α/3 = 0.017 判断显著);小样本(n ≤ 10)下 Cohen\'s d 效应量标签仅供探索参考,不作结论'
+      : '⚠ Three independent tests: p values are NOT corrected for multiple comparisons (use Bonferroni α/3 = 0.017 as the stricter threshold). With small samples (n ≤ 10), Cohen\'s d magnitude labels are exploratory only';
     return `
       <tr class="layer-breakdown-row">
         <td colspan="6">
           <details class="layer-breakdown"${openAttr}>
             <summary>${e(summaryLabel)}</summary>
+            <div class="layer-breakdown-disclaimer">${e(disclaimerText)}</div>
             <table class="summary-table variance-table layer-sub-table">
               <tbody>${layerRows}</tbody>
             </table>

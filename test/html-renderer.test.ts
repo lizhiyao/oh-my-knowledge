@@ -133,6 +133,62 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('4.60'));
   });
 
+  it('--layered-stats: <details> is OPEN when report.meta.layeredStats=true (PR-2 穿透测试)', () => {
+    // 构造带 byLayer variance data + layeredStats=true 的 report 验证渲染器读取 meta flag
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    const mkLayer = (mean: number) => ({
+      scores: [mean - 0.1, mean + 0.1], mean, lower: mean - 0.1, upper: mean + 0.1, stddev: 0.1,
+    });
+    const mkComp = () => ({
+      meanDiff: -0.8, tStatistic: -8, df: 2, significant: true,
+      effectSize: { cohensD: -8, hedgesG: -7, primary: 'g' as const, magnitude: 'large' as const, pooledStddev: 0.1, n1: 2, n2: 2 },
+    });
+    report.variance = {
+      runs: 2,
+      perVariant: {
+        v1: { ...mkLayer(4.0), byLayer: { fact: mkLayer(4.2), behavior: mkLayer(4.0), judge: mkLayer(3.8) } },
+        v2: { ...mkLayer(4.8), byLayer: { fact: mkLayer(5.0), behavior: mkLayer(4.8), judge: mkLayer(4.6) } },
+      },
+      comparisons: [{
+        a: 'v1', b: 'v2', ...mkComp(),
+        byLayer: { fact: mkComp(), behavior: mkComp(), judge: mkComp() },
+      }],
+    };
+    report.meta.layeredStats = true;
+
+    const html = renderRunDetail(report);
+    // layer-breakdown <details> 应当带 open 属性,默认展开
+    assert.match(html, /<details class="layer-breakdown" open>/);
+  });
+
+  it('--layered-stats: <details> is COLLAPSED by default (meta.layeredStats absent)', () => {
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    const mkLayer = (mean: number) => ({
+      scores: [mean - 0.1, mean + 0.1], mean, lower: mean - 0.1, upper: mean + 0.1, stddev: 0.1,
+    });
+    const mkComp = () => ({
+      meanDiff: -0.8, tStatistic: -8, df: 2, significant: true,
+      effectSize: { cohensD: -8, hedgesG: -7, primary: 'g' as const, magnitude: 'large' as const, pooledStddev: 0.1, n1: 2, n2: 2 },
+    });
+    report.variance = {
+      runs: 2,
+      perVariant: {
+        v1: { ...mkLayer(4.0), byLayer: { fact: mkLayer(4.2), behavior: mkLayer(4.0), judge: mkLayer(3.8) } },
+        v2: { ...mkLayer(4.8), byLayer: { fact: mkLayer(5.0), behavior: mkLayer(4.8), judge: mkLayer(4.6) } },
+      },
+      comparisons: [{
+        a: 'v1', b: 'v2', ...mkComp(),
+        byLayer: { fact: mkComp(), behavior: mkComp(), judge: mkComp() },
+      }],
+    };
+    // meta.layeredStats 不设置(或显式 false)—— details 应不带 open
+
+    const html = renderRunDetail(report);
+    // <details> 结构存在,但不带 open 属性
+    assert.match(html, /<details class="layer-breakdown">/);
+    assert.doesNotMatch(html, /<details class="layer-breakdown" open>/);
+  });
+
   it('renders exec cost (not total cost)', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
     // Should show exec cost ($0.0200 for v1), not total cost ($0.0250)

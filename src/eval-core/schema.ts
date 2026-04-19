@@ -91,8 +91,8 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
         layeredScores.factScore = assertionFact != null
           ? Number(((assertionFact + hardScore) / 2).toFixed(2))
           : hardScore;
-        // Recompute composite from updated layers
-        const scores = [layeredScores.factScore, layeredScores.behaviorScore, layeredScores.judgeScore].filter((s): s is number => s != null && s > 0);
+        // Recompute composite from updated layers (保留 0 分,仅过滤真正缺失)
+        const scores = [layeredScores.factScore, layeredScores.behaviorScore, layeredScores.judgeScore].filter((s): s is number => s != null);
         compositeScore = scores.length > 0 ? Number((scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)) : compositeScore;
       }
 
@@ -176,9 +176,11 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
       };
     })(),
     ...(() => {
-      const factScores = ok.map((e) => e.layeredScores?.factScore).filter((s): s is number => s != null && s > 0);
-      const behaviorScores = ok.map((e) => e.layeredScores?.behaviorScore).filter((s): s is number => s != null && s > 0);
-      const judgeScores = ok.map((e) => e.layeredScores?.judgeScore).filter((s): s is number => s != null && s > 0);
+      // 保留 0 分样本(评委打"完全不合格"是合法低分,不是缺失)。
+      // 仅 filter null / undefined(真正缺数据,如该 sample 无对应断言或未配 judge)。
+      const factScores = ok.map((e) => e.layeredScores?.factScore).filter((s): s is number => s != null);
+      const behaviorScores = ok.map((e) => e.layeredScores?.behaviorScore).filter((s): s is number => s != null);
+      const judgeScores = ok.map((e) => e.layeredScores?.judgeScore).filter((s): s is number => s != null);
       const factVerifiedRates = ok.map((e) => e.factCheck?.verifiedRate).filter((r): r is number => r != null);
       return {
         ...(factScores.length > 0 && { avgFactScore: Number((factScores.reduce((a, b) => a + b, 0) / factScores.length).toFixed(2)) }),

@@ -339,6 +339,8 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .layer-breakdown[open]>summary{color:var(--text-primary);margin-bottom:8px}
 .layer-sub-table{margin:0;width:100%;font-size:var(--fs-detail)}
 .layer-sub-table td{padding-top:8px;padding-bottom:8px}
+/* Multiple-comparisons disclaimer for the three-layer breakdown (PR-2) */
+.layer-breakdown-disclaimer{font-size:var(--fs-micro);color:var(--text-muted);line-height:1.5;padding:4px 8px 10px 0;font-style:italic}
 .modal-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center}
 .modal-content{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);max-width:800px;max-height:80vh;overflow:auto;padding:24px;margin:20px;width:90%}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
@@ -359,7 +361,12 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .card-detail div{margin:2px 0}
 
 /* Table */
-.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:16px 0}
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:16px 0;position:relative}
+/* 窄屏下 6 列宽 >700px 会横向溢出,右侧稳定性列容易被遮盖。
+   加一条渐变阴影作为"可滑动"视觉提示,仅在 ≤768px 且可滚动容器里显示。 */
+@media(max-width:768px){
+  .table-wrap::after{content:'';position:sticky;right:0;top:0;display:block;float:right;width:32px;height:100%;margin-left:-32px;margin-top:-100%;pointer-events:none;background:linear-gradient(to right,transparent,var(--bg-card) 85%);z-index:2}
+}
 table{border-collapse:collapse;width:100%;font-size:0.8125rem;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;line-height:1.4}
 th{background:var(--bg-elevated);padding:8px 14px;text-align:center;vertical-align:middle;font-weight:500;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap}
 td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}

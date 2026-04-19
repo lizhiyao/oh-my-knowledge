@@ -364,7 +364,7 @@ Options for "bench run":
                          (default: .mcp.json in current directory)
   --no-serve             Skip auto-starting report server after evaluation
   --verbose              Print detailed progress for each sample (exec result, grading phases)
-  --layered-stats        Expand the three-layer (fact/behavior/quality) independent
+  --layered-stats        Expand the three-layer (fact/behavior/judge) independent
                          significance breakdown in the HTML report by default.
                          Without this flag, the breakdown is collapsed behind a
                          click-to-expand summary under each comparison.
@@ -585,7 +585,7 @@ async function handleRun(argv: string[]): Promise<void> {
 
         if (!values['no-serve'] && process.stdout.isTTY) {
           const { createReportServer } = await import('./server/report-server.js');
-          const server: ReportServer = createReportServer({ reportsDir: resolve(values['output-dir'] as string) });
+          const server: ReportServer = createReportServer({ reportsDir: config.outputDir });
           const serverUrl: string = await server.start();
           const reportUrl: string = `${serverUrl}/run/${report.id}`;
           process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
@@ -598,7 +598,7 @@ async function handleRun(argv: string[]): Promise<void> {
           execFileCb(openCmd, [reportUrl], () => { });
         } else if (!values['no-serve']) {
           process.stderr.write('\n💡 非交互环境，已跳过 report server\n');
-          process.stderr.write(`   查看报告: omk bench report --reports-dir ${resolve(values['output-dir'] as string)}\n`);
+          process.stderr.write(`   查看报告: omk bench report --reports-dir ${config.outputDir}\n`);
         }
       }
       return;
@@ -633,7 +633,7 @@ async function handleRun(argv: string[]): Promise<void> {
         // Auto-start report server
         const { createReportServer } = await import('./server/report-server.js');
         const server: ReportServer = createReportServer({
-          reportsDir: resolve(values['output-dir'] as string),
+          reportsDir: config.outputDir,
         });
         const serverUrl: string = await server.start();
         const reportUrl: string = `${serverUrl}/run/${report.id}`;
@@ -648,7 +648,7 @@ async function handleRun(argv: string[]): Promise<void> {
         execFileCb(openCmd, [reportUrl], () => { });
       } else if (!values['no-serve']) {
         process.stderr.write('\n💡 非交互环境，已跳过 report server\n');
-        process.stderr.write(`   查看报告: omk bench report --reports-dir ${resolve(values['output-dir'] as string)}\n`);
+        process.stderr.write(`   查看报告: omk bench report --reports-dir ${config.outputDir}\n`);
       }
     }
   } catch (err: unknown) {
@@ -1017,45 +1017,16 @@ async function handleCi(argv: string[]): Promise<void> {
     const { report } = (await runEvaluation(config)) as EvalResult;
 
     const threshold: number = Number(values.threshold);
-    let allPass: boolean = true;
 
     if ((report as Report & { dryRun?: boolean }).dryRun) {
       console.log('CI dry-run: no scores to check');
       process.exit(0);
     }
 
-    // PR-3 three-gate CI: 事实 / 行为 / LLM 评价 三层各自与 threshold 比较,任一层低于
-    // threshold 即 FAIL。这样某一层崩盘会被暴露出来,不会被 composite 合成分均化掩盖。
-    // 三层都缺时(eval-samples 既没断言又没 rubric)直接 FAIL + 引导,不降级到 composite。
-    for (const [variant, stats] of Object.entries(report.summary || {})) {
-      const layers: Array<{ label: string; value: number | undefined }> = [
-        { label: '事实 / Fact',        value: stats.avgFactScore },
-        { label: '行为 / Behavior',    value: stats.avgBehaviorScore },
-        { label: 'LLM 评价 / judge',   value: stats.avgJudgeScore },
-      ];
-      const present = layers.filter((l) => typeof l.value === 'number');
-
-      if (present.length === 0) {
-        // 没有任何一层分数意味着 eval-samples 既未定义 assertions 也未定义 rubric——
-        // 没数据就没法 gate,诚实报告 FAIL 并引导用户补配置,不偷偷走 composite 兜底。
-        console.log(`FAIL: ${variant} · 无分层评分(fact / behavior / judge 三层均缺数据)。请检查 eval-samples 是否定义了断言(assertions)或 LLM 评委(rubric)`);
-        allPass = false;
-        continue;
-      }
-
-      let variantPass = true;
-      const parts: string[] = [];
-      for (const l of present) {
-        const v = l.value ?? 0;
-        const pass = v >= threshold;
-        if (!pass) variantPass = false;
-        parts.push(`${l.label}=${v.toFixed(2)}${pass ? '' : ' ✗'}`);
-      }
-      const status = variantPass ? 'PASS' : 'FAIL';
-      console.log(`${status}: ${variant} · ${parts.join(' · ')} (threshold=${threshold})`);
-      if (!variantPass) allPass = false;
-    }
-
+    // three-gate 逻辑抽到 src/eval-core/ci-gates.ts 作纯函数,便于测试;此处只做 IO。
+    const { evaluateCiGates } = await import('./eval-core/ci-gates.js');
+    const { allPass, lines } = evaluateCiGates(report.summary || {}, threshold);
+    for (const line of lines) console.log(line);
     process.exit(allPass ? 0 : 1);
   } catch (err: unknown) {
     console.error(`Error: ${(err as Error).message}`);

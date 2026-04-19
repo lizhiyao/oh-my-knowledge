@@ -56,11 +56,20 @@ function generateSummary(report: Report, variants: string[]): string | undefined
   if (variants.length < 2) return undefined;
   const stats = report.summary || {};
 
-  // Find control and test groups
+  // Find control group. experimentRole 是 v0.16 起用户显式声明的 control/treatment
+  // 角色(见 docs/terminology-spec.md 三-4),是判定对照组的唯一来源。
+  // 老 report(v0.15 及更早)variantConfig 里可能缺 experimentRole 字段,
+  // 退化到从 artifactKind === 'baseline' / experimentType 反推——标注为 legacy 路径。
   const configs = report.meta?.variantConfigs || [];
-  const controlVariants = configs
-    .filter((c) => c.artifactKind === 'baseline' || c.experimentType === 'runtime-context-only' || c.experimentType === 'baseline')
+  let controlVariants = configs
+    .filter((c) => c.experimentRole === 'control')
     .map((c) => c.variant);
+  if (controlVariants.length === 0) {
+    // legacy fallback for old reports without experimentRole
+    controlVariants = configs
+      .filter((c) => c.artifactKind === 'baseline' || c.experimentType === 'runtime-context-only' || c.experimentType === 'baseline')
+      .map((c) => c.variant);
+  }
 
   const control = controlVariants[0] || variants[0];
   const test = variants.find((v) => v !== control);

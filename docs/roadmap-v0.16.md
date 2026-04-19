@@ -105,14 +105,13 @@ config 文件与 CLI 参数共存：config 定义基础配置，CLI 参数可覆
 **目标**：`VarianceComparison.byMetric.quality` 下嵌套 `byLayer: { fact, behavior, quality }`，每层独立计算 t / df / p / Cohen's d / 95% CI。
 
 **实现路径**：
-- `buildVarianceData` 为每个 variant 采集三层的 per-run 序列（`avgFactScore` / `avgBehaviorScore` / `avgQualityScore` 已在 `VariantSummary`）
+- `buildVarianceData` 为每个 variant 采集三层的 per-run 序列（`avgFactScore` / `avgBehaviorScore` / `avgJudgeScore` 已在 `VariantSummary`）
 - 独立跑三次 Welch's t-test，合成分的 t 检验保留但标为 legacy
 - 渲染器默认只展示合成层，点开分层（避免表格爆炸：2 variants × 3 metrics × 3 layers = 最多 9 行 per 对比对）
 
 **验收标准**：
 - 三层各自给出 `t, df, p, d, significant`
-- HTML 报告默认折叠分层，点开可见
-- CLI `--layered-stats` 开关输出完整分层表
+- HTML 报告默认折叠三层独立显著性，`--layered-stats` 传入时 `<details>` 默认展开
 
 ### 工作项 C｜PR-3 compositeScore 语义降级（1 周）
 
@@ -121,11 +120,14 @@ config 文件与 CLI 参数共存：config 定义基础配置，CLI 参数可覆
 **目标**：compositeScore 从"主分"降为"参考分值"。报告主视图展示三层独立结果，合成分放次要位置。
 
 **改动面**：
-- HTML 报告主视图：三层并列展示，compositeScore 单独小字标注
-- CLI 默认输出三层（现在默认输出合成），`--legacy-composite` 开关恢复旧行为
-- 断言判定：`score_min` 这类断言要明确作用于哪一层（默认 quality 层）
-- 回归阈值 / CI 门禁：`--threshold` 语义澄清（默认作用于 quality 层）
+- HTML 报告主视图：三层并列展示（六列平铺：事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性），composite 合成分不再占 UI 主位
+- 回归阈值 / CI 门禁：`--threshold` 改为三层 all-pass（any layer < threshold → FAIL），避免 composite 均化掩盖结构性差异
 - 文案全面重写：引导读者看分层而非合成分
+
+**主动不做（0-1 窗口期原则）**：
+
+- ~~`--legacy-composite` 兼容开关恢复旧行为~~：不做。0-1 阶段不留回退通道，用户迁移一次到位。合成分在 JSON 数据层保留（report.meta + VarianceComparison flat fields），外部脚本仍可读 `avgCompositeScore`，但 CLI 不再用它做主视觉或门禁
+- ~~断言判定：`score_min` 这类断言要明确作用于哪一层~~：当前代码并无 `score_min` / `score_max` 断言类型（roadmap 起草时假设有，实际不存在）；未来若新增此类断言，默认作用于 composite 层作向后兼容方便，并同时提供 `layer: fact | behavior | judge` 参数显式指定。
 
 **验收标准**：用户能一眼看出"质量改进但成本涨了"这类混合信号；compositeScore 不在任何主视图独占 C 位。
 
