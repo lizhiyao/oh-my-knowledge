@@ -97,6 +97,47 @@ export const I18N: Record<Lang, Record<string, string>> = {
     variantArtifactSource: '知识来源',
     variantExecutionStrategy: '执行策略',
     variantRuntimeContext: '运行环境',
+    // --- observability (skill health / trend / diff) ---
+    skillHealthTitle: 'Skill 健康度日报',
+    noAnalyses: '暂无 skill 健康度日报。运行 <code>omk analyze &lt;trace-dir&gt;</code> 生成。',
+    backToEvalReports: '← 评测报告',
+    backToAnalyses: '← Skill 健康度日报',
+    analysesCompareHint: '选两个报告的 from/to 单选框,点 Compare 生成 diff。',
+    analysesCompareBtn: '对比 →',
+    analysesFromLabel: 'from',
+    analysesToLabel: 'to',
+    analysesSessions: '会话',
+    analysesSegs: '段',
+    analysesSkills: '技能',
+    skillTrendHeading: 'Skill 趋势',
+    noTrendData: '暂无趋势数据。该 skill 尚未出现在任何分析报告里。',
+    trendNPoints: '个时间点',
+    trendEarliest: '最早',
+    trendLatest: '最新',
+    trendLegendGap: 'gap rate',
+    trendLegendWeighted: 'weighted gap',
+    trendLegendFailure: 'failure rate',
+    trendLegendCoverage: 'coverage',
+    trendColTimestamp: '时间',
+    trendColSegs: '段数',
+    trendColGap: 'Gap',
+    trendColWeighted: '加权',
+    trendColFailure: '失败率',
+    trendColCoverage: '覆盖',
+    trendColTokens: 'Tokens',
+    trendColDuration: '耗时',
+    skillDiffHeading: 'Skill 健康度对比',
+    diffSortHint: '按 gap 变化量排序;绿色=改善,红色=恶化',
+    diffTagRemoved: '已消失',
+    diffTagNew: '新增',
+    diffNavFrom: '起点',
+    diffNavTo: '终点',
+    diffColSkill: 'Skill',
+    diffColSegments: '段数',
+    diffColWeightedGap: '加权 Gap',
+    diffColFailureRate: '失败率',
+    diffColCoverage: '覆盖',
+    viewTrendLink: '查看趋势 →',
     switchLang: 'EN',
   },
   en: {
@@ -152,6 +193,47 @@ export const I18N: Record<Lang, Record<string, string>> = {
     variantArtifactSource: 'Source',
     variantExecutionStrategy: 'Execution Strategy',
     variantRuntimeContext: 'Runtime Context',
+    // --- observability (skill health / trend / diff) ---
+    skillHealthTitle: 'Skill Health Reports',
+    noAnalyses: 'No skill health reports yet. Run <code>omk analyze &lt;trace-dir&gt;</code> to generate.',
+    backToEvalReports: '← Eval reports',
+    backToAnalyses: '← Skill Health Reports',
+    analysesCompareHint: 'Pick from/to radios on two reports, then click Compare to generate a diff.',
+    analysesCompareBtn: 'Compare →',
+    analysesFromLabel: 'from',
+    analysesToLabel: 'to',
+    analysesSessions: 'sessions',
+    analysesSegs: 'segs',
+    analysesSkills: 'skills',
+    skillTrendHeading: 'Skill Trend',
+    noTrendData: 'No trend data. This skill has not appeared in any analysis report yet.',
+    trendNPoints: 'data points',
+    trendEarliest: 'earliest',
+    trendLatest: 'latest',
+    trendLegendGap: 'gap rate',
+    trendLegendWeighted: 'weighted gap',
+    trendLegendFailure: 'failure rate',
+    trendLegendCoverage: 'coverage',
+    trendColTimestamp: 'Timestamp',
+    trendColSegs: 'Segs',
+    trendColGap: 'Gap',
+    trendColWeighted: 'Weighted',
+    trendColFailure: 'Failure',
+    trendColCoverage: 'Coverage',
+    trendColTokens: 'Tokens',
+    trendColDuration: 'Duration',
+    skillDiffHeading: 'Skill Health Diff',
+    diffSortHint: 'Sorted by |Δgap|; green=improved, red=regressed',
+    diffTagRemoved: 'removed',
+    diffTagNew: 'new',
+    diffNavFrom: 'from',
+    diffNavTo: 'to',
+    diffColSkill: 'Skill',
+    diffColSegments: 'Segments',
+    diffColWeightedGap: 'Weighted gap',
+    diffColFailureRate: 'Failure rate',
+    diffColCoverage: 'Coverage',
+    viewTrendLink: 'trend →',
     switchLang: '中文',
   },
 };
@@ -209,7 +291,27 @@ function langToggleScript(): string {
       }
     });
     document.getElementById('lang-toggle').textContent = I18N[next].switchLang;
+    // 同步写入 URL ?lang= 和 localStorage,让刷新/跳转保持语言选择
+    try {
+      var url = new URL(window.location.href);
+      url.searchParams.set('lang', next);
+      window.history.replaceState(null, '', url.toString());
+      localStorage.setItem('omk-lang', next);
+    } catch (e) { /* ignore */ }
   }
+  // 页面加载时,若 URL 无 lang 但 localStorage 有,跳转到带 lang 的 URL (仅一次)
+  (function() {
+    try {
+      var url = new URL(window.location.href);
+      if (!url.searchParams.get('lang')) {
+        var saved = localStorage.getItem('omk-lang');
+        if (saved && saved !== '${DEFAULT_LANG}') {
+          url.searchParams.set('lang', saved);
+          window.location.replace(url.toString());
+        }
+      }
+    } catch (e) { /* ignore */ }
+  })();
   </script>`;
 }
 

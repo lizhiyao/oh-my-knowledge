@@ -14,7 +14,7 @@
 
 import type { SkillHealth, SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import type { Lang } from '../types.js';
-import { COLORS, e, layout } from './layout.js';
+import { COLORS, e, layout, t } from './layout.js';
 
 const HEALTH_BAND_COLOR: Record<'green' | 'yellow' | 'red', string> = {
   green: 'var(--green)',
@@ -181,8 +181,8 @@ function renderSkillCard(skill: SkillHealth, variantColor: string, lang: Lang): 
     <div class="ki-card-header">
       <span class="ki-card-title">${e(skill.skillName)}</span>
       <div class="ki-card-meta">
-        ${skill.segmentCount} ${lang === 'zh' ? '段' : 'segments'} · <span style="color:${stabilityColor}">${failureLabel}</span>
-        · <a href="/skill-trend/${encodeURIComponent(skill.skillName)}" style="color:var(--link);text-decoration:none;font-size:11px">${lang === 'zh' ? '查看趋势 →' : 'trend →'}</a>
+        ${skill.segmentCount} <span data-i18n="analysesSegs">${t('analysesSegs', lang)}</span> · <span style="color:${stabilityColor}">${failureLabel}</span>
+        · <a href="/skill-trend/${encodeURIComponent(skill.skillName)}" data-i18n="viewTrendLink" style="color:var(--accent);text-decoration:none;font-size:11px">${t('viewTrendLink', lang)}</a>
       </div>
     </div>
     <div style="font-size:11px;color:var(--text-muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 0 8px;border-bottom:1px solid var(--border);margin-bottom:10px">

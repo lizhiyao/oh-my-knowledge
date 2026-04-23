@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { renderRunList, renderRunDetail, renderEachRunDetail, renderTrendsPage } from '../renderer/html-renderer.js';
 import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
+import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
+import type { Lang } from '../types.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
 import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
 import type { JobStore, ReportStore } from '../types.js';
@@ -201,11 +203,11 @@ function fmtPct(v: number | null | undefined): string {
   return `${Math.round(v * 100)}%`;
 }
 
-function renderSkillDiffPage(diff: SkillDiffResult): string {
+function renderSkillDiffPage(diff: SkillDiffResult, lang: Lang = DEFAULT_LANG): string {
   const { fromId, toId, fromAt, toAt, rows } = diff;
   const rowHtml = rows.map((r) => {
-    const tag = r.presence === 'only-from' ? `<span style="color:#16a34a;font-size:10px;padding:1px 6px;background:#ecfdf5;border-radius:3px">removed</span>`
-      : r.presence === 'only-to' ? `<span style="color:#0366d6;font-size:10px;padding:1px 6px;background:#eff6ff;border-radius:3px">new</span>`
+    const tag = r.presence === 'only-from' ? `<span style="color:var(--green);font-size:10px;padding:1px 6px;background:var(--green-bg);border-radius:3px" data-i18n="diffTagRemoved">${t('diffTagRemoved', lang)}</span>`
+      : r.presence === 'only-to' ? `<span style="color:var(--accent);font-size:10px;padding:1px 6px;background:var(--info-bg);border-radius:3px" data-i18n="diffTagNew">${t('diffTagNew', lang)}</span>`
       : '';
     return `<tr>
       <td style="padding:8px 10px;font-family:ui-monospace,monospace">${r.skillName} ${tag}</td>
@@ -215,13 +217,42 @@ function renderSkillDiffPage(diff: SkillDiffResult): string {
       <td style="padding:8px 10px;text-align:right">${fmtPct(r.fromCoverage)} → ${fmtPct(r.toCoverage)} ${r.presence === 'both' && r.deltaCoverage != null ? fmtDelta(r.deltaCoverage) : ''}</td>
     </tr>`;
   }).join('');
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Skill Health Diff</title><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0 auto;padding:24px;max-width:1000px}nav a{color:#0366d6;text-decoration:none;margin-right:12px}h1{font-size:20px;margin:8px 0}.meta{color:#888;font-size:13px;margin-bottom:20px}table{border-collapse:collapse;width:100%;font-size:13px}thead th{text-align:left;padding:10px;border-bottom:2px solid #eee;font-weight:600}tr:nth-child(even) td{background:#fafafa}</style></head><body><nav><a href="/analyses">← Reports</a><a href="/analyses/${encodeURIComponent(fromId)}">from</a><a href="/analyses/${encodeURIComponent(toId)}">to</a></nav><h1>Skill Health Diff</h1><div class="meta">from <code>${fromId}</code> (${fromAt.slice(0, 19).replace('T', ' ')}) → to <code>${toId}</code> (${toAt.slice(0, 19).replace('T', ' ')})<br/>按 gap 变化量排序;绿色=改善,红色=恶化</div><table><thead><tr><th>Skill</th><th style="text-align:right">Segments</th><th style="text-align:right">Weighted gap</th><th style="text-align:right">Failure rate</th><th style="text-align:right">Coverage</th></tr></thead><tbody>${rowHtml}</tbody></table></body></html>`;
+  const body = `
+    <main style="max-width:1000px;margin:0 auto;padding:24px">
+      <nav style="margin-bottom:8px">
+        <a href="/analyses" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none;margin-right:12px">${t('backToAnalyses', lang)}</a>
+        <a href="/analyses/${encodeURIComponent(fromId)}" data-i18n="diffNavFrom" style="color:var(--accent);text-decoration:none;margin-right:12px">${t('diffNavFrom', lang)}</a>
+        <a href="/analyses/${encodeURIComponent(toId)}" data-i18n="diffNavTo" style="color:var(--accent);text-decoration:none">${t('diffNavTo', lang)}</a>
+      </nav>
+      <h1 data-i18n="skillDiffHeading" style="font-size:20px;margin:8px 0">${t('skillDiffHeading', lang)}</h1>
+      <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px">
+        <span data-i18n="diffNavFrom">${t('diffNavFrom', lang)}</span> <code>${fromId}</code> (${fromAt.slice(0, 19).replace('T', ' ')}) → <span data-i18n="diffNavTo">${t('diffNavTo', lang)}</span> <code>${toId}</code> (${toAt.slice(0, 19).replace('T', ' ')})<br/>
+        <span data-i18n="diffSortHint">${t('diffSortHint', lang)}</span>
+      </div>
+      <table style="border-collapse:collapse;width:100%;font-size:13px">
+        <thead><tr>
+          <th style="text-align:left;padding:10px;border-bottom:2px solid var(--border);font-weight:600" data-i18n="diffColSkill">${t('diffColSkill', lang)}</th>
+          <th style="text-align:right;padding:10px;border-bottom:2px solid var(--border);font-weight:600" data-i18n="diffColSegments">${t('diffColSegments', lang)}</th>
+          <th style="text-align:right;padding:10px;border-bottom:2px solid var(--border);font-weight:600" data-i18n="diffColWeightedGap">${t('diffColWeightedGap', lang)}</th>
+          <th style="text-align:right;padding:10px;border-bottom:2px solid var(--border);font-weight:600" data-i18n="diffColFailureRate">${t('diffColFailureRate', lang)}</th>
+          <th style="text-align:right;padding:10px;border-bottom:2px solid var(--border);font-weight:600" data-i18n="diffColCoverage">${t('diffColCoverage', lang)}</th>
+        </tr></thead>
+        <tbody>${rowHtml}</tbody>
+      </table>
+    </main>`;
+  return layout(t('skillDiffHeading', lang), body, lang);
 }
 
-function renderSkillTrendPage(trend: SkillTrendResult): string {
+function renderSkillTrendPage(trend: SkillTrendResult, lang: Lang = DEFAULT_LANG): string {
   const { skillName, points } = trend;
   if (points.length === 0) {
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Skill Trend · ${skillName}</title><style>body{font-family:-apple-system,sans-serif;margin:0 auto;padding:24px;max-width:900px}nav a{color:#0366d6;text-decoration:none}</style></head><body><nav><a href="/analyses">← Skill Health Reports</a></nav><h1>${skillName}</h1><p style="color:#888">No trend data. This skill has not appeared in any analysis report yet.</p></body></html>`;
+    const emptyBody = `
+    <main style="max-width:900px;margin:0 auto;padding:24px">
+      <nav style="margin-bottom:12px"><a href="/analyses" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none">${t('backToAnalyses', lang)}</a></nav>
+      <h1 style="font-size:20px;margin:8px 0 4px"><span data-i18n="skillTrendHeading">${t('skillTrendHeading', lang)}</span> · ${skillName}</h1>
+      <p style="color:var(--text-muted)" data-i18n="noTrendData">${t('noTrendData', lang)}</p>
+    </main>`;
+    return layout(`${t('skillTrendHeading', lang)} · ${skillName}`, emptyBody, lang);
   }
   // SVG 折线图: gapRate 主线 + failureRate 辅线, X 轴时间序
   const W = 760, H = 200, PAD = 40;
@@ -238,67 +269,104 @@ function renderSkillTrendPage(trend: SkillTrendResult): string {
   };
   const dots = (key: 'gapRate' | 'weightedGapRate' | 'failureRate' | 'coverageRate', color: string) =>
     points.map((p, i) => p[key] == null ? '' : `<circle cx="${toX(i)}" cy="${toY(p[key] as number)}" r="3" fill="${color}"/>`).join('');
-  // Y 轴刻度 (0, 50%, 100%)
-  const yTicks = [0, 0.5, 1.0].map((v) => `<g><line x1="${PAD}" y1="${toY(v)}" x2="${W - PAD}" y2="${toY(v)}" stroke="#eee"/><text x="${PAD - 6}" y="${toY(v) + 4}" text-anchor="end" font-size="11" fill="#888">${Math.round(v * 100)}%</text></g>`).join('');
-  const svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:${H}px;background:#fafafa;border:1px solid #eee;border-radius:6px">
+  const yTicks = [0, 0.5, 1.0].map((v) => `<g><line x1="${PAD}" y1="${toY(v)}" x2="${W - PAD}" y2="${toY(v)}" stroke="var(--border)"/><text x="${PAD - 6}" y="${toY(v) + 4}" text-anchor="end" font-size="11" fill="var(--text-muted)">${Math.round(v * 100)}%</text></g>`).join('');
+  const svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:${H}px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)">
     ${yTicks}
-    <path d="${pathOf('gapRate')}" stroke="#dc2626" stroke-width="2" fill="none"/>
-    <path d="${pathOf('weightedGapRate')}" stroke="#f59e0b" stroke-width="2" fill="none" stroke-dasharray="4 4"/>
-    <path d="${pathOf('failureRate')}" stroke="#7c3aed" stroke-width="2" fill="none"/>
-    <path d="${pathOf('coverageRate')}" stroke="#16a34a" stroke-width="2" fill="none"/>
-    ${dots('gapRate', '#dc2626')}${dots('weightedGapRate', '#f59e0b')}${dots('failureRate', '#7c3aed')}${dots('coverageRate', '#16a34a')}
+    <path d="${pathOf('gapRate')}" stroke="#f87171" stroke-width="2" fill="none"/>
+    <path d="${pathOf('weightedGapRate')}" stroke="#fbbf24" stroke-width="2" fill="none" stroke-dasharray="4 4"/>
+    <path d="${pathOf('failureRate')}" stroke="#a78bfa" stroke-width="2" fill="none"/>
+    <path d="${pathOf('coverageRate')}" stroke="#4ade80" stroke-width="2" fill="none"/>
+    ${dots('gapRate', '#f87171')}${dots('weightedGapRate', '#fbbf24')}${dots('failureRate', '#a78bfa')}${dots('coverageRate', '#4ade80')}
   </svg>`;
-  const legend = `<div style="margin:12px 0;font-size:12px;color:#555">
-    <span style="color:#dc2626">● gap rate</span> ·
-    <span style="color:#f59e0b">◆ weighted gap</span> ·
-    <span style="color:#7c3aed">● failure rate</span> ·
-    <span style="color:#16a34a">● coverage</span>
+  const legend = `<div style="margin:12px 0;font-size:12px;color:var(--text-secondary)">
+    <span style="color:#f87171">● <span data-i18n="trendLegendGap">${t('trendLegendGap', lang)}</span></span> ·
+    <span style="color:#fbbf24">◆ <span data-i18n="trendLegendWeighted">${t('trendLegendWeighted', lang)}</span></span> ·
+    <span style="color:#a78bfa">● <span data-i18n="trendLegendFailure">${t('trendLegendFailure', lang)}</span></span> ·
+    <span style="color:#4ade80">● <span data-i18n="trendLegendCoverage">${t('trendLegendCoverage', lang)}</span></span>
   </div>`;
   const rows = points.map((p) => `<tr>
-    <td style="padding:6px 10px;font-family:ui-monospace,monospace;font-size:12px"><a href="/analyses/${encodeURIComponent(p.analysisId)}" style="color:#0366d6;text-decoration:none">${p.generatedAt.slice(0, 19).replace('T', ' ')}</a></td>
+    <td style="padding:6px 10px;font-family:ui-monospace,monospace;font-size:12px"><a href="/analyses/${encodeURIComponent(p.analysisId)}" style="color:var(--accent);text-decoration:none">${p.generatedAt.slice(0, 19).replace('T', ' ')}</a></td>
     <td style="padding:6px 10px;text-align:right">${p.segmentCount}</td>
-    <td style="padding:6px 10px;text-align:right;color:#dc2626">${Math.round(p.gapRate * 100)}%</td>
-    <td style="padding:6px 10px;text-align:right;color:#f59e0b">${Math.round(p.weightedGapRate * 100)}%</td>
-    <td style="padding:6px 10px;text-align:right;color:#7c3aed">${Math.round(p.failureRate * 100)}%</td>
-    <td style="padding:6px 10px;text-align:right;color:#16a34a">${p.coverageRate == null ? '—' : Math.round(p.coverageRate * 100) + '%'}</td>
+    <td style="padding:6px 10px;text-align:right;color:#f87171">${Math.round(p.gapRate * 100)}%</td>
+    <td style="padding:6px 10px;text-align:right;color:#fbbf24">${Math.round(p.weightedGapRate * 100)}%</td>
+    <td style="padding:6px 10px;text-align:right;color:#a78bfa">${Math.round(p.failureRate * 100)}%</td>
+    <td style="padding:6px 10px;text-align:right;color:#4ade80">${p.coverageRate == null ? '—' : Math.round(p.coverageRate * 100) + '%'}</td>
     <td style="padding:6px 10px;text-align:right;font-family:ui-monospace,monospace;font-size:12px">${(p.totalTokens / 1000).toFixed(1)}k</td>
     <td style="padding:6px 10px;text-align:right;font-family:ui-monospace,monospace;font-size:12px">${(p.durationMs / 1000).toFixed(1)}s</td>
   </tr>`).join('');
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Skill Trend · ${skillName}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0 auto;padding:24px;max-width:900px}nav a{color:#0366d6;text-decoration:none}h1{font-size:20px;margin:8px 0 4px}.sub{color:#888;font-size:13px;margin-bottom:16px}table{border-collapse:collapse;width:100%;font-size:13px;margin-top:12px}thead th{text-align:left;padding:8px 10px;border-bottom:2px solid #eee;color:#555;font-weight:600}tr:nth-child(even) td{background:#fafafa}</style></head><body><nav><a href="/analyses">← Skill Health Reports</a></nav><h1>${skillName}</h1><div class="sub">${points.length} 个时间点 · 最早 ${points[0].generatedAt.slice(0, 10)} · 最新 ${points[points.length - 1].generatedAt.slice(0, 10)}</div>${svg}${legend}<table><thead><tr><th>Timestamp</th><th style="text-align:right">Segs</th><th style="text-align:right">Gap</th><th style="text-align:right">Weighted</th><th style="text-align:right">Failure</th><th style="text-align:right">Coverage</th><th style="text-align:right">Tokens</th><th style="text-align:right">Duration</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+  const subtitle = `${points.length} <span data-i18n="trendNPoints">${t('trendNPoints', lang)}</span> · <span data-i18n="trendEarliest">${t('trendEarliest', lang)}</span> ${points[0].generatedAt.slice(0, 10)} · <span data-i18n="trendLatest">${t('trendLatest', lang)}</span> ${points[points.length - 1].generatedAt.slice(0, 10)}`;
+  const body = `
+    <main style="max-width:900px;margin:0 auto;padding:24px">
+      <nav style="margin-bottom:8px"><a href="/analyses" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none">${t('backToAnalyses', lang)}</a></nav>
+      <h1 style="font-size:20px;margin:8px 0 4px"><span data-i18n="skillTrendHeading">${t('skillTrendHeading', lang)}</span> · ${skillName}</h1>
+      <div style="color:var(--text-muted);font-size:13px;margin-bottom:16px">${subtitle}</div>
+      ${svg}
+      ${legend}
+      <table style="border-collapse:collapse;width:100%;font-size:13px;margin-top:12px">
+        <thead><tr>
+          <th style="text-align:left;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--text-secondary);font-weight:600" data-i18n="trendColTimestamp">${t('trendColTimestamp', lang)}</th>
+          <th style="text-align:right;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--text-secondary);font-weight:600" data-i18n="trendColSegs">${t('trendColSegs', lang)}</th>
+          <th style="text-align:right;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--text-secondary);font-weight:600" data-i18n="trendColGap">${t('trendColGap', lang)}</th>
+          <th style="text-align:right;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--text-secondary);font-weight:600" data-i18n="trendColWeighted">${t('trendColWeighted', lang)}</th>
+          <th style="text-align:right;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--text-secondary);font-weight:600" data-i18n="trendColFailure">${t('trendColFailure', lang)}</th>
+          <th style="text-align:right;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--text-secondary);font-weight:600" data-i18n="trendColCoverage">${t('trendColCoverage', lang)}</th>
+          <th style="text-align:right;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--text-secondary);font-weight:600" data-i18n="trendColTokens">${t('trendColTokens', lang)}</th>
+          <th style="text-align:right;padding:8px 10px;border-bottom:2px solid var(--border);color:var(--text-secondary);font-weight:600" data-i18n="trendColDuration">${t('trendColDuration', lang)}</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </main>`;
+  return layout(`${t('skillTrendHeading', lang)} · ${skillName}`, body, lang);
 }
 
-function renderAnalysisList(items: AnalysisListItem[]): string {
-  if (items.length === 0) {
-    return `<!doctype html><html><head><meta charset="utf-8"><title>Skill Health Reports</title><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0 auto;padding:24px;max-width:900px}nav a{color:#0366d6;text-decoration:none;margin-right:16px}</style></head><body><nav><a href="/">← Eval reports</a></nav><h1>Skill Health Reports</h1><div style="color:#888;padding:16px">暂无 skill 健康度日报。运行 <code>omk analyze &lt;trace-dir&gt;</code> 生成。</div></body></html>`;
-  }
-  const rows = items.map((it) => {
-    const badgeColor = it.healthBand === 'red' ? '#dc2626' : it.healthBand === 'yellow' ? '#d97706' : '#16a34a';
-    const enc = encodeURIComponent(it.id);
-    return `<li style="padding:10px 14px;border-bottom:1px solid #eee;list-style:none;display:flex;align-items:center;gap:12px">
-      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${badgeColor}"></span>
-      <label style="font-size:11px;color:#888;display:flex;align-items:center;gap:3px"><input type="radio" name="from" value="${enc}" onchange="updateCompare()"> from</label>
-      <label style="font-size:11px;color:#888;display:flex;align-items:center;gap:3px"><input type="radio" name="to" value="${enc}" onchange="updateCompare()"> to</label>
-      <a href="/analyses/${enc}" style="color:#0366d6;text-decoration:none;flex:1;font-family:ui-monospace,monospace">${it.id}</a>
-      <span style="color:#666;font-size:12px">${it.sessionCount} sessions · ${it.segmentCount} segs · ${it.skillCount} skills</span>
-    </li>`;
-  }).join('');
-  const script = `<script>
-    function updateCompare() {
-      var f = document.querySelector('input[name=from]:checked');
-      var t = document.querySelector('input[name=to]:checked');
-      var btn = document.getElementById('compare-btn');
-      if (f && t && f.value !== t.value) {
-        btn.href = '/analyses-diff?from=' + f.value + '&to=' + t.value;
-        btn.style.opacity = '1';
-        btn.style.pointerEvents = 'auto';
-      } else {
-        btn.removeAttribute('href');
-        btn.style.opacity = '0.4';
-        btn.style.pointerEvents = 'none';
-      }
-    }
-  </script>`;
-  return `<!doctype html><html><head><meta charset="utf-8"><title>Skill Health Reports</title><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0 auto;padding:24px;max-width:900px}nav a{color:#0366d6;text-decoration:none;margin-right:16px}ul{padding:0;margin:0;border:1px solid #eee;border-radius:6px;overflow:hidden}</style></head><body><nav><a href="/">← Eval reports</a></nav><h1>Skill Health Reports</h1><div style="margin-bottom:12px;padding:8px 12px;background:#f9f9f9;border-radius:4px;font-size:12px;color:#555">选两个报告的 from/to 单选框,点 Compare 生成 diff。 <a id="compare-btn" style="margin-left:8px;padding:4px 10px;background:#0366d6;color:white;text-decoration:none;border-radius:3px;opacity:0.4;pointer-events:none">Compare →</a></div><ul>${rows}</ul>${script}</body></html>`;
+function renderAnalysisList(items: AnalysisListItem[], lang: Lang = DEFAULT_LANG): string {
+  const body = items.length === 0
+    ? `
+    <main style="max-width:900px;margin:0 auto;padding:24px">
+      <nav style="margin-bottom:12px"><a href="/" data-i18n="backToEvalReports" style="color:var(--accent);text-decoration:none">${t('backToEvalReports', lang)}</a></nav>
+      <h1 data-i18n="skillHealthTitle" style="font-size:20px;margin:8px 0 16px">${t('skillHealthTitle', lang)}</h1>
+      <div style="color:var(--text-muted);padding:16px" data-i18n="noAnalyses">${t('noAnalyses', lang)}</div>
+    </main>`
+    : (() => {
+      const rows = items.map((it) => {
+        const badgeColor = it.healthBand === 'red' ? 'var(--red)' : it.healthBand === 'yellow' ? 'var(--yellow)' : 'var(--green)';
+        const enc = encodeURIComponent(it.id);
+        return `<li style="padding:10px 14px;border-bottom:1px solid var(--border);list-style:none;display:flex;align-items:center;gap:12px">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${badgeColor}"></span>
+          <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><input type="radio" name="from" value="${enc}" onchange="updateCompare()"> <span data-i18n="analysesFromLabel">${t('analysesFromLabel', lang)}</span></label>
+          <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><input type="radio" name="to" value="${enc}" onchange="updateCompare()"> <span data-i18n="analysesToLabel">${t('analysesToLabel', lang)}</span></label>
+          <a href="/analyses/${enc}" style="color:var(--accent);text-decoration:none;flex:1;font-family:ui-monospace,monospace">${it.id}</a>
+          <span style="color:var(--text-muted);font-size:12px">${it.sessionCount} <span data-i18n="analysesSessions">${t('analysesSessions', lang)}</span> · ${it.segmentCount} <span data-i18n="analysesSegs">${t('analysesSegs', lang)}</span> · ${it.skillCount} <span data-i18n="analysesSkills">${t('analysesSkills', lang)}</span></span>
+        </li>`;
+      }).join('');
+      return `
+      <main style="max-width:900px;margin:0 auto;padding:24px">
+        <nav style="margin-bottom:12px"><a href="/" data-i18n="backToEvalReports" style="color:var(--accent);text-decoration:none">${t('backToEvalReports', lang)}</a></nav>
+        <h1 data-i18n="skillHealthTitle" style="font-size:20px;margin:8px 0 16px">${t('skillHealthTitle', lang)}</h1>
+        <div style="margin-bottom:12px;padding:8px 12px;background:var(--bg-surface);border-radius:var(--radius);font-size:12px;color:var(--text-secondary)">
+          <span data-i18n="analysesCompareHint">${t('analysesCompareHint', lang)}</span>
+          <a id="compare-btn" style="margin-left:8px;padding:4px 10px;background:var(--accent);color:white;text-decoration:none;border-radius:3px;opacity:0.4;pointer-events:none" data-i18n="analysesCompareBtn">${t('analysesCompareBtn', lang)}</a>
+        </div>
+        <ul style="padding:0;margin:0;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden">${rows}</ul>
+      </main>
+      <script>
+        function updateCompare() {
+          var f = document.querySelector('input[name=from]:checked');
+          var t2 = document.querySelector('input[name=to]:checked');
+          var btn = document.getElementById('compare-btn');
+          if (f && t2 && f.value !== t2.value) {
+            btn.href = '/analyses-diff?from=' + f.value + '&to=' + t2.value + '&lang=' + (document.documentElement.dataset.lang || '${DEFAULT_LANG}');
+            btn.style.opacity = '1';
+            btn.style.pointerEvents = 'auto';
+          } else {
+            btn.removeAttribute('href');
+            btn.style.opacity = '0.4';
+            btn.style.pointerEvents = 'none';
+          }
+        }
+      </script>`;
+    })();
+  return layout(t('skillHealthTitle', lang), body, lang);
 }
 
 interface ReportServer {
@@ -323,6 +391,8 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
     try {
       const parsed = new URL(req.url || '/', 'http://127.0.0.1');
       const path = parsed.pathname;
+      const langParam = parsed.searchParams.get('lang');
+      const lang: Lang = langParam === 'en' ? 'en' : langParam === 'zh' ? 'zh' : DEFAULT_LANG;
 
       if (path === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -353,7 +423,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
 
       if (path === '/analyses') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderAnalysisList(listAnalyses(analysesDir)));
+        res.end(renderAnalysisList(listAnalyses(analysesDir), lang));
         return;
       }
 
@@ -367,7 +437,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
           return;
         }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderSkillHealthReport(report));
+        res.end(renderSkillHealthReport(report, lang));
         return;
       }
 
@@ -397,7 +467,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
       if (skillTrendPageMatch) {
         const skillName = decodeURIComponent(skillTrendPageMatch[1]);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderSkillTrendPage(querySkillTrend(analysesDir, skillName)));
+        res.end(renderSkillTrendPage(querySkillTrend(analysesDir, skillName), lang));
         return;
       }
 
@@ -416,7 +486,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
           return;
         }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderSkillDiffPage(diff));
+        res.end(renderSkillDiffPage(diff, lang));
         return;
       }
 
