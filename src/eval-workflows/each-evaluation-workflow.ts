@@ -76,6 +76,7 @@ export function buildEachReport({
   concurrency,
   timeoutMs,
   totalCostUSD,
+  repeat,
 }: {
   skillDir: string;
   skillEntries: Array<{ name: string; skillPath: string; samplesPath: string }>;
@@ -92,6 +93,7 @@ export function buildEachReport({
   concurrency: number;
   timeoutMs?: number;
   totalCostUSD: number;
+  repeat?: number;
 }) {
   const runId = generateRunId(['each']);
   const request = buildEvaluationRequest({
@@ -117,6 +119,8 @@ export function buildEachReport({
     project,
     owner,
     tags,
+    repeat,
+    each: true,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
@@ -185,6 +189,7 @@ export async function executeEachEvaluationRuns({
   skipPreflight = false,
   mcpConfig,
   verbose = false,
+  repeat,
   runSingleEvaluation,
 }: {
   skillDir: string;
@@ -207,6 +212,7 @@ export async function executeEachEvaluationRuns({
   skipPreflight?: boolean;
   mcpConfig?: string;
   verbose?: boolean;
+  repeat?: number;
   runSingleEvaluation: (options: RunSingleEvaluationOptions) => Promise<{ report: Report; filePath: string | null }>;
 }): Promise<{ report: Report; filePath: string | null }> {
   const skillResults: EachSkillResult[] = [];
@@ -282,6 +288,7 @@ export async function executeEachEvaluationRuns({
     concurrency,
     timeoutMs,
     totalCostUSD,
+    repeat,
   });
   const filePath = persistReport(combinedReport, outputDir);
   const resolvedJobStore = persistJob ? (jobStore ?? createFileJobStore(DEFAULT_JOBS_DIR)) : null;

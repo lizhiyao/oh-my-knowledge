@@ -587,11 +587,21 @@ async function handleRun(argv: string[]): Promise<void> {
   config.blind = values.blind as boolean | undefined;
   config.onProgress = defaultOnProgress as unknown as ProgressCallback;
 
+  // --repeat 诚实输入校验:非 ≥1 整数时提示并钳到 1,不静默掩盖用户错字/极端输入
+  // 提前到 --each 分支之前,保证 each 模式也能读到 repeat (曾经 bug: --each 吞 --repeat)
+  const repeatRaw = values.repeat as string | undefined;
+  const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : 1;
+  if (repeatRaw !== undefined && (!Number.isFinite(parsedRepeat) || parsedRepeat < 1)) {
+    process.stderr.write(`⚠ --repeat "${repeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次评测执行\n`);
+  }
+  const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
+
   try {
     // --each mode: evaluate each skill independently
     if (values.each) {
       const { report, filePath } = await runEachEvaluation({
         ...config,
+        repeat: repeatCount,
         onSkillProgress({ phase, skill, current, total }: SkillProgressInfo): void {
           if (phase === 'start') {
             process.stderr.write(`\n=== [${current}/${total}] Skill: ${skill} ===\n`);
@@ -624,13 +634,6 @@ async function handleRun(argv: string[]): Promise<void> {
       return;
     }
 
-    // --repeat 诚实输入校验:非 ≥1 整数时提示并钳到 1,不静默掩盖用户错字/极端输入
-    const repeatRaw = values.repeat as string | undefined;
-    const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : 1;
-    if (repeatRaw !== undefined && (!Number.isFinite(parsedRepeat) || parsedRepeat < 1)) {
-      process.stderr.write(`⚠ --repeat "${repeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次评测执行\n`);
-    }
-    const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
     let report: Report;
     let filePath: string | null;
 

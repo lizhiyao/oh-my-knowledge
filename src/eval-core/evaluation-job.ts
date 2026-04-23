@@ -21,6 +21,8 @@ export function buildEvaluationRequest({
   project,
   owner,
   tags,
+  repeat,
+  each,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -38,6 +40,8 @@ export function buildEvaluationRequest({
   project?: string;
   owner?: string;
   tags?: string[];
+  repeat?: number;
+  each?: boolean;
 }): EvaluationRequest {
   return {
     samplesPath,
@@ -56,6 +60,8 @@ export function buildEvaluationRequest({
     project,
     owner,
     tags,
+    repeat,
+    each,
   };
 }
 
