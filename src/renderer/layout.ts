@@ -483,5 +483,5 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body>${langToggleButton(lang)}${body}<footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge · Built by lizhiyao</footer>${langToggleScript()}</body></html>`;
+</style></head><body>${langToggleButton(lang)}${body}<footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer>${langToggleScript()}</body></html>`;
 }

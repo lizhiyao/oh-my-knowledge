@@ -67,7 +67,7 @@ function extractFromText(text: string): { tools: Set<string>; files: Set<string>
     tools.add(match[1].toLowerCase());
   }
 
-  // Subcommand patterns like $(foo-cli ...)
+  // Subcommand patterns like $(my-cli ...)
   for (const match of text.matchAll(SUBCOMMAND_REGEX)) {
     const cmd = match[1].toLowerCase();
     // Only add if it looks like an external tool (contains hyphen or underscore)

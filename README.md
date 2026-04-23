@@ -49,7 +49,7 @@ omk bench run
 | **18 种断言** | 包含子串、正则、JSON Schema、语义相似度、自定义函数等 |
 | **四维评估** | 质量、成本、效率、稳定性四个维度对比 |
 | **多执行器** | 支持 Claude CLI / Claude SDK / OpenAI / Gemini 及自定义命令 |
-| **MCP URL 获取** | 通过 MCP Server 获取私有 URL 内容（如文档） |
+| **MCP URL 获取** | 通过 MCP Server 获取私有文档 URL 内容（SSO 保护的知识库等） |
 | **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
 | **并行执行** | `--concurrency N` 并行 N 个任务 |
 | **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
@@ -70,7 +70,7 @@ flowchart TD
 
     subgraph Prep["② 预处理(解析与抓取)"]
         V["变体解析<br/>variant → artifact + runtime context<br/>(cwd / 项目级 CLAUDE.md / 本地 skills)"]
-        U["URL 抓取<br/>prompt / context 中的 URL<br/>MCP Server(私有docs) → HTTP"]
+        U["URL 抓取<br/>prompt / context 中的 URL<br/>MCP Server(私有文档) → HTTP"]
     end
 
     subgraph Schedule["③ 交错调度 + 并发"]
@@ -177,21 +177,22 @@ flowchart TD
 }
 ```
 
-运行时，URL 会被替换为实际文档内容。获取顺序：先通过 MCP Server 获取匹配的 URL（如私有docs），再通过 HTTP 获取剩余 URL。MCP 已成功的 URL 不会重复 HTTP 抓取。
+运行时，URL 会被替换为实际文档内容。获取顺序：先通过 MCP Server 获取匹配的 URL（如 SSO 保护的私有文档），再通过 HTTP 获取剩余 URL。MCP 已成功的 URL 不会重复 HTTP 抓取。
 
-**私有 URL（如文档）**：在项目目录放一个 `.mcp.json` 配置文件，或通过 `--mcp-config` 指定路径：
+**私有文档 URL**：在项目目录放一个 `.mcp.json` 配置文件，或通过 `--mcp-config` 指定路径：
 
 ```json
 {
   "mcpServers": {
-    "yuque": {
-      "command": "~/./",
-      "args": ["-t", "STREAMABLE_HTTP", "https://mcpgw.../example-mcp-server"],
+    "docs": {
+      "command": "npx",
+      "args": ["@example/docs-mcp-server"],
+      "env": { "DOCS_API_TOKEN": "xxx" },
       "urlPatterns": ["docs.example.com"],
       "fetchTool": {
         "name": "fetch_doc",
         "urlTransform": {
-          "regex": "yuque\\.antfin\\.com/([^/]+/[^/]+)/([^/?#]+)",
+          "regex": "docs\\.example\\.com/([^/]+/[^/]+)/([^/?#]+)",
           "params": { "namespace": "$1", "slug": "$2" }
         },
         "contentExtract": "data.body"
@@ -292,7 +293,7 @@ omk bench run [选项]
   --repeat <n>           重复 N 次做方差分析（默认：1）
   --executor <名称>      执行器（默认：claude），支持自定义命令
   --skip-preflight       跳过评测前的模型连通性检查
-  --mcp-config <路径>    MCP 配置文件，用于通过 MCP Server 获取私有 URL 内容
+  --mcp-config <路径>    MCP 配置文件，用于通过 MCP Server 获取私有文档 URL 内容
                          （默认：当前目录的 .mcp.json）
   --no-serve             评测完成后不自动启动报告服务
   --verbose              打印每个样本的详细执行结果（耗时、tokens、输出预览）
@@ -468,10 +469,10 @@ omk bench run --variants v1,v2
 omk bench run --variants baseline,my-skill
 
 # 推荐用自描述标签单独观察项目级 runtime context 的影响
-omk bench run --variants project-env@/Projects/workspace
+omk bench run --variants project-env@/path/to/target-project
 
 # 对比“项目级 runtime context”与“显式 artifact 注入”
-omk bench run --variants project-env@/Projects/workspace,/Projects/workspace/.claude/skills/prd/SKILL.md@/Projects/workspace
+omk bench run --variants project-env@/path/to/target-project,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 
 # 对比修改前后（旧版本从 git 历史读取）
 omk bench run --variants git:my-skill,my-skill
@@ -540,7 +541,7 @@ omk bench run \
 ```bash
 omk bench run \
   --executor claude-sdk \
-  --variants project-env@/Projects/workspace
+  --variants project-env@/path/to/target-project
 ```
 
 **3. 显式 artifact 注入**
@@ -550,7 +551,7 @@ omk bench run \
 ```bash
 omk bench run \
   --executor claude-sdk \
-  --variants /Projects/workspace/.claude/skills/prd/SKILL.md@/Projects/workspace
+  --variants /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 ```
 
 #### 推荐的第一轮对照设计
@@ -561,7 +562,7 @@ omk bench run \
 omk bench run \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
-  --variants baseline,/Projects/workspace/.claude/skills/prd/SKILL.md@/Projects/workspace
+  --variants baseline,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 ```
 
 如果你想证明“项目目录中的知识沉淀本身”是否有效，再加第三组：
@@ -570,7 +571,7 @@ omk bench run \
 omk bench run \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
-  --variants baseline,project-env@/Projects/workspace,/Projects/workspace/.claude/skills/prd/SKILL.md@/Projects/workspace
+  --variants baseline,project-env@/path/to/target-project,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 ```
 
 #### 设计建议

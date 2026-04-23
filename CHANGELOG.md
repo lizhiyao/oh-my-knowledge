@@ -2,7 +2,7 @@
 
 omk（`oh-my-knowledge`）的版本变更记录。格式参照 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/)。
 
-**0-1 阶段说明**：omk 仍处于 0-1 阶段，用户规模小。破坏性调整直接移除旧接口，不挂兼容别名、不打 deprecation warning——保留旧行为只会让歧义继续影响新用户。详见 [`docs/roadmap-v0.16.md`](./docs/roadmap-v0.16.md) 第 8 节"执行原则"。
+**0-1 阶段说明**：omk 仍处于 0-1 阶段，用户规模小。破坏性调整直接移除旧接口，不挂兼容别名、不打 deprecation warning——保留旧行为只会让歧义继续影响新用户。
 
 ---
 
@@ -108,7 +108,7 @@ omk（`oh-my-knowledge`）的版本变更记录。格式参照 [Keep a Changelog
   - 影响：老 CI 脚本 `omk bench ci --threshold 3.5` 语义从单-gate 变 three-gate，**通常更严格但信息更丰富**（旧 PASS 的 case 绝大多数仍 PASS，除非靠 layer-averaging 躲过 gate 的 case）。
   - **不提供 composite fallback**：三层都缺（eval-samples 既没定义断言也没定义 rubric）时直接 FAIL + 引导用户补配置，不偷偷走合成分。符合 0-1 窗口期不做兼容的执行原则与 PR-3"拒绝合成分掩盖"精神。
 - **稳定性语义修正**：四维对比表"稳定性"列主指标从"成功率 %"改为 **CV（变异系数）= σ / mean**，数据来自跨 run 的 `report.variance.perVariant[v]`（需 `--repeat ≥ 2`）。副区显示 `σ + 95% CI`。无 variance 数据时主值显示 `—` + 副区 `需 --repeat ≥ 2`，不再虚报成功率。
-  - 原因：v0.15 及更早把"稳定性"主值挂成执行成功率、副值挂成跨样本 min~max 分数范围——两者都不是稳定性。成功率是执行健康度、跨样本 range 反映的是样本难度差异而非 variant 波动。行业对照（Anthropic / OpenAI eval docs / Braintrust / Langfuse）里稳定性以跨重复运行的方差为核心——CV 是工程领域相对离散度指标，与 psychometrics 意义的 test-retest reliability（ICC / Pearson r）不完全等价，阈值 `<5% / 5~15% / >15%` 为 1-5 分数量纲的内部经验值。
+  - 原因：v0.15 及更早把"稳定性"主值挂成执行成功率、副值挂成跨样本 min~max 分数范围——两者都不是稳定性。成功率是执行健康度、跨样本 range 反映的是样本难度差异而非 variant 波动。行业对照（Anthropic / OpenAI eval docs / Braintrust / Langfuse）里稳定性以跨重复运行的方差为核心——CV 是工程领域相对离散度指标，与 psychometrics 意义的 test-retest reliability（ICC / Pearson r）不完全等价，阈值 `<5% / 5~15% / >15%` 为 1-5 分数量纲下的经验值。
   - 影响：单轮评测（无 `--repeat`）报告不再显示"稳定性 100%"，改为诚实占位"— 需 `--repeat ≥ 2`"；成功率 < 100% 时作为副区 alert 保留。
   - 详见 `docs/terminology-spec.md` 第三节第 5 条。
 - **新增必填字段（旧 v0.15 / 更早 report JSON 在新 renderer 下部分维度退化为 `—`）**：
@@ -121,4 +121,4 @@ omk（`oh-my-knowledge`）的版本变更记录。格式参照 [Keep a Changelog
 
 ## [0.15.0] 及更早
 
-本文件从 v0.16 起追踪详细变更。v0.15 及之前的演进见 git log 与 `docs/roadmap-v0.16.md` 开头的基线说明（"v0.15 omk 的四件独家事已立：控制变量 / 统计严谨 / 缺口信号 / evolve"）。
+本文件从 v0.16 起追踪详细变更。v0.15 及之前的演进见 git log。

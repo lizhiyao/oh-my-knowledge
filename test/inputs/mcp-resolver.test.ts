@@ -59,10 +59,10 @@ describe('loadMcpConfig', () => {
     const configPath = join(tmpDir, '.mcp.json');
     writeFileSync(configPath, JSON.stringify({
       mcpServers: {
-        yuque: {
+        docs: {
           command: 'npx',
           args: ['@example/docs-mcp-server'],
-          env: { YUQUE_API_TOKEN: 'test-token' },
+          env: { DOCS_API_TOKEN: 'test-token' },
           urlPatterns: ['docs.example.com'],
           fetchTool: { name: 'get_doc', urlParam: 'url' },
         },
@@ -74,10 +74,10 @@ describe('loadMcpConfig', () => {
     }));
     const result = loadMcpConfig(configPath);
     assert.ok(result);
-    assert.deepEqual(Object.keys(result), ['yuque']);
-    assert.equal(result.yuque.command, 'npx');
-    assert.deepEqual(result.yuque.urlPatterns, ['docs.example.com']);
-    assert.equal(result.yuque.fetchTool.name, 'get_doc');
+    assert.deepEqual(Object.keys(result), ['docs']);
+    assert.equal(result.docs.command, 'npx');
+    assert.deepEqual(result.docs.urlPatterns, ['docs.example.com']);
+    assert.equal(result.docs.fetchTool.name, 'get_doc');
   });
 
   it('支持 servers 字段（兼容格式）', () => {
@@ -87,7 +87,7 @@ describe('loadMcpConfig', () => {
         dima: {
           command: 'node',
           args: ['dima-server.js'],
-          urlPatterns: ['docs.example.com'],
+          urlPatterns: ['internal.example.com'],
           fetchTool: { name: 'query', urlParam: 'workItemId' },
         },
       },
@@ -108,7 +108,7 @@ describe('resolveMcpUrls', () => {
   it('无 URL 时直接返回', async () => {
     const samples = [{ sample_id: 's1', prompt: 'no urls here' }];
     const mcpServers: McpServers = {
-      yuque: {
+      docs: {
         command: 'echo', urlPatterns: ['docs.example.com'],
         fetchTool: { name: 'get_doc', urlParam: 'url' },
       },
@@ -123,7 +123,7 @@ describe('resolveMcpUrls', () => {
       prompt: 'check https://github.com/some/repo',
     }];
     const mcpServers: McpServers = {
-      yuque: {
+      docs: {
         command: 'echo', urlPatterns: ['docs.example.com'],
         fetchTool: { name: 'get_doc', urlParam: 'url' },
       },
@@ -140,7 +140,7 @@ describe('resolveMcpUrls', () => {
     }];
 
     const mcpServers: McpServers = {
-      yuque: {
+      docs: {
         command: 'echo',
         urlPatterns: ['docs.example.com'],
         fetchTool: { name: 'get_doc', urlParam: 'url' },
@@ -203,7 +203,7 @@ describe('buildToolArgs logic', () => {
       {
         name: 'fetch_doc',
         urlTransform: {
-          regex: 'yuque\\.antfin\\.com/([^/]+/[^/]+)/([^/?#]+)',
+          regex: 'docs\\.example\\.com/([^/]+/[^/]+)/([^/?#]+)',
           params: { namespace: '$1', slug: '$2' },
         },
       },
@@ -217,7 +217,7 @@ describe('buildToolArgs logic', () => {
       {
         name: 'fetch_doc',
         urlTransform: {
-          regex: 'yuque\\.antfin\\.com/([^/]+/[^/]+)/([^/?#]+)',
+          regex: 'docs\\.example\\.com/([^/]+/[^/]+)/([^/?#]+)',
           params: { namespace: '$1', slug: '$2' },
         },
       },
