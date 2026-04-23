@@ -875,17 +875,11 @@ async function handleAnalyze(argv: string[]): Promise<void> {
     skills,
   });
 
-  const { renderSkillHealthReport } = await import('./renderer/skill-health-renderer.js');
-  const html = renderSkillHealthReport(report);
-
+  // JSON 是主产物; HTML 由 report server 的 /analyses/:id 按需渲染 (和 bench run 一致)
   const outDir = resolve(values['output-dir'] || join(process.env.HOME || '.', '.oh-my-knowledge', 'analyses'));
   mkdirSync(outDir, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const basePath = join(outDir, `${timestamp}-skill-health`);
-  const outPath = `${basePath}.html`;
-  const jsonPath = `${basePath}.json`;
-  writeFileSync(outPath, html);
-  // JSON 同步写出,供 report server 的 /analyses 路由挂载
+  const jsonPath = join(outDir, `${timestamp}-skill-health.json`);
   writeFileSync(jsonPath, JSON.stringify(report, null, 2));
 
   // 控制台摘要
@@ -901,7 +895,8 @@ async function handleAnalyze(argv: string[]): Promise<void> {
   console.log('top skills:');
   console.log(skillRows.join('\n'));
   console.log('');
-  console.log(`report written to: ${outPath}`);
+  console.log(`report written to: ${jsonPath}`);
+  console.log(`view in browser: omk bench report  # 打开后点首页的 "📊 Skill 健康度日报"`);
 }
 
 async function handleInit(argv: string[]): Promise<void> {
