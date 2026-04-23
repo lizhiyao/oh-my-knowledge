@@ -84,7 +84,7 @@ omk（`oh-my-knowledge`）的版本变更记录。格式参照 [Keep a Changelog
 - `src/inputs/eval-config.ts`：config 加载 + schema 校验；相对路径按 config 文件所在目录解析；`baseline` / `git:` 前缀保持原样
 - 类型层：`VariantConfig.experimentRole`、`Artifact.experimentRole`（run-time 属性）、`VariantSpec`、`EvalConfig`、`EvalConfigVariant`
 - 术语规范 `docs/terminology-spec.md` 第 4 节 Experiment Role，明确 `control` / `treatment` 术语与 `baseline` kind 的正交边界
-- 能力迭代路线图 `docs/roadmap-v0.16.md`：v0.16-v0.20+ 节奏与执行原则
+- 能力迭代路线图：v0.16-v0.20+ 节奏与执行原则
 - dry-run 输出新增 `experimentRole` 字段
 
 ### Changed
