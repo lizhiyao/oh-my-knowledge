@@ -74,6 +74,10 @@ interface SkillTrendPoint {
   weightedGapRate: number;
   failureRate: number;
   coverageRate: number | null;
+  /** input + output only, 计费主成本 */
+  billableTokens: number;
+  /** cache_read + cache_creation, 通常远大于 billable 但计费权重低 */
+  cachedTokens: number;
   totalTokens: number;
   avgTokensPerSegment: number;
   durationMs: number;
@@ -99,6 +103,8 @@ function querySkillTrend(dir: string, skillName: string): SkillTrendResult {
     if (!h) continue;
     // 旧格式 (加 usage 字段前的 analysis) 用 safe access,缺字段降级为 0/undefined
     const u = h.usage;
+    const billable = (u?.inputTokens ?? 0) + (u?.outputTokens ?? 0);
+    const cached = (u?.cacheReadTokens ?? 0) + (u?.cacheCreationTokens ?? 0);
     points.push({
       analysisId: it.id,
       generatedAt: report.meta.generatedAt,
@@ -106,6 +112,8 @@ function querySkillTrend(dir: string, skillName: string): SkillTrendResult {
       weightedGapRate: h.gap?.weightedGapRate ?? 0,
       failureRate: h.toolFailureRate ?? 0,
       coverageRate: h.coverage?.fileCoverageRate ?? null,
+      billableTokens: billable,
+      cachedTokens: cached,
       totalTokens: u?.totalTokens ?? 0,
       avgTokensPerSegment: u?.avgTokensPerSegment ?? 0,
       durationMs: u?.durationMs ?? 0,
@@ -205,6 +213,7 @@ function fmtPct(v: number | null | undefined): string {
 
 function renderSkillDiffPage(diff: SkillDiffResult, lang: Lang = DEFAULT_LANG): string {
   const { fromId, toId, fromAt, toAt, rows } = diff;
+  const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
   const rowHtml = rows.map((r) => {
     const tag = r.presence === 'only-from' ? `<span style="color:var(--green);font-size:10px;padding:1px 6px;background:var(--green-bg);border-radius:3px" data-i18n="diffTagRemoved">${t('diffTagRemoved', lang)}</span>`
       : r.presence === 'only-to' ? `<span style="color:var(--accent);font-size:10px;padding:1px 6px;background:var(--info-bg);border-radius:3px" data-i18n="diffTagNew">${t('diffTagNew', lang)}</span>`
@@ -220,9 +229,9 @@ function renderSkillDiffPage(diff: SkillDiffResult, lang: Lang = DEFAULT_LANG): 
   const body = `
     <main style="max-width:1000px;margin:0 auto;padding:24px">
       <nav style="margin-bottom:8px">
-        <a href="/analyses" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none;margin-right:12px">${t('backToAnalyses', lang)}</a>
-        <a href="/analyses/${encodeURIComponent(fromId)}" data-i18n="diffNavFrom" style="color:var(--accent);text-decoration:none;margin-right:12px">${t('diffNavFrom', lang)}</a>
-        <a href="/analyses/${encodeURIComponent(toId)}" data-i18n="diffNavTo" style="color:var(--accent);text-decoration:none">${t('diffNavTo', lang)}</a>
+        <a href="/analyses${langQ}" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none;margin-right:12px">${t('backToAnalyses', lang)}</a>
+        <a href="/analyses/${encodeURIComponent(fromId)}${langQ}" data-i18n="diffNavFrom" style="color:var(--accent);text-decoration:none;margin-right:12px">${t('diffNavFrom', lang)}</a>
+        <a href="/analyses/${encodeURIComponent(toId)}${langQ}" data-i18n="diffNavTo" style="color:var(--accent);text-decoration:none">${t('diffNavTo', lang)}</a>
       </nav>
       <h1 data-i18n="skillDiffHeading" style="font-size:20px;margin:8px 0">${t('skillDiffHeading', lang)}</h1>
       <div style="color:var(--text-muted);font-size:13px;margin-bottom:20px">
@@ -245,10 +254,11 @@ function renderSkillDiffPage(diff: SkillDiffResult, lang: Lang = DEFAULT_LANG): 
 
 function renderSkillTrendPage(trend: SkillTrendResult, lang: Lang = DEFAULT_LANG): string {
   const { skillName, points } = trend;
+  const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
   if (points.length === 0) {
     const emptyBody = `
     <main style="max-width:900px;margin:0 auto;padding:24px">
-      <nav style="margin-bottom:12px"><a href="/analyses" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none">${t('backToAnalyses', lang)}</a></nav>
+      <nav style="margin-bottom:12px"><a href="/analyses${langQ}" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none">${t('backToAnalyses', lang)}</a></nav>
       <h1 style="font-size:20px;margin:8px 0 4px"><span data-i18n="skillTrendHeading">${t('skillTrendHeading', lang)}</span> · ${skillName}</h1>
       <p style="color:var(--text-muted)" data-i18n="noTrendData">${t('noTrendData', lang)}</p>
     </main>`;
@@ -285,19 +295,19 @@ function renderSkillTrendPage(trend: SkillTrendResult, lang: Lang = DEFAULT_LANG
     <span style="color:#4ade80">● <span data-i18n="trendLegendCoverage">${t('trendLegendCoverage', lang)}</span></span>
   </div>`;
   const rows = points.map((p) => `<tr>
-    <td style="padding:6px 10px;font-family:ui-monospace,monospace;font-size:12px"><a href="/analyses/${encodeURIComponent(p.analysisId)}" style="color:var(--accent);text-decoration:none">${p.generatedAt.slice(0, 19).replace('T', ' ')}</a></td>
+    <td style="padding:6px 10px;font-family:ui-monospace,monospace;font-size:12px"><a href="/analyses/${encodeURIComponent(p.analysisId)}${langQ}" style="color:var(--accent);text-decoration:none">${p.generatedAt.slice(0, 19).replace('T', ' ')}</a></td>
     <td style="padding:6px 10px;text-align:right">${p.segmentCount}</td>
     <td style="padding:6px 10px;text-align:right;color:#f87171">${Math.round(p.gapRate * 100)}%</td>
     <td style="padding:6px 10px;text-align:right;color:#fbbf24">${Math.round(p.weightedGapRate * 100)}%</td>
     <td style="padding:6px 10px;text-align:right;color:#a78bfa">${Math.round(p.failureRate * 100)}%</td>
     <td style="padding:6px 10px;text-align:right;color:#4ade80">${p.coverageRate == null ? '—' : Math.round(p.coverageRate * 100) + '%'}</td>
-    <td style="padding:6px 10px;text-align:right;font-family:ui-monospace,monospace;font-size:12px">${(p.totalTokens / 1000).toFixed(1)}k</td>
+    <td style="padding:6px 10px;text-align:right;font-family:ui-monospace,monospace;font-size:12px" title="input+output only; cache 分开计">${(p.billableTokens / 1000).toFixed(1)}k</td>
     <td style="padding:6px 10px;text-align:right;font-family:ui-monospace,monospace;font-size:12px">${(p.durationMs / 1000).toFixed(1)}s</td>
   </tr>`).join('');
   const subtitle = `${points.length} <span data-i18n="trendNPoints">${t('trendNPoints', lang)}</span> · <span data-i18n="trendEarliest">${t('trendEarliest', lang)}</span> ${points[0].generatedAt.slice(0, 10)} · <span data-i18n="trendLatest">${t('trendLatest', lang)}</span> ${points[points.length - 1].generatedAt.slice(0, 10)}`;
   const body = `
     <main style="max-width:900px;margin:0 auto;padding:24px">
-      <nav style="margin-bottom:8px"><a href="/analyses" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none">${t('backToAnalyses', lang)}</a></nav>
+      <nav style="margin-bottom:8px"><a href="/analyses${langQ}" data-i18n="backToAnalyses" style="color:var(--accent);text-decoration:none">${t('backToAnalyses', lang)}</a></nav>
       <h1 style="font-size:20px;margin:8px 0 4px"><span data-i18n="skillTrendHeading">${t('skillTrendHeading', lang)}</span> · ${skillName}</h1>
       <div style="color:var(--text-muted);font-size:13px;margin-bottom:16px">${subtitle}</div>
       ${svg}
@@ -320,10 +330,11 @@ function renderSkillTrendPage(trend: SkillTrendResult, lang: Lang = DEFAULT_LANG
 }
 
 function renderAnalysisList(items: AnalysisListItem[], lang: Lang = DEFAULT_LANG): string {
+  const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
   const body = items.length === 0
     ? `
     <main style="max-width:900px;margin:0 auto;padding:24px">
-      <nav style="margin-bottom:12px"><a href="/" data-i18n="backToEvalReports" style="color:var(--accent);text-decoration:none">${t('backToEvalReports', lang)}</a></nav>
+      <nav style="margin-bottom:12px"><a href="/${langQ}" data-i18n="backToEvalReports" style="color:var(--accent);text-decoration:none">${t('backToEvalReports', lang)}</a></nav>
       <h1 data-i18n="skillHealthTitle" style="font-size:20px;margin:8px 0 16px">${t('skillHealthTitle', lang)}</h1>
       <div style="color:var(--text-muted);padding:16px" data-i18n="noAnalyses">${t('noAnalyses', lang)}</div>
     </main>`
@@ -335,13 +346,13 @@ function renderAnalysisList(items: AnalysisListItem[], lang: Lang = DEFAULT_LANG
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${badgeColor}"></span>
           <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><input type="radio" name="from" value="${enc}" onchange="updateCompare()"> <span data-i18n="analysesFromLabel">${t('analysesFromLabel', lang)}</span></label>
           <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><input type="radio" name="to" value="${enc}" onchange="updateCompare()"> <span data-i18n="analysesToLabel">${t('analysesToLabel', lang)}</span></label>
-          <a href="/analyses/${enc}" style="color:var(--accent);text-decoration:none;flex:1;font-family:ui-monospace,monospace">${it.id}</a>
+          <a href="/analyses/${enc}${langQ}" style="color:var(--accent);text-decoration:none;flex:1;font-family:ui-monospace,monospace">${it.id}</a>
           <span style="color:var(--text-muted);font-size:12px">${it.sessionCount} <span data-i18n="analysesSessions">${t('analysesSessions', lang)}</span> · ${it.segmentCount} <span data-i18n="analysesSegs">${t('analysesSegs', lang)}</span> · ${it.skillCount} <span data-i18n="analysesSkills">${t('analysesSkills', lang)}</span></span>
         </li>`;
       }).join('');
       return `
       <main style="max-width:900px;margin:0 auto;padding:24px">
-        <nav style="margin-bottom:12px"><a href="/" data-i18n="backToEvalReports" style="color:var(--accent);text-decoration:none">${t('backToEvalReports', lang)}</a></nav>
+        <nav style="margin-bottom:12px"><a href="/${langQ}" data-i18n="backToEvalReports" style="color:var(--accent);text-decoration:none">${t('backToEvalReports', lang)}</a></nav>
         <h1 data-i18n="skillHealthTitle" style="font-size:20px;margin:8px 0 16px">${t('skillHealthTitle', lang)}</h1>
         <div style="margin-bottom:12px;padding:8px 12px;background:var(--bg-surface);border-radius:var(--radius);font-size:12px;color:var(--text-secondary)">
           <span data-i18n="analysesCompareHint">${t('analysesCompareHint', lang)}</span>

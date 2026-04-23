@@ -19,7 +19,8 @@ type EachOverviewArtifact = EachOverview['artifacts'][number];
 type EachArtifactReport = NonNullable<Report['artifacts']>[number];
 
 export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string {
-  const skillHealthLink = `<a href="/analyses" style="color:var(--text-muted);font-size:12px;text-decoration:none;border:1px solid var(--border);padding:4px 10px;border-radius:var(--radius);display:inline-block">📊 <span data-i18n="skillHealthTitle">${t('skillHealthTitle', lang)}</span> →</a>`;
+  const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
+  const skillHealthLink = `<a href="/analyses${langQ}" style="color:var(--text-muted);font-size:12px;text-decoration:none;border:1px solid var(--border);padding:4px 10px;border-radius:var(--radius);display:inline-block">📊 <span data-i18n="skillHealthTitle">${t('skillHealthTitle', lang)}</span> →</a>`;
   if (!runs || runs.length === 0) {
     return layout(t('title', lang), `
       <main>

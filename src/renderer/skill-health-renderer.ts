@@ -169,11 +169,14 @@ function renderSkillCard(skill: SkillHealth, variantColor: string, lang: Lang): 
     totalTokens: 0, durationMs: 0, numTurns: 0,
     avgTokensPerSegment: 0, avgDurationMsPerSegment: 0,
   };
-  const totalTokK = (u.totalTokens / 1000).toFixed(1);
-  const avgTokK = (u.avgTokensPerSegment / 1000).toFixed(1);
+  const billableTokens = (u.inputTokens ?? 0) + (u.outputTokens ?? 0);
+  const cachedTokens = (u.cacheReadTokens ?? 0) + (u.cacheCreationTokens ?? 0);
+  const billK = (billableTokens / 1000).toFixed(1);
+  const cachedK = (cachedTokens / 1000).toFixed(1);
   const durSec = (u.durationMs / 1000).toFixed(1);
   const avgDurSec = (u.avgDurationMsPerSegment / 1000).toFixed(1);
-  const usageLine = `${totalTokK}k ${lang === 'zh' ? 'tokens' : 'tokens'} (${lang === 'zh' ? '均' : 'avg'} ${avgTokK}k/${lang === 'zh' ? '段' : 'seg'}) · ${durSec}s ${lang === 'zh' ? '总耗时' : 'total'} (${lang === 'zh' ? '均' : 'avg'} ${avgDurSec}s/${lang === 'zh' ? '段' : 'seg'}) · ${u.numTurns} ${lang === 'zh' ? '轮次' : 'turns'}`;
+  const cachedSeg = cachedTokens > 0 ? ` + ${cachedK}k ${lang === 'zh' ? '缓存' : 'cached'}` : '';
+  const usageLine = `${billK}k tokens${cachedSeg} · ${durSec}s (${lang === 'zh' ? '均' : 'avg'} ${avgDurSec}s/${lang === 'zh' ? '段' : 'seg'}) · ${u.numTurns} ${lang === 'zh' ? '轮次' : 'turns'}`;
 
   // ─── Card 结构 ───────────────────────────────
   return `
@@ -182,7 +185,7 @@ function renderSkillCard(skill: SkillHealth, variantColor: string, lang: Lang): 
       <span class="ki-card-title">${e(skill.skillName)}</span>
       <div class="ki-card-meta">
         ${skill.segmentCount} <span data-i18n="analysesSegs">${t('analysesSegs', lang)}</span> · <span style="color:${stabilityColor}">${failureLabel}</span>
-        · <a href="/skill-trend/${encodeURIComponent(skill.skillName)}" data-i18n="viewTrendLink" style="color:var(--accent);text-decoration:none;font-size:11px">${t('viewTrendLink', lang)}</a>
+        · <a href="/skill-trend/${encodeURIComponent(skill.skillName)}${lang === 'zh' ? '' : `?lang=${lang}`}" data-i18n="viewTrendLink" style="color:var(--accent);text-decoration:none;font-size:11px">${t('viewTrendLink', lang)}</a>
       </div>
     </div>
     <div style="font-size:11px;color:var(--text-muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 0 8px;border-bottom:1px solid var(--border);margin-bottom:10px">
