@@ -228,12 +228,17 @@ function parseRunConfig(
     }
   } else if (evalConfig) {
     variantSpecs = configVariantsToSpecs(evalConfig.variants);
+  } else if (values.each) {
+    // --each 模式自动用 baseline (control) vs 每个 skill (treatment),
+    // 不需要用户显式传 --control / --treatment,校验跳过。
+    variantSpecs = [];
   } else {
     const discovered = discoverVariants(skillDir);
     const hint = discovered.length > 0 ? `\n  skill-dir (${skillDir}) 下发现的候选：${discovered.join(', ')}` : '';
     throw new Error(
       `请通过 --control / --treatment 或 --config eval.yaml 声明 variant 角色。\n`
       + `  示例：omk bench run --control baseline --treatment my-skill${hint}\n`
+      + `  --each 模式下自动用 baseline vs 每个 skill,无需显式声明\n`
       + `  术语见 docs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
     );
   }

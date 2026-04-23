@@ -3,7 +3,7 @@ import { DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/e
 import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finalizeEvaluationRun } from '../eval-core/evaluation-job.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from '../server/job-store.js';
 import { resolveArtifacts } from '../inputs/skill-loader.js';
-import type { Artifact, JobStore, ProgressCallback, Report, VariantResult, VariantSummary } from '../types.js';
+import type { Artifact, JobStore, ProgressCallback, Report, VarianceData, VariantResult, VariantSummary } from '../types.js';
 
 interface RunSingleEvaluationOptions {
   samplesPath: string;
@@ -31,6 +31,8 @@ export interface EachSkillResult {
   samplesPath: string;
   sampleCount: number;
   summary: Record<string, VariantSummary>;
+  /** repeat > 1 时由 runMultiple 聚合,承载三层独立 variance + t 检验 */
+  variance?: VarianceData;
   results: Array<{
     sample_id: string;
     variants: {
@@ -259,6 +261,8 @@ export async function executeEachEvaluationRuns({
         baseline: report.summary.baseline || ({} as VariantSummary),
         skill: (report.summary.skill || {}) as VariantSummary,
       },
+      // runMultiple 跑 N 次后会把 variance 挂到 report.variance,这里搬到 skill 维度
+      ...(report.variance ? { variance: report.variance } : {}),
       results: report.results.map((result) => ({
         sample_id: result.sample_id,
         variants: {
