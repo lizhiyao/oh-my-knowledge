@@ -1,8 +1,9 @@
 /**
- * Production analyzer (v0.18 skill-health).
+ * Skill health analyzer (v0.18 skill-health).
  *
  * 接 trace-adapter 输出 → 按 skill 维度聚合 coverage + gap,产出 SkillHealthReport。
  * 复用 analysis/coverage-analyzer + analysis/gap-analyzer,跳过对照组逻辑。
+ * 定位是"真实使用 trace 的 skill 维度观察",不是通用 APM / 生产监控。
  *
  * 分析流水线:
  *   1. ccTracesToResultEntries(path) → segments + ResultEntry[]

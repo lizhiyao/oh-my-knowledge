@@ -867,7 +867,7 @@ async function handleAnalyze(argv: string[]): Promise<void> {
   const skills = values.skills ? values.skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
   console.log(`[omk] analyzing ${tracePath}...`);
-  const { computeSkillHealthReport } = await import('./observability/production-analyzer.js');
+  const { computeSkillHealthReport } = await import('./observability/skill-health-analyzer.js');
   const report = computeSkillHealthReport(tracePath, {
     kbRoot: values.kb ? resolve(values.kb) : undefined,
     from,

@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import {
   computeSkillHealthFromSegments,
-} from '../../src/observability/production-analyzer.js';
+} from '../../src/observability/skill-health-analyzer.js';
 import type { CcSession, SkillSegment } from '../../src/observability/trace-adapter.js';
 
 // ---------- Helpers ----------

@@ -7,7 +7,7 @@ import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
 import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
 import type { JobStore, ReportStore } from '../types.js';
-import type { SkillHealthReport } from '../observability/production-analyzer.js';
+import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;

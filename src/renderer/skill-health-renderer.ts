@@ -1,7 +1,7 @@
 /**
  * Skill 健康度日报 renderer (v0.18).
  *
- * 输入: SkillHealthReport (from production-analyzer)
+ * 输入: SkillHealthReport (from skill-health-analyzer)
  * 输出: 完整 HTML 文档, 包含:
  *   - 顶部摘要 (trace 源水印 + overall 健康度色带)
  *   - 每 skill 一张 card, 复用 v0.17 A 的 ki-card 左右栏 (coverage + gap)
@@ -12,7 +12,7 @@
  *   - 报告视觉和 bench HTML 保持一致, 读者无学习成本切换
  */
 
-import type { SkillHealth, SkillHealthReport } from '../observability/production-analyzer.js';
+import type { SkillHealth, SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import type { Lang } from '../types.js';
 import { COLORS, e, layout } from './layout.js';
 
