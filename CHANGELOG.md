@@ -10,6 +10,44 @@ omk（`oh-my-knowledge`）的版本变更记录。格式参照 [Keep a Changelog
 
 ---
 
+## [0.18.0] - 2026-04-23
+
+**一句话**:从 offline eval 扩展到 production observability——新增 `omk analyze <dir>` 命令,把 gap-analyzer / coverage 的能力应用到真实 cc session trace 上,产出"skill 健康度日报"。不是新产品线,是现有分析能力换 input 源。
+
+### Added
+
+- **v0.18 工作项 A · cc session JSONL trace adapter（`src/observability/trace-adapter.ts`）**:把 cc session transcript 解析成 omk 内部 ResultEntry 结构。skill 归属采用三类硬信号(spec §四):`tool_use name="Skill"` / `<command-name>/X</command-name>` 注入 / Read `.claude/skills/<name>/SKILL.md`(留 v0.19)。段式归属——信号触发即切段,相邻同名不切,空段不推进 index。归一化规则:plugin 前缀 `pbakaus/impeccable:audit` → `audit`,过滤 17 个 cc 内置命令(`/clear` `/model` `/exit` 等,不算 skill)。tool_use/tool_result 配对,`is_error=true` 映射 `ToolCallInfo.success=false`。14 case 覆盖 schema 解析、skill 切段、归一化、边界 case。
+
+- **v0.18 工作项 B · production-analyzer 单组分析路径（`src/observability/production-analyzer.ts`）**:`computeSkillHealthReport(tracePath, opts)` 主入口,按 skill 维度聚合 coverage + gap。100% 复用现有 `computeCoverage` + `computeGapReport`,跳过对照组逻辑。时间窗过滤(`--from/--to` / `--last 7d`)+ skill 白名单。kbRoot 自动推断:没传时取首个 session 的 cwd。overall 健康度色带:weightedGapRate ≥ 30% 红 / ≥ 10% 黄 / 否则绿。gap.testSetPath 挂 tracePath 作水印(spec §六)。8 case 覆盖 skill 分组、overall 加权、色带、时间窗、白名单、空输入。
+
+- **v0.18 工作项 C · `omk analyze` CLI + skill 健康度 HTML 模板**:新 domain `omk analyze <dir> [--kb] [--last 7d|--from/--to] [--skills]`。`parseLastWindow` 把 `"7d"/"24h"/"30m"` 转成 from ISO 时间戳。控制台摘要 + HTML 文件默认写入 `~/.oh-my-knowledge/analyses/<timestamp>-skill-health.html`。HTML 模板(`src/renderer/skill-health-renderer.ts`)复用 v0.17 A 的 ki-card 左右栏布局:顶部整体健康度色带 + 水印 section(强制展示 trace 路径 / kb 路径 / "不替代 offline eval 对照验证"警告)+ 每 skill 一张 card(coverage / gap 并列)+ 底部"死代码 KB"section(所有 skill 都没访问过的 KB 文件清单,skill-health 独家洞察)。
+
+### Dogfood 验证
+
+本机 `~/.claude/projects/-Users-lizhiyao-Documents-oh-my-knowledge/` 438 sessions 数据:
+
+- 467 skill segments · 6710 tool calls · 4.6% 失败率
+- overall weightedGapRate 13%(yellow)
+- skill 分布:general 438 / wiki 11(gapRate 64%,MCP 配置不稳证据)/ audit 7(gapRate 43%,coverage 0% — UI polish 类 skill 不读 KB,符合预期)/ polish 4 / typeset 3 / devops 2 / overdrive 1 / test-spec-generator 1
+- 产出真实 action-driven 洞察,不是 vanity metrics
+
+### 设计定位
+
+- **不是** Langfuse / Braintrust / Datadog 通用 observability 平台(不做 request/response/latency/cost 追踪)
+- **不是** 在线评分 / 在线告警 / streaming(v0.18 只做 batch)
+- **不是** skill 评分(生产无对照组/无标答/无重复,评分不成立,只做观察性分析)
+- **是** omk 分析能力的新 input 模式,offline eval + production analyze 互补不替代
+
+### v0.19 已识别的 TODO
+
+- **bench report server 集成 analyses 目录**:当前 `omk bench report` 只扫 reports/,skill 健康度日报在 analyses/ 成孤岛,30 行改动在 v0.18.x patch 或 v0.19 补
+- **业务指标挂接**:gap rate 和"用户是否重试 / 人工接管"关联分析
+- **competency questions / probe**(v0.17 原 C 工作项,已延期两个版本)
+- **streaming / dashboard**:batch → 持续观察 + 异动告警
+- **skill 归属信号 3**(Read `.claude/skills/<name>/SKILL.md` 作 fallback)
+
+---
+
 ## [0.17.0] - 2026-04-19
 
 **一句话**:知识缺口信号 v0.2——强证据 / 弱信号按权重分开聚合(weightedGapRate 与 gapRate 并列);hedging 从"regex 假阳 50%+"升级为"regex 召回 + LLM 二次判定";报告把 coverage 和 gap 合并成单 section 并压层减噪(variant card 高度从 ~380px 砍到 ~110px)。工作项 C(competency questions / 主动探测)明确推迟到 v0.18 单独立题。
