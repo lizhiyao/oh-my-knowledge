@@ -36,6 +36,18 @@ export interface SkillHealth {
    *  - stable:        否则
    */
   stability: 'stable' | 'unstable' | 'very-unstable';
+  /** 成本/耗时聚合(来自 SkillSegment.metrics,第四轴). 粒度是 skill 级,非单次调用级 */
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    totalTokens: number;
+    durationMs: number;
+    numTurns: number;
+    avgTokensPerSegment: number;
+    avgDurationMsPerSegment: number;
+  };
   coverage: CoverageReport | null;
   gap: GapReport;
 }
@@ -102,6 +114,39 @@ function stabilityOf(toolFailureRate: number): SkillHealth['stability'] {
 }
 
 /**
+ * 聚合一组 segment 的 tokens / duration / turns. 平均值按 segment 数(非 toolCall 数)算。
+ */
+function aggregateUsage(skillSegs: SkillSegment[]): SkillHealth['usage'] {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheCreationTokens = 0;
+  let durationMs = 0;
+  let numTurns = 0;
+  for (const s of skillSegs) {
+    inputTokens += s.metrics.inputTokens ?? 0;
+    outputTokens += s.metrics.outputTokens ?? 0;
+    cacheReadTokens += s.metrics.cacheReadTokens ?? 0;
+    cacheCreationTokens += s.metrics.cacheCreationTokens ?? 0;
+    durationMs += s.metrics.durationMs ?? 0;
+    numTurns += s.metrics.numTurns ?? 0;
+  }
+  const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens;
+  const n = skillSegs.length || 1;
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+    totalTokens,
+    durationMs,
+    numTurns,
+    avgTokensPerSegment: Math.round(totalTokens / n),
+    avgDurationMsPerSegment: Math.round(durationMs / n),
+  };
+}
+
+/**
  * 推断 KB root: 没传 --kb 时,取第一个 assistant record 的 cwd。
  * 如果跨多个 cwd,取第一个并 warn。
  */
@@ -154,6 +199,7 @@ export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions
       toolFailureCount: skillFailures,
       toolFailureRate,
       stability: stabilityOf(toolFailureRate),
+      usage: aggregateUsage(skillSegs),
       coverage,
       gap,
     };
@@ -241,6 +287,7 @@ function buildReport(
       toolFailureCount: skillFailures,
       toolFailureRate,
       stability: stabilityOf(toolFailureRate),
+      usage: aggregateUsage(skillSegs),
       coverage,
       gap,
     };

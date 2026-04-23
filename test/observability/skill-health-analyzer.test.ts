@@ -218,4 +218,58 @@ describe('computeSkillHealthFromSegments', () => {
     assert.equal(report.bySkill.talker.toolFailureRate, 0);
     assert.equal(report.bySkill.talker.stability, 'stable');
   });
+
+  it('usage aggregates tokens/duration/turns from SkillSegment metrics', () => {
+    const segs: SkillSegment[] = [
+      {
+        skillName: 'audit',
+        sessionId: 's1',
+        segmentIndex: 0,
+        startTimestamp: '2026-04-19T10:00:00.000Z',
+        endTimestamp: '2026-04-19T10:00:00.000Z',
+        turns: [],
+        toolCalls: [],
+        metrics: {
+          durationMs: 2000,
+          inputTokens: 1000,
+          outputTokens: 500,
+          cacheReadTokens: 200,
+          cacheCreationTokens: 100,
+          numTurns: 3,
+          numToolCalls: 0,
+          numToolFailures: 0,
+        },
+      },
+      {
+        skillName: 'audit',
+        sessionId: 's2',
+        segmentIndex: 0,
+        startTimestamp: '2026-04-19T11:00:00.000Z',
+        endTimestamp: '2026-04-19T11:00:00.000Z',
+        turns: [],
+        toolCalls: [],
+        metrics: {
+          durationMs: 4000,
+          inputTokens: 2000,
+          outputTokens: 1000,
+          cacheReadTokens: 400,
+          cacheCreationTokens: 200,
+          numTurns: 5,
+          numToolCalls: 0,
+          numToolFailures: 0,
+        },
+      },
+    ];
+    const report = computeSkillHealthFromSegments(segs, [makeSession('s1')], '/tmp');
+    const u = report.bySkill.audit.usage;
+    assert.equal(u.inputTokens, 3000);
+    assert.equal(u.outputTokens, 1500);
+    assert.equal(u.cacheReadTokens, 600);
+    assert.equal(u.cacheCreationTokens, 300);
+    assert.equal(u.totalTokens, 5400);
+    assert.equal(u.durationMs, 6000);
+    assert.equal(u.numTurns, 8);
+    assert.equal(u.avgTokensPerSegment, 2700);
+    assert.equal(u.avgDurationMsPerSegment, 3000);
+  });
 });
