@@ -325,6 +325,8 @@ Usage:
   omk bench diff <id1> <id2>      Compare two evaluation reports
   omk bench evolve <skill>       Self-improve a skill through iterative evaluation
 
+  omk analyze <dir>           Analyze cc session trace(s), produce skill 健康度日报 (v0.18)
+
 Options for "bench run":
 
   --samples <path>       Sample file (default: eval-samples.json)
@@ -391,6 +393,15 @@ Options for "bench gen-samples":
   --model <name>         Model for generation (default: sonnet)
   --skill-dir <path>     Skill directory (default: skills), used with --each
 
+Options for "analyze":
+  <dir>                  Input: cc session JSONL file / dir (e.g. ~/.claude/projects/<slug>)
+  --kb <path>            Knowledge base root (default: auto-infer from trace cwd)
+  --last <duration>      Time window like "7d" / "30d" (default: all)
+  --from <iso>           Window start (ISO8601), takes precedence over --last
+  --to <iso>             Window end (ISO8601), takes precedence over --last
+  --skills <n1,n2,...>   Whitelist skills to analyze (default: all)
+  --output-dir <path>    Output dir (default: ~/.oh-my-knowledge/analyses/)
+
 Options for "bench evolve":
   --rounds <n>           Maximum evolution rounds (default: 5)
   --target <score>       Stop early when score reaches this threshold
@@ -419,6 +430,9 @@ Examples:
   omk bench gen-samples --each
   omk bench diff <report-id-1> <report-id-2>
   omk bench evolve skills/my-skill.md --rounds 5
+  omk analyze ~/.claude/projects/-Users-lizhiyao-Documents-oh-my-knowledge
+  omk analyze ~/.claude/projects/my-project --last 7d --kb /path/to/project
+  omk analyze ~/.claude/projects/my-project --skills audit,polish
 `.trim();
 
 // ---------------------------------------------------------------------------
@@ -456,8 +470,14 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (domain === 'analyze') {
+    const args = command ? [command, ...rest] : [];
+    await handleAnalyze(args);
+    return;
+  }
+
   if (domain !== 'bench') {
-    console.error(`Unknown domain: ${domain}. Use "omk bench <command>".`);
+    console.error(`Unknown domain: ${domain}. Use "omk bench <command>" or "omk analyze <dir>".`);
     process.exit(1);
   }
 
@@ -792,6 +812,93 @@ const INIT_SKILL_V2 = `你是一个高级代码审查专家。请从以下维度
 
 对每个维度给出具体的改进建议，并标注严重程度（高/中/低）。
 `;
+
+// ---------------------------------------------------------------------------
+// handleAnalyze (v0.18 skill 健康度日报)
+// ---------------------------------------------------------------------------
+
+function parseLastWindow(spec: string): string | null {
+  // "7d" / "24h" / "30m" → ISO timestamp (from = now - spec)
+  const m = /^(\d+)([dhm])$/.exec(spec);
+  if (!m) return null;
+  const n = Number(m[1]);
+  const unit = m[2];
+  const ms = unit === 'd' ? n * 86400_000 : unit === 'h' ? n * 3600_000 : n * 60_000;
+  return new Date(Date.now() - ms).toISOString();
+}
+
+async function handleAnalyze(argv: string[]): Promise<void> {
+  const { values, positionals } = parseArgs({
+    args: argv,
+    allowPositionals: true,
+    options: {
+      kb: { type: 'string' },
+      last: { type: 'string' },
+      from: { type: 'string' },
+      to: { type: 'string' },
+      skills: { type: 'string' },
+      'output-dir': { type: 'string' },
+    },
+  });
+  const dir = positionals[0];
+  if (!dir) {
+    console.error('Usage: omk analyze <dir> [--kb <path>] [--last 7d] [--from ISO] [--to ISO] [--skills name1,name2]');
+    process.exit(1);
+  }
+  const tracePath = resolve(dir);
+
+  const { existsSync, mkdirSync, writeFileSync } = await import('node:fs');
+  if (!existsSync(tracePath)) {
+    console.error(`Trace path does not exist: ${tracePath}`);
+    process.exit(1);
+  }
+
+  // 时间窗: --from/--to 优先, --last fallback
+  let from: string | undefined = values.from;
+  if (!from && values.last) {
+    const inferred = parseLastWindow(values.last);
+    if (!inferred) {
+      console.error(`Invalid --last format: "${values.last}". Expected e.g. "7d" / "24h" / "30m".`);
+      process.exit(1);
+    }
+    from = inferred;
+  }
+  const to: string | undefined = values.to;
+  const skills = values.skills ? values.skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+
+  console.log(`[omk] analyzing ${tracePath}...`);
+  const { computeSkillHealthReport } = await import('./observability/production-analyzer.js');
+  const report = computeSkillHealthReport(tracePath, {
+    kbRoot: values.kb ? resolve(values.kb) : undefined,
+    from,
+    to,
+    skills,
+  });
+
+  const { renderSkillHealthReport } = await import('./renderer/skill-health-renderer.js');
+  const html = renderSkillHealthReport(report);
+
+  const outDir = resolve(values['output-dir'] || join(process.env.HOME || '.', '.oh-my-knowledge', 'analyses'));
+  mkdirSync(outDir, { recursive: true });
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const outPath = join(outDir, `${timestamp}-skill-health.html`);
+  writeFileSync(outPath, html);
+
+  // 控制台摘要
+  const { sessionCount, segmentCount, toolCallCount, toolFailureRate } = report.meta;
+  console.log('');
+  console.log(`sessions: ${sessionCount} · segments: ${segmentCount} · tool calls: ${toolCallCount} · fail rate: ${(toolFailureRate * 100).toFixed(1)}%`);
+  console.log(`overall: gapRate ${(report.overall.gapRate * 100).toFixed(1)}% · weightedGapRate ${(report.overall.weightedGapRate * 100).toFixed(1)}% · health: ${report.overall.healthBand}`);
+  console.log('');
+  const skillRows = Object.values(report.bySkill)
+    .sort((a, b) => b.segmentCount - a.segmentCount)
+    .slice(0, 10)
+    .map((s) => `  ${s.skillName.padEnd(24)} segs=${String(s.segmentCount).padStart(4)}  gapRate=${String(Math.round(s.gap.gapRate * 100) + '%').padStart(4)}  weighted=${String(Math.round(s.gap.weightedGapRate * 100) + '%').padStart(4)}${s.coverage ? `  cov=${Math.round(s.coverage.fileCoverageRate * 100)}%` : ''}`);
+  console.log('top skills:');
+  console.log(skillRows.join('\n'));
+  console.log('');
+  console.log(`report written to: ${outPath}`);
+}
 
 async function handleInit(argv: string[]): Promise<void> {
   const targetDir: string = resolve(argv[0] || '.');
