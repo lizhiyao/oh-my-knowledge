@@ -881,8 +881,12 @@ async function handleAnalyze(argv: string[]): Promise<void> {
   const outDir = resolve(values['output-dir'] || join(process.env.HOME || '.', '.oh-my-knowledge', 'analyses'));
   mkdirSync(outDir, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const outPath = join(outDir, `${timestamp}-skill-health.html`);
+  const basePath = join(outDir, `${timestamp}-skill-health`);
+  const outPath = `${basePath}.html`;
+  const jsonPath = `${basePath}.json`;
   writeFileSync(outPath, html);
+  // JSON 同步写出,供 report server 的 /analyses 路由挂载
+  writeFileSync(jsonPath, JSON.stringify(report, null, 2));
 
   // 控制台摘要
   const { sessionCount, segmentCount, toolCallCount, toolFailureRate } = report.meta;

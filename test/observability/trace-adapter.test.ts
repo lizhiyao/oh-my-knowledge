@@ -194,6 +194,85 @@ describe('segmentBySkill', () => {
     assert.equal(segs[0].metrics.numToolFailures, 0);
   });
 
+  it('Read .claude/skills/<name>/SKILL.md signal cuts new segment (signal 3 fallback)', () => {
+    const s = {
+      sessionId: 's1',
+      sourcePath: '/t',
+      records: [
+        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '/home/user/project/.claude/skills/review/SKILL.md' } }]),
+        userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'skill body' }]),
+      ],
+    };
+    const segs = segmentBySkill(s);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'review');
+  });
+
+  it('signal 1 (Skill tool_use) wins over signal 3 (Read SKILL.md) when both present', () => {
+    const s = {
+      sessionId: 's1',
+      sourcePath: '/t',
+      records: [
+        asstRec('a1', [
+          { type: 'tool_use', id: 'tu1', name: 'Skill', input: { skill: 'audit' } },
+          { type: 'tool_use', id: 'tu2', name: 'Read', input: { file_path: '.claude/skills/other/SKILL.md' } },
+        ]),
+        userRec('u1', [
+          { type: 'tool_result', tool_use_id: 'tu1', content: 'x' },
+          { type: 'tool_result', tool_use_id: 'tu2', content: 'y' },
+        ]),
+      ],
+    };
+    const segs = segmentBySkill(s);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'audit');
+  });
+
+  it('signal 2 (slash command) wins over signal 3 (Read SKILL.md)', () => {
+    const s = {
+      sessionId: 's1',
+      sourcePath: '/t',
+      records: [
+        userRec('u1', '<command-name>/polish</command-name>'),
+        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '.claude/skills/other/SKILL.md' } }]),
+        userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
+      ],
+    };
+    const segs = segmentBySkill(s);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'polish');
+  });
+
+  it('repeated Read of same SKILL.md does not cut multiple segments', () => {
+    const s = {
+      sessionId: 's1',
+      sourcePath: '/t',
+      records: [
+        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '.claude/skills/review/SKILL.md' } }]),
+        userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
+        asstRec('a2', [{ type: 'tool_use', id: 'tu2', name: 'Read', input: { file_path: '.claude/skills/review/SKILL.md' } }]),
+        userRec('u2', [{ type: 'tool_result', tool_use_id: 'tu2', content: 'y' }]),
+      ],
+    };
+    const segs = segmentBySkill(s);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'review');
+  });
+
+  it('Read non-SKILL.md file does not trigger signal 3', () => {
+    const s = {
+      sessionId: 's1',
+      sourcePath: '/t',
+      records: [
+        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: { file_path: '.claude/skills/review/references/cmds.md' } }]),
+        userRec('u1', [{ type: 'tool_result', tool_use_id: 'tu1', content: 'x' }]),
+      ],
+    };
+    const segs = segmentBySkill(s);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'general');
+  });
+
   it('CC builtin command (/clear, /model, /exit) is NOT treated as skill', () => {
     const s = {
       sessionId: 's1',

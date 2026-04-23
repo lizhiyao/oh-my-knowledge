@@ -1,22 +1,82 @@
 import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { renderRunList, renderRunDetail, renderEachRunDetail, renderTrendsPage } from '../renderer/html-renderer.js';
+import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
 import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
 import type { JobStore, ReportStore } from '../types.js';
+import type { SkillHealthReport } from '../observability/production-analyzer.js';
 import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;
 const DEFAULT_REPORTS_DIR = join(homedir(), '.oh-my-knowledge', 'reports');
+const DEFAULT_ANALYSES_DIR = join(homedir(), '.oh-my-knowledge', 'analyses');
 
 interface ReportServerOptions {
   port?: number;
   reportsDir?: string;
+  analysesDir?: string;
   jobsDir?: string;
   store?: ReportStore;
   jobStore?: JobStore;
+}
+
+interface AnalysisListItem {
+  id: string;
+  generatedAt: string;
+  sessionCount: number;
+  segmentCount: number;
+  skillCount: number;
+  healthBand: 'green' | 'yellow' | 'red';
+}
+
+function listAnalyses(dir: string): AnalysisListItem[] {
+  if (!existsSync(dir)) return [];
+  const items: AnalysisListItem[] = [];
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.json')) continue;
+    try {
+      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as SkillHealthReport;
+      if (!data.meta || !data.overall) continue;
+      items.push({
+        id: file.replace(/\.json$/, ''),
+        generatedAt: data.meta.generatedAt,
+        sessionCount: data.meta.sessionCount,
+        segmentCount: data.meta.segmentCount,
+        skillCount: Object.keys(data.bySkill || {}).length,
+        healthBand: data.overall.healthBand,
+      });
+    } catch { /* skip corrupt */ }
+  }
+  // 最新在前
+  items.sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
+  return items;
+}
+
+function loadAnalysis(dir: string, id: string): SkillHealthReport | null {
+  const path = join(dir, `${id}.json`);
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf-8')) as SkillHealthReport;
+  } catch {
+    return null;
+  }
+}
+
+function renderAnalysisList(items: AnalysisListItem[]): string {
+  const rows = items.length === 0
+    ? `<div style="color:#888;padding:16px">暂无 skill 健康度日报。运行 <code>omk analyze &lt;trace-dir&gt;</code> 生成。</div>`
+    : items.map((it) => {
+        const badgeColor = it.healthBand === 'red' ? '#dc2626' : it.healthBand === 'yellow' ? '#d97706' : '#16a34a';
+        return `<li style="padding:10px 14px;border-bottom:1px solid #eee;list-style:none;display:flex;align-items:center;gap:12px">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${badgeColor}"></span>
+          <a href="/analyses/${encodeURIComponent(it.id)}" style="color:#0366d6;text-decoration:none;flex:1;font-family:ui-monospace,monospace">${it.id}</a>
+          <span style="color:#666;font-size:12px">${it.sessionCount} sessions · ${it.segmentCount} segs · ${it.skillCount} skills</span>
+        </li>`;
+      }).join('');
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Skill Health Reports</title><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;padding:24px;max-width:900px;margin:0 auto}h1{font-size:20px;margin:0 0 16px}nav{margin-bottom:16px}nav a{color:#0366d6;text-decoration:none;margin-right:16px}ul{padding:0;margin:0;border:1px solid #eee;border-radius:6px;overflow:hidden}</style></head><body><nav><a href="/">← Eval reports</a></nav><h1>Skill Health Reports</h1><ul>${rows}</ul></body></html>`;
 }
 
 interface ReportServer {
@@ -29,7 +89,7 @@ function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, jobsDir = DEFAULT_JOBS_DIR, store, jobStore }: ReportServerOptions = {}): ReportServer {
+export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, analysesDir = DEFAULT_ANALYSES_DIR, jobsDir = DEFAULT_JOBS_DIR, store, jobStore }: ReportServerOptions = {}): ReportServer {
   let server: Server | null = null;
   let serverUrl: string | null = null;
 
@@ -60,6 +120,46 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, job
         const runs = await queryRunList(reportStore);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(runs));
+        return;
+      }
+
+      if (path === '/api/analyses') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(listAnalyses(analysesDir)));
+        return;
+      }
+
+      if (path === '/analyses') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderAnalysisList(listAnalyses(analysesDir)));
+        return;
+      }
+
+      const analysisDetailMatch = path.match(/^\/analyses\/(.+)$/);
+      if (analysisDetailMatch) {
+        const id = decodeURIComponent(analysisDetailMatch[1]);
+        const report = loadAnalysis(analysesDir, id);
+        if (!report) {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('analysis not found');
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderSkillHealthReport(report));
+        return;
+      }
+
+      const analysisApiMatch = path.match(/^\/api\/analyses\/(.+)$/);
+      if (analysisApiMatch) {
+        const id = decodeURIComponent(analysisApiMatch[1]);
+        const report = loadAnalysis(analysesDir, id);
+        if (!report) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'analysis not found' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(report));
         return;
       }
 
@@ -164,6 +264,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, job
   async function start(): Promise<string> {
     if (server) return serverUrl!;
     if (!existsSync(reportsDir)) mkdirSync(reportsDir, { recursive: true });
+    if (!existsSync(analysesDir)) mkdirSync(analysesDir, { recursive: true });
     if (!existsSync(jobsDir)) mkdirSync(jobsDir, { recursive: true });
 
     const p = port || Number(process.env.OMK_BENCH_PORT || DEFAULT_PORT);

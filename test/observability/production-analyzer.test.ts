@@ -175,4 +175,47 @@ describe('computeSkillHealthFromSegments', () => {
     assert.equal(report.overall.gapRate, 0);
     assert.equal(report.overall.healthBand, 'green');
   });
+
+  it('per-skill toolFailureRate computed; stability stable when failures < 20%', () => {
+    const segs = [
+      makeSegment('audit', 0, {
+        toolCalls: [
+          { tool: 'Read', success: true },
+          { tool: 'Read', success: true },
+          { tool: 'Read', success: true },
+          { tool: 'Read', success: true },
+          { tool: 'Read', success: false },
+        ],
+      }),
+    ];
+    const report = computeSkillHealthFromSegments(segs, [makeSession('s1')], '/tmp');
+    assert.equal(report.bySkill.audit.toolCallCount, 5);
+    assert.equal(report.bySkill.audit.toolFailureCount, 1);
+    assert.equal(report.bySkill.audit.toolFailureRate, 0.2);
+    assert.equal(report.bySkill.audit.stability, 'unstable');
+  });
+
+  it('stability flips to very-unstable when failure rate >= 40%', () => {
+    const segs = [
+      makeSegment('flaky-skill', 0, {
+        toolCalls: [
+          { tool: 'Bash', success: false },
+          { tool: 'Bash', success: false },
+          { tool: 'Bash', success: false },
+          { tool: 'Bash', success: true },
+          { tool: 'Bash', success: true },
+        ],
+      }),
+    ];
+    const report = computeSkillHealthFromSegments(segs, [makeSession('s1')], '/tmp');
+    assert.equal(report.bySkill['flaky-skill'].toolFailureRate, 0.6);
+    assert.equal(report.bySkill['flaky-skill'].stability, 'very-unstable');
+  });
+
+  it('toolCallCount=0 → toolFailureRate=0, stability=stable', () => {
+    const segs = [makeSegment('talker', 0, { toolCalls: [] })];
+    const report = computeSkillHealthFromSegments(segs, [makeSession('s1')], '/tmp');
+    assert.equal(report.bySkill.talker.toolFailureRate, 0);
+    assert.equal(report.bySkill.talker.stability, 'stable');
+  });
 });

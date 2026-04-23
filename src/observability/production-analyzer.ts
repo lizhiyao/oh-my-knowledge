@@ -26,6 +26,15 @@ export interface SkillHealth {
   segmentCount: number;
   toolCallCount: number;
   toolFailureCount: number;
+  /** 失败率 = toolFailureCount / toolCallCount; toolCallCount=0 时为 0 */
+  toolFailureRate: number;
+  /**
+   * 执行稳定性标签。阈值:
+   *  - very-unstable: failureRate >= 0.4 (gap 信号极可能是环境问题,不是真知识缺口)
+   *  - unstable:      failureRate >= 0.2 (建议排查环境后再看 gap)
+   *  - stable:        否则
+   */
+  stability: 'stable' | 'unstable' | 'very-unstable';
   coverage: CoverageReport | null;
   gap: GapReport;
 }
@@ -83,6 +92,15 @@ function healthBandOf(weightedGapRate: number): 'green' | 'yellow' | 'red' {
 }
 
 /**
+ * 按 per-skill 失败率判定执行稳定性。阈值见 SkillHealth.stability。
+ */
+function stabilityOf(toolFailureRate: number): SkillHealth['stability'] {
+  if (toolFailureRate >= 0.4) return 'very-unstable';
+  if (toolFailureRate >= 0.2) return 'unstable';
+  return 'stable';
+}
+
+/**
  * 推断 KB root: 没传 --kb 时,取第一个 assistant record 的 cwd。
  * 如果跨多个 cwd,取第一个并 warn。
  */
@@ -125,11 +143,16 @@ export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions
     const gap = computeGapReport(filteredEntries, skill);
     // 挂 trace 源作水印(spec §六)
     gap.testSetPath = tracePath;
+    const skillToolCalls = skillSegs.reduce((a, s) => a + s.metrics.numToolCalls, 0);
+    const skillFailures = skillSegs.reduce((a, s) => a + s.metrics.numToolFailures, 0);
+    const toolFailureRate = skillToolCalls > 0 ? Number((skillFailures / skillToolCalls).toFixed(4)) : 0;
     bySkill[skill] = {
       skillName: skill,
       segmentCount: skillSegs.length,
-      toolCallCount: skillSegs.reduce((a, s) => a + s.metrics.numToolCalls, 0),
-      toolFailureCount: skillSegs.reduce((a, s) => a + s.metrics.numToolFailures, 0),
+      toolCallCount: skillToolCalls,
+      toolFailureCount: skillFailures,
+      toolFailureRate,
+      stability: stabilityOf(toolFailureRate),
       coverage,
       gap,
     };
@@ -207,11 +230,16 @@ function buildReport(
     const coverage = index ? computeCoverage(entries, skill, index, kbRoot) : null;
     const gap = computeGapReport(entries, skill);
     gap.testSetPath = tracePath;
+    const skillToolCalls = skillSegs.reduce((a, s) => a + s.metrics.numToolCalls, 0);
+    const skillFailures = skillSegs.reduce((a, s) => a + s.metrics.numToolFailures, 0);
+    const toolFailureRate = skillToolCalls > 0 ? Number((skillFailures / skillToolCalls).toFixed(4)) : 0;
     bySkill[skill] = {
       skillName: skill,
       segmentCount: skillSegs.length,
-      toolCallCount: skillSegs.reduce((a, s) => a + s.metrics.numToolCalls, 0),
-      toolFailureCount: skillSegs.reduce((a, s) => a + s.metrics.numToolFailures, 0),
+      toolCallCount: skillToolCalls,
+      toolFailureCount: skillFailures,
+      toolFailureRate,
+      stability: stabilityOf(toolFailureRate),
       coverage,
       gap,
     };

@@ -19,11 +19,13 @@ type EachOverviewArtifact = EachOverview['artifacts'][number];
 type EachArtifactReport = NonNullable<Report['artifacts']>[number];
 
 export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string {
+  const skillHealthLink = `<a href="/analyses" style="color:var(--text-muted);font-size:12px;text-decoration:none;border:1px solid var(--border);padding:4px 10px;border-radius:var(--radius);display:inline-block">📊 ${lang === 'zh' ? 'Skill 健康度日报' : 'Skill Health Reports'} →</a>`;
   if (!runs || runs.length === 0) {
     return layout(t('title', lang), `
       <main>
       <h1>${t('title', lang)}</h1>
       <p class="subtitle">${t('subtitle', lang)}</p>
+      <div style="margin-top:16px">${skillHealthLink}</div>
       <p style="color:var(--text-muted);margin-top:40px">${t('noRuns', lang)}</p>
       </main>
     `, lang);
@@ -88,6 +90,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
     <h1>${t('title', lang)}</h1>
     <p class="subtitle" data-i18n="subtitle">${t('subtitle', lang)} &middot; ${runCount} &middot; ${costLabel}</p>
     ${trendsSection}
+    <div style="margin:12px 0">${skillHealthLink}</div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
       <input id="filter-input" type="text" placeholder="${lang === 'zh' ? '搜索报告名称、变体...' : 'Filter by name, variant...'}" style="flex:1;max-width:320px;padding:6px 10px;font-size:13px;background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius);outline:none" oninput="filterTable(this.value)">
       <span id="filter-count" style="font-size:11px;color:var(--text-muted)"></span>

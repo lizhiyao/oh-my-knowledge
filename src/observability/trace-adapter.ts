@@ -223,6 +223,26 @@ function extractSkillToolUse(record: CcAssistantRecord): string | null {
   return null;
 }
 
+const SKILL_READ_FILE_RE = /\.claude\/skills\/([^/]+)\/SKILL\.md$/;
+
+/**
+ * 从 assistant message 的 Read tool_use 里提取 skill 名字(信号 3, fallback)。
+ * 匹配 file_path 形如 ".claude/skills/<name>/SKILL.md" 的模式。
+ * 返回 null 表示没命中。
+ */
+function extractSkillReadFile(record: CcAssistantRecord): string | null {
+  for (const part of record.message.content) {
+    if (part.type === 'tool_use' && part.name === 'Read') {
+      const filePath = part.input?.file_path;
+      if (typeof filePath === 'string') {
+        const m = SKILL_READ_FILE_RE.exec(filePath);
+        if (m) return normalizeSkillName(m[1]);
+      }
+    }
+  }
+  return null;
+}
+
 // ---------- Segment by skill ----------
 
 /**
@@ -292,10 +312,16 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
     }
     if (rec.type === 'assistant') {
       const a = rec as CcAssistantRecord;
-      // 检测 skill 信号 1 (Skill tool_use)
+      // 检测 skill 信号 1 (Skill tool_use); 信号 3 (Read SKILL.md) 作 fallback,
+      // 仅在当前段仍是 'general'(未被信号 1/2 命中过)时触发,避免压过更强信号。
       const skillTool = extractSkillToolUse(a);
       if (skillTool && skillTool !== currentSkill) {
         startNewSegment(skillTool, a.timestamp);
+      } else if (!skillTool && currentSkill === 'general') {
+        const readSkill = extractSkillReadFile(a);
+        if (readSkill) {
+          startNewSegment(readSkill, a.timestamp);
+        }
       }
       // 提取 tool_use → ToolCallInfo(success 先标 true, 等 tool_result 回填)
       const toolCalls: ToolCallInfo[] = [];
