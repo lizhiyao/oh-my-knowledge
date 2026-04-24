@@ -5,104 +5,106 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node.js Version](https://img.shields.io/node/v/oh-my-knowledge.svg)](https://nodejs.org)
 
-知识载体评测工具 — 用客观数据衡量你的 artifact 质量。
+**English** | [简体中文](./README.zh.md)
 
-**固定模型，只变知识载体，数据说话。**
+Knowledge-artifact evaluation toolkit — measure your artifact's quality with objective data.
 
-## 为什么需要这个工具
+**Fix the model, vary the knowledge artifact, let the data speak.**
 
-做知识工程的团队会产出大量知识载体（当前常见是 skill，也包括 prompt、agent、workflow 等）。当被问到"v2 比 v1 好在哪"时，需要客观数据而非主观判断。`oh-my-knowledge` 通过控制变量实验解决这个问题：相同模型、相同测试样本，只改变知识载体。
+## Why this tool
 
-## 快速开始
+Teams doing knowledge engineering produce lots of knowledge artifacts (skills today, but also prompts, agents, workflows…). When someone asks "why is v2 better than v1", you need objective data instead of gut feeling. `oh-my-knowledge` solves this with controlled experiments: **same model, same test samples, only the knowledge artifact changes.**
+
+## Quick start
 
 ```bash
-# 安装
+# install
 npm i oh-my-knowledge -g
 
-# 生成评测项目脚手架
+# scaffold an eval project
 omk bench init my-eval
 cd my-eval
 
-# 把要对比的 artifact 放到 skills/ 目录
-# 方式一：直接放 .md 文件（skills/v1.md, skills/v2.md）
-# 方式二：放完整 artifact 目录（skills/my-skill-v1/SKILL.md, ...）
-# 只放一个 artifact 也行，会自动加 baseline 对照
+# drop the artifacts you want to compare into skills/
+# option 1: plain .md files (skills/v1.md, skills/v2.md)
+# option 2: full artifact dirs (skills/my-skill-v1/SKILL.md, ...)
+# a single artifact also works — baseline is auto-added as control
 
-# 预览评测计划
+# preview the plan
 omk bench run --dry-run
 
-# 运行评测（自动发现 skills/ 目录下的所有 artifact）
+# run the evaluation (auto-discovers everything under skills/)
 omk bench run
 ```
 
-## 在 Claude Code 中使用
+## Use inside Claude Code
 
-安装 omk 后，在 Claude Code 中直接用自然语言交互：
+After installing omk, talk to it in natural language from Claude Code:
 
 ```
-/omk eval              # 评测当前项目的 artifact
-/omk evolve            # 自动迭代改进 artifact
-/omk gen-samples       # 生成测试用例
+/omk eval              # evaluate the artifact(s) in the current project
+/omk evolve            # auto-iterate to improve an artifact
+/omk gen-samples       # generate test cases
 ```
 
-或直接说"帮我评测 v1 和 v2 的差异"、"改进一下这个 artifact"，omk 会自动理解意图并调用对应命令。
+You can also just say "compare v1 vs v2 for me" or "improve this artifact" — omk picks the right command.
 
-## 特性
+## Features
 
-| 特性 | 说明 |
-|------|------|
-| **18 种断言** | 包含子串、正则、JSON Schema、语义相似度、自定义函数等 |
-| **六维评估** | 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性独立展示 |
-| **多执行器** | 支持 Claude CLI / Claude SDK / OpenAI / Gemini 及自定义命令 |
-| **MCP URL 获取** | 通过 MCP Server 获取私有文档 URL 内容（SSO 保护的知识库等） |
-| **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
-| **并行执行** | `--concurrency N` 并行 N 个任务 |
-| **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
-| **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本样本 |
-| **可追溯性** | 报告含 CLI 版本、Node 版本、artifact 哈希 |
-| **中英切换** | HTML 报告右上角一键切换语言 |
+| Feature | What it does |
+|---|---|
+| **18 assertion types** | substring, regex, JSON Schema, semantic similarity, custom JS function, and more |
+| **Six-dim evaluation** | Fact / Behavior / LLM-judge / Cost / Efficiency / Stability shown independently |
+| **Multi-executor** | Claude CLI / Claude SDK / OpenAI / Gemini / any custom command |
+| **MCP URL fetching** | pull content from private-doc URLs via an MCP server (SSO-protected knowledge bases, etc.) |
+| **Blind A/B** | `--blind` hides variant names; HTML report has a reveal button |
+| **Parallel execution** | `--concurrency N` runs N tasks at once |
+| **Multi-run variance** | `--repeat N` repeats the eval and computes mean / SD / CI / t-test |
+| **Auto analysis** | detects low-discrimination assertions, flat scores, all-pass / all-fail, expensive samples |
+| **Traceability** | reports carry CLI version, Node version, artifact fingerprint |
+| **EN / ZH switch** | one-click language toggle in the HTML report |
 
-## 工作原理
+## How it works
 
-核心思路:**固定模型 + 固定样本,只变 artifact 和 runtime context**,通过交错调度消除时间漂移,用断言 + LLM 评委双通道评分,再叠加知识缺口信号量化风险敞口。
+Core idea: **fix the model and the samples, vary only the artifact and runtime context**, use interleaved scheduling to cancel time drift, score via assertions + LLM judge (dual channel), then layer on knowledge-gap signals to quantify risk exposure.
 
 ```mermaid
 flowchart TD
-    subgraph Input["① 输入"]
+    subgraph Input["① Input"]
         S["eval-samples<br/>(JSON / YAML)"]
         A["artifacts<br/>skills/*.md · SKILL.md<br/>baseline · git:name · @cwd"]
     end
 
-    subgraph Prep["② 预处理(解析与抓取)"]
-        V["变体解析<br/>variant → artifact + runtime context<br/>(cwd / 项目级 CLAUDE.md / 本地 skills)"]
-        U["URL 抓取<br/>prompt / context 中的 URL<br/>MCP Server(私有文档) → HTTP"]
+    subgraph Prep["② Preprocess (resolve & fetch)"]
+        V["variant resolution<br/>variant → artifact + runtime context<br/>(cwd / project CLAUDE.md / local skills)"]
+        U["URL fetching<br/>URLs in prompt / context<br/>MCP Server(private docs) → HTTP"]
     end
 
-    subgraph Schedule["③ 交错调度 + 并发"]
+    subgraph Schedule["③ Interleaved + concurrent scheduling"]
         Q["s1-v1 → s1-v2 → s2-v1 → s2-v2 …<br/>--concurrency N · --repeat N"]
     end
 
-    subgraph Exec["④ 执行器(固定模型)"]
-        E["claude / claude-sdk / openai / gemini<br/>anthropic-api / openai-api / 自定义命令"]
-        T["claude-sdk 抽取<br/>turns / toolCalls trace"]
+    subgraph Exec["④ Executor (fixed model)"]
+        E["claude / claude-sdk / openai / gemini<br/>anthropic-api / openai-api / custom"]
+        T["claude-sdk extracts<br/>turns / toolCalls trace"]
         E -.-> T
     end
 
-    subgraph Score["⑤ 双通道评分"]
-        AS["断言(18 种)<br/>内容 / 结构 / 成本 / 延迟<br/>agent: tools_called · turns_min …"]
-        LS["LLM 评委<br/>rubric · dimensions(多维独立打分)"]
-        CS["综合分数<br/>断言 & LLM 有则均值"]
+    subgraph Score["⑤ Dual-channel scoring"]
+        AS["assertions (18 types)<br/>content / structure / cost / latency<br/>agent: tools_called · turns_min …"]
+        LS["LLM judge<br/>rubric · dimensions (independent per-dim scores)"]
+        CS["composite score<br/>mean of assertion & LLM when both present"]
         AS --> CS
         LS --> CS
     end
 
-    subgraph Analyze["⑥ 自动分析 + 知识缺口"]
-        D["低区分度断言 / 均匀分 / 全通过全失败<br/>高成本样本 · 方差 · t 检验"]
-        G["知识缺口信号<br/>(风险敞口量化, 不证明完备)"]
+    subgraph Analyze["⑥ Auto analysis + knowledge gaps"]
+        D["low-discrimination / flat scores / all-pass or all-fail<br/>expensive samples · variance · t-test"]
+        G["knowledge-gap signals<br/>(quantify risk exposure, not completeness proof)"]
     end
 
-    subgraph Report["⑦ 报告"]
-        R["六维: 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性<br/>JSON + HTML · 盲测揭晓<br/>CLI/Node/artifact 哈希可追溯"]
+    subgraph Report["⑦ Report"]
+        R["Six dims: Fact / Behavior / LLM-judge / Cost / Efficiency / Stability<br/>JSON + HTML · blind reveal<br/>CLI/Node/artifact fingerprint traceable"]
     end
 
     S --> U
@@ -119,72 +121,72 @@ flowchart TD
     G --> R
 ```
 
-**关键设计:**
+**Key design choices:**
 
-- **交错调度**消除时间漂移:同一样本的不同 variant 交替发出,而非 v1 全跑完再跑 v2,避免模型负载/网络波动被错误归因给 artifact。
-- **variant = artifact + runtime context**:`name@cwd` 让对照组可以显式声明"项目目录"这个隐性输入,把"项目级沉淀"和"显式 artifact 注入"拆开测。
-- **双通道评分互补**:断言抓确定性缺陷(必须调用某工具/必须包含某字段),LLM 评委抓主观质量(可读性/完整性),两者都存在时取均值。
-- **知识缺口信号**不是评分的一部分,而是一个独立追踪项:它告诉你"这次评测覆盖了多少风险敞口",用于追踪收敛,而非断言知识"完备"。
+- **Interleaved scheduling** removes time drift: different variants of the same sample are dispatched alternately rather than "all of v1 then all of v2", so model load / network jitter can't be mis-attributed to the artifact.
+- **variant = artifact + runtime context**: `name@cwd` lets control groups explicitly declare the "project directory" input, separating "project-level accumulated knowledge" from "explicit artifact injection".
+- **Dual-channel scoring is complementary**: assertions catch deterministic defects (must call tool X, must contain field Y); the LLM judge catches subjective quality (readability, completeness). Mean is taken when both are present.
+- **Knowledge-gap signals** are not part of the score — they are an independent tracking channel that tells you "how much risk exposure this evaluation covered", for convergence tracking, not as a completeness proof.
 
-## 评测样本格式
+## Eval sample format
 
-支持 JSON 和 YAML（`eval-samples.json`、`eval-samples.yaml`、`eval-samples.yml`）。
+Supports JSON and YAML (`eval-samples.json`, `eval-samples.yaml`, `eval-samples.yml`).
 
 ```json
 [
   {
     "sample_id": "s001",
-    "prompt": "审查这段代码的安全性",
+    "prompt": "Review this code for security issues",
     "context": "function auth(u, p) { db.query('SELECT * FROM users WHERE name=' + u); }",
-    "rubric": "应识别 SQL 注入风险并建议参数化查询",
+    "rubric": "Should identify SQL injection risk and recommend parameterized queries",
     "assertions": [
-      { "type": "contains", "value": "SQL 注入", "weight": 1 },
-      { "type": "contains", "value": "参数化", "weight": 1 },
-      { "type": "not_contains", "value": "没有问题", "weight": 0.5 }
+      { "type": "contains", "value": "SQL injection", "weight": 1 },
+      { "type": "contains", "value": "parameterized", "weight": 1 },
+      { "type": "not_contains", "value": "looks fine", "weight": 0.5 }
     ],
     "dimensions": {
-      "security": "是否识别出注入漏洞",
-      "actionability": "是否给出可直接使用的修复代码"
+      "security": "did it identify the injection vulnerability?",
+      "actionability": "did it give directly usable fix code?"
     }
   }
 ]
 ```
 
-### 字段说明
+### Fields
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| `sample_id` | `string` | **是** | 样本唯一标识 |
-| `prompt` | `string` | **是** | 发送给模型的用户提示词 |
-| `context` | `string` | 否 | 附加上下文（代码片段等），会被包裹在代码块中拼接到 prompt 后。也支持 URL，运行时自动抓取内容 |
-| `rubric` | `string` | 否 | LLM 评委的评分标准（1-5 分） |
-| `assertions` | `array` | 否 | 断言检查列表，详见[断言类型](#断言类型) |
-| `assertions[].type` | `string` | **是** | 断言类型 |
-| `assertions[].value` | `string\|number` | 视类型 | 检查值（`contains`、`min_length`、`cost_max` 等必填） |
-| `assertions[].values` | `array` | 视类型 | 字符串数组（`contains_all`、`contains_any` 必填） |
-| `assertions[].pattern` | `string` | 视类型 | 正则表达式（`regex` 必填） |
-| `assertions[].flags` | `string` | 否 | 正则标志（默认 `"i"`） |
-| `assertions[].schema` | `object` | 视类型 | JSON Schema 对象（`json_schema` 必填，基于 [ajv](https://ajv.js.org/)） |
-| `assertions[].reference` | `string` | 视类型 | 参考文本（`semantic_similarity` 必填） |
-| `assertions[].threshold` | `number` | 否 | 语义相似度通过阈值（默认 3） |
-| `assertions[].fn` | `string` | 视类型 | 自定义断言 JS 文件路径（`custom` 必填） |
-| `assertions[].weight` | `number` | 否 | 权重（默认 1） |
-| `dimensions` | `object` | 否 | 多维度评分，key 为维度名，value 为评分标准文本 |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `sample_id` | `string` | **yes** | Unique sample ID |
+| `prompt` | `string` | **yes** | User prompt sent to the model |
+| `context` | `string` | no | Extra context (e.g. code). Wrapped in a code block and appended to the prompt. URLs are auto-fetched at runtime. |
+| `rubric` | `string` | no | Scoring guideline for the LLM judge (1-5 scale) |
+| `assertions` | `array` | no | Assertion checks; see [assertion types](#assertion-types) |
+| `assertions[].type` | `string` | **yes** | Assertion type |
+| `assertions[].value` | `string\|number` | depends | Check value (required for `contains`, `min_length`, `cost_max`, etc.) |
+| `assertions[].values` | `array` | depends | String array (required for `contains_all`, `contains_any`) |
+| `assertions[].pattern` | `string` | depends | Regex pattern (required for `regex`) |
+| `assertions[].flags` | `string` | no | Regex flags (default `"i"`) |
+| `assertions[].schema` | `object` | depends | JSON Schema object (required for `json_schema`, via [ajv](https://ajv.js.org/)) |
+| `assertions[].reference` | `string` | depends | Reference text (required for `semantic_similarity`) |
+| `assertions[].threshold` | `number` | no | Pass threshold for semantic similarity (default 3) |
+| `assertions[].fn` | `string` | depends | Path to a custom assertion JS file (required for `custom`) |
+| `assertions[].weight` | `number` | no | Weight (default 1) |
+| `dimensions` | `object` | no | Multi-dimension scoring; key = dimension name, value = scoring guideline |
 
-### URL 自动抓取
+### URL auto-fetching
 
-`prompt` 和 `context` 中的 URL 会在评测前自动抓取内容并内联到文本中。适用于引用在线文档、API 文档等场景：
+URLs in `prompt` and `context` are auto-fetched before evaluation and inlined into the text. Useful when referencing online docs, API references, etc.:
 
 ```json
 {
   "sample_id": "s001",
-  "prompt": "请根据以下 PRD 文档生成测试用例：https://wiki.example.com/prd/feature-x"
+  "prompt": "Generate test cases from this PRD: https://wiki.example.com/prd/feature-x"
 }
 ```
 
-运行时，URL 会被替换为实际文档内容。获取顺序：先通过 MCP Server 获取匹配的 URL（如 SSO 保护的私有文档），再通过 HTTP 获取剩余 URL。MCP 已成功的 URL 不会重复 HTTP 抓取。
+At runtime, URLs are replaced with the actual content. Fetch order: MCP Server first for matching URLs (e.g. SSO-protected private docs), then plain HTTP for the rest. URLs already resolved by MCP are not re-fetched via HTTP.
 
-**私有文档 URL**：在项目目录放一个 `.mcp.json` 配置文件，或通过 `--mcp-config` 指定路径：
+**Private-doc URLs**: drop a `.mcp.json` config file into the project dir, or pass `--mcp-config <path>`:
 
 ```json
 {
@@ -207,333 +209,333 @@ flowchart TD
 }
 ```
 
-**公网 URL**：直接 HTTP 获取，如果需要认证请确保命令行环境已配置好网络访问（VPN、代理等）。
+**Public URLs**: fetched via plain HTTP. If they require auth, make sure the shell already has network access configured (VPN, proxy, etc.).
 
-### 评分策略
+### Scoring strategy
 
-#### 1. 断言评分
+#### 1. Assertion score
 
-基于规则的本地检查，每个断言产生通过/失败结果。
+Rule-based local checks; each assertion yields pass/fail.
 
-**计算方式：**
+**Formula:**
 
-- 通过率 = 通过断言的权重之和 / 总权重（0~1）
-- 分数 = 1 + 通过率 × 4（映射到 1~5 分）
-- 示例：3 个断言（权重各 1），2 个通过 → 通过率 = 2/3 → 分数 = 1 + 0.67 × 4 = **3.67**
+- Pass rate = sum of passed assertion weights / total weight (0–1)
+- Score = 1 + pass_rate × 4 (mapped to 1–5)
+- Example: 3 assertions (weight 1 each), 2 pass → pass rate 2/3 → score = 1 + 0.67 × 4 = **3.67**
 
-#### 2. Rubric / Dimensions 评分
+#### 2. Rubric / Dimensions score
 
-评委模型（默认 `haiku`）按标准打 1-5 分。`dimensions` 模式下各维度独立评分后取平均。
+The judge model (default `haiku`) scores 1–5 against the rubric. In `dimensions` mode, each dimension is scored independently and then averaged.
 
-#### 3. 综合分数
+#### 3. Composite score
 
-| 条件 | 公式 |
-|------|------|
-| 仅断言 | `assertionScore` |
-| 仅 LLM | `llmScore` |
-| 两者都有 | `(assertionScore + llmScore) / 2` |
-| 都没有 | `0` |
+| Condition | Formula |
+|---|---|
+| Only assertions | `assertionScore` |
+| Only LLM judge | `llmScore` |
+| Both present | `(assertionScore + llmScore) / 2` |
+| Neither | `0` |
 
-### 断言类型
+### Assertion types
 
-**确定性断言（18 种）：**
+**Deterministic assertions (18 total):**
 
-| 类型 | 说明 |
-|------|------|
-| `contains` / `not_contains` | 包含/不包含子串 |
-| `regex` | 正则匹配 |
-| `min_length` / `max_length` | 长度范围 |
-| `json_valid` / `json_schema` | JSON 校验 |
-| `starts_with` / `ends_with` | 前缀/后缀匹配 |
-| `equals` / `not_equals` | 精确匹配 |
-| `word_count_min` / `word_count_max` | 词数范围 |
-| `contains_all` / `contains_any` | 多值匹配 |
-| `cost_max` / `latency_max` | 成本/延迟限制 |
-| `semantic_similarity` | LLM 语义相似度 |
-| `custom` | 自定义 JS 函数（30s 超时） |
+| Type | Description |
+|---|---|
+| `contains` / `not_contains` | substring must / must-not appear |
+| `regex` | regex match |
+| `min_length` / `max_length` | length bounds |
+| `json_valid` / `json_schema` | JSON validation |
+| `starts_with` / `ends_with` | prefix / suffix |
+| `equals` / `not_equals` | exact match |
+| `word_count_min` / `word_count_max` | word-count bounds |
+| `contains_all` / `contains_any` | multi-value match |
+| `cost_max` / `latency_max` | cost / latency caps |
+| `semantic_similarity` | LLM-based semantic similarity |
+| `custom` | custom JS function (30 s timeout) |
 
-### 自定义断言
+### Custom assertion
 
 ```js
 // my-assertion.mjs
 export default function(output, { sample, assertion }) {
-  return { pass: output.includes('SQL'), message: '检查了 SQL 关键字' };
+  return { pass: output.includes('SQL'), message: 'checked for SQL keyword' };
 }
 ```
 
-## 六维评估指标
+## Six-dim evaluation
 
-评测报告从六个维度独立展示结果（v0.16 起把旧"质量"维拆成事实 / 行为 / LLM 评价三层，回答"哪一层拉胯"而不是单一合成分）：
+Reports display results across six independent dimensions (since v0.16 the legacy "quality" dim was split into three layers — Fact / Behavior / LLM-judge — so you see **which layer regressed** instead of a single composite number):
 
-| 维度 | 指标 | 说明 |
-|------|------|------|
-| 📋 **事实** | 事实类断言通过率 | `contains` / `json_schema` / `fact_check` 等规则可验证断言的 1-5 分映射 |
-| 🛠️ **行为** | 行为类断言通过率 | `tools_called` / `tool_output_contains` / `turns_max` 等执行合规类断言 |
-| 💬 **LLM 评价** | rubric 评分 | 由评委模型按预先写好的评分规则（rubric）打的 1-5 分，主观但能抓规则断言之外的"整体好不好" |
-| 💰 **成本** | 总成本、输入/输出 Token 数 | 基于 Token 消耗和模型定价的 API 费用 |
-| ⚡ **效率** | 平均延迟 (ms) | 从发送请求到收到完整响应的端到端耗时 |
-| 🛡️ **稳定性** | CV（变异系数） | 跨重复运行（`--repeat ≥ 2`）分数一致性；单轮评测显示 `—`，**诚实交代测不到什么** |
+| Dimension | Metric | Description |
+|---|---|---|
+| 📋 **Fact** | fact-assertion pass rate | rule-verifiable assertions like `contains` / `json_schema` / `fact_check`, mapped to 1-5 |
+| 🛠️ **Behavior** | behavior-assertion pass rate | execution-compliance assertions like `tools_called` / `tool_output_contains` / `turns_max` |
+| 💬 **LLM-judge** | rubric score | 1-5 scored by the judge model against a predefined rubric; subjective, catches what rules miss |
+| 💰 **Cost** | total cost, input/output tokens | API cost based on token usage and model pricing |
+| ⚡ **Efficiency** | average latency (ms) | end-to-end latency from request to full response |
+| 🛡️ **Stability** | CV (coefficient of variation) | score consistency across repeated runs (`--repeat ≥ 2`); single-run shows `—`, **honestly acknowledging what can't be measured** |
 
-## CLI 参考
+## CLI reference
 
 ### `omk bench run`
 
 ```bash
-omk bench run [选项]
+omk bench run [options]
 
-选项：
-  --samples <路径>       样本文件（默认：eval-samples.json，自动检测 .yaml/.yml）
-  --skill-dir <路径>     artifact 目录（参数名沿用历史写法，默认：skills）
-  --variants <a,b>       变体名称，不指定时自动从 artifact 目录发现
-                         只有一个 artifact 时自动加 baseline 对照
-                         特殊值：baseline（空 artifact）、git:name（git 历史版本）、
-                         git:ref:name（指定 commit）、含 / 的路径（直接读取文件）
-  --model <名称>         被测模型（默认：sonnet）
-  --judge-model <名称>   评委模型（默认：haiku）
-  --output-dir <路径>    输出目录（默认：~/.oh-my-knowledge/reports/）
-  --no-judge             跳过 LLM 评分
-  --no-cache             禁用结果缓存（默认开启，相同输入自动复用）
-  --dry-run              仅预览
-  --blind                盲测模式
-  --concurrency <n>      并行任务数（默认：1）
-  --timeout <秒>         单个任务的执行器超时时间（默认：120）
-  --repeat <n>           重复 N 次做方差分析（默认：1）
-  --executor <名称>      执行器（默认：claude），支持自定义命令
-  --skip-preflight       跳过评测前的模型连通性检查
-  --mcp-config <路径>    MCP 配置文件，用于通过 MCP Server 获取私有文档 URL 内容
-                         （默认：当前目录的 .mcp.json）
-  --no-serve             评测完成后不自动启动报告服务
-  --verbose              打印每个样本的详细执行结果（耗时、tokens、输出预览）
-  --each                 批量评测：每个 artifact 独立和 baseline 对比
-                         需要每个 artifact 配对 {name}.eval-samples.json
+options:
+  --samples <path>       sample file (default: eval-samples.json, also detects .yaml/.yml)
+  --skill-dir <path>     artifact dir (historical flag name, default: skills)
+  --variants <a,b>       variant names; auto-discovered from the artifact dir if omitted
+                         with a single artifact, baseline is auto-added
+                         special values: baseline (empty artifact), git:name (git HEAD),
+                         git:ref:name (specific commit), path with "/" (read file directly)
+  --model <name>         model under test (default: sonnet)
+  --judge-model <name>   judge model (default: haiku)
+  --output-dir <path>    output dir (default: ~/.oh-my-knowledge/reports/)
+  --no-judge             skip the LLM judge
+  --no-cache             disable result cache (on by default; identical inputs reuse)
+  --dry-run              preview only
+  --blind                blind mode
+  --concurrency <n>      parallel tasks (default: 1)
+  --timeout <sec>        per-task executor timeout (default: 120)
+  --repeat <n>           repeat N times for variance analysis (default: 1)
+  --executor <name>      executor (default: claude); supports custom commands
+  --skip-preflight       skip pre-evaluation model reachability check
+  --mcp-config <path>    MCP config for fetching private-doc URLs via MCP Server
+                         (default: .mcp.json in cwd)
+  --no-serve             don't auto-start the report server after the run
+  --verbose              print per-sample details (duration, tokens, output preview)
+  --each                 batch mode: evaluate each artifact independently vs baseline
+                         requires {name}.eval-samples.json paired with each artifact
 ```
 
-### `omk bench run --each`（批量评测）
+### `omk bench run --each` (batch mode)
 
-当 skills/ 下放了多个**独立的** artifact 时，使用 `--each` 逐个评测，每个 artifact 独立和 baseline 对比，生成一份合并报告。
+When `skills/` contains several **independent** artifacts, use `--each` to evaluate each one against baseline and produce a merged report.
 
 ```
 skills/
-├── asset.md                       ← artifact 文件
-├── asset.eval-samples.json        ← 配对的测试集
+├── asset.md                       ← artifact file
+├── asset.eval-samples.json        ← paired samples
 ├── home.md
 ├── home.eval-samples.json
-└── product/                       ← 目录格式也支持
+└── product/                       ← directory format also supported
     ├── SKILL.md
     └── eval-samples.json
 ```
 
-配对规则：
+Pairing rules:
 
-- `{name}.md` → 查找同目录下的 `{name}.eval-samples.json`
-- `{name}/SKILL.md` → 查找 `{name}/eval-samples.json`
-- 没有配对 eval-samples 的 artifact 会被跳过并打印警告
+- `{name}.md` → looks for `{name}.eval-samples.json` in the same dir
+- `{name}/SKILL.md` → looks for `{name}/eval-samples.json`
+- artifacts without paired samples are skipped with a warning
 
 ```bash
 omk bench run --each
 omk bench run --each --dry-run
 ```
 
-### `omk bench gen-samples`（生成测评用例）
+### `omk bench gen-samples` (generate test cases)
 
-读取 artifact 内容，通过 LLM 自动生成 eval-samples。生成后请审查编辑再跑评测。
+Reads an artifact's content and uses an LLM to auto-generate eval-samples. Review and edit them before running eval.
 
 ```bash
-# 为指定 artifact 生成测试集（输出到 eval-samples.json）
+# generate for a specific artifact (writes eval-samples.json)
 omk bench gen-samples skills/my-skill.md
 
-# 为 skills/ 下所有缺少测试集的 artifact 批量生成
+# batch-generate for every artifact under skills/ that lacks samples
 omk bench gen-samples --each
 
-# 指定生成数量
+# specify sample count
 omk bench gen-samples skills/my-skill.md --count 10
 ```
 
-选项：
+Options:
 
 ```
-  --each                 为所有缺少 eval-samples 的 artifact 批量生成
-  --count <n>            每个 artifact 生成的样本数（默认：5）
-  --model <名称>         生成用的模型（默认：sonnet）
-  --skill-dir <路径>     artifact 目录（参数名沿用历史写法，默认：skills），配合 --each 使用
+  --each                 batch-generate for every artifact missing samples
+  --count <n>            samples per artifact (default: 5)
+  --model <name>         model used for generation (default: sonnet)
+  --skill-dir <path>     artifact dir (historical flag name, default: skills), used with --each
 ```
 
-### `omk bench evolve`（自我循环改进）
+### `omk bench evolve` (self-iterating improvement)
 
-让 AI 自动迭代 artifact：评测 → 分析弱点 → LLM 改进 → 再评测 → 分数涨了留、没涨扔 → 重复。
+Lets the AI iterate an artifact automatically: evaluate → analyze weak spots → LLM rewrites → evaluate again → keep if the score went up, drop otherwise → repeat.
 
 ```bash
-# 基本用法：迭代 5 轮
+# basic: iterate 5 rounds
 omk bench evolve skills/my-skill.md
 
-# 指定轮数和目标分数
+# set rounds and target score
 omk bench evolve skills/my-skill.md --rounds 10 --target 4.5
 ```
 
-选项：
+Options:
 
 ```
-  --rounds <n>           最大迭代轮数（默认：5）
-  --target <分数>        目标分数，达到即停
-  --samples <路径>       样本文件（默认：eval-samples.json）
-  --improve-model <名称> 改进用模型（默认：sonnet）
+  --rounds <n>           max iteration rounds (default: 5)
+  --target <score>       stop early when the score reaches this threshold
+  --samples <path>       sample file (default: eval-samples.json)
+  --improve-model <name> model used for rewrites (default: sonnet)
 ```
 
-每轮产出保存在 `skills/evolve/` 目录（`my-skill.r0.md`、`my-skill.r1.md`...），可以 diff 查看 AI 改了什么。最佳版本自动写回原始文件。
+Each round's output is saved under `skills/evolve/` (`my-skill.r0.md`, `my-skill.r1.md`…), so you can `diff` to see what the AI changed. The best round is written back to the original file.
 
 ### `omk bench ci`
 
-在自动化流水线中运行评测。评分达标则退出码为 0（通过），否则为 1（失败），可直接用于卡点判断。
+Run the evaluation inside CI. Exit code 0 on pass, 1 on fail — can be wired into gates directly.
 
 ```bash
-omk bench ci [选项]
-  --threshold <数值>     达标的最低综合分数（默认：3.5）
+omk bench ci [options]
+  --threshold <number>   minimum composite score to pass (default: 3.5)
 ```
 
 ### `omk bench report`
 
-启动报告服务，浏览历史报告、提交反馈、删除报告。
+Start the report server to browse historical reports, submit feedback, and delete reports.
 
 ```bash
-omk bench report [选项]
-  --port <端口号>        服务端口（默认：7799）
+omk bench report [options]
+  --port <number>        server port (default: 7799)
 ```
 
 ### `omk bench init`
 
 ```bash
-omk bench init [目录]    # 生成评测项目脚手架
+omk bench init [dir]     # scaffold an eval project
 ```
 
-## 执行器
+## Executors
 
-### 内置执行器
+### Built-in executors
 
-| 执行器 | 适用场景 | 说明 |
-|--------|----------|------|
-| `claude` | 默认 | 通过 `claude -p` 调用 Claude CLI |
-| `claude-sdk` | 结构化输出 | 通过 Claude Agent SDK 调用，无 stdout 解析，避免 buffer 截断 |
-| `openai` | 跨厂商对比 | 通过 `openai api` CLI 调用 |
-| `gemini` | 跨厂商对比 | 通过 `gemini` CLI 调用 |
-| `anthropic-api` | 无需 CLI | 直接调用 Anthropic HTTP API（需 `ANTHROPIC_API_KEY`） |
-| `openai-api` | 无需 CLI | 直接调用 OpenAI HTTP API（需 `OPENAI_API_KEY`） |
+| Executor | When to use | Description |
+|---|---|---|
+| `claude` | default | invokes `claude -p` via Claude CLI |
+| `claude-sdk` | structured output | uses Claude Agent SDK — no stdout parsing, avoids buffer truncation |
+| `openai` | cross-vendor comparison | invokes `openai api` CLI |
+| `gemini` | cross-vendor comparison | invokes `gemini` CLI |
+| `anthropic-api` | no CLI needed | calls Anthropic HTTP API directly (needs `ANTHROPIC_API_KEY`) |
+| `openai-api` | no CLI needed | calls OpenAI HTTP API directly (needs `OPENAI_API_KEY`) |
 
-API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL`。
+API-direct executors support custom base URLs via env: `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`.
 
-### 自定义执行器
+### Custom executor
 
-任何 shell 命令都可以作为执行器，通过 stdin/stdout JSON 协议通信：
+Any shell command can serve as an executor, communicating via stdin/stdout JSON:
 
 ```bash
 omk bench run --executor "python my_provider.py"
 omk bench run --executor "./my-executor.sh"
 ```
 
-**协议约定：**
+**Protocol:**
 
-- **输入**（stdin）：JSON `{"model":"...","system":"...","prompt":"..."}`
-- **输出**（stdout）：JSON `{"output":"模型回复","inputTokens":0,"outputTokens":0,"costUSD":0}`
-- stdout 中只需返回有值的字段，其余默认为 0；也可以直接输出纯文本（不解析 token/成本）
-- 非零退出码视为执行失败
+- **input** (stdin): JSON `{"model":"...","system":"...","prompt":"..."}`
+- **output** (stdout): JSON `{"output":"model reply","inputTokens":0,"outputTokens":0,"costUSD":0}`
+- stdout only needs to return the fields you care about; others default to 0. Plain-text output (no tokens/cost parsing) is also fine.
+- non-zero exit code counts as failure
 
-### Artifact 目录结构
+### Artifact directory layout
 
-默认执行器（claude/openai/gemini）支持两种 artifact 布局，同一次评测中可混用：
+The built-in executors (claude / openai / gemini) support two artifact layouts, mixable in the same run:
 
 ```
 skills/
-├── v1.md                    # 方式一：直接放 .md 文件
-└── my-skill/                # 方式二：完整 artifact 目录
-    ├── SKILL.md             #   工具自动读取此文件作为 system prompt
-    ├── config.json          #   其他文件不参与评测，仅保留完整性
+├── v1.md                    # option 1: plain .md file
+└── my-skill/                # option 2: full artifact dir
+    ├── SKILL.md             #   this file is auto-loaded as system prompt
+    ├── config.json          #   other files don't participate in eval, kept for completeness
     └── scripts/
 ```
 
-**Variant 解析规则：**
+**Variant resolution rules:**
 
-`variant` 是实验分组表达式。解析之后，OMK 会得到一个 `artifact` 与可选的 `runtime context`（当前主要是 `cwd`）。
+`variant` is the experiment-group expression. After resolution, OMK produces an `artifact` plus an optional `runtime context` (currently mainly `cwd`).
 
-| 格式 | 含义 |
-|------|------|
-| `name` | 从 artifact 目录查找 `name.md` 或 `name/SKILL.md`，解析为一个 artifact |
-| `baseline` | 空 artifact，不使用 system prompt；可直接理解为“什么都没有” |
-| `project-env@/path/to/project` | 空 artifact，但在指定项目目录运行，用于单独观察项目级 runtime context |
-| `git:name` | 从 git HEAD 读取一个 artifact 的上次提交版本 |
-| `git:ref:name` | 从 git 指定 commit 读取一个 artifact |
-| `./path/to/file.md` | 含 `/` 的路径，直接读取文件作为 artifact |
-| `variant@/path/to/project` | 给任意变体附加运行目录，支持 `name@cwd`、`git:name@cwd`、`/file.md@cwd` |
+| Format | Meaning |
+|---|---|
+| `name` | looks up `name.md` or `name/SKILL.md` in the artifact dir, resolves to one artifact |
+| `baseline` | empty artifact, no system prompt — think "nothing at all" |
+| `project-env@/path/to/project` | empty artifact, but run in the specified project dir — observe project-level runtime context alone |
+| `git:name` | reads the last-committed version of an artifact from git HEAD |
+| `git:ref:name` | reads an artifact from a specific commit |
+| `./path/to/file.md` | path with `/`: read the file directly as an artifact |
+| `variant@/path/to/project` | attach a run dir to any variant; supports `name@cwd`, `git:name@cwd`, `/file.md@cwd` |
 
-不指定 `--variants` 时，自动扫描 artifact 目录下的所有 `.md` 文件和含 `SKILL.md` 的子目录。只有一个 artifact 时自动加 `baseline` 作为对照。
+When `--variants` is omitted, all `.md` files and subdirs containing `SKILL.md` under the artifact dir are auto-discovered. With a single artifact, `baseline` is auto-added as control.
 
 ```bash
-# 自动发现 skills/ 下所有 artifact
+# auto-discover all artifacts under skills/
 omk bench run
 
-# 显式指定两个变体
+# explicit two variants
 omk bench run --variants v1,v2
 
-# 对比空 artifact 和显式 artifact 的效果差异
+# compare empty artifact vs explicit artifact
 omk bench run --variants baseline,my-skill
 
-# 推荐用自描述标签单独观察项目级 runtime context 的影响
+# observe project-level runtime context in isolation (recommended with a self-describing label)
 omk bench run --variants project-env@/path/to/target-project
 
-# 对比“项目级 runtime context”与“显式 artifact 注入”
+# compare "project-level runtime context" vs "explicit artifact injection"
 omk bench run --variants project-env@/path/to/target-project,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 
-# 对比修改前后（旧版本从 git 历史读取）
+# before vs after (old version read from git history)
 omk bench run --variants git:my-skill,my-skill
 
-# 直接指定文件路径
+# direct file paths
 omk bench run --variants ./old-skill.md,./new-skill.md
 ```
 
-**前置要求：**
+**Prerequisites:**
 
-- **claude**：安装 [Claude Code](https://claude.ai/code) 并认证
-- **claude-sdk**：安装 [Claude Code](https://claude.ai/code) 并认证（使用 Agent SDK，无需 CLI stdout 解析）
-- **anthropic-api**：设置 `ANTHROPIC_API_KEY` 环境变量
-- **openai**：`pip install openai` 并设置 `OPENAI_API_KEY`
-- **openai-api**：设置 `OPENAI_API_KEY` 环境变量
-- **gemini**：`npm i -g @google/gemini-cli` 并认证
+- **claude**: install [Claude Code](https://claude.ai/code) and authenticate
+- **claude-sdk**: install [Claude Code](https://claude.ai/code) and authenticate (uses Agent SDK, no CLI stdout parsing)
+- **anthropic-api**: set the `ANTHROPIC_API_KEY` env var
+- **openai**: `pip install openai` and set `OPENAI_API_KEY`
+- **openai-api**: set the `OPENAI_API_KEY` env var
+- **gemini**: `npm i -g @google/gemini-cli` and authenticate
 
-### Agent 评测与项目级 Runtime Context
+### Agent evaluation and project-level runtime context
 
-当执行器使用 `claude-sdk` 时，OMK 现在已经支持第一版 agent-aware evaluation。
+When the executor is `claude-sdk`, OMK supports a first pass of agent-aware evaluation.
 
-这里建议把几个概念分开理解：
+A few concepts worth keeping separate:
 
-- `artifact`：被评测对象，例如 baseline、skill、prompt、agent
-- `variant`：CLI 里的实验分组表达式
-- `runtime context`：运行时上下文，当前主要是 `cwd`；在项目型 agent 场景下，它就包含项目目录、`CLAUDE.md`、本地 skills 等会影响行为的环境因素
+- `artifact`: the thing being evaluated — baseline, skill, prompt, agent
+- `variant`: the CLI expression for an experiment group
+- `runtime context`: the runtime environment; currently mainly `cwd`. In project-type agent scenarios it includes the project dir, its `CLAUDE.md`, local skills, and any other environmental factors that affect behavior
 
-在 OMK 里，`agent` 不是所有对象的总称，`skill` 也不是所有对象的总称。更稳妥的说法是：你在比较不同 artifact 在不同 runtime context 下的表现。
+In OMK, `agent` is not a catch-all term and neither is `skill`. A cleaner phrasing: **you are comparing how different artifacts behave under different runtime contexts.**
 
-- 自动抽取 turns / toolCalls trace
-- 支持基于工具调用行为的断言
-- 支持在指定 `cwd` 下运行，让 Claude Code 自动加载项目内的 `CLAUDE.md`、skills 和本地 runtime context
+- auto-extracts turns / toolCalls traces
+- supports assertions on tool-call behavior
+- supports running under a specified `cwd`, so Claude Code auto-loads the project's `CLAUDE.md`, skills, and local runtime context
 
-#### 推荐执行器
+#### Recommended executor
 
 ```bash
 omk bench run --executor claude-sdk
 ```
 
-#### 支持的 agent 相关断言
+#### Agent-related assertions
 
-| 断言 | 含义 |
-|------|------|
-| `tools_called` | 必须调用指定工具 |
-| `tools_not_called` | 禁止调用指定工具 |
-| `tools_count_min` / `tools_count_max` | 工具调用次数上下界 |
-| `tool_output_contains` | 指定工具输出必须包含关键内容 |
-| `turns_min` / `turns_max` | 交互轮次上下界 |
+| Assertion | Meaning |
+|---|---|
+| `tools_called` | must call the specified tool(s) |
+| `tools_not_called` | must not call the specified tool(s) |
+| `tools_count_min` / `tools_count_max` | tool-call-count bounds |
+| `tool_output_contains` | output of a specific tool must contain given content |
+| `turns_min` / `turns_max` | turn-count bounds |
 
-#### 三种常见对照组
+#### Three common control setups
 
-**1. 裸模型 baseline**
+**1. Bare-model baseline**
 
-不注入 system prompt，也不进入带知识的项目目录。
+No system prompt and no knowledge-carrying project dir.
 
 ```bash
 omk bench run \
@@ -541,9 +543,9 @@ omk bench run \
   --variants baseline
 ```
 
-**2. 空 artifact + 项目级 runtime context**
+**2. Empty artifact + project-level runtime context**
 
-不注入 system prompt，但在项目目录运行。它不是严格意义上的“裸 baseline”，而是“空 artifact + 项目级 runtime context”。
+No system prompt, but runs inside a project dir. This is **not** a strict "bare baseline" — it is "empty artifact + project-level runtime context".
 
 ```bash
 omk bench run \
@@ -551,9 +553,9 @@ omk bench run \
   --variants project-env@/path/to/target-project
 ```
 
-**3. 显式 artifact 注入**
+**3. Explicit artifact injection**
 
-直接把某个外部 `SKILL.md` 作为 artifact 注入，同时保留项目目录上下文。适合对比“项目级 runtime context”与“显式单 artifact 注入”之间的差异。
+Inject an external `SKILL.md` as the artifact while also keeping the project dir. Good for contrasting "project-level runtime context" vs "explicit single-artifact injection".
 
 ```bash
 omk bench run \
@@ -561,9 +563,9 @@ omk bench run \
   --variants /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 ```
 
-#### 推荐的第一轮对照设计
+#### Recommended first-round design
 
-对于 PRD / 复杂业务知识场景，建议先从下面两组开始：
+For PRD / complex business-knowledge scenarios, start with these two groups:
 
 ```bash
 omk bench run \
@@ -572,7 +574,7 @@ omk bench run \
   --variants baseline,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 ```
 
-如果你想证明“项目目录中的知识沉淀本身”是否有效，再加第三组：
+If you want to prove whether "the knowledge sitting inside the project directory" is effective on its own, add a third group:
 
 ```bash
 omk bench run \
@@ -581,80 +583,80 @@ omk bench run \
   --variants baseline,project-env@/path/to/target-project,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 ```
 
-#### 设计建议
+#### Design tips
 
-- **先用 `--dry-run`**：确认样本、variant 和 `cwd` 被正确解析
-- **项目级对照必须区分 `cwd`**：相同 prompt 在不同项目目录下会走不同 runtime context
-- **优先先跑 PRD 场景**：相比 Coding，更容易验证知识完整性、影响面识别和业务正确性
+- **Always start with `--dry-run`** to confirm samples, variants, and `cwd` are parsed correctly
+- **Project-level controls must differ in `cwd`**: the same prompt under different project dirs hits different runtime contexts
+- **Try PRD scenarios first**: compared to pure coding, they make it easier to validate knowledge completeness, impact-area detection, and business correctness
 
-### 常见模型配置示例
+### Common model configurations
 
-**没有 Claude？** 大多数国产模型（GLM、通义千问、Moonshot、DeepSeek 等）都兼容 OpenAI API 格式，可以直接使用 `openai-api` 执行器：
+**Don't have Claude?** Most Chinese LLMs (GLM, Qwen, Moonshot, DeepSeek, etc.) are OpenAI-API compatible — use the `openai-api` executor directly:
 
 ```bash
-# GLM（智谱）
-export OPENAI_API_KEY="你的智谱 API Key"
+# GLM (Zhipu)
+export OPENAI_API_KEY="your Zhipu API key"
 export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 omk bench run --executor openai-api --model glm-4-plus \
   --judge-model glm-4-plus --no-cache
 
-# 通义千问
-export OPENAI_API_KEY="你的通义 API Key"
+# Qwen (Alibaba)
+export OPENAI_API_KEY="your Qwen API key"
 export OPENAI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 omk bench run --executor openai-api --model qwen-plus \
   --judge-model qwen-plus
 
 # DeepSeek
-export OPENAI_API_KEY="你的 DeepSeek API Key"
+export OPENAI_API_KEY="your DeepSeek API key"
 export OPENAI_BASE_URL="https://api.deepseek.com"
 omk bench run --executor openai-api --model deepseek-chat \
   --judge-model deepseek-chat
 
-# Moonshot（Kimi）
-export OPENAI_API_KEY="你的 Moonshot API Key"
+# Moonshot (Kimi)
+export OPENAI_API_KEY="your Moonshot API key"
 export OPENAI_BASE_URL="https://api.moonshot.cn/v1"
 omk bench run --executor openai-api --model moonshot-v1-8k \
   --judge-model moonshot-v1-8k
 ```
 
-**Ollama 本地模型：**
+**Ollama local model:**
 
 ```bash
 omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
   --model llama3 --no-judge
 ```
 
-**关于评委模型：**
+**About the judge model:**
 
-- `--judge-model` 指定 LLM 评委使用的模型，默认 `haiku`
-- `--judge-executor` 指定评委使用的执行器（默认与 `--executor` 相同）
-- 如果你没有 Claude，用 `--judge-executor` 和 `--judge-model` 指向你可用的模型
-- 加 `--no-judge` 可跳过 LLM 评委，仅使用断言评分
+- `--judge-model` picks the model used by the LLM judge (default `haiku`)
+- `--judge-executor` picks the executor the judge uses (defaults to `--executor`)
+- If you don't have Claude, point `--judge-executor` and `--judge-model` at whatever model you have
+- Add `--no-judge` to skip the LLM judge and rely on assertions alone
 
-## 环境变量
+## Environment variables
 
-| 变量 | 说明 |
-|------|------|
-| `CCV_PROXY_URL` | 将请求代理到 cc-viewer，实时可视化评测流量 |
-| `OMK_BENCH_PORT` | 报告服务端口（默认：7799） |
+| Variable | Description |
+|---|---|
+| `CCV_PROXY_URL` | proxy requests through cc-viewer for live eval-traffic visualization |
+| `OMK_BENCH_PORT` | report server port (default: 7799) |
 
-## 系统要求
+## Requirements
 
 - Node.js >= 20
-- `claude` CLI（用于默认执行器和 LLM 评委，安装方式见 [Claude Code](https://claude.ai/code)）
-  - 使用其他执行器（openai/gemini）且加 `--no-judge` 时可不装
+- `claude` CLI (for the default executor and LLM judge; see [Claude Code](https://claude.ai/code))
+  - not needed if you use other executors (openai / gemini) with `--no-judge`
 
-## 安全说明
+## Security notice
 
-本工具设计用于**本地可信环境**（开发机、CI 流水线）。以下功能会执行本地代码，请确保输入来源可信：
+This tool is designed for **local trusted environments** (dev machines, CI pipelines). The following features execute local code — make sure inputs come from a trusted source:
 
-| 功能 | 风险说明 | 适用范围 |
-|------|----------|----------|
-| **自定义断言** (`custom`) | 动态加载并执行用户指定的 `.mjs` 文件 | 仅使用自己编写或审查过的断言文件 |
-| **eval-samples.json** | 断言配置中可引用外部文件路径 | 不要使用不可信来源的样本文件 |
+| Feature | Risk | Scope |
+|---|---|---|
+| **Custom assertions** (`custom`) | dynamically loads and executes user-specified `.mjs` files | only use assertion files you authored or reviewed |
+| **eval-samples.json** | assertion configs can reference external file paths | don't use sample files from untrusted sources |
 
-**建议：**
+**Recommendations:**
 
-- 不要在公网服务中暴露 `omk bench report` 服务（无认证）
-- 不要用不可信的第三方 eval-samples 文件
-- 自定义断言有 30 秒执行超时，但无沙箱隔离
+- Do not expose `omk bench report` on the public internet (no auth)
+- Don't use third-party eval-samples you haven't vetted
+- Custom assertions have a 30-second timeout but no sandbox isolation
