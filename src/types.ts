@@ -444,6 +444,8 @@ export interface Report {
     sampleCount: number;
     artifactHash: string | null;
     summary: Record<string, VariantSummary>;
+    /** --each --repeat N 时由 runMultiple 聚合的三层独立 variance + t 检验 */
+    variance?: VarianceData;
     results: ResultEntry[];
   }>;
 }

@@ -315,17 +315,26 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
   }).join('');
 
   // Per-artifact detail sections
+  const repeatN = report.meta.request?.repeat;
   const skillSections = eachArtifacts.map((sk) => {
     const variants = ['baseline', 'skill'];
     const summary = sk.summary || {};
     const cards = renderSummaryCards(variants, summary, lang);
     const sampleTable = renderSampleTable(variants, sk.results, lang);
+    // --each --repeat N 时每个 skill 有自己的 variance; 复用 bench 的 renderVarianceComparisons
+    const varianceBlock = sk.variance
+      ? renderVarianceComparisons(sk.variance, lang, Boolean(report.meta.layeredStats))
+      : '';
+    const repeatTag = repeatN && repeatN > 1
+      ? `<span class="meta-tag" style="background:var(--info-bg);color:var(--accent)">--repeat ${repeatN}</span>`
+      : '';
 
     return `
       <section id="skill-${e(sk.name)}" style="margin-top:36px;padding-top:20px;border-top:1px solid var(--border)">
-        <h2>${e(sk.name)}</h2>
+        <h2>${e(sk.name)} ${repeatTag}</h2>
         <p style="font-size:12px;color:var(--text-muted)">${t('samples', lang)}: ${sk.sampleCount} &middot; Hash: ${e(sk.artifactHash || '-')}</p>
         ${cards}
+        ${varianceBlock}
         ${sampleTable}
       </section>
     `;
