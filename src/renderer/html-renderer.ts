@@ -336,14 +336,14 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
     `;
   }).join('');
 
-  // 轮次信息放总览: "3 个 Skill · 6 个样本 × 2 轮 · $0.12"
+  // 轮次信息放总览。统一用 · 分隔(each 下 skills×samples 不是严格乘法,避免 × 的误导)
   const repeatN = report.meta.request?.repeat;
-  const repeatSuffix = repeatN && repeatN > 1
-    ? (lang === 'zh' ? ` × ${repeatN} 轮` : ` × ${repeatN} runs`)
+  const repeatSegment = repeatN && repeatN > 1
+    ? (lang === 'zh' ? ` · ${repeatN} 轮重复` : ` · ${repeatN} runs`)
     : '';
   const overviewSubtitle = lang === 'zh'
-    ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个样本${repeatSuffix} · ${fmtCost(overview?.totalCostUSD || 0)}`
-    : `${overview?.totalArtifacts || 0} skills · ${overview?.totalSamples || 0} samples${repeatSuffix} · ${fmtCost(overview?.totalCostUSD || 0)}`;
+    ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个样本${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`
+    : `${overview?.totalArtifacts || 0} skills · ${overview?.totalSamples || 0} samples${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`;
 
   return layout(`${t('reportTitle', lang)} - ${report.id}`, `
     <main>
