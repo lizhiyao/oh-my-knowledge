@@ -318,7 +318,8 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
   const skillSections = eachArtifacts.map((sk) => {
     const variants = ['baseline', 'skill'];
     const summary = sk.summary || {};
-    const cards = renderSummaryCards(variants, summary, lang);
+    // 传 sk.variance 给 summaryCards, 稳定性 CV 列才有数据 (非 each 模式是传 report.variance)
+    const cards = renderSummaryCards(variants, summary, lang, sk.variance);
     const sampleTable = renderSampleTable(variants, sk.results, lang);
     // --each --repeat N 时每个 skill 有自己的 variance; 复用 bench 的 renderVarianceComparisons
     const varianceBlock = sk.variance
