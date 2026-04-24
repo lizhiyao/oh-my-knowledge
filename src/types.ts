@@ -154,6 +154,10 @@ export interface EvaluationRequest {
   noCache: boolean;
   dryRun: boolean;
   blind: boolean;
+  /** --repeat N; 1 表示单次跑,> 1 走 runMultiple 做 variance 分析 */
+  repeat?: number;
+  /** --each; 默认不传(=false),true 表示 each mode (每个 skill 独立对比 baseline) */
+  each?: boolean;
 }
 
 export type EvaluationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -440,6 +444,8 @@ export interface Report {
     sampleCount: number;
     artifactHash: string | null;
     summary: Record<string, VariantSummary>;
+    /** --each --repeat N 时由 runMultiple 聚合的三层独立 variance + t 检验 */
+    variance?: VarianceData;
     results: ResultEntry[];
   }>;
 }

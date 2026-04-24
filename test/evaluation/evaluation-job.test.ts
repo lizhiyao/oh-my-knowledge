@@ -47,6 +47,44 @@ describe('buildEvaluationRequest', () => {
     assert.equal(req.noCache, true);
     assert.equal(req.blind, true);
   });
+
+  it('--each --repeat N 时 repeat / each 字段透传到 request (防回归)', () => {
+    const req = buildEvaluationRequest({
+      samplesPath: '/a.json',
+      skillDir: '/skills',
+      artifacts: [],
+      model: 'sonnet',
+      judgeModel: 'haiku',
+      executor: 'claude',
+      noJudge: false,
+      concurrency: 3,
+      noCache: false,
+      dryRun: false,
+      blind: false,
+      repeat: 2,
+      each: true,
+    });
+    assert.equal(req.repeat, 2);
+    assert.equal(req.each, true);
+  });
+
+  it('未传 repeat / each 时字段为 undefined (不是 0 或 false)', () => {
+    const req = buildEvaluationRequest({
+      samplesPath: '/a.json',
+      skillDir: '/skills',
+      artifacts: [],
+      model: 'sonnet',
+      judgeModel: 'haiku',
+      executor: 'claude',
+      noJudge: false,
+      concurrency: 1,
+      noCache: false,
+      dryRun: false,
+      blind: false,
+    });
+    assert.equal(req.repeat, undefined);
+    assert.equal(req.each, undefined);
+  });
 });
 
 describe('createQueuedJob', () => {

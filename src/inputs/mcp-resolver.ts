@@ -3,15 +3,15 @@
  *
  * Reads a MCP config file (.mcp.json), launches configured MCP servers,
  * and uses them to fetch URL content that cannot be reached via plain HTTP
- * (e.g. internal Yuque documents behind SSO).
+ * (e.g. private documentation behind SSO).
  *
  * Config format (.mcp.json):
  * {
  *   "mcpServers": {
- *     "yuque": {
+ *     "docs": {
  *       "command": "npx",
  *       "args": ["@example/docs-mcp-server"],
- *       "env": { "YUQUE_API_TOKEN": "xxx" },
+ *       "env": { "DOCS_API_TOKEN": "xxx" },
  *       "urlPatterns": ["docs.example.com"],
  *       "fetchTool": { "name": "get_doc", "urlParam": "url" }
  *     }
@@ -23,7 +23,7 @@
  *   "fetchTool": {
  *     "name": "fetch_doc",
  *     "urlTransform": {
- *       "regex": "yuque\\.antfin\\.com/([^/]+/[^/]+)/([^/?#]+)",
+ *       "regex": "docs\\.example\\.com/([^/]+/[^/]+)/([^/?#]+)",
  *       "params": { "namespace": "$1", "slug": "$2" }
  *     },
  *     "contentExtract": "data.body"

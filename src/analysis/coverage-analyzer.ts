@@ -37,8 +37,8 @@ function classifyEntry(path: string): KnowledgeEntry['type'] {
 export function extractReferencedPaths(artifactContent: string): string[] {
   const paths = new Set<string>();
   const pathPatterns = [
-    /(?:\.claude|\.aima)\/[a-zA-Z0-9_/.-]+\.md/g,
-    /(?:\.claude|\.aima)\/[a-zA-Z0-9_/.-]+\.sh/g,
+    /\.claude\/[a-zA-Z0-9_/.-]+\.md/g,
+    /\.claude\/[a-zA-Z0-9_/.-]+\.sh/g,
     /repos\/[a-zA-Z0-9_/-]+/g,
   ];
 
@@ -89,7 +89,6 @@ export function buildKnowledgeIndex(cwd: string): KnowledgeIndex {
   const knowledgeDirs = [
     { dir: join(cwd, '.claude', 'knowledge'), prefix: '.claude/knowledge' },
     { dir: join(cwd, '.claude', 'skills'), prefix: '.claude/skills' },
-    { dir: join(cwd, '.aima', 'skills'), prefix: '.aima/skills' },
   ];
 
   const entries: KnowledgeEntry[] = [];
@@ -208,7 +207,7 @@ export function normalizeKnowledgePath(filePath: string, cwd?: string | null): s
     const relative = filePath.slice(cwd.endsWith('/') ? cwd.length : cwd.length + 1);
     return relative;
   }
-  const patterns = ['.claude/knowledge/', '.claude/skills/', '.aima/skills/'];
+  const patterns = ['.claude/knowledge/', '.claude/skills/'];
   for (const pattern of patterns) {
     const index = filePath.indexOf(pattern);
     if (index !== -1) return filePath.slice(index);

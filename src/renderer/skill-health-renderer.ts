@@ -1,7 +1,7 @@
 /**
  * Skill 健康度日报 renderer (v0.18).
  *
- * 输入: SkillHealthReport (from production-analyzer)
+ * 输入: SkillHealthReport (from skill-health-analyzer)
  * 输出: 完整 HTML 文档, 包含:
  *   - 顶部摘要 (trace 源水印 + overall 健康度色带)
  *   - 每 skill 一张 card, 复用 v0.17 A 的 ki-card 左右栏 (coverage + gap)
@@ -12,9 +12,9 @@
  *   - 报告视觉和 bench HTML 保持一致, 读者无学习成本切换
  */
 
-import type { SkillHealth, SkillHealthReport } from '../observability/production-analyzer.js';
+import type { SkillHealth, SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import type { Lang } from '../types.js';
-import { COLORS, e, layout } from './layout.js';
+import { COLORS, e, layout, t } from './layout.js';
 
 const HEALTH_BAND_COLOR: Record<'green' | 'yellow' | 'red', string> = {
   green: 'var(--green)',
@@ -116,9 +116,16 @@ function renderSkillCard(skill: SkillHealth, variantColor: string, lang: Lang): 
 
   // ─── 右栏: gap signals ────────────────────────
   const softShare = gapPct - weightedPct;
-  const weightedHint = softShare >= 10
+  const failureRatePct = Math.round(skill.toolFailureRate * 100);
+  const instabilityNote = skill.stability === 'very-unstable'
+    ? ` · <span style="color:var(--red)">${lang === 'zh' ? `失败率 ${failureRatePct}%,gap 可能是环境问题` : `failure rate ${failureRatePct}%, gap likely env issue`}</span>`
+    : skill.stability === 'unstable'
+      ? ` · <span style="color:var(--yellow)">${lang === 'zh' ? `失败率 ${failureRatePct}%,gap 可能含噪声` : `failure rate ${failureRatePct}%, gap may be noisy`}</span>`
+      : '';
+  const weightedHintBase = softShare >= 10
     ? `<strong>${lang === 'zh' ? '加权盲区' : 'weighted gap'} ${weightedPct}%</strong> · ${softShare}% ${lang === 'zh' ? '为软信号(建议复核)' : 'soft signals (review)'}`
     : `<strong>${lang === 'zh' ? '加权盲区' : 'weighted gap'} ${weightedPct}%</strong> · ${lang === 'zh' ? '以硬证据为主' : 'mostly hard evidence'}`;
+  const weightedHint = weightedHintBase + instabilityNote;
   const signalBadges = (Object.entries(gap.byType) as Array<[string, number]>)
     .filter(([, n]) => n > 0)
     .map(([k, n]) => {
@@ -145,14 +152,44 @@ function renderSkillCard(skill: SkillHealth, variantColor: string, lang: Lang): 
     ${signalBadges ? `<div>${signalBadges}</div>` : ''}
   `;
 
+  // 失败率 badge: 用 skill.stability 决定颜色
+  const stabilityColor = skill.stability === 'very-unstable'
+    ? 'var(--red)'
+    : skill.stability === 'unstable'
+      ? 'var(--yellow)'
+      : 'var(--text-muted)';
+  const failureLabel = skill.toolCallCount > 0
+    ? `${skill.toolFailureCount}/${skill.toolCallCount} ${lang === 'zh' ? '失败' : 'failed'} (${failureRatePct}%)`
+    : `0 ${lang === 'zh' ? '次工具调用' : 'tool calls'}`;
+
+  // ─── 成本/耗时行(第四轴,skill 维度聚合) ─────────
+  // 旧 JSON (加 usage 字段前生成的) 缺此字段,降级为全 0
+  const u = skill.usage ?? {
+    inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
+    totalTokens: 0, durationMs: 0, numTurns: 0,
+    avgTokensPerSegment: 0, avgDurationMsPerSegment: 0,
+  };
+  const billableTokens = (u.inputTokens ?? 0) + (u.outputTokens ?? 0);
+  const cachedTokens = (u.cacheReadTokens ?? 0) + (u.cacheCreationTokens ?? 0);
+  const billK = (billableTokens / 1000).toFixed(1);
+  const cachedK = (cachedTokens / 1000).toFixed(1);
+  const durSec = (u.durationMs / 1000).toFixed(1);
+  const avgDurSec = (u.avgDurationMsPerSegment / 1000).toFixed(1);
+  const cachedSeg = cachedTokens > 0 ? ` + ${cachedK}k ${lang === 'zh' ? '缓存' : 'cached'}` : '';
+  const usageLine = `${billK}k tokens${cachedSeg} · ${durSec}s (${lang === 'zh' ? '均' : 'avg'} ${avgDurSec}s/${lang === 'zh' ? '段' : 'seg'}) · ${u.numTurns} ${lang === 'zh' ? '轮次' : 'turns'}`;
+
   // ─── Card 结构 ───────────────────────────────
   return `
   <div class="ki-card" style="border-left:3px solid ${variantColor}">
     <div class="ki-card-header">
       <span class="ki-card-title">${e(skill.skillName)}</span>
       <div class="ki-card-meta">
-        ${skill.segmentCount} ${lang === 'zh' ? '段' : 'segments'} · ${skill.toolCallCount} ${lang === 'zh' ? '次工具调用' : 'tool calls'} · ${skill.toolFailureCount} ${lang === 'zh' ? '失败' : 'failed'}
+        ${skill.segmentCount} <span data-i18n="analysesSegs">${t('analysesSegs', lang)}</span> · <span style="color:${stabilityColor}">${failureLabel}</span>
+        · <a href="/skill-trend/${encodeURIComponent(skill.skillName)}${lang === 'zh' ? '' : `?lang=${lang}`}" data-i18n="viewTrendLink" style="color:var(--accent);text-decoration:none;font-size:11px">${t('viewTrendLink', lang)}</a>
       </div>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;padding:4px 0 8px;border-bottom:1px solid var(--border);margin-bottom:10px">
+      ${usageLine}
     </div>
     <div class="ki-columns">
       <div class="ki-col">${covInner}</div>

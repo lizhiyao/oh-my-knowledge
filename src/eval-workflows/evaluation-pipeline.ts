@@ -68,6 +68,8 @@ async function initializeEvaluationRunState({
   runId,
   jobStore,
   persistJob,
+  repeat,
+  each,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -87,6 +89,8 @@ async function initializeEvaluationRunState({
   runId: string;
   jobStore?: JobStore | null;
   persistJob?: boolean;
+  repeat?: number;
+  each?: boolean;
 }): Promise<EvaluationRunState> {
   const request = buildEvaluationRequest({
     samplesPath,
@@ -105,6 +109,8 @@ async function initializeEvaluationRunState({
     project,
     owner,
     tags,
+    repeat,
+    each,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
@@ -247,6 +253,10 @@ export interface EvaluationPipelineOptions {
   existingResults?: Record<string, Record<string, VariantResult>>;
   requires?: DependencyRequirements;
   layeredStats?: boolean;
+  /** 透传到 meta.request.repeat */
+  repeat?: number;
+  /** 透传到 meta.request.each */
+  each?: boolean;
 }
 
 export async function executeEvaluationPipeline({
@@ -279,6 +289,8 @@ export async function executeEvaluationPipeline({
   existingResults,
   requires,
   layeredStats = false,
+  repeat,
+  each,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -300,6 +312,8 @@ export async function executeEvaluationPipeline({
     runId: generateRunId(variantNames),
     jobStore,
     persistJob,
+    repeat,
+    each,
   });
 
   try {

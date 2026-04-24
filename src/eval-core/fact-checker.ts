@@ -24,8 +24,8 @@ export interface FactCheckResult {
 const PATH_PATTERNS = [
   // Explicit code paths: repos/xxx, src/xxx, lib/xxx, packages/xxx
   /(?:repos|src|lib|packages|dist|test|components)\/[a-zA-Z0-9_/.@-]+/g,
-  // .claude / .aima paths
-  /\.(?:claude|aima)\/[a-zA-Z0-9_/.@-]+/g,
+  // .claude paths
+  /\.claude\/[a-zA-Z0-9_/.@-]+/g,
   // Paths with file extensions mentioned in text
   /[a-zA-Z0-9_/-]+\.(?:ts|js|tsx|jsx|md|json|yaml|yml|sh)\b/g,
 ];

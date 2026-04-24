@@ -56,6 +56,12 @@ interface CommonEvaluationOptions {
   // breakdown by default (CLI `--layered-stats`). Written to report.meta.layeredStats
   // and read by the renderer; does not affect data collection.
   layeredStats?: boolean;
+  /** --repeat N. 1 表示单次(默认); > 1 时在 runMultiple 层聚合 variance。
+   *  记入 report.meta.request.repeat 让 meta 如实反映用户输入。 */
+  repeat?: number;
+  /** --each 模式标记, true 表示当前评测是 each 批量流程(每个 skill 独立对比 baseline)。
+   *  记入 report.meta.request.each。 */
+  each?: boolean;
 }
 
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
@@ -140,6 +146,8 @@ export async function runEvaluation({
   retry = 0,
   resume,
   layeredStats = false,
+  repeat,
+  each,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
@@ -217,6 +225,8 @@ export async function runEvaluation({
     existingResults,
     requires,
     layeredStats,
+    repeat,
+    each,
   });
 }
 
@@ -370,6 +380,7 @@ export async function runEachEvaluation({
   skipPreflight = false,
   mcpConfig,
   verbose = false,
+  repeat,
 }: RunEachEvaluationOptions): Promise<{ report: Report | DryRunEachReport; filePath: string | null }> {
   const skillEntries = discoverEachSkills(resolve(skillDir));
   if (skillEntries.length === 0) {
@@ -414,8 +425,14 @@ export async function runEachEvaluation({
     skipPreflight,
     mcpConfig,
     verbose,
+    repeat,
     runSingleEvaluation: async (options) => {
-      const result = await runEvaluation(options);
+      // repeat > 1 时走 runMultiple 做 variance; each=true 标记让 meta.request 如实反映
+      if (repeat && repeat > 1) {
+        const multi = await runMultiple({ ...options, repeat, each: true });
+        return { report: multi.report, filePath: multi.filePath };
+      }
+      const result = await runEvaluation({ ...options, each: true });
       return { report: result.report as Report, filePath: result.filePath };
     },
   });

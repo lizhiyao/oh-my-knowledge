@@ -19,11 +19,14 @@ type EachOverviewArtifact = EachOverview['artifacts'][number];
 type EachArtifactReport = NonNullable<Report['artifacts']>[number];
 
 export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string {
+  const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
+  const skillHealthLink = `<a href="/analyses${langQ}" style="color:var(--text-muted);font-size:12px;text-decoration:none;border:1px solid var(--border);padding:4px 10px;border-radius:var(--radius);display:inline-block">📊 <span data-i18n="skillHealthTitle">${t('skillHealthTitle', lang)}</span> →</a>`;
   if (!runs || runs.length === 0) {
     return layout(t('title', lang), `
       <main>
       <h1>${t('title', lang)}</h1>
       <p class="subtitle">${t('subtitle', lang)}</p>
+      <div style="margin-top:16px">${skillHealthLink}</div>
       <p style="color:var(--text-muted);margin-top:40px">${t('noRuns', lang)}</p>
       </main>
     `, lang);
@@ -88,6 +91,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
     <h1>${t('title', lang)}</h1>
     <p class="subtitle" data-i18n="subtitle">${t('subtitle', lang)} &middot; ${runCount} &middot; ${costLabel}</p>
     ${trendsSection}
+    <div style="margin:12px 0">${skillHealthLink}</div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
       <input id="filter-input" type="text" placeholder="${lang === 'zh' ? '搜索报告名称、变体...' : 'Filter by name, variant...'}" style="flex:1;max-width:320px;padding:6px 10px;font-size:13px;background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius);outline:none" oninput="filterTable(this.value)">
       <span id="filter-count" style="font-size:11px;color:var(--text-muted)"></span>
@@ -314,18 +318,37 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
   const skillSections = eachArtifacts.map((sk) => {
     const variants = ['baseline', 'skill'];
     const summary = sk.summary || {};
-    const cards = renderSummaryCards(variants, summary, lang);
+    // 传 sk.variance 给 summaryCards, 稳定性 CV 列才有数据 (非 each 模式是传 report.variance)
+    const cards = renderSummaryCards(variants, summary, lang, sk.variance);
     const sampleTable = renderSampleTable(variants, sk.results, lang);
+    // --each --repeat N 时每个 skill 有自己的 variance; 复用 bench 的 renderVarianceComparisons
+    const varianceBlock = sk.variance
+      ? renderVarianceComparisons(sk.variance, lang, Boolean(report.meta.layeredStats))
+      : '';
 
+    const hashShort = sk.artifactHash ? e(sk.artifactHash).slice(0, 12) : '-';
+    const hashBlock = sk.artifactHash
+      ? `<span title="${t('artifactHashTooltip', lang)}"><span data-i18n="artifactHashLabel">${t('artifactHashLabel', lang)}</span>: <code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${hashShort}</code></span>`
+      : '';
     return `
       <section id="skill-${e(sk.name)}" style="margin-top:36px;padding-top:20px;border-top:1px solid var(--border)">
         <h2>${e(sk.name)}</h2>
-        <p style="font-size:12px;color:var(--text-muted)">${t('samples', lang)}: ${sk.sampleCount} &middot; Hash: ${e(sk.artifactHash || '-')}</p>
+        <p style="font-size:12px;color:var(--text-muted)">${t('samples', lang)}: ${sk.sampleCount}${hashBlock ? ' &middot; ' + hashBlock : ''}</p>
         ${cards}
+        ${varianceBlock}
         ${sampleTable}
       </section>
     `;
   }).join('');
+
+  // 轮次信息放总览。统一用 · 分隔(each 下 skills×samples 不是严格乘法,避免 × 的误导)
+  const repeatN = report.meta.request?.repeat;
+  const repeatSegment = repeatN && repeatN > 1
+    ? (lang === 'zh' ? ` · ${repeatN} 轮重复` : ` · ${repeatN} runs`)
+    : '';
+  const overviewSubtitle = lang === 'zh'
+    ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个样本${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`
+    : `${overview?.totalArtifacts || 0} skills · ${overview?.totalSamples || 0} samples${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`;
 
   return layout(`${t('reportTitle', lang)} - ${report.id}`, `
     <main>
@@ -341,7 +364,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
     <section>
     <h2>${t('eachOverview', lang)}</h2>
 
-    <p style="font-size:13px;color:var(--text-muted)">${overview?.totalArtifacts || 0} ${t('eachSkills', lang)} &middot; ${overview?.totalSamples || 0} ${t('eachSamples', lang)} &middot; ${fmtCost(overview?.totalCostUSD || 0)}</p>
+    <p style="font-size:13px;color:var(--text-muted)">${overviewSubtitle}</p>
     <div class="table-wrap">
     <table>
       <thead><tr>

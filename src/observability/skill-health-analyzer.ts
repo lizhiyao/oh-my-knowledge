@@ -1,8 +1,9 @@
 /**
- * Production analyzer (v0.18 skill-health).
+ * Skill health analyzer (v0.18 skill-health).
  *
  * 接 trace-adapter 输出 → 按 skill 维度聚合 coverage + gap,产出 SkillHealthReport。
  * 复用 analysis/coverage-analyzer + analysis/gap-analyzer,跳过对照组逻辑。
+ * 定位是"真实使用 trace 的 skill 维度观察",不是通用 APM / 生产监控。
  *
  * 分析流水线:
  *   1. ccTracesToResultEntries(path) → segments + ResultEntry[]
@@ -26,6 +27,27 @@ export interface SkillHealth {
   segmentCount: number;
   toolCallCount: number;
   toolFailureCount: number;
+  /** 失败率 = toolFailureCount / toolCallCount; toolCallCount=0 时为 0 */
+  toolFailureRate: number;
+  /**
+   * 执行稳定性标签。阈值:
+   *  - very-unstable: failureRate >= 0.4 (gap 信号极可能是环境问题,不是真知识缺口)
+   *  - unstable:      failureRate >= 0.2 (建议排查环境后再看 gap)
+   *  - stable:        否则
+   */
+  stability: 'stable' | 'unstable' | 'very-unstable';
+  /** 成本/耗时聚合(来自 SkillSegment.metrics,第四轴). 粒度是 skill 级,非单次调用级 */
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+    totalTokens: number;
+    durationMs: number;
+    numTurns: number;
+    avgTokensPerSegment: number;
+    avgDurationMsPerSegment: number;
+  };
   coverage: CoverageReport | null;
   gap: GapReport;
 }
@@ -83,6 +105,48 @@ function healthBandOf(weightedGapRate: number): 'green' | 'yellow' | 'red' {
 }
 
 /**
+ * 按 per-skill 失败率判定执行稳定性。阈值见 SkillHealth.stability。
+ */
+function stabilityOf(toolFailureRate: number): SkillHealth['stability'] {
+  if (toolFailureRate >= 0.4) return 'very-unstable';
+  if (toolFailureRate >= 0.2) return 'unstable';
+  return 'stable';
+}
+
+/**
+ * 聚合一组 segment 的 tokens / duration / turns. 平均值按 segment 数(非 toolCall 数)算。
+ */
+function aggregateUsage(skillSegs: SkillSegment[]): SkillHealth['usage'] {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheCreationTokens = 0;
+  let durationMs = 0;
+  let numTurns = 0;
+  for (const s of skillSegs) {
+    inputTokens += s.metrics.inputTokens ?? 0;
+    outputTokens += s.metrics.outputTokens ?? 0;
+    cacheReadTokens += s.metrics.cacheReadTokens ?? 0;
+    cacheCreationTokens += s.metrics.cacheCreationTokens ?? 0;
+    durationMs += s.metrics.durationMs ?? 0;
+    numTurns += s.metrics.numTurns ?? 0;
+  }
+  const totalTokens = inputTokens + outputTokens + cacheReadTokens + cacheCreationTokens;
+  const n = skillSegs.length || 1;
+  return {
+    inputTokens,
+    outputTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+    totalTokens,
+    durationMs,
+    numTurns,
+    avgTokensPerSegment: Math.round(totalTokens / n),
+    avgDurationMsPerSegment: Math.round(durationMs / n),
+  };
+}
+
+/**
  * 推断 KB root: 没传 --kb 时,取第一个 assistant record 的 cwd。
  * 如果跨多个 cwd,取第一个并 warn。
  */
@@ -125,11 +189,17 @@ export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions
     const gap = computeGapReport(filteredEntries, skill);
     // 挂 trace 源作水印(spec §六)
     gap.testSetPath = tracePath;
+    const skillToolCalls = skillSegs.reduce((a, s) => a + s.metrics.numToolCalls, 0);
+    const skillFailures = skillSegs.reduce((a, s) => a + s.metrics.numToolFailures, 0);
+    const toolFailureRate = skillToolCalls > 0 ? Number((skillFailures / skillToolCalls).toFixed(4)) : 0;
     bySkill[skill] = {
       skillName: skill,
       segmentCount: skillSegs.length,
-      toolCallCount: skillSegs.reduce((a, s) => a + s.metrics.numToolCalls, 0),
-      toolFailureCount: skillSegs.reduce((a, s) => a + s.metrics.numToolFailures, 0),
+      toolCallCount: skillToolCalls,
+      toolFailureCount: skillFailures,
+      toolFailureRate,
+      stability: stabilityOf(toolFailureRate),
+      usage: aggregateUsage(skillSegs),
       coverage,
       gap,
     };
@@ -207,11 +277,17 @@ function buildReport(
     const coverage = index ? computeCoverage(entries, skill, index, kbRoot) : null;
     const gap = computeGapReport(entries, skill);
     gap.testSetPath = tracePath;
+    const skillToolCalls = skillSegs.reduce((a, s) => a + s.metrics.numToolCalls, 0);
+    const skillFailures = skillSegs.reduce((a, s) => a + s.metrics.numToolFailures, 0);
+    const toolFailureRate = skillToolCalls > 0 ? Number((skillFailures / skillToolCalls).toFixed(4)) : 0;
     bySkill[skill] = {
       skillName: skill,
       segmentCount: skillSegs.length,
-      toolCallCount: skillSegs.reduce((a, s) => a + s.metrics.numToolCalls, 0),
-      toolFailureCount: skillSegs.reduce((a, s) => a + s.metrics.numToolFailures, 0),
+      toolCallCount: skillToolCalls,
+      toolFailureCount: skillFailures,
+      toolFailureRate,
+      stability: stabilityOf(toolFailureRate),
+      usage: aggregateUsage(skillSegs),
       coverage,
       gap,
     };

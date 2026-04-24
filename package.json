@@ -1,6 +1,6 @@
 {
   "name": "oh-my-knowledge",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "description": "Knowledge artifact evaluation toolkit — benchmark your skills with objective data",
   "type": "module",
   "bin": {
@@ -24,14 +24,21 @@
   "keywords": [
     "knowledge-engineering",
     "skill-evaluation",
+    "evaluation-framework",
     "benchmark",
+    "prompt-engineering",
+    "claude-code",
+    "claude",
     "llm",
-    "ai",
-    "claude"
+    "ai"
   ],
   "repository": {
     "type": "git",
-    "url": "git@github.com:insurance-future/oh-my-knowledge.git"
+    "url": "git@github.com:lizhiyao/oh-my-knowledge.git"
+  },
+  "homepage": "https://github.com/lizhiyao/oh-my-knowledge#readme",
+  "bugs": {
+    "url": "https://github.com/lizhiyao/oh-my-knowledge/issues"
   },
   "author": "lizhiyao",
   "license": "MIT",

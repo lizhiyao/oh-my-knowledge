@@ -228,12 +228,17 @@ function parseRunConfig(
     }
   } else if (evalConfig) {
     variantSpecs = configVariantsToSpecs(evalConfig.variants);
+  } else if (values.each) {
+    // --each 模式自动用 baseline (control) vs 每个 skill (treatment),
+    // 不需要用户显式传 --control / --treatment,校验跳过。
+    variantSpecs = [];
   } else {
     const discovered = discoverVariants(skillDir);
     const hint = discovered.length > 0 ? `\n  skill-dir (${skillDir}) 下发现的候选：${discovered.join(', ')}` : '';
     throw new Error(
       `请通过 --control / --treatment 或 --config eval.yaml 声明 variant 角色。\n`
       + `  示例：omk bench run --control baseline --treatment my-skill${hint}\n`
+      + `  --each 模式下自动用 baseline vs 每个 skill,无需显式声明\n`
       + `  术语见 docs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
     );
   }
@@ -587,11 +592,21 @@ async function handleRun(argv: string[]): Promise<void> {
   config.blind = values.blind as boolean | undefined;
   config.onProgress = defaultOnProgress as unknown as ProgressCallback;
 
+  // --repeat 诚实输入校验:非 ≥1 整数时提示并钳到 1,不静默掩盖用户错字/极端输入
+  // 提前到 --each 分支之前,保证 each 模式也能读到 repeat (曾经 bug: --each 吞 --repeat)
+  const repeatRaw = values.repeat as string | undefined;
+  const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : 1;
+  if (repeatRaw !== undefined && (!Number.isFinite(parsedRepeat) || parsedRepeat < 1)) {
+    process.stderr.write(`⚠ --repeat "${repeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次评测执行\n`);
+  }
+  const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
+
   try {
     // --each mode: evaluate each skill independently
     if (values.each) {
       const { report, filePath } = await runEachEvaluation({
         ...config,
+        repeat: repeatCount,
         onSkillProgress({ phase, skill, current, total }: SkillProgressInfo): void {
           if (phase === 'start') {
             process.stderr.write(`\n=== [${current}/${total}] Skill: ${skill} ===\n`);
@@ -624,13 +639,6 @@ async function handleRun(argv: string[]): Promise<void> {
       return;
     }
 
-    // --repeat 诚实输入校验:非 ≥1 整数时提示并钳到 1,不静默掩盖用户错字/极端输入
-    const repeatRaw = values.repeat as string | undefined;
-    const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : 1;
-    if (repeatRaw !== undefined && (!Number.isFinite(parsedRepeat) || parsedRepeat < 1)) {
-      process.stderr.write(`⚠ --repeat "${repeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次评测执行\n`);
-    }
-    const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
     let report: Report;
     let filePath: string | null;
 
@@ -867,7 +875,7 @@ async function handleAnalyze(argv: string[]): Promise<void> {
   const skills = values.skills ? values.skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
   console.log(`[omk] analyzing ${tracePath}...`);
-  const { computeSkillHealthReport } = await import('./observability/production-analyzer.js');
+  const { computeSkillHealthReport } = await import('./observability/skill-health-analyzer.js');
   const report = computeSkillHealthReport(tracePath, {
     kbRoot: values.kb ? resolve(values.kb) : undefined,
     from,
@@ -875,14 +883,12 @@ async function handleAnalyze(argv: string[]): Promise<void> {
     skills,
   });
 
-  const { renderSkillHealthReport } = await import('./renderer/skill-health-renderer.js');
-  const html = renderSkillHealthReport(report);
-
+  // JSON 是主产物; HTML 由 report server 的 /analyses/:id 按需渲染 (和 bench run 一致)
   const outDir = resolve(values['output-dir'] || join(process.env.HOME || '.', '.oh-my-knowledge', 'analyses'));
   mkdirSync(outDir, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const outPath = join(outDir, `${timestamp}-skill-health.html`);
-  writeFileSync(outPath, html);
+  const jsonPath = join(outDir, `${timestamp}-skill-health.json`);
+  writeFileSync(jsonPath, JSON.stringify(report, null, 2));
 
   // 控制台摘要
   const { sessionCount, segmentCount, toolCallCount, toolFailureRate } = report.meta;
@@ -897,7 +903,8 @@ async function handleAnalyze(argv: string[]): Promise<void> {
   console.log('top skills:');
   console.log(skillRows.join('\n'));
   console.log('');
-  console.log(`report written to: ${outPath}`);
+  console.log(`report written to: ${jsonPath}`);
+  console.log(`view in browser: omk bench report  # 打开后点首页的 "📊 Skill 健康度日报"`);
 }
 
 async function handleInit(argv: string[]): Promise<void> {
