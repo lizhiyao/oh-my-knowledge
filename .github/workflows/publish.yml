@@ -1,0 +1,43 @@
+name: CD - Publish to NPM
+
+on:
+  push:
+    tags:
+      - 'v*' # 仅在推送以 'v' 开头的 Tag 时触发，例如 v0.19.0
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # 使工作流能够通过 OIDC 从 GitHub 获取凭证（npm provenance 必需）
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22.x'
+        registry-url: 'https://registry.npmjs.org'
+
+    - name: Install dependencies
+      run: yarn cache clean && yarn install --update-checksums
+
+    - name: Run Lint
+      run: yarn run lint
+
+    - name: Run Tests
+      run: yarn run test
+
+    - name: Build Project
+      run: yarn run build
+
+    - name: Publish to NPM
+      run: npm publish --access public --provenance
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
