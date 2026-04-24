@@ -138,8 +138,8 @@ export const I18N: Record<Lang, Record<string, string>> = {
     diffColFailureRate: '失败率',
     diffColCoverage: '覆盖',
     viewTrendLink: '查看趋势 →',
-    artifactHashLabel: '内容哈希',
-    artifactHashTooltip: 'skill 文件内容的 SHA-256 前 12 位(内容 hash,不含路径/时间/git),用于追溯本次评测使用的具体版本;同文件多次跑 hash 不变,改一字节就变',
+    artifactHashLabel: '版本指纹',
+    artifactHashTooltip: 'skill 文件内容的 SHA-256 前 12 位(不含路径/时间/git),用于辨别报告对应哪一版 skill;同文件多次跑指纹不变,改一字节就变——防止"改动效果"和"随机波动"混淆',
     switchLang: 'EN',
   },
   en: {
@@ -236,8 +236,8 @@ export const I18N: Record<Lang, Record<string, string>> = {
     diffColFailureRate: 'Failure rate',
     diffColCoverage: 'Coverage',
     viewTrendLink: 'trend →',
-    artifactHashLabel: 'Artifact hash',
-    artifactHashTooltip: 'First 12 hex chars of SHA-256 over the skill file content (content-only: no path/time/git); identifies the exact version used in this run — same file = same hash, any byte change = different hash',
+    artifactHashLabel: 'Version fingerprint',
+    artifactHashTooltip: 'First 12 hex chars of SHA-256 over the skill file content (content-only: no path/time/git); identifies which version of the skill this report ran — same file = same fingerprint, any byte change = different fingerprint. Keeps "intentional change" separate from "random variance"',
     switchLang: '中文',
   },
 };
