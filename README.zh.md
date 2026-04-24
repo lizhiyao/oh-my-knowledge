@@ -15,6 +15,14 @@
 
 做知识工程的团队会产出大量知识载体（当前常见是 skill，也包括 prompt、agent、workflow 等）。当被问到"v2 比 v1 好在哪"时，需要客观数据而非主观判断。`oh-my-knowledge` 通过控制变量实验解决这个问题：相同模型、相同测试样本，只改变知识载体。
 
+## 核心能力
+
+- **控制变量离线评测** — 固定模型和样本，只变知识载体；兼容 Claude Code skill、CLAUDE.md prompt、RAG 知识库等任何 markdown 形式的指令
+- **六维独立打分** — Fact / Behavior / LLM-judge / Cost / Efficiency / Stability 分别出信号，单一维度的回退不会被其他维度的收益掩盖
+- **线上 session 观测** — 解析 Claude Code session JSONL，在真实用户会话上测量各 skill 的失败率、耗时、token 成本和知识缺口信号
+- **知识缺口识别** — 严重度加权的信号（显式标记 / 搜索失败 / hedging 用语 / 反复失败）量化风险敞口,不宣称完备性
+- **合并前 CI 门** — `omk bench ci` 强制三层 all-pass（fact + behavior + llm-judge），抓复合分掩盖的单层回退
+
 ## 快速开始
 
 ```bash
@@ -710,3 +718,7 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
 - 不要在公网服务中暴露 `omk bench report` 服务（无认证）
 - 不要用不可信的第三方 eval-samples 文件
 - 自定义断言有 30 秒执行超时，但无沙箱隔离
+
+---
+
+版本变更记录见 [CHANGELOG](./CHANGELOG.md)。欢迎贡献 — 详见 [CONTRIBUTING](./CONTRIBUTING.md)。
