@@ -61,7 +61,7 @@ omk bench run
 | **并行执行** | `--concurrency N` 并行 N 个任务 |
 | **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
 | **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本样本 |
-| **可追溯性** | 报告含 CLI 版本、Node 版本、artifact 哈希 |
+| **可追溯性** | 报告含 CLI 版本、Node 版本、artifact 版本指纹 |
 | **中英切换** | HTML 报告右上角一键切换语言 |
 
 ## 工作原理
@@ -104,7 +104,7 @@ flowchart TD
     end
 
     subgraph Report["⑦ 报告"]
-        R["六维: 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性<br/>JSON + HTML · 盲测揭晓<br/>CLI/Node/artifact 哈希可追溯"]
+        R["六维: 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性<br/>JSON + HTML · 盲测揭晓<br/>CLI/Node/版本指纹可追溯"]
     end
 
     S --> U
@@ -286,10 +286,14 @@ omk bench run [选项]
 选项：
   --samples <路径>       样本文件（默认：eval-samples.json，自动检测 .yaml/.yml）
   --skill-dir <路径>     artifact 目录（参数名沿用历史写法，默认：skills）
-  --variants <a,b>       变体名称，不指定时自动从 artifact 目录发现
-                         只有一个 artifact 时自动加 baseline 对照
+  --control <expr>       对照组变体表达式（experiment role = control）
+  --treatment <v1,v2>    实验组变体表达式,逗号分隔
+                         （v0.16 起废除 --variants,改用 --control / --treatment 显式声明
+                          experiment role;除非用 --config 或 --each,两者至少传一个）
                          特殊值：baseline（空 artifact）、git:name（git 历史版本）、
                          git:ref:name（指定 commit）、含 / 的路径（直接读取文件）
+  --config <路径>        YAML/JSON 配置文件（evaluation-as-code）;在一个文件里声明
+                         samples + variants + model + executor;CLI 参数会覆盖 config
   --model <名称>         被测模型（默认：sonnet）
   --judge-model <名称>   评委模型（默认：haiku）
   --output-dir <路径>    输出目录（默认：~/.oh-my-knowledge/reports/）
@@ -385,11 +389,14 @@ omk bench evolve skills/my-skill.md --rounds 10 --target 4.5
 
 ### `omk bench ci`
 
-在自动化流水线中运行评测。评分达标则退出码为 0（通过），否则为 1（失败），可直接用于卡点判断。
+在自动化流水线中运行评测。评分达标则退出码为 0(通过),否则为 1(失败),可直接用于卡点判断。
+
+v0.16 起门禁从"守合成分"改为**三层 all-pass**:`avgFactScore >= threshold AND avgBehaviorScore >= threshold AND avgJudgeScore >= threshold`,任一层低于阈值即 FAIL,输出显示是哪一层破了 gate。这样能把 `v1→v2 事实 4.5→2.5 但 judge 3→5` 这种合成分均值不变但事实层崩盘的 case 暴露出来。
 
 ```bash
 omk bench ci [选项]
-  --threshold <数值>     达标的最低综合分数（默认：3.5）
+  --threshold <数值>     各层最低分数(默认:3.5);独立应用于
+                         fact / behavior / judge 三层
 ```
 
 ### `omk bench report`
@@ -406,6 +413,42 @@ omk bench report [选项]
 ```bash
 omk bench init [目录]    # 生成评测项目脚手架
 ```
+
+## `omk analyze` — 生产观测(v0.18+)
+
+`omk bench run` 是**离线评测**(固定对照、可复现、可评分)。生产环境不一样 — 没对照组、没标准答案、没重复,所以评分在那里不成立。`omk analyze` 把已有的 Claude Code session trace 转成**skill 健康度报告**(按 skill 维度的覆盖率、缺口信号、执行稳定性、tokens/延迟)。它给的是"哪个 skill 值得拉回离线再测一遍"的线索,不是生产评分。
+
+```bash
+# 分析当前项目的所有 cc session(kb 路径从 trace 里自动推断)
+omk analyze ~/.claude/projects/-Users-you-Documents-my-project
+
+# 限定时间窗:最近 7 天 / 24 小时 / 30 分钟
+omk analyze ~/.claude/projects/my-project --last 7d
+
+# 绝对时间窗
+omk analyze ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
+
+# 白名单特定 skill
+omk analyze ~/.claude/projects/my-project --skills audit,polish
+
+# 显式指定知识库根目录(覆盖自动推断)
+omk analyze ~/.claude/projects/my-project --kb /path/to/project
+```
+
+命令产出 `~/.oh-my-knowledge/analyses/<timestamp>-skill-health.json`。启 `omk bench report` 后,首页右上有"📊 Skill 健康度日报"入口;每张 skill card 上有"查看趋势 →"链接;`/analyses` 列表页顶部有 Compare 选择器,可以选两份报告生成 diff。
+
+**每个 skill 你能看到:**
+
+- **知识使用** — 这个 skill 实际读了哪些 KB 文件(coverage %)
+- **知识盲区** — 四类加权信号(搜索未命中 / 模型标记缺口 / 表达不确定 / 反复未命中);hedging 经 LLM 二次判定过滤"业务可能性"和"知识不确定"(v0.17)
+- **执行稳定性** — 工具失败率;失败率 > 20% 的 skill 会标警告,提示"gap 信号可能是环境问题而非真实知识缺口"(v0.19)
+- **使用成本** — billable tokens(input+output)和 cached tokens 分列,总耗时
+
+**这不是什么:**
+
+- 不是通用 APM(请求级 latency/cost tracing 是 Langfuse / Datadog 的领域)
+- 不是 streaming / alert(只做 batch — 想要周期快照用 cron)
+- 不是生产评分(没对照组没标答 — 评分回到 `omk bench run`)
 
 ## 执行器
 
@@ -465,30 +508,35 @@ skills/
 | `./path/to/file.md` | 含 `/` 的路径，直接读取文件作为 artifact |
 | `variant@/path/to/project` | 给任意变体附加运行目录，支持 `name@cwd`、`git:name@cwd`、`/file.md@cwd` |
 
-不指定 `--variants` 时，自动扫描 artifact 目录下的所有 `.md` 文件和含 `SKILL.md` 的子目录。只有一个 artifact 时自动加 `baseline` 作为对照。
+`--control` 和 `--treatment` 都不传时,用 `--config eval.yaml` 或 `--each`。`--each` 模式下会自动用 `baseline` 作对照组,每个被发现的 artifact 作实验组。
 
 ```bash
-# 自动发现 skills/ 下所有 artifact
-omk bench run
-
-# 显式指定两个变体
-omk bench run --variants v1,v2
+# 显式:一个 control,一个或多个 treatment
+omk bench run --control v1 --treatment v2
+omk bench run --control baseline --treatment v1,v2,v3
 
 # 对比空 artifact 和显式 artifact 的效果差异
-omk bench run --variants baseline,my-skill
+omk bench run --control baseline --treatment my-skill
 
-# 推荐用自描述标签单独观察项目级 runtime context 的影响
-omk bench run --variants project-env@/path/to/target-project
+# 单独观察项目级 runtime context 的影响(用自描述标签)
+omk bench run --control baseline --treatment project-env@/path/to/target-project
 
-# 对比“项目级 runtime context”与“显式 artifact 注入”
-omk bench run --variants project-env@/path/to/target-project,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+# 对比"项目级 runtime context"与"显式 artifact 注入"
+omk bench run \
+  --control project-env@/path/to/target-project \
+  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 
-# 对比修改前后（旧版本从 git 历史读取）
-omk bench run --variants git:my-skill,my-skill
+# 对比修改前后(旧版本从 git 历史读取)
+omk bench run --control git:my-skill --treatment my-skill
 
 # 直接指定文件路径
-omk bench run --variants ./old-skill.md,./new-skill.md
+omk bench run --control ./old-skill.md --treatment ./new-skill.md
+
+# 配置文件驱动(evaluation-as-code)
+omk bench run --config eval.yaml
 ```
+
+> 迁移提示:v0.16 之前的 `--variants a,b` 已废除。CLI 会直接报错并提示迁移方式。字面迁移:`--control a --treatment b`。
 
 **前置要求：**
 
@@ -535,52 +583,57 @@ omk bench run --executor claude-sdk
 
 **1. 裸模型 baseline**
 
-不注入 system prompt，也不进入带知识的项目目录。
+不注入 system prompt,也不进入带知识的项目目录。至少需要一个 treatment 做对比:
 
 ```bash
 omk bench run \
   --executor claude-sdk \
-  --variants baseline
+  --control baseline \
+  --treatment my-skill
 ```
 
 **2. 空 artifact + 项目级 runtime context**
 
-不注入 system prompt，但在项目目录运行。它不是严格意义上的“裸 baseline”，而是“空 artifact + 项目级 runtime context”。
+不注入 system prompt,但在项目目录运行。它不是严格意义上的"裸 baseline",而是"空 artifact + 项目级 runtime context"。
 
 ```bash
 omk bench run \
   --executor claude-sdk \
-  --variants project-env@/path/to/target-project
+  --control baseline \
+  --treatment project-env@/path/to/target-project
 ```
 
 **3. 显式 artifact 注入**
 
-直接把某个外部 `SKILL.md` 作为 artifact 注入，同时保留项目目录上下文。适合对比“项目级 runtime context”与“显式单 artifact 注入”之间的差异。
+直接把某个外部 `SKILL.md` 作为 artifact 注入,同时保留项目目录上下文。适合对比"项目级 runtime context"与"显式单 artifact 注入"之间的差异。
 
 ```bash
 omk bench run \
   --executor claude-sdk \
-  --variants /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --control project-env@/path/to/target-project \
+  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 ```
 
 #### 推荐的第一轮对照设计
 
-对于 PRD / 复杂业务知识场景，建议先从下面两组开始：
+对于 PRD / 复杂业务知识场景,建议从下面开始:
 
 ```bash
 omk bench run \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
-  --variants baseline,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --control baseline \
+  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 ```
 
-如果你想证明“项目目录中的知识沉淀本身”是否有效，再加第三组：
+如果你想证明"项目目录中的知识沉淀本身"是否有效,加第二个 treatment:
 
 ```bash
 omk bench run \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
-  --variants baseline,project-env@/path/to/target-project,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --control baseline \
+  --treatment project-env@/path/to/target-project,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 ```
 
 #### 设计建议

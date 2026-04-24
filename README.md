@@ -61,7 +61,7 @@ You can also just say "compare v1 vs v2 for me" or "improve this artifact" — o
 | **Parallel execution** | `--concurrency N` runs N tasks at once |
 | **Multi-run variance** | `--repeat N` repeats the eval and computes mean / SD / CI / t-test |
 | **Auto analysis** | detects low-discrimination assertions, flat scores, all-pass / all-fail, expensive samples |
-| **Traceability** | reports carry CLI version, Node version, artifact fingerprint |
+| **Traceability** | reports carry CLI version, Node version, artifact version fingerprint |
 | **EN / ZH switch** | one-click language toggle in the HTML report |
 
 ## How it works
@@ -104,7 +104,7 @@ flowchart TD
     end
 
     subgraph Report["⑦ Report"]
-        R["Six dims: Fact / Behavior / LLM-judge / Cost / Efficiency / Stability<br/>JSON + HTML · blind reveal<br/>CLI/Node/artifact fingerprint traceable"]
+        R["Six dims: Fact / Behavior / LLM-judge / Cost / Efficiency / Stability<br/>JSON + HTML · blind reveal<br/>CLI/Node/version fingerprint traceable"]
     end
 
     S --> U
@@ -286,10 +286,16 @@ omk bench run [options]
 options:
   --samples <path>       sample file (default: eval-samples.json, also detects .yaml/.yml)
   --skill-dir <path>     artifact dir (historical flag name, default: skills)
-  --variants <a,b>       variant names; auto-discovered from the artifact dir if omitted
-                         with a single artifact, baseline is auto-added
+  --control <expr>       control-group variant expression (experiment role = control)
+  --treatment <v1,v2>    treatment-group variant expressions, comma-separated
+                         (since v0.16 the legacy --variants was replaced by
+                          explicit --control / --treatment roles; at least one
+                          of the two is required unless you use --config or --each)
                          special values: baseline (empty artifact), git:name (git HEAD),
                          git:ref:name (specific commit), path with "/" (read file directly)
+  --config <path>        YAML/JSON config file (evaluation-as-code); declares
+                         samples + variants + model + executor in one file; CLI
+                         flags override config fields when both are provided
   --model <name>         model under test (default: sonnet)
   --judge-model <name>   judge model (default: haiku)
   --output-dir <path>    output dir (default: ~/.oh-my-knowledge/reports/)
@@ -387,9 +393,12 @@ Each round's output is saved under `skills/evolve/` (`my-skill.r0.md`, `my-skill
 
 Run the evaluation inside CI. Exit code 0 on pass, 1 on fail — can be wired into gates directly.
 
+Since v0.16 the gate is **three-layer all-pass** (not a single composite score): `avgFactScore >= threshold AND avgBehaviorScore >= threshold AND avgJudgeScore >= threshold`. Any layer below threshold is FAIL, and the output shows which layer broke. This stops `v1→v2 fact 4.5→2.5 but judge 3→5` from passing via composite averaging.
+
 ```bash
 omk bench ci [options]
-  --threshold <number>   minimum composite score to pass (default: 3.5)
+  --threshold <number>   per-layer minimum score (default: 3.5); applied
+                         independently to fact / behavior / judge
 ```
 
 ### `omk bench report`
@@ -406,6 +415,42 @@ omk bench report [options]
 ```bash
 omk bench init [dir]     # scaffold an eval project
 ```
+
+## `omk analyze` — production observability (v0.18+)
+
+`omk bench run` is **offline evaluation** (fixed controls, repeatable, scored). Production is different — no control group, no ground truth, no repetition, so scoring isn't valid there. `omk analyze` turns existing Claude Code session traces into **skill-health reports** (coverage, gap signals, execution stability, tokens/latency per skill). It gives you clues about **which skill is worth re-evaluating offline**, not a production score.
+
+```bash
+# analyze all cc sessions of the current project (auto-infers kb from the trace)
+omk analyze ~/.claude/projects/-Users-you-Documents-my-project
+
+# restrict to the last 7 days / 24 hours / 30 minutes
+omk analyze ~/.claude/projects/my-project --last 7d
+
+# absolute time window
+omk analyze ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
+
+# whitelist specific skills
+omk analyze ~/.claude/projects/my-project --skills audit,polish
+
+# override the inferred knowledge-base root
+omk analyze ~/.claude/projects/my-project --kb /path/to/project
+```
+
+The command writes `~/.oh-my-knowledge/analyses/<timestamp>-skill-health.json`. Browse results alongside bench reports with `omk bench report` — the homepage has a "📊 Skill Health Reports" link, and each skill card also has a "trend →" link to its time-series view. For two reports side-by-side, use the compare selector on `/analyses`.
+
+**What you get per skill:**
+
+- **Knowledge usage** — which KB files this skill actually read (coverage %)
+- **Knowledge gaps** — four weighted signals (failed search / model-flagged gap / hedging / repeated miss); hedging goes through an LLM-assisted classifier to filter out business-possibility hedging vs genuine knowledge uncertainty (v0.17)
+- **Execution stability** — tool-failure rate; a skill with > 20% failures gets a warning that its gap signals may be environmental noise rather than real knowledge gaps (v0.19)
+- **Usage cost** — billable tokens (input+output) separate from cached tokens, total duration
+
+**What this is NOT:**
+
+- Not a general APM (request/response/latency tracing is Langfuse / Datadog territory)
+- Not streaming / alerting (batch only — run on a cron if you want periodic snapshots)
+- Not a production score (no control group, no ground truth — use `omk bench run` for scoring)
 
 ## Executors
 
@@ -465,30 +510,35 @@ skills/
 | `./path/to/file.md` | path with `/`: read the file directly as an artifact |
 | `variant@/path/to/project` | attach a run dir to any variant; supports `name@cwd`, `git:name@cwd`, `/file.md@cwd` |
 
-When `--variants` is omitted, all `.md` files and subdirs containing `SKILL.md` under the artifact dir are auto-discovered. With a single artifact, `baseline` is auto-added as control.
+When both `--control` and `--treatment` are omitted, use `--config eval.yaml` or `--each`. With `--each`, `baseline` is auto-added as control and every discovered artifact becomes a treatment.
 
 ```bash
-# auto-discover all artifacts under skills/
-omk bench run
-
-# explicit two variants
-omk bench run --variants v1,v2
+# explicit: one control, one or more treatments
+omk bench run --control v1 --treatment v2
+omk bench run --control baseline --treatment v1,v2,v3
 
 # compare empty artifact vs explicit artifact
-omk bench run --variants baseline,my-skill
+omk bench run --control baseline --treatment my-skill
 
-# observe project-level runtime context in isolation (recommended with a self-describing label)
-omk bench run --variants project-env@/path/to/target-project
+# observe project-level runtime context in isolation (use a self-describing label)
+omk bench run --control baseline --treatment project-env@/path/to/target-project
 
 # compare "project-level runtime context" vs "explicit artifact injection"
-omk bench run --variants project-env@/path/to/target-project,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+omk bench run \
+  --control project-env@/path/to/target-project \
+  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 
 # before vs after (old version read from git history)
-omk bench run --variants git:my-skill,my-skill
+omk bench run --control git:my-skill --treatment my-skill
 
 # direct file paths
-omk bench run --variants ./old-skill.md,./new-skill.md
+omk bench run --control ./old-skill.md --treatment ./new-skill.md
+
+# config-file driven (evaluation-as-code)
+omk bench run --config eval.yaml
 ```
+
+> Migration note: `--variants a,b` (pre-v0.16) is gone. The CLI now throws an error explaining the rename. `--control a --treatment b` is the literal migration.
 
 **Prerequisites:**
 
@@ -535,12 +585,13 @@ omk bench run --executor claude-sdk
 
 **1. Bare-model baseline**
 
-No system prompt and no knowledge-carrying project dir.
+No system prompt and no knowledge-carrying project dir. Requires at least one treatment to compare against:
 
 ```bash
 omk bench run \
   --executor claude-sdk \
-  --variants baseline
+  --control baseline \
+  --treatment my-skill
 ```
 
 **2. Empty artifact + project-level runtime context**
@@ -550,7 +601,8 @@ No system prompt, but runs inside a project dir. This is **not** a strict "bare 
 ```bash
 omk bench run \
   --executor claude-sdk \
-  --variants project-env@/path/to/target-project
+  --control baseline \
+  --treatment project-env@/path/to/target-project
 ```
 
 **3. Explicit artifact injection**
@@ -560,27 +612,30 @@ Inject an external `SKILL.md` as the artifact while also keeping the project dir
 ```bash
 omk bench run \
   --executor claude-sdk \
-  --variants /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --control project-env@/path/to/target-project \
+  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 ```
 
 #### Recommended first-round design
 
-For PRD / complex business-knowledge scenarios, start with these two groups:
+For PRD / complex business-knowledge scenarios, start with:
 
 ```bash
 omk bench run \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
-  --variants baseline,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --control baseline \
+  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 ```
 
-If you want to prove whether "the knowledge sitting inside the project directory" is effective on its own, add a third group:
+If you want to prove whether "the knowledge sitting inside the project directory" is effective on its own, add a second treatment:
 
 ```bash
 omk bench run \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
-  --variants baseline,project-env@/path/to/target-project,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --control baseline \
+  --treatment project-env@/path/to/target-project,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 ```
 
 #### Design tips
