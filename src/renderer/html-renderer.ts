@@ -326,10 +326,14 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
       ? renderVarianceComparisons(sk.variance, lang, Boolean(report.meta.layeredStats))
       : '';
 
+    const hashShort = sk.artifactHash ? e(sk.artifactHash).slice(0, 12) : '-';
+    const hashBlock = sk.artifactHash
+      ? `<span title="${t('artifactHashTooltip', lang)}"><span data-i18n="artifactHashLabel">${t('artifactHashLabel', lang)}</span>: <code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${hashShort}</code></span>`
+      : '';
     return `
       <section id="skill-${e(sk.name)}" style="margin-top:36px;padding-top:20px;border-top:1px solid var(--border)">
         <h2>${e(sk.name)}</h2>
-        <p style="font-size:12px;color:var(--text-muted)">${t('samples', lang)}: ${sk.sampleCount} &middot; Hash: ${e(sk.artifactHash || '-')}</p>
+        <p style="font-size:12px;color:var(--text-muted)">${t('samples', lang)}: ${sk.sampleCount}${hashBlock ? ' &middot; ' + hashBlock : ''}</p>
         ${cards}
         ${varianceBlock}
         ${sampleTable}

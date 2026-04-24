@@ -138,6 +138,8 @@ export const I18N: Record<Lang, Record<string, string>> = {
     diffColFailureRate: '失败率',
     diffColCoverage: '覆盖',
     viewTrendLink: '查看趋势 →',
+    artifactHashLabel: '内容哈希',
+    artifactHashTooltip: 'skill 文件内容的 SHA 哈希(截断显示前 12 位),用于追溯本次评测时使用的具体版本;同文件多次跑 hash 不变,改一行内容就变',
     switchLang: 'EN',
   },
   en: {
@@ -234,6 +236,8 @@ export const I18N: Record<Lang, Record<string, string>> = {
     diffColFailureRate: 'Failure rate',
     diffColCoverage: 'Coverage',
     viewTrendLink: 'trend →',
+    artifactHashLabel: 'Artifact hash',
+    artifactHashTooltip: 'SHA hash of the skill file content (first 12 chars shown); identifies the exact version used in this run — same file = same hash, any byte change = different hash',
     switchLang: '中文',
   },
 };
