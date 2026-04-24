@@ -195,7 +195,7 @@ omk 的具体实现：`--repeat N` 让同一 (variant × sample) 跑 N 次，`re
 
 **UI 约定**：
 
-- 四维对比表"稳定性"列主值：有 variance 数据时显示 `CV X.X%`，没有（单轮评测 / 无 `--repeat`）时显示 `—` + 副区 `需 --repeat ≥ 2`。**诚实交代测不到什么**（见 `docs/roadmap-v0.16.md` 叙事底线）。
+- 六维对比表"稳定性"列主值：有 variance 数据时显示 `CV X.X%`，没有（单轮评测 / 无 `--repeat`）时显示 `—` + 副区 `需 --repeat ≥ 2`。**诚实交代测不到什么**。
 - 行业对照：Anthropic / OpenAI eval docs、Braintrust、Langfuse 等都把多次运行之间的 variance 作为稳定性核心指标，不用跨样本散度。
 
 ### 6. 三层评分：事实 / 行为 / LLM 评价

@@ -144,7 +144,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     ? '每行是一个实验分组（Variant），六列分别衡量不同维度：'
     : 'Each row is a Variant. Six columns measure independent dimensions:';
   const icon = (emoji: string) => `<span aria-hidden="true">${emoji}</span>`;
-  // 维度分隔加粗(border-top 2px),让四维的视觉边界更明显。sub 缩进从 28 收到 22。
+  // 维度分隔加粗(border-top 2px),让六维的视觉边界更明显。sub 缩进从 28 收到 22。
   const dim = 'style="padding:12px 0 4px;border-top:2px solid var(--border);color:var(--text-primary);font-weight:600"';
   const dimDesc = 'style="padding:12px 0 4px;border-top:2px solid var(--border);color:var(--text-secondary)"';
   const dimFirst = 'style="padding:4px 0 4px;color:var(--text-primary);font-weight:600"';
