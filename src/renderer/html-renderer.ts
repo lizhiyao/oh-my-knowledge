@@ -315,7 +315,6 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
   }).join('');
 
   // Per-artifact detail sections
-  const repeatN = report.meta.request?.repeat;
   const skillSections = eachArtifacts.map((sk) => {
     const variants = ['baseline', 'skill'];
     const summary = sk.summary || {};
@@ -325,13 +324,10 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
     const varianceBlock = sk.variance
       ? renderVarianceComparisons(sk.variance, lang, Boolean(report.meta.layeredStats))
       : '';
-    const repeatTag = repeatN && repeatN > 1
-      ? `<span class="meta-tag" style="background:var(--info-bg);color:var(--accent)">--repeat ${repeatN}</span>`
-      : '';
 
     return `
       <section id="skill-${e(sk.name)}" style="margin-top:36px;padding-top:20px;border-top:1px solid var(--border)">
-        <h2>${e(sk.name)} ${repeatTag}</h2>
+        <h2>${e(sk.name)}</h2>
         <p style="font-size:12px;color:var(--text-muted)">${t('samples', lang)}: ${sk.sampleCount} &middot; Hash: ${e(sk.artifactHash || '-')}</p>
         ${cards}
         ${varianceBlock}
@@ -339,6 +335,15 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
       </section>
     `;
   }).join('');
+
+  // 轮次信息放总览: "3 个 Skill · 6 个样本 × 2 轮 · $0.12"
+  const repeatN = report.meta.request?.repeat;
+  const repeatSuffix = repeatN && repeatN > 1
+    ? (lang === 'zh' ? ` × ${repeatN} 轮` : ` × ${repeatN} runs`)
+    : '';
+  const overviewSubtitle = lang === 'zh'
+    ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个样本${repeatSuffix} · ${fmtCost(overview?.totalCostUSD || 0)}`
+    : `${overview?.totalArtifacts || 0} skills · ${overview?.totalSamples || 0} samples${repeatSuffix} · ${fmtCost(overview?.totalCostUSD || 0)}`;
 
   return layout(`${t('reportTitle', lang)} - ${report.id}`, `
     <main>
@@ -354,7 +359,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
     <section>
     <h2>${t('eachOverview', lang)}</h2>
 
-    <p style="font-size:13px;color:var(--text-muted)">${overview?.totalArtifacts || 0} ${t('eachSkills', lang)} &middot; ${overview?.totalSamples || 0} ${t('eachSamples', lang)} &middot; ${fmtCost(overview?.totalCostUSD || 0)}</p>
+    <p style="font-size:13px;color:var(--text-muted)">${overviewSubtitle}</p>
     <div class="table-wrap">
     <table>
       <thead><tr>
