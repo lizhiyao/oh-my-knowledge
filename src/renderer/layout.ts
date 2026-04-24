@@ -139,7 +139,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     diffColCoverage: '覆盖',
     viewTrendLink: '查看趋势 →',
     artifactHashLabel: '内容哈希',
-    artifactHashTooltip: 'skill 文件内容的 SHA 哈希(截断显示前 12 位),用于追溯本次评测时使用的具体版本;同文件多次跑 hash 不变,改一行内容就变',
+    artifactHashTooltip: 'skill 文件内容的 SHA-256 前 12 位(内容 hash,不含路径/时间/git),用于追溯本次评测使用的具体版本;同文件多次跑 hash 不变,改一字节就变',
     switchLang: 'EN',
   },
   en: {
@@ -237,7 +237,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     diffColCoverage: 'Coverage',
     viewTrendLink: 'trend →',
     artifactHashLabel: 'Artifact hash',
-    artifactHashTooltip: 'SHA hash of the skill file content (first 12 chars shown); identifies the exact version used in this run — same file = same hash, any byte change = different hash',
+    artifactHashTooltip: 'First 12 hex chars of SHA-256 over the skill file content (content-only: no path/time/git); identifies the exact version used in this run — same file = same hash, any byte change = different hash',
     switchLang: '中文',
   },
 };
