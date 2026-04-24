@@ -265,7 +265,7 @@ export default function(output, { sample, assertion }) {
 
 ## 六维评估指标
 
-评测报告从六个维度独立展示结果（v0.16 起把旧"质量"维拆成事实 / 行为 / LLM 评价三层，回答"哪一层拉胯"而不是单一合成分）：
+评测报告从六个维度独立展示结果。其中评分三层(事实 / 行为 / LLM 评价)分开展示,让你看到**是哪一层拉胯**,而不是只看到一个合成分:
 
 | 维度 | 指标 | 说明 |
 |------|------|------|
@@ -285,11 +285,10 @@ omk bench run [选项]
 
 选项：
   --samples <路径>       样本文件（默认：eval-samples.json，自动检测 .yaml/.yml）
-  --skill-dir <路径>     artifact 目录（参数名沿用历史写法，默认：skills）
+  --skill-dir <路径>     artifact 目录（默认：skills）
   --control <expr>       对照组变体表达式（experiment role = control）
   --treatment <v1,v2>    实验组变体表达式,逗号分隔
-                         （v0.16 起废除 --variants,改用 --control / --treatment 显式声明
-                          experiment role;除非用 --config 或 --each,两者至少传一个）
+                         除非用 --config 或 --each,--control / --treatment 两者至少传一个
                          特殊值：baseline（空 artifact）、git:name（git 历史版本）、
                          git:ref:name（指定 commit）、含 / 的路径（直接读取文件）
   --config <路径>        YAML/JSON 配置文件（evaluation-as-code）;在一个文件里声明
@@ -361,7 +360,7 @@ omk bench gen-samples skills/my-skill.md --count 10
   --each                 为所有缺少 eval-samples 的 artifact 批量生成
   --count <n>            每个 artifact 生成的样本数（默认：5）
   --model <名称>         生成用的模型（默认：sonnet）
-  --skill-dir <路径>     artifact 目录（参数名沿用历史写法，默认：skills），配合 --each 使用
+  --skill-dir <路径>     artifact 目录（默认：skills），配合 --each 使用
 ```
 
 ### `omk bench evolve`（自我循环改进）
@@ -391,7 +390,7 @@ omk bench evolve skills/my-skill.md --rounds 10 --target 4.5
 
 在自动化流水线中运行评测。评分达标则退出码为 0(通过),否则为 1(失败),可直接用于卡点判断。
 
-v0.16 起门禁从"守合成分"改为**三层 all-pass**:`avgFactScore >= threshold AND avgBehaviorScore >= threshold AND avgJudgeScore >= threshold`,任一层低于阈值即 FAIL,输出显示是哪一层破了 gate。这样能把 `v1→v2 事实 4.5→2.5 但 judge 3→5` 这种合成分均值不变但事实层崩盘的 case 暴露出来。
+门禁是**三层 all-pass**:`avgFactScore >= threshold AND avgBehaviorScore >= threshold AND avgJudgeScore >= threshold`,任一层低于阈值即 FAIL,输出显示是哪一层破了 gate。这样能把"事实 4.5→2.5 但 judge 3→5"这种合成分均值不变但事实层崩盘的 case 暴露出来 — 任何一层退化都会被卡住。
 
 ```bash
 omk bench ci [选项]
@@ -414,7 +413,7 @@ omk bench report [选项]
 omk bench init [目录]    # 生成评测项目脚手架
 ```
 
-## `omk analyze` — 生产观测(v0.18+)
+## `omk analyze` — 生产观测
 
 `omk bench run` 是**离线评测**(固定对照、可复现、可评分)。生产环境不一样 — 没对照组、没标准答案、没重复,所以评分在那里不成立。`omk analyze` 把已有的 Claude Code session trace 转成**skill 健康度报告**(按 skill 维度的覆盖率、缺口信号、执行稳定性、tokens/延迟)。它给的是"哪个 skill 值得拉回离线再测一遍"的线索,不是生产评分。
 
@@ -440,8 +439,8 @@ omk analyze ~/.claude/projects/my-project --kb /path/to/project
 **每个 skill 你能看到:**
 
 - **知识使用** — 这个 skill 实际读了哪些 KB 文件(coverage %)
-- **知识盲区** — 四类加权信号(搜索未命中 / 模型标记缺口 / 表达不确定 / 反复未命中);hedging 经 LLM 二次判定过滤"业务可能性"和"知识不确定"(v0.17)
-- **执行稳定性** — 工具失败率;失败率 > 20% 的 skill 会标警告,提示"gap 信号可能是环境问题而非真实知识缺口"(v0.19)
+- **知识盲区** — 四类加权信号(搜索未命中 / 模型标记缺口 / 表达不确定 / 反复未命中);hedging 经 LLM 二次判定过滤"业务可能性"和"知识不确定"
+- **执行稳定性** — 工具失败率;失败率 > 20% 的 skill 会标警告,提示"gap 信号可能是环境问题而非真实知识缺口"
 - **使用成本** — billable tokens(input+output)和 cached tokens 分列,总耗时
 
 **这不是什么:**
@@ -535,8 +534,6 @@ omk bench run --control ./old-skill.md --treatment ./new-skill.md
 # 配置文件驱动(evaluation-as-code)
 omk bench run --config eval.yaml
 ```
-
-> 迁移提示:v0.16 之前的 `--variants a,b` 已废除。CLI 会直接报错并提示迁移方式。字面迁移:`--control a --treatment b`。
 
 **前置要求：**
 

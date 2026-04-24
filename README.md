@@ -265,7 +265,7 @@ export default function(output, { sample, assertion }) {
 
 ## Six-dim evaluation
 
-Reports display results across six independent dimensions (since v0.16 the legacy "quality" dim was split into three layers — Fact / Behavior / LLM-judge — so you see **which layer regressed** instead of a single composite number):
+Reports display results across six independent dimensions. The three scoring layers — Fact / Behavior / LLM-judge — are shown separately so you see **which layer regressed** instead of a single composite number:
 
 | Dimension | Metric | Description |
 |---|---|---|
@@ -285,12 +285,11 @@ omk bench run [options]
 
 options:
   --samples <path>       sample file (default: eval-samples.json, also detects .yaml/.yml)
-  --skill-dir <path>     artifact dir (historical flag name, default: skills)
+  --skill-dir <path>     artifact dir (default: skills)
   --control <expr>       control-group variant expression (experiment role = control)
   --treatment <v1,v2>    treatment-group variant expressions, comma-separated
-                         (since v0.16 the legacy --variants was replaced by
-                          explicit --control / --treatment roles; at least one
-                          of the two is required unless you use --config or --each)
+                         at least one of --control / --treatment is required
+                         (unless you use --config or --each)
                          special values: baseline (empty artifact), git:name (git HEAD),
                          git:ref:name (specific commit), path with "/" (read file directly)
   --config <path>        YAML/JSON config file (evaluation-as-code); declares
@@ -363,7 +362,7 @@ Options:
   --each                 batch-generate for every artifact missing samples
   --count <n>            samples per artifact (default: 5)
   --model <name>         model used for generation (default: sonnet)
-  --skill-dir <path>     artifact dir (historical flag name, default: skills), used with --each
+  --skill-dir <path>     artifact dir (default: skills), used with --each
 ```
 
 ### `omk bench evolve` (self-iterating improvement)
@@ -393,7 +392,7 @@ Each round's output is saved under `skills/evolve/` (`my-skill.r0.md`, `my-skill
 
 Run the evaluation inside CI. Exit code 0 on pass, 1 on fail — can be wired into gates directly.
 
-Since v0.16 the gate is **three-layer all-pass** (not a single composite score): `avgFactScore >= threshold AND avgBehaviorScore >= threshold AND avgJudgeScore >= threshold`. Any layer below threshold is FAIL, and the output shows which layer broke. This stops `v1→v2 fact 4.5→2.5 but judge 3→5` from passing via composite averaging.
+The gate is **three-layer all-pass**: `avgFactScore >= threshold AND avgBehaviorScore >= threshold AND avgJudgeScore >= threshold`. Any layer below threshold is FAIL, and the output shows which layer broke. This stops cases like `fact 4.5→2.5 but judge 3→5` from passing via composite averaging — if one layer regresses, the gate catches it.
 
 ```bash
 omk bench ci [options]
@@ -416,7 +415,7 @@ omk bench report [options]
 omk bench init [dir]     # scaffold an eval project
 ```
 
-## `omk analyze` — production observability (v0.18+)
+## `omk analyze` — production observability
 
 `omk bench run` is **offline evaluation** (fixed controls, repeatable, scored). Production is different — no control group, no ground truth, no repetition, so scoring isn't valid there. `omk analyze` turns existing Claude Code session traces into **skill-health reports** (coverage, gap signals, execution stability, tokens/latency per skill). It gives you clues about **which skill is worth re-evaluating offline**, not a production score.
 
@@ -442,8 +441,8 @@ The command writes `~/.oh-my-knowledge/analyses/<timestamp>-skill-health.json`. 
 **What you get per skill:**
 
 - **Knowledge usage** — which KB files this skill actually read (coverage %)
-- **Knowledge gaps** — four weighted signals (failed search / model-flagged gap / hedging / repeated miss); hedging goes through an LLM-assisted classifier to filter out business-possibility hedging vs genuine knowledge uncertainty (v0.17)
-- **Execution stability** — tool-failure rate; a skill with > 20% failures gets a warning that its gap signals may be environmental noise rather than real knowledge gaps (v0.19)
+- **Knowledge gaps** — four weighted signals (failed search / model-flagged gap / hedging / repeated miss); hedging goes through an LLM-assisted classifier to filter out business-possibility hedging vs genuine knowledge uncertainty
+- **Execution stability** — tool-failure rate; a skill with > 20% failures gets a warning that its gap signals may be environmental noise rather than real knowledge gaps
 - **Usage cost** — billable tokens (input+output) separate from cached tokens, total duration
 
 **What this is NOT:**
@@ -537,8 +536,6 @@ omk bench run --control ./old-skill.md --treatment ./new-skill.md
 # config-file driven (evaluation-as-code)
 omk bench run --config eval.yaml
 ```
-
-> Migration note: `--variants a,b` (pre-v0.16) is gone. The CLI now throws an error explaining the rename. `--control a --treatment b` is the literal migration.
 
 **Prerequisites:**
 
