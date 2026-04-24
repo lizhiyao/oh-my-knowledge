@@ -10,6 +10,49 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ---
 
+## [0.19.0] - 2026-04-24
+
+First iteration after the initial public release — product polish + open-source day-1 discoverability.
+
+### Production observability (`omk analyze`)
+
+- Renamed `production-analyzer` → `skill-health-analyzer` (closer to what the report actually shows)
+- Separated **execution failure rate** from **knowledge gap rate** (a flaky tool chain is not the same as a missing skill)
+- Added **cost / duration / turns** dimensions per skill (billable vs. cached tokens shown separately)
+- Added **stability** classification per skill (`stable` / `unstable` / `very-unstable`) with 20% / 40% failure-rate thresholds
+- Skill attribution signal 3: fallback via `Read SKILL.md` when the session didn't invoke the Skill tool explicitly
+- Aligned `omk analyze` output with `omk bench` — JSON-only artifact, HTML rendered on-demand by `omk bench report`
+
+### Report server
+
+- **Skill health trend** page: per-skill time series (gap / weighted-gap / failure / coverage / tokens / duration)
+- **Skill health diff** page: side-by-side comparison of two analyses with sort + removed/new tags
+- Observability pages fully internationalized (EN / ZH), language choice persists across pages via URL + localStorage
+- Version fingerprint UX: labeled "Version fingerprint" / "版本指纹" with tooltip, truncated to first 12 hex of SHA-256
+
+### Offline evaluation (`omk bench`)
+
+- Fixed `--each --repeat N` silently swallowing repeat (each-branch now threads `repeat`/`each` through `EvaluationRequest`)
+- Fixed `--each` mode incorrectly requiring `--control` / `--treatment` variant-role arguments
+- Per-skill variance now surfaces correctly in `--each` mode (was previously discarded)
+- Unified separator in each-mode overview subtitle (`·` instead of mixing `·` and `×`)
+
+### Open source
+
+- English-first README with `README.zh.md` mirror; top-bar language switcher
+- Gitflow branching model: `main` for tagged releases, `develop` for integration (see `CONTRIBUTING.md`)
+- npm keywords expanded to 9 (added `claude-code`, `prompt-engineering`, `evaluation-framework`); added `homepage` and `bugs` fields
+- Community files: `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue forms templates, PR template
+- GitHub topics enriched with `claude-code` + `evaluation-framework`
+
+### Developer experience
+
+- Unified "six-dimension" terminology across README / docs / renderer (replaced stale "four-dimension" references)
+- Per-page language persistence in report server
+- CI runs `yarn build` before `yarn test` (fixes `test/cli.test.ts` dependency on `dist/`)
+
+---
+
 ## [0.18.0] - 2026-04-23
 
 Initial public release.
