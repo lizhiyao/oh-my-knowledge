@@ -15,6 +15,14 @@ Knowledge-artifact evaluation toolkit — measure your artifact's quality with o
 
 Teams doing knowledge engineering produce lots of knowledge artifacts (skills today, but also prompts, agents, workflows…). When someone asks "why is v2 better than v1", you need objective data instead of gut feeling. `oh-my-knowledge` solves this with controlled experiments: **same model, same test samples, only the knowledge artifact changes.**
 
+## Key features
+
+- **Controlled-variable offline bench** — fix the model and samples, vary only the artifact; works with Claude Code skills, CLAUDE.md prompts, RAG knowledge bases, or any markdown-based instruction
+- **Six-dimension scoring** — separate signals for Fact / Behavior / LLM-judge / Cost / Efficiency / Stability, so a regression in one axis isn't hidden by gains in another
+- **Production session observability** — parse Claude Code session JSONL traces, measure per-skill failure rate, latency, token cost, and knowledge-gap signals on real user sessions
+- **Knowledge-gap detection** — severity-weighted signals (explicit markers / failed searches / hedging language / repeated failures) quantify risk exposure instead of claiming completeness
+- **Pre-merge CI gate** — `omk bench ci` enforces three-layer all-pass (fact + behavior + llm-judge) semantics, catching single-layer regressions a composite score would hide
+
 ## Quick start
 
 ```bash
@@ -712,3 +720,7 @@ This tool is designed for **local trusted environments** (dev machines, CI pipel
 - Do not expose `omk bench report` on the public internet (no auth)
 - Don't use third-party eval-samples you haven't vetted
 - Custom assertions have a 30-second timeout but no sandbox isolation
+
+---
+
+See [CHANGELOG](./CHANGELOG.md) for release notes. Contributions welcome — see [CONTRIBUTING](./CONTRIBUTING.md).
