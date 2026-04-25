@@ -72,6 +72,8 @@ async function initializeEvaluationRunState({
   each,
   judgeRepeat,
   judgeModels,
+  bootstrap,
+  bootstrapSamples,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -95,6 +97,8 @@ async function initializeEvaluationRunState({
   each?: boolean;
   judgeRepeat?: number;
   judgeModels?: import('../types.js').JudgeConfig[];
+  bootstrap?: boolean;
+  bootstrapSamples?: number;
 }): Promise<EvaluationRunState> {
   const request = buildEvaluationRequest({
     samplesPath,
@@ -117,6 +121,8 @@ async function initializeEvaluationRunState({
     each,
     judgeRepeat,
     judgeModels,
+    bootstrap,
+    bootstrapSamples,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
@@ -267,6 +273,10 @@ export interface EvaluationPipelineOptions {
   judgeRepeat?: number;
   /** Multi-judge ensemble configs (≥ 2 entries triggers ensemble mode). */
   judgeModels?: import('../types.js').JudgeConfig[];
+  /** --bootstrap. */
+  bootstrap?: boolean;
+  /** --bootstrap-samples N. Default 1000. */
+  bootstrapSamples?: number;
 }
 
 export async function executeEvaluationPipeline({
@@ -303,6 +313,8 @@ export async function executeEvaluationPipeline({
   each,
   judgeRepeat,
   judgeModels,
+  bootstrap,
+  bootstrapSamples,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -328,6 +340,8 @@ export async function executeEvaluationPipeline({
     each,
     judgeRepeat,
     judgeModels,
+    bootstrap,
+    bootstrapSamples,
   });
 
   try {

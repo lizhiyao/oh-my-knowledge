@@ -46,6 +46,10 @@ interface RunConfig {
   judgeRepeat?: number;
   /** --judge-models executor:model,executor:model,... — multi-judge ensemble (≥ 2 entries). */
   judgeModels?: import('./types.js').JudgeConfig[];
+  /** --bootstrap. Adds bootstrap CI to summary (per-variant mean + pairwise diff). */
+  bootstrap?: boolean;
+  /** --bootstrap-samples N. Bootstrap resamples count, default 1000. */
+  bootstrapSamples?: number;
   onProgress?: ProgressCallback | null;
 }
 
@@ -372,6 +376,13 @@ Options for "bench run":
                          down + Pearson/MAD inter-judge agreement. Refutes "Claude
                          judge Claude same-modality bias" critique. Combines with
                          --judge-repeat. Cost ~ N_judges × N_repeat × N_samples.
+  --bootstrap            Compute bootstrap confidence intervals (distribution-free,
+                         preferred over t-interval for ordinal LLM scores). Adds
+                         per-variant CI on the mean + pairwise CI on treatment-vs-
+                         control difference (significant=0 outside CI). Reports both
+                         t-interval and bootstrap so old tooling still works.
+  --bootstrap-samples <n>  Number of bootstrap resamples (default 1000). N>10000
+                         triggers a stderr warning about runtime cost.
   --retry <n>            Retry failed tasks up to N times with exponential backoff (default: 0)
   --resume <report-id>   Resume from a previous report, skipping completed tasks
   --executor <name>      Executor: claude, openai, gemini, anthropic-api, openai-api,
@@ -600,6 +611,8 @@ async function handleRun(argv: string[]): Promise<void> {
     repeat: { type: 'string', default: '1' },
     'judge-repeat': { type: 'string', default: '1' },
     'judge-models': { type: 'string' },
+    bootstrap: { type: 'boolean', default: false },
+    'bootstrap-samples': { type: 'string', default: '1000' },
   });
 
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
@@ -644,6 +657,21 @@ async function handleRun(argv: string[]): Promise<void> {
       // 单 judge 不走 ensemble,但允许这样写,等同于 --judge-model + --executor
       process.stderr.write(`ℹ --judge-models 只指定 1 个 judge (${judges[0].executor}:${judges[0].model}),不触发 ensemble。如需 ensemble 至少给 2 个。\n`);
     }
+  }
+
+  // --bootstrap / --bootstrap-samples
+  if (values.bootstrap as boolean) {
+    config.bootstrap = true;
+    const bsRaw = values['bootstrap-samples'] as string | undefined;
+    const parsedBs = bsRaw !== undefined ? Number(bsRaw) : 1000;
+    if (bsRaw !== undefined && (!Number.isFinite(parsedBs) || parsedBs < 100)) {
+      process.stderr.write(`⚠ --bootstrap-samples "${bsRaw}" 无效(期望 ≥ 100 的整数),已按 1000 执行\n`);
+    }
+    const bsCount = Math.max(100, Math.floor(parsedBs) || 1000);
+    if (bsCount > 10000) {
+      process.stderr.write(`⚠ --bootstrap-samples ${bsCount} 较大,可能耗时数秒。1000 是业内标准,通常已够用。\n`);
+    }
+    config.bootstrapSamples = bsCount;
   }
 
   try {

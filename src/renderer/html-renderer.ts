@@ -7,6 +7,7 @@ import {
   renderAgentOverview,
   renderAnalysis,
   renderKnowledgeInteractionSection,
+  renderPairwiseDiff,
   renderSummaryCards,
   renderVarianceComparisons,
 } from './summary.js';
@@ -156,6 +157,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const results = report.results || [];
 
   const cards = renderSummaryCards(variants, summary, lang, report.variance);
+  const pairwiseDiff = renderPairwiseDiff(report.meta.pairComparisons, lang);
   const sampleTable = renderSampleTable(variants, results, lang);
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
   const totalDurationMs = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
@@ -264,6 +266,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       ${m.gitInfo ? `<span class="meta-tag">commit: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
       ${m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : ''}
       ${m.sampleHashes ? `<span class="meta-tag" style="color:var(--text-muted)" title="${t('sampleHashCountDesc', lang)}">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}/${m.sampleCount}</span>` : ''}
+      ${m.evaluationFramework ? `<span class="meta-tag" title="${t('evalFrameworkDesc', lang)}">${t('evalFrameworkLabel', lang)}: ${m.evaluationFramework === 'bootstrap' ? t('evalFrameworkBootstrap', lang) : m.evaluationFramework === 'both' ? t('evalFrameworkBoth', lang) : t('evalFrameworkTTest', lang)}</span>` : ''}
       ${m.blind ? `<span class="meta-tag" style="color:var(--green)" data-i18n="blindLabel">${t('blindLabel', lang)}</span>` : ''}
     </div>
     ${m.blind ? `
@@ -276,7 +279,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
 
     ${variantConfigSection}
 
-    <section>${cards}</section>
+    <section>${cards}${pairwiseDiff}</section>
 
     ${renderVarianceComparisons(report.variance, lang, Boolean(report.meta.layeredStats))}
 

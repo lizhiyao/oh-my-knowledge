@@ -1,6 +1,47 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import { pValueCategory } from '../eval-core/statistics.js';
-import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantSummary } from '../types.js';
+import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types.js';
+
+/**
+ * Pairwise diff (treatment vs control) bootstrap CI table — populated only when
+ * --bootstrap was used and at least 2 variants ran. Each row shows whether
+ * treatment significantly outperformed control on compositeScore mean.
+ */
+export function renderPairwiseDiff(pairs: VariantPairComparison[] | undefined, lang: Lang): string {
+  if (!pairs || pairs.length === 0) return '';
+  const validPairs = pairs.filter((p) => p.diffBootstrapCI);
+  if (validPairs.length === 0) return '';
+
+  const rows = validPairs.map((p) => {
+    const ci = p.diffBootstrapCI!;
+    const sigClass = ci.significant ? 'green' : 'text-muted';
+    const sigText = ci.significant ? t('bootstrapDiffSignificant', lang) : t('bootstrapDiffNotSignificant', lang);
+    const estColor = ci.estimate > 0 ? 'var(--green)' : ci.estimate < 0 ? 'var(--red)' : 'var(--text-muted)';
+    return `<tr>
+      <td><strong>${e(p.treatment)}</strong> ${lang === 'zh' ? 'vs' : 'vs'} ${e(p.control)}</td>
+      <td style="text-align:center;color:${estColor}"><strong>${ci.estimate >= 0 ? '+' : ''}${ci.estimate}</strong></td>
+      <td style="text-align:center;font-size:11px">[${ci.low}, ${ci.high}]</td>
+      <td style="text-align:center;color:var(--${sigClass})">${sigText}</td>
+      <td style="text-align:center;color:var(--text-muted);font-size:11px">${ci.samples}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <h2 style="margin-top:24px">${lang === 'zh' ? '配对对比 (Bootstrap CI)' : 'Pairwise comparison (bootstrap CI)'}</h2>
+    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? 'control vs treatment 的均值差 95% CI。CI 不含 0 = 显著差异。bootstrap 不假设分布,适合 LLM 序数评分。' : '95% CI on (treatment - control) mean diff. 0 outside CI = significant. Bootstrap is distribution-free, fits ordinal LLM scores.'}</p>
+    <div class="table-wrap">
+    <table class="summary-table">
+      <thead><tr>
+        <th>${lang === 'zh' ? '对照' : 'Pair'}</th>
+        <th title="${t('bootstrapDiffLabel', lang)}">${t('bootstrapDiffLabel', lang)}</th>
+        <th>95% CI</th>
+        <th>${lang === 'zh' ? '显著性' : 'Significance'}</th>
+        <th>${lang === 'zh' ? '重采样数' : 'samples'}</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    </div>`;
+}
 
 export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang, variance?: VarianceData): string {
   // 六维对比表格:事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性。

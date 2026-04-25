@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { buildVariantSummary } from './schema.js';
 import { buildVariantConfig } from './execution-strategy.js';
 import { getJudgePromptHash } from '../grading/judge.js';
+import { bootstrapMeanCI, bootstrapDiffCI } from './bootstrap.js';
 import type {
   Artifact,
   Report,
@@ -14,6 +15,7 @@ import type {
   Task,
   VariantResult,
   VariantSummary,
+  VariantPairComparison,
   GitInfo,
   EvaluationJob,
   EvaluationRequest,
@@ -121,6 +123,48 @@ export function aggregateReport({
     summary[variant] = buildVariantSummary(entries);
   }
 
+  // Bootstrap CI (per-variant mean) when --bootstrap requested. Adds bootstrapCI to
+  // each VariantSummary; legacy t-interval (in summary's other fields) is preserved.
+  const bootstrapEnabled = request?.bootstrap === true;
+  const bootstrapSamples = request?.bootstrapSamples ?? 1000;
+  let pairComparisons: VariantPairComparison[] | undefined;
+  if (bootstrapEnabled) {
+    for (const variant of variants) {
+      const entries = Object.values(results).map((r) => r[variant]).filter(Boolean);
+      const compositeScores = entries
+        .filter((e) => typeof e.compositeScore === 'number' && e.compositeScore! > 0)
+        .map((e) => e.compositeScore!);
+      if (compositeScores.length >= 2) {
+        summary[variant].bootstrapCI = bootstrapMeanCI(compositeScores, 0.05, bootstrapSamples);
+      }
+    }
+
+    // Pairwise treatment-vs-control comparisons. Convention: variants[0] is control;
+    // each variants[i>0] is a treatment compared against control.
+    if (variants.length >= 2) {
+      pairComparisons = [];
+      const controlName = variants[0];
+      const controlEntries = Object.values(results).map((r) => r[controlName]).filter(Boolean);
+      const controlScores = controlEntries
+        .filter((e) => typeof e.compositeScore === 'number' && e.compositeScore! > 0)
+        .map((e) => e.compositeScore!);
+      for (let i = 1; i < variants.length; i++) {
+        const treatmentName = variants[i];
+        const treatmentEntries = Object.values(results).map((r) => r[treatmentName]).filter(Boolean);
+        const treatmentScores = treatmentEntries
+          .filter((e) => typeof e.compositeScore === 'number' && e.compositeScore! > 0)
+          .map((e) => e.compositeScore!);
+        if (controlScores.length >= 2 && treatmentScores.length >= 2) {
+          pairComparisons.push({
+            control: controlName,
+            treatment: treatmentName,
+            diffBootstrapCI: bootstrapDiffCI(controlScores, treatmentScores, 0.05, bootstrapSamples),
+          });
+        }
+      }
+    }
+  }
+
   const artifactHashes = Object.fromEntries(
     artifacts.map((artifact) => [artifact.name, artifact.content ? hashString(artifact.content) : 'no-skill']),
   );
@@ -149,6 +193,8 @@ export function aggregateReport({
       ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash() }),
       ...(judgeRepeat ? { judgeRepeat } : {}),
       ...(judgeModelsList ? { judgeModels: judgeModelsList } : {}),
+      ...(bootstrapEnabled ? { evaluationFramework: 'both' as const } : {}),
+      ...(pairComparisons ? { pairComparisons } : {}),
       variantConfigs: artifacts.map((artifact) => buildVariantConfig(artifact)),
       request,
       run,

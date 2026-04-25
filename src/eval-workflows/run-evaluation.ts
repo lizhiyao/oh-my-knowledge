@@ -68,6 +68,10 @@ interface CommonEvaluationOptions {
   /** --judge-models executor:model,executor:model,... — multi-judge ensemble. ≥ 2 个
    *  judge 时每条 sample × dimension 由所有 judge 各自打分, 输出 inter-judge agreement. */
   judgeModels?: import('../types.js').JudgeConfig[];
+  /** --bootstrap. Distribution-free CI on each variant mean + pairwise diff. */
+  bootstrap?: boolean;
+  /** --bootstrap-samples N. Default 1000. */
+  bootstrapSamples?: number;
 }
 
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
@@ -156,6 +160,8 @@ export async function runEvaluation({
   each,
   judgeRepeat,
   judgeModels,
+  bootstrap,
+  bootstrapSamples,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
@@ -237,6 +243,8 @@ export async function runEvaluation({
     each,
     judgeRepeat,
     judgeModels,
+    bootstrap,
+    bootstrapSamples,
   });
 }
 

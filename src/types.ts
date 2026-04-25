@@ -165,6 +165,11 @@ export interface EvaluationRequest {
    *  inter-judge agreement (Pearson correlation + mean absolute difference) — 反驳
    *  "Claude judge Claude 同模态偏差" 的硬证据. 与 judgeRepeat 可组合. */
   judgeModels?: JudgeConfig[];
+  /** --bootstrap; true 时 aggregateReport 加跑 bootstrap mean/diff CI, 写入 VariantSummary.
+   *  与原 t-interval 共存 (ReportMeta.evaluationFramework='both'), renderer 优先 bootstrap. */
+  bootstrap?: boolean;
+  /** --bootstrap-samples N; bootstrap 重采样次数, 默认 1000. > 10000 时 stderr 警告. */
+  bootstrapSamples?: number;
 }
 
 /** Single judge configuration: which executor to call and which model alias to pass. */
@@ -472,6 +477,22 @@ export interface VariantSummary {
   judgeAgreement?: JudgeAgreement & { sampleCount: number };
   /** List of judge identifiers ("executor:model") seen in this variant's ensemble data. */
   judgeModels?: string[];
+  /** Bootstrap CI on this variant's compositeScore mean (when --bootstrap enabled).
+   *  Distribution-free; preferred over t-interval for ordinal LLM scores. */
+  bootstrapCI?: { low: number; high: number; estimate: number; samples: number };
+}
+
+/**
+ * Pairwise variant comparison stats — used when comparing treatment vs control.
+ * Independent from per-variant `bootstrapCI` (which is on each variant alone).
+ */
+export interface VariantPairComparison {
+  /** Control variant name (the subtrahend). */
+  control: string;
+  /** Treatment variant name (the minuend). */
+  treatment: string;
+  /** Bootstrap CI on (treatment - control) mean diff. `significant` = 0 outside CI. */
+  diffBootstrapCI?: { low: number; high: number; estimate: number; samples: number; significant: boolean };
 }
 
 export interface GitInfo {
@@ -503,6 +524,13 @@ export interface ReportMeta {
    *  When length >= 2, every (sample × dimension) is scored by all judges and
    *  agreement metrics are reported per-result. */
   judgeModels?: string[];
+  /** Which CI framework was used for this report: 't-test' (legacy default),
+   *  'bootstrap' (--bootstrap), or 'both' (some summaries have both). Reports
+   *  with mismatched frameworks shouldn't be compared blindly on CI bounds. */
+  evaluationFramework?: 't-test' | 'bootstrap' | 'both';
+  /** Pairwise comparisons (treatment vs control) — populated when --bootstrap and
+   *  multi-variant. Length = (variants.length - 1). */
+  pairComparisons?: VariantPairComparison[];
   variantConfigs?: VariantConfig[];
   request?: EvaluationRequest;
   run?: EvaluationRun;
