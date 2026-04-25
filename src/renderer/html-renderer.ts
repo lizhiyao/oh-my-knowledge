@@ -9,6 +9,7 @@ import {
   renderHumanAgreement,
   renderKnowledgeInteractionSection,
   renderPairwiseDiff,
+  renderSaturationCurve,
   renderSummaryCards,
   renderVarianceComparisons,
 } from './summary.js';
@@ -160,6 +161,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const cards = renderSummaryCards(variants, summary, lang, report.variance);
   const pairwiseDiff = renderPairwiseDiff(report.meta.pairComparisons, lang);
   const humanAgreement = renderHumanAgreement(report.meta.humanAgreement, lang);
+  const saturationCurve = renderSaturationCurve(report.variance?.saturation, variants, lang);
   const sampleTable = renderSampleTable(variants, results, lang);
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
   const totalDurationMs = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
@@ -282,7 +284,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
 
     ${variantConfigSection}
 
-    <section>${cards}${pairwiseDiff}${humanAgreement}</section>
+    <section>${cards}${pairwiseDiff}${humanAgreement}${saturationCurve}</section>
 
     ${renderVarianceComparisons(report.variance, lang, Boolean(report.meta.layeredStats))}
 

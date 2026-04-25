@@ -754,6 +754,28 @@ export interface VarianceData {
   runs: number;
   perVariant: Record<string, VariantVariance>;
   comparisons: VarianceComparison[];
+  /** v0.21 Phase 4 — saturation curve data. Populated only when repeat ≥ 2.
+   *  Per-variant cumulative score arrays at each repeat checkpoint, plus the
+   *  saturation verdict (only computed when repeat ≥ 5). */
+  saturation?: SaturationData;
+}
+
+/** Per-variant saturation curve data + (optionally) verdict. */
+export interface SaturationData {
+  /** Cumulative checkpoint counts (sample-cumulative across runs). */
+  checkpointSampleCounts: number[];
+  /** Per-variant trace: at each checkpoint, mean and CI bounds.
+   *  perVariant[variant][i] = { n, mean, ciLow, ciHigh } at checkpoint i. */
+  perVariant: Record<string, Array<{ n: number; mean: number; ciLow: number; ciHigh: number }>>;
+  /** Saturation verdict per variant. Only present when repeat ≥ 5. */
+  verdicts?: Record<string, {
+    saturated: boolean;
+    atN: number | null;
+    confidence: 'high' | 'medium' | 'low';
+    method: 'slope' | 'bootstrap-ci-width' | 'plateau-height';
+    threshold: number;
+    reason: string;
+  }>;
 }
 
 export interface McpFetchTool {

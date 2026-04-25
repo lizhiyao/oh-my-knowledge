@@ -1,6 +1,6 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import { pValueCategory } from '../eval-core/statistics.js';
-import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, ReportHumanAgreement, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types.js';
+import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types.js';
 
 /**
  * Pairwise diff (treatment vs control) bootstrap CI table — populated only when
@@ -121,6 +121,108 @@ export function renderHumanAgreement(agreement: ReportHumanAgreement | undefined
     <p style="margin:8px 0 0;font-size:13px"><strong>${lang === 'zh' ? '解读' : 'Reading'}:</strong> ${e(interpret)}</p>
     <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted)">${lang === 'zh' ? '标注者' : 'annotator'}: ${e(a.goldAnnotator)} (v${e(a.goldVersion)}) · variant: <strong>${e(a.variant)}</strong> · n=${a.sampleCount}</p>
     ${missingNote}`;
+}
+
+/**
+ * Saturation curve — answers "did I run enough samples?". Renders an inline
+ * SVG of mean ± 95% CI shading vs cumulative N, one curve per variant. The
+ * verdict line below the chart calls out the saturation point (when the curve
+ * has flattened enough that more samples don't materially shrink the CI).
+ *
+ * Hidden when variance is absent (single-run reports) or when there are fewer
+ * than 2 checkpoints. We keep the chart visible at 2-4 checkpoints (= repeat
+ * < 5) so users can see the trajectory; the verdict is only computed at
+ * repeat ≥ 5.
+ */
+export function renderSaturationCurve(saturation: SaturationData | undefined, variants: string[], lang: Lang): string {
+  if (!saturation) return '';
+  const checkpoints = saturation.checkpointSampleCounts;
+  if (!checkpoints || checkpoints.length < 2) return '';
+
+  // Layout: 600 × 280 SVG, leave 50px on the left for y-axis and 30px at the
+  // bottom for x-axis labels. Score is the 1-5 Likert range; pin axes to that.
+  const width = 600, height = 280, padL = 50, padR = 20, padT = 16, padB = 32;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+  const xMax = Math.max(...checkpoints);
+  const xMin = Math.min(...checkpoints);
+  const yMin = 1, yMax = 5;
+  const xScale = (x: number): number => padL + (plotW * (x - xMin)) / Math.max(1, xMax - xMin);
+  const yScale = (y: number): number => padT + plotH - (plotH * (y - yMin)) / (yMax - yMin);
+
+  // Per-variant curves and CI ribbons.
+  const seriesParts: string[] = [];
+  variants.forEach((variant, i) => {
+    const trace = saturation.perVariant[variant];
+    if (!trace || trace.length === 0) return;
+    const color = COLORS[i % COLORS.length];
+
+    // CI ribbon: polygon walking forward along upper bound and back along lower.
+    const upper = trace.map((p) => `${xScale(p.n).toFixed(1)},${yScale(p.ciHigh).toFixed(1)}`);
+    const lower = trace.map((p) => `${xScale(p.n).toFixed(1)},${yScale(p.ciLow).toFixed(1)}`).reverse();
+    const ribbonPoints = [...upper, ...lower].join(' ');
+    seriesParts.push(`<polygon points="${ribbonPoints}" fill="${color}" fill-opacity="0.15" stroke="none" />`);
+
+    // Mean line.
+    const linePoints = trace.map((p) => `${xScale(p.n).toFixed(1)},${yScale(p.mean).toFixed(1)}`).join(' ');
+    seriesParts.push(`<polyline points="${linePoints}" fill="none" stroke="${color}" stroke-width="2" />`);
+
+    // Mean dots.
+    for (const p of trace) {
+      seriesParts.push(`<circle cx="${xScale(p.n).toFixed(1)}" cy="${yScale(p.mean).toFixed(1)}" r="3" fill="${color}" />`);
+    }
+  });
+
+  // Y-axis ticks at 1..5; x-axis ticks at every checkpoint.
+  const yTicks = [1, 2, 3, 4, 5].map((y) =>
+    `<line x1="${padL}" y1="${yScale(y)}" x2="${width - padR}" y2="${yScale(y)}" stroke="var(--border)" stroke-width="0.5" />
+     <text x="${padL - 6}" y="${yScale(y) + 4}" font-size="10" text-anchor="end" fill="var(--text-muted)">${y}</text>`,
+  ).join('');
+  const xTicks = checkpoints.map((n) =>
+    `<text x="${xScale(n)}" y="${height - padB + 14}" font-size="10" text-anchor="middle" fill="var(--text-muted)">${n}</text>`,
+  ).join('');
+
+  // Per-variant verdict block underneath.
+  const verdictRows: string[] = [];
+  if (saturation.verdicts) {
+    for (const variant of variants) {
+      const v = saturation.verdicts[variant];
+      if (!v) continue;
+      const flagColor = v.saturated ? 'var(--green)' : 'var(--yellow)';
+      const flagText = v.saturated
+        ? (lang === 'zh' ? `已饱和 (N=${v.atN})` : `saturated at N=${v.atN}`)
+        : (lang === 'zh' ? '尚未饱和' : 'not yet saturated');
+      const conf = v.confidence === 'low'
+        ? `<span style="color:var(--yellow)">⚠ ${lang === 'zh' ? '样本太少,结论参考意义有限' : 'low confidence, interpret cautiously'}</span>`
+        : '';
+      verdictRows.push(
+        `<tr><td><strong>${e(variant)}</strong></td>
+         <td style="color:${flagColor}"><strong>${flagText}</strong></td>
+         <td style="font-size:12px;color:var(--text-secondary)">${e(v.reason)} ${conf}</td></tr>`,
+      );
+    }
+  }
+
+  const noteHtml = saturation.verdicts
+    ? `<div class="table-wrap"><table class="summary-table">
+       <thead><tr>
+         <th>${lang === 'zh' ? '变体' : 'Variant'}</th>
+         <th>${lang === 'zh' ? '判定' : 'Verdict'}</th>
+         <th>${lang === 'zh' ? '依据' : 'Rationale'}</th>
+       </tr></thead><tbody>${verdictRows.join('')}</tbody></table></div>`
+    : `<p style="font-size:13px;color:var(--text-muted);margin:8px 0 0">${lang === 'zh' ? '提示:repeat ≥ 5 时才会输出饱和判定。当前数据只够画曲线,不足以下结论。' : 'Note: saturation verdict needs repeat ≥ 5. Current data plots the curve only.'}</p>`;
+
+  return `
+    <h2 style="margin-top:24px">${lang === 'zh' ? '饱和曲线 (Saturation curve)' : 'Saturation curve'}</h2>
+    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? '随累积样本数 N 增长的均值与 95% CI。CI 宽度衰减放缓即饱和——再多样本对结论无实质收益。' : 'Mean and 95% CI as cumulative N grows. When CI shrink rate flattens, the evidence has saturated — more samples buy little.'}</p>
+    <svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:${width}px;height:auto;display:block">
+      ${yTicks}
+      <text x="${padL - 36}" y="${padT + plotH / 2}" font-size="11" text-anchor="middle" fill="var(--text-muted)" transform="rotate(-90 ${padL - 36} ${padT + plotH / 2})">${lang === 'zh' ? '均值' : 'mean'}</text>
+      <text x="${padL + plotW / 2}" y="${height - 4}" font-size="11" text-anchor="middle" fill="var(--text-muted)">${lang === 'zh' ? '累积样本数 N' : 'cumulative N'}</text>
+      ${xTicks}
+      ${seriesParts.join('\n')}
+    </svg>
+    ${noteHtml}`;
 }
 
 export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang, variance?: VarianceData): string {

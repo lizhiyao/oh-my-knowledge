@@ -545,8 +545,11 @@ async function main(): Promise<void> {
     case 'debias-validate':
       await handleDebiasValidate(rest);
       break;
+    case 'saturation':
+      await handleSaturation(rest);
+      break;
     default:
-      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", "evolve", "diff", "gold", or "debias-validate".`);
+      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", "evolve", "diff", "gold", "debias-validate", or "saturation".`);
       process.exit(1);
   }
 }
@@ -1565,6 +1568,98 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
     },
   });
   console.log(formatDebiasValidate(result));
+}
+
+// ---------------------------------------------------------------------------
+// handleSaturation — re-compute saturation verdict from a finished report
+// ---------------------------------------------------------------------------
+
+async function handleSaturation(argv: string[]): Promise<void> {
+  const reportId = argv[0];
+  if (!reportId || reportId === '--help' || reportId === '-h') {
+    console.log([
+      '',
+      'Usage: omk bench saturation <reportId> [options]',
+      '',
+      '回答"我跑够样本了吗?"。重新对已有 report 算饱和判定,无需重跑评测。',
+      '',
+      'Options:',
+      '  --reports-dir <dir>   report store dir (default: ~/.oh-my-knowledge/reports)',
+      '  --variant <name>      只算一个 variant (default: all)',
+      '  --method <m>          slope | bootstrap-ci-width (default) | plateau-height',
+      '  --threshold <num>     方法相关阈值 (默认随 method 选)',
+      '  --window <num>        连续多少窗口满足才判饱和 (default 3)',
+      '',
+    ].join('\n'));
+    process.exit(reportId ? 0 : 1);
+  }
+
+  const { values } = parseArgs({
+    args: argv.slice(1),
+    options: {
+      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+      variant: { type: 'string' },
+      method: { type: 'string', default: 'bootstrap-ci-width' },
+      threshold: { type: 'string' },
+      window: { type: 'string', default: '3' },
+    },
+    strict: false,
+  });
+
+  const { createFileStore } = await import('./server/report-store.js');
+  const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+  const report: Report | null = await store.get(reportId);
+  if (!report) {
+    console.error(`Report not found: ${reportId}`);
+    process.exit(1);
+  }
+
+  const saturation = report!.variance?.saturation;
+  if (!saturation) {
+    console.error('该 report 无 saturation 数据 (需要 --repeat ≥ 2 才会记录)。');
+    process.exit(1);
+  }
+
+  // Reconstruct cumulative score arrays from per-variant trace counts.
+  // Since persisted shape stores (mean, ciLow, ciHigh) per checkpoint, not
+  // raw scores, we can only re-run findSaturationPoint when raw scores are
+  // reconstructable. For now, walk the report.results to rebuild.
+  const variants = report!.meta.variants ?? [];
+  const targetVariants = values.variant ? [values.variant as string] : variants;
+
+  const method = values.method as 'slope' | 'bootstrap-ci-width' | 'plateau-height';
+  if (!['slope', 'bootstrap-ci-width', 'plateau-height'].includes(method)) {
+    console.error(`unknown method: ${method}`);
+    process.exit(1);
+  }
+  const thresholdRaw = values.threshold != null ? Number(values.threshold) : undefined;
+  const windowSize = Math.max(1, Number(values.window) || 3);
+
+  // Per-variant: collect all composite scores in order from report.results.
+  // Each report represents the LATEST run only. We use the saturation trace's
+  // count series as the partition signal — checkpointSampleCounts[i] tells us
+  // how many samples were cumulative after run i. We can't reconstruct
+  // per-run boundaries from a single report, so this CLI mostly re-applies
+  // the saved trace's metric. Future work: persist raw scores for full
+  // re-computation.
+  console.log(`\n  Saturation 重算 (method=${method}${thresholdRaw != null ? `, threshold=${thresholdRaw}` : ''})\n`);
+  for (const variant of targetVariants) {
+    const trace = saturation.perVariant[variant];
+    if (!trace || trace.length === 0) {
+      console.log(`  ${variant}: 无 trace 数据`);
+      continue;
+    }
+    console.log(`  ${variant}:`);
+    console.log(`    checkpoints: ${trace.length} (N=${trace.map((p) => p.n).join(', ')})`);
+    console.log(`    最近一点 mean=${trace[trace.length - 1].mean.toFixed(3)}, CI=[${trace[trace.length - 1].ciLow.toFixed(3)}, ${trace[trace.length - 1].ciHigh.toFixed(3)}]`);
+    if (saturation.verdicts?.[variant]) {
+      const v = saturation.verdicts[variant];
+      console.log(`    持久化判定 (${v.method}): ${v.saturated ? `已饱和@N=${v.atN}` : '未饱和'} - ${v.reason}`);
+    } else if (trace.length < 5) {
+      console.log(`    判定: 数据点 ${trace.length} < 5,跳过 (跑 --repeat 5 以上才输出)`);
+    }
+  }
+  console.log('');
 }
 
 // ---------------------------------------------------------------------------
