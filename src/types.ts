@@ -158,6 +158,8 @@ export interface EvaluationRequest {
   repeat?: number;
   /** --each; 默认不传(=false),true 表示 each mode (每个 skill 独立对比 baseline) */
   each?: boolean;
+  /** --judge-repeat N; 每条 sample × dimension 用 LLM judge 跑 N 次, 输出 stddev. 默认 1 (单次). */
+  judgeRepeat?: number;
 }
 
 export type EvaluationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -290,6 +292,12 @@ export interface DimensionResult {
   score: number;
   reason: string;
   judgeCostUSD?: number;
+  /** When judge-repeat > 1: scores from each judge run (length = repeat count). */
+  scoreSamples?: number[];
+  /** Standard deviation across scoreSamples (0 when repeat = 1). */
+  scoreStddev?: number;
+  /** Chain-of-thought reasoning produced by the judge before the final score. */
+  reasoning?: string;
 }
 
 export interface LayeredScores {
@@ -304,6 +312,10 @@ export interface GradeResult {
   assertions?: AssertionResults;
   llmScore?: number;
   llmReason?: string;
+  /** When judge-repeat > 1 with single rubric: stddev across N judge calls. */
+  llmScoreStddev?: number;
+  /** When judge-repeat > 1 with single rubric: raw scores from each judge call. */
+  llmScoreSamples?: number[];
   dimensions?: Record<string, DimensionResult>;
   judgeCostUSD?: number;
 }
@@ -402,6 +414,12 @@ export interface ReportMeta {
   cliVersion: string;
   nodeVersion: string;
   artifactHashes: Record<string, string>;
+  /** SHA256-12 of every sample's content (sample_id → hash). Same hash = same sample. */
+  sampleHashes?: Record<string, string>;
+  /** SHA256-12 of the LLM judge prompt template. Different hash = judge changed semantics. */
+  judgePromptHash?: string;
+  /** Number of times each sample was judged. 1 = single judge (default). */
+  judgeRepeat?: number;
   variantConfigs?: VariantConfig[];
   request?: EvaluationRequest;
   run?: EvaluationRun;

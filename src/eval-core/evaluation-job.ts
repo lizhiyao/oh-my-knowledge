@@ -23,6 +23,7 @@ export function buildEvaluationRequest({
   tags,
   repeat,
   each,
+  judgeRepeat,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -42,6 +43,7 @@ export function buildEvaluationRequest({
   tags?: string[];
   repeat?: number;
   each?: boolean;
+  judgeRepeat?: number;
 }): EvaluationRequest {
   return {
     samplesPath,
@@ -62,6 +64,7 @@ export function buildEvaluationRequest({
     tags,
     repeat,
     each,
+    judgeRepeat,
   };
 }
 

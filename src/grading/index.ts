@@ -4,7 +4,7 @@
 
 import type { AssertionResults, GradeResult, LayeredScores, DimensionResult, ExecutorFn, Sample, ToolCallInfo, TurnInfo } from '../types.js';
 import { ASYNC_ASSERTION_TYPES, ratioToScore, runAssertions, runAsyncAssertions } from './assertions.js';
-import { buildTraceSummary, llmJudge } from './judge.js';
+import { buildTraceSummary, llmJudgeRepeat } from './judge.js';
 import { computeLayeredScores } from './layered-scores.js';
 
 interface GradeOptions {
@@ -15,16 +15,24 @@ interface GradeOptions {
   allowLlmJudge?: boolean;
   execMetrics?: { costUSD?: number; durationMs?: number; numTurns?: number; toolCalls?: ToolCallInfo[]; turns?: TurnInfo[] };
   samplesDir?: string;
+  /**
+   * Run the LLM judge N times per (sample × dimension) pair and report mean + stddev.
+   * Default 1 (single judge call). Useful for measuring judge self-consistency:
+   * a high stddev means the judge isn't stable on this rubric and the score is noisy.
+   */
+  judgeRepeat?: number;
 }
 
 /**
  * Grade a model output against a sample's criteria.
  */
-export async function grade({ output, sample, executor, judgeModel, allowLlmJudge = true, execMetrics = {}, samplesDir = '.' }: GradeOptions): Promise<GradeResult> {
+export async function grade({ output, sample, executor, judgeModel, allowLlmJudge = true, execMetrics = {}, samplesDir = '.', judgeRepeat = 1 }: GradeOptions): Promise<GradeResult> {
   const results: {
     assertions?: AssertionResults;
     llmScore?: number;
     llmReason?: string;
+    llmScoreStddev?: number;
+    llmScoreSamples?: number[];
     dimensions?: Record<string, DimensionResult>;
     judgeCostUSD?: number;
     compositeScore: number;
@@ -77,14 +85,14 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     // Multi-dimensional scoring
     results.dimensions = {};
     for (const [dim, rubric] of Object.entries(sample.dimensions)) {
-      results.dimensions[dim] = await llmJudge({
+      results.dimensions[dim] = await llmJudgeRepeat({
         output,
         rubric,
         prompt: sample.prompt,
         executor,
         model: judgeModel,
         traceSummary,
-      });
+      }, judgeRepeat);
     }
     const dimValues = Object.values(results.dimensions);
     const dimScores = dimValues.map((d) => d.score).filter((s) => s > 0);
@@ -96,16 +104,20 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     if (dimCost > 0) results.judgeCostUSD = (results.judgeCostUSD || 0) + dimCost;
   } else if (allowLlmJudge && sample.rubric) {
     // Single rubric scoring
-    const judge = await llmJudge({
+    const judge = await llmJudgeRepeat({
       output,
       rubric: sample.rubric,
       prompt: sample.prompt,
       executor,
       model: judgeModel,
       traceSummary,
-    });
+    }, judgeRepeat);
     results.llmScore = judge.score;
     results.llmReason = judge.reason;
+    if (judge.scoreSamples && judge.scoreSamples.length > 1) {
+      results.llmScoreSamples = judge.scoreSamples;
+      results.llmScoreStddev = judge.scoreStddev;
+    }
     results.judgeCostUSD = (results.judgeCostUSD || 0) + (judge.judgeCostUSD || 0);
   }
 

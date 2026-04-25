@@ -62,6 +62,9 @@ interface CommonEvaluationOptions {
   /** --each 模式标记, true 表示当前评测是 each 批量流程(每个 skill 独立对比 baseline)。
    *  记入 report.meta.request.each。 */
   each?: boolean;
+  /** --judge-repeat N. 每条 sample × dimension 调 LLM judge N 次, 输出 stddev (judge 自一致性).
+   *  默认 1 (单次). 用于量化 LLM judge 在该 rubric 上的稳定性 — stddev 高 = 评分噪声大. */
+  judgeRepeat?: number;
 }
 
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
@@ -148,6 +151,7 @@ export async function runEvaluation({
   layeredStats = false,
   repeat,
   each,
+  judgeRepeat,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
@@ -227,6 +231,7 @@ export async function runEvaluation({
     layeredStats,
     repeat,
     each,
+    judgeRepeat,
   });
 }
 
