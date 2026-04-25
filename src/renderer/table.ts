@@ -1,5 +1,44 @@
 import { e, fmtNum, fmtDuration, delta, t } from './layout.js';
-import type { Lang, ResultEntry, TurnInfo, ToolCallInfo } from '../types.js';
+import type { Lang, ResultEntry, TurnInfo, ToolCallInfo, EnsembleJudgeResult, JudgeAgreement, DimensionResult } from '../types.js';
+
+/** Render the multi-judge ensemble breakdown for a single (sample × rubric or dimension). */
+function renderEnsembleBlock(ensemble: EnsembleJudgeResult[] | undefined, agreement: JudgeAgreement | undefined, lang: Lang): string {
+  if (!ensemble || ensemble.length < 2) return '';
+  const rows = ensemble.map((judge) => {
+    const stddev = judge.scoreStddev != null && judge.scoreStddev > 0
+      ? ` <span style="color:var(--text-muted)">±${judge.scoreStddev}</span>`
+      : '';
+    const fail = judge.judgeFailureCount && judge.judgeFailureCount > 0
+      ? ` <span style="color:var(--red);font-size:10px">${judge.judgeFailureCount}/${judge.scoreSamples?.length || '?'} fail</span>`
+      : '';
+    const reasoning = judge.reasoning
+      ? `<details style="margin-top:2px"><summary style="font-size:10px;color:var(--text-muted);cursor:pointer">${t('judgeReasoning', lang)} ${t('judgeReasoningExpand', lang)}</summary><div style="font-size:11px;color:var(--text-muted);padding:4px;background:var(--bg-subtle);border-radius:3px;white-space:pre-wrap">${e(judge.reasoning)}</div></details>`
+      : '';
+    return `<div style="margin-top:3px;font-size:11px"><strong>${e(judge.judge)}</strong>: ${judge.score}${stddev}${fail}${reasoning}</div>`;
+  }).join('');
+  const agreementLine = agreement && agreement.pairCount > 0
+    ? `<div style="margin-top:4px;font-size:10px;color:var(--text-muted)" title="${t('madDesc', lang)}">MAD ${agreement.meanAbsDiff}${agreement.pearson != null ? ` · Pearson ${agreement.pearson}` : ''}</div>`
+    : '';
+  return `<details style="margin-top:6px;border-left:2px solid var(--accent);padding-left:6px"><summary style="font-size:11px;cursor:pointer;color:var(--text-muted)">${t('ensembleHeader', lang)} (${ensemble.length})</summary>${rows}${agreementLine}</details>`;
+}
+
+/** Render judge stddev / failure inline next to a score (single rubric or dim). */
+function renderJudgeStability(stddev: number | undefined, samples: number[] | undefined, failures: number | undefined, lang: Lang): string {
+  if (!samples || samples.length <= 1) return '';
+  const stddevTag = stddev != null
+    ? `<span class="dim-tag" title="${t('judgeStddevDesc', lang)}">±${stddev}</span>`
+    : '';
+  const failTag = failures && failures > 0
+    ? `<span class="dim-tag" style="background:var(--red-soft);color:var(--red)" title="${t('judgeFailuresDesc', lang)}">${failures}/${samples.length} fail</span>`
+    : '';
+  return stddevTag + failTag;
+}
+
+/** Render CoT reasoning as a collapsed details block. */
+function renderReasoning(reasoning: string | undefined, lang: Lang): string {
+  if (!reasoning) return '';
+  return `<details style="margin-top:4px"><summary style="font-size:10px;color:var(--text-muted);cursor:pointer">${t('judgeReasoning', lang)} ${t('judgeReasoningExpand', lang)}</summary><div style="font-size:11px;color:var(--text-muted);padding:4px;background:var(--bg-subtle);border-radius:3px;white-space:pre-wrap">${e(reasoning)}</div></details>`;
+}
 
 function renderTrace(turns: TurnInfo[], toolCalls: ToolCallInfo[] | undefined, timing: { execMs: number; gradeMs: number; totalMs: number } | undefined, fullOutput: string | undefined, id: string, lang: Lang): string {
   if (!turns || turns.length === 0) return '';
@@ -100,13 +139,33 @@ export function renderSampleTable(variants: string[], results: ResultEntry[], la
       }
 
       let dimHtml = '';
+      let dimEnsembleHtml = '';
       if (d.dimensions) {
         const tags = Object.entries(d.dimensions).map(([dim, info]) => {
           const s = typeof info === 'object' ? info.score : info;
-          return `<span class="dim-tag">${e(dim)}: ${s}</span>`;
+          const dr = typeof info === 'object' ? (info as DimensionResult) : undefined;
+          const stab = dr ? renderJudgeStability(dr.scoreStddev, dr.scoreSamples, dr.judgeFailureCount, lang) : '';
+          return `<span class="dim-tag">${e(dim)}: ${s}</span>${stab}`;
         }).join('');
         dimHtml = `<div class="dim-scores">${tags}</div>`;
+        // Per-dimension ensemble blocks (collapsed)
+        const ensBlocks = Object.entries(d.dimensions)
+          .map(([dim, info]) => {
+            if (typeof info !== 'object') return '';
+            const dr = info as DimensionResult;
+            const block = renderEnsembleBlock(dr.ensemble, dr.agreement, lang);
+            const reasoning = renderReasoning(dr.reasoning, lang);
+            if (!block && !reasoning) return '';
+            return `<div style="margin-top:4px"><strong style="font-size:11px">${e(dim)}</strong>${block}${reasoning}</div>`;
+          })
+          .filter(Boolean).join('');
+        if (ensBlocks) dimEnsembleHtml = ensBlocks;
       }
+
+      // Single-rubric mode: stddev / failures / reasoning / ensemble inline
+      const stabilityHtml = renderJudgeStability(d.llmScoreStddev, d.llmScoreSamples, d.llmScoreFailures, lang);
+      const reasoningHtml = renderReasoning(d.llmReasoning, lang);
+      const ensembleHtml = renderEnsembleBlock(d.llmEnsemble, d.llmAgreement, lang);
 
       const reasonHtml = d.llmReason
         ? `<br><span style="font-size:11px;color:var(--text-muted)">${e(d.llmReason?.slice(0, 80))}</span>`
@@ -137,7 +196,7 @@ export function renderSampleTable(variants: string[], results: ResultEntry[], la
       const tokenDelta = i > 0 && firstV ? delta(firstV.totalTokens, d.totalTokens, true) : '';
       const msDelta = i > 0 && firstTotalMs ? delta(firstTotalMs, totalMs, true) : '';
 
-      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${layeredHtml}${factCheckHtml}${errorHtml}${reasonHtml}${assertionHtml}${dimHtml}${toolHtml}${timingHtml}${traceHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtDuration(totalMs)}${msDelta}</td>`;
+      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${stabilityHtml}${layeredHtml}${factCheckHtml}${errorHtml}${reasonHtml}${reasoningHtml}${ensembleHtml}${assertionHtml}${dimHtml}${dimEnsembleHtml}${toolHtml}${timingHtml}${traceHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtDuration(totalMs)}${msDelta}</td>`;
     }).join('');
 
     return `<tr><td><strong>${e(r.sample_id)}</strong></td>${cols}</tr>`;

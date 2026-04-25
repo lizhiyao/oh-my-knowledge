@@ -254,10 +254,14 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     <div class="meta-tags">
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
       <span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>
+      ${m.judgeModels && m.judgeModels.length >= 2 ? `<span class="meta-tag" style="background:var(--accent-soft)" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${m.judgeModels.map((j) => e(j)).join(' · ')}</span>` : ''}
+      ${m.judgeRepeat && m.judgeRepeat > 1 ? `<span class="meta-tag" title="${t('judgeStddevDesc', lang)}">${t('judgeRepeatLabel', lang)}: ${m.judgeRepeat}</span>` : ''}
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
       <span class="meta-tag">${t('cost', lang)}: ${fmtCost(totalExecCost)}</span>
       <span class="meta-tag">${lang === 'zh' ? '耗时' : 'duration'}: ${fmtDuration(totalDurationMs)}</span>
       ${m.gitInfo ? `<span class="meta-tag">commit: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
+      ${m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : ''}
+      ${m.sampleHashes ? `<span class="meta-tag" style="color:var(--text-muted)">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}</span>` : ''}
       ${m.blind ? `<span class="meta-tag" style="color:var(--green)" data-i18n="blindLabel">${t('blindLabel', lang)}</span>` : ''}
     </div>
     ${m.blind ? `

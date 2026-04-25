@@ -192,6 +192,53 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       <thead>${thead}</thead>
       <tbody>${rows}</tbody>
     </table>
+    </div>
+    ${renderJudgeAgreementBlock(variants, summary, lang)}`;
+}
+
+/**
+ * Cross-sample inter-judge agreement table — only renders when at least one variant
+ * has multi-judge ensemble data. This is the v0.20.2 "blog headline" view: shows
+ * Pearson + MAD across the whole sample set, the metric that refutes "Claude judge
+ * Claude same-modality bias".
+ */
+function renderJudgeAgreementBlock(variants: string[], summary: Record<string, VariantSummary>, lang: Lang): string {
+  const variantsWithEnsemble = variants.filter((v) => summary[v]?.judgeAgreement);
+  if (variantsWithEnsemble.length === 0) return '';
+
+  const rows = variantsWithEnsemble.map((v) => {
+    const s = summary[v];
+    const ag = s.judgeAgreement!;
+    const judgeList = (s.judgeModels || []).map((j) => `<code>${e(j)}</code>`).join(', ');
+    const pearsonCell = ag.pearson != null
+      ? `<span title="${t('pearsonDesc', lang)}" style="color:${ag.pearson >= 0.7 ? 'var(--green)' : ag.pearson >= 0.4 ? 'var(--yellow)' : 'var(--red)'}"><strong>${ag.pearson}</strong></span>`
+      : `<span style="color:var(--text-muted)">—</span>`;
+    const madCell = `<span title="${t('madDesc', lang)}" style="color:${ag.meanAbsDiff < 0.5 ? 'var(--green)' : ag.meanAbsDiff < 1.5 ? 'var(--yellow)' : 'var(--red)'}"><strong>${ag.meanAbsDiff}</strong></span>`;
+    return `<tr>
+      <td><strong>${e(v)}</strong></td>
+      <td style="font-size:11px;color:var(--text-muted)">${judgeList}</td>
+      <td style="text-align:center">${pearsonCell}</td>
+      <td style="text-align:center">${madCell}</td>
+      <td style="text-align:center;color:var(--text-muted)">${ag.sampleCount}</td>
+      <td style="text-align:center;color:var(--text-muted)">${ag.pairCount}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <h2 style="margin-top:24px">${t('agreementHeader', lang)}</h2>
+    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${t('agreementDesc', lang)}</p>
+    <div class="table-wrap">
+    <table class="summary-table">
+      <thead><tr>
+        <th>${t('variants', lang)}</th>
+        <th>${t('judgeModelsLabel', lang)}</th>
+        <th title="${t('pearsonDesc', lang)}">${t('pearsonLabel', lang)}</th>
+        <th title="${t('madDesc', lang)}">${t('madLabel', lang)}</th>
+        <th>${lang === 'zh' ? '样本数' : 'Samples'}</th>
+        <th>${lang === 'zh' ? 'Judge 对数' : 'Pairs'}</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
     </div>`;
 }
 
