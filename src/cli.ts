@@ -44,6 +44,8 @@ interface RunConfig {
   layeredStats?: boolean;
   /** --judge-repeat N. Calls LLM judge N times per (sample × dimension). Default 1. */
   judgeRepeat?: number;
+  /** --judge-models executor:model,executor:model,... — multi-judge ensemble (≥ 2 entries). */
+  judgeModels?: import('./types.js').JudgeConfig[];
   onProgress?: ProgressCallback | null;
 }
 
@@ -364,6 +366,12 @@ Options for "bench run":
   --judge-repeat <n>     Call LLM judge N times per (sample × dimension) for self-
                          consistency (default: 1). High stddev across runs = the
                          judge is unstable on this rubric and the score is noisy.
+  --judge-models <list>  Multi-judge ensemble. Comma-separated executor:model pairs,
+                         e.g. claude:opus,openai:gpt-4o,gemini:pro. Each judge scores
+                         every (sample × dimension); report includes per-judge break-
+                         down + Pearson/MAD inter-judge agreement. Refutes "Claude
+                         judge Claude same-modality bias" critique. Combines with
+                         --judge-repeat. Cost ~ N_judges × N_repeat × N_samples.
   --retry <n>            Retry failed tasks up to N times with exponential backoff (default: 0)
   --resume <report-id>   Resume from a previous report, skipping completed tasks
   --executor <name>      Executor: claude, openai, gemini, anthropic-api, openai-api,
@@ -591,6 +599,7 @@ async function handleRun(argv: string[]): Promise<void> {
     blind: { type: 'boolean', default: false },
     repeat: { type: 'string', default: '1' },
     'judge-repeat': { type: 'string', default: '1' },
+    'judge-models': { type: 'string' },
   });
 
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
@@ -615,6 +624,27 @@ async function handleRun(argv: string[]): Promise<void> {
   }
   const judgeRepeatCount: number = Math.max(1, Math.floor(parsedJudgeRepeat) || 1);
   if (judgeRepeatCount > 1) config.judgeRepeat = judgeRepeatCount;
+
+  // --judge-models executor:model,executor:model,... -> JudgeConfig[]
+  // 至少 2 个才进 ensemble 模式,1 个等同于 --judge-model
+  const judgeModelsRaw = values['judge-models'] as string | undefined;
+  if (judgeModelsRaw) {
+    const parts = judgeModelsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    const judges = parts.map((p) => {
+      const [executor, ...modelParts] = p.split(':');
+      const model = modelParts.join(':');
+      if (!executor || !model) {
+        throw new Error(`--judge-models 格式错误: "${p}",应为 "executor:model" (如 claude:opus)`);
+      }
+      return { executor, model };
+    });
+    if (judges.length >= 2) {
+      config.judgeModels = judges;
+    } else if (judges.length === 1) {
+      // 单 judge 不走 ensemble,但允许这样写,等同于 --judge-model + --executor
+      process.stderr.write(`ℹ --judge-models 只指定 1 个 judge (${judges[0].executor}:${judges[0].model}),不触发 ensemble。如需 ensemble 至少给 2 个。\n`);
+    }
+  }
 
   try {
     // --each mode: evaluate each skill independently

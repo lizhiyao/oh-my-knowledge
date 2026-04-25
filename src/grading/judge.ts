@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { DimensionResult, ExecutorFn, ToolCallInfo, TurnInfo } from '../types.js';
+import type { DimensionResult, EnsembleJudgeResult, ExecutorFn, JudgeAgreement, JudgeConfig, ToolCallInfo, TurnInfo } from '../types.js';
 
 interface JudgeResponse {
   score?: number | string;
@@ -225,5 +225,167 @@ export async function llmJudgeRepeat(
     scoreSamples: samples,
     scoreStddev: Number(stddev.toFixed(3)),
     judgeFailureCount: failures,
+  };
+}
+
+// ===========================================================================
+// Multi-judge ensemble — cross-model agreement
+// ===========================================================================
+
+/** Format a JudgeConfig as "executor:model" identifier for reports / logs. */
+export function judgeId(config: JudgeConfig): string {
+  return `${config.executor}:${config.model}`;
+}
+
+/**
+ * Pearson correlation between two number arrays of equal length. Returns null when
+ * either array has zero variance (constant scores) — Pearson is undefined in that
+ * case (division by zero), and reporting 0 would be misleading.
+ */
+function pearson(a: number[], b: number[]): number | null {
+  if (a.length !== b.length || a.length < 2) return null;
+  const n = a.length;
+  const meanA = a.reduce((s, x) => s + x, 0) / n;
+  const meanB = b.reduce((s, x) => s + x, 0) / n;
+  let num = 0;
+  let denomA = 0;
+  let denomB = 0;
+  for (let i = 0; i < n; i++) {
+    const da = a[i] - meanA;
+    const db = b[i] - meanB;
+    num += da * db;
+    denomA += da * da;
+    denomB += db * db;
+  }
+  if (denomA === 0 || denomB === 0) return null;
+  return num / Math.sqrt(denomA * denomB);
+}
+
+/** Mean absolute difference between two equal-length number arrays. */
+function meanAbsDiff(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
+  return sum / a.length;
+}
+
+/**
+ * Compute pairwise inter-judge agreement metrics across an ensemble. For N judges
+ * we get N*(N-1)/2 pairs; metrics are pairwise-averaged.
+ *
+ * Each judge contributes ONE score per sample (its mean if judge-repeat > 1). We
+ * then compute Pearson and mean-abs-diff over the N-judge × M-sample score matrix.
+ *
+ * NOTE: Within a single (sample × dimension) call, each judge gives ONE aggregated
+ * score. So `pairwise` here means "two judges' scores on this one sample". With a
+ * single sample point Pearson is undefined (need ≥ 2). For per-sample agreement we
+ * fall back to mean-abs-diff alone; Pearson kicks in at the report-aggregate level
+ * (across many samples).
+ */
+export function computeJudgeAgreement(judgeScores: number[][]): JudgeAgreement {
+  // judgeScores[i][j] = score from judge i on sample j. All rows same length.
+  const n = judgeScores.length;
+  if (n < 2) return { meanAbsDiff: 0, pairCount: 0 };
+
+  let madSum = 0;
+  let pearsonSum = 0;
+  let pearsonCount = 0;
+  let pairs = 0;
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      pairs++;
+      madSum += meanAbsDiff(judgeScores[i], judgeScores[j]);
+      const p = pearson(judgeScores[i], judgeScores[j]);
+      if (p !== null) {
+        pearsonSum += p;
+        pearsonCount++;
+      }
+    }
+  }
+
+  const result: JudgeAgreement = {
+    meanAbsDiff: Number((madSum / pairs).toFixed(3)),
+    pairCount: pairs,
+  };
+  if (pearsonCount > 0) {
+    result.pearson = Number((pearsonSum / pearsonCount).toFixed(3));
+  }
+  return result;
+}
+
+/**
+ * Judge a single (output, rubric) pair with N judge models in parallel. Each judge
+ * may use a different executor (e.g. claude:opus + openai:gpt-4o + gemini:pro). Each
+ * judge can also be repeated `judgeRepeat` times — final per-judge score is its mean.
+ *
+ * Returns: aggregate DimensionResult (score = mean across judges; this is the "consensus"
+ * score), per-judge breakdown in `ensemble`, and agreement metrics in `agreement`.
+ *
+ * The aggregate score is the mean of per-judge scores. This is a defensible default
+ * but not the only choice — one could argue median (robust to outlier judges) or
+ * majority vote (if scores are categorical). Mean is what most papers report; we
+ * provide the raw ensemble so downstream can recompute.
+ */
+export async function llmJudgeEnsemble(
+  options: LlmJudgeOptions,
+  judges: JudgeConfig[],
+  executorByName: (name: string) => ExecutorFn,
+  judgeRepeat = 1,
+): Promise<DimensionResult> {
+  if (judges.length === 0) {
+    throw new Error('llmJudgeEnsemble called with empty judges array');
+  }
+  if (judges.length === 1) {
+    // Degenerate case — fall through to non-ensemble path.
+    return llmJudgeRepeat({ ...options, executor: executorByName(judges[0].executor), model: judges[0].model }, judgeRepeat);
+  }
+
+  // Run all judges in parallel — they're independent. Each judge internally handles
+  // its judge-repeat sequence.
+  const perJudge = await Promise.all(
+    judges.map(async (jc) => {
+      const r = await llmJudgeRepeat(
+        { ...options, executor: executorByName(jc.executor), model: jc.model },
+        judgeRepeat,
+      );
+      const entry: EnsembleJudgeResult = {
+        judge: judgeId(jc),
+        score: r.score,
+        scoreStddev: r.scoreStddev,
+        scoreSamples: r.scoreSamples,
+        judgeFailureCount: r.judgeFailureCount,
+        reasoning: r.reasoning,
+        costUSD: r.judgeCostUSD,
+      };
+      return { entry, raw: r };
+    }),
+  );
+
+  const ensemble = perJudge.map((p) => p.entry);
+  const totalCost = perJudge.reduce((s, p) => s + (p.raw.judgeCostUSD || 0), 0);
+
+  // Aggregate score = mean of per-judge means (consensus).
+  const validScores = ensemble.map((e) => e.score).filter((s) => s > 0);
+  const consensusScore = validScores.length > 0
+    ? Number((validScores.reduce((a, b) => a + b, 0) / validScores.length).toFixed(2))
+    : 0;
+
+  // Per-judge agreement: only one sample point here (this single output), so Pearson
+  // is undefined and we report mean-abs-diff. Aggregate-level Pearson (across all
+  // samples in the run) is computed by the report-level aggregator, not here.
+  const judgeScoreMatrix = ensemble.map((e) => [e.score]);
+  const agreement = computeJudgeAgreement(judgeScoreMatrix);
+
+  // Pick the "spokesperson" reasoning from the first judge that produced one.
+  const spokesperson = ensemble.find((e) => e.reasoning);
+
+  return {
+    score: consensusScore,
+    reason: `consensus across ${judges.length} judges`,
+    reasoning: spokesperson?.reasoning,
+    judgeCostUSD: totalCost,
+    ensemble,
+    agreement,
   };
 }

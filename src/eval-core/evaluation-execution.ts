@@ -35,6 +35,10 @@ export interface ExecuteTasksOptions {
   existingResults?: Record<string, Record<string, VariantResult>>;
   /** Number of times to call the LLM judge per (sample × dimension); default 1. */
   judgeRepeat?: number;
+  /** Multi-judge ensemble configs (≥ 2 entries triggers ensemble mode). */
+  judgeModels?: import('../types.js').JudgeConfig[];
+  /** Pre-built executor map for ensemble: executor name → ExecutorFn. */
+  judgeExecutors?: Record<string, ExecutorFn>;
 }
 
 async function runWithConcurrency<T>(tasks: T[], concurrency: number, fn: (task: T) => Promise<void>): Promise<void> {
@@ -86,6 +90,8 @@ export async function executeTasks({
   retry = 0,
   existingResults,
   judgeRepeat = 1,
+  judgeModels,
+  judgeExecutors,
 }: ExecuteTasksOptions): Promise<{ results: Record<string, Record<string, VariantResult>>; totalCostUSD: number; skipped: number }> {
   const results: Record<string, Record<string, VariantResult>> = {};
   let started = 0;
@@ -194,6 +200,8 @@ export async function executeTasks({
             },
             samplesDir: dirname(resolve(samplesPath)),
             judgeRepeat,
+            judgeModels,
+            judgeExecutors,
           });
         } catch (err) {
           gradeResult = { compositeScore: 0 };

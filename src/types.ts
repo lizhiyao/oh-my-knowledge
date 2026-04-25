@@ -160,6 +160,50 @@ export interface EvaluationRequest {
   each?: boolean;
   /** --judge-repeat N; 每条 sample × dimension 用 LLM judge 跑 N 次, 输出 stddev. 默认 1 (单次). */
   judgeRepeat?: number;
+  /** --judge-models executor:model,executor:model,... — multi-judge ensemble.
+   *  当传入 ≥ 2 个 judge 时, 每条 sample × dimension 由所有 judge 各自打分, 输出
+   *  inter-judge agreement (Pearson correlation + mean absolute difference) — 反驳
+   *  "Claude judge Claude 同模态偏差" 的硬证据. 与 judgeRepeat 可组合. */
+  judgeModels?: JudgeConfig[];
+}
+
+/** Single judge configuration: which executor to call and which model alias to pass. */
+export interface JudgeConfig {
+  /** Executor name (claude / openai / gemini / anthropic-api / openai-api / shell command). */
+  executor: string;
+  /** Model alias passed to the executor (e.g. "opus", "haiku", "gpt-4o", "gemini-2.0-pro"). */
+  model: string;
+}
+
+/** Per-judge ensemble entry: which judge gave what score (mean over judge-repeat if N>1). */
+export interface EnsembleJudgeResult {
+  /** "executor:model" identifier — e.g. "claude:opus" or "openai:gpt-4o". */
+  judge: string;
+  /** Mean score from this judge over judge-repeat calls (or single score if repeat=1). */
+  score: number;
+  /** Stddev across judge-repeat calls for this judge (0 if repeat=1). */
+  scoreStddev?: number;
+  /** Raw scores per call (length = judgeRepeat). */
+  scoreSamples?: number[];
+  /** How many of judgeRepeat calls failed (returned score=0). */
+  judgeFailureCount?: number;
+  /** First-call CoT reasoning from this judge. */
+  reasoning?: string;
+  /** Cost in USD across all calls from this judge. */
+  costUSD?: number;
+}
+
+/** Inter-judge agreement metrics across an ensemble. Both metrics are pairwise-averaged. */
+export interface JudgeAgreement {
+  /** Pairwise Pearson correlation, averaged. 1 = judges fully agree on rank order; 0 = no
+   *  correlation; -1 = anti-correlated. Note: only defined when at least one judge has
+   *  variance (constant-score judges produce undefined Pearson). */
+  pearson?: number;
+  /** Pairwise mean absolute difference of scores. 0 = identical scores. On a 1-5 scale
+   *  values < 0.5 are tight agreement, > 1.5 is large disagreement. */
+  meanAbsDiff: number;
+  /** Number of judge pairs the metrics were computed over (= n*(n-1)/2). */
+  pairCount: number;
 }
 
 export type EvaluationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -304,6 +348,10 @@ export interface DimensionResult {
    * NOT "judge agreed perfectly". Always check this before trusting low stddev.
    */
   judgeFailureCount?: number;
+  /** Multi-judge ensemble: per-judge results when judgeModels.length >= 2. */
+  ensemble?: EnsembleJudgeResult[];
+  /** Multi-judge ensemble: inter-judge agreement metrics. */
+  agreement?: JudgeAgreement;
 }
 
 export interface LayeredScores {
@@ -326,6 +374,10 @@ export interface GradeResult {
   llmScoreSamples?: number[];
   /** When judge-repeat > 1 with single rubric: how many of the N judge calls failed. */
   llmScoreFailures?: number;
+  /** Multi-judge ensemble (single rubric): per-judge results when judgeModels.length >= 2. */
+  llmEnsemble?: EnsembleJudgeResult[];
+  /** Multi-judge ensemble (single rubric): inter-judge agreement metrics. */
+  llmAgreement?: JudgeAgreement;
   dimensions?: Record<string, DimensionResult>;
   judgeCostUSD?: number;
 }
@@ -366,6 +418,10 @@ export interface VariantResult {
   llmScoreSamples?: number[];
   /** Single-rubric mode + judgeRepeat > 1: how many of N calls failed. */
   llmScoreFailures?: number;
+  /** Single-rubric mode + judgeModels.length >= 2: per-judge ensemble results. */
+  llmEnsemble?: EnsembleJudgeResult[];
+  /** Single-rubric mode + judgeModels.length >= 2: inter-judge agreement metrics. */
+  llmAgreement?: JudgeAgreement;
   dimensions?: Record<string, DimensionResult>;
   factCheck?: { verifiedCount: number; totalCount: number; verifiedRate: number; claims: Array<{ type: string; value: string; verified: boolean; evidence?: string }> };
   outputPreview: string | null;
@@ -438,6 +494,10 @@ export interface ReportMeta {
   judgePromptHash?: string;
   /** Number of times each sample was judged. 1 = single judge (default). */
   judgeRepeat?: number;
+  /** Multi-judge ensemble configuration: ["claude:opus", "openai:gpt-4o", ...].
+   *  When length >= 2, every (sample × dimension) is scored by all judges and
+   *  agreement metrics are reported per-result. */
+  judgeModels?: string[];
   variantConfigs?: VariantConfig[];
   request?: EvaluationRequest;
   run?: EvaluationRun;
