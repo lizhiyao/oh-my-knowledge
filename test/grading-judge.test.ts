@@ -1,8 +1,8 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { llmJudgeRepeat, getJudgePromptHash } from '../src/grading/judge.js';
+import { llmJudgeRepeat, getJudgePromptHash, llmJudgeEnsemble, computeJudgeAgreement, judgeId } from '../src/grading/judge.js';
 import { grade } from '../src/grading/index.js';
-import type { ExecResult, ExecutorFn, Sample } from '../src/types.js';
+import type { ExecResult, ExecutorFn, JudgeConfig, Sample } from '../src/types.js';
 
 /**
  * Build an executor that returns a different score on each call, cycled from `scores`.
@@ -196,5 +196,195 @@ describe('grade with judgeRepeat', () => {
       assert.equal(dim.scoreSamples?.length, 2);
       assert.ok(dim.scoreStddev !== undefined && dim.scoreStddev >= 0);
     }
+  });
+});
+
+describe('judgeId', () => {
+  it('formats executor:model', () => {
+    assert.equal(judgeId({ executor: 'claude', model: 'opus' }), 'claude:opus');
+    assert.equal(judgeId({ executor: 'openai', model: 'gpt-4o' }), 'openai:gpt-4o');
+  });
+});
+
+describe('computeJudgeAgreement', () => {
+  it('two judges with identical scores → meanAbsDiff=0, pearson=1 (when variance present)', () => {
+    const a = computeJudgeAgreement([[3, 4, 5], [3, 4, 5]]);
+    assert.equal(a.meanAbsDiff, 0);
+    assert.equal(a.pearson, 1);
+    assert.equal(a.pairCount, 1);
+  });
+
+  it('two judges with different scores → meanAbsDiff > 0', () => {
+    const a = computeJudgeAgreement([[3, 4, 5], [4, 4, 4]]);
+    // |3-4| + |4-4| + |5-4| = 2, divided by 3 ≈ 0.667
+    assert.ok(Math.abs(a.meanAbsDiff - 0.667) < 0.01);
+    assert.equal(a.pairCount, 1);
+  });
+
+  it('three judges → 3 pairs averaged', () => {
+    const a = computeJudgeAgreement([[3, 4, 5], [3, 4, 5], [3, 4, 5]]);
+    assert.equal(a.pairCount, 3);
+    assert.equal(a.meanAbsDiff, 0);
+  });
+
+  it('constant scores → pearson undefined (returns omitted), MAD still computed', () => {
+    const a = computeJudgeAgreement([[3, 3, 3], [3, 3, 3]]);
+    assert.equal(a.pearson, undefined); // pearson is undefined when variance=0
+    assert.equal(a.meanAbsDiff, 0);
+  });
+
+  it('single judge (n<2) → pairCount=0', () => {
+    const a = computeJudgeAgreement([[3, 4, 5]]);
+    assert.equal(a.pairCount, 0);
+  });
+});
+
+describe('llmJudgeEnsemble', () => {
+  it('two judges agree perfectly → consensus = mean, MAD = 0', async () => {
+    const claude = makeStubJudgeExecutor([4]);
+    const openai = makeStubJudgeExecutor([4]);
+    const executors: Record<string, ExecutorFn> = { claude, openai };
+    const judges: JudgeConfig[] = [
+      { executor: 'claude', model: 'opus' },
+      { executor: 'openai', model: 'gpt-4o' },
+    ];
+    const r = await llmJudgeEnsemble(
+      { output: 'o', rubric: 'r', prompt: 'p', executor: claude, model: 'opus' },
+      judges,
+      (name) => executors[name],
+      1,
+    );
+    assert.equal(r.score, 4);
+    assert.equal(r.ensemble?.length, 2);
+    assert.equal(r.agreement?.meanAbsDiff, 0);
+    // Verify per-judge identifier format
+    assert.equal(r.ensemble![0].judge, 'claude:opus');
+    assert.equal(r.ensemble![1].judge, 'openai:gpt-4o');
+  });
+
+  it('two judges disagree (3 vs 5) → consensus = 4, MAD = 2', async () => {
+    const claude = makeStubJudgeExecutor([3]);
+    const openai = makeStubJudgeExecutor([5]);
+    const executors: Record<string, ExecutorFn> = { claude, openai };
+    const judges: JudgeConfig[] = [
+      { executor: 'claude', model: 'opus' },
+      { executor: 'openai', model: 'gpt-4o' },
+    ];
+    const r = await llmJudgeEnsemble(
+      { output: 'o', rubric: 'r', prompt: 'p', executor: claude, model: 'opus' },
+      judges,
+      (name) => executors[name],
+      1,
+    );
+    assert.equal(r.score, 4);  // (3+5)/2
+    assert.equal(r.agreement?.meanAbsDiff, 2);
+    assert.equal(r.ensemble![0].score, 3);
+    assert.equal(r.ensemble![1].score, 5);
+  });
+
+  it('ensemble + judge-repeat: each judge has its own scoreStddev', async () => {
+    const claude = makeStubJudgeExecutor([3, 4, 5]);  // mean 4, stddev 1
+    const openai = makeStubJudgeExecutor([4, 4, 4]);  // mean 4, stddev 0
+    const executors: Record<string, ExecutorFn> = { claude, openai };
+    const judges: JudgeConfig[] = [
+      { executor: 'claude', model: 'opus' },
+      { executor: 'openai', model: 'gpt-4o' },
+    ];
+    const r = await llmJudgeEnsemble(
+      { output: 'o', rubric: 'r', prompt: 'p', executor: claude, model: 'opus' },
+      judges,
+      (name) => executors[name],
+      3,
+    );
+    assert.equal(r.score, 4);  // both judges mean 4
+    assert.equal(r.ensemble![0].scoreStddev, 1);  // claude variable
+    assert.equal(r.ensemble![1].scoreStddev, 0);  // openai constant
+    assert.equal(r.agreement?.meanAbsDiff, 0);  // mean scores agree
+  });
+
+  it('single judge in array → falls back to llmJudgeRepeat (degenerate ensemble)', async () => {
+    const claude = makeStubJudgeExecutor([4]);
+    const executors: Record<string, ExecutorFn> = { claude };
+    const judges: JudgeConfig[] = [{ executor: 'claude', model: 'opus' }];
+    const r = await llmJudgeEnsemble(
+      { output: 'o', rubric: 'r', prompt: 'p', executor: claude, model: 'opus' },
+      judges,
+      (name) => executors[name],
+      1,
+    );
+    assert.equal(r.score, 4);
+    // Single judge falls through to non-ensemble path so no ensemble field
+    assert.equal(r.ensemble, undefined);
+    assert.equal(r.agreement, undefined);
+  });
+
+  it('ensemble cost = sum of all judge calls', async () => {
+    const claude = makeStubJudgeExecutor([4]);
+    const openai = makeStubJudgeExecutor([4]);
+    const executors: Record<string, ExecutorFn> = { claude, openai };
+    const judges: JudgeConfig[] = [
+      { executor: 'claude', model: 'opus' },
+      { executor: 'openai', model: 'gpt-4o' },
+    ];
+    const r = await llmJudgeEnsemble(
+      { output: 'o', rubric: 'r', prompt: 'p', executor: claude, model: 'opus' },
+      judges,
+      (name) => executors[name],
+      1,
+    );
+    // Each stub call costs 0.001, 2 judges × 1 repeat = 0.002
+    assert.ok(r.judgeCostUSD !== undefined && Math.abs(r.judgeCostUSD - 0.002) < 1e-9);
+  });
+});
+
+describe('grade with ensemble (judgeModels >= 2)', () => {
+  it('single rubric + ensemble → llmEnsemble + llmAgreement populated', async () => {
+    const claude = makeStubJudgeExecutor([3]);
+    const openai = makeStubJudgeExecutor([5]);
+    const executors: Record<string, ExecutorFn> = { claude, openai };
+    const sample: Sample = { sample_id: 's', prompt: 'p', rubric: 'r' };
+    const result = await grade({
+      output: 'o',
+      sample,
+      executor: claude,  // legacy single executor (still required by grade signature)
+      judgeModel: 'opus',
+      judgeModels: [
+        { executor: 'claude', model: 'opus' },
+        { executor: 'openai', model: 'gpt-4o' },
+      ],
+      judgeExecutors: executors,
+    });
+    assert.equal(result.llmScore, 4);  // consensus (3+5)/2
+    assert.equal(result.llmEnsemble?.length, 2);
+    assert.equal(result.llmAgreement?.meanAbsDiff, 2);
+  });
+
+  it('multi-dim + ensemble → each dim has its own ensemble/agreement', async () => {
+    // 2 dims × 2 judges = 4 calls
+    const claude = makeStubJudgeExecutor([4, 5]);  // dim1=4, dim2=5
+    const openai = makeStubJudgeExecutor([3, 4]);  // dim1=3, dim2=4
+    const executors: Record<string, ExecutorFn> = { claude, openai };
+    const sample: Sample = {
+      sample_id: 's', prompt: 'p',
+      dimensions: { correctness: 'r1', clarity: 'r2' },
+    };
+    const result = await grade({
+      output: 'o',
+      sample,
+      executor: claude,
+      judgeModel: 'opus',
+      judgeModels: [
+        { executor: 'claude', model: 'opus' },
+        { executor: 'openai', model: 'gpt-4o' },
+      ],
+      judgeExecutors: executors,
+    });
+    assert.ok(result.dimensions);
+    const correctness = result.dimensions!.correctness;
+    const clarity = result.dimensions!.clarity;
+    assert.equal(correctness.ensemble?.length, 2);
+    assert.equal(clarity.ensemble?.length, 2);
+    assert.equal(correctness.score, 3.5);  // (4+3)/2
+    assert.equal(clarity.score, 4.5);  // (5+4)/2
   });
 });

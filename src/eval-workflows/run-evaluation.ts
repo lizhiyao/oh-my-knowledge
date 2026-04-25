@@ -65,6 +65,9 @@ interface CommonEvaluationOptions {
   /** --judge-repeat N. 每条 sample × dimension 调 LLM judge N 次, 输出 stddev (judge 自一致性).
    *  默认 1 (单次). 用于量化 LLM judge 在该 rubric 上的稳定性 — stddev 高 = 评分噪声大. */
   judgeRepeat?: number;
+  /** --judge-models executor:model,executor:model,... — multi-judge ensemble. ≥ 2 个
+   *  judge 时每条 sample × dimension 由所有 judge 各自打分, 输出 inter-judge agreement. */
+  judgeModels?: import('../types.js').JudgeConfig[];
 }
 
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
@@ -152,6 +155,7 @@ export async function runEvaluation({
   repeat,
   each,
   judgeRepeat,
+  judgeModels,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
@@ -232,6 +236,7 @@ export async function runEvaluation({
     repeat,
     each,
     judgeRepeat,
+    judgeModels,
   });
 }
 
@@ -387,6 +392,7 @@ export async function runEachEvaluation({
   verbose = false,
   repeat,
   judgeRepeat,
+  judgeModels,
 }: RunEachEvaluationOptions): Promise<{ report: Report | DryRunEachReport; filePath: string | null }> {
   const skillEntries = discoverEachSkills(resolve(skillDir));
   if (skillEntries.length === 0) {
@@ -433,13 +439,14 @@ export async function runEachEvaluation({
     verbose,
     repeat,
     judgeRepeat,
+    judgeModels,
     runSingleEvaluation: async (options) => {
       // repeat > 1 时走 runMultiple 做 variance; each=true 标记让 meta.request 如实反映
       if (repeat && repeat > 1) {
-        const multi = await runMultiple({ ...options, repeat, each: true, judgeRepeat });
+        const multi = await runMultiple({ ...options, repeat, each: true, judgeRepeat, judgeModels });
         return { report: multi.report, filePath: multi.filePath };
       }
-      const result = await runEvaluation({ ...options, each: true, judgeRepeat });
+      const result = await runEvaluation({ ...options, each: true, judgeRepeat, judgeModels });
       return { report: result.report as Report, filePath: result.filePath };
     },
   });

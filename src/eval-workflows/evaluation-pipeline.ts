@@ -71,6 +71,7 @@ async function initializeEvaluationRunState({
   repeat,
   each,
   judgeRepeat,
+  judgeModels,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -93,6 +94,7 @@ async function initializeEvaluationRunState({
   repeat?: number;
   each?: boolean;
   judgeRepeat?: number;
+  judgeModels?: import('../types.js').JudgeConfig[];
 }): Promise<EvaluationRunState> {
   const request = buildEvaluationRequest({
     samplesPath,
@@ -114,6 +116,7 @@ async function initializeEvaluationRunState({
     repeat,
     each,
     judgeRepeat,
+    judgeModels,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
@@ -262,6 +265,8 @@ export interface EvaluationPipelineOptions {
   each?: boolean;
   /** 透传到 meta.request.judgeRepeat 与 grade()，每条 sample × dimension judge N 次 */
   judgeRepeat?: number;
+  /** Multi-judge ensemble configs (≥ 2 entries triggers ensemble mode). */
+  judgeModels?: import('../types.js').JudgeConfig[];
 }
 
 export async function executeEvaluationPipeline({
@@ -297,6 +302,7 @@ export async function executeEvaluationPipeline({
   repeat,
   each,
   judgeRepeat,
+  judgeModels,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -321,6 +327,7 @@ export async function executeEvaluationPipeline({
     repeat,
     each,
     judgeRepeat,
+    judgeModels,
   });
 
   try {
@@ -335,6 +342,22 @@ export async function executeEvaluationPipeline({
       const depResult = await preflightDependencies(skillContents, samples, cwd, requires, artifacts);
       if (!depResult.ok) {
         throw new Error(formatDependencyErrors(depResult.missing));
+      }
+    }
+
+    // Pre-build a per-executor map for ensemble judges. Each unique executor name
+    // gets one ExecutorFn, shared across all judges using that executor. The default
+    // judge's executor is also included so single-judge fallbacks have it available.
+    let judgeExecutors: Record<string, ExecutorFn> | undefined;
+    if (judgeModels && judgeModels.length >= 2) {
+      const { createExecutor } = await import('../executors/index.js');
+      judgeExecutors = {};
+      const seen = new Set<string>();
+      for (const jc of judgeModels) {
+        if (!seen.has(jc.executor)) {
+          seen.add(jc.executor);
+          judgeExecutors[jc.executor] = createExecutor(jc.executor);
+        }
       }
     }
 
@@ -354,6 +377,8 @@ export async function executeEvaluationPipeline({
       retry,
       existingResults,
       judgeRepeat,
+      judgeModels,
+      judgeExecutors,
     });
     if (skipped > 0 && onProgress) {
       onProgress({ phase: 'done', completed: tasks.length, total: tasks.length, sample_id: '', variant: '', skipped: true });

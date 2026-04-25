@@ -127,6 +127,9 @@ export function aggregateReport({
 
   const sampleHashes = Object.fromEntries(samples.map((s) => [s.sample_id, hashSample(s)]));
   const judgeRepeat = request?.judgeRepeat && request.judgeRepeat > 1 ? request.judgeRepeat : undefined;
+  const judgeModelsList = request?.judgeModels && request.judgeModels.length >= 2
+    ? request.judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
+    : undefined;
 
   return {
     id: runId,
@@ -145,6 +148,7 @@ export function aggregateReport({
       sampleHashes,
       ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash() }),
       ...(judgeRepeat ? { judgeRepeat } : {}),
+      ...(judgeModelsList ? { judgeModels: judgeModelsList } : {}),
       variantConfigs: artifacts.map((artifact) => buildVariantConfig(artifact)),
       request,
       run,
