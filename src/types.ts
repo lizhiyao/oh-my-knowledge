@@ -55,6 +55,17 @@ export interface Assertion {
   fn?: string;
   reference?: string;
   threshold?: number;
+  /** v0.21 Phase 5a — when true, the assertion's pass/fail is inverted. Works
+   *  with any type, including legacy `not_contains` (which becomes a redundant
+   *  but still supported double-negation). */
+  not?: boolean;
+  /** v0.21 Phase 5a — only used by type='assert-set'. 'any' = at least one
+   *  child must pass; 'all' = every child must pass. Children may be any
+   *  assertion type, including nested assert-sets. */
+  mode?: 'any' | 'all';
+  children?: Assertion[];
+  /** v0.21 Phase 5b — for rouge_n_min: which n-gram order (default 1). */
+  n?: number;
 }
 
 export interface Sample {
@@ -135,6 +146,20 @@ export interface EvalConfig {
   blind?: boolean;
   mcpConfig?: string;
   variants: EvalConfigVariant[];
+  /** v0.22 — hard budget caps. When any limit is hit during a run, remaining
+   *  tasks are aborted and the partial report is persisted. CLI flags
+   *  `--budget-usd` / `--budget-per-sample-usd` / `--budget-per-sample-ms`
+   *  override the config values. */
+  budget?: EvalBudget;
+}
+
+export interface EvalBudget {
+  /** Stop the run if cumulative (exec + judge) cost exceeds this many USD. */
+  totalUSD?: number;
+  /** Per-sample cost ceiling. Tasks exceeding this fail individually but the run continues. */
+  perSampleUSD?: number;
+  /** Per-sample wall-clock latency ceiling in milliseconds. */
+  perSampleMs?: number;
 }
 
 export interface EvaluationRequest {
@@ -158,6 +183,63 @@ export interface EvaluationRequest {
   repeat?: number;
   /** --each; 默认不传(=false),true 表示 each mode (每个 skill 独立对比 baseline) */
   each?: boolean;
+  /** --judge-repeat N; 每条 sample × dimension 用 LLM judge 跑 N 次, 输出 stddev. 默认 1 (单次). */
+  judgeRepeat?: number;
+  /** --judge-models executor:model,executor:model,... — multi-judge ensemble.
+   *  当传入 ≥ 2 个 judge 时, 每条 sample × dimension 由所有 judge 各自打分, 输出
+   *  inter-judge agreement (Pearson correlation + mean absolute difference) — 反驳
+   *  "Claude judge Claude 同模态偏差" 的硬证据. 与 judgeRepeat 可组合. */
+  judgeModels?: JudgeConfig[];
+  /** --bootstrap; true 时 aggregateReport 加跑 bootstrap mean/diff CI, 写入 VariantSummary.
+   *  与原 t-interval 共存 (ReportMeta.evaluationFramework='both'), renderer 优先 bootstrap. */
+  bootstrap?: boolean;
+  /** --bootstrap-samples N; bootstrap 重采样次数, 默认 1000. > 10000 时 stderr 警告. */
+  bootstrapSamples?: number;
+  /** v0.21 Phase 3a length-debias toggle. Default true (judge prompt v3-cot-length).
+   *  CLI flag --no-debias-length flips to false (legacy v2-cot prompt). The active
+   *  value is reflected in ReportMeta.judgePromptHash and ReportMeta.debiasMode. */
+  lengthDebias?: boolean;
+  /** v0.22 — hard budget caps. See EvalBudget. */
+  budget?: EvalBudget;
+}
+
+/** Single judge configuration: which executor to call and which model alias to pass. */
+export interface JudgeConfig {
+  /** Executor name (claude / openai / gemini / anthropic-api / openai-api / shell command). */
+  executor: string;
+  /** Model alias passed to the executor (e.g. "opus", "haiku", "gpt-4o", "gemini-2.0-pro"). */
+  model: string;
+}
+
+/** Per-judge ensemble entry: which judge gave what score (mean over judge-repeat if N>1). */
+export interface EnsembleJudgeResult {
+  /** "executor:model" identifier — e.g. "claude:opus" or "openai:gpt-4o". */
+  judge: string;
+  /** Mean score from this judge over judge-repeat calls (or single score if repeat=1). */
+  score: number;
+  /** Stddev across judge-repeat calls for this judge (0 if repeat=1). */
+  scoreStddev?: number;
+  /** Raw scores per call (length = judgeRepeat). */
+  scoreSamples?: number[];
+  /** How many of judgeRepeat calls failed (returned score=0). */
+  judgeFailureCount?: number;
+  /** First-call CoT reasoning from this judge. */
+  reasoning?: string;
+  /** Cost in USD across all calls from this judge. */
+  costUSD?: number;
+}
+
+/** Inter-judge agreement metrics across an ensemble. Both metrics are pairwise-averaged. */
+export interface JudgeAgreement {
+  /** Pairwise Pearson correlation, averaged. 1 = judges fully agree on rank order; 0 = no
+   *  correlation; -1 = anti-correlated. Note: only defined when at least one judge has
+   *  variance (constant-score judges produce undefined Pearson). */
+  pearson?: number;
+  /** Pairwise mean absolute difference of scores. 0 = identical scores. On a 1-5 scale
+   *  values < 0.5 are tight agreement, > 1.5 is large disagreement. */
+  meanAbsDiff: number;
+  /** Number of judge pairs the metrics were computed over (= n*(n-1)/2). */
+  pairCount: number;
 }
 
 export type EvaluationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
@@ -290,6 +372,22 @@ export interface DimensionResult {
   score: number;
   reason: string;
   judgeCostUSD?: number;
+  /** When judge-repeat > 1: scores from each judge run (length = repeat count). */
+  scoreSamples?: number[];
+  /** Standard deviation across scoreSamples (0 when repeat = 1). */
+  scoreStddev?: number;
+  /** Chain-of-thought reasoning produced by the judge before the final score. */
+  reasoning?: string;
+  /**
+   * Number of judge calls that failed (returned score=0 / non-JSON / executor error).
+   * Stddev = 0 + judgeFailureCount > 0 means "looks consistent but actually had failures",
+   * NOT "judge agreed perfectly". Always check this before trusting low stddev.
+   */
+  judgeFailureCount?: number;
+  /** Multi-judge ensemble: per-judge results when judgeModels.length >= 2. */
+  ensemble?: EnsembleJudgeResult[];
+  /** Multi-judge ensemble: inter-judge agreement metrics. */
+  agreement?: JudgeAgreement;
 }
 
 export interface LayeredScores {
@@ -304,6 +402,18 @@ export interface GradeResult {
   assertions?: AssertionResults;
   llmScore?: number;
   llmReason?: string;
+  /** Single-rubric mode: judge's chain-of-thought reasoning (first call when judgeRepeat > 1). */
+  llmReasoning?: string;
+  /** When judge-repeat > 1 with single rubric: stddev across N judge calls. */
+  llmScoreStddev?: number;
+  /** When judge-repeat > 1 with single rubric: raw scores from each judge call. */
+  llmScoreSamples?: number[];
+  /** When judge-repeat > 1 with single rubric: how many of the N judge calls failed. */
+  llmScoreFailures?: number;
+  /** Multi-judge ensemble (single rubric): per-judge results when judgeModels.length >= 2. */
+  llmEnsemble?: EnsembleJudgeResult[];
+  /** Multi-judge ensemble (single rubric): inter-judge agreement metrics. */
+  llmAgreement?: JudgeAgreement;
   dimensions?: Record<string, DimensionResult>;
   judgeCostUSD?: number;
 }
@@ -336,6 +446,18 @@ export interface VariantResult {
   assertions?: AssertionResults;
   llmScore?: number;
   llmReason?: string;
+  /** Single-rubric mode: judge's chain-of-thought reasoning (first call when judgeRepeat > 1). */
+  llmReasoning?: string;
+  /** Single-rubric mode + judgeRepeat > 1: stddev across N judge calls. */
+  llmScoreStddev?: number;
+  /** Single-rubric mode + judgeRepeat > 1: raw scores from each call. */
+  llmScoreSamples?: number[];
+  /** Single-rubric mode + judgeRepeat > 1: how many of N calls failed. */
+  llmScoreFailures?: number;
+  /** Single-rubric mode + judgeModels.length >= 2: per-judge ensemble results. */
+  llmEnsemble?: EnsembleJudgeResult[];
+  /** Single-rubric mode + judgeModels.length >= 2: inter-judge agreement metrics. */
+  llmAgreement?: JudgeAgreement;
   dimensions?: Record<string, DimensionResult>;
   factCheck?: { verifiedCount: number; totalCount: number; verifiedRate: number; claims: Array<{ type: string; value: string; verified: boolean; evidence?: string }> };
   outputPreview: string | null;
@@ -381,6 +503,27 @@ export interface VariantSummary {
   avgLlmScore?: number;
   minLlmScore?: number;
   maxLlmScore?: number;
+  /** Aggregate-level multi-judge agreement across this variant's samples (single rubric mode).
+   *  sampleCount = how many samples had complete ensemble data. */
+  judgeAgreement?: JudgeAgreement & { sampleCount: number };
+  /** List of judge identifiers ("executor:model") seen in this variant's ensemble data. */
+  judgeModels?: string[];
+  /** Bootstrap CI on this variant's compositeScore mean (when --bootstrap enabled).
+   *  Distribution-free; preferred over t-interval for ordinal LLM scores. */
+  bootstrapCI?: { low: number; high: number; estimate: number; samples: number };
+}
+
+/**
+ * Pairwise variant comparison stats — used when comparing treatment vs control.
+ * Independent from per-variant `bootstrapCI` (which is on each variant alone).
+ */
+export interface VariantPairComparison {
+  /** Control variant name (the subtrahend). */
+  control: string;
+  /** Treatment variant name (the minuend). */
+  treatment: string;
+  /** Bootstrap CI on (treatment - control) mean diff. `significant` = 0 outside CI. */
+  diffBootstrapCI?: { low: number; high: number; estimate: number; samples: number; significant: boolean };
 }
 
 export interface GitInfo {
@@ -388,6 +531,34 @@ export interface GitInfo {
   commitShort: string;
   branch: string;
   dirty: boolean;
+}
+
+/** Persisted form of agreement metrics between gold dataset and the LLM judge.
+ *  Lives on ReportMeta so the renderer can show a "人工锚点" section without
+ *  re-loading the gold dataset. */
+export interface ReportHumanAgreement {
+  /** Krippendorff α (interval weights) — primary metric. */
+  alpha: number;
+  /** Bootstrap 95% CI on α. */
+  alphaCI: { low: number; high: number; estimate: number; samples: number };
+  /** Quadratic-weighted κ — secondary metric. */
+  weightedKappa: number;
+  /** Pearson r — tertiary, rank-order only. */
+  pearson: number;
+  /** Number of (gold, judge) pairs that contributed. */
+  sampleCount: number;
+  /** Variant whose judge scores were compared. */
+  variant: string;
+  /** Identifier of the gold annotator (model id, person, or team handle). */
+  goldAnnotator: string;
+  /** Free-form version string from the gold metadata. */
+  goldVersion: string;
+  /** Set when annotator id overlapped with judge model id. */
+  contaminationWarning?: string;
+  /** Sample_ids in the gold set that were absent from the report. */
+  missingCount: number;
+  /** Sample_ids present in the report but with no judge score (assertion-only etc). */
+  unscoredCount: number;
 }
 
 export interface ReportMeta {
@@ -402,6 +573,38 @@ export interface ReportMeta {
   cliVersion: string;
   nodeVersion: string;
   artifactHashes: Record<string, string>;
+  /** SHA256-12 of every sample's content (sample_id → hash). Same hash = same sample. */
+  sampleHashes?: Record<string, string>;
+  /** SHA256-12 of the LLM judge prompt template. Different hash = judge changed semantics. */
+  judgePromptHash?: string;
+  /** Number of times each sample was judged. 1 = single judge (default). */
+  judgeRepeat?: number;
+  /** Multi-judge ensemble configuration: ["claude:opus", "openai:gpt-4o", ...].
+   *  When length >= 2, every (sample × dimension) is scored by all judges and
+   *  agreement metrics are reported per-result. */
+  judgeModels?: string[];
+  /** Which CI framework was used for this report: 't-test' (legacy default),
+   *  'bootstrap' (--bootstrap), or 'both' (some summaries have both). Reports
+   *  with mismatched frameworks shouldn't be compared blindly on CI bounds. */
+  evaluationFramework?: 't-test' | 'bootstrap' | 'both';
+  /** Pairwise comparisons (treatment vs control) — populated when --bootstrap and
+   *  multi-variant. Length = (variants.length - 1). */
+  pairComparisons?: VariantPairComparison[];
+  /** v0.21 Phase 3 — which judge-bias debias modes were active for this run.
+   *  Values: 'length' (substance-not-length prompt), 'position' (random ensemble
+   *  order). Empty / absent means legacy default (no debias). The renderer shows
+   *  this so readers can tell apples from oranges across reports. */
+  debiasMode?: Array<'length' | 'position'>;
+  /** v0.22 — set to true when the run was aborted by a budget tracker. The
+   *  report is partial: only tasks completed before the abort are present. */
+  budgetExhausted?: boolean;
+  /** v0.22 — budget caps that were active for this run, copied from request.budget
+   *  for ease of reading without dereferencing request. */
+  budget?: EvalBudget;
+  /** Human-gold agreement when --gold-dir was passed at run time. Compares the
+   *  judge's llmScore against the gold annotations on matching sample_ids. See
+   *  src/grading/human-gold.ts for the metric definitions. */
+  humanAgreement?: ReportHumanAgreement;
   variantConfigs?: VariantConfig[];
   request?: EvaluationRequest;
   run?: EvaluationRun;
@@ -584,6 +787,28 @@ export interface VarianceData {
   runs: number;
   perVariant: Record<string, VariantVariance>;
   comparisons: VarianceComparison[];
+  /** v0.21 Phase 4 — saturation curve data. Populated only when repeat ≥ 2.
+   *  Per-variant cumulative score arrays at each repeat checkpoint, plus the
+   *  saturation verdict (only computed when repeat ≥ 5). */
+  saturation?: SaturationData;
+}
+
+/** Per-variant saturation curve data + (optionally) verdict. */
+export interface SaturationData {
+  /** Cumulative checkpoint counts (sample-cumulative across runs). */
+  checkpointSampleCounts: number[];
+  /** Per-variant trace: at each checkpoint, mean and CI bounds.
+   *  perVariant[variant][i] = { n, mean, ciLow, ciHigh } at checkpoint i. */
+  perVariant: Record<string, Array<{ n: number; mean: number; ciLow: number; ciHigh: number }>>;
+  /** Saturation verdict per variant. Only present when repeat ≥ 5. */
+  verdicts?: Record<string, {
+    saturated: boolean;
+    atN: number | null;
+    confidence: 'high' | 'medium' | 'low';
+    method: 'slope' | 'bootstrap-ci-width' | 'plateau-height';
+    threshold: number;
+    reason: string;
+  }>;
 }
 
 export interface McpFetchTool {

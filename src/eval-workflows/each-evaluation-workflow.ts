@@ -23,6 +23,12 @@ interface RunSingleEvaluationOptions {
   skipPreflight: boolean;
   mcpConfig?: string;
   verbose: boolean;
+  /** Forwarded to grade(); each sample × dimension is judged N times. Default 1. */
+  judgeRepeat?: number;
+  /** Forwarded to pipeline; ≥ 2 entries triggers multi-judge ensemble mode. */
+  judgeModels?: import('../types.js').JudgeConfig[];
+  /** v0.21 Phase 3a length-debias toggle. Default true. */
+  lengthDebias?: boolean;
 }
 
 export interface EachSkillResult {
@@ -192,6 +198,9 @@ export async function executeEachEvaluationRuns({
   mcpConfig,
   verbose = false,
   repeat,
+  judgeRepeat,
+  judgeModels,
+  lengthDebias,
   runSingleEvaluation,
 }: {
   skillDir: string;
@@ -215,6 +224,9 @@ export async function executeEachEvaluationRuns({
   mcpConfig?: string;
   verbose?: boolean;
   repeat?: number;
+  judgeRepeat?: number;
+  judgeModels?: import('../types.js').JudgeConfig[];
+  lengthDebias?: boolean;
   runSingleEvaluation: (options: RunSingleEvaluationOptions) => Promise<{ report: Report; filePath: string | null }>;
 }): Promise<{ report: Report; filePath: string | null }> {
   const skillResults: EachSkillResult[] = [];
@@ -250,6 +262,9 @@ export async function executeEachEvaluationRuns({
       skipPreflight: skipPreflight || i > 0,
       mcpConfig,
       verbose,
+      judgeRepeat,
+      judgeModels,
+      lengthDebias,
     });
 
     skillResults.push({

@@ -191,3 +191,105 @@ describe('configVariantsToSpecs', () => {
     assert.equal(specs[0].expr, 'git:my-skill');
   });
 });
+
+describe('loadEvalConfig — budget (v0.22)', () => {
+  const minimalVariants = `
+variants:
+  - name: v1
+    role: control
+    artifact: ./v1.md
+`;
+
+  it('parses budget block with all three caps', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+${minimalVariants}
+budget:
+  totalUSD: 5
+  perSampleUSD: 0.5
+  perSampleMs: 30000
+`.trim());
+      const cfg = loadEvalConfig(path);
+      assert.equal(cfg.budget?.totalUSD, 5);
+      assert.equal(cfg.budget?.perSampleUSD, 0.5);
+      assert.equal(cfg.budget?.perSampleMs, 30000);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('absent budget block stays undefined', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}`);
+      const cfg = loadEvalConfig(path);
+      assert.equal(cfg.budget, undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects negative budget values', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+${minimalVariants}
+budget:
+  totalUSD: -1
+`.trim());
+      assert.throws(() => loadEvalConfig(path), /totalUSD/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects non-numeric budget values', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+${minimalVariants}
+budget:
+  totalUSD: "five"
+`.trim());
+      assert.throws(() => loadEvalConfig(path), /totalUSD/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects non-object budget value', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+${minimalVariants}
+budget: 5
+`.trim());
+      assert.throws(() => loadEvalConfig(path), /budget 必须是对象/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('partial budget (only totalUSD) parses cleanly', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+${minimalVariants}
+budget:
+  totalUSD: 1.5
+`.trim());
+      const cfg = loadEvalConfig(path);
+      assert.equal(cfg.budget?.totalUSD, 1.5);
+      assert.equal(cfg.budget?.perSampleUSD, undefined);
+      assert.equal(cfg.budget?.perSampleMs, undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

@@ -296,4 +296,63 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('评测报告'));
     assert.ok(html.includes('质量'));
   });
+
+  it('renders multi-judge ensemble agreement when summary has judgeAgreement', () => {
+    const ensembleReport = JSON.parse(JSON.stringify(SAMPLE_REPORT));
+    ensembleReport.meta.judgeModels = ['claude:opus', 'openai:gpt-4o'];
+    ensembleReport.meta.judgeRepeat = 3;
+    ensembleReport.meta.judgePromptHash = 'abc123def456';
+    ensembleReport.summary.v1.judgeAgreement = { pearson: 0.85, meanAbsDiff: 0.6, pairCount: 1, sampleCount: 50 };
+    ensembleReport.summary.v1.judgeModels = ['claude:opus', 'openai:gpt-4o'];
+    const html = renderRunDetail(ensembleReport);
+    // Meta tags surface the judge ensemble + reproducibility metadata
+    assert.ok(html.includes('claude:opus'), 'should mention claude:opus');
+    assert.ok(html.includes('openai:gpt-4o'), 'should mention openai:gpt-4o');
+    assert.ok(html.includes('abc123def456'), 'should show prompt hash');
+    // Agreement table renders pearson + MAD numbers
+    assert.ok(html.includes('0.85'), 'should show pearson value');
+    assert.ok(html.includes('0.6'), 'should show MAD value');
+  });
+
+  it('renders bootstrap pairwise diff section when meta.pairComparisons present', () => {
+    const bsReport = JSON.parse(JSON.stringify(SAMPLE_REPORT));
+    bsReport.meta.evaluationFramework = 'both';
+    bsReport.meta.pairComparisons = [
+      {
+        control: 'v1',
+        treatment: 'v2',
+        diffBootstrapCI: { low: 0.2, high: 0.8, estimate: 0.5, samples: 1000, significant: true },
+      },
+    ];
+    const html = renderRunDetail(bsReport);
+    // Section heading visible (zh by default)
+    assert.ok(html.includes('配对对比') || html.includes('Pairwise comparison'), 'should render pairwise heading');
+    // Diff CI numbers
+    assert.ok(html.includes('0.5'), 'should show diff estimate 0.5');
+    assert.ok(html.includes('[0.2, 0.8]'), 'should show CI bracket');
+    // Significance label
+    assert.ok(html.includes('显著差异') || html.includes('significant'), 'should label significance');
+    // Framework meta tag
+    assert.ok(html.includes('统计框架') || html.includes('CI framework'), 'should show framework meta tag');
+  });
+
+  it('renders single-rubric judge stddev / failures / reasoning when ensemble data present on result', () => {
+    const stabilityReport = JSON.parse(JSON.stringify(SAMPLE_REPORT));
+    stabilityReport.results[0].variants.v1.llmScoreSamples = [3, 4, 5];
+    stabilityReport.results[0].variants.v1.llmScoreStddev = 1;
+    stabilityReport.results[0].variants.v1.llmScoreFailures = 0;
+    stabilityReport.results[0].variants.v1.llmReasoning = 'Stub CoT reasoning here';
+    stabilityReport.results[0].variants.v1.llmEnsemble = [
+      { judge: 'claude:opus', score: 4 },
+      { judge: 'openai:gpt-4o', score: 5 },
+    ];
+    stabilityReport.results[0].variants.v1.llmAgreement = { pearson: undefined, meanAbsDiff: 1, pairCount: 1 };
+    const html = renderRunDetail(stabilityReport);
+    // stddev tag visible
+    assert.ok(html.includes('±1'), 'should show stddev tag');
+    // ensemble rows visible
+    assert.ok(html.includes('claude:opus'), 'should show judge identifier in ensemble block');
+    // reasoning collapsible
+    assert.ok(html.includes('Stub CoT reasoning here'), 'should embed reasoning text');
+  });
 });

@@ -70,6 +70,12 @@ async function initializeEvaluationRunState({
   persistJob,
   repeat,
   each,
+  judgeRepeat,
+  judgeModels,
+  bootstrap,
+  bootstrapSamples,
+  lengthDebias,
+  budget,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -91,6 +97,12 @@ async function initializeEvaluationRunState({
   persistJob?: boolean;
   repeat?: number;
   each?: boolean;
+  judgeRepeat?: number;
+  judgeModels?: import('../types.js').JudgeConfig[];
+  bootstrap?: boolean;
+  bootstrapSamples?: number;
+  lengthDebias?: boolean;
+  budget?: import('../types.js').EvalBudget;
 }): Promise<EvaluationRunState> {
   const request = buildEvaluationRequest({
     samplesPath,
@@ -111,6 +123,12 @@ async function initializeEvaluationRunState({
     tags,
     repeat,
     each,
+    judgeRepeat,
+    judgeModels,
+    bootstrap,
+    bootstrapSamples,
+    lengthDebias,
+    budget,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
@@ -257,6 +275,18 @@ export interface EvaluationPipelineOptions {
   repeat?: number;
   /** 透传到 meta.request.each */
   each?: boolean;
+  /** 透传到 meta.request.judgeRepeat 与 grade()，每条 sample × dimension judge N 次 */
+  judgeRepeat?: number;
+  /** Multi-judge ensemble configs (≥ 2 entries triggers ensemble mode). */
+  judgeModels?: import('../types.js').JudgeConfig[];
+  /** --bootstrap. */
+  bootstrap?: boolean;
+  /** --bootstrap-samples N. Default 1000. */
+  bootstrapSamples?: number;
+  /** v0.21 length-debias toggle. Default true; --no-debias-length flips to false. */
+  lengthDebias?: boolean;
+  /** v0.22 — hard budget caps. */
+  budget?: import('../types.js').EvalBudget;
 }
 
 export async function executeEvaluationPipeline({
@@ -291,6 +321,12 @@ export async function executeEvaluationPipeline({
   layeredStats = false,
   repeat,
   each,
+  judgeRepeat,
+  judgeModels,
+  bootstrap,
+  bootstrapSamples,
+  lengthDebias = true,
+  budget,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -314,6 +350,12 @@ export async function executeEvaluationPipeline({
     persistJob,
     repeat,
     each,
+    judgeRepeat,
+    judgeModels,
+    bootstrap,
+    bootstrapSamples,
+    lengthDebias,
+    budget,
   });
 
   try {
@@ -331,7 +373,23 @@ export async function executeEvaluationPipeline({
       }
     }
 
-    const { results, totalCostUSD, skipped } = await executeTasks({
+    // Pre-build a per-executor map for ensemble judges. Each unique executor name
+    // gets one ExecutorFn, shared across all judges using that executor. The default
+    // judge's executor is also included so single-judge fallbacks have it available.
+    let judgeExecutors: Record<string, ExecutorFn> | undefined;
+    if (judgeModels && judgeModels.length >= 2) {
+      const { createExecutor } = await import('../executors/index.js');
+      judgeExecutors = {};
+      const seen = new Set<string>();
+      for (const jc of judgeModels) {
+        if (!seen.has(jc.executor)) {
+          seen.add(jc.executor);
+          judgeExecutors[jc.executor] = createExecutor(jc.executor);
+        }
+      }
+    }
+
+    const { results, totalCostUSD, skipped, budgetExhausted } = await executeTasks({
       tasks,
       executor,
       judgeExecutor,
@@ -346,6 +404,11 @@ export async function executeEvaluationPipeline({
       onProgress,
       retry,
       existingResults,
+      judgeRepeat,
+      judgeModels,
+      judgeExecutors,
+      lengthDebias,
+      budget,
     });
     if (skipped > 0 && onProgress) {
       onProgress({ phase: 'done', completed: tasks.length, total: tasks.length, sample_id: '', variant: '', skipped: true });
@@ -376,6 +439,12 @@ export async function executeEvaluationPipeline({
       blind,
       samplesPath,
     });
+    if (budgetExhausted) {
+      report.meta.budgetExhausted = true;
+    }
+    if (budget) {
+      report.meta.budget = budget;
+    }
     const filePath = persistReport(report, outputDir);
     await persistSuccessfulJob(runState, job);
     return { report, filePath };

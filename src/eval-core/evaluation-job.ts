@@ -1,4 +1,4 @@
-import type { Artifact, EvaluationErrorCategory, EvaluationJob, EvaluationRequest, EvaluationRun } from '../types.js';
+import type { Artifact, EvaluationErrorCategory, EvaluationJob, EvaluationRequest, EvaluationRun, JudgeConfig } from '../types.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -23,6 +23,12 @@ export function buildEvaluationRequest({
   tags,
   repeat,
   each,
+  judgeRepeat,
+  judgeModels,
+  bootstrap,
+  bootstrapSamples,
+  lengthDebias,
+  budget,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -42,6 +48,12 @@ export function buildEvaluationRequest({
   tags?: string[];
   repeat?: number;
   each?: boolean;
+  judgeRepeat?: number;
+  judgeModels?: JudgeConfig[];
+  bootstrap?: boolean;
+  bootstrapSamples?: number;
+  lengthDebias?: boolean;
+  budget?: import('../types.js').EvalBudget;
 }): EvaluationRequest {
   return {
     samplesPath,
@@ -62,6 +74,12 @@ export function buildEvaluationRequest({
     tags,
     repeat,
     each,
+    judgeRepeat,
+    judgeModels,
+    bootstrap,
+    bootstrapSamples,
+    lengthDebias,
+    budget,
   };
 }
 

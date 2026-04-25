@@ -42,6 +42,18 @@ interface RunConfig {
   retry?: number;
   resume?: string;
   layeredStats?: boolean;
+  /** --judge-repeat N. Calls LLM judge N times per (sample × dimension). Default 1. */
+  judgeRepeat?: number;
+  /** --judge-models executor:model,executor:model,... — multi-judge ensemble (≥ 2 entries). */
+  judgeModels?: import('./types.js').JudgeConfig[];
+  /** --bootstrap. Adds bootstrap CI to summary (per-variant mean + pairwise diff). */
+  bootstrap?: boolean;
+  /** --bootstrap-samples N. Bootstrap resamples count, default 1000. */
+  bootstrapSamples?: number;
+  /** v0.21 Phase 3a length-debias toggle. Default true; --no-debias-length sets false. */
+  lengthDebias?: boolean;
+  /** v0.22 — hard budget caps from CLI or config. */
+  budget?: import('./types.js').EvalBudget;
   onProgress?: ProgressCallback | null;
 }
 
@@ -310,6 +322,7 @@ function parseRunConfig(
       resume,
       blind,
       layeredStats,
+      budget: evalConfig?.budget,
     },
   };
 }
@@ -359,6 +372,22 @@ Options for "bench run":
   --concurrency <n>      Number of parallel tasks (default: 1)
   --timeout <seconds>    Executor timeout per task in seconds (default: 120)
   --repeat <n>           Run evaluation N times for variance analysis (default: 1)
+  --judge-repeat <n>     Call LLM judge N times per (sample × dimension) for self-
+                         consistency (default: 1). High stddev across runs = the
+                         judge is unstable on this rubric and the score is noisy.
+  --judge-models <list>  Multi-judge ensemble. Comma-separated executor:model pairs,
+                         e.g. claude:opus,openai:gpt-4o,gemini:pro. Each judge scores
+                         every (sample × dimension); report includes per-judge break-
+                         down + Pearson/MAD inter-judge agreement. Refutes "Claude
+                         judge Claude same-modality bias" critique. Combines with
+                         --judge-repeat. Cost ~ N_judges × N_repeat × N_samples.
+  --bootstrap            Compute bootstrap confidence intervals (distribution-free,
+                         preferred over t-interval for ordinal LLM scores). Adds
+                         per-variant CI on the mean + pairwise CI on treatment-vs-
+                         control difference (significant=0 outside CI). Reports both
+                         t-interval and bootstrap so old tooling still works.
+  --bootstrap-samples <n>  Number of bootstrap resamples (default 1000). N>10000
+                         triggers a stderr warning about runtime cost.
   --retry <n>            Retry failed tasks up to N times with exponential backoff (default: 0)
   --resume <report-id>   Resume from a previous report, skipping completed tasks
   --executor <name>      Executor: claude, openai, gemini, anthropic-api, openai-api,
@@ -513,8 +542,26 @@ async function main(): Promise<void> {
     case 'diff':
       await handleDiff(rest);
       break;
+    case 'gold':
+      await handleGold(rest);
+      break;
+    case 'debias-validate':
+      await handleDebiasValidate(rest);
+      break;
+    case 'saturation':
+      await handleSaturation(rest);
+      break;
+    case 'verdict':
+      await handleVerdict(rest);
+      break;
+    case 'diagnose':
+      await handleDiagnose(rest);
+      break;
+    case 'failures':
+      await handleFailures(rest);
+      break;
     default:
-      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", or "evolve".`);
+      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", "evolve", "diff", "gold", "debias-validate", "saturation", "verdict", "diagnose", or "failures".`);
       process.exit(1);
   }
 }
@@ -585,6 +632,15 @@ async function handleRun(argv: string[]): Promise<void> {
   const { values, config } = parseRunConfig(argv, {
     blind: { type: 'boolean', default: false },
     repeat: { type: 'string', default: '1' },
+    'judge-repeat': { type: 'string', default: '1' },
+    'judge-models': { type: 'string' },
+    bootstrap: { type: 'boolean', default: false },
+    'bootstrap-samples': { type: 'string', default: '1000' },
+    'gold-dir': { type: 'string' },
+    'no-debias-length': { type: 'boolean', default: false },
+    'budget-usd': { type: 'string' },
+    'budget-per-sample-usd': { type: 'string' },
+    'budget-per-sample-ms': { type: 'string' },
   });
 
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
@@ -600,6 +656,74 @@ async function handleRun(argv: string[]): Promise<void> {
     process.stderr.write(`⚠ --repeat "${repeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次评测执行\n`);
   }
   const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
+
+  // --judge-repeat 同样的诚实校验:非 ≥1 整数时钳到 1
+  const judgeRepeatRaw = values['judge-repeat'] as string | undefined;
+  const parsedJudgeRepeat = judgeRepeatRaw !== undefined ? Number(judgeRepeatRaw) : 1;
+  if (judgeRepeatRaw !== undefined && (!Number.isFinite(parsedJudgeRepeat) || parsedJudgeRepeat < 1)) {
+    process.stderr.write(`⚠ --judge-repeat "${judgeRepeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次 judge 执行\n`);
+  }
+  const judgeRepeatCount: number = Math.max(1, Math.floor(parsedJudgeRepeat) || 1);
+  if (judgeRepeatCount > 1) config.judgeRepeat = judgeRepeatCount;
+
+  // --judge-models executor:model,executor:model,... -> JudgeConfig[]
+  // 至少 2 个才进 ensemble 模式,1 个等同于 --judge-model
+  const judgeModelsRaw = values['judge-models'] as string | undefined;
+  if (judgeModelsRaw) {
+    const parts = judgeModelsRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    const judges = parts.map((p) => {
+      const [executor, ...modelParts] = p.split(':');
+      const model = modelParts.join(':');
+      if (!executor || !model) {
+        throw new Error(`--judge-models 格式错误: "${p}",应为 "executor:model" (如 claude:opus)`);
+      }
+      return { executor, model };
+    });
+    if (judges.length >= 2) {
+      config.judgeModels = judges;
+    } else if (judges.length === 1) {
+      // 单 judge 不走 ensemble,但允许这样写,等同于 --judge-model + --executor
+      process.stderr.write(`ℹ --judge-models 只指定 1 个 judge (${judges[0].executor}:${judges[0].model}),不触发 ensemble。如需 ensemble 至少给 2 个。\n`);
+    }
+  }
+
+  // --budget-usd / --budget-per-sample-usd / --budget-per-sample-ms:
+  // v0.22 hard budget caps. CLI flags override config-file values. When the
+  // total-USD cap is exceeded mid-run, remaining tasks are skipped and a
+  // partial report is persisted with meta.budgetExhausted=true.
+  const budgetUSD = values['budget-usd'] != null ? Number(values['budget-usd']) : undefined;
+  const budgetPerSampleUSD = values['budget-per-sample-usd'] != null ? Number(values['budget-per-sample-usd']) : undefined;
+  const budgetPerSampleMs = values['budget-per-sample-ms'] != null ? Number(values['budget-per-sample-ms']) : undefined;
+  if (budgetUSD !== undefined || budgetPerSampleUSD !== undefined || budgetPerSampleMs !== undefined) {
+    config.budget = {
+      ...(budgetUSD !== undefined && Number.isFinite(budgetUSD) && budgetUSD >= 0 ? { totalUSD: budgetUSD } : {}),
+      ...(budgetPerSampleUSD !== undefined && Number.isFinite(budgetPerSampleUSD) && budgetPerSampleUSD >= 0 ? { perSampleUSD: budgetPerSampleUSD } : {}),
+      ...(budgetPerSampleMs !== undefined && Number.isFinite(budgetPerSampleMs) && budgetPerSampleMs >= 0 ? { perSampleMs: budgetPerSampleMs } : {}),
+    };
+  }
+
+  // --no-debias-length: opt out of v0.21 Phase 3a length-controlled prompt.
+  // Default behavior is debias-on (judge prompt v3-cot-length); flag flips it
+  // off so historical reports (judgePromptHash from v2-cot era) can be reproduced.
+  if (values['no-debias-length'] as boolean) {
+    config.lengthDebias = false;
+    process.stderr.write('ℹ --no-debias-length 已生效:judge prompt 退回 v2-cot,与 < v0.21 报告 hash 一致。\n');
+  }
+
+  // --bootstrap / --bootstrap-samples
+  if (values.bootstrap as boolean) {
+    config.bootstrap = true;
+    const bsRaw = values['bootstrap-samples'] as string | undefined;
+    const parsedBs = bsRaw !== undefined ? Number(bsRaw) : 1000;
+    if (bsRaw !== undefined && (!Number.isFinite(parsedBs) || parsedBs < 100)) {
+      process.stderr.write(`⚠ --bootstrap-samples "${bsRaw}" 无效(期望 ≥ 100 的整数),已按 1000 执行\n`);
+    }
+    const bsCount = Math.max(100, Math.floor(parsedBs) || 1000);
+    if (bsCount > 10000) {
+      process.stderr.write(`⚠ --bootstrap-samples ${bsCount} 较大,可能耗时数秒。1000 是业内标准,通常已够用。\n`);
+    }
+    config.bootstrapSamples = bsCount;
+  }
 
   try {
     // --each mode: evaluate each skill independently
@@ -656,6 +780,27 @@ async function handleRun(argv: string[]): Promise<void> {
       const result = (await runEvaluation(config)) as EvalResult;
       report = result.report;
       filePath = result.filePath;
+    }
+
+    // --gold-dir: compute α/κ/Pearson against gold annotations and re-persist.
+    const goldDir = values['gold-dir'] as string | undefined;
+    if (goldDir && filePath) {
+      const { attachGoldAgreementToReport, formatGoldCompare } = await import('./grading/gold-cli.js');
+      const out = attachGoldAgreementToReport({
+        report,
+        goldDir,
+        outputDir: config.outputDir,
+        samples: config.bootstrapSamples,
+      });
+      if (out.result && out.gold) {
+        process.stderr.write(formatGoldCompare(out.result, out.gold));
+        if (out.result.contaminationWarning) {
+          process.stderr.write(`\n⚠ ${out.result.contaminationWarning}\n`);
+        }
+      } else {
+        process.stderr.write(`\n⚠ gold dataset 加载失败 (${goldDir}):\n`);
+        for (const m of out.loadIssues) process.stderr.write(`  - ${m}\n`);
+      }
     }
 
     console.log(JSON.stringify(report, null, 2));
@@ -1159,15 +1304,61 @@ async function handleCi(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleDiff(argv: string[]): Promise<void> {
-  if (argv.length < 2) {
-    console.error('Usage: omk bench diff <report-id-1> <report-id-2>');
-    process.exit(1);
+  // Flag-aware split: separate positional report IDs from flags so we can support
+  //   omk bench diff <id>                      — within-report sample-level (v0.22)
+  //   omk bench diff <id1> <id2>               — cross-report variant-level (legacy)
+  // both with optional --regressions-only / --threshold / --variant flags.
+  const positional: string[] = [];
+  const flagArgs: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith('--')) {
+      flagArgs.push(a);
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith('--')) {
+        flagArgs.push(next);
+        i++;
+      }
+    } else {
+      positional.push(a);
+    }
   }
+
+  if (positional.length === 0) {
+    console.error([
+      'Usage:',
+      '  omk bench diff <reportId>                     within-report per-sample diff (v0.22)',
+      '  omk bench diff <reportId1> <reportId2>        cross-report variant-level diff',
+      '',
+      'Options:',
+      '  --regressions-only          只列 treatment < control 的样本',
+      '  --threshold <num>           regression 阈值 (default 0,即任一负 Δ 算回退)',
+      '  --variant <name>            within-report 模式下指定要钻取的 variant (default: variants[1])',
+      '  --top <n>                   只列差距最大的前 N 个样本',
+    ].join('\n'));
+    process.exit(positional.length === 0 ? 1 : 0);
+  }
+
+  const { values } = parseArgs({
+    args: flagArgs,
+    options: {
+      'regressions-only': { type: 'boolean', default: false },
+      threshold: { type: 'string' },
+      variant: { type: 'string' },
+      top: { type: 'string' },
+    },
+    strict: false,
+  });
 
   const { createFileStore } = await import('./server/report-store.js');
   const store: ReportStore = createFileStore(resolve(DEFAULT_REPORTS_DIR));
 
-  const [id1, id2]: string[] = argv;
+  if (positional.length === 1) {
+    await runSampleLevelDiff(positional[0], store, values);
+    return;
+  }
+
+  const [id1, id2]: string[] = positional;
   const r1: Report | null = await store.get(id1);
   const r2: Report | null = await store.get(id2);
 
@@ -1227,6 +1418,625 @@ async function handleDiff(argv: string[]): Promise<void> {
   }
 
   console.log('');
+}
+
+/**
+ * Within-report sample-level diff (v0.22). Compares two variants' scores on
+ * each shared sample and surfaces the worst regressions / biggest wins.
+ *
+ * Default focus is variants[0] (control) vs variants[1] (treatment), but
+ * `--variant` overrides which variant is the "treatment" side.
+ */
+async function runSampleLevelDiff(
+  reportId: string,
+  store: ReportStore,
+  flags: Record<string, string | boolean | undefined>,
+): Promise<void> {
+  const report: Report | null = await store.get(reportId);
+  if (!report) {
+    console.error(`Report not found: ${reportId}`);
+    process.exit(1);
+  }
+  const variants = report!.meta?.variants ?? [];
+  if (variants.length < 2) {
+    console.error('Sample-level diff needs at least 2 variants in the report.');
+    process.exit(1);
+  }
+  const control = variants[0];
+  const treatment = (flags.variant as string | undefined) ?? variants[1];
+  if (!variants.includes(treatment)) {
+    console.error(`Variant "${treatment}" not in report. Available: ${variants.join(', ')}`);
+    process.exit(1);
+  }
+
+  const threshold = flags.threshold != null ? Number(flags.threshold) : 0;
+  const regressionsOnly = Boolean(flags['regressions-only']);
+  const topN = flags.top != null ? Math.max(1, Number(flags.top) || 0) : undefined;
+
+  const rows: Array<{ id: string; cFact?: number; tFact?: number; cBeh?: number; tBeh?: number; cJudge?: number; tJudge?: number; cComp: number; tComp: number; delta: number }> = [];
+  for (const entry of report!.results ?? []) {
+    const c = entry.variants?.[control];
+    const t = entry.variants?.[treatment];
+    if (!c || !t) continue;
+    const cComp = c.compositeScore ?? c.llmScore ?? 0;
+    const tComp = t.compositeScore ?? t.llmScore ?? 0;
+    const delta = Number((tComp - cComp).toFixed(3));
+    rows.push({
+      id: entry.sample_id,
+      cFact: c.layeredScores?.factScore, tFact: t.layeredScores?.factScore,
+      cBeh: c.layeredScores?.behaviorScore, tBeh: t.layeredScores?.behaviorScore,
+      cJudge: c.layeredScores?.judgeScore, tJudge: t.layeredScores?.judgeScore,
+      cComp, tComp, delta,
+    });
+  }
+
+  // Sort by |delta| desc so the most impactful rows surface first.
+  rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+  let filtered = rows;
+  if (regressionsOnly) filtered = filtered.filter((r) => r.delta < threshold);
+  if (topN !== undefined) filtered = filtered.slice(0, topN);
+
+  console.log(`\n  Sample-level diff: ${treatment} vs ${control} (report ${reportId})`);
+  if (regressionsOnly) console.log(`  Filter: regressions only (Δ < ${threshold})`);
+  console.log('');
+  console.log('  sample_id           Δ      composite (c→t)   fact (c→t)     behavior (c→t)   judge (c→t)');
+  console.log('  ' + '-'.repeat(100));
+
+  if (filtered.length === 0) {
+    console.log(regressionsOnly ? '  (no regressions found)' : '  (no shared samples)');
+    console.log('');
+    return;
+  }
+
+  const fmt = (a: number | undefined, b: number | undefined): string => {
+    const av = typeof a === 'number' ? a.toFixed(2) : '—';
+    const bv = typeof b === 'number' ? b.toFixed(2) : '—';
+    return `${av} → ${bv}`.padEnd(15);
+  };
+  for (const r of filtered) {
+    const sign = r.delta > 0 ? '+' : '';
+    const idCol = r.id.slice(0, 18).padEnd(20);
+    const deltaCol = `${sign}${r.delta.toFixed(2)}`.padEnd(7);
+    const compCol = `${r.cComp.toFixed(2)} → ${r.tComp.toFixed(2)}`.padEnd(17);
+    console.log(`  ${idCol}${deltaCol}${compCol}${fmt(r.cFact, r.tFact)} ${fmt(r.cBeh, r.tBeh)} ${fmt(r.cJudge, r.tJudge)}`);
+  }
+  console.log('');
+  console.log(`  Showing ${filtered.length} of ${rows.length} samples · sorted by |Δ|`);
+  if (regressionsOnly) {
+    const total = rows.length;
+    const reg = rows.filter((r) => r.delta < threshold).length;
+    console.log(`  Regression rate: ${reg}/${total} samples (${total > 0 ? ((reg / total) * 100).toFixed(0) : 0}%)`);
+  }
+  console.log('');
+}
+
+// ---------------------------------------------------------------------------
+// handleGold — gold dataset workflow (init / validate / compare)
+// ---------------------------------------------------------------------------
+
+async function handleGold(argv: string[]): Promise<void> {
+  const sub = argv[0];
+  const rest = argv.slice(1);
+  if (!sub || sub === '--help' || sub === '-h') {
+    console.log([
+      '',
+      'Usage: omk bench gold <subcommand>',
+      '',
+      'Subcommands:',
+      '  init [--out <dir>] [--annotator <id>]    生成空白 gold dataset 模板',
+      '  validate <dir>                           校验数据集结构',
+      '  compare <reportId> --gold-dir <dir>      与已有 report 计算 α/κ/Pearson',
+      '    [--variant <name>] [--reports-dir <d>]',
+      '    [--bootstrap-samples N] [--seed N]',
+      '',
+    ].join('\n'));
+    process.exit(sub ? 0 : 1);
+  }
+
+  if (sub === 'init') {
+    const { values } = parseArgs({
+      args: rest,
+      options: {
+        out: { type: 'string', default: './gold-dataset' },
+        annotator: { type: 'string' },
+      },
+      strict: false,
+    });
+    const { initGoldDataset } = await import('./grading/gold-cli.js');
+    try {
+      const written = initGoldDataset(values.out as string, {
+        annotator: values.annotator as string | undefined,
+      });
+      console.log(`Created ${written.length} files in ${values.out}:`);
+      for (const p of written) console.log(`  ${p}`);
+      console.log('\n下一步: 编辑 annotations.yaml 加入真实标注 → 跑 omk bench gold validate');
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (sub === 'validate') {
+    const dir = rest[0];
+    if (!dir) {
+      console.error('Usage: omk bench gold validate <dir>');
+      process.exit(1);
+    }
+    const { validateGoldDataset } = await import('./grading/gold-cli.js');
+    const result = validateGoldDataset(dir);
+    if (result.ok) {
+      console.log(`✓ gold dataset OK — ${result.sampleCount} 条标注`);
+      return;
+    }
+    console.error(`✗ gold dataset has ${result.issues.length} issue(s):`);
+    for (const msg of result.issues) console.error(`  - ${msg}`);
+    process.exit(1);
+  }
+
+  if (sub === 'compare') {
+    const reportId = rest[0];
+    if (!reportId) {
+      console.error('Usage: omk bench gold compare <reportId> --gold-dir <dir>');
+      process.exit(1);
+    }
+    const { values } = parseArgs({
+      args: rest.slice(1),
+      options: {
+        'gold-dir': { type: 'string' },
+        variant: { type: 'string' },
+        'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+        'bootstrap-samples': { type: 'string', default: '1000' },
+        seed: { type: 'string' },
+      },
+      strict: false,
+    });
+    const goldDir = values['gold-dir'] as string | undefined;
+    if (!goldDir) {
+      console.error('--gold-dir is required');
+      process.exit(1);
+    }
+    const { loadGoldDataset } = await import('./grading/gold-dataset.js');
+    const { compareGoldToReport, formatGoldCompare } = await import('./grading/gold-cli.js');
+    const { createFileStore } = await import('./server/report-store.js');
+
+    const { dataset, issues } = loadGoldDataset(goldDir);
+    if (!dataset) {
+      console.error('Cannot load gold dataset:');
+      for (const i of issues) console.error(`  - ${i.message}`);
+      process.exit(1);
+    }
+    if (issues.length) {
+      // Non-fatal issues (e.g. duplicate already filtered) — surface them.
+      for (const i of issues) console.error(`warn: ${i.message}`);
+    }
+
+    const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+    const report: Report | null = await store.get(reportId);
+    if (!report) {
+      console.error(`Report not found: ${reportId}`);
+      process.exit(1);
+    }
+
+    const samples = Math.max(100, Number(values['bootstrap-samples']) || 1000);
+    const seedVal = values.seed != null ? Number(values.seed) : undefined;
+    const result = compareGoldToReport({
+      report: report!,
+      gold: dataset,
+      variant: values.variant as string | undefined,
+      samples,
+      seed: Number.isFinite(seedVal) ? seedVal : undefined,
+    });
+    console.log(formatGoldCompare(result, dataset));
+    return;
+  }
+
+  console.error(`Unknown subcommand: gold ${sub}. Use init / validate / compare.`);
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// handleDebiasValidate — measure length-debias prompt sensitivity (Phase 3a)
+// ---------------------------------------------------------------------------
+
+async function handleDebiasValidate(argv: string[]): Promise<void> {
+  const sub = argv[0];
+  const rest = argv.slice(1);
+  if (!sub || sub === '--help' || sub === '-h') {
+    console.log([
+      '',
+      'Usage: omk bench debias-validate <kind> <reportId> [options]',
+      '',
+      'Kinds:',
+      '  length    re-judge with the opposite length-debias setting and bootstrap CI',
+      '            on the score diff. Cost ~doubles vs the original judge pass.',
+      '',
+      'Options:',
+      '  --reports-dir <dir>          report store dir (default: ~/.oh-my-knowledge/reports)',
+      '  --samples <path>             override samples file (default: from report.meta.request)',
+      '  --variant <name>             which variant to validate (default: first)',
+      '  --judge-executor <name>      executor for judge calls (default: claude)',
+      '  --judge-model <model>        judge model id (default: from report)',
+      '  --bootstrap-samples N        bootstrap iterations (default 1000)',
+      '  --seed N                     deterministic CI seed',
+      '',
+    ].join('\n'));
+    process.exit(sub ? 0 : 1);
+  }
+
+  if (sub !== 'length') {
+    console.error(`Unknown debias-validate kind: ${sub}. Use "length".`);
+    process.exit(1);
+  }
+
+  const reportId = rest[0];
+  if (!reportId) {
+    console.error('Usage: omk bench debias-validate length <reportId>');
+    process.exit(1);
+  }
+  const { values } = parseArgs({
+    args: rest.slice(1),
+    options: {
+      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+      samples: { type: 'string' },
+      variant: { type: 'string' },
+      'judge-executor': { type: 'string', default: 'claude' },
+      'judge-model': { type: 'string' },
+      'bootstrap-samples': { type: 'string', default: '1000' },
+      seed: { type: 'string' },
+    },
+    strict: false,
+  });
+
+  const { createFileStore } = await import('./server/report-store.js');
+  const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+  const report: Report | null = await store.get(reportId);
+  if (!report) {
+    console.error(`Report not found: ${reportId}`);
+    process.exit(1);
+  }
+
+  // Resolve samples path: --samples overrides; otherwise read from report.meta.request.
+  const samplesPath = (values.samples as string | undefined)
+    ?? report!.meta?.request?.samplesPath;
+  if (!samplesPath) {
+    console.error('Cannot find samples path. Pass --samples <path> or ensure report has request.samplesPath.');
+    process.exit(1);
+  }
+  const { loadSamples } = await import('./inputs/load-samples.js');
+  const { samples } = loadSamples(samplesPath);
+
+  const judgeModel = (values['judge-model'] as string | undefined)
+    ?? report!.meta?.judgeModel;
+  if (!judgeModel) {
+    console.error('No judge model. Pass --judge-model <id> or ensure report has meta.judgeModel.');
+    process.exit(1);
+  }
+
+  process.stderr.write('\n⚠ debias-validate 会重判所有 (sample × variant),judge cost 大致翻倍。\n');
+
+  const { createExecutor } = await import('./executors/index.js');
+  const judgeExecutor = createExecutor(values['judge-executor'] as string);
+  const { validateLengthDebias, formatDebiasValidate } = await import('./grading/debias-validate.js');
+
+  const seedVal = values.seed != null ? Number(values.seed) : undefined;
+  const bsRaw = Number(values['bootstrap-samples']) || 1000;
+  const result = await validateLengthDebias({
+    report: report!,
+    samples,
+    judgeExecutor,
+    judgeModel,
+    variant: values.variant as string | undefined,
+    bootstrapSamples: Math.max(100, bsRaw),
+    seed: Number.isFinite(seedVal) ? seedVal : undefined,
+    onProgress: ({ sample_id, completed, total }) => {
+      process.stderr.write(`  judging ${completed}/${total}: ${sample_id}\n`);
+    },
+  });
+  console.log(formatDebiasValidate(result));
+}
+
+// ---------------------------------------------------------------------------
+// handleSaturation — re-compute saturation verdict from a finished report
+// ---------------------------------------------------------------------------
+
+async function handleSaturation(argv: string[]): Promise<void> {
+  const reportId = argv[0];
+  if (!reportId || reportId === '--help' || reportId === '-h') {
+    console.log([
+      '',
+      'Usage: omk bench saturation <reportId> [options]',
+      '',
+      '回答"我跑够样本了吗?"。复述已有 report 中持久化的饱和判定。',
+      '',
+      '注:本命令读取 run 时跑出的 verdict(运行时已用 method=bootstrap-ci-width',
+      '默认阈值 + 3 窗口 持续条件)。如要换 method/threshold 重新计算,需要重跑',
+      '`omk bench run --repeat ≥ 5`(运行时持久化的 trace 不含原始分数,无法',
+      '在事后用其他参数复算)。',
+      '',
+      'Options:',
+      '  --reports-dir <dir>   report store dir (default: ~/.oh-my-knowledge/reports)',
+      '  --variant <name>      只看一个 variant (default: all)',
+      '',
+    ].join('\n'));
+    process.exit(reportId ? 0 : 1);
+  }
+
+  const { values } = parseArgs({
+    args: argv.slice(1),
+    options: {
+      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+      variant: { type: 'string' },
+    },
+    strict: false,
+  });
+
+  const { createFileStore } = await import('./server/report-store.js');
+  const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+  const report: Report | null = await store.get(reportId);
+  if (!report) {
+    console.error(`Report not found: ${reportId}`);
+    process.exit(1);
+  }
+
+  const saturation = report!.variance?.saturation;
+  if (!saturation) {
+    console.error('该 report 无 saturation 数据 (需要 --repeat ≥ 2 才会记录)。');
+    process.exit(1);
+  }
+
+  // Print the persisted verdict from the original run. The trace stores
+  // (mean, ciLow, ciHigh) per checkpoint but not raw scores, so re-running
+  // findSaturationPoint with different method/threshold is not possible
+  // here — that would need raw scores, which would have to be persisted
+  // by runMultiple. Future work: opt-in `--persist-saturation-raw` flag at
+  // run time to enable post-hoc parameter sweeps.
+  const variants = report!.meta.variants ?? [];
+  const targetVariants = values.variant ? [values.variant as string] : variants;
+
+  console.log(`\n  Saturation verdict (复述持久化结果)\n`);
+  for (const variant of targetVariants) {
+    const trace = saturation.perVariant[variant];
+    if (!trace || trace.length === 0) {
+      console.log(`  ${variant}: 无 trace 数据`);
+      continue;
+    }
+    console.log(`  ${variant}:`);
+    console.log(`    checkpoints: ${trace.length} (N=${trace.map((p) => p.n).join(', ')})`);
+    console.log(`    最近一点 mean=${trace[trace.length - 1].mean.toFixed(3)}, CI=[${trace[trace.length - 1].ciLow.toFixed(3)}, ${trace[trace.length - 1].ciHigh.toFixed(3)}]`);
+    if (saturation.verdicts?.[variant]) {
+      const v = saturation.verdicts[variant];
+      console.log(`    持久化判定 (${v.method}): ${v.saturated ? `已饱和@N=${v.atN}` : '未饱和'} - ${v.reason}`);
+    } else if (trace.length < 5) {
+      console.log(`    判定: 数据点 ${trace.length} < 5,跳过 (跑 --repeat 5 以上才输出)`);
+    }
+  }
+  console.log('');
+}
+
+// ---------------------------------------------------------------------------
+// handleVerdict — one-line ship/no-ship verdict (v0.22)
+// ---------------------------------------------------------------------------
+
+async function handleVerdict(argv: string[]): Promise<void> {
+  const reportId = argv[0];
+  if (!reportId || reportId === '--help' || reportId === '-h') {
+    console.log([
+      '',
+      'Usage: omk bench verdict <reportId> [options]',
+      '',
+      '聚合 bootstrap CI / 三层 ci-gate / saturation / human α 给出一行结论。',
+      '',
+      'Verdict 等级:',
+      '  PROGRESS      显著改进 + 三层全过',
+      '  CAUTIOUS      改进真实但有警告 (gate 破 / 幅度太小 / 控制组本身崩)',
+      '  REGRESS       显著回退 — 不要 ship',
+      '  NOISE         CI 跨 0,无法判定',
+      '  UNDERPOWERED  样本不足,需要扩 N 重测',
+      '  SOLO          单变体报告,无对比对象',
+      '',
+      'Options:',
+      '  --reports-dir <dir>      report store dir (default: ~/.oh-my-knowledge/reports)',
+      '  --threshold <num>        三层 gate 阈值 (default 3.5,匹配 omk bench ci)',
+      '  --trivial-diff <num>     "幅度太小"阈值 (default 0.1)',
+      '  --verbose                展开 per-pair 详情',
+      '',
+    ].join('\n'));
+    process.exit(reportId ? 0 : 1);
+  }
+
+  const { values } = parseArgs({
+    args: argv.slice(1),
+    options: {
+      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+      threshold: { type: 'string' },
+      'trivial-diff': { type: 'string' },
+      verbose: { type: 'boolean', default: false },
+    },
+    strict: false,
+  });
+
+  const { createFileStore } = await import('./server/report-store.js');
+  const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+  const report: Report | null = await store.get(reportId);
+  if (!report) {
+    console.error(`Report not found: ${reportId}`);
+    process.exit(1);
+  }
+
+  const { computeVerdict, formatVerdictText } = await import('./eval-core/verdict.js');
+  const result = computeVerdict(report!, {
+    ciThreshold: values.threshold != null ? Number(values.threshold) : undefined,
+    triviallySmallDiff: values['trivial-diff'] != null ? Number(values['trivial-diff']) : undefined,
+  });
+  console.log(formatVerdictText(result, { verbose: Boolean(values.verbose) }));
+
+  // Exit code reflects ship recommendation: 0 only on PROGRESS / SOLO-pass.
+  // NOISE / UNDERPOWERED / CAUTIOUS / REGRESS all exit 1 so this composes
+  // with shell `&&` chains in CI.
+  if (result.level === 'PROGRESS') {
+    process.exit(0);
+  }
+  if (result.level === 'SOLO' && result.headline.includes('PASS')) {
+    process.exit(0);
+  }
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// handleDiagnose — per-sample quality diagnostics (v0.23 A)
+// ---------------------------------------------------------------------------
+
+async function handleDiagnose(argv: string[]): Promise<void> {
+  const reportId = argv[0];
+  if (!reportId || reportId === '--help' || reportId === '-h') {
+    console.log([
+      '',
+      'Usage: omk bench diagnose <reportId> [options]',
+      '',
+      '诊断样本集本身的质量问题:区分度低 / 重复 / 歧义 / 成本异常 / 全 fail。',
+      '回答"测评结论是否被坏样本污染"——与 omk bench verdict 互补。',
+      '',
+      'Options:',
+      '  --reports-dir <dir>      report store dir',
+      '  --samples <path>         样本文件路径 (用于 near-duplicate 检测;默认从 report.meta.request 读)',
+      '  --top <n>                每类只显示前 N 个 (默认 10,0=全部)',
+      '  --duplicate-rouge <num>  near-duplicate ROUGE-1 阈值 (默认 0.7)',
+      '  --ambiguous-stddev <num> 歧义阈值,judge stddev (默认 1.0,需要 --judge-repeat ≥ 2 数据)',
+      '  --cost-k <num>           成本异常倍数 vs median (默认 3)',
+      '  --latency-k <num>        耗时异常倍数 vs median (默认 3)',
+      '  --flat <num>             flat_scores 分差阈值 (默认 0.5)',
+      '',
+    ].join('\n'));
+    process.exit(reportId ? 0 : 1);
+  }
+
+  const { values } = parseArgs({
+    args: argv.slice(1),
+    options: {
+      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+      samples: { type: 'string' },
+      top: { type: 'string', default: '10' },
+      'duplicate-rouge': { type: 'string' },
+      'ambiguous-stddev': { type: 'string' },
+      'cost-k': { type: 'string' },
+      'latency-k': { type: 'string' },
+      flat: { type: 'string' },
+    },
+    strict: false,
+  });
+
+  const { createFileStore } = await import('./server/report-store.js');
+  const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+  const report: Report | null = await store.get(reportId);
+  if (!report) {
+    console.error(`Report not found: ${reportId}`);
+    process.exit(1);
+  }
+
+  // Try to read the samples file for near-duplicate detection. Source order:
+  //  1. --samples <path> override
+  //  2. report.meta.request.samplesPath (recorded at run time)
+  // If neither resolves to a readable file, skip near-duplicate gracefully.
+  let samples: import('./types.js').Sample[] | undefined;
+  const samplesPath = (values.samples as string | undefined) ?? report!.meta?.request?.samplesPath;
+  if (samplesPath && existsSync(samplesPath)) {
+    try {
+      const { loadSamples } = await import('./inputs/load-samples.js');
+      samples = loadSamples(samplesPath).samples;
+    } catch (err) {
+      process.stderr.write(`warn: 加载 samples 文件失败 (${samplesPath}): ${(err as Error).message}\n`);
+    }
+  }
+
+  const topRaw = Number(values.top);
+  const topN = Number.isFinite(topRaw) && topRaw > 0 ? topRaw : undefined;
+
+  const { diagnoseSamples, formatSampleDiagnostics } = await import('./analysis/sample-diagnostics.js');
+  const diag = diagnoseSamples(report!, {
+    samples,
+    duplicateRouge: values['duplicate-rouge'] != null ? Number(values['duplicate-rouge']) : undefined,
+    ambiguousStddev: values['ambiguous-stddev'] != null ? Number(values['ambiguous-stddev']) : undefined,
+    costOutlierK: values['cost-k'] != null ? Number(values['cost-k']) : undefined,
+    latencyOutlierK: values['latency-k'] != null ? Number(values['latency-k']) : undefined,
+    flatThreshold: values.flat != null ? Number(values.flat) : undefined,
+  });
+  console.log(formatSampleDiagnostics(diag, { topN }));
+
+  // Exit code: 0 if health ≥ 70 and no errors; 1 otherwise. CI-friendly.
+  if (diag.totals.errors === 0 && diag.healthScore >= 70) {
+    process.exit(0);
+  }
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// handleFailures — LLM-driven failure clustering (v0.23 B)
+// ---------------------------------------------------------------------------
+
+async function handleFailures(argv: string[]): Promise<void> {
+  const reportId = argv[0];
+  if (!reportId || reportId === '--help' || reportId === '-h') {
+    console.log([
+      '',
+      'Usage: omk bench failures <reportId> [options]',
+      '',
+      '把已有 report 的失败样本喂给一次 LLM 调用,自动聚类 + 给修复建议。',
+      '失败定义:compositeScore < threshold 或 ok=false。',
+      '',
+      'Options:',
+      '  --reports-dir <dir>      report store dir',
+      '  --judge-executor <name>  执行器 (default: claude)',
+      '  --judge-model <id>       聚类用的 model (default: 沿用 report.meta.judgeModel)',
+      '  --max-clusters <n>       最多多少 cluster (default 5)',
+      '  --threshold <num>        compositeScore < threshold 算失败 (default 3)',
+      '  --max-feed <n>           最多喂给 LLM 多少条 (default 50,超出取最差)',
+      '',
+    ].join('\n'));
+    process.exit(reportId ? 0 : 1);
+  }
+
+  const { values } = parseArgs({
+    args: argv.slice(1),
+    options: {
+      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+      'judge-executor': { type: 'string', default: 'claude' },
+      'judge-model': { type: 'string' },
+      'max-clusters': { type: 'string', default: '5' },
+      threshold: { type: 'string', default: '3' },
+      'max-feed': { type: 'string', default: '50' },
+    },
+    strict: false,
+  });
+
+  const { createFileStore } = await import('./server/report-store.js');
+  const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+  const report: Report | null = await store.get(reportId);
+  if (!report) {
+    console.error(`Report not found: ${reportId}`);
+    process.exit(1);
+  }
+
+  const judgeModel = (values['judge-model'] as string | undefined) ?? report!.meta?.judgeModel;
+  if (!judgeModel) {
+    console.error('No judge model. Pass --judge-model <id> or ensure report has meta.judgeModel.');
+    process.exit(1);
+  }
+
+  const { createExecutor } = await import('./executors/index.js');
+  const executor = createExecutor(values['judge-executor'] as string);
+  const { clusterFailures, formatFailureClusterReport } = await import('./analysis/failure-clusterer.js');
+
+  const out = await clusterFailures({
+    report: report!,
+    executor,
+    judgeModel,
+    maxClusters: Number(values['max-clusters']) || 5,
+    failureThreshold: Number(values.threshold) || 3,
+    maxFailuresFed: Number(values['max-feed']) || 50,
+  });
+  console.log(formatFailureClusterReport(out));
 }
 
 // ---------------------------------------------------------------------------

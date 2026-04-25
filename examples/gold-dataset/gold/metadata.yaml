@@ -1,0 +1,22 @@
+metadata:
+  annotator: claude-opus-4-7-1m
+  annotatedAt: '2026-04-25'
+  version: '0.1'
+  scale: { min: 1, max: 5 }
+  notes: |
+    Demo gold annotations for omk's human-gold workflow.
+
+    Annotated by Claude Opus 4.7 (1M context) — used as a "stronger model proxy"
+    rather than literal human annotation. This is acceptable for demos and CI
+    sanity checks; for any externally-published evaluation, replace with
+    real human annotations or at minimum cross-vendor (e.g. GPT + Claude
+    independent passes with disagreement reconciliation).
+
+    Critical: the annotator id "claude-opus-4-7-1m" intentionally differs from
+    omk's default judge "claude-sonnet-4-6". Running this gold against a Sonnet
+    judge is the supported configuration. Running it against an Opus judge will
+    trigger the contamination warning (correctly — same model can't audit itself).
+
+    Why this dataset is small (10 samples, not 30+): see README. v0.21 ships
+    the framework and a starter set; production gold should be 50-200 samples
+    chosen to span the rubric distribution your evaluation cares about.

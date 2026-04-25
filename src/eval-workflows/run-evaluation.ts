@@ -17,6 +17,7 @@ import type {
   JobStore,
   ProgressCallback,
   Report,
+  SaturationData,
   VarianceComparison,
   VarianceComparisonMetric,
   VarianceData,
@@ -26,6 +27,8 @@ import type {
   VariantSummary,
   VariantVariance,
 } from '../types.js';
+import { findSaturationPoint } from '../analysis/saturation.js';
+import { bootstrapMeanCI } from '../eval-core/bootstrap.js';
 
 export interface SkillProgressInfo {
   phase: string;
@@ -62,6 +65,21 @@ interface CommonEvaluationOptions {
   /** --each 模式标记, true 表示当前评测是 each 批量流程(每个 skill 独立对比 baseline)。
    *  记入 report.meta.request.each。 */
   each?: boolean;
+  /** --judge-repeat N. 每条 sample × dimension 调 LLM judge N 次, 输出 stddev (judge 自一致性).
+   *  默认 1 (单次). 用于量化 LLM judge 在该 rubric 上的稳定性 — stddev 高 = 评分噪声大. */
+  judgeRepeat?: number;
+  /** --judge-models executor:model,executor:model,... — multi-judge ensemble. ≥ 2 个
+   *  judge 时每条 sample × dimension 由所有 judge 各自打分, 输出 inter-judge agreement. */
+  judgeModels?: import('../types.js').JudgeConfig[];
+  /** --bootstrap. Distribution-free CI on each variant mean + pairwise diff. */
+  bootstrap?: boolean;
+  /** --bootstrap-samples N. Default 1000. */
+  bootstrapSamples?: number;
+  /** v0.21 Phase 3a length-debias toggle. Default true (judge prompt v3-cot-length).
+   *  CLI passes false when --no-debias-length is set. */
+  lengthDebias?: boolean;
+  /** v0.22 — hard budget caps. */
+  budget?: import('../types.js').EvalBudget;
 }
 
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
@@ -148,6 +166,12 @@ export async function runEvaluation({
   layeredStats = false,
   repeat,
   each,
+  judgeRepeat,
+  judgeModels,
+  bootstrap,
+  bootstrapSamples,
+  lengthDebias,
+  budget,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
@@ -227,6 +251,12 @@ export async function runEvaluation({
     layeredStats,
     repeat,
     each,
+    judgeRepeat,
+    judgeModels,
+    bootstrap,
+    bootstrapSamples,
+    lengthDebias,
+    budget,
   });
 }
 
@@ -283,6 +313,82 @@ function buildComparisonMetric(scoresA: number[], scoresB: number[], meanA: numb
     df: t.df,
     significant: t.significant,
     effectSize: es,
+  };
+}
+
+/**
+ * Build saturation curve data from a sequence of runs.
+ *
+ * Each run contributes one checkpoint = "all samples up to and including this run".
+ * For each variant we compute (mean, CI) at that cumulative N. When repeat ≥ 5
+ * we additionally run findSaturationPoint to assess whether the curve has
+ * flattened. Below that threshold the data is recorded for plotting but no
+ * verdict is computed — the user still sees the curve, just without the auto
+ * "saturated at N=X" claim.
+ */
+function buildSaturationData(runs: Report[]): SaturationData | undefined {
+  if (runs.length < 2) return undefined;
+  const variants = runs[0].meta.variants ?? [];
+  if (variants.length === 0) return undefined;
+
+  // Per-variant: cumulative composite scores after each repeat.
+  const cumulativeByVariant: Record<string, number[][]> = {};
+  const tracesByVariant: Record<string, Array<{ n: number; mean: number; ciLow: number; ciHigh: number }>> = {};
+
+  const checkpointSampleCounts: number[] = [];
+  const acc: Record<string, number[]> = Object.fromEntries(variants.map((v) => [v, []]));
+
+  for (let runIdx = 0; runIdx < runs.length; runIdx++) {
+    const run = runs[runIdx];
+    for (const variant of variants) {
+      const newScores: number[] = [];
+      for (const entry of run.results ?? []) {
+        const v = entry.variants?.[variant];
+        if (!v || typeof v.compositeScore !== 'number' || v.compositeScore <= 0) continue;
+        newScores.push(v.compositeScore);
+      }
+      acc[variant] = acc[variant].concat(newScores);
+    }
+    // Snapshot cumulative state for this checkpoint.
+    const checkpointN = acc[variants[0]]?.length ?? 0;
+    checkpointSampleCounts.push(checkpointN);
+    for (const variant of variants) {
+      if (!cumulativeByVariant[variant]) cumulativeByVariant[variant] = [];
+      cumulativeByVariant[variant].push([...acc[variant]]);
+
+      // Per-checkpoint trace: bootstrap CI on cumulative scores.
+      const ci = bootstrapMeanCI(acc[variant], 0.05, 1000);
+      if (!tracesByVariant[variant]) tracesByVariant[variant] = [];
+      tracesByVariant[variant].push({
+        n: acc[variant].length,
+        mean: ci.estimate,
+        ciLow: ci.low,
+        ciHigh: ci.high,
+      });
+    }
+  }
+
+  const verdicts: SaturationData['verdicts'] = {};
+  if (runs.length >= 5) {
+    for (const variant of variants) {
+      const cumulative = cumulativeByVariant[variant];
+      if (!cumulative) continue;
+      const r = findSaturationPoint(cumulative, 'bootstrap-ci-width');
+      verdicts[variant] = {
+        saturated: r.saturated,
+        atN: r.atN,
+        confidence: r.confidence,
+        method: r.method,
+        threshold: r.threshold,
+        reason: r.reason,
+      };
+    }
+  }
+
+  return {
+    checkpointSampleCounts,
+    perVariant: tracesByVariant,
+    ...(Object.keys(verdicts).length > 0 ? { verdicts } : {}),
   };
 }
 
@@ -356,7 +462,13 @@ export function buildVarianceData(runs: Report[]): VarianceData | null {
     }
   }
 
-  return { runs: runs.length, perVariant, comparisons };
+  const saturation = buildSaturationData(runs);
+  return {
+    runs: runs.length,
+    perVariant,
+    comparisons,
+    ...(saturation ? { saturation } : {}),
+  };
 }
 
 export async function runEachEvaluation({
@@ -381,6 +493,9 @@ export async function runEachEvaluation({
   mcpConfig,
   verbose = false,
   repeat,
+  judgeRepeat,
+  judgeModels,
+  lengthDebias,
 }: RunEachEvaluationOptions): Promise<{ report: Report | DryRunEachReport; filePath: string | null }> {
   const skillEntries = discoverEachSkills(resolve(skillDir));
   if (skillEntries.length === 0) {
@@ -426,13 +541,16 @@ export async function runEachEvaluation({
     mcpConfig,
     verbose,
     repeat,
+    judgeRepeat,
+    judgeModels,
+    lengthDebias,
     runSingleEvaluation: async (options) => {
       // repeat > 1 时走 runMultiple 做 variance; each=true 标记让 meta.request 如实反映
       if (repeat && repeat > 1) {
-        const multi = await runMultiple({ ...options, repeat, each: true });
+        const multi = await runMultiple({ ...options, repeat, each: true, judgeRepeat, judgeModels, lengthDebias });
         return { report: multi.report, filePath: multi.filePath };
       }
-      const result = await runEvaluation({ ...options, each: true });
+      const result = await runEvaluation({ ...options, each: true, judgeRepeat, judgeModels, lengthDebias });
       return { report: result.report as Report, filePath: result.filePath };
     },
   });

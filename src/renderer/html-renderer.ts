@@ -6,9 +6,13 @@ import { e, fmtCost, fmtDuration, COLORS, DEFAULT_LANG, t, layout } from './layo
 import {
   renderAgentOverview,
   renderAnalysis,
+  renderHumanAgreement,
   renderKnowledgeInteractionSection,
+  renderPairwiseDiff,
+  renderSaturationCurve,
   renderSummaryCards,
   renderVarianceComparisons,
+  renderVerdictPill,
 } from './summary.js';
 import { renderSampleTable } from './table.js';
 import { renderTrendsBody } from './trends.js';
@@ -156,6 +160,10 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const results = report.results || [];
 
   const cards = renderSummaryCards(variants, summary, lang, report.variance);
+  const pairwiseDiff = renderPairwiseDiff(report.meta.pairComparisons, lang);
+  const humanAgreement = renderHumanAgreement(report.meta.humanAgreement, lang);
+  const saturationCurve = renderSaturationCurve(report.variance?.saturation, variants, lang);
+  const verdictPill = renderVerdictPill(report, lang);
   const sampleTable = renderSampleTable(variants, results, lang);
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
   const totalDurationMs = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
@@ -251,13 +259,22 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     <main>
     <nav class="nav"><a href="/" data-i18n="backToList">${t('backToList', lang)}</a></nav>
     <h1>${e(report.id)}</h1>
+    ${verdictPill}
     <div class="meta-tags">
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
-      <span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>
+      ${m.judgeModels && m.judgeModels.length >= 2
+        ? `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${m.judgeModels.map((j) => e(j)).join(' · ')}</span>`
+        : `<span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>`
+      }
+      ${m.judgeRepeat && m.judgeRepeat > 1 ? `<span class="meta-tag" title="${t('judgeStddevDesc', lang)}">${t('judgeRepeatLabel', lang)}: ${m.judgeRepeat}</span>` : ''}
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
       <span class="meta-tag">${t('cost', lang)}: ${fmtCost(totalExecCost)}</span>
       <span class="meta-tag">${lang === 'zh' ? '耗时' : 'duration'}: ${fmtDuration(totalDurationMs)}</span>
       ${m.gitInfo ? `<span class="meta-tag">commit: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
+      ${m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : ''}
+      ${m.sampleHashes ? `<span class="meta-tag" style="color:var(--text-muted)" title="${t('sampleHashCountDesc', lang)}">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}/${m.sampleCount}</span>` : ''}
+      ${m.evaluationFramework ? `<span class="meta-tag" title="${t('evalFrameworkDesc', lang)}">${t('evalFrameworkLabel', lang)}: ${m.evaluationFramework === 'bootstrap' ? t('evalFrameworkBootstrap', lang) : m.evaluationFramework === 'both' ? t('evalFrameworkBoth', lang) : t('evalFrameworkTTest', lang)}</span>` : ''}
+      ${m.debiasMode && m.debiasMode.length > 0 ? `<span class="meta-tag" style="color:var(--green)" title="${lang === 'zh' ? 'judge bias 校正模式 (Phase 3)：length=substance-not-length 提示;position=ensemble 顺序随机化' : 'Judge bias debias modes (Phase 3): length = substance-not-length prompt; position = randomized ensemble order'}">${lang === 'zh' ? '校正' : 'debias'}: ${m.debiasMode.join(' · ')}</span>` : ''}
       ${m.blind ? `<span class="meta-tag" style="color:var(--green)" data-i18n="blindLabel">${t('blindLabel', lang)}</span>` : ''}
     </div>
     ${m.blind ? `
@@ -270,7 +287,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
 
     ${variantConfigSection}
 
-    <section>${cards}</section>
+    <section>${cards}${pairwiseDiff}${humanAgreement}${saturationCurve}</section>
 
     ${renderVarianceComparisons(report.variance, lang, Boolean(report.meta.layeredStats))}
 
@@ -347,7 +364,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
     ? (lang === 'zh' ? ` · ${repeatN} 轮重复` : ` · ${repeatN} runs`)
     : '';
   const overviewSubtitle = lang === 'zh'
-    ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个样本${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`
+    ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个用例${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`
     : `${overview?.totalArtifacts || 0} skills · ${overview?.totalSamples || 0} samples${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`;
 
   return layout(`${t('reportTitle', lang)} - ${report.id}`, `

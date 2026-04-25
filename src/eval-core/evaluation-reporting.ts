@@ -6,6 +6,8 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { buildVariantSummary } from './schema.js';
 import { buildVariantConfig } from './execution-strategy.js';
+import { getJudgePromptHash } from '../grading/judge.js';
+import { bootstrapMeanCI, bootstrapDiffCI } from './bootstrap.js';
 import type {
   Artifact,
   Report,
@@ -13,6 +15,7 @@ import type {
   Task,
   VariantResult,
   VariantSummary,
+  VariantPairComparison,
   GitInfo,
   EvaluationJob,
   EvaluationRequest,
@@ -37,6 +40,35 @@ export const DEFAULT_OUTPUT_DIR: string = join(homedir(), '.oh-my-knowledge', 'r
 
 function hashString(str: string): string {
   return createHash('sha256').update(str).digest('hex').slice(0, 12);
+}
+
+/**
+ * Canonical (key-sorted, recursive) JSON serialization. Required for cross-run hash
+ * stability — JS object key iteration order is implementation-defined for objects
+ * built by spread / Object.assign / yaml.parse, so naive JSON.stringify can produce
+ * different bytes for the "same" sample on different runs.
+ */
+function canonicalStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(canonicalStringify).join(',') + ']';
+  const entries = Object.keys(value as Record<string, unknown>).sort();
+  return '{' + entries.map((k) => JSON.stringify(k) + ':' + canonicalStringify((value as Record<string, unknown>)[k])).join(',') + '}';
+}
+
+/**
+ * Stable content hash of a sample. Hashes the prompt + assertions + dimensions/rubric
+ * (the parts that determine what's being measured). Two samples with the same hash
+ * across runs measure the same thing; mismatched hashes mean the sample changed.
+ */
+function hashSample(sample: Sample): string {
+  const stableForm = canonicalStringify({
+    prompt: sample.prompt,
+    rubric: sample.rubric ?? null,
+    dimensions: sample.dimensions ?? null,
+    assertions: sample.assertions ?? null,
+    schema: sample.schema ?? null,
+  });
+  return hashString(stableForm);
 }
 
 function getGitInfo(): GitInfo | null {
@@ -91,9 +123,63 @@ export function aggregateReport({
     summary[variant] = buildVariantSummary(entries);
   }
 
+  // Bootstrap CI (per-variant mean) when --bootstrap requested. Adds bootstrapCI to
+  // each VariantSummary; legacy t-interval (in summary's other fields) is preserved.
+  const bootstrapEnabled = request?.bootstrap === true;
+  const bootstrapSamples = request?.bootstrapSamples ?? 1000;
+  let pairComparisons: VariantPairComparison[] | undefined;
+  if (bootstrapEnabled) {
+    for (const variant of variants) {
+      const entries = Object.values(results).map((r) => r[variant]).filter(Boolean);
+      const compositeScores = entries
+        .filter((e) => typeof e.compositeScore === 'number' && e.compositeScore! > 0)
+        .map((e) => e.compositeScore!);
+      if (compositeScores.length >= 2) {
+        summary[variant].bootstrapCI = bootstrapMeanCI(compositeScores, 0.05, bootstrapSamples);
+      }
+    }
+
+    // Pairwise treatment-vs-control comparisons. Convention: variants[0] is control;
+    // each variants[i>0] is a treatment compared against control.
+    if (variants.length >= 2) {
+      pairComparisons = [];
+      const controlName = variants[0];
+      const controlEntries = Object.values(results).map((r) => r[controlName]).filter(Boolean);
+      const controlScores = controlEntries
+        .filter((e) => typeof e.compositeScore === 'number' && e.compositeScore! > 0)
+        .map((e) => e.compositeScore!);
+      for (let i = 1; i < variants.length; i++) {
+        const treatmentName = variants[i];
+        const treatmentEntries = Object.values(results).map((r) => r[treatmentName]).filter(Boolean);
+        const treatmentScores = treatmentEntries
+          .filter((e) => typeof e.compositeScore === 'number' && e.compositeScore! > 0)
+          .map((e) => e.compositeScore!);
+        if (controlScores.length >= 2 && treatmentScores.length >= 2) {
+          pairComparisons.push({
+            control: controlName,
+            treatment: treatmentName,
+            diffBootstrapCI: bootstrapDiffCI(controlScores, treatmentScores, 0.05, bootstrapSamples),
+          });
+        }
+      }
+    }
+  }
+
   const artifactHashes = Object.fromEntries(
     artifacts.map((artifact) => [artifact.name, artifact.content ? hashString(artifact.content) : 'no-skill']),
   );
+
+  const sampleHashes = Object.fromEntries(samples.map((s) => [s.sample_id, hashSample(s)]));
+  const judgeRepeat = request?.judgeRepeat && request.judgeRepeat > 1 ? request.judgeRepeat : undefined;
+  const judgeModelsList = request?.judgeModels && request.judgeModels.length >= 2
+    ? request.judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
+    : undefined;
+  // v0.21 Phase 3a: length-debias is on by default; the request only sets it
+  // false when the user passed --no-debias-length. The hash differs between
+  // v3-cot-length (on) and v2-cot (off) so readers can detect the divergence.
+  const lengthDebiasOn = request?.lengthDebias !== false;
+  const debiasModeList: Array<'length' | 'position'> = [];
+  if (lengthDebiasOn) debiasModeList.push('length');
 
   return {
     id: runId,
@@ -109,6 +195,13 @@ export function aggregateReport({
       cliVersion: PKG.version,
       nodeVersion: process.version,
       artifactHashes,
+      sampleHashes,
+      ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash(lengthDebiasOn) }),
+      ...(judgeRepeat ? { judgeRepeat } : {}),
+      ...(judgeModelsList ? { judgeModels: judgeModelsList } : {}),
+      ...(debiasModeList.length > 0 ? { debiasMode: debiasModeList } : {}),
+      ...(bootstrapEnabled ? { evaluationFramework: 'both' as const } : {}),
+      ...(pairComparisons ? { pairComparisons } : {}),
       variantConfigs: artifacts.map((artifact) => buildVariantConfig(artifact)),
       request,
       run,

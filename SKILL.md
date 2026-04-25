@@ -55,23 +55,30 @@ npm i oh-my-knowledge -g
 # 自动发现 skills/ 下的所有 skill
 omk bench run
 
-# 对比指定变体
-omk bench run --variants v1,v2
+# 对照实验:control 是基线/旧版,treatment 是要测的新版
+omk bench run --control baseline --treatment my-skill
+omk bench run --control v1 --treatment v2
 
-# 对比有无 skill 的效果
-omk bench run --variants baseline,my-skill
+# 多 treatment 同时跑
+omk bench run --control baseline --treatment v1,v2,v3
 
-# 对比修改前后（从 git 历史读取旧版本）
-omk bench run --variants git:my-skill,my-skill
+# 跨 git 版本对比(从历史读取旧版本)
+omk bench run --control git:my-skill --treatment my-skill
 
-# 批量评测多个独立 skill
+# 批量评测:每个 skill 独立和 baseline 对比,需要每个 skill 配对 {name}.eval-samples.json
 omk bench run --each
 
 # 先预览再执行
 omk bench run --dry-run
 ```
 
-常用选项：`--model`（被测模型）、`--judge-model`（评委模型）、`--concurrency`（并发数）
+常用选项：`--model`（执行模型）、`--judge-model`（评委模型）、`--concurrency`（并发数）
+
+**严谨度选项**(用户要求"严肃出结论"时启用):
+- `--bootstrap`: 用 distribution-free 置信区间替代 t 检验,适合小 N 或非正态分布
+- `--gold-dir <path>`: 引入人工锚点算 Krippendorff α,验证评委是否可信
+- `--judge-models claude:opus,openai:gpt-4o`: 多评委 ensemble,消除单评委偏差
+- `--repeat 5`: 启用饱和曲线分析,告诉用户"再多跑样本是否有收益"
 
 ### 自动迭代改进
 
@@ -83,10 +90,10 @@ omk bench evolve skills/my-skill.md --rounds 10 --target 4.5
 ### 生成测试用例
 
 ```bash
-# 为单个 skill 生成
-omk bench gen-samples skills/my-skill.md
+# 为当前项目生成评测样本
+omk bench gen-samples
 
-# 为所有缺少测试集的 skill 批量生成
+# 为所有缺少测试集的 skill 批量生成(--each 模式)
 omk bench gen-samples --each
 ```
 
@@ -98,6 +105,39 @@ omk bench report
 
 # 导出为独立 HTML
 omk bench report --export <报告名称>
+```
+
+### 跑完后的深入分析(用户问"结论靠不靠谱"时主动用)
+
+```bash
+# 一行 ship/no-ship 结论,聚合所有统计指标
+omk bench verdict <reportId>
+
+# 诊断样本质量(区分度低 / 重复 / 歧义 / 全 fail 等 7 类问题)
+omk bench diagnose <reportId>
+
+# 失败样本自动 LLM 聚类 + 修复建议
+omk bench failures <reportId>
+
+# 跨样本钻取(--regressions-only 只看回退的样本)
+omk bench diff <reportId>
+omk bench diff <reportId> --regressions-only --top 10
+
+# 对比两份报告(跨时间)
+omk bench diff <reportId1> <reportId2>
+```
+
+### 引入人工锚点验证评委(--gold-dir 工作流)
+
+```bash
+# 生成 gold dataset 模板
+omk bench gold init --out my-gold --annotator your-team-id
+
+# 用户填好 annotations.yaml 后校验
+omk bench gold validate my-gold
+
+# 与已有 report 对比算 α/κ/Pearson
+omk bench gold compare <reportId> --gold-dir my-gold
 ```
 
 ## 第五步：解读结果
@@ -147,7 +187,7 @@ v2 比 v1 更好：
 
 ## 注意事项
 
-- 评测需要调用 LLM，会产生费用。运行前告知用户预估成本（样本数 × 变体数 × 约 $0.01-0.05/次）
+- 评测需要调用 LLM，会产生费用。运行前告知用户预估成本（样本数 × 变体数 × 约 $0.01-0.05/次）。担心爆费可加 `--budget-usd 5` 设硬阈值
 - 首次使用建议先 `--dry-run` 预览任务计划
 - `evolve` 命令会修改原始 skill 文件，原始版本保存在 `skills/evolve/*.r0.md`
-- 详细命令参考见 [commands.md](references/commands.md)
+- 详细命令参考见项目 [README.md](README.md) 的 CLI reference 章节

@@ -2,9 +2,9 @@
  * Mixed grading: deterministic assertions + LLM judge + multi-dimensional scoring.
  */
 
-import type { AssertionResults, GradeResult, LayeredScores, DimensionResult, ExecutorFn, Sample, ToolCallInfo, TurnInfo } from '../types.js';
+import type { GradeResult, ExecutorFn, JudgeConfig, Sample, ToolCallInfo, TurnInfo } from '../types.js';
 import { ASYNC_ASSERTION_TYPES, ratioToScore, runAssertions, runAsyncAssertions } from './assertions.js';
-import { buildTraceSummary, llmJudge } from './judge.js';
+import { buildTraceSummary, llmJudgeEnsemble, llmJudgeRepeat } from './judge.js';
 import { computeLayeredScores } from './layered-scores.js';
 
 interface GradeOptions {
@@ -15,21 +15,50 @@ interface GradeOptions {
   allowLlmJudge?: boolean;
   execMetrics?: { costUSD?: number; durationMs?: number; numTurns?: number; toolCalls?: ToolCallInfo[]; turns?: TurnInfo[] };
   samplesDir?: string;
+  /**
+   * Run the LLM judge N times per (sample × dimension) pair and report mean + stddev.
+   * Default 1 (single judge call). Useful for measuring judge self-consistency:
+   * a high stddev means the judge isn't stable on this rubric and the score is noisy.
+   */
+  judgeRepeat?: number;
+  /**
+   * Multi-judge ensemble: if provided with >= 2 judges, every (sample × dimension) is
+   * scored by every judge. Each judge can use a different executor (claude/openai/etc)
+   * and model. Output gets per-judge breakdown + Pearson/MAD agreement metrics — used
+   * to refute "Claude judge Claude same-modality bias" critique.
+   */
+  judgeModels?: JudgeConfig[];
+  /**
+   * Map from executor name → ExecutorFn. Required when judgeModels has judges with
+   * different executor strings. Pipeline layer pre-creates these so grade() stays pure.
+   */
+  judgeExecutors?: Record<string, ExecutorFn>;
+  /**
+   * v0.21 length-debias toggle. Defaults to true — judge prompt includes the
+   * "length is not a quality signal" instruction, prompt template version is
+   * v3-cot-length. Set false (via `--no-debias-length`) to revert to the
+   * legacy v2-cot prompt for reproducing historical reports.
+   */
+  lengthDebias?: boolean;
 }
 
 /**
  * Grade a model output against a sample's criteria.
  */
-export async function grade({ output, sample, executor, judgeModel, allowLlmJudge = true, execMetrics = {}, samplesDir = '.' }: GradeOptions): Promise<GradeResult> {
-  const results: {
-    assertions?: AssertionResults;
-    llmScore?: number;
-    llmReason?: string;
-    dimensions?: Record<string, DimensionResult>;
-    judgeCostUSD?: number;
-    compositeScore: number;
-    layeredScores?: LayeredScores;
-  } = { compositeScore: 0 };
+export async function grade({ output, sample, executor, judgeModel, allowLlmJudge = true, execMetrics = {}, samplesDir = '.', judgeRepeat = 1, judgeModels, judgeExecutors, lengthDebias = true }: GradeOptions): Promise<GradeResult> {
+  const useEnsemble = !!(judgeModels && judgeModels.length >= 2);
+  const results: GradeResult = { compositeScore: 0 };
+
+  // Helper: build a config-keyed function for ensemble pathway. Each judge config
+  // names an executor by string; we resolve via judgeExecutors map (set by pipeline).
+  const executorByName = (name: string): ExecutorFn => {
+    if (judgeExecutors && judgeExecutors[name]) return judgeExecutors[name];
+    // Fallback: pipeline only set up the default judgeExecutor and didn't pre-create
+    // others. Tests / single-judge callers hit this path. Use the passed-in executor
+    // for the base case; ensemble with mismatched executor names should fail loudly.
+    if (!judgeExecutors) return executor;
+    throw new Error(`No executor registered for "${name}"; pipeline must populate judgeExecutors`);
+  };
 
   // 1. Deterministic assertions (pure, no LLM)
   const allAssertions = sample.assertions || [];
@@ -77,14 +106,10 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     // Multi-dimensional scoring
     results.dimensions = {};
     for (const [dim, rubric] of Object.entries(sample.dimensions)) {
-      results.dimensions[dim] = await llmJudge({
-        output,
-        rubric,
-        prompt: sample.prompt,
-        executor,
-        model: judgeModel,
-        traceSummary,
-      });
+      const dimOptions = { output, rubric, prompt: sample.prompt, executor, model: judgeModel, traceSummary, lengthDebias };
+      results.dimensions[dim] = useEnsemble
+        ? await llmJudgeEnsemble(dimOptions, judgeModels!, executorByName, judgeRepeat)
+        : await llmJudgeRepeat(dimOptions, judgeRepeat);
     }
     const dimValues = Object.values(results.dimensions);
     const dimScores = dimValues.map((d) => d.score).filter((s) => s > 0);
@@ -96,16 +121,24 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     if (dimCost > 0) results.judgeCostUSD = (results.judgeCostUSD || 0) + dimCost;
   } else if (allowLlmJudge && sample.rubric) {
     // Single rubric scoring
-    const judge = await llmJudge({
-      output,
-      rubric: sample.rubric,
-      prompt: sample.prompt,
-      executor,
-      model: judgeModel,
-      traceSummary,
-    });
+    const rubricOptions = { output, rubric: sample.rubric, prompt: sample.prompt, executor, model: judgeModel, traceSummary, lengthDebias };
+    const judge = useEnsemble
+      ? await llmJudgeEnsemble(rubricOptions, judgeModels!, executorByName, judgeRepeat)
+      : await llmJudgeRepeat(rubricOptions, judgeRepeat);
     results.llmScore = judge.score;
     results.llmReason = judge.reason;
+    if (judge.reasoning) results.llmReasoning = judge.reasoning;
+    if (judge.scoreSamples && judge.scoreSamples.length > 1) {
+      results.llmScoreSamples = judge.scoreSamples;
+      results.llmScoreStddev = judge.scoreStddev;
+      if (judge.judgeFailureCount && judge.judgeFailureCount > 0) {
+        results.llmScoreFailures = judge.judgeFailureCount;
+      }
+    }
+    if (judge.ensemble) {
+      results.llmEnsemble = judge.ensemble;
+      results.llmAgreement = judge.agreement;
+    }
     results.judgeCostUSD = (results.judgeCostUSD || 0) + (judge.judgeCostUSD || 0);
   }
 
