@@ -70,6 +70,7 @@ async function initializeEvaluationRunState({
   persistJob,
   repeat,
   each,
+  judgeRepeat,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -91,6 +92,7 @@ async function initializeEvaluationRunState({
   persistJob?: boolean;
   repeat?: number;
   each?: boolean;
+  judgeRepeat?: number;
 }): Promise<EvaluationRunState> {
   const request = buildEvaluationRequest({
     samplesPath,
@@ -111,6 +113,7 @@ async function initializeEvaluationRunState({
     tags,
     repeat,
     each,
+    judgeRepeat,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
@@ -257,6 +260,8 @@ export interface EvaluationPipelineOptions {
   repeat?: number;
   /** 透传到 meta.request.each */
   each?: boolean;
+  /** 透传到 meta.request.judgeRepeat 与 grade()，每条 sample × dimension judge N 次 */
+  judgeRepeat?: number;
 }
 
 export async function executeEvaluationPipeline({
@@ -291,6 +296,7 @@ export async function executeEvaluationPipeline({
   layeredStats = false,
   repeat,
   each,
+  judgeRepeat,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -314,6 +320,7 @@ export async function executeEvaluationPipeline({
     persistJob,
     repeat,
     each,
+    judgeRepeat,
   });
 
   try {
@@ -346,6 +353,7 @@ export async function executeEvaluationPipeline({
       onProgress,
       retry,
       existingResults,
+      judgeRepeat,
     });
     if (skipped > 0 && onProgress) {
       onProgress({ phase: 'done', completed: tasks.length, total: tasks.length, sample_id: '', variant: '', skipped: true });

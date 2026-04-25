@@ -33,6 +33,8 @@ export interface ExecuteTasksOptions {
   retry?: number;
   /** Pre-loaded results to skip (for --resume) */
   existingResults?: Record<string, Record<string, VariantResult>>;
+  /** Number of times to call the LLM judge per (sample × dimension); default 1. */
+  judgeRepeat?: number;
 }
 
 async function runWithConcurrency<T>(tasks: T[], concurrency: number, fn: (task: T) => Promise<void>): Promise<void> {
@@ -83,6 +85,7 @@ export async function executeTasks({
   onProgress,
   retry = 0,
   existingResults,
+  judgeRepeat = 1,
 }: ExecuteTasksOptions): Promise<{ results: Record<string, Record<string, VariantResult>>; totalCostUSD: number; skipped: number }> {
   const results: Record<string, Record<string, VariantResult>> = {};
   let started = 0;
@@ -190,6 +193,7 @@ export async function executeTasks({
               turns: execResult!.turns,
             },
             samplesDir: dirname(resolve(samplesPath)),
+            judgeRepeat,
           });
         } catch (err) {
           gradeResult = { compositeScore: 0 };

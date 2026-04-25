@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { buildVariantSummary } from './schema.js';
 import { buildVariantConfig } from './execution-strategy.js';
+import { getJudgePromptHash } from '../grading/judge.js';
 import type {
   Artifact,
   Report,
@@ -37,6 +38,22 @@ export const DEFAULT_OUTPUT_DIR: string = join(homedir(), '.oh-my-knowledge', 'r
 
 function hashString(str: string): string {
   return createHash('sha256').update(str).digest('hex').slice(0, 12);
+}
+
+/**
+ * Stable content hash of a sample. Hashes the prompt + assertions + dimensions/rubric
+ * (the parts that determine what's being measured). Two samples with the same hash
+ * across runs measure the same thing; mismatched hashes mean the sample changed.
+ */
+function hashSample(sample: Sample): string {
+  const stableForm = JSON.stringify({
+    prompt: sample.prompt,
+    rubric: sample.rubric ?? null,
+    dimensions: sample.dimensions ?? null,
+    assertions: sample.assertions ?? null,
+    schema: sample.schema ?? null,
+  });
+  return hashString(stableForm);
 }
 
 function getGitInfo(): GitInfo | null {
@@ -95,6 +112,9 @@ export function aggregateReport({
     artifacts.map((artifact) => [artifact.name, artifact.content ? hashString(artifact.content) : 'no-skill']),
   );
 
+  const sampleHashes = Object.fromEntries(samples.map((s) => [s.sample_id, hashSample(s)]));
+  const judgeRepeat = request?.judgeRepeat && request.judgeRepeat > 1 ? request.judgeRepeat : undefined;
+
   return {
     id: runId,
     meta: {
@@ -109,6 +129,9 @@ export function aggregateReport({
       cliVersion: PKG.version,
       nodeVersion: process.version,
       artifactHashes,
+      sampleHashes,
+      ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash() }),
+      ...(judgeRepeat ? { judgeRepeat } : {}),
       variantConfigs: artifacts.map((artifact) => buildVariantConfig(artifact)),
       request,
       run,

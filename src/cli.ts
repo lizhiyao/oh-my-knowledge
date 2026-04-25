@@ -42,6 +42,8 @@ interface RunConfig {
   retry?: number;
   resume?: string;
   layeredStats?: boolean;
+  /** --judge-repeat N. Calls LLM judge N times per (sample × dimension). Default 1. */
+  judgeRepeat?: number;
   onProgress?: ProgressCallback | null;
 }
 
@@ -359,6 +361,9 @@ Options for "bench run":
   --concurrency <n>      Number of parallel tasks (default: 1)
   --timeout <seconds>    Executor timeout per task in seconds (default: 120)
   --repeat <n>           Run evaluation N times for variance analysis (default: 1)
+  --judge-repeat <n>     Call LLM judge N times per (sample × dimension) for self-
+                         consistency (default: 1). High stddev across runs = the
+                         judge is unstable on this rubric and the score is noisy.
   --retry <n>            Retry failed tasks up to N times with exponential backoff (default: 0)
   --resume <report-id>   Resume from a previous report, skipping completed tasks
   --executor <name>      Executor: claude, openai, gemini, anthropic-api, openai-api,
@@ -585,6 +590,7 @@ async function handleRun(argv: string[]): Promise<void> {
   const { values, config } = parseRunConfig(argv, {
     blind: { type: 'boolean', default: false },
     repeat: { type: 'string', default: '1' },
+    'judge-repeat': { type: 'string', default: '1' },
   });
 
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
@@ -600,6 +606,15 @@ async function handleRun(argv: string[]): Promise<void> {
     process.stderr.write(`⚠ --repeat "${repeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次评测执行\n`);
   }
   const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
+
+  // --judge-repeat 同样的诚实校验:非 ≥1 整数时钳到 1
+  const judgeRepeatRaw = values['judge-repeat'] as string | undefined;
+  const parsedJudgeRepeat = judgeRepeatRaw !== undefined ? Number(judgeRepeatRaw) : 1;
+  if (judgeRepeatRaw !== undefined && (!Number.isFinite(parsedJudgeRepeat) || parsedJudgeRepeat < 1)) {
+    process.stderr.write(`⚠ --judge-repeat "${judgeRepeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次 judge 执行\n`);
+  }
+  const judgeRepeatCount: number = Math.max(1, Math.floor(parsedJudgeRepeat) || 1);
+  if (judgeRepeatCount > 1) config.judgeRepeat = judgeRepeatCount;
 
   try {
     // --each mode: evaluate each skill independently
