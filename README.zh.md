@@ -7,7 +7,7 @@
 
 [English](./README.md) | **简体中文**
 
-知识载体评测工具 — 用客观数据衡量你的 artifact 质量。
+**omk** — 内置统计严谨性的 LLM 评测框架。Bootstrap CI / Krippendorff α / 长度偏差校正 / 饱和曲线开箱即用。原生支持 Claude Code skill、prompt、agent、RAG。
 
 **固定模型，只变知识载体，数据说话。**
 
@@ -22,6 +22,32 @@
 - **线上 session 观测** — 解析 Claude Code session JSONL，在真实用户会话上测量各 skill 的失败率、耗时、token 成本和知识缺口信号
 - **知识缺口识别** — 严重度加权的信号（显式标记 / 搜索失败 / hedging 用语 / 反复失败）量化风险敞口,不宣称完备性
 - **合并前 CI 门** — `omk bench ci` 强制三层 all-pass（fact + behavior + llm-judge），抓复合分掩盖的单层回退
+- **一行 ship/no-ship 结论** — `omk bench verdict <reportId>` 聚合 bootstrap CI / 三层 ci-gate / saturation / human α,给六档 verdict（PROGRESS / CAUTIOUS / REGRESS / NOISE / UNDERPOWERED / SOLO）+ 行动建议;exit code 反映是否可 ship
+
+### 统计严谨性
+LLM 评测最容易踩的坑是"自信的偏差"——CI 很窄但结论错。omk 的统计层做四件事让结论可被外部审计：
+
+- **Bootstrap CI** (`--bootstrap`) — 不假设分布的置信区间。t 检验在 LLM 序数评分上失效，bootstrap 直接重采样原始数据，对小 N（< 30）和偏态分布都稳。pairwise diff CI 不含 0 = 显著差异。
+- **Human Gold + Krippendorff α** (`--gold-dir`) — 引入外部标注作为锚点。CI 解决"评委稳不稳"，α 解决"评委对不对"——两个维度互补。omk 自动检测污染（gold annotator 与 judge 同模型时警告）。
+- **Length-controlled judge prompt** (默认开启) — 研究证实 LLM 评委隐性偏向更长的回答。omk 的 judge prompt 加显式段落"长度不是质量信号"，template hash 为 v3-cot-length，跟旧版本的报告 hash 肉眼可辨。`omk bench debias-validate length <reportId>` 重判检测偏差幅度。
+- **Saturation curve** — 回答"我跑够样本了吗"。`--repeat ≥ 5` 时累积 N → 均值 + bootstrap CI 序列，CI 宽度衰减率 < 5% 持续 3 个窗口判定饱和——再多样本对结论无实质收益。HTML 报告内联 SVG 曲线 + verdict。
+
+## 为什么选 omk
+
+| | omk | promptfoo | DeepEval | RAGAS | LangSmith |
+|--|--|--|--|--|--|
+| Bootstrap CI | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Krippendorff α(评委 ↔ 人工锚点） | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Length-debias 评委 prompt | ✓ 默认 | ✗ | ✗ | ✗ | ✗ |
+| 饱和曲线 | ✓ | ✗ | ✗ | ✗ | ✗ |
+| 三层独立评分 | ✓ | ✗ | 部分 | ✗ | ✗ |
+| 原生 Claude Code skill | ✓ | ✗ | ✗ | ✗ | ✗ |
+| 完整中文文档 | ✓ | ✗ | ✗ | ✗ | ✗ |
+| 托管 SaaS 看板 | ✗ | ✗ | ✓ | ✗ | ✓ |
+
+omk 的护城河是**统计严谨性** — 每条结论都能被研究者审计。需要托管 SaaS 看板?选 LangSmith。要本地快速 prompt 迭代不要统计层?选 promptfoo。**要 ship 到生产且会被问"为什么应该相信这个数字"?选 omk**。
+
+完整对比(7 个工具 × 25+ 维度): [docs/zh/comparison.md](docs/zh/comparison.md)
 
 ## 快速开始
 
@@ -61,15 +87,23 @@ omk bench run
 
 | 特性 | 说明 |
 |------|------|
-| **18 种断言** | 包含子串、正则、JSON Schema、语义相似度、自定义函数等 |
+| **21+ 种断言** | 包含子串、正则、JSON Schema、ROUGE/BLEU/Levenshtein 相似度、Agent 工具调用、语义相似度、自定义函数等 |
+| **断言取反 + 组合** | 通用 `not: true` 字段 + `assert-set` (any/all) 任意嵌套 |
 | **六维评估** | 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性独立展示 |
+| **统计严谨性** | Bootstrap CI / Krippendorff α / Length-debias / Saturation curve |
+| **Verdict 一行结论** | `omk bench verdict <id>` 六档判定 + ship 建议 + exit code 路由,与 HTML 报告 verdict pill 共享规则 |
+| **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` 三 metric — 反幻觉 + 切题度 + context 覆盖,自动继承 length-debias |
+| **样本质量诊断** | `omk bench diagnose <id>` 7 类 issue（区分度低 / 重复 / 歧义 / 成本异常 / 全 fail 等）+ healthScore 0-100 |
+| **失败聚类 + 根因** | `omk bench failures <id>` 单 LLM 调用聚类失败样本 + 每 cluster 给修复建议 |
+| **预算硬阈值** | `--budget-usd / --budget-per-sample-usd / --budget-per-sample-ms` 总成本 + 单样本成本/耗时上限,超出中止保留 partial report |
 | **多执行器** | 支持 Claude CLI / Claude SDK / OpenAI / Gemini 及自定义命令 |
+| **多评委 ensemble** | `--judge-models claude:opus,openai:gpt-4o` 跨厂商评分 + agreement 度量 |
 | **MCP URL 获取** | 通过 MCP Server 获取私有文档 URL 内容（SSO 保护的知识库等） |
 | **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
 | **并行执行** | `--concurrency N` 并行 N 个任务 |
 | **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
 | **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本样本 |
-| **可追溯性** | 报告含 CLI 版本、Node 版本、artifact 版本指纹 |
+| **可追溯性** | 报告含 CLI 版本、Node 版本、artifact 版本指纹、judge prompt hash |
 | **中英切换** | HTML 报告右上角一键切换语言 |
 
 ## 工作原理
@@ -112,7 +146,7 @@ flowchart TD
     end
 
     subgraph Report["⑦ 报告"]
-        R["六维: 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性<br/>JSON + HTML · 盲测揭晓<br/>CLI/Node/版本指纹可追溯"]
+        R["六维: 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性<br/>JSON + HTML · 顶部 verdict pill · 盲测揭晓<br/>CLI/Node/版本指纹可追溯"]
     end
 
     S --> U
@@ -246,7 +280,7 @@ flowchart TD
 
 ### 断言类型
 
-**确定性断言（18 种）：**
+**确定性断言（21+ 种）：**
 
 | 类型 | 说明 |
 |------|------|
@@ -259,8 +293,42 @@ flowchart TD
 | `word_count_min` / `word_count_max` | 词数范围 |
 | `contains_all` / `contains_any` | 多值匹配 |
 | `cost_max` / `latency_max` | 成本/延迟限制 |
-| `semantic_similarity` | LLM 语义相似度 |
+| `tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` | Agent 工具调用断言 |
+| `tool_output_contains` / `tool_input_contains` | 工具输入/输出内容匹配 |
+| `turns_min` / `turns_max` | 多轮对话轮数限制 |
+| `rouge_n_min` | ROUGE-N recall ≥ threshold（`reference` 字段填参考答案，`n` 默认 1，`threshold` 默认 0.5） |
+| `levenshtein_max` | 编辑距离 ≤ value（用于"输出跟参考几乎一致"场景） |
+| `bleu_min` | BLEU-4 ≥ threshold（unsmoothed，短文本会塌陷到 0） |
+| `faithfulness` | 输出是否被 `sample.context` 支持(反幻觉);LLM judge 1-5 评分,threshold 默认 3 |
+| `answer_relevancy` | 输出是否切题回答 `sample.prompt`;能抓住跑题、回避、冗余;threshold 默认 3 |
+| `context_recall` | `sample.context` 关键事实在输出中的覆盖率;`reference` 可显式指定 gold facts;threshold 默认 3 |
+| `semantic_similarity` | LLM 语义相似度（与 reference 的整体相似度,与 RAG 三 metric 互补） |
 | `custom` | 自定义 JS 函数（30s 超时） |
+
+**通用修饰：**
+
+任何断言加 `not: true` 即反向（替代 `not_contains` / `not_equals` 等成对类型；老类型保留作 alias）：
+
+```yaml
+- type: regex
+  pattern: "TODO|FIXME"
+  not: true              # 必须不含 TODO/FIXME
+```
+
+**断言组合（— assert-set）：**
+
+`assert-set` 类型让多个断言以 `any`（OR）或 `all`（AND）逻辑组合，可嵌套：
+
+```yaml
+- type: assert-set
+  mode: any              # 任一通过即过 (mode: 'all' 则需全部通过)
+  children:
+    - { type: contains, value: "参数化" }
+    - { type: contains, value: "prepared statement" }
+    - { type: regex, pattern: "bind\\(.*\\?" }
+```
+
+子断言可独立带 `not: true`；嵌套 assert-set 可表达任意布尔逻辑。
 
 ### 自定义断言
 
@@ -319,7 +387,25 @@ omk bench run [选项]
   --verbose              打印每个样本的详细执行结果（耗时、tokens、输出预览）
   --each                 批量评测：每个 artifact 独立和 baseline 对比
                          需要每个 artifact 配对 {name}.eval-samples.json
+  --judge-repeat <n>     每条 sample × dimension 跑 LLM 评委 N 次,输出 stddev (评委自一致性)
+  --judge-models <list>  多评委 ensemble: "executor1:model1,executor2:model2"
+                         ≥ 2 个 judge 触发 ensemble + inter-judge agreement 输出
+  --bootstrap            启用 distribution-free CI:每个 variant 加 bootstrap CI,
+                         pairwise diff CI 含 0 = 不显著
+  --bootstrap-samples N  bootstrap 重采样次数 (默认 1000)
+  --gold-dir <路径>      跑完自动对比 human gold 算 Krippendorff α / κ / Pearson,
+                         结果写入 report.meta.humanAgreement,HTML 报告显示「人工锚点」
+  --no-debias-length     退回 v2-cot 评委 prompt (不含"长度不是质量信号"段落),
+                         用于复现旧版本（v3-cot-length 之前）的报告 hash
+  --budget-usd <num>             总成本上限 (USD);超出中止评测,partial report 仍持久化
+                                 (`report.meta.budgetExhausted = true`)
+  --budget-per-sample-usd <num>  单样本成本上限;超出该样本失败但评测继续
+  --budget-per-sample-ms <num>   单样本耗时上限 (ms);超出该样本失败但评测继续
 ```
+
+**eval.yaml 预算字段**: `budget: { totalUSD?, perSampleUSD?, perSampleMs? }`,所有字段可选且必须 ≥ 0。CLI 同名 flag 覆盖配置值。
+
+**和 `cost_max` / `latency_max` 断言的区别**: 断言是**单样本评分维度**(超出直接打 0 分,run 继续);budget 是**工作流级硬阈值**(`totalUSD` 超出整个 run abort 保留 partial report,per-sample 超出该样本失败但 run 继续)。一个回答"质量是否达标",一个回答"花钱/时间是否在预算内"。
 
 ### `omk bench run --each`（批量评测）
 
@@ -420,6 +506,113 @@ omk bench report [选项]
 ```bash
 omk bench init [目录]    # 生成评测项目脚手架
 ```
+
+### `omk bench gold`（人工锚点）
+
+人工标注（或更强模型代理）作为外部锚点，与 LLM 评委的分数对比 Krippendorff α / 加权 κ / Pearson。回答"评委对不对"，与 Bootstrap CI 的"评委稳不稳"互补。
+
+```bash
+omk bench gold init [--out <dir>] [--annotator <id>]   # 生成数据集模板
+omk bench gold validate <dir>                          # 校验 schema (annotator/时间/版本/score 范围)
+omk bench gold compare <reportId> --gold-dir <dir>     # 与已有 report 对比,输出 verdict + α/κ/r
+```
+
+dataset 目录结构：
+
+```
+gold-dir/
+├── metadata.yaml      # annotator (注意不要与 omk judge 同模型,会触发污染警告) + 时间 + 版本
+└── annotations.yaml   # [{ sample_id, score, reason? }] 按 sample_id 拼接
+```
+
+α 阈值参考 Krippendorff (2011)：≥ 0.80 高度一致；[0.67, 0.80) 可接受；< 0.40 偏差大需排查 rubric / prompt。
+
+完整 demo: [examples/gold-dataset/](examples/gold-dataset/)
+
+### `omk bench debias-validate length`（评委长度偏差检测）
+
+重判已有 report 的所有 (sample × variant)，用相反的 length-debias 设置（v3-cot-length ↔ v2-cot），bootstrap CI 算两次差值。差异显著 = 评委对长度敏感（length bias 间接证据）。
+
+```bash
+omk bench debias-validate length <reportId> [选项]
+  --variant <name>            只测一个 variant
+  --judge-model <id>          override report 的 judge model
+  --bootstrap-samples N       bootstrap 迭代数 (默认 1000)
+  --seed N                    确定性种子
+```
+
+verdict 分四档：未检测 / 弱 / 中（差值 |0.2-0.5|）/ 强（差值 ≥ 0.5）。重判 cost 大致翻倍。
+
+### `omk bench saturation`（饱和曲线）
+
+回答"我跑够样本了吗"。从已有 report 读取 saturation trace 输出判定，无需重跑评测。需要原 run 跑了 `--repeat ≥ 5` 才会有 verdict（低 repeat 只画曲线）。
+
+```bash
+omk bench saturation <reportId> [选项]
+  --variant <name>             只看一个 variant
+  --method <m>                 slope | bootstrap-ci-width (默认) | plateau-height
+  --threshold <num>            方法相关阈值 (默认随 method)
+  --window <num>               连续多少窗口满足才判饱和 (默认 3)
+```
+
+HTML 报告会内联 SVG 饱和曲线（横 N，纵 mean ± 95% CI 阴影带，per-variant 一条），自动渲染。
+
+### `omk bench verdict`（一行 ship/no-ship 结论）
+
+聚合 bootstrap CI / 三层 ci-gate / saturation / human α 给一行结论。Verdict 六档:**PROGRESS**（显著改进 + 三层全过 → exit 0）/ **CAUTIOUS**（改进真实但有警告:gate 破/幅度太小/控制组本身崩 → exit 1）/ **REGRESS**（显著回退 → exit 1）/ **NOISE**（CI 跨 0,无法判定 → exit 1）/ **UNDERPOWERED**（样本不足 → exit 1）/ **SOLO**（单变体,仅自身三层 gate 过才 exit 0）。
+
+```bash
+omk bench verdict <reportId> [选项]
+  --threshold <num>      三层 gate 阈值 (默认 3.5,匹配 omk bench ci)
+  --trivial-diff <num>   "幅度太小"阈值 (默认 0.1)
+  --verbose              展开 per-pair 详情
+```
+
+与 HTML 报告顶部的 verdict pill 共享规则模块,CLI 与 UI 不会矛盾。
+
+### `omk bench diagnose`（样本质量诊断）
+
+回答"测评结论是否被坏样本污染"。诊断 7 类样本质量问题:`flat_scores`（区分度低）/ `all_pass`（太简单）/ `all_fail`（broken,error 级）/ `near_duplicate`（prompt ROUGE-1 ≥ 阈值）/ `ambiguous_rubric`（judge stddev 大,需要 `--judge-repeat ≥ 2`）/ `cost_outlier`（≥ k× median）/ `latency_outlier`（≥ k× median）/ `error_prone`（执行失败）。
+
+```bash
+omk bench diagnose <reportId> [选项]
+  --top <n>                   每类显示前 N 个 (默认 10,0=全部)
+  --duplicate-rouge <num>     near-duplicate ROUGE-1 阈值 (默认 0.7)
+  --ambiguous-stddev <num>    歧义 judge stddev 阈值 (默认 1.0)
+  --cost-k <num>              成本异常倍数 vs median (默认 3)
+  --latency-k <num>           耗时异常倍数 vs median (默认 3)
+  --flat <num>                flat_scores 分差阈值 (默认 0.5)
+```
+
+输出含 healthScore（0-100,公式 `100 - normalized × 20`,其中 `normalized = (errors×8 + warnings×3 + infos×1) / N`）。exit code 0 仅当 `healthScore ≥ 70` 且无 error 级 issue,适合 CI 链。
+
+### `omk bench failures`（失败 case LLM 聚类）
+
+跑完 14 条失败,逐个看太慢。本命令把失败样本喂给单次 LLM 调用,自动聚到 ≤ N 个 cluster,每个 cluster 给根因 + 修复建议。失败定义:`compositeScore < threshold` 或 `ok = false`。
+
+```bash
+omk bench failures <reportId> [选项]
+  --judge-executor <name>     执行器 (默认 claude)
+  --judge-model <id>          聚类用 model (默认沿用 report.meta.judgeModel)
+  --max-clusters <n>          最多多少 cluster (默认 5)
+  --threshold <num>           算失败的分数阈值 (默认 3)
+  --max-feed <n>              最多喂给 LLM 多少条 (默认 50,超出取最差)
+```
+
+容错:tolerate ```json``` markdown fence、`"sample_id@variant"` 字符串成员形式、hallucinated 成员自动剔除、单条失败跳过 LLM 直接列出、executor 错误降级到 unclassified。
+
+### `omk bench diff`（报告对比 — 单参 / 双参双模式）
+
+**单参模式**(within-report sample-level 钻取): `omk bench diff <reportId>` — 在同一份报告内对比两个 variant 的逐样本得分,默认对比 `variants[0]` vs `variants[1]`。
+
+**双参模式**(cross-report variant-level): `omk bench diff <reportId1> <reportId2>` — 跨报告对比同一 variant 的整体均值漂移(向后兼容旧用法)。
+
+```bash
+omk bench diff <reportId> [--variant <name>] [--regressions-only] [--threshold 0] [--top N]
+omk bench diff <reportId1> <reportId2> [--regressions-only] [--threshold 0]
+```
+
+单参模式表格按 |Δ| 排序,Δ < threshold 高亮 regression。`--top N` 限制行数,`--regressions-only` 过滤到只看回退。
 
 ## `omk analyze` — 生产观测
 

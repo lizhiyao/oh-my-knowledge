@@ -72,6 +72,10 @@ async function initializeEvaluationRunState({
   each,
   judgeRepeat,
   judgeModels,
+  bootstrap,
+  bootstrapSamples,
+  lengthDebias,
+  budget,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -95,6 +99,10 @@ async function initializeEvaluationRunState({
   each?: boolean;
   judgeRepeat?: number;
   judgeModels?: import('../types.js').JudgeConfig[];
+  bootstrap?: boolean;
+  bootstrapSamples?: number;
+  lengthDebias?: boolean;
+  budget?: import('../types.js').EvalBudget;
 }): Promise<EvaluationRunState> {
   const request = buildEvaluationRequest({
     samplesPath,
@@ -117,6 +125,10 @@ async function initializeEvaluationRunState({
     each,
     judgeRepeat,
     judgeModels,
+    bootstrap,
+    bootstrapSamples,
+    lengthDebias,
+    budget,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
@@ -267,6 +279,14 @@ export interface EvaluationPipelineOptions {
   judgeRepeat?: number;
   /** Multi-judge ensemble configs (≥ 2 entries triggers ensemble mode). */
   judgeModels?: import('../types.js').JudgeConfig[];
+  /** --bootstrap. */
+  bootstrap?: boolean;
+  /** --bootstrap-samples N. Default 1000. */
+  bootstrapSamples?: number;
+  /** v0.21 length-debias toggle. Default true; --no-debias-length flips to false. */
+  lengthDebias?: boolean;
+  /** v0.22 — hard budget caps. */
+  budget?: import('../types.js').EvalBudget;
 }
 
 export async function executeEvaluationPipeline({
@@ -303,6 +323,10 @@ export async function executeEvaluationPipeline({
   each,
   judgeRepeat,
   judgeModels,
+  bootstrap,
+  bootstrapSamples,
+  lengthDebias = true,
+  budget,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -328,6 +352,10 @@ export async function executeEvaluationPipeline({
     each,
     judgeRepeat,
     judgeModels,
+    bootstrap,
+    bootstrapSamples,
+    lengthDebias,
+    budget,
   });
 
   try {
@@ -361,7 +389,7 @@ export async function executeEvaluationPipeline({
       }
     }
 
-    const { results, totalCostUSD, skipped } = await executeTasks({
+    const { results, totalCostUSD, skipped, budgetExhausted } = await executeTasks({
       tasks,
       executor,
       judgeExecutor,
@@ -379,6 +407,8 @@ export async function executeEvaluationPipeline({
       judgeRepeat,
       judgeModels,
       judgeExecutors,
+      lengthDebias,
+      budget,
     });
     if (skipped > 0 && onProgress) {
       onProgress({ phase: 'done', completed: tasks.length, total: tasks.length, sample_id: '', variant: '', skipped: true });
@@ -409,6 +439,12 @@ export async function executeEvaluationPipeline({
       blind,
       samplesPath,
     });
+    if (budgetExhausted) {
+      report.meta.budgetExhausted = true;
+    }
+    if (budget) {
+      report.meta.budget = budget;
+    }
     const filePath = persistReport(report, outputDir);
     await persistSuccessfulJob(runState, job);
     return { report, filePath };

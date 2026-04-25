@@ -1,6 +1,291 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import { pValueCategory } from '../eval-core/statistics.js';
-import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantSummary } from '../types.js';
+import { computeVerdict, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
+import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types.js';
+
+/**
+ * Verdict pill — sticky banner at the top of the HTML report giving the same
+ * one-line conclusion as the `omk bench verdict` CLI. Both surfaces share the
+ * computeVerdict rule engine so they can never disagree.
+ *
+ * Color coding follows traffic-light convention plus a yellow band for
+ * UNDERPOWERED / NOISE / CAUTIOUS — none of which are "ship" but none of which
+ * are "regress" either. SOLO is grey because it's an info pill, not a verdict.
+ */
+function levelColor(level: VerdictLevel): { bg: string; fg: string; border: string } {
+  switch (level) {
+    case 'PROGRESS': return { bg: 'rgba(46, 204, 113, 0.15)', fg: 'var(--green)', border: 'var(--green)' };
+    case 'REGRESS':  return { bg: 'rgba(231, 76, 60, 0.15)',  fg: 'var(--red)',   border: 'var(--red)' };
+    case 'CAUTIOUS': return { bg: 'rgba(255, 200, 80, 0.15)', fg: 'var(--yellow)', border: 'var(--yellow)' };
+    case 'UNDERPOWERED':
+    case 'NOISE':    return { bg: 'rgba(180, 180, 180, 0.15)', fg: 'var(--text-muted)', border: 'var(--text-muted)' };
+    case 'SOLO':     return { bg: 'rgba(180, 180, 180, 0.10)', fg: 'var(--text-secondary)', border: 'var(--border)' };
+  }
+}
+
+function levelLabel(level: VerdictLevel, lang: Lang): string {
+  if (lang === 'zh') {
+    switch (level) {
+      case 'PROGRESS':     return '进步';
+      case 'CAUTIOUS':     return '需谨慎';
+      case 'REGRESS':      return '回退';
+      case 'NOISE':        return '无信号';
+      case 'UNDERPOWERED': return '样本不足';
+      case 'SOLO':         return '单变体';
+    }
+  }
+  return level;
+}
+
+export function renderVerdictPill(report: Report, lang: Lang): string {
+  const result: VerdictResult = computeVerdict(report);
+  const c = levelColor(result.level);
+  const label = levelLabel(result.level, lang);
+  const ration = result.rationale;
+  const bullets: string[] = [];
+  if (ration.significance) bullets.push(`<span style="color:var(--text-secondary)">${e(ration.significance)}</span>`);
+  if (ration.layerWinners) bullets.push(`<span style="color:var(--text-muted);font-size:12px">${lang === 'zh' ? '层' : 'layers'}: ${e(ration.layerWinners)}</span>`);
+  if (ration.sampleSize)   bullets.push(`<span style="color:var(--text-muted);font-size:12px">${lang === 'zh' ? '样本' : 'samples'}: ${e(ration.sampleSize)}</span>`);
+  if (ration.judgeAgreement) bullets.push(`<span style="color:var(--text-muted);font-size:12px">${e(ration.judgeAgreement)}</span>`);
+
+  const ship = ration.shipRecommendation
+    ? `<div style="margin-top:8px;font-size:13px"><strong>${lang === 'zh' ? '建议' : 'Recommendation'}:</strong> ${e(ration.shipRecommendation)}</div>`
+    : '';
+
+  return `
+    <div style="margin:8px 0 16px;padding:14px 18px;background:${c.bg};border-left:4px solid ${c.border};border-radius:var(--radius)">
+      <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+        <span style="font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em">${lang === 'zh' ? '一句话结论' : 'Verdict'}</span>
+        <strong style="color:${c.fg};font-size:18px">${e(label)}</strong>
+        <span style="color:var(--text-secondary);font-size:14px">${e(result.headline)}</span>
+      </div>
+      <div style="margin-top:6px;display:flex;flex-direction:column;gap:2px">${bullets.join('')}</div>
+      ${ship}
+    </div>`;
+}
+
+/**
+ * Pairwise diff (treatment vs control) bootstrap CI table — populated only when
+ * --bootstrap was used and at least 2 variants ran. Each row shows whether
+ * treatment significantly outperformed control on compositeScore mean.
+ */
+export function renderPairwiseDiff(pairs: VariantPairComparison[] | undefined, lang: Lang): string {
+  if (!pairs || pairs.length === 0) return '';
+  const validPairs = pairs.filter((p) => p.diffBootstrapCI);
+  if (validPairs.length === 0) return '';
+
+  const rows = validPairs.map((p) => {
+    const ci = p.diffBootstrapCI!;
+    const sigClass = ci.significant ? 'green' : 'text-muted';
+    const sigText = ci.significant ? t('bootstrapDiffSignificant', lang) : t('bootstrapDiffNotSignificant', lang);
+    const estColor = ci.estimate > 0 ? 'var(--green)' : ci.estimate < 0 ? 'var(--red)' : 'var(--text-muted)';
+    return `<tr>
+      <td><strong>${e(p.treatment)}</strong> ${lang === 'zh' ? 'vs' : 'vs'} ${e(p.control)}</td>
+      <td style="text-align:center;color:${estColor}"><strong>${ci.estimate >= 0 ? '+' : ''}${ci.estimate}</strong></td>
+      <td style="text-align:center;font-size:11px">[${ci.low}, ${ci.high}]</td>
+      <td style="text-align:center;color:var(--${sigClass})">${sigText}</td>
+      <td style="text-align:center;color:var(--text-muted);font-size:11px">${ci.samples}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <h2 style="margin-top:24px">${lang === 'zh' ? '配对对比 (Bootstrap CI)' : 'Pairwise comparison (bootstrap CI)'}</h2>
+    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? 'control vs treatment 的均值差 95% CI。CI 不含 0 = 显著差异。bootstrap 不假设分布,适合 LLM 序数评分。' : '95% CI on (treatment - control) mean diff. 0 outside CI = significant. Bootstrap is distribution-free, fits ordinal LLM scores.'}</p>
+    <div class="table-wrap">
+    <table class="summary-table">
+      <thead><tr>
+        <th>${lang === 'zh' ? '对照' : 'Pair'}</th>
+        <th title="${t('bootstrapDiffLabel', lang)}">${t('bootstrapDiffLabel', lang)}</th>
+        <th>95% CI</th>
+        <th>${lang === 'zh' ? '显著性' : 'Significance'}</th>
+        <th>${lang === 'zh' ? '重采样数' : 'samples'}</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    </div>`;
+}
+
+/**
+ * Human-gold agreement section — rendered when --gold-dir was used at run time
+ * and the report has been re-persisted with `meta.humanAgreement`. Shows α
+ * (primary), bootstrap CI on α, weighted κ, Pearson — and surfaces a
+ * contamination warning prominently when the gold annotator id overlaps with
+ * the judge model id.
+ */
+export function renderHumanAgreement(agreement: ReportHumanAgreement | undefined, lang: Lang): string {
+  if (!agreement) return '';
+  if (agreement.sampleCount === 0) return '';
+  const fmt = (x: number): string => Number.isNaN(x) ? 'NaN' : x.toFixed(3);
+  const a = agreement;
+  const alphaColor = Number.isNaN(a.alpha)
+    ? 'var(--text-muted)'
+    : a.alpha >= 0.8 ? 'var(--green)'
+    : a.alpha >= 0.667 ? 'var(--yellow)'
+    : 'var(--red)';
+  const interpret = lang === 'zh'
+    ? (Number.isNaN(a.alpha)
+      ? '评分多样性不足，α 未定义'
+      : a.alpha >= 0.8 ? '高度一致 — 结论可放心使用'
+      : a.alpha >= 0.667 ? '可接受 — 谨慎结论'
+      : a.alpha >= 0.4 ? '较弱一致 — 结论需配合 CI 与人工抽检'
+      : a.alpha >= 0 ? '偏差较大 — 排查 rubric / prompt'
+      : '系统性反向 — 重新审视判分逻辑')
+    : (Number.isNaN(a.alpha)
+      ? 'insufficient rating variance for α'
+      : a.alpha >= 0.8 ? 'high agreement — conclusions trustworthy'
+      : a.alpha >= 0.667 ? 'acceptable — conclude cautiously'
+      : a.alpha >= 0.4 ? 'weak agreement — pair with CI + spot-checks'
+      : a.alpha >= 0 ? 'large divergence — investigate rubric / prompt'
+      : 'systematic inversion — judge logic needs review');
+
+  const warningBlock = a.contaminationWarning
+    ? `<div style="margin:8px 0;padding:8px 12px;background:rgba(255, 200, 80, 0.12);border-left:3px solid var(--yellow);font-size:13px"><strong>${lang === 'zh' ? '污染警告' : 'Contamination warning'}:</strong> ${e(a.contaminationWarning)}</div>`
+    : '';
+
+  const missingNote = (a.missingCount > 0 || a.unscoredCount > 0)
+    ? `<p style="font-size:12px;color:var(--text-muted);margin:4px 0">${lang === 'zh' ? '注: 报告缺' : 'Note: report missing'} ${a.missingCount} ${lang === 'zh' ? '条 sample' : 'samples'}${a.unscoredCount > 0 ? `, ${a.unscoredCount} ${lang === 'zh' ? '条无评分' : 'unscored'}` : ''}</p>`
+    : '';
+
+  return `
+    <h2 style="margin-top:24px">${lang === 'zh' ? '人工锚点 (Human Gold)' : 'Human gold anchor'}</h2>
+    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? '对比 LLM 评委分与外部标注的一致性。α 解决"评委对不对"，区别于 CI 解决"评委稳不稳"。' : 'Agreement between the LLM judge and external annotations. α addresses "is the judge correct"; the bootstrap CI addresses "is it consistent".'}</p>
+    ${warningBlock}
+    <div class="table-wrap">
+    <table class="summary-table">
+      <thead><tr>
+        <th>${lang === 'zh' ? '指标' : 'Metric'}</th>
+        <th style="text-align:center">${lang === 'zh' ? '值' : 'Value'}</th>
+        <th style="text-align:center">95% CI</th>
+        <th>${lang === 'zh' ? '说明' : 'Note'}</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Krippendorff α</strong></td>
+          <td style="text-align:center;color:${alphaColor}"><strong>${fmt(a.alpha)}</strong></td>
+          <td style="text-align:center;font-size:11px">[${fmt(a.alphaCI.low)}, ${fmt(a.alphaCI.high)}]</td>
+          <td style="font-size:12px;color:var(--text-secondary)">${lang === 'zh' ? '主指标，序数加权' : 'primary, ordinal-weighted'}</td>
+        </tr>
+        <tr>
+          <td>${lang === 'zh' ? '加权 κ' : 'weighted κ'}</td>
+          <td style="text-align:center">${fmt(a.weightedKappa)}</td>
+          <td style="text-align:center;color:var(--text-muted)">—</td>
+          <td style="font-size:12px;color:var(--text-secondary)">${lang === 'zh' ? '副指标，平方加权' : 'secondary, quadratic'}</td>
+        </tr>
+        <tr>
+          <td>Pearson r</td>
+          <td style="text-align:center">${fmt(a.pearson)}</td>
+          <td style="text-align:center;color:var(--text-muted)">—</td>
+          <td style="font-size:12px;color:var(--text-secondary)">${lang === 'zh' ? '只看 rank order' : 'rank-order only'}</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <p style="margin:8px 0 0;font-size:13px"><strong>${lang === 'zh' ? '解读' : 'Reading'}:</strong> ${e(interpret)}</p>
+    <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted)">${lang === 'zh' ? '标注者' : 'annotator'}: ${e(a.goldAnnotator)} (v${e(a.goldVersion)}) · variant: <strong>${e(a.variant)}</strong> · n=${a.sampleCount}</p>
+    ${missingNote}`;
+}
+
+/**
+ * Saturation curve — answers "did I run enough samples?". Renders an inline
+ * SVG of mean ± 95% CI shading vs cumulative N, one curve per variant. The
+ * verdict line below the chart calls out the saturation point (when the curve
+ * has flattened enough that more samples don't materially shrink the CI).
+ *
+ * Hidden when variance is absent (single-run reports) or when there are fewer
+ * than 2 checkpoints. We keep the chart visible at 2-4 checkpoints (= repeat
+ * < 5) so users can see the trajectory; the verdict is only computed at
+ * repeat ≥ 5.
+ */
+export function renderSaturationCurve(saturation: SaturationData | undefined, variants: string[], lang: Lang): string {
+  if (!saturation) return '';
+  const checkpoints = saturation.checkpointSampleCounts;
+  if (!checkpoints || checkpoints.length < 2) return '';
+
+  // Layout: 600 × 280 SVG, leave 50px on the left for y-axis and 30px at the
+  // bottom for x-axis labels. Score is the 1-5 Likert range; pin axes to that.
+  const width = 600, height = 280, padL = 50, padR = 20, padT = 16, padB = 32;
+  const plotW = width - padL - padR;
+  const plotH = height - padT - padB;
+  const xMax = Math.max(...checkpoints);
+  const xMin = Math.min(...checkpoints);
+  const yMin = 1, yMax = 5;
+  const xScale = (x: number): number => padL + (plotW * (x - xMin)) / Math.max(1, xMax - xMin);
+  const yScale = (y: number): number => padT + plotH - (plotH * (y - yMin)) / (yMax - yMin);
+
+  // Per-variant curves and CI ribbons.
+  const seriesParts: string[] = [];
+  variants.forEach((variant, i) => {
+    const trace = saturation.perVariant[variant];
+    if (!trace || trace.length === 0) return;
+    const color = COLORS[i % COLORS.length];
+
+    // CI ribbon: polygon walking forward along upper bound and back along lower.
+    const upper = trace.map((p) => `${xScale(p.n).toFixed(1)},${yScale(p.ciHigh).toFixed(1)}`);
+    const lower = trace.map((p) => `${xScale(p.n).toFixed(1)},${yScale(p.ciLow).toFixed(1)}`).reverse();
+    const ribbonPoints = [...upper, ...lower].join(' ');
+    seriesParts.push(`<polygon points="${ribbonPoints}" fill="${color}" fill-opacity="0.15" stroke="none" />`);
+
+    // Mean line.
+    const linePoints = trace.map((p) => `${xScale(p.n).toFixed(1)},${yScale(p.mean).toFixed(1)}`).join(' ');
+    seriesParts.push(`<polyline points="${linePoints}" fill="none" stroke="${color}" stroke-width="2" />`);
+
+    // Mean dots.
+    for (const p of trace) {
+      seriesParts.push(`<circle cx="${xScale(p.n).toFixed(1)}" cy="${yScale(p.mean).toFixed(1)}" r="3" fill="${color}" />`);
+    }
+  });
+
+  // Y-axis ticks at 1..5; x-axis ticks at every checkpoint.
+  const yTicks = [1, 2, 3, 4, 5].map((y) =>
+    `<line x1="${padL}" y1="${yScale(y)}" x2="${width - padR}" y2="${yScale(y)}" stroke="var(--border)" stroke-width="0.5" />
+     <text x="${padL - 6}" y="${yScale(y) + 4}" font-size="10" text-anchor="end" fill="var(--text-muted)">${y}</text>`,
+  ).join('');
+  const xTicks = checkpoints.map((n) =>
+    `<text x="${xScale(n)}" y="${height - padB + 14}" font-size="10" text-anchor="middle" fill="var(--text-muted)">${n}</text>`,
+  ).join('');
+
+  // Per-variant verdict block underneath.
+  const verdictRows: string[] = [];
+  if (saturation.verdicts) {
+    for (const variant of variants) {
+      const v = saturation.verdicts[variant];
+      if (!v) continue;
+      const flagColor = v.saturated ? 'var(--green)' : 'var(--yellow)';
+      const flagText = v.saturated
+        ? (lang === 'zh' ? `已饱和 (N=${v.atN})` : `saturated at N=${v.atN}`)
+        : (lang === 'zh' ? '尚未饱和' : 'not yet saturated');
+      const conf = v.confidence === 'low'
+        ? `<span style="color:var(--yellow)">⚠ ${lang === 'zh' ? '样本太少,结论参考意义有限' : 'low confidence, interpret cautiously'}</span>`
+        : '';
+      verdictRows.push(
+        `<tr><td><strong>${e(variant)}</strong></td>
+         <td style="color:${flagColor}"><strong>${flagText}</strong></td>
+         <td style="font-size:12px;color:var(--text-secondary)">${e(v.reason)} ${conf}</td></tr>`,
+      );
+    }
+  }
+
+  const noteHtml = saturation.verdicts
+    ? `<div class="table-wrap"><table class="summary-table">
+       <thead><tr>
+         <th>${lang === 'zh' ? '变体' : 'Variant'}</th>
+         <th>${lang === 'zh' ? '判定' : 'Verdict'}</th>
+         <th>${lang === 'zh' ? '依据' : 'Rationale'}</th>
+       </tr></thead><tbody>${verdictRows.join('')}</tbody></table></div>`
+    : `<p style="font-size:13px;color:var(--text-muted);margin:8px 0 0">${lang === 'zh' ? '提示:repeat ≥ 5 时才会输出饱和判定。当前数据只够画曲线,不足以下结论。' : 'Note: saturation verdict needs repeat ≥ 5. Current data plots the curve only.'}</p>`;
+
+  return `
+    <h2 style="margin-top:24px">${lang === 'zh' ? '饱和曲线 (Saturation curve)' : 'Saturation curve'}</h2>
+    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? '随累积样本数 N 增长的均值与 95% CI。CI 宽度衰减放缓即饱和——再多样本对结论无实质收益。' : 'Mean and 95% CI as cumulative N grows. When CI shrink rate flattens, the evidence has saturated — more samples buy little.'}</p>
+    <svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:${width}px;height:auto;display:block">
+      ${yTicks}
+      <text x="${padL - 36}" y="${padT + plotH / 2}" font-size="11" text-anchor="middle" fill="var(--text-muted)" transform="rotate(-90 ${padL - 36} ${padT + plotH / 2})">${lang === 'zh' ? '均值' : 'mean'}</text>
+      <text x="${padL + plotW / 2}" y="${height - 4}" font-size="11" text-anchor="middle" fill="var(--text-muted)">${lang === 'zh' ? '累积样本数 N' : 'cumulative N'}</text>
+      ${xTicks}
+      ${seriesParts.join('\n')}
+    </svg>
+    ${noteHtml}`;
+}
 
 export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang, variance?: VarianceData): string {
   // 六维对比表格:事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性。

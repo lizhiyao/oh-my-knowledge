@@ -55,6 +55,17 @@ export interface Assertion {
   fn?: string;
   reference?: string;
   threshold?: number;
+  /** v0.21 Phase 5a — when true, the assertion's pass/fail is inverted. Works
+   *  with any type, including legacy `not_contains` (which becomes a redundant
+   *  but still supported double-negation). */
+  not?: boolean;
+  /** v0.21 Phase 5a — only used by type='assert-set'. 'any' = at least one
+   *  child must pass; 'all' = every child must pass. Children may be any
+   *  assertion type, including nested assert-sets. */
+  mode?: 'any' | 'all';
+  children?: Assertion[];
+  /** v0.21 Phase 5b — for rouge_n_min: which n-gram order (default 1). */
+  n?: number;
 }
 
 export interface Sample {
@@ -135,6 +146,20 @@ export interface EvalConfig {
   blind?: boolean;
   mcpConfig?: string;
   variants: EvalConfigVariant[];
+  /** v0.22 — hard budget caps. When any limit is hit during a run, remaining
+   *  tasks are aborted and the partial report is persisted. CLI flags
+   *  `--budget-usd` / `--budget-per-sample-usd` / `--budget-per-sample-ms`
+   *  override the config values. */
+  budget?: EvalBudget;
+}
+
+export interface EvalBudget {
+  /** Stop the run if cumulative (exec + judge) cost exceeds this many USD. */
+  totalUSD?: number;
+  /** Per-sample cost ceiling. Tasks exceeding this fail individually but the run continues. */
+  perSampleUSD?: number;
+  /** Per-sample wall-clock latency ceiling in milliseconds. */
+  perSampleMs?: number;
 }
 
 export interface EvaluationRequest {
@@ -165,6 +190,17 @@ export interface EvaluationRequest {
    *  inter-judge agreement (Pearson correlation + mean absolute difference) — 反驳
    *  "Claude judge Claude 同模态偏差" 的硬证据. 与 judgeRepeat 可组合. */
   judgeModels?: JudgeConfig[];
+  /** --bootstrap; true 时 aggregateReport 加跑 bootstrap mean/diff CI, 写入 VariantSummary.
+   *  与原 t-interval 共存 (ReportMeta.evaluationFramework='both'), renderer 优先 bootstrap. */
+  bootstrap?: boolean;
+  /** --bootstrap-samples N; bootstrap 重采样次数, 默认 1000. > 10000 时 stderr 警告. */
+  bootstrapSamples?: number;
+  /** v0.21 Phase 3a length-debias toggle. Default true (judge prompt v3-cot-length).
+   *  CLI flag --no-debias-length flips to false (legacy v2-cot prompt). The active
+   *  value is reflected in ReportMeta.judgePromptHash and ReportMeta.debiasMode. */
+  lengthDebias?: boolean;
+  /** v0.22 — hard budget caps. See EvalBudget. */
+  budget?: EvalBudget;
 }
 
 /** Single judge configuration: which executor to call and which model alias to pass. */
@@ -472,6 +508,22 @@ export interface VariantSummary {
   judgeAgreement?: JudgeAgreement & { sampleCount: number };
   /** List of judge identifiers ("executor:model") seen in this variant's ensemble data. */
   judgeModels?: string[];
+  /** Bootstrap CI on this variant's compositeScore mean (when --bootstrap enabled).
+   *  Distribution-free; preferred over t-interval for ordinal LLM scores. */
+  bootstrapCI?: { low: number; high: number; estimate: number; samples: number };
+}
+
+/**
+ * Pairwise variant comparison stats — used when comparing treatment vs control.
+ * Independent from per-variant `bootstrapCI` (which is on each variant alone).
+ */
+export interface VariantPairComparison {
+  /** Control variant name (the subtrahend). */
+  control: string;
+  /** Treatment variant name (the minuend). */
+  treatment: string;
+  /** Bootstrap CI on (treatment - control) mean diff. `significant` = 0 outside CI. */
+  diffBootstrapCI?: { low: number; high: number; estimate: number; samples: number; significant: boolean };
 }
 
 export interface GitInfo {
@@ -479,6 +531,34 @@ export interface GitInfo {
   commitShort: string;
   branch: string;
   dirty: boolean;
+}
+
+/** Persisted form of agreement metrics between gold dataset and the LLM judge.
+ *  Lives on ReportMeta so the renderer can show a "人工锚点" section without
+ *  re-loading the gold dataset. */
+export interface ReportHumanAgreement {
+  /** Krippendorff α (interval weights) — primary metric. */
+  alpha: number;
+  /** Bootstrap 95% CI on α. */
+  alphaCI: { low: number; high: number; estimate: number; samples: number };
+  /** Quadratic-weighted κ — secondary metric. */
+  weightedKappa: number;
+  /** Pearson r — tertiary, rank-order only. */
+  pearson: number;
+  /** Number of (gold, judge) pairs that contributed. */
+  sampleCount: number;
+  /** Variant whose judge scores were compared. */
+  variant: string;
+  /** Identifier of the gold annotator (model id, person, or team handle). */
+  goldAnnotator: string;
+  /** Free-form version string from the gold metadata. */
+  goldVersion: string;
+  /** Set when annotator id overlapped with judge model id. */
+  contaminationWarning?: string;
+  /** Sample_ids in the gold set that were absent from the report. */
+  missingCount: number;
+  /** Sample_ids present in the report but with no judge score (assertion-only etc). */
+  unscoredCount: number;
 }
 
 export interface ReportMeta {
@@ -503,6 +583,28 @@ export interface ReportMeta {
    *  When length >= 2, every (sample × dimension) is scored by all judges and
    *  agreement metrics are reported per-result. */
   judgeModels?: string[];
+  /** Which CI framework was used for this report: 't-test' (legacy default),
+   *  'bootstrap' (--bootstrap), or 'both' (some summaries have both). Reports
+   *  with mismatched frameworks shouldn't be compared blindly on CI bounds. */
+  evaluationFramework?: 't-test' | 'bootstrap' | 'both';
+  /** Pairwise comparisons (treatment vs control) — populated when --bootstrap and
+   *  multi-variant. Length = (variants.length - 1). */
+  pairComparisons?: VariantPairComparison[];
+  /** v0.21 Phase 3 — which judge-bias debias modes were active for this run.
+   *  Values: 'length' (substance-not-length prompt), 'position' (random ensemble
+   *  order). Empty / absent means legacy default (no debias). The renderer shows
+   *  this so readers can tell apples from oranges across reports. */
+  debiasMode?: Array<'length' | 'position'>;
+  /** v0.22 — set to true when the run was aborted by a budget tracker. The
+   *  report is partial: only tasks completed before the abort are present. */
+  budgetExhausted?: boolean;
+  /** v0.22 — budget caps that were active for this run, copied from request.budget
+   *  for ease of reading without dereferencing request. */
+  budget?: EvalBudget;
+  /** Human-gold agreement when --gold-dir was passed at run time. Compares the
+   *  judge's llmScore against the gold annotations on matching sample_ids. See
+   *  src/grading/human-gold.ts for the metric definitions. */
+  humanAgreement?: ReportHumanAgreement;
   variantConfigs?: VariantConfig[];
   request?: EvaluationRequest;
   run?: EvaluationRun;
@@ -685,6 +787,28 @@ export interface VarianceData {
   runs: number;
   perVariant: Record<string, VariantVariance>;
   comparisons: VarianceComparison[];
+  /** v0.21 Phase 4 — saturation curve data. Populated only when repeat ≥ 2.
+   *  Per-variant cumulative score arrays at each repeat checkpoint, plus the
+   *  saturation verdict (only computed when repeat ≥ 5). */
+  saturation?: SaturationData;
+}
+
+/** Per-variant saturation curve data + (optionally) verdict. */
+export interface SaturationData {
+  /** Cumulative checkpoint counts (sample-cumulative across runs). */
+  checkpointSampleCounts: number[];
+  /** Per-variant trace: at each checkpoint, mean and CI bounds.
+   *  perVariant[variant][i] = { n, mean, ciLow, ciHigh } at checkpoint i. */
+  perVariant: Record<string, Array<{ n: number; mean: number; ciLow: number; ciHigh: number }>>;
+  /** Saturation verdict per variant. Only present when repeat ≥ 5. */
+  verdicts?: Record<string, {
+    saturated: boolean;
+    atN: number | null;
+    confidence: 'high' | 'medium' | 'low';
+    method: 'slope' | 'bootstrap-ci-width' | 'plateau-height';
+    threshold: number;
+    reason: string;
+  }>;
 }
 
 export interface McpFetchTool {

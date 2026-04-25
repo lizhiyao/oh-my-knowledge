@@ -122,6 +122,25 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
   assertBoolOpt('blind');
   assertStringOpt('mcpConfig');
 
+  // v0.22 — budget validation. Top-level `budget: { totalUSD?, perSampleUSD?, perSampleMs? }`.
+  let budget: import('../types.js').EvalBudget | undefined;
+  if (obj.budget !== undefined) {
+    if (typeof obj.budget !== 'object' || obj.budget === null || Array.isArray(obj.budget)) {
+      throw new Error(`${configPath}: budget 必须是对象`);
+    }
+    const b = obj.budget as Record<string, unknown>;
+    for (const k of ['totalUSD', 'perSampleUSD', 'perSampleMs']) {
+      if (b[k] !== undefined && (typeof b[k] !== 'number' || b[k] as number < 0)) {
+        throw new Error(`${configPath}: budget.${k} 必须是非负数字`);
+      }
+    }
+    budget = {
+      totalUSD: b.totalUSD as number | undefined,
+      perSampleUSD: b.perSampleUSD as number | undefined,
+      perSampleMs: b.perSampleMs as number | undefined,
+    };
+  }
+
   return {
     samples: obj.samples as string,
     executor: obj.executor as string | undefined,
@@ -134,6 +153,7 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     blind: obj.blind as boolean | undefined,
     mcpConfig: obj.mcpConfig as string | undefined,
     variants,
+    budget,
   };
 }
 

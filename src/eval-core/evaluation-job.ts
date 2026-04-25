@@ -25,6 +25,10 @@ export function buildEvaluationRequest({
   each,
   judgeRepeat,
   judgeModels,
+  bootstrap,
+  bootstrapSamples,
+  lengthDebias,
+  budget,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -46,6 +50,10 @@ export function buildEvaluationRequest({
   each?: boolean;
   judgeRepeat?: number;
   judgeModels?: JudgeConfig[];
+  bootstrap?: boolean;
+  bootstrapSamples?: number;
+  lengthDebias?: boolean;
+  budget?: import('../types.js').EvalBudget;
 }): EvaluationRequest {
   return {
     samplesPath,
@@ -68,6 +76,10 @@ export function buildEvaluationRequest({
     each,
     judgeRepeat,
     judgeModels,
+    bootstrap,
+    bootstrapSamples,
+    lengthDebias,
+    budget,
   };
 }
 

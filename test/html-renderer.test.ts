@@ -314,6 +314,28 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('0.6'), 'should show MAD value');
   });
 
+  it('renders bootstrap pairwise diff section when meta.pairComparisons present', () => {
+    const bsReport = JSON.parse(JSON.stringify(SAMPLE_REPORT));
+    bsReport.meta.evaluationFramework = 'both';
+    bsReport.meta.pairComparisons = [
+      {
+        control: 'v1',
+        treatment: 'v2',
+        diffBootstrapCI: { low: 0.2, high: 0.8, estimate: 0.5, samples: 1000, significant: true },
+      },
+    ];
+    const html = renderRunDetail(bsReport);
+    // Section heading visible (zh by default)
+    assert.ok(html.includes('配对对比') || html.includes('Pairwise comparison'), 'should render pairwise heading');
+    // Diff CI numbers
+    assert.ok(html.includes('0.5'), 'should show diff estimate 0.5');
+    assert.ok(html.includes('[0.2, 0.8]'), 'should show CI bracket');
+    // Significance label
+    assert.ok(html.includes('显著差异') || html.includes('significant'), 'should label significance');
+    // Framework meta tag
+    assert.ok(html.includes('统计框架') || html.includes('CI framework'), 'should show framework meta tag');
+  });
+
   it('renders single-rubric judge stddev / failures / reasoning when ensemble data present on result', () => {
     const stabilityReport = JSON.parse(JSON.stringify(SAMPLE_REPORT));
     stabilityReport.results[0].variants.v1.llmScoreSamples = [3, 4, 5];

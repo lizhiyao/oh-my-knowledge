@@ -1,0 +1,83 @@
+annotations:
+  # === Code review ===
+  - sample_id: code_sql_injection
+    score: 4
+    reason: |
+      理想回答应做到三件事:(1) 命名漏洞为 SQL 注入并解释模板字符串拼接如何让用户输入直接落地为 SQL 语法
+      (2) 给出参数化查询的具体改写代码 (placeholder + bound params)
+      (3) 提到 ORM/参数化 driver 是更可持续的层级方案
+      满足 (1)+(2) 给 4 分,三件齐全且解释清楚给 5,只命名不给修复给 2-3,完全没识别给 1。
+
+  - sample_id: code_missing_error_handling
+    score: 3
+    reason: |
+      鲁棒性问题难度低于 SQL 注入,但鉴别"完整列表 vs 漏掉一项"需要细心。
+      满分需指出 3 个失败点:HTTP 非 2xx 状态码 / fetch 网络异常 / .json() 解析失败;
+      并给出 try-catch + res.ok 检查的整合代码。
+      多数 LLM 给出 try-catch 但漏掉 res.ok 或 JSON 解析点 — 给 3。
+      只说"加 try-catch"无具体场景给 2。给出 3 类失败 + 修复给 4-5。
+
+  # === Writing ===
+  - sample_id: writing_tone_softening
+    score: 4
+    reason: |
+      关键不是抹掉拒绝事实,而是包装柔软。理想模式:致歉 → 解释规则 → 给替代路径 (申诉?例外审核?)。
+      只改语气不给替代路径 → 3。给替代且事实清晰 → 4。再加情感共鸣的细节 → 5。
+      警惕过度道歉而扭曲事实,或加入虚假的"我们一定帮你"承诺 — 那应扣到 2。
+
+  - sample_id: writing_summary_constraint
+    score: 4
+    reason: |
+      硬约束 (≤ 25 字 + 保留"驾驶员仍负责") 满足 → 4 起步。
+      若同时凝练得简洁有力 → 5。
+      满足字数但丢"责任在驾驶员"的关键信息 → 2,虽然字数过关但任务核心丢了。
+      违反字数 → 1,无论内容多准确。
+
+  # === Reasoning ===
+  - sample_id: reasoning_math_word
+    score: 5
+    reason: |
+      问题简单、答案唯一。LLM 算错的概率很低。理想答案展示:设男生 x、女生 30-x、x = (30-x)+4 → x=17。
+      正确答案 + 清晰过程 → 5。答对但过程粗糙 → 4。算错 → 1-2。
+      此题 5 是默认期望,没有理由放水。
+
+  - sample_id: reasoning_logic_constraint
+    score: 4
+    reason: |
+      此题需要假设法 + 排除。三种假设:A 说谎 / B 说谎 / C 说谎。
+      若 A 说谎,则 B 没说谎,则 C 说谎,但只有一个说谎,矛盾。
+      若 C 说谎,则 A 和 B 都没说谎,与"A 说 B 说谎"矛盾。
+      故 B 说谎。
+      推理完整 → 5,只给答案不展示假设排除 → 3,答错 → 1。
+      默认 4 因为多数 LLM 会跳一两步。
+
+  # === Knowledge Q&A ===
+  - sample_id: knowledge_factual_with_year
+    score: 5
+    reason: |
+      该事实属于网络基础知识,LLM 命中率应近 100%。
+      要点:HTTP 明文 / HTTPS = HTTP over TLS / TLS 提供加密 + 完整性 + 身份验证。
+      三点齐 → 5,缺身份验证 → 4,只说"加密"不区分三件事 → 3。
+
+  - sample_id: knowledge_grounded_in_context
+    score: 5
+    reason: |
+      封闭式问题,context 直接给出答案。LLM 唯一失败模式是无视 context 用通用知识猜测 (例如答快排)。
+      答"合并排序" → 5。错答其他算法 → 1,因为这是 grounding 失败,严重于内容错。
+
+  # === Dialogue ===
+  - sample_id: dialogue_empathy_layoff
+    score: 3
+    reason: |
+      此题对 LLM 偏难,容易两个失败:(a) 直接跳进理财技术建议而无情感铺垫
+      (b) 大段共情但无任何实操方向 (空安慰)。
+      理想:1 句共情 + 1-2 个实操建议 (公积金贷款规则 / 协商延期 / 提前与银行沟通)。
+      平衡好 → 4-5。仅共情或仅技术 → 2-3。
+      默认给 3 因为这一对平衡点恰到好处的回答较难。
+
+  - sample_id: dialogue_clarify_ambiguous
+    score: 5
+    reason: |
+      理想反应是反问而非生成。问题"帮我写脚本"信息严重不足:语言?用途?平台?
+      满分回答应反问 2-3 个具体问题,而不是揣测后直接给 Python 模板。
+      反问得当 → 5。揣测后产出但末尾问需求 → 3。直接揣测产出 → 2。

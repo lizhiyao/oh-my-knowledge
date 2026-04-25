@@ -33,12 +33,19 @@ interface GradeOptions {
    * different executor strings. Pipeline layer pre-creates these so grade() stays pure.
    */
   judgeExecutors?: Record<string, ExecutorFn>;
+  /**
+   * v0.21 length-debias toggle. Defaults to true — judge prompt includes the
+   * "length is not a quality signal" instruction, prompt template version is
+   * v3-cot-length. Set false (via `--no-debias-length`) to revert to the
+   * legacy v2-cot prompt for reproducing historical reports.
+   */
+  lengthDebias?: boolean;
 }
 
 /**
  * Grade a model output against a sample's criteria.
  */
-export async function grade({ output, sample, executor, judgeModel, allowLlmJudge = true, execMetrics = {}, samplesDir = '.', judgeRepeat = 1, judgeModels, judgeExecutors }: GradeOptions): Promise<GradeResult> {
+export async function grade({ output, sample, executor, judgeModel, allowLlmJudge = true, execMetrics = {}, samplesDir = '.', judgeRepeat = 1, judgeModels, judgeExecutors, lengthDebias = true }: GradeOptions): Promise<GradeResult> {
   const useEnsemble = !!(judgeModels && judgeModels.length >= 2);
   const results: GradeResult = { compositeScore: 0 };
 
@@ -99,7 +106,7 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     // Multi-dimensional scoring
     results.dimensions = {};
     for (const [dim, rubric] of Object.entries(sample.dimensions)) {
-      const dimOptions = { output, rubric, prompt: sample.prompt, executor, model: judgeModel, traceSummary };
+      const dimOptions = { output, rubric, prompt: sample.prompt, executor, model: judgeModel, traceSummary, lengthDebias };
       results.dimensions[dim] = useEnsemble
         ? await llmJudgeEnsemble(dimOptions, judgeModels!, executorByName, judgeRepeat)
         : await llmJudgeRepeat(dimOptions, judgeRepeat);
@@ -114,7 +121,7 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     if (dimCost > 0) results.judgeCostUSD = (results.judgeCostUSD || 0) + dimCost;
   } else if (allowLlmJudge && sample.rubric) {
     // Single rubric scoring
-    const rubricOptions = { output, rubric: sample.rubric, prompt: sample.prompt, executor, model: judgeModel, traceSummary };
+    const rubricOptions = { output, rubric: sample.rubric, prompt: sample.prompt, executor, model: judgeModel, traceSummary, lengthDebias };
     const judge = useEnsemble
       ? await llmJudgeEnsemble(rubricOptions, judgeModels!, executorByName, judgeRepeat)
       : await llmJudgeRepeat(rubricOptions, judgeRepeat);
