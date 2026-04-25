@@ -336,7 +336,7 @@ function buildSaturationData(runs: Report[]): SaturationData | undefined {
   const tracesByVariant: Record<string, Array<{ n: number; mean: number; ciLow: number; ciHigh: number }>> = {};
 
   const checkpointSampleCounts: number[] = [];
-  let acc: Record<string, number[]> = Object.fromEntries(variants.map((v) => [v, []]));
+  const acc: Record<string, number[]> = Object.fromEntries(variants.map((v) => [v, []]));
 
   for (let runIdx = 0; runIdx < runs.length; runIdx++) {
     const run = runs[runIdx];

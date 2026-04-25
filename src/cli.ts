@@ -1748,14 +1748,16 @@ async function handleSaturation(argv: string[]): Promise<void> {
       '',
       'Usage: omk bench saturation <reportId> [options]',
       '',
-      '回答"我跑够样本了吗?"。重新对已有 report 算饱和判定,无需重跑评测。',
+      '回答"我跑够样本了吗?"。复述已有 report 中持久化的饱和判定。',
+      '',
+      '注:本命令读取 run 时跑出的 verdict(运行时已用 method=bootstrap-ci-width',
+      '默认阈值 + 3 窗口 持续条件)。如要换 method/threshold 重新计算,需要重跑',
+      '`omk bench run --repeat ≥ 5`(运行时持久化的 trace 不含原始分数,无法',
+      '在事后用其他参数复算)。',
       '',
       'Options:',
       '  --reports-dir <dir>   report store dir (default: ~/.oh-my-knowledge/reports)',
-      '  --variant <name>      只算一个 variant (default: all)',
-      '  --method <m>          slope | bootstrap-ci-width (default) | plateau-height',
-      '  --threshold <num>     方法相关阈值 (默认随 method 选)',
-      '  --window <num>        连续多少窗口满足才判饱和 (default 3)',
+      '  --variant <name>      只看一个 variant (default: all)',
       '',
     ].join('\n'));
     process.exit(reportId ? 0 : 1);
@@ -1766,9 +1768,6 @@ async function handleSaturation(argv: string[]): Promise<void> {
     options: {
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       variant: { type: 'string' },
-      method: { type: 'string', default: 'bootstrap-ci-width' },
-      threshold: { type: 'string' },
-      window: { type: 'string', default: '3' },
     },
     strict: false,
   });
@@ -1787,29 +1786,16 @@ async function handleSaturation(argv: string[]): Promise<void> {
     process.exit(1);
   }
 
-  // Reconstruct cumulative score arrays from per-variant trace counts.
-  // Since persisted shape stores (mean, ciLow, ciHigh) per checkpoint, not
-  // raw scores, we can only re-run findSaturationPoint when raw scores are
-  // reconstructable. For now, walk the report.results to rebuild.
+  // Print the persisted verdict from the original run. The trace stores
+  // (mean, ciLow, ciHigh) per checkpoint but not raw scores, so re-running
+  // findSaturationPoint with different method/threshold is not possible
+  // here — that would need raw scores, which would have to be persisted
+  // by runMultiple. Future work: opt-in `--persist-saturation-raw` flag at
+  // run time to enable post-hoc parameter sweeps.
   const variants = report!.meta.variants ?? [];
   const targetVariants = values.variant ? [values.variant as string] : variants;
 
-  const method = values.method as 'slope' | 'bootstrap-ci-width' | 'plateau-height';
-  if (!['slope', 'bootstrap-ci-width', 'plateau-height'].includes(method)) {
-    console.error(`unknown method: ${method}`);
-    process.exit(1);
-  }
-  const thresholdRaw = values.threshold != null ? Number(values.threshold) : undefined;
-  const windowSize = Math.max(1, Number(values.window) || 3);
-
-  // Per-variant: collect all composite scores in order from report.results.
-  // Each report represents the LATEST run only. We use the saturation trace's
-  // count series as the partition signal — checkpointSampleCounts[i] tells us
-  // how many samples were cumulative after run i. We can't reconstruct
-  // per-run boundaries from a single report, so this CLI mostly re-applies
-  // the saved trace's metric. Future work: persist raw scores for full
-  // re-computation.
-  console.log(`\n  Saturation 重算 (method=${method}${thresholdRaw != null ? `, threshold=${thresholdRaw}` : ''})\n`);
+  console.log(`\n  Saturation verdict (复述持久化结果)\n`);
   for (const variant of targetVariants) {
     const trace = saturation.perVariant[variant];
     if (!trace || trace.length === 0) {

@@ -41,7 +41,7 @@ describe('findSaturationPoint — bootstrap-ci-width (default)', () => {
 describe('findSaturationPoint — slope', () => {
   it('saturates when mean stabilizes', () => {
     const cumulative: number[][] = [];
-    let scores: number[] = [];
+    const scores: number[] = [];
     // First 30 samples push mean from ~3 to ~4; thereafter all 4s.
     for (let i = 0; i < 30; i++) scores.push(3 + i / 30);
     for (let i = 0; i < 60; i++) scores.push(4);

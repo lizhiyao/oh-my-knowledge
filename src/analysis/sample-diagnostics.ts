@@ -24,7 +24,7 @@
  * sorted by severity then by sample_id so the report is stable across runs.
  */
 
-import type { Report, ResultEntry, Sample, VariantSummary } from '../types.js';
+import type { Report, ResultEntry, Sample } from '../types.js';
 import { rougeN } from '../grading/assertions.js';
 
 export type SampleIssueKind =

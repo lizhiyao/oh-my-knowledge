@@ -302,7 +302,7 @@ function formatJudgeAgreement(report: Report): string | undefined {
   return `α=${Number.isNaN(a.alpha) ? 'NaN' : a.alpha.toFixed(2)} (${verdict}) vs gold ${a.goldAnnotator}`;
 }
 
-function recommendation(level: VerdictLevel, perPair: Array<{ level: VerdictLevel }>): string {
+function recommendation(level: VerdictLevel, _perPair: Array<{ level: VerdictLevel }>): string {
   switch (level) {
     case 'PROGRESS':
       return 'SHIP — treatment is significantly better and passes all layer gates.';
