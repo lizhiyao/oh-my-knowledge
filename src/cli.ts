@@ -554,8 +554,14 @@ async function main(): Promise<void> {
     case 'verdict':
       await handleVerdict(rest);
       break;
+    case 'diagnose':
+      await handleDiagnose(rest);
+      break;
+    case 'failures':
+      await handleFailures(rest);
+      break;
     default:
-      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", "evolve", "diff", "gold", "debias-validate", "saturation", or "verdict".`);
+      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", "evolve", "diff", "gold", "debias-validate", "saturation", "verdict", "diagnose", or "failures".`);
       process.exit(1);
   }
 }
@@ -1890,6 +1896,161 @@ async function handleVerdict(argv: string[]): Promise<void> {
     process.exit(0);
   }
   process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// handleDiagnose — per-sample quality diagnostics (v0.23 A)
+// ---------------------------------------------------------------------------
+
+async function handleDiagnose(argv: string[]): Promise<void> {
+  const reportId = argv[0];
+  if (!reportId || reportId === '--help' || reportId === '-h') {
+    console.log([
+      '',
+      'Usage: omk bench diagnose <reportId> [options]',
+      '',
+      '诊断样本集本身的质量问题:区分度低 / 重复 / 歧义 / 成本异常 / 全 fail。',
+      '回答"测评结论是否被坏样本污染"——与 omk bench verdict 互补。',
+      '',
+      'Options:',
+      '  --reports-dir <dir>      report store dir',
+      '  --samples <path>         样本文件路径 (用于 near-duplicate 检测;默认从 report.meta.request 读)',
+      '  --top <n>                每类只显示前 N 个 (默认 10,0=全部)',
+      '  --duplicate-rouge <num>  near-duplicate ROUGE-1 阈值 (默认 0.7)',
+      '  --ambiguous-stddev <num> 歧义阈值,judge stddev (默认 1.0,需要 --judge-repeat ≥ 2 数据)',
+      '  --cost-k <num>           成本异常倍数 vs median (默认 3)',
+      '  --latency-k <num>        耗时异常倍数 vs median (默认 3)',
+      '  --flat <num>             flat_scores 分差阈值 (默认 0.5)',
+      '',
+    ].join('\n'));
+    process.exit(reportId ? 0 : 1);
+  }
+
+  const { values } = parseArgs({
+    args: argv.slice(1),
+    options: {
+      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+      samples: { type: 'string' },
+      top: { type: 'string', default: '10' },
+      'duplicate-rouge': { type: 'string' },
+      'ambiguous-stddev': { type: 'string' },
+      'cost-k': { type: 'string' },
+      'latency-k': { type: 'string' },
+      flat: { type: 'string' },
+    },
+    strict: false,
+  });
+
+  const { createFileStore } = await import('./server/report-store.js');
+  const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+  const report: Report | null = await store.get(reportId);
+  if (!report) {
+    console.error(`Report not found: ${reportId}`);
+    process.exit(1);
+  }
+
+  // Try to read the samples file for near-duplicate detection. Source order:
+  //  1. --samples <path> override
+  //  2. report.meta.request.samplesPath (recorded at run time)
+  // If neither resolves to a readable file, skip near-duplicate gracefully.
+  let samples: import('./types.js').Sample[] | undefined;
+  const samplesPath = (values.samples as string | undefined) ?? report!.meta?.request?.samplesPath;
+  if (samplesPath && existsSync(samplesPath)) {
+    try {
+      const { loadSamples } = await import('./inputs/load-samples.js');
+      samples = loadSamples(samplesPath).samples;
+    } catch (err) {
+      process.stderr.write(`warn: 加载 samples 文件失败 (${samplesPath}): ${(err as Error).message}\n`);
+    }
+  }
+
+  const topRaw = Number(values.top);
+  const topN = Number.isFinite(topRaw) && topRaw > 0 ? topRaw : undefined;
+
+  const { diagnoseSamples, formatSampleDiagnostics } = await import('./analysis/sample-diagnostics.js');
+  const diag = diagnoseSamples(report!, {
+    samples,
+    duplicateRouge: values['duplicate-rouge'] != null ? Number(values['duplicate-rouge']) : undefined,
+    ambiguousStddev: values['ambiguous-stddev'] != null ? Number(values['ambiguous-stddev']) : undefined,
+    costOutlierK: values['cost-k'] != null ? Number(values['cost-k']) : undefined,
+    latencyOutlierK: values['latency-k'] != null ? Number(values['latency-k']) : undefined,
+    flatThreshold: values.flat != null ? Number(values.flat) : undefined,
+  });
+  console.log(formatSampleDiagnostics(diag, { topN }));
+
+  // Exit code: 0 if health ≥ 70 and no errors; 1 otherwise. CI-friendly.
+  if (diag.totals.errors === 0 && diag.healthScore >= 70) {
+    process.exit(0);
+  }
+  process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// handleFailures — LLM-driven failure clustering (v0.23 B)
+// ---------------------------------------------------------------------------
+
+async function handleFailures(argv: string[]): Promise<void> {
+  const reportId = argv[0];
+  if (!reportId || reportId === '--help' || reportId === '-h') {
+    console.log([
+      '',
+      'Usage: omk bench failures <reportId> [options]',
+      '',
+      '把已有 report 的失败样本喂给一次 LLM 调用,自动聚类 + 给修复建议。',
+      '失败定义:compositeScore < threshold 或 ok=false。',
+      '',
+      'Options:',
+      '  --reports-dir <dir>      report store dir',
+      '  --judge-executor <name>  执行器 (default: claude)',
+      '  --judge-model <id>       聚类用的 model (default: 沿用 report.meta.judgeModel)',
+      '  --max-clusters <n>       最多多少 cluster (default 5)',
+      '  --threshold <num>        compositeScore < threshold 算失败 (default 3)',
+      '  --max-feed <n>           最多喂给 LLM 多少条 (default 50,超出取最差)',
+      '',
+    ].join('\n'));
+    process.exit(reportId ? 0 : 1);
+  }
+
+  const { values } = parseArgs({
+    args: argv.slice(1),
+    options: {
+      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+      'judge-executor': { type: 'string', default: 'claude' },
+      'judge-model': { type: 'string' },
+      'max-clusters': { type: 'string', default: '5' },
+      threshold: { type: 'string', default: '3' },
+      'max-feed': { type: 'string', default: '50' },
+    },
+    strict: false,
+  });
+
+  const { createFileStore } = await import('./server/report-store.js');
+  const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+  const report: Report | null = await store.get(reportId);
+  if (!report) {
+    console.error(`Report not found: ${reportId}`);
+    process.exit(1);
+  }
+
+  const judgeModel = (values['judge-model'] as string | undefined) ?? report!.meta?.judgeModel;
+  if (!judgeModel) {
+    console.error('No judge model. Pass --judge-model <id> or ensure report has meta.judgeModel.');
+    process.exit(1);
+  }
+
+  const { createExecutor } = await import('./executors/index.js');
+  const executor = createExecutor(values['judge-executor'] as string);
+  const { clusterFailures, formatFailureClusterReport } = await import('./analysis/failure-clusterer.js');
+
+  const out = await clusterFailures({
+    report: report!,
+    executor,
+    judgeModel,
+    maxClusters: Number(values['max-clusters']) || 5,
+    failureThreshold: Number(values.threshold) || 3,
+    maxFailuresFed: Number(values['max-feed']) || 50,
+  });
+  console.log(formatFailureClusterReport(out));
 }
 
 // ---------------------------------------------------------------------------
