@@ -55,6 +55,17 @@ export interface Assertion {
   fn?: string;
   reference?: string;
   threshold?: number;
+  /** v0.21 Phase 5a — when true, the assertion's pass/fail is inverted. Works
+   *  with any type, including legacy `not_contains` (which becomes a redundant
+   *  but still supported double-negation). */
+  not?: boolean;
+  /** v0.21 Phase 5a — only used by type='assert-set'. 'any' = at least one
+   *  child must pass; 'all' = every child must pass. Children may be any
+   *  assertion type, including nested assert-sets. */
+  mode?: 'any' | 'all';
+  children?: Assertion[];
+  /** v0.21 Phase 5b — for rouge_n_min: which n-gram order (default 1). */
+  n?: number;
 }
 
 export interface Sample {
