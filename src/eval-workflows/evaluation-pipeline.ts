@@ -74,6 +74,7 @@ async function initializeEvaluationRunState({
   judgeModels,
   bootstrap,
   bootstrapSamples,
+  lengthDebias,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -99,6 +100,7 @@ async function initializeEvaluationRunState({
   judgeModels?: import('../types.js').JudgeConfig[];
   bootstrap?: boolean;
   bootstrapSamples?: number;
+  lengthDebias?: boolean;
 }): Promise<EvaluationRunState> {
   const request = buildEvaluationRequest({
     samplesPath,
@@ -123,6 +125,7 @@ async function initializeEvaluationRunState({
     judgeModels,
     bootstrap,
     bootstrapSamples,
+    lengthDebias,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
@@ -277,6 +280,8 @@ export interface EvaluationPipelineOptions {
   bootstrap?: boolean;
   /** --bootstrap-samples N. Default 1000. */
   bootstrapSamples?: number;
+  /** v0.21 length-debias toggle. Default true; --no-debias-length flips to false. */
+  lengthDebias?: boolean;
 }
 
 export async function executeEvaluationPipeline({
@@ -315,6 +320,7 @@ export async function executeEvaluationPipeline({
   judgeModels,
   bootstrap,
   bootstrapSamples,
+  lengthDebias = true,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -342,6 +348,7 @@ export async function executeEvaluationPipeline({
     judgeModels,
     bootstrap,
     bootstrapSamples,
+    lengthDebias,
   });
 
   try {
@@ -393,6 +400,7 @@ export async function executeEvaluationPipeline({
       judgeRepeat,
       judgeModels,
       judgeExecutors,
+      lengthDebias,
     });
     if (skipped > 0 && onProgress) {
       onProgress({ phase: 'done', completed: tasks.length, total: tasks.length, sample_id: '', variant: '', skipped: true });

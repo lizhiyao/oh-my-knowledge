@@ -174,6 +174,12 @@ export function aggregateReport({
   const judgeModelsList = request?.judgeModels && request.judgeModels.length >= 2
     ? request.judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
     : undefined;
+  // v0.21 Phase 3a: length-debias is on by default; the request only sets it
+  // false when the user passed --no-debias-length. The hash differs between
+  // v3-cot-length (on) and v2-cot (off) so readers can detect the divergence.
+  const lengthDebiasOn = request?.lengthDebias !== false;
+  const debiasModeList: Array<'length' | 'position'> = [];
+  if (lengthDebiasOn) debiasModeList.push('length');
 
   return {
     id: runId,
@@ -190,9 +196,10 @@ export function aggregateReport({
       nodeVersion: process.version,
       artifactHashes,
       sampleHashes,
-      ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash() }),
+      ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash(lengthDebiasOn) }),
       ...(judgeRepeat ? { judgeRepeat } : {}),
       ...(judgeModelsList ? { judgeModels: judgeModelsList } : {}),
+      ...(debiasModeList.length > 0 ? { debiasMode: debiasModeList } : {}),
       ...(bootstrapEnabled ? { evaluationFramework: 'both' as const } : {}),
       ...(pairComparisons ? { pairComparisons } : {}),
       variantConfigs: artifacts.map((artifact) => buildVariantConfig(artifact)),

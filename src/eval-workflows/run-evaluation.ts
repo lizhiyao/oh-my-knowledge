@@ -72,6 +72,9 @@ interface CommonEvaluationOptions {
   bootstrap?: boolean;
   /** --bootstrap-samples N. Default 1000. */
   bootstrapSamples?: number;
+  /** v0.21 Phase 3a length-debias toggle. Default true (judge prompt v3-cot-length).
+   *  CLI passes false when --no-debias-length is set. */
+  lengthDebias?: boolean;
 }
 
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
@@ -162,6 +165,7 @@ export async function runEvaluation({
   judgeModels,
   bootstrap,
   bootstrapSamples,
+  lengthDebias,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
@@ -245,6 +249,7 @@ export async function runEvaluation({
     judgeModels,
     bootstrap,
     bootstrapSamples,
+    lengthDebias,
   });
 }
 
@@ -401,6 +406,7 @@ export async function runEachEvaluation({
   repeat,
   judgeRepeat,
   judgeModels,
+  lengthDebias,
 }: RunEachEvaluationOptions): Promise<{ report: Report | DryRunEachReport; filePath: string | null }> {
   const skillEntries = discoverEachSkills(resolve(skillDir));
   if (skillEntries.length === 0) {
@@ -448,13 +454,14 @@ export async function runEachEvaluation({
     repeat,
     judgeRepeat,
     judgeModels,
+    lengthDebias,
     runSingleEvaluation: async (options) => {
       // repeat > 1 时走 runMultiple 做 variance; each=true 标记让 meta.request 如实反映
       if (repeat && repeat > 1) {
-        const multi = await runMultiple({ ...options, repeat, each: true, judgeRepeat, judgeModels });
+        const multi = await runMultiple({ ...options, repeat, each: true, judgeRepeat, judgeModels, lengthDebias });
         return { report: multi.report, filePath: multi.filePath };
       }
-      const result = await runEvaluation({ ...options, each: true, judgeRepeat, judgeModels });
+      const result = await runEvaluation({ ...options, each: true, judgeRepeat, judgeModels, lengthDebias });
       return { report: result.report as Report, filePath: result.filePath };
     },
   });

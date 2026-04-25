@@ -50,6 +50,8 @@ interface RunConfig {
   bootstrap?: boolean;
   /** --bootstrap-samples N. Bootstrap resamples count, default 1000. */
   bootstrapSamples?: number;
+  /** v0.21 Phase 3a length-debias toggle. Default true; --no-debias-length sets false. */
+  lengthDebias?: boolean;
   onProgress?: ProgressCallback | null;
 }
 
@@ -540,8 +542,11 @@ async function main(): Promise<void> {
     case 'gold':
       await handleGold(rest);
       break;
+    case 'debias-validate':
+      await handleDebiasValidate(rest);
+      break;
     default:
-      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", "evolve", "diff", or "gold".`);
+      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", "evolve", "diff", "gold", or "debias-validate".`);
       process.exit(1);
   }
 }
@@ -617,6 +622,7 @@ async function handleRun(argv: string[]): Promise<void> {
     bootstrap: { type: 'boolean', default: false },
     'bootstrap-samples': { type: 'string', default: '1000' },
     'gold-dir': { type: 'string' },
+    'no-debias-length': { type: 'boolean', default: false },
   });
 
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
@@ -661,6 +667,14 @@ async function handleRun(argv: string[]): Promise<void> {
       // 单 judge 不走 ensemble,但允许这样写,等同于 --judge-model + --executor
       process.stderr.write(`ℹ --judge-models 只指定 1 个 judge (${judges[0].executor}:${judges[0].model}),不触发 ensemble。如需 ensemble 至少给 2 个。\n`);
     }
+  }
+
+  // --no-debias-length: opt out of v0.21 Phase 3a length-controlled prompt.
+  // Default behavior is debias-on (judge prompt v3-cot-length); flag flips it
+  // off so historical reports (judgePromptHash from v2-cot era) can be reproduced.
+  if (values['no-debias-length'] as boolean) {
+    config.lengthDebias = false;
+    process.stderr.write('ℹ --no-debias-length 已生效:judge prompt 退回 v2-cot,与 < v0.21 报告 hash 一致。\n');
   }
 
   // --bootstrap / --bootstrap-samples
@@ -1450,6 +1464,107 @@ async function handleGold(argv: string[]): Promise<void> {
 
   console.error(`Unknown subcommand: gold ${sub}. Use init / validate / compare.`);
   process.exit(1);
+}
+
+// ---------------------------------------------------------------------------
+// handleDebiasValidate — measure length-debias prompt sensitivity (Phase 3a)
+// ---------------------------------------------------------------------------
+
+async function handleDebiasValidate(argv: string[]): Promise<void> {
+  const sub = argv[0];
+  const rest = argv.slice(1);
+  if (!sub || sub === '--help' || sub === '-h') {
+    console.log([
+      '',
+      'Usage: omk bench debias-validate <kind> <reportId> [options]',
+      '',
+      'Kinds:',
+      '  length    re-judge with the opposite length-debias setting and bootstrap CI',
+      '            on the score diff. Cost ~doubles vs the original judge pass.',
+      '',
+      'Options:',
+      '  --reports-dir <dir>          report store dir (default: ~/.oh-my-knowledge/reports)',
+      '  --samples <path>             override samples file (default: from report.meta.request)',
+      '  --variant <name>             which variant to validate (default: first)',
+      '  --judge-executor <name>      executor for judge calls (default: claude)',
+      '  --judge-model <model>        judge model id (default: from report)',
+      '  --bootstrap-samples N        bootstrap iterations (default 1000)',
+      '  --seed N                     deterministic CI seed',
+      '',
+    ].join('\n'));
+    process.exit(sub ? 0 : 1);
+  }
+
+  if (sub !== 'length') {
+    console.error(`Unknown debias-validate kind: ${sub}. Use "length".`);
+    process.exit(1);
+  }
+
+  const reportId = rest[0];
+  if (!reportId) {
+    console.error('Usage: omk bench debias-validate length <reportId>');
+    process.exit(1);
+  }
+  const { values } = parseArgs({
+    args: rest.slice(1),
+    options: {
+      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+      samples: { type: 'string' },
+      variant: { type: 'string' },
+      'judge-executor': { type: 'string', default: 'claude' },
+      'judge-model': { type: 'string' },
+      'bootstrap-samples': { type: 'string', default: '1000' },
+      seed: { type: 'string' },
+    },
+    strict: false,
+  });
+
+  const { createFileStore } = await import('./server/report-store.js');
+  const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+  const report: Report | null = await store.get(reportId);
+  if (!report) {
+    console.error(`Report not found: ${reportId}`);
+    process.exit(1);
+  }
+
+  // Resolve samples path: --samples overrides; otherwise read from report.meta.request.
+  const samplesPath = (values.samples as string | undefined)
+    ?? report!.meta?.request?.samplesPath;
+  if (!samplesPath) {
+    console.error('Cannot find samples path. Pass --samples <path> or ensure report has request.samplesPath.');
+    process.exit(1);
+  }
+  const { loadSamples } = await import('./inputs/load-samples.js');
+  const { samples } = loadSamples(samplesPath);
+
+  const judgeModel = (values['judge-model'] as string | undefined)
+    ?? report!.meta?.judgeModel;
+  if (!judgeModel) {
+    console.error('No judge model. Pass --judge-model <id> or ensure report has meta.judgeModel.');
+    process.exit(1);
+  }
+
+  process.stderr.write('\n⚠ debias-validate 会重判所有 (sample × variant),judge cost 大致翻倍。\n');
+
+  const { createExecutor } = await import('./executors/index.js');
+  const judgeExecutor = createExecutor(values['judge-executor'] as string);
+  const { validateLengthDebias, formatDebiasValidate } = await import('./grading/debias-validate.js');
+
+  const seedVal = values.seed != null ? Number(values.seed) : undefined;
+  const bsRaw = Number(values['bootstrap-samples']) || 1000;
+  const result = await validateLengthDebias({
+    report: report!,
+    samples,
+    judgeExecutor,
+    judgeModel,
+    variant: values.variant as string | undefined,
+    bootstrapSamples: Math.max(100, bsRaw),
+    seed: Number.isFinite(seedVal) ? seedVal : undefined,
+    onProgress: ({ sample_id, completed, total }) => {
+      process.stderr.write(`  judging ${completed}/${total}: ${sample_id}\n`);
+    },
+  });
+  console.log(formatDebiasValidate(result));
 }
 
 // ---------------------------------------------------------------------------

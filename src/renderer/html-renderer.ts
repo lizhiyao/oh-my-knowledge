@@ -269,6 +269,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       ${m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : ''}
       ${m.sampleHashes ? `<span class="meta-tag" style="color:var(--text-muted)" title="${t('sampleHashCountDesc', lang)}">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}/${m.sampleCount}</span>` : ''}
       ${m.evaluationFramework ? `<span class="meta-tag" title="${t('evalFrameworkDesc', lang)}">${t('evalFrameworkLabel', lang)}: ${m.evaluationFramework === 'bootstrap' ? t('evalFrameworkBootstrap', lang) : m.evaluationFramework === 'both' ? t('evalFrameworkBoth', lang) : t('evalFrameworkTTest', lang)}</span>` : ''}
+      ${m.debiasMode && m.debiasMode.length > 0 ? `<span class="meta-tag" style="color:var(--green)" title="${lang === 'zh' ? 'judge bias 校正模式 (Phase 3)：length=substance-not-length 提示;position=ensemble 顺序随机化' : 'Judge bias debias modes (Phase 3): length = substance-not-length prompt; position = randomized ensemble order'}">${lang === 'zh' ? '校正' : 'debias'}: ${m.debiasMode.join(' · ')}</span>` : ''}
       ${m.blind ? `<span class="meta-tag" style="color:var(--green)" data-i18n="blindLabel">${t('blindLabel', lang)}</span>` : ''}
     </div>
     ${m.blind ? `

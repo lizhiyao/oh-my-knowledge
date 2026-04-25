@@ -8,21 +8,46 @@ interface JudgeResponse {
 }
 
 /**
- * Judge prompt template version. Bump when the prompt's intent or structure changes
- * meaningfully — reports tagged with the same hash are score-comparable; mismatched
- * hashes mean "we changed how we ask the judge to think" and should not be compared blind.
+ * Judge prompt template version.
+ *
+ *  - 'v2-cot'         — legacy; CoT scoring without explicit length-debias instruction.
+ *                       Kept for `--no-debias-length` so users can reproduce historical
+ *                       reports byte-for-byte.
+ *  - 'v3-cot-length'  — adds a paragraph telling the judge that length is not a quality
+ *                       signal. Default since v0.21 Phase 3a (research consistently shows
+ *                       LLM judges over-weight verbosity; explicit instruction mitigates).
+ *
+ * Bump when the prompt's intent or structure changes meaningfully — reports tagged
+ * with the same hash are score-comparable; mismatched hashes mean "we changed how we
+ * ask the judge to think" and should not be compared blind.
  */
-const JUDGE_PROMPT_TEMPLATE_V = 'v2-cot';
+const JUDGE_PROMPT_VERSION_DEBIAS_OFF = 'v2-cot';
+const JUDGE_PROMPT_VERSION_DEBIAS_ON = 'v3-cot-length';
 
 const JUDGE_SYSTEM_PROMPT = '你是一个严格的 AI 输出质量评审员。先逐条对照评分标准做推理，再给最终分数。只返回 JSON，不要其他内容。';
 
-function buildJudgePrompt(prompt: string, rubric: string, output: string, traceSummary: string | null): string {
+const LENGTH_DEBIAS_INSTRUCTION = [
+  '## 重要：长度不是质量信号',
+  '评分时聚焦内容实质与正确性。回答的篇幅、行文丰富度、结构复杂度本身不是质量指标 ——',
+  '简洁正确的回答不应因短而扣分；冗长但偏题或重复的回答不应因长而加分。',
+  '研究显示 LLM 评委容易隐性偏向更长的回答，请在打分前先警觉这一点。',
+].join('\n');
+
+export function buildJudgePrompt(
+  prompt: string,
+  rubric: string,
+  output: string,
+  traceSummary: string | null,
+  lengthDebias = true,
+): string {
+  const version = lengthDebias ? JUDGE_PROMPT_VERSION_DEBIAS_ON : JUDGE_PROMPT_VERSION_DEBIAS_OFF;
   const traceSection = traceSummary
     ? ['', '## Agent 执行过程', traceSummary, '', '请同时考虑执行过程的合理性（工具选择、步骤效率、错误恢复）。']
     : [];
+  const debiasSection = lengthDebias ? ['', LENGTH_DEBIAS_INSTRUCTION] : [];
 
   return [
-    `请对以下 AI 输出进行质量评分（template ${JUDGE_PROMPT_TEMPLATE_V}）。`,
+    `请对以下 AI 输出进行质量评分（template ${version}）。`,
     '',
     '## 原始任务',
     prompt,
@@ -33,6 +58,7 @@ function buildJudgePrompt(prompt: string, rubric: string, output: string, traceS
     '## AI 输出',
     output,
     ...traceSection,
+    ...debiasSection,
     '',
     '## 评分流程',
     '1. 逐条对照评分标准，先做推理（reasoning）：列出 AI 输出哪些点对应哪条标准，哪些缺失，哪些有歧义。',
@@ -48,13 +74,17 @@ function buildJudgePrompt(prompt: string, rubric: string, output: string, traceS
 /**
  * Stable hash of the judge prompt template. Saved into ReportMeta.judgePromptHash so
  * downstream readers can detect "the judge prompt changed between these two reports".
+ *
+ * `lengthDebias` defaults to true (v0.21+ default). Pass false when running under
+ * `--no-debias-length` so the hash matches historical v2-cot reports.
  */
-export function getJudgePromptHash(): string {
+export function getJudgePromptHash(lengthDebias = true): string {
+  const version = lengthDebias ? JUDGE_PROMPT_VERSION_DEBIAS_ON : JUDGE_PROMPT_VERSION_DEBIAS_OFF;
   // Hash the template-shaping function source + the version tag together. We hash a
   // deterministic stringified form of the template (with placeholder inputs) so any
   // structural edit shows up.
-  const sample = buildJudgePrompt('<P>', '<R>', '<O>', '<T>');
-  return createHash('sha256').update(JUDGE_PROMPT_TEMPLATE_V + '\n' + sample).digest('hex').slice(0, 12);
+  const sample = buildJudgePrompt('<P>', '<R>', '<O>', '<T>', lengthDebias);
+  return createHash('sha256').update(version + '\n' + sample).digest('hex').slice(0, 12);
 }
 
 interface LlmJudgeOptions {
@@ -64,6 +94,13 @@ interface LlmJudgeOptions {
   executor: ExecutorFn;
   model: string;
   traceSummary?: string | null;
+  /**
+   * When true (default since v0.21), the judge prompt includes an explicit
+   * "length is not a quality signal" instruction. Pass false to fall back to
+   * the legacy v2-cot prompt — only useful for reproducing pre-v0.21 reports
+   * or running A/B comparisons inside `omk bench debias-validate length`.
+   */
+  lengthDebias?: boolean;
 }
 
 function getErrorMessage(err: unknown): string {
@@ -117,8 +154,8 @@ export function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]
   return lines.join('\n');
 }
 
-export async function llmJudge({ output, rubric, prompt, executor, model, traceSummary }: LlmJudgeOptions): Promise<DimensionResult> {
-  const judgePrompt = buildJudgePrompt(prompt, rubric, output, traceSummary || null);
+export async function llmJudge({ output, rubric, prompt, executor, model, traceSummary, lengthDebias }: LlmJudgeOptions): Promise<DimensionResult> {
+  const judgePrompt = buildJudgePrompt(prompt, rubric, output, traceSummary || null, lengthDebias ?? true);
 
   const result = await executor({
     model,

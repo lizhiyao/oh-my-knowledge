@@ -170,6 +170,10 @@ export interface EvaluationRequest {
   bootstrap?: boolean;
   /** --bootstrap-samples N; bootstrap 重采样次数, 默认 1000. > 10000 时 stderr 警告. */
   bootstrapSamples?: number;
+  /** v0.21 Phase 3a length-debias toggle. Default true (judge prompt v3-cot-length).
+   *  CLI flag --no-debias-length flips to false (legacy v2-cot prompt). The active
+   *  value is reflected in ReportMeta.judgePromptHash and ReportMeta.debiasMode. */
+  lengthDebias?: boolean;
 }
 
 /** Single judge configuration: which executor to call and which model alias to pass. */
@@ -559,6 +563,11 @@ export interface ReportMeta {
   /** Pairwise comparisons (treatment vs control) — populated when --bootstrap and
    *  multi-variant. Length = (variants.length - 1). */
   pairComparisons?: VariantPairComparison[];
+  /** v0.21 Phase 3 — which judge-bias debias modes were active for this run.
+   *  Values: 'length' (substance-not-length prompt), 'position' (random ensemble
+   *  order). Empty / absent means legacy default (no debias). The renderer shows
+   *  this so readers can tell apples from oranges across reports. */
+  debiasMode?: Array<'length' | 'position'>;
   /** Human-gold agreement when --gold-dir was passed at run time. Compares the
    *  judge's llmScore against the gold annotations on matching sample_ids. See
    *  src/grading/human-gold.ts for the metric definitions. */

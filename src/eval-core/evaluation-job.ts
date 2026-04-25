@@ -27,6 +27,7 @@ export function buildEvaluationRequest({
   judgeModels,
   bootstrap,
   bootstrapSamples,
+  lengthDebias,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -50,6 +51,7 @@ export function buildEvaluationRequest({
   judgeModels?: JudgeConfig[];
   bootstrap?: boolean;
   bootstrapSamples?: number;
+  lengthDebias?: boolean;
 }): EvaluationRequest {
   return {
     samplesPath,
@@ -74,6 +76,7 @@ export function buildEvaluationRequest({
     judgeModels,
     bootstrap,
     bootstrapSamples,
+    lengthDebias,
   };
 }
 

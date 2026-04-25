@@ -39,6 +39,8 @@ export interface ExecuteTasksOptions {
   judgeModels?: import('../types.js').JudgeConfig[];
   /** Pre-built executor map for ensemble: executor name → ExecutorFn. */
   judgeExecutors?: Record<string, ExecutorFn>;
+  /** v0.21 length-debias toggle. Default true; CLI's --no-debias-length sets it false. */
+  lengthDebias?: boolean;
 }
 
 async function runWithConcurrency<T>(tasks: T[], concurrency: number, fn: (task: T) => Promise<void>): Promise<void> {
@@ -92,6 +94,7 @@ export async function executeTasks({
   judgeRepeat = 1,
   judgeModels,
   judgeExecutors,
+  lengthDebias = true,
 }: ExecuteTasksOptions): Promise<{ results: Record<string, Record<string, VariantResult>>; totalCostUSD: number; skipped: number }> {
   const results: Record<string, Record<string, VariantResult>> = {};
   let started = 0;
@@ -202,6 +205,7 @@ export async function executeTasks({
             judgeRepeat,
             judgeModels,
             judgeExecutors,
+            lengthDebias,
           });
         } catch (err) {
           gradeResult = { compositeScore: 0 };
