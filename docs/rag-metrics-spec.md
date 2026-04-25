@@ -1,6 +1,6 @@
-# RAG metrics 规范 (v0.22)
+# RAG metrics 规范
 
-omk 的三个 RAG 专用 assertion type 的设计、prompt 形态、与主流方案的关系。
+omk 的三个 RAG 专用 assertion type(`faithfulness` / `answer_relevancy` / `context_recall`)的设计、prompt 形态、与主流方案的关系。配套示例:[examples/rag-eval/](../examples/rag-eval/)。
 
 ## 三件事的关系
 
