@@ -467,6 +467,11 @@ export interface VariantSummary {
   avgLlmScore?: number;
   minLlmScore?: number;
   maxLlmScore?: number;
+  /** Aggregate-level multi-judge agreement across this variant's samples (single rubric mode).
+   *  sampleCount = how many samples had complete ensemble data. */
+  judgeAgreement?: JudgeAgreement & { sampleCount: number };
+  /** List of judge identifiers ("executor:model") seen in this variant's ensemble data. */
+  judgeModels?: string[];
 }
 
 export interface GitInfo {
