@@ -145,6 +145,17 @@ describe('grade with judgeRepeat', () => {
     assert.equal(result.llmScore, 4);  // mean of [3,5,4]
   });
 
+  it('single rubric: judge CoT reasoning is preserved on GradeResult.llmReasoning', async () => {
+    const executor = makeStubJudgeExecutor([4]);
+    const sample: Sample = { sample_id: 's', prompt: 'p', rubric: 'r' };
+    const result = await grade({
+      output: 'o', sample, executor, judgeModel: 'haiku',
+    });
+    // The stub returns reasoning="stub reasoning" — without the schema fix
+    // this would be silently dropped between grade() and the report.
+    assert.equal(result.llmReasoning, 'stub reasoning');
+  });
+
   it('single rubric, judgeRepeat=1 (default) → llmScoreSamples / Stddev not set', async () => {
     const executor = makeStubJudgeExecutor([4]);
     const sample: Sample = {

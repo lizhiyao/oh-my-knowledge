@@ -318,6 +318,8 @@ export interface GradeResult {
   assertions?: AssertionResults;
   llmScore?: number;
   llmReason?: string;
+  /** Single-rubric mode: judge's chain-of-thought reasoning (first call when judgeRepeat > 1). */
+  llmReasoning?: string;
   /** When judge-repeat > 1 with single rubric: stddev across N judge calls. */
   llmScoreStddev?: number;
   /** When judge-repeat > 1 with single rubric: raw scores from each judge call. */
@@ -356,6 +358,14 @@ export interface VariantResult {
   assertions?: AssertionResults;
   llmScore?: number;
   llmReason?: string;
+  /** Single-rubric mode: judge's chain-of-thought reasoning (first call when judgeRepeat > 1). */
+  llmReasoning?: string;
+  /** Single-rubric mode + judgeRepeat > 1: stddev across N judge calls. */
+  llmScoreStddev?: number;
+  /** Single-rubric mode + judgeRepeat > 1: raw scores from each call. */
+  llmScoreSamples?: number[];
+  /** Single-rubric mode + judgeRepeat > 1: how many of N calls failed. */
+  llmScoreFailures?: number;
   dimensions?: Record<string, DimensionResult>;
   factCheck?: { verifiedCount: number; totalCount: number; verifiedRate: number; claims: Array<{ type: string; value: string; verified: boolean; evidence?: string }> };
   outputPreview: string | null;

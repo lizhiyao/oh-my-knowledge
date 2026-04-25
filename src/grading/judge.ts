@@ -149,12 +149,38 @@ export async function llmJudge({ output, rubric, prompt, executor, model, traceS
 }
 
 /**
+ * Max concurrent judge calls within a single sample × dimension. Each judge call
+ * is one API request; running N=3 sequentially means 3× latency, but going wide
+ * open risks hitting per-account RPM limits. 3 is a conservative middle ground —
+ * for N=3 (the common case) it's fully parallel; for N=10 it's 4 batches.
+ */
+const JUDGE_REPEAT_CONCURRENCY = 3;
+
+async function runInChunks<T>(
+  items: number,
+  chunkSize: number,
+  fn: (i: number) => Promise<T>,
+): Promise<T[]> {
+  const results: T[] = new Array(items);
+  for (let start = 0; start < items; start += chunkSize) {
+    const end = Math.min(start + chunkSize, items);
+    const batch = await Promise.all(
+      Array.from({ length: end - start }, (_, k) => fn(start + k)),
+    );
+    for (let k = 0; k < batch.length; k++) results[start + k] = batch[k];
+  }
+  return results;
+}
+
+/**
  * Judge a single (output, rubric) pair N times and aggregate. Returns mean score,
- * stddev across runs, the raw score samples, and the first-run reasoning (we don't
- * keep N reasonings — only the score distribution matters for stability monitoring).
+ * stddev across runs, raw score samples, and the first-call reasoning (we keep one
+ * reasoning sample, not N — only the score distribution matters for stability).
  *
- * Cost is summed across all N calls. When N <= 1 this is equivalent to llmJudge()
- * with scoreSamples = [score], scoreStddev = 0. The repeat value is clamped to >= 1
+ * Calls run with bounded concurrency (JUDGE_REPEAT_CONCURRENCY) to amortize latency
+ * without burning rate limit. N=3 finishes in ~1 round-trip; N=10 in ~4. Cost is
+ * summed across all N calls. When N <= 1 this is equivalent to llmJudge() with
+ * scoreSamples = [score], scoreStddev = 0. The repeat value is clamped to >= 1
  * here as well as at the CLI layer — library callers shouldn't see surprises.
  *
  * Failures: any call returning score=0 (non-JSON / executor error / parse error) is
@@ -173,18 +199,15 @@ export async function llmJudgeRepeat(
     return { ...single, scoreSamples: [single.score], scoreStddev: 0, judgeFailureCount: failed };
   }
 
-  const samples: number[] = [];
-  const reasons: string[] = [];
-  let totalCost = 0;
-  let firstReasoning: string | undefined;
+  // Run N judge calls with bounded concurrency. Result array preserves input order
+  // (call 0 → results[0]) so "first call reasoning" is well-defined regardless of
+  // which physical call returned first.
+  const calls = await runInChunks(n, JUDGE_REPEAT_CONCURRENCY, () => llmJudge(options));
 
-  for (let i = 0; i < n; i++) {
-    const r = await llmJudge(options);
-    samples.push(r.score);
-    if (r.reason) reasons.push(r.reason);
-    if (r.judgeCostUSD) totalCost += r.judgeCostUSD;
-    if (i === 0 && r.reasoning) firstReasoning = r.reasoning;
-  }
+  const samples = calls.map((c) => c.score);
+  const totalCost = calls.reduce((sum, c) => sum + (c.judgeCostUSD || 0), 0);
+  const firstReasoning = calls[0]?.reasoning;
+  const firstReason = calls.find((c) => c.reason)?.reason || '';
 
   const validSamples = samples.filter((s) => s > 0);
   const failures = samples.length - validSamples.length;
@@ -196,7 +219,7 @@ export async function llmJudgeRepeat(
 
   return {
     score: Number(mean.toFixed(2)),
-    reason: reasons[0] || '',
+    reason: firstReason,
     reasoning: firstReasoning,
     judgeCostUSD: totalCost,
     scoreSamples: samples,

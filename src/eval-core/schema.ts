@@ -102,6 +102,10 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
         ...(gradeResult.assertions && { assertions: gradeResult.assertions }),
         ...(gradeResult.llmScore != null && { llmScore: gradeResult.llmScore }),
         ...(gradeResult.llmReason && { llmReason: gradeResult.llmReason }),
+        ...(gradeResult.llmReasoning && { llmReasoning: gradeResult.llmReasoning }),
+        ...(gradeResult.llmScoreStddev != null && { llmScoreStddev: gradeResult.llmScoreStddev }),
+        ...(gradeResult.llmScoreSamples && { llmScoreSamples: gradeResult.llmScoreSamples }),
+        ...(gradeResult.llmScoreFailures != null && { llmScoreFailures: gradeResult.llmScoreFailures }),
         ...(gradeResult.dimensions && { dimensions: gradeResult.dimensions }),
       };
     })()),

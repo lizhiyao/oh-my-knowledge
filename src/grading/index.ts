@@ -31,6 +31,7 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     assertions?: AssertionResults;
     llmScore?: number;
     llmReason?: string;
+    llmReasoning?: string;
     llmScoreStddev?: number;
     llmScoreSamples?: number[];
     llmScoreFailures?: number;
@@ -115,6 +116,7 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     }, judgeRepeat);
     results.llmScore = judge.score;
     results.llmReason = judge.reason;
+    if (judge.reasoning) results.llmReasoning = judge.reasoning;
     if (judge.scoreSamples && judge.scoreSamples.length > 1) {
       results.llmScoreSamples = judge.scoreSamples;
       results.llmScoreStddev = judge.scoreStddev;
