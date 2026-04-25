@@ -4,6 +4,7 @@
  */
 
 import type { ExecResult, GradeResult, VariantResult, VariantSummary, TurnInfo, ToolCallInfo } from '../types.js';
+import { computeJudgeAgreement } from '../grading/judge.js';
 
 function ratioToScore(ratio: number): number {
   return Number((1 + ratio * 4).toFixed(2));
@@ -215,5 +216,64 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
       minLlmScore: Math.min(...llmScores),
       maxLlmScore: Math.max(...llmScores),
     }),
+    ...buildEnsembleAggregate(ok),
+  };
+}
+
+/**
+ * Aggregate-level multi-judge agreement across all samples in this variant.
+ *
+ * Per-sample (single rubric) ensemble gives one score per judge. With M samples we
+ * have an M-point series per judge. Pearson is well-defined when M >= 2 — that
+ * answers "do these two judges agree on RANK ORDER" — vs MAD on a single sample
+ * which only answers "how far apart are these two specific scores".
+ *
+ * For multi-dimensional ensembles, we currently aggregate ONLY single-rubric mode
+ * (entries with llmEnsemble at the top level). Per-dimension aggregate Pearson is
+ * a future extension — most blog narratives use single rubric so we'd be over-
+ * engineering to do dimensions on day one.
+ */
+function buildEnsembleAggregate(ok: VariantResult[]): Pick<VariantSummary, 'judgeAgreement' | 'judgeModels'> {
+  // Collect per-judge score series across samples that have ensemble data.
+  const judgeScores = new Map<string, number[]>();
+  let samplesWithEnsemble = 0;
+
+  for (const entry of ok) {
+    const ensemble = entry.llmEnsemble;
+    if (!ensemble || ensemble.length < 2) continue;
+    samplesWithEnsemble++;
+    for (const e of ensemble) {
+      if (e.score <= 0) continue; // exclude failed-judge samples from agreement
+      if (!judgeScores.has(e.judge)) judgeScores.set(e.judge, []);
+      judgeScores.get(e.judge)!.push(e.score);
+    }
+  }
+
+  // Skip entirely if no ensemble data at all, or if we somehow only saw 1 judge.
+  if (samplesWithEnsemble === 0 || judgeScores.size < 2) return {};
+
+  // Use samples where every judge produced a valid score, so series align.
+  // Recompute aligned matrix instead of trusting per-judge length.
+  const judges = [...judgeScores.keys()];
+  const alignedMatrix: number[][] = judges.map(() => []);
+  for (const entry of ok) {
+    const ensemble = entry.llmEnsemble;
+    if (!ensemble || ensemble.length < 2) continue;
+    const scoreByJudge = new Map<string, number>();
+    for (const e of ensemble) scoreByJudge.set(e.judge, e.score);
+    // Skip rows where any judge missing or scored 0
+    const allValid = judges.every((j) => {
+      const s = scoreByJudge.get(j);
+      return typeof s === 'number' && s > 0;
+    });
+    if (!allValid) continue;
+    judges.forEach((j, i) => alignedMatrix[i].push(scoreByJudge.get(j)!));
+  }
+
+  if (alignedMatrix[0].length < 2) return { judgeModels: judges }; // not enough aligned points
+  const agreement = computeJudgeAgreement(alignedMatrix);
+  return {
+    judgeModels: judges,
+    judgeAgreement: { ...agreement, sampleCount: alignedMatrix[0].length },
   };
 }
