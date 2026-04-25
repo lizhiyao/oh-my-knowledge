@@ -23,6 +23,15 @@
 - **知识缺口识别** — 严重度加权的信号（显式标记 / 搜索失败 / hedging 用语 / 反复失败）量化风险敞口,不宣称完备性
 - **合并前 CI 门** — `omk bench ci` 强制三层 all-pass（fact + behavior + llm-judge），抓复合分掩盖的单层回退
 
+### 统计严谨性 (v0.21)
+
+LLM 评测最容易踩的坑是"自信的偏差"——CI 很窄但结论错。v0.21 引入四件事让结论可被外部审计：
+
+- **Bootstrap CI** (`--bootstrap`) — 不假设分布的置信区间。t 检验在 LLM 序数评分上失效，bootstrap 直接重采样原始数据，对小 N（< 30）和偏态分布都稳。pairwise diff CI 不含 0 = 显著差异。
+- **Human Gold + Krippendorff α** (`--gold-dir`) — 引入外部标注作为锚点。CI 解决"评委稳不稳"，α 解决"评委对不对"——两个维度互补。omk 自动检测污染（gold annotator 与 judge 同模型时警告）。
+- **Length-controlled judge prompt** (默认开启) — 研究证实 LLM 评委隐性偏向更长的回答。v0.21 起 judge prompt 加显式段落"长度不是质量信号"，template hash 升 v3-cot-length，老报告 hash 不同肉眼可辨。`omk bench debias-validate length <reportId>` 重判检测偏差幅度。
+- **Saturation curve** — 回答"我跑够样本了吗"。`--repeat ≥ 5` 时累积 N → 均值 + bootstrap CI 序列，CI 宽度衰减率 < 5% 持续 3 个窗口判定饱和——再多样本对结论无实质收益。HTML 报告内联 SVG 曲线 + verdict。
+
 ## 快速开始
 
 ```bash
@@ -61,15 +70,18 @@ omk bench run
 
 | 特性 | 说明 |
 |------|------|
-| **18 种断言** | 包含子串、正则、JSON Schema、语义相似度、自定义函数等 |
+| **21+ 种断言** | 包含子串、正则、JSON Schema、ROUGE/BLEU/Levenshtein 相似度、Agent 工具调用、语义相似度、自定义函数等 |
+| **断言取反 + 组合** (v0.21) | 通用 `not: true` 字段 + `assert-set` (any/all) 任意嵌套 |
 | **六维评估** | 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性独立展示 |
+| **统计严谨性** (v0.21) | Bootstrap CI / Krippendorff α / Length-debias / Saturation curve |
 | **多执行器** | 支持 Claude CLI / Claude SDK / OpenAI / Gemini 及自定义命令 |
+| **多评委 ensemble** | `--judge-models claude:opus,openai:gpt-4o` 跨厂商评分 + agreement 度量 |
 | **MCP URL 获取** | 通过 MCP Server 获取私有文档 URL 内容（SSO 保护的知识库等） |
 | **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
 | **并行执行** | `--concurrency N` 并行 N 个任务 |
 | **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
 | **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本样本 |
-| **可追溯性** | 报告含 CLI 版本、Node 版本、artifact 版本指纹 |
+| **可追溯性** | 报告含 CLI 版本、Node 版本、artifact 版本指纹、judge prompt hash |
 | **中英切换** | HTML 报告右上角一键切换语言 |
 
 ## 工作原理
@@ -246,7 +258,7 @@ flowchart TD
 
 ### 断言类型
 
-**确定性断言（18 种）：**
+**确定性断言（21+ 种）：**
 
 | 类型 | 说明 |
 |------|------|
@@ -259,8 +271,39 @@ flowchart TD
 | `word_count_min` / `word_count_max` | 词数范围 |
 | `contains_all` / `contains_any` | 多值匹配 |
 | `cost_max` / `latency_max` | 成本/延迟限制 |
+| `tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` | Agent 工具调用断言 |
+| `tool_output_contains` / `tool_input_contains` | 工具输入/输出内容匹配 |
+| `turns_min` / `turns_max` | 多轮对话轮数限制 |
+| `rouge_n_min` (v0.21) | ROUGE-N recall ≥ threshold（`reference` 字段填参考答案，`n` 默认 1，`threshold` 默认 0.5） |
+| `levenshtein_max` (v0.21) | 编辑距离 ≤ value（用于"输出跟参考几乎一致"场景） |
+| `bleu_min` (v0.21) | BLEU-4 ≥ threshold（unsmoothed，短文本会塌陷到 0） |
 | `semantic_similarity` | LLM 语义相似度 |
 | `custom` | 自定义 JS 函数（30s 超时） |
+
+**通用修饰（v0.21）：**
+
+任何断言加 `not: true` 即反向（替代 `not_contains` / `not_equals` 等成对类型；老类型保留作 alias）：
+
+```yaml
+- type: regex
+  pattern: "TODO|FIXME"
+  not: true              # 必须不含 TODO/FIXME
+```
+
+**断言组合（v0.21 — assert-set）：**
+
+`assert-set` 类型让多个断言以 `any`（OR）或 `all`（AND）逻辑组合，可嵌套：
+
+```yaml
+- type: assert-set
+  mode: any              # 任一通过即过 (mode: 'all' 则需全部通过)
+  children:
+    - { type: contains, value: "参数化" }
+    - { type: contains, value: "prepared statement" }
+    - { type: regex, pattern: "bind\\(.*\\?" }
+```
+
+子断言可独立带 `not: true`；嵌套 assert-set 可表达任意布尔逻辑。
 
 ### 自定义断言
 
@@ -319,6 +362,16 @@ omk bench run [选项]
   --verbose              打印每个样本的详细执行结果（耗时、tokens、输出预览）
   --each                 批量评测：每个 artifact 独立和 baseline 对比
                          需要每个 artifact 配对 {name}.eval-samples.json
+  --judge-repeat <n>     每条 sample × dimension 跑 LLM 评委 N 次,输出 stddev (评委自一致性)
+  --judge-models <list>  多评委 ensemble: "executor1:model1,executor2:model2"
+                         ≥ 2 个 judge 触发 ensemble + inter-judge agreement 输出
+  --bootstrap            (v0.21) 启用 distribution-free CI:每个 variant 加 bootstrap CI,
+                         pairwise diff CI 含 0 = 不显著
+  --bootstrap-samples N  bootstrap 重采样次数 (默认 1000)
+  --gold-dir <路径>      (v0.21) 跑完自动对比 human gold 算 Krippendorff α / κ / Pearson,
+                         结果写入 report.meta.humanAgreement,HTML 报告显示「人工锚点」
+  --no-debias-length     (v0.21) 退回 v2-cot 评委 prompt (不含"长度不是质量信号"段落),
+                         用于复现 < v0.21 历史报告 hash
 ```
 
 ### `omk bench run --each`（批量评测）
@@ -420,6 +473,56 @@ omk bench report [选项]
 ```bash
 omk bench init [目录]    # 生成评测项目脚手架
 ```
+
+### `omk bench gold`（v0.21 — 人工锚点）
+
+人工标注（或更强模型代理）作为外部锚点，与 LLM 评委的分数对比 Krippendorff α / 加权 κ / Pearson。回答"评委对不对"，与 Bootstrap CI 的"评委稳不稳"互补。
+
+```bash
+omk bench gold init [--out <dir>] [--annotator <id>]   # 生成数据集模板
+omk bench gold validate <dir>                          # 校验 schema (annotator/时间/版本/score 范围)
+omk bench gold compare <reportId> --gold-dir <dir>     # 与已有 report 对比,输出 verdict + α/κ/r
+```
+
+dataset 目录结构：
+
+```
+gold-dir/
+├── metadata.yaml      # annotator (注意不要与 omk judge 同模型,会触发污染警告) + 时间 + 版本
+└── annotations.yaml   # [{ sample_id, score, reason? }] 按 sample_id 拼接
+```
+
+α 阈值参考 Krippendorff (2011)：≥ 0.80 高度一致；[0.67, 0.80) 可接受；< 0.40 偏差大需排查 rubric / prompt。
+
+完整 demo: [examples/gold-dataset/](examples/gold-dataset/)
+
+### `omk bench debias-validate length`（v0.21 — 评委长度偏差检测）
+
+重判已有 report 的所有 (sample × variant)，用相反的 length-debias 设置（v3-cot-length ↔ v2-cot），bootstrap CI 算两次差值。差异显著 = 评委对长度敏感（length bias 间接证据）。
+
+```bash
+omk bench debias-validate length <reportId> [选项]
+  --variant <name>            只测一个 variant
+  --judge-model <id>          override report 的 judge model
+  --bootstrap-samples N       bootstrap 迭代数 (默认 1000)
+  --seed N                    确定性种子
+```
+
+verdict 分四档：未检测 / 弱 / 中（差值 |0.2-0.5|）/ 强（差值 ≥ 0.5）。重判 cost 大致翻倍。
+
+### `omk bench saturation`（v0.21 — 饱和曲线）
+
+回答"我跑够样本了吗"。从已有 report 读取 saturation trace 输出判定，无需重跑评测。需要原 run 跑了 `--repeat ≥ 5` 才会有 verdict（低 repeat 只画曲线）。
+
+```bash
+omk bench saturation <reportId> [选项]
+  --variant <name>             只看一个 variant
+  --method <m>                 slope | bootstrap-ci-width (默认) | plateau-height
+  --threshold <num>            方法相关阈值 (默认随 method)
+  --window <num>               连续多少窗口满足才判饱和 (默认 3)
+```
+
+HTML 报告会内联 SVG 饱和曲线（横 N，纵 mean ± 95% CI 阴影带，per-variant 一条），自动渲染。
 
 ## `omk analyze` — 生产观测
 

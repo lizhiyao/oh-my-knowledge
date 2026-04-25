@@ -23,6 +23,15 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 - **Knowledge-gap detection** — severity-weighted signals (explicit markers / failed searches / hedging language / repeated failures) quantify risk exposure instead of claiming completeness
 - **Pre-merge CI gate** — `omk bench ci` enforces three-layer all-pass (fact + behavior + llm-judge) semantics, catching single-layer regressions a composite score would hide
 
+### Statistical rigor (v0.21)
+
+The biggest LLM-eval failure mode is "confident bias" — narrow CIs around the wrong answer. v0.21 ships four pieces so conclusions can be externally audited:
+
+- **Bootstrap CI** (`--bootstrap`) — distribution-free confidence intervals. The t-test breaks on ordinal LLM scores; bootstrap resamples raw observations and stays valid at small N (< 30) and on skewed data. Pairwise diff CI not crossing 0 = significant.
+- **Human Gold + Krippendorff α** (`--gold-dir`) — bring an external annotation as anchor. CI tells you "is the judge stable", α tells you "is the judge correct" — two complementary axes. omk warns when the gold annotator and the judge are the same model (would inflate α).
+- **Length-controlled judge prompt** (default ON) — research shows LLM judges over-weight verbosity. Since v0.21 the judge prompt explicitly states "length is not a quality signal"; template hash bumps to v3-cot-length so older reports are visibly different. `omk bench debias-validate length <reportId>` re-judges with the opposite setting and reports the score shift.
+- **Saturation curve** — answers "have I run enough samples?". With `--repeat ≥ 5` we accumulate cumulative N → bootstrap CI; when CI shrink rate stays under 5% across 3 windows, more samples buy nothing. The HTML report inlines the SVG curve plus a verdict.
+
 ## Quick start
 
 ```bash
@@ -61,15 +70,18 @@ You can also just say "compare v1 vs v2 for me" or "improve this artifact" — o
 
 | Feature | What it does |
 |---|---|
-| **18 assertion types** | substring, regex, JSON Schema, semantic similarity, custom JS function, and more |
+| **21+ assertion types** | substring, regex, JSON Schema, ROUGE/BLEU/Levenshtein similarity, agent tool-call assertions, semantic similarity, custom JS, and more |
+| **Assertion negation + composition** (v0.21) | universal `not: true` field + `assert-set` (any/all) with arbitrary nesting |
 | **Six-dim evaluation** | Fact / Behavior / LLM-judge / Cost / Efficiency / Stability shown independently |
+| **Statistical rigor** (v0.21) | Bootstrap CI / Krippendorff α / length-debias / saturation curve |
 | **Multi-executor** | Claude CLI / Claude SDK / OpenAI / Gemini / any custom command |
+| **Multi-judge ensemble** | `--judge-models claude:opus,openai:gpt-4o` cross-vendor scoring + agreement metrics |
 | **MCP URL fetching** | pull content from private-doc URLs via an MCP server (SSO-protected knowledge bases, etc.) |
 | **Blind A/B** | `--blind` hides variant names; HTML report has a reveal button |
 | **Parallel execution** | `--concurrency N` runs N tasks at once |
 | **Multi-run variance** | `--repeat N` repeats the eval and computes mean / SD / CI / t-test |
 | **Auto analysis** | detects low-discrimination assertions, flat scores, all-pass / all-fail, expensive samples |
-| **Traceability** | reports carry CLI version, Node version, artifact version fingerprint |
+| **Traceability** | reports carry CLI version, Node version, artifact version fingerprint, judge prompt hash |
 | **EN / ZH switch** | one-click language toggle in the HTML report |
 
 ## How it works
@@ -246,7 +258,7 @@ The judge model (default `haiku`) scores 1–5 against the rubric. In `dimension
 
 ### Assertion types
 
-**Deterministic assertions (18 total):**
+**Deterministic assertions (21+ total):**
 
 | Type | Description |
 |---|---|
@@ -259,8 +271,39 @@ The judge model (default `haiku`) scores 1–5 against the rubric. In `dimension
 | `word_count_min` / `word_count_max` | word-count bounds |
 | `contains_all` / `contains_any` | multi-value match |
 | `cost_max` / `latency_max` | cost / latency caps |
+| `tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` | agent tool-call assertions |
+| `tool_output_contains` / `tool_input_contains` | match content of a tool's input or output |
+| `turns_min` / `turns_max` | conversation-turn bounds |
+| `rouge_n_min` (v0.21) | ROUGE-N recall ≥ threshold (`reference` field holds the gold text; `n` defaults to 1; `threshold` defaults to 0.5) |
+| `levenshtein_max` (v0.21) | edit distance ≤ value (for "output should be near-identical to reference") |
+| `bleu_min` (v0.21) | BLEU-4 ≥ threshold (unsmoothed; degenerates to 0 on short text) |
 | `semantic_similarity` | LLM-based semantic similarity |
 | `custom` | custom JS function (30 s timeout) |
+
+**Universal modifier (v0.21):**
+
+Any assertion takes `not: true` to invert (replaces paired `not_contains` / `not_equals` etc; legacy types remain as aliases):
+
+```yaml
+- type: regex
+  pattern: "TODO|FIXME"
+  not: true              # output must NOT contain TODO/FIXME
+```
+
+**Composition (v0.21 — assert-set):**
+
+`assert-set` combines child assertions with `any` (OR) or `all` (AND) and supports nesting:
+
+```yaml
+- type: assert-set
+  mode: any              # at least one child must pass (mode: 'all' = all must pass)
+  children:
+    - { type: contains, value: "parameterized" }
+    - { type: contains, value: "prepared statement" }
+    - { type: regex, pattern: "bind\\(.*\\?" }
+```
+
+Children can independently use `not: true`; nested `assert-set`s can express any boolean shape.
 
 ### Custom assertion
 
@@ -321,6 +364,17 @@ options:
   --verbose              print per-sample details (duration, tokens, output preview)
   --each                 batch mode: evaluate each artifact independently vs baseline
                          requires {name}.eval-samples.json paired with each artifact
+  --judge-repeat <n>     run the LLM judge N times per (sample × dimension) and report stddev
+  --judge-models <list>  multi-judge ensemble: "executor1:model1,executor2:model2"
+                         ≥ 2 judges enables ensemble + inter-judge agreement output
+  --bootstrap            (v0.21) enable distribution-free CIs: bootstrap CI per variant +
+                         pairwise diff CI (CI containing 0 = not significant)
+  --bootstrap-samples N  bootstrap resample count (default 1000)
+  --gold-dir <path>      (v0.21) after the run, compare scores against the gold dataset
+                         (Krippendorff α / κ / Pearson). Result is written to
+                         report.meta.humanAgreement and shown in the HTML report
+  --no-debias-length     (v0.21) revert to legacy v2-cot judge prompt (no "length is not
+                         a quality signal" paragraph) for byte-compat with pre-v0.21 reports
 ```
 
 ### `omk bench run --each` (batch mode)
@@ -422,6 +476,56 @@ omk bench report [options]
 ```bash
 omk bench init [dir]     # scaffold an eval project
 ```
+
+### `omk bench gold` (v0.21 — human gold anchor)
+
+Bring a human (or stronger-model proxy) annotation as an external anchor and compute Krippendorff α / weighted κ / Pearson against the LLM judge. Answers "is the judge correct?", complementary to Bootstrap CI's "is the judge stable?".
+
+```bash
+omk bench gold init [--out <dir>] [--annotator <id>]   # scaffold a dataset template
+omk bench gold validate <dir>                          # check schema (annotator / date / version / score range)
+omk bench gold compare <reportId> --gold-dir <dir>     # compare against an existing report; prints α/κ/r + verdict
+```
+
+Dataset layout:
+
+```
+gold-dir/
+├── metadata.yaml      # annotator (must NOT match the omk judge model — would trigger contamination warning) + date + version
+└── annotations.yaml   # [{ sample_id, score, reason? }] concatenated by sample_id
+```
+
+α thresholds follow Krippendorff (2011): ≥ 0.80 strong agreement; [0.67, 0.80) acceptable; < 0.40 large divergence — investigate rubric / prompt.
+
+Full demo: [examples/gold-dataset/](examples/gold-dataset/)
+
+### `omk bench debias-validate length` (v0.21 — judge length-bias check)
+
+Re-judges every (sample × variant) of an existing report with the OPPOSITE length-debias setting (v3-cot-length ↔ v2-cot) and bootstraps the CI on the score difference. A significant shift = the judge is sensitive to the length-debias instruction (indirect evidence of length bias).
+
+```bash
+omk bench debias-validate length <reportId> [options]
+  --variant <name>            check a single variant only
+  --judge-model <id>          override the report's judge model
+  --bootstrap-samples N       bootstrap iterations (default 1000)
+  --seed N                    deterministic seed
+```
+
+Verdict bucket: none / weak / medium (|0.2-0.5|) / strong (≥ 0.5). Re-judge cost roughly doubles vs the original judge pass.
+
+### `omk bench saturation` (v0.21 — saturation curve)
+
+Answers "have I run enough samples?". Reads the saturation trace from an existing report (no re-run). Verdicts only emit when the original run used `--repeat ≥ 5`; below that, the curve is plotted but no verdict is computed.
+
+```bash
+omk bench saturation <reportId> [options]
+  --variant <name>             single-variant view
+  --method <m>                 slope | bootstrap-ci-width (default) | plateau-height
+  --threshold <num>            method-specific cutoff (defaults match the method)
+  --window <num>               consecutive windows that must satisfy the threshold (default 3)
+```
+
+The HTML report inlines an SVG curve (cumulative N on X, mean ± 95% CI shading on Y, one curve per variant) automatically.
 
 ## `omk analyze` — production observability
 
