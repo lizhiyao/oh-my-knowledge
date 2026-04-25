@@ -22,6 +22,7 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 - **Production session observability** — parse Claude Code session JSONL traces, measure per-skill failure rate, latency, token cost, and knowledge-gap signals on real user sessions
 - **Knowledge-gap detection** — severity-weighted signals (explicit markers / failed searches / hedging language / repeated failures) quantify risk exposure instead of claiming completeness
 - **Pre-merge CI gate** — `omk bench ci` enforces three-layer all-pass (fact + behavior + llm-judge) semantics, catching single-layer regressions a composite score would hide
+- **One-line ship/no-ship verdict** — `omk bench verdict <reportId>` aggregates bootstrap CI / three-layer ci-gate / saturation / human α into a six-tier verdict (PROGRESS / CAUTIOUS / REGRESS / NOISE / UNDERPOWERED / SOLO) plus an action recommendation; the exit code reflects whether to ship
 
 ### Statistical rigor
 
@@ -74,6 +75,11 @@ You can also just say "compare v1 vs v2 for me" or "improve this artifact" — o
 | **Assertion negation + composition** | universal `not: true` field + `assert-set` (any/all) with arbitrary nesting |
 | **Six-dim evaluation** | Fact / Behavior / LLM-judge / Cost / Efficiency / Stability shown independently |
 | **Statistical rigor** | Bootstrap CI / Krippendorff α / length-debias / saturation curve |
+| **One-line verdict** | `omk bench verdict <id>` six-tier verdict + ship recommendation + exit-code routing; HTML pill shares the same rules |
+| **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage; auto-inherits length-debias |
+| **Sample diagnostics** | `omk bench diagnose <id>` — 7 issue kinds (low discrimination / duplicates / ambiguous rubric / cost outliers / etc.) + 0-100 healthScore |
+| **Failure clustering** | `omk bench failures <id>` — single LLM call clusters failed samples and emits per-cluster fixes |
+| **Hard budget caps** | `--budget-usd / --budget-per-sample-usd / --budget-per-sample-ms` — abort on total-cost overrun, flag per-sample overruns; partial report persisted |
 | **Multi-executor** | Claude CLI / Claude SDK / OpenAI / Gemini / any custom command |
 | **Multi-judge ensemble** | `--judge-models claude:opus,openai:gpt-4o` cross-vendor scoring + agreement metrics |
 | **MCP URL fetching** | pull content from private-doc URLs via an MCP server (SSO-protected knowledge bases, etc.) |
@@ -124,7 +130,7 @@ flowchart TD
     end
 
     subgraph Report["⑦ Report"]
-        R["Six dims: Fact / Behavior / LLM-judge / Cost / Efficiency / Stability<br/>JSON + HTML · blind reveal<br/>CLI/Node/version fingerprint traceable"]
+        R["Six dims: Fact / Behavior / LLM-judge / Cost / Efficiency / Stability<br/>JSON + HTML · top verdict pill · blind reveal<br/>CLI/Node/version fingerprint traceable"]
     end
 
     S --> U
@@ -277,7 +283,10 @@ The judge model (default `haiku`) scores 1–5 against the rubric. In `dimension
 | `rouge_n_min` | ROUGE-N recall ≥ threshold (`reference` field holds the gold text; `n` defaults to 1; `threshold` defaults to 0.5) |
 | `levenshtein_max` | edit distance ≤ value (for "output should be near-identical to reference") |
 | `bleu_min` | BLEU-4 ≥ threshold (unsmoothed; degenerates to 0 on short text) |
-| `semantic_similarity` | LLM-based semantic similarity |
+| `faithfulness` | output stays grounded in `sample.context` (anti-hallucination); LLM judge 1-5; threshold defaults to 3 |
+| `answer_relevancy` | output directly answers `sample.prompt`; catches dodging, topic drift, verbosity; threshold defaults to 3 |
+| `context_recall` | gold facts in `sample.context` are actually used in the output; `reference` may explicitly enumerate gold facts; threshold defaults to 3 |
+| `semantic_similarity` | LLM-based holistic semantic similarity (complementary to the three RAG metrics above) |
 | `custom` | custom JS function (30 s timeout) |
 
 **Universal modifier:**
@@ -376,7 +385,14 @@ options:
   --no-debias-length     revert to legacy v2-cot judge prompt (no "length is not
                          a quality signal" paragraph) — for byte-compat with
                          legacy reports whose hash predates v3-cot-length
+  --budget-usd <num>             total cost cap (USD); on overrun the run aborts and
+                                 a partial report is persisted (`report.meta.budgetExhausted = true`)
+  --budget-per-sample-usd <num>  per-sample cost cap; offending samples fail individually,
+                                 the run continues
+  --budget-per-sample-ms <num>   per-sample latency cap (ms); same semantics as cost cap
 ```
+
+**eval.yaml budget**: declare `budget: { totalUSD?, perSampleUSD?, perSampleMs? }` (all optional, must be ≥ 0). CLI flags of the same name override the config values.
 
 ### `omk bench run --each` (batch mode)
 
@@ -527,6 +543,63 @@ omk bench saturation <reportId> [options]
 ```
 
 The HTML report inlines an SVG curve (cumulative N on X, mean ± 95% CI shading on Y, one curve per variant) automatically.
+
+### `omk bench verdict` (one-line ship/no-ship verdict)
+
+Aggregates bootstrap CI / three-layer ci-gate / saturation / human α into one of six verdicts: **PROGRESS** (significant improvement, all three layers pass → exit 0), **CAUTIOUS** (real gain but with a warning — broken gate / trivially small / control regressed → exit 1), **REGRESS** (significant negative shift → exit 1), **NOISE** (CI spans 0, undecidable → exit 1), **UNDERPOWERED** (sample size too small → exit 1), **SOLO** (single variant; exit 0 only if its own three-layer gate passes).
+
+```bash
+omk bench verdict <reportId> [options]
+  --threshold <num>      three-layer gate threshold (default 3.5, matches `omk bench ci`)
+  --trivial-diff <num>   "practically tiny" cutoff (default 0.1)
+  --verbose              expand per-pair detail
+```
+
+Shares its rule module with the HTML report's verdict pill — CLI and UI cannot disagree.
+
+### `omk bench diagnose` (sample quality diagnostics)
+
+Answers "is the conclusion polluted by bad samples?". Diagnoses 7 sample-quality issues: `flat_scores` (low discrimination), `all_pass` (too easy), `all_fail` (broken — error severity), `near_duplicate` (prompt ROUGE-1 ≥ threshold), `ambiguous_rubric` (high judge stddev across `--judge-repeat ≥ 2`), `cost_outlier` (≥ k× median), `latency_outlier` (≥ k× median), `error_prone` (executor failure).
+
+```bash
+omk bench diagnose <reportId> [options]
+  --top <n>                   show top N per kind (default 10, 0 = all)
+  --duplicate-rouge <num>     near-duplicate ROUGE-1 threshold (default 0.7)
+  --ambiguous-stddev <num>    judge-stddev threshold (default 1.0)
+  --cost-k <num>              cost-outlier multiplier vs median (default 3)
+  --latency-k <num>           latency-outlier multiplier vs median (default 3)
+  --flat <num>                flat_scores spread threshold (default 0.5)
+```
+
+Output includes a healthScore (0-100, formula `100 - normalized × 20` where `normalized = (errors×8 + warnings×3 + infos×1) / N`). Exit code is 0 only when `healthScore ≥ 70` AND no error-severity issue — CI-friendly.
+
+### `omk bench failures` (failure case LLM clustering)
+
+When 14 of 50 samples failed, reading them one by one is slow. This command sends failed samples to a single LLM call, clusters them into ≤ N groups, and emits per-cluster root cause + fix. "Failed" = `compositeScore < threshold` OR `ok = false`.
+
+```bash
+omk bench failures <reportId> [options]
+  --judge-executor <name>     executor (default: claude)
+  --judge-model <id>          clustering model (default: from report.meta.judgeModel)
+  --max-clusters <n>          maximum clusters (default 5)
+  --threshold <num>           failure score threshold (default 3)
+  --max-feed <n>              max failures fed to LLM (default 50; takes the worst)
+```
+
+Tolerant: ```json``` markdown fences, `"sample_id@variant"` string member form, hallucinated members are dropped, single-failure case skips the LLM call, executor errors degrade to unclassified.
+
+### `omk bench diff` (report comparison — single / dual mode)
+
+**Single-arg mode** (within-report sample-level): `omk bench diff <reportId>` — within one report, drill down per-sample comparing `variants[0]` against `variants[1]` (or `--variant <name>`).
+
+**Dual-arg mode** (cross-report variant-level): `omk bench diff <reportId1> <reportId2>` — compare the same variant across two reports (legacy behavior preserved).
+
+```bash
+omk bench diff <reportId> [--variant <name>] [--regressions-only] [--threshold 0] [--top N]
+omk bench diff <reportId1> <reportId2> [--regressions-only] [--threshold 0]
+```
+
+Single-arg output sorts by |Δ| desc; rows where Δ < threshold are highlighted as regressions. `--top N` caps row count, `--regressions-only` shows only negative Δ samples.
 
 ## `omk analyze` — production observability
 
