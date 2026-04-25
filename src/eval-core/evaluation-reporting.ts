@@ -41,12 +41,25 @@ function hashString(str: string): string {
 }
 
 /**
+ * Canonical (key-sorted, recursive) JSON serialization. Required for cross-run hash
+ * stability — JS object key iteration order is implementation-defined for objects
+ * built by spread / Object.assign / yaml.parse, so naive JSON.stringify can produce
+ * different bytes for the "same" sample on different runs.
+ */
+function canonicalStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(canonicalStringify).join(',') + ']';
+  const entries = Object.keys(value as Record<string, unknown>).sort();
+  return '{' + entries.map((k) => JSON.stringify(k) + ':' + canonicalStringify((value as Record<string, unknown>)[k])).join(',') + '}';
+}
+
+/**
  * Stable content hash of a sample. Hashes the prompt + assertions + dimensions/rubric
  * (the parts that determine what's being measured). Two samples with the same hash
  * across runs measure the same thing; mismatched hashes mean the sample changed.
  */
 function hashSample(sample: Sample): string {
-  const stableForm = JSON.stringify({
+  const stableForm = canonicalStringify({
     prompt: sample.prompt,
     rubric: sample.rubric ?? null,
     dimensions: sample.dimensions ?? null,

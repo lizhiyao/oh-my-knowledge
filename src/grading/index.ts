@@ -33,6 +33,7 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     llmReason?: string;
     llmScoreStddev?: number;
     llmScoreSamples?: number[];
+    llmScoreFailures?: number;
     dimensions?: Record<string, DimensionResult>;
     judgeCostUSD?: number;
     compositeScore: number;
@@ -117,6 +118,9 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     if (judge.scoreSamples && judge.scoreSamples.length > 1) {
       results.llmScoreSamples = judge.scoreSamples;
       results.llmScoreStddev = judge.scoreStddev;
+      if (judge.judgeFailureCount && judge.judgeFailureCount > 0) {
+        results.llmScoreFailures = judge.judgeFailureCount;
+      }
     }
     results.judgeCostUSD = (results.judgeCostUSD || 0) + (judge.judgeCostUSD || 0);
   }

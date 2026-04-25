@@ -386,6 +386,7 @@ export async function runEachEvaluation({
   mcpConfig,
   verbose = false,
   repeat,
+  judgeRepeat,
 }: RunEachEvaluationOptions): Promise<{ report: Report | DryRunEachReport; filePath: string | null }> {
   const skillEntries = discoverEachSkills(resolve(skillDir));
   if (skillEntries.length === 0) {
@@ -431,13 +432,14 @@ export async function runEachEvaluation({
     mcpConfig,
     verbose,
     repeat,
+    judgeRepeat,
     runSingleEvaluation: async (options) => {
       // repeat > 1 时走 runMultiple 做 variance; each=true 标记让 meta.request 如实反映
       if (repeat && repeat > 1) {
-        const multi = await runMultiple({ ...options, repeat, each: true });
+        const multi = await runMultiple({ ...options, repeat, each: true, judgeRepeat });
         return { report: multi.report, filePath: multi.filePath };
       }
-      const result = await runEvaluation({ ...options, each: true });
+      const result = await runEvaluation({ ...options, each: true, judgeRepeat });
       return { report: result.report as Report, filePath: result.filePath };
     },
   });

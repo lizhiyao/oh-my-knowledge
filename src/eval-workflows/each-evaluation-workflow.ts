@@ -23,6 +23,8 @@ interface RunSingleEvaluationOptions {
   skipPreflight: boolean;
   mcpConfig?: string;
   verbose: boolean;
+  /** Forwarded to grade(); each sample × dimension is judged N times. Default 1. */
+  judgeRepeat?: number;
 }
 
 export interface EachSkillResult {
@@ -192,6 +194,7 @@ export async function executeEachEvaluationRuns({
   mcpConfig,
   verbose = false,
   repeat,
+  judgeRepeat,
   runSingleEvaluation,
 }: {
   skillDir: string;
@@ -215,6 +218,7 @@ export async function executeEachEvaluationRuns({
   mcpConfig?: string;
   verbose?: boolean;
   repeat?: number;
+  judgeRepeat?: number;
   runSingleEvaluation: (options: RunSingleEvaluationOptions) => Promise<{ report: Report; filePath: string | null }>;
 }): Promise<{ report: Report; filePath: string | null }> {
   const skillResults: EachSkillResult[] = [];
@@ -250,6 +254,7 @@ export async function executeEachEvaluationRuns({
       skipPreflight: skipPreflight || i > 0,
       mcpConfig,
       verbose,
+      judgeRepeat,
     });
 
     skillResults.push({

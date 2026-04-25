@@ -91,6 +91,38 @@ describe('llmJudgeRepeat', () => {
     }, 3);
     assert.equal(r.reasoning, 'stub reasoning');
   });
+
+  it('judgeFailureCount=0 when all N calls succeed', async () => {
+    const executor = makeStubJudgeExecutor([4, 5, 3]);
+    const r = await llmJudgeRepeat({
+      output: 'o', rubric: 'r', prompt: 'p', executor, model: 'haiku',
+    }, 3);
+    assert.equal(r.judgeFailureCount, 0);
+  });
+
+  it('judgeFailureCount counts score=0 calls; stddev only over successful samples', async () => {
+    // 3 calls: [0, 0, 4] — 2 failures, 1 success. mean over success = 4, stddev = 0
+    // (only one successful sample). judgeFailureCount = 2 disambiguates.
+    const executor = makeStubJudgeExecutor([0, 0, 4]);
+    const r = await llmJudgeRepeat({
+      output: 'o', rubric: 'r', prompt: 'p', executor, model: 'haiku',
+    }, 3);
+    assert.equal(r.judgeFailureCount, 2);
+    assert.equal(r.scoreSamples?.length, 3);
+    assert.deepEqual(r.scoreSamples, [0, 0, 4]);
+    // mean and stddev should reflect only the successful sample
+    assert.equal(r.score, 4);
+    assert.equal(r.scoreStddev, 0);
+  });
+
+  it('library accepts repeat=0 / negative defensively (clamped to 1)', async () => {
+    const executor = makeStubJudgeExecutor([4]);
+    const r = await llmJudgeRepeat({
+      output: 'o', rubric: 'r', prompt: 'p', executor, model: 'haiku',
+    }, 0);
+    assert.equal(r.score, 4);
+    assert.deepEqual(r.scoreSamples, [4]);
+  });
 });
 
 describe('grade with judgeRepeat', () => {

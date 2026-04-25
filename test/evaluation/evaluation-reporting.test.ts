@@ -4,7 +4,7 @@ import { aggregateReport } from '../../src/eval-core/evaluation-reporting.js';
 import type { Artifact, Sample, Task, VariantResult, EvaluationRequest } from '../../src/types.js';
 
 function makeArtifact(name: string, content: string): Artifact {
-  return { name, kind: 'skill-md', source: '/tmp/' + name + '.md', content, experimentRole: 'treatment' };
+  return { name, kind: 'skill', source: 'inline', content, experimentRole: 'treatment' };
 }
 
 function makeSample(id: string, prompt: string, rubric?: string): Sample {
@@ -90,5 +90,61 @@ describe('aggregateReport — reproducibility metadata', () => {
 
     const r2 = aggregateReport(baseOpts); // no request at all
     assert.equal(r2.meta.judgeRepeat, undefined);
+  });
+});
+
+describe('aggregateReport — sampleHash key-order stability', () => {
+  // The whole point of canonical JSON: key insertion order shouldn't affect hash.
+  // Two samples with the same dimensions but different key insertion order must hash equal.
+  function commonOpts(samples: Sample[]) {
+    return {
+      runId: 'r', variants: ['v1'], model: 'haiku', judgeModel: 'haiku', noJudge: false,
+      executorName: 'claude',
+      samples,
+      tasks: [] as Task[],
+      results: Object.fromEntries(samples.map((s) => [s.sample_id, { v1: makeVariantResult() }])),
+      totalCostUSD: 0,
+      artifacts: [makeArtifact('v1', 'c')],
+    };
+  }
+
+  it('different dimensions key insertion order → same hash', () => {
+    const a: Sample = { sample_id: 'a', prompt: 'p', dimensions: { correctness: 'r1', clarity: 'r2' } };
+    // Build via a different path so JS engine may iterate keys in a different order
+    const dims: Record<string, string> = {};
+    dims.clarity = 'r2';
+    dims.correctness = 'r1';
+    const b: Sample = { sample_id: 'b', prompt: 'p', dimensions: dims };
+    const r = aggregateReport(commonOpts([a, b]));
+    assert.equal(r.meta.sampleHashes!.a, r.meta.sampleHashes!.b);
+  });
+
+  it('different assertions array order → DIFFERENT hash (order is meaningful)', () => {
+    // Arrays, unlike object keys, have semantic order — assertion order may matter
+    // for evaluation pipelines (e.g. early-exit). Hash should reflect that.
+    const a: Sample = {
+      sample_id: 'a', prompt: 'p',
+      assertions: [{ type: 'contains', value: 'foo', weight: 1 }, { type: 'contains', value: 'bar', weight: 1 }],
+    };
+    const b: Sample = {
+      sample_id: 'b', prompt: 'p',
+      assertions: [{ type: 'contains', value: 'bar', weight: 1 }, { type: 'contains', value: 'foo', weight: 1 }],
+    };
+    const r = aggregateReport(commonOpts([a, b]));
+    assert.notEqual(r.meta.sampleHashes!.a, r.meta.sampleHashes!.b);
+  });
+
+  it('same prompt + different rubric → different hash', () => {
+    const a: Sample = { sample_id: 'a', prompt: 'p', rubric: 'rubric one' };
+    const b: Sample = { sample_id: 'b', prompt: 'p', rubric: 'rubric two' };
+    const r = aggregateReport(commonOpts([a, b]));
+    assert.notEqual(r.meta.sampleHashes!.a, r.meta.sampleHashes!.b);
+  });
+
+  it('same prompt + different dimensions → different hash', () => {
+    const a: Sample = { sample_id: 'a', prompt: 'p', dimensions: { acc: 'is it accurate' } };
+    const b: Sample = { sample_id: 'b', prompt: 'p', dimensions: { acc: 'is it accurate', clarity: 'is it clear' } };
+    const r = aggregateReport(commonOpts([a, b]));
+    assert.notEqual(r.meta.sampleHashes!.a, r.meta.sampleHashes!.b);
   });
 });

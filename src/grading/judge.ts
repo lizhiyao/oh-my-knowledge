@@ -153,34 +153,41 @@ export async function llmJudge({ output, rubric, prompt, executor, model, traceS
  * stddev across runs, the raw score samples, and the first-run reasoning (we don't
  * keep N reasonings — only the score distribution matters for stability monitoring).
  *
- * Cost is summed across all N calls. When N=1 this is equivalent to llmJudge() with
- * scoreSamples = [score], scoreStddev = 0.
+ * Cost is summed across all N calls. When N <= 1 this is equivalent to llmJudge()
+ * with scoreSamples = [score], scoreStddev = 0. The repeat value is clamped to >= 1
+ * here as well as at the CLI layer — library callers shouldn't see surprises.
+ *
+ * Failures: any call returning score=0 (non-JSON / executor error / parse error) is
+ * counted in `judgeFailureCount`. stddev is computed only over successful calls. If
+ * stddev is 0 but judgeFailureCount > 0, that's NOT "judge agreed perfectly" — it
+ * means most calls failed and one happened to succeed. Always inspect both fields.
  */
 export async function llmJudgeRepeat(
   options: LlmJudgeOptions,
   repeat: number,
 ): Promise<DimensionResult> {
-  if (repeat <= 1) {
+  const n = Math.max(1, Math.floor(repeat) || 1);
+  if (n === 1) {
     const single = await llmJudge(options);
-    return { ...single, scoreSamples: [single.score], scoreStddev: 0 };
+    const failed = single.score <= 0 ? 1 : 0;
+    return { ...single, scoreSamples: [single.score], scoreStddev: 0, judgeFailureCount: failed };
   }
 
   const samples: number[] = [];
-  const reasonings: string[] = [];
   const reasons: string[] = [];
   let totalCost = 0;
   let firstReasoning: string | undefined;
 
-  for (let i = 0; i < repeat; i++) {
+  for (let i = 0; i < n; i++) {
     const r = await llmJudge(options);
     samples.push(r.score);
     if (r.reason) reasons.push(r.reason);
-    if (r.reasoning) reasonings.push(r.reasoning);
     if (r.judgeCostUSD) totalCost += r.judgeCostUSD;
     if (i === 0 && r.reasoning) firstReasoning = r.reasoning;
   }
 
   const validSamples = samples.filter((s) => s > 0);
+  const failures = samples.length - validSamples.length;
   const mean = validSamples.length > 0 ? validSamples.reduce((a, b) => a + b, 0) / validSamples.length : 0;
   const variance = validSamples.length > 1
     ? validSamples.reduce((s, x) => s + (x - mean) ** 2, 0) / (validSamples.length - 1)
@@ -194,5 +201,6 @@ export async function llmJudgeRepeat(
     judgeCostUSD: totalCost,
     scoreSamples: samples,
     scoreStddev: Number(stddev.toFixed(3)),
+    judgeFailureCount: failures,
   };
 }

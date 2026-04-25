@@ -298,6 +298,12 @@ export interface DimensionResult {
   scoreStddev?: number;
   /** Chain-of-thought reasoning produced by the judge before the final score. */
   reasoning?: string;
+  /**
+   * Number of judge calls that failed (returned score=0 / non-JSON / executor error).
+   * Stddev = 0 + judgeFailureCount > 0 means "looks consistent but actually had failures",
+   * NOT "judge agreed perfectly". Always check this before trusting low stddev.
+   */
+  judgeFailureCount?: number;
 }
 
 export interface LayeredScores {
@@ -316,6 +322,8 @@ export interface GradeResult {
   llmScoreStddev?: number;
   /** When judge-repeat > 1 with single rubric: raw scores from each judge call. */
   llmScoreSamples?: number[];
+  /** When judge-repeat > 1 with single rubric: how many of the N judge calls failed. */
+  llmScoreFailures?: number;
   dimensions?: Record<string, DimensionResult>;
   judgeCostUSD?: number;
 }
