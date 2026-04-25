@@ -7,7 +7,7 @@
 
 [English](./README.md) | **简体中文**
 
-知识载体评测工具 — 用客观数据衡量你的 artifact 质量。
+**omk** — 内置统计严谨性的 LLM 评测框架。Bootstrap CI / Krippendorff α / 长度偏差校正 / 饱和曲线开箱即用。原生支持 Claude Code skill、prompt、agent、RAG。
 
 **固定模型，只变知识载体，数据说话。**
 
@@ -31,6 +31,23 @@ LLM 评测最容易踩的坑是"自信的偏差"——CI 很窄但结论错。om
 - **Human Gold + Krippendorff α** (`--gold-dir`) — 引入外部标注作为锚点。CI 解决"评委稳不稳"，α 解决"评委对不对"——两个维度互补。omk 自动检测污染（gold annotator 与 judge 同模型时警告）。
 - **Length-controlled judge prompt** (默认开启) — 研究证实 LLM 评委隐性偏向更长的回答。omk 的 judge prompt 加显式段落"长度不是质量信号"，template hash 为 v3-cot-length，跟旧版本的报告 hash 肉眼可辨。`omk bench debias-validate length <reportId>` 重判检测偏差幅度。
 - **Saturation curve** — 回答"我跑够样本了吗"。`--repeat ≥ 5` 时累积 N → 均值 + bootstrap CI 序列，CI 宽度衰减率 < 5% 持续 3 个窗口判定饱和——再多样本对结论无实质收益。HTML 报告内联 SVG 曲线 + verdict。
+
+## 为什么选 omk
+
+| | omk | promptfoo | DeepEval | RAGAS | LangSmith |
+|--|--|--|--|--|--|
+| Bootstrap CI | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Krippendorff α(评委 ↔ 人工锚点） | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Length-debias 评委 prompt | ✓ 默认 | ✗ | ✗ | ✗ | ✗ |
+| 饱和曲线 | ✓ | ✗ | ✗ | ✗ | ✗ |
+| 三层独立评分 | ✓ | ✗ | 部分 | ✗ | ✗ |
+| 原生 Claude Code skill | ✓ | ✗ | ✗ | ✗ | ✗ |
+| 完整中文文档 | ✓ | ✗ | ✗ | ✗ | ✗ |
+| 托管 SaaS 看板 | ✗ | ✗ | ✓ | ✗ | ✓ |
+
+omk 的护城河是**统计严谨性** — 每条结论都能被研究者审计。需要托管 SaaS 看板?选 LangSmith。要本地快速 prompt 迭代不要统计层?选 promptfoo。**要 ship 到生产且会被问"为什么应该相信这个数字"?选 omk**。
+
+完整对比(7 个工具 × 25+ 维度): [docs/zh/comparison.md](docs/zh/comparison.md)
 
 ## 快速开始
 

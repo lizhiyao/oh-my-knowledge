@@ -7,7 +7,7 @@
 
 **English** | [简体中文](./README.zh.md)
 
-Knowledge-artifact evaluation toolkit — measure your artifact's quality with objective data.
+**omk** — LLM evaluation framework with built-in statistical rigor. Bootstrap CI / Krippendorff α / length-debias / saturation curves out of the box. Native support for Claude Code skills, prompts, agents, and RAG.
 
 **Fix the model, vary the knowledge artifact, let the data speak.**
 
@@ -32,6 +32,23 @@ The biggest LLM-eval failure mode is "confident bias" — narrow CIs around the 
 - **Human Gold + Krippendorff α** (`--gold-dir`) — bring an external annotation as anchor. CI tells you "is the judge stable", α tells you "is the judge correct" — two complementary axes. omk warns when the gold annotator and the judge are the same model (would inflate α).
 - **Length-controlled judge prompt** (default ON) — research shows LLM judges over-weight verbosity. omk's judge prompt explicitly states "length is not a quality signal"; template hash is `v3-cot-length` so older reports (with the legacy hash) are visibly different. `omk bench debias-validate length <reportId>` re-judges with the opposite setting and reports the score shift.
 - **Saturation curve** — answers "have I run enough samples?". With `--repeat ≥ 5` we accumulate cumulative N → bootstrap CI; when CI shrink rate stays under 5% across 3 windows, more samples buy nothing. The HTML report inlines the SVG curve plus a verdict.
+
+## Why omk over alternatives
+
+| | omk | promptfoo | DeepEval | RAGAS | LangSmith |
+|--|--|--|--|--|--|
+| Bootstrap CI | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Krippendorff α (judge ↔ human) | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Length-debias judge prompt | ✓ default | ✗ | ✗ | ✗ | ✗ |
+| Saturation curve | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Three-layer scoring isolation | ✓ | ✗ | partial | ✗ | ✗ |
+| Native Claude Code skill | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Full Chinese docs | ✓ | ✗ | ✗ | ✗ | ✗ |
+| Hosted SaaS dashboard | ✗ | ✗ | ✓ | ✗ | ✓ |
+
+omk's moat is **statistical rigor** — every conclusion is auditable by a researcher. If you need a hosted SaaS dashboard, choose LangSmith. If you want quick local prompt iteration without statistics, choose promptfoo. **If you ship to production and someone will ask "why should I trust this number?", choose omk**.
+
+Full comparison with 7 tools across 25+ dimensions: [docs/comparison.md](docs/comparison.md)
 
 ## Quick start
 

@@ -1,7 +1,7 @@
 {
   "name": "oh-my-knowledge",
   "version": "0.20.0",
-  "description": "Knowledge artifact evaluation toolkit — benchmark your skills with objective data",
+  "description": "LLM evaluation framework with built-in statistical rigor: bootstrap CI, Krippendorff α, length-debias, saturation curves. Native Claude Code skill / RAG / agent / prompt evaluation.",
   "type": "module",
   "bin": {
     "omk": "dist/src/cli.js"
@@ -22,10 +22,21 @@
     "prepublishOnly": "yarn build"
   },
   "keywords": [
-    "knowledge-engineering",
-    "skill-evaluation",
+    "llm-evaluation",
     "evaluation-framework",
+    "prompt-evaluation",
+    "prompt-testing",
+    "prompt-regression-testing",
+    "rag-evaluation",
+    "agent-evaluation",
+    "llm-judge",
+    "multi-judge-ensemble",
+    "bootstrap-ci",
+    "krippendorff-alpha",
+    "evaluation-as-code",
     "benchmark",
+    "skill-evaluation",
+    "knowledge-engineering",
     "prompt-engineering",
     "claude-code",
     "claude",
