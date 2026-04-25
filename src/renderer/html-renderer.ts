@@ -12,6 +12,7 @@ import {
   renderSaturationCurve,
   renderSummaryCards,
   renderVarianceComparisons,
+  renderVerdictPill,
 } from './summary.js';
 import { renderSampleTable } from './table.js';
 import { renderTrendsBody } from './trends.js';
@@ -162,6 +163,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const pairwiseDiff = renderPairwiseDiff(report.meta.pairComparisons, lang);
   const humanAgreement = renderHumanAgreement(report.meta.humanAgreement, lang);
   const saturationCurve = renderSaturationCurve(report.variance?.saturation, variants, lang);
+  const verdictPill = renderVerdictPill(report, lang);
   const sampleTable = renderSampleTable(variants, results, lang);
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
   const totalDurationMs = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
@@ -257,6 +259,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     <main>
     <nav class="nav"><a href="/" data-i18n="backToList">${t('backToList', lang)}</a></nav>
     <h1>${e(report.id)}</h1>
+    ${verdictPill}
     <div class="meta-tags">
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
       ${m.judgeModels && m.judgeModels.length >= 2

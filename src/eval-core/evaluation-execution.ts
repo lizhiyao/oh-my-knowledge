@@ -41,6 +41,11 @@ export interface ExecuteTasksOptions {
   judgeExecutors?: Record<string, ExecutorFn>;
   /** v0.21 length-debias toggle. Default true; CLI's --no-debias-length sets it false. */
   lengthDebias?: boolean;
+  /** v0.22 — hard budget caps. When totalUSD is exceeded mid-run, remaining
+   *  tasks are skipped and the partial result set is returned with
+   *  budgetExhausted: true. Per-sample caps don't abort but mark offending
+   *  tasks as failed. */
+  budget?: import('../types.js').EvalBudget;
 }
 
 async function runWithConcurrency<T>(tasks: T[], concurrency: number, fn: (task: T) => Promise<void>): Promise<void> {
@@ -95,12 +100,14 @@ export async function executeTasks({
   judgeModels,
   judgeExecutors,
   lengthDebias = true,
-}: ExecuteTasksOptions): Promise<{ results: Record<string, Record<string, VariantResult>>; totalCostUSD: number; skipped: number }> {
+  budget,
+}: ExecuteTasksOptions): Promise<{ results: Record<string, Record<string, VariantResult>>; totalCostUSD: number; skipped: number; budgetExhausted: boolean }> {
   const results: Record<string, Record<string, VariantResult>> = {};
   let started = 0;
   let completed = 0;
   let skipped = 0;
   let totalCostUSD = 0;
+  let budgetExhausted = false;
 
   // Seed results from previous run (--resume)
   if (existingResults) {
@@ -115,6 +122,17 @@ export async function executeTasks({
   async function executeTask(task: Task): Promise<void> {
     // Skip if already have a successful result (--resume)
     if (existingResults?.[task.sample_id]?.[task.variant]?.ok) {
+      skipped++;
+      started++;
+      completed++;
+      onProgress?.({ phase: 'done', completed, total: tasks.length, sample_id: task.sample_id, variant: task.variant, skipped: true });
+      return;
+    }
+
+    // v0.22 budget abort: if a previous task tripped the total-USD cap, skip
+    // remaining tasks. The partial report is still persisted so the user sees
+    // what completed before the run stopped.
+    if (budgetExhausted) {
       skipped++;
       started++;
       completed++;
@@ -238,7 +256,28 @@ export async function executeTasks({
     }
 
     if (!results[task.sample_id]) results[task.sample_id] = {};
-    results[task.sample_id][task.variant] = buildVariantResult(execResult!, gradeResult, { execMs, gradeMs, factCheck });
+    const variantResult = buildVariantResult(execResult!, gradeResult, { execMs, gradeMs, factCheck });
+
+    // v0.22 per-sample budget enforcement. If a sample's cost or latency
+    // exceeds the per-sample cap, the result is kept (so the user can see
+    // what happened) but flagged as a budget overrun. The run continues.
+    if (budget?.perSampleUSD != null && variantResult.costUSD > budget.perSampleUSD) {
+      variantResult.ok = false;
+      variantResult.error = `budget overrun: per-sample cost $${variantResult.costUSD.toFixed(4)} > cap $${budget.perSampleUSD.toFixed(4)}`;
+    }
+    if (budget?.perSampleMs != null && (execMs + (gradeMs ?? 0)) > budget.perSampleMs) {
+      variantResult.ok = false;
+      variantResult.error = `budget overrun: per-sample latency ${execMs + (gradeMs ?? 0)}ms > cap ${budget.perSampleMs}ms`;
+    }
+    results[task.sample_id][task.variant] = variantResult;
+
+    // v0.22 total-USD budget enforcement. Once the global cap is exceeded,
+    // flip the abort flag so subsequent tasks short-circuit. The current task
+    // is kept (already paid for it).
+    if (budget?.totalUSD != null && totalCostUSD > budget.totalUSD && !budgetExhausted) {
+      budgetExhausted = true;
+      process.stderr.write(`\n⚠ budget exhausted: cumulative cost $${totalCostUSD.toFixed(4)} exceeded cap $${budget.totalUSD.toFixed(4)}; remaining ${tasks.length - started} tasks will be skipped.\n`);
+    }
   }
 
   try {
@@ -247,7 +286,7 @@ export async function executeTasks({
     if (cache) cache.save();
   }
 
-  return { results, totalCostUSD, skipped };
+  return { results, totalCostUSD, skipped, budgetExhausted };
 }
 
 export async function preflight(executor: ExecutorFn, model: string, timeoutMs: number = 15000): Promise<void> {

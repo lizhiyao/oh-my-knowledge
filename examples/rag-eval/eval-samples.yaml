@@ -1,0 +1,42 @@
+samples:
+  - sample_id: rag_grounded_answer
+    prompt: 根据下面的 context 回答用户问题。
+    context: |
+      自动驾驶并非完全无监督。当前 L2 级别系统仍要求驾驶员保持双手随时接管准备,
+      违反此规定的事故责任并不会因系统启用而转嫁到厂商。L3 级别在特定 ODD 内允许
+      driver 脱手,但事故责任划分仍以是否在 ODD 内为准。L4 级别在该 ODD 内厂商
+      承担主要责任。
+    rubric: 应基于 context 回答 L2/L3/L4 责任划分,不引入 context 之外的内容
+    assertions:
+      - type: faithfulness
+        threshold: 4
+      - type: answer_relevancy
+        threshold: 4
+      - type: context_recall
+        threshold: 3
+
+  - sample_id: rag_concise_summary
+    prompt: 一句话概括这段 context 的核心结论。
+    context: |
+      合并排序通过分治法把数组对半切分,递归排序后再做有序合并。最坏与平均时间
+      复杂度都是 O(n log n),但需要额外 O(n) 空间。在数据量大且需要稳定排序时
+      推荐使用,内存敏感场景应改用堆排或快排。
+    rubric: 输出 ≤ 30 字,保留"O(n log n) + O(n) 空间 + 稳定"三件事
+    assertions:
+      - type: faithfulness
+      - type: answer_relevancy
+      - type: max_length
+        value: 100  # 30 中文字 ≈ 90 字符
+      - type: context_recall
+        reference: "时间复杂度 O(n log n);空间复杂度 O(n);稳定排序"
+
+  - sample_id: rag_should_refuse
+    prompt: 根据 context 回答"M1 芯片的功耗是多少"。
+    context: |
+      M1 芯片是 Apple 2020 年发布的 ARM SoC,采用 5nm 工艺。
+    rubric: context 不含功耗信息,应明确告诉用户"context 未提及"而不是编造数字
+    assertions:
+      - type: faithfulness
+        threshold: 5  # 严格:任何编造都扣分
+      - type: contains_any
+        values: ["未提及", "没有", "未包含", "context 中没有"]

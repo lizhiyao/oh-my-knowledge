@@ -1,6 +1,68 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import { pValueCategory } from '../eval-core/statistics.js';
-import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types.js';
+import { computeVerdict, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
+import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types.js';
+
+/**
+ * Verdict pill — sticky banner at the top of the HTML report giving the same
+ * one-line conclusion as the `omk bench verdict` CLI. Both surfaces share the
+ * computeVerdict rule engine so they can never disagree.
+ *
+ * Color coding follows traffic-light convention plus a yellow band for
+ * UNDERPOWERED / NOISE / CAUTIOUS — none of which are "ship" but none of which
+ * are "regress" either. SOLO is grey because it's an info pill, not a verdict.
+ */
+function levelColor(level: VerdictLevel): { bg: string; fg: string; border: string } {
+  switch (level) {
+    case 'PROGRESS': return { bg: 'rgba(46, 204, 113, 0.15)', fg: 'var(--green)', border: 'var(--green)' };
+    case 'REGRESS':  return { bg: 'rgba(231, 76, 60, 0.15)',  fg: 'var(--red)',   border: 'var(--red)' };
+    case 'CAUTIOUS': return { bg: 'rgba(255, 200, 80, 0.15)', fg: 'var(--yellow)', border: 'var(--yellow)' };
+    case 'UNDERPOWERED':
+    case 'NOISE':    return { bg: 'rgba(180, 180, 180, 0.15)', fg: 'var(--text-muted)', border: 'var(--text-muted)' };
+    case 'SOLO':     return { bg: 'rgba(180, 180, 180, 0.10)', fg: 'var(--text-secondary)', border: 'var(--border)' };
+  }
+}
+
+function levelLabel(level: VerdictLevel, lang: Lang): string {
+  if (lang === 'zh') {
+    switch (level) {
+      case 'PROGRESS':     return '进步';
+      case 'CAUTIOUS':     return '需谨慎';
+      case 'REGRESS':      return '回退';
+      case 'NOISE':        return '无信号';
+      case 'UNDERPOWERED': return '样本不足';
+      case 'SOLO':         return '单变体';
+    }
+  }
+  return level;
+}
+
+export function renderVerdictPill(report: Report, lang: Lang): string {
+  const result: VerdictResult = computeVerdict(report);
+  const c = levelColor(result.level);
+  const label = levelLabel(result.level, lang);
+  const ration = result.rationale;
+  const bullets: string[] = [];
+  if (ration.significance) bullets.push(`<span style="color:var(--text-secondary)">${e(ration.significance)}</span>`);
+  if (ration.layerWinners) bullets.push(`<span style="color:var(--text-muted);font-size:12px">${lang === 'zh' ? '层' : 'layers'}: ${e(ration.layerWinners)}</span>`);
+  if (ration.sampleSize)   bullets.push(`<span style="color:var(--text-muted);font-size:12px">${lang === 'zh' ? '样本' : 'samples'}: ${e(ration.sampleSize)}</span>`);
+  if (ration.judgeAgreement) bullets.push(`<span style="color:var(--text-muted);font-size:12px">${e(ration.judgeAgreement)}</span>`);
+
+  const ship = ration.shipRecommendation
+    ? `<div style="margin-top:8px;font-size:13px"><strong>${lang === 'zh' ? '建议' : 'Recommendation'}:</strong> ${e(ration.shipRecommendation)}</div>`
+    : '';
+
+  return `
+    <div style="margin:8px 0 16px;padding:14px 18px;background:${c.bg};border-left:4px solid ${c.border};border-radius:var(--radius)">
+      <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+        <span style="font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em">${lang === 'zh' ? '一句话结论' : 'Verdict'}</span>
+        <strong style="color:${c.fg};font-size:18px">${e(label)}</strong>
+        <span style="color:var(--text-secondary);font-size:14px">${e(result.headline)}</span>
+      </div>
+      <div style="margin-top:6px;display:flex;flex-direction:column;gap:2px">${bullets.join('')}</div>
+      ${ship}
+    </div>`;
+}
 
 /**
  * Pairwise diff (treatment vs control) bootstrap CI table — populated only when

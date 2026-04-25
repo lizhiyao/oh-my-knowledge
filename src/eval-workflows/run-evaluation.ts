@@ -78,6 +78,8 @@ interface CommonEvaluationOptions {
   /** v0.21 Phase 3a length-debias toggle. Default true (judge prompt v3-cot-length).
    *  CLI passes false when --no-debias-length is set. */
   lengthDebias?: boolean;
+  /** v0.22 — hard budget caps. */
+  budget?: import('../types.js').EvalBudget;
 }
 
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
@@ -169,6 +171,7 @@ export async function runEvaluation({
   bootstrap,
   bootstrapSamples,
   lengthDebias,
+  budget,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
@@ -253,6 +256,7 @@ export async function runEvaluation({
     bootstrap,
     bootstrapSamples,
     lengthDebias,
+    budget,
   });
 }
 

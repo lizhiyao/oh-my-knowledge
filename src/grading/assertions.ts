@@ -6,7 +6,15 @@ const Ajv = _Ajv.default ?? _Ajv;
 const ajv = new Ajv();
 const CUSTOM_ASSERTION_TIMEOUT_MS = 30_000;
 
-export const ASYNC_ASSERTION_TYPES = new Set(['semantic_similarity', 'custom']);
+export const ASYNC_ASSERTION_TYPES = new Set([
+  'semantic_similarity',
+  'custom',
+  // v0.22 — RAG-specific judge metrics. All three go through the LLM-judge path
+  // and inherit the same length-debias instruction as the main rubric judge.
+  'faithfulness',
+  'answer_relevancy',
+  'context_recall',
+]);
 
 export interface AsyncAssertionContext {
   executor: ExecutorFn;
@@ -341,6 +349,15 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
           process.stderr.write(`[omk] semantic_similarity judge parse error: ${getErrorMessage(parseErr)}\n`);
         }
       }
+    } else if (
+      assertion.type === 'faithfulness' ||
+      assertion.type === 'answer_relevancy' ||
+      assertion.type === 'context_recall'
+    ) {
+      const ragResult = await runRagJudge(assertion, output, sample, executor, judgeModel);
+      asyncCostUSD += ragResult.costUSD;
+      passed = ragResult.passed;
+      message = ragResult.message;
     } else if (assertion.type === 'custom') {
       try {
         const fnPath = resolve(samplesDir, assertion.fn!);
@@ -374,4 +391,173 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
   const ratio = totalWeight > 0 ? passedWeight / totalWeight : 0;
 
   return { passed: passedCount, total: details.length, score: ratioToScore(ratio), details, judgeCostUSD: asyncCostUSD };
+}
+
+// ===========================================================================
+// v0.22 — RAG-specific judge metrics
+// ===========================================================================
+//
+// Three metrics, all running through the LLM judge:
+//
+//  - faithfulness:      does the output's content stay grounded in the
+//                       reference context? Anti-hallucination check.
+//  - answer_relevancy:  does the output directly answer the user's question?
+//                       Catches verbose dodges and topic drift.
+//  - context_recall:    are the key facts from the gold context actually
+//                       used in the output? Catches retrieved-but-ignored
+//                       context (a common RAG bug).
+//
+// Implementation notes:
+//
+//  1. Each prompt is a SINGLE-CALL judge (1-5 score) rather than the multi-step
+//     statement-decomposition that RAGAS uses. This is honest tradeoff: simpler,
+//     faster, less rigorous than RAGAS but consistent with omk's other LLM-judge
+//     assertions. Users who need RAGAS-grade decomposition can drop down to a
+//     custom assertion.
+//  2. The prompt includes the SAME length-debias paragraph as the main judge
+//     prompt (v3-cot-length) — output verbosity is not a quality signal here
+//     either. This is the "auto-inherit length-debias" claim from the v0.22 plan.
+//  3. Reference resolution:
+//       faithfulness:    sample.context  (or assertion.reference override)
+//       context_recall:  assertion.reference (or sample.context fallback)
+//       answer_relevancy: sample.prompt — no reference needed
+//  4. Threshold defaults to 3 (same as semantic_similarity). User can override.
+
+const RAG_LENGTH_DEBIAS = [
+  '## 重要:长度不是质量信号',
+  '评分时聚焦内容实质,不要因输出更长就给更高分。',
+  '简洁正确的回答与冗长正确的回答应得相同分数。',
+].join('\n');
+
+interface RagJudgeOutcome {
+  passed: boolean;
+  message: string;
+  costUSD: number;
+}
+
+async function runRagJudge(
+  assertion: Assertion,
+  output: string,
+  sample: Sample,
+  executor: ExecutorFn,
+  judgeModel: string,
+): Promise<RagJudgeOutcome> {
+  const threshold = assertion.threshold ?? 3;
+
+  let prompt: string;
+  let system: string;
+
+  if (assertion.type === 'faithfulness') {
+    const context = assertion.reference || sample.context || '';
+    if (!context) {
+      return { passed: false, message: 'faithfulness: 缺少 sample.context 或 assertion.reference', costUSD: 0 };
+    }
+    system = '你是 RAG 评审员,专注判断输出是否被参考 context 支持。只返回 JSON。';
+    prompt = [
+      '请判断"待评估输出"中的事实性陈述是否被"参考 context"支持。',
+      '',
+      '## 参考 context',
+      context,
+      '',
+      '## 待评估输出',
+      output,
+      '',
+      RAG_LENGTH_DEBIAS,
+      '',
+      '## 评分流程',
+      '1. 列出待评估输出中所有事实性陈述',
+      '2. 逐条判断是否能在 context 中找到支持',
+      '3. 给出 1-5 分:',
+      '   5 = 全部陈述都有 context 支持,无编造',
+      '   4 = 多数有支持,有 1-2 处不重要的编造',
+      '   3 = 一半有支持',
+      '   2 = 多数无支持',
+      '   1 = 完全编造或与 context 矛盾',
+      '',
+      '请返回 JSON(不要 markdown 代码块):',
+      '{"score": <1-5的整数>, "reason": "<简短理由>"}',
+    ].join('\n');
+  } else if (assertion.type === 'answer_relevancy') {
+    system = '你是答题切题度评审员。只返回 JSON。';
+    prompt = [
+      '请判断"AI 输出"是否直接、切题地回答了"用户问题"。',
+      '',
+      '## 用户问题',
+      sample.prompt,
+      '',
+      '## AI 输出',
+      output,
+      '',
+      RAG_LENGTH_DEBIAS,
+      '',
+      '## 评分',
+      '5 = 完整切题回答,无冗余无遗漏',
+      '4 = 切题但有少量冗余或小遗漏',
+      '3 = 部分切题,部分跑题或避而不答',
+      '2 = 大部分跑题',
+      '1 = 完全跑题或拒答',
+      '',
+      '请返回 JSON(不要 markdown 代码块):',
+      '{"score": <1-5的整数>, "reason": "<简短理由>"}',
+    ].join('\n');
+  } else {
+    // context_recall
+    const reference = assertion.reference || sample.context || '';
+    if (!reference) {
+      return { passed: false, message: 'context_recall: 缺少 assertion.reference 或 sample.context', costUSD: 0 };
+    }
+    system = '你是 context 覆盖率评审员。只返回 JSON。';
+    prompt = [
+      '请判断"参考 gold"中的关键事实在"AI 输出"中被覆盖的程度。',
+      '',
+      '## 参考 gold',
+      reference,
+      '',
+      '## AI 输出',
+      output,
+      '',
+      RAG_LENGTH_DEBIAS,
+      '',
+      '## 评分流程',
+      '1. 列出参考中的关键事实(忽略修饰性内容)',
+      '2. 检查每条是否在输出中被提及/使用',
+      '3. 给出 1-5 分:',
+      '   5 = 全部关键事实被覆盖',
+      '   4 = 大部分覆盖,缺 1-2 条次要事实',
+      '   3 = 一半覆盖',
+      '   2 = 仅覆盖少量',
+      '   1 = 完全未覆盖',
+      '',
+      '请返回 JSON(不要 markdown 代码块):',
+      '{"score": <1-5的整数>, "reason": "<简短理由>"}',
+    ].join('\n');
+  }
+
+  const result = await executor({ model: judgeModel, system, prompt });
+  if (!result.ok) {
+    return {
+      passed: false,
+      message: `${assertion.type} judge error: ${result.error}`,
+      costUSD: result.costUSD || 0,
+    };
+  }
+
+  try {
+    const text = result.output!.trim();
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      process.stderr.write(`[omk] ${assertion.type} judge returned non-JSON: ${text.slice(0, 100)}\n`);
+      return { passed: false, message: 'judge returned non-JSON', costUSD: result.costUSD || 0 };
+    }
+    const parsed = JSON.parse(jsonMatch[0]) as JudgeResponse;
+    const score = Number(parsed.score) || 0;
+    return {
+      passed: score >= threshold,
+      message: parsed.reason ? String(parsed.reason) : '',
+      costUSD: result.costUSD || 0,
+    };
+  } catch (parseErr: unknown) {
+    process.stderr.write(`[omk] ${assertion.type} judge parse error: ${getErrorMessage(parseErr)}\n`);
+    return { passed: false, message: 'failed to parse judge response', costUSD: result.costUSD || 0 };
+  }
 }

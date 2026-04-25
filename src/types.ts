@@ -146,6 +146,20 @@ export interface EvalConfig {
   blind?: boolean;
   mcpConfig?: string;
   variants: EvalConfigVariant[];
+  /** v0.22 — hard budget caps. When any limit is hit during a run, remaining
+   *  tasks are aborted and the partial report is persisted. CLI flags
+   *  `--budget-usd` / `--budget-per-sample-usd` / `--budget-per-sample-ms`
+   *  override the config values. */
+  budget?: EvalBudget;
+}
+
+export interface EvalBudget {
+  /** Stop the run if cumulative (exec + judge) cost exceeds this many USD. */
+  totalUSD?: number;
+  /** Per-sample cost ceiling. Tasks exceeding this fail individually but the run continues. */
+  perSampleUSD?: number;
+  /** Per-sample wall-clock latency ceiling in milliseconds. */
+  perSampleMs?: number;
 }
 
 export interface EvaluationRequest {
@@ -185,6 +199,8 @@ export interface EvaluationRequest {
    *  CLI flag --no-debias-length flips to false (legacy v2-cot prompt). The active
    *  value is reflected in ReportMeta.judgePromptHash and ReportMeta.debiasMode. */
   lengthDebias?: boolean;
+  /** v0.22 — hard budget caps. See EvalBudget. */
+  budget?: EvalBudget;
 }
 
 /** Single judge configuration: which executor to call and which model alias to pass. */
@@ -579,6 +595,12 @@ export interface ReportMeta {
    *  order). Empty / absent means legacy default (no debias). The renderer shows
    *  this so readers can tell apples from oranges across reports. */
   debiasMode?: Array<'length' | 'position'>;
+  /** v0.22 — set to true when the run was aborted by a budget tracker. The
+   *  report is partial: only tasks completed before the abort are present. */
+  budgetExhausted?: boolean;
+  /** v0.22 — budget caps that were active for this run, copied from request.budget
+   *  for ease of reading without dereferencing request. */
+  budget?: EvalBudget;
   /** Human-gold agreement when --gold-dir was passed at run time. Compares the
    *  judge's llmScore against the gold annotations on matching sample_ids. See
    *  src/grading/human-gold.ts for the metric definitions. */

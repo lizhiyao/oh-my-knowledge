@@ -52,6 +52,8 @@ interface RunConfig {
   bootstrapSamples?: number;
   /** v0.21 Phase 3a length-debias toggle. Default true; --no-debias-length sets false. */
   lengthDebias?: boolean;
+  /** v0.22 — hard budget caps from CLI or config. */
+  budget?: import('./types.js').EvalBudget;
   onProgress?: ProgressCallback | null;
 }
 
@@ -320,6 +322,7 @@ function parseRunConfig(
       resume,
       blind,
       layeredStats,
+      budget: evalConfig?.budget,
     },
   };
 }
@@ -548,8 +551,11 @@ async function main(): Promise<void> {
     case 'saturation':
       await handleSaturation(rest);
       break;
+    case 'verdict':
+      await handleVerdict(rest);
+      break;
     default:
-      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", "evolve", "diff", "gold", "debias-validate", or "saturation".`);
+      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", "evolve", "diff", "gold", "debias-validate", "saturation", or "verdict".`);
       process.exit(1);
   }
 }
@@ -626,6 +632,9 @@ async function handleRun(argv: string[]): Promise<void> {
     'bootstrap-samples': { type: 'string', default: '1000' },
     'gold-dir': { type: 'string' },
     'no-debias-length': { type: 'boolean', default: false },
+    'budget-usd': { type: 'string' },
+    'budget-per-sample-usd': { type: 'string' },
+    'budget-per-sample-ms': { type: 'string' },
   });
 
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
@@ -670,6 +679,21 @@ async function handleRun(argv: string[]): Promise<void> {
       // 单 judge 不走 ensemble,但允许这样写,等同于 --judge-model + --executor
       process.stderr.write(`ℹ --judge-models 只指定 1 个 judge (${judges[0].executor}:${judges[0].model}),不触发 ensemble。如需 ensemble 至少给 2 个。\n`);
     }
+  }
+
+  // --budget-usd / --budget-per-sample-usd / --budget-per-sample-ms:
+  // v0.22 hard budget caps. CLI flags override config-file values. When the
+  // total-USD cap is exceeded mid-run, remaining tasks are skipped and a
+  // partial report is persisted with meta.budgetExhausted=true.
+  const budgetUSD = values['budget-usd'] != null ? Number(values['budget-usd']) : undefined;
+  const budgetPerSampleUSD = values['budget-per-sample-usd'] != null ? Number(values['budget-per-sample-usd']) : undefined;
+  const budgetPerSampleMs = values['budget-per-sample-ms'] != null ? Number(values['budget-per-sample-ms']) : undefined;
+  if (budgetUSD !== undefined || budgetPerSampleUSD !== undefined || budgetPerSampleMs !== undefined) {
+    config.budget = {
+      ...(budgetUSD !== undefined && Number.isFinite(budgetUSD) && budgetUSD >= 0 ? { totalUSD: budgetUSD } : {}),
+      ...(budgetPerSampleUSD !== undefined && Number.isFinite(budgetPerSampleUSD) && budgetPerSampleUSD >= 0 ? { perSampleUSD: budgetPerSampleUSD } : {}),
+      ...(budgetPerSampleMs !== undefined && Number.isFinite(budgetPerSampleMs) && budgetPerSampleMs >= 0 ? { perSampleMs: budgetPerSampleMs } : {}),
+    };
   }
 
   // --no-debias-length: opt out of v0.21 Phase 3a length-controlled prompt.
@@ -1274,15 +1298,61 @@ async function handleCi(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleDiff(argv: string[]): Promise<void> {
-  if (argv.length < 2) {
-    console.error('Usage: omk bench diff <report-id-1> <report-id-2>');
-    process.exit(1);
+  // Flag-aware split: separate positional report IDs from flags so we can support
+  //   omk bench diff <id>                      — within-report sample-level (v0.22)
+  //   omk bench diff <id1> <id2>               — cross-report variant-level (legacy)
+  // both with optional --regressions-only / --threshold / --variant flags.
+  const positional: string[] = [];
+  const flagArgs: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith('--')) {
+      flagArgs.push(a);
+      const next = argv[i + 1];
+      if (next !== undefined && !next.startsWith('--')) {
+        flagArgs.push(next);
+        i++;
+      }
+    } else {
+      positional.push(a);
+    }
   }
+
+  if (positional.length === 0) {
+    console.error([
+      'Usage:',
+      '  omk bench diff <reportId>                     within-report per-sample diff (v0.22)',
+      '  omk bench diff <reportId1> <reportId2>        cross-report variant-level diff',
+      '',
+      'Options:',
+      '  --regressions-only          只列 treatment < control 的样本',
+      '  --threshold <num>           regression 阈值 (default 0,即任一负 Δ 算回退)',
+      '  --variant <name>            within-report 模式下指定要钻取的 variant (default: variants[1])',
+      '  --top <n>                   只列差距最大的前 N 个样本',
+    ].join('\n'));
+    process.exit(positional.length === 0 ? 1 : 0);
+  }
+
+  const { values } = parseArgs({
+    args: flagArgs,
+    options: {
+      'regressions-only': { type: 'boolean', default: false },
+      threshold: { type: 'string' },
+      variant: { type: 'string' },
+      top: { type: 'string' },
+    },
+    strict: false,
+  });
 
   const { createFileStore } = await import('./server/report-store.js');
   const store: ReportStore = createFileStore(resolve(DEFAULT_REPORTS_DIR));
 
-  const [id1, id2]: string[] = argv;
+  if (positional.length === 1) {
+    await runSampleLevelDiff(positional[0], store, values);
+    return;
+  }
+
+  const [id1, id2]: string[] = positional;
   const r1: Report | null = await store.get(id1);
   const r2: Report | null = await store.get(id2);
 
@@ -1341,6 +1411,97 @@ async function handleDiff(argv: string[]): Promise<void> {
     }
   }
 
+  console.log('');
+}
+
+/**
+ * Within-report sample-level diff (v0.22). Compares two variants' scores on
+ * each shared sample and surfaces the worst regressions / biggest wins.
+ *
+ * Default focus is variants[0] (control) vs variants[1] (treatment), but
+ * `--variant` overrides which variant is the "treatment" side.
+ */
+async function runSampleLevelDiff(
+  reportId: string,
+  store: ReportStore,
+  flags: Record<string, string | boolean | undefined>,
+): Promise<void> {
+  const report: Report | null = await store.get(reportId);
+  if (!report) {
+    console.error(`Report not found: ${reportId}`);
+    process.exit(1);
+  }
+  const variants = report!.meta?.variants ?? [];
+  if (variants.length < 2) {
+    console.error('Sample-level diff needs at least 2 variants in the report.');
+    process.exit(1);
+  }
+  const control = variants[0];
+  const treatment = (flags.variant as string | undefined) ?? variants[1];
+  if (!variants.includes(treatment)) {
+    console.error(`Variant "${treatment}" not in report. Available: ${variants.join(', ')}`);
+    process.exit(1);
+  }
+
+  const threshold = flags.threshold != null ? Number(flags.threshold) : 0;
+  const regressionsOnly = Boolean(flags['regressions-only']);
+  const topN = flags.top != null ? Math.max(1, Number(flags.top) || 0) : undefined;
+
+  const rows: Array<{ id: string; cFact?: number; tFact?: number; cBeh?: number; tBeh?: number; cJudge?: number; tJudge?: number; cComp: number; tComp: number; delta: number }> = [];
+  for (const entry of report!.results ?? []) {
+    const c = entry.variants?.[control];
+    const t = entry.variants?.[treatment];
+    if (!c || !t) continue;
+    const cComp = c.compositeScore ?? c.llmScore ?? 0;
+    const tComp = t.compositeScore ?? t.llmScore ?? 0;
+    const delta = Number((tComp - cComp).toFixed(3));
+    rows.push({
+      id: entry.sample_id,
+      cFact: c.layeredScores?.factScore, tFact: t.layeredScores?.factScore,
+      cBeh: c.layeredScores?.behaviorScore, tBeh: t.layeredScores?.behaviorScore,
+      cJudge: c.layeredScores?.judgeScore, tJudge: t.layeredScores?.judgeScore,
+      cComp, tComp, delta,
+    });
+  }
+
+  // Sort by |delta| desc so the most impactful rows surface first.
+  rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+  let filtered = rows;
+  if (regressionsOnly) filtered = filtered.filter((r) => r.delta < threshold);
+  if (topN !== undefined) filtered = filtered.slice(0, topN);
+
+  console.log(`\n  Sample-level diff: ${treatment} vs ${control} (report ${reportId})`);
+  if (regressionsOnly) console.log(`  Filter: regressions only (Δ < ${threshold})`);
+  console.log('');
+  console.log('  sample_id           Δ      composite (c→t)   fact (c→t)     behavior (c→t)   judge (c→t)');
+  console.log('  ' + '-'.repeat(100));
+
+  if (filtered.length === 0) {
+    console.log(regressionsOnly ? '  (no regressions found)' : '  (no shared samples)');
+    console.log('');
+    return;
+  }
+
+  const fmt = (a: number | undefined, b: number | undefined): string => {
+    const av = typeof a === 'number' ? a.toFixed(2) : '—';
+    const bv = typeof b === 'number' ? b.toFixed(2) : '—';
+    return `${av} → ${bv}`.padEnd(15);
+  };
+  for (const r of filtered) {
+    const sign = r.delta > 0 ? '+' : '';
+    const idCol = r.id.slice(0, 18).padEnd(20);
+    const deltaCol = `${sign}${r.delta.toFixed(2)}`.padEnd(7);
+    const compCol = `${r.cComp.toFixed(2)} → ${r.tComp.toFixed(2)}`.padEnd(17);
+    console.log(`  ${idCol}${deltaCol}${compCol}${fmt(r.cFact, r.tFact)} ${fmt(r.cBeh, r.tBeh)} ${fmt(r.cJudge, r.tJudge)}`);
+  }
+  console.log('');
+  console.log(`  Showing ${filtered.length} of ${rows.length} samples · sorted by |Δ|`);
+  if (regressionsOnly) {
+    const total = rows.length;
+    const reg = rows.filter((r) => r.delta < threshold).length;
+    console.log(`  Regression rate: ${reg}/${total} samples (${total > 0 ? ((reg / total) * 100).toFixed(0) : 0}%)`);
+  }
   console.log('');
 }
 
@@ -1660,6 +1821,75 @@ async function handleSaturation(argv: string[]): Promise<void> {
     }
   }
   console.log('');
+}
+
+// ---------------------------------------------------------------------------
+// handleVerdict — one-line ship/no-ship verdict (v0.22)
+// ---------------------------------------------------------------------------
+
+async function handleVerdict(argv: string[]): Promise<void> {
+  const reportId = argv[0];
+  if (!reportId || reportId === '--help' || reportId === '-h') {
+    console.log([
+      '',
+      'Usage: omk bench verdict <reportId> [options]',
+      '',
+      '聚合 bootstrap CI / 三层 ci-gate / saturation / human α 给出一行结论。',
+      '',
+      'Verdict 等级:',
+      '  PROGRESS      显著改进 + 三层全过',
+      '  CAUTIOUS      改进真实但有警告 (gate 破 / 幅度太小 / 控制组本身崩)',
+      '  REGRESS       显著回退 — 不要 ship',
+      '  NOISE         CI 跨 0,无法判定',
+      '  UNDERPOWERED  样本不足,需要扩 N 重测',
+      '  SOLO          单变体报告,无对比对象',
+      '',
+      'Options:',
+      '  --reports-dir <dir>      report store dir (default: ~/.oh-my-knowledge/reports)',
+      '  --threshold <num>        三层 gate 阈值 (default 3.5,匹配 omk bench ci)',
+      '  --trivial-diff <num>     "幅度太小"阈值 (default 0.1)',
+      '  --verbose                展开 per-pair 详情',
+      '',
+    ].join('\n'));
+    process.exit(reportId ? 0 : 1);
+  }
+
+  const { values } = parseArgs({
+    args: argv.slice(1),
+    options: {
+      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+      threshold: { type: 'string' },
+      'trivial-diff': { type: 'string' },
+      verbose: { type: 'boolean', default: false },
+    },
+    strict: false,
+  });
+
+  const { createFileStore } = await import('./server/report-store.js');
+  const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+  const report: Report | null = await store.get(reportId);
+  if (!report) {
+    console.error(`Report not found: ${reportId}`);
+    process.exit(1);
+  }
+
+  const { computeVerdict, formatVerdictText } = await import('./eval-core/verdict.js');
+  const result = computeVerdict(report!, {
+    ciThreshold: values.threshold != null ? Number(values.threshold) : undefined,
+    triviallySmallDiff: values['trivial-diff'] != null ? Number(values['trivial-diff']) : undefined,
+  });
+  console.log(formatVerdictText(result, { verbose: Boolean(values.verbose) }));
+
+  // Exit code reflects ship recommendation: 0 only on PROGRESS / SOLO-pass.
+  // NOISE / UNDERPOWERED / CAUTIOUS / REGRESS all exit 1 so this composes
+  // with shell `&&` chains in CI.
+  if (result.level === 'PROGRESS') {
+    process.exit(0);
+  }
+  if (result.level === 'SOLO' && result.headline.includes('PASS')) {
+    process.exit(0);
+  }
+  process.exit(1);
 }
 
 // ---------------------------------------------------------------------------
