@@ -253,8 +253,10 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     <h1>${e(report.id)}</h1>
     <div class="meta-tags">
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
-      <span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>
-      ${m.judgeModels && m.judgeModels.length >= 2 ? `<span class="meta-tag" style="background:var(--accent-soft)" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${m.judgeModels.map((j) => e(j)).join(' · ')}</span>` : ''}
+      ${m.judgeModels && m.judgeModels.length >= 2
+        ? `<span class="meta-tag" style="background:var(--accent-soft)" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${m.judgeModels.map((j) => e(j)).join(' · ')}</span>`
+        : `<span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>`
+      }
       ${m.judgeRepeat && m.judgeRepeat > 1 ? `<span class="meta-tag" title="${t('judgeStddevDesc', lang)}">${t('judgeRepeatLabel', lang)}: ${m.judgeRepeat}</span>` : ''}
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
       <span class="meta-tag">${t('cost', lang)}: ${fmtCost(totalExecCost)}</span>
