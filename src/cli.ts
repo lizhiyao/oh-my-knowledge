@@ -537,8 +537,11 @@ async function main(): Promise<void> {
     case 'diff':
       await handleDiff(rest);
       break;
+    case 'gold':
+      await handleGold(rest);
+      break;
     default:
-      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", or "evolve".`);
+      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", "evolve", "diff", or "gold".`);
       process.exit(1);
   }
 }
@@ -613,6 +616,7 @@ async function handleRun(argv: string[]): Promise<void> {
     'judge-models': { type: 'string' },
     bootstrap: { type: 'boolean', default: false },
     'bootstrap-samples': { type: 'string', default: '1000' },
+    'gold-dir': { type: 'string' },
   });
 
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
@@ -729,6 +733,27 @@ async function handleRun(argv: string[]): Promise<void> {
       const result = (await runEvaluation(config)) as EvalResult;
       report = result.report;
       filePath = result.filePath;
+    }
+
+    // --gold-dir: compute α/κ/Pearson against gold annotations and re-persist.
+    const goldDir = values['gold-dir'] as string | undefined;
+    if (goldDir && filePath) {
+      const { attachGoldAgreementToReport, formatGoldCompare } = await import('./grading/gold-cli.js');
+      const out = attachGoldAgreementToReport({
+        report,
+        goldDir,
+        outputDir: config.outputDir,
+        samples: config.bootstrapSamples,
+      });
+      if (out.result && out.gold) {
+        process.stderr.write(formatGoldCompare(out.result, out.gold));
+        if (out.result.contaminationWarning) {
+          process.stderr.write(`\n⚠ ${out.result.contaminationWarning}\n`);
+        }
+      } else {
+        process.stderr.write(`\n⚠ gold dataset 加载失败 (${goldDir}):\n`);
+        for (const m of out.loadIssues) process.stderr.write(`  - ${m}\n`);
+      }
     }
 
     console.log(JSON.stringify(report, null, 2));
@@ -1300,6 +1325,131 @@ async function handleDiff(argv: string[]): Promise<void> {
   }
 
   console.log('');
+}
+
+// ---------------------------------------------------------------------------
+// handleGold — gold dataset workflow (init / validate / compare)
+// ---------------------------------------------------------------------------
+
+async function handleGold(argv: string[]): Promise<void> {
+  const sub = argv[0];
+  const rest = argv.slice(1);
+  if (!sub || sub === '--help' || sub === '-h') {
+    console.log([
+      '',
+      'Usage: omk bench gold <subcommand>',
+      '',
+      'Subcommands:',
+      '  init [--out <dir>] [--annotator <id>]    生成空白 gold dataset 模板',
+      '  validate <dir>                           校验数据集结构',
+      '  compare <reportId> --gold-dir <dir>      与已有 report 计算 α/κ/Pearson',
+      '    [--variant <name>] [--reports-dir <d>]',
+      '    [--bootstrap-samples N] [--seed N]',
+      '',
+    ].join('\n'));
+    process.exit(sub ? 0 : 1);
+  }
+
+  if (sub === 'init') {
+    const { values } = parseArgs({
+      args: rest,
+      options: {
+        out: { type: 'string', default: './gold-dataset' },
+        annotator: { type: 'string' },
+      },
+      strict: false,
+    });
+    const { initGoldDataset } = await import('./grading/gold-cli.js');
+    try {
+      const written = initGoldDataset(values.out as string, {
+        annotator: values.annotator as string | undefined,
+      });
+      console.log(`Created ${written.length} files in ${values.out}:`);
+      for (const p of written) console.log(`  ${p}`);
+      console.log('\n下一步: 编辑 annotations.yaml 加入真实标注 → 跑 omk bench gold validate');
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+    return;
+  }
+
+  if (sub === 'validate') {
+    const dir = rest[0];
+    if (!dir) {
+      console.error('Usage: omk bench gold validate <dir>');
+      process.exit(1);
+    }
+    const { validateGoldDataset } = await import('./grading/gold-cli.js');
+    const result = validateGoldDataset(dir);
+    if (result.ok) {
+      console.log(`✓ gold dataset OK — ${result.sampleCount} 条标注`);
+      return;
+    }
+    console.error(`✗ gold dataset has ${result.issues.length} issue(s):`);
+    for (const msg of result.issues) console.error(`  - ${msg}`);
+    process.exit(1);
+  }
+
+  if (sub === 'compare') {
+    const reportId = rest[0];
+    if (!reportId) {
+      console.error('Usage: omk bench gold compare <reportId> --gold-dir <dir>');
+      process.exit(1);
+    }
+    const { values } = parseArgs({
+      args: rest.slice(1),
+      options: {
+        'gold-dir': { type: 'string' },
+        variant: { type: 'string' },
+        'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
+        'bootstrap-samples': { type: 'string', default: '1000' },
+        seed: { type: 'string' },
+      },
+      strict: false,
+    });
+    const goldDir = values['gold-dir'] as string | undefined;
+    if (!goldDir) {
+      console.error('--gold-dir is required');
+      process.exit(1);
+    }
+    const { loadGoldDataset } = await import('./grading/gold-dataset.js');
+    const { compareGoldToReport, formatGoldCompare } = await import('./grading/gold-cli.js');
+    const { createFileStore } = await import('./server/report-store.js');
+
+    const { dataset, issues } = loadGoldDataset(goldDir);
+    if (!dataset) {
+      console.error('Cannot load gold dataset:');
+      for (const i of issues) console.error(`  - ${i.message}`);
+      process.exit(1);
+    }
+    if (issues.length) {
+      // Non-fatal issues (e.g. duplicate already filtered) — surface them.
+      for (const i of issues) console.error(`warn: ${i.message}`);
+    }
+
+    const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+    const report: Report | null = await store.get(reportId);
+    if (!report) {
+      console.error(`Report not found: ${reportId}`);
+      process.exit(1);
+    }
+
+    const samples = Math.max(100, Number(values['bootstrap-samples']) || 1000);
+    const seedVal = values.seed != null ? Number(values.seed) : undefined;
+    const result = compareGoldToReport({
+      report: report!,
+      gold: dataset,
+      variant: values.variant as string | undefined,
+      samples,
+      seed: Number.isFinite(seedVal) ? seedVal : undefined,
+    });
+    console.log(formatGoldCompare(result, dataset));
+    return;
+  }
+
+  console.error(`Unknown subcommand: gold ${sub}. Use init / validate / compare.`);
+  process.exit(1);
 }
 
 // ---------------------------------------------------------------------------

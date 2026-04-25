@@ -502,6 +502,34 @@ export interface GitInfo {
   dirty: boolean;
 }
 
+/** Persisted form of agreement metrics between gold dataset and the LLM judge.
+ *  Lives on ReportMeta so the renderer can show a "人工锚点" section without
+ *  re-loading the gold dataset. */
+export interface ReportHumanAgreement {
+  /** Krippendorff α (interval weights) — primary metric. */
+  alpha: number;
+  /** Bootstrap 95% CI on α. */
+  alphaCI: { low: number; high: number; estimate: number; samples: number };
+  /** Quadratic-weighted κ — secondary metric. */
+  weightedKappa: number;
+  /** Pearson r — tertiary, rank-order only. */
+  pearson: number;
+  /** Number of (gold, judge) pairs that contributed. */
+  sampleCount: number;
+  /** Variant whose judge scores were compared. */
+  variant: string;
+  /** Identifier of the gold annotator (model id, person, or team handle). */
+  goldAnnotator: string;
+  /** Free-form version string from the gold metadata. */
+  goldVersion: string;
+  /** Set when annotator id overlapped with judge model id. */
+  contaminationWarning?: string;
+  /** Sample_ids in the gold set that were absent from the report. */
+  missingCount: number;
+  /** Sample_ids present in the report but with no judge score (assertion-only etc). */
+  unscoredCount: number;
+}
+
 export interface ReportMeta {
   variants: string[];
   model: string;
@@ -531,6 +559,10 @@ export interface ReportMeta {
   /** Pairwise comparisons (treatment vs control) — populated when --bootstrap and
    *  multi-variant. Length = (variants.length - 1). */
   pairComparisons?: VariantPairComparison[];
+  /** Human-gold agreement when --gold-dir was passed at run time. Compares the
+   *  judge's llmScore against the gold annotations on matching sample_ids. See
+   *  src/grading/human-gold.ts for the metric definitions. */
+  humanAgreement?: ReportHumanAgreement;
   variantConfigs?: VariantConfig[];
   request?: EvaluationRequest;
   run?: EvaluationRun;

@@ -1,0 +1,77 @@
+samples:
+  # === Code review (2) ===
+  - sample_id: code_sql_injection
+    prompt: 审查以下代码，指出问题并给出修复方案
+    context: |
+      function authenticate(username, password) {
+        const query = `SELECT * FROM users WHERE name='${username}' AND pass='${password}'`;
+        return db.execute(query);
+      }
+    rubric: 应识别 SQL 注入风险并给出参数化查询的具体改写
+    dimensions:
+      security: 是否准确点出 SQL 注入及其后果
+      actionability: 是否给出可直接套用的参数化查询代码
+
+  - sample_id: code_missing_error_handling
+    prompt: 审查以下代码，指出问题并给出修复方案
+    context: |
+      async function fetchData(url) {
+        const res = await fetch(url);
+        const data = await res.json();
+        return data;
+      }
+    rubric: 应指出缺少 HTTP 错误码处理与 JSON 解析失败处理，并补全 try/catch 与状态码检查
+    dimensions:
+      robustness: 错误场景识别完整性
+      actionability: 修复代码可直接套用度
+
+  # === Writing (2) ===
+  - sample_id: writing_tone_softening
+    prompt: 把下面这条客服回复改得更柔和、更有同理心，但保留事实信息
+    context: |
+      你的退款申请超过了 30 天的有效期，所以我们不能给你处理。请阅读条款。
+    rubric: 输出应保留"超过 30 天 / 无法处理"的事实，加入致歉、共情或备选方案，避免说教
+
+  - sample_id: writing_summary_constraint
+    prompt: 用一句话（≤ 25 字）概括这段文字
+    context: |
+      自动驾驶并非完全无监督。当前 L2 级别系统仍要求驾驶员保持双手随时接管准备，违反此规定的事故责任并不会因系统启用而转嫁到厂商。
+    rubric: 必须 ≤ 25 字；必须保留"驾驶员仍负责"这一关键信息
+
+  # === Reasoning (2) ===
+  - sample_id: reasoning_math_word
+    prompt: |
+      一个班级有 30 个学生，男生比女生多 4 人。求男生人数。请给出计算过程。
+    rubric: 答案应为 17 男 13 女；过程应清晰展示设变量与解方程
+    dimensions:
+      correctness: 最终答案与中间步骤是否正确
+      explanation: 推导过程是否便于初学者跟随
+
+  - sample_id: reasoning_logic_constraint
+    prompt: |
+      A、B、C 三人中有且只有一人在说谎。A 说"B 在说谎"，B 说"C 在说谎"，C 说"A 和 B 都在说谎"。谁在说谎？
+    rubric: 答案应为 B 说谎；推理需排除其他两种假设
+
+  # === Knowledge Q&A (2) ===
+  - sample_id: knowledge_factual_with_year
+    prompt: HTTPS 与 HTTP 在传输层有什么本质不同？请简明回答。
+    rubric: 应点出 HTTPS = HTTP + TLS（或 SSL），TLS 提供加密、完整性、身份验证三件事
+
+  - sample_id: knowledge_grounded_in_context
+    prompt: 根据下面段落回答：本文支持哪种排序算法？
+    context: |
+      合并排序通过分治法把数组对半切分，递归排序后再做有序合并。最坏与平均时间复杂度都是 O(n log n)，但需要额外 O(n) 空间。
+    rubric: 答案应为合并排序（merge sort）；不应回答快排、堆排或文中未提到的算法
+
+  # === Dialogue (2) ===
+  - sample_id: dialogue_empathy_layoff
+    prompt: |
+      用户："我刚刚被裁员了，明年贷款怎么办？"
+      请给出一个简短回复。
+    rubric: 必须先共情、再回应实质问题；不能直接进入理财说教；不能空洞安慰而无实质建议
+
+  - sample_id: dialogue_clarify_ambiguous
+    prompt: |
+      用户："帮我写一个脚本"
+      你不知道是什么类型的脚本。请给出回应。
+    rubric: 应通过追问明确语言、运行环境、目的；不应猜测后直接生成代码

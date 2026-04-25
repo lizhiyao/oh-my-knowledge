@@ -1,6 +1,6 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import { pValueCategory } from '../eval-core/statistics.js';
-import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types.js';
+import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, ReportHumanAgreement, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types.js';
 
 /**
  * Pairwise diff (treatment vs control) bootstrap CI table — populated only when
@@ -41,6 +41,86 @@ export function renderPairwiseDiff(pairs: VariantPairComparison[] | undefined, l
       <tbody>${rows}</tbody>
     </table>
     </div>`;
+}
+
+/**
+ * Human-gold agreement section — rendered when --gold-dir was used at run time
+ * and the report has been re-persisted with `meta.humanAgreement`. Shows α
+ * (primary), bootstrap CI on α, weighted κ, Pearson — and surfaces a
+ * contamination warning prominently when the gold annotator id overlaps with
+ * the judge model id.
+ */
+export function renderHumanAgreement(agreement: ReportHumanAgreement | undefined, lang: Lang): string {
+  if (!agreement) return '';
+  if (agreement.sampleCount === 0) return '';
+  const fmt = (x: number): string => Number.isNaN(x) ? 'NaN' : x.toFixed(3);
+  const a = agreement;
+  const alphaColor = Number.isNaN(a.alpha)
+    ? 'var(--text-muted)'
+    : a.alpha >= 0.8 ? 'var(--green)'
+    : a.alpha >= 0.667 ? 'var(--yellow)'
+    : 'var(--red)';
+  const interpret = lang === 'zh'
+    ? (Number.isNaN(a.alpha)
+      ? '评分多样性不足，α 未定义'
+      : a.alpha >= 0.8 ? '高度一致 — 结论可放心使用'
+      : a.alpha >= 0.667 ? '可接受 — 谨慎结论'
+      : a.alpha >= 0.4 ? '较弱一致 — 结论需配合 CI 与人工抽检'
+      : a.alpha >= 0 ? '偏差较大 — 排查 rubric / prompt'
+      : '系统性反向 — 重新审视判分逻辑')
+    : (Number.isNaN(a.alpha)
+      ? 'insufficient rating variance for α'
+      : a.alpha >= 0.8 ? 'high agreement — conclusions trustworthy'
+      : a.alpha >= 0.667 ? 'acceptable — conclude cautiously'
+      : a.alpha >= 0.4 ? 'weak agreement — pair with CI + spot-checks'
+      : a.alpha >= 0 ? 'large divergence — investigate rubric / prompt'
+      : 'systematic inversion — judge logic needs review');
+
+  const warningBlock = a.contaminationWarning
+    ? `<div style="margin:8px 0;padding:8px 12px;background:rgba(255, 200, 80, 0.12);border-left:3px solid var(--yellow);font-size:13px"><strong>${lang === 'zh' ? '污染警告' : 'Contamination warning'}:</strong> ${e(a.contaminationWarning)}</div>`
+    : '';
+
+  const missingNote = (a.missingCount > 0 || a.unscoredCount > 0)
+    ? `<p style="font-size:12px;color:var(--text-muted);margin:4px 0">${lang === 'zh' ? '注: 报告缺' : 'Note: report missing'} ${a.missingCount} ${lang === 'zh' ? '条 sample' : 'samples'}${a.unscoredCount > 0 ? `, ${a.unscoredCount} ${lang === 'zh' ? '条无评分' : 'unscored'}` : ''}</p>`
+    : '';
+
+  return `
+    <h2 style="margin-top:24px">${lang === 'zh' ? '人工锚点 (Human Gold)' : 'Human gold anchor'}</h2>
+    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? '对比 LLM 评委分与外部标注的一致性。α 解决"评委对不对"，区别于 CI 解决"评委稳不稳"。' : 'Agreement between the LLM judge and external annotations. α addresses "is the judge correct"; the bootstrap CI addresses "is it consistent".'}</p>
+    ${warningBlock}
+    <div class="table-wrap">
+    <table class="summary-table">
+      <thead><tr>
+        <th>${lang === 'zh' ? '指标' : 'Metric'}</th>
+        <th style="text-align:center">${lang === 'zh' ? '值' : 'Value'}</th>
+        <th style="text-align:center">95% CI</th>
+        <th>${lang === 'zh' ? '说明' : 'Note'}</th>
+      </tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Krippendorff α</strong></td>
+          <td style="text-align:center;color:${alphaColor}"><strong>${fmt(a.alpha)}</strong></td>
+          <td style="text-align:center;font-size:11px">[${fmt(a.alphaCI.low)}, ${fmt(a.alphaCI.high)}]</td>
+          <td style="font-size:12px;color:var(--text-secondary)">${lang === 'zh' ? '主指标，序数加权' : 'primary, ordinal-weighted'}</td>
+        </tr>
+        <tr>
+          <td>${lang === 'zh' ? '加权 κ' : 'weighted κ'}</td>
+          <td style="text-align:center">${fmt(a.weightedKappa)}</td>
+          <td style="text-align:center;color:var(--text-muted)">—</td>
+          <td style="font-size:12px;color:var(--text-secondary)">${lang === 'zh' ? '副指标，平方加权' : 'secondary, quadratic'}</td>
+        </tr>
+        <tr>
+          <td>Pearson r</td>
+          <td style="text-align:center">${fmt(a.pearson)}</td>
+          <td style="text-align:center;color:var(--text-muted)">—</td>
+          <td style="font-size:12px;color:var(--text-secondary)">${lang === 'zh' ? '只看 rank order' : 'rank-order only'}</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <p style="margin:8px 0 0;font-size:13px"><strong>${lang === 'zh' ? '解读' : 'Reading'}:</strong> ${e(interpret)}</p>
+    <p style="margin:4px 0 0;font-size:12px;color:var(--text-muted)">${lang === 'zh' ? '标注者' : 'annotator'}: ${e(a.goldAnnotator)} (v${e(a.goldVersion)}) · variant: <strong>${e(a.variant)}</strong> · n=${a.sampleCount}</p>
+    ${missingNote}`;
 }
 
 export function renderSummaryCards(variants: string[], summary: Record<string, VariantSummary>, lang: Lang, variance?: VarianceData): string {
