@@ -234,7 +234,7 @@ function renderJudgeAgreementBlock(variants: string[], summary: Record<string, V
         <th>${t('judgeModelsLabel', lang)}</th>
         <th title="${t('pearsonDesc', lang)}">${t('pearsonLabel', lang)}</th>
         <th title="${t('madDesc', lang)}">${t('madLabel', lang)}</th>
-        <th>${lang === 'zh' ? '样本数' : 'Samples'}</th>
+        <th>${lang === 'zh' ? '用例数' : 'Samples'}</th>
         <th>${lang === 'zh' ? 'Judge 对数' : 'Pairs'}</th>
       </tr></thead>
       <tbody>${rows}</tbody>
@@ -296,10 +296,10 @@ function buildDiagnostic(
   if (!metric.significant && isStrong) {
     const leadPhrase = winner
       ? (lang === 'zh'
-          ? `${winner} 看似${cfg.winnerWordZh}但样本不足，建议加大 --repeat`
+          ? `${winner} 看似${cfg.winnerWordZh}但用例不足，建议加大 --repeat`
           : `${winner} looks ${cfg.winnerWordEn.replace(' by', '')} but underpowered — increase --repeat`)
       : (lang === 'zh'
-          ? `${strongLabelZh}差异但样本不足，建议加大 --repeat`
+          ? `${strongLabelZh}差异但用例不足，建议加大 --repeat`
           : `${strongLabelEn} effect but underpowered — increase --repeat`);
     return {
       icon: '⚠',
@@ -646,7 +646,7 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
   const diagRulesZhData: DiagRule[] = [
     { variant: 'good', icon: '✓', title: '显著差异（中/大效应）', desc: '差异真实且有实际意义，可作为结论', example: '示例：v1 更便宜 · 显著 · g=1.04' },
     { variant: 'warn', icon: '⚠', title: '显著但效应微弱', desc: '差异真实但太小没实际价值，别过度解读', example: '示例：p<0.05 但 g≈0.1（--repeat 很大时易出现）' },
-    { variant: 'warn', icon: '⚠', title: '大效应但样本不足', desc: '差距看似大但样本太少，建议加大 --repeat 再判断', example: '示例：v2 胜出 0.30 · g=1.04 · 不显著' },
+    { variant: 'warn', icon: '⚠', title: '大效应但用例不足', desc: '差距看似大但用例太少，建议加大 --repeat 再判断', example: '示例：v2 胜出 0.30 · g=1.04 · 不显著' },
     { variant: 'neutral', icon: '—', title: '两变体相当', desc: '既不显著也效应微弱，可视为无差异', example: '示例：Δ≈0 · 不显著 · g<0.2' },
   ];
   const diagRulesEnData: DiagRule[] = [
@@ -899,7 +899,7 @@ export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage
     }
     const uncoveredHint = hintLines.length > 0
       ? `<div style="font-size:11px;color:var(--text-muted);margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
-          <div style="margin-bottom:4px">${lang === 'zh' ? '💡 以下知识未被任何样本访问,建议补充测试用例覆盖:' : '💡 These knowledge files were not accessed by any sample — consider adding test cases:'}</div>
+          <div style="margin-bottom:4px">${lang === 'zh' ? '💡 以下知识未被任何用例覆盖,建议补充测评用例:' : '💡 These knowledge files were not accessed by any sample — consider adding test cases:'}</div>
           ${hintLines.map((line) => `<div style="margin:2px 0">${line}</div>`).join('')}
         </div>`
       : '';
@@ -960,7 +960,7 @@ export function renderKnowledgeInteractionSection(
     ? '展示本次测评用例和知识库的交互画像——用到哪些知识（使用情况）· 哪些知识想找但没找到或模型表达不确定（盲区）。'
     : 'How this test set interacts with the KB — which knowledge was exercised (usage) · which was missed or flagged as uncertain (gaps).';
   const readHint = lang === 'zh'
-    ? '💡 读表：两者同时高 → 知识库内容有问题（有文件但答不出）· 同时低 → 测试用例太浅（没触到复杂场景）· 使用高 + 盲区低 → 理想但警惕样本驯化'
+    ? '💡 读表：两者同时高 → 知识库内容有问题（有文件但答不出）· 同时低 → 测评用例太浅（没触到复杂场景）· 使用高 + 盲区低 → 理想但警惕用例驯化'
     : '💡 Read together: both high → KB content issues (files exist but can\'t answer) · both low → test set too shallow · high use + low gap → ideal, but beware sample-set overfitting';
 
   // 聚合所有 variant(coverage / gap 任一侧存在即纳入)
@@ -1028,7 +1028,7 @@ export function renderKnowledgeInteractionSection(
       }
       const uncoveredHint = hintLines.length > 0
         ? `<div style="font-size:11px;color:var(--text-muted);margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
-            <div style="margin-bottom:4px">${lang === 'zh' ? '💡 以下知识未被任何样本访问,建议补充测试用例:' : '💡 These knowledge files were not accessed — consider adding test cases:'}</div>
+            <div style="margin-bottom:4px">${lang === 'zh' ? '💡 以下知识未被任何用例覆盖,建议补充测评用例:' : '💡 These knowledge files were not accessed — consider adding test cases:'}</div>
             ${hintLines.map((line) => `<div style="margin:2px 0">${line}</div>`).join('')}
           </div>`
         : '';
@@ -1103,7 +1103,7 @@ export function renderKnowledgeInteractionSection(
         <div class="ki-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${e(barLabel)}">
           <div class="ki-bar-fill" style="width:${barW}%;background:${pctColor}"></div>
         </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${gap.samplesWithGap}/${gap.sampleCount} ${lang === 'zh' ? '个样本出现搜索未命中或表达不确定' : 'samples with search miss / hedging'}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${gap.samplesWithGap}/${gap.sampleCount} ${lang === 'zh' ? '个用例出现搜索未命中或表达不确定' : 'samples with search miss / hedging'}</div>
         <div style="font-size:var(--fs-detail);color:var(--text-secondary);margin-bottom:8px">${weightedHint}</div>
         ${typeBadges ? `<div>${typeBadges}</div>` : ''}
         ${inventory ? `<details class="ki-details"><summary>${detailsLabel}</summary>

@@ -353,7 +353,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
     ? (lang === 'zh' ? ` · ${repeatN} 轮重复` : ` · ${repeatN} runs`)
     : '';
   const overviewSubtitle = lang === 'zh'
-    ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个样本${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`
+    ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个用例${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`
     : `${overview?.totalArtifacts || 0} skills · ${overview?.totalSamples || 0} samples${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`;
 
   return layout(`${t('reportTitle', lang)} - ${report.id}`, `
