@@ -154,6 +154,9 @@ export const I18N: Record<Lang, Record<string, string>> = {
     viewTrendLink: '查看趋势 →',
     artifactHashLabel: '版本指纹',
     artifactHashTooltip: 'skill 文件内容的 SHA-256 前 12 位(不含路径/时间/git),用于辨别报告对应哪一版 skill;同文件多次跑指纹不变,改一字节就变——防止"改动效果"和"随机波动"混淆',
+    // v0.21 B.4 — 列表页 verdict 图例条
+    verdictLegendLabel: '图例',
+    verdictLegendClose: '关闭图例',
     switchLang: 'EN',
   },
   en: {
@@ -266,6 +269,9 @@ export const I18N: Record<Lang, Record<string, string>> = {
     viewTrendLink: 'trend →',
     artifactHashLabel: 'Version fingerprint',
     artifactHashTooltip: 'First 12 hex chars of SHA-256 over the skill file content (content-only: no path/time/git); identifies which version of the skill this report ran — same file = same fingerprint, any byte change = different fingerprint. Keeps "intentional change" separate from "random variance"',
+    // v0.21 B.4 — listing page verdict legend strip
+    verdictLegendLabel: 'Legend',
+    verdictLegendClose: 'Dismiss legend',
     switchLang: '中文',
   },
 };
@@ -507,6 +513,92 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .layer-sub-table td{padding-top:8px;padding-bottom:8px}
 /* Multiple-comparisons disclaimer for the three-layer breakdown (PR-2) */
 .layer-breakdown-disclaimer{font-size:var(--fs-micro);color:var(--text-muted);line-height:1.5;padding:4px 8px 10px 0;font-style:italic}
+
+/* v0.21 B.4 — Verdict pill (GitHub PR check 风, 水平 status banner + CTA + 层 strip).
+   颜色严格按 level 编码: PROGRESS 绿, REGRESS 红, CAUTIOUS/UNDERPOWERED 黄,
+   NOISE/SOLO 用 secondary 而非 muted (深底下保证对比度). border-left 4px 是
+   status 视觉信号, 不堆边框/卡片 — 整体融入页面排版. */
+.verdict-banner{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:12px 18px;margin:12px 0 0;border-left:4px solid var(--text-secondary);background:rgba(148,163,184,0.06);border-radius:var(--radius)}
+.verdict-banner.verdict-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.07)}
+.verdict-banner.verdict-REGRESS{border-left-color:var(--red);background:rgba(248,113,113,0.07)}
+.verdict-banner.verdict-CAUTIOUS{border-left-color:var(--yellow);background:rgba(251,191,36,0.07)}
+.verdict-banner.verdict-UNDERPOWERED{border-left-color:var(--yellow);background:rgba(251,191,36,0.04)}
+.verdict-banner.verdict-NOISE{border-left-color:var(--text-secondary);background:rgba(148,163,184,0.06)}
+.verdict-banner.verdict-SOLO{border-left-color:var(--border-hover);background:transparent}
+.verdict-icon{font-size:12px;line-height:1;flex-shrink:0}
+.verdict-line{font-size:14px;font-weight:500;color:var(--text-primary);line-height:1.6;letter-spacing:-0.005em}
+
+/* v0.21 B.4 — page-verdict: verdict 融入标题副标行, 不再是独立 banner. 跟整页
+   扁平 + outline 风协调 (GitHub PR 标题下 status 一行的视觉模型).
+   "测评结论:" 前缀 muted 灰作 label, 句子主体 primary 色, 状态信号靠中文措辞
+   ("明显更好" / "明显更差") 自然传达, 不依赖 icon / 边框 / 背景块. */
+.page-verdict{display:flex;align-items:baseline;gap:8px;margin:4px 0 14px;padding:0;font-size:13.5px;line-height:1.6;flex-wrap:wrap}
+.page-verdict-label{color:var(--text-muted);font-weight:500;flex-shrink:0;font-size:13px;letter-spacing:0}
+.page-verdict-text{flex:1 1 auto;min-width:0;color:var(--text-primary);font-weight:400}
+.verdict-PROGRESS .verdict-icon{color:var(--green)}
+.verdict-REGRESS .verdict-icon{color:var(--red)}
+.verdict-CAUTIOUS .verdict-icon{color:var(--yellow)}
+.verdict-UNDERPOWERED .verdict-icon{color:var(--yellow)}
+.verdict-NOISE .verdict-icon{color:var(--text-secondary)}
+.verdict-SOLO .verdict-icon{color:var(--text-muted)}
+.verdict-level{font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em}
+.verdict-level-code{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;font-weight:500}
+.verdict-sep{color:var(--text-faint);font-size:12px}
+.verdict-metric{font-size:14px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
+.verdict-meta{font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+
+.verdict-cta{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:10px 18px;margin:0;border-left:4px solid var(--accent);background:var(--bg-surface);border-top:1px solid var(--border);border-radius:0}
+.verdict-cta.verdict-cta-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.04)}
+.verdict-cta.verdict-cta-REGRESS{border-left-color:var(--red);background:rgba(248,113,113,0.04)}
+.verdict-cta.verdict-cta-CAUTIOUS{border-left-color:var(--yellow);background:rgba(251,191,36,0.04)}
+.verdict-cta.verdict-cta-NOISE,
+.verdict-cta.verdict-cta-UNDERPOWERED,
+.verdict-cta.verdict-cta-SOLO{border-left-color:var(--text-secondary)}
+.verdict-cta-icon{font-size:13px;flex-shrink:0;color:var(--text-secondary)}
+.verdict-cta-PROGRESS .verdict-cta-icon{color:var(--green)}
+.verdict-cta-REGRESS .verdict-cta-icon{color:var(--red)}
+.verdict-cta-CAUTIOUS .verdict-cta-icon{color:var(--yellow)}
+.verdict-cta-action{font-size:13px;font-weight:700;color:var(--text-primary);letter-spacing:0.04em;text-transform:uppercase;white-space:nowrap}
+.verdict-cta-detail{font-size:13px;color:var(--text-secondary);line-height:1.55;flex:1 1 200px;min-width:0}
+
+.verdict-layers{display:flex;align-items:baseline;gap:10px;padding:6px 18px 0;margin:0 0 16px;border-left:4px solid transparent;flex-wrap:wrap}
+.verdict-layers-label{font-size:10px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);font-weight:500}
+.verdict-layers-content{font-size:12px;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+
+/* v0.21 B.4 — 列表页 RUN ID 旁的 verdict status pill. inline-flex 紧凑 pill,
+   颜色编码同 banner, 字号微小但对比清晰. 鼠标悬停/键盘聚焦时不抢戏 — 它只是
+   "这个 run 是什么 status" 的一眼瞥. */
+.run-status{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:1px 8px;border-radius:var(--radius);margin-right:8px;line-height:1.5;letter-spacing:-0.005em;white-space:nowrap;color:var(--text-secondary);background:rgba(148,163,184,0.1);vertical-align:1px}
+.run-status .run-status-dot{font-size:8px;line-height:1}
+.run-status.verdict-PROGRESS{color:var(--green);background:rgba(74,222,128,0.12)}
+.run-status.verdict-REGRESS{color:var(--red);background:rgba(248,113,113,0.12)}
+.run-status.verdict-CAUTIOUS{color:var(--yellow);background:rgba(251,191,36,0.12)}
+.run-status.verdict-UNDERPOWERED{color:var(--yellow);background:rgba(251,191,36,0.08)}
+.run-status.verdict-NOISE{color:var(--text-secondary);background:rgba(148,163,184,0.1)}
+.run-status.verdict-SOLO{color:var(--text-muted);background:transparent;border:1px solid var(--border)}
+
+/* v0.21 B.4 — 列表页 verdict 图例条. 默认展示一行带过 6 个 status 含义,
+   × 关闭后 localStorage 记忆 — 老用户不被打扰, 新用户第一次进站能快速对照. */
+.verdict-legend{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 12px;margin:0 0 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text-muted)}
+.verdict-legend[hidden]{display:none}
+.verdict-legend-prefix{font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;font-size:10px}
+.verdict-legend-item{display:inline-flex;align-items:center;gap:5px;font-weight:500;cursor:help;font-variant-numeric:tabular-nums}
+.verdict-legend-item .verdict-legend-dot{font-size:9px;line-height:1}
+.verdict-legend-item.verdict-PROGRESS{color:var(--green)}
+.verdict-legend-item.verdict-REGRESS{color:var(--red)}
+.verdict-legend-item.verdict-CAUTIOUS{color:var(--yellow)}
+.verdict-legend-item.verdict-UNDERPOWERED{color:var(--yellow);opacity:0.85}
+.verdict-legend-item.verdict-NOISE{color:var(--text-secondary)}
+.verdict-legend-item.verdict-SOLO{color:var(--text-muted)}
+.verdict-legend-close{margin-left:auto;background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:2px 8px;border-radius:3px;line-height:1;min-height:auto}
+.verdict-legend-close:hover{color:var(--text-primary);background:var(--bg-surface);border-color:transparent}
+
+@media print{
+  .verdict-banner,.verdict-cta{break-inside:avoid;page-break-inside:avoid}
+  .run-status{border:1px solid #cbd5e1;background:transparent !important}
+  .verdict-legend{display:none}
+}
+
 .modal-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center}
 .modal-content{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);max-width:800px;max-height:80vh;overflow:auto;padding:24px;margin:20px;width:90%}
 .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}

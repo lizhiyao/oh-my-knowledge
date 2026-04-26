@@ -12,57 +12,120 @@ import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverag
  * UNDERPOWERED / NOISE / CAUTIOUS — none of which are "ship" but none of which
  * are "regress" either. SOLO is grey because it's an info pill, not a verdict.
  */
-function levelColor(level: VerdictLevel): { bg: string; fg: string; border: string } {
+// v0.21 B.4 — verdict level → status icon. PROGRESS/REGRESS 用实心点强信号,
+// CAUTIOUS 三角(警示),NOISE 空心圆(有信号但无效果),UNDERPOWERED 部分填充
+// (不够数据),SOLO 描边圆(单变体非对比).
+function levelIcon(level: VerdictLevel): string {
   switch (level) {
-    case 'PROGRESS': return { bg: 'rgba(46, 204, 113, 0.15)', fg: 'var(--green)', border: 'var(--green)' };
-    case 'REGRESS':  return { bg: 'rgba(231, 76, 60, 0.15)',  fg: 'var(--red)',   border: 'var(--red)' };
-    case 'CAUTIOUS': return { bg: 'rgba(255, 200, 80, 0.15)', fg: 'var(--yellow)', border: 'var(--yellow)' };
-    case 'UNDERPOWERED':
-    case 'NOISE':    return { bg: 'rgba(180, 180, 180, 0.15)', fg: 'var(--text-muted)', border: 'var(--text-muted)' };
-    case 'SOLO':     return { bg: 'rgba(180, 180, 180, 0.10)', fg: 'var(--text-secondary)', border: 'var(--border)' };
+    case 'PROGRESS':     return '●';
+    case 'REGRESS':      return '●';
+    case 'CAUTIOUS':     return '▲';
+    case 'NOISE':        return '◌';
+    case 'UNDERPOWERED': return '◔';
+    case 'SOLO':         return '○';
   }
 }
 
-function levelLabel(level: VerdictLevel, lang: Lang): string {
+// v0.21 B.4 — verdict 一句话总结. 把 level 标签 + Δ 数字 + action 推荐 + 原因
+// 压成一个完整的中文/英文句子, 用 variant 名直接说"X 比 Y 怎么样, 怎么办".
+// 用户读完一句话就懂结论, 不需要先学 jargon (Δ / CI / NOISE / SHIP).
+// 数字细节让"六维对比"表展示, verdict pill 只给 takeaway.
+function verdictOneLine(level: VerdictLevel, lang: Lang, treatment?: string, control?: string): string {
+  const t = treatment ?? (lang === 'zh' ? '实验组' : 'treatment');
+  const c = control ?? (lang === 'zh' ? '对照组' : 'control');
   if (lang === 'zh') {
     switch (level) {
-      case 'PROGRESS':     return '进步';
-      case 'CAUTIOUS':     return '需谨慎';
-      case 'REGRESS':      return '回退';
-      case 'NOISE':        return '无信号';
+      case 'PROGRESS':     return `${t} 比 ${c} 明显更好 — 可以发布`;
+      case 'CAUTIOUS':     return `${t} 比 ${c} 略好 — 但建议再仔细看,差距很小或某层未达标`;
+      case 'REGRESS':      return `${t} 比 ${c} 明显更差 — 不要发布`;
+      case 'NOISE':        return `${t} 和 ${c} 没看出明显差别 — 可以加大样本量再试`;
+      case 'UNDERPOWERED': return `样本数太少,看不出 ${t} 和 ${c} 的差别 — 多跑几个再看`;
+      case 'SOLO':         return `只跑了一组,需要加对照组才能对比`;
+    }
+  }
+  switch (level) {
+    case 'PROGRESS':     return `${t} is clearly better than ${c} — ready to ship`;
+    case 'CAUTIOUS':     return `${t} is slightly better than ${c} — investigate, gap is small or a layer is below threshold`;
+    case 'REGRESS':      return `${t} is clearly worse than ${c} — do not ship`;
+    case 'NOISE':        return `No clear difference between ${t} and ${c} — try more samples`;
+    case 'UNDERPOWERED': return `Not enough data to compare ${t} and ${c} — run more samples`;
+    case 'SOLO':         return `Single variant — add a control to compare`;
+  }
+}
+
+// v0.21 B.4 — 中文标签用"程度副词 + 方向" 三段式 (明显进步 / 略微进步 / 基本
+// 持平 / 明显退步) 让用户一眼读懂,不必先学 jargon. 英文保留 level code (开发者
+// 用户多, code 反而无歧义).
+export function levelLabel(level: VerdictLevel, lang: Lang): string {
+  if (lang === 'zh') {
+    switch (level) {
+      case 'PROGRESS':     return '明显进步';
+      case 'CAUTIOUS':     return '略微进步';
+      case 'REGRESS':      return '明显退步';
+      case 'NOISE':        return '基本持平';
       case 'UNDERPOWERED': return '样本不足';
-      case 'SOLO':         return '单变体';
+      case 'SOLO':         return '无法对比';
     }
   }
   return level;
 }
 
-export function renderVerdictPill(report: Report, lang: Lang): string {
-  const result: VerdictResult = computeVerdict(report);
-  const c = levelColor(result.level);
-  const label = levelLabel(result.level, lang);
-  const ration = result.rationale;
-  const bullets: string[] = [];
-  if (ration.significance) bullets.push(`<span style="color:var(--text-secondary)">${e(ration.significance)}</span>`);
-  if (ration.layerWinners) bullets.push(`<span style="color:var(--text-muted);font-size:12px">${lang === 'zh' ? '层' : 'layers'}: ${e(ration.layerWinners)}</span>`);
-  if (ration.sampleSize)   bullets.push(`<span style="color:var(--text-muted);font-size:12px">${lang === 'zh' ? '样本' : 'samples'}: ${e(ration.sampleSize)}</span>`);
-  if (ration.judgeAgreement) bullets.push(`<span style="color:var(--text-muted);font-size:12px">${e(ration.judgeAgreement)}</span>`);
-
-  const ship = ration.shipRecommendation
-    ? `<div style="margin-top:8px;font-size:13px"><strong>${lang === 'zh' ? '建议' : 'Recommendation'}:</strong> ${e(ration.shipRecommendation)}</div>`
-    : '';
-
-  return `
-    <div style="margin:8px 0 16px;padding:14px 18px;background:${c.bg};border-left:4px solid ${c.border};border-radius:var(--radius)">
-      <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
-        <span style="font-size:13px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em">${lang === 'zh' ? '一句话结论' : 'Verdict'}</span>
-        <strong style="color:${c.fg};font-size:18px">${e(label)}</strong>
-        <span style="color:var(--text-secondary);font-size:14px">${e(result.headline)}</span>
-      </div>
-      <div style="margin-top:6px;display:flex;flex-direction:column;gap:2px">${bullets.join('')}</div>
-      ${ship}
-    </div>`;
+// v0.21 B.4 — Tooltip 写人话,不是 jargon 重复. 出现在 listing 页的 status pill
+// title 和 detail 页 banner 的 aria-label 上. 用户 hover 立刻知道这个 status
+// 是怎么算出来的, 不用查文档.
+export function levelTooltip(level: VerdictLevel, lang: Lang): string {
+  if (lang === 'zh') {
+    switch (level) {
+      case 'PROGRESS':     return '实验组分数显著优于对照组';
+      case 'REGRESS':      return '实验组分数显著劣于对照组';
+      case 'CAUTIOUS':     return '实验组略优于对照组,但差距小或某层未达 gate';
+      case 'NOISE':        return '两组分数差距置信区间跨过 0,统计上分辨不出效果';
+      case 'UNDERPOWERED': return '样本量太小,需要多跑几次再看';
+      case 'SOLO':         return '只跑了一组,没做对比';
+    }
+  }
+  switch (level) {
+    case 'PROGRESS':     return 'Treatment scores significantly above control';
+    case 'REGRESS':      return 'Treatment scores significantly below control';
+    case 'CAUTIOUS':     return 'Treatment slightly above control — small gap or layer below gate';
+    case 'NOISE':        return 'Diff CI spans 0; effect not separable from noise';
+    case 'UNDERPOWERED': return 'Sample size too small to detect effect';
+    case 'SOLO':         return 'Single variant — no comparison';
+  }
 }
+
+// v0.21 B.4 — Verdict pill 重写. 行业领先 status banner 三段式:
+//   1. Banner: 强信号(色 + 词) + 核心 metric (Δ + CI) + meta (pair / N / α)
+//   2. CTA: emoji + 加粗 action + 详情 (从 shipRecommendation 拆)
+//   3. Layers strip: fact/behavior/judge 一行带过, 不堆 bullets
+// 去掉旧版 headline 和 significance 的内容重复 (perPair[0].headline 是干净的
+// Δ+CI 核心, headline 拼装版只在 SOLO mode 用).
+//
+// computeVerdict 在 each mode + 历史脏 report 上有 NPE 风险 (顶层 summary
+// 缺 variant 数据时 evaluateCiGates 访问 .avgFactScore 炸). 加 try/catch
+// 让 renderer 不 crash, 改为静默 skip pill — 这是 v0.21 B.4 的 scope 范围,
+// verdict.ts/ci-gates.ts 的 defensive 修复留作单独 task.
+export function renderVerdictPill(report: Report, lang: Lang): string {
+  let result: VerdictResult;
+  try {
+    result = computeVerdict(report);
+  } catch {
+    return '';
+  }
+  const level = result.level;
+  const pair = result.perPair?.[0];
+  const oneLine = verdictOneLine(level, lang, pair?.treatment, pair?.control);
+  const tooltip = levelTooltip(level, lang);
+  const prefix = lang === 'zh' ? '测评结论' : 'Verdict';
+  // v0.21 B.4 — verdict 融入标题副标. 去 icon, 用 "测评结论:" 前缀引导, 让用户
+  // 一眼读到 "label : 结论" 的语义结构. 状态色信号通过 verdictOneLine 的中文
+  // 措辞 ("明显更好" / "明显更差" / "没看出差别") 传达, 不再依赖颜色 dot.
+  return `<p class="page-verdict verdict-${level}" role="status" aria-label="${e(prefix)}: ${e(oneLine)}" title="${e(tooltip)}">
+    <span class="page-verdict-label">${e(prefix)}:</span>
+    <span class="page-verdict-text">${e(oneLine)}</span>
+  </p>`;
+}
+
 
 /**
  * Pairwise diff (treatment vs control) bootstrap CI table — populated only when
