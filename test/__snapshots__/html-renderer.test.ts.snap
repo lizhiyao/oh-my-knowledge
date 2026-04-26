@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`snapshot baselines (zh / en × list / detail) > renderRunDetail en 1`] = `
-"<!doctype html><html lang="en" data-lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · test-run-001</title>
+"<!doctype html><html lang="en" data-lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · test-run-20260325-1000</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2360a5fa%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23a78bfa%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%2215%22%20fill%3D%22%230f172a%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%228%22%20stroke%3D%22url(%23g)%22%20stroke-width%3D%223.5%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E">
   <script>
   // Global modal helpers. openModal/closeModal manage focus so the close
@@ -379,7 +379,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
 </style></head><body><button id="lang-toggle" onclick="switchLang()" class="lang-toggle">中文</button>
     <main>
     <nav class="nav"><a href="/" data-i18n="backToList">← Back to list</a></nav>
-    <h1>test-run-001</h1>
+    <h1>test-run-20260325-1000</h1>
     <p class="page-verdict verdict-CAUTIOUS" role="status" aria-label="Verdict: v2 is slightly better than v1 — investigate, gap is small or a layer is below threshold" title="Treatment slightly above control — small gap or layer below gate">
     <span class="page-verdict-label">Verdict:</span>
     <span class="page-verdict-text">v2 is slightly better than v1 — investigate, gap is small or a layer is below threshold</span>
@@ -562,7 +562,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
 `;
 
 exports[`snapshot baselines (zh / en × list / detail) > renderRunDetail zh 1`] = `
-"<!doctype html><html lang="zh-CN" data-lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · test-run-001</title>
+"<!doctype html><html lang="zh-CN" data-lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · test-run-20260325-1000</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2032%2032%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22g%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%25%22%20stop-color%3D%22%2360a5fa%22%2F%3E%3Cstop%20offset%3D%22100%25%22%20stop-color%3D%22%23a78bfa%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%2215%22%20fill%3D%22%230f172a%22%2F%3E%3Ccircle%20cx%3D%2216%22%20cy%3D%2216%22%20r%3D%228%22%20stroke%3D%22url(%23g)%22%20stroke-width%3D%223.5%22%20fill%3D%22none%22%2F%3E%3C%2Fsvg%3E">
   <script>
   // Global modal helpers. openModal/closeModal manage focus so the close
@@ -940,7 +940,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
 </style></head><body><button id="lang-toggle" onclick="switchLang()" class="lang-toggle">EN</button>
     <main>
     <nav class="nav"><a href="/" data-i18n="backToList">← 返回列表</a></nav>
-    <h1>test-run-001</h1>
+    <h1>test-run-20260325-1000</h1>
     <p class="page-verdict verdict-CAUTIOUS" role="status" aria-label="测评结论: v2 比 v1 略好 — 但建议再仔细看,差距很小或某层未达标" title="实验组略优于对照组,但差距小或某层未达 gate">
     <span class="page-verdict-label">测评结论:</span>
     <span class="page-verdict-text">v2 比 v1 略好 — 但建议再仔细看,差距很小或某层未达标</span>
@@ -1529,13 +1529,13 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
         <th></th>
       </tr></thead>
       <tbody><tr>
-      <td><span class="run-status verdict-CAUTIOUS" title="Treatment slightly above control — small gap or layer below gate" aria-label="CAUTIOUS — Treatment slightly above control — small gap or layer below gate"><span class="run-status-dot" aria-hidden="true">▲</span>CAUTIOUS</span><a href="/run/test-run-001"><span style="color:var(--text-primary)">test-run-001</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">03/25 18:00</span></a></td>
+      <td><span class="run-status verdict-CAUTIOUS" title="Treatment slightly above control — small gap or layer below gate" aria-label="CAUTIOUS — Treatment slightly above control — small gap or layer below gate"><span class="run-status-dot" aria-hidden="true">▲</span>CAUTIOUS</span><a href="/run/test-run-20260325-1000"><span style="color:var(--text-primary)">test-run-20260325-1000</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">03/25 10:00</span></a></td>
       <td>sonnet</td>
       <td>2</td>
       <td><div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span title="v1" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">v1</span><div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0"><div style="width:80%;height:100%;background:var(--green);border-radius:3px"></div></div><span style="font-size:12px;font-weight:600;color:var(--green);min-width:24px">4</span></div><div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span title="v2" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">v2</span><div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0"><div style="width:96%;height:100%;background:var(--green);border-radius:3px"></div></div><span style="font-size:12px;font-weight:600;color:var(--green);min-width:24px">4.8</span></div></td>
       <td>$0.0380</td>
       <td>10.0s</td>
-      <td style="white-space:nowrap"><button onclick="deleteRun('test-run-001',this)" class="btn-danger" data-i18n="deleteBtnText">Delete</button></td>
+      <td style="white-space:nowrap"><button onclick="deleteRun('test-run-20260325-1000',this)" class="btn-danger" data-i18n="deleteBtnText">Delete</button></td>
     </tr></tbody>
     </table>
     </div>
@@ -2013,13 +2013,13 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
         <th></th>
       </tr></thead>
       <tbody><tr>
-      <td><span class="run-status verdict-CAUTIOUS" title="实验组略优于对照组,但差距小或某层未达 gate" aria-label="略微进步 — 实验组略优于对照组,但差距小或某层未达 gate"><span class="run-status-dot" aria-hidden="true">▲</span>略微进步</span><a href="/run/test-run-001"><span style="color:var(--text-primary)">test-run-001</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">03/25 18:00</span></a></td>
+      <td><span class="run-status verdict-CAUTIOUS" title="实验组略优于对照组,但差距小或某层未达 gate" aria-label="略微进步 — 实验组略优于对照组,但差距小或某层未达 gate"><span class="run-status-dot" aria-hidden="true">▲</span>略微进步</span><a href="/run/test-run-20260325-1000"><span style="color:var(--text-primary)">test-run-20260325-1000</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">03/25 10:00</span></a></td>
       <td>sonnet</td>
       <td>2</td>
       <td><div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span title="v1" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">v1</span><div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0"><div style="width:80%;height:100%;background:var(--green);border-radius:3px"></div></div><span style="font-size:12px;font-weight:600;color:var(--green);min-width:24px">4</span></div><div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span title="v2" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">v2</span><div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0"><div style="width:96%;height:100%;background:var(--green);border-radius:3px"></div></div><span style="font-size:12px;font-weight:600;color:var(--green);min-width:24px">4.8</span></div></td>
       <td>$0.0380</td>
       <td>10.0s</td>
-      <td style="white-space:nowrap"><button onclick="deleteRun('test-run-001',this)" class="btn-danger" data-i18n="deleteBtnText">删除</button></td>
+      <td style="white-space:nowrap"><button onclick="deleteRun('test-run-20260325-1000',this)" class="btn-danger" data-i18n="deleteBtnText">删除</button></td>
     </tr></tbody>
     </table>
     </div>
