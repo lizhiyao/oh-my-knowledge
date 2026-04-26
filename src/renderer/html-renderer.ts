@@ -13,10 +13,27 @@ import {
   renderSummaryCards,
   renderVarianceComparisons,
   renderVerdictPill,
+  levelLabel,
+  levelTooltip,
 } from './summary.js';
 import { renderSampleTable } from './table.js';
 import { renderTrendsBody } from './trends.js';
+import { computeVerdict, type VerdictLevel } from '../eval-core/verdict.js';
 import type { Report, Lang } from '../types.js';
+
+// v0.21 B.4 — 列表页 status pill 用的 dot. PROGRESS/REGRESS 实心(强信号),
+// CAUTIOUS 三角(警示),NOISE 空心圆(有信号但无效果),UNDERPOWERED 部分填充
+// (不够数据),SOLO 描边圆(单变体). 跟 verdict pill 同一组符号,跨入口一致.
+function levelDot(level: VerdictLevel): string {
+  switch (level) {
+    case 'PROGRESS':
+    case 'REGRESS':      return '●';
+    case 'CAUTIOUS':     return '▲';
+    case 'NOISE':        return '◌';
+    case 'UNDERPOWERED': return '◔';
+    case 'SOLO':         return '○';
+  }
+}
 
 type EachOverview = NonNullable<Report['overview']>;
 type EachOverviewArtifact = EachOverview['artifacts'][number];
@@ -56,8 +73,20 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
       : '<div style="color:var(--text-faint);font-size:0.6875rem;text-align:center">no score</div>';
     const badges = ''; // TODO: artifact kind 体系完善后，按 kind 显示评测类型标签
 
+    // v0.21 B.4 — 列表页 verdict pill: 一眼分辨 progress / regress / noise.
+    // computeVerdict 是同步纯函数(report -> level),per row 跑成本 O(samples).
+    // each mode 或脏老报告会让 ci-gates 访问 undefined.avgFactScore 抛 NPE,
+    // try/catch 兜底, 失败的 row 不显示 pill(不要让一个坏 report 把整个列表
+    // 撤掉). verdict.ts 的 defensive 修复另立 task.
+    let statusPill = '';
+    try {
+      const verdict = computeVerdict(run);
+      const lvl = verdict.level;
+      statusPill = `<span class="run-status verdict-${lvl}" title="${e(levelTooltip(lvl, lang))}" aria-label="${e(levelLabel(lvl, lang))} — ${e(levelTooltip(lvl, lang))}"><span class="run-status-dot" aria-hidden="true">${levelDot(lvl)}</span>${e(levelLabel(lvl, lang))}</span>`;
+    } catch { /* skip pill on this row */ }
+
     return `<tr>
-      <td><a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e(run.id)}${badges}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${(() => {
+      <td>${statusPill}<a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e(run.id)}${badges}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${(() => {
         // Extract date/time from report ID: ...-YYYYMMDD-HHmm
         const idMatch = run.id.match(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
         if (idMatch) return `${idMatch[2]}/${idMatch[3]} ${idMatch[4]}:${idMatch[5]}`;
@@ -90,10 +119,28 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
     .join('');
   const trendsSection = trendLinks ? `<div style="margin:12px 0"><span style="font-size:12px;color:var(--text-muted);margin-right:8px">${lang === 'zh' ? '📈 趋势：' : '📈 Trends:'}</span>${trendLinks}</div>` : '';
 
+  // v0.21 B.4 — verdict 图例条. 默认展示, × 关闭后 localStorage 记忆.
+  // 按 verdict.ts 的 worst-case roll-up 顺序排列 (REGRESS / CAUTIOUS /
+  // UNDERPOWERED / NOISE / PROGRESS), 让用户从最严重的状态开始扫.
+  const legendLevels: VerdictLevel[] = ['PROGRESS', 'CAUTIOUS', 'NOISE', 'REGRESS', 'UNDERPOWERED', 'SOLO'];
+  const legendItems = legendLevels.map((lvl) =>
+    `<span class="verdict-legend-item verdict-${lvl}" title="${e(levelTooltip(lvl, lang))}"><span class="verdict-legend-dot" aria-hidden="true">${levelDot(lvl)}</span>${e(levelLabel(lvl, lang))}</span>`,
+  ).join('');
+  const legendHtml = `<div id="verdict-legend" class="verdict-legend" role="region" aria-label="${e(t('verdictLegendLabel', lang))}">
+    <span class="verdict-legend-prefix">${e(t('verdictLegendLabel', lang))}</span>
+    ${legendItems}
+    <button class="verdict-legend-close" onclick="dismissVerdictLegend()" aria-label="${e(t('verdictLegendClose', lang))}">×</button>
+  </div>
+  <script>
+  (function(){var el=document.getElementById('verdict-legend');if(el&&localStorage.getItem('omk-verdict-legend-dismissed')==='1')el.hidden=true;})();
+  window.dismissVerdictLegend=function(){var el=document.getElementById('verdict-legend');if(el)el.hidden=true;try{localStorage.setItem('omk-verdict-legend-dismissed','1');}catch(e){}};
+  </script>`;
+
   return layout(t('title', lang), `
     <main>
     <h1>${t('title', lang)}</h1>
     <p class="subtitle" data-i18n="subtitle">${t('subtitle', lang)} &middot; ${runCount} &middot; ${costLabel}</p>
+    ${legendHtml}
     ${trendsSection}
     <div style="margin:12px 0">${skillHealthLink}</div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
