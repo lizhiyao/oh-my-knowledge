@@ -10,6 +10,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ---
 
+## [0.20.1] - 2026-04-26
+
+Patch — verdict 用户可见性升级 + 内部类型重构 + 测量学不变量保护(为后续 v0.21 路线做地基)。
+
+### Added
+
+- **列表页 verdict 信号**:RUN ID 旁加 status pill(明显进步 / 略微进步 / 基本持平 / 明显退步 / 样本不足 / 无法对比),从首页一眼分辨结果,不再需要挨个点进详情页。
+- **列表页 verdict 图例条**:默认顶部显示一行带过 6 个状态词的语义,× 关闭后 localStorage 记忆,老用户不被打扰。
+- **ReportMeta.schemaVersion 字段**:v0.21+ 写 `1`,无字段视为 v0,为后续兼容机制做准备。
+- **judge prompt hash 字节级冻结测试**(`test/grading/judge-hash-frozen.test.ts`):写死 v2-cot / v3-cot-length 的 12-char hex hash,任何动 prompt 文本会立即失败 — 防止跨版本报告不可比的隐性破坏(原 `judge-prompt-version.test.ts` 只断 12 hex 形态不锁具体值,可被无声破坏)。
+- **html-renderer + i18n 双语 snapshot 测试基线**:`renderRunList` / `renderRunDetail` × zh / en × list / detail 4 个 snapshot,加 `t()` 默认行为 + zh/en key set 一致性测试,作为后续 UI 改动的回归网。
+
+### Changed
+
+- **详情页 verdict 重写为一句话副标**:`测评结论: skill 和 baseline 没看出明显差别 — 可以加大样本量再试`。砍掉之前的强 banner / Δ 数字 / "skill vs baseline" 副标 / "样本=N" / 三层得分 strip / CTA 块。中文措辞自带状态信号("明显更好" / "明显更差" / "略好" / "没看出差别"),视觉融入页面扁平 + outline 风格,不依赖颜色 dot 或边框块。
+- **`src/types.ts`(859 行)按消费域拆分**到 `src/types/{shared,executor,judge,eval,report,storage}.ts` + `index.ts`。原 `src/types.ts` 改为 1 行 facade(`export * from './types/index.js'`),95+ 处 `'../types.js'` import 路径 100% 不变。
+
+### Fixed
+
+- **`computeVerdict` 在 each mode + 顶层 summary 缺 variant 数据的脏老报告上 NPE**:渲染器层加 try/catch 兜底,失败的 row(列表页)或 verdict 区(详情页)静默跳过显示,不让一个坏 report 撤掉整页。根因(`evaluateCiGates` 访问 `undefined.avgFactScore`)留作 v0.21 单独修复。
+
+### Internal
+
+- 6 个分域类型文件取代单一 859 行 `src/types.ts`,跨域引用关系明晰(`shared` 叶子 / `executor` 自闭 / `judge` 自闭 / `eval → judge` / `report → executor + judge + eval` / `storage → eval + report`)。
+
+---
+
 ## [0.20.0] - 2026-04-25
 
 Major release — statistical rigor as a first-class concern, plus a verdict / diagnostics / RAG / budget surface that turns omk from "evaluation runner" into "evaluation reasoning system."
