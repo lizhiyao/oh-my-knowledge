@@ -1,7 +1,13 @@
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import assert from 'node:assert/strict';
 import { renderRunList, renderRunDetail } from '../src/renderer/html-renderer.js';
 import type { Lang, Report } from '../src/types.js';
+
+// Snapshot 稳定化:把所有 YYYY-MM-DD HH:MM:SS 形式的本地时间戳替换成 [TIMESTAMP],
+// 防止 fmtLocalTime 基于本地时区产出的字符串在不同机器/CI 上抖动。
+function normalizeForSnapshot(html: string): string {
+  return html.replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/g, '[TIMESTAMP]');
+}
 
 const SAMPLE_REPORT: Report = {
   id: 'test-run-001',
@@ -354,5 +360,23 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('claude:opus'), 'should show judge identifier in ensemble block');
     // reasoning collapsible
     assert.ok(html.includes('Stub CoT reasoning here'), 'should embed reasoning text');
+  });
+});
+
+describe('snapshot baselines (zh / en × list / detail)', () => {
+  // 这些 snapshot 是 v0.21 攻坚的回归基线。Phase B/C/D 改 UI 时如果意外动到非攻坚区,
+  // snapshot 会失败,review diff 后 vitest -u 主动更新。固定 SAMPLE_REPORT + 时间 normalize
+  // 让 snapshot 跨机器稳定。
+  it('renderRunList zh', () => {
+    expect(normalizeForSnapshot(renderRunList([SAMPLE_REPORT], 'zh' as Lang))).toMatchSnapshot();
+  });
+  it('renderRunList en', () => {
+    expect(normalizeForSnapshot(renderRunList([SAMPLE_REPORT], 'en' as Lang))).toMatchSnapshot();
+  });
+  it('renderRunDetail zh', () => {
+    expect(normalizeForSnapshot(renderRunDetail(SAMPLE_REPORT, 'zh' as Lang))).toMatchSnapshot();
+  });
+  it('renderRunDetail en', () => {
+    expect(normalizeForSnapshot(renderRunDetail(SAMPLE_REPORT, 'en' as Lang))).toMatchSnapshot();
   });
 });
