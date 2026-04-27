@@ -12,7 +12,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write # 创建 GitHub Release(npm publish 完成后自动建,从 CHANGELOG 抽 notes）
       id-token: write # 使工作流能够通过 OIDC 从 GitHub 获取凭证（npm provenance 必需）
 
     steps:
@@ -41,3 +41,30 @@ jobs:
       run: npm publish --access public --provenance
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+    - name: Create GitHub Release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        TAG="${GITHUB_REF#refs/tags/}"
+        VERSION="${TAG#v}"
+        # 从 CHANGELOG.md 抽 ## [VERSION] section(到下一个 ## [ 之前)
+        # sed 去掉所有 `---` 单独行: CHANGELOG sections 之间用 --- 分隔, 抽出的
+        # section 末尾会带 trailing ---, 去掉避免和下面 footer 的 --- 撞两个.
+        # CHANGELOG section 内容本身不使用 --- 单独行做分隔, 此清理安全.
+        NOTES=$(awk "/^## \\[${VERSION}\\]/{flag=1; next} /^## \\[/{if(flag){exit}} flag" CHANGELOG.md | sed '/^---$/d')
+        if [ -z "$NOTES" ]; then
+          echo "::warning::no CHANGELOG section for v${VERSION}; falling back to auto-generated notes"
+          gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag
+        else
+          # 找 prev tag (按创建时间排序, 当前 tag 的下一行就是上一个 release tag)
+          PREV_TAG=$(git tag --sort=-creatordate | grep -A 1 "^${TAG}$" | tail -1)
+          if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$TAG" ]; then
+            NOTES="${NOTES}
+
+---
+
+**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}"
+          fi
+          gh release create "$TAG" --title "$TAG" --notes "$NOTES" --verify-tag
+        fi
