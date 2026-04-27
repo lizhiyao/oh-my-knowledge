@@ -47,6 +47,10 @@ export interface Artifact {
   locator?: string;
   ref?: string;
   cwd?: string;
+  // SKILL.md 约定的 directory-skill 根目录(skill 自带 assets / 引相对路径时,
+  // 默认 cwd / preflight 路径解析的锚点)。只对 directory-skill 填,file-skill 留空。
+  // 优先级:用户显式 cwd(@/path) > skillRoot > sample.cwd > null。
+  skillRoot?: string;
   // run-time 属性:variant 在当次实验中扮演的角色(由 CLI --control/--treatment 或 eval.yaml 注入)
   // 不是 artifact 文件的固有属性;同一 artifact 在不同 run 可以扮演不同角色
   experimentRole?: ExperimentRole;

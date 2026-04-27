@@ -1,4 +1,4 @@
-import type { ExecResult, ExecutorInput } from '../types.js';
+import type { ExecResult, ExecutorInput } from '../types/index.js';
 import { asErrorLike, DEFAULT_TIMEOUT_MS, errorMessage, OpenAiResponse } from './shared.js';
 
 export async function openAiApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {

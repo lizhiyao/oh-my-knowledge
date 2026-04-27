@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildVarianceData } from '../src/eval-workflows/run-evaluation.js';
-import type { Report, VariantResult } from '../src/types.js';
+import type { Report, VariantResult } from '../src/types/index.js';
 
 const variantResult = (compositeScore: number): VariantResult => ({
   ok: true,

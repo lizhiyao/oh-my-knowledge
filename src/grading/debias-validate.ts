@@ -24,7 +24,7 @@
  * large/expensive evaluations can opt in deliberately.
  */
 
-import type { ExecutorFn, Report, Sample } from '../types.js';
+import type { ExecutorFn, Report, Sample } from '../types/index.js';
 import { llmJudge } from './judge.js';
 import { bootstrapDiffCI, type BootstrapDiffCI } from '../eval-core/bootstrap.js';
 
@@ -192,9 +192,9 @@ export function formatDebiasValidate(result: DebiasValidateResult): string {
   lines.push(`\n  Length-debias 灵敏度验证 (variant: ${result.variant})\n`);
   lines.push(`  原始 prompt:    ${dirOrig}`);
   lines.push(`  对照 prompt:    ${dirAlt}`);
-  lines.push(`  样本数:         ${result.pairs.length}`);
+  lines.push(`  用例数:         ${result.pairs.length}`);
   if (result.pairs.length === 0) {
-    lines.push('  无可比对样本 — 检查报告是否含 fullOutput / rubric。');
+    lines.push('  无可比对用例 — 检查报告是否含 fullOutput / rubric。');
     return lines.join('\n');
   }
   lines.push(`  原均值:         ${result.meanOriginal.toFixed(3)}`);
@@ -209,7 +209,7 @@ export function formatDebiasValidate(result: DebiasValidateResult): string {
   lines.push(`      间接支持 length bias 存在;但 prompt 文本变化也可能因其他原因影响评分。`);
   lines.push(`      重判 cost: ${result.alternateJudgeCostUSD.toFixed(6)} USD`);
   if (result.missing.length) {
-    lines.push(`  缺样本 ID:      ${result.missing.length} 条`);
+    lines.push(`  缺用例 ID:      ${result.missing.length} 条`);
   }
   if (result.unscored.length) {
     lines.push(`  无 LLM 分:      ${result.unscored.length} 条`);

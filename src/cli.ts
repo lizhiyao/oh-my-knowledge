@@ -16,7 +16,7 @@ import type {
   GitInfo,
   ReportStore,
   ProgressCallback,
-} from './types.js';
+} from './types/index.js';
 
 // ---------------------------------------------------------------------------
 // Local types (CLI-specific, not shared with lib/)
@@ -46,7 +46,7 @@ interface RunConfig {
   /** --judge-repeat N. Calls LLM judge N times per (sample × dimension). Default 1. */
   judgeRepeat?: number;
   /** --judge-models executor:model,executor:model,... — multi-judge ensemble (≥ 2 entries). */
-  judgeModels?: import('./types.js').JudgeConfig[];
+  judgeModels?: import('./types/index.js').JudgeConfig[];
   /** --bootstrap. Adds bootstrap CI to summary (per-variant mean + pairwise diff). */
   bootstrap?: boolean;
   /** --bootstrap-samples N. Bootstrap resamples count, default 1000. */
@@ -54,7 +54,7 @@ interface RunConfig {
   /** v0.21 Phase 3a length-debias toggle. Default true; --no-debias-length sets false. */
   lengthDebias?: boolean;
   /** v0.22 — hard budget caps from CLI or config. */
-  budget?: import('./types.js').EvalBudget;
+  budget?: import('./types/index.js').EvalBudget;
   onProgress?: ProgressCallback | null;
 }
 
@@ -401,8 +401,8 @@ async function main(): Promise<void> {
     case 'init':
       await handleInit(rest);
       break;
-    case 'ci':
-      await handleCi(rest);
+    case 'gate':
+      await handleGate(rest);
       break;
     case 'gen-samples':
       await handleGenSamples(rest);
@@ -1192,13 +1192,20 @@ async function handleEvolve(argv: string[]): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// handleCi
+// handleGate — 跑评测 + 应用 gate, exit code 0/1 适合 CI/CD pipeline 调用。
+// 内部 = runEvaluation + computeVerdict + formatVerdictText, 与 bench verdict
+// 共用决策内核(只是 verdict 读已有报告, gate 跑完再判)。
 // ---------------------------------------------------------------------------
 
-async function handleCi(argv: string[]): Promise<void> {
+async function handleGate(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
+  if (argv[0] === '--help' || argv[0] === '-h') {
+    console.log(tCli('cli.help.main', lang).trim());
+    process.exit(0);
+  }
   const { values, config } = parseRunConfig(argv, {
     threshold: { type: 'string', default: '3.5' },
+    'trivial-diff': { type: 'string' },
   });
 
   const { runEvaluation } = await import('./eval-workflows/run-evaluation.js');
@@ -1208,18 +1215,32 @@ async function handleCi(argv: string[]): Promise<void> {
   try {
     const { report } = (await runEvaluation(config)) as EvalResult;
 
-    const threshold: number = Number(values.threshold);
-
     if ((report as Report & { dryRun?: boolean }).dryRun) {
-      console.log('CI dry-run: no scores to check');
+      console.log('Gate dry-run: no scores to check');
       process.exit(0);
     }
 
-    // three-gate 逻辑抽到 src/eval-core/ci-gates.ts 作纯函数,便于测试;此处只做 IO。
-    const { evaluateCiGates } = await import('./eval-core/ci-gates.js');
-    const { allPass, lines } = evaluateCiGates(report.summary || {}, threshold);
-    for (const line of lines) console.log(line);
-    process.exit(allPass ? 0 : 1);
+    // gate 内核 = run + verdict, 自动覆盖 omk 全部决策维度(三层 layer-gate /
+    // bootstrap diff CI / saturation / Krippendorff α)。computeVerdict 是单一
+    // 决策源, exit code 跟 verdict.level 走 — 数据 underpowered 直接 FAIL,
+    // 堵住"过 PASS 就 deploy"的漏洞。
+    const { computeVerdict, formatVerdictText } = await import('./eval-core/verdict.js');
+    const result = computeVerdict(report, {
+      gateThreshold: Number(values.threshold),
+      triviallySmallDiff: values['trivial-diff'] != null ? Number(values['trivial-diff']) : undefined,
+    });
+    console.log(formatVerdictText(result, { verbose: true }));
+
+    // exit code 与 handleVerdict 对齐:只有 PROGRESS / SOLO-pass 才 0,
+    // NOISE / UNDERPOWERED / CAUTIOUS / REGRESS 全 1。pipeline `omk bench gate
+    // && deploy` 数据不显著就不会误 deploy。
+    if (result.level === 'PROGRESS') {
+      process.exit(0);
+    }
+    if (result.level === 'SOLO' && result.headline.includes('PASS')) {
+      process.exit(0);
+    }
+    process.exit(1);
   } catch (err: unknown) {
     console.error(`Error: ${(err as Error).message}`);
     process.exit(1);
@@ -1745,7 +1766,7 @@ async function handleVerdict(argv: string[]): Promise<void> {
 
   const { computeVerdict, formatVerdictText } = await import('./eval-core/verdict.js');
   const result = computeVerdict(report!, {
-    ciThreshold: values.threshold != null ? Number(values.threshold) : undefined,
+    gateThreshold: values.threshold != null ? Number(values.threshold) : undefined,
     triviallySmallDiff: values['trivial-diff'] != null ? Number(values['trivial-diff']) : undefined,
   });
   console.log(formatVerdictText(result, { verbose: Boolean(values.verbose) }));
@@ -1802,7 +1823,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   //  1. --samples <path> override
   //  2. report.meta.request.samplesPath (recorded at run time)
   // If neither resolves to a readable file, skip near-duplicate gracefully.
-  let samples: import('./types.js').Sample[] | undefined;
+  let samples: import('./types/index.js').Sample[] | undefined;
   const samplesPath = (values.samples as string | undefined) ?? report!.meta?.request?.samplesPath;
   if (samplesPath && existsSync(samplesPath)) {
     try {

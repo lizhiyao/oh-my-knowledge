@@ -11,7 +11,7 @@ import {
   applyHedgingClassifier,
 } from '../../src/analysis/gap-analyzer.js';
 import { clearHedgingCache } from '../../src/analysis/hedging-classifier.js';
-import type { ExecResult, ExecutorFn, ToolCallInfo, TurnInfo, VariantResult, ResultEntry } from '../../src/types.js';
+import type { ExecResult, ExecutorFn, ToolCallInfo, TurnInfo, VariantResult, ResultEntry } from '../../src/types/index.js';
 
 // ---------- Helpers for building test fixtures ----------
 
@@ -442,8 +442,8 @@ describe('computeGapReport', () => {
     assert.equal(byType.hedging, 0.5);
   });
 
-  it('v0.2: weightedGapRate 按样本最强信号聚合', () => {
-    // 3 个样本:1 个 failed_search(强,权重 1.0)、1 个 hedging(弱,权重 0.5)、1 个无信号
+  it('v0.2: weightedGapRate 按用例最强信号聚合', () => {
+    // 3 个用例:1 个 failed_search(强,权重 1.0)、1 个 hedging(弱,权重 0.5)、1 个无信号
     // gapRate = 2/3 ≈ 0.6667
     // weightedGapRate = (1.0 + 0.5 + 0) / 3 ≈ 0.5000
     const results: ResultEntry[] = [
@@ -467,8 +467,8 @@ describe('computeGapReport', () => {
     assert.ok(report.weightedGapRate <= report.gapRate);
   });
 
-  it('v0.2: 同一样本多信号时取最强权重(不是累加)', () => {
-    // 一个样本同时有 hedging(0.5) + failed_search(1.0) → sample weight = 1.0 而不是 1.5
+  it('v0.2: 同一用例多信号时取最强权重(不是累加)', () => {
+    // 一个用例同时有 hedging(0.5) + failed_search(1.0) → sample weight = 1.0 而不是 1.5
     const results: ResultEntry[] = [
       {
         sample_id: 's001',
@@ -484,12 +484,12 @@ describe('computeGapReport', () => {
       },
     ];
     const report = computeGapReport(results, 'v1');
-    // 样本内聚合取 max(1.0, 0.5) = 1.0
+    // 用例内聚合取 max(1.0, 0.5) = 1.0
     assert.equal(report.weightedGapRate, 1.0);
   });
 
   it('v0.2: 全弱信号时 weightedGapRate 显著低于 gapRate', () => {
-    // 4 个样本全是 hedging(弱,0.5)
+    // 4 个用例全是 hedging(弱,0.5)
     // gapRate = 4/4 = 1.0 (100% 触发信号)
     // weightedGapRate = 4*0.5 / 4 = 0.5 (加权严重度只到 50%)
     // 读者据此判断:100% 触发率但加权只到一半,大概率是软信号噪声,该复核
@@ -529,7 +529,7 @@ function makeMockExec(jsonOutput: string, costUSD = 0.001): ExecutorFn {
 describe('applyHedgingClassifier (v0.2)', () => {
   it('classifier 剔除假阳 hedging:byType.hedging 减少, gapRate 重算', async () => {
     clearHedgingCache();
-    // 4 个样本全只有 hedging,classifier 判 2 个真不确定 / 2 个业务推理
+    // 4 个用例全只有 hedging,classifier 判 2 个真不确定 / 2 个业务推理
     const results: ResultEntry[] = [
       { sample_id: 's1', variants: { v1: vr({ turns: [turn('assistant', '我不确定数据库结构', [])] }) } },
       { sample_id: 's2', variants: { v1: vr({ turns: [turn('assistant', '没有足够信息回答', [])] }) } },

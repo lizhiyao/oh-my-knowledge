@@ -24,7 +24,7 @@
  * sorted by severity then by sample_id so the report is stable across runs.
  */
 
-import type { Report, ResultEntry, Sample } from '../types.js';
+import type { Report, ResultEntry, Sample } from '../types/index.js';
 import { rougeN } from '../grading/assertions.js';
 
 export type SampleIssueKind =
@@ -133,19 +133,19 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
       if (max === 5 && min === 5) {
         issues.push({
           sample_id: entry.sample_id, severity: 'info', kind: 'all_pass',
-          message: `所有 variant 得分均为 5 — 样本可能太简单或断言过宽`,
+          message: `所有 variant 得分均为 5 — 用例可能太简单或断言过宽`,
           evidence: { scores: scoresMap(entry, variants) },
         });
       } else if (max === 1 && min === 1) {
         issues.push({
           sample_id: entry.sample_id, severity: 'error', kind: 'all_fail',
-          message: `所有 variant 得分均为 1 — 样本可能 broken / rubric 不可达`,
+          message: `所有 variant 得分均为 1 — 用例可能 broken / rubric 不可达`,
           evidence: { scores: scoresMap(entry, variants) },
         });
       } else if (max - min < opt.flatThreshold) {
         issues.push({
           sample_id: entry.sample_id, severity: 'warning', kind: 'flat_scores',
-          message: `分差 ${(max - min).toFixed(2)} < ${opt.flatThreshold} — 区分度低,该样本对结论贡献小`,
+          message: `分差 ${(max - min).toFixed(2)} < ${opt.flatThreshold} — 区分度低,该用例对结论贡献小`,
           evidence: { scores: scoresMap(entry, variants), spread: Number((max - min).toFixed(2)) },
         });
       }
@@ -155,7 +155,7 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
     if (errors > 0) {
       issues.push({
         sample_id: entry.sample_id, severity: errors === variants.length ? 'error' : 'warning', kind: 'error_prone',
-        message: `${errors}/${variants.length} variant 执行失败 — 检查样本配置 / 环境依赖`,
+        message: `${errors}/${variants.length} variant 执行失败 — 检查用例配置 / 环境依赖`,
         evidence: { errorCount: errors, variantCount: variants.length },
       });
     }
@@ -181,14 +181,14 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
     if (medianCost > 0 && s.cost >= opt.costOutlierK * medianCost) {
       issues.push({
         sample_id: s.entry.sample_id, severity: 'info', kind: 'cost_outlier',
-        message: `样本总成本 $${s.cost.toFixed(4)} ≥ ${opt.costOutlierK}× 中位数 $${medianCost.toFixed(4)}`,
+        message: `用例总成本 $${s.cost.toFixed(4)} ≥ ${opt.costOutlierK}× 中位数 $${medianCost.toFixed(4)}`,
         evidence: { cost: Number(s.cost.toFixed(4)), medianCost: Number(medianCost.toFixed(4)) },
       });
     }
     if (medianLatency > 0 && s.latencyMs >= opt.latencyOutlierK * medianLatency) {
       issues.push({
         sample_id: s.entry.sample_id, severity: 'info', kind: 'latency_outlier',
-        message: `样本总耗时 ${(s.latencyMs / 1000).toFixed(1)}s ≥ ${opt.latencyOutlierK}× 中位数 ${(medianLatency / 1000).toFixed(1)}s`,
+        message: `用例总耗时 ${(s.latencyMs / 1000).toFixed(1)}s ≥ ${opt.latencyOutlierK}× 中位数 ${(medianLatency / 1000).toFixed(1)}s`,
         evidence: { latencyMs: s.latencyMs, medianMs: medianLatency },
       });
     }
@@ -216,7 +216,7 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
           seenPair.add(key);
           issues.push({
             sample_id: prompts[i].id, severity: 'warning', kind: 'near_duplicate',
-            message: `prompt ROUGE-1 ${score.toFixed(2)} ≥ ${opt.duplicateRouge} 与样本 "${prompts[j].id}" 高度相似`,
+            message: `prompt ROUGE-1 ${score.toFixed(2)} ≥ ${opt.duplicateRouge} 与用例 "${prompts[j].id}" 高度相似`,
             evidence: { duplicateOf: prompts[j].id, rouge1: Number(score.toFixed(2)) },
           });
         }
@@ -279,12 +279,12 @@ export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: {
   const lines: string[] = [];
   const { topN } = options;
   lines.push('');
-  lines.push(`  样本质量诊断 — health score ${diag.healthScore}/100`);
-  lines.push(`  样本总数: ${diag.totals.samples}, flagged: ${diag.totals.flagged} (errors=${diag.totals.errors}, warnings=${diag.totals.warnings}, infos=${diag.totals.infos})`);
+  lines.push(`  用例质量诊断 — health score ${diag.healthScore}/100`);
+  lines.push(`  用例总数: ${diag.totals.samples}, flagged: ${diag.totals.flagged} (errors=${diag.totals.errors}, warnings=${diag.totals.warnings}, infos=${diag.totals.infos})`);
   lines.push('');
 
   if (diag.issues.length === 0) {
-    lines.push('  ✓ 未检测到样本质量问题');
+    lines.push('  ✓ 未检测到用例质量问题');
     lines.push('');
     return lines.join('\n');
   }
@@ -310,19 +310,19 @@ export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: {
   // Recommendations based on dominant issue kinds.
   lines.push('  建议:');
   if (diag.byKind.all_pass && diag.byKind.all_pass.length > diag.totals.samples * 0.3) {
-    lines.push('  - 样本太简单 (>30% all-pass) — 加难度 / 加更严断言来拉开 variant 差距');
+    lines.push('  - 用例太简单 (>30% all-pass) — 加难度 / 加更严断言来拉开 variant 差距');
   }
   if (diag.byKind.flat_scores && diag.byKind.flat_scores.length > diag.totals.samples * 0.3) {
-    lines.push('  - 多数样本区分度低 — 当前评分维度可能与 skill 差异不正交');
+    lines.push('  - 多数用例区分度低 — 当前评分维度可能与 skill 差异不正交');
   }
   if (diag.byKind.near_duplicate) {
-    lines.push('  - 删除或改写 near-duplicate 样本,避免数据有效维度被挤压');
+    lines.push('  - 删除或改写 near-duplicate 用例,避免数据有效维度被挤压');
   }
   if (diag.byKind.ambiguous_rubric) {
-    lines.push('  - rubric 在这些样本上歧义大 — 改写 rubric 或加更多确定性断言锚定');
+    lines.push('  - rubric 在这些用例上歧义大 — 改写 rubric 或加更多确定性断言锚定');
   }
   if (diag.byKind.error_prone) {
-    lines.push('  - 这些样本执行失败 — 检查环境依赖 / executor 配置 / 样本本身是否过期');
+    lines.push('  - 这些用例执行失败 — 检查环境依赖 / executor 配置 / 用例本身是否过期');
   }
 
   lines.push('');

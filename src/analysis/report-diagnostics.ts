@@ -2,7 +2,7 @@
  * Auto-analysis: detect patterns and generate insights from evaluation results.
  */
 
-import type { Report, ResultEntry, Insight, AnalysisResult } from '../types.js';
+import type { Report, ResultEntry, Insight, AnalysisResult } from '../types/index.js';
 
 /**
  * Analyze an evaluation report and produce insights + suggestions.
@@ -147,9 +147,9 @@ function generateSummary(report: Report, variants: string[]): string | undefined
   if (cCost > 0 && tCost > 0 && Math.abs(tCost - cCost) / cCost > 0.05) {
     const pct = Math.abs(((tCost - cCost) / cCost) * 100).toFixed(0);
     if (tCost < cCost) {
-      diffs.push(`单样本成本 $${tCost.toFixed(4)} vs $${cCost.toFixed(4)}（↓${pct}%）`);
+      diffs.push(`单用例成本 $${tCost.toFixed(4)} vs $${cCost.toFixed(4)}（↓${pct}%）`);
     } else {
-      diffs.push(`单样本成本 $${tCost.toFixed(4)} vs $${cCost.toFixed(4)}（↑${pct}%）`);
+      diffs.push(`单用例成本 $${tCost.toFixed(4)} vs $${cCost.toFixed(4)}（↑${pct}%）`);
     }
   }
 
@@ -353,11 +353,11 @@ function detectUniformScores(results: ResultEntry[], variants: string[], insight
     insights.push({
       type: 'uniform_scores',
       severity: uniformCount === results.length ? 'warning' : 'info',
-      message: `${uniformCount}/${results.length} 个样本在各变体间分差 < 0.5，区分度较低`,
+      message: `${uniformCount}/${results.length} 个用例在各变体间分差 < 0.5，区分度较低`,
       details: uniformSamples,
     });
     if (uniformCount === results.length) {
-      suggestions.push('所有样本分数差异都很小，建议增加更有挑战性的测试用例或更严格的评分标准');
+      suggestions.push('所有用例分数差异都很小，建议增加更有挑战性的测试用例或更严格的评分标准');
     }
   }
 }
@@ -454,8 +454,8 @@ function detectEfficiencyGap(report: Report, variants: string[], insights: Insig
       const costPct = ((costDiff / baseCost) * 100).toFixed(0);
       if (Math.abs(costDiff / baseCost) > 0.2) {
         details.push(costDiff > 0
-          ? `单样本成本降低 ${Math.abs(Number(costPct))}%（$${otherCost.toFixed(4)} vs $${baseCost.toFixed(4)}）`
-          : `单样本成本增加 ${Math.abs(Number(costPct))}%（$${otherCost.toFixed(4)} vs $${baseCost.toFixed(4)}）`);
+          ? `单用例成本降低 ${Math.abs(Number(costPct))}%（$${otherCost.toFixed(4)} vs $${baseCost.toFixed(4)}）`
+          : `单用例成本增加 ${Math.abs(Number(costPct))}%（$${otherCost.toFixed(4)} vs $${baseCost.toFixed(4)}）`);
       }
     }
 
@@ -670,7 +670,7 @@ function detectHighCost(results: ResultEntry[], variants: string[], insights: In
     insights.push({
       type: 'high_cost_sample',
       severity: 'info',
-      message: `${expensive.length} 个样本成本显著高于平均值 (>${(avg * 2).toFixed(4)} USD)`,
+      message: `${expensive.length} 个用例成本显著高于平均值 (>${(avg * 2).toFixed(4)} USD)`,
       details: expensive,
     });
   }

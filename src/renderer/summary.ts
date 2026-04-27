@@ -1,7 +1,7 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import { pValueCategory } from '../eval-core/statistics.js';
 import { computeVerdict, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
-import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types.js';
+import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types/index.js';
 
 /**
  * Verdict pill — sticky banner at the top of the HTML report giving the same
@@ -38,8 +38,8 @@ function verdictOneLine(level: VerdictLevel, lang: Lang, treatment?: string, con
       case 'PROGRESS':     return `${t} 比 ${c} 明显更好 — 可以发布`;
       case 'CAUTIOUS':     return `${t} 比 ${c} 略好 — 但建议再仔细看,差距很小或某层未达标`;
       case 'REGRESS':      return `${t} 比 ${c} 明显更差 — 不要发布`;
-      case 'NOISE':        return `${t} 和 ${c} 没看出明显差别 — 可以加大样本量再试`;
-      case 'UNDERPOWERED': return `样本数太少,看不出 ${t} 和 ${c} 的差别 — 多跑几个再看`;
+      case 'NOISE':        return `${t} 和 ${c} 没看出明显差别 — 可以多加几条用例再试`;
+      case 'UNDERPOWERED': return `用例数太少,看不出 ${t} 和 ${c} 的差别 — 多跑几个再看`;
       case 'SOLO':         return `只跑了一组,需要加对照组才能对比`;
     }
   }
@@ -63,7 +63,7 @@ export function levelLabel(level: VerdictLevel, lang: Lang): string {
       case 'CAUTIOUS':     return '略微进步';
       case 'REGRESS':      return '明显退步';
       case 'NOISE':        return '基本持平';
-      case 'UNDERPOWERED': return '样本不足';
+      case 'UNDERPOWERED': return '用例不足';
       case 'SOLO':         return '无法对比';
     }
   }
@@ -80,7 +80,7 @@ export function levelTooltip(level: VerdictLevel, lang: Lang): string {
       case 'REGRESS':      return '实验组分数显著劣于对照组';
       case 'CAUTIOUS':     return '实验组略优于对照组,但差距小或某层未达 gate';
       case 'NOISE':        return '两组分数差距置信区间跨过 0,统计上分辨不出效果';
-      case 'UNDERPOWERED': return '样本量太小,需要多跑几次再看';
+      case 'UNDERPOWERED': return '用例数太少,需要多加几条再看';
       case 'SOLO':         return '只跑了一组,没做对比';
     }
   }
@@ -102,9 +102,9 @@ export function levelTooltip(level: VerdictLevel, lang: Lang): string {
 // Δ+CI 核心, headline 拼装版只在 SOLO mode 用).
 //
 // computeVerdict 在 each mode + 历史脏 report 上有 NPE 风险 (顶层 summary
-// 缺 variant 数据时 evaluateCiGates 访问 .avgFactScore 炸). 加 try/catch
+// 缺 variant 数据时 evaluateLayerGates 访问 .avgFactScore 炸). 加 try/catch
 // 让 renderer 不 crash, 改为静默 skip pill — 这是 v0.21 B.4 的 scope 范围,
-// verdict.ts/ci-gates.ts 的 defensive 修复留作单独 task.
+// verdict.ts/layer-gates.ts 的 defensive 修复留作单独 task.
 export function renderVerdictPill(report: Report, lang: Lang): string {
   let result: VerdictResult;
   try {
@@ -318,7 +318,7 @@ export function renderSaturationCurve(saturation: SaturationData | undefined, va
         ? (lang === 'zh' ? `已饱和 (N=${v.atN})` : `saturated at N=${v.atN}`)
         : (lang === 'zh' ? '尚未饱和' : 'not yet saturated');
       const conf = v.confidence === 'low'
-        ? `<span style="color:var(--yellow)">⚠ ${lang === 'zh' ? '样本太少,结论参考意义有限' : 'low confidence, interpret cautiously'}</span>`
+        ? `<span style="color:var(--yellow)">⚠ ${lang === 'zh' ? '用例太少,结论参考意义有限' : 'low confidence, interpret cautiously'}</span>`
         : '';
       verdictRows.push(
         `<tr><td><strong>${e(variant)}</strong></td>
@@ -339,11 +339,11 @@ export function renderSaturationCurve(saturation: SaturationData | undefined, va
 
   return `
     <h2 style="margin-top:24px">${lang === 'zh' ? '饱和曲线 (Saturation curve)' : 'Saturation curve'}</h2>
-    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? '随累积样本数 N 增长的均值与 95% CI。CI 宽度衰减放缓即饱和——再多样本对结论无实质收益。' : 'Mean and 95% CI as cumulative N grows. When CI shrink rate flattens, the evidence has saturated — more samples buy little.'}</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? '随累积用例数 N 增长的均值与 95% CI。CI 宽度衰减放缓即饱和——再多用例对结论无实质收益。' : 'Mean and 95% CI as cumulative N grows. When CI shrink rate flattens, the evidence has saturated — more samples buy little.'}</p>
     <svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:${width}px;height:auto;display:block">
       ${yTicks}
       <text x="${padL - 36}" y="${padT + plotH / 2}" font-size="11" text-anchor="middle" fill="var(--text-muted)" transform="rotate(-90 ${padL - 36} ${padT + plotH / 2})">${lang === 'zh' ? '均值' : 'mean'}</text>
-      <text x="${padL + plotW / 2}" y="${height - 4}" font-size="11" text-anchor="middle" fill="var(--text-muted)">${lang === 'zh' ? '累积样本数 N' : 'cumulative N'}</text>
+      <text x="${padL + plotW / 2}" y="${height - 4}" font-size="11" text-anchor="middle" fill="var(--text-muted)">${lang === 'zh' ? '累积用例数 N' : 'cumulative N'}</text>
       ${xTicks}
       ${seriesParts.join('\n')}
     </svg>
@@ -371,7 +371,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
 
   // 渲染单层分数 cell(事实/行为/LLM 评价通用)。
   // 优先读跨 run 均值(byLayer[key].mean),fallback 到 summary 的单 run avg。
-  // 缺数据时显示 "—" + 灰色,让读者明确看到"这一层这批样本/评委没测到",不假装有值。
+  // 缺数据时显示 "—" + 灰色,让读者明确看到"这一层这批用例/评委没测到",不假装有值。
   function renderLayerCell(varianceMean: number | undefined, summaryValue: number | undefined, detailHtml = ''): string {
     const v = varianceMean ?? summaryValue;
     const hasValue = typeof v === 'number' && v > 0;
@@ -429,7 +429,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     // 无 --repeat(variance 缺失) 时主值显示 "—" + 明示需多跑,不虚报 100%——
     // 符合 omk 叙事底线"诚实交代测不到什么"。
     //
-    // 跨样本 min~max range 不是稳定性(反映样本难度差异,非 variant 波动),已从此列移除。
+    // 跨用例 min~max range 不是稳定性(反映用例难度差异,非 variant 波动),已从此列移除。
     // 成功率 ≠ 稳定性(执行完成率,不是分数一致性),降级到 < 100% 时的副区 alert。
     const total = s.totalSamples || 0;
     const successCount = s.successCount || 0;
@@ -464,10 +464,16 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       const ciHi = fmtNum(vd.upper, 2);
       stabDetails.push(`CV ${cvPct.toFixed(1)}% · 95% CI [${ciLo}, ${ciHi}]`);
     } else {
-      // No cross-run data → honestly say "not measurable with single run".
-      stabValue = '—';
-      stabColor = 'var(--text-muted)';
-      stabDetails.push(`<span style="color:var(--text-muted)">${lang === 'zh' ? '需 --repeat ≥ 2' : 'needs --repeat ≥ 2'}</span>`);
+      // No cross-run data → make the gap loud, not silent. 之前用灰色 "—" 让单轮
+      // 报告读者误以为"无显示 = 没问题",实际是 omk 测不到这个维度。改红 +
+      // "未测量" 字样让缺失可见 — 鼓励用户加 --repeat ≥ 2 而不是默默 ship。
+      stabValue = lang === 'zh' ? '⚠ 未测量' : '⚠ Not measured';
+      stabColor = 'var(--red)';
+      stabDetails.push(
+        `<span style="color:var(--red)">${
+          lang === 'zh' ? '单轮评测,加 --repeat ≥ 2 才能测 CV' : 'single-run; needs --repeat ≥ 2 to measure CV'
+        }</span>`,
+      );
     }
 
     // Execution-completion alerts:success rate < 100% 时降级到此处,避免和"稳定性"语义混淆。
@@ -906,7 +912,7 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
       ? '展开三层独立显著性（fact / behavior / judge）'
       : 'Show three-layer independent significance (fact / behavior / judge)';
     const openAttr = layeredStatsOpen ? ' open' : '';
-    // 多重比较 disclaimer:三层独立 t 检验,family-wise error 未矫正;小样本 Cohen's d 不稳。
+    // 多重比较 disclaimer:三层独立 t 检验,family-wise error 未矫正;小样本下 Cohen's d 不稳(stats 术语,见 terminology-spec §6 例外)。
     // 不默默修改 significant 判定(避免用户被"自动矫正"误导),而是把判读责任明示交给读者。
     const disclaimerText = lang === 'zh'
       ? '⚠ 三层独立检验:p 值未做多重比较矫正(建议按 Bonferroni α/3 = 0.017 判断显著);小样本(n ≤ 10)下 Cohen\'s d 效应量标签仅供探索参考,不作结论'
@@ -963,12 +969,12 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
   const glossaryZh: GlossaryRow[] = [
     { label: '差距', desc: '跨轮均值胜出者 + 绝对差值（原始单位）' },
     { label: '效应量', desc: '差距相对标准差的倍数。阈值：0.2=小 / 0.5=中 / 0.8=大' },
-    { label: "Hedges' g", desc: '小样本修正版，n1+n2<20 时优先参考', sub: true },
+    { label: "Hedges' g", desc: '小样本修正版（统计术语）；n1+n2<20 时优先参考', sub: true },
     { label: "Cohen's d", desc: '未修正版，n1+n2≥20 时是学术惯例', sub: true },
     { label: '显著性', desc: 't 检验结论，基于 p<0.05 阈值。回答"差异真不真"，和效应量"差多大"互补' },
     { label: 'p 值', desc: '假设真的没差异时，观察到当前差距的概率。越小越可信。0.05 只是约定阈值', sub: true },
     { label: 't 值', desc: '均值差 ÷ 估计误差，需配合 df 和效应量解读，不能单独看', sub: true },
-    { label: 'df 自由度', desc: '≈"有效样本量"。--repeat 3 时通常 2~4；想达到 20+ 需 --repeat 10+', sub: true },
+    { label: 'df 自由度', desc: '≈"有效用例数"。--repeat 3 时通常 2~4；想达到 20+ 需 --repeat 10+', sub: true },
   ];
   const glossaryEn: GlossaryRow[] = [
     { label: 'Gap', desc: 'Cross-run mean winner + absolute difference (raw units)' },
@@ -1518,7 +1524,7 @@ export function renderGapSection(gapReports: Record<string, GapReport> | undefin
     const pctColor = pct <= 10 ? 'var(--green)' : pct <= 30 ? 'var(--yellow)' : 'var(--red)';
     const barW = Math.max(2, pct);
 
-    // v0.2 加权严重度 (spec §6):weightedGapRate 按样本最强信号权重聚合,总是 ≤ gapRate,
+    // v0.2 加权严重度 (spec §6):weightedGapRate 按用例最强信号权重聚合,总是 ≤ gapRate,
     // 差值反映"软信号(hedging / explicit_marker)占比"——若差值大,说明 gap_rate 被软信号
     // 拉高,读者该复核弱信号的真实含义。若差值小,说明信号以硬证据为主,结论可信度高。
     const weightedPct = Math.round(report.weightedGapRate * 100);
@@ -1576,7 +1582,7 @@ export function renderGapSection(gapReports: Record<string, GapReport> | undefin
         <div style="width:${barW}%;height:100%;background:${pctColor};border-radius:4px"></div>
       </div>
       <div style="font-size:var(--fs-detail);color:var(--text-muted);margin-bottom:4px">
-        ${report.samplesWithGap} / ${report.sampleCount} ${lang === 'zh' ? '个样本出现搜索未命中或表达不确定' : 'samples with search miss or hedging'}
+        ${report.samplesWithGap} / ${report.sampleCount} ${lang === 'zh' ? '个用例出现搜索未命中或表达不确定' : 'samples with search miss or hedging'}
       </div>
       <div style="font-size:var(--fs-detail);color:var(--text-secondary);margin-bottom:10px">${weightedHint}</div>
       ${typeBadges ? `<div style="margin-bottom:10px">${typeBadges}</div>` : ''}

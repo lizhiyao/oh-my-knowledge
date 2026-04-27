@@ -19,7 +19,7 @@ import {
 import { renderSampleTable } from './table.js';
 import { renderTrendsBody } from './trends.js';
 import { computeVerdict, type VerdictLevel } from '../eval-core/verdict.js';
-import type { Report, Lang } from '../types.js';
+import type { Report, Lang } from '../types/index.js';
 
 // v0.21 B.4 — 列表页 status pill 用的 dot. PROGRESS/REGRESS 实心(强信号),
 // CAUTIOUS 三角(警示),NOISE 空心圆(有信号但无效果),UNDERPOWERED 部分填充
@@ -75,7 +75,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
 
     // v0.21 B.4 — 列表页 verdict pill: 一眼分辨 progress / regress / noise.
     // computeVerdict 是同步纯函数(report -> level),per row 跑成本 O(samples).
-    // each mode 或脏老报告会让 ci-gates 访问 undefined.avgFactScore 抛 NPE,
+    // each mode 或脏老报告会让 layer-gates 访问 undefined.avgFactScore 抛 NPE,
     // try/catch 兜底, 失败的 row 不显示 pill(不要让一个坏 report 把整个列表
     // 撤掉). verdict.ts 的 defensive 修复另立 task.
     let statusPill = '';

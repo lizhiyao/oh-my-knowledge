@@ -11,7 +11,7 @@ import {
   toPersistedAgreement,
 } from '../../src/grading/gold-cli.js';
 import { loadGoldDataset } from '../../src/grading/gold-dataset.js';
-import type { Report } from '../../src/types.js';
+import type { Report } from '../../src/types/index.js';
 
 let dir: string;
 

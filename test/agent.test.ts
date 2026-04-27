@@ -15,7 +15,7 @@ import { runAssertions, buildTraceSummary } from '../src/grading/index.js';
 import { renderAgentOverview } from '../src/renderer/summary.js';
 import { buildVariantResult, buildVariantSummary } from '../src/eval-core/schema.js';
 import { analyzeResults } from '../src/analysis/report-diagnostics.js';
-import type { ExecResult, Report, ToolCallInfo, TurnInfo } from '../src/types.js';
+import type { ExecResult, Report, ToolCallInfo, TurnInfo } from '../src/types/index.js';
 
 // ---------------------------------------------------------------------------
 // extractAgentTrace

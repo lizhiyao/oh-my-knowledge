@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { computeVerdict, formatVerdictText } from '../../src/eval-core/verdict.js';
-import type { Report, VariantSummary } from '../../src/types.js';
+import type { Report, VariantSummary } from '../../src/types/index.js';
 
 const summary = (avg: { fact?: number; behavior?: number; judge?: number; composite?: number }): VariantSummary => ({
   totalSamples: 30, successCount: 30, errorCount: 0, errorRate: 0,
@@ -189,7 +189,7 @@ describe('computeVerdict', () => {
     assert.equal(v.perPair?.length, 2);
   });
 
-  it('formatVerdictText stays under 6 lines for the headline path', () => {
+  it('formatVerdictText stays under 7 lines for the headline path (含 stability rationale)', () => {
     const r = buildReport({
       variants: ['baseline', 'skill'],
       perVariantAvg: {
@@ -204,6 +204,59 @@ describe('computeVerdict', () => {
     const v = computeVerdict(r);
     const text = formatVerdictText(v);
     const lines = text.split('\n');
-    assert.ok(lines.length <= 6, `expected ≤6 lines, got ${lines.length}: ${text}`);
+    assert.ok(lines.length <= 7, `expected ≤7 lines, got ${lines.length}: ${text}`);
+  });
+
+  it('rationale.stability 在单轮(无 variance)时显式说"未测量"', () => {
+    const r = buildReport({
+      variants: ['baseline', 'skill'],
+      perVariantAvg: {
+        baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+        skill:    { fact: 4.3, behavior: 4.3, judge: 4.3, composite: 4.3 },
+      },
+      pairs: [{
+        control: 'baseline', treatment: 'skill',
+        diffBootstrapCI: { low: 0.1, high: 0.5, estimate: 0.3, samples: 1000, significant: true },
+      }],
+    });
+    const v = computeVerdict(r);
+    assert.match(v.rationale.stability ?? '', /未测量/);
+    assert.match(v.rationale.stability ?? '', /--repeat/);
+  });
+
+  it('rationale.stability 在多轮 variance 数据齐时报 CV 主指标', () => {
+    const r = buildReport({
+      variants: ['baseline', 'skill'],
+      perVariantAvg: {
+        baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+        skill:    { fact: 4.3, behavior: 4.3, judge: 4.3, composite: 4.3 },
+      },
+      pairs: [{
+        control: 'baseline', treatment: 'skill',
+        diffBootstrapCI: { low: 0.1, high: 0.5, estimate: 0.3, samples: 1000, significant: true },
+      }],
+      variance: {
+        runs: 3,
+        perVariant: {
+          baseline: { scores: [4.0, 4.0, 4.0], mean: 4.0, lower: 4.0, upper: 4.0, stddev: 0 },
+          skill:    { scores: [4.3, 4.3, 4.3], mean: 4.3, lower: 4.3, upper: 4.3, stddev: 0 },
+        },
+        comparisons: [],
+      },
+    });
+    const v = computeVerdict(r);
+    assert.match(v.rationale.stability ?? '', /CV=0\.0%/);
+    assert.match(v.rationale.stability ?? '', /稳定/);
+    assert.match(v.rationale.stability ?? '', /runs=3/);
+  });
+
+  it('rationale.stability 单 variant SOLO 路径同样标"未测量"', () => {
+    const r = buildReport({
+      variants: ['solo'],
+      perVariantAvg: { solo: { fact: 4, behavior: 4, judge: 4, composite: 4 } },
+    });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'SOLO');
+    assert.match(v.rationale.stability ?? '', /未测量/);
   });
 });

@@ -1,15 +1,16 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { writeFileSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   extractDependencies,
+  extractFilesByBase,
   checkDependencies,
   preflightDependencies,
   formatDependencyErrors,
 } from '../src/eval-core/dependency-checker.js';
-import type { Sample } from '../src/types.js';
+import type { Artifact, Sample } from '../src/types/index.js';
 
 const tmp = () => join(tmpdir(), `omk-dep-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
 
@@ -170,6 +171,93 @@ describe('preflightDependencies', () => {
   it('无依赖时通过', async () => {
     const result = await preflightDependencies(['纯文本 skill'], [], process.cwd());
     assert.ok(result.ok);
+  });
+
+  it('directory-skill 的相对路径锚到 skillRoot,不会撞到全局 cwd', async () => {
+    // 模拟两个 directory-skill 各自在自己根目录下有 assets/foo.md
+    // bug-fix 之前:用单一 cwd 找 assets/foo.md,只能找到一个或全找不到
+    // bug-fix 之后:每个 skill 的引用按各自 skillRoot 解析
+    const root = tmp();
+    mkdirSync(join(root, 'skill-a'), { recursive: true });
+    mkdirSync(join(root, 'skill-b'), { recursive: true });
+    writeFileSync(join(root, 'skill-a', 'assets-a-only.md'), 'a');
+    writeFileSync(join(root, 'skill-b', 'assets-b-only.md'), 'b');
+
+    try {
+      const artifacts: Artifact[] = [
+        {
+          name: 'skill-a', kind: 'skill', source: 'variant-name',
+          content: '查看 assets-a-only.md',
+          locator: join(root, 'skill-a', 'SKILL.md'),
+          skillRoot: join(root, 'skill-a'),
+        },
+        {
+          name: 'skill-b', kind: 'skill', source: 'variant-name',
+          content: '查看 assets-b-only.md',
+          locator: join(root, 'skill-b', 'SKILL.md'),
+          skillRoot: join(root, 'skill-b'),
+        },
+      ];
+      const skillContents = artifacts.map((a) => a.content!);
+      // 全局 cwd 设为 root,两个 skill 在 root 下都找不到 assets-a-only.md / assets-b-only.md
+      // 但分别按 skillRoot 解析就都能找到
+      const result = await preflightDependencies(skillContents, [], root, undefined, artifacts);
+      assert.ok(result.ok, `应通过,但 missing=${JSON.stringify(result.missing)}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('directory-skill 引用的文件不存在时仍报错(并标出正确的 baseDir)', async () => {
+    const root = tmp();
+    mkdirSync(join(root, 'skill-a'), { recursive: true });
+    try {
+      const artifacts: Artifact[] = [
+        {
+          name: 'skill-a', kind: 'skill', source: 'variant-name',
+          content: '需要读 assets/missing.md',
+          locator: join(root, 'skill-a', 'SKILL.md'),
+          skillRoot: join(root, 'skill-a'),
+        },
+      ];
+      const result = await preflightDependencies(['需要读 assets/missing.md'], [], root, undefined, artifacts);
+      assert.ok(!result.ok);
+      const fileIssue = result.missing.find((m) => m.category === 'file' && m.name.includes('missing.md'));
+      assert.ok(fileIssue, '应报告 missing.md 文件缺失');
+      assert.ok(fileIssue!.hint.includes(join(root, 'skill-a')), `hint 应含 skillRoot 路径,实际:${fileIssue!.hint}`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('extractFilesByBase', () => {
+  it('每个 artifact 按各自 skillRoot 分桶', () => {
+    const artifacts: Artifact[] = [
+      { name: 'a', kind: 'skill', source: 'variant-name', content: '看 docs/a.md', skillRoot: '/root/a' },
+      { name: 'b', kind: 'skill', source: 'variant-name', content: '看 docs/b.md', skillRoot: '/root/b' },
+    ];
+    const map = extractFilesByBase(artifacts, '/default/cwd');
+    assert.equal(map.size, 2);
+    assert.ok(map.get('/root/a')?.has('docs/a.md'));
+    assert.ok(map.get('/root/b')?.has('docs/b.md'));
+  });
+
+  it('无 skillRoot 的 artifact 落到 defaultCwd', () => {
+    const artifacts: Artifact[] = [
+      { name: 'a', kind: 'skill', source: 'variant-name', content: '看 docs/a.md' },
+    ];
+    const map = extractFilesByBase(artifacts, '/default/cwd');
+    assert.ok(map.get('/default/cwd')?.has('docs/a.md'));
+  });
+
+  it('artifact.cwd 优先于 defaultCwd(但低于 skillRoot)', () => {
+    const artifacts: Artifact[] = [
+      { name: 'a', kind: 'skill', source: 'variant-name', content: '看 docs/a.md', cwd: '/explicit' },
+    ];
+    const map = extractFilesByBase(artifacts, '/default/cwd');
+    assert.ok(map.get('/explicit')?.has('docs/a.md'));
+    assert.equal(map.get('/default/cwd'), undefined);
   });
 });
 

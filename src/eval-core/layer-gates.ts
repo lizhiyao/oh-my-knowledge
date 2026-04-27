@@ -1,24 +1,24 @@
-import type { VariantSummary } from '../types.js';
+import type { VariantSummary } from '../types/index.js';
 
-export interface CiGateResult {
+export interface LayerGateResult {
   allPass: boolean;
   lines: string[];
 }
 
 /**
- * PR-3 three-gate CI 门禁:事实 / 行为 / LLM 评价 三层各自与 threshold 独立比较,
+ * Three-layer gate:事实 / 行为 / LLM 评价 三层各自与 threshold 独立比较,
  * 任一层低于 threshold 即 FAIL。这样某一层崩盘会被暴露,不会被 composite 合成分
  * 均化掩盖。
  *
  * 三层都缺(eval-samples 既没定义断言也没定义 rubric)时直接 FAIL + 引导,
- * 不走 composite fallback——符合 0-1 窗口期不做兼容原则与 PR-3 精神。
+ * 不走 composite fallback——符合 0-1 窗口期不做兼容原则。
  *
- * 抽为纯函数便于单测;handleCi 只负责 IO(读 config、打印、退出码)。
+ * 抽为纯函数便于单测;handleGate 只负责 IO(读 config、打印、退出码)。
  */
-export function evaluateCiGates(
+export function evaluateLayerGates(
   summary: Record<string, VariantSummary>,
   threshold: number,
-): CiGateResult {
+): LayerGateResult {
   let allPass = true;
   const lines: string[] = [];
 

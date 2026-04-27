@@ -27,8 +27,8 @@
  * empirical) is documented inline so users can audit and override.
  */
 
-import type { Report, VariantPairComparison, VariantSummary } from '../types.js';
-import { evaluateCiGates } from './ci-gates.js';
+import type { Report, VariantPairComparison, VariantSummary } from '../types/index.js';
+import { evaluateLayerGates } from './layer-gates.js';
 
 export type VerdictLevel =
   | 'PROGRESS'
@@ -49,6 +49,9 @@ export interface VerdictResult {
     significance?: string;
     layerWinners?: string;
     sampleSize?: string;
+    /** Stability claim:CV / variance summary if --repeat ≥ 2, 否则显式说"未测量"
+     *  让用户感受到 single-run 的盲区,而不是默默不提。 */
+    stability?: string;
     judgeAgreement?: string;
     shipRecommendation?: string;
   };
@@ -58,7 +61,7 @@ export interface VerdictResult {
 
 export interface VerdictOptions {
   /** Three-layer ci-gate threshold; defaults to 3.5 (matches `omk bench ci`). */
-  ciThreshold?: number;
+  gateThreshold?: number;
   /**
    * Magnitude (in raw score points) below which a "significant" diff is treated
    * as practically negligible (statistically real but too small to matter).
@@ -71,7 +74,7 @@ export interface VerdictOptions {
  * Compute a verdict for a finished report. Pure function — no I/O.
  */
 export function computeVerdict(report: Report, options: VerdictOptions = {}): VerdictResult {
-  const { ciThreshold = 3.5, triviallySmallDiff = 0.1 } = options;
+  const { gateThreshold = 3.5, triviallySmallDiff = 0.1 } = options;
   const variants = report.meta?.variants ?? [];
   const summary = report.summary ?? {};
   const sampleCount = report.meta?.sampleCount ?? 0;
@@ -79,15 +82,16 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
   if (variants.length < 2) {
     // Single-variant — no comparison possible. Just report whether the variant
     // passes its own three-layer gate.
-    const gate = evaluateCiGates(summary, ciThreshold);
+    const gate = evaluateLayerGates(summary, gateThreshold);
     return {
       level: 'SOLO',
       headline: gate.allPass
-        ? `SOLO · single variant, three-layer gate PASS @ threshold ${ciThreshold}`
+        ? `SOLO · single variant, three-layer gate PASS @ threshold ${gateThreshold}`
         : `SOLO · single variant, three-layer gate FAIL — see ci output`,
       rationale: {
         layerWinners: gate.lines.join('; '),
         sampleSize: `N=${sampleCount}`,
+        stability: formatStability(report),
       },
       variants,
     };
@@ -100,7 +104,7 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
   const pairs: VariantPairComparison[] = explicitPairs.length > 0
     ? explicitPairs
     : variants.slice(1).map((treatment) => ({ control: variants[0], treatment }));
-  const perPair = pairs.map((p) => verdictForPair(p, summary, sampleCount, report, ciThreshold, triviallySmallDiff));
+  const perPair = pairs.map((p) => verdictForPair(p, summary, sampleCount, report, gateThreshold, triviallySmallDiff));
 
   // Worst-case roll-up: REGRESS dominates, then CAUTIOUS, then NOISE/UNDERPOWERED, then PROGRESS.
   const order: VerdictLevel[] = ['REGRESS', 'CAUTIOUS', 'UNDERPOWERED', 'NOISE', 'PROGRESS'];
@@ -121,6 +125,7 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
 
   const layerWinners = formatLayerWinners(summary, variants);
   const sampleSize = formatSampleSize(report);
+  const stability = formatStability(report);
   const judgeAgreement = formatJudgeAgreement(report);
   const shipRecommendation = recommendation(topLevel, perPair);
 
@@ -134,6 +139,7 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
       significance,
       layerWinners,
       sampleSize,
+      stability,
       judgeAgreement,
       shipRecommendation,
     },
@@ -157,14 +163,14 @@ function verdictForPair(
   summary: Record<string, VariantSummary>,
   sampleCount: number,
   report: Report,
-  ciThreshold: number,
+  gateThreshold: number,
   triviallySmallDiff: number,
 ): { control: string; treatment: string; level: VerdictLevel; headline: string } {
   const { control, treatment, diffBootstrapCI: diff } = pair;
 
   // Layer-gate check: did any layer fall below threshold for either variant?
-  const cGate = evaluateCiGates({ [control]: summary[control] }, ciThreshold);
-  const tGate = evaluateCiGates({ [treatment]: summary[treatment] }, ciThreshold);
+  const cGate = evaluateLayerGates({ [control]: summary[control] }, gateThreshold);
+  const tGate = evaluateLayerGates({ [treatment]: summary[treatment] }, gateThreshold);
 
   // No bootstrap CI available → fall back to point-estimate diff comparison.
   if (!diff) {
@@ -290,6 +296,40 @@ function formatSampleSize(report: Report): string {
   return `N=${n}, not yet saturated (${v.confidence} confidence)`;
 }
 
+/**
+ * Stability rationale. 三种状态:
+ *   - --repeat ≥ 2 + 有 variance 数据: 报告 CV (variation coefficient) 主指标
+ *   - --repeat ≥ 2 但 variance 缺失: 异常,标 "—" 提示数据丢失
+ *   - --repeat < 2: 显式说"未测量,需 --repeat ≥ 2",而不是默默不提
+ *
+ * 单轮场景关键:不是"稳定 = 100%"(常见误读),而是"测不到稳定性"。
+ * Verdict 必须诚实交代这个盲区,不能让用户以为没说就是 OK。
+ */
+function formatStability(report: Report): string {
+  const runs = report.variance?.runs ?? report.meta?.request?.repeat ?? 1;
+  if (runs < 2) {
+    return '稳定性未测量(单轮评测,需 --repeat ≥ 2 才能测 CV)';
+  }
+  const variance = report.variance?.perVariant;
+  if (!variance || Object.keys(variance).length === 0) {
+    return `runs=${runs} 但 variance 数据缺失`;
+  }
+  // CV = stddev / mean,取所有 variant 的中位数(单 variant 易有 NaN/0,聚合更稳)
+  const cvs: number[] = [];
+  for (const v of Object.values(variance)) {
+    if (typeof v.stddev === 'number' && typeof v.mean === 'number' && v.mean > 0) {
+      cvs.push(v.stddev / v.mean);
+    }
+  }
+  if (cvs.length === 0) return `runs=${runs}, CV 计算失败(stddev/mean 数据缺失)`;
+  cvs.sort((a, b) => a - b);
+  const median = cvs[Math.floor(cvs.length / 2)];
+  const cvPct = (median * 100).toFixed(1);
+  // 阈值参考 terminology-spec §5:<5% 稳 / 5-15% 中 / >15% 不稳
+  const verdict = median < 0.05 ? '稳定' : median < 0.15 ? '中等' : '不稳';
+  return `CV=${cvPct}% (${verdict}, runs=${runs}; 阈值 <5%=稳/5-15%=中/>15%=不稳)`;
+}
+
 function formatJudgeAgreement(report: Report): string | undefined {
   const a = report.meta?.humanAgreement;
   if (!a) return undefined;
@@ -329,6 +369,7 @@ export function formatVerdictText(result: VerdictResult, options: { verbose?: bo
   lines.push(`  ${result.headline}`);
   if (result.rationale.layerWinners) lines.push(`  Layer winners: ${result.rationale.layerWinners}`);
   if (result.rationale.sampleSize) lines.push(`  Sample size:   ${result.rationale.sampleSize}`);
+  if (result.rationale.stability) lines.push(`  Stability:     ${result.rationale.stability}`);
   if (result.rationale.judgeAgreement) lines.push(`  Judge α:       ${result.rationale.judgeAgreement}`);
   if (result.rationale.shipRecommendation) lines.push(`  ${result.rationale.shipRecommendation}`);
   if (options.verbose && result.perPair && result.perPair.length > 1) {

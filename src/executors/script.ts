@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { ExecResult, ExecutorFn, ExecutorInput } from '../types.js';
+import type { ExecResult, ExecutorFn, ExecutorInput } from '../types/index.js';
 import { DEFAULT_TIMEOUT_MS } from './shared.js';
 
 export function createScriptExecutor(command: string): ExecutorFn {

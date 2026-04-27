@@ -21,7 +21,7 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 - **Six-dimension scoring** — separate signals for Fact / Behavior / LLM-judge / Cost / Efficiency / Stability, so a regression in one axis isn't hidden by gains in another
 - **Production session observability** — parse Claude Code session JSONL traces, measure per-skill failure rate, latency, token cost, and knowledge-gap signals on real user sessions
 - **Knowledge-gap detection** — severity-weighted signals (explicit markers / failed searches / hedging language / repeated failures) quantify risk exposure instead of claiming completeness
-- **Pre-merge CI gate** — `omk bench ci` enforces three-layer all-pass (fact + behavior + llm-judge) semantics, catching single-layer regressions a composite score would hide
+- **Pre-merge CI gate** — `omk bench gate` enforces three-layer all-pass (fact + behavior + llm-judge) semantics, catching single-layer regressions a composite score would hide
 - **One-line ship/no-ship verdict** — `omk bench verdict <reportId>` aggregates bootstrap CI / three-layer ci-gate / saturation / human α into a six-tier verdict (PROGRESS / CAUTIOUS / REGRESS / NOISE / UNDERPOWERED / SOLO) plus an action recommendation; the exit code reflects whether to ship
 
 ### Statistical rigor
@@ -490,14 +490,14 @@ Options:
 
 Each round's output is saved under `skills/evolve/` (`my-skill.r0.md`, `my-skill.r1.md`…), so you can `diff` to see what the AI changed. The best round is written back to the original file.
 
-### `omk bench ci`
+### `omk bench gate`
 
 Run the evaluation inside CI. Exit code 0 on pass, 1 on fail — can be wired into gates directly.
 
 The gate is **three-layer all-pass**: `avgFactScore >= threshold AND avgBehaviorScore >= threshold AND avgJudgeScore >= threshold`. Any layer below threshold is FAIL, and the output shows which layer broke. This stops cases like `fact 4.5→2.5 but judge 3→5` from passing via composite averaging — if one layer regresses, the gate catches it.
 
 ```bash
-omk bench ci [options]
+omk bench gate [options]
   --threshold <number>   per-layer minimum score (default: 3.5); applied
                          independently to fact / behavior / judge
 ```
@@ -573,7 +573,7 @@ Aggregates bootstrap CI / three-layer ci-gate / saturation / human α into one o
 
 ```bash
 omk bench verdict <reportId> [options]
-  --threshold <num>      three-layer gate threshold (default 3.5, matches `omk bench ci`)
+  --threshold <num>      three-layer gate threshold (default 3.5, matches `omk bench gate`)
   --trivial-diff <num>   "practically tiny" cutoff (default 0.1)
   --verbose              expand per-pair detail
 ```

@@ -1,5 +1,5 @@
 import { e, fmtNum, fmtDuration, delta, t } from './layout.js';
-import type { Lang, ResultEntry, TurnInfo, ToolCallInfo, EnsembleJudgeResult, JudgeAgreement, DimensionResult } from '../types.js';
+import type { Lang, ResultEntry, TurnInfo, ToolCallInfo, EnsembleJudgeResult, JudgeAgreement, DimensionResult } from '../types/index.js';
 
 /** Render the multi-judge ensemble breakdown for a single (sample × rubric or dimension). */
 function renderEnsembleBlock(ensemble: EnsembleJudgeResult[] | undefined, agreement: JudgeAgreement | undefined, lang: Lang): string {

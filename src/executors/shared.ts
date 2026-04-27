@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { promisify } from 'node:util';
-import type { ExecResult } from '../types.js';
+import type { ExecResult } from '../types/index.js';
 
 export const execFileAsync = promisify(execFile);
 

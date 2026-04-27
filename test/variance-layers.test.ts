@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildVarianceData } from '../src/eval-workflows/run-evaluation.js';
-import type { Report, VariantSummary } from '../src/types.js';
+import type { Report, VariantSummary } from '../src/types/index.js';
 
 /**
  * Minimal factory for a Report with enough fields to exercise buildVarianceData's
@@ -194,8 +194,8 @@ describe('buildVarianceData — three-layer breakdown (PR-2)', () => {
   });
 
   it('边界: mean = 0 (全 0 分数)不崩,byLayer 输出 stddev=0', () => {
-    // 所有样本 judge=0(评委判全部不合格)。mean=0 是合法数据,不是 NaN。
-    // 这是 "judgeScore > 0 过滤 bias" fix 之后的关键 case:0 分样本应该进聚合,
+    // 所有用例 judge=0(评委判全部不合格)。mean=0 是合法数据,不是 NaN。
+    // 这是 "judgeScore > 0 过滤 bias" fix 之后的关键 case:0 分用例应该进聚合,
     // 最终 byLayer.judge.mean === 0,stddev === 0,不抛异常。
     const runs: Report[] = [
       makeRun('r1', { v1: { composite: 2.0, fact: 4.0, behavior: 2.0, quality: 0 } }),

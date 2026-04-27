@@ -11,7 +11,7 @@ import {
   failEvaluationRun,
   classifyEvaluationError,
 } from '../../src/eval-core/evaluation-job.js';
-import type { EvaluationRequest } from '../../src/types.js';
+import type { EvaluationRequest } from '../../src/types/index.js';
 
 const mockRequest: EvaluationRequest = {
   samplesPath: '/tmp/samples.json',

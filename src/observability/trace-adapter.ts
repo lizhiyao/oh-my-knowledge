@@ -20,7 +20,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types.js';
+import type { ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types/index.js';
 
 // ---------- cc session JSONL raw schema (v0.18 subset) ----------
 

@@ -34,7 +34,7 @@ import type {
   Sample,
   Task,
   VariantResult,
-} from '../types.js';
+} from '../types/index.js';
 
 type EvaluationResults = Record<string, Record<string, VariantResult>>;
 
@@ -98,11 +98,11 @@ async function initializeEvaluationRunState({
   repeat?: number;
   each?: boolean;
   judgeRepeat?: number;
-  judgeModels?: import('../types.js').JudgeConfig[];
+  judgeModels?: import('../types/index.js').JudgeConfig[];
   bootstrap?: boolean;
   bootstrapSamples?: number;
   lengthDebias?: boolean;
-  budget?: import('../types.js').EvalBudget;
+  budget?: import('../types/index.js').EvalBudget;
 }): Promise<EvaluationRunState> {
   const request = buildEvaluationRequest({
     samplesPath,
@@ -187,6 +187,45 @@ function computeTestSetHash(samplesPath: string): string | null {
     return createHash('sha256').update(content).digest('hex').slice(0, 12);
   } catch {
     return null;
+  }
+}
+
+/**
+ * Compute structural power warnings (pure function, no I/O — for testing).
+ *
+ * Not MDE / power-analysis predictions (we don't have σ pre-run; predicting
+ * "CI half-width ~ ±0.4" before any data exists is hand-wave). These are
+ * **hard-floor + experience-based** thresholds:
+ *   - n < 5: any conclusion unreliable, CI uselessly wide
+ *   - 5 ≤ n < 20: only large effects (Cohen's d > 0.8) detectable
+ *   - repeat=1: stability cannot be measured at all
+ *
+ * Real power claims happen post-hoc via `bench verdict` UNDERPOWERED state +
+ * saturation curves. This is the upfront "you might be wasting the run"
+ * heads-up, not a gate.
+ */
+export function buildPowerWarnings(sampleCount: number, repeat: number): string[] {
+  const warnings: string[] = [];
+  if (sampleCount < 5) {
+    warnings.push(
+      `⚠ N=${sampleCount} < 5 (exploration-only): any conclusion is unreliable, CI will be uselessly wide. Decisions need ≥20 cases.`,
+    );
+  } else if (sampleCount < 20) {
+    warnings.push(
+      `⚠ N=${sampleCount} < 20 (large-effect-only, Cohen's d > 0.8): medium effects (d ≈ 0.5) hard to detect. For confident decisions consider ≥20 cases.`,
+    );
+  }
+  if (repeat < 2) {
+    warnings.push(
+      `⚠ --repeat=1: single-run cannot measure stability (CV will be marked "not measured"). Use --repeat 3+ to detect within-variant variance.`,
+    );
+  }
+  return warnings;
+}
+
+function emitPowerWarnings(sampleCount: number, repeat: number): void {
+  for (const w of buildPowerWarnings(sampleCount, repeat)) {
+    process.stderr.write(`${w}\n`);
   }
 }
 
@@ -278,7 +317,7 @@ export interface EvaluationPipelineOptions {
   /** 透传到 meta.request.judgeRepeat 与 grade()，每条 sample × dimension judge N 次 */
   judgeRepeat?: number;
   /** Multi-judge ensemble configs (≥ 2 entries triggers ensemble mode). */
-  judgeModels?: import('../types.js').JudgeConfig[];
+  judgeModels?: import('../types/index.js').JudgeConfig[];
   /** --bootstrap. */
   bootstrap?: boolean;
   /** --bootstrap-samples N. Default 1000. */
@@ -286,7 +325,7 @@ export interface EvaluationPipelineOptions {
   /** v0.21 length-debias toggle. Default true; --no-debias-length flips to false. */
   lengthDebias?: boolean;
   /** v0.22 — hard budget caps. */
-  budget?: import('../types.js').EvalBudget;
+  budget?: import('../types/index.js').EvalBudget;
 }
 
 export async function executeEvaluationPipeline({
@@ -372,6 +411,12 @@ export async function executeEvaluationPipeline({
         throw new Error(formatDependencyErrors(depResult.missing));
       }
     }
+
+    // Structural power warnings — print to stderr after preflight passes, before
+    // tasks start. These are *not* MDE / power-analysis predictions (we don't have
+    // σ before the run); they're hard-floor + experience-based thresholds. Verdict
+    // gate (computeVerdict) handles real power claims post-hoc.
+    emitPowerWarnings(samples.length, repeat ?? 1);
 
     // Pre-build a per-executor map for ensemble judges. Each unique executor name
     // gets one ExecutorFn, shared across all judges using that executor. The default

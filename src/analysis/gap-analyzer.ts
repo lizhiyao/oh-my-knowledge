@@ -16,7 +16,7 @@
  * step-3 work. This module only computes the structured GapReport.
  */
 
-import type { ExecutorFn, GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types.js';
+import type { ExecutorFn, GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types/index.js';
 import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
 
 export type GapSignalType = GapSignalRef['type'];
@@ -61,7 +61,7 @@ const REPEATED_FAILURE_THRESHOLD = 3;
  *   - explicit_marker: 依赖 agent 按约定打【推断】等标记,可能漏标
  *   - hedging: 字符串匹配 "我不确定/可能是"等,假阳率已知较高(spec §2.8)
  *
- * Aggregation: 每个样本取其信号的最高权重作"样本严重度",平均到 weightedGapRate。
+ * Aggregation: 每个用例取其信号的最高权重作"用例严重度",平均到 weightedGapRate。
  * weightedGapRate ≤ gapRate,差值反映"软信号占比"——读者据此判断结果可信度。
  */
 export const SIGNAL_WEIGHTS: Record<GapSignalType, number> = {
@@ -303,8 +303,8 @@ export function extractGapSignalsFromSample(variantResult: VariantResult, sample
 export function computeGapReport(results: ResultEntry[], variant: string): GapReport {
   const signals: GapSignal[] = [];
   const sampleIdsWithGap = new Set<string>();
-  // 每样本取信号中的最强权重,用于 weightedGapRate(v0.2 §6)。
-  // 无信号样本 sampleWeight 隐含为 0,自然不计入 weighted 和。
+  // 每用例取信号中的最强权重,用于 weightedGapRate(v0.2 §6)。
+  // 无信号用例 sampleWeight 隐含为 0,自然不计入 weighted 和。
   const sampleMaxWeight = new Map<string, number>();
   let sampleCount = 0;
 
@@ -365,7 +365,7 @@ export function computeReportGapRates(results: ResultEntry[], variants: string[]
 /**
  * 重新计算 GapReport 的衍生字段(samplesWithGap / gapRate / weightedGapRate /
  * byType),用于 hedging signal 被 classifier 过滤后的二次聚合。
- * sampleCount 不变(分母:成功执行的样本数,与是否有信号无关)。
+ * sampleCount 不变(分母:成功执行的用例数,与是否有信号无关)。
  */
 function recomputeAggregates(report: GapReport): GapReport {
   const sampleIdsWithGap = new Set<string>();

@@ -9,7 +9,7 @@
 import { existsSync } from 'node:fs';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { execFileSync, execSync } from 'node:child_process';
-import type { Artifact, Sample } from '../types.js';
+import type { Artifact, Sample } from '../types/index.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -83,6 +83,13 @@ function extractFromText(text: string): { tools: Set<string>; files: Set<string>
     if (path.startsWith('http') || path.startsWith('node_modules') || /^\d/.test(path)) continue;
     // Skip very short paths that are likely not real files
     if (path.length < 5) continue;
+    // Skip extension-mention patterns(`.d.ts` / `.tsx` 这种以点开头的"扩展名讨论"
+    // 不是真路径,SKILL.md 里"查看 .d.ts 文件"会被误识别)
+    if (path.startsWith('.')) continue;
+    // Skip bare filenames without a directory segment(`index.ts` / `package.json`
+    // 这种通用文件名几乎都是示例性提及,真依赖会带路径段。要声明 bare 文件
+    // 走显式 requires)
+    if (!path.includes('/')) continue;
     files.add(path);
   }
 
@@ -135,6 +142,36 @@ export function extractDependencies(
     files: files.size > 0 ? [...files] : undefined,
     env: env.size > 0 ? [...env] : undefined,
   };
+}
+
+/**
+ * Extract file dependencies per artifact, keyed by the base dir each file
+ * should be resolved against:
+ *   - artifact.skillRoot (directory-skill: SKILL.md 自带 assets,相对路径锚到 skill 根)
+ *   - artifact.cwd       (用户显式 @cwd)
+ *   - defaultCwd         (其他)
+ *
+ * 必须用 per-artifact 分桶,否则两个 skill 各自的 assets/foo.md 在单一 cwd 下
+ * 互相错位(WCC 评测里 41 个 false-positive 的根因)。
+ */
+export function extractFilesByBase(
+  artifacts: Artifact[],
+  defaultCwd: string,
+): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  for (const artifact of artifacts) {
+    if (!artifact.content) continue;
+    const baseDir = artifact.skillRoot || artifact.cwd || defaultCwd;
+    const extracted = extractFromText(artifact.content);
+    if (extracted.files.size === 0) continue;
+    let bucket = map.get(baseDir);
+    if (!bucket) {
+      bucket = new Set<string>();
+      map.set(baseDir, bucket);
+    }
+    for (const f of extracted.files) bucket.add(f);
+  }
+  return map;
 }
 
 // ---------------------------------------------------------------------------
@@ -285,7 +322,32 @@ function runPreflightCommands(commands: string[], cwd: string, env?: NodeJS.Proc
 // ---------------------------------------------------------------------------
 
 /**
+ * Check files per base dir. Each (baseDir, [files]) bucket is resolved
+ * independently so directory-skill 自带 assets 的相对路径能锚到 skill 根。
+ */
+function checkFilesByBase(filesByBase: Map<string, Set<string>>): DependencyIssue[] {
+  const missing: DependencyIssue[] = [];
+  for (const [baseDir, files] of filesByBase) {
+    for (const file of files) {
+      const absPath = resolve(baseDir, file);
+      if (!existsSync(absPath)) {
+        missing.push({
+          category: 'file',
+          name: file,
+          hint: `文件不存在 (cwd: ${baseDir})`,
+        });
+      }
+    }
+  }
+  return missing;
+}
+
+/**
  * Run preflight dependency check: auto-extract + merge explicit requires + validate + run preflight commands.
+ *
+ * 文件路径走 per-artifact 分桶解析(每个 skill 用自己的 skillRoot / cwd 当 base),
+ * 工具 / env 变量 / preflight 命令仍全局合并。explicit requires.files 视为用户全局
+ * 声明,落到 defaultCwd。
  */
 export async function preflightDependencies(
   skillContents: string[],
@@ -296,12 +358,27 @@ export async function preflightDependencies(
 ): Promise<DependencyCheckResult> {
   const env = buildPreflightEnv(artifacts);
   const autoDetected = extractDependencies(skillContents, samples);
-  const merged = mergeRequirements(autoDetected, explicitRequires);
-  const result = await checkDependencies(merged, cwd, env);
 
-  // 合并 preflight 命令：来自 requires + 来自 artifact metadata
+  // 工具 / env / 显式 files / preflight 仍合并(语义不依赖 per-skill 路径锚)
+  const globalDeps: DependencyRequirements = {
+    tools: autoDetected.tools,
+    env: autoDetected.env,
+  };
+  const mergedGlobal = mergeRequirements(globalDeps, explicitRequires);
+  // explicit requires.files 视为用户全局声明,继续锚到 defaultCwd
+  const result = await checkDependencies(mergedGlobal, cwd, env);
+
+  // 自动检出的文件依赖按 artifact 分桶,每个 skill 用自己的 base 验证
+  if (artifacts && artifacts.length > 0) {
+    const filesByBase = extractFilesByBase(artifacts, cwd);
+    const fileIssues = checkFilesByBase(filesByBase);
+    result.missing.push(...fileIssues);
+    result.ok = result.ok && fileIssues.length === 0;
+  }
+
+  // 合并 preflight 命令:来自 requires + 来自 artifact metadata
   const artifactPreflight = artifacts ? extractPreflightFromArtifacts(artifacts) : [];
-  const allPreflight = [...new Set([...(merged.preflight || []), ...artifactPreflight])];
+  const allPreflight = [...new Set([...(mergedGlobal.preflight || []), ...artifactPreflight])];
 
   if (allPreflight.length > 0) {
     const preflightIssues = runPreflightCommands(allPreflight, cwd, env);

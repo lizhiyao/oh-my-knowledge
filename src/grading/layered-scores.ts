@@ -1,4 +1,4 @@
-import type { AssertionDetail, LayeredScores } from '../types.js';
+import type { AssertionDetail, LayeredScores } from '../types/index.js';
 
 const FACTUAL_ASSERTION_TYPES = new Set([
   'contains',

@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { extractWeakSamples, buildImprovementPrompt, evolveSkill } from '../../src/authoring/evolver.js';
-import type { Report } from '../../src/types.js';
+import type { Report } from '../../src/types/index.js';
 
 function toReport(value: unknown): Report {
   return value as Report;

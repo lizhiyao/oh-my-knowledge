@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildVariantSummary } from '../../src/eval-core/schema.js';
-import type { VariantResult, EnsembleJudgeResult } from '../../src/types.js';
+import type { VariantResult, EnsembleJudgeResult } from '../../src/types/index.js';
 
 function makeEntry(scores: { judge: string; score: number }[], llmScore: number): VariantResult {
   const ensemble: EnsembleJudgeResult[] = scores.map((s) => ({ judge: s.judge, score: s.score }));

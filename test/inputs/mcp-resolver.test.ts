@@ -4,7 +4,7 @@ import { loadMcpConfig, resolveMcpUrls, stopAllServers } from '../../src/inputs/
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import type { McpServers } from '../../src/types.js';
+import type { McpServers } from '../../src/types/index.js';
 
 describe('loadMcpConfig', () => {
   let tmpDir: string;

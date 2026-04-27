@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import _Ajv from 'ajv';
-import type { Assertion, AssertionDetail, AssertionResults, ExecutorFn, Sample, ToolCallInfo } from '../types.js';
+import type { Assertion, AssertionDetail, AssertionResults, ExecutorFn, Sample, ToolCallInfo } from '../types/index.js';
 
 const Ajv = _Ajv.default ?? _Ajv;
 const ajv = new Ajv();

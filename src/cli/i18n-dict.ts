@@ -363,7 +363,7 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '🔄 {name}: generating {count} test cases...\n',
   },
   'cli.gen.skill_done': {
-    zh: '✅ {name}: 已生成 {n} 条样本 → {path}{cost}\n',
+    zh: '✅ {name}: 已生成 {n} 条用例 → {path}{cost}\n',
     en: '✅ {name}: generated {n} samples → {path}{cost}\n',
   },
   'cli.gen.skill_failed': {
@@ -391,7 +391,7 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '🔄 Generating {count} test cases...\n',
   },
   'cli.gen.single_done': {
-    zh: '✅ 已生成 {n} 条样本 → {path}{cost}\n',
+    zh: '✅ 已生成 {n} 条用例 → {path}{cost}\n',
     en: '✅ Generated {n} samples → {path}{cost}\n',
   },
   'cli.gen.review_hint': {
@@ -501,7 +501,7 @@ oh-my-knowledge — 知识工件评测工具集
 用法:
   omk bench run [options]              跑一轮评测
   omk bench report [options]           启动报告 server
-  omk bench ci [options]               跑评测并按 pass/fail 退出码返回
+  omk bench gate [options]             跑评测 + 应用 gate, exit code 0/1 (CI/CD 用)
   omk bench init [dir]                 初始化一个评测项目
   omk bench gen-samples [skill]        从 skill 内容生成 eval-samples
   omk bench diff <id1> <id2>           对比两份评测报告
@@ -511,7 +511,7 @@ oh-my-knowledge — 知识工件评测工具集
 
 bench run 选项:
 
-  --samples <path>       样本文件 (默认: eval-samples.json)
+  --samples <path>       用例文件 (默认: eval-samples.json)
   --skill-dir <path>     skill 定义目录 (默认: skills)
   --control <expr>       对照组 variant 表达式 (实验角色 = control)
   --treatment <v1,v2>    实验组 variant 表达式 (逗号分隔; 角色 = treatment)
@@ -562,18 +562,25 @@ bench run 选项:
   --mcp-config <path>    通过 MCP server 抓 URL 用的 MCP 配置文件
                          (默认: 当前目录下的 .mcp.json)
   --no-serve             评测后不自动启动报告 server
-  --verbose              打印每个样本的详细进度 (执行结果 / 评分阶段)
+  --verbose              打印每个用例的详细进度 (执行结果 / 评分阶段)
   --layered-stats        默认在 HTML 报告里展开三层 (fact/behavior/judge) 独立
                          显著性细分。不加这个 flag 时, 细分会折叠在每个对比下
                          的 click-to-expand summary 里。
 
-bench ci 选项:
+bench gate 选项:
   (与 bench run 相同, 额外加:)
-  --threshold <number>   通过分数下限, 独立应用到三层中的每一层 (fact /
-                         behavior / LLM judge)。任一层低于阈值即失败 — 防止
-                         合成均值掩盖单层崩塌。默认: 3.5。如果三层全空 (没有
-                         assertion 也没在 eval-samples 里定义 rubric), gate
-                         失败并提示配置问题, 不走合成 fallback。
+  --threshold <number>   三层 gate 阈值 (fact / behavior / LLM judge), 独立应用
+                         到每一层。任一层低于阈值即失败 — 防止合成均值掩盖单层
+                         崩塌。默认: 3.5。如果三层全空 (没有 assertion 也没在
+                         eval-samples 里定义 rubric), gate 失败并提示配置问题,
+                         不走合成 fallback。
+  --trivial-diff <num>   实际可忽略的最小 diff (默认 0.1)。bootstrap diff CI
+                         显著但 |Δ| 小于此值视为"统计有效但实际无意义",标
+                         CAUTIOUS 不给 PROGRESS。
+
+  内部 = bench run + bench verdict, exit code 与 bench verdict 对齐:
+  PROGRESS / SOLO-PASS → 0; NOISE / UNDERPOWERED / CAUTIOUS / REGRESS → 1。
+  数据 underpowered 时直接 FAIL, 堵住"单轮过 PASS 就 deploy"漏洞。
 
 bench report 选项:
   --port <number>        server 端口 (默认: 7799)
@@ -583,7 +590,7 @@ bench report 选项:
 
 bench gen-samples 选项:
   --each                 为所有还没 eval-samples 的 skill 生成
-  --count <n>            每个 skill 生成多少条样本 (默认: 5)
+  --count <n>            每个 skill 生成多少条用例 (默认: 5)
   --model <name>         生成用的模型 (默认: sonnet)
   --skill-dir <path>     skill 目录 (默认: skills), 配合 --each 用
 
@@ -600,7 +607,7 @@ analyze 选项:
 bench evolve 选项:
   --rounds <n>           最大演化轮数 (默认: 5)
   --target <score>       达到该分数即提前停止
-  --samples <path>       样本文件 (默认: eval-samples.json)
+  --samples <path>       用例文件 (默认: eval-samples.json)
   --model <name>         被测模型 (默认: sonnet)
   --judge-model <name>   评委模型 (默认: haiku)
   --improve-model <name> 生成改进版的模型 (默认: sonnet)
@@ -632,7 +639,7 @@ oh-my-knowledge — Knowledge artifact evaluation toolkit
 Usage:
   omk bench run [options]              Run an evaluation
   omk bench report [options]           Start the report server
-  omk bench ci [options]               Run evaluation and exit with pass/fail code
+  omk bench gate [options]             Run evaluation + apply gate, exit 0/1 (for CI/CD)
   omk bench init [dir]                 Scaffold a new eval project
   omk bench gen-samples [skill]        Generate eval-samples from skill content
   omk bench diff <id1> <id2>           Compare two evaluation reports
@@ -700,15 +707,23 @@ Options for "bench run":
                          Without this flag, the breakdown is collapsed behind a
                          click-to-expand summary under each comparison.
 
-Options for "bench ci":
+Options for "bench gate":
   (same as "bench run", plus:)
-  --threshold <number>   Minimum score to pass, applied INDEPENDENTLY to each of
-                         the three layers (fact / behavior / LLM judge). ANY
-                         layer below threshold fails the gate — this prevents
-                         composite averaging from masking a single-layer collapse.
-                         Default: 3.5. If all three layers are absent (no
+  --threshold <number>   Three-layer gate threshold (fact / behavior / LLM judge),
+                         applied INDEPENDENTLY to each layer. ANY layer below
+                         threshold fails the gate — prevents composite averaging
+                         from masking a single-layer collapse. Default: 3.5.
+                         If all three layers are absent (no
                          assertions and no rubric defined in eval-samples), the
                          gate FAILS with a configuration hint — no composite fallback.
+  --trivial-diff <num>   Smallest diff to treat as practically meaningful
+                         (default 0.1). Bootstrap diff CI may be statistically
+                         significant but with |Δ| < this value, treated as
+                         CAUTIOUS rather than PROGRESS.
+
+  Internally = bench run + bench verdict. Exit code aligns with bench verdict:
+  PROGRESS / SOLO-PASS → 0; NOISE / UNDERPOWERED / CAUTIOUS / REGRESS → 1.
+  Underpowered runs fail directly — closes the "single-run PASS = deploy" loophole.
 
 Options for "bench report":
   --port <number>        Server port (default: 7799)
@@ -768,10 +783,10 @@ Examples:
       '  omk bench diff <reportId1> <reportId2>        跨 report variant 级 diff',
       '',
       '选项:',
-      '  --regressions-only          只列 treatment < control 的样本',
+      '  --regressions-only          只列 treatment < control 的用例',
       '  --threshold <num>           回退判定阈值 (默认 0, 即任何负 Δ 都算回退)',
       '  --variant <name>            within-report 模式下指定要钻取的 variant (默认: variants[1])',
-      '  --top <n>                   只列差距最大的前 N 个样本',
+      '  --top <n>                   只列差距最大的前 N 个用例',
     ].join('\n'),
     en: [
       'Usage:',
@@ -826,7 +841,7 @@ Examples:
       '',
       '选项:',
       '  --reports-dir <dir>          报告存储目录 (默认: ~/.oh-my-knowledge/reports)',
-      '  --samples <path>             覆盖样本文件 (默认: 从 report.meta.request 读)',
+      '  --samples <path>             覆盖用例文件 (默认: 从 report.meta.request 读)',
       '  --variant <name>             校验哪个 variant (默认: 第一个)',
       '  --judge-executor <name>      评委调用执行器 (默认: claude)',
       '  --judge-model <model>        评委模型 ID (默认: 沿用 report)',
@@ -858,7 +873,7 @@ Examples:
       '',
       '用法: omk bench saturation <reportId> [options]',
       '',
-      '回答 "我跑够样本了吗?"。复述已有 report 中持久化的饱和判定。',
+      '回答 "我跑够用例了吗?"。复述已有 report 中持久化的饱和判定。',
       '',
       '注: 本命令读取 run 时跑出的 verdict (运行时已用 method=bootstrap-ci-width',
       '默认阈值 + 3 窗口持续条件)。如要换 method/threshold 重新计算, 需要重跑',
@@ -901,12 +916,12 @@ Examples:
       '  CAUTIOUS      改进真实但有警告 (gate 破 / 幅度太小 / 控制组本身崩)',
       '  REGRESS       显著回退 — 不要 ship',
       '  NOISE         CI 跨 0, 无法判定',
-      '  UNDERPOWERED  样本不足, 需要扩 N 重测',
+      '  UNDERPOWERED  用例不足, 需要扩 N 重测',
       '  SOLO          单 variant 报告, 没有对比对象',
       '',
       '选项:',
       '  --reports-dir <dir>      报告存储目录 (默认: ~/.oh-my-knowledge/reports)',
-      '  --threshold <num>        三层 gate 阈值 (默认 3.5, 与 omk bench ci 对齐)',
+      '  --threshold <num>        三层 gate 阈值 (默认 3.5, 与 omk bench gate 对齐)',
       '  --trivial-diff <num>     "幅度太小" 阈值 (默认 0.1)',
       '  --verbose                展开每个 pair 的详情',
       '',
@@ -927,7 +942,7 @@ Examples:
       '',
       'Options:',
       '  --reports-dir <dir>      report store dir (default: ~/.oh-my-knowledge/reports)',
-      '  --threshold <num>        3-layer gate threshold (default 3.5, matches omk bench ci)',
+      '  --threshold <num>        3-layer gate threshold (default 3.5, matches omk bench gate)',
       '  --trivial-diff <num>     "diff too small" threshold (default 0.1)',
       '  --verbose                expand per-pair details',
       '',
@@ -938,12 +953,12 @@ Examples:
       '',
       '用法: omk bench diagnose <reportId> [options]',
       '',
-      '诊断样本集本身的质量问题: 区分度低 / 重复 / 歧义 / 成本异常 / 全 fail。',
-      '回答 "测评结论是否被坏样本污染" — 与 omk bench verdict 互补。',
+      '诊断用例集本身的质量问题: 区分度低 / 重复 / 歧义 / 成本异常 / 全 fail。',
+      '回答 "测评结论是否被坏用例污染" — 与 omk bench verdict 互补。',
       '',
       '选项:',
       '  --reports-dir <dir>      报告存储目录',
-      '  --samples <path>         样本文件路径 (用于 near-duplicate 检测; 默认从 report.meta.request 读)',
+      '  --samples <path>         用例文件路径 (用于 near-duplicate 检测; 默认从 report.meta.request 读)',
       '  --top <n>                每类只显示前 N 个 (默认 10, 0=全部)',
       '  --duplicate-rouge <num>  near-duplicate ROUGE-1 阈值 (默认 0.7)',
       '  --ambiguous-stddev <num> 歧义阈值, judge stddev (默认 1.0, 需要 --judge-repeat ≥ 2 数据)',
@@ -977,7 +992,7 @@ Examples:
       '',
       '用法: omk bench failures <reportId> [options]',
       '',
-      '把已有 report 的失败样本喂给一次 LLM 调用, 自动聚类并给出修复建议。',
+      '把已有 report 的失败用例喂给一次 LLM 调用, 自动聚类并给出修复建议。',
       '失败定义: compositeScore < threshold 或 ok=false。',
       '',
       '选项:',

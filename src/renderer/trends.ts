@@ -1,5 +1,5 @@
 import { e, fmtCost, fmtLocalTime, t } from './layout.js';
-import type { Lang, Report, ReportMeta, VariantSummary } from '../types.js';
+import type { Lang, Report, ReportMeta, VariantSummary } from '../types/index.js';
 
 interface ChartPoint {
   timestamp: string;

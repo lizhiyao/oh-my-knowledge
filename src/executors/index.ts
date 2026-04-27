@@ -1,4 +1,4 @@
-import type { ExecutorFn } from '../types.js';
+import type { ExecutorFn } from '../types/index.js';
 import { anthropicApiExecutor } from './anthropic-api.js';
 import { claudeCliExecutor } from './claude-cli.js';
 import { claudeSdkExecutor } from './claude-sdk.js';

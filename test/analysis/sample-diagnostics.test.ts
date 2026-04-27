@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { diagnoseSamples, formatSampleDiagnostics } from '../../src/analysis/sample-diagnostics.js';
-import type { Report, ResultEntry, Sample, VariantResult } from '../../src/types.js';
+import type { Report, ResultEntry, Sample, VariantResult } from '../../src/types/index.js';
 
 const variantResult = (overrides: Partial<VariantResult> = {}): VariantResult => ({
   ok: true, durationMs: 1000, durationApiMs: 1000,
@@ -220,7 +220,7 @@ describe('formatSampleDiagnostics', () => {
     ], ['v1', 'v2']);
     const d = diagnoseSamples(r);
     const text = formatSampleDiagnostics(d);
-    assert.match(text, /未检测到样本质量问题/);
+    assert.match(text, /未检测到用例质量问题/);
   });
 
   it('groups issues by kind in output', () => {

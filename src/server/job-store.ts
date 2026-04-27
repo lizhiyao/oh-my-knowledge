@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import type { EvaluationJob, JobStore } from '../types.js';
+import type { EvaluationJob, JobStore } from '../types/index.js';
 
 export const DEFAULT_JOBS_DIR = join(homedir(), '.oh-my-knowledge', 'jobs');
 
