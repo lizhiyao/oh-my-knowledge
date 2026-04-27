@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { tCli, getCliLang, parseLangFromArgv, langFromArgv } from './cli/i18n.js';
+import { tCli, getCliLang, parseLangFromArgv, langFromArgv, type CliLang } from './cli/i18n.js';
 import { discoverVariants, parseVariantCwd } from './inputs/skill-loader.js';
 import { loadEvalConfig, configVariantsToSpecs } from './inputs/eval-config.js';
 import type {
@@ -483,7 +483,7 @@ Examples:
 // Update check
 // ---------------------------------------------------------------------------
 
-async function checkUpdate(): Promise<void> {
+async function checkUpdate(lang: CliLang): Promise<void> {
   try {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
@@ -496,9 +496,11 @@ async function checkUpdate(): Promise<void> {
     if (!res.ok) return;
     const data = await res.json() as { version?: string };
     if (data.version && data.version !== pkg.version) {
-      process.stderr.write(`\n💡 新版本可用: ${pkg.version} → ${data.version}，运行 npm update ${pkg.name} -g 更新\n\n`);
+      process.stderr.write(tCli('cli.update.new_version_available', lang, {
+        old: pkg.version, new: data.version, pkg: pkg.name,
+      }));
     }
-  } catch { /* 静默失败，不影响正常使用 */ }
+  } catch { /* 静默失败,不影响正常使用 */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -506,8 +508,8 @@ async function checkUpdate(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  checkUpdate();
   const lang = getCliLang(parseLangFromArgv(process.argv));
+  checkUpdate(lang);
   const [domain, command, ...rest]: string[] = process.argv.slice(2);
 
   if (!domain || domain === '--help' || domain === '-h') {
@@ -581,58 +583,74 @@ async function main(): Promise<void> {
 // Progress callback
 // ---------------------------------------------------------------------------
 
-function defaultOnProgress({
-  phase,
-  completed,
-  total,
-  sample_id,
-  variant,
-  durationMs,
-  inputTokens,
-  outputTokens,
-  costUSD,
-  score,
-  outputPreview,
-  judgePhase: _judgePhase,
-  judgeDim,
-  skipped,
-  attempt,
-  maxAttempts,
-  error,
-}: ProgressInfo): void {
-  if (phase === 'preflight') {
-    process.stderr.write('⏳ 预检模型连通性...\n');
-    return;
-  }
-  if (phase === 'retry') {
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 🔄 重试 ${attempt}/${maxAttempts}...\n`);
-    return;
-  }
-  if (phase === 'error') {
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ❌ ${error}\n`);
-    return;
-  }
-  if (phase === 'start') {
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ⏳ 执行中...\n`);
-  } else if (phase === 'exec_done') {
-    const costInfo: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 执行完成 ${durationMs}ms ${inputTokens}+${outputTokens} tokens${costInfo}\n`);
-    if (outputPreview) {
-      process.stderr.write(`  输出预览: ${outputPreview.slice(0, 150).replace(/\n/g, ' ')}\n`);
+/**
+ * Factory: 闭住 lang, 返回 onProgress callback。evaluation engine 回调时不传
+ * 上下文, 所以 lang 必须在 handler 入口处通过 closure 传进来。
+ */
+function makeOnProgress(lang: CliLang): (info: ProgressInfo) => void {
+  return ({
+    phase,
+    completed,
+    total,
+    sample_id,
+    variant,
+    durationMs,
+    inputTokens,
+    outputTokens,
+    costUSD,
+    score,
+    outputPreview,
+    judgePhase: _judgePhase,
+    judgeDim,
+    skipped,
+    attempt,
+    maxAttempts,
+    error,
+  }: ProgressInfo): void => {
+    const ctx = { i: completed ?? '', n: total ?? '', sample: sample_id ?? '', variant: variant ?? '' };
+    if (phase === 'preflight') {
+      process.stderr.write(tCli('cli.progress.preflight_starting', lang));
+      return;
     }
-  } else if (phase === 'grading') {
-    const dimInfo: string = judgeDim ? ` [${judgeDim}]` : '';
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 评审中${dimInfo}...\n`);
-  } else if (phase === 'judge_done') {
-    const dimInfo: string = judgeDim ? ` [${judgeDim}]` : '';
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 评审完成${dimInfo} score=${score}\n`);
-  } else if (phase === 'done' && skipped) {
-    if (sample_id) process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ⏭ 已跳过（已有结果）\n`);
-  } else {
-    const costInfo: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
-    const scoreInfo: string = typeof score === 'number' ? ` score=${score}` : '';
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ✓ ${durationMs}ms ${inputTokens}+${outputTokens} tokens${costInfo}${scoreInfo}\n`);
-  }
+    if (phase === 'retry') {
+      process.stderr.write(tCli('cli.progress.sample_retry', lang, {
+        ...ctx, attempt: attempt ?? '', max: maxAttempts ?? '',
+      }));
+      return;
+    }
+    if (phase === 'error') {
+      process.stderr.write(tCli('cli.progress.sample_error', lang, { ...ctx, error: error ?? '' }));
+      return;
+    }
+    if (phase === 'start') {
+      process.stderr.write(tCli('cli.progress.sample_executing', lang, ctx));
+    } else if (phase === 'exec_done') {
+      const cost: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+      process.stderr.write(tCli('cli.progress.sample_exec_done', lang, {
+        ...ctx, ms: durationMs ?? '', input: inputTokens ?? '', output: outputTokens ?? '', cost,
+      }));
+      if (outputPreview) {
+        process.stderr.write(tCli('cli.progress.output_preview', lang, {
+          preview: outputPreview.slice(0, 150).replace(/\n/g, ' '),
+        }));
+      }
+    } else if (phase === 'grading') {
+      const dim: string = judgeDim ? ` [${judgeDim}]` : '';
+      process.stderr.write(tCli('cli.progress.judging', lang, { ...ctx, dim }));
+    } else if (phase === 'judge_done') {
+      const dim: string = judgeDim ? ` [${judgeDim}]` : '';
+      process.stderr.write(tCli('cli.progress.judged', lang, { ...ctx, dim, score: score ?? '' }));
+    } else if (phase === 'done' && skipped) {
+      if (sample_id) process.stderr.write(tCli('cli.progress.skipped', lang, ctx));
+    } else {
+      const cost: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+      const scoreInfo: string = typeof score === 'number' ? ` score=${score}` : '';
+      process.stderr.write(tCli('cli.progress.sample_done', lang, {
+        ...ctx, ms: durationMs ?? '', input: inputTokens ?? '', output: outputTokens ?? '',
+        cost, score: scoreInfo,
+      }));
+    }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -640,6 +658,7 @@ function defaultOnProgress({
 // ---------------------------------------------------------------------------
 
 async function handleRun(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const { values, config } = parseRunConfig(argv, {
     blind: { type: 'boolean', default: false },
     repeat: { type: 'string', default: '1' },
@@ -657,28 +676,28 @@ async function handleRun(argv: string[]): Promise<void> {
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
 
   config.blind = values.blind as boolean | undefined;
-  config.onProgress = defaultOnProgress as unknown as ProgressCallback;
+  config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
-  // --repeat 诚实输入校验:非 ≥1 整数时提示并钳到 1,不静默掩盖用户错字/极端输入
-  // 提前到 --each 分支之前,保证 each 模式也能读到 repeat (曾经 bug: --each 吞 --repeat)
+  // --repeat 输入校验: 非 ≥1 整数时提示并钳到 1, 不静默掩盖用户错字 / 极端输入。
+  // 提前到 --each 分支之前, 保证 each 模式也能读到 repeat (曾经 bug: --each 吞 --repeat)。
   const repeatRaw = values.repeat as string | undefined;
   const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : 1;
   if (repeatRaw !== undefined && (!Number.isFinite(parsedRepeat) || parsedRepeat < 1)) {
-    process.stderr.write(`⚠ --repeat "${repeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次评测执行\n`);
+    process.stderr.write(tCli('cli.run.invalid_repeat', lang, { value: repeatRaw }));
   }
   const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
 
-  // --judge-repeat 同样的诚实校验:非 ≥1 整数时钳到 1
+  // --judge-repeat 同样校验: 非 ≥1 整数时钳到 1
   const judgeRepeatRaw = values['judge-repeat'] as string | undefined;
   const parsedJudgeRepeat = judgeRepeatRaw !== undefined ? Number(judgeRepeatRaw) : 1;
   if (judgeRepeatRaw !== undefined && (!Number.isFinite(parsedJudgeRepeat) || parsedJudgeRepeat < 1)) {
-    process.stderr.write(`⚠ --judge-repeat "${judgeRepeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次 judge 执行\n`);
+    process.stderr.write(tCli('cli.run.invalid_judge_repeat', lang, { value: judgeRepeatRaw }));
   }
   const judgeRepeatCount: number = Math.max(1, Math.floor(parsedJudgeRepeat) || 1);
   if (judgeRepeatCount > 1) config.judgeRepeat = judgeRepeatCount;
 
   // --judge-models executor:model,executor:model,... -> JudgeConfig[]
-  // 至少 2 个才进 ensemble 模式,1 个等同于 --judge-model
+  // 至少 2 个才进 ensemble 模式, 1 个等同于 --judge-model
   const judgeModelsRaw = values['judge-models'] as string | undefined;
   if (judgeModelsRaw) {
     const parts = judgeModelsRaw.split(',').map((s) => s.trim()).filter(Boolean);
@@ -686,15 +705,17 @@ async function handleRun(argv: string[]): Promise<void> {
       const [executor, ...modelParts] = p.split(':');
       const model = modelParts.join(':');
       if (!executor || !model) {
-        throw new Error(`--judge-models 格式错误: "${p}",应为 "executor:model" (如 claude:opus)`);
+        throw new Error(tCli('cli.run.invalid_judge_models_format', lang, { part: p }));
       }
       return { executor, model };
     });
     if (judges.length >= 2) {
       config.judgeModels = judges;
     } else if (judges.length === 1) {
-      // 单 judge 不走 ensemble,但允许这样写,等同于 --judge-model + --executor
-      process.stderr.write(`ℹ --judge-models 只指定 1 个 judge (${judges[0].executor}:${judges[0].model}),不触发 ensemble。如需 ensemble 至少给 2 个。\n`);
+      // 单 judge 不走 ensemble, 但允许这样写, 等同于 --judge-model + --executor
+      process.stderr.write(tCli('cli.run.judge_models_single_warning', lang, {
+        executor: judges[0].executor, model: judges[0].model,
+      }));
     }
   }
 
@@ -718,7 +739,7 @@ async function handleRun(argv: string[]): Promise<void> {
   // off so historical reports (judgePromptHash from v2-cot era) can be reproduced.
   if (values['no-debias-length'] as boolean) {
     config.lengthDebias = false;
-    process.stderr.write('ℹ --no-debias-length 已生效:judge prompt 退回 v2-cot,与 < v0.21 报告 hash 一致。\n');
+    process.stderr.write(tCli('cli.run.no_debias_length_active', lang));
   }
 
   // --bootstrap / --bootstrap-samples
@@ -727,11 +748,11 @@ async function handleRun(argv: string[]): Promise<void> {
     const bsRaw = values['bootstrap-samples'] as string | undefined;
     const parsedBs = bsRaw !== undefined ? Number(bsRaw) : 1000;
     if (bsRaw !== undefined && (!Number.isFinite(parsedBs) || parsedBs < 100)) {
-      process.stderr.write(`⚠ --bootstrap-samples "${bsRaw}" 无效(期望 ≥ 100 的整数),已按 1000 执行\n`);
+      process.stderr.write(tCli('cli.run.invalid_bootstrap_samples', lang, { value: bsRaw }));
     }
     const bsCount = Math.max(100, Math.floor(parsedBs) || 1000);
     if (bsCount > 10000) {
-      process.stderr.write(`⚠ --bootstrap-samples ${bsCount} 较大,可能耗时数秒。1000 是业内标准,通常已够用。\n`);
+      process.stderr.write(tCli('cli.run.bootstrap_samples_too_large', lang, { n: bsCount }));
     }
     config.bootstrapSamples = bsCount;
   }
@@ -1202,6 +1223,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleEvolve(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const { values } = parseArgs({
     args: argv,
     options: {
@@ -1250,7 +1272,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
       concurrency: Math.max(1, Number(values.concurrency) || 1),
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
       skipPreflight: values['skip-preflight'] as boolean,
-      onProgress: defaultOnProgress as unknown as ProgressCallback,
+      onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, error }: RoundProgressInfo): void {
         if (phase === 'baseline') {
           process.stderr.write(`Round 0 (baseline): score=${score!.toFixed(2)} ($${costUSD!.toFixed(4)})\n`);
@@ -1286,13 +1308,14 @@ async function handleEvolve(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleCi(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const { values, config } = parseRunConfig(argv, {
     threshold: { type: 'string', default: '3.5' },
   });
 
   const { runEvaluation } = await import('./eval-workflows/run-evaluation.js');
 
-  config.onProgress = defaultOnProgress as unknown as ProgressCallback;
+  config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
   try {
     const { report } = (await runEvaluation(config)) as EvalResult;

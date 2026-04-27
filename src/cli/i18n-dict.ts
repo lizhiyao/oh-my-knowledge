@@ -59,7 +59,28 @@ export type CliMessageKey =
   | 'cli.init.next_steps_title'
   | 'cli.init.next_step_edit_samples'
   | 'cli.init.next_step_edit_skills'
-  | 'cli.init.next_step_run';
+  | 'cli.init.next_step_run'
+  // 启动期检查 (checkUpdate)
+  | 'cli.update.new_version_available'
+  // 实时进度 (defaultOnProgress)
+  | 'cli.progress.preflight_starting'
+  | 'cli.progress.sample_retry'
+  | 'cli.progress.sample_error'
+  | 'cli.progress.sample_executing'
+  | 'cli.progress.sample_exec_done'
+  | 'cli.progress.output_preview'
+  | 'cli.progress.judging'
+  | 'cli.progress.judged'
+  | 'cli.progress.skipped'
+  | 'cli.progress.sample_done'
+  // bench run 参数校验 (parseRunConfig)
+  | 'cli.run.invalid_repeat'
+  | 'cli.run.invalid_judge_repeat'
+  | 'cli.run.invalid_judge_models_format'
+  | 'cli.run.judge_models_single_warning'
+  | 'cli.run.no_debias_length_active'
+  | 'cli.run.invalid_bootstrap_samples'
+  | 'cli.run.bootstrap_samples_too_large';
 
 export interface CliMessage {
   zh: string;
@@ -102,5 +123,77 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.init.next_step_run': {
     zh: '  3. 运行: omk bench run --control v1 --treatment v2',
     en: '  3. Run: omk bench run --control v1 --treatment v2',
+  },
+  'cli.update.new_version_available': {
+    zh: '\n💡 新版本可用: {old} → {new}, 运行 npm update {pkg} -g 升级\n\n',
+    en: '\n💡 New version available: {old} → {new}, run npm update {pkg} -g to upgrade\n\n',
+  },
+  'cli.progress.preflight_starting': {
+    zh: '⏳ 正在预检模型连通性...\n',
+    en: '⏳ Preflight: checking model connectivity...\n',
+  },
+  'cli.progress.sample_retry': {
+    zh: '[{i}/{n}] {sample}/{variant} 🔄 重试 {attempt}/{max}...\n',
+    en: '[{i}/{n}] {sample}/{variant} 🔄 retry {attempt}/{max}...\n',
+  },
+  'cli.progress.sample_error': {
+    zh: '[{i}/{n}] {sample}/{variant} ❌ {error}\n',
+    en: '[{i}/{n}] {sample}/{variant} ❌ {error}\n',
+  },
+  'cli.progress.sample_executing': {
+    zh: '[{i}/{n}] {sample}/{variant} ⏳ 执行中...\n',
+    en: '[{i}/{n}] {sample}/{variant} ⏳ running...\n',
+  },
+  'cli.progress.sample_exec_done': {
+    zh: '[{i}/{n}] {sample}/{variant} 执行完成 {ms}ms {input}+{output} tokens{cost}\n',
+    en: '[{i}/{n}] {sample}/{variant} done {ms}ms {input}+{output} tokens{cost}\n',
+  },
+  'cli.progress.output_preview': {
+    zh: '  输出预览: {preview}\n',
+    en: '  output preview: {preview}\n',
+  },
+  'cli.progress.judging': {
+    zh: '[{i}/{n}] {sample}/{variant} 评委评审中{dim}...\n',
+    en: '[{i}/{n}] {sample}/{variant} judging{dim}...\n',
+  },
+  'cli.progress.judged': {
+    zh: '[{i}/{n}] {sample}/{variant} 评委评审完成{dim} score={score}\n',
+    en: '[{i}/{n}] {sample}/{variant} judged{dim} score={score}\n',
+  },
+  'cli.progress.skipped': {
+    zh: '[{i}/{n}] {sample}/{variant} ⏭ 已跳过 (已有结果)\n',
+    en: '[{i}/{n}] {sample}/{variant} ⏭ skipped (cached)\n',
+  },
+  'cli.progress.sample_done': {
+    zh: '[{i}/{n}] {sample}/{variant} ✓ {ms}ms {input}+{output} tokens{cost}{score}\n',
+    en: '[{i}/{n}] {sample}/{variant} ✓ {ms}ms {input}+{output} tokens{cost}{score}\n',
+  },
+  'cli.run.invalid_repeat': {
+    zh: '⚠ --repeat "{value}" 无效 (期望 ≥ 1 的整数), 已按 1 次评测执行\n',
+    en: '⚠ --repeat "{value}" is invalid (expected an integer ≥ 1), falling back to 1 run\n',
+  },
+  'cli.run.invalid_judge_repeat': {
+    zh: '⚠ --judge-repeat "{value}" 无效 (期望 ≥ 1 的整数), 已按 1 次 judge 执行\n',
+    en: '⚠ --judge-repeat "{value}" is invalid (expected an integer ≥ 1), falling back to 1 judge call\n',
+  },
+  'cli.run.invalid_judge_models_format': {
+    zh: '--judge-models 格式错误: "{part}", 应为 "executor:model" (例如 claude:opus)',
+    en: '--judge-models format error: "{part}", expected "executor:model" (e.g. claude:opus)',
+  },
+  'cli.run.judge_models_single_warning': {
+    zh: 'ℹ --judge-models 只指定了 1 个 judge ({executor}:{model}), 不会进入 ensemble 模式。如需 ensemble, 至少配 2 个。\n',
+    en: 'ℹ --judge-models specified only 1 judge ({executor}:{model}); ensemble not triggered. Configure at least 2 for ensemble mode.\n',
+  },
+  'cli.run.no_debias_length_active': {
+    zh: 'ℹ --no-debias-length 已生效: judge prompt 退回 v2-cot, 与 < v0.21 报告 hash 一致。\n',
+    en: 'ℹ --no-debias-length is active: judge prompt reverts to v2-cot, matching < v0.21 report hashes.\n',
+  },
+  'cli.run.invalid_bootstrap_samples': {
+    zh: '⚠ --bootstrap-samples "{value}" 无效 (期望 ≥ 100 的整数), 已按 1000 执行\n',
+    en: '⚠ --bootstrap-samples "{value}" is invalid (expected an integer ≥ 100), falling back to 1000\n',
+  },
+  'cli.run.bootstrap_samples_too_large': {
+    zh: '⚠ --bootstrap-samples {n} 较大, 可能耗时数秒。1000 是业内标准, 通常已够用。\n',
+    en: '⚠ --bootstrap-samples {n} is large and may take several seconds. 1000 is the industry standard and usually sufficient.\n',
   },
 };
