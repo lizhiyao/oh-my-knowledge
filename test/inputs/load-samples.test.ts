@@ -44,27 +44,27 @@ describe('loadSamples', () => {
     const p = tmp('empty.json');
     cleanups.push(p);
     writeFileSync(p, '[]');
-    assert.throws(() => loadSamples(p), /无效的样本文件/);
+    assert.throws(() => loadSamples(p), /invalid samples file/);
   });
 
   it('无效内容抛出异常', () => {
     const p = tmp('invalid.json');
     cleanups.push(p);
     writeFileSync(p, '"not an array"');
-    assert.throws(() => loadSamples(p), /无效的样本文件/);
+    assert.throws(() => loadSamples(p), /invalid samples file/);
   });
 
   it('缺少 sample_id 抛出异常', () => {
     const p = tmp('no-id.json');
     cleanups.push(p);
     writeFileSync(p, JSON.stringify([{ prompt: 'hello' }]));
-    assert.throws(() => loadSamples(p), /缺少必填字段: sample_id/);
+    assert.throws(() => loadSamples(p), /missing required field: sample_id/);
   });
 
   it('缺少 prompt 抛出异常', () => {
     const p = tmp('no-prompt.json');
     cleanups.push(p);
     writeFileSync(p, JSON.stringify([{ sample_id: 'x' }]));
-    assert.throws(() => loadSamples(p), /缺少必填字段: prompt/);
+    assert.throws(() => loadSamples(p), /missing required field: prompt/);
   });
 });

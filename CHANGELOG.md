@@ -8,6 +8,36 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+
+- **CLI 双语输出 (zh / en)**:`omk` 所有 CLI 输出现支持中英两种语言。优先级 `--lang` flag > `OMK_LANG` 环境变量 > 默认 `zh`。覆盖范围:
+  - `omk --help` 主帮助文档(140 行)+ 所有子命令 help(`gold` / `verdict` / `diagnose` / `failures` / `saturation` / `debias-validate` / `diff` / `analyze`)
+  - 实时进度反馈(预检 / 重试 / 执行中 / 评委评审 / 已完成 / 已跳过 / 错误)
+  - 评测完成提示 + report server 启动信息 + gold dataset 对比反馈
+  - 参数校验提示(`--repeat` / `--judge-repeat` / `--judge-models` / `--bootstrap-samples` / `--no-debias-length` 等)
+  - `bench gen-samples` / `bench evolve` / `bench gold` / `bench saturation` 等子命令的 runtime 反馈
+- **CLI i18n 基础设施**:`src/cli/i18n.ts`(`tCli` / `getCliLang` / `parseLangFromArgv` / `langFromArgv` / `makeOnProgress` factory)+ `src/cli/i18n-dict.ts`(~80 个 key,zh/en 双写,`Record` 类型强制对齐)。新增 `test/cli-i18n.test.ts`(10 用例)做 dict parity / placeholder 替换 / lang 优先级 runtime 校验。
+- **`src/cli/i18n-dict.ts` 头部翻译守则文档**(受 [lizhiyao/cc-viewer](https://github.com/lizhiyao/cc-viewer) i18n 方案启发):明确"保留原文白名单"(产品名 / 子命令名 / 业务术语 skill/variant/sample/judge / 技术参数 / 文件名 / 数学缩写) vs "必须翻译的内容"(动作 / 状态 / 引导文案 / 解释),后续维护者按守则审 dict。
+
+### Changed
+
+- **CLI 默认输出从英文混搭中文改为彻底双语化**:之前 `omk bench run` / `omk --help` / 进度反馈混合中英文(例如 "评测完成 done"),用户每次 review 报告或调试都要"切语境"。本版整体重写:中文用户读到的全是中文,英文用户读到的全是英文,无任何中英混搭。
+- **lib 层(非 cli)user-facing 错误统一英文**:遵循"对客表达层 i18n / 内部实现层统一英文"分层原则,把 `src/inputs/eval-config.ts`(16 处)/ `skill-loader.ts`(5 处)/ `load-samples.ts`(4 处)/ `eval-workflows/run-evaluation.ts`(3 处)/ `inputs/url-fetcher.ts`(2 处)/ `inputs/mcp-resolver.ts`(4 处)/ `executors/{anthropic,openai}-api.ts`(2 处)/ `eval-core/evaluation-execution.ts`(1 处)/ `server/report-server.ts`(2 处)/ `authoring/{generator,evolver}.ts`(6 处)/ `grading/gold-cli.ts`(1 处)的中文 `throw new Error` 和 `process.stderr.write` 改英文。zh 用户看到的最终输出形如"错误: skill file not found: /path"——前缀本地化(由 cli 层负责),内部错误细节是英文工程内容。
+- **`unknown` 提示文案更准**:`未知模块` → `未知顶层命令`,`未知 bench 子命令` → `未知子命令: bench {command}`(中文语序更自然)。
+- **`Skill 健康度日报` 中英混搭 bug 修复**:之前 HELP 主常量中文版混杂了中文短语 "skill 健康度日报",现在英文版改为 `skill health report`。
+
+### Internal
+
+- `src/cli.ts` 顶部 `const HELP` 142 行原英文模板字符串删除,内容完整迁到 dict。`HELP` 现通过 `tCli('cli.help.main', lang).trim()` 取得。
+- 13 处 `parseArgs options` 块统一 spread `COMMON_OPTIONS = { lang: { type: 'string' } }`,所有子命令都接收 `--lang` flag。
+- `defaultOnProgress` 改为 `makeOnProgress(lang)` factory:evaluation engine 异步回调时拿不到 argv,通过 closure 闭住 lang。每个 handler 入口通过 `langFromArgv(argv)` 一行拿到 lang 并传 factory。
+- 测量学不变量未受影响:`src/grading/judge.ts` prompt 文本字节级未动,`test/grading/judge-hash-frozen.test.ts` 仍冻结 `v2-cot=fdc81b19c721` / `v3-cot-length=629bf3b8c41d` 两个 hash。
+- 10 处测试 assertion regex 同步从中文更新为英文(`test/eval-config.test.ts` / `test/runner.test.ts` / `test/inputs/{load-samples,skill-loader}.test.ts` / `test/grading/gold-cli.test.ts`)。
+
+### Fixed
+
+- **(已知漏洞)CLI 中英混搭**:历史上 cli.ts / lib 层中混有大量"中文 stderr 嵌入英文 token / 英文 console.error 嵌入中文短语"。`grep -E "console\\.(log|error|warn).*[一-鿿]|process\\.stderr\\.write.*[一-鿿]|throw new Error.*[一-鿿]" src/` 现为 0 残留(除 `judge.ts` 测量学锚点不动)。
+
 ---
 
 ## [0.20.1] - 2026-04-26

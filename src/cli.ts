@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { tCli, getCliLang, parseLangFromArgv, langFromArgv, type CliLang } from './cli/i18n.js';
 import { discoverVariants, parseVariantCwd } from './inputs/skill-loader.js';
 import { loadEvalConfig, configVariantsToSpecs } from './inputs/eval-config.js';
 import type {
@@ -152,7 +153,16 @@ const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports
 // Defaults are applied inside parseRunConfig (after config-file merge) so that
 // CLI `undefined` can be reliably distinguished from "user passed the default value".
 // Priority order resolved in parseRunConfig: CLI arg > --config file > hard-coded default.
+/**
+ * 所有子命令都接受的通用 flag。新增 --lang 让 parseArgs strict:false 模式下
+ * 仍能把值类型化到 values.lang 上(否则未声明的 flag 会被丢弃)。
+ */
+const COMMON_OPTIONS: ParseArgsConfig['options'] = {
+  lang: { type: 'string' },
+};
+
 const RUN_OPTIONS: ParseArgsConfig['options'] = {
+  ...COMMON_OPTIONS,
   samples: { type: 'string' },
   'skill-dir': { type: 'string' },
   control: { type: 'string' },
@@ -328,152 +338,10 @@ function parseRunConfig(
 }
 
 // ---------------------------------------------------------------------------
-// Help text
-// ---------------------------------------------------------------------------
-
-const HELP: string = `
-oh-my-knowledge — Knowledge artifact evaluation toolkit
-
-Usage:
-  omk bench run [options]     Run an evaluation
-  omk bench report [options]  Start the report server
-  omk bench ci [options]      Run evaluation and exit with pass/fail code
-  omk bench init [dir]        Scaffold a new eval project
-  omk bench gen-samples [skill]  Generate eval-samples from skill content
-  omk bench diff <id1> <id2>      Compare two evaluation reports
-  omk bench evolve <skill>       Self-improve a skill through iterative evaluation
-
-  omk analyze <dir>           Analyze cc session trace(s), produce skill 健康度日报 (v0.18)
-
-Options for "bench run":
-
-  --samples <path>       Sample file (default: eval-samples.json)
-  --skill-dir <path>     Skill definitions directory (default: skills)
-  --control <expr>       Control-group variant expression (experiment role = control)
-  --treatment <v1,v2>    Treatment-group variant expressions (comma-separated; role = treatment)
-                         Each variant expression resolves to an artifact and optional runtime context:
-                           "baseline"       — bare model, no artifact injected
-                           "git:name"       — artifact from last commit
-                           "git:ref:name"   — artifact from specific commit
-                           path with "/"    — artifact from file directly (e.g. ./v1.md)
-                           "name@/cwd"      — attach runtime context / cwd
-                         At least one of --control / --treatment must be provided.
-  --config <path>        YAML/JSON config file (evaluation-as-code).
-                         Declares samples + variants + model + executor in one file.
-                         CLI flags override config fields when both are provided.
-                         Relative paths inside the config are resolved against its directory.
-  --model <name>         Model under test (default: sonnet)
-  --judge-model <name>   Judge model (default: haiku)
-  --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
-  --no-judge             Skip LLM judging
-  --no-cache             Disable result caching
-  --dry-run              Preview tasks without executing
-  --blind                Blind A/B mode: hide variant names in report
-  --concurrency <n>      Number of parallel tasks (default: 1)
-  --timeout <seconds>    Executor timeout per task in seconds (default: 120)
-  --repeat <n>           Run evaluation N times for variance analysis (default: 1)
-  --judge-repeat <n>     Call LLM judge N times per (sample × dimension) for self-
-                         consistency (default: 1). High stddev across runs = the
-                         judge is unstable on this rubric and the score is noisy.
-  --judge-models <list>  Multi-judge ensemble. Comma-separated executor:model pairs,
-                         e.g. claude:opus,openai:gpt-4o,gemini:pro. Each judge scores
-                         every (sample × dimension); report includes per-judge break-
-                         down + Pearson/MAD inter-judge agreement. Refutes "Claude
-                         judge Claude same-modality bias" critique. Combines with
-                         --judge-repeat. Cost ~ N_judges × N_repeat × N_samples.
-  --bootstrap            Compute bootstrap confidence intervals (distribution-free,
-                         preferred over t-interval for ordinal LLM scores). Adds
-                         per-variant CI on the mean + pairwise CI on treatment-vs-
-                         control difference (significant=0 outside CI). Reports both
-                         t-interval and bootstrap so old tooling still works.
-  --bootstrap-samples <n>  Number of bootstrap resamples (default 1000). N>10000
-                         triggers a stderr warning about runtime cost.
-  --retry <n>            Retry failed tasks up to N times with exponential backoff (default: 0)
-  --resume <report-id>   Resume from a previous report, skipping completed tasks
-  --executor <name>      Executor: claude, openai, gemini, anthropic-api, openai-api,
-                         or any shell command (e.g. "python my_provider.py")
-  --judge-executor <name> Executor for LLM judge (default: same as --executor)
-  --each                 Evaluate each skill independently against baseline
-                         Requires {name}.eval-samples.json paired with each skill
-  --skip-preflight       Skip model connectivity check before evaluation
-  --mcp-config <path>    MCP config file for URL fetching via MCP servers
-                         (default: .mcp.json in current directory)
-  --no-serve             Skip auto-starting report server after evaluation
-  --verbose              Print detailed progress for each sample (exec result, grading phases)
-  --layered-stats        Expand the three-layer (fact/behavior/judge) independent
-                         significance breakdown in the HTML report by default.
-                         Without this flag, the breakdown is collapsed behind a
-                         click-to-expand summary under each comparison.
-
-Options for "bench ci":
-  (same as "bench run", plus:)
-  --threshold <number>   Minimum score to pass, applied INDEPENDENTLY to each of
-                         the three layers (fact / behavior / LLM judge). ANY
-                         layer below threshold fails the gate — this prevents
-                         composite averaging from masking a single-layer collapse.
-                         Default: 3.5. If all three layers are absent (no
-                         assertions and no rubric defined in eval-samples), the
-                         gate FAILS with a configuration hint — no composite fallback.
-
-Options for "bench report":
-  --port <number>        Server port (default: 7799)
-  --reports-dir <path>   Reports directory (default: ~/.oh-my-knowledge/reports/)
-  --export <id>          Export report as standalone HTML file
-  --dev                  Dev mode: auto-restart on lib/ file changes
-
-Options for "bench gen-samples":
-  --each                 Generate for all skills missing eval-samples
-  --count <n>            Number of samples to generate per skill (default: 5)
-  --model <name>         Model for generation (default: sonnet)
-  --skill-dir <path>     Skill directory (default: skills), used with --each
-
-Options for "analyze":
-  <dir>                  Input: cc session JSONL file / dir (e.g. ~/.claude/projects/<slug>)
-  --kb <path>            Knowledge base root (default: auto-infer from trace cwd)
-  --last <duration>      Time window like "7d" / "30d" (default: all)
-  --from <iso>           Window start (ISO8601), takes precedence over --last
-  --to <iso>             Window end (ISO8601), takes precedence over --last
-  --skills <n1,n2,...>   Whitelist skills to analyze (default: all)
-  --output-dir <path>    Output dir (default: ~/.oh-my-knowledge/analyses/)
-
-Options for "bench evolve":
-  --rounds <n>           Maximum evolution rounds (default: 5)
-  --target <score>       Stop early when score reaches this threshold
-  --samples <path>       Sample file (default: eval-samples.json)
-  --model <name>         Model under test (default: sonnet)
-  --judge-model <name>   Judge model (default: haiku)
-  --improve-model <name> Model for generating improvements (default: sonnet)
-  --concurrency <n>      Parallel eval tasks (default: 1)
-  --timeout <seconds>    Executor timeout per task in seconds (default: 120)
-  --executor <name>      Executor to use (default: claude)
-
-Examples:
-  omk bench run --control v1 --treatment v2
-  omk bench run --control baseline --treatment my-skill
-  omk bench run --control git:my-skill --treatment my-skill
-  omk bench run --control ./old-skill.md --treatment ./new-skill.md
-  omk bench run --control baseline --treatment v1,v2,v3
-  omk bench run --config eval.yaml
-  omk bench run --config eval.yaml --model sonnet-4.6   # CLI overrides config
-  omk bench run --each
-  omk bench run --dry-run
-  omk bench report --port 8080
-  omk bench report --export v1-vs-v2-20260326-1832
-  omk bench init my-eval
-  omk bench gen-samples skills/my-skill.md
-  omk bench gen-samples --each
-  omk bench diff <report-id-1> <report-id-2>
-  omk bench evolve skills/my-skill.md --rounds 5
-  omk analyze ~/.claude/projects/-Users-lizhiyao-Documents-oh-my-knowledge
-  omk analyze ~/.claude/projects/my-project --last 7d --kb /path/to/project
-  omk analyze ~/.claude/projects/my-project --skills audit,polish
-`.trim();
-
-// ---------------------------------------------------------------------------
 // Update check
 // ---------------------------------------------------------------------------
 
-async function checkUpdate(): Promise<void> {
+async function checkUpdate(lang: CliLang): Promise<void> {
   try {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
@@ -486,9 +354,11 @@ async function checkUpdate(): Promise<void> {
     if (!res.ok) return;
     const data = await res.json() as { version?: string };
     if (data.version && data.version !== pkg.version) {
-      process.stderr.write(`\n💡 新版本可用: ${pkg.version} → ${data.version}，运行 npm update ${pkg.name} -g 更新\n\n`);
+      process.stderr.write(tCli('cli.update.new_version_available', lang, {
+        old: pkg.version, new: data.version, pkg: pkg.name,
+      }));
     }
-  } catch { /* 静默失败，不影响正常使用 */ }
+  } catch { /* 静默失败,不影响正常使用 */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -496,11 +366,12 @@ async function checkUpdate(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  checkUpdate();
+  const lang = getCliLang(parseLangFromArgv(process.argv));
+  checkUpdate(lang);
   const [domain, command, ...rest]: string[] = process.argv.slice(2);
 
   if (!domain || domain === '--help' || domain === '-h') {
-    console.log(HELP);
+    console.log(tCli('cli.help.main', lang).trim());
     process.exit(0);
   }
 
@@ -511,12 +382,12 @@ async function main(): Promise<void> {
   }
 
   if (domain !== 'bench') {
-    console.error(`Unknown domain: ${domain}. Use "omk bench <command>" or "omk analyze <dir>".`);
+    console.error(tCli('cli.common.unknown_domain', lang, { domain }));
     process.exit(1);
   }
 
   if (!command || command === '--help' || command === '-h') {
-    console.log(HELP);
+    console.log(tCli('cli.help.main', lang).trim());
     process.exit(0);
   }
 
@@ -561,7 +432,7 @@ async function main(): Promise<void> {
       await handleFailures(rest);
       break;
     default:
-      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", "evolve", "diff", "gold", "debias-validate", "saturation", "verdict", "diagnose", or "failures".`);
+      console.error(tCli('cli.common.unknown_bench_command', lang, { command }));
       process.exit(1);
   }
 }
@@ -570,58 +441,74 @@ async function main(): Promise<void> {
 // Progress callback
 // ---------------------------------------------------------------------------
 
-function defaultOnProgress({
-  phase,
-  completed,
-  total,
-  sample_id,
-  variant,
-  durationMs,
-  inputTokens,
-  outputTokens,
-  costUSD,
-  score,
-  outputPreview,
-  judgePhase: _judgePhase,
-  judgeDim,
-  skipped,
-  attempt,
-  maxAttempts,
-  error,
-}: ProgressInfo): void {
-  if (phase === 'preflight') {
-    process.stderr.write('⏳ 预检模型连通性...\n');
-    return;
-  }
-  if (phase === 'retry') {
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 🔄 重试 ${attempt}/${maxAttempts}...\n`);
-    return;
-  }
-  if (phase === 'error') {
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ❌ ${error}\n`);
-    return;
-  }
-  if (phase === 'start') {
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ⏳ 执行中...\n`);
-  } else if (phase === 'exec_done') {
-    const costInfo: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 执行完成 ${durationMs}ms ${inputTokens}+${outputTokens} tokens${costInfo}\n`);
-    if (outputPreview) {
-      process.stderr.write(`  输出预览: ${outputPreview.slice(0, 150).replace(/\n/g, ' ')}\n`);
+/**
+ * Factory: 闭住 lang, 返回 onProgress callback。evaluation engine 回调时不传
+ * 上下文, 所以 lang 必须在 handler 入口处通过 closure 传进来。
+ */
+function makeOnProgress(lang: CliLang): (info: ProgressInfo) => void {
+  return ({
+    phase,
+    completed,
+    total,
+    sample_id,
+    variant,
+    durationMs,
+    inputTokens,
+    outputTokens,
+    costUSD,
+    score,
+    outputPreview,
+    judgePhase: _judgePhase,
+    judgeDim,
+    skipped,
+    attempt,
+    maxAttempts,
+    error,
+  }: ProgressInfo): void => {
+    const ctx = { i: completed ?? '', n: total ?? '', sample: sample_id ?? '', variant: variant ?? '' };
+    if (phase === 'preflight') {
+      process.stderr.write(tCli('cli.progress.preflight_starting', lang));
+      return;
     }
-  } else if (phase === 'grading') {
-    const dimInfo: string = judgeDim ? ` [${judgeDim}]` : '';
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 评审中${dimInfo}...\n`);
-  } else if (phase === 'judge_done') {
-    const dimInfo: string = judgeDim ? ` [${judgeDim}]` : '';
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} 评审完成${dimInfo} score=${score}\n`);
-  } else if (phase === 'done' && skipped) {
-    if (sample_id) process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ⏭ 已跳过（已有结果）\n`);
-  } else {
-    const costInfo: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
-    const scoreInfo: string = typeof score === 'number' ? ` score=${score}` : '';
-    process.stderr.write(`[${completed}/${total}] ${sample_id}/${variant} ✓ ${durationMs}ms ${inputTokens}+${outputTokens} tokens${costInfo}${scoreInfo}\n`);
-  }
+    if (phase === 'retry') {
+      process.stderr.write(tCli('cli.progress.sample_retry', lang, {
+        ...ctx, attempt: attempt ?? '', max: maxAttempts ?? '',
+      }));
+      return;
+    }
+    if (phase === 'error') {
+      process.stderr.write(tCli('cli.progress.sample_error', lang, { ...ctx, error: error ?? '' }));
+      return;
+    }
+    if (phase === 'start') {
+      process.stderr.write(tCli('cli.progress.sample_executing', lang, ctx));
+    } else if (phase === 'exec_done') {
+      const cost: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+      process.stderr.write(tCli('cli.progress.sample_exec_done', lang, {
+        ...ctx, ms: durationMs ?? '', input: inputTokens ?? '', output: outputTokens ?? '', cost,
+      }));
+      if (outputPreview) {
+        process.stderr.write(tCli('cli.progress.output_preview', lang, {
+          preview: outputPreview.slice(0, 150).replace(/\n/g, ' '),
+        }));
+      }
+    } else if (phase === 'grading') {
+      const dim: string = judgeDim ? ` [${judgeDim}]` : '';
+      process.stderr.write(tCli('cli.progress.judging', lang, { ...ctx, dim }));
+    } else if (phase === 'judge_done') {
+      const dim: string = judgeDim ? ` [${judgeDim}]` : '';
+      process.stderr.write(tCli('cli.progress.judged', lang, { ...ctx, dim, score: score ?? '' }));
+    } else if (phase === 'done' && skipped) {
+      if (sample_id) process.stderr.write(tCli('cli.progress.skipped', lang, ctx));
+    } else {
+      const cost: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+      const scoreInfo: string = typeof score === 'number' ? ` score=${score}` : '';
+      process.stderr.write(tCli('cli.progress.sample_done', lang, {
+        ...ctx, ms: durationMs ?? '', input: inputTokens ?? '', output: outputTokens ?? '',
+        cost, score: scoreInfo,
+      }));
+    }
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -629,6 +516,7 @@ function defaultOnProgress({
 // ---------------------------------------------------------------------------
 
 async function handleRun(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const { values, config } = parseRunConfig(argv, {
     blind: { type: 'boolean', default: false },
     repeat: { type: 'string', default: '1' },
@@ -646,28 +534,28 @@ async function handleRun(argv: string[]): Promise<void> {
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
 
   config.blind = values.blind as boolean | undefined;
-  config.onProgress = defaultOnProgress as unknown as ProgressCallback;
+  config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
-  // --repeat 诚实输入校验:非 ≥1 整数时提示并钳到 1,不静默掩盖用户错字/极端输入
-  // 提前到 --each 分支之前,保证 each 模式也能读到 repeat (曾经 bug: --each 吞 --repeat)
+  // --repeat 输入校验: 非 ≥1 整数时提示并钳到 1, 不静默掩盖用户错字 / 极端输入。
+  // 提前到 --each 分支之前, 保证 each 模式也能读到 repeat (曾经 bug: --each 吞 --repeat)。
   const repeatRaw = values.repeat as string | undefined;
   const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : 1;
   if (repeatRaw !== undefined && (!Number.isFinite(parsedRepeat) || parsedRepeat < 1)) {
-    process.stderr.write(`⚠ --repeat "${repeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次评测执行\n`);
+    process.stderr.write(tCli('cli.run.invalid_repeat', lang, { value: repeatRaw }));
   }
   const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
 
-  // --judge-repeat 同样的诚实校验:非 ≥1 整数时钳到 1
+  // --judge-repeat 同样校验: 非 ≥1 整数时钳到 1
   const judgeRepeatRaw = values['judge-repeat'] as string | undefined;
   const parsedJudgeRepeat = judgeRepeatRaw !== undefined ? Number(judgeRepeatRaw) : 1;
   if (judgeRepeatRaw !== undefined && (!Number.isFinite(parsedJudgeRepeat) || parsedJudgeRepeat < 1)) {
-    process.stderr.write(`⚠ --judge-repeat "${judgeRepeatRaw}" 无效(期望 ≥ 1 的整数),已按 1 次 judge 执行\n`);
+    process.stderr.write(tCli('cli.run.invalid_judge_repeat', lang, { value: judgeRepeatRaw }));
   }
   const judgeRepeatCount: number = Math.max(1, Math.floor(parsedJudgeRepeat) || 1);
   if (judgeRepeatCount > 1) config.judgeRepeat = judgeRepeatCount;
 
   // --judge-models executor:model,executor:model,... -> JudgeConfig[]
-  // 至少 2 个才进 ensemble 模式,1 个等同于 --judge-model
+  // 至少 2 个才进 ensemble 模式, 1 个等同于 --judge-model
   const judgeModelsRaw = values['judge-models'] as string | undefined;
   if (judgeModelsRaw) {
     const parts = judgeModelsRaw.split(',').map((s) => s.trim()).filter(Boolean);
@@ -675,15 +563,17 @@ async function handleRun(argv: string[]): Promise<void> {
       const [executor, ...modelParts] = p.split(':');
       const model = modelParts.join(':');
       if (!executor || !model) {
-        throw new Error(`--judge-models 格式错误: "${p}",应为 "executor:model" (如 claude:opus)`);
+        throw new Error(tCli('cli.run.invalid_judge_models_format', lang, { part: p }));
       }
       return { executor, model };
     });
     if (judges.length >= 2) {
       config.judgeModels = judges;
     } else if (judges.length === 1) {
-      // 单 judge 不走 ensemble,但允许这样写,等同于 --judge-model + --executor
-      process.stderr.write(`ℹ --judge-models 只指定 1 个 judge (${judges[0].executor}:${judges[0].model}),不触发 ensemble。如需 ensemble 至少给 2 个。\n`);
+      // 单 judge 不走 ensemble, 但允许这样写, 等同于 --judge-model + --executor
+      process.stderr.write(tCli('cli.run.judge_models_single_warning', lang, {
+        executor: judges[0].executor, model: judges[0].model,
+      }));
     }
   }
 
@@ -707,7 +597,7 @@ async function handleRun(argv: string[]): Promise<void> {
   // off so historical reports (judgePromptHash from v2-cot era) can be reproduced.
   if (values['no-debias-length'] as boolean) {
     config.lengthDebias = false;
-    process.stderr.write('ℹ --no-debias-length 已生效:judge prompt 退回 v2-cot,与 < v0.21 报告 hash 一致。\n');
+    process.stderr.write(tCli('cli.run.no_debias_length_active', lang));
   }
 
   // --bootstrap / --bootstrap-samples
@@ -716,11 +606,11 @@ async function handleRun(argv: string[]): Promise<void> {
     const bsRaw = values['bootstrap-samples'] as string | undefined;
     const parsedBs = bsRaw !== undefined ? Number(bsRaw) : 1000;
     if (bsRaw !== undefined && (!Number.isFinite(parsedBs) || parsedBs < 100)) {
-      process.stderr.write(`⚠ --bootstrap-samples "${bsRaw}" 无效(期望 ≥ 100 的整数),已按 1000 执行\n`);
+      process.stderr.write(tCli('cli.run.invalid_bootstrap_samples', lang, { value: bsRaw }));
     }
     const bsCount = Math.max(100, Math.floor(parsedBs) || 1000);
     if (bsCount > 10000) {
-      process.stderr.write(`⚠ --bootstrap-samples ${bsCount} 较大,可能耗时数秒。1000 是业内标准,通常已够用。\n`);
+      process.stderr.write(tCli('cli.run.bootstrap_samples_too_large', lang, { n: bsCount }));
     }
     config.bootstrapSamples = bsCount;
   }
@@ -733,31 +623,33 @@ async function handleRun(argv: string[]): Promise<void> {
         repeat: repeatCount,
         onSkillProgress({ phase, skill, current, total }: SkillProgressInfo): void {
           if (phase === 'start') {
-            process.stderr.write(`\n=== [${current}/${total}] Skill: ${skill} ===\n`);
+            process.stderr.write(tCli('cli.run.skill_section', lang, {
+              i: current ?? '', n: total ?? '', skill: skill ?? '',
+            }));
           }
         },
       }) as EvalResult;
       console.log(JSON.stringify(report, null, 2));
       if (filePath) {
-        process.stderr.write('\n✅ 批量评测完成\n');
-        process.stderr.write(`📄 Report saved to: ${filePath}\n`);
+        process.stderr.write(tCli('cli.run.batch_complete', lang));
+        process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
 
         if (!values['no-serve'] && process.stdout.isTTY) {
           const { createReportServer } = await import('./server/report-server.js');
           const server: ReportServer = createReportServer({ reportsDir: config.outputDir });
           const serverUrl: string = await server.start();
           const reportUrl: string = `${serverUrl}/run/${report.id}`;
-          process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
-          process.stderr.write(`👉 View report: ${reportUrl}\n`);
-          process.stderr.write('\nPress Ctrl+C to stop the server\n');
+          process.stderr.write(tCli('cli.run.report_server_running', lang, { url: serverUrl }));
+          process.stderr.write(tCli('cli.run.report_server_view', lang, { url: reportUrl }));
+          process.stderr.write(tCli('cli.run.report_server_stop', lang));
 
           const { platform } = await import('node:os');
           const openCmd: string = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
           const { execFile: execFileCb } = await import('node:child_process');
           execFileCb(openCmd, [reportUrl], () => { });
         } else if (!values['no-serve']) {
-          process.stderr.write('\n💡 非交互环境，已跳过 report server\n');
-          process.stderr.write(`   查看报告: omk bench report --reports-dir ${config.outputDir}\n`);
+          process.stderr.write(tCli('cli.run.no_serve_in_non_tty', lang));
+          process.stderr.write(tCli('cli.run.no_serve_view_hint', lang, { dir: config.outputDir }));
         }
       }
       return;
@@ -771,7 +663,7 @@ async function handleRun(argv: string[]): Promise<void> {
         ...config,
         repeat: repeatCount,
         onRepeatProgress({ run, total }: RepeatProgressInfo): void {
-          process.stderr.write(`\n=== Run ${run}/${total} ===\n`);
+          process.stderr.write(tCli('cli.run.run_section', lang, { i: run, n: total }));
         },
       }) as { report: Report };
       report = result.report;
@@ -795,18 +687,22 @@ async function handleRun(argv: string[]): Promise<void> {
       if (out.result && out.gold) {
         process.stderr.write(formatGoldCompare(out.result, out.gold));
         if (out.result.contaminationWarning) {
-          process.stderr.write(`\n⚠ ${out.result.contaminationWarning}\n`);
+          process.stderr.write(tCli('cli.run.contamination_warning', lang, {
+            warning: out.result.contaminationWarning,
+          }));
         }
       } else {
-        process.stderr.write(`\n⚠ gold dataset 加载失败 (${goldDir}):\n`);
-        for (const m of out.loadIssues) process.stderr.write(`  - ${m}\n`);
+        process.stderr.write(tCli('cli.run.gold_load_failed', lang, { dir: goldDir }));
+        for (const m of out.loadIssues) {
+          process.stderr.write(tCli('cli.run.gold_load_issue', lang, { message: m }));
+        }
       }
     }
 
     console.log(JSON.stringify(report, null, 2));
     if (filePath) {
-      process.stderr.write('\n✅ 评测完成\n');
-      process.stderr.write(`📄 Report saved to: ${filePath}\n`);
+      process.stderr.write(tCli('cli.run.eval_complete', lang));
+      process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
 
       if (!values['no-serve'] && process.stdout.isTTY) {
         // Auto-start report server
@@ -816,9 +712,9 @@ async function handleRun(argv: string[]): Promise<void> {
         });
         const serverUrl: string = await server.start();
         const reportUrl: string = `${serverUrl}/run/${report.id}`;
-        process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
-        process.stderr.write(`👉 View report: ${reportUrl}\n`);
-        process.stderr.write('\nPress Ctrl+C to stop the server\n');
+        process.stderr.write(tCli('cli.run.report_server_running', lang, { url: serverUrl }));
+        process.stderr.write(tCli('cli.run.report_server_view', lang, { url: reportUrl }));
+        process.stderr.write(tCli('cli.run.report_server_stop', lang));
 
         // Auto-open report in browser
         const { platform } = await import('node:os');
@@ -826,12 +722,12 @@ async function handleRun(argv: string[]): Promise<void> {
         const { execFile: execFileCb } = await import('node:child_process');
         execFileCb(openCmd, [reportUrl], () => { });
       } else if (!values['no-serve']) {
-        process.stderr.write('\n💡 非交互环境，已跳过 report server\n');
-        process.stderr.write(`   查看报告: omk bench report --reports-dir ${config.outputDir}\n`);
+        process.stderr.write(tCli('cli.run.no_serve_in_non_tty', lang));
+        process.stderr.write(tCli('cli.run.no_serve_view_hint', lang, { dir: config.outputDir }));
       }
     }
   } catch (err: unknown) {
-    console.error(`Error: ${(err as Error).message}`);
+    console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
     process.exit(1);
   }
 }
@@ -841,9 +737,11 @@ async function handleRun(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleReport(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const { values } = parseArgs({
     args: argv,
     options: {
+      ...COMMON_OPTIONS,
       port: { type: 'string', default: '7799' },
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       export: { type: 'string' },
@@ -878,7 +776,7 @@ async function handleReport(argv: string[]): Promise<void> {
     const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
     const report: Report | null = await store.get(values.export as string);
     if (!report) {
-      console.error(`Report not found: ${values.export}`);
+      console.error(tCli('cli.common.report_not_found', lang, { id: values.export as string }));
       process.exit(1);
     }
     const html: string = report!.each ? renderEachRunDetail(report) : renderRunDetail(report);
@@ -981,10 +879,12 @@ function parseLastWindow(spec: string): string | null {
 }
 
 async function handleAnalyze(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
     options: {
+      ...COMMON_OPTIONS,
       kb: { type: 'string' },
       last: { type: 'string' },
       from: { type: 'string' },
@@ -995,7 +895,7 @@ async function handleAnalyze(argv: string[]): Promise<void> {
   });
   const dir = positionals[0];
   if (!dir) {
-    console.error('Usage: omk analyze <dir> [--kb <path>] [--last 7d] [--from ISO] [--to ISO] [--skills name1,name2]');
+    console.error(tCli('cli.help.analyze_usage', lang));
     process.exit(1);
   }
   const tracePath = resolve(dir);
@@ -1049,10 +949,11 @@ async function handleAnalyze(argv: string[]): Promise<void> {
   console.log(skillRows.join('\n'));
   console.log('');
   console.log(`report written to: ${jsonPath}`);
-  console.log(`view in browser: omk bench report  # 打开后点首页的 "📊 Skill 健康度日报"`);
+  console.log(tCli('cli.analyze.view_in_browser', lang));
 }
 
 async function handleInit(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const targetDir: string = resolve(argv[0] || '.');
   const { writeFileSync, mkdirSync } = await import('node:fs');
 
@@ -1061,12 +962,12 @@ async function handleInit(argv: string[]): Promise<void> {
   writeFileSync(join(targetDir, 'skills', 'v1.md'), INIT_SKILL_V1);
   writeFileSync(join(targetDir, 'skills', 'v2.md'), INIT_SKILL_V2);
 
-  console.log(`Eval project scaffolded at: ${targetDir}`);
+  console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));
   console.log('');
-  console.log('Next steps:');
-  console.log('  1. Edit eval-samples.json to add your test cases');
-  console.log('  2. Edit skills/v1.md and skills/v2.md with your skill versions');
-  console.log('  3. Run: omk bench run --control v1 --treatment v2');
+  console.log(tCli('cli.init.next_steps_title', lang));
+  console.log(tCli('cli.init.next_step_edit_samples', lang));
+  console.log(tCli('cli.init.next_step_edit_skills', lang));
+  console.log(tCli('cli.init.next_step_run', lang));
 }
 
 // ---------------------------------------------------------------------------
@@ -1074,9 +975,11 @@ async function handleInit(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleGenSamples(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const { values } = parseArgs({
     args: argv,
     options: {
+      ...COMMON_OPTIONS,
       each: { type: 'boolean', default: false },
       count: { type: 'string', default: '5' },
       model: { type: 'string', default: 'sonnet' },
@@ -1095,7 +998,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
     // Batch mode: generate for all skills missing eval-samples
     const skillDir: string = resolve(values['skill-dir'] as string);
     if (!existsSync(skillDir)) {
-      console.error(`Skill directory not found: ${skillDir}`);
+      console.error(tCli('cli.common.skill_dir_not_found', lang, { path: skillDir }));
       process.exit(1);
     }
 
@@ -1124,39 +1027,44 @@ async function handleGenSamples(argv: string[]): Promise<void> {
       }
 
       if (existsSync(samplesPath)) {
-        process.stderr.write(`⏭️  ${name}: eval-samples 已存在，跳过\n`);
+        process.stderr.write(tCli('cli.gen.skill_skipped_existing', lang, { name }));
         continue;
       }
 
-      process.stderr.write(`🔄 ${name}: 正在生成 ${count} 个测试样本...\n`);
+      process.stderr.write(tCli('cli.gen.skill_generating', lang, { name, count }));
       try {
         const skillContent: string = readFileSync(skillPath, 'utf-8');
         const { samples, costUSD }: GenerateSamplesResult =
           await generateSamples({ skillContent, count, model });
         writeFileSync(samplesPath, JSON.stringify(samples, null, 2));
-        process.stderr.write(`✅ ${name}: 已生成 ${samples.length} 个样本 → ${samplesPath} (${costUSD > 0 ? `$${costUSD.toFixed(4)}` : ''})\n`);
+        const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+        process.stderr.write(tCli('cli.gen.skill_done', lang, {
+          name, n: samples.length, path: samplesPath, cost,
+        }));
         generated++;
       } catch (err: unknown) {
-        process.stderr.write(`❌ ${name}: ${(err as Error).message}\n`);
+        process.stderr.write(tCli('cli.gen.skill_failed', lang, {
+          name, message: (err as Error).message,
+        }));
       }
     }
 
     if (generated === 0) {
-      console.log('没有需要生成的 eval-samples（所有 skill 已有配对文件）');
+      console.log(tCli('cli.gen.batch_none_needed', lang));
     } else {
-      console.log(`\n共生成 ${generated} 份 eval-samples，请审查后运行: omk bench run --each`);
+      console.log(tCli('cli.gen.batch_summary', lang, { n: generated }));
     }
   } else {
     // Single skill mode
     const skillPath: string | undefined = argv.find((a: string) => !a.startsWith('-'));
     if (!skillPath) {
-      console.error('请指定 skill 文件路径，例如: omk bench gen-samples skills/my-skill.md');
+      console.error(tCli('cli.gen.specify_skill_path', lang));
       process.exit(1);
     }
 
     const resolvedPath: string = resolve(skillPath);
     if (!existsSync(resolvedPath)) {
-      console.error(`Skill file not found: ${resolvedPath}`);
+      console.error(tCli('cli.common.skill_file_not_found', lang, { path: resolvedPath }));
       process.exit(1);
     }
 
@@ -1164,19 +1072,22 @@ async function handleGenSamples(argv: string[]): Promise<void> {
     const outputPath: string = resolve('eval-samples.json');
 
     if (existsSync(outputPath)) {
-      console.error(`eval-samples.json 已存在。如需覆盖请先删除。`);
+      console.error(tCli('cli.gen.samples_already_exists', lang));
       process.exit(1);
     }
 
-    process.stderr.write(`🔄 正在生成 ${count} 个测试样本...\n`);
+    process.stderr.write(tCli('cli.gen.single_generating', lang, { count }));
     try {
       const { samples, costUSD }: GenerateSamplesResult =
         await generateSamples({ skillContent, count, model });
       writeFileSync(outputPath, JSON.stringify(samples, null, 2));
-      process.stderr.write(`✅ 已生成 ${samples.length} 个样本 → ${outputPath} (${costUSD > 0 ? `$${costUSD.toFixed(4)}` : ''})\n`);
-      console.log('\n请审查生成的测试样本后运行: omk bench run');
+      const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+      process.stderr.write(tCli('cli.gen.single_done', lang, {
+        n: samples.length, path: outputPath, cost,
+      }));
+      console.log(tCli('cli.gen.review_hint', lang));
     } catch (err: unknown) {
-      console.error(`生成失败: ${(err as Error).message}`);
+      console.error(tCli('cli.gen.failed', lang, { message: (err as Error).message }));
       process.exit(1);
     }
   }
@@ -1187,9 +1098,11 @@ async function handleGenSamples(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleEvolve(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const { values } = parseArgs({
     args: argv,
     options: {
+      ...COMMON_OPTIONS,
       rounds: { type: 'string', default: '5' },
       target: { type: 'string' },
       samples: { type: 'string', default: 'eval-samples.json' },
@@ -1207,7 +1120,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
 
   const skillPath: string | undefined = argv.find((a: string) => !a.startsWith('-'));
   if (!skillPath) {
-    console.error('请指定 skill 文件路径，例如: omk bench evolve skills/my-skill.md');
+    console.error(tCli('cli.evolve.specify_skill_path', lang));
     process.exit(1);
   }
 
@@ -1219,7 +1132,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
 
   const { evolveSkill } = await import('./authoring/evolver.js');
 
-  process.stderr.write(`\n=== Evolution: ${skillPath} ===\n`);
+  process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
 
   try {
     const result: EvolveResult = await evolveSkill({
@@ -1234,16 +1147,22 @@ async function handleEvolve(argv: string[]): Promise<void> {
       concurrency: Math.max(1, Number(values.concurrency) || 1),
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
       skipPreflight: values['skip-preflight'] as boolean,
-      onProgress: defaultOnProgress as unknown as ProgressCallback,
+      onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, error }: RoundProgressInfo): void {
         if (phase === 'baseline') {
-          process.stderr.write(`Round 0 (baseline): score=${score!.toFixed(2)} ($${costUSD!.toFixed(4)})\n`);
+          process.stderr.write(tCli('cli.evolve.round_baseline', lang, {
+            score: score!.toFixed(2), cost: costUSD!.toFixed(4),
+          }));
         } else if (phase === 'error') {
-          process.stderr.write(`Round ${round}: ✗ 改进生成失败: ${error}\n`);
+          process.stderr.write(tCli('cli.evolve.round_error', lang, {
+            round, error: String(error ?? ''),
+          }));
         } else if (phase === 'done') {
-          const deltaStr: string = delta! >= 0 ? `+${delta!.toFixed(2)}` : delta!.toFixed(2);
+          const delta_: string = delta! >= 0 ? `+${delta!.toFixed(2)}` : delta!.toFixed(2);
           const status: string = accepted ? '✓ ACCEPT' : '✗ REJECT';
-          process.stderr.write(`Round ${round}: score=${score!.toFixed(2)} (${deltaStr}) ${status} ($${costUSD!.toFixed(4)})\n`);
+          process.stderr.write(tCli('cli.evolve.round_done', lang, {
+            round, score: score!.toFixed(2), delta: delta_, status, cost: costUSD!.toFixed(4),
+          }));
         }
       },
     });
@@ -1251,16 +1170,23 @@ async function handleEvolve(argv: string[]): Promise<void> {
     const improvement: string = result.startScore > 0
       ? ((result.finalScore - result.startScore) / result.startScore * 100).toFixed(1)
       : '0';
-    process.stderr.write(`\n✅ ${result.startScore.toFixed(2)} → ${result.finalScore.toFixed(2)} (+${improvement}%) | ${result.totalRounds} 轮 | $${result.totalCostUSD.toFixed(4)}\n`);
-    process.stderr.write(`Best: ${result.bestSkillPath} → ${resolve(skillPath)}\n`);
-    process.stderr.write(`所有版本保存在: ${join(resolve(skillPath, '..'), 'evolve')}/\n`);
+    process.stderr.write(tCli('cli.evolve.summary', lang, {
+      start: result.startScore.toFixed(2), final: result.finalScore.toFixed(2),
+      percent: improvement, rounds: result.totalRounds, cost: result.totalCostUSD.toFixed(4),
+    }));
+    process.stderr.write(tCli('cli.evolve.best_path', lang, {
+      best: result.bestSkillPath, target: resolve(skillPath),
+    }));
+    process.stderr.write(tCli('cli.evolve.versions_saved', lang, {
+      dir: join(resolve(skillPath, '..'), 'evolve'),
+    }));
     if (result.reportId) {
-      process.stderr.write(`📊 评测报告: omk bench report (ID: ${result.reportId})\n`);
+      process.stderr.write(tCli('cli.evolve.report_link', lang, { id: result.reportId }));
     }
 
     console.log(JSON.stringify(result, null, 2));
   } catch (err: unknown) {
-    console.error(`Error: ${(err as Error).message}`);
+    console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
     process.exit(1);
   }
 }
@@ -1270,13 +1196,14 @@ async function handleEvolve(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleCi(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const { values, config } = parseRunConfig(argv, {
     threshold: { type: 'string', default: '3.5' },
   });
 
   const { runEvaluation } = await import('./eval-workflows/run-evaluation.js');
 
-  config.onProgress = defaultOnProgress as unknown as ProgressCallback;
+  config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
   try {
     const { report } = (await runEvaluation(config)) as EvalResult;
@@ -1304,6 +1231,7 @@ async function handleCi(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleDiff(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   // Flag-aware split: separate positional report IDs from flags so we can support
   //   omk bench diff <id>                      — within-report sample-level (v0.22)
   //   omk bench diff <id1> <id2>               — cross-report variant-level (legacy)
@@ -1325,23 +1253,14 @@ async function handleDiff(argv: string[]): Promise<void> {
   }
 
   if (positional.length === 0) {
-    console.error([
-      'Usage:',
-      '  omk bench diff <reportId>                     within-report per-sample diff (v0.22)',
-      '  omk bench diff <reportId1> <reportId2>        cross-report variant-level diff',
-      '',
-      'Options:',
-      '  --regressions-only          只列 treatment < control 的样本',
-      '  --threshold <num>           regression 阈值 (default 0,即任一负 Δ 算回退)',
-      '  --variant <name>            within-report 模式下指定要钻取的 variant (default: variants[1])',
-      '  --top <n>                   只列差距最大的前 N 个样本',
-    ].join('\n'));
+    console.error(tCli('cli.help.diff_usage', lang));
     process.exit(positional.length === 0 ? 1 : 0);
   }
 
   const { values } = parseArgs({
     args: flagArgs,
     options: {
+      ...COMMON_OPTIONS,
       'regressions-only': { type: 'boolean', default: false },
       threshold: { type: 'string' },
       variant: { type: 'string' },
@@ -1354,7 +1273,7 @@ async function handleDiff(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(DEFAULT_REPORTS_DIR));
 
   if (positional.length === 1) {
-    await runSampleLevelDiff(positional[0], store, values);
+    await runSampleLevelDiff(positional[0], store, values, lang);
     return;
   }
 
@@ -1362,8 +1281,8 @@ async function handleDiff(argv: string[]): Promise<void> {
   const r1: Report | null = await store.get(id1);
   const r2: Report | null = await store.get(id2);
 
-  if (!r1) { console.error(`Report not found: ${id1}`); process.exit(1); }
-  if (!r2) { console.error(`Report not found: ${id2}`); process.exit(1); }
+  if (!r1) { console.error(tCli('cli.common.report_not_found', lang, { id: id1 })); process.exit(1); }
+  if (!r2) { console.error(tCli('cli.common.report_not_found', lang, { id: id2 })); process.exit(1); }
 
   console.log(`\n  Diff: ${id1} → ${id2}\n`);
 
@@ -1431,10 +1350,11 @@ async function runSampleLevelDiff(
   reportId: string,
   store: ReportStore,
   flags: Record<string, string | boolean | undefined>,
+  lang: CliLang,
 ): Promise<void> {
   const report: Report | null = await store.get(reportId);
   if (!report) {
-    console.error(`Report not found: ${reportId}`);
+    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
   const variants = report!.meta?.variants ?? [];
@@ -1516,21 +1436,11 @@ async function runSampleLevelDiff(
 // ---------------------------------------------------------------------------
 
 async function handleGold(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const sub = argv[0];
   const rest = argv.slice(1);
   if (!sub || sub === '--help' || sub === '-h') {
-    console.log([
-      '',
-      'Usage: omk bench gold <subcommand>',
-      '',
-      'Subcommands:',
-      '  init [--out <dir>] [--annotator <id>]    生成空白 gold dataset 模板',
-      '  validate <dir>                           校验数据集结构',
-      '  compare <reportId> --gold-dir <dir>      与已有 report 计算 α/κ/Pearson',
-      '    [--variant <name>] [--reports-dir <d>]',
-      '    [--bootstrap-samples N] [--seed N]',
-      '',
-    ].join('\n'));
+    console.log(tCli('cli.help.gold', lang));
     process.exit(sub ? 0 : 1);
   }
 
@@ -1538,6 +1448,7 @@ async function handleGold(argv: string[]): Promise<void> {
     const { values } = parseArgs({
       args: rest,
       options: {
+        ...COMMON_OPTIONS,
         out: { type: 'string', default: './gold-dataset' },
         annotator: { type: 'string' },
       },
@@ -1548,9 +1459,11 @@ async function handleGold(argv: string[]): Promise<void> {
       const written = initGoldDataset(values.out as string, {
         annotator: values.annotator as string | undefined,
       });
-      console.log(`Created ${written.length} files in ${values.out}:`);
+      console.log(tCli('cli.gold.created_files', lang, {
+        n: written.length, dir: values.out as string,
+      }));
       for (const p of written) console.log(`  ${p}`);
-      console.log('\n下一步: 编辑 annotations.yaml 加入真实标注 → 跑 omk bench gold validate');
+      console.log(tCli('cli.gold.next_step_edit_annotations', lang));
     } catch (err) {
       console.error((err as Error).message);
       process.exit(1);
@@ -1561,13 +1474,13 @@ async function handleGold(argv: string[]): Promise<void> {
   if (sub === 'validate') {
     const dir = rest[0];
     if (!dir) {
-      console.error('Usage: omk bench gold validate <dir>');
+      console.error(tCli('cli.common.usage_gold_validate', lang));
       process.exit(1);
     }
     const { validateGoldDataset } = await import('./grading/gold-cli.js');
     const result = validateGoldDataset(dir);
     if (result.ok) {
-      console.log(`✓ gold dataset OK — ${result.sampleCount} 条标注`);
+      console.log(tCli('cli.gold.validate_ok', lang, { n: result.sampleCount }));
       return;
     }
     console.error(`✗ gold dataset has ${result.issues.length} issue(s):`);
@@ -1584,6 +1497,7 @@ async function handleGold(argv: string[]): Promise<void> {
     const { values } = parseArgs({
       args: rest.slice(1),
       options: {
+        ...COMMON_OPTIONS,
         'gold-dir': { type: 'string' },
         variant: { type: 'string' },
         'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
@@ -1615,7 +1529,7 @@ async function handleGold(argv: string[]): Promise<void> {
     const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
     const report: Report | null = await store.get(reportId);
     if (!report) {
-      console.error(`Report not found: ${reportId}`);
+      console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
       process.exit(1);
     }
 
@@ -1641,27 +1555,11 @@ async function handleGold(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleDebiasValidate(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const sub = argv[0];
   const rest = argv.slice(1);
   if (!sub || sub === '--help' || sub === '-h') {
-    console.log([
-      '',
-      'Usage: omk bench debias-validate <kind> <reportId> [options]',
-      '',
-      'Kinds:',
-      '  length    re-judge with the opposite length-debias setting and bootstrap CI',
-      '            on the score diff. Cost ~doubles vs the original judge pass.',
-      '',
-      'Options:',
-      '  --reports-dir <dir>          report store dir (default: ~/.oh-my-knowledge/reports)',
-      '  --samples <path>             override samples file (default: from report.meta.request)',
-      '  --variant <name>             which variant to validate (default: first)',
-      '  --judge-executor <name>      executor for judge calls (default: claude)',
-      '  --judge-model <model>        judge model id (default: from report)',
-      '  --bootstrap-samples N        bootstrap iterations (default 1000)',
-      '  --seed N                     deterministic CI seed',
-      '',
-    ].join('\n'));
+    console.log(tCli('cli.help.debias_validate', lang));
     process.exit(sub ? 0 : 1);
   }
 
@@ -1678,6 +1576,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: rest.slice(1),
     options: {
+      ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       samples: { type: 'string' },
       variant: { type: 'string' },
@@ -1693,7 +1592,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
-    console.error(`Report not found: ${reportId}`);
+    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
 
@@ -1710,11 +1609,11 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const judgeModel = (values['judge-model'] as string | undefined)
     ?? report!.meta?.judgeModel;
   if (!judgeModel) {
-    console.error('No judge model. Pass --judge-model <id> or ensure report has meta.judgeModel.');
+    console.error(tCli('cli.common.no_judge_model', lang));
     process.exit(1);
   }
 
-  process.stderr.write('\n⚠ debias-validate 会重判所有 (sample × variant),judge cost 大致翻倍。\n');
+  process.stderr.write(tCli('cli.debias.warn_cost_doubles', lang));
 
   const { createExecutor } = await import('./executors/index.js');
   const judgeExecutor = createExecutor(values['judge-executor'] as string);
@@ -1742,30 +1641,17 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleSaturation(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId || reportId === '--help' || reportId === '-h') {
-    console.log([
-      '',
-      'Usage: omk bench saturation <reportId> [options]',
-      '',
-      '回答"我跑够样本了吗?"。复述已有 report 中持久化的饱和判定。',
-      '',
-      '注:本命令读取 run 时跑出的 verdict(运行时已用 method=bootstrap-ci-width',
-      '默认阈值 + 3 窗口 持续条件)。如要换 method/threshold 重新计算,需要重跑',
-      '`omk bench run --repeat ≥ 5`(运行时持久化的 trace 不含原始分数,无法',
-      '在事后用其他参数复算)。',
-      '',
-      'Options:',
-      '  --reports-dir <dir>   report store dir (default: ~/.oh-my-knowledge/reports)',
-      '  --variant <name>      只看一个 variant (default: all)',
-      '',
-    ].join('\n'));
+    console.log(tCli('cli.help.saturation', lang));
     process.exit(reportId ? 0 : 1);
   }
 
   const { values } = parseArgs({
     args: argv.slice(1),
     options: {
+      ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       variant: { type: 'string' },
     },
@@ -1776,13 +1662,13 @@ async function handleSaturation(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
-    console.error(`Report not found: ${reportId}`);
+    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
 
   const saturation = report!.variance?.saturation;
   if (!saturation) {
-    console.error('该 report 无 saturation 数据 (需要 --repeat ≥ 2 才会记录)。');
+    console.error(tCli('cli.saturation.no_data', lang));
     process.exit(1);
   }
 
@@ -1795,21 +1681,31 @@ async function handleSaturation(argv: string[]): Promise<void> {
   const variants = report!.meta.variants ?? [];
   const targetVariants = values.variant ? [values.variant as string] : variants;
 
-  console.log(`\n  Saturation verdict (复述持久化结果)\n`);
+  console.log(tCli('cli.saturation.verdict_header', lang));
   for (const variant of targetVariants) {
     const trace = saturation.perVariant[variant];
     if (!trace || trace.length === 0) {
-      console.log(`  ${variant}: 无 trace 数据`);
+      console.log(tCli('cli.saturation.variant_no_trace', lang, { variant }));
       continue;
     }
-    console.log(`  ${variant}:`);
-    console.log(`    checkpoints: ${trace.length} (N=${trace.map((p) => p.n).join(', ')})`);
-    console.log(`    最近一点 mean=${trace[trace.length - 1].mean.toFixed(3)}, CI=[${trace[trace.length - 1].ciLow.toFixed(3)}, ${trace[trace.length - 1].ciHigh.toFixed(3)}]`);
+    console.log(tCli('cli.saturation.variant_label', lang, { variant }));
+    console.log(tCli('cli.saturation.checkpoints', lang, {
+      n: trace.length, list: trace.map((p) => p.n).join(', '),
+    }));
+    const last = trace[trace.length - 1];
+    console.log(tCli('cli.saturation.last_point', lang, {
+      mean: last.mean.toFixed(3), lo: last.ciLow.toFixed(3), hi: last.ciHigh.toFixed(3),
+    }));
     if (saturation.verdicts?.[variant]) {
       const v = saturation.verdicts[variant];
-      console.log(`    持久化判定 (${v.method}): ${v.saturated ? `已饱和@N=${v.atN}` : '未饱和'} - ${v.reason}`);
+      const result = v.saturated
+        ? tCli('cli.saturation.persisted_verdict_saturated', lang, { n: v.atN ?? '?' })
+        : tCli('cli.saturation.persisted_verdict_unsaturated', lang);
+      console.log(tCli('cli.saturation.persisted_verdict', lang, {
+        method: v.method, result, reason: v.reason,
+      }));
     } else if (trace.length < 5) {
-      console.log(`    判定: 数据点 ${trace.length} < 5,跳过 (跑 --repeat 5 以上才输出)`);
+      console.log(tCli('cli.saturation.skipped_too_few_points', lang, { n: trace.length }));
     }
   }
   console.log('');
@@ -1820,35 +1716,17 @@ async function handleSaturation(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleVerdict(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId || reportId === '--help' || reportId === '-h') {
-    console.log([
-      '',
-      'Usage: omk bench verdict <reportId> [options]',
-      '',
-      '聚合 bootstrap CI / 三层 ci-gate / saturation / human α 给出一行结论。',
-      '',
-      'Verdict 等级:',
-      '  PROGRESS      显著改进 + 三层全过',
-      '  CAUTIOUS      改进真实但有警告 (gate 破 / 幅度太小 / 控制组本身崩)',
-      '  REGRESS       显著回退 — 不要 ship',
-      '  NOISE         CI 跨 0,无法判定',
-      '  UNDERPOWERED  样本不足,需要扩 N 重测',
-      '  SOLO          单变体报告,无对比对象',
-      '',
-      'Options:',
-      '  --reports-dir <dir>      report store dir (default: ~/.oh-my-knowledge/reports)',
-      '  --threshold <num>        三层 gate 阈值 (default 3.5,匹配 omk bench ci)',
-      '  --trivial-diff <num>     "幅度太小"阈值 (default 0.1)',
-      '  --verbose                展开 per-pair 详情',
-      '',
-    ].join('\n'));
+    console.log(tCli('cli.help.verdict', lang));
     process.exit(reportId ? 0 : 1);
   }
 
   const { values } = parseArgs({
     args: argv.slice(1),
     options: {
+      ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       threshold: { type: 'string' },
       'trivial-diff': { type: 'string' },
@@ -1861,7 +1739,7 @@ async function handleVerdict(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
-    console.error(`Report not found: ${reportId}`);
+    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
 
@@ -1889,32 +1767,17 @@ async function handleVerdict(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleDiagnose(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId || reportId === '--help' || reportId === '-h') {
-    console.log([
-      '',
-      'Usage: omk bench diagnose <reportId> [options]',
-      '',
-      '诊断样本集本身的质量问题:区分度低 / 重复 / 歧义 / 成本异常 / 全 fail。',
-      '回答"测评结论是否被坏样本污染"——与 omk bench verdict 互补。',
-      '',
-      'Options:',
-      '  --reports-dir <dir>      report store dir',
-      '  --samples <path>         样本文件路径 (用于 near-duplicate 检测;默认从 report.meta.request 读)',
-      '  --top <n>                每类只显示前 N 个 (默认 10,0=全部)',
-      '  --duplicate-rouge <num>  near-duplicate ROUGE-1 阈值 (默认 0.7)',
-      '  --ambiguous-stddev <num> 歧义阈值,judge stddev (默认 1.0,需要 --judge-repeat ≥ 2 数据)',
-      '  --cost-k <num>           成本异常倍数 vs median (默认 3)',
-      '  --latency-k <num>        耗时异常倍数 vs median (默认 3)',
-      '  --flat <num>             flat_scores 分差阈值 (默认 0.5)',
-      '',
-    ].join('\n'));
+    console.log(tCli('cli.help.diagnose', lang));
     process.exit(reportId ? 0 : 1);
   }
 
   const { values } = parseArgs({
     args: argv.slice(1),
     options: {
+      ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       samples: { type: 'string' },
       top: { type: 'string', default: '10' },
@@ -1931,7 +1794,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
-    console.error(`Report not found: ${reportId}`);
+    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
 
@@ -1946,7 +1809,9 @@ async function handleDiagnose(argv: string[]): Promise<void> {
       const { loadSamples } = await import('./inputs/load-samples.js');
       samples = loadSamples(samplesPath).samples;
     } catch (err) {
-      process.stderr.write(`warn: 加载 samples 文件失败 (${samplesPath}): ${(err as Error).message}\n`);
+      process.stderr.write(tCli('cli.common.warn_load_samples_failed', lang, {
+        path: samplesPath, message: (err as Error).message,
+      }));
     }
   }
 
@@ -1976,30 +1841,17 @@ async function handleDiagnose(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleFailures(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId || reportId === '--help' || reportId === '-h') {
-    console.log([
-      '',
-      'Usage: omk bench failures <reportId> [options]',
-      '',
-      '把已有 report 的失败样本喂给一次 LLM 调用,自动聚类 + 给修复建议。',
-      '失败定义:compositeScore < threshold 或 ok=false。',
-      '',
-      'Options:',
-      '  --reports-dir <dir>      report store dir',
-      '  --judge-executor <name>  执行器 (default: claude)',
-      '  --judge-model <id>       聚类用的 model (default: 沿用 report.meta.judgeModel)',
-      '  --max-clusters <n>       最多多少 cluster (default 5)',
-      '  --threshold <num>        compositeScore < threshold 算失败 (default 3)',
-      '  --max-feed <n>           最多喂给 LLM 多少条 (default 50,超出取最差)',
-      '',
-    ].join('\n'));
+    console.log(tCli('cli.help.failures', lang));
     process.exit(reportId ? 0 : 1);
   }
 
   const { values } = parseArgs({
     args: argv.slice(1),
     options: {
+      ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       'judge-executor': { type: 'string', default: 'claude' },
       'judge-model': { type: 'string' },
@@ -2014,13 +1866,13 @@ async function handleFailures(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
-    console.error(`Report not found: ${reportId}`);
+    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
 
   const judgeModel = (values['judge-model'] as string | undefined) ?? report!.meta?.judgeModel;
   if (!judgeModel) {
-    console.error('No judge model. Pass --judge-model <id> or ensure report has meta.judgeModel.');
+    console.error(tCli('cli.common.no_judge_model', lang));
     process.exit(1);
   }
 

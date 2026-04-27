@@ -70,6 +70,10 @@ omk bench run --dry-run
 
 # run the evaluation (auto-discovers everything under skills/)
 omk bench run
+
+# CLI output language: zh (default) / en — flag wins over env
+omk bench run --lang en
+OMK_LANG=en omk bench report
 ```
 
 ## Use inside Claude Code

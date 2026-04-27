@@ -69,6 +69,10 @@ omk bench run --dry-run
 
 # 运行评测（自动发现 skills/ 目录下的所有 artifact）
 omk bench run
+
+# CLI 输出语言: zh (默认) / en — flag 优先级高于环境变量
+omk bench run --lang en
+OMK_LANG=en omk bench report
 ```
 
 ## 在 Claude Code 中使用

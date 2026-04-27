@@ -103,7 +103,7 @@ export function discoverEachSkills(skillDir: string): Array<{ name: string; skil
   }
 
   for (const name of warned) {
-    process.stderr.write(`⚠️  跳过 ${name}：未找到配对的 eval-samples\n`);
+    process.stderr.write(`⚠️  skipping ${name}: paired eval-samples not found\n`);
   }
 
   skills.sort((a, b) => a.name.localeCompare(b.name));
@@ -132,7 +132,7 @@ export function resolveArtifacts(skillDir: string, variants: string[]): Artifact
     const { name: variantName, cwd: variantCwd } = parseVariantCwd(rawVariant);
 
     if (variantName === 'baseline' && variantCwd) {
-      throw new Error('baseline 不能绑定 cwd。若要表达项目级 runtime context，请使用自定义标签，例如 project-env@/path/to/project');
+      throw new Error('baseline cannot be bound to a cwd. To express a project-level runtime context, use a custom label such as project-env@/path/to/project');
     }
 
     if (variantName === 'baseline') {
@@ -161,7 +161,7 @@ export function resolveArtifacts(skillDir: string, variants: string[]): Artifact
       const content = gitShowFile(ref, join(gitRelDir, `${name}.md`))
         || gitShowFile(ref, join(gitRelDir, name, 'SKILL.md'));
       if (!content) {
-        throw new Error(`skill 在 git ${ref} 中未找到: ${name}.md 或 ${name}/SKILL.md`);
+        throw new Error(`skill not found in git ${ref}: ${name}.md or ${name}/SKILL.md`);
       }
       artifacts.push({
         name: variantName,
@@ -178,7 +178,7 @@ export function resolveArtifacts(skillDir: string, variants: string[]): Artifact
     if (variantName.includes('/')) {
       const filePath = resolve(variantName);
       if (!existsSync(filePath)) {
-        throw new Error(`skill 文件未找到: ${filePath}`);
+        throw new Error(`skill file not found: ${filePath}`);
       }
       const content = readFileSync(filePath, 'utf-8').trim();
       artifacts.push({
@@ -226,7 +226,7 @@ export function resolveArtifacts(skillDir: string, variants: string[]): Artifact
         cwd: variantCwd,
       });
     } else {
-      throw new Error(`skill 未找到: ${mdPath} 或 ${dirSkillPath}`);
+      throw new Error(`skill not found: ${mdPath} or ${dirSkillPath}`);
     }
   }
 

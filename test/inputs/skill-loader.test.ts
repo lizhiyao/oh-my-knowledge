@@ -37,7 +37,7 @@ describe('resolveArtifacts', () => {
   it('baseline@cwd 不再受支持', () => {
     assert.throws(
       () => resolveArtifacts(SKILL_DIR, ['baseline@/tmp/project-a']),
-      /baseline 不能绑定 cwd/,
+      /baseline cannot be bound to a cwd/,
     );
   });
 
