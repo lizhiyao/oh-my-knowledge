@@ -501,7 +501,7 @@ oh-my-knowledge — 知识工件评测工具集
 用法:
   omk bench run [options]              跑一轮评测
   omk bench report [options]           启动报告 server
-  omk bench ci [options]               跑评测并按 pass/fail 退出码返回
+  omk bench gate [options]             跑评测 + 应用 gate, exit code 0/1 (CI/CD 用)
   omk bench init [dir]                 初始化一个评测项目
   omk bench gen-samples [skill]        从 skill 内容生成 eval-samples
   omk bench diff <id1> <id2>           对比两份评测报告
@@ -567,13 +567,20 @@ bench run 选项:
                          显著性细分。不加这个 flag 时, 细分会折叠在每个对比下
                          的 click-to-expand summary 里。
 
-bench ci 选项:
+bench gate 选项:
   (与 bench run 相同, 额外加:)
-  --threshold <number>   通过分数下限, 独立应用到三层中的每一层 (fact /
-                         behavior / LLM judge)。任一层低于阈值即失败 — 防止
-                         合成均值掩盖单层崩塌。默认: 3.5。如果三层全空 (没有
-                         assertion 也没在 eval-samples 里定义 rubric), gate
-                         失败并提示配置问题, 不走合成 fallback。
+  --threshold <number>   三层 gate 阈值 (fact / behavior / LLM judge), 独立应用
+                         到每一层。任一层低于阈值即失败 — 防止合成均值掩盖单层
+                         崩塌。默认: 3.5。如果三层全空 (没有 assertion 也没在
+                         eval-samples 里定义 rubric), gate 失败并提示配置问题,
+                         不走合成 fallback。
+  --trivial-diff <num>   实际可忽略的最小 diff (默认 0.1)。bootstrap diff CI
+                         显著但 |Δ| 小于此值视为"统计有效但实际无意义",标
+                         CAUTIOUS 不给 PROGRESS。
+
+  内部 = bench run + bench verdict, exit code 与 bench verdict 对齐:
+  PROGRESS / SOLO-PASS → 0; NOISE / UNDERPOWERED / CAUTIOUS / REGRESS → 1。
+  数据 underpowered 时直接 FAIL, 堵住"单轮过 PASS 就 deploy"漏洞。
 
 bench report 选项:
   --port <number>        server 端口 (默认: 7799)
@@ -632,7 +639,7 @@ oh-my-knowledge — Knowledge artifact evaluation toolkit
 Usage:
   omk bench run [options]              Run an evaluation
   omk bench report [options]           Start the report server
-  omk bench ci [options]               Run evaluation and exit with pass/fail code
+  omk bench gate [options]             Run evaluation + apply gate, exit 0/1 (for CI/CD)
   omk bench init [dir]                 Scaffold a new eval project
   omk bench gen-samples [skill]        Generate eval-samples from skill content
   omk bench diff <id1> <id2>           Compare two evaluation reports
@@ -700,15 +707,23 @@ Options for "bench run":
                          Without this flag, the breakdown is collapsed behind a
                          click-to-expand summary under each comparison.
 
-Options for "bench ci":
+Options for "bench gate":
   (same as "bench run", plus:)
-  --threshold <number>   Minimum score to pass, applied INDEPENDENTLY to each of
-                         the three layers (fact / behavior / LLM judge). ANY
-                         layer below threshold fails the gate — this prevents
-                         composite averaging from masking a single-layer collapse.
-                         Default: 3.5. If all three layers are absent (no
+  --threshold <number>   Three-layer gate threshold (fact / behavior / LLM judge),
+                         applied INDEPENDENTLY to each layer. ANY layer below
+                         threshold fails the gate — prevents composite averaging
+                         from masking a single-layer collapse. Default: 3.5.
+                         If all three layers are absent (no
                          assertions and no rubric defined in eval-samples), the
                          gate FAILS with a configuration hint — no composite fallback.
+  --trivial-diff <num>   Smallest diff to treat as practically meaningful
+                         (default 0.1). Bootstrap diff CI may be statistically
+                         significant but with |Δ| < this value, treated as
+                         CAUTIOUS rather than PROGRESS.
+
+  Internally = bench run + bench verdict. Exit code aligns with bench verdict:
+  PROGRESS / SOLO-PASS → 0; NOISE / UNDERPOWERED / CAUTIOUS / REGRESS → 1.
+  Underpowered runs fail directly — closes the "single-run PASS = deploy" loophole.
 
 Options for "bench report":
   --port <number>        Server port (default: 7799)
@@ -906,7 +921,7 @@ Examples:
       '',
       '选项:',
       '  --reports-dir <dir>      报告存储目录 (默认: ~/.oh-my-knowledge/reports)',
-      '  --threshold <num>        三层 gate 阈值 (默认 3.5, 与 omk bench ci 对齐)',
+      '  --threshold <num>        三层 gate 阈值 (默认 3.5, 与 omk bench gate 对齐)',
       '  --trivial-diff <num>     "幅度太小" 阈值 (默认 0.1)',
       '  --verbose                展开每个 pair 的详情',
       '',
@@ -927,7 +942,7 @@ Examples:
       '',
       'Options:',
       '  --reports-dir <dir>      report store dir (default: ~/.oh-my-knowledge/reports)',
-      '  --threshold <num>        3-layer gate threshold (default 3.5, matches omk bench ci)',
+      '  --threshold <num>        3-layer gate threshold (default 3.5, matches omk bench gate)',
       '  --trivial-diff <num>     "diff too small" threshold (default 0.1)',
       '  --verbose                expand per-pair details',
       '',
