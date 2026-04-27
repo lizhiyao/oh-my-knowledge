@@ -7,6 +7,19 @@ const DEFAULT_LANG: CliLang = 'zh';
 const SUPPORTED: ReadonlySet<string> = new Set(['zh', 'en']);
 
 /**
+ * main() 在子命令 parseArgs 之前就需要拿到 lang(用于打印 unknown 提示)。
+ * 早期 scan argv,支持 `--lang en` 和 `--lang=en` 两种形式。
+ */
+export function parseLangFromArgv(argv: readonly string[]): string | undefined {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--lang' && i + 1 < argv.length) return argv[i + 1];
+    if (a && a.startsWith('--lang=')) return a.slice('--lang='.length);
+  }
+  return undefined;
+}
+
+/**
  * 优先级: --lang flag > OMK_LANG env > 默认 zh。
  * 不识别的值静默退回默认,避免在解析阶段抛错让用户卡住。
  */

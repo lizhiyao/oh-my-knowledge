@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { tCli, getCliLang, parseLangFromArgv } from './cli/i18n.js';
 import { discoverVariants, parseVariantCwd } from './inputs/skill-loader.js';
 import { loadEvalConfig, configVariantsToSpecs } from './inputs/eval-config.js';
 import type {
@@ -152,7 +153,16 @@ const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports
 // Defaults are applied inside parseRunConfig (after config-file merge) so that
 // CLI `undefined` can be reliably distinguished from "user passed the default value".
 // Priority order resolved in parseRunConfig: CLI arg > --config file > hard-coded default.
+/**
+ * 所有子命令都接受的通用 flag。新增 --lang 让 parseArgs strict:false 模式下
+ * 仍能把值类型化到 values.lang 上(否则未声明的 flag 会被丢弃)。
+ */
+const COMMON_OPTIONS: ParseArgsConfig['options'] = {
+  lang: { type: 'string' },
+};
+
 const RUN_OPTIONS: ParseArgsConfig['options'] = {
+  ...COMMON_OPTIONS,
   samples: { type: 'string' },
   'skill-dir': { type: 'string' },
   control: { type: 'string' },
@@ -497,6 +507,7 @@ async function checkUpdate(): Promise<void> {
 
 async function main(): Promise<void> {
   checkUpdate();
+  const lang = getCliLang(parseLangFromArgv(process.argv));
   const [domain, command, ...rest]: string[] = process.argv.slice(2);
 
   if (!domain || domain === '--help' || domain === '-h') {
@@ -511,7 +522,7 @@ async function main(): Promise<void> {
   }
 
   if (domain !== 'bench') {
-    console.error(`Unknown domain: ${domain}. Use "omk bench <command>" or "omk analyze <dir>".`);
+    console.error(tCli('cli.common.unknown_domain', lang, { domain }));
     process.exit(1);
   }
 
@@ -561,7 +572,7 @@ async function main(): Promise<void> {
       await handleFailures(rest);
       break;
     default:
-      console.error(`Unknown command: bench ${command}. Use "run", "report", "ci", "init", "gen-samples", "evolve", "diff", "gold", "debias-validate", "saturation", "verdict", "diagnose", or "failures".`);
+      console.error(tCli('cli.common.unknown_bench_command', lang, { command }));
       process.exit(1);
   }
 }
@@ -844,6 +855,7 @@ async function handleReport(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv,
     options: {
+      ...COMMON_OPTIONS,
       port: { type: 'string', default: '7799' },
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       export: { type: 'string' },
@@ -985,6 +997,7 @@ async function handleAnalyze(argv: string[]): Promise<void> {
     args: argv,
     allowPositionals: true,
     options: {
+      ...COMMON_OPTIONS,
       kb: { type: 'string' },
       last: { type: 'string' },
       from: { type: 'string' },
@@ -1077,6 +1090,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv,
     options: {
+      ...COMMON_OPTIONS,
       each: { type: 'boolean', default: false },
       count: { type: 'string', default: '5' },
       model: { type: 'string', default: 'sonnet' },
@@ -1190,6 +1204,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv,
     options: {
+      ...COMMON_OPTIONS,
       rounds: { type: 'string', default: '5' },
       target: { type: 'string' },
       samples: { type: 'string', default: 'eval-samples.json' },
@@ -1342,6 +1357,7 @@ async function handleDiff(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: flagArgs,
     options: {
+      ...COMMON_OPTIONS,
       'regressions-only': { type: 'boolean', default: false },
       threshold: { type: 'string' },
       variant: { type: 'string' },
@@ -1538,6 +1554,7 @@ async function handleGold(argv: string[]): Promise<void> {
     const { values } = parseArgs({
       args: rest,
       options: {
+        ...COMMON_OPTIONS,
         out: { type: 'string', default: './gold-dataset' },
         annotator: { type: 'string' },
       },
@@ -1584,6 +1601,7 @@ async function handleGold(argv: string[]): Promise<void> {
     const { values } = parseArgs({
       args: rest.slice(1),
       options: {
+        ...COMMON_OPTIONS,
         'gold-dir': { type: 'string' },
         variant: { type: 'string' },
         'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
@@ -1678,6 +1696,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: rest.slice(1),
     options: {
+      ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       samples: { type: 'string' },
       variant: { type: 'string' },
@@ -1766,6 +1785,7 @@ async function handleSaturation(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv.slice(1),
     options: {
+      ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       variant: { type: 'string' },
     },
@@ -1849,6 +1869,7 @@ async function handleVerdict(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv.slice(1),
     options: {
+      ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       threshold: { type: 'string' },
       'trivial-diff': { type: 'string' },
@@ -1915,6 +1936,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv.slice(1),
     options: {
+      ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       samples: { type: 'string' },
       top: { type: 'string', default: '10' },
@@ -2000,6 +2022,7 @@ async function handleFailures(argv: string[]): Promise<void> {
   const { values } = parseArgs({
     args: argv.slice(1),
     options: {
+      ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       'judge-executor': { type: 'string', default: 'claude' },
       'judge-model': { type: 'string' },
