@@ -183,6 +183,12 @@ export async function runEvaluation({
   });
 
   if (dryRun) {
+    // Emit power warnings during dry-run too — this is exactly when users
+    // preview the run, the right moment to flag "you might be wasting it".
+    const { buildPowerWarnings } = await import('./evaluation-pipeline.js');
+    for (const w of buildPowerWarnings(samples.length, repeat ?? 1)) {
+      process.stderr.write(`${w}\n`);
+    }
     return {
       report: buildDryRunTaskReport({
         model,

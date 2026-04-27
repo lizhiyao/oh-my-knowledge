@@ -10,6 +10,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Changed
 
+- **single-run 盲区在用户旅程三处可见(三处一致信号)**:之前用户跑单轮(`--repeat=1`)评测,**没有任何一个面提醒"稳定性测不到"**——单轮报告读起来就像满分,容易误读为"稳"。本版在用户接触 omk 的三个时间点都加显眼信号,**单轮的盲区不会再被默默忽略**:
+
+  1. **进门(`bench run` / `--dry-run` 跑前 stderr)**——pre-flight 结构性预警,N<5 / N<20 / repeat=1 三档:
+     - `N < 5` → `⚠ exploration-only, any conclusion is unreliable, CI will be uselessly wide`
+     - `5 ≤ N < 20` → `⚠ large-effect-only (Cohen's d > 0.8), medium effects hard to detect`
+     - `--repeat=1` → `⚠ single-run cannot measure stability (CV will be marked "not measured")`
+
+     **不预测 MDE 数值** — σ 跑前不知道,拍脑袋写"CI 半宽 ±0.4"是 hand-wave。所以纯**结构性 hard-floor**,严肃 power 判定交给 `bench verdict` + saturation 曲线 post-hoc。`buildPowerWarnings(n, repeat): string[]` 抽为纯函数,9 个单测覆盖各档边界。
+
+  2. **决策(`bench verdict` / `bench ci`)**——`computeVerdict` 加 `rationale.stability` 字段,三态:
+     - `--repeat ≥ 2` + variance 数据齐:报 `CV=X.X% (稳定/中等/不稳, runs=N)` 主指标(阈值参考 terminology-spec §5)
+     - `--repeat ≥ 2` 但 variance 缺失:标"variance 数据缺失"
+     - `--repeat < 2`:**显式说**「稳定性未测量(单轮评测,需 --repeat ≥ 2 才能测 CV)」
+
+     `formatVerdictText` 同步打印 Stability 行,SOLO 单 variant 路径走同一逻辑。**之前 verdict 不报告稳定性,导致单轮用户无法感知盲区**。
+
+  3. **复盘(HTML 报告稳定性列)**——`--repeat=1` 时从灰色 `—` + 灰色"需 --repeat ≥ 2"改成**红色 `⚠ 未测量` + 红字引导文案**(英文 `⚠ Not measured` / `single-run; needs --repeat ≥ 2 to measure CV`)。**之前太弱容易被误读为"无显示=没问题"**,改红让缺失可见。zh + en snapshot 同步重生,UI 结构 0 改动。
+
+  无论用户是 CLI pipeline、verdict 用户、还是只看 HTML 的用户,都能在最自然的地方看到这个盲区。
+
+- **`omk bench ci` 内核统一为 verdict**:之前 `ci` 只看三层平均分阈值(`evaluateCiGates`),用户花钱跑 `--bootstrap` 但 ci 退出码完全忽略 bootstrap diff CI、saturation、Krippendorff α——是个**隐性漏洞**。本版把 `handleCi` 重写为 `runEvaluation + computeVerdict + formatVerdictText`,exit code 与 `bench verdict` 对齐:**只有 PROGRESS / SOLO-pass 才 0**;`NOISE` / `UNDERPOWERED` / `CAUTIOUS` / `REGRESS` 全 1。**这是行为变更**:之前三层都过 3.5 即 PASS 的 underpowered run 现在会 FAIL——这正是 ci gate 应有的语义(数据不显著就不该进 deploy)。`--threshold` 继续生效作为三层 gate 阈值,新增 `--trivial-diff` 调"实际可忽略的小差距"门限。两个 CLI 表层(`ci` 一句话跑+判 / `verdict` 离线判已有报告)继续保留,内核共用。这一改与上面的 single-run verdict rationale 是同一回路:`ci` 在 underpowered 数据上现在会自动 FAIL,堵住"单轮过 PASS 就 deploy"的漏洞。
+
 - **user-facing 中文文案统一用「用例」,不用「样本」**:`docs/terminology-spec.md` §6 加显式规则——代码 / API / 文件名 / CLI flag(`Sample` / `sample_id` / `eval-samples.json` / `--samples`)继续用 `sample`(开源 API + 英文圈通用术语),只 user-facing zh 切换。理由:omk 的 `eval-samples` 是开发者**手挑**的测试用例,不是从某分布**随机抽样**的统计样本——「样本」会暗示"再多跑就能扩大样本量"误导用户,实际是要补设计、补用例。
 
   本版同步把 `src/cli/i18n-dict.ts`(15 处 zh CLI 输出)/ `src/renderer/{summary,layout}.ts`(报告 UI zh)/ `src/grading/{debias-validate,gold-cli}.ts`(5 处 stderr)/ `src/analysis/{report,sample}-diagnostics.ts`(22 处 diagnostic message)/ `src/authoring/{generator,evolver}.ts`(7 处 LLM prompt zh) / `src/types/report.ts` + `src/analysis/gap-analyzer.ts` + `src/eval-core/schema.ts` 注释 / `docs/{knowledge-gap-signal-spec,zh/comparison}.md` 全部 sweep。HTML 报告 zh 快照同步重生。

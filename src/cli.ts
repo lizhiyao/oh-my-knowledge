@@ -1199,6 +1199,7 @@ async function handleCi(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const { values, config } = parseRunConfig(argv, {
     threshold: { type: 'string', default: '3.5' },
+    'trivial-diff': { type: 'string' },
   });
 
   const { runEvaluation } = await import('./eval-workflows/run-evaluation.js');
@@ -1208,18 +1209,31 @@ async function handleCi(argv: string[]): Promise<void> {
   try {
     const { report } = (await runEvaluation(config)) as EvalResult;
 
-    const threshold: number = Number(values.threshold);
-
     if ((report as Report & { dryRun?: boolean }).dryRun) {
       console.log('CI dry-run: no scores to check');
       process.exit(0);
     }
 
-    // three-gate 逻辑抽到 src/eval-core/ci-gates.ts 作纯函数,便于测试;此处只做 IO。
-    const { evaluateCiGates } = await import('./eval-core/ci-gates.js');
-    const { allPass, lines } = evaluateCiGates(report.summary || {}, threshold);
-    for (const line of lines) console.log(line);
-    process.exit(allPass ? 0 : 1);
+    // ci 内核统一为 verdict — 之前只看 three-layer threshold 漏掉 bootstrap diff /
+    // saturation / Krip α 等关键信号(用户花钱跑 --bootstrap 但 ci 不看 CI)。
+    // 现在 ci = run + verdict,自动用上 omk 全部决策维度。
+    const { computeVerdict, formatVerdictText } = await import('./eval-core/verdict.js');
+    const result = computeVerdict(report, {
+      ciThreshold: Number(values.threshold),
+      triviallySmallDiff: values['trivial-diff'] != null ? Number(values['trivial-diff']) : undefined,
+    });
+    console.log(formatVerdictText(result, { verbose: true }));
+
+    // exit code 与 handleVerdict 对齐:只有 PROGRESS / SOLO-pass 才 0,
+    // NOISE / UNDERPOWERED / CAUTIOUS / REGRESS 全 1。这样 CI pipeline 用
+    // `omk bench ci && deploy` 时,数据不显著就不会误 deploy。
+    if (result.level === 'PROGRESS') {
+      process.exit(0);
+    }
+    if (result.level === 'SOLO' && result.headline.includes('PASS')) {
+      process.exit(0);
+    }
+    process.exit(1);
   } catch (err: unknown) {
     console.error(`Error: ${(err as Error).message}`);
     process.exit(1);
