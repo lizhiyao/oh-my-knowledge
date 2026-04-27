@@ -20,6 +20,14 @@ export function parseLangFromArgv(argv: readonly string[]): string | undefined {
 }
 
 /**
+ * handler 内一行拿到 lang。handler 收到的 argv 已被 main 切掉前 N 项,
+ * 但 --lang 选项位置无关, scan 即可。
+ */
+export function langFromArgv(argv: readonly string[]): CliLang {
+  return getCliLang(parseLangFromArgv(argv));
+}
+
+/**
  * 优先级: --lang flag > OMK_LANG env > 默认 zh。
  * 不识别的值静默退回默认,避免在解析阶段抛错让用户卡住。
  */

@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { tCli, getCliLang, parseLangFromArgv } from './cli/i18n.js';
+import { tCli, getCliLang, parseLangFromArgv, langFromArgv } from './cli/i18n.js';
 import { discoverVariants, parseVariantCwd } from './inputs/skill-loader.js';
 import { loadEvalConfig, configVariantsToSpecs } from './inputs/eval-config.js';
 import type {
@@ -1066,6 +1066,7 @@ async function handleAnalyze(argv: string[]): Promise<void> {
 }
 
 async function handleInit(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const targetDir: string = resolve(argv[0] || '.');
   const { writeFileSync, mkdirSync } = await import('node:fs');
 
@@ -1074,12 +1075,12 @@ async function handleInit(argv: string[]): Promise<void> {
   writeFileSync(join(targetDir, 'skills', 'v1.md'), INIT_SKILL_V1);
   writeFileSync(join(targetDir, 'skills', 'v2.md'), INIT_SKILL_V2);
 
-  console.log(`Eval project scaffolded at: ${targetDir}`);
+  console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));
   console.log('');
-  console.log('Next steps:');
-  console.log('  1. Edit eval-samples.json to add your test cases');
-  console.log('  2. Edit skills/v1.md and skills/v2.md with your skill versions');
-  console.log('  3. Run: omk bench run --control v1 --treatment v2');
+  console.log(tCli('cli.init.next_steps_title', lang));
+  console.log(tCli('cli.init.next_step_edit_samples', lang));
+  console.log(tCli('cli.init.next_step_edit_skills', lang));
+  console.log(tCli('cli.init.next_step_run', lang));
 }
 
 // ---------------------------------------------------------------------------
