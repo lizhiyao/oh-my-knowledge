@@ -28,7 +28,7 @@ PR base **永远是 develop**,绝不在 main / develop 直接 commit。release P
 
 ## 写代码约定
 
-- **commit message 前缀英文 + 正文中文**:前缀走标准 Conventional Commits(`feat` / `fix` / `refactor` / `docs` / `chore` / `test` / `ci` / `perf` / `style` / `build`),正文继续中文写。例:`feat(v0.21 D.1.c): 接通 --lang flag 和 OMK_LANG 环境变量` / `chore(release): bump 0.20.1 → 0.20.2`。不追溯改历史 commit(中文前缀的老 commit 不动)
+- **commit message 前缀英文 + 正文中文**:type 走 Conventional Commits 标准(`feat` / `fix` / `refactor` / `docs` / `chore` / `test` / `ci` / `perf` / `style` / `build`),scope 用**稳定的代码模块名**(`cli` / `i18n` / `judge` / `renderer` / `eval-core` / `eval-workflows` / `inputs` / `executors` / `server` / `analysis` / `authoring` / `grading` / `release` / `claude-md` 等),**不用 plan 阶段编号**(`D.1.c` / `Phase B.4` 这种本地维护者 plan 内部编号外部不可读、发版后失效、也无法跨版本 grep 聚合)。subject 用中文写。例:`feat(cli-i18n): 接通 --lang flag 和 OMK_LANG 环境变量` / `chore(release): bump 0.20.1 → 0.20.2` / `docs(claude-md): commit message 规则改为英文前缀`。不追溯改历史 commit
 - **user-facing 文案中文优先**(报告 UI / CLI / 错误信息)。LLM judge 译为「**评委**」,不译「判官」,不中英混用
 - **CI gate 两个**:`test/grading/judge-hash-frozen.test.ts`(judge prompt 不变性)、`test/__snapshots__/html-renderer.test.ts.snap`(zh/en × list/detail UI 回归)。改 UI / judge 后 review snapshot diff,确认无误再 `vitest -u`
 - **顺手更新 CHANGELOG `[Unreleased]`**(Keep a Changelog 风格:Added / Changed / Fixed / Internal)
