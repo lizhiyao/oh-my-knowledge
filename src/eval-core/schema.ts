@@ -183,7 +183,7 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
       };
     })(),
     ...(() => {
-      // 保留 0 分样本(评委打"完全不合格"是合法低分,不是缺失)。
+      // 保留 0 分用例(评委打"完全不合格"是合法低分,不是缺失)。
       // 仅 filter null / undefined(真正缺数据,如该 sample 无对应断言或未配 judge)。
       const factScores = ok.map((e) => e.layeredScores?.factScore).filter((s): s is number => s != null);
       const behaviorScores = ok.map((e) => e.layeredScores?.behaviorScore).filter((s): s is number => s != null);

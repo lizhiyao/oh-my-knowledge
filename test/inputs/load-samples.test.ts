@@ -17,7 +17,7 @@ describe('loadSamples', () => {
     cleanups.length = 0;
   });
 
-  it('加载 JSON 样本文件', () => {
+  it('加载 JSON 用例文件', () => {
     const p = tmp('samples.json');
     cleanups.push(p);
     writeFileSync(p, JSON.stringify([
@@ -30,7 +30,7 @@ describe('loadSamples', () => {
     assert.equal(samples[1].prompt, '世界');
   });
 
-  it('加载 YAML 样本文件', () => {
+  it('加载 YAML 用例文件', () => {
     const p = tmp('samples.yaml');
     cleanups.push(p);
     writeFileSync(p, `- sample_id: y1\n  prompt: hello\n- sample_id: y2\n  prompt: world\n`);

@@ -102,14 +102,15 @@
 - 如果要表达"空 artifact + 指定 runtime context"，推荐使用自描述标签，例如 `project-env@/path/to/project`
 - 不要把项目目录、项目级 runtime context、显式 artifact 注入混成一个概念
 
-### 6. Sample
+### 6. Sample / 用例
 
-`sample` 是评测样本的一条记录。
+`sample` 是评测的一条**用例**(test case)记录。
 
-规则：
+规则:
 
-- 数据文件、类型、代码结构继续使用 `sample`
-- `case` 可以作为自然语言描述使用，但不作为核心结构名
+- **代码 / API / 文件名 / CLI flag 继续用 `sample`**:`Sample` 类型、`sample_id` 字段、`eval-samples.json` 文件名、`--samples` flag——这些是开源 API + 英文圈 LLM eval 通用术语,不动
+- **user-facing 中文文案统一用「用例」,不用「样本」**:CLI 输出、报告 UI、错误信息、文档正文、commit message 中文部分。包括"用例数"/"用例难度"/"用例不足"/"跨用例散度"等组合
+- **理由**:omk 的 `eval-samples` 是开发者**手挑**的测试用例,不是从某分布**随机抽样**的统计样本。「样本」会暗示"再多跑就能扩大样本量",误导用户——实际是要补设计、补用例。「用例」是工程语境(test case),与用户写测评时的心智一致("我设计了 5 个用例")
 
 ### 7. Task
 
@@ -184,7 +185,7 @@
 - 两个都是 `skill` kind 的 artifact（v1 vs v2）比较时，其中一个被显式声明为 `control`——此时 control role 和 baseline kind 没有任何关系
 - 报告与代码都应以 `experimentRole` 作为判定对照组的唯一来源，不从 `artifactKind === 'baseline'` 反推
 
-### 5. 稳定性 = 跨重复运行（test-retest），不是跨样本散度
+### 5. 稳定性 = 跨重复运行（test-retest），不是跨用例散度
 
 **稳定性（stability）的概念对齐 psychometrics 的 test-retest reliability——同一对象在重复运行下的分数一致性。omk 采用 CV（变异系数，工程领域相对离散度指标）作主指标；它与 psychometrics 严格意义的 test-retest reliability（通常用 ICC 或 Pearson r）不完全等价，不是 psychometrics 标准下的 reliability 测量，而是同类概念下的工程化近似。**
 
@@ -192,13 +193,13 @@ omk 的具体实现：`--repeat N` 让同一 (variant × sample) 跑 N 次，`re
 
 **什么不是稳定性**：
 
-- **跨样本 min~max 分数范围**不是稳定性。同一 variant 在多个样本上的分数差异，大部分来自**样本难度本身不同**（eval-samples 通常有意覆盖多种任务），不是 variant 内在波动。把这个 range 叫稳定性是误读——读者看到"100%"会错以为 variant 很稳定，实际可能只是样本集太窄。
+- **跨用例 min~max 分数范围**不是稳定性。同一 variant 在多个用例上的分数差异，大部分来自**用例难度本身不同**（eval-samples 通常有意覆盖多种任务），不是 variant 内在波动。把这个 range 叫稳定性是误读——读者看到"100%"会错以为 variant 很稳定，实际可能只是用例集太窄。
 - **成功率（success rate）**不是稳定性。成功率反映的是"任务有没有完成"（执行健康度），和"分数在重复测时抖动多大"（测量稳定性）是两个独立概念。成功率 < 100% 时在副区 alert，不作为稳定性主指标。
 
 **UI 约定**：
 
 - 六维对比表"稳定性"列主值：有 variance 数据时显示 `CV X.X%`，没有（单轮评测 / 无 `--repeat`）时显示 `—` + 副区 `需 --repeat ≥ 2`。**诚实交代测不到什么**。
-- 行业对照：Anthropic / OpenAI eval docs、Braintrust、Langfuse 等都把多次运行之间的 variance 作为稳定性核心指标，不用跨样本散度。
+- 行业对照：Anthropic / OpenAI eval docs、Braintrust、Langfuse 等都把多次运行之间的 variance 作为稳定性核心指标，不用跨用例散度。
 
 ### 6. 三层评分：事实 / 行为 / LLM 评价
 

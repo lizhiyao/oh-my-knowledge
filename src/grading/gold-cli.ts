@@ -129,9 +129,9 @@ export function formatGoldCompare(result: GoldCompareResult, gold: GoldDataset):
   const lines: string[] = [];
   const a = result.agreement;
   lines.push(`\n  人工锚点对比 (variant: ${result.variant})\n`);
-  lines.push(`  样本数:           ${a.sampleCount}`);
+  lines.push(`  用例数:           ${a.sampleCount}`);
   if (a.sampleCount === 0) {
-    lines.push('  无可比对样本 — 检查 sample_id 是否对应。');
+    lines.push('  无可比对用例 — 检查 sample_id 是否对应。');
     if (result.missing.length) lines.push(`  报告缺失:         ${result.missing.join(', ')}`);
     return lines.join('\n');
   }

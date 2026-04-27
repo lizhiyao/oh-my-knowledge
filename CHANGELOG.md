@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Changed
+
+- **user-facing 中文文案统一用「用例」,不用「样本」**:`docs/terminology-spec.md` §6 加显式规则——代码 / API / 文件名 / CLI flag(`Sample` / `sample_id` / `eval-samples.json` / `--samples`)继续用 `sample`(开源 API + 英文圈通用术语),只 user-facing zh 切换。理由:omk 的 `eval-samples` 是开发者**手挑**的测试用例,不是从某分布**随机抽样**的统计样本——「样本」会暗示"再多跑就能扩大样本量"误导用户,实际是要补设计、补用例。
+
+  本版同步把 `src/cli/i18n-dict.ts`(15 处 zh CLI 输出)/ `src/renderer/{summary,layout}.ts`(15 处报告 UI zh)/ `src/grading/{debias-validate,gold-cli}.ts`(5 处 stderr)/ `src/analysis/{report,sample}-diagnostics.ts`(22 处 diagnostic message)/ `src/authoring/{generator,evolver}.ts`(7 处 LLM prompt zh) / `src/types/report.ts` + `src/analysis/gap-analyzer.ts` + `src/eval-core/schema.ts` 注释 / `docs/{knowledge-gap-signal-spec,zh/comparison}.md` 全部 sweep 干净。HTML 报告 zh 快照同步重生。统计术语场景(Cohen's d / Hedges' g 的"小 n 样本修正")改用「n 小」/「小 n 修正」,避免与「用例」语义冲突。
+
 ### Fixed
 
 - **directory-skill 路径解析(`SKILL.md` 约定)**:符号链接或非 cwd 子目录里的 directory-skill(例如 `~/.claude/skills/foo/SKILL.md` 引用 `assets/references/...` 相对路径)在评测时:

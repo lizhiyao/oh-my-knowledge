@@ -75,7 +75,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     judgePromptHashLabel: '评委提示词指纹', judgePromptHashDesc: '评委提示词模板的 SHA256 前 12 位。两份报告 hash 相同才能严格比分数',
     sampleHashCount: '用例指纹', sampleHashCountDesc: '已记录内容指纹的测评用例数 / 全部用例数。每条用例算 SHA256 前 12 位，用于跨 run 识别"测的是不是同一件事"。两份报告对同一 sample_id hash 一致才能严格比分',
     evalFrameworkLabel: '统计框架', evalFrameworkBootstrap: 'bootstrap CI', evalFrameworkBoth: 't-test + bootstrap', evalFrameworkTTest: 't-test',
-    evalFrameworkDesc: '分数置信区间用什么算法。bootstrap 不假设分布,适合 LLM 1-5 序数评分;t-test 假设正态,小样本不稳。"both" = 报告同时含两种,renderer 优先 bootstrap',
+    evalFrameworkDesc: '分数置信区间用什么算法。bootstrap 不假设分布,适合 LLM 1-5 序数评分;t-test 假设正态,n 小时不稳。"both" = 报告同时含两种,renderer 优先 bootstrap',
     bootstrapDiffSignificant: '✓ 显著差异', bootstrapDiffNotSignificant: '✗ 无显著差异', bootstrapDiffLabel: 'Δ (treatment - control)',
     totalCost: '总成本', inputTokens: '输入', outputTokens: '输出',
     totalTokens: '总计', tokPerReq: 'tokens/次', avgLatency: '平均延迟',
