@@ -42,29 +42,23 @@ jobs:
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-    - name: Create GitHub Release
-      env:
-        GH_TOKEN: ${{ github.token }}
+    # 从 CHANGELOG.md 抽 ## [VERSION] section 到临时文件, 喂给下一步的 action 做 release body。
+    # sed 去掉单独行 `---` (CHANGELOG sections 之间的分隔符, 在 release notes 里没意义)。
+    - name: Extract CHANGELOG section
       run: |
-        TAG="${GITHUB_REF#refs/tags/}"
-        VERSION="${TAG#v}"
-        # 从 CHANGELOG.md 抽 ## [VERSION] section(到下一个 ## [ 之前)
-        # sed 去掉所有 `---` 单独行: CHANGELOG sections 之间用 --- 分隔, 抽出的
-        # section 末尾会带 trailing ---, 去掉避免和下面 footer 的 --- 撞两个.
-        # CHANGELOG section 内容本身不使用 --- 单独行做分隔, 此清理安全.
-        NOTES=$(awk "/^## \\[${VERSION}\\]/{flag=1; next} /^## \\[/{if(flag){exit}} flag" CHANGELOG.md | sed '/^---$/d')
-        if [ -z "$NOTES" ]; then
-          echo "::warning::no CHANGELOG section for v${VERSION}; falling back to auto-generated notes"
-          gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag
-        else
-          # 找 prev tag (按创建时间排序, 当前 tag 的下一行就是上一个 release tag)
-          PREV_TAG=$(git tag --sort=-creatordate | grep -A 1 "^${TAG}$" | tail -1)
-          if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "$TAG" ]; then
-            NOTES="${NOTES}
-
----
-
-**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}"
-          fi
-          gh release create "$TAG" --title "$TAG" --notes "$NOTES" --verify-tag
+        VERSION="${GITHUB_REF#refs/tags/v}"
+        awk "/^## \[${VERSION}\]/{flag=1; next} /^## \[/{if(flag){exit}} flag" CHANGELOG.md | sed '/^---$/d' > /tmp/release-notes.md
+        if [ ! -s /tmp/release-notes.md ]; then
+          echo "::warning::no CHANGELOG section for v${VERSION}; release will use auto-generated notes only"
         fi
+
+    # softprops/action-gh-release 是行业通用 GitHub Release action (~17k stars)。
+    # body_path 提供我们手写的 CHANGELOG section, generate_release_notes 让 GitHub
+    # 自动 append "What's Changed" + "Full Changelog: compare URL" footer。
+    # 不再自己用 `gh release create` + 手拼 footer (PR #6 那套写法因 yaml 多行
+    # 字符串里的 `**` 被误读为 alias 整个 yml 加载失败)。
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        body_path: /tmp/release-notes.md
+        generate_release_notes: true
