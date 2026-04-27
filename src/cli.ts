@@ -667,7 +667,7 @@ async function handleRun(argv: string[]): Promise<void> {
           const { createReportServer } = await import('./server/report-server.js');
           const server: ReportServer = createReportServer({ reportsDir: config.outputDir });
           const serverUrl: string = await server.start();
-          const reportUrl: string = `${serverUrl}/run/${report.id}`;
+          const reportUrl: string = `${serverUrl}/reports/${report.id}`;
           process.stderr.write(tCli('cli.run.report_server_running', lang, { url: serverUrl }));
           process.stderr.write(tCli('cli.run.report_server_view', lang, { url: reportUrl }));
           process.stderr.write(tCli('cli.run.report_server_stop', lang));
@@ -740,7 +740,7 @@ async function handleRun(argv: string[]): Promise<void> {
           reportsDir: config.outputDir,
         });
         const serverUrl: string = await server.start();
-        const reportUrl: string = `${serverUrl}/run/${report.id}`;
+        const reportUrl: string = `${serverUrl}/reports/${report.id}`;
         process.stderr.write(tCli('cli.run.report_server_running', lang, { url: serverUrl }));
         process.stderr.write(tCli('cli.run.report_server_view', lang, { url: reportUrl }));
         process.stderr.write(tCli('cli.run.report_server_stop', lang));

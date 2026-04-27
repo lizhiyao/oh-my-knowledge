@@ -93,7 +93,7 @@ function renderTable(variantName: string, runs: Report[], lang: Lang): string {
     }
 
     return `<tr>
-      <td><a href="/run/${e(r.id)}">${fmtLocalTime(m.timestamp)}</a></td>
+      <td><a href="/reports/${e(r.id)}">${fmtLocalTime(m.timestamp)}</a></td>
       <td>${s.avgCompositeScore ?? '-'}</td>
       <td>${gapCell}</td>
       <td>${s.avgFullNumTurns ?? s.avgNumTurns ?? '-'}</td>

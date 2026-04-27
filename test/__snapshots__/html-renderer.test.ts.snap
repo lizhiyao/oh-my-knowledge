@@ -1529,7 +1529,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
         <th></th>
       </tr></thead>
       <tbody><tr>
-      <td><span class="run-status verdict-CAUTIOUS" title="Treatment slightly above control — small gap or layer below gate" aria-label="CAUTIOUS — Treatment slightly above control — small gap or layer below gate"><span class="run-status-dot" aria-hidden="true">▲</span>CAUTIOUS</span><a href="/run/test-run-20260325-1000"><span style="color:var(--text-primary)">test-run-20260325-1000</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">03/25 10:00</span></a></td>
+      <td><span class="run-status verdict-CAUTIOUS" title="Treatment slightly above control — small gap or layer below gate" aria-label="CAUTIOUS — Treatment slightly above control — small gap or layer below gate"><span class="run-status-dot" aria-hidden="true">▲</span>CAUTIOUS</span><a href="/reports/test-run-20260325-1000"><span style="color:var(--text-primary)">test-run-20260325-1000</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">03/25 10:00</span></a></td>
       <td>sonnet</td>
       <td>2</td>
       <td><div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span title="v1" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">v1</span><div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0"><div style="width:80%;height:100%;background:var(--green);border-radius:3px"></div></div><span style="font-size:12px;font-weight:600;color:var(--green);min-width:24px">4</span></div><div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span title="v2" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">v2</span><div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0"><div style="width:96%;height:100%;background:var(--green);border-radius:3px"></div></div><span style="font-size:12px;font-weight:600;color:var(--green);min-width:24px">4.8</span></div></td>
@@ -1556,7 +1556,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     function deleteRun(id, btn) {
       var lang = document.documentElement.dataset.lang || 'zh';
       if (!confirm(I18N[lang].deleteConfirm + ' ' + id + ' ?')) return;
-      fetch('/api/run/' + encodeURIComponent(id), { method: 'DELETE' })
+      fetch('/api/reports/' + encodeURIComponent(id), { method: 'DELETE' })
         .then(function(r) { return r.json(); })
         .then(function(d) {
           if (d.ok) { btn.closest('tr').remove(); }
@@ -2013,7 +2013,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
         <th></th>
       </tr></thead>
       <tbody><tr>
-      <td><span class="run-status verdict-CAUTIOUS" title="实验组略优于对照组,但差距小或某层未达 gate" aria-label="略微进步 — 实验组略优于对照组,但差距小或某层未达 gate"><span class="run-status-dot" aria-hidden="true">▲</span>略微进步</span><a href="/run/test-run-20260325-1000"><span style="color:var(--text-primary)">test-run-20260325-1000</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">03/25 10:00</span></a></td>
+      <td><span class="run-status verdict-CAUTIOUS" title="实验组略优于对照组,但差距小或某层未达 gate" aria-label="略微进步 — 实验组略优于对照组,但差距小或某层未达 gate"><span class="run-status-dot" aria-hidden="true">▲</span>略微进步</span><a href="/reports/test-run-20260325-1000"><span style="color:var(--text-primary)">test-run-20260325-1000</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">03/25 10:00</span></a></td>
       <td>sonnet</td>
       <td>2</td>
       <td><div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span title="v1" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">v1</span><div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0"><div style="width:80%;height:100%;background:var(--green);border-radius:3px"></div></div><span style="font-size:12px;font-weight:600;color:var(--green);min-width:24px">4</span></div><div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span title="v2" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">v2</span><div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0"><div style="width:96%;height:100%;background:var(--green);border-radius:3px"></div></div><span style="font-size:12px;font-weight:600;color:var(--green);min-width:24px">4.8</span></div></td>
@@ -2040,7 +2040,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     function deleteRun(id, btn) {
       var lang = document.documentElement.dataset.lang || 'zh';
       if (!confirm(I18N[lang].deleteConfirm + ' ' + id + ' ?')) return;
-      fetch('/api/run/' + encodeURIComponent(id), { method: 'DELETE' })
+      fetch('/api/reports/' + encodeURIComponent(id), { method: 'DELETE' })
         .then(function(r) { return r.json(); })
         .then(function(d) {
           if (d.ok) { btn.closest('tr').remove(); }
