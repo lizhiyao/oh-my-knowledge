@@ -338,148 +338,6 @@ function parseRunConfig(
 }
 
 // ---------------------------------------------------------------------------
-// Help text
-// ---------------------------------------------------------------------------
-
-const HELP: string = `
-oh-my-knowledge — Knowledge artifact evaluation toolkit
-
-Usage:
-  omk bench run [options]     Run an evaluation
-  omk bench report [options]  Start the report server
-  omk bench ci [options]      Run evaluation and exit with pass/fail code
-  omk bench init [dir]        Scaffold a new eval project
-  omk bench gen-samples [skill]  Generate eval-samples from skill content
-  omk bench diff <id1> <id2>      Compare two evaluation reports
-  omk bench evolve <skill>       Self-improve a skill through iterative evaluation
-
-  omk analyze <dir>           Analyze cc session trace(s), produce skill 健康度日报 (v0.18)
-
-Options for "bench run":
-
-  --samples <path>       Sample file (default: eval-samples.json)
-  --skill-dir <path>     Skill definitions directory (default: skills)
-  --control <expr>       Control-group variant expression (experiment role = control)
-  --treatment <v1,v2>    Treatment-group variant expressions (comma-separated; role = treatment)
-                         Each variant expression resolves to an artifact and optional runtime context:
-                           "baseline"       — bare model, no artifact injected
-                           "git:name"       — artifact from last commit
-                           "git:ref:name"   — artifact from specific commit
-                           path with "/"    — artifact from file directly (e.g. ./v1.md)
-                           "name@/cwd"      — attach runtime context / cwd
-                         At least one of --control / --treatment must be provided.
-  --config <path>        YAML/JSON config file (evaluation-as-code).
-                         Declares samples + variants + model + executor in one file.
-                         CLI flags override config fields when both are provided.
-                         Relative paths inside the config are resolved against its directory.
-  --model <name>         Model under test (default: sonnet)
-  --judge-model <name>   Judge model (default: haiku)
-  --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
-  --no-judge             Skip LLM judging
-  --no-cache             Disable result caching
-  --dry-run              Preview tasks without executing
-  --blind                Blind A/B mode: hide variant names in report
-  --concurrency <n>      Number of parallel tasks (default: 1)
-  --timeout <seconds>    Executor timeout per task in seconds (default: 120)
-  --repeat <n>           Run evaluation N times for variance analysis (default: 1)
-  --judge-repeat <n>     Call LLM judge N times per (sample × dimension) for self-
-                         consistency (default: 1). High stddev across runs = the
-                         judge is unstable on this rubric and the score is noisy.
-  --judge-models <list>  Multi-judge ensemble. Comma-separated executor:model pairs,
-                         e.g. claude:opus,openai:gpt-4o,gemini:pro. Each judge scores
-                         every (sample × dimension); report includes per-judge break-
-                         down + Pearson/MAD inter-judge agreement. Refutes "Claude
-                         judge Claude same-modality bias" critique. Combines with
-                         --judge-repeat. Cost ~ N_judges × N_repeat × N_samples.
-  --bootstrap            Compute bootstrap confidence intervals (distribution-free,
-                         preferred over t-interval for ordinal LLM scores). Adds
-                         per-variant CI on the mean + pairwise CI on treatment-vs-
-                         control difference (significant=0 outside CI). Reports both
-                         t-interval and bootstrap so old tooling still works.
-  --bootstrap-samples <n>  Number of bootstrap resamples (default 1000). N>10000
-                         triggers a stderr warning about runtime cost.
-  --retry <n>            Retry failed tasks up to N times with exponential backoff (default: 0)
-  --resume <report-id>   Resume from a previous report, skipping completed tasks
-  --executor <name>      Executor: claude, openai, gemini, anthropic-api, openai-api,
-                         or any shell command (e.g. "python my_provider.py")
-  --judge-executor <name> Executor for LLM judge (default: same as --executor)
-  --each                 Evaluate each skill independently against baseline
-                         Requires {name}.eval-samples.json paired with each skill
-  --skip-preflight       Skip model connectivity check before evaluation
-  --mcp-config <path>    MCP config file for URL fetching via MCP servers
-                         (default: .mcp.json in current directory)
-  --no-serve             Skip auto-starting report server after evaluation
-  --verbose              Print detailed progress for each sample (exec result, grading phases)
-  --layered-stats        Expand the three-layer (fact/behavior/judge) independent
-                         significance breakdown in the HTML report by default.
-                         Without this flag, the breakdown is collapsed behind a
-                         click-to-expand summary under each comparison.
-
-Options for "bench ci":
-  (same as "bench run", plus:)
-  --threshold <number>   Minimum score to pass, applied INDEPENDENTLY to each of
-                         the three layers (fact / behavior / LLM judge). ANY
-                         layer below threshold fails the gate — this prevents
-                         composite averaging from masking a single-layer collapse.
-                         Default: 3.5. If all three layers are absent (no
-                         assertions and no rubric defined in eval-samples), the
-                         gate FAILS with a configuration hint — no composite fallback.
-
-Options for "bench report":
-  --port <number>        Server port (default: 7799)
-  --reports-dir <path>   Reports directory (default: ~/.oh-my-knowledge/reports/)
-  --export <id>          Export report as standalone HTML file
-  --dev                  Dev mode: auto-restart on lib/ file changes
-
-Options for "bench gen-samples":
-  --each                 Generate for all skills missing eval-samples
-  --count <n>            Number of samples to generate per skill (default: 5)
-  --model <name>         Model for generation (default: sonnet)
-  --skill-dir <path>     Skill directory (default: skills), used with --each
-
-Options for "analyze":
-  <dir>                  Input: cc session JSONL file / dir (e.g. ~/.claude/projects/<slug>)
-  --kb <path>            Knowledge base root (default: auto-infer from trace cwd)
-  --last <duration>      Time window like "7d" / "30d" (default: all)
-  --from <iso>           Window start (ISO8601), takes precedence over --last
-  --to <iso>             Window end (ISO8601), takes precedence over --last
-  --skills <n1,n2,...>   Whitelist skills to analyze (default: all)
-  --output-dir <path>    Output dir (default: ~/.oh-my-knowledge/analyses/)
-
-Options for "bench evolve":
-  --rounds <n>           Maximum evolution rounds (default: 5)
-  --target <score>       Stop early when score reaches this threshold
-  --samples <path>       Sample file (default: eval-samples.json)
-  --model <name>         Model under test (default: sonnet)
-  --judge-model <name>   Judge model (default: haiku)
-  --improve-model <name> Model for generating improvements (default: sonnet)
-  --concurrency <n>      Parallel eval tasks (default: 1)
-  --timeout <seconds>    Executor timeout per task in seconds (default: 120)
-  --executor <name>      Executor to use (default: claude)
-
-Examples:
-  omk bench run --control v1 --treatment v2
-  omk bench run --control baseline --treatment my-skill
-  omk bench run --control git:my-skill --treatment my-skill
-  omk bench run --control ./old-skill.md --treatment ./new-skill.md
-  omk bench run --control baseline --treatment v1,v2,v3
-  omk bench run --config eval.yaml
-  omk bench run --config eval.yaml --model sonnet-4.6   # CLI overrides config
-  omk bench run --each
-  omk bench run --dry-run
-  omk bench report --port 8080
-  omk bench report --export v1-vs-v2-20260326-1832
-  omk bench init my-eval
-  omk bench gen-samples skills/my-skill.md
-  omk bench gen-samples --each
-  omk bench diff <report-id-1> <report-id-2>
-  omk bench evolve skills/my-skill.md --rounds 5
-  omk analyze ~/.claude/projects/-Users-lizhiyao-Documents-oh-my-knowledge
-  omk analyze ~/.claude/projects/my-project --last 7d --kb /path/to/project
-  omk analyze ~/.claude/projects/my-project --skills audit,polish
-`.trim();
-
-// ---------------------------------------------------------------------------
 // Update check
 // ---------------------------------------------------------------------------
 
@@ -513,7 +371,7 @@ async function main(): Promise<void> {
   const [domain, command, ...rest]: string[] = process.argv.slice(2);
 
   if (!domain || domain === '--help' || domain === '-h') {
-    console.log(HELP);
+    console.log(tCli('cli.help.main', lang).trim());
     process.exit(0);
   }
 
@@ -529,7 +387,7 @@ async function main(): Promise<void> {
   }
 
   if (!command || command === '--help' || command === '-h') {
-    console.log(HELP);
+    console.log(tCli('cli.help.main', lang).trim());
     process.exit(0);
   }
 
@@ -1037,7 +895,7 @@ async function handleAnalyze(argv: string[]): Promise<void> {
   });
   const dir = positionals[0];
   if (!dir) {
-    console.error('Usage: omk analyze <dir> [--kb <path>] [--last 7d] [--from ISO] [--to ISO] [--skills name1,name2]');
+    console.error(tCli('cli.help.analyze_usage', lang));
     process.exit(1);
   }
   const tracePath = resolve(dir);
@@ -1395,17 +1253,7 @@ async function handleDiff(argv: string[]): Promise<void> {
   }
 
   if (positional.length === 0) {
-    console.error([
-      'Usage:',
-      '  omk bench diff <reportId>                     within-report per-sample diff (v0.22)',
-      '  omk bench diff <reportId1> <reportId2>        cross-report variant-level diff',
-      '',
-      'Options:',
-      '  --regressions-only          只列 treatment < control 的样本',
-      '  --threshold <num>           regression 阈值 (default 0,即任一负 Δ 算回退)',
-      '  --variant <name>            within-report 模式下指定要钻取的 variant (default: variants[1])',
-      '  --top <n>                   只列差距最大的前 N 个样本',
-    ].join('\n'));
+    console.error(tCli('cli.help.diff_usage', lang));
     process.exit(positional.length === 0 ? 1 : 0);
   }
 
@@ -1592,18 +1440,7 @@ async function handleGold(argv: string[]): Promise<void> {
   const sub = argv[0];
   const rest = argv.slice(1);
   if (!sub || sub === '--help' || sub === '-h') {
-    console.log([
-      '',
-      'Usage: omk bench gold <subcommand>',
-      '',
-      'Subcommands:',
-      '  init [--out <dir>] [--annotator <id>]    生成空白 gold dataset 模板',
-      '  validate <dir>                           校验数据集结构',
-      '  compare <reportId> --gold-dir <dir>      与已有 report 计算 α/κ/Pearson',
-      '    [--variant <name>] [--reports-dir <d>]',
-      '    [--bootstrap-samples N] [--seed N]',
-      '',
-    ].join('\n'));
+    console.log(tCli('cli.help.gold', lang));
     process.exit(sub ? 0 : 1);
   }
 
@@ -1722,24 +1559,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const sub = argv[0];
   const rest = argv.slice(1);
   if (!sub || sub === '--help' || sub === '-h') {
-    console.log([
-      '',
-      'Usage: omk bench debias-validate <kind> <reportId> [options]',
-      '',
-      'Kinds:',
-      '  length    re-judge with the opposite length-debias setting and bootstrap CI',
-      '            on the score diff. Cost ~doubles vs the original judge pass.',
-      '',
-      'Options:',
-      '  --reports-dir <dir>          report store dir (default: ~/.oh-my-knowledge/reports)',
-      '  --samples <path>             override samples file (default: from report.meta.request)',
-      '  --variant <name>             which variant to validate (default: first)',
-      '  --judge-executor <name>      executor for judge calls (default: claude)',
-      '  --judge-model <model>        judge model id (default: from report)',
-      '  --bootstrap-samples N        bootstrap iterations (default 1000)',
-      '  --seed N                     deterministic CI seed',
-      '',
-    ].join('\n'));
+    console.log(tCli('cli.help.debias_validate', lang));
     process.exit(sub ? 0 : 1);
   }
 
@@ -1824,22 +1644,7 @@ async function handleSaturation(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId || reportId === '--help' || reportId === '-h') {
-    console.log([
-      '',
-      'Usage: omk bench saturation <reportId> [options]',
-      '',
-      '回答"我跑够样本了吗?"。复述已有 report 中持久化的饱和判定。',
-      '',
-      '注:本命令读取 run 时跑出的 verdict(运行时已用 method=bootstrap-ci-width',
-      '默认阈值 + 3 窗口 持续条件)。如要换 method/threshold 重新计算,需要重跑',
-      '`omk bench run --repeat ≥ 5`(运行时持久化的 trace 不含原始分数,无法',
-      '在事后用其他参数复算)。',
-      '',
-      'Options:',
-      '  --reports-dir <dir>   report store dir (default: ~/.oh-my-knowledge/reports)',
-      '  --variant <name>      只看一个 variant (default: all)',
-      '',
-    ].join('\n'));
+    console.log(tCli('cli.help.saturation', lang));
     process.exit(reportId ? 0 : 1);
   }
 
@@ -1914,27 +1719,7 @@ async function handleVerdict(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId || reportId === '--help' || reportId === '-h') {
-    console.log([
-      '',
-      'Usage: omk bench verdict <reportId> [options]',
-      '',
-      '聚合 bootstrap CI / 三层 ci-gate / saturation / human α 给出一行结论。',
-      '',
-      'Verdict 等级:',
-      '  PROGRESS      显著改进 + 三层全过',
-      '  CAUTIOUS      改进真实但有警告 (gate 破 / 幅度太小 / 控制组本身崩)',
-      '  REGRESS       显著回退 — 不要 ship',
-      '  NOISE         CI 跨 0,无法判定',
-      '  UNDERPOWERED  样本不足,需要扩 N 重测',
-      '  SOLO          单变体报告,无对比对象',
-      '',
-      'Options:',
-      '  --reports-dir <dir>      report store dir (default: ~/.oh-my-knowledge/reports)',
-      '  --threshold <num>        三层 gate 阈值 (default 3.5,匹配 omk bench ci)',
-      '  --trivial-diff <num>     "幅度太小"阈值 (default 0.1)',
-      '  --verbose                展开 per-pair 详情',
-      '',
-    ].join('\n'));
+    console.log(tCli('cli.help.verdict', lang));
     process.exit(reportId ? 0 : 1);
   }
 
@@ -1985,24 +1770,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId || reportId === '--help' || reportId === '-h') {
-    console.log([
-      '',
-      'Usage: omk bench diagnose <reportId> [options]',
-      '',
-      '诊断样本集本身的质量问题:区分度低 / 重复 / 歧义 / 成本异常 / 全 fail。',
-      '回答"测评结论是否被坏样本污染"——与 omk bench verdict 互补。',
-      '',
-      'Options:',
-      '  --reports-dir <dir>      report store dir',
-      '  --samples <path>         样本文件路径 (用于 near-duplicate 检测;默认从 report.meta.request 读)',
-      '  --top <n>                每类只显示前 N 个 (默认 10,0=全部)',
-      '  --duplicate-rouge <num>  near-duplicate ROUGE-1 阈值 (默认 0.7)',
-      '  --ambiguous-stddev <num> 歧义阈值,judge stddev (默认 1.0,需要 --judge-repeat ≥ 2 数据)',
-      '  --cost-k <num>           成本异常倍数 vs median (默认 3)',
-      '  --latency-k <num>        耗时异常倍数 vs median (默认 3)',
-      '  --flat <num>             flat_scores 分差阈值 (默认 0.5)',
-      '',
-    ].join('\n'));
+    console.log(tCli('cli.help.diagnose', lang));
     process.exit(reportId ? 0 : 1);
   }
 
@@ -2076,22 +1844,7 @@ async function handleFailures(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId || reportId === '--help' || reportId === '-h') {
-    console.log([
-      '',
-      'Usage: omk bench failures <reportId> [options]',
-      '',
-      '把已有 report 的失败样本喂给一次 LLM 调用,自动聚类 + 给修复建议。',
-      '失败定义:compositeScore < threshold 或 ok=false。',
-      '',
-      'Options:',
-      '  --reports-dir <dir>      report store dir',
-      '  --judge-executor <name>  执行器 (default: claude)',
-      '  --judge-model <id>       聚类用的 model (default: 沿用 report.meta.judgeModel)',
-      '  --max-clusters <n>       最多多少 cluster (default 5)',
-      '  --threshold <num>        compositeScore < threshold 算失败 (default 3)',
-      '  --max-feed <n>           最多喂给 LLM 多少条 (default 50,超出取最差)',
-      '',
-    ].join('\n'));
+    console.log(tCli('cli.help.failures', lang));
     process.exit(reportId ? 0 : 1);
   }
 
