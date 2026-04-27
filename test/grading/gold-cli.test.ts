@@ -148,7 +148,7 @@ describe('initGoldDataset', () => {
 
   it('refuses to clobber existing yaml files', () => {
     writeYaml('keep', 'existing.yaml', 'foo: bar');
-    assert.throws(() => initGoldDataset(join(dir, 'keep')), /已存在/);
+    assert.throws(() => initGoldDataset(join(dir, 'keep')), /already contains YAML files/);
   });
 });
 

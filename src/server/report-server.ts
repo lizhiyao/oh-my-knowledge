@@ -652,14 +652,14 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
         try {
           server = await boot(p);
         } catch {
-          throw new Error(`端口 ${p} 仍被占用，请手动关闭后重试：lsof -ti:${p} | xargs kill`);
+          throw new Error(`port ${p} is still in use; close it manually and retry: lsof -ti:${p} | xargs kill`);
         }
       } else {
         throw new Error(
-          `端口 ${p} 已被其他程序占用。\n` +
-          `  查看占用进程：lsof -i:${p}\n` +
-          `  释放端口：lsof -ti:${p} | xargs kill\n` +
-          `  或指定其他端口：omk bench report --port 8080`
+          `port ${p} is already in use by another process.\n` +
+          `  inspect: lsof -i:${p}\n` +
+          `  release: lsof -ti:${p} | xargs kill\n` +
+          `  or pick another port: omk bench report --port 8080`
         );
       }
     }

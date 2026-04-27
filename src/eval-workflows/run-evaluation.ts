@@ -210,10 +210,10 @@ export async function runEvaluation({
       }
       if (onProgress) {
         const count = Object.values(existingResults).reduce((sum, v) => sum + Object.values(v).filter((r) => r.ok).length, 0);
-        process.stderr.write(`\n📂 从报告 ${resume} 恢复了 ${count} 个已完成结果\n`);
+        process.stderr.write(`\n📂 resumed ${count} completed results from report ${resume}\n`);
       }
     } else {
-      process.stderr.write(`\n⚠️  报告 ${resume} 未找到，将从头执行\n`);
+      process.stderr.write(`\n⚠️  report ${resume} not found, starting from scratch\n`);
     }
   }
 
@@ -499,7 +499,7 @@ export async function runEachEvaluation({
 }: RunEachEvaluationOptions): Promise<{ report: Report | DryRunEachReport; filePath: string | null }> {
   const skillEntries = discoverEachSkills(resolve(skillDir));
   if (skillEntries.length === 0) {
-    throw new Error(`未发现带配对 eval-samples 的 skill：${skillDir}`);
+    throw new Error(`no skill with paired eval-samples found in: ${skillDir}`);
   }
 
   if (dryRun) {

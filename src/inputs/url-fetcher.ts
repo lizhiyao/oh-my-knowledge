@@ -72,7 +72,7 @@ export async function resolveUrls(samples: Sample[], skipUrls?: Set<string>): Pr
   const fetched = new Map<string, FetchResult>(); // url -> { ok, content, error }
   const entries = [...urlMap.keys()];
 
-  process.stderr.write(`ℹ 检测到 ${entries.length} 个 URL，正在获取内容:\n`);
+  process.stderr.write(`ℹ detected ${entries.length} URL(s), fetching content:\n`);
   for (const url of entries) {
     process.stderr.write(`    - ${url}\n`);
   }
@@ -102,7 +102,7 @@ export async function resolveUrls(samples: Sample[], skipUrls?: Set<string>): Pr
 
   const failCount = [...fetched.values()].filter((r) => !r.ok).length;
   if (failCount > 0) {
-    process.stderr.write(`\n⚠ ${failCount} 个 URL 抓取失败，将使用原始 URL 继续评测\n\n`);
+    process.stderr.write(`\n⚠ ${failCount} URL(s) failed to fetch, falling back to raw URLs for evaluation\n\n`);
   }
 
   // 4. Inline fetched content into samples (only successful ones)

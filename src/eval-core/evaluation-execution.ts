@@ -298,6 +298,6 @@ export async function preflight(executor: ExecutorFn, model: string, timeoutMs: 
     timeoutMs,
   });
   if (!result.ok) {
-    throw new Error(`预检失败 [${model}]: ${result.error}`);
+    throw new Error(`preflight failed [${model}]: ${result.error}`);
   }
 }
