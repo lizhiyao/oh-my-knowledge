@@ -21,7 +21,7 @@
 - **六维独立打分** — Fact / Behavior / LLM-judge / Cost / Efficiency / Stability 分别出信号，单一维度的回退不会被其他维度的收益掩盖
 - **线上 session 观测** — 解析 Claude Code session JSONL，在真实用户会话上测量各 skill 的失败率、耗时、token 成本和知识缺口信号
 - **知识缺口识别** — 严重度加权的信号（显式标记 / 搜索失败 / hedging 用语 / 反复失败）量化风险敞口,不宣称完备性
-- **合并前 CI 门** — `omk bench ci` 强制三层 all-pass（fact + behavior + llm-judge），抓复合分掩盖的单层回退
+- **合并前 CI 门** — `omk bench gate` 强制三层 all-pass（fact + behavior + llm-judge），抓复合分掩盖的单层回退
 - **一行 ship/no-ship 结论** — `omk bench verdict <reportId>` 聚合 bootstrap CI / 三层 ci-gate / saturation / human α,给六档 verdict（PROGRESS / CAUTIOUS / REGRESS / NOISE / UNDERPOWERED / SOLO）+ 行动建议;exit code 反映是否可 ship
 
 ### 统计严谨性
@@ -484,14 +484,14 @@ omk bench evolve skills/my-skill.md --rounds 10 --target 4.5
 
 每轮产出保存在 `skills/evolve/` 目录（`my-skill.r0.md`、`my-skill.r1.md`...），可以 diff 查看 AI 改了什么。最佳版本自动写回原始文件。
 
-### `omk bench ci`
+### `omk bench gate`
 
 在自动化流水线中运行评测。评分达标则退出码为 0(通过),否则为 1(失败),可直接用于卡点判断。
 
 门禁是**三层 all-pass**:`avgFactScore >= threshold AND avgBehaviorScore >= threshold AND avgJudgeScore >= threshold`,任一层低于阈值即 FAIL,输出显示是哪一层破了 gate。这样能把"事实 4.5→2.5 但 judge 3→5"这种合成分均值不变但事实层崩盘的 case 暴露出来 — 任何一层退化都会被卡住。
 
 ```bash
-omk bench ci [选项]
+omk bench gate [选项]
   --threshold <数值>     各层最低分数(默认:3.5);独立应用于
                          fact / behavior / judge 三层
 ```
@@ -567,7 +567,7 @@ HTML 报告会内联 SVG 饱和曲线（横 N，纵 mean ± 95% CI 阴影带，p
 
 ```bash
 omk bench verdict <reportId> [选项]
-  --threshold <num>      三层 gate 阈值 (默认 3.5,匹配 omk bench ci)
+  --threshold <num>      三层 gate 阈值 (默认 3.5,匹配 omk bench gate)
   --trivial-diff <num>   "幅度太小"阈值 (默认 0.1)
   --verbose              展开 per-pair 详情
 ```

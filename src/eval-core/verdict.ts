@@ -28,7 +28,7 @@
  */
 
 import type { Report, VariantPairComparison, VariantSummary } from '../types/index.js';
-import { evaluateCiGates } from './ci-gates.js';
+import { evaluateLayerGates } from './layer-gates.js';
 
 export type VerdictLevel =
   | 'PROGRESS'
@@ -61,7 +61,7 @@ export interface VerdictResult {
 
 export interface VerdictOptions {
   /** Three-layer ci-gate threshold; defaults to 3.5 (matches `omk bench ci`). */
-  ciThreshold?: number;
+  gateThreshold?: number;
   /**
    * Magnitude (in raw score points) below which a "significant" diff is treated
    * as practically negligible (statistically real but too small to matter).
@@ -74,7 +74,7 @@ export interface VerdictOptions {
  * Compute a verdict for a finished report. Pure function — no I/O.
  */
 export function computeVerdict(report: Report, options: VerdictOptions = {}): VerdictResult {
-  const { ciThreshold = 3.5, triviallySmallDiff = 0.1 } = options;
+  const { gateThreshold = 3.5, triviallySmallDiff = 0.1 } = options;
   const variants = report.meta?.variants ?? [];
   const summary = report.summary ?? {};
   const sampleCount = report.meta?.sampleCount ?? 0;
@@ -82,11 +82,11 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
   if (variants.length < 2) {
     // Single-variant — no comparison possible. Just report whether the variant
     // passes its own three-layer gate.
-    const gate = evaluateCiGates(summary, ciThreshold);
+    const gate = evaluateLayerGates(summary, gateThreshold);
     return {
       level: 'SOLO',
       headline: gate.allPass
-        ? `SOLO · single variant, three-layer gate PASS @ threshold ${ciThreshold}`
+        ? `SOLO · single variant, three-layer gate PASS @ threshold ${gateThreshold}`
         : `SOLO · single variant, three-layer gate FAIL — see ci output`,
       rationale: {
         layerWinners: gate.lines.join('; '),
@@ -104,7 +104,7 @@ export function computeVerdict(report: Report, options: VerdictOptions = {}): Ve
   const pairs: VariantPairComparison[] = explicitPairs.length > 0
     ? explicitPairs
     : variants.slice(1).map((treatment) => ({ control: variants[0], treatment }));
-  const perPair = pairs.map((p) => verdictForPair(p, summary, sampleCount, report, ciThreshold, triviallySmallDiff));
+  const perPair = pairs.map((p) => verdictForPair(p, summary, sampleCount, report, gateThreshold, triviallySmallDiff));
 
   // Worst-case roll-up: REGRESS dominates, then CAUTIOUS, then NOISE/UNDERPOWERED, then PROGRESS.
   const order: VerdictLevel[] = ['REGRESS', 'CAUTIOUS', 'UNDERPOWERED', 'NOISE', 'PROGRESS'];
@@ -163,14 +163,14 @@ function verdictForPair(
   summary: Record<string, VariantSummary>,
   sampleCount: number,
   report: Report,
-  ciThreshold: number,
+  gateThreshold: number,
   triviallySmallDiff: number,
 ): { control: string; treatment: string; level: VerdictLevel; headline: string } {
   const { control, treatment, diffBootstrapCI: diff } = pair;
 
   // Layer-gate check: did any layer fall below threshold for either variant?
-  const cGate = evaluateCiGates({ [control]: summary[control] }, ciThreshold);
-  const tGate = evaluateCiGates({ [treatment]: summary[treatment] }, ciThreshold);
+  const cGate = evaluateLayerGates({ [control]: summary[control] }, gateThreshold);
+  const tGate = evaluateLayerGates({ [treatment]: summary[treatment] }, gateThreshold);
 
   // No bootstrap CI available → fall back to point-estimate diff comparison.
   if (!diff) {

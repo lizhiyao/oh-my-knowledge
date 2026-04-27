@@ -186,7 +186,17 @@
 - 两个都是 `skill` kind 的 artifact（v1 vs v2）比较时，其中一个被显式声明为 `control`——此时 control role 和 baseline kind 没有任何关系
 - 报告与代码都应以 `experimentRole` 作为判定对照组的唯一来源，不从 `artifactKind === 'baseline'` 反推
 
-### 5. 稳定性 = 跨重复运行（test-retest），不是跨用例散度
+### 5. CI 在 omk 里只指 Confidence Interval
+
+**omk 里 CI 永远只指置信区间(Confidence Interval)**,不指 Continuous Integration。这条避免与统计学外的 "CI" 含义混淆。
+
+规则:
+
+- **持续集成场景的命令 / 内部 helper 一律用 "gate"**:`bench gate` / `evaluateLayerGates` / `gateThreshold` / `LayerGateResult`
+- **置信区间场景一律用 "CI"**:`bootstrap CI` / `diff CI` / `bootstrapCI` 字段 / "95% CI"
+- 文档 / 注释 / commit message 提到 "CI" 时不必加澄清 — 单一含义,读者不需上下文判断
+
+### 6. 稳定性 = 跨重复运行（test-retest），不是跨用例散度
 
 **稳定性（stability）的概念对齐 psychometrics 的 test-retest reliability——同一对象在重复运行下的分数一致性。omk 采用 CV（变异系数，工程领域相对离散度指标）作主指标；它与 psychometrics 严格意义的 test-retest reliability（通常用 ICC 或 Pearson r）不完全等价，不是 psychometrics 标准下的 reliability 测量，而是同类概念下的工程化近似。**
 
@@ -202,7 +212,7 @@ omk 的具体实现：`--repeat N` 让同一 (variant × sample) 跑 N 次，`re
 - 六维对比表"稳定性"列主值：有 variance 数据时显示 `CV X.X%`，没有（单轮评测 / 无 `--repeat`）时显示 `—` + 副区 `需 --repeat ≥ 2`。**诚实交代测不到什么**。
 - 行业对照：Anthropic / OpenAI eval docs、Braintrust、Langfuse 等都把多次运行之间的 variance 作为稳定性核心指标，不用跨用例散度。
 
-### 6. 三层评分：事实 / 行为 / LLM 评价
+### 7. 三层评分：事实 / 行为 / LLM 评价
 
 `LayeredScores` 把 composite（合成分）拆成三个正交层，字段依次 `factScore` / `behaviorScore` / `judgeScore`，UI 分别展示为 **"事实" / "行为" / "LLM 评价"**。
 

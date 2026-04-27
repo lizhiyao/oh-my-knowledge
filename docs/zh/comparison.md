@@ -80,7 +80,7 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 | 生产 session JSONL 解析(omk analyze) | ✓ Claude Code | ✗ | ✗ | ✗ | ✗ | ✓ 仅 LangChain | ✗ | ✗ |
 | 自迭代(`omk bench evolve`) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | eval.yaml(evaluation-as-code) | ✓ | ✓ | ✗ | ✗ | 部分 | ✗ | 部分 | ✓ |
-| CI/CD `omk bench ci` 退出码路由 | ✓ 三层 | ✓ 基础 | ✓ | ✗ | ✗ | 部分 | ✗ | ✓ |
+| CI/CD `omk bench gate` 退出码路由 | ✓ 三层 | ✓ 基础 | ✓ | ✗ | ✗ | 部分 | ✗ | ✓ |
 | 预算硬阈值(工作流级中止) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 中断恢复 | ✓ `--resume` | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 盲测 A/B + 揭晓 | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ pairwise | ✗ | ✗ |
