@@ -80,7 +80,7 @@ Three-layer isolation prevents single-axis regressions from being masked by comp
 | Production session JSONL parsing (omk analyze) | ✓ Claude Code | ✗ | ✗ | ✗ | ✗ | ✓ LangChain only | ✗ | ✗ |
 | Auto self-iteration (`omk bench evolve`) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | eval.yaml (evaluation-as-code) | ✓ | ✓ | ✗ | ✗ | partial | ✗ | partial | ✓ |
-| CI/CD `omk bench ci` exit-code routing | ✓ three-layer | ✓ basic | ✓ | ✗ | ✗ | partial | ✗ | ✓ |
+| CI/CD `omk bench gate` exit-code routing | ✓ three-layer | ✓ basic | ✓ | ✗ | ✗ | partial | ✗ | ✓ |
 | Hard budget caps (workflow abort) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Resume from interruption | ✓ `--resume` | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Blind A/B reveal | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ pairwise | ✗ | ✗ |

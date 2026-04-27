@@ -10,6 +10,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Changed
 
+- **⚠️ BREAKING:`bench ci` 删除,改名 `bench gate`**:omk 里 "CI" 一直有歧义——既指 Continuous Integration(`bench ci` 命令),又指 Confidence Interval(`bootstrap CI` / `diff CI` / `95% CI`)。读代码注释 / 文档 / commit message 时常常需要看上下文猜哪个 CI。本版**直接删除 `bench ci`**(omk 0-1 阶段不留兼容层),命令改名 `bench gate`,从此 omk 里 **CI 永远只指置信区间**。
+
+  改动范围:
+  - CLI:`omk bench ci` → `omk bench gate`(内核不变,仍 = `run + computeVerdict + 0/1 exit code`)
+  - 内部:`evaluateCiGates` → `evaluateLayerGates`,`CiGateResult` → `LayerGateResult`,`VerdictOptions.ciThreshold` → `gateThreshold`
+  - 文件:`src/eval-core/ci-gates.ts` → `layer-gates.ts`,`test/ci-gates.test.ts` → `test/layer-gates.test.ts`
+  - 文档:`README.md` / `README.zh.md` / `docs/comparison.md` / `docs/zh/comparison.md` / `docs/knowledge-gap-signal-spec.md` 全部 sweep
+  - `terminology-spec.md` 加 §5"CI 在 omk 里只指 Confidence Interval"显式规则
+
+  为什么改名"gate"而不是别的:**业界 vocabulary**(SonarQube Quality Gate / Azure release gates / Spinnaker pipeline gates),"gate" 在 CI/CD 圈是通用名词。codebase 内本来满地是 `gate`(`three-layer gate` / `gate.allPass` / `layer-gate check`),命令名也叫 gate 后,代码 / 文档 / commit 讲同一个词,可搜索性升一级。
+
+  **迁移指南**(用户面):GitHub Actions / GitLab CI / 任何 shell pipeline 把 `omk bench ci` 替换为 `omk bench gate`,其余 flag 不变。omk 还在 0.x,主动放弃兼容层,**不留 deprecation alias**。内部代码引用 `evaluateCiGates` / `ciThreshold` 的请相应改名。
+
 - **single-run 盲区在用户旅程三处可见(三处一致信号)**:之前用户跑单轮(`--repeat=1`)评测,**没有任何一个面提醒"稳定性测不到"**——单轮报告读起来就像满分,容易误读为"稳"。本版在用户接触 omk 的三个时间点都加显眼信号,**单轮的盲区不会再被默默忽略**:
 
   1. **进门(`bench run` / `--dry-run` 跑前 stderr)**——pre-flight 结构性预警,N<5 / N<20 / repeat=1 三档:

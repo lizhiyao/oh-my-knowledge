@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { evaluateCiGates } from '../src/eval-core/ci-gates.js';
+import { evaluateLayerGates } from '../src/eval-core/layer-gates.js';
 import type { VariantSummary } from '../src/types/index.js';
 
 function mkSummary(seed: Partial<VariantSummary>): VariantSummary {
@@ -13,12 +13,12 @@ function mkSummary(seed: Partial<VariantSummary>): VariantSummary {
   };
 }
 
-describe('evaluateCiGates — PR-3 three-gate CI', () => {
+describe('evaluateLayerGates — PR-3 three-layer gate', () => {
   it('PASS when all three layers meet threshold', () => {
     const summary = {
       v1: mkSummary({ avgFactScore: 4.2, avgBehaviorScore: 4.0, avgJudgeScore: 3.8 }),
     };
-    const { allPass, lines } = evaluateCiGates(summary, 3.5);
+    const { allPass, lines } = evaluateLayerGates(summary, 3.5);
     assert.equal(allPass, true);
     assert.equal(lines.length, 1);
     assert.match(lines[0], /^PASS: v1/);
@@ -30,7 +30,7 @@ describe('evaluateCiGates — PR-3 three-gate CI', () => {
     const summary = {
       v2: mkSummary({ avgFactScore: 2.8, avgBehaviorScore: 4.2, avgJudgeScore: 4.5 }),
     };
-    const { allPass, lines } = evaluateCiGates(summary, 3.5);
+    const { allPass, lines } = evaluateLayerGates(summary, 3.5);
     assert.equal(allPass, false);
     assert.match(lines[0], /^FAIL: v2/);
     // Fact layer should be marked with ✗, others not
@@ -41,7 +41,7 @@ describe('evaluateCiGates — PR-3 three-gate CI', () => {
 
   it('FAIL with hint when all three layers are absent', () => {
     const summary = { v3: mkSummary({}) };
-    const { allPass, lines } = evaluateCiGates(summary, 3.5);
+    const { allPass, lines } = evaluateLayerGates(summary, 3.5);
     assert.equal(allPass, false);
     assert.match(lines[0], /^FAIL: v3/);
     assert.match(lines[0], /无分层评分/);
@@ -54,7 +54,7 @@ describe('evaluateCiGates — PR-3 three-gate CI', () => {
     const summary = {
       v4: mkSummary({ avgFactScore: 4.0, avgJudgeScore: 4.2 }),
     };
-    const { allPass, lines } = evaluateCiGates(summary, 3.5);
+    const { allPass, lines } = evaluateLayerGates(summary, 3.5);
     assert.equal(allPass, true);
     assert.match(lines[0], /^PASS: v4/);
     assert.match(lines[0], /Fact=4\.00/);
@@ -67,7 +67,7 @@ describe('evaluateCiGates — PR-3 three-gate CI', () => {
       good: mkSummary({ avgFactScore: 4.5, avgBehaviorScore: 4.3, avgJudgeScore: 4.1 }),
       bad:  mkSummary({ avgFactScore: 2.0, avgBehaviorScore: 4.0, avgJudgeScore: 4.0 }),
     };
-    const { allPass, lines } = evaluateCiGates(summary, 3.5);
+    const { allPass, lines } = evaluateLayerGates(summary, 3.5);
     assert.equal(allPass, false);
     assert.equal(lines.length, 2);
     assert.match(lines[0], /^PASS: good/);
@@ -79,7 +79,7 @@ describe('evaluateCiGates — PR-3 three-gate CI', () => {
     const summary = {
       edge: mkSummary({ avgFactScore: 3.5, avgBehaviorScore: 3.5, avgJudgeScore: 3.5 }),
     };
-    const { allPass, lines } = evaluateCiGates(summary, 3.5);
+    const { allPass, lines } = evaluateLayerGates(summary, 3.5);
     assert.equal(allPass, true);
     assert.match(lines[0], /^PASS: edge/);
     assert.ok(!lines[0].includes('✗'));

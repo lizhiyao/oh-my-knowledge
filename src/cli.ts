@@ -401,8 +401,8 @@ async function main(): Promise<void> {
     case 'init':
       await handleInit(rest);
       break;
-    case 'ci':
-      await handleCi(rest);
+    case 'gate':
+      await handleGate(rest);
       break;
     case 'gen-samples':
       await handleGenSamples(rest);
@@ -1192,11 +1192,17 @@ async function handleEvolve(argv: string[]): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// handleCi
+// handleGate — 跑评测 + 应用 gate, exit code 0/1 适合 CI/CD pipeline 调用。
+// 内部 = runEvaluation + computeVerdict + formatVerdictText, 与 bench verdict
+// 共用决策内核(只是 verdict 读已有报告, gate 跑完再判)。
 // ---------------------------------------------------------------------------
 
-async function handleCi(argv: string[]): Promise<void> {
+async function handleGate(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
+  if (argv[0] === '--help' || argv[0] === '-h') {
+    console.log(tCli('cli.help.main', lang).trim());
+    process.exit(0);
+  }
   const { values, config } = parseRunConfig(argv, {
     threshold: { type: 'string', default: '3.5' },
     'trivial-diff': { type: 'string' },
@@ -1210,23 +1216,24 @@ async function handleCi(argv: string[]): Promise<void> {
     const { report } = (await runEvaluation(config)) as EvalResult;
 
     if ((report as Report & { dryRun?: boolean }).dryRun) {
-      console.log('CI dry-run: no scores to check');
+      console.log('Gate dry-run: no scores to check');
       process.exit(0);
     }
 
-    // ci 内核统一为 verdict — 之前只看 three-layer threshold 漏掉 bootstrap diff /
-    // saturation / Krip α 等关键信号(用户花钱跑 --bootstrap 但 ci 不看 CI)。
-    // 现在 ci = run + verdict,自动用上 omk 全部决策维度。
+    // gate 内核 = run + verdict, 自动覆盖 omk 全部决策维度(三层 layer-gate /
+    // bootstrap diff CI / saturation / Krippendorff α)。computeVerdict 是单一
+    // 决策源, exit code 跟 verdict.level 走 — 数据 underpowered 直接 FAIL,
+    // 堵住"过 PASS 就 deploy"的漏洞。
     const { computeVerdict, formatVerdictText } = await import('./eval-core/verdict.js');
     const result = computeVerdict(report, {
-      ciThreshold: Number(values.threshold),
+      gateThreshold: Number(values.threshold),
       triviallySmallDiff: values['trivial-diff'] != null ? Number(values['trivial-diff']) : undefined,
     });
     console.log(formatVerdictText(result, { verbose: true }));
 
     // exit code 与 handleVerdict 对齐:只有 PROGRESS / SOLO-pass 才 0,
-    // NOISE / UNDERPOWERED / CAUTIOUS / REGRESS 全 1。这样 CI pipeline 用
-    // `omk bench ci && deploy` 时,数据不显著就不会误 deploy。
+    // NOISE / UNDERPOWERED / CAUTIOUS / REGRESS 全 1。pipeline `omk bench gate
+    // && deploy` 数据不显著就不会误 deploy。
     if (result.level === 'PROGRESS') {
       process.exit(0);
     }
@@ -1759,7 +1766,7 @@ async function handleVerdict(argv: string[]): Promise<void> {
 
   const { computeVerdict, formatVerdictText } = await import('./eval-core/verdict.js');
   const result = computeVerdict(report!, {
-    ciThreshold: values.threshold != null ? Number(values.threshold) : undefined,
+    gateThreshold: values.threshold != null ? Number(values.threshold) : undefined,
     triviallySmallDiff: values['trivial-diff'] != null ? Number(values['trivial-diff']) : undefined,
   });
   console.log(formatVerdictText(result, { verbose: Boolean(values.verbose) }));
