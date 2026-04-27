@@ -16,7 +16,7 @@ import type {
   GitInfo,
   ReportStore,
   ProgressCallback,
-} from './types.js';
+} from './types/index.js';
 
 // ---------------------------------------------------------------------------
 // Local types (CLI-specific, not shared with lib/)
@@ -46,7 +46,7 @@ interface RunConfig {
   /** --judge-repeat N. Calls LLM judge N times per (sample × dimension). Default 1. */
   judgeRepeat?: number;
   /** --judge-models executor:model,executor:model,... — multi-judge ensemble (≥ 2 entries). */
-  judgeModels?: import('./types.js').JudgeConfig[];
+  judgeModels?: import('./types/index.js').JudgeConfig[];
   /** --bootstrap. Adds bootstrap CI to summary (per-variant mean + pairwise diff). */
   bootstrap?: boolean;
   /** --bootstrap-samples N. Bootstrap resamples count, default 1000. */
@@ -54,7 +54,7 @@ interface RunConfig {
   /** v0.21 Phase 3a length-debias toggle. Default true; --no-debias-length sets false. */
   lengthDebias?: boolean;
   /** v0.22 — hard budget caps from CLI or config. */
-  budget?: import('./types.js').EvalBudget;
+  budget?: import('./types/index.js').EvalBudget;
   onProgress?: ProgressCallback | null;
 }
 
@@ -1802,7 +1802,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   //  1. --samples <path> override
   //  2. report.meta.request.samplesPath (recorded at run time)
   // If neither resolves to a readable file, skip near-duplicate gracefully.
-  let samples: import('./types.js').Sample[] | undefined;
+  let samples: import('./types/index.js').Sample[] | undefined;
   const samplesPath = (values.samples as string | undefined) ?? report!.meta?.request?.samplesPath;
   if (samplesPath && existsSync(samplesPath)) {
     try {

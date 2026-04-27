@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { runAsyncAssertions, ASYNC_ASSERTION_TYPES } from '../../src/grading/assertions.js';
-import type { ExecutorFn, Sample } from '../../src/types.js';
+import type { ExecutorFn, Sample } from '../../src/types/index.js';
 
 const ok = (output: string): Awaited<ReturnType<ExecutorFn>> => ({
   ok: true,

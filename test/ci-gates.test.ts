@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { evaluateCiGates } from '../src/eval-core/ci-gates.js';
-import type { VariantSummary } from '../src/types.js';
+import type { VariantSummary } from '../src/types/index.js';
 
 function mkSummary(seed: Partial<VariantSummary>): VariantSummary {
   return {

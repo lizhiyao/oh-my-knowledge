@@ -1,4 +1,4 @@
-import type { Artifact, EvaluationErrorCategory, EvaluationJob, EvaluationRequest, EvaluationRun, JudgeConfig } from '../types.js';
+import type { Artifact, EvaluationErrorCategory, EvaluationJob, EvaluationRequest, EvaluationRun, JudgeConfig } from '../types/index.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -53,7 +53,7 @@ export function buildEvaluationRequest({
   bootstrap?: boolean;
   bootstrapSamples?: number;
   lengthDebias?: boolean;
-  budget?: import('../types.js').EvalBudget;
+  budget?: import('../types/index.js').EvalBudget;
 }): EvaluationRequest {
   return {
     samplesPath,

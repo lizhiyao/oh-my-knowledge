@@ -13,7 +13,7 @@
  */
 
 import type { SkillHealth, SkillHealthReport } from '../observability/skill-health-analyzer.js';
-import type { Lang } from '../types.js';
+import type { Lang } from '../types/index.js';
 import { COLORS, e, layout, t } from './layout.js';
 
 const HEALTH_BAND_COLOR: Record<'green' | 'yellow' | 'red', string> = {

@@ -34,7 +34,7 @@ import type {
   Sample,
   Task,
   VariantResult,
-} from '../types.js';
+} from '../types/index.js';
 
 type EvaluationResults = Record<string, Record<string, VariantResult>>;
 
@@ -98,11 +98,11 @@ async function initializeEvaluationRunState({
   repeat?: number;
   each?: boolean;
   judgeRepeat?: number;
-  judgeModels?: import('../types.js').JudgeConfig[];
+  judgeModels?: import('../types/index.js').JudgeConfig[];
   bootstrap?: boolean;
   bootstrapSamples?: number;
   lengthDebias?: boolean;
-  budget?: import('../types.js').EvalBudget;
+  budget?: import('../types/index.js').EvalBudget;
 }): Promise<EvaluationRunState> {
   const request = buildEvaluationRequest({
     samplesPath,
@@ -278,7 +278,7 @@ export interface EvaluationPipelineOptions {
   /** 透传到 meta.request.judgeRepeat 与 grade()，每条 sample × dimension judge N 次 */
   judgeRepeat?: number;
   /** Multi-judge ensemble configs (≥ 2 entries triggers ensemble mode). */
-  judgeModels?: import('../types.js').JudgeConfig[];
+  judgeModels?: import('../types/index.js').JudgeConfig[];
   /** --bootstrap. */
   bootstrap?: boolean;
   /** --bootstrap-samples N. Default 1000. */
@@ -286,7 +286,7 @@ export interface EvaluationPipelineOptions {
   /** v0.21 length-debias toggle. Default true; --no-debias-length flips to false. */
   lengthDebias?: boolean;
   /** v0.22 — hard budget caps. */
-  budget?: import('../types.js').EvalBudget;
+  budget?: import('../types/index.js').EvalBudget;
 }
 
 export async function executeEvaluationPipeline({

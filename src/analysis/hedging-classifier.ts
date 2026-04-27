@@ -12,7 +12,7 @@
 
 import { createHash } from 'node:crypto';
 
-import type { ExecutorFn, HedgingVerdict } from '../types.js';
+import type { ExecutorFn, HedgingVerdict } from '../types/index.js';
 
 export interface HedgingCandidate {
   sampleId: string;

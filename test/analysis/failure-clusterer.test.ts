@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { clusterFailures, formatFailureClusterReport } from '../../src/analysis/failure-clusterer.js';
-import type { ExecutorFn, Report, ResultEntry, VariantResult } from '../../src/types.js';
+import type { ExecutorFn, Report, ResultEntry, VariantResult } from '../../src/types/index.js';
 
 const variantResult = (overrides: Partial<VariantResult> = {}): VariantResult => ({
   ok: true, durationMs: 1000, durationApiMs: 1000,

@@ -1,7 +1,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { resolve, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import type { Artifact } from '../types.js';
+import type { Artifact } from '../types/index.js';
 
 function parseFrontmatterPreflight(content: string): string[] | undefined {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);

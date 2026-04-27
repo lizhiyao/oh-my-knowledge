@@ -6,7 +6,7 @@ import type {
   EvalConfigVariant,
   ExperimentRole,
   VariantSpec,
-} from '../types.js';
+} from '../types/index.js';
 
 const VALID_ROLES: readonly ExperimentRole[] = ['control', 'treatment'];
 
@@ -123,7 +123,7 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
   assertStringOpt('mcpConfig');
 
   // v0.22 — budget validation. Top-level `budget: { totalUSD?, perSampleUSD?, perSampleMs? }`.
-  let budget: import('../types.js').EvalBudget | undefined;
+  let budget: import('../types/index.js').EvalBudget | undefined;
   if (obj.budget !== undefined) {
     if (typeof obj.budget !== 'object' || obj.budget === null || Array.isArray(obj.budget)) {
       throw new Error(`${configPath}: budget must be an object`);

@@ -1,5 +1,5 @@
 import { dirname } from 'node:path';
-import type { Artifact, ExecutionStrategyKind, ExecutorInput, ExperimentType, Task, VariantConfig } from '../types.js';
+import type { Artifact, ExecutionStrategyKind, ExecutorInput, ExperimentType, Task, VariantConfig } from '../types/index.js';
 
 export interface ExecutionPlan {
   strategy: ExecutionStrategyKind;

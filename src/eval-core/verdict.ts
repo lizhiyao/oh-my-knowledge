@@ -27,7 +27,7 @@
  * empirical) is documented inline so users can audit and override.
  */
 
-import type { Report, VariantPairComparison, VariantSummary } from '../types.js';
+import type { Report, VariantPairComparison, VariantSummary } from '../types/index.js';
 import { evaluateCiGates } from './ci-gates.js';
 
 export type VerdictLevel =

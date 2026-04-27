@@ -1,4 +1,4 @@
-import type { ExecResult, ExecutorInput } from '../types.js';
+import type { ExecResult, ExecutorInput } from '../types/index.js';
 import { extractAgentTrace, isClaudeSdkResultMessage } from './claude-sdk-trace.js';
 import type { ClaudeSdkBaseMessage, ClaudeSdkResultMessage } from './shared.js';
 import {

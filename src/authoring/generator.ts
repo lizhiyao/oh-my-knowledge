@@ -1,5 +1,5 @@
 import { createExecutor, DEFAULT_MODEL } from '../executors/index.js';
-import type { Sample } from '../types.js';
+import type { Sample } from '../types/index.js';
 
 const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的测试样本。
 

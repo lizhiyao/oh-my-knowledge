@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { diagnoseSamples, formatSampleDiagnostics } from '../../src/analysis/sample-diagnostics.js';
-import type { Report, ResultEntry, Sample, VariantResult } from '../../src/types.js';
+import type { Report, ResultEntry, Sample, VariantResult } from '../../src/types/index.js';
 
 const variantResult = (overrides: Partial<VariantResult> = {}): VariantResult => ({
   ok: true, durationMs: 1000, durationApiMs: 1000,

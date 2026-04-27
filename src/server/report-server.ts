@@ -5,10 +5,10 @@ import { homedir } from 'node:os';
 import { renderRunList, renderRunDetail, renderEachRunDetail, renderTrendsPage } from '../renderer/html-renderer.js';
 import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
-import type { Lang } from '../types.js';
+import type { Lang } from '../types/index.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
 import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
-import type { JobStore, ReportStore } from '../types.js';
+import type { JobStore, ReportStore } from '../types/index.js';
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import type { AddressInfo } from 'node:net';
 

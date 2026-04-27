@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildTasks, buildTasksFromArtifacts } from '../../src/eval-core/task-planner.js';
-import type { Artifact, Sample } from '../../src/types.js';
+import type { Artifact, Sample } from '../../src/types/index.js';
 
 const makeSample = (id: string, prompt: string, context?: string): Sample => ({
   sample_id: id,

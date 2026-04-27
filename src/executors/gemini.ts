@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import type { ExecResult, ExecutorInput } from '../types.js';
+import type { ExecResult, ExecutorInput } from '../types/index.js';
 import { DEFAULT_TIMEOUT_MS, errorMessage, GeminiResponse, parseJson } from './shared.js';
 
 export async function geminiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {

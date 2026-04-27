@@ -2,7 +2,7 @@
  * Mixed grading: deterministic assertions + LLM judge + multi-dimensional scoring.
  */
 
-import type { GradeResult, ExecutorFn, JudgeConfig, Sample, ToolCallInfo, TurnInfo } from '../types.js';
+import type { GradeResult, ExecutorFn, JudgeConfig, Sample, ToolCallInfo, TurnInfo } from '../types/index.js';
 import { ASYNC_ASSERTION_TYPES, ratioToScore, runAssertions, runAsyncAssertions } from './assertions.js';
 import { buildTraceSummary, llmJudgeEnsemble, llmJudgeRepeat } from './judge.js';
 import { computeLayeredScores } from './layered-scores.js';

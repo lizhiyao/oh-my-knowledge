@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { executeTasks } from '../../src/eval-core/evaluation-execution.js';
-import type { Artifact, ExecutorFn, Sample, Task } from '../../src/types.js';
+import type { Artifact, ExecutorFn, Sample, Task } from '../../src/types/index.js';
 
 const sample = (id: string): Sample => ({
   sample_id: id, prompt: `prompt for ${id}`,

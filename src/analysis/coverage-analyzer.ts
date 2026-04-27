@@ -5,7 +5,7 @@
 
 import { basename, join, resolve } from 'node:path';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import type { ToolCallInfo, ResultEntry, Report } from '../types.js';
+import type { ToolCallInfo, ResultEntry, Report } from '../types/index.js';
 
 export interface KnowledgeEntry {
   path: string;

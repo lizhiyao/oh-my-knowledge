@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { mergeEvolveReports, type RoundReport } from '../src/authoring/evolver.js';
-import type { Report, VariantResult, VariantSummary } from '../src/types.js';
+import type { Report, VariantResult, VariantSummary } from '../src/types/index.js';
 
 function makeVariantResult(score: number): VariantResult {
   return { ok: true, durationMs: 1000, compositeScore: score } as VariantResult;

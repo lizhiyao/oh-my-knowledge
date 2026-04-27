@@ -9,7 +9,7 @@ import {
   preflightDependencies,
   formatDependencyErrors,
 } from '../src/eval-core/dependency-checker.js';
-import type { Sample } from '../src/types.js';
+import type { Sample } from '../src/types/index.js';
 
 const tmp = () => join(tmpdir(), `omk-dep-test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
 

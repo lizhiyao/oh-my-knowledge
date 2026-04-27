@@ -39,7 +39,7 @@
  * directive is inapplicable.
  */
 
-import type { ExecutorFn, Report, ResultEntry, VariantResult } from '../types.js';
+import type { ExecutorFn, Report, ResultEntry, VariantResult } from '../types/index.js';
 
 export interface FailureClusterRequest {
   report: Report;
