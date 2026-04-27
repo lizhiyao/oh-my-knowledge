@@ -143,13 +143,15 @@ describe('renderRunDetail', () => {
     assert.match(html, /summary-value-primary[^"]*"[^>]*>4\.60</);  // v2 judge
   });
 
-  it('stability cell: 单 run (无 variance) 显示 "—" + 引导', () => {
+  it('stability cell: 单 run (无 variance) 主值标红 "未测量" + 显眼引导', () => {
     const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
     // SAMPLE_REPORT 默认无 variance 字段,这正是单 run 场景
     assert.equal(report.variance, undefined);
     const html = renderRunDetail(report);
-    // 稳定性主值应该是 "—",副区提示需 --repeat
-    assert.match(html, /需 --repeat ≥ 2/);
+    // 之前显示灰色 "—" 太弱,容易被误读为"无显示=没问题"。改成红色"⚠ 未测量"
+    // + 引导文案,让缺失可见、鼓励用户加 --repeat。
+    assert.match(html, /⚠ 未测量/);
+    assert.match(html, /color:var\(--red\).*单轮评测,加 --repeat ≥ 2 才能测 CV/);
   });
 
   it('stability cell: 有 variance 数据显示 CV + 白话定性 (稳定/较稳/波动大)', () => {

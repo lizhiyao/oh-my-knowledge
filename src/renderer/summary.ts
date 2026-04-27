@@ -464,10 +464,16 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       const ciHi = fmtNum(vd.upper, 2);
       stabDetails.push(`CV ${cvPct.toFixed(1)}% · 95% CI [${ciLo}, ${ciHi}]`);
     } else {
-      // No cross-run data → honestly say "not measurable with single run".
-      stabValue = '—';
-      stabColor = 'var(--text-muted)';
-      stabDetails.push(`<span style="color:var(--text-muted)">${lang === 'zh' ? '需 --repeat ≥ 2' : 'needs --repeat ≥ 2'}</span>`);
+      // No cross-run data → make the gap loud, not silent. 之前用灰色 "—" 让单轮
+      // 报告读者误以为"无显示 = 没问题",实际是 omk 测不到这个维度。改红 +
+      // "未测量" 字样让缺失可见 — 鼓励用户加 --repeat ≥ 2 而不是默默 ship。
+      stabValue = lang === 'zh' ? '⚠ 未测量' : '⚠ Not measured';
+      stabColor = 'var(--red)';
+      stabDetails.push(
+        `<span style="color:var(--red)">${
+          lang === 'zh' ? '单轮评测,加 --repeat ≥ 2 才能测 CV' : 'single-run; needs --repeat ≥ 2 to measure CV'
+        }</span>`,
+      );
     }
 
     // Execution-completion alerts:success rate < 100% 时降级到此处,避免和"稳定性"语义混淆。

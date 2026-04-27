@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Changed
 
+- **报告 UI 稳定性列在 `--repeat=1` 时标红可见**:之前单轮评测稳定性列显示灰色 `—` + 灰色"需 --repeat ≥ 2"提示,**容易被误读为"无显示 = 没问题"**——用户看不到 omk 实际测不到这个维度。改成红色 `⚠ 未测量` + 红字引导文案 `单轮评测,加 --repeat ≥ 2 才能测 CV`(英文 `⚠ Not measured` / `single-run; needs --repeat ≥ 2 to measure CV`),让缺失可见、鼓励用户用 `--repeat` 而不是默默 ship。修改 `src/renderer/summary.ts` stability cell,zh + en 双语 snapshot 同步重生。
+
+
+
 - **user-facing 中文文案统一用「用例」,不用「样本」**:`docs/terminology-spec.md` §6 加显式规则——代码 / API / 文件名 / CLI flag(`Sample` / `sample_id` / `eval-samples.json` / `--samples`)继续用 `sample`(开源 API + 英文圈通用术语),只 user-facing zh 切换。理由:omk 的 `eval-samples` 是开发者**手挑**的测试用例,不是从某分布**随机抽样**的统计样本——「样本」会暗示"再多跑就能扩大样本量"误导用户,实际是要补设计、补用例。
 
   本版同步把 `src/cli/i18n-dict.ts`(15 处 zh CLI 输出)/ `src/renderer/{summary,layout}.ts`(报告 UI zh)/ `src/grading/{debias-validate,gold-cli}.ts`(5 处 stderr)/ `src/analysis/{report,sample}-diagnostics.ts`(22 处 diagnostic message)/ `src/authoring/{generator,evolver}.ts`(7 处 LLM prompt zh) / `src/types/report.ts` + `src/analysis/gap-analyzer.ts` + `src/eval-core/schema.ts` 注释 / `docs/{knowledge-gap-signal-spec,zh/comparison}.md` 全部 sweep。HTML 报告 zh 快照同步重生。
