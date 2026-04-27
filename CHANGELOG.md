@@ -8,6 +8,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Changed
+
+- **`omk bench ci` 内核统一为 verdict**:之前 `ci` 只看三层平均分阈值(`evaluateCiGates`),用户花钱跑 `--bootstrap` 但 ci 退出码完全忽略 bootstrap diff CI、saturation、Krippendorff α——是个**隐性漏洞**。本版把 `handleCi` 重写为 `runEvaluation + computeVerdict + formatVerdictText`,exit code 与 `bench verdict` 对齐:**只有 PROGRESS / SOLO-pass 才 0**;`NOISE` / `UNDERPOWERED` / `CAUTIOUS` / `REGRESS` 全 1。**这是行为变更**:之前三层都过 3.5 即 PASS 的 underpowered run 现在会 FAIL——这正是 ci gate 应有的语义(数据不显著就不该进 deploy)。`--threshold` 继续生效作为三层 gate 阈值,新增 `--trivial-diff` 调"实际可忽略的小差距"门限。两个 CLI 表层(`ci` 一句话跑+判 / `verdict` 离线判已有报告)继续保留,内核共用。
+
+- **`computeVerdict` 加 `rationale.stability` 字段**:之前 verdict 不报告稳定性,导致单轮(`--repeat=1`)用户无法感知"测不到稳定性"这个盲区。现在三态:
+  - `--repeat ≥ 2` + variance 数据齐:报 `CV=X.X% (稳定/中等/不稳, runs=N)` 主指标(阈值参考 terminology-spec §5)
+  - `--repeat ≥ 2` 但 variance 缺失:标"variance 数据缺失"提示数据丢失
+  - `--repeat < 2`:**显式说**「稳定性未测量(单轮评测,需 --repeat ≥ 2 才能测 CV)」
+
+  `formatVerdictText` 同步打印 stability 行,SOLO 单 variant 路径也走同一逻辑。让用户感受到 single-run 的盲区,而不是默默不提让人误读为"稳"。
+
 ### Fixed
 
 - **directory-skill 路径解析(`SKILL.md` 约定)**:符号链接或非 cwd 子目录里的 directory-skill(例如 `~/.claude/skills/foo/SKILL.md` 引用 `assets/references/...` 相对路径)在评测时:
