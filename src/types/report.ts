@@ -304,9 +304,9 @@ export interface GapReport {
   sampleCount: number;
   samplesWithGap: number;
   gapRate: number;
-  // v0.2 严重度加权 gap rate:每个样本取其信号的最强权重,再按样本均值聚合。
+  // v0.2 严重度加权 gap rate:每个用例取其信号的最强权重,再按用例均值聚合。
   // `weightedGapRate ≤ gapRate`,差值反映"弱信号占比"——
-  // 若 raw=30% 但 weighted=15% 意味着一半样本是软信号,该复核。
+  // 若 raw=30% 但 weighted=15% 意味着一半用例是软信号,该复核。
   weightedGapRate: number;
   testSetPath?: string | null;
   testSetHash?: string | null;

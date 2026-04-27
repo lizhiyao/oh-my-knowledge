@@ -9,7 +9,7 @@ import type { ProgressCallback, Report, ResultEntry, VariantResult } from '../ty
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。你的任务是分析评测结果中的薄弱环节，针对性地改进 skill（系统提示词），使其在评测中获得更高的分数。
 
 改进原则：
-1. 针对低分样本暴露的具体问题做改进，不要泛泛修改
+1. 针对低分用例暴露的具体问题做改进，不要泛泛修改
 2. 保留当前版本中已经表现良好的部分
 3. 保持 skill 的整体结构和格式
 4. 改进应该具体、可执行，不要空泛的描述
@@ -77,9 +77,9 @@ export function buildImprovementPrompt(skillContent: string, score: number, weak
 
 ${skillContent}
 
-## 低分样本分析
+## 低分用例分析
 
-${weakDetails || '（无低分样本）'}
+${weakDetails || '（无低分用例）'}
 
 请基于以上分析改进 Skill，使其在这些场景中表现更好。直接输出改进后的完整 Skill 内容。`;
 }
