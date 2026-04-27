@@ -97,7 +97,7 @@ export function loadMcpConfig(configPath?: string): McpServers | null {
   try {
     raw = JSON.parse(readFileSync(filePath, 'utf-8'));
   } catch (err: unknown) {
-    process.stderr.write(`⚠ MCP 配置文件解析失败: ${filePath}\n  ${getErrorMessage(err)}\n`);
+    process.stderr.write(`⚠ failed to parse MCP config file: ${filePath}\n  ${getErrorMessage(err)}\n`);
     return null;
   }
 
@@ -189,7 +189,7 @@ export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers |
     }
   }
   if (failCount > 0) {
-    process.stderr.write(`\n⚠ ${failCount} 个 URL 通过 MCP 获取失败，将尝试 HTTP 回退\n\n`);
+    process.stderr.write(`\n⚠ ${failCount} URL(s) failed via MCP, will retry with HTTP fallback\n\n`);
   }
 
   // 5. Inline successful results into samples
@@ -205,7 +205,7 @@ export async function resolveMcpUrls(samples: Sample[], mcpServers: McpServers |
   }
 
   if (successCount > 0) {
-    process.stderr.write(`✓ MCP: 成功获取 ${successCount} 个 URL 的内容\n\n`);
+    process.stderr.write(`✓ MCP: fetched content for ${successCount} URL(s)\n\n`);
   }
 
   return resolved;
@@ -220,7 +220,7 @@ export async function stopAllServers(): Promise<void> {
   for (const [name, client] of activeClients) {
     promises.push(
       client.close().catch((err: unknown) => {
-        process.stderr.write(`⚠ MCP server "${name}" 关闭异常: ${getErrorMessage(err)}\n`);
+        process.stderr.write(`⚠ MCP server "${name}" failed to close cleanly: ${getErrorMessage(err)}\n`);
       }),
     );
   }

@@ -49,16 +49,16 @@ export function loadSamples(samplesPath: string): LoadSamplesResult {
     samples = wrapper.samples;
     requires = wrapper.requires;
   } else {
-    throw new Error(`无效的样本文件格式: ${samplesPath}（期望数组或包含 samples 字段的对象）`);
+    throw new Error(`invalid samples file shape: ${samplesPath} (expected an array or an object with a 'samples' field)`);
   }
 
   if (!Array.isArray(samples) || samples.length === 0) {
-    throw new Error(`无效的样本文件: ${samplesPath}`);
+    throw new Error(`invalid samples file: ${samplesPath}`);
   }
 
   for (const [i, sample] of samples.entries()) {
-    if (!sample.sample_id) throw new Error(`samples[${i}] 缺少必填字段: sample_id`);
-    if (!sample.prompt) throw new Error(`samples[${i}] (${sample.sample_id}) 缺少必填字段: prompt`);
+    if (!sample.sample_id) throw new Error(`samples[${i}] missing required field: sample_id`);
+    if (!sample.prompt) throw new Error(`samples[${i}] (${sample.sample_id}) missing required field: prompt`);
   }
 
   return { samples, requires };

@@ -181,7 +181,7 @@ export function initGoldDataset(targetDir: string, options: { annotator?: string
   if (existsSync(abs)) {
     const present = readdirSync(abs).filter((f) => /\.ya?ml$/.test(f));
     if (present.length > 0) {
-      throw new Error(`目标目录已存在 YAML 文件 (${present.join(', ')})，避免覆盖请换目录`);
+      throw new Error(`target directory already contains YAML files (${present.join(', ')}); use a different directory to avoid overwriting`);
     }
   } else {
     mkdirSync(abs, { recursive: true });

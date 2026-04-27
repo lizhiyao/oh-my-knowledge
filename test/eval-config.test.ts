@@ -65,7 +65,7 @@ variants:
     role: control
     artifact: baseline
       `.trim());
-      assert.throws(() => loadEvalConfig(path), /samples 字段必填/);
+      assert.throws(() => loadEvalConfig(path), /'samples' is required/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -78,7 +78,7 @@ variants:
 samples: ./samples.json
 variants: []
       `.trim());
-      assert.throws(() => loadEvalConfig(path), /variants 字段必填/);
+      assert.throws(() => loadEvalConfig(path), /'variants' is required/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -94,7 +94,7 @@ variants:
     role: baseline
     artifact: ./v1.md
       `.trim());
-      assert.throws(() => loadEvalConfig(path), /role 必须是 'control' 或 'treatment'/);
+      assert.throws(() => loadEvalConfig(path), /role must be 'control' or 'treatment'/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -113,7 +113,7 @@ variants:
     role: treatment
     artifact: ./v1.md
       `.trim());
-      assert.throws(() => loadEvalConfig(path), /"v1" 重复/);
+      assert.throws(() => loadEvalConfig(path), /"v1" is duplicated/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -122,7 +122,7 @@ variants:
   it('throws when --config file does not exist', () => {
     assert.throws(
       () => loadEvalConfig('/tmp/omk-nonexistent-config-xyz.yaml'),
-      /--config 指定的文件不存在/,
+      /--config file does not exist/,
     );
   });
 
@@ -269,7 +269,7 @@ samples: ./s.json
 ${minimalVariants}
 budget: 5
 `.trim());
-      assert.throws(() => loadEvalConfig(path), /budget 必须是对象/);
+      assert.throws(() => loadEvalConfig(path), /budget must be an object/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

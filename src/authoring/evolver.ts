@@ -242,8 +242,8 @@ export async function evolveSkill({
   const skillName = readSkillName(absSkillPath) ?? (fileBaseName === 'SKILL' ? basename(skillDir) : fileBaseName);
   const evolveDir = join(skillDir, 'evolve');
 
-  if (!existsSync(absSkillPath)) throw new Error(`skill 文件未找到: ${absSkillPath}`);
-  if (!existsSync(absSamplesPath)) throw new Error(`样本文件未找到: ${absSamplesPath}`);
+  if (!existsSync(absSkillPath)) throw new Error(`skill file not found: ${absSkillPath}`);
+  if (!existsSync(absSamplesPath)) throw new Error(`samples file not found: ${absSamplesPath}`);
   mkdirSync(evolveDir, { recursive: true });
 
   // Save original as r0

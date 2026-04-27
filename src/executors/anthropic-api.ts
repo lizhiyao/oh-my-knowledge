@@ -3,7 +3,7 @@ import { AnthropicResponse, asErrorLike, DEFAULT_TIMEOUT_MS, errorMessage } from
 
 export async function anthropicApiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error('ANTHROPIC_API_KEY 环境变量未设置');
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY environment variable is not set');
 
   const baseUrl = process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com';
   const reqBody: {

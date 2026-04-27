@@ -17,7 +17,7 @@ const VALID_ROLES: readonly ExperimentRole[] = ['control', 'treatment'];
 export function loadEvalConfig(configPath: string): EvalConfig {
   const absPath = resolve(configPath);
   if (!existsSync(absPath)) {
-    throw new Error(`--config 指定的文件不存在: ${absPath}`);
+    throw new Error(`--config file does not exist: ${absPath}`);
   }
   const raw = readFileSync(absPath, 'utf-8');
   const isJson = absPath.endsWith('.json');
@@ -41,15 +41,15 @@ export function configVariantsToSpecs(variants: EvalConfigVariant[]): VariantSpe
 
 function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error(`${configPath}: 顶层必须是对象`);
+    throw new Error(`${configPath}: top level must be an object`);
   }
   const obj = parsed as Record<string, unknown>;
 
   if (typeof obj.samples !== 'string' || !obj.samples) {
-    throw new Error(`${configPath}: samples 字段必填，需为字符串`);
+    throw new Error(`${configPath}: 'samples' is required and must be a string`);
   }
   if (!Array.isArray(obj.variants) || obj.variants.length === 0) {
-    throw new Error(`${configPath}: variants 字段必填，需为非空数组`);
+    throw new Error(`${configPath}: 'variants' is required and must be a non-empty array`);
   }
 
   const variants: EvalConfigVariant[] = [];
@@ -58,25 +58,25 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
 
   for (const [i, raw] of (obj.variants as unknown[]).entries()) {
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-      throw new Error(`${configPath}: variants[${i}] 必须是对象`);
+      throw new Error(`${configPath}: variants[${i}] must be an object`);
     }
     const v = raw as Record<string, unknown>;
     if (typeof v.name !== 'string' || !v.name) {
-      throw new Error(`${configPath}: variants[${i}].name 必填，需为字符串`);
+      throw new Error(`${configPath}: variants[${i}].name is required and must be a string`);
     }
     if (typeof v.role !== 'string' || !VALID_ROLES.includes(v.role as ExperimentRole)) {
       throw new Error(
-        `${configPath}: variants[${i}].role 必须是 'control' 或 'treatment'（当前：${JSON.stringify(v.role)}）`,
+        `${configPath}: variants[${i}].role must be 'control' or 'treatment' (got: ${JSON.stringify(v.role)})`,
       );
     }
     if (typeof v.artifact !== 'string' || !v.artifact) {
-      throw new Error(`${configPath}: variants[${i}].artifact 必填，需为字符串`);
+      throw new Error(`${configPath}: variants[${i}].artifact is required and must be a string`);
     }
     if (v.cwd !== undefined && typeof v.cwd !== 'string') {
-      throw new Error(`${configPath}: variants[${i}].cwd 必须是字符串`);
+      throw new Error(`${configPath}: variants[${i}].cwd must be a string`);
     }
     if (seen.has(v.name)) {
-      throw new Error(`${configPath}: variants[${i}].name "${v.name}" 重复`);
+      throw new Error(`${configPath}: variants[${i}].name "${v.name}" is duplicated`);
     }
     seen.add(v.name);
     hasAnyRole = true;
@@ -89,32 +89,32 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
   }
 
   if (!hasAnyRole) {
-    throw new Error(`${configPath}: variants 里至少要有一个 control 或 treatment`);
+    throw new Error(`${configPath}: variants must contain at least one control or treatment entry`);
   }
 
   const assertStringOpt = (key: string): void => {
     if (obj[key] !== undefined && typeof obj[key] !== 'string') {
-      throw new Error(`${configPath}: ${key} 必须是字符串`);
+      throw new Error(`${configPath}: ${key} must be a string`);
     }
   };
   const assertNumberOpt = (key: string): void => {
     if (obj[key] !== undefined && typeof obj[key] !== 'number') {
-      throw new Error(`${configPath}: ${key} 必须是数字`);
+      throw new Error(`${configPath}: ${key} must be a number`);
     }
   };
   const assertBoolOpt = (key: string): void => {
     if (obj[key] !== undefined && typeof obj[key] !== 'boolean') {
-      throw new Error(`${configPath}: ${key} 必须是布尔值`);
+      throw new Error(`${configPath}: ${key} must be a boolean`);
     }
   };
 
   assertStringOpt('executor');
   assertStringOpt('model');
   if (obj.judgeModel !== undefined && obj.judgeModel !== null && typeof obj.judgeModel !== 'string') {
-    throw new Error(`${configPath}: judgeModel 必须是字符串或 null`);
+    throw new Error(`${configPath}: judgeModel must be a string or null`);
   }
   if (obj.judgeExecutor !== undefined && obj.judgeExecutor !== null && typeof obj.judgeExecutor !== 'string') {
-    throw new Error(`${configPath}: judgeExecutor 必须是字符串或 null`);
+    throw new Error(`${configPath}: judgeExecutor must be a string or null`);
   }
   assertNumberOpt('concurrency');
   assertNumberOpt('timeoutMs');
@@ -126,12 +126,12 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
   let budget: import('../types.js').EvalBudget | undefined;
   if (obj.budget !== undefined) {
     if (typeof obj.budget !== 'object' || obj.budget === null || Array.isArray(obj.budget)) {
-      throw new Error(`${configPath}: budget 必须是对象`);
+      throw new Error(`${configPath}: budget must be an object`);
     }
     const b = obj.budget as Record<string, unknown>;
     for (const k of ['totalUSD', 'perSampleUSD', 'perSampleMs']) {
       if (b[k] !== undefined && (typeof b[k] !== 'number' || b[k] as number < 0)) {
-        throw new Error(`${configPath}: budget.${k} 必须是非负数字`);
+        throw new Error(`${configPath}: budget.${k} must be a non-negative number`);
       }
     }
     budget = {

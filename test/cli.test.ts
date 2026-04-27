@@ -24,9 +24,9 @@ describe('CLI', () => {
     assert.ok(stdout.includes('oh-my-knowledge'));
   });
 
-  it('unknown domain exits with error', async () => {
+  it('unknown domain exits with error (--lang en)', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'unknown']),
+      () => execFileAsync('node', [CLI, 'unknown', '--lang', 'en']),
       (err: unknown) => {
         assert.ok((err as { stderr: string }).stderr.includes('Unknown domain'));
         return true;
@@ -34,11 +34,21 @@ describe('CLI', () => {
     );
   });
 
-  it('unknown bench command exits with error', async () => {
+  it('unknown domain in zh (default) prints 中文', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'bench', 'unknown']),
+      () => execFileAsync('node', [CLI, 'unknown']),
       (err: unknown) => {
-        assert.ok((err as { stderr: string }).stderr.includes('Unknown command'));
+        assert.ok((err as { stderr: string }).stderr.includes('未知顶层命令'));
+        return true;
+      },
+    );
+  });
+
+  it('unknown bench command exits with error (--lang en)', async () => {
+    await assert.rejects(
+      () => execFileAsync('node', [CLI, 'bench', 'unknown', '--lang', 'en']),
+      (err: unknown) => {
+        assert.ok((err as { stderr: string }).stderr.includes('Unknown bench command'));
         return true;
       },
     );

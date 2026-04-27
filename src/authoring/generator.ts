@@ -43,7 +43,7 @@ ${skillContent}
   const result = await executor({ model, system: SYSTEM_PROMPT, prompt });
 
   if (!result.ok) {
-    throw new Error(`生成失败: ${result.error || 'unknown error'}`);
+    throw new Error(`generation failed: ${result.error || 'unknown error'}`);
   }
 
   // Extract JSON from output (handle possible markdown code blocks)
@@ -57,17 +57,17 @@ ${skillContent}
   try {
     samples = JSON.parse(jsonStr);
   } catch {
-    throw new Error('生成的内容不是有效的 JSON，请重试');
+    throw new Error('generated content is not valid JSON, please retry');
   }
 
   if (!Array.isArray(samples) || samples.length === 0) {
-    throw new Error('生成结果为空，请重试');
+    throw new Error('generated result is empty, please retry');
   }
 
   // Validate required fields
   for (const [i, s] of samples.entries()) {
     if (!s.sample_id) s.sample_id = `s${String(i + 1).padStart(3, '0')}`;
-    if (!s.prompt) throw new Error(`samples[${i}] 缺少 prompt 字段`);
+    if (!s.prompt) throw new Error(`samples[${i}] missing required prompt field`);
   }
 
   return { samples, costUSD: result.costUSD };
