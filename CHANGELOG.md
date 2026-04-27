@@ -8,6 +8,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Fixed
+
+- **directory-skill 路径解析(`SKILL.md` 约定)**:符号链接或非 cwd 子目录里的 directory-skill(例如 `~/.claude/skills/foo/SKILL.md` 引用 `assets/references/...` 相对路径)在评测时:
+  1. preflight 把所有 artifact 的文件依赖 fold 进单一 cwd 检查,不同 skill 的 `assets/foo.md` 互相覆盖,会产生大量 false-positive missing。
+  2. 运行时 executor cwd = `process.cwd()` 而非 skill 根,LLM 的 Read 工具按 SKILL.md 的相对路径找文件全部失败,触发反复 retry / 模型放弃 / 长时间超时。
+
+  修复:`Artifact` 加 `skillRoot?: string`,在 `src/inputs/skill-loader.ts` 对 SKILL.md 约定的 directory-skill 设值(单文件 file-skill 维持 `process.cwd()` 语义不变)。`src/eval-core/task-planner.ts` `cwd` fallback 链改为 `artifact.cwd > artifact.skillRoot > sample.cwd > null`,`src/eval-core/dependency-checker.ts` `preflightDependencies` 文件依赖按 artifact 分桶解析(每个 skill 用各自 `skillRoot` 当 base)。WCC skill 端到端验证:bug-fix 前 41 个 false-positive missing + 1 个 sample 180s 超时;fix 后 preflight 通过、tool failure 减半、不再超时,wcc 平均分从 4.25 拉回 4.62,与 baseline diff CI 不再显著负向。
+
+- **依赖文件提取 regex 收紧**:之前 `FILE_PATH_REGEX` 把 SKILL.md 里"查看 `.d.ts` / `index.ts` 文件"这种**示例性扩展名提及 / bare 文件名提及**误识别为依赖。新增过滤:跳过以 `.` 开头的路径(扩展名讨论)和不含 `/` 的 bare 文件名(通用文件名几乎都是示例)。要声明 `package.json` / `README.md` 等 bare 文件作为真依赖请走显式 `requires:`。
+
 ---
 
 ## [0.20.2] - 2026-04-27

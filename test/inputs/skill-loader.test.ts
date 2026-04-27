@@ -6,6 +6,7 @@ import { resolveArtifacts } from '../../src/inputs/skill-loader.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = join(__dirname, '..', '..', 'examples', 'code-review', 'skills');
+const MULTI_SKILL_DIR = join(__dirname, '..', '..', 'examples', 'multi-skills', 'skills');
 
 describe('resolveArtifacts', () => {
   it('baseline 产生 kind 为 baseline 的 artifact', () => {
@@ -48,5 +49,42 @@ describe('resolveArtifacts', () => {
     assert.equal(artifacts[0].kind, 'baseline');
     assert.equal(artifacts[0].content, null);
     assert.equal(artifacts[0].cwd, '/tmp/project-b');
+  });
+
+  it('file-skill 不设 skillRoot(cwd 走默认,即用户项目目录)', () => {
+    const artifacts = resolveArtifacts(SKILL_DIR, ['v1']);
+    assert.equal(artifacts.length, 1);
+    assert.equal(artifacts[0].skillRoot, undefined);
+  });
+
+  it('directory-skill 把 skillRoot 设到 SKILL.md 所在目录', () => {
+    const artifacts = resolveArtifacts(MULTI_SKILL_DIR, ['classifier']);
+    assert.equal(artifacts.length, 1);
+    assert.equal(artifacts[0].name, 'classifier');
+    assert.equal(artifacts[0].kind, 'skill');
+    assert.equal(artifacts[0].skillRoot, join(MULTI_SKILL_DIR, 'classifier'));
+  });
+
+  it('显式 @cwd 覆盖,但 skillRoot 仍记录在 artifact 上(优先级在 task-planner 处理)', () => {
+    const artifacts = resolveArtifacts(MULTI_SKILL_DIR, ['classifier@/tmp/override']);
+    assert.equal(artifacts.length, 1);
+    assert.equal(artifacts[0].cwd, '/tmp/override');
+    assert.equal(artifacts[0].skillRoot, join(MULTI_SKILL_DIR, 'classifier'));
+  });
+
+  it('file-path 指向 SKILL.md 同 directory-skill 处理:设 skillRoot 为该目录', () => {
+    const skillMd = join(MULTI_SKILL_DIR, 'classifier', 'SKILL.md');
+    const artifacts = resolveArtifacts(SKILL_DIR, [skillMd]);
+    assert.equal(artifacts.length, 1);
+    assert.equal(artifacts[0].source, 'file-path');
+    assert.equal(artifacts[0].skillRoot, dirname(skillMd));
+  });
+
+  it('file-path 指向单文件 .md 不设 skillRoot', () => {
+    const v1Path = join(SKILL_DIR, 'v1.md');
+    const artifacts = resolveArtifacts(MULTI_SKILL_DIR, [v1Path]);
+    assert.equal(artifacts.length, 1);
+    assert.equal(artifacts[0].source, 'file-path');
+    assert.equal(artifacts[0].skillRoot, undefined);
   });
 });

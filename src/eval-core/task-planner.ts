@@ -28,7 +28,7 @@ export function buildTasksFromArtifacts(samples: Sample[], artifacts: Artifact[]
         assertions: sample.assertions || null,
         dimensions: sample.dimensions || null,
         artifactContent: artifact.content,
-        cwd: artifact.cwd || sample.cwd || null,
+        cwd: artifact.cwd || artifact.skillRoot || sample.cwd || null,
         _sample: sample,
       });
     }

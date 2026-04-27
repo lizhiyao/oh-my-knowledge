@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
-import { resolve, join, relative } from 'node:path';
+import { resolve, join, relative, dirname, basename } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import type { Artifact } from '../types/index.js';
 
@@ -181,6 +181,8 @@ export function resolveArtifacts(skillDir: string, variants: string[]): Artifact
         throw new Error(`skill file not found: ${filePath}`);
       }
       const content = readFileSync(filePath, 'utf-8').trim();
+      // 用户直接指 SKILL.md 等同 directory-skill 约定:cwd 默认锚到该目录
+      const isSkillMd = basename(filePath) === 'SKILL.md';
       artifacts.push({
         name: variantName,
         kind: 'skill',
@@ -188,6 +190,7 @@ export function resolveArtifacts(skillDir: string, variants: string[]): Artifact
         content,
         locator: filePath,
         cwd: variantCwd,
+        ...(isSkillMd && { skillRoot: dirname(filePath) }),
         metadata: buildMetadata(content),
       });
       continue;
@@ -196,6 +199,7 @@ export function resolveArtifacts(skillDir: string, variants: string[]): Artifact
     const mdPath = join(skillDir, `${variantName}.md`);
     const dirSkillPath = join(skillDir, variantName, 'SKILL.md');
     if (existsSync(mdPath)) {
+      // file-skill:单文件 .md,无 asset 概念,cwd 走默认(用户项目目录),不设 skillRoot
       const content = readFileSync(mdPath, 'utf-8').trim();
       artifacts.push({
         name: variantName,
@@ -207,6 +211,7 @@ export function resolveArtifacts(skillDir: string, variants: string[]): Artifact
         metadata: buildMetadata(content),
       });
     } else if (existsSync(dirSkillPath)) {
+      // directory-skill:SKILL.md 引相对路径 assets,cwd 默认锚到 skill 根目录
       const content = readFileSync(dirSkillPath, 'utf-8').trim();
       artifacts.push({
         name: variantName,
@@ -215,6 +220,7 @@ export function resolveArtifacts(skillDir: string, variants: string[]): Artifact
         content,
         locator: dirSkillPath,
         cwd: variantCwd,
+        skillRoot: dirname(dirSkillPath),
         metadata: buildMetadata(content),
       });
     } else if (variantCwd) {

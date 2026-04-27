@@ -61,4 +61,30 @@ describe('buildTasksFromArtifacts', () => {
   it('空输入返回空数组', () => {
     assert.deepEqual(buildTasksFromArtifacts([], []), []);
   });
+
+  it('cwd fallback 链:artifact.cwd > skillRoot > sample.cwd > null', () => {
+    const samples = [makeSample('s1', 'p')];
+
+    // 1. 仅 skillRoot:directory-skill 默认锚到 skill 根
+    const onlySkillRoot: Artifact[] = [
+      { name: 'k', kind: 'skill', source: 'variant-name', content: 'c', skillRoot: '/skill/root' },
+    ];
+    assert.equal(buildTasksFromArtifacts(samples, onlySkillRoot)[0].cwd, '/skill/root');
+
+    // 2. artifact.cwd 优先于 skillRoot(用户显式 @cwd 覆盖默认)
+    const cwdAndSkillRoot: Artifact[] = [
+      { name: 'k', kind: 'skill', source: 'variant-name', content: 'c', cwd: '/explicit', skillRoot: '/skill/root' },
+    ];
+    assert.equal(buildTasksFromArtifacts(samples, cwdAndSkillRoot)[0].cwd, '/explicit');
+
+    // 3. 都没有 → null(executor 走 process.cwd())
+    const none: Artifact[] = [
+      { name: 'k', kind: 'skill', source: 'variant-name', content: 'c' },
+    ];
+    assert.equal(buildTasksFromArtifacts(samples, none)[0].cwd, null);
+
+    // 4. sample.cwd 兜底(file-skill 配 sample-级 cwd)
+    const sampleWithCwd: Sample = { sample_id: 's2', prompt: 'p', cwd: '/sample/cwd' };
+    assert.equal(buildTasksFromArtifacts([sampleWithCwd], none)[0].cwd, '/sample/cwd');
+  });
 });
