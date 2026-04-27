@@ -38,7 +38,7 @@ describe('CLI', () => {
     await assert.rejects(
       () => execFileAsync('node', [CLI, 'unknown']),
       (err: unknown) => {
-        assert.ok((err as { stderr: string }).stderr.includes('未知模块'));
+        assert.ok((err as { stderr: string }).stderr.includes('未知顶层命令'));
         return true;
       },
     );
