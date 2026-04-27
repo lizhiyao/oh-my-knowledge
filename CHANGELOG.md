@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+
+- **`bench run` 跑前结构性预警**:用例数偏少 / 单轮评测会让结论不可靠,但用户跑前不知道——`bench verdict` 的 `UNDERPOWERED` 是事后判定。本版加 pre-run stderr 提醒(dry-run 也包括,让用户**真花钱前**就能看到):
+  - `N < 5`:`⚠ exploration-only, any conclusion is unreliable, CI will be uselessly wide`
+  - `5 ≤ N < 20`:`⚠ large-effect-only (Cohen's d > 0.8), medium effects hard to detect`
+  - `--repeat=1`:`⚠ single-run cannot measure stability (CV will be marked "not measured")`
+
+  **不预测 MDE 数值**(σ 跑前不知道,正态假设套 bootstrap 自相矛盾)——纯**结构性 hard-floor**:n<5 / n<20 / repeat=1 三档。要严肃判"数据够不够"留给 `bench verdict` + saturation 曲线 post-hoc。`buildPowerWarnings(n, repeat): string[]` 抽为纯函数,9 个单测覆盖各档边界。
+
 ### Changed
 
 - **user-facing 中文文案统一用「用例」,不用「样本」**:`docs/terminology-spec.md` §6 加显式规则——代码 / API / 文件名 / CLI flag(`Sample` / `sample_id` / `eval-samples.json` / `--samples`)继续用 `sample`(开源 API + 英文圈通用术语),只 user-facing zh 切换。理由:omk 的 `eval-samples` 是开发者**手挑**的测试用例,不是从某分布**随机抽样**的统计样本——「样本」会暗示"再多跑就能扩大样本量"误导用户,实际是要补设计、补用例。
