@@ -24,7 +24,7 @@
  * large/expensive evaluations can opt in deliberately.
  */
 
-import type { ExecutorFn, Report, Sample } from '../types.js';
+import type { ExecutorFn, Report, Sample } from '../types/index.js';
 import { llmJudge } from './judge.js';
 import { bootstrapDiffCI, type BootstrapDiffCI } from '../eval-core/bootstrap.js';
 

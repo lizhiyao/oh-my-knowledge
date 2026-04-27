@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import yaml from 'js-yaml';
-import type { Sample } from '../types.js';
+import type { Sample } from '../types/index.js';
 import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
 
 interface YamlErrorLike {

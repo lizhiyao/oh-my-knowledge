@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { DimensionResult, EnsembleJudgeResult, ExecutorFn, JudgeAgreement, JudgeConfig, ToolCallInfo, TurnInfo } from '../types.js';
+import type { DimensionResult, EnsembleJudgeResult, ExecutorFn, JudgeAgreement, JudgeConfig, ToolCallInfo, TurnInfo } from '../types/index.js';
 
 interface JudgeResponse {
   score?: number | string;

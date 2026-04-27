@@ -14,7 +14,7 @@
 
 import { buildKnowledgeIndex, computeCoverage, type CoverageReport } from '../analysis/coverage-analyzer.js';
 import { computeGapReport } from '../analysis/gap-analyzer.js';
-import type { GapReport, ResultEntry } from '../types.js';
+import type { GapReport, ResultEntry } from '../types/index.js';
 import {
   ccTracesToResultEntries,
   segmentsToResultEntries,

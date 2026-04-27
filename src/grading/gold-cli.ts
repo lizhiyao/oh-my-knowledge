@@ -7,7 +7,7 @@
 
 import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
-import type { Report, ReportHumanAgreement, ResultEntry, VariantResult } from '../types.js';
+import type { Report, ReportHumanAgreement, ResultEntry, VariantResult } from '../types/index.js';
 import { persistReport } from '../eval-core/evaluation-reporting.js';
 import { loadGoldDataset, dumpYaml, type GoldDataset } from './gold-dataset.js';
 import {

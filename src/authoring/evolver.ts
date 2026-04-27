@@ -4,7 +4,7 @@ import { runEvaluation } from '../eval-workflows/run-evaluation.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
 import { persistReport, DEFAULT_OUTPUT_DIR, generateRunId } from '../eval-core/evaluation-reporting.js';
 import { analyzeResults } from '../analysis/report-diagnostics.js';
-import type { ProgressCallback, Report, ResultEntry, VariantResult } from '../types.js';
+import type { ProgressCallback, Report, ResultEntry, VariantResult } from '../types/index.js';
 
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。你的任务是分析评测结果中的薄弱环节，针对性地改进 skill（系统提示词），使其在评测中获得更高的分数。
 

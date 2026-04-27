@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildVarianceData } from '../src/eval-workflows/run-evaluation.js';
-import type { Report, VariantSummary } from '../src/types.js';
+import type { Report, VariantSummary } from '../src/types/index.js';
 
 /**
  * Minimal factory for a Report with enough fields to exercise buildVarianceData's

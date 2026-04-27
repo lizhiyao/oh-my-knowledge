@@ -6,7 +6,7 @@ import { buildVariantConfig } from '../eval-core/execution-strategy.js';
 import { loadMcpConfig, resolveMcpUrls } from '../inputs/mcp-resolver.js';
 import { resolveUrls } from '../inputs/url-fetcher.js';
 import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
-import type { Artifact, McpServers, Sample, Task, VariantSpec } from '../types.js';
+import type { Artifact, McpServers, Sample, Task, VariantSpec } from '../types/index.js';
 
 export interface PreparedEvaluationRun {
   samples: Sample[];

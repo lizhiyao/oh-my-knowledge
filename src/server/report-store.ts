@@ -6,7 +6,7 @@
 
 import { readdir, readFile, writeFile, unlink, access, mkdir, rename } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { EvaluationJob, JobStore, Report, ReportMeta, ReportStore, VariantSummary } from '../types.js';
+import type { EvaluationJob, JobStore, Report, ReportMeta, ReportStore, VariantSummary } from '../types/index.js';
 
 // Per-id in-memory mutex for safe read-modify-write.
 // Uses a queue to avoid the race window between checking and acquiring the lock.

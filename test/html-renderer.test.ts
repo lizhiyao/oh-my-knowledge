@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import assert from 'node:assert/strict';
 import { renderRunList, renderRunDetail } from '../src/renderer/html-renderer.js';
-import type { Lang, Report } from '../src/types.js';
+import type { Lang, Report } from '../src/types/index.js';
 
 // Snapshot 稳定化:把所有 YYYY-MM-DD HH:MM:SS 形式的本地时间戳替换成 [TIMESTAMP],
 // 防止 fmtLocalTime 基于本地时区产出的字符串在不同机器/CI 上抖动。

@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { queryRunList, queryRun, queryTrend } from '../../src/server/report-store.js';
-import type { Report, ReportStore, VariantSummary } from '../../src/types.js';
+import type { Report, ReportStore, VariantSummary } from '../../src/types/index.js';
 
 function makeReport(id: string, variant: string, timestamp: string, avgScore: number | undefined): Report {
   const summary: Record<string, VariantSummary> = {

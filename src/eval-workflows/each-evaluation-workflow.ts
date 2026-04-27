@@ -3,7 +3,7 @@ import { DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/e
 import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finalizeEvaluationRun } from '../eval-core/evaluation-job.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from '../server/job-store.js';
 import { resolveArtifacts } from '../inputs/skill-loader.js';
-import type { Artifact, JobStore, ProgressCallback, Report, VarianceData, VariantResult, VariantSummary } from '../types.js';
+import type { Artifact, JobStore, ProgressCallback, Report, VarianceData, VariantResult, VariantSummary } from '../types/index.js';
 
 interface RunSingleEvaluationOptions {
   samplesPath: string;
@@ -26,7 +26,7 @@ interface RunSingleEvaluationOptions {
   /** Forwarded to grade(); each sample × dimension is judged N times. Default 1. */
   judgeRepeat?: number;
   /** Forwarded to pipeline; ≥ 2 entries triggers multi-judge ensemble mode. */
-  judgeModels?: import('../types.js').JudgeConfig[];
+  judgeModels?: import('../types/index.js').JudgeConfig[];
   /** v0.21 Phase 3a length-debias toggle. Default true. */
   lengthDebias?: boolean;
 }
@@ -225,7 +225,7 @@ export async function executeEachEvaluationRuns({
   verbose?: boolean;
   repeat?: number;
   judgeRepeat?: number;
-  judgeModels?: import('../types.js').JudgeConfig[];
+  judgeModels?: import('../types/index.js').JudgeConfig[];
   lengthDebias?: boolean;
   runSingleEvaluation: (options: RunSingleEvaluationOptions) => Promise<{ report: Report; filePath: string | null }>;
 }): Promise<{ report: Report; filePath: string | null }> {

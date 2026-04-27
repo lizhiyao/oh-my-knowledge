@@ -14,7 +14,7 @@ import type {
   ProgressCallback,
   Task,
   VariantResult,
-} from '../types.js';
+} from '../types/index.js';
 
 export interface ExecuteTasksOptions {
   tasks: Task[];
@@ -36,7 +36,7 @@ export interface ExecuteTasksOptions {
   /** Number of times to call the LLM judge per (sample × dimension); default 1. */
   judgeRepeat?: number;
   /** Multi-judge ensemble configs (≥ 2 entries triggers ensemble mode). */
-  judgeModels?: import('../types.js').JudgeConfig[];
+  judgeModels?: import('../types/index.js').JudgeConfig[];
   /** Pre-built executor map for ensemble: executor name → ExecutorFn. */
   judgeExecutors?: Record<string, ExecutorFn>;
   /** v0.21 length-debias toggle. Default true; CLI's --no-debias-length sets it false. */
@@ -45,7 +45,7 @@ export interface ExecuteTasksOptions {
    *  tasks are skipped and the partial result set is returned with
    *  budgetExhausted: true. Per-sample caps don't abort but mark offending
    *  tasks as failed. */
-  budget?: import('../types.js').EvalBudget;
+  budget?: import('../types/index.js').EvalBudget;
 }
 
 async function runWithConcurrency<T>(tasks: T[], concurrency: number, fn: (task: T) => Promise<void>): Promise<void> {

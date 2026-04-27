@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { resolveExecutionStrategy } from '../../src/eval-core/execution-strategy.js';
-import type { Task } from '../../src/types.js';
+import type { Task } from '../../src/types/index.js';
 
 function mockTask(kind: string, content: string | null = 'skill content'): Task {
   return {

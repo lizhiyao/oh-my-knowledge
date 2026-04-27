@@ -5,7 +5,7 @@ import {
   clearHedgingCache,
   type HedgingCandidate,
 } from '../../src/analysis/hedging-classifier.js';
-import type { ExecResult, ExecutorFn } from '../../src/types.js';
+import type { ExecResult, ExecutorFn } from '../../src/types/index.js';
 
 function execOk(output: string, costUSD = 0.001): ExecResult {
   return {

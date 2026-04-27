@@ -1,4 +1,4 @@
-import type { VariantSummary } from '../types.js';
+import type { VariantSummary } from '../types/index.js';
 
 export interface CiGateResult {
   allPass: boolean;

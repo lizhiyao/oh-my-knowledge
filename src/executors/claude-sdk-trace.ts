@@ -1,4 +1,4 @@
-import type { ToolCallInfo, TurnInfo } from '../types.js';
+import type { ToolCallInfo, TurnInfo } from '../types/index.js';
 import type { ClaudeSdkBaseMessage } from './shared.js';
 
 export function isClaudeSdkResultMessage(message: ClaudeSdkBaseMessage): boolean {

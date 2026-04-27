@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { runAssertions, grade, validateJsonSchema } from '../src/grading/index.js';
-import type { ExecResult, ExecutorFn } from '../src/types.js';
+import type { ExecResult, ExecutorFn } from '../src/types/index.js';
 
 const unusedExecutor: ExecutorFn = async () => {
   throw new Error('executor should not be called in this test');

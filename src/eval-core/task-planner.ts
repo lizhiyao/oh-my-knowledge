@@ -1,4 +1,4 @@
-import type { Artifact, Sample, Task } from '../types.js';
+import type { Artifact, Sample, Task } from '../types/index.js';
 
 export function buildTasks(samples: Sample[], variants: string[], skills: Record<string, string | null>): Task[] {
   const artifacts: Artifact[] = variants.map((variant) => ({

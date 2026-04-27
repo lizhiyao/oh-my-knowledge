@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { llmJudgeRepeat, getJudgePromptHash, llmJudgeEnsemble, computeJudgeAgreement, judgeId } from '../src/grading/judge.js';
 import { grade } from '../src/grading/index.js';
-import type { ExecResult, ExecutorFn, JudgeConfig, Sample } from '../src/types.js';
+import type { ExecResult, ExecutorFn, JudgeConfig, Sample } from '../src/types/index.js';
 
 /**
  * Build an executor that returns a different score on each call, cycled from `scores`.

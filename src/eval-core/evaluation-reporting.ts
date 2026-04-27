@@ -20,7 +20,7 @@ import type {
   EvaluationJob,
   EvaluationRequest,
   EvaluationRun,
-} from '../types.js';
+} from '../types/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

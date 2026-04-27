@@ -16,7 +16,7 @@
  * step-3 work. This module only computes the structured GapReport.
  */
 
-import type { ExecutorFn, GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types.js';
+import type { ExecutorFn, GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types/index.js';
 import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
 
 export type GapSignalType = GapSignalRef['type'];

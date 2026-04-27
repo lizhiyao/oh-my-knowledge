@@ -1,4 +1,4 @@
-import type { Lang } from '../types.js';
+import type { Lang } from '../types/index.js';
 
 export function e(text: unknown): string {
   return String(text)

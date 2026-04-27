@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { validateLengthDebias } from '../../src/grading/debias-validate.js';
-import type { ExecutorFn, Report, Sample } from '../../src/types.js';
+import type { ExecutorFn, Report, Sample } from '../../src/types/index.js';
 
 /**
  * Mock executor that returns a fixed JSON judge response. We use it to

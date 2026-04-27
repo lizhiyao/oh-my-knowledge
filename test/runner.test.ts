@@ -6,7 +6,7 @@ import { discoverVariants, discoverEachSkills, loadSkills } from '../src/inputs/
 import { generateRunId } from '../src/eval-core/evaluation-reporting.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Report, VariantSpec } from '../src/types.js';
+import type { Report, VariantSpec } from '../src/types/index.js';
 
 // Test helper: convert a list of variant names into VariantSpec[].
 // First name becomes `control`, the rest become `treatment`—mirrors the

@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { aggregateReport } from '../../src/eval-core/evaluation-reporting.js';
-import type { Artifact, Sample, Task, VariantResult, EvaluationRequest } from '../../src/types.js';
+import type { Artifact, Sample, Task, VariantResult, EvaluationRequest } from '../../src/types/index.js';
 
 function makeArtifact(name: string, content: string): Artifact {
   return { name, kind: 'skill', source: 'inline', content, experimentRole: 'treatment' };

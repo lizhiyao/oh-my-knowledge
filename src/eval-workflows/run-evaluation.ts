@@ -26,7 +26,7 @@ import type {
   VariantSpec,
   VariantSummary,
   VariantVariance,
-} from '../types.js';
+} from '../types/index.js';
 import { findSaturationPoint } from '../analysis/saturation.js';
 import { bootstrapMeanCI } from '../eval-core/bootstrap.js';
 
@@ -70,7 +70,7 @@ interface CommonEvaluationOptions {
   judgeRepeat?: number;
   /** --judge-models executor:model,executor:model,... — multi-judge ensemble. ≥ 2 个
    *  judge 时每条 sample × dimension 由所有 judge 各自打分, 输出 inter-judge agreement. */
-  judgeModels?: import('../types.js').JudgeConfig[];
+  judgeModels?: import('../types/index.js').JudgeConfig[];
   /** --bootstrap. Distribution-free CI on each variant mean + pairwise diff. */
   bootstrap?: boolean;
   /** --bootstrap-samples N. Default 1000. */
@@ -79,7 +79,7 @@ interface CommonEvaluationOptions {
    *  CLI passes false when --no-debias-length is set. */
   lengthDebias?: boolean;
   /** v0.22 — hard budget caps. */
-  budget?: import('../types.js').EvalBudget;
+  budget?: import('../types/index.js').EvalBudget;
 }
 
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
@@ -198,7 +198,7 @@ export async function runEvaluation({
   }
 
   // --resume: load existing report results to skip completed tasks
-  let existingResults: Record<string, Record<string, import('../types.js').VariantResult>> | undefined;
+  let existingResults: Record<string, Record<string, import('../types/index.js').VariantResult>> | undefined;
   if (resume) {
     const { createFileStore } = await import('../server/report-store.js');
     const store = createFileStore(resolve(outputDir || DEFAULT_OUTPUT_DIR));

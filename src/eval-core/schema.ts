@@ -3,7 +3,7 @@
  * Single source of truth for object structures used across runner, renderer, and server.
  */
 
-import type { ExecResult, GradeResult, VariantResult, VariantSummary, TurnInfo, ToolCallInfo } from '../types.js';
+import type { ExecResult, GradeResult, VariantResult, VariantSummary, TurnInfo, ToolCallInfo } from '../types/index.js';
 import { computeJudgeAgreement } from '../grading/judge.js';
 
 function ratioToScore(ratio: number): number {

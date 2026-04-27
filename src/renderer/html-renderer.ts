@@ -19,7 +19,7 @@ import {
 import { renderSampleTable } from './table.js';
 import { renderTrendsBody } from './trends.js';
 import { computeVerdict, type VerdictLevel } from '../eval-core/verdict.js';
-import type { Report, Lang } from '../types.js';
+import type { Report, Lang } from '../types/index.js';
 
 // v0.21 B.4 — 列表页 status pill 用的 dot. PROGRESS/REGRESS 实心(强信号),
 // CAUTIOUS 三角(警示),NOISE 空心圆(有信号但无效果),UNDERPOWERED 部分填充

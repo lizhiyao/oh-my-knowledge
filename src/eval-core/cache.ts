@@ -9,7 +9,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import type { ExecResult, ExecutorCache } from '../types.js';
+import type { ExecResult, ExecutorCache } from '../types/index.js';
 
 const CACHE_FILE = 'executor-cache.json';
 
