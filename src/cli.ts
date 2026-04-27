@@ -879,6 +879,7 @@ async function handleRun(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleReport(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const { values } = parseArgs({
     args: argv,
     options: {
@@ -917,7 +918,7 @@ async function handleReport(argv: string[]): Promise<void> {
     const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
     const report: Report | null = await store.get(values.export as string);
     if (!report) {
-      console.error(`Report not found: ${values.export}`);
+      console.error(tCli('cli.common.report_not_found', lang, { id: values.export as string }));
       process.exit(1);
     }
     const html: string = report!.each ? renderEachRunDetail(report) : renderRunDetail(report);
@@ -1116,6 +1117,7 @@ async function handleInit(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleGenSamples(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const { values } = parseArgs({
     args: argv,
     options: {
@@ -1138,7 +1140,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
     // Batch mode: generate for all skills missing eval-samples
     const skillDir: string = resolve(values['skill-dir'] as string);
     if (!existsSync(skillDir)) {
-      console.error(`Skill directory not found: ${skillDir}`);
+      console.error(tCli('cli.common.skill_dir_not_found', lang, { path: skillDir }));
       process.exit(1);
     }
 
@@ -1167,39 +1169,44 @@ async function handleGenSamples(argv: string[]): Promise<void> {
       }
 
       if (existsSync(samplesPath)) {
-        process.stderr.write(`⏭️  ${name}: eval-samples 已存在，跳过\n`);
+        process.stderr.write(tCli('cli.gen.skill_skipped_existing', lang, { name }));
         continue;
       }
 
-      process.stderr.write(`🔄 ${name}: 正在生成 ${count} 个测试样本...\n`);
+      process.stderr.write(tCli('cli.gen.skill_generating', lang, { name, count }));
       try {
         const skillContent: string = readFileSync(skillPath, 'utf-8');
         const { samples, costUSD }: GenerateSamplesResult =
           await generateSamples({ skillContent, count, model });
         writeFileSync(samplesPath, JSON.stringify(samples, null, 2));
-        process.stderr.write(`✅ ${name}: 已生成 ${samples.length} 个样本 → ${samplesPath} (${costUSD > 0 ? `$${costUSD.toFixed(4)}` : ''})\n`);
+        const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+        process.stderr.write(tCli('cli.gen.skill_done', lang, {
+          name, n: samples.length, path: samplesPath, cost,
+        }));
         generated++;
       } catch (err: unknown) {
-        process.stderr.write(`❌ ${name}: ${(err as Error).message}\n`);
+        process.stderr.write(tCli('cli.gen.skill_failed', lang, {
+          name, message: (err as Error).message,
+        }));
       }
     }
 
     if (generated === 0) {
-      console.log('没有需要生成的 eval-samples（所有 skill 已有配对文件）');
+      console.log(tCli('cli.gen.batch_none_needed', lang));
     } else {
-      console.log(`\n共生成 ${generated} 份 eval-samples，请审查后运行: omk bench run --each`);
+      console.log(tCli('cli.gen.batch_summary', lang, { n: generated }));
     }
   } else {
     // Single skill mode
     const skillPath: string | undefined = argv.find((a: string) => !a.startsWith('-'));
     if (!skillPath) {
-      console.error('请指定 skill 文件路径，例如: omk bench gen-samples skills/my-skill.md');
+      console.error(tCli('cli.gen.specify_skill_path', lang));
       process.exit(1);
     }
 
     const resolvedPath: string = resolve(skillPath);
     if (!existsSync(resolvedPath)) {
-      console.error(`Skill file not found: ${resolvedPath}`);
+      console.error(tCli('cli.common.skill_file_not_found', lang, { path: resolvedPath }));
       process.exit(1);
     }
 
@@ -1207,19 +1214,22 @@ async function handleGenSamples(argv: string[]): Promise<void> {
     const outputPath: string = resolve('eval-samples.json');
 
     if (existsSync(outputPath)) {
-      console.error(`eval-samples.json 已存在。如需覆盖请先删除。`);
+      console.error(tCli('cli.gen.samples_already_exists', lang));
       process.exit(1);
     }
 
-    process.stderr.write(`🔄 正在生成 ${count} 个测试样本...\n`);
+    process.stderr.write(tCli('cli.gen.single_generating', lang, { count }));
     try {
       const { samples, costUSD }: GenerateSamplesResult =
         await generateSamples({ skillContent, count, model });
       writeFileSync(outputPath, JSON.stringify(samples, null, 2));
-      process.stderr.write(`✅ 已生成 ${samples.length} 个样本 → ${outputPath} (${costUSD > 0 ? `$${costUSD.toFixed(4)}` : ''})\n`);
-      console.log('\n请审查生成的测试样本后运行: omk bench run');
+      const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+      process.stderr.write(tCli('cli.gen.single_done', lang, {
+        n: samples.length, path: outputPath, cost,
+      }));
+      console.log(tCli('cli.gen.review_hint', lang));
     } catch (err: unknown) {
-      console.error(`生成失败: ${(err as Error).message}`);
+      console.error(tCli('cli.gen.failed', lang, { message: (err as Error).message }));
       process.exit(1);
     }
   }
@@ -1252,7 +1262,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
 
   const skillPath: string | undefined = argv.find((a: string) => !a.startsWith('-'));
   if (!skillPath) {
-    console.error('请指定 skill 文件路径，例如: omk bench evolve skills/my-skill.md');
+    console.error(tCli('cli.evolve.specify_skill_path', lang));
     process.exit(1);
   }
 
@@ -1264,7 +1274,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
 
   const { evolveSkill } = await import('./authoring/evolver.js');
 
-  process.stderr.write(`\n=== Evolution: ${skillPath} ===\n`);
+  process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
 
   try {
     const result: EvolveResult = await evolveSkill({
@@ -1282,13 +1292,19 @@ async function handleEvolve(argv: string[]): Promise<void> {
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, error }: RoundProgressInfo): void {
         if (phase === 'baseline') {
-          process.stderr.write(`Round 0 (baseline): score=${score!.toFixed(2)} ($${costUSD!.toFixed(4)})\n`);
+          process.stderr.write(tCli('cli.evolve.round_baseline', lang, {
+            score: score!.toFixed(2), cost: costUSD!.toFixed(4),
+          }));
         } else if (phase === 'error') {
-          process.stderr.write(`Round ${round}: ✗ 改进生成失败: ${error}\n`);
+          process.stderr.write(tCli('cli.evolve.round_error', lang, {
+            round, error: String(error ?? ''),
+          }));
         } else if (phase === 'done') {
-          const deltaStr: string = delta! >= 0 ? `+${delta!.toFixed(2)}` : delta!.toFixed(2);
+          const delta_: string = delta! >= 0 ? `+${delta!.toFixed(2)}` : delta!.toFixed(2);
           const status: string = accepted ? '✓ ACCEPT' : '✗ REJECT';
-          process.stderr.write(`Round ${round}: score=${score!.toFixed(2)} (${deltaStr}) ${status} ($${costUSD!.toFixed(4)})\n`);
+          process.stderr.write(tCli('cli.evolve.round_done', lang, {
+            round, score: score!.toFixed(2), delta: delta_, status, cost: costUSD!.toFixed(4),
+          }));
         }
       },
     });
@@ -1296,16 +1312,23 @@ async function handleEvolve(argv: string[]): Promise<void> {
     const improvement: string = result.startScore > 0
       ? ((result.finalScore - result.startScore) / result.startScore * 100).toFixed(1)
       : '0';
-    process.stderr.write(`\n✅ ${result.startScore.toFixed(2)} → ${result.finalScore.toFixed(2)} (+${improvement}%) | ${result.totalRounds} 轮 | $${result.totalCostUSD.toFixed(4)}\n`);
-    process.stderr.write(`Best: ${result.bestSkillPath} → ${resolve(skillPath)}\n`);
-    process.stderr.write(`所有版本保存在: ${join(resolve(skillPath, '..'), 'evolve')}/\n`);
+    process.stderr.write(tCli('cli.evolve.summary', lang, {
+      start: result.startScore.toFixed(2), final: result.finalScore.toFixed(2),
+      percent: improvement, rounds: result.totalRounds, cost: result.totalCostUSD.toFixed(4),
+    }));
+    process.stderr.write(tCli('cli.evolve.best_path', lang, {
+      best: result.bestSkillPath, target: resolve(skillPath),
+    }));
+    process.stderr.write(tCli('cli.evolve.versions_saved', lang, {
+      dir: join(resolve(skillPath, '..'), 'evolve'),
+    }));
     if (result.reportId) {
-      process.stderr.write(`📊 评测报告: omk bench report (ID: ${result.reportId})\n`);
+      process.stderr.write(tCli('cli.evolve.report_link', lang, { id: result.reportId }));
     }
 
     console.log(JSON.stringify(result, null, 2));
   } catch (err: unknown) {
-    console.error(`Error: ${(err as Error).message}`);
+    console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
     process.exit(1);
   }
 }
@@ -1350,6 +1373,7 @@ async function handleCi(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleDiff(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   // Flag-aware split: separate positional report IDs from flags so we can support
   //   omk bench diff <id>                      — within-report sample-level (v0.22)
   //   omk bench diff <id1> <id2>               — cross-report variant-level (legacy)
@@ -1401,7 +1425,7 @@ async function handleDiff(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(DEFAULT_REPORTS_DIR));
 
   if (positional.length === 1) {
-    await runSampleLevelDiff(positional[0], store, values);
+    await runSampleLevelDiff(positional[0], store, values, lang);
     return;
   }
 
@@ -1409,8 +1433,8 @@ async function handleDiff(argv: string[]): Promise<void> {
   const r1: Report | null = await store.get(id1);
   const r2: Report | null = await store.get(id2);
 
-  if (!r1) { console.error(`Report not found: ${id1}`); process.exit(1); }
-  if (!r2) { console.error(`Report not found: ${id2}`); process.exit(1); }
+  if (!r1) { console.error(tCli('cli.common.report_not_found', lang, { id: id1 })); process.exit(1); }
+  if (!r2) { console.error(tCli('cli.common.report_not_found', lang, { id: id2 })); process.exit(1); }
 
   console.log(`\n  Diff: ${id1} → ${id2}\n`);
 
@@ -1478,10 +1502,11 @@ async function runSampleLevelDiff(
   reportId: string,
   store: ReportStore,
   flags: Record<string, string | boolean | undefined>,
+  lang: CliLang,
 ): Promise<void> {
   const report: Report | null = await store.get(reportId);
   if (!report) {
-    console.error(`Report not found: ${reportId}`);
+    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
   const variants = report!.meta?.variants ?? [];
@@ -1563,6 +1588,7 @@ async function runSampleLevelDiff(
 // ---------------------------------------------------------------------------
 
 async function handleGold(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const sub = argv[0];
   const rest = argv.slice(1);
   if (!sub || sub === '--help' || sub === '-h') {
@@ -1596,9 +1622,11 @@ async function handleGold(argv: string[]): Promise<void> {
       const written = initGoldDataset(values.out as string, {
         annotator: values.annotator as string | undefined,
       });
-      console.log(`Created ${written.length} files in ${values.out}:`);
+      console.log(tCli('cli.gold.created_files', lang, {
+        n: written.length, dir: values.out as string,
+      }));
       for (const p of written) console.log(`  ${p}`);
-      console.log('\n下一步: 编辑 annotations.yaml 加入真实标注 → 跑 omk bench gold validate');
+      console.log(tCli('cli.gold.next_step_edit_annotations', lang));
     } catch (err) {
       console.error((err as Error).message);
       process.exit(1);
@@ -1609,13 +1637,13 @@ async function handleGold(argv: string[]): Promise<void> {
   if (sub === 'validate') {
     const dir = rest[0];
     if (!dir) {
-      console.error('Usage: omk bench gold validate <dir>');
+      console.error(tCli('cli.common.usage_gold_validate', lang));
       process.exit(1);
     }
     const { validateGoldDataset } = await import('./grading/gold-cli.js');
     const result = validateGoldDataset(dir);
     if (result.ok) {
-      console.log(`✓ gold dataset OK — ${result.sampleCount} 条标注`);
+      console.log(tCli('cli.gold.validate_ok', lang, { n: result.sampleCount }));
       return;
     }
     console.error(`✗ gold dataset has ${result.issues.length} issue(s):`);
@@ -1664,7 +1692,7 @@ async function handleGold(argv: string[]): Promise<void> {
     const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
     const report: Report | null = await store.get(reportId);
     if (!report) {
-      console.error(`Report not found: ${reportId}`);
+      console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
       process.exit(1);
     }
 
@@ -1690,6 +1718,7 @@ async function handleGold(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleDebiasValidate(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const sub = argv[0];
   const rest = argv.slice(1);
   if (!sub || sub === '--help' || sub === '-h') {
@@ -1743,7 +1772,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
-    console.error(`Report not found: ${reportId}`);
+    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
 
@@ -1760,11 +1789,11 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const judgeModel = (values['judge-model'] as string | undefined)
     ?? report!.meta?.judgeModel;
   if (!judgeModel) {
-    console.error('No judge model. Pass --judge-model <id> or ensure report has meta.judgeModel.');
+    console.error(tCli('cli.common.no_judge_model', lang));
     process.exit(1);
   }
 
-  process.stderr.write('\n⚠ debias-validate 会重判所有 (sample × variant),judge cost 大致翻倍。\n');
+  process.stderr.write(tCli('cli.debias.warn_cost_doubles', lang));
 
   const { createExecutor } = await import('./executors/index.js');
   const judgeExecutor = createExecutor(values['judge-executor'] as string);
@@ -1792,6 +1821,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleSaturation(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId || reportId === '--help' || reportId === '-h') {
     console.log([
@@ -1827,13 +1857,13 @@ async function handleSaturation(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
-    console.error(`Report not found: ${reportId}`);
+    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
 
   const saturation = report!.variance?.saturation;
   if (!saturation) {
-    console.error('该 report 无 saturation 数据 (需要 --repeat ≥ 2 才会记录)。');
+    console.error(tCli('cli.saturation.no_data', lang));
     process.exit(1);
   }
 
@@ -1846,21 +1876,31 @@ async function handleSaturation(argv: string[]): Promise<void> {
   const variants = report!.meta.variants ?? [];
   const targetVariants = values.variant ? [values.variant as string] : variants;
 
-  console.log(`\n  Saturation verdict (复述持久化结果)\n`);
+  console.log(tCli('cli.saturation.verdict_header', lang));
   for (const variant of targetVariants) {
     const trace = saturation.perVariant[variant];
     if (!trace || trace.length === 0) {
-      console.log(`  ${variant}: 无 trace 数据`);
+      console.log(tCli('cli.saturation.variant_no_trace', lang, { variant }));
       continue;
     }
-    console.log(`  ${variant}:`);
-    console.log(`    checkpoints: ${trace.length} (N=${trace.map((p) => p.n).join(', ')})`);
-    console.log(`    最近一点 mean=${trace[trace.length - 1].mean.toFixed(3)}, CI=[${trace[trace.length - 1].ciLow.toFixed(3)}, ${trace[trace.length - 1].ciHigh.toFixed(3)}]`);
+    console.log(tCli('cli.saturation.variant_label', lang, { variant }));
+    console.log(tCli('cli.saturation.checkpoints', lang, {
+      n: trace.length, list: trace.map((p) => p.n).join(', '),
+    }));
+    const last = trace[trace.length - 1];
+    console.log(tCli('cli.saturation.last_point', lang, {
+      mean: last.mean.toFixed(3), lo: last.ciLow.toFixed(3), hi: last.ciHigh.toFixed(3),
+    }));
     if (saturation.verdicts?.[variant]) {
       const v = saturation.verdicts[variant];
-      console.log(`    持久化判定 (${v.method}): ${v.saturated ? `已饱和@N=${v.atN}` : '未饱和'} - ${v.reason}`);
+      const result = v.saturated
+        ? tCli('cli.saturation.persisted_verdict_saturated', lang, { n: v.atN ?? '?' })
+        : tCli('cli.saturation.persisted_verdict_unsaturated', lang);
+      console.log(tCli('cli.saturation.persisted_verdict', lang, {
+        method: v.method, result, reason: v.reason,
+      }));
     } else if (trace.length < 5) {
-      console.log(`    判定: 数据点 ${trace.length} < 5,跳过 (跑 --repeat 5 以上才输出)`);
+      console.log(tCli('cli.saturation.skipped_too_few_points', lang, { n: trace.length }));
     }
   }
   console.log('');
@@ -1871,6 +1911,7 @@ async function handleSaturation(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleVerdict(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId || reportId === '--help' || reportId === '-h') {
     console.log([
@@ -1913,7 +1954,7 @@ async function handleVerdict(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
-    console.error(`Report not found: ${reportId}`);
+    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
 
@@ -1941,6 +1982,7 @@ async function handleVerdict(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleDiagnose(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId || reportId === '--help' || reportId === '-h') {
     console.log([
@@ -1984,7 +2026,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
-    console.error(`Report not found: ${reportId}`);
+    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
 
@@ -1999,7 +2041,9 @@ async function handleDiagnose(argv: string[]): Promise<void> {
       const { loadSamples } = await import('./inputs/load-samples.js');
       samples = loadSamples(samplesPath).samples;
     } catch (err) {
-      process.stderr.write(`warn: 加载 samples 文件失败 (${samplesPath}): ${(err as Error).message}\n`);
+      process.stderr.write(tCli('cli.common.warn_load_samples_failed', lang, {
+        path: samplesPath, message: (err as Error).message,
+      }));
     }
   }
 
@@ -2029,6 +2073,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function handleFailures(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId || reportId === '--help' || reportId === '-h') {
     console.log([
@@ -2068,13 +2113,13 @@ async function handleFailures(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
-    console.error(`Report not found: ${reportId}`);
+    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
 
   const judgeModel = (values['judge-model'] as string | undefined) ?? report!.meta?.judgeModel;
   if (!judgeModel) {
-    console.error('No judge model. Pass --judge-model <id> or ensure report has meta.judgeModel.');
+    console.error(tCli('cli.common.no_judge_model', lang));
     process.exit(1);
   }
 

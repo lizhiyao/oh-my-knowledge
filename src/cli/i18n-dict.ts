@@ -97,7 +97,54 @@ export type CliMessageKey =
   | 'cli.run.contamination_warning'
   | 'cli.common.error_prefix'
   // bench analyze
-  | 'cli.analyze.view_in_browser';
+  | 'cli.analyze.view_in_browser'
+  // 通用 not-found 错误
+  | 'cli.common.skill_dir_not_found'
+  | 'cli.common.skill_file_not_found'
+  | 'cli.common.report_not_found'
+  | 'cli.common.no_judge_model'
+  | 'cli.common.usage_gold_validate'
+  | 'cli.common.warn_load_samples_failed'
+  // bench gen-samples
+  | 'cli.gen.skill_skipped_existing'
+  | 'cli.gen.skill_generating'
+  | 'cli.gen.skill_done'
+  | 'cli.gen.skill_failed'
+  | 'cli.gen.batch_none_needed'
+  | 'cli.gen.batch_summary'
+  | 'cli.gen.specify_skill_path'
+  | 'cli.gen.samples_already_exists'
+  | 'cli.gen.single_generating'
+  | 'cli.gen.single_done'
+  | 'cli.gen.review_hint'
+  | 'cli.gen.failed'
+  // bench evolve
+  | 'cli.evolve.specify_skill_path'
+  | 'cli.evolve.section_header'
+  | 'cli.evolve.round_baseline'
+  | 'cli.evolve.round_error'
+  | 'cli.evolve.round_done'
+  | 'cli.evolve.summary'
+  | 'cli.evolve.best_path'
+  | 'cli.evolve.versions_saved'
+  | 'cli.evolve.report_link'
+  // bench gold
+  | 'cli.gold.created_files'
+  | 'cli.gold.next_step_edit_annotations'
+  | 'cli.gold.validate_ok'
+  // bench debias-validate
+  | 'cli.debias.warn_cost_doubles'
+  // bench saturation
+  | 'cli.saturation.no_data'
+  | 'cli.saturation.verdict_header'
+  | 'cli.saturation.variant_no_trace'
+  | 'cli.saturation.variant_label'
+  | 'cli.saturation.checkpoints'
+  | 'cli.saturation.last_point'
+  | 'cli.saturation.persisted_verdict'
+  | 'cli.saturation.persisted_verdict_saturated'
+  | 'cli.saturation.persisted_verdict_unsaturated'
+  | 'cli.saturation.skipped_too_few_points';
 
 export interface CliMessage {
   zh: string;
@@ -272,5 +319,169 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.analyze.view_in_browser': {
     zh: "在浏览器查看: omk bench report  # 打开后点首页的 \"📊 Skill 健康度日报\"",
     en: "View in browser: omk bench report  # then click \"📊 Skill health report\" on the home page",
+  },
+  'cli.common.skill_dir_not_found': {
+    zh: '未找到 skill 目录: {path}',
+    en: 'Skill directory not found: {path}',
+  },
+  'cli.common.skill_file_not_found': {
+    zh: '未找到 skill 文件: {path}',
+    en: 'Skill file not found: {path}',
+  },
+  'cli.common.report_not_found': {
+    zh: '未找到 report: {id}',
+    en: 'Report not found: {id}',
+  },
+  'cli.common.no_judge_model': {
+    zh: '未指定评委模型。请加 --judge-model <id>, 或确保 report.meta.judgeModel 已写。',
+    en: 'No judge model. Pass --judge-model <id> or ensure report has meta.judgeModel.',
+  },
+  'cli.common.usage_gold_validate': {
+    zh: '用法: omk bench gold validate <dir>',
+    en: 'Usage: omk bench gold validate <dir>',
+  },
+  'cli.common.warn_load_samples_failed': {
+    zh: '⚠ 加载 samples 文件失败 ({path}): {message}\n',
+    en: '⚠ Failed to load samples file ({path}): {message}\n',
+  },
+  'cli.gen.skill_skipped_existing': {
+    zh: '⏭️  {name}: eval-samples 已存在, 跳过\n',
+    en: '⏭️  {name}: eval-samples already exists, skipping\n',
+  },
+  'cli.gen.skill_generating': {
+    zh: '🔄 {name}: 正在生成 {count} 条测评用例...\n',
+    en: '🔄 {name}: generating {count} test cases...\n',
+  },
+  'cli.gen.skill_done': {
+    zh: '✅ {name}: 已生成 {n} 条样本 → {path}{cost}\n',
+    en: '✅ {name}: generated {n} samples → {path}{cost}\n',
+  },
+  'cli.gen.skill_failed': {
+    zh: '❌ {name}: {message}\n',
+    en: '❌ {name}: {message}\n',
+  },
+  'cli.gen.batch_none_needed': {
+    zh: '没有需要生成的 eval-samples (所有 skill 都已有配对文件)',
+    en: 'No eval-samples need generating (all skills already have paired files)',
+  },
+  'cli.gen.batch_summary': {
+    zh: '\n共生成 {n} 份 eval-samples, 请审查后运行: omk bench run --each',
+    en: '\nGenerated {n} eval-samples files. Review them, then run: omk bench run --each',
+  },
+  'cli.gen.specify_skill_path': {
+    zh: '请指定 skill 文件路径, 例如: omk bench gen-samples skills/my-skill.md',
+    en: 'Please specify a skill file path, e.g.: omk bench gen-samples skills/my-skill.md',
+  },
+  'cli.gen.samples_already_exists': {
+    zh: 'eval-samples.json 已存在。如需覆盖请先删除该文件。',
+    en: 'eval-samples.json already exists. Delete it first if you want to overwrite.',
+  },
+  'cli.gen.single_generating': {
+    zh: '🔄 正在生成 {count} 条测评用例...\n',
+    en: '🔄 Generating {count} test cases...\n',
+  },
+  'cli.gen.single_done': {
+    zh: '✅ 已生成 {n} 条样本 → {path}{cost}\n',
+    en: '✅ Generated {n} samples → {path}{cost}\n',
+  },
+  'cli.gen.review_hint': {
+    zh: '\n请审查生成的测评用例后运行: omk bench run',
+    en: '\nReview the generated test cases, then run: omk bench run',
+  },
+  'cli.gen.failed': {
+    zh: '生成失败: {message}',
+    en: 'Generation failed: {message}',
+  },
+  'cli.evolve.specify_skill_path': {
+    zh: '请指定 skill 文件路径, 例如: omk bench evolve skills/my-skill.md',
+    en: 'Please specify a skill file path, e.g.: omk bench evolve skills/my-skill.md',
+  },
+  'cli.evolve.section_header': {
+    zh: '\n=== Evolution: {path} ===\n',
+    en: '\n=== Evolution: {path} ===\n',
+  },
+  'cli.evolve.round_baseline': {
+    zh: '第 0 轮 (基线): score={score} (${cost})\n',
+    en: 'Round 0 (baseline): score={score} (${cost})\n',
+  },
+  'cli.evolve.round_error': {
+    zh: '第 {round} 轮: ✗ 改进生成失败: {error}\n',
+    en: 'Round {round}: ✗ improvement generation failed: {error}\n',
+  },
+  'cli.evolve.round_done': {
+    zh: '第 {round} 轮: score={score} ({delta}) {status} (${cost})\n',
+    en: 'Round {round}: score={score} ({delta}) {status} (${cost})\n',
+  },
+  'cli.evolve.summary': {
+    zh: '\n✅ {start} → {final} (+{percent}%) | 共 {rounds} 轮 | ${cost}\n',
+    en: '\n✅ {start} → {final} (+{percent}%) | {rounds} rounds | ${cost}\n',
+  },
+  'cli.evolve.best_path': {
+    zh: '最优版本: {best} → {target}\n',
+    en: 'Best: {best} → {target}\n',
+  },
+  'cli.evolve.versions_saved': {
+    zh: '所有版本已保存在: {dir}/\n',
+    en: 'All versions saved at: {dir}/\n',
+  },
+  'cli.evolve.report_link': {
+    zh: '📊 评测报告: omk bench report (ID: {id})\n',
+    en: '📊 Report: omk bench report (ID: {id})\n',
+  },
+  'cli.gold.created_files': {
+    zh: '已在 {dir} 创建 {n} 个文件:',
+    en: 'Created {n} files in {dir}:',
+  },
+  'cli.gold.next_step_edit_annotations': {
+    zh: '\n下一步: 编辑 annotations.yaml 加入真实标注 → 跑 omk bench gold validate',
+    en: '\nNext step: edit annotations.yaml with real annotations → run omk bench gold validate',
+  },
+  'cli.gold.validate_ok': {
+    zh: '✓ gold dataset OK — 共 {n} 条标注',
+    en: '✓ gold dataset OK — {n} annotations',
+  },
+  'cli.debias.warn_cost_doubles': {
+    zh: '\n⚠ debias-validate 会重判所有 (sample × variant), judge 成本大约翻倍。\n',
+    en: '\n⚠ debias-validate will re-judge all (sample × variant) pairs; judge cost will roughly double.\n',
+  },
+  'cli.saturation.no_data': {
+    zh: '该 report 没有 saturation 数据 (需要 --repeat ≥ 2 才会记录)。',
+    en: 'This report has no saturation data (requires --repeat ≥ 2 to record).',
+  },
+  'cli.saturation.verdict_header': {
+    zh: '\n  Saturation verdict (复述持久化结果)\n',
+    en: '\n  Saturation verdict (replaying persisted result)\n',
+  },
+  'cli.saturation.variant_no_trace': {
+    zh: '  {variant}: 没有 trace 数据',
+    en: '  {variant}: no trace data',
+  },
+  'cli.saturation.variant_label': {
+    zh: '  {variant}:',
+    en: '  {variant}:',
+  },
+  'cli.saturation.checkpoints': {
+    zh: '    检查点: {n} (N={list})',
+    en: '    checkpoints: {n} (N={list})',
+  },
+  'cli.saturation.last_point': {
+    zh: '    最后一点 mean={mean}, CI=[{lo}, {hi}]',
+    en: '    last point mean={mean}, CI=[{lo}, {hi}]',
+  },
+  'cli.saturation.persisted_verdict': {
+    zh: '    持久化判定 ({method}): {result} - {reason}',
+    en: '    persisted verdict ({method}): {result} - {reason}',
+  },
+  'cli.saturation.persisted_verdict_saturated': {
+    zh: '已饱和@N={n}',
+    en: 'saturated@N={n}',
+  },
+  'cli.saturation.persisted_verdict_unsaturated': {
+    zh: '未饱和',
+    en: 'not saturated',
+  },
+  'cli.saturation.skipped_too_few_points': {
+    zh: '    判定: 数据点数 {n} < 5, 跳过 (需要跑 --repeat 5 以上才会输出)',
+    en: '    verdict: only {n} data points (< 5), skipping (need --repeat 5 or more)',
   },
 };
