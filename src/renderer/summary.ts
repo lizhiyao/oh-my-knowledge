@@ -906,10 +906,10 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
       ? '展开三层独立显著性（fact / behavior / judge）'
       : 'Show three-layer independent significance (fact / behavior / judge)';
     const openAttr = layeredStatsOpen ? ' open' : '';
-    // 多重比较 disclaimer:三层独立 t 检验,family-wise error 未矫正;n 小(用例数少)时 Cohen's d 不稳。
+    // 多重比较 disclaimer:三层独立 t 检验,family-wise error 未矫正;小样本下 Cohen's d 不稳(stats 术语,见 terminology-spec §6 例外)。
     // 不默默修改 significant 判定(避免用户被"自动矫正"误导),而是把判读责任明示交给读者。
     const disclaimerText = lang === 'zh'
-      ? '⚠ 三层独立检验:p 值未做多重比较矫正(建议按 Bonferroni α/3 = 0.017 判断显著);n 小(n ≤ 10)时 Cohen\'s d 效应量标签仅供探索参考,不作结论'
+      ? '⚠ 三层独立检验:p 值未做多重比较矫正(建议按 Bonferroni α/3 = 0.017 判断显著);小样本(n ≤ 10)下 Cohen\'s d 效应量标签仅供探索参考,不作结论'
       : '⚠ Three independent tests: p values are NOT corrected for multiple comparisons (use Bonferroni α/3 = 0.017 as the stricter threshold). With small samples (n ≤ 10), Cohen\'s d magnitude labels are exploratory only';
     return `
       <tr class="layer-breakdown-row">
@@ -963,7 +963,7 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
   const glossaryZh: GlossaryRow[] = [
     { label: '差距', desc: '跨轮均值胜出者 + 绝对差值（原始单位）' },
     { label: '效应量', desc: '差距相对标准差的倍数。阈值：0.2=小 / 0.5=中 / 0.8=大' },
-    { label: "Hedges' g", desc: '对 Cohen\'s d 做小 n 修正，n1+n2<20 时优先参考', sub: true },
+    { label: "Hedges' g", desc: '小样本修正版（统计术语）；n1+n2<20 时优先参考', sub: true },
     { label: "Cohen's d", desc: '未修正版，n1+n2≥20 时是学术惯例', sub: true },
     { label: '显著性', desc: 't 检验结论，基于 p<0.05 阈值。回答"差异真不真"，和效应量"差多大"互补' },
     { label: 'p 值', desc: '假设真的没差异时，观察到当前差距的概率。越小越可信。0.05 只是约定阈值', sub: true },
