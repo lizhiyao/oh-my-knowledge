@@ -80,7 +80,24 @@ export type CliMessageKey =
   | 'cli.run.judge_models_single_warning'
   | 'cli.run.no_debias_length_active'
   | 'cli.run.invalid_bootstrap_samples'
-  | 'cli.run.bootstrap_samples_too_large';
+  | 'cli.run.bootstrap_samples_too_large'
+  // bench run 完成 / 报告 server / gold compare / 错误
+  | 'cli.run.skill_section'
+  | 'cli.run.run_section'
+  | 'cli.run.batch_complete'
+  | 'cli.run.eval_complete'
+  | 'cli.run.report_saved'
+  | 'cli.run.report_server_running'
+  | 'cli.run.report_server_view'
+  | 'cli.run.report_server_stop'
+  | 'cli.run.no_serve_in_non_tty'
+  | 'cli.run.no_serve_view_hint'
+  | 'cli.run.gold_load_failed'
+  | 'cli.run.gold_load_issue'
+  | 'cli.run.contamination_warning'
+  | 'cli.common.error_prefix'
+  // bench analyze
+  | 'cli.analyze.view_in_browser';
 
 export interface CliMessage {
   zh: string;
@@ -195,5 +212,65 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.run.bootstrap_samples_too_large': {
     zh: '⚠ --bootstrap-samples {n} 较大, 可能耗时数秒。1000 是业内标准, 通常已够用。\n',
     en: '⚠ --bootstrap-samples {n} is large and may take several seconds. 1000 is the industry standard and usually sufficient.\n',
+  },
+  'cli.run.skill_section': {
+    zh: '\n=== [{i}/{n}] Skill: {skill} ===\n',
+    en: '\n=== [{i}/{n}] Skill: {skill} ===\n',
+  },
+  'cli.run.run_section': {
+    zh: '\n=== 第 {i}/{n} 轮 ===\n',
+    en: '\n=== Run {i}/{n} ===\n',
+  },
+  'cli.run.batch_complete': {
+    zh: '\n✅ 批量评测完成\n',
+    en: '\n✅ Batch evaluation done\n',
+  },
+  'cli.run.eval_complete': {
+    zh: '\n✅ 评测完成\n',
+    en: '\n✅ Evaluation done\n',
+  },
+  'cli.run.report_saved': {
+    zh: '📄 报告已保存到: {path}\n',
+    en: '📄 Report saved to: {path}\n',
+  },
+  'cli.run.report_server_running': {
+    zh: '\n📊 报告服务已启动: {url}\n',
+    en: '\n📊 Report server running at {url}\n',
+  },
+  'cli.run.report_server_view': {
+    zh: '👉 查看报告: {url}\n',
+    en: '👉 View report: {url}\n',
+  },
+  'cli.run.report_server_stop': {
+    zh: '\n按 Ctrl+C 停止服务\n',
+    en: '\nPress Ctrl+C to stop the server\n',
+  },
+  'cli.run.no_serve_in_non_tty': {
+    zh: '\n💡 非交互环境, 已跳过 report server\n',
+    en: '\n💡 Non-interactive environment, skipping report server\n',
+  },
+  'cli.run.no_serve_view_hint': {
+    zh: '   查看报告: omk bench report --reports-dir {dir}\n',
+    en: '   View report: omk bench report --reports-dir {dir}\n',
+  },
+  'cli.run.gold_load_failed': {
+    zh: '\n⚠ gold dataset 加载失败 ({dir}):\n',
+    en: '\n⚠ Failed to load gold dataset ({dir}):\n',
+  },
+  'cli.run.gold_load_issue': {
+    zh: '  - {message}\n',
+    en: '  - {message}\n',
+  },
+  'cli.run.contamination_warning': {
+    zh: '\n⚠ {warning}\n',
+    en: '\n⚠ {warning}\n',
+  },
+  'cli.common.error_prefix': {
+    zh: '错误: {message}',
+    en: 'Error: {message}',
+  },
+  'cli.analyze.view_in_browser': {
+    zh: "在浏览器查看: omk bench report  # 打开后点首页的 \"📊 Skill 健康度日报\"",
+    en: "View in browser: omk bench report  # then click \"📊 Skill health report\" on the home page",
   },
 };

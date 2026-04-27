@@ -765,31 +765,33 @@ async function handleRun(argv: string[]): Promise<void> {
         repeat: repeatCount,
         onSkillProgress({ phase, skill, current, total }: SkillProgressInfo): void {
           if (phase === 'start') {
-            process.stderr.write(`\n=== [${current}/${total}] Skill: ${skill} ===\n`);
+            process.stderr.write(tCli('cli.run.skill_section', lang, {
+              i: current ?? '', n: total ?? '', skill: skill ?? '',
+            }));
           }
         },
       }) as EvalResult;
       console.log(JSON.stringify(report, null, 2));
       if (filePath) {
-        process.stderr.write('\n✅ 批量评测完成\n');
-        process.stderr.write(`📄 Report saved to: ${filePath}\n`);
+        process.stderr.write(tCli('cli.run.batch_complete', lang));
+        process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
 
         if (!values['no-serve'] && process.stdout.isTTY) {
           const { createReportServer } = await import('./server/report-server.js');
           const server: ReportServer = createReportServer({ reportsDir: config.outputDir });
           const serverUrl: string = await server.start();
           const reportUrl: string = `${serverUrl}/run/${report.id}`;
-          process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
-          process.stderr.write(`👉 View report: ${reportUrl}\n`);
-          process.stderr.write('\nPress Ctrl+C to stop the server\n');
+          process.stderr.write(tCli('cli.run.report_server_running', lang, { url: serverUrl }));
+          process.stderr.write(tCli('cli.run.report_server_view', lang, { url: reportUrl }));
+          process.stderr.write(tCli('cli.run.report_server_stop', lang));
 
           const { platform } = await import('node:os');
           const openCmd: string = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
           const { execFile: execFileCb } = await import('node:child_process');
           execFileCb(openCmd, [reportUrl], () => { });
         } else if (!values['no-serve']) {
-          process.stderr.write('\n💡 非交互环境，已跳过 report server\n');
-          process.stderr.write(`   查看报告: omk bench report --reports-dir ${config.outputDir}\n`);
+          process.stderr.write(tCli('cli.run.no_serve_in_non_tty', lang));
+          process.stderr.write(tCli('cli.run.no_serve_view_hint', lang, { dir: config.outputDir }));
         }
       }
       return;
@@ -803,7 +805,7 @@ async function handleRun(argv: string[]): Promise<void> {
         ...config,
         repeat: repeatCount,
         onRepeatProgress({ run, total }: RepeatProgressInfo): void {
-          process.stderr.write(`\n=== Run ${run}/${total} ===\n`);
+          process.stderr.write(tCli('cli.run.run_section', lang, { i: run, n: total }));
         },
       }) as { report: Report };
       report = result.report;
@@ -827,18 +829,22 @@ async function handleRun(argv: string[]): Promise<void> {
       if (out.result && out.gold) {
         process.stderr.write(formatGoldCompare(out.result, out.gold));
         if (out.result.contaminationWarning) {
-          process.stderr.write(`\n⚠ ${out.result.contaminationWarning}\n`);
+          process.stderr.write(tCli('cli.run.contamination_warning', lang, {
+            warning: out.result.contaminationWarning,
+          }));
         }
       } else {
-        process.stderr.write(`\n⚠ gold dataset 加载失败 (${goldDir}):\n`);
-        for (const m of out.loadIssues) process.stderr.write(`  - ${m}\n`);
+        process.stderr.write(tCli('cli.run.gold_load_failed', lang, { dir: goldDir }));
+        for (const m of out.loadIssues) {
+          process.stderr.write(tCli('cli.run.gold_load_issue', lang, { message: m }));
+        }
       }
     }
 
     console.log(JSON.stringify(report, null, 2));
     if (filePath) {
-      process.stderr.write('\n✅ 评测完成\n');
-      process.stderr.write(`📄 Report saved to: ${filePath}\n`);
+      process.stderr.write(tCli('cli.run.eval_complete', lang));
+      process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
 
       if (!values['no-serve'] && process.stdout.isTTY) {
         // Auto-start report server
@@ -848,9 +854,9 @@ async function handleRun(argv: string[]): Promise<void> {
         });
         const serverUrl: string = await server.start();
         const reportUrl: string = `${serverUrl}/run/${report.id}`;
-        process.stderr.write(`\n📊 Report server running at ${serverUrl}\n`);
-        process.stderr.write(`👉 View report: ${reportUrl}\n`);
-        process.stderr.write('\nPress Ctrl+C to stop the server\n');
+        process.stderr.write(tCli('cli.run.report_server_running', lang, { url: serverUrl }));
+        process.stderr.write(tCli('cli.run.report_server_view', lang, { url: reportUrl }));
+        process.stderr.write(tCli('cli.run.report_server_stop', lang));
 
         // Auto-open report in browser
         const { platform } = await import('node:os');
@@ -858,12 +864,12 @@ async function handleRun(argv: string[]): Promise<void> {
         const { execFile: execFileCb } = await import('node:child_process');
         execFileCb(openCmd, [reportUrl], () => { });
       } else if (!values['no-serve']) {
-        process.stderr.write('\n💡 非交互环境，已跳过 report server\n');
-        process.stderr.write(`   查看报告: omk bench report --reports-dir ${config.outputDir}\n`);
+        process.stderr.write(tCli('cli.run.no_serve_in_non_tty', lang));
+        process.stderr.write(tCli('cli.run.no_serve_view_hint', lang, { dir: config.outputDir }));
       }
     }
   } catch (err: unknown) {
-    console.error(`Error: ${(err as Error).message}`);
+    console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
     process.exit(1);
   }
 }
@@ -1014,6 +1020,7 @@ function parseLastWindow(spec: string): string | null {
 }
 
 async function handleAnalyze(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
   const { values, positionals } = parseArgs({
     args: argv,
     allowPositionals: true,
@@ -1083,7 +1090,7 @@ async function handleAnalyze(argv: string[]): Promise<void> {
   console.log(skillRows.join('\n'));
   console.log('');
   console.log(`report written to: ${jsonPath}`);
-  console.log(`view in browser: omk bench report  # 打开后点首页的 "📊 Skill 健康度日报"`);
+  console.log(tCli('cli.analyze.view_in_browser', lang));
 }
 
 async function handleInit(argv: string[]): Promise<void> {
