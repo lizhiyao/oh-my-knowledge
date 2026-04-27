@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+---
+
+## [0.20.2] - 2026-04-27
+
+Patch — CLI 双语 i18n 全面落地 + 发版自动化(publish.yml 现自动从 CHANGELOG 抽 release notes 创建 GitHub Release)。
+
 ### Added
 
 - **CLI 双语输出 (zh / en)**:`omk` 所有 CLI 输出现支持中英两种语言。优先级 `--lang` flag > `OMK_LANG` 环境变量 > 默认 `zh`。覆盖范围:
@@ -28,6 +34,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Internal
 
+- **`publish.yml` 自动从 CHANGELOG 抽 release notes 创建 GitHub Release**:push tag `v*` 触发后,workflow 在 `npm publish` 之后自动找 CHANGELOG.md `## [VERSION]` section,用作 GitHub Release 的 body。维护者只需 bump `package.json` + 改 CHANGELOG `[Unreleased]` → `[VERSION] - YYYY-MM-DD`,merge release PR 后打 tag + push tag 即可,Release notes 不再手动写。
+- **协作者入场文档 `CLAUDE.md` 精简**(61 → 39 行,-36%):删除与 `CONTRIBUTING.md` 重复内容,目标"AI / 新人 90 秒读完不踩雷"。
 - `src/cli.ts` 顶部 `const HELP` 142 行原英文模板字符串删除,内容完整迁到 dict。`HELP` 现通过 `tCli('cli.help.main', lang).trim()` 取得。
 - 13 处 `parseArgs options` 块统一 spread `COMMON_OPTIONS = { lang: { type: 'string' } }`,所有子命令都接收 `--lang` flag。
 - `defaultOnProgress` 改为 `makeOnProgress(lang)` factory:evaluation engine 异步回调时拿不到 argv,通过 closure 闭住 lang。每个 handler 入口通过 `langFromArgv(argv)` 一行拿到 lang 并传 factory。
