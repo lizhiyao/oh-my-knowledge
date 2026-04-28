@@ -113,6 +113,19 @@
 - **理由**:omk 的 `eval-samples` 是开发者**手挑**的测试用例,不是从某分布**随机抽样**的统计样本。「样本」会暗示"再多跑就能扩大样本量",误导用户——实际是要补设计、补用例。「用例」是工程语境(test case),与用户写测评时的心智一致("我设计了 5 个用例")
 - **例外:统计学术语场景保留「样本」**——Cohen's d / Hedges' g 的"**小样本修正**"、"**样本均值**"、"**样本方差**"、"**样本量**"、bootstrap "**重采样**" 等,这些是 stats 领域的固定提法(对应英文 small-sample correction / sample mean / sample variance / sample size / resampling),硬翻成「用例」反而让懂统计的读者多一拍。判定准则:**这个词指的是"对总体的一次随机抽样"统计概念**(那就是样本),还是**"开发者手挑的一条测试用例"**(那就是用例)。两者不混用、上下文清晰
 
+#### 6.1 Sample 元数据字段(v0.22 起)
+
+Sample schema 加 4 个可选元数据字段,纯文档 / 诊断用,**不参与 grading / judge / verdict / sampleHash**(跨版本 verdict / Δ 完全可比)。详见 [docs/sample-design-spec.md](sample-design-spec.md)。
+
+- **`capability?: string[]`** — 该 sample 测试的能力维度(可多个)。归一时大小写 / 短横线 / 驼峰 / 下划线不敏感。
+- **`difficulty?: 'easy' | 'medium' | 'hard'`** — 难度分层(强枚举)。
+- **`construct?: string`** — 该 sample 测的 construct 类型。Suggested:`'necessity'`(测必要性,baseline-vs-skill)/ `'quality'`(测 skill 写得好不好)/ `'capability'`(测某具体能力)。Free-form string 允许自定义。
+- **`provenance?: 'human' | 'llm-generated' | 'production-trace'`** — 数据来源。
+
+**construct 跟 capability 区别**(用户最常混淆的两个字段):
+- **construct** = 这个 sample 测**哪类事**(necessity / quality / capability)。是实验设计的层面 — 你跑 baseline-vs-skill 是测必要性,跑 skill-v1-vs-skill-v2 是测质量。
+- **capability** = 这个 sample 测**哪些具体能力**(api-selection / error-diagnosis / fallback)。是被测对象的能力维度。
+
 ### 7. Task
 
 `task` 是一次具体执行单元：

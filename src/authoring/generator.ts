@@ -22,6 +22,11 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
    避免使用 baseline 凭常识或搜索文件也能答对的断言（如 not_contains 通用错误写法）。
    优先使用 contains 检测文档独有的术语、参数组合或特定值
 
+可选元数据字段（v0.22 起，如能判断顺便填，无法判断时省略整个字段即可）：
+- capability: string[] — 该用例覆盖的能力维度，如 ["api-selection", "error-diagnosis"]
+- difficulty: "easy" | "medium" | "hard" — 难度等级
+- construct: string — 用例测的 construct 类型，建议值 "necessity"（测知识必要性）/ "quality"（测 skill 写得好不好）/ "capability"（测某具体能力）
+
 直接输出 JSON 数组，不要包含 markdown 代码块标记或其他内容。`;
 
 interface GenerateSamplesOptions {
@@ -68,6 +73,11 @@ ${skillContent}
   for (const [i, s] of samples.entries()) {
     if (!s.sample_id) s.sample_id = `s${String(i + 1).padStart(3, '0')}`;
     if (!s.prompt) throw new Error(`samples[${i}] missing required prompt field`);
+    // v0.22 — auto-stamp provenance so downstream tooling (bench diagnose,
+    // sampleQuality aggregate) can distinguish LLM-synthesized samples from
+    // human-curated. LLM-output `provenance` field, if present, is preserved;
+    // otherwise we mark it as 'llm-generated'.
+    if (!s.provenance) s.provenance = 'llm-generated';
   }
 
   return { samples, costUSD: result.costUSD };

@@ -8,6 +8,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+
+- **测评用例科学性 v1**(对标 HELM / MMLU-Pro / Construct Validity 三件套 / HF Dataset Cards 行业共识):`Sample` schema 加 4 个可选元数据字段(`capability` / `difficulty` / `construct` / `provenance`),纯文档/诊断用,**完全不参与 grading / judge / verdict / Report 顶层 schema**(测量学不变量保护,跨版本 verdict / Δ 完全可比,跟 v0.22 strict-baseline 那次的 breaking-comparability 区分开)。
+  - **Sample 元数据**(`src/types/eval.ts`):
+    - `capability?: string[]` — 该用例覆盖的能力维度(如 `['api-selection', 'error-diagnosis']`),归一时大小写/短横线/驼峰/下划线不敏感
+    - `difficulty?: 'easy' | 'medium' | 'hard'` — 难度分层(强枚举,防错)
+    - `construct?: string` — 该用例测的 construct 类型,suggested values:`'necessity'`(测必要性,baseline-vs-skill)/ `'quality'`(测 skill 写得好不好,skill-v1-vs-skill-v2)/ `'capability'`(测某具体能力);free-form string 允许自定义
+    - `provenance?: 'human' | 'llm-generated' | 'production-trace'` — 数据来源
+  - **`load-samples.ts` 新增 enum 校验**:`difficulty` / `provenance` 非法值含 `sample_id` 定位的错误信息(`samples[3] (wcc-007) invalid difficulty: 'easy?', expected one of [easy, medium, hard]`);`capability` 必须是 string[];`construct` 接受任意 string。
+  - **`bench diagnose` 加 2 类新 issue**:
+    - `rubric_clarity_low`(info):rubric < 20 字符 **AND** 不含任何评分级别词(中英 22 词清单)→ static rubric quality signal,跟现有 `ambiguous_rubric`(runtime/judge stddev)互补
+    - `capability_thin`(warning):某 capability 只 ≤ `max(2, N*0.2)` 个 sample 撑(总 N≥10 才检测,小 N 自动跳过避免全报)
+    - fine-grained discrimination signal(IRT 风格)留 follow-up
+  - **`bench diagnose` CLI 加 sample design coverage 块**:capability / difficulty / construct / provenance 分桶呈现(ASCII),数据从 `report.analysis.sampleQuality` 取(分桶聚合)或 fresh 加载 samples 算
+  - **`Report.analysis.sampleQuality`**:新增 `SampleQualityAggregate` 子结构,纯文档聚合(`capabilityCoverage` / `difficultyDistribution` / `constructDistribution` / `provenanceBreakdown` / `avgRubricLength` / `sampleCountWith*`)。**不破老报告兼容**:不传 samples 时不挂此字段,老 reader 读取仍正常。
+  - **`bench gen-samples` 自动注入 `provenance: 'llm-generated'`**:`SYSTEM_PROMPT` 加可选 hint 段(LLM 如能判断顺便填 capability / difficulty / construct,无法判断省略不强制)
+  - **新建 [`docs/sample-design-spec.md`](docs/sample-design-spec.md)**:行业 8 条 gap 引用 + omk v1 映射 + 完整 yaml example + 11 条用例设计自检 checklist + verdict 解读跟 construct 配合
+  - **HTML report 暂不显示 sample design coverage**(只 CLI `bench diagnose`),HTML 渲染留 follow-up — 用户跑 HTML 报告需要看 coverage 时,从 `report.json` 的 `analysis.sampleQuality` 读
+  - **R11 防御测试**:`test/grading/judge-prompt-isolation.test.ts` 锁住 judge prompt 不含任何 sample 元数据 token(`'capability:'` / `'difficulty:'` 等),防未来 refactor 把元数据意外注入 judge prompt 破坏 construct validity
+  - **软兼容性 callout**:如果用户之前用 sample.capability 作为自由 unknown 字段(string / object / 其它),v1 起此字段是 `string[]`,类型校验会拒掉非数组值(此前 omk 没 publicize 过 capability 名字,概率极低)。`provenance` enum 简化:`'evolved'` / `'mixed'` 留 follow-up 跟 evolver 升级一起做。
+
 ### Fixed
 
 - **`VariantSummary.toolDistribution` 修真实 call count**:之前 aggregate 阶段按 `result.toolNames`(per-sample dedup 列表)累加,语义是"出现该 tool 的 sample 数",跟字段名"工具调用分布"不符 — 用户读 summary 看到 `Read: 5` 以为模型调了 5 次 Read,实际是"5 个样本里出现过 Read"。修法:`VariantResult` 加 per-sample `toolDistribution`(从 `toolCalls` reduce 得到真实 call count map),aggregate 时 sum per-sample 字段。旧报告 result 没 `toolDistribution` 字段时 fallback 到老 `toolNames` 语义保兼容。

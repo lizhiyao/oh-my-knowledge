@@ -24,6 +24,13 @@ export interface Assertion {
   n?: number;
 }
 
+/** v0.22 — sample provenance(数据来源)。`evolved` / `mixed` 留 follow-up
+ *  跟 evolver 升级一起做。 */
+export type SampleProvenance = 'human' | 'llm-generated' | 'production-trace';
+
+/** v0.22 — sample 难度等级。简单分桶,跟 IRT 风格 fine-grained difficulty 不同。 */
+export type SampleDifficulty = 'easy' | 'medium' | 'hard';
+
 export interface Sample {
   sample_id: string;
   prompt: string;
@@ -34,6 +41,21 @@ export interface Sample {
   dimensions?: Record<string, string>;
   allowedTools?: string[];
   expectedTools?: string[];
+  /** v0.22 — 该 sample 测试的能力维度,可多维。free-form string,suggested
+   *  values 见 docs/sample-design-spec.md。aggregate 时大小写不敏感。
+   *  纯文档 / 诊断用,不参与 grading / judge / verdict。 */
+  capability?: string[];
+  /** v0.22 — 难度分层,enum 防错。纯文档 / 诊断用。 */
+  difficulty?: SampleDifficulty;
+  /** v0.22 — 该 sample 测的 construct 类型。suggested:`'necessity'`(测必要性,
+   *  baseline-vs-skill)/ `'quality'`(测 skill 写得好不好,skill-vs-skill-variant)/
+   *  `'capability'`(测某具体能力维度)。free-form string,允许自定义。
+   *  纯文档 / 诊断用,不参与 grading。 */
+  construct?: string;
+  /** v0.22 — 数据来源。`bench gen-samples` 自动注入 `'llm-generated'`,人工
+   *  curated 用 `'human'`,production trace 抽样用 `'production-trace'`。
+   *  纯文档 / 诊断用。 */
+  provenance?: SampleProvenance;
   [key: string]: unknown;  // allow extra fields like mutated prompt/context from URL resolution
 }
 

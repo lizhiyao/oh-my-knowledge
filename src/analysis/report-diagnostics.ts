@@ -2,19 +2,35 @@
  * Auto-analysis: detect patterns and generate insights from evaluation results.
  */
 
-import type { Report, ResultEntry, Insight, AnalysisResult } from '../types/index.js';
+import type { Report, ResultEntry, Insight, AnalysisResult, Sample, SampleQualityAggregate } from '../types/index.js';
+import { normalizeCapability } from './sample-diagnostics.js';
+
+/** v0.22 — opts for `analyzeResults`. Optional because most older callers don't have
+ *  samples in scope; new callers (evaluation-pipeline / evolver) pass them in to
+ *  populate `analysis.sampleQuality`. */
+export interface AnalyzeResultsOptions {
+  /** Original Sample[] from eval-samples. Enables `analysis.sampleQuality` aggregation. */
+  samples?: Sample[];
+}
 
 /**
  * Analyze an evaluation report and produce insights + suggestions.
  */
-export function analyzeResults(report: Report): AnalysisResult {
+export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {}): AnalysisResult {
   const insights: Insight[] = [];
   const suggestions: string[] = [];
   const variants = report.meta?.variants || [];
   const results = report.results || [];
 
+  // v0.22 — sampleQuality aggregate is built from sample metadata only,
+  // independent of result data. Computed even when results.length === 0 or
+  // variants.length < 2 (e.g. dry-run / single-variant analysis).
+  const sampleQuality: SampleQualityAggregate | undefined = opts.samples
+    ? buildSampleQualityAggregate(opts.samples)
+    : undefined;
+
   if (results.length === 0 || variants.length < 2) {
-    return { insights, suggestions };
+    return { insights, suggestions, ...(sampleQuality && { sampleQuality }) };
   }
 
   // 1. Low-discrimination assertions
@@ -49,7 +65,96 @@ export function analyzeResults(report: Report): AnalysisResult {
 
   const summary = generateSummary(report, variants);
 
-  return { summary, insights, suggestions };
+  return { summary, insights, suggestions, ...(sampleQuality && { sampleQuality }) };
+}
+
+/**
+ * v0.22 — Build sample design science aggregate from sample metadata.
+ *
+ * Pure function — no result/score data needed. Reads:
+ * - `Sample.capability` (string[], normalized case-insensitive + dash/camel/underscore stripped)
+ * - `Sample.difficulty` ('easy' | 'medium' | 'hard')
+ * - `Sample.construct` (free-form string)
+ * - `Sample.provenance` ('human' | 'llm-generated' | 'production-trace')
+ * - `Sample.rubric` (for avgRubricLength)
+ *
+ * Missing fields are bucketed under the `unspecified` key in the relevant
+ * distribution map, so users see "I have N samples without difficulty declared".
+ *
+ * Used by `bench diagnose` CLI to surface coverage gaps. Does NOT participate
+ * in grading / judge / verdict. See docs/sample-design-spec.md.
+ */
+export function buildSampleQualityAggregate(samples: Sample[]): SampleQualityAggregate {
+  const capabilityCoverage: Record<string, number> = {};
+  const difficultyDistribution: Record<'easy' | 'medium' | 'hard' | 'unspecified', number> = {
+    easy: 0, medium: 0, hard: 0, unspecified: 0,
+  };
+  const constructDistribution: Record<string, number> = {};
+  const provenanceBreakdown: Record<string, number> = {};
+
+  let totalRubricLength = 0;
+  let rubricCount = 0;
+  let withCapability = 0;
+  let withDifficulty = 0;
+  let withConstruct = 0;
+  let withProvenance = 0;
+
+  for (const sample of samples) {
+    // capability — normalize case + dash/camel/underscore so 'api-selection' / 'apiSelection' / 'API_Selection' merge.
+    if (Array.isArray(sample.capability) && sample.capability.length > 0) {
+      withCapability++;
+      const seen = new Set<string>();
+      for (const rawCap of sample.capability) {
+        if (typeof rawCap !== 'string') continue;
+        const cap = normalizeCapability(rawCap);
+        if (seen.has(cap)) continue; // 同 sample 内同 capability 重复声明只计 1
+        seen.add(cap);
+        capabilityCoverage[cap] = (capabilityCoverage[cap] || 0) + 1;
+      }
+    }
+
+    // difficulty
+    if (sample.difficulty) {
+      withDifficulty++;
+      difficultyDistribution[sample.difficulty]++;
+    } else {
+      difficultyDistribution.unspecified++;
+    }
+
+    // construct (free-form)
+    if (sample.construct) {
+      withConstruct++;
+      constructDistribution[sample.construct] = (constructDistribution[sample.construct] || 0) + 1;
+    } else {
+      constructDistribution.unspecified = (constructDistribution.unspecified || 0) + 1;
+    }
+
+    // provenance
+    if (sample.provenance) {
+      withProvenance++;
+      provenanceBreakdown[sample.provenance] = (provenanceBreakdown[sample.provenance] || 0) + 1;
+    } else {
+      provenanceBreakdown.unspecified = (provenanceBreakdown.unspecified || 0) + 1;
+    }
+
+    // rubric length(only counted if present, NaN-safe)
+    if (sample.rubric) {
+      totalRubricLength += sample.rubric.trim().length;
+      rubricCount++;
+    }
+  }
+
+  return {
+    capabilityCoverage,
+    difficultyDistribution,
+    constructDistribution,
+    provenanceBreakdown,
+    avgRubricLength: rubricCount > 0 ? Math.round(totalRubricLength / rubricCount) : 0,
+    sampleCountWithCapability: withCapability,
+    sampleCountWithDifficulty: withDifficulty,
+    sampleCountWithConstruct: withConstruct,
+    sampleCountWithProvenance: withProvenance,
+  };
 }
 
 function generateSummary(report: Report, variants: string[]): string | undefined {

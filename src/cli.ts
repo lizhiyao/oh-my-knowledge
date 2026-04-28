@@ -1879,6 +1879,14 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   });
   console.log(formatSampleDiagnostics(diag, { topN }));
 
+  // v0.22 — Sample design science coverage block. Render after diagnose 主体,因为
+  // coverage 是声明式元数据(capability/difficulty/construct/provenance)的整体分布,
+  // 跟 issue list 是不同视角的两件事。优先从 samples (现场加载) 算,fallback 到
+  // report.analysis.sampleQuality(报告里持久化的数据)。
+  const { renderSampleDesignCoverage } = await import('./analysis/sample-design-coverage-cli.js');
+  const coverageBlock = renderSampleDesignCoverage(samples, report!.analysis?.sampleQuality, lang);
+  if (coverageBlock) console.log(coverageBlock);
+
   // Exit code: 0 if health ≥ 70 and no errors; 1 otherwise. CI-friendly.
   if (diag.totals.errors === 0 && diag.healthScore >= 70) {
     process.exit(0);

@@ -32,10 +32,13 @@ export type SampleIssueKind =
   | 'all_pass'           // all variants got max score → too easy
   | 'all_fail'           // all variants got min score → too hard / broken
   | 'near_duplicate'     // prompt is ROUGE-1 ≥ threshold with another sample
-  | 'ambiguous_rubric'   // judge stddev across repeats high → unclear rubric
+  | 'ambiguous_rubric'   // judge stddev across repeats high → unclear rubric (后验/runtime 信号)
   | 'cost_outlier'       // sample's cost ≥ k × median cost
   | 'latency_outlier'    // sample's latency ≥ k × median latency
-  | 'error_prone';       // sample failed (ok=false) on ≥ 1 variant
+  | 'error_prone'        // sample failed (ok=false) on ≥ 1 variant
+  // v0.22 — sample design science signals (先验 / static metadata signal,跟 ambiguous_rubric 是后验 / runtime 信号互补)
+  | 'rubric_clarity_low' // rubric 字符 < 20 且不含评分级别词 → static rubric quality signal
+  | 'capability_thin';   // 某 capability 只 ≤ max(2, N*0.2) 个 sample 撑(总 N≥10 才检测)
 
 export interface SampleIssue {
   sample_id: string;
@@ -224,6 +227,55 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
     }
   }
 
+  // v0.22 — Pass 4: sample design science signals (跟 sample metadata 的 rubric / capability
+  // 字段相关,只在 caller 提供 options.samples 时才能跑).
+  if (options.samples && options.samples.length > 0) {
+    const samplesById = new Map<string, Sample>();
+    for (const s of options.samples) samplesById.set(s.sample_id, s);
+
+    // 4a. rubric_clarity_low — static rubric quality signal.
+    // 判定:rubric 字符长度 < 20 AND 不含任何评分级别词。两条件 AND 避免长 rubric 没用关键词被误报。
+    for (const entry of results) {
+      const sample = samplesById.get(entry.sample_id);
+      if (!sample?.rubric) continue;
+      const rubric = sample.rubric.trim();
+      if (rubric.length >= 20) continue;
+      if (containsRubricGradeKeyword(rubric)) continue;
+      issues.push({
+        sample_id: entry.sample_id, severity: 'info', kind: 'rubric_clarity_low',
+        message: `rubric 仅 ${rubric.length} 字且未含评分级别词 — 评委标准模糊,可能 judge 分数不稳`,
+        evidence: { rubricLength: rubric.length, rubricSnippet: rubric.slice(0, 80) },
+      });
+    }
+
+    // 4b. capability_thin — 某 capability 只被 ≤ max(2, N*0.2) sample 声明 → 该维度 thin coverage。
+    // small-N guard:总 sample < 10 时 completely skip(避免 N=5 全报)。
+    if (options.samples.length >= 10) {
+      const threshold = Math.max(2, Math.floor(options.samples.length * 0.2));
+      const capabilityCount: Record<string, { count: number; sampleIds: string[] }> = {};
+      for (const sample of options.samples) {
+        if (!Array.isArray(sample.capability)) continue;
+        for (const rawCap of sample.capability) {
+          if (typeof rawCap !== 'string') continue;
+          const cap = normalizeCapability(rawCap);
+          if (!capabilityCount[cap]) capabilityCount[cap] = { count: 0, sampleIds: [] };
+          capabilityCount[cap].count++;
+          capabilityCount[cap].sampleIds.push(sample.sample_id);
+        }
+      }
+      for (const [cap, info] of Object.entries(capabilityCount)) {
+        if (info.count > threshold) continue;
+        // 报警挂在该 capability 的第一个 sample 上(便于定位),其他在 evidence 里列。
+        const primarySampleId = info.sampleIds[0];
+        issues.push({
+          sample_id: primarySampleId, severity: 'warning', kind: 'capability_thin',
+          message: `capability "${cap}" 只 ${info.count} 个 sample 撑(阈值 ${threshold},N=${options.samples.length}) — 单 sample 失败会让该维度结论不稳`,
+          evidence: { capability: cap, sampleCount: info.count, threshold, sampleIds: info.sampleIds },
+        });
+      }
+    }
+  }
+
   // Sort and roll up.
   issues.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || a.sample_id.localeCompare(b.sample_id));
 
@@ -270,6 +322,33 @@ function scoresMap(entry: ResultEntry, variants: string[]): Record<string, numbe
     }
   }
   return out;
+}
+
+// v0.22 — rubric grade-level keywords (中英),case-insensitive。
+// 这是 static rubric quality signal,跟 ambiguous_rubric (judge stddev runtime 信号) 互补。
+const RUBRIC_GRADE_KEYWORDS_ZH: readonly string[] = [
+  '优秀', '良好', '合格', '不合格', '分数', '标准', '必须', '应当', '至少', '应该', '需要',
+];
+const RUBRIC_GRADE_KEYWORDS_EN: readonly string[] = [
+  'excellent', 'good', 'poor', 'score', 'grade', 'must', 'should', 'shall', 'at least', 'expected', 'required',
+];
+
+function containsRubricGradeKeyword(rubric: string): boolean {
+  const lower = rubric.toLowerCase();
+  for (const kw of RUBRIC_GRADE_KEYWORDS_ZH) {
+    if (rubric.includes(kw)) return true;
+  }
+  for (const kw of RUBRIC_GRADE_KEYWORDS_EN) {
+    if (lower.includes(kw)) return true;
+  }
+  return false;
+}
+
+/** v0.22 — case-insensitive + dash/camel/underscore normalize:
+ *  `api-selection`, `apiSelection`, `API_Selection` 都归到 `apiselection`。
+ *  让 capability_thin / capabilityCoverage 不受拼写风格差异影响。 */
+export function normalizeCapability(raw: string): string {
+  return raw.trim().toLowerCase().replace(/[-_\s]+/g, '');
 }
 
 /**

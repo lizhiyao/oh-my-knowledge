@@ -67,4 +67,72 @@ describe('loadSamples', () => {
     writeFileSync(p, JSON.stringify([{ sample_id: 'x' }]));
     assert.throws(() => loadSamples(p), /missing required field: prompt/);
   });
+
+  // v0.22 — sample design metadata fields validation
+  describe('sample design metadata (v0.22)', () => {
+    it('接受 capability / difficulty / construct / provenance 4 个新字段', () => {
+      const p = tmp('with-meta.json');
+      cleanups.push(p);
+      writeFileSync(p, JSON.stringify([{
+        sample_id: 's1',
+        prompt: 'p',
+        capability: ['api-selection', 'error-diagnosis'],
+        difficulty: 'medium',
+        construct: 'necessity',
+        provenance: 'human',
+      }]));
+      const { samples } = loadSamples(p);
+      assert.deepEqual(samples[0].capability, ['api-selection', 'error-diagnosis']);
+      assert.equal(samples[0].difficulty, 'medium');
+      assert.equal(samples[0].construct, 'necessity');
+      assert.equal(samples[0].provenance, 'human');
+    });
+
+    it('老 sample(无新字段)仍正常解析', () => {
+      const p = tmp('legacy.json');
+      cleanups.push(p);
+      writeFileSync(p, JSON.stringify([{ sample_id: 's1', prompt: 'p' }]));
+      const { samples } = loadSamples(p);
+      assert.equal(samples[0].capability, undefined);
+      assert.equal(samples[0].difficulty, undefined);
+      assert.equal(samples[0].construct, undefined);
+      assert.equal(samples[0].provenance, undefined);
+    });
+
+    it('difficulty 非法值 reject 含 sample_id 定位', () => {
+      const p = tmp('bad-difficulty.json');
+      cleanups.push(p);
+      writeFileSync(p, JSON.stringify([{ sample_id: 's7', prompt: 'p', difficulty: 'easy?' }]));
+      assert.throws(() => loadSamples(p), /s7.*invalid difficulty.*easy\?.*easy, medium, hard/);
+    });
+
+    it('provenance 非法值 reject', () => {
+      const p = tmp('bad-prov.json');
+      cleanups.push(p);
+      writeFileSync(p, JSON.stringify([{ sample_id: 's1', prompt: 'p', provenance: 'random' }]));
+      assert.throws(() => loadSamples(p), /invalid provenance/);
+    });
+
+    it('capability 必须是 array(reject single string)', () => {
+      const p = tmp('bad-cap.json');
+      cleanups.push(p);
+      writeFileSync(p, JSON.stringify([{ sample_id: 's1', prompt: 'p', capability: 'api-selection' }]));
+      assert.throws(() => loadSamples(p), /invalid capability.*string array/);
+    });
+
+    it('capability 数组里非字符串 reject', () => {
+      const p = tmp('bad-cap-elem.json');
+      cleanups.push(p);
+      writeFileSync(p, JSON.stringify([{ sample_id: 's1', prompt: 'p', capability: ['ok', 123] }]));
+      assert.throws(() => loadSamples(p), /capability\[1\] must be a non-empty string/);
+    });
+
+    it('construct 接受任意 string(允许自定义值)', () => {
+      const p = tmp('custom-construct.json');
+      cleanups.push(p);
+      writeFileSync(p, JSON.stringify([{ sample_id: 's1', prompt: 'p', construct: 'my-custom-thing' }]));
+      const { samples } = loadSamples(p);
+      assert.equal(samples[0].construct, 'my-custom-thing');
+    });
+  });
 });

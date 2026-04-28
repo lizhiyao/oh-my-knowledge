@@ -46,6 +46,7 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 | 三层独立评分(事实/行为/评委) | ✓ | ✗ | 部分 | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 三层 all-pass CI gate | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 用例隔离(per-variant skill 隔离 / construct validity) | ✓ 默认开 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | 部分 |
+| 用例设计元数据(capability / difficulty / construct / provenance) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 一行 verdict(PROGRESS / REGRESS / NOISE / ...) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 知识缺口信号(严重度加权) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 用例质量诊断(7 类 issue) | ✓ | 仅低区分度 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |

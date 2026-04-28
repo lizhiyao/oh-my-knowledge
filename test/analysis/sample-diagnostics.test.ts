@@ -233,3 +233,112 @@ describe('formatSampleDiagnostics', () => {
     assert.match(text, /\[all_pass\] 2 sample/);
   });
 });
+
+// v0.22 — sample design science signals (rubric_clarity_low / capability_thin)
+describe('diagnoseSamples — rubric_clarity_low (v0.22)', () => {
+  function reportWithSample(sample: Partial<Sample>): { report: Report; samples: Sample[] } {
+    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p', ...sample }];
+    const report = buildReport(
+      [{ id: 's1', perVariant: { v1: { compositeScore: 4 }, v2: { compositeScore: 4 } } }],
+      ['v1', 'v2'],
+    );
+    return { report, samples };
+  }
+
+  it('短 rubric(< 20 字符) AND 无评分级别词 → 触发', () => {
+    const { report, samples } = reportWithSample({ rubric: '回答这道题' }); // 5 字符,不含任何关键词
+    const d = diagnoseSamples(report, { samples });
+    assert.ok(d.byKind.rubric_clarity_low, 'should fire on short rubric without keyword');
+  });
+
+  it('短 rubric 但含中文评分词(优秀) → 不触发(AND 条件)', () => {
+    const { report, samples } = reportWithSample({ rubric: '回答优秀的判定' });
+    const d = diagnoseSamples(report, { samples });
+    assert.equal(d.byKind.rubric_clarity_low, undefined, 'short with grade keyword should NOT fire');
+  });
+
+  it('短 rubric 但含英文评分词(should) → 不触发', () => {
+    const { report, samples } = reportWithSample({ rubric: 'must mention X' });
+    const d = diagnoseSamples(report, { samples });
+    assert.equal(d.byKind.rubric_clarity_low, undefined);
+  });
+
+  it('长 rubric 即使无关键词 → 不触发', () => {
+    const { report, samples } = reportWithSample({
+      rubric: '回答需要识别图表组件并给出对应数据结构示例,包含字段名、类型、嵌套关系',
+    });
+    const d = diagnoseSamples(report, { samples });
+    assert.equal(d.byKind.rubric_clarity_low, undefined, 'long rubric is OK even without keywords');
+  });
+
+  it('无 samples 入参时不报(只看 sample 元数据)', () => {
+    const { report } = reportWithSample({ rubric: '应该' });
+    const d = diagnoseSamples(report);
+    assert.equal(d.byKind.rubric_clarity_low, undefined);
+  });
+});
+
+describe('diagnoseSamples — capability_thin (v0.22)', () => {
+  function buildN(n: number, capabilityFn: (i: number) => string[] | undefined): { report: Report; samples: Sample[] } {
+    const samples: Sample[] = [];
+    const entries: Array<{ id: string; perVariant: Record<string, Partial<VariantResult>> }> = [];
+    for (let i = 0; i < n; i++) {
+      const id = `s${i + 1}`;
+      const cap = capabilityFn(i);
+      samples.push({ sample_id: id, prompt: 'p', ...(cap !== undefined && { capability: cap }) });
+      entries.push({ id, perVariant: { v1: { compositeScore: 4 }, v2: { compositeScore: 4 } } });
+    }
+    return { report: buildReport(entries, ['v1', 'v2']), samples };
+  }
+
+  it('小 N(< 10)完全跳过 capability_thin 检测', () => {
+    // N=5,所有 capability 都只 1-2 个 sample,正常情况会全报,small-N guard 让它不报
+    const { report, samples } = buildN(5, (i) => i < 3 ? ['core'] : ['rare']);
+    const d = diagnoseSamples(report, { samples });
+    assert.equal(d.byKind.capability_thin, undefined, 'small N should skip capability_thin');
+  });
+
+  it('N≥10 时,某 capability 只 ≤ max(2, N*0.2) 个 sample → 触发', () => {
+    // N=10,threshold = max(2, 2) = 2;'rare' 只 2 个 → 触发(<=2);'common' 8 个 → 不触发
+    const { report, samples } = buildN(10, (i) => i < 8 ? ['common'] : ['rare']);
+    const d = diagnoseSamples(report, { samples });
+    assert.ok(d.byKind.capability_thin, 'rare capability should be flagged');
+    const rareIssue = d.issues.find((i) => i.kind === 'capability_thin');
+    assert.ok(rareIssue);
+    assert.equal((rareIssue!.evidence as { capability: string }).capability, 'rare');
+    assert.equal((rareIssue!.evidence as { sampleCount: number }).sampleCount, 2);
+  });
+
+  it('N≥10 时,所有 capability 都 > threshold → 不触发', () => {
+    const { report, samples } = buildN(10, () => ['core']);
+    const d = diagnoseSamples(report, { samples });
+    assert.equal(d.byKind.capability_thin, undefined);
+  });
+
+  it('capability 字段缺失的 sample 不影响其他 capability 的计数', () => {
+    // N=12,8 个标 'core',2 个标 'rare',2 个不标 capability
+    // threshold = max(2, 2) = 2; 'rare'=2 应触发(<=2)
+    const { report, samples } = buildN(12, (i) => {
+      if (i < 8) return ['core'];
+      if (i < 10) return ['rare'];
+      return undefined;
+    });
+    const d = diagnoseSamples(report, { samples });
+    assert.ok(d.byKind.capability_thin);
+  });
+});
+
+describe('diagnoseSamples — backward compat (v0.22)', () => {
+  it('老 report(不传 samples)→ 不报新 v0.22 issue', () => {
+    // 用 spread > 0.5 (max-min 1.5 > flatThreshold) 避免 flat_scores 干扰这次断言。
+    const r = buildReport([
+      { id: 's1', perVariant: { v1: { compositeScore: 3 }, v2: { compositeScore: 4.5 } } },
+    ], ['v1', 'v2']);
+    const d = diagnoseSamples(r); // 不传 samples
+    // 关键断言:v0.22 新 issue kinds 不被触发
+    assert.equal(d.byKind.rubric_clarity_low, undefined);
+    assert.equal(d.byKind.capability_thin, undefined);
+    // healthScore 仍按老规则算(任何老 issue 触发也照常,不被 v0.22 改变)
+    assert.equal(d.healthScore, 100);
+  });
+});

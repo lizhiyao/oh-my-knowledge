@@ -154,7 +154,12 @@ export type CliMessageKey =
   | 'cli.help.saturation'
   | 'cli.help.verdict'
   | 'cli.help.diagnose'
-  | 'cli.help.failures';
+  | 'cli.help.failures'
+  // v0.22 — sample design coverage block (bench diagnose)
+  | 'cli.diagnose.coverage_header'
+  | 'cli.diagnose.coverage_unspecified'
+  | 'cli.diagnose.coverage_chars'
+  | 'cli.diagnose.coverage_hint_empty';
 
 export interface CliMessage {
   zh: string;
@@ -1043,5 +1048,22 @@ Examples:
       '  --max-feed <n>           max samples to feed the LLM (default 50, takes the worst)',
       '',
     ].join('\n'),
+  },
+  // v0.22 — sample design coverage block strings
+  'cli.diagnose.coverage_header': {
+    zh: '用例设计覆盖度 (Sample design coverage):',
+    en: 'Sample design coverage:',
+  },
+  'cli.diagnose.coverage_unspecified': {
+    zh: '(未声明)',
+    en: '(unspecified)',
+  },
+  'cli.diagnose.coverage_chars': {
+    zh: '字符',
+    en: 'chars',
+  },
+  'cli.diagnose.coverage_hint_empty': {
+    zh: 'ℹ 该用例集未声明任何 capability / difficulty / construct / provenance 元数据。详见 docs/sample-design-spec.md',
+    en: 'ℹ No samples in this set declare capability / difficulty / construct / provenance metadata. See docs/sample-design-spec.md',
   },
 };

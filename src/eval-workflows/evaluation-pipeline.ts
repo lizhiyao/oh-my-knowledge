@@ -280,6 +280,7 @@ function finalizeEvaluationReport({
   variantNames,
   blind,
   samplesPath,
+  samples,
 }: {
   report: Report;
   results: EvaluationResults;
@@ -287,8 +288,12 @@ function finalizeEvaluationReport({
   variantNames: string[];
   blind: boolean;
   samplesPath: string;
+  samples: Sample[];
 }): Report {
-  report.analysis = analyzeResults(report);
+  // v0.22 — pass samples so analyzeResults can populate analysis.sampleQuality
+  // (capability/difficulty/construct/provenance coverage aggregate). Without
+  // samples, analysis.sampleQuality is omitted (老报告读取仍可工作).
+  report.analysis = analyzeResults(report, { samples });
 
   const hasToolData = Object.values(results).some((sampleResults) => (
     Object.values(sampleResults).some((variantResult) => variantResult.toolCalls && variantResult.toolCalls.length > 0)
@@ -534,6 +539,7 @@ export async function executeEvaluationPipeline({
       variantNames,
       blind,
       samplesPath,
+      samples,
     });
     if (budgetExhausted) {
       report.meta.budgetExhausted = true;

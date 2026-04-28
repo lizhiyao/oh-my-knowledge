@@ -283,6 +283,33 @@ export interface AnalysisResult {
   coverage?: Record<string, KnowledgeCoverage>;
   /** Per-variant knowledge gap reports. See docs/knowledge-gap-signal-spec.md */
   gapReports?: Record<string, GapReport>;
+  /** v0.22 — Sample design science aggregate. Built from sample metadata
+   *  (capability / difficulty / construct / provenance), used by `bench diagnose`
+   *  CLI to surface coverage gaps. See docs/sample-design-spec.md. */
+  sampleQuality?: SampleQualityAggregate;
+}
+
+/** v0.22 — Aggregated sample design coverage stats. Built by
+ *  `buildSampleQualityAggregate(samples)` from `Sample.capability` /
+ *  `Sample.difficulty` / `Sample.construct` / `Sample.provenance` fields.
+ *  Pure documentation aggregate — no field here participates in grading,
+ *  judge, or verdict. */
+export interface SampleQualityAggregate {
+  /** capability name (case-insensitive, dash/camel normalized) → sample count. */
+  capabilityCoverage: Record<string, number>;
+  /** difficulty bucket → count. `unspecified` key for samples without difficulty. */
+  difficultyDistribution: Record<'easy' | 'medium' | 'hard' | 'unspecified', number>;
+  /** construct value (free-form, suggested necessity/quality/capability) → count. */
+  constructDistribution: Record<string, number>;
+  /** provenance → count. `unspecified` for samples without provenance. */
+  provenanceBreakdown: Record<string, number>;
+  /** Mean rubric character length across all samples (0 if no rubric). */
+  avgRubricLength: number;
+  /** How many samples declared each metadata field (helpful for "completeness"). */
+  sampleCountWithCapability: number;
+  sampleCountWithDifficulty: number;
+  sampleCountWithConstruct: number;
+  sampleCountWithProvenance: number;
 }
 
 // v0.2 hedging classifier 的二次判定结果。挂在 GapSignalRef.classifierVerdict 上,

@@ -4,7 +4,8 @@ import { runEvaluation } from '../eval-workflows/run-evaluation.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
 import { persistReport, DEFAULT_OUTPUT_DIR, generateRunId } from '../eval-core/evaluation-reporting.js';
 import { analyzeResults } from '../analysis/report-diagnostics.js';
-import type { ProgressCallback, Report, ResultEntry, VariantResult } from '../types/index.js';
+import { loadSamples } from '../inputs/load-samples.js';
+import type { ProgressCallback, Report, ResultEntry, Sample, VariantResult } from '../types/index.js';
 
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。你的任务是分析评测结果中的薄弱环节，针对性地改进 skill（系统提示词），使其在评测中获得更高的分数。
 
@@ -154,7 +155,12 @@ export interface RoundReport {
   report: Report;
 }
 
-export function mergeEvolveReports(roundReports: RoundReport[], skillName: string, totalCostUSD: number): Report {
+export function mergeEvolveReports(
+  roundReports: RoundReport[],
+  skillName: string,
+  totalCostUSD: number,
+  samples?: Sample[],
+): Report {
   const firstReport = roundReports[0].report;
 
   // Build variant labels: "round-0", "round-1", "round-2", ...
@@ -215,7 +221,10 @@ export function mergeEvolveReports(roundReports: RoundReport[], skillName: strin
     results,
   };
 
-  report.analysis = analyzeResults(report);
+  // v0.22 — pass samples to populate analysis.sampleQuality (capability/difficulty/
+  // construct/provenance coverage). Without samples, sampleQuality is omitted but
+  // insights/suggestions/summary still computed.
+  report.analysis = analyzeResults(report, { samples });
 
   return report;
 }
@@ -336,7 +345,9 @@ export async function evolveSkill({
   // Merge all round reports into one and persist
   let reportId: string | undefined;
   if (roundReports.length > 0) {
-    const mergedReport = mergeEvolveReports(roundReports, skillName, totalCostUSD);
+    // v0.22 — load samples once to enable analysis.sampleQuality on the merged report.
+    const { samples } = loadSamples(absSamplesPath);
+    const mergedReport = mergeEvolveReports(roundReports, skillName, totalCostUSD, samples);
     persistReport(mergedReport, DEFAULT_OUTPUT_DIR);
     reportId = mergedReport.id;
   }

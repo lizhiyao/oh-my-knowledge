@@ -46,6 +46,7 @@ omk is the only tool surveyed that ships all five rigour pieces. The closest com
 | Three-layer scoring (Fact / Behavior / Judge) isolation | ✓ | ✗ | partial | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Three-layer all-pass CI gate | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Per-variant skill-discovery isolation (construct validity) | ✓ default | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | partial |
+| Sample design metadata (capability / difficulty / construct / provenance) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | One-line verdict (PROGRESS / REGRESS / NOISE / ...) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Knowledge gap signals (severity-weighted) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Sample quality diagnostics (7 issue kinds) | ✓ | low-discrim only | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
