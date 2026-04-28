@@ -8,6 +8,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Fixed
+
+- **`VariantSummary.toolDistribution` 修真实 call count**:之前 aggregate 阶段按 `result.toolNames`(per-sample dedup 列表)累加,语义是"出现该 tool 的 sample 数",跟字段名"工具调用分布"不符 — 用户读 summary 看到 `Read: 5` 以为模型调了 5 次 Read,实际是"5 个样本里出现过 Read"。修法:`VariantResult` 加 per-sample `toolDistribution`(从 `toolCalls` reduce 得到真实 call count map),aggregate 时 sum per-sample 字段。旧报告 result 没 `toolDistribution` 字段时 fallback 到老 `toolNames` 语义保兼容。
+
 ### Changed
 
 - **⚠️ BREAKING:report server URL 从 `/run/<id>` 改为 `/reports/<id>`**:命名跟 codebase 内一致语义(`Report` 类型 / `~/.oh-my-knowledge/reports/` 目录 / `omk bench report` CLI 命令)对齐。`/run/` 是 omk 内部把 "evaluation run" 当 entity 的旧叫法,但用户打开 URL 是来"看报告"的——`/reports/` 直接匹配心智。同步改:`/api/run/<id>` → `/api/reports/<id>`,`/api/runs` → `/api/reports`。**直接删旧路径,不留兼容 alias**(omk 0-1 阶段)。已有书签需要更新。
