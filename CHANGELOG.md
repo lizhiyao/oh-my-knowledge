@@ -10,6 +10,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Changed
 
+- **⚠️ BREAKING:report server URL 从 `/run/<id>` 改为 `/reports/<id>`**:命名跟 codebase 内一致语义(`Report` 类型 / `~/.oh-my-knowledge/reports/` 目录 / `omk bench report` CLI 命令)对齐。`/run/` 是 omk 内部把 "evaluation run" 当 entity 的旧叫法,但用户打开 URL 是来"看报告"的——`/reports/` 直接匹配心智。同步改:`/api/run/<id>` → `/api/reports/<id>`,`/api/runs` → `/api/reports`。**直接删旧路径,不留兼容 alias**(omk 0-1 阶段)。已有书签需要更新。
+
 - **⚠️ BREAKING-COMPARABILITY:`bench run` / `bench gate` 默认对 baseline-kind variant 启用 skill isolation**(`--strict-baseline` default true)。这是 omk 测量学严谨性的根本承诺补全:之前 baseline 通过 Claude Agent SDK 的 skill auto-discovery 拿到 `~/.claude/skills/` 全部 skill,导致 baseline-vs-skill 比较 construct invalid——具体证据是 N=20 WCC 评测里 baseline 平均 13 次 `Skill` 工具调用 + 输出含 `@alipay/wealth-chart-components` 私有 import,verdict NOISE 实为污染。本版默认开启隔离(双堵 main session skills + subagent Skill 工具调用),baseline 真正干净。
 
   改动范围:

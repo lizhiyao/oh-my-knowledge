@@ -86,7 +86,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
     } catch { /* skip pill on this row */ }
 
     return `<tr>
-      <td>${statusPill}<a href="/run/${e(run.id)}"><span style="color:var(--text-primary)">${e(run.id)}${badges}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${(() => {
+      <td>${statusPill}<a href="/reports/${e(run.id)}"><span style="color:var(--text-primary)">${e(run.id)}${badges}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${(() => {
         // Extract date/time from report ID: ...-YYYYMMDD-HHmm
         const idMatch = run.id.match(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
         if (idMatch) return `${idMatch[2]}/${idMatch[3]} ${idMatch[4]}:${idMatch[5]}`;
@@ -178,7 +178,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
     function deleteRun(id, btn) {
       var lang = document.documentElement.dataset.lang || '${DEFAULT_LANG}';
       if (!confirm(I18N[lang].deleteConfirm + ' ' + id + ' ?')) return;
-      fetch('/api/run/' + encodeURIComponent(id), { method: 'DELETE' })
+      fetch('/api/reports/' + encodeURIComponent(id), { method: 'DELETE' })
         .then(function(r) { return r.json(); })
         .then(function(d) {
           if (d.ok) { btn.closest('tr').remove(); }
