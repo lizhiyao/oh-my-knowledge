@@ -2,8 +2,20 @@ import { spawn } from 'node:child_process';
 import type { ExecResult, ExecutorFn, ExecutorInput } from '../types/index.js';
 import { DEFAULT_TIMEOUT_MS } from './shared.js';
 
+// v0.22 — script executor 由用户自定义,omk 无法保证它实现 skill 隔离。
+// 任何 allowedSkills(包括 [])下都 stderr 一次性 warn,不阻塞执行,
+// 让用户知道 strict-baseline / 显式 allowedSkills 在 script executor 下静默无效。
+let scriptIsolationWarned = false;
+
 export function createScriptExecutor(command: string): ExecutorFn {
-  return async function scriptExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {
+  return async function scriptExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills }: ExecutorInput): Promise<ExecResult> {
+    if (allowedSkills !== undefined && !scriptIsolationWarned) {
+      scriptIsolationWarned = true;
+      process.stderr.write(
+        `[omk] script executor 不参与 skill isolation:allowedSkills=${JSON.stringify(allowedSkills)} 在自定义 executor "${command}" 下无效。\n`
+        + `  如需 baseline 真正隔离,请用 --executor claude-sdk(或 claude-cli degraded mode)。\n`,
+      );
+    }
     const input = JSON.stringify({ model, system: system || '', prompt });
     const start = Date.now();
 

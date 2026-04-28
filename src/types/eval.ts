@@ -54,6 +54,12 @@ export interface Artifact {
   // run-time 属性:variant 在当次实验中扮演的角色(由 CLI --control/--treatment 或 eval.yaml 注入)
   // 不是 artifact 文件的固有属性;同一 artifact 在不同 run 可以扮演不同角色
   experimentRole?: ExperimentRole;
+  // v0.22 — Skill auto-discovery 隔离声明(per-variant)。
+  //   undefined → 默认 SDK 行为(全发现 ~/.claude/skills/)
+  //   []        → 完全禁用 skill 发现 + Skill 工具 disable(main session + subagent 同堵)
+  //   [...]     → 白名单(只载入指定 skill,subagent 仍可调 Skill 工具)
+  // baseline-kind 默认 [],由 --strict-baseline (default true) 注入;显式 eval.yaml 优先。
+  allowedSkills?: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -79,6 +85,9 @@ export interface VariantConfig {
   cwd: string | null;
   locator?: string;
   ref?: string;
+  // v0.22 — 隔离声明。undefined = SDK 默认全发现,[] = 完全隔离,[...] = 白名单。
+  // 来源:Artifact.allowedSkills(由 strict-baseline 默认 + eval.yaml 显式合并而成)。
+  allowedSkills?: string[];
 }
 
 export interface VariantSpec {
@@ -92,6 +101,11 @@ export interface EvalConfigVariant {
   role: ExperimentRole;
   artifact: string;
   cwd?: string;
+  // v0.22 — 显式 skill 隔离声明。优先级高于 --strict-baseline default。
+  //   写 [] 完全禁用 skill 发现;写 [name1, name2] 白名单;不写 = 默认行为。
+  // 注:YAML `allowedSkills:` 不写值会被 parse 成 null,validateEvalConfig 会显式 reject;
+  //     要写就显式写 `[]`。
+  allowedSkills?: string[];
 }
 
 export interface EvalConfig {
@@ -161,6 +175,11 @@ export interface EvaluationRequest {
   lengthDebias?: boolean;
   /** v0.22 — hard budget caps. See EvalBudget. */
   budget?: EvalBudget;
+  /** v0.22 — Skill isolation default (CLI `--strict-baseline` default true).
+   *  true = baseline-kind variants 没显式 allowedSkills 时自动设为 [];
+   *  false = 全部 variants 没显式 allowedSkills 时保持 undefined(旧行为)。
+   *  显式 eval.yaml `allowedSkills` 总是优先于此默认。 */
+  strictBaseline?: boolean;
 }
 
 export type EvaluationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';

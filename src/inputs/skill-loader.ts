@@ -114,6 +114,16 @@ export function loadSkills(skillDir: string, variants: string[]): Record<string,
   return Object.fromEntries(resolveArtifacts(skillDir, variants).map((artifact) => [artifact.name, artifact.content]));
 }
 
+/** v0.22 — opts for resolveArtifacts skill-isolation wiring. */
+export interface ResolveArtifactsOptions {
+  /** Default true. When true, baseline-kind artifacts get allowedSkills=[] auto-injected
+   *  unless overridden by variantAllowedSkills. */
+  strictBaseline?: boolean;
+  /** Per-variant explicit allowedSkills (from eval.yaml). Keyed by variant name (post
+   *  parseVariantCwd, matches Artifact.name). Always overrides strictBaseline default. */
+  variantAllowedSkills?: Record<string, string[]>;
+}
+
 /**
  * Parse variant expression, extracting optional cwd suffix.
  * Format: "name@/path/to/cwd" or just "name"
@@ -124,7 +134,13 @@ export function parseVariantCwd(variant: string): { name: string; cwd?: string }
   return { name: variant.slice(0, atIdx), cwd: variant.slice(atIdx + 1) };
 }
 
-export function resolveArtifacts(skillDir: string, variants: string[]): Artifact[] {
+export function resolveArtifacts(
+  skillDir: string,
+  variants: string[],
+  opts: ResolveArtifactsOptions = {},
+): Artifact[] {
+  const strictBaseline = opts.strictBaseline ?? true;
+  const variantAllowedSkills = opts.variantAllowedSkills ?? {};
   const artifacts: Artifact[] = [];
   let gitRelDir: string | null = null;
 
@@ -234,6 +250,22 @@ export function resolveArtifacts(skillDir: string, variants: string[]): Artifact
     } else {
       throw new Error(`skill not found: ${mdPath} or ${dirSkillPath}`);
     }
+  }
+
+  // v0.22 — Skill-isolation wiring.
+  //   Priority: variantAllowedSkills (explicit eval.yaml) > strictBaseline default > none.
+  //   strictBaseline=true 时,所有 kind:'baseline' artifact 默认 allowedSkills=[]。
+  //   显式 [] 也是合法(用户主动想"完全发现")的反义靠 strictBaseline=false 表达整批关闭。
+  for (const artifact of artifacts) {
+    const explicit = variantAllowedSkills[artifact.name];
+    if (explicit !== undefined) {
+      artifact.allowedSkills = explicit;
+      continue;
+    }
+    if (strictBaseline && artifact.kind === 'baseline') {
+      artifact.allowedSkills = [];
+    }
+    // else leave undefined → SDK default (full discovery)
   }
 
   return artifacts;

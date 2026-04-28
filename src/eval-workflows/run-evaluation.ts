@@ -92,12 +92,23 @@ export interface RunEvaluationOptions extends CommonEvaluationOptions {
   noCache?: boolean;
   retry?: number;
   resume?: string;
+  /** v0.22 — strict-baseline default (CLI `--strict-baseline` default true).
+   *  When undefined, treated as true. baseline-kind variants get allowedSkills=[]
+   *  unless eval.yaml explicitly overrides per-variant. */
+  strictBaseline?: boolean;
+  /** v0.22 — per-variant explicit allowedSkills override map (from eval.yaml).
+   *  Keyed by variant name. Always wins over strictBaseline default. */
+  variantAllowedSkills?: Record<string, string[]>;
 }
 
 export interface RunEachEvaluationOptions extends CommonEvaluationOptions {
   skillDir: string;
   dryRun?: boolean;
   onSkillProgress?: ((info: SkillProgressInfo) => void) | null;
+  /** v0.22 — strict-baseline default. each mode 仍尊重此 flag。 */
+  strictBaseline?: boolean;
+  /** v0.22 — per-variant allowedSkills override (rare in each mode but supported). */
+  variantAllowedSkills?: Record<string, string[]>;
 }
 
 export interface RunMultipleOptions extends RunEvaluationOptions {
@@ -172,6 +183,8 @@ export async function runEvaluation({
   bootstrapSamples,
   lengthDebias,
   budget,
+  strictBaseline,
+  variantAllowedSkills,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
@@ -180,13 +193,18 @@ export async function runEvaluation({
     artifacts,
     dryRun,
     mcpConfig,
+    strictBaseline,
+    variantAllowedSkills,
   });
 
   if (dryRun) {
     // Emit power warnings during dry-run too — this is exactly when users
     // preview the run, the right moment to flag "you might be wasting it".
-    const { buildPowerWarnings } = await import('./evaluation-pipeline.js');
+    const { buildPowerWarnings, buildIsolationWarnings } = await import('./evaluation-pipeline.js');
     for (const w of buildPowerWarnings(samples.length, repeat ?? 1)) {
+      process.stderr.write(`${w}\n`);
+    }
+    for (const w of buildIsolationWarnings(resolvedArtifacts, strictBaseline)) {
       process.stderr.write(`${w}\n`);
     }
     return {
@@ -217,6 +235,24 @@ export async function runEvaluation({
       if (onProgress) {
         const count = Object.values(existingResults).reduce((sum, v) => sum + Object.values(v).filter((r) => r.ok).length, 0);
         process.stderr.write(`\n📂 resumed ${count} completed results from report ${resume}\n`);
+      }
+      // v0.22 — Skill isolation 一致性校验。老 report 没 meta.skillIsolation = pre-v0.22
+      // 报告(默认全发现);此时如果当前 strict-baseline 默认 true,会出现"老 entries 是
+      // 污染的,新 entries 是干净的"混合,verdict 会被混合数据带歪。stderr warn 不阻塞,
+      // 让用户判断是否要 --no-cache 强制重跑或换报告。
+      const oldIsolation = existing.meta?.skillIsolation;
+      const expectedIsolated = strictBaseline !== false; // default true
+      if (!oldIsolation && expectedIsolated) {
+        process.stderr.write(
+          `\n⚠️  resumed report ${resume} 来自 pre-v0.22(无 meta.skillIsolation 字段),baseline 可能被 ~/.claude/skills/ 污染。\n`
+          + `   当前 --strict-baseline 默认开启,新 entries 会被隔离 → 与老 entries 不可比。\n`
+          + `   建议:加 --no-cache 强制重跑,或显式 --no-strict-baseline 接受混合数据(慎用)。\n`,
+        );
+      } else if (oldIsolation && !expectedIsolated) {
+        process.stderr.write(
+          `\n⚠️  resumed report ${resume} 已 strict-isolated(meta.skillIsolation 存在),但本次 --no-strict-baseline。\n`
+          + `   新 entries 不隔离 → 与老 entries 不可比。建议恢复默认 strict-baseline。\n`,
+        );
       }
     } else {
       process.stderr.write(`\n⚠️  report ${resume} not found, starting from scratch\n`);
@@ -263,6 +299,7 @@ export async function runEvaluation({
     bootstrapSamples,
     lengthDebias,
     budget,
+    strictBaseline,
   });
 }
 
@@ -502,6 +539,8 @@ export async function runEachEvaluation({
   judgeRepeat,
   judgeModels,
   lengthDebias,
+  strictBaseline,
+  variantAllowedSkills,
 }: RunEachEvaluationOptions): Promise<{ report: Report | DryRunEachReport; filePath: string | null }> {
   const skillEntries = discoverEachSkills(resolve(skillDir));
   if (skillEntries.length === 0) {
@@ -550,6 +589,8 @@ export async function runEachEvaluation({
     judgeRepeat,
     judgeModels,
     lengthDebias,
+    strictBaseline,
+    variantAllowedSkills,
     runSingleEvaluation: async (options) => {
       // repeat > 1 时走 runMultiple 做 variance; each=true 标记让 meta.request 如实反映
       if (repeat && repeat > 1) {

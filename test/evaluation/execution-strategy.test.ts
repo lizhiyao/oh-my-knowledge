@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { resolveExecutionStrategy } from '../../src/eval-core/execution-strategy.js';
-import type { Task } from '../../src/types/index.js';
+import { buildVariantConfig, resolveExecutionStrategy } from '../../src/eval-core/execution-strategy.js';
+import type { Artifact, Task } from '../../src/types/index.js';
 
 function mockTask(kind: string, content: string | null = 'skill content'): Task {
   return {
@@ -57,5 +57,54 @@ describe('resolveExecutionStrategy', () => {
     assert.equal(plan.input.model, 'haiku');
     assert.equal(plan.input.timeoutMs, 30000);
     assert.equal(plan.input.verbose, true);
+  });
+
+  // v0.22 — Skill isolation pass-through.
+  it('allowedSkills 从 artifact 透到 ExecutorInput(strict baseline []）', () => {
+    const t = mockTask('baseline', null);
+    t.artifact.allowedSkills = [];
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.deepEqual(plan.input.allowedSkills, []);
+  });
+
+  it('allowedSkills 白名单透传', () => {
+    const t = mockTask('skill', 'sys');
+    t.artifact.allowedSkills = ['react', 'typescript'];
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.deepEqual(plan.input.allowedSkills, ['react', 'typescript']);
+  });
+
+  it('allowedSkills undefined 时不注入 ExecutorInput.allowedSkills', () => {
+    const t = mockTask('skill', 'sys');
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.equal(plan.input.allowedSkills, undefined);
+  });
+});
+
+describe('buildVariantConfig skill isolation (v0.22)', () => {
+  function mkArtifact(name: string, kind: Artifact['kind'], allowedSkills?: string[]): Artifact {
+    return {
+      name,
+      kind,
+      source: kind === 'baseline' ? 'baseline' : 'custom',
+      content: kind === 'baseline' ? null : 'sys',
+      experimentRole: kind === 'baseline' ? 'control' : 'treatment',
+      ...(allowedSkills !== undefined && { allowedSkills }),
+    };
+  }
+
+  it('artifact.allowedSkills=[] 时 VariantConfig.allowedSkills=[](写入 report.meta)', () => {
+    const cfg = buildVariantConfig(mkArtifact('baseline', 'baseline', []));
+    assert.deepEqual(cfg.allowedSkills, []);
+  });
+
+  it('artifact.allowedSkills 白名单透传到 VariantConfig', () => {
+    const cfg = buildVariantConfig(mkArtifact('wcc-clean', 'baseline', ['react']));
+    assert.deepEqual(cfg.allowedSkills, ['react']);
+  });
+
+  it('artifact.allowedSkills 未声明时 VariantConfig.allowedSkills 缺失(undefined)', () => {
+    const cfg = buildVariantConfig(mkArtifact('wcc', 'skill'));
+    assert.equal(cfg.allowedSkills, undefined);
   });
 });

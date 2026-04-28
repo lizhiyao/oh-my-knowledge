@@ -58,6 +58,9 @@ export function buildVariantConfig(artifact: Artifact): VariantConfig {
     cwd: artifact.cwd || null,
     locator: artifact.locator,
     ref: artifact.ref,
+    // v0.22 — propagate skill-isolation declaration so report.meta.skillIsolation
+    // 能在 evaluation-reporting 阶段从 variantConfigs 提取 (avoid re-resolving artifacts).
+    ...(artifact.allowedSkills !== undefined && { allowedSkills: artifact.allowedSkills }),
   };
 }
 
@@ -74,6 +77,10 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
     skillDir,
     timeoutMs,
     verbose,
+    // v0.22 — pass skill-isolation declaration to executors. undefined keeps
+    // SDK default; [] = strict isolation (skills:[] + disallowedTools:['Skill']);
+    // [...] = whitelist (skills:[...] only).
+    ...(task.artifact.allowedSkills !== undefined && { allowedSkills: task.artifact.allowedSkills }),
   };
 
   switch (task.artifact.kind) {

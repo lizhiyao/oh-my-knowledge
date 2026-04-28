@@ -148,3 +148,44 @@ describe('aggregateReport — sampleHash key-order stability', () => {
     assert.notEqual(r.meta.sampleHashes!.a, r.meta.sampleHashes!.b);
   });
 });
+
+describe('aggregateReport — meta.skillIsolation (v0.22)', () => {
+  function withIsolation(name: string, allowed?: string[]): Artifact {
+    const a: Artifact = { name, kind: 'baseline', source: 'baseline', content: null, experimentRole: 'control' };
+    if (allowed !== undefined) a.allowedSkills = allowed;
+    return a;
+  }
+
+  const baseSample = makeSample('s1', 'p');
+  const baseResult: VariantResult = makeVariantResult();
+
+  it('每个 variant 的 allowedSkills 写入 meta.skillIsolation(strict baseline []]', () => {
+    const report = aggregateReport({
+      runId: 'r',
+      variants: ['baseline', 'wcc'],
+      model: 'haiku', judgeModel: 'haiku', noJudge: false, executorName: 'claude',
+      samples: [baseSample], tasks: [], totalCostUSD: 0,
+      results: { s1: { baseline: baseResult, wcc: baseResult } },
+      artifacts: [
+        withIsolation('baseline', []),
+        { name: 'wcc', kind: 'skill', source: 'inline', content: 'wcc skill', experimentRole: 'treatment' },
+      ],
+    });
+    assert.ok(report.meta.skillIsolation, 'skillIsolation 必须 populate');
+    assert.deepEqual(report.meta.skillIsolation!.baseline, []);
+    assert.equal(report.meta.skillIsolation!.wcc, null,
+      'undefined 序列化为 null,跨 variant 都有 entry');
+  });
+
+  it('白名单也写入 meta.skillIsolation', () => {
+    const report = aggregateReport({
+      runId: 'r',
+      variants: ['wcc-clean'],
+      model: 'haiku', judgeModel: 'haiku', noJudge: false, executorName: 'claude',
+      samples: [baseSample], tasks: [], totalCostUSD: 0,
+      results: { s1: { 'wcc-clean': baseResult } },
+      artifacts: [withIsolation('wcc-clean', ['react-skill'])],
+    });
+    assert.deepEqual(report.meta.skillIsolation!['wcc-clean'], ['react-skill']);
+  });
+});

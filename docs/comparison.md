@@ -45,12 +45,15 @@ omk is the only tool surveyed that ships all five rigour pieces. The closest com
 |---|---|---|---|---|---|---|---|---|
 | Three-layer scoring (Fact / Behavior / Judge) isolation | ✓ | ✗ | partial | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Three-layer all-pass CI gate | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Per-variant skill-discovery isolation (construct validity) | ✓ default | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | partial |
 | One-line verdict (PROGRESS / REGRESS / NOISE / ...) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Knowledge gap signals (severity-weighted) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Sample quality diagnostics (7 issue kinds) | ✓ | low-discrim only | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Failure case LLM clustering | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 Three-layer isolation prevents single-axis regressions from being masked by composite averaging — a `fact 4.5 → 2.5` drop with `judge 3 → 5` boost looks fine in composite mean but is caught by all-pass gates.
+
+**Per-variant skill-discovery isolation** is a v0.22 addition that closes a subtle construct-validity hole: when comparing `baseline` vs `wcc-skill`, the Claude Agent SDK's default skill auto-discovery silently let `baseline` see whatever skill the user had in `~/.claude/skills/` — including the very skill being tested. omk now defaults to `--strict-baseline` (cuts main-session skills + subagent Skill tool), with a `--no-strict-baseline` escape hatch and per-variant `allowedSkills` whitelist in eval.yaml. inspect-ai's per-sample solver pattern achieves a similar effect for arbitrary tools but requires explicit per-test wiring; promptfoo / DeepEval / OpenAI Evals don't address this dimension.
 
 ## Judges
 

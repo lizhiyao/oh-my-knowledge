@@ -11,6 +11,33 @@ import {
   timeoutExecResult,
 } from './shared.js';
 
+// v0.22 — claude CLI 没有 --skills flag(实测 claude --help 只有 --disable-slash-commands /
+// --bare),degraded mode 处理 allowedSkills:
+//   undefined           → 不传任何 flag(原行为,SDK 全发现)
+//   []                  → --disable-slash-commands(关闭所有 slash commands,粒度更粗但可堵住
+//                          ~/.claude/skills/ + ~/.claude/commands/),首次 stderr warn
+//   [...] (length > 0)  → throw,提示用 claude-sdk executor 走精准白名单
+let cliPartialAllowlistWarned = false;
+
+function applySkillIsolationToCliArgs(args: string[], allowedSkills: string[] | undefined): void {
+  if (allowedSkills === undefined) return;
+  if (allowedSkills.length > 0) {
+    throw new Error(
+      `claude-cli executor 不支持 partial skill 白名单(allowedSkills=${JSON.stringify(allowedSkills)})。\n`
+      + `  仅支持 [](映射为 --disable-slash-commands)或 undefined(默认)。\n`
+      + `  精确隔离请改用 --executor claude-sdk(SDK skills option pass-through)。`,
+    );
+  }
+  // 完全隔离 → --disable-slash-commands(也会关掉 slash command 类的 skill)
+  args.push('--disable-slash-commands');
+  if (!cliPartialAllowlistWarned) {
+    cliPartialAllowlistWarned = true;
+    process.stderr.write(
+      `[omk] claude-cli executor: allowedSkills=[] 映射为 --disable-slash-commands(粒度比 claude-sdk 粗,会一并禁用所有 slash commands)。如需精确隔离请用 --executor claude-sdk。\n`,
+    );
+  }
+}
+
 function parseStreamJson(stdout: string): ClaudeSdkBaseMessage[] {
   const messages: ClaudeSdkBaseMessage[] = [];
   for (const line of stdout.split('\n')) {
@@ -23,9 +50,10 @@ function parseStreamJson(stdout: string): ClaudeSdkBaseMessage[] {
   return messages;
 }
 
-export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {
+export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills }: ExecutorInput): Promise<ExecResult> {
   const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--model', model];
   if (system) args.push('--system-prompt', system);
+  applySkillIsolationToCliArgs(args, allowedSkills);
 
   const env = buildExecEnv(skillDir);
 

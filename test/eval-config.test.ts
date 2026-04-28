@@ -293,3 +293,118 @@ budget:
     }
   });
 });
+
+describe('loadEvalConfig — allowedSkills (v0.22)', () => {
+  it('解析 allowedSkills: [] 表示完全隔离', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+variants:
+  - name: baseline
+    role: control
+    artifact: baseline
+    allowedSkills: []
+  - name: v1
+    role: treatment
+    artifact: ./v1.md
+`.trim());
+      const cfg = loadEvalConfig(path);
+      assert.deepEqual(cfg.variants[0].allowedSkills, []);
+      assert.equal(cfg.variants[1].allowedSkills, undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('解析 allowedSkills 白名单', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+variants:
+  - name: wcc-clean
+    role: control
+    artifact: baseline
+    allowedSkills:
+      - react-skill
+      - typescript-skill
+`.trim());
+      const cfg = loadEvalConfig(path);
+      assert.deepEqual(cfg.variants[0].allowedSkills, ['react-skill', 'typescript-skill']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject `allowedSkills:` 不写值(parse 成 null,语义不清)', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+variants:
+  - name: baseline
+    role: control
+    artifact: baseline
+    allowedSkills:
+`.trim());
+      assert.throws(() => loadEvalConfig(path), /allowedSkills must be an array/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject 非数组(string)', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+variants:
+  - name: baseline
+    role: control
+    artifact: baseline
+    allowedSkills: "react"
+`.trim());
+      assert.throws(() => loadEvalConfig(path), /allowedSkills must be an array/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject 数组里有非字符串元素', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+variants:
+  - name: baseline
+    role: control
+    artifact: baseline
+    allowedSkills:
+      - react
+      - 123
+`.trim());
+      assert.throws(() => loadEvalConfig(path), /allowedSkills\[1\]/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('absent allowedSkills 字段:variant.allowedSkills === undefined', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+variants:
+  - name: baseline
+    role: control
+    artifact: baseline
+`.trim());
+      const cfg = loadEvalConfig(path);
+      assert.equal(cfg.variants[0].allowedSkills, undefined,
+        'absent vs explicit [] 必须区分');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

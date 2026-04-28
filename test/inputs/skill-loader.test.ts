@@ -88,3 +88,44 @@ describe('resolveArtifacts', () => {
     assert.equal(artifacts[0].skillRoot, undefined);
   });
 });
+
+describe('resolveArtifacts skill isolation (v0.22)', () => {
+  it('default(strictBaseline=true): baseline-kind artifact 自动 allowedSkills=[]', () => {
+    const artifacts = resolveArtifacts(SKILL_DIR, ['baseline', 'v1']);
+    const baseline = artifacts.find((a) => a.name === 'baseline')!;
+    const v1 = artifacts.find((a) => a.name === 'v1')!;
+    assert.deepEqual(baseline.allowedSkills, []);
+    assert.equal(v1.allowedSkills, undefined, 'treatment 不被自动隔离,保持 undefined');
+  });
+
+  it('strictBaseline=false: baseline-kind 不被自动设,allowedSkills 保持 undefined', () => {
+    const artifacts = resolveArtifacts(SKILL_DIR, ['baseline', 'v1'], { strictBaseline: false });
+    const baseline = artifacts.find((a) => a.name === 'baseline')!;
+    assert.equal(baseline.allowedSkills, undefined);
+  });
+
+  it('显式 variantAllowedSkills 优先于 strictBaseline 默认', () => {
+    const artifacts = resolveArtifacts(SKILL_DIR, ['baseline', 'v1'], {
+      strictBaseline: true,
+      variantAllowedSkills: { baseline: ['react-skill'], v1: [] },
+    });
+    const baseline = artifacts.find((a) => a.name === 'baseline')!;
+    const v1 = artifacts.find((a) => a.name === 'v1')!;
+    assert.deepEqual(baseline.allowedSkills, ['react-skill'], 'eval.yaml 显式覆盖 strict-baseline 默认 []');
+    assert.deepEqual(v1.allowedSkills, [], '显式给 treatment 设 [] 也合法');
+  });
+
+  it('cwd-only project-env@/path 也被认作 baseline-kind,strict-baseline 自动隔离', () => {
+    const artifacts = resolveArtifacts(SKILL_DIR, ['project-env@/tmp/proj']);
+    assert.deepEqual(artifacts[0].allowedSkills, [],
+      'kind:baseline 包括 cwd-only custom variant,strict-baseline 一并隔离');
+  });
+
+  it('strictBaseline=true 但 variantAllowedSkills 显式给 baseline 一个非空白名单 → 用白名单', () => {
+    const artifacts = resolveArtifacts(SKILL_DIR, ['baseline'], {
+      strictBaseline: true,
+      variantAllowedSkills: { baseline: ['allowed-one'] },
+    });
+    assert.deepEqual(artifacts[0].allowedSkills, ['allowed-one']);
+  });
+});

@@ -148,7 +148,15 @@ export async function executeTasks({
     const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose);
 
     let execResult: ExecResult;
-    const key = cacheKey(model, executionPlan.cacheSystem, executionPlan.input.prompt, executionPlan.input.cwd);
+    // v0.22 — include allowedSkills in cache key so isolation-on / isolation-off runs
+    // don't share cache entries (would otherwise replay contaminated baseline results).
+    const key = cacheKey(
+      model,
+      executionPlan.cacheSystem,
+      executionPlan.input.prompt,
+      executionPlan.input.cwd,
+      task.artifact.allowedSkills,
+    );
     const cached = cache?.get(key);
     const execStart = Date.now();
     if (cached) {

@@ -194,6 +194,11 @@ export interface ReportMeta {
    *  src/grading/human-gold.ts for the metric definitions. */
   humanAgreement?: ReportHumanAgreement;
   variantConfigs?: VariantConfig[];
+  /** v0.22 — Skill isolation 快照(per-variant)。
+   *  key = variant name;value = allowedSkills(undefined → null,SDK 默认全发现 / [] → 完全隔离 / [...] → 白名单)。
+   *  跨报告对比 verdict / Δ 时,isolation 状态不一致会被 stderr warn 标"不可比"。
+   *  字段缺失意味着报告产自 v0.22 之前(默认全发现,construct validity 不保证)。 */
+  skillIsolation?: Record<string, string[] | null>;
   request?: EvaluationRequest;
   run?: EvaluationRun;
   job?: EvaluationJob;
