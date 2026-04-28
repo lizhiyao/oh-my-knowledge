@@ -23,6 +23,11 @@ export interface VariantResult {
   numToolFailures?: number;
   toolSuccessRate?: number;
   toolNames?: string[];
+  /** v0.22 — per-sample tool call distribution (tool name → call count).
+   *  Same shape as VariantSummary.toolDistribution but at sample granularity.
+   *  Aggregating these gives true call-count totals; aggregating toolNames
+   *  (deduped) only gives "samples-that-used-this-tool" counts. */
+  toolDistribution?: Record<string, number>;
   traceCoverage?: number;
   error?: string;
   compositeScore?: number;
