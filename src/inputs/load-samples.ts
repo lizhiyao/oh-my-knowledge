@@ -62,8 +62,12 @@ export function loadSamples(samplesPath: string): LoadSamplesResult {
   const VALID_PROVENANCE: ReadonlySet<string> = new Set(['human', 'llm-generated', 'production-trace']);
 
   for (const [i, sample] of samples.entries()) {
-    if (!sample.sample_id) throw new Error(`samples[${i}] missing required field: sample_id`);
-    if (!sample.prompt) throw new Error(`samples[${i}] (${sample.sample_id}) missing required field: prompt`);
+    if (!sample.sample_id || typeof sample.sample_id !== 'string') {
+      throw new Error(`samples[${i}] missing or invalid required field: sample_id (must be a non-empty string)`);
+    }
+    if (!sample.prompt || typeof sample.prompt !== 'string') {
+      throw new Error(`samples[${i}] (${sample.sample_id}) missing or invalid required field: prompt (must be a non-empty string)`);
+    }
 
     // v0.22 — validate optional metadata enums; help users typo-check (`'easy?'` etc).
     if (sample.difficulty !== undefined && !VALID_DIFFICULTY.has(sample.difficulty)) {

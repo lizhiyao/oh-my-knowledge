@@ -283,10 +283,20 @@ export async function evolveSkill({
 
   // Evolution loop
   for (let round = 1; round <= rounds; round++) {
-    // Extract weak samples from last accepted evaluation
-    const lastReport = round === 1 ? baselineReport : await evaluate(allVersions[bestRound], {
-      samplesPath: absSamplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, skipPreflight, onProgress,
-    });
+    // Extract weak samples from last accepted evaluation. round=1 reuses baselineReport
+    // (already paid for above). round≥2 re-evaluates the current best skill to get fresh
+    // weak samples — this evaluation costs real money and MUST be added to totalCostUSD,
+    // otherwise the user-facing budget tracker undercounts by ~N-1 evaluations across
+    // an N-round run. (Bug found in v0.22 UltraReview.)
+    let lastReport: Report;
+    if (round === 1) {
+      lastReport = baselineReport;
+    } else {
+      lastReport = await evaluate(allVersions[bestRound], {
+        samplesPath: absSamplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, skipPreflight, onProgress,
+      });
+      totalCostUSD += lastReport.meta.totalCostUSD;
+    }
     const lastVariantKey = Object.keys(lastReport.summary)[0];
     const weakSamples = extractWeakSamples(lastReport, lastVariantKey);
 

@@ -69,16 +69,67 @@ ${skillContent}
     throw new Error('generated result is empty, please retry');
   }
 
-  // Validate required fields
-  for (const [i, s] of samples.entries()) {
-    if (!s.sample_id) s.sample_id = `s${String(i + 1).padStart(3, '0')}`;
-    if (!s.prompt) throw new Error(`samples[${i}] missing required prompt field`);
-    // v0.22 — auto-stamp provenance so downstream tooling (bench diagnose,
-    // sampleQuality aggregate) can distinguish LLM-synthesized samples from
-    // human-curated. LLM-output `provenance` field, if present, is preserved;
-    // otherwise we mark it as 'llm-generated'.
-    if (!s.provenance) s.provenance = 'llm-generated';
+  // Validate required fields + sanitize v0.22 metadata enums *at generator boundary*
+  // (see sanitizeGeneratedSamples).
+  const { stripped } = sanitizeGeneratedSamples(samples);
+  if (stripped.length > 0) {
+    process.stderr.write(
+      `[omk gen-samples] LLM-output 含 ${stripped.length} 个非法元数据字段, 已剥离避免污染:\n  - ${stripped.join('\n  - ')}\n`,
+    );
   }
 
   return { samples, costUSD: result.costUSD };
+}
+
+/**
+ * v0.22 — Validate + sanitize LLM-generated samples at generator boundary.
+ *
+ * Why this exists:
+ *   LLM-output garbage (`capability: 'string'` / `difficulty: 'Easy'` /
+ *   `provenance: 'invalid'`) shouldn't get persisted to disk and trip
+ *   `loadSamples` on the NEXT run/diagnose. We strip invalid metadata fields
+ *   with a stderr warn (don't throw — valid required fields should still
+ *   produce usable samples).
+ *
+ * Behavior:
+ *   - `sample_id` defaulted if missing
+ *   - `prompt` missing → throw (required)
+ *   - `capability` not string[] → strip
+ *   - `difficulty` not in enum → strip
+ *   - `construct` not non-empty string → strip
+ *   - `provenance` not in enum → strip,then auto-stamp 'llm-generated'
+ *
+ * Mutates the samples array in-place (matches generator's existing style).
+ * Returns `{ stripped: string[] }` for warning aggregation + tests.
+ */
+export function sanitizeGeneratedSamples(samples: Sample[]): { stripped: string[] } {
+  const VALID_DIFFICULTY = new Set(['easy', 'medium', 'hard']);
+  const VALID_PROVENANCE = new Set(['human', 'llm-generated', 'production-trace']);
+  const stripped: string[] = [];
+  for (const [i, s] of samples.entries()) {
+    if (!s.sample_id) s.sample_id = `s${String(i + 1).padStart(3, '0')}`;
+    if (!s.prompt) throw new Error(`samples[${i}] missing required prompt field`);
+
+    if (s.capability !== undefined) {
+      if (!Array.isArray(s.capability) || !s.capability.every((c) => typeof c === 'string' && c.length > 0)) {
+        stripped.push(`samples[${i}].capability (${typeof s.capability})`);
+        delete (s as { capability?: unknown }).capability;
+      }
+    }
+    if (s.difficulty !== undefined && !VALID_DIFFICULTY.has(s.difficulty as string)) {
+      stripped.push(`samples[${i}].difficulty=${JSON.stringify(s.difficulty)}`);
+      delete (s as { difficulty?: unknown }).difficulty;
+    }
+    if (s.construct !== undefined && (typeof s.construct !== 'string' || !s.construct)) {
+      stripped.push(`samples[${i}].construct (${typeof s.construct})`);
+      delete (s as { construct?: unknown }).construct;
+    }
+    if (s.provenance !== undefined && !VALID_PROVENANCE.has(s.provenance as string)) {
+      stripped.push(`samples[${i}].provenance=${JSON.stringify(s.provenance)}`);
+      delete (s as { provenance?: unknown }).provenance;
+    }
+    // After stripping invalid provenance, auto-stamp the generator's authority value.
+    if (!s.provenance) s.provenance = 'llm-generated';
+  }
+  return { stripped };
 }

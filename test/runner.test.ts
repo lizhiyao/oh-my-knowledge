@@ -248,7 +248,7 @@ describe('runEvaluation', () => {
           skillDir: SKILL_DIR,
           variantSpecs: asSpecs(['v1', 'v2']),
         }),
-        /missing required field: sample_id/,
+        /required field: sample_id/,
       );
     } finally {
       try { unlinkSync(tmpSamples); } catch { /* ignore */ }

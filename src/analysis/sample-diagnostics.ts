@@ -324,13 +324,24 @@ function scoresMap(entry: ResultEntry, variants: string[]): Record<string, numbe
   return out;
 }
 
-// v0.22 — rubric grade-level keywords (中英),case-insensitive。
+// v0.22 — rubric grade-level keywords (中英)。
 // 这是 static rubric quality signal,跟 ambiguous_rubric (judge stddev runtime 信号) 互补。
+//
+// 关键词选择原则:**指向"评分级别 / 评分维度 / 评分阈值"的强语义词**,不要过宽的字典词。
+// 反例:'分数' (会误命中"打 5 分"等无关用法)、'标准' (会误命中"标准答案")、'应该' (太通用)。
+// 改用组合词 / 评分专用词,提高召回精度。
 const RUBRIC_GRADE_KEYWORDS_ZH: readonly string[] = [
-  '优秀', '良好', '合格', '不合格', '分数', '标准', '必须', '应当', '至少', '应该', '需要',
+  '优秀', '良好', '合格', '不合格', '及格',
+  '满分', '零分', '扣分', '加分', '得分',
+  '评分标准', '判分标准', '评分要点', '评分级别', '判定标准',
+  '至少包含', '必须包含', '不应包含', '应当', '应识别',
 ];
 const RUBRIC_GRADE_KEYWORDS_EN: readonly string[] = [
-  'excellent', 'good', 'poor', 'score', 'grade', 'must', 'should', 'shall', 'at least', 'expected', 'required',
+  'excellent', 'good', 'poor', 'fail', 'pass',
+  'rubric', 'criterion', 'criteria',
+  'must include', 'must contain', 'should include', 'should contain',
+  'at least', 'at most', 'no more than',
+  'scored as', 'graded as', 'full marks', 'full score',
 ];
 
 function containsRubricGradeKeyword(rubric: string): boolean {
@@ -402,6 +413,13 @@ export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: {
   }
   if (diag.byKind.error_prone) {
     lines.push('  - 这些用例执行失败 — 检查环境依赖 / executor 配置 / 用例本身是否过期');
+  }
+  // v0.22 — sample design science signals
+  if (diag.byKind.rubric_clarity_low) {
+    lines.push('  - rubric 太短 / 无评分级别词 — 把 rubric 写成"应识别 X / 必须包含 Y / 至少 N 项"这样的判分细则,让 judge 有可执行标准');
+  }
+  if (diag.byKind.capability_thin) {
+    lines.push('  - 某 capability 维度只 1-2 用例撑 — 要么补 sample 加厚该维度,要么删该 capability(明确不在测试范围),避免单 sample 失败让该维度结论不稳');
   }
 
   lines.push('');

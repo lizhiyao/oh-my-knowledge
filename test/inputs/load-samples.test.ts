@@ -58,14 +58,22 @@ describe('loadSamples', () => {
     const p = tmp('no-id.json');
     cleanups.push(p);
     writeFileSync(p, JSON.stringify([{ prompt: 'hello' }]));
-    assert.throws(() => loadSamples(p), /missing required field: sample_id/);
+    assert.throws(() => loadSamples(p), /required field: sample_id/);
   });
 
   it('缺少 prompt 抛出异常', () => {
     const p = tmp('no-prompt.json');
     cleanups.push(p);
     writeFileSync(p, JSON.stringify([{ sample_id: 'x' }]));
-    assert.throws(() => loadSamples(p), /missing required field: prompt/);
+    assert.throws(() => loadSamples(p), /required field: prompt/);
+  });
+
+  // v0.22 — UltraReview follow-up #6: typeof check for prompt
+  it('prompt 非字符串(数字)抛出异常', () => {
+    const p = tmp('bad-prompt-type.json');
+    cleanups.push(p);
+    writeFileSync(p, JSON.stringify([{ sample_id: 'x', prompt: 123 }]));
+    assert.throws(() => loadSamples(p), /invalid required field: prompt/);
   });
 
   // v0.22 — sample design metadata fields validation
