@@ -95,6 +95,7 @@ OMK_LANG=en omk bench report
 | **断言取反 + 组合** | 通用 `not: true` 字段 + `assert-set` (any/all) 任意嵌套 |
 | **六维评估** | 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性独立展示 |
 | **统计严谨性** | Bootstrap CI / Krippendorff α / Length-debias / Saturation curve |
+| **用例隔离 (construct validity)** | `--strict-baseline` (default ON) 切断 baseline 通过 `~/.claude/skills/` auto-discovery 拿到被测 skill 的污染路径,主 session + subagent 双堵。eval.yaml `allowedSkills` 支持 per-variant 白名单 |
 | **Verdict 一行结论** | `omk bench verdict <id>` 六档判定 + ship 建议 + exit code 路由,与 HTML 报告 verdict pill 共享规则 |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` 三 metric — 反幻觉 + 切题度 + context 覆盖,自动继承 length-debias |
 | **样本质量诊断** | `omk bench diagnose <id>` 7 类 issue（区分度低 / 重复 / 歧义 / 成本异常 / 全 fail 等）+ healthScore 0-100 |

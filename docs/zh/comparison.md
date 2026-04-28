@@ -45,12 +45,15 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 |---|---|---|---|---|---|---|---|---|
 | 三层独立评分(事实/行为/评委) | ✓ | ✗ | 部分 | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 三层 all-pass CI gate | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 用例隔离(per-variant skill 隔离 / construct validity) | ✓ 默认开 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | 部分 |
 | 一行 verdict(PROGRESS / REGRESS / NOISE / ...) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 知识缺口信号(严重度加权) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 用例质量诊断(7 类 issue) | ✓ | 仅低区分度 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 失败 case LLM 聚类 | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 三层独立评分能挡住"复合分掩盖单层崩盘":`fact 4.5→2.5 + judge 3→5` 在复合均值看着无伤,但三层 all-pass gate 能立刻抓出来。
+
+**用例隔离**是 v0.22 新增的 construct validity 维度:跑 `baseline` vs `wcc-skill` 时,Claude Agent SDK 的默认 skill auto-discovery 会让 `baseline` 静默拿到用户 `~/.claude/skills/` 里的所有 skill——包括正在被测的那个。omk 默认 `--strict-baseline`(切断 main session + subagent 双通道),`--no-strict-baseline` 是逃生口,eval.yaml 支持 per-variant `allowedSkills` 白名单。inspect-ai 的 per-sample solver 模式能达到类似效果但需要显式逐题 wiring;promptfoo / DeepEval / OpenAI Evals 都不处理这维度。
 
 ## 评委
 

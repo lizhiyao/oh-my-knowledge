@@ -55,6 +55,12 @@ interface RunConfig {
   lengthDebias?: boolean;
   /** v0.22 — hard budget caps from CLI or config. */
   budget?: import('./types/index.js').EvalBudget;
+  /** v0.22 — Skill isolation default for baseline-kind variants. Default true.
+   *  CLI flag --no-strict-baseline reverts to pre-v0.22 behavior. */
+  strictBaseline?: boolean;
+  /** v0.22 — Per-variant allowedSkills override extracted from eval.yaml. Always wins
+   *  over strictBaseline default. Keyed by variant name. */
+  variantAllowedSkills?: Record<string, string[]>;
   onProgress?: ProgressCallback | null;
 }
 
@@ -186,6 +192,10 @@ const RUN_OPTIONS: ParseArgsConfig['options'] = {
   retry: { type: 'string' },
   resume: { type: 'string' },
   'layered-stats': { type: 'boolean' },
+  // v0.22 — strict-baseline default true. Declare both forms; reconcile in
+  // parseRunConfig (后者赢)。strict-baseline 没传 + no-strict-baseline 没传 = default true。
+  'strict-baseline': { type: 'boolean' },
+  'no-strict-baseline': { type: 'boolean' },
 };
 
 // ---------------------------------------------------------------------------
@@ -309,6 +319,23 @@ function parseRunConfig(
   const blind = (values.blind as boolean | undefined) ?? evalConfig?.blind ?? false;
   const layeredStats = (values['layered-stats'] as boolean | undefined) ?? false;
 
+  // v0.22 — strict-baseline default true. Reconcile both flag forms.
+  // Priority: --no-strict-baseline > --strict-baseline > undefined(=true).
+  const noStrictFlag = values['no-strict-baseline'] as boolean | undefined;
+  const strictFlag = values['strict-baseline'] as boolean | undefined;
+  const strictBaseline: boolean = noStrictFlag === true ? false : (strictFlag ?? true);
+
+  // v0.22 — extract eval.yaml variant.allowedSkills overrides (per-variant). Always
+  // wins over strictBaseline default. Empty object when no eval.yaml or no overrides.
+  const variantAllowedSkills: Record<string, string[]> = {};
+  if (evalConfig?.variants) {
+    for (const v of evalConfig.variants) {
+      if (v.allowedSkills !== undefined) {
+        variantAllowedSkills[v.name] = v.allowedSkills;
+      }
+    }
+  }
+
   return {
     values,
     config: {
@@ -333,6 +360,8 @@ function parseRunConfig(
       blind,
       layeredStats,
       budget: evalConfig?.budget,
+      strictBaseline,
+      ...(Object.keys(variantAllowedSkills).length > 0 && { variantAllowedSkills }),
     },
   };
 }

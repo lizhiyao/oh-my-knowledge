@@ -8,6 +8,24 @@ import { asErrorLike, buildExecEnv, DEFAULT_TIMEOUT_MS, errorMessage } from './s
 
 let sdkQuery: ClaudeSdkModule['query'] | null = null;
 
+/**
+ * v0.22 — Map ExecutorInput.allowedSkills to SDK query options for skill isolation.
+ *   undefined → {} (SDK default: full ~/.claude/skills/ discovery)
+ *   []        → { skills: [], disallowedTools: ['Skill'] } (main session + subagent 双堵)
+ *   [...]     → { skills: [...] } (main session whitelist; subagent 走独立 channel,
+ *               白名单场景 v1 不强制 subagent 跟随)
+ *
+ * Exported for unit tests to lock the option-shape contract.
+ */
+export function buildSdkIsolationOptions(allowedSkills: string[] | undefined): {
+  skills?: string[];
+  disallowedTools?: string[];
+} {
+  if (allowedSkills === undefined) return {};
+  if (allowedSkills.length === 0) return { skills: allowedSkills, disallowedTools: ['Skill'] };
+  return { skills: allowedSkills };
+}
+
 async function getSdkQuery(): Promise<ClaudeSdkModule['query']> {
   if (!sdkQuery) {
     const sdk = await import('@anthropic-ai/claude-agent-sdk') as ClaudeSdkModule;
@@ -16,7 +34,7 @@ async function getSdkQuery(): Promise<ClaudeSdkModule['query']> {
   return sdkQuery;
 }
 
-export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, verbose = false }: ExecutorInput): Promise<ExecResult> {
+export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, verbose = false, allowedSkills }: ExecutorInput): Promise<ExecResult> {
   const start = Date.now();
   const abortController = new AbortController();
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
@@ -28,6 +46,7 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
 
   try {
     const query = await getSdkQuery();
+    const isolationOpts = buildSdkIsolationOptions(allowedSkills);
     const stream = query({
       prompt,
       options: {
@@ -38,6 +57,7 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
         allowDangerouslySkipPermissions: true,
         abortController,
         env,
+        ...isolationOpts,
       },
     });
 
