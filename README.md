@@ -97,7 +97,7 @@ You can also just say "compare v1 vs v2 for me" or "improve this artifact" — o
 | **Assertion negation + composition** | universal `not: true` field + `assert-set` (any/all) with arbitrary nesting |
 | **Six-dim evaluation** | Fact / Behavior / LLM-judge / Cost / Efficiency / Stability shown independently |
 | **Statistical rigor** | Bootstrap CI / Krippendorff α / length-debias / saturation curve |
-| **Construct-validity isolation** | `--strict-baseline` (default ON) cuts the `~/.claude/skills/` auto-discovery contamination path so baseline doesn't silently see the skill it's being compared against. Double-blocked: main-session skills + subagent Skill tool. eval.yaml `allowedSkills` for per-variant whitelists |
+| **Construct-validity isolation** | `--strict-baseline` (default ON) cuts three contamination channels so baseline doesn't silently see the skill it's being compared against: (1) SDK skill auto-discovery, (2) subagent Skill tool, (3) cwd file-system access via the `skills/<name>/` symlink that's normally there for the treatment variant. eval.yaml `allowedSkills` for per-variant whitelists |
 | **One-line verdict** | `omk bench verdict <id>` six-tier verdict + ship recommendation + exit-code routing; HTML pill shares the same rules |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage; auto-inherits length-debias |
 | **Sample diagnostics** | `omk bench diagnose <id>` — 7 issue kinds (low discrimination / duplicates / ambiguous rubric / cost outliers / etc.) + 0-100 healthScore |
