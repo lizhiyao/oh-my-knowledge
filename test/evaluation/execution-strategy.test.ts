@@ -79,6 +79,40 @@ describe('resolveExecutionStrategy', () => {
     const plan = resolveExecutionStrategy(t, 'sonnet');
     assert.equal(plan.input.allowedSkills, undefined);
   });
+
+  // v0.22 — strict-baseline cwd 沙箱:baseline 跑在 isolated empty dir,避免
+  // 通过 Glob/Read 工具走 cwd 路径绕过 SDK skill isolation 直接读 skills/symlink。
+  it('strict baseline (kind=baseline + allowedSkills=[]) + 没显式 cwd → effectiveCwd 是 isolated dir', () => {
+    const t = mockTask('baseline', null);
+    t.artifact.allowedSkills = [];
+    t.cwd = null;
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.ok(plan.input.cwd?.includes('.oh-my-knowledge/isolated-cwd'),
+      `cwd should be isolated, got: ${plan.input.cwd}`);
+  });
+
+  it('strict baseline 但用户显式给 cwd → 不动用户 cwd(用户自己负责)', () => {
+    const t = mockTask('baseline', null);
+    t.artifact.allowedSkills = [];
+    t.cwd = '/tmp/user-explicit';
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.equal(plan.input.cwd, '/tmp/user-explicit');
+  });
+
+  it('non-strict baseline (allowedSkills undefined) → 不强制 isolated cwd(原行为)', () => {
+    const t = mockTask('baseline', null);
+    t.cwd = null;
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.equal(plan.input.cwd, null, '默认行为下 cwd 仍是用户传入的 null');
+  });
+
+  it('treatment (kind=skill) + allowedSkills=[] → 不动 cwd(隔离仅对 baseline-kind)', () => {
+    const t = mockTask('skill', 'sys');
+    t.artifact.allowedSkills = [];
+    t.cwd = '/some/skill/root';
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.equal(plan.input.cwd, '/some/skill/root');
+  });
 });
 
 describe('buildVariantConfig skill isolation (v0.22)', () => {

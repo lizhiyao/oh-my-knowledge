@@ -15,7 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   改动范围:
   - **CLI flag**:新增 `--strict-baseline`(default true) / `--no-strict-baseline`(显式 opt-out 逃生口)。`bench run` + `bench gate` 同步支持。pre-flight 在 `--no-strict-baseline` + `~/.claude/skills/` 非空时 stderr 显式提醒。
   - **eval.yaml schema**:新增 `variants[].allowedSkills?: string[]` 显式声明,优先级高于 CLI flag。`undefined` = 默认 / `[]` = 完全隔离 / `[name1, name2]` = 白名单。YAML `allowedSkills:` 不写值会被 parse 成 null,显式 reject(语义不清)。
-  - **executor 行为**:claude-sdk 完整支持(注入 `skills` + `disallowedTools:['Skill']`);claude-cli degraded(`[]` 映射 `--disable-slash-commands` + warn,任意非空白名单 throw,提示改 sdk);script 仅 stderr warn 不参与 isolation。
+  - **executor 行为**:claude-sdk 注入 `skills` + `disallowedTools:['Skill']`;**claude-cli 等价**(`--disable-slash-commands` + `--disallowedTools Skill`,文档说前者就是 "Disable all skills"),任意非空白名单 throw 提示改 sdk(CLI 没暴露 partial whitelist);script 仅 stderr warn 不参与 isolation。
   - **cache key 升级 `v2:` prefix + 含 allowedSkills**:旧 cache 一次性失效(避免 strict / non-strict 切换时误命中污染结果)。同 prompt 不同 isolation 必拿不同 cache key。
   - **report.meta.skillIsolation**:新字段记录每个 variant 的 allowedSkills 快照(undefined → null),供跨报告对比。`--resume` 时 isolation 状态不一致 stderr warn 不阻塞。
   - **隔离覆盖**:main session skills(SDK `options.skills`)+ subagent Skill 工具(SDK `options.disallowedTools`)。MCP servers 已默认堵(SDK `settingSources` 默认 `[]` + omk 不传 `mcpServers`)。
