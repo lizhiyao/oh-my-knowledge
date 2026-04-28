@@ -624,7 +624,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
     if (!existsSync(analysesDir)) mkdirSync(analysesDir, { recursive: true });
     if (!existsSync(jobsDir)) mkdirSync(jobsDir, { recursive: true });
 
-    const p = port || Number(process.env.OMK_BENCH_PORT || DEFAULT_PORT);
+    const p = port ?? Number(process.env.OMK_BENCH_PORT || DEFAULT_PORT);
     const host = '127.0.0.1';
 
     const boot = (listenPort: number): Promise<Server> => new Promise((resolve, reject) => {

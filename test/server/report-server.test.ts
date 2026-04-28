@@ -129,7 +129,7 @@ describe('report-server', () => {
     writeFileSync(join(TEST_DIR, 'test-run-001.json'), JSON.stringify(SAMPLE_REPORT, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-001.json'), JSON.stringify(SAMPLE_JOB, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-002.json'), JSON.stringify(FAILED_JOB, null, 2));
-    server = createReportServer({ reportsDir: TEST_DIR, jobsDir: JOBS_DIR });
+    server = createReportServer({ port: 0, reportsDir: TEST_DIR, jobsDir: JOBS_DIR });
     baseUrl = await server.start();
   });
 

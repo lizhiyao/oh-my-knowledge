@@ -6,11 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ---
 
-## [Unreleased]
+## [0.22.0] - 2026-04-28
 
 ### Fixed
 
 - **`VariantSummary.toolDistribution` 修真实 call count**:之前 aggregate 阶段按 `result.toolNames`(per-sample dedup 列表)累加,语义是"出现该 tool 的 sample 数",跟字段名"工具调用分布"不符 — 用户读 summary 看到 `Read: 5` 以为模型调了 5 次 Read,实际是"5 个样本里出现过 Read"。修法:`VariantResult` 加 per-sample `toolDistribution`(从 `toolCalls` reduce 得到真实 call count map),aggregate 时 sum per-sample 字段。旧报告 result 没 `toolDistribution` 字段时 fallback 到老 `toolNames` 语义保兼容。
+- **release hardening**:
+  - report server 测试改用动态端口(`port: 0`),避免本机 7799 被占用导致测试套件偶发失败。
+  - `eval.yaml` 中的 `blind: true` 不再被 `bench run` 的 CLI 默认值覆盖;只有显式传 `--blind` 时才覆盖 config。
+  - 启动期更新检查改为从 `dist/src` 向上查找 `package.json`,修复发布包内 `dist/src/package.json` 不存在导致的静默失效。
 
 ### Changed
 

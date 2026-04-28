@@ -376,8 +376,19 @@ async function checkUpdate(lang: CliLang): Promise<void> {
     const { fileURLToPath } = await import('node:url');
     const { dirname, join } = await import('node:path');
     const __dirname: string = dirname(fileURLToPath(import.meta.url));
+    const findPackageJson = (startDir: string): string | null => {
+      let dir = startDir;
+      for (let i = 0; i < 5; i++) {
+        const candidate = join(dir, 'package.json');
+        if (existsSync(candidate)) return candidate;
+        dir = dirname(dir);
+      }
+      return null;
+    };
+    const pkgPath = findPackageJson(__dirname);
+    if (!pkgPath) return;
     const pkg: { name: string; version: string; publishConfig?: { registry?: string } } =
-      JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf-8'));
+      JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const registry: string = pkg.publishConfig?.registry || 'https://registry.npmjs.org';
     const res: Response = await fetch(`${registry}/${pkg.name}/latest`, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) return;
@@ -547,7 +558,7 @@ function makeOnProgress(lang: CliLang): (info: ProgressInfo) => void {
 async function handleRun(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const { values, config } = parseRunConfig(argv, {
-    blind: { type: 'boolean', default: false },
+    blind: { type: 'boolean' },
     repeat: { type: 'string', default: '1' },
     'judge-repeat': { type: 'string', default: '1' },
     'judge-models': { type: 'string' },
@@ -562,7 +573,9 @@ async function handleRun(argv: string[]): Promise<void> {
 
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
 
-  config.blind = values.blind as boolean | undefined;
+  if (values.blind !== undefined) {
+    config.blind = values.blind as boolean | undefined;
+  }
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
   // --repeat 输入校验: 非 ≥1 整数时提示并钳到 1, 不静默掩盖用户错字 / 极端输入。
