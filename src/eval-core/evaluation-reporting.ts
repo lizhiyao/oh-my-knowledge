@@ -203,6 +203,12 @@ export function aggregateReport({
       ...(bootstrapEnabled ? { evaluationFramework: 'both' as const } : {}),
       ...(pairComparisons ? { pairComparisons } : {}),
       variantConfigs: artifacts.map((artifact) => buildVariantConfig(artifact)),
+      // v0.22 — Skill isolation snapshot per variant. variantName → allowedSkills (null
+      // 表示该 variant 没声明 = SDK 默认全发现)。跨报告对比 verdict / Δ 时,isolation
+      // 不一致(一个报告有 [],另一个没字段)即不可比。renderer 可据此打提示。
+      skillIsolation: Object.fromEntries(
+        artifacts.map((a) => [a.name, a.allowedSkills ?? null]),
+      ),
       request,
       run,
       job,

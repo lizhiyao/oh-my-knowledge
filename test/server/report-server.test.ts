@@ -129,7 +129,7 @@ describe('report-server', () => {
     writeFileSync(join(TEST_DIR, 'test-run-001.json'), JSON.stringify(SAMPLE_REPORT, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-001.json'), JSON.stringify(SAMPLE_JOB, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-002.json'), JSON.stringify(FAILED_JOB, null, 2));
-    server = createReportServer({ reportsDir: TEST_DIR, jobsDir: JOBS_DIR });
+    server = createReportServer({ port: 0, reportsDir: TEST_DIR, jobsDir: JOBS_DIR });
     baseUrl = await server.start();
   });
 
@@ -146,8 +146,8 @@ describe('report-server', () => {
     assert.equal(data.ok, true);
   });
 
-  it('GET /api/runs returns run list', async () => {
-    const res = await fetch(`${baseUrl}/api/runs`);
+  it('GET /api/reports returns run list', async () => {
+    const res = await fetch(`${baseUrl}/api/reports`);
     assert.equal(res.status, 200);
     const data = JSON.parse(res.body);
     assert.ok(Array.isArray(data));
@@ -188,16 +188,16 @@ describe('report-server', () => {
     assert.equal(data[0].jobId, 'job-test-run-001');
   });
 
-  it('GET /api/run/:id returns run detail', async () => {
-    const res = await fetch(`${baseUrl}/api/run/test-run-001`);
+  it('GET /api/reports/:id returns run detail', async () => {
+    const res = await fetch(`${baseUrl}/api/reports/test-run-001`);
     assert.equal(res.status, 200);
     const data = JSON.parse(res.body);
     assert.equal(data.id, 'test-run-001');
     assert.equal(data.meta.model, 'sonnet');
   });
 
-  it('GET /api/run/:id returns 404 for missing run', async () => {
-    const res = await fetch(`${baseUrl}/api/run/nonexistent`);
+  it('GET /api/reports/:id returns 404 for missing run', async () => {
+    const res = await fetch(`${baseUrl}/api/reports/nonexistent`);
     assert.equal(res.status, 404);
   });
 
@@ -208,27 +208,27 @@ describe('report-server', () => {
     assert.ok(res.body.includes('test-run-001'));
   });
 
-  it('GET /run/:id returns HTML detail page', async () => {
-    const res = await fetch(`${baseUrl}/run/test-run-001`);
+  it('GET /reports/:id returns HTML detail page', async () => {
+    const res = await fetch(`${baseUrl}/reports/test-run-001`);
     assert.equal(res.status, 200);
     assert.ok(res.headers['content-type']!.includes('text/html'));
     assert.ok(res.body.includes('test-run-001'));
   });
 
-  it('DELETE /api/run/:id removes report', async () => {
+  it('DELETE /api/reports/:id removes report', async () => {
     // Create a temp report to delete
     writeFileSync(join(TEST_DIR, 'to-delete.json'), JSON.stringify({ ...SAMPLE_REPORT, id: 'to-delete' }));
 
-    const res = await fetch(`${baseUrl}/api/run/to-delete`, { method: 'DELETE' });
+    const res = await fetch(`${baseUrl}/api/reports/to-delete`, { method: 'DELETE' });
     assert.equal(res.status, 200);
 
     // Verify it's gone
-    const check = await fetch(`${baseUrl}/api/run/to-delete`);
+    const check = await fetch(`${baseUrl}/api/reports/to-delete`);
     assert.equal(check.status, 404);
   });
 
-  it('DELETE /api/run/:id returns 404 for missing run', async () => {
-    const res = await fetch(`${baseUrl}/api/run/nonexistent`, { method: 'DELETE' });
+  it('DELETE /api/reports/:id returns 404 for missing run', async () => {
+    const res = await fetch(`${baseUrl}/api/reports/nonexistent`, { method: 'DELETE' });
     assert.equal(res.status, 404);
   });
 

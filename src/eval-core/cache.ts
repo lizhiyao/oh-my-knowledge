@@ -2,8 +2,12 @@
  * Executor result cache.
  *
  * Caches successful executor results to disk to avoid redundant API calls.
- * Cache key = sha256(model + system + prompt).
+ * Cache key v2 = "v2:" + sha256(model + system + prompt + cwd + allowedSkills).
  * Loaded into memory on init, flushed to disk on save().
+ *
+ * v0.22 — key prefix bump v1 → v2 invalidates pre-isolation cache entries
+ * (otherwise a strict-baseline run could replay a non-isolated cached result
+ * and silently keep the contamination).
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -53,9 +57,21 @@ export function createCache(cacheDir: string): ExecutorCache {
   };
 }
 
-export function cacheKey(model: string, system: string, prompt: string, cwd?: string | null): string {
-  return createHash('sha256')
-    .update(`${model || ''}\n${system || ''}\n${prompt || ''}\n${cwd || ''}`)
+export function cacheKey(
+  model: string,
+  system: string,
+  prompt: string,
+  cwd?: string | null,
+  allowedSkills?: string[],
+): string {
+  // allowedSkills 序列化:undefined → "" / [] → "[]" / [...] → 排序后 JSON。
+  // 排序保证 ["a","b"] 和 ["b","a"] 命中同一缓存(语义等价)。
+  const isoStr = allowedSkills === undefined
+    ? ''
+    : JSON.stringify([...allowedSkills].sort());
+  const hash = createHash('sha256')
+    .update(`${model || ''}\n${system || ''}\n${prompt || ''}\n${cwd || ''}\n${isoStr}`)
     .digest('hex')
     .slice(0, 16);
+  return `v2:${hash}`;
 }

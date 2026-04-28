@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { computeReportCoverage } from '../analysis/coverage-analyzer.js';
 import { computeReportGapRates } from '../analysis/gap-analyzer.js';
@@ -229,6 +231,48 @@ function emitPowerWarnings(sampleCount: number, repeat: number): void {
   }
 }
 
+/**
+ * Pre-flight warning emitted when user explicitly opts out of strict-baseline
+ * (--no-strict-baseline) AND there are baseline-kind variants AND ~/.claude/skills/
+ * has content. baseline 会被 SDK 全发现污染 → verdict / Δ 不可信。
+ *
+ * 默认 strict 时(strictBaseline === true / undefined)不出 warn。
+ *
+ * Exported for tests.
+ */
+export function buildIsolationWarnings(
+  artifacts: Artifact[],
+  strictBaseline: boolean | undefined,
+): string[] {
+  // Only warn when user explicitly disabled isolation.
+  if (strictBaseline !== false) return [];
+
+  const hasBaselineKind = artifacts.some((a) => a.kind === 'baseline');
+  if (!hasBaselineKind) return [];
+
+  // Check ~/.claude/skills/ for content (avoid hard-coding home — read at runtime).
+  const skillsDir = join(homedir(), '.claude', 'skills');
+  if (!existsSync(skillsDir)) return [];
+
+  let skillCount = 0;
+  try {
+    skillCount = readdirSync(skillsDir).filter((entry) => !entry.startsWith('.')).length;
+  } catch {
+    return [];
+  }
+  if (skillCount === 0) return [];
+
+  return [
+    `⚠ baseline 隔离已关闭(--no-strict-baseline)。检测到 ~/.claude/skills/ 内有 ${skillCount} 个 skill, baseline variant 可能被 auto-discovery 污染。除非你确认要这种比较,建议恢复默认 strict 模式。`,
+  ];
+}
+
+function emitIsolationWarnings(artifacts: Artifact[], strictBaseline: boolean | undefined): void {
+  for (const w of buildIsolationWarnings(artifacts, strictBaseline)) {
+    process.stderr.write(`${w}\n`);
+  }
+}
+
 function finalizeEvaluationReport({
   report,
   results,
@@ -326,6 +370,10 @@ export interface EvaluationPipelineOptions {
   lengthDebias?: boolean;
   /** v0.22 — hard budget caps. */
   budget?: import('../types/index.js').EvalBudget;
+  /** v0.22 — strict-baseline default state (only used to decide whether to emit
+   *  isolation-disabled pre-flight warnings). True/undefined = default behavior
+   *  (no warning); false = user explicitly disabled, warn if ~/.claude/skills/ has content. */
+  strictBaseline?: boolean;
 }
 
 export async function executeEvaluationPipeline({
@@ -366,6 +414,7 @@ export async function executeEvaluationPipeline({
   bootstrapSamples,
   lengthDebias = true,
   budget,
+  strictBaseline,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -417,6 +466,8 @@ export async function executeEvaluationPipeline({
     // σ before the run); they're hard-floor + experience-based thresholds. Verdict
     // gate (computeVerdict) handles real power claims post-hoc.
     emitPowerWarnings(samples.length, repeat ?? 1);
+    // v0.22 — Isolation pre-flight warning (--no-strict-baseline + ~/.claude/skills/ non-empty)
+    emitIsolationWarnings(artifacts, strictBaseline);
 
     // Pre-build a per-executor map for ensemble judges. Each unique executor name
     // gets one ExecutorFn, shared across all judges using that executor. The default

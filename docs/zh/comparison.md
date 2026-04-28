@@ -45,12 +45,15 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 |---|---|---|---|---|---|---|---|---|
 | 三层独立评分(事实/行为/评委) | ✓ | ✗ | 部分 | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 三层 all-pass CI gate | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| 用例隔离(per-variant skill 隔离 / construct validity) | ✓ 默认开 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | 部分 |
 | 一行 verdict(PROGRESS / REGRESS / NOISE / ...) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 知识缺口信号(严重度加权) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 用例质量诊断(7 类 issue) | ✓ | 仅低区分度 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 失败 case LLM 聚类 | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 三层独立评分能挡住"复合分掩盖单层崩盘":`fact 4.5→2.5 + judge 3→5` 在复合均值看着无伤,但三层 all-pass gate 能立刻抓出来。
+
+**用例隔离**是 v0.22 新增的 construct validity 维度:跑 `baseline` vs `wcc-skill` 时, 三条 channel 都可能让 `baseline` 静默拿到用户 `~/.claude/skills/` 里被测的那个 skill。omk 默认 `--strict-baseline` 把三条都堵掉:(1) SDK skill auto-discovery,通过 `options.skills:[]`;(2) subagent Skill 工具,通过 `options.disallowedTools:['Skill']`;(3) cwd 文件系统访问 — baseline 默认 cwd 是用户评测工作目录,那里通常有 `skills/<name>/` symlink 给 treatment 用,baseline 用 `Glob` + `Read` 顺 symlink 直读 `SKILL.md` 就完全绕过 SDK 隔离。omk 在用户没显式指定 cwd 时把 baseline cwd 切到 `~/.oh-my-knowledge/isolated-cwd/`(stable 空目录,cache 一致)。`--no-strict-baseline` 是逃生口,eval.yaml 支持 per-variant `allowedSkills` 白名单。inspect-ai 的 per-sample solver 模式能达到类似效果但需要显式逐题 wiring;promptfoo / DeepEval / OpenAI Evals 都不处理这维度。
 
 ## 评委
 

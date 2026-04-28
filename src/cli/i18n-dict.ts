@@ -566,6 +566,15 @@ bench run 选项:
   --layered-stats        默认在 HTML 报告里展开三层 (fact/behavior/judge) 独立
                          显著性细分。不加这个 flag 时, 细分会折叠在每个对比下
                          的 click-to-expand summary 里。
+  --strict-baseline      (默认开启) 对 baseline-kind variant 强制隔离 skill 自动
+                         发现 + Skill 工具调用, 切断 ~/.claude/skills/ 污染路径,
+                         保证 skill 评测的 construct validity。eval.yaml 显式
+                         allowedSkills 优先。注: v0.22 默认行为变更, 旧报告与新
+                         报告 verdict / Δ 不可跨版本对比 (CHANGELOG 标注)。
+  --no-strict-baseline   显式关闭 strict-baseline (退回 v0.21 行为, baseline 走
+                         默认 SDK skill 全发现)。少数场景下可能想要这个 (例如
+                         评测 skill 文档对默认全发现行为的增量影响)。开启时
+                         pre-flight 会 stderr 提醒, 因为 verdict / Δ 易受污染。
 
 bench gate 选项:
   (与 bench run 相同, 额外加:)
@@ -706,6 +715,19 @@ Options for "bench run":
                          significance breakdown in the HTML report by default.
                          Without this flag, the breakdown is collapsed behind a
                          click-to-expand summary under each comparison.
+  --strict-baseline      (default ON) Isolate skill auto-discovery + Skill tool
+                         use for baseline-kind variants. Cuts the ~/.claude/skills/
+                         contamination path so skill evaluations have valid
+                         construct validity. Explicit eval.yaml allowedSkills
+                         takes precedence. Note: v0.22 default-behavior change —
+                         pre-v0.22 reports cannot be compared head-to-head on
+                         verdict / Δ (see CHANGELOG).
+  --no-strict-baseline   Explicitly turn strict-baseline OFF (reverts to pre-v0.22
+                         behavior: baseline sees all auto-discovered skills). Use
+                         only in narrow scenarios (e.g. measuring how much a skill
+                         doc adds on top of full default discovery). Pre-flight
+                         emits a stderr warning when this flag is set, because
+                         verdict / Δ are vulnerable to skill contamination.
 
 Options for "bench gate":
   (same as "bench run", plus:)

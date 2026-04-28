@@ -419,7 +419,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
         return;
       }
 
-      if (path === '/api/runs') {
+      if (path === '/api/reports') {
         const runs = await queryRunList(reportStore);
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify(runs));
@@ -548,15 +548,15 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
         return;
       }
 
-      const runApiMatch = path.match(/^\/api\/run\/(.+)$/);
-      if (runApiMatch) {
-        const id = decodeURIComponent(runApiMatch[1]);
+      const reportApiMatch = path.match(/^\/api\/reports\/(.+)$/);
+      if (reportApiMatch) {
+        const id = decodeURIComponent(reportApiMatch[1]);
 
         if (req.method === 'DELETE') {
           const removed = await reportStore.remove(id);
           if (!removed) {
             res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'run not found' }));
+            res.end(JSON.stringify({ error: 'report not found' }));
           } else {
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ ok: true }));
@@ -564,14 +564,14 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
           return;
         }
 
-        const run = await queryRun(reportStore, id);
-        if (!run) {
+        const report = await queryRun(reportStore, id);
+        if (!report) {
           res.writeHead(404, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'run not found' }));
+          res.end(JSON.stringify({ error: 'report not found' }));
           return;
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(run));
+        res.end(JSON.stringify(report));
         return;
       }
 
@@ -595,11 +595,11 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
         return;
       }
 
-      const runPageMatch = path.match(/^\/run\/(.+)$/);
-      if (runPageMatch) {
-        const run = await queryRun(reportStore, decodeURIComponent(runPageMatch[1]));
-        res.writeHead(run ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(run?.each ? renderEachRunDetail(run) : renderRunDetail(run));
+      const reportPageMatch = path.match(/^\/reports\/(.+)$/);
+      if (reportPageMatch) {
+        const report = await queryRun(reportStore, decodeURIComponent(reportPageMatch[1]));
+        res.writeHead(report ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(report?.each ? renderEachRunDetail(report) : renderRunDetail(report));
         return;
       }
 
@@ -624,7 +624,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
     if (!existsSync(analysesDir)) mkdirSync(analysesDir, { recursive: true });
     if (!existsSync(jobsDir)) mkdirSync(jobsDir, { recursive: true });
 
-    const p = port || Number(process.env.OMK_BENCH_PORT || DEFAULT_PORT);
+    const p = port ?? Number(process.env.OMK_BENCH_PORT || DEFAULT_PORT);
     const host = '127.0.0.1';
 
     const boot = (listenPort: number): Promise<Server> => new Promise((resolve, reject) => {

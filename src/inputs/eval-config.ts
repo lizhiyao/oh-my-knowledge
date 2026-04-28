@@ -75,6 +75,26 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     if (v.cwd !== undefined && typeof v.cwd !== 'string') {
       throw new Error(`${configPath}: variants[${i}].cwd must be a string`);
     }
+    // v0.22 — allowedSkills schema check. YAML key without value parses as null,
+    // which is ambiguous ("none" vs "default"); reject so users must write `[]`
+    // explicitly. undefined (key absent) means "use --strict-baseline default".
+    let allowedSkills: string[] | undefined;
+    if (v.allowedSkills !== undefined) {
+      if (v.allowedSkills === null) {
+        throw new Error(
+          `${configPath}: variants[${i}].allowedSkills must be an array (use [] to disable skill discovery, or omit the key for default behavior). YAML \`allowedSkills:\` without a value parses as null, which is ambiguous.`,
+        );
+      }
+      if (!Array.isArray(v.allowedSkills)) {
+        throw new Error(`${configPath}: variants[${i}].allowedSkills must be an array of strings`);
+      }
+      for (const [j, name] of (v.allowedSkills as unknown[]).entries()) {
+        if (typeof name !== 'string' || !name) {
+          throw new Error(`${configPath}: variants[${i}].allowedSkills[${j}] must be a non-empty string`);
+        }
+      }
+      allowedSkills = v.allowedSkills as string[];
+    }
     if (seen.has(v.name)) {
       throw new Error(`${configPath}: variants[${i}].name "${v.name}" is duplicated`);
     }
@@ -85,6 +105,7 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
       role: v.role as ExperimentRole,
       artifact: v.artifact,
       cwd: v.cwd as string | undefined,
+      ...(allowedSkills !== undefined && { allowedSkills }),
     });
   }
 

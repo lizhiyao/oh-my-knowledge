@@ -55,6 +55,12 @@ interface RunConfig {
   lengthDebias?: boolean;
   /** v0.22 — hard budget caps from CLI or config. */
   budget?: import('./types/index.js').EvalBudget;
+  /** v0.22 — Skill isolation default for baseline-kind variants. Default true.
+   *  CLI flag --no-strict-baseline reverts to pre-v0.22 behavior. */
+  strictBaseline?: boolean;
+  /** v0.22 — Per-variant allowedSkills override extracted from eval.yaml. Always wins
+   *  over strictBaseline default. Keyed by variant name. */
+  variantAllowedSkills?: Record<string, string[]>;
   onProgress?: ProgressCallback | null;
 }
 
@@ -186,6 +192,10 @@ const RUN_OPTIONS: ParseArgsConfig['options'] = {
   retry: { type: 'string' },
   resume: { type: 'string' },
   'layered-stats': { type: 'boolean' },
+  // v0.22 — strict-baseline default true. Declare both forms; reconcile in
+  // parseRunConfig (后者赢)。strict-baseline 没传 + no-strict-baseline 没传 = default true。
+  'strict-baseline': { type: 'boolean' },
+  'no-strict-baseline': { type: 'boolean' },
 };
 
 // ---------------------------------------------------------------------------
@@ -309,6 +319,23 @@ function parseRunConfig(
   const blind = (values.blind as boolean | undefined) ?? evalConfig?.blind ?? false;
   const layeredStats = (values['layered-stats'] as boolean | undefined) ?? false;
 
+  // v0.22 — strict-baseline default true. Reconcile both flag forms.
+  // Priority: --no-strict-baseline > --strict-baseline > undefined(=true).
+  const noStrictFlag = values['no-strict-baseline'] as boolean | undefined;
+  const strictFlag = values['strict-baseline'] as boolean | undefined;
+  const strictBaseline: boolean = noStrictFlag === true ? false : (strictFlag ?? true);
+
+  // v0.22 — extract eval.yaml variant.allowedSkills overrides (per-variant). Always
+  // wins over strictBaseline default. Empty object when no eval.yaml or no overrides.
+  const variantAllowedSkills: Record<string, string[]> = {};
+  if (evalConfig?.variants) {
+    for (const v of evalConfig.variants) {
+      if (v.allowedSkills !== undefined) {
+        variantAllowedSkills[v.name] = v.allowedSkills;
+      }
+    }
+  }
+
   return {
     values,
     config: {
@@ -333,6 +360,8 @@ function parseRunConfig(
       blind,
       layeredStats,
       budget: evalConfig?.budget,
+      strictBaseline,
+      ...(Object.keys(variantAllowedSkills).length > 0 && { variantAllowedSkills }),
     },
   };
 }
@@ -347,8 +376,19 @@ async function checkUpdate(lang: CliLang): Promise<void> {
     const { fileURLToPath } = await import('node:url');
     const { dirname, join } = await import('node:path');
     const __dirname: string = dirname(fileURLToPath(import.meta.url));
+    const findPackageJson = (startDir: string): string | null => {
+      let dir = startDir;
+      for (let i = 0; i < 5; i++) {
+        const candidate = join(dir, 'package.json');
+        if (existsSync(candidate)) return candidate;
+        dir = dirname(dir);
+      }
+      return null;
+    };
+    const pkgPath = findPackageJson(__dirname);
+    if (!pkgPath) return;
     const pkg: { name: string; version: string; publishConfig?: { registry?: string } } =
-      JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf-8'));
+      JSON.parse(readFileSync(pkgPath, 'utf-8'));
     const registry: string = pkg.publishConfig?.registry || 'https://registry.npmjs.org';
     const res: Response = await fetch(`${registry}/${pkg.name}/latest`, { signal: AbortSignal.timeout(3000) });
     if (!res.ok) return;
@@ -518,7 +558,7 @@ function makeOnProgress(lang: CliLang): (info: ProgressInfo) => void {
 async function handleRun(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const { values, config } = parseRunConfig(argv, {
-    blind: { type: 'boolean', default: false },
+    blind: { type: 'boolean' },
     repeat: { type: 'string', default: '1' },
     'judge-repeat': { type: 'string', default: '1' },
     'judge-models': { type: 'string' },
@@ -533,7 +573,9 @@ async function handleRun(argv: string[]): Promise<void> {
 
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
 
-  config.blind = values.blind as boolean | undefined;
+  if (values.blind !== undefined) {
+    config.blind = values.blind as boolean | undefined;
+  }
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
   // --repeat 输入校验: 非 ≥1 整数时提示并钳到 1, 不静默掩盖用户错字 / 极端输入。
@@ -638,7 +680,7 @@ async function handleRun(argv: string[]): Promise<void> {
           const { createReportServer } = await import('./server/report-server.js');
           const server: ReportServer = createReportServer({ reportsDir: config.outputDir });
           const serverUrl: string = await server.start();
-          const reportUrl: string = `${serverUrl}/run/${report.id}`;
+          const reportUrl: string = `${serverUrl}/reports/${report.id}`;
           process.stderr.write(tCli('cli.run.report_server_running', lang, { url: serverUrl }));
           process.stderr.write(tCli('cli.run.report_server_view', lang, { url: reportUrl }));
           process.stderr.write(tCli('cli.run.report_server_stop', lang));
@@ -711,7 +753,7 @@ async function handleRun(argv: string[]): Promise<void> {
           reportsDir: config.outputDir,
         });
         const serverUrl: string = await server.start();
-        const reportUrl: string = `${serverUrl}/run/${report.id}`;
+        const reportUrl: string = `${serverUrl}/reports/${report.id}`;
         process.stderr.write(tCli('cli.run.report_server_running', lang, { url: serverUrl }));
         process.stderr.write(tCli('cli.run.report_server_view', lang, { url: reportUrl }));
         process.stderr.write(tCli('cli.run.report_server_stop', lang));

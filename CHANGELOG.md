@@ -6,7 +6,48 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ---
 
-## [Unreleased]
+## [0.22.0] - 2026-04-28
+
+### Fixed
+
+- **`VariantSummary.toolDistribution` 修真实 call count**:之前 aggregate 阶段按 `result.toolNames`(per-sample dedup 列表)累加,语义是"出现该 tool 的 sample 数",跟字段名"工具调用分布"不符 — 用户读 summary 看到 `Read: 5` 以为模型调了 5 次 Read,实际是"5 个样本里出现过 Read"。修法:`VariantResult` 加 per-sample `toolDistribution`(从 `toolCalls` reduce 得到真实 call count map),aggregate 时 sum per-sample 字段。旧报告 result 没 `toolDistribution` 字段时 fallback 到老 `toolNames` 语义保兼容。
+- **release hardening**:
+  - report server 测试改用动态端口(`port: 0`),避免本机 7799 被占用导致测试套件偶发失败。
+  - `eval.yaml` 中的 `blind: true` 不再被 `bench run` 的 CLI 默认值覆盖;只有显式传 `--blind` 时才覆盖 config。
+  - 启动期更新检查改为从 `dist/src` 向上查找 `package.json`,修复发布包内 `dist/src/package.json` 不存在导致的静默失效。
+
+### Changed
+
+- **⚠️ BREAKING:report server URL 从 `/run/<id>` 改为 `/reports/<id>`**:命名跟 codebase 内一致语义(`Report` 类型 / `~/.oh-my-knowledge/reports/` 目录 / `omk bench report` CLI 命令)对齐。`/run/` 是 omk 内部把 "evaluation run" 当 entity 的旧叫法,但用户打开 URL 是来"看报告"的——`/reports/` 直接匹配心智。同步改:`/api/run/<id>` → `/api/reports/<id>`,`/api/runs` → `/api/reports`。**直接删旧路径,不留兼容 alias**(omk 0-1 阶段)。已有书签需要更新。
+
+- **⚠️ BREAKING-COMPARABILITY:`bench run` / `bench gate` 默认对 baseline-kind variant 启用 skill isolation**(`--strict-baseline` default true)。这是 omk 测量学严谨性的根本承诺补全:之前 baseline 通过三条 channel(SDK skill auto-discovery / subagent Skill 工具 / cwd 文件系统)拿到 `~/.claude/skills/` 全部 skill,导致 baseline-vs-skill 比较 construct invalid——具体证据是 N=20 WCC 评测里 baseline 平均 13 次 `Skill` 工具调用 + 输出 13/20 含 `@alipay/wealth-chart-components` 私有 import,verdict NOISE 实为污染。本版默认三堵(main session skills + subagent Skill 工具 + cwd 切到 isolated empty dir),baseline 真正干净 → verdict 翻盘 NOISE Δ=-0.0006 → PROGRESS Δ=+1.03 CI [0.50, 1.51]。
+
+  改动范围:
+  - **CLI flag**:新增 `--strict-baseline`(default true) / `--no-strict-baseline`(显式 opt-out 逃生口)。`bench run` + `bench gate` 同步支持。pre-flight 在 `--no-strict-baseline` + `~/.claude/skills/` 非空时 stderr 显式提醒。
+  - **eval.yaml schema**:新增 `variants[].allowedSkills?: string[]` 显式声明,优先级高于 CLI flag。`undefined` = 默认 / `[]` = 完全隔离 / `[name1, name2]` = 白名单。YAML `allowedSkills:` 不写值会被 parse 成 null,显式 reject(语义不清)。
+  - **executor 行为**:claude-sdk 注入 `skills` + `disallowedTools:['Skill']`;**claude-cli 等价**(`--disable-slash-commands` + `--disallowedTools Skill`,文档说前者就是 "Disable all skills"),任意非空白名单 throw 提示改 sdk(CLI 没暴露 partial whitelist);script 仅 stderr warn 不参与 isolation。
+  - **cache key 升级 `v2:` prefix + 含 allowedSkills**:旧 cache 一次性失效(避免 strict / non-strict 切换时误命中污染结果)。同 prompt 不同 isolation 必拿不同 cache key。
+  - **report.meta.skillIsolation**:新字段记录每个 variant 的 allowedSkills 快照(undefined → null),供跨报告对比。`--resume` 时 isolation 状态不一致 stderr warn 不阻塞。
+  - **隔离覆盖(三条 channel)**:
+    1. **main session skills**(SDK `options.skills`):`skills:[]` 关 SDK 内部 skill 发现
+    2. **subagent Skill 工具**(SDK `options.disallowedTools`):`disallowedTools:['Skill']` 关 SDK 内置 task subagent 调 Skill 工具
+    3. **cwd 文件系统访问**(切到 isolated empty dir):baseline 默认 cwd 是 `process.cwd()`(用户评测工作目录),那里通常有 `skills/<name>/` symlink 给 treatment 用 — baseline 用 Glob/Read 直接顺 symlink 读 SKILL.md 就完全绕过 SDK 隔离。strict 模式 + 用户没显式 cwd 时切到 `~/.oh-my-knowledge/isolated-cwd/`(stable 空目录,cache 稳定),Glob/Read 探索不到任何 skill 文件。**这条是 NOISE → PROGRESS verdict 翻盘的真正 load-bearing channel**(N=20 WCC 实测:仅堵 SDK 两条 baseline 仍 13/20 输出泄露 `@alipay/wealth-chart-components`,加 cwd 隔离后降到 2/20,剩下 2 处是 prompt 自带)。
+  - **MCP servers**:已默认堵(SDK `settingSources` 默认 `[]` + omk 不传 `mcpServers`)。
+  - **已知 limit**:`AgentDefinition.skills` 白名单精确控制留 follow-up(白名单场景 subagent 仍能调 Skill 工具,但 v1 用户主要用 `[]` 完全隔离,影响小)。
+
+  **breaking-comparability 标记**:旧报告(无 `meta.skillIsolation`)与新报告 verdict / Δ 不可跨版本对比——等同 judge prompt bump 一档;CHANGELOG 显式 callout。**迁移指南**:
+  - 已有 baseline-vs-skill 评测脚本无需改 flag 即享受 default strict;旧报告作为"污染基线"留存,新跑作为"干净基线"。
+  - 需要老行为(测 baseline 走默认 skill 发现的效果)显式加 `--no-strict-baseline`。
+  - 跨版本对比 verdict / Δ 前先看 `meta.skillIsolation` 是否一致。
+
+  设计 spec 见 [docs/terminology-spec.md §七 Skill Isolation](docs/terminology-spec.md)。
+
+### Internal
+
+- 新增 `buildSdkIsolationOptions(allowedSkills)`(纯函数,可测) + `buildIsolationWarnings(artifacts, strictBaseline)` pre-flight helper。
+- `resolveArtifacts(skillDir, variants, opts)` 新增 `opts: { strictBaseline?, variantAllowedSkills? }`,旧 caller 0 改动(opts 全 optional)。
+- `cacheKey()` signature 加 `allowedSkills?: string[]` 入参,旧 caller 不传时退化到默认行为(但 prefix 升级到 `v2:`,旧 cache 一次性失效)。
+- 单测覆盖:resolveArtifacts 三种优先级 / cache key 不同 isolation 不同键 + 顺序不敏感 / SDK option 形态契约 / claude-cli throw 非空白名单 / eval-config schema reject null + 非数组 / report.meta.skillIsolation populate / pre-flight isolation warning 触发条件。
 
 ---
 

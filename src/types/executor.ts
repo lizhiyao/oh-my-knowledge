@@ -40,6 +40,11 @@ export interface ExecutorInput {
   skillDir?: string | null;
   timeoutMs?: number;
   verbose?: boolean;
+  // v0.22 — Skill 隔离白名单(per-task)。来源:Artifact.allowedSkills。
+  //   undefined → executor 不传 SDK skills option(默认全发现)
+  //   []        → SDK skills:[] + disallowedTools:['Skill'](main session + subagent 双堵)
+  //   [...]     → SDK skills:[...](白名单)
+  allowedSkills?: string[];
 }
 
 export type ExecutorFn = (input: ExecutorInput) => Promise<ExecResult>;

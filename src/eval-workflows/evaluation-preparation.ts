@@ -23,6 +23,8 @@ export async function prepareEvaluationRun({
   artifacts,
   dryRun,
   mcpConfig,
+  strictBaseline,
+  variantAllowedSkills,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -30,12 +32,20 @@ export async function prepareEvaluationRun({
   artifacts?: Artifact[];
   dryRun: boolean;
   mcpConfig?: string;
+  /** v0.22 — default true, baseline-kind 自动 allowedSkills=[]。 */
+  strictBaseline?: boolean;
+  /** v0.22 — eval.yaml 显式 allowedSkills per variant (overrides strictBaseline default). */
+  variantAllowedSkills?: Record<string, string[]>;
 }): Promise<PreparedEvaluationRun> {
   const { samples, requires } = loadSamples(samplesPath);
 
   // Build expressions from specs (preserving order) and resolve to artifacts.
   const variantExpressions = variantSpecs.map((spec) => spec.expr);
-  const resolvedArtifacts = artifacts || resolveArtifacts(resolve(skillDir), variantExpressions);
+  const resolvedArtifacts = artifacts || resolveArtifacts(
+    resolve(skillDir),
+    variantExpressions,
+    { strictBaseline, variantAllowedSkills },
+  );
 
   // Attach experimentRole to each artifact by matching spec.name to artifact.name.
   const roleByName: Record<string, VariantSpec['role']> = {};

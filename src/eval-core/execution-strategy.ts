@@ -1,5 +1,24 @@
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
+import { existsSync, mkdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import type { Artifact, ExecutionStrategyKind, ExecutorInput, ExperimentType, Task, VariantConfig } from '../types/index.js';
+
+/**
+ * v0.22 — Isolated cwd for strict baseline. Empty dir under ~/.oh-my-knowledge/
+ * so baseline's Glob/Read tools can't walk into the user's eval workdir (which
+ * usually has skills/<name>/ symlinks for treatment variants — those symlinks
+ * leak the skill content into baseline via plain file-system access, even when
+ * Skill auto-discovery is blocked).
+ *
+ * Stable path (not per-task tmpdir) so cache keys remain consistent.
+ */
+function getIsolatedCwd(): string {
+  const dir = join(homedir(), '.oh-my-knowledge', 'isolated-cwd');
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
 
 export interface ExecutionPlan {
   strategy: ExecutionStrategyKind;
@@ -58,6 +77,9 @@ export function buildVariantConfig(artifact: Artifact): VariantConfig {
     cwd: artifact.cwd || null,
     locator: artifact.locator,
     ref: artifact.ref,
+    // v0.22 — propagate skill-isolation declaration so report.meta.skillIsolation
+    // 能在 evaluation-reporting 阶段从 variantConfigs 提取 (avoid re-resolving artifacts).
+    ...(artifact.allowedSkills !== undefined && { allowedSkills: artifact.allowedSkills }),
   };
 }
 
@@ -68,12 +90,25 @@ function extractSkillDir(artifact: Artifact): string | null {
 
 export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: number, verbose?: boolean): ExecutionPlan {
   const skillDir = extractSkillDir(task.artifact);
+  // v0.22 — strict-baseline cwd 沙箱:baseline + allowedSkills===[] + 用户没显式
+  // cwd 时,改用 isolated empty dir。否则 baseline 的 Glob/Read 会走进用户工作目录
+  // (含 skills/<name>/ symlink) 直接读到 skill 内容,绕过 SDK isolation。
+  // 用户显式给 baseline 设了 cwd 时不动(用户自己负责干净)。
+  const isStrictBaseline =
+    task.artifact.kind === 'baseline'
+    && Array.isArray(task.artifact.allowedSkills)
+    && task.artifact.allowedSkills.length === 0;
+  const effectiveCwd = isStrictBaseline && !task.cwd ? getIsolatedCwd() : task.cwd;
   const baseInput = {
     model,
-    cwd: task.cwd,
+    cwd: effectiveCwd,
     skillDir,
     timeoutMs,
     verbose,
+    // v0.22 — pass skill-isolation declaration to executors. undefined keeps
+    // SDK default; [] = strict isolation (skills:[] + disallowedTools:['Skill']);
+    // [...] = whitelist (skills:[...] only).
+    ...(task.artifact.allowedSkills !== undefined && { allowedSkills: task.artifact.allowedSkills }),
   };
 
   switch (task.artifact.kind) {

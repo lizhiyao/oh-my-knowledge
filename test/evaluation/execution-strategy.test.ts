@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { resolveExecutionStrategy } from '../../src/eval-core/execution-strategy.js';
-import type { Task } from '../../src/types/index.js';
+import { buildVariantConfig, resolveExecutionStrategy } from '../../src/eval-core/execution-strategy.js';
+import type { Artifact, Task } from '../../src/types/index.js';
 
 function mockTask(kind: string, content: string | null = 'skill content'): Task {
   return {
@@ -57,5 +57,88 @@ describe('resolveExecutionStrategy', () => {
     assert.equal(plan.input.model, 'haiku');
     assert.equal(plan.input.timeoutMs, 30000);
     assert.equal(plan.input.verbose, true);
+  });
+
+  // v0.22 — Skill isolation pass-through.
+  it('allowedSkills 从 artifact 透到 ExecutorInput(strict baseline []）', () => {
+    const t = mockTask('baseline', null);
+    t.artifact.allowedSkills = [];
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.deepEqual(plan.input.allowedSkills, []);
+  });
+
+  it('allowedSkills 白名单透传', () => {
+    const t = mockTask('skill', 'sys');
+    t.artifact.allowedSkills = ['react', 'typescript'];
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.deepEqual(plan.input.allowedSkills, ['react', 'typescript']);
+  });
+
+  it('allowedSkills undefined 时不注入 ExecutorInput.allowedSkills', () => {
+    const t = mockTask('skill', 'sys');
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.equal(plan.input.allowedSkills, undefined);
+  });
+
+  // v0.22 — strict-baseline cwd 沙箱:baseline 跑在 isolated empty dir,避免
+  // 通过 Glob/Read 工具走 cwd 路径绕过 SDK skill isolation 直接读 skills/symlink。
+  it('strict baseline (kind=baseline + allowedSkills=[]) + 没显式 cwd → effectiveCwd 是 isolated dir', () => {
+    const t = mockTask('baseline', null);
+    t.artifact.allowedSkills = [];
+    t.cwd = null;
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.ok(plan.input.cwd?.includes('.oh-my-knowledge/isolated-cwd'),
+      `cwd should be isolated, got: ${plan.input.cwd}`);
+  });
+
+  it('strict baseline 但用户显式给 cwd → 不动用户 cwd(用户自己负责)', () => {
+    const t = mockTask('baseline', null);
+    t.artifact.allowedSkills = [];
+    t.cwd = '/tmp/user-explicit';
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.equal(plan.input.cwd, '/tmp/user-explicit');
+  });
+
+  it('non-strict baseline (allowedSkills undefined) → 不强制 isolated cwd(原行为)', () => {
+    const t = mockTask('baseline', null);
+    t.cwd = null;
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.equal(plan.input.cwd, null, '默认行为下 cwd 仍是用户传入的 null');
+  });
+
+  it('treatment (kind=skill) + allowedSkills=[] → 不动 cwd(隔离仅对 baseline-kind)', () => {
+    const t = mockTask('skill', 'sys');
+    t.artifact.allowedSkills = [];
+    t.cwd = '/some/skill/root';
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.equal(plan.input.cwd, '/some/skill/root');
+  });
+});
+
+describe('buildVariantConfig skill isolation (v0.22)', () => {
+  function mkArtifact(name: string, kind: Artifact['kind'], allowedSkills?: string[]): Artifact {
+    return {
+      name,
+      kind,
+      source: kind === 'baseline' ? 'baseline' : 'custom',
+      content: kind === 'baseline' ? null : 'sys',
+      experimentRole: kind === 'baseline' ? 'control' : 'treatment',
+      ...(allowedSkills !== undefined && { allowedSkills }),
+    };
+  }
+
+  it('artifact.allowedSkills=[] 时 VariantConfig.allowedSkills=[](写入 report.meta)', () => {
+    const cfg = buildVariantConfig(mkArtifact('baseline', 'baseline', []));
+    assert.deepEqual(cfg.allowedSkills, []);
+  });
+
+  it('artifact.allowedSkills 白名单透传到 VariantConfig', () => {
+    const cfg = buildVariantConfig(mkArtifact('wcc-clean', 'baseline', ['react']));
+    assert.deepEqual(cfg.allowedSkills, ['react']);
+  });
+
+  it('artifact.allowedSkills 未声明时 VariantConfig.allowedSkills 缺失(undefined)', () => {
+    const cfg = buildVariantConfig(mkArtifact('wcc', 'skill'));
+    assert.equal(cfg.allowedSkills, undefined);
   });
 });
