@@ -159,7 +159,8 @@ export type CliMessageKey =
   | 'cli.diagnose.coverage_header'
   | 'cli.diagnose.coverage_unspecified'
   | 'cli.diagnose.coverage_chars'
-  | 'cli.diagnose.coverage_hint_empty';
+  | 'cli.diagnose.coverage_hint_empty'
+  | 'cli.diagnose.coverage_declared';
 
 export interface CliMessage {
   zh: string;
@@ -1062,5 +1063,9 @@ Examples:
   'cli.diagnose.coverage_hint_empty': {
     zh: 'ℹ 该用例集未声明任何 capability / difficulty / construct / provenance 元数据。详见 docs/sample-design-spec.md',
     en: 'ℹ No samples in this set declare capability / difficulty / construct / provenance metadata. See docs/sample-design-spec.md',
+  },
+  'cli.diagnose.coverage_declared': {
+    zh: '声明',
+    en: 'declared',
   },
 };

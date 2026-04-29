@@ -76,4 +76,17 @@ describe('renderSampleDesignCoverage', () => {
     assert.match(out, /Sample design coverage/);
     assert.match(out, /easy \(1\)/);
   });
+
+  it('declared 词 走 i18n:zh 渲染 "声明",en 渲染 "declared"', () => {
+    const samples: Sample[] = [
+      { sample_id: 's1', prompt: 'p', capability: ['x'] },
+      { sample_id: 's2', prompt: 'p', capability: ['y'] },
+    ];
+    const zh = renderSampleDesignCoverage(samples, undefined, 'zh');
+    assert.match(zh, /\[2\/2 声明 = 100%\]/);
+    assert.doesNotMatch(zh, /declared/);
+    const en = renderSampleDesignCoverage(samples, undefined, 'en');
+    assert.match(en, /\[2\/2 declared = 100%\]/);
+    assert.doesNotMatch(en, /声明/);
+  });
 });

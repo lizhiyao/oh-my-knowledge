@@ -107,8 +107,14 @@ export function sanitizeGeneratedSamples(samples: Sample[]): { stripped: string[
   const VALID_PROVENANCE = new Set(['human', 'llm-generated', 'production-trace']);
   const stripped: string[] = [];
   for (const [i, s] of samples.entries()) {
-    if (!s.sample_id) s.sample_id = `s${String(i + 1).padStart(3, '0')}`;
-    if (!s.prompt) throw new Error(`samples[${i}] missing required prompt field`);
+    // sample_id / prompt 必须是 non-empty string。LLM 偶尔返回 number / null,
+    // 当前若漏校验下游 loadSamples 会拒掉整个文件 — 在 generator boundary 修掉。
+    if (typeof s.sample_id !== 'string' || s.sample_id.length === 0) {
+      s.sample_id = `s${String(i + 1).padStart(3, '0')}`;
+    }
+    if (typeof s.prompt !== 'string' || s.prompt.length === 0) {
+      throw new Error(`samples[${i}] missing or invalid required prompt field (got ${typeof s.prompt})`);
+    }
 
     if (s.capability !== undefined) {
       if (!Array.isArray(s.capability) || !s.capability.every((c) => typeof c === 'string' && c.length > 0)) {

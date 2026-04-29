@@ -78,6 +78,24 @@ describe('sanitizeGeneratedSamples', () => {
 
   it('throws on missing prompt(required field)', () => {
     const samples: Sample[] = [{ sample_id: 's1' } as Sample];
-    assert.throws(() => sanitizeGeneratedSamples(samples), /missing required prompt field/);
+    assert.throws(() => sanitizeGeneratedSamples(samples), /missing or invalid required prompt field/);
+  });
+
+  it('throws on non-string prompt(LLM 偶尔返回 number / null)', () => {
+    const samples: Sample[] = [{ sample_id: 's1', prompt: 456 as unknown as string }];
+    assert.throws(() => sanitizeGeneratedSamples(samples), /missing or invalid required prompt field.*number/);
+  });
+
+  it('default sample_id when type is non-string(LLM 返回 number)', () => {
+    // Bug #2:写盘后下游 loadSamples 会 reject 整文件 — generator boundary 应规范化
+    const samples: Sample[] = [{ sample_id: 123 as unknown as string, prompt: 'p' }];
+    sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].sample_id, 's001', 'non-string sample_id should be replaced with default');
+  });
+
+  it('default sample_id when empty string', () => {
+    const samples: Sample[] = [{ sample_id: '', prompt: 'p' }];
+    sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].sample_id, 's001');
   });
 });

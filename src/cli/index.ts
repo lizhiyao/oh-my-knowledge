@@ -1,16 +1,14 @@
 #!/usr/bin/env node
 
-import { parseArgs, type ParseArgsConfig } from 'node:util';
+import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { tCli, getCliLang, parseLangFromArgv, langFromArgv, type CliLang } from './i18n.js';
 import {
   parseRunConfig,
-  type RunConfig,
   DEFAULT_REPORTS_DIR,
   COMMON_OPTIONS,
-  RUN_OPTIONS,
 } from './parse-run-config.js';
 import { makeOnProgress } from './progress.js';
 import { checkUpdate } from './update-check.js';

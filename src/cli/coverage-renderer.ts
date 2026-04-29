@@ -42,7 +42,7 @@ export function renderSampleDesignCoverage(
   if (capabilityEntries.length > 0) {
     const formatted = capabilityEntries.map(([name, count]) => `${name} (${count})`).join(' | ');
     const declaredPct = Math.round((aggregate.sampleCountWithCapability / totalSamples) * 100);
-    lines.push(`  capability:  ${formatted}    [${aggregate.sampleCountWithCapability}/${totalSamples} 声明 = ${declaredPct}%]`);
+    lines.push(`  capability:  ${formatted}    [${aggregate.sampleCountWithCapability}/${totalSamples} ${tCli('cli.diagnose.coverage_declared', lang)} = ${declaredPct}%]`);
   } else {
     lines.push(`  capability:  ${tCli('cli.diagnose.coverage_unspecified', lang)} (0/${totalSamples})`);
   }

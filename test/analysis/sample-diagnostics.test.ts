@@ -335,6 +335,21 @@ describe('diagnoseSamples — capability_thin', () => {
     const d = diagnoseSamples(report, { samples });
     assert.ok(d.byKind.capability_thin);
   });
+
+  it('同 sample 内同 capability 重复声明只算 1 个 sample 撑(防漏报)', () => {
+    // N=10,1 个 sample 把 'rare' 重复声明 3 次,9 个 sample 标 'core'。
+    // 修前:rare 被计成 3 sample 撑 > 阈值 2,漏报
+    // 修后:rare 只 1 sample 撑 ≤ 阈值 2,触发
+    const { report, samples } = buildN(10, (i) => {
+      if (i === 0) return ['rare', 'rare', 'rare'];
+      return ['core'];
+    });
+    const d = diagnoseSamples(report, { samples });
+    const rareIssue = d.issues.find((i) => i.kind === 'capability_thin'
+      && (i.evidence as { capability?: string })?.capability === 'rare');
+    assert.ok(rareIssue, 'rare capability with deduped count=1 should still flag thin');
+    assert.equal((rareIssue!.evidence as { sampleCount: number }).sampleCount, 1, 'count should be 1 (deduped), not 3');
+  });
 });
 
 describe('diagnoseSamples — backward compat', () => {

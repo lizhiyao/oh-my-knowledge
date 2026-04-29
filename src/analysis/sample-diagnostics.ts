@@ -255,9 +255,15 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
       const capabilityCount: Record<string, { count: number; sampleIds: string[] }> = {};
       for (const sample of options.samples) {
         if (!Array.isArray(sample.capability)) continue;
+        // 同 sample 内同 capability 重复声明只计 1(跟 buildSampleQualityAggregate 对齐)。
+        // 否则 capability:['rare','rare','rare'] 会让 rare 计成 3 sample 撑,
+        // 实际只 1 条 sample,thin coverage 警告漏报。
+        const seenCaps = new Set<string>();
         for (const rawCap of sample.capability) {
           if (typeof rawCap !== 'string') continue;
           const cap = normalizeCapability(rawCap);
+          if (seenCaps.has(cap)) continue;
+          seenCaps.add(cap);
           if (!capabilityCount[cap]) capabilityCount[cap] = { count: 0, sampleIds: [] };
           capabilityCount[cap].count++;
           capabilityCount[cap].sampleIds.push(sample.sample_id);
