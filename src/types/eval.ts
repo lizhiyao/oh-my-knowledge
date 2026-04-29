@@ -24,6 +24,13 @@ export interface Assertion {
   n?: number;
 }
 
+/** sample provenance(数据来源)。`evolved` / `mixed` 留 follow-up
+ *  跟 evolver 升级一起做。 */
+export type SampleProvenance = 'human' | 'llm-generated' | 'production-trace';
+
+/** sample 难度等级。简单分桶,跟 IRT 风格 fine-grained difficulty 不同。 */
+export type SampleDifficulty = 'easy' | 'medium' | 'hard';
+
 export interface Sample {
   sample_id: string;
   prompt: string;
@@ -34,6 +41,21 @@ export interface Sample {
   dimensions?: Record<string, string>;
   allowedTools?: string[];
   expectedTools?: string[];
+  /** 该 sample 测试的能力维度,可多维。free-form string,suggested
+   *  values 见 docs/sample-design-spec.md。aggregate 时大小写不敏感。
+   *  纯文档 / 诊断用,不参与 grading / judge / verdict。 */
+  capability?: string[];
+  /** 难度分层,enum 防错。纯文档 / 诊断用。 */
+  difficulty?: SampleDifficulty;
+  /** 该 sample 测的 construct 类型。suggested:`'necessity'`(测必要性,
+   *  baseline-vs-skill)/ `'quality'`(测 skill 写得好不好,skill-vs-skill-variant)/
+   *  `'capability'`(测某具体能力维度)。free-form string,允许自定义。
+   *  纯文档 / 诊断用,不参与 grading。 */
+  construct?: string;
+  /** 数据来源。`bench gen-samples` 自动注入 `'llm-generated'`,人工
+   *  curated 用 `'human'`,production trace 抽样用 `'production-trace'`。
+   *  纯文档 / 诊断用。 */
+  provenance?: SampleProvenance;
   [key: string]: unknown;  // allow extra fields like mutated prompt/context from URL resolution
 }
 
@@ -54,7 +76,7 @@ export interface Artifact {
   // run-time 属性:variant 在当次实验中扮演的角色(由 CLI --control/--treatment 或 eval.yaml 注入)
   // 不是 artifact 文件的固有属性;同一 artifact 在不同 run 可以扮演不同角色
   experimentRole?: ExperimentRole;
-  // v0.22 — Skill auto-discovery 隔离声明(per-variant)。
+  // Skill auto-discovery 隔离声明(per-variant)。
   //   undefined → 默认 SDK 行为(全发现 ~/.claude/skills/)
   //   []        → 完全禁用 skill 发现 + Skill 工具 disable(main session + subagent 同堵)
   //   [...]     → 白名单(只载入指定 skill,subagent 仍可调 Skill 工具)
@@ -85,7 +107,7 @@ export interface VariantConfig {
   cwd: string | null;
   locator?: string;
   ref?: string;
-  // v0.22 — 隔离声明。undefined = SDK 默认全发现,[] = 完全隔离,[...] = 白名单。
+  // 隔离声明。undefined = SDK 默认全发现,[] = 完全隔离,[...] = 白名单。
   // 来源:Artifact.allowedSkills(由 strict-baseline 默认 + eval.yaml 显式合并而成)。
   allowedSkills?: string[];
 }
@@ -101,7 +123,7 @@ export interface EvalConfigVariant {
   role: ExperimentRole;
   artifact: string;
   cwd?: string;
-  // v0.22 — 显式 skill 隔离声明。优先级高于 --strict-baseline default。
+  // 显式 skill 隔离声明。优先级高于 --strict-baseline default。
   //   写 [] 完全禁用 skill 发现;写 [name1, name2] 白名单;不写 = 默认行为。
   // 注:YAML `allowedSkills:` 不写值会被 parse 成 null,validateEvalConfig 会显式 reject;
   //     要写就显式写 `[]`。
@@ -120,7 +142,7 @@ export interface EvalConfig {
   blind?: boolean;
   mcpConfig?: string;
   variants: EvalConfigVariant[];
-  /** v0.22 — hard budget caps. When any limit is hit during a run, remaining
+  /** hard budget caps. When any limit is hit during a run, remaining
    *  tasks are aborted and the partial report is persisted. CLI flags
    *  `--budget-usd` / `--budget-per-sample-usd` / `--budget-per-sample-ms`
    *  override the config values. */
@@ -173,9 +195,9 @@ export interface EvaluationRequest {
    *  CLI flag --no-debias-length flips to false (legacy v2-cot prompt). The active
    *  value is reflected in ReportMeta.judgePromptHash and ReportMeta.debiasMode. */
   lengthDebias?: boolean;
-  /** v0.22 — hard budget caps. See EvalBudget. */
+  /** hard budget caps. See EvalBudget. */
   budget?: EvalBudget;
-  /** v0.22 — Skill isolation default (CLI `--strict-baseline` default true).
+  /** Skill isolation default (CLI `--strict-baseline` default true).
    *  true = baseline-kind variants 没显式 allowedSkills 时自动设为 [];
    *  false = 全部 variants 没显式 allowedSkills 时保持 undefined(旧行为)。
    *  显式 eval.yaml `allowedSkills` 总是优先于此默认。 */

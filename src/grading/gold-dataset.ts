@@ -21,7 +21,7 @@
  *       reason: <free text>                           # optional, kept for audit only
  *
  * v0.21 supports single-score gold only. Multi-dimensional gold (per-rubric
- * scores) is a candidate for v0.22 once we have real users asking for it —
+ * scores) is a candidate for —
  * the schema is forwards-compatible (we can add a `dimensions` field next to
  * `score` later without breaking existing files).
  */

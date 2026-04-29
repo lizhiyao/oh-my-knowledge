@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildSdkIsolationOptions } from '../../src/executors/claude-sdk.js';
 
-describe('buildSdkIsolationOptions (v0.22)', () => {
+describe('buildSdkIsolationOptions', () => {
   it('allowedSkills=undefined → {} (SDK 默认全发现)', () => {
     assert.deepEqual(buildSdkIsolationOptions(undefined), {});
   });

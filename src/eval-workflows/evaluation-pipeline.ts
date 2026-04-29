@@ -280,6 +280,7 @@ function finalizeEvaluationReport({
   variantNames,
   blind,
   samplesPath,
+  samples,
 }: {
   report: Report;
   results: EvaluationResults;
@@ -287,8 +288,12 @@ function finalizeEvaluationReport({
   variantNames: string[];
   blind: boolean;
   samplesPath: string;
+  samples: Sample[];
 }): Report {
-  report.analysis = analyzeResults(report);
+  // pass samples so analyzeResults can populate analysis.sampleQuality
+  // (capability/difficulty/construct/provenance coverage aggregate). Without
+  // samples, analysis.sampleQuality is omitted (老报告读取仍可工作).
+  report.analysis = analyzeResults(report, { samples });
 
   const hasToolData = Object.values(results).some((sampleResults) => (
     Object.values(sampleResults).some((variantResult) => variantResult.toolCalls && variantResult.toolCalls.length > 0)
@@ -368,9 +373,9 @@ export interface EvaluationPipelineOptions {
   bootstrapSamples?: number;
   /** v0.21 length-debias toggle. Default true; --no-debias-length flips to false. */
   lengthDebias?: boolean;
-  /** v0.22 — hard budget caps. */
+  /** hard budget caps. */
   budget?: import('../types/index.js').EvalBudget;
-  /** v0.22 — strict-baseline default state (only used to decide whether to emit
+  /** strict-baseline default state (only used to decide whether to emit
    *  isolation-disabled pre-flight warnings). True/undefined = default behavior
    *  (no warning); false = user explicitly disabled, warn if ~/.claude/skills/ has content. */
   strictBaseline?: boolean;
@@ -466,7 +471,7 @@ export async function executeEvaluationPipeline({
     // σ before the run); they're hard-floor + experience-based thresholds. Verdict
     // gate (computeVerdict) handles real power claims post-hoc.
     emitPowerWarnings(samples.length, repeat ?? 1);
-    // v0.22 — Isolation pre-flight warning (--no-strict-baseline + ~/.claude/skills/ non-empty)
+    // Isolation pre-flight warning (--no-strict-baseline + ~/.claude/skills/ non-empty)
     emitIsolationWarnings(artifacts, strictBaseline);
 
     // Pre-build a per-executor map for ensemble judges. Each unique executor name
@@ -534,6 +539,7 @@ export async function executeEvaluationPipeline({
       variantNames,
       blind,
       samplesPath,
+      samples,
     });
     if (budgetExhausted) {
       report.meta.budgetExhausted = true;

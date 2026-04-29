@@ -149,7 +149,7 @@ describe('aggregateReport — sampleHash key-order stability', () => {
   });
 });
 
-describe('aggregateReport — meta.skillIsolation (v0.22)', () => {
+describe('aggregateReport — meta.skillIsolation', () => {
   function withIsolation(name: string, allowed?: string[]): Artifact {
     const a: Artifact = { name, kind: 'baseline', source: 'baseline', content: null, experimentRole: 'control' };
     if (allowed !== undefined) a.allowedSkills = allowed;
@@ -162,30 +162,30 @@ describe('aggregateReport — meta.skillIsolation (v0.22)', () => {
   it('每个 variant 的 allowedSkills 写入 meta.skillIsolation(strict baseline []]', () => {
     const report = aggregateReport({
       runId: 'r',
-      variants: ['baseline', 'wcc'],
+      variants: ['baseline', 'skillA'],
       model: 'haiku', judgeModel: 'haiku', noJudge: false, executorName: 'claude',
       samples: [baseSample], tasks: [], totalCostUSD: 0,
-      results: { s1: { baseline: baseResult, wcc: baseResult } },
+      results: { s1: { baseline: baseResult, skillA: baseResult } },
       artifacts: [
         withIsolation('baseline', []),
-        { name: 'wcc', kind: 'skill', source: 'inline', content: 'wcc skill', experimentRole: 'treatment' },
+        { name: 'skillA', kind: 'skill', source: 'inline', content: 'skillA skill', experimentRole: 'treatment' },
       ],
     });
     assert.ok(report.meta.skillIsolation, 'skillIsolation 必须 populate');
     assert.deepEqual(report.meta.skillIsolation!.baseline, []);
-    assert.equal(report.meta.skillIsolation!.wcc, null,
+    assert.equal(report.meta.skillIsolation!.skillA, null,
       'undefined 序列化为 null,跨 variant 都有 entry');
   });
 
   it('白名单也写入 meta.skillIsolation', () => {
     const report = aggregateReport({
       runId: 'r',
-      variants: ['wcc-clean'],
+      variants: ['skill-clean'],
       model: 'haiku', judgeModel: 'haiku', noJudge: false, executorName: 'claude',
       samples: [baseSample], tasks: [], totalCostUSD: 0,
-      results: { s1: { 'wcc-clean': baseResult } },
-      artifacts: [withIsolation('wcc-clean', ['react-skill'])],
+      results: { s1: { 'skill-clean': baseResult } },
+      artifacts: [withIsolation('skill-clean', ['react-skill'])],
     });
-    assert.deepEqual(report.meta.skillIsolation!['wcc-clean'], ['react-skill']);
+    assert.deepEqual(report.meta.skillIsolation!['skill-clean'], ['react-skill']);
   });
 });

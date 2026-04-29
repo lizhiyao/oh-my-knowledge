@@ -229,10 +229,10 @@ export async function executeEachEvaluationRuns({
   judgeRepeat?: number;
   judgeModels?: import('../types/index.js').JudgeConfig[];
   lengthDebias?: boolean;
-  /** v0.22 — strict-baseline default. Forwarded to per-skill resolveArtifacts so each
+  /**  — strict-baseline default. Forwarded to per-skill resolveArtifacts so each
    *  skill's baseline gets allowedSkills=[] when default true. */
   strictBaseline?: boolean;
-  /** v0.22 — explicit per-variant allowedSkills override. each mode rarely uses this
+  /**  — explicit per-variant allowedSkills override. each mode rarely uses this
    *  (since it auto-pairs baseline + skill), but if user has yaml override on either
    *  "baseline" or "skill" name, we honor it. */
   variantAllowedSkills?: Record<string, string[]>;
@@ -247,7 +247,7 @@ export async function executeEachEvaluationRuns({
 
     // each mode 的实验结构固定为"baseline (control) vs skill (treatment)"。
     // 显式在 artifact 上填 experimentRole，下游 buildVariantConfig 直接读取。
-    // v0.22 — pass strictBaseline + variantAllowedSkills opts so isolation 默认生效。
+    //  — pass strictBaseline + variantAllowedSkills opts so isolation 默认生效。
     const skillArtifacts = resolveArtifacts(
       resolve(skillDir),
       ['baseline', entry.skillPath],

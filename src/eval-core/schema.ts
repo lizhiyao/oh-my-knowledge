@@ -173,7 +173,7 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
       if (withTools.length === 0) return {};
       const totalToolCalls = withTools.reduce((s, e) => s + (e.numToolCalls || 0), 0);
       const avgSuccessRate = withTools.reduce((s, e) => s + (e.toolSuccessRate || 0), 0) / withTools.length;
-      // v0.22 fix — sum per-sample toolDistribution(真实 call count),
+      // sum per-sample toolDistribution(真实 call count),
       // 不再用 dedup 后的 toolNames 累加(那只统计"出现该 tool 的 sample 数",不是调用次数)。
       // 旧报告没 toolDistribution 字段时 fallback 到 toolNames 老语义,保兼容性。
       const dist: Record<string, number> = {};

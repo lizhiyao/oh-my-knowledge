@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if git -C \"$CLAUDE_PROJECT_DIR\" diff --name-only HEAD 2>/dev/null | grep -qE '^(src|test)/.+\\.ts$'; then cd \"$CLAUDE_PROJECT_DIR\" && yarn lint; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

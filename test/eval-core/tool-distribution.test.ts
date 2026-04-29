@@ -21,7 +21,7 @@ function mkExec(toolCalls: ToolCallInfo[]): ExecResult {
   };
 }
 
-describe('VariantResult.toolDistribution (v0.22 fix)', () => {
+describe('VariantResult.toolDistribution (real call count fix)', () => {
   it('single sample: per-sample toolDistribution counts each call(NOT dedup)', () => {
     const exec = mkExec([
       mkToolCall('Read'),
@@ -45,7 +45,7 @@ describe('VariantResult.toolDistribution (v0.22 fix)', () => {
   });
 });
 
-describe('VariantSummary.toolDistribution aggregation (v0.22 fix)', () => {
+describe('VariantSummary.toolDistribution aggregation (real call count fix)', () => {
   function mkResult(td: Record<string, number>, numToolCalls: number, toolNames?: string[]): VariantResult {
     return {
       ok: true,
@@ -79,7 +79,7 @@ describe('VariantSummary.toolDistribution aggregation (v0.22 fix)', () => {
     // 模拟 v0.21 旧报告 result(没 toolDistribution 字段)— 仍按 toolNames dedup 累加,
     // 不让兼容旧报告时 crash 或语义跳变。
     const legacy = mkResult({}, 4, ['Read', 'Glob']);
-    delete legacy.toolDistribution; // 抹掉 v0.22 新字段模拟旧报告
+    delete legacy.toolDistribution; // 抹掉  新字段模拟旧报告
     const summary = buildVariantSummary([legacy]);
     // 老语义:Read+1, Glob+1(每 sample 出现某 tool 各 +1)
     assert.deepEqual(summary.toolDistribution, { Read: 1, Glob: 1 });

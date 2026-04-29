@@ -89,7 +89,7 @@ describe('resolveArtifacts', () => {
   });
 });
 
-describe('resolveArtifacts skill isolation (v0.22)', () => {
+describe('resolveArtifacts skill isolation', () => {
   it('default(strictBaseline=true): baseline-kind artifact 自动 allowedSkills=[]', () => {
     const artifacts = resolveArtifacts(SKILL_DIR, ['baseline', 'v1']);
     const baseline = artifacts.find((a) => a.name === 'baseline')!;

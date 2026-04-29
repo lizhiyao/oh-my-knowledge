@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { claudeCliExecutor } from '../../src/executors/claude-cli.js';
 
-// v0.22 — claude CLI executor isolation 行为契约。
+// claude CLI executor isolation 行为契约。
 //
 // claude CLI 用 `--disable-slash-commands` (文档:"Disable all skills") +
 // `--disallowedTools Skill` 双堵,跟 SDK 等价,只缺 partial whitelist。
@@ -10,7 +10,7 @@ import { claudeCliExecutor } from '../../src/executors/claude-cli.js';
 //   []        → --disable-slash-commands + --disallowedTools Skill(完全隔离)
 //   [...]     → throw,提示用户改 --executor claude-sdk(精确白名单)
 
-describe('claude-cli executor — skill isolation degraded mode (v0.22)', () => {
+describe('claude-cli executor — skill isolation degraded mode', () => {
   it('allowedSkills=[\'foo\', \'bar\'] (白名单)→ throw,不静默降级', async () => {
     await assert.rejects(
       claudeCliExecutor({

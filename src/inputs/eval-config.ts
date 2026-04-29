@@ -75,7 +75,7 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     if (v.cwd !== undefined && typeof v.cwd !== 'string') {
       throw new Error(`${configPath}: variants[${i}].cwd must be a string`);
     }
-    // v0.22 — allowedSkills schema check. YAML key without value parses as null,
+    //  — allowedSkills schema check. YAML key without value parses as null,
     // which is ambiguous ("none" vs "default"); reject so users must write `[]`
     // explicitly. undefined (key absent) means "use --strict-baseline default".
     let allowedSkills: string[] | undefined;
@@ -143,7 +143,7 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
   assertBoolOpt('blind');
   assertStringOpt('mcpConfig');
 
-  // v0.22 — budget validation. Top-level `budget: { totalUSD?, perSampleUSD?, perSampleMs? }`.
+  //  — budget validation. Top-level `budget: { totalUSD?, perSampleUSD?, perSampleMs? }`.
   let budget: import('../types/index.js').EvalBudget | undefined;
   if (obj.budget !== undefined) {
     if (typeof obj.budget !== 'object' || obj.budget === null || Array.isArray(obj.budget)) {

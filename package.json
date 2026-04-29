@@ -1,10 +1,10 @@
 {
   "name": "oh-my-knowledge",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "LLM evaluation framework with built-in statistical rigor: bootstrap CI, Krippendorff α, length-debias, saturation curves. Native Claude Code skill / RAG / agent / prompt evaluation.",
   "type": "module",
   "bin": {
-    "omk": "dist/src/cli.js"
+    "omk": "dist/src/cli/index.js"
   },
   "engines": {
     "node": ">=20"
@@ -15,11 +15,17 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "postbuild": "node -e \"const fs=require('fs'),f='dist/src/cli.js',c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!'))fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)\"",
-    "lint": "eslint 'src/**/*.ts' 'test/**/*.ts'",
+    "postbuild": "node -e \"const fs=require('fs'),f='dist/src/cli/index.js',c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!'))fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)\"",
+    "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --max-warnings 0",
     "test": "vitest run",
     "ci": "yarn lint && yarn typecheck && yarn test",
-    "prepublishOnly": "yarn build"
+    "prepublishOnly": "yarn build",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "{src,test}/**/*.ts": [
+      "eslint --max-warnings 0"
+    ]
   },
   "keywords": [
     "llm-evaluation",
@@ -67,6 +73,8 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.5.0",
     "eslint": "^10.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.0",
     "vitest": "^4.1.3"

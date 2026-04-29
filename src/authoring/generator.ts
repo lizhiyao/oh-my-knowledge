@@ -22,6 +22,11 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
    避免使用 baseline 凭常识或搜索文件也能答对的断言（如 not_contains 通用错误写法）。
    优先使用 contains 检测文档独有的术语、参数组合或特定值
 
+可选元数据字段如能判断顺便填，无法判断时省略整个字段即可）：
+- capability: string[] — 该用例覆盖的能力维度，如 ["api-selection", "error-diagnosis"]
+- difficulty: "easy" | "medium" | "hard" — 难度等级
+- construct: string — 用例测的 construct 类型，建议值 "necessity"（测知识必要性）/ "quality"（测 skill 写得好不好）/ "capability"（测某具体能力）
+
 直接输出 JSON 数组，不要包含 markdown 代码块标记或其他内容。`;
 
 interface GenerateSamplesOptions {
@@ -64,11 +69,73 @@ ${skillContent}
     throw new Error('generated result is empty, please retry');
   }
 
-  // Validate required fields
-  for (const [i, s] of samples.entries()) {
-    if (!s.sample_id) s.sample_id = `s${String(i + 1).padStart(3, '0')}`;
-    if (!s.prompt) throw new Error(`samples[${i}] missing required prompt field`);
+  // Validate required fields + sanitize  metadata enums *at generator boundary*
+  // (see sanitizeGeneratedSamples).
+  const { stripped } = sanitizeGeneratedSamples(samples);
+  if (stripped.length > 0) {
+    process.stderr.write(
+      `[omk gen-samples] LLM-output 含 ${stripped.length} 个非法元数据字段, 已剥离避免污染:\n  - ${stripped.join('\n  - ')}\n`,
+    );
   }
 
   return { samples, costUSD: result.costUSD };
+}
+
+/**
+ * Validate + sanitize LLM-generated samples at generator boundary.
+ *
+ * Why this exists:
+ *   LLM-output garbage (`capability: 'string'` / `difficulty: 'Easy'` /
+ *   `provenance: 'invalid'`) shouldn't get persisted to disk and trip
+ *   `loadSamples` on the NEXT run/diagnose. We strip invalid metadata fields
+ *   with a stderr warn (don't throw — valid required fields should still
+ *   produce usable samples).
+ *
+ * Behavior:
+ *   - `sample_id` defaulted if missing
+ *   - `prompt` missing → throw (required)
+ *   - `capability` not string[] → strip
+ *   - `difficulty` not in enum → strip
+ *   - `construct` not non-empty string → strip
+ *   - `provenance` not in enum → strip,then auto-stamp 'llm-generated'
+ *
+ * Mutates the samples array in-place (matches generator's existing style).
+ * Returns `{ stripped: string[] }` for warning aggregation + tests.
+ */
+export function sanitizeGeneratedSamples(samples: Sample[]): { stripped: string[] } {
+  const VALID_DIFFICULTY = new Set(['easy', 'medium', 'hard']);
+  const VALID_PROVENANCE = new Set(['human', 'llm-generated', 'production-trace']);
+  const stripped: string[] = [];
+  for (const [i, s] of samples.entries()) {
+    // sample_id / prompt 必须是 non-empty string。LLM 偶尔返回 number / null,
+    // 当前若漏校验下游 loadSamples 会拒掉整个文件 — 在 generator boundary 修掉。
+    if (typeof s.sample_id !== 'string' || s.sample_id.length === 0) {
+      s.sample_id = `s${String(i + 1).padStart(3, '0')}`;
+    }
+    if (typeof s.prompt !== 'string' || s.prompt.length === 0) {
+      throw new Error(`samples[${i}] missing or invalid required prompt field (got ${typeof s.prompt})`);
+    }
+
+    if (s.capability !== undefined) {
+      if (!Array.isArray(s.capability) || !s.capability.every((c) => typeof c === 'string' && c.length > 0)) {
+        stripped.push(`samples[${i}].capability (${typeof s.capability})`);
+        delete (s as { capability?: unknown }).capability;
+      }
+    }
+    if (s.difficulty !== undefined && !VALID_DIFFICULTY.has(s.difficulty as string)) {
+      stripped.push(`samples[${i}].difficulty=${JSON.stringify(s.difficulty)}`);
+      delete (s as { difficulty?: unknown }).difficulty;
+    }
+    if (s.construct !== undefined && (typeof s.construct !== 'string' || !s.construct)) {
+      stripped.push(`samples[${i}].construct (${typeof s.construct})`);
+      delete (s as { construct?: unknown }).construct;
+    }
+    if (s.provenance !== undefined && !VALID_PROVENANCE.has(s.provenance as string)) {
+      stripped.push(`samples[${i}].provenance=${JSON.stringify(s.provenance)}`);
+      delete (s as { provenance?: unknown }).provenance;
+    }
+    // After stripping invalid provenance, auto-stamp the generator's authority value.
+    if (!s.provenance) s.provenance = 'llm-generated';
+  }
+  return { stripped };
 }
