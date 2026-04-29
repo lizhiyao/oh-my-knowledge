@@ -56,9 +56,49 @@ export function loadSamples(samplesPath: string): LoadSamplesResult {
     throw new Error(`invalid samples file: ${samplesPath}`);
   }
 
+  // sample design metadata enums (capability/difficulty/construct/provenance).
+  // Pure documentation/diagnostic fields; do NOT participate in grading/judge/verdict.
+  const VALID_DIFFICULTY: ReadonlySet<string> = new Set(['easy', 'medium', 'hard']);
+  const VALID_PROVENANCE: ReadonlySet<string> = new Set(['human', 'llm-generated', 'production-trace']);
+
   for (const [i, sample] of samples.entries()) {
-    if (!sample.sample_id) throw new Error(`samples[${i}] missing required field: sample_id`);
-    if (!sample.prompt) throw new Error(`samples[${i}] (${sample.sample_id}) missing required field: prompt`);
+    if (!sample.sample_id || typeof sample.sample_id !== 'string') {
+      throw new Error(`samples[${i}] missing or invalid required field: sample_id (must be a non-empty string)`);
+    }
+    if (!sample.prompt || typeof sample.prompt !== 'string') {
+      throw new Error(`samples[${i}] (${sample.sample_id}) missing or invalid required field: prompt (must be a non-empty string)`);
+    }
+
+    // validate optional metadata enums; help users typo-check (`'easy?'` etc).
+    if (sample.difficulty !== undefined && !VALID_DIFFICULTY.has(sample.difficulty)) {
+      throw new Error(
+        `samples[${i}] (${sample.sample_id}) invalid difficulty: ${JSON.stringify(sample.difficulty)}, expected one of [easy, medium, hard]`,
+      );
+    }
+    if (sample.provenance !== undefined && !VALID_PROVENANCE.has(sample.provenance)) {
+      throw new Error(
+        `samples[${i}] (${sample.sample_id}) invalid provenance: ${JSON.stringify(sample.provenance)}, expected one of [human, llm-generated, production-trace]`,
+      );
+    }
+    if (sample.capability !== undefined) {
+      if (!Array.isArray(sample.capability)) {
+        throw new Error(
+          `samples[${i}] (${sample.sample_id}) invalid capability: must be a string array (got ${typeof sample.capability})`,
+        );
+      }
+      for (const [j, cap] of sample.capability.entries()) {
+        if (typeof cap !== 'string' || !cap) {
+          throw new Error(
+            `samples[${i}] (${sample.sample_id}) capability[${j}] must be a non-empty string`,
+          );
+        }
+      }
+    }
+    if (sample.construct !== undefined && typeof sample.construct !== 'string') {
+      throw new Error(
+        `samples[${i}] (${sample.sample_id}) invalid construct: must be a string (got ${typeof sample.construct})`,
+      );
+    }
   }
 
   return { samples, requires };

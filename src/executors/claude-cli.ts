@@ -11,7 +11,7 @@ import {
   timeoutExecResult,
 } from './shared.js';
 
-// v0.22 — claude CLI 用 `--disable-slash-commands` (文档:"Disable all skills") +
+// claude CLI 用 `--disable-slash-commands` (文档:"Disable all skills") +
 // `--disallowedTools Skill` 实现与 SDK 等价的完全隔离。但 CLI 没有 partial whitelist
 // 的 flag,所以 [name1, ...] 必须 throw。
 //

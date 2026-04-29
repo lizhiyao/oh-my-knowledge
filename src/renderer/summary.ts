@@ -12,20 +12,6 @@ import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverag
  * UNDERPOWERED / NOISE / CAUTIOUS — none of which are "ship" but none of which
  * are "regress" either. SOLO is grey because it's an info pill, not a verdict.
  */
-// v0.21 B.4 — verdict level → status icon. PROGRESS/REGRESS 用实心点强信号,
-// CAUTIOUS 三角(警示),NOISE 空心圆(有信号但无效果),UNDERPOWERED 部分填充
-// (不够数据),SOLO 描边圆(单变体非对比).
-function levelIcon(level: VerdictLevel): string {
-  switch (level) {
-    case 'PROGRESS':     return '●';
-    case 'REGRESS':      return '●';
-    case 'CAUTIOUS':     return '▲';
-    case 'NOISE':        return '◌';
-    case 'UNDERPOWERED': return '◔';
-    case 'SOLO':         return '○';
-  }
-}
-
 // v0.21 B.4 — verdict 一句话总结. 把 level 标签 + Δ 数字 + action 推荐 + 原因
 // 压成一个完整的中文/英文句子, 用 variant 名直接说"X 比 Y 怎么样, 怎么办".
 // 用户读完一句话就懂结论, 不需要先学 jargon (Δ / CI / NOISE / SHIP).

@@ -8,6 +8,27 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+
+- **测评用例科学性 v1**(对标 HELM / MMLU-Pro / Construct Validity 三件套 / HF Dataset Cards 行业共识):`Sample` schema 加 4 个可选元数据字段(`capability` / `difficulty` / `construct` / `provenance`),纯文档/诊断用,**完全不参与 grading / judge / verdict / Report 顶层 schema**(测量学不变量保护,跨版本 verdict / Δ 完全可比,跟 v0.22 strict-baseline 那次的 breaking-comparability 区分开)。
+  - **Sample 元数据**(`src/types/eval.ts`):
+    - `capability?: string[]` — 该用例覆盖的能力维度(如 `['api-selection', 'error-diagnosis']`),归一时大小写/短横线/驼峰/下划线不敏感
+    - `difficulty?: 'easy' | 'medium' | 'hard'` — 难度分层(强枚举,防错)
+    - `construct?: string` — 该用例测的 construct 类型,suggested values:`'necessity'`(测必要性,baseline-vs-skill)/ `'quality'`(测 skill 写得好不好,skill-v1-vs-skill-v2)/ `'capability'`(测某具体能力);free-form string 允许自定义
+    - `provenance?: 'human' | 'llm-generated' | 'production-trace'` — 数据来源
+  - **`load-samples.ts` 新增 enum 校验**:`difficulty` / `provenance` 非法值含 `sample_id` 定位的错误信息(形如 `samples[3] (s007) invalid difficulty: 'easy?', expected one of [easy, medium, hard]`);`capability` 必须是 string[];`construct` 接受任意 string。
+  - **`bench diagnose` 加 2 类新 issue**:
+    - `rubric_clarity_low`(info):rubric < 20 字符 **AND** 不含任何评分级别词(中英 22 词清单)→ static rubric quality signal,跟现有 `ambiguous_rubric`(runtime/judge stddev)互补
+    - `capability_thin`(warning):某 capability 只 ≤ `max(2, N*0.2)` 个 sample 撑(总 N≥10 才检测,小 N 自动跳过避免全报)
+    - fine-grained discrimination signal(IRT 风格)留 follow-up
+  - **`bench diagnose` CLI 加 sample design coverage 块**:capability / difficulty / construct / provenance 分桶呈现(ASCII),数据从 `report.analysis.sampleQuality` 取(分桶聚合)或 fresh 加载 samples 算
+  - **`Report.analysis.sampleQuality`**:新增 `SampleQualityAggregate` 子结构,纯文档聚合(`capabilityCoverage` / `difficultyDistribution` / `constructDistribution` / `provenanceBreakdown` / `avgRubricLength` / `sampleCountWith*`)。**不破老报告兼容**:不传 samples 时不挂此字段,老 reader 读取仍正常。
+  - **`bench gen-samples` 自动注入 `provenance: 'llm-generated'`**:`SYSTEM_PROMPT` 加可选 hint 段(LLM 如能判断顺便填 capability / difficulty / construct,无法判断省略不强制)
+  - **新建 [`docs/sample-design-spec.md`](docs/sample-design-spec.md)**:行业 8 条 gap 引用 + omk v1 映射 + 完整 yaml example + 11 条用例设计自检 checklist + verdict 解读跟 construct 配合 + §八 Schema 扩展候选(v2 路线 source_ids / status / 拒绝清单 tags / expected_facts / owner / risk_level 含理由)
+  - **HTML report 暂不显示 sample design coverage**(只 CLI `bench diagnose`),HTML 渲染留 follow-up — 用户跑 HTML 报告需要看 coverage 时,从 `report.json` 的 `analysis.sampleQuality` 读
+  - **R11 防御测试**:`test/grading/judge-prompt-isolation.test.ts` 锁住 judge prompt 不含任何 sample 元数据 token(`'capability:'` / `'difficulty:'` 等),防未来 refactor 把元数据意外注入 judge prompt 破坏 construct validity
+  - **软兼容性 callout**:如果用户之前用 sample.capability 作为自由 unknown 字段(string / object / 其它),v1 起此字段是 `string[]`,类型校验会拒掉非数组值(此前 omk 没 publicize 过 capability 名字,概率极低)。`provenance` enum 简化:`'evolved'` / `'mixed'` 留 follow-up 跟 evolver 升级一起做。
+
 ### Fixed
 
 - **`VariantSummary.toolDistribution` 修真实 call count**:之前 aggregate 阶段按 `result.toolNames`(per-sample dedup 列表)累加,语义是"出现该 tool 的 sample 数",跟字段名"工具调用分布"不符 — 用户读 summary 看到 `Read: 5` 以为模型调了 5 次 Read,实际是"5 个样本里出现过 Read"。修法:`VariantResult` 加 per-sample `toolDistribution`(从 `toolCalls` reduce 得到真实 call count map),aggregate 时 sum per-sample 字段。旧报告 result 没 `toolDistribution` 字段时 fallback 到老 `toolNames` 语义保兼容。
@@ -16,7 +37,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 - **⚠️ BREAKING:report server URL 从 `/run/<id>` 改为 `/reports/<id>`**:命名跟 codebase 内一致语义(`Report` 类型 / `~/.oh-my-knowledge/reports/` 目录 / `omk bench report` CLI 命令)对齐。`/run/` 是 omk 内部把 "evaluation run" 当 entity 的旧叫法,但用户打开 URL 是来"看报告"的——`/reports/` 直接匹配心智。同步改:`/api/run/<id>` → `/api/reports/<id>`,`/api/runs` → `/api/reports`。**直接删旧路径,不留兼容 alias**(omk 0-1 阶段)。已有书签需要更新。
 
-- **⚠️ BREAKING-COMPARABILITY:`bench run` / `bench gate` 默认对 baseline-kind variant 启用 skill isolation**(`--strict-baseline` default true)。这是 omk 测量学严谨性的根本承诺补全:之前 baseline 通过三条 channel(SDK skill auto-discovery / subagent Skill 工具 / cwd 文件系统)拿到 `~/.claude/skills/` 全部 skill,导致 baseline-vs-skill 比较 construct invalid——具体证据是 N=20 WCC 评测里 baseline 平均 13 次 `Skill` 工具调用 + 输出 13/20 含 `@alipay/wealth-chart-components` 私有 import,verdict NOISE 实为污染。本版默认三堵(main session skills + subagent Skill 工具 + cwd 切到 isolated empty dir),baseline 真正干净 → verdict 翻盘 NOISE Δ=-0.0006 → PROGRESS Δ=+1.03 CI [0.50, 1.51]。
+- **⚠️ BREAKING-COMPARABILITY:`bench run` / `bench gate` 默认对 baseline-kind variant 启用 skill isolation**(`--strict-baseline` default true)。这是 omk 测量学严谨性的根本承诺补全:之前 baseline 通过三条 channel(SDK skill auto-discovery / subagent Skill 工具 / cwd 文件系统)拿到 `~/.claude/skills/` 全部 skill,导致 baseline-vs-skill 比较 construct invalid——baseline 跟 treatment 看到的是同一份 skill 内容,Δ 接近 0 是必然结果。本版默认三堵(main session skills + subagent Skill 工具 + cwd 切到 isolated empty dir),baseline 真正干净。
 
   改动范围:
   - **CLI flag**:新增 `--strict-baseline`(default true) / `--no-strict-baseline`(显式 opt-out 逃生口)。`bench run` + `bench gate` 同步支持。pre-flight 在 `--no-strict-baseline` + `~/.claude/skills/` 非空时 stderr 显式提醒。
@@ -27,7 +48,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   - **隔离覆盖(三条 channel)**:
     1. **main session skills**(SDK `options.skills`):`skills:[]` 关 SDK 内部 skill 发现
     2. **subagent Skill 工具**(SDK `options.disallowedTools`):`disallowedTools:['Skill']` 关 SDK 内置 task subagent 调 Skill 工具
-    3. **cwd 文件系统访问**(切到 isolated empty dir):baseline 默认 cwd 是 `process.cwd()`(用户评测工作目录),那里通常有 `skills/<name>/` symlink 给 treatment 用 — baseline 用 Glob/Read 直接顺 symlink 读 SKILL.md 就完全绕过 SDK 隔离。strict 模式 + 用户没显式 cwd 时切到 `~/.oh-my-knowledge/isolated-cwd/`(stable 空目录,cache 稳定),Glob/Read 探索不到任何 skill 文件。**这条是 NOISE → PROGRESS verdict 翻盘的真正 load-bearing channel**(N=20 WCC 实测:仅堵 SDK 两条 baseline 仍 13/20 输出泄露 `@alipay/wealth-chart-components`,加 cwd 隔离后降到 2/20,剩下 2 处是 prompt 自带)。
+    3. **cwd 文件系统访问**(切到 isolated empty dir):baseline 默认 cwd 是 `process.cwd()`(用户评测工作目录),那里通常有 `skills/<name>/` symlink 给 treatment 用 — baseline 用 Glob/Read 直接顺 symlink 读 SKILL.md 就完全绕过 SDK 隔离。strict 模式 + 用户没显式 cwd 时切到 `~/.oh-my-knowledge/isolated-cwd/`(空目录),Glob/Read 探索不到任何 skill 文件。**这条是真正 load-bearing 的 channel** — 仅堵 SDK 两条时 baseline 输出仍含被测 skill 的私有 token,加 cwd 隔离后才真正干净。
   - **MCP servers**:已默认堵(SDK `settingSources` 默认 `[]` + omk 不传 `mcpServers`)。
   - **已知 limit**:`AgentDefinition.skills` 白名单精确控制留 follow-up(白名单场景 subagent 仍能调 Skill 工具,但 v1 用户主要用 `[]` 完全隔离,影响小)。
 
@@ -44,6 +65,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - `resolveArtifacts(skillDir, variants, opts)` 新增 `opts: { strictBaseline?, variantAllowedSkills? }`,旧 caller 0 改动(opts 全 optional)。
 - `cacheKey()` signature 加 `allowedSkills?: string[]` 入参,旧 caller 不传时退化到默认行为(但 prefix 升级到 `v2:`,旧 cache 一次性失效)。
 - 单测覆盖:resolveArtifacts 三种优先级 / cache key 不同 isolation 不同键 + 顺序不敏感 / SDK option 形态契约 / claude-cli throw 非空白名单 / eval-config schema reject null + 非数组 / report.meta.skillIsolation populate / pre-flight isolation warning 触发条件。
+- **lint 严格化三层防御**:(1) `yarn lint` 加 `--max-warnings 0`,任何 warning 都让 CI / `yarn ci` 红;(2) 新加 `husky` + `lint-staged` pre-commit hook,commit 前对 staged TS 文件跑 `eslint --max-warnings 0`,本地拦住坏 commit;(3) `.claude/settings.json` 加 `Stop` hook,Claude Code 协作时每次 turn 结束自动跑 `yarn lint`(只在 src/test TS 文件有改动时跑,避免无用 IO),AI 编辑出 warning 立刻被 feedback 回来。**前置清掉 4 个 pre-existing unused-var warning**(summary.ts 没用的 levelIcon helper;grader.test.ts 两处 `{ dirname, join }` 解构里 join 没用;trace-adapter.test.ts 没用的 TestSession type alias)。
+- `src/cli` 模块化重构:`src/cli.ts` (1956 行单文件)→ `src/cli/index.ts` (1583 行 entry + dispatcher) + 抽 `parse-run-config.ts` / `progress.ts` / `update-check.ts` / `coverage-renderer.ts`(后者从 `src/analysis/` 搬过来,本质 CLI 渲染)。修 sibling-folder 反模式(`src/cli.ts` 与 `src/cli/` 同级)。`package.json` bin 路径同步:`dist/src/cli.js` → `dist/src/cli/index.js`。纯 file move + 路径调整,不动逻辑。
 
 ---
 
@@ -118,7 +141,7 @@ Minor — **BREAKING** `bench ci` 改名 `bench gate`(消除 omk 里 "CI" 歧义
   1. preflight 把所有 artifact 的文件依赖 fold 进单一 cwd 检查,不同 skill 的 `assets/foo.md` 互相覆盖,会产生大量 false-positive missing。
   2. 运行时 executor cwd = `process.cwd()` 而非 skill 根,LLM 的 Read 工具按 SKILL.md 的相对路径找文件全部失败,触发反复 retry / 模型放弃 / 长时间超时。
 
-  修复:`Artifact` 加 `skillRoot?: string`,在 `src/inputs/skill-loader.ts` 对 SKILL.md 约定的 directory-skill 设值(单文件 file-skill 维持 `process.cwd()` 语义不变)。`src/eval-core/task-planner.ts` `cwd` fallback 链改为 `artifact.cwd > artifact.skillRoot > sample.cwd > null`,`src/eval-core/dependency-checker.ts` `preflightDependencies` 文件依赖按 artifact 分桶解析(每个 skill 用各自 `skillRoot` 当 base)。WCC skill 端到端验证:bug-fix 前 41 个 false-positive missing + 1 个 sample 180s 超时;fix 后 preflight 通过、tool failure 减半、不再超时,wcc 平均分从 4.25 拉回 4.62,与 baseline diff CI 不再显著负向。
+  修复:`Artifact` 加 `skillRoot?: string`,在 `src/inputs/skill-loader.ts` 对 SKILL.md 约定的 directory-skill 设值(单文件 file-skill 维持 `process.cwd()` 语义不变)。`src/eval-core/task-planner.ts` `cwd` fallback 链改为 `artifact.cwd > artifact.skillRoot > sample.cwd > null`,`src/eval-core/dependency-checker.ts` `preflightDependencies` 文件依赖按 artifact 分桶解析(每个 skill 用各自 `skillRoot` 当 base)。端到端验证修复前后差异显著:false-positive missing 完全消除、tool failure 减半、不再超时、treatment 平均分从受 bug 拖累的低值恢复到正常水平。
 
 - **依赖文件提取 regex 收紧**:之前 `FILE_PATH_REGEX` 把 SKILL.md 里"查看 `.d.ts` / `index.ts` 文件"这种**示例性扩展名提及 / bare 文件名提及**误识别为依赖。新增过滤:跳过以 `.` 开头的路径(扩展名讨论)和不含 `/` 的 bare 文件名(通用文件名几乎都是示例)。要声明 `package.json` / `README.md` 等 bare 文件作为真依赖请走显式 `requires:`。
 

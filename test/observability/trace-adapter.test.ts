@@ -10,14 +10,6 @@ import {
   ccTracesToResultEntries,
 } from '../../src/observability/trace-adapter.js';
 
-// Test fixtures use unknown[] for records and cast at call-site; this avoids
-// leaking the internal CcRecord union into tests.
-type TestSession = {
-  sessionId: string;
-  sourcePath: string;
-  records: unknown[];
-};
-
 // ---------- Helpers ----------
 
 function jsonl(records: unknown[]): string {

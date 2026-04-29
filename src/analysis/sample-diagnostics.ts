@@ -32,10 +32,13 @@ export type SampleIssueKind =
   | 'all_pass'           // all variants got max score → too easy
   | 'all_fail'           // all variants got min score → too hard / broken
   | 'near_duplicate'     // prompt is ROUGE-1 ≥ threshold with another sample
-  | 'ambiguous_rubric'   // judge stddev across repeats high → unclear rubric
+  | 'ambiguous_rubric'   // judge stddev across repeats high → unclear rubric (后验/runtime 信号)
   | 'cost_outlier'       // sample's cost ≥ k × median cost
   | 'latency_outlier'    // sample's latency ≥ k × median latency
-  | 'error_prone';       // sample failed (ok=false) on ≥ 1 variant
+  | 'error_prone'        // sample failed (ok=false) on ≥ 1 variant
+  // sample design science signals (先验 / static metadata signal,跟 ambiguous_rubric 是后验 / runtime 信号互补)
+  | 'rubric_clarity_low' // rubric 字符 < 20 且不含评分级别词 → static rubric quality signal
+  | 'capability_thin';   // 某 capability 只 ≤ max(2, N*0.2) 个 sample 撑(总 N≥10 才检测)
 
 export interface SampleIssue {
   sample_id: string;
@@ -224,6 +227,61 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
     }
   }
 
+  // Pass 4: sample design science signals (跟 sample metadata 的 rubric / capability
+  // 字段相关,只在 caller 提供 options.samples 时才能跑).
+  if (options.samples && options.samples.length > 0) {
+    const samplesById = new Map<string, Sample>();
+    for (const s of options.samples) samplesById.set(s.sample_id, s);
+
+    // 4a. rubric_clarity_low — static rubric quality signal.
+    // 判定:rubric 字符长度 < 20 AND 不含任何评分级别词。两条件 AND 避免长 rubric 没用关键词被误报。
+    for (const entry of results) {
+      const sample = samplesById.get(entry.sample_id);
+      if (!sample?.rubric) continue;
+      const rubric = sample.rubric.trim();
+      if (rubric.length >= 20) continue;
+      if (containsRubricGradeKeyword(rubric)) continue;
+      issues.push({
+        sample_id: entry.sample_id, severity: 'info', kind: 'rubric_clarity_low',
+        message: `rubric 仅 ${rubric.length} 字且未含评分级别词 — 评委标准模糊,可能 judge 分数不稳`,
+        evidence: { rubricLength: rubric.length, rubricSnippet: rubric.slice(0, 80) },
+      });
+    }
+
+    // 4b. capability_thin — 某 capability 只被 ≤ max(2, N*0.2) sample 声明 → 该维度 thin coverage。
+    // small-N guard:总 sample < 10 时 completely skip(避免 N=5 全报)。
+    if (options.samples.length >= 10) {
+      const threshold = Math.max(2, Math.floor(options.samples.length * 0.2));
+      const capabilityCount: Record<string, { count: number; sampleIds: string[] }> = {};
+      for (const sample of options.samples) {
+        if (!Array.isArray(sample.capability)) continue;
+        // 同 sample 内同 capability 重复声明只计 1(跟 buildSampleQualityAggregate 对齐)。
+        // 否则 capability:['rare','rare','rare'] 会让 rare 计成 3 sample 撑,
+        // 实际只 1 条 sample,thin coverage 警告漏报。
+        const seenCaps = new Set<string>();
+        for (const rawCap of sample.capability) {
+          if (typeof rawCap !== 'string') continue;
+          const cap = normalizeCapability(rawCap);
+          if (seenCaps.has(cap)) continue;
+          seenCaps.add(cap);
+          if (!capabilityCount[cap]) capabilityCount[cap] = { count: 0, sampleIds: [] };
+          capabilityCount[cap].count++;
+          capabilityCount[cap].sampleIds.push(sample.sample_id);
+        }
+      }
+      for (const [cap, info] of Object.entries(capabilityCount)) {
+        if (info.count > threshold) continue;
+        // 报警挂在该 capability 的第一个 sample 上(便于定位),其他在 evidence 里列。
+        const primarySampleId = info.sampleIds[0];
+        issues.push({
+          sample_id: primarySampleId, severity: 'warning', kind: 'capability_thin',
+          message: `capability "${cap}" 只 ${info.count} 个 sample 撑(阈值 ${threshold},N=${options.samples.length}) — 单 sample 失败会让该维度结论不稳`,
+          evidence: { capability: cap, sampleCount: info.count, threshold, sampleIds: info.sampleIds },
+        });
+      }
+    }
+  }
+
   // Sort and roll up.
   issues.sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] || a.sample_id.localeCompare(b.sample_id));
 
@@ -270,6 +328,44 @@ function scoresMap(entry: ResultEntry, variants: string[]): Record<string, numbe
     }
   }
   return out;
+}
+
+// rubric grade-level keywords (中英)。
+// 这是 static rubric quality signal,跟 ambiguous_rubric (judge stddev runtime 信号) 互补。
+//
+// 关键词选择原则:**指向"评分级别 / 评分维度 / 评分阈值"的强语义词**,不要过宽的字典词。
+// 反例:'分数' (会误命中"打 5 分"等无关用法)、'标准' (会误命中"标准答案")、'应该' (太通用)。
+// 改用组合词 / 评分专用词,提高召回精度。
+const RUBRIC_GRADE_KEYWORDS_ZH: readonly string[] = [
+  '优秀', '良好', '合格', '不合格', '及格',
+  '满分', '零分', '扣分', '加分', '得分',
+  '评分标准', '判分标准', '评分要点', '评分级别', '判定标准',
+  '至少包含', '必须包含', '不应包含', '应当', '应识别',
+];
+const RUBRIC_GRADE_KEYWORDS_EN: readonly string[] = [
+  'excellent', 'good', 'poor', 'fail', 'pass',
+  'rubric', 'criterion', 'criteria',
+  'must include', 'must contain', 'should include', 'should contain',
+  'at least', 'at most', 'no more than',
+  'scored as', 'graded as', 'full marks', 'full score',
+];
+
+function containsRubricGradeKeyword(rubric: string): boolean {
+  const lower = rubric.toLowerCase();
+  for (const kw of RUBRIC_GRADE_KEYWORDS_ZH) {
+    if (rubric.includes(kw)) return true;
+  }
+  for (const kw of RUBRIC_GRADE_KEYWORDS_EN) {
+    if (lower.includes(kw)) return true;
+  }
+  return false;
+}
+
+/** case-insensitive + dash/camel/underscore normalize:
+ *  `api-selection`, `apiSelection`, `API_Selection` 都归到 `apiselection`。
+ *  让 capability_thin / capabilityCoverage 不受拼写风格差异影响。 */
+export function normalizeCapability(raw: string): string {
+  return raw.trim().toLowerCase().replace(/[-_\s]+/g, '');
 }
 
 /**
@@ -323,6 +419,13 @@ export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: {
   }
   if (diag.byKind.error_prone) {
     lines.push('  - 这些用例执行失败 — 检查环境依赖 / executor 配置 / 用例本身是否过期');
+  }
+  // sample design science signals
+  if (diag.byKind.rubric_clarity_low) {
+    lines.push('  - rubric 太短 / 无评分级别词 — 把 rubric 写成"应识别 X / 必须包含 Y / 至少 N 项"这样的判分细则,让 judge 有可执行标准');
+  }
+  if (diag.byKind.capability_thin) {
+    lines.push('  - 某 capability 维度只 1-2 用例撑 — 要么补 sample 加厚该维度,要么删该 capability(明确不在测试范围),避免单 sample 失败让该维度结论不稳');
   }
 
   lines.push('');

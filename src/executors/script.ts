@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import type { ExecResult, ExecutorFn, ExecutorInput } from '../types/index.js';
 import { DEFAULT_TIMEOUT_MS } from './shared.js';
 
-// v0.22 — script executor 由用户自定义,omk 无法保证它实现 skill 隔离。
+// script executor 由用户自定义,omk 无法保证它实现 skill 隔离。
 // 任何 allowedSkills(包括 [])下都 stderr 一次性 warn,不阻塞执行,
 // 让用户知道 strict-baseline / 显式 allowedSkills 在 script executor 下静默无效。
 let scriptIsolationWarned = false;

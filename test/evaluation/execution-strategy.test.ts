@@ -59,7 +59,7 @@ describe('resolveExecutionStrategy', () => {
     assert.equal(plan.input.verbose, true);
   });
 
-  // v0.22 — Skill isolation pass-through.
+  // Skill isolation pass-through.
   it('allowedSkills 从 artifact 透到 ExecutorInput(strict baseline []）', () => {
     const t = mockTask('baseline', null);
     t.artifact.allowedSkills = [];
@@ -80,7 +80,7 @@ describe('resolveExecutionStrategy', () => {
     assert.equal(plan.input.allowedSkills, undefined);
   });
 
-  // v0.22 — strict-baseline cwd 沙箱:baseline 跑在 isolated empty dir,避免
+  // strict-baseline cwd 沙箱:baseline 跑在 isolated empty dir,避免
   // 通过 Glob/Read 工具走 cwd 路径绕过 SDK skill isolation 直接读 skills/symlink。
   it('strict baseline (kind=baseline + allowedSkills=[]) + 没显式 cwd → effectiveCwd 是 isolated dir', () => {
     const t = mockTask('baseline', null);
@@ -115,7 +115,7 @@ describe('resolveExecutionStrategy', () => {
   });
 });
 
-describe('buildVariantConfig skill isolation (v0.22)', () => {
+describe('buildVariantConfig skill isolation', () => {
   function mkArtifact(name: string, kind: Artifact['kind'], allowedSkills?: string[]): Artifact {
     return {
       name,
@@ -133,12 +133,12 @@ describe('buildVariantConfig skill isolation (v0.22)', () => {
   });
 
   it('artifact.allowedSkills 白名单透传到 VariantConfig', () => {
-    const cfg = buildVariantConfig(mkArtifact('wcc-clean', 'baseline', ['react']));
+    const cfg = buildVariantConfig(mkArtifact('skill-clean', 'baseline', ['react']));
     assert.deepEqual(cfg.allowedSkills, ['react']);
   });
 
   it('artifact.allowedSkills 未声明时 VariantConfig.allowedSkills 缺失(undefined)', () => {
-    const cfg = buildVariantConfig(mkArtifact('wcc', 'skill'));
+    const cfg = buildVariantConfig(mkArtifact('skillA', 'skill'));
     assert.equal(cfg.allowedSkills, undefined);
   });
 });

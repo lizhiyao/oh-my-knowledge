@@ -114,7 +114,7 @@ export function loadSkills(skillDir: string, variants: string[]): Record<string,
   return Object.fromEntries(resolveArtifacts(skillDir, variants).map((artifact) => [artifact.name, artifact.content]));
 }
 
-/** v0.22 — opts for resolveArtifacts skill-isolation wiring. */
+/** opts for resolveArtifacts skill-isolation wiring. */
 export interface ResolveArtifactsOptions {
   /** Default true. When true, baseline-kind artifacts get allowedSkills=[] auto-injected
    *  unless overridden by variantAllowedSkills. */
@@ -252,7 +252,7 @@ export function resolveArtifacts(
     }
   }
 
-  // v0.22 — Skill-isolation wiring.
+  // Skill-isolation wiring.
   //   Priority: variantAllowedSkills (explicit eval.yaml) > strictBaseline default > none.
   //   strictBaseline=true 时,所有 kind:'baseline' artifact 默认 allowedSkills=[]。
   //   显式 [] 也是合法(用户主动想"完全发现")的反义靠 strictBaseline=false 表达整批关闭。

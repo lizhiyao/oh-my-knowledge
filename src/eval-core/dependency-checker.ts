@@ -152,7 +152,7 @@ export function extractDependencies(
  *   - defaultCwd         (其他)
  *
  * 必须用 per-artifact 分桶,否则两个 skill 各自的 assets/foo.md 在单一 cwd 下
- * 互相错位(WCC 评测里 41 个 false-positive 的根因)。
+ * 互相错位,导致大量 false-positive missing。
  */
 export function extractFilesByBase(
   artifacts: Artifact[],

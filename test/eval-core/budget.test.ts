@@ -34,7 +34,7 @@ const makeExecutor = (perCallCost: number, perCallMs = 10): ExecutorFn => async 
   };
 };
 
-describe('executeTasks — v0.22 budget tracker', () => {
+describe('executeTasks —  budget tracker', () => {
   it('aborts remaining tasks when totalUSD cap is exceeded', async () => {
     const tasks = ['s1', 's2', 's3', 's4', 's5'].map(task);
     const exec = makeExecutor(0.4); // each task costs $0.4

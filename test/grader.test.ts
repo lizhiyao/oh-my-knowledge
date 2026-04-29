@@ -466,7 +466,7 @@ describe('grade', () => {
 
   it('custom assertion: calls external JS function', async () => {
     const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
+    const { dirname } = await import('node:path');
     const __dirname = dirname(fileURLToPath(import.meta.url));
 
     const result = await grade({
@@ -519,7 +519,7 @@ describe('grade', () => {
 
   it('mixed sync + async assertions: merged correctly', async () => {
     const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
+    const { dirname } = await import('node:path');
     const __dirname = dirname(fileURLToPath(import.meta.url));
 
     const result = await grade({
