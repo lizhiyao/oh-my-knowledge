@@ -56,7 +56,7 @@ export function loadSamples(samplesPath: string): LoadSamplesResult {
     throw new Error(`invalid samples file: ${samplesPath}`);
   }
 
-  // v0.22 — sample design metadata enums (capability/difficulty/construct/provenance).
+  // sample design metadata enums (capability/difficulty/construct/provenance).
   // Pure documentation/diagnostic fields; do NOT participate in grading/judge/verdict.
   const VALID_DIFFICULTY: ReadonlySet<string> = new Set(['easy', 'medium', 'hard']);
   const VALID_PROVENANCE: ReadonlySet<string> = new Set(['human', 'llm-generated', 'production-trace']);
@@ -69,7 +69,7 @@ export function loadSamples(samplesPath: string): LoadSamplesResult {
       throw new Error(`samples[${i}] (${sample.sample_id}) missing or invalid required field: prompt (must be a non-empty string)`);
     }
 
-    // v0.22 — validate optional metadata enums; help users typo-check (`'easy?'` etc).
+    // validate optional metadata enums; help users typo-check (`'easy?'` etc).
     if (sample.difficulty !== undefined && !VALID_DIFFICULTY.has(sample.difficulty)) {
       throw new Error(
         `samples[${i}] (${sample.sample_id}) invalid difficulty: ${JSON.stringify(sample.difficulty)}, expected one of [easy, medium, hard]`,

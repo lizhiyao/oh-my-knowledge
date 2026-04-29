@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { buildJudgePrompt } from '../../src/grading/judge.js';
 
 /**
- * v0.22 — Defensive test (R11 from sample-design plan).
+ * Defensive test (R11 from sample-design plan).
  *
  * Sample design metadata fields (capability / difficulty / construct / provenance /
  * llm-generated / human / production-trace) are PURE DOCUMENTATION — they must NEVER
@@ -19,7 +19,7 @@ import { buildJudgePrompt } from '../../src/grading/judge.js';
  * sample-metadata token strings.
  */
 
-describe('buildJudgePrompt — sample metadata isolation (v0.22 R11)', () => {
+describe('buildJudgePrompt — sample metadata isolation', () => {
   // Use prompts/rubrics that DELIBERATELY contain "necessity" / "capability" / etc as
   // generic English/Chinese words, to make sure the assertion isn't fragile to that.
   // We assert specific TOKENS (字段名 + enum 值) don't appear, not generic dictionary words.

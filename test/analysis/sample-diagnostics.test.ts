@@ -234,8 +234,8 @@ describe('formatSampleDiagnostics', () => {
   });
 });
 
-// v0.22 — sample design science signals (rubric_clarity_low / capability_thin)
-describe('diagnoseSamples — rubric_clarity_low (v0.22)', () => {
+// sample design science signals (rubric_clarity_low / capability_thin)
+describe('diagnoseSamples — rubric_clarity_low', () => {
   function reportWithSample(sample: Partial<Sample>): { report: Report; samples: Sample[] } {
     const samples: Sample[] = [{ sample_id: 's1', prompt: 'p', ...sample }];
     const report = buildReport(
@@ -264,7 +264,7 @@ describe('diagnoseSamples — rubric_clarity_low (v0.22)', () => {
   });
 
   it('短 rubric 含原过宽词(分数 / 标准 / 应该)无评分语义 → 触发(收紧后)', () => {
-    // 这些词在 v0.22 review 后被剔除,避免"打 5 分数学题"/"标准答案"/"你应该"等误豁免
+    // 这些词在  review 后被剔除,避免"打 5 分数学题"/"标准答案"/"你应该"等误豁免
     for (const fakeRubric of ['打 5 分数学题', '标准答案是', '你应该']) {
       const { report, samples } = reportWithSample({ rubric: fakeRubric });
       const d = diagnoseSamples(report, { samples });
@@ -287,7 +287,7 @@ describe('diagnoseSamples — rubric_clarity_low (v0.22)', () => {
   });
 });
 
-describe('diagnoseSamples — capability_thin (v0.22)', () => {
+describe('diagnoseSamples — capability_thin', () => {
   function buildN(n: number, capabilityFn: (i: number) => string[] | undefined): { report: Report; samples: Sample[] } {
     const samples: Sample[] = [];
     const entries: Array<{ id: string; perVariant: Record<string, Partial<VariantResult>> }> = [];
@@ -337,17 +337,17 @@ describe('diagnoseSamples — capability_thin (v0.22)', () => {
   });
 });
 
-describe('diagnoseSamples — backward compat (v0.22)', () => {
-  it('老 report(不传 samples)→ 不报新 v0.22 issue', () => {
+describe('diagnoseSamples — backward compat', () => {
+  it('老 report(不传 samples)→ 不报新  issue', () => {
     // 用 spread > 0.5 (max-min 1.5 > flatThreshold) 避免 flat_scores 干扰这次断言。
     const r = buildReport([
       { id: 's1', perVariant: { v1: { compositeScore: 3 }, v2: { compositeScore: 4.5 } } },
     ], ['v1', 'v2']);
     const d = diagnoseSamples(r); // 不传 samples
-    // 关键断言:v0.22 新 issue kinds 不被触发
+    // 关键断言:新 issue kinds 不被触发
     assert.equal(d.byKind.rubric_clarity_low, undefined);
     assert.equal(d.byKind.capability_thin, undefined);
-    // healthScore 仍按老规则算(任何老 issue 触发也照常,不被 v0.22 改变)
+    // healthScore 仍按老规则算(任何老 issue 触发也照常,不被  改变)
     assert.equal(d.healthScore, 100);
   });
 });

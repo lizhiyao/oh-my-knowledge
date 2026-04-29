@@ -68,7 +68,7 @@ describe('loadSamples', () => {
     assert.throws(() => loadSamples(p), /required field: prompt/);
   });
 
-  // v0.22 — UltraReview follow-up #6: typeof check for prompt
+  // UltraReview follow-up #6: typeof check for prompt
   it('prompt 非字符串(数字)抛出异常', () => {
     const p = tmp('bad-prompt-type.json');
     cleanups.push(p);
@@ -76,8 +76,8 @@ describe('loadSamples', () => {
     assert.throws(() => loadSamples(p), /invalid required field: prompt/);
   });
 
-  // v0.22 — sample design metadata fields validation
-  describe('sample design metadata (v0.22)', () => {
+  // sample design metadata fields validation
+  describe('sample design metadata', () => {
     it('接受 capability / difficulty / construct / provenance 4 个新字段', () => {
       const p = tmp('with-meta.json');
       cleanups.push(p);

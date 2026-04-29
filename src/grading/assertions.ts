@@ -9,7 +9,7 @@ const CUSTOM_ASSERTION_TIMEOUT_MS = 30_000;
 export const ASYNC_ASSERTION_TYPES = new Set([
   'semantic_similarity',
   'custom',
-  // v0.22 — RAG-specific judge metrics. All three go through the LLM-judge path
+  // RAG-specific judge metrics. All three go through the LLM-judge path
   // and inherit the same length-debias instruction as the main rubric judge.
   'faithfulness',
   'answer_relevancy',
@@ -394,7 +394,7 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
 }
 
 // ===========================================================================
-// v0.22 — RAG-specific judge metrics
+// RAG-specific judge metrics
 // ===========================================================================
 //
 // Three metrics, all running through the LLM judge:
@@ -416,7 +416,7 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
 //     custom assertion.
 //  2. The prompt includes the SAME length-debias paragraph as the main judge
 //     prompt (v3-cot-length) — output verbosity is not a quality signal here
-//     either. This is the "auto-inherit length-debias" claim from the v0.22 plan.
+//     either. This is the "auto-inherit length-debias" claim from the  plan.
 //  3. Reference resolution:
 //       faithfulness:    sample.context  (or assertion.reference override)
 //       context_recall:  assertion.reference (or sample.context fallback)

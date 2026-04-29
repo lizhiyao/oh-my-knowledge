@@ -1,10 +1,10 @@
 /**
- * v0.22 — CLI rendering of Sample design science coverage block for `bench diagnose`.
+ * CLI rendering of Sample design science coverage block for `bench diagnose`.
  *
  * Two data sources:
  *   1. samples (loaded fresh from eval-samples file) — preferred, always up-to-date
  *   2. report.analysis.sampleQuality (persisted on report) — fallback when samples
- *      file isn't accessible (老报告 / 移动过 samples 路径)
+ *      file isn't accessible (e.g. samples 路径已变)
  *
  * Rendering: ASCII bar / count list, no fancy charts, lo-fi by design.
  * Returns empty string when neither source provides data.

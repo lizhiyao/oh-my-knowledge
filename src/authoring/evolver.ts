@@ -221,7 +221,7 @@ export function mergeEvolveReports(
     results,
   };
 
-  // v0.22 — pass samples to populate analysis.sampleQuality (capability/difficulty/
+  // pass samples to populate analysis.sampleQuality (capability/difficulty/
   // construct/provenance coverage). Without samples, sampleQuality is omitted but
   // insights/suggestions/summary still computed.
   report.analysis = analyzeResults(report, { samples });
@@ -287,7 +287,7 @@ export async function evolveSkill({
     // (already paid for above). round≥2 re-evaluates the current best skill to get fresh
     // weak samples — this evaluation costs real money and MUST be added to totalCostUSD,
     // otherwise the user-facing budget tracker undercounts by ~N-1 evaluations across
-    // an N-round run. (Bug found in v0.22 UltraReview.)
+    // an N-round run. (Bug found in  UltraReview.)
     let lastReport: Report;
     if (round === 1) {
       lastReport = baselineReport;
@@ -355,7 +355,7 @@ export async function evolveSkill({
   // Merge all round reports into one and persist
   let reportId: string | undefined;
   if (roundReports.length > 0) {
-    // v0.22 — load samples once to enable analysis.sampleQuality on the merged report.
+    // load samples once to enable analysis.sampleQuality on the merged report.
     const { samples } = loadSamples(absSamplesPath);
     const mergedReport = mergeEvolveReports(roundReports, skillName, totalCostUSD, samples);
     persistReport(mergedReport, DEFAULT_OUTPUT_DIR);

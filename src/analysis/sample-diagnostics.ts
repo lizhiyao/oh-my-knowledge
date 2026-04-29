@@ -36,7 +36,7 @@ export type SampleIssueKind =
   | 'cost_outlier'       // sample's cost ≥ k × median cost
   | 'latency_outlier'    // sample's latency ≥ k × median latency
   | 'error_prone'        // sample failed (ok=false) on ≥ 1 variant
-  // v0.22 — sample design science signals (先验 / static metadata signal,跟 ambiguous_rubric 是后验 / runtime 信号互补)
+  // sample design science signals (先验 / static metadata signal,跟 ambiguous_rubric 是后验 / runtime 信号互补)
   | 'rubric_clarity_low' // rubric 字符 < 20 且不含评分级别词 → static rubric quality signal
   | 'capability_thin';   // 某 capability 只 ≤ max(2, N*0.2) 个 sample 撑(总 N≥10 才检测)
 
@@ -227,7 +227,7 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
     }
   }
 
-  // v0.22 — Pass 4: sample design science signals (跟 sample metadata 的 rubric / capability
+  // Pass 4: sample design science signals (跟 sample metadata 的 rubric / capability
   // 字段相关,只在 caller 提供 options.samples 时才能跑).
   if (options.samples && options.samples.length > 0) {
     const samplesById = new Map<string, Sample>();
@@ -324,7 +324,7 @@ function scoresMap(entry: ResultEntry, variants: string[]): Record<string, numbe
   return out;
 }
 
-// v0.22 — rubric grade-level keywords (中英)。
+// rubric grade-level keywords (中英)。
 // 这是 static rubric quality signal,跟 ambiguous_rubric (judge stddev runtime 信号) 互补。
 //
 // 关键词选择原则:**指向"评分级别 / 评分维度 / 评分阈值"的强语义词**,不要过宽的字典词。
@@ -355,7 +355,7 @@ function containsRubricGradeKeyword(rubric: string): boolean {
   return false;
 }
 
-/** v0.22 — case-insensitive + dash/camel/underscore normalize:
+/** case-insensitive + dash/camel/underscore normalize:
  *  `api-selection`, `apiSelection`, `API_Selection` 都归到 `apiselection`。
  *  让 capability_thin / capabilityCoverage 不受拼写风格差异影响。 */
 export function normalizeCapability(raw: string): string {
@@ -414,7 +414,7 @@ export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: {
   if (diag.byKind.error_prone) {
     lines.push('  - 这些用例执行失败 — 检查环境依赖 / executor 配置 / 用例本身是否过期');
   }
-  // v0.22 — sample design science signals
+  // sample design science signals
   if (diag.byKind.rubric_clarity_low) {
     lines.push('  - rubric 太短 / 无评分级别词 — 把 rubric 写成"应识别 X / 必须包含 Y / 至少 N 项"这样的判分细则,让 judge 有可执行标准');
   }

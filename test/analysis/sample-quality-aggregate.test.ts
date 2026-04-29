@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { buildSampleQualityAggregate, analyzeResults } from '../../src/analysis/report-diagnostics.js';
 import type { Report, Sample } from '../../src/types/index.js';
 
-describe('buildSampleQualityAggregate (v0.22)', () => {
+describe('buildSampleQualityAggregate', () => {
   it('空 sample 数组返回零值', () => {
     const agg = buildSampleQualityAggregate([]);
     assert.deepEqual(agg.capabilityCoverage, {});
@@ -88,7 +88,7 @@ describe('buildSampleQualityAggregate (v0.22)', () => {
   });
 });
 
-describe('analyzeResults — sampleQuality wiring (v0.22)', () => {
+describe('analyzeResults — sampleQuality wiring', () => {
   function emptyReport(): Report {
     return {
       id: 'r',

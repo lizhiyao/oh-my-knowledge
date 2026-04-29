@@ -16,7 +16,7 @@ describe('generateSamples', () => {
   });
 });
 
-// v0.22 — sanitize boundary (UltraReview Bug #1 fix)
+// sanitize boundary (UltraReview Bug #1 fix)
 describe('sanitizeGeneratedSamples', () => {
   it('default-stamps provenance: "llm-generated" when missing', () => {
     const samples: Sample[] = [{ sample_id: 's1', prompt: 'p' }];

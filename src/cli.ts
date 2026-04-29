@@ -53,12 +53,12 @@ interface RunConfig {
   bootstrapSamples?: number;
   /** v0.21 Phase 3a length-debias toggle. Default true; --no-debias-length sets false. */
   lengthDebias?: boolean;
-  /** v0.22 — hard budget caps from CLI or config. */
+  /** hard budget caps from CLI or config. */
   budget?: import('./types/index.js').EvalBudget;
-  /** v0.22 — Skill isolation default for baseline-kind variants. Default true.
-   *  CLI flag --no-strict-baseline reverts to pre-v0.22 behavior. */
+  /** Skill isolation default for baseline-kind variants. Default true.
+   *  CLI flag --no-strict-baseline disables strict isolation. */
   strictBaseline?: boolean;
-  /** v0.22 — Per-variant allowedSkills override extracted from eval.yaml. Always wins
+  /** Per-variant allowedSkills override extracted from eval.yaml. Always wins
    *  over strictBaseline default. Keyed by variant name. */
   variantAllowedSkills?: Record<string, string[]>;
   onProgress?: ProgressCallback | null;
@@ -192,7 +192,7 @@ const RUN_OPTIONS: ParseArgsConfig['options'] = {
   retry: { type: 'string' },
   resume: { type: 'string' },
   'layered-stats': { type: 'boolean' },
-  // v0.22 — strict-baseline default true. Declare both forms; reconcile in
+  // strict-baseline default true. Declare both forms; reconcile in
   // parseRunConfig (后者赢)。strict-baseline 没传 + no-strict-baseline 没传 = default true。
   'strict-baseline': { type: 'boolean' },
   'no-strict-baseline': { type: 'boolean' },
@@ -319,13 +319,13 @@ function parseRunConfig(
   const blind = (values.blind as boolean | undefined) ?? evalConfig?.blind ?? false;
   const layeredStats = (values['layered-stats'] as boolean | undefined) ?? false;
 
-  // v0.22 — strict-baseline default true. Reconcile both flag forms.
+  // strict-baseline default true. Reconcile both flag forms.
   // Priority: --no-strict-baseline > --strict-baseline > undefined(=true).
   const noStrictFlag = values['no-strict-baseline'] as boolean | undefined;
   const strictFlag = values['strict-baseline'] as boolean | undefined;
   const strictBaseline: boolean = noStrictFlag === true ? false : (strictFlag ?? true);
 
-  // v0.22 — extract eval.yaml variant.allowedSkills overrides (per-variant). Always
+  // extract eval.yaml variant.allowedSkills overrides (per-variant). Always
   // wins over strictBaseline default. Empty object when no eval.yaml or no overrides.
   const variantAllowedSkills: Record<string, string[]> = {};
   if (evalConfig?.variants) {
@@ -607,7 +607,7 @@ async function handleRun(argv: string[]): Promise<void> {
   }
 
   // --budget-usd / --budget-per-sample-usd / --budget-per-sample-ms:
-  // v0.22 hard budget caps. CLI flags override config-file values. When the
+  //  hard budget caps. CLI flags override config-file values. When the
   // total-USD cap is exceeded mid-run, remaining tasks are skipped and a
   // partial report is persisted with meta.budgetExhausted=true.
   const budgetUSD = values['budget-usd'] != null ? Number(values['budget-usd']) : undefined;
@@ -1283,7 +1283,7 @@ async function handleGate(argv: string[]): Promise<void> {
 async function handleDiff(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   // Flag-aware split: separate positional report IDs from flags so we can support
-  //   omk bench diff <id>                      — within-report sample-level (v0.22)
+  //   omk bench diff <id>                      — within-report sample-level
   //   omk bench diff <id1> <id2>               — cross-report variant-level (legacy)
   // both with optional --regressions-only / --threshold / --variant flags.
   const positional: string[] = [];
@@ -1390,7 +1390,7 @@ async function handleDiff(argv: string[]): Promise<void> {
 }
 
 /**
- * Within-report sample-level diff (v0.22). Compares two variants' scores on
+ * Within-report sample-level diff. Compares two variants' scores on
  * each shared sample and surfaces the worst regressions / biggest wins.
  *
  * Default focus is variants[0] (control) vs variants[1] (treatment), but
@@ -1762,7 +1762,7 @@ async function handleSaturation(argv: string[]): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// handleVerdict — one-line ship/no-ship verdict (v0.22)
+// handleVerdict — one-line ship/no-ship verdict
 // ---------------------------------------------------------------------------
 
 async function handleVerdict(argv: string[]): Promise<void> {
@@ -1879,7 +1879,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   });
   console.log(formatSampleDiagnostics(diag, { topN }));
 
-  // v0.22 — Sample design science coverage block. Render after diagnose 主体,因为
+  // Sample design science coverage block. Render after diagnose 主体,因为
   // coverage 是声明式元数据(capability/difficulty/construct/provenance)的整体分布,
   // 跟 issue list 是不同视角的两件事。优先从 samples (现场加载) 算,fallback 到
   // report.analysis.sampleQuality(报告里持久化的数据)。

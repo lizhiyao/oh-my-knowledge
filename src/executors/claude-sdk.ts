@@ -9,7 +9,7 @@ import { asErrorLike, buildExecEnv, DEFAULT_TIMEOUT_MS, errorMessage } from './s
 let sdkQuery: ClaudeSdkModule['query'] | null = null;
 
 /**
- * v0.22 — Map ExecutorInput.allowedSkills to SDK query options for skill isolation.
+ * Map ExecutorInput.allowedSkills to SDK query options for skill isolation.
  *   undefined → {} (SDK default: full ~/.claude/skills/ discovery)
  *   []        → { skills: [], disallowedTools: ['Skill'] } (main session + subagent 双堵)
  *   [...]     → { skills: [...] } (main session whitelist; subagent 走独立 channel,

@@ -15,7 +15,7 @@ describe('cacheKey', () => {
     assert.equal(key1, key2);
   });
 
-  // v0.22 — Skill isolation 必须进 cache key,否则 strict / non-strict 切换会误命中。
+  // Skill isolation 必须进 cache key,否则 strict / non-strict 切换会误命中。
   it('allowedSkills 进 cache key:undefined vs [] 不同键', () => {
     const noIso = cacheKey('sonnet', '', 'same prompt', '/tmp/p', undefined);
     const strict = cacheKey('sonnet', '', 'same prompt', '/tmp/p', []);
@@ -34,7 +34,7 @@ describe('cacheKey', () => {
     assert.equal(a, b);
   });
 
-  it('cache key 带 v2: 前缀(v0.22 invalidates pre-isolation cache)', () => {
+  it('cache key 带 v2: 前缀(invalidates old cache entries)', () => {
     const key = cacheKey('sonnet', '', 'p', '/tmp/p');
     assert.match(key, /^v2:/);
   });

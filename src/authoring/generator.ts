@@ -22,7 +22,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
    避免使用 baseline 凭常识或搜索文件也能答对的断言（如 not_contains 通用错误写法）。
    优先使用 contains 检测文档独有的术语、参数组合或特定值
 
-可选元数据字段（v0.22 起，如能判断顺便填，无法判断时省略整个字段即可）：
+可选元数据字段如能判断顺便填，无法判断时省略整个字段即可）：
 - capability: string[] — 该用例覆盖的能力维度，如 ["api-selection", "error-diagnosis"]
 - difficulty: "easy" | "medium" | "hard" — 难度等级
 - construct: string — 用例测的 construct 类型，建议值 "necessity"（测知识必要性）/ "quality"（测 skill 写得好不好）/ "capability"（测某具体能力）
@@ -69,7 +69,7 @@ ${skillContent}
     throw new Error('generated result is empty, please retry');
   }
 
-  // Validate required fields + sanitize v0.22 metadata enums *at generator boundary*
+  // Validate required fields + sanitize  metadata enums *at generator boundary*
   // (see sanitizeGeneratedSamples).
   const { stripped } = sanitizeGeneratedSamples(samples);
   if (stripped.length > 0) {
@@ -82,7 +82,7 @@ ${skillContent}
 }
 
 /**
- * v0.22 — Validate + sanitize LLM-generated samples at generator boundary.
+ * Validate + sanitize LLM-generated samples at generator boundary.
  *
  * Why this exists:
  *   LLM-output garbage (`capability: 'string'` / `difficulty: 'Easy'` /

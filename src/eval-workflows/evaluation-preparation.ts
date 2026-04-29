@@ -32,9 +32,9 @@ export async function prepareEvaluationRun({
   artifacts?: Artifact[];
   dryRun: boolean;
   mcpConfig?: string;
-  /** v0.22 — default true, baseline-kind 自动 allowedSkills=[]。 */
+  /**  — default true, baseline-kind 自动 allowedSkills=[]。 */
   strictBaseline?: boolean;
-  /** v0.22 — eval.yaml 显式 allowedSkills per variant (overrides strictBaseline default). */
+  /**  — eval.yaml 显式 allowedSkills per variant (overrides strictBaseline default). */
   variantAllowedSkills?: Record<string, string[]>;
 }): Promise<PreparedEvaluationRun> {
   const { samples, requires } = loadSamples(samplesPath);

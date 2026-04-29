@@ -5,7 +5,7 @@
 import type { Report, ResultEntry, Insight, AnalysisResult, Sample, SampleQualityAggregate } from '../types/index.js';
 import { normalizeCapability } from './sample-diagnostics.js';
 
-/** v0.22 — opts for `analyzeResults`. Optional because most older callers don't have
+/** opts for `analyzeResults`. Optional because most older callers don't have
  *  samples in scope; new callers (evaluation-pipeline / evolver) pass them in to
  *  populate `analysis.sampleQuality`. */
 export interface AnalyzeResultsOptions {
@@ -22,7 +22,7 @@ export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {})
   const variants = report.meta?.variants || [];
   const results = report.results || [];
 
-  // v0.22 — sampleQuality aggregate is built from sample metadata only,
+  // sampleQuality aggregate is built from sample metadata only,
   // independent of result data. Computed even when results.length === 0 or
   // variants.length < 2 (e.g. dry-run / single-variant analysis).
   const sampleQuality: SampleQualityAggregate | undefined = opts.samples
@@ -69,7 +69,7 @@ export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {})
 }
 
 /**
- * v0.22 — Build sample design science aggregate from sample metadata.
+ * Build sample design science aggregate from sample metadata.
  *
  * Pure function — no result/score data needed. Reads:
  * - `Sample.capability` (string[], normalized case-insensitive + dash/camel/underscore stripped)

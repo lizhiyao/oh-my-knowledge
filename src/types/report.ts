@@ -23,7 +23,7 @@ export interface VariantResult {
   numToolFailures?: number;
   toolSuccessRate?: number;
   toolNames?: string[];
-  /** v0.22 — per-sample tool call distribution (tool name → call count).
+  /** per-sample tool call distribution (tool name → call count).
    *  Same shape as VariantSummary.toolDistribution but at sample granularity.
    *  Aggregating these gives true call-count totals; aggregating toolNames
    *  (deduped) only gives "samples-that-used-this-tool" counts. */
@@ -188,10 +188,10 @@ export interface ReportMeta {
    *  order). Empty / absent means legacy default (no debias). The renderer shows
    *  this so readers can tell apples from oranges across reports. */
   debiasMode?: Array<'length' | 'position'>;
-  /** v0.22 — set to true when the run was aborted by a budget tracker. The
+  /** set to true when the run was aborted by a budget tracker. The
    *  report is partial: only tasks completed before the abort are present. */
   budgetExhausted?: boolean;
-  /** v0.22 — budget caps that were active for this run, copied from request.budget
+  /** budget caps that were active for this run, copied from request.budget
    *  for ease of reading without dereferencing request. */
   budget?: EvalBudget;
   /** Human-gold agreement when --gold-dir was passed at run time. Compares the
@@ -199,10 +199,10 @@ export interface ReportMeta {
    *  src/grading/human-gold.ts for the metric definitions. */
   humanAgreement?: ReportHumanAgreement;
   variantConfigs?: VariantConfig[];
-  /** v0.22 — Skill isolation 快照(per-variant)。
+  /** Skill isolation 快照(per-variant)。
    *  key = variant name;value = allowedSkills(undefined → null,SDK 默认全发现 / [] → 完全隔离 / [...] → 白名单)。
    *  跨报告对比 verdict / Δ 时,isolation 状态不一致会被 stderr warn 标"不可比"。
-   *  字段缺失意味着报告产自 v0.22 之前(默认全发现,construct validity 不保证)。 */
+   *  字段缺失意味着报告产自  之前(默认全发现,construct validity 不保证)。 */
   skillIsolation?: Record<string, string[] | null>;
   request?: EvaluationRequest;
   run?: EvaluationRun;
@@ -283,13 +283,13 @@ export interface AnalysisResult {
   coverage?: Record<string, KnowledgeCoverage>;
   /** Per-variant knowledge gap reports. See docs/knowledge-gap-signal-spec.md */
   gapReports?: Record<string, GapReport>;
-  /** v0.22 — Sample design science aggregate. Built from sample metadata
+  /** Sample design science aggregate. Built from sample metadata
    *  (capability / difficulty / construct / provenance), used by `bench diagnose`
    *  CLI to surface coverage gaps. See docs/sample-design-spec.md. */
   sampleQuality?: SampleQualityAggregate;
 }
 
-/** v0.22 — Aggregated sample design coverage stats. Built by
+/** Aggregated sample design coverage stats. Built by
  *  `buildSampleQualityAggregate(samples)` from `Sample.capability` /
  *  `Sample.difficulty` / `Sample.construct` / `Sample.provenance` fields.
  *  Pure documentation aggregate — no field here participates in grading,

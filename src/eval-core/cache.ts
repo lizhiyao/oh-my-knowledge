@@ -5,7 +5,7 @@
  * Cache key v2 = "v2:" + sha256(model + system + prompt + cwd + allowedSkills).
  * Loaded into memory on init, flushed to disk on save().
  *
- * v0.22 — key prefix bump v1 → v2 invalidates pre-isolation cache entries
+ * key prefix bump v1 → v2 invalidates pre-isolation cache entries
  * (otherwise a strict-baseline run could replay a non-isolated cached result
  * and silently keep the contamination).
  */

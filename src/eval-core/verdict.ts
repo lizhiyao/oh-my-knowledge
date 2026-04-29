@@ -3,7 +3,7 @@
  *
  * Why this exists
  * ---------------
- * v0.21 makes the data trustworthy. v0.22 closes the last mile: senior
+ * v0.21 makes the data trustworthy.  closes the last mile: senior
  * engineers' #1 complaint is "the report has all the right numbers but I
  * still need 30 minutes to read it before I can decide". This module
  * aggregates the four data sources omk already produces — Bootstrap CI on
@@ -20,7 +20,7 @@
  *
  * The output is intentionally text-template-driven so the same rule engine
  * powers both `omk bench verdict` (CLI, terse) and the HTML report's
- * top-of-page "verdict pill" (Phase v0.22.2). Both surfaces must agree.
+ * top-of-page "verdict pill" ("verdict pill" surface). Both surfaces must agree.
  *
  * Subjectivity caveat: the ship recommendation is rule-based, not statistically
  * proven optimal. Each rule's source (NIST AI 800-3 / Krippendorff thresholds /
@@ -361,7 +361,7 @@ function recommendation(level: VerdictLevel, _perPair: Array<{ level: VerdictLev
 
 /**
  * Plain-text formatter for `omk bench verdict <id>`. Stays under 6 lines per the
- * v0.22 spec — one verdict + four rationale bullets + one ship recommendation.
+ *  spec — one verdict + four rationale bullets + one ship recommendation.
  */
 export function formatVerdictText(result: VerdictResult, options: { verbose?: boolean } = {}): string {
   const lines: string[] = [];

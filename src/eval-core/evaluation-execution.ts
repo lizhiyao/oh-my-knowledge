@@ -41,7 +41,7 @@ export interface ExecuteTasksOptions {
   judgeExecutors?: Record<string, ExecutorFn>;
   /** v0.21 length-debias toggle. Default true; CLI's --no-debias-length sets it false. */
   lengthDebias?: boolean;
-  /** v0.22 — hard budget caps. When totalUSD is exceeded mid-run, remaining
+  /** hard budget caps. When totalUSD is exceeded mid-run, remaining
    *  tasks are skipped and the partial result set is returned with
    *  budgetExhausted: true. Per-sample caps don't abort but mark offending
    *  tasks as failed. */
@@ -129,7 +129,7 @@ export async function executeTasks({
       return;
     }
 
-    // v0.22 budget abort: if a previous task tripped the total-USD cap, skip
+    //  budget abort: if a previous task tripped the total-USD cap, skip
     // remaining tasks. The partial report is still persisted so the user sees
     // what completed before the run stopped.
     if (budgetExhausted) {
@@ -148,7 +148,7 @@ export async function executeTasks({
     const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose);
 
     let execResult: ExecResult;
-    // v0.22 — include allowedSkills in cache key so isolation-on / isolation-off runs
+    // include allowedSkills in cache key so isolation-on / isolation-off runs
     // don't share cache entries (would otherwise replay contaminated baseline results).
     const key = cacheKey(
       model,
@@ -266,7 +266,7 @@ export async function executeTasks({
     if (!results[task.sample_id]) results[task.sample_id] = {};
     const variantResult = buildVariantResult(execResult!, gradeResult, { execMs, gradeMs, factCheck });
 
-    // v0.22 per-sample budget enforcement. If a sample's cost or latency
+    //  per-sample budget enforcement. If a sample's cost or latency
     // exceeds the per-sample cap, the result is kept (so the user can see
     // what happened) but flagged as a budget overrun. The run continues.
     if (budget?.perSampleUSD != null && variantResult.costUSD > budget.perSampleUSD) {
@@ -279,7 +279,7 @@ export async function executeTasks({
     }
     results[task.sample_id][task.variant] = variantResult;
 
-    // v0.22 total-USD budget enforcement. Once the global cap is exceeded,
+    //  total-USD budget enforcement. Once the global cap is exceeded,
     // flip the abort flag so subsequent tasks short-circuit. The current task
     // is kept (already paid for it).
     if (budget?.totalUSD != null && totalCostUSD > budget.totalUSD && !budgetExhausted) {

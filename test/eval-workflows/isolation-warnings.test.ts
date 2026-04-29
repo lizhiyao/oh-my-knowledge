@@ -13,7 +13,7 @@ function mkArtifact(name: string, kind: Artifact['kind'] = 'baseline'): Artifact
   };
 }
 
-describe('buildIsolationWarnings (v0.22)', () => {
+describe('buildIsolationWarnings', () => {
   it('strictBaseline=undefined(default true)→ 不出 warning(默认就是干净的)', () => {
     const w = buildIsolationWarnings([mkArtifact('baseline')], undefined);
     assert.deepEqual(w, []);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { renderSampleDesignCoverage } from '../../src/analysis/sample-design-coverage-cli.js';
 import type { Sample, SampleQualityAggregate } from '../../src/types/index.js';
 
-// v0.22 — UltraReview follow-up #7: cover the renderer, not just E2E.
+// UltraReview follow-up #7: cover the renderer, not just E2E.
 
 describe('renderSampleDesignCoverage', () => {
   it('renders empty string when no samples and no aggregate', () => {

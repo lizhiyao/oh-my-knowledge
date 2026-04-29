@@ -155,7 +155,7 @@ export type CliMessageKey =
   | 'cli.help.verdict'
   | 'cli.help.diagnose'
   | 'cli.help.failures'
-  // v0.22 — sample design coverage block (bench diagnose)
+  // sample design coverage block (bench diagnose)
   | 'cli.diagnose.coverage_header'
   | 'cli.diagnose.coverage_unspecified'
   | 'cli.diagnose.coverage_chars'
@@ -574,12 +574,11 @@ bench run 选项:
   --strict-baseline      (默认开启) 对 baseline-kind variant 强制隔离 skill 自动
                          发现 + Skill 工具调用, 切断 ~/.claude/skills/ 污染路径,
                          保证 skill 评测的 construct validity。eval.yaml 显式
-                         allowedSkills 优先。注: v0.22 默认行为变更, 旧报告与新
-                         报告 verdict / Δ 不可跨版本对比 (CHANGELOG 标注)。
-  --no-strict-baseline   显式关闭 strict-baseline (退回 v0.21 行为, baseline 走
-                         默认 SDK skill 全发现)。少数场景下可能想要这个 (例如
-                         评测 skill 文档对默认全发现行为的增量影响)。开启时
-                         pre-flight 会 stderr 提醒, 因为 verdict / Δ 易受污染。
+                         allowedSkills 优先。
+  --no-strict-baseline   显式关闭 strict-baseline (baseline 走默认 SDK skill
+                         全发现)。少数场景下可能想要这个 (例如评测 skill 文档
+                         对默认全发现行为的增量影响)。开启时 pre-flight 会
+                         stderr 提醒, 因为 verdict / Δ 易受污染。
 
 bench gate 选项:
   (与 bench run 相同, 额外加:)
@@ -724,14 +723,12 @@ Options for "bench run":
                          use for baseline-kind variants. Cuts the ~/.claude/skills/
                          contamination path so skill evaluations have valid
                          construct validity. Explicit eval.yaml allowedSkills
-                         takes precedence. Note: v0.22 default-behavior change —
-                         pre-v0.22 reports cannot be compared head-to-head on
-                         verdict / Δ (see CHANGELOG).
-  --no-strict-baseline   Explicitly turn strict-baseline OFF (reverts to pre-v0.22
-                         behavior: baseline sees all auto-discovered skills). Use
-                         only in narrow scenarios (e.g. measuring how much a skill
-                         doc adds on top of full default discovery). Pre-flight
-                         emits a stderr warning when this flag is set, because
+                         takes precedence.
+  --no-strict-baseline   Explicitly turn strict-baseline OFF (baseline sees all
+                         auto-discovered skills). Use only in narrow scenarios
+                         (e.g. measuring how much a skill doc adds on top of
+                         full default discovery). Pre-flight emits a stderr
+                         warning when this flag is set, because
                          verdict / Δ are vulnerable to skill contamination.
 
 Options for "bench gate":
@@ -806,7 +803,7 @@ Examples:
   'cli.help.diff_usage': {
     zh: [
       '用法:',
-      '  omk bench diff <reportId>                     单 report 内 sample 级 diff (v0.22)',
+      '  omk bench diff <reportId>                     单 report 内 sample 级 diff',
       '  omk bench diff <reportId1> <reportId2>        跨 report variant 级 diff',
       '',
       '选项:',
@@ -817,7 +814,7 @@ Examples:
     ].join('\n'),
     en: [
       'Usage:',
-      '  omk bench diff <reportId>                     within-report per-sample diff (v0.22)',
+      '  omk bench diff <reportId>                     within-report per-sample diff',
       '  omk bench diff <reportId1> <reportId2>        cross-report variant-level diff',
       '',
       'Options:',
@@ -1049,7 +1046,7 @@ Examples:
       '',
     ].join('\n'),
   },
-  // v0.22 — sample design coverage block strings
+  // sample design coverage block strings
   'cli.diagnose.coverage_header': {
     zh: '用例设计覆盖度 (Sample design coverage):',
     en: 'Sample design coverage:',

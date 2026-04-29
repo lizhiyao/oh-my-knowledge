@@ -192,7 +192,7 @@ describe('configVariantsToSpecs', () => {
   });
 });
 
-describe('loadEvalConfig — budget (v0.22)', () => {
+describe('loadEvalConfig — budget', () => {
   const minimalVariants = `
 variants:
   - name: v1
@@ -294,7 +294,7 @@ budget:
   });
 });
 
-describe('loadEvalConfig — allowedSkills (v0.22)', () => {
+describe('loadEvalConfig — allowedSkills', () => {
   it('解析 allowedSkills: [] 表示完全隔离', () => {
     const dir = makeTmpDir();
     try {
@@ -323,7 +323,7 @@ variants:
       const path = writeYaml(dir, 'eval.yaml', `
 samples: ./s.json
 variants:
-  - name: wcc-clean
+  - name: skill-clean
     role: control
     artifact: baseline
     allowedSkills:
