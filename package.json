@@ -4,7 +4,7 @@
   "description": "LLM evaluation framework with built-in statistical rigor: bootstrap CI, Krippendorff α, length-debias, saturation curves. Native Claude Code skill / RAG / agent / prompt evaluation.",
   "type": "module",
   "bin": {
-    "omk": "dist/src/cli.js"
+    "omk": "dist/src/cli/index.js"
   },
   "engines": {
     "node": ">=20"
@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "postbuild": "node -e \"const fs=require('fs'),f='dist/src/cli.js',c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!'))fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)\"",
+    "postbuild": "node -e \"const fs=require('fs'),f='dist/src/cli/index.js',c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!'))fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)\"",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts'",
     "test": "vitest run",
     "ci": "yarn lint && yarn typecheck && yarn test",

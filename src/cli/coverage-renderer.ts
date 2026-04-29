@@ -11,9 +11,9 @@
  */
 
 import type { Sample, SampleQualityAggregate } from '../types/index.js';
-import type { CliLang } from '../cli/i18n.js';
-import { tCli } from '../cli/i18n.js';
-import { buildSampleQualityAggregate } from './report-diagnostics.js';
+import type { CliLang } from './i18n.js';
+import { tCli } from './i18n.js';
+import { buildSampleQualityAggregate } from '../analysis/report-diagnostics.js';
 
 export function renderSampleDesignCoverage(
   samples: Sample[] | undefined,

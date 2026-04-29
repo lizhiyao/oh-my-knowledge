@@ -2,90 +2,29 @@
 
 import { parseArgs, type ParseArgsConfig } from 'node:util';
 import { resolve } from 'node:path';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { tCli, getCliLang, parseLangFromArgv, langFromArgv, type CliLang } from './cli/i18n.js';
-import { discoverVariants, parseVariantCwd } from './inputs/skill-loader.js';
-import { loadEvalConfig, configVariantsToSpecs } from './inputs/eval-config.js';
+import { tCli, getCliLang, parseLangFromArgv, langFromArgv, type CliLang } from './i18n.js';
+import {
+  parseRunConfig,
+  type RunConfig,
+  DEFAULT_REPORTS_DIR,
+  COMMON_OPTIONS,
+  RUN_OPTIONS,
+} from './parse-run-config.js';
+import { makeOnProgress } from './progress.js';
+import { checkUpdate } from './update-check.js';
 import type {
-  EvalConfig,
   Report,
-  VariantSpec,
   VariantSummary,
   GitInfo,
   ReportStore,
   ProgressCallback,
-} from './types/index.js';
+} from '../types/index.js';
 
 // ---------------------------------------------------------------------------
 // Local types (CLI-specific, not shared with lib/)
 // ---------------------------------------------------------------------------
-
-interface RunConfig {
-  samplesPath: string;
-  skillDir: string;
-  variantSpecs: VariantSpec[];
-  model: string | undefined;
-  judgeModel: string | undefined;
-  outputDir: string;
-  noJudge: boolean | undefined;
-  noCache: boolean | undefined;
-  dryRun: boolean | undefined;
-  concurrency: number;
-  timeoutMs: number;
-  executorName: string | undefined;
-  judgeExecutorName: string | undefined;
-  skipPreflight: boolean | undefined;
-  mcpConfig: string | undefined;
-  verbose: boolean | undefined;
-  blind?: boolean | undefined;
-  retry?: number;
-  resume?: string;
-  layeredStats?: boolean;
-  /** --judge-repeat N. Calls LLM judge N times per (sample × dimension). Default 1. */
-  judgeRepeat?: number;
-  /** --judge-models executor:model,executor:model,... — multi-judge ensemble (≥ 2 entries). */
-  judgeModels?: import('./types/index.js').JudgeConfig[];
-  /** --bootstrap. Adds bootstrap CI to summary (per-variant mean + pairwise diff). */
-  bootstrap?: boolean;
-  /** --bootstrap-samples N. Bootstrap resamples count, default 1000. */
-  bootstrapSamples?: number;
-  /** v0.21 Phase 3a length-debias toggle. Default true; --no-debias-length sets false. */
-  lengthDebias?: boolean;
-  /** hard budget caps from CLI or config. */
-  budget?: import('./types/index.js').EvalBudget;
-  /** Skill isolation default for baseline-kind variants. Default true.
-   *  CLI flag --no-strict-baseline disables strict isolation. */
-  strictBaseline?: boolean;
-  /** Per-variant allowedSkills override extracted from eval.yaml. Always wins
-   *  over strictBaseline default. Keyed by variant name. */
-  variantAllowedSkills?: Record<string, string[]>;
-  onProgress?: ProgressCallback | null;
-}
-
-// CLI progress info — superset of all possible fields from ProgressInfo union members
-interface ProgressInfo {
-  phase: string;
-  completed?: number;
-  total?: number;
-  sample_id?: string;
-  variant?: string;
-  strategy?: string;
-  durationMs?: number;
-  inputTokens?: number;
-  outputTokens?: number;
-  costUSD?: number;
-  score?: number;
-  outputPreview?: string | null;
-  jobId?: string;
-  judgePhase?: string;
-  judgeDim?: string;
-  skipped?: boolean;
-  attempt?: number;
-  maxAttempts?: number;
-  error?: string;
-}
 
 interface SkillProgressInfo {
   phase: string;
@@ -142,252 +81,6 @@ interface EvolveResult {
 interface GenerateSamplesResult {
   samples: unknown[];
   costUSD: number;
-}
-
-interface ParseRunConfigResult {
-  values: Record<string, string | boolean | undefined>;
-  config: RunConfig;
-}
-
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
-
-// Shared CLI options for run/ci commands.
-// Defaults are applied inside parseRunConfig (after config-file merge) so that
-// CLI `undefined` can be reliably distinguished from "user passed the default value".
-// Priority order resolved in parseRunConfig: CLI arg > --config file > hard-coded default.
-/**
- * 所有子命令都接受的通用 flag。新增 --lang 让 parseArgs strict:false 模式下
- * 仍能把值类型化到 values.lang 上(否则未声明的 flag 会被丢弃)。
- */
-const COMMON_OPTIONS: ParseArgsConfig['options'] = {
-  lang: { type: 'string' },
-};
-
-const RUN_OPTIONS: ParseArgsConfig['options'] = {
-  ...COMMON_OPTIONS,
-  samples: { type: 'string' },
-  'skill-dir': { type: 'string' },
-  control: { type: 'string' },
-  treatment: { type: 'string' },
-  config: { type: 'string' },
-  model: { type: 'string' },
-  'judge-model': { type: 'string' },
-  'output-dir': { type: 'string' },
-  'no-judge': { type: 'boolean' },
-  'no-cache': { type: 'boolean' },
-  'dry-run': { type: 'boolean' },
-  concurrency: { type: 'string' },
-  timeout: { type: 'string' },
-  executor: { type: 'string' },
-  'judge-executor': { type: 'string' },
-  each: { type: 'boolean' },
-  'skip-preflight': { type: 'boolean' },
-  'mcp-config': { type: 'string' },
-  'no-serve': { type: 'boolean' },
-  verbose: { type: 'boolean' },
-  retry: { type: 'string' },
-  resume: { type: 'string' },
-  'layered-stats': { type: 'boolean' },
-  // strict-baseline default true. Declare both forms; reconcile in
-  // parseRunConfig (后者赢)。strict-baseline 没传 + no-strict-baseline 没传 = default true。
-  'strict-baseline': { type: 'boolean' },
-  'no-strict-baseline': { type: 'boolean' },
-};
-
-// ---------------------------------------------------------------------------
-// parseRunConfig
-// ---------------------------------------------------------------------------
-
-function parseRunConfig(
-  argv: string[],
-  extraOptions: ParseArgsConfig['options'] = {},
-): ParseRunConfigResult {
-  const { values } = parseArgs({
-    args: argv,
-    options: { ...RUN_OPTIONS, ...extraOptions },
-    strict: false,
-  });
-
-  if (values.variants !== undefined) {
-    throw new Error(
-      `--variants 已在 v0.16 废除，请改用 --control <expr> 与 --treatment <v1,v2,...>\n`
-      + `  迁移示例：--variants baseline,my-skill  →  --control baseline --treatment my-skill\n`
-      + `  复杂场景可用 --config eval.yaml（参见 docs/terminology-spec.md）`,
-    );
-  }
-
-  // 1) Load --config (if provided). All subsequent fields fall back to it when CLI is silent.
-  const evalConfig: EvalConfig | null = values.config
-    ? loadEvalConfig(values.config as string)
-    : null;
-
-  // 2) Resolve samples path: CLI > config > auto-detect .json/.yaml/.yml in cwd.
-  const cliSamples = values.samples as string | undefined;
-  let samplesFile: string;
-  if (cliSamples) {
-    samplesFile = cliSamples;
-  } else if (evalConfig?.samples) {
-    samplesFile = evalConfig.samples;  // already resolved against config file dir
-  } else {
-    samplesFile = 'eval-samples.json';
-    if (!existsSync(resolve(samplesFile))) {
-      if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
-      else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
-    }
-  }
-
-  const skillDir: string = resolve((values['skill-dir'] as string | undefined) ?? 'skills');
-
-  // 3) Resolve variantSpecs: CLI > config. If neither, error with a helpful hint.
-  const controlExpr = values.control as string | undefined;
-  const treatmentExprs: string[] = values.treatment
-    ? (values.treatment as string).split(',').map((v: string) => v.trim()).filter(Boolean)
-    : [];
-
-  let variantSpecs: VariantSpec[];
-  if (controlExpr || treatmentExprs.length > 0) {
-    // CLI roles present → CLI entirely replaces config.variants (no merging).
-    variantSpecs = [];
-    if (controlExpr) {
-      variantSpecs.push({ name: parseVariantCwd(controlExpr).name, role: 'control', expr: controlExpr });
-    }
-    for (const expr of treatmentExprs) {
-      variantSpecs.push({ name: parseVariantCwd(expr).name, role: 'treatment', expr });
-    }
-  } else if (evalConfig) {
-    variantSpecs = configVariantsToSpecs(evalConfig.variants);
-  } else if (values.each) {
-    // --each 模式自动用 baseline (control) vs 每个 skill (treatment),
-    // 不需要用户显式传 --control / --treatment,校验跳过。
-    variantSpecs = [];
-  } else {
-    const discovered = discoverVariants(skillDir);
-    const hint = discovered.length > 0 ? `\n  skill-dir (${skillDir}) 下发现的候选：${discovered.join(', ')}` : '';
-    throw new Error(
-      `请通过 --control / --treatment 或 --config eval.yaml 声明 variant 角色。\n`
-      + `  示例：omk bench run --control baseline --treatment my-skill${hint}\n`
-      + `  --each 模式下自动用 baseline vs 每个 skill,无需显式声明\n`
-      + `  术语见 docs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
-    );
-  }
-
-  const seenNames = new Set<string>();
-  for (const spec of variantSpecs) {
-    if (seenNames.has(spec.name)) {
-      throw new Error(
-        `variant "${spec.name}" 重复出现——同一 variant 不能同时属于 --control 与 --treatment，也不能在 --treatment 中重复。`,
-      );
-    }
-    seenNames.add(spec.name);
-  }
-
-  // 4) Apply CLI > config > hard-coded default for all other fields.
-  const executorName = (values.executor as string | undefined) ?? evalConfig?.executor ?? 'claude';
-  const judgeExecutorName =
-    (values['judge-executor'] as string | undefined) ?? evalConfig?.judgeExecutor ?? executorName;
-  const model = (values.model as string | undefined) ?? evalConfig?.model ?? 'sonnet';
-  const judgeModelRaw =
-    values['judge-model'] !== undefined
-      ? (values['judge-model'] as string | undefined)
-      : evalConfig?.judgeModel ?? 'haiku';
-  const judgeModel = judgeModelRaw ?? 'haiku';
-  const outputDir = resolve((values['output-dir'] as string | undefined) ?? DEFAULT_REPORTS_DIR);
-  const concurrencyRaw =
-    (values.concurrency as string | undefined) !== undefined
-      ? Number(values.concurrency)
-      : evalConfig?.concurrency ?? 1;
-  const concurrency = Math.max(1, Number(concurrencyRaw) || 1);
-  const timeoutSec =
-    (values.timeout as string | undefined) !== undefined
-      ? Number(values.timeout)
-      : evalConfig?.timeoutMs
-        ? evalConfig.timeoutMs / 1000
-        : 120;
-  const timeoutMs = Math.max(1, Number(timeoutSec) || 120) * 1000;
-  const noJudge = (values['no-judge'] as boolean | undefined) ?? false;
-  const noCache = (values['no-cache'] as boolean | undefined) ?? evalConfig?.noCache ?? false;
-  const dryRun = (values['dry-run'] as boolean | undefined) ?? false;
-  const skipPreflight = (values['skip-preflight'] as boolean | undefined) ?? false;
-  const mcpConfig = (values['mcp-config'] as string | undefined) ?? evalConfig?.mcpConfig;
-  const verbose = (values.verbose as boolean | undefined) ?? false;
-  const retry = Math.max(0, Number(values.retry ?? 0) || 0);
-  const resume = values.resume as string | undefined;
-  const blind = (values.blind as boolean | undefined) ?? evalConfig?.blind ?? false;
-  const layeredStats = (values['layered-stats'] as boolean | undefined) ?? false;
-
-  // strict-baseline default true. Reconcile both flag forms.
-  // Priority: --no-strict-baseline > --strict-baseline > undefined(=true).
-  const noStrictFlag = values['no-strict-baseline'] as boolean | undefined;
-  const strictFlag = values['strict-baseline'] as boolean | undefined;
-  const strictBaseline: boolean = noStrictFlag === true ? false : (strictFlag ?? true);
-
-  // extract eval.yaml variant.allowedSkills overrides (per-variant). Always
-  // wins over strictBaseline default. Empty object when no eval.yaml or no overrides.
-  const variantAllowedSkills: Record<string, string[]> = {};
-  if (evalConfig?.variants) {
-    for (const v of evalConfig.variants) {
-      if (v.allowedSkills !== undefined) {
-        variantAllowedSkills[v.name] = v.allowedSkills;
-      }
-    }
-  }
-
-  return {
-    values,
-    config: {
-      samplesPath: resolve(samplesFile),
-      skillDir,
-      variantSpecs,
-      model,
-      judgeModel,
-      outputDir,
-      noJudge,
-      noCache,
-      dryRun,
-      concurrency,
-      timeoutMs,
-      executorName,
-      judgeExecutorName,
-      skipPreflight,
-      mcpConfig,
-      verbose,
-      retry,
-      resume,
-      blind,
-      layeredStats,
-      budget: evalConfig?.budget,
-      strictBaseline,
-      ...(Object.keys(variantAllowedSkills).length > 0 && { variantAllowedSkills }),
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Update check
-// ---------------------------------------------------------------------------
-
-async function checkUpdate(lang: CliLang): Promise<void> {
-  try {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const __dirname: string = dirname(fileURLToPath(import.meta.url));
-    const pkg: { name: string; version: string; publishConfig?: { registry?: string } } =
-      JSON.parse(readFileSync(join(__dirname, 'package.json'), 'utf-8'));
-    const registry: string = pkg.publishConfig?.registry || 'https://registry.npmjs.org';
-    const res: Response = await fetch(`${registry}/${pkg.name}/latest`, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) return;
-    const data = await res.json() as { version?: string };
-    if (data.version && data.version !== pkg.version) {
-      process.stderr.write(tCli('cli.update.new_version_available', lang, {
-        old: pkg.version, new: data.version, pkg: pkg.name,
-      }));
-    }
-  } catch { /* 静默失败,不影响正常使用 */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -474,72 +167,6 @@ async function main(): Promise<void> {
  * Factory: 闭住 lang, 返回 onProgress callback。evaluation engine 回调时不传
  * 上下文, 所以 lang 必须在 handler 入口处通过 closure 传进来。
  */
-function makeOnProgress(lang: CliLang): (info: ProgressInfo) => void {
-  return ({
-    phase,
-    completed,
-    total,
-    sample_id,
-    variant,
-    durationMs,
-    inputTokens,
-    outputTokens,
-    costUSD,
-    score,
-    outputPreview,
-    judgePhase: _judgePhase,
-    judgeDim,
-    skipped,
-    attempt,
-    maxAttempts,
-    error,
-  }: ProgressInfo): void => {
-    const ctx = { i: completed ?? '', n: total ?? '', sample: sample_id ?? '', variant: variant ?? '' };
-    if (phase === 'preflight') {
-      process.stderr.write(tCli('cli.progress.preflight_starting', lang));
-      return;
-    }
-    if (phase === 'retry') {
-      process.stderr.write(tCli('cli.progress.sample_retry', lang, {
-        ...ctx, attempt: attempt ?? '', max: maxAttempts ?? '',
-      }));
-      return;
-    }
-    if (phase === 'error') {
-      process.stderr.write(tCli('cli.progress.sample_error', lang, { ...ctx, error: error ?? '' }));
-      return;
-    }
-    if (phase === 'start') {
-      process.stderr.write(tCli('cli.progress.sample_executing', lang, ctx));
-    } else if (phase === 'exec_done') {
-      const cost: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
-      process.stderr.write(tCli('cli.progress.sample_exec_done', lang, {
-        ...ctx, ms: durationMs ?? '', input: inputTokens ?? '', output: outputTokens ?? '', cost,
-      }));
-      if (outputPreview) {
-        process.stderr.write(tCli('cli.progress.output_preview', lang, {
-          preview: outputPreview.slice(0, 150).replace(/\n/g, ' '),
-        }));
-      }
-    } else if (phase === 'grading') {
-      const dim: string = judgeDim ? ` [${judgeDim}]` : '';
-      process.stderr.write(tCli('cli.progress.judging', lang, { ...ctx, dim }));
-    } else if (phase === 'judge_done') {
-      const dim: string = judgeDim ? ` [${judgeDim}]` : '';
-      process.stderr.write(tCli('cli.progress.judged', lang, { ...ctx, dim, score: score ?? '' }));
-    } else if (phase === 'done' && skipped) {
-      if (sample_id) process.stderr.write(tCli('cli.progress.skipped', lang, ctx));
-    } else {
-      const cost: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
-      const scoreInfo: string = typeof score === 'number' ? ` score=${score}` : '';
-      process.stderr.write(tCli('cli.progress.sample_done', lang, {
-        ...ctx, ms: durationMs ?? '', input: inputTokens ?? '', output: outputTokens ?? '',
-        cost, score: scoreInfo,
-      }));
-    }
-  };
-}
-
 // ---------------------------------------------------------------------------
 // handleRun
 // ---------------------------------------------------------------------------
@@ -560,7 +187,7 @@ async function handleRun(argv: string[]): Promise<void> {
     'budget-per-sample-ms': { type: 'string' },
   });
 
-  const { runEvaluation, runMultiple, runEachEvaluation } = await import('./eval-workflows/run-evaluation.js');
+  const { runEvaluation, runMultiple, runEachEvaluation } = await import('../eval-workflows/run-evaluation.js');
 
   config.blind = values.blind as boolean | undefined;
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
@@ -664,7 +291,7 @@ async function handleRun(argv: string[]): Promise<void> {
         process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
 
         if (!values['no-serve'] && process.stdout.isTTY) {
-          const { createReportServer } = await import('./server/report-server.js');
+          const { createReportServer } = await import('../server/report-server.js');
           const server: ReportServer = createReportServer({ reportsDir: config.outputDir });
           const serverUrl: string = await server.start();
           const reportUrl: string = `${serverUrl}/reports/${report.id}`;
@@ -706,7 +333,7 @@ async function handleRun(argv: string[]): Promise<void> {
     // --gold-dir: compute α/κ/Pearson against gold annotations and re-persist.
     const goldDir = values['gold-dir'] as string | undefined;
     if (goldDir && filePath) {
-      const { attachGoldAgreementToReport, formatGoldCompare } = await import('./grading/gold-cli.js');
+      const { attachGoldAgreementToReport, formatGoldCompare } = await import('../grading/gold-cli.js');
       const out = attachGoldAgreementToReport({
         report,
         goldDir,
@@ -735,7 +362,7 @@ async function handleRun(argv: string[]): Promise<void> {
 
       if (!values['no-serve'] && process.stdout.isTTY) {
         // Auto-start report server
-        const { createReportServer } = await import('./server/report-server.js');
+        const { createReportServer } = await import('../server/report-server.js');
         const server: ReportServer = createReportServer({
           reportsDir: config.outputDir,
         });
@@ -799,8 +426,8 @@ async function handleReport(argv: string[]): Promise<void> {
   }
 
   if (values.export) {
-    const { createFileStore } = await import('./server/report-store.js');
-    const { renderRunDetail, renderEachRunDetail } = await import('./renderer/html-renderer.js');
+    const { createFileStore } = await import('../server/report-store.js');
+    const { renderRunDetail, renderEachRunDetail } = await import('../renderer/html-renderer.js');
     const { writeFileSync } = await import('node:fs');
     const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
     const report: Report | null = await store.get(values.export as string);
@@ -816,7 +443,7 @@ async function handleReport(argv: string[]): Promise<void> {
     return;
   }
 
-  const { createReportServer } = await import('./server/report-server.js');
+  const { createReportServer } = await import('../server/report-server.js');
   const server: ReportServer = createReportServer({
     port: Number(values.port),
     reportsDir: resolve(values['reports-dir'] as string),
@@ -949,7 +576,7 @@ async function handleAnalyze(argv: string[]): Promise<void> {
   const skills = values.skills ? values.skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
   console.log(`[omk] analyzing ${tracePath}...`);
-  const { computeSkillHealthReport } = await import('./observability/skill-health-analyzer.js');
+  const { computeSkillHealthReport } = await import('../observability/skill-health-analyzer.js');
   const report = computeSkillHealthReport(tracePath, {
     kbRoot: values.kb ? resolve(values.kb) : undefined,
     from,
@@ -1018,7 +645,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
     allowPositionals: true,
   });
 
-  const { generateSamples } = await import('./authoring/generator.js');
+  const { generateSamples } = await import('../authoring/generator.js');
   const { readFileSync, writeFileSync } = await import('node:fs');
   const count: number = Math.max(1, Number(values.count) || 5);
   const model: string = values.model as string;
@@ -1159,7 +786,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
     else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
   }
 
-  const { evolveSkill } = await import('./authoring/evolver.js');
+  const { evolveSkill } = await import('../authoring/evolver.js');
 
   process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
 
@@ -1237,7 +864,7 @@ async function handleGate(argv: string[]): Promise<void> {
     'trivial-diff': { type: 'string' },
   });
 
-  const { runEvaluation } = await import('./eval-workflows/run-evaluation.js');
+  const { runEvaluation } = await import('../eval-workflows/run-evaluation.js');
 
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
@@ -1253,7 +880,7 @@ async function handleGate(argv: string[]): Promise<void> {
     // bootstrap diff CI / saturation / Krippendorff α)。computeVerdict 是单一
     // 决策源, exit code 跟 verdict.level 走 — 数据 underpowered 直接 FAIL,
     // 堵住"过 PASS 就 deploy"的漏洞。
-    const { computeVerdict, formatVerdictText } = await import('./eval-core/verdict.js');
+    const { computeVerdict, formatVerdictText } = await import('../eval-core/verdict.js');
     const result = computeVerdict(report, {
       gateThreshold: Number(values.threshold),
       triviallySmallDiff: values['trivial-diff'] != null ? Number(values['trivial-diff']) : undefined,
@@ -1319,7 +946,7 @@ async function handleDiff(argv: string[]): Promise<void> {
     strict: false,
   });
 
-  const { createFileStore } = await import('./server/report-store.js');
+  const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(DEFAULT_REPORTS_DIR));
 
   if (positional.length === 1) {
@@ -1504,7 +1131,7 @@ async function handleGold(argv: string[]): Promise<void> {
       },
       strict: false,
     });
-    const { initGoldDataset } = await import('./grading/gold-cli.js');
+    const { initGoldDataset } = await import('../grading/gold-cli.js');
     try {
       const written = initGoldDataset(values.out as string, {
         annotator: values.annotator as string | undefined,
@@ -1527,7 +1154,7 @@ async function handleGold(argv: string[]): Promise<void> {
       console.error(tCli('cli.common.usage_gold_validate', lang));
       process.exit(1);
     }
-    const { validateGoldDataset } = await import('./grading/gold-cli.js');
+    const { validateGoldDataset } = await import('../grading/gold-cli.js');
     const result = validateGoldDataset(dir);
     if (result.ok) {
       console.log(tCli('cli.gold.validate_ok', lang, { n: result.sampleCount }));
@@ -1561,9 +1188,9 @@ async function handleGold(argv: string[]): Promise<void> {
       console.error('--gold-dir is required');
       process.exit(1);
     }
-    const { loadGoldDataset } = await import('./grading/gold-dataset.js');
-    const { compareGoldToReport, formatGoldCompare } = await import('./grading/gold-cli.js');
-    const { createFileStore } = await import('./server/report-store.js');
+    const { loadGoldDataset } = await import('../grading/gold-dataset.js');
+    const { compareGoldToReport, formatGoldCompare } = await import('../grading/gold-cli.js');
+    const { createFileStore } = await import('../server/report-store.js');
 
     const { dataset, issues } = loadGoldDataset(goldDir);
     if (!dataset) {
@@ -1638,7 +1265,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
     strict: false,
   });
 
-  const { createFileStore } = await import('./server/report-store.js');
+  const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
@@ -1653,7 +1280,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
     console.error('Cannot find samples path. Pass --samples <path> or ensure report has request.samplesPath.');
     process.exit(1);
   }
-  const { loadSamples } = await import('./inputs/load-samples.js');
+  const { loadSamples } = await import('../inputs/load-samples.js');
   const { samples } = loadSamples(samplesPath);
 
   const judgeModel = (values['judge-model'] as string | undefined)
@@ -1665,9 +1292,9 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
 
   process.stderr.write(tCli('cli.debias.warn_cost_doubles', lang));
 
-  const { createExecutor } = await import('./executors/index.js');
+  const { createExecutor } = await import('../executors/index.js');
   const judgeExecutor = createExecutor(values['judge-executor'] as string);
-  const { validateLengthDebias, formatDebiasValidate } = await import('./grading/debias-validate.js');
+  const { validateLengthDebias, formatDebiasValidate } = await import('../grading/debias-validate.js');
 
   const seedVal = values.seed != null ? Number(values.seed) : undefined;
   const bsRaw = Number(values['bootstrap-samples']) || 1000;
@@ -1708,7 +1335,7 @@ async function handleSaturation(argv: string[]): Promise<void> {
     strict: false,
   });
 
-  const { createFileStore } = await import('./server/report-store.js');
+  const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
@@ -1785,7 +1412,7 @@ async function handleVerdict(argv: string[]): Promise<void> {
     strict: false,
   });
 
-  const { createFileStore } = await import('./server/report-store.js');
+  const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
@@ -1793,7 +1420,7 @@ async function handleVerdict(argv: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const { computeVerdict, formatVerdictText } = await import('./eval-core/verdict.js');
+  const { computeVerdict, formatVerdictText } = await import('../eval-core/verdict.js');
   const result = computeVerdict(report!, {
     gateThreshold: values.threshold != null ? Number(values.threshold) : undefined,
     triviallySmallDiff: values['trivial-diff'] != null ? Number(values['trivial-diff']) : undefined,
@@ -1840,7 +1467,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
     strict: false,
   });
 
-  const { createFileStore } = await import('./server/report-store.js');
+  const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
@@ -1852,11 +1479,11 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   //  1. --samples <path> override
   //  2. report.meta.request.samplesPath (recorded at run time)
   // If neither resolves to a readable file, skip near-duplicate gracefully.
-  let samples: import('./types/index.js').Sample[] | undefined;
+  let samples: import('../types/index.js').Sample[] | undefined;
   const samplesPath = (values.samples as string | undefined) ?? report!.meta?.request?.samplesPath;
   if (samplesPath && existsSync(samplesPath)) {
     try {
-      const { loadSamples } = await import('./inputs/load-samples.js');
+      const { loadSamples } = await import('../inputs/load-samples.js');
       samples = loadSamples(samplesPath).samples;
     } catch (err) {
       process.stderr.write(tCli('cli.common.warn_load_samples_failed', lang, {
@@ -1868,7 +1495,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   const topRaw = Number(values.top);
   const topN = Number.isFinite(topRaw) && topRaw > 0 ? topRaw : undefined;
 
-  const { diagnoseSamples, formatSampleDiagnostics } = await import('./analysis/sample-diagnostics.js');
+  const { diagnoseSamples, formatSampleDiagnostics } = await import('../analysis/sample-diagnostics.js');
   const diag = diagnoseSamples(report!, {
     samples,
     duplicateRouge: values['duplicate-rouge'] != null ? Number(values['duplicate-rouge']) : undefined,
@@ -1883,7 +1510,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   // coverage 是声明式元数据(capability/difficulty/construct/provenance)的整体分布,
   // 跟 issue list 是不同视角的两件事。优先从 samples (现场加载) 算,fallback 到
   // report.analysis.sampleQuality(报告里持久化的数据)。
-  const { renderSampleDesignCoverage } = await import('./analysis/sample-design-coverage-cli.js');
+  const { renderSampleDesignCoverage } = await import('./coverage-renderer.js');
   const coverageBlock = renderSampleDesignCoverage(samples, report!.analysis?.sampleQuality, lang);
   if (coverageBlock) console.log(coverageBlock);
 
@@ -1920,7 +1547,7 @@ async function handleFailures(argv: string[]): Promise<void> {
     strict: false,
   });
 
-  const { createFileStore } = await import('./server/report-store.js');
+  const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report: Report | null = await store.get(reportId);
   if (!report) {
@@ -1934,9 +1561,9 @@ async function handleFailures(argv: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const { createExecutor } = await import('./executors/index.js');
+  const { createExecutor } = await import('../executors/index.js');
   const executor = createExecutor(values['judge-executor'] as string);
-  const { clusterFailures, formatFailureClusterReport } = await import('./analysis/failure-clusterer.js');
+  const { clusterFailures, formatFailureClusterReport } = await import('../analysis/failure-clusterer.js');
 
   const out = await clusterFailures({
     report: report!,

@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { renderSampleDesignCoverage } from '../../src/analysis/sample-design-coverage-cli.js';
+import { renderSampleDesignCoverage } from '../../src/cli/coverage-renderer.js';
 import type { Sample, SampleQualityAggregate } from '../../src/types/index.js';
 
 // UltraReview follow-up #7: cover the renderer, not just E2E.
