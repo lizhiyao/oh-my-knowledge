@@ -125,6 +125,30 @@ omk verdict 输出 PROGRESS / NOISE / REGRESS / CAUTIOUS / UNDERPOWERED / SOLO,*
 - Contamination 检测算法实现(canary string / paraphrase detection)
 - 用户自定义 rubric 关键词清单(`diagnostics.rubricKeywords` 配置)
 
+## 八、Schema 扩展候选(v2 路线)
+
+v1 schema 只有 4 字段(capability / difficulty / construct / provenance),都属于「测量学正确性」(measurement validity)轴 — 回答**这条用例测的事是它声称要测的事吗**。社区另一类常见建议(以 GPT-5.5 review 为代表)走的是「资产治理」(asset governance)轴:tags / risk_level / expected_facts / source_ids / owner — 回答**这条用例归谁、来自哪里、有多重要**。两轴正交不冲突,但治理假设测量学先稳固;v1 选了先解测量学。本节记录 v2 候选字段及拒绝清单,供后续 PR 决策时不重新讨论一遍。
+
+### v2 候选(高价值低风险,等真实用户需求触发再加)
+
+- **`source_ids?: string[]`**:具体来源标识(`issue-123` / `doc:react-charts.md#line-chart` / `slack-thread-...`)。补足 `provenance` enum 太粗的问题 — provenance 答「机器/人/线上」,source_ids 答「具体哪个 issue / doc 段落」。debug 价值高(可追溯 sample 出处),纯文档不进 grading。代价:链接腐烂需用户自己治理。
+- **`status?: 'active' | 'deprecated' | 'superseded'`**:lifecycle 字段。sample 集长期演化时,知道一条 sample 是「主力」还是「淘汰中」对 verdict 解读至关重要 — `deprecated` sample 仍在跑但 Δ 不该计入主结论。比 `owner` 更要紧。
+
+### 已拒绝(列出理由防止反复讨论)
+
+- **`tags?: string[]`**:跟 `capability` 语义混。capability 是「测什么具体能力」,tags 想加的「regression / p0 / edge-case」要么属于 `capability`(能力维度)要么属于 `status`(lifecycle)。free-form string 没 enum 约束极易腐化为 mess。**Verdict**:不加,逼用户用 capability + status 表达。
+- **`expected_facts?: string[]`**:跟 `rubric` + `assertions: contains` 大量重叠。omk 的 judge 已经在做语义评分,expected_facts 是同一抽象的另一个 alias。**Verdict**:不加,引入会让 sample 设计时有两个地方写期望,易漂移。
+- **`owner?: string`**:治理字段,跟 omk 测量学使命错配。omk 不消费 owner 做 routing / notify;放在 git blame / CODEOWNERS 更合适。**Verdict**:不加。
+- **`risk_level?: 'p0' | 'p1' | 'p2'`**:提了一个真问题(aggregate 应不应该按 risk 加权样本),但解这个会动 verdict 公式,**测量学不变量**。当前 verdict / Δ 都是 sample-uniform,加权进 verdict 会破跨版本可比性。无 consumer 时纯噪音,有 consumer 时破不变量 —— 两难。**Verdict**:不加;真要做,得单独立项跟 verdict v2 一起设计加权 aggregator。
+
+### 不加新字段的硬约束
+
+加任何字段前先确认:
+- 不进 `buildJudgePrompt` signature(`test/grading/judge-prompt-isolation.test.ts` 防御回归)
+- 不进 `sampleHash` 计算(否则破 cache key 跨版本可比性)
+- 不进 verdict / Δ 算法
+- 跟现有 4 字段 + `rubric` / `assertions` 语义不重叠
+
 ## Sources
 
 - [Holistic Evaluation of Language Models (HELM, 2211.09110)](https://arxiv.org/abs/2211.09110)

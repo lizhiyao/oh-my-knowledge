@@ -24,7 +24,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   - **`bench diagnose` CLI 加 sample design coverage 块**:capability / difficulty / construct / provenance 分桶呈现(ASCII),数据从 `report.analysis.sampleQuality` 取(分桶聚合)或 fresh 加载 samples 算
   - **`Report.analysis.sampleQuality`**:新增 `SampleQualityAggregate` 子结构,纯文档聚合(`capabilityCoverage` / `difficultyDistribution` / `constructDistribution` / `provenanceBreakdown` / `avgRubricLength` / `sampleCountWith*`)。**不破老报告兼容**:不传 samples 时不挂此字段,老 reader 读取仍正常。
   - **`bench gen-samples` 自动注入 `provenance: 'llm-generated'`**:`SYSTEM_PROMPT` 加可选 hint 段(LLM 如能判断顺便填 capability / difficulty / construct,无法判断省略不强制)
-  - **新建 [`docs/sample-design-spec.md`](docs/sample-design-spec.md)**:行业 8 条 gap 引用 + omk v1 映射 + 完整 yaml example + 11 条用例设计自检 checklist + verdict 解读跟 construct 配合
+  - **新建 [`docs/sample-design-spec.md`](docs/sample-design-spec.md)**:行业 8 条 gap 引用 + omk v1 映射 + 完整 yaml example + 11 条用例设计自检 checklist + verdict 解读跟 construct 配合 + §八 Schema 扩展候选(v2 路线 source_ids / status / 拒绝清单 tags / expected_facts / owner / risk_level 含理由)
   - **HTML report 暂不显示 sample design coverage**(只 CLI `bench diagnose`),HTML 渲染留 follow-up — 用户跑 HTML 报告需要看 coverage 时,从 `report.json` 的 `analysis.sampleQuality` 读
   - **R11 防御测试**:`test/grading/judge-prompt-isolation.test.ts` 锁住 judge prompt 不含任何 sample 元数据 token(`'capability:'` / `'difficulty:'` 等),防未来 refactor 把元数据意外注入 judge prompt 破坏 construct validity
   - **软兼容性 callout**:如果用户之前用 sample.capability 作为自由 unknown 字段(string / object / 其它),v1 起此字段是 `string[]`,类型校验会拒掉非数组值(此前 omk 没 publicize 过 capability 名字,概率极低)。`provenance` enum 简化:`'evolved'` / `'mixed'` 留 follow-up 跟 evolver 升级一起做。
