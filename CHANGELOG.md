@@ -67,9 +67,54 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - 单测覆盖:resolveArtifacts 三种优先级 / cache key 不同 isolation 不同键 + 顺序不敏感 / SDK option 形态契约 / claude-cli throw 非空白名单 / eval-config schema reject null + 非数组 / report.meta.skillIsolation populate / pre-flight isolation warning 触发条件。
 - **lint 严格化三层防御**:(1) `yarn lint` 加 `--max-warnings 0`,任何 warning 都让 CI / `yarn ci` 红;(2) 新加 `husky` + `lint-staged` pre-commit hook,commit 前对 staged TS 文件跑 `eslint --max-warnings 0`,本地拦住坏 commit;(3) `.claude/settings.json` 加 `Stop` hook,Claude Code 协作时每次 turn 结束自动跑 `yarn lint`(只在 src/test TS 文件有改动时跑,避免无用 IO),AI 编辑出 warning 立刻被 feedback 回来。**前置清掉 4 个 pre-existing unused-var warning**(summary.ts 没用的 levelIcon helper;grader.test.ts 两处 `{ dirname, join }` 解构里 join 没用;trace-adapter.test.ts 没用的 TestSession type alias)。
 - `src/cli` 模块化重构:`src/cli.ts` (1956 行单文件)→ `src/cli/index.ts` (1583 行 entry + dispatcher) + 抽 `parse-run-config.ts` / `progress.ts` / `update-check.ts` / `coverage-renderer.ts`(后者从 `src/analysis/` 搬过来,本质 CLI 渲染)。修 sibling-folder 反模式(`src/cli.ts` 与 `src/cli/` 同级)。`package.json` bin 路径同步:`dist/src/cli.js` → `dist/src/cli/index.js`。纯 file move + 路径调整,不动逻辑。
+- **Reconcile main → develop**:0.22.0 release 走的是从更早 develop 切出的 `release/0.22.0`,跟 PR #26(sample-design v1)并行,release prep 两处代码改动没回到 develop。本次补到 cli refactor 后的位置:`checkUpdate` 5 层向上找 `package.json` 落到 `src/cli/update-check.ts`(兼容 `dist/src/cli/` 这条新路径);`handleRun` 的 `blind: { type: 'boolean' }` + `if (values.blind !== undefined)` 守门(避免 CLI default 覆盖 `eval.yaml` 的 `blind: true`)已通过 git rename detection 自动 merge 到 `src/cli/index.ts`。同时把 `[0.22.0]` CHANGELOG section 两处含公司内部信息的描述(WCC / @alipay / 13/20)替换成中性语句,跟 GitHub Release v0.22.0 已编辑的 notes 同步。
 
 ---
 
+## [0.22.0] - 2026-04-28
+
+### Fixed
+
+- **`VariantSummary.toolDistribution` 修真实 call count**:之前 aggregate 阶段按 `result.toolNames`(per-sample dedup 列表)累加,语义是"出现该 tool 的 sample 数",跟字段名"工具调用分布"不符 — 用户读 summary 看到 `Read: 5` 以为模型调了 5 次 Read,实际是"5 个样本里出现过 Read"。修法:`VariantResult` 加 per-sample `toolDistribution`(从 `toolCalls` reduce 得到真实 call count map),aggregate 时 sum per-sample 字段。旧报告 result 没 `toolDistribution` 字段时 fallback 到老 `toolNames` 语义保兼容。
+- **release hardening**:
+  - report server 测试改用动态端口(`port: 0`),避免本机 7799 被占用导致测试套件偶发失败。
+  - `eval.yaml` 中的 `blind: true` 不再被 `bench run` 的 CLI 默认值覆盖;只有显式传 `--blind` 时才覆盖 config。
+  - 启动期更新检查改为从 `dist/src` 向上查找 `package.json`,修复发布包内 `dist/src/package.json` 不存在导致的静默失效。
+
+### Changed
+
+- **⚠️ BREAKING:report server URL 从 `/run/<id>` 改为 `/reports/<id>`**:命名跟 codebase 内一致语义(`Report` 类型 / `~/.oh-my-knowledge/reports/` 目录 / `omk bench report` CLI 命令)对齐。`/run/` 是 omk 内部把 "evaluation run" 当 entity 的旧叫法,但用户打开 URL 是来"看报告"的——`/reports/` 直接匹配心智。同步改:`/api/run/<id>` → `/api/reports/<id>`,`/api/runs` → `/api/reports`。**直接删旧路径,不留兼容 alias**(omk 0-1 阶段)。已有书签需要更新。
+
+- **⚠️ BREAKING-COMPARABILITY:`bench run` / `bench gate` 默认对 baseline-kind variant 启用 skill isolation**(`--strict-baseline` default true)。这是 omk 测量学严谨性的根本承诺补全:之前 baseline 通过三条 channel(SDK skill auto-discovery / subagent Skill 工具 / cwd 文件系统)拿到 `~/.claude/skills/` 全部 skill,导致 baseline-vs-skill 比较 construct invalid——baseline 自动发现并使用了被测 skill 的内容,verdict 看起来 NOISE 实为污染。本版默认三堵(main session skills + subagent Skill 工具 + cwd 切到 isolated empty dir),baseline 真正干净 → 验证用例集上 verdict 从 NOISE 翻盘到 PROGRESS。
+
+  改动范围:
+  - **CLI flag**:新增 `--strict-baseline`(default true) / `--no-strict-baseline`(显式 opt-out 逃生口)。`bench run` + `bench gate` 同步支持。pre-flight 在 `--no-strict-baseline` + `~/.claude/skills/` 非空时 stderr 显式提醒。
+  - **eval.yaml schema**:新增 `variants[].allowedSkills?: string[]` 显式声明,优先级高于 CLI flag。`undefined` = 默认 / `[]` = 完全隔离 / `[name1, name2]` = 白名单。YAML `allowedSkills:` 不写值会被 parse 成 null,显式 reject(语义不清)。
+  - **executor 行为**:claude-sdk 注入 `skills` + `disallowedTools:['Skill']`;**claude-cli 等价**(`--disable-slash-commands` + `--disallowedTools Skill`,文档说前者就是 "Disable all skills"),任意非空白名单 throw 提示改 sdk(CLI 没暴露 partial whitelist);script 仅 stderr warn 不参与 isolation。
+  - **cache key 升级 `v2:` prefix + 含 allowedSkills**:旧 cache 一次性失效(避免 strict / non-strict 切换时误命中污染结果)。同 prompt 不同 isolation 必拿不同 cache key。
+  - **report.meta.skillIsolation**:新字段记录每个 variant 的 allowedSkills 快照(undefined → null),供跨报告对比。`--resume` 时 isolation 状态不一致 stderr warn 不阻塞。
+  - **隔离覆盖(三条 channel)**:
+    1. **main session skills**(SDK `options.skills`):`skills:[]` 关 SDK 内部 skill 发现
+    2. **subagent Skill 工具**(SDK `options.disallowedTools`):`disallowedTools:['Skill']` 关 SDK 内置 task subagent 调 Skill 工具
+    3. **cwd 文件系统访问**(切到 isolated empty dir):baseline 默认 cwd 是 `process.cwd()`(用户评测工作目录),那里通常有 `skills/<name>/` symlink 给 treatment 用 — baseline 用 Glob/Read 直接顺 symlink 读 SKILL.md 就完全绕过 SDK 隔离。strict 模式 + 用户没显式 cwd 时切到 `~/.oh-my-knowledge/isolated-cwd/`(stable 空目录,cache 稳定),Glob/Read 探索不到任何 skill 文件。**这条是 verdict 翻盘的真正 load-bearing channel**:仅堵 SDK 两条 baseline 输出仍多处泄露被测 skill 的私有标识,加 cwd 隔离后绝大多数干净,残余少量是 prompt 自带。
+  - **MCP servers**:已默认堵(SDK `settingSources` 默认 `[]` + omk 不传 `mcpServers`)。
+  - **已知 limit**:`AgentDefinition.skills` 白名单精确控制留 follow-up(白名单场景 subagent 仍能调 Skill 工具,但 v1 用户主要用 `[]` 完全隔离,影响小)。
+
+  **breaking-comparability 标记**:旧报告(无 `meta.skillIsolation`)与新报告 verdict / Δ 不可跨版本对比——等同 judge prompt bump 一档;CHANGELOG 显式 callout。**迁移指南**:
+  - 已有 baseline-vs-skill 评测脚本无需改 flag 即享受 default strict;旧报告作为"污染基线"留存,新跑作为"干净基线"。
+  - 需要老行为(测 baseline 走默认 skill 发现的效果)显式加 `--no-strict-baseline`。
+  - 跨版本对比 verdict / Δ 前先看 `meta.skillIsolation` 是否一致。
+
+  设计 spec 见 [docs/terminology-spec.md §七 Skill Isolation](docs/terminology-spec.md)。
+
+### Internal
+
+- 新增 `buildSdkIsolationOptions(allowedSkills)`(纯函数,可测) + `buildIsolationWarnings(artifacts, strictBaseline)` pre-flight helper。
+- `resolveArtifacts(skillDir, variants, opts)` 新增 `opts: { strictBaseline?, variantAllowedSkills? }`,旧 caller 0 改动(opts 全 optional)。
+- `cacheKey()` signature 加 `allowedSkills?: string[]` 入参,旧 caller 不传时退化到默认行为(但 prefix 升级到 `v2:`,旧 cache 一次性失效)。
+- 单测覆盖:resolveArtifacts 三种优先级 / cache key 不同 isolation 不同键 + 顺序不敏感 / SDK option 形态契约 / claude-cli throw 非空白名单 / eval-config schema reject null + 非数组 / report.meta.skillIsolation populate / pre-flight isolation warning 触发条件。
+
+---
 ## [0.21.0] - 2026-04-27
 
 Minor — **BREAKING** `bench ci` 改名 `bench gate`(消除 omk 里 "CI" 歧义,从此 CI 永远只指置信区间),gate 内核切换为完整 verdict;single-run 盲区在用户旅程三处可见;CLI 双语 i18n 全面落地;发版自动化(publish.yml 现自动从 CHANGELOG 抽 release notes 建 GitHub Release)。
