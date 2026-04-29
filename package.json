@@ -1,6 +1,6 @@
 {
   "name": "oh-my-knowledge",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "LLM evaluation framework with built-in statistical rigor: bootstrap CI, Krippendorff α, length-debias, saturation curves. Native Claude Code skill / RAG / agent / prompt evaluation.",
   "type": "module",
   "bin": {
