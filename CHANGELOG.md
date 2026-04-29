@@ -65,6 +65,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - `resolveArtifacts(skillDir, variants, opts)` 新增 `opts: { strictBaseline?, variantAllowedSkills? }`,旧 caller 0 改动(opts 全 optional)。
 - `cacheKey()` signature 加 `allowedSkills?: string[]` 入参,旧 caller 不传时退化到默认行为(但 prefix 升级到 `v2:`,旧 cache 一次性失效)。
 - 单测覆盖:resolveArtifacts 三种优先级 / cache key 不同 isolation 不同键 + 顺序不敏感 / SDK option 形态契约 / claude-cli throw 非空白名单 / eval-config schema reject null + 非数组 / report.meta.skillIsolation populate / pre-flight isolation warning 触发条件。
+- **lint 严格化三层防御**:(1) `yarn lint` 加 `--max-warnings 0`,任何 warning 都让 CI / `yarn ci` 红;(2) 新加 `husky` + `lint-staged` pre-commit hook,commit 前对 staged TS 文件跑 `eslint --max-warnings 0`,本地拦住坏 commit;(3) `.claude/settings.json` 加 `Stop` hook,Claude Code 协作时每次 turn 结束自动跑 `yarn lint`(只在 src/test TS 文件有改动时跑,避免无用 IO),AI 编辑出 warning 立刻被 feedback 回来。**前置清掉 4 个 pre-existing unused-var warning**(summary.ts 没用的 levelIcon helper;grader.test.ts 两处 `{ dirname, join }` 解构里 join 没用;trace-adapter.test.ts 没用的 TestSession type alias)。
+- `src/cli` 模块化重构:`src/cli.ts` (1956 行单文件)→ `src/cli/index.ts` (1583 行 entry + dispatcher) + 抽 `parse-run-config.ts` / `progress.ts` / `update-check.ts` / `coverage-renderer.ts`(后者从 `src/analysis/` 搬过来,本质 CLI 渲染)。修 sibling-folder 反模式(`src/cli.ts` 与 `src/cli/` 同级)。`package.json` bin 路径同步:`dist/src/cli.js` → `dist/src/cli/index.js`。纯 file move + 路径调整,不动逻辑。
 
 ---
 
