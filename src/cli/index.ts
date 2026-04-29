@@ -172,7 +172,7 @@ async function main(): Promise<void> {
 async function handleRun(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const { values, config } = parseRunConfig(argv, {
-    blind: { type: 'boolean', default: false },
+    blind: { type: 'boolean' },
     repeat: { type: 'string', default: '1' },
     'judge-repeat': { type: 'string', default: '1' },
     'judge-models': { type: 'string' },
@@ -187,7 +187,9 @@ async function handleRun(argv: string[]): Promise<void> {
 
   const { runEvaluation, runMultiple, runEachEvaluation } = await import('../eval-workflows/run-evaluation.js');
 
-  config.blind = values.blind as boolean | undefined;
+  if (values.blind !== undefined) {
+    config.blind = values.blind as boolean | undefined;
+  }
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
   // --repeat 输入校验: 非 ≥1 整数时提示并钳到 1, 不静默掩盖用户错字 / 极端输入。
