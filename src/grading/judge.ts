@@ -163,14 +163,17 @@ export async function llmJudge({ output, rubric, prompt, executor, model, traceS
     prompt: judgePrompt,
   });
 
-  if (!result.ok) return { score: 0, reason: `judge error: ${result.error}`, judgeCostUSD: result.costUSD };
+  // 透传 executor 是否报告 cost。codex executor `costReportedByExecutor: false`,
+  // 让 grade / VariantResult / renderer 跨 judge 路径仍能识别 cost 非真值。
+  const reportedField = result.costReportedByExecutor === false ? { judgeCostReportedByExecutor: false } : {};
+  if (!result.ok) return { score: 0, reason: `judge error: ${result.error}`, judgeCostUSD: result.costUSD, ...reportedField };
 
   try {
     const text = result.output!.trim();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       process.stderr.write(`[omk] LLM judge returned non-JSON: ${text.slice(0, 100)}\n`);
-      return { score: 0, reason: 'judge returned non-JSON', judgeCostUSD: result.costUSD };
+      return { score: 0, reason: 'judge returned non-JSON', judgeCostUSD: result.costUSD, ...reportedField };
     }
     const parsed = JSON.parse(jsonMatch[0]) as JudgeResponse;
     return {
@@ -178,10 +181,11 @@ export async function llmJudge({ output, rubric, prompt, executor, model, traceS
       reason: String(parsed.reason || ''),
       reasoning: parsed.reasoning ? String(parsed.reasoning) : undefined,
       judgeCostUSD: result.costUSD,
+      ...reportedField,
     };
   } catch (parseErr: unknown) {
     process.stderr.write(`[omk] LLM judge parse error: ${getErrorMessage(parseErr)}\n`);
-    return { score: 0, reason: 'failed to parse judge response', judgeCostUSD: result.costUSD };
+    return { score: 0, reason: 'failed to parse judge response', judgeCostUSD: result.costUSD, ...reportedField };
   }
 }
 
@@ -243,6 +247,8 @@ export async function llmJudgeRepeat(
 
   const samples = calls.map((c) => c.score);
   const totalCost = calls.reduce((sum, c) => sum + (c.judgeCostUSD || 0), 0);
+  // 任一 call 的 executor 不报 cost → 整个 repeat 的 totalCost 不可信
+  const anyCostUnreported = calls.some((c) => c.judgeCostReportedByExecutor === false);
   const firstReasoning = calls[0]?.reasoning;
   const firstReason = calls.find((c) => c.reason)?.reason || '';
 
@@ -259,6 +265,7 @@ export async function llmJudgeRepeat(
     reason: firstReason,
     reasoning: firstReasoning,
     judgeCostUSD: totalCost,
+    ...(anyCostUnreported && { judgeCostReportedByExecutor: false }),
     scoreSamples: samples,
     scoreStddev: Number(stddev.toFixed(3)),
     judgeFailureCount: failures,
@@ -394,6 +401,7 @@ export async function llmJudgeEnsemble(
         judgeFailureCount: r.judgeFailureCount,
         reasoning: r.reasoning,
         costUSD: r.judgeCostUSD,
+        ...(r.judgeCostReportedByExecutor === false && { costReportedByExecutor: false }),
       };
       return { entry, raw: r };
     }),
@@ -401,6 +409,8 @@ export async function llmJudgeEnsemble(
 
   const ensemble = perJudge.map((p) => p.entry);
   const totalCost = perJudge.reduce((s, p) => s + (p.raw.judgeCostUSD || 0), 0);
+  // 任一 judge 的 executor 不报 cost → ensemble totalCost 不可信
+  const anyCostUnreported = perJudge.some((p) => p.raw.judgeCostReportedByExecutor === false);
 
   // Aggregate score = mean of per-judge means (consensus).
   const validScores = ensemble.map((e) => e.score).filter((s) => s > 0);
@@ -422,6 +432,7 @@ export async function llmJudgeEnsemble(
     reason: `consensus across ${judges.length} judges`,
     reasoning: spokesperson?.reasoning,
     judgeCostUSD: totalCost,
+    ...(anyCostUnreported && { judgeCostReportedByExecutor: false }),
     ensemble,
     agreement,
   };

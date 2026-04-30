@@ -97,7 +97,7 @@ function renderTable(variantName: string, runs: Report[], lang: Lang): string {
       <td>${s.avgCompositeScore ?? '-'}</td>
       <td>${gapCell}</td>
       <td>${s.avgFullNumTurns ?? s.avgNumTurns ?? '-'}</td>
-      <td>${fmtCost(s.avgCostPerSample)}</td>
+      <td>${fmtCost(s.avgCostPerSample, s.execCostReported !== false && s.judgeCostReported !== false)}</td>
       <td><code style="font-size:11px">${e(hash.slice(0, 8))}</code></td>
       <td>${commitCell}</td>
       <td>${branchCell}</td>

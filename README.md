@@ -104,7 +104,7 @@ You can also just say "compare v1 vs v2 for me" or "improve this artifact" — o
 | **Sample diagnostics** | `omk bench diagnose <id>` — 7 issue kinds (low discrimination / duplicates / ambiguous rubric / cost outliers / etc.) + 0-100 healthScore |
 | **Failure clustering** | `omk bench failures <id>` — single LLM call clusters failed samples and emits per-cluster fixes |
 | **Hard budget caps** | `--budget-usd / --budget-per-sample-usd / --budget-per-sample-ms` — abort on total-cost overrun, flag per-sample overruns; partial report persisted |
-| **Multi-executor** | Claude CLI / Claude SDK / OpenAI / Gemini / any custom command |
+| **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / OpenAI / Gemini / any custom command |
 | **Multi-judge ensemble** | `--judge-models claude:opus,openai:gpt-4o` cross-vendor scoring + agreement metrics |
 | **MCP URL fetching** | pull content from private-doc URLs via an MCP server (SSO-protected knowledge bases, etc.) |
 | **Blind A/B** | `--blind` hides variant names; HTML report has a reveal button |
@@ -135,8 +135,8 @@ flowchart TD
     end
 
     subgraph Exec["④ Executor (fixed model)"]
-        E["claude / claude-sdk / openai / gemini<br/>anthropic-api / openai-api / custom"]
-        T["claude-sdk extracts<br/>turns / toolCalls trace"]
+        E["claude / claude-sdk / codex / openai / gemini<br/>anthropic-api / openai-api / custom"]
+        T["claude-sdk / codex extract<br/>turns / toolCalls trace"]
         E -.-> T
     end
 
@@ -671,6 +671,7 @@ The command writes `~/.oh-my-knowledge/analyses/<timestamp>-skill-health.json`. 
 |---|---|---|
 | `claude` | default | invokes `claude -p` via Claude CLI |
 | `claude-sdk` | structured output | uses Claude Agent SDK — no stdout parsing, avoids buffer truncation |
+| `codex` | OpenAI agent CLI | invokes `codex exec --json` (`@openai/codex` npm); best-effort tool trace; **costUSD not reported** (codex CLI does not emit USD; check usage externally) |
 | `openai` | cross-vendor comparison | invokes `openai api` CLI |
 | `gemini` | cross-vendor comparison | invokes `gemini` CLI |
 | `anthropic-api` | no CLI needed | calls Anthropic HTTP API directly (needs `ANTHROPIC_API_KEY`) |

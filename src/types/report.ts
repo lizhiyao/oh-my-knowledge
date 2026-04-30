@@ -14,6 +14,15 @@ export interface VariantResult {
   execCostUSD: number;
   judgeCostUSD: number;
   costUSD: number;
+  /** Whether `execCostUSD` came from a real cost number reported by the executor.
+   *  Mirrors `ExecResult.costReportedByExecutor`. False ⇒ `execCostUSD` is a 0
+   *  placeholder, renderer should show 「未报告」 instead of $0.0000. Default
+   *  undefined ⇒ reported (preserves backward-compat for old reports). */
+  costReportedByExecutor?: boolean;
+  /** Whether `judgeCostUSD` came from a real cost number reported by the judge executor.
+   *  False ⇒ at least one judge call (single rubric / dimension / async assertion / ensemble member)
+   *  was made through an executor that doesn't report cost (currently codex). Default undefined ⇒ reported. */
+  judgeCostReportedByExecutor?: boolean;
   numTurns: number;
   fullNumTurns?: number;
   numSubAgents?: number;
@@ -69,6 +78,15 @@ export interface VariantSummary {
   totalExecCostUSD: number;
   totalJudgeCostUSD: number;
   avgCostPerSample: number;
+  /** Whether every sample had its exec cost reported by the executor.
+   *  - undefined / true : 所有样本 exec cost 都报告了 (默认,向后兼容)
+   *  - false            : 至少一个样本 exec cost 未报告(混合执行器 / 全部走 codex 等)
+   *  renderer 据此显示「成本: —」 而不是 "$0.0000"。 */
+  execCostReported?: boolean;
+  /** Whether every sample's judge cost was reported. False ⇒ 任一 sample 的 judge call
+   *  走了不报 cost 的 executor(如 codex 当 judge)。renderer 在显示 totalJudgeCost /
+   *  detail 页 cost meta-tag 总值时同时考虑 exec + judge,任一 false 显示「—」。 */
+  judgeCostReported?: boolean;
   avgNumTurns: number;
   avgFullNumTurns?: number;
   avgNumSubAgents?: number;

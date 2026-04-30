@@ -493,6 +493,7 @@ export async function executeEvaluationPipeline({
     const { results, totalCostUSD, skipped, budgetExhausted } = await executeTasks({
       tasks,
       executor,
+      executorName,
       judgeExecutor,
       model,
       judgeModel,

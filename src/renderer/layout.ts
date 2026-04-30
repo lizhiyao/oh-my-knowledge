@@ -22,7 +22,11 @@ export function fmtDuration(ms: number | undefined | null): string {
   return sec > 0 ? `${min}m${sec}s` : `${min}m`;
 }
 
-export function fmtCost(usd: number | undefined | null): string {
+export function fmtCost(usd: number | undefined | null, reported: boolean = true): string {
+  // reported=false 时 executor 不报 cost(如 codex CLI),`usd` 是占位 0,
+  // 显示 "—" 跟"真的花了 $0"区分开。callsite 传 reported 时通常来自
+  // `VariantSummary.execCostReported !== false` 或 `VariantResult.costReportedByExecutor !== false`。
+  if (!reported) return '—';
   return `$${Number(usd || 0).toFixed(4)}`;
 }
 
@@ -154,9 +158,6 @@ export const I18N: Record<Lang, Record<string, string>> = {
     viewTrendLink: '查看趋势 →',
     artifactHashLabel: '版本指纹',
     artifactHashTooltip: 'skill 文件内容的 SHA-256 前 12 位(不含路径/时间/git),用于辨别报告对应哪一版 skill;同文件多次跑指纹不变,改一字节就变——防止"改动效果"和"随机波动"混淆',
-    // v0.21 B.4 — 列表页 verdict 图例条
-    verdictLegendLabel: '图例',
-    verdictLegendClose: '关闭图例',
     switchLang: 'EN',
   },
   en: {
@@ -269,9 +270,6 @@ export const I18N: Record<Lang, Record<string, string>> = {
     viewTrendLink: 'trend →',
     artifactHashLabel: 'Version fingerprint',
     artifactHashTooltip: 'First 12 hex chars of SHA-256 over the skill file content (content-only: no path/time/git); identifies which version of the skill this report ran — same file = same fingerprint, any byte change = different fingerprint. Keeps "intentional change" separate from "random variance"',
-    // v0.21 B.4 — listing page verdict legend strip
-    verdictLegendLabel: 'Legend',
-    verdictLegendClose: 'Dismiss legend',
     switchLang: '中文',
   },
 };
@@ -577,26 +575,9 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .run-status.verdict-NOISE{color:var(--text-secondary);background:rgba(148,163,184,0.1)}
 .run-status.verdict-SOLO{color:var(--text-muted);background:transparent;border:1px solid var(--border)}
 
-/* v0.21 B.4 — 列表页 verdict 图例条. 默认展示一行带过 6 个 status 含义,
-   × 关闭后 localStorage 记忆 — 老用户不被打扰, 新用户第一次进站能快速对照. */
-.verdict-legend{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:8px 12px;margin:0 0 14px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius);font-size:11px;color:var(--text-muted)}
-.verdict-legend[hidden]{display:none}
-.verdict-legend-prefix{font-weight:600;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.08em;font-size:10px}
-.verdict-legend-item{display:inline-flex;align-items:center;gap:5px;font-weight:500;cursor:help;font-variant-numeric:tabular-nums}
-.verdict-legend-item .verdict-legend-dot{font-size:9px;line-height:1}
-.verdict-legend-item.verdict-PROGRESS{color:var(--green)}
-.verdict-legend-item.verdict-REGRESS{color:var(--red)}
-.verdict-legend-item.verdict-CAUTIOUS{color:var(--yellow)}
-.verdict-legend-item.verdict-UNDERPOWERED{color:var(--yellow);opacity:0.85}
-.verdict-legend-item.verdict-NOISE{color:var(--text-secondary)}
-.verdict-legend-item.verdict-SOLO{color:var(--text-muted)}
-.verdict-legend-close{margin-left:auto;background:transparent;border:none;color:var(--text-muted);cursor:pointer;font-size:14px;padding:2px 8px;border-radius:3px;line-height:1;min-height:auto}
-.verdict-legend-close:hover{color:var(--text-primary);background:var(--bg-surface);border-color:transparent}
-
 @media print{
   .verdict-banner,.verdict-cta{break-inside:avoid;page-break-inside:avoid}
   .run-status{border:1px solid #cbd5e1;background:transparent !important}
-  .verdict-legend{display:none}
 }
 
 .modal-overlay{display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center}

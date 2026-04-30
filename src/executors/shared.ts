@@ -101,6 +101,44 @@ export interface ClaudeSdkModule {
   query: (opts: ClaudeSdkQueryInput) => AsyncIterable<ClaudeSdkBaseMessage>;
 }
 
+// Codex CLI `codex exec --json` 事件流 schema(基于 codex 0.125 实测)。
+// 实测事件举例:
+//   {"type":"thread.started","thread_id":"..."}
+//   {"type":"turn.started"}
+//   {"type":"item.started","item":{"id":"item_0","type":"command_execution","command":"...","aggregated_output":"","exit_code":null,"status":"in_progress"}}
+//   {"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"...","aggregated_output":"...","exit_code":0,"status":"completed"}}
+//   {"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"..."}}
+//   {"type":"turn.completed","usage":{...}}
+// schema 没有官方稳定文档,字段缺失静默 skip 不 throw。未来 codex schema 漂移时 fixture 测试会先红。
+export interface CodexEvent {
+  type?: string;
+  turn_id?: string;
+  usage?: {
+    input_tokens?: number;
+    cached_input_tokens?: number;
+    output_tokens?: number;
+  };
+  elapsed_ms?: number;
+  stop_reason?: string;
+  // item.* 事件把所有 item 数据嵌套在 item 字段下。
+  // item.type 是真正的 item 类型(agent_message / command_execution / file_read / ...)
+  item?: {
+    id?: string;
+    type?: string;
+    text?: string;
+    command?: string;
+    aggregated_output?: string;
+    exit_code?: number | null;
+    status?: string;
+    path?: string;
+    content?: string;
+    query?: string;
+    results?: unknown[];
+  };
+  error?: { message?: string };
+  ts?: number;
+}
+
 export interface ExecutorErrorLike {
   message?: string;
   name?: string;

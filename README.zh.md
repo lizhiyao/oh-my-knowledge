@@ -102,7 +102,7 @@ OMK_LANG=en omk bench report
 | **样本质量诊断** | `omk bench diagnose <id>` 7 类 issue（区分度低 / 重复 / 歧义 / 成本异常 / 全 fail 等）+ healthScore 0-100 |
 | **失败聚类 + 根因** | `omk bench failures <id>` 单 LLM 调用聚类失败样本 + 每 cluster 给修复建议 |
 | **预算硬阈值** | `--budget-usd / --budget-per-sample-usd / --budget-per-sample-ms` 总成本 + 单样本成本/耗时上限,超出中止保留 partial report |
-| **多执行器** | 支持 Claude CLI / Claude SDK / OpenAI / Gemini 及自定义命令 |
+| **多执行器** | 支持 Claude CLI / Claude SDK / Codex CLI / OpenAI / Gemini 及自定义命令 |
 | **多评委 ensemble** | `--judge-models claude:opus,openai:gpt-4o` 跨厂商评分 + agreement 度量 |
 | **MCP URL 获取** | 通过 MCP Server 获取私有文档 URL 内容（SSO 保护的知识库等） |
 | **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
@@ -133,7 +133,7 @@ flowchart TD
     end
 
     subgraph Exec["④ 执行器(固定模型)"]
-        E["claude / claude-sdk / openai / gemini<br/>anthropic-api / openai-api / 自定义命令"]
+        E["claude / claude-sdk / codex / openai / gemini<br/>anthropic-api / openai-api / 自定义命令"]
         T["claude-sdk 抽取<br/>turns / toolCalls trace"]
         E -.-> T
     end
@@ -664,6 +664,7 @@ omk analyze ~/.claude/projects/my-project --kb /path/to/project
 |--------|----------|------|
 | `claude` | 默认 | 通过 `claude -p` 调用 Claude CLI |
 | `claude-sdk` | 结构化输出 | 通过 Claude Agent SDK 调用，无 stdout 解析，避免 buffer 截断 |
+| `codex` | OpenAI agent CLI | 通过 `codex exec --json` 调用,需本地装好登录的 codex(`@openai/codex`);best-effort tool trace,**costUSD 不报**(codex 自身不输出 USD,需外部账单核算) |
 | `openai` | 跨厂商对比 | 通过 `openai api` CLI 调用 |
 | `gemini` | 跨厂商对比 | 通过 `gemini` CLI 调用 |
 | `anthropic-api` | 无需 CLI | 直接调用 Anthropic HTTP API（需 `ANTHROPIC_API_KEY`） |

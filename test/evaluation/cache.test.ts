@@ -34,8 +34,28 @@ describe('cacheKey', () => {
     assert.equal(a, b);
   });
 
-  it('cache key 带 v2: 前缀(invalidates old cache entries)', () => {
+  it('cache key 带 v3: 前缀(invalidates old v2 cache entries)', () => {
     const key = cacheKey('sonnet', '', 'p', '/tmp/p');
-    assert.match(key, /^v2:/);
+    assert.match(key, /^v3:/);
+  });
+
+  // executor 进 cache key:同 model 名(如 'gpt-4o')走 openai-api vs codex 输出不同,
+  // 不区分会污染。新版 v3 含 executor 名,跨 executor 必拿不同 key。
+  it('executor 进 cache key:不同 executor 同 model 不同键', () => {
+    const codex = cacheKey('gpt-4o', '', 'p', '/tmp/p', undefined, 'codex');
+    const openaiApi = cacheKey('gpt-4o', '', 'p', '/tmp/p', undefined, 'openai-api');
+    assert.notEqual(codex, openaiApi);
+  });
+
+  it('executor 进 cache key:undefined 跟空串等价(都 fallback)', () => {
+    const noExec = cacheKey('sonnet', '', 'p', '/tmp/p');
+    const emptyExec = cacheKey('sonnet', '', 'p', '/tmp/p', undefined, '');
+    assert.equal(noExec, emptyExec);
+  });
+
+  it('executor 进 cache key:同 executor 同 model 同 key', () => {
+    const a = cacheKey('sonnet', '', 'p', '/tmp/p', undefined, 'claude');
+    const b = cacheKey('sonnet', '', 'p', '/tmp/p', undefined, 'claude');
+    assert.equal(a, b);
   });
 });
