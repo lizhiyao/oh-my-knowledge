@@ -765,8 +765,13 @@ function getVariantMetricMean(variance: VarianceData, variant: string, key: Metr
   return v.byMetric?.[key]?.mean ?? null;
 }
 
-export function renderVarianceComparisons(variance: VarianceData | undefined, lang: Lang, layeredStatsOpen = false): string {
+export function renderVarianceComparisons(variance: VarianceData | undefined, lang: Lang, layeredStatsOpen = false, summary?: Record<string, VariantSummary>): string {
   if (!variance || !variance.comparisons || variance.comparisons.length === 0) return '';
+
+  // 任一 variant 的 exec 或 judge cost 未报告 → cost 行跳过(显示「—」会跟"持平"难区分,
+  // 索性直接不渲染该指标行)。判 cost 列前看 summary,缺 summary 当全 reported 走旧路径。
+  const allCostReported = !summary || Object.values(summary).every((v) =>
+    v.execCostReported !== false && v.judgeCostReported !== false);
 
   const modalId = 'guide-variance-comparisons';
   const title = lang === 'zh' ? '方差与显著性' : 'Variance & Significance';
@@ -929,6 +934,8 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
     // Collect available metric rows for this comparison
     const availableMetrics: Array<{ cfg: MetricDisplayConfig; metric: VarianceComparisonMetric }> = [];
     for (const cfg of METRIC_CONFIGS) {
+      // cost 行:任一 variant 不报 cost 时跳过(数据是占位 0,显示"持平"误导)
+      if (cfg.key === 'cost' && !allCostReported) continue;
       const m = pickMetricFromComparison(comp, cfg.key);
       if (m) availableMetrics.push({ cfg, metric: m });
     }

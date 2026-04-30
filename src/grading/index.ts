@@ -96,6 +96,11 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     if (asyncResults.judgeCostUSD && asyncResults.judgeCostUSD > 0) {
       results.judgeCostUSD = (results.judgeCostUSD || 0) + asyncResults.judgeCostUSD;
     }
+    // 透传 cost reported flag。async assertion 调 judge executor 时,该 executor 若不报 cost
+    // (codex)→ asyncResults.judgeCostReportedByExecutor=false → GradeResult 整体也不可信。
+    if (asyncResults.judgeCostReportedByExecutor === false) {
+      results.judgeCostReportedByExecutor = false;
+    }
   }
 
   // 2. LLM scoring
@@ -119,6 +124,9 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     // Accumulate judge cost from all dimensions (add to any existing async assertion cost)
     const dimCost = dimValues.reduce((s, d) => s + (d.judgeCostUSD || 0), 0);
     if (dimCost > 0) results.judgeCostUSD = (results.judgeCostUSD || 0) + dimCost;
+    if (dimValues.some((d) => d.judgeCostReportedByExecutor === false)) {
+      results.judgeCostReportedByExecutor = false;
+    }
   } else if (allowLlmJudge && sample.rubric) {
     // Single rubric scoring
     const rubricOptions = { output, rubric: sample.rubric, prompt: sample.prompt, executor, model: judgeModel, traceSummary, lengthDebias };
@@ -140,6 +148,9 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
       results.llmAgreement = judge.agreement;
     }
     results.judgeCostUSD = (results.judgeCostUSD || 0) + (judge.judgeCostUSD || 0);
+    if (judge.judgeCostReportedByExecutor === false) {
+      results.judgeCostReportedByExecutor = false;
+    }
   }
 
   // 3. Layered scores + composite

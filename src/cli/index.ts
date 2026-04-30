@@ -44,6 +44,7 @@ interface RoundProgressInfo {
   delta?: number;
   accepted?: boolean;
   costUSD?: number;
+  costReported?: boolean;
   error?: string;
 }
 
@@ -70,6 +71,7 @@ interface EvolveResult {
   bestRound: number;
   totalRounds: number;
   totalCostUSD: number;
+  costReported?: boolean;
   trajectory: TrajectoryEntry[];
   bestSkillPath: string;
   allVersions: string[];
@@ -804,10 +806,13 @@ async function handleEvolve(argv: string[]): Promise<void> {
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
       skipPreflight: values['skip-preflight'] as boolean,
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
-      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, error }: RoundProgressInfo): void {
+      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error }: RoundProgressInfo): void {
+        // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。
+        // 缺位 / true 当 reported 走旧格式。
+        const fmtRoundCost = (c: number, r: boolean): string => r ? `$${c.toFixed(4)}` : '—';
         if (phase === 'baseline') {
           process.stderr.write(tCli('cli.evolve.round_baseline', lang, {
-            score: score!.toFixed(2), cost: costUSD!.toFixed(4),
+            score: score!.toFixed(2), cost: fmtRoundCost(costUSD!, costReported !== false),
           }));
         } else if (phase === 'error') {
           process.stderr.write(tCli('cli.evolve.round_error', lang, {
@@ -817,7 +822,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
           const delta_: string = delta! >= 0 ? `+${delta!.toFixed(2)}` : delta!.toFixed(2);
           const status: string = accepted ? '✓ ACCEPT' : '✗ REJECT';
           process.stderr.write(tCli('cli.evolve.round_done', lang, {
-            round, score: score!.toFixed(2), delta: delta_, status, cost: costUSD!.toFixed(4),
+            round, score: score!.toFixed(2), delta: delta_, status, cost: fmtRoundCost(costUSD!, costReported !== false),
           }));
         }
       },
@@ -826,9 +831,12 @@ async function handleEvolve(argv: string[]): Promise<void> {
     const improvement: string = result.startScore > 0
       ? ((result.finalScore - result.startScore) / result.startScore * 100).toFixed(1)
       : '0';
+    const totalCostStr = result.costReported === false
+      ? '—'  // 任一轮的 executor 不报 cost → totalCostUSD 是 lower-bound
+      : `$${result.totalCostUSD.toFixed(4)}`;
     process.stderr.write(tCli('cli.evolve.summary', lang, {
       start: result.startScore.toFixed(2), final: result.finalScore.toFixed(2),
-      percent: improvement, rounds: result.totalRounds, cost: result.totalCostUSD.toFixed(4),
+      percent: improvement, rounds: result.totalRounds, cost: totalCostStr,
     }));
     process.stderr.write(tCli('cli.evolve.best_path', lang, {
       best: result.bestSkillPath, target: resolve(skillPath),

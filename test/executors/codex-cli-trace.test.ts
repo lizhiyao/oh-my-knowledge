@@ -236,4 +236,21 @@ describe('extractCodexTrace', () => {
     assert.equal(r.toolCalls[0].input, 'what is omk');
     assert.match(r.toolCalls[0].output as string, /t1/);
   });
+
+  // multi-turn elapsed_ms 累加(bug_014):codex events 的 elapsed_ms 是 per-turn delta,
+  // 跟 extractCodexUsage 累加 token 同语义。fixture 里多 turn.completed 各带 elapsed_ms,
+  // 这里只测 trace 不出错,duration sum 走 sumCodexElapsed(executor 内部,sum 在 codex-cli.ts)。
+  it('multi-turn 流跨多 turn.completed 各自带 elapsed_ms 不爆栈', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.started', ts: 0 },
+      { type: 'item.completed', item: { id: 'a', type: 'agent_message', text: 't1' } },
+      { type: 'turn.completed', ts: 2000, elapsed_ms: 2000 },
+      { type: 'turn.started', ts: 2100 },
+      { type: 'item.completed', item: { id: 'b', type: 'agent_message', text: 't2' } },
+      { type: 'turn.completed', ts: 5500, elapsed_ms: 3500 },
+    ];
+    const r = extractCodexTrace(events);
+    assert.equal(r.turns.length, 2);
+    assert.equal(r.fullNumTurns, 2);
+  });
 });

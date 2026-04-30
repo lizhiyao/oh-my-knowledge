@@ -43,6 +43,12 @@ function isolateCodexCwd(allowedSkills: string[] | undefined, cwd: string | null
   }
 }
 
+// codex 的 verbose 降级提示是 binary 能力快照(无 --system-prompt flag / 不报 cost),
+// 不会逐次调用变化。executor 在 sample × variant × judge_repeat × dimension 多次被调,
+// 每次都打两行会让 stderr 被同样文本刷屏(140-280 行)。模块级 flag 一个 process 只打一次。
+let hasWarnedSystem = false;
+let hasWarnedCost = false;
+
 function parseCodexJsonl(stdout: string): CodexEvent[] {
   const events: CodexEvent[] = [];
   for (const line of stdout.split('\n')) {
@@ -68,20 +74,21 @@ function extractCodexUsage(events: CodexEvent[]): { input: number; cached: numbe
   return { input, cached, output };
 }
 
-function extractCodexFinalOutput(events: CodexEvent[]): string {
-  // 抓 item.completed + item.type='agent_message' 的 text;优先取最后一条,否则全部拼起来。
-  let lastAssistantText = '';
+// exported for unit tests
+export function extractCodexFinalOutput(events: CodexEvent[]): string {
+  // 抓 item.completed + item.type='agent_message' 的 text 全部拼起来。
+  // codex 同 turn 内可能 emit 多条 agent_message(如 "step 1" / "step 2" / "final answer"),
+  // 取最后一条会让 grader / assertion / LLM judge 只看到最后片段,跟 extractCodexTrace
+  // 把多条拼到 turn.content 的语义不一致(test/executors/codex-cli-trace.test.ts:120-130 锁住)。
+  // 一致化:final output 也拼,跟 trace UI 看到的内容对齐。
   const allTexts: string[] = [];
   for (const e of events) {
     if (e.type !== 'item.completed') continue;
     if (e.item?.type !== 'agent_message') continue;
     const txt = e.item.text;
-    if (txt) {
-      allTexts.push(txt);
-      lastAssistantText = txt;
-    }
+    if (txt) allTexts.push(txt);
   }
-  return lastAssistantText || allTexts.join('\n');
+  return allTexts.join('\n');
 }
 
 function extractCodexStopReason(events: CodexEvent[]): string {
@@ -89,6 +96,16 @@ function extractCodexStopReason(events: CodexEvent[]): string {
   if (!last) return 'unknown';
   if (last.type === 'turn.failed') return 'error';
   return last.stop_reason || 'end_turn';
+}
+
+// codex 每个 turn.completed 携带本 turn 的 elapsed_ms(per-turn delta),
+// 跟 extractCodexUsage 把 token 累加多 turn 是同一语义假设(events 是 per-turn delta,
+// 不是 cumulative)。multi-turn 只取最后一条会漏算前面 turn 的耗时。fallback:
+// 累加为 0 / 全部缺失时退到 wall-clock,避免 elapsed_ms===0 单 turn 抹平 duration。
+// exported for unit tests
+export function sumCodexElapsed(resultEvents: CodexEvent[], wallClock: number): number {
+  const total = resultEvents.reduce((s, e) => s + (e.elapsed_ms ?? 0), 0);
+  return total > 0 ? total : wallClock;
 }
 
 // exported for arg-shape regression tests
@@ -137,11 +154,13 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
   // codex CLI 没有 --system-prompt flag。降级:把 system 拼到 prompt 头部,
   // verbose 输出降级提示。reproducibility 略受影响,但语义大致等价。
   const finalPrompt = system ? `${system}\n\n---\n\n${prompt}` : prompt;
-  if (system && verbose) {
+  if (system && verbose && !hasWarnedSystem) {
     process.stderr.write('[codex] system prompt prepended (codex CLI lacks --system-prompt flag)\n');
+    hasWarnedSystem = true;
   }
-  if (verbose) {
+  if (verbose && !hasWarnedCost) {
     process.stderr.write('[codex] cost not reported by binary; costReportedByExecutor=false (renderer shows 「—」 instead of $0.0000)\n');
+    hasWarnedCost = true;
   }
 
   const args = buildCodexArgs({ model, cwd, prompt: finalPrompt });
@@ -186,8 +205,8 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
 
     return {
       ok,
-      // ?? 不 ||:elapsed_ms === 0(异常 turn)时不应 fallback 到 wall-clock duration
-      durationMs: last.elapsed_ms ?? durationMs,
+      // multi-turn 累加 elapsed_ms(per-turn delta);全 0 fallback wall-clock。详见 sumCodexElapsed
+      durationMs: sumCodexElapsed(resultEvents, durationMs),
       durationApiMs: 0, // codex 不报 API duration
       inputTokens: usage.input,
       outputTokens: usage.output,
@@ -197,6 +216,9 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
       costReportedByExecutor: false,    // renderer 据此显示「未报告」而非 $0.0000
       output: finalOutput,
       stopReason,
+      // success path:ok=false(turn.failed)时透传 last.error.message 给 caller 看到
+      // 失败原因。catch path 历史上已经透传(对称化)。
+      ...(!ok && { error: last.error?.message || 'codex turn.failed' }),
       numTurns: resultEvents.length,
       fullNumTurns: trace.fullNumTurns,
       numSubAgents: trace.numSubAgents,
@@ -218,7 +240,7 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
       return {
         ok: false,
         error: last.error?.message || errorMessage(err),
-        durationMs: last.elapsed_ms ?? durationMs,
+        durationMs: sumCodexElapsed(resultEvents, durationMs),
         durationApiMs: 0,
         inputTokens: usage.input,
         outputTokens: usage.output,

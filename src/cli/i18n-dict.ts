@@ -417,20 +417,20 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '\n=== Evolution: {path} ===\n',
   },
   'cli.evolve.round_baseline': {
-    zh: '第 0 轮 (基线): score={score} (${cost})\n',
-    en: 'Round 0 (baseline): score={score} (${cost})\n',
+    zh: '第 0 轮 (基线): score={score} ({cost})\n',
+    en: 'Round 0 (baseline): score={score} ({cost})\n',
   },
   'cli.evolve.round_error': {
     zh: '第 {round} 轮: ✗ 改进生成失败: {error}\n',
     en: 'Round {round}: ✗ improvement generation failed: {error}\n',
   },
   'cli.evolve.round_done': {
-    zh: '第 {round} 轮: score={score} ({delta}) {status} (${cost})\n',
-    en: 'Round {round}: score={score} ({delta}) {status} (${cost})\n',
+    zh: '第 {round} 轮: score={score} ({delta}) {status} ({cost})\n',
+    en: 'Round {round}: score={score} ({delta}) {status} ({cost})\n',
   },
   'cli.evolve.summary': {
-    zh: '\n✅ {start} → {final} (+{percent}%) | 共 {rounds} 轮 | ${cost}\n',
-    en: '\n✅ {start} → {final} (+{percent}%) | {rounds} rounds | ${cost}\n',
+    zh: '\n✅ {start} → {final} (+{percent}%) | 共 {rounds} 轮 | {cost}\n',
+    en: '\n✅ {start} → {final} (+{percent}%) | {rounds} rounds | {cost}\n',
   },
   'cli.evolve.best_path': {
     zh: '最优版本: {best} → {target}\n',

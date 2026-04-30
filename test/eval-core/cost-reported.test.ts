@@ -59,6 +59,48 @@ describe('costReportedByExecutor: ExecResult → VariantResult', () => {
   });
 });
 
+describe('judgeCostReportedByExecutor: GradeResult → VariantResult', () => {
+  it('grade.judgeCostReportedByExecutor=false 透传到 VariantResult', () => {
+    const exec = mkExec();
+    const r = buildVariantResult(exec, {
+      compositeScore: 4,
+      judgeCostUSD: 0,
+      judgeCostReportedByExecutor: false,
+    });
+    assert.equal(r.judgeCostReportedByExecutor, false);
+    assert.equal(r.judgeCostUSD, 0);
+  });
+
+  it('grade.judgeCostReportedByExecutor 缺失 → VariantResult 无字段', () => {
+    const exec = mkExec();
+    const r = buildVariantResult(exec, { compositeScore: 4, judgeCostUSD: 0.0001 });
+    assert.equal(r.judgeCostReportedByExecutor, undefined);
+  });
+});
+
+describe('judgeCostReported: VariantResult[] → VariantSummary', () => {
+  it('全部 reported → summary 不出 judgeCostReported 字段', () => {
+    const s = buildVariantSummary([mkVR(), mkVR()]);
+    assert.equal(s.judgeCostReported, undefined);
+  });
+
+  it('任一 sample judgeCostReportedByExecutor=false → summary.judgeCostReported=false', () => {
+    const s = buildVariantSummary([
+      mkVR(),
+      mkVR({ judgeCostReportedByExecutor: false }),
+    ]);
+    assert.equal(s.judgeCostReported, false);
+  });
+
+  it('exec reported + judge unreported → summary 只标 judgeCostReported=false', () => {
+    const s = buildVariantSummary([
+      mkVR({ judgeCostReportedByExecutor: false }),
+    ]);
+    assert.equal(s.execCostReported, undefined);
+    assert.equal(s.judgeCostReported, false);
+  });
+});
+
 describe('execCostReported: VariantResult[] → VariantSummary', () => {
   it('全部 sample reported(undefined)→ summary 不出 execCostReported 字段', () => {
     const entries = [mkVR(), mkVR(), mkVR()];
@@ -85,9 +127,16 @@ describe('execCostReported: VariantResult[] → VariantSummary', () => {
     assert.equal(s.execCostReported, false);
   });
 
-  it('全部 sample 失败(没 ok)→ summary 不出字段(避免 partial 误报)', () => {
+  it('全 error 但 codex 标记 not reported → summary 仍 emit false(executor 能力跟成功无关)', () => {
+    // 旧实现 gate 是 ok.some(),全 error 时漏字段,renderer 把"$0.0000"当真值显示。
+    // 新实现 entries.some():executor 不报 cost 是 binary 能力事实,跟 sample 成功无关。
     const entries = [mkVR({ ok: false, costReportedByExecutor: false })];
     const s = buildVariantSummary(entries);
+    assert.equal(s.execCostReported, false);
+  });
+
+  it('无 sample(空 entries)→ summary 不出字段', () => {
+    const s = buildVariantSummary([]);
     assert.equal(s.execCostReported, undefined);
   });
 });

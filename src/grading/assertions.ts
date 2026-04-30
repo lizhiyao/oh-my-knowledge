@@ -303,6 +303,7 @@ export function runAssertions(
 export async function runAsyncAssertions(output: string, assertions: Assertion[], { executor, judgeModel, sample, samplesDir }: AsyncAssertionContext): Promise<AssertionResults> {
   const details: AssertionDetail[] = [];
   let asyncCostUSD = 0;
+  let anyCostUnreported = false;
 
   for (const assertion of assertions) {
     const weight = assertion.weight ?? 1;
@@ -333,6 +334,7 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
       });
 
       asyncCostUSD += result.costUSD || 0;
+      if (result.costReportedByExecutor === false) anyCostUnreported = true;
       if (result.ok) {
         try {
           const jsonMatch = result.output!.trim().match(/\{[\s\S]*\}/);
@@ -356,6 +358,7 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
     ) {
       const ragResult = await runRagJudge(assertion, output, sample, executor, judgeModel);
       asyncCostUSD += ragResult.costUSD;
+      if (ragResult.costReportedByExecutor === false) anyCostUnreported = true;
       passed = ragResult.passed;
       message = ragResult.message;
     } else if (assertion.type === 'custom') {
@@ -390,7 +393,14 @@ export async function runAsyncAssertions(output: string, assertions: Assertion[]
   const passedCount = details.filter((d) => d.passed).length;
   const ratio = totalWeight > 0 ? passedWeight / totalWeight : 0;
 
-  return { passed: passedCount, total: details.length, score: ratioToScore(ratio), details, judgeCostUSD: asyncCostUSD };
+  return {
+    passed: passedCount,
+    total: details.length,
+    score: ratioToScore(ratio),
+    details,
+    judgeCostUSD: asyncCostUSD,
+    ...(anyCostUnreported && { judgeCostReportedByExecutor: false }),
+  };
 }
 
 // ===========================================================================
@@ -433,6 +443,8 @@ interface RagJudgeOutcome {
   passed: boolean;
   message: string;
   costUSD: number;
+  /** False = judge executor 不报 cost(如 codex)→ costUSD 是占位 0。 */
+  costReportedByExecutor?: boolean;
 }
 
 async function runRagJudge(
@@ -534,11 +546,13 @@ async function runRagJudge(
   }
 
   const result = await executor({ model: judgeModel, system, prompt });
+  const reported = result.costReportedByExecutor === false ? { costReportedByExecutor: false as const } : {};
   if (!result.ok) {
     return {
       passed: false,
       message: `${assertion.type} judge error: ${result.error}`,
       costUSD: result.costUSD || 0,
+      ...reported,
     };
   }
 
@@ -547,7 +561,7 @@ async function runRagJudge(
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       process.stderr.write(`[omk] ${assertion.type} judge returned non-JSON: ${text.slice(0, 100)}\n`);
-      return { passed: false, message: 'judge returned non-JSON', costUSD: result.costUSD || 0 };
+      return { passed: false, message: 'judge returned non-JSON', costUSD: result.costUSD || 0, ...reported };
     }
     const parsed = JSON.parse(jsonMatch[0]) as JudgeResponse;
     const score = Number(parsed.score) || 0;
@@ -555,9 +569,10 @@ async function runRagJudge(
       passed: score >= threshold,
       message: parsed.reason ? String(parsed.reason) : '',
       costUSD: result.costUSD || 0,
+      ...reported,
     };
   } catch (parseErr: unknown) {
     process.stderr.write(`[omk] ${assertion.type} judge parse error: ${getErrorMessage(parseErr)}\n`);
-    return { passed: false, message: 'failed to parse judge response', costUSD: result.costUSD || 0 };
+    return { passed: false, message: 'failed to parse judge response', costUSD: result.costUSD || 0, ...reported };
   }
 }

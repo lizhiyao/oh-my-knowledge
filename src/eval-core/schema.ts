@@ -70,6 +70,8 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     // 透传 executor 是否报告了 cost。undefined 当 reported(向后兼容)。
     // false 时 renderer 应显示「—」而不是 $0.0000;codex 0.125 binary 不报 cost。
     ...(execResult.costReportedByExecutor === false && { costReportedByExecutor: false }),
+    // judge 同理:任一 dim/single/async assertion 走了不报 cost 的 judge executor → grade 整体也不可信
+    ...(gradeResult?.judgeCostReportedByExecutor === false && { judgeCostReportedByExecutor: false }),
     numTurns: execResult.numTurns,
     ...(execResult.fullNumTurns != null && { fullNumTurns: execResult.fullNumTurns }),
     ...(execResult.numSubAgents != null && { numSubAgents: execResult.numSubAgents }),
@@ -151,9 +153,14 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
     totalExecCostUSD: ok.reduce((s, e) => s + (e.execCostUSD || 0), 0),
     totalJudgeCostUSD: ok.reduce((s, e) => s + (e.judgeCostUSD || 0), 0),
     avgCostPerSample: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.costUSD || 0), 0) / ok.length).toFixed(6)) : 0,
-    // 任一 ok sample exec cost 未报告 → variant 整体标 false。renderer 据此把
-    // "成本: $0.0000" 改成 "成本: —(未报告)"。无 ok sample(全 error)时省略字段。
-    ...(ok.length > 0 && ok.some((e) => e.costReportedByExecutor === false) && { execCostReported: false }),
+    // 任一 sample(含失败 sample)exec cost 未报告 → variant 整体标 false。
+    // 用 entries 而不是 ok:codex 全 error 的场景 ok=[],但 entries 里 every 个都是
+    // codex 不报 cost,这种"executor 能力 cap"事实跟 sample 是否成功无关 — 全错时
+    // 也应该标 false,否则 renderer 会显示 $0.0000(执行 cost 列空 + summary 卡片
+    // 已用 hasCost gate 兜住,但 list 页累计 / detail meta-tag 无该 gate,会泄漏)。
+    ...(entries.some((e) => e.costReportedByExecutor === false) && { execCostReported: false }),
+    // judge 同理:任一 sample 走了不报 cost 的 judge executor → totalJudgeCostUSD 不可信
+    ...(entries.some((e) => e.judgeCostReportedByExecutor === false) && { judgeCostReported: false }),
     avgNumTurns: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.numTurns || 0), 0) / ok.length).toFixed(1)) : 0,
     ...(() => {
       const withFullTurns = ok.filter((e) => e.fullNumTurns != null);

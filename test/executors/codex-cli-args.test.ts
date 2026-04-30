@@ -1,6 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { buildCodexArgs } from '../../src/executors/codex-cli.js';
+import { buildCodexArgs, extractCodexFinalOutput, sumCodexElapsed } from '../../src/executors/codex-cli.js';
+import type { CodexEvent } from '../../src/executors/shared.js';
 
 // Args shape 回归测:codex CLI 0.125 起去掉 `--ask-for-approval` flag。
 // 我们曾经用过这个 flag,会让 preflight 直接挂(unexpected argument)。
@@ -45,5 +46,93 @@ describe('buildCodexArgs flag schema', () => {
   it('puts prompt as last positional arg', () => {
     const args = buildCodexArgs({ model: 'gpt-5-codex', cwd: '/tmp', prompt: 'the-prompt' });
     assert.equal(args[args.length - 1], 'the-prompt');
+  });
+});
+
+// bug_001:同 turn 多 agent_message 时 final output 必须全部拼接,不能只取最后一条。
+// 否则 grader / assertion / LLM judge 看到的 output 跟 trace UI 看到的内容不一致。
+describe('extractCodexFinalOutput multi-message turn', () => {
+  it('multi agent_message in same turn → join all with \\n', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.started' },
+      { type: 'item.completed', item: { id: 'a', type: 'agent_message', text: 'first part' } },
+      { type: 'item.completed', item: { id: 'b', type: 'agent_message', text: 'second part' } },
+      { type: 'item.completed', item: { id: 'c', type: 'agent_message', text: 'final answer: yes' } },
+      { type: 'turn.completed' },
+    ];
+    assert.equal(extractCodexFinalOutput(events), 'first part\nsecond part\nfinal answer: yes');
+  });
+
+  it('skip agent_message with empty text', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.started' },
+      { type: 'item.completed', item: { id: 'a', type: 'agent_message', text: '' } },
+      { type: 'item.completed', item: { id: 'b', type: 'agent_message', text: 'real content' } },
+      { type: 'turn.completed' },
+    ];
+    assert.equal(extractCodexFinalOutput(events), 'real content');
+  });
+
+  it('skip non-agent_message items', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.started' },
+      { type: 'item.completed', item: { id: 'a', type: 'command_execution', command: 'ls', aggregated_output: 'x' } },
+      { type: 'item.completed', item: { id: 'b', type: 'agent_message', text: 'response' } },
+      { type: 'turn.completed' },
+    ];
+    assert.equal(extractCodexFinalOutput(events), 'response');
+  });
+
+  it('skip item.started (in-progress placeholder)', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.started' },
+      { type: 'item.started', item: { id: 'a', type: 'agent_message', text: 'partial...' } },
+      { type: 'item.completed', item: { id: 'a', type: 'agent_message', text: 'final' } },
+      { type: 'turn.completed' },
+    ];
+    assert.equal(extractCodexFinalOutput(events), 'final');
+  });
+
+  it('no agent_message → empty string', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.started' },
+      { type: 'turn.completed' },
+    ];
+    assert.equal(extractCodexFinalOutput(events), '');
+  });
+});
+
+// bug_014:durationMs 在 multi-turn 必须累加每个 turn.completed 的 elapsed_ms,
+// 跟 extractCodexUsage 累加 token 同语义。只取 last.elapsed_ms 会漏算前 N-1 turn。
+describe('sumCodexElapsed multi-turn aggregation', () => {
+  it('sums elapsed_ms across all result events', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.completed', elapsed_ms: 2000 },
+      { type: 'turn.completed', elapsed_ms: 3500 },
+      { type: 'turn.completed', elapsed_ms: 1500 },
+    ];
+    assert.equal(sumCodexElapsed(events, 8000), 7000);
+  });
+
+  it('全部 elapsed_ms === 0 → fallback wall-clock', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.completed', elapsed_ms: 0 },
+    ];
+    assert.equal(sumCodexElapsed(events, 5000), 5000);
+  });
+
+  it('全部 elapsed_ms 缺失 → fallback wall-clock', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.completed' },
+      { type: 'turn.completed' },
+    ];
+    assert.equal(sumCodexElapsed(events, 3000), 3000);
+  });
+
+  it('单 turn 的传统 case 仍 OK', () => {
+    const events: CodexEvent[] = [
+      { type: 'turn.completed', elapsed_ms: 1234 },
+    ];
+    assert.equal(sumCodexElapsed(events, 1500), 1234);
   });
 });

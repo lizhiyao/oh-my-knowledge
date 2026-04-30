@@ -346,7 +346,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
 
     <section>${cards}${pairwiseDiff}${humanAgreement}${saturationCurve}</section>
 
-    ${renderVarianceComparisons(report.variance, lang, Boolean(report.meta.layeredStats))}
+    ${renderVarianceComparisons(report.variance, lang, Boolean(report.meta.layeredStats), summary)}
 
     ${renderAnalysis(report.analysis, lang)}
 
@@ -397,7 +397,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
     const sampleTable = renderSampleTable(variants, sk.results, lang);
     // --each --repeat N 时每个 skill 有自己的 variance; 复用 bench 的 renderVarianceComparisons
     const varianceBlock = sk.variance
-      ? renderVarianceComparisons(sk.variance, lang, Boolean(report.meta.layeredStats))
+      ? renderVarianceComparisons(sk.variance, lang, Boolean(report.meta.layeredStats), sk.summary)
       : '';
 
     const hashShort = sk.artifactHash ? e(sk.artifactHash).slice(0, 12) : '-';
@@ -420,9 +420,12 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
   const repeatSegment = repeatN && repeatN > 1
     ? (lang === 'zh' ? ` · ${repeatN} 轮重复` : ` · ${repeatN} runs`)
     : '';
-  // each 模式下,任一 artifact 的任一 variant exec cost 未报告 → 整体 cost 不可信
+  // each 模式 totalCostUSD 含 exec + judge 两块。任一 artifact 的任一 variant 任一边
+  // 未报告 → 整体不可信(显示「—」)。判 judge 是因为 codex 当 judge 时 judgeCostUSD=0
+  // 但实际真有 API 花费,total 看着是数字会误导。
   const eachAllCostReported = eachArtifacts.every((sk) =>
-    Object.values(sk.summary || {}).every((v) => v.execCostReported !== false));
+    Object.values(sk.summary || {}).every((v) =>
+      v.execCostReported !== false && v.judgeCostReported !== false));
   const overviewSubtitle = lang === 'zh'
     ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个用例${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0, eachAllCostReported)}`
     : `${overview?.totalArtifacts || 0} skills · ${overview?.totalSamples || 0} samples${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0, eachAllCostReported)}`;

@@ -21,6 +21,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Fixed
 
+- **codex executor UltraReview follow-ups**(合入前 ultrareview 扫描发现):
+  - **`extractCodexFinalOutput` 同 turn 多 agent_message 只返回最后一条**(死代码 fallback):codex 同 turn 内可能 emit 多条 `agent_message`(如 "step 1" / "step 2" / "final answer"),旧实现只取最后一条 → grader / assertion / LLM judge 看到的 output 跟 trace UI 看到的内容不一致(后者拼接,前者截断),多步骤回答的 grading 不准。改为全部拼接,跟 `extractCodexTrace` 多条文本拼接语义一致。export + 5 个回归 case。
+  - **`turn.failed` 在 success path 漏 error 字段**:codex binary 退出 0 但流里是 `turn.failed`(rate limit / API error 等)时,success path return 没透传 `last.error.message`,catch path 透传了。对称化:success path 加 `...(!ok && { error: last.error?.message || 'codex turn.failed' })`。
+  - **`durationMs` 只取 last turn elapsed_ms**(multi-turn 漏算):`extractCodexUsage` 累加多 turn 的 token,但 `durationMs: last.elapsed_ms ?? wallClock` 只看最后一 turn 的 elapsed_ms,multi-turn agentic 任务 duration 严重偏低(per-turn delta 语义假设)。提取 `sumCodexElapsed` helper:累加所有 result event 的 elapsed_ms,全 0 / 缺失 fallback wall-clock。export + 4 个回归 case。
+  - **verbose 降级 banner 每次调用都打**:`[codex] system prompt prepended` / `[codex] cost not reported` 是 binary 能力快照,evaluation pipeline sample×variant×judge_repeat×dimension 多次调用每次重复打,verbose 模式 stderr 被同样文本刷 140-280 行。改为模块级 `hasWarnedSystem` / `hasWarnedCost` flag,一个 process 只打一次。
+  - **全 error variant 的 `execCostReported` 字段被 ok-gate 漏掉**:旧实现 `ok.length > 0 && ok.some(...)` 在零 ok sample 时短路,导致 codex 全错 run 的 summary 不出 `execCostReported` 字段,renderer 把缺位当 reported 显示 `$0.0000`。改为 `entries.some(...)`:executor 不报 cost 是 binary 能力事实,跟 sample 是否成功无关。
+- **`judgeCostReportedByExecutor` 全链路透传**(`--judge-executor codex` 时 `judgeCostUSD=0` 不再静默撒谎):
+  - **schema**:`DimensionResult` / `AssertionResults` / `EnsembleJudgeResult` / `GradeResult` 全部加 `judgeCostReportedByExecutor?: boolean`(缺位 ≡ true 向后兼容);`VariantResult.judgeCostReportedByExecutor?` + `VariantSummary.judgeCostReported?` 两层透传聚合。
+  - **judge 路径**:`llmJudge` 4 个 return 透传 `result.costReportedByExecutor`;`llmJudgeRepeat` / `llmJudgeEnsemble` 任一 call false → 整体 false;`runAsyncAssertions` / `runRagJudge` 同。`grade()` 主流程聚合 dim / single / async assertion 三处。
+  - **renderer**:`each` overview subtitle 同时考虑 exec + judge 两边的 reported 标志,任一 false 显示「—」+ tooltip(detail 页 cost meta-tag 仍只显示 exec cost,设计上 judge cost 是工具开销)。
+- **三处 cost 渲染 callsite 漏 `execCostReported / judgeCostReported` 检查**(违反 "executor 不报 cost 显示「—」" invariant):
+  - `src/renderer/trends.ts:100` 趋势页 Cost 列:`fmtCost(s.avgCostPerSample, s.execCostReported !== false && s.judgeCostReported !== false)`,跟 detail / list 一致。
+  - `src/cli/index.ts` `omk bench evolve` 三处:`Round 0 (baseline)` / `Round N (done)` / 总结行 `summary` 都依赖 i18n template 硬编码 `$` + `{cost}.toFixed(4)`,改为 template 移除 `$` + handler 端构造 `$X.XXXX` 或「—」字符串。`EvolveRoundProgressInfo.costReported?` + `EvolveResult.costReported?` 全链路透传(任一轮 exec / judge / improver 不报 → 整体 lower-bound)。
+  - `src/renderer/summary.ts` variance/significance 表格:`renderVarianceComparisons` 加可选 `summary` 入参,检测到任一 variant cost 不报告时**整行跳过 cost** 而不是显示 "持平 / tied" 误导(executor 没测过 cost 不能算"等价")。html-renderer 两处 caller 同步传 summary。
 - **codex executor 端到端烟测三处 blocker**(本 PR 内自检发现,合入前修):
   - **`--ask-for-approval never` flag 已被 codex 0.125 移除**,preflight 直接挂(`error: unexpected argument '--ask-for-approval' found`)。改用 `-c approval_policy="never"` config override(TOML 字符串需要 quote);该 config key 在 codex 0.125 仍稳定。`buildCodexArgs` exported + 加 6 个 args-shape 回归 case 防退回。
   - **codex 看到 stdin 是 pipe(execFile 默认 stdio)就当作 `<stdin>` 块读,卡到 timeout**。`promisify(execFile)` 拿不到 child handle 关 stdin,改用手写 Promise wrapper 包 `execFile` callback 形式,spawn 后立刻 `child.stdin?.end()` 发 EOF。timeout / maxBuffer / 错误时 stdout 透传等行为跟原来一致。
