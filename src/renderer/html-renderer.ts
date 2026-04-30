@@ -144,28 +144,10 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
     .join('');
   const trendsSection = trendLinks ? `<div style="margin:12px 0"><span style="font-size:12px;color:var(--text-muted);margin-right:8px">${lang === 'zh' ? '📈 趋势：' : '📈 Trends:'}</span>${trendLinks}</div>` : '';
 
-  // v0.21 B.4 — verdict 图例条. 默认展示, × 关闭后 localStorage 记忆.
-  // 按 verdict.ts 的 worst-case roll-up 顺序排列 (REGRESS / CAUTIOUS /
-  // UNDERPOWERED / NOISE / PROGRESS), 让用户从最严重的状态开始扫.
-  const legendLevels: VerdictLevel[] = ['PROGRESS', 'CAUTIOUS', 'NOISE', 'REGRESS', 'UNDERPOWERED', 'SOLO'];
-  const legendItems = legendLevels.map((lvl) =>
-    `<span class="verdict-legend-item verdict-${lvl}" title="${e(levelTooltip(lvl, lang))}"><span class="verdict-legend-dot" aria-hidden="true">${levelDot(lvl)}</span>${e(levelLabel(lvl, lang))}</span>`,
-  ).join('');
-  const legendHtml = `<div id="verdict-legend" class="verdict-legend" role="region" aria-label="${e(t('verdictLegendLabel', lang))}">
-    <span class="verdict-legend-prefix">${e(t('verdictLegendLabel', lang))}</span>
-    ${legendItems}
-    <button class="verdict-legend-close" onclick="dismissVerdictLegend()" aria-label="${e(t('verdictLegendClose', lang))}">×</button>
-  </div>
-  <script>
-  (function(){var el=document.getElementById('verdict-legend');if(el&&localStorage.getItem('omk-verdict-legend-dismissed')==='1')el.hidden=true;})();
-  window.dismissVerdictLegend=function(){var el=document.getElementById('verdict-legend');if(el)el.hidden=true;try{localStorage.setItem('omk-verdict-legend-dismissed','1');}catch(e){}};
-  </script>`;
-
   return layout(t('title', lang), `
     <main>
     <h1>${t('title', lang)}</h1>
     <p class="subtitle" data-i18n="subtitle">${t('subtitle', lang)} &middot; ${runCount} &middot; ${costLabel}</p>
-    ${legendHtml}
     ${trendsSection}
     <div style="margin:12px 0">${skillHealthLink}</div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
