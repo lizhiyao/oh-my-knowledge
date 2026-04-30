@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **codex-cli executor**(`@openai/codex` npm 集成):新加 `--executor codex` 把 OpenAI Codex CLI(跟 Claude Code 同类的 coding agent CLI)接入 omk 评测框架。invocation:`codex exec --json --ephemeral --ignore-user-config --skip-git-repo-check --sandbox read-only --ask-for-approval never --model <m> [-C <cwd>] PROMPT`。完整支持 token 统计 + best-effort tool trace 抽取(把 `item.command_execution` / `item.file_read` / `item.file_write` / `item.web_search` 等事件映射成 omk `ToolCallInfo`)。
+  - **新文件**:`src/executors/codex-cli.ts`(executor 主体)+ `src/executors/codex-cli-trace.ts`(独立 trace parser,跟 claude-sdk-trace 不共用因为 schema 不同)+ `test/executors/codex-cli-isolation.test.ts`(4 个 case 测 throw 路径)+ `test/executors/codex-cli-trace.test.ts`(11 个 fixture-based case 锁住 schema 假设)
+  - **降级三处**(对照 claude-cli):
+    - **system prompt**:codex CLI 没 `--system-prompt` flag,把 system 拼到 prompt 头(`${system}\n\n---\n\n${prompt}`),verbose 输出降级提示
+    - **skill isolation**:codex 没有 SDK skills auto-discovery / subagent Skill 工具这两条 channel,只剩 channel 3 cwd 文件系统隔离一条。`allowedSkills === []` 时强制 require cwd 非空(否则 throw),caller 应传 isolated 空目录(如 `~/.oh-my-knowledge/isolated-cwd/`);`allowedSkills === [...]` 部分白名单不支持,throw 同 claude-cli pattern。AGENTS.md / `.agents/skills/` 自动加载只能靠 cwd 切到隔离目录避免
+    - **costUSD**:codex CLI 不报 USD cost,统一填 0;verbose 输出 "[codex] cost not reported";用户需外部账单核算
+  - **EXECUTOR_REGISTRY** `'codex': codexCliExecutor`(命名跟 `'claude'` / `'openai'` 对齐,不带 -cli 后缀)
+  - **`shared.ts`** 加 `CodexEvent` interface(跟 `ClaudeSdkBaseMessage` 同层级)
+
+### Fixed
+
+- **⚠ BREAKING-COMPARABILITY:`cacheKey()` 加 executor 名,prefix `v2:` → `v3:`**:`cacheKey(model, system, prompt, cwd, allowedSkills, executor)` 第 6 入参 executor 名进 hash。原因:同 model 名(如 `gpt-4o`)走 `openai-api` vs `codex` 输出不同但旧 v2 schema 不区分会让两个 executor 互相污染缓存。新版 v3 含 executor 名,跨 executor 必拿不同 key。**旧 v2 cache 一次性失效**(同 v0.22.0 加 allowedSkills 时 v1 → v2 的 pattern),用户重跑无数据丢失风险,只是首跑无 cache 加速。
+
+---
+
 ## [0.23.0] - 2026-04-29
 
 ### Added
