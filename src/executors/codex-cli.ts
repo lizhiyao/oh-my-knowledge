@@ -163,7 +163,8 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
 
     return {
       ok,
-      durationMs: last.elapsed_ms || durationMs,
+      // ?? 不 ||:elapsed_ms === 0(异常 turn)时不应 fallback 到 wall-clock duration
+      durationMs: last.elapsed_ms ?? durationMs,
       durationApiMs: 0, // codex 不报 API duration
       inputTokens: usage.input,
       outputTokens: usage.output,
@@ -193,7 +194,7 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
       return {
         ok: false,
         error: last.error?.message || errorMessage(err),
-        durationMs: last.elapsed_ms || durationMs,
+        durationMs: last.elapsed_ms ?? durationMs,
         durationApiMs: 0,
         inputTokens: usage.input,
         outputTokens: usage.output,

@@ -559,8 +559,8 @@ bench run 选项:
                          stderr 警告提示耗时。
   --retry <n>            失败任务最多重试 N 次, 指数退避 (默认: 0)
   --resume <report-id>   从历史报告恢复, 跳过已完成任务
-  --executor <name>      执行器: claude / openai / gemini / anthropic-api /
-                         openai-api, 或任意 shell 命令 (例如 "python my_provider.py")
+  --executor <name>      执行器: claude / claude-sdk / codex / openai / gemini /
+                         anthropic-api / openai-api, 或任意 shell 命令 (例如 "python my_provider.py")
   --judge-executor <name> 评委执行器 (默认: 同 --executor)
   --each                 对每个 skill 独立 vs baseline 评测
                          需要每个 skill 有配对的 {name}.eval-samples.json
@@ -706,8 +706,8 @@ Options for "bench run":
                          triggers a stderr warning about runtime cost.
   --retry <n>            Retry failed tasks up to N times with exponential backoff (default: 0)
   --resume <report-id>   Resume from a previous report, skipping completed tasks
-  --executor <name>      Executor: claude, openai, gemini, anthropic-api, openai-api,
-                         or any shell command (e.g. "python my_provider.py")
+  --executor <name>      Executor: claude, claude-sdk, codex, openai, gemini,
+                         anthropic-api, openai-api, or any shell command (e.g. "python my_provider.py")
   --judge-executor <name> Executor for LLM judge (default: same as --executor)
   --each                 Evaluate each skill independently against baseline
                          Requires {name}.eval-samples.json paired with each skill
