@@ -141,7 +141,7 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
     process.stderr.write('[codex] system prompt prepended (codex CLI lacks --system-prompt flag)\n');
   }
   if (verbose) {
-    process.stderr.write('[codex] cost not reported by binary; costUSD will be 0\n');
+    process.stderr.write('[codex] cost not reported by binary; costReportedByExecutor=false (renderer shows 「—」 instead of $0.0000)\n');
   }
 
   const args = buildCodexArgs({ model, cwd, prompt: finalPrompt });
@@ -170,6 +170,7 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
         cacheReadTokens: 0,
         cacheCreationTokens: 0,
         costUSD: 0,
+        costReportedByExecutor: false,
         output: null,
         stopReason: 'error',
         numTurns: 0,
@@ -192,7 +193,8 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
       outputTokens: usage.output,
       cacheReadTokens: usage.cached,
       cacheCreationTokens: 0, // codex 不报 cache creation
-      costUSD: 0, // codex 不报 USD cost
+      costUSD: 0,                       // 占位:codex 0.125 binary 不输出 cost
+      costReportedByExecutor: false,    // renderer 据此显示「未报告」而非 $0.0000
       output: finalOutput,
       stopReason,
       numTurns: resultEvents.length,
@@ -204,7 +206,7 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
   } catch (err: unknown) {
     const durationMs = Date.now() - start;
     const details = asErrorLike(err);
-    if (details.killed) return timeoutExecResult(timeoutMs, durationMs);
+    if (details.killed) return { ...timeoutExecResult(timeoutMs, durationMs), costReportedByExecutor: false };
 
     // 尝试从 stdout parse 部分结果(同 claude-cli 防御性写法)
     const events = parseCodexJsonl(details.stdout || '');
@@ -223,6 +225,7 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
         cacheReadTokens: usage.cached,
         cacheCreationTokens: 0,
         costUSD: 0,
+        costReportedByExecutor: false,
         output: extractCodexFinalOutput(events) || null,
         stopReason: 'error',
         numTurns: resultEvents.length,
@@ -243,6 +246,7 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
       cacheReadTokens: 0,
       cacheCreationTokens: 0,
       costUSD: 0,
+      costReportedByExecutor: false,
       output: null,
       stopReason: 'error',
       numTurns: 0,

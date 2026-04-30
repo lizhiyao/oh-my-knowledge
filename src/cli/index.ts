@@ -1002,8 +1002,14 @@ async function handleDiff(argv: string[]): Promise<void> {
 
     const cost1: number = s1?.avgCostPerSample ?? 0;
     const cost2: number = s2?.avgCostPerSample ?? 0;
-    const costPct: string = cost1 > 0 ? ` (${cost2 > cost1 ? '+' : ''}${(((cost2 - cost1) / cost1) * 100).toFixed(0)}%)` : '';
-    console.log(`    Cost:    $${cost1.toFixed(4)} → $${cost2.toFixed(4)}${costPct}`);
+    const reported1 = s1?.execCostReported !== false;
+    const reported2 = s2?.execCostReported !== false;
+    const fmt = (c: number, r: boolean): string => r ? `$${c.toFixed(4)}` : '—';
+    // 任一边 not reported 就不报增减百分比(没意义)
+    const costPct: string = (reported1 && reported2 && cost1 > 0)
+      ? ` (${cost2 > cost1 ? '+' : ''}${(((cost2 - cost1) / cost1) * 100).toFixed(0)}%)`
+      : '';
+    console.log(`    Cost:    ${fmt(cost1, reported1)} → ${fmt(cost2, reported2)}${costPct}`);
 
     // Skill hash change
     const h1: string | undefined = r1!.meta?.artifactHashes?.[v];

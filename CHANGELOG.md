@@ -15,7 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   - **降级三处**(对照 claude-cli):
     - **system prompt**:codex CLI 没 `--system-prompt` flag,把 system 拼到 prompt 头(`${system}\n\n---\n\n${prompt}`),verbose 输出降级提示
     - **skill isolation**:codex 没有 SDK skills auto-discovery / subagent Skill 工具这两条 channel,只剩 channel 3 cwd 文件系统隔离一条。`allowedSkills === []` 时强制 require cwd 非空(否则 throw),caller 应传 isolated 空目录(如 `~/.oh-my-knowledge/isolated-cwd/`);`allowedSkills === [...]` 部分白名单不支持,throw 同 claude-cli pattern。AGENTS.md / `.agents/skills/` 自动加载只能靠 cwd 切到隔离目录避免
-    - **costUSD**:codex CLI 不报 USD cost,统一填 0;verbose 输出 "[codex] cost not reported";用户需外部账单核算
+    - **costUSD**:codex CLI 不报 USD cost,设 `costReportedByExecutor: false`(下面 Changed 段说明语义),renderer 显示「—」而不是 $0.0000;verbose 输出 "[codex] cost not reported";用户需外部账单核算
   - **EXECUTOR_REGISTRY** `'codex': codexCliExecutor`(命名跟 `'claude'` / `'openai'` 对齐,不带 -cli 后缀)
   - **`shared.ts`** 加 `CodexEvent` interface(跟 `ClaudeSdkBaseMessage` 同层级)
 
@@ -26,6 +26,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   - **codex 看到 stdin 是 pipe(execFile 默认 stdio)就当作 `<stdin>` 块读,卡到 timeout**。`promisify(execFile)` 拿不到 child handle 关 stdin,改用手写 Promise wrapper 包 `execFile` callback 形式,spawn 后立刻 `child.stdin?.end()` 发 EOF。timeout / maxBuffer / 错误时 stdout 透传等行为跟原来一致。
   - **trace parser schema 假设跟 codex 0.125 实测错位**,导致 `output=''` + tool 名错成 `'completed'`。原假设 `{type:'item.assistant_message', payload:{text}}` 是猜的从未跟真 binary 验过;实测 schema 是 `{type:'item.completed', item:{type:'agent_message', text}}`。重写 parser 只支持实测 schema,fixture 测试同步重写为实测形状(14 个 case 覆盖 agent_message / command_execution / 多 turn / item.started 占位跳过 / file_read / web_search 等)。
 - **⚠ BREAKING-COMPARABILITY:`cacheKey()` 加 executor 名,prefix `v2:` → `v3:`**:`cacheKey(model, system, prompt, cwd, allowedSkills, executor)` 第 6 入参 executor 名进 hash。原因:同 model 名(如 `gpt-4o`)走 `openai-api` vs `codex` 输出不同但旧 v2 schema 不区分会让两个 executor 互相污染缓存。新版 v3 含 executor 名,跨 executor 必拿不同 key。**旧 v2 cache 一次性失效**(同 v0.22.0 加 allowedSkills 时 v1 → v2 的 pattern),用户重跑无数据丢失风险,只是首跑无 cache 加速。
+
+### Changed
+
+- **cost 显示语义:不报 cost 的 executor(如 codex)显示「—」而非 `$0.0000`**(避免误导,跟"真的花了 0"区分)。
+  - **schema**:`ExecResult.costReportedByExecutor?: boolean` / `VariantResult.costReportedByExecutor?: boolean` / `VariantSummary.execCostReported?: boolean`,**全部可选,缺位 ≡ true(向后兼容)**,只 codex executor 显式 false。
+  - **聚合**:`buildVariantResult` 透传 ExecResult 标志;`buildVariantSummary` 任一 ok sample `costReportedByExecutor=false` → variant `execCostReported=false`;全部 reported 时不写字段(保持 result 紧凑)。
+  - **renderer**:`fmtCost(usd, reported=true)` 加 `reported` 参数,false 时返回 `—`;HTML detail 页 / each overview / list page / CLI compare 输出全部识别 summary 的 `execCostReported`,not reported 时显示「—」+ tooltip 解释 "executor 不报 USD 成本(如 codex CLI),无法估算"。CLI `omk bench diff` 的 `Cost: $X → $Y (Δ%)` 也跟着改 — 任一边 not reported 就不报百分比。
+  - **测试**:`test/eval-core/cost-reported.test.ts` 9 个 case 锁住三层透传 + fmtCost 双路径;HTML snapshot 不破(默认 reported=true 路径输出跟旧版完全一致,只新增 false 分支)。
+  - 老报告(无 `execCostReported` 字段)继续按 reported 显示,跟 v0.23 之前完全等价。
 
 ---
 

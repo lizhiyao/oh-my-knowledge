@@ -67,6 +67,9 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     execCostUSD,
     judgeCostUSD,
     costUSD: execCostUSD + judgeCostUSD, // Total = execution + grading
+    // 透传 executor 是否报告了 cost。undefined 当 reported(向后兼容)。
+    // false 时 renderer 应显示「—」而不是 $0.0000;codex 0.125 binary 不报 cost。
+    ...(execResult.costReportedByExecutor === false && { costReportedByExecutor: false }),
     numTurns: execResult.numTurns,
     ...(execResult.fullNumTurns != null && { fullNumTurns: execResult.fullNumTurns }),
     ...(execResult.numSubAgents != null && { numSubAgents: execResult.numSubAgents }),
@@ -148,6 +151,9 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
     totalExecCostUSD: ok.reduce((s, e) => s + (e.execCostUSD || 0), 0),
     totalJudgeCostUSD: ok.reduce((s, e) => s + (e.judgeCostUSD || 0), 0),
     avgCostPerSample: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.costUSD || 0), 0) / ok.length).toFixed(6)) : 0,
+    // 任一 ok sample exec cost 未报告 → variant 整体标 false。renderer 据此把
+    // "成本: $0.0000" 改成 "成本: —(未报告)"。无 ok sample(全 error)时省略字段。
+    ...(ok.length > 0 && ok.some((e) => e.costReportedByExecutor === false) && { execCostReported: false }),
     avgNumTurns: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.numTurns || 0), 0) / ok.length).toFixed(1)) : 0,
     ...(() => {
       const withFullTurns = ok.filter((e) => e.fullNumTurns != null);

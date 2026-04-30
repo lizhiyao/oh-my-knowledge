@@ -95,7 +95,11 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
       <td>${e(m.model || '-')}</td>
       <td>${m.sampleCount || 0}</td>
       <td>${scoreCol}</td>
-      <td>${fmtCost(Object.values(run.summary || {}).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0))}</td>
+      <td>${(() => {
+        const cost = Object.values(run.summary || {}).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
+        const reported = Object.values(run.summary || {}).every((v) => v.execCostReported !== false);
+        return fmtCost(cost, reported);
+      })()}</td>
       <td>${fmtDuration(Object.values(run.summary || {}).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0))}</td>
       <td style="white-space:nowrap"><button onclick="deleteRun('${e(run.id)}',this)" class="btn-danger" data-i18n="deleteBtnText">${t('deleteBtnText', lang)}</button></td>
     </tr>`;
@@ -103,7 +107,10 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
 
   const runCount = lang === 'zh' ? `${runs.length} 次评测` : `${runs.length} runs`;
   const totalCost = runs.reduce((s, r) => s + Object.values(r.summary || {}).reduce((sv, v) => sv + (v.totalExecCostUSD || 0), 0), 0);
-  const costLabel = lang === 'zh' ? `累计 ${fmtCost(totalCost)}` : `Total ${fmtCost(totalCost)}`;
+  // 任一 run 任一 variant 未报告 → 列表累计也不可信,显示「—」
+  const totalCostReported = runs.every((r) =>
+    Object.values(r.summary || {}).every((v) => v.execCostReported !== false));
+  const costLabel = lang === 'zh' ? `累计 ${fmtCost(totalCost, totalCostReported)}` : `Total ${fmtCost(totalCost, totalCostReported)}`;
 
   // Collect variants with ≥2 reports for trend links
   const variantCounts: Record<string, number> = {};
@@ -213,6 +220,9 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const verdictPill = renderVerdictPill(report, lang);
   const sampleTable = renderSampleTable(variants, results, lang);
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
+  // 任一 variant exec cost 未报告 → 总 cost 不可靠,renderer 显示「—」+ tooltip。
+  // 全部 reported(undefined / true)才正常显示 USD 数字。
+  const execCostReported = Object.values(summary).every((v) => v.execCostReported !== false);
   const totalDurationMs = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
   const sourceLabels: Record<string, Record<string, string>> = {
     zh: { 'variant-name': '本地文件', 'file-path': '本地文件', git: 'Git 版本', inline: '内联', baseline: '无', custom: '自定义' },
@@ -315,7 +325,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       }
       ${m.judgeRepeat && m.judgeRepeat > 1 ? `<span class="meta-tag" title="${t('judgeStddevDesc', lang)}">${t('judgeRepeatLabel', lang)}: ${m.judgeRepeat}</span>` : ''}
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
-      <span class="meta-tag">${t('cost', lang)}: ${fmtCost(totalExecCost)}</span>
+      <span class="meta-tag"${execCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(totalExecCost, execCostReported)}</span>
       <span class="meta-tag">${lang === 'zh' ? '耗时' : 'duration'}: ${fmtDuration(totalDurationMs)}</span>
       ${m.gitInfo ? `<span class="meta-tag">commit: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
       ${m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : ''}
@@ -410,9 +420,12 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
   const repeatSegment = repeatN && repeatN > 1
     ? (lang === 'zh' ? ` · ${repeatN} 轮重复` : ` · ${repeatN} runs`)
     : '';
+  // each 模式下,任一 artifact 的任一 variant exec cost 未报告 → 整体 cost 不可信
+  const eachAllCostReported = eachArtifacts.every((sk) =>
+    Object.values(sk.summary || {}).every((v) => v.execCostReported !== false));
   const overviewSubtitle = lang === 'zh'
-    ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个用例${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`
-    : `${overview?.totalArtifacts || 0} skills · ${overview?.totalSamples || 0} samples${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`;
+    ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个用例${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0, eachAllCostReported)}`
+    : `${overview?.totalArtifacts || 0} skills · ${overview?.totalSamples || 0} samples${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0, eachAllCostReported)}`;
 
   return layout(`${t('reportTitle', lang)} - ${report.id}`, `
     <main>
@@ -422,7 +435,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
       <span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
-      <span class="meta-tag">${t('cost', lang)}: ${fmtCost(m.totalCostUSD)}</span>
+      <span class="meta-tag"${eachAllCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(m.totalCostUSD, eachAllCostReported)}</span>
     </div>
 
     <section>

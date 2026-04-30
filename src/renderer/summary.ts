@@ -389,10 +389,18 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     const judgeCell = renderLayerCell(vd?.byLayer?.judge?.mean, s.avgJudgeScore);
 
     // Cost — only show execution cost (judge cost is tool overhead, not skill cost)
+    // execCostReported === false 时(如 codex executor)显示「—」并 tooltip 解释,
+    // 跟"真的花了 $0(全 cached / 短 prompt)"区分开。
     const execCost = s.totalExecCostUSD || 0;
+    const costReported = s.execCostReported !== false;
     const hasCost = execCost > 0 || (s.avgTotalTokens || 0) > 0;
+    const costUnreportedTooltip = lang === 'zh'
+      ? 'executor 不报 USD 成本(如 codex CLI),无法估算'
+      : 'executor does not report USD cost (e.g. codex CLI); not measurable';
     const costCell = hasCost
-      ? `<td class="summary-cell"><div class="summary-value">${fmtCost(execCost)}</div><div class="summary-detail">${fmtNum(s.avgTotalTokens)} tokens/${t('tokPerReq', lang).replace('tokens/', '')}</div></td>`
+      ? (costReported
+        ? `<td class="summary-cell"><div class="summary-value">${fmtCost(execCost)}</div><div class="summary-detail">${fmtNum(s.avgTotalTokens)} tokens/${t('tokPerReq', lang).replace('tokens/', '')}</div></td>`
+        : `<td class="summary-cell" title="${e(costUnreportedTooltip)}"><div class="summary-value" style="color:var(--text-muted)">${fmtCost(0, false)}</div><div class="summary-detail">${fmtNum(s.avgTotalTokens)} tokens/${t('tokPerReq', lang).replace('tokens/', '')}</div></td>`)
       : `<td class="summary-cell"><span style="color:var(--text-muted)">N/A</span></td>`;
 
     // Efficiency

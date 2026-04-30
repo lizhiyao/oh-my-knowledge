@@ -22,7 +22,11 @@ export function fmtDuration(ms: number | undefined | null): string {
   return sec > 0 ? `${min}m${sec}s` : `${min}m`;
 }
 
-export function fmtCost(usd: number | undefined | null): string {
+export function fmtCost(usd: number | undefined | null, reported: boolean = true): string {
+  // reported=false 时 executor 不报 cost(如 codex CLI),`usd` 是占位 0,
+  // 显示 "—" 跟"真的花了 $0"区分开。callsite 传 reported 时通常来自
+  // `VariantSummary.execCostReported !== false` 或 `VariantResult.costReportedByExecutor !== false`。
+  if (!reported) return '—';
   return `$${Number(usd || 0).toFixed(4)}`;
 }
 
