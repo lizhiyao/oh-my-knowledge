@@ -19,6 +19,9 @@ import type {
 export interface ExecuteTasksOptions {
   tasks: Task[];
   executor: ExecutorFn;
+  /** Executor name (e.g. 'claude' / 'codex' / 'openai-api'). Used in cache key
+   *  to prevent cross-executor pollution when same model name is used. */
+  executorName?: string;
   judgeExecutor: ExecutorFn;
   model: string;
   judgeModel: string;
@@ -84,6 +87,7 @@ function sleep(ms: number): Promise<void> {
 export async function executeTasks({
   tasks,
   executor,
+  executorName,
   judgeExecutor,
   model,
   judgeModel,
@@ -156,6 +160,7 @@ export async function executeTasks({
       executionPlan.input.prompt,
       executionPlan.input.cwd,
       task.artifact.allowedSkills,
+      executorName,
     );
     const cached = cache?.get(key);
     const execStart = Date.now();
