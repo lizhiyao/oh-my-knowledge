@@ -5,15 +5,16 @@ import type { CodexEvent } from './shared.js';
 // 跟 claude-sdk-trace.ts 不同源:
 //   Claude SDK 是 message[block] 嵌套结构,有 tool_use / tool_result 配对;
 //   Codex 是事件流(turn.started → turn.completed,夹杂 item.* 事件),每个
-//   item.* 事件直接生成完整 ToolCallInfo,**不需要 use/result 配对**。
+//   item.completed 事件直接生成完整 ToolCallInfo,**不需要 use/result 配对**。
 //
-// schema 假设(基于 codex 0.125,未来版本可能变):
-//   - 'turn.started' / 'turn.completed' / 'turn.failed' 划 assistant turn 边界
-//   - 'item.assistant_message' append 文本到当前 turn
-//   - 'item.command_execution' / 'item.file_read' / 'item.file_write' / 'item.web_search'
-//     等 item.* 事件当 ToolCallInfo;tool 名取 item_type 或 type 去 'item.' 前缀
-//   - codex 无 sub-agent 概念,numSubAgents 恒 0
-// 字段缺失静默 skip 不 throw,保证 schema 漂移时不破主流程。
+// schema(基于 codex 0.125 实测,fixture 测试锁住假设;漂移时 fixture 先红):
+//   - {type:'thread.started' | 'turn.started'} 划 turn 边界
+//   - {type:'turn.completed', usage} / {type:'turn.failed', error} 收尾
+//   - {type:'item.started', item:{type, status:'in_progress', ...}} 是 in_progress 占位 → 跳过
+//   - {type:'item.completed', item:{type:'agent_message', text:'...'}} → assistant 文本
+//   - {type:'item.completed', item:{type:'command_execution', command, aggregated_output, exit_code, status}} → ToolCallInfo
+//   - 其他 item.type(file_read/file_write/web_search 等)best-effort 抽 input/output
+// codex 无 sub-agent 概念,numSubAgents 恒 0。字段缺失静默 skip 不 throw。
 
 const TOOL_INPUT_LIMIT = 500;
 const TOOL_OUTPUT_LIMIT = 500;
@@ -22,53 +23,19 @@ export function isCodexResultEvent(event: CodexEvent): boolean {
   return event.type === 'turn.completed' || event.type === 'turn.failed';
 }
 
-interface ItemPayload {
-  command?: string;
-  path?: string;
-  query?: string;
-  text?: string;
-  stdout?: string;
-  stderr?: string;
-  content?: string;
-  results?: unknown[];
+function extractToolInput(item: NonNullable<CodexEvent['item']>, itemType: string): unknown {
+  if (itemType === 'command_execution') return (item.command || '').slice(0, TOOL_INPUT_LIMIT);
+  if (itemType === 'file_read' || itemType === 'file_write') return item.path || null;
+  if (itemType === 'web_search') return item.query || null;
+  return null;
 }
 
-function getItemType(event: CodexEvent): string {
-  // 优先 item_type 字段,fallback 把 'item.command_execution' 切成 'command_execution'
-  if (event.item_type) return event.item_type;
-  if (event.type?.startsWith('item.')) return event.type.slice(5);
-  return event.type || 'unknown';
-}
-
-function extractToolInput(event: CodexEvent, itemType: string): unknown {
-  const payload = event.payload as ItemPayload | undefined;
-  if (!payload) return null;
-  if (itemType === 'command_execution') return (payload.command || '').slice(0, TOOL_INPUT_LIMIT);
-  if (itemType === 'file_read' || itemType === 'file_write') return payload.path || null;
-  if (itemType === 'web_search') return payload.query || null;
-  return payload;
-}
-
-function extractToolOutput(event: CodexEvent, itemType: string): string {
-  const payload = event.payload as ItemPayload | undefined;
-  // command_execution: stdout + stderr 合并
-  if (itemType === 'command_execution' && payload) {
-    const out = (payload.stdout || '') + (payload.stderr ? `\n[stderr] ${payload.stderr}` : '');
-    return out.slice(0, TOOL_OUTPUT_LIMIT);
+function extractToolOutput(item: NonNullable<CodexEvent['item']>, itemType: string): string {
+  if (itemType === 'command_execution' && item.aggregated_output) {
+    return item.aggregated_output.slice(0, TOOL_OUTPUT_LIMIT);
   }
-  // file_read: content
-  if (itemType === 'file_read' && payload?.content) return payload.content.slice(0, TOOL_OUTPUT_LIMIT);
-  // 通用 fallback:event.result 或 payload.results
-  if (typeof event.result === 'string') return event.result.slice(0, TOOL_OUTPUT_LIMIT);
-  if (payload?.results) return JSON.stringify(payload.results).slice(0, TOOL_OUTPUT_LIMIT);
-  return '';
-}
-
-function extractAssistantText(event: CodexEvent): string {
-  // assistant_message payload 可能是 { text } 或顶层 text
-  const payload = event.payload as ItemPayload | undefined;
-  if (payload?.text) return payload.text;
-  if (event.text) return event.text;
+  if (itemType === 'file_read' && item.content) return item.content.slice(0, TOOL_OUTPUT_LIMIT);
+  if (item.results) return JSON.stringify(item.results).slice(0, TOOL_OUTPUT_LIMIT);
   return '';
 }
 
@@ -76,7 +43,7 @@ export function extractCodexTrace(events: CodexEvent[]): { turns: TurnInfo[]; to
   const turns: TurnInfo[] = [];
   const toolCalls: ToolCallInfo[] = [];
   let fullNumTurns = 0;
-  // numSubAgents:codex 没有 sub-agent 概念(没有像 Claude 的 Agent 工具),恒 0
+  // codex 没有 Agent 工具(像 Claude 的 sub-agent),恒 0
   const numSubAgents = 0;
 
   let currentTurnText = '';
@@ -106,7 +73,6 @@ export function extractCodexTrace(events: CodexEvent[]): { turns: TurnInfo[]; to
     if (!t) continue;
 
     if (t === 'thread.started' || t === 'turn.started') {
-      // 开新 turn(如果上一个 turn 还有 buffered 内容,先 flush)
       if (currentTurnHasContent || currentTurnTools.length > 0) flushTurn();
       if (event.ts) lastTurnTs = event.ts;
       continue;
@@ -118,7 +84,6 @@ export function extractCodexTrace(events: CodexEvent[]): { turns: TurnInfo[]; to
     }
 
     if (t === 'turn.failed') {
-      // 标 failed turn:把最后一个 ToolCallInfo(如有)success=false,flush
       if (currentTurnTools.length > 0) {
         currentTurnTools[currentTurnTools.length - 1].success = false;
       }
@@ -126,36 +91,36 @@ export function extractCodexTrace(events: CodexEvent[]): { turns: TurnInfo[]; to
       continue;
     }
 
-    // item.* 事件
-    if (t.startsWith('item.') || event.item_type) {
-      const itemType = getItemType(event);
-      if (itemType === 'assistant_message') {
-        const txt = extractAssistantText(event);
-        if (txt) {
-          if (currentTurnText) currentTurnText += '\n';
-          currentTurnText += txt;
-          currentTurnHasContent = true;
-        }
-        continue;
+    // 只关心 item.completed —— item.started 是 in_progress 占位,后面会被 completed 覆盖
+    if (t !== 'item.completed') continue;
+    const item = event.item;
+    if (!item || !item.type) continue;
+
+    const itemType = item.type;
+    if (itemType === 'agent_message') {
+      const txt = item.text || '';
+      if (txt) {
+        if (currentTurnText) currentTurnText += '\n';
+        currentTurnText += txt;
+        currentTurnHasContent = true;
       }
-      // 其他 item.* 当 tool call
-      const isError = !!event.error || (typeof event.exit_code === 'number' && event.exit_code !== 0);
-      const tc: ToolCallInfo = {
-        tool: itemType,
-        input: extractToolInput(event, itemType),
-        output: extractToolOutput(event, itemType),
-        success: !isError,
-      };
-      currentTurnTools.push(tc);
-      toolCalls.push(tc);
-      currentTurnHasContent = true;
       continue;
     }
 
-    // 其他事件(rate_limit / system 等)忽略
+    // 其他 item type 当 tool call
+    const isError = !!event.error || (typeof item.exit_code === 'number' && item.exit_code !== 0);
+    const tc: ToolCallInfo = {
+      tool: itemType,
+      input: extractToolInput(item, itemType),
+      output: extractToolOutput(item, itemType),
+      success: !isError,
+    };
+    currentTurnTools.push(tc);
+    toolCalls.push(tc);
+    currentTurnHasContent = true;
   }
 
-  // 流末尾 flush(防止最后一个 turn 没有 turn.completed 收尾)
+  // 流末尾 flush(防止最后一个 turn 没 turn.completed 收尾)
   flushTurn();
 
   return { turns, toolCalls, fullNumTurns, numSubAgents };

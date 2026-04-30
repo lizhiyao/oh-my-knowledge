@@ -10,8 +10,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Added
 
-- **codex-cli executor**(`@openai/codex` npm 集成):新加 `--executor codex` 把 OpenAI Codex CLI(跟 Claude Code 同类的 coding agent CLI)接入 omk 评测框架。invocation:`codex exec --json --ephemeral --ignore-user-config --skip-git-repo-check --sandbox read-only --ask-for-approval never --model <m> [-C <cwd>] PROMPT`。完整支持 token 统计 + best-effort tool trace 抽取(把 `item.command_execution` / `item.file_read` / `item.file_write` / `item.web_search` 等事件映射成 omk `ToolCallInfo`)。
-  - **新文件**:`src/executors/codex-cli.ts`(executor 主体)+ `src/executors/codex-cli-trace.ts`(独立 trace parser,跟 claude-sdk-trace 不共用因为 schema 不同)+ `test/executors/codex-cli-isolation.test.ts`(4 个 case 测 throw 路径)+ `test/executors/codex-cli-trace.test.ts`(11 个 fixture-based case 锁住 schema 假设)
+- **codex-cli executor**(`@openai/codex` npm 集成):新加 `--executor codex` 把 OpenAI Codex CLI(跟 Claude Code 同类的 coding agent CLI)接入 omk 评测框架。invocation:`codex exec --json --ephemeral --ignore-user-config --skip-git-repo-check --sandbox read-only -c approval_policy="never" --model <m> [-C <cwd>] PROMPT`。完整支持 token 统计 + best-effort tool trace 抽取,把 codex 0.125 的 `{type:'item.completed', item:{type, ...}}` 事件按 `item.type`(`agent_message` / `command_execution` / `file_read` / `file_write` / `web_search` 等)映射成 omk `ToolCallInfo`。
+  - **新文件**:`src/executors/codex-cli.ts`(executor 主体)+ `src/executors/codex-cli-trace.ts`(独立 trace parser,跟 claude-sdk-trace 不共用因为 schema 不同)+ `test/executors/codex-cli-isolation.test.ts`(4 个 case 测 throw 路径)+ `test/executors/codex-cli-trace.test.ts`(14 个 fixture-based case 锁住 codex 0.125 实测 schema)+ `test/executors/codex-cli-args.test.ts`(6 个 case 锁 args 形状,防 `--ask-for-approval` 这种已 removed flag 退回去)
   - **降级三处**(对照 claude-cli):
     - **system prompt**:codex CLI 没 `--system-prompt` flag,把 system 拼到 prompt 头(`${system}\n\n---\n\n${prompt}`),verbose 输出降级提示
     - **skill isolation**:codex 没有 SDK skills auto-discovery / subagent Skill 工具这两条 channel,只剩 channel 3 cwd 文件系统隔离一条。`allowedSkills === []` 时强制 require cwd 非空(否则 throw),caller 应传 isolated 空目录(如 `~/.oh-my-knowledge/isolated-cwd/`);`allowedSkills === [...]` 部分白名单不支持,throw 同 claude-cli pattern。AGENTS.md / `.agents/skills/` 自动加载只能靠 cwd 切到隔离目录避免
@@ -21,6 +21,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Fixed
 
+- **codex executor 端到端烟测三处 blocker**(本 PR 内自检发现,合入前修):
+  - **`--ask-for-approval never` flag 已被 codex 0.125 移除**,preflight 直接挂(`error: unexpected argument '--ask-for-approval' found`)。改用 `-c approval_policy="never"` config override(TOML 字符串需要 quote);该 config key 在 codex 0.125 仍稳定。`buildCodexArgs` exported + 加 6 个 args-shape 回归 case 防退回。
+  - **codex 看到 stdin 是 pipe(execFile 默认 stdio)就当作 `<stdin>` 块读,卡到 timeout**。`promisify(execFile)` 拿不到 child handle 关 stdin,改用手写 Promise wrapper 包 `execFile` callback 形式,spawn 后立刻 `child.stdin?.end()` 发 EOF。timeout / maxBuffer / 错误时 stdout 透传等行为跟原来一致。
+  - **trace parser schema 假设跟 codex 0.125 实测错位**,导致 `output=''` + tool 名错成 `'completed'`。原假设 `{type:'item.assistant_message', payload:{text}}` 是猜的从未跟真 binary 验过;实测 schema 是 `{type:'item.completed', item:{type:'agent_message', text}}`。重写 parser 只支持实测 schema,fixture 测试同步重写为实测形状(14 个 case 覆盖 agent_message / command_execution / 多 turn / item.started 占位跳过 / file_read / web_search 等)。
 - **⚠ BREAKING-COMPARABILITY:`cacheKey()` 加 executor 名,prefix `v2:` → `v3:`**:`cacheKey(model, system, prompt, cwd, allowedSkills, executor)` 第 6 入参 executor 名进 hash。原因:同 model 名(如 `gpt-4o`)走 `openai-api` vs `codex` 输出不同但旧 v2 schema 不区分会让两个 executor 互相污染缓存。新版 v3 含 executor 名,跨 executor 必拿不同 key。**旧 v2 cache 一次性失效**(同 v0.22.0 加 allowedSkills 时 v1 → v2 的 pattern),用户重跑无数据丢失风险,只是首跑无 cache 加速。
 
 ---

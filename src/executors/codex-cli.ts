@@ -1,3 +1,4 @@
+import { execFile } from 'node:child_process';
 import type { ExecResult, ExecutorInput } from '../types/index.js';
 import { extractCodexTrace, isCodexResultEvent } from './codex-cli-trace.js';
 import type { CodexEvent } from './shared.js';
@@ -6,7 +7,6 @@ import {
   buildExecEnv,
   DEFAULT_TIMEOUT_MS,
   errorMessage,
-  execFileAsync,
   MAX_BUFFER,
   timeoutExecResult,
 } from './shared.js';
@@ -69,14 +69,13 @@ function extractCodexUsage(events: CodexEvent[]): { input: number; cached: numbe
 }
 
 function extractCodexFinalOutput(events: CodexEvent[]): string {
-  // 优先取最后一个 assistant_message 的 text;否则把所有 assistant_message 拼起来
+  // 抓 item.completed + item.type='agent_message' 的 text;优先取最后一条,否则全部拼起来。
   let lastAssistantText = '';
   const allTexts: string[] = [];
   for (const e of events) {
-    const isAssistantMsg = e.type === 'item.assistant_message' || e.item_type === 'assistant_message';
-    if (!isAssistantMsg) continue;
-    const payload = e.payload as { text?: string } | undefined;
-    const txt = payload?.text || e.text || '';
+    if (e.type !== 'item.completed') continue;
+    if (e.item?.type !== 'agent_message') continue;
+    const txt = e.item.text;
     if (txt) {
       allTexts.push(txt);
       lastAssistantText = txt;
@@ -92,8 +91,11 @@ function extractCodexStopReason(events: CodexEvent[]): string {
   return last.stop_reason || 'end_turn';
 }
 
-function buildCodexArgs({ model, cwd, prompt }: { model: string; cwd?: string | null; prompt: string }): string[] {
+// exported for arg-shape regression tests
+export function buildCodexArgs({ model, cwd, prompt }: { model: string; cwd?: string | null; prompt: string }): string[] {
   // codex exec [OPTIONS] [PROMPT];prompt 走 positional(execFile 不走 shell,自动 escape)
+  // approval_policy 走 -c config override:codex CLI 0.125 起去掉了 `--ask-for-approval` flag,
+  // 但 approval_policy 这个 config key 仍在,通过 -c 透传不依赖 flag 表面 schema。
   const args: string[] = [
     'exec',
     '--json',
@@ -101,12 +103,32 @@ function buildCodexArgs({ model, cwd, prompt }: { model: string; cwd?: string | 
     '--ignore-user-config',             // 不读 $CODEX_HOME/config.toml
     '--skip-git-repo-check',            // 允许 isolated cwd 不是 git 仓库
     '--sandbox', 'read-only',           // 评测场景不需要写文件
-    '--ask-for-approval', 'never',      // non-interactive 必须
+    '-c', 'approval_policy="never"',    // non-interactive 必须;TOML 字符串需要 quote
   ];
   if (model) args.push('--model', model);
   if (cwd) args.push('-C', cwd);
   args.push(prompt);
   return args;
+}
+
+// codex 看到 stdin 是 pipe(execFile 默认 stdio)就当作 `<stdin>` 块读,会卡到 timeout。
+// promisify(execFile) 拿不到 child handle 关 stdin,这里手写 Promise 包装器,
+// spawn 后立刻 child.stdin.end() 发 EOF。其余行为(timeout / maxBuffer / 错误时附 stdout)
+// 跟 execFileAsync 一致 —— execFile 在错误时会把 stdout/stderr 挂到 error 对象上。
+function runCodexExec(args: string[], options: { env: NodeJS.ProcessEnv; cwd?: string; timeout: number; maxBuffer: number }): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child = execFile('codex', args, options, (err, stdout, stderr) => {
+      if (err) {
+        const e = err as Error & { stdout?: string; stderr?: string };
+        e.stdout = stdout;
+        e.stderr = stderr;
+        reject(e);
+      } else {
+        resolve({ stdout, stderr });
+      }
+    });
+    child.stdin?.end();
+  });
 }
 
 export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose }: ExecutorInput): Promise<ExecResult> {
@@ -127,7 +149,7 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
 
   const start = Date.now();
   try {
-    const { stdout } = await execFileAsync('codex', args, {
+    const { stdout } = await runCodexExec(args, {
       maxBuffer: MAX_BUFFER,
       timeout: timeoutMs,
       env,
