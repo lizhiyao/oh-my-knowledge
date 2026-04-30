@@ -113,8 +113,9 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
     Object.values(r.summary || {}).every((v) => v.execCostReported !== false));
   const unmeasuredRunsCount = runs.length - reportableRuns.length;
   const totalCost = reportableRuns.reduce((s, r) => s + Object.values(r.summary || {}).reduce((sv, v) => sv + (v.totalExecCostUSD || 0), 0), 0);
-  // partial:有 reported 就显示数字 + (X/N) 限定 + tooltip;全部 not reported 才显示「—」;
+  // partial:有 reported 就显示数字 + tooltip;全部 not reported 才显示「—」;
   // 全 reported(unmeasuredRunsCount=0)走老格式不包 span,保持 HTML snapshot 向后兼容。
+  // X/N 限定信息只放 tooltip,不挂在显眼位置 — 累计行视觉应该是单纯的数字。
   const allUnmeasured = reportableRuns.length === 0 && runs.length > 0;
   const baseLabel = lang === 'zh' ? '累计' : 'Total';
   const costNumber = fmtCost(totalCost, !allUnmeasured);
@@ -126,8 +127,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
     const tip = lang === 'zh'
       ? `${reportableRuns.length}/${runs.length} 次报告了 USD 成本;${unmeasuredRunsCount} 次 executor 不报(如 codex CLI),已从累计中排除`
       : `${reportableRuns.length}/${runs.length} runs reported USD cost; ${unmeasuredRunsCount} excluded (executor doesn't report, e.g. codex CLI)`;
-    const suffix = reportableRuns.length > 0 ? ` (${reportableRuns.length}/${runs.length})` : '';
-    costLabel = `<span title="${e(tip)}">${baseLabel} ${costNumber}${suffix}</span>`;
+    costLabel = `<span title="${e(tip)}">${baseLabel} ${costNumber}</span>`;
   }
 
   // Collect variants with ≥2 reports for trend links
