@@ -8,6 +8,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Removed
+
+- **⚠ BREAKING:删 `openai-cli` executor 及 `'openai'` alias,统一用 `'openai-api'`**:
+  `src/executors/openai-cli.ts` 跟 `openai-api.ts` 历史职责重复,两者都走 `chat.completions.create`、同一份 token / output schema、同一个 `OPENAI_API_KEY` env。`openai-cli` 经外部 `openai` Python CLI binary,多一层启动 + 子进程 stdout parse,无独有便利。
+  - 删:`src/executors/openai-cli.ts`(整文件)+ `import { openAiCliExecutor } from './openai-cli.js'` 这一行 + `EXECUTOR_REGISTRY` 内 `'openai'` 条目(连同 alias 一起,不留向后兼容指针 — 命名一致性优先,跟 `'anthropic-api'` 对齐)。
+  - **迁移**:`--executor openai` 现在会 fall through 到 script executor(把 `'openai'` 当 shell 命令运行,基本会失败)。用户改用 `--executor openai-api`。CLI flag 帮助 / `EXECUTOR_REGISTRY` 文档化的执行器名称从来都是 `openai-api` / `anthropic-api`,所以 `'openai'` alias 实际从未被 README 推荐过 — 影响面应该很小。
+  - 不动 README / README.zh.md(它们引用的就是 `openai-api`),不动 `judgeId` 测试(只把 `'openai'` 当字符串,跟 `EXECUTOR_REGISTRY` 解析无关 — `llmJudgeEnsemble` 通过 caller 传入的 `executorByName` mock 解析)。`test/executor.test.ts` 改 `createExecutor('openai')` → `createExecutor('openai-api')` 让测试名称跟实现一致。
+
 ### Added
 
 - **codex-cli executor**(`@openai/codex` npm 集成):新加 `--executor codex` 把 OpenAI Codex CLI(跟 Claude Code 同类的 coding agent CLI)接入 omk 评测框架。invocation:`codex exec --json --ephemeral --ignore-user-config --skip-git-repo-check --sandbox read-only -c approval_policy="never" --model <m> [-C <cwd>] PROMPT`。完整支持 token 统计 + best-effort tool trace 抽取,把 codex 0.125 的 `{type:'item.completed', item:{type, ...}}` 事件按 `item.type`(`agent_message` / `command_execution` / `file_read` / `file_write` / `web_search` 等)映射成 omk `ToolCallInfo`。
