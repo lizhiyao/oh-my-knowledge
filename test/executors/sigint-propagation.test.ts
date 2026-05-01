@@ -128,4 +128,43 @@ describe('spawnWithSigintPropagation', () => {
       return true;
     });
   });
+
+  // UltraReview Item 6:timeout 发了 SIGTERM 但 child trap 后 graceful exit 0,
+  // stdout 应该当成成功完成 — 旧实现会 reject "timed out" 误导 caller。
+  it('timeout 发 SIGTERM 后 child trap 并 exit 0:resolve 而不是 reject(数据是完整的)', async () => {
+    const { done } = spawnWithSigintPropagation(
+      'node',
+      [
+        '-e',
+        // SIGTERM trap:写完 stdout 后 exit 0(模拟 codex / claude binary 的 telemetry flush)
+        'process.on("SIGTERM",()=>{process.stdout.write("done");process.exit(0)}); setTimeout(()=>{}, 5000)',
+      ],
+      { timeoutMs: 100 },
+    );
+    const r = await done;
+    assert.equal(r.code, 0);
+    assert.equal(r.stdout, 'done');
+    assert.equal(r.killedByTimeout, true); // flag 仍 true(我们确实发了 SIGTERM)
+  });
+
+  // UltraReview Item 7:bufferOverflow 路径要走 graceTimer,不能裸 SIGTERM。
+  // child trap SIGTERM 不退出时,旧实现会让 child 永不被 SIGKILL,变成 zombie。
+  it('bufferOverflow + child trap SIGTERM:500ms 内被 SIGKILL 兜底', async () => {
+    // child 先疯狂写 stdout 触发 bufferOverflow,然后 trap SIGTERM 不退
+    const { done } = spawnWithSigintPropagation(
+      'node',
+      [
+        '-e',
+        'process.on("SIGTERM",()=>{}); const buf="x".repeat(100000); for(let i=0;i<5;i++){process.stdout.write(buf)} setInterval(()=>{},1000)',
+      ],
+      { maxBuffer: 10 * 1024 },
+    );
+    const start = Date.now();
+    await assert.rejects(done, (err: SpawnHelperError) => {
+      const elapsed = Date.now() - start;
+      assert.match(err.message, /maxBuffer/);
+      assert.ok(elapsed < 1500, `bufferOverflow SIGKILL fallback should kick in within ~600ms, got ${elapsed}ms`);
+      return true;
+    });
+  });
 });

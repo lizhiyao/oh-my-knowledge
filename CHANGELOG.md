@@ -21,6 +21,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   - **不改**:`anthropic-api.ts` / `openai-api.ts`(用 fetch + AbortSignal.timeout 自带 abort);`claude-sdk.ts`(in-process,无 child)。这些走另一条路,无 orphan 风险。
   - **测试**:`test/executors/sigint-propagation.test.ts` 新增 9 case 锁定:正常退出 / exit 非 0 / timeout / listener 单一性(loop 10 次仍 1 个 listener)/ 自然退出 grace 不误升级 / abortSignal abort / maxBuffer 超限 kill / stdout-stderr 分别捕获 / SIGTERM ignore 时 SIGKILL fallback within ~600ms。helper 单元测试用真 spawn `node -e "..."` 子进程而非 mock,行为更可信(<2s 跑完)。回归测试全部保持绿(865 → 875,+9 case)。
   - **手动验证**(不进 CI):`docs/dev/sigint-validation.md` 写一个 ps 验证脚本,跑长 eval + 按 Ctrl+C,观察内层 codex 进程立即退出而非 orphan。
+  - **关键正确性 fix**(本 PR 内 ultrareview 发现):
+    - `code === 0` 优先于 timeout reject:child trap SIGTERM 后 graceful exit 0 完成 stdout 写入时,resolve 而不是误报 timeout(stdout 数据是完整的,不应当成失败)
+    - `bufferOverflow` 走 `killWithGrace('buffer')` 而非裸 `child.kill('SIGTERM')`:确保 trap SIGTERM 不退出的 child 在 500ms 后被 SIGKILL 兜底,不留 zombie
+    - 这两个 fix 各加一个测试 case 锁定,共 11 case
+  - **行为变化备注**:
+    - **timeout grace +500ms**:旧 `execFile` timeout 是裸 SIGTERM(无 grace),新 helper 是 SIGTERM+500ms+SIGKILL。timeout=120s 默认下不显著(0.4% 延迟),边缘 timeout=100ms 短测场景下可能感知到 ~600ms 总延迟
+    - **gemini / script maxBuffer 加 10MB 上限**:旧 `spawn` 实现无 maxBuffer 概念(无限制),迁移到 helper 后跟 codex / claude 一致的 `MAX_BUFFER`(10MB)。stdout 极端大输出会被 reject,但 CLI executor 实际几乎不会到 10MB
+  - **范围**:本 PR 不迁移 `openai-cli.ts`(PR #32 已经把它整体删除,`'openai'` alias 重定向到 `openai-api` HTTP 实现,无 child 无 SIGINT 风险)。其他长期 follow-up 见 plan `~/.claude/plans/virtual-forging-fog.md`(P1 codex-sdk / P2 MCP server 包装)。
 
 ### Added
 

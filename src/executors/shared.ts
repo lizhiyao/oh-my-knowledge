@@ -326,11 +326,13 @@ export function spawnWithSigintPropagation(
   let graceTimer: NodeJS.Timeout | null = null;
   let timeoutTimer: NodeJS.Timeout | null = null;
 
-  function killWithGrace(reason: 'timeout' | 'abort'): void {
-    if (reason === 'timeout') killedByTimeout = true;
-    if (reason === 'abort') killedBySignalReason = 'SIGTERM';
+  function killWithGrace(reason: 'timeout' | 'abort' | 'buffer'): void {
+    // 优先级:abort 跟 timeout 互不覆盖(谁先设谁赢);buffer 不重写已有 reason
+    if (reason === 'timeout' && !killedBySignalReason) killedByTimeout = true;
+    if (reason === 'abort' && !killedByTimeout) killedBySignalReason = 'SIGTERM';
     try { child.kill('SIGTERM'); } catch { /* already dead */ }
     if (graceTimer) return;
+    // 即使 child trap SIGTERM 不退出,500ms 后强 SIGKILL 兜底
     graceTimer = setTimeout(() => {
       try { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); } catch { /* */ }
     }, SIGTERM_GRACE_MS);
@@ -350,9 +352,10 @@ export function spawnWithSigintPropagation(
 
   child.stdout?.on('data', (chunk: Buffer) => {
     stdout += chunk.toString();
-    if (stdout.length > maxBuffer) {
+    if (stdout.length > maxBuffer && !bufferOverflow) {
       bufferOverflow = true;
-      try { child.kill('SIGTERM'); } catch { /* */ }
+      // 走 killWithGrace 保证 SIGTERM trap child 也会被 500ms 后 SIGKILL 兜底
+      killWithGrace('buffer');
     }
   });
   child.stderr?.on('data', (chunk: Buffer) => {
@@ -383,22 +386,37 @@ export function spawnWithSigintPropagation(
         killedByTimeout,
         killedBySignal: killedSig,
       };
+      // bufferOverflow 优先 — 数据已截断不可信,即使 child 后来 exit 0 也不能用
       if (bufferOverflow) {
         const e = Object.assign(new Error(`stdout maxBuffer (${maxBuffer}) exceeded`), result) as SpawnHelperError;
         reject(e);
-      } else if (killedByTimeout) {
+        return;
+      }
+      // **code === 0 时 child 是干净完成的**:即使我们前面发了 SIGTERM(timeout / abort),
+      // child 可能 trap 信号并 graceful exit 0 完成数据写入。这种情况 stdout 是完整的,
+      // 不应该当 timeout / signal 错误 reject。优先级:exit 0 > 任何 kill reason。
+      if (code === 0) {
+        resolve(result);
+        return;
+      }
+      if (killedByTimeout) {
         const tSec = timeoutMs ? (timeoutMs / 1000).toFixed(0) : '?';
         const e = Object.assign(new Error(`execution timed out after ${tSec}s`), result) as SpawnHelperError;
         reject(e);
-      } else if (killedSig) {
+        return;
+      }
+      if (killedSig) {
         const e = Object.assign(new Error(`execution interrupted by signal ${killedSig}`), result) as SpawnHelperError;
         reject(e);
-      } else if (code !== 0 && code !== null) {
+        return;
+      }
+      if (code !== null) {
         const e = Object.assign(new Error(`${command} exited with code ${code}`), result) as SpawnHelperError;
         reject(e);
-      } else {
-        resolve(result);
+        return;
       }
+      // code === null && signal === null:罕见,fallback resolve
+      resolve(result);
     });
   });
 
