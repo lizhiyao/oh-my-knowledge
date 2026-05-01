@@ -665,12 +665,14 @@ omk analyze ~/.claude/projects/my-project --kb /path/to/project
 | `claude` | 默认 | 通过 `claude -p` 调用 Claude CLI |
 | `claude-sdk` | 结构化输出 | 通过 Claude Agent SDK 调用，无 stdout 解析，避免 buffer 截断 |
 | `codex` | OpenAI agent CLI | 通过 `codex exec --json` 调用,需本地装好登录的 codex(`@openai/codex`);best-effort tool trace,**costUSD 不报**(codex 自身不输出 USD,需外部账单核算) |
-| `openai` | 跨厂商对比 | 通过 `openai api` CLI 调用 |
+| `codex-sdk` | OpenAI agent SDK | 通过 `@openai/codex-sdk` 调用其自带的 `@openai/codex` binary 和 SDK 事件流;**costUSD 不报** |
 | `gemini` | 跨厂商对比 | 通过 `gemini` CLI 调用 |
 | `anthropic-api` | 无需 CLI | 直接调用 Anthropic HTTP API（需 `ANTHROPIC_API_KEY`） |
 | `openai-api` | 无需 CLI | 直接调用 OpenAI HTTP API（需 `OPENAI_API_KEY`） |
 
 API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL`。
+
+Codex construct-validity 说明:(1) `codex` 使用 `PATH` 上找到的 `codex` binary;`codex-sdk` 使用 `@openai/codex-sdk` 解析到的自带 `@openai/codex` binary。两者严格横向比较时,记录两个 runtime 版本(`codex --version` 和 lockfile 中的 npm 版本)—— 版本不一致时,结果应解释为 executor runtime 对比,而不只是 prompt/template 行为对比。(2) 两个 executor 都隔离用户级 config:`codex` 传 `--ephemeral` + `--ignore-user-config`,`codex-sdk` 把 `$CODEX_HOME` 重定向到 per-process tmp 目录(auth.json 通过 symlink 透传)。用户的 `~/.codex/config.toml` 不会渗入任意一个 executor 的 eval。
 
 ### 自定义执行器
 
