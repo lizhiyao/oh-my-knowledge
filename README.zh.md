@@ -672,7 +672,7 @@ omk analyze ~/.claude/projects/my-project --kb /path/to/project
 
 API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL`。
 
-Codex construct-validity 说明:(1) `codex` 使用 `PATH` 上找到的 `codex` binary;`codex-sdk` 使用 `@openai/codex-sdk` 解析到的自带 `@openai/codex` binary。两者严格横向比较时,记录两个 runtime 版本(`codex --version` 和 lockfile 中的 npm 版本)—— 版本不一致时,结果应解释为 executor runtime 对比,而不只是 prompt/template 行为对比。(2) 两个 executor 都隔离用户级 config:`codex` 传 `--ephemeral` + `--ignore-user-config`,`codex-sdk` 把 `$CODEX_HOME` 重定向到 per-process tmp 目录(auth.json 通过 symlink 透传)。用户的 `~/.codex/config.toml` 不会渗入任意一个 executor 的 eval。
+Codex construct-validity 说明:(1) `codex` 使用 `PATH` 上找到的 `codex` binary;`codex-sdk` 使用 `@openai/codex-sdk` 解析到的自带 `@openai/codex` binary。报告会持久化 `meta.executorRuntime` / `meta.judgeRuntime` 指纹(binary 或 SDK 版本 + 能力快照),`bench diff` / `bench verdict` 会在 strict comparability 无法审计时提示。runtime 指纹不一致时,结果应解释为 executor runtime 对比,而不只是 prompt/template 行为对比。(2) 两个 executor 都隔离用户级 config:`codex` 传 `--ephemeral` + `--ignore-user-config`,`codex-sdk` 把 `$CODEX_HOME` 重定向到 per-process tmp 目录(auth.json 通过 symlink 透传)。用户的 `~/.codex/config.toml` 不会渗入任意一个 executor 的 eval。
 
 ### 自定义执行器
 

@@ -978,6 +978,10 @@ async function handleDiff(argv: string[]): Promise<void> {
     console.log(`  Git:  ${g1?.commitShort || '?'}${g1?.dirty ? '*' : ''} (${g1?.branch || '?'}) → ${g2?.commitShort || '?'}${g2?.dirty ? '*' : ''} (${g2?.branch || '?'})`);
   }
 
+  const { crossReportComparabilityWarnings, formatComparabilityWarnings } = await import('../eval-core/comparability.js');
+  const comparability = formatComparabilityWarnings(crossReportComparabilityWarnings(r1!, r2!), lang);
+  if (comparability) console.log(`\n${comparability}\n`);
+
   // Per-variant comparison
   const variants: string[] = [...new Set([...(r1!.meta?.variants || []), ...(r2!.meta?.variants || [])])];
   for (const v of variants) {
@@ -1435,6 +1439,9 @@ async function handleVerdict(argv: string[]): Promise<void> {
   }
 
   const { computeVerdict, formatVerdictText } = await import('../eval-core/verdict.js');
+  const { reportComparabilityWarnings, formatComparabilityWarnings } = await import('../eval-core/comparability.js');
+  const comparability = formatComparabilityWarnings(reportComparabilityWarnings(report!), lang);
+  if (comparability) process.stderr.write(`${comparability}\n`);
   const result = computeVerdict(report!, {
     gateThreshold: values.threshold != null ? Number(values.threshold) : undefined,
     triviallySmallDiff: values['trivial-diff'] != null ? Number(values['trivial-diff']) : undefined,

@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 - **codex-cli executor**(`--executor codex`):接入 OpenAI Codex CLI 当被测 / 评委,跟 Claude Code 同类 agent CLI 对位。token 统计齐全,best-effort 抽 codex 事件流到 omk trace。skill isolation 仅 cwd 一条 channel(codex 没 SDK skill 等价物),`allowedSkills=[]` 强制 cwd 非空。EXECUTOR_REGISTRY 加 `'codex'` 跟 `'claude'` 对齐。详见 #31。
 - **codex-sdk executor**(`--executor codex-sdk`):接入 `@openai/codex-sdk` 自带的 `@openai/codex` binary 和 SDK 事件流,复用 codex trace / token / cost-not-reported 语义。Construct validity:CODEX_HOME 隔离到 per-process tmp 防 `~/.codex/config.toml` 渗入 eval(等价 codex CLI `--ephemeral` + `--ignore-user-config`,auth.json symlink 透传);SIGINT 联动 abortController 让 PR #33 的 nested-host orphan 修复对 SDK 子进程同样生效。详见 #36。
+- **executor runtime 指纹写入 report**:`meta.executorRuntime` / `meta.judgeRuntime` 记录 binary 或 SDK 版本、模型和能力快照(system prompt / cost / trace / isolation)。HTML 报告展示指纹,`bench diff` / `bench verdict` 在缺失或不一致时提示 strict comparability 风险。详见 #37。
 
 ### Changed
 
