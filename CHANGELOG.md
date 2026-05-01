@@ -8,55 +8,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
-### Removed
-
-- **⚠ BREAKING:删 `openai-cli` executor 及 `'openai'` alias,统一用 `'openai-api'`**:
-  `src/executors/openai-cli.ts` 跟 `openai-api.ts` 历史职责重复,两者都走 `chat.completions.create`、同一份 token / output schema、同一个 `OPENAI_API_KEY` env。`openai-cli` 经外部 `openai` Python CLI binary,多一层启动 + 子进程 stdout parse,无独有便利。
-  - 删:`src/executors/openai-cli.ts`(整文件)+ `import { openAiCliExecutor } from './openai-cli.js'` 这一行 + `EXECUTOR_REGISTRY` 内 `'openai'` 条目(连同 alias 一起,不留向后兼容指针 — 命名一致性优先,跟 `'anthropic-api'` 对齐)。
-  - **迁移**:`--executor openai` 现在会 fall through 到 script executor(把 `'openai'` 当 shell 命令运行,基本会失败)。用户改用 `--executor openai-api`。CLI flag 帮助 / `EXECUTOR_REGISTRY` 文档化的执行器名称从来都是 `openai-api` / `anthropic-api`,所以 `'openai'` alias 实际从未被 README 推荐过 — 影响面应该很小。
-  - 不动 README / README.zh.md(它们引用的就是 `openai-api`),不动 `judgeId` 测试(只把 `'openai'` 当字符串,跟 `EXECUTOR_REGISTRY` 解析无关 — `llmJudgeEnsemble` 通过 caller 传入的 `executorByName` mock 解析)。`test/executor.test.ts` 改 `createExecutor('openai')` → `createExecutor('openai-api')` 让测试名称跟实现一致。
+> CHANGELOG 写作风格:每条改动 3-5 行,链 PR # 让需要细节的人去看。详情见 commit / PR description,本文档只保留 user-facing 影响 / BREAKING / migration 指引 / 测量学不变量 callout。规则在 [CLAUDE.md](./CLAUDE.md)「写代码约定」段。
 
 ### Added
 
-- **codex-cli executor**(`@openai/codex` npm 集成):新加 `--executor codex` 把 OpenAI Codex CLI(跟 Claude Code 同类的 coding agent CLI)接入 omk 评测框架。invocation:`codex exec --json --ephemeral --ignore-user-config --skip-git-repo-check --sandbox read-only -c approval_policy="never" --model <m> [-C <cwd>] PROMPT`。完整支持 token 统计 + best-effort tool trace 抽取,把 codex 0.125 的 `{type:'item.completed', item:{type, ...}}` 事件按 `item.type`(`agent_message` / `command_execution` / `file_read` / `file_write` / `web_search` 等)映射成 omk `ToolCallInfo`。
-  - **新文件**:`src/executors/codex-cli.ts`(executor 主体)+ `src/executors/codex-cli-trace.ts`(独立 trace parser,跟 claude-sdk-trace 不共用因为 schema 不同)+ `test/executors/codex-cli-isolation.test.ts`(4 个 case 测 throw 路径)+ `test/executors/codex-cli-trace.test.ts`(14 个 fixture-based case 锁住 codex 0.125 实测 schema)+ `test/executors/codex-cli-args.test.ts`(6 个 case 锁 args 形状,防 `--ask-for-approval` 这种已 removed flag 退回去)
-  - **降级三处**(对照 claude-cli):
-    - **system prompt**:codex CLI 没 `--system-prompt` flag,把 system 拼到 prompt 头(`${system}\n\n---\n\n${prompt}`),verbose 输出降级提示
-    - **skill isolation**:codex 没有 SDK skills auto-discovery / subagent Skill 工具这两条 channel,只剩 channel 3 cwd 文件系统隔离一条。`allowedSkills === []` 时强制 require cwd 非空(否则 throw),caller 应传 isolated 空目录(如 `~/.oh-my-knowledge/isolated-cwd/`);`allowedSkills === [...]` 部分白名单不支持,throw 同 claude-cli pattern。AGENTS.md / `.agents/skills/` 自动加载只能靠 cwd 切到隔离目录避免
-    - **costUSD**:codex CLI 不报 USD cost,设 `costReportedByExecutor: false`(下面 Changed 段说明语义),renderer 显示「—」而不是 $0.0000;verbose 输出 "[codex] cost not reported";用户需外部账单核算
-  - **EXECUTOR_REGISTRY** `'codex': codexCliExecutor`(命名跟 `'claude'` / `'openai'` 对齐,不带 -cli 后缀)
-  - **`shared.ts`** 加 `CodexEvent` interface(跟 `ClaudeSdkBaseMessage` 同层级)
-
-### Fixed
-
-- **codex executor UltraReview follow-ups**(合入前 ultrareview 扫描发现):
-  - **`extractCodexFinalOutput` 同 turn 多 agent_message 只返回最后一条**(死代码 fallback):codex 同 turn 内可能 emit 多条 `agent_message`(如 "step 1" / "step 2" / "final answer"),旧实现只取最后一条 → grader / assertion / LLM judge 看到的 output 跟 trace UI 看到的内容不一致(后者拼接,前者截断),多步骤回答的 grading 不准。改为全部拼接,跟 `extractCodexTrace` 多条文本拼接语义一致。export + 5 个回归 case。
-  - **`turn.failed` 在 success path 漏 error 字段**:codex binary 退出 0 但流里是 `turn.failed`(rate limit / API error 等)时,success path return 没透传 `last.error.message`,catch path 透传了。对称化:success path 加 `...(!ok && { error: last.error?.message || 'codex turn.failed' })`。
-  - **`durationMs` 只取 last turn elapsed_ms**(multi-turn 漏算):`extractCodexUsage` 累加多 turn 的 token,但 `durationMs: last.elapsed_ms ?? wallClock` 只看最后一 turn 的 elapsed_ms,multi-turn agentic 任务 duration 严重偏低(per-turn delta 语义假设)。提取 `sumCodexElapsed` helper:累加所有 result event 的 elapsed_ms,全 0 / 缺失 fallback wall-clock。export + 4 个回归 case。
-  - **verbose 降级 banner 每次调用都打**:`[codex] system prompt prepended` / `[codex] cost not reported` 是 binary 能力快照,evaluation pipeline sample×variant×judge_repeat×dimension 多次调用每次重复打,verbose 模式 stderr 被同样文本刷 140-280 行。改为模块级 `hasWarnedSystem` / `hasWarnedCost` flag,一个 process 只打一次。
-  - **全 error variant 的 `execCostReported` 字段被 ok-gate 漏掉**:旧实现 `ok.length > 0 && ok.some(...)` 在零 ok sample 时短路,导致 codex 全错 run 的 summary 不出 `execCostReported` 字段,renderer 把缺位当 reported 显示 `$0.0000`。改为 `entries.some(...)`:executor 不报 cost 是 binary 能力事实,跟 sample 是否成功无关。
-- **`judgeCostReportedByExecutor` 全链路透传**(`--judge-executor codex` 时 `judgeCostUSD=0` 不再静默撒谎):
-  - **schema**:`DimensionResult` / `AssertionResults` / `EnsembleJudgeResult` / `GradeResult` 全部加 `judgeCostReportedByExecutor?: boolean`(缺位 ≡ true 向后兼容);`VariantResult.judgeCostReportedByExecutor?` + `VariantSummary.judgeCostReported?` 两层透传聚合。
-  - **judge 路径**:`llmJudge` 4 个 return 透传 `result.costReportedByExecutor`;`llmJudgeRepeat` / `llmJudgeEnsemble` 任一 call false → 整体 false;`runAsyncAssertions` / `runRagJudge` 同。`grade()` 主流程聚合 dim / single / async assertion 三处。
-  - **renderer**:`each` overview subtitle 同时考虑 exec + judge 两边的 reported 标志,任一 false 显示「—」+ tooltip(detail 页 cost meta-tag 仍只显示 exec cost,设计上 judge cost 是工具开销)。
-- **三处 cost 渲染 callsite 漏 `execCostReported / judgeCostReported` 检查**(违反 "executor 不报 cost 显示「—」" invariant):
-  - `src/renderer/trends.ts:100` 趋势页 Cost 列:`fmtCost(s.avgCostPerSample, s.execCostReported !== false && s.judgeCostReported !== false)`,跟 detail / list 一致。
-  - `src/cli/index.ts` `omk bench evolve` 三处:`Round 0 (baseline)` / `Round N (done)` / 总结行 `summary` 都依赖 i18n template 硬编码 `$` + `{cost}.toFixed(4)`,改为 template 移除 `$` + handler 端构造 `$X.XXXX` 或「—」字符串。`EvolveRoundProgressInfo.costReported?` + `EvolveResult.costReported?` 全链路透传(任一轮 exec / judge / improver 不报 → 整体 lower-bound)。
-  - `src/renderer/summary.ts` variance/significance 表格:`renderVarianceComparisons` 加可选 `summary` 入参,检测到任一 variant cost 不报告时**整行跳过 cost** 而不是显示 "持平 / tied" 误导(executor 没测过 cost 不能算"等价")。html-renderer 两处 caller 同步传 summary。
-- **codex executor 端到端烟测三处 blocker**(本 PR 内自检发现,合入前修):
-  - **`--ask-for-approval never` flag 已被 codex 0.125 移除**,preflight 直接挂(`error: unexpected argument '--ask-for-approval' found`)。改用 `-c approval_policy="never"` config override(TOML 字符串需要 quote);该 config key 在 codex 0.125 仍稳定。`buildCodexArgs` exported + 加 6 个 args-shape 回归 case 防退回。
-  - **codex 看到 stdin 是 pipe(execFile 默认 stdio)就当作 `<stdin>` 块读,卡到 timeout**。`promisify(execFile)` 拿不到 child handle 关 stdin,改用手写 Promise wrapper 包 `execFile` callback 形式,spawn 后立刻 `child.stdin?.end()` 发 EOF。timeout / maxBuffer / 错误时 stdout 透传等行为跟原来一致。
-  - **trace parser schema 假设跟 codex 0.125 实测错位**,导致 `output=''` + tool 名错成 `'completed'`。原假设 `{type:'item.assistant_message', payload:{text}}` 是猜的从未跟真 binary 验过;实测 schema 是 `{type:'item.completed', item:{type:'agent_message', text}}`。重写 parser 只支持实测 schema,fixture 测试同步重写为实测形状(14 个 case 覆盖 agent_message / command_execution / 多 turn / item.started 占位跳过 / file_read / web_search 等)。
-- **⚠ BREAKING-COMPARABILITY:`cacheKey()` 加 executor 名,prefix `v2:` → `v3:`**:`cacheKey(model, system, prompt, cwd, allowedSkills, executor)` 第 6 入参 executor 名进 hash。原因:同 model 名(如 `gpt-4o`)走 `openai-api` vs `codex` 输出不同但旧 v2 schema 不区分会让两个 executor 互相污染缓存。新版 v3 含 executor 名,跨 executor 必拿不同 key。**旧 v2 cache 一次性失效**(同 v0.22.0 加 allowedSkills 时 v1 → v2 的 pattern),用户重跑无数据丢失风险,只是首跑无 cache 加速。
+- **codex-cli executor**(`--executor codex`):接入 OpenAI Codex CLI 当被测 / 评委,跟 Claude Code 同类 agent CLI 对位。token 统计齐全,best-effort 抽 codex 事件流到 omk trace。skill isolation 仅 cwd 一条 channel(codex 没 SDK skill 等价物),`allowedSkills=[]` 强制 cwd 非空。EXECUTOR_REGISTRY 加 `'codex'` 跟 `'claude'` 对齐。详见 #31。
 
 ### Changed
 
-- **cost 显示语义:不报 cost 的 executor(如 codex)显示「—」而非 `$0.0000`**(避免误导,跟"真的花了 0"区分)。
-  - **schema**:`ExecResult.costReportedByExecutor?: boolean` / `VariantResult.costReportedByExecutor?: boolean` / `VariantSummary.execCostReported?: boolean`,**全部可选,缺位 ≡ true(向后兼容)**,只 codex executor 显式 false。
-  - **聚合**:`buildVariantResult` 透传 ExecResult 标志;`buildVariantSummary` 任一 ok sample `costReportedByExecutor=false` → variant `execCostReported=false`;全部 reported 时不写字段(保持 result 紧凑)。
-  - **renderer**:`fmtCost(usd, reported=true)` 加 `reported` 参数,false 时返回 `—`;HTML detail 页 / each overview / list page / CLI compare 输出全部识别 summary 的 `execCostReported`,not reported 时显示「—」+ tooltip 解释 "executor 不报 USD 成本(如 codex CLI),无法估算"。CLI `omk bench diff` 的 `Cost: $X → $Y (Δ%)` 也跟着改 — 任一边 not reported 就不报百分比。
-  - **测试**:`test/eval-core/cost-reported.test.ts` 9 个 case 锁住三层透传 + fmtCost 双路径;HTML snapshot 不破(默认 reported=true 路径输出跟旧版完全一致,只新增 false 分支)。
-  - 老报告(无 `execCostReported` 字段)继续按 reported 显示,跟 v0.23 之前完全等价。
+- **cost 显示「—」 而非 `$0.0000`**(executor 不报 cost 时):`ExecResult` / `VariantResult` / `VariantSummary` / `GradeResult` 加 `costReportedByExecutor` / `execCostReported` / `judgeCostReported` 三层 flag,全可选缺位 ≡ true(老报告兼容)。Renderer(HTML detail / list / each / trends / variance chart / CLI bench diff / bench evolve)全部识别该 flag,not reported 时显示「—」+ tooltip 解释。详见 #31。
+
+### Fixed
+
+- **⚠ BREAKING-COMPARABILITY:`cacheKey()` 加 executor 名,prefix `v2:` → `v3:`** —— 同 model 名跨 executor(如 `gpt-4o` 走 `openai-api` vs `codex`)旧 v2 schema 互相污染缓存。旧 v2 cache 一次性失效,无数据丢失,首跑无 cache 加速(同 v0.22.0 加 allowedSkills 那次 pattern)。详见 #31。
+
+### Removed
+
+- **⚠ BREAKING:删 `openai-cli` executor 及 `'openai'` alias** —— 跟 `'openai-api'` HTTP 实现职责重复(同 endpoint / token schema / `OPENAI_API_KEY` env),`openai-cli` 多一层 Python CLI binary 子进程,无独有便利。`--executor openai` 现在会 fall through 到 script executor 失败,改用 `--executor openai-api`。alias 从未被 README 推荐过,影响面小。详见 #32。
 
 ---
 

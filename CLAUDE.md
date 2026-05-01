@@ -31,7 +31,7 @@ PR base **永远是 develop**,绝不在 main / develop 直接 commit。release P
 - **commit message 前缀英文 + 正文中文**:type 走 Conventional Commits 标准(`feat` / `fix` / `refactor` / `docs` / `chore` / `test` / `ci` / `perf` / `style` / `build`),scope 用**稳定的代码模块名**(`cli` / `i18n` / `judge` / `renderer` / `eval-core` / `eval-workflows` / `inputs` / `executors` / `server` / `analysis` / `authoring` / `grading` / `release` / `claude-md` 等),**不用 plan 阶段编号**(`D.1.c` / `Phase B.4` 这种本地维护者 plan 内部编号外部不可读、发版后失效、也无法跨版本 grep 聚合)。subject 用中文写。例:`feat(cli-i18n): 接通 --lang flag 和 OMK_LANG 环境变量` / `chore(release): bump 0.20.1 → 0.20.2` / `docs(claude-md): commit message 规则改为英文前缀`。不追溯改历史 commit
 - **user-facing 文案中文优先**(报告 UI / CLI / 错误信息)。LLM judge 译为「**评委**」,不译「判官」,不中英混用
 - **CI gate 两个**:`test/grading/judge-hash-frozen.test.ts`(judge prompt 不变性)、`test/__snapshots__/html-renderer.test.ts.snap`(zh/en × list/detail UI 回归)。改 UI / judge 后 review snapshot diff,确认无误再 `vitest -u`
-- **顺手更新 CHANGELOG `[Unreleased]`**(Keep a Changelog 风格:Added / Changed / Fixed / Internal)
+- **CHANGELOG 写作克制原则**(AI 协作时代):`[Unreleased]` 每条改动收敛 3-5 行,**链 PR # 让需要细节的人去看,不在这里复述 commit / PR description 已有的内容**。保留:user-facing 影响、BREAKING / migration 指引、测量学不变量 callout(judge prompt hash / cacheKey 版本 / construct validity)。删:代码路径行号(`shared.ts:131-149` 这种 — 文件行号会随其他 PR 偏移)、测试 case 列举(用户不关心)、技术实现 bullet 嵌套(那是 PR description 的事)。Keep a Changelog 分类沿用(Added / Changed / Fixed / Removed / Internal)
 - **不要硬编码端口**:report server 默认请求 7799 但实际 bound 端口取自 `server.start()` 返回值(7799 被占会切 7800+),所有给用户看的 URL 都用 `serverUrl` 实参
 
 ## 发版
