@@ -10,6 +10,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-05-02
+
 ### Added
 
 - **codex-cli executor**(`--executor codex`):接入 OpenAI Codex CLI 当被测 / 评委,跟 Claude Code 同类 agent CLI 对位。token 统计齐全,best-effort 抽 codex 事件流到 omk trace。skill isolation 仅 cwd 一条 channel(codex 没 SDK skill 等价物),`allowedSkills=[]` 强制 cwd 非空。EXECUTOR_REGISTRY 加 `'codex'` 跟 `'claude'` 对齐。详见 #31。
@@ -20,11 +22,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 - **cost 显示「—」 而非 `$0.0000`**(executor 不报 cost 时):`ExecResult` / `VariantResult` / `VariantSummary` / `GradeResult` 加 `costReportedByExecutor` / `execCostReported` / `judgeCostReported` 三层 flag,全可选缺位 ≡ true(老报告兼容)。Renderer(HTML detail / list / batch / trends / variance chart / CLI bench diff / bench evolve)全部识别该 flag,not reported 时显示「—」+ tooltip 解释。详见 #31。
 - **⚠ BREAKING:`bench run --batch` 产物收敛为 `BatchEvaluationReport` + child `EvaluationReport`** —— 顶层 `kind: "batch-evaluation"` 只保存批次索引和摘要,每个 skill vs baseline 单独持久化为可比较的原子报告。child report 的 treatment variant 使用真实 skill 名,趋势页按 skill 名聚合,不再写 generic `skill`。删除 `overview` / `artifacts` 这类混合 schema,`bench diff` / `verdict` / `diagnose` 等命令现在只接受 child reportId。旧混合批量报告不做兼容迁移。详见 #40。
-- **README 重定位 + Statistical rigor 抽到 docs/**:hero 从"内置统计严谨性 + 一堆 jargon"改写为 outcome-first("你给 LLM 的知识,价值在哪里?omk 帮你用客观数据回答,而不是凭感觉"),Bootstrap CI / α / 长度去偏 / 饱和曲线 / 用例隔离 5 个不变量保留为 hero 下方 callout(visibility 不丢、SEO 不弱化)。Statistical rigor 章节迁移到 [docs/statistical-rigor.md](docs/statistical-rigor.md) / [docs/zh/statistical-rigor.md](docs/zh/statistical-rigor.md),README anchor `#statistical-rigor` 通过 `<a id>` redirect 兼容旧外链。Features 表行重排为 broad-appeal-first(Verdict / 六维 / 多 executor / 21+ 断言 在前)。详见 #PR-readme-rewrite。
+- **README 重定位 + Statistical rigor 抽到 docs/**:hero 从"内置统计严谨性 + 一堆 jargon"改写为 outcome-first("你给 LLM 的知识,价值在哪里?omk 帮你用客观数据回答,而不是凭感觉"),Bootstrap CI / α / 长度去偏 / 饱和曲线 / 用例隔离 5 个不变量保留为 hero 下方 callout(visibility 不丢、SEO 不弱化)。Statistical rigor 章节迁移到 [docs/statistical-rigor.md](docs/statistical-rigor.md) / [docs/zh/statistical-rigor.md](docs/zh/statistical-rigor.md),README anchor `#statistical-rigor` 通过 `<a id>` redirect 兼容旧外链。Features 表行重排为 broad-appeal-first(Verdict / 六维 / 多 executor / 21+ 断言 在前),并把中英文报告截图前置到 Quick start 之前。详见 #44 / #47。
 
 ### Fixed
 
-- **报告术语和多评委可观测性修正**:`--model` 在 CLI / HTML 中统一表达为“任务执行模型”,避免误解为被评测对象;多评委 ensemble 报告不再把 legacy 单评委 `judgeModel` / `judgeRuntime` 展示成实际评委。任务失败的进度行改为 `✗` 并显示 error,不再把 timeout 显示成成功。`meta.totalCostReported=false` 标记部分 executor / 评委不回传 USD 时的成本下界,HTML 用 `≥$x` 展示已上报成本。评委 JSON 轻微破损时会尽量保留可解析 score,减少非语义性的 0 分失败。
+- **报告术语和多评委可观测性修正**:`--model` 在 CLI / HTML 中统一表达为“任务执行模型”,避免误解为被评测对象;多评委 ensemble 报告不再把 legacy 单评委 `judgeModel` / `judgeRuntime` 展示成实际评委。任务失败的进度行改为 `✗` 并显示 error,不再把 timeout 显示成成功。`meta.totalCostReported=false` 标记部分 executor / 评委不回传 USD 时的成本下界,HTML 标出已上报成本。评委 JSON 轻微破损时会尽量保留可解析 score,减少非语义性的 0 分失败。详见 #46。
 - **`bench run --batch --no-cache` 不再被吞**:BatchEvaluationReport 和所有 child report 的 `meta.request.noCache` 现在都会如实记录并透传到实际单次评测,避免 smoke / CI 想禁用 cache 时仍写入默认 cache。`omk bench report --help` 也改为直接显示帮助,不再误启动 report server。
 - **SIGINT 传播到 spawn 出来的子进程**(嵌套 host CLI 下避免 child orphan):用户在 host CLI(codex / claude code)按 Ctrl+C 时,omk spawn 的内层 codex / claude / gemini / script 子进程之前会成 orphan 跑到 timeout。新 `spawnWithSigintPropagation` helper 统一 SIGINT / timeout / abortSignal 三条 kill 路径,SIGTERM + 500ms grace + SIGKILL 兜底。**行为变化**:gemini / script 加 10MB maxBuffer 上限(旧 spawn 实现无限制);timeout grace 多 500ms(120s 默认下不显著)。详见 #33。
 - **⚠ BREAKING-COMPARABILITY:`cacheKey()` 加 executor runtime 指纹,prefix `v3:` → `v4:`** —— 同 executor 换 binary / SDK 版本时旧 cache 不再误命中,避免报告写入新 runtime 指纹但输出来自旧 runtime。runtime 探测改用 executor 实际 `PATH` 形态,`codex-sdk` bundled `@openai/codex` 版本按 SDK 解析链读取。详见 #37。
