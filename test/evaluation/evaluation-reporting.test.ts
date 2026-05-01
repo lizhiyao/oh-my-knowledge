@@ -164,6 +164,45 @@ describe('aggregateReport — reproducibility metadata', () => {
     assert.match(report.meta.judgeRuntime!.fingerprint, /^[0-9a-f]{12}$/);
   });
 
+  it('uses judgeRuntimes and clears legacy single-judge fields for ensemble reports', () => {
+    const request: EvaluationRequest = {
+      samplesPath: '/tmp/s.json',
+      skillDir: '/tmp',
+      artifacts: [],
+      model: 'haiku',
+      judgeModel: 'haiku',
+      executor: 'claude',
+      noJudge: false,
+      concurrency: 1,
+      noCache: false,
+      dryRun: false,
+      blind: false,
+      judgeModels: [
+        { executor: 'claude', model: 'sonnet' },
+        { executor: 'codex', model: 'gpt-5.5' },
+      ],
+    };
+
+    const report = aggregateReport({ ...baseOpts, request });
+
+    assert.equal(report.meta.judgeModel, null);
+    assert.equal(report.meta.judgeRuntime, null);
+    assert.deepEqual(report.meta.judgeModels, ['claude:sonnet', 'codex:gpt-5.5']);
+    assert.equal(report.meta.judgeRuntimes?.['claude:sonnet'].model, 'sonnet');
+    assert.equal(report.meta.judgeRuntimes?.['codex:gpt-5.5'].model, 'gpt-5.5');
+  });
+
+  it('marks totalCostReported=false when any judge cost is not reported', () => {
+    const result = { ...makeVariantResult(), judgeCostReportedByExecutor: false as const };
+    const report = aggregateReport({
+      ...baseOpts,
+      results: { s1: { v1: result } },
+      totalCostUSD: result.costUSD,
+    });
+
+    assert.equal(report.meta.totalCostReported, false);
+  });
+
   it('omits judgePromptHash when noJudge=true (no judge ran)', () => {
     const report = aggregateReport({ ...baseOpts, noJudge: true });
     assert.equal(report.meta.judgePromptHash, undefined);

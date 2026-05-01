@@ -46,7 +46,8 @@ interface DryRunReport {
   variants: string[];
   executor: string;
   model?: string;
-  judgeModel?: string;
+  judgeModel?: string | null;
+  judgeModels?: string[];
   tasks: DryRunTask[];
 }
 
@@ -111,7 +112,7 @@ describe('runEvaluation', () => {
     const report = asDryRunReport(result.report);
 
     assert.equal(report.dryRun, true);
-    assert.equal(report.totalTasks, 6); // 3 samples × 2 variants
+    assert.equal(report.totalTasks, 10); // 5 samples × 2 variants
     assert.deepEqual(report.variants, ['v1', 'v2']);
     assert.equal(report.executor, 'claude');
   });
@@ -127,9 +128,11 @@ describe('runEvaluation', () => {
 
     const schedule = report.tasks.map((t: { sample_id: string; variant: string }) => `${t.sample_id}-${t.variant}`);
     assert.deepEqual(schedule, [
-      's001-v1', 's001-v2',
-      's002-v1', 's002-v2',
-      's003-v1', 's003-v2',
+      'code-review-sql-injection-v1', 'code-review-sql-injection-v2',
+      'code-review-fetch-robustness-v1', 'code-review-fetch-robustness-v2',
+      'code-review-xss-v1', 'code-review-xss-v2',
+      'code-review-authorization-v1', 'code-review-authorization-v2',
+      'code-review-secret-logging-v1', 'code-review-secret-logging-v2',
     ]);
   });
 
@@ -158,7 +161,7 @@ describe('runEvaluation', () => {
     });
     const report = asDryRunReport(result.report);
 
-    assert.equal(report.totalTasks, 6);
+    assert.equal(report.totalTasks, 10);
   });
 
   it('dry-run: custom model and judge model', async () => {
@@ -174,6 +177,23 @@ describe('runEvaluation', () => {
 
     assert.equal(report.model, 'opus');
     assert.equal(report.judgeModel, 'sonnet');
+  });
+
+  it('dry-run: surfaces multi-judge ensemble without legacy single judge model', async () => {
+    const result = await runEvaluation({
+      samplesPath: SAMPLES_PATH,
+      skillDir: SKILL_DIR,
+      variantSpecs: asSpecs(['v1', 'v2']),
+      judgeModels: [
+        { executor: 'claude', model: 'sonnet' },
+        { executor: 'codex', model: 'gpt-5.5' },
+      ],
+      dryRun: true,
+    });
+    const report = asDryRunReport(result.report);
+
+    assert.equal(report.judgeModel, null);
+    assert.deepEqual(report.judgeModels, ['claude:sonnet', 'codex:gpt-5.5']);
   });
 
   it('throws on missing samples file', async () => {
@@ -387,7 +407,7 @@ describe('baseline variant', () => {
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
-    assert.equal(report.totalTasks, 6); // 3 samples × 2 variants
+    assert.equal(report.totalTasks, 10); // 5 samples × 2 variants
     assert.deepEqual(report.variants, ['baseline', 'v1']);
   });
 });
@@ -434,7 +454,7 @@ describe('git: variant', () => {
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
-    assert.equal(report.totalTasks, 6);
+    assert.equal(report.totalTasks, 10);
     assert.deepEqual(report.variants, ['git:v1', 'v1']);
   });
 });
@@ -470,7 +490,7 @@ describe('file path variant', () => {
       dryRun: true,
     });
     const report = asDryRunReport(result.report);
-    assert.equal(report.totalTasks, 6);
+    assert.equal(report.totalTasks, 10);
   });
 });
 

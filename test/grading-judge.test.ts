@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { llmJudgeRepeat, getJudgePromptHash, llmJudgeEnsemble, computeJudgeAgreement, judgeId } from '../src/grading/judge.js';
+import { llmJudge, llmJudgeRepeat, getJudgePromptHash, llmJudgeEnsemble, computeJudgeAgreement, judgeId } from '../src/grading/judge.js';
 import { grade } from '../src/grading/index.js';
 import type { ExecResult, ExecutorFn, JudgeConfig, Sample } from '../src/types/index.js';
 
@@ -43,6 +43,61 @@ describe('getJudgePromptHash', () => {
 });
 
 describe('llmJudgeRepeat', () => {
+  it('salvages score from malformed judge JSON instead of failing the judge', async () => {
+    const executor: ExecutorFn = async () => ({
+      ok: true,
+      output: '{"score": 4 "reason": "missing comma"}',
+      durationMs: 10,
+      durationApiMs: 10,
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      costUSD: 0.001,
+      stopReason: 'end_turn',
+      numTurns: 1,
+    });
+
+    const result = await llmJudge({
+      output: 'answer',
+      rubric: 'rubric',
+      prompt: 'task',
+      executor,
+      model: 'haiku',
+    });
+
+    assert.equal(result.score, 4);
+    assert.equal(result.reason, 'judge returned malformed JSON; score salvaged');
+    assert.equal(result.judgeCostUSD, 0.001);
+  });
+
+  it('does not salvage out-of-range scores from malformed judge JSON', async () => {
+    const executor: ExecutorFn = async () => ({
+      ok: true,
+      output: '{"score": 45 "reason": "bad scale"}',
+      durationMs: 10,
+      durationApiMs: 10,
+      inputTokens: 100,
+      outputTokens: 50,
+      cacheReadTokens: 0,
+      cacheCreationTokens: 0,
+      costUSD: 0.001,
+      stopReason: 'end_turn',
+      numTurns: 1,
+    });
+
+    const result = await llmJudge({
+      output: 'answer',
+      rubric: 'rubric',
+      prompt: 'task',
+      executor,
+      model: 'haiku',
+    });
+
+    assert.equal(result.score, 0);
+    assert.equal(result.reason, 'failed to parse judge response');
+  });
+
   it('repeat=1: equivalent to single judge, scoreSamples=[score], stddev=0', async () => {
     const executor = makeStubJudgeExecutor([4]);
     const r = await llmJudgeRepeat({

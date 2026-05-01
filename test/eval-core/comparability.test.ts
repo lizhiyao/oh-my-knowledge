@@ -162,6 +162,6 @@ describe('comparability warnings', () => {
   it('formats warnings in Chinese', () => {
     const text = formatComparabilityWarnings(crossReportComparabilityWarnings(report(), report({ model: 'm2' })), 'zh');
     assert.match(text, /可比性提示/);
-    assert.match(text, /执行模型不同/);
+    assert.match(text, /任务执行模型不同/);
   });
 });

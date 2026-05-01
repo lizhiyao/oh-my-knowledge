@@ -196,6 +196,11 @@ export function buildBatchEvaluationReport({
   const executorRuntime = commonRuntime(executorRuntimes)
     ?? Object.values(executorRuntimes)[0]
     ?? getExecutorRuntimeFingerprint(executorName, model, { skillDir });
+  const isJudgeEnsemble = Boolean(judgeModels && judgeModels.length >= 2);
+  const totalCostReported = skillResults.every((skill) =>
+    skill.report.meta.totalCostReported !== false
+    && Object.values(skill.report.summary || {}).every((variant) =>
+      variant.execCostReported !== false && variant.judgeCostReported !== false));
 
   const report: BatchEvaluationReport = {
     kind: 'batch-evaluation',
@@ -204,19 +209,20 @@ export function buildBatchEvaluationReport({
     meta: {
       mode: 'skill',
       model,
-      judgeModel: noJudge ? null : judgeModel,
+      judgeModel: noJudge || isJudgeEnsemble ? null : judgeModel,
       executor: executorName,
       skillDir,
       sampleCount,
       taskCount: sampleCount * 2,
       totalArtifacts: skillResults.length,
       totalCostUSD: Number(totalCostUSD.toFixed(6)),
+      ...(totalCostReported ? {} : { totalCostReported: false }),
       timestamp: finishedAt,
       cliVersion: getCliVersion(),
       nodeVersion: process.version,
       executorRuntime,
       executorRuntimes,
-      judgeRuntime: noJudge ? null : getExecutorRuntimeFingerprint(judgeExecutorName || executorName, judgeModel, { skillDir }),
+      judgeRuntime: noJudge || isJudgeEnsemble ? null : getExecutorRuntimeFingerprint(judgeExecutorName || executorName, judgeModel, { skillDir }),
       ...(judgeModels && judgeModels.length >= 2 ? {
         judgeModels: judgeModels.map((jc) => `${jc.executor}:${jc.model}`),
         judgeRuntimes: Object.fromEntries(

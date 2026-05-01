@@ -591,7 +591,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
         const variantName = decodeURIComponent(trendsPageMatch[1]);
         const trend = await queryTrend(reportStore, variantName);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderTrendsPage(variantName, trend.runs));
+        res.end(renderTrendsPage(variantName, trend.runs, lang));
         return;
       }
 
@@ -599,14 +599,14 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
       if (reportPageMatch) {
         const report = await queryRun(reportStore, decodeURIComponent(reportPageMatch[1]));
         res.writeHead(report ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderReportDocumentDetail(report));
+        res.end(renderReportDocumentDetail(report, lang));
         return;
       }
 
       if (path === '/') {
         const runs = await reportStore.list();
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderRunList(runs));
+        res.end(renderRunList(runs, lang));
         return;
       }
 

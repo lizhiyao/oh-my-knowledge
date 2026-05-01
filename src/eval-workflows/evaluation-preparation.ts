@@ -6,7 +6,7 @@ import { buildVariantConfig } from '../eval-core/execution-strategy.js';
 import { loadMcpConfig, resolveMcpUrls } from '../inputs/mcp-resolver.js';
 import { resolveUrls } from '../inputs/url-fetcher.js';
 import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
-import type { Artifact, McpServers, Sample, Task, VariantSpec } from '../types/index.js';
+import type { Artifact, JudgeConfig, McpServers, Sample, Task, VariantSpec } from '../types/index.js';
 
 export interface PreparedEvaluationRun {
   samples: Sample[];
@@ -86,6 +86,7 @@ export async function prepareEvaluationRun({
 export function buildDryRunTaskReport({
   model,
   judgeModel,
+  judgeModels,
   executorName,
   samplesPath,
   skillDir,
@@ -94,16 +95,21 @@ export function buildDryRunTaskReport({
 }: {
   model: string;
   judgeModel: string;
+  judgeModels?: JudgeConfig[];
   executorName: string;
   samplesPath: string;
   skillDir: string;
   tasks: Task[];
   variantNames: string[];
 }) {
+  const judgeModelList = judgeModels && judgeModels.length >= 2
+    ? judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
+    : undefined;
   return {
     dryRun: true as const,
     model,
-    judgeModel,
+    judgeModel: judgeModelList ? null : judgeModel,
+    ...(judgeModelList ? { judgeModels: judgeModelList } : {}),
     variants: variantNames,
     executor: executorName,
     samplesPath,

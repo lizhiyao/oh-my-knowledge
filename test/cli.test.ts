@@ -87,7 +87,7 @@ describe('CLI', () => {
     ]);
     const report = JSON.parse(stdout);
     assert.equal(report.dryRun, true);
-    assert.equal(report.totalTasks, 6);
+    assert.equal(report.totalTasks, 10);
   });
 
   it('bench run --batch --dry-run produces batch JSON', async () => {

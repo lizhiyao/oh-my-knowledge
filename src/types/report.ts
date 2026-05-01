@@ -218,6 +218,8 @@ export interface ReportMeta {
   sampleCount: number;
   taskCount: number;
   totalCostUSD: number;
+  /** False when `totalCostUSD` is only the sum reported by executors/judges that expose USD cost. */
+  totalCostReported?: boolean;
   timestamp: string;
   cliVersion: string;
   nodeVersion: string;
@@ -316,6 +318,8 @@ export interface BatchEvaluationMeta {
   taskCount: number;
   totalArtifacts: number;
   totalCostUSD: number;
+  /** False when `totalCostUSD` is only the sum reported by executors/judges that expose USD cost. */
+  totalCostReported?: boolean;
   timestamp: string;
   cliVersion: string;
   nodeVersion: string;
@@ -359,7 +363,6 @@ export type ReportDocument = EvaluationReport | BatchEvaluationReport;
 export interface Insight {
   type: string;
   severity: 'error' | 'warning' | 'info';
-  message: string;
   details: unknown;
 }
 
@@ -382,9 +385,11 @@ export interface KnowledgeCoverage {
 }
 
 export interface AnalysisResult {
+  /** @deprecated Legacy display text. Renderers generate localized summaries from structured report data. */
   summary?: string;
   insights: Insight[];
-  suggestions: string[];
+  /** @deprecated Legacy display text. Renderers generate localized suggestions from structured insights. */
+  suggestions?: string[];
   coverage?: Record<string, KnowledgeCoverage>;
   /** Per-variant knowledge gap reports. See docs/knowledge-gap-signal-spec.md */
   gapReports?: Record<string, GapReport>;

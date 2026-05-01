@@ -271,6 +271,8 @@ export interface ProgressDone {
   outputTokens?: number;
   costUSD?: number;
   score?: number;
+  ok?: boolean;
+  error?: string;
   skipped?: boolean;
 }
 

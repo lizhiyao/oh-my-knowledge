@@ -225,7 +225,7 @@ export function crossReportComparabilityWarnings(before: Report, after: Report):
   const a = after.meta;
 
   if (b.model !== a.model) {
-    push(warnings, 'model_mismatch', `执行模型不同: ${b.model} → ${a.model}。`, `Execution model changed: ${b.model} → ${a.model}.`);
+    push(warnings, 'model_mismatch', `任务执行模型不同: ${b.model} → ${a.model}。`, `Task execution model changed: ${b.model} → ${a.model}.`);
   }
   if (b.executor !== a.executor) {
     push(warnings, 'executor_mismatch', `executor 不同: ${b.executor} → ${a.executor}。`, `Executor changed: ${b.executor} → ${a.executor}.`);
@@ -280,12 +280,12 @@ export function crossReportComparabilityWarnings(before: Report, after: Report):
     pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', 'after executor', 'After executor', a.executorRuntime);
   }
 
-  if ((b.judgeModel || a.judgeModel) && b.judgeModel !== a.judgeModel) {
-    push(warnings, 'judge_model_mismatch', `评委模型不同: ${b.judgeModel ?? 'none'} → ${a.judgeModel ?? 'none'}。`, `Judge model changed: ${b.judgeModel ?? 'none'} → ${a.judgeModel ?? 'none'}.`);
-  }
   const bJudgeModels = sorted(b.judgeModels);
   const aJudgeModels = sorted(a.judgeModels);
   const ensembleInEither = bJudgeModels.length > 0 || aJudgeModels.length > 0;
+  if (!ensembleInEither && (b.judgeModel || a.judgeModel) && b.judgeModel !== a.judgeModel) {
+    push(warnings, 'judge_model_mismatch', `评委模型不同: ${b.judgeModel ?? 'none'} → ${a.judgeModel ?? 'none'}。`, `Judge model changed: ${b.judgeModel ?? 'none'} → ${a.judgeModel ?? 'none'}.`);
+  }
   if (ensembleInEither && stableStringify(bJudgeModels) !== stableStringify(aJudgeModels)) {
     push(
       warnings,
