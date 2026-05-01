@@ -1,43 +1,47 @@
-# CLAUDE.md — 协作者(包括 AI agent)入场必读
+# CLAUDE.md - Agent 入场清单
 
-omk 是 LLM 评测框架,主打**统计严谨性**(Bootstrap CI / Krippendorff α / Length-debias / Saturation curves)+ verdict / RAG / budget 决策面。两条底线:**测量学不变量不能动**,**分支操作走 gitflow**。
+omk 是 LLM 评测框架。所有改动都要优先保护测量可比性。
 
-## 开工前
+## 开工先做
 
-- 看 [CHANGELOG.md](./CHANGELOG.md) `[Unreleased]` 段了解在做什么版本
-- 改完跑 `yarn lint && yarn build && yarn test`
-- 分支模型 / 发版细节 / commit 风格全在 [CONTRIBUTING.md](./CONTRIBUTING.md)
+- 改代码前先看 `CHANGELOG.md` 的 `[Unreleased]`。
+- 涉及 commit、PR、分支或发版时，先看 `CONTRIBUTING.md`。
+- 交付前默认跑 `yarn lint && yarn build && yarn test`，除非用户明确要求只做更窄验证。
 
-## 分支策略
+## 硬规则
 
-严格 gitflow:`feat/* | fix/* | docs/* | chore/*` → `develop` → `main`(release)。
+- 遵守 `CONTRIBUTING.md` 的 Gitflow：普通 feature / fix / docs / chore PR 进 `develop`；release / hotfix 走专门路径。
+- 不要直接在 `main` 或 `develop` 上提交。
+- commit 格式：`type(scope): 中文 subject`。scope 用稳定模块名，如 `cli` / `i18n` / `judge` / `renderer` / `eval-core` / `eval-workflows` / `inputs` / `executors` / `server` / `analysis` / `authoring` / `grading` / `release` / `claude-md`。
+- 用户可见、发版相关或影响 construct validity 的改动，要更新 `CHANGELOG.md` `[Unreleased]`。
+- 不要在给用户看的 URL 里硬编码 report server 端口；使用 `server.start()` 返回的实际 URL。
 
-PR base **永远是 develop**,绝不在 main / develop 直接 commit。release PR merge 后必须 fast-forward `develop = main`,否则 develop 永远落后一个 merge commit。
+## 测量学不变量
 
-## 测量学不变量(绝对不能动)
+这些是跨版本报告可比性的锚点，不要静默修改：
 
-这些是历史报告可比性的锚,改动会破坏跨版本对比:
+- `src/types/report.ts` 里的 Report JSON schema 字段语义。
+- `test/grading/judge-hash-frozen.test.ts` 冻结的 judge prompt hash。
+- 五层评分管道语义：assertion / llm / judge / dimension / composite。
+- Bootstrap CI 和 Krippendorff alpha 公式。
+- Length-debias toggle 语义：`--no-debias-length` 与 prompt v2/v3 的对应关系。
 
-- **Report JSON schema**:`src/types/report.ts` 里 `Report` / `ReportMeta` / `VariantResult` / `VariantSummary` 字段含义
-- **Judge Prompt Hash**:`v2-cot=fdc81b19c721` / `v3-cot-length=629bf3b8c41d`,由 `test/grading/judge-hash-frozen.test.ts` 字节级冻结。动 `src/grading/judge.ts` 的 prompt 文本会立即 fail
-- **五层评分管道**:assertion / llm / judge / dimension / composite 的算法和权重
-- **Bootstrap CI 公式**(`src/eval-core/bootstrap.ts`)、**Krippendorff α 公式**(`src/grading/human-gold.ts`)
-- **Length-debias toggle**(`--no-debias-length` 与 prompt v2/v3 的对应关系)
+确实需要改不变量时，必须在 `CHANGELOG.md` 标明 BREAKING-COMPARABILITY，并按 `CONTRIBUTING.md` 的版本规则处理。
 
-确需 bump 见 CONTRIBUTING,核心动作是 bump `JUDGE_PROMPT_VERSION_DEBIAS_*` + CHANGELOG 标 breaking-comparability。**不要悄悄改**。
+## 写作规则
 
-## 写代码约定
+- CLI / 报告 UI / 错误信息等 user-facing 文案中文优先。
+- LLM judge 译为 `评委`，不要译为 `判官`。
+- CHANGELOG 每条保持克制：3-5 行，写用户影响、迁移说明、construct-validity 或测量学 caveat，并链接 PR。不要写行号、测试用例清单或嵌套实现细节。
 
-- **commit message 前缀英文 + 正文中文**:type 走 Conventional Commits 标准(`feat` / `fix` / `refactor` / `docs` / `chore` / `test` / `ci` / `perf` / `style` / `build`),scope 用**稳定的代码模块名**(`cli` / `i18n` / `judge` / `renderer` / `eval-core` / `eval-workflows` / `inputs` / `executors` / `server` / `analysis` / `authoring` / `grading` / `release` / `claude-md` 等),**不用 plan 阶段编号**(`D.1.c` / `Phase B.4` 这种本地维护者 plan 内部编号外部不可读、发版后失效、也无法跨版本 grep 聚合)。subject 用中文写。例:`feat(cli-i18n): 接通 --lang flag 和 OMK_LANG 环境变量` / `chore(release): bump 0.20.1 → 0.20.2` / `docs(claude-md): commit message 规则改为英文前缀`。不追溯改历史 commit
-- **user-facing 文案中文优先**(报告 UI / CLI / 错误信息)。LLM judge 译为「**评委**」,不译「判官」,不中英混用
-- **CI gate 两个**:`test/grading/judge-hash-frozen.test.ts`(judge prompt 不变性)、`test/__snapshots__/html-renderer.test.ts.snap`(zh/en × list/detail UI 回归)。改 UI / judge 后 review snapshot diff,确认无误再 `vitest -u`
-- **CHANGELOG 写作克制原则**(AI 协作时代):`[Unreleased]` 每条改动收敛 3-5 行,**链 PR # 让需要细节的人去看,不在这里复述 commit / PR description 已有的内容**。保留:user-facing 影响、BREAKING / migration 指引、测量学不变量 callout(judge prompt hash / cacheKey 版本 / construct validity)。删:代码路径行号(`shared.ts:131-149` 这种 — 文件行号会随其他 PR 偏移)、测试 case 列举(用户不关心)、技术实现 bullet 嵌套(那是 PR description 的事)。Keep a Changelog 分类沿用(Added / Changed / Fixed / Removed / Internal)
-- **不要硬编码端口**:report server 默认请求 7799 但实际 bound 端口取自 `server.start()` 返回值(7799 被占会切 7800+),所有给用户看的 URL 都用 `serverUrl` 实参
+## UI / Judge 改动
 
-## 发版
+- 改 judge prompt 文本前，先确认 `test/grading/judge-hash-frozen.test.ts` 的影响，不要随手更新 hash。
+- 改报告 UI 后，先 review `test/__snapshots__/html-renderer.test.ts.snap` diff，再决定是否更新 snapshot。
 
-push tag `v*` 触发 publish.yml 全自动:lint + build + test → `npm publish` → 从 CHANGELOG 抽对应 section 建 GitHub Release。维护者只 bump version + 改 CHANGELOG `[Unreleased]` → `[VERSION] - YYYY-MM-DD`。细节见 CONTRIBUTING。
+## 参考
 
-## 其他参考
-
-[README.md](./README.md) / [README.zh.md](./README.zh.md) 用户面文档,[SKILL.md](./SKILL.md) Claude Code skill 用法,[docs/](./docs/) 设计 spec(rag-metrics / knowledge-gap-signal / 等)。维护者本地 plan(不在仓库):`~/.claude/plans/iridescent-zooming-lynx.md`。
+- 用户文档：`README.md` / `README.zh.md`
+- Claude Code skill：`SKILL.md`
+- 设计 spec：`docs/`
+- 分支 / 发版 / 贡献细节：`CONTRIBUTING.md`
