@@ -1,14 +1,15 @@
-import { execFile } from 'node:child_process';
 import type { ExecResult, ExecutorInput } from '../types/index.js';
 import { extractCodexTrace, isCodexResultEvent } from './codex-cli-trace.js';
 import type { CodexEvent } from './shared.js';
 import {
-  asErrorLike,
   buildExecEnv,
   DEFAULT_TIMEOUT_MS,
   errorMessage,
+  interruptedExecResult,
   MAX_BUFFER,
+  spawnWithSigintPropagation,
   timeoutExecResult,
+  type SpawnHelperError,
 } from './shared.js';
 
 // codex CLI(0.125)隔离能力对比 claude-cli:
@@ -128,24 +129,17 @@ export function buildCodexArgs({ model, cwd, prompt }: { model: string; cwd?: st
   return args;
 }
 
-// codex 看到 stdin 是 pipe(execFile 默认 stdio)就当作 `<stdin>` 块读,会卡到 timeout。
-// promisify(execFile) 拿不到 child handle 关 stdin,这里手写 Promise 包装器,
-// spawn 后立刻 child.stdin.end() 发 EOF。其余行为(timeout / maxBuffer / 错误时附 stdout)
-// 跟 execFileAsync 一致 —— execFile 在错误时会把 stdout/stderr 挂到 error 对象上。
+// codex 看到 stdin 是 pipe 就当作 `<stdin>` 块读,会卡到 timeout。spawn 后立刻
+// child.stdin.end() 发 EOF。SIGINT 传播 / timeout / maxBuffer / kill 由 helper 统一处理。
 function runCodexExec(args: string[], options: { env: NodeJS.ProcessEnv; cwd?: string; timeout: number; maxBuffer: number }): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = execFile('codex', args, options, (err, stdout, stderr) => {
-      if (err) {
-        const e = err as Error & { stdout?: string; stderr?: string };
-        e.stdout = stdout;
-        e.stderr = stderr;
-        reject(e);
-      } else {
-        resolve({ stdout, stderr });
-      }
-    });
-    child.stdin?.end();
+  const { child, done } = spawnWithSigintPropagation('codex', args, {
+    env: options.env,
+    cwd: options.cwd,
+    timeoutMs: options.timeout,
+    maxBuffer: options.maxBuffer,
   });
+  child.stdin?.end();
+  return done.then((r) => ({ stdout: r.stdout, stderr: r.stderr }));
 }
 
 export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, verbose }: ExecutorInput): Promise<ExecResult> {
@@ -227,8 +221,9 @@ export async function codexCliExecutor({ model, system, prompt, cwd, skillDir, t
     };
   } catch (err: unknown) {
     const durationMs = Date.now() - start;
-    const details = asErrorLike(err);
-    if (details.killed) return { ...timeoutExecResult(timeoutMs, durationMs), costReportedByExecutor: false };
+    const details = err as SpawnHelperError;
+    if (details.killedByTimeout) return { ...timeoutExecResult(timeoutMs, durationMs), costReportedByExecutor: false };
+    if (details.killedBySignal) return { ...interruptedExecResult(durationMs), costReportedByExecutor: false };
 
     // 尝试从 stdout parse 部分结果(同 claude-cli 防御性写法)
     const events = parseCodexJsonl(details.stdout || '');

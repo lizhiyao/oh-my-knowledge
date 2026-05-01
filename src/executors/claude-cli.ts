@@ -2,13 +2,14 @@ import type { ExecResult, ExecutorInput } from '../types/index.js';
 import { extractAgentTrace, isClaudeSdkResultMessage } from './claude-sdk-trace.js';
 import type { ClaudeSdkBaseMessage, ClaudeSdkResultMessage } from './shared.js';
 import {
-  asErrorLike,
   buildExecEnv,
   DEFAULT_TIMEOUT_MS,
   errorMessage,
-  execFileAsync,
+  interruptedExecResult,
   MAX_BUFFER,
+  spawnWithSigintPropagation,
   timeoutExecResult,
+  type SpawnHelperError,
 } from './shared.js';
 
 // claude CLI 用 `--disable-slash-commands` (文档:"Disable all skills") +
@@ -54,12 +55,15 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
 
   const start = Date.now();
   try {
-    const { stdout } = await execFileAsync('claude', args, {
+    const { child, done } = spawnWithSigintPropagation('claude', args, {
       maxBuffer: MAX_BUFFER,
-      timeout: timeoutMs,
+      timeoutMs,
       env,
       ...(cwd && { cwd }),
     });
+    // claude binary 不读 stdin(prompt 走 -p flag),关掉避免 codex 那种 pipe 卡死风险
+    child.stdin?.end();
+    const { stdout } = await done;
     const durationMs = Date.now() - start;
     const messages = parseStreamJson(stdout);
 
@@ -99,10 +103,11 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
     };
   } catch (err: unknown) {
     const durationMs = Date.now() - start;
-    const details = asErrorLike(err);
-    if (details.killed) return timeoutExecResult(timeoutMs, durationMs);
+    const details = err as SpawnHelperError;
+    if (details.killedByTimeout) return timeoutExecResult(timeoutMs, durationMs);
+    if (details.killedBySignal) return interruptedExecResult(durationMs);
 
-    // 尝试从 stdout 解析 stream-json（即使进程退出码非 0 也可能有 result）
+    // 尝试从 stdout 解析 stream-json(即使进程退出码非 0 也可能有 result)
     const messages = parseStreamJson(details.stdout || '');
     const resultMsgs = messages.filter(isClaudeSdkResultMessage) as ClaudeSdkResultMessage[];
     if (resultMsgs.length > 0) {
