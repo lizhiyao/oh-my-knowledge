@@ -4,6 +4,7 @@ import { claudeCliExecutor } from './claude-cli.js';
 import { claudeSdkExecutor } from './claude-sdk.js';
 import { extractAgentTrace } from './claude-sdk-trace.js';
 import { codexCliExecutor } from './codex-cli.js';
+import { codexSdkExecutor } from './codex-sdk.js';
 import { geminiExecutor } from './gemini.js';
 import { openAiApiExecutor } from './openai-api.js';
 import { createScriptExecutor } from './script.js';
@@ -16,6 +17,7 @@ const EXECUTOR_REGISTRY: Record<string, ExecutorFn> = {
   claude: claudeCliExecutor,
   'claude-sdk': claudeSdkExecutor,
   codex: codexCliExecutor,
+  'codex-sdk': codexSdkExecutor,
   gemini: geminiExecutor,
   'anthropic-api': anthropicApiExecutor,
   'openai-api': openAiApiExecutor,

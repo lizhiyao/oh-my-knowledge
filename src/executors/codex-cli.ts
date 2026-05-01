@@ -23,11 +23,11 @@ import {
 //   []                → 必须提供 cwd 非空(否则 throw),caller 应传一个
 //                       isolated 空目录(如 ~/.oh-my-knowledge/isolated-cwd/)
 //   [...] (length>0)  → throw,codex CLI 没有 partial 白名单 flag
-function isolateCodexCwd(allowedSkills: string[] | undefined, cwd: string | null | undefined): void {
+export function isolateCodexCwd(allowedSkills: string[] | undefined, cwd: string | null | undefined, executorName = 'codex-cli'): void {
   if (allowedSkills === undefined) return;
   if (allowedSkills.length > 0) {
     throw new Error(
-      `codex-cli executor 不支持 partial skill 白名单(allowedSkills=${JSON.stringify(allowedSkills)})。\n`
+      `${executorName} executor 不支持 partial skill 白名单(allowedSkills=${JSON.stringify(allowedSkills)})。\n`
       + `  仅支持 [](强制 cwd 隔离,需提供 cwd 非空)或 undefined(默认)。\n`
       + `  codex CLI 无 partial 白名单 flag,请改用其他 executor 或显式 cwd 隔离。`,
     );
@@ -35,7 +35,7 @@ function isolateCodexCwd(allowedSkills: string[] | undefined, cwd: string | null
   // allowedSkills === [] 时必须有 cwd(channel 3 cwd 隔离是 codex 唯一 channel)
   if (!cwd) {
     throw new Error(
-      'codex-cli executor allowedSkills=[] 需要提供 cwd 非空(channel 3 cwd 隔离)。\n'
+      `${executorName} executor allowedSkills=[] 需要提供 cwd 非空(channel 3 cwd 隔离)。\n`
       + '  codex 没有 SDK skill 自动发现 / subagent Skill 工具这两条 channel,\n'
       + '  cwd 文件系统隔离是它唯一能堵 AGENTS.md / .agents/skills/ 自动加载的途径。\n'
       + '  caller 应传一个 isolated 空目录(如 ~/.oh-my-knowledge/isolated-cwd/)。',
@@ -61,7 +61,7 @@ function parseCodexJsonl(stdout: string): CodexEvent[] {
   return events;
 }
 
-function extractCodexUsage(events: CodexEvent[]): { input: number; cached: number; output: number } {
+export function extractCodexUsage(events: CodexEvent[]): { input: number; cached: number; output: number } {
   let input = 0;
   let cached = 0;
   let output = 0;
@@ -91,7 +91,7 @@ export function extractCodexFinalOutput(events: CodexEvent[]): string {
   return allTexts.join('\n');
 }
 
-function extractCodexStopReason(events: CodexEvent[]): string {
+export function extractCodexStopReason(events: CodexEvent[]): string {
   const last = [...events].reverse().find((e) => isCodexResultEvent(e));
   if (!last) return 'unknown';
   if (last.type === 'turn.failed') return 'error';

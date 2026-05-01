@@ -117,6 +117,7 @@ export interface CodexEvent {
     input_tokens?: number;
     cached_input_tokens?: number;
     output_tokens?: number;
+    reasoning_output_tokens?: number;
   };
   elapsed_ms?: number;
   stop_reason?: string;
@@ -134,6 +135,12 @@ export interface CodexEvent {
     content?: string;
     query?: string;
     results?: unknown[];
+    changes?: Array<{ path?: string; kind?: string }>;
+    server?: string;
+    tool?: string;
+    arguments?: unknown;
+    result?: unknown;
+    message?: string;
   };
   error?: { message?: string };
   ts?: number;
