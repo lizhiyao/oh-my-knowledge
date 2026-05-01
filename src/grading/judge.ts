@@ -7,6 +7,52 @@ interface JudgeResponse {
   reasoning?: string;
 }
 
+function extractFirstJsonObject(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === '\\') {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+function salvageJudgeResponse(text: string): JudgeResponse | null {
+  const scoreMatch = text.match(/"score"\s*:\s*([0-5](?:\.\d+)?)(?![\d.])/i)
+    ?? text.match(/\bscore\b\s*[:=]\s*([0-5](?:\.\d+)?)(?![\d.])/i);
+  if (!scoreMatch) return null;
+
+  const score = Number(scoreMatch[1]);
+  if (!Number.isFinite(score) || score < 0 || score > 5) return null;
+
+  return {
+    score,
+    reason: 'judge returned malformed JSON; score salvaged',
+    reasoning: text.trim().slice(0, 2000),
+  };
+}
+
 /**
  * Judge prompt template version.
  *
@@ -170,12 +216,12 @@ export async function llmJudge({ output, rubric, prompt, executor, model, traceS
 
   try {
     const text = result.output!.trim();
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    const jsonText = extractFirstJsonObject(text);
+    if (!jsonText) {
       process.stderr.write(`[omk] LLM judge returned non-JSON: ${text.slice(0, 100)}\n`);
       return { score: 0, reason: 'judge returned non-JSON', judgeCostUSD: result.costUSD, ...reportedField };
     }
-    const parsed = JSON.parse(jsonMatch[0]) as JudgeResponse;
+    const parsed = JSON.parse(jsonText) as JudgeResponse;
     return {
       score: Number(parsed.score) || 0,
       reason: String(parsed.reason || ''),
@@ -184,6 +230,17 @@ export async function llmJudge({ output, rubric, prompt, executor, model, traceS
       ...reportedField,
     };
   } catch (parseErr: unknown) {
+    const salvaged = salvageJudgeResponse(result.output || '');
+    if (salvaged) {
+      process.stderr.write(`[omk] LLM judge malformed JSON salvaged: ${getErrorMessage(parseErr)}\n`);
+      return {
+        score: Number(salvaged.score) || 0,
+        reason: String(salvaged.reason || ''),
+        reasoning: salvaged.reasoning ? String(salvaged.reasoning) : undefined,
+        judgeCostUSD: result.costUSD,
+        ...reportedField,
+      };
+    }
     process.stderr.write(`[omk] LLM judge parse error: ${getErrorMessage(parseErr)}\n`);
     return { score: 0, reason: 'failed to parse judge response', judgeCostUSD: result.costUSD, ...reportedField };
   }

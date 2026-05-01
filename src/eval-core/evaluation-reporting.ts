@@ -230,13 +230,14 @@ export function aggregateReport({
   const judgeModelsList = request?.judgeModels && request.judgeModels.length >= 2
     ? request.judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
     : undefined;
+  const isJudgeEnsemble = Boolean(judgeModelsList);
   const effectiveJudgeExecutorName = request?.judgeExecutor || executorName;
   const runtimeOptions = { skillDir: request?.skillDir };
   const executorRuntimes = buildExecutorRuntimesByVariant({ variants, model, executorName, tasks, artifacts, request });
   const executorRuntime = commonRuntime(executorRuntimes)
     ?? representativeRuntime(executorRuntimes)
     ?? getExecutorRuntimeFingerprint(executorName, model, runtimeOptions);
-  const judgeRuntime = noJudge ? null : getExecutorRuntimeFingerprint(effectiveJudgeExecutorName, judgeModel, runtimeOptions);
+  const judgeRuntime = noJudge || isJudgeEnsemble ? null : getExecutorRuntimeFingerprint(effectiveJudgeExecutorName, judgeModel, runtimeOptions);
   const judgeRuntimes = request?.judgeModels && request.judgeModels.length >= 2
     ? Object.fromEntries(
       request.judgeModels.map((jc) => [`${jc.executor}:${jc.model}`, getExecutorRuntimeFingerprint(jc.executor, jc.model, runtimeOptions)]),
@@ -248,6 +249,8 @@ export function aggregateReport({
   const lengthDebiasOn = request?.lengthDebias !== false;
   const debiasModeList: Array<'length' | 'position'> = [];
   if (lengthDebiasOn) debiasModeList.push('length');
+  const totalCostReported = Object.values(summary).every((variant) =>
+    variant.execCostReported !== false && variant.judgeCostReported !== false);
 
   return {
     kind: 'evaluation',
@@ -255,11 +258,12 @@ export function aggregateReport({
     meta: {
       variants,
       model,
-      judgeModel: noJudge ? null : judgeModel,
+      judgeModel: noJudge || isJudgeEnsemble ? null : judgeModel,
       executor: executorName,
       sampleCount: samples.length,
       taskCount: tasks.length,
       totalCostUSD: Number(totalCostUSD.toFixed(6)),
+      ...(totalCostReported ? {} : { totalCostReported: false }),
       timestamp: new Date().toISOString(),
       cliVersion: getCliVersion(),
       nodeVersion: process.version,

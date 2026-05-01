@@ -375,7 +375,7 @@ options:
   --config <path>        YAML/JSON config file (evaluation-as-code); declares
                          samples + variants + model + executor in one file; CLI
                          flags override config fields when both are provided
-  --model <name>         model under test (default: sonnet)
+  --model <name>         task execution model (default: sonnet)
   --judge-model <name>   judge model (default: haiku)
   --output-dir <path>    output dir (default: ~/.oh-my-knowledge/reports/)
   --no-judge             skip the LLM judge

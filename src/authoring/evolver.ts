@@ -229,7 +229,7 @@ export function mergeEvolveReports(
 
   // pass samples to populate analysis.sampleQuality (capability/difficulty/
   // construct/provenance coverage). Without samples, sampleQuality is omitted but
-  // insights/suggestions/summary still computed.
+  // structured insights are still computed.
   report.analysis = analyzeResults(report, { samples });
 
   return report;

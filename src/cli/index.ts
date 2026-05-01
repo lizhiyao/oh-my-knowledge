@@ -1530,7 +1530,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
     latencyOutlierK: values['latency-k'] != null ? Number(values['latency-k']) : undefined,
     flatThreshold: values.flat != null ? Number(values.flat) : undefined,
   });
-  console.log(formatSampleDiagnostics(diag, { topN }));
+  console.log(formatSampleDiagnostics(diag, { topN, lang }));
 
   // Sample design science coverage block. Render after diagnose 主体,因为
   // coverage 是声明式元数据(capability/difficulty/construct/provenance)的整体分布,

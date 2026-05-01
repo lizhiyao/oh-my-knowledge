@@ -44,7 +44,6 @@ export interface SampleIssue {
   sample_id: string;
   severity: 'error' | 'warning' | 'info';
   kind: SampleIssueKind;
-  message: string;
   /** Minimal evidence to make the issue actionable. */
   evidence: Record<string, unknown>;
 }
@@ -136,20 +135,17 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
       if (max === 5 && min === 5) {
         issues.push({
           sample_id: entry.sample_id, severity: 'info', kind: 'all_pass',
-          message: `所有 variant 得分均为 5 — 用例可能太简单或断言过宽`,
           evidence: { scores: scoresMap(entry, variants) },
         });
       } else if (max === 1 && min === 1) {
         issues.push({
           sample_id: entry.sample_id, severity: 'error', kind: 'all_fail',
-          message: `所有 variant 得分均为 1 — 用例可能 broken / rubric 不可达`,
           evidence: { scores: scoresMap(entry, variants) },
         });
       } else if (max - min < opt.flatThreshold) {
         issues.push({
           sample_id: entry.sample_id, severity: 'warning', kind: 'flat_scores',
-          message: `分差 ${(max - min).toFixed(2)} < ${opt.flatThreshold} — 区分度低,该用例对结论贡献小`,
-          evidence: { scores: scoresMap(entry, variants), spread: Number((max - min).toFixed(2)) },
+          evidence: { scores: scoresMap(entry, variants), spread: Number((max - min).toFixed(2)), threshold: opt.flatThreshold },
         });
       }
     }
@@ -158,7 +154,6 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
     if (errors > 0) {
       issues.push({
         sample_id: entry.sample_id, severity: errors === variants.length ? 'error' : 'warning', kind: 'error_prone',
-        message: `${errors}/${variants.length} variant 执行失败 — 检查用例配置 / 环境依赖`,
         evidence: { errorCount: errors, variantCount: variants.length },
       });
     }
@@ -168,8 +163,7 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
     if (maxStddev >= opt.ambiguousStddev) {
       issues.push({
         sample_id: entry.sample_id, severity: 'warning', kind: 'ambiguous_rubric',
-        message: `LLM 评委多次评分 stddev ${maxStddev.toFixed(2)} ≥ ${opt.ambiguousStddev} — rubric 可能存在歧义`,
-        evidence: { maxStddev: Number(maxStddev.toFixed(2)), stddevs: judgeStddevs.map((s) => Number(s.toFixed(2))) },
+        evidence: { maxStddev: Number(maxStddev.toFixed(2)), threshold: opt.ambiguousStddev, stddevs: judgeStddevs.map((s) => Number(s.toFixed(2))) },
       });
     }
   }
@@ -184,15 +178,13 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
     if (medianCost > 0 && s.cost >= opt.costOutlierK * medianCost) {
       issues.push({
         sample_id: s.entry.sample_id, severity: 'info', kind: 'cost_outlier',
-        message: `用例总成本 $${s.cost.toFixed(4)} ≥ ${opt.costOutlierK}× 中位数 $${medianCost.toFixed(4)}`,
-        evidence: { cost: Number(s.cost.toFixed(4)), medianCost: Number(medianCost.toFixed(4)) },
+        evidence: { cost: Number(s.cost.toFixed(4)), medianCost: Number(medianCost.toFixed(4)), multiplier: opt.costOutlierK },
       });
     }
     if (medianLatency > 0 && s.latencyMs >= opt.latencyOutlierK * medianLatency) {
       issues.push({
         sample_id: s.entry.sample_id, severity: 'info', kind: 'latency_outlier',
-        message: `用例总耗时 ${(s.latencyMs / 1000).toFixed(1)}s ≥ ${opt.latencyOutlierK}× 中位数 ${(medianLatency / 1000).toFixed(1)}s`,
-        evidence: { latencyMs: s.latencyMs, medianMs: medianLatency },
+        evidence: { latencyMs: s.latencyMs, medianMs: medianLatency, multiplier: opt.latencyOutlierK },
       });
     }
   }
@@ -219,8 +211,7 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
           seenPair.add(key);
           issues.push({
             sample_id: prompts[i].id, severity: 'warning', kind: 'near_duplicate',
-            message: `prompt ROUGE-1 ${score.toFixed(2)} ≥ ${opt.duplicateRouge} 与用例 "${prompts[j].id}" 高度相似`,
-            evidence: { duplicateOf: prompts[j].id, rouge1: Number(score.toFixed(2)) },
+            evidence: { duplicateOf: prompts[j].id, rouge1: Number(score.toFixed(2)), threshold: opt.duplicateRouge },
           });
         }
       }
@@ -243,7 +234,6 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
       if (containsRubricGradeKeyword(rubric)) continue;
       issues.push({
         sample_id: entry.sample_id, severity: 'info', kind: 'rubric_clarity_low',
-        message: `rubric 仅 ${rubric.length} 字且未含评分级别词 — 评委标准模糊,可能 judge 分数不稳`,
         evidence: { rubricLength: rubric.length, rubricSnippet: rubric.slice(0, 80) },
       });
     }
@@ -275,7 +265,6 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
         const primarySampleId = info.sampleIds[0];
         issues.push({
           sample_id: primarySampleId, severity: 'warning', kind: 'capability_thin',
-          message: `capability "${cap}" 只 ${info.count} 个 sample 撑(阈值 ${threshold},N=${options.samples.length}) — 单 sample 失败会让该维度结论不稳`,
           evidence: { capability: cap, sampleCount: info.count, threshold, sampleIds: info.sampleIds },
         });
       }
@@ -368,19 +357,112 @@ export function normalizeCapability(raw: string): string {
   return raw.trim().toLowerCase().replace(/[-_\s]+/g, '');
 }
 
+type DiagnosticLang = 'zh' | 'en';
+
+function evidenceNumber(evidence: Record<string, unknown>, key: string, fallback = 0): number {
+  const value = evidence[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function evidenceString(evidence: Record<string, unknown>, key: string, fallback = ''): string {
+  const value = evidence[key];
+  return typeof value === 'string' ? value : fallback;
+}
+
+export function formatSampleIssue(issue: SampleIssue, lang: DiagnosticLang = 'zh'): string {
+  const evidence = issue.evidence;
+  switch (issue.kind) {
+    case 'all_pass':
+      return lang === 'zh'
+        ? '所有 variant 得分均为 5 — 用例可能太简单或断言过宽'
+        : 'All variants scored 5; this sample may be too easy or the assertions may be too loose';
+    case 'all_fail':
+      return lang === 'zh'
+        ? '所有 variant 得分均为 1 — 用例可能 broken / rubric 不可达'
+        : 'All variants scored 1; this sample may be broken or the rubric may be unreachable';
+    case 'flat_scores': {
+      const spread = evidenceNumber(evidence, 'spread').toFixed(2);
+      const threshold = evidenceNumber(evidence, 'threshold').toString();
+      return lang === 'zh'
+        ? `分差 ${spread} < ${threshold} — 区分度低,该用例对结论贡献小`
+        : `Score spread ${spread} < ${threshold}; low discrimination, so this sample contributes little to the conclusion`;
+    }
+    case 'error_prone': {
+      const errors = evidenceNumber(evidence, 'errorCount');
+      const variants = evidenceNumber(evidence, 'variantCount');
+      return lang === 'zh'
+        ? `${errors}/${variants} variant 执行失败 — 检查用例配置 / 环境依赖`
+        : `${errors}/${variants} variants failed; check sample config and environment dependencies`;
+    }
+    case 'ambiguous_rubric': {
+      const maxStddev = evidenceNumber(evidence, 'maxStddev').toFixed(2);
+      const threshold = evidenceNumber(evidence, 'threshold').toString();
+      return lang === 'zh'
+        ? `LLM 评委多次评分 stddev ${maxStddev} ≥ ${threshold} — rubric 可能存在歧义`
+        : `LLM judge score stddev ${maxStddev} >= ${threshold}; the rubric may be ambiguous`;
+    }
+    case 'cost_outlier': {
+      const cost = evidenceNumber(evidence, 'cost').toFixed(4);
+      const medianCost = evidenceNumber(evidence, 'medianCost').toFixed(4);
+      const multiplier = evidenceNumber(evidence, 'multiplier');
+      return lang === 'zh'
+        ? `用例总成本 $${cost} ≥ ${multiplier}× 中位数 $${medianCost}`
+        : `Sample cost $${cost} >= ${multiplier}x median $${medianCost}`;
+    }
+    case 'latency_outlier': {
+      const latencySec = (evidenceNumber(evidence, 'latencyMs') / 1000).toFixed(1);
+      const medianSec = (evidenceNumber(evidence, 'medianMs') / 1000).toFixed(1);
+      const multiplier = evidenceNumber(evidence, 'multiplier');
+      return lang === 'zh'
+        ? `用例总耗时 ${latencySec}s ≥ ${multiplier}× 中位数 ${medianSec}s`
+        : `Sample latency ${latencySec}s >= ${multiplier}x median ${medianSec}s`;
+    }
+    case 'near_duplicate': {
+      const rouge = evidenceNumber(evidence, 'rouge1').toFixed(2);
+      const threshold = evidenceNumber(evidence, 'threshold').toString();
+      const duplicateOf = evidenceString(evidence, 'duplicateOf', 'unknown');
+      return lang === 'zh'
+        ? `prompt ROUGE-1 ${rouge} ≥ ${threshold} 与用例 "${duplicateOf}" 高度相似`
+        : `Prompt ROUGE-1 ${rouge} >= ${threshold}; highly similar to sample "${duplicateOf}"`;
+    }
+    case 'rubric_clarity_low': {
+      const rubricLength = evidenceNumber(evidence, 'rubricLength');
+      return lang === 'zh'
+        ? `rubric 仅 ${rubricLength} 字且未含评分级别词 — 评委标准模糊,可能 judge 分数不稳`
+        : `Rubric is only ${rubricLength} characters and has no grading-level terms; judge scores may be unstable`;
+    }
+    case 'capability_thin': {
+      const capability = evidenceString(evidence, 'capability', 'unknown');
+      const sampleCount = evidenceNumber(evidence, 'sampleCount');
+      const threshold = evidenceNumber(evidence, 'threshold');
+      return lang === 'zh'
+        ? `capability "${capability}" 只 ${sampleCount} 个 sample 撑(阈值 ${threshold}) — 单 sample 失败会让该维度结论不稳`
+        : `Capability "${capability}" is covered by only ${sampleCount} samples (threshold ${threshold}); one failed sample can destabilize this dimension`;
+    }
+    default:
+      return lang === 'zh'
+        ? `结构化诊断：${issue.kind}`
+        : `Structured diagnostic: ${issue.kind}`;
+  }
+}
+
 /**
  * Plain-text formatter for `omk bench diagnose <reportId>`.
  */
-export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: { topN?: number } = {}): string {
+export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: { topN?: number; lang?: DiagnosticLang } = {}): string {
   const lines: string[] = [];
-  const { topN } = options;
+  const { topN, lang = 'zh' } = options;
   lines.push('');
-  lines.push(`  用例质量诊断 — health score ${diag.healthScore}/100`);
-  lines.push(`  用例总数: ${diag.totals.samples}, flagged: ${diag.totals.flagged} (errors=${diag.totals.errors}, warnings=${diag.totals.warnings}, infos=${diag.totals.infos})`);
+  lines.push(lang === 'zh'
+    ? `  用例质量诊断 — health score ${diag.healthScore}/100`
+    : `  Sample quality diagnostics — health score ${diag.healthScore}/100`);
+  lines.push(lang === 'zh'
+    ? `  用例总数: ${diag.totals.samples}, flagged: ${diag.totals.flagged} (errors=${diag.totals.errors}, warnings=${diag.totals.warnings}, infos=${diag.totals.infos})`
+    : `  Samples: ${diag.totals.samples}, flagged: ${diag.totals.flagged} (errors=${diag.totals.errors}, warnings=${diag.totals.warnings}, infos=${diag.totals.infos})`);
   lines.push('');
 
   if (diag.issues.length === 0) {
-    lines.push('  ✓ 未检测到用例质量问题');
+    lines.push(lang === 'zh' ? '  ✓ 未检测到用例质量问题' : '  ✓ No sample quality issues detected');
     lines.push('');
     return lines.join('\n');
   }
@@ -395,37 +477,53 @@ export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: {
     const display = topN ? matching.slice(0, topN) : matching;
     for (const issue of display) {
       const sev = issue.severity === 'error' ? '✗' : issue.severity === 'warning' ? '⚠' : 'ℹ';
-      lines.push(`    ${sev} ${issue.sample_id}: ${issue.message}`);
+      lines.push(`    ${sev} ${issue.sample_id}: ${formatSampleIssue(issue, lang)}`);
     }
     if (topN && matching.length > topN) {
-      lines.push(`    ... 还有 ${matching.length - topN} 个,加 --top 0 看全部`);
+      lines.push(lang === 'zh'
+        ? `    ... 还有 ${matching.length - topN} 个,加 --top 0 看全部`
+        : `    ... ${matching.length - topN} more; pass --top 0 to show all`);
     }
     lines.push('');
   }
 
   // Recommendations based on dominant issue kinds.
-  lines.push('  建议:');
+  lines.push(lang === 'zh' ? '  建议:' : '  Recommendations:');
   if (diag.byKind.all_pass && diag.byKind.all_pass.length > diag.totals.samples * 0.3) {
-    lines.push('  - 用例太简单 (>30% all-pass) — 加难度 / 加更严断言来拉开 variant 差距');
+    lines.push(lang === 'zh'
+      ? '  - 用例太简单 (>30% all-pass) — 加难度 / 加更严断言来拉开 variant 差距'
+      : '  - Samples are too easy (>30% all-pass); add difficulty or stricter assertions to separate variants');
   }
   if (diag.byKind.flat_scores && diag.byKind.flat_scores.length > diag.totals.samples * 0.3) {
-    lines.push('  - 多数用例区分度低 — 当前评分维度可能与 skill 差异不正交');
+    lines.push(lang === 'zh'
+      ? '  - 多数用例区分度低 — 当前评分维度可能与 skill 差异不正交'
+      : '  - Many samples have low discrimination; the scoring dimensions may not isolate skill differences');
   }
   if (diag.byKind.near_duplicate) {
-    lines.push('  - 删除或改写 near-duplicate 用例,避免数据有效维度被挤压');
+    lines.push(lang === 'zh'
+      ? '  - 删除或改写 near-duplicate 用例,避免数据有效维度被挤压'
+      : '  - Remove or rewrite near-duplicate samples so the effective data dimensions are not compressed');
   }
   if (diag.byKind.ambiguous_rubric) {
-    lines.push('  - rubric 在这些用例上歧义大 — 改写 rubric 或加更多确定性断言锚定');
+    lines.push(lang === 'zh'
+      ? '  - rubric 在这些用例上歧义大 — 改写 rubric 或加更多确定性断言锚定'
+      : '  - Rubrics are ambiguous on these samples; rewrite them or add deterministic assertions');
   }
   if (diag.byKind.error_prone) {
-    lines.push('  - 这些用例执行失败 — 检查环境依赖 / executor 配置 / 用例本身是否过期');
+    lines.push(lang === 'zh'
+      ? '  - 这些用例执行失败 — 检查环境依赖 / executor 配置 / 用例本身是否过期'
+      : '  - These samples failed during execution; check environment dependencies, executor config, or stale samples');
   }
   // sample design science signals
   if (diag.byKind.rubric_clarity_low) {
-    lines.push('  - rubric 太短 / 无评分级别词 — 把 rubric 写成"应识别 X / 必须包含 Y / 至少 N 项"这样的判分细则,让 judge 有可执行标准');
+    lines.push(lang === 'zh'
+      ? '  - rubric 太短 / 无评分级别词 — 把 rubric 写成"应识别 X / 必须包含 Y / 至少 N 项"这样的判分细则,让 judge 有可执行标准'
+      : '  - Rubrics are too short or lack grading-level terms; write actionable criteria such as "must identify X", "must include Y", or "at least N items"');
   }
   if (diag.byKind.capability_thin) {
-    lines.push('  - 某 capability 维度只 1-2 用例撑 — 要么补 sample 加厚该维度,要么删该 capability(明确不在测试范围),避免单 sample 失败让该维度结论不稳');
+    lines.push(lang === 'zh'
+      ? '  - 某 capability 维度只 1-2 用例撑 — 要么补 sample 加厚该维度,要么删该 capability(明确不在测试范围),避免单 sample 失败让该维度结论不稳'
+      : '  - Some capability dimensions have only 1-2 samples; add coverage or remove the capability from scope to avoid single-sample instability');
   }
 
   lines.push('');

@@ -6,7 +6,9 @@ import type { Lang, Report } from '../src/types/index.js';
 // Snapshot 稳定化:把所有 YYYY-MM-DD HH:MM:SS 形式的本地时间戳替换成 [TIMESTAMP],
 // 防止 fmtLocalTime 基于本地时区产出的字符串在不同机器/CI 上抖动。
 function normalizeForSnapshot(html: string): string {
-  return html.replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/g, '[TIMESTAMP]');
+  return html
+    .replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/g, '[TIMESTAMP]')
+    .replace(/[ \t]+$/gm, '');
 }
 
 const SAMPLE_REPORT: Report = {
@@ -86,8 +88,7 @@ const SAMPLE_REPORT: Report = {
     },
   ],
   analysis: {
-    insights: [{ type: 'uniform_scores', severity: 'info', message: 'Scores are similar', details: [] }],
-    suggestions: ['Add harder tests'],
+    insights: [{ type: 'uniform_scores', severity: 'info', details: ['s001'] }],
   },
 };
 
@@ -170,6 +171,16 @@ describe('renderRunDetail', () => {
     assert.match(html, /稳定/);
     assert.match(html, /CV \d/);  // CV 数字出现
     assert.match(html, /95% CI/);
+  });
+
+  it('debias mode chip uses neutral, customer-facing labels', () => {
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    report.meta.debiasMode = ['length'];
+    const html = renderRunDetail(report, 'zh');
+    assert.match(html, /评分偏差控制: 长度偏差/);
+    assert.doesNotMatch(html, /校正: length/);
+    assert.doesNotMatch(html, /Debias: length/);
+    assert.doesNotMatch(html, /评分偏差控制[^<]*style="color:var\(--green\)"/);
   });
 
   it('stability cell: errorCount > 0 时副区显示完成率 alert', () => {
@@ -269,8 +280,11 @@ describe('renderRunDetail', () => {
 
   it('renders analysis section', () => {
     const html = renderRunDetail(SAMPLE_REPORT);
-    assert.ok(html.includes('Scores are similar'));
-    assert.ok(html.includes('Add harder tests'));
+    assert.ok(html.includes('自动分析'));
+    assert.ok(html.includes('个评测用例在变体间分差 &lt; 0.5'));
+    assert.ok(html.includes('增加更有挑战性的评测用例'));
+    assert.ok(!html.includes('Scores are similar'));
+    assert.ok(!html.includes('Add harder tests'));
   });
 
   it('renders variant configuration section', () => {
@@ -301,6 +315,65 @@ describe('renderRunDetail', () => {
     const html = renderRunDetail(SAMPLE_REPORT, 'en' as Lang);
     assert.ok(html.includes('Evaluation Report'));
     assert.ok(html.includes('Quality'));
+  });
+
+  it('renders polished English detail copy for README screenshots', () => {
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    report.meta.variants = ['v1'];
+    report.meta.sampleCount = 1;
+    report.summary = { v1: report.summary.v1 };
+    report.results = [{
+      sample_id: 's001',
+      variants: { v1: SAMPLE_REPORT.results[0].variants.v1 },
+    }];
+
+    const html = renderRunDetail(report, 'en' as Lang);
+
+    assert.ok(html.includes('1 sample × 1 variant'));
+    assert.ok(!html.includes('1 samples × 1 variants'));
+    assert.ok(html.includes('Six-Dimension Comparison'));
+    assert.ok(html.includes("task execution model's output"));
+    assert.ok(!html.includes("the model's output"));
+    assert.ok(html.includes('Executor:'));
+    assert.ok(html.includes('Duration:'));
+  });
+
+  it('localizes auto analysis from structured data instead of persisted display text', () => {
+    const report = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    report.analysis = {
+      summary: '【结论】这是旧报告里的中文摘要',
+      insights: [{
+        type: 'uniform_scores',
+        severity: 'info',
+        message: '这是旧报告里的中文问题',
+        details: ['s001'],
+      }],
+      suggestions: ['这是旧报告里的中文建议'],
+    } as unknown as Report['analysis'];
+
+    const en = renderRunDetail(report, 'en' as Lang);
+    assert.ok(en.includes('Conclusion'));
+    assert.ok(en.includes('samples differ by less than 0.5 across variants'));
+    assert.ok(!en.includes('这是旧报告里的中文摘要'));
+    assert.ok(!en.includes('这是旧报告里的中文问题'));
+    assert.ok(!en.includes('这是旧报告里的中文建议'));
+
+    report.analysis = {
+      summary: 'Legacy English summary',
+      insights: [{
+        type: 'uniform_scores',
+        severity: 'info',
+        message: 'Legacy English issue',
+        details: ['s001'],
+      }],
+      suggestions: ['Legacy English suggestion'],
+    } as unknown as Report['analysis'];
+    const zh = renderRunDetail(report, 'zh' as Lang);
+    assert.ok(zh.includes('结论'));
+    assert.ok(zh.includes('个评测用例在变体间分差 &lt; 0.5'));
+    assert.ok(!zh.includes('Legacy English summary'));
+    assert.ok(!zh.includes('Legacy English issue'));
+    assert.ok(!zh.includes('Legacy English suggestion'));
   });
 
   it('supports Chinese language (default)', () => {
@@ -338,7 +411,7 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('执行器指纹 v2'));
     assert.ok(html.includes('abc123def456'));
     assert.ok(html.includes('abc123variant'));
-    assert.ok(html.includes('binary 0.128.0'));
+    assert.ok(html.includes('二进制 0.128.0'));
     assert.ok(html.includes('评委指纹'));
     assert.ok(html.includes('def456abc123'));
   });

@@ -18,6 +18,7 @@ export interface ProgressInfo {
   judgePhase?: string;
   judgeDim?: string;
   skipped?: boolean;
+  ok?: boolean;
   attempt?: number;
   maxAttempts?: number;
   error?: string;
@@ -39,6 +40,7 @@ export function makeOnProgress(lang: CliLang): (info: ProgressInfo) => void {
     judgePhase: _judgePhase,
     judgeDim,
     skipped,
+    ok,
     attempt,
     maxAttempts,
     error,
@@ -78,6 +80,12 @@ export function makeOnProgress(lang: CliLang): (info: ProgressInfo) => void {
       process.stderr.write(tCli('cli.progress.judged', lang, { ...ctx, dim, score: score ?? '' }));
     } else if (phase === 'done' && skipped) {
       if (sample_id) process.stderr.write(tCli('cli.progress.skipped', lang, ctx));
+    } else if (ok === false) {
+      const cost: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+      process.stderr.write(tCli('cli.progress.sample_failed_done', lang, {
+        ...ctx, ms: durationMs ?? '', input: inputTokens ?? '', output: outputTokens ?? '',
+        cost, error: error ?? '',
+      }));
     } else {
       const cost: string = costUSD != null && costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
       const scoreInfo: string = typeof score === 'number' ? ` score=${score}` : '';

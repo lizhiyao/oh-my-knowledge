@@ -30,6 +30,12 @@ export function fmtCost(usd: number | undefined | null, reported: boolean = true
   return `$${Number(usd || 0).toFixed(4)}`;
 }
 
+export function fmtKnownCost(usd: number | undefined | null, fullyReported: boolean = true): string {
+  const value = Number(usd || 0);
+  if (fullyReported) return fmtCost(value);
+  return value > 0 ? `≥${fmtCost(value)}` : '—';
+}
+
 export function fmtLocalTime(isoStr: string): string {
   const d = new Date(isoStr);
   const pad = (n: number): string => String(n).padStart(2, '0');
@@ -52,16 +58,16 @@ export const I18N: Record<Lang, Record<string, string>> = {
     title: '评测报告',
     subtitle: '知识载体评测',
     noRuns: '暂无评测记录。运行 <code>omk bench run --control v1 --treatment v2</code> 开始。',
-    runId: '报告名称', variants: '实验分组', model: '执行模型', samples: '用例数',
-    score: '分数', cost: '成本', time: '时间',
+    runId: '报告名称', variants: '实验分组', model: '任务执行模型', samples: '评测用例数',
+    score: '分数', cost: '执行成本', time: '时间',
     deleteBtnText: '删除', deleteConfirm: '确定删除报告', deleteFail: '删除失败',
     reportTitle: '评测报告', backToList: '← 返回列表',
     judge: '评委', executor: '执行器', blindLabel: '盲测', revealBlind: '显示变体对应关系',
     dimFact: '📋 事实', dimFactDesc: '输出的事实声明是否正确（规则可验证：关键词匹配、格式校验等断言）',
     dimBehavior: '🛠️ 行为', dimBehaviorDesc: '执行过程是否合规（规则可验证：工具调用路径、轮次限制、成本约束等断言）',
-    dimJudge: '💬 LLM 评价', dimJudgeDesc: '请一个 LLM 当评委，读被测模型的输出内容，按预先写好的评分规则（英文 rubric）打 1-5 分。主观但能抓到规则断言判不了的"整体好不好"',
+    dimJudge: '💬 LLM 评价', dimJudgeDesc: '请一个 LLM 当评委，读任务执行模型的输出内容，按预先写好的评分规则（英文 rubric）打 1-5 分。主观但能抓到规则断言判不了的"整体好不好"',
     dimQuality: '📊 质量', dimQualityDesc: '事实 + 行为 + LLM 评价的等权平均（1-5 分）。UI 已拆出三层平铺展示，composite 字段仅保留在 JSON 数据层',
-    dimCost: '💰 成本', dimCostDesc: '基于 Token 消耗量和模型定价计算的 API 调用费用',
+    dimCost: '💰 执行成本', dimCostDesc: '基于 Token 消耗量和模型定价计算的任务执行模型调用费用',
     dimEfficiency: '⚡ 效率', dimEfficiencyDesc: 'Skill 从发送请求到模型返回完整响应的端到端耗时',
     dimStability: '🛡️ 稳定性', dimStabilityDesc: '多次运行（--repeat ≥ 2）分数一致性的 CV 变异系数，单轮显示"—"',
     compositeScore: '综合分数', scoreRange: '分数范围',
@@ -77,11 +83,11 @@ export const I18N: Record<Lang, Record<string, string>> = {
     judgeModelsLabel: '评委模型',
     judgeRepeatLabel: '每条用例评委评价次数',
     judgePromptHashLabel: '评委提示词指纹', judgePromptHashDesc: '评委提示词模板的 SHA256 前 12 位。两份报告 hash 相同才能严格比分数',
-    sampleHashCount: '用例指纹', sampleHashCountDesc: '已记录内容指纹的测评用例数 / 全部用例数。每条用例算 SHA256 前 12 位，用于跨 run 识别"测的是不是同一件事"。两份报告对同一 sample_id hash 一致才能严格比分',
+    sampleHashCount: '评测用例指纹', sampleHashCountDesc: '已记录内容指纹的评测用例数 / 全部评测用例数。每条评测用例算 SHA256 前 12 位，用于跨 run 识别"测的是不是同一件事"。两份报告对同一 sample_id hash 一致才能严格比分',
     evalFrameworkLabel: '统计框架', evalFrameworkBootstrap: 'bootstrap CI', evalFrameworkBoth: 't-test + bootstrap', evalFrameworkTTest: 't-test',
     evalFrameworkDesc: '分数置信区间用什么算法。bootstrap 不假设分布,适合 LLM 1-5 序数评分;t-test 假设正态,小样本下不稳。"both" = 报告同时含两种,renderer 优先 bootstrap',
     bootstrapDiffSignificant: '✓ 显著差异', bootstrapDiffNotSignificant: '✗ 无显著差异', bootstrapDiffLabel: 'Δ (treatment - control)',
-    totalCost: '总成本', inputTokens: '输入', outputTokens: '输出',
+    totalCost: '已上报总成本', inputTokens: '输入', outputTokens: '输出',
     totalTokens: '总计', tokPerReq: 'tokens/次', avgLatency: '平均延迟',
     successRate: '完成率', success: '成功', errors: '失败',
     tokenComparison: 'Tokens 对比', latencyComparison: '延迟对比',
@@ -90,7 +96,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     perSampleDetail: '逐用例详情', sample: '用例',
     scoreCol: '分数', tokensCol: 'Tokens', msCol: '延迟(ms)',
     batchOverview: '总览', batchSkill: 'Skill', batchBaseline: '无 Skill', batchWithSkill: '有 Skill', batchImprovement: '提升',
-    batchSkills: '个 Skill', batchSamples: '个用例',
+    batchSkills: '个 Skill', batchSamples: '个评测用例',
     agentLabel: 'Agent 评测',
     skillLabel: 'Skill 评测',
     promptLabel: 'Prompt 评测',
@@ -158,22 +164,22 @@ export const I18N: Record<Lang, Record<string, string>> = {
     viewTrendLink: '查看趋势 →',
     artifactHashLabel: '版本指纹',
     artifactHashTooltip: 'skill 文件内容的 SHA-256 前 12 位(不含路径/时间/git),用于辨别报告对应哪一版 skill;同文件多次跑指纹不变,改一字节就变——防止"改动效果"和"随机波动"混淆',
-    switchLang: 'EN',
+    switchLang: '英文',
   },
   en: {
     title: 'Evaluation Reports',
     subtitle: 'Knowledge Artifact Evaluation',
     noRuns: 'No evaluation runs yet. Run <code>omk bench run --control v1 --treatment v2</code> to start.',
-    runId: 'Report', variants: 'Variant', model: 'Execution model', samples: 'Samples',
-    score: 'Score', cost: 'Cost', time: 'Time',
+    runId: 'Report', variants: 'Variant', model: 'Task execution model', samples: 'Samples',
+    score: 'Score', cost: 'Execution cost', time: 'Time',
     deleteBtnText: 'Delete', deleteConfirm: 'Delete report', deleteFail: 'Delete failed',
     reportTitle: 'Evaluation Report', backToList: '← Back to list',
-    judge: 'judge', executor: 'executor', blindLabel: 'BLIND', revealBlind: 'Reveal variant mapping',
+    judge: 'Judge', executor: 'Executor', blindLabel: 'BLIND', revealBlind: 'Reveal variant mapping',
     dimFact: '📋 Fact', dimFactDesc: 'Are factual claims correct (rule-verified: keyword matching, schema checks, etc.)',
     dimBehavior: '🛠️ Behavior', dimBehaviorDesc: 'Is execution compliant (rule-verified: tool paths, turn limits, cost constraints)',
-    dimJudge: '💬 LLM judge', dimJudgeDesc: 'A separate LLM acts as judge: reads the tested model output, scores 1-5 against a predefined rubric. Subjective, catches "overall feel" rule-based assertions miss',
+    dimJudge: '💬 LLM judge', dimJudgeDesc: 'A separate LLM acts as judge: reads the task execution model output, scores 1-5 against a predefined rubric. Subjective, catches "overall feel" rule-based assertions miss',
     dimQuality: '📊 Quality', dimQualityDesc: 'Equal-weight average of Fact + Behavior + LLM judge (1-5). UI now splits the three layers into separate columns; composite lives only in JSON data',
-    dimCost: '💰 Cost', dimCostDesc: 'API cost calculated from token usage and model pricing',
+    dimCost: '💰 Exec cost', dimCostDesc: 'API cost for the task execution model, calculated from token usage and model pricing',
     dimEfficiency: '⚡ Efficiency', dimEfficiencyDesc: 'End-to-end latency from sending request to receiving full response',
     dimStability: '🛡️ Stability', dimStabilityDesc: 'How much the score swings across repeated runs. Needs `--repeat ≥ 2`; single-run shows "—" because stability cannot be measured from one run',
     compositeScore: 'composite score', scoreRange: 'Range',
@@ -193,7 +199,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     evalFrameworkLabel: 'CI framework', evalFrameworkBootstrap: 'bootstrap CI', evalFrameworkBoth: 't-test + bootstrap', evalFrameworkTTest: 't-test',
     evalFrameworkDesc: 'Algorithm used for confidence intervals. Bootstrap is distribution-free and recommended for ordinal LLM scores; t-test assumes normality and is unstable on small N. "both" = report has both, renderer prefers bootstrap',
     bootstrapDiffSignificant: '✓ significant', bootstrapDiffNotSignificant: '✗ not significant', bootstrapDiffLabel: 'Δ (treatment - control)',
-    totalCost: 'total cost', inputTokens: 'Input', outputTokens: 'Output',
+    totalCost: 'Reported total cost', inputTokens: 'Input', outputTokens: 'Output',
     totalTokens: 'Total', tokPerReq: 'tokens/req', avgLatency: 'avg latency',
     successRate: 'completion rate', success: 'Success', errors: 'Errors',
     tokenComparison: 'Tokens Comparison', latencyComparison: 'Latency Comparison',
@@ -270,7 +276,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     viewTrendLink: 'trend →',
     artifactHashLabel: 'Version fingerprint',
     artifactHashTooltip: 'First 12 hex chars of SHA-256 over the skill file content (content-only: no path/time/git); identifies which version of the skill this report ran — same file = same fingerprint, any byte change = different fingerprint. Keeps "intentional change" separate from "random variance"',
-    switchLang: '中文',
+    switchLang: 'Chinese',
   },
 };
 

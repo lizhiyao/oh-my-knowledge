@@ -1,7 +1,8 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
+import { generateAnalysisSummary } from '../analysis/report-diagnostics.js';
 import { pValueCategory } from '../eval-core/statistics.js';
 import { computeVerdict, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
-import type { AnalysisResult, GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types/index.js';
+import type { GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types/index.js';
 
 /**
  * Verdict pill — sticky banner at the top of the HTML report giving the same
@@ -25,7 +26,7 @@ function verdictOneLine(level: VerdictLevel, lang: Lang, treatment?: string, con
       case 'CAUTIOUS':     return `${t} 比 ${c} 略好 — 但建议再仔细看,差距很小或某层未达标`;
       case 'REGRESS':      return `${t} 比 ${c} 明显更差 — 不要发布`;
       case 'NOISE':        return `${t} 和 ${c} 没看出明显差别 — 可以多加几条用例再试`;
-      case 'UNDERPOWERED': return `用例数太少,看不出 ${t} 和 ${c} 的差别 — 多跑几个再看`;
+      case 'UNDERPOWERED': return `评测用例数太少,看不出 ${t} 和 ${c} 的差别 — 多跑几个再看`;
       case 'SOLO':         return `只跑了一组,需要加对照组才能对比`;
     }
   }
@@ -66,7 +67,7 @@ export function levelTooltip(level: VerdictLevel, lang: Lang): string {
       case 'REGRESS':      return '实验组分数显著劣于对照组';
       case 'CAUTIOUS':     return '实验组略优于对照组,但差距小或某层未达 gate';
       case 'NOISE':        return '两组分数差距置信区间跨过 0,统计上分辨不出效果';
-      case 'UNDERPOWERED': return '用例数太少,需要多加几条再看';
+      case 'UNDERPOWERED': return '评测用例数太少,需要多加几条再看';
       case 'SOLO':         return '只跑了一组,没做对比';
     }
   }
@@ -325,11 +326,11 @@ export function renderSaturationCurve(saturation: SaturationData | undefined, va
 
   return `
     <h2 style="margin-top:24px">${lang === 'zh' ? '饱和曲线 (Saturation curve)' : 'Saturation curve'}</h2>
-    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? '随累积用例数 N 增长的均值与 95% CI。CI 宽度衰减放缓即饱和——再多用例对结论无实质收益。' : 'Mean and 95% CI as cumulative N grows. When CI shrink rate flattens, the evidence has saturated — more samples buy little.'}</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${lang === 'zh' ? '随累积评测用例数 N 增长的均值与 95% CI。CI 宽度衰减放缓即饱和——再多评测用例对结论无实质收益。' : 'Mean and 95% CI as cumulative N grows. When CI shrink rate flattens, the evidence has saturated — more samples buy little.'}</p>
     <svg viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:${width}px;height:auto;display:block">
       ${yTicks}
       <text x="${padL - 36}" y="${padT + plotH / 2}" font-size="11" text-anchor="middle" fill="var(--text-muted)" transform="rotate(-90 ${padL - 36} ${padT + plotH / 2})">${lang === 'zh' ? '均值' : 'mean'}</text>
-      <text x="${padL + plotW / 2}" y="${height - 4}" font-size="11" text-anchor="middle" fill="var(--text-muted)">${lang === 'zh' ? '累积用例数 N' : 'cumulative N'}</text>
+      <text x="${padL + plotW / 2}" y="${height - 4}" font-size="11" text-anchor="middle" fill="var(--text-muted)">${lang === 'zh' ? '累积评测用例数 N' : 'cumulative N'}</text>
       ${xTicks}
       ${seriesParts.join('\n')}
     </svg>
@@ -487,10 +488,10 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   }).join('');
 
   const guideModalId = 'guide-six-dims';
-  const guideTitle = lang === 'zh' ? '如何阅读六维对比？' : 'How to read this 6-dim comparison?';
+  const guideTitle = lang === 'zh' ? '如何阅读六维对比？' : 'How to read this six-dimension comparison?';
   const guideIntro = lang === 'zh'
     ? '每行是一个实验分组（Variant），六列分别衡量不同维度：'
-    : 'Each row is a Variant. Six columns measure independent dimensions:';
+    : 'Each row is an experiment variant. Six columns measure independent dimensions:';
   const icon = (emoji: string) => `<span aria-hidden="true">${emoji}</span>`;
   // 维度分隔加粗(border-top 2px),让六维的视觉边界更明显。sub 缩进从 28 收到 22。
   const dim = 'style="padding:12px 0 4px;border-top:2px solid var(--border);color:var(--text-primary);font-weight:600"';
@@ -500,10 +501,10 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   const sub = 'style="padding:2px 0 2px 22px;font-size:12px;color:var(--text-secondary);font-weight:500"';
   const subDesc = 'style="padding:2px 0;font-size:12px;color:var(--text-muted)"';
   const guideRows = lang === 'zh' ? `
-    <tr><td ${dimFirst}>${icon('📋')} <strong>事实</strong></td><td ${dimFirstDesc}>模型的输出说得对不对（事实声明层面）。靠规则断言判：关键词是否出现、JSON 格式是否合法等，答错了直接不给分。</td></tr>
-    <tr><td ${dim}>${icon('🛠️')} <strong>行为</strong></td><td ${dimDesc}>模型做事的过程有没有走对路。靠规则断言判：该调的工具有没有调、有没有超过轮次/成本上限。</td></tr>
-    <tr><td ${dim}>${icon('💬')} <strong>LLM 评价</strong></td><td ${dimDesc}>请一个 LLM 当评委，让它读被测模型的输出内容，按预先写好的评分规则（英文叫 rubric）打个 1-5 分。主观但能抓到规则断言判不了的"整体好不好"——比如回答是否清晰、有没有答非所问。</td></tr>
-    <tr><td ${dim}>${icon('💰')} <strong>成本</strong></td><td ${dimDesc}>跑这次评测花了多少 API 调用费（只算执行成本，评委那个 LLM 的钱不算进来）。</td></tr>
+    <tr><td ${dimFirst}>${icon('📋')} <strong>事实</strong></td><td ${dimFirstDesc}>任务执行模型的输出说得对不对（事实声明层面）。靠规则断言判：关键词是否出现、JSON 格式是否合法等，答错了直接不给分。</td></tr>
+    <tr><td ${dim}>${icon('🛠️')} <strong>行为</strong></td><td ${dimDesc}>任务执行模型做事的过程有没有走对路。靠规则断言判：该调的工具有没有调、有没有超过轮次/成本上限。</td></tr>
+    <tr><td ${dim}>${icon('💬')} <strong>LLM 评价</strong></td><td ${dimDesc}>请一个 LLM 当评委，让它读任务执行模型的输出内容，按预先写好的评分规则（英文叫 rubric）打个 1-5 分。主观但能抓到规则断言判不了的"整体好不好"——比如回答是否清晰、有没有答非所问。</td></tr>
+    <tr><td ${dim}>${icon('💰')} <strong>执行成本</strong></td><td ${dimDesc}>任务执行模型跑这次评测花了多少 API 调用费。评委模型成本单独作为评测开销记录，不算进 skill 自身成本。</td></tr>
     <tr><td ${dim}>${icon('⚡')} <strong>效率</strong></td><td ${dimDesc}>一次评测平均跑多久；附带轮次数和工具调用次数。</td></tr>
     <tr><td ${dim}>${icon('🛡️')} <strong>稳定性</strong></td><td ${dimDesc}>同一份测试跑很多次，分数抖不抖。抖得越少越稳定。<strong>跑一次看不出稳定性</strong>——至少要 <code>--repeat ≥ 2</code>，不然显示"—"。</td></tr>
     <tr><td ${sub}>稳定 / 较稳 / 波动大</td><td ${subDesc}>分数波动比例 &lt;5% = 稳定 · 5~15% = 一般 · &gt;15% = 波动大</td></tr>
@@ -511,10 +512,10 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     <tr><td ${sub}>CV</td><td ${subDesc}>分数抖动幅度占平均分的比例（例：CV 2% = 分数波动大约是平均分的 2%）</td></tr>
     <tr><td ${sub}>95% CI</td><td ${subDesc}>如果跑无数次求平均，真实平均分有 95% 概率落在这个范围里——范围越窄，这次测出的均值越可信</td></tr>
   ` : `
-    <tr><td ${dimFirst}>${icon('📋')} <strong>Fact</strong></td><td ${dimFirstDesc}>Whether the model's output is factually correct. Checked by rule-based assertions — keyword matches, JSON schema validity, etc. Wrong = zero.</td></tr>
-    <tr><td ${dim}>${icon('🛠️')} <strong>Behavior</strong></td><td ${dimDesc}>Whether the model followed the right process. Checked by rule-based assertions — did it call the expected tools, stay within turn/cost limits.</td></tr>
-    <tr><td ${dim}>${icon('💬')} <strong>LLM judge</strong></td><td ${dimDesc}>A separate LLM acts as judge: it reads the tested model's output and scores it 1-5 against a predefined rubric. Subjective, but catches "overall feel" that rule-based assertions miss — e.g., whether the answer is clear, whether it's on-topic.</td></tr>
-    <tr><td ${dim}>${icon('💰')} <strong>Cost</strong></td><td ${dimDesc}>API cost of this run (execution only — the judge LLM's cost isn't included here).</td></tr>
+    <tr><td ${dimFirst}>${icon('📋')} <strong>Fact</strong></td><td ${dimFirstDesc}>Whether the task execution model's output is factually correct. Checked by rule-based assertions — keyword matches, JSON schema validity, etc. Wrong = zero.</td></tr>
+    <tr><td ${dim}>${icon('🛠️')} <strong>Behavior</strong></td><td ${dimDesc}>Whether the task execution model followed the right process. Checked by rule-based assertions — did it call the expected tools, stay within turn/cost limits.</td></tr>
+    <tr><td ${dim}>${icon('💬')} <strong>LLM judge</strong></td><td ${dimDesc}>A separate LLM acts as judge: it reads the task execution model's output and scores it 1-5 against a predefined rubric. Subjective, but catches "overall feel" that rule-based assertions miss — e.g., whether the answer is clear, whether it's on-topic.</td></tr>
+    <tr><td ${dim}>${icon('💰')} <strong>Exec cost</strong></td><td ${dimDesc}>API cost for the task execution model. Judge model cost is tracked as evaluation overhead, not skill cost.</td></tr>
     <tr><td ${dim}>${icon('⚡')} <strong>Efficiency</strong></td><td ${dimDesc}>Average time per evaluation, plus turn counts and tool call stats.</td></tr>
     <tr><td ${dim}>${icon('🛡️')} <strong>Stability</strong></td><td ${dimDesc}>How much the score swings when you repeat the same test. Less swing = more stable. <strong>You can't measure stability from a single run</strong> — need <code>--repeat ≥ 2</code>, otherwise shows "—".</td></tr>
     <tr><td ${sub}>Stable / Moderate / Variable</td><td ${subDesc}>Score swing as % of mean: &lt;5% = Stable · 5~15% = Moderate · &gt;15% = Variable</td></tr>
@@ -524,7 +525,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   `;
 
   return `
-    <h2 style="display:flex;align-items:center;gap:4px">${lang === 'zh' ? '六维对比' : '6-Dim Comparison'} <button type="button" class="hint-btn" onclick="openModal('${guideModalId}')" aria-label="${e(guideTitle)}" aria-haspopup="dialog">?</button></h2>
+    <h2 style="display:flex;align-items:center;gap:4px">${lang === 'zh' ? '六维对比' : 'Six-Dimension Comparison'} <button type="button" class="hint-btn" onclick="openModal('${guideModalId}')" aria-label="${e(guideTitle)}" aria-haspopup="dialog">?</button></h2>
     <div id="${guideModalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${guideModalId}-title" onclick="if(event.target===this)closeModal('${guideModalId}')">
       <div class="modal-content">
         <div class="modal-header">
@@ -582,7 +583,7 @@ function renderJudgeAgreementBlock(variants: string[], summary: Record<string, V
         <th>${t('judgeModelsLabel', lang)}</th>
         <th title="${t('pearsonDesc', lang)}">${t('pearsonLabel', lang)}</th>
         <th title="${t('madDesc', lang)}">${t('madLabel', lang)}</th>
-        <th>${lang === 'zh' ? '用例数' : 'Samples'}</th>
+        <th>${lang === 'zh' ? '评测用例数' : 'Samples'}</th>
         <th>${lang === 'zh' ? 'Judge 对数' : 'Pairs'}</th>
       </tr></thead>
       <tbody>${rows}</tbody>
@@ -975,7 +976,7 @@ export function renderVarianceComparisons(variance: VarianceData | undefined, la
     { label: '显著性', desc: 't 检验结论，基于 p<0.05 阈值。回答"差异真不真"，和效应量"差多大"互补' },
     { label: 'p 值', desc: '假设真的没差异时，观察到当前差距的概率。越小越可信。0.05 只是约定阈值', sub: true },
     { label: 't 值', desc: '均值差 ÷ 估计误差，需配合 df 和效应量解读，不能单独看', sub: true },
-    { label: 'df 自由度', desc: '≈"有效用例数"。--repeat 3 时通常 2~4；想达到 20+ 需 --repeat 10+', sub: true },
+    { label: 'df 自由度', desc: '≈"有效评测用例数"。--repeat 3 时通常 2~4；想达到 20+ 需 --repeat 10+', sub: true },
   ];
   const glossaryEn: GlossaryRow[] = [
     { label: 'Gap', desc: 'Cross-run mean winner + absolute difference (raw units)' },
@@ -1068,7 +1069,7 @@ function severityDot(severity: string): string {
   return `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${color[severity] || 'var(--text-muted)'};margin-right:8px;flex-shrink:0;margin-top:6px"></span>`;
 }
 
-function renderSummaryStructured(summary: string): string {
+function renderSummaryStructured(summary: string, lang: Lang): string {
   const markerRegex = /【([^】]+)】/g;
   const markers: Array<{ label: string; start: number; contentStart: number }> = [];
   let match: RegExpExecArray | null;
@@ -1087,9 +1088,17 @@ function renderSummaryStructured(summary: string): string {
     return `<div style="padding:14px 18px;font-size:13px;line-height:1.8;color:var(--text-secondary);background:var(--bg-surface);border-radius:var(--radius);border:1px solid var(--border)">${e(summary)}</div>`;
   }
 
+  const labelMap: Record<string, Record<Lang, string>> = {
+    结论: { zh: '结论', en: 'Conclusion' },
+    Conclusion: { zh: '结论', en: 'Conclusion' },
+    '关键差异': { zh: '关键差异', en: 'Key differences' },
+    'Key differences': { zh: '关键差异', en: 'Key differences' },
+    综合洞察: { zh: '综合洞察', en: 'Synthesis' },
+    Synthesis: { zh: '综合洞察', en: 'Synthesis' },
+  };
   const sectionHtml = sections.map((section) => `
       <div style="display:flex;gap:12px;align-items:baseline">
-        <span style="flex-shrink:0;font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:0.03em;min-width:56px">${e(section.label)}</span>
+        <span style="flex-shrink:0;font-size:11px;font-weight:600;color:var(--text-muted);letter-spacing:0.03em;min-width:56px">${e(labelMap[section.label]?.[lang] || section.label)}</span>
         <span style="color:var(--text-secondary);font-size:13px;line-height:1.7">${e(section.content)}</span>
       </div>`).join('');
 
@@ -1099,24 +1108,194 @@ function renderSummaryStructured(summary: string): string {
     </div>`;
 }
 
-export function renderAnalysis(analysis: AnalysisResult | undefined, lang: Lang): string {
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function num(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function localizedInsightMessage(insight: Insight, report: Report | undefined, lang: Lang): string {
+  const details = asRecord(insight.details);
+  const detailItems = asArray(insight.details);
+  const totalSamples = report?.results?.length || detailItems.length || num(details.total) || 0;
+  const type = insight.type;
+
+  switch (type) {
+    case 'low_discrimination_all_passed': {
+      const count = detailItems.length;
+      return lang === 'zh'
+        ? `${count} 个断言所有变体均通过，区分度低`
+        : `${count} assertions passed for every variant, so they have low discrimination power`;
+    }
+    case 'low_discrimination_all_failed': {
+      const count = detailItems.length;
+      return lang === 'zh'
+        ? `${count} 个断言所有变体均失败，断言可能过严或配置有误`
+        : `${count} assertions failed for every variant; they may be too strict or misconfigured`;
+    }
+    case 'uniform_scores': {
+      const count = detailItems.length;
+      return lang === 'zh'
+        ? `${count}/${totalSamples} 个评测用例在变体间分差 < 0.5，区分度较低`
+        : `${count}/${totalSamples} samples differ by less than 0.5 across variants, so they have low discrimination power`;
+    }
+    case 'all_pass':
+      return lang === 'zh'
+        ? '所有断言在所有变体上全部通过，断言可能过于宽松'
+        : 'All assertions passed for all variants; the assertions may be too loose';
+    case 'all_fail':
+      return lang === 'zh'
+        ? '所有断言在所有变体上全部失败，请检查断言配置'
+        : 'All assertions failed for all variants; check the assertion configuration';
+    case 'suggest_repeat': {
+      const variant = String(details.variant || 'variant');
+      const min = num(details.min);
+      const max = num(details.max);
+      const range = min != null && max != null ? `${min}~${max}` : '';
+      return lang === 'zh'
+        ? `${variant} 的分数跨度较大${range ? `（${range}）` : ''}，建议使用 --repeat 多轮评测`
+        : `${variant} has a wide score range${range ? ` (${range})` : ''}; run with --repeat to measure variance`;
+    }
+    case 'low_tool_success_rate': {
+      const variant = String(details.variant || 'variant');
+      const rate = num(details.toolSuccessRate);
+      const pct = rate != null ? `${(rate * 100).toFixed(0)}%` : 'low';
+      return lang === 'zh'
+        ? `${variant} 的工具调用成功率仅 ${pct}，可能存在工具选择或参数问题`
+        : `${variant} has only ${pct} tool-call success, which may indicate tool-selection or parameter issues`;
+    }
+    case 'tool_permission_error': {
+      const count = detailItems.length;
+      return lang === 'zh'
+        ? `检测到 ${count} 次工具权限错误，实验结论可能被环境问题污染`
+        : `${count} tool permission errors were detected; the conclusion may be contaminated by environment issues`;
+    }
+    case 'trace_integrity_gap': {
+      const count = detailItems.length;
+      return lang === 'zh'
+        ? `${count} 个 variant 的 trace 覆盖率低于 75%，报告可能不足以解释 agent 行为差异`
+        : `${count} variants have trace coverage below 75%, so the report may not fully explain agent behavior differences`;
+    }
+    case 'agent_assertion_discrimination_low': {
+      const total = num(details.total) || 0;
+      const discriminative = num(details.discriminative) || 0;
+      const pct = total > 0 ? Math.round((discriminative / total) * 100) : 0;
+      return lang === 'zh'
+        ? `agent 断言区分度偏低，只有 ${pct}% 的断言真正拉开了变体差异`
+        : `Agent assertion discrimination is low; only ${pct}% of assertions separate variants`;
+    }
+    case 'agent_assertion_discrimination_ok': {
+      const total = num(details.total) || 0;
+      const discriminative = num(details.discriminative) || 0;
+      const pct = total > 0 ? Math.round((discriminative / total) * 100) : 0;
+      return lang === 'zh'
+        ? `agent 断言区分度达标，${pct}% 的断言能区分变体差异`
+        : `Agent assertion discrimination is healthy; ${pct}% of assertions separate variants`;
+    }
+    case 'efficiency_gap': {
+      const variant = String(details.variant || 'variant');
+      const baseline = String(details.baseline || 'baseline');
+      return lang === 'zh'
+        ? `${variant} 与 ${baseline} 在效率维度存在明显差异`
+        : `${variant} differs materially from ${baseline} on efficiency`;
+    }
+    case 'tool_count_gap': {
+      const variant = String(details.variant || 'variant');
+      const baseline = String(details.baseline || 'baseline');
+      const baseTools = num(details.baseTools);
+      const otherTools = num(details.otherTools);
+      const delta = baseTools != null && otherTools != null ? Math.abs(otherTools - baseTools).toFixed(1) : '';
+      return lang === 'zh'
+        ? `${variant} 与 ${baseline} 的工具调用次数差异明显${delta ? `（差 ${delta} 次）` : ''}`
+        : `${variant} differs materially from ${baseline} in tool-call count${delta ? ` (${delta} calls apart)` : ''}`;
+    }
+    case 'high_cost_sample': {
+      const count = detailItems.length;
+      return lang === 'zh'
+        ? `${count} 个评测用例成本显著高于平均值`
+        : `${count} samples cost materially more than average`;
+    }
+    default:
+      return lang === 'zh'
+        ? `结构化诊断：${type}`
+        : `Structured diagnostic: ${type}`;
+  }
+}
+
+function localizedSuggestion(insight: Insight, lang: Lang): string {
+  switch (insight.type) {
+    case 'low_discrimination_all_passed':
+      return lang === 'zh'
+        ? '把全通过断言替换为能检测 skill 独有细节的断言，例如特定参数名、配置值或流程要求'
+        : 'Replace always-passing assertions with checks for artifact-specific details, such as parameter names, config values, or workflow requirements';
+    case 'low_discrimination_all_failed':
+      return lang === 'zh'
+        ? '检查断言条件是否正确，或降低匹配要求，避免 broken 用例污染结论'
+        : 'Check whether the assertion condition is correct, or relax the matcher to avoid broken samples contaminating the conclusion';
+    case 'uniform_scores':
+      return lang === 'zh'
+        ? '增加更有挑战性的评测用例，或把 rubric 写得更能区分优劣'
+        : 'Add more challenging samples, or make the rubric more discriminative';
+    case 'all_pass':
+      return lang === 'zh'
+        ? '增加更严格的断言来区分不同变体的质量'
+        : 'Add stricter assertions that can distinguish variant quality';
+    case 'all_fail':
+      return lang === 'zh'
+        ? '优先检查评测配置和断言目标，确认用例不是整体不可达'
+        : 'Check the evaluation config and assertion target first; make sure the sample is reachable';
+    case 'suggest_repeat':
+      return lang === 'zh'
+        ? '使用 --repeat 3 或更多轮次获取方差、置信区间和显著性检验'
+        : 'Run with --repeat 3 or more to obtain variance, confidence intervals, and significance tests';
+    case 'low_tool_success_rate':
+      return lang === 'zh'
+        ? '检查失败工具调用，必要时在 skill 中补充工具选择和参数约束'
+        : 'Inspect failed tool calls and, if needed, add tool-selection and parameter guidance to the artifact';
+    case 'tool_permission_error':
+      return lang === 'zh'
+        ? '先解决工具权限或工作目录问题，再解读分数差异'
+        : 'Fix tool permission or working-directory issues before interpreting score differences';
+    case 'trace_integrity_gap':
+      return lang === 'zh'
+        ? '补齐 turns、toolCalls、timing 和完整输出采集，确保报告能解释行为差异'
+        : 'Capture turns, tool calls, timing, and full output so the report can explain behavior differences';
+    case 'agent_assertion_discrimination_low':
+      return lang === 'zh'
+        ? '重写 agent 断言时优先约束工具路径、关键文件读取和 turns 上限'
+        : 'When rewriting agent assertions, prioritize tool path, key file reads, and turn-limit constraints';
+    default:
+      return lang === 'zh'
+        ? '查看结构化 details 字段定位原因'
+        : 'Inspect the structured details field for the underlying evidence';
+  }
+}
+
+export function renderAnalysis(report: Report | undefined, lang: Lang): string {
+  const analysis = report?.analysis;
   if (!analysis) return '';
-  const { insights, suggestions } = analysis;
-  if ((!insights || insights.length === 0) && (!suggestions || suggestions.length === 0)) return '';
+  const { insights } = analysis;
+  if ((!insights || insights.length === 0) && !report) return '';
 
   const issues = (insights || []).filter((insight) => !isConclusion(insight));
   const issueLabel = lang === 'zh' ? '问题与建议' : 'Issues & Suggestions';
-  const safeSuggestions = suggestions || [];
+  const safeSuggestions = issues.map((issue) => localizedSuggestion(issue, lang));
 
   let issuesHtml = '';
-  if (issues.length > 0 || safeSuggestions.length > 0) {
-    const maxRows = Math.max(issues.length, safeSuggestions.length);
+  if (issues.length > 0) {
+    const maxRows = issues.length;
     const rows: string[] = [];
     for (let i = 0; i < maxRows; i++) {
       const issue = issues[i];
       const suggestion = safeSuggestions[i];
       const issueContent = issue
-        ? `${severityDot(issue.severity)}<span>${e(issue.message)}</span>`
+        ? `${severityDot(issue.severity)}<span>${e(localizedInsightMessage(issue, report, lang))}</span>`
         : '';
       const suggestionContent = suggestion
         ? e(suggestion)
@@ -1143,9 +1322,12 @@ export function renderAnalysis(analysis: AnalysisResult | undefined, lang: Lang)
     `;
   }
 
-  const summaryHtml = analysis.summary
-    ? renderSummaryStructured(analysis.summary)
+  const generatedSummary = report ? generateAnalysisSummary(report, lang) : undefined;
+  const summaryHtml = generatedSummary
+    ? renderSummaryStructured(generatedSummary, lang)
     : '';
+
+  if (!summaryHtml && !issuesHtml) return '';
 
   return `
     <h2 data-i18n="autoAnalysis">${t('autoAnalysis', lang)}</h2>
@@ -1312,8 +1494,8 @@ export function renderKnowledgeInteractionSection(
 
   const title = lang === 'zh' ? '本次测评：测试用例 × 知识库' : 'This Evaluation: Test Set × Knowledge Base';
   const desc = lang === 'zh'
-    ? '展示本次测评用例和知识库的交互画像——用到哪些知识（使用情况）· 哪些知识想找但没找到或模型表达不确定（盲区）。'
-    : 'How this test set interacts with the KB — which knowledge was exercised (usage) · which was missed or flagged as uncertain (gaps).';
+    ? '展示本次测评用例和知识库的交互画像——用到哪些知识（使用情况）· 哪些知识想找但没找到或任务执行模型表达不确定（盲区）。'
+    : 'How this test set interacts with the KB — which knowledge was exercised (usage) · which knowledge the task execution model missed or flagged as uncertain (gaps).';
   const readHint = lang === 'zh'
     ? '💡 读表：两者同时高 → 知识库内容有问题（有文件但答不出）· 同时低 → 测评用例太浅（没触到复杂场景）· 使用高 + 盲区低 → 理想但警惕用例驯化'
     : '💡 Read together: both high → KB content issues (files exist but can\'t answer) · both low → test set too shallow · high use + low gap → ideal, but beware sample-set overfitting';
@@ -1326,7 +1508,7 @@ export function renderKnowledgeInteractionSection(
 
   const signalTypeLabels: Record<GapSignalRef['type'], { zh: string; en: string }> = {
     failed_search: { zh: '搜索未命中', en: 'Search miss' },
-    explicit_marker: { zh: '模型标记缺口', en: 'Model-flagged gap' },
+    explicit_marker: { zh: '任务执行模型标记缺口', en: 'Execution model flag' },
     hedging: { zh: '表达不确定', en: 'Hedging' },
     repeated_failure: { zh: '反复未命中', en: 'Repeated miss' },
   };
@@ -1422,7 +1604,7 @@ export function renderKnowledgeInteractionSection(
       const softShare = pct - weightedPct;
       const weightedHint = lang === 'zh'
         ? (softShare >= 10
-            ? `<strong>实际盲区 ${weightedPct}%</strong> · 另 ${softShare}% 为模型表达不确定(软信号,建议对照清单复核)`
+            ? `<strong>实际盲区 ${weightedPct}%</strong> · 另 ${softShare}% 为任务执行模型表达不确定(软信号,建议对照清单复核)`
             : `<strong>实际盲区 ${weightedPct}%</strong> · 主要来自确定的搜索未命中`)
         : (softShare >= 10
             ? `<strong>real gaps ${weightedPct}%</strong> · another ${softShare}% is hedging (review list below)`
@@ -1448,7 +1630,7 @@ export function renderKnowledgeInteractionSection(
         : '';
 
       const detailsLabel = lang === 'zh'
-        ? `展开 ${gap.signals.length} 条证据（按严重度上色: 红=确定 / 黄=模型自述 / 灰=犹豫）`
+        ? `展开 ${gap.signals.length} 条证据（按严重度上色: 红=确定 / 黄=执行模型自述 / 灰=犹豫）`
         : `Show all ${gap.signals.length} evidence items (red=confirmed · yellow=self-flagged · gray=hedging)`;
       gapInner = `
         <div class="ki-col-header">
@@ -1458,7 +1640,7 @@ export function renderKnowledgeInteractionSection(
         <div class="ki-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${e(barLabel)}">
           <div class="ki-bar-fill" style="width:${barW}%;background:${pctColor}"></div>
         </div>
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${gap.samplesWithGap}/${gap.sampleCount} ${lang === 'zh' ? '个用例出现搜索未命中或表达不确定' : 'samples with search miss / hedging'}</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${gap.samplesWithGap}/${gap.sampleCount} ${lang === 'zh' ? '个评测用例出现搜索未命中或表达不确定' : 'samples with search miss / hedging'}</div>
         <div style="font-size:var(--fs-detail);color:var(--text-secondary);margin-bottom:8px">${weightedHint}</div>
         ${typeBadges ? `<div>${typeBadges}</div>` : ''}
         ${inventory ? `<details class="ki-details"><summary>${detailsLabel}</summary>
@@ -1508,12 +1690,12 @@ export function renderGapSection(gapReports: Record<string, GapReport> | undefin
 
   const title = lang === 'zh' ? '本次测评的知识盲区' : 'Knowledge gaps in this evaluation';
   const desc = lang === 'zh'
-    ? '本次测评中，哪些知识想找但没找到、或模型表达不确定。数字高不一定代表知识库不全——也可能是测试用例问的领域知识库未覆盖。'
-    : 'Which knowledge the model tried to find but missed, or expressed uncertainty about. High numbers do not necessarily mean the KB is incomplete — the test set may be asking about areas the KB never covered.';
+    ? '本次测评中，哪些知识想找但没找到、或任务执行模型表达不确定。数字高不一定代表知识库不全——也可能是测试用例问的领域知识库未覆盖。'
+    : 'Which knowledge the task execution model tried to find but missed, or expressed uncertainty about. High numbers do not necessarily mean the KB is incomplete — the test set may be asking about areas the KB never covered.';
 
   const signalTypeLabels: Record<GapSignalRef['type'], { zh: string; en: string }> = {
     failed_search: { zh: '搜索未命中', en: 'Search miss' },
-    explicit_marker: { zh: '模型标记缺口', en: 'Model-flagged gap' },
+    explicit_marker: { zh: '任务执行模型标记缺口', en: 'Execution model flag' },
     hedging: { zh: '表达不确定', en: 'Hedging' },
     repeated_failure: { zh: '反复未命中', en: 'Repeated miss' },
   };
@@ -1532,7 +1714,7 @@ export function renderGapSection(gapReports: Record<string, GapReport> | undefin
     const softSignalShare = pct - weightedPct;
     const weightedHint = lang === 'zh'
       ? (softSignalShare >= 10
-          ? `<strong>实际盲区 ${weightedPct}%</strong> · 另外 ${softSignalShare}% 为模型表达不确定(软信号,建议对照右侧清单复核)`
+          ? `<strong>实际盲区 ${weightedPct}%</strong> · 另外 ${softSignalShare}% 为任务执行模型表达不确定(软信号,建议对照右侧清单复核)`
           : `<strong>实际盲区 ${weightedPct}%</strong> · 主要来自确定的搜索未命中`)
       : (softSignalShare >= 10
           ? `<strong>real gaps ${weightedPct}%</strong> · another ${softSignalShare}% is hedging (soft signals — review the list on the right)`
@@ -1583,7 +1765,7 @@ export function renderGapSection(gapReports: Record<string, GapReport> | undefin
         <div style="width:${barW}%;height:100%;background:${pctColor};border-radius:4px"></div>
       </div>
       <div style="font-size:var(--fs-detail);color:var(--text-muted);margin-bottom:4px">
-        ${report.samplesWithGap} / ${report.sampleCount} ${lang === 'zh' ? '个用例出现搜索未命中或表达不确定' : 'samples with search miss or hedging'}
+        ${report.samplesWithGap} / ${report.sampleCount} ${lang === 'zh' ? '个评测用例出现搜索未命中或表达不确定' : 'samples with search miss or hedging'}
       </div>
       <div style="font-size:var(--fs-detail);color:var(--text-secondary);margin-bottom:10px">${weightedHint}</div>
       ${typeBadges ? `<div style="margin-bottom:10px">${typeBadges}</div>` : ''}
