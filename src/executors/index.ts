@@ -9,16 +9,13 @@ import { openAiApiExecutor } from './openai-api.js';
 import { createScriptExecutor } from './script.js';
 import { DEFAULT_MODEL, JUDGE_MODEL } from './shared.js';
 
-// 'openai' 跟 'openai-api' 都指向 HTTP API 实现:两者历史上职责重复(都走
-// chat.completions.create + 同一份 schema),'openai' 之前经外部 `openai` Python CLI binary
-// 多一层启动 + parse 子进程 stdout,API key 读法跟 openai-api 一致,没有独有便利。
-// 'openai' 名字保留为 alias,旧用户 `--executor openai` 仍工作 — 行为静默切到 HTTP,
-// token 统计 / output schema 完全一致,verdict / Δ 跨版本可比。
+// 命名一致性:provider HTTP 路径统一用 `<vendor>-api`(`anthropic-api` / `openai-api`),
+// vendor coding agent CLI 用 vendor 名(`claude` / `codex`)。`openai` 这个不带 -api 后缀的
+// 旧 alias 历史上指 openai-cli 子进程实现,删除后不再设别名 — 用 `--executor openai-api`。
 const EXECUTOR_REGISTRY: Record<string, ExecutorFn> = {
   claude: claudeCliExecutor,
   'claude-sdk': claudeSdkExecutor,
   codex: codexCliExecutor,
-  openai: openAiApiExecutor,
   gemini: geminiExecutor,
   'anthropic-api': anthropicApiExecutor,
   'openai-api': openAiApiExecutor,

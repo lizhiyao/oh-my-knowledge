@@ -10,12 +10,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Removed
 
-- **删 `openai-cli` executor,`'openai'` alias 重定向到 `openai-api` HTTP 实现**:
+- **⚠ BREAKING:删 `openai-cli` executor 及 `'openai'` alias,统一用 `'openai-api'`**:
   `src/executors/openai-cli.ts` 跟 `openai-api.ts` 历史职责重复,两者都走 `chat.completions.create`、同一份 token / output schema、同一个 `OPENAI_API_KEY` env。`openai-cli` 经外部 `openai` Python CLI binary,多一层启动 + 子进程 stdout parse,无独有便利。
-  - 删:`src/executors/openai-cli.ts`(整文件)+ `import { openAiCliExecutor } from './openai-cli.js'` 这一行 + `EXECUTOR_REGISTRY` 内对应条目。
-  - 改:`EXECUTOR_REGISTRY['openai']` 重指向 `openAiApiExecutor` —— 旧用户 `--executor openai` 仍工作,行为静默切到 HTTP 路径。token 统计 / output schema / verdict 全部一致,跨版本可比。
-  - 副作用:用户原本依赖外部 `openai` Python CLI binary 安装的环境(没设 `OPENAI_API_KEY`)会切到必须设 env 的 HTTP 路径。但 `openai` CLI 内部本身也读 `OPENAI_API_KEY`,所以实操层不存在 auth 行为差异。
-  - 不动 README / README.zh.md(它们引用的就是 `openai-api`,不是 `openai`),不动 `judgeId` 测试(只把 `'openai'` 当字符串,跟实现无关)。
+  - 删:`src/executors/openai-cli.ts`(整文件)+ `import { openAiCliExecutor } from './openai-cli.js'` 这一行 + `EXECUTOR_REGISTRY` 内 `'openai'` 条目(连同 alias 一起,不留向后兼容指针 — 命名一致性优先,跟 `'anthropic-api'` 对齐)。
+  - **迁移**:`--executor openai` 现在会 fall through 到 script executor(把 `'openai'` 当 shell 命令运行,基本会失败)。用户改用 `--executor openai-api`。CLI flag 帮助 / `EXECUTOR_REGISTRY` 文档化的执行器名称从来都是 `openai-api` / `anthropic-api`,所以 `'openai'` alias 实际从未被 README 推荐过 — 影响面应该很小。
+  - 不动 README / README.zh.md(它们引用的就是 `openai-api`),不动 `judgeId` 测试(只把 `'openai'` 当字符串,跟 `EXECUTOR_REGISTRY` 解析无关 — `llmJudgeEnsemble` 通过 caller 传入的 `executorByName` mock 解析)。`test/executor.test.ts` 改 `createExecutor('openai')` → `createExecutor('openai-api')` 让测试名称跟实现一致。
 
 ### Added
 

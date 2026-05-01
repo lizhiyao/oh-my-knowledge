@@ -8,8 +8,8 @@ describe('createExecutor', () => {
     assert.equal(typeof exec, 'function');
   });
 
-  it('returns a function for openai', () => {
-    const exec = createExecutor('openai');
+  it('returns a function for openai-api', () => {
+    const exec = createExecutor('openai-api');
     assert.equal(typeof exec, 'function');
   });
 
