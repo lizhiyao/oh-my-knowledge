@@ -167,12 +167,12 @@ export function buildEachReport({
         artifactHashes: Object.fromEntries(
           skillResults.map((skill) => [skill.name, skill.artifactHash || 'no-skill']),
         ),
-        executorRuntime: getExecutorRuntimeFingerprint(executorName, model),
-        judgeRuntime: noJudge ? null : getExecutorRuntimeFingerprint(judgeExecutorName || executorName, judgeModel),
+        executorRuntime: getExecutorRuntimeFingerprint(executorName, model, { skillDir }),
+        judgeRuntime: noJudge ? null : getExecutorRuntimeFingerprint(judgeExecutorName || executorName, judgeModel, { skillDir }),
         ...(judgeModels && judgeModels.length >= 2 ? {
           judgeModels: judgeModels.map((jc) => `${jc.executor}:${jc.model}`),
           judgeRuntimes: Object.fromEntries(
-            judgeModels.map((jc) => [`${jc.executor}:${jc.model}`, getExecutorRuntimeFingerprint(jc.executor, jc.model)]),
+            judgeModels.map((jc) => [`${jc.executor}:${jc.model}`, getExecutorRuntimeFingerprint(jc.executor, jc.model, { skillDir })]),
           ),
         } : {}),
         request,

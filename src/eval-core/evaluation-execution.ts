@@ -4,6 +4,7 @@ import { grade } from '../grading/index.js';
 import { checkFacts } from './fact-checker.js';
 import type { FactCheckResult } from './fact-checker.js';
 import { resolveExecutionStrategy } from './execution-strategy.js';
+import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import { resolve, join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import type {
@@ -150,17 +151,23 @@ export async function executeTasks({
     onProgress?.({ phase: 'start', completed: idx, total, sample_id: task.sample_id, variant: task.variant });
 
     const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose);
+    const effectiveExecutorName = executorName || 'claude';
+    const executorRuntime = getExecutorRuntimeFingerprint(effectiveExecutorName, model, {
+      skillDir: executionPlan.input.skillDir,
+    });
 
     let execResult: ExecResult;
     // include allowedSkills in cache key so isolation-on / isolation-off runs
-    // don't share cache entries (would otherwise replay contaminated baseline results).
+    // don't share cache entries, and include runtime fingerprint so a binary/SDK bump
+    // cannot replay old-runtime outputs under new-runtime report metadata.
     const key = cacheKey(
       model,
       executionPlan.cacheSystem,
       executionPlan.input.prompt,
       executionPlan.input.cwd,
       task.artifact.allowedSkills,
-      executorName,
+      effectiveExecutorName,
+      executorRuntime.fingerprint,
     );
     const cached = cache?.get(key);
     const execStart = Date.now();

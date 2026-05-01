@@ -1,4 +1,4 @@
-import type { Lang, Report, ExecutorRuntimeFingerprint } from '../types/index.js';
+import type { Lang, Report, ReportMeta, ExecutorRuntimeFingerprint, ExecutorRuntimePackage } from '../types/index.js';
 
 export interface ComparabilityWarning {
   code: string;
@@ -24,6 +24,73 @@ function runtimeLabel(runtime: ExecutorRuntimeFingerprint | null | undefined): s
 
 function push(warnings: ComparabilityWarning[], code: string, zh: string, en: string): void {
   warnings.push({ code, severity: 'warning', zh, en });
+}
+
+function sorted(values: string[] | undefined): string[] {
+  return [...(values ?? [])].sort();
+}
+
+function hasJudge(meta: ReportMeta): boolean {
+  return Boolean(meta.judgeModel || (meta.judgeModels && meta.judgeModels.length > 0));
+}
+
+function effectiveJudgeRepeat(meta: ReportMeta): number {
+  return meta.judgeRepeat ?? 1;
+}
+
+function packageReasons(pkg: ExecutorRuntimePackage | undefined, label: string): string[] {
+  if (!pkg) return [`${label} missing`];
+  const reasons: string[] = [];
+  if (pkg.error) reasons.push(`${label} probe failed`);
+  if (!pkg.version) reasons.push(`${label} version missing`);
+  return reasons;
+}
+
+function runtimeUnverifiableReasons(runtime: ExecutorRuntimeFingerprint): string[] {
+  const reasons: string[] = [];
+  if (runtime.kind === 'api') return reasons;
+
+  if (runtime.kind === 'agent-sdk') {
+    reasons.push(...packageReasons(runtime.sdk, 'sdk'));
+  }
+
+  const binary = runtime.binary;
+  if (!binary) {
+    reasons.push('binary missing');
+    return reasons;
+  }
+  if (binary.error) reasons.push('binary probe failed');
+
+  if (binary.source === 'path') {
+    if (!binary.path) reasons.push('binary path missing');
+    if (!binary.version) reasons.push('binary version missing');
+  } else if (binary.source === 'bundled') {
+    if (!binary.version && !binary.package?.version) reasons.push('bundled binary version missing');
+    if (binary.package) reasons.push(...packageReasons(binary.package, 'bundled package').filter((r) => r !== 'bundled package missing'));
+  } else if (binary.source === 'unknown') {
+    reasons.push('binary source unknown');
+  }
+
+  if (runtime.kind === 'unknown') reasons.push('runtime kind unknown');
+  return [...new Set(reasons)];
+}
+
+function pushRuntimeUnverifiable(
+  warnings: ComparabilityWarning[],
+  code: string,
+  zhSubject: string,
+  enSubject: string,
+  runtime: ExecutorRuntimeFingerprint | null | undefined,
+): void {
+  if (!runtime) return;
+  const reasons = runtimeUnverifiableReasons(runtime);
+  if (reasons.length === 0) return;
+  push(
+    warnings,
+    code,
+    `${zhSubject} runtime 指纹不可完全审计: ${runtimeLabel(runtime)} (${reasons.join('; ')})。`,
+    `${enSubject} runtime fingerprint is not fully verifiable: ${runtimeLabel(runtime)} (${reasons.join('; ')}).`,
+  );
 }
 
 function countSampleHashMismatches(a: Report, b: Report): { mismatched: number; missing: number; common: number } | null {
@@ -54,6 +121,16 @@ export function reportComparabilityWarnings(report: Report): ComparabilityWarnin
       '报告缺少 executor runtime 指纹；无法审计 binary / SDK 版本，跨报告严格比较需谨慎。',
       'Report is missing executor runtime fingerprint; binary / SDK versions cannot be audited for strict cross-report comparison.',
     );
+  } else {
+    pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', 'executor', 'Executor', report.meta.executorRuntime);
+  }
+  if (hasJudge(report.meta) && !report.meta.judgePromptHash) {
+    push(
+      warnings,
+      'judge_prompt_hash_missing',
+      '报告缺少评委提示词指纹；无法确认 LLM 评分语义是否一致。',
+      'Report is missing judge prompt fingerprint; LLM scoring semantics cannot be verified.',
+    );
   }
   if (report.meta.judgeModel && !report.meta.judgeRuntime) {
     push(
@@ -62,6 +139,32 @@ export function reportComparabilityWarnings(report: Report): ComparabilityWarnin
       '报告缺少评委 runtime 指纹；无法审计评委 executor 的 binary / SDK 版本。',
       'Report is missing judge runtime fingerprint; judge executor binary / SDK versions cannot be audited.',
     );
+  } else if (report.meta.judgeRuntime) {
+    pushRuntimeUnverifiable(warnings, 'judge_runtime_unverifiable', '评委', 'Judge', report.meta.judgeRuntime);
+  }
+  const judgeModels = sorted(report.meta.judgeModels);
+  if (judgeModels.length >= 2) {
+    if (!report.meta.judgeRuntimes) {
+      push(
+        warnings,
+        'judge_runtime_missing',
+        '报告缺少多评委 ensemble 的 runtime 指纹；无法审计每个评委 executor 的 binary / SDK 版本。',
+        'Report is missing multi-judge ensemble runtime fingerprints; each judge executor binary / SDK version cannot be audited.',
+      );
+    } else {
+      const missing = judgeModels.filter((model) => !report.meta.judgeRuntimes?.[model]);
+      if (missing.length > 0) {
+        push(
+          warnings,
+          'judge_runtime_missing',
+          `多评委 ensemble 缺少 runtime 指纹: ${missing.join(', ')}。`,
+          `Multi-judge ensemble is missing runtime fingerprints: ${missing.join(', ')}.`,
+        );
+      }
+      for (const key of judgeModels) {
+        pushRuntimeUnverifiable(warnings, 'judge_runtime_unverifiable', `评委 ${key}`, `Judge ${key}`, report.meta.judgeRuntimes[key]);
+      }
+    }
   }
   if (!report.meta.sampleHashes) {
     push(
@@ -110,11 +213,58 @@ export function crossReportComparabilityWarnings(before: Report, after: Report):
       'At least one report is missing executor runtime fingerprint; binary / SDK version parity cannot be verified.',
     );
   }
+  pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', 'before executor', 'Before executor', b.executorRuntime);
+  pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', 'after executor', 'After executor', a.executorRuntime);
 
   if ((b.judgeModel || a.judgeModel) && b.judgeModel !== a.judgeModel) {
     push(warnings, 'judge_model_mismatch', `评委模型不同: ${b.judgeModel ?? 'none'} → ${a.judgeModel ?? 'none'}。`, `Judge model changed: ${b.judgeModel ?? 'none'} → ${a.judgeModel ?? 'none'}.`);
   }
-  if (b.judgeRuntime?.fingerprint && a.judgeRuntime?.fingerprint) {
+  const bJudgeModels = sorted(b.judgeModels);
+  const aJudgeModels = sorted(a.judgeModels);
+  const ensembleInEither = bJudgeModels.length > 0 || aJudgeModels.length > 0;
+  if (ensembleInEither && stableStringify(bJudgeModels) !== stableStringify(aJudgeModels)) {
+    push(
+      warnings,
+      'judge_models_mismatch',
+      `多评委 ensemble 配置不同: ${bJudgeModels.join(', ') || 'none'} → ${aJudgeModels.join(', ') || 'none'}。`,
+      `Multi-judge ensemble changed: ${bJudgeModels.join(', ') || 'none'} → ${aJudgeModels.join(', ') || 'none'}.`,
+    );
+  }
+  if (effectiveJudgeRepeat(b) !== effectiveJudgeRepeat(a)) {
+    push(
+      warnings,
+      'judge_repeat_mismatch',
+      `每条用例评委评价次数不同: ${effectiveJudgeRepeat(b)} → ${effectiveJudgeRepeat(a)}。`,
+      `Judge repeat count changed: ${effectiveJudgeRepeat(b)} → ${effectiveJudgeRepeat(a)}.`,
+    );
+  }
+
+  if (ensembleInEither) {
+    const keys = sorted([...new Set([...bJudgeModels, ...aJudgeModels])]);
+    const missing = keys.filter((key) => !b.judgeRuntimes?.[key] || !a.judgeRuntimes?.[key]);
+    if (missing.length > 0) {
+      push(
+        warnings,
+        'judge_runtime_missing',
+        `至少一份报告缺少多评委 runtime 指纹: ${missing.join(', ')}。`,
+        `At least one report is missing multi-judge runtime fingerprints: ${missing.join(', ')}.`,
+      );
+    }
+    for (const key of keys) {
+      const beforeRuntime = b.judgeRuntimes?.[key];
+      const afterRuntime = a.judgeRuntimes?.[key];
+      if (beforeRuntime?.fingerprint && afterRuntime?.fingerprint && beforeRuntime.fingerprint !== afterRuntime.fingerprint) {
+        push(
+          warnings,
+          'judge_runtime_mismatch',
+          `评委 ${key} runtime 指纹不同: ${runtimeLabel(beforeRuntime)} → ${runtimeLabel(afterRuntime)}。`,
+          `Judge ${key} runtime fingerprint changed: ${runtimeLabel(beforeRuntime)} → ${runtimeLabel(afterRuntime)}.`,
+        );
+      }
+      pushRuntimeUnverifiable(warnings, 'judge_runtime_unverifiable', `before 评委 ${key}`, `Before judge ${key}`, beforeRuntime);
+      pushRuntimeUnverifiable(warnings, 'judge_runtime_unverifiable', `after 评委 ${key}`, `After judge ${key}`, afterRuntime);
+    }
+  } else if (b.judgeRuntime?.fingerprint && a.judgeRuntime?.fingerprint) {
     if (b.judgeRuntime.fingerprint !== a.judgeRuntime.fingerprint) {
       push(
         warnings,
@@ -131,8 +281,14 @@ export function crossReportComparabilityWarnings(before: Report, after: Report):
       'At least one report is missing judge runtime fingerprint; judge binary / SDK version parity cannot be verified.',
     );
   }
+  if (!ensembleInEither) {
+    pushRuntimeUnverifiable(warnings, 'judge_runtime_unverifiable', 'before 评委', 'Before judge', b.judgeRuntime);
+    pushRuntimeUnverifiable(warnings, 'judge_runtime_unverifiable', 'after 评委', 'After judge', a.judgeRuntime);
+  }
 
-  if ((b.judgePromptHash || a.judgePromptHash) && b.judgePromptHash !== a.judgePromptHash) {
+  if ((hasJudge(b) || hasJudge(a)) && (!b.judgePromptHash || !a.judgePromptHash)) {
+    push(warnings, 'judge_prompt_hash_missing', `至少一份报告缺少评委提示词指纹: ${b.judgePromptHash ?? 'missing'} → ${a.judgePromptHash ?? 'missing'}。`, `At least one report is missing judge prompt hash: ${b.judgePromptHash ?? 'missing'} → ${a.judgePromptHash ?? 'missing'}.`);
+  } else if ((b.judgePromptHash || a.judgePromptHash) && b.judgePromptHash !== a.judgePromptHash) {
     push(warnings, 'judge_prompt_hash_mismatch', `评委提示词指纹不同: ${b.judgePromptHash ?? 'missing'} → ${a.judgePromptHash ?? 'missing'}。`, `Judge prompt hash changed: ${b.judgePromptHash ?? 'missing'} → ${a.judgePromptHash ?? 'missing'}.`);
   }
   if ((b.evaluationFramework || a.evaluationFramework) && b.evaluationFramework !== a.evaluationFramework) {

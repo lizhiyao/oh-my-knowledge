@@ -176,11 +176,12 @@ export function aggregateReport({
     ? request.judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
     : undefined;
   const effectiveJudgeExecutorName = request?.judgeExecutor || executorName;
-  const executorRuntime = getExecutorRuntimeFingerprint(executorName, model);
-  const judgeRuntime = noJudge ? null : getExecutorRuntimeFingerprint(effectiveJudgeExecutorName, judgeModel);
+  const runtimeOptions = { skillDir: request?.skillDir };
+  const executorRuntime = getExecutorRuntimeFingerprint(executorName, model, runtimeOptions);
+  const judgeRuntime = noJudge ? null : getExecutorRuntimeFingerprint(effectiveJudgeExecutorName, judgeModel, runtimeOptions);
   const judgeRuntimes = request?.judgeModels && request.judgeModels.length >= 2
     ? Object.fromEntries(
-      request.judgeModels.map((jc) => [`${jc.executor}:${jc.model}`, getExecutorRuntimeFingerprint(jc.executor, jc.model)]),
+      request.judgeModels.map((jc) => [`${jc.executor}:${jc.model}`, getExecutorRuntimeFingerprint(jc.executor, jc.model, runtimeOptions)]),
     )
     : undefined;
   // v0.21 Phase 3a: length-debias is on by default; the request only sets it

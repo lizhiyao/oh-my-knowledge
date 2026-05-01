@@ -980,7 +980,7 @@ async function handleDiff(argv: string[]): Promise<void> {
 
   const { crossReportComparabilityWarnings, formatComparabilityWarnings } = await import('../eval-core/comparability.js');
   const comparability = formatComparabilityWarnings(crossReportComparabilityWarnings(r1!, r2!), lang);
-  if (comparability) console.log(`\n${comparability}\n`);
+  if (comparability) process.stderr.write(`\n${comparability}\n\n`);
 
   // Per-variant comparison
   const variants: string[] = [...new Set([...(r1!.meta?.variants || []), ...(r2!.meta?.variants || [])])];
@@ -1052,6 +1052,9 @@ async function runSampleLevelDiff(
     console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
     process.exit(1);
   }
+  const { reportComparabilityWarnings, formatComparabilityWarnings } = await import('../eval-core/comparability.js');
+  const comparability = formatComparabilityWarnings(reportComparabilityWarnings(report!), lang);
+  if (comparability) process.stderr.write(`\n${comparability}\n\n`);
   const variants = report!.meta?.variants ?? [];
   if (variants.length < 2) {
     console.error('Sample-level diff needs at least 2 variants in the report.');

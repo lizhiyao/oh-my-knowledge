@@ -341,6 +341,24 @@ describe('renderRunDetail', () => {
     ensembleReport.meta.judgeModels = ['claude:opus', 'openai:gpt-4o'];
     ensembleReport.meta.judgeRepeat = 3;
     ensembleReport.meta.judgePromptHash = 'abc123def456';
+    ensembleReport.meta.judgeRuntimes = {
+      'claude:opus': {
+        executor: 'claude',
+        model: 'opus',
+        kind: 'agent-cli',
+        fingerprint: 'judge1111111',
+        binary: { name: 'claude', source: 'path', version: '2.0.0' },
+        capabilities: { systemPrompt: 'native', costUSD: 'reported', trace: 'native', skillIsolation: 'full-no-partial' },
+      },
+      'openai:gpt-4o': {
+        executor: 'openai-api',
+        model: 'gpt-4o',
+        kind: 'api',
+        fingerprint: 'judge2222222',
+        binary: { name: 'openai-api', source: 'none' },
+        capabilities: { systemPrompt: 'native', costUSD: 'not-reported', trace: 'none', skillIsolation: 'none' },
+      },
+    };
     ensembleReport.summary.v1.judgeAgreement = { pearson: 0.85, meanAbsDiff: 0.6, pairCount: 1, sampleCount: 50 };
     ensembleReport.summary.v1.judgeModels = ['claude:opus', 'openai:gpt-4o'];
     const html = renderRunDetail(ensembleReport);
@@ -348,6 +366,8 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('claude:opus'), 'should mention claude:opus');
     assert.ok(html.includes('openai:gpt-4o'), 'should mention openai:gpt-4o');
     assert.ok(html.includes('abc123def456'), 'should show prompt hash');
+    assert.ok(html.includes('judge1111111'), 'should show claude judge runtime fingerprint');
+    assert.ok(html.includes('judge2222222'), 'should show openai judge runtime fingerprint');
     // Agreement table renders pearson + MAD numbers
     assert.ok(html.includes('0.85'), 'should show pearson value');
     assert.ok(html.includes('0.6'), 'should show MAD value');
