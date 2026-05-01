@@ -1,32 +1,42 @@
-import { spawn } from 'node:child_process';
 import type { ExecResult, ExecutorInput } from '../types/index.js';
-import { DEFAULT_TIMEOUT_MS, errorMessage, GeminiResponse, parseJson } from './shared.js';
+import {
+  DEFAULT_TIMEOUT_MS,
+  errorMessage,
+  GeminiResponse,
+  interruptedExecResult,
+  parseJson,
+  spawnWithSigintPropagation,
+  timeoutExecResult,
+  type SpawnHelperError,
+} from './shared.js';
 
 export async function geminiExecutor({ model, system, prompt, timeoutMs = DEFAULT_TIMEOUT_MS }: ExecutorInput): Promise<ExecResult> {
   const fullPrompt = system ? `${system}\n\n${prompt}` : prompt;
   const start = Date.now();
   try {
-    const output = await new Promise<string>((resolve, reject) => {
-      const args: string[] = [];
-      if (model) args.push('--model', model);
-      const child = spawn('gemini', args, {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env },
-        timeout: timeoutMs,
-      });
-
-      let stdout = '';
-      let stderr = '';
-      child.stdout.on('data', (chunk: Buffer) => { stdout += chunk; });
-      child.stderr.on('data', (chunk: Buffer) => { stderr += chunk; });
-      child.on('error', (err: Error) => reject(err));
-      child.on('close', (code: number | null) => {
-        if (code !== 0 && !stdout) reject(new Error(stderr || `gemini exited with code ${code}`));
-        else resolve(stdout);
-      });
-      child.stdin.write(fullPrompt);
-      child.stdin.end();
+    const args: string[] = [];
+    if (model) args.push('--model', model);
+    const { child, done } = spawnWithSigintPropagation('gemini', args, {
+      env: { ...process.env },
+      timeoutMs,
     });
+    child.stdin?.write(fullPrompt);
+    child.stdin?.end();
+    let output: string;
+    try {
+      const r = await done;
+      output = r.stdout;
+    } catch (err: unknown) {
+      const details = err as SpawnHelperError;
+      if (details.killedByTimeout) return timeoutExecResult(timeoutMs, Date.now() - start);
+      if (details.killedBySignal) return interruptedExecResult(Date.now() - start);
+      // gemini 退出码非 0 但有 stdout 时仍按成功路径解析(原行为);只在 stdout 为空时才视为失败
+      if (details.stdout && details.stdout.length > 0) {
+        output = details.stdout;
+      } else {
+        throw err;
+      }
+    }
 
     const durationMs = Date.now() - start;
     let text = output;

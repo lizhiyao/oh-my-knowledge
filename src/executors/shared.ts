@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -190,4 +190,217 @@ export function timeoutExecResult(timeoutMs: number, durationMs: number): ExecRe
     stopReason: 'timeout',
     numTurns: 0,
   };
+}
+
+// SIGINT-killed child(用户在 host 按 Ctrl+C,parent 收到 SIGINT 后广播 SIGTERM 给 children)
+// 跟 timeout-killed 区分:stopReason='interrupted',跟 'timeout' / 'error' 都不一样,
+// caller / renderer 可以据此显示不同的语义("用户中断" vs "超时" vs "执行错误")。
+export function interruptedExecResult(durationMs: number): ExecResult {
+  return {
+    ok: false,
+    error: 'execution interrupted (SIGINT)',
+    durationMs,
+    durationApiMs: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    costUSD: 0,
+    output: null,
+    stopReason: 'interrupted',
+    numTurns: 0,
+  };
+}
+
+// ===========================================================================
+// SIGINT propagation:统一让 spawn 出来的 child 在 parent 收到 SIGINT 时被 kill,
+// 避免 host CLI(codex / claude code)Ctrl+C 后内层子进程成为 orphan。
+// ===========================================================================
+//
+// 设计要点:
+// - 单一进程级 process.on('SIGINT', ...) listener,惰性首次 spawn 时安装一次(零 leak)
+// - 模块级 Set<ChildProcess> registry,child 退出 / 出错时立即 delete
+// - SIGTERM 先发(child 一般会做 telemetry flush),500ms grace,然后 SIGKILL fallback
+// - handler 用具名 function + process.removeListener(self),不动 host 自己的 listener;
+//   然后 process.kill(pid, 'SIGINT') re-raise 让 default action / host listener 接管
+// - shuttingDown flag:第一次 SIGINT 进 handler 后置 true,第二次按 Ctrl+C 走 default action
+//   立即退出(软关 → 硬关两段式)
+// - 同时支持 timeout 跟 abortSignal 两条 kill 路径,跟 SIGINT 共用 grace 逻辑
+
+const activeChildren = new Set<ChildProcess>();
+let sigintListenerInstalled = false;
+let shuttingDown = false;
+const SIGTERM_GRACE_MS = 500;
+
+function broadcastShutdown(): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  for (const child of activeChildren) {
+    try { child.kill('SIGTERM'); } catch { /* already dead */ }
+    setTimeout(() => {
+      try { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); } catch { /* */ }
+    }, SIGTERM_GRACE_MS).unref();
+  }
+  // 卸载自己,re-raise SIGINT 让 host listener / default action(exit code 130)接管
+  process.removeListener('SIGINT', sigintHandler);
+  process.kill(process.pid, 'SIGINT');
+}
+
+function sigintHandler(): void {
+  broadcastShutdown();
+}
+
+function ensureSigintListener(): void {
+  if (sigintListenerInstalled) return;
+  sigintListenerInstalled = true;
+  process.on('SIGINT', sigintHandler);
+}
+
+// test-only:重置模块级状态,让 vitest 之间互不污染
+export function __resetSigintRegistryForTest(): void {
+  activeChildren.clear();
+  if (sigintListenerInstalled) {
+    process.removeListener('SIGINT', sigintHandler);
+    sigintListenerInstalled = false;
+  }
+  shuttingDown = false;
+}
+
+export interface SpawnHelperResult {
+  stdout: string;
+  stderr: string;
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  killedByTimeout: boolean;
+  killedBySignal: NodeJS.Signals | null;
+}
+
+export interface SpawnHelperError extends Error {
+  stdout?: string;
+  stderr?: string;
+  code?: number | null;
+  signal?: NodeJS.Signals | null;
+  killedByTimeout?: boolean;
+  killedBySignal?: NodeJS.Signals | null;
+}
+
+export interface SpawnHelperOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  /** kill child after this many ms; reject with killedByTimeout=true */
+  timeoutMs?: number;
+  /** stdout overflow threshold; reject when累计超限 */
+  maxBuffer?: number;
+  /** external abort signal; abort() 走跟 SIGINT 同一 grace 路径 */
+  abortSignal?: AbortSignal;
+}
+
+/**
+ * spawn child + 注册到全局 SIGINT registry。返回 { child, done } 让 caller 自己
+ * 操作 stdin(写入 / 关闭),通过 done 等结果。
+ *
+ * 适用:claude / codex / gemini / script CLI 子进程。HTTP executor(*-api)用 fetch +
+ * AbortSignal.timeout,自带 abort,不走这个。claude-sdk in-process 也不走。
+ */
+export function spawnWithSigintPropagation(
+  command: string,
+  args: string[],
+  options: SpawnHelperOptions = {},
+): { child: ChildProcess; done: Promise<SpawnHelperResult> } {
+  const { cwd, env, timeoutMs, maxBuffer = MAX_BUFFER, abortSignal } = options;
+  ensureSigintListener();
+
+  const child = spawn(command, args, {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    ...(cwd && { cwd }),
+    ...(env && { env }),
+  });
+
+  activeChildren.add(child);
+
+  let stdout = '';
+  let stderr = '';
+  let bufferOverflow = false;
+  let killedByTimeout = false;
+  let killedBySignalReason: NodeJS.Signals | null = null;
+  let graceTimer: NodeJS.Timeout | null = null;
+  let timeoutTimer: NodeJS.Timeout | null = null;
+
+  function killWithGrace(reason: 'timeout' | 'abort'): void {
+    if (reason === 'timeout') killedByTimeout = true;
+    if (reason === 'abort') killedBySignalReason = 'SIGTERM';
+    try { child.kill('SIGTERM'); } catch { /* already dead */ }
+    if (graceTimer) return;
+    graceTimer = setTimeout(() => {
+      try { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); } catch { /* */ }
+    }, SIGTERM_GRACE_MS);
+    graceTimer.unref();
+  }
+
+  if (timeoutMs && timeoutMs > 0) {
+    timeoutTimer = setTimeout(() => killWithGrace('timeout'), timeoutMs);
+    timeoutTimer.unref();
+  }
+
+  let abortListener: (() => void) | null = null;
+  if (abortSignal) {
+    abortListener = (): void => killWithGrace('abort');
+    abortSignal.addEventListener('abort', abortListener, { once: true });
+  }
+
+  child.stdout?.on('data', (chunk: Buffer) => {
+    stdout += chunk.toString();
+    if (stdout.length > maxBuffer) {
+      bufferOverflow = true;
+      try { child.kill('SIGTERM'); } catch { /* */ }
+    }
+  });
+  child.stderr?.on('data', (chunk: Buffer) => {
+    stderr += chunk.toString();
+  });
+
+  function cleanup(): void {
+    activeChildren.delete(child);
+    if (timeoutTimer) clearTimeout(timeoutTimer);
+    if (graceTimer) clearTimeout(graceTimer);
+    if (abortListener && abortSignal) abortSignal.removeEventListener('abort', abortListener);
+  }
+
+  const done = new Promise<SpawnHelperResult>((resolve, reject) => {
+    child.on('error', (err: Error) => {
+      cleanup();
+      const e = err as SpawnHelperError;
+      e.stdout = stdout;
+      e.stderr = stderr;
+      reject(e);
+    });
+    child.on('close', (code: number | null, signal: NodeJS.Signals | null) => {
+      cleanup();
+      const killedSig: NodeJS.Signals | null = killedBySignalReason
+        || (signal && !killedByTimeout ? signal : null);
+      const result: SpawnHelperResult = {
+        stdout, stderr, code, signal,
+        killedByTimeout,
+        killedBySignal: killedSig,
+      };
+      if (bufferOverflow) {
+        const e = Object.assign(new Error(`stdout maxBuffer (${maxBuffer}) exceeded`), result) as SpawnHelperError;
+        reject(e);
+      } else if (killedByTimeout) {
+        const tSec = timeoutMs ? (timeoutMs / 1000).toFixed(0) : '?';
+        const e = Object.assign(new Error(`execution timed out after ${tSec}s`), result) as SpawnHelperError;
+        reject(e);
+      } else if (killedSig) {
+        const e = Object.assign(new Error(`execution interrupted by signal ${killedSig}`), result) as SpawnHelperError;
+        reject(e);
+      } else if (code !== 0 && code !== null) {
+        const e = Object.assign(new Error(`${command} exited with code ${code}`), result) as SpawnHelperError;
+        reject(e);
+      } else {
+        resolve(result);
+      }
+    });
+  });
+
+  return { child, done };
 }

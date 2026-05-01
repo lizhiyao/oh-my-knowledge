@@ -10,6 +10,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 > CHANGELOG 写作风格:每条改动 3-5 行,链 PR # 让需要细节的人去看。详情见 commit / PR description,本文档只保留 user-facing 影响 / BREAKING / migration 指引 / 测量学不变量 callout。规则在 [CLAUDE.md](./CLAUDE.md)「写代码约定」段。
 
+### Fixed
+
+- **SIGINT 传播到 spawn 出来的子进程**(嵌套 host CLI 场景下避免 child orphan):
+  在 host(如 codex / claude code)CLI 里跑 omk 时,用户按 Ctrl+C 信号传到 omk process,但 omk 之前没注册 SIGINT handler 也没传给子进程,**spawn 的内层 codex / claude / gemini / script 子进程会成为 orphan,继续跑直到 timeout(30-180s)**。非嵌套场景从普通 shell 跑 Ctrl+C 也有同样问题。
+  - **新 helper**:`src/executors/shared.ts` 加 `spawnWithSigintPropagation(cmd, args, opts)` —— 单一进程级 `process.on('SIGINT', handler)`(惰性首装,模块级 boolean 守护防 leak)+ 模块级 `Set<ChildProcess>` registry。SIGINT 触发时广播 `SIGTERM` 给所有 active children,500ms grace 后升级 `SIGKILL`(`setTimeout.unref()` 不阻 process exit)。handler 用具名 function + `process.removeListener(self)` 后 `process.kill(pid, 'SIGINT')` re-raise,让 host listener / Node default action(exit 130)接管,**不动 host 自己的 SIGINT handler**。
+  - **同时统一 timeout / abortSignal 路径**:helper 内置 timeout 走同一 grace 逻辑,新增 `abortSignal` 入参支持 task-level cancel(`evaluation-execution.ts` 未来扩展用)。reject 时透传 `killedByTimeout: boolean` / `killedBySignal: NodeJS.Signals | null` 两个独立 flag,跟现有 timeout / 进程退出码三条路径不混。
+  - **新 helper:`interruptedExecResult(durationMs)`** —— `stopReason: 'interrupted'`,跟 `timeoutExecResult` 的 `'timeout'` 区分,renderer / CLI 可显示"用户中断"语义。
+  - **4 个 executor 迁移**:`codex-cli.ts:131-149`(`runCodexExec` 改用 helper,保留 `child.stdin?.end()` 关 stdin)、`claude-cli.ts:55-66`(替换 `execFileAsync`,加 `child.stdin?.end()` 防 codex 那种 pipe 卡死风险)、`gemini.ts:9-29`(替换手写 spawn 包装,stdin.write/end 由 caller 做)、`script.ts:22-79`(同 gemini)。catch 路径全部改成识别 `killedByTimeout` / `killedBySignal` 两个 flag。
+  - **不改**:`anthropic-api.ts` / `openai-api.ts`(用 fetch + AbortSignal.timeout 自带 abort);`claude-sdk.ts`(in-process,无 child)。这些走另一条路,无 orphan 风险。
+  - **测试**:`test/executors/sigint-propagation.test.ts` 新增 9 case 锁定:正常退出 / exit 非 0 / timeout / listener 单一性(loop 10 次仍 1 个 listener)/ 自然退出 grace 不误升级 / abortSignal abort / maxBuffer 超限 kill / stdout-stderr 分别捕获 / SIGTERM ignore 时 SIGKILL fallback within ~600ms。helper 单元测试用真 spawn `node -e "..."` 子进程而非 mock,行为更可信(<2s 跑完)。回归测试全部保持绿(865 → 875,+9 case)。
+  - **手动验证**(不进 CI):`docs/dev/sigint-validation.md` 写一个 ps 验证脚本,跑长 eval + 按 Ctrl+C,观察内层 codex 进程立即退出而非 orphan。
+
 ### Added
 
 - **codex-cli executor**(`--executor codex`):接入 OpenAI Codex CLI 当被测 / 评委,跟 Claude Code 同类 agent CLI 对位。token 统计齐全,best-effort 抽 codex 事件流到 omk trace。skill isolation 仅 cwd 一条 channel(codex 没 SDK skill 等价物),`allowedSkills=[]` 强制 cwd 非空。EXECUTOR_REGISTRY 加 `'codex'` 跟 `'claude'` 对齐。详见 #31。
