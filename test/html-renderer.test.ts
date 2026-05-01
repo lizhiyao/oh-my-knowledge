@@ -319,6 +319,10 @@ describe('renderRunDetail', () => {
       sdk: { name: '@openai/codex-sdk', version: '0.128.0' },
       capabilities: { systemPrompt: 'prepended', costUSD: 'not-reported', trace: 'best-effort', skillIsolation: 'cwd-only' },
     };
+    runtimeReport.meta.executorRuntimes = {
+      v1: runtimeReport.meta.executorRuntime,
+      v2: { ...runtimeReport.meta.executorRuntime, fingerprint: 'abc123variant', binary: { name: 'codex', source: 'bundled', version: '0.129.0' } },
+    };
     runtimeReport.meta.judgeRuntime = {
       executor: 'claude-sdk',
       model: 'haiku',
@@ -329,8 +333,10 @@ describe('renderRunDetail', () => {
       capabilities: { systemPrompt: 'native', costUSD: 'reported', trace: 'native', skillIsolation: 'full' },
     };
     const html = renderRunDetail(runtimeReport);
-    assert.ok(html.includes('执行器指纹'));
+    assert.ok(html.includes('执行器指纹 v1'));
+    assert.ok(html.includes('执行器指纹 v2'));
     assert.ok(html.includes('abc123def456'));
+    assert.ok(html.includes('abc123variant'));
     assert.ok(html.includes('binary 0.128.0'));
     assert.ok(html.includes('评委指纹'));
     assert.ok(html.includes('def456abc123'));

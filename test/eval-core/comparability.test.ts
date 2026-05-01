@@ -57,6 +57,13 @@ describe('comparability warnings', () => {
     assert.ok(warnings.some((w) => w.code === 'executor_runtime_missing'));
   });
 
+  it('single-report audit warns when per-variant runtime metadata is incomplete', () => {
+    const warnings = reportComparabilityWarnings(report({
+      executorRuntimes: { control: runtime('claude-sdk', 'm', 'exec11111111') },
+    }));
+    assert.ok(warnings.some((w) => w.code === 'executor_runtime_missing'));
+  });
+
   it('single-report audit warns when runtime metadata is not verifiable', () => {
     const warnings = reportComparabilityWarnings(report({
       executorRuntime: {
@@ -91,6 +98,32 @@ describe('comparability warnings', () => {
     assert.ok(codes.includes('judge_prompt_hash_mismatch'));
     assert.ok(codes.includes('sample_hashes_mismatch'));
     assert.ok(codes.includes('skill_isolation_mismatch'));
+  });
+
+  it('cross-report audit checks per-variant executor runtime fingerprints', () => {
+    const before = report({
+      executorRuntimes: {
+        control: runtime('claude-sdk', 'm', 'exec11111111'),
+        treatment: runtime('claude-sdk', 'm', 'exec22222222'),
+      },
+    });
+    const after = report({
+      executorRuntimes: {
+        control: runtime('claude-sdk', 'm', 'exec11111111'),
+        treatment: runtime('claude-sdk', 'm', 'exec33333333'),
+      },
+    });
+
+    const codes = crossReportComparabilityWarnings(before, after).map((w) => w.code);
+    assert.ok(codes.includes('executor_runtime_mismatch'));
+  });
+
+  it('cross-report audit warns when per-variant executor runtime is missing on one side', () => {
+    const codes = crossReportComparabilityWarnings(
+      report({ executorRuntimes: { control: runtime('claude-sdk', 'm', 'exec11111111') } }),
+      report({ executorRuntimes: { control: runtime('claude-sdk', 'm', 'exec11111111'), treatment: runtime('claude-sdk', 'm', 'exec22222222') } }),
+    ).map((w) => w.code);
+    assert.ok(codes.includes('executor_runtime_missing'));
   });
 
   it('cross-report audit checks ensemble judge models, repeat, and per-judge runtime', () => {

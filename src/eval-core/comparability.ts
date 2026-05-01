@@ -93,6 +93,49 @@ function pushRuntimeUnverifiable(
   );
 }
 
+function runtimeMapKeys(meta: ReportMeta): string[] {
+  return sorted(meta.executorRuntimes ? Object.keys(meta.executorRuntimes) : undefined);
+}
+
+function reportExecutorRuntimeWarnings(report: Report, warnings: ComparabilityWarning[]): void {
+  const runtimes = report.meta.executorRuntimes;
+  if (runtimes && Object.keys(runtimes).length > 0) {
+    const missing = report.meta.variants.filter((variant) => !runtimes[variant]);
+    if (missing.length > 0) {
+      push(
+        warnings,
+        'executor_runtime_missing',
+        `报告缺少部分 variant 的 executor runtime 指纹: ${missing.join(', ')}。`,
+        `Report is missing executor runtime fingerprints for variants: ${missing.join(', ')}.`,
+      );
+    }
+    for (const [variant, runtime] of Object.entries(runtimes)) {
+      pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', `variant ${variant} executor`, `Variant ${variant} executor`, runtime);
+    }
+    return;
+  }
+
+  if (!report.meta.executorRuntime) {
+    push(
+      warnings,
+      'executor_runtime_missing',
+      '报告缺少 executor runtime 指纹；无法审计 binary / SDK 版本，跨报告严格比较需谨慎。',
+      'Report is missing executor runtime fingerprint; binary / SDK versions cannot be audited for strict cross-report comparison.',
+    );
+    return;
+  }
+
+  if (report.meta.variants.length > 1) {
+    push(
+      warnings,
+      'executor_runtimes_missing',
+      '报告缺少 per-variant executor runtime 指纹；多 variant run 无法审计每个分组实际使用的 binary / SDK 版本。',
+      'Report is missing per-variant executor runtime fingerprints; multi-variant runs cannot audit each group’s actual binary / SDK version.',
+    );
+  }
+  pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', 'executor', 'Executor', report.meta.executorRuntime);
+}
+
 function countSampleHashMismatches(a: Report, b: Report): { mismatched: number; missing: number; common: number } | null {
   const ah = a.meta.sampleHashes;
   const bh = b.meta.sampleHashes;
@@ -114,16 +157,7 @@ function countSampleHashMismatches(a: Report, b: Report): { mismatched: number; 
 
 export function reportComparabilityWarnings(report: Report): ComparabilityWarning[] {
   const warnings: ComparabilityWarning[] = [];
-  if (!report.meta.executorRuntime) {
-    push(
-      warnings,
-      'executor_runtime_missing',
-      '报告缺少 executor runtime 指纹；无法审计 binary / SDK 版本，跨报告严格比较需谨慎。',
-      'Report is missing executor runtime fingerprint; binary / SDK versions cannot be audited for strict cross-report comparison.',
-    );
-  } else {
-    pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', 'executor', 'Executor', report.meta.executorRuntime);
-  }
+  reportExecutorRuntimeWarnings(report, warnings);
   if (hasJudge(report.meta) && !report.meta.judgePromptHash) {
     push(
       warnings,
@@ -196,7 +230,35 @@ export function crossReportComparabilityWarnings(before: Report, after: Report):
   if (b.executor !== a.executor) {
     push(warnings, 'executor_mismatch', `executor 不同: ${b.executor} → ${a.executor}。`, `Executor changed: ${b.executor} → ${a.executor}.`);
   }
-  if (b.executorRuntime?.fingerprint && a.executorRuntime?.fingerprint) {
+  const bExecutorRuntimeKeys = runtimeMapKeys(b);
+  const aExecutorRuntimeKeys = runtimeMapKeys(a);
+  const hasExecutorRuntimeMap = bExecutorRuntimeKeys.length > 0 || aExecutorRuntimeKeys.length > 0;
+  if (hasExecutorRuntimeMap) {
+    const keys = sorted([...new Set([...b.variants, ...a.variants, ...bExecutorRuntimeKeys, ...aExecutorRuntimeKeys])]);
+    const missing = keys.filter((key) => !b.executorRuntimes?.[key] || !a.executorRuntimes?.[key]);
+    if (missing.length > 0) {
+      push(
+        warnings,
+        'executor_runtime_missing',
+        `至少一份报告缺少 per-variant executor runtime 指纹: ${missing.join(', ')}。`,
+        `At least one report is missing per-variant executor runtime fingerprints: ${missing.join(', ')}.`,
+      );
+    }
+    for (const key of keys) {
+      const beforeRuntime = b.executorRuntimes?.[key];
+      const afterRuntime = a.executorRuntimes?.[key];
+      if (beforeRuntime?.fingerprint && afterRuntime?.fingerprint && beforeRuntime.fingerprint !== afterRuntime.fingerprint) {
+        push(
+          warnings,
+          'executor_runtime_mismatch',
+          `variant ${key} executor runtime 指纹不同: ${runtimeLabel(beforeRuntime)} → ${runtimeLabel(afterRuntime)}。`,
+          `Variant ${key} executor runtime fingerprint changed: ${runtimeLabel(beforeRuntime)} → ${runtimeLabel(afterRuntime)}.`,
+        );
+      }
+      pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', `before variant ${key} executor`, `Before variant ${key} executor`, beforeRuntime);
+      pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', `after variant ${key} executor`, `After variant ${key} executor`, afterRuntime);
+    }
+  } else if (b.executorRuntime?.fingerprint && a.executorRuntime?.fingerprint) {
     if (b.executorRuntime.fingerprint !== a.executorRuntime.fingerprint) {
       push(
         warnings,
@@ -213,8 +275,10 @@ export function crossReportComparabilityWarnings(before: Report, after: Report):
       'At least one report is missing executor runtime fingerprint; binary / SDK version parity cannot be verified.',
     );
   }
-  pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', 'before executor', 'Before executor', b.executorRuntime);
-  pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', 'after executor', 'After executor', a.executorRuntime);
+  if (!hasExecutorRuntimeMap) {
+    pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', 'before executor', 'Before executor', b.executorRuntime);
+    pushRuntimeUnverifiable(warnings, 'executor_runtime_unverifiable', 'after executor', 'After executor', a.executorRuntime);
+  }
 
   if ((b.judgeModel || a.judgeModel) && b.judgeModel !== a.judgeModel) {
     push(warnings, 'judge_model_mismatch', `评委模型不同: ${b.judgeModel ?? 'none'} → ${a.judgeModel ?? 'none'}。`, `Judge model changed: ${b.judgeModel ?? 'none'} → ${a.judgeModel ?? 'none'}.`);

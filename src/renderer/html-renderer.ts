@@ -81,6 +81,20 @@ function renderJudgeRuntimeTags(meta: Report['meta'], lang: Lang): string {
   return renderRuntimeTag(meta.judgeRuntime, lang === 'zh' ? '评委指纹' : 'Judge runtime', lang);
 }
 
+function renderExecutorRuntimeTags(meta: Report['meta'], lang: Lang): string {
+  if (meta.executorRuntimes && Object.keys(meta.executorRuntimes).length > 0) {
+    return Object.entries(meta.executorRuntimes)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, runtime]) => renderRuntimeTag(
+        runtime,
+        lang === 'zh' ? `执行器指纹 ${key}` : `Executor runtime ${key}`,
+        lang,
+      ))
+      .join('');
+  }
+  return renderRuntimeTag(meta.executorRuntime, lang === 'zh' ? '执行器指纹' : 'Executor runtime', lang);
+}
+
 export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
   const skillHealthLink = `<a href="/analyses${langQ}" style="color:var(--text-muted);font-size:12px;text-decoration:none;border:1px solid var(--border);padding:4px 10px;border-radius:var(--radius);display:inline-block">📊 <span data-i18n="skillHealthTitle">${t('skillHealthTitle', lang)}</span> →</a>`;
@@ -370,7 +384,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       <span class="meta-tag"${execCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(totalExecCost, execCostReported)}</span>
       <span class="meta-tag">${lang === 'zh' ? '耗时' : 'duration'}: ${fmtDuration(totalDurationMs)}</span>
       ${m.gitInfo ? `<span class="meta-tag">commit: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
-      ${m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : ''}${renderRuntimeTag(m.executorRuntime, lang === 'zh' ? '执行器指纹' : 'Executor runtime', lang)}${renderJudgeRuntimeTags(m, lang)}
+      ${m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : ''}${renderExecutorRuntimeTags(m, lang)}${renderJudgeRuntimeTags(m, lang)}
       ${m.sampleHashes ? `<span class="meta-tag" style="color:var(--text-muted)" title="${t('sampleHashCountDesc', lang)}">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}/${m.sampleCount}</span>` : ''}
       ${m.evaluationFramework ? `<span class="meta-tag" title="${t('evalFrameworkDesc', lang)}">${t('evalFrameworkLabel', lang)}: ${m.evaluationFramework === 'bootstrap' ? t('evalFrameworkBootstrap', lang) : m.evaluationFramework === 'both' ? t('evalFrameworkBoth', lang) : t('evalFrameworkTTest', lang)}</span>` : ''}
       ${m.debiasMode && m.debiasMode.length > 0 ? `<span class="meta-tag" style="color:var(--green)" title="${lang === 'zh' ? 'judge bias 校正模式 (Phase 3)：length=substance-not-length 提示;position=ensemble 顺序随机化' : 'Judge bias debias modes (Phase 3): length = substance-not-length prompt; position = randomized ensemble order'}">${lang === 'zh' ? '校正' : 'debias'}: ${m.debiasMode.join(' · ')}</span>` : ''}
@@ -480,7 +494,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
       <span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
-      ${renderRuntimeTag(m.executorRuntime, lang === 'zh' ? '执行器指纹' : 'Executor runtime', lang)}${renderJudgeRuntimeTags(m, lang)}
+      ${renderExecutorRuntimeTags(m, lang)}${renderJudgeRuntimeTags(m, lang)}
       <span class="meta-tag"${eachAllCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(m.totalCostUSD, eachAllCostReported)}</span>
     </div>
 

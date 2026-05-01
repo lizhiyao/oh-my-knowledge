@@ -1,10 +1,10 @@
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/evaluation-reporting.js';
 import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finalizeEvaluationRun } from '../eval-core/evaluation-job.js';
 import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from '../server/job-store.js';
 import { resolveArtifacts } from '../inputs/skill-loader.js';
-import type { Artifact, JobStore, ProgressCallback, Report, VarianceData, VariantResult, VariantSummary } from '../types/index.js';
+import type { Artifact, ExecutorRuntimeFingerprint, JobStore, ProgressCallback, Report, VarianceData, VariantResult, VariantSummary } from '../types/index.js';
 
 interface RunSingleEvaluationOptions {
   samplesPath: string;
@@ -40,6 +40,9 @@ export interface EachSkillResult {
   summary: Record<string, VariantSummary>;
   /** repeat > 1 时由 runMultiple 聚合,承载三层独立 variance + t 检验 */
   variance?: VarianceData;
+  /** Runtime fingerprints from the single skill-vs-baseline run. */
+  executorRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
+  executorRuntime?: ExecutorRuntimeFingerprint;
   results: Array<{
     sample_id: string;
     variants: {
@@ -47,6 +50,13 @@ export interface EachSkillResult {
       skill: VariantResult;
     };
   }>;
+}
+
+function commonRuntime(runtimes: Record<string, ExecutorRuntimeFingerprint>): ExecutorRuntimeFingerprint | undefined {
+  const values = Object.values(runtimes);
+  if (values.length === 0) return undefined;
+  const first = values[0];
+  return values.every((runtime) => runtime.fingerprint === first.fingerprint) ? first : undefined;
 }
 
 function buildEachOverview(skillResults: EachSkillResult[], totalCostUSD: number) {
@@ -148,6 +158,18 @@ export function buildEachReport({
     finishedAt,
   });
   const totalSampleCount = skillResults.reduce((sum, skill) => sum + skill.sampleCount, 0);
+  const executorRuntimes: Record<string, ExecutorRuntimeFingerprint> = {};
+  const entryByName = new Map(skillEntries.map((entry) => [entry.name, entry]));
+  for (const skill of skillResults) {
+    const entry = entryByName.get(skill.name);
+    executorRuntimes[skill.name] =
+      skill.executorRuntimes?.skill
+      ?? skill.executorRuntime
+      ?? getExecutorRuntimeFingerprint(executorName, model, {
+        skillDir: entry ? dirname(entry.skillPath) : skillDir,
+      });
+  }
+  const executorRuntime = commonRuntime(executorRuntimes) ?? Object.values(executorRuntimes)[0] ?? getExecutorRuntimeFingerprint(executorName, model, { skillDir });
 
   return {
     report: {
@@ -167,7 +189,8 @@ export function buildEachReport({
         artifactHashes: Object.fromEntries(
           skillResults.map((skill) => [skill.name, skill.artifactHash || 'no-skill']),
         ),
-        executorRuntime: getExecutorRuntimeFingerprint(executorName, model, { skillDir }),
+        executorRuntime,
+        executorRuntimes,
         judgeRuntime: noJudge ? null : getExecutorRuntimeFingerprint(judgeExecutorName || executorName, judgeModel, { skillDir }),
         ...(judgeModels && judgeModels.length >= 2 ? {
           judgeModels: judgeModels.map((jc) => `${jc.executor}:${jc.model}`),
@@ -304,6 +327,8 @@ export async function executeEachEvaluationRuns({
       },
       // runMultiple 跑 N 次后会把 variance 挂到 report.variance,这里搬到 skill 维度
       ...(report.variance ? { variance: report.variance } : {}),
+      executorRuntimes: report.meta.executorRuntimes,
+      executorRuntime: report.meta.executorRuntime,
       results: report.results.map((result) => ({
         sample_id: result.sample_id,
         variants: {
