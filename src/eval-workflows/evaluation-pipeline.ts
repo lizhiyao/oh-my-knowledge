@@ -379,6 +379,8 @@ export interface EvaluationPipelineOptions {
    *  isolation-disabled pre-flight warnings). True/undefined = default behavior
    *  (no warning); false = user explicitly disabled, warn if ~/.claude/skills/ has content. */
   strictBaseline?: boolean;
+  /** Explicit persisted run id. Used by batch workflows that need stable child ids. */
+  runId?: string;
 }
 
 export async function executeEvaluationPipeline({
@@ -420,6 +422,7 @@ export async function executeEvaluationPipeline({
   lengthDebias = true,
   budget,
   strictBaseline,
+  runId,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -438,7 +441,7 @@ export async function executeEvaluationPipeline({
     project,
     owner,
     tags,
-    runId: generateRunId(variantNames),
+    runId: runId ?? generateRunId(variantNames),
     jobStore,
     persistJob,
     repeat,

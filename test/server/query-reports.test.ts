@@ -1,6 +1,9 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { queryRunList, queryRun, queryTrend } from '../../src/server/report-store.js';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { createFileStore, queryRunList, queryRun, queryTrend } from '../../src/server/report-store.js';
 import type { Report, ReportStore, VariantSummary } from '../../src/types/index.js';
 
 function makeReport(id: string, variant: string, timestamp: string, avgScore: number | undefined): Report {
@@ -23,6 +26,7 @@ function makeReport(id: string, variant: string, timestamp: string, avgScore: nu
     },
   };
   return {
+    kind: 'evaluation',
     id,
     meta: {
       variants: [variant],
@@ -66,6 +70,46 @@ describe('queryRunList', () => {
     assert.ok(list[0].meta);
     assert.ok(list[0].summary);
     assert.equal(list[0].meta.model, 'sonnet');
+  });
+});
+
+describe('createFileStore legacy report loading', () => {
+  it('把无 kind 的历史普通报告归一化为 evaluation', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-report-'));
+    try {
+      const legacy = makeReport('legacy-run', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;
+      delete legacy.kind;
+      delete legacy.id;
+      writeFileSync(join(dir, 'legacy-run.json'), JSON.stringify(legacy, null, 2));
+
+      const store = createFileStore(dir);
+      const report = await store.get('legacy-run');
+      assert.equal(report?.kind, 'evaluation');
+      assert.equal(report?.id, 'legacy-run');
+      const list = await store.list();
+      assert.equal(list.length, 1);
+      assert.equal(list[0].kind, 'evaluation');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('不把旧 each 混合报告误认为 evaluation', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-each-'));
+    try {
+      const legacyEach = makeReport('legacy-each', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;
+      delete legacyEach.kind;
+      legacyEach.each = true;
+      legacyEach.overview = { totalArtifacts: 1, totalSamples: 1, totalCostUSD: 0, artifacts: [] };
+      legacyEach.artifacts = [];
+      writeFileSync(join(dir, 'legacy-each.json'), JSON.stringify(legacyEach, null, 2));
+
+      const store = createFileStore(dir);
+      assert.equal(await store.get('legacy-each'), null);
+      assert.deepEqual(await store.list(), []);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

@@ -72,7 +72,11 @@ function hashSample(sample: Sample): string {
   return hashString(stableForm);
 }
 
-function getGitInfo(): GitInfo | null {
+export function getCliVersion(): string {
+  return PKG.version;
+}
+
+export function getGitInfo(): GitInfo | null {
   try {
     const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim();
     const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
@@ -246,6 +250,7 @@ export function aggregateReport({
   if (lengthDebiasOn) debiasModeList.push('length');
 
   return {
+    kind: 'evaluation',
     id: runId,
     meta: {
       variants,
@@ -256,7 +261,7 @@ export function aggregateReport({
       taskCount: tasks.length,
       totalCostUSD: Number(totalCostUSD.toFixed(6)),
       timestamp: new Date().toISOString(),
-      cliVersion: PKG.version,
+      cliVersion: getCliVersion(),
       nodeVersion: process.version,
       artifactHashes,
       sampleHashes,

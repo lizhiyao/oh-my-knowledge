@@ -294,35 +294,67 @@ export interface ResultEntry {
   variants: Record<string, VariantResult>;
 }
 
-export interface Report {
+export interface EvaluationReport {
+  kind: 'evaluation';
   id: string;
   meta: ReportMeta;
   summary: Record<string, VariantSummary>;
   results: ResultEntry[];
   analysis?: AnalysisResult;
   variance?: VarianceData;
-  each?: boolean;
-  overview?: {
-    totalArtifacts: number;
-    totalSamples: number;
-    totalCostUSD: number;
-    artifacts: Array<{
-      name: string;
-      baselineScore: number | null;
-      artifactScore: number | null;
-      improvement: string;
-    }>;
-  };
-  artifacts?: Array<{
-    name: string;
-    sampleCount: number;
-    artifactHash: string | null;
-    summary: Record<string, VariantSummary>;
-    /** --each --repeat N 时由 runMultiple 聚合的三层独立 variance + t 检验 */
-    variance?: VarianceData;
-    results: ResultEntry[];
-  }>;
 }
+
+export type Report = EvaluationReport;
+
+export interface EvaluationBatchMeta {
+  mode: 'each';
+  model: string;
+  judgeModel: string | null;
+  executor: string;
+  skillDir: string;
+  sampleCount: number;
+  taskCount: number;
+  totalArtifacts: number;
+  totalCostUSD: number;
+  timestamp: string;
+  cliVersion: string;
+  nodeVersion: string;
+  executorRuntime?: ExecutorRuntimeFingerprint;
+  executorRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
+  judgeRuntime?: ExecutorRuntimeFingerprint | null;
+  judgeRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
+  judgeModels?: string[];
+  request?: EvaluationRequest;
+  run?: EvaluationRun;
+  job?: EvaluationJob;
+  gitInfo?: GitInfo | null;
+}
+
+export interface EvaluationBatchIndexItem {
+  /** Skill name; also the treatment variant key inside the child EvaluationReport. */
+  name: string;
+  skillPath: string;
+  samplesPath: string;
+  reportId: string;
+  reportPath: string | null;
+  status: 'completed' | 'failed';
+  sampleCount: number;
+  totalCostUSD: number;
+  artifactHash: string | null;
+  summary: Record<string, VariantSummary>;
+  /** --each --repeat N 时由 child EvaluationReport 聚合的三层独立 variance + t 检验快照 */
+  variance?: VarianceData;
+}
+
+export interface EvaluationBatchIndex {
+  kind: 'batch-index';
+  id: string;
+  mode: 'each';
+  meta: EvaluationBatchMeta;
+  items: EvaluationBatchIndexItem[];
+}
+
+export type ReportDocument = EvaluationReport | EvaluationBatchIndex;
 
 export interface Insight {
   type: string;

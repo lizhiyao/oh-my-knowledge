@@ -10,6 +10,7 @@ const TEST_DIR = join(tmpdir(), `omk-test-reports-${Date.now()}`);
 const JOBS_DIR = join(tmpdir(), `omk-test-jobs-${Date.now()}`);
 
 const SAMPLE_REPORT = {
+  kind: 'evaluation',
   id: 'test-run-001',
   meta: {
     variants: ['v1', 'v2'],

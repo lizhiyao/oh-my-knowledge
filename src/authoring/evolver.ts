@@ -213,6 +213,7 @@ export function mergeEvolveReports(
   const runId = `evolve-${skillName}-${generateRunId([skillName]).split('-').slice(-2).join('-')}`;
 
   const report: Report = {
+    kind: 'evaluation',
     id: runId,
     meta: {
       ...firstReport.meta,

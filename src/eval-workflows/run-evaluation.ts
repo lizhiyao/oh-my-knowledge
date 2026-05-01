@@ -13,6 +13,8 @@ import { executeEvaluationPipeline } from './evaluation-pipeline.js';
 
 import type {
   Artifact,
+  EvaluationBatchIndex,
+  EvaluationReport,
   ExecutorFn,
   JobStore,
   ProgressCallback,
@@ -92,6 +94,8 @@ export interface RunEvaluationOptions extends CommonEvaluationOptions {
   noCache?: boolean;
   retry?: number;
   resume?: string;
+  /** Explicit persisted run id. Used by batch workflows that need stable child ids. */
+  runId?: string;
   /** strict-baseline default (CLI `--strict-baseline` default true).
    *  When undefined, treated as true. baseline-kind variants get allowedSkills=[]
    *  unless eval.yaml explicitly overrides per-variant. */
@@ -174,6 +178,7 @@ export async function runEvaluation({
   verbose = false,
   retry = 0,
   resume,
+  runId,
   layeredStats = false,
   repeat,
   each,
@@ -227,7 +232,7 @@ export async function runEvaluation({
     const { createFileStore } = await import('../server/report-store.js');
     const store = createFileStore(resolve(outputDir || DEFAULT_OUTPUT_DIR));
     const existing = await store.get(resume);
-    if (existing) {
+    if (existing?.kind === 'evaluation') {
       existingResults = {};
       for (const entry of existing.results || []) {
         existingResults[entry.sample_id] = entry.variants;
@@ -253,6 +258,8 @@ export async function runEvaluation({
           + `   新 entries 不隔离 → 与现有 entries 不可比。建议恢复默认 strict-baseline。\n`,
         );
       }
+    } else if (existing?.kind === 'batch-index') {
+      process.stderr.write(`\n⚠️  report ${resume} is an each batch index; resume needs a child EvaluationReport, starting from scratch\n`);
     } else {
       process.stderr.write(`\n⚠️  report ${resume} not found, starting from scratch\n`);
     }
@@ -299,6 +306,7 @@ export async function runEvaluation({
     lengthDebias,
     budget,
     strictBaseline,
+    runId,
   });
 }
 
@@ -540,7 +548,7 @@ export async function runEachEvaluation({
   lengthDebias,
   strictBaseline,
   variantAllowedSkills,
-}: RunEachEvaluationOptions): Promise<{ report: Report | DryRunEachReport; filePath: string | null }> {
+}: RunEachEvaluationOptions): Promise<{ report: EvaluationBatchIndex | DryRunEachReport; filePath: string | null }> {
   const skillEntries = discoverEachSkills(resolve(skillDir));
   if (skillEntries.length === 0) {
     throw new Error(`no skill with paired eval-samples found in: ${skillDir}`);
@@ -594,10 +602,10 @@ export async function runEachEvaluation({
       // repeat > 1 时走 runMultiple 做 variance; each=true 标记让 meta.request 如实反映
       if (repeat && repeat > 1) {
         const multi = await runMultiple({ ...options, repeat, each: true, judgeRepeat, judgeModels, lengthDebias });
-        return { report: multi.report, filePath: multi.filePath };
+        return { report: multi.report as EvaluationReport, filePath: multi.filePath };
       }
       const result = await runEvaluation({ ...options, each: true, judgeRepeat, judgeModels, lengthDebias });
-      return { report: result.report as Report, filePath: result.filePath };
+      return { report: result.report as EvaluationReport, filePath: result.filePath };
     },
   });
 }
