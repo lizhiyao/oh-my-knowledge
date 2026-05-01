@@ -8,6 +8,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Removed
+
+- **删 `openai-cli` executor,`'openai'` alias 重定向到 `openai-api` HTTP 实现**:
+  `src/executors/openai-cli.ts` 跟 `openai-api.ts` 历史职责重复,两者都走 `chat.completions.create`、同一份 token / output schema、同一个 `OPENAI_API_KEY` env。`openai-cli` 经外部 `openai` Python CLI binary,多一层启动 + 子进程 stdout parse,无独有便利。
+  - 删:`src/executors/openai-cli.ts`(整文件)+ `import { openAiCliExecutor } from './openai-cli.js'` 这一行 + `EXECUTOR_REGISTRY` 内对应条目。
+  - 改:`EXECUTOR_REGISTRY['openai']` 重指向 `openAiApiExecutor` —— 旧用户 `--executor openai` 仍工作,行为静默切到 HTTP 路径。token 统计 / output schema / verdict 全部一致,跨版本可比。
+  - 副作用:用户原本依赖外部 `openai` Python CLI binary 安装的环境(没设 `OPENAI_API_KEY`)会切到必须设 env 的 HTTP 路径。但 `openai` CLI 内部本身也读 `OPENAI_API_KEY`,所以实操层不存在 auth 行为差异。
+  - 不动 README / README.zh.md(它们引用的就是 `openai-api`,不是 `openai`),不动 `judgeId` 测试(只把 `'openai'` 当字符串,跟实现无关)。
+
 ### Added
 
 - **codex-cli executor**(`@openai/codex` npm 集成):新加 `--executor codex` 把 OpenAI Codex CLI(跟 Claude Code 同类的 coding agent CLI)接入 omk 评测框架。invocation:`codex exec --json --ephemeral --ignore-user-config --skip-git-repo-check --sandbox read-only -c approval_policy="never" --model <m> [-C <cwd>] PROMPT`。完整支持 token 统计 + best-effort tool trace 抽取,把 codex 0.125 的 `{type:'item.completed', item:{type, ...}}` 事件按 `item.type`(`agent_message` / `command_execution` / `file_read` / `file_write` / `web_search` 等)映射成 omk `ToolCallInfo`。
