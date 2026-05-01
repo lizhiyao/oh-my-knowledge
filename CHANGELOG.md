@@ -24,6 +24,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Fixed
 
+- **`bench run --each --no-cache` 不再被吞**:each batch index 和所有 child report 的 `meta.request.noCache` 现在都会如实记录并透传到实际单次评测,避免 smoke / CI 想禁用 cache 时仍写入默认 cache。`omk bench report --help` 也改为直接显示帮助,不再误启动 report server。
 - **SIGINT 传播到 spawn 出来的子进程**(嵌套 host CLI 下避免 child orphan):用户在 host CLI(codex / claude code)按 Ctrl+C 时,omk spawn 的内层 codex / claude / gemini / script 子进程之前会成 orphan 跑到 timeout。新 `spawnWithSigintPropagation` helper 统一 SIGINT / timeout / abortSignal 三条 kill 路径,SIGTERM + 500ms grace + SIGKILL 兜底。**行为变化**:gemini / script 加 10MB maxBuffer 上限(旧 spawn 实现无限制);timeout grace 多 500ms(120s 默认下不显著)。详见 #33。
 - **⚠ BREAKING-COMPARABILITY:`cacheKey()` 加 executor runtime 指纹,prefix `v3:` → `v4:`** —— 同 executor 换 binary / SDK 版本时旧 cache 不再误命中,避免报告写入新 runtime 指纹但输出来自旧 runtime。runtime 探测改用 executor 实际 `PATH` 形态,`codex-sdk` bundled `@openai/codex` 版本按 SDK 解析链读取。详见 #37。
 - **⚠ BREAKING-COMPARABILITY:`cacheKey()` 加 executor 名,prefix `v2:` → `v3:`** —— 同 model 名跨 executor(如 `gpt-4o` 走 `openai-api` vs `codex`)旧 v2 schema 互相污染缓存。旧 v2 cache 一次性失效,无数据丢失,首跑无 cache 加速(同 v0.22.0 加 allowedSkills 那次 pattern)。详见 #31。

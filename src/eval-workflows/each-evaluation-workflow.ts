@@ -25,6 +25,7 @@ interface RunSingleEvaluationOptions {
   noJudge: boolean;
   concurrency: number;
   timeoutMs?: number;
+  noCache: boolean;
   executorName: string;
   judgeExecutorName?: string;
   jobStore: null;
@@ -129,6 +130,7 @@ export function buildEvaluationBatchIndex({
   totalCostUSD,
   repeat,
   judgeModels,
+  noCache,
 }: {
   batchRunId: string;
   skillDir: string;
@@ -147,6 +149,7 @@ export function buildEvaluationBatchIndex({
   totalCostUSD: number;
   repeat?: number;
   judgeModels?: import('../types/index.js').JudgeConfig[];
+  noCache: boolean;
 }): { report: EvaluationBatchIndex; job: import('../types/index.js').EvaluationJob } {
   const request = buildEvaluationRequest({
     samplesPath: '',
@@ -165,7 +168,7 @@ export function buildEvaluationBatchIndex({
     noJudge,
     concurrency,
     timeoutMs,
-    noCache: false,
+    noCache,
     dryRun: false,
     blind: false,
     project,
@@ -256,6 +259,7 @@ export async function executeEachEvaluationRuns({
   judgeRepeat,
   judgeModels,
   lengthDebias,
+  noCache = false,
   strictBaseline,
   variantAllowedSkills,
   runSingleEvaluation,
@@ -284,6 +288,7 @@ export async function executeEachEvaluationRuns({
   judgeRepeat?: number;
   judgeModels?: import('../types/index.js').JudgeConfig[];
   lengthDebias?: boolean;
+  noCache?: boolean;
   /** strict-baseline default. Forwarded to per-skill resolveArtifacts. */
   strictBaseline?: boolean;
   /** explicit per-variant allowedSkills override. */
@@ -323,6 +328,7 @@ export async function executeEachEvaluationRuns({
       noJudge,
       concurrency,
       timeoutMs,
+      noCache,
       executorName,
       judgeExecutorName,
       jobStore: null,
@@ -367,6 +373,7 @@ export async function executeEachEvaluationRuns({
     totalCostUSD,
     repeat,
     judgeModels,
+    noCache,
   });
   const filePath = persistReport(batchIndex, outputDir);
   const resolvedJobStore = persistJob ? (jobStore ?? createFileJobStore(DEFAULT_JOBS_DIR)) : null;

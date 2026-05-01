@@ -24,6 +24,12 @@ describe('CLI', () => {
     assert.ok(stdout.includes('oh-my-knowledge'));
   });
 
+  it('bench report --help shows usage without starting the server', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'bench', 'report', '--help']);
+    assert.ok(stdout.includes('bench report 选项'));
+    assert.ok(stdout.includes('--reports-dir'));
+  });
+
   it('unknown domain exits with error (--lang en)', async () => {
     await assert.rejects(
       () => execFileAsync('node', [CLI, 'unknown', '--lang', 'en']),

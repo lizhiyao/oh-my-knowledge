@@ -586,9 +586,11 @@ describe('runEachEvaluation', () => {
         outputDir,
         noJudge: true,
         concurrency: 1,
+        noCache: true,
         executorName: 'claude',
         persistJob: false,
         runSingleEvaluation: async (options) => {
+          assert.equal(options.noCache, true);
           const treatment = options.artifacts.find((artifact) => artifact.experimentRole === 'treatment')?.name ?? 'alpha';
           const report: Report = {
             kind: 'evaluation',
@@ -605,6 +607,22 @@ describe('runEachEvaluation', () => {
               cliVersion: 'test',
               nodeVersion: 'test',
               artifactHashes: { baseline: 'no-skill', [treatment]: 'hash-alpha' },
+              request: {
+                samplesPath: options.samplesPath,
+                skillDir: options.skillDir,
+                artifacts: options.artifacts,
+                model: options.model,
+                judgeModel: null,
+                executor: options.executorName,
+                judgeExecutor: options.judgeExecutorName || options.executorName,
+                noJudge: options.noJudge,
+                concurrency: options.concurrency,
+                timeoutMs: options.timeoutMs,
+                noCache: options.noCache,
+                dryRun: false,
+                blind: false,
+                each: true,
+              },
             },
             summary: { baseline: summary(3), [treatment]: summary(4) },
             results: [],
@@ -615,6 +633,7 @@ describe('runEachEvaluation', () => {
 
       assert.equal(result.report.kind, 'batch-index');
       assert.equal(result.report.mode, 'each');
+      assert.equal(result.report.meta.request?.noCache, true);
       assert.equal(result.report.items.length, 1);
       assert.equal(result.report.items[0].name, 'alpha');
       assert.equal(result.report.items[0].artifactHash, 'hash-alpha');
@@ -627,6 +646,7 @@ describe('runEachEvaluation', () => {
       assert.ok(existsSync(childPath));
       const childReport = JSON.parse(readFileSync(childPath, 'utf-8')) as Report;
       assert.deepEqual(childReport.meta.variants, ['baseline', 'alpha']);
+      assert.equal(childReport.meta.request?.noCache, true);
       assert.equal(childReport.meta.artifactHashes.alpha, 'hash-alpha');
       assert.ok(childReport.summary.alpha);
       assert.equal(childReport.summary.skill, undefined);

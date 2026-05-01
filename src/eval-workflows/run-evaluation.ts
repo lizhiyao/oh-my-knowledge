@@ -82,6 +82,7 @@ interface CommonEvaluationOptions {
   lengthDebias?: boolean;
   /** hard budget caps. */
   budget?: import('../types/index.js').EvalBudget;
+  noCache?: boolean;
 }
 
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
@@ -91,7 +92,6 @@ export interface RunEvaluationOptions extends CommonEvaluationOptions {
   artifacts?: Artifact[];
   dryRun?: boolean;
   blind?: boolean;
-  noCache?: boolean;
   retry?: number;
   resume?: string;
   /** Explicit persisted run id. Used by batch workflows that need stable child ids. */
@@ -546,6 +546,7 @@ export async function runEachEvaluation({
   judgeRepeat,
   judgeModels,
   lengthDebias,
+  noCache = false,
   strictBaseline,
   variantAllowedSkills,
 }: RunEachEvaluationOptions): Promise<{ report: EvaluationBatchIndex | DryRunEachReport; filePath: string | null }> {
@@ -596,6 +597,7 @@ export async function runEachEvaluation({
     judgeRepeat,
     judgeModels,
     lengthDebias,
+    noCache,
     strictBaseline,
     variantAllowedSkills,
     runSingleEvaluation: async (options) => {
