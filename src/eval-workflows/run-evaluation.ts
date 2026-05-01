@@ -1,11 +1,11 @@
 import { resolve } from 'node:path';
 import { DEFAULT_OUTPUT_DIR, persistReport } from '../eval-core/evaluation-reporting.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
-import { discoverEachSkills } from '../inputs/skill-loader.js';
+import { discoverBatchSkills } from '../inputs/skill-loader.js';
 import { confidenceInterval, tTest, effectSize } from '../eval-core/statistics.js';
-import { executeEachEvaluationRuns } from './each-evaluation-workflow.js';
+import { executeBatchEvaluationRuns } from './batch-evaluation-workflow.js';
 import {
-  buildDryRunEachArtifacts,
+  buildDryRunBatchArtifacts,
   buildDryRunTaskReport,
   prepareEvaluationRun,
 } from './evaluation-preparation.js';
@@ -13,7 +13,7 @@ import { executeEvaluationPipeline } from './evaluation-pipeline.js';
 
 import type {
   Artifact,
-  EvaluationBatchIndex,
+  BatchEvaluationReport,
   EvaluationReport,
   ExecutorFn,
   JobStore,
@@ -64,9 +64,9 @@ interface CommonEvaluationOptions {
   /** --repeat N. 1 表示单次(默认); > 1 时在 runMultiple 层聚合 variance。
    *  记入 report.meta.request.repeat 让 meta 如实反映用户输入。 */
   repeat?: number;
-  /** --each 模式标记, true 表示当前评测是 each 批量流程(每个 skill 独立对比 baseline)。
-   *  记入 report.meta.request.each。 */
-  each?: boolean;
+  /** --batch 模式标记, true 表示当前评测是 skill batch 流程。
+   *  记入 report.meta.request.batch。 */
+  batch?: boolean;
   /** --judge-repeat N. 每条 sample × dimension 调 LLM judge N 次, 输出 stddev (judge 自一致性).
    *  默认 1 (单次). 用于量化 LLM judge 在该 rubric 上的稳定性 — stddev 高 = 评分噪声大. */
   judgeRepeat?: number;
@@ -82,6 +82,7 @@ interface CommonEvaluationOptions {
   lengthDebias?: boolean;
   /** hard budget caps. */
   budget?: import('../types/index.js').EvalBudget;
+  noCache?: boolean;
 }
 
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
@@ -91,7 +92,6 @@ export interface RunEvaluationOptions extends CommonEvaluationOptions {
   artifacts?: Artifact[];
   dryRun?: boolean;
   blind?: boolean;
-  noCache?: boolean;
   retry?: number;
   resume?: string;
   /** Explicit persisted run id. Used by batch workflows that need stable child ids. */
@@ -105,13 +105,13 @@ export interface RunEvaluationOptions extends CommonEvaluationOptions {
   variantAllowedSkills?: Record<string, string[]>;
 }
 
-export interface RunEachEvaluationOptions extends CommonEvaluationOptions {
+export interface RunBatchEvaluationOptions extends CommonEvaluationOptions {
   skillDir: string;
   dryRun?: boolean;
   onSkillProgress?: ((info: SkillProgressInfo) => void) | null;
-  /** strict-baseline default. each mode 仍尊重此 flag。 */
+  /** strict-baseline default. batch mode 仍尊重此 flag。 */
   strictBaseline?: boolean;
-  /** per-variant allowedSkills override (rare in each mode but supported). */
+  /** per-variant allowedSkills override (rare in batch mode but supported). */
   variantAllowedSkills?: Record<string, string[]>;
 }
 
@@ -181,7 +181,7 @@ export async function runEvaluation({
   runId,
   layeredStats = false,
   repeat,
-  each,
+  batch,
   judgeRepeat,
   judgeModels,
   bootstrap,
@@ -258,8 +258,8 @@ export async function runEvaluation({
           + `   新 entries 不隔离 → 与现有 entries 不可比。建议恢复默认 strict-baseline。\n`,
         );
       }
-    } else if (existing?.kind === 'batch-index') {
-      process.stderr.write(`\n⚠️  report ${resume} is an each batch index; resume needs a child EvaluationReport, starting from scratch\n`);
+    } else if (existing?.kind === 'batch-evaluation') {
+      process.stderr.write(`\n⚠️  report ${resume} is a BatchEvaluationReport; resume needs a child EvaluationReport, starting from scratch\n`);
     } else {
       process.stderr.write(`\n⚠️  report ${resume} not found, starting from scratch\n`);
     }
@@ -298,7 +298,7 @@ export async function runEvaluation({
     requires,
     layeredStats,
     repeat,
-    each,
+    batch,
     judgeRepeat,
     judgeModels,
     bootstrap,
@@ -310,17 +310,17 @@ export async function runEvaluation({
   });
 }
 
-interface DryRunEachSkill {
+interface DryRunBatchSkill {
   name: string;
   samplesPath: string;
   sampleCount: number;
   taskCount: number;
 }
 
-export interface DryRunEachReport extends DryRunBase {
-  each: true;
+export interface DryRunBatchReport extends DryRunBase {
+  batch: true;
   totalArtifacts: number;
-  artifacts: DryRunEachSkill[];
+  artifacts: DryRunBatchSkill[];
 }
 
 // Top-level (composite) extractor: feeds the legacy flat-field variance on
@@ -521,7 +521,7 @@ export function buildVarianceData(runs: Report[]): VarianceData | null {
   };
 }
 
-export async function runEachEvaluation({
+export async function runBatchEvaluation({
   skillDir,
   model = DEFAULT_MODEL,
   judgeModel = JUDGE_MODEL,
@@ -546,20 +546,21 @@ export async function runEachEvaluation({
   judgeRepeat,
   judgeModels,
   lengthDebias,
+  noCache = false,
   strictBaseline,
   variantAllowedSkills,
-}: RunEachEvaluationOptions): Promise<{ report: EvaluationBatchIndex | DryRunEachReport; filePath: string | null }> {
-  const skillEntries = discoverEachSkills(resolve(skillDir));
+}: RunBatchEvaluationOptions): Promise<{ report: BatchEvaluationReport | DryRunBatchReport; filePath: string | null }> {
+  const skillEntries = discoverBatchSkills(resolve(skillDir));
   if (skillEntries.length === 0) {
     throw new Error(`no skill with paired eval-samples found in: ${skillDir}`);
   }
 
   if (dryRun) {
-    const { artifacts: dryArtifacts, totalTasks } = buildDryRunEachArtifacts(skillEntries);
+    const { artifacts: dryArtifacts, totalTasks } = buildDryRunBatchArtifacts(skillEntries);
     return {
       report: {
         dryRun: true,
-        each: true,
+        batch: true,
         model,
         judgeModel,
         executor: executorName,
@@ -571,7 +572,7 @@ export async function runEachEvaluation({
       filePath: null,
     };
   }
-  return executeEachEvaluationRuns({
+  return executeBatchEvaluationRuns({
     skillDir,
     skillEntries,
     model,
@@ -596,15 +597,16 @@ export async function runEachEvaluation({
     judgeRepeat,
     judgeModels,
     lengthDebias,
+    noCache,
     strictBaseline,
     variantAllowedSkills,
     runSingleEvaluation: async (options) => {
-      // repeat > 1 时走 runMultiple 做 variance; each=true 标记让 meta.request 如实反映
+      // repeat > 1 时走 runMultiple 做 variance; batch=true 标记让 meta.request 如实反映
       if (repeat && repeat > 1) {
-        const multi = await runMultiple({ ...options, repeat, each: true, judgeRepeat, judgeModels, lengthDebias });
+        const multi = await runMultiple({ ...options, repeat, batch: true, judgeRepeat, judgeModels, lengthDebias });
         return { report: multi.report as EvaluationReport, filePath: multi.filePath };
       }
-      const result = await runEvaluation({ ...options, each: true, judgeRepeat, judgeModels, lengthDebias });
+      const result = await runEvaluation({ ...options, batch: true, judgeRepeat, judgeModels, lengthDebias });
       return { report: result.report as EvaluationReport, filePath: result.filePath };
     },
   });

@@ -306,8 +306,8 @@ export interface EvaluationReport {
 
 export type Report = EvaluationReport;
 
-export interface EvaluationBatchMeta {
-  mode: 'each';
+export interface BatchEvaluationMeta {
+  mode: 'skill';
   model: string;
   judgeModel: string | null;
   executor: string;
@@ -330,7 +330,7 @@ export interface EvaluationBatchMeta {
   gitInfo?: GitInfo | null;
 }
 
-export interface EvaluationBatchIndexItem {
+export interface BatchEvaluationItem {
   /** Skill name; also the treatment variant key inside the child EvaluationReport. */
   name: string;
   skillPath: string;
@@ -342,19 +342,19 @@ export interface EvaluationBatchIndexItem {
   totalCostUSD: number;
   artifactHash: string | null;
   summary: Record<string, VariantSummary>;
-  /** --each --repeat N 时由 child EvaluationReport 聚合的三层独立 variance + t 检验快照 */
+  /** --batch --repeat N 时由 child EvaluationReport 聚合的三层独立 variance + t 检验快照 */
   variance?: VarianceData;
 }
 
-export interface EvaluationBatchIndex {
-  kind: 'batch-index';
+export interface BatchEvaluationReport {
+  kind: 'batch-evaluation';
   id: string;
-  mode: 'each';
-  meta: EvaluationBatchMeta;
-  items: EvaluationBatchIndexItem[];
+  mode: 'skill';
+  meta: BatchEvaluationMeta;
+  items: BatchEvaluationItem[];
 }
 
-export type ReportDocument = EvaluationReport | EvaluationBatchIndex;
+export type ReportDocument = EvaluationReport | BatchEvaluationReport;
 
 export interface Insight {
   type: string;

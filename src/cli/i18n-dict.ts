@@ -381,8 +381,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'No eval-samples need generating (all skills already have paired files)',
   },
   'cli.gen.batch_summary': {
-    zh: '\n共生成 {n} 份 eval-samples, 请审查后运行: omk bench run --each',
-    en: '\nGenerated {n} eval-samples files. Review them, then run: omk bench run --each',
+    zh: '\n共生成 {n} 份 eval-samples, 请审查后运行: omk bench run --batch',
+    en: '\nGenerated {n} eval-samples files. Review them, then run: omk bench run --batch',
   },
   'cli.gen.specify_skill_path': {
     zh: '请指定 skill 文件路径, 例如: omk bench gen-samples skills/my-skill.md',
@@ -562,7 +562,7 @@ bench run 选项:
   --executor <name>      执行器: claude / claude-sdk / codex / openai / gemini /
                          anthropic-api / openai-api, 或任意 shell 命令 (例如 "python my_provider.py")
   --judge-executor <name> 评委执行器 (默认: 同 --executor)
-  --each                 对每个 skill 独立 vs baseline 评测
+  --batch                批量评测:每个 skill 独立 vs baseline
                          需要每个 skill 有配对的 {name}.eval-samples.json
   --skip-preflight       评测前跳过模型连通性预检
   --mcp-config <path>    通过 MCP server 抓 URL 用的 MCP 配置文件
@@ -603,10 +603,10 @@ bench report 选项:
   --dev                  开发模式: lib/ 文件改动时自动重启
 
 bench gen-samples 选项:
-  --each                 为所有还没 eval-samples 的 skill 生成
+  --batch                为所有还没 eval-samples 的 skill 生成
   --count <n>            每个 skill 生成多少条用例 (默认: 5)
   --model <name>         生成用的模型 (默认: sonnet)
-  --skill-dir <path>     skill 目录 (默认: skills), 配合 --each 用
+  --skill-dir <path>     skill 目录 (默认: skills), 配合 --batch 用
 
 analyze 选项:
   <dir>                  输入: cc session JSONL 文件 / 目录
@@ -640,7 +640,7 @@ bench evolve 选项:
   omk bench run --control baseline --treatment v1,v2,v3
   omk bench run --config eval.yaml
   omk bench run --config eval.yaml --model sonnet-4.6   # CLI 覆盖配置
-  omk bench run --each
+  omk bench run --batch
   omk bench run --dry-run
   omk bench report --port 8080
   omk bench report --export v1-vs-v2-20260326-1832
@@ -709,7 +709,7 @@ Options for "bench run":
   --executor <name>      Executor: claude, claude-sdk, codex, openai, gemini,
                          anthropic-api, openai-api, or any shell command (e.g. "python my_provider.py")
   --judge-executor <name> Executor for LLM judge (default: same as --executor)
-  --each                 Evaluate each skill independently against baseline
+  --batch                Batch evaluation: each skill independently against baseline
                          Requires {name}.eval-samples.json paired with each skill
   --skip-preflight       Skip model connectivity check before evaluation
   --mcp-config <path>    MCP config file for URL fetching via MCP servers
@@ -757,10 +757,10 @@ Options for "bench report":
   --dev                  Dev mode: auto-restart on lib/ file changes
 
 Options for "bench gen-samples":
-  --each                 Generate for all skills missing eval-samples
+  --batch                Generate for all skills missing eval-samples
   --count <n>            Number of samples to generate per skill (default: 5)
   --model <name>         Model for generation (default: sonnet)
-  --skill-dir <path>     Skill directory (default: skills), used with --each
+  --skill-dir <path>     Skill directory (default: skills), used with --batch
 
 Options for "analyze":
   <dir>                  Input: cc session JSONL file / dir (e.g. ~/.claude/projects/<slug>)
@@ -793,7 +793,7 @@ Examples:
   omk bench run --control baseline --treatment v1,v2,v3
   omk bench run --config eval.yaml
   omk bench run --config eval.yaml --model sonnet-4.6   # CLI overrides config
-  omk bench run --each
+  omk bench run --batch
   omk bench run --dry-run
   omk bench report --port 8080
   omk bench report --export v1-vs-v2-20260326-1832

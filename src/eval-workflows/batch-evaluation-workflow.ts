@@ -6,8 +6,8 @@ import { createFileJobStore, DEFAULT_JOBS_DIR } from '../server/job-store.js';
 import { resolveArtifacts } from '../inputs/skill-loader.js';
 import type {
   Artifact,
-  EvaluationBatchIndex,
-  EvaluationBatchIndexItem,
+  BatchEvaluationReport,
+  BatchEvaluationItem,
   EvaluationReport,
   ExecutorRuntimeFingerprint,
   JobStore,
@@ -25,6 +25,7 @@ interface RunSingleEvaluationOptions {
   noJudge: boolean;
   concurrency: number;
   timeoutMs?: number;
+  noCache: boolean;
   executorName: string;
   judgeExecutorName?: string;
   jobStore: null;
@@ -42,7 +43,7 @@ interface RunSingleEvaluationOptions {
   lengthDebias?: boolean;
 }
 
-interface CompletedEachSkillRun {
+interface CompletedBatchSkillRun {
   name: string;
   skillPath: string;
   samplesPath: string;
@@ -72,7 +73,7 @@ function reportSummarySnapshot(report: EvaluationReport, treatmentVariant: strin
   };
 }
 
-function buildBatchItems(skillResults: CompletedEachSkillRun[]): EvaluationBatchIndexItem[] {
+function buildBatchItems(skillResults: CompletedBatchSkillRun[]): BatchEvaluationItem[] {
   return skillResults.map(({ name, skillPath, samplesPath, report, filePath }) => ({
     name,
     skillPath,
@@ -95,7 +96,7 @@ function buildExecutorRuntimesBySkill({
   model,
 }: {
   skillDir: string;
-  skillResults: CompletedEachSkillRun[];
+  skillResults: CompletedBatchSkillRun[];
   executorName: string;
   model: string;
 }): Record<string, ExecutorRuntimeFingerprint> {
@@ -111,7 +112,7 @@ function buildExecutorRuntimesBySkill({
   return executorRuntimes;
 }
 
-export function buildEvaluationBatchIndex({
+export function buildBatchEvaluationReport({
   batchRunId,
   skillDir,
   skillEntries,
@@ -129,11 +130,12 @@ export function buildEvaluationBatchIndex({
   totalCostUSD,
   repeat,
   judgeModels,
+  noCache,
 }: {
   batchRunId: string;
   skillDir: string;
   skillEntries: Array<{ name: string; skillPath: string; samplesPath: string }>;
-  skillResults: CompletedEachSkillRun[];
+  skillResults: CompletedBatchSkillRun[];
   model: string;
   judgeModel: string;
   noJudge: boolean;
@@ -147,7 +149,8 @@ export function buildEvaluationBatchIndex({
   totalCostUSD: number;
   repeat?: number;
   judgeModels?: import('../types/index.js').JudgeConfig[];
-}): { report: EvaluationBatchIndex; job: import('../types/index.js').EvaluationJob } {
+  noCache: boolean;
+}): { report: BatchEvaluationReport; job: import('../types/index.js').EvaluationJob } {
   const request = buildEvaluationRequest({
     samplesPath: '',
     skillDir,
@@ -165,7 +168,7 @@ export function buildEvaluationBatchIndex({
     noJudge,
     concurrency,
     timeoutMs,
-    noCache: false,
+    noCache,
     dryRun: false,
     blind: false,
     project,
@@ -173,7 +176,7 @@ export function buildEvaluationBatchIndex({
     tags,
     repeat,
     judgeModels,
-    each: true,
+    batch: true,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(batchRunId, createdAt);
@@ -194,12 +197,12 @@ export function buildEvaluationBatchIndex({
     ?? Object.values(executorRuntimes)[0]
     ?? getExecutorRuntimeFingerprint(executorName, model, { skillDir });
 
-  const report: EvaluationBatchIndex = {
-    kind: 'batch-index',
+  const report: BatchEvaluationReport = {
+    kind: 'batch-evaluation',
     id: batchRunId,
-    mode: 'each',
+    mode: 'skill',
     meta: {
-      mode: 'each',
+      mode: 'skill',
       model,
       judgeModel: noJudge ? null : judgeModel,
       executor: executorName,
@@ -231,7 +234,7 @@ export function buildEvaluationBatchIndex({
   return { report, job };
 }
 
-export async function executeEachEvaluationRuns({
+export async function executeBatchEvaluationRuns({
   skillDir,
   skillEntries,
   model,
@@ -256,6 +259,7 @@ export async function executeEachEvaluationRuns({
   judgeRepeat,
   judgeModels,
   lengthDebias,
+  noCache = false,
   strictBaseline,
   variantAllowedSkills,
   runSingleEvaluation,
@@ -284,21 +288,22 @@ export async function executeEachEvaluationRuns({
   judgeRepeat?: number;
   judgeModels?: import('../types/index.js').JudgeConfig[];
   lengthDebias?: boolean;
+  noCache?: boolean;
   /** strict-baseline default. Forwarded to per-skill resolveArtifacts. */
   strictBaseline?: boolean;
   /** explicit per-variant allowedSkills override. */
   variantAllowedSkills?: Record<string, string[]>;
   runSingleEvaluation: (options: RunSingleEvaluationOptions) => Promise<{ report: EvaluationReport; filePath: string | null }>;
-}): Promise<{ report: EvaluationBatchIndex; filePath: string | null }> {
-  const batchRunId = generateRunId(['each']);
-  const skillResults: CompletedEachSkillRun[] = [];
+}): Promise<{ report: BatchEvaluationReport; filePath: string | null }> {
+  const batchRunId = generateRunId(['batch']);
+  const skillResults: CompletedBatchSkillRun[] = [];
   let totalCostUSD = 0;
 
   for (let i = 0; i < skillEntries.length; i++) {
     const entry = skillEntries[i];
     onSkillProgress?.({ phase: 'start', skill: entry.name, current: i + 1, total: skillEntries.length });
 
-    // each mode 的实验结构固定为 baseline control vs 当前 skill treatment。
+    // Batch mode 的实验结构固定为 baseline control vs 当前 skill treatment。
     const perSkillAllowedSkills = variantAllowedSkills?.[entry.name] !== undefined
       ? { ...variantAllowedSkills, [entry.skillPath]: variantAllowedSkills[entry.name] }
       : variantAllowedSkills;
@@ -323,6 +328,7 @@ export async function executeEachEvaluationRuns({
       noJudge,
       concurrency,
       timeoutMs,
+      noCache,
       executorName,
       judgeExecutorName,
       jobStore: null,
@@ -349,7 +355,7 @@ export async function executeEachEvaluationRuns({
     onSkillProgress?.({ phase: 'done', skill: entry.name, current: i + 1, total: skillEntries.length });
   }
 
-  const { report: batchIndex, job } = buildEvaluationBatchIndex({
+  const { report: batchReport, job } = buildBatchEvaluationReport({
     batchRunId,
     skillDir,
     skillEntries,
@@ -367,9 +373,10 @@ export async function executeEachEvaluationRuns({
     totalCostUSD,
     repeat,
     judgeModels,
+    noCache,
   });
-  const filePath = persistReport(batchIndex, outputDir);
+  const filePath = persistReport(batchReport, outputDir);
   const resolvedJobStore = persistJob ? (jobStore ?? createFileJobStore(DEFAULT_JOBS_DIR)) : null;
   if (resolvedJobStore) await resolvedJobStore.save(job.jobId, job);
-  return { report: batchIndex, filePath };
+  return { report: batchReport, filePath };
 }

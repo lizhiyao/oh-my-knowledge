@@ -87,7 +87,7 @@ export function levelTooltip(level: VerdictLevel, lang: Lang): string {
 // 去掉旧版 headline 和 significance 的内容重复 (perPair[0].headline 是干净的
 // Δ+CI 核心, headline 拼装版只在 SOLO mode 用).
 //
-// computeVerdict 在 each mode + 历史脏 report 上有 NPE 风险 (顶层 summary
+// computeVerdict 在历史混合批量 report 上有 NPE 风险 (顶层 summary
 // 缺 variant 数据时 evaluateLayerGates 访问 .avgFactScore 炸). 加 try/catch
 // 让 renderer 不 crash, 改为静默 skip pill — 这是 v0.21 B.4 的 scope 范围,
 // verdict.ts/layer-gates.ts 的 defensive 修复留作单独 task.

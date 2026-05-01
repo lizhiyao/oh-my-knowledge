@@ -90,7 +90,7 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   timeout: { type: 'string' },
   executor: { type: 'string' },
   'judge-executor': { type: 'string' },
-  each: { type: 'boolean' },
+  batch: { type: 'boolean' },
   'skip-preflight': { type: 'boolean' },
   'mcp-config': { type: 'string' },
   'no-serve': { type: 'boolean' },
@@ -121,7 +121,6 @@ export function parseRunConfig(
       + `  复杂场景可用 --config eval.yaml（参见 docs/terminology-spec.md）`,
     );
   }
-
   // 1) Load --config (if provided). All subsequent fields fall back to it when CLI is silent.
   const evalConfig: EvalConfig | null = values.config
     ? loadEvalConfig(values.config as string)
@@ -162,8 +161,8 @@ export function parseRunConfig(
     }
   } else if (evalConfig) {
     variantSpecs = configVariantsToSpecs(evalConfig.variants);
-  } else if (values.each) {
-    // --each 模式自动用 baseline (control) vs 每个 skill (treatment),
+  } else if (values.batch) {
+    // --batch 模式自动用 baseline (control) vs 每个 skill (treatment),
     // 不需要用户显式传 --control / --treatment,校验跳过。
     variantSpecs = [];
   } else {
@@ -172,7 +171,7 @@ export function parseRunConfig(
     throw new Error(
       `请通过 --control / --treatment 或 --config eval.yaml 声明 variant 角色。\n`
       + `  示例：omk bench run --control baseline --treatment my-skill${hint}\n`
-      + `  --each 模式下自动用 baseline vs 每个 skill,无需显式声明\n`
+      + `  --batch 模式下自动用 baseline vs 每个 skill,无需显式声明\n`
       + `  术语见 docs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
     );
   }

@@ -51,7 +51,7 @@ export async function prepareEvaluationRun({
   const roleByName: Record<string, VariantSpec['role']> = {};
   for (const spec of variantSpecs) roleByName[spec.name] = spec.role;
   for (const artifact of resolvedArtifacts) {
-    if (artifact.experimentRole) continue;  // preserve if already set (e.g. each-workflow)
+    if (artifact.experimentRole) continue;  // preserve if already set (e.g. batch workflow)
     const role = roleByName[artifact.name];
     if (role) artifact.experimentRole = role;
   }
@@ -130,7 +130,7 @@ export function buildDryRunTaskReport({
   };
 }
 
-export function buildDryRunEachArtifacts(skillEntries: Array<{ name: string; skillPath: string; samplesPath: string }>) {
+export function buildDryRunBatchArtifacts(skillEntries: Array<{ name: string; skillPath: string; samplesPath: string }>) {
   const artifacts = skillEntries.map((entry) => {
     const { samples } = loadSamples(entry.samplesPath);
     return {
