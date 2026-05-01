@@ -19,7 +19,7 @@ import {
 import { renderSampleTable } from './table.js';
 import { renderTrendsBody } from './trends.js';
 import { computeVerdict, type VerdictLevel } from '../eval-core/verdict.js';
-import type { ExecutorRuntimeFingerprint, Report, Lang } from '../types/index.js';
+import type { EvaluationBatchIndex, EvaluationReport, ExecutorRuntimeFingerprint, Report, ReportDocument, Lang, VariantSummary } from '../types/index.js';
 
 // v0.21 B.4 — 列表页 status pill 用的 dot. PROGRESS/REGRESS 实心(强信号),
 // CAUTIOUS 三角(警示),NOISE 空心圆(有信号但无效果),UNDERPOWERED 部分填充
@@ -35,9 +35,21 @@ function levelDot(level: VerdictLevel): string {
   }
 }
 
-type EachOverview = NonNullable<Report['overview']>;
-type EachOverviewArtifact = EachOverview['artifacts'][number];
-type EachArtifactReport = NonNullable<Report['artifacts']>[number];
+type RuntimeMeta = Pick<EvaluationReport['meta'], 'executorRuntime' | 'executorRuntimes' | 'judgeRuntime' | 'judgeRuntimes'>;
+
+function isEvaluationReport(document: ReportDocument): document is EvaluationReport {
+  return document.kind === 'evaluation';
+}
+
+function scoreOf(summary: VariantSummary | undefined): number | null {
+  return summary?.avgCompositeScore ?? summary?.avgLlmScore ?? null;
+}
+
+function improvementOf(baselineScore: number | null, skillScore: number | null): string {
+  if (typeof baselineScore !== 'number' || typeof skillScore !== 'number' || baselineScore <= 0) return '-';
+  const delta = ((skillScore - baselineScore) / baselineScore * 100).toFixed(0);
+  return skillScore >= baselineScore ? `+${delta}%` : `${delta}%`;
+}
 
 function renderRuntimeTag(runtime: ExecutorRuntimeFingerprint | null | undefined, label: string, lang: Lang): string {
   if (!runtime) return '';
@@ -67,7 +79,7 @@ function renderRuntimeTag(runtime: ExecutorRuntimeFingerprint | null | undefined
   return `<span class="meta-tag" title="${e(title)}">${e(label)}: <code>${e(runtime.fingerprint)}</code>${versionText}</span>`;
 }
 
-function renderJudgeRuntimeTags(meta: Report['meta'], lang: Lang): string {
+function renderJudgeRuntimeTags(meta: RuntimeMeta, lang: Lang): string {
   if (meta.judgeRuntimes && Object.keys(meta.judgeRuntimes).length > 0) {
     return Object.entries(meta.judgeRuntimes)
       .sort(([a], [b]) => a.localeCompare(b))
@@ -81,7 +93,7 @@ function renderJudgeRuntimeTags(meta: Report['meta'], lang: Lang): string {
   return renderRuntimeTag(meta.judgeRuntime, lang === 'zh' ? '评委指纹' : 'Judge runtime', lang);
 }
 
-function renderExecutorRuntimeTags(meta: Report['meta'], lang: Lang): string {
+function renderExecutorRuntimeTags(meta: RuntimeMeta, lang: Lang): string {
   if (meta.executorRuntimes && Object.keys(meta.executorRuntimes).length > 0) {
     return Object.entries(meta.executorRuntimes)
       .sort(([a], [b]) => a.localeCompare(b))
@@ -95,7 +107,7 @@ function renderExecutorRuntimeTags(meta: Report['meta'], lang: Lang): string {
   return renderRuntimeTag(meta.executorRuntime, lang === 'zh' ? '执行器指纹' : 'Executor runtime', lang);
 }
 
-export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string {
+export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
   const skillHealthLink = `<a href="/analyses${langQ}" style="color:var(--text-muted);font-size:12px;text-decoration:none;border:1px solid var(--border);padding:4px 10px;border-radius:var(--radius);display:inline-block">📊 <span data-i18n="skillHealthTitle">${t('skillHealthTitle', lang)}</span> →</a>`;
   if (!runs || runs.length === 0) {
@@ -110,6 +122,40 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
   }
 
   const rows = runs.map((run) => {
+    if (run.kind === 'batch-index') {
+      const m = run.meta;
+      const scoreCol = run.items.length > 0
+        ? run.items.map((item) => {
+          const baselineScore = scoreOf(item.summary.baseline);
+          const skillScore = scoreOf(item.summary.skill);
+          const score = skillScore ?? baselineScore;
+          if (score == null) return `<span style="color:var(--text-muted)">${e(item.name)}: -</span>`;
+          const color = score >= 4 ? 'var(--green)' : score >= 3 ? 'var(--yellow)' : 'var(--red)';
+          const barW = Math.round((score / 5) * 100);
+          return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">` +
+            `<span title="${e(item.name)}" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">${e(item.name)}</span>` +
+            `<div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0">` +
+            `<div style="width:${barW}%;height:100%;background:${color};border-radius:3px"></div></div>` +
+            `<span style="font-size:12px;font-weight:600;color:${color};min-width:24px">${score.toFixed(2)}</span></div>`;
+        }).join('')
+        : '<div style="color:var(--text-faint);font-size:0.6875rem;text-align:center">no score</div>';
+      const allCostReported = run.items.every((item) =>
+        Object.values(item.summary || {}).every((v) => v.execCostReported !== false && v.judgeCostReported !== false));
+      const totalDurationMs = run.items.reduce((sum, item) => (
+        sum + Object.values(item.summary || {}).reduce((inner, v) => inner + (v.avgDurationMs || 0) * (v.successCount || 0), 0)
+      ), 0);
+      const statusPill = `<span class="run-status" title="${lang === 'zh' ? 'each 批次索引' : 'each batch index'}"><span class="run-status-dot" aria-hidden="true">◇</span>${lang === 'zh' ? '批次' : 'Batch'}</span>`;
+      return `<tr>
+      <td>${statusPill}<a href="/reports/${e(run.id)}"><span style="color:var(--text-primary)">${e(run.id)}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : e(run.id)}</span></a></td>
+      <td>${e(m.model || '-')}</td>
+      <td>${m.sampleCount || 0}</td>
+      <td>${scoreCol}</td>
+      <td>${fmtCost(m.totalCostUSD || 0, allCostReported)}</td>
+      <td>${fmtDuration(totalDurationMs)}</td>
+      <td style="white-space:nowrap"><button onclick="deleteRun('${e(run.id)}',this)" class="btn-danger" data-i18n="deleteBtnText">${t('deleteBtnText', lang)}</button></td>
+    </tr>`;
+    }
+
     const m = run.meta;
     const hasScores = Object.values(run.summary || {}).some((s) =>
       typeof s.avgCompositeScore === 'number' || typeof s.avgLlmScore === 'number'
@@ -131,9 +177,8 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
 
     // v0.21 B.4 — 列表页 verdict pill: 一眼分辨 progress / regress / noise.
     // computeVerdict 是同步纯函数(report -> level),per row 跑成本 O(samples).
-    // each mode 或脏老报告会让 layer-gates 访问 undefined.avgFactScore 抛 NPE,
-    // try/catch 兜底, 失败的 row 不显示 pill(不要让一个坏 report 把整个列表
-    // 撤掉). verdict.ts 的 defensive 修复另立 task.
+    // 脏报告可能让 layer-gates 访问 undefined.avgFactScore 抛 NPE。
+    // try/catch 兜底,失败的 row 不显示 pill,避免一个坏 report 撤掉整页。
     let statusPill = '';
     try {
       const verdict = computeVerdict(run);
@@ -165,9 +210,10 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
   // 列表累计:只 sum 那些"全 variant 都报告了 cost"的 run,跳过任一 variant not reported 的。
   // 排除 not reported(而不是把整体压成「—」)是因为列表常含数十个 run 仅 1-2 个是 codex,
   // 把全部 sum 抹成「—」会丢掉绝大多数有效成本信息。
-  const reportableRuns = runs.filter((r) =>
+  const evaluationRuns = runs.filter(isEvaluationReport);
+  const reportableRuns = evaluationRuns.filter((r) =>
     Object.values(r.summary || {}).every((v) => v.execCostReported !== false));
-  const unmeasuredRunsCount = runs.length - reportableRuns.length;
+  const unmeasuredRunsCount = evaluationRuns.length - reportableRuns.length;
   const totalCost = reportableRuns.reduce((s, r) => s + Object.values(r.summary || {}).reduce((sv, v) => sv + (v.totalExecCostUSD || 0), 0), 0);
   // partial:有 reported 就显示数字 + tooltip;全部 not reported 才显示「—」;
   // 全 reported(unmeasuredRunsCount=0)走老格式不包 span,保持 HTML snapshot 向后兼容。
@@ -181,14 +227,14 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
     costLabel = `${baseLabel} ${costNumber}`;
   } else {
     const tip = lang === 'zh'
-      ? `${reportableRuns.length}/${runs.length} 次报告了 USD 成本;${unmeasuredRunsCount} 次 executor 不报(如 codex CLI),已从累计中排除`
-      : `${reportableRuns.length}/${runs.length} runs reported USD cost; ${unmeasuredRunsCount} excluded (executor doesn't report, e.g. codex CLI)`;
+      ? `${reportableRuns.length}/${evaluationRuns.length} 次单次报告了 USD 成本;${unmeasuredRunsCount} 次 executor 不报(如 codex CLI),batch index 不计入累计以避免重复`
+      : `${reportableRuns.length}/${evaluationRuns.length} evaluation reports reported USD cost; ${unmeasuredRunsCount} excluded (executor doesn't report, e.g. codex CLI); batch indexes are excluded to avoid double counting`;
     costLabel = `<span title="${e(tip)}">${baseLabel} ${costNumber}</span>`;
   }
 
   // Collect variants with ≥2 reports for trend links
   const variantCounts: Record<string, number> = {};
-  for (const run of runs) {
+  for (const run of evaluationRuns) {
     for (const v of (run.meta?.variants || [])) {
       if (v === 'baseline') continue;
       variantCounts[v] = (variantCounts[v] || 0) + 1;
@@ -254,7 +300,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
   `, lang);
 }
 
-export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG): string {
+export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DEFAULT_LANG): string {
   if (!report) {
     return layout(t('title', lang), `
       <main>
@@ -416,7 +462,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   `, lang);
 }
 
-export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG): string {
+export function renderBatchIndexDetail(report: EvaluationBatchIndex | null, lang: Lang = DEFAULT_LANG): string {
   if (!report) {
     return layout(t('title', lang), `
       <main>
@@ -427,80 +473,49 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
   }
 
   const m = report.meta;
-  const overview: EachOverview | null = report.overview || null;
-  const eachArtifacts: EachArtifactReport[] = report.artifacts || [];
-
-  // Overview table
-  const overviewRows = (overview?.artifacts || []).map((sk: EachOverviewArtifact) => {
-    const bs = typeof sk.baselineScore === 'number' ? sk.baselineScore.toFixed(2) : '-';
-    const ss = typeof sk.artifactScore === 'number' ? sk.artifactScore.toFixed(2) : '-';
-    const imp = sk.improvement || '-';
-    const impColor = imp.startsWith('+') ? 'var(--green)' : imp.startsWith('-') ? 'var(--red)' : 'var(--text-muted)';
-    return `<tr>
-      <td><a href="#skill-${e(sk.name)}">${e(sk.name)}</a></td>
-      <td>${bs}</td>
-      <td>${ss}</td>
-      <td style="color:${impColor};font-weight:600">${imp}</td>
-    </tr>`;
-  }).join('');
-
-  // Per-artifact detail sections
-  const skillSections = eachArtifacts.map((sk) => {
-    const variants = ['baseline', 'skill'];
-    const summary = sk.summary || {};
-    // 传 sk.variance 给 summaryCards, 稳定性 CV 列才有数据 (非 each 模式是传 report.variance)
-    const cards = renderSummaryCards(variants, summary, lang, sk.variance);
-    const sampleTable = renderSampleTable(variants, sk.results, lang);
-    // --each --repeat N 时每个 skill 有自己的 variance; 复用 bench 的 renderVarianceComparisons
-    const varianceBlock = sk.variance
-      ? renderVarianceComparisons(sk.variance, lang, Boolean(report.meta.layeredStats), sk.summary)
-      : '';
-
-    const hashShort = sk.artifactHash ? e(sk.artifactHash).slice(0, 12) : '-';
-    const hashBlock = sk.artifactHash
-      ? `<span title="${t('artifactHashTooltip', lang)}"><span data-i18n="artifactHashLabel">${t('artifactHashLabel', lang)}</span>: <code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${hashShort}</code></span>`
-      : '';
-    return `
-      <section id="skill-${e(sk.name)}" style="margin-top:36px;padding-top:20px;border-top:1px solid var(--border)">
-        <h2>${e(sk.name)}</h2>
-        <p style="font-size:12px;color:var(--text-muted)">${t('samples', lang)}: ${sk.sampleCount}${hashBlock ? ' &middot; ' + hashBlock : ''}</p>
-        ${cards}
-        ${varianceBlock}
-        ${sampleTable}
-      </section>
-    `;
-  }).join('');
-
-  // 轮次信息放总览。统一用 · 分隔(each 下 skills×samples 不是严格乘法,避免 × 的误导)
+  const allCostReported = report.items.every((item) =>
+    Object.values(item.summary || {}).every((v) =>
+      v.execCostReported !== false && v.judgeCostReported !== false));
   const repeatN = report.meta.request?.repeat;
   const repeatSegment = repeatN && repeatN > 1
     ? (lang === 'zh' ? ` · ${repeatN} 轮重复` : ` · ${repeatN} runs`)
     : '';
-  // each 模式 totalCostUSD 含 exec + judge 两块。任一 artifact 的任一 variant 任一边
-  // 未报告 → 整体不可信(显示「—」)。判 judge 是因为 codex 当 judge 时 judgeCostUSD=0
-  // 但实际真有 API 花费,total 看着是数字会误导。
-  const eachAllCostReported = eachArtifacts.every((sk) =>
-    Object.values(sk.summary || {}).every((v) =>
-      v.execCostReported !== false && v.judgeCostReported !== false));
   const overviewSubtitle = lang === 'zh'
-    ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个用例${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0, eachAllCostReported)}`
-    : `${overview?.totalArtifacts || 0} skills · ${overview?.totalSamples || 0} samples${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0, eachAllCostReported)}`;
+    ? `${m.totalArtifacts || report.items.length} 个 Skill · ${m.sampleCount || 0} 个用例${repeatSegment} · ${fmtCost(m.totalCostUSD || 0, allCostReported)}`
+    : `${m.totalArtifacts || report.items.length} skills · ${m.sampleCount || 0} samples${repeatSegment} · ${fmtCost(m.totalCostUSD || 0, allCostReported)}`;
+
+  const rows = report.items.map((item) => {
+    const baselineScore = scoreOf(item.summary.baseline);
+    const skillScore = scoreOf(item.summary.skill);
+    const improvement = improvementOf(baselineScore, skillScore);
+    const impColor = improvement.startsWith('+') ? 'var(--green)' : improvement.startsWith('-') ? 'var(--red)' : 'var(--text-muted)';
+    const hashShort = item.artifactHash ? e(item.artifactHash).slice(0, 12) : '-';
+    return `<tr>
+      <td><a href="/reports/${encodeURIComponent(item.reportId)}">${e(item.name)}</a></td>
+      <td>${typeof baselineScore === 'number' ? baselineScore.toFixed(2) : '-'}</td>
+      <td>${typeof skillScore === 'number' ? skillScore.toFixed(2) : '-'}</td>
+      <td style="color:${impColor};font-weight:600">${improvement}</td>
+      <td>${item.sampleCount}</td>
+      <td>${fmtCost(item.totalCostUSD, allCostReported)}</td>
+      <td><code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${hashShort}</code></td>
+    </tr>`;
+  }).join('');
 
   return layout(`${t('reportTitle', lang)} - ${report.id}`, `
     <main>
     <nav class="nav"><a href="/" data-i18n="backToList">${t('backToList', lang)}</a></nav>
     <h1>${e(report.id)}</h1>
     <div class="meta-tags">
+      <span class="meta-tag">${lang === 'zh' ? '类型' : 'type'}: each batch index</span>
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
       <span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
       ${renderExecutorRuntimeTags(m, lang)}${renderJudgeRuntimeTags(m, lang)}
-      <span class="meta-tag"${eachAllCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(m.totalCostUSD, eachAllCostReported)}</span>
+      <span class="meta-tag"${allCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(m.totalCostUSD, allCostReported)}</span>
     </div>
 
     <section>
     <h2>${t('eachOverview', lang)}</h2>
-
     <p style="font-size:13px;color:var(--text-muted)">${overviewSubtitle}</p>
     <div class="table-wrap">
     <table>
@@ -509,16 +524,24 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
         <th>${t('eachBaseline', lang)}</th>
         <th>${t('eachWithSkill', lang)}</th>
         <th>${t('eachImprovement', lang)}</th>
+        <th>${t('samples', lang)}</th>
+        <th>${t('cost', lang)}</th>
+        <th>${t('artifactHashLabel', lang)}</th>
       </tr></thead>
-      <tbody>${overviewRows}</tbody>
+      <tbody>${rows}</tbody>
     </table>
     </div>
     </section>
 
-    ${skillSections}
-
     </main>
   `, lang);
+}
+
+export function renderReportDocumentDetail(report: ReportDocument | null, lang: Lang = DEFAULT_LANG): string {
+  if (!report) return renderRunDetail(null, lang);
+  return report.kind === 'batch-index'
+    ? renderBatchIndexDetail(report, lang)
+    : renderRunDetail(report, lang);
 }
 
 export function renderTrendsPage(variantName: string, runs: Report[], lang: Lang = DEFAULT_LANG): string {

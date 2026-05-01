@@ -1,11 +1,14 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { runEvaluation, runEachEvaluation } from '../src/eval-workflows/run-evaluation.js';
+import { executeEachEvaluationRuns } from '../src/eval-workflows/each-evaluation-workflow.js';
 import { buildTasks } from '../src/eval-core/task-planner.js';
 import { discoverVariants, discoverEachSkills, loadSkills } from '../src/inputs/skill-loader.js';
-import { generateRunId } from '../src/eval-core/evaluation-reporting.js';
+import { generateRunId, persistReport } from '../src/eval-core/evaluation-reporting.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import type { Report, VariantSpec } from '../src/types/index.js';
 
 // Test helper: convert a list of variant names into VariantSpec[].
@@ -547,6 +550,80 @@ describe('runEachEvaluation', () => {
     const report = asEachDryRunReport(result.report);
     const expectedTotal = report.artifacts.reduce((s: number, sk: { taskCount: number }) => s + sk.taskCount, 0);
     assert.equal(report.totalTasks, expectedTotal);
+  });
+
+  it('non-dry-run: returns batch index and persists child EvaluationReport', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'omk-each-index-'));
+    try {
+      const skillPath = join(tmpDir, 'alpha.md');
+      const samplesPath = join(tmpDir, 'alpha.eval-samples.json');
+      const outputDir = join(tmpDir, 'reports');
+      writeFileSync(skillPath, 'skill content');
+      writeFileSync(samplesPath, JSON.stringify([{ sample_id: 's1', prompt: 'p' }, { sample_id: 's2', prompt: 'p' }]));
+
+      const summary = (score: number): Report['summary'][string] => ({
+        totalSamples: 2,
+        successCount: 2,
+        errorCount: 0,
+        errorRate: 0,
+        avgDurationMs: 100,
+        avgInputTokens: 0,
+        avgOutputTokens: 0,
+        avgTotalTokens: 0,
+        totalCostUSD: 0,
+        totalExecCostUSD: 0,
+        totalJudgeCostUSD: 0,
+        avgCostPerSample: 0,
+        avgNumTurns: 1,
+        avgCompositeScore: score,
+      });
+
+      const result = await executeEachEvaluationRuns({
+        skillDir: tmpDir,
+        skillEntries: [{ name: 'alpha', skillPath, samplesPath }],
+        model: 'm',
+        judgeModel: 'j',
+        outputDir,
+        noJudge: true,
+        concurrency: 1,
+        executorName: 'claude',
+        persistJob: false,
+        runSingleEvaluation: async (options) => {
+          const report: Report = {
+            kind: 'evaluation',
+            id: options.runId!,
+            meta: {
+              variants: ['baseline', 'skill'],
+              model: options.model,
+              judgeModel: null,
+              executor: options.executorName,
+              sampleCount: 2,
+              taskCount: 4,
+              totalCostUSD: 0.01,
+              timestamp: '2026-05-01T00:00:00.000Z',
+              cliVersion: 'test',
+              nodeVersion: 'test',
+              artifactHashes: { baseline: 'no-skill', skill: 'hash-alpha' },
+            },
+            summary: { baseline: summary(3), skill: summary(4) },
+            results: [],
+          };
+          return { report, filePath: persistReport(report, options.outputDir) };
+        },
+      });
+
+      assert.equal(result.report.kind, 'batch-index');
+      assert.equal(result.report.mode, 'each');
+      assert.equal(result.report.items.length, 1);
+      assert.equal(result.report.items[0].name, 'alpha');
+      assert.equal(result.report.items[0].artifactHash, 'hash-alpha');
+      assert.ok(result.report.items[0].reportId.startsWith(`${result.report.id}-01-alpha`));
+      assert.ok(result.filePath);
+      assert.ok(existsSync(result.filePath!));
+      assert.ok(existsSync(join(outputDir, `${result.report.items[0].reportId}.json`)));
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

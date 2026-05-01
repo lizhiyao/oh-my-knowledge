@@ -41,6 +41,7 @@ function makeRun(runId: string, perVariant: Record<string, LayerSeed>): Report {
     };
   }
   return {
+    kind: 'evaluation',
     id: runId,
     meta: {
       variants: Object.keys(perVariant),

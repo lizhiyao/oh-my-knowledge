@@ -23,6 +23,7 @@ function makeReport(id: string, variant: string, timestamp: string, avgScore: nu
     },
   };
   return {
+    kind: 'evaluation',
     id,
     meta: {
       variants: [variant],

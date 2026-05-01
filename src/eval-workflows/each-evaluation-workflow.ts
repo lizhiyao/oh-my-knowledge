@@ -1,10 +1,19 @@
 import { dirname, resolve } from 'node:path';
-import { DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/evaluation-reporting.js';
+import { DEFAULT_OUTPUT_DIR, generateRunId, getCliVersion, getGitInfo, persistReport } from '../eval-core/evaluation-reporting.js';
 import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finalizeEvaluationRun } from '../eval-core/evaluation-job.js';
 import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from '../server/job-store.js';
 import { resolveArtifacts } from '../inputs/skill-loader.js';
-import type { Artifact, ExecutorRuntimeFingerprint, JobStore, ProgressCallback, Report, VarianceData, VariantResult, VariantSummary } from '../types/index.js';
+import type {
+  Artifact,
+  EvaluationBatchIndex,
+  EvaluationBatchIndexItem,
+  EvaluationReport,
+  ExecutorRuntimeFingerprint,
+  JobStore,
+  ProgressCallback,
+  VariantSummary,
+} from '../types/index.js';
 
 interface RunSingleEvaluationOptions {
   samplesPath: string;
@@ -12,7 +21,7 @@ interface RunSingleEvaluationOptions {
   artifacts: Artifact[];
   model: string;
   judgeModel: string;
-  outputDir: null;
+  outputDir: string | null;
   noJudge: boolean;
   concurrency: number;
   timeoutMs?: number;
@@ -24,32 +33,21 @@ interface RunSingleEvaluationOptions {
   skipPreflight: boolean;
   mcpConfig?: string;
   verbose: boolean;
-  /** Forwarded to grade(); each sample × dimension is judged N times. Default 1. */
+  runId?: string;
+  /** Forwarded to grade(); each sample x dimension is judged N times. Default 1. */
   judgeRepeat?: number;
-  /** Forwarded to pipeline; ≥ 2 entries triggers multi-judge ensemble mode. */
+  /** Forwarded to pipeline; >= 2 entries triggers multi-judge ensemble mode. */
   judgeModels?: import('../types/index.js').JudgeConfig[];
   /** v0.21 Phase 3a length-debias toggle. Default true. */
   lengthDebias?: boolean;
 }
 
-export interface EachSkillResult {
+interface CompletedEachSkillRun {
   name: string;
-  artifactHash: string;
+  skillPath: string;
   samplesPath: string;
-  sampleCount: number;
-  summary: Record<string, VariantSummary>;
-  /** repeat > 1 时由 runMultiple 聚合,承载三层独立 variance + t 检验 */
-  variance?: VarianceData;
-  /** Runtime fingerprints from the single skill-vs-baseline run. */
-  executorRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
-  executorRuntime?: ExecutorRuntimeFingerprint;
-  results: Array<{
-    sample_id: string;
-    variants: {
-      baseline: VariantResult;
-      skill: VariantResult;
-    };
-  }>;
+  report: EvaluationReport;
+  filePath: string | null;
 }
 
 function commonRuntime(runtimes: Record<string, ExecutorRuntimeFingerprint>): ExecutorRuntimeFingerprint | undefined {
@@ -59,27 +57,62 @@ function commonRuntime(runtimes: Record<string, ExecutorRuntimeFingerprint>): Ex
   return values.every((runtime) => runtime.fingerprint === first.fingerprint) ? first : undefined;
 }
 
-function buildEachOverview(skillResults: EachSkillResult[], totalCostUSD: number) {
+function safeRunIdPart(value: string): string {
+  return value
+    .replaceAll(/[\\/:]/g, '-')
+    .replaceAll(/[^a-zA-Z0-9._@-]/g, '_')
+    .replace(/^_+|_+$/g, '')
+    || 'skill';
+}
+
+function reportSummarySnapshot(report: EvaluationReport): Record<string, VariantSummary> {
   return {
-    totalArtifacts: skillResults.length,
-    totalSamples: skillResults.reduce((sum, skill) => sum + skill.sampleCount, 0),
-    totalCostUSD: Number(totalCostUSD.toFixed(6)),
-    artifacts: skillResults.map((skill) => {
-      const baselineSummary = skill.summary.baseline;
-      const artifactSummary = skill.summary.skill;
-      const baselineScore = baselineSummary?.avgCompositeScore ?? baselineSummary?.avgLlmScore ?? null;
-      const artifactScore = artifactSummary?.avgCompositeScore ?? artifactSummary?.avgLlmScore ?? null;
-      if (typeof baselineScore !== 'number' || typeof artifactScore !== 'number' || baselineScore <= 0) {
-        return { name: skill.name, baselineScore, artifactScore, improvement: '-' };
-      }
-      const delta = ((artifactScore - baselineScore) / baselineScore * 100).toFixed(0);
-      const improvement = artifactScore >= baselineScore ? `+${delta}%` : `${delta}%`;
-      return { name: skill.name, baselineScore, artifactScore, improvement };
-    }),
+    baseline: report.summary.baseline || ({} as VariantSummary),
+    skill: report.summary.skill || ({} as VariantSummary),
   };
 }
 
-export function buildEachReport({
+function buildBatchItems(skillResults: CompletedEachSkillRun[]): EvaluationBatchIndexItem[] {
+  return skillResults.map(({ name, skillPath, samplesPath, report, filePath }) => ({
+    name,
+    skillPath,
+    samplesPath,
+    reportId: report.id,
+    reportPath: filePath,
+    status: 'completed',
+    sampleCount: report.meta.sampleCount,
+    totalCostUSD: report.meta.totalCostUSD,
+    artifactHash: report.meta.artifactHashes?.skill || null,
+    summary: reportSummarySnapshot(report),
+    ...(report.variance ? { variance: report.variance } : {}),
+  }));
+}
+
+function buildExecutorRuntimesBySkill({
+  skillDir,
+  skillResults,
+  executorName,
+  model,
+}: {
+  skillDir: string;
+  skillResults: CompletedEachSkillRun[];
+  executorName: string;
+  model: string;
+}): Record<string, ExecutorRuntimeFingerprint> {
+  const executorRuntimes: Record<string, ExecutorRuntimeFingerprint> = {};
+  for (const skill of skillResults) {
+    executorRuntimes[skill.name] =
+      skill.report.meta.executorRuntimes?.skill
+      ?? skill.report.meta.executorRuntime
+      ?? getExecutorRuntimeFingerprint(executorName, model, {
+        skillDir: skill.skillPath ? dirname(skill.skillPath) : skillDir,
+      });
+  }
+  return executorRuntimes;
+}
+
+export function buildEvaluationBatchIndex({
+  batchRunId,
   skillDir,
   skillEntries,
   skillResults,
@@ -91,16 +124,16 @@ export function buildEachReport({
   project,
   owner,
   tags,
-  dryRun,
   concurrency,
   timeoutMs,
   totalCostUSD,
   repeat,
   judgeModels,
 }: {
+  batchRunId: string;
   skillDir: string;
   skillEntries: Array<{ name: string; skillPath: string; samplesPath: string }>;
-  skillResults: EachSkillResult[];
+  skillResults: CompletedEachSkillRun[];
   model: string;
   judgeModel: string;
   noJudge: boolean;
@@ -109,14 +142,12 @@ export function buildEachReport({
   project?: string;
   owner?: string;
   tags?: string[];
-  dryRun: boolean;
   concurrency: number;
   timeoutMs?: number;
   totalCostUSD: number;
   repeat?: number;
   judgeModels?: import('../types/index.js').JudgeConfig[];
-}) {
-  const runId = generateRunId(['each']);
+}): { report: EvaluationBatchIndex; job: import('../types/index.js').EvaluationJob } {
   const request = buildEvaluationRequest({
     samplesPath: '',
     skillDir,
@@ -135,7 +166,7 @@ export function buildEachReport({
     concurrency,
     timeoutMs,
     noCache: false,
-    dryRun,
+    dryRun: false,
     blind: false,
     project,
     owner,
@@ -145,70 +176,59 @@ export function buildEachReport({
     each: true,
   });
   const createdAt = new Date().toISOString();
-  const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
+  const { run: initialRun, startedAt } = createEvaluationRun(batchRunId, createdAt);
   const finishedAt = new Date().toISOString();
   const run = finalizeEvaluationRun(initialRun, finishedAt);
   const job = createSucceededJob({
-    jobId: `job-${runId}`,
-    runId,
-    reportId: runId,
+    jobId: `job-${batchRunId}`,
+    runId: batchRunId,
+    reportId: batchRunId,
     request,
     createdAt,
     startedAt,
     finishedAt,
   });
-  const totalSampleCount = skillResults.reduce((sum, skill) => sum + skill.sampleCount, 0);
-  const executorRuntimes: Record<string, ExecutorRuntimeFingerprint> = {};
-  const entryByName = new Map(skillEntries.map((entry) => [entry.name, entry]));
-  for (const skill of skillResults) {
-    const entry = entryByName.get(skill.name);
-    executorRuntimes[skill.name] =
-      skill.executorRuntimes?.skill
-      ?? skill.executorRuntime
-      ?? getExecutorRuntimeFingerprint(executorName, model, {
-        skillDir: entry ? dirname(entry.skillPath) : skillDir,
-      });
-  }
-  const executorRuntime = commonRuntime(executorRuntimes) ?? Object.values(executorRuntimes)[0] ?? getExecutorRuntimeFingerprint(executorName, model, { skillDir });
+  const sampleCount = skillResults.reduce((sum, skill) => sum + skill.report.meta.sampleCount, 0);
+  const executorRuntimes = buildExecutorRuntimesBySkill({ skillDir, skillResults, executorName, model });
+  const executorRuntime = commonRuntime(executorRuntimes)
+    ?? Object.values(executorRuntimes)[0]
+    ?? getExecutorRuntimeFingerprint(executorName, model, { skillDir });
 
-  return {
-    report: {
-      id: runId,
-      each: true,
-      meta: {
-        variants: skillEntries.map((entry) => entry.name),
-        model,
-        judgeModel: noJudge ? null : judgeModel,
-        executor: executorName,
-        sampleCount: totalSampleCount,
-        taskCount: totalSampleCount * 2,
-        totalCostUSD: Number(totalCostUSD.toFixed(6)),
-        timestamp: new Date().toISOString(),
-        cliVersion: '',
-        nodeVersion: process.version,
-        artifactHashes: Object.fromEntries(
-          skillResults.map((skill) => [skill.name, skill.artifactHash || 'no-skill']),
+  const report: EvaluationBatchIndex = {
+    kind: 'batch-index',
+    id: batchRunId,
+    mode: 'each',
+    meta: {
+      mode: 'each',
+      model,
+      judgeModel: noJudge ? null : judgeModel,
+      executor: executorName,
+      skillDir,
+      sampleCount,
+      taskCount: sampleCount * 2,
+      totalArtifacts: skillResults.length,
+      totalCostUSD: Number(totalCostUSD.toFixed(6)),
+      timestamp: finishedAt,
+      cliVersion: getCliVersion(),
+      nodeVersion: process.version,
+      executorRuntime,
+      executorRuntimes,
+      judgeRuntime: noJudge ? null : getExecutorRuntimeFingerprint(judgeExecutorName || executorName, judgeModel, { skillDir }),
+      ...(judgeModels && judgeModels.length >= 2 ? {
+        judgeModels: judgeModels.map((jc) => `${jc.executor}:${jc.model}`),
+        judgeRuntimes: Object.fromEntries(
+          judgeModels.map((jc) => [`${jc.executor}:${jc.model}`, getExecutorRuntimeFingerprint(jc.executor, jc.model, { skillDir })]),
         ),
-        executorRuntime,
-        executorRuntimes,
-        judgeRuntime: noJudge ? null : getExecutorRuntimeFingerprint(judgeExecutorName || executorName, judgeModel, { skillDir }),
-        ...(judgeModels && judgeModels.length >= 2 ? {
-          judgeModels: judgeModels.map((jc) => `${jc.executor}:${jc.model}`),
-          judgeRuntimes: Object.fromEntries(
-            judgeModels.map((jc) => [`${jc.executor}:${jc.model}`, getExecutorRuntimeFingerprint(jc.executor, jc.model, { skillDir })]),
-          ),
-        } : {}),
-        request,
-        run,
-        job,
-      },
-      summary: {},
-      results: [],
-      overview: buildEachOverview(skillResults, totalCostUSD),
-      artifacts: skillResults,
-    } satisfies Report,
-    job,
+      } : {}),
+      request,
+      run,
+      job,
+      gitInfo: getGitInfo(),
+    },
+    items: buildBatchItems(skillResults),
   };
+
+  return { report, job };
 }
 
 export async function executeEachEvaluationRuns({
@@ -264,25 +284,21 @@ export async function executeEachEvaluationRuns({
   judgeRepeat?: number;
   judgeModels?: import('../types/index.js').JudgeConfig[];
   lengthDebias?: boolean;
-  /**  — strict-baseline default. Forwarded to per-skill resolveArtifacts so each
-   *  skill's baseline gets allowedSkills=[] when default true. */
+  /** strict-baseline default. Forwarded to per-skill resolveArtifacts. */
   strictBaseline?: boolean;
-  /**  — explicit per-variant allowedSkills override. each mode rarely uses this
-   *  (since it auto-pairs baseline + skill), but if user has yaml override on either
-   *  "baseline" or "skill" name, we honor it. */
+  /** explicit per-variant allowedSkills override. */
   variantAllowedSkills?: Record<string, string[]>;
-  runSingleEvaluation: (options: RunSingleEvaluationOptions) => Promise<{ report: Report; filePath: string | null }>;
-}): Promise<{ report: Report; filePath: string | null }> {
-  const skillResults: EachSkillResult[] = [];
+  runSingleEvaluation: (options: RunSingleEvaluationOptions) => Promise<{ report: EvaluationReport; filePath: string | null }>;
+}): Promise<{ report: EvaluationBatchIndex; filePath: string | null }> {
+  const batchRunId = generateRunId(['each']);
+  const skillResults: CompletedEachSkillRun[] = [];
   let totalCostUSD = 0;
 
   for (let i = 0; i < skillEntries.length; i++) {
     const entry = skillEntries[i];
     onSkillProgress?.({ phase: 'start', skill: entry.name, current: i + 1, total: skillEntries.length });
 
-    // each mode 的实验结构固定为"baseline (control) vs skill (treatment)"。
-    // 显式在 artifact 上填 experimentRole，下游 buildVariantConfig 直接读取。
-    //  — pass strictBaseline + variantAllowedSkills opts so isolation 默认生效。
+    // each mode 的实验结构固定为 "baseline (control) vs skill (treatment)"。
     const skillArtifacts = resolveArtifacts(
       resolve(skillDir),
       ['baseline', entry.skillPath],
@@ -293,13 +309,14 @@ export async function executeEachEvaluationRuns({
       }
       return { ...artifact, experimentRole: 'control' as const };
     });
-    const { report } = await runSingleEvaluation({
+    const childRunId = `${batchRunId}-${String(i + 1).padStart(2, '0')}-${safeRunIdPart(entry.name)}`;
+    const { report, filePath } = await runSingleEvaluation({
       samplesPath: entry.samplesPath,
       skillDir,
       artifacts: skillArtifacts,
       model,
       judgeModel,
-      outputDir: null,
+      outputDir,
       noJudge,
       concurrency,
       timeoutMs,
@@ -311,6 +328,7 @@ export async function executeEachEvaluationRuns({
       skipPreflight: skipPreflight || i > 0,
       mcpConfig,
       verbose,
+      runId: childRunId,
       judgeRepeat,
       judgeModels,
       lengthDebias,
@@ -318,31 +336,18 @@ export async function executeEachEvaluationRuns({
 
     skillResults.push({
       name: entry.name,
-      artifactHash: report.meta.artifactHashes?.skill || '',
+      skillPath: entry.skillPath,
       samplesPath: entry.samplesPath,
-      sampleCount: report.meta.sampleCount,
-      summary: {
-        baseline: report.summary.baseline || ({} as VariantSummary),
-        skill: (report.summary.skill || {}) as VariantSummary,
-      },
-      // runMultiple 跑 N 次后会把 variance 挂到 report.variance,这里搬到 skill 维度
-      ...(report.variance ? { variance: report.variance } : {}),
-      executorRuntimes: report.meta.executorRuntimes,
-      executorRuntime: report.meta.executorRuntime,
-      results: report.results.map((result) => ({
-        sample_id: result.sample_id,
-        variants: {
-          baseline: result.variants.baseline || result.variants['baseline'],
-          skill: result.variants.skill,
-        },
-      })),
+      report,
+      filePath,
     });
 
     totalCostUSD += report.meta.totalCostUSD;
     onSkillProgress?.({ phase: 'done', skill: entry.name, current: i + 1, total: skillEntries.length });
   }
 
-  const { report: combinedReport, job } = buildEachReport({
+  const { report: batchIndex, job } = buildEvaluationBatchIndex({
+    batchRunId,
     skillDir,
     skillEntries,
     skillResults,
@@ -354,15 +359,14 @@ export async function executeEachEvaluationRuns({
     project,
     owner,
     tags,
-    dryRun: false,
     concurrency,
     timeoutMs,
     totalCostUSD,
     repeat,
     judgeModels,
   });
-  const filePath = persistReport(combinedReport, outputDir);
+  const filePath = persistReport(batchIndex, outputDir);
   const resolvedJobStore = persistJob ? (jobStore ?? createFileJobStore(DEFAULT_JOBS_DIR)) : null;
   if (resolvedJobStore) await resolvedJobStore.save(job.jobId, job);
-  return { report: combinedReport, filePath };
+  return { report: batchIndex, filePath };
 }

@@ -13,7 +13,9 @@ import {
 import { makeOnProgress } from './progress.js';
 import { checkUpdate } from './update-check.js';
 import type {
+  EvaluationReport,
   Report,
+  ReportDocument,
   VariantSummary,
   GitInfo,
   ReportStore,
@@ -49,7 +51,7 @@ interface RoundProgressInfo {
 }
 
 interface EvalResult {
-  report: Report;
+  report: ReportDocument;
   filePath: string | null;
 }
 
@@ -81,6 +83,20 @@ interface EvolveResult {
 interface GenerateSamplesResult {
   samples: unknown[];
   costUSD: number;
+}
+
+function requireEvaluationReport(report: ReportDocument | null, id: string, lang: CliLang): EvaluationReport {
+  if (!report) {
+    console.error(tCli('cli.common.report_not_found', lang, { id }));
+    process.exit(1);
+  }
+  if (report.kind === 'batch-index') {
+    console.error(lang === 'zh'
+      ? `报告 ${id} 是 each 批次索引。该命令需要单次 EvaluationReport；请使用索引里的 child reportId。`
+      : `Report ${id} is an each batch index. This command requires an EvaluationReport; use a child reportId from the index.`);
+    process.exit(1);
+  }
+  return report;
 }
 
 // ---------------------------------------------------------------------------
@@ -328,7 +344,7 @@ async function handleRun(argv: string[]): Promise<void> {
       filePath = null;
     } else {
       const result = (await runEvaluation(config)) as EvalResult;
-      report = result.report;
+      report = result.report as Report;
       filePath = result.filePath;
     }
 
@@ -429,15 +445,15 @@ async function handleReport(argv: string[]): Promise<void> {
 
   if (values.export) {
     const { createFileStore } = await import('../server/report-store.js');
-    const { renderRunDetail, renderEachRunDetail } = await import('../renderer/html-renderer.js');
+    const { renderReportDocumentDetail } = await import('../renderer/html-renderer.js');
     const { writeFileSync } = await import('node:fs');
     const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
-    const report: Report | null = await store.get(values.export as string);
+    const report: ReportDocument | null = await store.get(values.export as string);
     if (!report) {
       console.error(tCli('cli.common.report_not_found', lang, { id: values.export as string }));
       process.exit(1);
     }
-    const html: string = report!.each ? renderEachRunDetail(report) : renderRunDetail(report);
+    const html: string = renderReportDocumentDetail(report);
     const outPath: string = resolve(`${values.export}.html`);
     writeFileSync(outPath, html);
     console.log(`Exported to: ${outPath}`);
@@ -877,12 +893,13 @@ async function handleGate(argv: string[]): Promise<void> {
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
   try {
-    const { report } = (await runEvaluation(config)) as EvalResult;
+    const { report: document } = (await runEvaluation(config)) as EvalResult;
 
-    if ((report as Report & { dryRun?: boolean }).dryRun) {
+    if ((document as ReportDocument & { dryRun?: boolean }).dryRun) {
       console.log('Gate dry-run: no scores to check');
       process.exit(0);
     }
+    const report = requireEvaluationReport(document, 'current run', lang);
 
     // gate 内核 = run + verdict, 自动覆盖 omk 全部决策维度(三层 layer-gate /
     // bootstrap diff CI / saturation / Krippendorff α)。computeVerdict 是单一
@@ -963,30 +980,27 @@ async function handleDiff(argv: string[]): Promise<void> {
   }
 
   const [id1, id2]: string[] = positional;
-  const r1: Report | null = await store.get(id1);
-  const r2: Report | null = await store.get(id2);
-
-  if (!r1) { console.error(tCli('cli.common.report_not_found', lang, { id: id1 })); process.exit(1); }
-  if (!r2) { console.error(tCli('cli.common.report_not_found', lang, { id: id2 })); process.exit(1); }
+  const r1 = requireEvaluationReport(await store.get(id1), id1, lang);
+  const r2 = requireEvaluationReport(await store.get(id2), id2, lang);
 
   console.log(`\n  Diff: ${id1} → ${id2}\n`);
 
   // Git info — r1/r2 are guaranteed non-null after process.exit() guards above
-  const g1: GitInfo | null | undefined = r1!.meta?.gitInfo;
-  const g2: GitInfo | null | undefined = r2!.meta?.gitInfo;
+  const g1: GitInfo | null | undefined = r1.meta?.gitInfo;
+  const g2: GitInfo | null | undefined = r2.meta?.gitInfo;
   if (g1 || g2) {
     console.log(`  Git:  ${g1?.commitShort || '?'}${g1?.dirty ? '*' : ''} (${g1?.branch || '?'}) → ${g2?.commitShort || '?'}${g2?.dirty ? '*' : ''} (${g2?.branch || '?'})`);
   }
 
   const { crossReportComparabilityWarnings, formatComparabilityWarnings } = await import('../eval-core/comparability.js');
-  const comparability = formatComparabilityWarnings(crossReportComparabilityWarnings(r1!, r2!), lang);
+  const comparability = formatComparabilityWarnings(crossReportComparabilityWarnings(r1, r2), lang);
   if (comparability) process.stderr.write(`\n${comparability}\n\n`);
 
   // Per-variant comparison
-  const variants: string[] = [...new Set([...(r1!.meta?.variants || []), ...(r2!.meta?.variants || [])])];
+  const variants: string[] = [...new Set([...(r1.meta?.variants || []), ...(r2.meta?.variants || [])])];
   for (const v of variants) {
-    const s1: VariantSummary | undefined = r1!.summary?.[v];
-    const s2: VariantSummary | undefined = r2!.summary?.[v];
+    const s1: VariantSummary | undefined = r1.summary?.[v];
+    const s2: VariantSummary | undefined = r2.summary?.[v];
     if (!s1 && !s2) continue;
 
     console.log(`\n  [${v}]`);
@@ -1024,8 +1038,8 @@ async function handleDiff(argv: string[]): Promise<void> {
     console.log(`    Cost:    ${fmt(cost1, reported1)} → ${fmt(cost2, reported2)}${costPct}`);
 
     // Skill hash change
-    const h1: string | undefined = r1!.meta?.artifactHashes?.[v];
-    const h2: string | undefined = r2!.meta?.artifactHashes?.[v];
+    const h1: string | undefined = r1.meta?.artifactHashes?.[v];
+    const h2: string | undefined = r2.meta?.artifactHashes?.[v];
     if (h1 && h2 && h1 !== h2) {
       console.log(`    Skill:   ${h1.slice(0, 8)} → ${h2.slice(0, 8)} (changed)`);
     }
@@ -1047,15 +1061,11 @@ async function runSampleLevelDiff(
   flags: Record<string, string | boolean | undefined>,
   lang: CliLang,
 ): Promise<void> {
-  const report: Report | null = await store.get(reportId);
-  if (!report) {
-    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
-    process.exit(1);
-  }
+  const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
   const { reportComparabilityWarnings, formatComparabilityWarnings } = await import('../eval-core/comparability.js');
-  const comparability = formatComparabilityWarnings(reportComparabilityWarnings(report!), lang);
+  const comparability = formatComparabilityWarnings(reportComparabilityWarnings(report), lang);
   if (comparability) process.stderr.write(`\n${comparability}\n\n`);
-  const variants = report!.meta?.variants ?? [];
+  const variants = report.meta?.variants ?? [];
   if (variants.length < 2) {
     console.error('Sample-level diff needs at least 2 variants in the report.');
     process.exit(1);
@@ -1072,7 +1082,7 @@ async function runSampleLevelDiff(
   const topN = flags.top != null ? Math.max(1, Number(flags.top) || 0) : undefined;
 
   const rows: Array<{ id: string; cFact?: number; tFact?: number; cBeh?: number; tBeh?: number; cJudge?: number; tJudge?: number; cComp: number; tComp: number; delta: number }> = [];
-  for (const entry of report!.results ?? []) {
+  for (const entry of report.results ?? []) {
     const c = entry.variants?.[control];
     const t = entry.variants?.[treatment];
     if (!c || !t) continue;
@@ -1225,16 +1235,12 @@ async function handleGold(argv: string[]): Promise<void> {
     }
 
     const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
-    const report: Report | null = await store.get(reportId);
-    if (!report) {
-      console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
-      process.exit(1);
-    }
+    const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
 
     const samples = Math.max(100, Number(values['bootstrap-samples']) || 1000);
     const seedVal = values.seed != null ? Number(values.seed) : undefined;
     const result = compareGoldToReport({
-      report: report!,
+      report,
       gold: dataset,
       variant: values.variant as string | undefined,
       samples,
@@ -1288,15 +1294,11 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
 
   const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
-  const report: Report | null = await store.get(reportId);
-  if (!report) {
-    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
-    process.exit(1);
-  }
+  const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
 
   // Resolve samples path: --samples overrides; otherwise read from report.meta.request.
   const samplesPath = (values.samples as string | undefined)
-    ?? report!.meta?.request?.samplesPath;
+    ?? report.meta?.request?.samplesPath;
   if (!samplesPath) {
     console.error('Cannot find samples path. Pass --samples <path> or ensure report has request.samplesPath.');
     process.exit(1);
@@ -1305,7 +1307,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const { samples } = loadSamples(samplesPath);
 
   const judgeModel = (values['judge-model'] as string | undefined)
-    ?? report!.meta?.judgeModel;
+    ?? report.meta?.judgeModel;
   if (!judgeModel) {
     console.error(tCli('cli.common.no_judge_model', lang));
     process.exit(1);
@@ -1320,7 +1322,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const seedVal = values.seed != null ? Number(values.seed) : undefined;
   const bsRaw = Number(values['bootstrap-samples']) || 1000;
   const result = await validateLengthDebias({
-    report: report!,
+    report,
     samples,
     judgeExecutor,
     judgeModel,
@@ -1358,13 +1360,9 @@ async function handleSaturation(argv: string[]): Promise<void> {
 
   const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
-  const report: Report | null = await store.get(reportId);
-  if (!report) {
-    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
-    process.exit(1);
-  }
+  const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
 
-  const saturation = report!.variance?.saturation;
+  const saturation = report.variance?.saturation;
   if (!saturation) {
     console.error(tCli('cli.saturation.no_data', lang));
     process.exit(1);
@@ -1376,7 +1374,7 @@ async function handleSaturation(argv: string[]): Promise<void> {
   // here — that would need raw scores, which would have to be persisted
   // by runMultiple. Future work: opt-in `--persist-saturation-raw` flag at
   // run time to enable post-hoc parameter sweeps.
-  const variants = report!.meta.variants ?? [];
+  const variants = report.meta.variants ?? [];
   const targetVariants = values.variant ? [values.variant as string] : variants;
 
   console.log(tCli('cli.saturation.verdict_header', lang));
@@ -1435,17 +1433,13 @@ async function handleVerdict(argv: string[]): Promise<void> {
 
   const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
-  const report: Report | null = await store.get(reportId);
-  if (!report) {
-    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
-    process.exit(1);
-  }
+  const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
 
   const { computeVerdict, formatVerdictText } = await import('../eval-core/verdict.js');
   const { reportComparabilityWarnings, formatComparabilityWarnings } = await import('../eval-core/comparability.js');
-  const comparability = formatComparabilityWarnings(reportComparabilityWarnings(report!), lang);
+  const comparability = formatComparabilityWarnings(reportComparabilityWarnings(report), lang);
   if (comparability) process.stderr.write(`${comparability}\n`);
-  const result = computeVerdict(report!, {
+  const result = computeVerdict(report, {
     gateThreshold: values.threshold != null ? Number(values.threshold) : undefined,
     triviallySmallDiff: values['trivial-diff'] != null ? Number(values['trivial-diff']) : undefined,
   });
@@ -1493,18 +1487,14 @@ async function handleDiagnose(argv: string[]): Promise<void> {
 
   const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
-  const report: Report | null = await store.get(reportId);
-  if (!report) {
-    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
-    process.exit(1);
-  }
+  const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
 
   // Try to read the samples file for near-duplicate detection. Source order:
   //  1. --samples <path> override
   //  2. report.meta.request.samplesPath (recorded at run time)
   // If neither resolves to a readable file, skip near-duplicate gracefully.
   let samples: import('../types/index.js').Sample[] | undefined;
-  const samplesPath = (values.samples as string | undefined) ?? report!.meta?.request?.samplesPath;
+  const samplesPath = (values.samples as string | undefined) ?? report.meta?.request?.samplesPath;
   if (samplesPath && existsSync(samplesPath)) {
     try {
       const { loadSamples } = await import('../inputs/load-samples.js');
@@ -1520,7 +1510,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   const topN = Number.isFinite(topRaw) && topRaw > 0 ? topRaw : undefined;
 
   const { diagnoseSamples, formatSampleDiagnostics } = await import('../analysis/sample-diagnostics.js');
-  const diag = diagnoseSamples(report!, {
+  const diag = diagnoseSamples(report, {
     samples,
     duplicateRouge: values['duplicate-rouge'] != null ? Number(values['duplicate-rouge']) : undefined,
     ambiguousStddev: values['ambiguous-stddev'] != null ? Number(values['ambiguous-stddev']) : undefined,
@@ -1535,7 +1525,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
   // 跟 issue list 是不同视角的两件事。优先从 samples (现场加载) 算,fallback 到
   // report.analysis.sampleQuality(报告里持久化的数据)。
   const { renderSampleDesignCoverage } = await import('./coverage-renderer.js');
-  const coverageBlock = renderSampleDesignCoverage(samples, report!.analysis?.sampleQuality, lang);
+  const coverageBlock = renderSampleDesignCoverage(samples, report.analysis?.sampleQuality, lang);
   if (coverageBlock) console.log(coverageBlock);
 
   // Exit code: 0 if health ≥ 70 and no errors; 1 otherwise. CI-friendly.
@@ -1573,13 +1563,9 @@ async function handleFailures(argv: string[]): Promise<void> {
 
   const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
-  const report: Report | null = await store.get(reportId);
-  if (!report) {
-    console.error(tCli('cli.common.report_not_found', lang, { id: reportId }));
-    process.exit(1);
-  }
+  const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
 
-  const judgeModel = (values['judge-model'] as string | undefined) ?? report!.meta?.judgeModel;
+  const judgeModel = (values['judge-model'] as string | undefined) ?? report.meta?.judgeModel;
   if (!judgeModel) {
     console.error(tCli('cli.common.no_judge_model', lang));
     process.exit(1);
@@ -1590,7 +1576,7 @@ async function handleFailures(argv: string[]): Promise<void> {
   const { clusterFailures, formatFailureClusterReport } = await import('../analysis/failure-clusterer.js');
 
   const out = await clusterFailures({
-    report: report!,
+    report,
     executor,
     judgeModel,
     maxClusters: Number(values['max-clusters']) || 5,

@@ -10,6 +10,7 @@ function normalizeForSnapshot(html: string): string {
 }
 
 const SAMPLE_REPORT: Report = {
+  kind: 'evaluation',
   // 让 id 匹配 renderRunList 里的 YYYYMMDD-HHmm regex (html-renderer.ts:62),
   // 这样列表页 row 的时间从 id 直接提取 (deterministic), 不走 toLocaleString
   // — 后者本地时区敏感, 会让 snapshot 在 CI UTC 和本地 CST 之间不一致.

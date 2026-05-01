@@ -2,7 +2,7 @@ import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { renderRunList, renderRunDetail, renderEachRunDetail, renderTrendsPage } from '../renderer/html-renderer.js';
+import { renderRunList, renderReportDocumentDetail, renderTrendsPage } from '../renderer/html-renderer.js';
 import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
 import type { Lang } from '../types/index.js';
@@ -599,7 +599,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
       if (reportPageMatch) {
         const report = await queryRun(reportStore, decodeURIComponent(reportPageMatch[1]));
         res.writeHead(report ? 200 : 404, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(report?.each ? renderEachRunDetail(report) : renderRunDetail(report));
+        res.end(renderReportDocumentDetail(report));
         return;
       }
 

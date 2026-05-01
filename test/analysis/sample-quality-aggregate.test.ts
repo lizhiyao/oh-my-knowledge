@@ -91,6 +91,7 @@ describe('buildSampleQualityAggregate', () => {
 describe('analyzeResults — sampleQuality wiring', () => {
   function emptyReport(): Report {
     return {
+      kind: 'evaluation',
       id: 'r',
       meta: {
         variants: ['v1', 'v2'], model: 'm', judgeModel: 'j', executor: 'claude',
