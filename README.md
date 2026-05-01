@@ -7,49 +7,13 @@
 
 **English** | [简体中文](./README.zh.md)
 
-**omk** — LLM evaluation framework with built-in statistical rigor. Bootstrap CI / Krippendorff α / length-debias / saturation curves out of the box. Native support for Claude Code skills, prompts, agents, and RAG.
+**omk** — The knowledge you give your LLM — what's it actually worth?
+omk answers with objective data, not gut feeling.
 
-**Fix the model, vary the knowledge artifact, let the data speak.**
+**Fix the model, vary the knowledge artifact.**
 
-## Why this tool
-
-Teams doing knowledge engineering produce lots of knowledge artifacts (skills today, but also prompts, agents, workflows…). When someone asks "why is v2 better than v1", you need objective data instead of gut feeling. `oh-my-knowledge` solves this with controlled experiments: **same model, same test samples, only the knowledge artifact changes.**
-
-## Key features
-
-- **Controlled-variable offline bench** — fix the model and samples, vary only the artifact; works with Claude Code skills, CLAUDE.md prompts, RAG knowledge bases, or any markdown-based instruction
-- **Six-dimension scoring** — separate signals for Fact / Behavior / LLM-judge / Cost / Efficiency / Stability, so a regression in one axis isn't hidden by gains in another
-- **Production session observability** — parse Claude Code session JSONL traces, measure per-skill failure rate, latency, token cost, and knowledge-gap signals on real user sessions
-- **Knowledge-gap detection** — severity-weighted signals (explicit markers / failed searches / hedging language / repeated failures) quantify risk exposure instead of claiming completeness
-- **Pre-merge CI gate** — `omk bench gate` enforces three-layer all-pass (fact + behavior + llm-judge) semantics, catching single-layer regressions a composite score would hide
-- **One-line ship/no-ship verdict** — `omk bench verdict <reportId>` aggregates bootstrap CI / three-layer ci-gate / saturation / human α into a six-tier verdict (PROGRESS / CAUTIOUS / REGRESS / NOISE / UNDERPOWERED / SOLO) plus an action recommendation; the exit code reflects whether to ship
-
-### Statistical rigor
-
-The biggest LLM-eval failure mode is "confident bias" — narrow CIs around the wrong answer. omk's statistical layer ships four pieces so conclusions can be externally audited:
-
-- **Bootstrap CI** (`--bootstrap`) — distribution-free confidence intervals. The t-test breaks on ordinal LLM scores; bootstrap resamples raw observations and stays valid at small N (< 30) and on skewed data. Pairwise diff CI not crossing 0 = significant.
-- **Human Gold + Krippendorff α** (`--gold-dir`) — bring an external annotation as anchor. CI tells you "is the judge stable", α tells you "is the judge correct" — two complementary axes. omk warns when the gold annotator and the judge are the same model (would inflate α).
-- **Length-controlled judge prompt** (default ON) — research shows LLM judges over-weight verbosity. omk's judge prompt explicitly states "length is not a quality signal"; template hash is `v3-cot-length` so older reports (with the legacy hash) are visibly different. `omk bench debias-validate length <reportId>` re-judges with the opposite setting and reports the score shift.
-- **Saturation curve** — answers "have I run enough samples?". With `--repeat ≥ 5` we accumulate cumulative N → bootstrap CI; when CI shrink rate stays under 5% across 3 windows, more samples buy nothing. The HTML report inlines the SVG curve plus a verdict.
-
-## Why omk over alternatives
-
-| | omk | promptfoo | DeepEval | RAGAS | LangSmith |
-|--|--|--|--|--|--|
-| Bootstrap CI | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Krippendorff α (judge ↔ human) | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Length-debias judge prompt | ✓ default | ✗ | ✗ | ✗ | ✗ |
-| Saturation curve | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Three-layer scoring isolation | ✓ | ✗ | partial | ✗ | ✗ |
-| Per-variant skill isolation (construct validity) | ✓ default | ✗ | ✗ | ✗ | ✗ |
-| Native Claude Code skill | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Full Chinese docs | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Hosted SaaS dashboard | ✗ | ✗ | ✓ | ✗ | ✓ |
-
-omk's moat is **statistical rigor** — every conclusion is auditable by a researcher. If you need a hosted SaaS dashboard, choose LangSmith. If you want quick local prompt iteration without statistics, choose promptfoo. **If you ship to production and someone will ask "why should I trust this number?", choose omk**.
-
-Full comparison with 7 tools across 25+ dimensions: [docs/comparison.md](docs/comparison.md)
+<a id="statistical-rigor"></a>
+> Built-in: Bootstrap CI · Krippendorff α (judge ↔ human) · length-debias · saturation curves · construct-validity isolation. [Why these matter →](docs/statistical-rigor.md)
 
 ## Quick start
 
@@ -70,12 +34,14 @@ cd my-eval
 omk bench run --dry-run
 
 # run the evaluation (auto-discovers everything under skills/)
-omk bench run
+omk bench run    # → HTML report with verdict in 5 minutes
 
 # CLI output language: zh (default) / en — flag wins over env
 omk bench run --lang en
 OMK_LANG=en omk bench report
 ```
+
+![omk report](./assets/screenshots/report-overview.png)
 
 ## Use inside Claude Code
 
@@ -89,27 +55,57 @@ After installing omk, talk to it in natural language from Claude Code:
 
 You can also just say "compare v1 vs v2 for me" or "improve this artifact" — omk picks the right command.
 
+## Why this tool
+
+Teams doing knowledge engineering produce lots of knowledge artifacts (skills today, but also prompts, agents, workflows…). When someone asks "why is v2 better than v1", you need objective data instead of gut feeling. `oh-my-knowledge` solves this with controlled experiments: **same model, same test samples, only the knowledge artifact changes.**
+
+## Key features
+
+- **Controlled-variable offline bench** — fix the model and samples, vary only the artifact; works with Claude Code skills, CLAUDE.md prompts, RAG knowledge bases, or any markdown-based instruction
+- **Six-dimension scoring** — separate signals for Fact / Behavior / LLM-judge / Cost / Efficiency / Stability, so a regression in one axis isn't hidden by gains in another
+- **Production session observability** — parse Claude Code session JSONL traces, measure per-skill failure rate, latency, token cost, and knowledge-gap signals on real user sessions
+- **Knowledge-gap detection** — severity-weighted signals (explicit markers / failed searches / hedging language / repeated failures) quantify risk exposure instead of claiming completeness
+- **Pre-merge CI gate** — `omk bench gate` enforces three-layer all-pass (fact + behavior + llm-judge) semantics, catching single-layer regressions a composite score would hide
+- **One-line ship/no-ship verdict** — `omk bench verdict <reportId>` aggregates bootstrap CI / three-layer ci-gate / saturation / human α into a six-tier verdict (PROGRESS / CAUTIOUS / REGRESS / NOISE / UNDERPOWERED / SOLO) plus an action recommendation; the exit code reflects whether to ship
+
+## Why omk over alternatives
+
+| | omk | promptfoo | DeepEval | LangSmith |
+|--|--|--|--|--|
+| Bootstrap CI | ✓ default | ✗ | ✗ | ✗ |
+| Krippendorff α (judge ↔ human) | ✓ default | ✗ | ✗ | ✗ |
+| Length-debias judge prompt | ✓ default | ✗ | ✗ | ✗ |
+| Saturation curve | ✓ | ✗ | ✗ | ✗ |
+| Three-layer scoring isolation | ✓ | ✗ | partial | ✗ |
+| Per-variant skill isolation (construct validity) | ✓ default | ✗ | ✗ | ✗ |
+| Native Claude Code skill | ✓ | ✗ | ✗ | ✗ |
+| Hosted SaaS dashboard | ✗ | ✗ | ✓ | ✓ |
+
+omk's moat is **default-on safety net** — Bootstrap CI, judge ↔ human α, and length-debias aren't advanced flags; they're the default. Other tools let you opt into confidence intervals; omk makes them unavoidable. Need a hosted SaaS dashboard? Choose LangSmith. Want quick local prompt iteration without statistics? Choose promptfoo. **Shipping to production and someone will ask "why should I trust this number?" Choose omk.**
+
+RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full comparison with 7 tools across 25+ dimensions: [docs/comparison.md](docs/comparison.md).
+
 ## Features
 
 | Feature | What it does |
 |---|---|
-| **21+ assertion types** | substring, regex, JSON Schema, ROUGE/BLEU/Levenshtein similarity, agent tool-call assertions, semantic similarity, custom JS, and more |
-| **Assertion negation + composition** | universal `not: true` field + `assert-set` (any/all) with arbitrary nesting |
-| **Six-dim evaluation** | Fact / Behavior / LLM-judge / Cost / Efficiency / Stability shown independently |
-| **Statistical rigor** | Bootstrap CI / Krippendorff α / length-debias / saturation curve |
-| **Construct-validity isolation** | `--strict-baseline` (default ON) cuts three contamination channels so baseline doesn't silently see the skill it's being compared against: (1) SDK skill auto-discovery, (2) subagent Skill tool, (3) cwd file-system access via the `skills/<name>/` symlink that's normally there for the treatment variant. eval.yaml `allowedSkills` for per-variant whitelists |
-| **Sample design science** | Sample schema with `capability` / `difficulty` / `construct` / `provenance` metadata fields (HF Dataset Cards style). `bench diagnose` shows coverage breakdown + flags `rubric_clarity_low` (short rubric without grading keywords) / `capability_thin` (capability supported by ≤ N×0.2 samples). `bench gen-samples` auto-stamps provenance. See [docs/sample-design-spec.md](docs/sample-design-spec.md) for the 8 industry-gap mapping |
 | **One-line verdict** | `omk bench verdict <id>` six-tier verdict + ship recommendation + exit-code routing; HTML pill shares the same rules |
-| **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage; auto-inherits length-debias |
+| **Six-dim evaluation** | Fact / Behavior / LLM-judge / Cost / Efficiency / Stability shown independently |
+| **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / Codex SDK / OpenAI / Gemini / any custom command |
+| **21+ assertion types** | substring, regex, JSON Schema, ROUGE/BLEU/Levenshtein similarity, agent tool-call assertions, semantic similarity, custom JS, and more |
+| **Statistical rigor** | Bootstrap CI / Krippendorff α / length-debias / saturation curve — all on by default. [Details →](docs/statistical-rigor.md) |
 | **Sample diagnostics** | `omk bench diagnose <id>` — 7 issue kinds (low discrimination / duplicates / ambiguous rubric / cost outliers / etc.) + 0-100 healthScore |
 | **Failure clustering** | `omk bench failures <id>` — single LLM call clusters failed samples and emits per-cluster fixes |
+| **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage; auto-inherits length-debias |
 | **Hard budget caps** | `--budget-usd / --budget-per-sample-usd / --budget-per-sample-ms` — abort on total-cost overrun, flag per-sample overruns; partial report persisted |
-| **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / OpenAI / Gemini / any custom command |
+| **Construct-validity isolation** | `--strict-baseline` (default ON) cuts three contamination channels so baseline doesn't silently see the skill it's being compared against: (1) SDK skill auto-discovery, (2) subagent Skill tool, (3) cwd file-system access via the `skills/<name>/` symlink that's normally there for the treatment variant. eval.yaml `allowedSkills` for per-variant whitelists |
+| **Sample design science** | Sample schema with `capability` / `difficulty` / `construct` / `provenance` metadata fields (HF Dataset Cards style). `bench diagnose` shows coverage breakdown + flags `rubric_clarity_low` (short rubric without grading keywords) / `capability_thin` (capability supported by ≤ N×0.2 samples). `bench gen-samples` auto-stamps provenance. See [docs/sample-design-spec.md](docs/sample-design-spec.md) for the 8 industry-gap mapping |
 | **Multi-judge ensemble** | `--judge-models claude:opus,openai:gpt-4o` cross-vendor scoring + agreement metrics |
 | **MCP URL fetching** | pull content from private-doc URLs via an MCP server (SSO-protected knowledge bases, etc.) |
 | **Blind A/B** | `--blind` hides variant names; HTML report has a reveal button |
-| **Parallel execution** | `--concurrency N` runs N tasks at once |
 | **Multi-run variance** | `--repeat N` repeats the eval and computes mean / SD / CI / t-test |
+| **Parallel execution** | `--concurrency N` runs N tasks at once |
+| **Assertion negation + composition** | universal `not: true` field + `assert-set` (any/all) with arbitrary nesting |
 | **Auto analysis** | detects low-discrimination assertions, flat scores, all-pass / all-fail, expensive samples |
 | **Traceability** | reports carry CLI version, Node version, artifact version fingerprint, judge prompt hash |
 | **EN / ZH switch** | one-click language toggle in the HTML report |
