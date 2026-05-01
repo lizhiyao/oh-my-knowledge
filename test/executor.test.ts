@@ -13,6 +13,11 @@ describe('createExecutor', () => {
     assert.equal(typeof exec, 'function');
   });
 
+  it('returns a function for codex-sdk', () => {
+    const exec = createExecutor('codex-sdk');
+    assert.equal(typeof exec, 'function');
+  });
+
   it('returns a function for gemini', () => {
     const exec = createExecutor('gemini');
     assert.equal(typeof exec, 'function');

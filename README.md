@@ -672,12 +672,14 @@ The command writes `~/.oh-my-knowledge/analyses/<timestamp>-skill-health.json`. 
 | `claude` | default | invokes `claude -p` via Claude CLI |
 | `claude-sdk` | structured output | uses Claude Agent SDK — no stdout parsing, avoids buffer truncation |
 | `codex` | OpenAI agent CLI | invokes `codex exec --json` (`@openai/codex` npm); best-effort tool trace; **costUSD not reported** (codex CLI does not emit USD; check usage externally) |
-| `openai` | cross-vendor comparison | invokes `openai api` CLI |
+| `codex-sdk` | OpenAI agent SDK | uses `@openai/codex-sdk` with its bundled `@openai/codex` binary and streamed SDK events; **costUSD not reported** |
 | `gemini` | cross-vendor comparison | invokes `gemini` CLI |
 | `anthropic-api` | no CLI needed | calls Anthropic HTTP API directly (needs `ANTHROPIC_API_KEY`) |
 | `openai-api` | no CLI needed | calls OpenAI HTTP API directly (needs `OPENAI_API_KEY`) |
 
 API-direct executors support custom base URLs via env: `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`.
+
+Codex construct-validity note: `codex` uses the `codex` binary found on `PATH`; `codex-sdk` uses the bundled `@openai/codex` binary resolved by `@openai/codex-sdk`. Strict comparisons between the two require recording both runtime versions (`codex --version` and the locked npm versions). If they differ, treat results as a comparison of executor runtimes, not only of prompt/template behavior.
 
 ### Custom executor
 
