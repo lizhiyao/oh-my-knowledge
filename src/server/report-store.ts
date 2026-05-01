@@ -6,7 +6,7 @@
 
 import { readdir, readFile, writeFile, unlink, access, mkdir, rename } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { EvaluationBatchIndex, EvaluationJob, EvaluationReport, JobStore, ReportDocument, ReportMeta, ReportStore, VariantSummary } from '../types/index.js';
+import type { BatchEvaluationReport, EvaluationJob, EvaluationReport, JobStore, ReportDocument, ReportMeta, ReportStore, VariantSummary } from '../types/index.js';
 
 // Per-id in-memory mutex for safe read-modify-write.
 // Uses a queue to avoid the race window between checking and acquiring the lock.
@@ -46,13 +46,12 @@ export function createFileStore(dir: string): ReportStore {
       if (!record.meta || !record.summary || !Array.isArray(record.results)) return null;
       return { ...record, id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
     }
-    if (record.kind === 'batch-index') {
+    if (record.kind === 'batch-evaluation') {
       if (!record.meta || !Array.isArray(record.items)) return null;
       return { ...record, id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
     }
     if (
       record.kind === undefined
-      && !record.each
       && record.overview === undefined
       && record.artifacts === undefined
       && record.meta
@@ -207,7 +206,7 @@ export interface RunListItem {
   kind: ReportDocument['kind'];
   meta: ReportDocument['meta'];
   summary?: EvaluationReport['summary'];
-  items?: EvaluationBatchIndex['items'];
+  items?: BatchEvaluationReport['items'];
 }
 
 export interface TrendPoint {

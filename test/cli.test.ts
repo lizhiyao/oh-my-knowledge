@@ -30,6 +30,20 @@ describe('CLI', () => {
     assert.ok(stdout.includes('--reports-dir'));
   });
 
+  it('bench run --help shows usage without parsing run config', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'bench', 'run', '--help']);
+    assert.ok(stdout.includes('bench run 选项'));
+    assert.ok(stdout.includes('--batch'));
+    assert.ok(!stdout.includes(['--', 'each'].join('')));
+  });
+
+  it('bench gen-samples --help shows usage without requiring a skill path', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'bench', 'gen-samples', '--help']);
+    assert.ok(stdout.includes('bench gen-samples 选项'));
+    assert.ok(stdout.includes('--batch'));
+    assert.ok(!stdout.includes(['--', 'each'].join('')));
+  });
+
   it('unknown domain exits with error (--lang en)', async () => {
     await assert.rejects(
       () => execFileAsync('node', [CLI, 'unknown', '--lang', 'en']),
@@ -74,5 +88,19 @@ describe('CLI', () => {
     const report = JSON.parse(stdout);
     assert.equal(report.dryRun, true);
     assert.equal(report.totalTasks, 6);
+  });
+
+  it('bench run --batch --dry-run produces batch JSON', async () => {
+    const skillDir = join(PROJECT_ROOT, 'examples', 'multi-skills', 'skills');
+    const { stdout } = await execFileAsync('node', [
+      CLI, 'bench', 'run',
+      '--batch',
+      '--dry-run',
+      '--skill-dir', skillDir,
+    ]);
+    const report = JSON.parse(stdout);
+    assert.equal(report.dryRun, true);
+    assert.equal(report.batch, true);
+    assert.ok(report.totalArtifacts >= 2);
   });
 });

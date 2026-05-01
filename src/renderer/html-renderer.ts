@@ -19,7 +19,7 @@ import {
 import { renderSampleTable } from './table.js';
 import { renderTrendsBody } from './trends.js';
 import { computeVerdict, type VerdictLevel } from '../eval-core/verdict.js';
-import type { EvaluationBatchIndex, EvaluationReport, ExecutorRuntimeFingerprint, Report, ReportDocument, Lang, VariantSummary } from '../types/index.js';
+import type { BatchEvaluationReport, EvaluationReport, ExecutorRuntimeFingerprint, Report, ReportDocument, Lang, VariantSummary } from '../types/index.js';
 
 // v0.21 B.4 — 列表页 status pill 用的 dot. PROGRESS/REGRESS 实心(强信号),
 // CAUTIOUS 三角(警示),NOISE 空心圆(有信号但无效果),UNDERPOWERED 部分填充
@@ -122,7 +122,7 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
   }
 
   const rows = runs.map((run) => {
-    if (run.kind === 'batch-index') {
+    if (run.kind === 'batch-evaluation') {
       const m = run.meta;
       const scoreCol = run.items.length > 0
         ? run.items.map((item) => {
@@ -144,7 +144,7 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
       const totalDurationMs = run.items.reduce((sum, item) => (
         sum + Object.values(item.summary || {}).reduce((inner, v) => inner + (v.avgDurationMs || 0) * (v.successCount || 0), 0)
       ), 0);
-      const statusPill = `<span class="run-status" title="${lang === 'zh' ? 'each 批次索引' : 'each batch index'}"><span class="run-status-dot" aria-hidden="true">◇</span>${lang === 'zh' ? '批次' : 'Batch'}</span>`;
+      const statusPill = `<span class="run-status" title="${lang === 'zh' ? '批量评测' : 'batch evaluation'}"><span class="run-status-dot" aria-hidden="true">◇</span>${lang === 'zh' ? '批量' : 'Batch'}</span>`;
       return `<tr>
       <td>${statusPill}<a href="/reports/${e(run.id)}"><span style="color:var(--text-primary)">${e(run.id)}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : e(run.id)}</span></a></td>
       <td>${e(m.model || '-')}</td>
@@ -462,7 +462,7 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
   `, lang);
 }
 
-export function renderBatchIndexDetail(report: EvaluationBatchIndex | null, lang: Lang = DEFAULT_LANG): string {
+export function renderBatchEvaluationDetail(report: BatchEvaluationReport | null, lang: Lang = DEFAULT_LANG): string {
   if (!report) {
     return layout(t('title', lang), `
       <main>
@@ -506,7 +506,7 @@ export function renderBatchIndexDetail(report: EvaluationBatchIndex | null, lang
     <nav class="nav"><a href="/" data-i18n="backToList">${t('backToList', lang)}</a></nav>
     <h1>${e(report.id)}</h1>
     <div class="meta-tags">
-      <span class="meta-tag">${lang === 'zh' ? '类型' : 'type'}: each batch index</span>
+      <span class="meta-tag">${lang === 'zh' ? '类型' : 'type'}: batch evaluation</span>
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
       <span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
@@ -515,15 +515,15 @@ export function renderBatchIndexDetail(report: EvaluationBatchIndex | null, lang
     </div>
 
     <section>
-    <h2>${t('eachOverview', lang)}</h2>
+    <h2>${t('batchOverview', lang)}</h2>
     <p style="font-size:13px;color:var(--text-muted)">${overviewSubtitle}</p>
     <div class="table-wrap">
     <table>
       <thead><tr>
-        <th>${t('eachSkill', lang)}</th>
-        <th>${t('eachBaseline', lang)}</th>
-        <th>${t('eachWithSkill', lang)}</th>
-        <th>${t('eachImprovement', lang)}</th>
+        <th>${t('batchSkill', lang)}</th>
+        <th>${t('batchBaseline', lang)}</th>
+        <th>${t('batchWithSkill', lang)}</th>
+        <th>${t('batchImprovement', lang)}</th>
         <th>${t('samples', lang)}</th>
         <th>${t('cost', lang)}</th>
         <th>${t('artifactHashLabel', lang)}</th>
@@ -539,8 +539,8 @@ export function renderBatchIndexDetail(report: EvaluationBatchIndex | null, lang
 
 export function renderReportDocumentDetail(report: ReportDocument | null, lang: Lang = DEFAULT_LANG): string {
   if (!report) return renderRunDetail(null, lang);
-  return report.kind === 'batch-index'
-    ? renderBatchIndexDetail(report, lang)
+  return report.kind === 'batch-evaluation'
+    ? renderBatchEvaluationDetail(report, lang)
     : renderRunDetail(report, lang);
 }
 

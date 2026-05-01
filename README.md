@@ -369,7 +369,7 @@ options:
   --control <expr>       control-group variant expression (experiment role = control)
   --treatment <v1,v2>    treatment-group variant expressions, comma-separated
                          at least one of --control / --treatment is required
-                         (unless you use --config or --each)
+                         (unless you use --config or --batch)
                          special values: baseline (empty artifact), git:name (git HEAD),
                          git:ref:name (specific commit), path with "/" (read file directly)
   --config <path>        YAML/JSON config file (evaluation-as-code); declares
@@ -391,7 +391,7 @@ options:
                          (default: .mcp.json in cwd)
   --no-serve             don't auto-start the report server after the run
   --verbose              print per-sample details (duration, tokens, output preview)
-  --each                 batch mode: evaluate each artifact independently vs baseline
+  --batch                batch mode: evaluate each artifact independently vs baseline
                          requires {name}.eval-samples.json paired with each artifact
   --judge-repeat <n>     run the LLM judge N times per (sample × dimension) and report stddev
   --judge-models <list>  multi-judge ensemble: "executor1:model1,executor2:model2"
@@ -416,9 +416,9 @@ options:
 
 **Difference from `cost_max` / `latency_max` assertions**: assertions are **per-sample scoring rules** (exceeding the cap fails that one assertion, the run continues); budget caps are **workflow-level hard limits** (`totalUSD` overrun aborts the run and persists a partial report; per-sample overruns fail the offending sample but the run continues). Assertions answer "is quality acceptable?"; budgets answer "are cost/time within the envelope?".
 
-### `omk bench run --each` (batch mode)
+### `omk bench run --batch` (batch mode)
 
-When `skills/` contains several **independent** artifacts, use `--each` to evaluate each one against baseline and produce a merged report.
+When `skills/` contains several **independent** artifacts, use `--batch` to evaluate each one against baseline and produce a BatchEvaluationReport with child EvaluationReports.
 
 ```
 skills/
@@ -438,8 +438,8 @@ Pairing rules:
 - artifacts without paired samples are skipped with a warning
 
 ```bash
-omk bench run --each
-omk bench run --each --dry-run
+omk bench run --batch
+omk bench run --batch --dry-run
 ```
 
 ### `omk bench gen-samples` (generate test cases)
@@ -451,7 +451,7 @@ Reads an artifact's content and uses an LLM to auto-generate eval-samples. Revie
 omk bench gen-samples skills/my-skill.md
 
 # batch-generate for every artifact under skills/ that lacks samples
-omk bench gen-samples --each
+omk bench gen-samples --batch
 
 # specify sample count
 omk bench gen-samples skills/my-skill.md --count 10
@@ -460,10 +460,10 @@ omk bench gen-samples skills/my-skill.md --count 10
 Options:
 
 ```
-  --each                 batch-generate for every artifact missing samples
+  --batch                batch-generate for every artifact missing samples
   --count <n>            samples per artifact (default: 5)
   --model <name>         model used for generation (default: sonnet)
-  --skill-dir <path>     artifact dir (default: skills), used with --each
+  --skill-dir <path>     artifact dir (default: skills), used with --batch
 ```
 
 ### `omk bench evolve` (self-iterating improvement)
@@ -720,7 +720,7 @@ skills/
 | `./path/to/file.md` | path with `/`: read the file directly as an artifact |
 | `variant@/path/to/project` | attach a run dir to any variant; supports `name@cwd`, `git:name@cwd`, `/file.md@cwd` |
 
-When both `--control` and `--treatment` are omitted, use `--config eval.yaml` or `--each`. With `--each`, `baseline` is auto-added as control and every discovered artifact becomes a treatment.
+When both `--control` and `--treatment` are omitted, use `--config eval.yaml` or `--batch`. With `--batch`, `baseline` is auto-added as control and every discovered artifact becomes a treatment.
 
 ```bash
 # explicit: one control, one or more treatments

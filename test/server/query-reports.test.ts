@@ -94,18 +94,17 @@ describe('createFileStore legacy report loading', () => {
     }
   });
 
-  it('不把旧 each 混合报告误认为 evaluation', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-each-'));
+  it('不把旧混合批量报告误认为 evaluation', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-legacy-batch-'));
     try {
-      const legacyEach = makeReport('legacy-each', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;
-      delete legacyEach.kind;
-      legacyEach.each = true;
-      legacyEach.overview = { totalArtifacts: 1, totalSamples: 1, totalCostUSD: 0, artifacts: [] };
-      legacyEach.artifacts = [];
-      writeFileSync(join(dir, 'legacy-each.json'), JSON.stringify(legacyEach, null, 2));
+      const legacyBatch = makeReport('legacy-batch', 'v1', '2024-01-01T00:00:00Z', 0.8) as unknown as Record<string, unknown>;
+      delete legacyBatch.kind;
+      legacyBatch.overview = { totalArtifacts: 1, totalSamples: 1, totalCostUSD: 0, artifacts: [] };
+      legacyBatch.artifacts = [];
+      writeFileSync(join(dir, 'legacy-batch.json'), JSON.stringify(legacyBatch, null, 2));
 
       const store = createFileStore(dir);
-      assert.equal(await store.get('legacy-each'), null);
+      assert.equal(await store.get('legacy-batch'), null);
       assert.deepEqual(await store.list(), []);
     } finally {
       rmSync(dir, { recursive: true, force: true });

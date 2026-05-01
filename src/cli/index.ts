@@ -90,10 +90,10 @@ function requireEvaluationReport(report: ReportDocument | null, id: string, lang
     console.error(tCli('cli.common.report_not_found', lang, { id }));
     process.exit(1);
   }
-  if (report.kind === 'batch-index') {
+  if (report.kind === 'batch-evaluation') {
     console.error(lang === 'zh'
-      ? `报告 ${id} 是 each 批次索引。该命令需要单次 EvaluationReport；请使用索引里的 child reportId。`
-      : `Report ${id} is an each batch index. This command requires an EvaluationReport; use a child reportId from the index.`);
+      ? `报告 ${id} 是 BatchEvaluationReport。该命令需要单次 EvaluationReport；请使用其中的 child reportId。`
+      : `Report ${id} is a BatchEvaluationReport. This command requires an EvaluationReport; use a child reportId from the batch.`);
     process.exit(1);
   }
   return report;
@@ -189,6 +189,10 @@ async function main(): Promise<void> {
 
 async function handleRun(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
+  if (argv.includes('--help') || argv.includes('-h')) {
+    console.log(tCli('cli.help.main', lang).trim());
+    process.exit(0);
+  }
   const { values, config } = parseRunConfig(argv, {
     blind: { type: 'boolean' },
     repeat: { type: 'string', default: '1' },
@@ -203,7 +207,7 @@ async function handleRun(argv: string[]): Promise<void> {
     'budget-per-sample-ms': { type: 'string' },
   });
 
-  const { runEvaluation, runMultiple, runEachEvaluation } = await import('../eval-workflows/run-evaluation.js');
+  const { runEvaluation, runMultiple, runBatchEvaluation } = await import('../eval-workflows/run-evaluation.js');
 
   if (values.blind !== undefined) {
     config.blind = values.blind as boolean | undefined;
@@ -211,7 +215,7 @@ async function handleRun(argv: string[]): Promise<void> {
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
   // --repeat 输入校验: 非 ≥1 整数时提示并钳到 1, 不静默掩盖用户错字 / 极端输入。
-  // 提前到 --each 分支之前, 保证 each 模式也能读到 repeat (曾经 bug: --each 吞 --repeat)。
+  // 提前到 --batch 分支之前, 保证 batch 模式也能读到 repeat。
   const repeatRaw = values.repeat as string | undefined;
   const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : 1;
   if (repeatRaw !== undefined && (!Number.isFinite(parsedRepeat) || parsedRepeat < 1)) {
@@ -290,9 +294,9 @@ async function handleRun(argv: string[]): Promise<void> {
   }
 
   try {
-    // --each mode: evaluate each skill independently
-    if (values.each) {
-      const { report, filePath } = await runEachEvaluation({
+    // --batch mode: evaluate each skill independently
+    if (values.batch) {
+      const { report, filePath } = await runBatchEvaluation({
         ...config,
         repeat: repeatCount,
         onSkillProgress({ phase, skill, current, total }: SkillProgressInfo): void {
@@ -654,11 +658,15 @@ async function handleInit(argv: string[]): Promise<void> {
 
 async function handleGenSamples(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
+  if (argv.includes('--help') || argv.includes('-h')) {
+    console.log(tCli('cli.help.main', lang).trim());
+    process.exit(0);
+  }
   const { values } = parseArgs({
     args: argv,
     options: {
       ...COMMON_OPTIONS,
-      each: { type: 'boolean', default: false },
+      batch: { type: 'boolean', default: false },
       count: { type: 'string', default: '5' },
       model: { type: 'string', default: 'sonnet' },
       'skill-dir': { type: 'string', default: 'skills' },
@@ -672,7 +680,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
   const count: number = Math.max(1, Number(values.count) || 5);
   const model: string = values.model as string;
 
-  if (values.each) {
+  if (values.batch) {
     // Batch mode: generate for all skills missing eval-samples
     const skillDir: string = resolve(values['skill-dir'] as string);
     if (!existsSync(skillDir)) {

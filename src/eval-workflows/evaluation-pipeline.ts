@@ -71,7 +71,7 @@ async function initializeEvaluationRunState({
   jobStore,
   persistJob,
   repeat,
-  each,
+  batch,
   judgeRepeat,
   judgeModels,
   bootstrap,
@@ -98,7 +98,7 @@ async function initializeEvaluationRunState({
   jobStore?: JobStore | null;
   persistJob?: boolean;
   repeat?: number;
-  each?: boolean;
+  batch?: boolean;
   judgeRepeat?: number;
   judgeModels?: import('../types/index.js').JudgeConfig[];
   bootstrap?: boolean;
@@ -124,7 +124,7 @@ async function initializeEvaluationRunState({
     owner,
     tags,
     repeat,
-    each,
+    batch,
     judgeRepeat,
     judgeModels,
     bootstrap,
@@ -361,8 +361,8 @@ export interface EvaluationPipelineOptions {
   layeredStats?: boolean;
   /** 透传到 meta.request.repeat */
   repeat?: number;
-  /** 透传到 meta.request.each */
-  each?: boolean;
+  /** 透传到 meta.request.batch */
+  batch?: boolean;
   /** 透传到 meta.request.judgeRepeat 与 grade()，每条 sample × dimension judge N 次 */
   judgeRepeat?: number;
   /** Multi-judge ensemble configs (≥ 2 entries triggers ensemble mode). */
@@ -414,7 +414,7 @@ export async function executeEvaluationPipeline({
   requires,
   layeredStats = false,
   repeat,
-  each,
+  batch,
   judgeRepeat,
   judgeModels,
   bootstrap,
@@ -445,7 +445,7 @@ export async function executeEvaluationPipeline({
     jobStore,
     persistJob,
     repeat,
-    each,
+    batch,
     judgeRepeat,
     judgeModels,
     bootstrap,

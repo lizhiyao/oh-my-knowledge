@@ -22,7 +22,7 @@ export function buildEvaluationRequest({
   owner,
   tags,
   repeat,
-  each,
+  batch,
   judgeRepeat,
   judgeModels,
   bootstrap,
@@ -47,7 +47,7 @@ export function buildEvaluationRequest({
   owner?: string;
   tags?: string[];
   repeat?: number;
-  each?: boolean;
+  batch?: boolean;
   judgeRepeat?: number;
   judgeModels?: JudgeConfig[];
   bootstrap?: boolean;
@@ -73,7 +73,7 @@ export function buildEvaluationRequest({
     owner,
     tags,
     repeat,
-    each,
+    batch,
     judgeRepeat,
     judgeModels,
     bootstrap,

@@ -368,7 +368,7 @@ omk bench run [选项]
   --skill-dir <路径>     artifact 目录（默认：skills）
   --control <expr>       对照组变体表达式（experiment role = control）
   --treatment <v1,v2>    实验组变体表达式,逗号分隔
-                         除非用 --config 或 --each,--control / --treatment 两者至少传一个
+                         除非用 --config 或 --batch,--control / --treatment 两者至少传一个
                          特殊值：baseline（空 artifact）、git:name（git 历史版本）、
                          git:ref:name（指定 commit）、含 / 的路径（直接读取文件）
   --config <路径>        YAML/JSON 配置文件（evaluation-as-code）;在一个文件里声明
@@ -389,7 +389,7 @@ omk bench run [选项]
                          （默认：当前目录的 .mcp.json）
   --no-serve             评测完成后不自动启动报告服务
   --verbose              打印每个样本的详细执行结果（耗时、tokens、输出预览）
-  --each                 批量评测：每个 artifact 独立和 baseline 对比
+  --batch                批量评测：每个 artifact 独立和 baseline 对比
                          需要每个 artifact 配对 {name}.eval-samples.json
   --judge-repeat <n>     每条 sample × dimension 跑 LLM 评委 N 次,输出 stddev (评委自一致性)
   --judge-models <list>  多评委 ensemble: "executor1:model1,executor2:model2"
@@ -411,9 +411,9 @@ omk bench run [选项]
 
 **和 `cost_max` / `latency_max` 断言的区别**: 断言是**单样本评分维度**(超出直接打 0 分,run 继续);budget 是**工作流级硬阈值**(`totalUSD` 超出整个 run abort 保留 partial report,per-sample 超出该样本失败但 run 继续)。一个回答"质量是否达标",一个回答"花钱/时间是否在预算内"。
 
-### `omk bench run --each`（批量评测）
+### `omk bench run --batch`（批量评测）
 
-当 skills/ 下放了多个**独立的** artifact 时，使用 `--each` 逐个评测，每个 artifact 独立和 baseline 对比，生成一份合并报告。
+当 skills/ 下放了多个**独立的** artifact 时，使用 `--batch` 逐个评测，每个 artifact 独立和 baseline 对比，生成一份 BatchEvaluationReport，内部索引多个 child EvaluationReport。
 
 ```
 skills/
@@ -433,8 +433,8 @@ skills/
 - 没有配对 eval-samples 的 artifact 会被跳过并打印警告
 
 ```bash
-omk bench run --each
-omk bench run --each --dry-run
+omk bench run --batch
+omk bench run --batch --dry-run
 ```
 
 ### `omk bench gen-samples`（生成测评用例）
@@ -446,7 +446,7 @@ omk bench run --each --dry-run
 omk bench gen-samples skills/my-skill.md
 
 # 为 skills/ 下所有缺少测试集的 artifact 批量生成
-omk bench gen-samples --each
+omk bench gen-samples --batch
 
 # 指定生成数量
 omk bench gen-samples skills/my-skill.md --count 10
@@ -455,10 +455,10 @@ omk bench gen-samples skills/my-skill.md --count 10
 选项：
 
 ```
-  --each                 为所有缺少 eval-samples 的 artifact 批量生成
+  --batch                为所有缺少 eval-samples 的 artifact 批量生成
   --count <n>            每个 artifact 生成的样本数（默认：5）
   --model <名称>         生成用的模型（默认：sonnet）
-  --skill-dir <路径>     artifact 目录（默认：skills），配合 --each 使用
+  --skill-dir <路径>     artifact 目录（默认：skills），配合 --batch 使用
 ```
 
 ### `omk bench evolve`（自我循环改进）
@@ -715,7 +715,7 @@ skills/
 | `./path/to/file.md` | 含 `/` 的路径，直接读取文件作为 artifact |
 | `variant@/path/to/project` | 给任意变体附加运行目录，支持 `name@cwd`、`git:name@cwd`、`/file.md@cwd` |
 
-`--control` 和 `--treatment` 都不传时,用 `--config eval.yaml` 或 `--each`。`--each` 模式下会自动用 `baseline` 作对照组,每个被发现的 artifact 作实验组。
+`--control` 和 `--treatment` 都不传时,用 `--config eval.yaml` 或 `--batch`。`--batch` 模式下会自动用 `baseline` 作对照组,每个被发现的 artifact 作实验组。
 
 ```bash
 # 显式:一个 control,一个或多个 treatment

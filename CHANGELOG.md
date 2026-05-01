@@ -18,13 +18,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Changed
 
-- **cost 显示「—」 而非 `$0.0000`**(executor 不报 cost 时):`ExecResult` / `VariantResult` / `VariantSummary` / `GradeResult` 加 `costReportedByExecutor` / `execCostReported` / `judgeCostReported` 三层 flag,全可选缺位 ≡ true(老报告兼容)。Renderer(HTML detail / list / each / trends / variance chart / CLI bench diff / bench evolve)全部识别该 flag,not reported 时显示「—」+ tooltip 解释。详见 #31。
-- **⚠ BREAKING:`bench run --each` 产物改为 `EvaluationBatchIndex` + child `EvaluationReport`** —— 顶层 batch index 只保存批次索引和摘要,每个 skill vs baseline 单独持久化为可比较的原子报告。child report 的 treatment variant 使用真实 skill 名,趋势页按 skill 名聚合,不再写 generic `skill`。删除 `Report.each` / `overview` / `artifacts` 这类混合 schema,`bench diff` / `verdict` / `diagnose` 等命令现在只接受 child reportId。旧 each 报告不做兼容迁移。详见 #40。
+- **cost 显示「—」 而非 `$0.0000`**(executor 不报 cost 时):`ExecResult` / `VariantResult` / `VariantSummary` / `GradeResult` 加 `costReportedByExecutor` / `execCostReported` / `judgeCostReported` 三层 flag,全可选缺位 ≡ true(老报告兼容)。Renderer(HTML detail / list / batch / trends / variance chart / CLI bench diff / bench evolve)全部识别该 flag,not reported 时显示「—」+ tooltip 解释。详见 #31。
+- **⚠ BREAKING:`bench run --batch` 产物收敛为 `BatchEvaluationReport` + child `EvaluationReport`** —— 顶层 `kind: "batch-evaluation"` 只保存批次索引和摘要,每个 skill vs baseline 单独持久化为可比较的原子报告。child report 的 treatment variant 使用真实 skill 名,趋势页按 skill 名聚合,不再写 generic `skill`。删除 `overview` / `artifacts` 这类混合 schema,`bench diff` / `verdict` / `diagnose` 等命令现在只接受 child reportId。旧混合批量报告不做兼容迁移。详见 #40。
 - **README 重定位 + Statistical rigor 抽到 docs/**:hero 从"内置统计严谨性 + 一堆 jargon"改写为 outcome-first("你给 LLM 的知识,价值在哪里?omk 帮你用客观数据回答,而不是凭感觉"),Bootstrap CI / α / 长度去偏 / 饱和曲线 / 用例隔离 5 个不变量保留为 hero 下方 callout(visibility 不丢、SEO 不弱化)。Statistical rigor 章节迁移到 [docs/statistical-rigor.md](docs/statistical-rigor.md) / [docs/zh/statistical-rigor.md](docs/zh/statistical-rigor.md),README anchor `#statistical-rigor` 通过 `<a id>` redirect 兼容旧外链。Features 表行重排为 broad-appeal-first(Verdict / 六维 / 多 executor / 21+ 断言 在前)。详见 #PR-readme-rewrite。
 
 ### Fixed
 
-- **`bench run --each --no-cache` 不再被吞**:each batch index 和所有 child report 的 `meta.request.noCache` 现在都会如实记录并透传到实际单次评测,避免 smoke / CI 想禁用 cache 时仍写入默认 cache。`omk bench report --help` 也改为直接显示帮助,不再误启动 report server。
+- **`bench run --batch --no-cache` 不再被吞**:BatchEvaluationReport 和所有 child report 的 `meta.request.noCache` 现在都会如实记录并透传到实际单次评测,避免 smoke / CI 想禁用 cache 时仍写入默认 cache。`omk bench report --help` 也改为直接显示帮助,不再误启动 report server。
 - **SIGINT 传播到 spawn 出来的子进程**(嵌套 host CLI 下避免 child orphan):用户在 host CLI(codex / claude code)按 Ctrl+C 时,omk spawn 的内层 codex / claude / gemini / script 子进程之前会成 orphan 跑到 timeout。新 `spawnWithSigintPropagation` helper 统一 SIGINT / timeout / abortSignal 三条 kill 路径,SIGTERM + 500ms grace + SIGKILL 兜底。**行为变化**:gemini / script 加 10MB maxBuffer 上限(旧 spawn 实现无限制);timeout grace 多 500ms(120s 默认下不显著)。详见 #33。
 - **⚠ BREAKING-COMPARABILITY:`cacheKey()` 加 executor runtime 指纹,prefix `v3:` → `v4:`** —— 同 executor 换 binary / SDK 版本时旧 cache 不再误命中,避免报告写入新 runtime 指纹但输出来自旧 runtime。runtime 探测改用 executor 实际 `PATH` 形态,`codex-sdk` bundled `@openai/codex` 版本按 SDK 解析链读取。详见 #37。
 - **⚠ BREAKING-COMPARABILITY:`cacheKey()` 加 executor 名,prefix `v2:` → `v3:`** —— 同 model 名跨 executor(如 `gpt-4o` 走 `openai-api` vs `codex`)旧 v2 schema 互相污染缓存。旧 v2 cache 一次性失效,无数据丢失,首跑无 cache 加速(同 v0.22.0 加 allowedSkills 那次 pattern)。详见 #31。
@@ -102,7 +102,7 @@ Patch — verdict 用户可见性升级 + 内部类型重构 + 测量学不变�
 
 ### Fixed
 
-- `computeVerdict` 在 each mode + 顶层 summary 缺 variant 数据的脏老报告上 NPE —— 渲染器层 try/catch 兜底,失败的 row(列表页)或 verdict 区(详情页)静默跳过。根因(`evaluateCiGates` 访问 undefined.avgFactScore)留 v0.21 单独修复。
+- `computeVerdict` 在顶层 summary 缺 variant 数据的脏老报告上 NPE —— 渲染器层 try/catch 兜底,失败的 row(列表页)或 verdict 区(详情页)静默跳过。根因(`evaluateCiGates` 访问 undefined.avgFactScore)留 v0.21 单独修复。
 
 ---
 
@@ -152,7 +152,7 @@ Major — statistical rigor 升一档,从 "evaluation runner" 转成 "evaluation
 
 ### Fixed
 
-- `--each --repeat N` 静默吞 repeat(each 分支 thread `repeat`/`each` 进 `EvaluationRequest`);`--each` 错误要求 `--control` / `--treatment` 参数;per-skill variance 在 `--each` 下消失。
+- `--batch --repeat N` 静默吞 repeat(批量分支未把 `repeat` / `batch` 写进 `EvaluationRequest`);`--batch` 错误要求 `--control` / `--treatment` 参数;per-skill variance 在 `--batch` 下消失。
 
 ---
 
@@ -166,7 +166,7 @@ Major — statistical rigor 升一档,从 "evaluation runner" 转成 "evaluation
 - **六维评分独立呈现**:Fact / Behavior / LLM-judge / Cost / Efficiency / Stability
 - **18 类断言**:substring / regex / JSON Schema / semantic similarity / tool-call behavior / custom JS / cost / latency caps / 等
 - **多执行器**:Claude CLI / Claude SDK / OpenAI / Gemini / Anthropic API / OpenAI API / 任意 custom command
-- **批量模式 `--each`**(多 artifact vs baseline 一次跑)+ **多轮方差** `--repeat N`(Welch t-test / Cohen's d / 95% CI 三层独立)
+- **批量模式 `--batch`**(多 artifact vs baseline 一次跑)+ **多轮方差** `--repeat N`(Welch t-test / Cohen's d / 95% CI 三层独立)
 - Blind A/B / interleaved scheduling / parallel execution / result caching / artifact 版本指纹
 - Knowledge-gap signals 含严重度加权 + LLM-assisted hedging classification(量化风险敞口,不是完整性证明)
 - CI gate `omk bench ci` 三层 all-pass(后 v0.21 改名 `bench gate`)
