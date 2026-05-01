@@ -58,7 +58,7 @@ jobs:
     # 不再自己用 `gh release create` + 手拼 footer (PR #6 那套写法因 yaml 多行
     # 字符串里的 `**` 被误读为 alias 整个 yml 加载失败)。
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         body_path: /tmp/release-notes.md
         generate_release_notes: true
