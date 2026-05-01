@@ -308,11 +308,63 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('质量'));
   });
 
+  it('renders executor runtime fingerprint meta tags', () => {
+    const runtimeReport = JSON.parse(JSON.stringify(SAMPLE_REPORT)) as Report;
+    runtimeReport.meta.executorRuntime = {
+      executor: 'codex-sdk',
+      model: 'gpt-5',
+      kind: 'agent-sdk',
+      fingerprint: 'abc123def456',
+      binary: { name: 'codex', source: 'bundled', version: '0.128.0' },
+      sdk: { name: '@openai/codex-sdk', version: '0.128.0' },
+      capabilities: { systemPrompt: 'prepended', costUSD: 'not-reported', trace: 'best-effort', skillIsolation: 'cwd-only' },
+    };
+    runtimeReport.meta.executorRuntimes = {
+      v1: runtimeReport.meta.executorRuntime,
+      v2: { ...runtimeReport.meta.executorRuntime, fingerprint: 'abc123variant', binary: { name: 'codex', source: 'bundled', version: '0.129.0' } },
+    };
+    runtimeReport.meta.judgeRuntime = {
+      executor: 'claude-sdk',
+      model: 'haiku',
+      kind: 'agent-sdk',
+      fingerprint: 'def456abc123',
+      binary: { name: 'claude-code', source: 'bundled', version: '2.1.118' },
+      sdk: { name: '@anthropic-ai/claude-agent-sdk', version: '0.2.118' },
+      capabilities: { systemPrompt: 'native', costUSD: 'reported', trace: 'native', skillIsolation: 'full' },
+    };
+    const html = renderRunDetail(runtimeReport);
+    assert.ok(html.includes('执行器指纹 v1'));
+    assert.ok(html.includes('执行器指纹 v2'));
+    assert.ok(html.includes('abc123def456'));
+    assert.ok(html.includes('abc123variant'));
+    assert.ok(html.includes('binary 0.128.0'));
+    assert.ok(html.includes('评委指纹'));
+    assert.ok(html.includes('def456abc123'));
+  });
+
   it('renders multi-judge ensemble agreement when summary has judgeAgreement', () => {
     const ensembleReport = JSON.parse(JSON.stringify(SAMPLE_REPORT));
     ensembleReport.meta.judgeModels = ['claude:opus', 'openai:gpt-4o'];
     ensembleReport.meta.judgeRepeat = 3;
     ensembleReport.meta.judgePromptHash = 'abc123def456';
+    ensembleReport.meta.judgeRuntimes = {
+      'claude:opus': {
+        executor: 'claude',
+        model: 'opus',
+        kind: 'agent-cli',
+        fingerprint: 'judge1111111',
+        binary: { name: 'claude', source: 'path', version: '2.0.0' },
+        capabilities: { systemPrompt: 'native', costUSD: 'reported', trace: 'native', skillIsolation: 'full-no-partial' },
+      },
+      'openai:gpt-4o': {
+        executor: 'openai-api',
+        model: 'gpt-4o',
+        kind: 'api',
+        fingerprint: 'judge2222222',
+        binary: { name: 'openai-api', source: 'none' },
+        capabilities: { systemPrompt: 'native', costUSD: 'not-reported', trace: 'none', skillIsolation: 'none' },
+      },
+    };
     ensembleReport.summary.v1.judgeAgreement = { pearson: 0.85, meanAbsDiff: 0.6, pairCount: 1, sampleCount: 50 };
     ensembleReport.summary.v1.judgeModels = ['claude:opus', 'openai:gpt-4o'];
     const html = renderRunDetail(ensembleReport);
@@ -320,6 +372,8 @@ describe('renderRunDetail', () => {
     assert.ok(html.includes('claude:opus'), 'should mention claude:opus');
     assert.ok(html.includes('openai:gpt-4o'), 'should mention openai:gpt-4o');
     assert.ok(html.includes('abc123def456'), 'should show prompt hash');
+    assert.ok(html.includes('judge1111111'), 'should show claude judge runtime fingerprint');
+    assert.ok(html.includes('judge2222222'), 'should show openai judge runtime fingerprint');
     // Agreement table renders pearson + MAD numbers
     assert.ok(html.includes('0.85'), 'should show pearson value');
     assert.ok(html.includes('0.6'), 'should show MAD value');

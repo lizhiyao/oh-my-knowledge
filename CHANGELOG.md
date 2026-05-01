@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 - **codex-cli executor**(`--executor codex`):接入 OpenAI Codex CLI 当被测 / 评委,跟 Claude Code 同类 agent CLI 对位。token 统计齐全,best-effort 抽 codex 事件流到 omk trace。skill isolation 仅 cwd 一条 channel(codex 没 SDK skill 等价物),`allowedSkills=[]` 强制 cwd 非空。EXECUTOR_REGISTRY 加 `'codex'` 跟 `'claude'` 对齐。详见 #31。
 - **codex-sdk executor**(`--executor codex-sdk`):接入 `@openai/codex-sdk` 自带的 `@openai/codex` binary 和 SDK 事件流,复用 codex trace / token / cost-not-reported 语义。Construct validity:CODEX_HOME 隔离到 per-process tmp 防 `~/.codex/config.toml` 渗入 eval(等价 codex CLI `--ephemeral` + `--ignore-user-config`,auth.json symlink 透传);SIGINT 联动 abortController 让 PR #33 的 nested-host orphan 修复对 SDK 子进程同样生效。详见 #36。
+- **executor runtime 指纹写入 report**:`meta.executorRuntimes` 按 variant 记录实际执行环境,`meta.executorRuntime` / `meta.judgeRuntime` 保留总览。指纹包含 binary 或 SDK 版本、模型和能力快照(system prompt / cost / trace / isolation)。HTML 报告展示指纹,`bench diff` / `bench verdict` 在缺失或不一致时提示 strict comparability 风险。详见 #37。
 
 ### Changed
 
@@ -22,6 +23,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 ### Fixed
 
 - **SIGINT 传播到 spawn 出来的子进程**(嵌套 host CLI 下避免 child orphan):用户在 host CLI(codex / claude code)按 Ctrl+C 时,omk spawn 的内层 codex / claude / gemini / script 子进程之前会成 orphan 跑到 timeout。新 `spawnWithSigintPropagation` helper 统一 SIGINT / timeout / abortSignal 三条 kill 路径,SIGTERM + 500ms grace + SIGKILL 兜底。**行为变化**:gemini / script 加 10MB maxBuffer 上限(旧 spawn 实现无限制);timeout grace 多 500ms(120s 默认下不显著)。详见 #33。
+- **⚠ BREAKING-COMPARABILITY:`cacheKey()` 加 executor runtime 指纹,prefix `v3:` → `v4:`** —— 同 executor 换 binary / SDK 版本时旧 cache 不再误命中,避免报告写入新 runtime 指纹但输出来自旧 runtime。runtime 探测改用 executor 实际 `PATH` 形态,`codex-sdk` bundled `@openai/codex` 版本按 SDK 解析链读取。详见 #37。
 - **⚠ BREAKING-COMPARABILITY:`cacheKey()` 加 executor 名,prefix `v2:` → `v3:`** —— 同 model 名跨 executor(如 `gpt-4o` 走 `openai-api` vs `codex`)旧 v2 schema 互相污染缓存。旧 v2 cache 一次性失效,无数据丢失,首跑无 cache 加速(同 v0.22.0 加 allowedSkills 那次 pattern)。详见 #31。
 
 ### Removed

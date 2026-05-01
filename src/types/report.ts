@@ -168,6 +168,48 @@ export interface ReportHumanAgreement {
   unscoredCount: number;
 }
 
+export type ExecutorRuntimeKind = 'agent-cli' | 'agent-sdk' | 'api' | 'script' | 'unknown';
+
+export type ExecutorSystemPromptMode = 'native' | 'prepended' | 'none' | 'unknown';
+
+export type ExecutorCostMode = 'reported' | 'not-reported' | 'unknown';
+
+export type ExecutorTraceMode = 'native' | 'best-effort' | 'none' | 'unknown';
+
+export type ExecutorSkillIsolationMode = 'full' | 'full-no-partial' | 'cwd-only' | 'none' | 'unknown';
+
+export interface ExecutorRuntimeCapabilities {
+  systemPrompt: ExecutorSystemPromptMode;
+  costUSD: ExecutorCostMode;
+  trace: ExecutorTraceMode;
+  skillIsolation: ExecutorSkillIsolationMode;
+}
+
+export interface ExecutorRuntimePackage {
+  name: string;
+  version?: string;
+  error?: string;
+}
+
+export interface ExecutorRuntimeBinary {
+  name: string;
+  source: 'path' | 'bundled' | 'none' | 'unknown';
+  version?: string;
+  path?: string;
+  package?: ExecutorRuntimePackage;
+  error?: string;
+}
+
+export interface ExecutorRuntimeFingerprint {
+  executor: string;
+  model: string;
+  kind: ExecutorRuntimeKind;
+  fingerprint: string;
+  binary?: ExecutorRuntimeBinary;
+  sdk?: ExecutorRuntimePackage;
+  capabilities: ExecutorRuntimeCapabilities;
+}
+
 export interface ReportMeta {
   variants: string[];
   model: string;
@@ -188,6 +230,19 @@ export interface ReportMeta {
   sampleHashes?: Record<string, string>;
   /** SHA256-12 of the LLM judge prompt template. Different hash = judge changed semantics. */
   judgePromptHash?: string;
+  /** Runtime fingerprint for the executor that produced tested outputs.
+   *  Legacy/common field. Prefer executorRuntimes for variant-level audit; this
+   *  field is the common runtime when all variants match, otherwise a representative
+   *  runtime for older consumers. */
+  executorRuntime?: ExecutorRuntimeFingerprint;
+  /** Runtime fingerprints for tested-output executors, keyed by variant name.
+   *  This is the strict construct-validity source because variants can resolve
+   *  different skillDir / PATH environments. */
+  executorRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
+  /** Runtime fingerprint for the default judge executor, or null when no judge ran. */
+  judgeRuntime?: ExecutorRuntimeFingerprint | null;
+  /** Runtime fingerprints for multi-judge ensemble members, keyed by "executor:model". */
+  judgeRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
   /** Number of times each sample was judged. 1 = single judge (default). */
   judgeRepeat?: number;
   /** Multi-judge ensemble configuration: ["claude:opus", "openai:gpt-4o", ...].

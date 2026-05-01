@@ -19,7 +19,7 @@ import {
 import { renderSampleTable } from './table.js';
 import { renderTrendsBody } from './trends.js';
 import { computeVerdict, type VerdictLevel } from '../eval-core/verdict.js';
-import type { Report, Lang } from '../types/index.js';
+import type { ExecutorRuntimeFingerprint, Report, Lang } from '../types/index.js';
 
 // v0.21 B.4 — 列表页 status pill 用的 dot. PROGRESS/REGRESS 实心(强信号),
 // CAUTIOUS 三角(警示),NOISE 空心圆(有信号但无效果),UNDERPOWERED 部分填充
@@ -38,6 +38,62 @@ function levelDot(level: VerdictLevel): string {
 type EachOverview = NonNullable<Report['overview']>;
 type EachOverviewArtifact = EachOverview['artifacts'][number];
 type EachArtifactReport = NonNullable<Report['artifacts']>[number];
+
+function renderRuntimeTag(runtime: ExecutorRuntimeFingerprint | null | undefined, label: string, lang: Lang): string {
+  if (!runtime) return '';
+  const versions: string[] = [];
+  if (runtime.binary?.version) versions.push(`binary ${runtime.binary.version}`);
+  if (runtime.sdk?.version) versions.push(`sdk ${runtime.sdk.version}`);
+  const versionText = versions.length > 0 ? ` · ${versions.map(e).join(' · ')}` : '';
+  const title = lang === 'zh'
+    ? [
+      `executor=${runtime.executor}`,
+      `model=${runtime.model}`,
+      `kind=${runtime.kind}`,
+      `system=${runtime.capabilities.systemPrompt}`,
+      `cost=${runtime.capabilities.costUSD}`,
+      `trace=${runtime.capabilities.trace}`,
+      `skillIsolation=${runtime.capabilities.skillIsolation}`,
+    ].join('; ')
+    : [
+      `executor=${runtime.executor}`,
+      `model=${runtime.model}`,
+      `kind=${runtime.kind}`,
+      `system=${runtime.capabilities.systemPrompt}`,
+      `cost=${runtime.capabilities.costUSD}`,
+      `trace=${runtime.capabilities.trace}`,
+      `skillIsolation=${runtime.capabilities.skillIsolation}`,
+    ].join('; ');
+  return `<span class="meta-tag" title="${e(title)}">${e(label)}: <code>${e(runtime.fingerprint)}</code>${versionText}</span>`;
+}
+
+function renderJudgeRuntimeTags(meta: Report['meta'], lang: Lang): string {
+  if (meta.judgeRuntimes && Object.keys(meta.judgeRuntimes).length > 0) {
+    return Object.entries(meta.judgeRuntimes)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, runtime]) => renderRuntimeTag(
+        runtime,
+        lang === 'zh' ? `评委指纹 ${key}` : `Judge runtime ${key}`,
+        lang,
+      ))
+      .join('');
+  }
+  return renderRuntimeTag(meta.judgeRuntime, lang === 'zh' ? '评委指纹' : 'Judge runtime', lang);
+}
+
+function renderExecutorRuntimeTags(meta: Report['meta'], lang: Lang): string {
+  if (meta.executorRuntimes && Object.keys(meta.executorRuntimes).length > 0) {
+    return Object.entries(meta.executorRuntimes)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, runtime]) => renderRuntimeTag(
+        runtime,
+        lang === 'zh' ? `执行器指纹 ${key}` : `Executor runtime ${key}`,
+        lang,
+      ))
+      .join('');
+  }
+  return renderRuntimeTag(meta.executorRuntime, lang === 'zh' ? '执行器指纹' : 'Executor runtime', lang);
+}
 
 export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
@@ -328,7 +384,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       <span class="meta-tag"${execCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(totalExecCost, execCostReported)}</span>
       <span class="meta-tag">${lang === 'zh' ? '耗时' : 'duration'}: ${fmtDuration(totalDurationMs)}</span>
       ${m.gitInfo ? `<span class="meta-tag">commit: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
-      ${m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : ''}
+      ${m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : ''}${renderExecutorRuntimeTags(m, lang)}${renderJudgeRuntimeTags(m, lang)}
       ${m.sampleHashes ? `<span class="meta-tag" style="color:var(--text-muted)" title="${t('sampleHashCountDesc', lang)}">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}/${m.sampleCount}</span>` : ''}
       ${m.evaluationFramework ? `<span class="meta-tag" title="${t('evalFrameworkDesc', lang)}">${t('evalFrameworkLabel', lang)}: ${m.evaluationFramework === 'bootstrap' ? t('evalFrameworkBootstrap', lang) : m.evaluationFramework === 'both' ? t('evalFrameworkBoth', lang) : t('evalFrameworkTTest', lang)}</span>` : ''}
       ${m.debiasMode && m.debiasMode.length > 0 ? `<span class="meta-tag" style="color:var(--green)" title="${lang === 'zh' ? 'judge bias 校正模式 (Phase 3)：length=substance-not-length 提示;position=ensemble 顺序随机化' : 'Judge bias debias modes (Phase 3): length = substance-not-length prompt; position = randomized ensemble order'}">${lang === 'zh' ? '校正' : 'debias'}: ${m.debiasMode.join(' · ')}</span>` : ''}
@@ -438,6 +494,7 @@ export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
       <span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
+      ${renderExecutorRuntimeTags(m, lang)}${renderJudgeRuntimeTags(m, lang)}
       <span class="meta-tag"${eachAllCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(m.totalCostUSD, eachAllCostReported)}</span>
     </div>
 

@@ -1,6 +1,9 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { aggregateReport } from '../../src/eval-core/evaluation-reporting.js';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { aggregateReport, applyBlindMode } from '../../src/eval-core/evaluation-reporting.js';
 import type { Artifact, Sample, Task, VariantResult, EvaluationRequest } from '../../src/types/index.js';
 
 function makeArtifact(name: string, content: string): Artifact {
@@ -22,6 +25,31 @@ function makeVariantResult(): VariantResult {
     execCostUSD: 0.001, judgeCostUSD: 0, costUSD: 0.001,
     numTurns: 1, outputPreview: 'ok',
   };
+}
+
+function makeTask(variant: string, artifact: Artifact, sample: Sample): Task {
+  return {
+    sample_id: sample.sample_id,
+    variant,
+    artifact,
+    prompt: sample.prompt,
+    rubric: sample.rubric ?? null,
+    assertions: sample.assertions ?? null,
+    dimensions: sample.dimensions ?? null,
+    artifactContent: artifact.content,
+    cwd: null,
+    _sample: sample,
+  };
+}
+
+function writeFakeBinary(dir: string, name: string, output: string): void {
+  const fileName = process.platform === 'win32' ? `${name}.cmd` : name;
+  const filePath = join(dir, fileName);
+  const content = process.platform === 'win32'
+    ? `@echo off\r\necho ${output}\r\n`
+    : `#!/bin/sh\necho ${output}\n`;
+  writeFileSync(filePath, content);
+  if (process.platform !== 'win32') chmodSync(filePath, 0o755);
 }
 
 describe('aggregateReport — reproducibility metadata', () => {
@@ -62,6 +90,78 @@ describe('aggregateReport — reproducibility metadata', () => {
     const report = aggregateReport(baseOpts);
     assert.ok(report.meta.judgePromptHash, 'judgePromptHash should be set');
     assert.match(report.meta.judgePromptHash!, /^[0-9a-f]{12}$/);
+  });
+
+  it('writes executor runtime fingerprint', () => {
+    const report = aggregateReport({ ...baseOpts, executorName: 'codex-sdk', model: 'gpt-5', noJudge: true });
+    assert.equal(report.meta.executorRuntime?.executor, 'codex-sdk');
+    assert.equal(report.meta.executorRuntime?.model, 'gpt-5');
+    assert.equal(report.meta.executorRuntime?.kind, 'agent-sdk');
+    assert.match(report.meta.executorRuntime!.fingerprint, /^[0-9a-f]{12}$/);
+    assert.equal(report.meta.executorRuntime?.sdk?.name, '@openai/codex-sdk');
+    assert.equal(report.meta.executorRuntime?.binary?.source, 'bundled');
+    assert.equal(report.meta.executorRuntime?.binary?.package?.name, '@openai/codex');
+    assert.equal(report.meta.executorRuntime?.capabilities.costUSD, 'not-reported');
+    assert.equal(report.meta.judgeRuntime, null);
+  });
+
+  it('writes per-variant executor runtime fingerprints from each task skillDir', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omk-runtime-report-'));
+    try {
+      const skillA = join(root, 'skill-a');
+      const skillB = join(root, 'skill-b');
+      for (const [dir, version] of [[skillA, 'codex-a'], [skillB, 'codex-b']] as const) {
+        mkdirSync(join(dir, 'node_modules', '.bin'), { recursive: true });
+        writeFakeBinary(join(dir, 'node_modules', '.bin'), 'codex', version);
+        writeFileSync(join(dir, 'SKILL.md'), `${version} skill`);
+      }
+      const artifactA: Artifact = { name: 'a', kind: 'skill', source: 'file-path', content: 'a skill', locator: join(skillA, 'SKILL.md'), experimentRole: 'control' };
+      const artifactB: Artifact = { name: 'b', kind: 'skill', source: 'file-path', content: 'b skill', locator: join(skillB, 'SKILL.md'), experimentRole: 'treatment' };
+      const sample = makeSample('s1', 'task');
+      const report = aggregateReport({
+        runId: 'run-1',
+        variants: ['a', 'b'],
+        model: 'gpt-5',
+        judgeModel: 'haiku',
+        noJudge: true,
+        executorName: 'codex',
+        samples: [sample],
+        tasks: [makeTask('a', artifactA, sample), makeTask('b', artifactB, sample)],
+        results: { s1: { a: makeVariantResult(), b: makeVariantResult() } },
+        totalCostUSD: 0,
+        artifacts: [artifactA, artifactB],
+      });
+
+      assert.equal(report.meta.executorRuntimes?.a.binary?.version, 'codex-a');
+      assert.equal(report.meta.executorRuntimes?.b.binary?.version, 'codex-b');
+      assert.notEqual(report.meta.executorRuntimes?.a.fingerprint, report.meta.executorRuntimes?.b.fingerprint);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('blind mode remaps per-variant executor runtime keys', () => {
+    const report = aggregateReport({
+      ...baseOpts,
+      variants: ['a', 'b'],
+      artifacts: [makeArtifact('a', 'a skill'), makeArtifact('b', 'b skill')],
+      results: { s1: { a: makeVariantResult(), b: makeVariantResult() } },
+    });
+    report.meta.executorRuntimes = {
+      a: { ...report.meta.executorRuntime!, fingerprint: 'runtimeaaaaaa' },
+      b: { ...report.meta.executorRuntime!, fingerprint: 'runtimebbbbbb' },
+    };
+
+    applyBlindMode(report, ['a', 'b'], 'seed');
+
+    assert.deepEqual(Object.keys(report.meta.executorRuntimes!).sort(), ['A', 'B']);
+  });
+
+  it('writes judge runtime fingerprint when judge runs', () => {
+    const report = aggregateReport(baseOpts);
+    assert.equal(report.meta.judgeRuntime?.executor, 'claude');
+    assert.equal(report.meta.judgeRuntime?.model, 'haiku');
+    assert.match(report.meta.judgeRuntime!.fingerprint, /^[0-9a-f]{12}$/);
   });
 
   it('omits judgePromptHash when noJudge=true (no judge ran)', () => {
