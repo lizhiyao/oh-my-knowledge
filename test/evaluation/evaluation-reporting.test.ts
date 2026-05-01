@@ -64,6 +64,26 @@ describe('aggregateReport — reproducibility metadata', () => {
     assert.match(report.meta.judgePromptHash!, /^[0-9a-f]{12}$/);
   });
 
+  it('writes executor runtime fingerprint', () => {
+    const report = aggregateReport({ ...baseOpts, executorName: 'codex-sdk', model: 'gpt-5', noJudge: true });
+    assert.equal(report.meta.executorRuntime?.executor, 'codex-sdk');
+    assert.equal(report.meta.executorRuntime?.model, 'gpt-5');
+    assert.equal(report.meta.executorRuntime?.kind, 'agent-sdk');
+    assert.match(report.meta.executorRuntime!.fingerprint, /^[0-9a-f]{12}$/);
+    assert.equal(report.meta.executorRuntime?.sdk?.name, '@openai/codex-sdk');
+    assert.equal(report.meta.executorRuntime?.binary?.source, 'bundled');
+    assert.equal(report.meta.executorRuntime?.binary?.package?.name, '@openai/codex');
+    assert.equal(report.meta.executorRuntime?.capabilities.costUSD, 'not-reported');
+    assert.equal(report.meta.judgeRuntime, null);
+  });
+
+  it('writes judge runtime fingerprint when judge runs', () => {
+    const report = aggregateReport(baseOpts);
+    assert.equal(report.meta.judgeRuntime?.executor, 'claude');
+    assert.equal(report.meta.judgeRuntime?.model, 'haiku');
+    assert.match(report.meta.judgeRuntime!.fingerprint, /^[0-9a-f]{12}$/);
+  });
+
   it('omits judgePromptHash when noJudge=true (no judge ran)', () => {
     const report = aggregateReport({ ...baseOpts, noJudge: true });
     assert.equal(report.meta.judgePromptHash, undefined);

@@ -679,7 +679,7 @@ The command writes `~/.oh-my-knowledge/analyses/<timestamp>-skill-health.json`. 
 
 API-direct executors support custom base URLs via env: `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`.
 
-Codex construct-validity note: `codex` uses the `codex` binary found on `PATH`; `codex-sdk` uses the bundled `@openai/codex` binary resolved by `@openai/codex-sdk`. Strict comparisons between the two require recording both runtime versions (`codex --version` and the locked npm versions). If they differ, treat results as a comparison of executor runtimes, not only of prompt/template behavior.
+Codex construct-validity note: `codex` uses the `codex` binary found on `PATH`; `codex-sdk` uses the bundled `@openai/codex` binary resolved by `@openai/codex-sdk`. Reports persist `meta.executorRuntime` / `meta.judgeRuntime` fingerprints (binary or SDK version + capability snapshot), and `bench diff` / `bench verdict` warn when strict comparability cannot be audited. If runtime fingerprints differ, treat results as a comparison of executor runtimes, not only of prompt/template behavior.
 
 ### Custom executor
 

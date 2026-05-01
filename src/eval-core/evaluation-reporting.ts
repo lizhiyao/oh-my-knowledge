@@ -8,6 +8,7 @@ import { buildVariantSummary } from './schema.js';
 import { buildVariantConfig } from './execution-strategy.js';
 import { getJudgePromptHash } from '../grading/judge.js';
 import { bootstrapMeanCI, bootstrapDiffCI } from './bootstrap.js';
+import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import type {
   Artifact,
   Report,
@@ -174,6 +175,14 @@ export function aggregateReport({
   const judgeModelsList = request?.judgeModels && request.judgeModels.length >= 2
     ? request.judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
     : undefined;
+  const effectiveJudgeExecutorName = request?.judgeExecutor || executorName;
+  const executorRuntime = getExecutorRuntimeFingerprint(executorName, model);
+  const judgeRuntime = noJudge ? null : getExecutorRuntimeFingerprint(effectiveJudgeExecutorName, judgeModel);
+  const judgeRuntimes = request?.judgeModels && request.judgeModels.length >= 2
+    ? Object.fromEntries(
+      request.judgeModels.map((jc) => [`${jc.executor}:${jc.model}`, getExecutorRuntimeFingerprint(jc.executor, jc.model)]),
+    )
+    : undefined;
   // v0.21 Phase 3a: length-debias is on by default; the request only sets it
   // false when the user passed --no-debias-length. The hash differs between
   // v3-cot-length (on) and v2-cot (off) so readers can detect the divergence.
@@ -197,6 +206,9 @@ export function aggregateReport({
       artifactHashes,
       sampleHashes,
       ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash(lengthDebiasOn) }),
+      executorRuntime,
+      judgeRuntime,
+      ...(judgeRuntimes ? { judgeRuntimes } : {}),
       ...(judgeRepeat ? { judgeRepeat } : {}),
       ...(judgeModelsList ? { judgeModels: judgeModelsList } : {}),
       ...(debiasModeList.length > 0 ? { debiasMode: debiasModeList } : {}),
