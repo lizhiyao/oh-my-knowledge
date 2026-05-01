@@ -15,6 +15,8 @@ omk answers with objective data, not gut feeling.
 <a id="statistical-rigor"></a>
 > Built-in: Bootstrap CI · Krippendorff α (judge ↔ human) · length-debias · saturation curves · construct-validity isolation. [Why these matter →](docs/statistical-rigor.md)
 
+![omk report](./assets/screenshots/report-overview.png)
+
 ## Quick start
 
 ```bash
@@ -40,8 +42,6 @@ omk bench run    # → HTML report with verdict in 5 minutes
 omk bench run --lang en
 OMK_LANG=en omk bench report
 ```
-
-![omk report](./assets/screenshots/report-overview.png)
 
 ## Use inside Claude Code
 

@@ -15,6 +15,8 @@ omk 帮你用客观数据回答,而不是凭感觉。
 <a id="statistical-rigor"></a>
 > 默认带:Bootstrap 置信区间 · Krippendorff α(评委 ↔ 人工)· 长度去偏 · 饱和曲线 · 用例隔离(construct validity)。[这些为什么重要 →](docs/zh/statistical-rigor.md)
 
+![omk 报告](./assets/screenshots/report-overview-zh.png)
+
 ## 快速开始
 
 ```bash
@@ -40,8 +42,6 @@ omk bench run    # → 5 分钟出 HTML 报告 + verdict
 omk bench run --lang en
 OMK_LANG=en omk bench report
 ```
-
-![omk 报告](./assets/screenshots/report-overview-zh.png)
 
 ## 在 Claude Code 中使用
 
