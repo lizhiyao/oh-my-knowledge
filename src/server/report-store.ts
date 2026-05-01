@@ -39,16 +39,33 @@ export function createFileStore(dir: string): ReportStore {
     }
   }
 
-  function isReportDocument(data: unknown): data is ReportDocument {
-    if (!data || typeof data !== 'object') return false;
+  function normalizeReportDocument(data: unknown, fallbackId: string): ReportDocument | null {
+    if (!data || typeof data !== 'object') return null;
     const record = data as Record<string, unknown>;
     if (record.kind === 'evaluation') {
-      return Boolean(record.id && record.meta && record.summary && record.results);
+      if (!record.meta || !record.summary || !Array.isArray(record.results)) return null;
+      return { ...record, id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
     }
     if (record.kind === 'batch-index') {
-      return Boolean(record.id && record.meta && Array.isArray(record.items));
+      if (!record.meta || !Array.isArray(record.items)) return null;
+      return { ...record, id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
     }
-    return false;
+    if (
+      record.kind === undefined
+      && !record.each
+      && record.overview === undefined
+      && record.artifacts === undefined
+      && record.meta
+      && record.summary
+      && Array.isArray(record.results)
+    ) {
+      return {
+        ...record,
+        kind: 'evaluation',
+        id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
+      } as unknown as ReportDocument;
+    }
+    return null;
   }
 
   function isEvaluationReport(report: ReportDocument): report is EvaluationReport {
@@ -69,10 +86,8 @@ export function createFileStore(dir: string): ReportStore {
     for (const file of files) {
       try {
         const data = JSON.parse(await readFile(join(dir, file), 'utf-8'));
-        if (isReportDocument(data)) {
-          if (!data.id) data.id = file.replace(/\.json$/, '');
-          runs.push(data);
-        }
+        const report = normalizeReportDocument(data, file.replace(/\.json$/, ''));
+        if (report) runs.push(report);
       } catch { /* skip corrupt files */ }
     }
     runs.sort((a, b) => {
@@ -86,8 +101,7 @@ export function createFileStore(dir: string): ReportStore {
   async function get(id: string): Promise<ReportDocument | null> {
     try {
       const data = JSON.parse(await readFile(join(dir, `${id}.json`), 'utf-8'));
-      if (!data.id) data.id = id;
-      return isReportDocument(data) ? data : null;
+      return normalizeReportDocument(data, id);
     } catch {
       return null;
     }
