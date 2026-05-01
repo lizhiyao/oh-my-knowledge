@@ -7,47 +7,13 @@
 
 [English](./README.md) | **简体中文**
 
-**omk** — 内置统计严谨性的 LLM 评测框架。Bootstrap CI / Krippendorff α / 长度偏差校正 / 饱和曲线开箱即用。原生支持 Claude Code skill、prompt、agent、RAG。
+**omk** — 你给 LLM 的知识,价值在哪里?
+omk 帮你用客观数据回答,而不是凭感觉。
 
-**固定模型，只变知识载体，数据说话。**
+**固定模型,只变知识载体。**
 
-## 为什么需要这个工具
-
-做知识工程的团队会产出大量知识载体（当前常见是 skill，也包括 prompt、agent、workflow 等）。当被问到"v2 比 v1 好在哪"时，需要客观数据而非主观判断。`oh-my-knowledge` 通过控制变量实验解决这个问题：相同模型、相同测试样本，只改变知识载体。
-
-## 核心能力
-
-- **控制变量离线评测** — 固定模型和样本，只变知识载体；兼容 Claude Code skill、CLAUDE.md prompt、RAG 知识库等任何 markdown 形式的指令
-- **六维独立打分** — Fact / Behavior / LLM-judge / Cost / Efficiency / Stability 分别出信号，单一维度的回退不会被其他维度的收益掩盖
-- **线上 session 观测** — 解析 Claude Code session JSONL，在真实用户会话上测量各 skill 的失败率、耗时、token 成本和知识缺口信号
-- **知识缺口识别** — 严重度加权的信号（显式标记 / 搜索失败 / hedging 用语 / 反复失败）量化风险敞口,不宣称完备性
-- **合并前 CI 门** — `omk bench gate` 强制三层 all-pass（fact + behavior + llm-judge），抓复合分掩盖的单层回退
-- **一行 ship/no-ship 结论** — `omk bench verdict <reportId>` 聚合 bootstrap CI / 三层 ci-gate / saturation / human α,给六档 verdict（PROGRESS / CAUTIOUS / REGRESS / NOISE / UNDERPOWERED / SOLO）+ 行动建议;exit code 反映是否可 ship
-
-### 统计严谨性
-LLM 评测最容易踩的坑是"自信的偏差"——CI 很窄但结论错。omk 的统计层做四件事让结论可被外部审计：
-
-- **Bootstrap CI** (`--bootstrap`) — 不假设分布的置信区间。t 检验在 LLM 序数评分上失效，bootstrap 直接重采样原始数据，对小 N（< 30）和偏态分布都稳。pairwise diff CI 不含 0 = 显著差异。
-- **Human Gold + Krippendorff α** (`--gold-dir`) — 引入外部标注作为锚点。CI 解决"评委稳不稳"，α 解决"评委对不对"——两个维度互补。omk 自动检测污染（gold annotator 与 judge 同模型时警告）。
-- **Length-controlled judge prompt** (默认开启) — 研究证实 LLM 评委隐性偏向更长的回答。omk 的 judge prompt 加显式段落"长度不是质量信号"，template hash 为 v3-cot-length，跟旧版本的报告 hash 肉眼可辨。`omk bench debias-validate length <reportId>` 重判检测偏差幅度。
-- **Saturation curve** — 回答"我跑够样本了吗"。`--repeat ≥ 5` 时累积 N → 均值 + bootstrap CI 序列，CI 宽度衰减率 < 5% 持续 3 个窗口判定饱和——再多样本对结论无实质收益。HTML 报告内联 SVG 曲线 + verdict。
-
-## 为什么选 omk
-
-| | omk | promptfoo | DeepEval | RAGAS | LangSmith |
-|--|--|--|--|--|--|
-| Bootstrap CI | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Krippendorff α(评委 ↔ 人工锚点） | ✓ | ✗ | ✗ | ✗ | ✗ |
-| Length-debias 评委 prompt | ✓ 默认 | ✗ | ✗ | ✗ | ✗ |
-| 饱和曲线 | ✓ | ✗ | ✗ | ✗ | ✗ |
-| 三层独立评分 | ✓ | ✗ | 部分 | ✗ | ✗ |
-| 原生 Claude Code skill | ✓ | ✗ | ✗ | ✗ | ✗ |
-| 完整中文文档 | ✓ | ✗ | ✗ | ✗ | ✗ |
-| 托管 SaaS 看板 | ✗ | ✗ | ✓ | ✗ | ✓ |
-
-omk 的护城河是**统计严谨性** — 每条结论都能被研究者审计。需要托管 SaaS 看板?选 LangSmith。要本地快速 prompt 迭代不要统计层?选 promptfoo。**要 ship 到生产且会被问"为什么应该相信这个数字"?选 omk**。
-
-完整对比(7 个工具 × 25+ 维度): [docs/zh/comparison.md](docs/zh/comparison.md)
+<a id="statistical-rigor"></a>
+> 默认带:Bootstrap 置信区间 · Krippendorff α(评委 ↔ 人工)· 长度去偏 · 饱和曲线 · 用例隔离(construct validity)。[这些为什么重要 →](docs/zh/statistical-rigor.md)
 
 ## 快速开始
 
@@ -68,12 +34,14 @@ cd my-eval
 omk bench run --dry-run
 
 # 运行评测（自动发现 skills/ 目录下的所有 artifact）
-omk bench run
+omk bench run    # → 5 分钟出 HTML 报告 + verdict
 
 # CLI 输出语言: zh (默认) / en — flag 优先级高于环境变量
 omk bench run --lang en
 OMK_LANG=en omk bench report
 ```
+
+![omk 报告](./assets/screenshots/report-overview-zh.png)
 
 ## 在 Claude Code 中使用
 
@@ -87,28 +55,58 @@ OMK_LANG=en omk bench report
 
 或直接说"帮我评测 v1 和 v2 的差异"、"改进一下这个 artifact"，omk 会自动理解意图并调用对应命令。
 
+## 为什么需要这个工具
+
+做知识工程的团队会产出大量知识载体（当前常见是 skill，也包括 prompt、agent、workflow 等）。当被问到"v2 比 v1 好在哪"时，需要客观数据而非主观判断。`oh-my-knowledge` 通过控制变量实验解决这个问题：相同模型、相同测试用例，只改变知识载体。
+
+## 核心能力
+
+- **控制变量离线评测** — 固定模型和用例，只变知识载体；兼容 Claude Code skill、CLAUDE.md prompt、RAG 知识库等任何 markdown 形式的指令
+- **六维独立打分** — Fact / Behavior / LLM-judge / Cost / Efficiency / Stability 分别出信号，单一维度的回退不会被其他维度的收益掩盖
+- **线上 session 观测** — 解析 Claude Code session JSONL，在真实用户会话上测量各 skill 的失败率、耗时、token 成本和知识缺口信号
+- **知识缺口识别** — 严重度加权的信号（显式标记 / 搜索失败 / hedging 用语 / 反复失败）量化风险敞口,不宣称完备性
+- **合并前 CI 门** — `omk bench gate` 强制三层 all-pass（fact + behavior + llm-judge），抓复合分掩盖的单层回退
+- **一行 ship/no-ship 结论** — `omk bench verdict <reportId>` 聚合 bootstrap CI / 三层 ci-gate / saturation / human α,给六档 verdict(PROGRESS / CAUTIOUS / REGRESS / NOISE / UNDERPOWERED / SOLO)+ 行动建议;exit code 反映是否可 ship
+
+## 为什么选 omk
+
+| | omk | promptfoo | DeepEval | LangSmith |
+|--|--|--|--|--|
+| Bootstrap 置信区间 | ✓ 默认 | ✗ | ✗ | ✗ |
+| Krippendorff α(评委 ↔ 人工) | ✓ 默认 | ✗ | ✗ | ✗ |
+| 长度去偏的评委 prompt | ✓ 默认 | ✗ | ✗ | ✗ |
+| 饱和曲线 | ✓ | ✗ | ✗ | ✗ |
+| 三层独立评分 | ✓ | ✗ | 部分 | ✗ |
+| 用例隔离(construct validity) | ✓ 默认 | ✗ | ✗ | ✗ |
+| 原生 Claude Code skill | ✓ | ✗ | ✗ | ✗ |
+| 托管 SaaS 看板 | ✗ | ✗ | ✓ | ✓ |
+
+omk 的护城河是 **default-on 安全网** —— Bootstrap CI / 评委 ↔ 人工 α / 长度去偏不是 advanced flag,是默认行为。其他工具让你**手动**接置信区间;omk 让你**默认无法忽略**它。需要 SaaS 看板?选 LangSmith。要快速 prompt 迭代不要统计层?选 promptfoo。**要发到生产且会被问"为什么应该相信这个数字"?选 omk。**
+
+RAG 专项评测请看 RAGAS(独立 niche,跟 omk 互补)。完整对比(7 个工具 × 25+ 维度): [docs/zh/comparison.md](docs/zh/comparison.md)
+
 ## 特性
 
 | 特性 | 说明 |
 |------|------|
-| **21+ 种断言** | 包含子串、正则、JSON Schema、ROUGE/BLEU/Levenshtein 相似度、Agent 工具调用、语义相似度、自定义函数等 |
-| **断言取反 + 组合** | 通用 `not: true` 字段 + `assert-set` (any/all) 任意嵌套 |
-| **六维评估** | 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性独立展示 |
-| **统计严谨性** | Bootstrap CI / Krippendorff α / Length-debias / Saturation curve |
-| **用例隔离 (construct validity)** | `--strict-baseline` (默认开) 三堵 baseline 拿到被测 skill 的污染路径:(1) SDK skill auto-discovery (2) subagent Skill 工具调用 (3) cwd 文件系统(避免 baseline 顺 `skills/<name>/` symlink 直接 Read 到 SKILL.md)。eval.yaml `allowedSkills` 支持 per-variant 白名单 |
-| **用例设计科学性 (sample design science)** | Sample schema 加 `capability` / `difficulty` / `construct` / `provenance` 元数据字段(HF Dataset Cards 风)。`bench diagnose` 输出 coverage 分桶 + 检测 `rubric_clarity_low` / `capability_thin` 两类新 issue。`bench gen-samples` 自动给生成的 sample 打 provenance。详见 [docs/sample-design-spec.md](docs/sample-design-spec.md),含 8 条行业 gap(HELM / MMLU-Pro / Construct Validity / IRT / Dataset Cards / Adversarial)的 omk v1 映射 |
 | **Verdict 一行结论** | `omk bench verdict <id>` 六档判定 + ship 建议 + exit code 路由,与 HTML 报告 verdict pill 共享规则 |
-| **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` 三 metric — 反幻觉 + 切题度 + context 覆盖,自动继承 length-debias |
-| **样本质量诊断** | `omk bench diagnose <id>` 7 类 issue（区分度低 / 重复 / 歧义 / 成本异常 / 全 fail 等）+ healthScore 0-100 |
-| **失败聚类 + 根因** | `omk bench failures <id>` 单 LLM 调用聚类失败样本 + 每 cluster 给修复建议 |
-| **预算硬阈值** | `--budget-usd / --budget-per-sample-usd / --budget-per-sample-ms` 总成本 + 单样本成本/耗时上限,超出中止保留 partial report |
-| **多执行器** | 支持 Claude CLI / Claude SDK / Codex CLI / OpenAI / Gemini 及自定义命令 |
+| **六维评估** | 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性独立展示 |
+| **多执行器** | 支持 Claude CLI / Claude SDK / Codex CLI / Codex SDK / OpenAI / Gemini 及自定义命令 |
+| **21+ 种断言** | 包含子串、正则、JSON Schema、ROUGE/BLEU/Levenshtein 相似度、Agent 工具调用、语义相似度、自定义函数等 |
+| **统计严谨性** | Bootstrap CI / Krippendorff α / 长度去偏 / 饱和曲线 —— 全部默认开。[详情 →](docs/zh/statistical-rigor.md) |
+| **用例质量诊断** | `omk bench diagnose <id>` 7 类 issue(区分度低 / 重复 / 歧义 / 成本异常 / 全 fail 等)+ healthScore 0-100 |
+| **失败聚类 + 根因** | `omk bench failures <id>` 单 LLM 调用聚类失败用例 + 每 cluster 给修复建议 |
+| **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` 三 metric — 反幻觉 + 切题度 + context 覆盖,自动继承长度去偏 |
+| **预算硬阈值** | `--budget-usd / --budget-per-sample-usd / --budget-per-sample-ms` 总成本 + 单用例成本/耗时上限,超出中止保留 partial report |
+| **用例隔离 (construct validity)** | `--strict-baseline` (默认开) 三堵 baseline 拿到被测 skill 的污染路径:(1) SDK skill auto-discovery (2) subagent Skill 工具调用 (3) cwd 文件系统(避免 baseline 顺 `skills/<name>/` symlink 直接 Read 到 SKILL.md)。eval.yaml `allowedSkills` 支持 per-variant 白名单 |
+| **用例设计科学性 (sample design science)** | Sample schema 加 `capability` / `difficulty` / `construct` / `provenance` 元数据字段(HF Dataset Cards 风)。`bench diagnose` 输出 coverage 分桶 + 检测 `rubric_clarity_low` / `capability_thin` 两类新 issue。`bench gen-samples` 自动给生成的用例打 provenance。详见 [docs/sample-design-spec.md](docs/sample-design-spec.md),含 8 条行业 gap(HELM / MMLU-Pro / Construct Validity / IRT / Dataset Cards / Adversarial)的 omk v1 映射 |
 | **多评委 ensemble** | `--judge-models claude:opus,openai:gpt-4o` 跨厂商评分 + agreement 度量 |
 | **MCP URL 获取** | 通过 MCP Server 获取私有文档 URL 内容（SSO 保护的知识库等） |
 | **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
-| **并行执行** | `--concurrency N` 并行 N 个任务 |
 | **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
-| **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本样本 |
+| **并行执行** | `--concurrency N` 并行 N 个任务 |
+| **断言取反 + 组合** | 通用 `not: true` 字段 + `assert-set` (any/all) 任意嵌套 |
+| **自动分析** | 检测低区分度断言、均匀分数、全通过/全失败、高成本用例 |
 | **可追溯性** | 报告含 CLI 版本、Node 版本、artifact 版本指纹、judge prompt hash |
 | **中英切换** | HTML 报告右上角一键切换语言 |
 

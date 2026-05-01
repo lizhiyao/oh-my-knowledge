@@ -20,6 +20,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 - **cost 显示「—」 而非 `$0.0000`**(executor 不报 cost 时):`ExecResult` / `VariantResult` / `VariantSummary` / `GradeResult` 加 `costReportedByExecutor` / `execCostReported` / `judgeCostReported` 三层 flag,全可选缺位 ≡ true(老报告兼容)。Renderer(HTML detail / list / each / trends / variance chart / CLI bench diff / bench evolve)全部识别该 flag,not reported 时显示「—」+ tooltip 解释。详见 #31。
 - **⚠ BREAKING:`bench run --each` 产物改为 `EvaluationBatchIndex` + child `EvaluationReport`** —— 顶层 batch index 只保存批次索引和摘要,每个 skill vs baseline 单独持久化为可比较的原子报告。child report 的 treatment variant 使用真实 skill 名,趋势页按 skill 名聚合,不再写 generic `skill`。删除 `Report.each` / `overview` / `artifacts` 这类混合 schema,`bench diff` / `verdict` / `diagnose` 等命令现在只接受 child reportId。旧 each 报告不做兼容迁移。详见 #40。
+- **README 重定位 + Statistical rigor 抽到 docs/**:hero 从"内置统计严谨性 + 一堆 jargon"改写为 outcome-first("你给 LLM 的知识,价值在哪里?omk 帮你用客观数据回答,而不是凭感觉"),Bootstrap CI / α / 长度去偏 / 饱和曲线 / 用例隔离 5 个不变量保留为 hero 下方 callout(visibility 不丢、SEO 不弱化)。Statistical rigor 章节迁移到 [docs/statistical-rigor.md](docs/statistical-rigor.md) / [docs/zh/statistical-rigor.md](docs/zh/statistical-rigor.md),README anchor `#statistical-rigor` 通过 `<a id>` redirect 兼容旧外链。Features 表行重排为 broad-appeal-first(Verdict / 六维 / 多 executor / 21+ 断言 在前)。详见 #PR-readme-rewrite。
 
 ### Fixed
 
