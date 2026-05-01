@@ -331,6 +331,7 @@ export interface EvaluationBatchMeta {
 }
 
 export interface EvaluationBatchIndexItem {
+  /** Skill name; also the treatment variant key inside the child EvaluationReport. */
   name: string;
   skillPath: string;
   samplesPath: string;

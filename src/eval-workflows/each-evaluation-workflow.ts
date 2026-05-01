@@ -65,10 +65,10 @@ function safeRunIdPart(value: string): string {
     || 'skill';
 }
 
-function reportSummarySnapshot(report: EvaluationReport): Record<string, VariantSummary> {
+function reportSummarySnapshot(report: EvaluationReport, treatmentVariant: string): Record<string, VariantSummary> {
   return {
     baseline: report.summary.baseline || ({} as VariantSummary),
-    skill: report.summary.skill || ({} as VariantSummary),
+    [treatmentVariant]: report.summary[treatmentVariant] || ({} as VariantSummary),
   };
 }
 
@@ -82,8 +82,8 @@ function buildBatchItems(skillResults: CompletedEachSkillRun[]): EvaluationBatch
     status: 'completed',
     sampleCount: report.meta.sampleCount,
     totalCostUSD: report.meta.totalCostUSD,
-    artifactHash: report.meta.artifactHashes?.skill || null,
-    summary: reportSummarySnapshot(report),
+    artifactHash: report.meta.artifactHashes?.[name] || null,
+    summary: reportSummarySnapshot(report, name),
     ...(report.variance ? { variance: report.variance } : {}),
   }));
 }
@@ -102,7 +102,7 @@ function buildExecutorRuntimesBySkill({
   const executorRuntimes: Record<string, ExecutorRuntimeFingerprint> = {};
   for (const skill of skillResults) {
     executorRuntimes[skill.name] =
-      skill.report.meta.executorRuntimes?.skill
+      skill.report.meta.executorRuntimes?.[skill.name]
       ?? skill.report.meta.executorRuntime
       ?? getExecutorRuntimeFingerprint(executorName, model, {
         skillDir: skill.skillPath ? dirname(skill.skillPath) : skillDir,
@@ -298,14 +298,17 @@ export async function executeEachEvaluationRuns({
     const entry = skillEntries[i];
     onSkillProgress?.({ phase: 'start', skill: entry.name, current: i + 1, total: skillEntries.length });
 
-    // each mode 的实验结构固定为 "baseline (control) vs skill (treatment)"。
+    // each mode 的实验结构固定为 baseline control vs 当前 skill treatment。
+    const perSkillAllowedSkills = variantAllowedSkills?.[entry.name] !== undefined
+      ? { ...variantAllowedSkills, [entry.skillPath]: variantAllowedSkills[entry.name] }
+      : variantAllowedSkills;
     const skillArtifacts = resolveArtifacts(
       resolve(skillDir),
       ['baseline', entry.skillPath],
-      { strictBaseline, variantAllowedSkills },
+      { strictBaseline, variantAllowedSkills: perSkillAllowedSkills },
     ).map((artifact) => {
       if (artifact.name === entry.skillPath) {
-        return { ...artifact, name: 'skill', experimentRole: 'treatment' as const };
+        return { ...artifact, name: entry.name, experimentRole: 'treatment' as const };
       }
       return { ...artifact, experimentRole: 'control' as const };
     });

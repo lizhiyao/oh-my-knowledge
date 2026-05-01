@@ -7,7 +7,7 @@ import { discoverVariants, discoverEachSkills, loadSkills } from '../src/inputs/
 import { generateRunId, persistReport } from '../src/eval-core/evaluation-reporting.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import type { Report, VariantSpec } from '../src/types/index.js';
 
@@ -589,11 +589,12 @@ describe('runEachEvaluation', () => {
         executorName: 'claude',
         persistJob: false,
         runSingleEvaluation: async (options) => {
+          const treatment = options.artifacts.find((artifact) => artifact.experimentRole === 'treatment')?.name ?? 'alpha';
           const report: Report = {
             kind: 'evaluation',
             id: options.runId!,
             meta: {
-              variants: ['baseline', 'skill'],
+              variants: ['baseline', treatment],
               model: options.model,
               judgeModel: null,
               executor: options.executorName,
@@ -603,9 +604,9 @@ describe('runEachEvaluation', () => {
               timestamp: '2026-05-01T00:00:00.000Z',
               cliVersion: 'test',
               nodeVersion: 'test',
-              artifactHashes: { baseline: 'no-skill', skill: 'hash-alpha' },
+              artifactHashes: { baseline: 'no-skill', [treatment]: 'hash-alpha' },
             },
-            summary: { baseline: summary(3), skill: summary(4) },
+            summary: { baseline: summary(3), [treatment]: summary(4) },
             results: [],
           };
           return { report, filePath: persistReport(report, options.outputDir) };
@@ -617,10 +618,18 @@ describe('runEachEvaluation', () => {
       assert.equal(result.report.items.length, 1);
       assert.equal(result.report.items[0].name, 'alpha');
       assert.equal(result.report.items[0].artifactHash, 'hash-alpha');
+      assert.ok(result.report.items[0].summary.alpha);
+      assert.equal(result.report.items[0].summary.skill, undefined);
       assert.ok(result.report.items[0].reportId.startsWith(`${result.report.id}-01-alpha`));
       assert.ok(result.filePath);
       assert.ok(existsSync(result.filePath!));
-      assert.ok(existsSync(join(outputDir, `${result.report.items[0].reportId}.json`)));
+      const childPath = join(outputDir, `${result.report.items[0].reportId}.json`);
+      assert.ok(existsSync(childPath));
+      const childReport = JSON.parse(readFileSync(childPath, 'utf-8')) as Report;
+      assert.deepEqual(childReport.meta.variants, ['baseline', 'alpha']);
+      assert.equal(childReport.meta.artifactHashes.alpha, 'hash-alpha');
+      assert.ok(childReport.summary.alpha);
+      assert.equal(childReport.summary.skill, undefined);
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

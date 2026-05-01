@@ -127,7 +127,7 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
       const scoreCol = run.items.length > 0
         ? run.items.map((item) => {
           const baselineScore = scoreOf(item.summary.baseline);
-          const skillScore = scoreOf(item.summary.skill);
+          const skillScore = scoreOf(item.summary[item.name]);
           const score = skillScore ?? baselineScore;
           if (score == null) return `<span style="color:var(--text-muted)">${e(item.name)}: -</span>`;
           const color = score >= 4 ? 'var(--green)' : score >= 3 ? 'var(--yellow)' : 'var(--red)';
@@ -486,7 +486,7 @@ export function renderBatchIndexDetail(report: EvaluationBatchIndex | null, lang
 
   const rows = report.items.map((item) => {
     const baselineScore = scoreOf(item.summary.baseline);
-    const skillScore = scoreOf(item.summary.skill);
+    const skillScore = scoreOf(item.summary[item.name]);
     const improvement = improvementOf(baselineScore, skillScore);
     const impColor = improvement.startsWith('+') ? 'var(--green)' : improvement.startsWith('-') ? 'var(--red)' : 'var(--text-muted)';
     const hashShort = item.artifactHash ? e(item.artifactHash).slice(0, 12) : '-';
