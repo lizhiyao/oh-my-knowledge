@@ -74,6 +74,7 @@ function renderChart(points: ChartPoint[]): string {
  * Render the trends history table.
  */
 function renderTable(variantName: string, runs: Report[], lang: Lang): string {
+  const langQ = lang === 'zh' ? '' : `?lang=${lang}`;
   const rows = runs.map((r) => {
     const s: Partial<VariantSummary> = r.summary?.[variantName] || {};
     const m: ReportMeta = r.meta;
@@ -93,11 +94,11 @@ function renderTable(variantName: string, runs: Report[], lang: Lang): string {
     }
 
     return `<tr>
-      <td><a href="/reports/${e(r.id)}">${fmtLocalTime(m.timestamp)}</a></td>
+      <td><a href="/reports/${e(r.id)}${langQ}">${fmtLocalTime(m.timestamp)}</a></td>
       <td>${s.avgCompositeScore ?? '-'}</td>
       <td>${gapCell}</td>
       <td>${s.avgFullNumTurns ?? s.avgNumTurns ?? '-'}</td>
-      <td>${fmtCost(s.avgCostPerSample)}</td>
+      <td>${fmtCost(s.avgCostPerSample, s.execCostReported !== false && s.judgeCostReported !== false)}</td>
       <td><code style="font-size:11px">${e(hash.slice(0, 8))}</code></td>
       <td>${commitCell}</td>
       <td>${branchCell}</td>
@@ -128,6 +129,7 @@ function renderTable(variantName: string, runs: Report[], lang: Lang): string {
  * Render full trends page for a variant.
  */
 export function renderTrendsBody(variantName: string, runs: Report[], lang: Lang = 'zh'): string {
+  const langQ = lang === 'zh' ? '' : `?lang=${lang}`;
   // Reverse to ASC for chart
   const sorted = [...runs].reverse();
 
@@ -143,7 +145,7 @@ export function renderTrendsBody(variantName: string, runs: Report[], lang: Lang
   const countLabel = lang === 'zh' ? `共 ${runs.length} 次评测` : `${runs.length} evaluations`;
 
   return `
-    <nav class="nav"><a href="/" data-i18n="backToList">${t('backToList', lang)}</a></nav>
+    <nav class="nav"><a href="/${langQ}" data-i18n="backToList">${t('backToList', lang)}</a></nav>
     <h1>${title}</h1>
     <p class="subtitle">${countLabel}</p>
     ${chart}

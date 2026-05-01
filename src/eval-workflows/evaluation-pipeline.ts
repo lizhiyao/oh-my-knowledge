@@ -71,7 +71,7 @@ async function initializeEvaluationRunState({
   jobStore,
   persistJob,
   repeat,
-  each,
+  batch,
   judgeRepeat,
   judgeModels,
   bootstrap,
@@ -98,7 +98,7 @@ async function initializeEvaluationRunState({
   jobStore?: JobStore | null;
   persistJob?: boolean;
   repeat?: number;
-  each?: boolean;
+  batch?: boolean;
   judgeRepeat?: number;
   judgeModels?: import('../types/index.js').JudgeConfig[];
   bootstrap?: boolean;
@@ -124,7 +124,7 @@ async function initializeEvaluationRunState({
     owner,
     tags,
     repeat,
-    each,
+    batch,
     judgeRepeat,
     judgeModels,
     bootstrap,
@@ -361,8 +361,8 @@ export interface EvaluationPipelineOptions {
   layeredStats?: boolean;
   /** 透传到 meta.request.repeat */
   repeat?: number;
-  /** 透传到 meta.request.each */
-  each?: boolean;
+  /** 透传到 meta.request.batch */
+  batch?: boolean;
   /** 透传到 meta.request.judgeRepeat 与 grade()，每条 sample × dimension judge N 次 */
   judgeRepeat?: number;
   /** Multi-judge ensemble configs (≥ 2 entries triggers ensemble mode). */
@@ -379,6 +379,8 @@ export interface EvaluationPipelineOptions {
    *  isolation-disabled pre-flight warnings). True/undefined = default behavior
    *  (no warning); false = user explicitly disabled, warn if ~/.claude/skills/ has content. */
   strictBaseline?: boolean;
+  /** Explicit persisted run id. Used by batch workflows that need stable child ids. */
+  runId?: string;
 }
 
 export async function executeEvaluationPipeline({
@@ -412,7 +414,7 @@ export async function executeEvaluationPipeline({
   requires,
   layeredStats = false,
   repeat,
-  each,
+  batch,
   judgeRepeat,
   judgeModels,
   bootstrap,
@@ -420,6 +422,7 @@ export async function executeEvaluationPipeline({
   lengthDebias = true,
   budget,
   strictBaseline,
+  runId,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -438,11 +441,11 @@ export async function executeEvaluationPipeline({
     project,
     owner,
     tags,
-    runId: generateRunId(variantNames),
+    runId: runId ?? generateRunId(variantNames),
     jobStore,
     persistJob,
     repeat,
-    each,
+    batch,
     judgeRepeat,
     judgeModels,
     bootstrap,
@@ -493,6 +496,7 @@ export async function executeEvaluationPipeline({
     const { results, totalCostUSD, skipped, budgetExhausted } = await executeTasks({
       tasks,
       executor,
+      executorName,
       judgeExecutor,
       model,
       judgeModel,

@@ -73,6 +73,7 @@ export type CliMessageKey =
   | 'cli.progress.judged'
   | 'cli.progress.skipped'
   | 'cli.progress.sample_done'
+  | 'cli.progress.sample_failed_done'
   // bench run 参数校验 (parseRunConfig)
   | 'cli.run.invalid_repeat'
   | 'cli.run.invalid_judge_repeat'
@@ -248,6 +249,10 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     zh: '[{i}/{n}] {sample}/{variant} ✓ {ms}ms {input}+{output} tokens{cost}{score}\n',
     en: '[{i}/{n}] {sample}/{variant} ✓ {ms}ms {input}+{output} tokens{cost}{score}\n',
   },
+  'cli.progress.sample_failed_done': {
+    zh: '[{i}/{n}] {sample}/{variant} ✗ {ms}ms {input}+{output} tokens{cost} error={error}\n',
+    en: '[{i}/{n}] {sample}/{variant} ✗ {ms}ms {input}+{output} tokens{cost} error={error}\n',
+  },
   'cli.run.invalid_repeat': {
     zh: '⚠ --repeat "{value}" 无效 (期望 ≥ 1 的整数), 已按 1 次评测执行\n',
     en: '⚠ --repeat "{value}" is invalid (expected an integer ≥ 1), falling back to 1 run\n',
@@ -381,8 +386,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'No eval-samples need generating (all skills already have paired files)',
   },
   'cli.gen.batch_summary': {
-    zh: '\n共生成 {n} 份 eval-samples, 请审查后运行: omk bench run --each',
-    en: '\nGenerated {n} eval-samples files. Review them, then run: omk bench run --each',
+    zh: '\n共生成 {n} 份 eval-samples, 请审查后运行: omk bench run --batch',
+    en: '\nGenerated {n} eval-samples files. Review them, then run: omk bench run --batch',
   },
   'cli.gen.specify_skill_path': {
     zh: '请指定 skill 文件路径, 例如: omk bench gen-samples skills/my-skill.md',
@@ -417,20 +422,20 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '\n=== Evolution: {path} ===\n',
   },
   'cli.evolve.round_baseline': {
-    zh: '第 0 轮 (基线): score={score} (${cost})\n',
-    en: 'Round 0 (baseline): score={score} (${cost})\n',
+    zh: '第 0 轮 (基线): score={score} ({cost})\n',
+    en: 'Round 0 (baseline): score={score} ({cost})\n',
   },
   'cli.evolve.round_error': {
     zh: '第 {round} 轮: ✗ 改进生成失败: {error}\n',
     en: 'Round {round}: ✗ improvement generation failed: {error}\n',
   },
   'cli.evolve.round_done': {
-    zh: '第 {round} 轮: score={score} ({delta}) {status} (${cost})\n',
-    en: 'Round {round}: score={score} ({delta}) {status} (${cost})\n',
+    zh: '第 {round} 轮: score={score} ({delta}) {status} ({cost})\n',
+    en: 'Round {round}: score={score} ({delta}) {status} ({cost})\n',
   },
   'cli.evolve.summary': {
-    zh: '\n✅ {start} → {final} (+{percent}%) | 共 {rounds} 轮 | ${cost}\n',
-    en: '\n✅ {start} → {final} (+{percent}%) | {rounds} rounds | ${cost}\n',
+    zh: '\n✅ {start} → {final} (+{percent}%) | 共 {rounds} 轮 | {cost}\n',
+    en: '\n✅ {start} → {final} (+{percent}%) | {rounds} rounds | {cost}\n',
   },
   'cli.evolve.best_path': {
     zh: '最优版本: {best} → {target}\n',
@@ -532,7 +537,7 @@ bench run 选项:
                          在一个文件里声明 samples + variants + model + executor。
                          CLI flag 会覆盖配置文件中的同名字段。
                          配置中的相对路径相对于配置文件所在目录解析。
-  --model <name>         被测模型 (默认: sonnet)
+  --model <name>         任务执行模型 (默认: sonnet)
   --judge-model <name>   评委模型 (默认: haiku)
   --output-dir <path>    报告输出目录 (默认: ~/.oh-my-knowledge/reports/)
   --no-judge             跳过 LLM 评委
@@ -559,10 +564,10 @@ bench run 选项:
                          stderr 警告提示耗时。
   --retry <n>            失败任务最多重试 N 次, 指数退避 (默认: 0)
   --resume <report-id>   从历史报告恢复, 跳过已完成任务
-  --executor <name>      执行器: claude / openai / gemini / anthropic-api /
-                         openai-api, 或任意 shell 命令 (例如 "python my_provider.py")
+  --executor <name>      执行器: claude / claude-sdk / codex / openai / gemini /
+                         anthropic-api / openai-api, 或任意 shell 命令 (例如 "python my_provider.py")
   --judge-executor <name> 评委执行器 (默认: 同 --executor)
-  --each                 对每个 skill 独立 vs baseline 评测
+  --batch                批量评测:每个 skill 独立 vs baseline
                          需要每个 skill 有配对的 {name}.eval-samples.json
   --skip-preflight       评测前跳过模型连通性预检
   --mcp-config <path>    通过 MCP server 抓 URL 用的 MCP 配置文件
@@ -603,10 +608,10 @@ bench report 选项:
   --dev                  开发模式: lib/ 文件改动时自动重启
 
 bench gen-samples 选项:
-  --each                 为所有还没 eval-samples 的 skill 生成
+  --batch                为所有还没 eval-samples 的 skill 生成
   --count <n>            每个 skill 生成多少条用例 (默认: 5)
   --model <name>         生成用的模型 (默认: sonnet)
-  --skill-dir <path>     skill 目录 (默认: skills), 配合 --each 用
+  --skill-dir <path>     skill 目录 (默认: skills), 配合 --batch 用
 
 analyze 选项:
   <dir>                  输入: cc session JSONL 文件 / 目录
@@ -622,7 +627,7 @@ bench evolve 选项:
   --rounds <n>           最大演化轮数 (默认: 5)
   --target <score>       达到该分数即提前停止
   --samples <path>       用例文件 (默认: eval-samples.json)
-  --model <name>         被测模型 (默认: sonnet)
+  --model <name>         任务执行模型 (默认: sonnet)
   --judge-model <name>   评委模型 (默认: haiku)
   --improve-model <name> 生成改进版的模型 (默认: sonnet)
   --concurrency <n>      并发评测任务数 (默认: 1)
@@ -640,7 +645,7 @@ bench evolve 选项:
   omk bench run --control baseline --treatment v1,v2,v3
   omk bench run --config eval.yaml
   omk bench run --config eval.yaml --model sonnet-4.6   # CLI 覆盖配置
-  omk bench run --each
+  omk bench run --batch
   omk bench run --dry-run
   omk bench report --port 8080
   omk bench report --export v1-vs-v2-20260326-1832
@@ -678,7 +683,7 @@ Options for "bench run":
                          Declares samples + variants + model + executor in one file.
                          CLI flags override config fields when both are provided.
                          Relative paths inside the config are resolved against its directory.
-  --model <name>         Model under test (default: sonnet)
+  --model <name>         Task execution model (default: sonnet)
   --judge-model <name>   Judge model (default: haiku)
   --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
   --no-judge             Skip LLM judging
@@ -706,10 +711,10 @@ Options for "bench run":
                          triggers a stderr warning about runtime cost.
   --retry <n>            Retry failed tasks up to N times with exponential backoff (default: 0)
   --resume <report-id>   Resume from a previous report, skipping completed tasks
-  --executor <name>      Executor: claude, openai, gemini, anthropic-api, openai-api,
-                         or any shell command (e.g. "python my_provider.py")
+  --executor <name>      Executor: claude, claude-sdk, codex, openai, gemini,
+                         anthropic-api, openai-api, or any shell command (e.g. "python my_provider.py")
   --judge-executor <name> Executor for LLM judge (default: same as --executor)
-  --each                 Evaluate each skill independently against baseline
+  --batch                Batch evaluation: each skill independently against baseline
                          Requires {name}.eval-samples.json paired with each skill
   --skip-preflight       Skip model connectivity check before evaluation
   --mcp-config <path>    MCP config file for URL fetching via MCP servers
@@ -757,10 +762,10 @@ Options for "bench report":
   --dev                  Dev mode: auto-restart on lib/ file changes
 
 Options for "bench gen-samples":
-  --each                 Generate for all skills missing eval-samples
+  --batch                Generate for all skills missing eval-samples
   --count <n>            Number of samples to generate per skill (default: 5)
   --model <name>         Model for generation (default: sonnet)
-  --skill-dir <path>     Skill directory (default: skills), used with --each
+  --skill-dir <path>     Skill directory (default: skills), used with --batch
 
 Options for "analyze":
   <dir>                  Input: cc session JSONL file / dir (e.g. ~/.claude/projects/<slug>)
@@ -775,7 +780,7 @@ Options for "bench evolve":
   --rounds <n>           Maximum evolution rounds (default: 5)
   --target <score>       Stop early when score reaches this threshold
   --samples <path>       Sample file (default: eval-samples.json)
-  --model <name>         Model under test (default: sonnet)
+  --model <name>         Task execution model (default: sonnet)
   --judge-model <name>   Judge model (default: haiku)
   --improve-model <name> Model for generating improvements (default: sonnet)
   --concurrency <n>      Parallel eval tasks (default: 1)
@@ -793,7 +798,7 @@ Examples:
   omk bench run --control baseline --treatment v1,v2,v3
   omk bench run --config eval.yaml
   omk bench run --config eval.yaml --model sonnet-4.6   # CLI overrides config
-  omk bench run --each
+  omk bench run --batch
   omk bench run --dry-run
   omk bench report --port 8080
   omk bench report --export v1-vs-v2-20260326-1832

@@ -6,7 +6,7 @@
 
 import { readdir, readFile, writeFile, unlink, access, mkdir, rename } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { EvaluationJob, JobStore, Report, ReportMeta, ReportStore, VariantSummary } from '../types/index.js';
+import type { BatchEvaluationReport, EvaluationJob, EvaluationReport, JobStore, ReportDocument, ReportMeta, ReportStore, VariantSummary } from '../types/index.js';
 
 // Per-id in-memory mutex for safe read-modify-write.
 // Uses a queue to avoid the race window between checking and acquiring the lock.
@@ -39,7 +39,39 @@ export function createFileStore(dir: string): ReportStore {
     }
   }
 
-  async function list(): Promise<Report[]> {
+  function normalizeReportDocument(data: unknown, fallbackId: string): ReportDocument | null {
+    if (!data || typeof data !== 'object') return null;
+    const record = data as Record<string, unknown>;
+    if (record.kind === 'evaluation') {
+      if (!record.meta || !record.summary || !Array.isArray(record.results)) return null;
+      return { ...record, id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
+    }
+    if (record.kind === 'batch-evaluation') {
+      if (!record.meta || !Array.isArray(record.items)) return null;
+      return { ...record, id: typeof record.id === 'string' && record.id ? record.id : fallbackId } as unknown as ReportDocument;
+    }
+    if (
+      record.kind === undefined
+      && record.overview === undefined
+      && record.artifacts === undefined
+      && record.meta
+      && record.summary
+      && Array.isArray(record.results)
+    ) {
+      return {
+        ...record,
+        kind: 'evaluation',
+        id: typeof record.id === 'string' && record.id ? record.id : fallbackId,
+      } as unknown as ReportDocument;
+    }
+    return null;
+  }
+
+  function isEvaluationReport(report: ReportDocument): report is EvaluationReport {
+    return report.kind === 'evaluation';
+  }
+
+  async function list(): Promise<ReportDocument[]> {
     try {
       await access(dir);
     } catch {
@@ -49,14 +81,12 @@ export function createFileStore(dir: string): ReportStore {
       .filter((f) => f.endsWith('.json'))
       .sort()
       .reverse();
-    const runs: Report[] = [];
+    const runs: ReportDocument[] = [];
     for (const file of files) {
       try {
         const data = JSON.parse(await readFile(join(dir, file), 'utf-8'));
-        if (data && data.meta) {
-          if (!data.id) data.id = file.replace(/\.json$/, '');
-          runs.push(data);
-        }
+        const report = normalizeReportDocument(data, file.replace(/\.json$/, ''));
+        if (report) runs.push(report);
       } catch { /* skip corrupt files */ }
     }
     runs.sort((a, b) => {
@@ -67,17 +97,16 @@ export function createFileStore(dir: string): ReportStore {
     return runs;
   }
 
-  async function get(id: string): Promise<Report | null> {
+  async function get(id: string): Promise<ReportDocument | null> {
     try {
       const data = JSON.parse(await readFile(join(dir, `${id}.json`), 'utf-8'));
-      if (!data.id) data.id = id;
-      return data;
+      return normalizeReportDocument(data, id);
     } catch {
       return null;
     }
   }
 
-  async function save(id: string, report: Report): Promise<void> {
+  async function save(id: string, report: ReportDocument): Promise<void> {
     await ensureDir();
     const tmpPath = join(dir, `${id}.json.tmp.${Date.now()}.${Math.random().toString(36).slice(2)}`);
     await writeFile(tmpPath, JSON.stringify(report, null, 2));
@@ -88,7 +117,7 @@ export function createFileStore(dir: string): ReportStore {
    * Atomic read-modify-write with in-memory mutex.
    * Prevents concurrent updates from overwriting each other.
    */
-  async function update(id: string, mutator: (report: Report) => void): Promise<Report | null> {
+  async function update(id: string, mutator: (report: ReportDocument) => void): Promise<ReportDocument | null> {
     return withLock(id, async () => {
       const report = await get(id);
       if (!report) return null;
@@ -118,14 +147,14 @@ export function createFileStore(dir: string): ReportStore {
     }
   }
 
-  async function findByVariant(variantName: string): Promise<Report[]> {
+  async function findByVariant(variantName: string): Promise<EvaluationReport[]> {
     const all = await list();
-    return all.filter((r) => r.meta?.variants?.includes(variantName));
+    return all.filter(isEvaluationReport).filter((r) => r.meta?.variants?.includes(variantName));
   }
 
-  async function findByArtifactHash(hash: string): Promise<Report[]> {
+  async function findByArtifactHash(hash: string): Promise<EvaluationReport[]> {
     const all = await list();
-    return all.filter((r) => {
+    return all.filter(isEvaluationReport).filter((r) => {
       const hashes = r.meta?.artifactHashes || {};
       return Object.values(hashes).includes(hash);
     });
@@ -174,8 +203,10 @@ export async function queryJob(jobStore: JobStore, id: string): Promise<Evaluati
 
 export interface RunListItem {
   id: string;
-  meta: ReportMeta;
-  summary: Report['summary'];
+  kind: ReportDocument['kind'];
+  meta: ReportDocument['meta'];
+  summary?: EvaluationReport['summary'];
+  items?: BatchEvaluationReport['items'];
 }
 
 export interface TrendPoint {
@@ -192,18 +223,19 @@ export interface TrendPoint {
 export interface TrendQueryResult {
   variant: string;
   points: TrendPoint[];
-  runs: Report[];
+  runs: EvaluationReport[];
 }
 
 export async function queryRunList(reportStore: ReportStore): Promise<RunListItem[]> {
   return (await reportStore.list()).map((report) => ({
     id: report.id,
+    kind: report.kind,
     meta: report.meta,
-    summary: report.summary,
+    ...(report.kind === 'evaluation' ? { summary: report.summary } : { items: report.items }),
   }));
 }
 
-export async function queryRun(reportStore: ReportStore, id: string): Promise<Report | null> {
+export async function queryRun(reportStore: ReportStore, id: string): Promise<ReportDocument | null> {
   return reportStore.get(id);
 }
 

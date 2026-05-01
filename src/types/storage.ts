@@ -1,15 +1,15 @@
 import type { EvaluationJob } from './eval.js';
-import type { Report } from './report.js';
+import type { EvaluationReport, ReportDocument } from './report.js';
 
 export interface ReportStore {
-  list(): Promise<Report[]>;
-  get(id: string): Promise<Report | null>;
-  save(id: string, report: Report): Promise<void>;
-  update(id: string, mutator: (report: Report) => void): Promise<Report | null>;
+  list(): Promise<ReportDocument[]>;
+  get(id: string): Promise<ReportDocument | null>;
+  save(id: string, report: ReportDocument): Promise<void>;
+  update(id: string, mutator: (report: ReportDocument) => void): Promise<ReportDocument | null>;
   remove(id: string): Promise<boolean>;
   exists(id: string): Promise<boolean>;
-  findByVariant(variantName: string): Promise<Report[]>;
-  findByArtifactHash(hash: string): Promise<Report[]>;
+  findByVariant(variantName: string): Promise<EvaluationReport[]>;
+  findByArtifactHash(hash: string): Promise<EvaluationReport[]>;
 }
 
 export interface JobStore {

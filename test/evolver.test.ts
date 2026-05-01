@@ -13,6 +13,7 @@ function makeSummary(avgScore: number): VariantSummary {
 
 function makeReport(variantName: string, sampleScores: Record<string, number>, avgScore: number): Report {
   return {
+    kind: 'evaluation',
     id: `${variantName}-id`,
     meta: {
       variants: [variantName],

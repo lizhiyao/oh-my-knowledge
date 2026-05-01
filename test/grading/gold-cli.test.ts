@@ -34,6 +34,7 @@ const buildReport = (
   scoresById: Record<string, number>,
   judgeModel = 'claude-sonnet-4-6',
 ): Report => ({
+  kind: 'evaluation',
   id: 'r1',
   meta: {
     variants: [variant],

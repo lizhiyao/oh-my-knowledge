@@ -110,6 +110,9 @@ export interface EvolveRoundProgressInfo {
   delta?: number;
   accepted?: boolean;
   costUSD?: number;
+  /** False = exec 或 judge executor 不报 cost(如 codex)→ costUSD 是占位 0。
+   *  CLI 输出据此把 "$0.0000" 改成「—」。 */
+  costReported?: boolean;
   error?: string;
 }
 
@@ -143,6 +146,8 @@ export interface EvolveResult {
   bestRound: number;
   totalRounds: number;
   totalCostUSD: number;
+  /** False = 任一轮的 exec / judge 不报 cost → totalCostUSD 是 lower-bound 而非真值。 */
+  costReported?: boolean;
   trajectory: TrajectoryEntry[];
   bestSkillPath: string;
   allVersions: string[];
@@ -208,6 +213,7 @@ export function mergeEvolveReports(
   const runId = `evolve-${skillName}-${generateRunId([skillName]).split('-').slice(-2).join('-')}`;
 
   const report: Report = {
+    kind: 'evaluation',
     id: runId,
     meta: {
       ...firstReport.meta,
@@ -223,7 +229,7 @@ export function mergeEvolveReports(
 
   // pass samples to populate analysis.sampleQuality (capability/difficulty/
   // construct/provenance coverage). Without samples, sampleQuality is omitted but
-  // insights/suggestions/summary still computed.
+  // structured insights are still computed.
   report.analysis = analyzeResults(report, { samples });
 
   return report;
@@ -264,9 +270,14 @@ export async function evolveSkill({
   let bestScore = 0;
   let bestRound = 0;
   let totalCostUSD = 0;
+  let totalCostReported = true; // 任一 round 走不报 cost 的 executor → 整体 lower-bound
   let consecutiveRejects = 0;
   const trajectory: TrajectoryEntry[] = [];
   const roundReports: RoundReport[] = [];
+
+  // 给定一个 report 看任一 variant 的 exec/judge cost 是否未报告
+  const reportHasUnreportedCost = (rep: Report): boolean =>
+    Object.values(rep.summary).some((v) => v.execCostReported === false || v.judgeCostReported === false);
 
   // Round 0: baseline evaluation
   const baselineReport = await evaluate(r0Path, {
@@ -276,10 +287,12 @@ export async function evolveSkill({
   bestScore = baselineReport.summary[baselineVariantKey]?.avgCompositeScore ?? 0;
   const baselineCost = baselineReport.meta.totalCostUSD;
   totalCostUSD += baselineCost;
+  const baselineCostReported = !reportHasUnreportedCost(baselineReport);
+  if (!baselineCostReported) totalCostReported = false;
 
   trajectory.push({ round: 0, score: bestScore, delta: 0, accepted: true, costUSD: baselineCost });
   roundReports.push({ round: 0, accepted: true, report: baselineReport });
-  if (onRoundProgress) onRoundProgress({ round: 0, totalRounds: rounds, phase: 'baseline', score: bestScore, costUSD: baselineCost });
+  if (onRoundProgress) onRoundProgress({ round: 0, totalRounds: rounds, phase: 'baseline', score: bestScore, costUSD: baselineCost, costReported: baselineCostReported });
 
   // Evolution loop
   for (let round = 1; round <= rounds; round++) {
@@ -296,6 +309,7 @@ export async function evolveSkill({
         samplesPath: absSamplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, skipPreflight, onProgress,
       });
       totalCostUSD += lastReport.meta.totalCostUSD;
+      if (reportHasUnreportedCost(lastReport)) totalCostReported = false;
     }
     const lastVariantKey = Object.keys(lastReport.summary)[0];
     const weakSamples = extractWeakSamples(lastReport, lastVariantKey);
@@ -310,9 +324,11 @@ export async function evolveSkill({
       consecutiveRejects++;
       trajectory.push({ round, score: bestScore, delta: 0, accepted: false, costUSD: improveResult.costUSD });
       totalCostUSD += improveResult.costUSD;
+      if (improveResult.costReportedByExecutor === false) totalCostReported = false;
       if (consecutiveRejects >= 2) break;
       continue;
     }
+    if (improveResult.costReportedByExecutor === false) totalCostReported = false;
 
     const candidateContent = parseImprovedSkill(improveResult.output!);
     const candidatePath = join(evolveDir, `${skillName}.r${round}.md`);
@@ -326,6 +342,8 @@ export async function evolveSkill({
     const candidateVariantKey = Object.keys(candidateReport.summary)[0];
     const candidateScore = candidateReport.summary[candidateVariantKey]?.avgCompositeScore ?? 0;
     const roundCost = improveResult.costUSD + candidateReport.meta.totalCostUSD;
+    const roundCostReported = improveResult.costReportedByExecutor !== false && !reportHasUnreportedCost(candidateReport);
+    if (!roundCostReported) totalCostReported = false;
     totalCostUSD += roundCost;
 
     const delta = candidateScore - bestScore;
@@ -342,7 +360,7 @@ export async function evolveSkill({
     }
 
     trajectory.push({ round, score: candidateScore, delta, accepted, costUSD: roundCost });
-    if (onRoundProgress) onRoundProgress({ round, totalRounds: rounds, phase: 'done', score: candidateScore, delta, accepted, costUSD: roundCost });
+    if (onRoundProgress) onRoundProgress({ round, totalRounds: rounds, phase: 'done', score: candidateScore, delta, accepted, costUSD: roundCost, costReported: roundCostReported });
 
     // Early stop
     if (target && bestScore >= target) break;
@@ -368,6 +386,7 @@ export async function evolveSkill({
     bestRound,
     totalRounds: trajectory.length - 1, // excluding baseline
     totalCostUSD: Number(totalCostUSD.toFixed(6)),
+    ...(totalCostReported ? {} : { costReported: false }),
     trajectory,
     bestSkillPath: allVersions[bestRound],
     allVersions,

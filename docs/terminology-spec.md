@@ -377,7 +377,7 @@ baseline-kind 默认 `[]`(strict),其他 kind 默认 `undefined`(SDK 全发现)�
 
 ### 5. cache key 版本
 
-cache key 升级到 `v2:` prefix,含 allowedSkills 入键 — 切换 strict / non-strict 不会误命中。
+cache key 当前为 `v4:` prefix,含 allowedSkills、executor 名和 executor runtime 指纹入键 — 切换 strict / non-strict、跨 executor 或 binary / SDK 版本变化都不会误命中旧输出。
 
 ### 6. executor 兼容
 

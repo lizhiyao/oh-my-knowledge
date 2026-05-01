@@ -1,6 +1,6 @@
 {
   "name": "oh-my-knowledge",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "description": "LLM evaluation framework with built-in statistical rigor: bootstrap CI, Krippendorff α, length-debias, saturation curves. Native Claude Code skill / RAG / agent / prompt evaluation.",
   "type": "module",
   "bin": {
@@ -62,6 +62,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.89",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@openai/codex-sdk": "0.128.0",
     "ajv": "^8.18.0",
     "js-yaml": "^4.1.1",
     "simple-statistics": "^7.8.9"

@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { analyzeResults } from '../../src/analysis/report-diagnostics.js';
+import { analyzeResults, generateAnalysisSummary } from '../../src/analysis/report-diagnostics.js';
 import type { Report } from '../../src/types/index.js';
 
 function toReport(value: unknown): Report {
@@ -12,7 +12,7 @@ describe('analyzeResults', () => {
     const report = { meta: { variants: ['v1', 'v2'] }, results: [] };
     const analysis = analyzeResults(toReport(report));
     assert.equal(analysis.insights.length, 0);
-    assert.equal(analysis.suggestions.length, 0);
+    assert.equal(analysis.suggestions, undefined);
   });
 
   it('detects low-discrimination assertions', () => {
@@ -32,6 +32,8 @@ describe('analyzeResults', () => {
     const lowDisc = analysis.insights.find((i) => i.type === 'low_discrimination_all_passed');
     assert.ok(lowDisc);
     assert.equal(lowDisc!.severity, 'info');
+    assert.equal('message' in lowDisc!, false);
+    assert.equal(analysis.suggestions, undefined);
   });
 
   it('detects uniform scores', () => {
@@ -131,5 +133,25 @@ describe('analyzeResults', () => {
     const highCost = analysis.insights.find((i) => i.type === 'high_cost_sample');
     assert.ok(highCost);
     assert.ok((highCost!.details as Array<{ sample_id: string }>).some((d) => d.sample_id === 's003'));
+  });
+
+  it('generates localized summary from report data', () => {
+    const report = toReport({
+      meta: { variants: ['v1', 'v2'] },
+      summary: {
+        v1: { avgCompositeScore: 4.0, avgFactScore: 4.0, avgCostPerSample: 0.01, avgDurationMs: 1000, avgNumTurns: 1, successCount: 1, totalSamples: 1 },
+        v2: { avgCompositeScore: 4.5, avgFactScore: 4.5, avgCostPerSample: 0.02, avgDurationMs: 1200, avgNumTurns: 1, successCount: 1, totalSamples: 1 },
+      },
+      results: [{ sample_id: 's001', variants: { v1: { compositeScore: 4.0 }, v2: { compositeScore: 4.5 } } }],
+    });
+
+    const en = generateAnalysisSummary(report, 'en');
+    const zh = generateAnalysisSummary(report, 'zh');
+
+    assert.ok(en?.includes('【Conclusion】'));
+    assert.ok(en?.includes('Key differences'));
+    assert.ok(!/[\u3400-\u9fff]/.test(en || ''));
+    assert.ok(zh?.includes('【结论】'));
+    assert.ok(zh?.includes('关键差异'));
   });
 });

@@ -22,6 +22,11 @@ export interface ExecResult {
   cacheReadTokens: number;
   cacheCreationTokens: number;
   costUSD: number;
+  /** Whether the underlying executor binary/SDK reported a USD cost figure.
+   *  - undefined / true : `costUSD` is authoritative (default — Anthropic SDK / OpenAI API / etc 都报)
+   *  - false            : executor 不报 cost,`costUSD` 是占位 0,renderer 应显示「未报告」/「—」。
+   *  目前只有 codex-cli executor 设 false (codex 0.125 binary 不输出 cost)。 */
+  costReportedByExecutor?: boolean;
   stopReason: string;
   numTurns: number;
   fullNumTurns?: number;

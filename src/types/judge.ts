@@ -22,6 +22,8 @@ export interface EnsembleJudgeResult {
   reasoning?: string;
   /** Cost in USD across all calls from this judge. */
   costUSD?: number;
+  /** False = 该 judge 的 executor 不报 cost(如 codex)→ costUSD 是占位 0。 */
+  costReportedByExecutor?: boolean;
 }
 
 /** Inter-judge agreement metrics across an ensemble. Both metrics are pairwise-averaged. */
@@ -51,12 +53,17 @@ export interface AssertionResults {
   score: number;
   details: AssertionDetail[];
   judgeCostUSD?: number;
+  /** False = async assertion 用的 judge executor 不报 cost(如 codex)→ judgeCostUSD 是占位 0。
+   *  缺位 / true 当真值。renderer 据此跳过 $0.0000 显示。 */
+  judgeCostReportedByExecutor?: boolean;
 }
 
 export interface DimensionResult {
   score: number;
   reason: string;
   judgeCostUSD?: number;
+  /** False = judge executor 不报 cost(如 codex)→ judgeCostUSD 是占位 0。缺位 / true 当真值。 */
+  judgeCostReportedByExecutor?: boolean;
   /** When judge-repeat > 1: scores from each judge run (length = repeat count). */
   scoreSamples?: number[];
   /** Standard deviation across scoreSamples (0 when repeat = 1). */
@@ -101,4 +108,7 @@ export interface GradeResult {
   llmAgreement?: JudgeAgreement;
   dimensions?: Record<string, DimensionResult>;
   judgeCostUSD?: number;
+  /** False = 至少一处 judge call(dim / single rubric / async assertion)的 executor 不报 cost
+   *  → judgeCostUSD 累计是 lower-bound 而非真值。缺位 / true 当真值。 */
+  judgeCostReportedByExecutor?: boolean;
 }

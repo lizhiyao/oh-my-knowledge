@@ -2,7 +2,7 @@
  * Auto-analysis: detect patterns and generate insights from evaluation results.
  */
 
-import type { Report, ResultEntry, Insight, AnalysisResult, Sample, SampleQualityAggregate } from '../types/index.js';
+import type { Report, ResultEntry, Insight, AnalysisResult, Sample, SampleQualityAggregate, Lang } from '../types/index.js';
 import { normalizeCapability } from './sample-diagnostics.js';
 
 /** opts for `analyzeResults`. Optional because most older callers don't have
@@ -14,11 +14,10 @@ export interface AnalyzeResultsOptions {
 }
 
 /**
- * Analyze an evaluation report and produce insights + suggestions.
+ * Analyze an evaluation report and produce structured insights.
  */
 export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {}): AnalysisResult {
   const insights: Insight[] = [];
-  const suggestions: string[] = [];
   const variants = report.meta?.variants || [];
   const results = report.results || [];
 
@@ -30,42 +29,43 @@ export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {})
     : undefined;
 
   if (results.length === 0 || variants.length < 2) {
-    return { insights, suggestions, ...(sampleQuality && { sampleQuality }) };
+    return { insights, ...(sampleQuality && { sampleQuality }) };
   }
 
   // 1. Low-discrimination assertions
-  detectLowDiscrimination(results, variants, insights, suggestions);
+  detectLowDiscrimination(results, variants, insights);
 
   // 2. Uniform scores across variants
-  detectUniformScores(results, variants, insights, suggestions);
+  detectUniformScores(results, variants, insights);
 
   // 3. All-pass / all-fail assertions
-  detectAllPassFail(results, variants, insights, suggestions);
+  detectAllPassFail(results, variants, insights);
 
   // 4. High-cost samples
   detectHighCost(results, variants, insights);
 
   // 5. Efficiency gap (turns & cost)
-  detectEfficiencyGap(report, variants, insights, suggestions);
+  detectEfficiencyGap(report, variants, insights);
 
   // 6. Agent tool usage patterns
-  detectToolPatterns(report, variants, insights, suggestions);
+  detectToolPatterns(report, variants, insights);
 
   // 7. Tooling / permission issues
-  detectToolPermissionIssues(results, variants, insights, suggestions);
+  detectToolPermissionIssues(results, variants, insights);
 
   // 8. Trace integrity
-  detectTraceIntegrity(report, variants, insights, suggestions);
+  detectTraceIntegrity(report, variants, insights);
 
   // 9. Agent assertion discrimination
-  detectAgentAssertionDiscrimination(results, variants, insights, suggestions);
+  detectAgentAssertionDiscrimination(results, variants, insights);
 
   // 10. Suggest --repeat when score variance is high and no repeat data
-  detectNeedRepeat(report, results, variants, insights, suggestions);
+  detectNeedRepeat(report, results, variants, insights);
 
-  const summary = generateSummary(report, variants);
-
-  return { summary, insights, suggestions, ...(sampleQuality && { sampleQuality }) };
+  return {
+    insights,
+    ...(sampleQuality && { sampleQuality }),
+  };
 }
 
 /**
@@ -157,7 +157,8 @@ export function buildSampleQualityAggregate(samples: Sample[]): SampleQualityAgg
   };
 }
 
-function generateSummary(report: Report, variants: string[]): string | undefined {
+export function generateAnalysisSummary(report: Report, lang: Lang = 'zh'): string | undefined {
+  const variants = report.meta?.variants || [];
   if (variants.length < 2) return undefined;
   const stats = report.summary || {};
 
@@ -194,13 +195,23 @@ function generateSummary(report: Report, variants: string[]): string | undefined
   if (scoreDiff != null && tScore != null && cScore != null) {
     const absDiff = Math.abs(scoreDiff);
     if (absDiff < 0.1) {
-      lines.push(`【结论】${test} 与 ${control} 综合得分持平（${tScore.toFixed(2)} vs ${cScore.toFixed(2)}），质量无显著差异。`);
+      lines.push(lang === 'zh'
+        ? `【结论】${test} 与 ${control} 综合得分持平（${tScore.toFixed(2)} vs ${cScore.toFixed(2)}），质量无显著差异。`
+        : `【Conclusion】${test} and ${control} are effectively tied on composite score (${tScore.toFixed(2)} vs ${cScore.toFixed(2)}); no clear quality difference.`);
     } else if (scoreDiff > 0) {
-      const tag = absDiff > 0.3 ? '明显领先' : '略优';
-      lines.push(`【结论】${test} 综合得分 ${tag}（${tScore.toFixed(2)} vs ${cScore.toFixed(2)}，+${scoreDiff.toFixed(2)}）。`);
+      const tag = lang === 'zh'
+        ? (absDiff > 0.3 ? '明显领先' : '略优')
+        : (absDiff > 0.3 ? 'clearly ahead' : 'slightly ahead');
+      lines.push(lang === 'zh'
+        ? `【结论】${test} 综合得分 ${tag}（${tScore.toFixed(2)} vs ${cScore.toFixed(2)}，+${scoreDiff.toFixed(2)}）。`
+        : `【Conclusion】${test} is ${tag} on composite score (${tScore.toFixed(2)} vs ${cScore.toFixed(2)}, +${scoreDiff.toFixed(2)}).`);
     } else {
-      const tag = absDiff > 0.3 ? '明显落后' : '略低';
-      lines.push(`【结论】${test} 综合得分 ${tag}（${tScore.toFixed(2)} vs ${cScore.toFixed(2)}，${scoreDiff.toFixed(2)}）。`);
+      const tag = lang === 'zh'
+        ? (absDiff > 0.3 ? '明显落后' : '略低')
+        : (absDiff > 0.3 ? 'clearly behind' : 'slightly lower');
+      lines.push(lang === 'zh'
+        ? `【结论】${test} 综合得分 ${tag}（${tScore.toFixed(2)} vs ${cScore.toFixed(2)}，${scoreDiff.toFixed(2)}）。`
+        : `【Conclusion】${test} is ${tag} on composite score (${tScore.toFixed(2)} vs ${cScore.toFixed(2)}, ${scoreDiff.toFixed(2)}).`);
     }
   }
 
@@ -214,9 +225,13 @@ function generateSummary(report: Report, variants: string[]): string | undefined
     if (tFact === cFact) {
       // Both same — don't mention (e.g. both 5/5 is not interesting)
     } else if (tFact > cFact) {
-      diffs.push(`事实性 ${tFact.toFixed(1)} vs ${cFact.toFixed(1)}（↑${(tFact - cFact).toFixed(1)}）`);
+      diffs.push(lang === 'zh'
+        ? `事实性 ${tFact.toFixed(1)} vs ${cFact.toFixed(1)}（↑${(tFact - cFact).toFixed(1)}）`
+        : `Fact score ${tFact.toFixed(1)} vs ${cFact.toFixed(1)} (up ${(tFact - cFact).toFixed(1)})`);
     } else {
-      diffs.push(`事实性 ${tFact.toFixed(1)} vs ${cFact.toFixed(1)}（↓${(cFact - tFact).toFixed(1)}）`);
+      diffs.push(lang === 'zh'
+        ? `事实性 ${tFact.toFixed(1)} vs ${cFact.toFixed(1)}（↓${(cFact - tFact).toFixed(1)}）`
+        : `Fact score ${tFact.toFixed(1)} vs ${cFact.toFixed(1)} (down ${(cFact - tFact).toFixed(1)})`);
     }
   }
 
@@ -224,14 +239,18 @@ function generateSummary(report: Report, variants: string[]): string | undefined
   const cBehavior = cs.avgBehaviorScore;
   if (tBehavior != null && cBehavior != null && Math.abs(tBehavior - cBehavior) > 0.3) {
     const dir = tBehavior > cBehavior ? '↑' : '↓';
-    diffs.push(`行为合规 ${tBehavior.toFixed(1)} vs ${cBehavior.toFixed(1)}（${dir}${Math.abs(tBehavior - cBehavior).toFixed(1)}）`);
+    diffs.push(lang === 'zh'
+      ? `行为合规 ${tBehavior.toFixed(1)} vs ${cBehavior.toFixed(1)}（${dir}${Math.abs(tBehavior - cBehavior).toFixed(1)}）`
+      : `Behavior score ${tBehavior.toFixed(1)} vs ${cBehavior.toFixed(1)} (${dir === '↑' ? 'up' : 'down'} ${Math.abs(tBehavior - cBehavior).toFixed(1)})`);
   }
 
   const tJudge = ts.avgJudgeScore;
   const cJudge = cs.avgJudgeScore;
   if (tJudge != null && cJudge != null && Math.abs(tJudge - cJudge) >= 0.5) {
     const dir = tJudge > cJudge ? '↑' : '↓';
-    diffs.push(`LLM 评价 ${tJudge.toFixed(1)} vs ${cJudge.toFixed(1)}（${dir}${Math.abs(tJudge - cJudge).toFixed(1)}）`);
+    diffs.push(lang === 'zh'
+      ? `LLM 评价 ${tJudge.toFixed(1)} vs ${cJudge.toFixed(1)}（${dir}${Math.abs(tJudge - cJudge).toFixed(1)}）`
+      : `LLM judge ${tJudge.toFixed(1)} vs ${cJudge.toFixed(1)} (${dir === '↑' ? 'up' : 'down'} ${Math.abs(tJudge - cJudge).toFixed(1)})`);
   }
 
   // Efficiency — with percentages
@@ -240,9 +259,13 @@ function generateSummary(report: Report, variants: string[]): string | undefined
   if (cTurns > 0 && tTurns > 0 && cTurns !== tTurns) {
     const pct = Math.abs(((tTurns - cTurns) / cTurns) * 100).toFixed(0);
     if (tTurns < cTurns) {
-      diffs.push(`轮次 ${tTurns.toFixed(1)} vs ${cTurns.toFixed(1)}（↓${pct}%，路径更高效）`);
+      diffs.push(lang === 'zh'
+        ? `轮次 ${tTurns.toFixed(1)} vs ${cTurns.toFixed(1)}（↓${pct}%，路径更高效）`
+        : `Turns ${tTurns.toFixed(1)} vs ${cTurns.toFixed(1)} (down ${pct}%, more efficient path)`);
     } else {
-      diffs.push(`轮次 ${tTurns.toFixed(1)} vs ${cTurns.toFixed(1)}（↑${pct}%）`);
+      diffs.push(lang === 'zh'
+        ? `轮次 ${tTurns.toFixed(1)} vs ${cTurns.toFixed(1)}（↑${pct}%）`
+        : `Turns ${tTurns.toFixed(1)} vs ${cTurns.toFixed(1)} (up ${pct}%)`);
     }
   }
 
@@ -252,9 +275,13 @@ function generateSummary(report: Report, variants: string[]): string | undefined
   if (cCost > 0 && tCost > 0 && Math.abs(tCost - cCost) / cCost > 0.05) {
     const pct = Math.abs(((tCost - cCost) / cCost) * 100).toFixed(0);
     if (tCost < cCost) {
-      diffs.push(`单用例成本 $${tCost.toFixed(4)} vs $${cCost.toFixed(4)}（↓${pct}%）`);
+      diffs.push(lang === 'zh'
+        ? `单用例成本 $${tCost.toFixed(4)} vs $${cCost.toFixed(4)}（↓${pct}%）`
+        : `Cost per sample $${tCost.toFixed(4)} vs $${cCost.toFixed(4)} (down ${pct}%)`);
     } else {
-      diffs.push(`单用例成本 $${tCost.toFixed(4)} vs $${cCost.toFixed(4)}（↑${pct}%）`);
+      diffs.push(lang === 'zh'
+        ? `单用例成本 $${tCost.toFixed(4)} vs $${cCost.toFixed(4)}（↑${pct}%）`
+        : `Cost per sample $${tCost.toFixed(4)} vs $${cCost.toFixed(4)} (up ${pct}%)`);
     }
   }
 
@@ -266,9 +293,13 @@ function generateSummary(report: Report, variants: string[]): string | undefined
     const tSec = (tDur / 1000).toFixed(1);
     const cSec = (cDur / 1000).toFixed(1);
     if (tDur < cDur) {
-      diffs.push(`耗时 ${tSec}s vs ${cSec}s（↓${pct}%）`);
+      diffs.push(lang === 'zh'
+        ? `耗时 ${tSec}s vs ${cSec}s（↓${pct}%）`
+        : `Duration ${tSec}s vs ${cSec}s (down ${pct}%)`);
     } else {
-      diffs.push(`耗时 ${tSec}s vs ${cSec}s（↑${pct}%）`);
+      diffs.push(lang === 'zh'
+        ? `耗时 ${tSec}s vs ${cSec}s（↑${pct}%）`
+        : `Duration ${tSec}s vs ${cSec}s (up ${pct}%)`);
     }
   }
 
@@ -276,11 +307,15 @@ function generateSummary(report: Report, variants: string[]): string | undefined
   const tTools = ts.avgToolCalls;
   const cTools = cs.avgToolCalls;
   if (tTools != null && cTools != null && Math.abs(tTools - cTools) > 0.5) {
-    diffs.push(`工具调用 ${tTools.toFixed(1)} vs ${cTools.toFixed(1)} 次`);
+    diffs.push(lang === 'zh'
+      ? `工具调用 ${tTools.toFixed(1)} vs ${cTools.toFixed(1)} 次`
+      : `Tool calls ${tTools.toFixed(1)} vs ${cTools.toFixed(1)}`);
   }
 
   if (diffs.length > 0) {
-    lines.push(`【关键差异】${diffs.join('；')}。`);
+    lines.push(lang === 'zh'
+      ? `【关键差异】${diffs.join('；')}。`
+      : `【Key differences】${diffs.join('; ')}.`);
   }
 
   // ── Section 3: Synthesis — connect the dots ──
@@ -290,20 +325,30 @@ function generateSummary(report: Report, variants: string[]): string | undefined
   if (scoreDiff != null && cCost > 0 && tCost > 0) {
     const costRatio = (tCost - cCost) / cCost;
     if (Math.abs(scoreDiff) < 0.1 && costRatio < -0.15) {
-      synthesis.push(`质量相当但成本显著降低，${test} 是更经济的选择`);
+      synthesis.push(lang === 'zh'
+        ? `质量相当但成本显著降低，${test} 是更经济的选择`
+        : `similar quality with materially lower cost; ${test} is the more economical choice`);
     } else if (scoreDiff > 0.1 && costRatio > 0.15) {
-      synthesis.push(`质量提升伴随成本上涨，需权衡投入产出比`);
+      synthesis.push(lang === 'zh'
+        ? '质量提升伴随成本上涨，需权衡投入产出比'
+        : 'quality improved, but cost also increased; weigh the return on investment');
     } else if (scoreDiff > 0.1 && costRatio <= 0) {
-      synthesis.push(`质量与成本双优，${test} 全面领先`);
+      synthesis.push(lang === 'zh'
+        ? `质量与成本双优，${test} 全面领先`
+        : `${test} leads on both quality and cost`);
     } else if (scoreDiff < -0.1 && costRatio < -0.15) {
-      synthesis.push(`成本虽降但质量下滑，需评估质量底线是否可接受`);
+      synthesis.push(lang === 'zh'
+        ? '成本虽降但质量下滑，需评估质量底线是否可接受'
+        : 'cost decreased, but quality dropped; check whether the quality floor is still acceptable');
     }
   }
 
   // Tool success rate concern
   const tToolSuccess = ts.toolSuccessRate;
   if (tToolSuccess != null && tToolSuccess < 1 && tToolSuccess >= 0.5) {
-    synthesis.push(`${test} 存在工具调用失败（成功率 ${(tToolSuccess * 100).toFixed(0)}%），可能拉低了得分`);
+    synthesis.push(lang === 'zh'
+      ? `${test} 存在工具调用失败（成功率 ${(tToolSuccess * 100).toFixed(0)}%），可能拉低了得分`
+      : `${test} had tool-call failures (${(tToolSuccess * 100).toFixed(0)}% success), which may have pulled the score down`);
   }
 
   // Variance / significance from --repeat
@@ -317,23 +362,33 @@ function generateSummary(report: Report, variants: string[]): string | undefined
           const primaryVal = es.primary === 'g' ? es.hedgesG : es.cohensD;
           const secondaryLabel = es.primary === 'g' ? 'd' : 'g';
           const secondaryVal = es.primary === 'g' ? es.cohensD : es.hedgesG;
-          esText = `，效应量 ${es.primary}=${primaryVal.toFixed(2)}（${es.magnitude}，${secondaryLabel}=${secondaryVal.toFixed(2)}）`;
+          esText = lang === 'zh'
+            ? `，效应量 ${es.primary}=${primaryVal.toFixed(2)}（${es.magnitude}，${secondaryLabel}=${secondaryVal.toFixed(2)}）`
+            : `, effect size ${es.primary}=${primaryVal.toFixed(2)} (${es.magnitude}, ${secondaryLabel}=${secondaryVal.toFixed(2)})`;
         }
         if (comp.significant) {
-          synthesis.push(`${v.runs} 轮重复评测显示差异具有统计显著性（t=${comp.tStatistic.toFixed(2)}, df=${comp.df.toFixed(1)}, p<0.05${esText}）`);
+          synthesis.push(lang === 'zh'
+            ? `${v.runs} 轮重复评测显示差异具有统计显著性（t=${comp.tStatistic.toFixed(2)}, df=${comp.df.toFixed(1)}, p<0.05${esText}）`
+            : `${v.runs} repeated runs show a statistically significant difference (t=${comp.tStatistic.toFixed(2)}, df=${comp.df.toFixed(1)}, p<0.05${esText})`);
         } else {
-          synthesis.push(`${v.runs} 轮重复评测未达到统计显著性（t=${comp.tStatistic.toFixed(2)}, df=${comp.df.toFixed(1)}${esText}），差异可能源于随机波动`);
+          synthesis.push(lang === 'zh'
+            ? `${v.runs} 轮重复评测未达到统计显著性（t=${comp.tStatistic.toFixed(2)}, df=${comp.df.toFixed(1)}${esText}），差异可能源于随机波动`
+            : `${v.runs} repeated runs did not reach statistical significance (t=${comp.tStatistic.toFixed(2)}, df=${comp.df.toFixed(1)}${esText}); the gap may be random variation`);
         }
       }
     }
     const testVd = v.perVariant[test];
     if (testVd) {
-      synthesis.push(`${test} 跨轮 95% 置信区间 [${testVd.lower.toFixed(2)}, ${testVd.upper.toFixed(2)}]`);
+      synthesis.push(lang === 'zh'
+        ? `${test} 跨轮 95% 置信区间 [${testVd.lower.toFixed(2)}, ${testVd.upper.toFixed(2)}]`
+        : `${test} cross-run 95% confidence interval [${testVd.lower.toFixed(2)}, ${testVd.upper.toFixed(2)}]`);
     }
   }
 
   if (synthesis.length > 0) {
-    lines.push(`【综合洞察】${synthesis.join('；')}。`);
+    lines.push(lang === 'zh'
+      ? `【综合洞察】${synthesis.join('；')}。`
+      : `【Synthesis】${synthesis.join('; ')}.`);
   }
 
   // Caveats and recommendations are handled by the issues table below,
@@ -376,7 +431,7 @@ function collectAgentAssertionTypes(results: ResultEntry[], variants: string[]):
   return types;
 }
 
-function detectLowDiscrimination(results: ResultEntry[], variants: string[], insights: Insight[], suggestions: string[]): void {
+function detectLowDiscrimination(results: ResultEntry[], variants: string[], insights: Insight[]): void {
   // For each sample, check if all variants have the same assertion pass/fail pattern
   const allPassedPatterns: Array<{ sample_id: string; type: string; value: string | number; allPassed: boolean }> = [];
   const allFailedPatterns: Array<{ sample_id: string; type: string; value: string | number; allPassed: boolean }> = [];
@@ -418,24 +473,20 @@ function detectLowDiscrimination(results: ResultEntry[], variants: string[], ins
     insights.push({
       type: 'low_discrimination_all_passed',
       severity: 'info',
-      message: `${allPassedPatterns.length} 个断言所有变体均通过，baseline 也能答对，区分度低`,
       details: allPassedPatterns,
     });
-    suggestions.push('对于所有变体均通过的断言，考虑替换为检测 skill 文档中独有细节的断言（如特定参数名、配置值）');
   }
 
   if (allFailedPatterns.length > 0) {
     insights.push({
       type: 'low_discrimination_all_failed',
       severity: 'warning',
-      message: `${allFailedPatterns.length} 个断言所有变体均失败，断言可能过于严格或存在配置错误`,
       details: allFailedPatterns,
     });
-    suggestions.push('对于所有变体均失败的断言，检查断言条件是否正确，或降低匹配要求');
   }
 }
 
-function detectUniformScores(results: ResultEntry[], variants: string[], insights: Insight[], suggestions: string[]): void {
+function detectUniformScores(results: ResultEntry[], variants: string[], insights: Insight[]): void {
   let uniformCount = 0;
   const uniformSamples: string[] = [];
 
@@ -458,16 +509,12 @@ function detectUniformScores(results: ResultEntry[], variants: string[], insight
     insights.push({
       type: 'uniform_scores',
       severity: uniformCount === results.length ? 'warning' : 'info',
-      message: `${uniformCount}/${results.length} 个用例在各变体间分差 < 0.5，区分度较低`,
       details: uniformSamples,
     });
-    if (uniformCount === results.length) {
-      suggestions.push('所有用例分数差异都很小，建议增加更有挑战性的测试用例或更严格的评分标准');
-    }
   }
 }
 
-function detectAllPassFail(results: ResultEntry[], variants: string[], insights: Insight[], suggestions: string[]): void {
+function detectAllPassFail(results: ResultEntry[], variants: string[], insights: Insight[]): void {
   let allPassCount = 0;
   let allFailCount = 0;
 
@@ -485,24 +532,20 @@ function detectAllPassFail(results: ResultEntry[], variants: string[], insights:
     insights.push({
       type: 'all_pass',
       severity: 'warning',
-      message: '所有断言在所有变体上全部通过，断言可能过于宽松',
       details: { allPassCount },
     });
-    suggestions.push('所有断言都通过了，考虑增加更严格的断言来更好地区分变体质量');
   }
 
   if (allFailCount === totalEntries && totalEntries > 0) {
     insights.push({
       type: 'all_fail',
       severity: 'error',
-      message: '所有断言在所有变体上全部失败，请检查断言配置是否正确',
       details: { allFailCount },
     });
-    suggestions.push('所有断言都失败了，请检查评测配置是否有误');
   }
 }
 
-function detectNeedRepeat(report: Report, results: ResultEntry[], variants: string[], insights: Insight[], suggestions: string[]): void {
+function detectNeedRepeat(report: Report, results: ResultEntry[], variants: string[], insights: Insight[]): void {
   // Skip if already has variance data (i.e. --repeat was used)
   if (report.variance) return;
 
@@ -515,16 +558,14 @@ function detectNeedRepeat(report: Report, results: ResultEntry[], variants: stri
       insights.push({
         type: 'suggest_repeat',
         severity: 'info',
-        message: `${v} 的分数跨度较大（${s.minCompositeScore}~${s.maxCompositeScore}），建议使用 --repeat 3 多轮评测以获取方差分析和统计显著性检验`,
         details: { variant: v, min: s.minCompositeScore, max: s.maxCompositeScore, spread },
       });
-      suggestions.push(`运行 omk bench run --repeat 3 获取置信区间和 t 检验结果，量化变体间差异的统计显著性`);
       return; // Only suggest once
     }
   }
 }
 
-function detectEfficiencyGap(report: Report, variants: string[], insights: Insight[], suggestions: string[]): void {
+function detectEfficiencyGap(report: Report, variants: string[], insights: Insight[]): void {
   if (variants.length < 2) return;
   const summary = report.summary || {};
 
@@ -568,15 +609,13 @@ function detectEfficiencyGap(report: Report, variants: string[], insights: Insig
       insights.push({
         type: 'efficiency_gap',
         severity: 'info',
-        message: details.join('；'),
         details: { baseline: variants[0], variant: variants[i], baseTurns, otherTurns, baseCost, otherCost },
       });
-      suggestions.push(`${variants[i]} 在效率维度与 ${variants[0]} 存在显著差异，这对导航型 Skill 是重要的价值体现`);
     }
   }
 }
 
-function detectToolPatterns(report: Report, variants: string[], insights: Insight[], suggestions: string[]): void {
+function detectToolPatterns(report: Report, variants: string[], insights: Insight[]): void {
   const summary = report.summary || {};
   const hasTools = variants.some((v) => summary[v]?.avgToolCalls != null && summary[v].avgToolCalls! > 0);
   if (!hasTools) return;
@@ -591,10 +630,8 @@ function detectToolPatterns(report: Report, variants: string[], insights: Insigh
       insights.push({
         type: 'low_tool_success_rate',
         severity: 'warning',
-        message: `${v} 的工具调用成功率仅 ${(s.toolSuccessRate * 100).toFixed(0)}%，可能存在工具选择或参数问题`,
         details: { variant: v, toolSuccessRate: s.toolSuccessRate, avgToolCalls: s.avgToolCalls },
       });
-      suggestions.push(`检查 ${v} 的工具调用失败模式，考虑在 skill 中增加工具使用指导`);
     }
   }
 
@@ -609,9 +646,6 @@ function detectToolPatterns(report: Report, variants: string[], insights: Insigh
         insights.push({
           type: 'tool_count_gap',
           severity: 'info',
-          message: diff > 0
-            ? `${variants[i]} 平均多调用 ${diff.toFixed(1)} 次工具（${other.avgToolCalls} vs ${base.avgToolCalls}）`
-            : `${variants[i]} 平均少调用 ${Math.abs(diff).toFixed(1)} 次工具（${other.avgToolCalls} vs ${base.avgToolCalls}）`,
           details: { baseline: variants[0], variant: variants[i], baseTools: base.avgToolCalls, otherTools: other.avgToolCalls },
         });
       }
@@ -619,7 +653,7 @@ function detectToolPatterns(report: Report, variants: string[], insights: Insigh
   }
 }
 
-function detectToolPermissionIssues(results: ResultEntry[], variants: string[], insights: Insight[], suggestions: string[]): void {
+function detectToolPermissionIssues(results: ResultEntry[], variants: string[], insights: Insight[]): void {
   const permissionErrors: Array<{ variant: string; tool: string; sample_id: string; output: string }> = [];
 
   for (const result of results) {
@@ -645,13 +679,11 @@ function detectToolPermissionIssues(results: ResultEntry[], variants: string[], 
   insights.push({
     type: 'tool_permission_error',
     severity: 'warning',
-    message: `检测到 ${permissionErrors.length} 次工具权限错误，实验结论可能被环境问题污染`,
     details: permissionErrors.slice(0, 10),
   });
-  suggestions.push('先处理工具权限错误，再解读 agent 分数差异；若是 Glob/rg 权限问题，优先避免在控制实验中依赖该工具');
 }
 
-function detectTraceIntegrity(report: Report, variants: string[], insights: Insight[], suggestions: string[]): void {
+function detectTraceIntegrity(report: Report, variants: string[], insights: Insight[]): void {
   const summary = report.summary || {};
   const agentAssertionTypes = collectAgentAssertionTypes(report.results || [], variants);
   const needsTraceHeavyCoverage = [...agentAssertionTypes].some((type) => TRACE_HEAVY_AGENT_ASSERTION_TYPES.has(type));
@@ -675,14 +707,12 @@ function detectTraceIntegrity(report: Report, variants: string[], insights: Insi
     insights.push({
       type: 'trace_integrity_gap',
       severity: 'warning',
-      message: `${weakCoverage.length} 个 variant 的 trace 覆盖率低于 75%，报告可能不足以解释 agent 行为差异`,
       details: weakCoverage,
     });
-    suggestions.push('优先补齐 turns、toolCalls、timing、full output 的采集与落盘，确保报告能解释工具路径和错误恢复过程');
   }
 }
 
-function detectAgentAssertionDiscrimination(results: ResultEntry[], variants: string[], insights: Insight[], suggestions: string[]): void {
+function detectAgentAssertionDiscrimination(results: ResultEntry[], variants: string[], insights: Insight[]): void {
   const assertionTypes = collectAgentAssertionTypes(results, variants);
   const hasTraceHeavyAssertions = [...assertionTypes].some((type) => TRACE_HEAVY_AGENT_ASSERTION_TYPES.has(type));
   if (!hasTraceHeavyAssertions) return;
@@ -730,7 +760,6 @@ function detectAgentAssertionDiscrimination(results: ResultEntry[], variants: st
     insights.push({
       type: 'agent_assertion_discrimination_low',
       severity: 'warning',
-      message: `agent 断言区分度偏低，只有 ${(discriminationRate * 100).toFixed(0)}% 的断言真正拉开了变体差异`,
       details: {
         total: evaluated.length,
         discriminative,
@@ -739,12 +768,10 @@ function detectAgentAssertionDiscrimination(results: ResultEntry[], variants: st
         examples: evaluated.slice(0, 10),
       },
     });
-    suggestions.push('重写 agent 断言时，优先约束工具路径、关键文件读取和 turns 上限，避免大量“全过”或“全挂”的弱断言');
   } else {
     insights.push({
       type: 'agent_assertion_discrimination_ok',
       severity: 'info',
-      message: `agent 断言区分度达标，${(discriminationRate * 100).toFixed(0)}% 的断言能区分变体差异`,
       details: {
         total: evaluated.length,
         discriminative,
@@ -775,7 +802,6 @@ function detectHighCost(results: ResultEntry[], variants: string[], insights: In
     insights.push({
       type: 'high_cost_sample',
       severity: 'info',
-      message: `${expensive.length} 个用例成本显著高于平均值 (>${(avg * 2).toFixed(4)} USD)`,
       details: expensive,
     });
   }

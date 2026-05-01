@@ -5,9 +5,10 @@ import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { buildVariantSummary } from './schema.js';
-import { buildVariantConfig } from './execution-strategy.js';
+import { buildVariantConfig, resolveExecutionStrategy } from './execution-strategy.js';
 import { getJudgePromptHash } from '../grading/judge.js';
 import { bootstrapMeanCI, bootstrapDiffCI } from './bootstrap.js';
+import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import type {
   Artifact,
   Report,
@@ -71,7 +72,11 @@ function hashSample(sample: Sample): string {
   return hashString(stableForm);
 }
 
-function getGitInfo(): GitInfo | null {
+export function getCliVersion(): string {
+  return PKG.version;
+}
+
+export function getGitInfo(): GitInfo | null {
   try {
     const commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf-8' }).trim();
     const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf-8' }).trim();
@@ -80,6 +85,57 @@ function getGitInfo(): GitInfo | null {
   } catch {
     return null;
   }
+}
+
+function commonRuntime(runtimes: Record<string, ReturnType<typeof getExecutorRuntimeFingerprint>>): ReturnType<typeof getExecutorRuntimeFingerprint> | undefined {
+  const values = Object.values(runtimes);
+  if (values.length === 0) return undefined;
+  const first = values[0];
+  return values.every((runtime) => runtime.fingerprint === first.fingerprint) ? first : undefined;
+}
+
+function representativeRuntime(runtimes: Record<string, ReturnType<typeof getExecutorRuntimeFingerprint>>): ReturnType<typeof getExecutorRuntimeFingerprint> | undefined {
+  return Object.values(runtimes)[0];
+}
+
+function buildExecutorRuntimesByVariant({
+  variants,
+  model,
+  executorName,
+  tasks,
+  artifacts,
+  request,
+}: {
+  variants: string[];
+  model: string;
+  executorName: string;
+  tasks: Task[];
+  artifacts: Artifact[];
+  request?: EvaluationRequest;
+}): Record<string, ReturnType<typeof getExecutorRuntimeFingerprint>> {
+  const runtimes: Record<string, ReturnType<typeof getExecutorRuntimeFingerprint>> = {};
+  for (const task of tasks) {
+    if (runtimes[task.variant]) continue;
+    const executionPlan = resolveExecutionStrategy(task, model, request?.timeoutMs, false);
+    runtimes[task.variant] = getExecutorRuntimeFingerprint(executorName, model, {
+      skillDir: executionPlan.input.skillDir,
+    });
+  }
+
+  for (const variant of variants) {
+    if (runtimes[variant]) continue;
+    const artifact = artifacts.find((a) => a.name === variant);
+    const fallbackSkillDir = artifact?.kind === 'baseline'
+      ? null
+      : artifact?.locator && artifact.source !== 'git'
+        ? dirname(artifact.locator)
+        : request?.skillDir;
+    runtimes[variant] = getExecutorRuntimeFingerprint(executorName, model, {
+      skillDir: fallbackSkillDir,
+    });
+  }
+
+  return runtimes;
 }
 
 interface AggregateReportOptions {
@@ -174,29 +230,50 @@ export function aggregateReport({
   const judgeModelsList = request?.judgeModels && request.judgeModels.length >= 2
     ? request.judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
     : undefined;
+  const isJudgeEnsemble = Boolean(judgeModelsList);
+  const effectiveJudgeExecutorName = request?.judgeExecutor || executorName;
+  const runtimeOptions = { skillDir: request?.skillDir };
+  const executorRuntimes = buildExecutorRuntimesByVariant({ variants, model, executorName, tasks, artifacts, request });
+  const executorRuntime = commonRuntime(executorRuntimes)
+    ?? representativeRuntime(executorRuntimes)
+    ?? getExecutorRuntimeFingerprint(executorName, model, runtimeOptions);
+  const judgeRuntime = noJudge || isJudgeEnsemble ? null : getExecutorRuntimeFingerprint(effectiveJudgeExecutorName, judgeModel, runtimeOptions);
+  const judgeRuntimes = request?.judgeModels && request.judgeModels.length >= 2
+    ? Object.fromEntries(
+      request.judgeModels.map((jc) => [`${jc.executor}:${jc.model}`, getExecutorRuntimeFingerprint(jc.executor, jc.model, runtimeOptions)]),
+    )
+    : undefined;
   // v0.21 Phase 3a: length-debias is on by default; the request only sets it
   // false when the user passed --no-debias-length. The hash differs between
   // v3-cot-length (on) and v2-cot (off) so readers can detect the divergence.
   const lengthDebiasOn = request?.lengthDebias !== false;
   const debiasModeList: Array<'length' | 'position'> = [];
   if (lengthDebiasOn) debiasModeList.push('length');
+  const totalCostReported = Object.values(summary).every((variant) =>
+    variant.execCostReported !== false && variant.judgeCostReported !== false);
 
   return {
+    kind: 'evaluation',
     id: runId,
     meta: {
       variants,
       model,
-      judgeModel: noJudge ? null : judgeModel,
+      judgeModel: noJudge || isJudgeEnsemble ? null : judgeModel,
       executor: executorName,
       sampleCount: samples.length,
       taskCount: tasks.length,
       totalCostUSD: Number(totalCostUSD.toFixed(6)),
+      ...(totalCostReported ? {} : { totalCostReported: false }),
       timestamp: new Date().toISOString(),
-      cliVersion: PKG.version,
+      cliVersion: getCliVersion(),
       nodeVersion: process.version,
       artifactHashes,
       sampleHashes,
       ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash(lengthDebiasOn) }),
+      executorRuntime,
+      executorRuntimes,
+      judgeRuntime,
+      ...(judgeRuntimes ? { judgeRuntimes } : {}),
       ...(judgeRepeat ? { judgeRepeat } : {}),
       ...(judgeModelsList ? { judgeModels: judgeModelsList } : {}),
       ...(debiasModeList.length > 0 ? { debiasMode: debiasModeList } : {}),
@@ -244,6 +321,11 @@ export function applyBlindMode(report: Report, variants: string[], blindSeed: st
   report.meta.blind = true;
   report.meta.blindMap = blindMap;
   report.meta.variants = labels;
+  if (report.meta.executorRuntimes) {
+    report.meta.executorRuntimes = Object.fromEntries(
+      Object.entries(report.meta.executorRuntimes).map(([variant, runtime]) => [reverseMap[variant] ?? variant, runtime]),
+    );
+  }
 
   const newSummary: Record<string, VariantSummary> = {};
   for (const [variant, stats] of Object.entries(report.summary)) {

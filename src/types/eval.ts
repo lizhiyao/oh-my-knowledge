@@ -177,8 +177,8 @@ export interface EvaluationRequest {
   blind: boolean;
   /** --repeat N; 1 表示单次跑,> 1 走 runMultiple 做 variance 分析 */
   repeat?: number;
-  /** --each; 默认不传(=false),true 表示 each mode (每个 skill 独立对比 baseline) */
-  each?: boolean;
+  /** --batch; default absent/false. True means skill-batch mode. */
+  batch?: boolean;
   /** --judge-repeat N; 每条 sample × dimension 用 LLM judge 跑 N 次, 输出 stddev. 默认 1 (单次). */
   judgeRepeat?: number;
   /** --judge-models executor:model,executor:model,... — multi-judge ensemble.
@@ -271,6 +271,8 @@ export interface ProgressDone {
   outputTokens?: number;
   costUSD?: number;
   score?: number;
+  ok?: boolean;
+  error?: string;
   skipped?: boolean;
 }
 

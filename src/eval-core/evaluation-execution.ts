@@ -4,6 +4,7 @@ import { grade } from '../grading/index.js';
 import { checkFacts } from './fact-checker.js';
 import type { FactCheckResult } from './fact-checker.js';
 import { resolveExecutionStrategy } from './execution-strategy.js';
+import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import { resolve, join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import type {
@@ -19,6 +20,9 @@ import type {
 export interface ExecuteTasksOptions {
   tasks: Task[];
   executor: ExecutorFn;
+  /** Executor name (e.g. 'claude' / 'codex' / 'openai-api'). Used in cache key
+   *  to prevent cross-executor pollution when same model name is used. */
+  executorName?: string;
   judgeExecutor: ExecutorFn;
   model: string;
   judgeModel: string;
@@ -84,6 +88,7 @@ function sleep(ms: number): Promise<void> {
 export async function executeTasks({
   tasks,
   executor,
+  executorName,
   judgeExecutor,
   model,
   judgeModel,
@@ -146,16 +151,23 @@ export async function executeTasks({
     onProgress?.({ phase: 'start', completed: idx, total, sample_id: task.sample_id, variant: task.variant });
 
     const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose);
+    const effectiveExecutorName = executorName || 'claude';
+    const executorRuntime = getExecutorRuntimeFingerprint(effectiveExecutorName, model, {
+      skillDir: executionPlan.input.skillDir,
+    });
 
     let execResult: ExecResult;
     // include allowedSkills in cache key so isolation-on / isolation-off runs
-    // don't share cache entries (would otherwise replay contaminated baseline results).
+    // don't share cache entries, and include runtime fingerprint so a binary/SDK bump
+    // cannot replay old-runtime outputs under new-runtime report metadata.
     const key = cacheKey(
       model,
       executionPlan.cacheSystem,
       executionPlan.input.prompt,
       executionPlan.input.cwd,
       task.artifact.allowedSkills,
+      effectiveExecutorName,
+      executorRuntime.fingerprint,
     );
     const cached = cache?.get(key);
     const execStart = Date.now();
@@ -243,21 +255,6 @@ export async function executeTasks({
       }
     }
 
-    completed++;
-    onProgress?.({
-      phase: 'done',
-      strategy: executionPlan.strategy,
-      completed,
-      total,
-      sample_id: task.sample_id,
-      variant: task.variant,
-      durationMs: execResult!.durationMs,
-      inputTokens: execResult!.inputTokens,
-      outputTokens: execResult!.outputTokens,
-      costUSD: execResult!.costUSD,
-      score: gradeResult?.compositeScore,
-    });
-
     let factCheck: FactCheckResult | undefined;
     if (execResult!.ok && execResult!.output && task.cwd) {
       factCheck = checkFacts(execResult!.output, resolve(task.cwd));
@@ -278,6 +275,23 @@ export async function executeTasks({
       variantResult.error = `budget overrun: per-sample latency ${execMs + (gradeMs ?? 0)}ms > cap ${budget.perSampleMs}ms`;
     }
     results[task.sample_id][task.variant] = variantResult;
+
+    completed++;
+    onProgress?.({
+      phase: 'done',
+      strategy: executionPlan.strategy,
+      completed,
+      total,
+      sample_id: task.sample_id,
+      variant: task.variant,
+      durationMs: variantResult.durationMs,
+      inputTokens: variantResult.inputTokens,
+      outputTokens: variantResult.outputTokens,
+      costUSD: variantResult.execCostUSD,
+      score: gradeResult?.compositeScore,
+      ok: variantResult.ok,
+      error: variantResult.error,
+    });
 
     //  total-USD budget enforcement. Once the global cap is exceeded,
     // flip the abort flag so subsequent tasks short-circuit. The current task

@@ -69,7 +69,7 @@ export function discoverVariants(skillDir: string): string[] {
   return variants;
 }
 
-export function discoverEachSkills(skillDir: string): Array<{ name: string; skillPath: string; samplesPath: string }> {
+export function discoverBatchSkills(skillDir: string): Array<{ name: string; skillPath: string; samplesPath: string }> {
   if (!existsSync(skillDir)) return [];
 
   const entries = readdirSync(skillDir);

@@ -10,6 +10,7 @@ const TEST_DIR = join(tmpdir(), `omk-test-reports-${Date.now()}`);
 const JOBS_DIR = join(tmpdir(), `omk-test-jobs-${Date.now()}`);
 
 const SAMPLE_REPORT = {
+  kind: 'evaluation',
   id: 'test-run-001',
   meta: {
     variants: ['v1', 'v2'],
@@ -92,6 +93,12 @@ const FAILED_JOB = {
   error: 'skill not found',
   errorCategory: 'user',
 };
+
+function stripScriptAndStyle(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '');
+}
 
 interface FetchResponse {
   status: number;
@@ -213,6 +220,21 @@ describe('report-server', () => {
     assert.equal(res.status, 200);
     assert.ok(res.headers['content-type']!.includes('text/html'));
     assert.ok(res.body.includes('test-run-001'));
+  });
+
+  it('passes ?lang=en through report list and detail pages', async () => {
+    const list = await fetch(`${baseUrl}/?lang=en`);
+    assert.equal(list.status, 200);
+    assert.ok(list.body.includes('data-lang="en"'));
+    assert.ok(list.body.includes('Evaluation Reports'));
+    assert.ok(list.body.includes('/reports/test-run-001?lang=en'));
+
+    const detail = await fetch(`${baseUrl}/reports/test-run-001?lang=en`);
+    assert.equal(detail.status, 200);
+    assert.ok(detail.body.includes('data-lang="en"'));
+    assert.ok(detail.body.includes('Evaluation Report'));
+    assert.ok(detail.body.includes('Back to list'));
+    assert.ok(!stripScriptAndStyle(detail.body).includes('评测报告'));
   });
 
   it('DELETE /api/reports/:id removes report', async () => {

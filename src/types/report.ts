@@ -14,6 +14,15 @@ export interface VariantResult {
   execCostUSD: number;
   judgeCostUSD: number;
   costUSD: number;
+  /** Whether `execCostUSD` came from a real cost number reported by the executor.
+   *  Mirrors `ExecResult.costReportedByExecutor`. False ⇒ `execCostUSD` is a 0
+   *  placeholder, renderer should show 「未报告」 instead of $0.0000. Default
+   *  undefined ⇒ reported (preserves backward-compat for old reports). */
+  costReportedByExecutor?: boolean;
+  /** Whether `judgeCostUSD` came from a real cost number reported by the judge executor.
+   *  False ⇒ at least one judge call (single rubric / dimension / async assertion / ensemble member)
+   *  was made through an executor that doesn't report cost (currently codex). Default undefined ⇒ reported. */
+  judgeCostReportedByExecutor?: boolean;
   numTurns: number;
   fullNumTurns?: number;
   numSubAgents?: number;
@@ -69,6 +78,15 @@ export interface VariantSummary {
   totalExecCostUSD: number;
   totalJudgeCostUSD: number;
   avgCostPerSample: number;
+  /** Whether every sample had its exec cost reported by the executor.
+   *  - undefined / true : 所有样本 exec cost 都报告了 (默认,向后兼容)
+   *  - false            : 至少一个样本 exec cost 未报告(混合执行器 / 全部走 codex 等)
+   *  renderer 据此显示「成本: —」 而不是 "$0.0000"。 */
+  execCostReported?: boolean;
+  /** Whether every sample's judge cost was reported. False ⇒ 任一 sample 的 judge call
+   *  走了不报 cost 的 executor(如 codex 当 judge)。renderer 在显示 totalJudgeCost /
+   *  detail 页 cost meta-tag 总值时同时考虑 exec + judge,任一 false 显示「—」。 */
+  judgeCostReported?: boolean;
   avgNumTurns: number;
   avgFullNumTurns?: number;
   avgNumSubAgents?: number;
@@ -150,6 +168,48 @@ export interface ReportHumanAgreement {
   unscoredCount: number;
 }
 
+export type ExecutorRuntimeKind = 'agent-cli' | 'agent-sdk' | 'api' | 'script' | 'unknown';
+
+export type ExecutorSystemPromptMode = 'native' | 'prepended' | 'none' | 'unknown';
+
+export type ExecutorCostMode = 'reported' | 'not-reported' | 'unknown';
+
+export type ExecutorTraceMode = 'native' | 'best-effort' | 'none' | 'unknown';
+
+export type ExecutorSkillIsolationMode = 'full' | 'full-no-partial' | 'cwd-only' | 'none' | 'unknown';
+
+export interface ExecutorRuntimeCapabilities {
+  systemPrompt: ExecutorSystemPromptMode;
+  costUSD: ExecutorCostMode;
+  trace: ExecutorTraceMode;
+  skillIsolation: ExecutorSkillIsolationMode;
+}
+
+export interface ExecutorRuntimePackage {
+  name: string;
+  version?: string;
+  error?: string;
+}
+
+export interface ExecutorRuntimeBinary {
+  name: string;
+  source: 'path' | 'bundled' | 'none' | 'unknown';
+  version?: string;
+  path?: string;
+  package?: ExecutorRuntimePackage;
+  error?: string;
+}
+
+export interface ExecutorRuntimeFingerprint {
+  executor: string;
+  model: string;
+  kind: ExecutorRuntimeKind;
+  fingerprint: string;
+  binary?: ExecutorRuntimeBinary;
+  sdk?: ExecutorRuntimePackage;
+  capabilities: ExecutorRuntimeCapabilities;
+}
+
 export interface ReportMeta {
   variants: string[];
   model: string;
@@ -158,6 +218,8 @@ export interface ReportMeta {
   sampleCount: number;
   taskCount: number;
   totalCostUSD: number;
+  /** False when `totalCostUSD` is only the sum reported by executors/judges that expose USD cost. */
+  totalCostReported?: boolean;
   timestamp: string;
   cliVersion: string;
   nodeVersion: string;
@@ -170,6 +232,19 @@ export interface ReportMeta {
   sampleHashes?: Record<string, string>;
   /** SHA256-12 of the LLM judge prompt template. Different hash = judge changed semantics. */
   judgePromptHash?: string;
+  /** Runtime fingerprint for the executor that produced tested outputs.
+   *  Legacy/common field. Prefer executorRuntimes for variant-level audit; this
+   *  field is the common runtime when all variants match, otherwise a representative
+   *  runtime for older consumers. */
+  executorRuntime?: ExecutorRuntimeFingerprint;
+  /** Runtime fingerprints for tested-output executors, keyed by variant name.
+   *  This is the strict construct-validity source because variants can resolve
+   *  different skillDir / PATH environments. */
+  executorRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
+  /** Runtime fingerprint for the default judge executor, or null when no judge ran. */
+  judgeRuntime?: ExecutorRuntimeFingerprint | null;
+  /** Runtime fingerprints for multi-judge ensemble members, keyed by "executor:model". */
+  judgeRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
   /** Number of times each sample was judged. 1 = single judge (default). */
   judgeRepeat?: number;
   /** Multi-judge ensemble configuration: ["claude:opus", "openai:gpt-4o", ...].
@@ -221,40 +296,73 @@ export interface ResultEntry {
   variants: Record<string, VariantResult>;
 }
 
-export interface Report {
+export interface EvaluationReport {
+  kind: 'evaluation';
   id: string;
   meta: ReportMeta;
   summary: Record<string, VariantSummary>;
   results: ResultEntry[];
   analysis?: AnalysisResult;
   variance?: VarianceData;
-  each?: boolean;
-  overview?: {
-    totalArtifacts: number;
-    totalSamples: number;
-    totalCostUSD: number;
-    artifacts: Array<{
-      name: string;
-      baselineScore: number | null;
-      artifactScore: number | null;
-      improvement: string;
-    }>;
-  };
-  artifacts?: Array<{
-    name: string;
-    sampleCount: number;
-    artifactHash: string | null;
-    summary: Record<string, VariantSummary>;
-    /** --each --repeat N 时由 runMultiple 聚合的三层独立 variance + t 检验 */
-    variance?: VarianceData;
-    results: ResultEntry[];
-  }>;
 }
+
+export type Report = EvaluationReport;
+
+export interface BatchEvaluationMeta {
+  mode: 'skill';
+  model: string;
+  judgeModel: string | null;
+  executor: string;
+  skillDir: string;
+  sampleCount: number;
+  taskCount: number;
+  totalArtifacts: number;
+  totalCostUSD: number;
+  /** False when `totalCostUSD` is only the sum reported by executors/judges that expose USD cost. */
+  totalCostReported?: boolean;
+  timestamp: string;
+  cliVersion: string;
+  nodeVersion: string;
+  executorRuntime?: ExecutorRuntimeFingerprint;
+  executorRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
+  judgeRuntime?: ExecutorRuntimeFingerprint | null;
+  judgeRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
+  judgeModels?: string[];
+  request?: EvaluationRequest;
+  run?: EvaluationRun;
+  job?: EvaluationJob;
+  gitInfo?: GitInfo | null;
+}
+
+export interface BatchEvaluationItem {
+  /** Skill name; also the treatment variant key inside the child EvaluationReport. */
+  name: string;
+  skillPath: string;
+  samplesPath: string;
+  reportId: string;
+  reportPath: string | null;
+  status: 'completed' | 'failed';
+  sampleCount: number;
+  totalCostUSD: number;
+  artifactHash: string | null;
+  summary: Record<string, VariantSummary>;
+  /** --batch --repeat N 时由 child EvaluationReport 聚合的三层独立 variance + t 检验快照 */
+  variance?: VarianceData;
+}
+
+export interface BatchEvaluationReport {
+  kind: 'batch-evaluation';
+  id: string;
+  mode: 'skill';
+  meta: BatchEvaluationMeta;
+  items: BatchEvaluationItem[];
+}
+
+export type ReportDocument = EvaluationReport | BatchEvaluationReport;
 
 export interface Insight {
   type: string;
   severity: 'error' | 'warning' | 'info';
-  message: string;
   details: unknown;
 }
 
@@ -277,9 +385,11 @@ export interface KnowledgeCoverage {
 }
 
 export interface AnalysisResult {
+  /** @deprecated Legacy display text. Renderers generate localized summaries from structured report data. */
   summary?: string;
   insights: Insight[];
-  suggestions: string[];
+  /** @deprecated Legacy display text. Renderers generate localized suggestions from structured insights. */
+  suggestions?: string[];
   coverage?: Record<string, KnowledgeCoverage>;
   /** Per-variant knowledge gap reports. See docs/knowledge-gap-signal-spec.md */
   gapReports?: Record<string, GapReport>;

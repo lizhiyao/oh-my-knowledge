@@ -2,7 +2,7 @@
  * HTML report renderer — orchestrates sub-modules.
  */
 
-import { e, fmtCost, fmtDuration, COLORS, DEFAULT_LANG, t, layout } from './layout.js';
+import { e, fmtCost, fmtDuration, fmtKnownCost, COLORS, DEFAULT_LANG, t, layout } from './layout.js';
 import {
   renderAgentOverview,
   renderAnalysis,
@@ -19,7 +19,7 @@ import {
 import { renderSampleTable } from './table.js';
 import { renderTrendsBody } from './trends.js';
 import { computeVerdict, type VerdictLevel } from '../eval-core/verdict.js';
-import type { Report, Lang } from '../types/index.js';
+import type { BatchEvaluationReport, EvaluationReport, ExecutorRuntimeFingerprint, Report, ReportDocument, Lang, VariantSummary } from '../types/index.js';
 
 // v0.21 B.4 — 列表页 status pill 用的 dot. PROGRESS/REGRESS 实心(强信号),
 // CAUTIOUS 三角(警示),NOISE 空心圆(有信号但无效果),UNDERPOWERED 部分填充
@@ -35,11 +35,102 @@ function levelDot(level: VerdictLevel): string {
   }
 }
 
-type EachOverview = NonNullable<Report['overview']>;
-type EachOverviewArtifact = EachOverview['artifacts'][number];
-type EachArtifactReport = NonNullable<Report['artifacts']>[number];
+type RuntimeMeta = Pick<EvaluationReport['meta'], 'executorRuntime' | 'executorRuntimes' | 'judgeRuntime' | 'judgeRuntimes'>;
 
-export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string {
+function isEvaluationReport(document: ReportDocument): document is EvaluationReport {
+  return document.kind === 'evaluation';
+}
+
+function scoreOf(summary: VariantSummary | undefined): number | null {
+  return summary?.avgCompositeScore ?? summary?.avgLlmScore ?? null;
+}
+
+function improvementOf(baselineScore: number | null, skillScore: number | null): string {
+  if (typeof baselineScore !== 'number' || typeof skillScore !== 'number' || baselineScore <= 0) return '-';
+  const delta = ((skillScore - baselineScore) / baselineScore * 100).toFixed(0);
+  return skillScore >= baselineScore ? `+${delta}%` : `${delta}%`;
+}
+
+function renderRuntimeTag(runtime: ExecutorRuntimeFingerprint | null | undefined, label: string, lang: Lang): string {
+  if (!runtime) return '';
+  const versions: string[] = [];
+  if (runtime.binary?.version) versions.push(`${lang === 'zh' ? '二进制' : 'binary'} ${runtime.binary.version}`);
+  if (runtime.sdk?.version) versions.push(`sdk ${runtime.sdk.version}`);
+  const versionText = versions.length > 0 ? ` · ${versions.map(e).join(' · ')}` : '';
+  const title = lang === 'zh'
+    ? [
+      `executor=${runtime.executor}`,
+      `model=${runtime.model}`,
+      `kind=${runtime.kind}`,
+      `system=${runtime.capabilities.systemPrompt}`,
+      `cost=${runtime.capabilities.costUSD}`,
+      `trace=${runtime.capabilities.trace}`,
+      `skillIsolation=${runtime.capabilities.skillIsolation}`,
+    ].join('; ')
+    : [
+      `executor=${runtime.executor}`,
+      `model=${runtime.model}`,
+      `kind=${runtime.kind}`,
+      `system=${runtime.capabilities.systemPrompt}`,
+      `cost=${runtime.capabilities.costUSD}`,
+      `trace=${runtime.capabilities.trace}`,
+      `skillIsolation=${runtime.capabilities.skillIsolation}`,
+    ].join('; ');
+  return `<span class="meta-tag" title="${e(title)}">${e(label)}: <code>${e(runtime.fingerprint)}</code>${versionText}</span>`;
+}
+
+function costCompletenessTooltip(lang: Lang): string {
+  return lang === 'zh'
+    ? '部分 executor 或评委不回传 USD 成本。这里显示的是已上报成本下界,真实花费可能更高。'
+    : 'Some executors or judges do not report USD cost. This is a lower bound from reported costs; actual spend may be higher.';
+}
+
+function renderDebiasModeTag(modes: EvaluationReport['meta']['debiasMode'], lang: Lang): string {
+  if (!modes || modes.length === 0) return '';
+  const labels = modes.map((mode) => {
+    if (mode === 'length') return lang === 'zh' ? '长度偏差' : 'length bias';
+    if (mode === 'position') return lang === 'zh' ? '位置偏差' : 'position bias';
+    return mode;
+  });
+  const title = lang === 'zh'
+    ? '评委评分偏差控制:长度偏差=提醒评委不要因为答案更长就给更高分;位置偏差=随机化多评委顺序'
+    : 'Judge scoring bias controls: length bias = do not reward longer answers; position bias = randomize ensemble order';
+  return `<span class="meta-tag" title="${e(title)}">${lang === 'zh' ? '评分偏差控制' : 'Judge bias control'}: ${labels.map(e).join(' · ')}</span>`;
+}
+
+function pluralizeEn(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function renderJudgeRuntimeTags(meta: RuntimeMeta, lang: Lang): string {
+  if (meta.judgeRuntimes && Object.keys(meta.judgeRuntimes).length > 0) {
+    return Object.entries(meta.judgeRuntimes)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, runtime]) => renderRuntimeTag(
+        runtime,
+        lang === 'zh' ? `评委指纹 ${key}` : `Judge runtime ${key}`,
+        lang,
+      ))
+      .join('');
+  }
+  return renderRuntimeTag(meta.judgeRuntime, lang === 'zh' ? '评委指纹' : 'Judge runtime', lang);
+}
+
+function renderExecutorRuntimeTags(meta: RuntimeMeta, lang: Lang): string {
+  if (meta.executorRuntimes && Object.keys(meta.executorRuntimes).length > 0) {
+    return Object.entries(meta.executorRuntimes)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, runtime]) => renderRuntimeTag(
+        runtime,
+        lang === 'zh' ? `执行器指纹 ${key}` : `Executor runtime ${key}`,
+        lang,
+      ))
+      .join('');
+  }
+  return renderRuntimeTag(meta.executorRuntime, lang === 'zh' ? '执行器指纹' : 'Executor runtime', lang);
+}
+
+export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
   const skillHealthLink = `<a href="/analyses${langQ}" style="color:var(--text-muted);font-size:12px;text-decoration:none;border:1px solid var(--border);padding:4px 10px;border-radius:var(--radius);display:inline-block">📊 <span data-i18n="skillHealthTitle">${t('skillHealthTitle', lang)}</span> →</a>`;
   if (!runs || runs.length === 0) {
@@ -54,6 +145,41 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
   }
 
   const rows = runs.map((run) => {
+    if (run.kind === 'batch-evaluation') {
+      const m = run.meta;
+      const scoreCol = run.items.length > 0
+        ? run.items.map((item) => {
+          const baselineScore = scoreOf(item.summary.baseline);
+          const skillScore = scoreOf(item.summary[item.name]);
+          const score = skillScore ?? baselineScore;
+          if (score == null) return `<span style="color:var(--text-muted)">${e(item.name)}: -</span>`;
+          const color = score >= 4 ? 'var(--green)' : score >= 3 ? 'var(--yellow)' : 'var(--red)';
+          const barW = Math.round((score / 5) * 100);
+          return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">` +
+            `<span title="${e(item.name)}" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">${e(item.name)}</span>` +
+            `<div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0">` +
+            `<div style="width:${barW}%;height:100%;background:${color};border-radius:3px"></div></div>` +
+            `<span style="font-size:12px;font-weight:600;color:${color};min-width:24px">${score.toFixed(2)}</span></div>`;
+        }).join('')
+        : '<div style="color:var(--text-faint);font-size:0.6875rem;text-align:center">no score</div>';
+      const allCostReported = run.items.every((item) =>
+        Object.values(item.summary || {}).every((v) => v.execCostReported !== false && v.judgeCostReported !== false));
+      const totalCostReported = m.totalCostReported !== false && allCostReported;
+      const totalDurationMs = run.items.reduce((sum, item) => (
+        sum + Object.values(item.summary || {}).reduce((inner, v) => inner + (v.avgDurationMs || 0) * (v.successCount || 0), 0)
+      ), 0);
+      const statusPill = `<span class="run-status" title="${lang === 'zh' ? '批量评测' : 'batch evaluation'}"><span class="run-status-dot" aria-hidden="true">◇</span>${lang === 'zh' ? '批量' : 'Batch'}</span>`;
+      return `<tr>
+      <td>${statusPill}<a href="/reports/${e(run.id)}${langQ}"><span style="color:var(--text-primary)">${e(run.id)}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : e(run.id)}</span></a></td>
+      <td>${e(m.model || '-')}</td>
+      <td>${m.sampleCount || 0}</td>
+      <td>${scoreCol}</td>
+      <td title="${totalCostReported ? '' : e(costCompletenessTooltip(lang))}">${fmtKnownCost(m.totalCostUSD || 0, totalCostReported)}</td>
+      <td>${fmtDuration(totalDurationMs)}</td>
+      <td style="white-space:nowrap"><button onclick="deleteRun('${e(run.id)}',this)" class="btn-danger" data-i18n="deleteBtnText">${t('deleteBtnText', lang)}</button></td>
+    </tr>`;
+    }
+
     const m = run.meta;
     const hasScores = Object.values(run.summary || {}).some((s) =>
       typeof s.avgCompositeScore === 'number' || typeof s.avgLlmScore === 'number'
@@ -75,9 +201,8 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
 
     // v0.21 B.4 — 列表页 verdict pill: 一眼分辨 progress / regress / noise.
     // computeVerdict 是同步纯函数(report -> level),per row 跑成本 O(samples).
-    // each mode 或脏老报告会让 layer-gates 访问 undefined.avgFactScore 抛 NPE,
-    // try/catch 兜底, 失败的 row 不显示 pill(不要让一个坏 report 把整个列表
-    // 撤掉). verdict.ts 的 defensive 修复另立 task.
+    // 脏报告可能让 layer-gates 访问 undefined.avgFactScore 抛 NPE。
+    // try/catch 兜底,失败的 row 不显示 pill,避免一个坏 report 撤掉整页。
     let statusPill = '';
     try {
       const verdict = computeVerdict(run);
@@ -86,7 +211,7 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
     } catch { /* skip pill on this row */ }
 
     return `<tr>
-      <td>${statusPill}<a href="/reports/${e(run.id)}"><span style="color:var(--text-primary)">${e(run.id)}${badges}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${(() => {
+      <td>${statusPill}<a href="/reports/${e(run.id)}${langQ}"><span style="color:var(--text-primary)">${e(run.id)}${badges}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${(() => {
         // Extract date/time from report ID: ...-YYYYMMDD-HHmm
         const idMatch = run.id.match(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
         if (idMatch) return `${idMatch[2]}/${idMatch[3]} ${idMatch[4]}:${idMatch[5]}`;
@@ -95,19 +220,45 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
       <td>${e(m.model || '-')}</td>
       <td>${m.sampleCount || 0}</td>
       <td>${scoreCol}</td>
-      <td>${fmtCost(Object.values(run.summary || {}).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0))}</td>
+      <td>${(() => {
+        const cost = Object.values(run.summary || {}).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
+        const reported = Object.values(run.summary || {}).every((v) => v.execCostReported !== false);
+        return fmtCost(cost, reported);
+      })()}</td>
       <td>${fmtDuration(Object.values(run.summary || {}).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0))}</td>
       <td style="white-space:nowrap"><button onclick="deleteRun('${e(run.id)}',this)" class="btn-danger" data-i18n="deleteBtnText">${t('deleteBtnText', lang)}</button></td>
     </tr>`;
   }).join('');
 
   const runCount = lang === 'zh' ? `${runs.length} 次评测` : `${runs.length} runs`;
-  const totalCost = runs.reduce((s, r) => s + Object.values(r.summary || {}).reduce((sv, v) => sv + (v.totalExecCostUSD || 0), 0), 0);
-  const costLabel = lang === 'zh' ? `累计 ${fmtCost(totalCost)}` : `Total ${fmtCost(totalCost)}`;
+  // 列表累计:只 sum 那些"全 variant 都报告了 cost"的 run,跳过任一 variant not reported 的。
+  // 排除 not reported(而不是把整体压成「—」)是因为列表常含数十个 run 仅 1-2 个是 codex,
+  // 把全部 sum 抹成「—」会丢掉绝大多数有效成本信息。
+  const evaluationRuns = runs.filter(isEvaluationReport);
+  const reportableRuns = evaluationRuns.filter((r) =>
+    Object.values(r.summary || {}).every((v) => v.execCostReported !== false));
+  const unmeasuredRunsCount = evaluationRuns.length - reportableRuns.length;
+  const totalCost = reportableRuns.reduce((s, r) => s + Object.values(r.summary || {}).reduce((sv, v) => sv + (v.totalExecCostUSD || 0), 0), 0);
+  // partial:有 reported 就显示数字 + tooltip;全部 not reported 才显示「—」;
+  // 全 reported(unmeasuredRunsCount=0)走老格式不包 span,保持 HTML snapshot 向后兼容。
+  // X/N 限定信息只放 tooltip,不挂在显眼位置 — 累计行视觉应该是单纯的数字。
+  const allUnmeasured = reportableRuns.length === 0 && runs.length > 0;
+  const baseLabel = lang === 'zh' ? '累计' : 'Total';
+  const costNumber = fmtCost(totalCost, !allUnmeasured);
+  let costLabel: string;
+  if (unmeasuredRunsCount === 0) {
+    // 全 reported → 跟旧版字节级一致,不破 snapshot
+    costLabel = `${baseLabel} ${costNumber}`;
+  } else {
+    const tip = lang === 'zh'
+      ? `${reportableRuns.length}/${evaluationRuns.length} 次单次报告了 USD 成本;${unmeasuredRunsCount} 次 executor 不报(如 codex CLI),batch index 不计入累计以避免重复`
+      : `${reportableRuns.length}/${evaluationRuns.length} evaluation reports reported USD cost; ${unmeasuredRunsCount} excluded (executor doesn't report, e.g. codex CLI); batch indexes are excluded to avoid double counting`;
+    costLabel = `<span title="${e(tip)}">${baseLabel} ${costNumber}</span>`;
+  }
 
   // Collect variants with ≥2 reports for trend links
   const variantCounts: Record<string, number> = {};
-  for (const run of runs) {
+  for (const run of evaluationRuns) {
     for (const v of (run.meta?.variants || [])) {
       if (v === 'baseline') continue;
       variantCounts[v] = (variantCounts[v] || 0) + 1;
@@ -115,32 +266,14 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
   }
   const trendLinks = Object.entries(variantCounts)
     .filter(([, count]) => count >= 2)
-    .map(([v]) => `<a href="/trends/${encodeURIComponent(v)}" style="display:inline-block;margin:4px 6px 4px 0;padding:3px 10px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius);color:var(--accent);text-decoration:none">${e(v)} (${variantCounts[v]})</a>`)
+    .map(([v]) => `<a href="/trends/${encodeURIComponent(v)}${langQ}" style="display:inline-block;margin:4px 6px 4px 0;padding:3px 10px;font-size:12px;border:1px solid var(--border);border-radius:var(--radius);color:var(--accent);text-decoration:none">${e(v)} (${variantCounts[v]})</a>`)
     .join('');
   const trendsSection = trendLinks ? `<div style="margin:12px 0"><span style="font-size:12px;color:var(--text-muted);margin-right:8px">${lang === 'zh' ? '📈 趋势：' : '📈 Trends:'}</span>${trendLinks}</div>` : '';
-
-  // v0.21 B.4 — verdict 图例条. 默认展示, × 关闭后 localStorage 记忆.
-  // 按 verdict.ts 的 worst-case roll-up 顺序排列 (REGRESS / CAUTIOUS /
-  // UNDERPOWERED / NOISE / PROGRESS), 让用户从最严重的状态开始扫.
-  const legendLevels: VerdictLevel[] = ['PROGRESS', 'CAUTIOUS', 'NOISE', 'REGRESS', 'UNDERPOWERED', 'SOLO'];
-  const legendItems = legendLevels.map((lvl) =>
-    `<span class="verdict-legend-item verdict-${lvl}" title="${e(levelTooltip(lvl, lang))}"><span class="verdict-legend-dot" aria-hidden="true">${levelDot(lvl)}</span>${e(levelLabel(lvl, lang))}</span>`,
-  ).join('');
-  const legendHtml = `<div id="verdict-legend" class="verdict-legend" role="region" aria-label="${e(t('verdictLegendLabel', lang))}">
-    <span class="verdict-legend-prefix">${e(t('verdictLegendLabel', lang))}</span>
-    ${legendItems}
-    <button class="verdict-legend-close" onclick="dismissVerdictLegend()" aria-label="${e(t('verdictLegendClose', lang))}">×</button>
-  </div>
-  <script>
-  (function(){var el=document.getElementById('verdict-legend');if(el&&localStorage.getItem('omk-verdict-legend-dismissed')==='1')el.hidden=true;})();
-  window.dismissVerdictLegend=function(){var el=document.getElementById('verdict-legend');if(el)el.hidden=true;try{localStorage.setItem('omk-verdict-legend-dismissed','1');}catch(e){}};
-  </script>`;
 
   return layout(t('title', lang), `
     <main>
     <h1>${t('title', lang)}</h1>
     <p class="subtitle" data-i18n="subtitle">${t('subtitle', lang)} &middot; ${runCount} &middot; ${costLabel}</p>
-    ${legendHtml}
     ${trendsSection}
     <div style="margin:12px 0">${skillHealthLink}</div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
@@ -191,11 +324,12 @@ export function renderRunList(runs: Report[], lang: Lang = DEFAULT_LANG): string
   `, lang);
 }
 
-export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG): string {
+export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DEFAULT_LANG): string {
+  const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
   if (!report) {
     return layout(t('title', lang), `
       <main>
-      <nav class="nav"><a href="/">${t('backToList', lang)}</a></nav>
+      <nav class="nav"><a href="/${langQ}">${t('backToList', lang)}</a></nav>
       <h1>Run not found</h1>
       </main>
     `, lang);
@@ -213,6 +347,11 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const verdictPill = renderVerdictPill(report, lang);
   const sampleTable = renderSampleTable(variants, results, lang);
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
+  // 任一 variant exec cost 未报告 → 总 cost 不可靠,renderer 显示「—」+ tooltip。
+  // 全部 reported(undefined / true)才正常显示 USD 数字。
+  const execCostReported = Object.values(summary).every((v) => v.execCostReported !== false);
+  const totalCostReported = m.totalCostReported !== false && Object.values(summary).every((v) =>
+    v.execCostReported !== false && v.judgeCostReported !== false);
   const totalDurationMs = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
   const sourceLabels: Record<string, Record<string, string>> = {
     zh: { 'variant-name': '本地文件', 'file-path': '本地文件', git: 'Git 版本', inline: '内联', baseline: '无', custom: '自定义' },
@@ -225,6 +364,10 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   const strategyLabels: Record<string, Record<string, string>> = {
     zh: { baseline: '无注入', 'system-prompt': '系统提示词', 'user-prompt': '用户提示词', 'agent-session': 'Agent 会话', 'workflow-session': '工作流会话' },
     en: { baseline: 'None', 'system-prompt': 'System prompt', 'user-prompt': 'User prompt', 'agent-session': 'Agent session', 'workflow-session': 'Workflow session' },
+  };
+  const artifactKindLabels: Record<string, Record<string, string>> = {
+    zh: { baseline: '基线', skill: 'Skill', prompt: 'Prompt', agent: 'Agent', workflow: 'Workflow' },
+    en: { baseline: 'Baseline', skill: 'Skill', prompt: 'Prompt', agent: 'Agent', workflow: 'Workflow' },
   };
 
   const variantConfigRows = (m.variantConfigs || []).map((config, i) => {
@@ -242,7 +385,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     return `<tr>
       <td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(config.variant)}</strong></td>
       <td>${e(expType)}</td>
-      <td>${e(config.artifactKind)}</td>
+      <td>${e((artifactKindLabels[lang] || artifactKindLabels.en)[config.artifactKind] || config.artifactKind)}</td>
       <td>${e(source)}</td>
       <td>${e(strategy)}</td>
       <td title="${e(cwdRaw)}">${e(runtimeContext)}</td>
@@ -254,7 +397,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
     : '';
   const experimentSummary = lang === 'zh'
     ? `${m.sampleCount} 个测评用例 × ${variants.length} 组实验${repeatSuffix}`
-    : `${m.sampleCount} samples × ${variants.length} variants${repeatSuffix}`;
+    : `${pluralizeEn(m.sampleCount, 'sample')} × ${pluralizeEn(variants.length, 'variant')}${repeatSuffix}`;
 
   const variantConfigSection = variantConfigRows ? `
     <section style="margin:20px 0">
@@ -304,7 +447,7 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
 
   return layout(`${report.id}`, `
     <main>
-    <nav class="nav"><a href="/" data-i18n="backToList">${t('backToList', lang)}</a></nav>
+    <nav class="nav"><a href="/${langQ}" data-i18n="backToList">${t('backToList', lang)}</a></nav>
     <h1>${e(report.id)}</h1>
     ${verdictPill}
     <div class="meta-tags">
@@ -315,13 +458,14 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
       }
       ${m.judgeRepeat && m.judgeRepeat > 1 ? `<span class="meta-tag" title="${t('judgeStddevDesc', lang)}">${t('judgeRepeatLabel', lang)}: ${m.judgeRepeat}</span>` : ''}
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
-      <span class="meta-tag">${t('cost', lang)}: ${fmtCost(totalExecCost)}</span>
-      <span class="meta-tag">${lang === 'zh' ? '耗时' : 'duration'}: ${fmtDuration(totalDurationMs)}</span>
-      ${m.gitInfo ? `<span class="meta-tag">commit: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
-      ${m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : ''}
+      <span class="meta-tag"${execCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(totalExecCost, execCostReported)}</span>
+      <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${t('totalCost', lang)}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>
+      <span class="meta-tag">${lang === 'zh' ? '耗时' : 'Duration'}: ${fmtDuration(totalDurationMs)}</span>
+      ${m.gitInfo ? `<span class="meta-tag">${lang === 'zh' ? '提交' : 'commit'}: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
+      ${m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : ''}${renderExecutorRuntimeTags(m, lang)}${renderJudgeRuntimeTags(m, lang)}
       ${m.sampleHashes ? `<span class="meta-tag" style="color:var(--text-muted)" title="${t('sampleHashCountDesc', lang)}">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}/${m.sampleCount}</span>` : ''}
       ${m.evaluationFramework ? `<span class="meta-tag" title="${t('evalFrameworkDesc', lang)}">${t('evalFrameworkLabel', lang)}: ${m.evaluationFramework === 'bootstrap' ? t('evalFrameworkBootstrap', lang) : m.evaluationFramework === 'both' ? t('evalFrameworkBoth', lang) : t('evalFrameworkTTest', lang)}</span>` : ''}
-      ${m.debiasMode && m.debiasMode.length > 0 ? `<span class="meta-tag" style="color:var(--green)" title="${lang === 'zh' ? 'judge bias 校正模式 (Phase 3)：length=substance-not-length 提示;position=ensemble 顺序随机化' : 'Judge bias debias modes (Phase 3): length = substance-not-length prompt; position = randomized ensemble order'}">${lang === 'zh' ? '校正' : 'debias'}: ${m.debiasMode.join(' · ')}</span>` : ''}
+      ${renderDebiasModeTag(m.debiasMode, lang)}
       ${m.blind ? `<span class="meta-tag" style="color:var(--green)" data-i18n="blindLabel">${t('blindLabel', lang)}</span>` : ''}
     </div>
     ${m.blind ? `
@@ -336,9 +480,9 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
 
     <section>${cards}${pairwiseDiff}${humanAgreement}${saturationCurve}</section>
 
-    ${renderVarianceComparisons(report.variance, lang, Boolean(report.meta.layeredStats))}
+    ${renderVarianceComparisons(report.variance, lang, Boolean(report.meta.layeredStats), summary)}
 
-    ${renderAnalysis(report.analysis, lang)}
+    ${renderAnalysis(report, lang)}
 
     ${renderAgentOverview(variants, summary, lang)}
 
@@ -350,102 +494,91 @@ export function renderRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG
   `, lang);
 }
 
-export function renderEachRunDetail(report: Report | null, lang: Lang = DEFAULT_LANG): string {
+export function renderBatchEvaluationDetail(report: BatchEvaluationReport | null, lang: Lang = DEFAULT_LANG): string {
+  const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
   if (!report) {
     return layout(t('title', lang), `
       <main>
-      <nav class="nav"><a href="/">${t('backToList', lang)}</a></nav>
+      <nav class="nav"><a href="/${langQ}">${t('backToList', lang)}</a></nav>
       <h1>Run not found</h1>
       </main>
     `, lang);
   }
 
   const m = report.meta;
-  const overview: EachOverview | null = report.overview || null;
-  const eachArtifacts: EachArtifactReport[] = report.artifacts || [];
-
-  // Overview table
-  const overviewRows = (overview?.artifacts || []).map((sk: EachOverviewArtifact) => {
-    const bs = typeof sk.baselineScore === 'number' ? sk.baselineScore.toFixed(2) : '-';
-    const ss = typeof sk.artifactScore === 'number' ? sk.artifactScore.toFixed(2) : '-';
-    const imp = sk.improvement || '-';
-    const impColor = imp.startsWith('+') ? 'var(--green)' : imp.startsWith('-') ? 'var(--red)' : 'var(--text-muted)';
-    return `<tr>
-      <td><a href="#skill-${e(sk.name)}">${e(sk.name)}</a></td>
-      <td>${bs}</td>
-      <td>${ss}</td>
-      <td style="color:${impColor};font-weight:600">${imp}</td>
-    </tr>`;
-  }).join('');
-
-  // Per-artifact detail sections
-  const skillSections = eachArtifacts.map((sk) => {
-    const variants = ['baseline', 'skill'];
-    const summary = sk.summary || {};
-    // 传 sk.variance 给 summaryCards, 稳定性 CV 列才有数据 (非 each 模式是传 report.variance)
-    const cards = renderSummaryCards(variants, summary, lang, sk.variance);
-    const sampleTable = renderSampleTable(variants, sk.results, lang);
-    // --each --repeat N 时每个 skill 有自己的 variance; 复用 bench 的 renderVarianceComparisons
-    const varianceBlock = sk.variance
-      ? renderVarianceComparisons(sk.variance, lang, Boolean(report.meta.layeredStats))
-      : '';
-
-    const hashShort = sk.artifactHash ? e(sk.artifactHash).slice(0, 12) : '-';
-    const hashBlock = sk.artifactHash
-      ? `<span title="${t('artifactHashTooltip', lang)}"><span data-i18n="artifactHashLabel">${t('artifactHashLabel', lang)}</span>: <code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${hashShort}</code></span>`
-      : '';
-    return `
-      <section id="skill-${e(sk.name)}" style="margin-top:36px;padding-top:20px;border-top:1px solid var(--border)">
-        <h2>${e(sk.name)}</h2>
-        <p style="font-size:12px;color:var(--text-muted)">${t('samples', lang)}: ${sk.sampleCount}${hashBlock ? ' &middot; ' + hashBlock : ''}</p>
-        ${cards}
-        ${varianceBlock}
-        ${sampleTable}
-      </section>
-    `;
-  }).join('');
-
-  // 轮次信息放总览。统一用 · 分隔(each 下 skills×samples 不是严格乘法,避免 × 的误导)
+  const allCostReported = report.items.every((item) =>
+    Object.values(item.summary || {}).every((v) =>
+      v.execCostReported !== false && v.judgeCostReported !== false));
+  const totalCostReported = m.totalCostReported !== false && allCostReported;
   const repeatN = report.meta.request?.repeat;
   const repeatSegment = repeatN && repeatN > 1
     ? (lang === 'zh' ? ` · ${repeatN} 轮重复` : ` · ${repeatN} runs`)
     : '';
   const overviewSubtitle = lang === 'zh'
-    ? `${overview?.totalArtifacts || 0} 个 Skill · ${overview?.totalSamples || 0} 个用例${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`
-    : `${overview?.totalArtifacts || 0} skills · ${overview?.totalSamples || 0} samples${repeatSegment} · ${fmtCost(overview?.totalCostUSD || 0)}`;
+    ? `${m.totalArtifacts || report.items.length} 个 Skill · ${m.sampleCount || 0} 个评测用例${repeatSegment} · ${fmtKnownCost(m.totalCostUSD || 0, totalCostReported)}`
+    : `${pluralizeEn(m.totalArtifacts || report.items.length, 'skill')} · ${pluralizeEn(m.sampleCount || 0, 'sample')}${repeatSegment} · ${fmtKnownCost(m.totalCostUSD || 0, totalCostReported)}`;
+
+  const rows = report.items.map((item) => {
+    const baselineScore = scoreOf(item.summary.baseline);
+    const skillScore = scoreOf(item.summary[item.name]);
+    const improvement = improvementOf(baselineScore, skillScore);
+    const impColor = improvement.startsWith('+') ? 'var(--green)' : improvement.startsWith('-') ? 'var(--red)' : 'var(--text-muted)';
+    const hashShort = item.artifactHash ? e(item.artifactHash).slice(0, 12) : '-';
+    return `<tr>
+      <td><a href="/reports/${encodeURIComponent(item.reportId)}${langQ}">${e(item.name)}</a></td>
+      <td>${typeof baselineScore === 'number' ? baselineScore.toFixed(2) : '-'}</td>
+      <td>${typeof skillScore === 'number' ? skillScore.toFixed(2) : '-'}</td>
+      <td style="color:${impColor};font-weight:600">${improvement}</td>
+      <td>${item.sampleCount}</td>
+      <td>${fmtCost(item.totalCostUSD, allCostReported)}</td>
+      <td><code style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace">${hashShort}</code></td>
+    </tr>`;
+  }).join('');
 
   return layout(`${t('reportTitle', lang)} - ${report.id}`, `
     <main>
-    <nav class="nav"><a href="/" data-i18n="backToList">${t('backToList', lang)}</a></nav>
+    <nav class="nav"><a href="/${langQ}" data-i18n="backToList">${t('backToList', lang)}</a></nav>
     <h1>${e(report.id)}</h1>
     <div class="meta-tags">
+      <span class="meta-tag">${lang === 'zh' ? '类型' : 'type'}: batch evaluation</span>
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
-      <span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>
+      ${m.judgeModels && m.judgeModels.length >= 2
+        ? `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${m.judgeModels.map((j) => e(j)).join(' · ')}</span>`
+        : `<span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>`
+      }
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
-      <span class="meta-tag">${t('cost', lang)}: ${fmtCost(m.totalCostUSD)}</span>
+      ${renderExecutorRuntimeTags(m, lang)}${renderJudgeRuntimeTags(m, lang)}
+      <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${t('totalCost', lang)}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>
     </div>
 
     <section>
-    <h2>${t('eachOverview', lang)}</h2>
-
+    <h2>${t('batchOverview', lang)}</h2>
     <p style="font-size:13px;color:var(--text-muted)">${overviewSubtitle}</p>
     <div class="table-wrap">
     <table>
       <thead><tr>
-        <th>${t('eachSkill', lang)}</th>
-        <th>${t('eachBaseline', lang)}</th>
-        <th>${t('eachWithSkill', lang)}</th>
-        <th>${t('eachImprovement', lang)}</th>
+        <th>${t('batchSkill', lang)}</th>
+        <th>${t('batchBaseline', lang)}</th>
+        <th>${t('batchWithSkill', lang)}</th>
+        <th>${t('batchImprovement', lang)}</th>
+        <th>${t('samples', lang)}</th>
+        <th>${t('cost', lang)}</th>
+        <th>${t('artifactHashLabel', lang)}</th>
       </tr></thead>
-      <tbody>${overviewRows}</tbody>
+      <tbody>${rows}</tbody>
     </table>
     </div>
     </section>
 
-    ${skillSections}
-
     </main>
   `, lang);
+}
+
+export function renderReportDocumentDetail(report: ReportDocument | null, lang: Lang = DEFAULT_LANG): string {
+  if (!report) return renderRunDetail(null, lang);
+  return report.kind === 'batch-evaluation'
+    ? renderBatchEvaluationDetail(report, lang)
+    : renderRunDetail(report, lang);
 }
 
 export function renderTrendsPage(variantName: string, runs: Report[], lang: Lang = DEFAULT_LANG): string {

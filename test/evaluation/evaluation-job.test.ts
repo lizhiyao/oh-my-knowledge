@@ -48,7 +48,7 @@ describe('buildEvaluationRequest', () => {
     assert.equal(req.blind, true);
   });
 
-  it('--each --repeat N 时 repeat / each 字段透传到 request (防回归)', () => {
+  it('--batch --repeat N 时 repeat / batch 字段透传到 request (防回归)', () => {
     const req = buildEvaluationRequest({
       samplesPath: '/a.json',
       skillDir: '/skills',
@@ -62,13 +62,13 @@ describe('buildEvaluationRequest', () => {
       dryRun: false,
       blind: false,
       repeat: 2,
-      each: true,
+      batch: true,
     });
     assert.equal(req.repeat, 2);
-    assert.equal(req.each, true);
+    assert.equal(req.batch, true);
   });
 
-  it('未传 repeat / each 时字段为 undefined (不是 0 或 false)', () => {
+  it('未传 repeat / batch 时字段为 undefined (不是 0 或 false)', () => {
     const req = buildEvaluationRequest({
       samplesPath: '/a.json',
       skillDir: '/skills',
@@ -83,7 +83,7 @@ describe('buildEvaluationRequest', () => {
       blind: false,
     });
     assert.equal(req.repeat, undefined);
-    assert.equal(req.each, undefined);
+    assert.equal(req.batch, undefined);
   });
 
   it('judgeRepeat 字段透传到 request (防回归: --judge-repeat N 不被吞)', () => {

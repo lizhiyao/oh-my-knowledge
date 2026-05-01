@@ -1,6 +1,7 @@
 <!--
 Thanks for the contribution! Filling in each section helps reviewers understand the change quickly.
-See CONTRIBUTING.md for the branch model (Gitflow) and commit message convention (Chinese or English both fine).
+Before opening a PR, read CLAUDE.md plus CONTRIBUTING.md for the current branch model,
+commit-message convention, changelog policy, and validation requirements.
 -->
 
 ## Purpose
@@ -19,14 +20,17 @@ See CONTRIBUTING.md for the branch model (Gitflow) and commit message convention
 <!-- How did you verify this works? -->
 
 - [ ] `yarn lint` passes
-- [ ] `yarn test` passes (all 442+ tests)
+- [ ] `yarn build` passes
+- [ ] `yarn test` passes
 - [ ] Added / updated tests covering new behavior (or explained why none needed)
 - [ ] Manually exercised the feature end-to-end if it touches CLI / reports
 
 ## Checklist
 
+- [ ] Read `CLAUDE.md`
 - [ ] Branch is `feat/*`, `fix/*`, `docs/*`, `chore/*`, `release/*`, or `hotfix/*` (Gitflow)
-- [ ] Target branch is `develop` (for features/fixes) or `main` (only for release/hotfix merges)
+- [ ] Target branch follows the current branch strategy in `CLAUDE.md` / `CONTRIBUTING.md`
+- [ ] Commit message follows the repo convention (`type(scope): subject`)
 - [ ] `CHANGELOG.md` `[Unreleased]` section updated if this is user-visible
 - [ ] No secrets / internal URLs / personal data in the diff
 - [ ] README / docs updated if behavior or CLI surface changed
