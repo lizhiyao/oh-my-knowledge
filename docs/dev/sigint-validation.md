@@ -86,3 +86,9 @@ claude
 - **Windows**:Node 的 `child.kill('SIGTERM')` 在 Windows 上是 `TerminateProcess` 等价 SIGKILL,**没有 grace period**。omk 主战场是 macOS / Linux,Windows best-effort。
 - **`--export` / dev mode**:`cli/index.ts` 的 dev mode `node --watch` spawn 不走 executor 路径,SIGINT 传播由 dev mode 自己处理。本 fix 不影响。
 - **HTTP executor**(`anthropic-api` / `openai-api`):用 fetch + `AbortSignal.timeout`,自带 abort,无 child 进程,无 orphan 风险。本 fix 不动它们。
+
+## codex-sdk executor 的额外校验
+
+`@openai/codex-sdk` 内部自己 `spawn(executablePath, ...)`,SDK 子进程**不在** `spawnWithSigintPropagation` 维护的 registry 里。`codex-sdk` executor 因此自己 install 一个 SIGINT listener 调 `abortController.abort()`,SDK 拿到 abort 后用它注册到 `spawn` 的 `signal` 选项 SIGTERM 子进程。
+
+验证方式:把上面"终端 A"命令的 `--executor codex` 换成 `--executor codex-sdk`,Ctrl+C 后预期同样无 orphan。listener 的 install/remove 走 try/finally,validation 抛错时不会装 listener。
