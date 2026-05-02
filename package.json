@@ -15,9 +15,9 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --max-warnings 0",
+    "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0",
     "test": "vitest run",
-    "ci": "yarn lint && yarn typecheck && yarn test",
+    "ci": "run-p lint typecheck test",
     "prepublishOnly": "yarn build",
     "prepare": "husky"
   },
@@ -75,6 +75,7 @@
     "eslint": "^10.1.0",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
+    "npm-run-all2": "^8.0.4",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.0",
     "vitest": "^4.1.3"
