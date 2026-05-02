@@ -1,6 +1,7 @@
 # oh-my-knowledge
 
 [![npm version](https://img.shields.io/npm/v/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge)
+[![npm weekly downloads](https://img.shields.io/npm/dw/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge)
 [![CI](https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node.js Version](https://img.shields.io/node/v/oh-my-knowledge.svg)](https://nodejs.org)
@@ -43,17 +44,31 @@ omk bench run --lang en
 OMK_LANG=en omk bench report
 ```
 
-## 在 Claude Code 中使用
+## 在 AI Coding Agent 中使用
 
-安装 omk 后，在 Claude Code 中直接用自然语言交互：
+### 在 Claude Code 中使用
 
-```
+当 `omk` skill 已在 Claude Code 中可用时，可以直接这样调用：
+
+```bash
 /omk eval              # 评测当前项目的 artifact
 /omk evolve            # 自动迭代改进 artifact
 /omk gen-samples       # 生成测试用例
 ```
 
 或直接说"帮我评测 v1 和 v2 的差异"、"改进一下这个 artifact"，omk 会自动理解意图并调用对应命令。
+
+### 在 Codex 中使用
+
+Codex 默认不支持 `/omk ...` 这种 Claude Code 风格的 slash command。通常直接让 agent 执行 `omk` CLI，例如：
+
+```bash
+omk bench run
+omk bench evolve
+omk bench gen-samples skills/my-skill.md
+```
+
+也可以直接用自然语言描述目标，例如"比较 v1 和 v2 的评测差异"、"为这个 skill 生成测试用例"。
 
 ## 为什么需要这个工具
 
