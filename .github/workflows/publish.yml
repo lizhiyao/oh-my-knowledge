@@ -12,7 +12,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # 创建 GitHub Release(npm publish 完成后自动建,从 CHANGELOG 抽 notes）
+      contents: write # 创建 GitHub Release(npm publish 完成后自动建, release notes 由 GitHub 从 PR 列表自动生成)
       id-token: write # 使工作流能够通过 OIDC 从 GitHub 获取凭证（npm provenance 必需）
 
     steps:
@@ -42,23 +42,11 @@ jobs:
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-    # 从 CHANGELOG.md 抽 ## [VERSION] section 到临时文件, 喂给下一步的 action 做 release body。
-    # sed 去掉单独行 `---` (CHANGELOG sections 之间的分隔符, 在 release notes 里没意义)。
-    - name: Extract CHANGELOG section
-      run: |
-        VERSION="${GITHUB_REF#refs/tags/v}"
-        awk "/^## \[${VERSION}\]/{flag=1; next} /^## \[/{if(flag){exit}} flag" CHANGELOG.md | sed '/^---$/d' > /tmp/release-notes.md
-        if [ ! -s /tmp/release-notes.md ]; then
-          echo "::warning::no CHANGELOG section for v${VERSION}; release will use auto-generated notes only"
-        fi
-
     # softprops/action-gh-release 是行业通用 GitHub Release action (~17k stars)。
-    # body_path 提供我们手写的 CHANGELOG section, generate_release_notes 让 GitHub
-    # 自动 append "What's Changed" + "Full Changelog: compare URL" footer。
-    # 不再自己用 `gh release create` + 手拼 footer (PR #6 那套写法因 yaml 多行
-    # 字符串里的 `**` 被误读为 alias 整个 yml 加载失败)。
+    # generate_release_notes 让 GitHub 直接从 tag 之间的 PR 列表自动生成
+    # "What's Changed" + "Full Changelog: compare URL"。不再维护单独的 CHANGELOG.md —
+    # PR title / description 是唯一信息源, BREAKING / migration 在 PR 描述里写清楚。
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
-        body_path: /tmp/release-notes.md
         generate_release_notes: true

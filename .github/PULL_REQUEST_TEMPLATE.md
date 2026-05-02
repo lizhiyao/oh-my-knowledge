@@ -1,7 +1,7 @@
 <!--
 Thanks for the contribution! Filling in each section helps reviewers understand the change quickly.
 Before opening a PR, read CLAUDE.md plus CONTRIBUTING.md for the current branch model,
-commit-message convention, changelog policy, and validation requirements.
+commit-message convention, and validation requirements.
 -->
 
 ## Purpose
@@ -31,7 +31,7 @@ commit-message convention, changelog policy, and validation requirements.
 - [ ] Branch is `feat/*`, `fix/*`, `docs/*`, `chore/*`, `release/*`, or `hotfix/*` (Gitflow)
 - [ ] Target branch follows the current branch strategy in `CLAUDE.md` / `CONTRIBUTING.md`
 - [ ] Commit message follows the repo convention (`type(scope): subject`)
-- [ ] `CHANGELOG.md` `[Unreleased]` section updated if this is user-visible
+- [ ] PR title / description note user-facing impact + migration if BREAKING (release notes are auto-generated from PR list)
 - [ ] No secrets / internal URLs / personal data in the diff
 - [ ] README / docs updated if behavior or CLI surface changed
 

@@ -98,4 +98,4 @@ Every report carries:
 - Skill isolation snapshot (`reportMeta.skillIsolation`)
 - Schema version (`reportMeta.schemaVersion`)
 
-Cross-version comparability is enforced by `BREAKING-COMPARABILITY` callouts in [CHANGELOG](../CHANGELOG.md) — when a measurement invariant changes, you'll see it.
+Cross-version comparability is enforced by `BREAKING-COMPARABILITY` callouts in [GitHub Releases](https://github.com/lizhiyao/oh-my-knowledge/releases) — when a measurement invariant changes, you'll see it.

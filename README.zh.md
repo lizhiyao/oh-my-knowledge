@@ -960,4 +960,4 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
 
 ---
 
-版本变更记录见 [CHANGELOG](./CHANGELOG.md)。欢迎贡献 — 详见 [CONTRIBUTING](./CONTRIBUTING.md)。
+版本变更记录见 [GitHub Releases](https://github.com/lizhiyao/oh-my-knowledge/releases)。欢迎贡献 — 详见 [CONTRIBUTING](./CONTRIBUTING.md)。

@@ -98,4 +98,4 @@ baseline 拿到的 prompt **不应**包含被测 skill。omk 切断三条污染�
 - skill 隔离快照(`reportMeta.skillIsolation`)
 - Schema 版本(`reportMeta.schemaVersion`)
 
-跨版本可比性由 [CHANGELOG](../../CHANGELOG.md) 中的 `BREAKING-COMPARABILITY` callout 强制 —— 测量学不变量改了,你能看到。
+跨版本可比性由 [GitHub Releases](https://github.com/lizhiyao/oh-my-knowledge/releases) 中的 `BREAKING-COMPARABILITY` callout 强制 —— 测量学不变量改了,你能看到。
