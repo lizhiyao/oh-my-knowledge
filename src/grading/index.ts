@@ -22,11 +22,13 @@ interface GradeOptions {
    */
   judgeModels: JudgeConfig[];
   /**
-   * Map `executor name → ExecutorFn`, must contain an entry for every executor
-   * referenced in `judgeModels`. Pipeline layer pre-creates these so grade()
-   * stays pure (no `createExecutor` import); tests pass mock executors directly.
+   * Map `executor name → ExecutorFn`. The map only needs entries for executors
+   * actually invoked by this grade call — i.e. when the sample triggers an LLM
+   * code path (async assertions, dimension scoring, single rubric, ensemble
+   * member). Sync-only samples can pass `{}`. Failures are lazy: missing entry
+   * throws only at the call site, not on grade entry.
    */
-  judgeExecutors: Record<string, ExecutorFn>;
+  judgeExecutors?: Record<string, ExecutorFn>;
   allowLlmJudge?: boolean;
   execMetrics?: { costUSD?: number; durationMs?: number; numTurns?: number; toolCalls?: ToolCallInfo[]; turns?: TurnInfo[] };
   samplesDir?: string;
@@ -54,18 +56,22 @@ export async function grade({ output, sample, judgeModels, judgeExecutors, allow
   }
   const useEnsemble = judgeModels.length >= 2;
   const primaryJudge = judgeModels[0];
-  const primaryExecutor = judgeExecutors[primaryJudge.executor];
-  if (!primaryExecutor) {
-    throw new Error(`grade(): judgeExecutors missing entry for primary judge "${primaryJudge.executor}"`);
-  }
   const judgeModel = primaryJudge.model;
+  const judgeExecutorMap = judgeExecutors ?? {};
   const results: GradeResult = { compositeScore: 0 };
 
-  // Helper: resolve ensemble member's executor by name. Pipeline must populate
-  // every entry referenced in `judgeModels` — failing loudly here catches any
-  // missed setup before grade() actually fans out.
+  // Lazy executor resolution: only throw when the sample actually triggers a
+  // code path that needs the executor. Sync-only samples never invoke these
+  // helpers, so they can pass `judgeExecutors: {}` (or omit it entirely).
+  const requirePrimaryExecutor = (): ExecutorFn => {
+    const exec = judgeExecutorMap[primaryJudge.executor];
+    if (!exec) {
+      throw new Error(`grade(): judgeExecutors missing entry for primary judge "${primaryJudge.executor}"`);
+    }
+    return exec;
+  };
   const executorByName = (name: string): ExecutorFn => {
-    const exec = judgeExecutors[name];
+    const exec = judgeExecutorMap[name];
     if (!exec) {
       throw new Error(`No executor registered for "${name}"; pipeline must populate judgeExecutors for every judge`);
     }
@@ -90,7 +96,7 @@ export async function grade({ output, sample, judgeModels, judgeExecutors, allow
   // we use the primary judge as a deterministic representative.
   if (asyncAssertions.length > 0) {
     const asyncResults = await runAsyncAssertions(output, asyncAssertions, {
-      executor: primaryExecutor, judgeModel, sample, samplesDir,
+      executor: requirePrimaryExecutor(), judgeModel, sample, samplesDir,
     });
     if (results.assertions) {
       // Merge async results into sync results
@@ -125,7 +131,7 @@ export async function grade({ output, sample, judgeModels, judgeExecutors, allow
     // Multi-dimensional scoring
     results.dimensions = {};
     for (const [dim, rubric] of Object.entries(sample.dimensions)) {
-      const dimOptions = { output, rubric, prompt: sample.prompt, executor: primaryExecutor, model: judgeModel, traceSummary, lengthDebias };
+      const dimOptions = { output, rubric, prompt: sample.prompt, executor: requirePrimaryExecutor(), model: judgeModel, traceSummary, lengthDebias };
       results.dimensions[dim] = useEnsemble
         ? await llmJudgeEnsemble(dimOptions, judgeModels, executorByName, judgeRepeat)
         : await llmJudgeRepeat(dimOptions, judgeRepeat);
@@ -143,7 +149,7 @@ export async function grade({ output, sample, judgeModels, judgeExecutors, allow
     }
   } else if (allowLlmJudge && sample.rubric) {
     // Single rubric scoring
-    const rubricOptions = { output, rubric: sample.rubric, prompt: sample.prompt, executor: primaryExecutor, model: judgeModel, traceSummary, lengthDebias };
+    const rubricOptions = { output, rubric: sample.rubric, prompt: sample.prompt, executor: requirePrimaryExecutor(), model: judgeModel, traceSummary, lengthDebias };
     const judge = useEnsemble
       ? await llmJudgeEnsemble(rubricOptions, judgeModels, executorByName, judgeRepeat)
       : await llmJudgeRepeat(rubricOptions, judgeRepeat);

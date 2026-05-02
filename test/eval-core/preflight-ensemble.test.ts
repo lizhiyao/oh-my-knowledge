@@ -100,4 +100,22 @@ describe('preflightAllJudges', () => {
       /no executor registered for "unmapped"/,
     );
   });
+
+  it('forwards timeoutMs to underlying preflight calls', async () => {
+    const observedTimeouts: Array<number | undefined> = [];
+    const recordingExecutor: ExecutorFn = async (opts) => {
+      observedTimeouts.push(opts.timeoutMs);
+      return okResult;
+    };
+    await preflightAllJudges(
+      [
+        { executor: 'a', model: 'm1' },
+        { executor: 'a', model: 'm2' },
+      ],
+      { a: recordingExecutor },
+      5000,
+    );
+
+    assert.deepEqual(observedTimeouts, [5000, 5000]);
+  });
 });

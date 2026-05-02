@@ -457,19 +457,27 @@ export async function executeEvaluationPipeline({
   });
 
   try {
-    // Pre-build a per-executor map covering ALL judges (single or ensemble). Built
-    // before preflight so we can probe every (executor, model) pair, not just the
-    // first one — otherwise a misconfigured judge #2/#3 only fails mid-grading
-    // after the run is already underway.
-    let judgeExecutors: Record<string, ExecutorFn> | undefined;
+    // 解析 judge config + 配套 executor map 一次,后续 preflight 与 executeTasks 共用。
+    // production 路径 judgeModels 始终非空(RunConfig 必填);fallback 仅兼容 internal
+    // legacy caller 还在传 single judgeModel + judgeExecutorName 的场景。
+    //
+    // executor map 必须先于 preflight build,否则 ensemble 中第二、第三个 judge 配错
+    // (404 model / executor 不存在 / auth fail)只会在 grading 半途才暴露 — 那时已经
+    // 浪费 task execution 成本 + 报告里也不会有 judgeAgreement。
+    const resolvedJudgeModels = judgeModels && judgeModels.length > 0
+      ? judgeModels
+      : [{ executor: executorName, model: judgeModel }];
+    let resolvedJudgeExecutors: Record<string, ExecutorFn>;
     if (judgeModels && judgeModels.length > 0) {
       const { createExecutor } = await import('../executors/index.js');
-      judgeExecutors = {};
-      for (const jc of judgeModels) {
-        if (!judgeExecutors[jc.executor]) {
-          judgeExecutors[jc.executor] = createExecutor(jc.executor);
+      resolvedJudgeExecutors = {};
+      for (const jc of resolvedJudgeModels) {
+        if (!resolvedJudgeExecutors[jc.executor]) {
+          resolvedJudgeExecutors[jc.executor] = createExecutor(jc.executor);
         }
       }
+    } else {
+      resolvedJudgeExecutors = { [executorName]: judgeExecutor };
     }
 
     if (!skipConnectivity) {
@@ -478,13 +486,7 @@ export async function executeEvaluationPipeline({
       // 包含 dep / 结构 / 元数据 / 契约检查。这里只剩 executor + 所有 judge。
       await preflight(executor, model);
       if (!noJudge) {
-        // 对每个 unique (executor, model) judge 做 preflight — 见 preflightAllJudges
-        // docstring。任一 judge 配错应在前置门禁拦截,不推迟到 grading。
-        const judgesToCheck = judgeModels && judgeModels.length > 0
-          ? judgeModels
-          : [{ executor: executorName, model: judgeModel }];
-        const judgeExecutorsForPreflight = judgeExecutors ?? { [executorName]: judgeExecutor };
-        await preflightAllJudges(judgesToCheck, judgeExecutorsForPreflight);
+        await preflightAllJudges(resolvedJudgeModels, resolvedJudgeExecutors);
       }
     }
 
@@ -496,12 +498,6 @@ export async function executeEvaluationPipeline({
     // Isolation pre-flight warning (--no-strict-baseline + ~/.claude/skills/ non-empty)
     emitIsolationWarnings(artifacts, strictBaseline);
 
-    // judgeModels 必非空(executeEvaluationPipeline 入口保证),judgeExecutors map
-    // 在上方已对每个 unique executor build 完。
-    const effectiveJudgeModels = judgeModels && judgeModels.length > 0
-      ? judgeModels
-      : [{ executor: executorName, model: judgeModel }];
-    const effectiveJudgeExecutors = judgeExecutors ?? { [executorName]: judgeExecutor };
     const { results, totalCostUSD, skipped, budgetExhausted } = await executeTasks({
       tasks,
       executor,
@@ -517,8 +513,8 @@ export async function executeEvaluationPipeline({
       retry,
       existingResults,
       judgeRepeat,
-      judgeModels: effectiveJudgeModels,
-      judgeExecutors: effectiveJudgeExecutors,
+      judgeModels: resolvedJudgeModels,
+      judgeExecutors: resolvedJudgeExecutors,
       lengthDebias,
       budget,
     });

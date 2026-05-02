@@ -350,6 +350,36 @@ describe('grade', () => {
     assert.equal(result.llmScore, undefined);
   });
 
+  it('sync-only sample without judgeExecutors entry does not throw (lazy resolution)', async () => {
+    // 当 sample 只有 sync assertions(没 LLM scoring,没 async assertions),
+    // primaryExecutor 永远不会被 invoke,所以 judgeExecutors 缺 entry 也不应报错。
+    const result = await grade({
+      output: 'parameterized',
+      sample: {
+        sample_id: 'sync-only',
+        prompt: 'p',
+        assertions: [{ type: 'contains', value: 'parameterized', weight: 1 }],
+      },
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: {},
+    });
+    assert.equal(result.assertions!.passed, 1);
+    assert.equal(result.compositeScore, 5);
+  });
+
+  it('LLM scoring without judgeExecutors entry throws at the call site', async () => {
+    // 互补:有 rubric 但 judgeExecutors 缺 primary entry,真用到时才 throw。
+    await assert.rejects(
+      () => grade({
+        output: 'o',
+        sample: { sample_id: 's', prompt: 'p', rubric: 'r' },
+        judgeModels: [{ executor: 'claude', model: 'haiku' }],
+        judgeExecutors: {},
+      }),
+      /missing entry for primary judge "claude"/,
+    );
+  });
+
   it('rubric only: calls LLM judge', async () => {
     const mockExecutor = async (): Promise<ExecResult> => ({
       ok: true,
