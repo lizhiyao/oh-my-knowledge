@@ -40,7 +40,6 @@ export interface SkillProgressInfo {
 
 interface CommonEvaluationOptions {
   model?: string;
-  judgeModel?: string;
   outputDir?: string | null;
   project?: string;
   owner?: string;
@@ -49,7 +48,6 @@ interface CommonEvaluationOptions {
   concurrency?: number;
   timeoutMs?: number;
   executorName?: string;
-  judgeExecutorName?: string;
   jobStore?: JobStore | null;
   persistJob?: boolean;
   onProgress?: ProgressCallback | null;
@@ -72,8 +70,9 @@ interface CommonEvaluationOptions {
   /** --judge-repeat N. 每条 sample × dimension 调 LLM judge N 次, 输出 stddev (judge 自一致性).
    *  默认 1 (单次). 用于量化 LLM judge 在该 rubric 上的稳定性 — stddev 高 = 评分噪声大. */
   judgeRepeat?: number;
-  /** --judge-models executor:model,executor:model,... — multi-judge ensemble. ≥ 2 个
-   *  judge 时每条 sample × dimension 由所有 judge 各自打分, 输出 inter-judge agreement. */
+  /** Unified judge config. 1 entry = single judge, ≥ 2 = ensemble + inter-judge agreement.
+   *  Optional at the API surface; runEvaluation defaults to `[{executor, model: 'haiku'}]`
+   *  when omitted. RunConfig (parseRunConfig 出口) 保证非空。 */
   judgeModels?: import('../types/index.js').JudgeConfig[];
   /** --bootstrap. Distribution-free CI on each variant mean + pairwise diff. */
   bootstrap?: boolean;
@@ -160,7 +159,6 @@ export async function runEvaluation({
   variantSpecs = [],
   artifacts,
   model = DEFAULT_MODEL,
-  judgeModel = JUDGE_MODEL,
   outputDir = DEFAULT_OUTPUT_DIR,
   project,
   owner,
@@ -172,7 +170,6 @@ export async function runEvaluation({
   timeoutMs,
   noCache = false,
   executorName = 'claude',
-  judgeExecutorName,
   jobStore = null,
   persistJob = true,
   onProgress = null,
@@ -195,6 +192,13 @@ export async function runEvaluation({
   strictBaseline,
   variantAllowedSkills,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
+  // Unified judgeModels → derive single-judge fields for downstream pipeline / grading
+  // (which still operate on string `judgeModel` + `judgeExecutorName` fields per call).
+  const effectiveJudgeModels: import('../types/index.js').JudgeConfig[] = judgeModels && judgeModels.length > 0
+    ? judgeModels
+    : [{ executor: executorName, model: JUDGE_MODEL }];
+  const judgeModel = effectiveJudgeModels[0].model;
+  const judgeExecutorName = effectiveJudgeModels[0].executor;
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
     skillDir,
@@ -569,7 +573,6 @@ export function buildVarianceData(runs: Report[]): VarianceData | null {
 export async function runBatchEvaluation({
   skillDir,
   model = DEFAULT_MODEL,
-  judgeModel = JUDGE_MODEL,
   outputDir = DEFAULT_OUTPUT_DIR,
   project,
   owner,
@@ -579,7 +582,6 @@ export async function runBatchEvaluation({
   concurrency = 1,
   timeoutMs,
   executorName = 'claude',
-  judgeExecutorName,
   jobStore = null,
   persistJob = true,
   onProgress = null,
@@ -596,6 +598,13 @@ export async function runBatchEvaluation({
   strictBaseline,
   variantAllowedSkills,
 }: RunBatchEvaluationOptions): Promise<{ report: BatchEvaluationReport | DryRunBatchReport; filePath: string | null }> {
+  // Same unified judge derivation as runEvaluation (downstream pipeline / report build
+  // still uses single judgeModel + judgeExecutorName per call).
+  const effectiveJudgeModels: import('../types/index.js').JudgeConfig[] = judgeModels && judgeModels.length > 0
+    ? judgeModels
+    : [{ executor: executorName, model: JUDGE_MODEL }];
+  const judgeModel = effectiveJudgeModels[0].model;
+  const judgeExecutorName = effectiveJudgeModels[0].executor;
   const skillEntries = discoverBatchSkills(resolve(skillDir));
   if (skillEntries.length === 0) {
     throw new Error(`no skill with paired eval-samples found in: ${skillDir}`);
@@ -626,9 +635,7 @@ export async function runBatchEvaluation({
           skillDir,
           artifacts: skillArtifacts,
           model,
-          judgeModel,
           executorName,
-          judgeExecutorName,
           dryRun: true,
           noJudge,
           timeoutMs,
@@ -640,7 +647,7 @@ export async function runBatchEvaluation({
           // 真实 run 一致(否则 batch dry-run 永远按 repeat=1 报警,误导用户)。
           repeat,
           judgeRepeat,
-          judgeModels,
+          judgeModels: effectiveJudgeModels,
           lengthDebias,
           noCache,
           verbose,

@@ -170,7 +170,7 @@ describe('runEvaluation', () => {
       skillDir: SKILL_DIR,
       variantSpecs: asSpecs(['v1', 'v2']),
       model: 'opus',
-      judgeModel: 'sonnet',
+      judgeModels: [{ executor: 'claude', model: 'sonnet' }],
       dryRun: true,
     });
     const report = asDryRunReport(result.report);

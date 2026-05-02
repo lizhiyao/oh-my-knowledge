@@ -239,10 +239,6 @@ async function handleRun(argv: string[]): Promise<void> {
   const judgeRepeatCount: number = Math.max(1, Math.floor(parsedJudgeRepeat) || 1);
   if (judgeRepeatCount > 1) config.judgeRepeat = judgeRepeatCount;
 
-  // --judge-models 解析与 ensemble 启用已经在 parseRunConfig 内统一处理:
-  // 1 条 -> single judge (config.judgeModel + judgeExecutorName), ≥ 2 条 -> config.judgeModels。
-  // CLI > eval.yaml.judgeModels > default。这里无需重复解析。
-
   // --budget-usd / --budget-per-sample-usd / --budget-per-sample-ms:
   //  hard budget caps. CLI flags override config-file values. When the
   // total-USD cap is exceeded mid-run, remaining tasks are skipped and a

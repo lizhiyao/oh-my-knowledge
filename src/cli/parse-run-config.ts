@@ -18,7 +18,6 @@ export interface RunConfig {
   skillDir: string;
   variantSpecs: VariantSpec[];
   model: string | undefined;
-  judgeModel: string | undefined;
   outputDir: string;
   noJudge: boolean | undefined;
   noCache: boolean | undefined;
@@ -26,7 +25,6 @@ export interface RunConfig {
   concurrency: number;
   timeoutMs: number;
   executorName: string | undefined;
-  judgeExecutorName: string | undefined;
   /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。
    *  doctor 是 mandatory 不提供 skip — 静态检查无成本理由跳过。 */
   skipConnectivity: boolean | undefined;
@@ -40,8 +38,9 @@ export interface RunConfig {
   layeredStats?: boolean;
   /** --judge-repeat N. Calls LLM judge N times per (sample × dimension). Default 1. */
   judgeRepeat?: number;
-  /** --judge-models executor:model,executor:model,... — multi-judge ensemble (≥ 2 entries). */
-  judgeModels?: JudgeConfig[];
+  /** Unified judge config. Always non-empty; 1 entry = single judge, ≥ 2 = ensemble.
+   *  parseRunConfig guarantees at least `[{executor: <executor>, model: 'haiku'}]`. */
+  judgeModels: JudgeConfig[];
   /** --bootstrap. Adds bootstrap CI to summary (per-variant mean + pairwise diff). */
   bootstrap?: boolean;
   /** --bootstrap-samples N. Bootstrap resamples count, default 1000. */
@@ -200,7 +199,7 @@ export function parseRunConfig(
 
   // judgeModels: unified judge config. Parse --judge-models (CLI) or evalConfig.judgeModels (yaml).
   // 1 entry = single judge, ≥ 2 entries = ensemble. Format `executor:model[,executor:model]`.
-  // Top-level judgeModel + judgeExecutor 已在 v0.25 删除 (validateEvalConfig 阶段会 reject 旧字段)。
+  // 出口 RunConfig.judgeModels 保证非空 (default `[{executor, model: 'haiku'}]`)。
   let parsedJudges: import('../types/index.js').JudgeConfig[] | undefined;
   const cliJudgesRaw = values['judge-models'] as string | undefined;
   if (cliJudgesRaw !== undefined) {
@@ -216,10 +215,9 @@ export function parseRunConfig(
       return { executor: p.slice(0, idx), model: p.slice(idx + 1) };
     });
   }
-  const judges = parsedJudges ?? evalConfig?.judgeModels;
-  const firstJudge = judges?.[0];
-  const judgeExecutorName = firstJudge?.executor ?? executorName;
-  const judgeModel = firstJudge?.model ?? 'haiku';
+  const judgeModels: JudgeConfig[] = parsedJudges
+    ?? evalConfig?.judgeModels
+    ?? [{ executor: executorName, model: 'haiku' }];
   const outputDir = resolve((values['output-dir'] as string | undefined) ?? DEFAULT_REPORTS_DIR);
   const concurrencyRaw =
     (values.concurrency as string | undefined) !== undefined
@@ -272,7 +270,6 @@ export function parseRunConfig(
       skillDir,
       variantSpecs,
       model,
-      judgeModel,
       outputDir,
       noJudge,
       noCache,
@@ -280,7 +277,6 @@ export function parseRunConfig(
       concurrency,
       timeoutMs,
       executorName,
-      judgeExecutorName,
       skipConnectivity,
       lang: undefined, // CLI 入口在 handleRun/handleGate 里注入
       mcpConfig,
@@ -291,7 +287,7 @@ export function parseRunConfig(
       layeredStats,
       budget: evalConfig?.budget,
       strictBaseline,
-      ...(judges && judges.length >= 2 ? { judgeModels: judges } : {}),
+      judgeModels,
       ...(Object.keys(variantAllowedSkills).length > 0 && { variantAllowedSkills }),
     },
     evalConfig,
