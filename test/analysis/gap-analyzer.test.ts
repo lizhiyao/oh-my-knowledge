@@ -416,7 +416,7 @@ describe('computeGapReport', () => {
 
   // ---------- v0.2 严重度加权 (SIGNAL_WEIGHTS + weightedGapRate) ----------
 
-  it('v0.2: 每个 signal 自带 weight (strong 1.0 / weak 0.5)', () => {
+  it('每个 signal 自带 weight (strong 1.0 / weak 0.5)', () => {
     const results: ResultEntry[] = [
       {
         sample_id: 's001',
@@ -442,7 +442,7 @@ describe('computeGapReport', () => {
     assert.equal(byType.hedging, 0.5);
   });
 
-  it('v0.2: weightedGapRate 按用例最强信号聚合', () => {
+  it('weightedGapRate 按用例最强信号聚合', () => {
     // 3 个用例:1 个 failed_search(强,权重 1.0)、1 个 hedging(弱,权重 0.5)、1 个无信号
     // gapRate = 2/3 ≈ 0.6667
     // weightedGapRate = (1.0 + 0.5 + 0) / 3 ≈ 0.5000
@@ -467,7 +467,7 @@ describe('computeGapReport', () => {
     assert.ok(report.weightedGapRate <= report.gapRate);
   });
 
-  it('v0.2: 同一用例多信号时取最强权重(不是累加)', () => {
+  it('同一用例多信号时取最强权重(不是累加)', () => {
     // 一个用例同时有 hedging(0.5) + failed_search(1.0) → sample weight = 1.0 而不是 1.5
     const results: ResultEntry[] = [
       {
@@ -488,7 +488,7 @@ describe('computeGapReport', () => {
     assert.equal(report.weightedGapRate, 1.0);
   });
 
-  it('v0.2: 全弱信号时 weightedGapRate 显著低于 gapRate', () => {
+  it('全弱信号时 weightedGapRate 显著低于 gapRate', () => {
     // 4 个用例全是 hedging(弱,0.5)
     // gapRate = 4/4 = 1.0 (100% 触发信号)
     // weightedGapRate = 4*0.5 / 4 = 0.5 (加权严重度只到 50%)
@@ -502,7 +502,7 @@ describe('computeGapReport', () => {
     assert.equal(report.weightedGapRate, 0.5);
   });
 
-  it('v0.2: 空 report 时 weightedGapRate === 0 不崩', () => {
+  it('空 report 时 weightedGapRate === 0 不崩', () => {
     const report = computeGapReport([], 'v1');
     assert.equal(report.weightedGapRate, 0);
   });

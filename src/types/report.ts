@@ -258,7 +258,7 @@ export interface ReportMeta {
   /** Pairwise comparisons (treatment vs control) — populated when --bootstrap and
    *  multi-variant. Length = (variants.length - 1). */
   pairComparisons?: VariantPairComparison[];
-  /** v0.21 Phase 3 — which judge-bias debias modes were active for this run.
+  /** Which judge-bias debias modes were active for this run.
    *  Values: 'length' (substance-not-length prompt), 'position' (random ensemble
    *  order). Empty / absent means legacy default (no debias). The renderer shows
    *  this so readers can tell apples from oranges across reports. */
@@ -497,7 +497,7 @@ export interface VarianceComparisonMetric {
 // carry composite-score variance for backward compatibility with historical reports.
 export type VarianceMetricKey = 'cost' | 'efficiency';
 
-// Layer keys for the three-layer independent significance tests (v0.16 work item B / PR-2).
+// Layer keys for the three-layer independent significance tests.
 // fact / behavior / judge are independent dimensions of the composite score:
 // - fact: rule-verifiable factual claim assertions
 // - behavior: rule-verifiable execution / tool-call compliance assertions
@@ -522,7 +522,7 @@ export interface VarianceData {
   runs: number;
   perVariant: Record<string, VariantVariance>;
   comparisons: VarianceComparison[];
-  /** v0.21 Phase 4 — saturation curve data. Populated only when repeat ≥ 2.
+  /** Saturation curve data. Populated only when repeat ≥ 2.
    *  Per-variant cumulative score arrays at each repeat checkpoint, plus the
    *  saturation verdict (only computed when repeat ≥ 5). */
   saturation?: SaturationData;

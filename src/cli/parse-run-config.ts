@@ -46,7 +46,7 @@ export interface RunConfig {
   bootstrap?: boolean;
   /** --bootstrap-samples N. Bootstrap resamples count, default 1000. */
   bootstrapSamples?: number;
-  /** v0.21 Phase 3a length-debias toggle. Default true; --no-debias-length sets false. */
+  /** length-debias toggle. Default true; --no-debias-length sets false. */
   lengthDebias?: boolean;
   /** hard budget caps from CLI or config. */
   budget?: EvalBudget;

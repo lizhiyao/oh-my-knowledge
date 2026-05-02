@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildJudgePrompt, getJudgePromptHash } from '../../src/grading/judge.js';
 
-describe('judge prompt versioning (Phase 3a)', () => {
+describe('judge prompt versioning', () => {
   it('default builds the v3-cot-length prompt', () => {
     const text = buildJudgePrompt('p', 'r', 'o', null);
     assert.match(text, /v3-cot-length/);

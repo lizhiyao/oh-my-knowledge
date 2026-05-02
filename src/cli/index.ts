@@ -276,7 +276,7 @@ async function handleRun(argv: string[]): Promise<void> {
     };
   }
 
-  // --no-debias-length: opt out of v0.21 Phase 3a length-controlled prompt.
+  // --no-debias-length: opt out of length-controlled prompt.
   // Default behavior is debias-on (judge prompt v3-cot-length); flag flips it
   // off so historical reports (judgePromptHash from v2-cot era) can be reproduced.
   if (values['no-debias-length'] as boolean) {
@@ -1368,7 +1368,7 @@ async function handleGold(argv: string[]): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// handleDebiasValidate — measure length-debias prompt sensitivity (Phase 3a)
+// handleDebiasValidate — measure length-debias prompt sensitivity
 // ---------------------------------------------------------------------------
 
 async function handleDebiasValidate(argv: string[]): Promise<void> {
