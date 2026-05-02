@@ -102,6 +102,23 @@ export function parseJudgeModelsArg(raw: string): JudgeConfig[] {
 }
 
 /**
+ * Friendly CLI wrapper around `parseJudgeModelsArg`. On parse error prints
+ * `error: <msg>` to stderr and exits 2 — matching `parseArgsStrict` 对 unknown
+ * option 的行为(exit 2 = parser/参数错误,区别于 doctor / gate eval failure 的
+ * exit 1)。CLI 层 `bench run` / `bench evolve` / `bench debias-validate` /
+ * `bench failures` 共享这一份。
+ */
+export function parseJudgeModelsArgOrExit(raw: string): JudgeConfig[] {
+  try {
+    return parseJudgeModelsArg(raw);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`error: ${msg}`);
+    process.exit(2);
+  }
+}
+
+/**
  * 所有子命令都接受的通用 flag。
  */
 export const COMMON_OPTIONS: ParseArgsConfig['options'] = {
@@ -233,7 +250,7 @@ export function parseRunConfig(
   // 1 entry = single judge, ≥ 2 entries = ensemble. Format `executor:model[,executor:model]`.
   // 出口 RunConfig.judgeModels 保证非空 (default `[{executor, model: 'haiku'}]`)。
   const cliJudgesRaw = values['judge-models'] as string | undefined;
-  const parsedJudges = cliJudgesRaw !== undefined ? parseJudgeModelsArg(cliJudgesRaw) : undefined;
+  const parsedJudges = cliJudgesRaw !== undefined ? parseJudgeModelsArgOrExit(cliJudgesRaw) : undefined;
   const judgeModels: JudgeConfig[] = parsedJudges
     ?? evalConfig?.judgeModels
     ?? [{ executor: executorName, model: 'haiku' }];

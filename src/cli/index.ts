@@ -893,9 +893,9 @@ async function handleEvolve(argv: string[]): Promise<void> {
   }
 
   const { evolveSkill } = await import('../authoring/evolver.js');
-  const { parseJudgeModelsArg } = await import('./parse-run-config.js');
+  const { parseJudgeModelsArgOrExit } = await import('./parse-run-config.js');
 
-  const evolveJudges = parseJudgeModelsArg(values['judge-models'] as string);
+  const evolveJudges = parseJudgeModelsArgOrExit(values['judge-models'] as string);
   if (evolveJudges.length > 1) {
     console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'evolve' }));
     process.exit(2);
@@ -1395,6 +1395,17 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
     },
   });
 
+  // Parse --judge-models 在 load report 之前 fail-fast。重复 entry / 缺 executor /
+  // 空串等参数错误应立即给 friendly error: + exit 2,不要等到 store IO 完成才暴露。
+  const { parseJudgeModelsArgOrExit: parseJudgesA } = await import('./parse-run-config.js');
+  const cliJudgeModelsA = (values['judge-models'] as string | undefined) !== undefined
+    ? parseJudgesA(values['judge-models'] as string)
+    : undefined;
+  if (cliJudgeModelsA && cliJudgeModelsA.length > 1) {
+    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'debias-validate' }));
+    process.exit(2);
+  }
+
   const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
@@ -1409,19 +1420,13 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const { loadSamples } = await import('../inputs/load-samples.js');
   const { samples } = loadSamples(samplesPath);
 
-  const { parseJudgeModelsArg: parseJudgesA } = await import('./parse-run-config.js');
-  const debiasJudges: JudgeConfig[] = (values['judge-models'] as string | undefined) !== undefined
-    ? parseJudgesA(values['judge-models'] as string)
-    : (report.meta?.judgeModels?.[0]
+  const debiasJudges: JudgeConfig[] = cliJudgeModelsA
+    ?? (report.meta?.judgeModels?.[0]
         ? [{ executor: report.meta.judgeModels[0].executor, model: report.meta.judgeModels[0].model }]
         : []);
   if (debiasJudges.length === 0) {
     console.error(tCli('cli.common.no_judge_model', lang));
     process.exit(1);
-  }
-  if (debiasJudges.length > 1) {
-    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'debias-validate' }));
-    process.exit(2);
   }
 
   process.stderr.write(tCli('cli.debias.warn_cost_doubles', lang));
@@ -1668,23 +1673,27 @@ async function handleFailures(argv: string[]): Promise<void> {
     },
   });
 
+  // Parse --judge-models 在 load report 之前 fail-fast(同 debias-validate)。
+  const { parseJudgeModelsArgOrExit: parseJudgesB } = await import('./parse-run-config.js');
+  const cliJudgeModelsB = (values['judge-models'] as string | undefined) !== undefined
+    ? parseJudgesB(values['judge-models'] as string)
+    : undefined;
+  if (cliJudgeModelsB && cliJudgeModelsB.length > 1) {
+    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'failures' }));
+    process.exit(2);
+  }
+
   const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
 
-  const { parseJudgeModelsArg: parseJudgesB } = await import('./parse-run-config.js');
-  const failuresJudges: JudgeConfig[] = (values['judge-models'] as string | undefined) !== undefined
-    ? parseJudgesB(values['judge-models'] as string)
-    : (report.meta?.judgeModels?.[0]
+  const failuresJudges: JudgeConfig[] = cliJudgeModelsB
+    ?? (report.meta?.judgeModels?.[0]
         ? [{ executor: report.meta.judgeModels[0].executor, model: report.meta.judgeModels[0].model }]
         : []);
   if (failuresJudges.length === 0) {
     console.error(tCli('cli.common.no_judge_model', lang));
     process.exit(1);
-  }
-  if (failuresJudges.length > 1) {
-    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'failures' }));
-    process.exit(2);
   }
 
   const { createExecutor } = await import('../executors/index.js');

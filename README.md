@@ -456,7 +456,7 @@ variants:
   - { name: my-skill, role: treatment, artifact: ./skills/my-skill.md }
 ```
 
-**字段入口**: `bench run` 完整支持上述全部字段; `bench gate` 通过 `parseRunConfig` 共享 variants / executor / model / `judgeModels`(单评委 + ensemble 都生效)/ noJudge / noCache / blind / strictBaseline / budget / mcpConfig / variantAllowedSkills,但 `handleRun` 自己处理的实验设计字段(`repeat` / `judgeRepeat` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`)gate 不读,后续按需扩展到 gate。其他子命令(`evolve` / `verdict` / `diff` / `analyze` / 等)完全不读 eval.yaml。
+**Field entry points**: `bench run` reads every field above. `bench gate` goes through `parseRunConfig` and picks up the shared subset (`variants` / `executor` / `model` / `judgeModels` — both single-judge and ensemble — / `noJudge` / `noCache` / `blind` / `strictBaseline` / `budget` / `mcpConfig` / `variantAllowedSkills`); the experiment-design fields handled by `handleRun` (`repeat` / `judgeRepeat` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`) are intentionally not read by `gate` and can be extended later. Other subcommands (`evolve` / `verdict` / `diff` / `analyze` / …) do not read `eval.yaml`.
 
 **Difference from `cost_max` / `latency_max` assertions**: assertions are **per-sample scoring rules** (exceeding the cap fails that one assertion, the run continues); budget caps are **workflow-level hard limits** (`totalUSD` overrun aborts the run and persists a partial report; per-sample overruns fail the offending sample but the run continues). Assertions answer "is quality acceptable?"; budgets answer "are cost/time within the envelope?".
 
