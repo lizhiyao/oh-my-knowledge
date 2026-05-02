@@ -241,7 +241,7 @@ describe('runDoctor', () => {
     }
   });
 
-  it('opts.artifacts overrides target resolution (P1 fix path)', async () => {
+  it('opts.artifacts overrides target resolution', async () => {
     // 用 artifacts 直传, 不论 target 指哪里, doctor 只检查传入的这一个 artifact
     const inlineArtifact: Artifact = {
       name: 'inline-fixture',
@@ -264,7 +264,7 @@ describe('runDoctor', () => {
     assert.equal(report.failed, false);
   });
 
-  it('default rules path includes registry (P2 fix: registerRule 接入)', async () => {
+  it('default rules include both BUILTIN_RULES and registerRule()-injected custom rules', async () => {
     __resetCustomRulesForTest();
     const customRule: DoctorRule = {
       id: 'custom_marker',
@@ -348,7 +348,7 @@ describe('runDoctor', () => {
     assert.ok(report.skills.length >= 2);
   });
 
-  it('result.labelKey is propagated from rule (P3 fix)', async () => {
+  it('result.labelKey is propagated from rule into DoctorRuleResult', async () => {
     const customRule: DoctorRule = {
       id: 'custom_label_test',
       severity: 'info',
@@ -373,7 +373,7 @@ describe('runDoctor', () => {
     }
   });
 
-  it('passes requires to dependencies_present rule (P2 fix)', async () => {
+  it('passes top-level requires through to dependencies_present rule', async () => {
     // 显式 requires.tools 包一个不存在的工具, dependencies_present 应该 fail
     const inlineArtifact: Artifact = {
       name: 'inline-with-requires',

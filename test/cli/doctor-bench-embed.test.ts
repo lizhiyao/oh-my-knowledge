@@ -120,7 +120,7 @@ describe('bench run / gate doctor preflight embedding', () => {
     assert.equal(parsed.dryRun, true);
   });
 
-  it('P1 fix: doctor preflight only checks variants used in this run, not unrelated drafts', async () => {
+  it('doctor preflight only checks variants used in this run, not unrelated drafts in the same skill-dir', async () => {
     // 准备目录: v1.md 和 v2.md 健康, draft.md 内容过短(会被 doctor fail).
     // 本次评测只用 --control v1 --treatment v2, 不应被 draft.md 阻断。
     const tmp = mkdtempSync(join(tmpdir(), 'doctor-preflight-converge-'));
