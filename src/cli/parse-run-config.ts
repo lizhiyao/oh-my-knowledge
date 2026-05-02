@@ -26,9 +26,9 @@ export interface RunConfig {
   timeoutMs: number;
   executorName: string | undefined;
   judgeExecutorName: string | undefined;
-  skipPreflight: boolean | undefined;
-  /** 跳过 doctor 健康检查(逃生 flag, 默认 false — doctor 是评测必经环节)。 */
-  skipDoctor: boolean | undefined;
+  /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。
+   *  doctor 是 mandatory 不提供 skip — 静态检查无成本理由跳过。 */
+  skipConnectivity: boolean | undefined;
   /** 用户语言, 透传给 doctor 报告渲染。 */
   lang: 'zh' | 'en' | undefined;
   mcpConfig: string | undefined;
@@ -95,8 +95,7 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   executor: { type: 'string' },
   'judge-executor': { type: 'string' },
   batch: { type: 'boolean' },
-  'skip-preflight': { type: 'boolean' },
-  'skip-doctor': { type: 'boolean' },
+  'skip-connectivity': { type: 'boolean' },
   'mcp-config': { type: 'string' },
   'no-serve': { type: 'boolean' },
   verbose: { type: 'boolean' },
@@ -217,8 +216,7 @@ export function parseRunConfig(
   const noJudge = (values['no-judge'] as boolean | undefined) ?? false;
   const noCache = (values['no-cache'] as boolean | undefined) ?? evalConfig?.noCache ?? false;
   const dryRun = (values['dry-run'] as boolean | undefined) ?? false;
-  const skipPreflight = (values['skip-preflight'] as boolean | undefined) ?? false;
-  const skipDoctor = (values['skip-doctor'] as boolean | undefined) ?? false;
+  const skipConnectivity = (values['skip-connectivity'] as boolean | undefined) ?? false;
   const mcpConfig = (values['mcp-config'] as string | undefined) ?? evalConfig?.mcpConfig;
   const verbose = (values.verbose as boolean | undefined) ?? false;
   const retry = Math.max(0, Number(values.retry ?? 0) || 0);
@@ -259,8 +257,7 @@ export function parseRunConfig(
       timeoutMs,
       executorName,
       judgeExecutorName,
-      skipPreflight,
-      skipDoctor,
+      skipConnectivity,
       lang: undefined, // CLI 入口在 handleRun/handleGate 里注入
       mcpConfig,
       verbose,

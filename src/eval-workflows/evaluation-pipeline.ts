@@ -352,7 +352,7 @@ export interface EvaluationPipelineOptions {
   jobStore?: JobStore | null;
   persistJob?: boolean;
   onProgress?: ProgressCallback | null;
-  skipPreflight?: boolean;
+  skipConnectivity?: boolean;
   verbose?: boolean;
   retry?: number;
   existingResults?: Record<string, Record<string, VariantResult>>;
@@ -406,7 +406,7 @@ export async function executeEvaluationPipeline({
   jobStore = null,
   persistJob = true,
   onProgress = null,
-  skipPreflight = false,
+  skipConnectivity = false,
   verbose = false,
   retry = 0,
   existingResults,
@@ -456,7 +456,7 @@ export async function executeEvaluationPipeline({
   });
 
   try {
-    if (!skipPreflight) {
+    if (!skipConnectivity) {
       if (onProgress) onProgress({ phase: 'preflight', jobId: runState.jobId });
       // LLM 连通性: eval 唯一职责。doctor 在 runEvaluation 上游已跑,
       // 包含 dep / 结构 / 元数据 / 契约检查。这里只剩 executor + judge。

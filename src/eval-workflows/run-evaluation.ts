@@ -54,9 +54,8 @@ interface CommonEvaluationOptions {
   jobStore?: JobStore | null;
   persistJob?: boolean;
   onProgress?: ProgressCallback | null;
-  skipPreflight?: boolean;
-  /** 跳过 doctor 健康检查。默认 false — doctor 是评测必经环节, --skip-doctor 仅作逃生 flag。 */
-  skipDoctor?: boolean;
+  /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。 */
+  skipConnectivity?: boolean;
   /** 用户语言, 透传给 doctor 报告渲染。 */
   lang?: 'zh' | 'en';
   mcpConfig?: string;
@@ -178,8 +177,7 @@ export async function runEvaluation({
   jobStore = null,
   persistJob = true,
   onProgress = null,
-  skipPreflight = false,
-  skipDoctor = false,
+  skipConnectivity = false,
   lang = 'zh',
   mcpConfig,
   verbose = false,
@@ -211,12 +209,9 @@ export async function runEvaluation({
 
   // doctor 强制门禁: skill 静态结构 + 元数据 + 依赖 + 用例契约。
   // 在 dryRun 分支之前跑, 让 dry-run 也得到 doctor 覆盖(保护 garbage-in 的 verdict)。
-  //
-  // doctor 和 LLM 连通 preflight 是**完全独立**的 flag:
-  // - --skip-doctor   仅跳过 doctor (静态), 连通性仍跑
-  // - --skip-preflight 仅跳过连通性 (LLM), doctor 仍跑
-  // 两者都是逃生 flag, 默认都开。doctor 是评测必经环节, 不被 --skip-preflight 顺带关掉。
-  if (!skipDoctor) {
+  // doctor 不可 skip — 静态检查无成本理由跳过, 也无 escape hatch flag。
+  // LLM 连通性是另一回事, 由独立的 skipConnectivity 控制。
+  {
     const { runDoctor } = await import('../doctor/index.js');
     const { renderDoctorReportText } = await import('../doctor/renderer.js');
     const { tCli } = await import('../cli/i18n.js');
@@ -240,6 +235,9 @@ export async function runEvaluation({
       }
     }
   }
+
+  // --resume 时自动跳过 LLM 连通性检测(原 run 已经验过, 重跑是浪费 LLM 调用)
+  const effectiveSkipConnectivity = resume ? true : skipConnectivity;
 
   if (dryRun) {
     // Emit power warnings during dry-run too — this is exactly when users
@@ -331,7 +329,7 @@ export async function runEvaluation({
     jobStore,
     persistJob,
     onProgress,
-    skipPreflight,
+    skipConnectivity: effectiveSkipConnectivity,
     verbose,
     retry,
     existingResults,
@@ -579,8 +577,7 @@ export async function runBatchEvaluation({
   persistJob = true,
   onProgress = null,
   onSkillProgress = null,
-  skipPreflight = false,
-  skipDoctor = false,
+  skipConnectivity = false,
   lang = 'zh',
   mcpConfig,
   verbose = false,
@@ -636,8 +633,7 @@ export async function runBatchEvaluation({
     persistJob,
     onProgress,
     onSkillProgress,
-    skipPreflight,
-    skipDoctor,
+    skipConnectivity,
     lang,
     mcpConfig,
     verbose,

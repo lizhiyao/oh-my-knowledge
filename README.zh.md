@@ -38,8 +38,8 @@ omk bench run --dry-run
 
 # 运行评测（自动发现 skills/ 目录下的所有 artifact）
 omk bench run    # → 5 分钟出 HTML 报告 + verdict
-                 # （会先跑 `omk doctor` 健康检查作为前置门禁；
-                 #  加 `--skip-doctor` 跳过）
+                 # （omk doctor 和 LLM 连通性检测都是强制前置门禁；
+                 #  --skip-connectivity 可跳连通性，doctor 无 skip flag）
 
 # CLI 输出语言: zh (默认) / en — flag 优先级高于环境变量
 omk bench run --lang en
@@ -66,7 +66,7 @@ doctor 检查项（纯静态 / 零 LLM 调用，类比 SE 工具栈的 lint + ty
 
 executor / judge 连通性由 evaluation preflight 单独负责，不在 doctor 范围内——边界清晰：doctor 静态，eval 动态。
 
-doctor 输出人类可读 PASS/WARN/FAIL 列表或结构化 JSON。`bench run` 与 `bench gate` 在 doctor 失败时 abort（exit 1，stderr 前缀 `doctor failed:`）；加 `--skip-doctor` 跳过（逃生 flag，生产环境不推荐）。
+doctor 输出人类可读 PASS/WARN/FAIL 列表或结构化 JSON。`bench run` 与 `bench gate` 在 doctor 失败时 abort（exit 1，stderr 前缀 `doctor failed:`）。**doctor 是评测必经环节，无 skip flag**——静态检查零成本无理由跳过。LLM 连通性检测可用 `--skip-connectivity` 单独控制（`--resume` 时自动跳过）。
 
 ## 在 AI Coding Agent 中使用
 

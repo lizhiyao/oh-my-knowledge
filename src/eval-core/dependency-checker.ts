@@ -411,6 +411,6 @@ export function formatDependencyErrors(missing: DependencyIssue[]): string {
     lines.push('');
   }
 
-  lines.push('提示: 使用 --skip-preflight 跳过此检查');
+  lines.push('提示: 安装缺失的工具/文件/环境变量后重跑;依赖检查由 doctor 负责,无 skip flag。');
   return lines.join('\n');
 }

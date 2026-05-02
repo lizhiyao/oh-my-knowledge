@@ -301,8 +301,8 @@ async function handleRun(argv: string[]): Promise<void> {
 
   // 注入 lang 让 evaluation pipeline 能渲染 doctor 报告(失败时)。
   config.lang = lang;
-  if (values['skip-doctor'] as boolean) {
-    process.stderr.write(tCli('cli.doctor.skip_doctor_warning', lang) + '\n');
+  if (values['skip-connectivity'] as boolean) {
+    process.stderr.write(tCli('cli.run.skip_connectivity_warning', lang) + '\n');
   }
 
   try {
@@ -572,25 +572,6 @@ function parseLastWindow(spec: string): string | null {
   return new Date(Date.now() - ms).toISOString();
 }
 
-/**
- * bench run / bench gate 前置门禁: 跑 doctor, 失败则 abort 评测(exit 1)。
- *
- * doctor 是纯静态/低成本检查 (skill 结构 + 元数据 + 依赖 + 用例契约),
- * 不碰 LLM 连通性 — executor / judge 连通由 evaluation preflight 负责。
- *
- * - --skip-doctor: 跳过 doctor + stderr warning(沿用旧行为)
- * - doctor 自身 crash: 降级跳过, stderr warn(不让 doctor bug 把评测堵死)
- *
- * **收敛到本次评测的 variants** — 用 config.variantSpecs 精确解析 artifacts,
- * 不扫整个 skillDir, 避免无关草稿 skill (skills/draft.md 之类) 误阻断本次
- * 只测 v1->v2 的 run。variantSpecs 为空时(如 batch 模式)退回扫 skillDir。
- *
- * **传入 samples** — load samples 让 samples_contract_aligned rule 在默认门禁
- * 路径里也生效(独立 omk doctor 不传 samples 仍然 skipped 这条 rule)。
- *
- * 失败时 stderr 前缀统一 'doctor failed:', 与 bench gate 的 'bench gate failed:'
- * 区分(同 exit 1, 不同 stderr 标签, CI 可 grep 区分)。
- */
 async function handleDoctor(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   if (argv.includes('--help') || argv.includes('-h')) {
@@ -903,7 +884,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
       concurrency: { type: 'string', default: '1' },
       timeout: { type: 'string', default: '120' },
       executor: { type: 'string', default: 'claude' },
-      'skip-preflight': { type: 'boolean', default: false },
+      'skip-connectivity': { type: 'boolean', default: false },
     },
     strict: false,
     allowPositionals: true,
@@ -937,7 +918,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
       executorName: values.executor as string,
       concurrency: Math.max(1, Number(values.concurrency) || 1),
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
-      skipPreflight: values['skip-preflight'] as boolean,
+      skipConnectivity: values['skip-connectivity'] as boolean,
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error }: RoundProgressInfo): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。
@@ -1009,10 +990,10 @@ async function handleGate(argv: string[]): Promise<void> {
 
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
-  // 注入 lang + skip-doctor warning(若 flag set);doctor 实际由 evaluation-pipeline 调。
+  // 注入 lang + skip-connectivity warning(若 flag set);doctor 由 evaluation 强制调, 无 skip 选项。
   config.lang = lang;
-  if (values['skip-doctor'] as boolean) {
-    process.stderr.write(tCli('cli.doctor.skip_doctor_warning', lang) + '\n');
+  if (values['skip-connectivity'] as boolean) {
+    process.stderr.write(tCli('cli.run.skip_connectivity_warning', lang) + '\n');
   }
 
   try {

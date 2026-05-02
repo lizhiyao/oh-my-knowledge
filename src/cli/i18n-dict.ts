@@ -195,7 +195,7 @@ export type CliMessageKey =
   | 'cli.help.doctor_usage'
   | 'cli.doctor.no_skill_found'
   | 'cli.doctor.gate_blocked'
-  | 'cli.doctor.skip_doctor_warning';
+  | 'cli.run.skip_connectivity_warning';
 
 export interface CliMessage {
   zh: string;
@@ -604,7 +604,7 @@ bench run 选项:
   --judge-executor <name> 评委执行器 (默认: 同 --executor)
   --batch                批量评测:每个 skill 独立 vs baseline
                          需要每个 skill 有配对的 {name}.eval-samples.json
-  --skip-preflight       评测前跳过模型连通性预检
+  --skip-connectivity    跳过 LLM 模型连通性检测 (--resume 时自动跳过)
   --mcp-config <path>    通过 MCP server 抓 URL 用的 MCP 配置文件
                          (默认: 当前目录下的 .mcp.json)
   --no-serve             评测后不自动启动报告 server
@@ -752,7 +752,7 @@ Options for "bench run":
   --judge-executor <name> Executor for LLM judge (default: same as --executor)
   --batch                Batch evaluation: each skill independently against baseline
                          Requires {name}.eval-samples.json paired with each skill
-  --skip-preflight       Skip model connectivity check before evaluation
+  --skip-connectivity    Skip LLM model connectivity check (auto-skipped when --resume)
   --mcp-config <path>    MCP config file for URL fetching via MCP servers
                          (default: .mcp.json in current directory)
   --no-serve             Skip auto-starting report server after evaluation
@@ -1187,8 +1187,8 @@ Examples:
     en: 'dependency check failed: {summary}',
   },
   'cli.doctor.dependencies.hint': {
-    zh: '安装缺失的工具或设置环境变量。也可以用 --skip-doctor 暂时跳过 doctor(不推荐生产用)',
-    en: 'install missing tools or set required env vars. Use --skip-doctor to temporarily bypass (not recommended for production)',
+    zh: '安装缺失的工具或设置环境变量;若依赖确实可用 (e.g. shim 化测试),修正 skill 引用方式',
+    en: 'install missing tools or set required env vars; if deps are actually present (e.g. shimmed in tests), adjust skill references',
   },
   // samples_contract
   'cli.doctor.samples_contract.skipped': {
@@ -1239,7 +1239,8 @@ doctor 检查项(纯静态 / 零 LLM 调用):
   - 用例 ↔ skill 输入约定 (warn 级, 仅传 samples 时跑)
 
 executor / judge 连通性由 evaluation preflight 负责, 不在 doctor 范围内。
-omk bench run 与 omk bench gate 默认前置走 doctor; 加 --skip-doctor 跳过(逃生 flag)。
+omk bench run / omk bench gate 内置 doctor 强制门禁, 不可 skip — 静态检查
+零成本无理由跳过。LLM 连通性可用 --skip-connectivity 跳过 (--resume 时自动)。
 `.trim() + '\n',
     en: `
 oh-my-knowledge — omk doctor health check
@@ -1271,8 +1272,9 @@ Checks (pure static / zero LLM calls):
   - samples ↔ skill contract (warn-level, only when samples provided)
 
 executor / judge connectivity is handled by evaluation preflight, not doctor.
-omk bench run and omk bench gate run doctor as a prerequisite by default;
-add --skip-doctor to bypass (escape-hatch flag).
+omk bench run / omk bench gate run doctor as mandatory; no skip flag — static
+checks cost nothing to run. LLM connectivity can be skipped with --skip-connectivity
+(auto-skipped on --resume).
 `.trim() + '\n',
   },
   'cli.doctor.no_skill_found': {
@@ -1280,11 +1282,11 @@ add --skip-doctor to bypass (escape-hatch flag).
     en: 'No skills found at {path}.\n  doctor expects a .md file, a directory (containing .md or SKILL.md), or skills/ under cwd.',
   },
   'cli.doctor.gate_blocked': {
-    zh: 'skill 健康检查未通过, 评测已中止。修复上述问题后重跑, 或加 --skip-doctor 暂时绕过(不推荐生产用)。',
-    en: 'skill health check failed; evaluation aborted. Fix the issues above and re-run, or pass --skip-doctor to bypass (not recommended for production).',
+    zh: 'skill 健康检查未通过, 评测已中止。doctor 是评测必经环节, 无 skip 选项 — 请修复上述问题后重跑。',
+    en: 'skill health check failed; evaluation aborted. doctor is mandatory and not skippable — fix the issues above and re-run.',
   },
-  'cli.doctor.skip_doctor_warning': {
-    zh: '⚠️  --skip-doctor 已启用: 跳过评测前置健康检查。garbage-in 风险由你自己承担。',
-    en: '⚠️  --skip-doctor enabled: pre-evaluation health check skipped. Garbage-in risk is on you.',
+  'cli.run.skip_connectivity_warning': {
+    zh: '⚠️  --skip-connectivity 已启用: 跳过 LLM 模型连通性检测。请确保 executor / judge 已通过其他方式验证可达。',
+    en: '⚠️  --skip-connectivity enabled: LLM connectivity check skipped. Verify executor / judge are reachable by other means.',
   },
 };

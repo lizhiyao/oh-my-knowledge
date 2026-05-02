@@ -38,8 +38,8 @@ omk bench run --dry-run
 
 # run the evaluation (auto-discovers everything under skills/)
 omk bench run    # → HTML report with verdict in 5 minutes
-                 # (a `omk doctor` health check runs first as a default gate;
-                 #  pass `--skip-doctor` to bypass)
+                 # (omk doctor + LLM connectivity check both run as mandatory gates;
+                 #  --skip-connectivity available for connectivity, doctor is unconditional)
 
 # CLI output language: zh (default) / en — flag wins over env
 omk bench run --lang en
@@ -66,7 +66,7 @@ What `doctor` checks (pure static / zero LLM calls — analogous to lint + typec
 
 executor / judge connectivity is verified by evaluation preflight (a separate phase), not by doctor — clean boundary: doctor is static, eval is dynamic.
 
-Doctor outputs human-readable PASS/WARN/FAIL or structured JSON. `bench run` and `bench gate` abort with `exit 1` and stderr `doctor failed:` prefix when doctor fails — pass `--skip-doctor` to skip (escape-hatch flag, not recommended for production).
+Doctor outputs human-readable PASS/WARN/FAIL or structured JSON. `bench run` and `bench gate` abort with `exit 1` and stderr `doctor failed:` prefix when doctor fails — **doctor is mandatory and not skippable** (static checks have no cost reason to skip). LLM connectivity check is separately controllable via `--skip-connectivity` (auto-skipped on `--resume`).
 
 ## Use inside AI Coding Agents
 

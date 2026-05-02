@@ -12,7 +12,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Added
 
-- **`omk doctor` 评测前置健康检查(纯静态 / 零 LLM 调用)**:回答「skill 能不能被有意义地评测」, 类比 SE 工具栈的 lint+typecheck。检查 skill 文件可读 / 元数据合法 / 依赖完整(全 fatal)+ samples↔skill 输入约定(warn)。executor / judge 连通性由 evaluation preflight 负责, 不在 doctor 范围内 — 边界清晰: doctor 静态, eval 动态。`omk doctor [path]` 接受单 .md 文件、目录或 cwd 默认;`--json` 输出 DoctorReport 给 CI,`--gate` 走 exit code。`omk bench run` / `omk bench gate` 内置 doctor 强制门禁(programmatic 用户 runEvaluation 也会跑), 失败 abort 评测;`--skip-doctor` 是逃生 flag(生产不推荐)。**Backward-compat caveat**: 现有自动化脚本若 skill 检出问题会被 abort, 需修复或加 `--skip-doctor` 跳过。详见 #<PR>。
+- **`omk doctor` 评测前置健康检查(纯静态 / 零 LLM 调用)**:回答「skill 能不能被有意义地评测」, 类比 SE 工具栈的 lint+typecheck。检查 skill 文件可读 / 元数据合法 / 依赖完整(全 fatal)+ samples↔skill 输入约定(warn)。executor / judge 连通性由 evaluation preflight 负责, 不在 doctor 范围内 — 边界清晰: doctor 静态, eval 动态。`omk doctor [path]` 接受单 .md 文件、目录或 cwd 默认;`--json` 输出 DoctorReport 给 CI,`--gate` 走 exit code。`omk bench run` / `omk bench gate` 内置 doctor 强制门禁(programmatic 用户 runEvaluation 也会跑), 失败 abort 评测; **doctor 无 skip flag** — 静态检查零成本无理由跳过。详见 #<PR>。
+
+- **⚠ BREAKING-CLI: `--skip-preflight` flag 重命名为 `--skip-connectivity`**。新名字精确反映语义(只跳过 LLM 连通性检测, 与 doctor 解耦)。`--resume` 现在自动跳过连通性检测(原 run 已经验过, 重跑浪费 LLM 调用)。`--skip-doctor` flag 不再存在 — doctor 是评测必经环节, 无 escape hatch。**迁移**: 把脚本里的 `--skip-preflight` 改为 `--skip-connectivity`;原 `--skip-doctor` 用法没有替代(需修复底层问题)。
 
 ### Changed
 

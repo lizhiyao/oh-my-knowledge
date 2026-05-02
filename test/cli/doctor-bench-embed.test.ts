@@ -59,26 +59,6 @@ describe('bench run / gate doctor preflight embedding', () => {
     }
   });
 
-  it('bench run --skip-doctor bypasses doctor preflight', async () => {
-    const broken = setupBrokenSkillDir();
-    try {
-      // --skip-doctor + --dry-run 应该跑过 doctor 阻断, 进入 dry-run 输出
-      const { stderr } = await execFileAsync('node', [
-        CLI, 'bench', 'run',
-        '--samples', join(broken, 'eval-samples.json'),
-        '--skill-dir', join(broken, 'skills'),
-        '--control', 'v1',
-        '--treatment', 'v2',
-        '--dry-run',
-        '--skip-doctor',
-      ], { cwd: broken });
-      assert.ok(stderr.includes('--skip-doctor'), `stderr should mention skip-doctor warning: ${stderr.slice(0, 300)}`);
-      assert.ok(!stderr.includes('doctor failed:'));
-    } finally {
-      rmSync(broken, { recursive: true, force: true });
-    }
-  });
-
   it('bench gate aborts when doctor detects broken skill', async () => {
     const broken = setupBrokenSkillDir();
     try {
@@ -120,9 +100,9 @@ describe('bench run / gate doctor preflight embedding', () => {
     assert.equal(parsed.dryRun, true);
   });
 
-  it('--skip-preflight does NOT bypass doctor (only skips LLM connectivity)', async () => {
-    // 解耦后:--skip-preflight 仅跳过连通性 LLM 调用, doctor 仍强制跑。
-    // 验证: 一个 broken skill 在 --skip-preflight 下仍然被 doctor abort。
+  it('--skip-connectivity does not bypass doctor', async () => {
+    // doctor 是强制门禁, 没有 skip flag — broken skill 一定 abort,
+    // --skip-connectivity 只跳 LLM 连通性, 不影响 doctor。
     const broken = setupBrokenSkillDir();
     try {
       await assert.rejects(
@@ -133,12 +113,12 @@ describe('bench run / gate doctor preflight embedding', () => {
           '--control', 'v1',
           '--treatment', 'v2',
           '--dry-run',
-          '--skip-preflight',
+          '--skip-connectivity',
         ], { cwd: broken }),
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
-          assert.ok(e.stderr.includes('doctor failed:'), `--skip-preflight should not bypass doctor: ${e.stderr.slice(0, 400)}`);
+          assert.ok(e.stderr.includes('doctor failed:'), `doctor should still gate: ${e.stderr.slice(0, 400)}`);
           return true;
         },
       );
