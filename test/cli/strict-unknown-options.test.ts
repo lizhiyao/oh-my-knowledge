@@ -120,6 +120,32 @@ describe('strict unknown option rejection', () => {
     );
   });
 
+  it('omk bench init --bogus exits 2 (init goes through helper now)', async () => {
+    // 之前 handleInit 直接 argv[0] 当目录名, --bogus 被当成 dir 名写文件 (静默 garbage)。
+    await assert.rejects(
+      () => execFileAsync('node', [CLI, 'bench', 'init', '--bogus']),
+      (err: unknown) => {
+        const e = err as ExecError;
+        assert.equal(e.code, 2);
+        assert.ok(e.stderr.includes('Unknown option') && e.stderr.includes('--bogus'));
+        return true;
+      },
+    );
+  });
+
+  it('omk bench gold validate <dir> --bogus exits 2 (gold subcommand also strict)', async () => {
+    // 之前 gold validate 只读 rest[0], --bogus 被吞掉, 用户拿到的是 dataset 错而不是 unknown option。
+    await assert.rejects(
+      () => execFileAsync('node', [CLI, 'bench', 'gold', 'validate', '/tmp/does-not-exist-doctor', '--bogus']),
+      (err: unknown) => {
+        const e = err as ExecError;
+        assert.equal(e.code, 2);
+        assert.ok(e.stderr.includes('Unknown option') && e.stderr.includes('--bogus'));
+        return true;
+      },
+    );
+  });
+
   it('omk bench run with valid flags still works (regression)', async () => {
     // 健康路径不被 strict 误伤: --dry-run / --skip-connectivity 等合法 flag 必须通过。
     const SAMPLES = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');

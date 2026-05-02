@@ -722,7 +722,14 @@ async function handleAnalyze(argv: string[]): Promise<void> {
 
 async function handleInit(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  const targetDir: string = resolve(argv[0] || '.');
+  // 走 helper 让未知 option fail-fast (e.g. `omk bench init --bogus`),
+  // 否则 argv[0] 直接当目录名, --bogus / --lang 都会被当成 dir 写文件。
+  const { positionals } = parseArgsStrictOrExit({
+    args: argv,
+    allowPositionals: true,
+    options: { ...COMMON_OPTIONS },
+  });
+  const targetDir: string = resolve(positionals[0] || '.');
   const { writeFileSync, mkdirSync } = await import('node:fs');
 
   mkdirSync(join(targetDir, 'skills'), { recursive: true });
@@ -1280,7 +1287,14 @@ async function handleGold(argv: string[]): Promise<void> {
   }
 
   if (sub === 'validate') {
-    const dir = rest[0];
+    // 走 helper 让 `omk bench gold validate <dir> --bogus` 走 unknown option 路径,
+    // 而不是直接执行 validate 后再报 dataset 错。
+    const { positionals } = parseArgsStrictOrExit({
+      args: rest,
+      allowPositionals: true,
+      options: { ...COMMON_OPTIONS },
+    });
+    const dir = positionals[0];
     if (!dir) {
       console.error(tCli('cli.common.usage_gold_validate', lang));
       process.exit(1);
