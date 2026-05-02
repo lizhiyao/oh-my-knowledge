@@ -563,7 +563,7 @@ oh-my-knowledge — 知识工件评测工具集
   omk bench diff <id1> <id2>           对比两份评测报告
   omk bench evolve <skill>             通过迭代评测自我改进 skill
 
-  omk doctor [path]                    skill 健康检查(评测前置门禁, v0.22)
+  omk doctor [path]                    skill 健康检查(评测前置门禁)
   omk analyze <dir>                    分析 cc session trace, 生成 skill 健康度日报 (v0.18)
 
 bench run 选项:
@@ -710,7 +710,7 @@ Usage:
   omk bench diff <id1> <id2>           Compare two evaluation reports
   omk bench evolve <skill>             Self-improve a skill through iterative evaluation
 
-  omk doctor [path]                    skill health check (pre-eval gate, v0.22)
+  omk doctor [path]                    skill health check (pre-eval gate)
   omk analyze <dir>                    Analyze cc session trace(s), produce skill health report (v0.18)
 
 Options for "bench run":
