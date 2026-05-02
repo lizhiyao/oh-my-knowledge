@@ -62,8 +62,11 @@ export interface DoctorReport {
 }
 
 export interface DoctorRunOptions {
-  /** 单 skill 文件 / 目录 / null(=cwd 当前目录批量) */
+  /** 单 skill 文件 / 目录 / null(=cwd 当前目录批量)。当 artifacts 显式提供时, target 被忽略。 */
   target?: string | null;
+  /** 直接提供 artifacts, 跳过 target 解析。CLI 嵌入 bench run/gate 时用,
+   *  避免 doctor 检查 skillDir 里与本次评测无关的草稿 skill。 */
+  artifacts?: Artifact[];
   cwd: string;
   executorName: string;
   model: string;
@@ -73,6 +76,6 @@ export interface DoctorRunOptions {
   skipSmoke?: boolean;
   /** 可选 samples,仅 samples_contract_aligned rule 会用 */
   samples?: Sample[];
-  /** 覆盖内置 rules(test 注入用)。生产路径走 BUILTIN_RULES。 */
+  /** 覆盖默认 rules(test 注入用)。生产路径走 getRegisteredRules() = BUILTIN + custom。 */
   rules?: DoctorRule[];
 }

@@ -90,15 +90,31 @@ skill body content here.`;
     assert.equal(r.status, 'pass');
   });
 
-  it('fails for skill with malformed front-matter', async () => {
+  it('fails for skill with malformed front-matter (unterminated YAML flow)', async () => {
+    // js-yaml will reject unterminated flow collections like `[unterminated`
     const content = `---
-this is not a valid yaml line
+name: [unterminated
 ---
 
 body.`;
     const r = await skillMetadataRule.check(ctxWith(sampleSkill({ content })));
     assert.equal(r.status, 'fail');
-    assert.ok(r.message.includes('unparseable'));
+    assert.ok(r.message.length > 0);
+    assert.ok(r.hint && r.hint.length > 0);
+  });
+
+  it('fails for skill with malformed front-matter (illegal indentation)', async () => {
+    // mixed-tab/space mapping — real YAML parsers reject this; hand-written
+    // pattern check before this fix would have let it pass.
+    const content = `---
+foo: bar
+  bad: indent
+back: top
+---
+
+body.`;
+    const r = await skillMetadataRule.check(ctxWith(sampleSkill({ content })));
+    assert.equal(r.status, 'fail');
   });
 
   it('fails when directory-skill is missing SKILL.md', async () => {

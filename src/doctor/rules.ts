@@ -17,6 +17,7 @@
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import yaml from 'js-yaml';
 import type { CliMessageKey } from '../cli/i18n-dict.js';
 import { tCli } from '../cli/i18n.js';
 import { preflightDependencies } from '../eval-core/dependency-checker.js';
@@ -33,22 +34,25 @@ import { runExecutorSmoke } from './smoke.js';
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** 极简 front-matter YAML 合法性检查。不做完整 YAML 解析(避免引入新依赖),
- *  只校验"每行符合常见模式"。覆盖 95% 实际情况,不通过的 case 让用户看
- *  到具体哪一行有问题。 */
-function checkFrontmatterShape(content: string): { ok: boolean; error?: string } {
+interface YamlErrorLike {
+  mark?: { line: number };
+  reason?: string;
+  message?: string;
+}
+
+/** 用 js-yaml 真正解析 front-matter。能抓 unterminated string、非法缩进、
+ *  duplicate key 等手写 pattern check 漏掉的 case。 */
+function checkFrontmatter(content: string): { ok: boolean; error?: string } {
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
   if (!match) return { ok: true };
-  const lines = match[1].split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed === '' || trimmed.startsWith('#')) continue;
-    if (trimmed.startsWith('-')) continue;
-    if (!/^[a-zA-Z_][a-zA-Z0-9_-]*\s*:/.test(trimmed)) {
-      return { ok: false, error: `unparseable line: "${trimmed.slice(0, 60)}"` };
-    }
+  try {
+    yaml.load(match[1]);
+    return { ok: true };
+  } catch (err: unknown) {
+    const e = (typeof err === 'object' && err !== null ? err : {}) as YamlErrorLike;
+    const lineSuffix = e.mark ? ` at line ${e.mark.line + 1}` : '';
+    return { ok: false, error: `${e.reason || e.message || 'YAML parse error'}${lineSuffix}` };
   }
-  return { ok: true };
 }
 
 function summarizeDependencyIssues(missing: DependencyIssue[], lang: 'zh' | 'en'): string {
@@ -126,9 +130,9 @@ export const skillMetadataRule: DoctorRule = {
         };
       }
     }
-    // front-matter 若存在则要合法。不存在 = pure markdown skill,合法。
+    // front-matter 若存在则要合法(走 js-yaml 真解析)。不存在 = pure markdown skill,合法。
     const content = ctx.artifact.content ?? '';
-    const fmCheck = checkFrontmatterShape(content);
+    const fmCheck = checkFrontmatter(content);
     if (!fmCheck.ok) {
       return {
         status: 'fail',

@@ -5,6 +5,8 @@ import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { runDoctor, resolveDoctorTargets } from '../../src/doctor/index.js';
+import { registerRule, __resetCustomRulesForTest } from '../../src/doctor/rules.js';
+import type { Artifact } from '../../src/types/index.js';
 import type { DoctorRule } from '../../src/types/doctor.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -237,5 +239,82 @@ describe('runDoctor', () => {
         assert.equal(typeof r.durationMs, 'number');
       }
     }
+  });
+
+  it('opts.artifacts overrides target resolution (P1 fix path)', async () => {
+    // 用 artifacts 直传, 不论 target 指哪里, doctor 只检查传入的这一个 artifact
+    const inlineArtifact: Artifact = {
+      name: 'inline-fixture',
+      kind: 'skill',
+      source: 'inline',
+      content: '你是一个内联测试 skill,内容足够长以通过 skill_readable rule。',
+    };
+    const report = await runDoctor({
+      target: '/tmp/some/non-existent/path',  // 故意指错, 应被忽略
+      artifacts: [inlineArtifact],
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule],
+    });
+    assert.equal(report.skills.length, 1);
+    assert.equal(report.skills[0].skillName, 'inline-fixture');
+    assert.equal(report.failed, false);
+  });
+
+  it('default rules path includes registry (P2 fix: registerRule 接入)', async () => {
+    __resetCustomRulesForTest();
+    const customRule: DoctorRule = {
+      id: 'custom_marker',
+      severity: 'info',
+      labelKey: 'cli.doctor.rule.skill_readable',
+      async check() {
+        return { status: 'pass', message: 'custom rule ran' };
+      },
+    };
+    registerRule(customRule);
+    try {
+      // 不传 opts.rules — 默认应该走 getRegisteredRules() = BUILTIN + custom
+      const report = await runDoctor({
+        target: EXAMPLE_SKILLS_DIR,
+        cwd: '/tmp',
+        executorName: 'claude',
+        model: 'sonnet',
+        timeoutMs: 8000,
+        lang: 'zh',
+        skipSmoke: true,
+      });
+      // 每个 skill 都应包含 custom_marker rule 的执行结果
+      for (const skill of report.skills) {
+        const ids = skill.results.map((r) => r.ruleId);
+        assert.ok(ids.includes('custom_marker'), `expected custom_marker in skill.results: got ${ids.join(',')}`);
+      }
+    } finally {
+      __resetCustomRulesForTest();
+    }
+  });
+
+  it('passes samples to samples_contract_aligned via top-level option', async () => {
+    const inlineArtifact: Artifact = {
+      name: 'inline-with-samples',
+      kind: 'skill',
+      source: 'inline',
+      content: '你是一个测试 skill 内容足够长足够长。',
+    };
+    const report = await runDoctor({
+      artifacts: [inlineArtifact],
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      skipSmoke: true,
+      samples: [],  // 空数组应触发 warn
+    });
+    const samplesResult = report.skills[0].results.find((r) => r.ruleId === 'samples_contract_aligned');
+    assert.ok(samplesResult);
+    assert.equal(samplesResult.status, 'warn');  // 不是 skipped
   });
 });

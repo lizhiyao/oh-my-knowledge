@@ -576,12 +576,19 @@ function parseLastWindow(spec: string): string | null {
  * - --dry-run: doctor 跑结构 / 依赖检查, 但 skipSmoke=true 避免 LLM 调用
  * - doctor 自身 crash: 降级跳过, stderr warn(不让 doctor bug 把评测堵死)
  *
+ * **收敛到本次评测的 variants** — 用 config.variantSpecs 精确解析 artifacts,
+ * 不扫整个 skillDir, 避免无关草稿 skill (skills/draft.md 之类) 误阻断本次
+ * 只测 v1->v2 的 run。variantSpecs 为空时(如 batch 模式)退回扫 skillDir。
+ *
+ * **传入 samples** — load samples 让 samples_contract_aligned rule 在默认门禁
+ * 路径里也生效(独立 omk doctor 不传 samples 仍然 skipped 这条 rule)。
+ *
  * 失败时 stderr 前缀统一 'doctor failed:', 与 bench gate 的 'bench gate failed:'
  * 区分(同 exit 1, 不同 stderr 标签, CI 可 grep 区分)。
  */
 async function runDoctorPreflight(
   values: Record<string, unknown>,
-  config: { executorName?: string; model?: string; timeoutMs?: number; skillDir?: string },
+  config: import('./parse-run-config.js').RunConfig,
   lang: CliLang,
 ): Promise<void> {
   if (values['skip-doctor'] as boolean) {
@@ -593,9 +600,42 @@ async function runDoctorPreflight(
   const skillDir = config.skillDir ?? join(cwd, 'skills');
   const executorName = config.executorName ?? 'claude';
   const model = config.model ?? 'sonnet';
-  // doctor smoke 默认 8s; 若 bench timeoutMs 更长, 取保守上限避免 doctor 异常拖慢
   const timeoutMs = Math.min(Math.max(config.timeoutMs ?? 8000, 8000), 30000);
   const skipSmoke = (values['dry-run'] as boolean) ?? false;
+
+  const { resolveArtifacts } = await import('../inputs/skill-loader.js');
+
+  // 收敛 artifacts 到本次评测的 variants (排除 baseline,baseline 没 content 不需要 doctor)。
+  // variantSpecs 为空 (e.g. batch 模式) 时,doctor 引擎自身 fallback 到 target 解析 (skillDir)。
+  const variantExprs = (config.variantSpecs ?? [])
+    .map((s) => s.expr)
+    .filter((expr) => expr !== 'baseline');
+  let artifacts: import('../types/index.js').Artifact[] | undefined;
+  if (variantExprs.length > 0) {
+    try {
+      const resolved = resolveArtifacts(skillDir, variantExprs, {
+        strictBaseline: config.strictBaseline,
+        variantAllowedSkills: config.variantAllowedSkills,
+      });
+      artifacts = resolved.filter((a) => a.kind !== 'baseline');
+    } catch (err) {
+      // resolveArtifacts 失败 (如 skill 文件不存在); 让 runEvaluation 自己报错
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`doctor preflight skipped (artifact resolution failed): ${msg}\n`);
+      return;
+    }
+  }
+
+  // 加载 samples 让 samples_contract_aligned rule 生效。失败不阻断 doctor。
+  let samples: import('../types/index.js').Sample[] | undefined;
+  if (config.samplesPath) {
+    try {
+      const { loadSamples } = await import('../inputs/load-samples.js');
+      samples = loadSamples(config.samplesPath).samples;
+    } catch {
+      // 沉默退回; 这条 rule 自然 skipped (artifact-level 仍然全跑)
+    }
+  }
 
   const { runDoctor } = await import('../doctor/index.js');
   const { renderDoctorReportText } = await import('../doctor/renderer.js');
@@ -603,23 +643,22 @@ async function runDoctorPreflight(
   let report;
   try {
     report = await runDoctor({
-      target: skillDir,
+      ...(artifacts ? { artifacts } : { target: skillDir }),
       cwd,
       executorName,
       model,
       timeoutMs,
       lang,
       skipSmoke,
+      samples,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // doctor crash != skill 有问题; 降级跳过, 让评测继续, 但 stderr 提示
     process.stderr.write(`doctor preflight skipped due to internal error: ${msg}\n`);
     return;
   }
 
   if (report.skills.length === 0) {
-    // 没找到 skill 也别拿 doctor 当借口阻止评测; 让 runEvaluation 自己报"no variants"
     return;
   }
 

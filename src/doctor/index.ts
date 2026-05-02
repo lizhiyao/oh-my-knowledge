@@ -21,7 +21,7 @@ import type {
   DoctorSkillReport,
   DoctorSkillStatus,
 } from '../types/index.js';
-import { BUILTIN_RULES } from './rules.js';
+import { getRegisteredRules } from './rules.js';
 
 // ---------------------------------------------------------------------------
 // Target resolution
@@ -133,13 +133,18 @@ function readCliVersion(): string {
 }
 
 export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
-  const rules = opts.rules && opts.rules.length > 0 ? opts.rules : BUILTIN_RULES;
+  // 默认规则 = 内置 + registerRule() 注册的 custom。test 注入走 opts.rules。
+  const rules = opts.rules && opts.rules.length > 0 ? opts.rules : getRegisteredRules();
   // 如果 skipSmoke,过滤掉 executor_smoke rule
   const effectiveRules = opts.skipSmoke
     ? rules.filter((r) => r.id !== 'executor_smoke')
     : rules;
 
-  const artifacts = resolveDoctorTargets(opts.target, opts.cwd);
+  // artifacts 显式提供时跳过 target 解析(嵌入 bench run/gate 的路径用,
+  // 避免扫整个 skillDir)。否则按 target 解析。
+  const artifacts = opts.artifacts && opts.artifacts.length > 0
+    ? opts.artifacts
+    : resolveDoctorTargets(opts.target, opts.cwd);
 
   const ctxBase: Omit<DoctorContext, 'artifact'> = {
     samples: opts.samples,

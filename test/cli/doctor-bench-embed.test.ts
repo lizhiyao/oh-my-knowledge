@@ -119,4 +119,36 @@ describe('bench run / gate doctor preflight embedding', () => {
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.dryRun, true);
   });
+
+  it('P1 fix: doctor preflight only checks variants used in this run, not unrelated drafts', async () => {
+    // 准备目录: v1.md 和 v2.md 健康, draft.md 内容过短(会被 doctor fail).
+    // 本次评测只用 --control v1 --treatment v2, 不应被 draft.md 阻断。
+    const tmp = mkdtempSync(join(tmpdir(), 'doctor-preflight-converge-'));
+    try {
+      const skillDir = join(tmp, 'skills');
+      mkdirSync(skillDir);
+      writeFileSync(join(skillDir, 'v1.md'), '你是一个版本 1 的代码审查助手,做基础检查。');
+      writeFileSync(join(skillDir, 'v2.md'), '你是一个版本 2 的代码审查助手,加了安全检查。');
+      writeFileSync(join(skillDir, 'draft.md'), 'hi');  // < 10 字符,本来会 fail
+      writeFileSync(join(tmp, 'eval-samples.json'), JSON.stringify({
+        samples: [{ sample_id: 's1', prompt: 'review' }],
+      }));
+
+      const { stdout, stderr } = await execFileAsync('node', [
+        CLI, 'bench', 'run',
+        '--samples', join(tmp, 'eval-samples.json'),
+        '--skill-dir', skillDir,
+        '--control', 'v1',
+        '--treatment', 'v2',
+        '--dry-run',
+      ], { cwd: tmp });
+
+      // doctor 应该只检查 v1 + v2 (健康), 完全忽略 draft.md
+      assert.ok(!stderr.includes('doctor failed:'), `expected no doctor failure when draft.md is unrelated to this run; stderr: ${stderr.slice(0, 400)}`);
+      const parsed = JSON.parse(stdout);
+      assert.equal(parsed.dryRun, true);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
