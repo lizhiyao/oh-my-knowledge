@@ -342,8 +342,8 @@ describe('grade', () => {
           { type: 'contains', value: 'parameterized', weight: 1 },
         ],
       },
-      executor: unusedExecutor,
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: unusedExecutor },
     });
     assert.equal(result.assertions!.passed, 2);
     assert.equal(result.compositeScore, 5);
@@ -372,8 +372,8 @@ describe('grade', () => {
         prompt: 'Review code',
         rubric: 'Should find SQL injection',
       },
-      executor: mockExecutor,
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: mockExecutor },
     });
     assert.equal(result.llmScore, 4);
     assert.equal(result.llmReason, 'Good review');
@@ -406,8 +406,8 @@ describe('grade', () => {
           { type: 'contains', value: 'parameterized', weight: 1 },
         ],
       },
-      executor: mockExecutor,
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: mockExecutor },
     });
     assert.equal(result.assertions!.passed, 2);
     assert.equal(result.llmScore, 4);
@@ -445,8 +445,8 @@ describe('grade', () => {
           actionability: 'Provide fix code',
         },
       },
-      executor: mockExecutor,
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: mockExecutor },
     });
     assert.equal(result.dimensions!.security.score, 5);
     assert.equal(result.dimensions!.actionability.score, 3);
@@ -458,8 +458,8 @@ describe('grade', () => {
     const result = await grade({
       output: 'Some output',
       sample: { sample_id: 'test', prompt: 'Do something' },
-      executor: unusedExecutor,
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: unusedExecutor },
     });
     assert.equal(result.compositeScore, 0);
   });
@@ -478,8 +478,8 @@ describe('grade', () => {
           { type: 'custom', fn: 'fixtures/custom-assertion.mjs', keyword: 'SQL', minCount: 2, weight: 1 } as Record<string, unknown> & { type: string; weight: number },
         ],
       },
-      executor: async (): Promise<ExecResult> => ({ ok: true, output: '{}', costUSD: 0, durationMs: 0, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, stopReason: 'end_turn', numTurns: 1 }),
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: async (): Promise<ExecResult> => ({ ok: true, output: '{}', costUSD: 0, durationMs: 0, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, stopReason: 'end_turn', numTurns: 1 }) },
       samplesDir: __dirname,
     });
     assert.equal(result.assertions!.passed, 1);
@@ -510,8 +510,8 @@ describe('grade', () => {
           { type: 'semantic_similarity', reference: 'SQL injection detected', threshold: 3, weight: 1 },
         ],
       },
-      executor: mockExecutor,
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: mockExecutor },
     });
     assert.equal(result.assertions!.passed, 1);
     assert.equal(result.assertions!.details[0].passed, true);
@@ -532,8 +532,8 @@ describe('grade', () => {
           { type: 'custom', fn: 'fixtures/custom-assertion.mjs', keyword: 'SQL', minCount: 1, weight: 1 } as Record<string, unknown> & { type: string; weight: number },
         ],
       },
-      executor: async (): Promise<ExecResult> => ({ ok: true, output: '{}', costUSD: 0, durationMs: 0, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, stopReason: 'end_turn', numTurns: 1 }),
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: async (): Promise<ExecResult> => ({ ok: true, output: '{}', costUSD: 0, durationMs: 0, durationApiMs: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0, stopReason: 'end_turn', numTurns: 1 }) },
       samplesDir: __dirname,
     });
     assert.equal(result.assertions!.passed, 2);
@@ -572,8 +572,8 @@ describe('grade cost accumulation', () => {
           perf: 'Check performance',
         },
       },
-      executor: mockExecutor,
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: mockExecutor },
     });
     // 2 dimensions × $0.01 each = $0.02
     assert.equal(result.judgeCostUSD, 0.02);
@@ -597,8 +597,8 @@ describe('grade cost accumulation', () => {
     const result = await grade({
       output: 'Found issue',
       sample: { sample_id: 'test', prompt: 'Review', rubric: 'Find bugs' },
-      executor: mockExecutor,
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: mockExecutor },
     });
     assert.equal(result.judgeCostUSD, 0.005);
   });
@@ -632,8 +632,8 @@ describe('grade cost accumulation', () => {
           security: 'Check security',
         },
       },
-      executor: mockExecutor,
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: mockExecutor },
     });
     // 1 semantic_similarity ($0.01) + 1 dimension ($0.01) = $0.02
     assert.equal(result.judgeCostUSD, 0.02);

@@ -122,8 +122,9 @@ interface EvolveOptions {
   rounds?: number;
   target?: number | null;
   model?: string;
-  /** Single-judge config (evolve 不支持 ensemble; CLI 已经在 length>=2 reject)。
-   *  Default `[{ executor: 'claude', model: 'haiku' }]`. */
+  /** Single-judge config. evolve 不支持 ensemble — CLI 在 length>=2 时 exit 2,
+   *  programmatic API 在 evolveSkill 入口同样 throw,二者一致。Default
+   *  `[{ executor: <executorName>, model: 'haiku' }]`. */
   judgeModels?: JudgeConfig[];
   improveModel?: string;
   executorName?: string;
@@ -252,6 +253,13 @@ export async function evolveSkill({
   onProgress = null,
   onRoundProgress = null,
 }: EvolveOptions): Promise<EvolveResult> {
+  if (judgeModels && judgeModels.length > 1) {
+    throw new Error(
+      'evolveSkill does not support multi-judge ensemble (received '
+      + `${judgeModels.length} judges). Pass a single-judge array, e.g. `
+      + `[{ executor: 'claude', model: 'haiku' }]`,
+    );
+  }
   const effectiveJudgeModels: JudgeConfig[] = judgeModels && judgeModels.length > 0
     ? judgeModels
     : [{ executor: executorName, model: JUDGE_MODEL }];

@@ -6,7 +6,7 @@ import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { computeReportCoverage } from '../analysis/coverage-analyzer.js';
 import { computeReportGapRates } from '../analysis/gap-analyzer.js';
 import { aggregateReport, applyBlindMode, DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/evaluation-reporting.js';
-import { executeTasks, preflight } from '../eval-core/evaluation-execution.js';
+import { executeTasks, preflight, preflightAllJudges } from '../eval-core/evaluation-execution.js';
 import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
 import {
   createFileJobStore,
@@ -478,20 +478,13 @@ export async function executeEvaluationPipeline({
       // 包含 dep / 结构 / 元数据 / 契约检查。这里只剩 executor + 所有 judge。
       await preflight(executor, model);
       if (!noJudge) {
-        // 对每个 unique (executor, model) judge 做 preflight。ensemble 中任意 judge
-        // 配错(404 model / executor not found / auth fail)都应在前置门禁拦截,
-        // 不应推迟到 grading 才暴露(避免半成品 run 浪费成本 + 缺失 agreement)。
+        // 对每个 unique (executor, model) judge 做 preflight — 见 preflightAllJudges
+        // docstring。任一 judge 配错应在前置门禁拦截,不推迟到 grading。
         const judgesToCheck = judgeModels && judgeModels.length > 0
           ? judgeModels
           : [{ executor: executorName, model: judgeModel }];
-        const seenJudge = new Set<string>();
-        for (const jc of judgesToCheck) {
-          const key = `${jc.executor}:${jc.model}`;
-          if (seenJudge.has(key)) continue;
-          seenJudge.add(key);
-          const exec = judgeExecutors?.[jc.executor] ?? judgeExecutor;
-          await preflight(exec, jc.model);
-        }
+        const judgeExecutorsForPreflight = judgeExecutors ?? { [executorName]: judgeExecutor };
+        await preflightAllJudges(judgesToCheck, judgeExecutorsForPreflight);
       }
     }
 
@@ -503,13 +496,17 @@ export async function executeEvaluationPipeline({
     // Isolation pre-flight warning (--no-strict-baseline + ~/.claude/skills/ non-empty)
     emitIsolationWarnings(artifacts, strictBaseline);
 
+    // judgeModels 必非空(executeEvaluationPipeline 入口保证),judgeExecutors map
+    // 在上方已对每个 unique executor build 完。
+    const effectiveJudgeModels = judgeModels && judgeModels.length > 0
+      ? judgeModels
+      : [{ executor: executorName, model: judgeModel }];
+    const effectiveJudgeExecutors = judgeExecutors ?? { [executorName]: judgeExecutor };
     const { results, totalCostUSD, skipped, budgetExhausted } = await executeTasks({
       tasks,
       executor,
       executorName,
-      judgeExecutor,
       model,
-      judgeModel,
       noJudge,
       samplesPath,
       concurrency,
@@ -520,8 +517,8 @@ export async function executeEvaluationPipeline({
       retry,
       existingResults,
       judgeRepeat,
-      judgeModels,
-      judgeExecutors,
+      judgeModels: effectiveJudgeModels,
+      judgeExecutors: effectiveJudgeExecutors,
       lengthDebias,
       budget,
     });
