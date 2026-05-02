@@ -50,7 +50,7 @@ export function ratioToScore(ratio: number): number {
 }
 
 // ===========================================================================
-// v0.21 Phase 5b — deterministic similarity metrics
+// Deterministic similarity metrics
 // ===========================================================================
 
 /** Tokenizer: Latin words/numbers as units; CJK chars as single-char units. */
@@ -155,9 +155,9 @@ export function validateJsonSchema(data: unknown, schema: Record<string, unknown
  * BEFORE applying `not`. Pulled out of `runAssertions` so `assert-set` can
  * recurse on children without rebuilding the context.
  *
- * v0.21 Phase 5a — added `not: true` (universal negation) and `assert-set`
- * (any/all combinator). Legacy `not_contains` / `not_equals` / etc. still
- * work; their negation is hard-coded inline as before.
+ * Universal negation (`not: true`) and `assert-set` (any/all combinator) are
+ * supported here. Legacy `not_contains` / `not_equals` / etc. still work;
+ * their negation is hard-coded inline as before.
  */
 function evalAssertion(
   output: string,

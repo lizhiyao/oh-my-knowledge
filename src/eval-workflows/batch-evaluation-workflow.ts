@@ -40,7 +40,7 @@ interface RunSingleEvaluationOptions {
   judgeRepeat?: number;
   /** Forwarded to pipeline; >= 2 entries triggers multi-judge ensemble mode. */
   judgeModels?: import('../types/index.js').JudgeConfig[];
-  /** v0.21 Phase 3a length-debias toggle. Default true. */
+  /** length-debias toggle. Default true. */
   lengthDebias?: boolean;
 }
 

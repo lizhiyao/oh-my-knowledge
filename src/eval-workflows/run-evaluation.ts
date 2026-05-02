@@ -79,7 +79,7 @@ interface CommonEvaluationOptions {
   bootstrap?: boolean;
   /** --bootstrap-samples N. Default 1000. */
   bootstrapSamples?: number;
-  /** v0.21 Phase 3a length-debias toggle. Default true (judge prompt v3-cot-length).
+  /** length-debias toggle. Default true (judge prompt v3-cot-length).
    *  CLI passes false when --no-debias-length is set. */
   lengthDebias?: boolean;
   /** hard budget caps. */
@@ -371,7 +371,7 @@ export interface DryRunBatchReport extends DryRunBase {
 // Top-level (composite) extractor: feeds the legacy flat-field variance on
 // VariantVariance / VarianceComparison. Composite lives here for backward
 // compatibility with historical reports; layer-independent stats are attached
-// via byLayer (see LAYER_EXTRACTORS) starting v0.16 work item B / PR-2.
+// via byLayer (see LAYER_EXTRACTORS).
 const COMPOSITE_EXTRACTOR = (s: VariantSummary | undefined): number | undefined => s?.avgCompositeScore;
 
 // Non-quality metric extractors tracked in byMetric (cost + efficiency).

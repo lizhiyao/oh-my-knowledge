@@ -11,16 +11,16 @@ export interface Assertion {
   fn?: string;
   reference?: string;
   threshold?: number;
-  /** v0.21 Phase 5a — when true, the assertion's pass/fail is inverted. Works
-   *  with any type, including legacy `not_contains` (which becomes a redundant
-   *  but still supported double-negation). */
+  /** When true, the assertion's pass/fail is inverted. Works with any type,
+   *  including legacy `not_contains` (which becomes a redundant but still
+   *  supported double-negation). */
   not?: boolean;
-  /** v0.21 Phase 5a — only used by type='assert-set'. 'any' = at least one
-   *  child must pass; 'all' = every child must pass. Children may be any
-   *  assertion type, including nested assert-sets. */
+  /** Only used by type='assert-set'. 'any' = at least one child must pass;
+   *  'all' = every child must pass. Children may be any assertion type,
+   *  including nested assert-sets. */
   mode?: 'any' | 'all';
   children?: Assertion[];
-  /** v0.21 Phase 5b — for rouge_n_min: which n-gram order (default 1). */
+  /** For rouge_n_min: which n-gram order (default 1). */
   n?: number;
 }
 
@@ -191,7 +191,7 @@ export interface EvaluationRequest {
   bootstrap?: boolean;
   /** --bootstrap-samples N; bootstrap 重采样次数, 默认 1000. > 10000 时 stderr 警告. */
   bootstrapSamples?: number;
-  /** v0.21 Phase 3a length-debias toggle. Default true (judge prompt v3-cot-length).
+  /** length-debias toggle. Default true (judge prompt v3-cot-length).
    *  CLI flag --no-debias-length flips to false (legacy v2-cot prompt). The active
    *  value is reflected in ReportMeta.judgePromptHash and ReportMeta.debiasMode. */
   lengthDebias?: boolean;

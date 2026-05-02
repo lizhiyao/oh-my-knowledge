@@ -243,7 +243,7 @@ export function aggregateReport({
       request.judgeModels.map((jc) => [`${jc.executor}:${jc.model}`, getExecutorRuntimeFingerprint(jc.executor, jc.model, runtimeOptions)]),
     )
     : undefined;
-  // v0.21 Phase 3a: length-debias is on by default; the request only sets it
+  // length-debias is on by default; the request only sets it
   // false when the user passed --no-debias-length. The hash differs between
   // v3-cot-length (on) and v2-cot (off) so readers can detect the divergence.
   const lengthDebiasOn = request?.lengthDebias !== false;
