@@ -21,6 +21,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 - **README / comparison 文档澄清 Claude Code 与 Codex 用法**:把 `/omk ...` 明确限定为 Claude Code skill 入口,避免让读者误解 Codex 也原生支持 slash command。README 中补充 Codex 直接驱动 `omk` CLI 的用法,comparison 文档同步改成"Claude Code 工作流最原生,但 `omk` CLI 也可被其他 coding agent 驱动"。
 - **README 顶部新增 npm weekly downloads badge**:公开仓库前补充近期使用热度信号,与现有 npm version / CI / License / Node.js version 形成一组更完整的基础元信息。
 
+### Fixed
+
+- **doctor 修三处 review issue**:(1) `omk doctor <directory-skill-root>`(目录自身含 `SKILL.md`)之前被当成「含多个 variant 的 skillDir」, `SKILL.md` 被识别为名为 `SKILL` 的 variant 导致 `skillRoot` 丢失, 相对路径 asset 锚错点; 现在优先按 directory-skill 解析。(2) `bench run --batch --dry-run` 之前绕过 mandatory doctor 静默通过 broken skill, 与"doctor 强制 + dry-run 也覆盖"的语义不一致; 现在 batch dry-run 也对每个 entry 跑 doctor, 失败 abort 并在 stderr 注明 `skill=<name>`。(3) README 中文 / 英文同步 doctor 语义到「纯静态零 LLM」, `--skip-preflight` 改名 `--skip-connectivity`。详见 #<PR>。
+
 ## [0.24.0] - 2026-05-02
 
 ### Added

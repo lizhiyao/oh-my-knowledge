@@ -100,7 +100,7 @@ omk bench gen-samples skills/my-skill.md
 
 ## 核心能力
 
-- **评测前置健康检查** — `omk doctor` 默认在 `bench run` / `bench gate` 之前运行，检查 skill 可读性、依赖完整性、executor 连通性、samples 契约——类比 SE 工具栈的 lint + typecheck + smoke for 知识工件
+- **评测前置健康检查** — `omk doctor` 在 `bench run` / `bench gate` 之前**强制**运行,检查 skill 可读性、元数据合法性、依赖完整性、samples 契约——纯静态零 LLM 调用,类比 SE 工具栈的 lint + typecheck。executor / judge 连通性是独立阶段,可用 `--skip-connectivity` 单独跳过
 - **控制变量离线评测** — 固定模型和用例，只变知识载体；兼容 Claude Code skill、CLAUDE.md prompt、RAG 知识库等任何 markdown 形式的指令
 - **六维独立打分** — Fact / Behavior / LLM-judge / Cost / Efficiency / Stability 分别出信号，单一维度的回退不会被其他维度的收益掩盖
 - **线上 session 观测** — 解析 Claude Code session JSONL，在真实用户会话上测量各 skill 的失败率、耗时、token 成本和知识缺口信号
@@ -424,7 +424,8 @@ omk bench run [选项]
   --timeout <秒>         单个任务的执行器超时时间（默认：120）
   --repeat <n>           重复 N 次做方差分析（默认：1）
   --executor <名称>      执行器（默认：claude），支持自定义命令
-  --skip-preflight       跳过评测前的模型连通性检查
+  --skip-connectivity    跳过评测前 LLM 连通性检测(doctor 仍然强制执行,无 skip flag)。
+                         --resume 时自动跳过(原 run 已验过连通性)。
   --mcp-config <路径>    MCP 配置文件，用于通过 MCP Server 获取私有文档 URL 内容
                          （默认：当前目录的 .mcp.json）
   --no-serve             评测完成后不自动启动报告服务

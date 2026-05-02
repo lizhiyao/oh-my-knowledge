@@ -54,6 +54,15 @@ export function resolveDoctorTargets(target: string | null | undefined, cwd: str
     return resolveArtifacts(dirname(absTarget), [absTarget], { strictBaseline: false });
   }
   if (stat.isDirectory()) {
+    // 目录自身就是 directory-skill (含 SKILL.md): 按单个 skill 解析,
+    // 让 skill-loader 的 directory-skill 分支命中 (设 skillRoot,
+    // 让相对路径 asset 能锚到 skill 根目录)。
+    // 否则 discoverVariants 会把 SKILL.md 当成名为 SKILL 的 variant,
+    // skillRoot 丢失,assets/foo.md 这类相对依赖会锚到 doctor 的 cwd 而不是
+    // skill 目录, 误报缺文件。
+    if (existsSync(join(absTarget, 'SKILL.md'))) {
+      return resolveArtifacts(dirname(absTarget), [basename(absTarget)], { strictBaseline: false });
+    }
     const variants = discoverVariants(absTarget).filter((v) => v !== 'baseline');
     return variants.length > 0 ? resolveArtifacts(absTarget, variants, { strictBaseline: false }) : [];
   }

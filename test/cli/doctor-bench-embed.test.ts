@@ -34,6 +34,25 @@ function setupBrokenSkillDir(): string {
   return tmp;
 }
 
+/** Batch 模式:skills/<name>.md + skills/<name>.eval-samples.json 配对。
+ *  broken.md 内容过短, healthy.md 正常。--batch 自动发现两者, doctor 应卡 broken。 */
+function setupBatchMixedSkillDir(): string {
+  const tmp = mkdtempSync(join(tmpdir(), 'bench-batch-doctor-'));
+  const skillDir = join(tmp, 'skills');
+  mkdirSync(skillDir);
+  // broken: 内容过短, doctor skill_readable 必 fail
+  writeFileSync(join(skillDir, 'broken.md'), 'hi');
+  writeFileSync(join(skillDir, 'broken.eval-samples.json'), JSON.stringify({
+    samples: [{ sample_id: 'b1', prompt: 'test prompt for broken' }],
+  }));
+  // healthy: batch 至少有一个 entry; 单独跑会 pass
+  writeFileSync(join(skillDir, 'healthy.md'), '你是一个版本健康的 skill, 内容足够长以通过 skill_readable rule。');
+  writeFileSync(join(skillDir, 'healthy.eval-samples.json'), JSON.stringify({
+    samples: [{ sample_id: 'h1', prompt: 'test prompt for healthy' }],
+  }));
+  return tmp;
+}
+
 describe('bench run / gate doctor preflight embedding', () => {
   it('bench run --dry-run aborts when doctor detects broken skill', async () => {
     const broken = setupBrokenSkillDir();
@@ -124,6 +143,31 @@ describe('bench run / gate doctor preflight embedding', () => {
       );
     } finally {
       rmSync(broken, { recursive: true, force: true });
+    }
+  });
+
+  it('bench run --batch --dry-run aborts when any batch entry fails doctor', async () => {
+    // batch dry-run 必须和 single dry-run 一样走 doctor 强制门禁。
+    // 不走的话, broken skill 在 batch 模式 dry-run 阶段会静默通过, 与"doctor 强制 + dry-run 也覆盖"的语义不一致。
+    const tmp = setupBatchMixedSkillDir();
+    try {
+      await assert.rejects(
+        () => execFileAsync('node', [
+          CLI, 'bench', 'run',
+          '--skill-dir', join(tmp, 'skills'),
+          '--batch',
+          '--dry-run',
+        ], { cwd: tmp }),
+        (err: unknown) => {
+          const e = err as ExecError;
+          assert.equal(e.code, 1);
+          assert.ok(e.stderr.includes('doctor failed:'), `batch dry-run should gate on doctor: ${e.stderr.slice(0, 500)}`);
+          assert.ok(e.stderr.includes('skill=broken'), `error should name the failing skill: ${e.stderr.slice(0, 500)}`);
+          return true;
+        },
+      );
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
     }
   });
 

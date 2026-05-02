@@ -100,7 +100,7 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 
 ## Key features
 
-- **Pre-evaluation health check** — `omk doctor` runs as a default gate before `bench run` / `bench gate`; checks skill readability, dependencies, executor connectivity, samples contract — like lint + typecheck + smoke for knowledge artifacts
+- **Pre-evaluation health check** — `omk doctor` runs as a mandatory gate before `bench run` / `bench gate`; checks skill readability, metadata, dependencies, samples contract — pure static, zero LLM calls (like lint + typecheck for knowledge artifacts). Executor / judge connectivity is a separate phase, controllable via `--skip-connectivity`
 - **Controlled-variable offline bench** — fix the model and samples, vary only the artifact; works with Claude Code skills, CLAUDE.md prompts, RAG knowledge bases, or any markdown-based instruction
 - **Six-dimension scoring** — separate signals for Fact / Behavior / LLM-judge / Cost / Efficiency / Stability, so a regression in one axis isn't hidden by gains in another
 - **Production session observability** — parse Claude Code session JSONL traces, measure per-skill failure rate, latency, token cost, and knowledge-gap signals on real user sessions
@@ -426,7 +426,10 @@ options:
   --timeout <sec>        per-task executor timeout (default: 120)
   --repeat <n>           repeat N times for variance analysis (default: 1)
   --executor <name>      executor (default: claude); supports custom commands
-  --skip-preflight       skip evaluation model reachability check
+  --skip-connectivity    skip the LLM connectivity check (doctor still runs;
+                         doctor is mandatory and has no skip flag).
+                         Auto-applied on --resume (the original run already
+                         verified connectivity).
   --mcp-config <path>    MCP config for fetching private-doc URLs via MCP Server
                          (default: .mcp.json in cwd)
   --no-serve             don't auto-start the report server after the run

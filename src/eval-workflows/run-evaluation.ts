@@ -1,7 +1,8 @@
 import { resolve } from 'node:path';
 import { DEFAULT_OUTPUT_DIR, persistReport } from '../eval-core/evaluation-reporting.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
-import { discoverBatchSkills } from '../inputs/skill-loader.js';
+import { discoverBatchSkills, resolveArtifacts } from '../inputs/skill-loader.js';
+import { loadSamples } from '../inputs/load-samples.js';
 import { confidenceInterval, tTest, effectSize } from '../eval-core/statistics.js';
 import { executeBatchEvaluationRuns } from './batch-evaluation-workflow.js';
 import {
@@ -595,6 +596,42 @@ export async function runBatchEvaluation({
   }
 
   if (dryRun) {
+    // doctor 强制门禁 batch 版: 与 single dry-run 对称,
+    // 每个 entry 解析 artifact + samples 后跑 doctor。任意 entry fail 即 abort。
+    // 不在这里做的话, batch dry-run 会绕过 mandatory doctor, broken skill
+    // 直到真实 run 才会被发现, 与"doctor 强制 + dry-run 也覆盖"语义不一致。
+    {
+      const { runDoctor } = await import('../doctor/index.js');
+      const { renderDoctorReportText } = await import('../doctor/renderer.js');
+      const { tCli } = await import('../cli/i18n.js');
+      const skillDirAbs = resolve(skillDir);
+      for (const entry of skillEntries) {
+        const skillArtifacts = resolveArtifacts(
+          skillDirAbs,
+          [entry.skillPath],
+          { strictBaseline, variantAllowedSkills },
+        );
+        if (skillArtifacts.length === 0) continue;
+        const dependencyCwd = skillArtifacts.find((a) => a.cwd)?.cwd || skillDirAbs;
+        const { samples, requires } = loadSamples(entry.samplesPath);
+        const doctorReport = await runDoctor({
+          artifacts: skillArtifacts,
+          cwd: dependencyCwd,
+          dependencyCwd,
+          executorName,
+          model,
+          timeoutMs: timeoutMs ?? 8000,
+          lang,
+          samples,
+          requires,
+        });
+        if (doctorReport.failed) {
+          renderDoctorReportText(doctorReport, lang);
+          throw new Error(`doctor failed: ${tCli('cli.doctor.gate_blocked', lang)} (skill=${entry.name})`);
+        }
+      }
+    }
+
     const { artifacts: dryArtifacts, totalTasks } = buildDryRunBatchArtifacts(skillEntries);
     const judgeModelList = judgeModels && judgeModels.length >= 2
       ? judgeModels.map((jc) => `${jc.executor}:${jc.model}`)

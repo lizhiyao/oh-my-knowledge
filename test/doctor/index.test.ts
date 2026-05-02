@@ -90,6 +90,45 @@ describe('resolveDoctorTargets', () => {
       rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it('directory target containing SKILL.md is resolved as a single directory-skill (preserves skillRoot)', () => {
+    // 关键回归: 目录自身就是 directory-skill 时, 必须按单 skill 解析,
+    // 而非 discoverVariants 把 SKILL.md 当成名为 SKILL 的 variant。
+    // 后者会让 skillRoot 丢失, 导致 SKILL.md 里的相对依赖 (assets/foo.md)
+    // 锚到 doctor 的 cwd 而不是 skill 目录, 误报缺文件。
+    const tmp = mkdtempSync(join(tmpdir(), 'doctor-dirskill-'));
+    try {
+      const skillRoot = join(tmp, 'my-dir-skill');
+      mkdirSync(skillRoot);
+      mkdirSync(join(skillRoot, 'assets'));
+      writeFileSync(join(skillRoot, 'SKILL.md'), '你是一个 directory-skill 的测试夹具,内容足够长。');
+      writeFileSync(join(skillRoot, 'assets', 'foo.md'), 'asset content');
+
+      const artifacts = resolveDoctorTargets(skillRoot, '/tmp');
+      assert.equal(artifacts.length, 1, 'directory-skill 必须解析为单个 artifact');
+      assert.equal(artifacts[0].name, 'my-dir-skill');
+      assert.equal(artifacts[0].kind, 'skill');
+      assert.equal(artifacts[0].skillRoot, skillRoot, 'skillRoot 必须指向 skill 根目录');
+      assert.ok(artifacts[0].content && artifacts[0].content.includes('directory-skill'));
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('directory target without SKILL.md still falls back to batch variant discovery', () => {
+    // 反向验证: 不是 directory-skill 的目录走老路径 (discoverVariants 批量)。
+    const tmp = mkdtempSync(join(tmpdir(), 'doctor-batch-'));
+    try {
+      writeFileSync(join(tmp, 'a.md'), 'this is skill a content for testing.');
+      writeFileSync(join(tmp, 'b.md'), 'this is skill b content for testing.');
+      const artifacts = resolveDoctorTargets(tmp, '/tmp');
+      assert.equal(artifacts.length, 2);
+      const names = artifacts.map((a) => a.name).sort();
+      assert.deepEqual(names, ['a', 'b']);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('runDoctor', () => {
