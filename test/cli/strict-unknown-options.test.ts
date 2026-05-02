@@ -96,6 +96,30 @@ describe('strict unknown option rejection', () => {
     );
   });
 
+  it('omk bench evolve --bogus-flag exits 2 (sanity: helper covers non-run handler)', async () => {
+    await assert.rejects(
+      () => execFileAsync('node', [CLI, 'bench', 'evolve', 'skills/v1.md', '--bogus-flag']),
+      (err: unknown) => {
+        const e = err as ExecError;
+        assert.equal(e.code, 2);
+        assert.ok(e.stderr.includes('Unknown option') && e.stderr.includes('--bogus-flag'));
+        return true;
+      },
+    );
+  });
+
+  it('omk analyze --bogus-flag exits 2 (sanity: helper covers analyze handler)', async () => {
+    await assert.rejects(
+      () => execFileAsync('node', [CLI, 'analyze', '/tmp/some-path', '--bogus-flag']),
+      (err: unknown) => {
+        const e = err as ExecError;
+        assert.equal(e.code, 2);
+        assert.ok(e.stderr.includes('Unknown option'));
+        return true;
+      },
+    );
+  });
+
   it('omk bench run with valid flags still works (regression)', async () => {
     // 健康路径不被 strict 误伤: --dry-run / --skip-connectivity 等合法 flag 必须通过。
     const SAMPLES = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');

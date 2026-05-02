@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -12,6 +11,7 @@ import {
 } from './parse-run-config.js';
 import { makeOnProgress } from './progress.js';
 import { checkUpdate } from './update-check.js';
+import { parseArgsStrictOrExit } from './parse-strict.js';
 import type {
   EvaluationReport,
   Report,
@@ -432,7 +432,7 @@ async function handleReport(argv: string[]): Promise<void> {
     console.log(tCli('cli.help.main', lang).trim());
     process.exit(0);
   }
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv,
     options: {
       ...COMMON_OPTIONS,
@@ -441,7 +441,6 @@ async function handleReport(argv: string[]): Promise<void> {
       export: { type: 'string' },
       dev: { type: 'boolean', default: false },
     },
-    strict: false,
   });
 
   // Dev mode: restart server on file changes via node --watch
@@ -579,28 +578,18 @@ async function handleDoctor(argv: string[]): Promise<void> {
     process.exit(0);
   }
 
-  // strict: true → 未知 option 报错 (含已删除的 --skip-smoke 等); 不维护
-  // deprecation list, "从未存在过" 的语义。exit 2 区分于 doctor failure exit 1。
-  let parsed;
-  try {
-    parsed = parseArgs({
-      args: argv,
-      allowPositionals: true,
-      strict: true,
-      options: {
-        ...COMMON_OPTIONS,
-        json: { type: 'boolean', default: false },
-        gate: { type: 'boolean', default: false },
-        executor: { type: 'string' },
-        model: { type: 'string' },
-        timeout: { type: 'string' },
-      },
-    });
-  } catch (err) {
-    process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
-    process.exit(2);
-  }
-  const { values, positionals } = parsed;
+  const { values, positionals } = parseArgsStrictOrExit({
+    args: argv,
+    allowPositionals: true,
+    options: {
+      ...COMMON_OPTIONS,
+      json: { type: 'boolean', default: false },
+      gate: { type: 'boolean', default: false },
+      executor: { type: 'string' },
+      model: { type: 'string' },
+      timeout: { type: 'string' },
+    },
+  });
 
   const target: string | null = positionals[0] ?? null;
   const executorName = (values.executor as string | undefined) ?? 'claude';
@@ -657,7 +646,7 @@ async function handleDoctor(argv: string[]): Promise<void> {
 
 async function handleAnalyze(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  const { values, positionals } = parseArgs({
+  const { values: rawValues, positionals } = parseArgsStrictOrExit({
     args: argv,
     allowPositionals: true,
     options: {
@@ -670,6 +659,8 @@ async function handleAnalyze(argv: string[]): Promise<void> {
       'output-dir': { type: 'string' },
     },
   });
+  // 该 handler options 全是 string-typed (无 boolean), 收紧 cast 让 caller 直接 use values.xxx 当 string 用。
+  const values = rawValues as Record<string, string | undefined>;
   const dir = positionals[0];
   if (!dir) {
     console.error(tCli('cli.help.analyze_usage', lang));
@@ -757,7 +748,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
     console.log(tCli('cli.help.main', lang).trim());
     process.exit(0);
   }
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv,
     options: {
       ...COMMON_OPTIONS,
@@ -766,7 +757,6 @@ async function handleGenSamples(argv: string[]): Promise<void> {
       model: { type: 'string', default: 'sonnet' },
       'skill-dir': { type: 'string', default: 'skills' },
     },
-    strict: false,
     allowPositionals: true,
   });
 
@@ -880,7 +870,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
 
 async function handleEvolve(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv,
     options: {
       ...COMMON_OPTIONS,
@@ -895,7 +885,6 @@ async function handleEvolve(argv: string[]): Promise<void> {
       executor: { type: 'string', default: 'claude' },
       'skip-connectivity': { type: 'boolean', default: false },
     },
-    strict: false,
     allowPositionals: true,
   });
 
@@ -1072,7 +1061,7 @@ async function handleDiff(argv: string[]): Promise<void> {
     process.exit(positional.length === 0 ? 1 : 0);
   }
 
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: flagArgs,
     options: {
       ...COMMON_OPTIONS,
@@ -1081,7 +1070,6 @@ async function handleDiff(argv: string[]): Promise<void> {
       variant: { type: 'string' },
       top: { type: 'string' },
     },
-    strict: false,
   });
 
   const { createFileStore } = await import('../server/report-store.js');
@@ -1266,14 +1254,13 @@ async function handleGold(argv: string[]): Promise<void> {
   }
 
   if (sub === 'init') {
-    const { values } = parseArgs({
+    const { values } = parseArgsStrictOrExit({
       args: rest,
       options: {
         ...COMMON_OPTIONS,
         out: { type: 'string', default: './gold-dataset' },
         annotator: { type: 'string' },
       },
-      strict: false,
     });
     const { initGoldDataset } = await import('../grading/gold-cli.js');
     try {
@@ -1315,7 +1302,7 @@ async function handleGold(argv: string[]): Promise<void> {
       console.error('Usage: omk bench gold compare <reportId> --gold-dir <dir>');
       process.exit(1);
     }
-    const { values } = parseArgs({
+    const { values } = parseArgsStrictOrExit({
       args: rest.slice(1),
       options: {
         ...COMMON_OPTIONS,
@@ -1325,7 +1312,6 @@ async function handleGold(argv: string[]): Promise<void> {
         'bootstrap-samples': { type: 'string', default: '1000' },
         seed: { type: 'string' },
       },
-      strict: false,
     });
     const goldDir = values['gold-dir'] as string | undefined;
     if (!goldDir) {
@@ -1390,7 +1376,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
     console.error('Usage: omk bench debias-validate length <reportId>');
     process.exit(1);
   }
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: rest.slice(1),
     options: {
       ...COMMON_OPTIONS,
@@ -1402,7 +1388,6 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
       'bootstrap-samples': { type: 'string', default: '1000' },
       seed: { type: 'string' },
     },
-    strict: false,
   });
 
   const { createFileStore } = await import('../server/report-store.js');
@@ -1461,14 +1446,13 @@ async function handleSaturation(argv: string[]): Promise<void> {
     process.exit(reportId ? 0 : 1);
   }
 
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv.slice(1),
     options: {
       ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       variant: { type: 'string' },
     },
-    strict: false,
   });
 
   const { createFileStore } = await import('../server/report-store.js');
@@ -1532,7 +1516,7 @@ async function handleVerdict(argv: string[]): Promise<void> {
     process.exit(reportId ? 0 : 1);
   }
 
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv.slice(1),
     options: {
       ...COMMON_OPTIONS,
@@ -1541,7 +1525,6 @@ async function handleVerdict(argv: string[]): Promise<void> {
       'trivial-diff': { type: 'string' },
       verbose: { type: 'boolean', default: false },
     },
-    strict: false,
   });
 
   const { createFileStore } = await import('../server/report-store.js');
@@ -1582,7 +1565,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
     process.exit(reportId ? 0 : 1);
   }
 
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv.slice(1),
     options: {
       ...COMMON_OPTIONS,
@@ -1595,7 +1578,6 @@ async function handleDiagnose(argv: string[]): Promise<void> {
       'latency-k': { type: 'string' },
       flat: { type: 'string' },
     },
-    strict: false,
   });
 
   const { createFileStore } = await import('../server/report-store.js');
@@ -1660,7 +1642,7 @@ async function handleFailures(argv: string[]): Promise<void> {
     process.exit(reportId ? 0 : 1);
   }
 
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv.slice(1),
     options: {
       ...COMMON_OPTIONS,
@@ -1671,7 +1653,6 @@ async function handleFailures(argv: string[]): Promise<void> {
       threshold: { type: 'string', default: '3' },
       'max-feed': { type: 'string', default: '50' },
     },
-    strict: false,
   });
 
   const { createFileStore } = await import('../server/report-store.js');
