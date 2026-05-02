@@ -317,4 +317,82 @@ describe('runDoctor', () => {
     assert.ok(samplesResult);
     assert.equal(samplesResult.status, 'warn');  // 不是 skipped
   });
+
+  it('opts.artifacts: [] yields empty skills (no fallback to target scan)', async () => {
+    // 显式空数组 = "本次评测无 skill" (e.g. baseline-only run); doctor 不应再扫 cwd/skills
+    // 找无关草稿。target 故意指 EXAMPLE_SKILLS_DIR 也应被忽略。
+    const report = await runDoctor({
+      artifacts: [],
+      target: EXAMPLE_SKILLS_DIR,  // 故意误导, 应被忽略
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+    });
+    assert.equal(report.skills.length, 0);
+    assert.equal(report.failed, false);
+    assert.equal(report.warned, false);
+  });
+
+  it('opts.artifacts undefined falls back to target resolution (preserves omk doctor [path] UX)', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule],
+    });
+    assert.ok(report.skills.length >= 2);
+  });
+
+  it('result.labelKey is propagated from rule (P3 fix)', async () => {
+    const customRule: DoctorRule = {
+      id: 'custom_label_test',
+      severity: 'info',
+      labelKey: 'cli.doctor.rule.executor_smoke',  // 任意已注册 key
+      async check() {
+        return { status: 'pass', message: 'ok' };
+      },
+    };
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [customRule],
+    });
+    for (const skill of report.skills) {
+      const result = skill.results[0];
+      assert.equal(result.ruleId, 'custom_label_test');
+      assert.equal(result.labelKey, 'cli.doctor.rule.executor_smoke');
+    }
+  });
+
+  it('passes requires to dependencies_present rule (P2 fix)', async () => {
+    // 显式 requires.tools 包一个不存在的工具, dependencies_present 应该 fail
+    const inlineArtifact: Artifact = {
+      name: 'inline-with-requires',
+      kind: 'skill',
+      source: 'inline',
+      content: '你是一个测试 skill, 没有自动检出的依赖。',
+    };
+    const report = await runDoctor({
+      artifacts: [inlineArtifact],
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      skipSmoke: true,
+      requires: { tools: ['definitely-not-installed-cli-xyz123'] },
+    });
+    const depsResult = report.skills[0].results.find((r) => r.ruleId === 'dependencies_present');
+    assert.ok(depsResult);
+    assert.equal(depsResult.status, 'fail', 'doctor should reject missing required tool from samples wrapper requires');
+  });
 });

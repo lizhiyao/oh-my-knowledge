@@ -158,7 +158,7 @@ export const dependenciesPresentRule: DoctorRule = {
       [content],
       ctx.samples ?? [],
       ctx.cwd,
-      undefined,
+      ctx.requires, // samples wrapper 显式 requires; doctor 与 evaluation preflight 判断对齐
       [ctx.artifact],
     );
     if (!result.ok) {

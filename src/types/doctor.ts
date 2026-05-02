@@ -1,4 +1,5 @@
 import type { Artifact, Sample } from './eval.js';
+import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
 
 export type DoctorSeverity = 'fatal' | 'warn' | 'info';
 export type DoctorRuleStatus = 'pass' | 'warn' | 'fail' | 'skipped';
@@ -7,6 +8,9 @@ export type DoctorSkillStatus = 'pass' | 'warn' | 'fail';
 export interface DoctorRuleResult {
   ruleId: string;
   severity: DoctorSeverity;
+  /** rule 的 i18n key, 引擎执行时由 rule.labelKey 注入。renderer 用它显示 rule 标题 —
+   *  自定义规则不再 fallback 到硬编码 ruleId 映射。 */
+  labelKey: string;
   status: DoctorRuleStatus;
   /** 已 i18n 翻译后的 user-facing message。CI 消费 JSON 时直接读。 */
   message: string;
@@ -17,12 +21,16 @@ export interface DoctorRuleResult {
   durationMs: number;
 }
 
-export type DoctorRuleCheckOutcome = Omit<DoctorRuleResult, 'ruleId' | 'severity' | 'durationMs'>;
+export type DoctorRuleCheckOutcome = Omit<DoctorRuleResult, 'ruleId' | 'severity' | 'labelKey' | 'durationMs'>;
 
 export interface DoctorContext {
   artifact: Artifact;
   /** 仅 samples_contract_aligned rule 用。其他 rule 可忽略。 */
   samples?: Sample[];
+  /** samples wrapper 里的显式 requires (tools/files/env/preflight)。
+   *  传给 dependencies_present rule, 让 doctor 与 evaluation preflight
+   *  对依赖完整性的判断完全一致。 */
+  requires?: DependencyRequirements;
   executorName: string;
   model: string;
   cwd: string;
@@ -76,6 +84,8 @@ export interface DoctorRunOptions {
   skipSmoke?: boolean;
   /** 可选 samples,仅 samples_contract_aligned rule 会用 */
   samples?: Sample[];
+  /** 可选 requires (samples wrapper 里的显式声明), 透传给 dependencies_present rule */
+  requires?: DependencyRequirements;
   /** 覆盖默认 rules(test 注入用)。生产路径走 getRegisteredRules() = BUILTIN + custom。 */
   rules?: DoctorRule[];
 }

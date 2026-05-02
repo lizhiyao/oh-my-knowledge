@@ -8,7 +8,7 @@
  */
 
 import { tCli, type CliLang } from '../cli/i18n.js';
-import type { CliMessageKey } from '../cli/i18n-dict.js';
+import { CLI_DICT, type CliMessageKey } from './../cli/i18n-dict.js';
 import type {
   DoctorReport,
   DoctorRuleResult,
@@ -59,7 +59,7 @@ export function renderDoctorReportText(
   for (const skill of report.skills) {
     write(`\n[${skill.skillName}] ${skill.skillPath}\n`);
     for (const result of skill.results) {
-      const ruleLabel = tCli(findLabelKey(result.ruleId), lang);
+      const ruleLabel = renderRuleLabel(result, lang);
       write(renderRuleLine(result, ruleLabel, lang) + '\n');
     }
   }
@@ -71,15 +71,15 @@ export function renderDoctorReportText(
   write(summary);
 }
 
-function findLabelKey(ruleId: string): CliMessageKey {
-  const map: Record<string, CliMessageKey> = {
-    skill_readable: 'cli.doctor.rule.skill_readable',
-    skill_metadata: 'cli.doctor.rule.skill_metadata',
-    dependencies_present: 'cli.doctor.rule.dependencies',
-    executor_smoke: 'cli.doctor.rule.executor_smoke',
-    samples_contract_aligned: 'cli.doctor.rule.samples_contract',
-  };
-  return map[ruleId] ?? 'cli.doctor.rule.skill_readable';
+/** 用 result.labelKey 翻译 rule 标题。已知 i18n key 走 tCli; 自定义 rule 用未注册的
+ *  key 时直接显示 ruleId 作为 fallback (而不是错挂到 skill_readable 的标题)。 */
+function renderRuleLabel(result: DoctorRuleResult, lang: CliLang): string {
+  const key = result.labelKey;
+  // labelKey 是已注册的 CliMessageKey 时走 i18n; 否则 fallback 用 ruleId
+  if (key in CLI_DICT) {
+    return tCli(key as CliMessageKey, lang);
+  }
+  return result.ruleId;
 }
 
 export function renderDoctorReportJson(report: DoctorReport): string {

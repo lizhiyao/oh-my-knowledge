@@ -89,6 +89,7 @@ async function runRulesOnArtifact(
       results.push({
         ruleId: rule.id,
         severity: rule.severity,
+        labelKey: rule.labelKey,
         durationMs: Date.now() - start,
         ...outcome,
       });
@@ -98,6 +99,7 @@ async function runRulesOnArtifact(
       results.push({
         ruleId: rule.id,
         severity: rule.severity,
+        labelKey: rule.labelKey,
         status: 'fail',
         message: `rule crashed: ${message.slice(0, 160)}`,
         hint: undefined,
@@ -141,13 +143,16 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     : rules;
 
   // artifacts 显式提供时跳过 target 解析(嵌入 bench run/gate 的路径用,
-  // 避免扫整个 skillDir)。否则按 target 解析。
-  const artifacts = opts.artifacts && opts.artifacts.length > 0
+  // 避免扫整个 skillDir)。空数组合法且明确 — 表示"本次评测没 skill 需要 doctor"
+  // (e.g. baseline-only 或纯 runtime-context-only run), doctor 不该再扫
+  // skillDir 找无关草稿。只有 artifacts 完全 undefined 时才 fallback 到 target 解析。
+  const artifacts = opts.artifacts !== undefined
     ? opts.artifacts
     : resolveDoctorTargets(opts.target, opts.cwd);
 
   const ctxBase: Omit<DoctorContext, 'artifact'> = {
     samples: opts.samples,
+    requires: opts.requires,
     executorName: opts.executorName,
     model: opts.model,
     cwd: opts.cwd,

@@ -606,17 +606,27 @@ async function runDoctorPreflight(
   const { resolveArtifacts } = await import('../inputs/skill-loader.js');
 
   // 收敛 artifacts 到本次评测的 variants (排除 baseline,baseline 没 content 不需要 doctor)。
-  // variantSpecs 为空 (e.g. batch 模式) 时,doctor 引擎自身 fallback 到 target 解析 (skillDir)。
+  //
+  // - 非 batch 且 variantSpecs 非空: 严格用 variantSpecs 解析,显式空数组表示
+  //   "本次没 skill 需要 doctor"(全 baseline / runtime-context-only run),
+  //   不 fallback 扫 skillDir 找无关草稿。
+  // - batch 模式: variantSpecs 不反映实际批量集合(由 discoverBatchSkills 决定),
+  //   交给 doctor 引擎 fallback 到 target=skillDir 扫描(让 doctor 把 skillDir 下
+  //   所有 skill 都检查一遍, batch 的语义本来就是"对每个配对 skill 跑评测")。
+  const isBatchMode = (values.batch as boolean) === true;
   const variantExprs = (config.variantSpecs ?? [])
     .map((s) => s.expr)
     .filter((expr) => expr !== 'baseline');
   let artifacts: import('../types/index.js').Artifact[] | undefined;
-  if (variantExprs.length > 0) {
+  if (!isBatchMode) {
     try {
-      const resolved = resolveArtifacts(skillDir, variantExprs, {
-        strictBaseline: config.strictBaseline,
-        variantAllowedSkills: config.variantAllowedSkills,
-      });
+      const resolved = variantExprs.length > 0
+        ? resolveArtifacts(skillDir, variantExprs, {
+          strictBaseline: config.strictBaseline,
+          variantAllowedSkills: config.variantAllowedSkills,
+        })
+        : [];
+      // 显式 [] (即便 variantExprs 为空) 也直接传给 doctor; 表达"本次无 skill"
       artifacts = resolved.filter((a) => a.kind !== 'baseline');
     } catch (err) {
       // resolveArtifacts 失败 (如 skill 文件不存在); 让 runEvaluation 自己报错
@@ -625,15 +635,21 @@ async function runDoctorPreflight(
       return;
     }
   }
+  // batch 模式下 artifacts 留 undefined, doctor 引擎自身 fallback 到 target=skillDir
 
-  // 加载 samples 让 samples_contract_aligned rule 生效。失败不阻断 doctor。
+  // 加载 samples + requires 让 samples_contract_aligned 与 dependencies_present 都生效。
+  // requires 不能丢, 否则 doctor 通过但 evaluation preflight 仍因 requires.env/tools fail —
+  // 门禁形同虚设。失败不阻断 doctor (rule 自然 skipped, artifact-level 仍全跑)。
   let samples: import('../types/index.js').Sample[] | undefined;
+  let requires: import('../eval-core/dependency-checker.js').DependencyRequirements | undefined;
   if (config.samplesPath) {
     try {
       const { loadSamples } = await import('../inputs/load-samples.js');
-      samples = loadSamples(config.samplesPath).samples;
+      const loaded = loadSamples(config.samplesPath);
+      samples = loaded.samples;
+      requires = loaded.requires;
     } catch {
-      // 沉默退回; 这条 rule 自然 skipped (artifact-level 仍然全跑)
+      // 沉默退回
     }
   }
 
@@ -643,7 +659,7 @@ async function runDoctorPreflight(
   let report;
   try {
     report = await runDoctor({
-      ...(artifacts ? { artifacts } : { target: skillDir }),
+      ...(artifacts !== undefined ? { artifacts } : { target: skillDir }),
       cwd,
       executorName,
       model,
@@ -651,6 +667,7 @@ async function runDoctorPreflight(
       lang,
       skipSmoke,
       samples,
+      requires,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
