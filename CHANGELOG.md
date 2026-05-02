@@ -10,6 +10,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+
+- **`omk doctor` 评测前置健康检查**:回答「skill 能不能被有意义地评测」的健康检查命令,类比 SE 工具栈的 lint+typecheck+smoke。检查 skill 文件可读 / 元数据合法 / 依赖完整 / executor 烟测可达(全 fatal)+ samples↔skill 输入约定(warn)。`omk doctor [path]` 接受单 .md 文件、目录或 cwd 默认;`--json` 输出 DoctorReport 给 CI,`--gate` 走 exit code。`omk bench run` 与 `omk bench gate` 默认前置调 doctor,fail 则 abort 评测(stderr `doctor failed:` 前缀,与 `bench gate failed:` 区分)。**Backward-compat caveat**: 现有自动化脚本若 skill 检出问题会被 abort,需修复或加 `--skip-doctor` 跳过。详见 #<PR>。
+
 ### Changed
 
 - **README / comparison 文档澄清 Claude Code 与 Codex 用法**:把 `/omk ...` 明确限定为 Claude Code skill 入口,避免让读者误解 Codex 也原生支持 slash command。README 中补充 Codex 直接驱动 `omk` CLI 的用法,comparison 文档同步改成"Claude Code 工作流最原生,但 `omk` CLI 也可被其他 coding agent 驱动"。

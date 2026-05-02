@@ -38,11 +38,34 @@ omk bench run --dry-run
 
 # run the evaluation (auto-discovers everything under skills/)
 omk bench run    # → HTML report with verdict in 5 minutes
+                 # (a `omk doctor` health check runs first as a default gate;
+                 #  pass `--skip-doctor` to bypass)
 
 # CLI output language: zh (default) / en — flag wins over env
 omk bench run --lang en
 OMK_LANG=en omk bench report
 ```
+
+## Pre-evaluation health check
+
+Before each evaluation, omk runs `omk doctor` as a **default gate** to make sure your skill is in a measurable state — no more garbage-in verdicts caused by a typo'd YAML, a missing dependency, or a broken executor:
+
+```bash
+omk doctor                    # batch check every skill in current dir / ./skills
+omk doctor skills/v1.md       # single file
+omk doctor skills/ --json     # JSON output for CI consumption
+omk doctor --gate; echo $?    # silent mode — exit 1 if any fatal check fails
+```
+
+What `doctor` checks (analogous to lint + typecheck + smoke in the SE toolchain):
+
+- **skill readable** — file exists, content non-empty, has minimum length
+- **skill metadata** — front-matter (if present) is valid YAML; directory-skills have `SKILL.md`
+- **dependencies present** — referenced CLI tools, files, env vars all available (reuses `preflightDependencies`)
+- **executor smoke** — skill + executor produces a non-empty response on a minimal prompt
+- **samples ↔ skill contract** — when samples are provided, validate they're non-empty and have prompt fields (warn-level)
+
+Doctor outputs human-readable PASS/WARN/FAIL or structured JSON; failure modes (`timeout` / `auth` / `empty` / `error`) come with actionable hints. `bench run` and `bench gate` abort with `exit 1` and stderr `doctor failed:` prefix when doctor fails — pass `--skip-doctor` to skip (not recommended for production).
 
 ## Use inside AI Coding Agents
 
@@ -76,6 +99,7 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 
 ## Key features
 
+- **Pre-evaluation health check** — `omk doctor` runs as a default gate before `bench run` / `bench gate`; checks skill readability, dependencies, executor connectivity, samples contract — like lint + typecheck + smoke for knowledge artifacts
 - **Controlled-variable offline bench** — fix the model and samples, vary only the artifact; works with Claude Code skills, CLAUDE.md prompts, RAG knowledge bases, or any markdown-based instruction
 - **Six-dimension scoring** — separate signals for Fact / Behavior / LLM-judge / Cost / Efficiency / Stability, so a regression in one axis isn't hidden by gains in another
 - **Production session observability** — parse Claude Code session JSONL traces, measure per-skill failure rate, latency, token cost, and knowledge-gap signals on real user sessions

@@ -38,11 +38,34 @@ omk bench run --dry-run
 
 # 运行评测（自动发现 skills/ 目录下的所有 artifact）
 omk bench run    # → 5 分钟出 HTML 报告 + verdict
+                 # （会先跑 `omk doctor` 健康检查作为前置门禁；
+                 #  加 `--skip-doctor` 跳过）
 
 # CLI 输出语言: zh (默认) / en — flag 优先级高于环境变量
 omk bench run --lang en
 OMK_LANG=en omk bench report
 ```
+
+## 评测前置健康检查
+
+每次评测前，omk 会先跑 `omk doctor` 作为**默认门禁**，确保 skill 处于可评测状态——避免 YAML 写错、依赖缺失、executor 跑不通这些问题让你拿到 garbage-in 的 verdict 数字：
+
+```bash
+omk doctor                    # 批量检查当前目录或 ./skills 下所有 skill
+omk doctor skills/v1.md       # 单个文件
+omk doctor skills/ --json     # JSON 输出供 CI 消费
+omk doctor --gate; echo $?    # 静默模式 — 任意 fatal 失败 exit 1
+```
+
+doctor 检查项（类比 SE 工具栈的 lint + typecheck + smoke）:
+
+- **skill 文件可读** — 文件存在、内容非空、有最低长度
+- **skill 元数据合法** — front-matter（若有）YAML 合法；directory-skill 有 `SKILL.md`
+- **前置依赖完整** — 引用的 CLI 工具、文件、环境变量都可用（复用 `preflightDependencies`）
+- **executor 烟测可达** — skill + executor 跑通最简 prompt 拿非空响应
+- **用例 ↔ skill 输入约定** — 传 samples 时校验非空且含 prompt 字段（warn 级）
+
+doctor 输出人类可读 PASS/WARN/FAIL 列表或结构化 JSON；失败类型（`timeout` / `auth` / `empty` / `error`）都带可操作 hint。`bench run` 与 `bench gate` 在 doctor 失败时 abort（exit 1，stderr 前缀 `doctor failed:`）；加 `--skip-doctor` 跳过（生产环境不推荐）。
 
 ## 在 AI Coding Agent 中使用
 
@@ -76,6 +99,7 @@ omk bench gen-samples skills/my-skill.md
 
 ## 核心能力
 
+- **评测前置健康检查** — `omk doctor` 默认在 `bench run` / `bench gate` 之前运行，检查 skill 可读性、依赖完整性、executor 连通性、samples 契约——类比 SE 工具栈的 lint + typecheck + smoke for 知识工件
 - **控制变量离线评测** — 固定模型和用例，只变知识载体；兼容 Claude Code skill、CLAUDE.md prompt、RAG 知识库等任何 markdown 形式的指令
 - **六维独立打分** — Fact / Behavior / LLM-judge / Cost / Efficiency / Stability 分别出信号，单一维度的回退不会被其他维度的收益掩盖
 - **线上 session 观测** — 解析 Claude Code session JSONL，在真实用户会话上测量各 skill 的失败率、耗时、token 成本和知识缺口信号
