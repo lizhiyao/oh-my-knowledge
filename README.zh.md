@@ -448,7 +448,7 @@ variants:
   - { name: my-skill, role: treatment, artifact: ./skills/my-skill.md }
 ```
 
-**字段入口**: `bench run` 完整支持上述全部字段; `bench gate` 共享 `parseRunConfig` 处理的基础字段(`model` / `judgeModel` / `noJudge` / `noCache` / `blind` / `strictBaseline` / `budget` / `mcpConfig` 等),但 v0.2 实验设计字段(`repeat` / `judgeRepeat` / `judgeModels` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`)不读 — 这些只在 `handleRun` 里有 fallback,后续按需扩展到 gate。其他子命令(`evolve` / `verdict` / `diff` / `analyze` 等)完全不读 eval.yaml。
+**字段入口**: `bench run` 完整支持上述全部字段; `bench gate` 通过 `parseRunConfig` 共享 variants / executor / model / `judgeModels`(单评委 + ensemble 都生效)/ noJudge / noCache / blind / strictBaseline / budget / mcpConfig / variantAllowedSkills,但 `handleRun` 自己处理的实验设计字段(`repeat` / `judgeRepeat` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`)gate 不读,后续按需扩展到 gate。其他子命令(`evolve` / `verdict` / `diff` / `analyze` 等)完全不读 eval.yaml。
 
 **和 `cost_max` / `latency_max` 断言的区别**: 断言是**单样本评分维度**(超出直接打 0 分,run 继续);budget 是**工作流级硬阈值**(`totalUSD` 超出整个 run abort 保留 partial report,per-sample 超出该样本失败但 run 继续)。一个回答"质量是否达标",一个回答"花钱/时间是否在预算内"。
 
@@ -917,25 +917,25 @@ omk bench run \
 export OPENAI_API_KEY="你的智谱 API Key"
 export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 omk bench run --executor openai-api --model glm-4-plus \
-  --judge-model glm-4-plus --no-cache
+  --judge-models openai-api:glm-4-plus --no-cache
 
 # 通义千问
 export OPENAI_API_KEY="你的通义 API Key"
 export OPENAI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 omk bench run --executor openai-api --model qwen-plus \
-  --judge-model qwen-plus
+  --judge-models openai-api:qwen-plus
 
 # DeepSeek
 export OPENAI_API_KEY="你的 DeepSeek API Key"
 export OPENAI_BASE_URL="https://api.deepseek.com"
 omk bench run --executor openai-api --model deepseek-chat \
-  --judge-model deepseek-chat
+  --judge-models openai-api:deepseek-chat
 
 # Moonshot（Kimi）
 export OPENAI_API_KEY="你的 Moonshot API Key"
 export OPENAI_BASE_URL="https://api.moonshot.cn/v1"
 omk bench run --executor openai-api --model moonshot-v1-8k \
-  --judge-model moonshot-v1-8k
+  --judge-models openai-api:moonshot-v1-8k
 ```
 
 **Ollama 本地模型：**
@@ -945,12 +945,12 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
   --model llama3 --no-judge
 ```
 
-**关于评委模型：**
+**关于评委:**
 
-- `--judge-model` 指定 LLM 评委使用的模型，默认 `haiku`
-- `--judge-executor` 指定评委使用的执行器（默认与 `--executor` 相同）
-- 如果你没有 Claude，用 `--judge-executor` 和 `--judge-model` 指向你可用的模型
-- 加 `--no-judge` 可跳过 LLM 评委，仅使用断言评分
+- `--judge-models <list>` 指定评委,格式 `executor:model[,executor:model]`。默认 `${executor}:haiku`(没设 `--executor` 时为 claude:haiku)
+- 1 条 = 单评委;≥ 2 条 = 多评委 ensemble + inter-judge agreement
+- 没有 Claude 时把 `--judge-models` 指向你可用的模型,例如 `--judge-models openai-api:glm-4-plus`
+- 加 `--no-judge` 可跳过 LLM 评委,仅使用断言评分
 
 ## 环境变量
 

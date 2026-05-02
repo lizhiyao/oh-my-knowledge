@@ -456,7 +456,7 @@ variants:
   - { name: my-skill, role: treatment, artifact: ./skills/my-skill.md }
 ```
 
-**字段入口**: `bench run` 完整支持上述全部字段; `bench gate` 共享 `parseRunConfig` 处理的基础字段(`model` / `judgeModel` / `noJudge` / `noCache` / `blind` / `strictBaseline` / `budget` / `mcpConfig` / 等),但 v0.2 实验设计字段(`repeat` / `judgeRepeat` / `judgeModels` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`)不读 — 这些只在 `handleRun` 里有 fallback,后续按需扩展到 gate。其他子命令(`evolve` / `verdict` / `diff` / `analyze` / 等)完全不读 eval.yaml。
+**字段入口**: `bench run` 完整支持上述全部字段; `bench gate` 通过 `parseRunConfig` 共享 variants / executor / model / `judgeModels`(单评委 + ensemble 都生效)/ noJudge / noCache / blind / strictBaseline / budget / mcpConfig / variantAllowedSkills,但 `handleRun` 自己处理的实验设计字段(`repeat` / `judgeRepeat` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`)gate 不读,后续按需扩展到 gate。其他子命令(`evolve` / `verdict` / `diff` / `analyze` / 等)完全不读 eval.yaml。
 
 **Difference from `cost_max` / `latency_max` assertions**: assertions are **per-sample scoring rules** (exceeding the cap fails that one assertion, the run continues); budget caps are **workflow-level hard limits** (`totalUSD` overrun aborts the run and persists a partial report; per-sample overruns fail the offending sample but the run continues). Assertions answer "is quality acceptable?"; budgets answer "are cost/time within the envelope?".
 
@@ -925,25 +925,25 @@ omk bench run \
 export OPENAI_API_KEY="your Zhipu API key"
 export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 omk bench run --executor openai-api --model glm-4-plus \
-  --judge-model glm-4-plus --no-cache
+  --judge-models openai-api:glm-4-plus --no-cache
 
 # Qwen (Alibaba)
 export OPENAI_API_KEY="your Qwen API key"
 export OPENAI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 omk bench run --executor openai-api --model qwen-plus \
-  --judge-model qwen-plus
+  --judge-models openai-api:qwen-plus
 
 # DeepSeek
 export OPENAI_API_KEY="your DeepSeek API key"
 export OPENAI_BASE_URL="https://api.deepseek.com"
 omk bench run --executor openai-api --model deepseek-chat \
-  --judge-model deepseek-chat
+  --judge-models openai-api:deepseek-chat
 
 # Moonshot (Kimi)
 export OPENAI_API_KEY="your Moonshot API key"
 export OPENAI_BASE_URL="https://api.moonshot.cn/v1"
 omk bench run --executor openai-api --model moonshot-v1-8k \
-  --judge-model moonshot-v1-8k
+  --judge-models openai-api:moonshot-v1-8k
 ```
 
 **Ollama local model:**
@@ -953,11 +953,11 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
   --model llama3 --no-judge
 ```
 
-**About the judge model:**
+**About the judge:**
 
-- `--judge-model` picks the model used by the LLM judge (default `haiku`)
-- `--judge-executor` picks the executor the judge uses (defaults to `--executor`)
-- If you don't have Claude, point `--judge-executor` and `--judge-model` at whatever model you have
+- `--judge-models <list>` picks the LLM judge(s). Format: `executor:model[,executor:model]`. Default: `${executor}:haiku` (or claude:haiku when no `--executor` set)
+- 1 entry = single judge; ≥ 2 entries = multi-judge ensemble + inter-judge agreement
+- If you don't have Claude, point `--judge-models` at whatever you have, e.g. `--judge-models openai-api:glm-4-plus`
 - Add `--no-judge` to skip the LLM judge and rely on assertions alone
 
 ## Environment variables
