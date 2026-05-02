@@ -157,8 +157,8 @@ export const dependenciesPresentRule: DoctorRule = {
     const result = await preflightDependencies(
       [content],
       ctx.samples ?? [],
-      ctx.cwd,
-      ctx.requires, // samples wrapper 显式 requires; doctor 与 evaluation preflight 判断对齐
+      ctx.dependencyCwd ?? ctx.cwd, // 与 evaluation preflight 同规则; 见 DoctorContext.dependencyCwd
+      ctx.requires,                  // samples wrapper 显式 requires
       [ctx.artifact],
     );
     if (!result.ok) {

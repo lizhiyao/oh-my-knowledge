@@ -150,12 +150,22 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     ? opts.artifacts
     : resolveDoctorTargets(opts.target, opts.cwd);
 
+  // dependencyCwd 选择优先级与 evaluation-pipeline.ts 的 dependency check 规则
+  // 严格对齐: artifact.cwd > opts.dependencyCwd (CLI 传 skillDir) > opts.cwd。
+  // 不对齐会让 requires.files / requires.preflight 在 doctor 和 eval 之间产生
+  // false-positive (文件在 skillDir 存在 doctor 误 fail) 或 false-negative
+  // (文件只在项目 cwd 存在 doctor pass 但 eval fail) 不一致。
+  const dependencyCwd = artifacts.find((a) => a.cwd)?.cwd
+    ?? opts.dependencyCwd
+    ?? opts.cwd;
+
   const ctxBase: Omit<DoctorContext, 'artifact'> = {
     samples: opts.samples,
     requires: opts.requires,
     executorName: opts.executorName,
     model: opts.model,
     cwd: opts.cwd,
+    dependencyCwd,
     lang: opts.lang,
     timeoutMs: opts.timeoutMs,
   };

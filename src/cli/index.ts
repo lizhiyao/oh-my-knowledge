@@ -661,6 +661,9 @@ async function runDoctorPreflight(
     report = await runDoctor({
       ...(artifacts !== undefined ? { artifacts } : { target: skillDir }),
       cwd,
+      // 与 evaluation-pipeline.ts dependency check 同规则: artifact.cwd > skillDir > cwd。
+      // CLI 这里固定传 skillDir, runDoctor 内部还会让 artifact.cwd 优先(若有)。
+      dependencyCwd: skillDir,
       executorName,
       model,
       timeoutMs,

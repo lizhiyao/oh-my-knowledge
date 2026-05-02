@@ -395,4 +395,85 @@ describe('runDoctor', () => {
     assert.ok(depsResult);
     assert.equal(depsResult.status, 'fail', 'doctor should reject missing required tool from samples wrapper requires');
   });
+
+  it('resolves requires.files relative to dependencyCwd, matching evaluation preflight rule', async () => {
+    // 准备一个真实文件,放在临时 dependencyCwd 下;
+    // dependencies_present 必须能在 dependencyCwd 找到它,而不是 opts.cwd。
+    const tmpDepDir = mkdtempSync(join(tmpdir(), 'doctor-depcwd-'));
+    const tmpOtherCwd = mkdtempSync(join(tmpdir(), 'doctor-other-cwd-'));
+    try {
+      writeFileSync(join(tmpDepDir, 'fixture.txt'), 'fixture content');
+      const inlineArtifact: Artifact = {
+        name: 'inline',
+        kind: 'skill',
+        source: 'inline',
+        content: '你是一个测试 skill 内容足够长。',
+      };
+      // requires.files 显式指相对路径 fixture.txt; 必须在 dependencyCwd 下解析才能找到
+      const reportPass = await runDoctor({
+        artifacts: [inlineArtifact],
+        cwd: tmpOtherCwd,        // 文件不在这里
+        dependencyCwd: tmpDepDir, // 文件在这里 — 应被 rule 用作 base
+        executorName: 'claude',
+        model: 'sonnet',
+        timeoutMs: 8000,
+        lang: 'zh',
+        skipSmoke: true,
+        requires: { files: ['fixture.txt'] },
+      });
+      const depsPass = reportPass.skills[0].results.find((r) => r.ruleId === 'dependencies_present');
+      assert.ok(depsPass);
+      assert.equal(depsPass.status, 'pass', 'should resolve fixture.txt against dependencyCwd');
+
+      // 反向验证: 不传 dependencyCwd 时退回 cwd, fixture.txt 在 cwd 下找不到 → fail
+      const reportFail = await runDoctor({
+        artifacts: [inlineArtifact],
+        cwd: tmpOtherCwd,
+        executorName: 'claude',
+        model: 'sonnet',
+        timeoutMs: 8000,
+        lang: 'zh',
+        skipSmoke: true,
+        requires: { files: ['fixture.txt'] },
+      });
+      const depsFail = reportFail.skills[0].results.find((r) => r.ruleId === 'dependencies_present');
+      assert.ok(depsFail);
+      assert.equal(depsFail.status, 'fail', 'without dependencyCwd, falls back to cwd which lacks the file');
+    } finally {
+      rmSync(tmpDepDir, { recursive: true, force: true });
+      rmSync(tmpOtherCwd, { recursive: true, force: true });
+    }
+  });
+
+  it('artifact.cwd takes priority over opts.dependencyCwd for dependency resolution', async () => {
+    const tmpArtifactCwd = mkdtempSync(join(tmpdir(), 'doctor-artifact-cwd-'));
+    const tmpOptsDepCwd = mkdtempSync(join(tmpdir(), 'doctor-opts-dep-cwd-'));
+    try {
+      // fixture 只在 artifact.cwd 下; 验证 artifact.cwd 优先级最高
+      writeFileSync(join(tmpArtifactCwd, 'fixture.txt'), 'a');
+      const artifactWithCwd: Artifact = {
+        name: 'inline',
+        kind: 'skill',
+        source: 'inline',
+        content: '你是一个测试 skill 内容足够长。',
+        cwd: tmpArtifactCwd, // 优先于 opts.dependencyCwd
+      };
+      const report = await runDoctor({
+        artifacts: [artifactWithCwd],
+        cwd: '/tmp',
+        dependencyCwd: tmpOptsDepCwd, // 没 fixture, 应被 artifact.cwd 覆盖
+        executorName: 'claude',
+        model: 'sonnet',
+        timeoutMs: 8000,
+        lang: 'zh',
+        skipSmoke: true,
+        requires: { files: ['fixture.txt'] },
+      });
+      const deps = report.skills[0].results.find((r) => r.ruleId === 'dependencies_present');
+      assert.equal(deps?.status, 'pass', 'artifact.cwd priority should win and locate fixture there');
+    } finally {
+      rmSync(tmpArtifactCwd, { recursive: true, force: true });
+      rmSync(tmpOptsDepCwd, { recursive: true, force: true });
+    }
+  });
 });

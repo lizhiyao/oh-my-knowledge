@@ -33,7 +33,12 @@ export interface DoctorContext {
   requires?: DependencyRequirements;
   executorName: string;
   model: string;
+  /** doctor 的运行工作目录(默认 process.cwd())。 */
   cwd: string;
+  /** 解析 requires.files / requires.preflight 路径时用的基准目录。
+   *  规则与 evaluation preflight 一致: artifact.cwd > dependencyCwd > cwd。
+   *  缺位时 rule 退回 ctx.cwd(行为不变, 测试 fixture 不强制传)。 */
+  dependencyCwd?: string;
   lang: 'zh' | 'en';
   timeoutMs: number;
 }
@@ -86,6 +91,10 @@ export interface DoctorRunOptions {
   samples?: Sample[];
   /** 可选 requires (samples wrapper 里的显式声明), 透传给 dependencies_present rule */
   requires?: DependencyRequirements;
+  /** 解析 requires.files / requires.preflight 路径时的基准目录(优先级低于
+   *  artifact.cwd, 高于 cwd)。CLI 嵌入 bench run 时传 skillDir, 与 evaluation
+   *  preflight 的 cwd 选择规则保持一致(参见 evaluation-pipeline.ts dependency check)。 */
+  dependencyCwd?: string;
   /** 覆盖默认 rules(test 注入用)。生产路径走 getRegisteredRules() = BUILTIN + custom。 */
   rules?: DoctorRule[];
 }
