@@ -73,6 +73,8 @@ export const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', '
  * 解析 `--judge-models` CLI 参数:`executor:model[,executor:model,...]`。
  * - 空字符串 / 全空 entry 抛错(避免 silent default)。
  * - entry 格式 `executor:model`,缺一报错。
+ * - 重复 `executor:model` 拒绝(否则 ensemble 聚合用 Map<judgeId, scores> 会把
+ *   同 id 合并,N 不可信、agreement 失真;而 grading 阶段又会按 entry 数实际跑 N 次)。
  * - 1 entry = 单评委,≥ 2 = ensemble(由调用方决定是否接受 ensemble)。
  */
 export function parseJudgeModelsArg(raw: string): JudgeConfig[] {
@@ -80,13 +82,23 @@ export function parseJudgeModelsArg(raw: string): JudgeConfig[] {
   if (parts.length === 0) {
     throw new Error(`--judge-models cannot be empty`);
   }
-  return parts.map((p) => {
+  const result: JudgeConfig[] = [];
+  const seen = new Set<string>();
+  for (const p of parts) {
     const idx = p.indexOf(':');
     if (idx <= 0 || idx === p.length - 1) {
       throw new Error(`--judge-models entry must be 'executor:model' (got "${p}")`);
     }
-    return { executor: p.slice(0, idx), model: p.slice(idx + 1) };
-  });
+    const executor = p.slice(0, idx);
+    const model = p.slice(idx + 1);
+    const key = `${executor}:${model}`;
+    if (seen.has(key)) {
+      throw new Error(`--judge-models has duplicate entry "${key}"; ensemble 聚合按 executor:model 去重,重复条目会让 N 不可信、agreement 失真`);
+    }
+    seen.add(key);
+    result.push({ executor, model });
+  }
+  return result;
 }
 
 /**

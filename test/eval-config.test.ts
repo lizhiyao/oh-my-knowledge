@@ -430,6 +430,17 @@ judgeModels:
     }
   });
 
+  it('reject judgeModels 重复 entry (ensemble 聚合按 executor:model 去重)', () => {
+    const dir = makeTmpDir();
+    try {
+      const yaml = `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: haiku\n  - executor: claude\n    model: haiku`;
+      const path = writeYaml(dir, 'eval.yaml', yaml);
+      assert.throws(() => loadEvalConfig(path), /duplicate entry "claude:haiku"/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('reject 旧字段 judgeModel (v0.25 已删, 引导改用 judgeModels)', () => {
     const dir = makeTmpDir();
     try {

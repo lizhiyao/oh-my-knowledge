@@ -156,6 +156,23 @@ describe('comparability warnings', () => {
     assert.ok(codes.includes('judge_runtime_missing'));
   });
 
+  it('cross-report audit skips judge warnings when both reports are no-judge', () => {
+    const noJudgeReport = (): Report => report({ noJudge: true, judgePromptHash: undefined });
+    const codes = crossReportComparabilityWarnings(noJudgeReport(), noJudgeReport()).map((w) => w.code);
+    // 都没跑评委 → 不应触发任何 judge 维度警告(judge_runtime_missing / judge_prompt_hash_missing 等)
+    assert.ok(!codes.some((c) => c.startsWith('judge_')), `unexpected judge warning(s) in noJudge↔noJudge cross-report: ${codes.join(', ')}`);
+  });
+
+  it('cross-report audit emits judge_presence_mismatch when one side ran a judge and the other did not', () => {
+    const judged = report();
+    const noJudge = report({ noJudge: true, judgePromptHash: undefined });
+    const codes = crossReportComparabilityWarnings(judged, noJudge).map((w) => w.code);
+    assert.ok(codes.includes('judge_presence_mismatch'), `expected judge_presence_mismatch, got: ${codes.join(', ')}`);
+    // judge_runtime_missing / judge_model_mismatch 等具体 audit 在 presence 不一致时被跳过(噪声)。
+    assert.ok(!codes.includes('judge_runtime_missing'));
+    assert.ok(!codes.includes('judge_model_mismatch'));
+  });
+
   it('formats warnings in Chinese', () => {
     const text = formatComparabilityWarnings(crossReportComparabilityWarnings(report(), report({ model: 'm2' })), 'zh');
     assert.match(text, /可比性提示/);

@@ -164,6 +164,8 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
 
   // judgeModels: array of { executor, model } — unified judge config.
   // 1 条 = single judge (no ensemble); ≥ 2 条 = ensemble + inter-judge agreement。空数组 reject。
+  // 重复 executor:model 拒绝:ensemble 聚合按 judge id 去重(参见 schema.ts buildEnsembleAggregate),
+  // 重复条目会让 N 不可信、agreement 失真,而 grading 又会照样跑 N 次。
   let judgeModelsParsed: import('../types/index.js').JudgeConfig[] | undefined;
   if (obj.judgeModels !== undefined) {
     if (!Array.isArray(obj.judgeModels)) {
@@ -173,6 +175,7 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
       throw new Error(`${configPath}: judgeModels must have ≥ 1 entry (omit the field for default judge)`);
     }
     judgeModelsParsed = [];
+    const seenJudgeKeys = new Set<string>();
     for (const [i, raw] of (obj.judgeModels as unknown[]).entries()) {
       if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
         throw new Error(`${configPath}: judgeModels[${i}] must be an object {executor, model}`);
@@ -184,6 +187,11 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
       if (typeof j.model !== 'string' || !j.model) {
         throw new Error(`${configPath}: judgeModels[${i}].model must be a non-empty string`);
       }
+      const key = `${j.executor}:${j.model}`;
+      if (seenJudgeKeys.has(key)) {
+        throw new Error(`${configPath}: judgeModels[${i}] is a duplicate entry "${key}"; ensemble 聚合按 executor:model 去重,重复条目会让 N 不可信、agreement 失真`);
+      }
+      seenJudgeKeys.add(key);
       judgeModelsParsed.push({ executor: j.executor, model: j.model });
     }
   }
