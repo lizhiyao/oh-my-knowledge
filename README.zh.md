@@ -46,28 +46,6 @@ omk bench run --lang en
 OMK_LANG=en omk bench report
 ```
 
-## 评测前置健康检查
-
-每次评测前，omk 会先跑 `omk doctor` 作为**默认门禁**，确保 skill 处于可评测状态——避免 YAML 写错、front-matter 格式非法、依赖缺失这些问题让你拿到 garbage-in 的 verdict 数字：
-
-```bash
-omk doctor                    # 批量检查当前目录或 ./skills 下所有 skill
-omk doctor skills/v1.md       # 单个文件
-omk doctor skills/ --json     # JSON 输出供 CI 消费
-omk doctor --gate; echo $?    # 静默模式 — 任意 fatal 失败 exit 1
-```
-
-doctor 检查项（纯静态 / 零 LLM 调用，类比 SE 工具栈的 lint + typecheck）:
-
-- **skill 文件可读** — 文件存在、内容非空、有最低长度
-- **skill 元数据合法** — front-matter（若有）YAML 合法；directory-skill 有 `SKILL.md`
-- **前置依赖完整** — 引用的 CLI 工具、文件、环境变量都可用（复用 `preflightDependencies`）
-- **用例 ↔ skill 输入约定** — 传 samples 时校验非空且含 prompt 字段（warn 级）
-
-executor / judge 连通性由 evaluation preflight 单独负责，不在 doctor 范围内——边界清晰：doctor 静态，eval 动态。
-
-doctor 输出人类可读 PASS/WARN/FAIL 列表或结构化 JSON。`bench run` 与 `bench gate` 在 doctor 失败时 abort（exit 1，stderr 前缀 `doctor failed:`）。**doctor 是评测必经环节，无 skip flag**——静态检查零成本无理由跳过。LLM 连通性检测可用 `--skip-connectivity` 单独控制（`--resume` 时自动跳过）。
-
 ## 在 AI Coding Agent 中使用
 
 ### 在 Claude Code 中使用
@@ -536,6 +514,26 @@ omk bench gate [选项]
   --threshold <数值>     各层最低分数(默认:3.5);独立应用于
                          fact / behavior / judge 三层
 ```
+
+### `omk doctor`(评测前置健康检查)
+
+纯静态 / 零 LLM 调用,类比 SE 工具栈的 lint + typecheck。`bench run` / `bench gate` 之前强制运行,YAML 写错、依赖缺失这类问题会 abort 评测并给可操作错误,而不是让你拿到 garbage-in 的 verdict 数字。也可独立调用,适合本地迭代或 CI 单跑。
+
+```bash
+omk doctor                    # 批量检查当前目录或 ./skills 下所有 skill
+omk doctor skills/v1.md       # 单个文件
+omk doctor skills/ --json     # JSON 输出供 CI 消费
+omk doctor --gate; echo $?    # 静默模式 — 任意 fatal 失败 exit 1
+```
+
+doctor 检查项:
+
+- **skill 文件可读** — 文件存在、内容非空、有最低长度
+- **skill 元数据合法** — front-matter(若有)YAML 合法;directory-skill 有 `SKILL.md`
+- **前置依赖完整** — 引用的 CLI 工具、文件、环境变量都可用(复用 `preflightDependencies`)
+- **用例 ↔ skill 输入约定** — 传 samples 时校验非空且含 prompt 字段(warn 级)
+
+executor / judge 连通性由独立的 evaluation preflight 阶段负责,不在 doctor 范围内 — 边界清晰:doctor 静态,eval 动态。`bench run` / `bench gate` 在 doctor 失败时 abort(exit 1,stderr 前缀 `doctor failed:`)。**doctor 是评测必经环节,无 skip flag**(静态检查零成本无理由跳过);LLM 连通性可用 `--skip-connectivity` 单独控制(`--resume` 时自动跳过)。
 
 ### `omk bench report`
 

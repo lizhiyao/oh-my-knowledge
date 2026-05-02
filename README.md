@@ -46,28 +46,6 @@ omk bench run --lang en
 OMK_LANG=en omk bench report
 ```
 
-## Pre-evaluation health check
-
-Before each evaluation, omk runs `omk doctor` as a **default gate** to make sure your skill is in a measurable state — no more garbage-in verdicts caused by a typo'd YAML, malformed front-matter, or a missing dependency:
-
-```bash
-omk doctor                    # batch check every skill in current dir / ./skills
-omk doctor skills/v1.md       # single file
-omk doctor skills/ --json     # JSON output for CI consumption
-omk doctor --gate; echo $?    # silent mode — exit 1 if any fatal check fails
-```
-
-What `doctor` checks (pure static / zero LLM calls — analogous to lint + typecheck in the SE toolchain):
-
-- **skill readable** — file exists, content non-empty, has minimum length
-- **skill metadata** — front-matter (if present) is valid YAML; directory-skills have `SKILL.md`
-- **dependencies present** — referenced CLI tools, files, env vars all available (reuses `preflightDependencies`)
-- **samples ↔ skill contract** — when samples are provided, validate they're non-empty and have prompt fields (warn-level)
-
-executor / judge connectivity is verified by evaluation preflight (a separate phase), not by doctor — clean boundary: doctor is static, eval is dynamic.
-
-Doctor outputs human-readable PASS/WARN/FAIL or structured JSON. `bench run` and `bench gate` abort with `exit 1` and stderr `doctor failed:` prefix when doctor fails — **doctor is mandatory and not skippable** (static checks have no cost reason to skip). LLM connectivity check is separately controllable via `--skip-connectivity` (auto-skipped on `--resume`).
-
 ## Use inside AI Coding Agents
 
 ### Use inside Claude Code
@@ -543,6 +521,26 @@ omk bench gate [options]
   --threshold <number>   per-layer minimum score (default: 3.5); applied
                          independently to fact / behavior / judge
 ```
+
+### `omk doctor` (pre-evaluation health check)
+
+Pure static / zero-LLM checks — analogous to lint + typecheck in the SE toolchain. Runs as a mandatory gate before `bench run` / `bench gate` so a typo'd YAML or missing dependency aborts with an actionable error instead of producing a garbage-in verdict. Also runnable standalone for local iteration or CI.
+
+```bash
+omk doctor                    # batch check every skill in current dir / ./skills
+omk doctor skills/v1.md       # single file
+omk doctor skills/ --json     # JSON output for CI consumption
+omk doctor --gate; echo $?    # silent mode — exit 1 if any fatal check fails
+```
+
+What `doctor` checks:
+
+- **skill readable** — file exists, content non-empty, has minimum length
+- **skill metadata** — front-matter (if present) is valid YAML; directory-skills have `SKILL.md`
+- **dependencies present** — referenced CLI tools, files, env vars all available (reuses `preflightDependencies`)
+- **samples ↔ skill contract** — when samples are provided, validate they're non-empty and have prompt fields (warn-level)
+
+Executor / judge connectivity is verified by a separate evaluation preflight phase, not by doctor — clean boundary: doctor is static, eval is dynamic. `bench run` / `bench gate` abort with `exit 1` and stderr `doctor failed:` prefix when doctor fails. **Doctor is mandatory and not skippable** (static checks have no cost reason to skip); LLM connectivity is separately controllable via `--skip-connectivity` (auto-skipped on `--resume`).
 
 ### `omk bench report`
 
