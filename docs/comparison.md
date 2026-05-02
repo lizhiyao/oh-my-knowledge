@@ -107,7 +107,7 @@ Three-layer isolation prevents single-axis regressions from being masked by comp
 
 **Chinese-speaking AI engineering teams.** omk has the only complete Chinese documentation set among the surveyed tools — README, CLI help, HTML report, terminology spec, gap-signal spec, RAG-metrics spec, all native Chinese (not machine-translated).
 
-**Claude Code users.** omk runs natively on Claude Code skills — `/omk eval` recognises your `skills/` directory automatically. promptfoo / DeepEval / others require shimming a custom executor.
+**Claude Code users.** omk has the most native workflow on Claude Code: it works as a Claude Code skill, and the underlying `omk` CLI can also be driven directly from Codex and other coding agents. promptfoo / DeepEval / others usually need a custom-executor shim to reach the same artifact-oriented workflow.
 
 ## When NOT to choose omk
 

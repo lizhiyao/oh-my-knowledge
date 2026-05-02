@@ -10,6 +10,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Changed
+
+- **README / comparison 文档澄清 Claude Code 与 Codex 用法**:把 `/omk ...` 明确限定为 Claude Code skill 入口,避免让读者误解 Codex 也原生支持 slash command。README 中补充 Codex 直接驱动 `omk` CLI 的用法,comparison 文档同步改成"Claude Code 工作流最原生,但 `omk` CLI 也可被其他 coding agent 驱动"。
+- **README 顶部新增 npm weekly downloads badge**:公开仓库前补充近期使用热度信号,与现有 npm version / CI / License / Node.js version 形成一组更完整的基础元信息。
+
 ## [0.24.0] - 2026-05-02
 
 ### Added

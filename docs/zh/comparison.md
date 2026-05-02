@@ -107,7 +107,7 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 
 **中文 AI 工程团队**。omk 是参与对比工具中**唯一**有完整中文文档的——README、CLI help、HTML 报告、术语规范、缺口信号规范、RAG metric 规范全部原生中文(非机翻)。
 
-**Claude Code 用户**。omk 原生跑 Claude Code skill —— `/omk eval` 自动识别你的 `skills/` 目录。promptfoo / DeepEval 等需要 shim 自定义 executor。
+**Claude Code 用户**。omk 在 Claude Code 里的工作流最原生:既可以作为 Claude Code skill 使用,底层 `omk` CLI 也能被 Codex 等 coding agent 直接驱动。promptfoo / DeepEval 等通常需要 shim 一层自定义 executor,才能接近这种面向 artifact 的工作流。
 
 ## 什么场景**不**选 omk
 

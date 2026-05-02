@@ -1,6 +1,7 @@
 # oh-my-knowledge
 
 [![npm version](https://img.shields.io/npm/v/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge)
+[![npm weekly downloads](https://img.shields.io/npm/dw/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge)
 [![CI](https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node.js Version](https://img.shields.io/node/v/oh-my-knowledge.svg)](https://nodejs.org)
@@ -43,17 +44,31 @@ omk bench run --lang en
 OMK_LANG=en omk bench report
 ```
 
-## Use inside Claude Code
+## Use inside AI Coding Agents
 
-After installing omk, talk to it in natural language from Claude Code:
+### Use inside Claude Code
 
-```
+When the `omk` skill is available in Claude Code, you can invoke it directly like this:
+
+```bash
 /omk eval              # evaluate the artifact(s) in the current project
 /omk evolve            # auto-iterate to improve an artifact
 /omk gen-samples       # generate test cases
 ```
 
-You can also just say "compare v1 vs v2 for me" or "improve this artifact" — omk picks the right command.
+You can also just say "compare v1 vs v2 for me" or "improve this artifact" and omk picks the right command.
+
+### Use inside Codex
+
+Codex does not support Claude Code style `/omk ...` slash commands by default. In Codex, the usual pattern is to ask the agent to run the `omk` CLI directly, for example:
+
+```bash
+omk bench run
+omk bench evolve
+omk bench gen-samples skills/my-skill.md
+```
+
+You can also describe the goal in natural language, such as "compare v1 vs v2" or "generate test cases for this skill".
 
 ## Why this tool
 
