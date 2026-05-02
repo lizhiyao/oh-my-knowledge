@@ -14,7 +14,7 @@ const ok = (output: string): Awaited<ReturnType<ExecutorFn>> => ({
 const mockJudge = (handler: (prompt: string) => number): ExecutorFn =>
   async ({ prompt }) => ok(JSON.stringify({ score: handler(prompt), reason: 'mock' }));
 
-describe('Phase 22.3 — RAG metrics registration', () => {
+describe('RAG metrics registration', () => {
   it('all three RAG metrics are registered as async assertion types', () => {
     assert.ok(ASYNC_ASSERTION_TYPES.has('faithfulness'));
     assert.ok(ASYNC_ASSERTION_TYPES.has('answer_relevancy'));
@@ -22,7 +22,7 @@ describe('Phase 22.3 — RAG metrics registration', () => {
   });
 });
 
-describe('Phase 22.3 — faithfulness', () => {
+describe('faithfulness', () => {
   const sample: Sample = {
     sample_id: 's1',
     prompt: 'Q?',
@@ -95,7 +95,7 @@ describe('Phase 22.3 — faithfulness', () => {
   });
 });
 
-describe('Phase 22.3 — answer_relevancy', () => {
+describe('answer_relevancy', () => {
   const sample: Sample = {
     sample_id: 's2',
     prompt: 'How tall is the Eiffel Tower?',
@@ -144,7 +144,7 @@ describe('Phase 22.3 — answer_relevancy', () => {
   });
 });
 
-describe('Phase 22.3 — context_recall', () => {
+describe('context_recall', () => {
   const sample: Sample = {
     sample_id: 's3',
     prompt: 'Summarize.',
@@ -208,7 +208,7 @@ describe('Phase 22.3 — context_recall', () => {
   });
 });
 
-describe('Phase 22.3 — judge cost is accumulated', () => {
+describe('judge cost is accumulated', () => {
   it('asyncCostUSD reflects all RAG metric calls', async () => {
     const sample: Sample = { sample_id: 's', prompt: 'Q?', context: 'ctx' };
     const judge = mockJudge(() => 5);
