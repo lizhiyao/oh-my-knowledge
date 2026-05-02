@@ -2,11 +2,9 @@ import { resolve } from 'node:path';
 import { DEFAULT_OUTPUT_DIR, persistReport } from '../eval-core/evaluation-reporting.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
 import { discoverBatchSkills, resolveArtifacts } from '../inputs/skill-loader.js';
-import { loadSamples } from '../inputs/load-samples.js';
 import { confidenceInterval, tTest, effectSize } from '../eval-core/statistics.js';
 import { executeBatchEvaluationRuns } from './batch-evaluation-workflow.js';
 import {
-  buildDryRunBatchArtifacts,
   buildDryRunTaskReport,
   prepareEvaluationRun,
 } from './evaluation-preparation.js';
@@ -212,23 +210,31 @@ export async function runEvaluation({
   // 在 dryRun 分支之前跑, 让 dry-run 也得到 doctor 覆盖(保护 garbage-in 的 verdict)。
   // doctor 不可 skip — 静态检查无成本理由跳过, 也无 escape hatch flag。
   // LLM 连通性是另一回事, 由独立的 skipConnectivity 控制。
+  //
+  // 路径推断收口在 buildDoctorPreflightContext: doctor engine 不再自己猜 bench 的
+  // artifact 形态 / cwd 优先级, 任何 bench 路径语义边界变化只改 builder 一处。
   {
-    const { runDoctor } = await import('../doctor/index.js');
-    const { renderDoctorReportText } = await import('../doctor/renderer.js');
-    const { tCli } = await import('../cli/i18n.js');
-    const skillArtifacts = resolvedArtifacts.filter((a) => a.kind !== 'baseline');
-    if (skillArtifacts.length > 0) {
-      const dependencyCwd = resolvedArtifacts.find((a) => a.cwd)?.cwd || resolve(skillDir) || process.cwd();
+    const { buildDoctorPreflightContext } = await import('../doctor/preflight.js');
+    const doctorCtx = buildDoctorPreflightContext({
+      artifacts: resolvedArtifacts,
+      samples,
+      requires,
+      skillDir,
+    });
+    if (doctorCtx) {
+      const { runDoctor } = await import('../doctor/index.js');
+      const { renderDoctorReportText } = await import('../doctor/renderer.js');
+      const { tCli } = await import('../cli/i18n.js');
       const doctorReport = await runDoctor({
-        artifacts: skillArtifacts,
-        cwd: dependencyCwd,
-        dependencyCwd,
+        artifacts: doctorCtx.doctorArtifacts,
+        cwd: doctorCtx.dependencyCwd,
+        dependencyCwd: doctorCtx.dependencyCwd,
+        samples: doctorCtx.samples,
+        requires: doctorCtx.requires,
         executorName,
         model,
         timeoutMs: timeoutMs ?? 8000,
         lang,
-        samples,
-        requires,
       });
       if (doctorReport.failed) {
         renderDoctorReportText(doctorReport, lang);
@@ -596,43 +602,61 @@ export async function runBatchEvaluation({
   }
 
   if (dryRun) {
-    // doctor 强制门禁 batch 版: 与 single dry-run 对称,
-    // 每个 entry 解析 artifact + samples 后跑 doctor。任意 entry fail 即 abort。
-    // 不在这里做的话, batch dry-run 会绕过 mandatory doctor, broken skill
-    // 直到真实 run 才会被发现, 与"doctor 强制 + dry-run 也覆盖"语义不一致。
-    {
-      const { runDoctor } = await import('../doctor/index.js');
-      const { renderDoctorReportText } = await import('../doctor/renderer.js');
-      const { tCli } = await import('../cli/i18n.js');
-      const skillDirAbs = resolve(skillDir);
-      for (const entry of skillEntries) {
-        const skillArtifacts = resolveArtifacts(
-          skillDirAbs,
-          [entry.skillPath],
-          { strictBaseline, variantAllowedSkills },
-        );
-        if (skillArtifacts.length === 0) continue;
-        const dependencyCwd = skillArtifacts.find((a) => a.cwd)?.cwd || skillDirAbs;
-        const { samples, requires } = loadSamples(entry.samplesPath);
-        const doctorReport = await runDoctor({
-          artifacts: skillArtifacts,
-          cwd: dependencyCwd,
-          dependencyCwd,
-          executorName,
-          model,
-          timeoutMs: timeoutMs ?? 8000,
-          lang,
-          samples,
-          requires,
-        });
-        if (doctorReport.failed) {
-          renderDoctorReportText(doctorReport, lang);
-          throw new Error(`doctor failed: ${tCli('cli.doctor.gate_blocked', lang)} (skill=${entry.name})`);
+    // batch dry-run 走 per-entry runEvaluation(dryRun: true) — doctor 嵌入
+    // 自动复用 runEvaluation 内部的 builder + 单一逻辑,不再在 batch 这边
+    // 旁路一套 doctor / 路径推断。entry artifact 拼装方式与 batch real-run
+    // (executeBatchEvaluationRuns) 严格一致, 避免 dry-run / real-run 漂移。
+    const skillDirAbs = resolve(skillDir);
+    const dryArtifacts: DryRunBatchSkill[] = [];
+    for (const entry of skillEntries) {
+      const skillArtifacts = resolveArtifacts(
+        skillDirAbs,
+        ['baseline', entry.skillPath],
+        { strictBaseline, variantAllowedSkills },
+      ).map((artifact) => {
+        if (artifact.name === entry.skillPath) {
+          return { ...artifact, name: entry.name, experimentRole: 'treatment' as const };
         }
+        return { ...artifact, experimentRole: 'control' as const };
+      });
+      let entryReport: DryRunReport;
+      try {
+        const result = await runEvaluation({
+          samplesPath: entry.samplesPath,
+          skillDir,
+          artifacts: skillArtifacts,
+          model,
+          judgeModel,
+          executorName,
+          judgeExecutorName,
+          dryRun: true,
+          noJudge,
+          timeoutMs,
+          lang,
+          mcpConfig,
+          strictBaseline,
+          variantAllowedSkills,
+          jobStore: null,
+          persistJob: false,
+          outputDir: null,
+        });
+        entryReport = result.report as DryRunReport;
+      } catch (err) {
+        // doctor abort 加 entry 名让 user / CI 定位是哪个 skill 卡住
+        if (err instanceof Error && err.message.startsWith('doctor failed:')) {
+          throw new Error(`${err.message} (skill=${entry.name})`);
+        }
+        throw err;
       }
+      // batch 模式恒定 2 variants(baseline + treatment),sampleCount = totalTasks / variants.length
+      dryArtifacts.push({
+        name: entry.name,
+        samplesPath: entry.samplesPath,
+        sampleCount: entryReport.totalTasks / entryReport.variants.length,
+        taskCount: entryReport.totalTasks,
+      });
     }
 
-    const { artifacts: dryArtifacts, totalTasks } = buildDryRunBatchArtifacts(skillEntries);
     const judgeModelList = judgeModels && judgeModels.length >= 2
       ? judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
       : undefined;
@@ -646,7 +670,7 @@ export async function runBatchEvaluation({
         executor: executorName,
         skillDir,
         totalArtifacts: dryArtifacts.length,
-        totalTasks,
+        totalTasks: dryArtifacts.reduce((sum, a) => sum + a.taskCount, 0),
         artifacts: dryArtifacts,
       },
       filePath: null,

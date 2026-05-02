@@ -136,19 +136,3 @@ export function buildDryRunTaskReport({
   };
 }
 
-export function buildDryRunBatchArtifacts(skillEntries: Array<{ name: string; skillPath: string; samplesPath: string }>) {
-  const artifacts = skillEntries.map((entry) => {
-    const { samples } = loadSamples(entry.samplesPath);
-    return {
-      name: entry.name,
-      samplesPath: entry.samplesPath,
-      sampleCount: samples.length,
-      taskCount: samples.length * 2,
-    };
-  });
-
-  return {
-    artifacts,
-    totalTasks: artifacts.reduce((sum, artifact) => sum + artifact.taskCount, 0),
-  };
-}
