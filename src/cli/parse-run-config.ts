@@ -66,8 +66,7 @@ export interface ParseRunConfigResult {
 export const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
 
 /**
- * 所有子命令都接受的通用 flag。新增 --lang 让 parseArgs strict:false 模式下
- * 仍能把值类型化到 values.lang 上(否则未声明的 flag 会被丢弃)。
+ * 所有子命令都接受的通用 flag。
  */
 export const COMMON_OPTIONS: ParseArgsConfig['options'] = {
   lang: { type: 'string' },
@@ -112,11 +111,24 @@ export function parseRunConfig(
   argv: string[],
   extraOptions: ParseArgsConfig['options'] = {},
 ): ParseRunConfigResult {
-  const { values } = parseArgs({
-    args: argv,
-    options: { ...RUN_OPTIONS, ...extraOptions },
-    strict: false,
-  });
+  // strict: true 让 parseArgs 对未知 option 报错。已删除 / 改名的 flag (e.g.
+  // --skip-doctor / --skip-preflight / --skip-smoke) 不在 RUN_OPTIONS 里 →
+  // 自然 fail with Unknown option, 不需要维护 deprecation list。
+  // catch 后转友好 stderr + exit 2 (区分 doctor / gate failure 的 exit 1)。
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args: argv,
+      options: { ...RUN_OPTIONS, ...extraOptions },
+      strict: true,
+    });
+  } catch (err) {
+    process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(2);
+  }
+  // strict:true 模式下 parseArgs 推断 values 含 array 类型;RUN_OPTIONS 没用到
+  // multiple,实际只可能 string | boolean | undefined,cast 收回 ParseRunConfigResult 的类型签名。
+  const values = parsed.values as Record<string, string | boolean | undefined>;
 
   if (values.variants !== undefined) {
     throw new Error(

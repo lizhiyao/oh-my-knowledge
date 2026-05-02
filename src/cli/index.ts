@@ -579,19 +579,28 @@ async function handleDoctor(argv: string[]): Promise<void> {
     process.exit(0);
   }
 
-  const { values, positionals } = parseArgs({
-    args: argv,
-    allowPositionals: true,
-    strict: false,
-    options: {
-      ...COMMON_OPTIONS,
-      json: { type: 'boolean', default: false },
-      gate: { type: 'boolean', default: false },
-      executor: { type: 'string' },
-      model: { type: 'string' },
-      timeout: { type: 'string' },
-    },
-  });
+  // strict: true → 未知 option 报错 (含已删除的 --skip-smoke 等); 不维护
+  // deprecation list, "从未存在过" 的语义。exit 2 区分于 doctor failure exit 1。
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args: argv,
+      allowPositionals: true,
+      strict: true,
+      options: {
+        ...COMMON_OPTIONS,
+        json: { type: 'boolean', default: false },
+        gate: { type: 'boolean', default: false },
+        executor: { type: 'string' },
+        model: { type: 'string' },
+        timeout: { type: 'string' },
+      },
+    });
+  } catch (err) {
+    process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(2);
+  }
+  const { values, positionals } = parsed;
 
   const target: string | null = positionals[0] ?? null;
   const executorName = (values.executor as string | undefined) ?? 'claude';

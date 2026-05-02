@@ -18,6 +18,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Changed
 
+- **`omk bench run` / `omk bench gate` / `omk doctor` 对未知 option 报错**(strict parser):之前 parseArgs `strict:false` 让未声明的 flag 被静默吞掉,用户写错 flag 名(或传已删除的 `--skip-doctor` / `--skip-preflight` / `--skip-smoke`)时命令仍 exit 0,以为生效实际没有。现在未知 option 直接 stderr `Unknown option '--xxx'` + exit 2(区分于 doctor / gate failure 的 exit 1)。其他 handler 保持原状。**迁移**: 把脚本里拼错的 flag 名修正即可。
 - **README / comparison 文档澄清 Claude Code 与 Codex 用法**:把 `/omk ...` 明确限定为 Claude Code skill 入口,避免让读者误解 Codex 也原生支持 slash command。README 中补充 Codex 直接驱动 `omk` CLI 的用法,comparison 文档同步改成"Claude Code 工作流最原生,但 `omk` CLI 也可被其他 coding agent 驱动"。
 - **README 顶部新增 npm weekly downloads badge**:公开仓库前补充近期使用热度信号,与现有 npm version / CI / License / Node.js version 形成一组更完整的基础元信息。
 
