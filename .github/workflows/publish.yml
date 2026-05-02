@@ -24,9 +24,10 @@ jobs:
       with:
         node-version: '22.x'
         registry-url: 'https://registry.npmjs.org'
+        cache: yarn
 
     - name: Install dependencies
-      run: yarn cache clean && yarn install --update-checksums
+      run: yarn install --frozen-lockfile
 
     - name: Run Lint
       run: yarn run lint
