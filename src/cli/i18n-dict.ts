@@ -201,7 +201,12 @@ export type CliMessageKey =
   | 'cli.doctor.samples_contract.skipped'
   | 'cli.doctor.samples_contract.warn.empty'
   | 'cli.doctor.samples_contract.warn.missing_prompt'
-  | 'cli.doctor.samples_contract.hint';
+  | 'cli.doctor.samples_contract.hint'
+  // omk doctor — CLI level
+  | 'cli.help.doctor_usage'
+  | 'cli.doctor.no_skill_found'
+  | 'cli.doctor.gate_blocked'
+  | 'cli.doctor.skip_doctor_warning';
 
 export interface CliMessage {
   zh: string;
@@ -218,8 +223,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: "Run 'omk --help' to see usage",
   },
   'cli.common.unknown_domain': {
-    zh: "未知顶层命令: {domain} (请用 'omk bench <command>' 或 'omk analyze <dir>')",
-    en: "Unknown domain: {domain} (use 'omk bench <command>' or 'omk analyze <dir>')",
+    zh: "未知顶层命令: {domain} (请用 'omk bench <command>'、'omk doctor [path]' 或 'omk analyze <dir>')",
+    en: "Unknown domain: {domain} (use 'omk bench <command>', 'omk doctor [path]' or 'omk analyze <dir>')",
   },
   'cli.common.unknown_bench_command': {
     zh: "未知子命令: bench {command} (运行 'omk --help' 查看可用列表)",
@@ -558,6 +563,7 @@ oh-my-knowledge — 知识工件评测工具集
   omk bench diff <id1> <id2>           对比两份评测报告
   omk bench evolve <skill>             通过迭代评测自我改进 skill
 
+  omk doctor [path]                    skill 健康检查(评测前置门禁, v0.22)
   omk analyze <dir>                    分析 cc session trace, 生成 skill 健康度日报 (v0.18)
 
 bench run 选项:
@@ -704,6 +710,7 @@ Usage:
   omk bench diff <id1> <id2>           Compare two evaluation reports
   omk bench evolve <skill>             Self-improve a skill through iterative evaluation
 
+  omk doctor [path]                    skill health check (pre-eval gate, v0.22)
   omk analyze <dir>                    Analyze cc session trace(s), produce skill health report (v0.18)
 
 Options for "bench run":
@@ -1251,5 +1258,87 @@ Examples:
   'cli.doctor.samples_contract.hint': {
     zh: '用例必须至少包含 prompt 字段。详见 docs/sample-design-spec.md',
     en: 'samples must contain at least a prompt field. See docs/sample-design-spec.md',
+  },
+  // ============ omk doctor CLI level ============
+  'cli.help.doctor_usage': {
+    zh: `
+oh-my-knowledge — omk doctor 健康检查
+
+用法:
+  omk doctor [path]                    在 path 上跑评测前置健康检查
+  omk doctor                           在当前目录(或 ./skills)批量跑
+
+参数:
+  path                   .md 单文件、目录或省略(=cwd)。目录会批量检查所有 skill
+
+选项:
+  --json                 把 DoctorReport 打到 stdout(CI 消费用)
+  --gate                 静默模式: 通过 exit 0 / 不通过 exit 1, 仅 stderr 出问题摘要
+  --executor <name>      指定 executor (默认: claude)
+  --model <name>         指定 model (默认: sonnet)
+  --timeout <seconds>    executor smoke 超时 (默认: 8)
+  --skip-smoke           跳过 executor smoke 测试 (离线 / 无凭证场景)
+  --lang <zh|en>         切换输出语言
+
+示例:
+  omk doctor examples/code-review/skills/v1.md
+  omk doctor examples/code-review/skills --json | jq .failed
+  omk doctor --gate; echo $?
+
+doctor 检查项:
+  - skill 文件可读 + 内容有最小长度
+  - skill 元数据合法 (front-matter 若有)
+  - 前置依赖完整 (引用的 CLI 工具 / 文件 / 环境变量)
+  - executor 烟测可达 (skill + executor 跑通最简 prompt 拿非空响应)
+  - 用例 ↔ skill 输入约定 (warn 级, 仅传 samples 时跑)
+
+omk bench run 与 omk bench gate 默认前置走 doctor; 加 --skip-doctor 跳过。
+`.trim() + '\n',
+    en: `
+oh-my-knowledge — omk doctor health check
+
+Usage:
+  omk doctor [path]                    Run pre-evaluation health check on path
+  omk doctor                           Batch check current dir (or ./skills)
+
+Arguments:
+  path                   A .md file, directory, or omit (= cwd). Directory mode batches all skills.
+
+Options:
+  --json                 Print DoctorReport JSON to stdout (CI-friendly)
+  --gate                 Silent mode: exit 0 if pass, exit 1 if fail; brief stderr summary only
+  --executor <name>      Executor (default: claude)
+  --model <name>         Model (default: sonnet)
+  --timeout <seconds>    Executor smoke timeout (default: 8)
+  --skip-smoke           Skip executor smoke (offline / no-credentials use case)
+  --lang <zh|en>         Output language
+
+Examples:
+  omk doctor examples/code-review/skills/v1.md
+  omk doctor examples/code-review/skills --json | jq .failed
+  omk doctor --gate; echo $?
+
+Checks:
+  - skill file readable + minimum content length
+  - skill metadata valid (front-matter if present)
+  - dependencies present (referenced CLI tools / files / env vars)
+  - executor smoke reachable (skill + executor produces non-empty response)
+  - samples ↔ skill contract (warn-level, only when samples provided)
+
+omk bench run and omk bench gate run doctor as a prerequisite by default;
+add --skip-doctor to bypass.
+`.trim() + '\n',
+  },
+  'cli.doctor.no_skill_found': {
+    zh: '未在 {path} 下发现 skill 文件。\n  doctor 期望 .md 文件、目录(包含 .md 或 SKILL.md)或 cwd 下的 skills/ 子目录。',
+    en: 'No skills found at {path}.\n  doctor expects a .md file, a directory (containing .md or SKILL.md), or skills/ under cwd.',
+  },
+  'cli.doctor.gate_blocked': {
+    zh: 'skill 健康检查未通过, 评测已中止。修复上述问题后重跑, 或加 --skip-doctor 暂时绕过(不推荐生产用)。',
+    en: 'skill health check failed; evaluation aborted. Fix the issues above and re-run, or pass --skip-doctor to bypass (not recommended for production).',
+  },
+  'cli.doctor.skip_doctor_warning': {
+    zh: '⚠️  --skip-doctor 已启用: 跳过评测前置健康检查。garbage-in 风险由你自己承担。',
+    en: '⚠️  --skip-doctor enabled: pre-evaluation health check skipped. Garbage-in risk is on you.',
   },
 };
