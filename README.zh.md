@@ -38,6 +38,8 @@ omk bench run --dry-run
 
 # 运行评测（自动发现 skills/ 目录下的所有 artifact）
 omk bench run    # → 5 分钟出 HTML 报告 + verdict
+                 # （omk doctor 和 LLM 连通性检测都是强制前置门禁；
+                 #  --skip-connectivity 可跳连通性，doctor 无 skip flag）
 
 # CLI 输出语言: zh (默认) / en — flag 优先级高于环境变量
 omk bench run --lang en
@@ -76,6 +78,7 @@ omk bench gen-samples skills/my-skill.md
 
 ## 核心能力
 
+- **评测前置健康检查** — `omk doctor` 在 `bench run` / `bench gate` 之前**强制**运行,检查 skill 可读性、元数据合法性、依赖完整性、samples 契约——纯静态零 LLM 调用,类比 SE 工具栈的 lint + typecheck。executor / judge 连通性是独立阶段,可用 `--skip-connectivity` 单独跳过
 - **控制变量离线评测** — 固定模型和用例，只变知识载体；兼容 Claude Code skill、CLAUDE.md prompt、RAG 知识库等任何 markdown 形式的指令
 - **六维独立打分** — Fact / Behavior / LLM-judge / Cost / Efficiency / Stability 分别出信号，单一维度的回退不会被其他维度的收益掩盖
 - **线上 session 观测** — 解析 Claude Code session JSONL，在真实用户会话上测量各 skill 的失败率、耗时、token 成本和知识缺口信号
@@ -399,7 +402,8 @@ omk bench run [选项]
   --timeout <秒>         单个任务的执行器超时时间（默认：120）
   --repeat <n>           重复 N 次做方差分析（默认：1）
   --executor <名称>      执行器（默认：claude），支持自定义命令
-  --skip-preflight       跳过评测前的模型连通性检查
+  --skip-connectivity    跳过评测前 LLM 连通性检测(doctor 仍然强制执行,无 skip flag)。
+                         --resume 时自动跳过(原 run 已验过连通性)。
   --mcp-config <路径>    MCP 配置文件，用于通过 MCP Server 获取私有文档 URL 内容
                          （默认：当前目录的 .mcp.json）
   --no-serve             评测完成后不自动启动报告服务
@@ -510,6 +514,26 @@ omk bench gate [选项]
   --threshold <数值>     各层最低分数(默认:3.5);独立应用于
                          fact / behavior / judge 三层
 ```
+
+### `omk doctor`(评测前置健康检查)
+
+纯静态 / 零 LLM 调用,类比 SE 工具栈的 lint + typecheck。`bench run` / `bench gate` 之前强制运行,YAML 写错、依赖缺失这类问题会 abort 评测并给可操作错误,而不是让你拿到 garbage-in 的 verdict 数字。也可独立调用,适合本地迭代或 CI 单跑。
+
+```bash
+omk doctor                    # 批量检查当前目录或 ./skills 下所有 skill
+omk doctor skills/v1.md       # 单个文件
+omk doctor skills/ --json     # JSON 输出供 CI 消费
+omk doctor --gate; echo $?    # 静默模式 — 任意 fatal 失败 exit 1
+```
+
+doctor 检查项:
+
+- **skill 文件可读** — 文件存在、内容非空、有最低长度
+- **skill 元数据合法** — front-matter(若有)YAML 合法;directory-skill 有 `SKILL.md`
+- **前置依赖完整** — 引用的 CLI 工具、文件、环境变量都可用(复用 `preflightDependencies`)
+- **用例 ↔ skill 输入约定** — 传 samples 时校验非空且含 prompt 字段(warn 级)
+
+executor / judge 连通性由独立的 evaluation preflight 阶段负责,不在 doctor 范围内 — 边界清晰:doctor 静态,eval 动态。`bench run` / `bench gate` 在 doctor 失败时 abort(exit 1,stderr 前缀 `doctor failed:`)。**doctor 是评测必经环节,无 skip flag**(静态检查零成本无理由跳过);LLM 连通性可用 `--skip-connectivity` 单独控制(`--resume` 时自动跳过)。
 
 ### `omk bench report`
 

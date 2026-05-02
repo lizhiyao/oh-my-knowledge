@@ -1,8 +1,9 @@
-import { parseArgs, type ParseArgsConfig } from 'node:util';
+import { type ParseArgsConfig } from 'node:util';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { discoverVariants, parseVariantCwd } from '../inputs/skill-loader.js';
+import { parseArgsStrictOrExit } from './parse-strict.js';
 import { loadEvalConfig, configVariantsToSpecs } from '../inputs/eval-config.js';
 import type {
   EvalConfig,
@@ -26,7 +27,11 @@ export interface RunConfig {
   timeoutMs: number;
   executorName: string | undefined;
   judgeExecutorName: string | undefined;
-  skipPreflight: boolean | undefined;
+  /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。
+   *  doctor 是 mandatory 不提供 skip — 静态检查无成本理由跳过。 */
+  skipConnectivity: boolean | undefined;
+  /** 用户语言, 透传给 doctor 报告渲染。 */
+  lang: 'zh' | 'en' | undefined;
   mcpConfig: string | undefined;
   verbose: boolean | undefined;
   blind?: boolean | undefined;
@@ -62,8 +67,7 @@ export interface ParseRunConfigResult {
 export const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
 
 /**
- * 所有子命令都接受的通用 flag。新增 --lang 让 parseArgs strict:false 模式下
- * 仍能把值类型化到 values.lang 上(否则未声明的 flag 会被丢弃)。
+ * 所有子命令都接受的通用 flag。
  */
 export const COMMON_OPTIONS: ParseArgsConfig['options'] = {
   lang: { type: 'string' },
@@ -91,7 +95,7 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   executor: { type: 'string' },
   'judge-executor': { type: 'string' },
   batch: { type: 'boolean' },
-  'skip-preflight': { type: 'boolean' },
+  'skip-connectivity': { type: 'boolean' },
   'mcp-config': { type: 'string' },
   'no-serve': { type: 'boolean' },
   verbose: { type: 'boolean' },
@@ -108,10 +112,11 @@ export function parseRunConfig(
   argv: string[],
   extraOptions: ParseArgsConfig['options'] = {},
 ): ParseRunConfigResult {
-  const { values } = parseArgs({
+  // strict 模式: 未知 option 报错 + exit 2(已删 / 改名 flag 自然 fail,
+  // 不维护 deprecation list)。详见 src/cli/parse-strict.ts。
+  const { values } = parseArgsStrictOrExit({
     args: argv,
     options: { ...RUN_OPTIONS, ...extraOptions },
-    strict: false,
   });
 
   if (values.variants !== undefined) {
@@ -212,7 +217,7 @@ export function parseRunConfig(
   const noJudge = (values['no-judge'] as boolean | undefined) ?? false;
   const noCache = (values['no-cache'] as boolean | undefined) ?? evalConfig?.noCache ?? false;
   const dryRun = (values['dry-run'] as boolean | undefined) ?? false;
-  const skipPreflight = (values['skip-preflight'] as boolean | undefined) ?? false;
+  const skipConnectivity = (values['skip-connectivity'] as boolean | undefined) ?? false;
   const mcpConfig = (values['mcp-config'] as string | undefined) ?? evalConfig?.mcpConfig;
   const verbose = (values.verbose as boolean | undefined) ?? false;
   const retry = Math.max(0, Number(values.retry ?? 0) || 0);
@@ -253,7 +258,8 @@ export function parseRunConfig(
       timeoutMs,
       executorName,
       judgeExecutorName,
-      skipPreflight,
+      skipConnectivity,
+      lang: undefined, // CLI 入口在 handleRun/handleGate 里注入
       mcpConfig,
       verbose,
       retry,

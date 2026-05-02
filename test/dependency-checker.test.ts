@@ -274,7 +274,7 @@ describe('formatDependencyErrors', () => {
     assert.ok(output.includes('scripts/commands.md'));
     assert.ok(output.includes('环境变量缺失'));
     assert.ok(output.includes('FOO_TOKEN'));
-    assert.ok(output.includes('--skip-preflight'));
+    assert.ok(output.includes('安装缺失的工具') || output.includes('doctor'));
   });
 });
 

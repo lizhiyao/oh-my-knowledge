@@ -31,7 +31,8 @@ interface RunSingleEvaluationOptions {
   jobStore: null;
   persistJob: false;
   onProgress: ProgressCallback | null;
-  skipPreflight: boolean;
+  skipConnectivity: boolean;
+  lang?: 'zh' | 'en';
   mcpConfig?: string;
   verbose: boolean;
   runId?: string;
@@ -258,7 +259,8 @@ export async function executeBatchEvaluationRuns({
   persistJob = true,
   onProgress = null,
   onSkillProgress = null,
-  skipPreflight = false,
+  skipConnectivity = false,
+  lang = 'zh',
   mcpConfig,
   verbose = false,
   repeat,
@@ -287,7 +289,8 @@ export async function executeBatchEvaluationRuns({
   persistJob?: boolean;
   onProgress?: ProgressCallback | null;
   onSkillProgress?: ((info: { phase: string; skill: string; current: number; total: number }) => void) | null;
-  skipPreflight?: boolean;
+  skipConnectivity?: boolean;
+  lang?: 'zh' | 'en';
   mcpConfig?: string;
   verbose?: boolean;
   repeat?: number;
@@ -340,7 +343,8 @@ export async function executeBatchEvaluationRuns({
       jobStore: null,
       persistJob: false,
       onProgress,
-      skipPreflight: skipPreflight || i > 0,
+      skipConnectivity: skipConnectivity || i > 0,
+      lang,
       mcpConfig,
       verbose,
       runId: childRunId,

@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 
-import { parseArgs } from 'node:util';
 import { resolve } from 'node:path';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -12,6 +11,7 @@ import {
 } from './parse-run-config.js';
 import { makeOnProgress } from './progress.js';
 import { checkUpdate } from './update-check.js';
+import { parseArgsStrictOrExit } from './parse-strict.js';
 import type {
   EvaluationReport,
   Report,
@@ -116,6 +116,12 @@ async function main(): Promise<void> {
   if (domain === 'analyze') {
     const args = command ? [command, ...rest] : [];
     await handleAnalyze(args);
+    return;
+  }
+
+  if (domain === 'doctor') {
+    const args = command ? [command, ...rest] : [];
+    await handleDoctor(args);
     return;
   }
 
@@ -293,6 +299,12 @@ async function handleRun(argv: string[]): Promise<void> {
     config.bootstrapSamples = bsCount;
   }
 
+  // 注入 lang 让 evaluation pipeline 能渲染 doctor 报告(失败时)。
+  config.lang = lang;
+  if (values['skip-connectivity'] as boolean) {
+    process.stderr.write(tCli('cli.run.skip_connectivity_warning', lang) + '\n');
+  }
+
   try {
     // --batch mode: evaluate each skill independently
     if (values.batch) {
@@ -420,7 +432,7 @@ async function handleReport(argv: string[]): Promise<void> {
     console.log(tCli('cli.help.main', lang).trim());
     process.exit(0);
   }
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv,
     options: {
       ...COMMON_OPTIONS,
@@ -429,7 +441,6 @@ async function handleReport(argv: string[]): Promise<void> {
       export: { type: 'string' },
       dev: { type: 'boolean', default: false },
     },
-    strict: false,
   });
 
   // Dev mode: restart server on file changes via node --watch
@@ -560,9 +571,82 @@ function parseLastWindow(spec: string): string | null {
   return new Date(Date.now() - ms).toISOString();
 }
 
+async function handleDoctor(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
+  if (argv.includes('--help') || argv.includes('-h')) {
+    console.log(tCli('cli.help.doctor_usage', lang));
+    process.exit(0);
+  }
+
+  const { values, positionals } = parseArgsStrictOrExit({
+    args: argv,
+    allowPositionals: true,
+    options: {
+      ...COMMON_OPTIONS,
+      json: { type: 'boolean', default: false },
+      gate: { type: 'boolean', default: false },
+      executor: { type: 'string' },
+      model: { type: 'string' },
+      timeout: { type: 'string' },
+    },
+  });
+
+  const target: string | null = positionals[0] ?? null;
+  const executorName = (values.executor as string | undefined) ?? 'claude';
+  const model = (values.model as string | undefined) ?? 'sonnet';
+  const timeoutRaw = values.timeout as string | undefined;
+  const timeoutSec = timeoutRaw != null ? Number(timeoutRaw) : 8;
+  const timeoutMs = Math.max(1000, Math.floor((Number.isFinite(timeoutSec) ? timeoutSec : 8) * 1000));
+  const cwd = process.cwd();
+
+  const { runDoctor } = await import('../doctor/index.js');
+  const { renderDoctorReportText, renderDoctorReportJson } = await import('../doctor/renderer.js');
+
+  let report;
+  try {
+    report = await runDoctor({
+      target,
+      cwd,
+      executorName,
+      model,
+      timeoutMs,
+      lang,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }));
+    console.error(`(${msg})`);
+    process.exit(1);
+  }
+
+  if (report.skills.length === 0) {
+    console.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }));
+    process.exit(1);
+  }
+
+  const isJson = values.json as boolean;
+  const isGate = values.gate as boolean;
+
+  if (isJson) {
+    console.log(renderDoctorReportJson(report));
+  } else if (isGate) {
+    // gate 模式: 静默 stdout, fail 时简短 stderr 摘要(供 CI 抓 exit code)
+    if (report.failed) {
+      const summary = lang === 'zh'
+        ? `doctor failed: ${report.totals.fail} 个 skill 未通过 (${report.totals.warn} warn / ${report.totals.pass} pass)`
+        : `doctor failed: ${report.totals.fail} skills did not pass (${report.totals.warn} warn / ${report.totals.pass} pass)`;
+      console.error(summary);
+    }
+  } else {
+    renderDoctorReportText(report, lang);
+  }
+
+  process.exit(report.failed ? 1 : 0);
+}
+
 async function handleAnalyze(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  const { values, positionals } = parseArgs({
+  const { values: rawValues, positionals } = parseArgsStrictOrExit({
     args: argv,
     allowPositionals: true,
     options: {
@@ -575,6 +659,8 @@ async function handleAnalyze(argv: string[]): Promise<void> {
       'output-dir': { type: 'string' },
     },
   });
+  // 该 handler options 全是 string-typed (无 boolean), 收紧 cast 让 caller 直接 use values.xxx 当 string 用。
+  const values = rawValues as Record<string, string | undefined>;
   const dir = positionals[0];
   if (!dir) {
     console.error(tCli('cli.help.analyze_usage', lang));
@@ -636,7 +722,14 @@ async function handleAnalyze(argv: string[]): Promise<void> {
 
 async function handleInit(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  const targetDir: string = resolve(argv[0] || '.');
+  // 走 helper 让未知 option fail-fast (e.g. `omk bench init --bogus`),
+  // 否则 argv[0] 直接当目录名, --bogus / --lang 都会被当成 dir 写文件。
+  const { positionals } = parseArgsStrictOrExit({
+    args: argv,
+    allowPositionals: true,
+    options: { ...COMMON_OPTIONS },
+  });
+  const targetDir: string = resolve(positionals[0] || '.');
   const { writeFileSync, mkdirSync } = await import('node:fs');
 
   mkdirSync(join(targetDir, 'skills'), { recursive: true });
@@ -662,7 +755,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
     console.log(tCli('cli.help.main', lang).trim());
     process.exit(0);
   }
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv,
     options: {
       ...COMMON_OPTIONS,
@@ -671,7 +764,6 @@ async function handleGenSamples(argv: string[]): Promise<void> {
       model: { type: 'string', default: 'sonnet' },
       'skill-dir': { type: 'string', default: 'skills' },
     },
-    strict: false,
     allowPositionals: true,
   });
 
@@ -785,7 +877,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
 
 async function handleEvolve(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv,
     options: {
       ...COMMON_OPTIONS,
@@ -798,9 +890,8 @@ async function handleEvolve(argv: string[]): Promise<void> {
       concurrency: { type: 'string', default: '1' },
       timeout: { type: 'string', default: '120' },
       executor: { type: 'string', default: 'claude' },
-      'skip-preflight': { type: 'boolean', default: false },
+      'skip-connectivity': { type: 'boolean', default: false },
     },
-    strict: false,
     allowPositionals: true,
   });
 
@@ -832,7 +923,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
       executorName: values.executor as string,
       concurrency: Math.max(1, Number(values.concurrency) || 1),
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
-      skipPreflight: values['skip-preflight'] as boolean,
+      skipConnectivity: values['skip-connectivity'] as boolean,
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error }: RoundProgressInfo): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。
@@ -904,6 +995,12 @@ async function handleGate(argv: string[]): Promise<void> {
 
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
+  // 注入 lang + skip-connectivity warning(若 flag set);doctor 由 evaluation 强制调, 无 skip 选项。
+  config.lang = lang;
+  if (values['skip-connectivity'] as boolean) {
+    process.stderr.write(tCli('cli.run.skip_connectivity_warning', lang) + '\n');
+  }
+
   try {
     const { report: document } = (await runEvaluation(config)) as EvalResult;
 
@@ -971,7 +1068,7 @@ async function handleDiff(argv: string[]): Promise<void> {
     process.exit(positional.length === 0 ? 1 : 0);
   }
 
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: flagArgs,
     options: {
       ...COMMON_OPTIONS,
@@ -980,7 +1077,6 @@ async function handleDiff(argv: string[]): Promise<void> {
       variant: { type: 'string' },
       top: { type: 'string' },
     },
-    strict: false,
   });
 
   const { createFileStore } = await import('../server/report-store.js');
@@ -1165,14 +1261,13 @@ async function handleGold(argv: string[]): Promise<void> {
   }
 
   if (sub === 'init') {
-    const { values } = parseArgs({
+    const { values } = parseArgsStrictOrExit({
       args: rest,
       options: {
         ...COMMON_OPTIONS,
         out: { type: 'string', default: './gold-dataset' },
         annotator: { type: 'string' },
       },
-      strict: false,
     });
     const { initGoldDataset } = await import('../grading/gold-cli.js');
     try {
@@ -1192,7 +1287,14 @@ async function handleGold(argv: string[]): Promise<void> {
   }
 
   if (sub === 'validate') {
-    const dir = rest[0];
+    // 走 helper 让 `omk bench gold validate <dir> --bogus` 走 unknown option 路径,
+    // 而不是直接执行 validate 后再报 dataset 错。
+    const { positionals } = parseArgsStrictOrExit({
+      args: rest,
+      allowPositionals: true,
+      options: { ...COMMON_OPTIONS },
+    });
+    const dir = positionals[0];
     if (!dir) {
       console.error(tCli('cli.common.usage_gold_validate', lang));
       process.exit(1);
@@ -1214,7 +1316,7 @@ async function handleGold(argv: string[]): Promise<void> {
       console.error('Usage: omk bench gold compare <reportId> --gold-dir <dir>');
       process.exit(1);
     }
-    const { values } = parseArgs({
+    const { values } = parseArgsStrictOrExit({
       args: rest.slice(1),
       options: {
         ...COMMON_OPTIONS,
@@ -1224,7 +1326,6 @@ async function handleGold(argv: string[]): Promise<void> {
         'bootstrap-samples': { type: 'string', default: '1000' },
         seed: { type: 'string' },
       },
-      strict: false,
     });
     const goldDir = values['gold-dir'] as string | undefined;
     if (!goldDir) {
@@ -1289,7 +1390,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
     console.error('Usage: omk bench debias-validate length <reportId>');
     process.exit(1);
   }
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: rest.slice(1),
     options: {
       ...COMMON_OPTIONS,
@@ -1301,7 +1402,6 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
       'bootstrap-samples': { type: 'string', default: '1000' },
       seed: { type: 'string' },
     },
-    strict: false,
   });
 
   const { createFileStore } = await import('../server/report-store.js');
@@ -1360,14 +1460,13 @@ async function handleSaturation(argv: string[]): Promise<void> {
     process.exit(reportId ? 0 : 1);
   }
 
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv.slice(1),
     options: {
       ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       variant: { type: 'string' },
     },
-    strict: false,
   });
 
   const { createFileStore } = await import('../server/report-store.js');
@@ -1431,7 +1530,7 @@ async function handleVerdict(argv: string[]): Promise<void> {
     process.exit(reportId ? 0 : 1);
   }
 
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv.slice(1),
     options: {
       ...COMMON_OPTIONS,
@@ -1440,7 +1539,6 @@ async function handleVerdict(argv: string[]): Promise<void> {
       'trivial-diff': { type: 'string' },
       verbose: { type: 'boolean', default: false },
     },
-    strict: false,
   });
 
   const { createFileStore } = await import('../server/report-store.js');
@@ -1481,7 +1579,7 @@ async function handleDiagnose(argv: string[]): Promise<void> {
     process.exit(reportId ? 0 : 1);
   }
 
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv.slice(1),
     options: {
       ...COMMON_OPTIONS,
@@ -1494,7 +1592,6 @@ async function handleDiagnose(argv: string[]): Promise<void> {
       'latency-k': { type: 'string' },
       flat: { type: 'string' },
     },
-    strict: false,
   });
 
   const { createFileStore } = await import('../server/report-store.js');
@@ -1559,7 +1656,7 @@ async function handleFailures(argv: string[]): Promise<void> {
     process.exit(reportId ? 0 : 1);
   }
 
-  const { values } = parseArgs({
+  const { values } = parseArgsStrictOrExit({
     args: argv.slice(1),
     options: {
       ...COMMON_OPTIONS,
@@ -1570,7 +1667,6 @@ async function handleFailures(argv: string[]): Promise<void> {
       threshold: { type: 'string', default: '3' },
       'max-feed': { type: 'string', default: '50' },
     },
-    strict: false,
   });
 
   const { createFileStore } = await import('../server/report-store.js');
