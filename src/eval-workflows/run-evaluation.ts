@@ -211,8 +211,12 @@ export async function runEvaluation({
 
   // doctor 强制门禁: skill 静态结构 + 元数据 + 依赖 + 用例契约。
   // 在 dryRun 分支之前跑, 让 dry-run 也得到 doctor 覆盖(保护 garbage-in 的 verdict)。
-  // --skip-doctor 是逃生 flag (不推荐生产用); skipPreflight=true 也跳过 doctor。
-  if (!skipDoctor && !skipPreflight) {
+  //
+  // doctor 和 LLM 连通 preflight 是**完全独立**的 flag:
+  // - --skip-doctor   仅跳过 doctor (静态), 连通性仍跑
+  // - --skip-preflight 仅跳过连通性 (LLM), doctor 仍跑
+  // 两者都是逃生 flag, 默认都开。doctor 是评测必经环节, 不被 --skip-preflight 顺带关掉。
+  if (!skipDoctor) {
     const { runDoctor } = await import('../doctor/index.js');
     const { renderDoctorReportText } = await import('../doctor/renderer.js');
     const { tCli } = await import('../cli/i18n.js');

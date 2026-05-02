@@ -120,6 +120,33 @@ describe('bench run / gate doctor preflight embedding', () => {
     assert.equal(parsed.dryRun, true);
   });
 
+  it('--skip-preflight does NOT bypass doctor (only skips LLM connectivity)', async () => {
+    // 解耦后:--skip-preflight 仅跳过连通性 LLM 调用, doctor 仍强制跑。
+    // 验证: 一个 broken skill 在 --skip-preflight 下仍然被 doctor abort。
+    const broken = setupBrokenSkillDir();
+    try {
+      await assert.rejects(
+        () => execFileAsync('node', [
+          CLI, 'bench', 'run',
+          '--samples', join(broken, 'eval-samples.json'),
+          '--skill-dir', join(broken, 'skills'),
+          '--control', 'v1',
+          '--treatment', 'v2',
+          '--dry-run',
+          '--skip-preflight',
+        ], { cwd: broken }),
+        (err: unknown) => {
+          const e = err as ExecError;
+          assert.equal(e.code, 1);
+          assert.ok(e.stderr.includes('doctor failed:'), `--skip-preflight should not bypass doctor: ${e.stderr.slice(0, 400)}`);
+          return true;
+        },
+      );
+    } finally {
+      rmSync(broken, { recursive: true, force: true });
+    }
+  });
+
   it('doctor preflight only checks variants used in this run, not unrelated drafts in the same skill-dir', async () => {
     // 准备目录: v1.md 和 v2.md 健康, draft.md 内容过短(会被 doctor fail).
     // 本次评测只用 --control v1 --treatment v2, 不应被 draft.md 阻断。
