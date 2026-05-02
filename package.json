@@ -15,7 +15,6 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "postbuild": "node -e \"const fs=require('fs'),f='dist/src/cli/index.js',c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!'))fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)\"",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --max-warnings 0",
     "test": "vitest run",
     "ci": "yarn lint && yarn typecheck && yarn test",
