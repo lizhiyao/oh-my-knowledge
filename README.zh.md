@@ -392,7 +392,8 @@ omk bench run [选项]
   --config <路径>        YAML/JSON 配置文件（evaluation-as-code）;在一个文件里声明
                          samples + variants + model + executor;CLI 参数会覆盖 config
   --model <名称>         被测模型（默认：sonnet）
-  --judge-model <名称>   评委模型（默认：haiku）
+  --judge-models <list>  评委配置;1 条 = 单评委 (默认 claude:haiku),
+                         ≥ 2 条 = ensemble。格式 `executor:model[,executor:model]`
   --output-dir <路径>    输出目录（默认：~/.oh-my-knowledge/reports/）
   --no-judge             跳过 LLM 评分
   --no-cache             禁用结果缓存（默认开启，相同输入自动复用）
@@ -411,8 +412,6 @@ omk bench run [选项]
   --batch                批量评测：每个 artifact 独立和 baseline 对比
                          需要每个 artifact 配对 {name}.eval-samples.json
   --judge-repeat <n>     每条 sample × dimension 跑 LLM 评委 N 次,输出 stddev (评委自一致性)
-  --judge-models <list>  多评委 ensemble: "executor1:model1,executor2:model2"
-                         ≥ 2 个 judge 触发 ensemble + inter-judge agreement 输出
   --bootstrap            启用 distribution-free CI:每个 variant 加 bootstrap CI,
                          pairwise diff CI 含 0 = 不显著
   --bootstrap-samples N  bootstrap 重采样次数 (默认 1000)
@@ -441,7 +440,7 @@ goldDir: ./gold              # 跑完自动对比 human anchor 算 α / κ / Pea
 lengthDebias: true           # 默认; 设 false 复现 v0.21 之前的 hash
 strictBaseline: true         # 默认; 设 false 关掉 skill 隔离
 noJudge: false               # 默认; 设 true 完全跳过 LLM 评委
-judgeModels:                 # multi-judge ensemble (≥ 2 条)
+judgeModels:                 # 1 条 = 单评委; ≥ 2 条 = ensemble
   - { executor: claude, model: opus }
   - { executor: openai-api, model: gpt-4o }
 variants:

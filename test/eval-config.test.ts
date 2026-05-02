@@ -409,11 +409,42 @@ judgeModels:
     }
   });
 
-  it('reject judgeModels 单条 (ensemble 至少 2 条, 单 judge 用顶层 judgeExecutor+judgeModel)', () => {
+  it('judgeModels 单条 = single judge (合法, 不进 ensemble)', () => {
     const dir = makeTmpDir();
     try {
-      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: opus`);
-      assert.throws(() => loadEvalConfig(path), /judgeModels must have ≥ 2 entries/);
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: haiku`);
+      const cfg = loadEvalConfig(path);
+      assert.deepEqual(cfg.judgeModels, [{ executor: 'claude', model: 'haiku' }]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject judgeModels 空数组 (省字段反而清晰)', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels: []`);
+      assert.throws(() => loadEvalConfig(path), /judgeModels must have ≥ 1 entry/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject 旧字段 judgeModel (v0.25 已删, 引导改用 judgeModels)', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModel: haiku`);
+      assert.throws(() => loadEvalConfig(path), /judgeModel.*were removed in v0\.25/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject 旧字段 judgeExecutor', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeExecutor: claude`);
+      assert.throws(() => loadEvalConfig(path), /judgeExecutor.*were removed in v0\.25/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

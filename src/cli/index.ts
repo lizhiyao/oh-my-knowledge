@@ -206,7 +206,6 @@ async function handleRun(argv: string[]): Promise<void> {
     blind: { type: 'boolean' },
     repeat: { type: 'string' },
     'judge-repeat': { type: 'string' },
-    'judge-models': { type: 'string' },
     bootstrap: { type: 'boolean' },
     'bootstrap-samples': { type: 'string' },
     'gold-dir': { type: 'string' },
@@ -240,29 +239,9 @@ async function handleRun(argv: string[]): Promise<void> {
   const judgeRepeatCount: number = Math.max(1, Math.floor(parsedJudgeRepeat) || 1);
   if (judgeRepeatCount > 1) config.judgeRepeat = judgeRepeatCount;
 
-  // --judge-models executor:model,executor:model,... -> JudgeConfig[]
-  // CLI > eval.yaml. 至少 2 个才进 ensemble 模式, 1 个等同于 --judge-model。
-  const judgeModelsRaw = values['judge-models'] as string | undefined;
-  if (judgeModelsRaw !== undefined) {
-    const parts = judgeModelsRaw.split(',').map((s) => s.trim()).filter(Boolean);
-    const judges = parts.map((p) => {
-      const [executor, ...modelParts] = p.split(':');
-      const model = modelParts.join(':');
-      if (!executor || !model) {
-        throw new Error(tCli('cli.run.invalid_judge_models_format', lang, { part: p }));
-      }
-      return { executor, model };
-    });
-    if (judges.length >= 2) {
-      config.judgeModels = judges;
-    } else if (judges.length === 1) {
-      process.stderr.write(tCli('cli.run.judge_models_single_warning', lang, {
-        executor: judges[0].executor, model: judges[0].model,
-      }));
-    }
-  } else if (evalConfig?.judgeModels && evalConfig.judgeModels.length >= 2) {
-    config.judgeModels = evalConfig.judgeModels;
-  }
+  // --judge-models 解析与 ensemble 启用已经在 parseRunConfig 内统一处理:
+  // 1 条 -> single judge (config.judgeModel + judgeExecutorName), ≥ 2 条 -> config.judgeModels。
+  // CLI > eval.yaml.judgeModels > default。这里无需重复解析。
 
   // --budget-usd / --budget-per-sample-usd / --budget-per-sample-ms:
   //  hard budget caps. CLI flags override config-file values. When the

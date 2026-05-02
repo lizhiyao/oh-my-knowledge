@@ -77,8 +77,6 @@ export type CliMessageKey =
   // bench run 参数校验 (parseRunConfig)
   | 'cli.run.invalid_repeat'
   | 'cli.run.invalid_judge_repeat'
-  | 'cli.run.invalid_judge_models_format'
-  | 'cli.run.judge_models_single_warning'
   | 'cli.run.no_debias_length_active'
   | 'cli.run.invalid_bootstrap_samples'
   | 'cli.run.bootstrap_samples_too_large'
@@ -294,14 +292,6 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.run.invalid_judge_repeat': {
     zh: '⚠ --judge-repeat "{value}" 无效 (期望 ≥ 1 的整数), 已按 1 次 judge 执行\n',
     en: '⚠ --judge-repeat "{value}" is invalid (expected an integer ≥ 1), falling back to 1 judge call\n',
-  },
-  'cli.run.invalid_judge_models_format': {
-    zh: '--judge-models 格式错误: "{part}", 应为 "executor:model" (例如 claude:opus)',
-    en: '--judge-models format error: "{part}", expected "executor:model" (e.g. claude:opus)',
-  },
-  'cli.run.judge_models_single_warning': {
-    zh: 'ℹ --judge-models 只指定了 1 个 judge ({executor}:{model}), 不会进入 ensemble 模式。如需 ensemble, 至少配 2 个。\n',
-    en: 'ℹ --judge-models specified only 1 judge ({executor}:{model}); ensemble not triggered. Configure at least 2 for ensemble mode.\n',
   },
   'cli.run.no_debias_length_active': {
     zh: 'ℹ --no-debias-length 已生效: judge prompt 退回 v2-cot, 与 < v0.21 报告 hash 一致。\n',
@@ -573,7 +563,6 @@ bench run 选项:
                          CLI flag 会覆盖配置文件中的同名字段。
                          配置中的相对路径相对于配置文件所在目录解析。
   --model <name>         任务执行模型 (默认: sonnet)
-  --judge-model <name>   评委模型 (默认: haiku)
   --output-dir <path>    报告输出目录 (默认: ~/.oh-my-knowledge/reports/)
   --no-judge             跳过 LLM 评委
   --no-cache             禁用结果缓存
@@ -585,12 +574,13 @@ bench run 选项:
   --judge-repeat <n>     每个 (sample × dimension) 调 LLM 评委 N 次评估
                          自洽性 (默认: 1)。多轮间高 stddev = 评委在该评分维度
                          上不稳定, 分数有噪声。
-  --judge-models <list>  多评委 ensemble。逗号分隔的 executor:model, 如
-                         claude:opus,openai:gpt-4o,gemini:pro。每个评委对所有
-                         (sample × dimension) 打分; 报告含每评委分布 + Pearson
-                         / MAD 评委间一致性。能反驳 "Claude 评委评 Claude 同
-                         模态偏置" 的质疑。可与 --judge-repeat 组合。
-                         成本 ~ N_judges × N_repeat × N_samples。
+  --judge-models <list>  评委配置, 逗号分隔的 executor:model, 如
+                         claude:haiku 或 claude:opus,openai:gpt-4o。
+                         1 条 = 单评委 (默认 claude:haiku); ≥ 2 条 = ensemble,
+                         每个评委对所有 (sample × dimension) 打分, 报告
+                         含每评委分布 + Pearson / MAD 评委间一致性。能反驳
+                         "Claude 评委评 Claude 同模态偏置" 的质疑。可与
+                         --judge-repeat 组合。成本 ~ N_judges × N_repeat × N_samples。
   --bootstrap            计算 bootstrap 置信区间 (无分布假设, 对 LLM 序数评分
                          比 t 区间更靠谱)。给出每个 variant 均值 CI + treatment
                          vs control 差值的 pairwise CI (CI 不跨 0 即显著)。
@@ -601,7 +591,6 @@ bench run 选项:
   --resume <report-id>   从历史报告恢复, 跳过已完成任务
   --executor <name>      执行器: claude / claude-sdk / codex / openai / gemini /
                          anthropic-api / openai-api, 或任意 shell 命令 (例如 "python my_provider.py")
-  --judge-executor <name> 评委执行器 (默认: 同 --executor)
   --batch                批量评测:每个 skill 独立 vs baseline
                          需要每个 skill 有配对的 {name}.eval-samples.json
   --skip-connectivity    跳过 LLM 模型连通性检测 (--resume 时自动跳过)
@@ -720,7 +709,6 @@ Options for "bench run":
                          CLI flags override config fields when both are provided.
                          Relative paths inside the config are resolved against its directory.
   --model <name>         Task execution model (default: sonnet)
-  --judge-model <name>   Judge model (default: haiku)
   --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
   --no-judge             Skip LLM judging
   --no-cache             Disable result caching
@@ -732,12 +720,14 @@ Options for "bench run":
   --judge-repeat <n>     Call LLM judge N times per (sample × dimension) for self-
                          consistency (default: 1). High stddev across runs = the
                          judge is unstable on this rubric and the score is noisy.
-  --judge-models <list>  Multi-judge ensemble. Comma-separated executor:model pairs,
-                         e.g. claude:opus,openai:gpt-4o,gemini:pro. Each judge scores
-                         every (sample × dimension); report includes per-judge break-
-                         down + Pearson/MAD inter-judge agreement. Refutes "Claude
-                         judge Claude same-modality bias" critique. Combines with
-                         --judge-repeat. Cost ~ N_judges × N_repeat × N_samples.
+  --judge-models <list>  Judge configuration. Comma-separated executor:model pairs,
+                         e.g. claude:haiku or claude:opus,openai:gpt-4o.
+                         1 entry = single judge (default claude:haiku); ≥ 2 entries
+                         = ensemble — every judge scores each (sample × dimension);
+                         the report includes per-judge breakdown + Pearson/MAD
+                         inter-judge agreement, which refutes "Claude judges Claude
+                         same-modality bias" critique. Combines with --judge-repeat.
+                         Cost ~ N_judges × N_repeat × N_samples.
   --bootstrap            Compute bootstrap confidence intervals (distribution-free,
                          preferred over t-interval for ordinal LLM scores). Adds
                          per-variant CI on the mean + pairwise CI on treatment-vs-
@@ -749,7 +739,6 @@ Options for "bench run":
   --resume <report-id>   Resume from a previous report, skipping completed tasks
   --executor <name>      Executor: claude, claude-sdk, codex, openai, gemini,
                          anthropic-api, openai-api, or any shell command (e.g. "python my_provider.py")
-  --judge-executor <name> Executor for LLM judge (default: same as --executor)
   --batch                Batch evaluation: each skill independently against baseline
                          Requires {name}.eval-samples.json paired with each skill
   --skip-connectivity    Skip LLM model connectivity check (auto-skipped when --resume)

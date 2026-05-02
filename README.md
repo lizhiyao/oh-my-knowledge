@@ -394,7 +394,9 @@ options:
                          samples + variants + model + executor in one file; CLI
                          flags override config fields when both are provided
   --model <name>         task execution model (default: sonnet)
-  --judge-model <name>   judge model (default: haiku)
+  --judge-models <list>  judge config; 1 entry = single judge (default
+                         claude:haiku), ≥ 2 entries = ensemble. Format:
+                         `executor:model[,executor:model]`
   --output-dir <path>    output dir (default: ~/.oh-my-knowledge/reports/)
   --no-judge             skip the LLM judge
   --no-cache             disable result cache (on by default; identical inputs reuse)
@@ -415,8 +417,6 @@ options:
   --batch                batch mode: evaluate each artifact independently vs baseline
                          requires {name}.eval-samples.json paired with each artifact
   --judge-repeat <n>     run the LLM judge N times per (sample × dimension) and report stddev
-  --judge-models <list>  multi-judge ensemble: "executor1:model1,executor2:model2"
-                         ≥ 2 judges enables ensemble + inter-judge agreement output
   --bootstrap            enable distribution-free CIs: bootstrap CI per variant +
                          pairwise diff CI (CI containing 0 = not significant)
   --bootstrap-samples N  bootstrap resample count (default 1000)
@@ -448,7 +448,7 @@ goldDir: ./gold              # post-run α / κ / Pearson against human anchor
 lengthDebias: true           # default; set false to reproduce pre-v0.21 hash
 strictBaseline: true         # default; set false to disable skill isolation
 noJudge: false               # default; set true to skip LLM judge entirely
-judgeModels:                 # multi-judge ensemble (≥ 2 entries)
+judgeModels:                 # 1 entry = single judge; ≥ 2 = ensemble
   - { executor: claude, model: opus }
   - { executor: openai-api, model: gpt-4o }
 variants:

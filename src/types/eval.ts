@@ -134,8 +134,12 @@ export interface EvalConfig {
   samples: string;
   executor?: string;
   model?: string;
-  judgeModel?: string | null;
-  judgeExecutor?: string | null;
+  /** Judge configuration. 1 entry = single judge (no ensemble); ≥ 2 entries = ensemble
+   *  with inter-judge agreement. Replaces v0.1 split `judgeModel` + `judgeExecutor` —
+   *  unified as a single first-class concept (single judge is the degenerate case of
+   *  an ensemble of size 1). When unset, defaults to `[{executor, model: 'haiku'}]` where
+   *  executor follows the top-level `executor`. */
+  judgeModels?: JudgeConfig[];
   concurrency?: number;
   timeoutMs?: number;
   noCache?: boolean;
@@ -153,8 +157,6 @@ export interface EvalConfig {
   repeat?: number;
   /** --judge-repeat N. Each (sample × dimension) judged N times for self-consistency stddev. */
   judgeRepeat?: number;
-  /** --judge-models. Multi-judge ensemble; ≥ 2 entries enables inter-judge agreement. */
-  judgeModels?: JudgeConfig[];
   /** --bootstrap. Distribution-free CI per variant + pairwise diff. */
   bootstrap?: boolean;
   /** --bootstrap-samples. Default 1000. */

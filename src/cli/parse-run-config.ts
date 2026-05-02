@@ -89,7 +89,7 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   treatment: { type: 'string' },
   config: { type: 'string' },
   model: { type: 'string' },
-  'judge-model': { type: 'string' },
+  'judge-models': { type: 'string' },
   'output-dir': { type: 'string' },
   'no-judge': { type: 'boolean' },
   'no-cache': { type: 'boolean' },
@@ -97,7 +97,6 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   concurrency: { type: 'string' },
   timeout: { type: 'string' },
   executor: { type: 'string' },
-  'judge-executor': { type: 'string' },
   batch: { type: 'boolean' },
   'skip-connectivity': { type: 'boolean' },
   'mcp-config': { type: 'string' },
@@ -197,14 +196,30 @@ export function parseRunConfig(
 
   // 4) Apply CLI > config > hard-coded default for all other fields.
   const executorName = (values.executor as string | undefined) ?? evalConfig?.executor ?? 'claude';
-  const judgeExecutorName =
-    (values['judge-executor'] as string | undefined) ?? evalConfig?.judgeExecutor ?? executorName;
   const model = (values.model as string | undefined) ?? evalConfig?.model ?? 'sonnet';
-  const judgeModelRaw =
-    values['judge-model'] !== undefined
-      ? (values['judge-model'] as string | undefined)
-      : evalConfig?.judgeModel ?? 'haiku';
-  const judgeModel = judgeModelRaw ?? 'haiku';
+
+  // judgeModels: unified judge config. Parse --judge-models (CLI) or evalConfig.judgeModels (yaml).
+  // 1 entry = single judge, ≥ 2 entries = ensemble. Format `executor:model[,executor:model]`.
+  // Top-level judgeModel + judgeExecutor 已在 v0.25 删除 (validateEvalConfig 阶段会 reject 旧字段)。
+  let parsedJudges: import('../types/index.js').JudgeConfig[] | undefined;
+  const cliJudgesRaw = values['judge-models'] as string | undefined;
+  if (cliJudgesRaw !== undefined) {
+    const parts = cliJudgesRaw.split(',').map((s) => s.trim()).filter(Boolean);
+    if (parts.length === 0) {
+      throw new Error(`--judge-models cannot be empty`);
+    }
+    parsedJudges = parts.map((p) => {
+      const idx = p.indexOf(':');
+      if (idx <= 0 || idx === p.length - 1) {
+        throw new Error(`--judge-models entry must be 'executor:model' (got "${p}")`);
+      }
+      return { executor: p.slice(0, idx), model: p.slice(idx + 1) };
+    });
+  }
+  const judges = parsedJudges ?? evalConfig?.judgeModels;
+  const firstJudge = judges?.[0];
+  const judgeExecutorName = firstJudge?.executor ?? executorName;
+  const judgeModel = firstJudge?.model ?? 'haiku';
   const outputDir = resolve((values['output-dir'] as string | undefined) ?? DEFAULT_REPORTS_DIR);
   const concurrencyRaw =
     (values.concurrency as string | undefined) !== undefined
@@ -276,6 +291,7 @@ export function parseRunConfig(
       layeredStats,
       budget: evalConfig?.budget,
       strictBaseline,
+      ...(judges && judges.length >= 2 ? { judgeModels: judges } : {}),
       ...(Object.keys(variantAllowedSkills).length > 0 && { variantAllowedSkills }),
     },
     evalConfig,

@@ -131,11 +131,10 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
 
   assertStringOpt('executor');
   assertStringOpt('model');
-  if (obj.judgeModel !== undefined && obj.judgeModel !== null && typeof obj.judgeModel !== 'string') {
-    throw new Error(`${configPath}: judgeModel must be a string or null`);
-  }
-  if (obj.judgeExecutor !== undefined && obj.judgeExecutor !== null && typeof obj.judgeExecutor !== 'string') {
-    throw new Error(`${configPath}: judgeExecutor must be a string or null`);
+  if (obj.judgeModel !== undefined || obj.judgeExecutor !== undefined) {
+    throw new Error(
+      `${configPath}: \`judgeModel\` and \`judgeExecutor\` were removed in v0.25 — use \`judgeModels: [{executor, model}]\` instead (single judge is the 1-entry case). See README.`,
+    );
   }
   assertNumberOpt('concurrency');
   assertNumberOpt('timeoutMs');
@@ -163,13 +162,15 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     }
   }
 
-  // judgeModels: array of { executor, model } — same shape as JudgeConfig in CLI parsing.
-  // 必须 ≥ 2 条 (ensemble 才有意义)。1 条会被运行时静默忽略, schema 阶段就 reject 比 runtime warning 清晰。
-  // 单 judge 用顶层 judgeExecutor + judgeModel 字段。
+  // judgeModels: array of { executor, model } — unified judge config.
+  // 1 条 = single judge (no ensemble); ≥ 2 条 = ensemble + inter-judge agreement。空数组 reject。
   let judgeModelsParsed: import('../types/index.js').JudgeConfig[] | undefined;
   if (obj.judgeModels !== undefined) {
     if (!Array.isArray(obj.judgeModels)) {
       throw new Error(`${configPath}: judgeModels must be an array of {executor, model}`);
+    }
+    if (obj.judgeModels.length === 0) {
+      throw new Error(`${configPath}: judgeModels must have ≥ 1 entry (omit the field for default judge)`);
     }
     judgeModelsParsed = [];
     for (const [i, raw] of (obj.judgeModels as unknown[]).entries()) {
@@ -184,11 +185,6 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
         throw new Error(`${configPath}: judgeModels[${i}].model must be a non-empty string`);
       }
       judgeModelsParsed.push({ executor: j.executor, model: j.model });
-    }
-    if (judgeModelsParsed.length < 2) {
-      throw new Error(
-        `${configPath}: judgeModels must have ≥ 2 entries to enable ensemble mode (got ${judgeModelsParsed.length}). For a single judge use top-level \`judgeExecutor\` + \`judgeModel\` instead.`,
-      );
     }
   }
 
@@ -215,8 +211,7 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     samples: obj.samples as string,
     executor: obj.executor as string | undefined,
     model: obj.model as string | undefined,
-    judgeModel: obj.judgeModel as string | null | undefined,
-    judgeExecutor: obj.judgeExecutor as string | null | undefined,
+    judgeModels: judgeModelsParsed,
     concurrency: obj.concurrency as number | undefined,
     timeoutMs: obj.timeoutMs as number | undefined,
     noCache: obj.noCache as boolean | undefined,
@@ -227,7 +222,6 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     budget,
     repeat: obj.repeat as number | undefined,
     judgeRepeat: obj.judgeRepeat as number | undefined,
-    judgeModels: judgeModelsParsed,
     bootstrap: obj.bootstrap as boolean | undefined,
     bootstrapSamples: obj.bootstrapSamples as number | undefined,
     goldDir: obj.goldDir as string | undefined,
