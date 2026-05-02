@@ -392,7 +392,8 @@ omk bench run [选项]
   --config <路径>        YAML/JSON 配置文件（evaluation-as-code）;在一个文件里声明
                          samples + variants + model + executor;CLI 参数会覆盖 config
   --model <名称>         被测模型（默认：sonnet）
-  --judge-model <名称>   评委模型（默认：haiku）
+  --judge-models <list>  评委配置;1 条 = 单评委 (默认 claude:haiku),
+                         ≥ 2 条 = ensemble。格式 `executor:model[,executor:model]`
   --output-dir <路径>    输出目录（默认：~/.oh-my-knowledge/reports/）
   --no-judge             跳过 LLM 评分
   --no-cache             禁用结果缓存（默认开启，相同输入自动复用）
@@ -411,8 +412,6 @@ omk bench run [选项]
   --batch                批量评测：每个 artifact 独立和 baseline 对比
                          需要每个 artifact 配对 {name}.eval-samples.json
   --judge-repeat <n>     每条 sample × dimension 跑 LLM 评委 N 次,输出 stddev (评委自一致性)
-  --judge-models <list>  多评委 ensemble: "executor1:model1,executor2:model2"
-                         ≥ 2 个 judge 触发 ensemble + inter-judge agreement 输出
   --bootstrap            启用 distribution-free CI:每个 variant 加 bootstrap CI,
                          pairwise diff CI 含 0 = 不显著
   --bootstrap-samples N  bootstrap 重采样次数 (默认 1000)
@@ -427,6 +426,29 @@ omk bench run [选项]
 ```
 
 **eval.yaml 预算字段**: `budget: { totalUSD?, perSampleUSD?, perSampleMs? }`,所有字段可选且必须 ≥ 0。CLI 同名 flag 覆盖配置值。
+
+**eval.yaml 实验设计字段**: 上面 CLI flag 同样可以写到 `eval.yaml` 让实验配置可复现 (CLI > eval.yaml > 默认):
+
+```yaml
+samples: ./eval-samples.yaml
+model: sonnet
+repeat: 5                    # 多轮方差分析, ≥ 1
+judgeRepeat: 3               # 每条 (sample × dim) 评委自一致性次数, ≥ 1
+bootstrap: true              # 每 variant distribution-free CI
+bootstrapSamples: 2000       # 默认 1000, ≥ 100
+goldDir: ./gold              # 跑完自动对比 human anchor 算 α / κ / Pearson
+lengthDebias: true           # 默认; 设 false 复现 v0.21 之前的 hash
+strictBaseline: true         # 默认; 设 false 关掉 skill 隔离
+noJudge: false               # 默认; 设 true 完全跳过 LLM 评委
+judgeModels:                 # 1 条 = 单评委; ≥ 2 条 = ensemble
+  - { executor: claude, model: opus }
+  - { executor: openai-api, model: gpt-4o }
+variants:
+  - { name: baseline, role: control, artifact: baseline }
+  - { name: my-skill, role: treatment, artifact: ./skills/my-skill.md }
+```
+
+**字段入口**: `bench run` 完整支持上述全部字段; `bench gate` 通过 `parseRunConfig` 共享 variants / executor / model / `judgeModels`(单评委 + ensemble 都生效)/ noJudge / noCache / blind / strictBaseline / budget / mcpConfig / variantAllowedSkills,但 `handleRun` 自己处理的实验设计字段(`repeat` / `judgeRepeat` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`)gate 不读,后续按需扩展到 gate。其他子命令(`evolve` / `verdict` / `diff` / `analyze` 等)完全不读 eval.yaml。
 
 **和 `cost_max` / `latency_max` 断言的区别**: 断言是**单样本评分维度**(超出直接打 0 分,run 继续);budget 是**工作流级硬阈值**(`totalUSD` 超出整个 run abort 保留 partial report,per-sample 超出该样本失败但 run 继续)。一个回答"质量是否达标",一个回答"花钱/时间是否在预算内"。
 
@@ -579,7 +601,7 @@ gold-dir/
 ```bash
 omk bench debias-validate length <reportId> [选项]
   --variant <name>            只测一个 variant
-  --judge-model <id>          override report 的 judge model
+  --judge-models <executor:model>  override report 的评委(仅支持单评委)
   --bootstrap-samples N       bootstrap 迭代数 (默认 1000)
   --seed N                    确定性种子
 ```
@@ -635,8 +657,7 @@ omk bench diagnose <reportId> [选项]
 
 ```bash
 omk bench failures <reportId> [选项]
-  --judge-executor <name>     执行器 (默认 claude)
-  --judge-model <id>          聚类用 model (默认沿用 report.meta.judgeModel)
+  --judge-models <executor:model>  聚类评委 (默认沿用 report.meta.judgeModels[0],仅支持单评委)
   --max-clusters <n>          最多多少 cluster (默认 5)
   --threshold <num>           算失败的分数阈值 (默认 3)
   --max-feed <n>              最多喂给 LLM 多少条 (默认 50,超出取最差)
@@ -709,7 +730,7 @@ omk analyze ~/.claude/projects/my-project --kb /path/to/project
 
 API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL`。
 
-Codex construct-validity 说明:(1) `codex` 使用 `PATH` 上找到的 `codex` binary;`codex-sdk` 使用 `@openai/codex-sdk` 解析到的自带 `@openai/codex` binary。报告会持久化 per-variant `meta.executorRuntimes` 以及 `meta.executorRuntime` / `meta.judgeRuntime` 指纹(binary 或 SDK 版本 + 能力快照),`bench diff` / `bench verdict` 会在 strict comparability 无法审计时提示。runtime 指纹不一致时,结果应解释为 executor runtime 对比,而不只是 prompt/template 行为对比。(2) 两个 executor 都隔离用户级 config:`codex` 传 `--ephemeral` + `--ignore-user-config`,`codex-sdk` 把 `$CODEX_HOME` 重定向到 per-process tmp 目录(auth.json 通过 symlink 透传)。用户的 `~/.codex/config.toml` 不会渗入任意一个 executor 的 eval。
+Codex construct-validity 说明:(1) `codex` 使用 `PATH` 上找到的 `codex` binary;`codex-sdk` 使用 `@openai/codex-sdk` 解析到的自带 `@openai/codex` binary。报告会持久化 per-variant `meta.executorRuntimes`、`meta.executorRuntime`,以及每个评委的 `meta.judgeModels[].runtime` 指纹(binary 或 SDK 版本 + 能力快照),`bench diff` / `bench verdict` 会在 strict comparability 无法审计时提示。runtime 指纹不一致时,结果应解释为 executor runtime 对比,而不只是 prompt/template 行为对比。(2) 两个 executor 都隔离用户级 config:`codex` 传 `--ephemeral` + `--ignore-user-config`,`codex-sdk` 把 `$CODEX_HOME` 重定向到 per-process tmp 目录(auth.json 通过 symlink 透传)。用户的 `~/.codex/config.toml` 不会渗入任意一个 executor 的 eval。
 
 ### 自定义执行器
 
@@ -895,25 +916,25 @@ omk bench run \
 export OPENAI_API_KEY="你的智谱 API Key"
 export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 omk bench run --executor openai-api --model glm-4-plus \
-  --judge-model glm-4-plus --no-cache
+  --judge-models openai-api:glm-4-plus --no-cache
 
 # 通义千问
 export OPENAI_API_KEY="你的通义 API Key"
 export OPENAI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 omk bench run --executor openai-api --model qwen-plus \
-  --judge-model qwen-plus
+  --judge-models openai-api:qwen-plus
 
 # DeepSeek
 export OPENAI_API_KEY="你的 DeepSeek API Key"
 export OPENAI_BASE_URL="https://api.deepseek.com"
 omk bench run --executor openai-api --model deepseek-chat \
-  --judge-model deepseek-chat
+  --judge-models openai-api:deepseek-chat
 
 # Moonshot（Kimi）
 export OPENAI_API_KEY="你的 Moonshot API Key"
 export OPENAI_BASE_URL="https://api.moonshot.cn/v1"
 omk bench run --executor openai-api --model moonshot-v1-8k \
-  --judge-model moonshot-v1-8k
+  --judge-models openai-api:moonshot-v1-8k
 ```
 
 **Ollama 本地模型：**
@@ -923,12 +944,12 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
   --model llama3 --no-judge
 ```
 
-**关于评委模型：**
+**关于评委:**
 
-- `--judge-model` 指定 LLM 评委使用的模型，默认 `haiku`
-- `--judge-executor` 指定评委使用的执行器（默认与 `--executor` 相同）
-- 如果你没有 Claude，用 `--judge-executor` 和 `--judge-model` 指向你可用的模型
-- 加 `--no-judge` 可跳过 LLM 评委，仅使用断言评分
+- `--judge-models <list>` 指定评委,格式 `executor:model[,executor:model]`。默认 `${executor}:haiku`(没设 `--executor` 时为 claude:haiku)
+- 1 条 = 单评委;≥ 2 条 = 多评委 ensemble + inter-judge agreement
+- 没有 Claude 时把 `--judge-models` 指向你可用的模型,例如 `--judge-models openai-api:glm-4-plus`
+- 加 `--no-judge` 可跳过 LLM 评委,仅使用断言评分
 
 ## 环境变量
 

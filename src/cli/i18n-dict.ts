@@ -77,8 +77,6 @@ export type CliMessageKey =
   // bench run 参数校验 (parseRunConfig)
   | 'cli.run.invalid_repeat'
   | 'cli.run.invalid_judge_repeat'
-  | 'cli.run.invalid_judge_models_format'
-  | 'cli.run.judge_models_single_warning'
   | 'cli.run.no_debias_length_active'
   | 'cli.run.invalid_bootstrap_samples'
   | 'cli.run.bootstrap_samples_too_large'
@@ -104,6 +102,7 @@ export type CliMessageKey =
   | 'cli.common.skill_file_not_found'
   | 'cli.common.report_not_found'
   | 'cli.common.no_judge_model'
+  | 'cli.common.judge_models_single_only'
   | 'cli.common.usage_gold_validate'
   | 'cli.common.warn_load_samples_failed'
   // bench gen-samples
@@ -295,14 +294,6 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     zh: '⚠ --judge-repeat "{value}" 无效 (期望 ≥ 1 的整数), 已按 1 次 judge 执行\n',
     en: '⚠ --judge-repeat "{value}" is invalid (expected an integer ≥ 1), falling back to 1 judge call\n',
   },
-  'cli.run.invalid_judge_models_format': {
-    zh: '--judge-models 格式错误: "{part}", 应为 "executor:model" (例如 claude:opus)',
-    en: '--judge-models format error: "{part}", expected "executor:model" (e.g. claude:opus)',
-  },
-  'cli.run.judge_models_single_warning': {
-    zh: 'ℹ --judge-models 只指定了 1 个 judge ({executor}:{model}), 不会进入 ensemble 模式。如需 ensemble, 至少配 2 个。\n',
-    en: 'ℹ --judge-models specified only 1 judge ({executor}:{model}); ensemble not triggered. Configure at least 2 for ensemble mode.\n',
-  },
   'cli.run.no_debias_length_active': {
     zh: 'ℹ --no-debias-length 已生效: judge prompt 退回 v2-cot, 与 < v0.21 报告 hash 一致。\n',
     en: 'ℹ --no-debias-length is active: judge prompt reverts to v2-cot, matching < v0.21 report hashes.\n',
@@ -388,8 +379,12 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'Report not found: {id}',
   },
   'cli.common.no_judge_model': {
-    zh: '未指定评委模型。请加 --judge-model <id>, 或确保 report.meta.judgeModel 已写。',
-    en: 'No judge model. Pass --judge-model <id> or ensure report has meta.judgeModel.',
+    zh: '未指定评委。请加 --judge-models <executor:model>, 或确保 report.meta.judgeModels 已写。',
+    en: 'No judge configured. Pass --judge-models <executor:model> or ensure the report has meta.judgeModels.',
+  },
+  'cli.common.judge_models_single_only': {
+    zh: 'bench {cmd} 仅支持单评委。--judge-models 只能传一个 executor:model entry。',
+    en: 'bench {cmd} only supports a single judge. --judge-models accepts exactly one executor:model entry.',
   },
   'cli.common.usage_gold_validate': {
     zh: '用法: omk bench gold validate <dir>',
@@ -573,7 +568,6 @@ bench run 选项:
                          CLI flag 会覆盖配置文件中的同名字段。
                          配置中的相对路径相对于配置文件所在目录解析。
   --model <name>         任务执行模型 (默认: sonnet)
-  --judge-model <name>   评委模型 (默认: haiku)
   --output-dir <path>    报告输出目录 (默认: ~/.oh-my-knowledge/reports/)
   --no-judge             跳过 LLM 评委
   --no-cache             禁用结果缓存
@@ -585,12 +579,13 @@ bench run 选项:
   --judge-repeat <n>     每个 (sample × dimension) 调 LLM 评委 N 次评估
                          自洽性 (默认: 1)。多轮间高 stddev = 评委在该评分维度
                          上不稳定, 分数有噪声。
-  --judge-models <list>  多评委 ensemble。逗号分隔的 executor:model, 如
-                         claude:opus,openai:gpt-4o,gemini:pro。每个评委对所有
-                         (sample × dimension) 打分; 报告含每评委分布 + Pearson
-                         / MAD 评委间一致性。能反驳 "Claude 评委评 Claude 同
-                         模态偏置" 的质疑。可与 --judge-repeat 组合。
-                         成本 ~ N_judges × N_repeat × N_samples。
+  --judge-models <list>  评委配置, 逗号分隔的 executor:model, 如
+                         claude:haiku 或 claude:opus,openai:gpt-4o。
+                         1 条 = 单评委 (默认 claude:haiku); ≥ 2 条 = ensemble,
+                         每个评委对所有 (sample × dimension) 打分, 报告
+                         含每评委分布 + Pearson / MAD 评委间一致性。能反驳
+                         "Claude 评委评 Claude 同模态偏置" 的质疑。可与
+                         --judge-repeat 组合。成本 ~ N_judges × N_repeat × N_samples。
   --bootstrap            计算 bootstrap 置信区间 (无分布假设, 对 LLM 序数评分
                          比 t 区间更靠谱)。给出每个 variant 均值 CI + treatment
                          vs control 差值的 pairwise CI (CI 不跨 0 即显著)。
@@ -601,7 +596,6 @@ bench run 选项:
   --resume <report-id>   从历史报告恢复, 跳过已完成任务
   --executor <name>      执行器: claude / claude-sdk / codex / openai / gemini /
                          anthropic-api / openai-api, 或任意 shell 命令 (例如 "python my_provider.py")
-  --judge-executor <name> 评委执行器 (默认: 同 --executor)
   --batch                批量评测:每个 skill 独立 vs baseline
                          需要每个 skill 有配对的 {name}.eval-samples.json
   --skip-connectivity    跳过 LLM 模型连通性检测 (--resume 时自动跳过)
@@ -663,7 +657,7 @@ bench evolve 选项:
   --target <score>       达到该分数即提前停止
   --samples <path>       用例文件 (默认: eval-samples.json)
   --model <name>         任务执行模型 (默认: sonnet)
-  --judge-model <name>   评委模型 (默认: haiku)
+  --judge-models <executor:model>  评委 (默认: claude:haiku, evolve 仅支持单评委)
   --improve-model <name> 生成改进版的模型 (默认: sonnet)
   --concurrency <n>      并发评测任务数 (默认: 1)
   --timeout <seconds>    单任务执行超时 (秒, 默认: 120)
@@ -720,7 +714,6 @@ Options for "bench run":
                          CLI flags override config fields when both are provided.
                          Relative paths inside the config are resolved against its directory.
   --model <name>         Task execution model (default: sonnet)
-  --judge-model <name>   Judge model (default: haiku)
   --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
   --no-judge             Skip LLM judging
   --no-cache             Disable result caching
@@ -732,12 +725,14 @@ Options for "bench run":
   --judge-repeat <n>     Call LLM judge N times per (sample × dimension) for self-
                          consistency (default: 1). High stddev across runs = the
                          judge is unstable on this rubric and the score is noisy.
-  --judge-models <list>  Multi-judge ensemble. Comma-separated executor:model pairs,
-                         e.g. claude:opus,openai:gpt-4o,gemini:pro. Each judge scores
-                         every (sample × dimension); report includes per-judge break-
-                         down + Pearson/MAD inter-judge agreement. Refutes "Claude
-                         judge Claude same-modality bias" critique. Combines with
-                         --judge-repeat. Cost ~ N_judges × N_repeat × N_samples.
+  --judge-models <list>  Judge configuration. Comma-separated executor:model pairs,
+                         e.g. claude:haiku or claude:opus,openai:gpt-4o.
+                         1 entry = single judge (default claude:haiku); ≥ 2 entries
+                         = ensemble — every judge scores each (sample × dimension);
+                         the report includes per-judge breakdown + Pearson/MAD
+                         inter-judge agreement, which refutes "Claude judges Claude
+                         same-modality bias" critique. Combines with --judge-repeat.
+                         Cost ~ N_judges × N_repeat × N_samples.
   --bootstrap            Compute bootstrap confidence intervals (distribution-free,
                          preferred over t-interval for ordinal LLM scores). Adds
                          per-variant CI on the mean + pairwise CI on treatment-vs-
@@ -749,7 +744,6 @@ Options for "bench run":
   --resume <report-id>   Resume from a previous report, skipping completed tasks
   --executor <name>      Executor: claude, claude-sdk, codex, openai, gemini,
                          anthropic-api, openai-api, or any shell command (e.g. "python my_provider.py")
-  --judge-executor <name> Executor for LLM judge (default: same as --executor)
   --batch                Batch evaluation: each skill independently against baseline
                          Requires {name}.eval-samples.json paired with each skill
   --skip-connectivity    Skip LLM model connectivity check (auto-skipped when --resume)
@@ -817,7 +811,7 @@ Options for "bench evolve":
   --target <score>       Stop early when score reaches this threshold
   --samples <path>       Sample file (default: eval-samples.json)
   --model <name>         Task execution model (default: sonnet)
-  --judge-model <name>   Judge model (default: haiku)
+  --judge-models <executor:model>  Judge config (default: claude:haiku; evolve is single-judge only)
   --improve-model <name> Model for generating improvements (default: sonnet)
   --concurrency <n>      Parallel eval tasks (default: 1)
   --timeout <seconds>    Executor timeout per task in seconds (default: 120)
@@ -909,8 +903,7 @@ Examples:
       '  --reports-dir <dir>          报告存储目录 (默认: ~/.oh-my-knowledge/reports)',
       '  --samples <path>             覆盖用例文件 (默认: 从 report.meta.request 读)',
       '  --variant <name>             校验哪个 variant (默认: 第一个)',
-      '  --judge-executor <name>      评委调用执行器 (默认: claude)',
-      '  --judge-model <model>        评委模型 ID (默认: 沿用 report)',
+      '  --judge-models <executor:model>  评委 (默认: 沿用 report.meta.judgeModels[0]; debias-validate 仅支持单评委)',
       '  --bootstrap-samples N        bootstrap 迭代次数 (默认 1000)',
       '  --seed N                     固定 CI 随机种子',
       '',
@@ -927,8 +920,7 @@ Examples:
       '  --reports-dir <dir>          report store dir (default: ~/.oh-my-knowledge/reports)',
       '  --samples <path>             override samples file (default: from report.meta.request)',
       '  --variant <name>             which variant to validate (default: first)',
-      '  --judge-executor <name>      executor for judge calls (default: claude)',
-      '  --judge-model <model>        judge model id (default: from report)',
+      '  --judge-models <executor:model>  Judge (default: from report.meta.judgeModels[0]; debias-validate is single-judge only)',
       '  --bootstrap-samples N        bootstrap iterations (default 1000)',
       '  --seed N                     deterministic CI seed',
       '',
@@ -1063,8 +1055,7 @@ Examples:
       '',
       '选项:',
       '  --reports-dir <dir>      报告存储目录',
-      '  --judge-executor <name>  执行器 (默认: claude)',
-      '  --judge-model <id>       聚类用的模型 (默认: 沿用 report.meta.judgeModel)',
+      '  --judge-models <executor:model>  评委 (默认: 沿用 report.meta.judgeModels[0]; failures 仅支持单评委)',
       '  --max-clusters <n>       最多聚成几类 (默认 5)',
       '  --threshold <num>        compositeScore < threshold 算失败 (默认 3)',
       '  --max-feed <n>           最多喂给 LLM 多少条 (默认 50, 超出取最差)',
@@ -1080,8 +1071,7 @@ Examples:
       '',
       'Options:',
       '  --reports-dir <dir>      report store dir',
-      '  --judge-executor <name>  executor (default: claude)',
-      '  --judge-model <id>       model for clustering (default: from report.meta.judgeModel)',
+      '  --judge-models <executor:model>  Judge (default: from report.meta.judgeModels[0]; failures is single-judge only)',
       '  --max-clusters <n>       max number of clusters (default 5)',
       '  --threshold <num>        compositeScore < threshold counts as failure (default 3)',
       '  --max-feed <n>           max samples to feed the LLM (default 50, takes the worst)',

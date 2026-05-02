@@ -23,9 +23,7 @@ export interface ExecuteTasksOptions {
   /** Executor name (e.g. 'claude' / 'codex' / 'openai-api'). Used in cache key
    *  to prevent cross-executor pollution when same model name is used. */
   executorName?: string;
-  judgeExecutor: ExecutorFn;
   model: string;
-  judgeModel: string;
   noJudge: boolean;
   samplesPath: string;
   concurrency: number;
@@ -39,10 +37,12 @@ export interface ExecuteTasksOptions {
   existingResults?: Record<string, Record<string, VariantResult>>;
   /** Number of times to call the LLM judge per (sample × dimension); default 1. */
   judgeRepeat?: number;
-  /** Multi-judge ensemble configs (≥ 2 entries triggers ensemble mode). */
-  judgeModels?: import('../types/index.js').JudgeConfig[];
-  /** Pre-built executor map for ensemble: executor name → ExecutorFn. */
-  judgeExecutors?: Record<string, ExecutorFn>;
+  /** Unified judge config — always non-empty. `length === 1` runs single-judge
+   *  quick path; `length >= 2` runs ensemble + agreement metrics. */
+  judgeModels: import('../types/index.js').JudgeConfig[];
+  /** Pre-built executor map covering every executor referenced in `judgeModels`.
+   *  Pipeline must populate this before calling executeTasks. */
+  judgeExecutors: Record<string, ExecutorFn>;
   /** v0.21 length-debias toggle. Default true; CLI's --no-debias-length sets it false. */
   lengthDebias?: boolean;
   /** hard budget caps. When totalUSD is exceeded mid-run, remaining
@@ -89,9 +89,7 @@ export async function executeTasks({
   tasks,
   executor,
   executorName,
-  judgeExecutor,
   model,
-  judgeModel,
   noJudge,
   samplesPath,
   concurrency,
@@ -229,8 +227,8 @@ export async function executeTasks({
           gradeResult = await grade({
             output: execResult!.output!,
             sample: task._sample,
-            executor: judgeExecutor,
-            judgeModel,
+            judgeModels,
+            judgeExecutors,
             allowLlmJudge: !noJudge,
             execMetrics: {
               costUSD: execResult!.costUSD,
@@ -241,8 +239,6 @@ export async function executeTasks({
             },
             samplesDir: dirname(resolve(samplesPath)),
             judgeRepeat,
-            judgeModels,
-            judgeExecutors,
             lengthDebias,
           });
         } catch (err) {
@@ -321,5 +317,35 @@ export async function preflight(executor: ExecutorFn, model: string, timeoutMs: 
   });
   if (!result.ok) {
     throw new Error(`preflight failed [${model}]: ${result.error}`);
+  }
+}
+
+/**
+ * Preflight every unique `(executor, model)` judge in `judgeModels`. Used by the
+ * eval pipeline to fail fast when any ensemble member is misconfigured (404 model,
+ * missing binary, auth failure) — without this, judge #2/#3 errors would only surface
+ * mid-grading, after the run had already incurred task-execution cost and produced
+ * partial reports without `judgeAgreement`.
+ *
+ * - Dedupes by normalized `executor:model` key — repeated entries probe once.
+ * - Fails fast on the first failing judge; does NOT continue probing.
+ * - Throws when an entry's executor is not present in `judgeExecutors` map (the
+ *   pipeline must build the map covering every judge before calling this).
+ */
+export async function preflightAllJudges(
+  judgeModels: import('../types/index.js').JudgeConfig[],
+  judgeExecutors: Record<string, ExecutorFn>,
+  timeoutMs?: number,
+): Promise<void> {
+  const seen = new Set<string>();
+  for (const jc of judgeModels) {
+    const key = `${jc.executor}:${jc.model}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const exec = judgeExecutors[jc.executor];
+    if (!exec) {
+      throw new Error(`preflight: no executor registered for "${jc.executor}" (judge "${key}"); pipeline must populate judgeExecutors before preflight`);
+    }
+    await preflight(exec, jc.model, timeoutMs);
   }
 }

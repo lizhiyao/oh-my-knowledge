@@ -23,7 +23,7 @@ const buildRun = (
     id: runId,
     meta: {
       variants,
-      model: 'm', judgeModel: 'j', executor: 'claude',
+      model: 'm', judgeModels: [{ executor: 'claude', model: 'j' }], executor: 'claude',
       sampleCount, taskCount: sampleCount,
       totalCostUSD: 0,
       timestamp: '2026-04-25T00:00:00Z',

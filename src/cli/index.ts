@@ -20,6 +20,7 @@ import type {
   GitInfo,
   ReportStore,
   ProgressCallback,
+  JudgeConfig,
 } from '../types/index.js';
 
 // ---------------------------------------------------------------------------
@@ -199,15 +200,17 @@ async function handleRun(argv: string[]): Promise<void> {
     console.log(tCli('cli.help.main', lang).trim());
     process.exit(0);
   }
-  const { values, config } = parseRunConfig(argv, {
+  // 注: 这里**不**给 parseArgs default 值, 否则 values.xxx 永远不为 undefined,
+  // CLI > eval.yaml > hardcoded-default 三级 fallback 区分不开 ("用户没传" vs "用户传了等于 default 值")。
+  // hardcoded default 在下面处理 undefined 时显式给。
+  const { values, config, evalConfig } = parseRunConfig(argv, {
     blind: { type: 'boolean' },
-    repeat: { type: 'string', default: '1' },
-    'judge-repeat': { type: 'string', default: '1' },
-    'judge-models': { type: 'string' },
-    bootstrap: { type: 'boolean', default: false },
-    'bootstrap-samples': { type: 'string', default: '1000' },
+    repeat: { type: 'string' },
+    'judge-repeat': { type: 'string' },
+    bootstrap: { type: 'boolean' },
+    'bootstrap-samples': { type: 'string' },
     'gold-dir': { type: 'string' },
-    'no-debias-length': { type: 'boolean', default: false },
+    'no-debias-length': { type: 'boolean' },
     'budget-usd': { type: 'string' },
     'budget-per-sample-usd': { type: 'string' },
     'budget-per-sample-ms': { type: 'string' },
@@ -220,46 +223,22 @@ async function handleRun(argv: string[]): Promise<void> {
   }
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
-  // --repeat 输入校验: 非 ≥1 整数时提示并钳到 1, 不静默掩盖用户错字 / 极端输入。
-  // 提前到 --batch 分支之前, 保证 batch 模式也能读到 repeat。
+  // --repeat: CLI > eval.yaml > 1. 非 ≥1 整数时提示并钳到 1。
   const repeatRaw = values.repeat as string | undefined;
-  const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : 1;
+  const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : (evalConfig?.repeat ?? 1);
   if (repeatRaw !== undefined && (!Number.isFinite(parsedRepeat) || parsedRepeat < 1)) {
     process.stderr.write(tCli('cli.run.invalid_repeat', lang, { value: repeatRaw }));
   }
   const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
 
-  // --judge-repeat 同样校验: 非 ≥1 整数时钳到 1
+  // --judge-repeat: CLI > eval.yaml > 1.
   const judgeRepeatRaw = values['judge-repeat'] as string | undefined;
-  const parsedJudgeRepeat = judgeRepeatRaw !== undefined ? Number(judgeRepeatRaw) : 1;
+  const parsedJudgeRepeat = judgeRepeatRaw !== undefined ? Number(judgeRepeatRaw) : (evalConfig?.judgeRepeat ?? 1);
   if (judgeRepeatRaw !== undefined && (!Number.isFinite(parsedJudgeRepeat) || parsedJudgeRepeat < 1)) {
     process.stderr.write(tCli('cli.run.invalid_judge_repeat', lang, { value: judgeRepeatRaw }));
   }
   const judgeRepeatCount: number = Math.max(1, Math.floor(parsedJudgeRepeat) || 1);
   if (judgeRepeatCount > 1) config.judgeRepeat = judgeRepeatCount;
-
-  // --judge-models executor:model,executor:model,... -> JudgeConfig[]
-  // 至少 2 个才进 ensemble 模式, 1 个等同于 --judge-model
-  const judgeModelsRaw = values['judge-models'] as string | undefined;
-  if (judgeModelsRaw) {
-    const parts = judgeModelsRaw.split(',').map((s) => s.trim()).filter(Boolean);
-    const judges = parts.map((p) => {
-      const [executor, ...modelParts] = p.split(':');
-      const model = modelParts.join(':');
-      if (!executor || !model) {
-        throw new Error(tCli('cli.run.invalid_judge_models_format', lang, { part: p }));
-      }
-      return { executor, model };
-    });
-    if (judges.length >= 2) {
-      config.judgeModels = judges;
-    } else if (judges.length === 1) {
-      // 单 judge 不走 ensemble, 但允许这样写, 等同于 --judge-model + --executor
-      process.stderr.write(tCli('cli.run.judge_models_single_warning', lang, {
-        executor: judges[0].executor, model: judges[0].model,
-      }));
-    }
-  }
 
   // --budget-usd / --budget-per-sample-usd / --budget-per-sample-ms:
   //  hard budget caps. CLI flags override config-file values. When the
@@ -276,19 +255,23 @@ async function handleRun(argv: string[]): Promise<void> {
     };
   }
 
-  // --no-debias-length: opt out of length-controlled prompt.
-  // Default behavior is debias-on (judge prompt v3-cot-length); flag flips it
-  // off so historical reports (judgePromptHash from v2-cot era) can be reproduced.
-  if (values['no-debias-length'] as boolean) {
+  // --no-debias-length / eval.yaml `lengthDebias: false`: opt out of length-controlled prompt。
+  // Default debias-on (judge prompt v3-cot-length); flip off only to reproduce historical reports。
+  // CLI 显式 --no-debias-length > eval.yaml lengthDebias > 默认 true。
+  const lengthDebiasOff = (values['no-debias-length'] as boolean | undefined) === true
+    || (values['no-debias-length'] === undefined && evalConfig?.lengthDebias === false);
+  if (lengthDebiasOff) {
     config.lengthDebias = false;
     process.stderr.write(tCli('cli.run.no_debias_length_active', lang));
   }
 
-  // --bootstrap / --bootstrap-samples
-  if (values.bootstrap as boolean) {
+  // --bootstrap / --bootstrap-samples: CLI > eval.yaml > default(off / 1000)。
+  const bootstrapEnabled = (values.bootstrap as boolean | undefined) === true
+    || (values.bootstrap === undefined && evalConfig?.bootstrap === true);
+  if (bootstrapEnabled) {
     config.bootstrap = true;
     const bsRaw = values['bootstrap-samples'] as string | undefined;
-    const parsedBs = bsRaw !== undefined ? Number(bsRaw) : 1000;
+    const parsedBs = bsRaw !== undefined ? Number(bsRaw) : (evalConfig?.bootstrapSamples ?? 1000);
     if (bsRaw !== undefined && (!Number.isFinite(parsedBs) || parsedBs < 100)) {
       process.stderr.write(tCli('cli.run.invalid_bootstrap_samples', lang, { value: bsRaw }));
     }
@@ -364,8 +347,8 @@ async function handleRun(argv: string[]): Promise<void> {
       filePath = result.filePath;
     }
 
-    // --gold-dir: compute α/κ/Pearson against gold annotations and re-persist.
-    const goldDir = values['gold-dir'] as string | undefined;
+    // --gold-dir / eval.yaml goldDir: compute α/κ/Pearson against gold annotations and re-persist.
+    const goldDir = (values['gold-dir'] as string | undefined) ?? evalConfig?.goldDir;
     if (goldDir && filePath) {
       const { attachGoldAgreementToReport, formatGoldCompare } = await import('../grading/gold-cli.js');
       const out = attachGoldAgreementToReport({
@@ -877,7 +860,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
 
 async function handleEvolve(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  const { values } = parseArgsStrictOrExit({
+  const { values, positionals } = parseArgsStrictOrExit({
     args: argv,
     options: {
       ...COMMON_OPTIONS,
@@ -885,7 +868,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
       target: { type: 'string' },
       samples: { type: 'string', default: 'eval-samples.json' },
       model: { type: 'string', default: 'sonnet' },
-      'judge-model': { type: 'string', default: 'haiku' },
+      'judge-models': { type: 'string', default: 'claude:haiku' },
       'improve-model': { type: 'string', default: 'sonnet' },
       concurrency: { type: 'string', default: '1' },
       timeout: { type: 'string', default: '120' },
@@ -895,7 +878,9 @@ async function handleEvolve(argv: string[]): Promise<void> {
     allowPositionals: true,
   });
 
-  const skillPath: string | undefined = argv.find((a: string) => !a.startsWith('-'));
+  // skill path 走 parseArgs 的 positionals (避免 raw argv.find 把 flag value
+  // 当成 path 误识别 — 例如 `evolve --judge-models openai-api:gpt-4o foo.md`)。
+  const skillPath: string | undefined = positionals[0];
   if (!skillPath) {
     console.error(tCli('cli.evolve.specify_skill_path', lang));
     process.exit(1);
@@ -908,6 +893,13 @@ async function handleEvolve(argv: string[]): Promise<void> {
   }
 
   const { evolveSkill } = await import('../authoring/evolver.js');
+  const { parseJudgeModelsArgOrExit } = await import('./parse-run-config.js');
+
+  const evolveJudges = parseJudgeModelsArgOrExit(values['judge-models'] as string);
+  if (evolveJudges.length > 1) {
+    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'evolve' }));
+    process.exit(2);
+  }
 
   process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
 
@@ -918,7 +910,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
       rounds: Math.max(1, Number(values.rounds) || 5),
       target: values.target ? Number(values.target) : null,
       model: values.model as string,
-      judgeModel: values['judge-model'] as string,
+      judgeModels: evolveJudges,
       improveModel: values['improve-model'] as string,
       executorName: values.executor as string,
       concurrency: Math.max(1, Number(values.concurrency) || 1),
@@ -1397,12 +1389,22 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       samples: { type: 'string' },
       variant: { type: 'string' },
-      'judge-executor': { type: 'string', default: 'claude' },
-      'judge-model': { type: 'string' },
+      'judge-models': { type: 'string' },
       'bootstrap-samples': { type: 'string', default: '1000' },
       seed: { type: 'string' },
     },
   });
+
+  // Parse --judge-models 在 load report 之前 fail-fast。重复 entry / 缺 executor /
+  // 空串等参数错误应立即给 friendly error: + exit 2,不要等到 store IO 完成才暴露。
+  const { parseJudgeModelsArgOrExit: parseJudgesA } = await import('./parse-run-config.js');
+  const cliJudgeModelsA = (values['judge-models'] as string | undefined) !== undefined
+    ? parseJudgesA(values['judge-models'] as string)
+    : undefined;
+  if (cliJudgeModelsA && cliJudgeModelsA.length > 1) {
+    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'debias-validate' }));
+    process.exit(2);
+  }
 
   const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
@@ -1418,9 +1420,11 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const { loadSamples } = await import('../inputs/load-samples.js');
   const { samples } = loadSamples(samplesPath);
 
-  const judgeModel = (values['judge-model'] as string | undefined)
-    ?? report.meta?.judgeModel;
-  if (!judgeModel) {
+  const debiasJudges: JudgeConfig[] = cliJudgeModelsA
+    ?? (report.meta?.judgeModels?.[0]
+        ? [{ executor: report.meta.judgeModels[0].executor, model: report.meta.judgeModels[0].model }]
+        : []);
+  if (debiasJudges.length === 0) {
     console.error(tCli('cli.common.no_judge_model', lang));
     process.exit(1);
   }
@@ -1428,7 +1432,8 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   process.stderr.write(tCli('cli.debias.warn_cost_doubles', lang));
 
   const { createExecutor } = await import('../executors/index.js');
-  const judgeExecutor = createExecutor(values['judge-executor'] as string);
+  const judgeExecutor = createExecutor(debiasJudges[0].executor);
+  const judgeModel = debiasJudges[0].model;
   const { validateLengthDebias, formatDebiasValidate } = await import('../grading/debias-validate.js');
 
   const seedVal = values.seed != null ? Number(values.seed) : undefined;
@@ -1661,26 +1666,39 @@ async function handleFailures(argv: string[]): Promise<void> {
     options: {
       ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
-      'judge-executor': { type: 'string', default: 'claude' },
-      'judge-model': { type: 'string' },
+      'judge-models': { type: 'string' },
       'max-clusters': { type: 'string', default: '5' },
       threshold: { type: 'string', default: '3' },
       'max-feed': { type: 'string', default: '50' },
     },
   });
 
+  // Parse --judge-models 在 load report 之前 fail-fast(同 debias-validate)。
+  const { parseJudgeModelsArgOrExit: parseJudgesB } = await import('./parse-run-config.js');
+  const cliJudgeModelsB = (values['judge-models'] as string | undefined) !== undefined
+    ? parseJudgesB(values['judge-models'] as string)
+    : undefined;
+  if (cliJudgeModelsB && cliJudgeModelsB.length > 1) {
+    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'failures' }));
+    process.exit(2);
+  }
+
   const { createFileStore } = await import('../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
 
-  const judgeModel = (values['judge-model'] as string | undefined) ?? report.meta?.judgeModel;
-  if (!judgeModel) {
+  const failuresJudges: JudgeConfig[] = cliJudgeModelsB
+    ?? (report.meta?.judgeModels?.[0]
+        ? [{ executor: report.meta.judgeModels[0].executor, model: report.meta.judgeModels[0].model }]
+        : []);
+  if (failuresJudges.length === 0) {
     console.error(tCli('cli.common.no_judge_model', lang));
     process.exit(1);
   }
 
   const { createExecutor } = await import('../executors/index.js');
-  const executor = createExecutor(values['judge-executor'] as string);
+  const executor = createExecutor(failuresJudges[0].executor);
+  const judgeModel = failuresJudges[0].model;
   const { clusterFailures, formatFailureClusterReport } = await import('../analysis/failure-clusterer.js');
 
   const out = await clusterFailures({

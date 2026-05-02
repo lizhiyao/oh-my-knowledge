@@ -18,7 +18,7 @@ function makeReport(variantName: string, sampleScores: Record<string, number>, a
     meta: {
       variants: [variantName],
       model: 'sonnet',
-      judgeModel: 'sonnet',
+      judgeModels: [{ executor: 'claude', model: 'sonnet' }],
       executor: 'claude',
       sampleCount: Object.keys(sampleScores).length,
       taskCount: Object.keys(sampleScores).length,

@@ -16,7 +16,7 @@ const buildReport = (entries: Array<{ id: string; perVariant: Record<string, Par
   kind: 'evaluation',
   id: 'r',
   meta: {
-    variants, model: 'm', judgeModel: 'j', executor: 'claude',
+    variants, model: 'm', judgeModels: [{ executor: 'claude', model: 'j' }], executor: 'claude',
     sampleCount: entries.length, taskCount: entries.length, totalCostUSD: 0,
     timestamp: '2026-04-25T00:00:00Z', cliVersion: 'test', nodeVersion: 'test',
     artifactHashes: Object.fromEntries(variants.map((v) => [v, 'h'])),

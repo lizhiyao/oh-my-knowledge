@@ -394,7 +394,9 @@ options:
                          samples + variants + model + executor in one file; CLI
                          flags override config fields when both are provided
   --model <name>         task execution model (default: sonnet)
-  --judge-model <name>   judge model (default: haiku)
+  --judge-models <list>  judge config; 1 entry = single judge (default
+                         claude:haiku), ≥ 2 entries = ensemble. Format:
+                         `executor:model[,executor:model]`
   --output-dir <path>    output dir (default: ~/.oh-my-knowledge/reports/)
   --no-judge             skip the LLM judge
   --no-cache             disable result cache (on by default; identical inputs reuse)
@@ -415,8 +417,6 @@ options:
   --batch                batch mode: evaluate each artifact independently vs baseline
                          requires {name}.eval-samples.json paired with each artifact
   --judge-repeat <n>     run the LLM judge N times per (sample × dimension) and report stddev
-  --judge-models <list>  multi-judge ensemble: "executor1:model1,executor2:model2"
-                         ≥ 2 judges enables ensemble + inter-judge agreement output
   --bootstrap            enable distribution-free CIs: bootstrap CI per variant +
                          pairwise diff CI (CI containing 0 = not significant)
   --bootstrap-samples N  bootstrap resample count (default 1000)
@@ -434,6 +434,29 @@ options:
 ```
 
 **eval.yaml budget**: declare `budget: { totalUSD?, perSampleUSD?, perSampleMs? }` (all optional, must be ≥ 0). CLI flags of the same name override the config values.
+
+**eval.yaml experiment-design fields**: the same flags above can be set in `eval.yaml` for reproducible experiment configuration (CLI > eval.yaml > default):
+
+```yaml
+samples: ./eval-samples.yaml
+model: sonnet
+repeat: 5                    # multi-run variance, ≥ 1
+judgeRepeat: 3               # per (sample × dim) judge self-consistency, ≥ 1
+bootstrap: true              # distribution-free CI per variant
+bootstrapSamples: 2000       # default 1000, ≥ 100
+goldDir: ./gold              # post-run α / κ / Pearson against human anchor
+lengthDebias: true           # default; set false to reproduce pre-v0.21 hash
+strictBaseline: true         # default; set false to disable skill isolation
+noJudge: false               # default; set true to skip LLM judge entirely
+judgeModels:                 # 1 entry = single judge; ≥ 2 = ensemble
+  - { executor: claude, model: opus }
+  - { executor: openai-api, model: gpt-4o }
+variants:
+  - { name: baseline, role: control, artifact: baseline }
+  - { name: my-skill, role: treatment, artifact: ./skills/my-skill.md }
+```
+
+**Field entry points**: `bench run` reads every field above. `bench gate` goes through `parseRunConfig` and picks up the shared subset (`variants` / `executor` / `model` / `judgeModels` — both single-judge and ensemble — / `noJudge` / `noCache` / `blind` / `strictBaseline` / `budget` / `mcpConfig` / `variantAllowedSkills`); the experiment-design fields handled by `handleRun` (`repeat` / `judgeRepeat` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`) are intentionally not read by `gate` and can be extended later. Other subcommands (`evolve` / `verdict` / `diff` / `analyze` / …) do not read `eval.yaml`.
 
 **Difference from `cost_max` / `latency_max` assertions**: assertions are **per-sample scoring rules** (exceeding the cap fails that one assertion, the run continues); budget caps are **workflow-level hard limits** (`totalUSD` overrun aborts the run and persists a partial report; per-sample overruns fail the offending sample but the run continues). Assertions answer "is quality acceptable?"; budgets answer "are cost/time within the envelope?".
 
@@ -586,7 +609,7 @@ Re-judges every (sample × variant) of an existing report with the OPPOSITE leng
 ```bash
 omk bench debias-validate length <reportId> [options]
   --variant <name>            check a single variant only
-  --judge-model <id>          override the report's judge model
+  --judge-models <executor:model>  override the report's judge (single-judge only)
   --bootstrap-samples N       bootstrap iterations (default 1000)
   --seed N                    deterministic seed
 ```
@@ -642,8 +665,7 @@ When 14 of 50 samples failed, reading them one by one is slow. This command send
 
 ```bash
 omk bench failures <reportId> [options]
-  --judge-executor <name>     executor (default: claude)
-  --judge-model <id>          clustering model (default: from report.meta.judgeModel)
+  --judge-models <executor:model>  clustering judge (default: from report.meta.judgeModels[0]; single-judge only)
   --max-clusters <n>          maximum clusters (default 5)
   --threshold <num>           failure score threshold (default 3)
   --max-feed <n>              max failures fed to LLM (default 50; takes the worst)
@@ -716,7 +738,7 @@ The command writes `~/.oh-my-knowledge/analyses/<timestamp>-skill-health.json`. 
 
 API-direct executors support custom base URLs via env: `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`.
 
-Codex construct-validity notes: (1) `codex` uses the `codex` binary on `PATH`; `codex-sdk` uses the bundled `@openai/codex` binary resolved by `@openai/codex-sdk`. Reports persist per-variant `meta.executorRuntimes` plus `meta.executorRuntime` / `meta.judgeRuntime` fingerprints (binary or SDK version + capability snapshot), and `bench diff` / `bench verdict` warn when strict comparability cannot be audited. If runtime fingerprints differ, treat results as an executor-runtime comparison, not only prompt/template behavior. (2) Both executors isolate user-level config: `codex` passes `--ephemeral` + `--ignore-user-config`; `codex-sdk` redirects `$CODEX_HOME` to a per-process tmp dir (auth.json symlinked through). User-level `~/.codex/config.toml` does not leak into eval runs in either case.
+Codex construct-validity notes: (1) `codex` uses the `codex` binary on `PATH`; `codex-sdk` uses the bundled `@openai/codex` binary resolved by `@openai/codex-sdk`. Reports persist per-variant `meta.executorRuntimes`, `meta.executorRuntime`, and per-judge `meta.judgeModels[].runtime` fingerprints (binary or SDK version + capability snapshot), and `bench diff` / `bench verdict` warn when strict comparability cannot be audited. If runtime fingerprints differ, treat results as an executor-runtime comparison, not only prompt/template behavior. (2) Both executors isolate user-level config: `codex` passes `--ephemeral` + `--ignore-user-config`; `codex-sdk` redirects `$CODEX_HOME` to a per-process tmp dir (auth.json symlinked through). User-level `~/.codex/config.toml` does not leak into eval runs in either case.
 
 ### Custom executor
 
@@ -902,25 +924,25 @@ omk bench run \
 export OPENAI_API_KEY="your Zhipu API key"
 export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 omk bench run --executor openai-api --model glm-4-plus \
-  --judge-model glm-4-plus --no-cache
+  --judge-models openai-api:glm-4-plus --no-cache
 
 # Qwen (Alibaba)
 export OPENAI_API_KEY="your Qwen API key"
 export OPENAI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 omk bench run --executor openai-api --model qwen-plus \
-  --judge-model qwen-plus
+  --judge-models openai-api:qwen-plus
 
 # DeepSeek
 export OPENAI_API_KEY="your DeepSeek API key"
 export OPENAI_BASE_URL="https://api.deepseek.com"
 omk bench run --executor openai-api --model deepseek-chat \
-  --judge-model deepseek-chat
+  --judge-models openai-api:deepseek-chat
 
 # Moonshot (Kimi)
 export OPENAI_API_KEY="your Moonshot API key"
 export OPENAI_BASE_URL="https://api.moonshot.cn/v1"
 omk bench run --executor openai-api --model moonshot-v1-8k \
-  --judge-model moonshot-v1-8k
+  --judge-models openai-api:moonshot-v1-8k
 ```
 
 **Ollama local model:**
@@ -930,11 +952,11 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
   --model llama3 --no-judge
 ```
 
-**About the judge model:**
+**About the judge:**
 
-- `--judge-model` picks the model used by the LLM judge (default `haiku`)
-- `--judge-executor` picks the executor the judge uses (defaults to `--executor`)
-- If you don't have Claude, point `--judge-executor` and `--judge-model` at whatever model you have
+- `--judge-models <list>` picks the LLM judge(s). Format: `executor:model[,executor:model]`. Default: `${executor}:haiku` (or claude:haiku when no `--executor` set)
+- 1 entry = single judge; ≥ 2 entries = multi-judge ensemble + inter-judge agreement
+- If you don't have Claude, point `--judge-models` at whatever you have, e.g. `--judge-models openai-api:glm-4-plus`
 - Add `--no-judge` to skip the LLM judge and rely on assertions alone
 
 ## Environment variables

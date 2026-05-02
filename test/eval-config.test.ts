@@ -294,6 +294,185 @@ budget:
   });
 });
 
+describe('loadEvalConfig — experiment-design fields (v0.2)', () => {
+  const minimalVariants = `
+variants:
+  - name: v1
+    role: control
+    artifact: ./v1.md
+`;
+
+  it('解析完整 v0.2 字段', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `
+samples: ./s.json
+${minimalVariants}
+repeat: 5
+judgeRepeat: 3
+bootstrap: true
+bootstrapSamples: 2000
+goldDir: ./gold
+lengthDebias: false
+strictBaseline: false
+noJudge: true
+judgeModels:
+  - executor: claude
+    model: opus
+  - executor: openai-api
+    model: gpt-4o
+`.trim());
+      const cfg = loadEvalConfig(path);
+      assert.equal(cfg.repeat, 5);
+      assert.equal(cfg.judgeRepeat, 3);
+      assert.equal(cfg.bootstrap, true);
+      assert.equal(cfg.bootstrapSamples, 2000);
+      assert.equal(cfg.goldDir, join(dir, 'gold'));  // 相对路径解析为绝对
+      assert.equal(cfg.lengthDebias, false);
+      assert.equal(cfg.strictBaseline, false);
+      assert.equal(cfg.noJudge, true);
+      assert.deepEqual(cfg.judgeModels, [
+        { executor: 'claude', model: 'opus' },
+        { executor: 'openai-api', model: 'gpt-4o' },
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('absent v0.2 字段全部 undefined', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}`);
+      const cfg = loadEvalConfig(path);
+      assert.equal(cfg.repeat, undefined);
+      assert.equal(cfg.judgeRepeat, undefined);
+      assert.equal(cfg.bootstrap, undefined);
+      assert.equal(cfg.bootstrapSamples, undefined);
+      assert.equal(cfg.goldDir, undefined);
+      assert.equal(cfg.lengthDebias, undefined);
+      assert.equal(cfg.strictBaseline, undefined);
+      assert.equal(cfg.noJudge, undefined);
+      assert.equal(cfg.judgeModels, undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject repeat 非整数', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\nrepeat: 1.5`);
+      assert.throws(() => loadEvalConfig(path), /repeat must be a positive integer/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject repeat ≤ 0', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\nrepeat: 0`);
+      assert.throws(() => loadEvalConfig(path), /repeat must be a positive integer/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject bootstrapSamples < 100', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\nbootstrapSamples: 50`);
+      assert.throws(() => loadEvalConfig(path), /bootstrapSamples must be a number ≥ 100/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject judgeModels 非数组', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels: "claude:opus"`);
+      assert.throws(() => loadEvalConfig(path), /judgeModels must be an array/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject judgeModels[i] 缺 executor 或 model', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude`);
+      assert.throws(() => loadEvalConfig(path), /judgeModels\[0\]\.model must be a non-empty string/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('judgeModels 单条 = single judge (合法, 不进 ensemble)', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: haiku`);
+      const cfg = loadEvalConfig(path);
+      assert.deepEqual(cfg.judgeModels, [{ executor: 'claude', model: 'haiku' }]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject judgeModels 空数组 (省字段反而清晰)', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels: []`);
+      assert.throws(() => loadEvalConfig(path), /judgeModels must have ≥ 1 entry/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject judgeModels 重复 entry (ensemble 聚合按 executor:model 去重)', () => {
+    const dir = makeTmpDir();
+    try {
+      const yaml = `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: haiku\n  - executor: claude\n    model: haiku`;
+      const path = writeYaml(dir, 'eval.yaml', yaml);
+      assert.throws(() => loadEvalConfig(path), /duplicate entry "claude:haiku"/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject 旧字段 judgeModel (v0.25 已删, 引导改用 judgeModels)', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModel: haiku`);
+      assert.throws(() => loadEvalConfig(path), /judgeModel.*were removed in v0\.25/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reject 旧字段 judgeExecutor', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeExecutor: claude`);
+      assert.throws(() => loadEvalConfig(path), /judgeExecutor.*were removed in v0\.25/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('goldDir 绝对路径保持不变', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\ngoldDir: /tmp/abs-gold`);
+      const cfg = loadEvalConfig(path);
+      assert.equal(cfg.goldDir, '/tmp/abs-gold');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('loadEvalConfig — allowedSkills', () => {
   it('解析 allowedSkills: [] 表示完全隔离', () => {
     const dir = makeTmpDir();

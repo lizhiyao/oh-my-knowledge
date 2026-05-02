@@ -39,7 +39,7 @@ const buildReport = (
   meta: {
     variants: [variant],
     model: 'claude-sonnet-4-6',
-    judgeModel,
+    judgeModels: [{ executor: 'claude', model: judgeModel }],
     executor: 'claude',
     sampleCount: Object.keys(scoresById).length,
     taskCount: Object.keys(scoresById).length,

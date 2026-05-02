@@ -70,7 +70,7 @@ omk bench run --each
 omk bench run --dry-run
 ```
 
-常用选项：`--model`（被测模型）、`--judge-model`（评委模型）、`--concurrency`（并发数）
+常用选项：`--model`（被测模型）、`--judge-models executor:model`（评委,1 条 = 单评委,≥ 2 条 = ensemble）、`--concurrency`（并发数）
 
 ### 自动迭代改进
 

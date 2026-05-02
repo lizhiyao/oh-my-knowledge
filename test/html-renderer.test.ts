@@ -20,7 +20,7 @@ const SAMPLE_REPORT: Report = {
   meta: {
     variants: ['v1', 'v2'],
     model: 'sonnet',
-    judgeModel: 'haiku',
+    judgeModels: [{ executor: 'claude', model: 'haiku' }],
     executor: 'claude',
     sampleCount: 2,
     taskCount: 4,
@@ -397,15 +397,19 @@ describe('renderRunDetail', () => {
       v1: runtimeReport.meta.executorRuntime,
       v2: { ...runtimeReport.meta.executorRuntime, fingerprint: 'abc123variant', binary: { name: 'codex', source: 'bundled', version: '0.129.0' } },
     };
-    runtimeReport.meta.judgeRuntime = {
-      executor: 'claude-sdk',
+    runtimeReport.meta.judgeModels = [{
+      executor: 'claude',
       model: 'haiku',
-      kind: 'agent-sdk',
-      fingerprint: 'def456abc123',
-      binary: { name: 'claude-code', source: 'bundled', version: '2.1.118' },
-      sdk: { name: '@anthropic-ai/claude-agent-sdk', version: '0.2.118' },
-      capabilities: { systemPrompt: 'native', costUSD: 'reported', trace: 'native', skillIsolation: 'full' },
-    };
+      runtime: {
+        executor: 'claude-sdk',
+        model: 'haiku',
+        kind: 'agent-sdk',
+        fingerprint: 'def456abc123',
+        binary: { name: 'claude-code', source: 'bundled', version: '2.1.118' },
+        sdk: { name: '@anthropic-ai/claude-agent-sdk', version: '0.2.118' },
+        capabilities: { systemPrompt: 'native', costUSD: 'reported', trace: 'native', skillIsolation: 'full' },
+      },
+    }];
     const html = renderRunDetail(runtimeReport);
     assert.ok(html.includes('执行器指纹 v1'));
     assert.ok(html.includes('执行器指纹 v2'));
@@ -418,29 +422,39 @@ describe('renderRunDetail', () => {
 
   it('renders multi-judge ensemble agreement when summary has judgeAgreement', () => {
     const ensembleReport = JSON.parse(JSON.stringify(SAMPLE_REPORT));
-    ensembleReport.meta.judgeModels = ['claude:opus', 'openai:gpt-4o'];
-    ensembleReport.meta.judgeRepeat = 3;
-    ensembleReport.meta.judgePromptHash = 'abc123def456';
-    ensembleReport.meta.judgeRuntimes = {
-      'claude:opus': {
+    ensembleReport.meta.judgeModels = [
+      {
         executor: 'claude',
         model: 'opus',
-        kind: 'agent-cli',
-        fingerprint: 'judge1111111',
-        binary: { name: 'claude', source: 'path', version: '2.0.0' },
-        capabilities: { systemPrompt: 'native', costUSD: 'reported', trace: 'native', skillIsolation: 'full-no-partial' },
+        runtime: {
+          executor: 'claude',
+          model: 'opus',
+          kind: 'agent-cli',
+          fingerprint: 'judge1111111',
+          binary: { name: 'claude', source: 'path', version: '2.0.0' },
+          capabilities: { systemPrompt: 'native', costUSD: 'reported', trace: 'native', skillIsolation: 'full-no-partial' },
+        },
       },
-      'openai:gpt-4o': {
-        executor: 'openai-api',
+      {
+        executor: 'openai',
         model: 'gpt-4o',
-        kind: 'api',
-        fingerprint: 'judge2222222',
-        binary: { name: 'openai-api', source: 'none' },
-        capabilities: { systemPrompt: 'native', costUSD: 'not-reported', trace: 'none', skillIsolation: 'none' },
+        runtime: {
+          executor: 'openai-api',
+          model: 'gpt-4o',
+          kind: 'api',
+          fingerprint: 'judge2222222',
+          binary: { name: 'openai-api', source: 'none' },
+          capabilities: { systemPrompt: 'native', costUSD: 'not-reported', trace: 'none', skillIsolation: 'none' },
+        },
       },
-    };
+    ];
+    ensembleReport.meta.judgeRepeat = 3;
+    ensembleReport.meta.judgePromptHash = 'abc123def456';
     ensembleReport.summary.v1.judgeAgreement = { pearson: 0.85, meanAbsDiff: 0.6, pairCount: 1, sampleCount: 50 };
-    ensembleReport.summary.v1.judgeModels = ['claude:opus', 'openai:gpt-4o'];
+    ensembleReport.summary.v1.judgeModels = [
+      { executor: 'claude', model: 'opus' },
+      { executor: 'openai', model: 'gpt-4o' },
+    ];
     const html = renderRunDetail(ensembleReport);
     // Meta tags surface the judge ensemble + reproducibility metadata
     assert.ok(html.includes('claude:opus'), 'should mention claude:opus');

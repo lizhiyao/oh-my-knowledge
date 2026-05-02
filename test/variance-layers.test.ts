@@ -46,7 +46,7 @@ function makeRun(runId: string, perVariant: Record<string, LayerSeed>): Report {
     meta: {
       variants: Object.keys(perVariant),
       model: 'sonnet',
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
       executor: 'claude',
       sampleCount: 5,
       taskCount: 10,

@@ -31,7 +31,7 @@ function makeReport(id: string, variant: string, timestamp: string, avgScore: nu
     meta: {
       variants: [variant],
       model: 'sonnet',
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
       executor: 'claude',
       sampleCount: 2,
       taskCount: 2,

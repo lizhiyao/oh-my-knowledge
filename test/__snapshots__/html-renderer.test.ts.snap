@@ -369,7 +369,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   </p>
     <div class="meta-tags">
       <span class="meta-tag">Task execution model: sonnet</span>
-      <span class="meta-tag">Judge: haiku</span>
+      <span class="meta-tag">Judge: claude:haiku</span>
 
       <span class="meta-tag">Executor: claude</span>
       <span class="meta-tag">Execution cost: $0.0380</span>
@@ -925,7 +925,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   </p>
     <div class="meta-tags">
       <span class="meta-tag">任务执行模型: sonnet</span>
-      <span class="meta-tag">评委: haiku</span>
+      <span class="meta-tag">评委: claude:haiku</span>
 
       <span class="meta-tag">执行器: claude</span>
       <span class="meta-tag">执行成本: $0.0380</span>

@@ -5,7 +5,7 @@ import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.j
 import { persistReport, DEFAULT_OUTPUT_DIR, generateRunId } from '../eval-core/evaluation-reporting.js';
 import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { loadSamples } from '../inputs/load-samples.js';
-import type { ProgressCallback, Report, ResultEntry, Sample, VariantResult } from '../types/index.js';
+import type { JudgeConfig, ProgressCallback, Report, ResultEntry, Sample, VariantResult } from '../types/index.js';
 
 const IMPROVE_SYSTEM_PROMPT = `你是一个 AI 提示词改进专家。你的任务是分析评测结果中的薄弱环节，针对性地改进 skill（系统提示词），使其在评测中获得更高的分数。
 
@@ -122,7 +122,10 @@ interface EvolveOptions {
   rounds?: number;
   target?: number | null;
   model?: string;
-  judgeModel?: string;
+  /** Single-judge config. evolve 不支持 ensemble — CLI 在 length>=2 时 exit 2,
+   *  programmatic API 在 evolveSkill 入口同样 throw,二者一致。Default
+   *  `[{ executor: <executorName>, model: 'haiku' }]`. */
+  judgeModels?: JudgeConfig[];
   improveModel?: string;
   executorName?: string;
   concurrency?: number;
@@ -241,7 +244,7 @@ export async function evolveSkill({
   rounds = 5,
   target = null,
   model = DEFAULT_MODEL,
-  judgeModel = JUDGE_MODEL,
+  judgeModels,
   improveModel = DEFAULT_MODEL,
   executorName = 'claude',
   concurrency = 1,
@@ -250,6 +253,16 @@ export async function evolveSkill({
   onProgress = null,
   onRoundProgress = null,
 }: EvolveOptions): Promise<EvolveResult> {
+  if (judgeModels && judgeModels.length > 1) {
+    throw new Error(
+      'evolveSkill does not support multi-judge ensemble (received '
+      + `${judgeModels.length} judges). Pass a single-judge array, e.g. `
+      + `[{ executor: 'claude', model: 'haiku' }]`,
+    );
+  }
+  const effectiveJudgeModels: JudgeConfig[] = judgeModels && judgeModels.length > 0
+    ? judgeModels
+    : [{ executor: executorName, model: JUDGE_MODEL }];
   const absSkillPath = resolve(skillPath);
   const absSamplesPath = resolve(samplesPath);
   const skillDir = dirname(absSkillPath);
@@ -281,7 +294,7 @@ export async function evolveSkill({
 
   // Round 0: baseline evaluation
   const baselineReport = await evaluate(r0Path, {
-    samplesPath: absSamplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, skipConnectivity, onProgress,
+    samplesPath: absSamplesPath, skillDir, model, judgeModels: effectiveJudgeModels, executorName, concurrency, timeoutMs, skipConnectivity, onProgress,
   });
   const baselineVariantKey = Object.keys(baselineReport.summary)[0];
   bestScore = baselineReport.summary[baselineVariantKey]?.avgCompositeScore ?? 0;
@@ -306,7 +319,7 @@ export async function evolveSkill({
       lastReport = baselineReport;
     } else {
       lastReport = await evaluate(allVersions[bestRound], {
-        samplesPath: absSamplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, skipConnectivity, onProgress,
+        samplesPath: absSamplesPath, skillDir, model, judgeModels: effectiveJudgeModels, executorName, concurrency, timeoutMs, skipConnectivity, onProgress,
       });
       totalCostUSD += lastReport.meta.totalCostUSD;
       if (reportHasUnreportedCost(lastReport)) totalCostReported = false;
@@ -337,7 +350,7 @@ export async function evolveSkill({
 
     // Evaluate candidate
     const candidateReport = await evaluate(candidatePath, {
-      samplesPath: absSamplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, skipConnectivity, onProgress,
+      samplesPath: absSamplesPath, skillDir, model, judgeModels: effectiveJudgeModels, executorName, concurrency, timeoutMs, skipConnectivity, onProgress,
     });
     const candidateVariantKey = Object.keys(candidateReport.summary)[0];
     const candidateScore = candidateReport.summary[candidateVariantKey]?.avgCompositeScore ?? 0;
@@ -398,7 +411,7 @@ interface EvaluateOptions {
   samplesPath: string;
   skillDir: string;
   model: string;
-  judgeModel: string;
+  judgeModels: JudgeConfig[];
   executorName: string;
   concurrency: number;
   timeoutMs?: number;
@@ -406,14 +419,14 @@ interface EvaluateOptions {
   onProgress: ((progress: EvolveProgressInfo) => void) | null;
 }
 
-async function evaluate(skillFilePath: string, { samplesPath, skillDir, model, judgeModel, executorName, concurrency, timeoutMs, skipConnectivity, onProgress }: EvaluateOptions): Promise<Report> {
+async function evaluate(skillFilePath: string, { samplesPath, skillDir, model, judgeModels, executorName, concurrency, timeoutMs, skipConnectivity, onProgress }: EvaluateOptions): Promise<Report> {
   const { report } = await runEvaluation({
     samplesPath,
     skillDir,
     // evolve 评测每一轮只跑当前迭代的 skill，没有对照组；标为 treatment。
     variantSpecs: [{ name: skillFilePath, role: 'treatment', expr: skillFilePath }],
     model,
-    judgeModel,
+    judgeModels,
     outputDir: null, // don't persist intermediate reports
     concurrency,
     timeoutMs,

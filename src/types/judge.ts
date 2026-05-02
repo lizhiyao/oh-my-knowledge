@@ -1,9 +1,22 @@
+import type { ExecutorRuntimeFingerprint } from './executor.js';
+
 /** Single judge configuration: which executor to call and which model alias to pass. */
 export interface JudgeConfig {
   /** Executor name (claude / openai / gemini / anthropic-api / openai-api / shell command). */
   executor: string;
   /** Model alias passed to the executor (e.g. "opus", "haiku", "gpt-4o", "gemini-2.0-pro"). */
   model: string;
+}
+
+/** Persisted judge entry on Report.meta.judgeModels: judge config + runtime fingerprint of
+ *  the executor that actually performed the judging. runtime is undefined when the judge
+ *  did not run (noJudge mode) — preserves the configured judge for audit even without
+ *  execution. */
+export interface JudgeRuntimeEntry {
+  executor: string;
+  model: string;
+  /** Runtime fingerprint of the judge executor at run time. Undefined ⇒ judge did not run. */
+  runtime?: ExecutorRuntimeFingerprint;
 }
 
 /** Per-judge ensemble entry: which judge gave what score (mean over judge-repeat if N>1). */

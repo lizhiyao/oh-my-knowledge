@@ -94,7 +94,7 @@ describe('analyzeResults — sampleQuality wiring', () => {
       kind: 'evaluation',
       id: 'r',
       meta: {
-        variants: ['v1', 'v2'], model: 'm', judgeModel: 'j', executor: 'claude',
+        variants: ['v1', 'v2'], model: 'm', judgeModels: [{ executor: 'claude', model: 'j' }], executor: 'claude',
         sampleCount: 0, taskCount: 0, totalCostUSD: 0,
         timestamp: '2026-04-25T00:00:00Z', cliVersion: 'test', nodeVersion: 'test',
         artifactHashes: {},

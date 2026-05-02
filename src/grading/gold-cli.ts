@@ -103,10 +103,10 @@ export function compareGoldToReport(input: GoldCompareInput): GoldCompareResult 
   // statistical hazard (model-judges-itself inflates agreement). We only warn
   // — users may have one model available and proceed knowingly.
   const annotator = gold.metadata.annotator.trim().toLowerCase();
-  const judgeIds: string[] = [
-    report.meta?.judgeModel ?? '',
-    ...(report.meta?.judgeModels ?? []),
-  ].filter(Boolean).map((s) => s.toLowerCase());
+  const judgeIds: string[] = (report.meta?.judgeModels ?? [])
+    .flatMap((j) => [j.model, `${j.executor}:${j.model}`])
+    .filter(Boolean)
+    .map((s) => s.toLowerCase());
   const contaminated = judgeIds.find((j) => j.includes(annotator) || annotator.includes(j));
   const contaminationWarning = contaminated
     ? `gold annotator "${gold.metadata.annotator}" overlaps with judge model "${contaminated}" — agreement is inflated; treat α as upper bound only`
