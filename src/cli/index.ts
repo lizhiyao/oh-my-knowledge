@@ -860,7 +860,7 @@ async function handleGenSamples(argv: string[]): Promise<void> {
 
 async function handleEvolve(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  const { values } = parseArgsStrictOrExit({
+  const { values, positionals } = parseArgsStrictOrExit({
     args: argv,
     options: {
       ...COMMON_OPTIONS,
@@ -878,7 +878,9 @@ async function handleEvolve(argv: string[]): Promise<void> {
     allowPositionals: true,
   });
 
-  const skillPath: string | undefined = argv.find((a: string) => !a.startsWith('-'));
+  // skill path 走 parseArgs 的 positionals (避免 raw argv.find 把 flag value
+  // 当成 path 误识别 — 例如 `evolve --judge-models openai-api:gpt-4o foo.md`)。
+  const skillPath: string | undefined = positionals[0];
   if (!skillPath) {
     console.error(tCli('cli.evolve.specify_skill_path', lang));
     process.exit(1);
@@ -908,7 +910,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
       rounds: Math.max(1, Number(values.rounds) || 5),
       target: values.target ? Number(values.target) : null,
       model: values.model as string,
-      judgeModel: evolveJudges[0].model,
+      judgeModels: evolveJudges,
       improveModel: values['improve-model'] as string,
       executorName: values.executor as string,
       concurrency: Math.max(1, Number(values.concurrency) || 1),

@@ -457,12 +457,42 @@ export async function executeEvaluationPipeline({
   });
 
   try {
+    // Pre-build a per-executor map covering ALL judges (single or ensemble). Built
+    // before preflight so we can probe every (executor, model) pair, not just the
+    // first one — otherwise a misconfigured judge #2/#3 only fails mid-grading
+    // after the run is already underway.
+    let judgeExecutors: Record<string, ExecutorFn> | undefined;
+    if (judgeModels && judgeModels.length > 0) {
+      const { createExecutor } = await import('../executors/index.js');
+      judgeExecutors = {};
+      for (const jc of judgeModels) {
+        if (!judgeExecutors[jc.executor]) {
+          judgeExecutors[jc.executor] = createExecutor(jc.executor);
+        }
+      }
+    }
+
     if (!skipConnectivity) {
       if (onProgress) onProgress({ phase: 'preflight', jobId: runState.jobId });
       // LLM 连通性: eval 唯一职责。doctor 在 runEvaluation 上游已跑,
-      // 包含 dep / 结构 / 元数据 / 契约检查。这里只剩 executor + judge。
+      // 包含 dep / 结构 / 元数据 / 契约检查。这里只剩 executor + 所有 judge。
       await preflight(executor, model);
-      if (!noJudge) await preflight(judgeExecutor, judgeModel);
+      if (!noJudge) {
+        // 对每个 unique (executor, model) judge 做 preflight。ensemble 中任意 judge
+        // 配错(404 model / executor not found / auth fail)都应在前置门禁拦截,
+        // 不应推迟到 grading 才暴露(避免半成品 run 浪费成本 + 缺失 agreement)。
+        const judgesToCheck = judgeModels && judgeModels.length > 0
+          ? judgeModels
+          : [{ executor: executorName, model: judgeModel }];
+        const seenJudge = new Set<string>();
+        for (const jc of judgesToCheck) {
+          const key = `${jc.executor}:${jc.model}`;
+          if (seenJudge.has(key)) continue;
+          seenJudge.add(key);
+          const exec = judgeExecutors?.[jc.executor] ?? judgeExecutor;
+          await preflight(exec, jc.model);
+        }
+      }
     }
 
     // Structural power warnings — print to stderr after preflight passes, before
@@ -472,22 +502,6 @@ export async function executeEvaluationPipeline({
     emitPowerWarnings(samples.length, repeat ?? 1);
     // Isolation pre-flight warning (--no-strict-baseline + ~/.claude/skills/ non-empty)
     emitIsolationWarnings(artifacts, strictBaseline);
-
-    // Pre-build a per-executor map for ensemble judges. Each unique executor name
-    // gets one ExecutorFn, shared across all judges using that executor. The default
-    // judge's executor is also included so single-judge fallbacks have it available.
-    let judgeExecutors: Record<string, ExecutorFn> | undefined;
-    if (judgeModels && judgeModels.length >= 2) {
-      const { createExecutor } = await import('../executors/index.js');
-      judgeExecutors = {};
-      const seen = new Set<string>();
-      for (const jc of judgeModels) {
-        if (!seen.has(jc.executor)) {
-          seen.add(jc.executor);
-          judgeExecutors[jc.executor] = createExecutor(jc.executor);
-        }
-      }
-    }
 
     const { results, totalCostUSD, skipped, budgetExhausted } = await executeTasks({
       tasks,

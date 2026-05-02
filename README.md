@@ -609,7 +609,7 @@ Re-judges every (sample × variant) of an existing report with the OPPOSITE leng
 ```bash
 omk bench debias-validate length <reportId> [options]
   --variant <name>            check a single variant only
-  --judge-model <id>          override the report's judge model
+  --judge-models <executor:model>  override the report's judge (single-judge only)
   --bootstrap-samples N       bootstrap iterations (default 1000)
   --seed N                    deterministic seed
 ```
@@ -665,8 +665,7 @@ When 14 of 50 samples failed, reading them one by one is slow. This command send
 
 ```bash
 omk bench failures <reportId> [options]
-  --judge-executor <name>     executor (default: claude)
-  --judge-model <id>          clustering model (default: from report.meta.judgeModel)
+  --judge-models <executor:model>  clustering judge (default: from report.meta.judgeModels[0]; single-judge only)
   --max-clusters <n>          maximum clusters (default 5)
   --threshold <num>           failure score threshold (default 3)
   --max-feed <n>              max failures fed to LLM (default 50; takes the worst)

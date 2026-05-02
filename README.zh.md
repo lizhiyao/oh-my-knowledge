@@ -601,7 +601,7 @@ gold-dir/
 ```bash
 omk bench debias-validate length <reportId> [选项]
   --variant <name>            只测一个 variant
-  --judge-model <id>          override report 的 judge model
+  --judge-models <executor:model>  override report 的评委(仅支持单评委)
   --bootstrap-samples N       bootstrap 迭代数 (默认 1000)
   --seed N                    确定性种子
 ```
@@ -657,8 +657,7 @@ omk bench diagnose <reportId> [选项]
 
 ```bash
 omk bench failures <reportId> [选项]
-  --judge-executor <name>     执行器 (默认 claude)
-  --judge-model <id>          聚类用 model (默认沿用 report.meta.judgeModel)
+  --judge-models <executor:model>  聚类评委 (默认沿用 report.meta.judgeModels[0],仅支持单评委)
   --max-clusters <n>          最多多少 cluster (默认 5)
   --threshold <num>           算失败的分数阈值 (默认 3)
   --max-feed <n>              最多喂给 LLM 多少条 (默认 50,超出取最差)
