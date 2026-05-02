@@ -3,7 +3,7 @@
  * Single source of truth for object structures used across runner, renderer, and server.
  */
 
-import type { ExecResult, GradeResult, VariantResult, VariantSummary, TurnInfo, ToolCallInfo } from '../types/index.js';
+import type { ExecResult, GradeResult, JudgeConfig, VariantResult, VariantSummary, TurnInfo, ToolCallInfo } from '../types/index.js';
 import { computeJudgeAgreement } from '../grading/judge.js';
 
 function ratioToScore(ratio: number): number {
@@ -296,10 +296,15 @@ function buildEnsembleAggregate(ok: VariantResult[]): Pick<VariantSummary, 'judg
     judges.forEach((j, i) => alignedMatrix[i].push(scoreByJudge.get(j)!));
   }
 
-  if (alignedMatrix[0].length < 2) return { judgeModels: judges }; // not enough aligned points
+  // EnsembleJudgeResult.judge stores "executor:model" strings; reverse-parse into structured form.
+  const judgeConfigs: JudgeConfig[] = judges.map((j) => {
+    const idx = j.indexOf(':');
+    return idx > 0 ? { executor: j.slice(0, idx), model: j.slice(idx + 1) } : { executor: '', model: j };
+  });
+  if (alignedMatrix[0].length < 2) return { judgeModels: judgeConfigs }; // not enough aligned points
   const agreement = computeJudgeAgreement(alignedMatrix);
   return {
-    judgeModels: judges,
+    judgeModels: judgeConfigs,
     judgeAgreement: { ...agreement, sampleCount: alignedMatrix[0].length },
   };
 }

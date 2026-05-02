@@ -1410,8 +1410,8 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const { parseJudgeModelsArg: parseJudgesA } = await import('./parse-run-config.js');
   const debiasJudges: JudgeConfig[] = (values['judge-models'] as string | undefined) !== undefined
     ? parseJudgesA(values['judge-models'] as string)
-    : (report.meta?.judgeModel
-        ? [{ executor: report.meta?.request?.judgeExecutor || 'claude', model: report.meta.judgeModel }]
+    : (report.meta?.judgeModels?.[0]
+        ? [{ executor: report.meta.judgeModels[0].executor, model: report.meta.judgeModels[0].model }]
         : []);
   if (debiasJudges.length === 0) {
     console.error(tCli('cli.common.no_judge_model', lang));
@@ -1673,8 +1673,8 @@ async function handleFailures(argv: string[]): Promise<void> {
   const { parseJudgeModelsArg: parseJudgesB } = await import('./parse-run-config.js');
   const failuresJudges: JudgeConfig[] = (values['judge-models'] as string | undefined) !== undefined
     ? parseJudgesB(values['judge-models'] as string)
-    : (report.meta?.judgeModel
-        ? [{ executor: report.meta?.request?.judgeExecutor || 'claude', model: report.meta.judgeModel }]
+    : (report.meta?.judgeModels?.[0]
+        ? [{ executor: report.meta.judgeModels[0].executor, model: report.meta.judgeModels[0].model }]
         : []);
   if (failuresJudges.length === 0) {
     console.error(tCli('cli.common.no_judge_model', lang));

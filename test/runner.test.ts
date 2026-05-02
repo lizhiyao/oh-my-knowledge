@@ -46,8 +46,7 @@ interface DryRunReport {
   variants: string[];
   executor: string;
   model?: string;
-  judgeModel?: string | null;
-  judgeModels?: string[];
+  judgeModels: { executor: string; model: string }[];
   tasks: DryRunTask[];
 }
 
@@ -176,7 +175,7 @@ describe('runEvaluation', () => {
     const report = asDryRunReport(result.report);
 
     assert.equal(report.model, 'opus');
-    assert.equal(report.judgeModel, 'sonnet');
+    assert.deepEqual(report.judgeModels, [{ executor: 'claude', model: 'sonnet' }]);
   });
 
   it('dry-run: surfaces multi-judge ensemble without legacy single judge model', async () => {
@@ -192,8 +191,10 @@ describe('runEvaluation', () => {
     });
     const report = asDryRunReport(result.report);
 
-    assert.equal(report.judgeModel, null);
-    assert.deepEqual(report.judgeModels, ['claude:sonnet', 'codex:gpt-5.5']);
+    assert.deepEqual(report.judgeModels, [
+      { executor: 'claude', model: 'sonnet' },
+      { executor: 'codex', model: 'gpt-5.5' },
+    ]);
   });
 
   it('throws on missing samples file', async () => {
@@ -329,7 +330,7 @@ describe('runEvaluation', () => {
     const report = result.report as Report;
     const baseline = report.results[0]?.variants?.baseline;
     const v1 = report.results[0]?.variants?.v1;
-    assert.equal(report.meta.judgeModel, null);
+    assert.equal(report.meta.noJudge, true);
     assert.equal(baseline?.assertions?.total, 1);
     assert.equal(baseline?.assertions?.passed, 0);
     assert.equal(baseline?.assertions?.score, 1);
@@ -618,7 +619,8 @@ describe('runBatchEvaluation', () => {
             meta: {
               variants: ['baseline', treatment],
               model: options.model,
-              judgeModel: null,
+              judgeModels: [{ executor: options.executorName, model: 'haiku' }],
+              noJudge: true,
               executor: options.executorName,
               sampleCount: 2,
               taskCount: 4,
@@ -632,9 +634,8 @@ describe('runBatchEvaluation', () => {
                 skillDir: options.skillDir,
                 artifacts: options.artifacts,
                 model: options.model,
-                judgeModel: null,
+                judgeModels: [{ executor: options.judgeExecutorName || options.executorName, model: 'haiku' }],
                 executor: options.executorName,
-                judgeExecutor: options.judgeExecutorName || options.executorName,
                 noJudge: options.noJudge,
                 concurrency: options.concurrency,
                 timeoutMs: options.timeoutMs,

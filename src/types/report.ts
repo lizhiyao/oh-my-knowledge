@@ -1,5 +1,5 @@
 import type { ToolCallInfo, TurnInfo } from './executor.js';
-import type { AssertionResults, DimensionResult, EnsembleJudgeResult, JudgeAgreement, LayeredScores } from './judge.js';
+import type { AssertionResults, DimensionResult, EnsembleJudgeResult, JudgeAgreement, JudgeConfig, JudgeRuntimeEntry, LayeredScores } from './judge.js';
 import type { EvalBudget, EvaluationJob, EvaluationRequest, EvaluationRun, VariantConfig } from './eval.js';
 
 export interface VariantResult {
@@ -113,8 +113,9 @@ export interface VariantSummary {
   /** Aggregate-level multi-judge agreement across this variant's samples (single rubric mode).
    *  sampleCount = how many samples had complete ensemble data. */
   judgeAgreement?: JudgeAgreement & { sampleCount: number };
-  /** List of judge identifiers ("executor:model") seen in this variant's ensemble data. */
-  judgeModels?: string[];
+  /** Judges seen in this variant's ensemble data (`{executor, model}`). Renderer joins as
+   *  "executor:model" for display. */
+  judgeModels?: JudgeConfig[];
   /** Bootstrap CI on this variant's compositeScore mean (when --bootstrap enabled).
    *  Distribution-free; preferred over t-interval for ordinal LLM scores. */
   bootstrapCI?: { low: number; high: number; estimate: number; samples: number };
@@ -213,7 +214,6 @@ export interface ExecutorRuntimeFingerprint {
 export interface ReportMeta {
   variants: string[];
   model: string;
-  judgeModel: string | null;
   executor: string;
   sampleCount: number;
   taskCount: number;
@@ -241,16 +241,18 @@ export interface ReportMeta {
    *  This is the strict construct-validity source because variants can resolve
    *  different skillDir / PATH environments. */
   executorRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
-  /** Runtime fingerprint for the default judge executor, or null when no judge ran. */
-  judgeRuntime?: ExecutorRuntimeFingerprint | null;
-  /** Runtime fingerprints for multi-judge ensemble members, keyed by "executor:model". */
-  judgeRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
   /** Number of times each sample was judged. 1 = single judge (default). */
   judgeRepeat?: number;
-  /** Multi-judge ensemble configuration: ["claude:opus", "openai:gpt-4o", ...].
-   *  When length >= 2, every (sample × dimension) is scored by all judges and
-   *  agreement metrics are reported per-result. */
-  judgeModels?: string[];
+  /** Unified judge configuration with embedded runtime fingerprints. Always non-empty.
+   *  - length === 1: single judge.
+   *  - length >= 2: ensemble; agreement metrics reported per-result.
+   *  Each entry's `runtime` is undefined ⇔ judge did not run for this report (see `noJudge`).
+   *  Replaces v0.24- `judgeModel` + `judgeRuntime` (single) and stringified
+   *  `judgeModels: string[]` + parallel `judgeRuntimes: Record<string, fp>` (ensemble). */
+  judgeModels: JudgeRuntimeEntry[];
+  /** True ⇒ no judge actually ran (--no-judge); each `judgeModels[i].runtime` is undefined.
+   *  Renderer / comparability use this to short-circuit judge-related rendering & checks. */
+  noJudge?: boolean;
   /** Which CI framework was used for this report: 't-test' (legacy default),
    *  'bootstrap' (--bootstrap), or 'both' (some summaries have both). Reports
    *  with mismatched frameworks shouldn't be compared blindly on CI bounds. */
@@ -311,7 +313,6 @@ export type Report = EvaluationReport;
 export interface BatchEvaluationMeta {
   mode: 'skill';
   model: string;
-  judgeModel: string | null;
   executor: string;
   skillDir: string;
   sampleCount: number;
@@ -325,9 +326,10 @@ export interface BatchEvaluationMeta {
   nodeVersion: string;
   executorRuntime?: ExecutorRuntimeFingerprint;
   executorRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
-  judgeRuntime?: ExecutorRuntimeFingerprint | null;
-  judgeRuntimes?: Record<string, ExecutorRuntimeFingerprint>;
-  judgeModels?: string[];
+  /** See ReportMeta.judgeModels — same semantics for batch reports. */
+  judgeModels: JudgeRuntimeEntry[];
+  /** See ReportMeta.noJudge. */
+  noJudge?: boolean;
   request?: EvaluationRequest;
   run?: EvaluationRun;
   job?: EvaluationJob;

@@ -9,9 +9,7 @@ export function buildEvaluationRequest({
   skillDir,
   artifacts,
   model,
-  judgeModel,
   executor,
-  judgeExecutor,
   noJudge,
   concurrency,
   timeoutMs,
@@ -34,9 +32,7 @@ export function buildEvaluationRequest({
   skillDir: string;
   artifacts: Artifact[];
   model: string;
-  judgeModel: string | null;
   executor: string;
-  judgeExecutor?: string | null;
   noJudge: boolean;
   concurrency: number;
   timeoutMs?: number;
@@ -49,7 +45,7 @@ export function buildEvaluationRequest({
   repeat?: number;
   batch?: boolean;
   judgeRepeat?: number;
-  judgeModels?: JudgeConfig[];
+  judgeModels: JudgeConfig[];
   bootstrap?: boolean;
   bootstrapSamples?: number;
   lengthDebias?: boolean;
@@ -60,9 +56,7 @@ export function buildEvaluationRequest({
     skillDir,
     artifacts,
     model,
-    judgeModel,
     executor,
-    judgeExecutor,
     noJudge,
     concurrency,
     timeoutMs,

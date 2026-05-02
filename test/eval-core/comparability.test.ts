@@ -31,7 +31,7 @@ function report(overrides: Partial<Report['meta']> = {}): Report {
     meta: {
       variants: ['control', 'treatment'],
       model: 'm',
-      judgeModel: 'j',
+      judgeModels: [{ executor: 'claude-sdk', model: 'j', runtime: runtime('claude-sdk', 'j', 'judge111111') }],
       executor: 'claude-sdk',
       sampleCount: 2,
       taskCount: 4,
@@ -43,7 +43,6 @@ function report(overrides: Partial<Report['meta']> = {}): Report {
       sampleHashes: { s1: 'aaa111aaa111', s2: 'bbb222bbb222' },
       judgePromptHash: 'judge1111111',
       executorRuntime: runtime('claude-sdk', 'm', 'exec11111111'),
-      judgeRuntime: runtime('claude-sdk', 'j', 'judge111111'),
       skillIsolation: { control: [], treatment: null },
       ...overrides,
     },
@@ -129,20 +128,18 @@ describe('comparability warnings', () => {
 
   it('cross-report audit checks ensemble judge models, repeat, and per-judge runtime', () => {
     const before = report({
-      judgeModels: ['claude:opus', 'openai:gpt-4o'],
+      judgeModels: [
+        { executor: 'claude', model: 'opus', runtime: runtime('claude', 'opus', 'judge111111') },
+        { executor: 'openai', model: 'gpt-4o', runtime: runtime('openai-api', 'gpt-4o', 'judge222222') },
+      ],
       judgeRepeat: 1,
-      judgeRuntimes: {
-        'claude:opus': runtime('claude', 'opus', 'judge111111'),
-        'openai:gpt-4o': runtime('openai-api', 'gpt-4o', 'judge222222'),
-      },
     });
     const after = report({
-      judgeModels: ['claude:opus', 'openai:gpt-4o'],
+      judgeModels: [
+        { executor: 'claude', model: 'opus', runtime: runtime('claude', 'opus', 'judge333333') },
+        { executor: 'openai', model: 'gpt-4o', runtime: runtime('openai-api', 'gpt-4o', 'judge222222') },
+      ],
       judgeRepeat: 3,
-      judgeRuntimes: {
-        'claude:opus': runtime('claude', 'opus', 'judge333333'),
-        'openai:gpt-4o': runtime('openai-api', 'gpt-4o', 'judge222222'),
-      },
     });
 
     const codes = crossReportComparabilityWarnings(before, after).map((w) => w.code);
@@ -152,8 +149,8 @@ describe('comparability warnings', () => {
 
   it('cross-report audit checks ensemble judge model set', () => {
     const codes = crossReportComparabilityWarnings(
-      report({ judgeModels: ['claude:opus', 'openai:gpt-4o'], judgeRuntimes: {} }),
-      report({ judgeModels: ['claude:opus', 'codex:gpt-5'], judgeRuntimes: {} }),
+      report({ judgeModels: [{ executor: 'claude', model: 'opus' }, { executor: 'openai', model: 'gpt-4o' }] }),
+      report({ judgeModels: [{ executor: 'claude', model: 'opus' }, { executor: 'codex', model: 'gpt-5' }] }),
     ).map((w) => w.code);
     assert.ok(codes.includes('judge_models_mismatch'));
     assert.ok(codes.includes('judge_runtime_missing'));

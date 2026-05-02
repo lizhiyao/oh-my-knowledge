@@ -140,8 +140,7 @@ interface DryRunTask {
 interface DryRunBase {
   dryRun: true;
   model: string;
-  judgeModel: string | null;
-  judgeModels?: string[];
+  judgeModels: import('../types/index.js').JudgeConfig[];
   executor: string;
   skillDir: string;
   totalTasks: number;
@@ -263,8 +262,7 @@ export async function runEvaluation({
     return {
       report: buildDryRunTaskReport({
         model,
-        judgeModel,
-        judgeModels,
+        judgeModels: effectiveJudgeModels,
         executorName,
         samplesPath,
         skillDir,
@@ -675,16 +673,12 @@ export async function runBatchEvaluation({
       });
     }
 
-    const judgeModelList = judgeModels && judgeModels.length >= 2
-      ? judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
-      : undefined;
     return {
       report: {
         dryRun: true,
         batch: true,
         model,
-        judgeModel: judgeModelList ? null : judgeModel,
-        ...(judgeModelList ? { judgeModels: judgeModelList } : {}),
+        judgeModels: effectiveJudgeModels,
         executor: executorName,
         skillDir,
         totalArtifacts: dryArtifacts.length,

@@ -6,6 +6,17 @@ export interface JudgeConfig {
   model: string;
 }
 
+/** Persisted judge entry on Report.meta.judgeModels: judge config + runtime fingerprint of
+ *  the executor that actually performed the judging. runtime is undefined when the judge
+ *  did not run (noJudge mode) — preserves the configured judge for audit even without
+ *  execution. */
+export interface JudgeRuntimeEntry {
+  executor: string;
+  model: string;
+  /** Runtime fingerprint of the judge executor at run time. Undefined ⇒ judge did not run. */
+  runtime?: import('./report.js').ExecutorRuntimeFingerprint;
+}
+
 /** Per-judge ensemble entry: which judge gave what score (mean over judge-repeat if N>1). */
 export interface EnsembleJudgeResult {
   /** "executor:model" identifier — e.g. "claude:opus" or "openai:gpt-4o". */

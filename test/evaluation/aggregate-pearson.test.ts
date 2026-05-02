@@ -28,7 +28,7 @@ describe('buildVariantSummary — aggregate-level judgeAgreement', () => {
       makeEntry([{ judge: 'claude:opus', score: 4 }, { judge: 'openai:gpt-4o', score: 4 }], 4),
     ];
     const summary = buildVariantSummary(entries);
-    assert.deepEqual(summary.judgeModels, ['claude:opus', 'openai:gpt-4o']);
+    assert.deepEqual(summary.judgeModels, [{ executor: 'claude', model: 'opus' }, { executor: 'openai', model: 'gpt-4o' }]);
     assert.equal(summary.judgeAgreement?.pearson, 1);
     assert.equal(summary.judgeAgreement?.meanAbsDiff, 0);
     assert.equal(summary.judgeAgreement?.sampleCount, 5);
@@ -72,7 +72,7 @@ describe('buildVariantSummary — aggregate-level judgeAgreement', () => {
     const summary = buildVariantSummary(entries);
     // Only 1 sample, so judgeAgreement should be omitted (not enough for Pearson).
     // judgeModels list still surfaces.
-    assert.deepEqual(summary.judgeModels, ['claude:opus', 'openai:gpt-4o']);
+    assert.deepEqual(summary.judgeModels, [{ executor: 'claude', model: 'opus' }, { executor: 'openai', model: 'gpt-4o' }]);
     assert.equal(summary.judgeAgreement, undefined);
   });
 

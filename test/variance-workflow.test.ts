@@ -10,7 +10,7 @@ function makeReport(id: string, variantScores: Record<string, number>): Report {
     meta: {
       variants: Object.keys(variantScores),
       model: 'test-model',
-      judgeModel: 'test-judge',
+      judgeModels: [{ executor: 'claude', model: 'test-judge' }],
       executor: 'test-executor',
       sampleCount: 1,
       taskCount: 1,

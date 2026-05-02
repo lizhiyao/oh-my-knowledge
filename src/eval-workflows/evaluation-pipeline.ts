@@ -105,14 +105,15 @@ async function initializeEvaluationRunState({
   lengthDebias?: boolean;
   budget?: import('../types/index.js').EvalBudget;
 }): Promise<EvaluationRunState> {
+  const effectiveJudges: import('../types/index.js').JudgeConfig[] = judgeModels && judgeModels.length > 0
+    ? judgeModels
+    : [{ executor: judgeExecutorName, model: judgeModel }];
   const request = buildEvaluationRequest({
     samplesPath,
     skillDir,
     artifacts,
     model,
-    judgeModel: noJudge ? null : judgeModel,
     executor: executorName,
-    judgeExecutor: judgeExecutorName,
     noJudge,
     concurrency,
     timeoutMs,
@@ -125,7 +126,7 @@ async function initializeEvaluationRunState({
     repeat,
     batch,
     judgeRepeat,
-    judgeModels,
+    judgeModels: effectiveJudges,
     bootstrap,
     bootstrapSamples,
     lengthDebias,

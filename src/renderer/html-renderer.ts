@@ -35,7 +35,7 @@ function levelDot(level: VerdictLevel): string {
   }
 }
 
-type RuntimeMeta = Pick<EvaluationReport['meta'], 'executorRuntime' | 'executorRuntimes' | 'judgeRuntime' | 'judgeRuntimes'>;
+type RuntimeMeta = Pick<EvaluationReport['meta'], 'executorRuntime' | 'executorRuntimes' | 'judgeModels' | 'noJudge'>;
 
 function isEvaluationReport(document: ReportDocument): document is EvaluationReport {
   return document.kind === 'evaluation';
@@ -103,17 +103,21 @@ function pluralizeEn(count: number, singular: string, plural = `${singular}s`): 
 }
 
 function renderJudgeRuntimeTags(meta: RuntimeMeta, lang: Lang): string {
-  if (meta.judgeRuntimes && Object.keys(meta.judgeRuntimes).length > 0) {
-    return Object.entries(meta.judgeRuntimes)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, runtime]) => renderRuntimeTag(
-        runtime,
-        lang === 'zh' ? `评委指纹 ${key}` : `Judge runtime ${key}`,
-        lang,
-      ))
-      .join('');
+  if (meta.noJudge) return '';
+  const entries = meta.judgeModels ?? [];
+  if (entries.length === 0) return '';
+  if (entries.length === 1) {
+    return renderRuntimeTag(entries[0].runtime, lang === 'zh' ? '评委指纹' : 'Judge runtime', lang);
   }
-  return renderRuntimeTag(meta.judgeRuntime, lang === 'zh' ? '评委指纹' : 'Judge runtime', lang);
+  return entries
+    .slice()
+    .sort((a, b) => `${a.executor}:${a.model}`.localeCompare(`${b.executor}:${b.model}`))
+    .map((entry) => renderRuntimeTag(
+      entry.runtime,
+      lang === 'zh' ? `评委指纹 ${entry.executor}:${entry.model}` : `Judge runtime ${entry.executor}:${entry.model}`,
+      lang,
+    ))
+    .join('');
 }
 
 function renderExecutorRuntimeTags(meta: RuntimeMeta, lang: Lang): string {
@@ -452,10 +456,13 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
     ${verdictPill}
     <div class="meta-tags">
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
-      ${m.judgeModels && m.judgeModels.length >= 2
-        ? `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${m.judgeModels.map((j) => e(j)).join(' · ')}</span>`
-        : `<span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>`
-      }
+      ${(() => {
+        if (m.noJudge) return `<span class="meta-tag">${t('judge', lang)}: none</span>`;
+        const list = m.judgeModels ?? [];
+        if (list.length === 0) return `<span class="meta-tag">${t('judge', lang)}: —</span>`;
+        if (list.length === 1) return `<span class="meta-tag">${t('judge', lang)}: ${e(`${list[0].executor}:${list[0].model}`)}</span>`;
+        return `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${list.map((j) => e(`${j.executor}:${j.model}`)).join(' · ')}</span>`;
+      })()}
       ${m.judgeRepeat && m.judgeRepeat > 1 ? `<span class="meta-tag" title="${t('judgeStddevDesc', lang)}">${t('judgeRepeatLabel', lang)}: ${m.judgeRepeat}</span>` : ''}
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
       <span class="meta-tag"${execCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(totalExecCost, execCostReported)}</span>
@@ -542,10 +549,13 @@ export function renderBatchEvaluationDetail(report: BatchEvaluationReport | null
     <div class="meta-tags">
       <span class="meta-tag">${lang === 'zh' ? '类型' : 'type'}: batch evaluation</span>
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
-      ${m.judgeModels && m.judgeModels.length >= 2
-        ? `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${m.judgeModels.map((j) => e(j)).join(' · ')}</span>`
-        : `<span class="meta-tag">${t('judge', lang)}: ${e(m.judgeModel || 'none')}</span>`
-      }
+      ${(() => {
+        if (m.noJudge) return `<span class="meta-tag">${t('judge', lang)}: none</span>`;
+        const list = m.judgeModels ?? [];
+        if (list.length === 0) return `<span class="meta-tag">${t('judge', lang)}: —</span>`;
+        if (list.length === 1) return `<span class="meta-tag">${t('judge', lang)}: ${e(`${list[0].executor}:${list[0].model}`)}</span>`;
+        return `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${list.map((j) => e(`${j.executor}:${j.model}`)).join(' · ')}</span>`;
+      })()}
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
       ${renderExecutorRuntimeTags(m, lang)}${renderJudgeRuntimeTags(m, lang)}
       <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${t('totalCost', lang)}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>
