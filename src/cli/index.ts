@@ -20,6 +20,7 @@ import type {
   GitInfo,
   ReportStore,
   ProgressCallback,
+  JudgeConfig,
 } from '../types/index.js';
 
 // ---------------------------------------------------------------------------
@@ -867,7 +868,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
       target: { type: 'string' },
       samples: { type: 'string', default: 'eval-samples.json' },
       model: { type: 'string', default: 'sonnet' },
-      'judge-model': { type: 'string', default: 'haiku' },
+      'judge-models': { type: 'string', default: 'claude:haiku' },
       'improve-model': { type: 'string', default: 'sonnet' },
       concurrency: { type: 'string', default: '1' },
       timeout: { type: 'string', default: '120' },
@@ -890,6 +891,13 @@ async function handleEvolve(argv: string[]): Promise<void> {
   }
 
   const { evolveSkill } = await import('../authoring/evolver.js');
+  const { parseJudgeModelsArg } = await import('./parse-run-config.js');
+
+  const evolveJudges = parseJudgeModelsArg(values['judge-models'] as string);
+  if (evolveJudges.length > 1) {
+    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'evolve' }));
+    process.exit(2);
+  }
 
   process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
 
@@ -900,7 +908,7 @@ async function handleEvolve(argv: string[]): Promise<void> {
       rounds: Math.max(1, Number(values.rounds) || 5),
       target: values.target ? Number(values.target) : null,
       model: values.model as string,
-      judgeModel: values['judge-model'] as string,
+      judgeModel: evolveJudges[0].model,
       improveModel: values['improve-model'] as string,
       executorName: values.executor as string,
       concurrency: Math.max(1, Number(values.concurrency) || 1),
@@ -1379,8 +1387,7 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       samples: { type: 'string' },
       variant: { type: 'string' },
-      'judge-executor': { type: 'string', default: 'claude' },
-      'judge-model': { type: 'string' },
+      'judge-models': { type: 'string' },
       'bootstrap-samples': { type: 'string', default: '1000' },
       seed: { type: 'string' },
     },
@@ -1400,17 +1407,26 @@ async function handleDebiasValidate(argv: string[]): Promise<void> {
   const { loadSamples } = await import('../inputs/load-samples.js');
   const { samples } = loadSamples(samplesPath);
 
-  const judgeModel = (values['judge-model'] as string | undefined)
-    ?? report.meta?.judgeModel;
-  if (!judgeModel) {
+  const { parseJudgeModelsArg: parseJudgesA } = await import('./parse-run-config.js');
+  const debiasJudges: JudgeConfig[] = (values['judge-models'] as string | undefined) !== undefined
+    ? parseJudgesA(values['judge-models'] as string)
+    : (report.meta?.judgeModel
+        ? [{ executor: report.meta?.request?.judgeExecutor || 'claude', model: report.meta.judgeModel }]
+        : []);
+  if (debiasJudges.length === 0) {
     console.error(tCli('cli.common.no_judge_model', lang));
     process.exit(1);
+  }
+  if (debiasJudges.length > 1) {
+    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'debias-validate' }));
+    process.exit(2);
   }
 
   process.stderr.write(tCli('cli.debias.warn_cost_doubles', lang));
 
   const { createExecutor } = await import('../executors/index.js');
-  const judgeExecutor = createExecutor(values['judge-executor'] as string);
+  const judgeExecutor = createExecutor(debiasJudges[0].executor);
+  const judgeModel = debiasJudges[0].model;
   const { validateLengthDebias, formatDebiasValidate } = await import('../grading/debias-validate.js');
 
   const seedVal = values.seed != null ? Number(values.seed) : undefined;
@@ -1643,8 +1659,7 @@ async function handleFailures(argv: string[]): Promise<void> {
     options: {
       ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
-      'judge-executor': { type: 'string', default: 'claude' },
-      'judge-model': { type: 'string' },
+      'judge-models': { type: 'string' },
       'max-clusters': { type: 'string', default: '5' },
       threshold: { type: 'string', default: '3' },
       'max-feed': { type: 'string', default: '50' },
@@ -1655,14 +1670,24 @@ async function handleFailures(argv: string[]): Promise<void> {
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
 
-  const judgeModel = (values['judge-model'] as string | undefined) ?? report.meta?.judgeModel;
-  if (!judgeModel) {
+  const { parseJudgeModelsArg: parseJudgesB } = await import('./parse-run-config.js');
+  const failuresJudges: JudgeConfig[] = (values['judge-models'] as string | undefined) !== undefined
+    ? parseJudgesB(values['judge-models'] as string)
+    : (report.meta?.judgeModel
+        ? [{ executor: report.meta?.request?.judgeExecutor || 'claude', model: report.meta.judgeModel }]
+        : []);
+  if (failuresJudges.length === 0) {
     console.error(tCli('cli.common.no_judge_model', lang));
     process.exit(1);
   }
+  if (failuresJudges.length > 1) {
+    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'failures' }));
+    process.exit(2);
+  }
 
   const { createExecutor } = await import('../executors/index.js');
-  const executor = createExecutor(values['judge-executor'] as string);
+  const executor = createExecutor(failuresJudges[0].executor);
+  const judgeModel = failuresJudges[0].model;
   const { clusterFailures, formatFailureClusterReport } = await import('../analysis/failure-clusterer.js');
 
   const out = await clusterFailures({

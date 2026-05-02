@@ -70,6 +70,26 @@ export interface ParseRunConfigResult {
 export const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
 
 /**
+ * 解析 `--judge-models` CLI 参数:`executor:model[,executor:model,...]`。
+ * - 空字符串 / 全空 entry 抛错(避免 silent default)。
+ * - entry 格式 `executor:model`,缺一报错。
+ * - 1 entry = 单评委,≥ 2 = ensemble(由调用方决定是否接受 ensemble)。
+ */
+export function parseJudgeModelsArg(raw: string): JudgeConfig[] {
+  const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) {
+    throw new Error(`--judge-models cannot be empty`);
+  }
+  return parts.map((p) => {
+    const idx = p.indexOf(':');
+    if (idx <= 0 || idx === p.length - 1) {
+      throw new Error(`--judge-models entry must be 'executor:model' (got "${p}")`);
+    }
+    return { executor: p.slice(0, idx), model: p.slice(idx + 1) };
+  });
+}
+
+/**
  * 所有子命令都接受的通用 flag。
  */
 export const COMMON_OPTIONS: ParseArgsConfig['options'] = {
@@ -200,21 +220,8 @@ export function parseRunConfig(
   // judgeModels: unified judge config. Parse --judge-models (CLI) or evalConfig.judgeModels (yaml).
   // 1 entry = single judge, ≥ 2 entries = ensemble. Format `executor:model[,executor:model]`.
   // 出口 RunConfig.judgeModels 保证非空 (default `[{executor, model: 'haiku'}]`)。
-  let parsedJudges: import('../types/index.js').JudgeConfig[] | undefined;
   const cliJudgesRaw = values['judge-models'] as string | undefined;
-  if (cliJudgesRaw !== undefined) {
-    const parts = cliJudgesRaw.split(',').map((s) => s.trim()).filter(Boolean);
-    if (parts.length === 0) {
-      throw new Error(`--judge-models cannot be empty`);
-    }
-    parsedJudges = parts.map((p) => {
-      const idx = p.indexOf(':');
-      if (idx <= 0 || idx === p.length - 1) {
-        throw new Error(`--judge-models entry must be 'executor:model' (got "${p}")`);
-      }
-      return { executor: p.slice(0, idx), model: p.slice(idx + 1) };
-    });
-  }
+  const parsedJudges = cliJudgesRaw !== undefined ? parseJudgeModelsArg(cliJudgesRaw) : undefined;
   const judgeModels: JudgeConfig[] = parsedJudges
     ?? evalConfig?.judgeModels
     ?? [{ executor: executorName, model: 'haiku' }];

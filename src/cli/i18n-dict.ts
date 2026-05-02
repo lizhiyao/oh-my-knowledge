@@ -102,6 +102,7 @@ export type CliMessageKey =
   | 'cli.common.skill_file_not_found'
   | 'cli.common.report_not_found'
   | 'cli.common.no_judge_model'
+  | 'cli.common.judge_models_single_only'
   | 'cli.common.usage_gold_validate'
   | 'cli.common.warn_load_samples_failed'
   // bench gen-samples
@@ -378,8 +379,12 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'Report not found: {id}',
   },
   'cli.common.no_judge_model': {
-    zh: '未指定评委模型。请加 --judge-model <id>, 或确保 report.meta.judgeModel 已写。',
-    en: 'No judge model. Pass --judge-model <id> or ensure report has meta.judgeModel.',
+    zh: '未指定评委。请加 --judge-models <executor:model>, 或确保 report.meta.judgeModel 已写。',
+    en: 'No judge configured. Pass --judge-models <executor:model> or ensure the report has meta.judgeModel.',
+  },
+  'cli.common.judge_models_single_only': {
+    zh: 'bench {cmd} 仅支持单评委。--judge-models 只能传一个 executor:model entry。',
+    en: 'bench {cmd} only supports a single judge. --judge-models accepts exactly one executor:model entry.',
   },
   'cli.common.usage_gold_validate': {
     zh: '用法: omk bench gold validate <dir>',
@@ -652,7 +657,7 @@ bench evolve 选项:
   --target <score>       达到该分数即提前停止
   --samples <path>       用例文件 (默认: eval-samples.json)
   --model <name>         任务执行模型 (默认: sonnet)
-  --judge-model <name>   评委模型 (默认: haiku)
+  --judge-models <executor:model>  评委 (默认: claude:haiku, evolve 仅支持单评委)
   --improve-model <name> 生成改进版的模型 (默认: sonnet)
   --concurrency <n>      并发评测任务数 (默认: 1)
   --timeout <seconds>    单任务执行超时 (秒, 默认: 120)
@@ -806,7 +811,7 @@ Options for "bench evolve":
   --target <score>       Stop early when score reaches this threshold
   --samples <path>       Sample file (default: eval-samples.json)
   --model <name>         Task execution model (default: sonnet)
-  --judge-model <name>   Judge model (default: haiku)
+  --judge-models <executor:model>  Judge config (default: claude:haiku; evolve is single-judge only)
   --improve-model <name> Model for generating improvements (default: sonnet)
   --concurrency <n>      Parallel eval tasks (default: 1)
   --timeout <seconds>    Executor timeout per task in seconds (default: 120)
@@ -898,8 +903,7 @@ Examples:
       '  --reports-dir <dir>          报告存储目录 (默认: ~/.oh-my-knowledge/reports)',
       '  --samples <path>             覆盖用例文件 (默认: 从 report.meta.request 读)',
       '  --variant <name>             校验哪个 variant (默认: 第一个)',
-      '  --judge-executor <name>      评委调用执行器 (默认: claude)',
-      '  --judge-model <model>        评委模型 ID (默认: 沿用 report)',
+      '  --judge-models <executor:model>  评委 (默认: 沿用 report.meta.judgeModel; debias-validate 仅支持单评委)',
       '  --bootstrap-samples N        bootstrap 迭代次数 (默认 1000)',
       '  --seed N                     固定 CI 随机种子',
       '',
@@ -916,8 +920,7 @@ Examples:
       '  --reports-dir <dir>          report store dir (default: ~/.oh-my-knowledge/reports)',
       '  --samples <path>             override samples file (default: from report.meta.request)',
       '  --variant <name>             which variant to validate (default: first)',
-      '  --judge-executor <name>      executor for judge calls (default: claude)',
-      '  --judge-model <model>        judge model id (default: from report)',
+      '  --judge-models <executor:model>  Judge (default: from report.meta.judgeModel; debias-validate is single-judge only)',
       '  --bootstrap-samples N        bootstrap iterations (default 1000)',
       '  --seed N                     deterministic CI seed',
       '',
@@ -1052,8 +1055,7 @@ Examples:
       '',
       '选项:',
       '  --reports-dir <dir>      报告存储目录',
-      '  --judge-executor <name>  执行器 (默认: claude)',
-      '  --judge-model <id>       聚类用的模型 (默认: 沿用 report.meta.judgeModel)',
+      '  --judge-models <executor:model>  评委 (默认: 沿用 report.meta.judgeModel; failures 仅支持单评委)',
       '  --max-clusters <n>       最多聚成几类 (默认 5)',
       '  --threshold <num>        compositeScore < threshold 算失败 (默认 3)',
       '  --max-feed <n>           最多喂给 LLM 多少条 (默认 50, 超出取最差)',
@@ -1069,8 +1071,7 @@ Examples:
       '',
       'Options:',
       '  --reports-dir <dir>      report store dir',
-      '  --judge-executor <name>  executor (default: claude)',
-      '  --judge-model <id>       model for clustering (default: from report.meta.judgeModel)',
+      '  --judge-models <executor:model>  Judge (default: from report.meta.judgeModel; failures is single-judge only)',
       '  --max-clusters <n>       max number of clusters (default 5)',
       '  --threshold <num>        compositeScore < threshold counts as failure (default 3)',
       '  --max-feed <n>           max samples to feed the LLM (default 50, takes the worst)',
