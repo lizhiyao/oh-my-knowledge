@@ -1,8 +1,9 @@
-import { parseArgs, type ParseArgsConfig } from 'node:util';
+import { type ParseArgsConfig } from 'node:util';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { discoverVariants, parseVariantCwd } from '../inputs/skill-loader.js';
+import { parseArgsStrictOrExit } from './parse-strict.js';
 import { loadEvalConfig, configVariantsToSpecs } from '../inputs/eval-config.js';
 import type {
   EvalConfig,
@@ -17,7 +18,6 @@ export interface RunConfig {
   skillDir: string;
   variantSpecs: VariantSpec[];
   model: string | undefined;
-  judgeModel: string | undefined;
   outputDir: string;
   noJudge: boolean | undefined;
   noCache: boolean | undefined;
@@ -25,8 +25,11 @@ export interface RunConfig {
   concurrency: number;
   timeoutMs: number;
   executorName: string | undefined;
-  judgeExecutorName: string | undefined;
-  skipPreflight: boolean | undefined;
+  /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。
+   *  doctor 是 mandatory 不提供 skip — 静态检查无成本理由跳过。 */
+  skipConnectivity: boolean | undefined;
+  /** 用户语言, 透传给 doctor 报告渲染。 */
+  lang: 'zh' | 'en' | undefined;
   mcpConfig: string | undefined;
   verbose: boolean | undefined;
   blind?: boolean | undefined;
@@ -35,13 +38,14 @@ export interface RunConfig {
   layeredStats?: boolean;
   /** --judge-repeat N. Calls LLM judge N times per (sample × dimension). Default 1. */
   judgeRepeat?: number;
-  /** --judge-models executor:model,executor:model,... — multi-judge ensemble (≥ 2 entries). */
-  judgeModels?: JudgeConfig[];
+  /** Unified judge config. Always non-empty; 1 entry = single judge, ≥ 2 = ensemble.
+   *  parseRunConfig guarantees at least `[{executor: <executor>, model: 'haiku'}]`. */
+  judgeModels: JudgeConfig[];
   /** --bootstrap. Adds bootstrap CI to summary (per-variant mean + pairwise diff). */
   bootstrap?: boolean;
   /** --bootstrap-samples N. Bootstrap resamples count, default 1000. */
   bootstrapSamples?: number;
-  /** v0.21 Phase 3a length-debias toggle. Default true; --no-debias-length sets false. */
+  /** length-debias toggle. Default true; --no-debias-length sets false. */
   lengthDebias?: boolean;
   /** hard budget caps from CLI or config. */
   budget?: EvalBudget;
@@ -57,13 +61,65 @@ export interface RunConfig {
 export interface ParseRunConfigResult {
   values: Record<string, string | boolean | undefined>;
   config: RunConfig;
+  /** Loaded eval.yaml when --config was provided. handleRun uses it to apply
+   *  CLI > eval.yaml > default fallback for fields not propagated by parseRunConfig
+   *  (e.g. repeat / judgeRepeat / bootstrap — handled in handleRun for input validation). */
+  evalConfig: EvalConfig | null;
 }
 
 export const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
 
 /**
- * 所有子命令都接受的通用 flag。新增 --lang 让 parseArgs strict:false 模式下
- * 仍能把值类型化到 values.lang 上(否则未声明的 flag 会被丢弃)。
+ * 解析 `--judge-models` CLI 参数:`executor:model[,executor:model,...]`。
+ * - 空字符串 / 全空 entry 抛错(避免 silent default)。
+ * - entry 格式 `executor:model`,缺一报错。
+ * - 重复 `executor:model` 拒绝(否则 ensemble 聚合用 Map<judgeId, scores> 会把
+ *   同 id 合并,N 不可信、agreement 失真;而 grading 阶段又会按 entry 数实际跑 N 次)。
+ * - 1 entry = 单评委,≥ 2 = ensemble(由调用方决定是否接受 ensemble)。
+ */
+export function parseJudgeModelsArg(raw: string): JudgeConfig[] {
+  const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (parts.length === 0) {
+    throw new Error(`--judge-models cannot be empty`);
+  }
+  const result: JudgeConfig[] = [];
+  const seen = new Set<string>();
+  for (const p of parts) {
+    const idx = p.indexOf(':');
+    if (idx <= 0 || idx === p.length - 1) {
+      throw new Error(`--judge-models entry must be 'executor:model' (got "${p}")`);
+    }
+    const executor = p.slice(0, idx);
+    const model = p.slice(idx + 1);
+    const key = `${executor}:${model}`;
+    if (seen.has(key)) {
+      throw new Error(`--judge-models has duplicate entry "${key}"; ensemble 聚合按 executor:model 去重,重复条目会让 N 不可信、agreement 失真`);
+    }
+    seen.add(key);
+    result.push({ executor, model });
+  }
+  return result;
+}
+
+/**
+ * Friendly CLI wrapper around `parseJudgeModelsArg`. On parse error prints
+ * `error: <msg>` to stderr and exits 2 — matching `parseArgsStrict` 对 unknown
+ * option 的行为(exit 2 = parser/参数错误,区别于 doctor / gate eval failure 的
+ * exit 1)。CLI 层 `bench run` / `bench evolve` / `bench debias-validate` /
+ * `bench failures` 共享这一份。
+ */
+export function parseJudgeModelsArgOrExit(raw: string): JudgeConfig[] {
+  try {
+    return parseJudgeModelsArg(raw);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`error: ${msg}`);
+    process.exit(2);
+  }
+}
+
+/**
+ * 所有子命令都接受的通用 flag。
  */
 export const COMMON_OPTIONS: ParseArgsConfig['options'] = {
   lang: { type: 'string' },
@@ -81,7 +137,7 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   treatment: { type: 'string' },
   config: { type: 'string' },
   model: { type: 'string' },
-  'judge-model': { type: 'string' },
+  'judge-models': { type: 'string' },
   'output-dir': { type: 'string' },
   'no-judge': { type: 'boolean' },
   'no-cache': { type: 'boolean' },
@@ -89,9 +145,8 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   concurrency: { type: 'string' },
   timeout: { type: 'string' },
   executor: { type: 'string' },
-  'judge-executor': { type: 'string' },
   batch: { type: 'boolean' },
-  'skip-preflight': { type: 'boolean' },
+  'skip-connectivity': { type: 'boolean' },
   'mcp-config': { type: 'string' },
   'no-serve': { type: 'boolean' },
   verbose: { type: 'boolean' },
@@ -108,10 +163,11 @@ export function parseRunConfig(
   argv: string[],
   extraOptions: ParseArgsConfig['options'] = {},
 ): ParseRunConfigResult {
-  const { values } = parseArgs({
+  // strict 模式: 未知 option 报错 + exit 2(已删 / 改名 flag 自然 fail,
+  // 不维护 deprecation list)。详见 src/cli/parse-strict.ts。
+  const { values } = parseArgsStrictOrExit({
     args: argv,
     options: { ...RUN_OPTIONS, ...extraOptions },
-    strict: false,
   });
 
   if (values.variants !== undefined) {
@@ -188,14 +244,16 @@ export function parseRunConfig(
 
   // 4) Apply CLI > config > hard-coded default for all other fields.
   const executorName = (values.executor as string | undefined) ?? evalConfig?.executor ?? 'claude';
-  const judgeExecutorName =
-    (values['judge-executor'] as string | undefined) ?? evalConfig?.judgeExecutor ?? executorName;
   const model = (values.model as string | undefined) ?? evalConfig?.model ?? 'sonnet';
-  const judgeModelRaw =
-    values['judge-model'] !== undefined
-      ? (values['judge-model'] as string | undefined)
-      : evalConfig?.judgeModel ?? 'haiku';
-  const judgeModel = judgeModelRaw ?? 'haiku';
+
+  // judgeModels: unified judge config. Parse --judge-models (CLI) or evalConfig.judgeModels (yaml).
+  // 1 entry = single judge, ≥ 2 entries = ensemble. Format `executor:model[,executor:model]`.
+  // 出口 RunConfig.judgeModels 保证非空 (default `[{executor, model: 'haiku'}]`)。
+  const cliJudgesRaw = values['judge-models'] as string | undefined;
+  const parsedJudges = cliJudgesRaw !== undefined ? parseJudgeModelsArgOrExit(cliJudgesRaw) : undefined;
+  const judgeModels: JudgeConfig[] = parsedJudges
+    ?? evalConfig?.judgeModels
+    ?? [{ executor: executorName, model: 'haiku' }];
   const outputDir = resolve((values['output-dir'] as string | undefined) ?? DEFAULT_REPORTS_DIR);
   const concurrencyRaw =
     (values.concurrency as string | undefined) !== undefined
@@ -209,10 +267,10 @@ export function parseRunConfig(
         ? evalConfig.timeoutMs / 1000
         : 120;
   const timeoutMs = Math.max(1, Number(timeoutSec) || 120) * 1000;
-  const noJudge = (values['no-judge'] as boolean | undefined) ?? false;
+  const noJudge = (values['no-judge'] as boolean | undefined) ?? evalConfig?.noJudge ?? false;
   const noCache = (values['no-cache'] as boolean | undefined) ?? evalConfig?.noCache ?? false;
   const dryRun = (values['dry-run'] as boolean | undefined) ?? false;
-  const skipPreflight = (values['skip-preflight'] as boolean | undefined) ?? false;
+  const skipConnectivity = (values['skip-connectivity'] as boolean | undefined) ?? false;
   const mcpConfig = (values['mcp-config'] as string | undefined) ?? evalConfig?.mcpConfig;
   const verbose = (values.verbose as boolean | undefined) ?? false;
   const retry = Math.max(0, Number(values.retry ?? 0) || 0);
@@ -220,11 +278,15 @@ export function parseRunConfig(
   const blind = (values.blind as boolean | undefined) ?? evalConfig?.blind ?? false;
   const layeredStats = (values['layered-stats'] as boolean | undefined) ?? false;
 
-  // strict-baseline default true. Reconcile both flag forms.
-  // Priority: --no-strict-baseline > --strict-baseline > undefined(=true).
+  // strict-baseline default true. Reconcile both flag forms with eval.yaml fallback.
+  // Priority: --no-strict-baseline > --strict-baseline > eval.yaml strictBaseline > true。
   const noStrictFlag = values['no-strict-baseline'] as boolean | undefined;
   const strictFlag = values['strict-baseline'] as boolean | undefined;
-  const strictBaseline: boolean = noStrictFlag === true ? false : (strictFlag ?? true);
+  const strictBaseline: boolean = noStrictFlag === true
+    ? false
+    : strictFlag === true
+      ? true
+      : (evalConfig?.strictBaseline ?? true);
 
   // extract eval.yaml variant.allowedSkills overrides (per-variant). Always
   // wins over strictBaseline default. Empty object when no eval.yaml or no overrides.
@@ -244,7 +306,6 @@ export function parseRunConfig(
       skillDir,
       variantSpecs,
       model,
-      judgeModel,
       outputDir,
       noJudge,
       noCache,
@@ -252,8 +313,8 @@ export function parseRunConfig(
       concurrency,
       timeoutMs,
       executorName,
-      judgeExecutorName,
-      skipPreflight,
+      skipConnectivity,
+      lang: undefined, // CLI 入口在 handleRun/handleGate 里注入
       mcpConfig,
       verbose,
       retry,
@@ -262,7 +323,9 @@ export function parseRunConfig(
       layeredStats,
       budget: evalConfig?.budget,
       strictBaseline,
+      judgeModels,
       ...(Object.keys(variantAllowedSkills).length > 0 && { variantAllowedSkills }),
     },
+    evalConfig,
   };
 }

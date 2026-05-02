@@ -227,23 +227,21 @@ export function aggregateReport({
 
   const sampleHashes = Object.fromEntries(samples.map((s) => [s.sample_id, hashSample(s)]));
   const judgeRepeat = request?.judgeRepeat && request.judgeRepeat > 1 ? request.judgeRepeat : undefined;
-  const judgeModelsList = request?.judgeModels && request.judgeModels.length >= 2
-    ? request.judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
-    : undefined;
-  const isJudgeEnsemble = Boolean(judgeModelsList);
-  const effectiveJudgeExecutorName = request?.judgeExecutor || executorName;
   const runtimeOptions = { skillDir: request?.skillDir };
   const executorRuntimes = buildExecutorRuntimesByVariant({ variants, model, executorName, tasks, artifacts, request });
   const executorRuntime = commonRuntime(executorRuntimes)
     ?? representativeRuntime(executorRuntimes)
     ?? getExecutorRuntimeFingerprint(executorName, model, runtimeOptions);
-  const judgeRuntime = noJudge || isJudgeEnsemble ? null : getExecutorRuntimeFingerprint(effectiveJudgeExecutorName, judgeModel, runtimeOptions);
-  const judgeRuntimes = request?.judgeModels && request.judgeModels.length >= 2
-    ? Object.fromEntries(
-      request.judgeModels.map((jc) => [`${jc.executor}:${jc.model}`, getExecutorRuntimeFingerprint(jc.executor, jc.model, runtimeOptions)]),
-    )
-    : undefined;
-  // v0.21 Phase 3a: length-debias is on by default; the request only sets it
+  // request.judgeModels is the authoritative source (always non-empty in new schema).
+  // Fallback synthesizes a 1-entry from positional judgeModel/executorName for any
+  // legacy caller not yet migrated to the array. noJudge ⇒ runtime undefined per entry.
+  const requestJudges = request?.judgeModels ?? [{ executor: executorName, model: judgeModel }];
+  const judgeModelsMeta: import('../types/index.js').JudgeRuntimeEntry[] = requestJudges.map((jc) => ({
+    executor: jc.executor,
+    model: jc.model,
+    ...(noJudge ? {} : { runtime: getExecutorRuntimeFingerprint(jc.executor, jc.model, runtimeOptions) }),
+  }));
+  // length-debias is on by default; the request only sets it
   // false when the user passed --no-debias-length. The hash differs between
   // v3-cot-length (on) and v2-cot (off) so readers can detect the divergence.
   const lengthDebiasOn = request?.lengthDebias !== false;
@@ -258,7 +256,6 @@ export function aggregateReport({
     meta: {
       variants,
       model,
-      judgeModel: noJudge || isJudgeEnsemble ? null : judgeModel,
       executor: executorName,
       sampleCount: samples.length,
       taskCount: tasks.length,
@@ -272,10 +269,9 @@ export function aggregateReport({
       ...(noJudge ? {} : { judgePromptHash: getJudgePromptHash(lengthDebiasOn) }),
       executorRuntime,
       executorRuntimes,
-      judgeRuntime,
-      ...(judgeRuntimes ? { judgeRuntimes } : {}),
+      judgeModels: judgeModelsMeta,
+      ...(noJudge ? { noJudge: true } : {}),
       ...(judgeRepeat ? { judgeRepeat } : {}),
-      ...(judgeModelsList ? { judgeModels: judgeModelsList } : {}),
       ...(debiasModeList.length > 0 ? { debiasMode: debiasModeList } : {}),
       ...(bootstrapEnabled ? { evaluationFramework: 'both' as const } : {}),
       ...(pairComparisons ? { pairComparisons } : {}),

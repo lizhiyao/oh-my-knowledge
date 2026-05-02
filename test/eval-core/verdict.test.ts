@@ -17,7 +17,7 @@ const buildReport = (overrides: Partial<Report> & { variants: string[]; perVaria
   id: 'r1',
   meta: {
     variants: overrides.variants,
-    model: 'm', judgeModel: 'j', executor: 'claude',
+    model: 'm', judgeModels: [{ executor: 'claude', model: 'j' }], executor: 'claude',
     sampleCount: 30, taskCount: 30, totalCostUSD: 0,
     timestamp: '2026-04-25T00:00:00Z', cliVersion: 'test', nodeVersion: 'test',
     artifactHashes: Object.fromEntries(overrides.variants.map((v) => [v, 'h'])),

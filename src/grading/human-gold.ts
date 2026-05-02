@@ -3,7 +3,7 @@
  *
  * Why this module exists
  * ----------------------
- * Bootstrap CI (Phase 1) gives us *precision* — how stable the judge is across
+ * Bootstrap CI gives us *precision* — how stable the judge is across
  * resampled evaluations. It does not give us *validity* — whether the judge is
  * scoring the right thing at all. A judge can be extremely consistent (CI very
  * narrow) and yet systematically biased; that's an undetected failure mode.

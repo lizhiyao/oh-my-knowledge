@@ -6,17 +6,23 @@ on:
   pull_request:
     branches: [main, develop]
 
+# 同 PR 推 N 次只跑最后一次, 省 GitHub Actions minutes。main / develop push 同样适用。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [20, 22]
+        node-version: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
+          cache: yarn
       - run: yarn install --frozen-lockfile
       - run: yarn lint
       - run: yarn build

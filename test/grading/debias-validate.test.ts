@@ -43,7 +43,7 @@ const buildReport = (
   meta: {
     variants: [variant],
     model: 'test-model',
-    judgeModel: 'test-judge',
+    judgeModels: [{ executor: 'claude', model: 'test-judge' }],
     executor: 'claude',
     sampleCount: rows.length,
     taskCount: rows.length,

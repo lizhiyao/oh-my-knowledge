@@ -12,7 +12,7 @@ omk bench run [选项]
   --skill-dir <路径>     skill 目录（默认：skills）
   --variants <a,b>       变体名称，不指定时自动从 skill 目录发现
   --model <名称>         被测模型（默认：sonnet）
-  --judge-model <名称>   评委模型（默认：haiku）
+  --judge-models <executor:model[,executor:model]>  评委（默认：claude:haiku；≥ 2 = ensemble）
   --concurrency <n>      并行任务数（默认：1）
   --timeout <秒>         单个任务的执行器超时时间（默认：120）
   --no-judge             跳过 LLM 评分

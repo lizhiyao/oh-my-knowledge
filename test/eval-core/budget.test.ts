@@ -39,8 +39,10 @@ describe('executeTasks —  budget tracker', () => {
     const tasks = ['s1', 's2', 's3', 's4', 's5'].map(task);
     const exec = makeExecutor(0.4); // each task costs $0.4
     const r = await executeTasks({
-      tasks, executor: exec, judgeExecutor: judgeNoop,
-      model: 'm', judgeModel: 'j', noJudge: true,
+      tasks, executor: exec,
+      judgeModels: [{ executor: 'claude', model: 'j' }],
+      judgeExecutors: { claude: judgeNoop },
+      model: 'm', noJudge: true,
       samplesPath: './x.json', concurrency: 1, noCache: true, verbose: false,
       budget: { totalUSD: 1 }, // budget exhausted after 3 tasks
     });
@@ -59,8 +61,10 @@ describe('executeTasks —  budget tracker', () => {
     const tasks = ['s1', 's2'].map(task);
     const exec = makeExecutor(0.1);
     const r = await executeTasks({
-      tasks, executor: exec, judgeExecutor: judgeNoop,
-      model: 'm', judgeModel: 'j', noJudge: true,
+      tasks, executor: exec,
+      judgeModels: [{ executor: 'claude', model: 'j' }],
+      judgeExecutors: { claude: judgeNoop },
+      model: 'm', noJudge: true,
       samplesPath: './x.json', concurrency: 1, noCache: true, verbose: false,
       budget: { totalUSD: 5 },
     });
@@ -72,8 +76,10 @@ describe('executeTasks —  budget tracker', () => {
     const tasks = ['s1', 's2'].map(task);
     const exec = makeExecutor(0.5); // exceeds perSampleUSD cap of 0.3
     const r = await executeTasks({
-      tasks, executor: exec, judgeExecutor: judgeNoop,
-      model: 'm', judgeModel: 'j', noJudge: true,
+      tasks, executor: exec,
+      judgeModels: [{ executor: 'claude', model: 'j' }],
+      judgeExecutors: { claude: judgeNoop },
+      model: 'm', noJudge: true,
       samplesPath: './x.json', concurrency: 1, noCache: true, verbose: false,
       budget: { perSampleUSD: 0.3 },
     });
@@ -91,8 +97,10 @@ describe('executeTasks —  budget tracker', () => {
     const tasks = [task('slow')];
     const exec = makeExecutor(0.001, 100); // 100 ms exec
     const r = await executeTasks({
-      tasks, executor: exec, judgeExecutor: judgeNoop,
-      model: 'm', judgeModel: 'j', noJudge: true,
+      tasks, executor: exec,
+      judgeModels: [{ executor: 'claude', model: 'j' }],
+      judgeExecutors: { claude: judgeNoop },
+      model: 'm', noJudge: true,
       samplesPath: './x.json', concurrency: 1, noCache: true, verbose: false,
       budget: { perSampleMs: 30 }, // 30 ms cap → 100ms exec must trip it
     });
@@ -105,8 +113,10 @@ describe('executeTasks —  budget tracker', () => {
     const tasks = ['s1', 's2', 's3'].map(task);
     const exec = makeExecutor(0.5);
     const r = await executeTasks({
-      tasks, executor: exec, judgeExecutor: judgeNoop,
-      model: 'm', judgeModel: 'j', noJudge: true,
+      tasks, executor: exec,
+      judgeModels: [{ executor: 'claude', model: 'j' }],
+      judgeExecutors: { claude: judgeNoop },
+      model: 'm', noJudge: true,
       samplesPath: './x.json', concurrency: 1, noCache: true, verbose: false,
     });
     assert.equal(r.budgetExhausted, false);

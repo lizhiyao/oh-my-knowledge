@@ -191,8 +191,8 @@ describe('grade with judgeRepeat', () => {
     const result = await grade({
       output: 'an output',
       sample,
-      executor,
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: executor },
       judgeRepeat: 3,
     });
     assert.deepEqual(result.llmScoreSamples, [3, 5, 4]);
@@ -204,7 +204,9 @@ describe('grade with judgeRepeat', () => {
     const executor = makeStubJudgeExecutor([4]);
     const sample: Sample = { sample_id: 's', prompt: 'p', rubric: 'r' };
     const result = await grade({
-      output: 'o', sample, executor, judgeModel: 'haiku',
+      output: 'o', sample,
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: executor },
     });
     // The stub returns reasoning="stub reasoning" — without the schema fix
     // this would be silently dropped between grade() and the report.
@@ -221,8 +223,8 @@ describe('grade with judgeRepeat', () => {
     const result = await grade({
       output: 'output',
       sample,
-      executor,
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: executor },
     });
     assert.equal(result.llmScore, 4);
     assert.equal(result.llmScoreSamples, undefined);
@@ -240,8 +242,8 @@ describe('grade with judgeRepeat', () => {
     const result = await grade({
       output: 'output',
       sample,
-      executor,
-      judgeModel: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
+      judgeExecutors: { claude: executor },
       judgeRepeat: 2,
     });
     assert.ok(result.dimensions);
@@ -401,8 +403,6 @@ describe('grade with ensemble (judgeModels >= 2)', () => {
     const result = await grade({
       output: 'o',
       sample,
-      executor: claude,  // legacy single executor (still required by grade signature)
-      judgeModel: 'opus',
       judgeModels: [
         { executor: 'claude', model: 'opus' },
         { executor: 'openai', model: 'gpt-4o' },
@@ -426,8 +426,6 @@ describe('grade with ensemble (judgeModels >= 2)', () => {
     const result = await grade({
       output: 'o',
       sample,
-      executor: claude,
-      judgeModel: 'opus',
       judgeModels: [
         { executor: 'claude', model: 'opus' },
         { executor: 'openai', model: 'gpt-4o' },

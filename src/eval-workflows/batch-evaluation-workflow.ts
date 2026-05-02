@@ -31,7 +31,8 @@ interface RunSingleEvaluationOptions {
   jobStore: null;
   persistJob: false;
   onProgress: ProgressCallback | null;
-  skipPreflight: boolean;
+  skipConnectivity: boolean;
+  lang?: 'zh' | 'en';
   mcpConfig?: string;
   verbose: boolean;
   runId?: string;
@@ -39,7 +40,7 @@ interface RunSingleEvaluationOptions {
   judgeRepeat?: number;
   /** Forwarded to pipeline; >= 2 entries triggers multi-judge ensemble mode. */
   judgeModels?: import('../types/index.js').JudgeConfig[];
-  /** v0.21 Phase 3a length-debias toggle. Default true. */
+  /** length-debias toggle. Default true. */
   lengthDebias?: boolean;
 }
 
@@ -151,6 +152,9 @@ export function buildBatchEvaluationReport({
   judgeModels?: import('../types/index.js').JudgeConfig[];
   noCache: boolean;
 }): { report: BatchEvaluationReport; job: import('../types/index.js').EvaluationJob } {
+  const effectiveBatchJudges = judgeModels && judgeModels.length > 0
+    ? judgeModels
+    : [{ executor: judgeExecutorName || executorName, model: judgeModel }];
   const request = buildEvaluationRequest({
     samplesPath: '',
     skillDir,
@@ -162,9 +166,7 @@ export function buildBatchEvaluationReport({
       locator: entry.skillPath,
     })),
     model,
-    judgeModel: noJudge ? null : judgeModel,
     executor: executorName,
-    judgeExecutor: judgeExecutorName || executorName,
     noJudge,
     concurrency,
     timeoutMs,
@@ -175,7 +177,7 @@ export function buildBatchEvaluationReport({
     owner,
     tags,
     repeat,
-    judgeModels,
+    judgeModels: effectiveBatchJudges,
     batch: true,
   });
   const createdAt = new Date().toISOString();
@@ -196,11 +198,16 @@ export function buildBatchEvaluationReport({
   const executorRuntime = commonRuntime(executorRuntimes)
     ?? Object.values(executorRuntimes)[0]
     ?? getExecutorRuntimeFingerprint(executorName, model, { skillDir });
-  const isJudgeEnsemble = Boolean(judgeModels && judgeModels.length >= 2);
   const totalCostReported = skillResults.every((skill) =>
     skill.report.meta.totalCostReported !== false
     && Object.values(skill.report.summary || {}).every((variant) =>
       variant.execCostReported !== false && variant.judgeCostReported !== false));
+
+  const judgeModelsMeta: import('../types/index.js').JudgeRuntimeEntry[] = effectiveBatchJudges.map((jc) => ({
+    executor: jc.executor,
+    model: jc.model,
+    ...(noJudge ? {} : { runtime: getExecutorRuntimeFingerprint(jc.executor, jc.model, { skillDir }) }),
+  }));
 
   const report: BatchEvaluationReport = {
     kind: 'batch-evaluation',
@@ -209,7 +216,6 @@ export function buildBatchEvaluationReport({
     meta: {
       mode: 'skill',
       model,
-      judgeModel: noJudge || isJudgeEnsemble ? null : judgeModel,
       executor: executorName,
       skillDir,
       sampleCount,
@@ -222,13 +228,8 @@ export function buildBatchEvaluationReport({
       nodeVersion: process.version,
       executorRuntime,
       executorRuntimes,
-      judgeRuntime: noJudge || isJudgeEnsemble ? null : getExecutorRuntimeFingerprint(judgeExecutorName || executorName, judgeModel, { skillDir }),
-      ...(judgeModels && judgeModels.length >= 2 ? {
-        judgeModels: judgeModels.map((jc) => `${jc.executor}:${jc.model}`),
-        judgeRuntimes: Object.fromEntries(
-          judgeModels.map((jc) => [`${jc.executor}:${jc.model}`, getExecutorRuntimeFingerprint(jc.executor, jc.model, { skillDir })]),
-        ),
-      } : {}),
+      judgeModels: judgeModelsMeta,
+      ...(noJudge ? { noJudge: true } : {}),
       request,
       run,
       job,
@@ -258,7 +259,8 @@ export async function executeBatchEvaluationRuns({
   persistJob = true,
   onProgress = null,
   onSkillProgress = null,
-  skipPreflight = false,
+  skipConnectivity = false,
+  lang = 'zh',
   mcpConfig,
   verbose = false,
   repeat,
@@ -287,7 +289,8 @@ export async function executeBatchEvaluationRuns({
   persistJob?: boolean;
   onProgress?: ProgressCallback | null;
   onSkillProgress?: ((info: { phase: string; skill: string; current: number; total: number }) => void) | null;
-  skipPreflight?: boolean;
+  skipConnectivity?: boolean;
+  lang?: 'zh' | 'en';
   mcpConfig?: string;
   verbose?: boolean;
   repeat?: number;
@@ -340,7 +343,8 @@ export async function executeBatchEvaluationRuns({
       jobStore: null,
       persistJob: false,
       onProgress,
-      skipPreflight: skipPreflight || i > 0,
+      skipConnectivity: skipConnectivity || i > 0,
+      lang,
       mcpConfig,
       verbose,
       runId: childRunId,

@@ -85,7 +85,6 @@ export async function prepareEvaluationRun({
 
 export function buildDryRunTaskReport({
   model,
-  judgeModel,
   judgeModels,
   executorName,
   samplesPath,
@@ -94,22 +93,17 @@ export function buildDryRunTaskReport({
   variantNames,
 }: {
   model: string;
-  judgeModel: string;
-  judgeModels?: JudgeConfig[];
+  judgeModels: JudgeConfig[];
   executorName: string;
   samplesPath: string;
   skillDir: string;
   tasks: Task[];
   variantNames: string[];
 }) {
-  const judgeModelList = judgeModels && judgeModels.length >= 2
-    ? judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
-    : undefined;
   return {
     dryRun: true as const,
     model,
-    judgeModel: judgeModelList ? null : judgeModel,
-    ...(judgeModelList ? { judgeModels: judgeModelList } : {}),
+    judgeModels,
     variants: variantNames,
     executor: executorName,
     samplesPath,
@@ -136,19 +130,3 @@ export function buildDryRunTaskReport({
   };
 }
 
-export function buildDryRunBatchArtifacts(skillEntries: Array<{ name: string; skillPath: string; samplesPath: string }>) {
-  const artifacts = skillEntries.map((entry) => {
-    const { samples } = loadSamples(entry.samplesPath);
-    return {
-      name: entry.name,
-      samplesPath: entry.samplesPath,
-      sampleCount: samples.length,
-      taskCount: samples.length * 2,
-    };
-  });
-
-  return {
-    artifacts,
-    totalTasks: artifacts.reduce((sum, artifact) => sum + artifact.taskCount, 0),
-  };
-}

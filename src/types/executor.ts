@@ -77,3 +77,54 @@ export interface McpServerDef {
 }
 
 export type McpServers = Record<string, McpServerDef>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Executor runtime fingerprint — describes which binary / SDK actually ran the
+// executor at run time, plus capability flags. Persisted on Report.meta and
+// Report.meta.judgeModels[i].runtime so cross-version reports can audit binary
+// / SDK parity. Lives here (not in report.ts) because it is fundamentally an
+// executor concept, and keeping it here breaks the judge.ts ↔ report.ts type
+// import cycle.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ExecutorRuntimeKind = 'agent-cli' | 'agent-sdk' | 'api' | 'script' | 'unknown';
+
+export type ExecutorSystemPromptMode = 'native' | 'prepended' | 'none' | 'unknown';
+
+export type ExecutorCostMode = 'reported' | 'not-reported' | 'unknown';
+
+export type ExecutorTraceMode = 'native' | 'best-effort' | 'none' | 'unknown';
+
+export type ExecutorSkillIsolationMode = 'full' | 'full-no-partial' | 'cwd-only' | 'none' | 'unknown';
+
+export interface ExecutorRuntimeCapabilities {
+  systemPrompt: ExecutorSystemPromptMode;
+  costUSD: ExecutorCostMode;
+  trace: ExecutorTraceMode;
+  skillIsolation: ExecutorSkillIsolationMode;
+}
+
+export interface ExecutorRuntimePackage {
+  name: string;
+  version?: string;
+  error?: string;
+}
+
+export interface ExecutorRuntimeBinary {
+  name: string;
+  source: 'path' | 'bundled' | 'none' | 'unknown';
+  version?: string;
+  path?: string;
+  package?: ExecutorRuntimePackage;
+  error?: string;
+}
+
+export interface ExecutorRuntimeFingerprint {
+  executor: string;
+  model: string;
+  kind: ExecutorRuntimeKind;
+  fingerprint: string;
+  binary?: ExecutorRuntimeBinary;
+  sdk?: ExecutorRuntimePackage;
+  capabilities: ExecutorRuntimeCapabilities;
+}

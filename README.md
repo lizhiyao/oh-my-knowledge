@@ -1,6 +1,7 @@
 # oh-my-knowledge
 
 [![npm version](https://img.shields.io/npm/v/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge)
+[![npm weekly downloads](https://img.shields.io/npm/dw/oh-my-knowledge.svg)](https://www.npmjs.com/package/oh-my-knowledge)
 [![CI](https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhiyao/oh-my-knowledge/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Node.js Version](https://img.shields.io/node/v/oh-my-knowledge.svg)](https://nodejs.org)
@@ -37,23 +38,39 @@ omk bench run --dry-run
 
 # run the evaluation (auto-discovers everything under skills/)
 omk bench run    # → HTML report with verdict in 5 minutes
+                 # (omk doctor + LLM connectivity check both run as mandatory gates;
+                 #  --skip-connectivity available for connectivity, doctor is unconditional)
 
 # CLI output language: zh (default) / en — flag wins over env
 omk bench run --lang en
 OMK_LANG=en omk bench report
 ```
 
-## Use inside Claude Code
+## Use inside AI Coding Agents
 
-After installing omk, talk to it in natural language from Claude Code:
+### Use inside Claude Code
 
-```
+When the `omk` skill is available in Claude Code, you can invoke it directly like this:
+
+```bash
 /omk eval              # evaluate the artifact(s) in the current project
 /omk evolve            # auto-iterate to improve an artifact
 /omk gen-samples       # generate test cases
 ```
 
-You can also just say "compare v1 vs v2 for me" or "improve this artifact" — omk picks the right command.
+You can also just say "compare v1 vs v2 for me" or "improve this artifact" and omk picks the right command.
+
+### Use inside Codex
+
+Codex does not support Claude Code style `/omk ...` slash commands by default. In Codex, the usual pattern is to ask the agent to run the `omk` CLI directly, for example:
+
+```bash
+omk bench run
+omk bench evolve
+omk bench gen-samples skills/my-skill.md
+```
+
+You can also describe the goal in natural language, such as "compare v1 vs v2" or "generate test cases for this skill".
 
 ## Why this tool
 
@@ -61,6 +78,7 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 
 ## Key features
 
+- **Pre-evaluation health check** — `omk doctor` runs as a mandatory gate before `bench run` / `bench gate`; checks skill readability, metadata, dependencies, samples contract — pure static, zero LLM calls (like lint + typecheck for knowledge artifacts). Executor / judge connectivity is a separate phase, controllable via `--skip-connectivity`
 - **Controlled-variable offline bench** — fix the model and samples, vary only the artifact; works with Claude Code skills, CLAUDE.md prompts, RAG knowledge bases, or any markdown-based instruction
 - **Six-dimension scoring** — separate signals for Fact / Behavior / LLM-judge / Cost / Efficiency / Stability, so a regression in one axis isn't hidden by gains in another
 - **Production session observability** — parse Claude Code session JSONL traces, measure per-skill failure rate, latency, token cost, and knowledge-gap signals on real user sessions
@@ -376,7 +394,9 @@ options:
                          samples + variants + model + executor in one file; CLI
                          flags override config fields when both are provided
   --model <name>         task execution model (default: sonnet)
-  --judge-model <name>   judge model (default: haiku)
+  --judge-models <list>  judge config; 1 entry = single judge (default
+                         claude:haiku), ≥ 2 entries = ensemble. Format:
+                         `executor:model[,executor:model]`
   --output-dir <path>    output dir (default: ~/.oh-my-knowledge/reports/)
   --no-judge             skip the LLM judge
   --no-cache             disable result cache (on by default; identical inputs reuse)
@@ -386,7 +406,10 @@ options:
   --timeout <sec>        per-task executor timeout (default: 120)
   --repeat <n>           repeat N times for variance analysis (default: 1)
   --executor <name>      executor (default: claude); supports custom commands
-  --skip-preflight       skip evaluation model reachability check
+  --skip-connectivity    skip the LLM connectivity check (doctor still runs;
+                         doctor is mandatory and has no skip flag).
+                         Auto-applied on --resume (the original run already
+                         verified connectivity).
   --mcp-config <path>    MCP config for fetching private-doc URLs via MCP Server
                          (default: .mcp.json in cwd)
   --no-serve             don't auto-start the report server after the run
@@ -394,8 +417,6 @@ options:
   --batch                batch mode: evaluate each artifact independently vs baseline
                          requires {name}.eval-samples.json paired with each artifact
   --judge-repeat <n>     run the LLM judge N times per (sample × dimension) and report stddev
-  --judge-models <list>  multi-judge ensemble: "executor1:model1,executor2:model2"
-                         ≥ 2 judges enables ensemble + inter-judge agreement output
   --bootstrap            enable distribution-free CIs: bootstrap CI per variant +
                          pairwise diff CI (CI containing 0 = not significant)
   --bootstrap-samples N  bootstrap resample count (default 1000)
@@ -413,6 +434,29 @@ options:
 ```
 
 **eval.yaml budget**: declare `budget: { totalUSD?, perSampleUSD?, perSampleMs? }` (all optional, must be ≥ 0). CLI flags of the same name override the config values.
+
+**eval.yaml experiment-design fields**: the same flags above can be set in `eval.yaml` for reproducible experiment configuration (CLI > eval.yaml > default):
+
+```yaml
+samples: ./eval-samples.yaml
+model: sonnet
+repeat: 5                    # multi-run variance, ≥ 1
+judgeRepeat: 3               # per (sample × dim) judge self-consistency, ≥ 1
+bootstrap: true              # distribution-free CI per variant
+bootstrapSamples: 2000       # default 1000, ≥ 100
+goldDir: ./gold              # post-run α / κ / Pearson against human anchor
+lengthDebias: true           # default; set false to reproduce pre-v0.21 hash
+strictBaseline: true         # default; set false to disable skill isolation
+noJudge: false               # default; set true to skip LLM judge entirely
+judgeModels:                 # 1 entry = single judge; ≥ 2 = ensemble
+  - { executor: claude, model: opus }
+  - { executor: openai-api, model: gpt-4o }
+variants:
+  - { name: baseline, role: control, artifact: baseline }
+  - { name: my-skill, role: treatment, artifact: ./skills/my-skill.md }
+```
+
+**Field entry points**: `bench run` reads every field above. `bench gate` goes through `parseRunConfig` and picks up the shared subset (`variants` / `executor` / `model` / `judgeModels` — both single-judge and ensemble — / `noJudge` / `noCache` / `blind` / `strictBaseline` / `budget` / `mcpConfig` / `variantAllowedSkills`); the experiment-design fields handled by `handleRun` (`repeat` / `judgeRepeat` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`) are intentionally not read by `gate` and can be extended later. Other subcommands (`evolve` / `verdict` / `diff` / `analyze` / …) do not read `eval.yaml`.
 
 **Difference from `cost_max` / `latency_max` assertions**: assertions are **per-sample scoring rules** (exceeding the cap fails that one assertion, the run continues); budget caps are **workflow-level hard limits** (`totalUSD` overrun aborts the run and persists a partial report; per-sample overruns fail the offending sample but the run continues). Assertions answer "is quality acceptable?"; budgets answer "are cost/time within the envelope?".
 
@@ -501,6 +545,26 @@ omk bench gate [options]
                          independently to fact / behavior / judge
 ```
 
+### `omk doctor` (pre-evaluation health check)
+
+Pure static / zero-LLM checks — analogous to lint + typecheck in the SE toolchain. Runs as a mandatory gate before `bench run` / `bench gate` so a typo'd YAML or missing dependency aborts with an actionable error instead of producing a garbage-in verdict. Also runnable standalone for local iteration or CI.
+
+```bash
+omk doctor                    # batch check every skill in current dir / ./skills
+omk doctor skills/v1.md       # single file
+omk doctor skills/ --json     # JSON output for CI consumption
+omk doctor --gate; echo $?    # silent mode — exit 1 if any fatal check fails
+```
+
+What `doctor` checks:
+
+- **skill readable** — file exists, content non-empty, has minimum length
+- **skill metadata** — front-matter (if present) is valid YAML; directory-skills have `SKILL.md`
+- **dependencies present** — referenced CLI tools, files, env vars all available (reuses `preflightDependencies`)
+- **samples ↔ skill contract** — when samples are provided, validate they're non-empty and have prompt fields (warn-level)
+
+Executor / judge connectivity is verified by a separate evaluation preflight phase, not by doctor — clean boundary: doctor is static, eval is dynamic. `bench run` / `bench gate` abort with `exit 1` and stderr `doctor failed:` prefix when doctor fails. **Doctor is mandatory and not skippable** (static checks have no cost reason to skip); LLM connectivity is separately controllable via `--skip-connectivity` (auto-skipped on `--resume`).
+
 ### `omk bench report`
 
 Start the report server to browse historical reports, submit feedback, and delete reports.
@@ -545,7 +609,7 @@ Re-judges every (sample × variant) of an existing report with the OPPOSITE leng
 ```bash
 omk bench debias-validate length <reportId> [options]
   --variant <name>            check a single variant only
-  --judge-model <id>          override the report's judge model
+  --judge-models <executor:model>  override the report's judge (single-judge only)
   --bootstrap-samples N       bootstrap iterations (default 1000)
   --seed N                    deterministic seed
 ```
@@ -601,8 +665,7 @@ When 14 of 50 samples failed, reading them one by one is slow. This command send
 
 ```bash
 omk bench failures <reportId> [options]
-  --judge-executor <name>     executor (default: claude)
-  --judge-model <id>          clustering model (default: from report.meta.judgeModel)
+  --judge-models <executor:model>  clustering judge (default: from report.meta.judgeModels[0]; single-judge only)
   --max-clusters <n>          maximum clusters (default 5)
   --threshold <num>           failure score threshold (default 3)
   --max-feed <n>              max failures fed to LLM (default 50; takes the worst)
@@ -675,7 +738,7 @@ The command writes `~/.oh-my-knowledge/analyses/<timestamp>-skill-health.json`. 
 
 API-direct executors support custom base URLs via env: `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`.
 
-Codex construct-validity notes: (1) `codex` uses the `codex` binary on `PATH`; `codex-sdk` uses the bundled `@openai/codex` binary resolved by `@openai/codex-sdk`. Reports persist per-variant `meta.executorRuntimes` plus `meta.executorRuntime` / `meta.judgeRuntime` fingerprints (binary or SDK version + capability snapshot), and `bench diff` / `bench verdict` warn when strict comparability cannot be audited. If runtime fingerprints differ, treat results as an executor-runtime comparison, not only prompt/template behavior. (2) Both executors isolate user-level config: `codex` passes `--ephemeral` + `--ignore-user-config`; `codex-sdk` redirects `$CODEX_HOME` to a per-process tmp dir (auth.json symlinked through). User-level `~/.codex/config.toml` does not leak into eval runs in either case.
+Codex construct-validity notes: (1) `codex` uses the `codex` binary on `PATH`; `codex-sdk` uses the bundled `@openai/codex` binary resolved by `@openai/codex-sdk`. Reports persist per-variant `meta.executorRuntimes`, `meta.executorRuntime`, and per-judge `meta.judgeModels[].runtime` fingerprints (binary or SDK version + capability snapshot), and `bench diff` / `bench verdict` warn when strict comparability cannot be audited. If runtime fingerprints differ, treat results as an executor-runtime comparison, not only prompt/template behavior. (2) Both executors isolate user-level config: `codex` passes `--ephemeral` + `--ignore-user-config`; `codex-sdk` redirects `$CODEX_HOME` to a per-process tmp dir (auth.json symlinked through). User-level `~/.codex/config.toml` does not leak into eval runs in either case.
 
 ### Custom executor
 
@@ -861,25 +924,25 @@ omk bench run \
 export OPENAI_API_KEY="your Zhipu API key"
 export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 omk bench run --executor openai-api --model glm-4-plus \
-  --judge-model glm-4-plus --no-cache
+  --judge-models openai-api:glm-4-plus --no-cache
 
 # Qwen (Alibaba)
 export OPENAI_API_KEY="your Qwen API key"
 export OPENAI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
 omk bench run --executor openai-api --model qwen-plus \
-  --judge-model qwen-plus
+  --judge-models openai-api:qwen-plus
 
 # DeepSeek
 export OPENAI_API_KEY="your DeepSeek API key"
 export OPENAI_BASE_URL="https://api.deepseek.com"
 omk bench run --executor openai-api --model deepseek-chat \
-  --judge-model deepseek-chat
+  --judge-models openai-api:deepseek-chat
 
 # Moonshot (Kimi)
 export OPENAI_API_KEY="your Moonshot API key"
 export OPENAI_BASE_URL="https://api.moonshot.cn/v1"
 omk bench run --executor openai-api --model moonshot-v1-8k \
-  --judge-model moonshot-v1-8k
+  --judge-models openai-api:moonshot-v1-8k
 ```
 
 **Ollama local model:**
@@ -889,11 +952,11 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
   --model llama3 --no-judge
 ```
 
-**About the judge model:**
+**About the judge:**
 
-- `--judge-model` picks the model used by the LLM judge (default `haiku`)
-- `--judge-executor` picks the executor the judge uses (defaults to `--executor`)
-- If you don't have Claude, point `--judge-executor` and `--judge-model` at whatever model you have
+- `--judge-models <list>` picks the LLM judge(s). Format: `executor:model[,executor:model]`. Default: `${executor}:haiku` (or claude:haiku when no `--executor` set)
+- 1 entry = single judge; ≥ 2 entries = multi-judge ensemble + inter-judge agreement
+- If you don't have Claude, point `--judge-models` at whatever you have, e.g. `--judge-models openai-api:glm-4-plus`
 - Add `--no-judge` to skip the LLM judge and rely on assertions alone
 
 ## Environment variables
@@ -926,4 +989,4 @@ This tool is designed for **local trusted environments** (dev machines, CI pipel
 
 ---
 
-See [CHANGELOG](./CHANGELOG.md) for release notes. Contributions welcome — see [CONTRIBUTING](./CONTRIBUTING.md).
+See [GitHub Releases](https://github.com/lizhiyao/oh-my-knowledge/releases) for release notes. Contributions welcome — see [CONTRIBUTING](./CONTRIBUTING.md).

@@ -10,8 +10,25 @@ import { computeLayeredScores } from './layered-scores.js';
 interface GradeOptions {
   output: string;
   sample: Sample;
-  executor: ExecutorFn;
-  judgeModel: string;
+  /**
+   * Unified judge config — always non-empty. `length === 1` runs the single-judge
+   * quick path (one judge per (sample × dimension)), `length >= 2` runs the
+   * ensemble path with per-judge breakdown + Pearson/MAD agreement metrics
+   * (refutes "judge same-modality bias" critique).
+   *
+   * The first entry (`judgeModels[0]`) is also used as the "primary judge" for
+   * single-call paths (async assertions): one LLM call per assertion, no ensemble
+   * aggregation — the primary judge is a deterministic representative.
+   */
+  judgeModels: JudgeConfig[];
+  /**
+   * Map `executor name → ExecutorFn`. The map only needs entries for executors
+   * actually invoked by this grade call — i.e. when the sample triggers an LLM
+   * code path (async assertions, dimension scoring, single rubric, ensemble
+   * member). Sync-only samples can pass `{}`. Failures are lazy: missing entry
+   * throws only at the call site, not on grade entry.
+   */
+  judgeExecutors?: Record<string, ExecutorFn>;
   allowLlmJudge?: boolean;
   execMetrics?: { costUSD?: number; durationMs?: number; numTurns?: number; toolCalls?: ToolCallInfo[]; turns?: TurnInfo[] };
   samplesDir?: string;
@@ -21,18 +38,6 @@ interface GradeOptions {
    * a high stddev means the judge isn't stable on this rubric and the score is noisy.
    */
   judgeRepeat?: number;
-  /**
-   * Multi-judge ensemble: if provided with >= 2 judges, every (sample × dimension) is
-   * scored by every judge. Each judge can use a different executor (claude/openai/etc)
-   * and model. Output gets per-judge breakdown + Pearson/MAD agreement metrics — used
-   * to refute "Claude judge Claude same-modality bias" critique.
-   */
-  judgeModels?: JudgeConfig[];
-  /**
-   * Map from executor name → ExecutorFn. Required when judgeModels has judges with
-   * different executor strings. Pipeline layer pre-creates these so grade() stays pure.
-   */
-  judgeExecutors?: Record<string, ExecutorFn>;
   /**
    * v0.21 length-debias toggle. Defaults to true — judge prompt includes the
    * "length is not a quality signal" instruction, prompt template version is
@@ -45,19 +50,32 @@ interface GradeOptions {
 /**
  * Grade a model output against a sample's criteria.
  */
-export async function grade({ output, sample, executor, judgeModel, allowLlmJudge = true, execMetrics = {}, samplesDir = '.', judgeRepeat = 1, judgeModels, judgeExecutors, lengthDebias = true }: GradeOptions): Promise<GradeResult> {
-  const useEnsemble = !!(judgeModels && judgeModels.length >= 2);
+export async function grade({ output, sample, judgeModels, judgeExecutors, allowLlmJudge = true, execMetrics = {}, samplesDir = '.', judgeRepeat = 1, lengthDebias = true }: GradeOptions): Promise<GradeResult> {
+  if (!judgeModels || judgeModels.length === 0) {
+    throw new Error('grade(): judgeModels must be non-empty');
+  }
+  const useEnsemble = judgeModels.length >= 2;
+  const primaryJudge = judgeModels[0];
+  const judgeModel = primaryJudge.model;
+  const judgeExecutorMap = judgeExecutors ?? {};
   const results: GradeResult = { compositeScore: 0 };
 
-  // Helper: build a config-keyed function for ensemble pathway. Each judge config
-  // names an executor by string; we resolve via judgeExecutors map (set by pipeline).
+  // Lazy executor resolution: only throw when the sample actually triggers a
+  // code path that needs the executor. Sync-only samples never invoke these
+  // helpers, so they can pass `judgeExecutors: {}` (or omit it entirely).
+  const requirePrimaryExecutor = (): ExecutorFn => {
+    const exec = judgeExecutorMap[primaryJudge.executor];
+    if (!exec) {
+      throw new Error(`grade(): judgeExecutors missing entry for primary judge "${primaryJudge.executor}"`);
+    }
+    return exec;
+  };
   const executorByName = (name: string): ExecutorFn => {
-    if (judgeExecutors && judgeExecutors[name]) return judgeExecutors[name];
-    // Fallback: pipeline only set up the default judgeExecutor and didn't pre-create
-    // others. Tests / single-judge callers hit this path. Use the passed-in executor
-    // for the base case; ensemble with mismatched executor names should fail loudly.
-    if (!judgeExecutors) return executor;
-    throw new Error(`No executor registered for "${name}"; pipeline must populate judgeExecutors`);
+    const exec = judgeExecutorMap[name];
+    if (!exec) {
+      throw new Error(`No executor registered for "${name}"; pipeline must populate judgeExecutors for every judge`);
+    }
+    return exec;
   };
 
   // 1. Deterministic assertions (pure, no LLM)
@@ -74,9 +92,11 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
   }
 
   // 1b. Async assertions (custom JS, semantic_similarity)
-  if (asyncAssertions.length > 0 && executor != null) {
+  // Async assertions are single-judge calls (no ensemble aggregation):
+  // we use the primary judge as a deterministic representative.
+  if (asyncAssertions.length > 0) {
     const asyncResults = await runAsyncAssertions(output, asyncAssertions, {
-      executor, judgeModel, sample, samplesDir,
+      executor: requirePrimaryExecutor(), judgeModel, sample, samplesDir,
     });
     if (results.assertions) {
       // Merge async results into sync results
@@ -111,9 +131,9 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     // Multi-dimensional scoring
     results.dimensions = {};
     for (const [dim, rubric] of Object.entries(sample.dimensions)) {
-      const dimOptions = { output, rubric, prompt: sample.prompt, executor, model: judgeModel, traceSummary, lengthDebias };
+      const dimOptions = { output, rubric, prompt: sample.prompt, executor: requirePrimaryExecutor(), model: judgeModel, traceSummary, lengthDebias };
       results.dimensions[dim] = useEnsemble
-        ? await llmJudgeEnsemble(dimOptions, judgeModels!, executorByName, judgeRepeat)
+        ? await llmJudgeEnsemble(dimOptions, judgeModels, executorByName, judgeRepeat)
         : await llmJudgeRepeat(dimOptions, judgeRepeat);
     }
     const dimValues = Object.values(results.dimensions);
@@ -129,9 +149,9 @@ export async function grade({ output, sample, executor, judgeModel, allowLlmJudg
     }
   } else if (allowLlmJudge && sample.rubric) {
     // Single rubric scoring
-    const rubricOptions = { output, rubric: sample.rubric, prompt: sample.prompt, executor, model: judgeModel, traceSummary, lengthDebias };
+    const rubricOptions = { output, rubric: sample.rubric, prompt: sample.prompt, executor: requirePrimaryExecutor(), model: judgeModel, traceSummary, lengthDebias };
     const judge = useEnsemble
-      ? await llmJudgeEnsemble(rubricOptions, judgeModels!, executorByName, judgeRepeat)
+      ? await llmJudgeEnsemble(rubricOptions, judgeModels, executorByName, judgeRepeat)
       : await llmJudgeRepeat(rubricOptions, judgeRepeat);
     results.llmScore = judge.score;
     results.llmReason = judge.reason;

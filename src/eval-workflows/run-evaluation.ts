@@ -1,11 +1,10 @@
 import { resolve } from 'node:path';
 import { DEFAULT_OUTPUT_DIR, persistReport } from '../eval-core/evaluation-reporting.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
-import { discoverBatchSkills } from '../inputs/skill-loader.js';
+import { discoverBatchSkills, resolveArtifacts } from '../inputs/skill-loader.js';
 import { confidenceInterval, tTest, effectSize } from '../eval-core/statistics.js';
 import { executeBatchEvaluationRuns } from './batch-evaluation-workflow.js';
 import {
-  buildDryRunBatchArtifacts,
   buildDryRunTaskReport,
   prepareEvaluationRun,
 } from './evaluation-preparation.js';
@@ -41,7 +40,6 @@ export interface SkillProgressInfo {
 
 interface CommonEvaluationOptions {
   model?: string;
-  judgeModel?: string;
   outputDir?: string | null;
   project?: string;
   owner?: string;
@@ -50,11 +48,13 @@ interface CommonEvaluationOptions {
   concurrency?: number;
   timeoutMs?: number;
   executorName?: string;
-  judgeExecutorName?: string;
   jobStore?: JobStore | null;
   persistJob?: boolean;
   onProgress?: ProgressCallback | null;
-  skipPreflight?: boolean;
+  /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。 */
+  skipConnectivity?: boolean;
+  /** 用户语言, 透传给 doctor 报告渲染。 */
+  lang?: 'zh' | 'en';
   mcpConfig?: string;
   verbose?: boolean;
   // When true, HTML report expands the three-layer independent significance
@@ -70,14 +70,15 @@ interface CommonEvaluationOptions {
   /** --judge-repeat N. 每条 sample × dimension 调 LLM judge N 次, 输出 stddev (judge 自一致性).
    *  默认 1 (单次). 用于量化 LLM judge 在该 rubric 上的稳定性 — stddev 高 = 评分噪声大. */
   judgeRepeat?: number;
-  /** --judge-models executor:model,executor:model,... — multi-judge ensemble. ≥ 2 个
-   *  judge 时每条 sample × dimension 由所有 judge 各自打分, 输出 inter-judge agreement. */
+  /** Unified judge config. 1 entry = single judge, ≥ 2 = ensemble + inter-judge agreement.
+   *  Optional at the API surface; runEvaluation defaults to `[{executor, model: 'haiku'}]`
+   *  when omitted. RunConfig (parseRunConfig 出口) 保证非空。 */
   judgeModels?: import('../types/index.js').JudgeConfig[];
   /** --bootstrap. Distribution-free CI on each variant mean + pairwise diff. */
   bootstrap?: boolean;
   /** --bootstrap-samples N. Default 1000. */
   bootstrapSamples?: number;
-  /** v0.21 Phase 3a length-debias toggle. Default true (judge prompt v3-cot-length).
+  /** length-debias toggle. Default true (judge prompt v3-cot-length).
    *  CLI passes false when --no-debias-length is set. */
   lengthDebias?: boolean;
   /** hard budget caps. */
@@ -139,8 +140,7 @@ interface DryRunTask {
 interface DryRunBase {
   dryRun: true;
   model: string;
-  judgeModel: string | null;
-  judgeModels?: string[];
+  judgeModels: import('../types/index.js').JudgeConfig[];
   executor: string;
   skillDir: string;
   totalTasks: number;
@@ -158,7 +158,6 @@ export async function runEvaluation({
   variantSpecs = [],
   artifacts,
   model = DEFAULT_MODEL,
-  judgeModel = JUDGE_MODEL,
   outputDir = DEFAULT_OUTPUT_DIR,
   project,
   owner,
@@ -170,11 +169,11 @@ export async function runEvaluation({
   timeoutMs,
   noCache = false,
   executorName = 'claude',
-  judgeExecutorName,
   jobStore = null,
   persistJob = true,
   onProgress = null,
-  skipPreflight = false,
+  skipConnectivity = false,
+  lang = 'zh',
   mcpConfig,
   verbose = false,
   retry = 0,
@@ -192,6 +191,13 @@ export async function runEvaluation({
   strictBaseline,
   variantAllowedSkills,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
+  // Unified judgeModels → derive single-judge fields for downstream pipeline / grading
+  // (which still operate on string `judgeModel` + `judgeExecutorName` fields per call).
+  const effectiveJudgeModels: import('../types/index.js').JudgeConfig[] = judgeModels && judgeModels.length > 0
+    ? judgeModels
+    : [{ executor: executorName, model: JUDGE_MODEL }];
+  const judgeModel = effectiveJudgeModels[0].model;
+  const judgeExecutorName = effectiveJudgeModels[0].executor;
   const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
     samplesPath,
     skillDir,
@@ -202,6 +208,46 @@ export async function runEvaluation({
     strictBaseline,
     variantAllowedSkills,
   });
+
+  // doctor 强制门禁: skill 静态结构 + 元数据 + 依赖 + 用例契约。
+  // 在 dryRun 分支之前跑, 让 dry-run 也得到 doctor 覆盖(保护 garbage-in 的 verdict)。
+  // doctor 不可 skip — 静态检查无成本理由跳过, 也无 escape hatch flag。
+  // LLM 连通性是另一回事, 由独立的 skipConnectivity 控制。
+  //
+  // 路径推断收口在 buildDoctorPreflightContext: doctor engine 不再自己猜 bench 的
+  // artifact 形态 / cwd 优先级, 任何 bench 路径语义边界变化只改 builder 一处。
+  {
+    const { buildDoctorPreflightContext } = await import('../doctor/preflight.js');
+    const doctorCtx = buildDoctorPreflightContext({
+      artifacts: resolvedArtifacts,
+      samples,
+      requires,
+      skillDir,
+    });
+    if (doctorCtx) {
+      const { runDoctor } = await import('../doctor/index.js');
+      const { renderDoctorReportText } = await import('../doctor/renderer.js');
+      const { tCli } = await import('../cli/i18n.js');
+      const doctorReport = await runDoctor({
+        artifacts: doctorCtx.doctorArtifacts,
+        cwd: doctorCtx.dependencyCwd,
+        dependencyCwd: doctorCtx.dependencyCwd,
+        samples: doctorCtx.samples,
+        requires: doctorCtx.requires,
+        executorName,
+        model,
+        timeoutMs: timeoutMs ?? 8000,
+        lang,
+      });
+      if (doctorReport.failed) {
+        renderDoctorReportText(doctorReport, lang);
+        throw new Error(`doctor failed: ${tCli('cli.doctor.gate_blocked', lang)}`);
+      }
+    }
+  }
+
+  // --resume 时自动跳过 LLM 连通性检测(原 run 已经验过, 重跑是浪费 LLM 调用)
+  const effectiveSkipConnectivity = resume ? true : skipConnectivity;
 
   if (dryRun) {
     // Emit power warnings during dry-run too — this is exactly when users
@@ -216,8 +262,7 @@ export async function runEvaluation({
     return {
       report: buildDryRunTaskReport({
         model,
-        judgeModel,
-        judgeModels,
+        judgeModels: effectiveJudgeModels,
         executorName,
         samplesPath,
         skillDir,
@@ -293,7 +338,7 @@ export async function runEvaluation({
     jobStore,
     persistJob,
     onProgress,
-    skipPreflight,
+    skipConnectivity: effectiveSkipConnectivity,
     verbose,
     retry,
     existingResults,
@@ -328,7 +373,7 @@ export interface DryRunBatchReport extends DryRunBase {
 // Top-level (composite) extractor: feeds the legacy flat-field variance on
 // VariantVariance / VarianceComparison. Composite lives here for backward
 // compatibility with historical reports; layer-independent stats are attached
-// via byLayer (see LAYER_EXTRACTORS) starting v0.16 work item B / PR-2.
+// via byLayer (see LAYER_EXTRACTORS).
 const COMPOSITE_EXTRACTOR = (s: VariantSummary | undefined): number | undefined => s?.avgCompositeScore;
 
 // Non-quality metric extractors tracked in byMetric (cost + efficiency).
@@ -526,7 +571,6 @@ export function buildVarianceData(runs: Report[]): VarianceData | null {
 export async function runBatchEvaluation({
   skillDir,
   model = DEFAULT_MODEL,
-  judgeModel = JUDGE_MODEL,
   outputDir = DEFAULT_OUTPUT_DIR,
   project,
   owner,
@@ -536,12 +580,12 @@ export async function runBatchEvaluation({
   concurrency = 1,
   timeoutMs,
   executorName = 'claude',
-  judgeExecutorName,
   jobStore = null,
   persistJob = true,
   onProgress = null,
   onSkillProgress = null,
-  skipPreflight = false,
+  skipConnectivity = false,
+  lang = 'zh',
   mcpConfig,
   verbose = false,
   repeat,
@@ -552,27 +596,93 @@ export async function runBatchEvaluation({
   strictBaseline,
   variantAllowedSkills,
 }: RunBatchEvaluationOptions): Promise<{ report: BatchEvaluationReport | DryRunBatchReport; filePath: string | null }> {
+  // Same unified judge derivation as runEvaluation (downstream pipeline / report build
+  // still uses single judgeModel + judgeExecutorName per call).
+  const effectiveJudgeModels: import('../types/index.js').JudgeConfig[] = judgeModels && judgeModels.length > 0
+    ? judgeModels
+    : [{ executor: executorName, model: JUDGE_MODEL }];
+  const judgeModel = effectiveJudgeModels[0].model;
+  const judgeExecutorName = effectiveJudgeModels[0].executor;
   const skillEntries = discoverBatchSkills(resolve(skillDir));
   if (skillEntries.length === 0) {
     throw new Error(`no skill with paired eval-samples found in: ${skillDir}`);
   }
 
   if (dryRun) {
-    const { artifacts: dryArtifacts, totalTasks } = buildDryRunBatchArtifacts(skillEntries);
-    const judgeModelList = judgeModels && judgeModels.length >= 2
-      ? judgeModels.map((jc) => `${jc.executor}:${jc.model}`)
-      : undefined;
+    // batch dry-run 走 per-entry runEvaluation(dryRun: true) — doctor 嵌入
+    // 自动复用 runEvaluation 内部的 builder + 单一逻辑,不再在 batch 这边
+    // 旁路一套 doctor / 路径推断。entry artifact 拼装方式与 batch real-run
+    // (executeBatchEvaluationRuns) 严格一致, 避免 dry-run / real-run 漂移。
+    const skillDirAbs = resolve(skillDir);
+    const dryArtifacts: DryRunBatchSkill[] = [];
+    for (const entry of skillEntries) {
+      const skillArtifacts = resolveArtifacts(
+        skillDirAbs,
+        ['baseline', entry.skillPath],
+        { strictBaseline, variantAllowedSkills },
+      ).map((artifact) => {
+        if (artifact.name === entry.skillPath) {
+          return { ...artifact, name: entry.name, experimentRole: 'treatment' as const };
+        }
+        return { ...artifact, experimentRole: 'control' as const };
+      });
+      let entryReport: DryRunReport;
+      try {
+        const result = await runEvaluation({
+          samplesPath: entry.samplesPath,
+          skillDir,
+          artifacts: skillArtifacts,
+          model,
+          executorName,
+          dryRun: true,
+          noJudge,
+          timeoutMs,
+          lang,
+          mcpConfig,
+          strictBaseline,
+          variantAllowedSkills,
+          // 透传 user 显式输入的参数,让 dry-run power / isolation warning 与
+          // 真实 run 一致(否则 batch dry-run 永远按 repeat=1 报警,误导用户)。
+          repeat,
+          judgeRepeat,
+          judgeModels: effectiveJudgeModels,
+          lengthDebias,
+          noCache,
+          verbose,
+          concurrency,
+          skipConnectivity,
+          // batch dry-run 关闭真实 run only 路径
+          jobStore: null,
+          persistJob: false,
+          outputDir: null,
+        });
+        entryReport = result.report as DryRunReport;
+      } catch (err) {
+        // doctor abort 加 entry 名让 user / CI 定位是哪个 skill 卡住
+        if (err instanceof Error && err.message.startsWith('doctor failed:')) {
+          throw new Error(`${err.message} (skill=${entry.name})`);
+        }
+        throw err;
+      }
+      // batch 模式恒定 2 variants(baseline + treatment),sampleCount = totalTasks / variants.length
+      dryArtifacts.push({
+        name: entry.name,
+        samplesPath: entry.samplesPath,
+        sampleCount: entryReport.totalTasks / entryReport.variants.length,
+        taskCount: entryReport.totalTasks,
+      });
+    }
+
     return {
       report: {
         dryRun: true,
         batch: true,
         model,
-        judgeModel: judgeModelList ? null : judgeModel,
-        ...(judgeModelList ? { judgeModels: judgeModelList } : {}),
+        judgeModels: effectiveJudgeModels,
         executor: executorName,
         skillDir,
         totalArtifacts: dryArtifacts.length,
-        totalTasks,
+        totalTasks: dryArtifacts.reduce((sum, a) => sum + a.taskCount, 0),
         artifacts: dryArtifacts,
       },
       filePath: null,
@@ -596,7 +706,8 @@ export async function runBatchEvaluation({
     persistJob,
     onProgress,
     onSkillProgress,
-    skipPreflight,
+    skipConnectivity,
+    lang,
     mcpConfig,
     verbose,
     repeat,

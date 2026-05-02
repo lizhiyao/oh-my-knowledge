@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { runAssertions, rougeN, levenshtein, bleu } from '../../src/grading/assertions.js';
 
-describe('Phase 5a — universal `not: true` field', () => {
+describe('universal `not: true` field', () => {
   it('not: true on contains inverts pass/fail', () => {
     const r = runAssertions('hello world', [
       { type: 'contains', value: 'foo' },                  // raw fail
@@ -27,7 +27,7 @@ describe('Phase 5a — universal `not: true` field', () => {
   });
 });
 
-describe('Phase 5a — assert-set combinator', () => {
+describe('assert-set combinator', () => {
   it("'all' mode requires every child to pass", () => {
     const r = runAssertions('hello world', [{
       type: 'assert-set', mode: 'all',
@@ -119,7 +119,7 @@ describe('Phase 5a — assert-set combinator', () => {
   });
 });
 
-describe('Phase 5b — rougeN', () => {
+describe('rougeN', () => {
   it('returns 1.0 for identical strings', () => {
     assert.equal(rougeN('hello world', 'hello world', 1), 1);
   });
@@ -160,7 +160,7 @@ describe('Phase 5b — rougeN', () => {
   });
 });
 
-describe('Phase 5b — levenshtein', () => {
+describe('levenshtein', () => {
   it('returns 0 for identical strings', () => {
     assert.equal(levenshtein('hello', 'hello'), 0);
   });
@@ -184,7 +184,7 @@ describe('Phase 5b — levenshtein', () => {
   });
 });
 
-describe('Phase 5b — bleu', () => {
+describe('bleu', () => {
   it('returns 1.0 for identical strings (long enough for 4-grams)', () => {
     const s = 'the quick brown fox jumps over the lazy dog';
     assert.ok(bleu(s, s) > 0.99);
@@ -210,7 +210,7 @@ describe('Phase 5b — bleu', () => {
   });
 });
 
-describe('Phase 5b — assertion integration', () => {
+describe('assertion integration', () => {
   it('rouge_n_min passes when score meets threshold', () => {
     const r = runAssertions('cat sat on the mat', [
       { type: 'rouge_n_min', reference: 'cat sat on a mat', n: 1, threshold: 0.7 },

@@ -60,7 +60,7 @@ function salvageJudgeResponse(text: string): JudgeResponse | null {
  *                       Kept for `--no-debias-length` so users can reproduce historical
  *                       reports byte-for-byte.
  *  - 'v3-cot-length'  — adds a paragraph telling the judge that length is not a quality
- *                       signal. Default since v0.21 Phase 3a (research consistently shows
+ *                       signal. Default on (research consistently shows
  *                       LLM judges over-weight verbosity; explicit instruction mitigates).
  *
  * Bump when the prompt's intent or structure changes meaningfully — reports tagged
@@ -141,7 +141,7 @@ interface LlmJudgeOptions {
   model: string;
   traceSummary?: string | null;
   /**
-   * When true (default since v0.21), the judge prompt includes an explicit
+   * When true (default), the judge prompt includes an explicit
    * "length is not a quality signal" instruction. Pass false to fall back to
    * the legacy v2-cot prompt — only useful for reproducing pre-v0.21 reports
    * or running A/B comparisons inside `omk bench debias-validate length`.

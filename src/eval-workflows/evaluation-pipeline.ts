@@ -6,8 +6,7 @@ import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { computeReportCoverage } from '../analysis/coverage-analyzer.js';
 import { computeReportGapRates } from '../analysis/gap-analyzer.js';
 import { aggregateReport, applyBlindMode, DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/evaluation-reporting.js';
-import { executeTasks, preflight } from '../eval-core/evaluation-execution.js';
-import { preflightDependencies, formatDependencyErrors } from '../eval-core/dependency-checker.js';
+import { executeTasks, preflight, preflightAllJudges } from '../eval-core/evaluation-execution.js';
 import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
 import {
   createFileJobStore,
@@ -106,14 +105,15 @@ async function initializeEvaluationRunState({
   lengthDebias?: boolean;
   budget?: import('../types/index.js').EvalBudget;
 }): Promise<EvaluationRunState> {
+  const effectiveJudges: import('../types/index.js').JudgeConfig[] = judgeModels && judgeModels.length > 0
+    ? judgeModels
+    : [{ executor: judgeExecutorName, model: judgeModel }];
   const request = buildEvaluationRequest({
     samplesPath,
     skillDir,
     artifacts,
     model,
-    judgeModel: noJudge ? null : judgeModel,
     executor: executorName,
-    judgeExecutor: judgeExecutorName,
     noJudge,
     concurrency,
     timeoutMs,
@@ -126,7 +126,7 @@ async function initializeEvaluationRunState({
     repeat,
     batch,
     judgeRepeat,
-    judgeModels,
+    judgeModels: effectiveJudges,
     bootstrap,
     bootstrapSamples,
     lengthDebias,
@@ -353,7 +353,7 @@ export interface EvaluationPipelineOptions {
   jobStore?: JobStore | null;
   persistJob?: boolean;
   onProgress?: ProgressCallback | null;
-  skipPreflight?: boolean;
+  skipConnectivity?: boolean;
   verbose?: boolean;
   retry?: number;
   existingResults?: Record<string, Record<string, VariantResult>>;
@@ -407,11 +407,13 @@ export async function executeEvaluationPipeline({
   jobStore = null,
   persistJob = true,
   onProgress = null,
-  skipPreflight = false,
+  skipConnectivity = false,
   verbose = false,
   retry = 0,
   existingResults,
-  requires,
+  // requires 现在由 runEvaluation 上游传给 doctor 处理; eval-pipeline 不再用
+  // 但保留接口字段,避免破 programmatic API (类型层面接收, 内部忽略)
+  requires: _requires,
   layeredStats = false,
   repeat,
   batch,
@@ -455,17 +457,36 @@ export async function executeEvaluationPipeline({
   });
 
   try {
-    if (!skipPreflight) {
-      if (onProgress) onProgress({ phase: 'preflight', jobId: runState.jobId });
-      await preflight(executor, model);
-      if (!noJudge) await preflight(judgeExecutor, judgeModel);
+    // 解析 judge config + 配套 executor map 一次,后续 preflight 与 executeTasks 共用。
+    // production 路径 judgeModels 始终非空(RunConfig 必填);fallback 仅兼容 internal
+    // legacy caller 还在传 single judgeModel + judgeExecutorName 的场景。
+    //
+    // executor map 必须先于 preflight build,否则 ensemble 中第二、第三个 judge 配错
+    // (404 model / executor 不存在 / auth fail)只会在 grading 半途才暴露 — 那时已经
+    // 浪费 task execution 成本 + 报告里也不会有 judgeAgreement。
+    const resolvedJudgeModels = judgeModels && judgeModels.length > 0
+      ? judgeModels
+      : [{ executor: executorName, model: judgeModel }];
+    let resolvedJudgeExecutors: Record<string, ExecutorFn>;
+    if (judgeModels && judgeModels.length > 0) {
+      const { createExecutor } = await import('../executors/index.js');
+      resolvedJudgeExecutors = {};
+      for (const jc of resolvedJudgeModels) {
+        if (!resolvedJudgeExecutors[jc.executor]) {
+          resolvedJudgeExecutors[jc.executor] = createExecutor(jc.executor);
+        }
+      }
+    } else {
+      resolvedJudgeExecutors = { [executorName]: judgeExecutor };
+    }
 
-      // Dependency check: auto-extract from skill contents + merge explicit requires
-      const skillContents = artifacts.map((a) => a.content).filter((c): c is string => typeof c === 'string');
-      const cwd = artifacts.find((a) => a.cwd)?.cwd || skillDir || process.cwd();
-      const depResult = await preflightDependencies(skillContents, samples, cwd, requires, artifacts);
-      if (!depResult.ok) {
-        throw new Error(formatDependencyErrors(depResult.missing));
+    if (!skipConnectivity) {
+      if (onProgress) onProgress({ phase: 'preflight', jobId: runState.jobId });
+      // LLM 连通性: eval 唯一职责。doctor 在 runEvaluation 上游已跑,
+      // 包含 dep / 结构 / 元数据 / 契约检查。这里只剩 executor + 所有 judge。
+      await preflight(executor, model);
+      if (!noJudge) {
+        await preflightAllJudges(resolvedJudgeModels, resolvedJudgeExecutors);
       }
     }
 
@@ -477,29 +498,11 @@ export async function executeEvaluationPipeline({
     // Isolation pre-flight warning (--no-strict-baseline + ~/.claude/skills/ non-empty)
     emitIsolationWarnings(artifacts, strictBaseline);
 
-    // Pre-build a per-executor map for ensemble judges. Each unique executor name
-    // gets one ExecutorFn, shared across all judges using that executor. The default
-    // judge's executor is also included so single-judge fallbacks have it available.
-    let judgeExecutors: Record<string, ExecutorFn> | undefined;
-    if (judgeModels && judgeModels.length >= 2) {
-      const { createExecutor } = await import('../executors/index.js');
-      judgeExecutors = {};
-      const seen = new Set<string>();
-      for (const jc of judgeModels) {
-        if (!seen.has(jc.executor)) {
-          seen.add(jc.executor);
-          judgeExecutors[jc.executor] = createExecutor(jc.executor);
-        }
-      }
-    }
-
     const { results, totalCostUSD, skipped, budgetExhausted } = await executeTasks({
       tasks,
       executor,
       executorName,
-      judgeExecutor,
       model,
-      judgeModel,
       noJudge,
       samplesPath,
       concurrency,
@@ -510,8 +513,8 @@ export async function executeEvaluationPipeline({
       retry,
       existingResults,
       judgeRepeat,
-      judgeModels,
-      judgeExecutors,
+      judgeModels: resolvedJudgeModels,
+      judgeExecutors: resolvedJudgeExecutors,
       lengthDebias,
       budget,
     });

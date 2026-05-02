@@ -9,7 +9,7 @@ function makeRequest(overrides: Partial<EvaluationRequest> = {}): EvaluationRequ
     skillDir: '/tmp/skills',
     artifacts: [],
     model: 'sonnet',
-    judgeModel: 'haiku',
+    judgeModels: [{ executor: 'claude', model: 'haiku' }],
     executor: 'claude',
     noJudge: false,
     concurrency: 1,

@@ -77,8 +77,6 @@ export type CliMessageKey =
   // bench run 参数校验 (parseRunConfig)
   | 'cli.run.invalid_repeat'
   | 'cli.run.invalid_judge_repeat'
-  | 'cli.run.invalid_judge_models_format'
-  | 'cli.run.judge_models_single_warning'
   | 'cli.run.no_debias_length_active'
   | 'cli.run.invalid_bootstrap_samples'
   | 'cli.run.bootstrap_samples_too_large'
@@ -104,6 +102,7 @@ export type CliMessageKey =
   | 'cli.common.skill_file_not_found'
   | 'cli.common.report_not_found'
   | 'cli.common.no_judge_model'
+  | 'cli.common.judge_models_single_only'
   | 'cli.common.usage_gold_validate'
   | 'cli.common.warn_load_samples_failed'
   // bench gen-samples
@@ -161,7 +160,41 @@ export type CliMessageKey =
   | 'cli.diagnose.coverage_unspecified'
   | 'cli.diagnose.coverage_chars'
   | 'cli.diagnose.coverage_hint_empty'
-  | 'cli.diagnose.coverage_declared';
+  | 'cli.diagnose.coverage_declared'
+  // omk doctor 健康检查 — rule labels
+  | 'cli.doctor.rule.skill_readable'
+  | 'cli.doctor.rule.skill_metadata'
+  | 'cli.doctor.rule.dependencies'
+  | 'cli.doctor.rule.samples_contract'
+  // doctor — pass messages
+  | 'cli.doctor.skill_readable.pass'
+  | 'cli.doctor.skill_metadata.pass'
+  | 'cli.doctor.dependencies.pass'
+  | 'cli.doctor.samples_contract.pass'
+  // doctor — skill_readable rule
+  | 'cli.doctor.skill_readable.fail.missing'
+  | 'cli.doctor.skill_readable.fail.empty'
+  | 'cli.doctor.skill_readable.fail.too_short'
+  | 'cli.doctor.skill_readable.hint.missing'
+  | 'cli.doctor.skill_readable.hint.too_short'
+  // doctor — skill_metadata rule
+  | 'cli.doctor.skill_metadata.fail.frontmatter_invalid'
+  | 'cli.doctor.skill_metadata.fail.missing_skillmd'
+  | 'cli.doctor.skill_metadata.hint.frontmatter'
+  | 'cli.doctor.skill_metadata.hint.missing_skillmd'
+  // doctor — dependencies rule
+  | 'cli.doctor.dependencies.fail'
+  | 'cli.doctor.dependencies.hint'
+  // doctor — samples_contract rule
+  | 'cli.doctor.samples_contract.skipped'
+  | 'cli.doctor.samples_contract.warn.empty'
+  | 'cli.doctor.samples_contract.warn.missing_prompt'
+  | 'cli.doctor.samples_contract.hint'
+  // omk doctor — CLI level
+  | 'cli.help.doctor_usage'
+  | 'cli.doctor.no_skill_found'
+  | 'cli.doctor.gate_blocked'
+  | 'cli.run.skip_connectivity_warning';
 
 export interface CliMessage {
   zh: string;
@@ -178,8 +211,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: "Run 'omk --help' to see usage",
   },
   'cli.common.unknown_domain': {
-    zh: "未知顶层命令: {domain} (请用 'omk bench <command>' 或 'omk analyze <dir>')",
-    en: "Unknown domain: {domain} (use 'omk bench <command>' or 'omk analyze <dir>')",
+    zh: "未知顶层命令: {domain} (请用 'omk bench <command>'、'omk doctor [path]' 或 'omk analyze <dir>')",
+    en: "Unknown domain: {domain} (use 'omk bench <command>', 'omk doctor [path]' or 'omk analyze <dir>')",
   },
   'cli.common.unknown_bench_command': {
     zh: "未知子命令: bench {command} (运行 'omk --help' 查看可用列表)",
@@ -260,14 +293,6 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.run.invalid_judge_repeat': {
     zh: '⚠ --judge-repeat "{value}" 无效 (期望 ≥ 1 的整数), 已按 1 次 judge 执行\n',
     en: '⚠ --judge-repeat "{value}" is invalid (expected an integer ≥ 1), falling back to 1 judge call\n',
-  },
-  'cli.run.invalid_judge_models_format': {
-    zh: '--judge-models 格式错误: "{part}", 应为 "executor:model" (例如 claude:opus)',
-    en: '--judge-models format error: "{part}", expected "executor:model" (e.g. claude:opus)',
-  },
-  'cli.run.judge_models_single_warning': {
-    zh: 'ℹ --judge-models 只指定了 1 个 judge ({executor}:{model}), 不会进入 ensemble 模式。如需 ensemble, 至少配 2 个。\n',
-    en: 'ℹ --judge-models specified only 1 judge ({executor}:{model}); ensemble not triggered. Configure at least 2 for ensemble mode.\n',
   },
   'cli.run.no_debias_length_active': {
     zh: 'ℹ --no-debias-length 已生效: judge prompt 退回 v2-cot, 与 < v0.21 报告 hash 一致。\n',
@@ -354,8 +379,12 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'Report not found: {id}',
   },
   'cli.common.no_judge_model': {
-    zh: '未指定评委模型。请加 --judge-model <id>, 或确保 report.meta.judgeModel 已写。',
-    en: 'No judge model. Pass --judge-model <id> or ensure report has meta.judgeModel.',
+    zh: '未指定评委。请加 --judge-models <executor:model>, 或确保 report.meta.judgeModels 已写。',
+    en: 'No judge configured. Pass --judge-models <executor:model> or ensure the report has meta.judgeModels.',
+  },
+  'cli.common.judge_models_single_only': {
+    zh: 'bench {cmd} 仅支持单评委。--judge-models 只能传一个 executor:model entry。',
+    en: 'bench {cmd} only supports a single judge. --judge-models accepts exactly one executor:model entry.',
   },
   'cli.common.usage_gold_validate': {
     zh: '用法: omk bench gold validate <dir>',
@@ -518,6 +547,7 @@ oh-my-knowledge — 知识工件评测工具集
   omk bench diff <id1> <id2>           对比两份评测报告
   omk bench evolve <skill>             通过迭代评测自我改进 skill
 
+  omk doctor [path]                    skill 健康检查(评测前置门禁)
   omk analyze <dir>                    分析 cc session trace, 生成 skill 健康度日报 (v0.18)
 
 bench run 选项:
@@ -538,7 +568,6 @@ bench run 选项:
                          CLI flag 会覆盖配置文件中的同名字段。
                          配置中的相对路径相对于配置文件所在目录解析。
   --model <name>         任务执行模型 (默认: sonnet)
-  --judge-model <name>   评委模型 (默认: haiku)
   --output-dir <path>    报告输出目录 (默认: ~/.oh-my-knowledge/reports/)
   --no-judge             跳过 LLM 评委
   --no-cache             禁用结果缓存
@@ -550,12 +579,13 @@ bench run 选项:
   --judge-repeat <n>     每个 (sample × dimension) 调 LLM 评委 N 次评估
                          自洽性 (默认: 1)。多轮间高 stddev = 评委在该评分维度
                          上不稳定, 分数有噪声。
-  --judge-models <list>  多评委 ensemble。逗号分隔的 executor:model, 如
-                         claude:opus,openai:gpt-4o,gemini:pro。每个评委对所有
-                         (sample × dimension) 打分; 报告含每评委分布 + Pearson
-                         / MAD 评委间一致性。能反驳 "Claude 评委评 Claude 同
-                         模态偏置" 的质疑。可与 --judge-repeat 组合。
-                         成本 ~ N_judges × N_repeat × N_samples。
+  --judge-models <list>  评委配置, 逗号分隔的 executor:model, 如
+                         claude:haiku 或 claude:opus,openai:gpt-4o。
+                         1 条 = 单评委 (默认 claude:haiku); ≥ 2 条 = ensemble,
+                         每个评委对所有 (sample × dimension) 打分, 报告
+                         含每评委分布 + Pearson / MAD 评委间一致性。能反驳
+                         "Claude 评委评 Claude 同模态偏置" 的质疑。可与
+                         --judge-repeat 组合。成本 ~ N_judges × N_repeat × N_samples。
   --bootstrap            计算 bootstrap 置信区间 (无分布假设, 对 LLM 序数评分
                          比 t 区间更靠谱)。给出每个 variant 均值 CI + treatment
                          vs control 差值的 pairwise CI (CI 不跨 0 即显著)。
@@ -566,10 +596,9 @@ bench run 选项:
   --resume <report-id>   从历史报告恢复, 跳过已完成任务
   --executor <name>      执行器: claude / claude-sdk / codex / openai / gemini /
                          anthropic-api / openai-api, 或任意 shell 命令 (例如 "python my_provider.py")
-  --judge-executor <name> 评委执行器 (默认: 同 --executor)
   --batch                批量评测:每个 skill 独立 vs baseline
                          需要每个 skill 有配对的 {name}.eval-samples.json
-  --skip-preflight       评测前跳过模型连通性预检
+  --skip-connectivity    跳过 LLM 模型连通性检测 (--resume 时自动跳过)
   --mcp-config <path>    通过 MCP server 抓 URL 用的 MCP 配置文件
                          (默认: 当前目录下的 .mcp.json)
   --no-serve             评测后不自动启动报告 server
@@ -628,7 +657,7 @@ bench evolve 选项:
   --target <score>       达到该分数即提前停止
   --samples <path>       用例文件 (默认: eval-samples.json)
   --model <name>         任务执行模型 (默认: sonnet)
-  --judge-model <name>   评委模型 (默认: haiku)
+  --judge-models <executor:model>  评委 (默认: claude:haiku, evolve 仅支持单评委)
   --improve-model <name> 生成改进版的模型 (默认: sonnet)
   --concurrency <n>      并发评测任务数 (默认: 1)
   --timeout <seconds>    单任务执行超时 (秒, 默认: 120)
@@ -664,6 +693,7 @@ Usage:
   omk bench diff <id1> <id2>           Compare two evaluation reports
   omk bench evolve <skill>             Self-improve a skill through iterative evaluation
 
+  omk doctor [path]                    skill health check (pre-eval gate)
   omk analyze <dir>                    Analyze cc session trace(s), produce skill health report (v0.18)
 
 Options for "bench run":
@@ -684,7 +714,6 @@ Options for "bench run":
                          CLI flags override config fields when both are provided.
                          Relative paths inside the config are resolved against its directory.
   --model <name>         Task execution model (default: sonnet)
-  --judge-model <name>   Judge model (default: haiku)
   --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
   --no-judge             Skip LLM judging
   --no-cache             Disable result caching
@@ -696,12 +725,14 @@ Options for "bench run":
   --judge-repeat <n>     Call LLM judge N times per (sample × dimension) for self-
                          consistency (default: 1). High stddev across runs = the
                          judge is unstable on this rubric and the score is noisy.
-  --judge-models <list>  Multi-judge ensemble. Comma-separated executor:model pairs,
-                         e.g. claude:opus,openai:gpt-4o,gemini:pro. Each judge scores
-                         every (sample × dimension); report includes per-judge break-
-                         down + Pearson/MAD inter-judge agreement. Refutes "Claude
-                         judge Claude same-modality bias" critique. Combines with
-                         --judge-repeat. Cost ~ N_judges × N_repeat × N_samples.
+  --judge-models <list>  Judge configuration. Comma-separated executor:model pairs,
+                         e.g. claude:haiku or claude:opus,openai:gpt-4o.
+                         1 entry = single judge (default claude:haiku); ≥ 2 entries
+                         = ensemble — every judge scores each (sample × dimension);
+                         the report includes per-judge breakdown + Pearson/MAD
+                         inter-judge agreement, which refutes "Claude judges Claude
+                         same-modality bias" critique. Combines with --judge-repeat.
+                         Cost ~ N_judges × N_repeat × N_samples.
   --bootstrap            Compute bootstrap confidence intervals (distribution-free,
                          preferred over t-interval for ordinal LLM scores). Adds
                          per-variant CI on the mean + pairwise CI on treatment-vs-
@@ -713,10 +744,9 @@ Options for "bench run":
   --resume <report-id>   Resume from a previous report, skipping completed tasks
   --executor <name>      Executor: claude, claude-sdk, codex, openai, gemini,
                          anthropic-api, openai-api, or any shell command (e.g. "python my_provider.py")
-  --judge-executor <name> Executor for LLM judge (default: same as --executor)
   --batch                Batch evaluation: each skill independently against baseline
                          Requires {name}.eval-samples.json paired with each skill
-  --skip-preflight       Skip model connectivity check before evaluation
+  --skip-connectivity    Skip LLM model connectivity check (auto-skipped when --resume)
   --mcp-config <path>    MCP config file for URL fetching via MCP servers
                          (default: .mcp.json in current directory)
   --no-serve             Skip auto-starting report server after evaluation
@@ -781,7 +811,7 @@ Options for "bench evolve":
   --target <score>       Stop early when score reaches this threshold
   --samples <path>       Sample file (default: eval-samples.json)
   --model <name>         Task execution model (default: sonnet)
-  --judge-model <name>   Judge model (default: haiku)
+  --judge-models <executor:model>  Judge config (default: claude:haiku; evolve is single-judge only)
   --improve-model <name> Model for generating improvements (default: sonnet)
   --concurrency <n>      Parallel eval tasks (default: 1)
   --timeout <seconds>    Executor timeout per task in seconds (default: 120)
@@ -873,8 +903,7 @@ Examples:
       '  --reports-dir <dir>          报告存储目录 (默认: ~/.oh-my-knowledge/reports)',
       '  --samples <path>             覆盖用例文件 (默认: 从 report.meta.request 读)',
       '  --variant <name>             校验哪个 variant (默认: 第一个)',
-      '  --judge-executor <name>      评委调用执行器 (默认: claude)',
-      '  --judge-model <model>        评委模型 ID (默认: 沿用 report)',
+      '  --judge-models <executor:model>  评委 (默认: 沿用 report.meta.judgeModels[0]; debias-validate 仅支持单评委)',
       '  --bootstrap-samples N        bootstrap 迭代次数 (默认 1000)',
       '  --seed N                     固定 CI 随机种子',
       '',
@@ -891,8 +920,7 @@ Examples:
       '  --reports-dir <dir>          report store dir (default: ~/.oh-my-knowledge/reports)',
       '  --samples <path>             override samples file (default: from report.meta.request)',
       '  --variant <name>             which variant to validate (default: first)',
-      '  --judge-executor <name>      executor for judge calls (default: claude)',
-      '  --judge-model <model>        judge model id (default: from report)',
+      '  --judge-models <executor:model>  Judge (default: from report.meta.judgeModels[0]; debias-validate is single-judge only)',
       '  --bootstrap-samples N        bootstrap iterations (default 1000)',
       '  --seed N                     deterministic CI seed',
       '',
@@ -1027,8 +1055,7 @@ Examples:
       '',
       '选项:',
       '  --reports-dir <dir>      报告存储目录',
-      '  --judge-executor <name>  执行器 (默认: claude)',
-      '  --judge-model <id>       聚类用的模型 (默认: 沿用 report.meta.judgeModel)',
+      '  --judge-models <executor:model>  评委 (默认: 沿用 report.meta.judgeModels[0]; failures 仅支持单评委)',
       '  --max-clusters <n>       最多聚成几类 (默认 5)',
       '  --threshold <num>        compositeScore < threshold 算失败 (默认 3)',
       '  --max-feed <n>           最多喂给 LLM 多少条 (默认 50, 超出取最差)',
@@ -1044,8 +1071,7 @@ Examples:
       '',
       'Options:',
       '  --reports-dir <dir>      report store dir',
-      '  --judge-executor <name>  executor (default: claude)',
-      '  --judge-model <id>       model for clustering (default: from report.meta.judgeModel)',
+      '  --judge-models <executor:model>  Judge (default: from report.meta.judgeModels[0]; failures is single-judge only)',
       '  --max-clusters <n>       max number of clusters (default 5)',
       '  --threshold <num>        compositeScore < threshold counts as failure (default 3)',
       '  --max-feed <n>           max samples to feed the LLM (default 50, takes the worst)',
@@ -1072,5 +1098,185 @@ Examples:
   'cli.diagnose.coverage_declared': {
     zh: '声明',
     en: 'declared',
+  },
+  // ============ omk doctor 健康检查 ============
+  'cli.doctor.rule.skill_readable': {
+    zh: 'skill 文件可读',
+    en: 'skill file readable',
+  },
+  'cli.doctor.rule.skill_metadata': {
+    zh: 'skill 元数据合法',
+    en: 'skill metadata valid',
+  },
+  'cli.doctor.rule.dependencies': {
+    zh: '前置依赖完整',
+    en: 'dependencies present',
+  },
+  'cli.doctor.rule.samples_contract': {
+    zh: '用例 ↔ skill 输入约定',
+    en: 'samples ↔ skill contract',
+  },
+  // pass
+  'cli.doctor.skill_readable.pass': {
+    zh: 'skill 内容长度 {length} 字符',
+    en: 'skill content {length} chars',
+  },
+  'cli.doctor.skill_metadata.pass': {
+    zh: '元数据格式合法',
+    en: 'metadata format valid',
+  },
+  'cli.doctor.dependencies.pass': {
+    zh: '依赖检查通过',
+    en: 'all dependencies present',
+  },
+  'cli.doctor.samples_contract.pass': {
+    zh: '用例 {count} 条,prompt 字段齐全',
+    en: '{count} samples, all with prompt',
+  },
+  // skill_readable
+  'cli.doctor.skill_readable.fail.missing': {
+    zh: 'skill 文件无内容(content 为空)',
+    en: 'skill file has no content (content is null)',
+  },
+  'cli.doctor.skill_readable.fail.empty': {
+    zh: 'skill 文件 trim 后为空',
+    en: 'skill file is empty after trim',
+  },
+  'cli.doctor.skill_readable.fail.too_short': {
+    zh: 'skill 内容过短(只有 {length} 字符,最低 10)',
+    en: 'skill content too short ({length} chars, minimum 10)',
+  },
+  'cli.doctor.skill_readable.hint.missing': {
+    zh: '请确认 skill 文件路径正确,文件可读且非空',
+    en: 'verify skill file path is correct and the file is readable',
+  },
+  'cli.doctor.skill_readable.hint.too_short': {
+    zh: 'skill 至少需要写一句完整的指令,过短的内容评测出来无意义',
+    en: 'a skill needs at least a full instruction sentence — too short content yields meaningless eval',
+  },
+  // skill_metadata
+  'cli.doctor.skill_metadata.fail.frontmatter_invalid': {
+    zh: 'front-matter 格式错误: {error}',
+    en: 'front-matter format error: {error}',
+  },
+  'cli.doctor.skill_metadata.fail.missing_skillmd': {
+    zh: 'directory-skill 缺少 SKILL.md 入口文件',
+    en: 'directory-skill missing SKILL.md entry file',
+  },
+  'cli.doctor.skill_metadata.hint.frontmatter': {
+    zh: 'front-matter 用 YAML 语法,key: value 或 - item 形式。可参考 examples/multi-skills 下的 skill 写法',
+    en: 'front-matter uses YAML syntax (key: value or - item). See examples/multi-skills for reference',
+  },
+  'cli.doctor.skill_metadata.hint.missing_skillmd': {
+    zh: 'directory-skill 必须有 SKILL.md 文件作为入口。或将 skill 写成单文件 .md',
+    en: 'directory-skills require a SKILL.md entry file. Alternatively, write the skill as a single .md file',
+  },
+  // dependencies
+  'cli.doctor.dependencies.fail': {
+    zh: '前置依赖检查失败: {summary}',
+    en: 'dependency check failed: {summary}',
+  },
+  'cli.doctor.dependencies.hint': {
+    zh: '安装缺失的工具或设置环境变量;若依赖确实可用 (e.g. shim 化测试),修正 skill 引用方式',
+    en: 'install missing tools or set required env vars; if deps are actually present (e.g. shimmed in tests), adjust skill references',
+  },
+  // samples_contract
+  'cli.doctor.samples_contract.skipped': {
+    zh: '未提供 samples,跳过此项检查',
+    en: 'no samples provided, skipped',
+  },
+  'cli.doctor.samples_contract.warn.empty': {
+    zh: 'samples 列表为空',
+    en: 'samples list is empty',
+  },
+  'cli.doctor.samples_contract.warn.missing_prompt': {
+    zh: '{count} 条用例缺 prompt 字段',
+    en: '{count} samples missing prompt field',
+  },
+  'cli.doctor.samples_contract.hint': {
+    zh: '用例必须至少包含 prompt 字段。详见 docs/sample-design-spec.md',
+    en: 'samples must contain at least a prompt field. See docs/sample-design-spec.md',
+  },
+  // ============ omk doctor CLI level ============
+  'cli.help.doctor_usage': {
+    zh: `
+oh-my-knowledge — omk doctor 健康检查
+
+用法:
+  omk doctor [path]                    在 path 上跑评测前置健康检查
+  omk doctor                           在当前目录(或 ./skills)批量跑
+
+参数:
+  path                   .md 单文件、目录或省略(=cwd)。目录会批量检查所有 skill
+
+选项:
+  --json                 把 DoctorReport 打到 stdout(CI 消费用)
+  --gate                 静默模式: 通过 exit 0 / 不通过 exit 1, 仅 stderr 出问题摘要
+  --executor <name>      executor 名(仅向后兼容, doctor 不直接打 LLM)
+  --model <name>         model 名(同上)
+  --timeout <seconds>    rule 执行超时(默认 8)
+  --lang <zh|en>         切换输出语言
+
+示例:
+  omk doctor examples/code-review/skills/v1.md
+  omk doctor examples/code-review/skills --json | jq .failed
+  omk doctor --gate; echo $?
+
+doctor 检查项(纯静态 / 零 LLM 调用):
+  - skill 文件可读 + 内容有最小长度
+  - skill 元数据合法 (front-matter 若有)
+  - 前置依赖完整 (引用的 CLI 工具 / 文件 / 环境变量)
+  - 用例 ↔ skill 输入约定 (warn 级, 仅传 samples 时跑)
+
+executor / judge 连通性由 evaluation preflight 负责, 不在 doctor 范围内。
+omk bench run / omk bench gate 内置 doctor 强制门禁, 不可 skip — 静态检查
+零成本无理由跳过。LLM 连通性可用 --skip-connectivity 跳过 (--resume 时自动)。
+`.trim() + '\n',
+    en: `
+oh-my-knowledge — omk doctor health check
+
+Usage:
+  omk doctor [path]                    Run pre-evaluation health check on path
+  omk doctor                           Batch check current dir (or ./skills)
+
+Arguments:
+  path                   A .md file, directory, or omit (= cwd). Directory mode batches all skills.
+
+Options:
+  --json                 Print DoctorReport JSON to stdout (CI-friendly)
+  --gate                 Silent mode: exit 0 if pass, exit 1 if fail; brief stderr summary only
+  --executor <name>      executor name (kept for compat; doctor does not call LLM)
+  --model <name>         model name (same)
+  --timeout <seconds>    per-rule timeout (default 8)
+  --lang <zh|en>         Output language
+
+Examples:
+  omk doctor examples/code-review/skills/v1.md
+  omk doctor examples/code-review/skills --json | jq .failed
+  omk doctor --gate; echo $?
+
+Checks (pure static / zero LLM calls):
+  - skill file readable + minimum content length
+  - skill metadata valid (front-matter if present)
+  - dependencies present (referenced CLI tools / files / env vars)
+  - samples ↔ skill contract (warn-level, only when samples provided)
+
+executor / judge connectivity is handled by evaluation preflight, not doctor.
+omk bench run / omk bench gate run doctor as mandatory; no skip flag — static
+checks cost nothing to run. LLM connectivity can be skipped with --skip-connectivity
+(auto-skipped on --resume).
+`.trim() + '\n',
+  },
+  'cli.doctor.no_skill_found': {
+    zh: '未在 {path} 下发现 skill 文件。\n  doctor 期望 .md 文件、目录(包含 .md 或 SKILL.md)或 cwd 下的 skills/ 子目录。',
+    en: 'No skills found at {path}.\n  doctor expects a .md file, a directory (containing .md or SKILL.md), or skills/ under cwd.',
+  },
+  'cli.doctor.gate_blocked': {
+    zh: 'skill 健康检查未通过, 评测已中止。doctor 是评测必经环节, 无 skip 选项 — 请修复上述问题后重跑。',
+    en: 'skill health check failed; evaluation aborted. doctor is mandatory and not skippable — fix the issues above and re-run.',
+  },
+  'cli.run.skip_connectivity_warning': {
+    zh: '⚠️  --skip-connectivity 已启用: 跳过 LLM 模型连通性检测。请确保 executor / judge 已通过其他方式验证可达。',
+    en: '⚠️  --skip-connectivity enabled: LLM connectivity check skipped. Verify executor / judge are reachable by other means.',
   },
 };

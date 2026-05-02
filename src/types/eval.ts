@@ -11,16 +11,16 @@ export interface Assertion {
   fn?: string;
   reference?: string;
   threshold?: number;
-  /** v0.21 Phase 5a — when true, the assertion's pass/fail is inverted. Works
-   *  with any type, including legacy `not_contains` (which becomes a redundant
-   *  but still supported double-negation). */
+  /** When true, the assertion's pass/fail is inverted. Works with any type,
+   *  including legacy `not_contains` (which becomes a redundant but still
+   *  supported double-negation). */
   not?: boolean;
-  /** v0.21 Phase 5a — only used by type='assert-set'. 'any' = at least one
-   *  child must pass; 'all' = every child must pass. Children may be any
-   *  assertion type, including nested assert-sets. */
+  /** Only used by type='assert-set'. 'any' = at least one child must pass;
+   *  'all' = every child must pass. Children may be any assertion type,
+   *  including nested assert-sets. */
   mode?: 'any' | 'all';
   children?: Assertion[];
-  /** v0.21 Phase 5b — for rouge_n_min: which n-gram order (default 1). */
+  /** For rouge_n_min: which n-gram order (default 1). */
   n?: number;
 }
 
@@ -134,11 +134,16 @@ export interface EvalConfig {
   samples: string;
   executor?: string;
   model?: string;
-  judgeModel?: string | null;
-  judgeExecutor?: string | null;
+  /** Judge configuration. 1 entry = single judge (no ensemble); ≥ 2 entries = ensemble
+   *  with inter-judge agreement. Replaces v0.1 split `judgeModel` + `judgeExecutor` —
+   *  unified as a single first-class concept (single judge is the degenerate case of
+   *  an ensemble of size 1). When unset, defaults to `[{executor, model: 'haiku'}]` where
+   *  executor follows the top-level `executor`. */
+  judgeModels?: JudgeConfig[];
   concurrency?: number;
   timeoutMs?: number;
   noCache?: boolean;
+  noJudge?: boolean;
   blind?: boolean;
   mcpConfig?: string;
   variants: EvalConfigVariant[];
@@ -147,6 +152,21 @@ export interface EvalConfig {
    *  `--budget-usd` / `--budget-per-sample-usd` / `--budget-per-sample-ms`
    *  override the config values. */
   budget?: EvalBudget;
+  // ----- v0.2: experiment-design fields (CLI flag → eval.yaml parity) -----
+  /** --repeat N. Multi-run variance analysis. */
+  repeat?: number;
+  /** --judge-repeat N. Each (sample × dimension) judged N times for self-consistency stddev. */
+  judgeRepeat?: number;
+  /** --bootstrap. Distribution-free CI per variant + pairwise diff. */
+  bootstrap?: boolean;
+  /** --bootstrap-samples. Default 1000. */
+  bootstrapSamples?: number;
+  /** --gold-dir. After-run automatic comparison against a human-anchor dataset. */
+  goldDir?: string;
+  /** --no-debias-length flips this to false. Default true (judge prompt v3-cot-length). */
+  lengthDebias?: boolean;
+  /** --no-strict-baseline flips this to false. Default true (baseline-kind allowedSkills=[]). */
+  strictBaseline?: boolean;
 }
 
 export interface EvalBudget {
@@ -166,9 +186,7 @@ export interface EvaluationRequest {
   owner?: string;
   tags?: string[];
   model: string;
-  judgeModel: string | null;
   executor: string;
-  judgeExecutor?: string | null;
   noJudge: boolean;
   concurrency: number;
   timeoutMs?: number;
@@ -181,17 +199,19 @@ export interface EvaluationRequest {
   batch?: boolean;
   /** --judge-repeat N; 每条 sample × dimension 用 LLM judge 跑 N 次, 输出 stddev. 默认 1 (单次). */
   judgeRepeat?: number;
-  /** --judge-models executor:model,executor:model,... — multi-judge ensemble.
-   *  当传入 ≥ 2 个 judge 时, 每条 sample × dimension 由所有 judge 各自打分, 输出
-   *  inter-judge agreement (Pearson correlation + mean absolute difference) — 反驳
-   *  "Claude judge Claude 同模态偏差" 的硬证据. 与 judgeRepeat 可组合. */
-  judgeModels?: JudgeConfig[];
+  /** Unified judge config — always non-empty.
+   *  - length === 1: single judge (degenerate ensemble of size 1).
+   *  - length >= 2: multi-judge ensemble. Each (sample × dimension) is scored by every judge,
+   *    inter-judge agreement (Pearson + mean absolute difference) reported as the hard
+   *    rebuttal to "judge same-model bias".
+   *  When `noJudge: true` the entry is preserved for audit but no judge call actually runs. */
+  judgeModels: JudgeConfig[];
   /** --bootstrap; true 时 aggregateReport 加跑 bootstrap mean/diff CI, 写入 VariantSummary.
    *  与原 t-interval 共存 (ReportMeta.evaluationFramework='both'), renderer 优先 bootstrap. */
   bootstrap?: boolean;
   /** --bootstrap-samples N; bootstrap 重采样次数, 默认 1000. > 10000 时 stderr 警告. */
   bootstrapSamples?: number;
-  /** v0.21 Phase 3a length-debias toggle. Default true (judge prompt v3-cot-length).
+  /** length-debias toggle. Default true (judge prompt v3-cot-length).
    *  CLI flag --no-debias-length flips to false (legacy v2-cot prompt). The active
    *  value is reflected in ReportMeta.judgePromptHash and ReportMeta.debiasMode. */
   lengthDebias?: boolean;

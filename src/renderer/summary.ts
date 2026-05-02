@@ -558,7 +558,7 @@ function renderJudgeAgreementBlock(variants: string[], summary: Record<string, V
   const rows = variantsWithEnsemble.map((v) => {
     const s = summary[v];
     const ag = s.judgeAgreement!;
-    const judgeList = (s.judgeModels || []).map((j) => `<code>${e(j)}</code>`).join(', ');
+    const judgeList = (s.judgeModels || []).map((j) => `<code>${e(`${j.executor}:${j.model}`)}</code>`).join(', ');
     const pearsonCell = ag.pearson != null
       ? `<span title="${t('pearsonDesc', lang)}" style="color:${ag.pearson >= 0.7 ? 'var(--green)' : ag.pearson >= 0.4 ? 'var(--yellow)' : 'var(--red)'}"><strong>${ag.pearson}</strong></span>`
       : `<span style="color:var(--text-muted)">—</span>`;

@@ -102,7 +102,8 @@ describe('aggregateReport — reproducibility metadata', () => {
     assert.equal(report.meta.executorRuntime?.binary?.source, 'bundled');
     assert.equal(report.meta.executorRuntime?.binary?.package?.name, '@openai/codex');
     assert.equal(report.meta.executorRuntime?.capabilities.costUSD, 'not-reported');
-    assert.equal(report.meta.judgeRuntime, null);
+    assert.equal(report.meta.noJudge, true);
+    assert.equal(report.meta.judgeModels[0]?.runtime, undefined);
   });
 
   it('writes per-variant executor runtime fingerprints from each task skillDir', () => {
@@ -159,18 +160,18 @@ describe('aggregateReport — reproducibility metadata', () => {
 
   it('writes judge runtime fingerprint when judge runs', () => {
     const report = aggregateReport(baseOpts);
-    assert.equal(report.meta.judgeRuntime?.executor, 'claude');
-    assert.equal(report.meta.judgeRuntime?.model, 'haiku');
-    assert.match(report.meta.judgeRuntime!.fingerprint, /^[0-9a-f]{12}$/);
+    const judge = report.meta.judgeModels[0];
+    assert.equal(judge.executor, 'claude');
+    assert.equal(judge.model, 'haiku');
+    assert.match(judge.runtime!.fingerprint, /^[0-9a-f]{12}$/);
   });
 
-  it('uses judgeRuntimes and clears legacy single-judge fields for ensemble reports', () => {
+  it('writes structured judgeModels with per-entry runtime for ensemble reports', () => {
     const request: EvaluationRequest = {
       samplesPath: '/tmp/s.json',
       skillDir: '/tmp',
       artifacts: [],
       model: 'haiku',
-      judgeModel: 'haiku',
       executor: 'claude',
       noJudge: false,
       concurrency: 1,
@@ -185,11 +186,13 @@ describe('aggregateReport — reproducibility metadata', () => {
 
     const report = aggregateReport({ ...baseOpts, request });
 
-    assert.equal(report.meta.judgeModel, null);
-    assert.equal(report.meta.judgeRuntime, null);
-    assert.deepEqual(report.meta.judgeModels, ['claude:sonnet', 'codex:gpt-5.5']);
-    assert.equal(report.meta.judgeRuntimes?.['claude:sonnet'].model, 'sonnet');
-    assert.equal(report.meta.judgeRuntimes?.['codex:gpt-5.5'].model, 'gpt-5.5');
+    assert.equal(report.meta.judgeModels.length, 2);
+    assert.equal(report.meta.judgeModels[0].executor, 'claude');
+    assert.equal(report.meta.judgeModels[0].model, 'sonnet');
+    assert.equal(report.meta.judgeModels[1].executor, 'codex');
+    assert.equal(report.meta.judgeModels[1].model, 'gpt-5.5');
+    assert.ok(report.meta.judgeModels[0].runtime);
+    assert.ok(report.meta.judgeModels[1].runtime);
   });
 
   it('marks totalCostReported=false when any judge cost is not reported', () => {
@@ -210,7 +213,8 @@ describe('aggregateReport — reproducibility metadata', () => {
 
   it('writes judgeRepeat when request.judgeRepeat > 1', () => {
     const request: EvaluationRequest = {
-      samplesPath: '/tmp/s.json', skillDir: '/tmp', artifacts: [], model: 'haiku', judgeModel: 'haiku',
+      samplesPath: '/tmp/s.json', skillDir: '/tmp', artifacts: [], model: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
       executor: 'claude', noJudge: false, concurrency: 1, noCache: false, dryRun: false, blind: false,
       judgeRepeat: 3,
     };
@@ -220,7 +224,8 @@ describe('aggregateReport — reproducibility metadata', () => {
 
   it('omits judgeRepeat when request.judgeRepeat is 1 or unset (avoid noise)', () => {
     const request1: EvaluationRequest = {
-      samplesPath: '/tmp/s.json', skillDir: '/tmp', artifacts: [], model: 'haiku', judgeModel: 'haiku',
+      samplesPath: '/tmp/s.json', skillDir: '/tmp', artifacts: [], model: 'haiku',
+      judgeModels: [{ executor: 'claude', model: 'haiku' }],
       executor: 'claude', noJudge: false, concurrency: 1, noCache: false, dryRun: false, blind: false,
       judgeRepeat: 1,
     };

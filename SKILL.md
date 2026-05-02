@@ -72,7 +72,7 @@ omk bench run --each
 omk bench run --dry-run
 ```
 
-常用选项：`--model`（执行模型）、`--judge-model`（评委模型）、`--concurrency`（并发数）
+常用选项：`--model`（执行模型）、`--judge-models executor:model`（评委,1 条 = 单评委,≥ 2 条 = ensemble）、`--concurrency`（并发数）
 
 **严谨度选项**(用户要求"严肃出结论"时启用):
 - `--bootstrap`: 用 distribution-free 置信区间替代 t 检验,适合小 N 或非正态分布

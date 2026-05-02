@@ -170,7 +170,7 @@ export function bootstrapDiffCI(
 
 /**
  * Generic bootstrap CI for an arbitrary sample-level metric. Used by
- * saturation analysis (Phase 4) to get CI on metrics like stddev or
+ * saturation analysis to get CI on metrics like stddev or
  * agreement, not just mean.
  *
  * @param scores   Original sample.

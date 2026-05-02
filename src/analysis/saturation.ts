@@ -7,7 +7,7 @@
  * is "is N=30 enough, or should I keep running?". Without a principled
  * answer, users either over-pay (running 200 when 50 was enough) or
  * under-pay (calling skill effects null at N=30 when N=80 would have
- * shown clearly significant — Bootstrap CI from Phase 1 just hasn't
+ * shown clearly significant — Bootstrap CI just hasn't
  * converged yet).
  *
  * Saturation analysis fits the right tool to the question: track a
@@ -19,7 +19,7 @@
  *    checkpoints. Easy to explain. Fragile to outlier samples.
  *  - **bootstrap-ci-width** (default): CI shrinks as O(1/√N); when its
  *    decay rate flattens, more samples buy little. Statistically
- *    grounded; pairs naturally with Phase 1.
+ *    grounded; pairs naturally with the Bootstrap CI module.
  *  - **plateau-height**: range of mean across the last K checkpoints.
  *    Conservative — slow to declare saturation, hard to fool.
  *
