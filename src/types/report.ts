@@ -1,4 +1,4 @@
-import type { ToolCallInfo, TurnInfo } from './executor.js';
+import type { ExecutorRuntimeFingerprint, ToolCallInfo, TurnInfo } from './executor.js';
 import type { AssertionResults, DimensionResult, EnsembleJudgeResult, JudgeAgreement, JudgeConfig, JudgeRuntimeEntry, LayeredScores } from './judge.js';
 import type { EvalBudget, EvaluationJob, EvaluationRequest, EvaluationRun, VariantConfig } from './eval.js';
 
@@ -167,48 +167,6 @@ export interface ReportHumanAgreement {
   missingCount: number;
   /** Sample_ids present in the report but with no judge score (assertion-only etc). */
   unscoredCount: number;
-}
-
-export type ExecutorRuntimeKind = 'agent-cli' | 'agent-sdk' | 'api' | 'script' | 'unknown';
-
-export type ExecutorSystemPromptMode = 'native' | 'prepended' | 'none' | 'unknown';
-
-export type ExecutorCostMode = 'reported' | 'not-reported' | 'unknown';
-
-export type ExecutorTraceMode = 'native' | 'best-effort' | 'none' | 'unknown';
-
-export type ExecutorSkillIsolationMode = 'full' | 'full-no-partial' | 'cwd-only' | 'none' | 'unknown';
-
-export interface ExecutorRuntimeCapabilities {
-  systemPrompt: ExecutorSystemPromptMode;
-  costUSD: ExecutorCostMode;
-  trace: ExecutorTraceMode;
-  skillIsolation: ExecutorSkillIsolationMode;
-}
-
-export interface ExecutorRuntimePackage {
-  name: string;
-  version?: string;
-  error?: string;
-}
-
-export interface ExecutorRuntimeBinary {
-  name: string;
-  source: 'path' | 'bundled' | 'none' | 'unknown';
-  version?: string;
-  path?: string;
-  package?: ExecutorRuntimePackage;
-  error?: string;
-}
-
-export interface ExecutorRuntimeFingerprint {
-  executor: string;
-  model: string;
-  kind: ExecutorRuntimeKind;
-  fingerprint: string;
-  binary?: ExecutorRuntimeBinary;
-  sdk?: ExecutorRuntimePackage;
-  capabilities: ExecutorRuntimeCapabilities;
 }
 
 export interface ReportMeta {
