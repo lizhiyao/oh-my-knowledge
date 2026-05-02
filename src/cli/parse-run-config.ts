@@ -92,6 +92,7 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   'judge-executor': { type: 'string' },
   batch: { type: 'boolean' },
   'skip-preflight': { type: 'boolean' },
+  'skip-doctor': { type: 'boolean' },
   'mcp-config': { type: 'string' },
   'no-serve': { type: 'boolean' },
   verbose: { type: 'boolean' },

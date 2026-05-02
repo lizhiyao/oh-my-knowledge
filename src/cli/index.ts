@@ -299,6 +299,9 @@ async function handleRun(argv: string[]): Promise<void> {
     config.bootstrapSamples = bsCount;
   }
 
+  // 评测前置门禁: doctor 健康检查。fail 则 abort, 加 --skip-doctor 跳过。
+  await runDoctorPreflight(values, config, lang);
+
   try {
     // --batch mode: evaluate each skill independently
     if (values.batch) {
@@ -564,6 +567,67 @@ function parseLastWindow(spec: string): string | null {
   const unit = m[2];
   const ms = unit === 'd' ? n * 86400_000 : unit === 'h' ? n * 3600_000 : n * 60_000;
   return new Date(Date.now() - ms).toISOString();
+}
+
+/**
+ * bench run / bench gate 前置门禁: 跑 doctor, 失败则 abort 评测(exit 1)。
+ *
+ * - --skip-doctor: 跳过 doctor + stderr warning(沿用旧行为)
+ * - --dry-run: doctor 跑结构 / 依赖检查, 但 skipSmoke=true 避免 LLM 调用
+ * - doctor 自身 crash: 降级跳过, stderr warn(不让 doctor bug 把评测堵死)
+ *
+ * 失败时 stderr 前缀统一 'doctor failed:', 与 bench gate 的 'bench gate failed:'
+ * 区分(同 exit 1, 不同 stderr 标签, CI 可 grep 区分)。
+ */
+async function runDoctorPreflight(
+  values: Record<string, unknown>,
+  config: { executorName?: string; model?: string; timeoutMs?: number; skillDir?: string },
+  lang: CliLang,
+): Promise<void> {
+  if (values['skip-doctor'] as boolean) {
+    process.stderr.write(tCli('cli.doctor.skip_doctor_warning', lang) + '\n');
+    return;
+  }
+
+  const cwd = process.cwd();
+  const skillDir = config.skillDir ?? join(cwd, 'skills');
+  const executorName = config.executorName ?? 'claude';
+  const model = config.model ?? 'sonnet';
+  // doctor smoke 默认 8s; 若 bench timeoutMs 更长, 取保守上限避免 doctor 异常拖慢
+  const timeoutMs = Math.min(Math.max(config.timeoutMs ?? 8000, 8000), 30000);
+  const skipSmoke = (values['dry-run'] as boolean) ?? false;
+
+  const { runDoctor } = await import('../doctor/index.js');
+  const { renderDoctorReportText } = await import('../doctor/renderer.js');
+
+  let report;
+  try {
+    report = await runDoctor({
+      target: skillDir,
+      cwd,
+      executorName,
+      model,
+      timeoutMs,
+      lang,
+      skipSmoke,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // doctor crash != skill 有问题; 降级跳过, 让评测继续, 但 stderr 提示
+    process.stderr.write(`doctor preflight skipped due to internal error: ${msg}\n`);
+    return;
+  }
+
+  if (report.skills.length === 0) {
+    // 没找到 skill 也别拿 doctor 当借口阻止评测; 让 runEvaluation 自己报"no variants"
+    return;
+  }
+
+  if (report.failed) {
+    renderDoctorReportText(report, lang);
+    console.error(`doctor failed: ${tCli('cli.doctor.gate_blocked', lang)}`);
+    process.exit(1);
+  }
 }
 
 async function handleDoctor(argv: string[]): Promise<void> {
@@ -986,6 +1050,9 @@ async function handleGate(argv: string[]): Promise<void> {
   const { runEvaluation } = await import('../eval-workflows/run-evaluation.js');
 
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
+
+  // 评测前置门禁: doctor 健康检查。fail 则 abort, 加 --skip-doctor 跳过。
+  await runDoctorPreflight(values, config, lang);
 
   try {
     const { report: document } = (await runEvaluation(config)) as EvalResult;
