@@ -967,4 +967,4 @@ This tool is designed for **local trusted environments** (dev machines, CI pipel
 
 ---
 
-See [CHANGELOG](./CHANGELOG.md) for release notes. Contributions welcome — see [CONTRIBUTING](./CONTRIBUTING.md).
+See [GitHub Releases](https://github.com/lizhiyao/oh-my-knowledge/releases) for release notes. Contributions welcome — see [CONTRIBUTING](./CONTRIBUTING.md).
