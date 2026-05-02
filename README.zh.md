@@ -48,7 +48,7 @@ OMK_LANG=en omk bench report
 
 ## 评测前置健康检查
 
-每次评测前，omk 会先跑 `omk doctor` 作为**默认门禁**，确保 skill 处于可评测状态——避免 YAML 写错、依赖缺失、executor 跑不通这些问题让你拿到 garbage-in 的 verdict 数字：
+每次评测前，omk 会先跑 `omk doctor` 作为**默认门禁**，确保 skill 处于可评测状态——避免 YAML 写错、front-matter 格式非法、依赖缺失这些问题让你拿到 garbage-in 的 verdict 数字：
 
 ```bash
 omk doctor                    # 批量检查当前目录或 ./skills 下所有 skill

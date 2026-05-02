@@ -48,7 +48,7 @@ OMK_LANG=en omk bench report
 
 ## Pre-evaluation health check
 
-Before each evaluation, omk runs `omk doctor` as a **default gate** to make sure your skill is in a measurable state — no more garbage-in verdicts caused by a typo'd YAML, a missing dependency, or a broken executor:
+Before each evaluation, omk runs `omk doctor` as a **default gate** to make sure your skill is in a measurable state — no more garbage-in verdicts caused by a typo'd YAML, malformed front-matter, or a missing dependency:
 
 ```bash
 omk doctor                    # batch check every skill in current dir / ./skills

@@ -103,7 +103,7 @@ describe('bench run / gate doctor preflight embedding', () => {
   });
 
   it('bench run --dry-run on healthy example skills passes doctor and proceeds', async () => {
-    // example skills are healthy; --dry-run skips smoke (LLM)
+    // example skills are healthy; --dry-run skips LLM connectivity (separate from doctor)
     const { stdout, stderr } = await execFileAsync('node', [
       CLI, 'bench', 'run',
       '--samples', EXAMPLE_SAMPLES,
