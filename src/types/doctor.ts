@@ -85,8 +85,6 @@ export interface DoctorRunOptions {
   model: string;
   timeoutMs: number;
   lang: 'zh' | 'en';
-  /** 跳过 executor smoke(测试 / 离线场景用,CLI 不暴露此 flag) */
-  skipSmoke?: boolean;
   /** 可选 samples,仅 samples_contract_aligned rule 会用 */
   samples?: Sample[];
   /** 可选 requires (samples wrapper 里的显式声明), 透传给 dependencies_present rule */

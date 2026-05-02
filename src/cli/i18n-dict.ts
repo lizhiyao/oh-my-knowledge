@@ -166,13 +166,11 @@ export type CliMessageKey =
   | 'cli.doctor.rule.skill_readable'
   | 'cli.doctor.rule.skill_metadata'
   | 'cli.doctor.rule.dependencies'
-  | 'cli.doctor.rule.executor_smoke'
   | 'cli.doctor.rule.samples_contract'
   // doctor — pass messages
   | 'cli.doctor.skill_readable.pass'
   | 'cli.doctor.skill_metadata.pass'
   | 'cli.doctor.dependencies.pass'
-  | 'cli.doctor.executor_smoke.pass'
   | 'cli.doctor.samples_contract.pass'
   // doctor — skill_readable rule
   | 'cli.doctor.skill_readable.fail.missing'
@@ -188,15 +186,6 @@ export type CliMessageKey =
   // doctor — dependencies rule
   | 'cli.doctor.dependencies.fail'
   | 'cli.doctor.dependencies.hint'
-  // doctor — executor_smoke rule
-  | 'cli.doctor.executor_smoke.fail.timeout'
-  | 'cli.doctor.executor_smoke.fail.auth'
-  | 'cli.doctor.executor_smoke.fail.empty'
-  | 'cli.doctor.executor_smoke.fail.error'
-  | 'cli.doctor.executor_smoke.hint.timeout'
-  | 'cli.doctor.executor_smoke.hint.auth'
-  | 'cli.doctor.executor_smoke.hint.empty'
-  | 'cli.doctor.executor_smoke.hint.generic'
   // doctor — samples_contract rule
   | 'cli.doctor.samples_contract.skipped'
   | 'cli.doctor.samples_contract.warn.empty'
@@ -1133,10 +1122,6 @@ Examples:
     zh: '前置依赖完整',
     en: 'dependencies present',
   },
-  'cli.doctor.rule.executor_smoke': {
-    zh: 'executor 烟测可达',
-    en: 'executor smoke test',
-  },
   'cli.doctor.rule.samples_contract': {
     zh: '用例 ↔ skill 输入约定',
     en: 'samples ↔ skill contract',
@@ -1153,10 +1138,6 @@ Examples:
   'cli.doctor.dependencies.pass': {
     zh: '依赖检查通过',
     en: 'all dependencies present',
-  },
-  'cli.doctor.executor_smoke.pass': {
-    zh: 'executor 烟测通过 ({duration}ms)',
-    en: 'executor smoke passed ({duration}ms)',
   },
   'cli.doctor.samples_contract.pass': {
     zh: '用例 {count} 条,prompt 字段齐全',
@@ -1209,39 +1190,6 @@ Examples:
     zh: '安装缺失的工具或设置环境变量。也可以用 --skip-doctor 暂时跳过 doctor(不推荐生产用)',
     en: 'install missing tools or set required env vars. Use --skip-doctor to temporarily bypass (not recommended for production)',
   },
-  // executor_smoke
-  'cli.doctor.executor_smoke.fail.timeout': {
-    zh: 'executor 烟测超时({timeout}ms): {error}',
-    en: 'executor smoke timed out ({timeout}ms): {error}',
-  },
-  'cli.doctor.executor_smoke.fail.auth': {
-    zh: 'executor 鉴权失败: {error}',
-    en: 'executor authentication failed: {error}',
-  },
-  'cli.doctor.executor_smoke.fail.empty': {
-    zh: 'executor 返回空响应',
-    en: 'executor returned empty response',
-  },
-  'cli.doctor.executor_smoke.fail.error': {
-    zh: 'executor 烟测失败: {error}',
-    en: 'executor smoke failed: {error}',
-  },
-  'cli.doctor.executor_smoke.hint.timeout': {
-    zh: '检查网络可达性,或用 --timeout 调高超时阈值(当前 {timeout}ms)',
-    en: 'check network connectivity, or raise --timeout (current {timeout}ms)',
-  },
-  'cli.doctor.executor_smoke.hint.auth': {
-    zh: '确认 executor 凭证已设置(claude-code 用 ANTHROPIC_API_KEY,其他 executor 见各自文档)',
-    en: 'verify executor credentials are set (ANTHROPIC_API_KEY for claude-code; see each executor docs)',
-  },
-  'cli.doctor.executor_smoke.hint.empty': {
-    zh: 'skill 内容可能与 executor / model 不兼容。可单独跑 omk doctor <skill> 复现并定位',
-    en: 'skill content may be incompatible with executor / model. Run omk doctor <skill> separately to reproduce',
-  },
-  'cli.doctor.executor_smoke.hint.generic': {
-    zh: '可单独跑 omk doctor <skill> 复现并定位',
-    en: 'run omk doctor <skill> separately to reproduce and diagnose',
-  },
   // samples_contract
   'cli.doctor.samples_contract.skipped': {
     zh: '未提供 samples,跳过此项检查',
@@ -1274,10 +1222,9 @@ oh-my-knowledge — omk doctor 健康检查
 选项:
   --json                 把 DoctorReport 打到 stdout(CI 消费用)
   --gate                 静默模式: 通过 exit 0 / 不通过 exit 1, 仅 stderr 出问题摘要
-  --executor <name>      指定 executor (默认: claude)
-  --model <name>         指定 model (默认: sonnet)
-  --timeout <seconds>    executor smoke 超时 (默认: 8)
-  --skip-smoke           跳过 executor smoke 测试 (离线 / 无凭证场景)
+  --executor <name>      executor 名(仅向后兼容, doctor 不直接打 LLM)
+  --model <name>         model 名(同上)
+  --timeout <seconds>    rule 执行超时(默认 8)
   --lang <zh|en>         切换输出语言
 
 示例:
@@ -1285,14 +1232,14 @@ oh-my-knowledge — omk doctor 健康检查
   omk doctor examples/code-review/skills --json | jq .failed
   omk doctor --gate; echo $?
 
-doctor 检查项:
+doctor 检查项(纯静态 / 零 LLM 调用):
   - skill 文件可读 + 内容有最小长度
   - skill 元数据合法 (front-matter 若有)
   - 前置依赖完整 (引用的 CLI 工具 / 文件 / 环境变量)
-  - executor 烟测可达 (skill + executor 跑通最简 prompt 拿非空响应)
   - 用例 ↔ skill 输入约定 (warn 级, 仅传 samples 时跑)
 
-omk bench run 与 omk bench gate 默认前置走 doctor; 加 --skip-doctor 跳过。
+executor / judge 连通性由 evaluation preflight 负责, 不在 doctor 范围内。
+omk bench run 与 omk bench gate 默认前置走 doctor; 加 --skip-doctor 跳过(逃生 flag)。
 `.trim() + '\n',
     en: `
 oh-my-knowledge — omk doctor health check
@@ -1307,10 +1254,9 @@ Arguments:
 Options:
   --json                 Print DoctorReport JSON to stdout (CI-friendly)
   --gate                 Silent mode: exit 0 if pass, exit 1 if fail; brief stderr summary only
-  --executor <name>      Executor (default: claude)
-  --model <name>         Model (default: sonnet)
-  --timeout <seconds>    Executor smoke timeout (default: 8)
-  --skip-smoke           Skip executor smoke (offline / no-credentials use case)
+  --executor <name>      executor name (kept for compat; doctor does not call LLM)
+  --model <name>         model name (same)
+  --timeout <seconds>    per-rule timeout (default 8)
   --lang <zh|en>         Output language
 
 Examples:
@@ -1318,15 +1264,15 @@ Examples:
   omk doctor examples/code-review/skills --json | jq .failed
   omk doctor --gate; echo $?
 
-Checks:
+Checks (pure static / zero LLM calls):
   - skill file readable + minimum content length
   - skill metadata valid (front-matter if present)
   - dependencies present (referenced CLI tools / files / env vars)
-  - executor smoke reachable (skill + executor produces non-empty response)
   - samples ↔ skill contract (warn-level, only when samples provided)
 
+executor / judge connectivity is handled by evaluation preflight, not doctor.
 omk bench run and omk bench gate run doctor as a prerequisite by default;
-add --skip-doctor to bypass.
+add --skip-doctor to bypass (escape-hatch flag).
 `.trim() + '\n',
   },
   'cli.doctor.no_skill_found': {

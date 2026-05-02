@@ -299,8 +299,11 @@ async function handleRun(argv: string[]): Promise<void> {
     config.bootstrapSamples = bsCount;
   }
 
-  // 评测前置门禁: doctor 健康检查。fail 则 abort, 加 --skip-doctor 跳过。
-  await runDoctorPreflight(values, config, lang);
+  // 注入 lang 让 evaluation pipeline 能渲染 doctor 报告(失败时)。
+  config.lang = lang;
+  if (values['skip-doctor'] as boolean) {
+    process.stderr.write(tCli('cli.doctor.skip_doctor_warning', lang) + '\n');
+  }
 
   try {
     // --batch mode: evaluate each skill independently
@@ -572,8 +575,10 @@ function parseLastWindow(spec: string): string | null {
 /**
  * bench run / bench gate 前置门禁: 跑 doctor, 失败则 abort 评测(exit 1)。
  *
+ * doctor 是纯静态/低成本检查 (skill 结构 + 元数据 + 依赖 + 用例契约),
+ * 不碰 LLM 连通性 — executor / judge 连通由 evaluation preflight 负责。
+ *
  * - --skip-doctor: 跳过 doctor + stderr warning(沿用旧行为)
- * - --dry-run: doctor 跑结构 / 依赖检查, 但 skipSmoke=true 避免 LLM 调用
  * - doctor 自身 crash: 降级跳过, stderr warn(不让 doctor bug 把评测堵死)
  *
  * **收敛到本次评测的 variants** — 用 config.variantSpecs 精确解析 artifacts,
@@ -586,109 +591,6 @@ function parseLastWindow(spec: string): string | null {
  * 失败时 stderr 前缀统一 'doctor failed:', 与 bench gate 的 'bench gate failed:'
  * 区分(同 exit 1, 不同 stderr 标签, CI 可 grep 区分)。
  */
-async function runDoctorPreflight(
-  values: Record<string, unknown>,
-  config: import('./parse-run-config.js').RunConfig,
-  lang: CliLang,
-): Promise<void> {
-  if (values['skip-doctor'] as boolean) {
-    process.stderr.write(tCli('cli.doctor.skip_doctor_warning', lang) + '\n');
-    return;
-  }
-
-  const cwd = process.cwd();
-  const skillDir = config.skillDir ?? join(cwd, 'skills');
-  const executorName = config.executorName ?? 'claude';
-  const model = config.model ?? 'sonnet';
-  const timeoutMs = Math.min(Math.max(config.timeoutMs ?? 8000, 8000), 30000);
-  const skipSmoke = (values['dry-run'] as boolean) ?? false;
-
-  const { resolveArtifacts } = await import('../inputs/skill-loader.js');
-
-  // 收敛 artifacts 到本次评测的 variants (排除 baseline,baseline 没 content 不需要 doctor)。
-  //
-  // - 非 batch 且 variantSpecs 非空: 严格用 variantSpecs 解析,显式空数组表示
-  //   "本次没 skill 需要 doctor"(全 baseline / runtime-context-only run),
-  //   不 fallback 扫 skillDir 找无关草稿。
-  // - batch 模式: variantSpecs 不反映实际批量集合(由 discoverBatchSkills 决定),
-  //   交给 doctor 引擎 fallback 到 target=skillDir 扫描(让 doctor 把 skillDir 下
-  //   所有 skill 都检查一遍, batch 的语义本来就是"对每个配对 skill 跑评测")。
-  const isBatchMode = (values.batch as boolean) === true;
-  const variantExprs = (config.variantSpecs ?? [])
-    .map((s) => s.expr)
-    .filter((expr) => expr !== 'baseline');
-  let artifacts: import('../types/index.js').Artifact[] | undefined;
-  if (!isBatchMode) {
-    try {
-      const resolved = variantExprs.length > 0
-        ? resolveArtifacts(skillDir, variantExprs, {
-          strictBaseline: config.strictBaseline,
-          variantAllowedSkills: config.variantAllowedSkills,
-        })
-        : [];
-      // 显式 [] (即便 variantExprs 为空) 也直接传给 doctor; 表达"本次无 skill"
-      artifacts = resolved.filter((a) => a.kind !== 'baseline');
-    } catch (err) {
-      // resolveArtifacts 失败 (如 skill 文件不存在); 让 runEvaluation 自己报错
-      const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`doctor preflight skipped (artifact resolution failed): ${msg}\n`);
-      return;
-    }
-  }
-  // batch 模式下 artifacts 留 undefined, doctor 引擎自身 fallback 到 target=skillDir
-
-  // 加载 samples + requires 让 samples_contract_aligned 与 dependencies_present 都生效。
-  // requires 不能丢, 否则 doctor 通过但 evaluation preflight 仍因 requires.env/tools fail —
-  // 门禁形同虚设。失败不阻断 doctor (rule 自然 skipped, artifact-level 仍全跑)。
-  let samples: import('../types/index.js').Sample[] | undefined;
-  let requires: import('../eval-core/dependency-checker.js').DependencyRequirements | undefined;
-  if (config.samplesPath) {
-    try {
-      const { loadSamples } = await import('../inputs/load-samples.js');
-      const loaded = loadSamples(config.samplesPath);
-      samples = loaded.samples;
-      requires = loaded.requires;
-    } catch {
-      // 沉默退回
-    }
-  }
-
-  const { runDoctor } = await import('../doctor/index.js');
-  const { renderDoctorReportText } = await import('../doctor/renderer.js');
-
-  let report;
-  try {
-    report = await runDoctor({
-      ...(artifacts !== undefined ? { artifacts } : { target: skillDir }),
-      cwd,
-      // 与 evaluation-pipeline.ts dependency check 同规则: artifact.cwd > skillDir > cwd。
-      // CLI 这里固定传 skillDir, runDoctor 内部还会让 artifact.cwd 优先(若有)。
-      dependencyCwd: skillDir,
-      executorName,
-      model,
-      timeoutMs,
-      lang,
-      skipSmoke,
-      samples,
-      requires,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    process.stderr.write(`doctor preflight skipped due to internal error: ${msg}\n`);
-    return;
-  }
-
-  if (report.skills.length === 0) {
-    return;
-  }
-
-  if (report.failed) {
-    renderDoctorReportText(report, lang);
-    console.error(`doctor failed: ${tCli('cli.doctor.gate_blocked', lang)}`);
-    process.exit(1);
-  }
-}
-
 async function handleDoctor(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   if (argv.includes('--help') || argv.includes('-h')) {
@@ -707,7 +609,6 @@ async function handleDoctor(argv: string[]): Promise<void> {
       executor: { type: 'string' },
       model: { type: 'string' },
       timeout: { type: 'string' },
-      'skip-smoke': { type: 'boolean', default: false },
     },
   });
 
@@ -717,7 +618,6 @@ async function handleDoctor(argv: string[]): Promise<void> {
   const timeoutRaw = values.timeout as string | undefined;
   const timeoutSec = timeoutRaw != null ? Number(timeoutRaw) : 8;
   const timeoutMs = Math.max(1000, Math.floor((Number.isFinite(timeoutSec) ? timeoutSec : 8) * 1000));
-  const skipSmoke = (values['skip-smoke'] as boolean) ?? false;
   const cwd = process.cwd();
 
   const { runDoctor } = await import('../doctor/index.js');
@@ -732,7 +632,6 @@ async function handleDoctor(argv: string[]): Promise<void> {
       model,
       timeoutMs,
       lang,
-      skipSmoke,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -1110,8 +1009,11 @@ async function handleGate(argv: string[]): Promise<void> {
 
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
-  // 评测前置门禁: doctor 健康检查。fail 则 abort, 加 --skip-doctor 跳过。
-  await runDoctorPreflight(values, config, lang);
+  // 注入 lang + skip-doctor warning(若 flag set);doctor 实际由 evaluation-pipeline 调。
+  config.lang = lang;
+  if (values['skip-doctor'] as boolean) {
+    process.stderr.write(tCli('cli.doctor.skip_doctor_warning', lang) + '\n');
+  }
 
   try {
     const { report: document } = (await runEvaluation(config)) as EvalResult;

@@ -7,7 +7,6 @@ import { computeReportCoverage } from '../analysis/coverage-analyzer.js';
 import { computeReportGapRates } from '../analysis/gap-analyzer.js';
 import { aggregateReport, applyBlindMode, DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/evaluation-reporting.js';
 import { executeTasks, preflight } from '../eval-core/evaluation-execution.js';
-import { preflightDependencies, formatDependencyErrors } from '../eval-core/dependency-checker.js';
 import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
 import {
   createFileJobStore,
@@ -411,7 +410,9 @@ export async function executeEvaluationPipeline({
   verbose = false,
   retry = 0,
   existingResults,
-  requires,
+  // requires 现在由 runEvaluation 上游传给 doctor 处理; eval-pipeline 不再用
+  // 但保留接口字段,避免破 programmatic API (类型层面接收, 内部忽略)
+  requires: _requires,
   layeredStats = false,
   repeat,
   batch,
@@ -457,16 +458,10 @@ export async function executeEvaluationPipeline({
   try {
     if (!skipPreflight) {
       if (onProgress) onProgress({ phase: 'preflight', jobId: runState.jobId });
+      // LLM 连通性: eval 唯一职责。doctor 在 runEvaluation 上游已跑,
+      // 包含 dep / 结构 / 元数据 / 契约检查。这里只剩 executor + judge。
       await preflight(executor, model);
       if (!noJudge) await preflight(judgeExecutor, judgeModel);
-
-      // Dependency check: auto-extract from skill contents + merge explicit requires
-      const skillContents = artifacts.map((a) => a.content).filter((c): c is string => typeof c === 'string');
-      const cwd = artifacts.find((a) => a.cwd)?.cwd || skillDir || process.cwd();
-      const depResult = await preflightDependencies(skillContents, samples, cwd, requires, artifacts);
-      if (!depResult.ok) {
-        throw new Error(formatDependencyErrors(depResult.missing));
-      }
     }
 
     // Structural power warnings — print to stderr after preflight passes, before

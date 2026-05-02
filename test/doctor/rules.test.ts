@@ -189,13 +189,12 @@ describe('samplesContractAlignedRule', () => {
 });
 
 describe('rules registry', () => {
-  it('BUILTIN_RULES includes all v0.22 rules in defined order', () => {
+  it('BUILTIN_RULES exposes the registered rules in stable order', () => {
     const ids = BUILTIN_RULES.map((r) => r.id);
     assert.deepEqual(ids, [
       'skill_readable',
       'skill_metadata',
       'dependencies_present',
-      'executor_smoke',
       'samples_contract_aligned',
     ]);
   });

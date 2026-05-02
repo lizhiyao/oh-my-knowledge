@@ -27,6 +27,10 @@ export interface RunConfig {
   executorName: string | undefined;
   judgeExecutorName: string | undefined;
   skipPreflight: boolean | undefined;
+  /** 跳过 doctor 健康检查(逃生 flag, 默认 false — doctor 是评测必经环节)。 */
+  skipDoctor: boolean | undefined;
+  /** 用户语言, 透传给 doctor 报告渲染。 */
+  lang: 'zh' | 'en' | undefined;
   mcpConfig: string | undefined;
   verbose: boolean | undefined;
   blind?: boolean | undefined;
@@ -214,6 +218,7 @@ export function parseRunConfig(
   const noCache = (values['no-cache'] as boolean | undefined) ?? evalConfig?.noCache ?? false;
   const dryRun = (values['dry-run'] as boolean | undefined) ?? false;
   const skipPreflight = (values['skip-preflight'] as boolean | undefined) ?? false;
+  const skipDoctor = (values['skip-doctor'] as boolean | undefined) ?? false;
   const mcpConfig = (values['mcp-config'] as string | undefined) ?? evalConfig?.mcpConfig;
   const verbose = (values.verbose as boolean | undefined) ?? false;
   const retry = Math.max(0, Number(values.retry ?? 0) || 0);
@@ -255,6 +260,8 @@ export function parseRunConfig(
       executorName,
       judgeExecutorName,
       skipPreflight,
+      skipDoctor,
+      lang: undefined, // CLI 入口在 handleRun/handleGate 里注入
       mcpConfig,
       verbose,
       retry,

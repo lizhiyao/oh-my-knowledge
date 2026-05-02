@@ -25,7 +25,6 @@ describe('omk doctor CLI', () => {
     assert.ok(stdout.includes('健康检查'));
     assert.ok(stdout.includes('--json'));
     assert.ok(stdout.includes('--gate'));
-    assert.ok(stdout.includes('--skip-smoke'));
   });
 
   it('--help --lang en shows English usage', async () => {
@@ -41,7 +40,6 @@ describe('omk doctor CLI', () => {
       'doctor',
       EXAMPLE_SKILL,
       '--json',
-      '--skip-smoke',
     ]);
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.kind, 'doctor');
@@ -56,7 +54,6 @@ describe('omk doctor CLI', () => {
       'doctor',
       EXAMPLE_SKILLS_DIR,
       '--json',
-      '--skip-smoke',
     ]);
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.kind, 'doctor');
@@ -74,13 +71,12 @@ describe('omk doctor CLI', () => {
     );
   });
 
-  it('--gate exits 0 on passing skill (--skip-smoke avoids LLM call)', async () => {
+  it('--gate exits 0 on passing skill', async () => {
     const { stderr } = await execFileAsync('node', [
       CLI,
       'doctor',
       EXAMPLE_SKILL,
       '--gate',
-      '--skip-smoke',
     ]);
     // Pass case: stdout silent, stderr should not contain "doctor failed:"
     assert.ok(!stderr.includes('doctor failed:'));
@@ -113,7 +109,6 @@ describe('omk doctor CLI', () => {
       CLI,
       'doctor',
       EXAMPLE_SKILL,
-      '--skip-smoke',
     ]);
     assert.ok(stderr.includes('健康检查'));
     assert.ok(stderr.includes('总览:'));

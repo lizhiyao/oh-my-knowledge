@@ -179,23 +179,6 @@ describe('runDoctor', () => {
     }
   });
 
-  it('skipSmoke=true filters out executor_smoke rule from BUILTIN_RULES', async () => {
-    const report = await runDoctor({
-      target: EXAMPLE_SKILLS_DIR,
-      cwd: '/tmp',
-      executorName: 'claude',
-      model: 'sonnet',
-      timeoutMs: 8000,
-      lang: 'zh',
-      skipSmoke: true,
-      // 用 BUILTIN_RULES — 不传 rules 就走默认
-    });
-    for (const skill of report.skills) {
-      const ruleIds = skill.results.map((r) => r.ruleId);
-      assert.ok(!ruleIds.includes('executor_smoke'), 'executor_smoke should be filtered out');
-    }
-  });
-
   it('emits empty skills array (no crash) for empty target dir', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'doctor-empty-'));
     try {
@@ -284,7 +267,7 @@ describe('runDoctor', () => {
         model: 'sonnet',
         timeoutMs: 8000,
         lang: 'zh',
-        skipSmoke: true,
+  
       });
       // 每个 skill 都应包含 custom_marker rule 的执行结果
       for (const skill of report.skills) {
@@ -310,7 +293,7 @@ describe('runDoctor', () => {
       model: 'sonnet',
       timeoutMs: 8000,
       lang: 'zh',
-      skipSmoke: true,
+
       samples: [],  // 空数组应触发 warn
     });
     const samplesResult = report.skills[0].results.find((r) => r.ruleId === 'samples_contract_aligned');
@@ -388,7 +371,7 @@ describe('runDoctor', () => {
       model: 'sonnet',
       timeoutMs: 8000,
       lang: 'zh',
-      skipSmoke: true,
+
       requires: { tools: ['definitely-not-installed-cli-xyz123'] },
     });
     const depsResult = report.skills[0].results.find((r) => r.ruleId === 'dependencies_present');
@@ -418,7 +401,7 @@ describe('runDoctor', () => {
         model: 'sonnet',
         timeoutMs: 8000,
         lang: 'zh',
-        skipSmoke: true,
+  
         requires: { files: ['fixture.txt'] },
       });
       const depsPass = reportPass.skills[0].results.find((r) => r.ruleId === 'dependencies_present');
@@ -433,7 +416,7 @@ describe('runDoctor', () => {
         model: 'sonnet',
         timeoutMs: 8000,
         lang: 'zh',
-        skipSmoke: true,
+  
         requires: { files: ['fixture.txt'] },
       });
       const depsFail = reportFail.skills[0].results.find((r) => r.ruleId === 'dependencies_present');
@@ -466,7 +449,7 @@ describe('runDoctor', () => {
         model: 'sonnet',
         timeoutMs: 8000,
         lang: 'zh',
-        skipSmoke: true,
+  
         requires: { files: ['fixture.txt'] },
       });
       const deps = report.skills[0].results.find((r) => r.ruleId === 'dependencies_present');

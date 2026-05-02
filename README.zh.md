@@ -57,15 +57,16 @@ omk doctor skills/ --json     # JSON 输出供 CI 消费
 omk doctor --gate; echo $?    # 静默模式 — 任意 fatal 失败 exit 1
 ```
 
-doctor 检查项（类比 SE 工具栈的 lint + typecheck + smoke）:
+doctor 检查项（纯静态 / 零 LLM 调用，类比 SE 工具栈的 lint + typecheck）:
 
 - **skill 文件可读** — 文件存在、内容非空、有最低长度
 - **skill 元数据合法** — front-matter（若有）YAML 合法；directory-skill 有 `SKILL.md`
 - **前置依赖完整** — 引用的 CLI 工具、文件、环境变量都可用（复用 `preflightDependencies`）
-- **executor 烟测可达** — skill + executor 跑通最简 prompt 拿非空响应
 - **用例 ↔ skill 输入约定** — 传 samples 时校验非空且含 prompt 字段（warn 级）
 
-doctor 输出人类可读 PASS/WARN/FAIL 列表或结构化 JSON；失败类型（`timeout` / `auth` / `empty` / `error`）都带可操作 hint。`bench run` 与 `bench gate` 在 doctor 失败时 abort（exit 1，stderr 前缀 `doctor failed:`）；加 `--skip-doctor` 跳过（生产环境不推荐）。
+executor / judge 连通性由 evaluation preflight 单独负责，不在 doctor 范围内——边界清晰：doctor 静态，eval 动态。
+
+doctor 输出人类可读 PASS/WARN/FAIL 列表或结构化 JSON。`bench run` 与 `bench gate` 在 doctor 失败时 abort（exit 1，stderr 前缀 `doctor failed:`）；加 `--skip-doctor` 跳过（逃生 flag，生产环境不推荐）。
 
 ## 在 AI Coding Agent 中使用
 

@@ -55,6 +55,10 @@ interface CommonEvaluationOptions {
   persistJob?: boolean;
   onProgress?: ProgressCallback | null;
   skipPreflight?: boolean;
+  /** 跳过 doctor 健康检查。默认 false — doctor 是评测必经环节, --skip-doctor 仅作逃生 flag。 */
+  skipDoctor?: boolean;
+  /** 用户语言, 透传给 doctor 报告渲染。 */
+  lang?: 'zh' | 'en';
   mcpConfig?: string;
   verbose?: boolean;
   // When true, HTML report expands the three-layer independent significance
@@ -175,6 +179,8 @@ export async function runEvaluation({
   persistJob = true,
   onProgress = null,
   skipPreflight = false,
+  skipDoctor = false,
+  lang = 'zh',
   mcpConfig,
   verbose = false,
   retry = 0,
@@ -202,6 +208,34 @@ export async function runEvaluation({
     strictBaseline,
     variantAllowedSkills,
   });
+
+  // doctor 强制门禁: skill 静态结构 + 元数据 + 依赖 + 用例契约。
+  // 在 dryRun 分支之前跑, 让 dry-run 也得到 doctor 覆盖(保护 garbage-in 的 verdict)。
+  // --skip-doctor 是逃生 flag (不推荐生产用); skipPreflight=true 也跳过 doctor。
+  if (!skipDoctor && !skipPreflight) {
+    const { runDoctor } = await import('../doctor/index.js');
+    const { renderDoctorReportText } = await import('../doctor/renderer.js');
+    const { tCli } = await import('../cli/i18n.js');
+    const skillArtifacts = resolvedArtifacts.filter((a) => a.kind !== 'baseline');
+    if (skillArtifacts.length > 0) {
+      const dependencyCwd = resolvedArtifacts.find((a) => a.cwd)?.cwd || resolve(skillDir) || process.cwd();
+      const doctorReport = await runDoctor({
+        artifacts: skillArtifacts,
+        cwd: dependencyCwd,
+        dependencyCwd,
+        executorName,
+        model,
+        timeoutMs: timeoutMs ?? 8000,
+        lang,
+        samples,
+        requires,
+      });
+      if (doctorReport.failed) {
+        renderDoctorReportText(doctorReport, lang);
+        throw new Error(`doctor failed: ${tCli('cli.doctor.gate_blocked', lang)}`);
+      }
+    }
+  }
 
   if (dryRun) {
     // Emit power warnings during dry-run too — this is exactly when users
@@ -542,6 +576,8 @@ export async function runBatchEvaluation({
   onProgress = null,
   onSkillProgress = null,
   skipPreflight = false,
+  skipDoctor = false,
+  lang = 'zh',
   mcpConfig,
   verbose = false,
   repeat,
@@ -597,6 +633,8 @@ export async function runBatchEvaluation({
     onProgress,
     onSkillProgress,
     skipPreflight,
+    skipDoctor,
+    lang,
     mcpConfig,
     verbose,
     repeat,

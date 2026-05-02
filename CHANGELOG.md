@@ -12,7 +12,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Added
 
-- **`omk doctor` 评测前置健康检查**:回答「skill 能不能被有意义地评测」的健康检查命令,类比 SE 工具栈的 lint+typecheck+smoke。检查 skill 文件可读 / 元数据合法 / 依赖完整 / executor 烟测可达(全 fatal)+ samples↔skill 输入约定(warn)。`omk doctor [path]` 接受单 .md 文件、目录或 cwd 默认;`--json` 输出 DoctorReport 给 CI,`--gate` 走 exit code。`omk bench run` 与 `omk bench gate` 默认前置调 doctor,fail 则 abort 评测(stderr `doctor failed:` 前缀,与 `bench gate failed:` 区分)。**Backward-compat caveat**: 现有自动化脚本若 skill 检出问题会被 abort,需修复或加 `--skip-doctor` 跳过。详见 #<PR>。
+- **`omk doctor` 评测前置健康检查(纯静态 / 零 LLM 调用)**:回答「skill 能不能被有意义地评测」, 类比 SE 工具栈的 lint+typecheck。检查 skill 文件可读 / 元数据合法 / 依赖完整(全 fatal)+ samples↔skill 输入约定(warn)。executor / judge 连通性由 evaluation preflight 负责, 不在 doctor 范围内 — 边界清晰: doctor 静态, eval 动态。`omk doctor [path]` 接受单 .md 文件、目录或 cwd 默认;`--json` 输出 DoctorReport 给 CI,`--gate` 走 exit code。`omk bench run` / `omk bench gate` 内置 doctor 强制门禁(programmatic 用户 runEvaluation 也会跑), 失败 abort 评测;`--skip-doctor` 是逃生 flag(生产不推荐)。**Backward-compat caveat**: 现有自动化脚本若 skill 检出问题会被 abort, 需修复或加 `--skip-doctor` 跳过。详见 #<PR>。
 
 ### Changed
 

@@ -1,11 +1,13 @@
 /**
  * omk doctor 内置规则注册表。
  *
+ * doctor 是**纯静态/低成本检查**, 不碰 LLM 连通性 — executor / judge 连通性由
+ * evaluation preflight 负责。边界清晰: doctor 静态(零 LLM 调用), eval 动态。
+ *
  * 每条 rule 回答一个独立的「skill 能不能被有意义评测」子问题:
  *   - skill_readable: 文件能读、内容非空且有最小长度
  *   - skill_metadata: front-matter(若有) YAML 合法、directory-skill 有 SKILL.md
  *   - dependencies: 引用的 tool / file / env / preflight 完整(复用 preflightDependencies)
- *   - executor_smoke: skill + executor 组合能跑通,拿到非空响应
  *   - samples_contract: 仅在传 samples 时跑,warn 级,校验 samples 非空 + 含 prompt
  *
  * fatal-fail 时 rule 引擎不中断后续 rule 执行(让用户一次看到全貌),
@@ -18,17 +20,14 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
-import type { CliMessageKey } from '../cli/i18n-dict.js';
 import { tCli } from '../cli/i18n.js';
 import { preflightDependencies } from '../eval-core/dependency-checker.js';
 import type { DependencyIssue } from '../eval-core/dependency-checker.js';
-import { createExecutor } from '../executors/index.js';
 import type {
   DoctorRule,
   DoctorContext,
   DoctorRuleCheckOutcome,
 } from '../types/doctor.js';
-import { runExecutorSmoke } from './smoke.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -177,52 +176,6 @@ export const dependenciesPresentRule: DoctorRule = {
   },
 };
 
-export const executorSmokeRule: DoctorRule = {
-  id: 'executor_smoke',
-  severity: 'fatal',
-  labelKey: 'cli.doctor.rule.executor_smoke',
-  async check(ctx: DoctorContext): Promise<DoctorRuleCheckOutcome> {
-    const executor = createExecutor(ctx.executorName);
-    const result = await runExecutorSmoke(ctx.artifact, executor, ctx.model, ctx.cwd, ctx.timeoutMs);
-    if (!result.ok) {
-      const failureKind = result.failureKind ?? 'error';
-      const error = (result.error ?? '').slice(0, 120);
-      let messageKey: CliMessageKey;
-      let hintKey: CliMessageKey;
-      const params: Record<string, string | number> = { error, timeout: ctx.timeoutMs, executor: ctx.executorName };
-
-      if (failureKind === 'timeout') {
-        messageKey = 'cli.doctor.executor_smoke.fail.timeout';
-        hintKey = 'cli.doctor.executor_smoke.hint.timeout';
-      } else if (failureKind === 'auth') {
-        messageKey = 'cli.doctor.executor_smoke.fail.auth';
-        hintKey = 'cli.doctor.executor_smoke.hint.auth';
-      } else if (failureKind === 'empty') {
-        messageKey = 'cli.doctor.executor_smoke.fail.empty';
-        hintKey = 'cli.doctor.executor_smoke.hint.empty';
-      } else {
-        messageKey = 'cli.doctor.executor_smoke.fail.error';
-        hintKey = 'cli.doctor.executor_smoke.hint.generic';
-      }
-
-      return {
-        status: 'fail',
-        message: tCli(messageKey, ctx.lang, params),
-        hint: tCli(hintKey, ctx.lang, params),
-        detail: { failureKind, durationMs: result.durationMs, error: result.error },
-      };
-    }
-    return {
-      status: 'pass',
-      message: tCli('cli.doctor.executor_smoke.pass', ctx.lang, { duration: result.durationMs }),
-      detail: {
-        durationMs: result.durationMs,
-        outputPreview: (result.output ?? '').slice(0, 100),
-      },
-    };
-  },
-};
-
 export const samplesContractAlignedRule: DoctorRule = {
   id: 'samples_contract_aligned',
   severity: 'warn',
@@ -263,12 +216,12 @@ export const samplesContractAlignedRule: DoctorRule = {
 // Registry
 // ---------------------------------------------------------------------------
 
-/** v0.22 内置规则注册表。执行顺序即此处定义顺序。 */
+/** v0.22 内置规则注册表。执行顺序即此处定义顺序。
+ *  doctor 不包含 executor 连通性检查 — 该职责属于 evaluation preflight。 */
 export const BUILTIN_RULES: DoctorRule[] = [
   skillReadableRule,
   skillMetadataRule,
   dependenciesPresentRule,
-  executorSmokeRule,
   samplesContractAlignedRule,
 ];
 

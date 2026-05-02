@@ -32,6 +32,8 @@ interface RunSingleEvaluationOptions {
   persistJob: false;
   onProgress: ProgressCallback | null;
   skipPreflight: boolean;
+  skipDoctor?: boolean;
+  lang?: 'zh' | 'en';
   mcpConfig?: string;
   verbose: boolean;
   runId?: string;
@@ -259,6 +261,8 @@ export async function executeBatchEvaluationRuns({
   onProgress = null,
   onSkillProgress = null,
   skipPreflight = false,
+  skipDoctor = false,
+  lang = 'zh',
   mcpConfig,
   verbose = false,
   repeat,
@@ -288,6 +292,8 @@ export async function executeBatchEvaluationRuns({
   onProgress?: ProgressCallback | null;
   onSkillProgress?: ((info: { phase: string; skill: string; current: number; total: number }) => void) | null;
   skipPreflight?: boolean;
+  skipDoctor?: boolean;
+  lang?: 'zh' | 'en';
   mcpConfig?: string;
   verbose?: boolean;
   repeat?: number;
@@ -341,6 +347,10 @@ export async function executeBatchEvaluationRuns({
       persistJob: false,
       onProgress,
       skipPreflight: skipPreflight || i > 0,
+      // doctor 每个 skill 都跑(每个 skill 是独立 artifact, 独立 dep / 元数据);
+      // 但若用户全局 --skip-doctor 也透传给每个 skill。
+      skipDoctor,
+      lang,
       mcpConfig,
       verbose,
       runId: childRunId,

@@ -57,15 +57,16 @@ omk doctor skills/ --json     # JSON output for CI consumption
 omk doctor --gate; echo $?    # silent mode — exit 1 if any fatal check fails
 ```
 
-What `doctor` checks (analogous to lint + typecheck + smoke in the SE toolchain):
+What `doctor` checks (pure static / zero LLM calls — analogous to lint + typecheck in the SE toolchain):
 
 - **skill readable** — file exists, content non-empty, has minimum length
 - **skill metadata** — front-matter (if present) is valid YAML; directory-skills have `SKILL.md`
 - **dependencies present** — referenced CLI tools, files, env vars all available (reuses `preflightDependencies`)
-- **executor smoke** — skill + executor produces a non-empty response on a minimal prompt
 - **samples ↔ skill contract** — when samples are provided, validate they're non-empty and have prompt fields (warn-level)
 
-Doctor outputs human-readable PASS/WARN/FAIL or structured JSON; failure modes (`timeout` / `auth` / `empty` / `error`) come with actionable hints. `bench run` and `bench gate` abort with `exit 1` and stderr `doctor failed:` prefix when doctor fails — pass `--skip-doctor` to skip (not recommended for production).
+executor / judge connectivity is verified by evaluation preflight (a separate phase), not by doctor — clean boundary: doctor is static, eval is dynamic.
+
+Doctor outputs human-readable PASS/WARN/FAIL or structured JSON. `bench run` and `bench gate` abort with `exit 1` and stderr `doctor failed:` prefix when doctor fails — pass `--skip-doctor` to skip (escape-hatch flag, not recommended for production).
 
 ## Use inside AI Coding Agents
 
