@@ -12,19 +12,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ### Added
 
-- **`omk doctor` 评测前置健康检查(纯静态 / 零 LLM 调用)**:回答「skill 能不能被有意义地评测」, 类比 SE 工具栈的 lint+typecheck。检查 skill 文件可读 / 元数据合法 / 依赖完整(全 fatal)+ samples↔skill 输入约定(warn)。executor / judge 连通性由 evaluation preflight 负责, 不在 doctor 范围内 — 边界清晰: doctor 静态, eval 动态。`omk doctor [path]` 接受单 .md 文件、目录或 cwd 默认;`--json` 输出 DoctorReport 给 CI,`--gate` 走 exit code。`omk bench run` / `omk bench gate` 内置 doctor 强制门禁(programmatic 用户 runEvaluation 也会跑), 失败 abort 评测; **doctor 无 skip flag** — 静态检查零成本无理由跳过。详见 #<PR>。
+- **`omk doctor` 评测前置健康检查(纯静态 / 零 LLM 调用)**:回答「skill 能不能被有意义地评测」, 类比 SE 工具栈的 lint+typecheck。检查 skill 文件可读 / 元数据合法 / 依赖完整(全 fatal)+ samples↔skill 输入约定(warn)。executor / judge 连通性由 evaluation preflight 负责, 不在 doctor 范围内 — 边界清晰: doctor 静态, eval 动态。`omk doctor [path]` 接受单 .md 文件、目录或 cwd 默认;`--json` 输出 DoctorReport 给 CI,`--gate` 走 exit code。`omk bench run` / `omk bench gate` 内置 doctor 强制门禁(programmatic 用户 runEvaluation 也会跑), 失败 abort 评测; **doctor 无 skip flag** — 静态检查零成本无理由跳过。详见 #57。
 
 - **⚠ BREAKING-CLI: `--skip-preflight` flag 重命名为 `--skip-connectivity`**。新名字精确反映语义(只跳过 LLM 连通性检测, 与 doctor 解耦)。`--resume` 现在自动跳过连通性检测(原 run 已经验过, 重跑浪费 LLM 调用)。`--skip-doctor` flag 不再存在 — doctor 是评测必经环节, 无 escape hatch。**迁移**: 把脚本里的 `--skip-preflight` 改为 `--skip-connectivity`;原 `--skip-doctor` 用法没有替代(需修复底层问题)。
 
 ### Changed
 
 - **所有 omk 子命令对未知 option 报错**(strict parser):之前 parseArgs `strict:false` 让未声明的 flag 被静默吞掉,用户写错 flag 名(或传已删除的 `--skip-doctor` / `--skip-preflight` / `--skip-smoke`)时命令仍 exit 0,以为生效实际没有。现在 `bench run / gate / doctor / report / gen-samples / evolve / diff / gold / debias-validate / saturation / verdict / diagnose / failures / analyze` 全部子命令未知 option 直接 stderr `Unknown option '--xxx'` + exit 2(区分于业务 failure 的 exit 1)。已删除的 flag 自然 fail,不维护 deprecation list。**迁移**: 把脚本里拼错的 flag 名修正即可。
+- **本地反馈链路提速**: `eslint` 默认开启 cache,TypeScript 打开 `incremental` + `.tsbuildinfo` 缓存,重复跑 `lint` / `typecheck` / `build` 不再每次从零开始。`package.json` 新增 `yarn typecheck:watch`、`yarn test:watch`、`yarn check`,推荐日常开发用 watch / check,完整 `yarn ci` 继续保留为提交前闸门。
 - **README / comparison 文档澄清 Claude Code 与 Codex 用法**:把 `/omk ...` 明确限定为 Claude Code skill 入口,避免让读者误解 Codex 也原生支持 slash command。README 中补充 Codex 直接驱动 `omk` CLI 的用法,comparison 文档同步改成"Claude Code 工作流最原生,但 `omk` CLI 也可被其他 coding agent 驱动"。
 - **README 顶部新增 npm weekly downloads badge**:公开仓库前补充近期使用热度信号,与现有 npm version / CI / License / Node.js version 形成一组更完整的基础元信息。
 
 ### Fixed
 
-- **doctor 修三处 review issue**:(1) `omk doctor <directory-skill-root>`(目录自身含 `SKILL.md`)之前被当成「含多个 variant 的 skillDir」, `SKILL.md` 被识别为名为 `SKILL` 的 variant 导致 `skillRoot` 丢失, 相对路径 asset 锚错点; 现在优先按 directory-skill 解析。(2) `bench run --batch --dry-run` 之前绕过 mandatory doctor 静默通过 broken skill, 与"doctor 强制 + dry-run 也覆盖"的语义不一致; 现在 batch dry-run 也对每个 entry 跑 doctor, 失败 abort 并在 stderr 注明 `skill=<name>`。(3) README 中文 / 英文同步 doctor 语义到「纯静态零 LLM」, `--skip-preflight` 改名 `--skip-connectivity`。详见 #<PR>。
+- **doctor 修三处 review issue**:(1) `omk doctor <directory-skill-root>`(目录自身含 `SKILL.md`)之前被当成「含多个 variant 的 skillDir」, `SKILL.md` 被识别为名为 `SKILL` 的 variant 导致 `skillRoot` 丢失, 相对路径 asset 锚错点; 现在优先按 directory-skill 解析。(2) `bench run --batch --dry-run` 之前绕过 mandatory doctor 静默通过 broken skill, 与"doctor 强制 + dry-run 也覆盖"的语义不一致; 现在 batch dry-run 也对每个 entry 跑 doctor, 失败 abort 并在 stderr 注明 `skill=<name>`。(3) README 中文 / 英文同步 doctor 语义到「纯静态零 LLM」, `--skip-preflight` 改名 `--skip-connectivity`。详见 #57。
 
 ## [0.24.0] - 2026-05-02
 
