@@ -62,6 +62,10 @@ export interface RunConfig {
 export interface ParseRunConfigResult {
   values: Record<string, string | boolean | undefined>;
   config: RunConfig;
+  /** Loaded eval.yaml when --config was provided. handleRun uses it to apply
+   *  CLI > eval.yaml > default fallback for fields not propagated by parseRunConfig
+   *  (e.g. repeat / judgeRepeat / bootstrap — handled in handleRun for input validation). */
+  evalConfig: EvalConfig | null;
 }
 
 export const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
@@ -214,7 +218,7 @@ export function parseRunConfig(
         ? evalConfig.timeoutMs / 1000
         : 120;
   const timeoutMs = Math.max(1, Number(timeoutSec) || 120) * 1000;
-  const noJudge = (values['no-judge'] as boolean | undefined) ?? false;
+  const noJudge = (values['no-judge'] as boolean | undefined) ?? evalConfig?.noJudge ?? false;
   const noCache = (values['no-cache'] as boolean | undefined) ?? evalConfig?.noCache ?? false;
   const dryRun = (values['dry-run'] as boolean | undefined) ?? false;
   const skipConnectivity = (values['skip-connectivity'] as boolean | undefined) ?? false;
@@ -225,11 +229,15 @@ export function parseRunConfig(
   const blind = (values.blind as boolean | undefined) ?? evalConfig?.blind ?? false;
   const layeredStats = (values['layered-stats'] as boolean | undefined) ?? false;
 
-  // strict-baseline default true. Reconcile both flag forms.
-  // Priority: --no-strict-baseline > --strict-baseline > undefined(=true).
+  // strict-baseline default true. Reconcile both flag forms with eval.yaml fallback.
+  // Priority: --no-strict-baseline > --strict-baseline > eval.yaml strictBaseline > true。
   const noStrictFlag = values['no-strict-baseline'] as boolean | undefined;
   const strictFlag = values['strict-baseline'] as boolean | undefined;
-  const strictBaseline: boolean = noStrictFlag === true ? false : (strictFlag ?? true);
+  const strictBaseline: boolean = noStrictFlag === true
+    ? false
+    : strictFlag === true
+      ? true
+      : (evalConfig?.strictBaseline ?? true);
 
   // extract eval.yaml variant.allowedSkills overrides (per-variant). Always
   // wins over strictBaseline default. Empty object when no eval.yaml or no overrides.
@@ -270,5 +278,6 @@ export function parseRunConfig(
       strictBaseline,
       ...(Object.keys(variantAllowedSkills).length > 0 && { variantAllowedSkills }),
     },
+    evalConfig,
   };
 }

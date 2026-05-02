@@ -199,15 +199,18 @@ async function handleRun(argv: string[]): Promise<void> {
     console.log(tCli('cli.help.main', lang).trim());
     process.exit(0);
   }
-  const { values, config } = parseRunConfig(argv, {
+  // 注: 这里**不**给 parseArgs default 值, 否则 values.xxx 永远不为 undefined,
+  // CLI > eval.yaml > hardcoded-default 三级 fallback 区分不开 ("用户没传" vs "用户传了等于 default 值")。
+  // hardcoded default 在下面处理 undefined 时显式给。
+  const { values, config, evalConfig } = parseRunConfig(argv, {
     blind: { type: 'boolean' },
-    repeat: { type: 'string', default: '1' },
-    'judge-repeat': { type: 'string', default: '1' },
+    repeat: { type: 'string' },
+    'judge-repeat': { type: 'string' },
     'judge-models': { type: 'string' },
-    bootstrap: { type: 'boolean', default: false },
-    'bootstrap-samples': { type: 'string', default: '1000' },
+    bootstrap: { type: 'boolean' },
+    'bootstrap-samples': { type: 'string' },
     'gold-dir': { type: 'string' },
-    'no-debias-length': { type: 'boolean', default: false },
+    'no-debias-length': { type: 'boolean' },
     'budget-usd': { type: 'string' },
     'budget-per-sample-usd': { type: 'string' },
     'budget-per-sample-ms': { type: 'string' },
@@ -220,18 +223,17 @@ async function handleRun(argv: string[]): Promise<void> {
   }
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
-  // --repeat 输入校验: 非 ≥1 整数时提示并钳到 1, 不静默掩盖用户错字 / 极端输入。
-  // 提前到 --batch 分支之前, 保证 batch 模式也能读到 repeat。
+  // --repeat: CLI > eval.yaml > 1. 非 ≥1 整数时提示并钳到 1。
   const repeatRaw = values.repeat as string | undefined;
-  const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : 1;
+  const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : (evalConfig?.repeat ?? 1);
   if (repeatRaw !== undefined && (!Number.isFinite(parsedRepeat) || parsedRepeat < 1)) {
     process.stderr.write(tCli('cli.run.invalid_repeat', lang, { value: repeatRaw }));
   }
   const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
 
-  // --judge-repeat 同样校验: 非 ≥1 整数时钳到 1
+  // --judge-repeat: CLI > eval.yaml > 1.
   const judgeRepeatRaw = values['judge-repeat'] as string | undefined;
-  const parsedJudgeRepeat = judgeRepeatRaw !== undefined ? Number(judgeRepeatRaw) : 1;
+  const parsedJudgeRepeat = judgeRepeatRaw !== undefined ? Number(judgeRepeatRaw) : (evalConfig?.judgeRepeat ?? 1);
   if (judgeRepeatRaw !== undefined && (!Number.isFinite(parsedJudgeRepeat) || parsedJudgeRepeat < 1)) {
     process.stderr.write(tCli('cli.run.invalid_judge_repeat', lang, { value: judgeRepeatRaw }));
   }
@@ -239,9 +241,9 @@ async function handleRun(argv: string[]): Promise<void> {
   if (judgeRepeatCount > 1) config.judgeRepeat = judgeRepeatCount;
 
   // --judge-models executor:model,executor:model,... -> JudgeConfig[]
-  // 至少 2 个才进 ensemble 模式, 1 个等同于 --judge-model
+  // CLI > eval.yaml. 至少 2 个才进 ensemble 模式, 1 个等同于 --judge-model。
   const judgeModelsRaw = values['judge-models'] as string | undefined;
-  if (judgeModelsRaw) {
+  if (judgeModelsRaw !== undefined) {
     const parts = judgeModelsRaw.split(',').map((s) => s.trim()).filter(Boolean);
     const judges = parts.map((p) => {
       const [executor, ...modelParts] = p.split(':');
@@ -254,11 +256,12 @@ async function handleRun(argv: string[]): Promise<void> {
     if (judges.length >= 2) {
       config.judgeModels = judges;
     } else if (judges.length === 1) {
-      // 单 judge 不走 ensemble, 但允许这样写, 等同于 --judge-model + --executor
       process.stderr.write(tCli('cli.run.judge_models_single_warning', lang, {
         executor: judges[0].executor, model: judges[0].model,
       }));
     }
+  } else if (evalConfig?.judgeModels && evalConfig.judgeModels.length >= 2) {
+    config.judgeModels = evalConfig.judgeModels;
   }
 
   // --budget-usd / --budget-per-sample-usd / --budget-per-sample-ms:
@@ -276,19 +279,23 @@ async function handleRun(argv: string[]): Promise<void> {
     };
   }
 
-  // --no-debias-length: opt out of length-controlled prompt.
-  // Default behavior is debias-on (judge prompt v3-cot-length); flag flips it
-  // off so historical reports (judgePromptHash from v2-cot era) can be reproduced.
-  if (values['no-debias-length'] as boolean) {
+  // --no-debias-length / eval.yaml `lengthDebias: false`: opt out of length-controlled prompt。
+  // Default debias-on (judge prompt v3-cot-length); flip off only to reproduce historical reports。
+  // CLI 显式 --no-debias-length > eval.yaml lengthDebias > 默认 true。
+  const lengthDebiasOff = (values['no-debias-length'] as boolean | undefined) === true
+    || (values['no-debias-length'] === undefined && evalConfig?.lengthDebias === false);
+  if (lengthDebiasOff) {
     config.lengthDebias = false;
     process.stderr.write(tCli('cli.run.no_debias_length_active', lang));
   }
 
-  // --bootstrap / --bootstrap-samples
-  if (values.bootstrap as boolean) {
+  // --bootstrap / --bootstrap-samples: CLI > eval.yaml > default(off / 1000)。
+  const bootstrapEnabled = (values.bootstrap as boolean | undefined) === true
+    || (values.bootstrap === undefined && evalConfig?.bootstrap === true);
+  if (bootstrapEnabled) {
     config.bootstrap = true;
     const bsRaw = values['bootstrap-samples'] as string | undefined;
-    const parsedBs = bsRaw !== undefined ? Number(bsRaw) : 1000;
+    const parsedBs = bsRaw !== undefined ? Number(bsRaw) : (evalConfig?.bootstrapSamples ?? 1000);
     if (bsRaw !== undefined && (!Number.isFinite(parsedBs) || parsedBs < 100)) {
       process.stderr.write(tCli('cli.run.invalid_bootstrap_samples', lang, { value: bsRaw }));
     }
@@ -364,8 +371,8 @@ async function handleRun(argv: string[]): Promise<void> {
       filePath = result.filePath;
     }
 
-    // --gold-dir: compute α/κ/Pearson against gold annotations and re-persist.
-    const goldDir = values['gold-dir'] as string | undefined;
+    // --gold-dir / eval.yaml goldDir: compute α/κ/Pearson against gold annotations and re-persist.
+    const goldDir = (values['gold-dir'] as string | undefined) ?? evalConfig?.goldDir;
     if (goldDir && filePath) {
       const { attachGoldAgreementToReport, formatGoldCompare } = await import('../grading/gold-cli.js');
       const out = attachGoldAgreementToReport({

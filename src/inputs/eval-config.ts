@@ -140,8 +140,50 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
   assertNumberOpt('concurrency');
   assertNumberOpt('timeoutMs');
   assertBoolOpt('noCache');
+  assertBoolOpt('noJudge');
   assertBoolOpt('blind');
   assertStringOpt('mcpConfig');
+  assertStringOpt('goldDir');
+  assertBoolOpt('bootstrap');
+  assertBoolOpt('lengthDebias');
+  assertBoolOpt('strictBaseline');
+
+  // experiment-design integers ≥ 1
+  const assertPositiveIntOpt = (key: string): void => {
+    if (obj[key] === undefined) return;
+    if (typeof obj[key] !== 'number' || !Number.isFinite(obj[key]) || (obj[key] as number) < 1 || !Number.isInteger(obj[key])) {
+      throw new Error(`${configPath}: ${key} must be a positive integer (≥ 1)`);
+    }
+  };
+  assertPositiveIntOpt('repeat');
+  assertPositiveIntOpt('judgeRepeat');
+  if (obj.bootstrapSamples !== undefined) {
+    if (typeof obj.bootstrapSamples !== 'number' || !Number.isFinite(obj.bootstrapSamples) || obj.bootstrapSamples < 100) {
+      throw new Error(`${configPath}: bootstrapSamples must be a number ≥ 100`);
+    }
+  }
+
+  // judgeModels: array of { executor, model } — same shape as JudgeConfig in CLI parsing.
+  let judgeModelsParsed: import('../types/index.js').JudgeConfig[] | undefined;
+  if (obj.judgeModels !== undefined) {
+    if (!Array.isArray(obj.judgeModels)) {
+      throw new Error(`${configPath}: judgeModels must be an array of {executor, model}`);
+    }
+    judgeModelsParsed = [];
+    for (const [i, raw] of (obj.judgeModels as unknown[]).entries()) {
+      if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+        throw new Error(`${configPath}: judgeModels[${i}] must be an object {executor, model}`);
+      }
+      const j = raw as Record<string, unknown>;
+      if (typeof j.executor !== 'string' || !j.executor) {
+        throw new Error(`${configPath}: judgeModels[${i}].executor must be a non-empty string`);
+      }
+      if (typeof j.model !== 'string' || !j.model) {
+        throw new Error(`${configPath}: judgeModels[${i}].model must be a non-empty string`);
+      }
+      judgeModelsParsed.push({ executor: j.executor, model: j.model });
+    }
+  }
 
   //  — budget validation. Top-level `budget: { totalUSD?, perSampleUSD?, perSampleMs? }`.
   let budget: import('../types/index.js').EvalBudget | undefined;
@@ -171,10 +213,19 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     concurrency: obj.concurrency as number | undefined,
     timeoutMs: obj.timeoutMs as number | undefined,
     noCache: obj.noCache as boolean | undefined,
+    noJudge: obj.noJudge as boolean | undefined,
     blind: obj.blind as boolean | undefined,
     mcpConfig: obj.mcpConfig as string | undefined,
     variants,
     budget,
+    repeat: obj.repeat as number | undefined,
+    judgeRepeat: obj.judgeRepeat as number | undefined,
+    judgeModels: judgeModelsParsed,
+    bootstrap: obj.bootstrap as boolean | undefined,
+    bootstrapSamples: obj.bootstrapSamples as number | undefined,
+    goldDir: obj.goldDir as string | undefined,
+    lengthDebias: obj.lengthDebias as boolean | undefined,
+    strictBaseline: obj.strictBaseline as boolean | undefined,
   };
 }
 
@@ -190,6 +241,7 @@ function resolveConfigPaths(config: EvalConfig, configDir: string): EvalConfig {
     ...config,
     samples: resolveRel(config.samples),
     mcpConfig: config.mcpConfig ? resolveRel(config.mcpConfig) : undefined,
+    goldDir: config.goldDir ? resolveRel(config.goldDir) : undefined,
     variants: config.variants.map((v) => ({
       ...v,
       artifact: isNonPathExpr(v.artifact) ? v.artifact : (looksLikePath(v.artifact) ? resolveRel(v.artifact) : v.artifact),

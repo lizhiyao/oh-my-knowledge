@@ -428,6 +428,29 @@ omk bench run [选项]
 
 **eval.yaml 预算字段**: `budget: { totalUSD?, perSampleUSD?, perSampleMs? }`,所有字段可选且必须 ≥ 0。CLI 同名 flag 覆盖配置值。
 
+**eval.yaml 实验设计字段**: 上面 CLI flag 同样可以写到 `eval.yaml` 让实验配置可复现 (CLI > eval.yaml > 默认):
+
+```yaml
+samples: ./eval-samples.yaml
+model: sonnet
+repeat: 5                    # 多轮方差分析, ≥ 1
+judgeRepeat: 3               # 每条 (sample × dim) 评委自一致性次数, ≥ 1
+bootstrap: true              # 每 variant distribution-free CI
+bootstrapSamples: 2000       # 默认 1000, ≥ 100
+goldDir: ./gold              # 跑完自动对比 human anchor 算 α / κ / Pearson
+lengthDebias: true           # 默认; 设 false 复现 v0.21 之前的 hash
+strictBaseline: true         # 默认; 设 false 关掉 skill 隔离
+noJudge: false               # 默认; 设 true 完全跳过 LLM 评委
+judgeModels:                 # multi-judge ensemble (≥ 2 条)
+  - { executor: claude, model: opus }
+  - { executor: openai-api, model: gpt-4o }
+variants:
+  - { name: baseline, role: control, artifact: baseline }
+  - { name: my-skill, role: treatment, artifact: ./skills/my-skill.md }
+```
+
+`evolve` / `gate` / `verdict` / `diff` 等子命令暂不读 v0.2 字段(只 `bench run` 走 `parseRunConfig` 入口)。
+
 **和 `cost_max` / `latency_max` 断言的区别**: 断言是**单样本评分维度**(超出直接打 0 分,run 继续);budget 是**工作流级硬阈值**(`totalUSD` 超出整个 run abort 保留 partial report,per-sample 超出该样本失败但 run 继续)。一个回答"质量是否达标",一个回答"花钱/时间是否在预算内"。
 
 ### `omk bench run --batch`（批量评测）

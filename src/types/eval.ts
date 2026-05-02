@@ -139,6 +139,7 @@ export interface EvalConfig {
   concurrency?: number;
   timeoutMs?: number;
   noCache?: boolean;
+  noJudge?: boolean;
   blind?: boolean;
   mcpConfig?: string;
   variants: EvalConfigVariant[];
@@ -147,6 +148,23 @@ export interface EvalConfig {
    *  `--budget-usd` / `--budget-per-sample-usd` / `--budget-per-sample-ms`
    *  override the config values. */
   budget?: EvalBudget;
+  // ----- v0.2: experiment-design fields (CLI flag → eval.yaml parity) -----
+  /** --repeat N. Multi-run variance analysis. */
+  repeat?: number;
+  /** --judge-repeat N. Each (sample × dimension) judged N times for self-consistency stddev. */
+  judgeRepeat?: number;
+  /** --judge-models. Multi-judge ensemble; ≥ 2 entries enables inter-judge agreement. */
+  judgeModels?: JudgeConfig[];
+  /** --bootstrap. Distribution-free CI per variant + pairwise diff. */
+  bootstrap?: boolean;
+  /** --bootstrap-samples. Default 1000. */
+  bootstrapSamples?: number;
+  /** --gold-dir. After-run automatic comparison against a human-anchor dataset. */
+  goldDir?: string;
+  /** --no-debias-length flips this to false. Default true (judge prompt v3-cot-length). */
+  lengthDebias?: boolean;
+  /** --no-strict-baseline flips this to false. Default true (baseline-kind allowedSkills=[]). */
+  strictBaseline?: boolean;
 }
 
 export interface EvalBudget {

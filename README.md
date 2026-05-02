@@ -435,6 +435,29 @@ options:
 
 **eval.yaml budget**: declare `budget: { totalUSD?, perSampleUSD?, perSampleMs? }` (all optional, must be ≥ 0). CLI flags of the same name override the config values.
 
+**eval.yaml experiment-design fields**: the same flags above can be set in `eval.yaml` for reproducible experiment configuration (CLI > eval.yaml > default):
+
+```yaml
+samples: ./eval-samples.yaml
+model: sonnet
+repeat: 5                    # multi-run variance, ≥ 1
+judgeRepeat: 3               # per (sample × dim) judge self-consistency, ≥ 1
+bootstrap: true              # distribution-free CI per variant
+bootstrapSamples: 2000       # default 1000, ≥ 100
+goldDir: ./gold              # post-run α / κ / Pearson against human anchor
+lengthDebias: true           # default; set false to reproduce pre-v0.21 hash
+strictBaseline: true         # default; set false to disable skill isolation
+noJudge: false               # default; set true to skip LLM judge entirely
+judgeModels:                 # multi-judge ensemble (≥ 2 entries)
+  - { executor: claude, model: opus }
+  - { executor: openai-api, model: gpt-4o }
+variants:
+  - { name: baseline, role: control, artifact: baseline }
+  - { name: my-skill, role: treatment, artifact: ./skills/my-skill.md }
+```
+
+`evolve` / `gate` / `verdict` `diff` 等子命令暂不读 v0.2 字段(只 `bench run` 走 `parseRunConfig` 入口)。
+
 **Difference from `cost_max` / `latency_max` assertions**: assertions are **per-sample scoring rules** (exceeding the cap fails that one assertion, the run continues); budget caps are **workflow-level hard limits** (`totalUSD` overrun aborts the run and persists a partial report; per-sample overruns fail the offending sample but the run continues). Assertions answer "is quality acceptable?"; budgets answer "are cost/time within the envelope?".
 
 ### `omk bench run --batch` (batch mode)
