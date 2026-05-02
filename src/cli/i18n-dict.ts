@@ -161,7 +161,47 @@ export type CliMessageKey =
   | 'cli.diagnose.coverage_unspecified'
   | 'cli.diagnose.coverage_chars'
   | 'cli.diagnose.coverage_hint_empty'
-  | 'cli.diagnose.coverage_declared';
+  | 'cli.diagnose.coverage_declared'
+  // omk doctor 健康检查 — rule labels
+  | 'cli.doctor.rule.skill_readable'
+  | 'cli.doctor.rule.skill_metadata'
+  | 'cli.doctor.rule.dependencies'
+  | 'cli.doctor.rule.executor_smoke'
+  | 'cli.doctor.rule.samples_contract'
+  // doctor — pass messages
+  | 'cli.doctor.skill_readable.pass'
+  | 'cli.doctor.skill_metadata.pass'
+  | 'cli.doctor.dependencies.pass'
+  | 'cli.doctor.executor_smoke.pass'
+  | 'cli.doctor.samples_contract.pass'
+  // doctor — skill_readable rule
+  | 'cli.doctor.skill_readable.fail.missing'
+  | 'cli.doctor.skill_readable.fail.empty'
+  | 'cli.doctor.skill_readable.fail.too_short'
+  | 'cli.doctor.skill_readable.hint.missing'
+  | 'cli.doctor.skill_readable.hint.too_short'
+  // doctor — skill_metadata rule
+  | 'cli.doctor.skill_metadata.fail.frontmatter_invalid'
+  | 'cli.doctor.skill_metadata.fail.missing_skillmd'
+  | 'cli.doctor.skill_metadata.hint.frontmatter'
+  | 'cli.doctor.skill_metadata.hint.missing_skillmd'
+  // doctor — dependencies rule
+  | 'cli.doctor.dependencies.fail'
+  | 'cli.doctor.dependencies.hint'
+  // doctor — executor_smoke rule
+  | 'cli.doctor.executor_smoke.fail.timeout'
+  | 'cli.doctor.executor_smoke.fail.auth'
+  | 'cli.doctor.executor_smoke.fail.empty'
+  | 'cli.doctor.executor_smoke.fail.error'
+  | 'cli.doctor.executor_smoke.hint.timeout'
+  | 'cli.doctor.executor_smoke.hint.auth'
+  | 'cli.doctor.executor_smoke.hint.empty'
+  | 'cli.doctor.executor_smoke.hint.generic'
+  // doctor — samples_contract rule
+  | 'cli.doctor.samples_contract.skipped'
+  | 'cli.doctor.samples_contract.warn.empty'
+  | 'cli.doctor.samples_contract.warn.missing_prompt'
+  | 'cli.doctor.samples_contract.hint';
 
 export interface CliMessage {
   zh: string;
@@ -1072,5 +1112,144 @@ Examples:
   'cli.diagnose.coverage_declared': {
     zh: '声明',
     en: 'declared',
+  },
+  // ============ omk doctor 健康检查 ============
+  'cli.doctor.rule.skill_readable': {
+    zh: 'skill 文件可读',
+    en: 'skill file readable',
+  },
+  'cli.doctor.rule.skill_metadata': {
+    zh: 'skill 元数据合法',
+    en: 'skill metadata valid',
+  },
+  'cli.doctor.rule.dependencies': {
+    zh: '前置依赖完整',
+    en: 'dependencies present',
+  },
+  'cli.doctor.rule.executor_smoke': {
+    zh: 'executor 烟测可达',
+    en: 'executor smoke test',
+  },
+  'cli.doctor.rule.samples_contract': {
+    zh: '用例 ↔ skill 输入约定',
+    en: 'samples ↔ skill contract',
+  },
+  // pass
+  'cli.doctor.skill_readable.pass': {
+    zh: 'skill 内容长度 {length} 字符',
+    en: 'skill content {length} chars',
+  },
+  'cli.doctor.skill_metadata.pass': {
+    zh: '元数据格式合法',
+    en: 'metadata format valid',
+  },
+  'cli.doctor.dependencies.pass': {
+    zh: '依赖检查通过',
+    en: 'all dependencies present',
+  },
+  'cli.doctor.executor_smoke.pass': {
+    zh: 'executor 烟测通过 ({duration}ms)',
+    en: 'executor smoke passed ({duration}ms)',
+  },
+  'cli.doctor.samples_contract.pass': {
+    zh: '用例 {count} 条,prompt 字段齐全',
+    en: '{count} samples, all with prompt',
+  },
+  // skill_readable
+  'cli.doctor.skill_readable.fail.missing': {
+    zh: 'skill 文件无内容(content 为空)',
+    en: 'skill file has no content (content is null)',
+  },
+  'cli.doctor.skill_readable.fail.empty': {
+    zh: 'skill 文件 trim 后为空',
+    en: 'skill file is empty after trim',
+  },
+  'cli.doctor.skill_readable.fail.too_short': {
+    zh: 'skill 内容过短(只有 {length} 字符,最低 10)',
+    en: 'skill content too short ({length} chars, minimum 10)',
+  },
+  'cli.doctor.skill_readable.hint.missing': {
+    zh: '请确认 skill 文件路径正确,文件可读且非空',
+    en: 'verify skill file path is correct and the file is readable',
+  },
+  'cli.doctor.skill_readable.hint.too_short': {
+    zh: 'skill 至少需要写一句完整的指令,过短的内容评测出来无意义',
+    en: 'a skill needs at least a full instruction sentence — too short content yields meaningless eval',
+  },
+  // skill_metadata
+  'cli.doctor.skill_metadata.fail.frontmatter_invalid': {
+    zh: 'front-matter 格式错误: {error}',
+    en: 'front-matter format error: {error}',
+  },
+  'cli.doctor.skill_metadata.fail.missing_skillmd': {
+    zh: 'directory-skill 缺少 SKILL.md 入口文件',
+    en: 'directory-skill missing SKILL.md entry file',
+  },
+  'cli.doctor.skill_metadata.hint.frontmatter': {
+    zh: 'front-matter 用 YAML 语法,key: value 或 - item 形式。可参考 examples/multi-skills 下的 skill 写法',
+    en: 'front-matter uses YAML syntax (key: value or - item). See examples/multi-skills for reference',
+  },
+  'cli.doctor.skill_metadata.hint.missing_skillmd': {
+    zh: 'directory-skill 必须有 SKILL.md 文件作为入口。或将 skill 写成单文件 .md',
+    en: 'directory-skills require a SKILL.md entry file. Alternatively, write the skill as a single .md file',
+  },
+  // dependencies
+  'cli.doctor.dependencies.fail': {
+    zh: '前置依赖检查失败: {summary}',
+    en: 'dependency check failed: {summary}',
+  },
+  'cli.doctor.dependencies.hint': {
+    zh: '安装缺失的工具或设置环境变量。也可以用 --skip-doctor 暂时跳过 doctor(不推荐生产用)',
+    en: 'install missing tools or set required env vars. Use --skip-doctor to temporarily bypass (not recommended for production)',
+  },
+  // executor_smoke
+  'cli.doctor.executor_smoke.fail.timeout': {
+    zh: 'executor 烟测超时({timeout}ms): {error}',
+    en: 'executor smoke timed out ({timeout}ms): {error}',
+  },
+  'cli.doctor.executor_smoke.fail.auth': {
+    zh: 'executor 鉴权失败: {error}',
+    en: 'executor authentication failed: {error}',
+  },
+  'cli.doctor.executor_smoke.fail.empty': {
+    zh: 'executor 返回空响应',
+    en: 'executor returned empty response',
+  },
+  'cli.doctor.executor_smoke.fail.error': {
+    zh: 'executor 烟测失败: {error}',
+    en: 'executor smoke failed: {error}',
+  },
+  'cli.doctor.executor_smoke.hint.timeout': {
+    zh: '检查网络可达性,或用 --timeout 调高超时阈值(当前 {timeout}ms)',
+    en: 'check network connectivity, or raise --timeout (current {timeout}ms)',
+  },
+  'cli.doctor.executor_smoke.hint.auth': {
+    zh: '确认 executor 凭证已设置(claude-code 用 ANTHROPIC_API_KEY,其他 executor 见各自文档)',
+    en: 'verify executor credentials are set (ANTHROPIC_API_KEY for claude-code; see each executor docs)',
+  },
+  'cli.doctor.executor_smoke.hint.empty': {
+    zh: 'skill 内容可能与 executor / model 不兼容。可单独跑 omk doctor <skill> 复现并定位',
+    en: 'skill content may be incompatible with executor / model. Run omk doctor <skill> separately to reproduce',
+  },
+  'cli.doctor.executor_smoke.hint.generic': {
+    zh: '可单独跑 omk doctor <skill> 复现并定位',
+    en: 'run omk doctor <skill> separately to reproduce and diagnose',
+  },
+  // samples_contract
+  'cli.doctor.samples_contract.skipped': {
+    zh: '未提供 samples,跳过此项检查',
+    en: 'no samples provided, skipped',
+  },
+  'cli.doctor.samples_contract.warn.empty': {
+    zh: 'samples 列表为空',
+    en: 'samples list is empty',
+  },
+  'cli.doctor.samples_contract.warn.missing_prompt': {
+    zh: '{count} 条用例缺 prompt 字段',
+    en: '{count} samples missing prompt field',
+  },
+  'cli.doctor.samples_contract.hint': {
+    zh: '用例必须至少包含 prompt 字段。详见 docs/sample-design-spec.md',
+    en: 'samples must contain at least a prompt field. See docs/sample-design-spec.md',
   },
 };
