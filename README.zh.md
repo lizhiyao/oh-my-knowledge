@@ -449,7 +449,7 @@ variants:
   - { name: my-skill, role: treatment, artifact: ./skills/my-skill.md }
 ```
 
-`evolve` / `gate` / `verdict` / `diff` 等子命令暂不读 v0.2 字段(只 `bench run` 走 `parseRunConfig` 入口)。
+**字段入口**: `bench run` 完整支持上述全部字段; `bench gate` 共享 `parseRunConfig` 处理的基础字段(`model` / `judgeModel` / `noJudge` / `noCache` / `blind` / `strictBaseline` / `budget` / `mcpConfig` 等),但 v0.2 实验设计字段(`repeat` / `judgeRepeat` / `judgeModels` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`)不读 — 这些只在 `handleRun` 里有 fallback,后续按需扩展到 gate。其他子命令(`evolve` / `verdict` / `diff` / `analyze` 等)完全不读 eval.yaml。
 
 **和 `cost_max` / `latency_max` 断言的区别**: 断言是**单样本评分维度**(超出直接打 0 分,run 继续);budget 是**工作流级硬阈值**(`totalUSD` 超出整个 run abort 保留 partial report,per-sample 超出该样本失败但 run 继续)。一个回答"质量是否达标",一个回答"花钱/时间是否在预算内"。
 

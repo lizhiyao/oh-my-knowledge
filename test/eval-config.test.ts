@@ -409,6 +409,16 @@ judgeModels:
     }
   });
 
+  it('reject judgeModels 单条 (ensemble 至少 2 条, 单 judge 用顶层 judgeExecutor+judgeModel)', () => {
+    const dir = makeTmpDir();
+    try {
+      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: opus`);
+      assert.throws(() => loadEvalConfig(path), /judgeModels must have ≥ 2 entries/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('goldDir 绝对路径保持不变', () => {
     const dir = makeTmpDir();
     try {

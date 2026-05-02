@@ -164,6 +164,8 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
   }
 
   // judgeModels: array of { executor, model } — same shape as JudgeConfig in CLI parsing.
+  // 必须 ≥ 2 条 (ensemble 才有意义)。1 条会被运行时静默忽略, schema 阶段就 reject 比 runtime warning 清晰。
+  // 单 judge 用顶层 judgeExecutor + judgeModel 字段。
   let judgeModelsParsed: import('../types/index.js').JudgeConfig[] | undefined;
   if (obj.judgeModels !== undefined) {
     if (!Array.isArray(obj.judgeModels)) {
@@ -182,6 +184,11 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
         throw new Error(`${configPath}: judgeModels[${i}].model must be a non-empty string`);
       }
       judgeModelsParsed.push({ executor: j.executor, model: j.model });
+    }
+    if (judgeModelsParsed.length < 2) {
+      throw new Error(
+        `${configPath}: judgeModels must have ≥ 2 entries to enable ensemble mode (got ${judgeModelsParsed.length}). For a single judge use top-level \`judgeExecutor\` + \`judgeModel\` instead.`,
+      );
     }
   }
 
