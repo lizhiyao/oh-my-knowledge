@@ -1,0 +1,181 @@
+/**
+ * omk doctor 引擎入口。
+ *
+ * runDoctor() 接受 target(单文件 / 目录 / null=cwd 默认),解析出 Artifact 列表,
+ * 对每个 artifact 顺序跑全部 rules,聚合为 DoctorReport。
+ *
+ * fatal-fail 不中断后续 rule 执行(让用户一次看到全貌),但 report.failed=true,
+ * CLI 据此 exit 1 / abort bench run。
+ */
+
+import { existsSync, statSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
+import { discoverVariants, resolveArtifacts } from '../inputs/skill-loader.js';
+import type {
+  Artifact,
+  DoctorContext,
+  DoctorReport,
+  DoctorRule,
+  DoctorRuleResult,
+  DoctorRunOptions,
+  DoctorSkillReport,
+  DoctorSkillStatus,
+} from '../types/index.js';
+import { BUILTIN_RULES } from './rules.js';
+
+// ---------------------------------------------------------------------------
+// Target resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * 把 doctor 的 target 参数解析成 Artifact 列表。
+ * - null/undefined: 默认在 cwd/skills 下批量;若不存在则在 cwd 自身找
+ * - 文件 (.md): 单 artifact,用 file-path 模式
+ * - 目录: discoverVariants 后批量
+ */
+export function resolveDoctorTargets(target: string | null | undefined, cwd: string): Artifact[] {
+  if (target == null) {
+    const skillsDir = join(cwd, 'skills');
+    if (existsSync(skillsDir) && statSync(skillsDir).isDirectory()) {
+      const variants = discoverVariants(skillsDir).filter((v) => v !== 'baseline');
+      return variants.length > 0 ? resolveArtifacts(skillsDir, variants, { strictBaseline: false }) : [];
+    }
+    const variants = discoverVariants(cwd).filter((v) => v !== 'baseline');
+    return variants.length > 0 ? resolveArtifacts(cwd, variants, { strictBaseline: false }) : [];
+  }
+
+  const absTarget = resolve(target);
+  if (!existsSync(absTarget)) {
+    throw new Error(`doctor target not found: ${target}`);
+  }
+  const stat = statSync(absTarget);
+  if (stat.isFile() && absTarget.endsWith('.md')) {
+    // 单文件:用 file-path 模式(走 resolveArtifacts 的 "包含 /" 分支)
+    return resolveArtifacts(dirname(absTarget), [absTarget], { strictBaseline: false });
+  }
+  if (stat.isDirectory()) {
+    const variants = discoverVariants(absTarget).filter((v) => v !== 'baseline');
+    return variants.length > 0 ? resolveArtifacts(absTarget, variants, { strictBaseline: false }) : [];
+  }
+  throw new Error(`doctor target must be a .md file or directory: ${target}`);
+}
+
+// ---------------------------------------------------------------------------
+// Rule execution
+// ---------------------------------------------------------------------------
+
+function classifySkillStatus(results: DoctorRuleResult[]): DoctorSkillStatus {
+  let hasFatalFail = false;
+  let hasWarn = false;
+  for (const r of results) {
+    if (r.severity === 'fatal' && r.status === 'fail') hasFatalFail = true;
+    if (r.status === 'warn') hasWarn = true;
+  }
+  if (hasFatalFail) return 'fail';
+  if (hasWarn) return 'warn';
+  return 'pass';
+}
+
+async function runRulesOnArtifact(
+  artifact: Artifact,
+  rules: DoctorRule[],
+  ctxBase: Omit<DoctorContext, 'artifact'>,
+): Promise<DoctorRuleResult[]> {
+  const results: DoctorRuleResult[] = [];
+  for (const rule of rules) {
+    const start = Date.now();
+    try {
+      const outcome = await rule.check({ ...ctxBase, artifact });
+      results.push({
+        ruleId: rule.id,
+        severity: rule.severity,
+        durationMs: Date.now() - start,
+        ...outcome,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // rule 自身崩溃也算 fail,不让 doctor 整体挂掉
+      results.push({
+        ruleId: rule.id,
+        severity: rule.severity,
+        status: 'fail',
+        message: `rule crashed: ${message.slice(0, 160)}`,
+        hint: undefined,
+        detail: { ruleCrash: true, error: message },
+        durationMs: Date.now() - start,
+      });
+    }
+  }
+  return results;
+}
+
+function inferSkillPath(artifact: Artifact, baseDir: string): string {
+  if (artifact.locator) return artifact.locator;
+  if (artifact.skillRoot) return artifact.skillRoot;
+  // fallback: 拼一个推断路径(用于 report 显示,不参与 io)
+  return join(baseDir, artifact.name.endsWith('.md') ? artifact.name : `${artifact.name}.md`);
+}
+
+// ---------------------------------------------------------------------------
+// Public entry
+// ---------------------------------------------------------------------------
+
+let reportIdCounter = 0;
+function nextReportId(): string {
+  reportIdCounter += 1;
+  const ts = new Date().toISOString().replace(/[-:.]/g, '').slice(0, 15);
+  return `doctor-${ts}-${reportIdCounter}`;
+}
+
+function readCliVersion(): string {
+  // 不依赖 package.json import(避免 type 解析复杂度);用环境变量或退回 'unknown'
+  return process.env.npm_package_version ?? '0.0.0';
+}
+
+export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
+  const rules = opts.rules && opts.rules.length > 0 ? opts.rules : BUILTIN_RULES;
+  // 如果 skipSmoke,过滤掉 executor_smoke rule
+  const effectiveRules = opts.skipSmoke
+    ? rules.filter((r) => r.id !== 'executor_smoke')
+    : rules;
+
+  const artifacts = resolveDoctorTargets(opts.target, opts.cwd);
+
+  const ctxBase: Omit<DoctorContext, 'artifact'> = {
+    samples: opts.samples,
+    executorName: opts.executorName,
+    model: opts.model,
+    cwd: opts.cwd,
+    lang: opts.lang,
+    timeoutMs: opts.timeoutMs,
+  };
+
+  const skillReports: DoctorSkillReport[] = [];
+  const totals = { pass: 0, warn: 0, fail: 0 };
+
+  for (const artifact of artifacts) {
+    const results = await runRulesOnArtifact(artifact, effectiveRules, ctxBase);
+    const status = classifySkillStatus(results);
+    skillReports.push({
+      skillName: basename(artifact.name).replace(/\.md$/, ''),
+      skillPath: inferSkillPath(artifact, opts.cwd),
+      results,
+      status,
+    });
+    totals[status] += 1;
+  }
+
+  return {
+    kind: 'doctor',
+    id: nextReportId(),
+    timestamp: new Date().toISOString(),
+    cliVersion: readCliVersion(),
+    cwd: opts.cwd,
+    executorName: opts.executorName,
+    model: opts.model,
+    skills: skillReports,
+    failed: totals.fail > 0,
+    warned: totals.warn > 0,
+    totals,
+  };
+}

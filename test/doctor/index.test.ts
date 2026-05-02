@@ -1,0 +1,241 @@
+import { describe, it } from 'vitest';
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { runDoctor, resolveDoctorTargets } from '../../src/doctor/index.js';
+import type { DoctorRule } from '../../src/types/doctor.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const EXAMPLE_SKILLS_DIR = join(__dirname, '..', '..', 'examples', 'code-review', 'skills');
+
+const passingRule: DoctorRule = {
+  id: 'test_pass',
+  severity: 'info',
+  labelKey: 'cli.doctor.rule.skill_readable',
+  async check() {
+    return { status: 'pass', message: 'all good' };
+  },
+};
+
+const failingRule: DoctorRule = {
+  id: 'test_fail',
+  severity: 'fatal',
+  labelKey: 'cli.doctor.rule.skill_readable',
+  async check() {
+    return { status: 'fail', message: 'broken', hint: 'fix it' };
+  },
+};
+
+const warningRule: DoctorRule = {
+  id: 'test_warn',
+  severity: 'warn',
+  labelKey: 'cli.doctor.rule.skill_readable',
+  async check() {
+    return { status: 'warn', message: 'mild concern' };
+  },
+};
+
+const crashingRule: DoctorRule = {
+  id: 'test_crash',
+  severity: 'fatal',
+  labelKey: 'cli.doctor.rule.skill_readable',
+  async check() {
+    throw new Error('rule logic exploded');
+  },
+};
+
+describe('resolveDoctorTargets', () => {
+  it('resolves all variants in a directory', () => {
+    const artifacts = resolveDoctorTargets(EXAMPLE_SKILLS_DIR, '/tmp');
+    const names = artifacts.map((a) => a.name);
+    assert.ok(names.length >= 2);
+    assert.ok(names.some((n) => n === 'v1' || n === 'v2'));
+  });
+
+  it('resolves a single .md file', () => {
+    const v1Path = join(EXAMPLE_SKILLS_DIR, 'v1.md');
+    const artifacts = resolveDoctorTargets(v1Path, '/tmp');
+    assert.equal(artifacts.length, 1);
+    assert.ok(artifacts[0].content && artifacts[0].content.length > 0);
+  });
+
+  it('throws for non-existent target', () => {
+    assert.throws(() => resolveDoctorTargets('/tmp/nonexistent-doctor-target.md', '/tmp'));
+  });
+
+  it('returns empty array for directory with no skills', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'doctor-empty-'));
+    try {
+      const artifacts = resolveDoctorTargets(tmp, '/tmp');
+      assert.equal(artifacts.length, 0);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to cwd/skills when target is null', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'doctor-cwd-'));
+    try {
+      const skillsDir = join(tmp, 'skills');
+      mkdirSync(skillsDir);
+      writeFileSync(join(skillsDir, 'a.md'), 'this is skill a content for testing.');
+      writeFileSync(join(skillsDir, 'b.md'), 'this is skill b content for testing.');
+      const artifacts = resolveDoctorTargets(null, tmp);
+      assert.equal(artifacts.length, 2);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('runDoctor', () => {
+  it('runs all custom rules per skill and aggregates totals', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule],
+    });
+    assert.equal(report.kind, 'doctor');
+    assert.ok(report.skills.length >= 2);
+    assert.equal(report.failed, false);
+    assert.equal(report.warned, false);
+    assert.equal(report.totals.pass, report.skills.length);
+    for (const skill of report.skills) {
+      assert.equal(skill.status, 'pass');
+      assert.equal(skill.results.length, 1);
+      assert.equal(skill.results[0].ruleId, 'test_pass');
+    }
+  });
+
+  it('marks report.failed=true when any rule fails fatally', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [failingRule],
+    });
+    assert.equal(report.failed, true);
+    assert.equal(report.warned, false);
+    assert.ok(report.totals.fail >= 1);
+  });
+
+  it('marks report.warned=true (not failed) when only warn rules trigger', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [warningRule],
+    });
+    assert.equal(report.failed, false);
+    assert.equal(report.warned, true);
+  });
+
+  it('catches rule exceptions and marks as fail rather than crashing the engine', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [crashingRule],
+    });
+    assert.equal(report.failed, true);
+    for (const skill of report.skills) {
+      assert.equal(skill.results[0].status, 'fail');
+      assert.ok(skill.results[0].message.includes('rule crashed'));
+      assert.ok((skill.results[0].detail as { ruleCrash?: boolean }).ruleCrash);
+    }
+  });
+
+  it('continues running remaining rules after a fatal-fail', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [failingRule, passingRule],
+    });
+    for (const skill of report.skills) {
+      assert.equal(skill.results.length, 2, 'both rules should run even after first fails');
+      assert.equal(skill.results[0].status, 'fail');
+      assert.equal(skill.results[1].status, 'pass');
+    }
+  });
+
+  it('skipSmoke=true filters out executor_smoke rule from BUILTIN_RULES', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      skipSmoke: true,
+      // 用 BUILTIN_RULES — 不传 rules 就走默认
+    });
+    for (const skill of report.skills) {
+      const ruleIds = skill.results.map((r) => r.ruleId);
+      assert.ok(!ruleIds.includes('executor_smoke'), 'executor_smoke should be filtered out');
+    }
+  });
+
+  it('emits empty skills array (no crash) for empty target dir', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'doctor-empty-'));
+    try {
+      const report = await runDoctor({
+        target: tmp,
+        cwd: '/tmp',
+        executorName: 'claude',
+        model: 'sonnet',
+        timeoutMs: 8000,
+        lang: 'zh',
+        rules: [passingRule],
+      });
+      assert.equal(report.skills.length, 0);
+      assert.equal(report.failed, false);
+      assert.equal(report.warned, false);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('produces machine-readable report with stable shape', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule],
+    });
+    assert.equal(typeof report.id, 'string');
+    assert.ok(report.id.startsWith('doctor-'));
+    assert.equal(typeof report.timestamp, 'string');
+    assert.equal(typeof report.cliVersion, 'string');
+    for (const skill of report.skills) {
+      assert.equal(typeof skill.skillName, 'string');
+      assert.equal(typeof skill.skillPath, 'string');
+      for (const r of skill.results) {
+        assert.equal(typeof r.ruleId, 'string');
+        assert.equal(typeof r.message, 'string');
+        assert.equal(typeof r.durationMs, 'number');
+      }
+    }
+  });
+});
