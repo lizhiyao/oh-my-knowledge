@@ -65,6 +65,24 @@ describe('buildDoctorPreflightContext', () => {
     assert.equal(ctx.dependencyCwd, '/tmp/explicit-cwd');
   });
 
+  it('runtime-context-only baseline (project-env@/repo) contributes cwd even after baseline filter', () => {
+    // 关键回归: `project-env@/repo` 在 skill-loader 会被生成成 kind:'baseline' 且带 cwd。
+    // 早版 builder 先过滤 baseline 再 find cwd, 把这个 cwd 丢了, 让 requires.files
+    // 错锚到 skillDir。修复: dependencyCwd 看完整 input.artifacts, doctorArtifacts 仅
+    // 决定 doctor 检查哪些(仍排 baseline)。
+    const ctx = buildDoctorPreflightContext({
+      artifacts: [
+        baselineArtifact({ name: 'project-env', cwd: '/repo/proj' }),
+        skillArtifact({ name: 'v1' }),
+      ],
+      skillDir: '/tmp/skills',
+    });
+    assert.ok(ctx);
+    assert.equal(ctx.dependencyCwd, '/repo/proj', 'baseline 的 cwd 必须被采纳为路径基准');
+    assert.equal(ctx.doctorArtifacts.length, 1, 'doctor 仍只检查 non-baseline');
+    assert.equal(ctx.doctorArtifacts[0].name, 'v1');
+  });
+
   it('passes through samples and requires unchanged', () => {
     const samples: Sample[] = [{ sample_id: 's1', prompt: 'hello' }];
     const requires = { tools: ['ripgrep'], files: ['fixture.txt'] };

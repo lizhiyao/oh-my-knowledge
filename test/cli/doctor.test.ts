@@ -91,7 +91,7 @@ describe('omk doctor CLI', () => {
       const tinyPath = join(tmp, 'tiny.md');
       writeFileSync(tinyPath, 'hi');
       await assert.rejects(
-        () => execFileAsync('node', [CLI, 'doctor', tinyPath, '--gate', '--skip-smoke']),
+        () => execFileAsync('node', [CLI, 'doctor', tinyPath, '--gate']),
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);

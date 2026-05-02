@@ -36,7 +36,11 @@ export function buildDoctorPreflightContext(input: {
   const doctorArtifacts = input.artifacts.filter((a) => a.kind !== 'baseline');
   if (doctorArtifacts.length === 0) return null; // baseline-only run, doctor skip
 
-  const dependencyCwd = doctorArtifacts.find((a) => a.cwd)?.cwd
+  // dependencyCwd 解析必须看完整 input.artifacts(包括 baseline-kind),
+  // 因为 `project-env@/repo` 这类 runtime-context-only 在 skill-loader.ts:242
+  // 会被生成成 kind:'baseline' 但带 cwd。如果只看 doctorArtifacts 就会丢这个
+  // cwd, 让 requires.files / preflight 错锚到 skillDir, false-fail 用户。
+  const dependencyCwd = input.artifacts.find((a) => a.cwd)?.cwd
     ?? resolve(input.skillDir);
 
   return {

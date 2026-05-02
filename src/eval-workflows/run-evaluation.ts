@@ -636,6 +636,17 @@ export async function runBatchEvaluation({
           mcpConfig,
           strictBaseline,
           variantAllowedSkills,
+          // 透传 user 显式输入的参数,让 dry-run power / isolation warning 与
+          // 真实 run 一致(否则 batch dry-run 永远按 repeat=1 报警,误导用户)。
+          repeat,
+          judgeRepeat,
+          judgeModels,
+          lengthDebias,
+          noCache,
+          verbose,
+          concurrency,
+          skipConnectivity,
+          // batch dry-run 关闭真实 run only 路径
           jobStore: null,
           persistJob: false,
           outputDir: null,
