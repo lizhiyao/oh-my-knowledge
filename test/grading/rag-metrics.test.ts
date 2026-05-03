@@ -37,19 +37,19 @@ describe('faithfulness', () => {
     context: 'The Eiffel Tower is in Paris and is 330 meters tall.',
   };
 
-  it('covers score threshold and context boundaries', async () => {
-    const cases = [
-      { name: 'passes when score >= threshold', assertion: { type: 'faithfulness' }, output: 'The Eiffel Tower is in Paris.', score: 5, expected: true },
-      { name: 'fails when score < threshold', assertion: { type: 'faithfulness' }, output: 'The Eiffel Tower is in London and is 100m tall.', score: 2, expected: false },
-      { name: 'respects custom threshold', assertion: { type: 'faithfulness', threshold: 4 }, output: 'mixed answer', score: 3, expected: false },
-      { name: 'uses assertion.reference when sample.context is absent', assertion: { type: 'faithfulness', reference: 'overridden context' }, sample: { sample_id: 's', prompt: 'Q?' }, expected: true },
-    ] satisfies Array<{ name: string; assertion: Assertion; output?: string; score?: number; sample?: Sample; expected: boolean }>;
+  const faithfulnessCases = [
+    { name: 'passes when score >= threshold', assertion: { type: 'faithfulness' }, output: 'The Eiffel Tower is in Paris.', score: 5, expected: true },
+    { name: 'fails when score < threshold', assertion: { type: 'faithfulness' }, output: 'The Eiffel Tower is in London and is 100m tall.', score: 2, expected: false },
+    { name: 'respects custom threshold', assertion: { type: 'faithfulness', threshold: 4 }, output: 'mixed answer', score: 3, expected: false },
+    { name: 'uses assertion.reference when sample.context is absent', assertion: { type: 'faithfulness', reference: 'overridden context' }, sample: { sample_id: 's', prompt: 'Q?' }, expected: true },
+  ] satisfies Array<{ name: string; assertion: Assertion; output?: string; score?: number; sample?: Sample; expected: boolean }>;
 
-    for (const testCase of cases) {
-      const r = await runSingle(testCase.sample ?? sample, testCase.assertion, testCase.output, testCase.score);
-      assert.equal(r.details[0].passed, testCase.expected, testCase.name);
-    }
+  it.each(faithfulnessCases)('$name', async (testCase) => {
+    const r = await runSingle(testCase.sample ?? sample, testCase.assertion, testCase.output, testCase.score);
+    assert.equal(r.details[0].passed, testCase.expected);
+  });
 
+  it('fails when both sample.context and assertion.reference are missing', async () => {
     const noCtx = await runSingle({ sample_id: 's', prompt: 'Q?' }, { type: 'faithfulness' });
     assert.equal(noCtx.details[0].passed, false);
     assert.match(noCtx.details[0].message ?? '', /缺少 sample.context/);
@@ -74,17 +74,15 @@ describe('answer_relevancy', () => {
     prompt: 'How tall is the Eiffel Tower?',
   };
 
-  it('covers score threshold and no-context behavior', async () => {
-    const cases = [
-      { name: 'passes when output answers the question', output: '330 meters tall.', score: 5, expected: true },
-      { name: 'fails when output dodges', output: 'Eiffel was an engineer.', score: 1, expected: false },
-      { name: 'does not require sample.context', output: '330m', score: 4, expected: true },
-    ];
+  const answerRelevancyCases = [
+    { name: 'passes when output answers the question', output: '330 meters tall.', score: 5, expected: true },
+    { name: 'fails when output dodges', output: 'Eiffel was an engineer.', score: 1, expected: false },
+    { name: 'does not require sample.context', output: '330m', score: 4, expected: true },
+  ];
 
-    for (const testCase of cases) {
-      const r = await runSingle(sample, { type: 'answer_relevancy' }, testCase.output, testCase.score);
-      assert.equal(r.details[0].passed, testCase.expected, testCase.name);
-    }
+  it.each(answerRelevancyCases)('$name', async ({ output, score, expected }) => {
+    const r = await runSingle(sample, { type: 'answer_relevancy' }, output, score);
+    assert.equal(r.details[0].passed, expected);
   });
 
   it('passes the user question into the judge prompt', async () => {
@@ -107,17 +105,17 @@ describe('context_recall', () => {
     context: 'Key fact A. Key fact B. Key fact C.',
   };
 
-  it('covers score threshold and missing-context behavior', async () => {
-    const cases = [
-      { name: 'passes when output covers gold facts', output: 'Output covers A B C.', score: 5, expected: true },
-      { name: 'fails when output ignores most gold facts', output: 'Only A.', score: 1, expected: false },
-    ];
+  const contextRecallCases = [
+    { name: 'passes when output covers gold facts', output: 'Output covers A B C.', score: 5, expected: true },
+    { name: 'fails when output ignores most gold facts', output: 'Only A.', score: 1, expected: false },
+  ];
 
-    for (const testCase of cases) {
-      const r = await runSingle(sample, { type: 'context_recall' }, testCase.output, testCase.score);
-      assert.equal(r.details[0].passed, testCase.expected, testCase.name);
-    }
+  it.each(contextRecallCases)('$name', async ({ output, score, expected }) => {
+    const r = await runSingle(sample, { type: 'context_recall' }, output, score);
+    assert.equal(r.details[0].passed, expected);
+  });
 
+  it('fails when sample.context is missing', async () => {
     const noCtxSample: Sample = { sample_id: 's', prompt: 'Q?' };
     const missing = await runSingle(noCtxSample, { type: 'context_recall' }, 'out');
     assert.equal(missing.details[0].passed, false);

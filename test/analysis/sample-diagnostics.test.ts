@@ -264,13 +264,11 @@ describe('diagnoseSamples — rubric_clarity_low', () => {
     assert.equal(d.byKind.rubric_clarity_low, undefined);
   });
 
-  it('短 rubric 含原过宽词(分数 / 标准 / 应该)无评分语义 → 触发(收紧后)', () => {
+  it.each(['打 5 分数学题', '标准答案是', '你应该'])('短 rubric "%s" 无评分语义 → 触发(收紧后)', (fakeRubric) => {
     // 这些词在  review 后被剔除,避免"打 5 分数学题"/"标准答案"/"你应该"等误豁免
-    for (const fakeRubric of ['打 5 分数学题', '标准答案是', '你应该']) {
-      const { report, samples } = reportWithSample({ rubric: fakeRubric });
-      const d = diagnoseSamples(report, { samples });
-      assert.ok(d.byKind.rubric_clarity_low, `should fire on "${fakeRubric}" (overbroad keywords removed)`);
-    }
+    const { report, samples } = reportWithSample({ rubric: fakeRubric });
+    const d = diagnoseSamples(report, { samples });
+    assert.ok(d.byKind.rubric_clarity_low, `should fire on "${fakeRubric}" (overbroad keywords removed)`);
   });
 
   it('长 rubric 即使无关键词 → 不触发', () => {

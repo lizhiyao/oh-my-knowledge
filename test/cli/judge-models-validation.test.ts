@@ -45,31 +45,29 @@ const CASES: Array<{ name: string; argv: string[] }> = [
 ];
 
 describe('--judge-models validation: CLI exits 2 with friendly error', () => {
-  for (const c of CASES) {
-    it(`omk ${c.name} --judge-models <duplicate> exits 2 with friendly error`, async () => {
-      await assert.rejects(
-        () => execFileAsync('node', [CLI, ...c.argv, '--judge-models', 'claude:haiku,claude:haiku']),
-        (err: unknown) => {
-          const e = err as ExecError;
-          assert.equal(e.code, 2, `expected exit 2, got ${e.code}; stderr: ${e.stderr.slice(0, 300)}`);
-          assert.ok(
-            e.stderr.startsWith('error:'),
-            `stderr should start with "error:", got: ${e.stderr.slice(0, 200)}`,
-          );
-          assert.ok(
-            e.stderr.includes('duplicate') && e.stderr.includes('claude:haiku'),
-            `stderr should mention duplicate entry: ${e.stderr.slice(0, 200)}`,
-          );
-          // 关键不变量:不能 leak Error stack trace。
-          assert.ok(
-            !/^\s*at\s/m.test(e.stderr),
-            `stderr should NOT include stack trace ("at " frame): ${e.stderr.slice(0, 400)}`,
-          );
-          return true;
-        },
-      );
-    });
-  }
+  it.each(CASES)('omk $name --judge-models <duplicate> exits 2 with friendly error', async ({ argv }) => {
+    await assert.rejects(
+      () => execFileAsync('node', [CLI, ...argv, '--judge-models', 'claude:haiku,claude:haiku']),
+      (err: unknown) => {
+        const e = err as ExecError;
+        assert.equal(e.code, 2, `expected exit 2, got ${e.code}; stderr: ${e.stderr.slice(0, 300)}`);
+        assert.ok(
+          e.stderr.startsWith('error:'),
+          `stderr should start with "error:", got: ${e.stderr.slice(0, 200)}`,
+        );
+        assert.ok(
+          e.stderr.includes('duplicate') && e.stderr.includes('claude:haiku'),
+          `stderr should mention duplicate entry: ${e.stderr.slice(0, 200)}`,
+        );
+        // 关键不变量:不能 leak Error stack trace。
+        assert.ok(
+          !/^\s*at\s/m.test(e.stderr),
+          `stderr should NOT include stack trace ("at " frame): ${e.stderr.slice(0, 400)}`,
+        );
+        return true;
+      },
+    );
+  });
 
   it('omk bench run --judge-models <missing executor> exits 2 with friendly error', async () => {
     await assert.rejects(
