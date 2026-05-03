@@ -11,7 +11,7 @@
 **omk** — 你给 LLM 的知识,价值在哪里?
 omk 帮你用客观数据回答,而不是凭感觉。
 
-**固定模型,只变知识载体。**
+**面向 LLM 知识输入(prompt / RAG / skill / agent)的评测框架** —— 固定模型,只变知识载体。
 
 <a id="statistical-rigor"></a>
 > 默认带:Bootstrap 置信区间 · Krippendorff α(评委 ↔ 人工)· 长度去偏 · 饱和曲线 · 用例隔离(construct validity)。[这些为什么重要 →](docs/zh/statistical-rigor.md)
