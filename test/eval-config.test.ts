@@ -15,6 +15,22 @@ function writeYaml(dir: string, name: string, content: string): string {
   return path;
 }
 
+function withYaml<T>(content: string, fn: (path: string, dir: string) => T): T {
+  const dir = makeTmpDir();
+  try {
+    const path = writeYaml(dir, 'eval.yaml', content.trim());
+    return fn(path, dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function assertYamlThrows(content: string, expected: RegExp, message: string): void {
+  withYaml(content, (path) => {
+    assert.throws(() => loadEvalConfig(path), expected, message);
+  });
+}
+
 describe('loadEvalConfig', () => {
   it('parses a valid yaml config with control + treatment variants', () => {
     const dir = makeTmpDir();
@@ -56,54 +72,40 @@ variants:
     }
   });
 
-  it('throws when samples field missing', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `
+  it('rejects invalid required config shape', () => {
+    const cases = [
+      {
+        name: 'samples field missing',
+        yaml: `
 variants:
   - name: v1
     role: control
     artifact: baseline
-      `.trim());
-      assert.throws(() => loadEvalConfig(path), /'samples' is required/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('throws when variants array is empty', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `
+        `,
+        error: /'samples' is required/,
+      },
+      {
+        name: 'variants array is empty',
+        yaml: `
 samples: ./samples.json
 variants: []
-      `.trim());
-      assert.throws(() => loadEvalConfig(path), /'variants' is required/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('throws when variant role is invalid', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `
+        `,
+        error: /'variants' is required/,
+      },
+      {
+        name: 'variant role is invalid',
+        yaml: `
 samples: ./samples.json
 variants:
   - name: v1
     role: baseline
     artifact: ./v1.md
-      `.trim());
-      assert.throws(() => loadEvalConfig(path), /role must be 'control' or 'treatment'/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('throws when variant names are duplicated', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `
+        `,
+        error: /role must be 'control' or 'treatment'/,
+      },
+      {
+        name: 'variant names are duplicated',
+        yaml: `
 samples: ./samples.json
 variants:
   - name: v1
@@ -112,10 +114,13 @@ variants:
   - name: v1
     role: treatment
     artifact: ./v1.md
-      `.trim());
-      assert.throws(() => loadEvalConfig(path), /"v1" is duplicated/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
+        `,
+        error: /"v1" is duplicated/,
+      },
+    ];
+
+    for (const testCase of cases) {
+      assertYamlThrows(testCase.yaml, testCase.error, testCase.name);
     }
   });
 
@@ -231,47 +236,41 @@ budget:
     }
   });
 
-  it('rejects negative budget values', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `
+  it('rejects invalid budget values', () => {
+    const cases = [
+      {
+        name: 'negative budget value',
+        yaml: `
 samples: ./s.json
 ${minimalVariants}
 budget:
   totalUSD: -1
-`.trim());
-      assert.throws(() => loadEvalConfig(path), /totalUSD/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('rejects non-numeric budget values', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `
+        `,
+        error: /totalUSD/,
+      },
+      {
+        name: 'non-numeric budget value',
+        yaml: `
 samples: ./s.json
 ${minimalVariants}
 budget:
   totalUSD: "five"
-`.trim());
-      assert.throws(() => loadEvalConfig(path), /totalUSD/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('rejects non-object budget value', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `
+        `,
+        error: /totalUSD/,
+      },
+      {
+        name: 'non-object budget value',
+        yaml: `
 samples: ./s.json
 ${minimalVariants}
 budget: 5
-`.trim());
-      assert.throws(() => loadEvalConfig(path), /budget must be an object/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
+        `,
+        error: /budget must be an object/,
+      },
+    ];
+
+    for (const testCase of cases) {
+      assertYamlThrows(testCase.yaml, testCase.error, testCase.name);
     }
   });
 
@@ -359,53 +358,57 @@ judgeModels:
     }
   });
 
-  it('reject repeat 非整数', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\nrepeat: 1.5`);
-      assert.throws(() => loadEvalConfig(path), /repeat must be a positive integer/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
+  it('rejects invalid v0.2 experiment-design fields', () => {
+    const cases = [
+      {
+        name: 'repeat non-integer',
+        yaml: `samples: ./s.json\n${minimalVariants}\nrepeat: 1.5`,
+        error: /repeat must be a positive integer/,
+      },
+      {
+        name: 'repeat <= 0',
+        yaml: `samples: ./s.json\n${minimalVariants}\nrepeat: 0`,
+        error: /repeat must be a positive integer/,
+      },
+      {
+        name: 'bootstrapSamples < 100',
+        yaml: `samples: ./s.json\n${minimalVariants}\nbootstrapSamples: 50`,
+        error: /bootstrapSamples must be a number ≥ 100/,
+      },
+      {
+        name: 'judgeModels non-array',
+        yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels: "claude:opus"`,
+        error: /judgeModels must be an array/,
+      },
+      {
+        name: 'judgeModels entry missing model',
+        yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude`,
+        error: /judgeModels\[0\]\.model must be a non-empty string/,
+      },
+      {
+        name: 'judgeModels empty array',
+        yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels: []`,
+        error: /judgeModels must have ≥ 1 entry/,
+      },
+      {
+        name: 'judgeModels duplicate entry',
+        yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: haiku\n  - executor: claude\n    model: haiku`,
+        error: /duplicate entry "claude:haiku"/,
+      },
+      {
+        name: 'legacy judgeModel field',
+        yaml: `samples: ./s.json\n${minimalVariants}\njudgeModel: haiku`,
+        error: /judgeModel.*were removed in v0\.25/,
+      },
+      {
+        name: 'legacy judgeExecutor field',
+        yaml: `samples: ./s.json\n${minimalVariants}\njudgeExecutor: claude`,
+        error: /judgeExecutor.*were removed in v0\.25/,
+      },
+    ];
 
-  it('reject repeat ≤ 0', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\nrepeat: 0`);
-      assert.throws(() => loadEvalConfig(path), /repeat must be a positive integer/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('reject bootstrapSamples < 100', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\nbootstrapSamples: 50`);
-      assert.throws(() => loadEvalConfig(path), /bootstrapSamples must be a number ≥ 100/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('reject judgeModels 非数组', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels: "claude:opus"`);
-      assert.throws(() => loadEvalConfig(path), /judgeModels must be an array/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('reject judgeModels[i] 缺 executor 或 model', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude`);
-      assert.throws(() => loadEvalConfig(path), /judgeModels\[0\]\.model must be a non-empty string/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
+    for (const testCase of cases) {
+      assertYamlThrows(testCase.yaml, testCase.error, testCase.name);
     }
   });
 
@@ -415,47 +418,6 @@ judgeModels:
       const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: haiku`);
       const cfg = loadEvalConfig(path);
       assert.deepEqual(cfg.judgeModels, [{ executor: 'claude', model: 'haiku' }]);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('reject judgeModels 空数组 (省字段反而清晰)', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModels: []`);
-      assert.throws(() => loadEvalConfig(path), /judgeModels must have ≥ 1 entry/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('reject judgeModels 重复 entry (ensemble 聚合按 executor:model 去重)', () => {
-    const dir = makeTmpDir();
-    try {
-      const yaml = `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: haiku\n  - executor: claude\n    model: haiku`;
-      const path = writeYaml(dir, 'eval.yaml', yaml);
-      assert.throws(() => loadEvalConfig(path), /duplicate entry "claude:haiku"/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('reject 旧字段 judgeModel (v0.25 已删, 引导改用 judgeModels)', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeModel: haiku`);
-      assert.throws(() => loadEvalConfig(path), /judgeModel.*were removed in v0\.25/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('reject 旧字段 judgeExecutor', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `samples: ./s.json\n${minimalVariants}\njudgeExecutor: claude`);
-      assert.throws(() => loadEvalConfig(path), /judgeExecutor.*were removed in v0\.25/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -516,44 +478,35 @@ variants:
     }
   });
 
-  it('reject `allowedSkills:` 不写值(parse 成 null,语义不清)', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `
+  it('rejects invalid allowedSkills shapes', () => {
+    const cases = [
+      {
+        name: 'empty YAML value parses as null',
+        yaml: `
 samples: ./s.json
 variants:
   - name: baseline
     role: control
     artifact: baseline
     allowedSkills:
-`.trim());
-      assert.throws(() => loadEvalConfig(path), /allowedSkills must be an array/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('reject 非数组(string)', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `
+        `,
+        error: /allowedSkills must be an array/,
+      },
+      {
+        name: 'string instead of array',
+        yaml: `
 samples: ./s.json
 variants:
   - name: baseline
     role: control
     artifact: baseline
     allowedSkills: "react"
-`.trim());
-      assert.throws(() => loadEvalConfig(path), /allowedSkills must be an array/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('reject 数组里有非字符串元素', () => {
-    const dir = makeTmpDir();
-    try {
-      const path = writeYaml(dir, 'eval.yaml', `
+        `,
+        error: /allowedSkills must be an array/,
+      },
+      {
+        name: 'array contains non-string element',
+        yaml: `
 samples: ./s.json
 variants:
   - name: baseline
@@ -562,10 +515,13 @@ variants:
     allowedSkills:
       - react
       - 123
-`.trim());
-      assert.throws(() => loadEvalConfig(path), /allowedSkills\[1\]/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
+        `,
+        error: /allowedSkills\[1\]/,
+      },
+    ];
+
+    for (const testCase of cases) {
+      assertYamlThrows(testCase.yaml, testCase.error, testCase.name);
     }
   });
 

@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest';
+import { afterEach, beforeEach, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { runEvaluation, runBatchEvaluation } from '../src/eval-workflows/run-evaluation.js';
 import { executeBatchEvaluationRuns } from '../src/eval-workflows/batch-evaluation-workflow.js';
@@ -9,6 +9,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { captureStderr, type CapturedStderr } from './helpers/stderr.js';
 import type { Report, VariantSpec } from '../src/types/index.js';
 
 // Test helper: convert a list of variant names into VariantSpec[].
@@ -80,6 +81,20 @@ const AGENT_SKILL_DIR = join(__dirname, '..', 'examples', 'agent-eval', 'skills'
 const CUSTOM_EXECUTOR_SAMPLES = join(__dirname, '..', 'examples', 'custom-executor', 'eval-samples.json');
 const CUSTOM_EXECUTOR_SKILL_DIR = join(__dirname, '..', 'examples', 'custom-executor', 'skills');
 const CUSTOM_EXECUTOR_PATH = join(__dirname, '..', 'examples', 'custom-executor', 'echo-executor.sh');
+
+let stderrCapture: CapturedStderr;
+
+// Runner tests intentionally discard expected progress / warning noise
+// (power warnings, batch skip notices, git fixture misses). Individual specs
+// assert the resulting reports/errors; keeping stderr quiet makes real test
+// failures easier to read.
+beforeEach(() => {
+  stderrCapture = captureStderr();
+});
+
+afterEach(() => {
+  stderrCapture.restore();
+});
 
 describe('runEvaluation', () => {
   it('dry-run: experimentRole 从 variantSpecs 正确穿透到每个 task (非默认排序)', async () => {

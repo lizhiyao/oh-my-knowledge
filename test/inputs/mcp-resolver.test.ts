@@ -4,6 +4,7 @@ import { loadMcpConfig, resolveMcpUrls, stopAllServers } from '../../src/inputs/
 import { writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { withCapturedStderr } from '../helpers/stderr.js';
 import type { McpServers } from '../../src/types/index.js';
 
 describe('loadMcpConfig', () => {
@@ -18,11 +19,12 @@ describe('loadMcpConfig', () => {
     assert.equal(result, null);
   });
 
-  it('返回 null 当 JSON 格式错误', () => {
+  it('返回 null 当 JSON 格式错误', async () => {
     const configPath = join(tmpDir, '.mcp.json');
     writeFileSync(configPath, '{ invalid json }');
-    const result = loadMcpConfig(configPath);
+    const { result, stderr } = await withCapturedStderr(() => loadMcpConfig(configPath));
     assert.equal(result, null);
+    assert.match(stderr, /failed to parse MCP config file/);
   });
 
   it('返回 null 当没有符合条件的 server（缺少 urlPatterns）', () => {

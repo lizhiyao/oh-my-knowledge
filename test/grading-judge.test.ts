@@ -2,6 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { llmJudge, llmJudgeRepeat, getJudgePromptHash, llmJudgeEnsemble, computeJudgeAgreement, judgeId } from '../src/grading/judge.js';
 import { grade } from '../src/grading/index.js';
+import { withCapturedStderr } from './helpers/stderr.js';
 import type { ExecResult, ExecutorFn, JudgeConfig, Sample } from '../src/types/index.js';
 
 /**
@@ -58,14 +59,15 @@ describe('llmJudgeRepeat', () => {
       numTurns: 1,
     });
 
-    const result = await llmJudge({
+    const { result, stderr } = await withCapturedStderr(() => llmJudge({
       output: 'answer',
       rubric: 'rubric',
       prompt: 'task',
       executor,
       model: 'haiku',
-    });
+    }));
 
+    assert.match(stderr, /malformed JSON salvaged/);
     assert.equal(result.score, 4);
     assert.equal(result.reason, 'judge returned malformed JSON; score salvaged');
     assert.equal(result.judgeCostUSD, 0.001);
@@ -86,14 +88,15 @@ describe('llmJudgeRepeat', () => {
       numTurns: 1,
     });
 
-    const result = await llmJudge({
+    const { result, stderr } = await withCapturedStderr(() => llmJudge({
       output: 'answer',
       rubric: 'rubric',
       prompt: 'task',
       executor,
       model: 'haiku',
-    });
+    }));
 
+    assert.match(stderr, /LLM judge parse error/);
     assert.equal(result.score, 0);
     assert.equal(result.reason, 'failed to parse judge response');
   });
