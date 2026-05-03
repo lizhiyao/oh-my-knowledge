@@ -1,9 +1,10 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { runAssertions, rougeN, levenshtein, bleu } from '../../src/grading/assertions.js';
+import type { Assertion } from '../../src/types/index.js';
 
 describe('universal `not: true` field', () => {
-  it('not: true on contains inverts pass/fail', () => {
+  it('covers top-level not inversion behavior', () => {
     const r = runAssertions('hello world', [
       { type: 'contains', value: 'foo' },                  // raw fail
       { type: 'contains', value: 'foo', not: true },       // inverted → pass
@@ -17,143 +18,138 @@ describe('universal `not: true` field', () => {
     const a = runAssertions('hello', [{ type: 'contains', value: 'world', not: true }]);
     const b = runAssertions('hello', [{ type: 'not_contains', value: 'world' }]);
     assert.equal(a.details[0].passed, b.details[0].passed);
-  });
 
-  it('not: true on a regex assertion inverts', () => {
-    const r = runAssertions('output 42', [
+    const regex = runAssertions('output 42', [
       { type: 'regex', pattern: '\\d+', not: true },
     ]);
-    assert.equal(r.details[0].passed, false);
+    assert.equal(regex.details[0].passed, false);
   });
 });
 
 describe('assert-set combinator', () => {
-  it("'all' mode requires every child to pass", () => {
-    const r = runAssertions('hello world', [{
-      type: 'assert-set', mode: 'all',
-      children: [
-        { type: 'contains', value: 'hello' },
-        { type: 'contains', value: 'world' },
-      ],
-    }]);
-    assert.equal(r.details[0].passed, true);
-  });
+  const cases: Array<{ name: string; output: string; assertion: Assertion; expected: boolean }> = [
+    {
+      name: "'all' mode requires every child to pass",
+      output: 'hello world',
+      assertion: {
+        type: 'assert-set', mode: 'all',
+        children: [
+          { type: 'contains', value: 'hello' },
+          { type: 'contains', value: 'world' },
+        ],
+      },
+      expected: true,
+    },
+    {
+      name: "'all' mode fails when any child fails",
+      output: 'hello world',
+      assertion: {
+        type: 'assert-set', mode: 'all',
+        children: [
+          { type: 'contains', value: 'hello' },
+          { type: 'contains', value: 'absent' },
+        ],
+      },
+      expected: false,
+    },
+    {
+      name: "'any' mode passes when at least one child passes",
+      output: 'hello',
+      assertion: {
+        type: 'assert-set', mode: 'any',
+        children: [
+          { type: 'contains', value: 'foo' },
+          { type: 'contains', value: 'hello' },
+          { type: 'contains', value: 'bar' },
+        ],
+      },
+      expected: true,
+    },
+    {
+      name: "'any' mode fails when no child passes",
+      output: 'hello',
+      assertion: {
+        type: 'assert-set', mode: 'any',
+        children: [
+          { type: 'contains', value: 'foo' },
+          { type: 'contains', value: 'bar' },
+        ],
+      },
+      expected: false,
+    },
+    {
+      name: 'child not: true inside assert-set is honored',
+      output: 'hello',
+      assertion: {
+        type: 'assert-set', mode: 'all',
+        children: [
+          { type: 'contains', value: 'hello' },
+          { type: 'contains', value: 'forbidden', not: true },
+        ],
+      },
+      expected: true,
+    },
+    {
+      name: 'top-level not: true on assert-set inverts the whole set',
+      output: 'hello',
+      assertion: {
+        type: 'assert-set', mode: 'all', not: true,
+        children: [
+          { type: 'contains', value: 'hello' },
+          { type: 'contains', value: 'absent' },
+        ],
+      },
+      expected: true,
+    },
+    {
+      name: 'nested assert-set works',
+      output: 'the quick brown fox',
+      assertion: {
+        type: 'assert-set', mode: 'all',
+        children: [
+          { type: 'contains', value: 'fox' },
+          {
+            type: 'assert-set', mode: 'any',
+            children: [
+              { type: 'contains', value: 'quick' },
+              { type: 'contains', value: 'lazy' },
+            ],
+          },
+        ],
+      },
+      expected: true,
+    },
+    {
+      name: 'empty children array fails',
+      output: 'x',
+      assertion: { type: 'assert-set', mode: 'all', children: [] },
+      expected: false,
+    },
+  ];
 
-  it("'all' mode fails when any child fails", () => {
-    const r = runAssertions('hello world', [{
-      type: 'assert-set', mode: 'all',
-      children: [
-        { type: 'contains', value: 'hello' },
-        { type: 'contains', value: 'absent' },
-      ],
-    }]);
-    assert.equal(r.details[0].passed, false);
-  });
-
-  it("'any' mode passes when at least one child passes", () => {
-    const r = runAssertions('hello', [{
-      type: 'assert-set', mode: 'any',
-      children: [
-        { type: 'contains', value: 'foo' },
-        { type: 'contains', value: 'hello' },
-        { type: 'contains', value: 'bar' },
-      ],
-    }]);
-    assert.equal(r.details[0].passed, true);
-  });
-
-  it("'any' mode fails when no child passes", () => {
-    const r = runAssertions('hello', [{
-      type: 'assert-set', mode: 'any',
-      children: [
-        { type: 'contains', value: 'foo' },
-        { type: 'contains', value: 'bar' },
-      ],
-    }]);
-    assert.equal(r.details[0].passed, false);
-  });
-
-  it('child not: true inside assert-set is honored', () => {
-    const r = runAssertions('hello', [{
-      type: 'assert-set', mode: 'all',
-      children: [
-        { type: 'contains', value: 'hello' },
-        { type: 'contains', value: 'forbidden', not: true },
-      ],
-    }]);
-    assert.equal(r.details[0].passed, true);
-  });
-
-  it('top-level not: true on assert-set inverts the whole set', () => {
-    const r = runAssertions('hello', [{
-      type: 'assert-set', mode: 'all', not: true,
-      children: [
-        { type: 'contains', value: 'hello' },
-        { type: 'contains', value: 'absent' },
-      ],
-    }]);
-    // raw set returns false (one child fails); not: true → true.
-    assert.equal(r.details[0].passed, true);
-  });
-
-  it('nested assert-set works', () => {
-    const r = runAssertions('the quick brown fox', [{
-      type: 'assert-set', mode: 'all',
-      children: [
-        { type: 'contains', value: 'fox' },
-        {
-          type: 'assert-set', mode: 'any',
-          children: [
-            { type: 'contains', value: 'quick' },
-            { type: 'contains', value: 'lazy' },
-          ],
-        },
-      ],
-    }]);
-    assert.equal(r.details[0].passed, true);
-  });
-
-  it('empty children array fails', () => {
-    const r = runAssertions('x', [{ type: 'assert-set', mode: 'all', children: [] }]);
-    assert.equal(r.details[0].passed, false);
+  it('covers assert-set pass/fail boundaries', () => {
+    for (const testCase of cases) {
+      const r = runAssertions(testCase.output, [testCase.assertion]);
+      assert.equal(r.details[0].passed, testCase.expected, testCase.name);
+    }
   });
 });
 
 describe('rougeN', () => {
-  it('returns 1.0 for identical strings', () => {
-    assert.equal(rougeN('hello world', 'hello world', 1), 1);
-  });
+  it('covers scoring boundaries', () => {
+    const cases = [
+      { name: 'identical strings', actual: rougeN('hello world', 'hello world', 1), expected: 1 },
+      { name: 'one-token swap', actual: rougeN('cat sat on the mat', 'cat sat on a mat', 1), expected: 0.8 },
+      { name: 'no overlap', actual: rougeN('xyz qwe', 'abc def', 1), expected: 0 },
+      { name: 'clipped repeated candidate n-grams', actual: rougeN('cat cat cat cat cat', 'the cat the cat', 1), expected: 0.5 },
+      { name: 'Chinese single-character tokenization', actual: rougeN('你好世界', '你好朋友', 1), expected: 0.5 },
+      { name: 'reference fewer tokens than n', actual: rougeN('a b c', 'a', 2), expected: 0 },
+    ];
 
-  it('returns ~0.8 for one-token swap on a 5-token reference', () => {
-    // candidate: cat sat on the mat; reference: cat sat on a mat
-    // Overlap: cat, sat, on, mat → 4 of 5 reference unigrams = 0.8
-    const score = rougeN('cat sat on the mat', 'cat sat on a mat', 1);
-    assert.ok(Math.abs(score - 0.8) < 0.001, `expected 0.8, got ${score}`);
-  });
+    for (const testCase of cases) {
+      assert.ok(Math.abs(testCase.actual - testCase.expected) < 0.001, `${testCase.name}: expected ${testCase.expected}, got ${testCase.actual}`);
+    }
 
-  it('returns 0 for no overlap', () => {
-    assert.equal(rougeN('xyz qwe', 'abc def', 1), 0);
-  });
-
-  it('clips repeated candidate n-grams to reference count', () => {
-    // Candidate spams "cat" but reference has it only twice.
-    const score = rougeN('cat cat cat cat cat', 'the cat the cat', 1);
-    // Reference unigrams: the, cat, the, cat → 4 tokens. Overlap clipped at min(cand=5, ref=2) = 2.
-    // ROUGE-1 recall = 2 / 4 = 0.5
-    assert.ok(Math.abs(score - 0.5) < 0.001, `expected 0.5, got ${score}`);
-  });
-
-  it('handles Chinese single-character tokenization', () => {
-    // 你好世界 vs 你好朋友 — overlap on 你, 好 → 2 of 4 unigrams = 0.5
-    const score = rougeN('你好世界', '你好朋友', 1);
-    assert.ok(Math.abs(score - 0.5) < 0.001, `expected 0.5, got ${score}`);
-  });
-
-  it('returns 0 when reference has fewer tokens than n', () => {
-    assert.equal(rougeN('a b c', 'a', 2), 0);
-  });
-
-  it('rouge-2 (bigram) is stricter than rouge-1', () => {
     const r1 = rougeN('the quick brown fox', 'the quick red fox', 1);
     const r2 = rougeN('the quick brown fox', 'the quick red fox', 2);
     assert.ok(r2 < r1, `rouge-2 (${r2}) should be < rouge-1 (${r1})`);
@@ -161,49 +157,35 @@ describe('rougeN', () => {
 });
 
 describe('levenshtein', () => {
-  it('returns 0 for identical strings', () => {
-    assert.equal(levenshtein('hello', 'hello'), 0);
-  });
+  it('covers edit-distance boundaries', () => {
+    const cases = [
+      { name: 'identical strings', a: 'hello', b: 'hello', expected: 0 },
+      { name: 'left side empty', a: '', b: 'abc', expected: 3 },
+      { name: 'right side empty', a: 'abc', b: '', expected: 3 },
+      { name: 'classic kitten to sitting', a: 'kitten', b: 'sitting', expected: 3 },
+      { name: 'single-char swap', a: 'cat', b: 'bat', expected: 1 },
+      { name: 'Chinese deletion', a: '你好世界', b: '你好世', expected: 1 },
+      { name: 'Chinese replacement', a: '你好', b: '世界', expected: 2 },
+    ];
 
-  it('returns the length when one side is empty', () => {
-    assert.equal(levenshtein('', 'abc'), 3);
-    assert.equal(levenshtein('abc', ''), 3);
-  });
-
-  it('classic example: kitten → sitting is 3', () => {
-    assert.equal(levenshtein('kitten', 'sitting'), 3);
-  });
-
-  it('single-char swap is 1', () => {
-    assert.equal(levenshtein('cat', 'bat'), 1);
-  });
-
-  it('handles Chinese characters', () => {
-    assert.equal(levenshtein('你好世界', '你好世'), 1);
-    assert.equal(levenshtein('你好', '世界'), 2);
+    for (const testCase of cases) {
+      assert.equal(levenshtein(testCase.a, testCase.b), testCase.expected, testCase.name);
+    }
   });
 });
 
 describe('bleu', () => {
-  it('returns 1.0 for identical strings (long enough for 4-grams)', () => {
+  it('covers BLEU scoring boundaries', () => {
     const s = 'the quick brown fox jumps over the lazy dog';
     assert.ok(bleu(s, s) > 0.99);
-  });
 
-  it('returns 0 when no overlap', () => {
     assert.equal(bleu('xyz qwe rtt mno', 'abc def ghi jkl'), 0);
-  });
 
-  it('returns 0 when candidate too short for 4-grams (unsmoothed)', () => {
-    // BLEU-4 unsmoothed degenerates on short text — documented behavior.
     const score = bleu('cat sat', 'cat sat');
     assert.equal(score, 0, `BLEU-4 should be 0 for 2-token text, got ${score}`);
-  });
 
-  it('brevity penalty is < 1 when candidate is shorter than reference', () => {
     const long = 'one two three four five six seven eight nine ten';
     const short = 'one two three four five six seven eight';
-    // Both share many n-grams; BP makes short < 1 even with perfect precision.
     const sShort = bleu(short, long, 2);
     const sLong = bleu(long, long, 2);
     assert.ok(sShort < sLong, `bp should pull short candidate's score below the full match`);
@@ -211,38 +193,43 @@ describe('bleu', () => {
 });
 
 describe('assertion integration', () => {
-  it('rouge_n_min passes when score meets threshold', () => {
-    const r = runAssertions('cat sat on the mat', [
-      { type: 'rouge_n_min', reference: 'cat sat on a mat', n: 1, threshold: 0.7 },
-    ]);
-    assert.equal(r.details[0].passed, true);
-  });
+  const cases: Array<{ name: string; output: string; assertion: Assertion; expected: boolean }> = [
+    {
+      name: 'rouge_n_min passes when score meets threshold',
+      output: 'cat sat on the mat',
+      assertion: { type: 'rouge_n_min', reference: 'cat sat on a mat', n: 1, threshold: 0.7 },
+      expected: true,
+    },
+    {
+      name: 'rouge_n_min fails when below threshold',
+      output: 'cat sat on the mat',
+      assertion: { type: 'rouge_n_min', reference: 'a different sentence', n: 1, threshold: 0.5 },
+      expected: false,
+    },
+    {
+      name: 'levenshtein_max passes within tolerance',
+      output: 'kitten',
+      assertion: { type: 'levenshtein_max', reference: 'sitting', value: 5 },
+      expected: true,
+    },
+    {
+      name: 'levenshtein_max fails over tolerance',
+      output: 'kitten',
+      assertion: { type: 'levenshtein_max', reference: 'sitting', value: 2 },
+      expected: false,
+    },
+    {
+      name: 'bleu_min works in assertion form',
+      output: 'the quick brown fox jumps over the lazy dog',
+      assertion: { type: 'bleu_min', reference: 'the quick brown fox jumps over the lazy dog', threshold: 0.9 },
+      expected: true,
+    },
+  ];
 
-  it('rouge_n_min fails when below threshold', () => {
-    const r = runAssertions('cat sat on the mat', [
-      { type: 'rouge_n_min', reference: 'a different sentence', n: 1, threshold: 0.5 },
-    ]);
-    assert.equal(r.details[0].passed, false);
-  });
-
-  it('levenshtein_max passes within tolerance', () => {
-    const r = runAssertions('kitten', [
-      { type: 'levenshtein_max', reference: 'sitting', value: 5 },
-    ]);
-    assert.equal(r.details[0].passed, true);
-  });
-
-  it('levenshtein_max fails over tolerance', () => {
-    const r = runAssertions('kitten', [
-      { type: 'levenshtein_max', reference: 'sitting', value: 2 },
-    ]);
-    assert.equal(r.details[0].passed, false);
-  });
-
-  it('bleu_min works in assertion form', () => {
-    const r = runAssertions('the quick brown fox jumps over the lazy dog', [
-      { type: 'bleu_min', reference: 'the quick brown fox jumps over the lazy dog', threshold: 0.9 },
-    ]);
-    assert.equal(r.details[0].passed, true);
+  it('covers deterministic metric assertion integration', () => {
+    for (const testCase of cases) {
+      const r = runAssertions(testCase.output, [testCase.assertion]);
+      assert.equal(r.details[0].passed, testCase.expected, testCase.name);
+    }
   });
 });

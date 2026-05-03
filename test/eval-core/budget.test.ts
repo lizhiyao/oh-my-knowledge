@@ -1,6 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { executeTasks } from '../../src/eval-core/evaluation-execution.js';
+import { withCapturedStderr } from '../helpers/stderr.js';
 import type { Artifact, ExecutorFn, Sample, Task } from '../../src/types/index.js';
 
 const sample = (id: string): Sample => ({
@@ -38,14 +39,15 @@ describe('executeTasks —  budget tracker', () => {
   it('aborts remaining tasks when totalUSD cap is exceeded', async () => {
     const tasks = ['s1', 's2', 's3', 's4', 's5'].map(task);
     const exec = makeExecutor(0.4); // each task costs $0.4
-    const r = await executeTasks({
+    const { result: r, stderr } = await withCapturedStderr(() => executeTasks({
       tasks, executor: exec,
       judgeModels: [{ executor: 'claude', model: 'j' }],
       judgeExecutors: { claude: judgeNoop },
       model: 'm', noJudge: true,
       samplesPath: './x.json', concurrency: 1, noCache: true, verbose: false,
       budget: { totalUSD: 1 }, // budget exhausted after 3 tasks
-    });
+    }));
+    assert.match(stderr, /budget exhausted/);
     assert.equal(r.budgetExhausted, true);
     // We don't pin the exact count — concurrency timing means the abort can
     // happen anywhere from task 3 onward — but we do require:
