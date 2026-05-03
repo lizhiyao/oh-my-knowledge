@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 1280px;
+    height: 640px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    background: #0d1117;
+    color: #e6edf3;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  .canvas {
+    width: 1280px;
+    height: 640px;
+    background: #0d1117;
+    padding: 88px 96px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  .top {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 22px;
+    color: #8b949e;
+    letter-spacing: 0.2px;
+  }
+  .top .name {
+    color: #f0f6fc;
+    font-weight: 600;
+  }
+  .middle {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  h1 {
+    font-size: 60px;
+    line-height: 1.1;
+    letter-spacing: -1.4px;
+    font-weight: 800;
+    color: #f0f6fc;
+    max-width: 1100px;
+  }
+  h1 .accent { color: #58a6ff; }
+  .subtitle {
+    font-size: 24px;
+    line-height: 1.4;
+    color: #8b949e;
+    font-weight: 400;
+  }
+
+  .terminal {
+    margin-top: 4px;
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 22px 28px;
+    font-family: ui-monospace, "SF Mono", Menlo, "Cascadia Code", monospace;
+    font-size: 22px;
+    line-height: 1.5;
+    color: #c9d1d9;
+    max-width: 1080px;
+  }
+  .term-line { white-space: nowrap; }
+  .prompt { color: #6e7681; }
+  .cmd { color: #c9d1d9; }
+  .check { color: #3fb950; font-weight: 600; }
+  .label { color: #8b949e; }
+  .verdict { color: #f0f6fc; font-weight: 600; }
+  .stat { color: #58a6ff; font-weight: 600; }
+  .sep { color: #30363d; padding: 0 14px; }
+  .dim { color: #6e7681; }
+
+  .bottom {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 18px;
+    color: #6e7681;
+    letter-spacing: 0.2px;
+  }
+</style>
+</head>
+<body>
+  <div class="canvas">
+    <div class="top">
+      <span class="name">omk</span> &nbsp;·&nbsp; oh-my-knowledge
+    </div>
+
+    <div class="middle">
+      <h1>The knowledge you give your LLM&nbsp;—<br/>what's it actually <span class="accent">worth?</span></h1>
+      <div class="subtitle">Evaluation for LLM knowledge inputs — fix the model, vary the artifact.</div>
+
+      <div class="terminal">
+        <div class="term-line"><span class="prompt">$</span> <span class="cmd">omk bench run</span></div>
+        <div class="term-line"><span class="check">✓</span> <span class="label">verdict:</span> <span class="verdict">v2 &gt; v1</span><span class="sep">·</span><span class="label">Δ </span><span class="stat">+0.18</span><span class="sep">·</span><span class="label">α </span><span class="stat">0.84</span><span class="sep">·</span><span class="label">n </span><span class="dim">240</span></div>
+      </div>
+    </div>
+
+    <div class="bottom">github.com/lizhiyao/oh-my-knowledge</div>
+  </div>
+</body>
+</html>
