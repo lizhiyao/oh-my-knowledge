@@ -11,7 +11,7 @@
 **omk** — The knowledge you give your LLM — what's it actually worth?
 omk answers with objective data, not gut feeling.
 
-**Fix the model, vary the knowledge artifact.**
+**Evaluation framework for LLM knowledge inputs** — prompts, RAG corpora, skills, agent workflows. Fix the model, vary the artifact.
 
 <a id="statistical-rigor"></a>
 > Built-in: Bootstrap CI · Krippendorff α (judge ↔ human) · length-debias · saturation curves · construct-validity isolation. [Why these matter →](docs/statistical-rigor.md)

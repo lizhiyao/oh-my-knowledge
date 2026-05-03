@@ -62,59 +62,78 @@ annotations:
     assert.ok(issues.some((i) => /duplicate sample_id/.test(i.message)));
   });
 
-  it('rejects missing metadata', () => {
-    writeYaml('a.yaml', `annotations: [{ sample_id: x, score: 3 }]`);
-    const { dataset, issues } = loadGoldDataset(dir);
-    assert.equal(dataset, undefined);
-    assert.ok(issues.some((i) => /metadata/.test(i.message)));
-  });
-
-  it('rejects non-numeric score with index pointing to the offending entry', () => {
-    writeYaml('a.yaml', `
-metadata: { annotator: x, annotatedAt: '2026-04-25', version: '1' }
-annotations:
-  - { sample_id: ok, score: 4 }
-  - { sample_id: bad, score: "five" }
-`);
-    const { issues } = loadGoldDataset(dir);
-    const scoreIssue = issues.find((i) => /score/.test(i.message));
-    assert.ok(scoreIssue, `expected a score issue, got ${JSON.stringify(issues)}`);
-    assert.equal(scoreIssue!.index, 1);
-  });
-
-  it('rejects invalid scale', () => {
-    writeYaml('a.yaml', `
-metadata: { annotator: x, annotatedAt: '2026-04-25', version: '1', scale: { min: 5, max: 1 } }
-annotations: [{ sample_id: a, score: 3 }]
-`);
-    const { issues } = loadGoldDataset(dir);
-    assert.ok(issues.some((i) => /scale/.test(i.message)));
-  });
-
   it('returns issues for missing directory without throwing', () => {
     const { dataset, issues } = loadGoldDataset(join(dir, 'does-not-exist'));
     assert.equal(dataset, undefined);
     assert.ok(issues[0].message.includes('not found') || issues[0].message.includes('unreadable'));
   });
 
-  it('reports YAML parse error with line number', () => {
-    writeYaml('bad.yaml', `metadata: { annotator: x, annotatedAt: '2026-04-25', version: '1'\nannotations: [unclosed`);
-    const { issues } = loadGoldDataset(dir);
-    assert.ok(issues.some((i) => /YAML parse error/.test(i.message)),
-      `expected YAML parse error, got: ${JSON.stringify(issues)}`);
-  });
-
-  it('flags metadata declared in multiple files', () => {
-    writeYaml('a.yaml', `metadata: { annotator: x, annotatedAt: '2026-04-25', version: '1' }`);
-    writeYaml('b.yaml', `metadata: { annotator: y, annotatedAt: '2026-04-25', version: '1' }
+  const invalidDatasetCases = [
+    {
+      name: 'missing metadata',
+      setup: () => writeYaml('a.yaml', `annotations: [{ sample_id: x, score: 3 }]`),
+      check: (issues: ReturnType<typeof loadGoldDataset>['issues'], dataset: ReturnType<typeof loadGoldDataset>['dataset']) => {
+        assert.equal(dataset, undefined);
+        assert.ok(issues.some((i) => /metadata/.test(i.message)));
+      },
+    },
+    {
+      name: 'non-numeric score',
+      setup: () => writeYaml('a.yaml', `
+metadata: { annotator: x, annotatedAt: '2026-04-25', version: '1' }
+annotations:
+  - { sample_id: ok, score: 4 }
+  - { sample_id: bad, score: "five" }
+`),
+      check: (issues: ReturnType<typeof loadGoldDataset>['issues']) => {
+        const scoreIssue = issues.find((i) => /score/.test(i.message));
+        assert.ok(scoreIssue, `expected a score issue, got ${JSON.stringify(issues)}`);
+        assert.equal(scoreIssue!.index, 1);
+      },
+    },
+    {
+      name: 'invalid scale',
+      setup: () => writeYaml('a.yaml', `
+metadata: { annotator: x, annotatedAt: '2026-04-25', version: '1', scale: { min: 5, max: 1 } }
+annotations: [{ sample_id: a, score: 3 }]
+`),
+      check: (issues: ReturnType<typeof loadGoldDataset>['issues']) => {
+        assert.ok(issues.some((i) => /scale/.test(i.message)));
+      },
+    },
+    {
+      name: 'YAML parse error',
+      setup: () => writeYaml('bad.yaml', `metadata: { annotator: x, annotatedAt: '2026-04-25', version: '1'\nannotations: [unclosed`),
+      check: (issues: ReturnType<typeof loadGoldDataset>['issues']) => {
+        assert.ok(issues.some((i) => /YAML parse error/.test(i.message)),
+          `expected YAML parse error, got: ${JSON.stringify(issues)}`);
+      },
+    },
+    {
+      name: 'metadata declared in multiple files',
+      setup: () => {
+        writeYaml('a.yaml', `metadata: { annotator: x, annotatedAt: '2026-04-25', version: '1' }`);
+        writeYaml('b.yaml', `metadata: { annotator: y, annotatedAt: '2026-04-25', version: '1' }
 annotations: [{ sample_id: s, score: 1 }]`);
-    const { issues } = loadGoldDataset(dir);
-    assert.ok(issues.some((i) => /multiple files/.test(i.message)));
-  });
+      },
+      check: (issues: ReturnType<typeof loadGoldDataset>['issues']) => {
+        assert.ok(issues.some((i) => /multiple files/.test(i.message)));
+      },
+    },
+    {
+      name: 'nested-but-empty directory',
+      setup: () => mkdirSync(join(dir, 'sub')),
+      check: (issues: ReturnType<typeof loadGoldDataset>['issues']) => {
+        assert.ok(issues.some((i) => /no \.yaml files/.test(i.message)));
+      },
+    },
+  ];
 
-  it('handles nested-but-empty directory gracefully', () => {
-    mkdirSync(join(dir, 'sub'));
-    const { issues } = loadGoldDataset(dir);
-    assert.ok(issues.some((i) => /no \.yaml files/.test(i.message)));
+  it.each(invalidDatasetCases)('reports invalid dataset shape: $name', ({ setup, check }) => {
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    setup();
+    const { dataset, issues } = loadGoldDataset(dir);
+    check(issues, dataset);
   });
 });

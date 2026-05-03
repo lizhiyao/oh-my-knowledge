@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { runAsyncAssertions, ASYNC_ASSERTION_TYPES } from '../../src/grading/assertions.js';
-import type { ExecutorFn, Sample } from '../../src/types/index.js';
+import type { Assertion, ExecutorFn, Sample } from '../../src/types/index.js';
 
 const ok = (output: string): Awaited<ReturnType<ExecutorFn>> => ({
   ok: true,
@@ -13,6 +13,14 @@ const ok = (output: string): Awaited<ReturnType<ExecutorFn>> => ({
 
 const mockJudge = (handler: (prompt: string) => number): ExecutorFn =>
   async ({ prompt }) => ok(JSON.stringify({ score: handler(prompt), reason: 'mock' }));
+
+async function runSingle(sample: Sample, assertion: Assertion, output = 'output', score = 5) {
+  return runAsyncAssertions(
+    output,
+    [assertion],
+    { executor: mockJudge(() => score), judgeModel: 'm', sample, samplesDir: '.' },
+  );
+}
 
 describe('RAG metrics registration', () => {
   it('all three RAG metrics are registered as async assertion types', () => {
@@ -29,57 +37,22 @@ describe('faithfulness', () => {
     context: 'The Eiffel Tower is in Paris and is 330 meters tall.',
   };
 
-  it('passes when score >= threshold (default 3)', async () => {
-    const judge = mockJudge(() => 5);
-    const r = await runAsyncAssertions(
-      'The Eiffel Tower is in Paris.',
-      [{ type: 'faithfulness' }],
-      { executor: judge, judgeModel: 'm', sample, samplesDir: '.' },
-    );
-    assert.equal(r.details[0].passed, true);
+  const faithfulnessCases = [
+    { name: 'passes when score >= threshold', assertion: { type: 'faithfulness' }, output: 'The Eiffel Tower is in Paris.', score: 5, expected: true },
+    { name: 'fails when score < threshold', assertion: { type: 'faithfulness' }, output: 'The Eiffel Tower is in London and is 100m tall.', score: 2, expected: false },
+    { name: 'respects custom threshold', assertion: { type: 'faithfulness', threshold: 4 }, output: 'mixed answer', score: 3, expected: false },
+    { name: 'uses assertion.reference when sample.context is absent', assertion: { type: 'faithfulness', reference: 'overridden context' }, sample: { sample_id: 's', prompt: 'Q?' }, expected: true },
+  ] satisfies Array<{ name: string; assertion: Assertion; output?: string; score?: number; sample?: Sample; expected: boolean }>;
+
+  it.each(faithfulnessCases)('$name', async (testCase) => {
+    const r = await runSingle(testCase.sample ?? sample, testCase.assertion, testCase.output, testCase.score);
+    assert.equal(r.details[0].passed, testCase.expected);
   });
 
-  it('fails when score < threshold', async () => {
-    const judge = mockJudge(() => 2);
-    const r = await runAsyncAssertions(
-      'The Eiffel Tower is in London and is 100m tall.',
-      [{ type: 'faithfulness' }],
-      { executor: judge, judgeModel: 'm', sample, samplesDir: '.' },
-    );
-    assert.equal(r.details[0].passed, false);
-  });
-
-  it('respects custom threshold', async () => {
-    const judge = mockJudge(() => 3);
-    const r = await runAsyncAssertions(
-      'mixed answer',
-      [{ type: 'faithfulness', threshold: 4 }],
-      { executor: judge, judgeModel: 'm', sample, samplesDir: '.' },
-    );
-    assert.equal(r.details[0].passed, false);
-  });
-
-  it('fails fast when sample has no context and no reference override', async () => {
-    const judge = mockJudge(() => 5);
-    const noCtxSample: Sample = { sample_id: 's', prompt: 'Q?' };
-    const r = await runAsyncAssertions(
-      'output',
-      [{ type: 'faithfulness' }],
-      { executor: judge, judgeModel: 'm', sample: noCtxSample, samplesDir: '.' },
-    );
-    assert.equal(r.details[0].passed, false);
-    assert.match(r.details[0].message ?? '', /缺少 sample.context/);
-  });
-
-  it('uses assertion.reference as override when sample.context is absent', async () => {
-    const judge = mockJudge(() => 5);
-    const noCtxSample: Sample = { sample_id: 's', prompt: 'Q?' };
-    const r = await runAsyncAssertions(
-      'output',
-      [{ type: 'faithfulness', reference: 'overridden context' }],
-      { executor: judge, judgeModel: 'm', sample: noCtxSample, samplesDir: '.' },
-    );
-    assert.equal(r.details[0].passed, true);
+  it('fails when both sample.context and assertion.reference are missing', async () => {
+    const noCtx = await runSingle({ sample_id: 's', prompt: 'Q?' }, { type: 'faithfulness' });
+    assert.equal(noCtx.details[0].passed, false);
+    assert.match(noCtx.details[0].message ?? '', /缺少 sample.context/);
   });
 
   it('prompt includes the length-debias paragraph', async () => {
@@ -101,34 +74,15 @@ describe('answer_relevancy', () => {
     prompt: 'How tall is the Eiffel Tower?',
   };
 
-  it('passes when output answers the question', async () => {
-    const judge = mockJudge(() => 5);
-    const r = await runAsyncAssertions(
-      '330 meters tall.',
-      [{ type: 'answer_relevancy' }],
-      { executor: judge, judgeModel: 'm', sample, samplesDir: '.' },
-    );
-    assert.equal(r.details[0].passed, true);
-  });
+  const answerRelevancyCases = [
+    { name: 'passes when output answers the question', output: '330 meters tall.', score: 5, expected: true },
+    { name: 'fails when output dodges', output: 'Eiffel was an engineer.', score: 1, expected: false },
+    { name: 'does not require sample.context', output: '330m', score: 4, expected: true },
+  ];
 
-  it('fails when output dodges', async () => {
-    const judge = mockJudge(() => 1);
-    const r = await runAsyncAssertions(
-      "Eiffel was an engineer.",
-      [{ type: 'answer_relevancy' }],
-      { executor: judge, judgeModel: 'm', sample, samplesDir: '.' },
-    );
-    assert.equal(r.details[0].passed, false);
-  });
-
-  it('does not require sample.context', async () => {
-    const judge = mockJudge(() => 4);
-    const r = await runAsyncAssertions(
-      '330m',
-      [{ type: 'answer_relevancy' }],
-      { executor: judge, judgeModel: 'm', sample, samplesDir: '.' },
-    );
-    assert.equal(r.details[0].passed, true);
+  it.each(answerRelevancyCases)('$name', async ({ output, score, expected }) => {
+    const r = await runSingle(sample, { type: 'answer_relevancy' }, output, score);
+    assert.equal(r.details[0].passed, expected);
   });
 
   it('passes the user question into the judge prompt', async () => {
@@ -151,24 +105,21 @@ describe('context_recall', () => {
     context: 'Key fact A. Key fact B. Key fact C.',
   };
 
-  it('passes when output covers gold facts', async () => {
-    const judge = mockJudge(() => 5);
-    const r = await runAsyncAssertions(
-      'Output covers A B C.',
-      [{ type: 'context_recall' }],
-      { executor: judge, judgeModel: 'm', sample, samplesDir: '.' },
-    );
-    assert.equal(r.details[0].passed, true);
+  const contextRecallCases = [
+    { name: 'passes when output covers gold facts', output: 'Output covers A B C.', score: 5, expected: true },
+    { name: 'fails when output ignores most gold facts', output: 'Only A.', score: 1, expected: false },
+  ];
+
+  it.each(contextRecallCases)('$name', async ({ output, score, expected }) => {
+    const r = await runSingle(sample, { type: 'context_recall' }, output, score);
+    assert.equal(r.details[0].passed, expected);
   });
 
-  it('fails when output ignores most gold facts', async () => {
-    const judge = mockJudge(() => 1);
-    const r = await runAsyncAssertions(
-      'Only A.',
-      [{ type: 'context_recall' }],
-      { executor: judge, judgeModel: 'm', sample, samplesDir: '.' },
-    );
-    assert.equal(r.details[0].passed, false);
+  it('fails when sample.context is missing', async () => {
+    const noCtxSample: Sample = { sample_id: 's', prompt: 'Q?' };
+    const missing = await runSingle(noCtxSample, { type: 'context_recall' }, 'out');
+    assert.equal(missing.details[0].passed, false);
+    assert.match(missing.details[0].message ?? '', /缺少/);
   });
 
   it('uses assertion.reference when explicitly given (even if sample.context exists)', async () => {
@@ -195,17 +146,6 @@ describe('context_recall', () => {
     assert.match(captured, /Key fact A/);
   });
 
-  it('fails fast when neither reference nor sample.context is present', async () => {
-    const judge = mockJudge(() => 5);
-    const noCtxSample: Sample = { sample_id: 's', prompt: 'Q?' };
-    const r = await runAsyncAssertions(
-      'out',
-      [{ type: 'context_recall' }],
-      { executor: judge, judgeModel: 'm', sample: noCtxSample, samplesDir: '.' },
-    );
-    assert.equal(r.details[0].passed, false);
-    assert.match(r.details[0].message ?? '', /缺少/);
-  });
 });
 
 describe('judge cost is accumulated', () => {

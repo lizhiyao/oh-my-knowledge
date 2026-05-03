@@ -1,7 +1,7 @@
 {
   "name": "oh-my-knowledge",
-  "version": "0.25.0",
-  "description": "LLM evaluation framework with built-in statistical rigor: bootstrap CI, Krippendorff α, length-debias, saturation curves. Native Claude Code skill / RAG / agent / prompt evaluation.",
+  "version": "0.25.1",
+  "description": "Evaluation framework for LLM knowledge inputs — prompts, RAG corpora, skills, agent workflows. Fix the model, vary the artifact. Built-in statistical rigor: bootstrap CI, Krippendorff α, length-debias, saturation curves.",
   "type": "module",
   "bin": {
     "omk": "dist/src/cli/index.js"

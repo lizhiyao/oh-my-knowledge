@@ -5,6 +5,7 @@ import {
   clearHedgingCache,
   type HedgingCandidate,
 } from '../../src/analysis/hedging-classifier.js';
+import { withCapturedStderr } from '../helpers/stderr.js';
 import type { ExecResult, ExecutorFn } from '../../src/types/index.js';
 
 function execOk(output: string, costUSD = 0.001): ExecResult {
@@ -97,11 +98,13 @@ describe('classifyHedgingCandidates', () => {
       { id: 2, isUncertainty: true, confidence: 0.8, reason: 'x' },
     ]);
     const m = makeExecutor([execOk(response)]);
-    const { verdicts, truncated } = await classifyHedgingCandidates(
+    const { result, stderr } = await withCapturedStderr(() => classifyHedgingCandidates(
       [cand('s1', 'A'), cand('s2', 'B'), cand('s3', 'C')],
       m.exec,
       { maxCandidates: 2, batchSize: 5 },
-    );
+    ));
+    const { verdicts, truncated } = result;
+    assert.match(stderr, /exceeds maxCandidates=2/);
     assert.equal(truncated, true);
     assert.equal(verdicts.length, 3);
     assert.equal(verdicts[0].isUncertainty, true);
