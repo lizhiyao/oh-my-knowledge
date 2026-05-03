@@ -58,10 +58,8 @@ describe('isFailedSearchTool', () => {
     { name: 'Write or other non-search tools', call: tc('Write', { file_path: '/x.md' }, '', false), expected: false },
   ];
 
-  it('classifies failed search tool boundaries', () => {
-    for (const testCase of cases) {
-      assert.equal(isFailedSearchTool(testCase.call), testCase.expected, testCase.name);
-    }
+  it.each(cases)('$name', ({ call, expected }) => {
+    assert.equal(isFailedSearchTool(call), expected);
   });
 });
 
@@ -124,13 +122,11 @@ describe('extractMarkerSignals', () => {
     { name: 'empty string', text: '', expectedLength: 0 },
   ];
 
-  it('extracts explicit marker boundaries', () => {
-    for (const testCase of cases) {
-      const signals = extractMarkerSignals(testCase.text);
-      assert.equal(signals.length, testCase.expectedLength, testCase.name);
-      if (testCase.expectedLength > 0) {
-        assert.equal(signals[0].type, 'explicit_marker', testCase.name);
-      }
+  it.each(cases)('$name', ({ text, expectedLength }) => {
+    const signals = extractMarkerSignals(text);
+    assert.equal(signals.length, expectedLength);
+    if (expectedLength > 0) {
+      assert.equal(signals[0].type, 'explicit_marker');
     }
   });
 });
@@ -146,13 +142,11 @@ describe('extractHedgingSignals', () => {
     { name: 'clean text', text: '这是一个确定的答案', expectedLength: 0 },
   ];
 
-  it('extracts hedging boundaries', () => {
-    for (const testCase of cases) {
-      const signals = extractHedgingSignals(testCase.text);
-      assert.equal(signals.length, testCase.expectedLength, testCase.name);
-      if (testCase.expectedLength > 0) {
-        assert.equal(signals[0].type, 'hedging', testCase.name);
-      }
+  it.each(cases)('$name', ({ text, expectedLength }) => {
+    const signals = extractHedgingSignals(text);
+    assert.equal(signals.length, expectedLength);
+    if (expectedLength > 0) {
+      assert.equal(signals[0].type, 'hedging');
     }
   });
 });
@@ -224,14 +218,12 @@ describe('extractRepeatedFailureSignals', () => {
     { name: 'empty turns', turns: [], expectedLength: 0 },
   ];
 
-  it('extracts repeated failure boundaries', () => {
-    for (const testCase of cases) {
-      const signals = extractRepeatedFailureSignals(testCase.turns);
-      assert.equal(signals.length, testCase.expectedLength, testCase.name);
-      if (testCase.expectGrepContext) {
-        assert.equal(signals[0].type, 'repeated_failure', testCase.name);
-        assert.ok(signals[0].context.includes('Grep'), testCase.name);
-      }
+  it.each(cases)('$name', ({ turns, expectedLength, expectGrepContext }) => {
+    const signals = extractRepeatedFailureSignals(turns);
+    assert.equal(signals.length, expectedLength);
+    if (expectGrepContext) {
+      assert.equal(signals[0].type, 'repeated_failure');
+      assert.ok(signals[0].context.includes('Grep'));
     }
   });
 });

@@ -47,19 +47,17 @@ describe('loadSamples', () => {
     assert.equal(samples[1].prompt, 'world');
   });
 
-  it('rejects invalid sample file shapes', () => {
-    const cases = [
-      { name: 'empty array', file: 'empty.json', value: [], error: /invalid samples file/ },
-      { name: 'non-array content', file: 'invalid.json', value: 'not an array', error: /invalid samples file/ },
-      { name: 'missing sample_id', file: 'no-id.json', value: [{ prompt: 'hello' }], error: /required field: sample_id/ },
-      { name: 'missing prompt', file: 'no-prompt.json', value: [{ sample_id: 'x' }], error: /required field: prompt/ },
-      { name: 'non-string prompt', file: 'bad-prompt-type.json', value: [{ sample_id: 'x', prompt: 123 }], error: /invalid required field: prompt/ },
-    ];
+  const invalidShapeCases = [
+    { name: 'empty array', file: 'empty.json', value: [], error: /invalid samples file/ },
+    { name: 'non-array content', file: 'invalid.json', value: 'not an array', error: /invalid samples file/ },
+    { name: 'missing sample_id', file: 'no-id.json', value: [{ prompt: 'hello' }], error: /required field: sample_id/ },
+    { name: 'missing prompt', file: 'no-prompt.json', value: [{ sample_id: 'x' }], error: /required field: prompt/ },
+    { name: 'non-string prompt', file: 'bad-prompt-type.json', value: [{ sample_id: 'x', prompt: 123 }], error: /invalid required field: prompt/ },
+  ];
 
-    for (const testCase of cases) {
-      const p = writeJsonSamples(testCase.file, testCase.value);
-      assert.throws(() => loadSamples(p), testCase.error, testCase.name);
-    }
+  it.each(invalidShapeCases)('rejects invalid sample file shape: $name', ({ file, value, error }) => {
+    const p = writeJsonSamples(file, value);
+    assert.throws(() => loadSamples(p), error);
   });
 
   // sample design metadata fields validation
@@ -89,38 +87,36 @@ describe('loadSamples', () => {
       assert.equal(samples[0].provenance, undefined);
     });
 
-    it('rejects invalid sample design metadata', () => {
-      const cases = [
-        {
-          name: 'difficulty invalid value includes sample_id',
-          file: 'bad-difficulty.json',
-          value: [{ sample_id: 's7', prompt: 'p', difficulty: 'easy?' }],
-          error: /s7.*invalid difficulty.*easy\?.*easy, medium, hard/,
-        },
-        {
-          name: 'provenance invalid value',
-          file: 'bad-prov.json',
-          value: [{ sample_id: 's1', prompt: 'p', provenance: 'random' }],
-          error: /invalid provenance/,
-        },
-        {
-          name: 'capability single string',
-          file: 'bad-cap.json',
-          value: [{ sample_id: 's1', prompt: 'p', capability: 'api-selection' }],
-          error: /invalid capability.*string array/,
-        },
-        {
-          name: 'capability array contains non-string',
-          file: 'bad-cap-elem.json',
-          value: [{ sample_id: 's1', prompt: 'p', capability: ['ok', 123] }],
-          error: /capability\[1\] must be a non-empty string/,
-        },
-      ];
+    const invalidMetadataCases = [
+      {
+        name: 'difficulty invalid value includes sample_id',
+        file: 'bad-difficulty.json',
+        value: [{ sample_id: 's7', prompt: 'p', difficulty: 'easy?' }],
+        error: /s7.*invalid difficulty.*easy\?.*easy, medium, hard/,
+      },
+      {
+        name: 'provenance invalid value',
+        file: 'bad-prov.json',
+        value: [{ sample_id: 's1', prompt: 'p', provenance: 'random' }],
+        error: /invalid provenance/,
+      },
+      {
+        name: 'capability single string',
+        file: 'bad-cap.json',
+        value: [{ sample_id: 's1', prompt: 'p', capability: 'api-selection' }],
+        error: /invalid capability.*string array/,
+      },
+      {
+        name: 'capability array contains non-string',
+        file: 'bad-cap-elem.json',
+        value: [{ sample_id: 's1', prompt: 'p', capability: ['ok', 123] }],
+        error: /capability\[1\] must be a non-empty string/,
+      },
+    ];
 
-      for (const testCase of cases) {
-        const p = writeJsonSamples(testCase.file, testCase.value);
-        assert.throws(() => loadSamples(p), testCase.error, testCase.name);
-      }
+    it.each(invalidMetadataCases)('rejects invalid sample design metadata: $name', ({ file, value, error }) => {
+      const p = writeJsonSamples(file, value);
+      assert.throws(() => loadSamples(p), error);
     });
 
     it('construct 接受任意 string(允许自定义值)', () => {

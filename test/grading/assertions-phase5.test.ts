@@ -127,29 +127,27 @@ describe('assert-set combinator', () => {
     },
   ];
 
-  it('covers assert-set pass/fail boundaries', () => {
-    for (const testCase of cases) {
-      const r = runAssertions(testCase.output, [testCase.assertion]);
-      assert.equal(r.details[0].passed, testCase.expected, testCase.name);
-    }
+  it.each(cases)('$name', ({ output, assertion, expected }) => {
+    const r = runAssertions(output, [assertion]);
+    assert.equal(r.details[0].passed, expected);
   });
 });
 
 describe('rougeN', () => {
-  it('covers scoring boundaries', () => {
-    const cases = [
-      { name: 'identical strings', actual: rougeN('hello world', 'hello world', 1), expected: 1 },
-      { name: 'one-token swap', actual: rougeN('cat sat on the mat', 'cat sat on a mat', 1), expected: 0.8 },
-      { name: 'no overlap', actual: rougeN('xyz qwe', 'abc def', 1), expected: 0 },
-      { name: 'clipped repeated candidate n-grams', actual: rougeN('cat cat cat cat cat', 'the cat the cat', 1), expected: 0.5 },
-      { name: 'Chinese single-character tokenization', actual: rougeN('你好世界', '你好朋友', 1), expected: 0.5 },
-      { name: 'reference fewer tokens than n', actual: rougeN('a b c', 'a', 2), expected: 0 },
-    ];
+  const cases = [
+    { name: 'identical strings', actual: rougeN('hello world', 'hello world', 1), expected: 1 },
+    { name: 'one-token swap', actual: rougeN('cat sat on the mat', 'cat sat on a mat', 1), expected: 0.8 },
+    { name: 'no overlap', actual: rougeN('xyz qwe', 'abc def', 1), expected: 0 },
+    { name: 'clipped repeated candidate n-grams', actual: rougeN('cat cat cat cat cat', 'the cat the cat', 1), expected: 0.5 },
+    { name: 'Chinese single-character tokenization', actual: rougeN('你好世界', '你好朋友', 1), expected: 0.5 },
+    { name: 'reference fewer tokens than n', actual: rougeN('a b c', 'a', 2), expected: 0 },
+  ];
 
-    for (const testCase of cases) {
-      assert.ok(Math.abs(testCase.actual - testCase.expected) < 0.001, `${testCase.name}: expected ${testCase.expected}, got ${testCase.actual}`);
-    }
+  it.each(cases)('$name', ({ actual, expected }) => {
+    assert.ok(Math.abs(actual - expected) < 0.001, `expected ${expected}, got ${actual}`);
+  });
 
+  it('rouge-2 is lower than rouge-1 for one-token substitutions', () => {
     const r1 = rougeN('the quick brown fox', 'the quick red fox', 1);
     const r2 = rougeN('the quick brown fox', 'the quick red fox', 2);
     assert.ok(r2 < r1, `rouge-2 (${r2}) should be < rouge-1 (${r1})`);
@@ -157,20 +155,18 @@ describe('rougeN', () => {
 });
 
 describe('levenshtein', () => {
-  it('covers edit-distance boundaries', () => {
-    const cases = [
-      { name: 'identical strings', a: 'hello', b: 'hello', expected: 0 },
-      { name: 'left side empty', a: '', b: 'abc', expected: 3 },
-      { name: 'right side empty', a: 'abc', b: '', expected: 3 },
-      { name: 'classic kitten to sitting', a: 'kitten', b: 'sitting', expected: 3 },
-      { name: 'single-char swap', a: 'cat', b: 'bat', expected: 1 },
-      { name: 'Chinese deletion', a: '你好世界', b: '你好世', expected: 1 },
-      { name: 'Chinese replacement', a: '你好', b: '世界', expected: 2 },
-    ];
+  const cases = [
+    { name: 'identical strings', a: 'hello', b: 'hello', expected: 0 },
+    { name: 'left side empty', a: '', b: 'abc', expected: 3 },
+    { name: 'right side empty', a: 'abc', b: '', expected: 3 },
+    { name: 'classic kitten to sitting', a: 'kitten', b: 'sitting', expected: 3 },
+    { name: 'single-char swap', a: 'cat', b: 'bat', expected: 1 },
+    { name: 'Chinese deletion', a: '你好世界', b: '你好世', expected: 1 },
+    { name: 'Chinese replacement', a: '你好', b: '世界', expected: 2 },
+  ];
 
-    for (const testCase of cases) {
-      assert.equal(levenshtein(testCase.a, testCase.b), testCase.expected, testCase.name);
-    }
+  it.each(cases)('$name', ({ a, b, expected }) => {
+    assert.equal(levenshtein(a, b), expected);
   });
 });
 
@@ -226,10 +222,8 @@ describe('assertion integration', () => {
     },
   ];
 
-  it('covers deterministic metric assertion integration', () => {
-    for (const testCase of cases) {
-      const r = runAssertions(testCase.output, [testCase.assertion]);
-      assert.equal(r.details[0].passed, testCase.expected, testCase.name);
-    }
+  it.each(cases)('$name', ({ output, assertion, expected }) => {
+    const r = runAssertions(output, [assertion]);
+    assert.equal(r.details[0].passed, expected);
   });
 });

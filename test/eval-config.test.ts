@@ -72,40 +72,39 @@ variants:
     }
   });
 
-  it('rejects invalid required config shape', () => {
-    const cases = [
-      {
-        name: 'samples field missing',
-        yaml: `
+  const invalidRequiredConfigCases = [
+    {
+      name: 'samples field missing',
+      yaml: `
 variants:
   - name: v1
     role: control
     artifact: baseline
         `,
-        error: /'samples' is required/,
-      },
-      {
-        name: 'variants array is empty',
-        yaml: `
+      error: /'samples' is required/,
+    },
+    {
+      name: 'variants array is empty',
+      yaml: `
 samples: ./samples.json
 variants: []
         `,
-        error: /'variants' is required/,
-      },
-      {
-        name: 'variant role is invalid',
-        yaml: `
+      error: /'variants' is required/,
+    },
+    {
+      name: 'variant role is invalid',
+      yaml: `
 samples: ./samples.json
 variants:
   - name: v1
     role: baseline
     artifact: ./v1.md
         `,
-        error: /role must be 'control' or 'treatment'/,
-      },
-      {
-        name: 'variant names are duplicated',
-        yaml: `
+      error: /role must be 'control' or 'treatment'/,
+    },
+    {
+      name: 'variant names are duplicated',
+      yaml: `
 samples: ./samples.json
 variants:
   - name: v1
@@ -115,13 +114,12 @@ variants:
     role: treatment
     artifact: ./v1.md
         `,
-        error: /"v1" is duplicated/,
-      },
-    ];
+      error: /"v1" is duplicated/,
+    },
+  ];
 
-    for (const testCase of cases) {
-      assertYamlThrows(testCase.yaml, testCase.error, testCase.name);
-    }
+  it.each(invalidRequiredConfigCases)('rejects invalid required config shape: $name', ({ yaml, error, name }) => {
+    assertYamlThrows(yaml, error, name);
   });
 
   it('throws when --config file does not exist', () => {
@@ -236,42 +234,40 @@ budget:
     }
   });
 
-  it('rejects invalid budget values', () => {
-    const cases = [
-      {
-        name: 'negative budget value',
-        yaml: `
+  const invalidBudgetCases = [
+    {
+      name: 'negative budget value',
+      yaml: `
 samples: ./s.json
 ${minimalVariants}
 budget:
   totalUSD: -1
         `,
-        error: /totalUSD/,
-      },
-      {
-        name: 'non-numeric budget value',
-        yaml: `
+      error: /totalUSD/,
+    },
+    {
+      name: 'non-numeric budget value',
+      yaml: `
 samples: ./s.json
 ${minimalVariants}
 budget:
   totalUSD: "five"
         `,
-        error: /totalUSD/,
-      },
-      {
-        name: 'non-object budget value',
-        yaml: `
+      error: /totalUSD/,
+    },
+    {
+      name: 'non-object budget value',
+      yaml: `
 samples: ./s.json
 ${minimalVariants}
 budget: 5
         `,
-        error: /budget must be an object/,
-      },
-    ];
+      error: /budget must be an object/,
+    },
+  ];
 
-    for (const testCase of cases) {
-      assertYamlThrows(testCase.yaml, testCase.error, testCase.name);
-    }
+  it.each(invalidBudgetCases)('rejects invalid budget value: $name', ({ yaml, error, name }) => {
+    assertYamlThrows(yaml, error, name);
   });
 
   it('partial budget (only totalUSD) parses cleanly', () => {
@@ -358,58 +354,56 @@ judgeModels:
     }
   });
 
-  it('rejects invalid v0.2 experiment-design fields', () => {
-    const cases = [
-      {
-        name: 'repeat non-integer',
-        yaml: `samples: ./s.json\n${minimalVariants}\nrepeat: 1.5`,
-        error: /repeat must be a positive integer/,
-      },
-      {
-        name: 'repeat <= 0',
-        yaml: `samples: ./s.json\n${minimalVariants}\nrepeat: 0`,
-        error: /repeat must be a positive integer/,
-      },
-      {
-        name: 'bootstrapSamples < 100',
-        yaml: `samples: ./s.json\n${minimalVariants}\nbootstrapSamples: 50`,
-        error: /bootstrapSamples must be a number ≥ 100/,
-      },
-      {
-        name: 'judgeModels non-array',
-        yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels: "claude:opus"`,
-        error: /judgeModels must be an array/,
-      },
-      {
-        name: 'judgeModels entry missing model',
-        yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude`,
-        error: /judgeModels\[0\]\.model must be a non-empty string/,
-      },
-      {
-        name: 'judgeModels empty array',
-        yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels: []`,
-        error: /judgeModels must have ≥ 1 entry/,
-      },
-      {
-        name: 'judgeModels duplicate entry',
-        yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: haiku\n  - executor: claude\n    model: haiku`,
-        error: /duplicate entry "claude:haiku"/,
-      },
-      {
-        name: 'legacy judgeModel field',
-        yaml: `samples: ./s.json\n${minimalVariants}\njudgeModel: haiku`,
-        error: /judgeModel.*were removed in v0\.25/,
-      },
-      {
-        name: 'legacy judgeExecutor field',
-        yaml: `samples: ./s.json\n${minimalVariants}\njudgeExecutor: claude`,
-        error: /judgeExecutor.*were removed in v0\.25/,
-      },
-    ];
+  const invalidExperimentDesignCases = [
+    {
+      name: 'repeat non-integer',
+      yaml: `samples: ./s.json\n${minimalVariants}\nrepeat: 1.5`,
+      error: /repeat must be a positive integer/,
+    },
+    {
+      name: 'repeat <= 0',
+      yaml: `samples: ./s.json\n${minimalVariants}\nrepeat: 0`,
+      error: /repeat must be a positive integer/,
+    },
+    {
+      name: 'bootstrapSamples < 100',
+      yaml: `samples: ./s.json\n${minimalVariants}\nbootstrapSamples: 50`,
+      error: /bootstrapSamples must be a number ≥ 100/,
+    },
+    {
+      name: 'judgeModels non-array',
+      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels: "claude:opus"`,
+      error: /judgeModels must be an array/,
+    },
+    {
+      name: 'judgeModels entry missing model',
+      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude`,
+      error: /judgeModels\[0\]\.model must be a non-empty string/,
+    },
+    {
+      name: 'judgeModels empty array',
+      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels: []`,
+      error: /judgeModels must have ≥ 1 entry/,
+    },
+    {
+      name: 'judgeModels duplicate entry',
+      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModels:\n  - executor: claude\n    model: haiku\n  - executor: claude\n    model: haiku`,
+      error: /duplicate entry "claude:haiku"/,
+    },
+    {
+      name: 'legacy judgeModel field',
+      yaml: `samples: ./s.json\n${minimalVariants}\njudgeModel: haiku`,
+      error: /judgeModel.*were removed in v0\.25/,
+    },
+    {
+      name: 'legacy judgeExecutor field',
+      yaml: `samples: ./s.json\n${minimalVariants}\njudgeExecutor: claude`,
+      error: /judgeExecutor.*were removed in v0\.25/,
+    },
+  ];
 
-    for (const testCase of cases) {
-      assertYamlThrows(testCase.yaml, testCase.error, testCase.name);
-    }
+  it.each(invalidExperimentDesignCases)('rejects invalid v0.2 experiment-design field: $name', ({ yaml, error, name }) => {
+    assertYamlThrows(yaml, error, name);
   });
 
   it('judgeModels 单条 = single judge (合法, 不进 ensemble)', () => {
@@ -478,11 +472,10 @@ variants:
     }
   });
 
-  it('rejects invalid allowedSkills shapes', () => {
-    const cases = [
-      {
-        name: 'empty YAML value parses as null',
-        yaml: `
+  const invalidAllowedSkillsCases = [
+    {
+      name: 'empty YAML value parses as null',
+      yaml: `
 samples: ./s.json
 variants:
   - name: baseline
@@ -490,11 +483,11 @@ variants:
     artifact: baseline
     allowedSkills:
         `,
-        error: /allowedSkills must be an array/,
-      },
-      {
-        name: 'string instead of array',
-        yaml: `
+      error: /allowedSkills must be an array/,
+    },
+    {
+      name: 'string instead of array',
+      yaml: `
 samples: ./s.json
 variants:
   - name: baseline
@@ -502,11 +495,11 @@ variants:
     artifact: baseline
     allowedSkills: "react"
         `,
-        error: /allowedSkills must be an array/,
-      },
-      {
-        name: 'array contains non-string element',
-        yaml: `
+      error: /allowedSkills must be an array/,
+    },
+    {
+      name: 'array contains non-string element',
+      yaml: `
 samples: ./s.json
 variants:
   - name: baseline
@@ -516,13 +509,12 @@ variants:
       - react
       - 123
         `,
-        error: /allowedSkills\[1\]/,
-      },
-    ];
+      error: /allowedSkills\[1\]/,
+    },
+  ];
 
-    for (const testCase of cases) {
-      assertYamlThrows(testCase.yaml, testCase.error, testCase.name);
-    }
+  it.each(invalidAllowedSkillsCases)('rejects invalid allowedSkills shape: $name', ({ yaml, error, name }) => {
+    assertYamlThrows(yaml, error, name);
   });
 
   it('absent allowedSkills 字段:variant.allowedSkills === undefined', () => {

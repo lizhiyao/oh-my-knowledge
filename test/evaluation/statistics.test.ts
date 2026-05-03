@@ -65,10 +65,8 @@ describe('tTest', () => {
     },
   ];
 
-  it('covers significance boundaries', () => {
-    for (const testCase of cases) {
-      testCase.check(tTest(testCase.a, testCase.b));
-    }
+  it.each(cases)('$name', ({ a, b, check }) => {
+    check(tTest(a, b));
   });
 });
 
@@ -156,9 +154,7 @@ describe('effectSize', () => {
     },
   ];
 
-  it('covers effect-size boundaries', () => {
-    for (const testCase of cases) {
-      testCase.check(effectSize(testCase.a, testCase.b));
-    }
+  it.each(cases)('$name', ({ a, b, check }) => {
+    check(effectSize(a, b));
   });
 });
