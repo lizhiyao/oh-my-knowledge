@@ -1239,7 +1239,7 @@ oh-my-knowledge — omk doctor 健康检查
 
 示例:
   omk doctor examples/code-review/skills/v1.md
-  omk doctor examples/code-review/skills --json | jq .failed
+  omk doctor examples/code-review/skills --json | jq .outcome  # passed | warnings_only | failed
   omk doctor --gate; echo $?
 
 doctor 检查项(纯静态 / 零 LLM 调用):
@@ -1272,7 +1272,7 @@ Options:
 
 Examples:
   omk doctor examples/code-review/skills/v1.md
-  omk doctor examples/code-review/skills --json | jq .failed
+  omk doctor examples/code-review/skills --json | jq .outcome  # passed | warnings_only | failed
   omk doctor --gate; echo $?
 
 Checks (pure static / zero LLM calls):

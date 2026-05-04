@@ -202,6 +202,25 @@ describe('dependenciesPresentRule', () => {
     assert.match(r.hint ?? '', /shell profile|CI secrets|环境变量缺失|missing env/);
     assert.doesNotMatch(r.hint ?? '', /requires\.tools|工具缺失|missing tool/);
   });
+
+  it('preflight failure echoes specific command/stderr from DependencyIssue.hint', async () => {
+    // dependency-checker tags preflight failures as category='tool' but stuffs
+    // the failing command + stderr into DependencyIssue.hint. Doctor must
+    // surface that — generic "install on PATH" would mislead away from the
+    // real cause (the command itself failed, not a missing binary).
+    const skill = sampleSkill({
+      content: `---\npreflight:\n  - "false"\n---\n\n你是一个测试 skill,内容长度足够通过 readable rule。`,
+      // 让 metadata.preflight 被 skill-loader 解析出来:模拟 file-skill 的 metadata 注入
+      metadata: { preflight: ['false'] },
+    });
+    const r = await dependenciesPresentRule.check(ctxWith(skill));
+    assert.equal(r.status, 'fail');
+    assert.match(r.hint ?? '', /preflight 命令执行失败|preflight command failed/);
+    // detail.missing 应保留原 issue 结构供 CI 直接读
+    const missing = (r.detail as { missing?: Array<{ hint?: string }> }).missing;
+    assert.ok(Array.isArray(missing) && missing.length > 0);
+    assert.ok(missing!.some((m) => m.hint?.includes('preflight')));
+  });
 });
 
 describe('samplesContractAlignedRule', () => {

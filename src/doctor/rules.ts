@@ -167,14 +167,20 @@ export const dependenciesPresentRule: DoctorRule = {
     );
     if (!result.ok) {
       const summary = summarizeDependencyIssues(result.missing, ctx.lang);
-      // Build hint conditionally so users only see fix advice for categories
-      // that actually have missing items. Generic header + per-category lines.
+      // Build hint as: generic header + per-category fix advice + each issue's
+      // own specific hint when present. The per-issue hint matters most for
+      // preflight failures (dependency-checker tags them as category='tool' but
+      // attaches the actual command + stderr in DependencyIssue.hint) — generic
+      // "install on PATH" advice would mislead users away from the real cause.
       const hintParts: string[] = [tCli('cli.doctor.dependencies.hint', ctx.lang)];
       const counts = { tool: 0, file: 0, env: 0 };
       for (const m of result.missing) counts[m.category] += 1;
       if (counts.tool > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.tool', ctx.lang));
       if (counts.file > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.file', ctx.lang));
       if (counts.env > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.env', ctx.lang));
+      for (const m of result.missing) {
+        if (m.hint) hintParts.push(m.hint);
+      }
       return {
         status: 'fail',
         message: tCli('cli.doctor.dependencies.fail', ctx.lang, { summary }),
