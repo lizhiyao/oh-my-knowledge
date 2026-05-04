@@ -38,21 +38,27 @@ describe('omk bench init produces directory-skill SKILL.md layout', () => {
     assert.ok(!existsSync(join(tmpDir, 'skills', 'v2.md')), 'no flat v2.md');
   });
 
-  it('SKILL.md is plain markdown without frontmatter (omk convention)', () => {
+  it('SKILL.md ships with Claude Code-compatible frontmatter so the file is deployable as-is', () => {
     execFileSync('node', [CLI, 'bench', 'init', tmpDir], { stdio: 'pipe' });
 
     const v1Content = readFileSync(join(tmpDir, 'skills', 'code-review-v1', 'SKILL.md'), 'utf-8');
     const v2Content = readFileSync(join(tmpDir, 'skills', 'code-review-v2', 'SKILL.md'), 'utf-8');
 
-    // No YAML frontmatter delimiter at file head — frontmatter would leak into the
-    // injected system prompt because omk's loader currently only parses `preflight:`
-    // and otherwise returns content unchanged.
-    assert.ok(!v1Content.startsWith('---'), 'v1 has no frontmatter');
-    assert.ok(!v2Content.startsWith('---'), 'v2 has no frontmatter');
+    // Frontmatter must be present so a user can drop the file straight into
+    // ~/.claude/skills/ for Claude Code without hand-editing. Both `name` and
+    // `description` are required by the Claude Code SKILL.md spec.
+    assert.ok(v1Content.startsWith('---'), 'v1 has frontmatter delimiter');
+    assert.ok(v2Content.startsWith('---'), 'v2 has frontmatter delimiter');
 
-    assert.match(v1Content, /^# Code review v1/, 'v1 starts with markdown title');
-    assert.match(v2Content, /^# Code review v2/, 'v2 starts with markdown title');
-    assert.match(v2Content, /安全性|健壮性|可维护性|性能/, 'v2 has the four-dimension prompt');
+    assert.match(v1Content, /^---\r?\nname:\s*code-review-v1\r?\n/m, 'v1 name matches dir');
+    assert.match(v1Content, /^description:\s*\S+/m, 'v1 has description');
+    assert.match(v2Content, /^---\r?\nname:\s*code-review-v2\r?\n/m, 'v2 name matches dir');
+    assert.match(v2Content, /^description:\s*\S+/m, 'v2 has description');
+
+    // Markdown body is still present after frontmatter so omk evaluation has content to inject.
+    assert.match(v1Content, /# Code review v1/, 'v1 markdown body intact');
+    assert.match(v2Content, /# Code review v2/, 'v2 markdown body intact');
+    assert.match(v2Content, /安全性|健壮性|可维护性|性能/, 'v2 keeps the four-dimension prompt');
   });
 
   it('skill loader resolves the produced layout as directory-skill artifacts', () => {
@@ -73,13 +79,15 @@ describe('omk bench init produces directory-skill SKILL.md layout', () => {
     }
   });
 
-  it('next-step output mentions the new SKILL.md path and codex fallback note', () => {
+  it('next-step output mentions the new SKILL.md path and the dual-deploy / codex fallback note', () => {
     const output = execFileSync('node', [CLI, 'bench', 'init', tmpDir], { encoding: 'utf-8' });
     assert.match(output, /code-review-v1\/SKILL\.md/);
     assert.match(output, /code-review-v2\/SKILL\.md/);
-    // codex fallback hint must appear in the default-language output (zh) so
-    // newcomers running on a codex-class executor see why frontmatter doesn't apply.
+    // Note must call out both halves of the deployment story:
+    //   1. the file is Claude Code-compatible (so user can dual-deploy),
+    //   2. on codex-class executors the full file is prepended as system prompt.
+    assert.match(output, /Claude Code|~\/\.claude\/skills/);
     assert.match(output, /Codex|codex/);
-    assert.match(output, /native skill|fallback|拼接|prompt 头部/);
+    assert.match(output, /拼接|prompt 头部|system 注入/);
   });
 });

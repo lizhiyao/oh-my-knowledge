@@ -528,12 +528,26 @@ const INIT_SAMPLES = `[
 ]
 `;
 
-const INIT_SKILL_V1 = `# Code review v1
+// 模板带 Claude Code SKILL.md 兼容 frontmatter(name + description),让用户
+// 可以把 init 出来的 SKILL.md 直接 deploy 到 ~/.claude/skills/ 给 Claude Code 用,
+// 一份文件双向 dogfood(omk 评测 + Claude 部署)。omk 当前不 strip frontmatter,
+// 它会跟着 leak 进 system prompt — 在 model 行为层面是无害噪声,跨 executor 一致。
+const INIT_SKILL_V1 = `---
+name: code-review-v1
+description: 简单代码审查 skill,识别明显问题
+---
+
+# Code review v1
 
 你是一个代码审查助手。请审查用户提供的代码，指出潜在问题。
 `;
 
-const INIT_SKILL_V2 = `# Code review v2
+const INIT_SKILL_V2 = `---
+name: code-review-v2
+description: 多维度代码审查,覆盖安全 / 健壮 / 可维护 / 性能,带严重程度标注
+---
+
+# Code review v2
 
 你是一个高级代码审查专家。请从以下维度审查用户提供的代码：
 

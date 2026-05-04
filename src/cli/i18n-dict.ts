@@ -240,8 +240,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '  3. Run: omk bench run --control code-review-v1 --treatment code-review-v2',
   },
   'cli.init.note_codex_executor': {
-    zh: '\n注: omk SKILL.md 是纯 markdown 正文(不带 frontmatter)。Claude executor 走 native skill 机制(SDK auto-discovery / Skill 工具);Codex / openai-api / gemini 执行器没有 native skill,SKILL.md 内容会被拼接到 prompt 头部作为 system 注入(omk 自动 fallback,功能等价但不暴露 skill metadata)。',
-    en: '\nNote: omk SKILL.md is plain markdown body (no frontmatter). The Claude executor uses native skill mechanisms (SDK auto-discovery / Skill tool); Codex / openai-api / gemini executors have no native skill, so SKILL.md content is prepended to the prompt as system injection (omk auto-fallback, functionally equivalent but skill metadata is not surfaced).',
+    zh: '\n注: 模板的 SKILL.md 带 Claude Code 兼容的 frontmatter(name + description),你可以把这份文件直接放进 ~/.claude/skills/ 给 Claude Code 用,一份文件双向 dogfood(omk 评测 + Claude 部署)。\nClaude executor 走 native skill 机制(SDK auto-discovery / Skill 工具);Codex / openai-api / gemini 执行器没有 native skill,SKILL.md 整文(含 frontmatter)会被拼接到 prompt 头部作为 system 注入 — frontmatter 在 model 行为层面是无害噪声,跨 executor 一致。',
+    en: '\nNote: the template SKILL.md ships with Claude Code-compatible frontmatter (name + description), so you can drop this file straight into ~/.claude/skills/ to deploy it on Claude Code while still using it for omk evaluation — one file, two-way dogfood.\nThe Claude executor uses native skill mechanisms (SDK auto-discovery / Skill tool); Codex / openai-api / gemini executors have no native skill, so the full SKILL.md (frontmatter included) is prepended to the prompt as system injection — frontmatter is harmless noise in model behavior and keeps cross-executor parity.',
   },
   'cli.update.new_version_available': {
     zh: '\n💡 新版本可用: {old} → {new}, 运行 npm update {pkg} -g 升级\n\n',
