@@ -26,8 +26,11 @@ export async function execute(argv: string[]): Promise<void> {
   if (values.dev && !process.env.__OMK_DEV_CHILD) {
     const { spawn } = await import('node:child_process');
     const { fileURLToPath } = await import('node:url');
-    const cliPath: string = fileURLToPath(import.meta.url);
-    const libDir: string = resolve(cliPath, '..', '..', 'lib');
+    // import.meta.url 指 commands/report.js,但 child 必须 spawn CLI 入口 index.js
+    // (那里有 main() 跑 dispatcher);否则 child 跑的是 report module,只 export
+    // execute,无入口直接退出,--dev 静默坏掉。
+    const cliPath: string = resolve(fileURLToPath(import.meta.url), '..', '..', 'index.js');
+    const libDir: string = resolve(cliPath, '..', 'lib');
     const args: string[] = [
       '--watch-path', libDir, cliPath, 'bench', 'report',
       '--port', values.port as string,
