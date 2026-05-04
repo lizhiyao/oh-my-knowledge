@@ -86,6 +86,7 @@ export type CliMessageKey =
   | 'cli.run.run_section'
   | 'cli.run.batch_complete'
   | 'cli.run.eval_complete'
+  | 'cli.run.tally'
   | 'cli.run.report_saved'
   | 'cli.run.report_server_running'
   | 'cli.run.report_server_view'
@@ -263,8 +264,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '[{i}/{n}] {sample}/{variant} 🔄 retry {attempt}/{max}...\n',
   },
   'cli.progress.sample_error': {
-    zh: '[{i}/{n}] {sample}/{variant} ❌ {error}\n',
-    en: '[{i}/{n}] {sample}/{variant} ❌ {error}\n',
+    zh: '[{i}/{n}] {sample}/{variant} ⚠ {error}\n',
+    en: '[{i}/{n}] {sample}/{variant} ⚠ {error}\n',
   },
   'cli.progress.sample_executing': {
     zh: '[{i}/{n}] {sample}/{variant} ⏳ 执行中...\n',
@@ -334,6 +335,10 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     zh: '\n✅ 评测完成\n',
     en: '\n✅ Evaluation done\n',
   },
+  'cli.run.tally': {
+    zh: '样本: {pass} ✓ / {fail} ⚠\n',
+    en: 'Samples: {pass} ✓ / {fail} ⚠\n',
+  },
   'cli.run.report_saved': {
     zh: '📄 报告已保存到: {path}\n',
     en: '📄 Report saved to: {path}\n',
@@ -371,8 +376,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '\n⚠ {warning}\n',
   },
   'cli.common.error_prefix': {
-    zh: '错误: {message}',
-    en: 'Error: {message}',
+    zh: '✗ 错误: {message}',
+    en: '✗ Error: {message}',
   },
   'cli.analyze.view_in_browser': {
     zh: "在浏览器查看: omk bench report  # 打开后点首页的 \"📊 Skill 健康度日报\"",
@@ -1318,7 +1323,7 @@ checks cost nothing to run. LLM connectivity can be skipped with --skip-connecti
     en: 'skill health check failed; evaluation aborted. doctor is mandatory and not skippable — fix the issues above and re-run.',
   },
   'cli.run.skip_connectivity_warning': {
-    zh: '⚠️  --skip-connectivity 已启用: 跳过 LLM 模型连通性检测。请确保 executor / judge 已通过其他方式验证可达。',
-    en: '⚠️  --skip-connectivity enabled: LLM connectivity check skipped. Verify executor / judge are reachable by other means.',
+    zh: '⚠ --skip-connectivity 已启用: 跳过 LLM 模型连通性检测。请确保 executor / judge 已通过其他方式验证可达。',
+    en: '⚠ --skip-connectivity enabled: LLM connectivity check skipped. Verify executor / judge are reachable by other means.',
   },
 };

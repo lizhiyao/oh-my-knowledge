@@ -295,20 +295,20 @@ export async function runEvaluation({
       const expectedIsolated = strictBaseline !== false; // default true
       if (!reportIsolation && expectedIsolated) {
         process.stderr.write(
-          `\n⚠️  resumed report ${resume} 无 meta.skillIsolation 字段,baseline 可能被 ~/.claude/skills/ 污染。\n`
+          `\n⚠ resumed report ${resume} 无 meta.skillIsolation 字段,baseline 可能被 ~/.claude/skills/ 污染。\n`
           + `   当前 --strict-baseline 默认开启,新 entries 会被隔离 → 与现有 entries 不可比。\n`
           + `   建议:加 --no-cache 强制重跑,或显式 --no-strict-baseline 接受混合数据(慎用)。\n`,
         );
       } else if (reportIsolation && !expectedIsolated) {
         process.stderr.write(
-          `\n⚠️  resumed report ${resume} 已 strict-isolated(meta.skillIsolation 存在),但本次 --no-strict-baseline。\n`
+          `\n⚠ resumed report ${resume} 已 strict-isolated(meta.skillIsolation 存在),但本次 --no-strict-baseline。\n`
           + `   新 entries 不隔离 → 与现有 entries 不可比。建议恢复默认 strict-baseline。\n`,
         );
       }
     } else if (existing?.kind === 'batch-evaluation') {
-      process.stderr.write(`\n⚠️  report ${resume} is a BatchEvaluationReport; resume needs a child EvaluationReport, starting from scratch\n`);
+      process.stderr.write(`\n⚠ report ${resume} is a BatchEvaluationReport; resume needs a child EvaluationReport, starting from scratch\n`);
     } else {
-      process.stderr.write(`\n⚠️  report ${resume} not found, starting from scratch\n`);
+      process.stderr.write(`\n⚠ report ${resume} not found, starting from scratch\n`);
     }
   }
 

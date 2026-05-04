@@ -10,6 +10,7 @@ import {
   COMMON_OPTIONS,
 } from './parse-run-config.js';
 import { makeOnProgress } from './progress.js';
+import { computeRunTally } from './run-tally.js';
 import { checkUpdate } from './update-check.js';
 import { parseArgsStrictOrExit } from './parse-strict.js';
 import type {
@@ -305,6 +306,8 @@ async function handleRun(argv: string[]): Promise<void> {
       console.log(JSON.stringify(report, null, 2));
       if (filePath) {
         process.stderr.write(tCli('cli.run.batch_complete', lang));
+        const tally = computeRunTally(report);
+        process.stderr.write(tCli('cli.run.tally', lang, tally));
         process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
 
         if (!values['no-serve'] && process.stdout.isTTY) {
@@ -375,6 +378,8 @@ async function handleRun(argv: string[]): Promise<void> {
     console.log(JSON.stringify(report, null, 2));
     if (filePath) {
       process.stderr.write(tCli('cli.run.eval_complete', lang));
+      const tally = computeRunTally(report);
+      process.stderr.write(tCli('cli.run.tally', lang, tally));
       process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
 
       if (!values['no-serve'] && process.stdout.isTTY) {
