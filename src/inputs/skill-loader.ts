@@ -103,7 +103,7 @@ export function discoverBatchSkills(skillDir: string): Array<{ name: string; ski
   }
 
   for (const name of warned) {
-    process.stderr.write(`⚠ skipping ${name}: paired eval-samples not found\n`);
+    process.stderr.write(`⚠️  skipping ${name}: paired eval-samples not found\n`);
   }
 
   skills.sort((a, b) => a.name.localeCompare(b.name));
