@@ -11,7 +11,7 @@
  *   - samples_contract: 仅在传 samples 时跑,warn 级,校验 samples 非空 + 含 prompt
  *
  * fatal-fail 时 rule 引擎不中断后续 rule 执行(让用户一次看到全貌),
- * 但 DoctorReport.failed 会置 true。
+ * 但 DoctorReport.outcome 会置 'failed'。
  *
  * 扩展接口预留: registerRule() 允许业务方注入自定义 rule(v0.22 不暴露 CLI flag,
  * 仅作为 library API 占位)。

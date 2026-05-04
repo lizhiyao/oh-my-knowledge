@@ -5,12 +5,10 @@ export type DoctorSeverity = 'fatal' | 'warn' | 'info';
 export type DoctorRuleStatus = 'pass' | 'warn' | 'fail' | 'skipped';
 export type DoctorSkillStatus = 'pass' | 'warn' | 'fail';
 
-/** Single-enum CI verdict. CI / agent code can switch on this directly instead
- *  of combining `failed` + `warned`. Mapping:
- *    'failed'        — at least one skill has fatal-fail
- *    'warnings_only' — no fatal-fail but at least one skill has warn
- *    'passed'        — all skills pass cleanly
- *  Coexists with the existing boolean flags for backward compat. */
+/** Single-enum CI verdict. Switch on this directly:
+ *    'failed'        — at least one skill has fatal-fail (CLI exits 1, bench run aborts)
+ *    'warnings_only' — no fatal-fail but at least one skill has warn (informational)
+ *    'passed'        — all skills pass cleanly */
 export type DoctorOutcome = 'passed' | 'warnings_only' | 'failed';
 
 /** Bumped whenever DoctorReport schema changes in a way CI consumers should
@@ -82,21 +80,15 @@ export interface DoctorReport {
   executorName: string;
   model: string;
   skills: DoctorSkillReport[];
-  /** Single-enum CI verdict. Prefer this over reading `failed` + `warned` separately. */
+  /** Single-enum CI verdict. CLI exits 1 iff `outcome === 'failed'`. */
   outcome: DoctorOutcome;
-  /** 至少一个 skill 有 fatal-fail。CLI exit 1 / bench run abort 的判断依据。
-   *  Kept for backward compat with consumers written before `outcome` existed. */
-  failed: boolean;
-  /** 至少一个 skill 有 warn(无 fail)。不阻断,仅提示。
-   *  Kept for backward compat. */
-  warned: boolean;
-  /** Per-skill outcome counts (each skill contributes exactly once).
+  /** Per-skill outcome counts (each skill contributes exactly once based on its worst rule).
    *  `skills.length === totals.pass + totals.warn + totals.fail`. */
   totals: { pass: number; warn: number; fail: number };
-  /** Per-rule outcome counts across all skills. Useful when CI wants to know
-   *  how much of the doctor surface actually ran (e.g. how many rules ended up
-   *  `skipped` because samples were not provided). `total` is provided for
-   *  convenience and equals pass+warn+fail+skipped. */
+  /** Per-rule outcome counts across all skills. Different granularity from `totals` —
+   *  CI uses this to know how much of the doctor surface actually ran (e.g. how many
+   *  rules ended up `skipped` because samples were not provided). `total` equals
+   *  pass+warn+fail+skipped. */
   ruleStats: { pass: number; warn: number; fail: number; skipped: number; total: number };
 }
 

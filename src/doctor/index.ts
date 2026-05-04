@@ -4,7 +4,7 @@
  * runDoctor() 接受 target(单文件 / 目录 / null=cwd 默认),解析出 Artifact 列表,
  * 对每个 artifact 顺序跑全部 rules,聚合为 DoctorReport。
  *
- * fatal-fail 不中断后续 rule 执行(让用户一次看到全貌),但 report.failed=true,
+ * fatal-fail 不中断后续 rule 执行(让用户一次看到全貌),但 report.outcome='failed',
  * CLI 据此 exit 1 / abort bench run。
  */
 
@@ -197,11 +197,13 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     }
   }
 
-  const failed = totals.fail > 0;
-  const warned = totals.warn > 0;
   // Single-enum verdict for CI / agent code. fatal-fail dominates;
   // warnings_only when no fatal-fail but at least one warn; otherwise passed.
-  const outcome: DoctorOutcome = failed ? 'failed' : (warned ? 'warnings_only' : 'passed');
+  const outcome: DoctorOutcome = totals.fail > 0
+    ? 'failed'
+    : totals.warn > 0
+      ? 'warnings_only'
+      : 'passed';
 
   return {
     kind: 'doctor',
@@ -214,8 +216,6 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     model: opts.model,
     skills: skillReports,
     outcome,
-    failed,
-    warned,
     totals,
     ruleStats,
   };

@@ -153,8 +153,7 @@ describe('runDoctor', () => {
     });
     assert.equal(report.kind, 'doctor');
     assert.ok(report.skills.length >= 2);
-    assert.equal(report.failed, false);
-    assert.equal(report.warned, false);
+    assert.equal(report.outcome, 'passed');
     assert.equal(report.totals.pass, report.skills.length);
     for (const skill of report.skills) {
       assert.equal(skill.status, 'pass');
@@ -163,7 +162,7 @@ describe('runDoctor', () => {
     }
   });
 
-  it('marks report.failed=true when any rule fails fatally', async () => {
+  it('marks outcome=failed when any rule fails fatally', async () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
@@ -173,12 +172,11 @@ describe('runDoctor', () => {
       lang: 'zh',
       rules: [failingRule],
     });
-    assert.equal(report.failed, true);
-    assert.equal(report.warned, false);
+    assert.equal(report.outcome, 'failed');
     assert.ok(report.totals.fail >= 1);
   });
 
-  it('marks report.warned=true (not failed) when only warn rules trigger', async () => {
+  it('marks outcome=warnings_only when only warn rules trigger (no fatal-fail)', async () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
@@ -188,8 +186,7 @@ describe('runDoctor', () => {
       lang: 'zh',
       rules: [warningRule],
     });
-    assert.equal(report.failed, false);
-    assert.equal(report.warned, true);
+    assert.equal(report.outcome, 'warnings_only');
   });
 
   it('catches rule exceptions and marks as fail rather than crashing the engine', async () => {
@@ -202,7 +199,7 @@ describe('runDoctor', () => {
       lang: 'zh',
       rules: [crashingRule],
     });
-    assert.equal(report.failed, true);
+    assert.equal(report.outcome, 'failed');
     for (const skill of report.skills) {
       assert.equal(skill.results[0].status, 'fail');
       assert.ok(skill.results[0].message.includes('rule crashed'));
@@ -240,8 +237,7 @@ describe('runDoctor', () => {
         rules: [passingRule],
       });
       assert.equal(report.skills.length, 0);
-      assert.equal(report.failed, false);
-      assert.equal(report.warned, false);
+      assert.equal(report.outcome, 'passed');
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
@@ -292,7 +288,7 @@ describe('runDoctor', () => {
     });
     assert.equal(report.skills.length, 1);
     assert.equal(report.skills[0].skillName, 'inline-fixture');
-    assert.equal(report.failed, false);
+    assert.equal(report.outcome, 'passed');
   });
 
   it('default rules include both BUILTIN_RULES and registerRule()-injected custom rules', async () => {
@@ -362,8 +358,7 @@ describe('runDoctor', () => {
       lang: 'zh',
     });
     assert.equal(report.skills.length, 0);
-    assert.equal(report.failed, false);
-    assert.equal(report.warned, false);
+    assert.equal(report.outcome, 'passed');
   });
 
   it('opts.artifacts undefined falls back to target resolution (preserves omk doctor [path] UX)', async () => {
@@ -535,8 +530,6 @@ describe('DoctorReport — CI-friendly schema fields', () => {
       rules: [passingRule],
     });
     assert.equal(report.outcome, 'passed');
-    assert.equal(report.failed, false);
-    assert.equal(report.warned, false);
   });
 
   it('outcome="warnings_only" when only warn rules trigger (no fatal-fail)', async () => {
@@ -550,8 +543,6 @@ describe('DoctorReport — CI-friendly schema fields', () => {
       rules: [warningRule],
     });
     assert.equal(report.outcome, 'warnings_only');
-    assert.equal(report.failed, false);
-    assert.equal(report.warned, true);
   });
 
   it('outcome="failed" when any rule fails fatally (dominates warns)', async () => {
@@ -565,7 +556,6 @@ describe('DoctorReport — CI-friendly schema fields', () => {
       rules: [failingRule, warningRule],
     });
     assert.equal(report.outcome, 'failed');
-    assert.equal(report.failed, true);
   });
 
   it('ruleStats counts each rule outcome across all skills, including skipped', async () => {
