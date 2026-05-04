@@ -44,6 +44,25 @@ describe('CLI', () => {
     assert.ok(!stdout.includes(['--', 'each'].join('')));
   });
 
+  // --help 集中到 dispatcher 后,evolve / init 也响应 --help。
+  // 拆 commands 之前这两个会被 parseArgsStrictOrExit 当 unknown option 报错。
+  it('bench evolve --help exits 0 (was unknown-option pre-dispatcher)', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'bench', 'evolve', '--help']);
+    assert.ok(stdout.includes('oh-my-knowledge'));
+  });
+
+  it('bench init --help exits 0 (was unknown-option pre-dispatcher)', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'bench', 'init', '--help']);
+    assert.ok(stdout.includes('oh-my-knowledge'));
+  });
+
+  // dispatcher 检查 --help 时扫整个 argv,不限第一位。
+  // 之前 gate 只查 argv[0] === '--help', 中间位置的 --help 会被 parseArgs 拒。
+  it('bench gate --skip-connectivity --help triggers help from any position', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'bench', 'gate', '--skip-connectivity', '--help']);
+    assert.ok(stdout.includes('oh-my-knowledge'));
+  });
+
   it('unknown domain exits with error (--lang en)', async () => {
     await assert.rejects(
       () => execFileAsync('node', [CLI, 'unknown', '--lang', 'en']),

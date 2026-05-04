@@ -9,9 +9,9 @@ export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const sub = argv[0];
   const rest = argv.slice(1);
-  if (!sub || sub === '--help' || sub === '-h') {
+  if (!sub) {
     console.log(tCli('cli.help.gold', lang));
-    process.exit(sub ? 0 : 1);
+    process.exit(1);
   }
 
   if (sub === 'init') {

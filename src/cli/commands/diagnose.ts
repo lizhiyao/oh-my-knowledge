@@ -10,9 +10,9 @@ import { requireEvaluationReport } from './_shared.js';
 export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const reportId = argv[0];
-  if (!reportId || reportId === '--help' || reportId === '-h') {
+  if (!reportId) {
     console.log(tCli('cli.help.diagnose', lang));
-    process.exit(reportId ? 0 : 1);
+    process.exit(1);
   }
 
   const { values } = parseArgsStrictOrExit({

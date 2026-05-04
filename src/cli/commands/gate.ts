@@ -6,10 +6,6 @@ import { requireEvaluationReport, type EvalResult } from './_shared.js';
 
 export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  if (argv[0] === '--help' || argv[0] === '-h') {
-    console.log(tCli('cli.help.main', lang).trim());
-    process.exit(0);
-  }
   const { values, config } = parseRunConfig(argv, {
     threshold: { type: 'string', default: '3.5' },
     'trivial-diff': { type: 'string' },

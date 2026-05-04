@@ -19,10 +19,6 @@ interface RepeatProgressInfo {
 
 export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  if (argv.includes('--help') || argv.includes('-h')) {
-    console.log(tCli('cli.help.main', lang).trim());
-    process.exit(0);
-  }
   // 注: 这里**不**给 parseArgs default 值, 否则 values.xxx 永远不为 undefined,
   // CLI > eval.yaml > hardcoded-default 三级 fallback 区分不开 ("用户没传" vs "用户传了等于 default 值")。
   // hardcoded default 在下面处理 undefined 时显式给。

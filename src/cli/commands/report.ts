@@ -7,10 +7,6 @@ import type { ReportServer } from './_shared.js';
 
 export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  if (argv.includes('--help') || argv.includes('-h')) {
-    console.log(tCli('cli.help.main', lang).trim());
-    process.exit(0);
-  }
   const { values } = parseArgsStrictOrExit({
     args: argv,
     options: {

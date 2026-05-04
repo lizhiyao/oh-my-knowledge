@@ -4,11 +4,6 @@ import { parseArgsStrictOrExit } from '../parse-strict.js';
 
 export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  if (argv.includes('--help') || argv.includes('-h')) {
-    console.log(tCli('cli.help.doctor_usage', lang));
-    process.exit(0);
-  }
-
   const { values, positionals } = parseArgsStrictOrExit({
     args: argv,
     allowPositionals: true,

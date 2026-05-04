@@ -1,8 +1,21 @@
 #!/usr/bin/env node
 
-import { tCli, getCliLang, parseLangFromArgv } from './i18n.js';
+import { tCli, getCliLang, parseLangFromArgv, type CliLang } from './i18n.js';
 import { checkUpdate } from './update-check.js';
-import { BENCH_COMMANDS, DOMAIN_COMMANDS } from './commands/registry.js';
+import { BENCH_COMMANDS, DOMAIN_COMMANDS, type CommandModule } from './commands/registry.js';
+
+/**
+ * --help / -h 在 argv 任意位置都打印对应 helpKey 内容并 exit 0。
+ * 集中在 dispatcher 处理,因为下游 execute 走 parseArgsStrictOrExit,
+ * 那一层 strict:true 不识别 --help 会当 unknown option 报错。
+ */
+function dispatchOrPrintHelp(cmd: CommandModule, argv: string[], lang: CliLang): Promise<void> {
+  if (argv.includes('--help') || argv.includes('-h')) {
+    console.log(tCli(cmd.helpKey, lang).trim());
+    process.exit(0);
+  }
+  return cmd.execute(argv);
+}
 
 async function main(): Promise<void> {
   const lang = getCliLang(parseLangFromArgv(process.argv));
@@ -18,7 +31,7 @@ async function main(): Promise<void> {
   const domainCmd = DOMAIN_COMMANDS[domain];
   if (domainCmd) {
     const args = command ? [command, ...rest] : [];
-    await domainCmd.execute(args);
+    await dispatchOrPrintHelp(domainCmd, args, lang);
     return;
   }
 
@@ -37,7 +50,7 @@ async function main(): Promise<void> {
     console.error(tCli('cli.common.unknown_bench_command', lang, { command }));
     process.exit(1);
   }
-  await benchCmd.execute(rest);
+  await dispatchOrPrintHelp(benchCmd, rest, lang);
 }
 
 main();
