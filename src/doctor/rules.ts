@@ -11,7 +11,7 @@
  *   - samples_contract: 仅在传 samples 时跑,warn 级,校验 samples 非空 + 含 prompt
  *
  * fatal-fail 时 rule 引擎不中断后续 rule 执行(让用户一次看到全貌),
- * 但 DoctorReport.failed 会置 true。
+ * 但 DoctorReport.outcome 会置 'failed'。
  *
  * 扩展接口预留: registerRule() 允许业务方注入自定义 rule(v0.22 不暴露 CLI flag,
  * 仅作为 library API 占位)。
@@ -55,16 +55,32 @@ function checkFrontmatter(content: string): { ok: boolean; error?: string } {
 }
 
 function summarizeDependencyIssues(missing: DependencyIssue[], lang: 'zh' | 'en'): string {
-  const counts = { tool: 0, file: 0, env: 0 };
+  const counts = { tool: 0, file: 0, env: 0, preflight: 0 };
   for (const m of missing) counts[m.category] += 1;
   const parts: string[] = [];
   const labels = lang === 'zh'
-    ? { tool: '工具', file: '文件', env: '环境变量' }
-    : { tool: 'tool', file: 'file', env: 'env' };
+    ? { tool: '工具', file: '文件', env: '环境变量', preflight: 'preflight' }
+    : { tool: 'tool', file: 'file', env: 'env', preflight: 'preflight' };
   if (counts.tool > 0) parts.push(`${counts.tool} ${labels.tool}`);
   if (counts.file > 0) parts.push(`${counts.file} ${labels.file}`);
   if (counts.env > 0) parts.push(`${counts.env} ${labels.env}`);
+  if (counts.preflight > 0) parts.push(`${counts.preflight} ${labels.preflight}`);
   return parts.join(', ') || (lang === 'zh' ? '未知' : 'unknown');
+}
+
+function renderIssue(issue: DependencyIssue, lang: 'zh' | 'en'): string {
+  const params: Record<string, string | number> = { name: issue.name };
+  if (issue.reasonDetail) params.detail = issue.reasonDetail;
+  switch (issue.reasonCode) {
+    case 'tool_not_found':
+      return tCli('cli.doctor.dependencies.issue.tool_not_found', lang, params);
+    case 'file_not_found':
+      return tCli('cli.doctor.dependencies.issue.file_not_found', lang, params);
+    case 'env_not_set':
+      return tCli('cli.doctor.dependencies.issue.env_not_set', lang, params);
+    case 'preflight_failed':
+      return tCli('cli.doctor.dependencies.issue.preflight_failed', lang, params);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -79,12 +95,17 @@ export const skillReadableRule: DoctorRule = {
   labelKey: 'cli.doctor.rule.skill_readable',
   async check(ctx: DoctorContext): Promise<DoctorRuleCheckOutcome> {
     const content = ctx.artifact.content;
+    // Echo the path that was tried, so the hint is concretely actionable
+    // (CI / agent and humans both see exactly where to look).
+    const triedPath = ctx.artifact.locator
+      ?? ctx.artifact.skillRoot
+      ?? `<inline:${ctx.artifact.name}>`;
     if (content === null || content === undefined) {
       return {
         status: 'fail',
         message: tCli('cli.doctor.skill_readable.fail.missing', ctx.lang),
-        hint: tCli('cli.doctor.skill_readable.hint.missing', ctx.lang),
-        detail: { length: 0 },
+        hint: tCli('cli.doctor.skill_readable.hint.missing', ctx.lang, { path: triedPath }),
+        detail: { length: 0, triedPath },
       };
     }
     const trimmed = content.trim();
@@ -92,8 +113,8 @@ export const skillReadableRule: DoctorRule = {
       return {
         status: 'fail',
         message: tCli('cli.doctor.skill_readable.fail.empty', ctx.lang),
-        hint: tCli('cli.doctor.skill_readable.hint.missing', ctx.lang),
-        detail: { length: 0 },
+        hint: tCli('cli.doctor.skill_readable.hint.missing', ctx.lang, { path: triedPath }),
+        detail: { length: 0, triedPath },
       };
     }
     if (trimmed.length < SKILL_MIN_LENGTH) {
@@ -162,10 +183,22 @@ export const dependenciesPresentRule: DoctorRule = {
     );
     if (!result.ok) {
       const summary = summarizeDependencyIssues(result.missing, ctx.lang);
+      // Hint composition: per-issue translated reason (carries the specific stderr /
+      // path / cmd via reasonDetail) + per-category fix advice. The per-issue line
+      // is what tells the user *what* failed; the category advice tells them *how*
+      // to fix the class of failure.
+      const hintParts: string[] = [];
+      for (const m of result.missing) hintParts.push(renderIssue(m, ctx.lang));
+      const counts = { tool: 0, file: 0, env: 0, preflight: 0 };
+      for (const m of result.missing) counts[m.category] += 1;
+      if (counts.tool > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.tool', ctx.lang));
+      if (counts.file > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.file', ctx.lang));
+      if (counts.env > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.env', ctx.lang));
+      if (counts.preflight > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.preflight', ctx.lang));
       return {
         status: 'fail',
         message: tCli('cli.doctor.dependencies.fail', ctx.lang, { summary }),
-        hint: tCli('cli.doctor.dependencies.hint', ctx.lang),
+        hint: hintParts.join('; '),
         detail: { missing: result.missing },
       };
     }

@@ -45,7 +45,7 @@ describe('omk doctor CLI', () => {
     assert.equal(parsed.kind, 'doctor');
     assert.ok(Array.isArray(parsed.skills));
     assert.ok(parsed.skills.length >= 1);
-    assert.equal(parsed.failed, false);
+    assert.equal(parsed.outcome, 'passed');
   });
 
   it('--json on directory batches all skills', async () => {

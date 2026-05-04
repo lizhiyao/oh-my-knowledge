@@ -5,6 +5,16 @@ export type DoctorSeverity = 'fatal' | 'warn' | 'info';
 export type DoctorRuleStatus = 'pass' | 'warn' | 'fail' | 'skipped';
 export type DoctorSkillStatus = 'pass' | 'warn' | 'fail';
 
+/** Single-enum CI verdict. Switch on this directly:
+ *    'failed'        — at least one skill has fatal-fail (CLI exits 1, bench run aborts)
+ *    'warnings_only' — no fatal-fail but at least one skill has warn (informational)
+ *    'passed'        — all skills pass cleanly */
+export type DoctorOutcome = 'passed' | 'warnings_only' | 'failed';
+
+/** Bumped whenever DoctorReport schema changes in a way CI consumers should
+ *  be able to detect. CI can pin/check this when parsing the JSON. */
+export const DOCTOR_REPORT_SCHEMA_VERSION = '1.0.0';
+
 export interface DoctorRuleResult {
   ruleId: string;
   severity: DoctorSeverity;
@@ -60,6 +70,9 @@ export interface DoctorSkillReport {
 
 export interface DoctorReport {
   kind: 'doctor';
+  /** Schema version the JSON consumer can pin/check. Bumped on any
+   *  user-visible change to this report's shape. See DOCTOR_REPORT_SCHEMA_VERSION. */
+  schemaVersion: string;
   id: string;
   timestamp: string;
   cliVersion: string;
@@ -67,11 +80,16 @@ export interface DoctorReport {
   executorName: string;
   model: string;
   skills: DoctorSkillReport[];
-  /** 至少一个 skill 有 fatal-fail。CLI exit 1 / bench run abort 的判断依据。 */
-  failed: boolean;
-  /** 至少一个 skill 有 warn(无 fail)。不阻断,仅提示。 */
-  warned: boolean;
+  /** Single-enum CI verdict. CLI exits 1 iff `outcome === 'failed'`. */
+  outcome: DoctorOutcome;
+  /** Per-skill outcome counts (each skill contributes exactly once based on its worst rule).
+   *  `skills.length === totals.pass + totals.warn + totals.fail`. */
   totals: { pass: number; warn: number; fail: number };
+  /** Per-rule outcome counts across all skills. Different granularity from `totals` —
+   *  CI uses this to know how much of the doctor surface actually ran (e.g. how many
+   *  rules ended up `skipped` because samples were not provided). `total` equals
+   *  pass+warn+fail+skipped. */
+  ruleStats: { pass: number; warn: number; fail: number; skipped: number; total: number };
 }
 
 export interface DoctorRunOptions {

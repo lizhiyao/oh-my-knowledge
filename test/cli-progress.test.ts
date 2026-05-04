@@ -35,7 +35,7 @@ describe('CLI progress', () => {
       });
     });
 
-    assert.match(output, /✗/);
+    assert.match(output, /⚠️/);
     assert.doesNotMatch(output, /✓/);
     assert.match(output, /execution timed out after 240s/);
   });

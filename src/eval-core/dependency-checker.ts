@@ -22,10 +22,22 @@ export interface DependencyRequirements {
   preflight?: string[];
 }
 
+export type DependencyReasonCode =
+  | 'tool_not_found'
+  | 'file_not_found'
+  | 'env_not_set'
+  | 'preflight_failed';
+
 export interface DependencyIssue {
-  category: 'tool' | 'file' | 'env';
+  category: 'tool' | 'file' | 'env' | 'preflight';
   name: string;
-  hint: string;
+  /** Stable enum so consumers (doctor, eval-pipeline) translate per their own lang.
+   *  The dep-checker itself never produces user-facing strings — it only carries facts. */
+  reasonCode: DependencyReasonCode;
+  /** Optional untranslated raw context: stderr line, cwd, command — surfaces at the
+   *  consumer's UI layer so the actual failure is visible without round-tripping the
+   *  process. Never localized; pass through verbatim. */
+  reasonDetail?: string;
 }
 
 export interface DependencyCheckResult {
@@ -221,7 +233,7 @@ export async function checkDependencies(
       missing.push({
         category: 'tool',
         name: tool,
-        hint: `未找到，请确认已安装并在 PATH 中`,
+        reasonCode: 'tool_not_found',
       });
     }
   }
@@ -233,7 +245,8 @@ export async function checkDependencies(
       missing.push({
         category: 'file',
         name: file,
-        hint: `文件不存在 (cwd: ${cwd})`,
+        reasonCode: 'file_not_found',
+        reasonDetail: cwd,
       });
     }
   }
@@ -244,7 +257,7 @@ export async function checkDependencies(
       missing.push({
         category: 'env',
         name: envVar,
-        hint: '未设置',
+        reasonCode: 'env_not_set',
       });
     }
   }
@@ -306,11 +319,18 @@ function runPreflightCommands(commands: string[], cwd: string, env?: NodeJS.Proc
         timeout: PREFLIGHT_TIMEOUT_MS,
       });
     } catch (err: unknown) {
-      const detail = err instanceof Error ? err.message.split('\n')[0] : 'unknown error';
+      // execSync error message is "Command failed: <cmd>\n<stderr>" — splitting by
+      // newline and keeping line 0 drops stderr. Prefer err.stderr directly so
+      // the actual failure cause (e.g. `BAD` from `sh -c "echo BAD >&2; exit 2"`)
+      // reaches the user.
+      const errObj = err as { stderr?: Buffer | string; message?: string };
+      const stderrText = errObj.stderr ? errObj.stderr.toString().trim() : '';
+      const reasonDetail = stderrText || (errObj.message ?? 'unknown error');
       issues.push({
-        category: 'tool',
+        category: 'preflight',
         name: cmd,
-        hint: `preflight 命令执行失败: ${detail}`,
+        reasonCode: 'preflight_failed',
+        reasonDetail,
       });
     }
   }
@@ -334,7 +354,8 @@ function checkFilesByBase(filesByBase: Map<string, Set<string>>): DependencyIssu
         missing.push({
           category: 'file',
           name: file,
-          hint: `文件不存在 (cwd: ${baseDir})`,
+          reasonCode: 'file_not_found',
+          reasonDetail: baseDir,
         });
       }
     }
@@ -389,28 +410,3 @@ export async function preflightDependencies(
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// Formatting
-// ---------------------------------------------------------------------------
-
-export function formatDependencyErrors(missing: DependencyIssue[]): string {
-  const lines: string[] = ['前置依赖检查失败:\n'];
-
-  const byCategory = { tool: [] as DependencyIssue[], file: [] as DependencyIssue[], env: [] as DependencyIssue[] };
-  for (const issue of missing) {
-    byCategory[issue.category].push(issue);
-  }
-
-  const labels: Record<string, string> = { tool: '工具缺失', file: '文件缺失', env: '环境变量缺失' };
-  for (const [cat, issues] of Object.entries(byCategory)) {
-    if (issues.length === 0) continue;
-    lines.push(`  ${labels[cat]}:`);
-    for (const issue of issues) {
-      lines.push(`    ✗ ${issue.name} — ${issue.hint}`);
-    }
-    lines.push('');
-  }
-
-  lines.push('提示: 安装缺失的工具/文件/环境变量后重跑;依赖检查由 doctor 负责,无 skip flag。');
-  return lines.join('\n');
-}
