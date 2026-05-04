@@ -122,6 +122,8 @@ export async function execute(argv: string[]): Promise<void> {
       }));
       console.log(tCli('cli.gen.review_hint', lang));
     } catch (err: unknown) {
+      // CliExit 透传(同 gate / run / evolve / doctor 的一致性约束)。
+      if (err instanceof CliExit) throw err;
       console.error(tCli('cli.gen.failed', lang, { message: (err as Error).message }));
       throw new CliExit(1);
     }

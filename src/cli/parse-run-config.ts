@@ -62,9 +62,9 @@ export interface RunConfig {
 export interface ParseRunConfigResult {
   values: Record<string, string | boolean | undefined>;
   config: RunConfig;
-  /** Loaded eval.yaml when --config was provided. handleRun uses it to apply
+  /** Loaded eval.yaml when --config was provided. `commands/run.ts` uses it to apply
    *  CLI > eval.yaml > default fallback for fields not propagated by parseRunConfig
-   *  (e.g. repeat / judgeRepeat / bootstrap — handled in handleRun for input validation). */
+   *  (e.g. repeat / judgeRepeat / bootstrap — handled in `commands/run.ts` for input validation). */
   evalConfig: EvalConfig | null;
 }
 
@@ -315,7 +315,7 @@ export function parseRunConfig(
       timeoutMs,
       executorName,
       skipConnectivity,
-      lang: undefined, // CLI 入口在 handleRun/handleGate 里注入
+      lang: undefined, // CLI 入口在 commands/run.ts / commands/gate.ts 里注入
       mcpConfig,
       verbose,
       retry,
