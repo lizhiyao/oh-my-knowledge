@@ -390,6 +390,47 @@ function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+// Returns Error to throw, or null when caller should fall through to the
+// EADDRINUSE / omk-takeover flow. Splits "occupancy" from "permission" /
+// "ephemeral-bind-rejected" so users see a fix path that matches the cause.
+export function formatListenError(p: number, err: unknown): Error | null {
+  const errno = (err as NodeJS.ErrnoException | undefined)?.code;
+
+  // p === 0 asks the OS to pick an ephemeral port; "already in use" is
+  // semantically wrong here. Failures are almost always sandbox / restricted
+  // network environments rather than occupancy.
+  if (p === 0) {
+    return new Error(
+      `cannot bind ephemeral port (--port 0): ${errno ?? 'unknown error'}.\n` +
+      `  likely cause: sandboxed / restricted network environment ` +
+      `(Docker without --net=host, container without bind permission).\n` +
+      `  try a fixed port: omk bench report --port 8080`
+    );
+  }
+
+  // EACCES / EPERM: permission, not occupancy. Common on privileged ports
+  // (<1024 without root) or sandbox / container restrictions.
+  if (errno === 'EACCES' || errno === 'EPERM') {
+    return new Error(
+      `cannot bind port ${p}: permission denied (${errno}).\n` +
+      `  ports < 1024 require root on Unix; sandboxed environments may block all binds.\n` +
+      `  pick a higher port: omk bench report --port 8080`
+    );
+  }
+
+  // Any other syscall errno that isn't EADDRINUSE: surface it directly,
+  // don't try the omk-takeover flow.
+  if (errno && errno !== 'EADDRINUSE') {
+    return new Error(
+      `cannot bind port ${p}: ${errno} (${getErrorMessage(err)}).\n` +
+      `  pick another port: omk bench report --port 8080`
+    );
+  }
+
+  // EADDRINUSE or unknown — let caller try the omk-takeover flow.
+  return null;
+}
+
 export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, analysesDir = DEFAULT_ANALYSES_DIR, jobsDir = DEFAULT_JOBS_DIR, store, jobStore }: ReportServerOptions = {}): ReportServer {
   let server: Server | null = null;
   let serverUrl: string | null = null;
@@ -635,8 +676,11 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
 
     try {
       server = await boot(p);
-    } catch {
-      // Port occupied — check if it's an existing omk service
+    } catch (err: unknown) {
+      const formatted = formatListenError(p, err);
+      if (formatted) throw formatted;
+
+      // EADDRINUSE — check if it's an existing omk service we can take over
       const url = `http://${host}:${p}`;
       let isOmk = false;
       try {
