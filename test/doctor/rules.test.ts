@@ -67,6 +67,28 @@ describe('skillReadableRule', () => {
     })));
     assert.equal(r.status, 'pass');
   });
+
+  it('echoes the file path in the hint and detail when content is missing', async () => {
+    const r = await skillReadableRule.check(ctxWith(sampleSkill({
+      content: null,
+      locator: '/tmp/missing/skills/v1.md',
+    })));
+    assert.equal(r.status, 'fail');
+    assert.ok(r.hint?.includes('/tmp/missing/skills/v1.md'),
+      `hint should echo the tried path; got: ${r.hint}`);
+    assert.equal((r.detail as { triedPath?: string })?.triedPath, '/tmp/missing/skills/v1.md');
+  });
+
+  it('falls back to inline marker in the hint when artifact has no locator', async () => {
+    const r = await skillReadableRule.check(ctxWith(sampleSkill({
+      name: 'inline-anon',
+      source: 'inline',
+      content: null,
+      locator: undefined,
+    })));
+    assert.equal(r.status, 'fail');
+    assert.match(r.hint ?? '', /<inline:inline-anon>/);
+  });
 });
 
 describe('skillMetadataRule', () => {
@@ -156,6 +178,29 @@ describe('dependenciesPresentRule', () => {
     })));
     assert.equal(r.status, 'fail');
     assert.ok(Array.isArray((r.detail as { missing?: unknown[] }).missing));
+  });
+
+  it('hint mentions tool-fix advice when only a tool is missing (no file/env noise)', async () => {
+    const r = await dependenciesPresentRule.check(ctxWith(sampleSkill({
+      content: '请运行 nonexistent-fake-cli 命令来分析数据。',
+    })));
+    assert.equal(r.status, 'fail');
+    assert.match(r.hint ?? '', /requires\.tools|工具缺失|missing tool/);
+    // Should not surface unrelated category fixes when those categories have 0 items.
+    assert.doesNotMatch(r.hint ?? '', /requires\.files|文件缺失|missing file/);
+    assert.doesNotMatch(r.hint ?? '', /requires\.env|环境变量缺失|missing env/);
+  });
+
+  it('hint mentions env-fix advice when only an env var is required and missing', async () => {
+    // Surface env-only path: declare a required env var that isn't set.
+    const envName = `OMK_DOCTOR_TEST_NOT_SET_${Date.now()}`;
+    delete process.env[envName];
+    const r = await dependenciesPresentRule.check(ctxWith(sampleSkill(), {
+      requires: { env: [envName] },
+    }));
+    assert.equal(r.status, 'fail');
+    assert.match(r.hint ?? '', /shell profile|CI secrets|环境变量缺失|missing env/);
+    assert.doesNotMatch(r.hint ?? '', /requires\.tools|工具缺失|missing tool/);
   });
 });
 

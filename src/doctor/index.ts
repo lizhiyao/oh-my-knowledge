@@ -14,6 +14,7 @@ import { discoverVariants, resolveArtifacts } from '../inputs/skill-loader.js';
 import type {
   Artifact,
   DoctorContext,
+  DoctorOutcome,
   DoctorReport,
   DoctorRule,
   DoctorRuleResult,
@@ -21,6 +22,7 @@ import type {
   DoctorSkillReport,
   DoctorSkillStatus,
 } from '../types/index.js';
+import { DOCTOR_REPORT_SCHEMA_VERSION } from '../types/doctor.js';
 import { getRegisteredRules } from './rules.js';
 
 // ---------------------------------------------------------------------------
@@ -177,6 +179,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
 
   const skillReports: DoctorSkillReport[] = [];
   const totals = { pass: 0, warn: 0, fail: 0 };
+  const ruleStats = { pass: 0, warn: 0, fail: 0, skipped: 0, total: 0 };
 
   for (const artifact of artifacts) {
     const results = await runRulesOnArtifact(artifact, effectiveRules, ctxBase);
@@ -188,10 +191,21 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
       status,
     });
     totals[status] += 1;
+    for (const r of results) {
+      ruleStats[r.status] += 1;
+      ruleStats.total += 1;
+    }
   }
+
+  const failed = totals.fail > 0;
+  const warned = totals.warn > 0;
+  // Single-enum verdict for CI / agent code. fatal-fail dominates;
+  // warnings_only when no fatal-fail but at least one warn; otherwise passed.
+  const outcome: DoctorOutcome = failed ? 'failed' : (warned ? 'warnings_only' : 'passed');
 
   return {
     kind: 'doctor',
+    schemaVersion: DOCTOR_REPORT_SCHEMA_VERSION,
     id: nextReportId(),
     timestamp: new Date().toISOString(),
     cliVersion: readCliVersion(),
@@ -199,8 +213,10 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     executorName: opts.executorName,
     model: opts.model,
     skills: skillReports,
-    failed: totals.fail > 0,
-    warned: totals.warn > 0,
+    outcome,
+    failed,
+    warned,
     totals,
+    ruleStats,
   };
 }

@@ -48,6 +48,15 @@ const crashingRule: DoctorRule = {
   },
 };
 
+const skippedRule: DoctorRule = {
+  id: 'test_skipped',
+  severity: 'warn',
+  labelKey: 'cli.doctor.rule.skill_readable',
+  async check() {
+    return { status: 'skipped', message: 'preconditions not met' };
+  },
+};
+
 describe('resolveDoctorTargets', () => {
   it('resolves all variants in a directory', () => {
     const artifacts = resolveDoctorTargets(EXAMPLE_SKILLS_DIR, '/tmp');
@@ -497,5 +506,117 @@ describe('runDoctor', () => {
       rmSync(tmpArtifactCwd, { recursive: true, force: true });
       rmSync(tmpOptsDepCwd, { recursive: true, force: true });
     }
+  });
+});
+
+describe('DoctorReport — CI-friendly schema fields', () => {
+  it('stamps schemaVersion on every report (CI can pin/check)', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule],
+    });
+    assert.equal(typeof report.schemaVersion, 'string');
+    assert.match(report.schemaVersion, /^\d+\.\d+\.\d+$/);
+  });
+
+  it('outcome="passed" when all skills pass cleanly', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule],
+    });
+    assert.equal(report.outcome, 'passed');
+    assert.equal(report.failed, false);
+    assert.equal(report.warned, false);
+  });
+
+  it('outcome="warnings_only" when only warn rules trigger (no fatal-fail)', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [warningRule],
+    });
+    assert.equal(report.outcome, 'warnings_only');
+    assert.equal(report.failed, false);
+    assert.equal(report.warned, true);
+  });
+
+  it('outcome="failed" when any rule fails fatally (dominates warns)', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [failingRule, warningRule],
+    });
+    assert.equal(report.outcome, 'failed');
+    assert.equal(report.failed, true);
+  });
+
+  it('ruleStats counts each rule outcome across all skills, including skipped', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule, warningRule, skippedRule],
+    });
+    const skillCount = report.skills.length;
+    assert.equal(report.ruleStats.pass, skillCount);
+    assert.equal(report.ruleStats.warn, skillCount);
+    assert.equal(report.ruleStats.skipped, skillCount);
+    assert.equal(report.ruleStats.fail, 0);
+    assert.equal(report.ruleStats.total, skillCount * 3);
+    assert.equal(
+      report.ruleStats.total,
+      report.ruleStats.pass + report.ruleStats.warn + report.ruleStats.fail + report.ruleStats.skipped,
+      'total must equal sum of statuses',
+    );
+  });
+
+  it('totals (per-skill) and ruleStats (per-rule) report different granularities', async () => {
+    // 1 skill with 1 pass + 1 warn rule:
+    //   - per-skill outcome = warn (the worst non-fail outcome on the skill)
+    //   - per-rule stats: pass=1, warn=1
+    // This test pins the contract that totals != ruleStats by design.
+    const inlineArtifact: Artifact = {
+      name: 'inline-mixed',
+      kind: 'skill',
+      source: 'inline',
+      content: '你是一个测试 skill,内容长度足够通过 readable rule。',
+    };
+    const report = await runDoctor({
+      artifacts: [inlineArtifact],
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule, warningRule],
+    });
+    assert.equal(report.skills.length, 1);
+    assert.equal(report.totals.pass, 0, 'skill outcome rolls up to warn, not pass');
+    assert.equal(report.totals.warn, 1);
+    assert.equal(report.ruleStats.pass, 1, 'per-rule pass count is unaffected by roll-up');
+    assert.equal(report.ruleStats.warn, 1);
+    assert.equal(report.ruleStats.total, 2);
+    assert.equal(report.outcome, 'warnings_only');
   });
 });

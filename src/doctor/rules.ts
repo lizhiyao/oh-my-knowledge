@@ -79,12 +79,17 @@ export const skillReadableRule: DoctorRule = {
   labelKey: 'cli.doctor.rule.skill_readable',
   async check(ctx: DoctorContext): Promise<DoctorRuleCheckOutcome> {
     const content = ctx.artifact.content;
+    // Echo the path that was tried, so the hint is concretely actionable
+    // (CI / agent and humans both see exactly where to look).
+    const triedPath = ctx.artifact.locator
+      ?? ctx.artifact.skillRoot
+      ?? `<inline:${ctx.artifact.name}>`;
     if (content === null || content === undefined) {
       return {
         status: 'fail',
         message: tCli('cli.doctor.skill_readable.fail.missing', ctx.lang),
-        hint: tCli('cli.doctor.skill_readable.hint.missing', ctx.lang),
-        detail: { length: 0 },
+        hint: tCli('cli.doctor.skill_readable.hint.missing', ctx.lang, { path: triedPath }),
+        detail: { length: 0, triedPath },
       };
     }
     const trimmed = content.trim();
@@ -92,8 +97,8 @@ export const skillReadableRule: DoctorRule = {
       return {
         status: 'fail',
         message: tCli('cli.doctor.skill_readable.fail.empty', ctx.lang),
-        hint: tCli('cli.doctor.skill_readable.hint.missing', ctx.lang),
-        detail: { length: 0 },
+        hint: tCli('cli.doctor.skill_readable.hint.missing', ctx.lang, { path: triedPath }),
+        detail: { length: 0, triedPath },
       };
     }
     if (trimmed.length < SKILL_MIN_LENGTH) {
@@ -162,10 +167,18 @@ export const dependenciesPresentRule: DoctorRule = {
     );
     if (!result.ok) {
       const summary = summarizeDependencyIssues(result.missing, ctx.lang);
+      // Build hint conditionally so users only see fix advice for categories
+      // that actually have missing items. Generic header + per-category lines.
+      const hintParts: string[] = [tCli('cli.doctor.dependencies.hint', ctx.lang)];
+      const counts = { tool: 0, file: 0, env: 0 };
+      for (const m of result.missing) counts[m.category] += 1;
+      if (counts.tool > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.tool', ctx.lang));
+      if (counts.file > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.file', ctx.lang));
+      if (counts.env > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.env', ctx.lang));
       return {
         status: 'fail',
         message: tCli('cli.doctor.dependencies.fail', ctx.lang, { summary }),
-        hint: tCli('cli.doctor.dependencies.hint', ctx.lang),
+        hint: hintParts.join('; '),
         detail: { missing: result.missing },
       };
     }

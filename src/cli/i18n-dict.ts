@@ -177,6 +177,9 @@ export type CliMessageKey =
   | 'cli.doctor.skill_readable.fail.empty'
   | 'cli.doctor.skill_readable.fail.too_short'
   | 'cli.doctor.skill_readable.hint.missing'
+  | 'cli.doctor.dependencies.hint.tool'
+  | 'cli.doctor.dependencies.hint.file'
+  | 'cli.doctor.dependencies.hint.env'
   | 'cli.doctor.skill_readable.hint.too_short'
   // doctor — skill_metadata rule
   | 'cli.doctor.skill_metadata.fail.frontmatter_invalid'
@@ -1152,8 +1155,8 @@ Examples:
     en: 'skill content too short ({length} chars, minimum 10)',
   },
   'cli.doctor.skill_readable.hint.missing': {
-    zh: '请确认 skill 文件路径正确,文件可读且非空',
-    en: 'verify skill file path is correct and the file is readable',
+    zh: 'skill 文件未读到内容(尝试路径: {path})。用 `ls -la {path}` 确认文件存在,用 `cat {path}` 确认可读且非空',
+    en: 'no content read from skill (tried path: {path}). Run `ls -la {path}` to verify it exists and `cat {path}` to confirm it is readable and non-empty',
   },
   'cli.doctor.skill_readable.hint.too_short': {
     zh: 'skill 至少需要写一句完整的指令,过短的内容评测出来无意义',
@@ -1182,8 +1185,20 @@ Examples:
     en: 'dependency check failed: {summary}',
   },
   'cli.doctor.dependencies.hint': {
-    zh: '安装缺失的工具或设置环境变量;若依赖确实可用 (e.g. shim 化测试),修正 skill 引用方式',
-    en: 'install missing tools or set required env vars; if deps are actually present (e.g. shimmed in tests), adjust skill references',
+    zh: '若依赖确实可用 (e.g. shim 化测试),修正 skill 引用方式;否则按下述提示补齐',
+    en: 'if these deps are actually present (e.g. shimmed in tests), adjust skill references; otherwise follow the per-category fix below',
+  },
+  'cli.doctor.dependencies.hint.tool': {
+    zh: '工具缺失: 安装到 PATH 或更新 skill 的 requires.tools 引用名',
+    en: 'missing tool: install it on PATH or update skill\'s requires.tools entry',
+  },
+  'cli.doctor.dependencies.hint.file': {
+    zh: '文件缺失: 检查路径是否相对 skill 目录正确,或更新 skill 的 requires.files 引用',
+    en: 'missing file: verify path is relative to skill dir, or update skill\'s requires.files entry',
+  },
+  'cli.doctor.dependencies.hint.env': {
+    zh: '环境变量缺失: 在 .env / shell profile 里 export,或在 CI secrets 中配置',
+    en: 'missing env: export it in .env / shell profile, or configure it in CI secrets',
   },
   // samples_contract
   'cli.doctor.samples_contract.skipped': {
