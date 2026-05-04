@@ -528,9 +528,14 @@ const INIT_SAMPLES = `[
 ]
 `;
 
-const INIT_SKILL_V1 = '你是一个代码审查助手。请审查用户提供的代码，指出潜在问题。';
+const INIT_SKILL_V1 = `# Code review v1
 
-const INIT_SKILL_V2 = `你是一个高级代码审查专家。请从以下维度审查用户提供的代码：
+你是一个代码审查助手。请审查用户提供的代码，指出潜在问题。
+`;
+
+const INIT_SKILL_V2 = `# Code review v2
+
+你是一个高级代码审查专家。请从以下维度审查用户提供的代码：
 
 1. 安全性：是否存在注入、XSS、敏感信息泄露等风险
 2. 健壮性：是否有适当的错误处理和边界检查
@@ -715,10 +720,14 @@ async function handleInit(argv: string[]): Promise<void> {
   const targetDir: string = resolve(positionals[0] || '.');
   const { writeFileSync, mkdirSync } = await import('node:fs');
 
-  mkdirSync(join(targetDir, 'skills'), { recursive: true });
+  // omk skill loader 把 `skills/<name>/SKILL.md` 子目录识别为 directory-skill,
+  // cwd 默认锚到 skill 根目录,后续可在同目录下放 assets / 子文档。
+  // 子目录主题化命名(code-review-v1 / code-review-v2)比泛 v1.md / v2.md 心智模型更清晰。
+  mkdirSync(join(targetDir, 'skills', 'code-review-v1'), { recursive: true });
+  mkdirSync(join(targetDir, 'skills', 'code-review-v2'), { recursive: true });
   writeFileSync(join(targetDir, 'eval-samples.json'), INIT_SAMPLES);
-  writeFileSync(join(targetDir, 'skills', 'v1.md'), INIT_SKILL_V1);
-  writeFileSync(join(targetDir, 'skills', 'v2.md'), INIT_SKILL_V2);
+  writeFileSync(join(targetDir, 'skills', 'code-review-v1', 'SKILL.md'), INIT_SKILL_V1);
+  writeFileSync(join(targetDir, 'skills', 'code-review-v2', 'SKILL.md'), INIT_SKILL_V2);
 
   console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));
   console.log('');
@@ -726,6 +735,7 @@ async function handleInit(argv: string[]): Promise<void> {
   console.log(tCli('cli.init.next_step_edit_samples', lang));
   console.log(tCli('cli.init.next_step_edit_skills', lang));
   console.log(tCli('cli.init.next_step_run', lang));
+  console.log(tCli('cli.init.note_codex_executor', lang));
 }
 
 // ---------------------------------------------------------------------------

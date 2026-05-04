@@ -60,6 +60,7 @@ export type CliMessageKey =
   | 'cli.init.next_step_edit_samples'
   | 'cli.init.next_step_edit_skills'
   | 'cli.init.next_step_run'
+  | 'cli.init.note_codex_executor'
   // 启动期检查 (checkUpdate)
   | 'cli.update.new_version_available'
   // 实时进度 (defaultOnProgress)
@@ -231,12 +232,16 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '  1. Edit eval-samples.json to add your test cases',
   },
   'cli.init.next_step_edit_skills': {
-    zh: '  2. 编辑 skills/v1.md 和 skills/v2.md, 为两个 skill 版本填入实际内容',
-    en: '  2. Edit skills/v1.md and skills/v2.md with your skill versions',
+    zh: '  2. 编辑 skills/code-review-v1/SKILL.md 和 skills/code-review-v2/SKILL.md, 为两个 skill 版本填入实际内容',
+    en: '  2. Edit skills/code-review-v1/SKILL.md and skills/code-review-v2/SKILL.md with your skill versions',
   },
   'cli.init.next_step_run': {
-    zh: '  3. 运行: omk bench run --control v1 --treatment v2',
-    en: '  3. Run: omk bench run --control v1 --treatment v2',
+    zh: '  3. 运行: omk bench run --control code-review-v1 --treatment code-review-v2',
+    en: '  3. Run: omk bench run --control code-review-v1 --treatment code-review-v2',
+  },
+  'cli.init.note_codex_executor': {
+    zh: '\n注: omk SKILL.md 是纯 markdown 正文(不带 frontmatter)。Claude executor 走 native skill 机制(SDK auto-discovery / Skill 工具);Codex / openai-api / gemini 执行器没有 native skill,SKILL.md 内容会被拼接到 prompt 头部作为 system 注入(omk 自动 fallback,功能等价但不暴露 skill metadata)。',
+    en: '\nNote: omk SKILL.md is plain markdown body (no frontmatter). The Claude executor uses native skill mechanisms (SDK auto-discovery / Skill tool); Codex / openai-api / gemini executors have no native skill, so SKILL.md content is prepended to the prompt as system injection (omk auto-fallback, functionally equivalent but skill metadata is not surfaced).',
   },
   'cli.update.new_version_available': {
     zh: '\n💡 新版本可用: {old} → {new}, 运行 npm update {pkg} -g 升级\n\n',
