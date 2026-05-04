@@ -1,34 +1,38 @@
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { BENCH_COMMANDS, DOMAIN_COMMANDS } from '../../src/cli/commands/registry.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const COMMANDS_DIR = join(PROJECT_ROOT, 'src', 'cli', 'commands');
-const INDEX_PATH = join(PROJECT_ROOT, 'src', 'cli', 'index.ts');
+const COMMANDS_DIR = join(__dirname, '..', '..', 'src', 'cli', 'commands');
 
 /**
- * 防止 `commands/<name>.ts` 文件存在但 index.ts 没接 import / dispatch case。
- * 拆 17 个 command 后,新增 / 移动 module 时容易漏接 — 这层 smoke 兜底。
+ * 防止 `commands/<name>.ts` 文件存在但 registry 没接上。新增命令时只要忘
+ * 加 registry entry, 这层就 fail — 比靠 review 抓更稳。
  *
- * 不验证 case 名 (有的命令走 domain 分支不在 switch 里,如 analyze/doctor),
- * 只验证 import 行存在 — 漏 import 时 TS 编译会报错,这里再加一层断言。
+ * `_*` (如 _shared) 是内部 module, registry.ts 自己也排除。
  */
 describe('CLI dispatcher routing', () => {
-  it('every commands/<name>.ts (除 _shared) 都被 index.ts 引用', () => {
-    const indexSrc = readFileSync(INDEX_PATH, 'utf-8');
+  it('每个 commands/<name>.ts 都注册在 BENCH 或 DOMAIN', () => {
     const files = readdirSync(COMMANDS_DIR)
-      .filter((f) => f.endsWith('.ts') && !f.startsWith('_'));
+      .filter((f) => f.endsWith('.ts'))
+      .filter((f) => !f.startsWith('_') && f !== 'registry.ts')
+      .map((f) => f.replace(/\.ts$/, ''));
 
-    expect(files.length).toBeGreaterThan(0);
+    const registered = new Set([
+      ...Object.keys(BENCH_COMMANDS),
+      ...Object.keys(DOMAIN_COMMANDS),
+    ]);
 
-    const missing: string[] = [];
-    for (const file of files) {
-      const name = file.replace(/\.ts$/, '');
-      const importRe = new RegExp(`from\\s+['"]\\./commands/${name}\\.js['"]`);
-      if (!importRe.test(indexSrc)) missing.push(name);
+    const missing = files.filter((name) => !registered.has(name));
+    expect(missing, `commands files not in registry: ${missing.join(', ')}`).toEqual([]);
+  });
+
+  it('registry 里每个 entry 都有可调用的 execute', () => {
+    const all = [...Object.entries(BENCH_COMMANDS), ...Object.entries(DOMAIN_COMMANDS)];
+    for (const [name, cmd] of all) {
+      expect(typeof cmd.execute, `${name}.execute should be a function`).toBe('function');
     }
-    expect(missing, `commands modules missing from index.ts: ${missing.join(', ')}`).toEqual([]);
   });
 });
