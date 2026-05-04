@@ -36,6 +36,9 @@ describe('bench report --dev: child spawn argv', () => {
     const [, libDir, cliPath] = spawnCalls[0].args;
     expect(cliPath).toMatch(/[\\/]cli[\\/]index\.(js|ts)$/);
     expect(cliPath).not.toMatch(/[\\/]commands[\\/]/);
+    // libDir 必须是真实存在的目录(否则 node --watch-path 静默不 watch),
+    // 不能是历史 bug 里的 dist/src/cli/lib (那个目录不存在)。
     expect(libDir).not.toMatch(/[\\/]commands[\\/]/);
+    expect(libDir).not.toMatch(/[\\/]lib$/);
   });
 });

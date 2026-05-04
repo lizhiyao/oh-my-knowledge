@@ -30,7 +30,10 @@ export async function execute(argv: string[]): Promise<void> {
     // (那里有 main() 跑 dispatcher);否则 child 跑的是 report module,只 export
     // execute,无入口直接退出,--dev 静默坏掉。
     const cliPath: string = resolve(fileURLToPath(import.meta.url), '..', '..', 'index.js');
-    const libDir: string = resolve(cliPath, '..', 'lib');
+    // watch 整个编译产物根 (dist/src/),覆盖 server / renderer / eval-core 等
+    // report server 依赖的 module。原来是 resolve(cliPath, '..', 'lib') = dist/src/cli/lib,
+    // 那个目录不存在,node --watch-path 对不存在路径静默,hot reload 一直没在工作。
+    const libDir: string = resolve(cliPath, '..', '..');
     const args: string[] = [
       '--watch-path', libDir, cliPath, 'bench', 'report',
       '--port', values.port as string,
