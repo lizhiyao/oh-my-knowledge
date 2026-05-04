@@ -86,6 +86,7 @@ export type CliMessageKey =
   | 'cli.run.run_section'
   | 'cli.run.batch_complete'
   | 'cli.run.eval_complete'
+  | 'cli.run.tally'
   | 'cli.run.report_saved'
   | 'cli.run.report_server_running'
   | 'cli.run.report_server_view'
@@ -263,8 +264,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '[{i}/{n}] {sample}/{variant} 🔄 retry {attempt}/{max}...\n',
   },
   'cli.progress.sample_error': {
-    zh: '[{i}/{n}] {sample}/{variant} ❌ {error}\n',
-    en: '[{i}/{n}] {sample}/{variant} ❌ {error}\n',
+    zh: '[{i}/{n}] {sample}/{variant} ⚠️ {error}\n',
+    en: '[{i}/{n}] {sample}/{variant} ⚠️ {error}\n',
   },
   'cli.progress.sample_executing': {
     zh: '[{i}/{n}] {sample}/{variant} ⏳ 执行中...\n',
@@ -295,8 +296,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '[{i}/{n}] {sample}/{variant} ✓ {ms}ms {input}+{output} tokens{cost}{score}\n',
   },
   'cli.progress.sample_failed_done': {
-    zh: '[{i}/{n}] {sample}/{variant} ✗ {ms}ms {input}+{output} tokens{cost} error={error}\n',
-    en: '[{i}/{n}] {sample}/{variant} ✗ {ms}ms {input}+{output} tokens{cost} error={error}\n',
+    zh: '[{i}/{n}] {sample}/{variant} ⚠️ {ms}ms {input}+{output} tokens{cost} error={error}\n',
+    en: '[{i}/{n}] {sample}/{variant} ⚠️ {ms}ms {input}+{output} tokens{cost} error={error}\n',
   },
   'cli.run.invalid_repeat': {
     zh: '⚠ --repeat "{value}" 无效 (期望 ≥ 1 的整数), 已按 1 次评测执行\n',
@@ -333,6 +334,10 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.run.eval_complete': {
     zh: '\n✅ 评测完成\n',
     en: '\n✅ Evaluation done\n',
+  },
+  'cli.run.tally': {
+    zh: '试次: {passed} ✓ / {failed} ⚠️\n',
+    en: 'Trials: {passed} ✓ / {failed} ⚠️\n',
   },
   'cli.run.report_saved': {
     zh: '📄 报告已保存到: {path}\n',
@@ -371,8 +376,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '\n⚠ {warning}\n',
   },
   'cli.common.error_prefix': {
-    zh: '错误: {message}',
-    en: 'Error: {message}',
+    zh: '❌ 错误: {message}',
+    en: '❌ Error: {message}',
   },
   'cli.analyze.view_in_browser': {
     zh: "在浏览器查看: omk bench report  # 打开后点首页的 \"📊 Skill 健康度日报\"",
