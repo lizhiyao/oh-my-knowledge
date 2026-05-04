@@ -44,6 +44,25 @@ describe('CLI', () => {
     assert.ok(!stdout.includes(['--', 'each'].join('')));
   });
 
+  // --help 集中到 dispatcher 后,evolve / init 也响应 --help。
+  // 拆 commands 之前这两个会被 parseArgsStrictOrExit 当 unknown option 报错。
+  it('bench evolve --help exits 0 (was unknown-option pre-dispatcher)', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'bench', 'evolve', '--help']);
+    assert.ok(stdout.includes('oh-my-knowledge'));
+  });
+
+  it('bench init --help exits 0 (was unknown-option pre-dispatcher)', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'bench', 'init', '--help']);
+    assert.ok(stdout.includes('oh-my-knowledge'));
+  });
+
+  // dispatcher 检查 --help 时扫整个 argv,不限第一位。
+  // 之前 gate 只查 argv[0] === '--help', 中间位置的 --help 会被 parseArgs 拒。
+  it('bench gate --skip-connectivity --help triggers help from any position', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'bench', 'gate', '--skip-connectivity', '--help']);
+    assert.ok(stdout.includes('oh-my-knowledge'));
+  });
+
   it('unknown domain exits with error (--lang en)', async () => {
     await assert.rejects(
       () => execFileAsync('node', [CLI, 'unknown', '--lang', 'en']),
@@ -102,5 +121,22 @@ describe('CLI', () => {
     assert.equal(report.dryRun, true);
     assert.equal(report.batch, true);
     assert.ok(report.totalArtifacts >= 2);
+  });
+
+  // 回归: gate 的 try/catch 不能吞 CliExit(0)。dry-run / PROGRESS / SOLO PASS
+  // 路径都在 try 内 throw CliExit(0),catch 必须 instanceof 守卫透传,
+  // 否则 `omk bench gate && deploy` 在 PASS 时也会挡住部署。
+  it('bench gate --dry-run exits 0 (CliExit(0) must pass through catch)', async () => {
+    const samplesPath = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');
+    const skillDir = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
+    // execFile 默认 reject on non-zero exit; resolve = exit 0.
+    await execFileAsync('node', [
+      CLI, 'bench', 'gate',
+      '--dry-run',
+      '--samples', samplesPath,
+      '--skill-dir', skillDir,
+      '--control', 'v1',
+      '--treatment', 'v2',
+    ]);
   });
 });

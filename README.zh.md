@@ -431,7 +431,7 @@ variants:
   - { name: my-skill, role: treatment, artifact: ./skills/my-skill.md }
 ```
 
-**字段入口**：`bench run` 完整支持上述全部字段；`bench gate` 通过 `parseRunConfig` 共享 variants / executor / model / `judgeModels`（单评委 + ensemble 都生效）/ noJudge / noCache / blind / strictBaseline / budget / mcpConfig / variantAllowedSkills，但 `handleRun` 自己处理的实验设计字段(`repeat` / `judgeRepeat` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`)gate 不读，后续按需扩展到 gate。其他子命令（`evolve` / `verdict` / `diff` / `analyze` 等）完全不读 eval.yaml。
+**字段入口**：`bench run` 完整支持上述全部字段；`bench gate` 通过 `parseRunConfig` 共享 variants / executor / model / `judgeModels`（单评委 + ensemble 都生效）/ noJudge / noCache / blind / strictBaseline / budget / mcpConfig / variantAllowedSkills，但 `commands/run.ts` 自己处理的实验设计字段（`repeat` / `judgeRepeat` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`）gate 不读，后续按需扩展到 gate。其他子命令（`evolve` / `verdict` / `diff` / `analyze` 等）完全不读 eval.yaml。
 
 **和 `cost_max` / `latency_max` 断言的区别**：断言是**单样本评分维度**（超出直接打 0 分，run 继续）；budget 是**工作流级硬阈值**（`totalUSD` 超出整个 run abort 保留 partial report，per-sample 超出该样本失败但 run 继续）。一个回答"质量是否达标"，一个回答"花钱/时间是否在预算内"。
 

@@ -3,6 +3,7 @@ import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { discoverVariants, parseVariantCwd } from '../inputs/skill-loader.js';
+import { CliExit } from './cli-exit.js';
 import { parseArgsStrictOrExit } from './parse-strict.js';
 import { loadEvalConfig, configVariantsToSpecs } from '../inputs/eval-config.js';
 import type {
@@ -61,9 +62,9 @@ export interface RunConfig {
 export interface ParseRunConfigResult {
   values: Record<string, string | boolean | undefined>;
   config: RunConfig;
-  /** Loaded eval.yaml when --config was provided. handleRun uses it to apply
+  /** Loaded eval.yaml when --config was provided. `commands/run.ts` uses it to apply
    *  CLI > eval.yaml > default fallback for fields not propagated by parseRunConfig
-   *  (e.g. repeat / judgeRepeat / bootstrap — handled in handleRun for input validation). */
+   *  (e.g. repeat / judgeRepeat / bootstrap — handled in `commands/run.ts` for input validation). */
   evalConfig: EvalConfig | null;
 }
 
@@ -114,7 +115,7 @@ export function parseJudgeModelsArgOrExit(raw: string): JudgeConfig[] {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`error: ${msg}`);
-    process.exit(2);
+    throw new CliExit(2);
   }
 }
 
@@ -314,7 +315,7 @@ export function parseRunConfig(
       timeoutMs,
       executorName,
       skipConnectivity,
-      lang: undefined, // CLI 入口在 handleRun/handleGate 里注入
+      lang: undefined, // CLI 入口在 commands/run.ts / commands/gate.ts 里注入
       mcpConfig,
       verbose,
       retry,
