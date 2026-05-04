@@ -1201,8 +1201,8 @@ Examples:
     en: 'missing env: export it in .env / shell profile, or configure it in CI secrets',
   },
   'cli.doctor.dependencies.hint.preflight': {
-    zh: 'preflight 命令失败: 看上面 detail 里的 stderr 找根因,或调整 skill 的 preflight 命令',
-    en: 'preflight command failed: read the stderr in the detail above, or adjust the skill\'s preflight command',
+    zh: 'preflight 命令失败: 看上面的失败原因定位根因,或调整 skill 的 preflight 命令',
+    en: 'preflight command failed: read the failure reason above, or adjust the skill\'s preflight command',
   },
   // Per-issue translated lines. dep-checker emits structured reasonCode +
   // reasonDetail (untranslated raw stderr / cwd) so doctor can localize per ctx.lang.
@@ -1267,7 +1267,7 @@ oh-my-knowledge — omk doctor 健康检查
 doctor 检查项(纯静态 / 零 LLM 调用):
   - skill 文件可读 + 内容有最小长度
   - skill 元数据合法 (front-matter 若有)
-  - 前置依赖完整 (引用的 CLI 工具 / 文件 / 环境变量)
+  - 前置依赖完整 (引用的 CLI 工具 / 文件 / 环境变量 / preflight 命令)
   - 用例 ↔ skill 输入约定 (warn 级, 仅传 samples 时跑)
 
 executor / judge 连通性由 evaluation preflight 负责, 不在 doctor 范围内。
@@ -1300,7 +1300,7 @@ Examples:
 Checks (pure static / zero LLM calls):
   - skill file readable + minimum content length
   - skill metadata valid (front-matter if present)
-  - dependencies present (referenced CLI tools / files / env vars)
+  - dependencies present (referenced CLI tools / files / env vars / preflight commands)
   - samples ↔ skill contract (warn-level, only when samples provided)
 
 executor / judge connectivity is handled by evaluation preflight, not doctor.
