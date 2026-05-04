@@ -3,6 +3,7 @@ import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { discoverVariants, parseVariantCwd } from '../inputs/skill-loader.js';
+import { CliExit } from './cli-exit.js';
 import { parseArgsStrictOrExit } from './parse-strict.js';
 import { loadEvalConfig, configVariantsToSpecs } from '../inputs/eval-config.js';
 import type {
@@ -114,7 +115,7 @@ export function parseJudgeModelsArgOrExit(raw: string): JudgeConfig[] {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`error: ${msg}`);
-    process.exit(2);
+    throw new CliExit(2);
   }
 }
 

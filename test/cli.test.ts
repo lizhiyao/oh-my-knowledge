@@ -122,4 +122,21 @@ describe('CLI', () => {
     assert.equal(report.batch, true);
     assert.ok(report.totalArtifacts >= 2);
   });
+
+  // 回归: gate 的 try/catch 不能吞 CliExit(0)。dry-run / PROGRESS / SOLO PASS
+  // 路径都在 try 内 throw CliExit(0),catch 必须 instanceof 守卫透传,
+  // 否则 `omk bench gate && deploy` 在 PASS 时也会挡住部署。
+  it('bench gate --dry-run exits 0 (CliExit(0) must pass through catch)', async () => {
+    const samplesPath = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');
+    const skillDir = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
+    // execFile 默认 reject on non-zero exit; resolve = exit 0.
+    await execFileAsync('node', [
+      CLI, 'bench', 'gate',
+      '--dry-run',
+      '--samples', samplesPath,
+      '--skill-dir', skillDir,
+      '--control', 'v1',
+      '--treatment', 'v2',
+    ]);
+  });
 });

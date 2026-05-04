@@ -143,6 +143,8 @@ export async function execute(argv: string[]): Promise<void> {
 
     console.log(JSON.stringify(result, null, 2));
   } catch (err: unknown) {
+    // CliExit 是显式 exit 信号,保持原 code 透传(同 gate / run)。
+    if (err instanceof CliExit) throw err;
     console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
     throw new CliExit(1);
   }

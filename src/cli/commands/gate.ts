@@ -53,6 +53,10 @@ export async function execute(argv: string[]): Promise<void> {
     }
     throw new CliExit(1);
   } catch (err: unknown) {
+    // CliExit 是上面 verdict 路径的显式终止信号(PROGRESS / SOLO PASS / dry-run
+    // 都 throw CliExit(0)),必须直通,不能被这层 generic catch 包成 CliExit(1) —
+    // 否则 `omk bench gate && deploy` 在 PASS 时也会挡住部署。
+    if (err instanceof CliExit) throw err;
     console.error(`Error: ${(err as Error).message}`);
     throw new CliExit(1);
   }

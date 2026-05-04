@@ -40,6 +40,8 @@ export async function execute(argv: string[]): Promise<void> {
       lang,
     });
   } catch (err) {
+    // CliExit 透传(防御性,目前 runDoctor 不抛 CliExit,但保持四个 catch 一致)。
+    if (err instanceof CliExit) throw err;
     const msg = err instanceof Error ? err.message : String(err);
     console.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }));
     console.error(`(${msg})`);

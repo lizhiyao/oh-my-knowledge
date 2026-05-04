@@ -224,6 +224,9 @@ export async function execute(argv: string[]): Promise<void> {
       }
     }
   } catch (err: unknown) {
+    // CliExit 是显式 exit 信号(从 requireEvaluationReport 等子调用冒上来),
+    // 保持原 code 透传;只有真正运行时错误才包装成 CliExit(1)。
+    if (err instanceof CliExit) throw err;
     console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
     throw new CliExit(1);
   }
