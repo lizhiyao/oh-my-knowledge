@@ -24,13 +24,14 @@ omk 是 LLM 评测框架。所有改动都要优先保护测量可比性。
 - Bootstrap CI 和 Krippendorff alpha 公式。
 - Length-debias toggle 语义：`--no-debias-length` 与 prompt v2/v3 的对应关系。
 
-确实需要改不变量时，必须在 PR 标题 / description 明确标 `BREAKING-COMPARABILITY`(GitHub Release notes 会从 PR title 自动汇总),并按 `CONTRIBUTING.md` 的版本规则处理。
+确实需要改不变量时，必须在 PR 标题 / description 明确标 `BREAKING-COMPARABILITY`（GitHub Release notes 会从 PR title 自动汇总），并按 `CONTRIBUTING.md` 的版本规则处理。
 
 ## 写作规则
 
 - CLI / 报告 UI / 错误信息等 user-facing 文案中文优先。
+- 中文文案统一用全角标点 `，。：；！？（）「」`，符合 GB/T 15834《标点符号用法》。半角 `,.():` 仅在代码块、命令行、文件路径、英文段落里出现。README.zh.md / docs/zh / SKILL.md / commit message subject / PR description 都按这条来。
 - LLM judge 译为 `评委`，不要译为 `判官`。
-- PR description 写用户影响、迁移说明、construct-validity 或测量学 caveat,链接相关 issue / 前置 PR。不要写行号、测试用例清单或嵌套实现细节 — 那些 git diff 里都有。
+- PR description 写用户影响、迁移说明、construct-validity 或测量学 caveat，链接相关 issue / 前置 PR。不要写行号、测试用例清单或嵌套实现细节 — 那些 git diff 里都有。
 
 ## UI / Judge 改动
 
