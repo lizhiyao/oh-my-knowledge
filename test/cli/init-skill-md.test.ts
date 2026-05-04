@@ -79,15 +79,19 @@ describe('omk bench init produces directory-skill SKILL.md layout', () => {
     }
   });
 
-  it('next-step output mentions the new SKILL.md path and the dual-deploy / codex fallback note', () => {
+  it('next-step output explains evaluation injection, cross-executor parity, and the directory-level deploy path', () => {
     const output = execFileSync('node', [CLI, 'bench', 'init', tmpDir], { encoding: 'utf-8' });
     assert.match(output, /code-review-v1\/SKILL\.md/);
     assert.match(output, /code-review-v2\/SKILL\.md/);
-    // Note must call out both halves of the deployment story:
-    //   1. the file is Claude Code-compatible (so user can dual-deploy),
-    //   2. on codex-class executors the full file is prepended as system prompt.
-    assert.match(output, /Claude Code|~\/\.claude\/skills/);
-    assert.match(output, /Codex|codex/);
-    assert.match(output, /拼接|prompt 头部|system 注入/);
+
+    // Evaluation path: omk injects SKILL.md as system prompt uniformly across executors.
+    // The note must NOT claim Claude executor goes through native skill auto-discovery,
+    // because that's the runtime mechanism (~/.claude/skills/), not omk's eval path.
+    assert.match(output, /system prompt|system 注入/);
+    assert.match(output, /跨 executor|cross-executor|claude.*codex|codex.*claude/);
+    assert.doesNotMatch(output, /Claude executor 走 native skill/);
+
+    // Deploy path: must point at ~/.claude/skills/<name>/ as a directory, not just the file.
+    assert.match(output, /~\/\.claude\/skills\/code-review-v1|the whole directory|整个目录|整目录/);
   });
 });
