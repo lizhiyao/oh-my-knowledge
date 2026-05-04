@@ -203,23 +203,54 @@ describe('dependenciesPresentRule', () => {
     assert.doesNotMatch(r.hint ?? '', /requires\.tools|工具缺失|missing tool/);
   });
 
-  it('preflight failure echoes specific command/stderr from DependencyIssue.hint', async () => {
-    // dependency-checker tags preflight failures as category='tool' but stuffs
-    // the failing command + stderr into DependencyIssue.hint. Doctor must
-    // surface that — generic "install on PATH" would mislead away from the
-    // real cause (the command itself failed, not a missing binary).
+  it('preflight failure surfaces command + reasonCode in localized hint', async () => {
+    // dep-checker emits structured DependencyIssue { category: 'preflight',
+    // reasonCode: 'preflight_failed', reasonDetail: <stderr> }. Doctor localizes
+    // it via ctx.lang. Generic "install on PATH" advice would mislead away from
+    // the real cause (the command itself failed, not a missing binary).
     const skill = sampleSkill({
       content: `---\npreflight:\n  - "false"\n---\n\n你是一个测试 skill,内容长度足够通过 readable rule。`,
-      // 让 metadata.preflight 被 skill-loader 解析出来:模拟 file-skill 的 metadata 注入
       metadata: { preflight: ['false'] },
     });
     const r = await dependenciesPresentRule.check(ctxWith(skill));
     assert.equal(r.status, 'fail');
-    assert.match(r.hint ?? '', /preflight 命令执行失败|preflight command failed/);
-    // detail.missing 应保留原 issue 结构供 CI 直接读
-    const missing = (r.detail as { missing?: Array<{ hint?: string }> }).missing;
+    assert.match(r.hint ?? '', /preflight 命令 "false" 执行失败/);
+    const missing = (r.detail as { missing?: Array<{ category?: string; reasonCode?: string }> }).missing;
     assert.ok(Array.isArray(missing) && missing.length > 0);
-    assert.ok(missing!.some((m) => m.hint?.includes('preflight')));
+    const pf = missing!.find((m) => m.reasonCode === 'preflight_failed');
+    assert.ok(pf, 'should carry preflight_failed reasonCode');
+    assert.equal(pf!.category, 'preflight');
+  });
+
+  it('preflight stderr is preserved in reasonDetail (not just truncated to "Command failed:")', async () => {
+    // execSync's err.message is "Command failed: <cmd>\n<stderr>" — splitting and
+    // keeping line 0 used to drop the actual stderr. Now we read err.stderr
+    // directly so the real cause reaches the user.
+    const stderrMarker = `OMK_PREFLIGHT_STDERR_TOKEN_${Date.now()}`;
+    const skill = sampleSkill({
+      content: '你是一个测试 skill,内容长度足够通过 readable rule。',
+      metadata: { preflight: [`sh -c 'echo ${stderrMarker} >&2; exit 2'`] },
+    });
+    const r = await dependenciesPresentRule.check(ctxWith(skill));
+    assert.equal(r.status, 'fail');
+    assert.ok(r.hint?.includes(stderrMarker),
+      `hint should carry the stderr line "${stderrMarker}"; got: ${r.hint}`);
+    const missing = (r.detail as { missing?: Array<{ reasonDetail?: string }> }).missing;
+    assert.ok(missing?.some((m) => m.reasonDetail?.includes(stderrMarker)));
+  });
+
+  it('--lang en hint contains no Chinese characters (i18n is structural, not pass-through)', async () => {
+    // Catches the bug where dep-checker leaked Chinese hint strings into doctor's
+    // localized hint. With reasonCode-driven translation, en stays pure-en.
+    const skill = sampleSkill({
+      content: '请运行 nonexistent-fake-cli-en 命令来分析数据。',
+    });
+    const r = await dependenciesPresentRule.check(ctxWith(skill, { lang: 'en' }));
+    assert.equal(r.status, 'fail');
+    assert.doesNotMatch(r.hint ?? '', /[一-鿿]/,
+      `en hint should contain no CJK chars; got: ${r.hint}`);
+    assert.doesNotMatch(r.message ?? '', /[一-鿿]/,
+      `en message should contain no CJK chars; got: ${r.message}`);
   });
 });
 

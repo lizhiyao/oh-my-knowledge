@@ -180,6 +180,11 @@ export type CliMessageKey =
   | 'cli.doctor.dependencies.hint.tool'
   | 'cli.doctor.dependencies.hint.file'
   | 'cli.doctor.dependencies.hint.env'
+  | 'cli.doctor.dependencies.hint.preflight'
+  | 'cli.doctor.dependencies.issue.tool_not_found'
+  | 'cli.doctor.dependencies.issue.file_not_found'
+  | 'cli.doctor.dependencies.issue.env_not_set'
+  | 'cli.doctor.dependencies.issue.preflight_failed'
   | 'cli.doctor.skill_readable.hint.too_short'
   // doctor — skill_metadata rule
   | 'cli.doctor.skill_metadata.fail.frontmatter_invalid'
@@ -188,7 +193,6 @@ export type CliMessageKey =
   | 'cli.doctor.skill_metadata.hint.missing_skillmd'
   // doctor — dependencies rule
   | 'cli.doctor.dependencies.fail'
-  | 'cli.doctor.dependencies.hint'
   // doctor — samples_contract rule
   | 'cli.doctor.samples_contract.skipped'
   | 'cli.doctor.samples_contract.warn.empty'
@@ -1184,10 +1188,6 @@ Examples:
     zh: '前置依赖检查失败: {summary}',
     en: 'dependency check failed: {summary}',
   },
-  'cli.doctor.dependencies.hint': {
-    zh: '若依赖确实可用 (e.g. shim 化测试),修正 skill 引用方式;否则按下述提示补齐',
-    en: 'if these deps are actually present (e.g. shimmed in tests), adjust skill references; otherwise follow the per-category fix below',
-  },
   'cli.doctor.dependencies.hint.tool': {
     zh: '工具缺失: 安装到 PATH 或更新 skill 的 requires.tools 引用名',
     en: 'missing tool: install it on PATH or update skill\'s requires.tools entry',
@@ -1199,6 +1199,28 @@ Examples:
   'cli.doctor.dependencies.hint.env': {
     zh: '环境变量缺失: 在 .env / shell profile 里 export,或在 CI secrets 中配置',
     en: 'missing env: export it in .env / shell profile, or configure it in CI secrets',
+  },
+  'cli.doctor.dependencies.hint.preflight': {
+    zh: 'preflight 命令失败: 看上面 detail 里的 stderr 找根因,或调整 skill 的 preflight 命令',
+    en: 'preflight command failed: read the stderr in the detail above, or adjust the skill\'s preflight command',
+  },
+  // Per-issue translated lines. dep-checker emits structured reasonCode +
+  // reasonDetail (untranslated raw stderr / cwd) so doctor can localize per ctx.lang.
+  'cli.doctor.dependencies.issue.tool_not_found': {
+    zh: '工具 {name} 未找到 (不在 PATH 中)',
+    en: 'tool {name} not found on PATH',
+  },
+  'cli.doctor.dependencies.issue.file_not_found': {
+    zh: '文件 {name} 不存在 (cwd: {detail})',
+    en: 'file {name} not found (cwd: {detail})',
+  },
+  'cli.doctor.dependencies.issue.env_not_set': {
+    zh: '环境变量 {name} 未设置',
+    en: 'env var {name} not set',
+  },
+  'cli.doctor.dependencies.issue.preflight_failed': {
+    zh: 'preflight 命令 "{name}" 执行失败: {detail}',
+    en: 'preflight command "{name}" failed: {detail}',
   },
   // samples_contract
   'cli.doctor.samples_contract.skipped': {

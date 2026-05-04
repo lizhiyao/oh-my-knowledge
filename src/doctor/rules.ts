@@ -55,16 +55,32 @@ function checkFrontmatter(content: string): { ok: boolean; error?: string } {
 }
 
 function summarizeDependencyIssues(missing: DependencyIssue[], lang: 'zh' | 'en'): string {
-  const counts = { tool: 0, file: 0, env: 0 };
+  const counts = { tool: 0, file: 0, env: 0, preflight: 0 };
   for (const m of missing) counts[m.category] += 1;
   const parts: string[] = [];
   const labels = lang === 'zh'
-    ? { tool: '工具', file: '文件', env: '环境变量' }
-    : { tool: 'tool', file: 'file', env: 'env' };
+    ? { tool: '工具', file: '文件', env: '环境变量', preflight: 'preflight' }
+    : { tool: 'tool', file: 'file', env: 'env', preflight: 'preflight' };
   if (counts.tool > 0) parts.push(`${counts.tool} ${labels.tool}`);
   if (counts.file > 0) parts.push(`${counts.file} ${labels.file}`);
   if (counts.env > 0) parts.push(`${counts.env} ${labels.env}`);
+  if (counts.preflight > 0) parts.push(`${counts.preflight} ${labels.preflight}`);
   return parts.join(', ') || (lang === 'zh' ? '未知' : 'unknown');
+}
+
+function renderIssue(issue: DependencyIssue, lang: 'zh' | 'en'): string {
+  const params: Record<string, string | number> = { name: issue.name };
+  if (issue.reasonDetail) params.detail = issue.reasonDetail;
+  switch (issue.reasonCode) {
+    case 'tool_not_found':
+      return tCli('cli.doctor.dependencies.issue.tool_not_found', lang, params);
+    case 'file_not_found':
+      return tCli('cli.doctor.dependencies.issue.file_not_found', lang, params);
+    case 'env_not_set':
+      return tCli('cli.doctor.dependencies.issue.env_not_set', lang, params);
+    case 'preflight_failed':
+      return tCli('cli.doctor.dependencies.issue.preflight_failed', lang, params);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -167,20 +183,18 @@ export const dependenciesPresentRule: DoctorRule = {
     );
     if (!result.ok) {
       const summary = summarizeDependencyIssues(result.missing, ctx.lang);
-      // Build hint as: generic header + per-category fix advice + each issue's
-      // own specific hint when present. The per-issue hint matters most for
-      // preflight failures (dependency-checker tags them as category='tool' but
-      // attaches the actual command + stderr in DependencyIssue.hint) — generic
-      // "install on PATH" advice would mislead users away from the real cause.
-      const hintParts: string[] = [tCli('cli.doctor.dependencies.hint', ctx.lang)];
-      const counts = { tool: 0, file: 0, env: 0 };
+      // Hint composition: per-issue translated reason (carries the specific stderr /
+      // path / cmd via reasonDetail) + per-category fix advice. The per-issue line
+      // is what tells the user *what* failed; the category advice tells them *how*
+      // to fix the class of failure.
+      const hintParts: string[] = [];
+      for (const m of result.missing) hintParts.push(renderIssue(m, ctx.lang));
+      const counts = { tool: 0, file: 0, env: 0, preflight: 0 };
       for (const m of result.missing) counts[m.category] += 1;
       if (counts.tool > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.tool', ctx.lang));
       if (counts.file > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.file', ctx.lang));
       if (counts.env > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.env', ctx.lang));
-      for (const m of result.missing) {
-        if (m.hint) hintParts.push(m.hint);
-      }
+      if (counts.preflight > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.preflight', ctx.lang));
       return {
         status: 'fail',
         message: tCli('cli.doctor.dependencies.fail', ctx.lang, { summary }),

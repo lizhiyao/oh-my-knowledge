@@ -8,7 +8,6 @@ import {
   extractFilesByBase,
   checkDependencies,
   preflightDependencies,
-  formatDependencyErrors,
 } from '../src/eval-core/dependency-checker.js';
 import type { Artifact, Sample } from '../src/types/index.js';
 
@@ -224,7 +223,9 @@ describe('preflightDependencies', () => {
       assert.ok(!result.ok);
       const fileIssue = result.missing.find((m) => m.category === 'file' && m.name.includes('missing.md'));
       assert.ok(fileIssue, '应报告 missing.md 文件缺失');
-      assert.ok(fileIssue!.hint.includes(join(root, 'skill-a')), `hint 应含 skillRoot 路径,实际:${fileIssue!.hint}`);
+      assert.equal(fileIssue!.reasonCode, 'file_not_found');
+      assert.equal(fileIssue!.reasonDetail, join(root, 'skill-a'),
+        `reasonDetail 应是 skillRoot 路径,实际:${fileIssue!.reasonDetail}`);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -258,23 +259,6 @@ describe('extractFilesByBase', () => {
     const map = extractFilesByBase(artifacts, '/default/cwd');
     assert.ok(map.get('/explicit')?.has('docs/a.md'));
     assert.equal(map.get('/default/cwd'), undefined);
-  });
-});
-
-describe('formatDependencyErrors', () => {
-  it('格式化输出包含分类标题和提示', () => {
-    const output = formatDependencyErrors([
-      { category: 'tool', name: 'foo-cli', hint: '未找到，请确认已安装并在 PATH 中' },
-      { category: 'file', name: 'scripts/commands.md', hint: '文件不存在' },
-      { category: 'env', name: 'FOO_TOKEN', hint: '未设置' },
-    ]);
-    assert.ok(output.includes('工具缺失'));
-    assert.ok(output.includes('foo-cli'));
-    assert.ok(output.includes('文件缺失'));
-    assert.ok(output.includes('scripts/commands.md'));
-    assert.ok(output.includes('环境变量缺失'));
-    assert.ok(output.includes('FOO_TOKEN'));
-    assert.ok(output.includes('安装缺失的工具') || output.includes('doctor'));
   });
 });
 
