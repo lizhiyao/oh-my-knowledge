@@ -1,6 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { computeRunTally } from '../../src/cli/run-tally.js';
+import { tCli } from '../../src/cli/i18n.js';
 import type {
   BatchEvaluationReport,
   EvaluationReport,
@@ -76,6 +77,22 @@ describe('computeRunTally', () => {
     } as unknown as BatchEvaluationReport;
     const tally = computeRunTally(report);
     assert.deepEqual(tally, { passed: 12, failed: 3 });
+  });
+
+  it('renders into the cli.run.tally template without leaving placeholders behind', () => {
+    // Catches the "{pass}/{fail}" vs `{ passed, failed }` mismatch — if the
+    // template placeholders and the helper return shape drift, the rendered
+    // string would contain literal "{passed}" instead of the number.
+    const tally = { passed: 17, failed: 3 };
+    const zh = tCli('cli.run.tally', 'zh', tally);
+    const en = tCli('cli.run.tally', 'en', tally);
+    for (const out of [zh, en]) {
+      assert.doesNotMatch(out, /\{[a-zA-Z]+\}/, `unsubstituted placeholder in: ${out}`);
+      assert.match(out, /17/);
+      assert.match(out, /3/);
+    }
+    assert.match(zh, /试次/);
+    assert.match(en, /Trials/);
   });
 
   it('returns zeros for an empty single report', () => {
