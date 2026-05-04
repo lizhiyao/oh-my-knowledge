@@ -29,7 +29,7 @@ omk 是 LLM 评测框架。所有改动都要优先保护测量可比性。
 ## 写作规则
 
 - CLI / 报告 UI / 错误信息等 user-facing 文案中文优先。
-- 中文文案统一用全角标点 `，。：；！？（）「」`，符合 GB/T 15834《标点符号用法》。半角 `,.():` 只在以下技术混排里出现：代码块（``` ```）、inline code（`...`）、文件路径、命令行、URL、YAML/JSON frontmatter、数学区间（`[lo, hi]`）、citation 年份（`(2023)`）、`executor:model` 风格的标识符。范围：README.zh.md / docs/zh / SKILL.md / src 内 zh 字符串 / PR description / commit message 的中文 subject 部分。例外：commit 的 `type(scope):` 前缀是 Conventional Commits 语法保留半角，只有冒号后的中文 subject 走全角（写成 `docs(readme): 中文 subject`，不是 `docs（readme）：中文 subject`）。
+- 中文文案统一用全角标点 `，。：；！？（）「」`，符合 GB/T 15834《标点符号用法》。半角 `,.():` 只在以下技术混排里出现：代码块（``` ```）、inline code（`...`）、文件路径、命令行、URL、YAML/JSON frontmatter、数学区间（`[lo, hi]`）、citation 年份（`(2023)`）、`executor:model` 风格的标识符、英文术语 / 技术枚举的括注（如 `用例隔离(construct validity)`、`verdict(PROGRESS / ...)`、`omk 版本(reportMeta.cliVersion)`：括号内容是英文术语、API 字段、枚举值，半角更易复制粘贴）。范围：README.zh.md / docs/zh / SKILL.md / src 内 zh 字符串 / PR description / commit message 的中文 subject 部分。例外：commit 的 `type(scope):` 前缀是 Conventional Commits 语法保留半角，只有冒号后的中文 subject 走全角（写成 `docs(readme): 中文 subject`，不是 `docs（readme）：中文 subject`）。
 - LLM judge 译为 `评委`，不要译为 `判官`。
 - PR description 写用户影响、迁移说明、construct-validity 或测量学 caveat，链接相关 issue / 前置 PR。不要写行号、测试用例清单或嵌套实现细节 — 那些 git diff 里都有。
 
