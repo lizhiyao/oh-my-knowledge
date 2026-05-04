@@ -2,6 +2,7 @@
 
 import { tCli, getCliLang, parseLangFromArgv, type CliLang } from './i18n.js';
 import { checkUpdate } from './update-check.js';
+import { CliExit } from './cli-exit.js';
 import { BENCH_COMMANDS, DOMAIN_COMMANDS, type CommandModule } from './commands/registry.js';
 
 /**
@@ -12,7 +13,7 @@ import { BENCH_COMMANDS, DOMAIN_COMMANDS, type CommandModule } from './commands/
 function dispatchOrPrintHelp(cmd: CommandModule, argv: string[], lang: CliLang): Promise<void> {
   if (argv.includes('--help') || argv.includes('-h')) {
     console.log(tCli(cmd.helpKey, lang).trim());
-    process.exit(0);
+    throw new CliExit(0);
   }
   return cmd.execute(argv);
 }
@@ -24,7 +25,7 @@ async function main(): Promise<void> {
 
   if (!domain || domain === '--help' || domain === '-h') {
     console.log(tCli('cli.help.main', lang).trim());
-    process.exit(0);
+    throw new CliExit(0);
   }
 
   // 顶层 domain 命令 (analyze / doctor) 不走 bench 前缀,先于 bench 路由
@@ -37,20 +38,28 @@ async function main(): Promise<void> {
 
   if (domain !== 'bench') {
     console.error(tCli('cli.common.unknown_domain', lang, { domain }));
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   if (!command || command === '--help' || command === '-h') {
     console.log(tCli('cli.help.main', lang).trim());
-    process.exit(0);
+    throw new CliExit(0);
   }
 
   const benchCmd = BENCH_COMMANDS[command];
   if (!benchCmd) {
     console.error(tCli('cli.common.unknown_bench_command', lang, { command }));
-    process.exit(1);
+    throw new CliExit(1);
   }
   await dispatchOrPrintHelp(benchCmd, rest, lang);
 }
 
-main();
+main().catch((err: unknown) => {
+  // CliExit = 命令显式终止(--help / 业务失败 / parse 错误等),透传 exit code。
+  // 其他 throw 是未处理的运行时错误,打印 stack 后 exit 1。
+  if (err instanceof CliExit) {
+    process.exit(err.code);
+  }
+  console.error(err);
+  process.exit(1);
+});

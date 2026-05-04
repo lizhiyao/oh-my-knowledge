@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { tCli, langFromArgv } from '../i18n.js';
 import { parseRunConfig } from '../parse-run-config.js';
 import { makeOnProgress } from '../progress.js';
@@ -26,7 +27,7 @@ export async function execute(argv: string[]): Promise<void> {
 
     if ((document as ReportDocument & { dryRun?: boolean }).dryRun) {
       console.log('Gate dry-run: no scores to check');
-      process.exit(0);
+      throw new CliExit(0);
     }
     const report = requireEvaluationReport(document, 'current run', lang);
 
@@ -45,14 +46,14 @@ export async function execute(argv: string[]): Promise<void> {
     // NOISE / UNDERPOWERED / CAUTIOUS / REGRESS 全 1。pipeline `omk bench gate
     // && deploy` 数据不显著就不会误 deploy。
     if (result.level === 'PROGRESS') {
-      process.exit(0);
+      throw new CliExit(0);
     }
     if (result.level === 'SOLO' && result.headline.includes('PASS')) {
-      process.exit(0);
+      throw new CliExit(0);
     }
-    process.exit(1);
+    throw new CliExit(1);
   } catch (err: unknown) {
     console.error(`Error: ${(err as Error).message}`);
-    process.exit(1);
+    throw new CliExit(1);
   }
 }

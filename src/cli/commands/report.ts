@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { resolve } from 'node:path';
 import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
@@ -39,6 +40,8 @@ export async function execute(argv: string[]): Promise<void> {
       stdio: 'inherit',
       env: { ...process.env, __OMK_DEV_CHILD: '1' },
     });
+    // 子进程 exit 透传:这一行在 spawn 的 async listener 里,不在 main 调用栈,
+    // 不能 throw CliExit (没人 catch),只能 process.exit。
     child.on('exit', (code: number | null) => process.exit(code || 0));
     return;
   }
@@ -51,7 +54,7 @@ export async function execute(argv: string[]): Promise<void> {
     const report: ReportDocument | null = await store.get(values.export as string);
     if (!report) {
       console.error(tCli('cli.common.report_not_found', lang, { id: values.export as string }));
-      process.exit(1);
+      throw new CliExit(1);
     }
     const html: string = renderReportDocumentDetail(report);
     const outPath: string = resolve(`${values.export}.html`);

@@ -1,3 +1,4 @@
+import { CliExit } from './cli-exit.js';
 /**
  * parseArgs strict:true wrapper, catch unknown option throw 转友好 stderr + exit 2。
  *
@@ -26,6 +27,6 @@ export function parseArgsStrictOrExit(opts: Omit<ParseArgsConfig, 'strict'>): St
     return result as unknown as StrictParsedArgs;
   } catch (err) {
     process.stderr.write(`error: ${err instanceof Error ? err.message : String(err)}\n`);
-    process.exit(2);
+    throw new CliExit(2);
   }
 }

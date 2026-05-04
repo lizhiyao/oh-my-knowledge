@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS } from '../parse-run-config.js';
 import { parseArgsStrictOrExit } from '../parse-strict.js';
@@ -42,12 +43,12 @@ export async function execute(argv: string[]): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }));
     console.error(`(${msg})`);
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   if (report.skills.length === 0) {
     console.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }));
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   const isJson = values.json as boolean;
@@ -67,5 +68,5 @@ export async function execute(argv: string[]): Promise<void> {
     renderDoctorReportText(report, lang);
   }
 
-  process.exit(report.outcome === 'failed' ? 1 : 0);
+  throw new CliExit(report.outcome === 'failed' ? 1 : 0);
 }

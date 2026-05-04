@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { tCli, langFromArgv } from '../i18n.js';
@@ -12,7 +13,7 @@ export async function execute(argv: string[]): Promise<void> {
   const reportId = argv[0];
   if (!reportId) {
     console.log(tCli('cli.help.diagnose', lang));
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   const { values } = parseArgsStrictOrExit({
@@ -74,7 +75,7 @@ export async function execute(argv: string[]): Promise<void> {
 
   // Exit code: 0 if health ≥ 70 and no errors; 1 otherwise. CI-friendly.
   if (diag.totals.errors === 0 && diag.healthScore >= 70) {
-    process.exit(0);
+    throw new CliExit(0);
   }
-  process.exit(1);
+  throw new CliExit(1);
 }

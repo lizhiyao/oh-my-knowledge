@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { resolve } from 'node:path';
 import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
@@ -11,7 +12,7 @@ export async function execute(argv: string[]): Promise<void> {
   const rest = argv.slice(1);
   if (!sub) {
     console.log(tCli('cli.help.gold', lang));
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   if (sub === 'init') {
@@ -35,7 +36,7 @@ export async function execute(argv: string[]): Promise<void> {
       console.log(tCli('cli.gold.next_step_edit_annotations', lang));
     } catch (err) {
       console.error((err as Error).message);
-      process.exit(1);
+      throw new CliExit(1);
     }
     return;
   }
@@ -51,7 +52,7 @@ export async function execute(argv: string[]): Promise<void> {
     const dir = positionals[0];
     if (!dir) {
       console.error(tCli('cli.common.usage_gold_validate', lang));
-      process.exit(1);
+      throw new CliExit(1);
     }
     const { validateGoldDataset } = await import('../../grading/gold-cli.js');
     const result = validateGoldDataset(dir);
@@ -61,14 +62,14 @@ export async function execute(argv: string[]): Promise<void> {
     }
     console.error(`✗ gold dataset has ${result.issues.length} issue(s):`);
     for (const msg of result.issues) console.error(`  - ${msg}`);
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   if (sub === 'compare') {
     const reportId = rest[0];
     if (!reportId) {
       console.error('Usage: omk bench gold compare <reportId> --gold-dir <dir>');
-      process.exit(1);
+      throw new CliExit(1);
     }
     const { values } = parseArgsStrictOrExit({
       args: rest.slice(1),
@@ -84,7 +85,7 @@ export async function execute(argv: string[]): Promise<void> {
     const goldDir = values['gold-dir'] as string | undefined;
     if (!goldDir) {
       console.error('--gold-dir is required');
-      process.exit(1);
+      throw new CliExit(1);
     }
     const { loadGoldDataset } = await import('../../grading/gold-dataset.js');
     const { compareGoldToReport, formatGoldCompare } = await import('../../grading/gold-cli.js');
@@ -94,7 +95,7 @@ export async function execute(argv: string[]): Promise<void> {
     if (!dataset) {
       console.error('Cannot load gold dataset:');
       for (const i of issues) console.error(`  - ${i.message}`);
-      process.exit(1);
+      throw new CliExit(1);
     }
     if (issues.length) {
       // Non-fatal issues (e.g. duplicate already filtered) — surface them.
@@ -118,5 +119,5 @@ export async function execute(argv: string[]): Promise<void> {
   }
 
   console.error(`Unknown subcommand: gold ${sub}. Use init / validate / compare.`);
-  process.exit(1);
+  throw new CliExit(1);
 }

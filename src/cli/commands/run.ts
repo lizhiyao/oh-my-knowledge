@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { tCli, langFromArgv } from '../i18n.js';
 import { parseRunConfig } from '../parse-run-config.js';
 import { makeOnProgress } from '../progress.js';
@@ -224,6 +225,6 @@ export async function execute(argv: string[]): Promise<void> {
     }
   } catch (err: unknown) {
     console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
-    process.exit(1);
+    throw new CliExit(1);
   }
 }

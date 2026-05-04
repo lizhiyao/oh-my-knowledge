@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { resolve } from 'node:path';
 import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
@@ -10,7 +11,7 @@ export async function execute(argv: string[]): Promise<void> {
   const reportId = argv[0];
   if (!reportId) {
     console.log(tCli('cli.help.saturation', lang));
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   const { values } = parseArgsStrictOrExit({
@@ -29,7 +30,7 @@ export async function execute(argv: string[]): Promise<void> {
   const saturation = report.variance?.saturation;
   if (!saturation) {
     console.error(tCli('cli.saturation.no_data', lang));
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   // Print the persisted verdict from the original run. The trace stores

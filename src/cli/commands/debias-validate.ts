@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { resolve } from 'node:path';
 import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
@@ -11,18 +12,18 @@ export async function execute(argv: string[]): Promise<void> {
   const rest = argv.slice(1);
   if (!sub) {
     console.log(tCli('cli.help.debias_validate', lang));
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   if (sub !== 'length') {
     console.error(`Unknown debias-validate kind: ${sub}. Use "length".`);
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   const reportId = rest[0];
   if (!reportId) {
     console.error('Usage: omk bench debias-validate length <reportId>');
-    process.exit(1);
+    throw new CliExit(1);
   }
   const { values } = parseArgsStrictOrExit({
     args: rest.slice(1),
@@ -45,7 +46,7 @@ export async function execute(argv: string[]): Promise<void> {
     : undefined;
   if (cliJudgeModelsA && cliJudgeModelsA.length > 1) {
     console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'debias-validate' }));
-    process.exit(2);
+    throw new CliExit(2);
   }
 
   const { createFileStore } = await import('../../server/report-store.js');
@@ -57,7 +58,7 @@ export async function execute(argv: string[]): Promise<void> {
     ?? report.meta?.request?.samplesPath;
   if (!samplesPath) {
     console.error('Cannot find samples path. Pass --samples <path> or ensure report has request.samplesPath.');
-    process.exit(1);
+    throw new CliExit(1);
   }
   const { loadSamples } = await import('../../inputs/load-samples.js');
   const { samples } = loadSamples(samplesPath);
@@ -68,7 +69,7 @@ export async function execute(argv: string[]): Promise<void> {
         : []);
   if (debiasJudges.length === 0) {
     console.error(tCli('cli.common.no_judge_model', lang));
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   process.stderr.write(tCli('cli.debias.warn_cost_doubles', lang));

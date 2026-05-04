@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { tCli, langFromArgv } from '../i18n.js';
@@ -64,7 +65,7 @@ export async function execute(argv: string[]): Promise<void> {
   const skillPath: string | undefined = positionals[0];
   if (!skillPath) {
     console.error(tCli('cli.evolve.specify_skill_path', lang));
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   let samplesFile: string = (values.samples as string) ?? 'eval-samples.json';
@@ -79,7 +80,7 @@ export async function execute(argv: string[]): Promise<void> {
   const evolveJudges = parseJudgeModelsArgOrExit(values['judge-models'] as string);
   if (evolveJudges.length > 1) {
     console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'evolve' }));
-    process.exit(2);
+    throw new CliExit(2);
   }
 
   process.stderr.write(tCli('cli.evolve.section_header', lang, { path: skillPath }));
@@ -143,6 +144,6 @@ export async function execute(argv: string[]): Promise<void> {
     console.log(JSON.stringify(result, null, 2));
   } catch (err: unknown) {
     console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
-    process.exit(1);
+    throw new CliExit(1);
   }
 }

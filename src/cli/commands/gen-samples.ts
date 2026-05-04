@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { tCli, langFromArgv } from '../i18n.js';
@@ -33,7 +34,7 @@ export async function execute(argv: string[]): Promise<void> {
     const skillDir: string = resolve(values['skill-dir'] as string);
     if (!existsSync(skillDir)) {
       console.error(tCli('cli.common.skill_dir_not_found', lang, { path: skillDir }));
-      process.exit(1);
+      throw new CliExit(1);
     }
 
     const { readdirSync, statSync } = await import('node:fs');
@@ -93,13 +94,13 @@ export async function execute(argv: string[]): Promise<void> {
     const skillPath: string | undefined = argv.find((a: string) => !a.startsWith('-'));
     if (!skillPath) {
       console.error(tCli('cli.gen.specify_skill_path', lang));
-      process.exit(1);
+      throw new CliExit(1);
     }
 
     const resolvedPath: string = resolve(skillPath);
     if (!existsSync(resolvedPath)) {
       console.error(tCli('cli.common.skill_file_not_found', lang, { path: resolvedPath }));
-      process.exit(1);
+      throw new CliExit(1);
     }
 
     const skillContent: string = readFileSync(resolvedPath, 'utf-8');
@@ -107,7 +108,7 @@ export async function execute(argv: string[]): Promise<void> {
 
     if (existsSync(outputPath)) {
       console.error(tCli('cli.gen.samples_already_exists', lang));
-      process.exit(1);
+      throw new CliExit(1);
     }
 
     process.stderr.write(tCli('cli.gen.single_generating', lang, { count }));
@@ -122,7 +123,7 @@ export async function execute(argv: string[]): Promise<void> {
       console.log(tCli('cli.gen.review_hint', lang));
     } catch (err: unknown) {
       console.error(tCli('cli.gen.failed', lang, { message: (err as Error).message }));
-      process.exit(1);
+      throw new CliExit(1);
     }
   }
 }

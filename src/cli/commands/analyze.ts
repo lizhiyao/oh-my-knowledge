@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { resolve, join } from 'node:path';
 import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS } from '../parse-run-config.js';
@@ -24,14 +25,14 @@ export async function execute(argv: string[]): Promise<void> {
   const dir = positionals[0];
   if (!dir) {
     console.error(tCli('cli.help.analyze_usage', lang));
-    process.exit(1);
+    throw new CliExit(1);
   }
   const tracePath = resolve(dir);
 
   const { existsSync, mkdirSync, writeFileSync } = await import('node:fs');
   if (!existsSync(tracePath)) {
     console.error(`Trace path does not exist: ${tracePath}`);
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   // 时间窗: --from/--to 优先, --last fallback
@@ -40,7 +41,7 @@ export async function execute(argv: string[]): Promise<void> {
     const inferred = parseLastWindow(values.last);
     if (!inferred) {
       console.error(`Invalid --last format: "${values.last}". Expected e.g. "7d" / "24h" / "30m".`);
-      process.exit(1);
+      throw new CliExit(1);
     }
     from = inferred;
   }

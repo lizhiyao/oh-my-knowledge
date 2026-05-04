@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { resolve } from 'node:path';
 import { tCli, langFromArgv, type CliLang } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
@@ -29,7 +30,7 @@ export async function execute(argv: string[]): Promise<void> {
 
   if (positional.length === 0) {
     console.error(tCli('cli.help.diff_usage', lang));
-    process.exit(positional.length === 0 ? 1 : 0);
+    throw new CliExit(positional.length === 0 ? 1 : 0);
   }
 
   const { values } = parseArgsStrictOrExit({
@@ -57,7 +58,7 @@ export async function execute(argv: string[]): Promise<void> {
 
   console.log(`\n  Diff: ${id1} → ${id2}\n`);
 
-  // Git info — r1/r2 are guaranteed non-null after process.exit() guards above
+  // Git info — r1/r2 are guaranteed non-null after CliExit guards above
   const g1: GitInfo | null | undefined = r1.meta?.gitInfo;
   const g2: GitInfo | null | undefined = r2.meta?.gitInfo;
   if (g1 || g2) {
@@ -140,13 +141,13 @@ async function runSampleLevelDiff(
   const variants = report.meta?.variants ?? [];
   if (variants.length < 2) {
     console.error('Sample-level diff needs at least 2 variants in the report.');
-    process.exit(1);
+    throw new CliExit(1);
   }
   const control = variants[0];
   const treatment = (flags.variant as string | undefined) ?? variants[1];
   if (!variants.includes(treatment)) {
     console.error(`Variant "${treatment}" not in report. Available: ${variants.join(', ')}`);
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   const threshold = flags.threshold != null ? Number(flags.threshold) : 0;

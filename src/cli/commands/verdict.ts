@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { resolve } from 'node:path';
 import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
@@ -10,7 +11,7 @@ export async function execute(argv: string[]): Promise<void> {
   const reportId = argv[0];
   if (!reportId) {
     console.log(tCli('cli.help.verdict', lang));
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   const { values } = parseArgsStrictOrExit({
@@ -42,10 +43,10 @@ export async function execute(argv: string[]): Promise<void> {
   // NOISE / UNDERPOWERED / CAUTIOUS / REGRESS all exit 1 so this composes
   // with shell `&&` chains in CI.
   if (result.level === 'PROGRESS') {
-    process.exit(0);
+    throw new CliExit(0);
   }
   if (result.level === 'SOLO' && result.headline.includes('PASS')) {
-    process.exit(0);
+    throw new CliExit(0);
   }
-  process.exit(1);
+  throw new CliExit(1);
 }

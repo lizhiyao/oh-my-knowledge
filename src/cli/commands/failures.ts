@@ -1,3 +1,4 @@
+import { CliExit } from '../cli-exit.js';
 import { resolve } from 'node:path';
 import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
@@ -10,7 +11,7 @@ export async function execute(argv: string[]): Promise<void> {
   const reportId = argv[0];
   if (!reportId) {
     console.log(tCli('cli.help.failures', lang));
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   const { values } = parseArgsStrictOrExit({
@@ -32,7 +33,7 @@ export async function execute(argv: string[]): Promise<void> {
     : undefined;
   if (cliJudgeModelsB && cliJudgeModelsB.length > 1) {
     console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'failures' }));
-    process.exit(2);
+    throw new CliExit(2);
   }
 
   const { createFileStore } = await import('../../server/report-store.js');
@@ -45,7 +46,7 @@ export async function execute(argv: string[]): Promise<void> {
         : []);
   if (failuresJudges.length === 0) {
     console.error(tCli('cli.common.no_judge_model', lang));
-    process.exit(1);
+    throw new CliExit(1);
   }
 
   const { createExecutor } = await import('../../executors/index.js');
