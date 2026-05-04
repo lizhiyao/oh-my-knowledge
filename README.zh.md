@@ -21,30 +21,13 @@ omk 帮你用客观数据回答,而不是凭感觉。
 ## 快速开始
 
 ```bash
-# 安装
 npm i oh-my-knowledge -g
-
-# 生成评测项目脚手架
-omk bench init my-eval
-cd my-eval
-
-# 把要对比的 artifact 放到 skills/ 目录
-# 方式一：直接放 .md 文件（skills/v1.md, skills/v2.md）
-# 方式二：放完整 artifact 目录（skills/my-skill-v1/SKILL.md, ...）
-# 只放一个 artifact 也行，会自动加 baseline 对照
-
-# 预览评测计划
-omk bench run --dry-run
-
-# 运行评测（自动发现 skills/ 目录下的所有 artifact）
-omk bench run    # → 5 分钟出 HTML 报告 + verdict
-                 # （omk doctor 和 LLM 连通性检测都是强制前置门禁；
-                 #  --skip-connectivity 可跳连通性，doctor 无 skip flag）
-
-# CLI 输出语言: zh (默认) / en — flag 优先级高于环境变量
-omk bench run --lang en
-OMK_LANG=en omk bench report
+omk bench init my-eval && cd my-eval
+# 编辑 skills/code-review-v1/SKILL.md 和 skills/code-review-v2/SKILL.md,填入你的两版内容
+omk bench run --control code-review-v1 --treatment code-review-v2    # → 5 分钟出 HTML 报告 + verdict
 ```
+
+深入:[在 Claude Code / Codex 中调用](#在-ai-coding-agent-中使用) · [`omk bench run` 全 flag](#omk-bench-run) · [artifact 目录结构](#artifact-目录结构) · [`--lang` / `OMK_LANG`](#环境变量)
 
 ## 在 AI Coding Agent 中使用
 

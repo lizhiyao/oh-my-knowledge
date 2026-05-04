@@ -21,30 +21,13 @@ omk answers with objective data, not gut feeling.
 ## Quick start
 
 ```bash
-# install
 npm i oh-my-knowledge -g
-
-# scaffold an eval project
-omk bench init my-eval
-cd my-eval
-
-# drop the artifacts you want to compare into skills/
-# option 1: plain .md files (skills/v1.md, skills/v2.md)
-# option 2: full artifact dirs (skills/my-skill-v1/SKILL.md, ...)
-# a single artifact also works — baseline is auto-added as control
-
-# preview the plan
-omk bench run --dry-run
-
-# run the evaluation (auto-discovers everything under skills/)
-omk bench run    # → HTML report with verdict in 5 minutes
-                 # (omk doctor + LLM connectivity check both run as mandatory gates;
-                 #  --skip-connectivity available for connectivity, doctor is unconditional)
-
-# CLI output language: zh (default) / en — flag wins over env
-omk bench run --lang en
-OMK_LANG=en omk bench report
+omk bench init my-eval && cd my-eval
+# edit skills/code-review-v1/SKILL.md and skills/code-review-v2/SKILL.md with your two versions
+omk bench run --control code-review-v1 --treatment code-review-v2    # → HTML report with verdict in 5 minutes
 ```
+
+Deeper: [use inside Claude Code / Codex](#use-inside-ai-coding-agents) · [`omk bench run` flags](#omk-bench-run) · [artifact directory layout](#artifact-directory-layout) · [`--lang` / `OMK_LANG`](#environment-variables)
 
 ## Use inside AI Coding Agents
 
