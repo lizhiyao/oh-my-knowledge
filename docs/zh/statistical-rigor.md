@@ -17,7 +17,7 @@ t 检验在 LLM 序数评分（Likert 类离散桶，不是正态分布的连续
 
 - **每个 variant 的均值 CI** —— 有放回重采样 N 次（默认 5000）
 - **两个 variant 之间的 pairwise diff CI** —— 重采样后的均值差；如果 CI 不跨 0，差异在选定 α（默认 0.05 → 95% CI）显著
-- **输出**：每个 `VariantResult.bootstrapCI` 含均值跟 pairwise 的 `[lo, hi]`;HTML 报告画 CI 带状区域；CLI `bench verdict` 在六档 verdict 逻辑里消费这些 CI
+- **输出**：每个 `VariantResult.bootstrapCI` 含均值跟 pairwise 的 `[lo, hi]`；HTML 报告画 CI 带状区域；CLI `bench verdict` 在六档 verdict 逻辑里消费这些 CI
 
 **参考**：Efron & Tibshirani (1993), "An Introduction to the Bootstrap"。omk 实现：`src/eval-core/bootstrap.ts`。由 `judge-hash-frozen.test.ts` 冻结防止公式悄悄漂移。
 
@@ -75,7 +75,7 @@ omk 自动检测 gold-judge 同源污染：如果 gold annotator 跟评委是同
 
 跟上面四件并列、但也是默认开的第五件：
 
-baseline 拿到的 prompt **不应**包含被测 skill。omk 切断三条污染路径，防止 baseline 偷偷看到对照组的 skill:
+baseline 拿到的 prompt **不应**包含被测 skill。omk 切断三条污染路径，防止 baseline 偷偷看到对照组的 skill：
 
 1. SDK skill auto-discovery
 2. subagent Skill 工具

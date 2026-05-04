@@ -46,16 +46,16 @@ OMK 下一步不应继续横向堆 metric，而应做“可信评测产品化”
 
 项目级指标：
 
-- GitHub:stars 从 1 增长到 25+；至少 3 个外部 issue / discussion；至少 1 个外部 PR 或明确外部用户案例。
-- npm:weekly downloads 从约 779 增长到 1500+。
+- GitHub：stars 从 1 增长到 25+；至少 3 个外部 issue / discussion；至少 1 个外部 PR 或明确外部用户案例。
+- npm：weekly downloads 从约 779 增长到 1500+。
 - 首次成功路径：新用户从 `omk bench init` 到第一份 HTML report 的中位时间低于 5 分钟。
 - 社区反馈：至少 3 个非作者团队实际跑过 `omk bench run` 并反馈问题。
 
 功能成功指标：
 
-- v0.26：新模板项目在干净环境中 `init -> dry-run -> run -> report` 成功率接近 100%;doctor 输出的问题可直接行动。
+- v0.26：新模板项目在干净环境中 `init -> dry-run -> run -> report` 成功率接近 100%；doctor 输出的问题可直接行动。
 - v0.27：至少 10 条真实 session / trace 能自动转成 eval sample 草稿；trace adapter 遇到未知 vendor schema 时降级而不是崩溃。
-- v0.28:MVP 只覆盖知识 artifact 相关安全面，能跑出安全 verdict 和可复现 case，不追求通用 red-team 覆盖。
+- v0.28：MVP 只覆盖知识 artifact 相关安全面，能跑出安全 verdict 和可复现 case，不追求通用 red-team 覆盖。
 - v0.29：报告可以一键导出 PR / CI / 审计材料，并被至少 1 个真实 PR 流程使用。
 
 ## 行业方向
@@ -76,7 +76,7 @@ OMK 下一步不应继续横向堆 metric，而应做“可信评测产品化”
 低成本高 ROI 动作：
 
 - 写 1 篇长文：主题聚焦“为什么 prompt / RAG / skill / agent 需要可信评测，不是凭感觉上线”。
-- 做 1-2 个 demo video:5 分钟从 `bench init` 到 report；另一个展示 trace 回流 eval dataset。
+- 做 1-2 个 demo video：5 分钟从 `bench init` 到 report；另一个展示 trace 回流 eval dataset。
 - 内部推广 3 个真实团队或项目，收集失败路径和术语误解。
 - 在 dev.to / 掘金 / GitHub Discussions 发布中文和英文短版。
 - 给 awesome-llm-eval / awesome-ai-agents 等列表提 PR，把 OMK 加进去。
@@ -93,10 +93,10 @@ distribution 成功标准：
 
 建议节奏：
 
-- v0.26:2-3 周，偏产品打磨和文案。
-- v0.27:3-5 周，取决于 Claude / Codex session schema 稳定性。
-- v0.28:4-6 周，必须限制为 MVP，否则会滑向完整 red-team 平台。
-- v0.29:2-4 周，偏导出、报告和 CI 集成。
+- v0.26：2-3 周，偏产品打磨和文案。
+- v0.27：3-5 周，取决于 Claude / Codex session schema 稳定性。
+- v0.28：4-6 周，必须限制为 MVP，否则会滑向完整 red-team 平台。
+- v0.29：2-4 周，偏导出、报告和 CI 集成。
 
 主要风险：
 
@@ -106,7 +106,7 @@ distribution 成功标准：
 
 ## 分阶段计划
 
-### v0.26: 首次成功路径
+### v0.26：首次成功路径
 
 目标：用户从安装到第一份可信报告不掉坑。
 
@@ -119,20 +119,20 @@ distribution 成功标准：
 - 压缩 README 首屏信息密度，把“5 分钟得到可信报告”变成唯一主线。
 - 成功标准：`init -> dry-run -> run -> report` 中位时间低于 5 分钟；npm weekly downloads 达到 1500+；新增至少 3 条外部 issue / discussion / 用户反馈。
 
-### v0.27: production trace 到 eval dataset 闭环
+### v0.27：production trace 到 eval dataset 闭环
 
 目标：把 OMK 从离线评测工具推进到“真实使用问题回流评测”的工具。
 
 优先事项：
 
-- 抽出 schema-version-aware trace adapter:Claude / Codex / future vendor trace 都先归一到 OMK 内部 trace schema。
+- 抽出 schema-version-aware trace adapter：Claude / Codex / future vendor trace 都先归一到 OMK 内部 trace schema。
 - `omk analyze sessions` 输出候选失败样本。
 - `omk bench gen-samples --from-traces` 把真实失败 trace 转成 eval sample 草稿。
 - 报告展示“本次 eval 覆盖了哪些真实使用缺口”。
 - 对 Claude Code / Codex trace 做更清晰的 tool trajectory 诊断。
 - 成功标准：至少 10 条真实 trace 能自动生成 sample 草稿；未知 vendor trace 字段不导致崩溃；至少 1 个真实问题通过 trace 回流后被 eval 防回归。
 
-### v0.28: 安全与知识污染专项
+### v0.28：安全与知识污染专项
 
 目标：承接行业 red-team 趋势，但保持 OMK 的知识 artifact 定位。
 
@@ -151,7 +151,7 @@ distribution 成功标准：
 - 支持导入 promptfoo / Inspect 结果，整合到 OMK 报告。
 - 成功标准：每类 MVP 风险至少 3 条可复现用例；安全 verdict 可独立导出；至少 1 个外部工具结果能被导入 OMK 报告。
 
-### v0.29: 可信报告包
+### v0.29：可信报告包
 
 目标：让团队能把报告用于 code review、事故复盘、release notes 和审计。
 
@@ -179,7 +179,7 @@ distribution 成功标准：
 
 ## 修订记录
 
-- 2026-05-03 v1: 初稿，六段（核心判断 / 短板 / 信号 / 行业方向 / 分阶段 / 暂缓）。
-- 2026-05-03 v2: 加成功标准量化 / 并行 distribution stream / 时间节奏与风险 / v0.28 范围约束 / 每个 minor 版本独立成功标准。
+- 2026-05-03 v1：初稿，六段（核心判断 / 短板 / 信号 / 行业方向 / 分阶段 / 暂缓）。
+- 2026-05-03 v2：加成功标准量化 / 并行 distribution stream / 时间节奏与风险 / v0.28 范围约束 / 每个 minor 版本独立成功标准。
 
 如果你打算更新本文档，建议保留 git history 而非整段 rewrite——后人需要从 history 看判断是怎么演化的。

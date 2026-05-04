@@ -21,9 +21,9 @@ omk 的护城河是**统计严谨性**：每条结论都能被研究者审计。
 | [**omk**](https://github.com/lizhiyao/oh-my-knowledge) | TS / Node | 统计严谨性 + Claude Code 原生的 LLM 评测 | MIT |
 | [promptfoo](https://github.com/promptfoo/promptfoo) | TS / Node | 本地 CLI、red-team 重点、被 OpenAI 收购 | MIT |
 | [DeepEval](https://github.com/confident-ai/deepeval) | Python | pytest 风格 metric 库，Confident AI 商业化引流 | Apache 2.0 |
-| [RAGAS](https://github.com/explodinggradients/ragas) | Python | RAG 专用 metric,statement-decomposition 实现 | Apache 2.0 |
+| [RAGAS](https://github.com/explodinggradients/ragas) | Python | RAG 专用 metric，statement-decomposition 实现 | Apache 2.0 |
 | [OpenAI Evals](https://github.com/openai/evals) | Python | benchmark 注册表，OpenAI 官方 | MIT |
-| [LangSmith](https://docs.smith.langchain.com/) | Python (LangChain) | 托管 SaaS,tracing + eval | 商业 |
+| [LangSmith](https://docs.smith.langchain.com/) | Python (LangChain) | 托管 SaaS，tracing + eval | 商业 |
 | [lm-evaluation-harness](https://github.com/EleutherAI/lm-evaluation-harness) | Python | 学术黄金标准，HuggingFace Open LLM Leaderboard 后端 | MIT |
 | [inspect-ai](https://github.com/UKGovernmentBEIS/inspect_ai) | Python | UK AISI 安全评测 | MIT |
 
@@ -52,9 +52,9 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 | 用例质量诊断（7 类 issue） | ✓ | 仅低区分度 | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | 失败 case LLM 聚类 | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
-三层独立评分能挡住"复合分掩盖单层崩盘":`fact 4.5→2.5 + judge 3→5` 在复合均值看着无伤，但三层 all-pass gate 能立刻抓出来。
+三层独立评分能挡住"复合分掩盖单层崩盘"：`fact 4.5→2.5 + judge 3→5` 在复合均值看着无伤，但三层 all-pass gate 能立刻抓出来。
 
-**用例隔离**是一个 construct validity 维度：跑 `baseline` vs skill variant 时，三条 channel 都可能让 `baseline` 静默拿到用户 `~/.claude/skills/` 里被测的那个 skill。omk 默认 `--strict-baseline` 把三条都堵掉：(1) SDK skill auto-discovery，通过 `options.skills:[]`;(2) subagent Skill 工具，通过 `options.disallowedTools:['Skill']`;(3) cwd 文件系统访问 — baseline 默认 cwd 是用户评测工作目录，那里通常有 `skills/<name>/` symlink 给 treatment 用，baseline 用 `Glob` + `Read` 顺 symlink 直读 `SKILL.md` 就完全绕过 SDK 隔离。omk 在用户没显式指定 cwd 时把 baseline cwd 切到 `~/.oh-my-knowledge/isolated-cwd/`（空目录）。`--no-strict-baseline` 是逃生口，eval.yaml 支持 per-variant `allowedSkills` 白名单。inspect-ai 的 per-sample solver 模式能达到类似效果但需要显式逐题 wiring;promptfoo / DeepEval / OpenAI Evals 都不处理这维度。
+**用例隔离**是一个 construct validity 维度：跑 `baseline` vs skill variant 时，三条 channel 都可能让 `baseline` 静默拿到用户 `~/.claude/skills/` 里被测的那个 skill。omk 默认 `--strict-baseline` 把三条都堵掉：（1）SDK skill auto-discovery，通过 `options.skills:[]`；（2）subagent Skill 工具，通过 `options.disallowedTools:['Skill']`；（3）cwd 文件系统访问 — baseline 默认 cwd 是用户评测工作目录，那里通常有 `skills/<name>/` symlink 给 treatment 用，baseline 用 `Glob` + `Read` 顺 symlink 直读 `SKILL.md` 就完全绕过 SDK 隔离。omk 在用户没显式指定 cwd 时把 baseline cwd 切到 `~/.oh-my-knowledge/isolated-cwd/`（空目录）。`--no-strict-baseline` 是逃生口，eval.yaml 支持 per-variant `allowedSkills` 白名单。inspect-ai 的 per-sample solver 模式能达到类似效果但需要显式逐题 wiring；promptfoo / DeepEval / OpenAI Evals 都不处理这维度。
 
 ## 评委
 
@@ -103,7 +103,7 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 
 **研究 / 学术 / NIST AI 800-3 合规对齐**。统计严谨性四件套就是为了回答"这个结论在小 N / 非正态数据 / 评委偏差下是否还稳健"。要发表或审计，bootstrap CI + α + length-debias 三件套是当前唯一现成可用的组合。
 
-**大厂 ML 平台团队**。当 skill / prompt 上线生产，组内会有人问"为什么我应该相信这个数字",omk 的审计链（judge prompt hash + 三层得分 + bootstrap CI + gold α）给你一个能扛住事故复盘的答案。
+**大厂 ML 平台团队**。当 skill / prompt 上线生产，组内会有人问"为什么我应该相信这个数字"，omk 的审计链（judge prompt hash + 三层得分 + bootstrap CI + gold α）给你一个能扛住事故复盘的答案。
 
 **中文 AI 工程团队**。omk 是参与对比工具中**唯一**有完整中文文档的——README、CLI help、HTML 报告、术语规范、缺口信号规范、RAG metric 规范全部原生中文（非机翻）。
 
@@ -117,7 +117,7 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 
 **对基础模型跑学术基准（HumanEval / MMLU 等）**。选 lm-evaluation-harness，它是事实上的 leaderboard 后端；omk 不为 benchmark 注册表场景优化。
 
-**安全场景需要 Docker / Kubernetes / Modal 紧密沙箱**。选 inspect-ai,UK AISI 就是为这场景做的。
+**安全场景需要 Docker / Kubernetes / Modal 紧密沙箱**。选 inspect-ai，UK AISI 就是为这场景做的。
 
 **只是一次性测 5 个 prompt**。写个一次性 Python 脚本就行。omk 的价值在反复跑 + 跨时间统计可比。
 
@@ -126,11 +126,11 @@ omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的
 omk 与其他工具天然兼容。常见组合：
 
 - **omk + LangSmith** — omk 做离线评测严谨性，LangSmith 做生产 tracing
-- **omk + RAGAS** — RAGAS 做细粒度 statement-decomposition faithfulness,omk 做跨版本回归 + 统计 CI
+- **omk + RAGAS** — RAGAS 做细粒度 statement-decomposition faithfulness，omk 做跨版本回归 + 统计 CI
 - **omk + lm-eval-harness** — lm-eval 跑基础模型 leaderboard 分，omk 在 prompt / skill / RAG 层做工程评测
 
 ## 更新与修正
 
-本页尽力保持准确，但竞品能力变化快（2025 年内 promptfoo 加了 `assert-set`,DeepEval 加了 agentic eval suite）。如发现过时或错误，请提 PR，我们会合并。
+本页尽力保持准确，但竞品能力变化快（2025 年内 promptfoo 加了 `assert-set`，DeepEval 加了 agentic eval suite）。如发现过时或错误，请提 PR，我们会合并。
 
 最后核对：2026-04-25。
