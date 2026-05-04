@@ -177,6 +177,14 @@ export type CliMessageKey =
   | 'cli.doctor.skill_readable.fail.empty'
   | 'cli.doctor.skill_readable.fail.too_short'
   | 'cli.doctor.skill_readable.hint.missing'
+  | 'cli.doctor.dependencies.hint.tool'
+  | 'cli.doctor.dependencies.hint.file'
+  | 'cli.doctor.dependencies.hint.env'
+  | 'cli.doctor.dependencies.hint.preflight'
+  | 'cli.doctor.dependencies.issue.tool_not_found'
+  | 'cli.doctor.dependencies.issue.file_not_found'
+  | 'cli.doctor.dependencies.issue.env_not_set'
+  | 'cli.doctor.dependencies.issue.preflight_failed'
   | 'cli.doctor.skill_readable.hint.too_short'
   // doctor — skill_metadata rule
   | 'cli.doctor.skill_metadata.fail.frontmatter_invalid'
@@ -185,7 +193,6 @@ export type CliMessageKey =
   | 'cli.doctor.skill_metadata.hint.missing_skillmd'
   // doctor — dependencies rule
   | 'cli.doctor.dependencies.fail'
-  | 'cli.doctor.dependencies.hint'
   // doctor — samples_contract rule
   | 'cli.doctor.samples_contract.skipped'
   | 'cli.doctor.samples_contract.warn.empty'
@@ -1152,8 +1159,8 @@ Examples:
     en: 'skill content too short ({length} chars, minimum 10)',
   },
   'cli.doctor.skill_readable.hint.missing': {
-    zh: '请确认 skill 文件路径正确,文件可读且非空',
-    en: 'verify skill file path is correct and the file is readable',
+    zh: 'skill 文件未读到内容(尝试路径: {path})。用 `ls -la {path}` 确认文件存在,用 `cat {path}` 确认可读且非空',
+    en: 'no content read from skill (tried path: {path}). Run `ls -la {path}` to verify it exists and `cat {path}` to confirm it is readable and non-empty',
   },
   'cli.doctor.skill_readable.hint.too_short': {
     zh: 'skill 至少需要写一句完整的指令,过短的内容评测出来无意义',
@@ -1181,9 +1188,39 @@ Examples:
     zh: '前置依赖检查失败: {summary}',
     en: 'dependency check failed: {summary}',
   },
-  'cli.doctor.dependencies.hint': {
-    zh: '安装缺失的工具或设置环境变量;若依赖确实可用 (e.g. shim 化测试),修正 skill 引用方式',
-    en: 'install missing tools or set required env vars; if deps are actually present (e.g. shimmed in tests), adjust skill references',
+  'cli.doctor.dependencies.hint.tool': {
+    zh: '工具缺失: 安装到 PATH 或更新 skill 的 requires.tools 引用名',
+    en: 'missing tool: install it on PATH or update skill\'s requires.tools entry',
+  },
+  'cli.doctor.dependencies.hint.file': {
+    zh: '文件缺失: 检查路径是否相对 skill 目录正确,或更新 skill 的 requires.files 引用',
+    en: 'missing file: verify path is relative to skill dir, or update skill\'s requires.files entry',
+  },
+  'cli.doctor.dependencies.hint.env': {
+    zh: '环境变量缺失: 在 .env / shell profile 里 export,或在 CI secrets 中配置',
+    en: 'missing env: export it in .env / shell profile, or configure it in CI secrets',
+  },
+  'cli.doctor.dependencies.hint.preflight': {
+    zh: 'preflight 命令失败: 看上面的失败原因定位根因,或调整 skill 的 preflight 命令',
+    en: 'preflight command failed: read the failure reason above, or adjust the skill\'s preflight command',
+  },
+  // Per-issue translated lines. dep-checker emits structured reasonCode +
+  // reasonDetail (untranslated raw stderr / cwd) so doctor can localize per ctx.lang.
+  'cli.doctor.dependencies.issue.tool_not_found': {
+    zh: '工具 {name} 未找到 (不在 PATH 中)',
+    en: 'tool {name} not found on PATH',
+  },
+  'cli.doctor.dependencies.issue.file_not_found': {
+    zh: '文件 {name} 不存在 (cwd: {detail})',
+    en: 'file {name} not found (cwd: {detail})',
+  },
+  'cli.doctor.dependencies.issue.env_not_set': {
+    zh: '环境变量 {name} 未设置',
+    en: 'env var {name} not set',
+  },
+  'cli.doctor.dependencies.issue.preflight_failed': {
+    zh: 'preflight 命令 "{name}" 执行失败: {detail}',
+    en: 'preflight command "{name}" failed: {detail}',
   },
   // samples_contract
   'cli.doctor.samples_contract.skipped': {
@@ -1224,13 +1261,13 @@ oh-my-knowledge — omk doctor 健康检查
 
 示例:
   omk doctor examples/code-review/skills/v1.md
-  omk doctor examples/code-review/skills --json | jq .failed
+  omk doctor examples/code-review/skills --json | jq .outcome  # passed | warnings_only | failed
   omk doctor --gate; echo $?
 
 doctor 检查项(纯静态 / 零 LLM 调用):
   - skill 文件可读 + 内容有最小长度
   - skill 元数据合法 (front-matter 若有)
-  - 前置依赖完整 (引用的 CLI 工具 / 文件 / 环境变量)
+  - 前置依赖完整 (引用的 CLI 工具 / 文件 / 环境变量 / preflight 命令)
   - 用例 ↔ skill 输入约定 (warn 级, 仅传 samples 时跑)
 
 executor / judge 连通性由 evaluation preflight 负责, 不在 doctor 范围内。
@@ -1257,13 +1294,13 @@ Options:
 
 Examples:
   omk doctor examples/code-review/skills/v1.md
-  omk doctor examples/code-review/skills --json | jq .failed
+  omk doctor examples/code-review/skills --json | jq .outcome  # passed | warnings_only | failed
   omk doctor --gate; echo $?
 
 Checks (pure static / zero LLM calls):
   - skill file readable + minimum content length
   - skill metadata valid (front-matter if present)
-  - dependencies present (referenced CLI tools / files / env vars)
+  - dependencies present (referenced CLI tools / files / env vars / preflight commands)
   - samples ↔ skill contract (warn-level, only when samples provided)
 
 executor / judge connectivity is handled by evaluation preflight, not doctor.

@@ -239,7 +239,7 @@ export async function runEvaluation({
         timeoutMs: timeoutMs ?? 8000,
         lang,
       });
-      if (doctorReport.failed) {
+      if (doctorReport.outcome === 'failed') {
         renderDoctorReportText(doctorReport, lang);
         throw new Error(`doctor failed: ${tCli('cli.doctor.gate_blocked', lang)}`);
       }

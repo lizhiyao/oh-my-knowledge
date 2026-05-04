@@ -48,6 +48,15 @@ const crashingRule: DoctorRule = {
   },
 };
 
+const skippedRule: DoctorRule = {
+  id: 'test_skipped',
+  severity: 'warn',
+  labelKey: 'cli.doctor.rule.skill_readable',
+  async check() {
+    return { status: 'skipped', message: 'preconditions not met' };
+  },
+};
+
 describe('resolveDoctorTargets', () => {
   it('resolves all variants in a directory', () => {
     const artifacts = resolveDoctorTargets(EXAMPLE_SKILLS_DIR, '/tmp');
@@ -144,8 +153,7 @@ describe('runDoctor', () => {
     });
     assert.equal(report.kind, 'doctor');
     assert.ok(report.skills.length >= 2);
-    assert.equal(report.failed, false);
-    assert.equal(report.warned, false);
+    assert.equal(report.outcome, 'passed');
     assert.equal(report.totals.pass, report.skills.length);
     for (const skill of report.skills) {
       assert.equal(skill.status, 'pass');
@@ -154,7 +162,7 @@ describe('runDoctor', () => {
     }
   });
 
-  it('marks report.failed=true when any rule fails fatally', async () => {
+  it('marks outcome=failed when any rule fails fatally', async () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
@@ -164,12 +172,11 @@ describe('runDoctor', () => {
       lang: 'zh',
       rules: [failingRule],
     });
-    assert.equal(report.failed, true);
-    assert.equal(report.warned, false);
+    assert.equal(report.outcome, 'failed');
     assert.ok(report.totals.fail >= 1);
   });
 
-  it('marks report.warned=true (not failed) when only warn rules trigger', async () => {
+  it('marks outcome=warnings_only when only warn rules trigger (no fatal-fail)', async () => {
     const report = await runDoctor({
       target: EXAMPLE_SKILLS_DIR,
       cwd: '/tmp',
@@ -179,8 +186,7 @@ describe('runDoctor', () => {
       lang: 'zh',
       rules: [warningRule],
     });
-    assert.equal(report.failed, false);
-    assert.equal(report.warned, true);
+    assert.equal(report.outcome, 'warnings_only');
   });
 
   it('catches rule exceptions and marks as fail rather than crashing the engine', async () => {
@@ -193,7 +199,7 @@ describe('runDoctor', () => {
       lang: 'zh',
       rules: [crashingRule],
     });
-    assert.equal(report.failed, true);
+    assert.equal(report.outcome, 'failed');
     for (const skill of report.skills) {
       assert.equal(skill.results[0].status, 'fail');
       assert.ok(skill.results[0].message.includes('rule crashed'));
@@ -231,8 +237,7 @@ describe('runDoctor', () => {
         rules: [passingRule],
       });
       assert.equal(report.skills.length, 0);
-      assert.equal(report.failed, false);
-      assert.equal(report.warned, false);
+      assert.equal(report.outcome, 'passed');
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
@@ -283,7 +288,7 @@ describe('runDoctor', () => {
     });
     assert.equal(report.skills.length, 1);
     assert.equal(report.skills[0].skillName, 'inline-fixture');
-    assert.equal(report.failed, false);
+    assert.equal(report.outcome, 'passed');
   });
 
   it('default rules include both BUILTIN_RULES and registerRule()-injected custom rules', async () => {
@@ -353,8 +358,7 @@ describe('runDoctor', () => {
       lang: 'zh',
     });
     assert.equal(report.skills.length, 0);
-    assert.equal(report.failed, false);
-    assert.equal(report.warned, false);
+    assert.equal(report.outcome, 'passed');
   });
 
   it('opts.artifacts undefined falls back to target resolution (preserves omk doctor [path] UX)', async () => {
@@ -497,5 +501,112 @@ describe('runDoctor', () => {
       rmSync(tmpArtifactCwd, { recursive: true, force: true });
       rmSync(tmpOptsDepCwd, { recursive: true, force: true });
     }
+  });
+});
+
+describe('DoctorReport — CI-friendly schema fields', () => {
+  it('stamps schemaVersion on every report (CI can pin/check)', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule],
+    });
+    assert.equal(typeof report.schemaVersion, 'string');
+    assert.match(report.schemaVersion, /^\d+\.\d+\.\d+$/);
+  });
+
+  it('outcome="passed" when all skills pass cleanly', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule],
+    });
+    assert.equal(report.outcome, 'passed');
+  });
+
+  it('outcome="warnings_only" when only warn rules trigger (no fatal-fail)', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [warningRule],
+    });
+    assert.equal(report.outcome, 'warnings_only');
+  });
+
+  it('outcome="failed" when any rule fails fatally (dominates warns)', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [failingRule, warningRule],
+    });
+    assert.equal(report.outcome, 'failed');
+  });
+
+  it('ruleStats counts each rule outcome across all skills, including skipped', async () => {
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule, warningRule, skippedRule],
+    });
+    const skillCount = report.skills.length;
+    assert.equal(report.ruleStats.pass, skillCount);
+    assert.equal(report.ruleStats.warn, skillCount);
+    assert.equal(report.ruleStats.skipped, skillCount);
+    assert.equal(report.ruleStats.fail, 0);
+    assert.equal(report.ruleStats.total, skillCount * 3);
+    assert.equal(
+      report.ruleStats.total,
+      report.ruleStats.pass + report.ruleStats.warn + report.ruleStats.fail + report.ruleStats.skipped,
+      'total must equal sum of statuses',
+    );
+  });
+
+  it('totals (per-skill) and ruleStats (per-rule) report different granularities', async () => {
+    // 1 skill with 1 pass + 1 warn rule:
+    //   - per-skill outcome = warn (the worst non-fail outcome on the skill)
+    //   - per-rule stats: pass=1, warn=1
+    // This test pins the contract that totals != ruleStats by design.
+    const inlineArtifact: Artifact = {
+      name: 'inline-mixed',
+      kind: 'skill',
+      source: 'inline',
+      content: '你是一个测试 skill,内容长度足够通过 readable rule。',
+    };
+    const report = await runDoctor({
+      artifacts: [inlineArtifact],
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [passingRule, warningRule],
+    });
+    assert.equal(report.skills.length, 1);
+    assert.equal(report.totals.pass, 0, 'skill outcome rolls up to warn, not pass');
+    assert.equal(report.totals.warn, 1);
+    assert.equal(report.ruleStats.pass, 1, 'per-rule pass count is unaffected by roll-up');
+    assert.equal(report.ruleStats.warn, 1);
+    assert.equal(report.ruleStats.total, 2);
+    assert.equal(report.outcome, 'warnings_only');
   });
 });

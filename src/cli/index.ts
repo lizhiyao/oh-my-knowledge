@@ -633,7 +633,7 @@ async function handleDoctor(argv: string[]): Promise<void> {
     console.log(renderDoctorReportJson(report));
   } else if (isGate) {
     // gate 模式: 静默 stdout, fail 时简短 stderr 摘要(供 CI 抓 exit code)
-    if (report.failed) {
+    if (report.outcome === 'failed') {
       const summary = lang === 'zh'
         ? `doctor failed: ${report.totals.fail} 个 skill 未通过 (${report.totals.warn} warn / ${report.totals.pass} pass)`
         : `doctor failed: ${report.totals.fail} skills did not pass (${report.totals.warn} warn / ${report.totals.pass} pass)`;
@@ -643,7 +643,7 @@ async function handleDoctor(argv: string[]): Promise<void> {
     renderDoctorReportText(report, lang);
   }
 
-  process.exit(report.failed ? 1 : 0);
+  process.exit(report.outcome === 'failed' ? 1 : 0);
 }
 
 async function handleAnalyze(argv: string[]): Promise<void> {

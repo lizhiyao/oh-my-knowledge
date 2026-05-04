@@ -67,6 +67,28 @@ describe('skillReadableRule', () => {
     })));
     assert.equal(r.status, 'pass');
   });
+
+  it('echoes the file path in the hint and detail when content is missing', async () => {
+    const r = await skillReadableRule.check(ctxWith(sampleSkill({
+      content: null,
+      locator: '/tmp/missing/skills/v1.md',
+    })));
+    assert.equal(r.status, 'fail');
+    assert.ok(r.hint?.includes('/tmp/missing/skills/v1.md'),
+      `hint should echo the tried path; got: ${r.hint}`);
+    assert.equal((r.detail as { triedPath?: string })?.triedPath, '/tmp/missing/skills/v1.md');
+  });
+
+  it('falls back to inline marker in the hint when artifact has no locator', async () => {
+    const r = await skillReadableRule.check(ctxWith(sampleSkill({
+      name: 'inline-anon',
+      source: 'inline',
+      content: null,
+      locator: undefined,
+    })));
+    assert.equal(r.status, 'fail');
+    assert.match(r.hint ?? '', /<inline:inline-anon>/);
+  });
 });
 
 describe('skillMetadataRule', () => {
@@ -156,6 +178,79 @@ describe('dependenciesPresentRule', () => {
     })));
     assert.equal(r.status, 'fail');
     assert.ok(Array.isArray((r.detail as { missing?: unknown[] }).missing));
+  });
+
+  it('hint mentions tool-fix advice when only a tool is missing (no file/env noise)', async () => {
+    const r = await dependenciesPresentRule.check(ctxWith(sampleSkill({
+      content: '请运行 nonexistent-fake-cli 命令来分析数据。',
+    })));
+    assert.equal(r.status, 'fail');
+    assert.match(r.hint ?? '', /requires\.tools|工具缺失|missing tool/);
+    // Should not surface unrelated category fixes when those categories have 0 items.
+    assert.doesNotMatch(r.hint ?? '', /requires\.files|文件缺失|missing file/);
+    assert.doesNotMatch(r.hint ?? '', /requires\.env|环境变量缺失|missing env/);
+  });
+
+  it('hint mentions env-fix advice when only an env var is required and missing', async () => {
+    // Surface env-only path: declare a required env var that isn't set.
+    const envName = `OMK_DOCTOR_TEST_NOT_SET_${Date.now()}`;
+    delete process.env[envName];
+    const r = await dependenciesPresentRule.check(ctxWith(sampleSkill(), {
+      requires: { env: [envName] },
+    }));
+    assert.equal(r.status, 'fail');
+    assert.match(r.hint ?? '', /shell profile|CI secrets|环境变量缺失|missing env/);
+    assert.doesNotMatch(r.hint ?? '', /requires\.tools|工具缺失|missing tool/);
+  });
+
+  it('preflight failure surfaces command + reasonCode in localized hint', async () => {
+    // dep-checker emits structured DependencyIssue { category: 'preflight',
+    // reasonCode: 'preflight_failed', reasonDetail: <stderr> }. Doctor localizes
+    // it via ctx.lang. Generic "install on PATH" advice would mislead away from
+    // the real cause (the command itself failed, not a missing binary).
+    const skill = sampleSkill({
+      content: `---\npreflight:\n  - "false"\n---\n\n你是一个测试 skill,内容长度足够通过 readable rule。`,
+      metadata: { preflight: ['false'] },
+    });
+    const r = await dependenciesPresentRule.check(ctxWith(skill));
+    assert.equal(r.status, 'fail');
+    assert.match(r.hint ?? '', /preflight 命令 "false" 执行失败/);
+    const missing = (r.detail as { missing?: Array<{ category?: string; reasonCode?: string }> }).missing;
+    assert.ok(Array.isArray(missing) && missing.length > 0);
+    const pf = missing!.find((m) => m.reasonCode === 'preflight_failed');
+    assert.ok(pf, 'should carry preflight_failed reasonCode');
+    assert.equal(pf!.category, 'preflight');
+  });
+
+  it('preflight stderr is preserved in reasonDetail (not just truncated to "Command failed:")', async () => {
+    // execSync's err.message is "Command failed: <cmd>\n<stderr>" — splitting and
+    // keeping line 0 used to drop the actual stderr. Now we read err.stderr
+    // directly so the real cause reaches the user.
+    const stderrMarker = `OMK_PREFLIGHT_STDERR_TOKEN_${Date.now()}`;
+    const skill = sampleSkill({
+      content: '你是一个测试 skill,内容长度足够通过 readable rule。',
+      metadata: { preflight: [`sh -c 'echo ${stderrMarker} >&2; exit 2'`] },
+    });
+    const r = await dependenciesPresentRule.check(ctxWith(skill));
+    assert.equal(r.status, 'fail');
+    assert.ok(r.hint?.includes(stderrMarker),
+      `hint should carry the stderr line "${stderrMarker}"; got: ${r.hint}`);
+    const missing = (r.detail as { missing?: Array<{ reasonDetail?: string }> }).missing;
+    assert.ok(missing?.some((m) => m.reasonDetail?.includes(stderrMarker)));
+  });
+
+  it('--lang en hint contains no Chinese characters (i18n is structural, not pass-through)', async () => {
+    // Catches the bug where dep-checker leaked Chinese hint strings into doctor's
+    // localized hint. With reasonCode-driven translation, en stays pure-en.
+    const skill = sampleSkill({
+      content: '请运行 nonexistent-fake-cli-en 命令来分析数据。',
+    });
+    const r = await dependenciesPresentRule.check(ctxWith(skill, { lang: 'en' }));
+    assert.equal(r.status, 'fail');
+    assert.doesNotMatch(r.hint ?? '', /[一-鿿]/,
+      `en hint should contain no CJK chars; got: ${r.hint}`);
+    assert.doesNotMatch(r.message ?? '', /[一-鿿]/,
+      `en message should contain no CJK chars; got: ${r.message}`);
   });
 });
 
