@@ -6,10 +6,10 @@
 用法：
   export OPENAI_API_KEY="你的 API Key"
   export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"  # 以智谱为例
-  omk bench run --executor "python openai-compat-executor.py" --model glm-4-plus
+  omk eval --executor "python openai-compat-executor.py" --model glm-4-plus
 
 也可以直接使用内置的 openai-api 执行器（无需此脚本）：
-  omk bench run --executor openai-api --model glm-4-plus
+  omk eval --executor openai-api --model glm-4-plus
 """
 
 import json

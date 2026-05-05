@@ -16,23 +16,23 @@ describe('CLI i18n dictionary parity (zh ↔ en)', () => {
 
 describe('tCli()', () => {
   it('returns zh value by default when lang omitted', () => {
-    assert.equal(tCli('cli.common.help_hint'), CLI_DICT['cli.common.help_hint'].zh);
+    assert.equal(tCli('cli.common.unknown_domain'), CLI_DICT['cli.common.unknown_domain'].zh);
   });
 
   it('returns en value when lang=en', () => {
-    assert.equal(tCli('cli.common.help_hint', 'en'), CLI_DICT['cli.common.help_hint'].en);
+    assert.equal(tCli('cli.common.unknown_domain', 'en'), CLI_DICT['cli.common.unknown_domain'].en);
   });
 
   it('substitutes {param} placeholders', () => {
-    const out = tCli('cli.common.unknown_bench_command', 'en', { command: 'foo' });
+    const out = tCli('cli.common.unknown_domain', 'en', { domain: 'foo' });
     assert.match(out, /foo/);
-    assert.doesNotMatch(out, /\{command\}/);
+    assert.doesNotMatch(out, /\{domain\}/);
   });
 
   it('replaces all occurrences of a placeholder', () => {
-    const out = tCli('cli.common.lang_invalid_silent', 'zh', { value: 'fr' });
-    assert.match(out, /fr/);
-    assert.doesNotMatch(out, /\{value\}/);
+    const out = tCli('cli.run.batch_verdict_header', 'zh', { status: '未通过', passed: 1, total: 2 });
+    assert.match(out, /1/);
+    assert.doesNotMatch(out, /\{passed\}/);
   });
 });
 

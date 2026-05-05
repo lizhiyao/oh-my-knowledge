@@ -29,7 +29,7 @@
       },
       {
         "type": "contains",
-        "value": "分析完成",
+        "value": "ANALYSIS_DONE",
         "weight": 0.5
       },
       {

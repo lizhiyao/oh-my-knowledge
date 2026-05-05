@@ -17,16 +17,16 @@ interface ExecError extends Error {
 }
 
 /**
- * bench run / bench gate / doctor 用 parseArgs strict:true。
+ * eval / doctor / observe / improve 用 parseArgs strict:true。
  * 任何未声明的 flag (含已删除的 --skip-doctor / --skip-preflight / --skip-smoke)
  * 都会 fail with Unknown option, 不静默吞掉。
  *
  * exit 2 = parser 失败 (区分 doctor / gate eval failure 用的 exit 1)。
  */
 describe('strict unknown option rejection', () => {
-  it('omk bench run --skip-doctor exits 2 with Unknown option', async () => {
+  it('omk eval --skip-doctor exits 2 with Unknown option', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'bench', 'run', '--skip-doctor', '--dry-run']),
+      () => execFileAsync('node', [CLI, 'eval', '--skip-doctor', '--dry-run']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2, 'unknown option should exit 2');
@@ -39,9 +39,9 @@ describe('strict unknown option rejection', () => {
     );
   });
 
-  it('omk bench run --skip-preflight (renamed) exits 2 with Unknown option', async () => {
+  it('omk eval --skip-preflight (renamed) exits 2 with Unknown option', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'bench', 'run', '--skip-preflight', '--dry-run']),
+      () => execFileAsync('node', [CLI, 'eval', '--skip-preflight', '--dry-run']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
@@ -54,14 +54,14 @@ describe('strict unknown option rejection', () => {
     );
   });
 
-  it('omk bench gate --skip-doctor exits 2 with Unknown option', async () => {
+  it('omk improve samples --bogus exits 2 before generation work', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'bench', 'gate', '--skip-doctor', '--dry-run']),
+      () => execFileAsync('node', [CLI, 'improve', 'samples', 'skills/v1.md', '--bogus']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
         assert.ok(
-          e.stderr.includes('Unknown option') && e.stderr.includes('--skip-doctor'),
+          e.stderr.includes('Unknown option') && e.stderr.includes('--bogus'),
           `stderr should name unknown option: ${e.stderr.slice(0, 300)}`,
         );
         return true;
@@ -86,7 +86,7 @@ describe('strict unknown option rejection', () => {
 
   it('arbitrary unknown flag also rejected (not just deprecated ones)', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'bench', 'run', '--no-such-flag', '--dry-run']),
+      () => execFileAsync('node', [CLI, 'eval', '--no-such-flag', '--dry-run']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
@@ -96,9 +96,9 @@ describe('strict unknown option rejection', () => {
     );
   });
 
-  it('omk bench evolve --bogus-flag exits 2 (sanity: helper covers non-run handler)', async () => {
+  it('omk improve skill --bogus-flag exits 2 (sanity: helper covers improve skill handler)', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'bench', 'evolve', 'skills/v1.md', '--bogus-flag']),
+      () => execFileAsync('node', [CLI, 'improve', 'skill', 'skills/v1.md', '--bogus-flag']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
@@ -108,9 +108,9 @@ describe('strict unknown option rejection', () => {
     );
   });
 
-  it('omk analyze --bogus-flag exits 2 (sanity: helper covers analyze handler)', async () => {
+  it('omk observe --bogus-flag exits 2 (sanity: helper covers observe handler)', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'analyze', '/tmp/some-path', '--bogus-flag']),
+      () => execFileAsync('node', [CLI, 'observe', '/tmp/some-path', '--bogus-flag']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
@@ -120,10 +120,10 @@ describe('strict unknown option rejection', () => {
     );
   });
 
-  it('omk bench init --bogus exits 2 (init goes through helper now)', async () => {
+  it('omk init --bogus exits 2 (init goes through helper now)', async () => {
     // 之前 handleInit 直接 argv[0] 当目录名, --bogus 被当成 dir 名写文件 (静默 garbage)。
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'bench', 'init', '--bogus']),
+      () => execFileAsync('node', [CLI, 'init', '--bogus']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
@@ -133,10 +133,9 @@ describe('strict unknown option rejection', () => {
     );
   });
 
-  it('omk bench gold validate <dir> --bogus exits 2 (gold subcommand also strict)', async () => {
-    // 之前 gold validate 只读 rest[0], --bogus 被吞掉, 用户拿到的是 dataset 错而不是 unknown option。
+  it('omk improve failures <id> --bogus exits 2 (failure clustering handler stays strict)', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'bench', 'gold', 'validate', '/tmp/does-not-exist-doctor', '--bogus']),
+      () => execFileAsync('node', [CLI, 'improve', 'failures', 'fake-report-id', '--bogus']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
@@ -146,20 +145,20 @@ describe('strict unknown option rejection', () => {
     );
   });
 
-  it('omk bench run with valid flags still works (regression)', async () => {
+  it('omk eval with valid flags still works (regression)', async () => {
     // 健康路径不被 strict 误伤: --dry-run / --skip-connectivity 等合法 flag 必须通过。
     const SAMPLES = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');
     const SKILLS = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
     const { stdout } = await execFileAsync('node', [
-      CLI, 'bench', 'run',
+      CLI, 'eval',
       '--samples', SAMPLES,
       '--skill-dir', SKILLS,
       '--control', 'v1',
       '--treatment', 'v2',
       '--dry-run',
       '--skip-connectivity',
+      '--lang', 'zh',
     ]);
-    const parsed = JSON.parse(stdout);
-    assert.equal(parsed.dryRun, true);
+    assert.ok(stdout.includes('eval dry-run'));
   });
 });

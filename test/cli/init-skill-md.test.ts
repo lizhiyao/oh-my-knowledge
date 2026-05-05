@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const CLI = join(__dirname, '..', '..', 'dist', 'src', 'cli', 'index.js');
 
-describe('omk bench init produces directory-skill SKILL.md layout', () => {
+describe('omk init produces directory-skill SKILL.md layout', () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -23,7 +23,7 @@ describe('omk bench init produces directory-skill SKILL.md layout', () => {
   });
 
   it('creates two directory-skill variants under skills/', () => {
-    execFileSync('node', [CLI, 'bench', 'init', tmpDir], { stdio: 'pipe' });
+    execFileSync('node', [CLI, 'init', tmpDir], { stdio: 'pipe' });
 
     assert.ok(existsSync(join(tmpDir, 'skills', 'code-review-v1')), 'v1 skill dir');
     assert.ok(existsSync(join(tmpDir, 'skills', 'code-review-v2')), 'v2 skill dir');
@@ -39,7 +39,7 @@ describe('omk bench init produces directory-skill SKILL.md layout', () => {
   });
 
   it('SKILL.md ships with Claude Code-compatible frontmatter so the file is deployable as-is', () => {
-    execFileSync('node', [CLI, 'bench', 'init', tmpDir], { stdio: 'pipe' });
+    execFileSync('node', [CLI, 'init', tmpDir], { stdio: 'pipe' });
 
     const v1Content = readFileSync(join(tmpDir, 'skills', 'code-review-v1', 'SKILL.md'), 'utf-8');
     const v2Content = readFileSync(join(tmpDir, 'skills', 'code-review-v2', 'SKILL.md'), 'utf-8');
@@ -62,7 +62,7 @@ describe('omk bench init produces directory-skill SKILL.md layout', () => {
   });
 
   it('skill loader resolves the produced layout as directory-skill artifacts', () => {
-    execFileSync('node', [CLI, 'bench', 'init', tmpDir], { stdio: 'pipe' });
+    execFileSync('node', [CLI, 'init', tmpDir], { stdio: 'pipe' });
 
     const artifacts = resolveArtifacts(
       join(tmpDir, 'skills'),
@@ -80,7 +80,7 @@ describe('omk bench init produces directory-skill SKILL.md layout', () => {
   });
 
   it('next-step output explains evaluation injection, cross-executor parity, and the directory-level deploy path', () => {
-    const output = execFileSync('node', [CLI, 'bench', 'init', tmpDir], { encoding: 'utf-8' });
+    const output = execFileSync('node', [CLI, 'init', tmpDir], { encoding: 'utf-8' });
     assert.match(output, /code-review-v1\/SKILL\.md/);
     assert.match(output, /code-review-v2\/SKILL\.md/);
 

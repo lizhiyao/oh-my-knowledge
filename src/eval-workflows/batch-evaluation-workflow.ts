@@ -42,6 +42,12 @@ interface RunSingleEvaluationOptions {
   judgeModels?: import('../types/index.js').JudgeConfig[];
   /** length-debias toggle. Default true. */
   lengthDebias?: boolean;
+  /** --bootstrap. Distribution-free CI on each child report. */
+  bootstrap?: boolean;
+  /** --bootstrap-samples N. */
+  bootstrapSamples?: number;
+  /** Hard budget caps forwarded to each child report. */
+  budget?: import('../types/index.js').EvalBudget;
 }
 
 interface CompletedBatchSkillRun {
@@ -132,6 +138,10 @@ export function buildBatchEvaluationReport({
   repeat,
   judgeModels,
   noCache,
+  bootstrap,
+  bootstrapSamples,
+  lengthDebias,
+  budget,
 }: {
   batchRunId: string;
   skillDir: string;
@@ -151,6 +161,10 @@ export function buildBatchEvaluationReport({
   repeat?: number;
   judgeModels?: import('../types/index.js').JudgeConfig[];
   noCache: boolean;
+  bootstrap?: boolean;
+  bootstrapSamples?: number;
+  lengthDebias?: boolean;
+  budget?: import('../types/index.js').EvalBudget;
 }): { report: BatchEvaluationReport; job: import('../types/index.js').EvaluationJob } {
   const effectiveBatchJudges = judgeModels && judgeModels.length > 0
     ? judgeModels
@@ -179,6 +193,10 @@ export function buildBatchEvaluationReport({
     repeat,
     judgeModels: effectiveBatchJudges,
     batch: true,
+    bootstrap,
+    bootstrapSamples,
+    lengthDebias,
+    budget,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(batchRunId, createdAt);
@@ -267,6 +285,9 @@ export async function executeBatchEvaluationRuns({
   judgeRepeat,
   judgeModels,
   lengthDebias,
+  bootstrap,
+  bootstrapSamples,
+  budget,
   noCache = false,
   strictBaseline,
   variantAllowedSkills,
@@ -297,6 +318,9 @@ export async function executeBatchEvaluationRuns({
   judgeRepeat?: number;
   judgeModels?: import('../types/index.js').JudgeConfig[];
   lengthDebias?: boolean;
+  bootstrap?: boolean;
+  bootstrapSamples?: number;
+  budget?: import('../types/index.js').EvalBudget;
   noCache?: boolean;
   /** strict-baseline default. Forwarded to per-skill resolveArtifacts. */
   strictBaseline?: boolean;
@@ -351,6 +375,9 @@ export async function executeBatchEvaluationRuns({
       judgeRepeat,
       judgeModels,
       lengthDebias,
+      bootstrap,
+      bootstrapSamples,
+      budget,
     });
 
     skillResults.push({
@@ -384,6 +411,10 @@ export async function executeBatchEvaluationRuns({
     repeat,
     judgeModels,
     noCache,
+    bootstrap,
+    bootstrapSamples,
+    lengthDebias,
+    budget,
   });
   const filePath = persistReport(batchReport, outputDir);
   const resolvedJobStore = persistJob ? (jobStore ?? createFileJobStore(DEFAULT_JOBS_DIR)) : null;

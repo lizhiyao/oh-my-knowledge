@@ -8,9 +8,9 @@
   },
   {
     "sample_id": "s002",
-    "prompt": "Say hello in Chinese",
+    "prompt": "Say hello in English",
     "assertions": [
-      { "type": "contains", "value": "你好", "weight": 1 }
+      { "type": "contains", "value": "hello", "weight": 1 }
     ]
   }
 ]

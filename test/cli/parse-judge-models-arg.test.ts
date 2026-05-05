@@ -4,8 +4,8 @@ import { parseJudgeModelsArg } from '../../src/cli/parse-run-config.js';
 
 /**
  * `parseJudgeModelsArg` 是 `--judge-models executor:model[,executor:model,...]`
- * CLI 参数的统一解析器,3 个 standalone 子命令(evolve / debias-validate /
- * failures)和主路径 `bench run` / `bench gate` 共享同一份解析。
+ * CLI 参数的统一解析器，`eval` / `improve skill` / `improve failures`
+ * 共享同一份解析。
  */
 describe('parseJudgeModelsArg', () => {
   it('单条 executor:model 解析为 1-entry 数组', () => {

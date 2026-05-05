@@ -214,8 +214,8 @@ export async function runEvaluation({
   // doctor 不可 skip — 静态检查无成本理由跳过, 也无 escape hatch flag。
   // LLM 连通性是另一回事, 由独立的 skipConnectivity 控制。
   //
-  // 路径推断收口在 buildDoctorPreflightContext: doctor engine 不再自己猜 bench 的
-  // artifact 形态 / cwd 优先级, 任何 bench 路径语义边界变化只改 builder 一处。
+  // 路径推断收口在 buildDoctorPreflightContext：doctor engine 不再自己猜 eval 的
+  // artifact 形态 / cwd 优先级，任何 eval 路径语义边界变化只改 builder 一处。
   {
     const { buildDoctorPreflightContext } = await import('../doctor/preflight.js');
     const doctorCtx = buildDoctorPreflightContext({
@@ -253,7 +253,7 @@ export async function runEvaluation({
     // Emit power warnings during dry-run too — this is exactly when users
     // preview the run, the right moment to flag "you might be wasting it".
     const { buildPowerWarnings, buildIsolationWarnings } = await import('./evaluation-pipeline.js');
-    for (const w of buildPowerWarnings(samples.length, repeat ?? 1)) {
+    for (const w of buildPowerWarnings(samples.length, repeat ?? 1, lang)) {
       process.stderr.write(`${w}\n`);
     }
     for (const w of buildIsolationWarnings(resolvedArtifacts, strictBaseline)) {
@@ -354,6 +354,7 @@ export async function runEvaluation({
     budget,
     strictBaseline,
     runId,
+    lang,
   });
 }
 
@@ -591,7 +592,10 @@ export async function runBatchEvaluation({
   repeat,
   judgeRepeat,
   judgeModels,
+  bootstrap,
+  bootstrapSamples,
   lengthDebias,
+  budget,
   noCache = false,
   strictBaseline,
   variantAllowedSkills,
@@ -646,7 +650,10 @@ export async function runBatchEvaluation({
           repeat,
           judgeRepeat,
           judgeModels: effectiveJudgeModels,
+          bootstrap,
+          bootstrapSamples,
           lengthDebias,
+          budget,
           noCache,
           verbose,
           concurrency,
@@ -713,17 +720,20 @@ export async function runBatchEvaluation({
     repeat,
     judgeRepeat,
     judgeModels,
+    bootstrap,
+    bootstrapSamples,
     lengthDebias,
+    budget,
     noCache,
     strictBaseline,
     variantAllowedSkills,
     runSingleEvaluation: async (options) => {
       // repeat > 1 时走 runMultiple 做 variance; batch=true 标记让 meta.request 如实反映
       if (repeat && repeat > 1) {
-        const multi = await runMultiple({ ...options, repeat, batch: true, judgeRepeat, judgeModels, lengthDebias });
+        const multi = await runMultiple({ ...options, repeat, batch: true, judgeRepeat, judgeModels, bootstrap, bootstrapSamples, lengthDebias, budget });
         return { report: multi.report as EvaluationReport, filePath: multi.filePath };
       }
-      const result = await runEvaluation({ ...options, batch: true, judgeRepeat, judgeModels, lengthDebias });
+      const result = await runEvaluation({ ...options, batch: true, judgeRepeat, judgeModels, bootstrap, bootstrapSamples, lengthDebias, budget });
       return { report: result.report as EvaluationReport, filePath: result.filePath };
     },
   });

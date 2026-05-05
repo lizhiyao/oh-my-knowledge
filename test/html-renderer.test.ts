@@ -96,7 +96,7 @@ describe('renderRunList', () => {
   it('renders empty state', () => {
     const html = renderRunList([]);
     assert.ok(html.includes('<!doctype html>'));
-    assert.ok(html.includes('omk bench run'));
+    assert.ok(html.includes('omk eval'));
   });
 
   it('renders run list with data', () => {

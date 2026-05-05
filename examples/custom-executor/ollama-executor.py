@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 自定义 executor 示例：通过 Ollama 调用本地模型
-用法：omk bench run --executor "python ollama-executor.py" --model llama3
+用法：omk eval --executor "python ollama-executor.py" --model llama3
 
 前置要求：
   - 安装 Ollama：https://ollama.com

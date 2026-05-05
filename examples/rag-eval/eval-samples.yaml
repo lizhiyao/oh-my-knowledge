@@ -28,7 +28,7 @@ samples:
       - type: max_length
         value: 100  # 30 中文字 ≈ 90 字符
       - type: context_recall
-        reference: "时间复杂度 O(n log n);空间复杂度 O(n);稳定排序"
+        reference: "time complexity O(n log n);space complexity O(n);stable sort"
 
   - sample_id: rag_should_refuse
     prompt: 根据 context 回答"M1 芯片的功耗是多少"。
@@ -39,4 +39,4 @@ samples:
       - type: faithfulness
         threshold: 5  # 严格:任何编造都扣分
       - type: contains_any
-        values: ["未提及", "没有", "未包含", "context 中没有"]
+        values: ["not mentioned", "not specified", "not included", "not in context"]

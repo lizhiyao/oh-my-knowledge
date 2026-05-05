@@ -3,6 +3,7 @@ import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { discoverVariants, parseVariantCwd } from '../inputs/skill-loader.js';
+import { CliExit } from './cli-exit.js';
 import { parseArgsStrictOrExit } from './parse-strict.js';
 import { loadEvalConfig, configVariantsToSpecs } from '../inputs/eval-config.js';
 import type {
@@ -61,9 +62,9 @@ export interface RunConfig {
 export interface ParseRunConfigResult {
   values: Record<string, string | boolean | undefined>;
   config: RunConfig;
-  /** Loaded eval.yaml when --config was provided. handleRun uses it to apply
+  /** Loaded eval.yaml when --config was provided. `commands/eval-runner.ts` uses it to apply
    *  CLI > eval.yaml > default fallback for fields not propagated by parseRunConfig
-   *  (e.g. repeat / judgeRepeat / bootstrap — handled in handleRun for input validation). */
+   *  (e.g. repeat / judgeRepeat / bootstrap — handled in `commands/eval-runner.ts` for input validation). */
   evalConfig: EvalConfig | null;
 }
 
@@ -105,8 +106,7 @@ export function parseJudgeModelsArg(raw: string): JudgeConfig[] {
  * Friendly CLI wrapper around `parseJudgeModelsArg`. On parse error prints
  * `error: <msg>` to stderr and exits 2 — matching `parseArgsStrict` 对 unknown
  * option 的行为(exit 2 = parser/参数错误,区别于 doctor / gate eval failure 的
- * exit 1)。CLI 层 `bench run` / `bench evolve` / `bench debias-validate` /
- * `bench failures` 共享这一份。
+ * exit 1）。CLI 层 `eval` / `improve skill` / `improve failures` 共享这一份。
  */
 export function parseJudgeModelsArgOrExit(raw: string): JudgeConfig[] {
   try {
@@ -114,7 +114,7 @@ export function parseJudgeModelsArgOrExit(raw: string): JudgeConfig[] {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`error: ${msg}`);
-    process.exit(2);
+    throw new CliExit(2);
   }
 }
 
@@ -226,7 +226,7 @@ export function parseRunConfig(
     const hint = discovered.length > 0 ? `\n  skill-dir (${skillDir}) 下发现的候选：${discovered.join(', ')}` : '';
     throw new Error(
       `请通过 --control / --treatment 或 --config eval.yaml 声明 variant 角色。\n`
-      + `  示例：omk bench run --control baseline --treatment my-skill${hint}\n`
+      + `  示例：omk eval --control baseline --treatment my-skill${hint}\n`
       + `  --batch 模式下自动用 baseline vs 每个 skill,无需显式声明\n`
       + `  术语见 docs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
     );
@@ -314,7 +314,7 @@ export function parseRunConfig(
       timeoutMs,
       executorName,
       skipConnectivity,
-      lang: undefined, // CLI 入口在 handleRun/handleGate 里注入
+      lang: undefined, // CLI 入口在 commands/eval-runner.ts 里注入
       mcpConfig,
       verbose,
       retry,

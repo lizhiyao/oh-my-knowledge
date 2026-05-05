@@ -22,7 +22,7 @@ interface ExecError extends Error {
 
 /** 准备一个 broken skill 目录(skill 内容过短,会被 doctor 的 skill_readable 卡掉) */
 function setupBrokenSkillDir(): string {
-  const tmp = mkdtempSync(join(tmpdir(), 'bench-doctor-broken-'));
+  const tmp = mkdtempSync(join(tmpdir(), 'eval-doctor-broken-'));
   const skillDir = join(tmp, 'skills');
   mkdirSync(skillDir);
   writeFileSync(join(skillDir, 'v1.md'), 'hi'); // 2 chars, fails skill_readable (min 10)
@@ -37,7 +37,7 @@ function setupBrokenSkillDir(): string {
 /** Batch 模式:skills/<name>.md + skills/<name>.eval-samples.json 配对。
  *  broken.md 内容过短, healthy.md 正常。--batch 自动发现两者, doctor 应卡 broken。 */
 function setupBatchMixedSkillDir(): string {
-  const tmp = mkdtempSync(join(tmpdir(), 'bench-batch-doctor-'));
+  const tmp = mkdtempSync(join(tmpdir(), 'eval-batch-doctor-'));
   const skillDir = join(tmp, 'skills');
   mkdirSync(skillDir);
   // broken: 内容过短, doctor skill_readable 必 fail
@@ -53,13 +53,13 @@ function setupBatchMixedSkillDir(): string {
   return tmp;
 }
 
-describe('bench run / gate doctor preflight embedding', () => {
-  it('bench run --dry-run aborts when doctor detects broken skill', async () => {
+describe('omk eval doctor preflight embedding', () => {
+  it('eval --dry-run aborts when doctor detects broken skill', async () => {
     const broken = setupBrokenSkillDir();
     try {
       await assert.rejects(
         () => execFileAsync('node', [
-          CLI, 'bench', 'run',
+          CLI, 'eval',
           '--samples', join(broken, 'eval-samples.json'),
           '--skill-dir', join(broken, 'skills'),
           '--control', 'v1',
@@ -78,12 +78,12 @@ describe('bench run / gate doctor preflight embedding', () => {
     }
   });
 
-  it('bench gate aborts when doctor detects broken skill', async () => {
+  it('eval applies the same doctor gate as the old CI path', async () => {
     const broken = setupBrokenSkillDir();
     try {
       await assert.rejects(
         () => execFileAsync('node', [
-          CLI, 'bench', 'gate',
+          CLI, 'eval',
           '--samples', join(broken, 'eval-samples.json'),
           '--skill-dir', join(broken, 'skills'),
           '--control', 'v1',
@@ -93,7 +93,7 @@ describe('bench run / gate doctor preflight embedding', () => {
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
-          assert.ok(e.stderr.includes('doctor failed:'), `bench gate should also gate on doctor: ${e.stderr.slice(0, 500)}`);
+          assert.ok(e.stderr.includes('doctor failed:'), `eval should gate on doctor: ${e.stderr.slice(0, 500)}`);
           return true;
         },
       );
@@ -102,21 +102,20 @@ describe('bench run / gate doctor preflight embedding', () => {
     }
   });
 
-  it('bench run --dry-run on healthy example skills passes doctor and proceeds', async () => {
+  it('eval --dry-run on healthy example skills passes doctor and proceeds', async () => {
     // example skills are healthy; --dry-run skips LLM connectivity (separate from doctor)
     const { stdout, stderr } = await execFileAsync('node', [
-      CLI, 'bench', 'run',
+      CLI, 'eval',
       '--samples', EXAMPLE_SAMPLES,
       '--skill-dir', EXAMPLE_SKILLS_DIR,
       '--control', 'v1',
       '--treatment', 'v2',
       '--dry-run',
+      '--lang', 'zh',
     ]);
     // Should NOT fail with doctor
     assert.ok(!stderr.includes('doctor failed:'), `stderr should not have doctor failure: ${stderr.slice(0, 500)}`);
-    // dry-run output should be present
-    const parsed = JSON.parse(stdout);
-    assert.equal(parsed.dryRun, true);
+    assert.ok(stdout.includes('eval dry-run'));
   });
 
   it('--skip-connectivity does not bypass doctor', async () => {
@@ -126,7 +125,7 @@ describe('bench run / gate doctor preflight embedding', () => {
     try {
       await assert.rejects(
         () => execFileAsync('node', [
-          CLI, 'bench', 'run',
+          CLI, 'eval',
           '--samples', join(broken, 'eval-samples.json'),
           '--skill-dir', join(broken, 'skills'),
           '--control', 'v1',
@@ -146,14 +145,14 @@ describe('bench run / gate doctor preflight embedding', () => {
     }
   });
 
-  it('bench run --batch --dry-run aborts when any batch entry fails doctor', async () => {
+  it('eval --batch --dry-run aborts when any batch entry fails doctor', async () => {
     // batch dry-run 必须和 single dry-run 一样走 doctor 强制门禁。
     // 不走的话, broken skill 在 batch 模式 dry-run 阶段会静默通过, 与"doctor 强制 + dry-run 也覆盖"的语义不一致。
     const tmp = setupBatchMixedSkillDir();
     try {
       await assert.rejects(
         () => execFileAsync('node', [
-          CLI, 'bench', 'run',
+          CLI, 'eval',
           '--skill-dir', join(tmp, 'skills'),
           '--batch',
           '--dry-run',
@@ -186,18 +185,18 @@ describe('bench run / gate doctor preflight embedding', () => {
       }));
 
       const { stdout, stderr } = await execFileAsync('node', [
-        CLI, 'bench', 'run',
+        CLI, 'eval',
         '--samples', join(tmp, 'eval-samples.json'),
         '--skill-dir', skillDir,
         '--control', 'v1',
         '--treatment', 'v2',
         '--dry-run',
+        '--lang', 'zh',
       ], { cwd: tmp });
 
       // doctor 应该只检查 v1 + v2 (健康), 完全忽略 draft.md
       assert.ok(!stderr.includes('doctor failed:'), `expected no doctor failure when draft.md is unrelated to this run; stderr: ${stderr.slice(0, 400)}`);
-      const parsed = JSON.parse(stdout);
-      assert.equal(parsed.dryRun, true);
+      assert.ok(stdout.includes('eval dry-run'));
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

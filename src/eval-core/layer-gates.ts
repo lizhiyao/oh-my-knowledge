@@ -13,7 +13,7 @@ export interface LayerGateResult {
  * 三层都缺(eval-samples 既没定义断言也没定义 rubric)时直接 FAIL + 引导,
  * 不走 composite fallback——符合 0-1 窗口期不做兼容原则。
  *
- * 抽为纯函数便于单测;handleGate 只负责 IO(读 config、打印、退出码)。
+ * 抽为纯函数便于单测；commands/eval-runner.ts 负责 IO（读 config、打印、退出码）。
  */
 export function evaluateLayerGates(
   summary: Record<string, VariantSummary>,

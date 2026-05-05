@@ -2,11 +2,11 @@
  * doctor preflight context builder。
  *
  * 把「评测前 doctor 要检查什么 + 路径上下文锚到哪里」从评测引擎里抽出来,
- * 让 doctor engine 只消费 ctx, 不再自己猜 bench 的路径语义。
+ * 让 doctor engine 只消费 ctx，不再自己猜 eval 的路径语义。
  *
  * Bench 路径语义本来就复杂(.md / SKILL.md 目录 / git: / 绝对路径 / name@cwd /
  * runtime-context-only / batch paired samples), doctor 嵌入需要用而不是旁路重建。
- * 任何 bench 路径推断的边界变化,只需改这一处, doctor engine 零修改。
+ * 任何 eval 路径推断的边界变化，只需改这一处，doctor engine 零修改。
  *
  * 不服务 standalone `omk doctor [path]` — 那条路径是用户视角的 target 解析,
  * 由 src/doctor/index.ts:resolveDoctorTargets() 单独负责。
