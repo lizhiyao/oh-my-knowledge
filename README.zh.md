@@ -38,7 +38,7 @@ omk eval --control code-review-v1 --treatment code-review-v2    # → 5 分钟�
 ```bash
 /omk eval              # 评测当前项目的 artifact
 /omk improve skill     # 自动迭代改进 artifact
-/omk improve samples   # 生成测试用例
+/omk improve samples   # 生成评测用例
 ```
 
 或直接说"帮我评测 v1 和 v2 的差异"、"改进一下这个 artifact"，omk 会自动理解意图并调用对应命令。
@@ -53,11 +53,11 @@ omk improve skill skills/my-skill.md
 omk improve samples skills/my-skill.md
 ```
 
-也可以直接用自然语言描述目标，例如"比较 v1 和 v2 的评测差异"、"为这个 skill 生成测试用例"。
+也可以直接用自然语言描述目标，例如"比较 v1 和 v2 的评测差异"、"为这个 skill 生成评测用例"。
 
 ## 为什么需要这个工具
 
-做知识工程的团队会产出大量知识载体（当前常见是 skill，也包括 prompt、agent、workflow 等）。当被问到"v2 比 v1 好在哪"时，需要客观数据而非主观判断。`oh-my-knowledge` 通过控制变量实验解决这个问题：相同模型、相同测试用例，只改变知识载体。
+做知识工程的团队会产出大量知识载体（当前常见是 skill，也包括 prompt、agent、workflow 等）。当被问到"v2 比 v1 好在哪"时，需要客观数据而非主观判断。`oh-my-knowledge` 通过控制变量实验解决这个问题：相同模型、相同评测用例，只改变知识载体。
 
 ## 核心能力
 
@@ -227,7 +227,7 @@ flowchart TD
 ```json
 {
   "sample_id": "s001",
-  "prompt": "请根据以下 PRD 文档生成测试用例：https://wiki.example.com/prd/feature-x"
+  "prompt": "请根据以下 PRD 文档生成评测用例：https://wiki.example.com/prd/feature-x"
 }
 ```
 

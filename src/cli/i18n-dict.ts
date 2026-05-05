@@ -212,7 +212,7 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'Next steps:',
   },
   'cli.init.next_step_edit_samples': {
-    zh: '  1. 编辑 eval-samples.json, 加入你要测的测评用例',
+    zh: '  1. 编辑 eval-samples.json，加入你要测的评测用例',
     en: '  1. Edit eval-samples.json to add your test cases',
   },
   'cli.init.next_step_edit_skills': {
@@ -388,7 +388,7 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '⏭️  {name}: eval-samples already exists, skipping\n',
   },
   'cli.gen.skill_generating': {
-    zh: '🔄 {name}: 正在生成 {count} 条测评用例...\n',
+    zh: '🔄 {name}: 正在生成 {count} 条评测用例...\n',
     en: '🔄 {name}: generating {count} test cases...\n',
   },
   'cli.gen.skill_done': {
@@ -416,7 +416,7 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'eval-samples.json already exists. Delete it first if you want to overwrite.',
   },
   'cli.gen.single_generating': {
-    zh: '🔄 正在生成 {count} 条测评用例...\n',
+    zh: '🔄 正在生成 {count} 条评测用例...\n',
     en: '🔄 Generating {count} test cases...\n',
   },
   'cli.gen.single_done': {
@@ -424,7 +424,7 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '✅ Generated {n} samples → {path}{cost}\n',
   },
   'cli.gen.review_hint': {
-    zh: '\n请审查生成的测评用例后运行: omk eval',
+    zh: '\n请审查生成的评测用例后运行: omk eval',
     en: '\nReview the generated test cases, then run: omk eval',
   },
   'cli.gen.failed': {

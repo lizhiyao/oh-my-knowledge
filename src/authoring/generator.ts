@@ -1,7 +1,7 @@
 import { createExecutor, DEFAULT_MODEL } from '../executors/index.js';
 import type { Sample } from '../types/index.js';
 
-const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的测试用例。
+const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。
 
 每个用例需包含以下字段：
 - sample_id: 唯一标识，格式为 s001, s002, ...
@@ -14,7 +14,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
   - { "type": "regex", "pattern": "English|code|token", "weight": 1 }
 
 要求：
-1. 测试用例应覆盖 skill 的不同能力维度
+1. 评测用例应覆盖 skill 的不同能力维度
 2. prompt 要贴近真实用户的使用场景
 3. rubric 要具体，不要泛泛而谈
 4. assertions 要有区分度，能检测出有无 skill 的差异
@@ -44,7 +44,7 @@ export async function generateSamples({ skillContent, count = 5, model = DEFAULT
 
 ${skillContent}
 
-请根据这个 skill 生成 ${count} 个测试用例。直接输出 JSON 数组。`;
+请根据这个 skill 生成 ${count} 个评测用例。直接输出 JSON 数组。`;
 
   const result = await executor({ model, system: SYSTEM_PROMPT, prompt });
 

@@ -2,7 +2,7 @@
 name: omk
 description: |
   oh-my-knowledge 知识载体评测工具的智能代理。评测 skill（系统提示词）质量，对比不同版本效果，自动迭代改进。
-  Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"omk"。
+  Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成评测用例"、"gen-samples"、"omk"。
 user-invocable: true
 argument-hint: "<eval|evolve|gen-samples|report|export> [options]"
 ---
@@ -27,7 +27,7 @@ npm i oh-my-knowledge -g
 |---------|------|
 | 评测/对比 skill | → 运行评测 |
 | 改进/优化 skill | → 自动迭代改进 |
-| 生成测试用例 | → 生成 eval-samples |
+| 生成评测用例 | → 生成 eval-samples |
 | 查看报告 | → 启动报告服务 |
 | 导出报告 | → 导出 HTML |
 
@@ -87,13 +87,13 @@ omk bench evolve skills/my-skill.md --rounds 5
 omk bench evolve skills/my-skill.md --rounds 10 --target 4.5
 ```
 
-### 生成测试用例
+### 生成评测用例
 
 ```bash
 # 为当前项目生成评测样本
 omk bench gen-samples
 
-# 为所有缺少测试集的 skill 批量生成(--each 模式)
+# 为所有缺少评测集的 skill 批量生成(--each 模式)
 omk bench gen-samples --each
 ```
 

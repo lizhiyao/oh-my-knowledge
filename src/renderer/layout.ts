@@ -77,7 +77,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     judgeFailures: '评委失败', judgeFailuresDesc: 'N 次评委评分中返回 score=0（解析失败 / 调用错误）的次数。stddev=0 + failureCount>0 不是"完美一致"，是"大部分炸了"',
     judgeReasoning: '评委推理', judgeReasoningExpand: '展开',
     ensembleHeader: '多评委评分对比', ensembleDesc: '不同评委模型对同一份输出的独立评分。用于反驳"同模态偏差"',
-    agreementHeader: '跨用例评委一致性', agreementDesc: '在所有测评用例上算的多评委一致性',
+    agreementHeader: '跨用例评委一致性', agreementDesc: '在所有评测用例上算的多评委一致性',
     pearsonLabel: '皮尔逊系数 (Pearson)', pearsonDesc: '皮尔逊相关系数：1=完全同向排序，0=无关，-1=完全反向',
     madLabel: '平均绝对差 (MAD)', madDesc: '平均绝对差。1-5 制下 < 0.5 紧密一致, > 1.5 大分歧',
     judgeModelsLabel: '评委模型',
