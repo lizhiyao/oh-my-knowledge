@@ -1,5 +1,8 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createExecutor } from '../src/executors/index.js';
 
 describe('createExecutor', () => {
@@ -31,5 +34,22 @@ describe('createExecutor', () => {
   it('falls back to script executor for unknown name', () => {
     const executor = createExecutor('echo hello');
     assert.equal(typeof executor, 'function');
+  });
+
+  it('resolves relative script executor paths before per-task cwd changes', async () => {
+    const cwd = await mkdtemp(join(tmpdir(), 'omk-script-executor-cwd-'));
+    try {
+      const executor = createExecutor('node test/fixtures/script-executor.mjs');
+      const result = await executor({
+        model: 'test',
+        system: '',
+        prompt: 'hello',
+        cwd,
+      });
+      assert.equal(result.ok, true);
+      assert.equal(result.output, 'fixture: hello');
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
   });
 });
