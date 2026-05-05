@@ -1051,11 +1051,13 @@ omk studio — 打开本地知识工作台
   --port <n>                          本地服务端口（默认：7799）
   --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
   --analyses-dir <path>               观测分析目录
+  --no-open                           只启动服务，不自动打开浏览器
   --dev                               开发模式：文件变化时自动重启
 
 示例：
   omk studio
   omk studio --port 7798
+  omk studio --no-open
 `,
     en: `
 omk studio — open the local knowledge workbench
@@ -1067,11 +1069,13 @@ Options:
   --port <n>                          Local server port (default: 7799)
   --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
   --analyses-dir <path>               Observation analyses directory
+  --no-open                           Start the server without opening a browser
   --dev                               Dev mode: restart on file changes
 
 Examples:
   omk studio
   omk studio --port 7798
+  omk studio --no-open
 `,
   },
   // sample design coverage block strings

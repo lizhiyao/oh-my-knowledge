@@ -4,6 +4,20 @@ import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
 import { parseArgsStrictOrExit } from '../parse-strict.js';
 import type { ReportServer } from './_shared.js';
 
+async function openWorkbench(url: string): Promise<void> {
+  const { execFile } = await import('node:child_process');
+  const { platform } = await import('node:os');
+  const browser = process.env.BROWSER?.trim();
+  const openCmd = browser && browser.toLowerCase() !== 'none'
+    ? browser
+    : platform() === 'darwin'
+      ? 'open'
+      : platform() === 'win32'
+        ? 'start'
+        : 'xdg-open';
+  execFile(openCmd, [url], () => undefined);
+}
+
 export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const { values } = parseArgsStrictOrExit({
@@ -13,6 +27,7 @@ export async function execute(argv: string[]): Promise<void> {
       port: { type: 'string', default: '7799' },
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       'analyses-dir': { type: 'string' },
+      'no-open': { type: 'boolean', default: false },
       dev: { type: 'boolean', default: false },
     },
   });
@@ -32,6 +47,9 @@ export async function execute(argv: string[]): Promise<void> {
     if (values['analyses-dir']) {
       args.push('--analyses-dir', values['analyses-dir'] as string);
     }
+    if (values['no-open']) {
+      args.push('--no-open');
+    }
     const child = spawn(process.execPath, args, {
       stdio: 'inherit',
       env: { ...process.env, __OMK_DEV_CHILD: '1' },
@@ -50,4 +68,7 @@ export async function execute(argv: string[]): Promise<void> {
   const url = await server.start();
   console.log(tCli('cli.studio.started', lang, { url }));
   console.log(tCli('cli.studio.stop_hint', lang));
+  if (!values['no-open'] && process.stdout.isTTY) {
+    await openWorkbench(url);
+  }
 }

@@ -462,6 +462,7 @@ Exports evidence for PRs, CI summaries, and audit trails. HTML writes a standalo
 omk studio
 omk studio --port 7799
 omk studio --reports-dir ~/.oh-my-knowledge/reports
+omk studio --no-open
 ```
 
 Starts the local knowledge workbench for browsing reports and observation analyses.

@@ -462,6 +462,7 @@ omk export saturation <report-id>
 omk studio
 omk studio --port 7799
 omk studio --reports-dir ~/.oh-my-knowledge/reports
+omk studio --no-open
 ```
 
 启动本地知识工作台，用来浏览报告和观测分析。

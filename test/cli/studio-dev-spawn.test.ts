@@ -22,7 +22,7 @@ describe('studio --dev child spawn argv', () => {
 
   it('uses cli/index.js as child entrypoint and re-enters studio', async () => {
     const { execute } = await import('../../src/cli/commands/studio.js');
-    await execute(['--dev', '--port', '8080', '--reports-dir', 'tmp-reports']);
+    await execute(['--dev', '--port', '8080', '--reports-dir', 'tmp-reports', '--no-open']);
 
     expect(spawnCalls).toHaveLength(1);
     const [, watchRoot, cliPath, command, ...rest] = spawnCalls[0].args;
@@ -31,6 +31,6 @@ describe('studio --dev child spawn argv', () => {
     expect(cliPath).toMatch(/[\\/]cli[\\/]index\.(js|ts)$/);
     expect(cliPath).not.toMatch(/[\\/]commands[\\/]/);
     expect(command).toBe('studio');
-    expect(rest).toEqual(['--port', '8080', '--reports-dir', 'tmp-reports']);
+    expect(rest).toEqual(['--port', '8080', '--reports-dir', 'tmp-reports', '--no-open']);
   });
 });

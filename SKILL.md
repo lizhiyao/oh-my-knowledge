@@ -148,6 +148,7 @@ omk improve samples --batch
 ```bash
 # 打开本地工作台
 omk studio
+omk studio --no-open
 
 # 导出为独立 HTML
 omk export <reportId> --format html

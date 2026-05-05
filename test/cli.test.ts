@@ -209,6 +209,7 @@ describe('CLI', () => {
     assert.ok(stdout.includes('omk studio'));
     assert.ok(stdout.includes('--reports-dir'));
     assert.ok(stdout.includes('--analyses-dir'));
+    assert.ok(stdout.includes('--no-open'));
   });
 
   // dispatcher 检查 --help 时扫整个 argv,不限第一位。
