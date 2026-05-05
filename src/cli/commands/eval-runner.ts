@@ -282,7 +282,7 @@ export async function execute(argv: string[]): Promise<void> {
       }) as { report: BatchEvaluationReport | DryRunBatchReport; filePath: string | null };
       console.log(JSON.stringify(report, null, 2));
       if (isDryRunBatchReport(report)) {
-        console.log('Eval dry-run: no scores to check');
+        console.log(tCli('cli.run.dry_run_no_scores', lang));
         throw new CliExit(0);
       }
       if (filePath) {
@@ -312,7 +312,7 @@ export async function execute(argv: string[]): Promise<void> {
       })) as EvalResult;
       if (isDryRunReport(result.report)) {
         console.log(JSON.stringify(result.report, null, 2));
-        console.log('Eval dry-run: no scores to check');
+        console.log(tCli('cli.run.dry_run_no_scores', lang));
         throw new CliExit(0);
       }
       report = result.report as Report;

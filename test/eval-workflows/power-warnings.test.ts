@@ -41,6 +41,14 @@ describe('buildPowerWarnings', () => {
     assert.match(w[1], /--repeat=1/);
   });
 
+  it('中文输出不泄漏英文 dry-run 体验文案', () => {
+    const w = buildPowerWarnings(3, 1, 'zh');
+    assert.equal(w.length, 2);
+    assert.match(w[0], /仅适合探索/);
+    assert.match(w[1], /单轮评测无法测稳定性/);
+    assert.doesNotMatch(w.join('\n'), /exploration-only|single-run cannot measure stability/);
+  });
+
   it('完美配置(n=30, repeat=3)无警告', () => {
     const w = buildPowerWarnings(30, 3);
     assert.equal(w.length, 0);

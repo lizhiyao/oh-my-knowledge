@@ -78,6 +78,10 @@ export type CliMessageKey =
   | 'cli.run.no_debias_length_active'
   | 'cli.run.invalid_bootstrap_samples'
   | 'cli.run.bootstrap_samples_too_large'
+  | 'cli.run.power_warning_tiny_n'
+  | 'cli.run.power_warning_small_n'
+  | 'cli.run.power_warning_repeat_one'
+  | 'cli.run.dry_run_no_scores'
   // eval 完成 / 报告 server / gold compare / 错误
   | 'cli.run.skill_section'
   | 'cli.run.run_section'
@@ -237,6 +241,22 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.update.new_version_available': {
     zh: '\n💡 新版本可用: {old} → {new}, 运行 npm update {pkg} -g 升级\n\n',
     en: '\n💡 New version available: {old} → {new}, run npm update {pkg} -g to upgrade\n\n',
+  },
+  'cli.run.power_warning_tiny_n': {
+    zh: '⚠ N={n} < 5：仅适合探索，任何结论都不可靠，CI 会很宽。需要决策时建议 ≥20 条评测用例。',
+    en: '⚠ N={n} < 5 (exploration-only): any conclusion is unreliable, CI will be uselessly wide. Decisions need ≥20 cases.',
+  },
+  'cli.run.power_warning_small_n': {
+    zh: '⚠ N={n} < 20：只能识别很大的效果（Cohen\'s d > 0.8），中等效果（d ≈ 0.5）很难检出。要做可靠决策建议 ≥20 条评测用例。',
+    en: '⚠ N={n} < 20 (large-effect-only, Cohen\'s d > 0.8): medium effects (d ≈ 0.5) hard to detect. For confident decisions consider ≥20 cases.',
+  },
+  'cli.run.power_warning_repeat_one': {
+    zh: '⚠ --repeat=1：单轮评测无法测稳定性（CV 会标记为未测量）。用 --repeat 3+ 检测同一 variant 内部方差。',
+    en: '⚠ --repeat=1: single-run cannot measure stability (CV will be marked "not measured"). Use --repeat 3+ to detect within-variant variance.',
+  },
+  'cli.run.dry_run_no_scores': {
+    zh: 'eval dry-run：仅预览任务，不检查分数',
+    en: 'Eval dry-run: no scores to check',
   },
   'cli.progress.preflight_starting': {
     zh: '⏳ 正在预检模型连通性...\n',

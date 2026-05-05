@@ -27,7 +27,7 @@ const PATH_PATTERNS = [
   // .claude paths
   /\.claude\/[a-zA-Z0-9_/.@-]+/g,
   // Paths with file extensions mentioned in text
-  /[a-zA-Z0-9_/-]+\.(?:ts|js|tsx|jsx|md|json|yaml|yml|sh)\b/g,
+  /[a-zA-Z0-9_/-]+\.(?:ts|js|tsx|jsx|md|json|yaml|yml|sh)\b(?!\s*\()/g,
 ];
 
 // Paths to ignore (too generic or always present)

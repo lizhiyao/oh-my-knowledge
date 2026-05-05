@@ -36,6 +36,7 @@ import type {
   Task,
   VariantResult,
 } from '../types/index.js';
+import { tCli, type CliLang } from '../cli/i18n.js';
 
 type EvaluationResults = Record<string, Record<string, VariantResult>>;
 
@@ -206,27 +207,21 @@ function computeTestSetHash(samplesPath: string): string | null {
  * saturation curves. This is the upfront "you might be wasting the run"
  * heads-up, not a gate.
  */
-export function buildPowerWarnings(sampleCount: number, repeat: number): string[] {
+export function buildPowerWarnings(sampleCount: number, repeat: number, lang: CliLang = 'en'): string[] {
   const warnings: string[] = [];
   if (sampleCount < 5) {
-    warnings.push(
-      `⚠ N=${sampleCount} < 5 (exploration-only): any conclusion is unreliable, CI will be uselessly wide. Decisions need ≥20 cases.`,
-    );
+    warnings.push(tCli('cli.run.power_warning_tiny_n', lang, { n: sampleCount }));
   } else if (sampleCount < 20) {
-    warnings.push(
-      `⚠ N=${sampleCount} < 20 (large-effect-only, Cohen's d > 0.8): medium effects (d ≈ 0.5) hard to detect. For confident decisions consider ≥20 cases.`,
-    );
+    warnings.push(tCli('cli.run.power_warning_small_n', lang, { n: sampleCount }));
   }
   if (repeat < 2) {
-    warnings.push(
-      `⚠ --repeat=1: single-run cannot measure stability (CV will be marked "not measured"). Use --repeat 3+ to detect within-variant variance.`,
-    );
+    warnings.push(tCli('cli.run.power_warning_repeat_one', lang));
   }
   return warnings;
 }
 
-function emitPowerWarnings(sampleCount: number, repeat: number): void {
-  for (const w of buildPowerWarnings(sampleCount, repeat)) {
+function emitPowerWarnings(sampleCount: number, repeat: number, lang: CliLang): void {
+  for (const w of buildPowerWarnings(sampleCount, repeat, lang)) {
     process.stderr.write(`${w}\n`);
   }
 }
@@ -381,6 +376,8 @@ export interface EvaluationPipelineOptions {
   strictBaseline?: boolean;
   /** Explicit persisted run id. Used by batch workflows that need stable child ids. */
   runId?: string;
+  /** CLI output language for warnings emitted by the pipeline. */
+  lang?: CliLang;
 }
 
 export async function executeEvaluationPipeline({
@@ -425,6 +422,7 @@ export async function executeEvaluationPipeline({
   budget,
   strictBaseline,
   runId,
+  lang = 'zh',
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -494,7 +492,7 @@ export async function executeEvaluationPipeline({
     // tasks start. These are *not* MDE / power-analysis predictions (we don't have
     // σ before the run); they're hard-floor + experience-based thresholds. Verdict
     // gate (computeVerdict) handles real power claims post-hoc.
-    emitPowerWarnings(samples.length, repeat ?? 1);
+    emitPowerWarnings(samples.length, repeat ?? 1, lang);
     // Isolation pre-flight warning (--no-strict-baseline + ~/.claude/skills/ non-empty)
     emitIsolationWarnings(artifacts, strictBaseline);
 

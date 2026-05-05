@@ -158,6 +158,6 @@ describe('strict unknown option rejection', () => {
       '--dry-run',
       '--skip-connectivity',
     ]);
-    assert.ok(stdout.includes('Eval dry-run'));
+    assert.ok(stdout.includes('eval dry-run'));
   });
 });
