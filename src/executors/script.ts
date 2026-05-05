@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
 import type { ExecResult, ExecutorFn, ExecutorInput } from '../types/index.js';
 import {
   DEFAULT_TIMEOUT_MS,
@@ -12,7 +14,21 @@ import {
 // 让用户知道 strict-baseline / 显式 allowedSkills 在 script executor 下静默无效。
 let scriptIsolationWarned = false;
 
+function resolveExecutorPath(part: string, baseCwd: string): string {
+  if (isAbsolute(part)) return part;
+  if (!part.includes('/') && !part.startsWith('.')) return part;
+  const candidate = resolve(baseCwd, part);
+  return existsSync(candidate) ? candidate : part;
+}
+
 export function createScriptExecutor(command: string): ExecutorFn {
+  const baseCwd = process.cwd();
+  const parts = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [command];
+  const cmd = resolveExecutorPath(parts[0].replace(/^["']|["']$/g, ''), baseCwd);
+  const args = parts.slice(1)
+    .map((a) => a.replace(/^["']|["']$/g, ''))
+    .map((a) => resolveExecutorPath(a, baseCwd));
+
   return async function scriptExecutor({ model, system, prompt, cwd, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills }: ExecutorInput): Promise<ExecResult> {
     if (allowedSkills !== undefined && !scriptIsolationWarned) {
       scriptIsolationWarned = true;
@@ -23,10 +39,6 @@ export function createScriptExecutor(command: string): ExecutorFn {
     }
     const input = JSON.stringify({ model, system: system || '', prompt });
     const start = Date.now();
-
-    const parts = command.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [command];
-    const cmd = parts[0].replace(/^["']|["']$/g, '');
-    const args = parts.slice(1).map((a) => a.replace(/^["']|["']$/g, ''));
 
     const { child, done } = spawnWithSigintPropagation(cmd, args, {
       env: { ...process.env },
