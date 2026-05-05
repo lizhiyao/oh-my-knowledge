@@ -159,6 +159,14 @@ describe('CLI', () => {
     assert.ok(!stdout.includes(['--', 'each'].join('')));
   });
 
+  it('init --help shows scaffold-specific usage', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'init', '--help']);
+    assert.ok(stdout.includes('omk init'));
+    assert.ok(stdout.includes('eval-samples.json'));
+    assert.ok(stdout.includes('skills/code-review-v1/SKILL.md'));
+    assert.ok(!stdout.includes('omk doctor'));
+  });
+
   it('second-level --help routes to subcommand usage', async () => {
     const gold = await execFileAsync('node', [CLI, 'eval', 'gold', '--help']);
     assert.ok(gold.stdout.includes('omk eval gold'));

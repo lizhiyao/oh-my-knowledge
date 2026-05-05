@@ -17,7 +17,7 @@ export interface CommandModule {
 
 /** 产品级主命令查表。新增对外命令时,在这里加一行就够。 */
 export const PRODUCT_COMMANDS: Record<string, CommandModule> = {
-  init:    { helpKey: 'cli.help.product_main', execute: init },
+  init:    { helpKey: 'cli.help.init_usage', execute: init },
   doctor:  { helpKey: 'cli.help.doctor_usage', execute: doctor },
   eval:    {
     helpKey: 'cli.help.eval',

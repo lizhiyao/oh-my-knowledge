@@ -137,6 +137,7 @@ export type CliMessageKey =
   | 'cli.evolve.report_link'
   // 长段 help / usage 文案 (multi-line)
   | 'cli.help.product_main'
+  | 'cli.help.init_usage'
   | 'cli.help.eval'
   | 'cli.help.eval_gold'
   | 'cli.help.eval_debias'
@@ -555,6 +556,40 @@ Common options:
   --lang <zh|en>                      CLI output language (default: zh, or set OMK_LANG)
 
 Run 'omk <command> --help' for command-specific options.
+`,
+  },
+  'cli.help.init_usage': {
+    zh: `
+omk init — 初始化 skill 评测项目
+
+用法：
+  omk init [dir]
+
+生成内容：
+  eval-samples.json                  示例评测用例
+  skills/code-review-v1/SKILL.md     基线 skill
+  skills/code-review-v2/SKILL.md     实验组 skill
+
+下一步：
+  1. 编辑 eval-samples.json，替换成你的真实评测用例
+  2. 编辑两个 SKILL.md，填入要对比的 skill 版本
+  3. 运行 omk eval --control code-review-v1 --treatment code-review-v2
+`,
+    en: `
+omk init — scaffold a skill evaluation project
+
+Usage:
+  omk init [dir]
+
+Generated files:
+  eval-samples.json                  Example test cases
+  skills/code-review-v1/SKILL.md     Baseline skill
+  skills/code-review-v2/SKILL.md     Treatment skill
+
+Next steps:
+  1. Edit eval-samples.json with your real test cases
+  2. Edit both SKILL.md files with the skill versions to compare
+  3. Run omk eval --control code-review-v1 --treatment code-review-v2
 `,
   },
   'cli.help.eval': {
