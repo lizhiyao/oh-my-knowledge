@@ -22,12 +22,12 @@ omk answers with objective data, not gut feeling.
 
 ```bash
 npm i oh-my-knowledge -g
-omk bench init my-eval && cd my-eval
+omk init my-eval && cd my-eval
 # edit skills/code-review-v1/SKILL.md and skills/code-review-v2/SKILL.md with your two versions
-omk bench run --control code-review-v1 --treatment code-review-v2    # → HTML report with verdict in 5 minutes
+omk eval --control code-review-v1 --treatment code-review-v2    # → HTML report with verdict in 5 minutes
 ```
 
-Deeper: [use inside Claude Code / Codex](#use-inside-ai-coding-agents) · [`omk bench run` flags](#omk-bench-run) · [artifact directory layout](#artifact-directory-layout) · [`--lang` / `OMK_LANG`](#environment-variables)
+Deeper: [use inside Claude Code / Codex](#use-inside-ai-coding-agents) · [`omk eval` flags](#omk-eval) · [artifact directory layout](#artifact-directory-layout) · [`--lang` / `OMK_LANG`](#environment-variables)
 
 ## Use inside AI Coding Agents
 
@@ -37,8 +37,8 @@ When the `omk` skill is available in Claude Code, you can invoke it directly lik
 
 ```bash
 /omk eval              # evaluate the artifact(s) in the current project
-/omk evolve            # auto-iterate to improve an artifact
-/omk gen-samples       # generate test cases
+/omk improve skill     # auto-iterate to improve an artifact
+/omk improve samples   # generate test cases
 ```
 
 You can also just say "compare v1 vs v2 for me" or "improve this artifact" and omk picks the right command.
@@ -48,9 +48,9 @@ You can also just say "compare v1 vs v2 for me" or "improve this artifact" and o
 Codex does not support Claude Code style `/omk ...` slash commands by default. In Codex, the usual pattern is to ask the agent to run the `omk` CLI directly, for example:
 
 ```bash
-omk bench run
-omk bench evolve
-omk bench gen-samples skills/my-skill.md
+omk eval
+omk improve skill skills/my-skill.md
+omk improve samples skills/my-skill.md
 ```
 
 You can also describe the goal in natural language, such as "compare v1 vs v2" or "generate test cases for this skill".
@@ -61,13 +61,13 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 
 ## Key features
 
-- **Pre-evaluation health check** — `omk doctor` runs as a mandatory gate before `bench run` / `bench gate`; checks skill readability, metadata, dependencies, samples contract — pure static, zero LLM calls (like lint + typecheck for knowledge artifacts). Executor / judge connectivity is a separate phase, controllable via `--skip-connectivity`
-- **Controlled-variable offline bench** — fix the model and samples, vary only the artifact; works with Claude Code skills, CLAUDE.md prompts, RAG knowledge bases, or any markdown-based instruction
+- **Pre-evaluation health check** — `omk doctor` runs as a mandatory gate before `omk eval`; checks skill readability, metadata, dependencies, samples contract — pure static, zero LLM calls (like lint + typecheck for knowledge artifacts). Executor / judge connectivity is a separate phase, controllable via `--skip-connectivity`
+- **Controlled-variable offline eval** — fix the model and samples, vary only the artifact; works with Claude Code skills, CLAUDE.md prompts, RAG knowledge bases, or any markdown-based instruction
 - **Six-dimension scoring** — separate signals for Fact / Behavior / LLM-judge / Cost / Efficiency / Stability, so a regression in one axis isn't hidden by gains in another
 - **Production session observability** — parse Claude Code session JSONL traces, measure per-skill failure rate, latency, token cost, and knowledge-gap signals on real user sessions
 - **Knowledge-gap detection** — severity-weighted signals (explicit markers / failed searches / hedging language / repeated failures) quantify risk exposure instead of claiming completeness
-- **Pre-merge CI gate** — `omk bench gate` enforces three-layer all-pass (fact + behavior + llm-judge) semantics, catching single-layer regressions a composite score would hide
-- **One-line ship/no-ship verdict** — `omk bench verdict <reportId>` aggregates bootstrap CI / three-layer ci-gate / saturation / human α into a six-tier verdict (PROGRESS / CAUTIOUS / REGRESS / NOISE / UNDERPOWERED / SOLO) plus an action recommendation; the exit code reflects whether to ship
+- **Pre-merge CI gate** — `omk eval` enforces three-layer all-pass (fact + behavior + llm-judge) semantics, catching single-layer regressions a composite score would hide
+- **One-line ship/no-ship verdict** — `omk eval` aggregates bootstrap CI / three-layer ci-gate / saturation / human α into a six-tier verdict (PROGRESS / CAUTIOUS / REGRESS / NOISE / UNDERPOWERED / SOLO) plus an action recommendation; the exit code reflects whether to ship
 
 ## Why omk over alternatives
 
@@ -90,17 +90,17 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 
 | Feature | What it does |
 |---|---|
-| **One-line verdict** | `omk bench verdict <id>` six-tier verdict + ship recommendation + exit-code routing; HTML pill shares the same rules |
+| **One-line verdict** | `omk eval` six-tier verdict + ship recommendation + exit-code routing; HTML pill shares the same rules |
 | **Six-dim evaluation** | Fact / Behavior / LLM-judge / Cost / Efficiency / Stability shown independently |
 | **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / Codex SDK / OpenAI / Gemini / any custom command |
 | **21+ assertion types** | substring, regex, JSON Schema, ROUGE/BLEU/Levenshtein similarity, agent tool-call assertions, semantic similarity, custom JS, and more |
 | **Statistical rigor** | Bootstrap CI / Krippendorff α / length-debias / saturation curve — all on by default. [Details →](docs/statistical-rigor.md) |
-| **Sample diagnostics** | `omk bench diagnose <id>` — 7 issue kinds (low discrimination / duplicates / ambiguous rubric / cost outliers / etc.) + 0-100 healthScore |
-| **Failure clustering** | `omk bench failures <id>` — single LLM call clusters failed samples and emits per-cluster fixes |
+| **Sample diagnostics** | `omk improve <id>` — 7 issue kinds (low discrimination / duplicates / ambiguous rubric / cost outliers / etc.) + 0-100 healthScore |
+| **Failure clustering** | `omk improve failures <id>` — single LLM call clusters failed samples and emits per-cluster fixes |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage; auto-inherits length-debias |
 | **Hard budget caps** | `--budget-usd / --budget-per-sample-usd / --budget-per-sample-ms` — abort on total-cost overrun, flag per-sample overruns; partial report persisted |
 | **Construct-validity isolation** | `--strict-baseline` (default ON) cuts three contamination channels so baseline doesn't silently see the skill it's being compared against: (1) SDK skill auto-discovery, (2) subagent Skill tool, (3) cwd file-system access via the `skills/<name>/` symlink that's normally there for the treatment variant. eval.yaml `allowedSkills` for per-variant whitelists |
-| **Sample design science** | Sample schema with `capability` / `difficulty` / `construct` / `provenance` metadata fields (HF Dataset Cards style). `bench diagnose` shows coverage breakdown + flags `rubric_clarity_low` (short rubric without grading keywords) / `capability_thin` (capability supported by ≤ N×0.2 samples). `bench gen-samples` auto-stamps provenance. See [docs/sample-design-spec.md](docs/sample-design-spec.md) for the 8 industry-gap mapping |
+| **Sample design science** | Sample schema with `capability` / `difficulty` / `construct` / `provenance` metadata fields (HF Dataset Cards style). `omk improve` shows coverage breakdown + flags `rubric_clarity_low` (short rubric without grading keywords) / `capability_thin` (capability supported by ≤ N×0.2 samples). `omk improve samples` auto-stamps provenance. See [docs/sample-design-spec.md](docs/sample-design-spec.md) for the 8 industry-gap mapping |
 | **Multi-judge ensemble** | `--judge-models claude:opus,openai:gpt-4o` cross-vendor scoring + agreement metrics |
 | **MCP URL fetching** | pull content from private-doc URLs via an MCP server (SSO-protected knowledge bases, etc.) |
 | **Blind A/B** | `--blind` hides variant names; HTML report has a reveal button |
@@ -359,351 +359,112 @@ Reports display results across six independent dimensions. The three scoring lay
 
 ## CLI reference
 
-### `omk bench run`
+omk exposes a workflow CLI for knowledge artifacts. The public surface is organized around the way users work: initialize, check, evaluate, observe, improve, export evidence, and open the local studio.
+
+### `omk init`
 
 ```bash
-omk bench run [options]
+omk init [dir]
+```
 
-options:
+Scaffolds an evaluation project with two starter skill variants and an `eval-samples.json` file.
+
+### `omk doctor`
+
+```bash
+omk doctor                    # check current dir / ./skills
+omk doctor skills/v1.md       # check one skill file
+omk doctor skills/ --json     # machine-readable output
+omk doctor --gate; echo $?    # silent CI gate
+```
+
+Pure static checks: skill readability, frontmatter, directory-skill layout, dependency hints, and sample contract. It is also run automatically before `omk eval`.
+
+### `omk eval`
+
+```bash
+omk eval --control code-review-v1 --treatment code-review-v2
+omk eval --config eval.yaml
+omk eval --batch
+omk eval gold compare <report-id> --gold-dir gold-dataset
+omk eval debias length <report-id>
+```
+
+Runs the offline evaluation, applies the verdict gate, persists the report, and returns a ship/no-ship exit code. Bootstrap CI is enabled by default on this workflow.
+
+Common options:
+
+```text
   --samples <path>       sample file (default: eval-samples.json, also detects .yaml/.yml)
   --skill-dir <path>     artifact dir (default: skills)
-  --control <expr>       control-group variant expression (experiment role = control)
-  --treatment <v1,v2>    treatment-group variant expressions, comma-separated
-                         at least one of --control / --treatment is required
-                         (unless you use --config or --batch)
-                         special values: baseline (empty artifact), git:name (git HEAD),
-                         git:ref:name (specific commit), path with "/" (read file directly)
-  --config <path>        YAML/JSON config file (evaluation-as-code); declares
-                         samples + variants + model + executor in one file; CLI
-                         flags override config fields when both are provided
+  --control <expr>       control variant expression
+  --treatment <v1,v2>    treatment variants, comma-separated
+  --config <path>        YAML/JSON evaluation config
   --model <name>         task execution model (default: sonnet)
-  --judge-models <list>  judge config; 1 entry = single judge (default
-                         claude:haiku), ≥ 2 entries = ensemble. Format:
-                         `executor:model[,executor:model]`
-  --output-dir <path>    output dir (default: ~/.oh-my-knowledge/reports/)
-  --no-judge             skip the LLM judge
-  --no-cache             disable result cache (on by default; identical inputs reuse)
+  --judge-models <list>  judge config, e.g. claude:haiku or claude:opus,openai:gpt-4o
+  --executor <name>      claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom
+  --no-judge             skip LLM judge
   --dry-run              preview only
-  --blind                blind mode
-  --concurrency <n>      parallel tasks (default: 1)
-  --timeout <sec>        per-task executor timeout (default: 120)
-  --repeat <n>           repeat N times for variance analysis (default: 1)
-  --executor <name>      executor (default: claude); supports custom commands
-  --skip-connectivity    skip the LLM connectivity check (doctor still runs;
-                         doctor is mandatory and has no skip flag).
-                         Auto-applied on --resume (the original run already
-                         verified connectivity).
-  --mcp-config <path>    MCP config for fetching private-doc URLs via MCP Server
-                         (default: .mcp.json in cwd)
-  --no-serve             don't auto-start the report server after the run
-  --verbose              print per-sample details (duration, tokens, output preview)
-  --batch                batch mode: evaluate each artifact independently vs baseline
-                         requires {name}.eval-samples.json paired with each artifact
-  --judge-repeat <n>     run the LLM judge N times per (sample × dimension) and report stddev
-  --bootstrap            enable distribution-free CIs: bootstrap CI per variant +
-                         pairwise diff CI (CI containing 0 = not significant)
+  --blind                blind A/B mode
+  --concurrency <n>      parallel tasks
+  --timeout <sec>        per-task timeout
+  --repeat <n>           repeat N times for variance analysis
+  --batch                evaluate each artifact independently vs baseline
   --bootstrap-samples N  bootstrap resample count (default 1000)
-  --gold-dir <path>      after the run, compare scores against the gold dataset
-                         (Krippendorff α / κ / Pearson). Result is written to
-                         report.meta.humanAgreement and shown in the HTML report
-  --no-debias-length     revert to legacy v2-cot judge prompt (no "length is not
-                         a quality signal" paragraph) — for byte-compat with
-                         legacy reports whose hash predates v3-cot-length
-  --budget-usd <num>             total cost cap (USD); on overrun the run aborts and
-                                 a partial report is persisted (`report.meta.budgetExhausted = true`)
-  --budget-per-sample-usd <num>  per-sample cost cap; offending samples fail individually,
-                                 the run continues
-  --budget-per-sample-ms <num>   per-sample latency cap (ms); same semantics as cost cap
+  --threshold <number>   verdict layer-gate threshold (default 3.5)
+  --trivial-diff <num>   practically tiny diff cutoff (default 0.1)
+  --report-only          produce the report and print verdict, but always exit 0
+  --no-gate              alias for --report-only
+  --skip-connectivity    skip model connectivity check; doctor still runs
+  --no-serve             do not auto-start the report server after evaluation
 ```
 
-**eval.yaml budget**: declare `budget: { totalUSD?, perSampleUSD?, perSampleMs? }` (all optional, must be ≥ 0). CLI flags of the same name override the config values.
-
-**eval.yaml experiment-design fields**: the same flags above can be set in `eval.yaml` for reproducible experiment configuration (CLI > eval.yaml > default):
-
-```yaml
-samples: ./eval-samples.yaml
-model: sonnet
-repeat: 5                    # multi-run variance, ≥ 1
-judgeRepeat: 3               # per (sample × dim) judge self-consistency, ≥ 1
-bootstrap: true              # distribution-free CI per variant
-bootstrapSamples: 2000       # default 1000, ≥ 100
-goldDir: ./gold              # post-run α / κ / Pearson against human anchor
-lengthDebias: true           # default; set false to reproduce pre-v0.21 hash
-strictBaseline: true         # default; set false to disable skill isolation
-noJudge: false               # default; set true to skip LLM judge entirely
-judgeModels:                 # 1 entry = single judge; ≥ 2 = ensemble
-  - { executor: claude, model: opus }
-  - { executor: openai-api, model: gpt-4o }
-variants:
-  - { name: baseline, role: control, artifact: baseline }
-  - { name: my-skill, role: treatment, artifact: ./skills/my-skill.md }
-```
-
-**Field entry points**: `bench run` reads every field above. `bench gate` goes through `parseRunConfig` and picks up the shared subset (`variants` / `executor` / `model` / `judgeModels` — both single-judge and ensemble — / `noJudge` / `noCache` / `blind` / `strictBaseline` / `budget` / `mcpConfig` / `variantAllowedSkills`); the experiment-design fields handled by `commands/run.ts` (`repeat` / `judgeRepeat` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`) are intentionally not read by `gate` and can be extended later. Other subcommands (`evolve` / `verdict` / `diff` / `analyze` / …) do not read `eval.yaml`.
-
-**Difference from `cost_max` / `latency_max` assertions**: assertions are **per-sample scoring rules** (exceeding the cap fails that one assertion, the run continues); budget caps are **workflow-level hard limits** (`totalUSD` overrun aborts the run and persists a partial report; per-sample overruns fail the offending sample but the run continues). Assertions answer "is quality acceptable?"; budgets answer "are cost/time within the envelope?".
-
-### `omk bench run --batch` (batch mode)
-
-When `skills/` contains several **independent** artifacts, use `--batch` to evaluate each one against baseline and produce a BatchEvaluationReport with child EvaluationReports.
-
-```
-skills/
-├── asset.md                       ← artifact file
-├── asset.eval-samples.json        ← paired samples
-├── home.md
-├── home.eval-samples.json
-└── product/                       ← directory format also supported
-    ├── SKILL.md
-    └── eval-samples.json
-```
-
-Pairing rules:
-
-- `{name}.md` → looks for `{name}.eval-samples.json` in the same dir
-- `{name}/SKILL.md` → looks for `{name}/eval-samples.json`
-- artifacts without paired samples are skipped with a warning
+### `omk observe`
 
 ```bash
-omk bench run --batch
-omk bench run --batch --dry-run
+omk observe ~/.claude/projects/-Users-you-Documents-my-project
+omk observe ~/.claude/projects/my-project --last 7d
+omk observe ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
+omk observe ~/.claude/projects/my-project --skills audit,polish
+omk observe ~/.claude/projects/my-project --kb /path/to/project
 ```
 
-### `omk bench gen-samples` (generate test cases)
+Turns real Claude Code session traces into skill-health reports: knowledge usage, gap signals, execution stability, tokens, and latency. This is production observation, not production scoring.
 
-Reads an artifact's content and uses an LLM to auto-generate eval-samples. Review and edit them before running eval.
+### `omk improve`
 
 ```bash
-# generate for a specific artifact (writes eval-samples.json)
-omk bench gen-samples skills/my-skill.md
-
-# batch-generate for every artifact under skills/ that lacks samples
-omk bench gen-samples --batch
-
-# specify sample count
-omk bench gen-samples skills/my-skill.md --count 10
+omk improve <report-id>             # sample diagnostics and repair plan
+omk improve plan <report-id>        # explicit repair-plan form
+omk improve failures <report-id>    # cluster failed samples into root causes
+omk improve samples [skill]         # generate or fill eval samples
+omk improve skill <skill>           # iterate a skill through eval-driven rewrites
 ```
 
-Options:
+Use this after `omk eval` or `omk observe` to decide what to change next. Generated sample assertions use English, numbers, or code tokens so they are easier to compare across bilingual outputs.
 
-```
-  --batch                batch-generate for every artifact missing samples
-  --count <n>            samples per artifact (default: 5)
-  --model <name>         model used for generation (default: sonnet)
-  --skill-dir <path>     artifact dir (default: skills), used with --batch
-```
-
-### `omk bench evolve` (self-iterating improvement)
-
-Lets the AI iterate an artifact automatically: evaluate → analyze weak spots → LLM rewrites → evaluate again → keep if the score went up, drop otherwise → repeat.
+### `omk export`
 
 ```bash
-# basic: iterate 5 rounds
-omk bench evolve skills/my-skill.md
-
-# set rounds and target score
-omk bench evolve skills/my-skill.md --rounds 10 --target 4.5
+omk export <report-id> --format html
+omk export <report-id> --format markdown --out report.md
+omk export <report-id> --format github-summary
+omk export diff <report-id> --regressions-only
+omk export verdict <report-id>
+omk export saturation <report-id>
 ```
 
-Options:
+Exports evidence for PRs, CI summaries, and audit trails. HTML writes a standalone report file; markdown and GitHub summary print to stdout unless `--out` is provided. The export subtree also owns sample/report diffing, persisted verdict reads, and saturation inspection.
 
-```
-  --rounds <n>           max iteration rounds (default: 5)
-  --target <score>       stop early when the score reaches this threshold
-  --samples <path>       sample file (default: eval-samples.json)
-  --improve-model <name> model used for rewrites (default: sonnet)
-```
-
-Each round's output is saved under `skills/evolve/` (`my-skill.r0.md`, `my-skill.r1.md`…), so you can `diff` to see what the AI changed. The best round is written back to the original file.
-
-### `omk bench gate`
-
-Run the evaluation inside CI. Exit code 0 on pass, 1 on fail — can be wired into gates directly.
-
-The gate is **three-layer all-pass**: `avgFactScore >= threshold AND avgBehaviorScore >= threshold AND avgJudgeScore >= threshold`. Any layer below threshold is FAIL, and the output shows which layer broke. This stops cases like `fact 4.5→2.5 but judge 3→5` from passing via composite averaging — if one layer regresses, the gate catches it.
+### `omk studio`
 
 ```bash
-omk bench gate [options]
-  --threshold <number>   per-layer minimum score (default: 3.5); applied
-                         independently to fact / behavior / judge
+omk studio
+omk studio --port 7799
+omk studio --reports-dir ~/.oh-my-knowledge/reports
 ```
 
-### `omk doctor` (pre-evaluation health check)
-
-Pure static / zero-LLM checks — analogous to lint + typecheck in the SE toolchain. Runs as a mandatory gate before `bench run` / `bench gate` so a typo'd YAML or missing dependency aborts with an actionable error instead of producing a garbage-in verdict. Also runnable standalone for local iteration or CI.
-
-```bash
-omk doctor                    # batch check every skill in current dir / ./skills
-omk doctor skills/v1.md       # single file
-omk doctor skills/ --json     # JSON output for CI consumption
-omk doctor --gate; echo $?    # silent mode — exit 1 if any fatal check fails
-```
-
-What `doctor` checks:
-
-- **skill readable** — file exists, content non-empty, has minimum length
-- **skill metadata** — front-matter (if present) is valid YAML; directory-skills have `SKILL.md`
-- **dependencies present** — referenced CLI tools, files, env vars all available (reuses `preflightDependencies`)
-- **samples ↔ skill contract** — when samples are provided, validate they're non-empty and have prompt fields (warn-level)
-
-Executor / judge connectivity is verified by a separate evaluation preflight phase, not by doctor — clean boundary: doctor is static, eval is dynamic. `bench run` / `bench gate` abort with `exit 1` and stderr `doctor failed:` prefix when doctor fails. **Doctor is mandatory and not skippable** (static checks have no cost reason to skip); LLM connectivity is separately controllable via `--skip-connectivity` (auto-skipped on `--resume`).
-
-### `omk bench report`
-
-Start the report server to browse historical reports, submit feedback, and delete reports.
-
-```bash
-omk bench report [options]
-  --port <number>        server port (default: 7799)
-```
-
-### `omk bench init`
-
-```bash
-omk bench init [dir]     # scaffold an eval project
-```
-
-### `omk bench gold` (human gold anchor)
-
-Bring a human (or stronger-model proxy) annotation as an external anchor and compute Krippendorff α / weighted κ / Pearson against the LLM judge. Answers "is the judge correct?", complementary to Bootstrap CI's "is the judge stable?".
-
-```bash
-omk bench gold init [--out <dir>] [--annotator <id>]   # scaffold a dataset template
-omk bench gold validate <dir>                          # check schema (annotator / date / version / score range)
-omk bench gold compare <reportId> --gold-dir <dir>     # compare against an existing report; prints α/κ/r + verdict
-```
-
-Dataset layout:
-
-```
-gold-dir/
-├── metadata.yaml      # annotator (must NOT match the omk judge model — would trigger contamination warning) + date + version
-└── annotations.yaml   # [{ sample_id, score, reason? }] concatenated by sample_id
-```
-
-α thresholds follow Krippendorff (2011): ≥ 0.80 strong agreement; [0.67, 0.80) acceptable; < 0.40 large divergence — investigate rubric / prompt.
-
-Full demo: [examples/gold-dataset/](examples/gold-dataset/)
-
-### `omk bench debias-validate length` (judge length-bias check)
-
-Re-judges every (sample × variant) of an existing report with the OPPOSITE length-debias setting (v3-cot-length ↔ v2-cot) and bootstraps the CI on the score difference. A significant shift = the judge is sensitive to the length-debias instruction (indirect evidence of length bias).
-
-```bash
-omk bench debias-validate length <reportId> [options]
-  --variant <name>            check a single variant only
-  --judge-models <executor:model>  override the report's judge (single-judge only)
-  --bootstrap-samples N       bootstrap iterations (default 1000)
-  --seed N                    deterministic seed
-```
-
-Verdict bucket: none / weak / medium (|0.2-0.5|) / strong (≥ 0.5). Re-judge cost roughly doubles vs the original judge pass.
-
-### `omk bench saturation` (saturation curve)
-
-Answers "have I run enough samples?". Reads the saturation trace from an existing report (no re-run). Verdicts only emit when the original run used `--repeat ≥ 5`; below that, the curve is plotted but no verdict is computed.
-
-```bash
-omk bench saturation <reportId> [options]
-  --variant <name>             single-variant view
-  --method <m>                 slope | bootstrap-ci-width (default) | plateau-height
-  --threshold <num>            method-specific cutoff (defaults match the method)
-  --window <num>               consecutive windows that must satisfy the threshold (default 3)
-```
-
-The HTML report inlines an SVG curve (cumulative N on X, mean ± 95% CI shading on Y, one curve per variant) automatically.
-
-### `omk bench verdict` (one-line ship/no-ship verdict)
-
-Aggregates bootstrap CI / three-layer ci-gate / saturation / human α into one of six verdicts: **PROGRESS** (significant improvement, all three layers pass → exit 0), **CAUTIOUS** (real gain but with a warning — broken gate / trivially small / control regressed → exit 1), **REGRESS** (significant negative shift → exit 1), **NOISE** (CI spans 0, undecidable → exit 1), **UNDERPOWERED** (sample size too small → exit 1), **SOLO** (single variant; exit 0 only if its own three-layer gate passes).
-
-```bash
-omk bench verdict <reportId> [options]
-  --threshold <num>      three-layer gate threshold (default 3.5, matches `omk bench gate`)
-  --trivial-diff <num>   "practically tiny" cutoff (default 0.1)
-  --verbose              expand per-pair detail
-```
-
-Shares its rule module with the HTML report's verdict pill — CLI and UI cannot disagree.
-
-### `omk bench diagnose` (sample quality diagnostics)
-
-Answers "is the conclusion polluted by bad samples?". Diagnoses 7 sample-quality issues: `flat_scores` (low discrimination), `all_pass` (too easy), `all_fail` (broken — error severity), `near_duplicate` (prompt ROUGE-1 ≥ threshold), `ambiguous_rubric` (high judge stddev across `--judge-repeat ≥ 2`), `cost_outlier` (≥ k× median), `latency_outlier` (≥ k× median), `error_prone` (executor failure).
-
-```bash
-omk bench diagnose <reportId> [options]
-  --top <n>                   show top N per kind (default 10, 0 = all)
-  --duplicate-rouge <num>     near-duplicate ROUGE-1 threshold (default 0.7)
-  --ambiguous-stddev <num>    judge-stddev threshold (default 1.0)
-  --cost-k <num>              cost-outlier multiplier vs median (default 3)
-  --latency-k <num>           latency-outlier multiplier vs median (default 3)
-  --flat <num>                flat_scores spread threshold (default 0.5)
-```
-
-Output includes a healthScore (0-100, formula `100 - normalized × 20` where `normalized = (errors×8 + warnings×3 + infos×1) / N`). Exit code is 0 only when `healthScore ≥ 70` AND no error-severity issue — CI-friendly.
-
-### `omk bench failures` (failure case LLM clustering)
-
-When 14 of 50 samples failed, reading them one by one is slow. This command sends failed samples to a single LLM call, clusters them into ≤ N groups, and emits per-cluster root cause + fix. "Failed" = `compositeScore < threshold` OR `ok = false`.
-
-```bash
-omk bench failures <reportId> [options]
-  --judge-models <executor:model>  clustering judge (default: from report.meta.judgeModels[0]; single-judge only)
-  --max-clusters <n>          maximum clusters (default 5)
-  --threshold <num>           failure score threshold (default 3)
-  --max-feed <n>              max failures fed to LLM (default 50; takes the worst)
-```
-
-Tolerant: ```json``` markdown fences, `"sample_id@variant"` string member form, hallucinated members are dropped, single-failure case skips the LLM call, executor errors degrade to unclassified.
-
-### `omk bench diff` (report comparison — single / dual mode)
-
-**Single-arg mode** (within-report sample-level): `omk bench diff <reportId>` — within one report, drill down per-sample comparing `variants[0]` against `variants[1]` (or `--variant <name>`).
-
-**Dual-arg mode** (cross-report variant-level): `omk bench diff <reportId1> <reportId2>` — compare the same variant across two reports (legacy behavior preserved).
-
-```bash
-omk bench diff <reportId> [--variant <name>] [--regressions-only] [--threshold 0] [--top N]
-omk bench diff <reportId1> <reportId2> [--regressions-only] [--threshold 0]
-```
-
-Single-arg output sorts by |Δ| desc; rows where Δ < threshold are highlighted as regressions. `--top N` caps row count, `--regressions-only` shows only negative Δ samples.
-
-## `omk analyze` — production observability
-
-`omk bench run` is **offline evaluation** (fixed controls, repeatable, scored). Production is different — no control group, no ground truth, no repetition, so scoring isn't valid there. `omk analyze` turns existing Claude Code session traces into **skill-health reports** (coverage, gap signals, execution stability, tokens/latency per skill). It gives you clues about **which skill is worth re-evaluating offline**, not a production score.
-
-```bash
-# analyze all cc sessions of the current project (auto-infers kb from the trace)
-omk analyze ~/.claude/projects/-Users-you-Documents-my-project
-
-# restrict to the last 7 days / 24 hours / 30 minutes
-omk analyze ~/.claude/projects/my-project --last 7d
-
-# absolute time window
-omk analyze ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
-
-# whitelist specific skills
-omk analyze ~/.claude/projects/my-project --skills audit,polish
-
-# override the inferred knowledge-base root
-omk analyze ~/.claude/projects/my-project --kb /path/to/project
-```
-
-The command writes `~/.oh-my-knowledge/analyses/<timestamp>-skill-health.json`. Browse results alongside bench reports with `omk bench report` — the homepage has a "📊 Skill Health Reports" link, and each skill card also has a "trend →" link to its time-series view. For two reports side-by-side, use the compare selector on `/analyses`.
-
-**What you get per skill:**
-
-- **Knowledge usage** — which KB files this skill actually read (coverage %)
-- **Knowledge gaps** — four weighted signals (failed search / model-flagged gap / hedging / repeated miss); hedging goes through an LLM-assisted classifier to filter out business-possibility hedging vs genuine knowledge uncertainty
-- **Execution stability** — tool-failure rate; a skill with > 20% failures gets a warning that its gap signals may be environmental noise rather than real knowledge gaps
-- **Usage cost** — billable tokens (input+output) separate from cached tokens, total duration
-
-**What this is NOT:**
-
-- Not a general APM (request/response/latency tracing is Langfuse / Datadog territory)
-- Not streaming / alerting (batch only — run on a cron if you want periodic snapshots)
-- Not a production score (no control group, no ground truth — use `omk bench run` for scoring)
+Starts the local knowledge workbench for browsing reports and observation analyses.
 
 ## Executors
 
@@ -721,15 +482,15 @@ The command writes `~/.oh-my-knowledge/analyses/<timestamp>-skill-health.json`. 
 
 API-direct executors support custom base URLs via env: `ANTHROPIC_BASE_URL`, `OPENAI_BASE_URL`.
 
-Codex construct-validity notes: (1) `codex` uses the `codex` binary on `PATH`; `codex-sdk` uses the bundled `@openai/codex` binary resolved by `@openai/codex-sdk`. Reports persist per-variant `meta.executorRuntimes`, `meta.executorRuntime`, and per-judge `meta.judgeModels[].runtime` fingerprints (binary or SDK version + capability snapshot), and `bench diff` / `bench verdict` warn when strict comparability cannot be audited. If runtime fingerprints differ, treat results as an executor-runtime comparison, not only prompt/template behavior. (2) Both executors isolate user-level config: `codex` passes `--ephemeral` + `--ignore-user-config`; `codex-sdk` redirects `$CODEX_HOME` to a per-process tmp dir (auth.json symlinked through). User-level `~/.codex/config.toml` does not leak into eval runs in either case.
+Codex construct-validity notes: (1) `codex` uses the `codex` binary on `PATH`; `codex-sdk` uses the bundled `@openai/codex` binary resolved by `@openai/codex-sdk`. Reports persist per-variant `meta.executorRuntimes`, `meta.executorRuntime`, and per-judge `meta.judgeModels[].runtime` fingerprints (binary or SDK version + capability snapshot), and strict comparability checks warn when runtime fingerprints cannot be audited. If runtime fingerprints differ, treat results as an executor-runtime comparison, not only prompt/template behavior. (2) Both executors isolate user-level config: `codex` passes `--ephemeral` + `--ignore-user-config`; `codex-sdk` redirects `$CODEX_HOME` to a per-process tmp dir (auth.json symlinked through). User-level `~/.codex/config.toml` does not leak into eval runs in either case.
 
 ### Custom executor
 
 Any shell command can serve as an executor, communicating via stdin/stdout JSON:
 
 ```bash
-omk bench run --executor "python my_provider.py"
-omk bench run --executor "./my-executor.sh"
+omk eval --executor "python my_provider.py"
+omk eval --executor "./my-executor.sh"
 ```
 
 **Protocol:**
@@ -770,28 +531,28 @@ When both `--control` and `--treatment` are omitted, use `--config eval.yaml` or
 
 ```bash
 # explicit: one control, one or more treatments
-omk bench run --control v1 --treatment v2
-omk bench run --control baseline --treatment v1,v2,v3
+omk eval --control v1 --treatment v2
+omk eval --control baseline --treatment v1,v2,v3
 
 # compare empty artifact vs explicit artifact
-omk bench run --control baseline --treatment my-skill
+omk eval --control baseline --treatment my-skill
 
 # observe project-level runtime context in isolation (use a self-describing label)
-omk bench run --control baseline --treatment project-env@/path/to/target-project
+omk eval --control baseline --treatment project-env@/path/to/target-project
 
 # compare "project-level runtime context" vs "explicit artifact injection"
-omk bench run \
+omk eval \
   --control project-env@/path/to/target-project \
   --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 
 # before vs after (old version read from git history)
-omk bench run --control git:my-skill --treatment my-skill
+omk eval --control git:my-skill --treatment my-skill
 
 # direct file paths
-omk bench run --control ./old-skill.md --treatment ./new-skill.md
+omk eval --control ./old-skill.md --treatment ./new-skill.md
 
 # config-file driven (evaluation-as-code)
-omk bench run --config eval.yaml
+omk eval --config eval.yaml
 ```
 
 **Prerequisites:**
@@ -822,7 +583,7 @@ In OMK, `agent` is not a catch-all term and neither is `skill`. A cleaner phrasi
 #### Recommended executor
 
 ```bash
-omk bench run --executor claude-sdk
+omk eval --executor claude-sdk
 ```
 
 #### Agent-related assertions
@@ -842,7 +603,7 @@ omk bench run --executor claude-sdk
 No system prompt and no knowledge-carrying project dir. Requires at least one treatment to compare against:
 
 ```bash
-omk bench run \
+omk eval \
   --executor claude-sdk \
   --control baseline \
   --treatment my-skill
@@ -853,7 +614,7 @@ omk bench run \
 No system prompt, but runs inside a project dir. This is **not** a strict "bare baseline" — it is "empty artifact + project-level runtime context".
 
 ```bash
-omk bench run \
+omk eval \
   --executor claude-sdk \
   --control baseline \
   --treatment project-env@/path/to/target-project
@@ -864,7 +625,7 @@ omk bench run \
 Inject an external `SKILL.md` as the artifact while also keeping the project dir. Good for contrasting "project-level runtime context" vs "explicit single-artifact injection".
 
 ```bash
-omk bench run \
+omk eval \
   --executor claude-sdk \
   --control project-env@/path/to/target-project \
   --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
@@ -875,7 +636,7 @@ omk bench run \
 For PRD / complex business-knowledge scenarios, start with:
 
 ```bash
-omk bench run \
+omk eval \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
   --control baseline \
@@ -885,7 +646,7 @@ omk bench run \
 If you want to prove whether "the knowledge sitting inside the project directory" is effective on its own, add a second treatment:
 
 ```bash
-omk bench run \
+omk eval \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
   --control baseline \
@@ -906,32 +667,32 @@ omk bench run \
 # GLM (Zhipu)
 export OPENAI_API_KEY="your Zhipu API key"
 export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
-omk bench run --executor openai-api --model glm-4-plus \
+omk eval --executor openai-api --model glm-4-plus \
   --judge-models openai-api:glm-4-plus --no-cache
 
 # Qwen (Alibaba)
 export OPENAI_API_KEY="your Qwen API key"
 export OPENAI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-omk bench run --executor openai-api --model qwen-plus \
+omk eval --executor openai-api --model qwen-plus \
   --judge-models openai-api:qwen-plus
 
 # DeepSeek
 export OPENAI_API_KEY="your DeepSeek API key"
 export OPENAI_BASE_URL="https://api.deepseek.com"
-omk bench run --executor openai-api --model deepseek-chat \
+omk eval --executor openai-api --model deepseek-chat \
   --judge-models openai-api:deepseek-chat
 
 # Moonshot (Kimi)
 export OPENAI_API_KEY="your Moonshot API key"
 export OPENAI_BASE_URL="https://api.moonshot.cn/v1"
-omk bench run --executor openai-api --model moonshot-v1-8k \
+omk eval --executor openai-api --model moonshot-v1-8k \
   --judge-models openai-api:moonshot-v1-8k
 ```
 
 **Ollama local model:**
 
 ```bash
-omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
+omk eval --executor "python examples/custom-executor/ollama-executor.py" \
   --model llama3 --no-judge
 ```
 
@@ -947,7 +708,7 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
 | Variable | Description |
 |---|---|
 | `CCV_PROXY_URL` | proxy requests through cc-viewer for live eval-traffic visualization |
-| `OMK_BENCH_PORT` | report server port (default: 7799) |
+| `OMK_REPORT_PORT` | report server port (default: 7799) |
 
 ## Requirements
 
@@ -966,7 +727,7 @@ This tool is designed for **local trusted environments** (dev machines, CI pipel
 
 **Recommendations:**
 
-- Do not expose `omk bench report` on the public internet (no auth)
+- Do not expose the local report server on the public internet (no auth)
 - Don't use third-party eval-samples you haven't vetted
 - Custom assertions have a 30-second timeout but no sandbox isolation
 

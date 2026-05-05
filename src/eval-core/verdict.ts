@@ -19,7 +19,7 @@
  *  - **SOLO**         single-variant report; nothing to compare against
  *
  * The output is intentionally text-template-driven so the same rule engine
- * powers both `omk bench verdict` (CLI, terse) and the HTML report's
+ * powers both `omk eval` (CLI, terse) and the HTML report's
  * top-of-page "verdict pill" ("verdict pill" surface). Both surfaces must agree.
  *
  * Subjectivity caveat: the ship recommendation is rule-based, not statistically
@@ -44,7 +44,7 @@ export interface VerdictResult {
   headline: string;
   /** Per-pair verdict if multi-treatment; same shape as level for each. */
   perPair?: Array<{ control: string; treatment: string; level: VerdictLevel; headline: string }>;
-  /** Detail bullets shown by `omk bench verdict --verbose`. */
+  /** Detail bullets shown by `omk eval` verbose output. */
   rationale: {
     significance?: string;
     layerWinners?: string;
@@ -60,7 +60,7 @@ export interface VerdictResult {
 }
 
 export interface VerdictOptions {
-  /** Three-layer ci-gate threshold; defaults to 3.5 (matches `omk bench ci`). */
+  /** Three-layer ci-gate threshold; defaults to 3.5 (matches `omk eval`). */
   gateThreshold?: number;
   /**
    * Magnitude (in raw score points) below which a "significant" diff is treated
@@ -360,7 +360,7 @@ function recommendation(level: VerdictLevel, _perPair: Array<{ level: VerdictLev
 }
 
 /**
- * Plain-text formatter for `omk bench verdict <id>`. Stays under 6 lines per the
+ * Plain-text formatter for the `omk eval` verdict. Stays under 6 lines per the
  *  spec — one verdict + four rationale bullets + one ship recommendation.
  */
 export function formatVerdictText(result: VerdictResult, options: { verbose?: boolean } = {}): string {

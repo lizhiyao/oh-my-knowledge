@@ -1,6 +1,6 @@
 /**
- * `omk bench debias-validate length <reportId>` — measure how much the judge's
- * scores shift when the length-debias instruction is toggled.
+ * Measure how much the judge's scores shift when the length-debias instruction
+ * is toggled.
  *
  * What it actually measures
  * -------------------------

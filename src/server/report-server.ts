@@ -404,7 +404,7 @@ export function formatListenError(p: number, err: unknown): Error | null {
       `cannot bind ephemeral port (--port 0): ${errno ?? 'unknown error'}.\n` +
       `  likely cause: sandboxed / restricted network environment ` +
       `(Docker without --net=host, container without bind permission).\n` +
-      `  try a fixed port: omk bench report --port 8080`
+      `  try a fixed port: OMK_REPORT_PORT=8080 omk eval ...`
     );
   }
 
@@ -414,7 +414,7 @@ export function formatListenError(p: number, err: unknown): Error | null {
     return new Error(
       `cannot bind port ${p}: permission denied (${errno}).\n` +
       `  ports < 1024 require root on Unix; sandboxed environments may block all binds.\n` +
-      `  pick a higher port: omk bench report --port 8080`
+      `  pick a higher port: OMK_REPORT_PORT=8080 omk eval ...`
     );
   }
 
@@ -423,7 +423,7 @@ export function formatListenError(p: number, err: unknown): Error | null {
   if (errno && errno !== 'EADDRINUSE') {
     return new Error(
       `cannot bind port ${p}: ${errno} (${getErrorMessage(err)}).\n` +
-      `  pick another port: omk bench report --port 8080`
+      `  pick another port: OMK_REPORT_PORT=8080 omk eval ...`
     );
   }
 
@@ -448,7 +448,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
 
       if (path === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, service: 'omk-bench' }));
+        res.end(JSON.stringify({ ok: true, service: 'omk' }));
         return;
       }
 
@@ -665,7 +665,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
     if (!existsSync(analysesDir)) mkdirSync(analysesDir, { recursive: true });
     if (!existsSync(jobsDir)) mkdirSync(jobsDir, { recursive: true });
 
-    const p = port ?? Number(process.env.OMK_BENCH_PORT || DEFAULT_PORT);
+    const p = port ?? Number(process.env.OMK_REPORT_PORT || DEFAULT_PORT);
     const host = '127.0.0.1';
 
     const boot = (listenPort: number): Promise<Server> => new Promise((resolve, reject) => {
@@ -686,7 +686,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
       try {
         const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
         const data = await res.json() as { service?: string };
-        isOmk = data.service === 'omk-bench';
+        isOmk = data.service === 'omk';
       } catch { /* not reachable or not omk */ }
 
       if (isOmk) {
@@ -703,7 +703,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
           `port ${p} is already in use by another process.\n` +
           `  inspect: lsof -i:${p}\n` +
           `  release: lsof -ti:${p} | xargs kill\n` +
-          `  or pick another port: omk bench report --port 8080`
+          `  or pick another port: OMK_REPORT_PORT=8080 omk eval ...`
         );
       }
     }

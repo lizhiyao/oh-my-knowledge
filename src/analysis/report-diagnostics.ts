@@ -81,7 +81,7 @@ export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {})
  * Missing fields are bucketed under the `unspecified` key in the relevant
  * distribution map, so users see "I have N samples without difficulty declared".
  *
- * Used by `bench diagnose` CLI to surface coverage gaps. Does NOT participate
+ * Used by `omk improve` to surface coverage gaps. Does NOT participate
  * in grading / judge / verdict. See docs/sample-design-spec.md.
  */
 export function buildSampleQualityAggregate(samples: Sample[]): SampleQualityAggregate {

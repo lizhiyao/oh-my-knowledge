@@ -23,24 +23,20 @@ interface ExecError extends Error {
  *
  * 不应漏给未捕获 Error 的 stack trace;不应 exit 1。
  */
-// bench run / gate 共享 parseRunConfig,需要 control/treatment 才能跑到 judgeModels 解析。
-// 三个 standalone 子命令在自己的 handler 里直接调 parseJudgeModelsArgOrExit,无前置依赖。
+// eval 通过 parseRunConfig 解析 judgeModels,需要 control/treatment 才能跑到参数解析。
+// improve 下的 standalone handler 直接调 parseJudgeModelsArgOrExit,无前置依赖。
 const CASES: Array<{ name: string; argv: string[] }> = [
   {
-    name: 'bench run',
-    argv: ['bench', 'run', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'examples/code-review/skills', '--dry-run'],
+    name: 'eval',
+    argv: ['eval', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'examples/code-review/skills', '--dry-run'],
   },
   {
-    name: 'bench evolve',
-    argv: ['bench', 'evolve', 'examples/code-review/skills/v1.md', '--rounds', '1', '--skip-connectivity'],
+    name: 'improve skill',
+    argv: ['improve', 'skill', 'examples/code-review/skills/v1.md', '--rounds', '1', '--skip-connectivity'],
   },
   {
-    name: 'bench debias-validate',
-    argv: ['bench', 'debias-validate', 'length', 'fake-report-id'],
-  },
-  {
-    name: 'bench failures',
-    argv: ['bench', 'failures', 'fake-report-id'],
+    name: 'improve failures',
+    argv: ['improve', 'failures', 'fake-report-id'],
   },
 ];
 
@@ -69,9 +65,9 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
     );
   });
 
-  it('omk bench run --judge-models <missing executor> exits 2 with friendly error', async () => {
+  it('omk eval --judge-models <missing executor> exits 2 with friendly error', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'bench', 'run', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'examples/code-review/skills', '--dry-run', '--judge-models', ':haiku']),
+      () => execFileAsync('node', [CLI, 'eval', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'examples/code-review/skills', '--dry-run', '--judge-models', ':haiku']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
@@ -82,9 +78,9 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
     );
   });
 
-  it('omk bench run --judge-models "" (empty) exits 2 with friendly error', async () => {
+  it('omk eval --judge-models "" (empty) exits 2 with friendly error', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'bench', 'run', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'examples/code-review/skills', '--dry-run', '--judge-models', '']),
+      () => execFileAsync('node', [CLI, 'eval', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'examples/code-review/skills', '--dry-run', '--judge-models', '']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);

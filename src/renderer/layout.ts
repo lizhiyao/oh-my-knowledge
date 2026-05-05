@@ -57,7 +57,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
   zh: {
     title: '评测报告',
     subtitle: '知识载体评测',
-    noRuns: '暂无评测记录。运行 <code>omk bench run --control v1 --treatment v2</code> 开始。',
+    noRuns: '暂无评测记录。运行 <code>omk eval --control v1 --treatment v2</code> 开始。',
     runId: '报告名称', variants: '实验分组', model: '任务执行模型', samples: '评测用例数',
     score: '分数', cost: '执行成本', time: '时间',
     deleteBtnText: '删除', deleteConfirm: '确定删除报告', deleteFail: '删除失败',
@@ -77,7 +77,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     judgeFailures: '评委失败', judgeFailuresDesc: 'N 次评委评分中返回 score=0（解析失败 / 调用错误）的次数。stddev=0 + failureCount>0 不是"完美一致"，是"大部分炸了"',
     judgeReasoning: '评委推理', judgeReasoningExpand: '展开',
     ensembleHeader: '多评委评分对比', ensembleDesc: '不同评委模型对同一份输出的独立评分。用于反驳"同模态偏差"',
-    agreementHeader: '跨用例评委一致性', agreementDesc: '在所有测评用例上算的多评委一致性',
+    agreementHeader: '跨用例评委一致性', agreementDesc: '在所有评测用例上算的多评委一致性',
     pearsonLabel: '皮尔逊系数 (Pearson)', pearsonDesc: '皮尔逊相关系数：1=完全同向排序，0=无关，-1=完全反向',
     madLabel: '平均绝对差 (MAD)', madDesc: '平均绝对差。1-5 制下 < 0.5 紧密一致, > 1.5 大分歧',
     judgeModelsLabel: '评委模型',
@@ -123,7 +123,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     variantRuntimeContext: '运行环境',
     // --- observability (skill health / trend / diff) ---
     skillHealthTitle: 'Skill 健康度日报',
-    noAnalyses: '暂无 skill 健康度日报。运行 <code>omk analyze &lt;trace-dir&gt;</code> 生成。',
+    noAnalyses: '暂无 skill 健康度日报。运行 <code>omk observe &lt;trace-dir&gt;</code> 生成。',
     backToEvalReports: '← 评测报告',
     backToAnalyses: '← Skill 健康度日报',
     analysesCompareHint: '选两个报告的 from/to 单选框,点 Compare 生成 diff。',
@@ -169,7 +169,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
   en: {
     title: 'Evaluation Reports',
     subtitle: 'Knowledge Artifact Evaluation',
-    noRuns: 'No evaluation runs yet. Run <code>omk bench run --control v1 --treatment v2</code> to start.',
+    noRuns: 'No evaluation runs yet. Run <code>omk eval --control v1 --treatment v2</code> to start.',
     runId: 'Report', variants: 'Variant', model: 'Task execution model', samples: 'Samples',
     score: 'Score', cost: 'Execution cost', time: 'Time',
     deleteBtnText: 'Delete', deleteConfirm: 'Delete report', deleteFail: 'Delete failed',
@@ -235,7 +235,7 @@ export const I18N: Record<Lang, Record<string, string>> = {
     variantRuntimeContext: 'Runtime Context',
     // --- observability (skill health / trend / diff) ---
     skillHealthTitle: 'Skill Health Reports',
-    noAnalyses: 'No skill health reports yet. Run <code>omk analyze &lt;trace-dir&gt;</code> to generate.',
+    noAnalyses: 'No skill health reports yet. Run <code>omk observe &lt;trace-dir&gt;</code> to generate.',
     backToEvalReports: '← Eval reports',
     backToAnalyses: '← Skill Health Reports',
     analysesCompareHint: 'Pick from/to radios on two reports, then click Compare to generate a diff.',

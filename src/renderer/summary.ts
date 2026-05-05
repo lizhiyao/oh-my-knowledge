@@ -6,7 +6,7 @@ import type { GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, Report,
 
 /**
  * Verdict pill — sticky banner at the top of the HTML report giving the same
- * one-line conclusion as the `omk bench verdict` CLI. Both surfaces share the
+ * one-line conclusion as the `omk eval` CLI. Both surfaces share the
  * computeVerdict rule engine so they can never disagree.
  *
  * Color coding follows traffic-light convention plus a yellow band for
@@ -1436,7 +1436,7 @@ export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage
     }
     const uncoveredHint = hintLines.length > 0
       ? `<div style="font-size:11px;color:var(--text-muted);margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
-          <div style="margin-bottom:4px">${lang === 'zh' ? '💡 以下知识未被任何用例覆盖,建议补充测评用例:' : '💡 These knowledge files were not accessed by any sample — consider adding test cases:'}</div>
+          <div style="margin-bottom:4px">${lang === 'zh' ? '💡 以下知识未被任何用例覆盖,建议补充评测用例:' : '💡 These knowledge files were not accessed by any sample — consider adding test cases:'}</div>
           ${hintLines.map((line) => `<div style="margin:2px 0">${line}</div>`).join('')}
         </div>`
       : '';
@@ -1457,7 +1457,7 @@ export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage
 
   const title = lang === 'zh' ? '本次测评的知识使用情况' : 'Knowledge usage in this evaluation';
   const desc = lang === 'zh'
-    ? '本次测评中，哪些知识没有被使用。数字低说明测试用例没覆盖到的角落多，不是知识库内容缺失——配合下方"本次测评的知识盲区"一起看才完整。'
+    ? '本次测评中，哪些知识没有被使用。数字低说明评测用例没覆盖到的角落多，不是知识库内容缺失——配合下方"本次测评的知识盲区"一起看才完整。'
     : 'Which knowledge files were NOT exercised by this evaluation. Low coverage means test cases leave KB corners untouched, not that the KB is incomplete. Pair with "knowledge gaps" below for the full picture.';
 
   return `
@@ -1492,12 +1492,12 @@ export function renderKnowledgeInteractionSection(
   const hasGap = gapReports && Object.keys(gapReports).length > 0;
   if (!hasCov && !hasGap) return '';
 
-  const title = lang === 'zh' ? '本次测评：测试用例 × 知识库' : 'This Evaluation: Test Set × Knowledge Base';
+  const title = lang === 'zh' ? '本次测评：评测用例 × 知识库' : 'This Evaluation: Test Set × Knowledge Base';
   const desc = lang === 'zh'
-    ? '展示本次测评用例和知识库的交互画像——用到哪些知识（使用情况）· 哪些知识想找但没找到或任务执行模型表达不确定（盲区）。'
+    ? '展示本次评测用例和知识库的交互画像——用到哪些知识（使用情况）· 哪些知识想找但没找到或任务执行模型表达不确定（盲区）。'
     : 'How this test set interacts with the KB — which knowledge was exercised (usage) · which knowledge the task execution model missed or flagged as uncertain (gaps).';
   const readHint = lang === 'zh'
-    ? '💡 读表：两者同时高 → 知识库内容有问题（有文件但答不出）· 同时低 → 测评用例太浅（没触到复杂场景）· 使用高 + 盲区低 → 理想但警惕用例驯化'
+    ? '💡 读表：两者同时高 → 知识库内容有问题（有文件但答不出）· 同时低 → 评测用例太浅（没触到复杂场景）· 使用高 + 盲区低 → 理想但警惕用例驯化'
     : '💡 Read together: both high → KB content issues (files exist but can\'t answer) · both low → test set too shallow · high use + low gap → ideal, but beware sample-set overfitting';
 
   // 聚合所有 variant(coverage / gap 任一侧存在即纳入)
@@ -1565,7 +1565,7 @@ export function renderKnowledgeInteractionSection(
       }
       const uncoveredHint = hintLines.length > 0
         ? `<div style="font-size:11px;color:var(--text-muted);margin-top:10px;border-top:1px solid var(--border);padding-top:8px">
-            <div style="margin-bottom:4px">${lang === 'zh' ? '💡 以下知识未被任何用例覆盖,建议补充测评用例:' : '💡 These knowledge files were not accessed — consider adding test cases:'}</div>
+            <div style="margin-bottom:4px">${lang === 'zh' ? '💡 以下知识未被任何用例覆盖,建议补充评测用例:' : '💡 These knowledge files were not accessed — consider adding test cases:'}</div>
             ${hintLines.map((line) => `<div style="margin:2px 0">${line}</div>`).join('')}
           </div>`
         : '';
@@ -1690,7 +1690,7 @@ export function renderGapSection(gapReports: Record<string, GapReport> | undefin
 
   const title = lang === 'zh' ? '本次测评的知识盲区' : 'Knowledge gaps in this evaluation';
   const desc = lang === 'zh'
-    ? '本次测评中，哪些知识想找但没找到、或任务执行模型表达不确定。数字高不一定代表知识库不全——也可能是测试用例问的领域知识库未覆盖。'
+    ? '本次测评中，哪些知识想找但没找到、或任务执行模型表达不确定。数字高不一定代表知识库不全——也可能是评测用例问的领域知识库未覆盖。'
     : 'Which knowledge the task execution model tried to find but missed, or expressed uncertainty about. High numbers do not necessarily mean the KB is incomplete — the test set may be asking about areas the KB never covered.';
 
   const signalTypeLabels: Record<GapSignalRef['type'], { zh: string; en: string }> = {

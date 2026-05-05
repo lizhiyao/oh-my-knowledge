@@ -23,7 +23,7 @@
     "rubric": "应识别 SQL 注入风险",
     "assertions": [
       { "type": "contains", "value": "SQL", "weight": 1 },
-      { "type": "contains", "value": "注入", "weight": 1 }
+      { "type": "contains", "value": "injection", "weight": 1 }
     ]
   }
 ]

@@ -291,7 +291,7 @@ gap rate 不只是一个数字，要驱动可执行的 action。报告里至少�
 
 ### 4. CI 阈值（cross-evaluation）
 
-CI 模式（`omk bench gate`）支持两种守护模式：
+CI 模式（`omk eval`）支持两种守护模式：
 
 - `--max-gap-rate <number>`：**绝对阈值**。gap rate 超过 number 时 CI 失败。用于"我们设定的可接受上限"
 - `--gap-rate-regression <delta>`：**回归阈值**。gap rate 相对上次评测上升超过 delta 时 CI 失败。用于"防止知识库劣化"

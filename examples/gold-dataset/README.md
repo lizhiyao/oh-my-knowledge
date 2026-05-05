@@ -24,7 +24,7 @@ examples/gold-dataset/
 第一步：用任意 skill 跑一次评测（这里以 baseline vs 一个 skill 为例）。
 
 ```bash
-omk bench run \
+omk eval \
   --samples examples/gold-dataset/eval-samples.yaml \
   --control baseline \
   --treatment your-skill \
@@ -33,17 +33,7 @@ omk bench run \
 
 `--gold-dir` 让 omk 跑完后自动计算 α/κ/Pearson 并把结果写到 report.meta.humanAgreement，HTML 报告中会显示「人工锚点」一栏。
 
-第二步：单独对比已有 report。
-
-```bash
-omk bench gold compare <reportId> --gold-dir examples/gold-dataset/gold
-```
-
-第三步：校验 gold 数据集结构是否合法。
-
-```bash
-omk bench gold validate examples/gold-dataset/gold
-```
+第二步：打开 HTML 报告，检查「人工锚点」区块中的 α / κ / Pearson 是否支持这次结论。
 
 ## 重要约束
 
@@ -72,13 +62,8 @@ omk 的 HTML 报告会按下面的阈值给 α 上色：
 把这份当作起点，按你自己的领域扩样：
 
 ```bash
-# 1. 用 omk 生成 starter 模板
-omk bench gold init --out my-gold --annotator your-team-or-model-id
-
-# 2. 编辑 annotations.yaml,填入对应你 sample_id 的标注
-# 3. 校验
-omk bench gold validate my-gold
-
-# 4. 跑评测时挂上
-omk bench run --gold-dir my-gold ...
+# 1. 复制 examples/gold-dataset/gold 作为 starter 模板
+# 2. 编辑 metadata.yaml 和 annotations.yaml，填入真实标注
+# 3. 跑评测时挂上
+omk eval --gold-dir my-gold ...
 ```

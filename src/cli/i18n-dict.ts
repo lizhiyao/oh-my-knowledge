@@ -16,9 +16,9 @@
  * 2. **保留原文的白名单 (产品术语 / 命令 / 文件名)**
  *    以下 token 在两种语言里都保留原文, 不翻译:
  *    - 产品名: omk, oh-my-knowledge, Claude, npm
- *    - 子命令空间和命令名: bench, analyze, run, report, init, evolve, gold,
- *      diff, ci, gen-samples, debias-validate, saturation, verdict,
- *      diagnose, failures
+ *    - 子命令空间和命令名: init, doctor, eval, observe, improve, export,
+ *      studio, samples, skill, plan, failures, gold, debias, diff, verdict,
+ *      saturation
  *    - omk 核心业务术语: skill, variant, sample, judge, executor (出现在产品
  *      UI 里时首字母可大写如 "Skill 评测", 描述句中保持小写)
  *    - 技术参数: --lang, --control, --treatment, --bootstrap, --judge-repeat,
@@ -50,11 +50,8 @@
 
 export type CliMessageKey =
   // 通用 / 启动期
-  | 'cli.common.lang_invalid_silent'
-  | 'cli.common.help_hint'
   | 'cli.common.unknown_domain'
-  | 'cli.common.unknown_bench_command'
-  // bench init
+  // init
   | 'cli.init.scaffolded'
   | 'cli.init.next_steps_title'
   | 'cli.init.next_step_edit_samples'
@@ -75,19 +72,22 @@ export type CliMessageKey =
   | 'cli.progress.skipped'
   | 'cli.progress.sample_done'
   | 'cli.progress.sample_failed_done'
-  // bench run 参数校验 (parseRunConfig)
+  // eval 参数校验 (parseRunConfig)
   | 'cli.run.invalid_repeat'
   | 'cli.run.invalid_judge_repeat'
   | 'cli.run.no_debias_length_active'
   | 'cli.run.invalid_bootstrap_samples'
   | 'cli.run.bootstrap_samples_too_large'
-  // bench run 完成 / 报告 server / gold compare / 错误
+  // eval 完成 / 报告 server / gold compare / 错误
   | 'cli.run.skill_section'
   | 'cli.run.run_section'
   | 'cli.run.batch_complete'
+  | 'cli.run.batch_verdict_header'
+  | 'cli.run.batch_child_report_missing'
   | 'cli.run.eval_complete'
   | 'cli.run.tally'
   | 'cli.run.report_saved'
+  | 'cli.run.report_only_gate_skipped'
   | 'cli.run.report_server_running'
   | 'cli.run.report_server_view'
   | 'cli.run.report_server_stop'
@@ -97,17 +97,22 @@ export type CliMessageKey =
   | 'cli.run.gold_load_issue'
   | 'cli.run.contamination_warning'
   | 'cli.common.error_prefix'
-  // bench analyze
-  | 'cli.analyze.view_in_browser'
+  // observe
+  | 'cli.observe.view_hint'
   // 通用 not-found 错误
   | 'cli.common.skill_dir_not_found'
   | 'cli.common.skill_file_not_found'
   | 'cli.common.report_not_found'
   | 'cli.common.no_judge_model'
   | 'cli.common.judge_models_single_only'
-  | 'cli.common.usage_gold_validate'
   | 'cli.common.warn_load_samples_failed'
-  // bench gen-samples
+  // export / studio 操作反馈
+  | 'cli.export.unsupported_format'
+  | 'cli.export.html_done'
+  | 'cli.export.done'
+  | 'cli.studio.started'
+  | 'cli.studio.stop_hint'
+  // improve samples
   | 'cli.gen.skill_skipped_existing'
   | 'cli.gen.skill_generating'
   | 'cli.gen.skill_done'
@@ -120,7 +125,7 @@ export type CliMessageKey =
   | 'cli.gen.single_done'
   | 'cli.gen.review_hint'
   | 'cli.gen.failed'
-  // bench evolve
+  // improve skill
   | 'cli.evolve.specify_skill_path'
   | 'cli.evolve.section_header'
   | 'cli.evolve.round_baseline'
@@ -130,34 +135,24 @@ export type CliMessageKey =
   | 'cli.evolve.best_path'
   | 'cli.evolve.versions_saved'
   | 'cli.evolve.report_link'
-  // bench gold
-  | 'cli.gold.created_files'
-  | 'cli.gold.next_step_edit_annotations'
-  | 'cli.gold.validate_ok'
-  // bench debias-validate
-  | 'cli.debias.warn_cost_doubles'
-  // bench saturation
-  | 'cli.saturation.no_data'
-  | 'cli.saturation.verdict_header'
-  | 'cli.saturation.variant_no_trace'
-  | 'cli.saturation.variant_label'
-  | 'cli.saturation.checkpoints'
-  | 'cli.saturation.last_point'
-  | 'cli.saturation.persisted_verdict'
-  | 'cli.saturation.persisted_verdict_saturated'
-  | 'cli.saturation.persisted_verdict_unsaturated'
-  | 'cli.saturation.skipped_too_few_points'
   // 长段 help / usage 文案 (multi-line)
-  | 'cli.help.main'
-  | 'cli.help.diff_usage'
-  | 'cli.help.analyze_usage'
-  | 'cli.help.gold'
-  | 'cli.help.debias_validate'
-  | 'cli.help.saturation'
-  | 'cli.help.verdict'
-  | 'cli.help.diagnose'
-  | 'cli.help.failures'
-  // sample design coverage block (bench diagnose)
+  | 'cli.help.product_main'
+  | 'cli.help.init_usage'
+  | 'cli.help.eval'
+  | 'cli.help.eval_gold'
+  | 'cli.help.eval_debias'
+  | 'cli.help.observe'
+  | 'cli.help.improve'
+  | 'cli.help.improve_plan'
+  | 'cli.help.improve_failures'
+  | 'cli.help.improve_samples'
+  | 'cli.help.improve_skill'
+  | 'cli.help.export'
+  | 'cli.help.export_diff'
+  | 'cli.help.export_verdict'
+  | 'cli.help.export_saturation'
+  | 'cli.help.studio'
+  // sample design coverage block (improve plan)
   | 'cli.diagnose.coverage_header'
   | 'cli.diagnose.coverage_unspecified'
   | 'cli.diagnose.coverage_chars'
@@ -211,21 +206,9 @@ export interface CliMessage {
 }
 
 export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
-  'cli.common.lang_invalid_silent': {
-    zh: '无效的语言代码: {value} (仅支持 zh / en, 已使用默认 zh)',
-    en: 'Invalid language code: {value} (supported: zh / en, using default zh)',
-  },
-  'cli.common.help_hint': {
-    zh: "运行 'omk --help' 查看用法",
-    en: "Run 'omk --help' to see usage",
-  },
   'cli.common.unknown_domain': {
-    zh: "未知顶层命令: {domain} (请用 'omk bench <command>'、'omk doctor [path]' 或 'omk analyze <dir>')",
-    en: "Unknown domain: {domain} (use 'omk bench <command>', 'omk doctor [path]' or 'omk analyze <dir>')",
-  },
-  'cli.common.unknown_bench_command': {
-    zh: "未知子命令: bench {command} (运行 'omk --help' 查看可用列表)",
-    en: "Unknown bench command: {command} (run 'omk --help' to see all commands)",
+    zh: "未知命令：{domain}。运行 'omk --help' 查看可用命令。",
+    en: "Unknown command: {domain}. Run 'omk --help' to see available commands.",
   },
   'cli.init.scaffolded': {
     zh: '已初始化测评项目: {dir}',
@@ -236,7 +219,7 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'Next steps:',
   },
   'cli.init.next_step_edit_samples': {
-    zh: '  1. 编辑 eval-samples.json, 加入你要测的测评用例',
+    zh: '  1. 编辑 eval-samples.json，加入你要测的评测用例',
     en: '  1. Edit eval-samples.json to add your test cases',
   },
   'cli.init.next_step_edit_skills': {
@@ -244,8 +227,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '  2. Edit skills/code-review-v1/SKILL.md and skills/code-review-v2/SKILL.md with your skill versions',
   },
   'cli.init.next_step_run': {
-    zh: '  3. 运行: omk bench run --control code-review-v1 --treatment code-review-v2',
-    en: '  3. Run: omk bench run --control code-review-v1 --treatment code-review-v2',
+    zh: '  3. 运行: omk eval --control code-review-v1 --treatment code-review-v2',
+    en: '  3. Run: omk eval --control code-review-v1 --treatment code-review-v2',
   },
   'cli.init.note_codex_executor': {
     zh: '\n注: omk 评测时把 SKILL.md 整文(含 frontmatter)作为 system prompt 注入 — 跨 executor 一致(claude / codex / openai-api / gemini 都走同一条路径,不依赖任何 executor 的 native skill auto-discovery 或 Skill 工具机制)。frontmatter 在 prompt 头部对 model 行为无显著影响。\n模板带 Claude Code 兼容的 frontmatter(name + description)是为了让同一份 directory-skill 也能 deploy 到 Claude Code:把整个目录复制到 ~/.claude/skills/code-review-v1/(整目录,不是单个 SKILL.md),Claude SDK 才能识别。这是 omk 评测之外的 bonus,一份文件双向 dogfood。',
@@ -331,6 +314,14 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     zh: '\n✅ 批量评测完成\n',
     en: '\n✅ Batch evaluation done\n',
   },
+  'cli.run.batch_verdict_header': {
+    zh: '批量评测结论：{status}（{passed}/{total} 通过）',
+    en: 'Batch verdict: {status} ({passed}/{total} passed)',
+  },
+  'cli.run.batch_child_report_missing': {
+    zh: '⚠ 子报告缺失：{id}，将按不可 ship 处理。\n',
+    en: '⚠ Child report missing: {id}; treating it as not shippable.\n',
+  },
   'cli.run.eval_complete': {
     zh: '\n✅ 评测完成\n',
     en: '\n✅ Evaluation done\n',
@@ -342,6 +333,10 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.run.report_saved': {
     zh: '📄 报告已保存到: {path}\n',
     en: '📄 Report saved to: {path}\n',
+  },
+  'cli.run.report_only_gate_skipped': {
+    zh: 'ℹ 已启用 report-only 模式：保留 verdict 输出，但本次不使用 verdict 改写 exit code。\n',
+    en: 'ℹ Report-only mode enabled: verdict is still printed, but it will not affect the exit code.\n',
   },
   'cli.run.report_server_running': {
     zh: '\n📊 报告服务已启动: {url}\n',
@@ -360,8 +355,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '\n💡 Non-interactive environment, skipping report server\n',
   },
   'cli.run.no_serve_view_hint': {
-    zh: '   查看报告: omk bench report --reports-dir {dir}\n',
-    en: '   View report: omk bench report --reports-dir {dir}\n',
+    zh: '   导出报告：omk export {id} --reports-dir {dir}\n',
+    en: '   Export report: omk export {id} --reports-dir {dir}\n',
   },
   'cli.run.gold_load_failed': {
     zh: '\n⚠ gold dataset 加载失败 ({dir}):\n',
@@ -379,9 +374,9 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     zh: '❌ 错误: {message}',
     en: '❌ Error: {message}',
   },
-  'cli.analyze.view_in_browser': {
-    zh: "在浏览器查看: omk bench report  # 打开后点首页的 \"📊 Skill 健康度日报\"",
-    en: "View in browser: omk bench report  # then click \"📊 Skill health report\" on the home page",
+  'cli.observe.view_hint': {
+    zh: '分析 JSON 已写入 output-dir；后续可用 omk observe 持续生成日报。',
+    en: 'Analysis JSON written to output-dir; use omk observe to keep producing health reports.',
   },
   'cli.common.skill_dir_not_found': {
     zh: '未找到 skill 目录: {path}',
@@ -400,23 +395,39 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'No judge configured. Pass --judge-models <executor:model> or ensure the report has meta.judgeModels.',
   },
   'cli.common.judge_models_single_only': {
-    zh: 'bench {cmd} 仅支持单评委。--judge-models 只能传一个 executor:model entry。',
-    en: 'bench {cmd} only supports a single judge. --judge-models accepts exactly one executor:model entry.',
-  },
-  'cli.common.usage_gold_validate': {
-    zh: '用法: omk bench gold validate <dir>',
-    en: 'Usage: omk bench gold validate <dir>',
+    zh: '{cmd} 仅支持单评委。--judge-models 只能传一个 executor:model entry。',
+    en: '{cmd} only supports a single judge. --judge-models accepts exactly one executor:model entry.',
   },
   'cli.common.warn_load_samples_failed': {
     zh: '⚠ 加载 samples 文件失败 ({path}): {message}\n',
     en: '⚠ Failed to load samples file ({path}): {message}\n',
+  },
+  'cli.export.unsupported_format': {
+    zh: '不支持的导出格式：{format}。可用格式：html / markdown / github-summary。',
+    en: 'Unsupported export format: {format}. Available: html / markdown / github-summary.',
+  },
+  'cli.export.html_done': {
+    zh: '已导出 HTML：{path}',
+    en: 'HTML exported to: {path}',
+  },
+  'cli.export.done': {
+    zh: '已导出：{path}',
+    en: 'Exported to: {path}',
+  },
+  'cli.studio.started': {
+    zh: 'studio 已启动：{url}',
+    en: 'Studio running at {url}',
+  },
+  'cli.studio.stop_hint': {
+    zh: '按 Ctrl+C 停止服务',
+    en: 'Press Ctrl+C to stop',
   },
   'cli.gen.skill_skipped_existing': {
     zh: '⏭️  {name}: eval-samples 已存在, 跳过\n',
     en: '⏭️  {name}: eval-samples already exists, skipping\n',
   },
   'cli.gen.skill_generating': {
-    zh: '🔄 {name}: 正在生成 {count} 条测评用例...\n',
+    zh: '🔄 {name}: 正在生成 {count} 条评测用例...\n',
     en: '🔄 {name}: generating {count} test cases...\n',
   },
   'cli.gen.skill_done': {
@@ -432,19 +443,19 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'No eval-samples need generating (all skills already have paired files)',
   },
   'cli.gen.batch_summary': {
-    zh: '\n共生成 {n} 份 eval-samples, 请审查后运行: omk bench run --batch',
-    en: '\nGenerated {n} eval-samples files. Review them, then run: omk bench run --batch',
+    zh: '\n共生成 {n} 份 eval-samples, 请审查后运行: omk eval --batch',
+    en: '\nGenerated {n} eval-samples files. Review them, then run: omk eval --batch',
   },
   'cli.gen.specify_skill_path': {
-    zh: '请指定 skill 文件路径, 例如: omk bench gen-samples skills/my-skill.md',
-    en: 'Please specify a skill file path, e.g.: omk bench gen-samples skills/my-skill.md',
+    zh: '请指定 skill 文件路径, 例如: omk improve samples skills/my-skill.md',
+    en: 'Please specify a skill file path, e.g.: omk improve samples skills/my-skill.md',
   },
   'cli.gen.samples_already_exists': {
     zh: 'eval-samples.json 已存在。如需覆盖请先删除该文件。',
     en: 'eval-samples.json already exists. Delete it first if you want to overwrite.',
   },
   'cli.gen.single_generating': {
-    zh: '🔄 正在生成 {count} 条测评用例...\n',
+    zh: '🔄 正在生成 {count} 条评测用例...\n',
     en: '🔄 Generating {count} test cases...\n',
   },
   'cli.gen.single_done': {
@@ -452,20 +463,20 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '✅ Generated {n} samples → {path}{cost}\n',
   },
   'cli.gen.review_hint': {
-    zh: '\n请审查生成的测评用例后运行: omk bench run',
-    en: '\nReview the generated test cases, then run: omk bench run',
+    zh: '\n请审查生成的评测用例后运行: omk eval',
+    en: '\nReview the generated test cases, then run: omk eval',
   },
   'cli.gen.failed': {
     zh: '生成失败: {message}',
     en: 'Generation failed: {message}',
   },
   'cli.evolve.specify_skill_path': {
-    zh: '请指定 skill 文件路径, 例如: omk bench evolve skills/my-skill.md',
-    en: 'Please specify a skill file path, e.g.: omk bench evolve skills/my-skill.md',
+    zh: '请指定 skill 文件路径, 例如: omk improve skill skills/my-skill.md',
+    en: 'Please specify a skill file path, e.g.: omk improve skill skills/my-skill.md',
   },
   'cli.evolve.section_header': {
-    zh: '\n=== Evolution: {path} ===\n',
-    en: '\n=== Evolution: {path} ===\n',
+    zh: '\n=== Improve skill: {path} ===\n',
+    en: '\n=== Improve skill: {path} ===\n',
   },
   'cli.evolve.round_baseline': {
     zh: '第 0 轮 (基线): score={score} ({cost})\n',
@@ -492,544 +503,285 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'All versions saved at: {dir}/\n',
   },
   'cli.evolve.report_link': {
-    zh: '📊 评测报告: omk bench report (ID: {id})\n',
-    en: '📊 Report: omk bench report (ID: {id})\n',
+    zh: '📊 评测报告：omk export {id} --format html\n',
+    en: '📊 Report: omk export {id} --format html\n',
   },
-  'cli.gold.created_files': {
-    zh: '已在 {dir} 创建 {n} 个文件:',
-    en: 'Created {n} files in {dir}:',
-  },
-  'cli.gold.next_step_edit_annotations': {
-    zh: '\n下一步: 编辑 annotations.yaml 加入真实标注 → 跑 omk bench gold validate',
-    en: '\nNext step: edit annotations.yaml with real annotations → run omk bench gold validate',
-  },
-  'cli.gold.validate_ok': {
-    zh: '✓ gold dataset OK — 共 {n} 条标注',
-    en: '✓ gold dataset OK — {n} annotations',
-  },
-  'cli.debias.warn_cost_doubles': {
-    zh: '\n⚠ debias-validate 会重判所有 (sample × variant), judge 成本大约翻倍。\n',
-    en: '\n⚠ debias-validate will re-judge all (sample × variant) pairs; judge cost will roughly double.\n',
-  },
-  'cli.saturation.no_data': {
-    zh: '该 report 没有 saturation 数据 (需要 --repeat ≥ 2 才会记录)。',
-    en: 'This report has no saturation data (requires --repeat ≥ 2 to record).',
-  },
-  'cli.saturation.verdict_header': {
-    zh: '\n  Saturation verdict (复述持久化结果)\n',
-    en: '\n  Saturation verdict (replaying persisted result)\n',
-  },
-  'cli.saturation.variant_no_trace': {
-    zh: '  {variant}: 没有 trace 数据',
-    en: '  {variant}: no trace data',
-  },
-  'cli.saturation.variant_label': {
-    zh: '  {variant}:',
-    en: '  {variant}:',
-  },
-  'cli.saturation.checkpoints': {
-    zh: '    检查点: {n} (N={list})',
-    en: '    checkpoints: {n} (N={list})',
-  },
-  'cli.saturation.last_point': {
-    zh: '    最后一点 mean={mean}, CI=[{lo}, {hi}]',
-    en: '    last point mean={mean}, CI=[{lo}, {hi}]',
-  },
-  'cli.saturation.persisted_verdict': {
-    zh: '    持久化判定 ({method}): {result} - {reason}',
-    en: '    persisted verdict ({method}): {result} - {reason}',
-  },
-  'cli.saturation.persisted_verdict_saturated': {
-    zh: '已饱和@N={n}',
-    en: 'saturated@N={n}',
-  },
-  'cli.saturation.persisted_verdict_unsaturated': {
-    zh: '未饱和',
-    en: 'not saturated',
-  },
-  'cli.saturation.skipped_too_few_points': {
-    zh: '    判定: 数据点数 {n} < 5, 跳过 (需要跑 --repeat 5 以上才会输出)',
-    en: '    verdict: only {n} data points (< 5), skipping (need --repeat 5 or more)',
-  },
-  'cli.help.main': {
+  'cli.help.product_main': {
     zh: `
-oh-my-knowledge — 知识工件评测工具集
+oh-my-knowledge — 知识载体工作台
 
-用法:
-  omk bench run [options]              跑一轮评测
-  omk bench report [options]           启动报告 server
-  omk bench gate [options]             跑评测 + 应用 gate, exit code 0/1 (CI/CD 用)
-  omk bench init [dir]                 初始化一个评测项目
-  omk bench gen-samples [skill]        从 skill 内容生成 eval-samples
-  omk bench diff <id1> <id2>           对比两份评测报告
-  omk bench evolve <skill>             通过迭代评测自我改进 skill
+用法：
+  omk init [dir]                      初始化一个 skill 评测项目
+  omk doctor [path]                   静态健康检查：结构、依赖、样本、配置、污染风险
+  omk eval [options]                  离线评测：比较版本，输出 verdict + report
+  omk observe <sessions-dir>          线上观测：真实 session、gap、失败率、inbox
+  omk improve <report-id>             改进建议：样本质量、失败聚类、skill patch 线索
+  omk export <report-id> [options]    证据导出：PR / CI / audit
+  omk studio                          打开本地工作台
 
-  omk doctor [path]                    skill 健康检查(评测前置门禁)
-  omk analyze <dir>                    分析 cc session trace, 生成 skill 健康度日报 (v0.18)
+主路径：
+  omk doctor
+  omk eval --control code-review-v1 --treatment code-review-v2
+  omk observe ~/.claude/projects/<project>
+  omk improve <report-id>
+  omk export <report-id> --format github-summary
+  omk studio
 
-bench run 选项:
+通用选项：
+  --lang <zh|en>                      CLI 输出语言（默认：zh，也可设 OMK_LANG）
 
-  --samples <path>       用例文件 (默认: eval-samples.json)
-  --skill-dir <path>     skill 定义目录 (默认: skills)
-  --control <expr>       对照组 variant 表达式 (实验角色 = control)
-  --treatment <v1,v2>    实验组 variant 表达式 (逗号分隔; 角色 = treatment)
-                         每个 variant 表达式解析为一个 artifact 加上可选运行时上下文:
-                           "baseline"       — 裸模型, 不注入 artifact
-                           "git:name"       — 来自最后一次 commit 的 artifact
-                           "git:ref:name"   — 来自指定 commit 的 artifact
-                           带 "/" 的路径    — 直接来自文件 (例如 ./v1.md)
-                           "name@/cwd"      — 附加运行时上下文 / cwd
-                         --control 和 --treatment 至少要给一个。
-  --config <path>        YAML/JSON 配置文件 (evaluation-as-code)。
-                         在一个文件里声明 samples + variants + model + executor。
-                         CLI flag 会覆盖配置文件中的同名字段。
-                         配置中的相对路径相对于配置文件所在目录解析。
-  --model <name>         任务执行模型 (默认: sonnet)
-  --output-dir <path>    报告输出目录 (默认: ~/.oh-my-knowledge/reports/)
-  --no-judge             跳过 LLM 评委
-  --no-cache             禁用结果缓存
-  --dry-run              预览任务但不执行
-  --blind                双盲 A/B 模式: 报告里隐藏 variant 名称
-  --concurrency <n>      并发任务数 (默认: 1)
-  --timeout <seconds>    单任务执行超时 (秒, 默认: 120)
-  --repeat <n>           跑 N 轮做方差分析 (默认: 1)
-  --judge-repeat <n>     每个 (sample × dimension) 调 LLM 评委 N 次评估
-                         自洽性 (默认: 1)。多轮间高 stddev = 评委在该评分维度
-                         上不稳定, 分数有噪声。
-  --judge-models <list>  评委配置, 逗号分隔的 executor:model, 如
-                         claude:haiku 或 claude:opus,openai:gpt-4o。
-                         1 条 = 单评委 (默认 claude:haiku); ≥ 2 条 = ensemble,
-                         每个评委对所有 (sample × dimension) 打分, 报告
-                         含每评委分布 + Pearson / MAD 评委间一致性。能反驳
-                         "Claude 评委评 Claude 同模态偏置" 的质疑。可与
-                         --judge-repeat 组合。成本 ~ N_judges × N_repeat × N_samples。
-  --bootstrap            计算 bootstrap 置信区间 (无分布假设, 对 LLM 序数评分
-                         比 t 区间更靠谱)。给出每个 variant 均值 CI + treatment
-                         vs control 差值的 pairwise CI (CI 不跨 0 即显著)。
-                         同时报告 t 区间和 bootstrap, 旧工具仍可用。
-  --bootstrap-samples <n>  bootstrap 重采样次数 (默认 1000)。N>10000 触发
-                         stderr 警告提示耗时。
-  --retry <n>            失败任务最多重试 N 次, 指数退避 (默认: 0)
-  --resume <report-id>   从历史报告恢复, 跳过已完成任务
-  --executor <name>      执行器: claude / claude-sdk / codex / openai / gemini /
-                         anthropic-api / openai-api, 或任意 shell 命令 (例如 "python my_provider.py")
-  --batch                批量评测:每个 skill 独立 vs baseline
-                         需要每个 skill 有配对的 {name}.eval-samples.json
-  --skip-connectivity    跳过 LLM 模型连通性检测 (--resume 时自动跳过)
-  --mcp-config <path>    通过 MCP server 抓 URL 用的 MCP 配置文件
-                         (默认: 当前目录下的 .mcp.json)
-  --no-serve             评测后不自动启动报告 server
-  --verbose              打印每个用例的详细进度 (执行结果 / 评分阶段)
-  --layered-stats        默认在 HTML 报告里展开三层 (fact/behavior/judge) 独立
-                         显著性细分。不加这个 flag 时, 细分会折叠在每个对比下
-                         的 click-to-expand summary 里。
-  --strict-baseline      (默认开启) 对 baseline-kind variant 强制隔离 skill 自动
-                         发现 + Skill 工具调用, 切断 ~/.claude/skills/ 污染路径,
-                         保证 skill 评测的 construct validity。eval.yaml 显式
-                         allowedSkills 优先。
-  --no-strict-baseline   显式关闭 strict-baseline (baseline 走默认 SDK skill
-                         全发现)。少数场景下可能想要这个 (例如评测 skill 文档
-                         对默认全发现行为的增量影响)。开启时 pre-flight 会
-                         stderr 提醒, 因为 verdict / Δ 易受污染。
-
-bench gate 选项:
-  (与 bench run 相同, 额外加:)
-  --threshold <number>   三层 gate 阈值 (fact / behavior / LLM judge), 独立应用
-                         到每一层。任一层低于阈值即失败 — 防止合成均值掩盖单层
-                         崩塌。默认: 3.5。如果三层全空 (没有 assertion 也没在
-                         eval-samples 里定义 rubric), gate 失败并提示配置问题,
-                         不走合成 fallback。
-  --trivial-diff <num>   实际可忽略的最小 diff (默认 0.1)。bootstrap diff CI
-                         显著但 |Δ| 小于此值视为"统计有效但实际无意义",标
-                         CAUTIOUS 不给 PROGRESS。
-
-  内部 = bench run + bench verdict, exit code 与 bench verdict 对齐:
-  PROGRESS / SOLO-PASS → 0; NOISE / UNDERPOWERED / CAUTIOUS / REGRESS → 1。
-  数据 underpowered 时直接 FAIL, 堵住"单轮过 PASS 就 deploy"漏洞。
-
-bench report 选项:
-  --port <number>        server 端口 (默认: 7799)
-  --reports-dir <path>   报告目录 (默认: ~/.oh-my-knowledge/reports/)
-  --export <id>          把报告导出为独立 HTML 文件
-  --dev                  开发模式: lib/ 文件改动时自动重启
-
-bench gen-samples 选项:
-  --batch                为所有还没 eval-samples 的 skill 生成
-  --count <n>            每个 skill 生成多少条用例 (默认: 5)
-  --model <name>         生成用的模型 (默认: sonnet)
-  --skill-dir <path>     skill 目录 (默认: skills), 配合 --batch 用
-
-analyze 选项:
-  <dir>                  输入: cc session JSONL 文件 / 目录
-                         (例如 ~/.claude/projects/<slug>)
-  --kb <path>            知识库根路径 (默认: 从 trace cwd 自动推断)
-  --last <duration>      时间窗口, 例如 "7d" / "30d" (默认: 全部)
-  --from <iso>           窗口起点 (ISO8601), 优先级高于 --last
-  --to <iso>             窗口终点 (ISO8601), 优先级高于 --last
-  --skills <n1,n2,...>   白名单要分析的 skill (默认: 全部)
-  --output-dir <path>    输出目录 (默认: ~/.oh-my-knowledge/analyses/)
-
-bench evolve 选项:
-  --rounds <n>           最大演化轮数 (默认: 5)
-  --target <score>       达到该分数即提前停止
-  --samples <path>       用例文件 (默认: eval-samples.json)
-  --model <name>         任务执行模型 (默认: sonnet)
-  --judge-models <executor:model>  评委 (默认: claude:haiku, evolve 仅支持单评委)
-  --improve-model <name> 生成改进版的模型 (默认: sonnet)
-  --concurrency <n>      并发评测任务数 (默认: 1)
-  --timeout <seconds>    单任务执行超时 (秒, 默认: 120)
-  --executor <name>      执行器 (默认: claude)
-
-通用选项:
-  --lang <zh|en>         CLI 输出语言 (默认: zh, 也可设 OMK_LANG 环境变量)
-
-示例:
-  omk bench run --control v1 --treatment v2
-  omk bench run --control baseline --treatment my-skill
-  omk bench run --control git:my-skill --treatment my-skill
-  omk bench run --control ./old-skill.md --treatment ./new-skill.md
-  omk bench run --control baseline --treatment v1,v2,v3
-  omk bench run --config eval.yaml
-  omk bench run --config eval.yaml --model sonnet-4.6   # CLI 覆盖配置
-  omk bench run --batch
-  omk bench run --dry-run
-  omk bench report --port 8080
-  omk bench report --export v1-vs-v2-20260326-1832
-  omk bench init my-eval
-  omk bench gen-samples skills/my-skill.md
+运行 'omk <command> --help' 查看单个命令的参数。
 `,
     en: `
-oh-my-knowledge — Knowledge artifact evaluation toolkit
+oh-my-knowledge — Knowledge Artifact Workbench
 
 Usage:
-  omk bench run [options]              Run an evaluation
-  omk bench report [options]           Start the report server
-  omk bench gate [options]             Run evaluation + apply gate, exit 0/1 (for CI/CD)
-  omk bench init [dir]                 Scaffold a new eval project
-  omk bench gen-samples [skill]        Generate eval-samples from skill content
-  omk bench diff <id1> <id2>           Compare two evaluation reports
-  omk bench evolve <skill>             Self-improve a skill through iterative evaluation
+  omk init [dir]                      Scaffold a skill evaluation project
+  omk doctor [path]                   Static health check: structure, deps, samples, config, contamination risk
+  omk eval [options]                  Offline evaluation: compare versions, emit verdict + report
+  omk observe <sessions-dir>          Production observation: sessions, gaps, failure rate, inbox
+  omk improve <report-id>             Improvement advice: sample quality, failure clusters, skill patch hints
+  omk export <report-id> [options]    Evidence export for PR / CI / audit
+  omk studio                          Open the local workbench
 
-  omk doctor [path]                    skill health check (pre-eval gate)
-  omk analyze <dir>                    Analyze cc session trace(s), produce skill health report (v0.18)
-
-Options for "bench run":
-
-  --samples <path>       Sample file (default: eval-samples.json)
-  --skill-dir <path>     Skill definitions directory (default: skills)
-  --control <expr>       Control-group variant expression (experiment role = control)
-  --treatment <v1,v2>    Treatment-group variant expressions (comma-separated; role = treatment)
-                         Each variant expression resolves to an artifact and optional runtime context:
-                           "baseline"       — bare model, no artifact injected
-                           "git:name"       — artifact from last commit
-                           "git:ref:name"   — artifact from specific commit
-                           path with "/"    — artifact from file directly (e.g. ./v1.md)
-                           "name@/cwd"      — attach runtime context / cwd
-                         At least one of --control / --treatment must be provided.
-  --config <path>        YAML/JSON config file (evaluation-as-code).
-                         Declares samples + variants + model + executor in one file.
-                         CLI flags override config fields when both are provided.
-                         Relative paths inside the config are resolved against its directory.
-  --model <name>         Task execution model (default: sonnet)
-  --output-dir <path>    Report output directory (default: ~/.oh-my-knowledge/reports/)
-  --no-judge             Skip LLM judging
-  --no-cache             Disable result caching
-  --dry-run              Preview tasks without executing
-  --blind                Blind A/B mode: hide variant names in report
-  --concurrency <n>      Number of parallel tasks (default: 1)
-  --timeout <seconds>    Executor timeout per task in seconds (default: 120)
-  --repeat <n>           Run evaluation N times for variance analysis (default: 1)
-  --judge-repeat <n>     Call LLM judge N times per (sample × dimension) for self-
-                         consistency (default: 1). High stddev across runs = the
-                         judge is unstable on this rubric and the score is noisy.
-  --judge-models <list>  Judge configuration. Comma-separated executor:model pairs,
-                         e.g. claude:haiku or claude:opus,openai:gpt-4o.
-                         1 entry = single judge (default claude:haiku); ≥ 2 entries
-                         = ensemble — every judge scores each (sample × dimension);
-                         the report includes per-judge breakdown + Pearson/MAD
-                         inter-judge agreement, which refutes "Claude judges Claude
-                         same-modality bias" critique. Combines with --judge-repeat.
-                         Cost ~ N_judges × N_repeat × N_samples.
-  --bootstrap            Compute bootstrap confidence intervals (distribution-free,
-                         preferred over t-interval for ordinal LLM scores). Adds
-                         per-variant CI on the mean + pairwise CI on treatment-vs-
-                         control difference (significant=0 outside CI). Reports both
-                         t-interval and bootstrap so old tooling still works.
-  --bootstrap-samples <n>  Number of bootstrap resamples (default 1000). N>10000
-                         triggers a stderr warning about runtime cost.
-  --retry <n>            Retry failed tasks up to N times with exponential backoff (default: 0)
-  --resume <report-id>   Resume from a previous report, skipping completed tasks
-  --executor <name>      Executor: claude, claude-sdk, codex, openai, gemini,
-                         anthropic-api, openai-api, or any shell command (e.g. "python my_provider.py")
-  --batch                Batch evaluation: each skill independently against baseline
-                         Requires {name}.eval-samples.json paired with each skill
-  --skip-connectivity    Skip LLM model connectivity check (auto-skipped when --resume)
-  --mcp-config <path>    MCP config file for URL fetching via MCP servers
-                         (default: .mcp.json in current directory)
-  --no-serve             Skip auto-starting report server after evaluation
-  --verbose              Print detailed progress for each sample (exec result, grading phases)
-  --layered-stats        Expand the three-layer (fact/behavior/judge) independent
-                         significance breakdown in the HTML report by default.
-                         Without this flag, the breakdown is collapsed behind a
-                         click-to-expand summary under each comparison.
-  --strict-baseline      (default ON) Isolate skill auto-discovery + Skill tool
-                         use for baseline-kind variants. Cuts the ~/.claude/skills/
-                         contamination path so skill evaluations have valid
-                         construct validity. Explicit eval.yaml allowedSkills
-                         takes precedence.
-  --no-strict-baseline   Explicitly turn strict-baseline OFF (baseline sees all
-                         auto-discovered skills). Use only in narrow scenarios
-                         (e.g. measuring how much a skill doc adds on top of
-                         full default discovery). Pre-flight emits a stderr
-                         warning when this flag is set, because
-                         verdict / Δ are vulnerable to skill contamination.
-
-Options for "bench gate":
-  (same as "bench run", plus:)
-  --threshold <number>   Three-layer gate threshold (fact / behavior / LLM judge),
-                         applied INDEPENDENTLY to each layer. ANY layer below
-                         threshold fails the gate — prevents composite averaging
-                         from masking a single-layer collapse. Default: 3.5.
-                         If all three layers are absent (no
-                         assertions and no rubric defined in eval-samples), the
-                         gate FAILS with a configuration hint — no composite fallback.
-  --trivial-diff <num>   Smallest diff to treat as practically meaningful
-                         (default 0.1). Bootstrap diff CI may be statistically
-                         significant but with |Δ| < this value, treated as
-                         CAUTIOUS rather than PROGRESS.
-
-  Internally = bench run + bench verdict. Exit code aligns with bench verdict:
-  PROGRESS / SOLO-PASS → 0; NOISE / UNDERPOWERED / CAUTIOUS / REGRESS → 1.
-  Underpowered runs fail directly — closes the "single-run PASS = deploy" loophole.
-
-Options for "bench report":
-  --port <number>        Server port (default: 7799)
-  --reports-dir <path>   Reports directory (default: ~/.oh-my-knowledge/reports/)
-  --export <id>          Export report as standalone HTML file
-  --dev                  Dev mode: auto-restart on lib/ file changes
-
-Options for "bench gen-samples":
-  --batch                Generate for all skills missing eval-samples
-  --count <n>            Number of samples to generate per skill (default: 5)
-  --model <name>         Model for generation (default: sonnet)
-  --skill-dir <path>     Skill directory (default: skills), used with --batch
-
-Options for "analyze":
-  <dir>                  Input: cc session JSONL file / dir (e.g. ~/.claude/projects/<slug>)
-  --kb <path>            Knowledge base root (default: auto-infer from trace cwd)
-  --last <duration>      Time window like "7d" / "30d" (default: all)
-  --from <iso>           Window start (ISO8601), takes precedence over --last
-  --to <iso>             Window end (ISO8601), takes precedence over --last
-  --skills <n1,n2,...>   Whitelist skills to analyze (default: all)
-  --output-dir <path>    Output dir (default: ~/.oh-my-knowledge/analyses/)
-
-Options for "bench evolve":
-  --rounds <n>           Maximum evolution rounds (default: 5)
-  --target <score>       Stop early when score reaches this threshold
-  --samples <path>       Sample file (default: eval-samples.json)
-  --model <name>         Task execution model (default: sonnet)
-  --judge-models <executor:model>  Judge config (default: claude:haiku; evolve is single-judge only)
-  --improve-model <name> Model for generating improvements (default: sonnet)
-  --concurrency <n>      Parallel eval tasks (default: 1)
-  --timeout <seconds>    Executor timeout per task in seconds (default: 120)
-  --executor <name>      Executor to use (default: claude)
+Main workflow:
+  omk doctor
+  omk eval --control code-review-v1 --treatment code-review-v2
+  omk observe ~/.claude/projects/<project>
+  omk improve <report-id>
+  omk export <report-id> --format github-summary
+  omk studio
 
 Common options:
-  --lang <zh|en>         CLI output language (default: zh, also via OMK_LANG env)
+  --lang <zh|en>                      CLI output language (default: zh, or set OMK_LANG)
 
-Examples:
-  omk bench run --control v1 --treatment v2
-  omk bench run --control baseline --treatment my-skill
-  omk bench run --control git:my-skill --treatment my-skill
-  omk bench run --control ./old-skill.md --treatment ./new-skill.md
-  omk bench run --control baseline --treatment v1,v2,v3
-  omk bench run --config eval.yaml
-  omk bench run --config eval.yaml --model sonnet-4.6   # CLI overrides config
-  omk bench run --batch
-  omk bench run --dry-run
-  omk bench report --port 8080
-  omk bench report --export v1-vs-v2-20260326-1832
-  omk bench init my-eval
-  omk bench gen-samples skills/my-skill.md
+Run 'omk <command> --help' for command-specific options.
 `,
   },
-  'cli.help.diff_usage': {
-    zh: [
-      '用法:',
-      '  omk bench diff <reportId>                     单 report 内 sample 级 diff',
-      '  omk bench diff <reportId1> <reportId2>        跨 report variant 级 diff',
-      '',
-      '选项:',
-      '  --regressions-only          只列 treatment < control 的用例',
-      '  --threshold <num>           回退判定阈值 (默认 0, 即任何负 Δ 都算回退)',
-      '  --variant <name>            within-report 模式下指定要钻取的 variant (默认: variants[1])',
-      '  --top <n>                   只列差距最大的前 N 个用例',
-    ].join('\n'),
-    en: [
-      'Usage:',
-      '  omk bench diff <reportId>                     within-report per-sample diff',
-      '  omk bench diff <reportId1> <reportId2>        cross-report variant-level diff',
-      '',
-      'Options:',
-      '  --regressions-only          show only samples where treatment < control',
-      '  --threshold <num>           regression threshold (default 0, any negative Δ counts)',
-      '  --variant <name>            within-report mode: which variant to drill (default: variants[1])',
-      '  --top <n>                   only show top N samples by absolute diff',
-    ].join('\n'),
+  'cli.help.init_usage': {
+    zh: `
+omk init — 初始化 skill 评测项目
+
+用法：
+  omk init [dir]
+
+生成内容：
+  eval-samples.json                  示例评测用例
+  skills/code-review-v1/SKILL.md     基线 skill
+  skills/code-review-v2/SKILL.md     实验组 skill
+
+下一步：
+  1. 编辑 eval-samples.json，替换成你的真实评测用例
+  2. 编辑两个 SKILL.md，填入要对比的 skill 版本
+  3. 运行 omk eval --control code-review-v1 --treatment code-review-v2
+`,
+    en: `
+omk init — scaffold a skill evaluation project
+
+Usage:
+  omk init [dir]
+
+Generated files:
+  eval-samples.json                  Example test cases
+  skills/code-review-v1/SKILL.md     Baseline skill
+  skills/code-review-v2/SKILL.md     Treatment skill
+
+Next steps:
+  1. Edit eval-samples.json with your real test cases
+  2. Edit both SKILL.md files with the skill versions to compare
+  3. Run omk eval --control code-review-v1 --treatment code-review-v2
+`,
   },
-  'cli.help.analyze_usage': {
-    zh: '用法: omk analyze <dir> [--kb <path>] [--last 7d] [--from ISO] [--to ISO] [--skills name1,name2]',
-    en: 'Usage: omk analyze <dir> [--kb <path>] [--last 7d] [--from ISO] [--to ISO] [--skills name1,name2]',
+  'cli.help.eval': {
+    zh: `
+omk eval — 离线评测 skill 版本，并给出 ship/no-ship verdict
+
+用法：
+  omk eval --control <variant> --treatment <variant> [options]
+  omk eval gold <init|validate|compare> ...
+  omk eval debias length <report-id> ...
+
+常用选项：
+  --samples <path>                    用例文件（默认：eval-samples.json）
+  --skill-dir <path>                  skill 目录（默认：skills）
+  --control <expr>                    对照组 variant
+  --treatment <v1,v2>                 实验组 variant，逗号分隔
+  --config <path>                     eval.yaml / JSON 配置
+  --executor <name>                   执行器：claude / claude-sdk / codex / openai / gemini / custom
+  --model <name>                      任务执行模型（默认：sonnet）
+  --judge-models <list>               评委配置，例如 claude:haiku 或 claude:opus,openai:gpt-4o
+  --dry-run                           预览任务，不调用模型
+  --batch                             批量评测：每个 skill 独立 vs baseline
+  --bootstrap                         显式开启 bootstrap CI；omk eval 默认会自动开启
+  --bootstrap-samples <n>             bootstrap 重采样次数（默认：1000）
+  --threshold <number>                三层 gate 阈值（默认：3.5）
+  --trivial-diff <number>             实际可忽略 diff（默认：0.1）
+  --report-only / --no-gate           生成报告并打印 verdict，但始终 exit 0
+  --no-serve                          评测后不自动启动报告 server
+
+示例：
+  omk eval --control code-review-v1 --treatment code-review-v2
+  omk eval --config eval.yaml
+  omk eval gold compare v1-vs-v2-20260505-1200 --gold-dir gold-dataset
+`,
+    en: `
+omk eval — run offline skill evaluation and emit a ship/no-ship verdict
+
+Usage:
+  omk eval --control <variant> --treatment <variant> [options]
+  omk eval gold <init|validate|compare> ...
+  omk eval debias length <report-id> ...
+
+Common options:
+  --samples <path>                    Sample file (default: eval-samples.json)
+  --skill-dir <path>                  Skill directory (default: skills)
+  --control <expr>                    Control variant
+  --treatment <v1,v2>                 Treatment variants, comma-separated
+  --config <path>                     eval.yaml / JSON config
+  --executor <name>                   Executor: claude / claude-sdk / codex / openai / gemini / custom
+  --model <name>                      Task execution model (default: sonnet)
+  --judge-models <list>               Judge config, e.g. claude:haiku or claude:opus,openai:gpt-4o
+  --dry-run                           Preview tasks without model calls
+  --batch                             Batch evaluation: each skill independently against baseline
+  --bootstrap                         Enable bootstrap CI explicitly; omk eval turns it on by default
+  --bootstrap-samples <n>             Bootstrap resamples (default: 1000)
+  --threshold <number>                Three-layer gate threshold (default: 3.5)
+  --trivial-diff <number>             Practically negligible diff (default: 0.1)
+  --report-only / --no-gate           Produce the report and print verdict, but always exit 0
+  --no-serve                          Do not auto-start report server after evaluation
+
+Examples:
+  omk eval --control code-review-v1 --treatment code-review-v2
+  omk eval --config eval.yaml
+  omk eval gold compare v1-vs-v2-20260505-1200 --gold-dir gold-dataset
+`,
   },
-  'cli.help.gold': {
+  'cli.help.eval_gold': {
+    zh: `
+omk eval gold — 管理 human-gold 标注集
+
+用法：
+  omk eval gold init [--out <dir>] [--annotator <name>]
+  omk eval gold validate <dir>
+  omk eval gold compare <reportId> --gold-dir <dir>
+
+选项：
+  --reports-dir <path>                报告目录（compare 使用，默认：~/.oh-my-knowledge/reports）
+  --variant <name>                    指定 report 中要对比的 variant
+  --bootstrap-samples <n>             bootstrap 重采样次数（compare 使用）
+`,
+    en: `
+omk eval gold — manage human-gold annotation datasets
+
+Usage:
+  omk eval gold init [--out <dir>] [--annotator <name>]
+  omk eval gold validate <dir>
+  omk eval gold compare <reportId> --gold-dir <dir>
+
+Options:
+  --reports-dir <path>                Reports directory for compare (default: ~/.oh-my-knowledge/reports)
+  --variant <name>                    Variant in the report to compare
+  --bootstrap-samples <n>             Bootstrap resamples for compare
+`,
+  },
+  'cli.help.eval_debias': {
+    zh: `
+omk eval debias — 验证 length-debias 是否降低评委长度偏差
+
+用法：
+  omk eval debias length <reportId> [options]
+
+选项：
+  --samples <path>                    用例文件；默认从 report.meta.request 读取
+  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
+  --variant <name>                    只验证指定 variant
+  --judge-models <executor:model>     指定单评委
+  --bootstrap-samples <n>             bootstrap 重采样次数
+`,
+    en: `
+omk eval debias — validate whether length-debias reduces judge length bias
+
+Usage:
+  omk eval debias length <reportId> [options]
+
+Options:
+  --samples <path>                    Sample file; defaults to report.meta.request
+  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
+  --variant <name>                    Validate only one variant
+  --judge-models <executor:model>     Single judge to use
+  --bootstrap-samples <n>             Bootstrap resamples
+`,
+  },
+  'cli.help.observe': {
+    zh: `
+omk observe — 分析真实 session trace，生成 skill 健康度日报
+
+用法：
+  omk observe <sessions-dir> [options]
+
+选项：
+  --kb <path>                         知识库根路径（默认：从 trace cwd 推断）
+  --last <duration>                   时间窗口，例如 7d / 24h / 30m
+  --from <iso>                        窗口起点，优先级高于 --last
+  --to <iso>                          窗口终点，优先级高于 --last
+  --skills <n1,n2,...>                只分析指定 skill
+  --output-dir <path>                 输出目录（默认：~/.oh-my-knowledge/analyses）
+`,
+    en: `
+omk observe — analyze production session traces and produce skill health reports
+
+Usage:
+  omk observe <sessions-dir> [options]
+
+Options:
+  --kb <path>                         Knowledge base root (default: infer from trace cwd)
+  --last <duration>                   Time window, e.g. 7d / 24h / 30m
+  --from <iso>                        Window start, overrides --last
+  --to <iso>                          Window end, overrides --last
+  --skills <n1,n2,...>                Only analyze selected skills
+  --output-dir <path>                 Output directory (default: ~/.oh-my-knowledge/analyses)
+`,
+  },
+  'cli.help.improve': {
+    zh: `
+omk improve — 从报告或 trace 中得到下一步改进建议
+
+用法：
+  omk improve <report-id>             输出样本质量诊断和改进计划
+  omk improve plan <report-id>        同上，显式 plan 子命令
+  omk improve failures <report-id>    聚类失败用例，生成根因和修复方向
+  omk improve samples [skill]         为 skill 生成或补齐 eval samples
+  omk improve skill <skill>           基于评测循环尝试改进 skill
+
+示例：
+  omk improve v1-vs-v2-20260505-1200
+  omk improve samples skills/code-review/SKILL.md
+  omk improve failures v1-vs-v2-20260505-1200
+`,
+    en: `
+omk improve — get next-step improvement advice from reports or traces
+
+Usage:
+  omk improve <report-id>             Print sample diagnostics and repair plan
+  omk improve plan <report-id>        Same as above, explicit plan subcommand
+  omk improve failures <report-id>    Cluster failed cases into root causes and fixes
+  omk improve samples [skill]         Generate or fill eval samples for a skill
+  omk improve skill <skill>           Try to improve a skill through evaluation loops
+
+Examples:
+  omk improve v1-vs-v2-20260505-1200
+  omk improve samples skills/code-review/SKILL.md
+  omk improve failures v1-vs-v2-20260505-1200
+`,
+  },
+  'cli.help.improve_plan': {
     zh: [
       '',
-      '用法: omk bench gold <subcommand>',
-      '',
-      '子命令:',
-      '  init [--out <dir>] [--annotator <id>]    生成空白 gold dataset 模板',
-      '  validate <dir>                           校验数据集结构',
-      '  compare <reportId> --gold-dir <dir>      与已有 report 计算 α / κ / Pearson',
-      '    [--variant <name>] [--reports-dir <d>]',
-      '    [--bootstrap-samples N] [--seed N]',
-      '',
-    ].join('\n'),
-    en: [
-      '',
-      'Usage: omk bench gold <subcommand>',
-      '',
-      'Subcommands:',
-      '  init [--out <dir>] [--annotator <id>]    create a blank gold dataset template',
-      '  validate <dir>                           validate dataset structure',
-      '  compare <reportId> --gold-dir <dir>      compute α / κ / Pearson against an existing report',
-      '    [--variant <name>] [--reports-dir <d>]',
-      '    [--bootstrap-samples N] [--seed N]',
-      '',
-    ].join('\n'),
-  },
-  'cli.help.debias_validate': {
-    zh: [
-      '',
-      '用法: omk bench debias-validate <kind> <reportId> [options]',
-      '',
-      '类别:',
-      '  length    用相反的长度去偏设置重新评判, 并对分数差出 bootstrap CI。',
-      '            judge 成本约为原评判的两倍。',
-      '',
-      '选项:',
-      '  --reports-dir <dir>          报告存储目录 (默认: ~/.oh-my-knowledge/reports)',
-      '  --samples <path>             覆盖用例文件 (默认: 从 report.meta.request 读)',
-      '  --variant <name>             校验哪个 variant (默认: 第一个)',
-      '  --judge-models <executor:model>  评委 (默认: 沿用 report.meta.judgeModels[0]; debias-validate 仅支持单评委)',
-      '  --bootstrap-samples N        bootstrap 迭代次数 (默认 1000)',
-      '  --seed N                     固定 CI 随机种子',
-      '',
-    ].join('\n'),
-    en: [
-      '',
-      'Usage: omk bench debias-validate <kind> <reportId> [options]',
-      '',
-      'Kinds:',
-      '  length    re-judge with the opposite length-debias setting and bootstrap CI',
-      '            on the score diff. Cost ~doubles vs the original judge pass.',
-      '',
-      'Options:',
-      '  --reports-dir <dir>          report store dir (default: ~/.oh-my-knowledge/reports)',
-      '  --samples <path>             override samples file (default: from report.meta.request)',
-      '  --variant <name>             which variant to validate (default: first)',
-      '  --judge-models <executor:model>  Judge (default: from report.meta.judgeModels[0]; debias-validate is single-judge only)',
-      '  --bootstrap-samples N        bootstrap iterations (default 1000)',
-      '  --seed N                     deterministic CI seed',
-      '',
-    ].join('\n'),
-  },
-  'cli.help.saturation': {
-    zh: [
-      '',
-      '用法: omk bench saturation <reportId> [options]',
-      '',
-      '回答 "我跑够用例了吗?"。复述已有 report 中持久化的饱和判定。',
-      '',
-      '注: 本命令读取 run 时跑出的 verdict (运行时已用 method=bootstrap-ci-width',
-      '默认阈值 + 3 窗口持续条件)。如要换 method/threshold 重新计算, 需要重跑',
-      '`omk bench run --repeat ≥ 5` (运行时持久化的 trace 不含原始分数, 无法',
-      '在事后用其他参数复算)。',
-      '',
-      '选项:',
-      '  --reports-dir <dir>   报告存储目录 (默认: ~/.oh-my-knowledge/reports)',
-      '  --variant <name>      只看一个 variant (默认: 全部)',
-      '',
-    ].join('\n'),
-    en: [
-      '',
-      'Usage: omk bench saturation <reportId> [options]',
-      '',
-      'Answers "do I have enough samples?". Replays the saturation verdict',
-      'persisted in an existing report.',
-      '',
-      'Note: this command reads the verdict computed at run time (which used',
-      'method=bootstrap-ci-width with default threshold + 3-window sustained',
-      'condition). To re-compute with a different method/threshold, re-run',
-      '`omk bench run --repeat ≥ 5` (the persisted trace does not include raw',
-      'scores, so post-hoc parameter sweeps are not possible here).',
-      '',
-      'Options:',
-      '  --reports-dir <dir>   report store dir (default: ~/.oh-my-knowledge/reports)',
-      '  --variant <name>      only show one variant (default: all)',
-      '',
-    ].join('\n'),
-  },
-  'cli.help.verdict': {
-    zh: [
-      '',
-      '用法: omk bench verdict <reportId> [options]',
-      '',
-      '聚合 bootstrap CI / 三层 ci-gate / saturation / human α, 给出一行结论。',
-      '',
-      'Verdict 等级:',
-      '  PROGRESS      显著改进 + 三层全过',
-      '  CAUTIOUS      改进真实但有警告 (gate 破 / 幅度太小 / 控制组本身崩)',
-      '  REGRESS       显著回退 — 不要 ship',
-      '  NOISE         CI 跨 0, 无法判定',
-      '  UNDERPOWERED  用例不足, 需要扩 N 重测',
-      '  SOLO          单 variant 报告, 没有对比对象',
-      '',
-      '选项:',
-      '  --reports-dir <dir>      报告存储目录 (默认: ~/.oh-my-knowledge/reports)',
-      '  --threshold <num>        三层 gate 阈值 (默认 3.5, 与 omk bench gate 对齐)',
-      '  --trivial-diff <num>     "幅度太小" 阈值 (默认 0.1)',
-      '  --verbose                展开每个 pair 的详情',
-      '',
-    ].join('\n'),
-    en: [
-      '',
-      'Usage: omk bench verdict <reportId> [options]',
-      '',
-      'Aggregates bootstrap CI / 3-layer ci-gate / saturation / human α into a one-line verdict.',
-      '',
-      'Verdict levels:',
-      '  PROGRESS      significant improvement + all 3 layers pass',
-      '  CAUTIOUS      real improvement but with warnings (gate fails / diff too small / control collapsed)',
-      '  REGRESS       significant regression — do not ship',
-      '  NOISE         CI crosses 0, no verdict',
-      '  UNDERPOWERED  not enough samples, expand N and re-run',
-      '  SOLO          single-variant report, nothing to compare against',
-      '',
-      'Options:',
-      '  --reports-dir <dir>      report store dir (default: ~/.oh-my-knowledge/reports)',
-      '  --threshold <num>        3-layer gate threshold (default 3.5, matches omk bench gate)',
-      '  --trivial-diff <num>     "diff too small" threshold (default 0.1)',
-      '  --verbose                expand per-pair details',
-      '',
-    ].join('\n'),
-  },
-  'cli.help.diagnose': {
-    zh: [
-      '',
-      '用法: omk bench diagnose <reportId> [options]',
+      '用法: omk improve <reportId> [options]',
+      '      omk improve plan <reportId> [options]',
       '',
       '诊断用例集本身的质量问题: 区分度低 / 重复 / 歧义 / 成本异常 / 全 fail。',
-      '回答 "测评结论是否被坏用例污染" — 与 omk bench verdict 互补。',
+      '回答 "评测结论是否被坏用例污染"。',
       '',
       '选项:',
       '  --reports-dir <dir>      报告存储目录',
@@ -1044,11 +796,12 @@ Examples:
     ].join('\n'),
     en: [
       '',
-      'Usage: omk bench diagnose <reportId> [options]',
+      'Usage: omk improve <reportId> [options]',
+      '       omk improve plan <reportId> [options]',
       '',
       'Diagnose quality issues in the sample set itself: low discrimination /',
       'duplicates / ambiguity / cost anomalies / all-fail. Answers "is the verdict',
-      'tainted by bad samples?" — complements omk bench verdict.',
+      'tainted by bad samples?".',
       '',
       'Options:',
       '  --reports-dir <dir>      report store dir',
@@ -1062,10 +815,10 @@ Examples:
       '',
     ].join('\n'),
   },
-  'cli.help.failures': {
+  'cli.help.improve_failures': {
     zh: [
       '',
-      '用法: omk bench failures <reportId> [options]',
+      '用法: omk improve failures <reportId> [options]',
       '',
       '把已有 report 的失败用例喂给一次 LLM 调用, 自动聚类并给出修复建议。',
       '失败定义: compositeScore < threshold 或 ok=false。',
@@ -1080,7 +833,7 @@ Examples:
     ].join('\n'),
     en: [
       '',
-      'Usage: omk bench failures <reportId> [options]',
+      'Usage: omk improve failures <reportId> [options]',
       '',
       'Feed failing samples from an existing report to a single LLM call, auto-cluster',
       'them, and produce per-cluster fix suggestions.',
@@ -1094,6 +847,212 @@ Examples:
       '  --max-feed <n>           max samples to feed the LLM (default 50, takes the worst)',
       '',
     ].join('\n'),
+  },
+  'cli.help.improve_samples': {
+    zh: `
+omk improve samples — 生成或补齐 eval-samples 评测用例
+
+用法：
+  omk improve samples <skill-path> [options]
+  omk improve samples --batch [--skill-dir <dir>] [options]
+
+选项：
+  --count <n>                         生成用例数量（默认：5）
+  --model <name>                      生成模型（默认：sonnet）
+  --batch                             为 skill 目录下缺少 eval-samples 的 skill 批量生成
+  --skill-dir <path>                  skill 目录（batch 使用，默认：skills）
+`,
+    en: `
+omk improve samples — generate or fill eval-samples test cases
+
+Usage:
+  omk improve samples <skill-path> [options]
+  omk improve samples --batch [--skill-dir <dir>] [options]
+
+Options:
+  --count <n>                         Number of test cases to generate (default: 5)
+  --model <name>                      Generation model (default: sonnet)
+  --batch                             Generate for skills that are missing eval-samples
+  --skill-dir <path>                  Skill directory for batch mode (default: skills)
+`,
+  },
+  'cli.help.improve_skill': {
+    zh: `
+omk improve skill — 基于评测循环迭代改进 skill
+
+用法：
+  omk improve skill <skill-path> [options]
+
+选项：
+  --rounds <n>                        迭代轮数（默认：3）
+  --target <score>                    目标分数
+  --model <name>                      改进模型
+  --judge-models <executor:model>     单评委配置
+`,
+    en: `
+omk improve skill — improve a skill through evaluation loops
+
+Usage:
+  omk improve skill <skill-path> [options]
+
+Options:
+  --rounds <n>                        Iteration rounds (default: 3)
+  --target <score>                    Target score
+  --model <name>                      Improvement model
+  --judge-models <executor:model>     Single judge config
+`,
+  },
+  'cli.help.export': {
+    zh: `
+omk export — 导出可贴到 PR / CI / audit 的证据包
+
+	用法：
+	  omk export <report-id> [options]
+	  omk export diff <report-id> [report-id] [options]
+	  omk export verdict <report-id> [options]
+	  omk export saturation <report-id> [options]
+
+选项：
+	  --format <format>                   html / markdown / github-summary（默认：html）
+	  --out <path>                        输出文件；markdown / github-summary 未指定时输出到 stdout
+	  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
+
+示例：
+	  omk export v1-vs-v2-20260505-1200 --format github-summary
+	  omk export v1-vs-v2-20260505-1200 --format markdown --out report.md
+	  omk export diff v1-vs-v2-20260505-1200 --regressions-only
+	  omk export verdict v1-vs-v2-20260505-1200
+`,
+    en: `
+omk export — export evidence packs for PR / CI / audit
+
+	Usage:
+	  omk export <report-id> [options]
+	  omk export diff <report-id> [report-id] [options]
+	  omk export verdict <report-id> [options]
+	  omk export saturation <report-id> [options]
+
+Options:
+	  --format <format>                   html / markdown / github-summary (default: html)
+	  --out <path>                        Output file; markdown / github-summary print to stdout by default
+	  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
+
+Examples:
+	  omk export v1-vs-v2-20260505-1200 --format github-summary
+	  omk export v1-vs-v2-20260505-1200 --format markdown --out report.md
+	  omk export diff v1-vs-v2-20260505-1200 --regressions-only
+	  omk export verdict v1-vs-v2-20260505-1200
+`,
+  },
+  'cli.help.export_diff': {
+    zh: `
+omk export diff — 导出样本级或报告级差异
+
+用法：
+  omk export diff <report-id> [--variant <name>] [--regressions-only] [--top <n>]
+  omk export diff <report-id-a> <report-id-b>
+
+选项：
+  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
+  --variant <name>                    样本级 diff 的实验组 variant
+  --regressions-only                  只显示回退用例
+  --top <n>                           最多显示 N 条
+`,
+    en: `
+omk export diff — export sample-level or cross-report differences
+
+Usage:
+  omk export diff <report-id> [--variant <name>] [--regressions-only] [--top <n>]
+  omk export diff <report-id-a> <report-id-b>
+
+Options:
+  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
+  --variant <name>                    Treatment variant for sample-level diff
+  --regressions-only                  Show regressions only
+  --top <n>                           Show at most N rows
+`,
+  },
+  'cli.help.export_verdict': {
+    zh: `
+omk export verdict — 输出已有报告的一行 ship/no-ship verdict
+
+用法：
+  omk export verdict <report-id> [options]
+
+选项：
+  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
+  --threshold <number>                三层 gate 阈值
+  --trivial-diff <number>             实际可忽略 diff
+  --verbose                           输出完整 verdict 解释
+`,
+    en: `
+omk export verdict — print a one-line ship/no-ship verdict for an existing report
+
+Usage:
+  omk export verdict <report-id> [options]
+
+Options:
+  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
+  --threshold <number>                Three-layer gate threshold
+  --trivial-diff <number>             Practically negligible diff
+  --verbose                           Print the full verdict explanation
+`,
+  },
+  'cli.help.export_saturation': {
+    zh: `
+omk export saturation — 输出重复评测的饱和度证据
+
+用法：
+  omk export saturation <report-id> [--variant <name>]
+
+选项：
+  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
+  --variant <name>                    只输出指定 variant
+`,
+    en: `
+omk export saturation — print saturation evidence from repeated evaluations
+
+Usage:
+  omk export saturation <report-id> [--variant <name>]
+
+Options:
+  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
+  --variant <name>                    Print only one variant
+`,
+  },
+  'cli.help.studio': {
+    zh: `
+omk studio — 打开本地知识工作台
+
+用法：
+  omk studio [options]
+
+选项：
+  --port <n>                          本地服务端口（默认：7799）
+  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
+  --analyses-dir <path>               观测分析目录
+  --dev                               开发模式：文件变化时自动重启
+
+示例：
+  omk studio
+  omk studio --port 7798
+`,
+    en: `
+omk studio — open the local knowledge workbench
+
+Usage:
+  omk studio [options]
+
+Options:
+  --port <n>                          Local server port (default: 7799)
+  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
+  --analyses-dir <path>               Observation analyses directory
+  --dev                               Dev mode: restart on file changes
+
+Examples:
+  omk studio
+  omk studio --port 7798
+`,
   },
   // sample design coverage block strings
   'cli.diagnose.coverage_header': {
@@ -1276,7 +1235,7 @@ doctor 检查项(纯静态 / 零 LLM 调用):
   - 用例 ↔ skill 输入约定 (warn 级, 仅传 samples 时跑)
 
 executor / judge 连通性由 evaluation preflight 负责, 不在 doctor 范围内。
-omk bench run / omk bench gate 内置 doctor 强制门禁, 不可 skip — 静态检查
+omk eval 内置 doctor 强制门禁, 不可 skip — 静态检查
 零成本无理由跳过。LLM 连通性可用 --skip-connectivity 跳过 (--resume 时自动)。
 `.trim() + '\n',
     en: `
@@ -1309,7 +1268,7 @@ Checks (pure static / zero LLM calls):
   - samples ↔ skill contract (warn-level, only when samples provided)
 
 executor / judge connectivity is handled by evaluation preflight, not doctor.
-omk bench run / omk bench gate run doctor as mandatory; no skip flag — static
+omk eval runs doctor as mandatory; no skip flag — static
 checks cost nothing to run. LLM connectivity can be skipped with --skip-connectivity
 (auto-skipped on --resume).
 `.trim() + '\n',

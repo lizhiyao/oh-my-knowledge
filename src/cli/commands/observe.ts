@@ -24,7 +24,7 @@ export async function execute(argv: string[]): Promise<void> {
   const values = rawValues as Record<string, string | undefined>;
   const dir = positionals[0];
   if (!dir) {
-    console.error(tCli('cli.help.analyze_usage', lang));
+    console.error(tCli('cli.help.observe', lang).trim());
     throw new CliExit(1);
   }
   const tracePath = resolve(dir);
@@ -57,7 +57,7 @@ export async function execute(argv: string[]): Promise<void> {
     skills,
   });
 
-  // JSON 是主产物; HTML 由 report server 的 /analyses/:id 按需渲染 (和 bench run 一致)
+  // JSON 是主产物；HTML 由 report server 的 /analyses/:id 按需渲染。
   const outDir = resolve(values['output-dir'] || join(process.env.HOME || '.', '.oh-my-knowledge', 'analyses'));
   mkdirSync(outDir, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -78,5 +78,5 @@ export async function execute(argv: string[]): Promise<void> {
   console.log(skillRows.join('\n'));
   console.log('');
   console.log(`report written to: ${jsonPath}`);
-  console.log(tCli('cli.analyze.view_in_browser', lang));
+  console.log(tCli('cli.observe.view_hint', lang));
 }

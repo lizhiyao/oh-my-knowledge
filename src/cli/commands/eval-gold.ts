@@ -1,6 +1,6 @@
-import { CliExit } from '../cli-exit.js';
 import { resolve } from 'node:path';
-import { tCli, langFromArgv } from '../i18n.js';
+import { CliExit } from '../cli-exit.js';
+import { langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
 import { parseArgsStrictOrExit } from '../parse-strict.js';
 import type { ReportStore } from '../../types/index.js';
@@ -8,10 +8,9 @@ import { requireEvaluationReport } from './_shared.js';
 
 export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  const sub = argv[0];
-  const rest = argv.slice(1);
+  const [sub, ...rest] = argv;
   if (!sub) {
-    console.log(tCli('cli.help.gold', lang));
+    console.log(usage(lang));
     throw new CliExit(1);
   }
 
@@ -29,11 +28,13 @@ export async function execute(argv: string[]): Promise<void> {
       const written = initGoldDataset(values.out as string, {
         annotator: values.annotator as string | undefined,
       });
-      console.log(tCli('cli.gold.created_files', lang, {
-        n: written.length, dir: values.out as string,
-      }));
+      console.log(lang === 'zh'
+        ? `已在 ${values.out as string} 创建 ${written.length} 个文件：`
+        : `Created ${written.length} files in ${values.out as string}:`);
       for (const p of written) console.log(`  ${p}`);
-      console.log(tCli('cli.gold.next_step_edit_annotations', lang));
+      console.log(lang === 'zh'
+        ? '\n下一步：编辑 annotations.yaml 加入真实标注，然后运行 omk eval gold validate'
+        : '\nNext step: edit annotations.yaml with real annotations, then run omk eval gold validate');
     } catch (err) {
       console.error((err as Error).message);
       throw new CliExit(1);
@@ -42,8 +43,6 @@ export async function execute(argv: string[]): Promise<void> {
   }
 
   if (sub === 'validate') {
-    // 走 helper 让 `omk bench gold validate <dir> --bogus` 走 unknown option 路径,
-    // 而不是直接执行 validate 后再报 dataset 错。
     const { positionals } = parseArgsStrictOrExit({
       args: rest,
       allowPositionals: true,
@@ -51,13 +50,15 @@ export async function execute(argv: string[]): Promise<void> {
     });
     const dir = positionals[0];
     if (!dir) {
-      console.error(tCli('cli.common.usage_gold_validate', lang));
+      console.error('Usage: omk eval gold validate <dir>');
       throw new CliExit(1);
     }
     const { validateGoldDataset } = await import('../../grading/gold-cli.js');
     const result = validateGoldDataset(dir);
     if (result.ok) {
-      console.log(tCli('cli.gold.validate_ok', lang, { n: result.sampleCount }));
+      console.log(lang === 'zh'
+        ? `✓ gold dataset OK，共 ${result.sampleCount} 条标注`
+        : `✓ gold dataset OK — ${result.sampleCount} annotations`);
       return;
     }
     console.error(`✗ gold dataset has ${result.issues.length} issue(s):`);
@@ -68,7 +69,7 @@ export async function execute(argv: string[]): Promise<void> {
   if (sub === 'compare') {
     const reportId = rest[0];
     if (!reportId) {
-      console.error('Usage: omk bench gold compare <reportId> --gold-dir <dir>');
+      console.error('Usage: omk eval gold compare <reportId> --gold-dir <dir>');
       throw new CliExit(1);
     }
     const { values } = parseArgsStrictOrExit({
@@ -97,14 +98,10 @@ export async function execute(argv: string[]): Promise<void> {
       for (const i of issues) console.error(`  - ${i.message}`);
       throw new CliExit(1);
     }
-    if (issues.length) {
-      // Non-fatal issues (e.g. duplicate already filtered) — surface them.
-      for (const i of issues) console.error(`warn: ${i.message}`);
-    }
+    for (const i of issues) console.error(`warn: ${i.message}`);
 
     const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
     const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
-
     const samples = Math.max(100, Number(values['bootstrap-samples']) || 1000);
     const seedVal = values.seed != null ? Number(values.seed) : undefined;
     const result = compareGoldToReport({
@@ -118,6 +115,26 @@ export async function execute(argv: string[]): Promise<void> {
     return;
   }
 
-  console.error(`Unknown subcommand: gold ${sub}. Use init / validate / compare.`);
+  console.error(`Unknown subcommand: eval gold ${sub}. Use init / validate / compare.`);
   throw new CliExit(1);
+}
+
+function usage(lang: 'zh' | 'en'): string {
+  return lang === 'zh'
+    ? [
+        'omk eval gold — 管理 human-gold 标注集',
+        '',
+        '用法：',
+        '  omk eval gold init [--out <dir>] [--annotator <name>]',
+        '  omk eval gold validate <dir>',
+        '  omk eval gold compare <reportId> --gold-dir <dir>',
+      ].join('\n')
+    : [
+        'omk eval gold — manage human-gold annotation datasets',
+        '',
+        'Usage:',
+        '  omk eval gold init [--out <dir>] [--annotator <name>]',
+        '  omk eval gold validate <dir>',
+        '  omk eval gold compare <reportId> --gold-dir <dir>',
+      ].join('\n');
 }

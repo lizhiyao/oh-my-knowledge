@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { CliExit } from '../../src/cli/cli-exit.js';
-import { execute as verdict } from '../../src/cli/commands/verdict.js';
-import { execute as gold } from '../../src/cli/commands/gold.js';
+import { execute as exportReport } from '../../src/cli/commands/export.js';
+import { execute as improve } from '../../src/cli/commands/improve.js';
 import { parseArgsStrictOrExit } from '../../src/cli/parse-strict.js';
 import { parseJudgeModelsArgOrExit } from '../../src/cli/parse-run-config.js';
 
@@ -10,14 +10,14 @@ import { parseJudgeModelsArgOrExit } from '../../src/cli/parse-run-config.js';
  * 测试进程。这层验证「不该跑业务逻辑直接退出」的几条核心 path。
  */
 describe('CliExit dispatch', () => {
-  it('verdict 命令缺 reportId 时 throw CliExit(1),不 kill 进程', async () => {
-    const err = await verdict([]).then(() => null, (e) => e);
+  it('export 命令缺 reportId 时 throw CliExit(1)，不 kill 进程', async () => {
+    const err = await exportReport([]).then(() => null, (e) => e);
     expect(err).toBeInstanceOf(CliExit);
     expect((err as CliExit).code).toBe(1);
   });
 
-  it('gold 命令缺子命令时 throw CliExit(1)', async () => {
-    const err = await gold([]).then(() => null, (e) => e);
+  it('improve 命令缺参数时 throw CliExit(1)', async () => {
+    const err = await improve([]).then(() => null, (e) => e);
     expect(err).toBeInstanceOf(CliExit);
     expect((err as CliExit).code).toBe(1);
   });
@@ -31,8 +31,8 @@ describe('CliExit dispatch', () => {
     ).toThrowError(CliExit);
   });
 
-  // parseJudgeModelsArgOrExit 也要走 CliExit,否则
-  // bench run / evolve / failures / debias-validate 单测里仍会被 process.exit kill
+  // parseJudgeModelsArgOrExit 也要走 CliExit，否则 eval / improve 子命令单测里
+  // 仍会被 process.exit kill。
   it('parseJudgeModelsArgOrExit 收到非法 --judge-models 时 throw CliExit(2)', () => {
     let caught: unknown = null;
     try {

@@ -32,7 +32,7 @@ EOF
 
 ```bash
 cd /Users/lizhiyao/Documents/oh-my-knowledge
-node dist/src/cli/index.js bench run \
+node dist/src/cli/index.js omk eval \
   --samples /tmp/sigint-long.json \
   --control baseline \
   --executor codex --model gpt-5.5 \
@@ -46,13 +46,13 @@ node dist/src/cli/index.js bench run \
 
 ```bash
 # 在终端 A 按 Ctrl+C 之前
-ps -ef | grep -E '(omk|codex|node.*bench)' | grep -v grep
+ps -ef | grep -E '(omk|codex|node.*eval)' | grep -v grep
 # 应该看到:
 #   1. parent omk node 进程
 #   2. 一到两个 codex 子进程(spawn 出来的)
 
 # 终端 A 按 Ctrl+C 之后立即(<1s)再跑
-ps -ef | grep -E '(omk|codex|node.*bench)' | grep -v grep
+ps -ef | grep -E '(omk|codex|node.*eval)' | grep -v grep
 # 期望:omk + codex 子进程都已消失
 # 修复前(基线):omk 退了但 codex 还在跑(orphan,parent PID 变 1)
 ```
@@ -68,7 +68,7 @@ ps -ef | grep -E '(omk|codex|node.*bench)' | grep -v grep
 ```bash
 # host = codex CLI
 codex
-# 在 codex 里:运行 shell tool: omk bench run --executor codex ...(同上面的命令)
+# 在 codex 里:运行 shell tool: omk eval --executor codex ...(同上面的命令)
 # 在 codex 里按 Ctrl+C
 # 退出 codex 后回到 shell,跑 ps -ef | grep codex,期望:0 个 orphan
 ```
@@ -76,7 +76,7 @@ codex
 ```bash
 # host = claude code
 claude
-# 在 claude code 里:Bash tool 运行 omk bench run ...
+# 在 claude code 里:Bash tool 运行 omk eval ...
 # 按 Ctrl+C 中断
 # 同样验证:无 codex / claude binary orphan
 ```

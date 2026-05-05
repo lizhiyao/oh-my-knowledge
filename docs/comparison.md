@@ -81,10 +81,10 @@ Three-layer isolation prevents single-axis regressions from being masked by comp
 | | omk | promptfoo | DeepEval | RAGAS | OpenAI Evals | LangSmith | lm-eval-harness | inspect-ai |
 |---|---|---|---|---|---|---|---|---|
 | Native Claude Code skill evaluation | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| Production session JSONL parsing (omk analyze) | ✓ Claude Code | ✗ | ✗ | ✗ | ✗ | ✓ LangChain only | ✗ | ✗ |
-| Auto self-iteration (`omk bench evolve`) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Production session JSONL parsing (omk observe) | ✓ Claude Code | ✗ | ✗ | ✗ | ✗ | ✓ LangChain only | ✗ | ✗ |
+| Auto self-iteration (`omk improve skill`) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | eval.yaml (evaluation-as-code) | ✓ | ✓ | ✗ | ✗ | partial | ✗ | partial | ✓ |
-| CI/CD `omk bench gate` exit-code routing | ✓ three-layer | ✓ basic | ✓ | ✗ | ✗ | partial | ✗ | ✓ |
+| CI/CD `omk eval` exit-code routing | ✓ three-layer | ✓ basic | ✓ | ✗ | ✗ | partial | ✗ | ✓ |
 | Hard budget caps (workflow abort) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Resume from interruption | ✓ `--resume` | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Blind A/B reveal | ✓ | ✗ | ✗ | ✗ | ✗ | ✓ pairwise | ✗ | ✗ |

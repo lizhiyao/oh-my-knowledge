@@ -400,7 +400,7 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
     ? (lang === 'zh' ? ` × ${report.variance.runs} 轮` : ` × ${report.variance.runs} runs`)
     : '';
   const experimentSummary = lang === 'zh'
-    ? `${m.sampleCount} 个测评用例 × ${variants.length} 组实验${repeatSuffix}`
+    ? `${m.sampleCount} 个评测用例 × ${variants.length} 组实验${repeatSuffix}`
     : `${pluralizeEn(m.sampleCount, 'sample')} × ${pluralizeEn(variants.length, 'variant')}${repeatSuffix}`;
 
   const variantConfigSection = variantConfigRows ? `
