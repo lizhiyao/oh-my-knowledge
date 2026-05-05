@@ -700,7 +700,7 @@ omk studio — 打开本地知识工作台
 
 示例：
   omk studio
-  omk studio --port 8080
+  omk studio --port 7798
 `,
     en: `
 omk studio — open the local knowledge workbench
@@ -716,7 +716,7 @@ Options:
 
 Examples:
   omk studio
-  omk studio --port 8080
+  omk studio --port 7798
 `,
   },
   'cli.help.diagnose': {
