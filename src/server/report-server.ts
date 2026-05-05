@@ -13,6 +13,7 @@ import type { SkillHealthReport } from '../observability/skill-health-analyzer.j
 import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;
+const PORT_HINT = `OMK_REPORT_PORT=${DEFAULT_PORT} omk eval ...`;
 const DEFAULT_REPORTS_DIR = join(homedir(), '.oh-my-knowledge', 'reports');
 const DEFAULT_ANALYSES_DIR = join(homedir(), '.oh-my-knowledge', 'analyses');
 
@@ -404,7 +405,7 @@ export function formatListenError(p: number, err: unknown): Error | null {
       `cannot bind ephemeral port (--port 0): ${errno ?? 'unknown error'}.\n` +
       `  likely cause: sandboxed / restricted network environment ` +
       `(Docker without --net=host, container without bind permission).\n` +
-      `  try a fixed port: OMK_REPORT_PORT=8080 omk eval ...`
+      `  try a fixed port: ${PORT_HINT}`
     );
   }
 
@@ -414,7 +415,7 @@ export function formatListenError(p: number, err: unknown): Error | null {
     return new Error(
       `cannot bind port ${p}: permission denied (${errno}).\n` +
       `  ports < 1024 require root on Unix; sandboxed environments may block all binds.\n` +
-      `  pick a higher port: OMK_REPORT_PORT=8080 omk eval ...`
+      `  pick another unblocked port: ${PORT_HINT}`
     );
   }
 
@@ -423,7 +424,7 @@ export function formatListenError(p: number, err: unknown): Error | null {
   if (errno && errno !== 'EADDRINUSE') {
     return new Error(
       `cannot bind port ${p}: ${errno} (${getErrorMessage(err)}).\n` +
-      `  pick another port: OMK_REPORT_PORT=8080 omk eval ...`
+      `  pick another port: ${PORT_HINT}`
     );
   }
 
@@ -703,7 +704,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
           `port ${p} is already in use by another process.\n` +
           `  inspect: lsof -i:${p}\n` +
           `  release: lsof -ti:${p} | xargs kill\n` +
-          `  or pick another port: OMK_REPORT_PORT=8080 omk eval ...`
+          `  or pick another port: ${PORT_HINT}`
         );
       }
     }

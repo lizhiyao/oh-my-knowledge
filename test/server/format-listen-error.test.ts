@@ -31,12 +31,12 @@ describe('formatListenError', () => {
     assert.match(out.message, /unknown error/);
   });
 
-  it('p=80 + EACCES → permission-denied message, suggests higher port', () => {
+  it('p=80 + EACCES → permission-denied message, suggests configured report port', () => {
     const out = formatListenError(80, nodeErr('EACCES'));
     assert.ok(out);
     assert.match(out.message, /permission denied/);
     assert.match(out.message, /port 80/);
-    assert.match(out.message, /pick a higher port/);
+    assert.match(out.message, /OMK_REPORT_PORT=7799/);
     assert.doesNotMatch(out.message, /already in use/);
   });
 
@@ -73,7 +73,7 @@ describe('formatListenError', () => {
     ];
     for (const out of cases) {
       assert.ok(out);
-      assert.match(out.message, /--port \d+|pick another port|pick a higher port/);
+      assert.match(out.message, /OMK_REPORT_PORT=7799|--port \d+|pick another port|pick another unblocked port/);
     }
   });
 });
