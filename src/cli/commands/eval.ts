@@ -13,6 +13,5 @@ export async function execute(argv: string[]): Promise<void> {
     return;
   }
 
-  const args = argv.includes('--bootstrap') ? argv : ['--bootstrap', ...argv];
-  await run(args);
+  await run(argv);
 }

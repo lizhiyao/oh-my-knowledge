@@ -215,9 +215,11 @@ export async function execute(argv: string[]): Promise<void> {
     process.stderr.write(tCli('cli.run.no_debias_length_active', lang));
   }
 
-  // --bootstrap / --bootstrap-samples: CLI > eval.yaml > default(off / 1000)。
+  // --bootstrap / --bootstrap-samples: CLI > eval.yaml > default(on / 1000)。
+  // `omk eval` owns the product default here instead of wrapper-injecting argv
+  // in commands/eval.ts, so config-file opt-out stays possible.
   const bootstrapEnabled = (values.bootstrap as boolean | undefined) === true
-    || (values.bootstrap === undefined && evalConfig?.bootstrap === true);
+    || (values.bootstrap === undefined && evalConfig?.bootstrap !== false);
   if (bootstrapEnabled) {
     config.bootstrap = true;
     const bsRaw = values['bootstrap-samples'] as string | undefined;

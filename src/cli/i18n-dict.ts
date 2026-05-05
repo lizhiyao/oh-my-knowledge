@@ -523,10 +523,10 @@ Run 'omk <command> --help' for command-specific options.
     zh: `
 omk eval — 离线评测 skill 版本，并给出 ship/no-ship verdict
 
-	用法：
-	  omk eval --control <variant> --treatment <variant> [options]
-	  omk eval gold <init|validate|compare> ...
-	  omk eval debias length <report-id> ...
+用法：
+  omk eval --control <variant> --treatment <variant> [options]
+  omk eval gold <init|validate|compare> ...
+  omk eval debias length <report-id> ...
 
 常用选项：
   --samples <path>                    用例文件（默认：eval-samples.json）
@@ -545,18 +545,18 @@ omk eval — 离线评测 skill 版本，并给出 ship/no-ship verdict
   --trivial-diff <number>             实际可忽略 diff（默认：0.1）
   --no-serve                          评测后不自动启动报告 server
 
-	示例：
-	  omk eval --control code-review-v1 --treatment code-review-v2
-	  omk eval --config eval.yaml
-	  omk eval gold compare v1-vs-v2-20260505-1200 --gold-dir gold-dataset
+示例：
+  omk eval --control code-review-v1 --treatment code-review-v2
+  omk eval --config eval.yaml
+  omk eval gold compare v1-vs-v2-20260505-1200 --gold-dir gold-dataset
 `,
     en: `
 omk eval — run offline skill evaluation and emit a ship/no-ship verdict
 
-	Usage:
-	  omk eval --control <variant> --treatment <variant> [options]
-	  omk eval gold <init|validate|compare> ...
-	  omk eval debias length <report-id> ...
+Usage:
+  omk eval --control <variant> --treatment <variant> [options]
+  omk eval gold <init|validate|compare> ...
+  omk eval debias length <report-id> ...
 
 Common options:
   --samples <path>                    Sample file (default: eval-samples.json)
@@ -575,10 +575,10 @@ Common options:
   --trivial-diff <number>             Practically negligible diff (default: 0.1)
   --no-serve                          Do not auto-start report server after evaluation
 
-	Examples:
-	  omk eval --control code-review-v1 --treatment code-review-v2
-	  omk eval --config eval.yaml
-	  omk eval gold compare v1-vs-v2-20260505-1200 --gold-dir gold-dataset
+Examples:
+  omk eval --control code-review-v1 --treatment code-review-v2
+  omk eval --config eval.yaml
+  omk eval gold compare v1-vs-v2-20260505-1200 --gold-dir gold-dataset
 `,
   },
   'cli.help.observe': {
@@ -700,7 +700,7 @@ omk studio — 打开本地知识工作台
 
 示例：
   omk studio
-  omk studio --port 7799
+  omk studio --port 8080
 `,
     en: `
 omk studio — open the local knowledge workbench
@@ -716,7 +716,7 @@ Options:
 
 Examples:
   omk studio
-  omk studio --port 7799
+  omk studio --port 8080
 `,
   },
   'cli.help.diagnose': {
