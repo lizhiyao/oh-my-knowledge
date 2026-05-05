@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { runDoctor, resolveDoctorTargets } from '../../src/doctor/index.js';
 import { registerRule, __resetCustomRulesForTest } from '../../src/doctor/rules.js';
 import type { Artifact } from '../../src/types/index.js';
-import type { DoctorRule } from '../../src/types/doctor.js';
+import type { ComposerRule, DoctorRule } from '../../src/types/doctor.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXAMPLE_SKILLS_DIR = join(__dirname, '..', '..', 'examples', 'code-review', 'skills');
@@ -608,5 +608,86 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     assert.equal(report.ruleStats.warn, 1);
     assert.equal(report.ruleStats.total, 2);
     assert.equal(report.outcome, 'warnings_only');
+  });
+
+  it('expands ComposerRule outcomes into multiple results sharing groupId', async () => {
+    const inlineArtifact: Artifact = {
+      name: 'inline-composer',
+      kind: 'skill',
+      source: 'inline',
+      content: '你是一个测试 skill,内容足够长以通过 readable 检测。',
+    };
+    const composer: ComposerRule = {
+      id: 'test_composer',
+      kind: 'composer',
+      severity: 'fatal',
+      labelKey: 'cli.doctor.rule.skill_readable',
+      async checkAll() {
+        return [
+          { subId: 'd1', status: 'fail',  message: 'd1 failed',  severity: 'fatal' },
+          { subId: 'd2', status: 'warn',  message: 'd2 warning', severity: 'warn' },
+          { subId: 'd3', status: 'pass',  message: 'd3 ok' },
+          { subId: '_summary', status: 'pass', message: 'overall summary', severity: 'info' },
+        ];
+      },
+    };
+    const report = await runDoctor({
+      artifacts: [inlineArtifact],
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [composer],
+    });
+    const results = report.skills[0].results;
+    assert.equal(results.length, 4, 'composer 4 outcomes should expand to 4 results');
+    const ids = results.map((r) => r.ruleId);
+    assert.deepEqual(ids, [
+      'test_composer:d1',
+      'test_composer:d2',
+      'test_composer:d3',
+      'test_composer:_summary',
+    ]);
+    for (const r of results) assert.equal(r.groupId, 'test_composer');
+    // skill 状态应该 roll up 到 fail (因为 d1 是 fatal+fail)
+    assert.equal(report.skills[0].status, 'fail');
+    assert.equal(report.outcome, 'failed');
+    // ruleStats 应该统计每条 sub-result(4 条)
+    assert.equal(report.ruleStats.total, 4);
+    assert.equal(report.ruleStats.fail, 1);
+    assert.equal(report.ruleStats.warn, 1);
+    assert.equal(report.ruleStats.pass, 2);
+  });
+
+  it('catches composer crashes and emits a single fail summary', async () => {
+    const inlineArtifact: Artifact = {
+      name: 'inline-crash',
+      kind: 'skill',
+      source: 'inline',
+      content: '你是一个测试 skill,长度足够。',
+    };
+    const crashing: ComposerRule = {
+      id: 'crash_composer',
+      kind: 'composer',
+      severity: 'fatal',
+      labelKey: 'cli.doctor.rule.skill_readable',
+      async checkAll() { throw new Error('composer exploded'); },
+    };
+    const report = await runDoctor({
+      artifacts: [inlineArtifact],
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [crashing],
+    });
+    const results = report.skills[0].results;
+    assert.equal(results.length, 1);
+    assert.equal(results[0].ruleId, 'crash_composer:_summary');
+    assert.equal(results[0].status, 'fail');
+    assert.ok(results[0].message.includes('composer crashed'));
+    assert.equal((results[0].detail as { ruleCrash?: boolean }).ruleCrash, true);
   });
 });

@@ -29,9 +29,43 @@ export interface DoctorRuleResult {
   /** 结构化数据,留给 renderer 或上游系统消费(不渲染到终端)。 */
   detail?: Record<string, unknown>;
   durationMs: number;
+  /** 由 ComposerRule 产出的子结果共享同一个 groupId(= composer.id)。renderer
+   *  按 groupId 把多条 result 渲染为同一组(header + 缩进的子项)。普通 rule 不设。 */
+  groupId?: string;
 }
 
-export type DoctorRuleCheckOutcome = Omit<DoctorRuleResult, 'ruleId' | 'severity' | 'labelKey' | 'durationMs'>;
+export type DoctorRuleCheckOutcome = Omit<DoctorRuleResult, 'ruleId' | 'severity' | 'labelKey' | 'durationMs' | 'groupId'>;
+
+/** ComposerRule 的子结果。一次 checkAll() 返回多条,每条会被 engine 映射成
+ *  独立的 DoctorRuleResult。subId 是子 rule 的稳定 id(eg. dimension id),
+ *  最终 ruleId = `${composer.id}:${subId}`。 */
+export interface ComposerOutcome extends DoctorRuleCheckOutcome {
+  subId: string;
+  /** 覆盖 composer 的默认 labelKey(每个子项有自己的标签)。 */
+  labelKey?: string;
+  /** 覆盖 composer 的默认 severity(子项可独立声明 fatal/warn/info)。 */
+  severity?: DoctorSeverity;
+}
+
+/** 复合 rule:一次 checkAll() 产出多条 result,适合"单次 LLM 调用 → N 个维度结果"
+ *  这类场景。doctor engine 检测 kind === 'composer' 时把数组结果展开,每条共享
+ *  同一个 groupId(= composer.id)以便 renderer 分组。 */
+export interface ComposerRule {
+  id: string;
+  kind: 'composer';
+  /** 默认 severity(子 outcome 未指定时用)。 */
+  severity: DoctorSeverity;
+  /** 默认 labelKey(子 outcome 未指定时用,通常是 composer 整体的标签)。 */
+  labelKey: string;
+  checkAll(ctx: DoctorContext): Promise<ComposerOutcome[]>;
+}
+
+/** doctor engine 接受的 rule 类型: 普通 DoctorRule 或 ComposerRule。 */
+export type DoctorRuleLike = DoctorRule | ComposerRule;
+
+export function isComposerRule(r: DoctorRuleLike): r is ComposerRule {
+  return (r as ComposerRule).kind === 'composer';
+}
 
 export interface DoctorContext {
   artifact: Artifact;
@@ -51,6 +85,10 @@ export interface DoctorContext {
   dependencyCwd?: string;
   lang: 'zh' | 'en';
   timeoutMs: number;
+  /** opt-in 深度健康检查(LLM-judge,多维度)。默认 false,只跑静态 rule;true 时
+   *  skill_health composer 才真正调 LLM。composer 不在 BUILTIN_RULES,必须先
+   *  import './doctor/health/register.js' 让 registerRule 副作用生效。 */
+  runHealthCheck?: boolean;
 }
 
 export interface DoctorRule {
@@ -111,6 +149,10 @@ export interface DoctorRunOptions {
    *  artifact.cwd, 高于 cwd)。CLI 嵌入 bench run 时传 skillDir, 与 evaluation
    *  preflight 的 cwd 选择规则保持一致(参见 evaluation-pipeline.ts dependency check)。 */
   dependencyCwd?: string;
-  /** 覆盖默认 rules(test 注入用)。生产路径走 getRegisteredRules() = BUILTIN + custom。 */
-  rules?: DoctorRule[];
+  /** 覆盖默认 rules(test 注入用)。生产路径走 getRegisteredRules() = BUILTIN + custom。
+   *  既可以是普通 DoctorRule,也可以是 ComposerRule(健康度体检走这条)。 */
+  rules?: DoctorRuleLike[];
+  /** opt-in 深度健康检查(7 维 LLM-judge)。透传给 DoctorContext.runHealthCheck。
+   *  CLI 层由 --health flag 控制。默认 false。 */
+  runHealthCheck?: boolean;
 }
