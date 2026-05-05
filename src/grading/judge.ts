@@ -144,7 +144,7 @@ interface LlmJudgeOptions {
    * When true (default), the judge prompt includes an explicit
    * "length is not a quality signal" instruction. Pass false to fall back to
    * the legacy v2-cot prompt — only useful for reproducing pre-v0.21 reports
-   * or running A/B comparisons inside `omk bench debias-validate length`.
+   * or running A/B comparisons with alternate length-debias settings.
    */
   lengthDebias?: boolean;
 }

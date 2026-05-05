@@ -11,9 +11,9 @@ const INIT_SAMPLES = `[
     "rubric": "应识别 SQL 注入风险，建议使用参数化查询",
     "assertions": [
       { "type": "contains", "value": "SQL", "weight": 1 },
-      { "type": "contains", "value": "注入", "weight": 1 },
-      { "type": "contains", "value": "参数化", "weight": 0.5 },
-      { "type": "not_contains", "value": "没有问题", "weight": 0.5 }
+      { "type": "contains", "value": "injection", "weight": 1 },
+      { "type": "regex", "pattern": "parameterized|prepared|placeholder|bind", "flags": "i", "weight": 0.5 },
+      { "type": "not_contains", "value": "looks good", "weight": 0.5 }
     ],
     "dimensions": {
       "security": "是否准确识别出 SQL 注入漏洞并说明其危害",
@@ -26,8 +26,8 @@ const INIT_SAMPLES = `[
     "context": "async function fetchData(url) {\\n  const res = await fetch(url);\\n  const data = await res.json();\\n  return data;\\n}",
     "rubric": "应指出缺少错误处理（网络异常、非 JSON 响应、HTTP 错误状态码）",
     "assertions": [
-      { "type": "contains", "value": "错误处理", "weight": 1 },
-      { "type": "regex", "pattern": "try[\\\\s\\\\S]*catch|错误|异常|error", "flags": "i", "weight": 1 },
+      { "type": "contains", "value": "error handling", "weight": 1 },
+      { "type": "regex", "pattern": "try[\\\\s\\\\S]*catch|exception|error", "flags": "i", "weight": 1 },
       { "type": "contains", "value": "status", "weight": 0.5 }
     ],
     "dimensions": {
@@ -42,7 +42,7 @@ const INIT_SAMPLES = `[
     "rubric": "应识别 XSS 风险，建议使用 textContent 或转义 HTML",
     "assertions": [
       { "type": "contains", "value": "XSS", "weight": 1 },
-      { "type": "regex", "pattern": "textContent|转义|escape|sanitize", "flags": "i", "weight": 1 },
+      { "type": "regex", "pattern": "textContent|escape|sanitize|sanitizer", "flags": "i", "weight": 1 },
       { "type": "contains", "value": "innerHTML", "weight": 0.5 }
     ],
     "dimensions": {
@@ -86,7 +86,7 @@ description: 多维度代码审查,覆盖安全 / 健壮 / 可维护 / 性能,�
 
 export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  // 走 helper 让未知 option fail-fast (e.g. `omk bench init --bogus`),
+  // 走 helper 让未知 option fail-fast（e.g. `omk init --bogus`），
   // 否则 argv[0] 直接当目录名, --bogus / --lang 都会被当成 dir 写文件。
   const { positionals } = parseArgsStrictOrExit({
     args: argv,

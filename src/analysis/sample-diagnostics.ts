@@ -16,7 +16,7 @@
  * (d) are cost / latency outliers (one sample spikes the budget by itself), or
  * (e) fail across the board (likely broken sample, not a model deficiency).
  *
- * The CLI `omk bench diagnose <reportId>` surfaces these so users can iterate
+ * The CLI `omk improve <reportId>` surfaces these so users can iterate
  * the SAMPLE SET as much as they iterate the SKILL.
  *
  * Output shape: a flat list of issues, each tagged with severity and the
@@ -447,7 +447,7 @@ export function formatSampleIssue(issue: SampleIssue, lang: DiagnosticLang = 'zh
 }
 
 /**
- * Plain-text formatter for `omk bench diagnose <reportId>`.
+ * Plain-text formatter for `omk improve <reportId>`.
  */
 export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: { topN?: number; lang?: DiagnosticLang } = {}): string {
   const lines: string[] = [];

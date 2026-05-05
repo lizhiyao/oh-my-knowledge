@@ -9,7 +9,7 @@
  *
  * 设计复用:
  *   - layout.ts 的整体 HTML skeleton + CSS (ki-card / ki-col / ki-bar 全部现成)
- *   - 报告视觉和 bench HTML 保持一致, 读者无学习成本切换
+ *   - 报告视觉和 eval HTML 保持一致，读者无学习成本切换
  */
 
 import type { SkillHealth, SkillHealthReport } from '../observability/skill-health-analyzer.js';

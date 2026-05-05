@@ -202,7 +202,7 @@ function computeTestSetHash(samplesPath: string): string | null {
  *   - 5 ≤ n < 20: only large effects (Cohen's d > 0.8) detectable
  *   - repeat=1: stability cannot be measured at all
  *
- * Real power claims happen post-hoc via `bench verdict` UNDERPOWERED state +
+ * Real power claims happen post-hoc via `omk eval` UNDERPOWERED state +
  * saturation curves. This is the upfront "you might be wasting the run"
  * heads-up, not a gate.
  */

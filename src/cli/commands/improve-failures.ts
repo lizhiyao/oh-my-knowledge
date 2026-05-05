@@ -26,7 +26,7 @@ export async function execute(argv: string[]): Promise<void> {
     },
   });
 
-  // Parse --judge-models 在 load report 之前 fail-fast(同 debias-validate)。
+  // Parse --judge-models 在 load report 之前 fail-fast。
   const { parseJudgeModelsArgOrExit: parseJudgesB } = await import('../parse-run-config.js');
   const cliJudgeModelsB = (values['judge-models'] as string | undefined) !== undefined
     ? parseJudgesB(values['judge-models'] as string)

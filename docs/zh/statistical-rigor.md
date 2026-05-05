@@ -17,7 +17,7 @@ t 检验在 LLM 序数评分（Likert 类离散桶，不是正态分布的连续
 
 - **每个 variant 的均值 CI** —— 有放回重采样 N 次（默认 5000）
 - **两个 variant 之间的 pairwise diff CI** —— 重采样后的均值差；如果 CI 不跨 0，差异在选定 α（默认 0.05 → 95% CI）显著
-- **输出**：每个 `VariantResult.bootstrapCI` 含均值跟 pairwise 的 `[lo, hi]`；HTML 报告画 CI 带状区域；CLI `bench verdict` 在六档 verdict 逻辑里消费这些 CI
+- **输出**：每个 `VariantResult.bootstrapCI` 含均值跟 pairwise 的 `[lo, hi]`；HTML 报告画 CI 带状区域；CLI `omk eval` 在六档 verdict 逻辑里消费这些 CI
 
 **参考**：Efron & Tibshirani (1993), "An Introduction to the Bootstrap"。omk 实现：`src/eval-core/bootstrap.ts`。由 `judge-hash-frozen.test.ts` 冻结防止公式悄悄漂移。
 
@@ -41,7 +41,7 @@ omk 自动检测 gold-judge 同源污染：如果 gold annotator 跟评委是同
 **研究证实 LLM 评委隐性偏向更长的回答。** 越长分越高，跟质量无关。omk 的评委 prompt 显式声明"长度不是质量信号"+ chain-of-thought + 长度归一化启发式。
 
 - Template hash `v3-cot-length` —— 旧报告用 `v2-cot`（去偏前），报告 hash 肉眼可辨
-- `omk bench debias-validate length <reportId>` —— 用相反设置重判，报告分数偏移；如果偏移超阈值，原报告有可测量的长度偏差
+- 报告元数据记录评委 prompt hash 和长度去偏设置；需要专门审计长度偏差时，用带 / 不带 `--no-debias-length` 的两份报告做对照
 - `--no-debias-length` 给研究 / 复现场景留 opt-out 口子
 - 参考：Saito et al. (2023), "Verbosity Bias in Preference Labeling by Large Language Models"
 
@@ -54,7 +54,7 @@ omk 自动检测 gold-judge 同源污染：如果 gold annotator 跟评委是同
 `--repeat ≥ 5` 时，omk 累积 N → bootstrap CI 序列。当 CI 宽度衰减率 < 5% 持续 3 个窗口，评测**饱和** —— 再多样本对结论无实质收益，额外的成本是浪费。
 
 - HTML 报告内联 SVG 饱和曲线 + verdict 标签
-- `omk bench verdict` 把饱和度作为六档 verdict 逻辑的输入之一
+- `omk eval` 把饱和度作为六档 verdict 逻辑的输入之一
 - 默认窗口大小：3 个连续测量；阈值：CI 宽度相对衰减 5%
 - 参考：omk 自有设计，不是已发表方法。实现：`src/eval-core/saturation.ts`
 

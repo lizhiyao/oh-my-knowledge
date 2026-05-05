@@ -3,7 +3,7 @@
 import { tCli, getCliLang, parseLangFromArgv, type CliLang } from './i18n.js';
 import { checkUpdate } from './update-check.js';
 import { CliExit } from './cli-exit.js';
-import { BENCH_COMMANDS, DOMAIN_COMMANDS, type CommandModule } from './commands/registry.js';
+import { PRODUCT_COMMANDS, type CommandModule } from './commands/registry.js';
 
 /**
  * --help / -h 在 argv 任意位置都打印对应 helpKey 内容并 exit 0。
@@ -21,37 +21,19 @@ function dispatchOrPrintHelp(cmd: CommandModule, argv: string[], lang: CliLang):
 async function main(): Promise<void> {
   const lang = getCliLang(parseLangFromArgv(process.argv));
   checkUpdate(lang);
-  const [domain, command, ...rest]: string[] = process.argv.slice(2);
-
-  if (!domain || domain === '--help' || domain === '-h') {
-    console.log(tCli('cli.help.main', lang).trim());
-    throw new CliExit(0);
-  }
-
-  // 顶层 domain 命令 (analyze / doctor) 不走 bench 前缀,先于 bench 路由
-  const domainCmd = DOMAIN_COMMANDS[domain];
-  if (domainCmd) {
-    const args = command ? [command, ...rest] : [];
-    await dispatchOrPrintHelp(domainCmd, args, lang);
-    return;
-  }
-
-  if (domain !== 'bench') {
-    console.error(tCli('cli.common.unknown_domain', lang, { domain }));
-    throw new CliExit(1);
-  }
+  const [command, ...rest]: string[] = process.argv.slice(2);
 
   if (!command || command === '--help' || command === '-h') {
-    console.log(tCli('cli.help.main', lang).trim());
+    console.log(tCli('cli.help.product_main', lang).trim());
     throw new CliExit(0);
   }
 
-  const benchCmd = BENCH_COMMANDS[command];
-  if (!benchCmd) {
-    console.error(tCli('cli.common.unknown_bench_command', lang, { command }));
+  const cmd = PRODUCT_COMMANDS[command];
+  if (!cmd) {
+    console.error(tCli('cli.common.unknown_domain', lang, { domain: command }));
     throw new CliExit(1);
   }
-  await dispatchOrPrintHelp(benchCmd, rest, lang);
+  await dispatchOrPrintHelp(cmd, rest, lang);
 }
 
 main().catch((err: unknown) => {

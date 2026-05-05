@@ -3,7 +3,8 @@ import { tCli, langFromArgv } from '../i18n.js';
 import { parseRunConfig } from '../parse-run-config.js';
 import { makeOnProgress } from '../progress.js';
 import { computeRunTally } from '../run-tally.js';
-import type { Report, ProgressCallback } from '../../types/index.js';
+import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback } from '../../types/index.js';
+import type { DryRunBatchReport, DryRunReport } from '../../eval-workflows/run-evaluation.js';
 import type { EvalResult, ReportServer } from './_shared.js';
 
 interface SkillProgressInfo {
@@ -16,6 +17,133 @@ interface SkillProgressInfo {
 interface RepeatProgressInfo {
   run: number;
   total: number;
+}
+
+type ParsedValues = Record<string, string | boolean | undefined>;
+type CliLang = 'zh' | 'en';
+
+function isDryRunReport(report: unknown): report is DryRunReport {
+  return Boolean(report && typeof report === 'object' && (report as { dryRun?: unknown }).dryRun === true);
+}
+
+function isDryRunBatchReport(report: unknown): report is DryRunBatchReport {
+  return isDryRunReport(report) && (report as { batch?: unknown }).batch === true;
+}
+
+function verdictOptions(values: ParsedValues): { gateThreshold: number; triviallySmallDiff: number | undefined } {
+  const rawThreshold = values.threshold as string | undefined;
+  const gateThreshold = rawThreshold !== undefined && Number.isFinite(Number(rawThreshold))
+    ? Number(rawThreshold)
+    : 3.5;
+  const rawTrivial = values['trivial-diff'] as string | undefined;
+  const triviallySmallDiff = rawTrivial !== undefined && Number.isFinite(Number(rawTrivial))
+    ? Number(rawTrivial)
+    : undefined;
+  return { gateThreshold, triviallySmallDiff };
+}
+
+function verdictPasses(level: string, headline: string): boolean {
+  return level === 'PROGRESS' || (level === 'SOLO' && headline.includes('PASS'));
+}
+
+async function emitEvaluationVerdict(report: EvaluationReport, values: ParsedValues): Promise<number> {
+  const { computeVerdict, formatVerdictText } = await import('../../eval-core/verdict.js');
+  const result = computeVerdict(report, verdictOptions(values));
+  console.log(formatVerdictText(result, { verbose: true }));
+  return verdictPasses(result.level, result.headline) ? 0 : 1;
+}
+
+function batchItemFallbackReport(
+  batch: BatchEvaluationReport,
+  item: BatchEvaluationReport['items'][number],
+): EvaluationReport {
+  return {
+    kind: 'evaluation',
+    id: item.reportId,
+    meta: {
+      ...batch.meta,
+      variants: ['baseline', item.name],
+      sampleCount: item.sampleCount,
+      totalCostUSD: item.totalCostUSD,
+      artifactHashes: item.artifactHash ? { [item.name]: item.artifactHash } : {},
+    },
+    summary: item.summary,
+    results: [],
+    ...(item.variance ? { variance: item.variance } : {}),
+  } as EvaluationReport;
+}
+
+async function loadBatchChildReports(batch: BatchEvaluationReport, reportsDir: string): Promise<EvaluationReport[]> {
+  const { createFileStore } = await import('../../server/report-store.js');
+  const store = createFileStore(reportsDir);
+  const reports: EvaluationReport[] = [];
+  for (const item of batch.items) {
+    const loaded = await store.get(item.reportId);
+    reports.push(loaded?.kind === 'evaluation' ? loaded : batchItemFallbackReport(batch, item));
+  }
+  return reports;
+}
+
+async function emitBatchVerdict(
+  report: BatchEvaluationReport,
+  reportsDir: string,
+  values: ParsedValues,
+  lang: CliLang,
+): Promise<number> {
+  const { computeVerdict } = await import('../../eval-core/verdict.js');
+  const childReports = await loadBatchChildReports(report, reportsDir);
+  const results = childReports.map((child) => ({
+    id: child.id,
+    treatment: child.meta.variants[1] ?? child.id,
+    verdict: computeVerdict(child, verdictOptions(values)),
+  }));
+  const passed = results.filter((r) => verdictPasses(r.verdict.level, r.verdict.headline)).length;
+  const failed = results.length - passed;
+
+  console.log(lang === 'zh'
+    ? `Batch verdict: ${failed === 0 ? 'PASS' : 'FAIL'} (${passed}/${results.length} passed)`
+    : `Batch verdict: ${failed === 0 ? 'PASS' : 'FAIL'} (${passed}/${results.length} passed)`);
+  for (const result of results) {
+    console.log(`  ${result.verdict.level}: ${result.treatment} — ${result.verdict.headline}`);
+  }
+  return failed === 0 ? 0 : 1;
+}
+
+async function announceSavedReport({
+  report,
+  filePath,
+  reportsDir,
+  values,
+  lang,
+}: {
+  report: EvaluationReport | BatchEvaluationReport;
+  filePath: string;
+  reportsDir: string;
+  values: ParsedValues;
+  lang: CliLang;
+}): Promise<void> {
+  const tally = computeRunTally(report);
+  process.stderr.write(tCli(report.kind === 'batch-evaluation' ? 'cli.run.batch_complete' : 'cli.run.eval_complete', lang));
+  process.stderr.write(tCli('cli.run.tally', lang, tally));
+  process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
+
+  if (!values['no-serve'] && process.stdout.isTTY) {
+    const { createReportServer } = await import('../../server/report-server.js');
+    const server: ReportServer = createReportServer({ reportsDir });
+    const serverUrl: string = await server.start();
+    const reportUrl: string = `${serverUrl}/reports/${report.id}`;
+    process.stderr.write(tCli('cli.run.report_server_running', lang, { url: serverUrl }));
+    process.stderr.write(tCli('cli.run.report_server_view', lang, { url: reportUrl }));
+    process.stderr.write(tCli('cli.run.report_server_stop', lang));
+
+    const { platform } = await import('node:os');
+    const openCmd: string = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
+    const { execFile: execFileCb } = await import('node:child_process');
+    execFileCb(openCmd, [reportUrl], () => undefined);
+  } else if (!values['no-serve']) {
+    process.stderr.write(tCli('cli.run.no_serve_in_non_tty', lang));
+    process.stderr.write(tCli('cli.run.no_serve_view_hint', lang, { id: report.id, dir: reportsDir }));
+  }
 }
 
 export async function execute(argv: string[]): Promise<void> {
@@ -34,6 +162,8 @@ export async function execute(argv: string[]): Promise<void> {
     'budget-usd': { type: 'string' },
     'budget-per-sample-usd': { type: 'string' },
     'budget-per-sample-ms': { type: 'string' },
+    threshold: { type: 'string', default: '3.5' },
+    'trivial-diff': { type: 'string' },
   });
 
   const { runEvaluation, runMultiple, runBatchEvaluation } = await import('../../eval-workflows/run-evaluation.js');
@@ -121,39 +251,22 @@ export async function execute(argv: string[]): Promise<void> {
             }));
           }
         },
-      }) as EvalResult;
+      }) as { report: BatchEvaluationReport | DryRunBatchReport; filePath: string | null };
       console.log(JSON.stringify(report, null, 2));
-      if (filePath) {
-        process.stderr.write(tCli('cli.run.batch_complete', lang));
-        const tally = computeRunTally(report);
-        process.stderr.write(tCli('cli.run.tally', lang, tally));
-        process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
-
-        if (!values['no-serve'] && process.stdout.isTTY) {
-          const { createReportServer } = await import('../../server/report-server.js');
-          const server: ReportServer = createReportServer({ reportsDir: config.outputDir });
-          const serverUrl: string = await server.start();
-          const reportUrl: string = `${serverUrl}/reports/${report.id}`;
-          process.stderr.write(tCli('cli.run.report_server_running', lang, { url: serverUrl }));
-          process.stderr.write(tCli('cli.run.report_server_view', lang, { url: reportUrl }));
-          process.stderr.write(tCli('cli.run.report_server_stop', lang));
-
-          const { platform } = await import('node:os');
-          const openCmd: string = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
-          const { execFile: execFileCb } = await import('node:child_process');
-          execFileCb(openCmd, [reportUrl], () => { });
-        } else if (!values['no-serve']) {
-          process.stderr.write(tCli('cli.run.no_serve_in_non_tty', lang));
-          process.stderr.write(tCli('cli.run.no_serve_view_hint', lang, { dir: config.outputDir }));
-        }
+      if (isDryRunBatchReport(report)) {
+        console.log('Eval dry-run: no scores to check');
+        throw new CliExit(0);
       }
-      return;
+      if (filePath) {
+        await announceSavedReport({ report, filePath, reportsDir: config.outputDir, values, lang });
+      }
+      throw new CliExit(await emitBatchVerdict(report, config.outputDir, values, lang));
     }
 
     let report: Report;
     let filePath: string | null;
 
-    if (repeatCount > 1) {
+    if (repeatCount > 1 && !config.dryRun) {
       const result = await runMultiple({
         ...config,
         repeat: repeatCount,
@@ -164,7 +277,15 @@ export async function execute(argv: string[]): Promise<void> {
       report = result.report;
       filePath = null;
     } else {
-      const result = (await runEvaluation(config)) as EvalResult;
+      const result = (await runEvaluation({
+        ...config,
+        ...(repeatCount > 1 ? { repeat: repeatCount } : {}),
+      })) as EvalResult;
+      if (isDryRunReport(result.report)) {
+        console.log(JSON.stringify(result.report, null, 2));
+        console.log('Eval dry-run: no scores to check');
+        throw new CliExit(0);
+      }
       report = result.report as Report;
       filePath = result.filePath;
     }
@@ -196,33 +317,9 @@ export async function execute(argv: string[]): Promise<void> {
 
     console.log(JSON.stringify(report, null, 2));
     if (filePath) {
-      process.stderr.write(tCli('cli.run.eval_complete', lang));
-      const tally = computeRunTally(report);
-      process.stderr.write(tCli('cli.run.tally', lang, tally));
-      process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
-
-      if (!values['no-serve'] && process.stdout.isTTY) {
-        // Auto-start report server
-        const { createReportServer } = await import('../../server/report-server.js');
-        const server: ReportServer = createReportServer({
-          reportsDir: config.outputDir,
-        });
-        const serverUrl: string = await server.start();
-        const reportUrl: string = `${serverUrl}/reports/${report.id}`;
-        process.stderr.write(tCli('cli.run.report_server_running', lang, { url: serverUrl }));
-        process.stderr.write(tCli('cli.run.report_server_view', lang, { url: reportUrl }));
-        process.stderr.write(tCli('cli.run.report_server_stop', lang));
-
-        // Auto-open report in browser
-        const { platform } = await import('node:os');
-        const openCmd: string = platform() === 'darwin' ? 'open' : platform() === 'win32' ? 'start' : 'xdg-open';
-        const { execFile: execFileCb } = await import('node:child_process');
-        execFileCb(openCmd, [reportUrl], () => { });
-      } else if (!values['no-serve']) {
-        process.stderr.write(tCli('cli.run.no_serve_in_non_tty', lang));
-        process.stderr.write(tCli('cli.run.no_serve_view_hint', lang, { dir: config.outputDir }));
-      }
+      await announceSavedReport({ report, filePath, reportsDir: config.outputDir, values, lang });
     }
+    throw new CliExit(await emitEvaluationVerdict(report, values));
   } catch (err: unknown) {
     // CliExit 是显式 exit 信号(从 requireEvaluationReport 等子调用冒上来),
     // 保持原 code 透传;只有真正运行时错误才包装成 CliExit(1)。

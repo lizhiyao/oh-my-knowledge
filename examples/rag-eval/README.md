@@ -13,12 +13,12 @@ omk 的三个 RAG 专用 metric 演示:`faithfulness` / `answer_relevancy` / `co
 ## 跑示例
 
 ```bash
-omk bench run --samples examples/rag-eval/eval-samples.yaml \
+omk eval --samples examples/rag-eval/eval-samples.yaml \
   --control baseline --treatment your-rag-skill \
   --bootstrap
 ```
 
-可叠加 `--gold-dir` 引入人工锚点对评分做外部验证(`omk bench gold` 流程),或叠加 `--repeat 5` 看饱和曲线。
+可叠加 `--gold-dir` 引入人工锚点对评分做外部验证，或叠加 `--repeat 5` 看饱和曲线。
 
 ## 实现注脚
 

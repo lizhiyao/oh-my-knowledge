@@ -9,16 +9,17 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 - context: 可选，附加上下文信息（如代码片段、文档段落等），仅在需要时提供
 - rubric: 评分标准，描述一个好的回答应该具备什么特征（1-2 句话）
 - assertions: 2-3 个断言检查，可选类型：
-  - { "type": "contains", "value": "关键词", "weight": 1 }
-  - { "type": "not_contains", "value": "不应出现的内容", "weight": 0.5 }
-  - { "type": "regex", "pattern": "正则表达式", "weight": 1 }
+  - { "type": "contains", "value": "English keyword or code token", "weight": 1 }
+  - { "type": "not_contains", "value": "English phrase that should not appear", "weight": 0.5 }
+  - { "type": "regex", "pattern": "English|code|token", "weight": 1 }
 
 要求：
 1. 测试用例应覆盖 skill 的不同能力维度
 2. prompt 要贴近真实用户的使用场景
 3. rubric 要具体，不要泛泛而谈
 4. assertions 要有区分度，能检测出有无 skill 的差异
-5. 断言应检测 skill 文档中的具体细节（如特定参数名、配置值、工作流步骤），而非通用知识。
+5. assertions 的 value / pattern / values / reference 必须使用英文、数字或代码 token，不要使用中文关键词。
+6. 断言应检测 skill 文档中的具体细节（如特定参数名、配置值、工作流步骤），而非通用知识。
    避免使用 baseline 凭常识或搜索文件也能答对的断言（如 not_contains 通用错误写法）。
    优先使用 contains 检测文档独有的术语、参数组合或特定值
 
@@ -74,7 +75,7 @@ ${skillContent}
   const { stripped } = sanitizeGeneratedSamples(samples);
   if (stripped.length > 0) {
     process.stderr.write(
-      `[omk gen-samples] LLM-output 含 ${stripped.length} 个非法元数据字段, 已剥离避免污染:\n  - ${stripped.join('\n  - ')}\n`,
+      `[omk improve samples] LLM-output 含 ${stripped.length} 个非法元数据字段，已剥离避免污染：\n  - ${stripped.join('\n  - ')}\n`,
     );
   }
 

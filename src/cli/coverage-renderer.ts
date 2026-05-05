@@ -1,5 +1,5 @@
 /**
- * CLI rendering of Sample design science coverage block for `bench diagnose`.
+ * CLI rendering of Sample design science coverage block for `omk improve`.
  *
  * Two data sources:
  *   1. samples (loaded fresh from eval-samples file) — preferred, always up-to-date

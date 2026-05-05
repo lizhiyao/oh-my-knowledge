@@ -5,7 +5,7 @@
  * 对每个 artifact 顺序跑全部 rules,聚合为 DoctorReport。
  *
  * fatal-fail 不中断后续 rule 执行(让用户一次看到全貌),但 report.outcome='failed',
- * CLI 据此 exit 1 / abort bench run。
+ * CLI 据此 exit 1 / abort eval。
  */
 
 import { existsSync, statSync } from 'node:fs';
@@ -149,7 +149,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
   // 默认规则 = 内置 + registerRule() 注册的 custom。test 注入走 opts.rules。
   const effectiveRules = opts.rules && opts.rules.length > 0 ? opts.rules : getRegisteredRules();
 
-  // artifacts 显式提供时跳过 target 解析(嵌入 bench run/gate 的路径用,
+  // artifacts 显式提供时跳过 target 解析（嵌入 eval 的路径用，
   // 避免扫整个 skillDir)。空数组合法且明确 — 表示"本次评测没 skill 需要 doctor"
   // (e.g. baseline-only 或纯 runtime-context-only run), doctor 不该再扫
   // skillDir 找无关草稿。只有 artifacts 完全 undefined 时才 fallback 到 target 解析。

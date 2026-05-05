@@ -17,7 +17,7 @@ The t-test breaks on ordinal LLM scores (Likert-like buckets, not normal-distrib
 
 - **Mean CI** per variant — resampled with replacement N times (default 5000)
 - **Pairwise diff CI** between two variants — diff of resampled means; if the CI does not cross 0, the difference is significant at the chosen α (default 0.05 → 95% CI)
-- **Output**: each `VariantResult.bootstrapCI` carries `[lo, hi]` for mean and pairwise; HTML report draws CI bands; CLI `bench verdict` consumes them in the 6-tier verdict logic
+- **Output**: each `VariantResult.bootstrapCI` carries `[lo, hi]` for mean and pairwise; HTML report draws CI bands; CLI `omk eval` consumes them in the 6-tier verdict logic
 
 **Reference**: Efron & Tibshirani (1993), "An Introduction to the Bootstrap". omk implementation: `src/eval-core/bootstrap.ts`. Frozen by `judge-hash-frozen.test.ts` to prevent silent formula drift.
 
@@ -41,7 +41,7 @@ omk auto-detects gold-judge collusion: if the gold annotator is the same model a
 **Research shows LLM judges over-weight verbosity.** Longer responses get higher scores, independent of quality. omk's judge prompt explicitly states "length is not a quality signal" + uses chain-of-thought + length normalization heuristics.
 
 - Template hash `v3-cot-length` — older reports use `v2-cot` (pre-debias), reports are visibly different by hash
-- `omk bench debias-validate length <reportId>` — re-judges with the opposite setting, reports the score shift; if shift > threshold, original report had measurable length bias
+- Report metadata records the judge prompt hash and length-debias setting; compare reports with and without `--no-debias-length` when you need a dedicated length-bias audit
 - `--no-debias-length` opt-out for research / replication scenarios
 - Reference: Saito et al. (2023), "Verbosity Bias in Preference Labeling by Large Language Models"
 
@@ -54,7 +54,7 @@ omk auto-detects gold-judge collusion: if the gold annotator is the same model a
 With `--repeat ≥ 5`, omk accumulates cumulative N → bootstrap CI sequence. When CI shrink rate stays under 5% across 3 windows, the eval is **saturated** — more samples buy nothing, additional cost is wasted.
 
 - HTML report inlines an SVG saturation curve + verdict label
-- `omk bench verdict` uses saturation as one input to the 6-tier verdict logic
+- `omk eval` uses saturation as one input to the 6-tier verdict logic
 - Default window size: 3 consecutive measurements; threshold: 5% relative shrink in CI width
 - Reference: this is omk's own design, not a published method. Implementation: `src/eval-core/saturation.ts`
 

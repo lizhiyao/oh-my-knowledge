@@ -205,7 +205,7 @@ Sample schema 含 4 个可选元数据字段,纯文档 / 诊断用,**不参与 g
 
 规则:
 
-- **持续集成场景的命令 / 内部 helper 一律用 "gate"**:`bench gate` / `evaluateLayerGates` / `gateThreshold` / `LayerGateResult`
+- **持续集成场景的内部 helper 一律用 "gate"**：`omk eval` 的 gate 路径 / `evaluateLayerGates` / `gateThreshold` / `LayerGateResult`
 - **置信区间场景一律用 "CI"**:`bootstrap CI` / `diff CI` / `bootstrapCI` 字段 / "95% CI"
 - 文档 / 注释 / commit message 提到 "CI" 时不必加澄清 — 单一含义,读者不需上下文判断
 

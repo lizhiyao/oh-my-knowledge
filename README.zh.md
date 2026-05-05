@@ -22,12 +22,12 @@ omk 帮你用客观数据回答，而不是凭感觉。
 
 ```bash
 npm i oh-my-knowledge -g
-omk bench init my-eval && cd my-eval
+omk init my-eval && cd my-eval
 # 编辑 skills/code-review-v1/SKILL.md 和 skills/code-review-v2/SKILL.md,填入你的两版内容
-omk bench run --control code-review-v1 --treatment code-review-v2    # → 5 分钟出 HTML 报告 + verdict
+omk eval --control code-review-v1 --treatment code-review-v2    # → 5 分钟出 HTML 报告 + verdict
 ```
 
-深入：[在 Claude Code / Codex 中调用](#在-ai-coding-agent-中使用) · [`omk bench run` 全 flag](#omk-bench-run) · [artifact 目录结构](#artifact-目录结构) · [`--lang` / `OMK_LANG`](#环境变量)
+深入：[在 Claude Code / Codex 中调用](#在-ai-coding-agent-中使用) · [`omk eval` 全 flag](#omk-eval) · [artifact 目录结构](#artifact-目录结构) · [`--lang` / `OMK_LANG`](#环境变量)
 
 ## 在 AI Coding Agent 中使用
 
@@ -37,8 +37,8 @@ omk bench run --control code-review-v1 --treatment code-review-v2    # → 5 分
 
 ```bash
 /omk eval              # 评测当前项目的 artifact
-/omk evolve            # 自动迭代改进 artifact
-/omk gen-samples       # 生成测试用例
+/omk improve skill     # 自动迭代改进 artifact
+/omk improve samples   # 生成测试用例
 ```
 
 或直接说"帮我评测 v1 和 v2 的差异"、"改进一下这个 artifact"，omk 会自动理解意图并调用对应命令。
@@ -48,9 +48,9 @@ omk bench run --control code-review-v1 --treatment code-review-v2    # → 5 分
 Codex 默认不支持 `/omk ...` 这种 Claude Code 风格的 slash command。通常直接让 agent 执行 `omk` CLI，例如：
 
 ```bash
-omk bench run
-omk bench evolve
-omk bench gen-samples skills/my-skill.md
+omk eval
+omk improve skill skills/my-skill.md
+omk improve samples skills/my-skill.md
 ```
 
 也可以直接用自然语言描述目标，例如"比较 v1 和 v2 的评测差异"、"为这个 skill 生成测试用例"。
@@ -61,13 +61,13 @@ omk bench gen-samples skills/my-skill.md
 
 ## 核心能力
 
-- **评测前置健康检查** — `omk doctor` 在 `bench run` / `bench gate` 之前**强制**运行，检查 skill 可读性、元数据合法性、依赖完整性、samples 契约——纯静态零 LLM 调用，类比 SE 工具栈的 lint + typecheck。executor / judge 连通性是独立阶段，可用 `--skip-connectivity` 单独跳过
+- **评测前置健康检查** — `omk doctor` 在 `omk eval` 之前**强制**运行，检查 skill 可读性、元数据合法性、依赖完整性、samples 契约——纯静态零 LLM 调用，类比 SE 工具栈的 lint + typecheck。executor / judge 连通性是独立阶段，可用 `--skip-connectivity` 单独跳过
 - **控制变量离线评测** — 固定模型和用例，只变知识载体；兼容 Claude Code skill、CLAUDE.md prompt、RAG 知识库等任何 markdown 形式的指令
 - **六维独立打分** — Fact / Behavior / LLM-judge / Cost / Efficiency / Stability 分别出信号，单一维度的回退不会被其他维度的收益掩盖
 - **线上 session 观测** — 解析 Claude Code session JSONL，在真实用户会话上测量各 skill 的失败率、耗时、token 成本和知识缺口信号
 - **知识缺口识别** — 严重度加权的信号（显式标记 / 搜索失败 / hedging 用语 / 反复失败）量化风险敞口，不宣称完备性
-- **合并前 CI 门** — `omk bench gate` 强制三层 all-pass（fact + behavior + llm-judge），抓复合分掩盖的单层回退
-- **一行 ship/no-ship 结论** — `omk bench verdict <reportId>` 聚合 bootstrap CI / 三层 ci-gate / saturation / human α，给六档 verdict(PROGRESS / CAUTIOUS / REGRESS / NOISE / UNDERPOWERED / SOLO)+ 行动建议；exit code 反映是否可 ship
+- **合并前 CI 门** — `omk eval` 强制三层 all-pass（fact + behavior + llm-judge），抓复合分掩盖的单层回退
+- **一行 ship/no-ship 结论** — `omk eval` 聚合 bootstrap CI / 三层 ci-gate / saturation / human α，给六档 verdict(PROGRESS / CAUTIOUS / REGRESS / NOISE / UNDERPOWERED / SOLO)+ 行动建议；exit code 反映是否可 ship
 
 ## 为什么选 omk
 
@@ -90,17 +90,17 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 
 | 特性 | 说明 |
 |------|------|
-| **Verdict 一行结论** | `omk bench verdict <id>` 六档判定 + ship 建议 + exit code 路由，与 HTML 报告 verdict pill 共享规则 |
+| **Verdict 一行结论** | `omk eval` 六档判定 + ship 建议 + exit code 路由，与 HTML 报告 verdict pill 共享规则 |
 | **六维评估** | 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性独立展示 |
 | **多执行器** | 支持 Claude CLI / Claude SDK / Codex CLI / Codex SDK / OpenAI / Gemini 及自定义命令 |
 | **21+ 种断言** | 包含子串、正则、JSON Schema、ROUGE/BLEU/Levenshtein 相似度、Agent 工具调用、语义相似度、自定义函数等 |
 | **统计严谨性** | Bootstrap CI / Krippendorff α / 长度去偏 / 饱和曲线 —— 全部默认开。[详情 →](docs/zh/statistical-rigor.md) |
-| **用例质量诊断** | `omk bench diagnose <id>` 7 类 issue（区分度低 / 重复 / 歧义 / 成本异常 / 全 fail 等）+ healthScore 0-100 |
-| **失败聚类 + 根因** | `omk bench failures <id>` 单 LLM 调用聚类失败用例 + 每 cluster 给修复建议 |
+| **用例质量诊断** | `omk improve <id>` 7 类 issue（区分度低 / 重复 / 歧义 / 成本异常 / 全 fail 等）+ healthScore 0-100 |
+| **失败聚类 + 根因** | `omk improve failures <id>` 单 LLM 调用聚类失败用例 + 每 cluster 给修复建议 |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` 三 metric — 反幻觉 + 切题度 + context 覆盖，自动继承长度去偏 |
 | **预算硬阈值** | `--budget-usd / --budget-per-sample-usd / --budget-per-sample-ms` 总成本 + 单用例成本/耗时上限，超出中止保留 partial report |
 | **用例隔离 (construct validity)** | `--strict-baseline` （默认开） 三堵 baseline 拿到被测 skill 的污染路径：(1) SDK skill auto-discovery (2) subagent Skill 工具调用 (3) cwd 文件系统（避免 baseline 顺 `skills/<name>/` symlink 直接 Read 到 SKILL.md）。eval.yaml `allowedSkills` 支持 per-variant 白名单 |
-| **用例设计科学性 (sample design science)** | Sample schema 加 `capability` / `difficulty` / `construct` / `provenance` 元数据字段（HF Dataset Cards 风）。`bench diagnose` 输出 coverage 分桶 + 检测 `rubric_clarity_low` / `capability_thin` 两类新 issue。`bench gen-samples` 自动给生成的用例打 provenance。详见 [docs/sample-design-spec.md](docs/sample-design-spec.md)，含 8 条行业 gap(HELM / MMLU-Pro / Construct Validity / IRT / Dataset Cards / Adversarial)的 omk v1 映射 |
+| **用例设计科学性 (sample design science)** | Sample schema 加 `capability` / `difficulty` / `construct` / `provenance` 元数据字段（HF Dataset Cards 风）。`omk improve` 输出 coverage 分桶 + 检测 `rubric_clarity_low` / `capability_thin` 两类新 issue。`omk improve samples` 自动给生成的用例打 provenance。详见 [docs/sample-design-spec.md](docs/sample-design-spec.md)，含 8 条行业 gap(HELM / MMLU-Pro / Construct Validity / IRT / Dataset Cards / Adversarial)的 omk v1 映射 |
 | **多评委 ensemble** | `--judge-models claude:opus,openai:gpt-4o` 跨厂商评分 + agreement 度量 |
 | **MCP URL 获取** | 通过 MCP Server 获取私有文档 URL 内容（SSO 保护的知识库等） |
 | **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
@@ -359,343 +359,110 @@ export default function(output, { sample, assertion }) {
 
 ## CLI 参考
 
-### `omk bench run`
+omk 的公开 CLI 按知识载体工作流组织：初始化、健康检查、离线评测、线上观测、改进建议、证据导出、本地工作台。
+
+### `omk init`
 
 ```bash
-omk bench run [选项]
+omk init [目录]
+```
 
-选项：
-  --samples <路径>       样本文件（默认：eval-samples.json，自动检测 .yaml/.yml）
+生成一个评测项目脚手架，包含两版 starter skill 和 `eval-samples.json`。
+
+### `omk doctor`
+
+```bash
+omk doctor                    # 检查当前目录或 ./skills
+omk doctor skills/v1.md       # 检查单个 skill 文件
+omk doctor skills/ --json     # 输出 JSON 给 CI 消费
+omk doctor --gate; echo $?    # 静默门禁，fatal 时 exit 1
+```
+
+纯静态检查：skill 可读性、frontmatter、directory-skill 结构、依赖提示、samples 契约。`omk eval` 前也会自动强制执行。
+
+### `omk eval`
+
+```bash
+omk eval --control code-review-v1 --treatment code-review-v2
+omk eval --config eval.yaml
+omk eval --batch
+omk eval gold compare <report-id> --gold-dir gold-dataset
+omk eval debias length <report-id>
+```
+
+运行离线评测，应用 verdict gate，持久化报告，并用 exit code 表示 ship/no-ship。这个工作流默认开启 bootstrap CI。
+
+常用选项：
+
+```text
+  --samples <路径>       样本文件（默认：eval-samples.json，也自动检测 .yaml/.yml）
   --skill-dir <路径>     artifact 目录（默认：skills）
-  --control <expr>       对照组变体表达式（experiment role = control）
-  --treatment <v1,v2>    实验组变体表达式,逗号分隔
-                         除非用 --config 或 --batch,--control / --treatment 两者至少传一个
-                         特殊值：baseline（空 artifact）、git:name（git 历史版本）、
-                         git:ref:name（指定 commit）、含 / 的路径（直接读取文件）
-  --config <路径>        YAML/JSON 配置文件（evaluation-as-code）;在一个文件里声明
-                         samples + variants + model + executor;CLI 参数会覆盖 config
-  --model <名称>         被测模型（默认：sonnet）
-  --judge-models <list>  评委配置;1 条 = 单评委 (默认 claude:haiku),
-                         ≥ 2 条 = ensemble。格式 `executor:model[,executor:model]`
-  --output-dir <路径>    输出目录（默认：~/.oh-my-knowledge/reports/）
-  --no-judge             跳过 LLM 评分
-  --no-cache             禁用结果缓存（默认开启，相同输入自动复用）
+  --control <expr>       对照组 variant 表达式
+  --treatment <v1,v2>    实验组 variants，逗号分隔
+  --config <路径>        YAML/JSON 评测配置
+  --model <名称>         任务执行模型（默认：sonnet）
+  --judge-models <list>  评委配置，例如 claude:haiku 或 claude:opus,openai:gpt-4o
+  --executor <名称>      claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom
+  --no-judge             跳过 LLM 评委
   --dry-run              仅预览
   --blind                盲测模式
-  --concurrency <n>      并行任务数（默认：1）
-  --timeout <秒>         单个任务的执行器超时时间（默认：120）
-  --repeat <n>           重复 N 次做方差分析（默认：1）
-  --executor <名称>      执行器（默认：claude），支持自定义命令
-  --skip-connectivity    跳过评测前 LLM 连通性检测(doctor 仍然强制执行,无 skip flag)。
-                         --resume 时自动跳过(原 run 已验过连通性)。
-  --mcp-config <路径>    MCP 配置文件，用于通过 MCP Server 获取私有文档 URL 内容
-                         （默认：当前目录的 .mcp.json）
-  --no-serve             评测完成后不自动启动报告服务
-  --verbose              打印每个样本的详细执行结果（耗时、tokens、输出预览）
-  --batch                批量评测：每个 artifact 独立和 baseline 对比
-                         需要每个 artifact 配对 {name}.eval-samples.json
-  --judge-repeat <n>     每条 sample × dimension 跑 LLM 评委 N 次,输出 stddev (评委自一致性)
-  --bootstrap            启用 distribution-free CI:每个 variant 加 bootstrap CI,
-                         pairwise diff CI 含 0 = 不显著
-  --bootstrap-samples N  bootstrap 重采样次数 (默认 1000)
-  --gold-dir <路径>      跑完自动对比 human gold 算 Krippendorff α / κ / Pearson,
-                         结果写入 report.meta.humanAgreement,HTML 报告显示「人工锚点」
-  --no-debias-length     退回 v2-cot 评委 prompt (不含"长度不是质量信号"段落),
-                         用于复现旧版本（v3-cot-length 之前）的报告 hash
-  --budget-usd <num>             总成本上限 (USD);超出中止评测,partial report 仍持久化
-                                 (`report.meta.budgetExhausted = true`)
-  --budget-per-sample-usd <num>  单样本成本上限;超出该样本失败但评测继续
-  --budget-per-sample-ms <num>   单样本耗时上限 (ms);超出该样本失败但评测继续
+  --concurrency <n>      并行任务数
+  --timeout <秒>         单任务超时
+  --repeat <n>           重复 N 次做方差分析
+  --batch                每个 artifact 独立和 baseline 对比
+  --bootstrap-samples N  bootstrap 重采样次数（默认 1000）
+  --threshold <number>   verdict 分层门禁阈值（默认 3.5）
+  --trivial-diff <num>   实际可忽略 diff 阈值（默认 0.1）
+  --skip-connectivity    跳过模型连通性检查；doctor 仍强制执行
+  --no-serve             评测后不自动启动报告服务
 ```
 
-**eval.yaml 预算字段**：`budget: { totalUSD?, perSampleUSD?, perSampleMs? }`，所有字段可选且必须 ≥ 0。CLI 同名 flag 覆盖配置值。
-
-**eval.yaml 实验设计字段**：上面 CLI flag 同样可以写到 `eval.yaml` 让实验配置可复现（CLI > eval.yaml > 默认）：
-
-```yaml
-samples: ./eval-samples.yaml
-model: sonnet
-repeat: 5                    # 多轮方差分析, ≥ 1
-judgeRepeat: 3               # 每条 (sample × dim) 评委自一致性次数, ≥ 1
-bootstrap: true              # 每 variant distribution-free CI
-bootstrapSamples: 2000       # 默认 1000, ≥ 100
-goldDir: ./gold              # 跑完自动对比 human anchor 算 α / κ / Pearson
-lengthDebias: true           # 默认; 设 false 复现 v0.21 之前的 hash
-strictBaseline: true         # 默认; 设 false 关掉 skill 隔离
-noJudge: false               # 默认; 设 true 完全跳过 LLM 评委
-judgeModels:                 # 1 条 = 单评委; ≥ 2 条 = ensemble
-  - { executor: claude, model: opus }
-  - { executor: openai-api, model: gpt-4o }
-variants:
-  - { name: baseline, role: control, artifact: baseline }
-  - { name: my-skill, role: treatment, artifact: ./skills/my-skill.md }
-```
-
-**字段入口**：`bench run` 完整支持上述全部字段；`bench gate` 通过 `parseRunConfig` 共享 variants / executor / model / `judgeModels`（单评委 + ensemble 都生效）/ noJudge / noCache / blind / strictBaseline / budget / mcpConfig / variantAllowedSkills，但 `commands/run.ts` 自己处理的实验设计字段（`repeat` / `judgeRepeat` / `bootstrap` / `bootstrapSamples` / `goldDir` / `lengthDebias`）gate 不读，后续按需扩展到 gate。其他子命令（`evolve` / `verdict` / `diff` / `analyze` 等）完全不读 eval.yaml。
-
-**和 `cost_max` / `latency_max` 断言的区别**：断言是**单样本评分维度**（超出直接打 0 分，run 继续）；budget 是**工作流级硬阈值**（`totalUSD` 超出整个 run abort 保留 partial report，per-sample 超出该样本失败但 run 继续）。一个回答"质量是否达标"，一个回答"花钱/时间是否在预算内"。
-
-### `omk bench run --batch`（批量评测）
-
-当 skills/ 下放了多个**独立的** artifact 时，使用 `--batch` 逐个评测，每个 artifact 独立和 baseline 对比，生成一份 BatchEvaluationReport，内部索引多个 child EvaluationReport。
-
-```
-skills/
-├── asset.md                       ← artifact 文件
-├── asset.eval-samples.json        ← 配对的测试集
-├── home.md
-├── home.eval-samples.json
-└── product/                       ← 目录格式也支持
-    ├── SKILL.md
-    └── eval-samples.json
-```
-
-配对规则：
-
-- `{name}.md` → 查找同目录下的 `{name}.eval-samples.json`
-- `{name}/SKILL.md` → 查找 `{name}/eval-samples.json`
-- 没有配对 eval-samples 的 artifact 会被跳过并打印警告
+### `omk observe`
 
 ```bash
-omk bench run --batch
-omk bench run --batch --dry-run
+omk observe ~/.claude/projects/-Users-you-Documents-my-project
+omk observe ~/.claude/projects/my-project --last 7d
+omk observe ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
+omk observe ~/.claude/projects/my-project --skills audit,polish
+omk observe ~/.claude/projects/my-project --kb /path/to/project
 ```
 
-### `omk bench gen-samples`（生成测评用例）
+把真实 Claude Code session trace 转成 skill 健康度报告：知识使用、gap 信号、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
 
-读取 artifact 内容，通过 LLM 自动生成 eval-samples。生成后请审查编辑再跑评测。
+### `omk improve`
 
 ```bash
-# 为指定 artifact 生成测试集（输出到 eval-samples.json）
-omk bench gen-samples skills/my-skill.md
-
-# 为 skills/ 下所有缺少测试集的 artifact 批量生成
-omk bench gen-samples --batch
-
-# 指定生成数量
-omk bench gen-samples skills/my-skill.md --count 10
+omk improve <report-id>             # 样本诊断和修复计划
+omk improve plan <report-id>        # 显式 repair-plan 形式
+omk improve failures <report-id>    # 聚类失败样本并给根因
+omk improve samples [skill]         # 生成或补齐 eval samples
+omk improve skill <skill>           # 通过评测循环迭代 skill
 ```
 
-选项：
+在 `omk eval` 或 `omk observe` 之后用它决定下一步改什么。自动生成的 sample assertions 使用英文、数字或代码 token，便于跨中英文输出比较。
 
-```
-  --batch                为所有缺少 eval-samples 的 artifact 批量生成
-  --count <n>            每个 artifact 生成的样本数（默认：5）
-  --model <名称>         生成用的模型（默认：sonnet）
-  --skill-dir <路径>     artifact 目录（默认：skills），配合 --batch 使用
-```
-
-### `omk bench evolve`（自我循环改进）
-
-让 AI 自动迭代 artifact：评测 → 分析弱点 → LLM 改进 → 再评测 → 分数涨了留、没涨扔 → 重复。
+### `omk export`
 
 ```bash
-# 基本用法：迭代 5 轮
-omk bench evolve skills/my-skill.md
-
-# 指定轮数和目标分数
-omk bench evolve skills/my-skill.md --rounds 10 --target 4.5
+omk export <report-id> --format html
+omk export <report-id> --format markdown --out report.md
+omk export <report-id> --format github-summary
+omk export diff <report-id> --regressions-only
+omk export verdict <report-id>
+omk export saturation <report-id>
 ```
 
-选项：
+导出可贴到 PR、CI summary 和审计材料里的证据。HTML 会写 standalone report 文件；markdown 和 GitHub summary 默认输出到 stdout，除非传 `--out`。样本/报告差异、已持久化 verdict、saturation 检查也都归在 export 子树下。
 
-```
-  --rounds <n>           最大迭代轮数（默认：5）
-  --target <分数>        目标分数，达到即停
-  --samples <路径>       样本文件（默认：eval-samples.json）
-  --improve-model <名称> 改进用模型（默认：sonnet）
-```
-
-每轮产出保存在 `skills/evolve/` 目录（`my-skill.r0.md`、`my-skill.r1.md`...），可以 diff 查看 AI 改了什么。最佳版本自动写回原始文件。
-
-### `omk bench gate`
-
-在自动化流水线中运行评测。评分达标则退出码为 0（通过），否则为 1（失败），可直接用于卡点判断。
-
-门禁是**三层 all-pass**：`avgFactScore >= threshold AND avgBehaviorScore >= threshold AND avgJudgeScore >= threshold`，任一层低于阈值即 FAIL，输出显示是哪一层破了 gate。这样能把"事实 4.5→2.5 但 judge 3→5"这种合成分均值不变但事实层崩盘的 case 暴露出来 — 任何一层退化都会被卡住。
+### `omk studio`
 
 ```bash
-omk bench gate [选项]
-  --threshold <数值>     各层最低分数(默认:3.5);独立应用于
-                         fact / behavior / judge 三层
+omk studio
+omk studio --port 7799
+omk studio --reports-dir ~/.oh-my-knowledge/reports
 ```
 
-### `omk doctor`（评测前置健康检查）
-
-纯静态 / 零 LLM 调用，类比 SE 工具栈的 lint + typecheck。`bench run` / `bench gate` 之前强制运行，YAML 写错、依赖缺失这类问题会 abort 评测并给可操作错误，而不是让你拿到 garbage-in 的 verdict 数字。也可独立调用，适合本地迭代或 CI 单跑。
-
-```bash
-omk doctor                    # 批量检查当前目录或 ./skills 下所有 skill
-omk doctor skills/v1.md       # 单个文件
-omk doctor skills/ --json     # JSON 输出供 CI 消费
-omk doctor --gate; echo $?    # 静默模式 — 任意 fatal 失败 exit 1
-```
-
-doctor 检查项：
-
-- **skill 文件可读** — 文件存在、内容非空、有最低长度
-- **skill 元数据合法** — front-matter（若有）YAML 合法；directory-skill 有 `SKILL.md`
-- **前置依赖完整** — 引用的 CLI 工具、文件、环境变量都可用（复用 `preflightDependencies`）
-- **用例 ↔ skill 输入约定** — 传 samples 时校验非空且含 prompt 字段（warn 级）
-
-executor / judge 连通性由独立的 evaluation preflight 阶段负责，不在 doctor 范围内 — 边界清晰：doctor 静态，eval 动态。`bench run` / `bench gate` 在 doctor 失败时 abort（exit 1，stderr 前缀 `doctor failed:`）。**doctor 是评测必经环节，无 skip flag**（静态检查零成本无理由跳过）；LLM 连通性可用 `--skip-connectivity` 单独控制（`--resume` 时自动跳过）。
-
-### `omk bench report`
-
-启动报告服务，浏览历史报告、提交反馈、删除报告。
-
-```bash
-omk bench report [选项]
-  --port <端口号>        服务端口（默认：7799）
-```
-
-### `omk bench init`
-
-```bash
-omk bench init [目录]    # 生成评测项目脚手架
-```
-
-### `omk bench gold`（人工锚点）
-
-人工标注（或更强模型代理）作为外部锚点，与 LLM 评委的分数对比 Krippendorff α / 加权 κ / Pearson。回答"评委对不对"，与 Bootstrap CI 的"评委稳不稳"互补。
-
-```bash
-omk bench gold init [--out <dir>] [--annotator <id>]   # 生成数据集模板
-omk bench gold validate <dir>                          # 校验 schema (annotator/时间/版本/score 范围)
-omk bench gold compare <reportId> --gold-dir <dir>     # 与已有 report 对比,输出 verdict + α/κ/r
-```
-
-dataset 目录结构：
-
-```
-gold-dir/
-├── metadata.yaml      # annotator (注意不要与 omk judge 同模型,会触发污染警告) + 时间 + 版本
-└── annotations.yaml   # [{ sample_id, score, reason? }] 按 sample_id 拼接
-```
-
-α 阈值参考 Krippendorff (2011)：≥ 0.80 高度一致；[0.67, 0.80) 可接受；< 0.40 偏差大需排查 rubric / prompt。
-
-完整 demo：[examples/gold-dataset/](examples/gold-dataset/)
-
-### `omk bench debias-validate length`（评委长度偏差检测）
-
-重判已有 report 的所有 (sample × variant)，用相反的 length-debias 设置（v3-cot-length ↔ v2-cot），bootstrap CI 算两次差值。差异显著 = 评委对长度敏感（length bias 间接证据）。
-
-```bash
-omk bench debias-validate length <reportId> [选项]
-  --variant <name>            只测一个 variant
-  --judge-models <executor:model>  override report 的评委(仅支持单评委)
-  --bootstrap-samples N       bootstrap 迭代数 (默认 1000)
-  --seed N                    确定性种子
-```
-
-verdict 分四档：未检测 / 弱 / 中（差值 |0.2-0.5|）/ 强（差值 ≥ 0.5）。重判 cost 大致翻倍。
-
-### `omk bench saturation`（饱和曲线）
-
-回答"我跑够样本了吗"。从已有 report 读取 saturation trace 输出判定，无需重跑评测。需要原 run 跑了 `--repeat ≥ 5` 才会有 verdict（低 repeat 只画曲线）。
-
-```bash
-omk bench saturation <reportId> [选项]
-  --variant <name>             只看一个 variant
-  --method <m>                 slope | bootstrap-ci-width (默认) | plateau-height
-  --threshold <num>            方法相关阈值 (默认随 method)
-  --window <num>               连续多少窗口满足才判饱和 (默认 3)
-```
-
-HTML 报告会内联 SVG 饱和曲线（横 N，纵 mean ± 95% CI 阴影带，per-variant 一条），自动渲染。
-
-### `omk bench verdict`（一行 ship/no-ship 结论）
-
-聚合 bootstrap CI / 三层 ci-gate / saturation / human α 给一行结论。Verdict 六档：**PROGRESS**（显著改进 + 三层全过 → exit 0）/ **CAUTIOUS**（改进真实但有警告：gate 破/幅度太小/控制组本身崩 → exit 1）/ **REGRESS**（显著回退 → exit 1）/ **NOISE**（CI 跨 0，无法判定 → exit 1）/ **UNDERPOWERED**（样本不足 → exit 1）/ **SOLO**（单变体，仅自身三层 gate 过才 exit 0）。
-
-```bash
-omk bench verdict <reportId> [选项]
-  --threshold <num>      三层 gate 阈值 (默认 3.5,匹配 omk bench gate)
-  --trivial-diff <num>   "幅度太小"阈值 (默认 0.1)
-  --verbose              展开 per-pair 详情
-```
-
-与 HTML 报告顶部的 verdict pill 共享规则模块，CLI 与 UI 不会矛盾。
-
-### `omk bench diagnose`（样本质量诊断）
-
-回答"测评结论是否被坏样本污染"。诊断 7 类样本质量问题：`flat_scores`（区分度低）/ `all_pass`（太简单）/ `all_fail`（broken，error 级）/ `near_duplicate`（prompt ROUGE-1 ≥ 阈值）/ `ambiguous_rubric`（judge stddev 大，需要 `--judge-repeat ≥ 2`）/ `cost_outlier`（≥ k× median）/ `latency_outlier`（≥ k× median）/ `error_prone`（执行失败）。
-
-```bash
-omk bench diagnose <reportId> [选项]
-  --top <n>                   每类显示前 N 个 (默认 10,0=全部)
-  --duplicate-rouge <num>     near-duplicate ROUGE-1 阈值 (默认 0.7)
-  --ambiguous-stddev <num>    歧义 judge stddev 阈值 (默认 1.0)
-  --cost-k <num>              成本异常倍数 vs median (默认 3)
-  --latency-k <num>           耗时异常倍数 vs median (默认 3)
-  --flat <num>                flat_scores 分差阈值 (默认 0.5)
-```
-
-输出含 healthScore（0-100，公式 `100 - normalized × 20`，其中 `normalized = (errors×8 + warnings×3 + infos×1) / N`）。exit code 0 仅当 `healthScore ≥ 70` 且无 error 级 issue，适合 CI 链。
-
-### `omk bench failures`（失败 case LLM 聚类）
-
-跑完 14 条失败，逐个看太慢。本命令把失败样本喂给单次 LLM 调用，自动聚到 ≤ N 个 cluster，每个 cluster 给根因 + 修复建议。失败定义：`compositeScore < threshold` 或 `ok = false`。
-
-```bash
-omk bench failures <reportId> [选项]
-  --judge-models <executor:model>  聚类评委 (默认沿用 report.meta.judgeModels[0],仅支持单评委)
-  --max-clusters <n>          最多多少 cluster (默认 5)
-  --threshold <num>           算失败的分数阈值 (默认 3)
-  --max-feed <n>              最多喂给 LLM 多少条 (默认 50,超出取最差)
-```
-
-容错：tolerate ```json``` markdown fence、`"sample_id@variant"` 字符串成员形式、hallucinated 成员自动剔除、单条失败跳过 LLM 直接列出、executor 错误降级到 unclassified。
-
-### `omk bench diff`（报告对比 — 单参 / 双参双模式）
-
-**单参模式**（within-report sample-level 钻取）：`omk bench diff <reportId>` — 在同一份报告内对比两个 variant 的逐样本得分，默认对比 `variants[0]` vs `variants[1]`。
-
-**双参模式**（cross-report variant-level）：`omk bench diff <reportId1> <reportId2>` — 跨报告对比同一 variant 的整体均值漂移（向后兼容旧用法）。
-
-```bash
-omk bench diff <reportId> [--variant <name>] [--regressions-only] [--threshold 0] [--top N]
-omk bench diff <reportId1> <reportId2> [--regressions-only] [--threshold 0]
-```
-
-单参模式表格按 |Δ| 排序，Δ < threshold 高亮 regression。`--top N` 限制行数，`--regressions-only` 过滤到只看回退。
-
-## `omk analyze` — 生产观测
-
-`omk bench run` 是**离线评测**（固定对照、可复现、可评分）。生产环境不一样 — 没对照组、没标准答案、没重复，所以评分在那里不成立。`omk analyze` 把已有的 Claude Code session trace 转成**skill 健康度报告**（按 skill 维度的覆盖率、缺口信号、执行稳定性、tokens/延迟）。它给的是"哪个 skill 值得拉回离线再测一遍"的线索，不是生产评分。
-
-```bash
-# 分析当前项目的所有 cc session(kb 路径从 trace 里自动推断)
-omk analyze ~/.claude/projects/-Users-you-Documents-my-project
-
-# 限定时间窗:最近 7 天 / 24 小时 / 30 分钟
-omk analyze ~/.claude/projects/my-project --last 7d
-
-# 绝对时间窗
-omk analyze ~/.claude/projects/my-project --from 2026-04-01T00:00:00Z --to 2026-04-15T23:59:59Z
-
-# 白名单特定 skill
-omk analyze ~/.claude/projects/my-project --skills audit,polish
-
-# 显式指定知识库根目录(覆盖自动推断)
-omk analyze ~/.claude/projects/my-project --kb /path/to/project
-```
-
-命令产出 `~/.oh-my-knowledge/analyses/<timestamp>-skill-health.json`。启 `omk bench report` 后，首页右上有"📊 Skill 健康度日报"入口；每张 skill card 上有"查看趋势 →"链接；`/analyses` 列表页顶部有 Compare 选择器，可以选两份报告生成 diff。
-
-**每个 skill 你能看到：**
-
-- **知识使用** — 这个 skill 实际读了哪些 KB 文件(coverage %)
-- **知识盲区** — 四类加权信号（搜索未命中 / 模型标记缺口 / 表达不确定 / 反复未命中）；hedging 经 LLM 二次判定过滤"业务可能性"和"知识不确定"
-- **执行稳定性** — 工具失败率；失败率 > 20% 的 skill 会标警告，提示"gap 信号可能是环境问题而非真实知识缺口"
-- **使用成本** — billable tokens(input+output)和 cached tokens 分列，总耗时
-
-**这不是什么：**
-
-- 不是通用 APM（请求级 latency/cost tracing 是 Langfuse / Datadog 的领域）
-- 不是 streaming / alert（只做 batch — 想要周期快照用 cron）
-- 不是生产评分（没对照组没标答 — 评分回到 `omk bench run`）
+启动本地知识工作台，用来浏览报告和观测分析。
 
 ## 执行器
 
@@ -713,15 +480,15 @@ omk analyze ~/.claude/projects/my-project --kb /path/to/project
 
 API 直调执行器支持通过环境变量自定义 Base URL：`ANTHROPIC_BASE_URL`、`OPENAI_BASE_URL`。
 
-Codex construct-validity 说明：（1）`codex` 使用 `PATH` 上找到的 `codex` binary；`codex-sdk` 使用 `@openai/codex-sdk` 解析到的自带 `@openai/codex` binary。报告会持久化 per-variant `meta.executorRuntimes`、`meta.executorRuntime`，以及每个评委的 `meta.judgeModels[].runtime` 指纹（binary 或 SDK 版本 + 能力快照），`bench diff` / `bench verdict` 会在 strict comparability 无法审计时提示。runtime 指纹不一致时，结果应解释为 executor runtime 对比，而不只是 prompt/template 行为对比。（2）两个 executor 都隔离用户级 config：`codex` 传 `--ephemeral` + `--ignore-user-config`，`codex-sdk` 把 `$CODEX_HOME` 重定向到 per-process tmp 目录（auth.json 通过 symlink 透传）。用户的 `~/.codex/config.toml` 不会渗入任意一个 executor 的 eval。
+Codex construct-validity 说明：（1）`codex` 使用 `PATH` 上找到的 `codex` binary；`codex-sdk` 使用 `@openai/codex-sdk` 解析到的自带 `@openai/codex` binary。报告会持久化 per-variant `meta.executorRuntimes`、`meta.executorRuntime`，以及每个评委的 `meta.judgeModels[].runtime` 指纹（binary 或 SDK 版本 + 能力快照），strict comparability checks 会在 runtime 指纹无法审计时提示。runtime 指纹不一致时，结果应解释为 executor runtime 对比，而不只是 prompt/template 行为对比。（2）两个 executor 都隔离用户级 config：`codex` 传 `--ephemeral` + `--ignore-user-config`，`codex-sdk` 把 `$CODEX_HOME` 重定向到 per-process tmp 目录（auth.json 通过 symlink 透传）。用户的 `~/.codex/config.toml` 不会渗入任意一个 executor 的 eval。
 
 ### 自定义执行器
 
 任何 shell 命令都可以作为执行器，通过 stdin/stdout JSON 协议通信：
 
 ```bash
-omk bench run --executor "python my_provider.py"
-omk bench run --executor "./my-executor.sh"
+omk eval --executor "python my_provider.py"
+omk eval --executor "./my-executor.sh"
 ```
 
 **协议约定：**
@@ -762,28 +529,28 @@ skills/
 
 ```bash
 # 显式:一个 control,一个或多个 treatment
-omk bench run --control v1 --treatment v2
-omk bench run --control baseline --treatment v1,v2,v3
+omk eval --control v1 --treatment v2
+omk eval --control baseline --treatment v1,v2,v3
 
 # 对比空 artifact 和显式 artifact 的效果差异
-omk bench run --control baseline --treatment my-skill
+omk eval --control baseline --treatment my-skill
 
 # 单独观察项目级 runtime context 的影响(用自描述标签)
-omk bench run --control baseline --treatment project-env@/path/to/target-project
+omk eval --control baseline --treatment project-env@/path/to/target-project
 
 # 对比"项目级 runtime context"与"显式 artifact 注入"
-omk bench run \
+omk eval \
   --control project-env@/path/to/target-project \
   --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
 
 # 对比修改前后(旧版本从 git 历史读取)
-omk bench run --control git:my-skill --treatment my-skill
+omk eval --control git:my-skill --treatment my-skill
 
 # 直接指定文件路径
-omk bench run --control ./old-skill.md --treatment ./new-skill.md
+omk eval --control ./old-skill.md --treatment ./new-skill.md
 
 # 配置文件驱动(evaluation-as-code)
-omk bench run --config eval.yaml
+omk eval --config eval.yaml
 ```
 
 **前置要求：**
@@ -814,7 +581,7 @@ omk bench run --config eval.yaml
 #### 推荐执行器
 
 ```bash
-omk bench run --executor claude-sdk
+omk eval --executor claude-sdk
 ```
 
 #### 支持的 agent 相关断言
@@ -834,7 +601,7 @@ omk bench run --executor claude-sdk
 不注入 system prompt，也不进入带知识的项目目录。至少需要一个 treatment 做对比：
 
 ```bash
-omk bench run \
+omk eval \
   --executor claude-sdk \
   --control baseline \
   --treatment my-skill
@@ -845,7 +612,7 @@ omk bench run \
 不注入 system prompt，但在项目目录运行。它不是严格意义上的"裸 baseline"，而是"空 artifact + 项目级 runtime context"。
 
 ```bash
-omk bench run \
+omk eval \
   --executor claude-sdk \
   --control baseline \
   --treatment project-env@/path/to/target-project
@@ -856,7 +623,7 @@ omk bench run \
 直接把某个外部 `SKILL.md` 作为 artifact 注入，同时保留项目目录上下文。适合对比"项目级 runtime context"与"显式单 artifact 注入"之间的差异。
 
 ```bash
-omk bench run \
+omk eval \
   --executor claude-sdk \
   --control project-env@/path/to/target-project \
   --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
@@ -867,7 +634,7 @@ omk bench run \
 对于 PRD / 复杂业务知识场景，建议从下面开始：
 
 ```bash
-omk bench run \
+omk eval \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
   --control baseline \
@@ -877,7 +644,7 @@ omk bench run \
 如果你想证明"项目目录中的知识沉淀本身"是否有效，加第二个 treatment：
 
 ```bash
-omk bench run \
+omk eval \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
   --control baseline \
@@ -898,32 +665,32 @@ omk bench run \
 # GLM（智谱）
 export OPENAI_API_KEY="你的智谱 API Key"
 export OPENAI_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
-omk bench run --executor openai-api --model glm-4-plus \
+omk eval --executor openai-api --model glm-4-plus \
   --judge-models openai-api:glm-4-plus --no-cache
 
 # 通义千问
 export OPENAI_API_KEY="你的通义 API Key"
 export OPENAI_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
-omk bench run --executor openai-api --model qwen-plus \
+omk eval --executor openai-api --model qwen-plus \
   --judge-models openai-api:qwen-plus
 
 # DeepSeek
 export OPENAI_API_KEY="你的 DeepSeek API Key"
 export OPENAI_BASE_URL="https://api.deepseek.com"
-omk bench run --executor openai-api --model deepseek-chat \
+omk eval --executor openai-api --model deepseek-chat \
   --judge-models openai-api:deepseek-chat
 
 # Moonshot（Kimi）
 export OPENAI_API_KEY="你的 Moonshot API Key"
 export OPENAI_BASE_URL="https://api.moonshot.cn/v1"
-omk bench run --executor openai-api --model moonshot-v1-8k \
+omk eval --executor openai-api --model moonshot-v1-8k \
   --judge-models openai-api:moonshot-v1-8k
 ```
 
 **Ollama 本地模型：**
 
 ```bash
-omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
+omk eval --executor "python examples/custom-executor/ollama-executor.py" \
   --model llama3 --no-judge
 ```
 
@@ -939,7 +706,7 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
 | 变量 | 说明 |
 |------|------|
 | `CCV_PROXY_URL` | 将请求代理到 cc-viewer，实时可视化评测流量 |
-| `OMK_BENCH_PORT` | 报告服务端口（默认：7799） |
+| `OMK_REPORT_PORT` | 报告服务端口（默认：7799） |
 
 ## 系统要求
 
@@ -958,7 +725,7 @@ omk bench run --executor "python examples/custom-executor/ollama-executor.py" \
 
 **建议：**
 
-- 不要在公网服务中暴露 `omk bench report` 服务（无认证）
+- 不要在公网服务中暴露本地报告服务（无认证）
 - 不要用不可信的第三方 eval-samples 文件
 - 自定义断言有 30 秒执行超时，但无沙箱隔离
 

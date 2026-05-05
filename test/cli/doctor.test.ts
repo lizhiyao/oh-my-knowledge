@@ -114,8 +114,8 @@ describe('omk doctor CLI', () => {
     assert.ok(stderr.includes('总览:'));
   });
 
-  it('domain dispatch: omk doctor is treated as a top-level domain like analyze', async () => {
-    // Verify --help mentions doctor as a domain
+  it('product dispatch lists omk doctor as a top-level command', async () => {
+    // Verify --help mentions doctor as a product command.
     const { stdout } = await execFileAsync('node', [CLI, '--help']);
     assert.ok(stdout.includes('omk doctor'));
   });

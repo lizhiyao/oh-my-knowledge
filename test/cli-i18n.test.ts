@@ -24,9 +24,9 @@ describe('tCli()', () => {
   });
 
   it('substitutes {param} placeholders', () => {
-    const out = tCli('cli.common.unknown_bench_command', 'en', { command: 'foo' });
+    const out = tCli('cli.common.unknown_domain', 'en', { domain: 'foo' });
     assert.match(out, /foo/);
-    assert.doesNotMatch(out, /\{command\}/);
+    assert.doesNotMatch(out, /\{domain\}/);
   });
 
   it('replaces all occurrences of a placeholder', () => {

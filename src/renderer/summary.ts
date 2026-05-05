@@ -6,7 +6,7 @@ import type { GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, Report,
 
 /**
  * Verdict pill — sticky banner at the top of the HTML report giving the same
- * one-line conclusion as the `omk bench verdict` CLI. Both surfaces share the
+ * one-line conclusion as the `omk eval` CLI. Both surfaces share the
  * computeVerdict rule engine so they can never disagree.
  *
  * Color coding follows traffic-light convention plus a yellow band for

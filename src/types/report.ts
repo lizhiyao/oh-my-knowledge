@@ -354,7 +354,7 @@ export interface AnalysisResult {
   /** Per-variant knowledge gap reports. See docs/knowledge-gap-signal-spec.md */
   gapReports?: Record<string, GapReport>;
   /** Sample design science aggregate. Built from sample metadata
-   *  (capability / difficulty / construct / provenance), used by `bench diagnose`
+   *  (capability / difficulty / construct / provenance), used by `omk improve`
    *  CLI to surface coverage gaps. See docs/sample-design-spec.md. */
   sampleQuality?: SampleQualityAggregate;
 }

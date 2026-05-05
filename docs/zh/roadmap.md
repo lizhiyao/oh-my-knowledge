@@ -48,8 +48,8 @@ OMK 下一步不应继续横向堆 metric，而应做“可信评测产品化”
 
 - GitHub：stars 从 1 增长到 25+；至少 3 个外部 issue / discussion；至少 1 个外部 PR 或明确外部用户案例。
 - npm：weekly downloads 从约 779 增长到 1500+。
-- 首次成功路径：新用户从 `omk bench init` 到第一份 HTML report 的中位时间低于 5 分钟。
-- 社区反馈：至少 3 个非作者团队实际跑过 `omk bench run` 并反馈问题。
+- 首次成功路径：新用户从 `omk init` 到第一份 HTML report 的中位时间低于 5 分钟。
+- 社区反馈：至少 3 个非作者团队实际跑过 `omk eval` 并反馈问题。
 
 功能成功指标：
 
@@ -76,7 +76,7 @@ OMK 下一步不应继续横向堆 metric，而应做“可信评测产品化”
 低成本高 ROI 动作：
 
 - 写 1 篇长文：主题聚焦“为什么 prompt / RAG / skill / agent 需要可信评测，不是凭感觉上线”。
-- 做 1-2 个 demo video：5 分钟从 `bench init` 到 report；另一个展示 trace 回流 eval dataset。
+- 做 1-2 个 demo video：5 分钟从 `omk init` 到 report；另一个展示 trace 回流 eval dataset。
 - 内部推广 3 个真实团队或项目，收集失败路径和术语误解。
 - 在 dev.to / 掘金 / GitHub Discussions 发布中文和英文短版。
 - 给 awesome-llm-eval / awesome-ai-agents 等列表提 PR，把 OMK 加进去。
@@ -112,7 +112,7 @@ distribution 成功标准：
 
 优先事项：
 
-- `omk bench init` 增加更明确模板：`skill` / `prompt` / `rag` / `agent`。
+- `omk init` 增加更明确模板：`skill` / `prompt` / `rag` / `agent`。
 - `omk doctor` 输出更可操作的 fix hints，并补强 `doctor --json` 给 agent / CI 使用。
 - 把预期内 progress noise、warning、fatal 区分清楚，避免用户把预期噪声误读为真实失败。
 - 修正 report server 在受限环境下 `listen(0)` 被拒时误报 `port 0 is already in use` 的错误文案。
@@ -126,8 +126,8 @@ distribution 成功标准：
 优先事项：
 
 - 抽出 schema-version-aware trace adapter：Claude / Codex / future vendor trace 都先归一到 OMK 内部 trace schema。
-- `omk analyze sessions` 输出候选失败样本。
-- `omk bench gen-samples --from-traces` 把真实失败 trace 转成 eval sample 草稿。
+- `omk observe sessions` 输出候选失败样本。
+- `omk improve samples --from-traces` 把真实失败 trace 转成 eval sample 草稿。
 - 报告展示“本次 eval 覆盖了哪些真实使用缺口”。
 - 对 Claude Code / Codex trace 做更清晰的 tool trajectory 诊断。
 - 成功标准：至少 10 条真实 trace 能自动生成 sample 草稿；未知 vendor trace 字段不导致崩溃；至少 1 个真实问题通过 trace 回流后被 eval 防回归。
@@ -145,7 +145,7 @@ distribution 成功标准：
 
 优先事项：
 
-- 增加 `omk bench redteam --profile knowledge-artifact`。
+- 增加 `omk improve redteam --profile knowledge-artifact`。
 - 覆盖 prompt injection、skill leakage、RAG poisoning、tool misuse、baseline contamination。
 - 输出独立安全维度 verdict，不混入综合质量分。
 - 支持导入 promptfoo / Inspect 结果，整合到 OMK 报告。
@@ -157,7 +157,7 @@ distribution 成功标准：
 
 优先事项：
 
-- `omk bench export --format github-summary|junit|sarif|markdown`。
+- `omk export --format github-summary|junit|sarif|markdown`。
 - 报告增加“审计摘要”：样本数、CI、judge hash、human alpha、dataset version、artifact hash、已知 caveat。
 - Release notes 自动提示 `BREAKING-COMPARABILITY` 和测量不变量变化。
 - 生成可直接贴到 PR 的中文摘要。

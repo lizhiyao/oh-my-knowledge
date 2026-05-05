@@ -6,9 +6,9 @@
     "rubric": "优秀答案应明确识别 SQL 注入风险，解释攻击面，并建议参数化查询或 prepared statement。",
     "assertions": [
       { "type": "contains", "value": "SQL", "weight": 1 },
-      { "type": "contains", "value": "注入", "weight": 1 },
-      { "type": "regex", "pattern": "参数化|prepared|占位符|绑定参数", "flags": "i", "weight": 1 },
-      { "type": "not_contains", "value": "没有问题", "weight": 1 }
+      { "type": "contains", "value": "injection", "weight": 1 },
+      { "type": "regex", "pattern": "parameterized|prepared|placeholder|bind", "flags": "i", "weight": 1 },
+      { "type": "not_contains", "value": "looks good", "weight": 1 }
     ],
     "dimensions": {
       "risk_identification": "是否准确识别核心安全风险",
@@ -26,8 +26,8 @@
     "context": "async function fetchData(url) {\n  const res = await fetch(url);\n  const data = await res.json();\n  return data;\n}",
     "rubric": "优秀答案应指出缺少网络异常处理、HTTP 状态码检查和 JSON 解析失败处理，并给出 try/catch 或错误分支建议。",
     "assertions": [
-      { "type": "contains", "value": "错误处理", "weight": 1 },
-      { "type": "regex", "pattern": "try[\\s\\S]*catch|catch|异常|error", "flags": "i", "weight": 1 },
+      { "type": "contains", "value": "error handling", "weight": 1 },
+      { "type": "regex", "pattern": "try[\\s\\S]*catch|catch|exception|error", "flags": "i", "weight": 1 },
       { "type": "regex", "pattern": "status|ok|HTTP", "flags": "i", "weight": 1 },
       { "type": "regex", "pattern": "JSON|json", "flags": "i", "weight": 0.5 }
     ],
@@ -49,8 +49,8 @@
     "assertions": [
       { "type": "contains", "value": "XSS", "weight": 1 },
       { "type": "contains", "value": "innerHTML", "weight": 0.5 },
-      { "type": "regex", "pattern": "textContent|转义|escape|sanitize|sanitizer", "flags": "i", "weight": 1 },
-      { "type": "not_contains", "value": "安全的", "weight": 0.5 }
+      { "type": "regex", "pattern": "textContent|escape|sanitize|sanitizer", "flags": "i", "weight": 1 },
+      { "type": "not_contains", "value": "safe as-is", "weight": 0.5 }
     ],
     "dimensions": {
       "risk_identification": "是否准确识别 XSS",
@@ -68,10 +68,10 @@
     "context": "app.post('/refund', async (req, res) => {\n  const { orderId } = req.body;\n  const order = await db.orders.findById(orderId);\n  await payment.refund(order.paymentId);\n  res.json({ ok: true });\n});",
     "rubric": "优秀答案应指出缺少认证/授权、未校验订单归属和订单状态，可能导致越权退款，并建议鉴权、ownership check、状态机校验和幂等控制。",
     "assertions": [
-      { "type": "regex", "pattern": "认证|鉴权|授权|权限|auth", "flags": "i", "weight": 1 },
-      { "type": "regex", "pattern": "归属|owner|ownership|用户.*订单|订单.*用户", "flags": "i", "weight": 1 },
-      { "type": "regex", "pattern": "状态|已退款|幂等|重复", "flags": "i", "weight": 1 },
-      { "type": "contains", "value": "退款", "weight": 0.5 }
+      { "type": "regex", "pattern": "auth|authentication|authorization|permission", "flags": "i", "weight": 1 },
+      { "type": "regex", "pattern": "owner|ownership|user.*order|order.*user", "flags": "i", "weight": 1 },
+      { "type": "regex", "pattern": "status|refunded|idempotent|duplicate", "flags": "i", "weight": 1 },
+      { "type": "contains", "value": "refund", "weight": 0.5 }
     ],
     "dimensions": {
       "risk_identification": "是否识别越权退款风险",
@@ -89,10 +89,10 @@
     "context": "async function callPartnerApi(user, token, payload) {\n  try {\n    return await partner.request(payload, token);\n  } catch (err) {\n    console.error('partner failed', { user, token, payload, err });\n    throw err;\n  }\n}",
     "rubric": "优秀答案应指出 token、用户信息和 payload 可能被写入日志，带来敏感信息泄露风险，并建议脱敏、最小化日志、结构化错误码和安全审计。",
     "assertions": [
-      { "type": "regex", "pattern": "token|密钥|凭证|敏感", "flags": "i", "weight": 1 },
-      { "type": "regex", "pattern": "日志|log|console\\.error", "flags": "i", "weight": 1 },
-      { "type": "regex", "pattern": "脱敏|mask|redact|最小化", "flags": "i", "weight": 1 },
-      { "type": "contains", "value": "泄露", "weight": 0.5 }
+      { "type": "regex", "pattern": "token|secret|credential|sensitive", "flags": "i", "weight": 1 },
+      { "type": "regex", "pattern": "log|logging|console\\.error", "flags": "i", "weight": 1 },
+      { "type": "regex", "pattern": "mask|redact|minimize", "flags": "i", "weight": 1 },
+      { "type": "contains", "value": "leak", "weight": 0.5 }
     ],
     "dimensions": {
       "risk_identification": "是否识别日志泄露敏感信息",

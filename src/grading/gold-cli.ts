@@ -1,8 +1,5 @@
 /**
- * `omk bench gold` subcommands: init / validate / compare.
- *
- * Kept out of cli.ts to keep that file from growing further; cli.ts only
- * dispatches subcommand strings to the handlers exported here.
+ * Helpers for creating, validating, and comparing human-gold datasets.
  */
 
 import { existsSync, mkdirSync, writeFileSync, readdirSync } from 'node:fs';
@@ -221,10 +218,9 @@ export function initGoldDataset(targetDir: string, options: { annotator?: string
     '2. 单标注者只反映一个视角；30 条以下的 demo 不构成基准',
     '3. score 必须在 metadata.scale 范围内 (默认 1-5)',
     '',
-    '## 校验',
+    '## 使用',
     '```bash',
-    'omk bench gold validate <this-dir>',
-    'omk bench gold compare <reportId> --gold-dir <this-dir>',
+    'omk eval --gold-dir <this-dir> ...',
     '```',
     '',
   ].join('\n');
@@ -258,7 +254,7 @@ export function toPersistedAgreement(
 }
 
 /**
- * Side-effecting helper for `omk bench run --gold-dir`: load gold, compute
+ * Side-effecting helper for `omk eval --gold-dir`: load gold, compute
  * agreement, mutate report.meta.humanAgreement, re-persist the report file,
  * print the human-readable comparison to stderr.
  *

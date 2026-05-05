@@ -1,32 +1,29 @@
-import { CliExit } from '../cli-exit.js';
 import { resolve } from 'node:path';
+import { CliExit } from '../cli-exit.js';
 import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
 import { parseArgsStrictOrExit } from '../parse-strict.js';
-import type { ReportStore, JudgeConfig } from '../../types/index.js';
+import type { JudgeConfig, ReportStore } from '../../types/index.js';
 import { requireEvaluationReport } from './_shared.js';
 
 export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  const sub = argv[0];
-  const rest = argv.slice(1);
-  if (!sub) {
-    console.log(tCli('cli.help.debias_validate', lang));
+  const [kind, reportId, ...rest] = argv;
+  if (!kind) {
+    console.log(usage(lang));
     throw new CliExit(1);
   }
-
-  if (sub !== 'length') {
-    console.error(`Unknown debias-validate kind: ${sub}. Use "length".`);
+  if (kind !== 'length') {
+    console.error(`Unknown debias validation kind: ${kind}. Use "length".`);
     throw new CliExit(1);
   }
-
-  const reportId = rest[0];
   if (!reportId) {
-    console.error('Usage: omk bench debias-validate length <reportId>');
+    console.error('Usage: omk eval debias length <reportId>');
     throw new CliExit(1);
   }
+
   const { values } = parseArgsStrictOrExit({
-    args: rest.slice(1),
+    args: rest,
     options: {
       ...COMMON_OPTIONS,
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
@@ -38,32 +35,27 @@ export async function execute(argv: string[]): Promise<void> {
     },
   });
 
-  // Parse --judge-models 在 load report 之前 fail-fast。重复 entry / 缺 executor /
-  // 空串等参数错误应立即给 friendly error: + exit 2,不要等到 store IO 完成才暴露。
-  const { parseJudgeModelsArgOrExit: parseJudgesA } = await import('../parse-run-config.js');
-  const cliJudgeModelsA = (values['judge-models'] as string | undefined) !== undefined
-    ? parseJudgesA(values['judge-models'] as string)
+  const { parseJudgeModelsArgOrExit } = await import('../parse-run-config.js');
+  const cliJudgeModels = (values['judge-models'] as string | undefined) !== undefined
+    ? parseJudgeModelsArgOrExit(values['judge-models'] as string)
     : undefined;
-  if (cliJudgeModelsA && cliJudgeModelsA.length > 1) {
-    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'debias-validate' }));
+  if (cliJudgeModels && cliJudgeModels.length > 1) {
+    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'eval debias' }));
     throw new CliExit(2);
   }
 
   const { createFileStore } = await import('../../server/report-store.js');
   const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
   const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
-
-  // Resolve samples path: --samples overrides; otherwise read from report.meta.request.
-  const samplesPath = (values.samples as string | undefined)
-    ?? report.meta?.request?.samplesPath;
+  const samplesPath = (values.samples as string | undefined) ?? report.meta?.request?.samplesPath;
   if (!samplesPath) {
     console.error('Cannot find samples path. Pass --samples <path> or ensure report has request.samplesPath.');
     throw new CliExit(1);
   }
+
   const { loadSamples } = await import('../../inputs/load-samples.js');
   const { samples } = loadSamples(samplesPath);
-
-  const debiasJudges: JudgeConfig[] = cliJudgeModelsA
+  const debiasJudges: JudgeConfig[] = cliJudgeModels
     ?? (report.meta?.judgeModels?.[0]
         ? [{ executor: report.meta.judgeModels[0].executor, model: report.meta.judgeModels[0].model }]
         : []);
@@ -72,13 +64,14 @@ export async function execute(argv: string[]): Promise<void> {
     throw new CliExit(1);
   }
 
-  process.stderr.write(tCli('cli.debias.warn_cost_doubles', lang));
+  process.stderr.write(lang === 'zh'
+    ? '\n⚠ eval debias 会重判所有 sample × variant，judge 成本大约翻倍。\n'
+    : '\n⚠ eval debias will re-judge all sample × variant pairs; judge cost will roughly double.\n');
 
   const { createExecutor } = await import('../../executors/index.js');
   const judgeExecutor = createExecutor(debiasJudges[0].executor);
   const judgeModel = debiasJudges[0].model;
   const { validateLengthDebias, formatDebiasValidate } = await import('../../grading/debias-validate.js');
-
   const seedVal = values.seed != null ? Number(values.seed) : undefined;
   const bsRaw = Number(values['bootstrap-samples']) || 1000;
   const result = await validateLengthDebias({
@@ -94,4 +87,10 @@ export async function execute(argv: string[]): Promise<void> {
     },
   });
   console.log(formatDebiasValidate(result));
+}
+
+function usage(lang: 'zh' | 'en'): string {
+  return lang === 'zh'
+    ? '用法：omk eval debias length <reportId> [--samples <path>] [--judge-models <executor:model>]'
+    : 'Usage: omk eval debias length <reportId> [--samples <path>] [--judge-models <executor:model>]';
 }
