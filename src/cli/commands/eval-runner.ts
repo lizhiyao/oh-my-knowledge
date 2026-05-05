@@ -46,6 +46,16 @@ function verdictPasses(level: string, headline: string): boolean {
   return level === 'PROGRESS' || (level === 'SOLO' && headline.includes('PASS'));
 }
 
+function reportOnlyMode(values: ParsedValues): boolean {
+  return values['report-only'] === true || values['no-gate'] === true;
+}
+
+function applyGateExitCode(code: number, values: ParsedValues, lang: CliLang): number {
+  if (!reportOnlyMode(values)) return code;
+  process.stderr.write(tCli('cli.run.report_only_gate_skipped', lang));
+  return 0;
+}
+
 async function emitEvaluationVerdict(report: EvaluationReport, values: ParsedValues): Promise<number> {
   const { computeVerdict, formatVerdictText } = await import('../../eval-core/verdict.js');
   const result = computeVerdict(report, verdictOptions(values));
@@ -178,6 +188,8 @@ export async function execute(argv: string[]): Promise<void> {
     'budget-per-sample-ms': { type: 'string' },
     threshold: { type: 'string', default: '3.5' },
     'trivial-diff': { type: 'string' },
+    'report-only': { type: 'boolean' },
+    'no-gate': { type: 'boolean' },
   });
 
   const { runEvaluation, runMultiple, runBatchEvaluation } = await import('../../eval-workflows/run-evaluation.js');
@@ -276,7 +288,8 @@ export async function execute(argv: string[]): Promise<void> {
       if (filePath) {
         await announceSavedReport({ report, filePath, reportsDir: config.outputDir, values, lang });
       }
-      throw new CliExit(await emitBatchVerdict(report, config.outputDir, values, lang));
+      const exitCode = await emitBatchVerdict(report, config.outputDir, values, lang);
+      throw new CliExit(applyGateExitCode(exitCode, values, lang));
     }
 
     let report: Report;
@@ -335,7 +348,8 @@ export async function execute(argv: string[]): Promise<void> {
     if (filePath) {
       await announceSavedReport({ report, filePath, reportsDir: config.outputDir, values, lang });
     }
-    throw new CliExit(await emitEvaluationVerdict(report, values));
+    const exitCode = await emitEvaluationVerdict(report, values);
+    throw new CliExit(applyGateExitCode(exitCode, values, lang));
   } catch (err: unknown) {
     // CliExit 是显式 exit 信号(从 requireEvaluationReport 等子调用冒上来),
     // 保持原 code 透传;只有真正运行时错误才包装成 CliExit(1)。

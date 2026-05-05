@@ -12,7 +12,7 @@ export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const reportId = argv[0];
   if (!reportId) {
-    console.log(tCli('cli.help.diagnose', lang));
+    console.log(tCli('cli.help.improve_plan', lang));
     throw new CliExit(1);
   }
 

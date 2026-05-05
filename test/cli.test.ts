@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -152,9 +152,25 @@ describe('CLI', () => {
     const { stdout } = await execFileAsync('node', [CLI, 'eval', '--help']);
     assert.ok(stdout.includes('omk eval'));
     assert.ok(stdout.includes('--batch'));
+    assert.ok(stdout.includes('--report-only'));
+    assert.ok(stdout.includes('--no-gate'));
     assert.ok(stdout.includes('omk eval gold'));
     assert.ok(stdout.includes('omk eval debias'));
     assert.ok(!stdout.includes(['--', 'each'].join('')));
+  });
+
+  it('second-level --help routes to subcommand usage', async () => {
+    const gold = await execFileAsync('node', [CLI, 'eval', 'gold', '--help']);
+    assert.ok(gold.stdout.includes('omk eval gold'));
+    assert.ok(!gold.stdout.includes('omk eval --control'));
+
+    const failures = await execFileAsync('node', [CLI, 'improve', 'failures', '--help']);
+    assert.ok(failures.stdout.includes('omk improve failures'));
+    assert.ok(!failures.stdout.includes('omk improve samples'));
+
+    const diff = await execFileAsync('node', [CLI, 'export', 'diff', '--help', '--lang', 'en']);
+    assert.ok(diff.stdout.includes('omk export diff'));
+    assert.ok(!diff.stdout.includes('github-summary'));
   });
 
   it('observe --help shows session observation usage', async () => {
@@ -263,8 +279,20 @@ describe('CLI', () => {
       '--no-debias-length',
       '--threshold', '3.2',
       '--trivial-diff', '0.2',
+      '--no-gate',
     ]);
     assert.ok(stdout.includes('Eval dry-run'));
+  });
+
+  it('Claude Code SKILL manifest uses current product commands', async () => {
+    const body = await readFile(join(PROJECT_ROOT, 'SKILL.md'), 'utf8');
+    assert.ok(body.includes('argument-hint: "<init|doctor|eval|observe|improve|export|studio> [options]"'));
+    assert.ok(body.includes('omk eval --batch'));
+    assert.ok(body.includes('omk improve samples --batch'));
+    assert.ok(body.includes('omk studio'));
+    assert.ok(!body.includes('omk bench'));
+    assert.ok(!body.includes('--each'));
+    assert.ok(!body.includes('gen-samples'));
   });
 
   it('init scaffolds eval project from top-level command', async () => {
@@ -364,6 +392,32 @@ describe('CLI', () => {
           return true;
         },
       );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('eval --report-only persists report and bypasses verdict exit code', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-cli-report-only-'));
+    try {
+      const { stdout, stderr } = await execFileAsync('node', [
+        CLI, 'eval',
+        '--samples', join(PROJECT_ROOT, 'examples', 'custom-executor', 'eval-samples.json'),
+        '--skill-dir', join(PROJECT_ROOT, 'examples', 'custom-executor', 'skills'),
+        '--control', 'baseline',
+        '--treatment', 'v1',
+        '--executor', CUSTOM_EXECUTOR,
+        '--no-judge',
+        '--output-dir', join(dir, 'reports'),
+        '--skip-connectivity',
+        '--bootstrap-samples', '100',
+        '--report-only',
+      ], {
+        env: { ...process.env, HOME: dir },
+        maxBuffer: 2 * 1024 * 1024,
+      });
+      assert.ok(stdout.includes('Verdict:'), stdout);
+      assert.ok(stderr.includes('report-only'), stderr);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

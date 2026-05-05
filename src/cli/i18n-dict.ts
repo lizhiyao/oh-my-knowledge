@@ -87,6 +87,7 @@ export type CliMessageKey =
   | 'cli.run.eval_complete'
   | 'cli.run.tally'
   | 'cli.run.report_saved'
+  | 'cli.run.report_only_gate_skipped'
   | 'cli.run.report_server_running'
   | 'cli.run.report_server_view'
   | 'cli.run.report_server_stop'
@@ -105,6 +106,12 @@ export type CliMessageKey =
   | 'cli.common.no_judge_model'
   | 'cli.common.judge_models_single_only'
   | 'cli.common.warn_load_samples_failed'
+  // export / studio 操作反馈
+  | 'cli.export.unsupported_format'
+  | 'cli.export.html_done'
+  | 'cli.export.done'
+  | 'cli.studio.started'
+  | 'cli.studio.stop_hint'
   // improve samples
   | 'cli.gen.skill_skipped_existing'
   | 'cli.gen.skill_generating'
@@ -131,12 +138,19 @@ export type CliMessageKey =
   // 长段 help / usage 文案 (multi-line)
   | 'cli.help.product_main'
   | 'cli.help.eval'
+  | 'cli.help.eval_gold'
+  | 'cli.help.eval_debias'
   | 'cli.help.observe'
   | 'cli.help.improve'
+  | 'cli.help.improve_plan'
+  | 'cli.help.improve_failures'
+  | 'cli.help.improve_samples'
+  | 'cli.help.improve_skill'
   | 'cli.help.export'
+  | 'cli.help.export_diff'
+  | 'cli.help.export_verdict'
+  | 'cli.help.export_saturation'
   | 'cli.help.studio'
-  | 'cli.help.diagnose'
-  | 'cli.help.failures'
   // sample design coverage block (improve plan)
   | 'cli.diagnose.coverage_header'
   | 'cli.diagnose.coverage_unspecified'
@@ -319,6 +333,10 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     zh: '📄 报告已保存到: {path}\n',
     en: '📄 Report saved to: {path}\n',
   },
+  'cli.run.report_only_gate_skipped': {
+    zh: 'ℹ 已启用 report-only 模式：保留 verdict 输出，但本次不使用 verdict 改写 exit code。\n',
+    en: 'ℹ Report-only mode enabled: verdict is still printed, but it will not affect the exit code.\n',
+  },
   'cli.run.report_server_running': {
     zh: '\n📊 报告服务已启动: {url}\n',
     en: '\n📊 Report server running at {url}\n',
@@ -382,6 +400,26 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.common.warn_load_samples_failed': {
     zh: '⚠ 加载 samples 文件失败 ({path}): {message}\n',
     en: '⚠ Failed to load samples file ({path}): {message}\n',
+  },
+  'cli.export.unsupported_format': {
+    zh: '不支持的导出格式：{format}。可用格式：html / markdown / github-summary。',
+    en: 'Unsupported export format: {format}. Available: html / markdown / github-summary.',
+  },
+  'cli.export.html_done': {
+    zh: '已导出 HTML：{path}',
+    en: 'HTML exported to: {path}',
+  },
+  'cli.export.done': {
+    zh: '已导出：{path}',
+    en: 'Exported to: {path}',
+  },
+  'cli.studio.started': {
+    zh: 'studio 已启动：{url}',
+    en: 'Studio running at {url}',
+  },
+  'cli.studio.stop_hint': {
+    zh: '按 Ctrl+C 停止服务',
+    en: 'Press Ctrl+C to stop',
   },
   'cli.gen.skill_skipped_existing': {
     zh: '⏭️  {name}: eval-samples 已存在, 跳过\n',
@@ -543,6 +581,7 @@ omk eval — 离线评测 skill 版本，并给出 ship/no-ship verdict
   --bootstrap-samples <n>             bootstrap 重采样次数（默认：1000）
   --threshold <number>                三层 gate 阈值（默认：3.5）
   --trivial-diff <number>             实际可忽略 diff（默认：0.1）
+  --report-only / --no-gate           生成报告并打印 verdict，但始终 exit 0
   --no-serve                          评测后不自动启动报告 server
 
 示例：
@@ -573,12 +612,69 @@ Common options:
   --bootstrap-samples <n>             Bootstrap resamples (default: 1000)
   --threshold <number>                Three-layer gate threshold (default: 3.5)
   --trivial-diff <number>             Practically negligible diff (default: 0.1)
+  --report-only / --no-gate           Produce the report and print verdict, but always exit 0
   --no-serve                          Do not auto-start report server after evaluation
 
 Examples:
   omk eval --control code-review-v1 --treatment code-review-v2
   omk eval --config eval.yaml
   omk eval gold compare v1-vs-v2-20260505-1200 --gold-dir gold-dataset
+`,
+  },
+  'cli.help.eval_gold': {
+    zh: `
+omk eval gold — 管理 human-gold 标注集
+
+用法：
+  omk eval gold init [--out <dir>] [--annotator <name>]
+  omk eval gold validate <dir>
+  omk eval gold compare <reportId> --gold-dir <dir>
+
+选项：
+  --reports-dir <path>                报告目录（compare 使用，默认：~/.oh-my-knowledge/reports）
+  --variant <name>                    指定 report 中要对比的 variant
+  --bootstrap-samples <n>             bootstrap 重采样次数（compare 使用）
+`,
+    en: `
+omk eval gold — manage human-gold annotation datasets
+
+Usage:
+  omk eval gold init [--out <dir>] [--annotator <name>]
+  omk eval gold validate <dir>
+  omk eval gold compare <reportId> --gold-dir <dir>
+
+Options:
+  --reports-dir <path>                Reports directory for compare (default: ~/.oh-my-knowledge/reports)
+  --variant <name>                    Variant in the report to compare
+  --bootstrap-samples <n>             Bootstrap resamples for compare
+`,
+  },
+  'cli.help.eval_debias': {
+    zh: `
+omk eval debias — 验证 length-debias 是否降低评委长度偏差
+
+用法：
+  omk eval debias length <reportId> [options]
+
+选项：
+  --samples <path>                    用例文件；默认从 report.meta.request 读取
+  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
+  --variant <name>                    只验证指定 variant
+  --judge-models <executor:model>     指定单评委
+  --bootstrap-samples <n>             bootstrap 重采样次数
+`,
+    en: `
+omk eval debias — validate whether length-debias reduces judge length bias
+
+Usage:
+  omk eval debias length <reportId> [options]
+
+Options:
+  --samples <path>                    Sample file; defaults to report.meta.request
+  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
+  --variant <name>                    Validate only one variant
+  --judge-models <executor:model>     Single judge to use
+  --bootstrap-samples <n>             Bootstrap resamples
 `,
   },
   'cli.help.observe': {
@@ -643,6 +739,134 @@ Examples:
   omk improve failures v1-vs-v2-20260505-1200
 `,
   },
+  'cli.help.improve_plan': {
+    zh: [
+      '',
+      '用法: omk improve <reportId> [options]',
+      '      omk improve plan <reportId> [options]',
+      '',
+      '诊断用例集本身的质量问题: 区分度低 / 重复 / 歧义 / 成本异常 / 全 fail。',
+      '回答 "评测结论是否被坏用例污染"。',
+      '',
+      '选项:',
+      '  --reports-dir <dir>      报告存储目录',
+      '  --samples <path>         用例文件路径 (用于 near-duplicate 检测; 默认从 report.meta.request 读)',
+      '  --top <n>                每类只显示前 N 个 (默认 10, 0=全部)',
+      '  --duplicate-rouge <num>  near-duplicate ROUGE-1 阈值 (默认 0.7)',
+      '  --ambiguous-stddev <num> 歧义阈值, judge stddev (默认 1.0, 需要 --judge-repeat ≥ 2 数据)',
+      '  --cost-k <num>           成本异常倍数 vs 中位数 (默认 3)',
+      '  --latency-k <num>        耗时异常倍数 vs 中位数 (默认 3)',
+      '  --flat <num>             flat_scores 分差阈值 (默认 0.5)',
+      '',
+    ].join('\n'),
+    en: [
+      '',
+      'Usage: omk improve <reportId> [options]',
+      '       omk improve plan <reportId> [options]',
+      '',
+      'Diagnose quality issues in the sample set itself: low discrimination /',
+      'duplicates / ambiguity / cost anomalies / all-fail. Answers "is the verdict',
+      'tainted by bad samples?".',
+      '',
+      'Options:',
+      '  --reports-dir <dir>      report store dir',
+      '  --samples <path>         sample file path (for near-duplicate detection; defaults to report.meta.request)',
+      '  --top <n>                top N per category (default 10, 0=all)',
+      '  --duplicate-rouge <num>  near-duplicate ROUGE-1 threshold (default 0.7)',
+      '  --ambiguous-stddev <num> ambiguity threshold, judge stddev (default 1.0, requires --judge-repeat ≥ 2)',
+      '  --cost-k <num>           cost-outlier multiplier vs median (default 3)',
+      '  --latency-k <num>        latency-outlier multiplier vs median (default 3)',
+      '  --flat <num>             flat_scores spread threshold (default 0.5)',
+      '',
+    ].join('\n'),
+  },
+  'cli.help.improve_failures': {
+    zh: [
+      '',
+      '用法: omk improve failures <reportId> [options]',
+      '',
+      '把已有 report 的失败用例喂给一次 LLM 调用, 自动聚类并给出修复建议。',
+      '失败定义: compositeScore < threshold 或 ok=false。',
+      '',
+      '选项:',
+      '  --reports-dir <dir>      报告存储目录',
+      '  --judge-models <executor:model>  评委 (默认: 沿用 report.meta.judgeModels[0]; failures 仅支持单评委)',
+      '  --max-clusters <n>       最多聚成几类 (默认 5)',
+      '  --threshold <num>        compositeScore < threshold 算失败 (默认 3)',
+      '  --max-feed <n>           最多喂给 LLM 多少条 (默认 50, 超出取最差)',
+      '',
+    ].join('\n'),
+    en: [
+      '',
+      'Usage: omk improve failures <reportId> [options]',
+      '',
+      'Feed failing samples from an existing report to a single LLM call, auto-cluster',
+      'them, and produce per-cluster fix suggestions.',
+      'Failure definition: compositeScore < threshold or ok=false.',
+      '',
+      'Options:',
+      '  --reports-dir <dir>      report store dir',
+      '  --judge-models <executor:model>  Judge (default: from report.meta.judgeModels[0]; failures is single-judge only)',
+      '  --max-clusters <n>       max number of clusters (default 5)',
+      '  --threshold <num>        compositeScore < threshold counts as failure (default 3)',
+      '  --max-feed <n>           max samples to feed the LLM (default 50, takes the worst)',
+      '',
+    ].join('\n'),
+  },
+  'cli.help.improve_samples': {
+    zh: `
+omk improve samples — 生成或补齐 eval-samples 评测用例
+
+用法：
+  omk improve samples <skill-path> [options]
+  omk improve samples --batch [--skill-dir <dir>] [options]
+
+选项：
+  --count <n>                         生成用例数量（默认：5）
+  --model <name>                      生成模型（默认：sonnet）
+  --batch                             为 skill 目录下缺少 eval-samples 的 skill 批量生成
+  --skill-dir <path>                  skill 目录（batch 使用，默认：skills）
+`,
+    en: `
+omk improve samples — generate or fill eval-samples test cases
+
+Usage:
+  omk improve samples <skill-path> [options]
+  omk improve samples --batch [--skill-dir <dir>] [options]
+
+Options:
+  --count <n>                         Number of test cases to generate (default: 5)
+  --model <name>                      Generation model (default: sonnet)
+  --batch                             Generate for skills that are missing eval-samples
+  --skill-dir <path>                  Skill directory for batch mode (default: skills)
+`,
+  },
+  'cli.help.improve_skill': {
+    zh: `
+omk improve skill — 基于评测循环迭代改进 skill
+
+用法：
+  omk improve skill <skill-path> [options]
+
+选项：
+  --rounds <n>                        迭代轮数（默认：3）
+  --target <score>                    目标分数
+  --model <name>                      改进模型
+  --judge-models <executor:model>     单评委配置
+`,
+    en: `
+omk improve skill — improve a skill through evaluation loops
+
+Usage:
+  omk improve skill <skill-path> [options]
+
+Options:
+  --rounds <n>                        Iteration rounds (default: 3)
+  --target <score>                    Target score
+  --model <name>                      Improvement model
+  --judge-models <executor:model>     Single judge config
+`,
+  },
   'cli.help.export': {
     zh: `
 omk export — 导出可贴到 PR / CI / audit 的证据包
@@ -685,6 +909,82 @@ Examples:
 	  omk export verdict v1-vs-v2-20260505-1200
 `,
   },
+  'cli.help.export_diff': {
+    zh: `
+omk export diff — 导出样本级或报告级差异
+
+用法：
+  omk export diff <report-id> [--variant <name>] [--regressions-only] [--top <n>]
+  omk export diff <report-id-a> <report-id-b>
+
+选项：
+  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
+  --variant <name>                    样本级 diff 的实验组 variant
+  --regressions-only                  只显示回退用例
+  --top <n>                           最多显示 N 条
+`,
+    en: `
+omk export diff — export sample-level or cross-report differences
+
+Usage:
+  omk export diff <report-id> [--variant <name>] [--regressions-only] [--top <n>]
+  omk export diff <report-id-a> <report-id-b>
+
+Options:
+  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
+  --variant <name>                    Treatment variant for sample-level diff
+  --regressions-only                  Show regressions only
+  --top <n>                           Show at most N rows
+`,
+  },
+  'cli.help.export_verdict': {
+    zh: `
+omk export verdict — 输出已有报告的一行 ship/no-ship verdict
+
+用法：
+  omk export verdict <report-id> [options]
+
+选项：
+  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
+  --threshold <number>                三层 gate 阈值
+  --trivial-diff <number>             实际可忽略 diff
+  --verbose                           输出完整 verdict 解释
+`,
+    en: `
+omk export verdict — print a one-line ship/no-ship verdict for an existing report
+
+Usage:
+  omk export verdict <report-id> [options]
+
+Options:
+  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
+  --threshold <number>                Three-layer gate threshold
+  --trivial-diff <number>             Practically negligible diff
+  --verbose                           Print the full verdict explanation
+`,
+  },
+  'cli.help.export_saturation': {
+    zh: `
+omk export saturation — 输出重复评测的饱和度证据
+
+用法：
+  omk export saturation <report-id> [--variant <name>]
+
+选项：
+  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
+  --variant <name>                    只输出指定 variant
+`,
+    en: `
+omk export saturation — print saturation evidence from repeated evaluations
+
+Usage:
+  omk export saturation <report-id> [--variant <name>]
+
+Options:
+  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
+  --variant <name>                    Print only one variant
+`,
+  },
   'cli.help.studio': {
     zh: `
 omk studio — 打开本地知识工作台
@@ -718,80 +1018,6 @@ Examples:
   omk studio
   omk studio --port 7798
 `,
-  },
-  'cli.help.diagnose': {
-    zh: [
-      '',
-      '用法: omk improve <reportId> [options]',
-      '      omk improve plan <reportId> [options]',
-      '',
-      '诊断用例集本身的质量问题: 区分度低 / 重复 / 歧义 / 成本异常 / 全 fail。',
-      '回答 "测评结论是否被坏用例污染"。',
-      '',
-      '选项:',
-      '  --reports-dir <dir>      报告存储目录',
-      '  --samples <path>         用例文件路径 (用于 near-duplicate 检测; 默认从 report.meta.request 读)',
-      '  --top <n>                每类只显示前 N 个 (默认 10, 0=全部)',
-      '  --duplicate-rouge <num>  near-duplicate ROUGE-1 阈值 (默认 0.7)',
-      '  --ambiguous-stddev <num> 歧义阈值, judge stddev (默认 1.0, 需要 --judge-repeat ≥ 2 数据)',
-      '  --cost-k <num>           成本异常倍数 vs 中位数 (默认 3)',
-      '  --latency-k <num>        耗时异常倍数 vs 中位数 (默认 3)',
-      '  --flat <num>             flat_scores 分差阈值 (默认 0.5)',
-      '',
-    ].join('\n'),
-    en: [
-      '',
-      'Usage: omk improve <reportId> [options]',
-      '       omk improve plan <reportId> [options]',
-      '',
-      'Diagnose quality issues in the sample set itself: low discrimination /',
-      'duplicates / ambiguity / cost anomalies / all-fail. Answers "is the verdict',
-      'tainted by bad samples?".',
-      '',
-      'Options:',
-      '  --reports-dir <dir>      report store dir',
-      '  --samples <path>         sample file path (for near-duplicate detection; defaults to report.meta.request)',
-      '  --top <n>                top N per category (default 10, 0=all)',
-      '  --duplicate-rouge <num>  near-duplicate ROUGE-1 threshold (default 0.7)',
-      '  --ambiguous-stddev <num> ambiguity threshold, judge stddev (default 1.0, requires --judge-repeat ≥ 2)',
-      '  --cost-k <num>           cost-outlier multiplier vs median (default 3)',
-      '  --latency-k <num>        latency-outlier multiplier vs median (default 3)',
-      '  --flat <num>             flat_scores spread threshold (default 0.5)',
-      '',
-    ].join('\n'),
-  },
-  'cli.help.failures': {
-    zh: [
-      '',
-      '用法: omk improve failures <reportId> [options]',
-      '',
-      '把已有 report 的失败用例喂给一次 LLM 调用, 自动聚类并给出修复建议。',
-      '失败定义: compositeScore < threshold 或 ok=false。',
-      '',
-      '选项:',
-      '  --reports-dir <dir>      报告存储目录',
-      '  --judge-models <executor:model>  评委 (默认: 沿用 report.meta.judgeModels[0]; failures 仅支持单评委)',
-      '  --max-clusters <n>       最多聚成几类 (默认 5)',
-      '  --threshold <num>        compositeScore < threshold 算失败 (默认 3)',
-      '  --max-feed <n>           最多喂给 LLM 多少条 (默认 50, 超出取最差)',
-      '',
-    ].join('\n'),
-    en: [
-      '',
-      'Usage: omk improve failures <reportId> [options]',
-      '',
-      'Feed failing samples from an existing report to a single LLM call, auto-cluster',
-      'them, and produce per-cluster fix suggestions.',
-      'Failure definition: compositeScore < threshold or ok=false.',
-      '',
-      'Options:',
-      '  --reports-dir <dir>      report store dir',
-      '  --judge-models <executor:model>  Judge (default: from report.meta.judgeModels[0]; failures is single-judge only)',
-      '  --max-clusters <n>       max number of clusters (default 5)',
-      '  --threshold <num>        compositeScore < threshold counts as failure (default 3)',
-      '  --max-feed <n>           max samples to feed the LLM (default 50, takes the worst)',
-      '',
-    ].join('\n'),
   },
   // sample design coverage block strings
   'cli.diagnose.coverage_header': {

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { tCli, getCliLang, parseLangFromArgv, type CliLang } from './i18n.js';
+import type { CliMessageKey } from './i18n-dict.js';
 import { checkUpdate } from './update-check.js';
 import { CliExit } from './cli-exit.js';
 import { PRODUCT_COMMANDS, type CommandModule } from './commands/registry.js';
@@ -10,9 +11,25 @@ import { PRODUCT_COMMANDS, type CommandModule } from './commands/registry.js';
  * 集中在 dispatcher 处理,因为下游 execute 走 parseArgsStrictOrExit,
  * 那一层 strict:true 不识别 --help 会当 unknown option 报错。
  */
+function helpKeyFor(cmd: CommandModule, argv: string[]): CliMessageKey {
+  if (!cmd.subHelp) return cmd.helpKey;
+  for (let i = 0; i < argv.length; i++) {
+    const token = argv[i];
+    if (!token || token === '--help' || token === '-h') continue;
+    if (token === '--lang') {
+      i++;
+      continue;
+    }
+    if (token.startsWith('--lang=')) continue;
+    if (token.startsWith('-')) continue;
+    return cmd.subHelp[token] ?? cmd.helpKey;
+  }
+  return cmd.helpKey;
+}
+
 function dispatchOrPrintHelp(cmd: CommandModule, argv: string[], lang: CliLang): Promise<void> {
   if (argv.includes('--help') || argv.includes('-h')) {
-    console.log(tCli(cmd.helpKey, lang).trim());
+    console.log(tCli(helpKeyFor(cmd, argv), lang).trim());
     throw new CliExit(0);
   }
   return cmd.execute(argv);

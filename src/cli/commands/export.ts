@@ -46,9 +46,7 @@ export async function execute(argv: string[]): Promise<void> {
 
   const format = String(values.format) as ExportFormat;
   if (!['html', 'markdown', 'github-summary'].includes(format)) {
-    console.error(lang === 'zh'
-      ? `不支持的导出格式：${String(values.format)}。可用格式：html / markdown / github-summary。`
-      : `Unsupported export format: ${String(values.format)}. Available: html / markdown / github-summary.`);
+    console.error(tCli('cli.export.unsupported_format', lang, { format: String(values.format) }));
     throw new CliExit(2);
   }
 
@@ -64,7 +62,7 @@ export async function execute(argv: string[]): Promise<void> {
     const { renderReportDocumentDetail } = await import('../../renderer/html-renderer.js');
     const outPath = resolve((values.out as string | undefined) ?? `${id}.html`);
     writeFileSync(outPath, renderReportDocumentDetail(report));
-    console.log(lang === 'zh' ? `已导出 HTML：${outPath}` : `HTML exported to: ${outPath}`);
+    console.log(tCli('cli.export.html_done', lang, { path: outPath }));
     return;
   }
 
@@ -76,7 +74,7 @@ export async function execute(argv: string[]): Promise<void> {
   if (out) {
     const outPath = resolve(out);
     writeFileSync(outPath, body);
-    console.log(lang === 'zh' ? `已导出：${outPath}` : `Exported to: ${outPath}`);
+    console.log(tCli('cli.export.done', lang, { path: outPath }));
     return;
   }
   console.log(body);

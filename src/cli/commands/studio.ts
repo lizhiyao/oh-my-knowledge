@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import { langFromArgv } from '../i18n.js';
+import { langFromArgv, tCli } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
 import { parseArgsStrictOrExit } from '../parse-strict.js';
 import type { ReportServer } from './_shared.js';
@@ -48,6 +48,6 @@ export async function execute(argv: string[]): Promise<void> {
   });
 
   const url = await server.start();
-  console.log(lang === 'zh' ? `studio 已启动：${url}` : `Studio running at ${url}`);
-  console.log(lang === 'zh' ? '按 Ctrl+C 停止服务' : 'Press Ctrl+C to stop');
+  console.log(tCli('cli.studio.started', lang, { url }));
+  console.log(tCli('cli.studio.stop_hint', lang));
 }

@@ -413,6 +413,8 @@ omk eval debias length <report-id>
   --bootstrap-samples N  bootstrap 重采样次数（默认 1000）
   --threshold <number>   verdict 分层门禁阈值（默认 3.5）
   --trivial-diff <num>   实际可忽略 diff 阈值（默认 0.1）
+  --report-only          生成报告并打印 verdict，但始终 exit 0
+  --no-gate              --report-only 的别名
   --skip-connectivity    跳过模型连通性检查；doctor 仍强制执行
   --no-serve             评测后不自动启动报告服务
 ```

@@ -413,6 +413,8 @@ Common options:
   --bootstrap-samples N  bootstrap resample count (default 1000)
   --threshold <number>   verdict layer-gate threshold (default 3.5)
   --trivial-diff <num>   practically tiny diff cutoff (default 0.1)
+  --report-only          produce the report and print verdict, but always exit 0
+  --no-gate              alias for --report-only
   --skip-connectivity    skip model connectivity check; doctor still runs
   --no-serve             do not auto-start the report server after evaluation
 ```
