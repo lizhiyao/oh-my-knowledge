@@ -389,7 +389,8 @@ describe('CLI', () => {
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
-          assert.ok(e.stdout.includes('Batch verdict: FAIL'), e.stdout);
+          assert.ok(e.stdout.includes('批量评测结论：未通过'), e.stdout);
+          assert.ok(!e.stdout.includes('Batch verdict:'), e.stdout);
           assert.ok(e.stdout.includes('UNDERPOWERED:'), e.stdout);
           assert.ok(e.stderr.includes('omk export '), e.stderr);
           return true;

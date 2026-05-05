@@ -50,8 +50,6 @@
 
 export type CliMessageKey =
   // 通用 / 启动期
-  | 'cli.common.lang_invalid_silent'
-  | 'cli.common.help_hint'
   | 'cli.common.unknown_domain'
   // init
   | 'cli.init.scaffolded'
@@ -84,6 +82,8 @@ export type CliMessageKey =
   | 'cli.run.skill_section'
   | 'cli.run.run_section'
   | 'cli.run.batch_complete'
+  | 'cli.run.batch_verdict_header'
+  | 'cli.run.batch_child_report_missing'
   | 'cli.run.eval_complete'
   | 'cli.run.tally'
   | 'cli.run.report_saved'
@@ -191,14 +191,6 @@ export interface CliMessage {
 }
 
 export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
-  'cli.common.lang_invalid_silent': {
-    zh: '无效的语言代码: {value} (仅支持 zh / en, 已使用默认 zh)',
-    en: 'Invalid language code: {value} (supported: zh / en, using default zh)',
-  },
-  'cli.common.help_hint': {
-    zh: "运行 'omk --help' 查看用法",
-    en: "Run 'omk --help' to see usage",
-  },
   'cli.common.unknown_domain': {
     zh: "未知命令：{domain}。运行 'omk --help' 查看可用命令。",
     en: "Unknown command: {domain}. Run 'omk --help' to see available commands.",
@@ -306,6 +298,14 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.run.batch_complete': {
     zh: '\n✅ 批量评测完成\n',
     en: '\n✅ Batch evaluation done\n',
+  },
+  'cli.run.batch_verdict_header': {
+    zh: '批量评测结论：{status}（{passed}/{total} 通过）',
+    en: 'Batch verdict: {status} ({passed}/{total} passed)',
+  },
+  'cli.run.batch_child_report_missing': {
+    zh: '⚠ 子报告缺失：{id}，将按不可 ship 处理。\n',
+    en: '⚠ Child report missing: {id}; treating it as not shippable.\n',
   },
   'cli.run.eval_complete': {
     zh: '\n✅ 评测完成\n',

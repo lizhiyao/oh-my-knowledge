@@ -73,13 +73,22 @@ function batchItemFallbackReport(
   } as EvaluationReport;
 }
 
-async function loadBatchChildReports(batch: BatchEvaluationReport, reportsDir: string): Promise<EvaluationReport[]> {
+async function loadBatchChildReports(
+  batch: BatchEvaluationReport,
+  reportsDir: string,
+  lang: CliLang,
+): Promise<EvaluationReport[]> {
   const { createFileStore } = await import('../../server/report-store.js');
   const store = createFileStore(reportsDir);
   const reports: EvaluationReport[] = [];
   for (const item of batch.items) {
     const loaded = await store.get(item.reportId);
-    reports.push(loaded?.kind === 'evaluation' ? loaded : batchItemFallbackReport(batch, item));
+    if (loaded?.kind === 'evaluation') {
+      reports.push(loaded);
+    } else {
+      process.stderr.write(tCli('cli.run.batch_child_report_missing', lang, { id: item.reportId }));
+      reports.push(batchItemFallbackReport(batch, item));
+    }
   }
   return reports;
 }
@@ -91,7 +100,7 @@ async function emitBatchVerdict(
   lang: CliLang,
 ): Promise<number> {
   const { computeVerdict } = await import('../../eval-core/verdict.js');
-  const childReports = await loadBatchChildReports(report, reportsDir);
+  const childReports = await loadBatchChildReports(report, reportsDir, lang);
   const results = childReports.map((child) => ({
     id: child.id,
     treatment: child.meta.variants[1] ?? child.id,
@@ -100,9 +109,14 @@ async function emitBatchVerdict(
   const passed = results.filter((r) => verdictPasses(r.verdict.level, r.verdict.headline)).length;
   const failed = results.length - passed;
 
-  console.log(lang === 'zh'
-    ? `Batch verdict: ${failed === 0 ? 'PASS' : 'FAIL'} (${passed}/${results.length} passed)`
-    : `Batch verdict: ${failed === 0 ? 'PASS' : 'FAIL'} (${passed}/${results.length} passed)`);
+  const status = lang === 'zh'
+    ? (failed === 0 ? '通过' : '未通过')
+    : (failed === 0 ? 'PASS' : 'FAIL');
+  console.log(tCli('cli.run.batch_verdict_header', lang, {
+    status,
+    passed,
+    total: results.length,
+  }));
   for (const result of results) {
     console.log(`  ${result.verdict.level}: ${result.treatment} — ${result.verdict.headline}`);
   }
