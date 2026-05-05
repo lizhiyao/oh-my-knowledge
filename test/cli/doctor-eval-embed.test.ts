@@ -111,10 +111,11 @@ describe('omk eval doctor preflight embedding', () => {
       '--control', 'v1',
       '--treatment', 'v2',
       '--dry-run',
+      '--lang', 'zh',
     ]);
     // Should NOT fail with doctor
     assert.ok(!stderr.includes('doctor failed:'), `stderr should not have doctor failure: ${stderr.slice(0, 500)}`);
-    assert.ok(stdout.includes('Eval dry-run'));
+    assert.ok(stdout.includes('eval dry-run'));
   });
 
   it('--skip-connectivity does not bypass doctor', async () => {
@@ -190,11 +191,12 @@ describe('omk eval doctor preflight embedding', () => {
         '--control', 'v1',
         '--treatment', 'v2',
         '--dry-run',
+        '--lang', 'zh',
       ], { cwd: tmp });
 
       // doctor 应该只检查 v1 + v2 (健康), 完全忽略 draft.md
       assert.ok(!stderr.includes('doctor failed:'), `expected no doctor failure when draft.md is unrelated to this run; stderr: ${stderr.slice(0, 400)}`);
-      assert.ok(stdout.includes('Eval dry-run'));
+      assert.ok(stdout.includes('eval dry-run'));
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

@@ -25,7 +25,10 @@ npm i oh-my-knowledge -g
 
 | 用户意图 | 操作 |
 |---------|------|
+| 创建/初始化评测项目 | → 初始化项目 |
+| 健康检查/检测 skill | → 运行 doctor |
 | 评测/对比 skill | → 运行评测 |
+| 线上观测/真实 session 分析 | → 运行 observe |
 | 改进/优化 skill | → 自动迭代改进 |
 | 生成评测用例 | → 生成评测用例 |
 | 查看报告 | → 打开本地工作台 |
@@ -40,14 +43,42 @@ npm i oh-my-knowledge -g
 1. `skills/` 目录下有哪些 skill 文件（`.md` 或 `*/SKILL.md`）
 2. 是否存在 `eval-samples.json`、`eval-samples.yaml`、`eval-samples.yml`
 3. 是否有 `skills/*.eval-samples.json`（--batch 模式的配对文件）
+4. 是否存在 Claude Code session trace（常见在 `~/.claude/projects/...`，用于 `omk observe`）
 
 根据检测结果决定：
+- 没有 omk 项目结构 → 建议 `omk init <dir>` 初始化
 - 有多个 skill + 各自的 eval-samples → 建议 `--batch` 批量模式
 - 有多个 skill + 共享 eval-samples → 建议版本对比模式
 - 只有一个 skill → 建议 `baseline` 对照或 `improve skill` 改进
 - 没有 eval-samples → 建议先 `improve samples` 生成
+- 用户关心真实使用效果、失败率、耗时、token 或知识缺口 → 建议 `observe`
 
 ## 第四步：执行操作
+
+### 初始化项目
+
+```bash
+# 创建一个包含两版 starter skill 和 eval-samples.json 的评测项目
+omk init my-eval
+cd my-eval
+```
+
+初始化后先让用户编辑 `skills/*/SKILL.md` 和 `eval-samples.json`，再进入 `doctor` / `eval`。
+
+### 健康检查
+
+```bash
+# 检查当前目录或 ./skills
+omk doctor
+
+# 检查单个 skill 文件
+omk doctor skills/my-skill.md
+
+# CI 门禁模式
+omk doctor --gate
+```
+
+`doctor` 是纯静态检查，零 LLM 调用。它检查 skill 可读性、frontmatter、前置依赖和评测用例契约；`omk eval` 前也会强制运行。
 
 ### 评测 Skill
 
@@ -80,6 +111,21 @@ omk eval --dry-run
 - `--judge-models claude:opus,openai:gpt-4o`: 多评委 ensemble,消除单评委偏差
 - `--repeat 5`: 启用饱和曲线分析,告诉用户"再多跑样本是否有收益"
 
+### 线上观测
+
+```bash
+# 解析真实 Claude Code session trace
+omk observe ~/.claude/projects/-Users-you-Documents-my-project
+
+# 只看最近 7 天
+omk observe ~/.claude/projects/-Users-you-Documents-my-project --last 7d
+
+# 只观测指定 skill
+omk observe ~/.claude/projects/-Users-you-Documents-my-project --skills audit,polish
+```
+
+`observe` 用真实 session 生成 skill 健康度报告：知识使用、失败率、gap 信号、耗时和 token。它是生产观测，不是离线评分；用户问"线上到底有没有用"时优先推荐。
+
 ### 自动迭代改进
 
 ```bash
@@ -102,6 +148,7 @@ omk improve samples --batch
 ```bash
 # 打开本地工作台
 omk studio
+omk studio --no-open
 
 # 导出为独立 HTML
 omk export <reportId> --format html

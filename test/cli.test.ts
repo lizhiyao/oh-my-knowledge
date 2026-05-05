@@ -209,6 +209,7 @@ describe('CLI', () => {
     assert.ok(stdout.includes('omk studio'));
     assert.ok(stdout.includes('--reports-dir'));
     assert.ok(stdout.includes('--analyses-dir'));
+    assert.ok(stdout.includes('--no-open'));
   });
 
   // dispatcher 检查 --help 时扫整个 argv,不限第一位。
@@ -261,15 +262,18 @@ describe('CLI', () => {
   it('eval --dry-run exits 0 through eval workflow', async () => {
     const samplesPath = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');
     const skillDir = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
-    const { stdout } = await execFileAsync('node', [
+    const { stdout, stderr } = await execFileAsync('node', [
       CLI, 'eval',
       '--dry-run',
       '--samples', samplesPath,
       '--skill-dir', skillDir,
       '--control', 'v1',
       '--treatment', 'v2',
+      '--lang', 'zh',
     ]);
-    assert.ok(stdout.includes('Eval dry-run'));
+    assert.ok(stdout.includes('eval dry-run'));
+    assert.ok(stderr.includes('只能识别很大的效果'));
+    assert.ok(!stderr.includes('exploration-only'));
   });
 
   it('eval dry-run accepts product workflow options on the unified runner', async () => {
@@ -288,8 +292,9 @@ describe('CLI', () => {
       '--threshold', '3.2',
       '--trivial-diff', '0.2',
       '--no-gate',
+      '--lang', 'zh',
     ]);
-    assert.ok(stdout.includes('Eval dry-run'));
+    assert.ok(stdout.includes('eval dry-run'));
   });
 
   it('Claude Code SKILL manifest uses current product commands', async () => {
@@ -308,6 +313,24 @@ describe('CLI', () => {
     try {
       const { stdout } = await execFileAsync('node', [CLI, 'init', dir]);
       assert.ok(stdout.includes('已初始化测评项目'));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('doctor auto-detects cwd eval-samples.json', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-doctor-samples-'));
+    try {
+      const skillDir = join(dir, 'skills', 'review');
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(join(skillDir, 'SKILL.md'), '你是一个测试用的代码审查 skill，内容足够长。');
+      await writeFile(join(dir, 'eval-samples.json'), JSON.stringify([
+        { sample_id: 's1', prompt: 'review this code' },
+      ]));
+
+      const { stderr } = await execFileAsync('node', [CLI, 'doctor'], { cwd: dir });
+      assert.ok(stderr.includes('用例 1 条'), stderr);
+      assert.ok(!stderr.includes('未提供 samples'), stderr);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -253,7 +253,7 @@ export async function runEvaluation({
     // Emit power warnings during dry-run too — this is exactly when users
     // preview the run, the right moment to flag "you might be wasting it".
     const { buildPowerWarnings, buildIsolationWarnings } = await import('./evaluation-pipeline.js');
-    for (const w of buildPowerWarnings(samples.length, repeat ?? 1)) {
+    for (const w of buildPowerWarnings(samples.length, repeat ?? 1, lang)) {
       process.stderr.write(`${w}\n`);
     }
     for (const w of buildIsolationWarnings(resolvedArtifacts, strictBaseline)) {
@@ -354,6 +354,7 @@ export async function runEvaluation({
     budget,
     strictBaseline,
     runId,
+    lang,
   });
 }
 

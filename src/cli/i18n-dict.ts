@@ -78,6 +78,10 @@ export type CliMessageKey =
   | 'cli.run.no_debias_length_active'
   | 'cli.run.invalid_bootstrap_samples'
   | 'cli.run.bootstrap_samples_too_large'
+  | 'cli.run.power_warning_tiny_n'
+  | 'cli.run.power_warning_small_n'
+  | 'cli.run.power_warning_repeat_one'
+  | 'cli.run.dry_run_no_scores'
   // eval 完成 / 报告 server / gold compare / 错误
   | 'cli.run.skill_section'
   | 'cli.run.run_section'
@@ -112,6 +116,7 @@ export type CliMessageKey =
   | 'cli.export.done'
   | 'cli.studio.started'
   | 'cli.studio.stop_hint'
+  | 'cli.studio.open_failed'
   // improve samples
   | 'cli.gen.skill_skipped_existing'
   | 'cli.gen.skill_generating'
@@ -197,6 +202,7 @@ export type CliMessageKey =
   // omk doctor — CLI level
   | 'cli.help.doctor_usage'
   | 'cli.doctor.no_skill_found'
+  | 'cli.doctor.samples_detected'
   | 'cli.doctor.gate_blocked'
   | 'cli.run.skip_connectivity_warning';
 
@@ -237,6 +243,22 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.update.new_version_available': {
     zh: '\n💡 新版本可用: {old} → {new}, 运行 npm update {pkg} -g 升级\n\n',
     en: '\n💡 New version available: {old} → {new}, run npm update {pkg} -g to upgrade\n\n',
+  },
+  'cli.run.power_warning_tiny_n': {
+    zh: '⚠ N={n} < 5：仅适合探索，任何结论都不可靠，CI 会很宽。需要决策时建议 ≥20 条评测用例。',
+    en: '⚠ N={n} < 5 (exploration-only): any conclusion is unreliable, CI will be uselessly wide. Decisions need ≥20 cases.',
+  },
+  'cli.run.power_warning_small_n': {
+    zh: '⚠ N={n} < 20：只能识别很大的效果（Cohen\'s d > 0.8），中等效果（d ≈ 0.5）很难检出。要做可靠决策建议 ≥20 条评测用例。',
+    en: '⚠ N={n} < 20 (large-effect-only, Cohen\'s d > 0.8): medium effects (d ≈ 0.5) hard to detect. For confident decisions consider ≥20 cases.',
+  },
+  'cli.run.power_warning_repeat_one': {
+    zh: '⚠ --repeat=1：单轮评测无法测稳定性（CV 会标记为未测量）。用 --repeat 3+ 检测同一 variant 内部方差。',
+    en: '⚠ --repeat=1: single-run cannot measure stability (CV will be marked "not measured"). Use --repeat 3+ to detect within-variant variance.',
+  },
+  'cli.run.dry_run_no_scores': {
+    zh: 'eval dry-run：仅预览任务，不检查分数',
+    en: 'Eval dry-run: no scores to check',
   },
   'cli.progress.preflight_starting': {
     zh: '⏳ 正在预检模型连通性...\n',
@@ -421,6 +443,10 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.studio.stop_hint': {
     zh: '按 Ctrl+C 停止服务',
     en: 'Press Ctrl+C to stop',
+  },
+  'cli.studio.open_failed': {
+    zh: '⚠ 无法自动打开浏览器（{command}）：{message}\n',
+    en: '⚠ Failed to open browser automatically ({command}): {message}\n',
   },
   'cli.gen.skill_skipped_existing': {
     zh: '⏭️  {name}: eval-samples 已存在, 跳过\n',
@@ -1031,11 +1057,13 @@ omk studio — 打开本地知识工作台
   --port <n>                          本地服务端口（默认：7799）
   --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
   --analyses-dir <path>               观测分析目录
+  --no-open                           只启动服务，不自动打开浏览器
   --dev                               开发模式：文件变化时自动重启
 
 示例：
   omk studio
   omk studio --port 7798
+  omk studio --no-open
 `,
     en: `
 omk studio — open the local knowledge workbench
@@ -1047,11 +1075,13 @@ Options:
   --port <n>                          Local server port (default: 7799)
   --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
   --analyses-dir <path>               Observation analyses directory
+  --no-open                           Start the server without opening a browser
   --dev                               Dev mode: restart on file changes
 
 Examples:
   omk studio
   omk studio --port 7798
+  omk studio --no-open
 `,
   },
   // sample design coverage block strings
@@ -1220,6 +1250,7 @@ oh-my-knowledge — omk doctor 健康检查
   --gate                 静默模式: 通过 exit 0 / 不通过 exit 1, 仅 stderr 出问题摘要
   --executor <name>      executor 名(仅向后兼容, doctor 不直接打 LLM)
   --model <name>         model 名(同上)
+  --samples <path>       显式指定评测用例文件
   --timeout <seconds>    rule 执行超时(默认 8)
   --lang <zh|en>         切换输出语言
 
@@ -1253,6 +1284,7 @@ Options:
   --gate                 Silent mode: exit 0 if pass, exit 1 if fail; brief stderr summary only
   --executor <name>      executor name (kept for compat; doctor does not call LLM)
   --model <name>         model name (same)
+  --samples <path>       Explicit eval samples file
   --timeout <seconds>    per-rule timeout (default 8)
   --lang <zh|en>         Output language
 
@@ -1276,6 +1308,10 @@ checks cost nothing to run. LLM connectivity can be skipped with --skip-connecti
   'cli.doctor.no_skill_found': {
     zh: '未在 {path} 下发现 skill 文件。\n  doctor 期望 .md 文件、目录(包含 .md 或 SKILL.md)或 cwd 下的 skills/ 子目录。',
     en: 'No skills found at {path}.\n  doctor expects a .md file, a directory (containing .md or SKILL.md), or skills/ under cwd.',
+  },
+  'cli.doctor.samples_detected': {
+    zh: '✓ 使用评测用例文件：{path}',
+    en: '✓ Using eval samples file: {path}',
   },
   'cli.doctor.gate_blocked': {
     zh: 'skill 健康检查未通过, 评测已中止。doctor 是评测必经环节, 无 skip 选项 — 请修复上述问题后重跑。',
