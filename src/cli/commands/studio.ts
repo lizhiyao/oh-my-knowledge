@@ -1,21 +1,27 @@
 import { resolve } from 'node:path';
-import { langFromArgv, tCli } from '../i18n.js';
+import { langFromArgv, tCli, type CliLang } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
 import { parseArgsStrictOrExit } from '../parse-strict.js';
 import type { ReportServer } from './_shared.js';
 
-async function openWorkbench(url: string): Promise<void> {
+async function openWorkbench(url: string, lang: CliLang): Promise<void> {
   const { execFile } = await import('node:child_process');
   const { platform } = await import('node:os');
   const browser = process.env.BROWSER?.trim();
-  const openCmd = browser && browser.toLowerCase() !== 'none'
-    ? browser
-    : platform() === 'darwin'
-      ? 'open'
-      : platform() === 'win32'
-        ? 'start'
-        : 'xdg-open';
-  execFile(openCmd, [url], () => undefined);
+  if (browser?.toLowerCase() === 'none') return;
+
+  const os = platform();
+  const command = browser || (os === 'win32' ? 'cmd' : os === 'darwin' ? 'open' : 'xdg-open');
+  const args = os === 'win32' && !browser
+    ? ['/c', 'start', '', url]
+    : [url];
+  execFile(command, args, (err) => {
+    if (!err) return;
+    process.stderr.write(tCli('cli.studio.open_failed', lang, {
+      command,
+      message: err.message,
+    }));
+  });
 }
 
 export async function execute(argv: string[]): Promise<void> {
@@ -69,6 +75,6 @@ export async function execute(argv: string[]): Promise<void> {
   console.log(tCli('cli.studio.started', lang, { url }));
   console.log(tCli('cli.studio.stop_hint', lang));
   if (!values['no-open'] && process.stdout.isTTY) {
-    await openWorkbench(url);
+    await openWorkbench(url, lang);
   }
 }

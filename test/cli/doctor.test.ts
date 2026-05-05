@@ -25,6 +25,7 @@ describe('omk doctor CLI', () => {
     assert.ok(stdout.includes('健康检查'));
     assert.ok(stdout.includes('--json'));
     assert.ok(stdout.includes('--gate'));
+    assert.ok(stdout.includes('--samples'));
   });
 
   it('--help --lang en shows English usage', async () => {
@@ -112,6 +113,67 @@ describe('omk doctor CLI', () => {
     ]);
     assert.ok(stderr.includes('健康检查'));
     assert.ok(stderr.includes('总览:'));
+  });
+
+  it('auto-detects samples from the target project when cwd differs', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const tmp = mkdtempSync(join(tmpdir(), 'doctor-target-samples-'));
+    const outside = mkdtempSync(join(tmpdir(), 'doctor-outside-cwd-'));
+    try {
+      const project = join(tmp, 'project');
+      const skillRoot = join(project, 'skills', 'review');
+      mkdirSync(skillRoot, { recursive: true });
+      writeFileSync(join(skillRoot, 'SKILL.md'), '你是一个测试用的代码审查 skill，内容足够长。');
+      writeFileSync(join(project, 'eval-samples.json'), JSON.stringify([
+        { sample_id: 's1', prompt: 'review this code' },
+      ]));
+
+      const { stderr } = await execFileAsync('node', [
+        CLI,
+        'doctor',
+        join(project, 'skills'),
+        '--lang', 'zh',
+      ], { cwd: outside });
+      assert.ok(stderr.includes('使用评测用例文件'), stderr);
+      assert.ok(stderr.includes('eval-samples.json'), stderr);
+      assert.ok(stderr.includes('用例 1 条'), stderr);
+      assert.ok(!stderr.includes('未提供 samples'), stderr);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('--samples overrides auto-detected samples', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const tmp = mkdtempSync(join(tmpdir(), 'doctor-explicit-samples-'));
+    try {
+      const skillRoot = join(tmp, 'skills', 'review');
+      mkdirSync(skillRoot, { recursive: true });
+      writeFileSync(join(skillRoot, 'SKILL.md'), '你是一个测试用的代码审查 skill，内容足够长。');
+      writeFileSync(join(tmp, 'eval-samples.json'), JSON.stringify([
+        { sample_id: 'auto', prompt: 'auto sample' },
+      ]));
+      const explicitSamples = join(tmp, 'explicit-samples.json');
+      writeFileSync(explicitSamples, JSON.stringify([
+        { sample_id: 'e1', prompt: 'explicit sample 1' },
+        { sample_id: 'e2', prompt: 'explicit sample 2' },
+      ]));
+
+      const { stderr } = await execFileAsync('node', [
+        CLI,
+        'doctor',
+        join(tmp, 'skills'),
+        '--samples', explicitSamples,
+        '--lang', 'zh',
+      ], { cwd: tmp });
+      assert.ok(stderr.includes(`使用评测用例文件：${explicitSamples}`), stderr);
+      assert.ok(stderr.includes('用例 2 条'), stderr);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   it('product dispatch lists omk doctor as a top-level command', async () => {

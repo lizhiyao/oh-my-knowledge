@@ -269,6 +269,7 @@ describe('CLI', () => {
       '--skill-dir', skillDir,
       '--control', 'v1',
       '--treatment', 'v2',
+      '--lang', 'zh',
     ]);
     assert.ok(stdout.includes('eval dry-run'));
     assert.ok(stderr.includes('只能识别很大的效果'));
@@ -291,6 +292,7 @@ describe('CLI', () => {
       '--threshold', '3.2',
       '--trivial-diff', '0.2',
       '--no-gate',
+      '--lang', 'zh',
     ]);
     assert.ok(stdout.includes('eval dry-run'));
   });

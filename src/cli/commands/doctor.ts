@@ -1,5 +1,5 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { CliExit } from '../cli-exit.js';
 import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS } from '../parse-run-config.js';
@@ -7,10 +7,45 @@ import { parseArgsStrictOrExit } from '../parse-strict.js';
 import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
 import type { Sample } from '../../types/index.js';
 
-function findDefaultSamplesPath(cwd: string): string | null {
-  for (const name of ['eval-samples.json', 'eval-samples.yaml', 'eval-samples.yml']) {
-    const candidate = join(cwd, name);
+const DEFAULT_SAMPLE_FILENAMES = ['eval-samples.json', 'eval-samples.yaml', 'eval-samples.yml'] as const;
+
+function findSamplesInDir(dir: string): string | null {
+  for (const name of DEFAULT_SAMPLE_FILENAMES) {
+    const candidate = join(dir, name);
     if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function sampleSearchDirs(target: string | null, cwd: string): string[] {
+  const dirs: string[] = [];
+  const add = (dir: string): void => {
+    const abs = resolve(dir);
+    if (!dirs.includes(abs)) dirs.push(abs);
+  };
+  if (target) {
+    const absTarget = resolve(target);
+    if (existsSync(absTarget)) {
+      const stat = statSync(absTarget);
+      if (stat.isDirectory()) {
+        add(absTarget);
+        add(dirname(absTarget));
+        add(dirname(dirname(absTarget)));
+      } else {
+        const parent = dirname(absTarget);
+        add(parent);
+        add(dirname(parent));
+      }
+    }
+  }
+  add(cwd);
+  return dirs;
+}
+
+function findDefaultSamplesPath(target: string | null, cwd: string): string | null {
+  for (const dir of sampleSearchDirs(target, cwd)) {
+    const samplesPath = findSamplesInDir(dir);
+    if (samplesPath) return samplesPath;
   }
   return null;
 }
@@ -26,6 +61,7 @@ export async function execute(argv: string[]): Promise<void> {
       gate: { type: 'boolean', default: false },
       executor: { type: 'string' },
       model: { type: 'string' },
+      samples: { type: 'string' },
       timeout: { type: 'string' },
     },
   });
@@ -37,7 +73,7 @@ export async function execute(argv: string[]): Promise<void> {
   const timeoutSec = timeoutRaw != null ? Number(timeoutRaw) : 8;
   const timeoutMs = Math.max(1000, Math.floor((Number.isFinite(timeoutSec) ? timeoutSec : 8) * 1000));
   const cwd = process.cwd();
-  const samplesPath = findDefaultSamplesPath(cwd);
+  const samplesPath = values.samples ? resolve(values.samples as string) : findDefaultSamplesPath(target, cwd);
   let samples: Sample[] | undefined;
   let requires: DependencyRequirements | undefined;
   if (samplesPath) {
@@ -95,6 +131,9 @@ export async function execute(argv: string[]): Promise<void> {
       console.error(summary);
     }
   } else {
+    if (samplesPath && samples) {
+      process.stderr.write(tCli('cli.doctor.samples_detected', lang, { path: samplesPath }) + '\n');
+    }
     renderDoctorReportText(report, lang);
   }
 

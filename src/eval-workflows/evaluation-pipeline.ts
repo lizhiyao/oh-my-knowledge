@@ -207,7 +207,7 @@ function computeTestSetHash(samplesPath: string): string | null {
  * saturation curves. This is the upfront "you might be wasting the run"
  * heads-up, not a gate.
  */
-export function buildPowerWarnings(sampleCount: number, repeat: number, lang: CliLang = 'en'): string[] {
+export function buildPowerWarnings(sampleCount: number, repeat: number, lang: CliLang = 'zh'): string[] {
   const warnings: string[] = [];
   if (sampleCount < 5) {
     warnings.push(tCli('cli.run.power_warning_tiny_n', lang, { n: sampleCount }));

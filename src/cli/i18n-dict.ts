@@ -116,6 +116,7 @@ export type CliMessageKey =
   | 'cli.export.done'
   | 'cli.studio.started'
   | 'cli.studio.stop_hint'
+  | 'cli.studio.open_failed'
   // improve samples
   | 'cli.gen.skill_skipped_existing'
   | 'cli.gen.skill_generating'
@@ -201,6 +202,7 @@ export type CliMessageKey =
   // omk doctor — CLI level
   | 'cli.help.doctor_usage'
   | 'cli.doctor.no_skill_found'
+  | 'cli.doctor.samples_detected'
   | 'cli.doctor.gate_blocked'
   | 'cli.run.skip_connectivity_warning';
 
@@ -441,6 +443,10 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.studio.stop_hint': {
     zh: '按 Ctrl+C 停止服务',
     en: 'Press Ctrl+C to stop',
+  },
+  'cli.studio.open_failed': {
+    zh: '⚠ 无法自动打开浏览器（{command}）：{message}\n',
+    en: '⚠ Failed to open browser automatically ({command}): {message}\n',
   },
   'cli.gen.skill_skipped_existing': {
     zh: '⏭️  {name}: eval-samples 已存在, 跳过\n',
@@ -1244,6 +1250,7 @@ oh-my-knowledge — omk doctor 健康检查
   --gate                 静默模式: 通过 exit 0 / 不通过 exit 1, 仅 stderr 出问题摘要
   --executor <name>      executor 名(仅向后兼容, doctor 不直接打 LLM)
   --model <name>         model 名(同上)
+  --samples <path>       显式指定评测用例文件
   --timeout <seconds>    rule 执行超时(默认 8)
   --lang <zh|en>         切换输出语言
 
@@ -1277,6 +1284,7 @@ Options:
   --gate                 Silent mode: exit 0 if pass, exit 1 if fail; brief stderr summary only
   --executor <name>      executor name (kept for compat; doctor does not call LLM)
   --model <name>         model name (same)
+  --samples <path>       Explicit eval samples file
   --timeout <seconds>    per-rule timeout (default 8)
   --lang <zh|en>         Output language
 
@@ -1300,6 +1308,10 @@ checks cost nothing to run. LLM connectivity can be skipped with --skip-connecti
   'cli.doctor.no_skill_found': {
     zh: '未在 {path} 下发现 skill 文件。\n  doctor 期望 .md 文件、目录(包含 .md 或 SKILL.md)或 cwd 下的 skills/ 子目录。',
     en: 'No skills found at {path}.\n  doctor expects a .md file, a directory (containing .md or SKILL.md), or skills/ under cwd.',
+  },
+  'cli.doctor.samples_detected': {
+    zh: '✓ 使用评测用例文件：{path}',
+    en: '✓ Using eval samples file: {path}',
   },
   'cli.doctor.gate_blocked': {
     zh: 'skill 健康检查未通过, 评测已中止。doctor 是评测必经环节, 无 skip 选项 — 请修复上述问题后重跑。',
