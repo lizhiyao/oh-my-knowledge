@@ -11,6 +11,9 @@ const PROJECT_ROOT = join(__dirname, '..', '..');
 const CLI = join(PROJECT_ROOT, 'dist', 'src', 'cli', 'index.js');
 const EXAMPLE_SKILL = join(PROJECT_ROOT, 'examples', 'code-review', 'skills', 'v1.md');
 const EXAMPLE_SKILLS_DIR = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
+// Fixture executor bypasses real LLM calls; outcome is steered via
+// OMK_DOCTOR_FIXTURE_OUTCOME env (pass/fail).
+const DOCTOR_FIXTURE = `node ${join(PROJECT_ROOT, 'test', 'fixtures', 'doctor-fixture-executor.mjs')}`;
 
 interface ExecError extends Error {
   code: number;
@@ -41,6 +44,7 @@ describe('omk doctor CLI', () => {
       'doctor',
       EXAMPLE_SKILL,
       '--json',
+      '--executor', DOCTOR_FIXTURE,
     ]);
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.kind, 'doctor');
@@ -55,6 +59,7 @@ describe('omk doctor CLI', () => {
       'doctor',
       EXAMPLE_SKILLS_DIR,
       '--json',
+      '--executor', DOCTOR_FIXTURE,
     ]);
     const parsed = JSON.parse(stdout);
     assert.equal(parsed.kind, 'doctor');
@@ -78,21 +83,23 @@ describe('omk doctor CLI', () => {
       'doctor',
       EXAMPLE_SKILL,
       '--gate',
+      '--executor', DOCTOR_FIXTURE,
     ]);
     // Pass case: stdout silent, stderr should not contain "doctor failed:"
     assert.ok(!stderr.includes('doctor failed:'));
   });
 
-  it('exits 1 when doctor reports failed (skill content too short)', async () => {
-    // Use a tiny one-line file that would fail skill_readable rule
+  it('exits 1 when doctor reports failed (LLM audit returns unhealthy)', async () => {
     const { mkdtempSync, writeFileSync, rmSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
     const tmp = mkdtempSync(join(tmpdir(), 'doctor-cli-fail-'));
     try {
-      const tinyPath = join(tmp, 'tiny.md');
-      writeFileSync(tinyPath, 'hi');
+      const skillPath = join(tmp, 'broken.md');
+      writeFileSync(skillPath, '一个内容足够长但被 fixture 标记为不健康的 skill 文件。');
       await assert.rejects(
-        () => execFileAsync('node', [CLI, 'doctor', tinyPath, '--gate']),
+        () => execFileAsync('node', [CLI, 'doctor', skillPath, '--gate', '--executor', DOCTOR_FIXTURE], {
+          env: { ...process.env, OMK_DOCTOR_FIXTURE_OUTCOME: 'fail' },
+        }),
         (err: unknown) => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
@@ -110,6 +117,7 @@ describe('omk doctor CLI', () => {
       CLI,
       'doctor',
       EXAMPLE_SKILL,
+      '--executor', DOCTOR_FIXTURE,
     ]);
     assert.ok(stderr.includes('健康检查'));
     assert.ok(stderr.includes('总览:'));
@@ -134,6 +142,7 @@ describe('omk doctor CLI', () => {
         'doctor',
         join(project, 'skills'),
         '--lang', 'zh',
+        '--executor', DOCTOR_FIXTURE,
       ], { cwd: outside });
       assert.ok(stderr.includes('使用评测用例文件'), stderr);
       assert.ok(stderr.includes('eval-samples.json'), stderr);
@@ -168,6 +177,7 @@ describe('omk doctor CLI', () => {
         join(tmp, 'skills'),
         '--samples', explicitSamples,
         '--lang', 'zh',
+        '--executor', DOCTOR_FIXTURE,
       ], { cwd: tmp });
       assert.ok(stderr.includes(`使用评测用例文件：${explicitSamples}`), stderr);
       assert.ok(stderr.includes('用例 2 条'), stderr);

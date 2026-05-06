@@ -13,6 +13,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
 const CLI = join(PROJECT_ROOT, 'dist', 'src', 'cli', 'index.js');
 const CUSTOM_EXECUTOR = join(PROJECT_ROOT, 'examples', 'custom-executor', 'echo-executor.sh');
+const DOCTOR_FIXTURE = `node ${join(PROJECT_ROOT, 'test', 'fixtures', 'doctor-fixture-executor.mjs')}`;
 
 interface ExecError extends Error {
   code?: number;
@@ -328,7 +329,7 @@ describe('CLI', () => {
         { sample_id: 's1', prompt: 'review this code' },
       ]));
 
-      const { stderr } = await execFileAsync('node', [CLI, 'doctor'], { cwd: dir });
+      const { stderr } = await execFileAsync('node', [CLI, 'doctor', '--executor', DOCTOR_FIXTURE], { cwd: dir });
       assert.ok(stderr.includes('用例 1 条'), stderr);
       assert.ok(!stderr.includes('未提供 samples'), stderr);
     } finally {
