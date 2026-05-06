@@ -3,7 +3,7 @@ updates:
   # npm 依赖周更, minor / patch 合一个 PR 减刷屏; major 单独 PR 留出 review 空间。
   - package-ecosystem: "npm"
     directory: "/"
-    target-branch: "develop"
+    target-branch: "main"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -22,7 +22,7 @@ updates:
   # GitHub Actions 工作流也跟着更新, 同样 minor / patch 合一个 PR。
   - package-ecosystem: "github-actions"
     directory: "/"
-    target-branch: "develop"
+    target-branch: "main"
     schedule:
       interval: "weekly"
       day: "monday"

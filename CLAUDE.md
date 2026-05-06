@@ -9,8 +9,8 @@ omk 是 LLM 评测框架。所有改动都要优先保护测量可比性。
 
 ## 硬规则
 
-- 遵守 `CONTRIBUTING.md` 的 Gitflow：普通 feature / fix / docs / chore PR 进 `develop`；release / hotfix 走专门路径。
-- 不要直接在 `main` 或 `develop` 上提交。
+- 遵守 `CONTRIBUTING.md` 的 GitHub Flow：`main` 是唯一长期分支；feature / fix / docs / chore 从 `main` 切短分支，通过 PR 回 `main`；release / hotfix 也通过短分支 PR 回 `main`，再由 tag 触发发版。
+- 不要直接在 `main` 上提交；不要再把新工作提交到 `develop`。
 - commit 格式：`type(scope): 中文 subject`。scope 用稳定模块名，如 `cli` / `i18n` / `judge` / `renderer` / `eval-core` / `eval-workflows` / `inputs` / `executors` / `server` / `analysis` / `authoring` / `grading` / `doctor` / `release` / `claude-md`。
 - 不要在给用户看的 URL 里硬编码 report server 端口；使用 `server.start()` 返回的实际 URL。
 
