@@ -1,0 +1,66 @@
+---
+title: omk capability map — skill 全生命周期
+config:
+  theme: dark
+  themeVariables:
+    primaryColor: '#1e3a5f'
+    primaryTextColor: '#e2e8f0'
+    primaryBorderColor: '#60a5fa'
+    lineColor: '#94a3b8'
+    secondaryColor: '#1e293b'
+    tertiaryColor: '#0f172a'
+    fontFamily: 'Helvetica, Arial, sans-serif'
+    fontSize: '15px'
+  flowchart:
+    nodeSpacing: 50
+    rankSpacing: 70
+    padding: 28
+    htmlLabels: true
+---
+flowchart TB
+    subgraph S1["① 提取 / 输入"]
+        direction LR
+        A1["从 trace / 记忆<br/>提议 skill 候选"]
+        A2["omk init<br/>模板脚手架"]
+    end
+    subgraph S2["② 检查（前置门禁）"]
+        direction LR
+        B1["omk doctor<br/>静态健康度"]
+        B2["omk sample<br/>生成评测用例"]
+    end
+    subgraph S3["③ 评测（A/B + 严谨性）"]
+        direction LR
+        C1["omk eval<br/>三层 all-pass<br/>+ verdict gate"]
+        C2["omk eval gold<br/>评委 ↔ 人工 α"]
+    end
+    subgraph S4["④ 上线"]
+        D1["~/.claude/skills/<br/>Claude Code<br/>包管理器"]
+    end
+    subgraph S5["⑤ 线上观测"]
+        direction LR
+        E1["omk observe<br/>session trace 解析"]
+        E2["Observe Inbox<br/>知识缺口 review 队列"]
+    end
+    subgraph S6["⑥ 迭代 / 淘汰"]
+        direction LR
+        F1["omk evolve<br/>多轮自动闭环"]
+        F2["跨 skill ROI ranking<br/>淘汰决策"]
+    end
+
+    A1 -.候选.-> B1
+    A2 --> B1
+    B1 --> B2
+    B2 --> C1
+    C1 --> C2
+    C2 --> D1
+    D1 --> E1
+    E1 --> E2
+    E2 -.驱动.-> F1
+    E2 -.信号源.-> F2
+    F1 --> C1
+    F2 -.淘汰.-> A1
+
+    style A1 stroke-dasharray: 5 5,fill:#1e293b,color:#94a3b8,stroke:#64748b
+    style F2 stroke-dasharray: 5 5,fill:#1e293b,color:#94a3b8,stroke:#64748b
+    style D1 fill:#334155,stroke:#64748b,color:#94a3b8
+    style E2 fill:#1e3a5f,color:#e2e8f0,stroke:#60a5fa
