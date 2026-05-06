@@ -39,7 +39,12 @@ jobs:
           exit 1
         fi
 
-        tag_type="$(git cat-file -t "${GITHUB_REF_NAME}")"
+        # actions/checkout checks out the tag target commit for tag-triggered runs.
+        # Fetch the tag ref explicitly so annotated-tag validation checks the tag
+        # object instead of the dereferenced commit.
+        git fetch --force --no-tags origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+        tag_ref="refs/tags/${GITHUB_REF_NAME}"
+        tag_type="$(git cat-file -t "${tag_ref}")"
         if [[ "${tag_type}" != "tag" ]]; then
           echo "::error::Release tag ${GITHUB_REF_NAME} must be an annotated tag."
           exit 1
@@ -53,7 +58,7 @@ jobs:
         fi
 
         git fetch --no-tags origin main
-        tag_commit="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
+        tag_commit="$(git rev-list -n 1 "${tag_ref}")"
         if ! git merge-base --is-ancestor "${tag_commit}" origin/main; then
           echo "::error::Release tag ${GITHUB_REF_NAME} must point to a commit reachable from origin/main."
           exit 1
