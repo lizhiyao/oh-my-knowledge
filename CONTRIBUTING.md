@@ -2,23 +2,20 @@
 
 Thanks for taking the time to contribute to `oh-my-knowledge`.
 
-## Branch model — Gitflow
+## Branch model — GitHub Flow
 
-Two long-lived branches:
+One long-lived branch:
 
-- **`main`** — holds tagged, released versions only. Every commit on `main` corresponds to a published release. Never commit features directly here.
-- **`develop`** — day-to-day integration branch. New features and fixes land here. It represents the "next release in progress".
+- **`main`** — the single integration and release branch. All production-ready work lands here through PRs. Do not commit directly to `main`.
 
-Supporting short-lived branches:
+All work happens on short-lived topic branches cut from `main`:
 
 | Branch prefix | Cut from | Merges back to | Purpose |
 |---|---|---|---|
-| `feat/<desc>` | `develop` | `develop` | new feature |
-| `fix/<desc>` | `develop` | `develop` | bug fix on an in-progress feature or an already-released one that can wait for the next release |
-| `docs/<desc>` | `develop` | `develop` | docs only |
-| `chore/<desc>` | `develop` | `develop` | build, tooling, dependency bumps |
-| `release/<x.y.z>` | `develop` | `main` (then ff `develop` to `main`) | stabilization before a release (version bump, last-mile fixes only) |
-| `hotfix/<x.y.z>` | `main` | `main` (then ff `develop` to `main`) | critical fix against a released version |
+| `feat/<desc>` | `main` | `main` | new feature |
+| `fix/<desc>` | `main` | `main` | bug fix, including urgent production fixes |
+| `docs/<desc>` | `main` | `main` | docs only |
+| `chore/<desc>` | `main` | `main` | build, tooling, dependency bumps, release version bumps |
 
 Delete the topic branch after its PR is merged.
 
@@ -27,10 +24,11 @@ Delete the topic branch after its PR is merged.
 ### Everyday feature / fix
 
 ```bash
-# sync develop first
-git checkout develop && git pull
+# sync main first
+git checkout main
+git pull --ff-only
 
-# cut a topic branch from develop
+# cut a topic branch from main
 git checkout -b feat/my-feature
 
 # build / test / lint
@@ -39,73 +37,63 @@ yarn build
 yarn test      # must pass
 yarn lint      # must pass
 
-git commit -m "feat: short imperative summary"
+git commit -m "feat(cli): 中文 subject"
 git push -u origin feat/my-feature
 
-# open a PR against **develop** (not main)
+# open a PR against **main**
 ```
 
 ### Releasing a new version
 
 ```bash
-# from develop
-git checkout -b release/0.19.0 develop
-
-# bump version in package.json, final polish commits
-
-# merge into main and tag
+# cut a release version-bump branch from main
 git checkout main
-git merge --no-ff release/0.19.0
-git tag -a v0.19.0 -m "Release v0.19.0"
+git pull --ff-only
+git checkout -b chore/release-0.28.0
 
-# Push commits and the tag SEPARATELY.
+# bump version in package.json, final polish commits, then verify
+yarn lint
+yarn build
+yarn test
+
+# commit and open a PR against main
+git commit -m "chore(release): 发布 0.28.0"
+git push -u origin chore/release-0.28.0
+
+# after the PR is merged, tag the merge commit on main
+git checkout main
+git pull --ff-only
+git tag -a v0.28.0 -m "Release v0.28.0"
+
+# Push the tag as its own command.
 # `git push origin main --tags` is an atomic push — GitHub treats it as one
 # event and only triggers workflows watching `branches: [main]`, so the
 # `tags: ['v*']` trigger in publish.yml never fires and npm publish is
 # skipped. Pushing the tag in its own command produces a distinct push
 # event that fires the tag workflow.
-git push origin main
-git push origin v0.19.0
-
-# Sync develop to main with a fast-forward — NOT another merge of the release
-# branch. Doing `git merge --no-ff release/0.19.0` here creates a sibling
-# merge commit that lives only on develop, so main's release commit never
-# enters develop's ancestry and the two branches drift apart with every
-# release. ff-only keeps develop a strict superset of main.
-git checkout develop
-git merge --ff-only origin/main
-git push origin develop
-
-# delete the release branch
-git branch -d release/0.19.0
-git push origin --delete release/0.19.0
+git push origin v0.28.0
 ```
 
 ### Hotfix against a released version
 
 ```bash
-# cut from main (the last released state)
-git checkout -b hotfix/0.18.1 main
+# cut from main
+git checkout main
+git pull --ff-only
+git checkout -b fix/critical-bug
 
-# make the fix, bump version
+# make the fix, bump patch version, verify, then open a PR against main
+yarn lint
+yarn build
+yarn test
+git commit -m "fix(cli): 中文 subject"
+git push -u origin fix/critical-bug
 
-# merge into main + tag
-git checkout main && git merge --no-ff hotfix/0.18.1
-git tag -a v0.18.1 -m "Hotfix v0.18.1"
-
-# Push commits and tag separately — see the "Releasing a new version"
-# section above for why `git push origin main --tags` skips publish.yml.
-git push origin main
-git push origin v0.18.1
-
-# Sync develop to main with a fast-forward (same reasoning as the
-# release flow — avoid creating a sibling merge that strands the hotfix
-# commit only on main).
-git checkout develop && git merge --ff-only origin/main
-git push origin develop
-
-git branch -d hotfix/0.18.1
-git push origin --delete hotfix/0.18.1
+# after the PR is merged, tag the merge commit on main and push the tag
+git checkout main
+git pull --ff-only
+git tag -a v0.28.1 -m "Release v0.28.1"
+git push origin v0.28.1
 ```
 
 ## Release notes
@@ -131,19 +119,19 @@ This keeps users who only read release notes (not individual PR descriptions) fr
 
 ## Commit messages
 
-Short imperative lines. Chinese or English both fine — match the tone of surrounding history. Prefix with a scope when it helps:
+Use Conventional Commits with a stable scope and a Chinese subject:
 
 ```
-feat(bench): add --repeat to --each mode
-fix(each): unswallow --repeat in --each branch
-docs: clarify --control / --treatment usage
+feat(cli): 新增工作流命令
+fix(eval-core): 修复事实检查误报
+docs(readme): 补充评测用例说明
 ```
 
 ## Tests
 
 - `yarn test` runs the full vitest suite
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
-- CI runs the same commands on Node 20 and Node 22 across both `main` and `develop` — all must pass before merge
+- CI runs the same commands on Node 22 and Node 24 for `main` pushes and PRs targeting `main` — all must pass before merge
 
 ## Style
 

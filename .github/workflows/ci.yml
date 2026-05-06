@@ -2,11 +2,11 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [main, develop]
+    branches: [main]
 
-# 同 PR 推 N 次只跑最后一次, 省 GitHub Actions minutes。main / develop push 同样适用。
+# 同 PR 推 N 次只跑最后一次，省 GitHub Actions minutes。main push 同样适用。
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

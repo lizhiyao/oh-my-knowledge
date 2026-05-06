@@ -28,8 +28,8 @@ commit-message convention, and validation requirements.
 ## Checklist
 
 - [ ] Read `CLAUDE.md`
-- [ ] Branch is `feat/*`, `fix/*`, `docs/*`, `chore/*`, `release/*`, or `hotfix/*` (Gitflow)
-- [ ] Target branch follows the current branch strategy in `CLAUDE.md` / `CONTRIBUTING.md`
+- [ ] Branch is `feat/*`, `fix/*`, `docs/*`, or `chore/*`, cut from `main` (GitHub Flow)
+- [ ] Target branch is `main`
 - [ ] Commit message follows the repo convention (`type(scope): subject`)
 - [ ] PR title / description note user-facing impact + migration if BREAKING (release notes are auto-generated from PR list)
 - [ ] No secrets / internal URLs / personal data in the diff
