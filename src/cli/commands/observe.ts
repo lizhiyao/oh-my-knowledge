@@ -6,6 +6,104 @@ import { parseArgsStrictOrExit } from '../parse-strict.js';
 import { parseLastWindow } from './_shared.js';
 
 export async function execute(argv: string[]): Promise<void> {
+  const [sub, ...rest] = argv;
+  if (sub === 'ingest') {
+    await executeIngest(rest);
+    return;
+  }
+  if (sub === 'inbox') {
+    await executeInbox(rest);
+    return;
+  }
+
+  await executeHealth(argv);
+}
+
+async function executeIngest(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
+  const { values: rawValues, positionals } = parseArgsStrictOrExit({
+    args: argv,
+    allowPositionals: true,
+    options: {
+      ...COMMON_OPTIONS,
+      'output-dir': { type: 'string' },
+    },
+  });
+  const values = rawValues as Record<string, string | undefined>;
+  const dir = positionals[0];
+  if (!dir) {
+    console.error(tCli('cli.help.observe', lang).trim());
+    throw new CliExit(1);
+  }
+  const tracePath = resolve(dir);
+  const { existsSync } = await import('node:fs');
+  if (!existsSync(tracePath)) {
+    console.error(`Trace path does not exist: ${tracePath}`);
+    throw new CliExit(1);
+  }
+  const { buildObservationInboxReport, saveObservationInboxReport, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
+  const report = buildObservationInboxReport(tracePath);
+  const outDir = resolve(values['output-dir'] || DEFAULT_OBSERVATIONS_DIR);
+  const path = saveObservationInboxReport(report, outDir);
+  console.log(JSON.stringify(report, null, 2));
+  process.stderr.write(`observe inbox written to: ${path}\n`);
+}
+
+async function executeInbox(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
+  const { values: rawValues } = parseArgsStrictOrExit({
+    args: argv,
+    options: {
+      ...COMMON_OPTIONS,
+      'input-dir': { type: 'string' },
+      skill: { type: 'string' },
+      limit: { type: 'string' },
+      explore: { type: 'string' },
+      'include-noise': { type: 'boolean' },
+      json: { type: 'boolean' },
+    },
+  });
+  const values = rawValues as Record<string, string | boolean | undefined>;
+  const { queryObservationInbox, selectExploreInboxItems, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
+  const dir = resolve((values['input-dir'] as string | undefined) || DEFAULT_OBSERVATIONS_DIR);
+  let items = queryObservationInbox(dir);
+  if (values.skill) {
+    items = items.filter((item) => item.skillName === values.skill);
+  }
+  if (values.explore) {
+    const n = Math.max(1, Number(values.explore) || 10);
+    items = selectExploreInboxItems(items, n, values['include-noise'] === true);
+  } else {
+    const limit = Math.max(1, Number(values.limit ?? 20) || 20);
+    items = items.slice(0, limit);
+  }
+  if (values.json) {
+    console.log(JSON.stringify({ kind: 'observe-inbox-query', items }, null, 2));
+    return;
+  }
+  if (items.length === 0) {
+    console.log(lang === 'zh' ? 'observe inbox 为空' : 'observe inbox is empty');
+    return;
+  }
+  console.log(lang === 'zh' ? 'observe inbox:' : 'observe inbox:');
+  for (const item of items) {
+    const evidence = item.evidence.query || item.evidence.path || item.evidence.assistantSnippet || item.evidence.outputSnippet || '';
+    const artifactVersion = item.artifactVersion === 'unknown' ? '⚠ unknown' : item.artifactVersion;
+    console.log(`- [${item.severity}] (${item.sourceKind}) ${item.skillName} ${item.signalType}/${item.signalSubtype} x${item.occurrences} confidence=${item.confidence.toFixed(2)} attribution=${item.attributionConfidence.toFixed(2)}`);
+    console.log(`  lastSeen=${item.lastSeen} version=${artifactVersion}`);
+    if (item.severityReason) console.log(`  reason=${item.severityReason}`);
+    if (evidence) console.log(`  evidence=${evidence.slice(0, 180)}`);
+  }
+  console.log('');
+  console.log(lang === 'zh'
+    ? 'Tip: omk observe inbox --explore 10  # 抽样查看 medium/low 长尾'
+    : 'Tip: omk observe inbox --explore 10  # sample medium/low long-tail items');
+  console.log(lang === 'zh'
+    ? 'Tip: omk observe inbox --explore 10 --include-noise  # 显式包含 noise 桶'
+    : 'Tip: omk observe inbox --explore 10 --include-noise  # explicitly include the noise bucket');
+}
+
+async function executeHealth(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const { values: rawValues, positionals } = parseArgsStrictOrExit({
     args: argv,

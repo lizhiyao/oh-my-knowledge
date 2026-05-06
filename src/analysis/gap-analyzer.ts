@@ -47,6 +47,11 @@ const HEDGING_PATTERNS: RegExp[] = [
   /\bpresumably\b/gi,
 ];
 
+const MARKER_META_DISCUSSION_RE =
+  /\b(explicit_marker|hedging|failed_search|repeated_failure|signal|severity|confidence|regex|marker|gap)\b|检测|规则|正则|打标|信号|判断标准|评分标准|分类|噪声|假阳|误报|命中/g;
+const MARKER_QUOTATION_RE =
+  /比如|例如|示例|转述|引用|文档里|表格|出现(?:了|过)?(?:多处)?[`【\[]|AI\s*输出里出现|assistant\s*文本里/i;
+
 /** Minimum consecutive failed-search count to trigger a repeated_failure signal. */
 const REPEATED_FAILURE_THRESHOLD = 3;
 
@@ -177,6 +182,7 @@ export function extractMarkerSignals(text: string): GapSignal[] {
     pat.lastIndex = 0;
     while ((match = pat.exec(text)) !== null) {
       const idx = match.index;
+      if (shouldIgnoreMarkerOccurrence(text, idx, match[0])) continue;
       const snippet = text.slice(Math.max(0, idx - 20), Math.min(text.length, idx + match[0].length + 60));
       signals.push({
         sampleId: '',
@@ -188,6 +194,28 @@ export function extractMarkerSignals(text: string): GapSignal[] {
     }
   }
   return signals;
+}
+
+function shouldIgnoreMarkerOccurrence(text: string, index: number, marker: string): boolean {
+  const lineStart = text.lastIndexOf('\n', index) + 1;
+  const nextLine = text.indexOf('\n', index);
+  const lineEnd = nextLine === -1 ? text.length : nextLine;
+  const line = text.slice(lineStart, lineEnd);
+  const trimmedLine = line.trim();
+  const before = text.slice(0, index);
+  const fenceCount = (before.match(/```/g) ?? []).length;
+  if (fenceCount % 2 === 1) return true;
+  if (trimmedLine.startsWith('>')) return true;
+  if (/^\|.*\|$/.test(trimmedLine)) return true;
+  if (trimmedLine.includes(`\`${marker}\``)) return true;
+
+  const window = text
+    .slice(Math.max(0, index - 90), Math.min(text.length, index + marker.length + 90))
+    .replace(/\s+/g, ' ');
+  MARKER_META_DISCUSSION_RE.lastIndex = 0;
+  if (MARKER_META_DISCUSSION_RE.test(window)) return true;
+  MARKER_QUOTATION_RE.lastIndex = 0;
+  return MARKER_QUOTATION_RE.test(window);
 }
 
 /**

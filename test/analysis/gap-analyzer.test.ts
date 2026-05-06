@@ -129,6 +129,18 @@ describe('extractMarkerSignals', () => {
       assert.equal(signals[0].type, 'explicit_marker');
     }
   });
+
+  it('ignores marker examples in meta discussion text', () => {
+    const text = 'AI 输出里出现【推断】【知识缺口】等 marker，会被 explicit_marker 捕获。';
+    assert.equal(extractMarkerSignals(text).length, 0);
+  });
+
+  it('ignores marker examples in markdown quote, table, code fence and backtick mention', () => {
+    assert.equal(extractMarkerSignals('> 【推断】这是文档引用里的例子').length, 0);
+    assert.equal(extractMarkerSignals('| signal | marker |\n| explicit_marker | 【知识缺口】 |').length, 0);
+    assert.equal(extractMarkerSignals('```md\n【未知】示例\n```').length, 0);
+    assert.equal(extractMarkerSignals('文档里出现了 `【推断】` 这个标记。').length, 0);
+  });
 });
 
 // ---------- extractHedgingSignals ----------

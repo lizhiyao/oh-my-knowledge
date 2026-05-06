@@ -2,7 +2,7 @@
  * cc session JSONL → omk ResultEntry adapter (v0.18 skill-health)。
  *
  * 核心职责:
- *   1. 读 cc session JSONL 文件 / 目录
+ *   1. 读 cc session JSONL / OpenClaw SDK log 文件 / 目录
  *   2. 按 session 拆分、按 skill 信号切段(见 docs/skill-health-spec.md §四)
  *   3. 每段输出为一个 ResultEntry, variant key = skill 名
  *
@@ -41,6 +41,7 @@ interface CcAssistantRecord {
   timestamp: string;
   cwd?: string;
   gitBranch?: string;
+  attributionSkill?: string;
   message: {
     role: 'assistant';
     model?: string;
@@ -98,6 +99,10 @@ export interface CcSession {
 
 export interface SkillSegment {
   skillName: string;
+  attribution?: {
+    source: 'skill-tool' | 'command-name' | 'read-skill-md' | 'general';
+    confidence: number;
+  };
   sessionId: string;
   segmentIndex: number;
   startTimestamp: string;
@@ -120,17 +125,44 @@ export interface SkillSegment {
 // ---------- Load ----------
 
 /**
- * 加载一个目录(或单个 JSONL 文件)下的所有 cc session。目录递归只一层(cc 的实际布局)。
+ * 加载一个目录(或单个 JSONL/OpenClaw SDK log 文件)下的所有 session。
+ * 递归扫描目录,覆盖 Claude Code 主 session 旁边的 subagents/*.jsonl,
+ * 也支持 OpenClaw workspace/logs/*.log 里的 Markdown 对话记录。
  */
 export function loadCcSessions(path: string): CcSession[] {
   const stat = statSync(path);
   if (stat.isFile()) {
-    return [parseCcSessionFile(path)];
+    const parsed = parseTraceFile(path);
+    return parsed ? [parsed] : [];
   }
-  const entries = readdirSync(path)
-    .filter((f) => f.endsWith('.jsonl'))
-    .map((f) => join(path, f));
-  return entries.map(parseCcSessionFile).filter((s): s is CcSession => s !== null) as CcSession[];
+  const entries = collectTraceFiles(path);
+  return entries.map(parseTraceFile).filter((s): s is CcSession => s !== null);
+}
+
+function collectTraceFiles(dir: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(dir)) {
+    if (entry === 'node_modules' || entry === '.git') continue;
+    const entryPath = join(dir, entry);
+    let stat;
+    try {
+      stat = statSync(entryPath);
+    } catch {
+      continue;
+    }
+    if (stat.isDirectory()) {
+      files.push(...collectTraceFiles(entryPath));
+    } else if (entry.endsWith('.jsonl') || entry.endsWith('.log')) {
+      files.push(entryPath);
+    }
+  }
+  return files.sort();
+}
+
+function parseTraceFile(filePath: string): CcSession | null {
+  if (filePath.endsWith('.jsonl')) return parseCcSessionFile(filePath);
+  if (filePath.endsWith('.log')) return parseOpenClawLogFile(filePath);
+  return null;
 }
 
 function parseCcSessionFile(filePath: string): CcSession {
@@ -160,6 +192,102 @@ function parseCcSessionFile(filePath: string): CcSession {
     startTimestamp: first?.timestamp,
     endTimestamp: last?.timestamp,
   };
+}
+
+const OPENCLAW_BLOCK_RE = /(?:^|\n)---\s*\n## \[([^\]]+)\] 对话记录[^\n]*\n([\s\S]*?)(?=\n---\s*\n## \[|$)/g;
+
+function parseOpenClawLogFile(filePath: string): CcSession | null {
+  const content = readFileSync(filePath, 'utf-8');
+  if (!content.includes('### 用户输入') || !content.includes('### AI 回复')) return null;
+
+  const records: CcRecord[] = [];
+  let sessionId = filePath.split('/').pop()!.replace(/\.log$/, '');
+  let cwd: string | undefined;
+  let firstTimestamp: string | undefined;
+  let lastTimestamp: string | undefined;
+  let index = 0;
+
+  for (const match of content.matchAll(OPENCLAW_BLOCK_RE)) {
+    const timestamp = openClawTimestampToIso(match[1]);
+    const body = match[2] ?? '';
+    const blockCwd = body.match(/^\*\*工作目录\*\*:\s*(.+)$/m)?.[1]?.trim();
+    const blockSessionId = body.match(/^\*\*会话 ID\*\*:\s*(.+)$/m)?.[1]?.trim();
+    const requestId = body.match(/^\*\*请求 ID\*\*:\s*(.+)$/m)?.[1]?.trim() ?? String(index);
+    const userText = extractOpenClawSection(body, '### 用户输入', '### AI 回复');
+    const assistantText = extractOpenClawSection(body, '### AI 回复');
+    if (!userText && !assistantText) continue;
+
+    if (blockSessionId) sessionId = blockSessionId;
+    if (blockCwd) cwd = blockCwd;
+    if (!firstTimestamp) firstTimestamp = timestamp;
+    lastTimestamp = timestamp;
+    const skill = extractOpenClawSkill(`${userText}\n${assistantText}`);
+    const userContent = skill ? `<command-name>/${skill}</command-name>\n${userText}` : userText;
+
+    records.push({
+      type: 'user',
+      uuid: `openclaw-${requestId}-user-${index}`,
+      parentUuid: null,
+      sessionId,
+      timestamp,
+      message: { role: 'user', content: userContent },
+    } as CcUserRecord);
+    records.push({
+      type: 'assistant',
+      uuid: `openclaw-${requestId}-assistant-${index}`,
+      parentUuid: `openclaw-${requestId}-user-${index}`,
+      sessionId,
+      timestamp,
+      cwd,
+      attributionSkill: skill,
+      message: {
+        role: 'assistant',
+        content: assistantText ? [{ type: 'text', text: assistantText }] : [],
+        stop_reason: 'end_turn',
+      },
+    } as CcAssistantRecord);
+    index += 1;
+  }
+
+  if (records.length === 0) return null;
+  return {
+    sessionId,
+    sourcePath: filePath,
+    records,
+    cwd,
+    startTimestamp: firstTimestamp,
+    endTimestamp: lastTimestamp,
+  };
+}
+
+function openClawTimestampToIso(value: string): string {
+  const m = value.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return new Date().toISOString();
+  return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}+08:00`;
+}
+
+function extractOpenClawSection(body: string, startMarker: string, endMarker?: string): string {
+  const start = body.indexOf(startMarker);
+  if (start < 0) return '';
+  const from = start + startMarker.length;
+  const end = endMarker ? body.indexOf(endMarker, from) : -1;
+  return body.slice(from, end >= 0 ? end : undefined).trim();
+}
+
+function extractOpenClawSkill(text: string): string | null {
+  const patterns = [
+    /优先调用\s+`?([a-zA-Z0-9][\w.-]*)`?\s+skill/i,
+    /调用\s+`?([a-zA-Z0-9][\w.-]*)`?\s+skill/i,
+    /使用\s+`?([a-zA-Z0-9][\w.-]*)`?\s+skill/i,
+    /`([a-zA-Z0-9][\w.-]*)`\s+skill/i,
+    /\b([a-zA-Z0-9][\w.-]*-[\w.-]*)\s+skill\b/i,
+  ];
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    const normalized = match?.[1] ? normalizeSkillName(match[1]) : null;
+    if (normalized) return normalized;
+  }
+  return null;
 }
 
 // ---------- Skill signal detection ----------
@@ -214,13 +342,18 @@ function extractCommandSkill(record: CcUserRecord): string | null {
  * 返回 null 表示没命中。
  */
 function extractSkillToolUse(record: CcAssistantRecord): string | null {
-  for (const part of record.message.content) {
+  const content = Array.isArray(record.message.content) ? record.message.content : [];
+  for (const part of content) {
     if (part.type === 'tool_use' && part.name === 'Skill') {
       const skill = part.input?.skill;
       if (typeof skill === 'string') return normalizeSkillName(skill);
     }
   }
   return null;
+}
+
+function extractAttributionSkill(record: CcAssistantRecord): string | null {
+  return record.attributionSkill ? normalizeSkillName(record.attributionSkill) : null;
 }
 
 const SKILL_READ_FILE_RE = /\.claude\/skills\/([^/]+)\/SKILL\.md$/;
@@ -231,7 +364,8 @@ const SKILL_READ_FILE_RE = /\.claude\/skills\/([^/]+)\/SKILL\.md$/;
  * 返回 null 表示没命中。
  */
 function extractSkillReadFile(record: CcAssistantRecord): string | null {
-  for (const part of record.message.content) {
+  const content = Array.isArray(record.message.content) ? record.message.content : [];
+  for (const part of content) {
     if (part.type === 'tool_use' && part.name === 'Read') {
       const filePath = part.input?.file_path;
       if (typeof filePath === 'string') {
@@ -266,11 +400,11 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
     return false;
   };
 
-  const startNewSegment = (skillName: string, timestamp?: string): void => {
+  const startNewSegment = (skillName: string, timestamp?: string, attribution?: SkillSegment['attribution']): void => {
     // 空段被新信号替换时,不推进 segmentIndex(保持整洁的 0-based 编号)
     const wasNonEmpty = flushCurrent();
     if (wasNonEmpty) segmentIndex += 1;
-    currentSegment = createEmptySegment(session, skillName, segmentIndex, timestamp);
+    currentSegment = createEmptySegment(session, skillName, segmentIndex, timestamp, attribution);
     currentSkill = skillName;
   };
 
@@ -283,7 +417,7 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
       // 检测 skill 信号 2 (slash command)
       const cmdSkill = extractCommandSkill(u);
       if (cmdSkill && cmdSkill !== currentSkill) {
-        startNewSegment(cmdSkill, u.timestamp);
+        startNewSegment(cmdSkill, u.timestamp, { source: 'command-name', confidence: 0.85 });
       }
       // 处理 tool_result(回填之前的 tool_use)
       if (typeof u.message.content !== 'string') {
@@ -316,17 +450,23 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
       // 仅在当前段仍是 'general'(未被信号 1/2 命中过)时触发,避免压过更强信号。
       const skillTool = extractSkillToolUse(a);
       if (skillTool && skillTool !== currentSkill) {
-        startNewSegment(skillTool, a.timestamp);
-      } else if (!skillTool && currentSkill === 'general') {
-        const readSkill = extractSkillReadFile(a);
-        if (readSkill) {
-          startNewSegment(readSkill, a.timestamp);
+        startNewSegment(skillTool, a.timestamp, { source: 'skill-tool', confidence: 0.95 });
+      } else if (!skillTool) {
+        const attrSkill = extractAttributionSkill(a);
+        if (attrSkill && attrSkill !== currentSkill) {
+          startNewSegment(attrSkill, a.timestamp, { source: 'command-name', confidence: 0.85 });
+        } else if (currentSkill === 'general') {
+          const readSkill = extractSkillReadFile(a);
+          if (readSkill) {
+            startNewSegment(readSkill, a.timestamp, { source: 'read-skill-md', confidence: 0.5 });
+          }
         }
       }
       // 提取 tool_use → ToolCallInfo(success 先标 true, 等 tool_result 回填)
       const toolCalls: ToolCallInfo[] = [];
       let assistantText = '';
-      for (const part of a.message.content) {
+      const assistantContent = Array.isArray(a.message.content) ? a.message.content : [];
+      for (const part of assistantContent) {
         if (part.type === 'text' && part.text) assistantText += part.text;
         if (part.type === 'tool_use' && part.id && part.name) {
           const tc: ToolCallInfo = {
@@ -368,10 +508,11 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
   return segments;
 }
 
-function createEmptySegment(session: CcSession, skillName: string, index: number, timestamp?: string): SkillSegment {
+function createEmptySegment(session: CcSession, skillName: string, index: number, timestamp?: string, attribution?: SkillSegment['attribution']): SkillSegment {
   const ts = timestamp ?? session.startTimestamp ?? new Date().toISOString();
   return {
     skillName,
+    attribution: attribution ?? { source: 'general', confidence: 0.3 },
     sessionId: session.sessionId,
     segmentIndex: index,
     startTimestamp: ts,

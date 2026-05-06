@@ -705,6 +705,8 @@ omk observe——分析真实 session trace，生成 skill 健康度日报
 
 用法：
   omk observe <sessions-dir> [options]
+  omk observe ingest <sessions-dir> [options]
+  omk observe inbox [options]
 
 选项：
   --kb <path>                         知识库根路径（默认：从 trace cwd 推断）
@@ -713,12 +715,23 @@ omk observe——分析真实 session trace，生成 skill 健康度日报
   --to <iso>                          窗口终点，优先级高于 --last
   --skills <n1,n2,...>                只分析指定 skill
   --output-dir <path>                 输出目录（默认：~/.oh-my-knowledge/analyses）
+
+Inbox:
+  ingest --output-dir <path>           写入 observe inbox 数据（默认：.omk/observations；读取时兜底到 ~/.oh-my-knowledge/observations）
+  inbox --input-dir <path>             读取 observe inbox 数据
+  inbox --limit <n>                    展示 top N（默认：20）
+  inbox --skill <name>                 只看指定 skill
+  inbox --explore <n>                  从最近 50 条 medium/low 问题里抽样查看长尾
+  inbox --include-noise                --explore 时显式包含 noise 桶
+  inbox --json                         输出 JSON
 `,
     en: `
 omk observe — analyze production session traces and produce skill health reports
 
 Usage:
   omk observe <sessions-dir> [options]
+  omk observe ingest <sessions-dir> [options]
+  omk observe inbox [options]
 
 Options:
   --kb <path>                         Knowledge base root (default: infer from trace cwd)
@@ -727,6 +740,15 @@ Options:
   --to <iso>                          Window end, overrides --last
   --skills <n1,n2,...>                Only analyze selected skills
   --output-dir <path>                 Output directory (default: ~/.oh-my-knowledge/analyses)
+
+Inbox:
+  ingest --output-dir <path>           Write observe inbox data (default: .omk/observations; read fallback: ~/.oh-my-knowledge/observations)
+  inbox --input-dir <path>             Read observe inbox data
+  inbox --limit <n>                    Show top N (default: 20)
+  inbox --skill <name>                 Only show one skill
+  inbox --explore <n>                  Sample long-tail issues from the latest 50 medium/low items
+  inbox --include-noise                Explicitly include the noise bucket with --explore
+  inbox --json                         Print JSON
 `,
   },
   'cli.help.evolve': {

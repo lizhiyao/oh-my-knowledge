@@ -79,6 +79,30 @@ describe('loadCcSessions', () => {
     const ids = sessions.map((s) => s.sessionId).sort();
     assert.deepEqual(ids, ['sa', 'sb']);
   });
+
+  it('loads OpenClaw SDK markdown logs', () => {
+    const path = join(tmpDir, 'openclaw.log');
+    writeFileSync(path, `---
+## [2026/04/09 16:22:55] 对话记录 (SDK)
+**工作目录**: /tmp/openclaw
+**会话 ID**: oc-1
+**请求 ID**: r1
+
+### 用户输入
+请优先调用 design-coding-create-template skill 处理。
+
+### AI 回复
+我会先处理当前模板。
+`);
+    const sessions = loadCcSessions(path);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].sessionId, 'oc-1');
+    assert.equal(sessions[0].cwd, '/tmp/openclaw');
+    const segs = segmentBySkill(sessions[0]);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'design-coding-create-template');
+    assert.equal(segs[0].attribution?.source, 'command-name');
+  });
 });
 
 // ---------- Segment by skill ----------
