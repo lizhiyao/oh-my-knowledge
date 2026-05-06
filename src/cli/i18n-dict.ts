@@ -168,6 +168,28 @@ export type CliMessageKey =
   | 'cli.doctor.rule.skill_metadata'
   | 'cli.doctor.rule.dependencies'
   | 'cli.doctor.rule.samples_contract'
+  | 'cli.doctor.rule.skill_health_check'
+  // doctor — skill_health composer (opt-in --health)
+  | 'cli.doctor.health.skipped'
+  | 'cli.doctor.health.no_dimensions'
+  | 'cli.doctor.health.fail.executor'
+  | 'cli.doctor.health.fail.parse'
+  | 'cli.doctor.health.fail.empty_output'
+  | 'cli.doctor.health.hint.executor'
+  | 'cli.doctor.health.hint.parse'
+  | 'cli.doctor.health.dim.message'
+  | 'cli.doctor.health.dim.missing'
+  | 'cli.doctor.health.summary.label'
+  | 'cli.doctor.health.summary.message'
+  | 'cli.doctor.health.summary.no_top'
+  // 7 内置维度的 labelKey (id-based,稳定,翻译可独立改)
+  | 'cli.doctor.health.dim.trigger-boundary'
+  | 'cli.doctor.health.dim.doc-clarity'
+  | 'cli.doctor.health.dim.instr-precision'
+  | 'cli.doctor.health.dim.dependency'
+  | 'cli.doctor.health.dim.tool-conventions'
+  | 'cli.doctor.health.dim.security'
+  | 'cli.doctor.health.dim.examples'
   // doctor — pass messages
   | 'cli.doctor.skill_readable.pass'
   | 'cli.doctor.skill_metadata.pass'
@@ -1122,6 +1144,67 @@ Examples:
     zh: '用例 ↔ skill 输入约定',
     en: 'samples ↔ skill contract',
   },
+  'cli.doctor.rule.skill_health_check': {
+    zh: '健康度体检',
+    en: 'Health check',
+  },
+  // ============ skill_health composer (opt-in --health) ============
+  'cli.doctor.health.skipped': {
+    zh: '健康度体检未启用(加 --health 开启)',
+    en: 'health check not enabled (pass --health to enable)',
+  },
+  'cli.doctor.health.no_dimensions': {
+    zh: '没有注册任何健康度维度,跳过',
+    en: 'no health dimensions registered, skipped',
+  },
+  'cli.doctor.health.fail.executor': {
+    zh: 'LLM 调用失败: {error}',
+    en: 'LLM call failed: {error}',
+  },
+  'cli.doctor.health.fail.parse': {
+    zh: 'LLM 输出解析失败: {error}',
+    en: 'failed to parse LLM output: {error}',
+  },
+  'cli.doctor.health.fail.empty_output': {
+    zh: 'LLM 返回了空输出',
+    en: 'LLM returned empty output',
+  },
+  'cli.doctor.health.hint.executor': {
+    zh: '检查 executor 配置(--executor / --model)与网络连通,或调大 --timeout',
+    en: 'Verify executor config (--executor / --model) and connectivity, or raise --timeout',
+  },
+  'cli.doctor.health.hint.parse': {
+    zh: 'LLM 没返回合法 JSON;原文存在 detail.rawOutput 截断片段,可重跑或换 model',
+    en: 'LLM did not return valid JSON; raw snippet stored in detail.rawOutput. Re-run or switch model',
+  },
+  'cli.doctor.health.dim.message': {
+    zh: '{level}: 错误 {err}/警告 {warn}/建议 {sug}',
+    en: '{level}: error {err}/warn {warn}/suggest {sug}',
+  },
+  'cli.doctor.health.dim.missing': {
+    zh: 'LLM 未输出此维度({dim}),已置不适用',
+    en: 'LLM omitted dimension ({dim}); treated as N/A',
+  },
+  'cli.doctor.health.summary.label': {
+    zh: '健康度总览',
+    en: 'Health summary',
+  },
+  'cli.doctor.health.summary.message': {
+    zh: '{overall} | 维度: 健康 {h}/亚健康 {sh}/不健康 {bad}/不适用 {na} | finding: 错误 {err}/警告 {warn}/建议 {sug}',
+    en: '{overall} | dims: healthy {h}/sub {sh}/unhealthy {bad}/n-a {na} | findings: err {err}/warn {warn}/sug {sug}',
+  },
+  'cli.doctor.health.summary.no_top': {
+    zh: '完整详情见 --json 输出或 --html 报告',
+    en: 'Full detail in --json output or --html report',
+  },
+  // 7 内置维度 labelKey (id-based)
+  'cli.doctor.health.dim.trigger-boundary': { zh: '触发与边界', en: 'Trigger & boundary' },
+  'cli.doctor.health.dim.doc-clarity':      { zh: '文档清晰',   en: 'Documentation clarity' },
+  'cli.doctor.health.dim.instr-precision':  { zh: '指令精确性', en: 'Instruction precision' },
+  'cli.doctor.health.dim.dependency':       { zh: '依赖检查',   en: 'Dependency check' },
+  'cli.doctor.health.dim.tool-conventions': { zh: '工具规范',   en: 'Tool conventions' },
+  'cli.doctor.health.dim.security':         { zh: '安全与合规', en: 'Security & compliance' },
+  'cli.doctor.health.dim.examples':         { zh: '示例完备',   en: 'Example completeness' },
   // pass
   'cli.doctor.skill_readable.pass': {
     zh: 'skill 内容长度 {length} 字符',
@@ -1236,10 +1319,10 @@ Examples:
   // ============ omk doctor CLI level ============
   'cli.help.doctor_usage': {
     zh: `
-oh-my-knowledge — omk doctor 健康检查
+oh-my-knowledge — omk doctor 健康度体检 (LLM-judge)
 
 用法:
-  omk doctor [path]                    在 path 上跑评测前置健康检查
+  omk doctor [path]                    在 path 上跑深度健康度体检
   omk doctor                           在当前目录(或 ./skills)批量跑
 
 参数:
@@ -1248,61 +1331,65 @@ oh-my-knowledge — omk doctor 健康检查
 选项:
   --json                 把 DoctorReport 打到 stdout(CI 消费用)
   --gate                 静默模式: 通过 exit 0 / 不通过 exit 1, 仅 stderr 出问题摘要
-  --executor <name>      executor 名(仅向后兼容, doctor 不直接打 LLM)
-  --model <name>         model 名(同上)
+  --executor <name>      LLM executor (默认 claude, 可换 anthropic-api/codex 等)
+  --model <name>         模型 (默认 sonnet)
   --samples <path>       显式指定评测用例文件
-  --timeout <seconds>    rule 执行超时(默认 8)
+  --timeout <seconds>    单次 LLM 会话超时 (默认 600)
+  --html <path>          产出可视化 HTML 报告到 <path> (可与 --json 同时用)
   --lang <zh|en>         切换输出语言
 
 示例:
-  omk doctor examples/code-review/skills/v1.md
-  omk doctor examples/code-review/skills --json | jq .outcome  # passed | warnings_only | failed
-  omk doctor --gate; echo $?
+  omk doctor my-skill --html /tmp/report.html             # 深度体检 + HTML 报告 (默认)
+  omk doctor examples/code-review/skills --json > r.json   # JSON 给 CI / 外部工具消费
+  omk doctor --gate; echo $?                               # CI 模式: exit 1 if 任一 skill 不健康
 
-doctor 检查项(纯静态 / 零 LLM 调用):
-  - skill 文件可读 + 内容有最小长度
-  - skill 元数据合法 (front-matter 若有)
-  - 前置依赖完整 (引用的 CLI 工具 / 文件 / 环境变量 / preflight 命令)
-  - 用例 ↔ skill 输入约定 (warn 级, 仅传 samples 时跑)
+doctor = LLM 健康度体检 (单次 LLM 会话):
+  - 7 个内置维度: 触发与边界 / 文档清晰 / 指令精确性 / 依赖检查 / 工具规范 / 安全与合规 / 示例完备
+  - 用户可扩展: 在自己代码里 registerHealthDimension(spec) 加自定义维度,
+    会自动加入同一次 LLM 调用的 prompt + 报告 (顺序 = 注册顺序)
+  - 每维度独立给 健康/亚健康/不健康/不适用 + findings + 改进建议
+  - HTML 报告: 维度按 fail→warn→pass→skipped 排, 错误 finding 排前面
 
-executor / judge 连通性由 evaluation preflight 负责, 不在 doctor 范围内。
-omk eval 内置 doctor 强制门禁, 不可 skip — 静态检查
-零成本无理由跳过。LLM 连通性可用 --skip-connectivity 跳过 (--resume 时自动)。
+注: omk bench run / bench gate 内部仍跑静态 skill-readability/metadata/dependency
+gate 保护评测质量, 不走 omk doctor 这条 LLM 路径 (角色分离: doctor=审计, bench=评测)。
+LLM 连通性可用 bench --skip-connectivity 跳过 (--resume 时自动)。
 `.trim() + '\n',
     en: `
-oh-my-knowledge — omk doctor health check
+oh-my-knowledge — omk doctor health audit (LLM-judge)
 
 Usage:
-  omk doctor [path]                    Run pre-evaluation health check on path
-  omk doctor                           Batch check current dir (or ./skills)
+  omk doctor [path]                    Run deep LLM-based health audit on path
+  omk doctor                           Batch audit current dir (or ./skills)
 
 Arguments:
-  path                   A .md file, directory, or omit (= cwd). Directory mode batches all skills.
+  path                   A .md file, directory, or omit (= cwd). Directory batches all skills.
 
 Options:
   --json                 Print DoctorReport JSON to stdout (CI-friendly)
-  --gate                 Silent mode: exit 0 if pass, exit 1 if fail; brief stderr summary only
-  --executor <name>      executor name (kept for compat; doctor does not call LLM)
-  --model <name>         model name (same)
+  --gate                 Silent mode: exit 0 if pass, exit 1 if fail; brief stderr summary
+  --executor <name>      LLM executor (default 'claude'; switchable to anthropic-api/codex etc)
+  --model <name>         model name (default 'sonnet')
   --samples <path>       Explicit eval samples file
-  --timeout <seconds>    per-rule timeout (default 8)
+  --timeout <seconds>    LLM session timeout (default 600)
+  --html <path>          Also write a visual HTML report to <path> (combines with --json)
   --lang <zh|en>         Output language
 
 Examples:
-  omk doctor examples/code-review/skills/v1.md
-  omk doctor examples/code-review/skills --json | jq .outcome  # passed | warnings_only | failed
-  omk doctor --gate; echo $?
+  omk doctor my-skill --html /tmp/report.html             # deep audit + HTML report (default)
+  omk doctor examples/code-review/skills --json > r.json   # JSON for CI / external tools
+  omk doctor --gate; echo $?                               # CI mode: exit 1 if any unhealthy
 
-Checks (pure static / zero LLM calls):
-  - skill file readable + minimum content length
-  - skill metadata valid (front-matter if present)
-  - dependencies present (referenced CLI tools / files / env vars / preflight commands)
-  - samples ↔ skill contract (warn-level, only when samples provided)
+doctor = LLM health audit (single LLM session):
+  - 7 builtin dimensions: trigger & boundary / doc clarity / instruction precision /
+    dependency / tool conventions / security & compliance / example completeness
+  - User-extensible: call registerHealthDimension(spec) in your code to add custom
+    dimensions; they join the same LLM call's prompt + report (order = registration order)
+  - Each dim graded healthy / sub-healthy / unhealthy / N-A + findings + suggestions
+  - HTML report: dims sorted fail→warn→pass→skipped; errors first within each dim
 
-executor / judge connectivity is handled by evaluation preflight, not doctor.
-omk eval runs doctor as mandatory; no skip flag — static
-checks cost nothing to run. LLM connectivity can be skipped with --skip-connectivity
-(auto-skipped on --resume).
+Note: omk bench run / bench gate still run static skill-readability/metadata/dependency
+gates internally (separate from this doctor command). Roles: doctor=audit, bench=eval.
+LLM connectivity for bench can be skipped with --skip-connectivity (auto on --resume).
 `.trim() + '\n',
   },
   'cli.doctor.no_skill_found': {

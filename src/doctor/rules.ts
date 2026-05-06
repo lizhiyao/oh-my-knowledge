@@ -25,6 +25,7 @@ import { preflightDependencies } from '../eval-core/dependency-checker.js';
 import type { DependencyIssue } from '../eval-core/dependency-checker.js';
 import type {
   DoctorRule,
+  DoctorRuleLike,
   DoctorContext,
   DoctorRuleCheckOutcome,
 } from '../types/doctor.js';
@@ -258,17 +259,17 @@ export const BUILTIN_RULES: DoctorRule[] = [
   samplesContractAlignedRule,
 ];
 
-/** 扩展 hook(v0.22 不通过 CLI flag 暴露,仅 library API 占位)。 */
-const customRules: DoctorRule[] = [];
+/** 扩展 hook。可注册普通 DoctorRule 或 ComposerRule(健康度体检走 composer)。 */
+const customRules: DoctorRuleLike[] = [];
 
-export function registerRule(rule: DoctorRule): void {
+export function registerRule(rule: DoctorRuleLike): void {
   if (BUILTIN_RULES.some((r) => r.id === rule.id) || customRules.some((r) => r.id === rule.id)) {
     throw new Error(`doctor rule id collision: ${rule.id}`);
   }
   customRules.push(rule);
 }
 
-export function getRegisteredRules(): DoctorRule[] {
+export function getRegisteredRules(): DoctorRuleLike[] {
   return [...BUILTIN_RULES, ...customRules];
 }
 
