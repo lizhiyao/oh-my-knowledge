@@ -9,7 +9,7 @@ const COMMANDS_DIR = join(__dirname, '..', '..', 'src', 'cli', 'commands');
 
 /**
  * 防止 `commands/<name>.ts` 文件重新长出旧入口。只有产品级命令能被
- * PRODUCT_COMMANDS 暴露；eval-* / improve-* / export-* 是产品命令内部实现模块。
+ * PRODUCT_COMMANDS 暴露；eval-* 是 eval 子命令内部实现模块。
  *
  * `_*` (如 _shared) 是内部 module, registry.ts 自己也排除。
  */
@@ -21,8 +21,7 @@ describe('CLI dispatcher routing', () => {
       .map((f) => f.replace(/\.ts$/, ''));
 
     const product = new Set(Object.keys(PRODUCT_COMMANDS));
-    const implementationOnly = files.filter((name) =>
-      name.startsWith('eval-') || name.startsWith('improve-') || name.startsWith('export-'));
+    const implementationOnly = files.filter((name) => name.startsWith('eval-'));
     const publicFiles = files.filter((name) => !implementationOnly.includes(name));
 
     expect(publicFiles.sort()).toEqual([...product].sort());
@@ -31,11 +30,11 @@ describe('CLI dispatcher routing', () => {
       'debias-validate',
       'diagnose',
       'diff',
-      'evolve',
       'failures',
       'gate',
       'gen-samples',
       'gold',
+      'improve',
       'report',
       'run',
       'saturation',
@@ -47,13 +46,14 @@ describe('CLI dispatcher routing', () => {
     expect(Object.keys(PRODUCT_COMMANDS).sort()).toEqual([
       'doctor',
       'eval',
-      'export',
-      'improve',
+      'evolve',
       'init',
       'observe',
+      'sample',
       'studio',
     ]);
-    for (const oldEntry of ['bench', 'analyze', 'diagnose', 'failures', 'verdict']) {
+    // 历史顶层入口都不应出现。
+    for (const oldEntry of ['bench', 'analyze', 'diagnose', 'failures', 'verdict', 'export', 'improve']) {
       expect(PRODUCT_COMMANDS).not.toHaveProperty(oldEntry);
     }
   });

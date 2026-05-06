@@ -16,8 +16,8 @@
  * (d) are cost / latency outliers (one sample spikes the budget by itself), or
  * (e) fail across the board (likely broken sample, not a model deficiency).
  *
- * The CLI `omk improve <reportId>` surfaces these so users can iterate
- * the SAMPLE SET as much as they iterate the SKILL.
+ * Persisted on the report so studio can surface these to users iterating
+ * the SAMPLE SET (alongside iterating the SKILL).
  *
  * Output shape: a flat list of issues, each tagged with severity and the
  * minimal evidence needed to act ("here are the matching prompts"). Issues are
@@ -447,7 +447,7 @@ export function formatSampleIssue(issue: SampleIssue, lang: DiagnosticLang = 'zh
 }
 
 /**
- * Plain-text formatter for `omk improve <reportId>`.
+ * Plain-text formatter for sample-quality diagnostics output.
  */
 export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: { topN?: number; lang?: DiagnosticLang } = {}): string {
   const lines: string[] = [];

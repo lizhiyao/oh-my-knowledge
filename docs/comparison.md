@@ -82,7 +82,7 @@ Three-layer isolation prevents single-axis regressions from being masked by comp
 |---|---|---|---|---|---|---|---|---|
 | Native Claude Code skill evaluation | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | Production session JSONL parsing (omk observe) | ✓ Claude Code | ✗ | ✗ | ✗ | ✗ | ✓ LangChain only | ✗ | ✗ |
-| Auto self-iteration (`omk improve skill`) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
+| Auto self-iteration (`omk evolve`) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 | eval.yaml (evaluation-as-code) | ✓ | ✓ | ✗ | ✗ | partial | ✗ | partial | ✓ |
 | CI/CD `omk eval` exit-code routing | ✓ three-layer | ✓ basic | ✓ | ✗ | ✗ | partial | ✗ | ✓ |
 | Hard budget caps (workflow abort) | ✓ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |

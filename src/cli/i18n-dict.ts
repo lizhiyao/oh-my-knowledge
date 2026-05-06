@@ -16,9 +16,7 @@
  * 2. **保留原文的白名单 (产品术语 / 命令 / 文件名)**
  *    以下 token 在两种语言里都保留原文, 不翻译:
  *    - 产品名: omk, oh-my-knowledge, Claude, npm
- *    - 子命令空间和命令名: init, doctor, eval, observe, improve, export,
- *      studio, samples, skill, plan, failures, gold, debias, diff, verdict,
- *      saturation
+ *    - 命令名: init, doctor, eval, observe, evolve, sample, studio, gold
  *    - omk 核心业务术语: skill, variant, sample, judge, executor (出现在产品
  *      UI 里时首字母可大写如 "Skill 评测", 描述句中保持小写)
  *    - 技术参数: --lang, --control, --treatment, --bootstrap, --judge-repeat,
@@ -110,14 +108,11 @@ export type CliMessageKey =
   | 'cli.common.no_judge_model'
   | 'cli.common.judge_models_single_only'
   | 'cli.common.warn_load_samples_failed'
-  // export / studio 操作反馈
-  | 'cli.export.unsupported_format'
-  | 'cli.export.html_done'
-  | 'cli.export.done'
+  // studio 操作反馈
   | 'cli.studio.started'
   | 'cli.studio.stop_hint'
   | 'cli.studio.open_failed'
-  // improve samples
+  // sample (generate eval-samples)
   | 'cli.gen.skill_skipped_existing'
   | 'cli.gen.skill_generating'
   | 'cli.gen.skill_done'
@@ -130,7 +125,7 @@ export type CliMessageKey =
   | 'cli.gen.single_done'
   | 'cli.gen.review_hint'
   | 'cli.gen.failed'
-  // improve skill
+  // evolve (auto-iterate skill)
   | 'cli.evolve.specify_skill_path'
   | 'cli.evolve.section_header'
   | 'cli.evolve.round_baseline'
@@ -145,24 +140,10 @@ export type CliMessageKey =
   | 'cli.help.init_usage'
   | 'cli.help.eval'
   | 'cli.help.eval_gold'
-  | 'cli.help.eval_debias'
   | 'cli.help.observe'
-  | 'cli.help.improve'
-  | 'cli.help.improve_plan'
-  | 'cli.help.improve_failures'
-  | 'cli.help.improve_samples'
-  | 'cli.help.improve_skill'
-  | 'cli.help.export'
-  | 'cli.help.export_diff'
-  | 'cli.help.export_verdict'
-  | 'cli.help.export_saturation'
+  | 'cli.help.evolve'
+  | 'cli.help.sample'
   | 'cli.help.studio'
-  // sample design coverage block (improve plan)
-  | 'cli.diagnose.coverage_header'
-  | 'cli.diagnose.coverage_unspecified'
-  | 'cli.diagnose.coverage_chars'
-  | 'cli.diagnose.coverage_hint_empty'
-  | 'cli.diagnose.coverage_declared'
   // omk doctor 健康检查 — rule labels
   | 'cli.doctor.rule.skill_readable'
   | 'cli.doctor.rule.skill_metadata'
@@ -377,8 +358,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '\n💡 Non-interactive environment, skipping report server\n',
   },
   'cli.run.no_serve_view_hint': {
-    zh: '   导出报告：omk export {id} --reports-dir {dir}\n',
-    en: '   Export report: omk export {id} --reports-dir {dir}\n',
+    zh: '   查看报告：omk studio --reports-dir {dir}（报告 ID：{id}）\n',
+    en: '   View report: omk studio --reports-dir {dir} (report id: {id})\n',
   },
   'cli.run.gold_load_failed': {
     zh: '\n⚠ gold dataset 加载失败 ({dir}):\n',
@@ -424,18 +405,6 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     zh: '⚠ 加载 samples 文件失败 ({path}): {message}\n',
     en: '⚠ Failed to load samples file ({path}): {message}\n',
   },
-  'cli.export.unsupported_format': {
-    zh: '不支持的导出格式：{format}。可用格式：html / markdown / github-summary。',
-    en: 'Unsupported export format: {format}. Available: html / markdown / github-summary.',
-  },
-  'cli.export.html_done': {
-    zh: '已导出 HTML：{path}',
-    en: 'HTML exported to: {path}',
-  },
-  'cli.export.done': {
-    zh: '已导出：{path}',
-    en: 'Exported to: {path}',
-  },
   'cli.studio.started': {
     zh: 'studio 已启动：{url}',
     en: 'Studio running at {url}',
@@ -473,8 +442,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '\nGenerated {n} eval-samples files. Review them, then run: omk eval --batch',
   },
   'cli.gen.specify_skill_path': {
-    zh: '请指定 skill 文件路径, 例如: omk improve samples skills/my-skill.md',
-    en: 'Please specify a skill file path, e.g.: omk improve samples skills/my-skill.md',
+    zh: '请指定 skill 文件路径, 例如: omk sample skills/my-skill.md',
+    en: 'Please specify a skill file path, e.g.: omk sample skills/my-skill.md',
   },
   'cli.gen.samples_already_exists': {
     zh: 'eval-samples.json 已存在。如需覆盖请先删除该文件。',
@@ -497,8 +466,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'Generation failed: {message}',
   },
   'cli.evolve.specify_skill_path': {
-    zh: '请指定 skill 文件路径, 例如: omk improve skill skills/my-skill.md',
-    en: 'Please specify a skill file path, e.g.: omk improve skill skills/my-skill.md',
+    zh: '请指定 skill 文件路径, 例如: omk evolve skills/my-skill.md',
+    en: 'Please specify a skill file path, e.g.: omk evolve skills/my-skill.md',
   },
   'cli.evolve.section_header': {
     zh: '\n=== Improve skill: {path} ===\n',
@@ -529,8 +498,8 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: 'All versions saved at: {dir}/\n',
   },
   'cli.evolve.report_link': {
-    zh: '📊 评测报告：omk export {id} --format html\n',
-    en: '📊 Report: omk export {id} --format html\n',
+    zh: '📊 查看报告：omk studio（报告 ID：{id}）\n',
+    en: '📊 View report: omk studio (report id: {id})\n',
   },
   'cli.help.product_main': {
     zh: `
@@ -541,16 +510,15 @@ oh-my-knowledge — 知识载体工作台
   omk doctor [path]                   静态健康检查：结构、依赖、样本、配置、污染风险
   omk eval [options]                  离线评测：比较版本，输出 verdict + report
   omk observe <sessions-dir>          线上观测：真实 session、gap、失败率、inbox
-  omk improve <report-id>             改进建议：样本质量、失败聚类、skill patch 线索
-  omk export <report-id> [options]    证据导出：PR / CI / audit
-  omk studio                          打开本地工作台
+  omk evolve <skill>                  多轮自动迭代改进 skill
+  omk sample <skill>                  生成或补齐 eval-samples 评测用例（或 --batch 批量模式）
+  omk studio                          打开本地工作台浏览报告
 
 主路径：
   omk doctor
   omk eval --control code-review-v1 --treatment code-review-v2
   omk observe ~/.claude/projects/<project>
-  omk improve <report-id>
-  omk export <report-id> --format github-summary
+  omk evolve skills/code-review-v2/SKILL.md
   omk studio
 
 通用选项：
@@ -566,16 +534,15 @@ Usage:
   omk doctor [path]                   Static health check: structure, deps, samples, config, contamination risk
   omk eval [options]                  Offline evaluation: compare versions, emit verdict + report
   omk observe <sessions-dir>          Production observation: sessions, gaps, failure rate, inbox
-  omk improve <report-id>             Improvement advice: sample quality, failure clusters, skill patch hints
-  omk export <report-id> [options]    Evidence export for PR / CI / audit
-  omk studio                          Open the local workbench
+  omk evolve <skill>                  Auto-iterate a skill through multi-round eval loops
+  omk sample <skill>                  Generate or fill eval-samples test cases (or --batch for all skills)
+  omk studio                          Open the local workbench to browse reports
 
 Main workflow:
   omk doctor
   omk eval --control code-review-v1 --treatment code-review-v2
   omk observe ~/.claude/projects/<project>
-  omk improve <report-id>
-  omk export <report-id> --format github-summary
+  omk evolve skills/code-review-v2/SKILL.md
   omk studio
 
 Common options:
@@ -625,7 +592,6 @@ omk eval — 离线评测 skill 版本，并给出 ship/no-ship verdict
 用法：
   omk eval --control <variant> --treatment <variant> [options]
   omk eval gold <init|validate|compare> ...
-  omk eval debias length <report-id> ...
 
 常用选项：
   --samples <path>                    用例文件（默认：eval-samples.json）
@@ -646,7 +612,8 @@ omk eval — 离线评测 skill 版本，并给出 ship/no-ship verdict
   --no-serve                          评测后不自动启动报告 server
 
 示例：
-  omk eval --control code-review-v1 --treatment code-review-v2
+  omk eval --control baseline --treatment my-skill                # 单 skill 必要性测试（baseline 是保留 variant 名，代表「不注入 skill 的裸基线」）
+  omk eval --control code-review-v1 --treatment code-review-v2    # 多版本 A/B
   omk eval --config eval.yaml
   omk eval gold compare v1-vs-v2-20260505-1200 --gold-dir gold-dataset
 `,
@@ -656,7 +623,6 @@ omk eval — run offline skill evaluation and emit a ship/no-ship verdict
 Usage:
   omk eval --control <variant> --treatment <variant> [options]
   omk eval gold <init|validate|compare> ...
-  omk eval debias length <report-id> ...
 
 Common options:
   --samples <path>                    Sample file (default: eval-samples.json)
@@ -677,7 +643,8 @@ Common options:
   --no-serve                          Do not auto-start report server after evaluation
 
 Examples:
-  omk eval --control code-review-v1 --treatment code-review-v2
+  omk eval --control baseline --treatment my-skill                # Single-skill necessity test (baseline is a reserved variant — "no skill injected")
+  omk eval --control code-review-v1 --treatment code-review-v2    # Multi-variant A/B
   omk eval --config eval.yaml
   omk eval gold compare v1-vs-v2-20260505-1200 --gold-dir gold-dataset
 `,
@@ -710,34 +677,6 @@ Options:
   --bootstrap-samples <n>             Bootstrap resamples for compare
 `,
   },
-  'cli.help.eval_debias': {
-    zh: `
-omk eval debias — 验证 length-debias 是否降低评委长度偏差
-
-用法：
-  omk eval debias length <reportId> [options]
-
-选项：
-  --samples <path>                    用例文件；默认从 report.meta.request 读取
-  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
-  --variant <name>                    只验证指定 variant
-  --judge-models <executor:model>     指定单评委
-  --bootstrap-samples <n>             bootstrap 重采样次数
-`,
-    en: `
-omk eval debias — validate whether length-debias reduces judge length bias
-
-Usage:
-  omk eval debias length <reportId> [options]
-
-Options:
-  --samples <path>                    Sample file; defaults to report.meta.request
-  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
-  --variant <name>                    Validate only one variant
-  --judge-models <executor:model>     Single judge to use
-  --bootstrap-samples <n>             Bootstrap resamples
-`,
-  },
   'cli.help.observe': {
     zh: `
 omk observe — 分析真实 session trace，生成 skill 健康度日报
@@ -768,119 +707,51 @@ Options:
   --output-dir <path>                 Output directory (default: ~/.oh-my-knowledge/analyses)
 `,
   },
-  'cli.help.improve': {
+  'cli.help.evolve': {
     zh: `
-omk improve — 从报告或 trace 中得到下一步改进建议
+omk evolve — 多轮自动迭代改进 skill
 
 用法：
-  omk improve <report-id>             输出样本质量诊断和改进计划
-  omk improve plan <report-id>        同上，显式 plan 子命令
-  omk improve failures <report-id>    聚类失败用例，生成根因和修复方向
-  omk improve samples [skill]         为 skill 生成或补齐 eval samples
-  omk improve skill <skill>           基于评测循环尝试改进 skill
+  omk evolve <skill-path> [options]
+
+选项：
+  --rounds <n>                        迭代轮数（默认：5）
+  --target <score>                    目标分数
+  --model <name>                      任务执行模型，每轮跑 eval samples 的被测模型（默认：sonnet）
+  --improve-model <name>              skill 改写模型，每轮根据反馈改写 skill 的模型（默认：sonnet）
+  --judge-models <executor:model>     单评委配置（默认：claude:haiku）
 
 示例：
-  omk improve v1-vs-v2-20260505-1200
-  omk improve samples skills/code-review/SKILL.md
-  omk improve failures v1-vs-v2-20260505-1200
+  omk evolve skills/code-review/SKILL.md
+  omk evolve skills/code-review/SKILL.md --rounds 10 --target 4.5
+  omk evolve skills/code-review/SKILL.md --model sonnet --improve-model opus
 `,
     en: `
-omk improve — get next-step improvement advice from reports or traces
+omk evolve — auto-iterate a skill through multi-round evaluation loops
 
 Usage:
-  omk improve <report-id>             Print sample diagnostics and repair plan
-  omk improve plan <report-id>        Same as above, explicit plan subcommand
-  omk improve failures <report-id>    Cluster failed cases into root causes and fixes
-  omk improve samples [skill]         Generate or fill eval samples for a skill
-  omk improve skill <skill>           Try to improve a skill through evaluation loops
+  omk evolve <skill-path> [options]
+
+Options:
+  --rounds <n>                        Iteration rounds (default: 5)
+  --target <score>                    Target score
+  --model <name>                      Task executor model — runs eval samples each round (default: sonnet)
+  --improve-model <name>              Skill rewriter model — rewrites the skill each round (default: sonnet)
+  --judge-models <executor:model>     Single judge config (default: claude:haiku)
 
 Examples:
-  omk improve v1-vs-v2-20260505-1200
-  omk improve samples skills/code-review/SKILL.md
-  omk improve failures v1-vs-v2-20260505-1200
+  omk evolve skills/code-review/SKILL.md
+  omk evolve skills/code-review/SKILL.md --rounds 10 --target 4.5
+  omk evolve skills/code-review/SKILL.md --model sonnet --improve-model opus
 `,
   },
-  'cli.help.improve_plan': {
-    zh: [
-      '',
-      '用法: omk improve <reportId> [options]',
-      '      omk improve plan <reportId> [options]',
-      '',
-      '诊断用例集本身的质量问题: 区分度低 / 重复 / 歧义 / 成本异常 / 全 fail。',
-      '回答 "评测结论是否被坏用例污染"。',
-      '',
-      '选项:',
-      '  --reports-dir <dir>      报告存储目录',
-      '  --samples <path>         用例文件路径 (用于 near-duplicate 检测; 默认从 report.meta.request 读)',
-      '  --top <n>                每类只显示前 N 个 (默认 10, 0=全部)',
-      '  --duplicate-rouge <num>  near-duplicate ROUGE-1 阈值 (默认 0.7)',
-      '  --ambiguous-stddev <num> 歧义阈值, judge stddev (默认 1.0, 需要 --judge-repeat ≥ 2 数据)',
-      '  --cost-k <num>           成本异常倍数 vs 中位数 (默认 3)',
-      '  --latency-k <num>        耗时异常倍数 vs 中位数 (默认 3)',
-      '  --flat <num>             flat_scores 分差阈值 (默认 0.5)',
-      '',
-    ].join('\n'),
-    en: [
-      '',
-      'Usage: omk improve <reportId> [options]',
-      '       omk improve plan <reportId> [options]',
-      '',
-      'Diagnose quality issues in the sample set itself: low discrimination /',
-      'duplicates / ambiguity / cost anomalies / all-fail. Answers "is the verdict',
-      'tainted by bad samples?".',
-      '',
-      'Options:',
-      '  --reports-dir <dir>      report store dir',
-      '  --samples <path>         sample file path (for near-duplicate detection; defaults to report.meta.request)',
-      '  --top <n>                top N per category (default 10, 0=all)',
-      '  --duplicate-rouge <num>  near-duplicate ROUGE-1 threshold (default 0.7)',
-      '  --ambiguous-stddev <num> ambiguity threshold, judge stddev (default 1.0, requires --judge-repeat ≥ 2)',
-      '  --cost-k <num>           cost-outlier multiplier vs median (default 3)',
-      '  --latency-k <num>        latency-outlier multiplier vs median (default 3)',
-      '  --flat <num>             flat_scores spread threshold (default 0.5)',
-      '',
-    ].join('\n'),
-  },
-  'cli.help.improve_failures': {
-    zh: [
-      '',
-      '用法: omk improve failures <reportId> [options]',
-      '',
-      '把已有 report 的失败用例喂给一次 LLM 调用, 自动聚类并给出修复建议。',
-      '失败定义: compositeScore < threshold 或 ok=false。',
-      '',
-      '选项:',
-      '  --reports-dir <dir>      报告存储目录',
-      '  --judge-models <executor:model>  评委 (默认: 沿用 report.meta.judgeModels[0]; failures 仅支持单评委)',
-      '  --max-clusters <n>       最多聚成几类 (默认 5)',
-      '  --threshold <num>        compositeScore < threshold 算失败 (默认 3)',
-      '  --max-feed <n>           最多喂给 LLM 多少条 (默认 50, 超出取最差)',
-      '',
-    ].join('\n'),
-    en: [
-      '',
-      'Usage: omk improve failures <reportId> [options]',
-      '',
-      'Feed failing samples from an existing report to a single LLM call, auto-cluster',
-      'them, and produce per-cluster fix suggestions.',
-      'Failure definition: compositeScore < threshold or ok=false.',
-      '',
-      'Options:',
-      '  --reports-dir <dir>      report store dir',
-      '  --judge-models <executor:model>  Judge (default: from report.meta.judgeModels[0]; failures is single-judge only)',
-      '  --max-clusters <n>       max number of clusters (default 5)',
-      '  --threshold <num>        compositeScore < threshold counts as failure (default 3)',
-      '  --max-feed <n>           max samples to feed the LLM (default 50, takes the worst)',
-      '',
-    ].join('\n'),
-  },
-  'cli.help.improve_samples': {
+  'cli.help.sample': {
     zh: `
-omk improve samples — 生成或补齐 eval-samples 评测用例
+omk sample — 生成或补齐 eval-samples 评测用例
 
 用法：
-  omk improve samples <skill-path> [options]
-  omk improve samples --batch [--skill-dir <dir>] [options]
+  omk sample <skill-path> [options]
+  omk sample --batch [--skill-dir <dir>] [options]
 
 选项：
   --count <n>                         生成用例数量（默认：5）
@@ -889,161 +760,17 @@ omk improve samples — 生成或补齐 eval-samples 评测用例
   --skill-dir <path>                  skill 目录（batch 使用，默认：skills）
 `,
     en: `
-omk improve samples — generate or fill eval-samples test cases
+omk sample — generate or fill eval-samples test cases
 
 Usage:
-  omk improve samples <skill-path> [options]
-  omk improve samples --batch [--skill-dir <dir>] [options]
+  omk sample <skill-path> [options]
+  omk sample --batch [--skill-dir <dir>] [options]
 
 Options:
   --count <n>                         Number of test cases to generate (default: 5)
   --model <name>                      Generation model (default: sonnet)
   --batch                             Generate for skills that are missing eval-samples
   --skill-dir <path>                  Skill directory for batch mode (default: skills)
-`,
-  },
-  'cli.help.improve_skill': {
-    zh: `
-omk improve skill — 基于评测循环迭代改进 skill
-
-用法：
-  omk improve skill <skill-path> [options]
-
-选项：
-  --rounds <n>                        迭代轮数（默认：3）
-  --target <score>                    目标分数
-  --model <name>                      改进模型
-  --judge-models <executor:model>     单评委配置
-`,
-    en: `
-omk improve skill — improve a skill through evaluation loops
-
-Usage:
-  omk improve skill <skill-path> [options]
-
-Options:
-  --rounds <n>                        Iteration rounds (default: 3)
-  --target <score>                    Target score
-  --model <name>                      Improvement model
-  --judge-models <executor:model>     Single judge config
-`,
-  },
-  'cli.help.export': {
-    zh: `
-omk export — 导出可贴到 PR / CI / audit 的证据包
-
-	用法：
-	  omk export <report-id> [options]
-	  omk export diff <report-id> [report-id] [options]
-	  omk export verdict <report-id> [options]
-	  omk export saturation <report-id> [options]
-
-选项：
-	  --format <format>                   html / markdown / github-summary（默认：html）
-	  --out <path>                        输出文件；markdown / github-summary 未指定时输出到 stdout
-	  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
-
-示例：
-	  omk export v1-vs-v2-20260505-1200 --format github-summary
-	  omk export v1-vs-v2-20260505-1200 --format markdown --out report.md
-	  omk export diff v1-vs-v2-20260505-1200 --regressions-only
-	  omk export verdict v1-vs-v2-20260505-1200
-`,
-    en: `
-omk export — export evidence packs for PR / CI / audit
-
-	Usage:
-	  omk export <report-id> [options]
-	  omk export diff <report-id> [report-id] [options]
-	  omk export verdict <report-id> [options]
-	  omk export saturation <report-id> [options]
-
-Options:
-	  --format <format>                   html / markdown / github-summary (default: html)
-	  --out <path>                        Output file; markdown / github-summary print to stdout by default
-	  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
-
-Examples:
-	  omk export v1-vs-v2-20260505-1200 --format github-summary
-	  omk export v1-vs-v2-20260505-1200 --format markdown --out report.md
-	  omk export diff v1-vs-v2-20260505-1200 --regressions-only
-	  omk export verdict v1-vs-v2-20260505-1200
-`,
-  },
-  'cli.help.export_diff': {
-    zh: `
-omk export diff — 导出样本级或报告级差异
-
-用法：
-  omk export diff <report-id> [--variant <name>] [--regressions-only] [--top <n>]
-  omk export diff <report-id-a> <report-id-b>
-
-选项：
-  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
-  --variant <name>                    样本级 diff 的实验组 variant
-  --regressions-only                  只显示回退用例
-  --top <n>                           最多显示 N 条
-`,
-    en: `
-omk export diff — export sample-level or cross-report differences
-
-Usage:
-  omk export diff <report-id> [--variant <name>] [--regressions-only] [--top <n>]
-  omk export diff <report-id-a> <report-id-b>
-
-Options:
-  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
-  --variant <name>                    Treatment variant for sample-level diff
-  --regressions-only                  Show regressions only
-  --top <n>                           Show at most N rows
-`,
-  },
-  'cli.help.export_verdict': {
-    zh: `
-omk export verdict — 输出已有报告的一行 ship/no-ship verdict
-
-用法：
-  omk export verdict <report-id> [options]
-
-选项：
-  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
-  --threshold <number>                三层 gate 阈值
-  --trivial-diff <number>             实际可忽略 diff
-  --verbose                           输出完整 verdict 解释
-`,
-    en: `
-omk export verdict — print a one-line ship/no-ship verdict for an existing report
-
-Usage:
-  omk export verdict <report-id> [options]
-
-Options:
-  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
-  --threshold <number>                Three-layer gate threshold
-  --trivial-diff <number>             Practically negligible diff
-  --verbose                           Print the full verdict explanation
-`,
-  },
-  'cli.help.export_saturation': {
-    zh: `
-omk export saturation — 输出重复评测的饱和度证据
-
-用法：
-  omk export saturation <report-id> [--variant <name>]
-
-选项：
-  --reports-dir <path>                报告目录（默认：~/.oh-my-knowledge/reports）
-  --variant <name>                    只输出指定 variant
-`,
-    en: `
-omk export saturation — print saturation evidence from repeated evaluations
-
-Usage:
-  omk export saturation <report-id> [--variant <name>]
-
-Options:
-  --reports-dir <path>                Reports directory (default: ~/.oh-my-knowledge/reports)
-  --variant <name>                    Print only one variant
 `,
   },
   'cli.help.studio': {
@@ -1083,27 +810,6 @@ Examples:
   omk studio --port 7798
   omk studio --no-open
 `,
-  },
-  // sample design coverage block strings
-  'cli.diagnose.coverage_header': {
-    zh: '用例设计覆盖度 (Sample design coverage):',
-    en: 'Sample design coverage:',
-  },
-  'cli.diagnose.coverage_unspecified': {
-    zh: '(未声明)',
-    en: '(unspecified)',
-  },
-  'cli.diagnose.coverage_chars': {
-    zh: '字符',
-    en: 'chars',
-  },
-  'cli.diagnose.coverage_hint_empty': {
-    zh: 'ℹ 该用例集未声明任何 capability / difficulty / construct / provenance 元数据。详见 docs/sample-design-spec.md',
-    en: 'ℹ No samples in this set declare capability / difficulty / construct / provenance metadata. See docs/sample-design-spec.md',
-  },
-  'cli.diagnose.coverage_declared': {
-    zh: '声明',
-    en: 'declared',
   },
   // ============ omk doctor 健康检查 ============
   'cli.doctor.rule.skill_readable': {

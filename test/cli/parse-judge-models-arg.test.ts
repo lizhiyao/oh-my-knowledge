@@ -4,8 +4,7 @@ import { parseJudgeModelsArg } from '../../src/cli/parse-run-config.js';
 
 /**
  * `parseJudgeModelsArg` 是 `--judge-models executor:model[,executor:model,...]`
- * CLI 参数的统一解析器，`eval` / `improve skill` / `improve failures`
- * 共享同一份解析。
+ * CLI 参数的统一解析器，`eval` / `evolve` 共享同一份解析。
  */
 describe('parseJudgeModelsArg', () => {
   it('单条 executor:model 解析为 1-entry 数组', () => {
