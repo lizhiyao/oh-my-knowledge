@@ -57,6 +57,18 @@ const skippedRule: DoctorRule = {
   },
 };
 
+// 关键回归夹具:severity=warn 但 status=fail。
+// 老 classifySkillStatus 只把 severity=fatal && status=fail 算 fail、status=warn
+// 算 warn,这种组合会被吃成 pass,gate 静默放行。修复后必须至少 roll 到 warn。
+const warnSeverityFailingRule: DoctorRule = {
+  id: 'test_warn_fail',
+  severity: 'warn',
+  labelKey: 'cli.doctor.rule.skill_readable',
+  async check() {
+    return { status: 'fail', message: 'warn-severity dimension reported fail' };
+  },
+};
+
 describe('resolveDoctorTargets', () => {
   it('resolves all variants in a directory', () => {
     const artifacts = resolveDoctorTargets(EXAMPLE_SKILLS_DIR, '/tmp');
@@ -187,6 +199,27 @@ describe('runDoctor', () => {
       rules: [warningRule],
     });
     assert.equal(report.outcome, 'warnings_only');
+  });
+
+  it('rolls warn-severity status=fail up to skill warn (not pass) — regression for gate-silent bug', async () => {
+    // 没修复前:health composer 对 warn 级维度(doc-clarity / instr-precision /
+    // tool-conventions / examples)判"不健康"会产 status=fail,但
+    // classifySkillStatus 只接 fatal-fail 当 fail、status=warn 当 warn,
+    // 这条结果两边都不挂,skill 被判 pass,doctor --gate exit 0 静默放行。
+    const report = await runDoctor({
+      target: EXAMPLE_SKILLS_DIR,
+      cwd: '/tmp',
+      executorName: 'claude',
+      model: 'sonnet',
+      timeoutMs: 8000,
+      lang: 'zh',
+      rules: [warnSeverityFailingRule],
+    });
+    assert.equal(report.outcome, 'warnings_only', 'warn-severity fail must surface as warnings_only outcome');
+    for (const skill of report.skills) {
+      assert.equal(skill.status, 'warn', 'skill status must roll up to warn, not pass');
+    }
+    assert.equal(report.totals.pass, 0, 'no skill should be classified pass when a warn-severity rule fails');
   });
 
   it('catches rule exceptions and marks as fail rather than crashing the engine', async () => {

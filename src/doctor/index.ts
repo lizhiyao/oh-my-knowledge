@@ -76,11 +76,19 @@ export function resolveDoctorTargets(target: string | null | undefined, cwd: str
 // ---------------------------------------------------------------------------
 
 function classifySkillStatus(results: DoctorRuleResult[]): DoctorSkillStatus {
+  // status=fail 时按 severity 分流:fatal 升 skill fail,非 fatal(warn / info)
+  // 至少 roll up 到 skill warn — 否则 health composer 对 warn 级维度产出
+  // status=fail 会被错误聚合成 pass,gate 静默放行。status=warn 一律 roll
+  // 到 skill warn(severity 不再作权重二次降级)。
   let hasFatalFail = false;
   let hasWarn = false;
   for (const r of results) {
-    if (r.severity === 'fatal' && r.status === 'fail') hasFatalFail = true;
-    if (r.status === 'warn') hasWarn = true;
+    if (r.status === 'fail') {
+      if (r.severity === 'fatal') hasFatalFail = true;
+      else hasWarn = true;
+    } else if (r.status === 'warn') {
+      hasWarn = true;
+    }
   }
   if (hasFatalFail) return 'fail';
   if (hasWarn) return 'warn';
