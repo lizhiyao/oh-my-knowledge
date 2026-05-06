@@ -75,7 +75,7 @@ ${skillContent}
   const { stripped } = sanitizeGeneratedSamples(samples);
   if (stripped.length > 0) {
     process.stderr.write(
-      `[omk improve samples] LLM-output 含 ${stripped.length} 个非法元数据字段，已剥离避免污染：\n  - ${stripped.join('\n  - ')}\n`,
+      `[omk sample] LLM-output 含 ${stripped.length} 个非法元数据字段，已剥离避免污染：\n  - ${stripped.join('\n  - ')}\n`,
     );
   }
 

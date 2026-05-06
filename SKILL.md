@@ -4,7 +4,7 @@ description: |
   oh-my-knowledge 知识载体评测工具的智能代理。评测 skill（系统提示词）质量，对比不同版本效果，自动迭代改进。
   Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"生成评测用例"、"omk"。
 user-invocable: true
-argument-hint: "<init|doctor|eval|observe|improve|export|studio> [options]"
+argument-hint: "<init|doctor|eval|observe|evolve|sample|studio> [options]"
 ---
 
 # OMK — 知识载体评测
@@ -31,8 +31,7 @@ npm i oh-my-knowledge -g
 | 线上观测/真实 session 分析 | → 运行 observe |
 | 改进/优化 skill | → 自动迭代改进 |
 | 生成评测用例 | → 生成评测用例 |
-| 查看报告 | → 打开本地工作台 |
-| 导出报告 | → 导出 HTML |
+| 查看报告 / 看 verdict / 看回退样本 | → 打开本地工作台 |
 
 如果用户意图不明确，先扫描当前项目结构（skills/ 目录和 eval-samples 文件），然后推荐最合适的操作。
 
@@ -48,9 +47,10 @@ npm i oh-my-knowledge -g
 根据检测结果决定：
 - 没有 omk 项目结构 → 建议 `omk init <dir>` 初始化
 - 有多个 skill + 各自的 eval-samples → 建议 `--batch` 批量模式
-- 有多个 skill + 共享 eval-samples → 建议版本对比模式
-- 只有一个 skill → 建议 `baseline` 对照或 `improve skill` 改进
-- 没有 eval-samples → 建议先 `improve samples` 生成
+- 有多个 skill + 共享 eval-samples → 建议版本对比模式（`--control v1 --treatment v2`）
+- **只有一个 skill，想知道它有没有用（必要性测试）→ `omk eval --control baseline --treatment <variant>`**（`baseline` 是 omk 保留 variant 名，代表「不注入 skill 的裸基线」，无需自己创建）
+- 只有一个 skill，想多轮自动迭代改进它 → `omk evolve <skill-path>`
+- 没有 eval-samples → 建议先 `omk sample <skill-path>` 生成
 - 用户关心真实使用效果、失败率、耗时、token 或知识缺口 → 建议 `observe`
 
 ## 第四步：执行操作
@@ -89,22 +89,31 @@ omk doctor --static-only
 
 ### 评测 Skill
 
-```bash
-# 自动发现 skills/ 下的所有 skill
-omk eval
+**最常见入口：单 skill 必要性测试**（用户手上一个 skill，想知道「加上它到底有没有用」）：
 
-# 对照实验:control 是基线/旧版,treatment 是要测的新版
+```bash
 omk eval --control baseline --treatment my-skill
+```
+
+`baseline` 是 omk 保留 variant 名，代表「不注入 system prompt 的裸基线」 —— **不需要在 `skills/` 下创建任何 baseline 文件**，omk 会自动跑一遍裸模型作为对照。`my-skill` 替换成 `skills/` 目录下的 variant 名（例如 `skills/code-review-v1.md` → `code-review-v1`）。
+
+其他场景：
+
+```bash
+# 多版本 A/B（新旧 skill 直接对比，不走 baseline）
 omk eval --control v1 --treatment v2
 
 # 多 treatment 同时跑
 omk eval --control baseline --treatment v1,v2,v3
 
-# 跨 git 版本对比(从历史读取旧版本)
+# 跨 git 版本对比（从历史读取旧版本）
 omk eval --control git:my-skill --treatment my-skill
 
-# 批量评测:每个 skill 独立和 baseline 对比,需要每个 skill 配对 {name}.eval-samples.json
+# 批量评测：每个 skill 独立和 baseline 对比，需要每个 skill 配对 {name}.eval-samples.json
 omk eval --batch
+
+# 自动发现 skills/ 下的所有 skill
+omk eval
 
 # 先预览再执行
 omk eval --dry-run
@@ -136,50 +145,37 @@ omk observe ~/.claude/projects/-Users-you-Documents-my-project --skills audit,po
 ### 自动迭代改进
 
 ```bash
-omk improve skill skills/my-skill.md --rounds 5
-omk improve skill skills/my-skill.md --rounds 10 --target 4.5
+omk evolve skills/my-skill.md --rounds 5
+omk evolve skills/my-skill.md --rounds 10 --target 4.5
 ```
+
+`evolve` 是多轮自动迭代:每一轮跑一次 eval、判读 verdict、改写 SKILL.md，直到达到 `--target` 或 `--rounds` 上限。耗时几分钟到几十分钟，烧 LLM 钱按 `rounds × samples × variants` 计。
 
 ### 生成评测用例
 
 ```bash
-# 为当前项目生成评测用例
-omk improve samples
+# 为指定 skill 生成
+omk sample skills/my-skill.md
 
-# 为所有缺少评测集的 skill 批量生成(--batch 模式)
-omk improve samples --batch
+# 为所有缺少评测集的 skill 批量生成
+omk sample --batch
 ```
 
-### 查看/导出报告
+非 batch 模式必须传 skill 路径,无参数会报「请指定 skill 文件路径」。
+
+### 查看报告
 
 ```bash
-# 打开本地工作台
+# 打开本地工作台浏览所有报告:verdict / 样本得分 / 跨样本回退 / 饱和曲线都在 UI
 omk studio
 omk studio --no-open
-
-# 导出为独立 HTML
-omk export <reportId> --format html
 ```
 
-### 跑完后的深入分析(用户问"结论靠不靠谱"时主动用)
-
-```bash
-# 一行 ship/no-ship 结论,聚合所有统计指标
-omk export verdict <reportId>
-
-# 诊断样本质量(区分度低 / 重复 / 歧义 / 全 fail 等 7 类问题)
-omk improve plan <reportId>
-
-# 失败样本自动 LLM 聚类 + 修复建议
-omk improve failures <reportId>
-
-# 跨样本钻取(--regressions-only 只看回退的样本)
-omk export diff <reportId>
-omk export diff <reportId> --regressions-only --top 10
-
-# 对比两份报告(跨时间)
-omk export diff <reportId1> <reportId2>
-```
+报告全部在 studio 里看。omk 没有 CLI 导出/分析子命令:
+- 想要 ship/no-ship 一行结论:`omk eval` 末尾输出已含 verdict,exit code 也按 verdict 走 (PROGRESS=0,其余非 0)
+- 想看回退样本 / 饱和曲线 / 跨报告 diff:都在 studio
+- 想分享 HTML 报告:studio 网页用浏览器「保存网页 → 完整存档单文件」即可
+- 想给 CI 喂结论:用 `omk eval` 的 exit code 做 gate,需要文字摘要自己 jq report JSON
 
 ### 引入人工锚点验证评委(--gold-dir 工作流)
 
@@ -216,7 +212,7 @@ v2 比 v1 更好：
 - 建议：v2 可以上线，但 s003（XSS 检测）仍然有提升空间
 ```
 
-### improve skill 模式
+### evolve 模式
 
 总结进化过程：起始分数 → 最终分数，接受/拒绝了哪些改进，总花费。如果用户想看具体改了什么，引导查看 `skills/evolve/` 目录下的版本文件。
 
@@ -243,5 +239,5 @@ v2 比 v1 更好：
 
 - 评测需要调用 LLM，会产生费用。运行前告知用户预估成本（样本数 × 变体数 × 约 $0.01-0.05/次）。担心爆费可加 `--budget-usd 5` 设硬阈值
 - 首次使用建议先 `--dry-run` 预览任务计划
-- `omk improve skill` 会修改原始 skill 文件，原始版本保存在 `skills/evolve/*.r0.md`
+- `omk evolve` 会修改原始 skill 文件，原始版本保存在 `skills/evolve/*.r0.md`
 - 详细命令参考见项目 [README.md](README.md) 的 CLI reference 章节

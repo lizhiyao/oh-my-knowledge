@@ -37,11 +37,11 @@ omk eval --control code-review-v1 --treatment code-review-v2    # → 5 分钟�
 
 ```bash
 /omk eval              # 评测当前项目的 artifact
-/omk improve skill     # 自动迭代改进 artifact
-/omk improve samples   # 生成评测用例
+/omk evolve            # 多轮自动迭代改进 skill
+/omk sample            # 生成或补齐评测用例
 ```
 
-或直接说"帮我评测 v1 和 v2 的差异"、"改进一下这个 artifact"，omk 会自动理解意图并调用对应命令。
+这些 slash command 是自然语言入口 —— agent 会从对话上下文里推断要操作哪个 skill，所以一般不用显式传路径。（下面 Codex 段落给出 `omk evolve <skill>` 的裸 CLI 形式。）也可以直接说「帮我评测 v1 和 v2 的差异」、「改进一下这个 artifact」，omk 会自动理解意图并调用对应命令。
 
 ### 在 Codex 中使用
 
@@ -49,8 +49,8 @@ Codex 默认不支持 `/omk ...` 这种 Claude Code 风格的 slash command。�
 
 ```bash
 omk eval
-omk improve skill skills/my-skill.md
-omk improve samples skills/my-skill.md
+omk evolve skills/my-skill.md
+omk sample skills/my-skill.md
 ```
 
 也可以直接用自然语言描述目标，例如"比较 v1 和 v2 的评测差异"、"为这个 skill 生成评测用例"。
@@ -95,12 +95,10 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 | **多执行器** | 支持 Claude CLI / Claude SDK / Codex CLI / Codex SDK / OpenAI / Gemini 及自定义命令 |
 | **21+ 种断言** | 包含子串、正则、JSON Schema、ROUGE/BLEU/Levenshtein 相似度、Agent 工具调用、语义相似度、自定义函数等 |
 | **统计严谨性** | Bootstrap CI / Krippendorff α / 长度去偏 / 饱和曲线 —— 全部默认开。[详情 →](docs/zh/statistical-rigor.md) |
-| **用例质量诊断** | `omk improve <id>` 7 类 issue（区分度低 / 重复 / 歧义 / 成本异常 / 全 fail 等）+ healthScore 0-100 |
-| **失败聚类 + 根因** | `omk improve failures <id>` 单 LLM 调用聚类失败用例 + 每 cluster 给修复建议 |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` 三 metric — 反幻觉 + 切题度 + context 覆盖，自动继承长度去偏 |
 | **预算硬阈值** | `--budget-usd / --budget-per-sample-usd / --budget-per-sample-ms` 总成本 + 单用例成本/耗时上限，超出中止保留 partial report |
 | **用例隔离 (construct validity)** | `--strict-baseline` （默认开） 三堵 baseline 拿到被测 skill 的污染路径：(1) SDK skill auto-discovery (2) subagent Skill 工具调用 (3) cwd 文件系统（避免 baseline 顺 `skills/<name>/` symlink 直接 Read 到 SKILL.md）。eval.yaml `allowedSkills` 支持 per-variant 白名单 |
-| **用例设计科学性 (sample design science)** | Sample schema 加 `capability` / `difficulty` / `construct` / `provenance` 元数据字段（HF Dataset Cards 风）。`omk improve` 输出 coverage 分桶 + 检测 `rubric_clarity_low` / `capability_thin` 两类新 issue。`omk improve samples` 自动给生成的用例打 provenance。详见 [docs/sample-design-spec.md](docs/sample-design-spec.md)，含 8 条行业 gap(HELM / MMLU-Pro / Construct Validity / IRT / Dataset Cards / Adversarial)的 omk v1 映射 |
+| **用例设计科学性 (sample design science)** | Sample schema 加 `capability` / `difficulty` / `construct` / `provenance` 元数据字段（HF Dataset Cards 风），studio 输出 coverage 分桶 + `rubric_clarity_low` / `capability_thin` 两类 issue。`omk sample` 自动给生成的用例打 provenance。详见 [docs/sample-design-spec.md](docs/sample-design-spec.md)，含 8 条行业 gap(HELM / MMLU-Pro / Construct Validity / IRT / Dataset Cards / Adversarial)的 omk v1 映射 |
 | **多评委 ensemble** | `--judge-models claude:opus,openai:gpt-4o` 跨厂商评分 + agreement 度量 |
 | **MCP URL 获取** | 通过 MCP Server 获取私有文档 URL 内容（SSO 保护的知识库等） |
 | **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
@@ -359,7 +357,7 @@ export default function(output, { sample, assertion }) {
 
 ## CLI 参考
 
-omk 的公开 CLI 按知识载体工作流组织：初始化、健康检查、离线评测、线上观测、改进建议、证据导出、本地工作台。
+omk 的公开 CLI 由 7 个顶层命令构成完整闭环：`init`（脚手架）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
 
 ### `omk init`
 
@@ -389,11 +387,11 @@ LLM 健康度审计：单次 LLM 会话产出 7 个内置维度的健康度评�
 ### `omk eval`
 
 ```bash
-omk eval --control code-review-v1 --treatment code-review-v2
+omk eval --control baseline --treatment my-skill                # 单 skill 必要性测试（baseline 是保留 variant，代表「不注入 skill」）
+omk eval --control code-review-v1 --treatment code-review-v2    # 多版本 A/B
 omk eval --config eval.yaml
 omk eval --batch
 omk eval gold compare <report-id> --gold-dir gold-dataset
-omk eval debias length <report-id>
 ```
 
 运行离线评测，应用 verdict gate，持久化报告，并用 exit code 表示 ship/no-ship。这个工作流默认开启 bootstrap CI。
@@ -437,30 +435,23 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 
 把真实 Claude Code session trace 转成 skill 健康度报告：知识使用、gap 信号、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
 
-### `omk improve`
+### `omk evolve`
 
 ```bash
-omk improve <report-id>             # 样本诊断和修复计划
-omk improve plan <report-id>        # 显式 repair-plan 形式
-omk improve failures <report-id>    # 聚类失败样本并给根因
-omk improve samples [skill]         # 生成或补齐 eval samples
-omk improve skill <skill>           # 通过评测循环迭代 skill
+omk evolve <skill>                  # 多轮自动迭代 skill
+omk evolve skills/foo.md --rounds 10 --target 4.5
 ```
 
-在 `omk eval` 或 `omk observe` 之后用它决定下一步改什么。自动生成的 sample assertions 使用英文、数字或代码 token，便于跨中英文输出比较。
+让 skill 跑 eval → judge → 改写 SKILL.md 的多轮闭环，直到达到 `--target` 或 `--rounds` 上限。耗时按 `轮数 × 样本 × 变体` 累加，几分钟到几十分钟级别。原始 skill 文件版本保存在 `skills/evolve/*.r0.md`。
 
-### `omk export`
+### `omk sample`
 
 ```bash
-omk export <report-id> --format html
-omk export <report-id> --format markdown --out report.md
-omk export <report-id> --format github-summary
-omk export diff <report-id> --regressions-only
-omk export verdict <report-id>
-omk export saturation <report-id>
+omk sample <skill>                  # 为单个 skill 生成或补齐评测用例
+omk sample --batch                  # 为目录下缺评测集的 skill 批量生成
 ```
 
-导出可贴到 PR、CI summary 和审计材料里的证据。HTML 会写 standalone report 文件；markdown 和 GitHub summary 默认输出到 stdout，除非传 `--out`。样本/报告差异、已持久化 verdict、saturation 检查也都归在 export 子树下。
+一次性生成。自动给生成的用例打 `provenance`。生成的 assertions 使用英文 / 数字 / 代码 token，便于跨中英文输出对比。
 
 ### `omk studio`
 
@@ -471,7 +462,7 @@ omk studio --reports-dir ~/.oh-my-knowledge/reports
 omk studio --no-open
 ```
 
-启动本地知识工作台，用来浏览报告和观测分析。
+启动本地知识工作台浏览报告。verdict、样本回退、跨样本 diff、饱和曲线、单样本 drill-down 全部在 studio UI 里 —— omk 不提供 CLI 导出 / 分析子命令。CI gate 用 `omk eval` 的 exit code（PROGRESS 退 0、其他非 0），需要文字摘要自己 `jq` report JSON。
 
 ## 执行器
 
