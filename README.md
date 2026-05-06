@@ -61,7 +61,7 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 
 ## Key features
 
-- **LLM health audit** — `omk doctor` runs a single LLM session that emits a multi-dimension report; 7 builtin dimensions (trigger & boundary / doc clarity / instruction precision / dependency / tool conventions / security & compliance / example completeness) each get a *healthy / sub-healthy / unhealthy / N-A* grade plus findings and suggestions; dimensions are extensible, and `--html` produces a visual report. `omk bench run` / `omk eval` still run static readability / metadata / dependency gates internally to protect eval quality (separation of roles: doctor = audit, bench = eval)
+- **LLM health audit** — `omk doctor` runs a single LLM session that emits a multi-dimension report; 7 builtin dimensions (trigger & boundary / doc clarity / instruction precision / dependency / tool conventions / security & compliance / example completeness) each get a *healthy / sub-healthy / unhealthy / N-A* grade plus findings and suggestions; dimensions are extensible, and `--html` produces a visual report. `omk eval` still runs static readability / metadata / dependency gates internally to protect eval quality (separation of roles: doctor = audit, eval = evaluate)
 - **Controlled-variable offline eval** — fix the model and samples, vary only the artifact; works with Claude Code skills, CLAUDE.md prompts, RAG knowledge bases, or any markdown-based instruction
 - **Six-dimension scoring** — separate signals for Fact / Behavior / LLM-judge / Cost / Efficiency / Stability, so a regression in one axis isn't hidden by gains in another
 - **Production session observability** — parse Claude Code session JSONL traces, measure per-skill failure rate, latency, token cost, and knowledge-gap signals on real user sessions
@@ -381,7 +381,7 @@ omk doctor --gate; echo $?              # silent gate; exit 1 if unhealthy
 
 LLM health audit: a single LLM session emits per-dimension grades, findings, and suggestions for the 7 builtin dimensions; the HTML report sorts dimensions fail→warn→pass→skipped with errors first within each dim. Dimensions are extensible — call `registerHealthDimension` in your own code and the new section is folded into the same LLM call's prompt and report (order = registration order).
 
-`omk bench run` / `omk eval` still run their own static readability / metadata / dependency / samples-contract gates internally to protect eval quality; that path is separate from this user-facing `omk doctor` command and the two roles do not overlap.
+`omk eval` still runs its own static readability / metadata / dependency / samples-contract gates internally to protect eval quality; that path is separate from this user-facing `omk doctor` command and the two roles do not overlap.
 
 ### `omk eval`
 

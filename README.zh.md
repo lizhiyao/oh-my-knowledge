@@ -61,7 +61,7 @@ omk improve samples skills/my-skill.md
 
 ## 核心能力
 
-- **LLM 健康度审计** — `omk doctor` 用单次 LLM 会话产出多维度健康度报告，7 个内置维度（触发与边界 / 文档清晰 / 指令精确性 / 依赖检查 / 工具规范 / 安全与合规 / 示例完备）独立给「健康 / 亚健康 / 不健康 / 不适用」+ findings + 改进建议；维度可扩展，`--html` 产可视化报告。`omk bench run` / `omk eval` 内部仍跑静态可读性、元数据、依赖 gate 把关评测质量（角色分离：doctor=审计，bench=评测）
+- **LLM 健康度审计** — `omk doctor` 用单次 LLM 会话产出多维度健康度报告，7 个内置维度（触发与边界 / 文档清晰 / 指令精确性 / 依赖检查 / 工具规范 / 安全与合规 / 示例完备）独立给「健康 / 亚健康 / 不健康 / 不适用」+ findings + 改进建议；维度可扩展，`--html` 产可视化报告。`omk eval` 内部仍跑静态可读性、元数据、依赖 gate 把关评测质量（角色分离：doctor=审计，eval=评测）
 - **控制变量离线评测** — 固定模型和用例，只变知识载体；兼容 Claude Code skill、CLAUDE.md prompt、RAG 知识库等任何 markdown 形式的指令
 - **六维独立打分** — Fact / Behavior / LLM-judge / Cost / Efficiency / Stability 分别出信号，单一维度的回退不会被其他维度的收益掩盖
 - **线上 session 观测** — 解析 Claude Code session JSONL，在真实用户会话上测量各 skill 的失败率、耗时、token 成本和知识缺口信号
@@ -381,7 +381,7 @@ omk doctor --gate; echo $?              # 静默门禁，不健康时 exit 1
 
 LLM 健康度审计：单次 LLM 会话产出 7 个内置维度的健康度评分 + findings + 改进建议；HTML 报告按 fail→warn→pass→skipped 排序，错误 finding 优先。维度可扩展（在自己代码里调 `registerHealthDimension`，自动并入同一次 LLM 调用的 prompt 与报告，顺序 = 注册顺序）。
 
-`omk bench run` / `omk eval` 内部继续跑静态 readability / metadata / dependency / samples 契约 gate 保护评测质量，这条路径与用户入口的 `omk doctor` 角色分离，互不干扰。
+`omk eval` 内部继续跑静态 readability / metadata / dependency / samples 契约 gate 保护评测质量，这条路径与用户入口的 `omk doctor` 角色分离，互不干扰。
 
 ### `omk eval`
 

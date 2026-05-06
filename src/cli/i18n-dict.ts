@@ -1350,9 +1350,9 @@ doctor = LLM 健康度体检 (单次 LLM 会话):
   - 每维度独立给 健康/亚健康/不健康/不适用 + findings + 改进建议
   - HTML 报告: 维度按 fail→warn→pass→skipped 排, 错误 finding 排前面
 
-注: omk bench run / bench gate 内部仍跑静态 skill-readability/metadata/dependency
-gate 保护评测质量, 不走 omk doctor 这条 LLM 路径 (角色分离: doctor=审计, bench=评测)。
-LLM 连通性可用 bench --skip-connectivity 跳过 (--resume 时自动)。
+注: omk eval 内部仍跑静态 skill-readability/metadata/dependency
+gate 保护评测质量, 不走 omk doctor 这条 LLM 路径 (角色分离: doctor=审计, eval=评测)。
+LLM 连通性可用 omk eval --skip-connectivity 跳过 (--resume 时自动)。
 `.trim() + '\n',
     en: `
 oh-my-knowledge — omk doctor health audit (LLM-judge)
@@ -1387,9 +1387,9 @@ doctor = LLM health audit (single LLM session):
   - Each dim graded healthy / sub-healthy / unhealthy / N-A + findings + suggestions
   - HTML report: dims sorted fail→warn→pass→skipped; errors first within each dim
 
-Note: omk bench run / bench gate still run static skill-readability/metadata/dependency
-gates internally (separate from this doctor command). Roles: doctor=audit, bench=eval.
-LLM connectivity for bench can be skipped with --skip-connectivity (auto on --resume).
+Note: omk eval still runs static skill-readability/metadata/dependency gates
+internally (separate from this doctor command). Roles: doctor=audit, eval=evaluate.
+LLM connectivity for omk eval can be skipped with --skip-connectivity (auto on --resume).
 `.trim() + '\n',
   },
   'cli.doctor.no_skill_found': {

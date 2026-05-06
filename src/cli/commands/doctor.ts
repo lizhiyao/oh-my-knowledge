@@ -73,7 +73,7 @@ export async function execute(argv: string[]): Promise<void> {
   const timeoutRaw = values.timeout as string | undefined;
   // omk doctor CLI 默认就是 LLM 健康度审计:跑 7 内置维度 + 用户注册的自定义维度。
   // 4 条静态 rule(skill_readable / skill_metadata / dependencies_present /
-  // samples_contract_aligned)在 bench run/gate 内部仍当强制 gate(代码层保留),
+  // samples_contract_aligned)在 omk eval 内部仍当强制 gate(代码层保留),
   // omk doctor 这个用户入口直接跳过它们,聚焦 LLM 深度审计。
   const runHealthCheck = true;
   // 单次 LLM 会话(7+N 维度,内部多 turn)默认 timeout 600s(10 min)。
@@ -105,7 +105,7 @@ export async function execute(argv: string[]): Promise<void> {
   const { renderDoctorReportText, renderDoctorReportJson } = await import('../../doctor/renderer.js');
 
   // 过滤掉所有静态 rule,只留 composer(健康度专属角色)。
-  // 静态 rule 是 bench run/gate 的强制 gate,用户用 omk doctor 时不接触它们。
+  // 静态 rule 是 omk eval 的强制 gate,用户用 omk doctor 时不接触它们。
   const { getRegisteredRules } = await import('../../doctor/rules.js');
   const { isComposerRule } = await import('../../types/doctor.js');
   const rulesOverride = getRegisteredRules().filter(isComposerRule);
