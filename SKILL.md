@@ -74,7 +74,7 @@ omk doctor
 # 体检单个 skill 文件
 omk doctor skills/my-skill.md
 
-# CI 门禁模式（不健康时 exit 1）
+# CI 门禁模式（fatal 问题 exit 1，警告不阻断）
 omk doctor --gate
 
 # 离线模式：CI 节点没装 claude / codex、本地断网时跑纯静态检查

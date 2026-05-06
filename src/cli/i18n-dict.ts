@@ -169,7 +169,7 @@ export type CliMessageKey =
   | 'cli.doctor.rule.dependencies'
   | 'cli.doctor.rule.samples_contract'
   | 'cli.doctor.rule.skill_health_check'
-  // doctor — skill_health composer (opt-in --health)
+  // doctor — skill_health composer (CLI default; --static-only disables it)
   | 'cli.doctor.health.skipped'
   | 'cli.doctor.health.no_dimensions'
   | 'cli.doctor.health.fail.executor'
@@ -1148,10 +1148,10 @@ Examples:
     zh: '健康度体检',
     en: 'Health check',
   },
-  // ============ skill_health composer (opt-in --health) ============
+  // ============ skill_health composer (CLI default; --static-only disables it) ============
   'cli.doctor.health.skipped': {
-    zh: '健康度体检未启用(加 --health 开启)',
-    en: 'health check not enabled (pass --health to enable)',
+    zh: '健康度体检已跳过(runHealthCheck=false)',
+    en: 'health check skipped (runHealthCheck=false)',
   },
   'cli.doctor.health.no_dimensions': {
     zh: '没有注册任何健康度维度,跳过',
@@ -1330,7 +1330,7 @@ oh-my-knowledge — omk doctor 健康度体检 (LLM-judge)
 
 选项:
   --json                 把 DoctorReport 打到 stdout(CI 消费用)
-  --gate                 静默模式: 通过 exit 0 / 不通过 exit 1, 仅 stderr 出问题摘要
+  --gate                 静默模式: fatal 问题 exit 1; warnings_only 仍 exit 0, 仅 stderr 出摘要
   --executor <name>      LLM executor (默认 claude, 可换 anthropic-api/codex 等)
   --model <name>         模型 (默认 sonnet)
   --samples <path>       显式指定评测用例文件
@@ -1342,7 +1342,7 @@ oh-my-knowledge — omk doctor 健康度体检 (LLM-judge)
 示例:
   omk doctor my-skill --html /tmp/report.html             # 深度体检 + HTML 报告 (默认)
   omk doctor examples/code-review/skills --json > r.json   # JSON 给 CI / 外部工具消费
-  omk doctor --gate; echo $?                               # CI 模式: exit 1 if 任一 skill 不健康
+  omk doctor --gate; echo $?                               # CI 模式: fatal 问题 exit 1, 警告不阻断
   omk doctor --static-only                                 # 无 LLM 环境 (CI / 断网) 跑纯静态检查
 
 doctor = LLM 健康度体检 (单次 LLM 会话):
@@ -1368,7 +1368,7 @@ Arguments:
 
 Options:
   --json                 Print DoctorReport JSON to stdout (CI-friendly)
-  --gate                 Silent mode: exit 0 if pass, exit 1 if fail; brief stderr summary
+  --gate                 Silent mode: exit 1 only on fatal failure; warnings_only exits 0
   --executor <name>      LLM executor (default 'claude'; switchable to anthropic-api/codex etc)
   --model <name>         model name (default 'sonnet')
   --samples <path>       Explicit eval samples file
@@ -1380,7 +1380,7 @@ Options:
 Examples:
   omk doctor my-skill --html /tmp/report.html             # deep audit + HTML report (default)
   omk doctor examples/code-review/skills --json > r.json   # JSON for CI / external tools
-  omk doctor --gate; echo $?                               # CI mode: exit 1 if any unhealthy
+  omk doctor --gate; echo $?                               # CI mode: fatal failures exit 1; warnings do not block
   omk doctor --static-only                                 # offline (CI / no LLM) static checks only
 
 doctor = LLM health audit (single LLM session):

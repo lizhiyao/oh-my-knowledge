@@ -376,7 +376,7 @@ omk doctor                              # audit current dir / ./skills
 omk doctor skills/v1.md                 # audit one skill file
 omk doctor skills/ --html report.html   # produce a visual HTML report
 omk doctor skills/ --json > r.json      # JSON for CI / external tools
-omk doctor --gate; echo $?              # silent gate; exit 1 if unhealthy
+omk doctor --gate; echo $?              # silent gate; exit 1 on fatal failures, warnings do not block
 omk doctor --static-only                # offline mode: static checks only, no LLM call
 ```
 

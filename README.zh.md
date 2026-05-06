@@ -376,7 +376,7 @@ omk doctor                              # 体检当前目录或 ./skills
 omk doctor skills/v1.md                 # 体检单个 skill
 omk doctor skills/ --html report.html   # 产 HTML 可视化报告
 omk doctor skills/ --json > r.json      # JSON 给 CI / 外部工具消费
-omk doctor --gate; echo $?              # 静默门禁，不健康时 exit 1
+omk doctor --gate; echo $?              # 静默门禁，fatal 问题 exit 1，警告不阻断
 omk doctor --static-only                # 离线模式：只跑静态检查，不调 LLM
 ```
 
