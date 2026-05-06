@@ -47,8 +47,9 @@ npm i oh-my-knowledge -g
 根据检测结果决定：
 - 没有 omk 项目结构 → 建议 `omk init <dir>` 初始化
 - 有多个 skill + 各自的 eval-samples → 建议 `--batch` 批量模式
-- 有多个 skill + 共享 eval-samples → 建议版本对比模式
-- 只有一个 skill → 建议 `baseline` 对照或 `omk evolve` 多轮迭代
+- 有多个 skill + 共享 eval-samples → 建议版本对比模式（`--control v1 --treatment v2`）
+- **只有一个 skill，想知道它有没有用（必要性测试）→ `omk eval --control baseline --treatment <variant>`**（`baseline` 是 omk 保留 variant 名，代表「不注入 skill 的裸基线」，无需自己创建）
+- 只有一个 skill，想多轮自动迭代改进它 → `omk evolve <skill-path>`
 - 没有 eval-samples → 建议先 `omk sample <skill-path>` 生成
 - 用户关心真实使用效果、失败率、耗时、token 或知识缺口 → 建议 `observe`
 
@@ -81,22 +82,31 @@ omk doctor --gate
 
 ### 评测 Skill
 
-```bash
-# 自动发现 skills/ 下的所有 skill
-omk eval
+**最常见入口：单 skill 必要性测试**（用户手上一个 skill，想知道「加上它到底有没有用」）：
 
-# 对照实验:control 是基线/旧版,treatment 是要测的新版
+```bash
 omk eval --control baseline --treatment my-skill
+```
+
+`baseline` 是 omk 保留 variant 名，代表「不注入 system prompt 的裸基线」 —— **不需要在 `skills/` 下创建任何 baseline 文件**，omk 会自动跑一遍裸模型作为对照。`my-skill` 替换成 `skills/` 目录下的 variant 名（例如 `skills/code-review-v1.md` → `code-review-v1`）。
+
+其他场景：
+
+```bash
+# 多版本 A/B（新旧 skill 直接对比，不走 baseline）
 omk eval --control v1 --treatment v2
 
 # 多 treatment 同时跑
 omk eval --control baseline --treatment v1,v2,v3
 
-# 跨 git 版本对比(从历史读取旧版本)
+# 跨 git 版本对比（从历史读取旧版本）
 omk eval --control git:my-skill --treatment my-skill
 
-# 批量评测:每个 skill 独立和 baseline 对比,需要每个 skill 配对 {name}.eval-samples.json
+# 批量评测：每个 skill 独立和 baseline 对比，需要每个 skill 配对 {name}.eval-samples.json
 omk eval --batch
+
+# 自动发现 skills/ 下的所有 skill
+omk eval
 
 # 先预览再执行
 omk eval --dry-run
