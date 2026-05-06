@@ -24,19 +24,15 @@ interface ExecError extends Error {
  * 不应漏给未捕获 Error 的 stack trace;不应 exit 1。
  */
 // eval 通过 parseRunConfig 解析 judgeModels,需要 control/treatment 才能跑到参数解析。
-// improve 下的 standalone handler 直接调 parseJudgeModelsArgOrExit,无前置依赖。
+// evolve 直接调 parseJudgeModelsArgOrExit,无前置依赖。
 const CASES: Array<{ name: string; argv: string[] }> = [
   {
     name: 'eval',
     argv: ['eval', '--control', 'baseline', '--treatment', 'v1', '--skill-dir', 'examples/code-review/skills', '--dry-run'],
   },
   {
-    name: 'improve skill',
-    argv: ['improve', 'skill', 'examples/code-review/skills/v1.md', '--rounds', '1', '--skip-connectivity'],
-  },
-  {
-    name: 'improve failures',
-    argv: ['improve', 'failures', 'fake-report-id'],
+    name: 'evolve',
+    argv: ['evolve', 'examples/code-review/skills/v1.md', '--rounds', '1', '--skip-connectivity'],
   },
 ];
 
@@ -59,6 +55,30 @@ describe('--judge-models validation: CLI exits 2 with friendly error', () => {
         assert.ok(
           !/^\s*at\s/m.test(e.stderr),
           `stderr should NOT include stack trace ("at " frame): ${e.stderr.slice(0, 400)}`,
+        );
+        return true;
+      },
+    );
+  });
+
+  // 回归: evolve 单评委约束的错误信息必须用新命令名 `omk evolve`,不能漏成旧 `improve skill`。
+  it('omk evolve 拒绝多评委时,error 用新命令名而非旧 improve skill', async () => {
+    await assert.rejects(
+      () => execFileAsync('node', [
+        CLI, 'evolve', 'examples/code-review/skills/v1.md',
+        '--rounds', '1', '--skip-connectivity',
+        '--judge-models', 'claude:haiku,claude:sonnet',
+      ]),
+      (err: unknown) => {
+        const e = err as ExecError;
+        assert.equal(e.code, 2);
+        assert.ok(
+          e.stderr.includes('omk evolve'),
+          `error 应当用新命令名 omk evolve: ${e.stderr.slice(0, 300)}`,
+        );
+        assert.ok(
+          !e.stderr.includes('improve skill'),
+          `error 不应漏 improve skill 旧名: ${e.stderr.slice(0, 300)}`,
         );
         return true;
       },

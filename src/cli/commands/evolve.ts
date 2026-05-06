@@ -79,7 +79,7 @@ export async function execute(argv: string[]): Promise<void> {
 
   const evolveJudges = parseJudgeModelsArgOrExit(values['judge-models'] as string);
   if (evolveJudges.length > 1) {
-    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'improve skill' }));
+    console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'omk evolve' }));
     throw new CliExit(2);
   }
 

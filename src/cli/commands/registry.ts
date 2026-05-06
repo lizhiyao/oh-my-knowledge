@@ -1,10 +1,10 @@
 import type { CliMessageKey } from '../i18n-dict.js';
 import { execute as doctor } from './doctor.js';
 import { execute as evalCommand } from './eval.js';
-import { execute as exportCommand } from './export.js';
-import { execute as improve } from './improve.js';
+import { execute as evolve } from './evolve.js';
 import { execute as init } from './init.js';
 import { execute as observe } from './observe.js';
+import { execute as sample } from './sample.js';
 import { execute as studio } from './studio.js';
 
 export interface CommandModule {
@@ -23,29 +23,11 @@ export const PRODUCT_COMMANDS: Record<string, CommandModule> = {
     helpKey: 'cli.help.eval',
     subHelp: {
       gold: 'cli.help.eval_gold',
-      debias: 'cli.help.eval_debias',
     },
     execute: evalCommand,
   },
   observe: { helpKey: 'cli.help.observe', execute: observe },
-  improve: {
-    helpKey: 'cli.help.improve',
-    subHelp: {
-      plan: 'cli.help.improve_plan',
-      failures: 'cli.help.improve_failures',
-      samples: 'cli.help.improve_samples',
-      skill: 'cli.help.improve_skill',
-    },
-    execute: improve,
-  },
-  export:  {
-    helpKey: 'cli.help.export',
-    subHelp: {
-      diff: 'cli.help.export_diff',
-      verdict: 'cli.help.export_verdict',
-      saturation: 'cli.help.export_saturation',
-    },
-    execute: exportCommand,
-  },
+  evolve:  { helpKey: 'cli.help.evolve', execute: evolve },
+  sample:  { helpKey: 'cli.help.sample', execute: sample },
   studio:  { helpKey: 'cli.help.studio',  execute: studio },
 };

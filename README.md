@@ -37,8 +37,8 @@ When the `omk` skill is available in Claude Code, you can invoke it directly lik
 
 ```bash
 /omk eval              # evaluate the artifact(s) in the current project
-/omk improve skill     # auto-iterate to improve an artifact
-/omk improve samples   # generate test cases
+/omk evolve            # auto-iterate to improve a skill
+/omk sample            # generate or fill test cases
 ```
 
 You can also just say "compare v1 vs v2 for me" or "improve this artifact" and omk picks the right command.
@@ -49,8 +49,8 @@ Codex does not support Claude Code style `/omk ...` slash commands by default. I
 
 ```bash
 omk eval
-omk improve skill skills/my-skill.md
-omk improve samples skills/my-skill.md
+omk evolve skills/my-skill.md
+omk sample skills/my-skill.md
 ```
 
 You can also describe the goal in natural language, such as "compare v1 vs v2" or "generate test cases for this skill".
@@ -95,12 +95,10 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 | **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / Codex SDK / OpenAI / Gemini / any custom command |
 | **21+ assertion types** | substring, regex, JSON Schema, ROUGE/BLEU/Levenshtein similarity, agent tool-call assertions, semantic similarity, custom JS, and more |
 | **Statistical rigor** | Bootstrap CI / Krippendorff α / length-debias / saturation curve — all on by default. [Details →](docs/statistical-rigor.md) |
-| **Sample diagnostics** | `omk improve <id>` — 7 issue kinds (low discrimination / duplicates / ambiguous rubric / cost outliers / etc.) + 0-100 healthScore |
-| **Failure clustering** | `omk improve failures <id>` — single LLM call clusters failed samples and emits per-cluster fixes |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage; auto-inherits length-debias |
 | **Hard budget caps** | `--budget-usd / --budget-per-sample-usd / --budget-per-sample-ms` — abort on total-cost overrun, flag per-sample overruns; partial report persisted |
 | **Construct-validity isolation** | `--strict-baseline` (default ON) cuts three contamination channels so baseline doesn't silently see the skill it's being compared against: (1) SDK skill auto-discovery, (2) subagent Skill tool, (3) cwd file-system access via the `skills/<name>/` symlink that's normally there for the treatment variant. eval.yaml `allowedSkills` for per-variant whitelists |
-| **Sample design science** | Sample schema with `capability` / `difficulty` / `construct` / `provenance` metadata fields (HF Dataset Cards style). `omk improve` shows coverage breakdown + flags `rubric_clarity_low` (short rubric without grading keywords) / `capability_thin` (capability supported by ≤ N×0.2 samples). `omk improve samples` auto-stamps provenance. See [docs/sample-design-spec.md](docs/sample-design-spec.md) for the 8 industry-gap mapping |
+| **Sample design science** | Sample schema with `capability` / `difficulty` / `construct` / `provenance` metadata fields (HF Dataset Cards style); studio surfaces coverage breakdown plus `rubric_clarity_low` / `capability_thin` flags. `omk sample` auto-stamps provenance on generated cases. See [docs/sample-design-spec.md](docs/sample-design-spec.md) for the 8 industry-gap mapping |
 | **Multi-judge ensemble** | `--judge-models claude:opus,openai:gpt-4o` cross-vendor scoring + agreement metrics |
 | **MCP URL fetching** | pull content from private-doc URLs via an MCP server (SSO-protected knowledge bases, etc.) |
 | **Blind A/B** | `--blind` hides variant names; HTML report has a reveal button |
@@ -387,7 +385,6 @@ omk eval --control code-review-v1 --treatment code-review-v2
 omk eval --config eval.yaml
 omk eval --batch
 omk eval gold compare <report-id> --gold-dir gold-dataset
-omk eval debias length <report-id>
 ```
 
 Runs the offline evaluation, applies the verdict gate, persists the report, and returns a ship/no-ship exit code. Bootstrap CI is enabled by default on this workflow.
@@ -431,30 +428,23 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 
 Turns real Claude Code session traces into skill-health reports: knowledge usage, gap signals, execution stability, tokens, and latency. This is production observation, not production scoring.
 
-### `omk improve`
+### `omk evolve`
 
 ```bash
-omk improve <report-id>             # sample diagnostics and repair plan
-omk improve plan <report-id>        # explicit repair-plan form
-omk improve failures <report-id>    # cluster failed samples into root causes
-omk improve samples [skill]         # generate or fill eval samples
-omk improve skill <skill>           # iterate a skill through eval-driven rewrites
+omk evolve <skill>                  # multi-round auto-iteration on a skill
+omk evolve skills/foo.md --rounds 10 --target 4.5
 ```
 
-Use this after `omk eval` or `omk observe` to decide what to change next. Generated sample assertions use English, numbers, or code tokens so they are easier to compare across bilingual outputs.
+Auto-iterates a skill through repeated eval → judge → rewrite loops until it hits `--target` or exhausts `--rounds`. Cost scales with `rounds × samples × variants`; a typical run takes minutes to tens of minutes. Original skill files are versioned under `skills/evolve/*.r0.md`.
 
-### `omk export`
+### `omk sample`
 
 ```bash
-omk export <report-id> --format html
-omk export <report-id> --format markdown --out report.md
-omk export <report-id> --format github-summary
-omk export diff <report-id> --regressions-only
-omk export verdict <report-id>
-omk export saturation <report-id>
+omk sample <skill>                  # generate or fill eval-samples test cases for one skill
+omk sample --batch                  # generate for skills missing eval-samples
 ```
 
-Exports evidence for PRs, CI summaries, and audit trails. HTML writes a standalone report file; markdown and GitHub summary print to stdout unless `--out` is provided. The export subtree also owns sample/report diffing, persisted verdict reads, and saturation inspection.
+One-shot generation. Auto-stamps `provenance` on generated cases. Generated assertions use English, numbers, or code tokens so they compare cleanly across bilingual outputs.
 
 ### `omk studio`
 
@@ -465,7 +455,7 @@ omk studio --reports-dir ~/.oh-my-knowledge/reports
 omk studio --no-open
 ```
 
-Starts the local knowledge workbench for browsing reports and observation analyses.
+Starts the local knowledge workbench for browsing reports and observation analyses. Verdict, sample diffs, regressions, saturation curves, and per-sample drill-downs all live in the studio UI — there is no CLI export / analysis subcommand. For CI gates, use `omk eval`'s exit code (0 on `PROGRESS`, non-zero otherwise) or `jq` over the report JSON.
 
 ## Executors
 

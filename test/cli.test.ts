@@ -142,9 +142,11 @@ describe('CLI', () => {
     assert.ok(stdout.includes('omk doctor'));
     assert.ok(stdout.includes('omk eval'));
     assert.ok(stdout.includes('omk observe'));
-    assert.ok(stdout.includes('omk improve'));
-    assert.ok(stdout.includes('omk export'));
+    assert.ok(stdout.includes('omk evolve'));
+    assert.ok(stdout.includes('omk sample'));
     assert.ok(stdout.includes('omk studio'));
+    assert.ok(!stdout.includes('omk export'));
+    assert.ok(!stdout.includes('omk improve'));
     assert.ok(!stdout.includes(['omk', 'bench', 'run'].join(' ')));
   });
 
@@ -155,7 +157,7 @@ describe('CLI', () => {
     assert.ok(stdout.includes('--report-only'));
     assert.ok(stdout.includes('--no-gate'));
     assert.ok(stdout.includes('omk eval gold'));
-    assert.ok(stdout.includes('omk eval debias'));
+    assert.ok(!stdout.includes('omk eval debias'));
     assert.ok(!stdout.includes(['--', 'each'].join('')));
   });
 
@@ -171,14 +173,6 @@ describe('CLI', () => {
     const gold = await execFileAsync('node', [CLI, 'eval', 'gold', '--help']);
     assert.ok(gold.stdout.includes('omk eval gold'));
     assert.ok(!gold.stdout.includes('omk eval --control'));
-
-    const failures = await execFileAsync('node', [CLI, 'improve', 'failures', '--help']);
-    assert.ok(failures.stdout.includes('omk improve failures'));
-    assert.ok(!failures.stdout.includes('omk improve samples'));
-
-    const diff = await execFileAsync('node', [CLI, 'export', 'diff', '--help', '--lang', 'en']);
-    assert.ok(diff.stdout.includes('omk export diff'));
-    assert.ok(!diff.stdout.includes('github-summary'));
   });
 
   it('observe --help shows session observation usage', async () => {
@@ -187,21 +181,45 @@ describe('CLI', () => {
     assert.ok(stdout.includes('--last'));
   });
 
-  it('improve --help shows improvement workflow usage', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'improve', '--help']);
-    assert.ok(stdout.includes('omk improve'));
-    assert.ok(stdout.includes('samples'));
-    assert.ok(stdout.includes('failures'));
+  it('evolve --help shows skill auto-iteration usage', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'evolve', '--help']);
+    assert.ok(stdout.includes('omk evolve'));
+    assert.ok(stdout.includes('--rounds'));
+    assert.ok(stdout.includes('--target'));
   });
 
-  it('export --help shows evidence export usage', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'export', '--help']);
-    assert.ok(stdout.includes('omk export'));
-    assert.ok(stdout.includes('github-summary'));
-    assert.ok(stdout.includes('omk export diff'));
-    assert.ok(stdout.includes('omk export verdict'));
-    assert.ok(stdout.includes('omk export saturation'));
-    assert.ok(!stdout.includes('omk export serve'));
+  it('sample --help shows test-case generation usage', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'sample', '--help']);
+    assert.ok(stdout.includes('omk sample'));
+    assert.ok(stdout.includes('--batch'));
+  });
+
+  // 回归: parser 必须用 positionals 取 skill path,不能扫 argv 的非 -- 项
+  // (否则 `omk sample --count 3 path.md` 会把 "3" 当 skill path)。
+  it('sample 把 flag value 跟 skill 路径区分开', async () => {
+    const fakePath = join(tmpdir(), 'omk-sample-flag-test-no-such-skill.md');
+    await assert.rejects(
+      () => execFileAsync('node', [
+        CLI, 'sample',
+        '--count', '3',
+        '--model', 'sonnet',
+        fakePath,
+        '--lang', 'zh',
+      ]),
+      (err: unknown) => {
+        const e = err as ExecError;
+        assert.equal(e.code, 1);
+        assert.ok(
+          e.stderr.includes(fakePath),
+          `error 应当指向真正的 skill 路径 ${fakePath}，得到: ${e.stderr.slice(0, 300)}`,
+        );
+        assert.ok(
+          !/未找到 skill 文件: 3/.test(e.stderr) && !/未找到 skill 文件: sonnet/.test(e.stderr),
+          `flag value 不应被当成 skill 路径: ${e.stderr.slice(0, 300)}`,
+        );
+        return true;
+      },
+    );
   });
 
   it('studio --help shows local workbench usage', async () => {
@@ -299,13 +317,14 @@ describe('CLI', () => {
 
   it('Claude Code SKILL manifest uses current product commands', async () => {
     const body = await readFile(join(PROJECT_ROOT, 'SKILL.md'), 'utf8');
-    assert.ok(body.includes('argument-hint: "<init|doctor|eval|observe|improve|export|studio> [options]"'));
+    assert.ok(body.includes('argument-hint: "<init|doctor|eval|observe|evolve|sample|studio> [options]"'));
     assert.ok(body.includes('omk eval --batch'));
-    assert.ok(body.includes('omk improve samples --batch'));
+    assert.ok(body.includes('omk sample --batch'));
+    assert.ok(body.includes('omk evolve'));
     assert.ok(body.includes('omk studio'));
     assert.ok(!body.includes('omk bench'));
+    assert.ok(!body.includes('omk improve'));
     assert.ok(!body.includes('--each'));
-    assert.ok(!body.includes('gen-samples'));
   });
 
   it('init scaffolds eval project from top-level command', async () => {
@@ -418,7 +437,7 @@ describe('CLI', () => {
           const e = err as ExecError;
           assert.equal(e.code, 1);
           assert.ok(e.stdout.includes('Verdict:'), e.stdout);
-          assert.ok(e.stderr.includes('omk export '), e.stderr);
+          assert.ok(e.stderr.includes('omk studio'), e.stderr);
           assert.ok(e.stderr.includes(`--reports-dir ${join(dir, 'reports')}`), e.stderr);
           return true;
         },
@@ -477,7 +496,7 @@ describe('CLI', () => {
           assert.ok(e.stdout.includes('批量评测结论：未通过'), e.stdout);
           assert.ok(!e.stdout.includes('Batch verdict:'), e.stdout);
           assert.ok(e.stdout.includes('UNDERPOWERED:'), e.stdout);
-          assert.ok(e.stderr.includes('omk export '), e.stderr);
+          assert.ok(e.stderr.includes('omk studio'), e.stderr);
           return true;
         },
       );
@@ -503,35 +522,4 @@ describe('CLI', () => {
     ]);
   });
 
-  it('export product subtree keeps diff, verdict, and saturation capabilities', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'omk-cli-export-tree-'));
-    try {
-      const reportsDir = join(dir, 'reports');
-      const reportId = await writeProductTreeReport(reportsDir);
-
-      const diff = await execFileAsync('node', [
-        CLI, 'export', 'diff',
-        '--reports-dir', reportsDir,
-        '--regressions-only',
-        reportId,
-      ]);
-      assert.ok(diff.stdout.includes('Sample-level diff'), diff.stdout);
-
-      const verdict = await execFileAsync('node', [
-        CLI, 'export', 'verdict', reportId,
-        '--reports-dir', reportsDir,
-      ]);
-      assert.ok(verdict.stdout.includes('Verdict: PROGRESS'), verdict.stdout);
-
-      const saturation = await execFileAsync('node', [
-        CLI, 'export', 'saturation', reportId,
-        '--reports-dir', reportsDir,
-        '--variant', 'v1',
-      ]);
-      assert.ok(saturation.stdout.includes('Saturation'), saturation.stdout);
-      assert.ok(saturation.stdout.includes('saturated@N=60'), saturation.stdout);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  });
 });

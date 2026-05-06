@@ -81,8 +81,8 @@ export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {})
  * Missing fields are bucketed under the `unspecified` key in the relevant
  * distribution map, so users see "I have N samples without difficulty declared".
  *
- * Used by `omk improve` to surface coverage gaps. Does NOT participate
- * in grading / judge / verdict. See docs/sample-design-spec.md.
+ * Persisted on the report so studio can surface coverage gaps. Does NOT
+ * participate in grading / judge / verdict. See docs/sample-design-spec.md.
  */
 export function buildSampleQualityAggregate(samples: Sample[]): SampleQualityAggregate {
   const capabilityCoverage: Record<string, number> = {};
