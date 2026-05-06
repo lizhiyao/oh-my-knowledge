@@ -612,7 +612,8 @@ omk eval — 离线评测 skill 版本，并给出 ship/no-ship verdict
   --no-serve                          评测后不自动启动报告 server
 
 示例：
-  omk eval --control code-review-v1 --treatment code-review-v2
+  omk eval --control baseline --treatment my-skill                # 单 skill 必要性测试（baseline 是保留 variant 名，代表「不注入 skill 的裸基线」）
+  omk eval --control code-review-v1 --treatment code-review-v2    # 多版本 A/B
   omk eval --config eval.yaml
   omk eval gold compare v1-vs-v2-20260505-1200 --gold-dir gold-dataset
 `,
@@ -642,7 +643,8 @@ Common options:
   --no-serve                          Do not auto-start report server after evaluation
 
 Examples:
-  omk eval --control code-review-v1 --treatment code-review-v2
+  omk eval --control baseline --treatment my-skill                # Single-skill necessity test (baseline is a reserved variant — "no skill injected")
+  omk eval --control code-review-v1 --treatment code-review-v2    # Multi-variant A/B
   omk eval --config eval.yaml
   omk eval gold compare v1-vs-v2-20260505-1200 --gold-dir gold-dataset
 `,

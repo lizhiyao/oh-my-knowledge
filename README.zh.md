@@ -381,7 +381,8 @@ omk doctor --gate; echo $?    # 静默门禁，fatal 时 exit 1
 ### `omk eval`
 
 ```bash
-omk eval --control code-review-v1 --treatment code-review-v2
+omk eval --control baseline --treatment my-skill                # 单 skill 必要性测试（baseline 是保留 variant，代表「不注入 skill」）
+omk eval --control code-review-v1 --treatment code-review-v2    # 多版本 A/B
 omk eval --config eval.yaml
 omk eval --batch
 omk eval gold compare <report-id> --gold-dir gold-dataset

@@ -381,7 +381,8 @@ Pure static checks: skill readability, frontmatter, directory-skill layout, depe
 ### `omk eval`
 
 ```bash
-omk eval --control code-review-v1 --treatment code-review-v2
+omk eval --control baseline --treatment my-skill                # single-skill necessity test (baseline = reserved "no skill" variant)
+omk eval --control code-review-v1 --treatment code-review-v2    # multi-variant A/B
 omk eval --config eval.yaml
 omk eval --batch
 omk eval gold compare <report-id> --gold-dir gold-dataset
