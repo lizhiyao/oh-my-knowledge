@@ -65,20 +65,27 @@ cd my-eval
 
 初始化后先让用户编辑 `skills/*/SKILL.md` 和 `eval-samples.json`，再进入 `doctor` / `eval`。
 
-### 健康检查
+### 健康度审计
 
 ```bash
-# 检查当前目录或 ./skills
+# 体检当前目录或 ./skills
 omk doctor
 
-# 检查单个 skill 文件
+# 体检单个 skill 文件
 omk doctor skills/my-skill.md
 
-# CI 门禁模式
+# CI 门禁模式（fatal 问题 exit 1，警告不阻断）
 omk doctor --gate
+
+# 离线模式：CI 节点没装 claude / codex、本地断网时跑纯静态检查
+omk doctor --static-only
 ```
 
-`doctor` 是纯静态检查，零 LLM 调用。它检查 skill 可读性、frontmatter、前置依赖和评测用例契约；`omk eval` 前也会强制运行。
+默认 `omk doctor` 跑 LLM 健康度审计：单次 LLM 会话产出 7 个内置维度（触发与边界 / 文档清晰 / 指令精确性 / 依赖检查 / 工具规范 / 安全与合规 / 示例完备）的健康度评分 + findings + 改进建议；`--html <path>` 产可视化报告。
+
+无 LLM 环境用 `--static-only` 切到离线模式，只跑 4 条静态 rule（可读性 / 元数据 / 依赖 / samples 契约），零 LLM 调用零成本。
+
+`omk eval` 内部仍跑同一批静态 gate 把关评测质量（角色分离：doctor=审计，eval=评测）。
 
 ### 评测 Skill
 

@@ -16,13 +16,13 @@ import type {
   DoctorContext,
   DoctorOutcome,
   DoctorReport,
-  DoctorRule,
+  DoctorRuleLike,
   DoctorRuleResult,
   DoctorRunOptions,
   DoctorSkillReport,
   DoctorSkillStatus,
 } from '../types/index.js';
-import { DOCTOR_REPORT_SCHEMA_VERSION } from '../types/doctor.js';
+import { DOCTOR_REPORT_SCHEMA_VERSION, isComposerRule } from '../types/doctor.js';
 import { getRegisteredRules } from './rules.js';
 
 // ---------------------------------------------------------------------------
@@ -76,11 +76,19 @@ export function resolveDoctorTargets(target: string | null | undefined, cwd: str
 // ---------------------------------------------------------------------------
 
 function classifySkillStatus(results: DoctorRuleResult[]): DoctorSkillStatus {
+  // status=fail 时按 severity 分流:fatal 升 skill fail,非 fatal(warn / info)
+  // 至少 roll up 到 skill warn — 否则 health composer 对 warn 级维度产出
+  // status=fail 会被错误聚合成 pass,gate 静默放行。status=warn 一律 roll
+  // 到 skill warn(severity 不再作权重二次降级)。
   let hasFatalFail = false;
   let hasWarn = false;
   for (const r of results) {
-    if (r.severity === 'fatal' && r.status === 'fail') hasFatalFail = true;
-    if (r.status === 'warn') hasWarn = true;
+    if (r.status === 'fail') {
+      if (r.severity === 'fatal') hasFatalFail = true;
+      else hasWarn = true;
+    } else if (r.status === 'warn') {
+      hasWarn = true;
+    }
   }
   if (hasFatalFail) return 'fail';
   if (hasWarn) return 'warn';
@@ -89,14 +97,54 @@ function classifySkillStatus(results: DoctorRuleResult[]): DoctorSkillStatus {
 
 async function runRulesOnArtifact(
   artifact: Artifact,
-  rules: DoctorRule[],
+  rules: DoctorRuleLike[],
   ctxBase: Omit<DoctorContext, 'artifact'>,
 ): Promise<DoctorRuleResult[]> {
   const results: DoctorRuleResult[] = [];
+  const ctx = { ...ctxBase, artifact };
   for (const rule of rules) {
     const start = Date.now();
+    if (isComposerRule(rule)) {
+      // ComposerRule: 一次 checkAll() 产出多条 outcome,展开成 N+1 条 result,
+      // 共享同一个 groupId(= composer.id),renderer 用它把多条 result 视为
+      // 一个组(eg. 健康度体检的 7+1 个 sub-result)。
+      try {
+        const outcomes = await rule.checkAll(ctx);
+        const took = Date.now() - start;
+        for (const oc of outcomes) {
+          results.push({
+            ruleId: `${rule.id}:${oc.subId}`,
+            groupId: rule.id,
+            severity: oc.severity ?? rule.severity,
+            labelKey: oc.labelKey ?? rule.labelKey,
+            status: oc.status,
+            message: oc.message,
+            hint: oc.hint,
+            detail: oc.detail,
+            // composer 只给整体耗时一次;均摊到每条 result 没意义,直接复用。
+            durationMs: took,
+          });
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        results.push({
+          ruleId: `${rule.id}:_summary`,
+          groupId: rule.id,
+          severity: rule.severity,
+          labelKey: rule.labelKey,
+          status: 'fail',
+          message: `composer crashed: ${message.slice(0, 160)}`,
+          hint: undefined,
+          detail: { ruleCrash: true, error: message },
+          durationMs: Date.now() - start,
+        });
+      }
+      continue;
+    }
+
+    // 普通 DoctorRule(原路径)
     try {
-      const outcome = await rule.check({ ...ctxBase, artifact });
+      const outcome = await rule.check(ctx);
       results.push({
         ruleId: rule.id,
         severity: rule.severity,
@@ -106,7 +154,6 @@ async function runRulesOnArtifact(
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      // rule 自身崩溃也算 fail,不让 doctor 整体挂掉
       results.push({
         ruleId: rule.id,
         severity: rule.severity,
@@ -175,6 +222,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     dependencyCwd,
     lang: opts.lang,
     timeoutMs: opts.timeoutMs,
+    runHealthCheck: opts.runHealthCheck ?? false,
   };
 
   const skillReports: DoctorSkillReport[] = [];

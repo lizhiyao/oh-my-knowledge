@@ -61,7 +61,7 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 
 ## Key features
 
-- **Pre-evaluation health check** — `omk doctor` runs as a mandatory gate before `omk eval`; checks skill readability, metadata, dependencies, samples contract — pure static, zero LLM calls (like lint + typecheck for knowledge artifacts). Executor / judge connectivity is a separate phase, controllable via `--skip-connectivity`
+- **LLM health audit** — `omk doctor` runs a single LLM session that emits a multi-dimension report; 7 builtin dimensions (trigger & boundary / doc clarity / instruction precision / dependency / tool conventions / security & compliance / example completeness) each get a *healthy / sub-healthy / unhealthy / N-A* grade plus findings and suggestions; dimensions are extensible, and `--html` produces a visual report. Pass `--static-only` for an offline mode (CI nodes without an LLM, debugging without network) that runs the static checks only (readability / metadata / dependencies / samples contract). `omk eval` still runs static readability / metadata / dependency gates internally to protect eval quality (separation of roles: doctor = audit, eval = evaluate)
 - **Controlled-variable offline eval** — fix the model and samples, vary only the artifact; works with Claude Code skills, CLAUDE.md prompts, RAG knowledge bases, or any markdown-based instruction
 - **Six-dimension scoring** — separate signals for Fact / Behavior / LLM-judge / Cost / Efficiency / Stability, so a regression in one axis isn't hidden by gains in another
 - **Production session observability** — parse Claude Code session JSONL traces, measure per-skill failure rate, latency, token cost, and knowledge-gap signals on real user sessions
@@ -370,13 +370,19 @@ Scaffolds an evaluation project with two starter skill variants and an `eval-sam
 ### `omk doctor`
 
 ```bash
-omk doctor                    # check current dir / ./skills
-omk doctor skills/v1.md       # check one skill file
-omk doctor skills/ --json     # machine-readable output
-omk doctor --gate; echo $?    # silent CI gate
+omk doctor                              # audit current dir / ./skills
+omk doctor skills/v1.md                 # audit one skill file
+omk doctor skills/ --html report.html   # produce a visual HTML report
+omk doctor skills/ --json > r.json      # JSON for CI / external tools
+omk doctor --gate; echo $?              # silent gate; exit 1 on fatal failures, warnings do not block
+omk doctor --static-only                # offline mode: static checks only, no LLM call
 ```
 
-Pure static checks: skill readability, frontmatter, directory-skill layout, dependency hints, and sample contract. It is also run automatically before `omk eval`.
+LLM health audit: a single LLM session emits per-dimension grades, findings, and suggestions for the 7 builtin dimensions; the HTML report sorts dimensions fail→warn→pass→skipped with errors first within each dim. Dimensions are extensible — call `registerHealthDimension` in your own code and the new section is folded into the same LLM call's prompt and report (order = registration order).
+
+Static-only mode (`--static-only`): for CI nodes without claude / codex installed, or local debugging without network — runs the four static rules (readability / metadata / dependencies / samples contract) with zero LLM calls and zero cost. Output goes through the same `DoctorReport` shape and combines with `--json` / `--gate` / `--html`.
+
+`omk eval` still runs its own static readability / metadata / dependency / samples-contract gates internally to protect eval quality; that path is separate from this user-facing `omk doctor` command and the two roles do not overlap.
 
 ### `omk eval`
 
@@ -413,7 +419,7 @@ Common options:
   --trivial-diff <num>   practically tiny diff cutoff (default 0.1)
   --report-only          produce the report and print verdict, but always exit 0
   --no-gate              alias for --report-only
-  --skip-connectivity    skip model connectivity check; doctor still runs
+  --skip-connectivity    skip model connectivity check (internal static gates still run)
   --no-serve             do not auto-start the report server after evaluation
 ```
 
