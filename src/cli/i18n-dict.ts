@@ -560,7 +560,7 @@ oh-my-knowledge — 知识载体工作台
 
 用法：
   omk init [dir]                      初始化一个 skill 评测项目
-  omk doctor [path]                   静态健康检查：结构、依赖、样本、配置、污染风险
+  omk doctor [path]                   LLM 健康度审计（7 内置维度 + 可扩展）；--static-only 切离线静态模式
   omk eval [options]                  离线评测：比较版本，输出 verdict + report
   omk observe <sessions-dir>          线上观测：真实 session、gap、失败率、inbox
   omk improve <report-id>             改进建议：样本质量、失败聚类、skill patch 线索
@@ -585,7 +585,7 @@ oh-my-knowledge — Knowledge Artifact Workbench
 
 Usage:
   omk init [dir]                      Scaffold a skill evaluation project
-  omk doctor [path]                   Static health check: structure, deps, samples, config, contamination risk
+  omk doctor [path]                   LLM health audit (7 builtin dimensions, extensible); --static-only for offline static checks
   omk eval [options]                  Offline evaluation: compare versions, emit verdict + report
   omk observe <sessions-dir>          Production observation: sessions, gaps, failure rate, inbox
   omk improve <report-id>             Improvement advice: sample quality, failure clusters, skill patch hints
