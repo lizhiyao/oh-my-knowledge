@@ -1336,12 +1336,14 @@ oh-my-knowledge — omk doctor 健康度体检 (LLM-judge)
   --samples <path>       显式指定评测用例文件
   --timeout <seconds>    单次 LLM 会话超时 (默认 600)
   --html <path>          产出可视化 HTML 报告到 <path> (可与 --json 同时用)
+  --static-only          离线模式: 只跑静态检查 (skill 可读性 / 元数据 / 依赖 / samples 契约), 不调 LLM
   --lang <zh|en>         切换输出语言
 
 示例:
   omk doctor my-skill --html /tmp/report.html             # 深度体检 + HTML 报告 (默认)
   omk doctor examples/code-review/skills --json > r.json   # JSON 给 CI / 外部工具消费
   omk doctor --gate; echo $?                               # CI 模式: exit 1 if 任一 skill 不健康
+  omk doctor --static-only                                 # 无 LLM 环境 (CI / 断网) 跑纯静态检查
 
 doctor = LLM 健康度体检 (单次 LLM 会话):
   - 7 个内置维度: 触发与边界 / 文档清晰 / 指令精确性 / 依赖检查 / 工具规范 / 安全与合规 / 示例完备
@@ -1372,12 +1374,14 @@ Options:
   --samples <path>       Explicit eval samples file
   --timeout <seconds>    LLM session timeout (default 600)
   --html <path>          Also write a visual HTML report to <path> (combines with --json)
+  --static-only          Offline mode: run only static checks (readability / metadata / deps / samples contract); no LLM call
   --lang <zh|en>         Output language
 
 Examples:
   omk doctor my-skill --html /tmp/report.html             # deep audit + HTML report (default)
   omk doctor examples/code-review/skills --json > r.json   # JSON for CI / external tools
   omk doctor --gate; echo $?                               # CI mode: exit 1 if any unhealthy
+  omk doctor --static-only                                 # offline (CI / no LLM) static checks only
 
 doctor = LLM health audit (single LLM session):
   - 7 builtin dimensions: trigger & boundary / doc clarity / instruction precision /

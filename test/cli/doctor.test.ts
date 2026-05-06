@@ -184,6 +184,28 @@ describe('omk doctor CLI', () => {
     }
   });
 
+  it('--static-only runs offline (no executor needed) and emits DoctorReport with static rule results', async () => {
+    // Note: no --executor flag here — --static-only must not require an LLM.
+    // The default 'claude' executor in PATH may or may not exist; either way
+    // doctor should exit cleanly because no rule actually calls it.
+    const { stdout } = await execFileAsync('node', [
+      CLI,
+      'doctor',
+      EXAMPLE_SKILL,
+      '--json',
+      '--static-only',
+    ]);
+    const parsed = JSON.parse(stdout);
+    assert.equal(parsed.kind, 'doctor');
+    assert.ok(parsed.skills.length >= 1);
+    // Static rules present, composer (skill_health) absent under --static-only.
+    const staticRuleIds = parsed.skills[0].results.map((r: { ruleId: string }) => r.ruleId);
+    assert.ok(staticRuleIds.includes('skill_readable'), `expected skill_readable, got: ${staticRuleIds.join(',')}`);
+    assert.ok(staticRuleIds.includes('skill_metadata'), `expected skill_metadata, got: ${staticRuleIds.join(',')}`);
+    assert.ok(!staticRuleIds.some((id: string) => id.startsWith('skill_health')),
+      `expected no skill_health composer results in static-only mode, got: ${staticRuleIds.join(',')}`);
+  });
+
   it('product dispatch lists omk doctor as a top-level command', async () => {
     // Verify --help mentions doctor as a product command.
     const { stdout } = await execFileAsync('node', [CLI, '--help']);
