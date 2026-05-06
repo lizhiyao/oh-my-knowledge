@@ -61,7 +61,7 @@ export async function execute(argv: string[]): Promise<void> {
   });
 
   // skill path 走 parseArgs 的 positionals，避免 raw argv.find 把 flag value
-  // 当成 path 误识别，例如 `improve skill --judge-models openai-api:gpt-4o foo.md`。
+  // 当成 path 误识别，例如 `omk evolve --judge-models openai-api:gpt-4o foo.md`。
   const skillPath: string | undefined = positionals[0];
   if (!skillPath) {
     console.error(tCli('cli.evolve.specify_skill_path', lang));

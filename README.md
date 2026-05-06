@@ -41,7 +41,7 @@ When the `omk` skill is available in Claude Code, you can invoke it directly lik
 /omk sample            # generate or fill test cases
 ```
 
-You can also just say "compare v1 vs v2 for me" or "improve this artifact" and omk picks the right command.
+These slash commands are natural-language entry points — the agent reads the conversation context to figure out which skill to operate on, so you usually don't pass the path explicitly. (See the Codex section below for the literal `omk evolve <skill>` CLI form.) You can also just say "compare v1 vs v2 for me" or "improve this artifact" and omk picks the right command.
 
 ### Use inside Codex
 
@@ -357,7 +357,7 @@ Reports display results across six independent dimensions. The three scoring lay
 
 ## CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. The public surface is organized around the way users work: initialize, check, evaluate, observe, improve, export evidence, and open the local studio.
+omk exposes a workflow CLI for knowledge artifacts. Seven top-level commands cover the full loop: `init` (scaffold) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
 
 ### `omk init`
 

@@ -112,7 +112,7 @@ export type CliMessageKey =
   | 'cli.studio.started'
   | 'cli.studio.stop_hint'
   | 'cli.studio.open_failed'
-  // improve samples
+  // sample (generate eval-samples)
   | 'cli.gen.skill_skipped_existing'
   | 'cli.gen.skill_generating'
   | 'cli.gen.skill_done'
@@ -125,7 +125,7 @@ export type CliMessageKey =
   | 'cli.gen.single_done'
   | 'cli.gen.review_hint'
   | 'cli.gen.failed'
-  // improve skill
+  // evolve (auto-iterate skill)
   | 'cli.evolve.specify_skill_path'
   | 'cli.evolve.section_header'
   | 'cli.evolve.round_baseline'
@@ -713,7 +713,7 @@ omk evolve — 多轮自动迭代改进 skill
   omk evolve <skill-path> [options]
 
 选项：
-  --rounds <n>                        迭代轮数（默认：3）
+  --rounds <n>                        迭代轮数（默认：5）
   --target <score>                    目标分数
   --model <name>                      改进模型
   --judge-models <executor:model>     单评委配置
@@ -729,7 +729,7 @@ Usage:
   omk evolve <skill-path> [options]
 
 Options:
-  --rounds <n>                        Iteration rounds (default: 3)
+  --rounds <n>                        Iteration rounds (default: 5)
   --target <score>                    Target score
   --model <name>                      Improvement model
   --judge-models <executor:model>     Single judge config

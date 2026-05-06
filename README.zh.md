@@ -41,7 +41,7 @@ omk eval --control code-review-v1 --treatment code-review-v2    # → 5 分钟�
 /omk sample            # 生成或补齐评测用例
 ```
 
-或直接说"帮我评测 v1 和 v2 的差异"、"改进一下这个 artifact"，omk 会自动理解意图并调用对应命令。
+这些 slash command 是自然语言入口 —— agent 会从对话上下文里推断要操作哪个 skill，所以一般不用显式传路径。（下面 Codex 段落给出 `omk evolve <skill>` 的裸 CLI 形式。）也可以直接说「帮我评测 v1 和 v2 的差异」、「改进一下这个 artifact」，omk 会自动理解意图并调用对应命令。
 
 ### 在 Codex 中使用
 
@@ -357,7 +357,7 @@ export default function(output, { sample, assertion }) {
 
 ## CLI 参考
 
-omk 的公开 CLI 按知识载体工作流组织：初始化、健康检查、离线评测、线上观测、改进建议、证据导出、本地工作台。
+omk 的公开 CLI 由 7 个顶层命令构成完整闭环：`init`（脚手架）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
 
 ### `omk init`
 
