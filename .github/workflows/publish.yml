@@ -29,6 +29,36 @@ jobs:
     - name: Install dependencies
       run: yarn install --frozen-lockfile
 
+    - name: Validate release tag
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [[ "${GITHUB_ACTOR}" != "lizhiyao" ]]; then
+          echo "::error::Only lizhiyao is allowed to trigger an npm release."
+          exit 1
+        fi
+
+        tag_type="$(git cat-file -t "${GITHUB_REF_NAME}")"
+        if [[ "${tag_type}" != "tag" ]]; then
+          echo "::error::Release tag ${GITHUB_REF_NAME} must be an annotated tag."
+          exit 1
+        fi
+
+        package_version="$(node -p "require('./package.json').version")"
+        expected_tag="v${package_version}"
+        if [[ "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
+          echo "::error::Release tag ${GITHUB_REF_NAME} does not match package.json version ${package_version}."
+          exit 1
+        fi
+
+        git fetch --no-tags origin main
+        tag_commit="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
+        if ! git merge-base --is-ancestor "${tag_commit}" origin/main; then
+          echo "::error::Release tag ${GITHUB_REF_NAME} must point to a commit reachable from origin/main."
+          exit 1
+        fi
+
     - name: Run Lint
       run: yarn run lint
 
