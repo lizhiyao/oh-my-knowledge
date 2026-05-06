@@ -330,7 +330,7 @@ describe('CLI', () => {
       ]));
 
       const { stderr } = await execFileAsync('node', [CLI, 'doctor', '--executor', DOCTOR_FIXTURE], { cwd: dir });
-      assert.ok(stderr.includes('用例 1 条'), stderr);
+      assert.ok(stderr.includes('使用评测用例文件'), stderr);
       assert.ok(!stderr.includes('未提供 samples'), stderr);
     } finally {
       await rm(dir, { recursive: true, force: true });

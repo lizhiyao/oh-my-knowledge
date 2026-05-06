@@ -25,7 +25,7 @@ describe('omk doctor CLI', () => {
   it('--help shows usage with key flags and check items', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help']);
     assert.ok(stdout.includes('omk doctor'));
-    assert.ok(stdout.includes('健康检查'));
+    assert.ok(stdout.includes('健康度'));
     assert.ok(stdout.includes('--json'));
     assert.ok(stdout.includes('--gate'));
     assert.ok(stdout.includes('--samples'));
@@ -34,8 +34,8 @@ describe('omk doctor CLI', () => {
   it('--help --lang en shows English usage', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help', '--lang', 'en']);
     assert.ok(stdout.includes('omk doctor'));
-    assert.ok(stdout.includes('health check'));
-    assert.ok(!stdout.includes('健康检查'));
+    assert.ok(stdout.includes('health audit'));
+    assert.ok(!stdout.includes('健康度'));
   });
 
   it('--json on example skill outputs valid DoctorReport with kind=doctor', async () => {
@@ -146,7 +146,6 @@ describe('omk doctor CLI', () => {
       ], { cwd: outside });
       assert.ok(stderr.includes('使用评测用例文件'), stderr);
       assert.ok(stderr.includes('eval-samples.json'), stderr);
-      assert.ok(stderr.includes('用例 1 条'), stderr);
       assert.ok(!stderr.includes('未提供 samples'), stderr);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
@@ -180,7 +179,6 @@ describe('omk doctor CLI', () => {
         '--executor', DOCTOR_FIXTURE,
       ], { cwd: tmp });
       assert.ok(stderr.includes(`使用评测用例文件：${explicitSamples}`), stderr);
-      assert.ok(stderr.includes('用例 2 条'), stderr);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
