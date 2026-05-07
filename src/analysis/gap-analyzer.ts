@@ -18,7 +18,7 @@
 
 import type { ExecutorFn, GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types/index.js';
 import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
-import { isFailedSearchToolCall, toolCallQuery } from '../observability/tool-search.js';
+import { isFailedSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
 
 export type GapSignalType = GapSignalRef['type'];
 export type GapSignal = GapSignalRef;

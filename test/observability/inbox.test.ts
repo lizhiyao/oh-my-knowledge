@@ -463,6 +463,107 @@ describe('observe inbox', () => {
     assert.equal(revenue.severity, 'high');
   });
 
+  it('keeps query hard_miss when a later successful Read only shares cwd path tokens', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
+            { type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/repo-a/src/auth.ts' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
+            { type: 'tool_result', tool_use_id: 't2', content: 'export const auth = true;', is_error: false },
+          ],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const revenue = report.items.find((item) => item.evidence.query === 'revenue_schema');
+    assert.ok(revenue);
+    assert.equal(revenue.signalSubtype, 'hard_miss');
+    assert.equal(revenue.severity, 'high');
+  });
+
+  it('uses a dedicated reason code for skill asset read failures', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\nUse skill asset' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: '/repo-a/.claude/skills/audit/examples/schema.md' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'Error: ENOENT no such file or directory', is_error: true }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    assert.equal(report.items[0].signalSubtype, 'skill_asset_read_failed');
+    assert.equal(report.items[0].severity, 'medium');
+    assert.equal(report.items[0].severityReasonCode, 'skill_asset_unavailable');
+  });
+
   it('formats observation show output with message window context', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');

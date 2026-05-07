@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { GapSignalRef, ToolCallInfo } from '../types/index.js';
 import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
 import { ccTracesToResultEntries, type SkillSegment } from './trace-adapter.js';
-import { isSearchToolCall, toolCallQuery } from './tool-search.js';
+import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
 
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = join(process.cwd(), '.omk', 'observations');
 export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(homedir(), '.oh-my-knowledge', 'observations');
@@ -18,6 +18,7 @@ export type ObservationSeverityReasonCode =
   | 'repeated_failure_suspected'
   | 'explicit_gap_marker'
   | 'exploratory_probe'
+  | 'skill_asset_unavailable'
   | 'soft_hedging_signal'
   | 'tool_or_runtime_noise';
 export type ObservationSignalSubtype =
@@ -218,15 +219,25 @@ function topicTokens(value: string): Set<string> {
     normalizeObservationKeyInput(value)
       .split(/[^a-z0-9_\u4e00-\u9fff]+/i)
       .map((part) => part.trim())
-      .filter((part) => part.length >= 3 && !['find', 'grep', 'head', 'tail', 'cat', 'src', 'path', 'file'].includes(part)),
+      .filter((part) => part.length >= 3 && !['find', 'grep', 'head', 'tail', 'cat', 'src', 'path', 'file', 'repo'].includes(part)),
   );
 }
 
 function isSameTopicSearch(a: ToolCallInfo, b: ToolCallInfo): boolean {
   const qa = toolCallQuery(a);
   const qb = toolCallQuery(b);
-  const left = qa.query && qb.query ? qa.query : `${qa.query ?? ''} ${qa.path ?? ''}`;
-  const right = qa.query && qb.query ? qb.query : `${qb.query ?? ''} ${qb.path ?? ''}`;
+  if (qa.query) {
+    const queryTokens = topicTokens(qa.query);
+    if (queryTokens.size === 0) return false;
+    const laterText = qb.query ?? qb.path ?? '';
+    const laterTokens = topicTokens(laterText);
+    for (const token of queryTokens) {
+      if (laterTokens.has(token) || normalizeObservationKeyInput(laterText).includes(token)) return true;
+    }
+    return false;
+  }
+  const left = qa.path ?? '';
+  const right = qb.query ?? qb.path ?? '';
   const aTokens = topicTokens(left);
   const bTokens = topicTokens(right);
   for (const token of aTokens) {
@@ -265,6 +276,7 @@ const SEVERITY_REASON_ZH: Record<ObservationSeverityReasonCode, string> = {
   explicit_gap_marker: 'agent 主动输出了知识缺口/未知标记，需要优先人工确认。',
   knowledge_gap_suspected: '{tool}失败后，session 内未找到同主题成功证据，疑似知识缺口。',
   exploratory_probe: 'skill 运行过程中出现了试路径、试目录或前序失败后后续成功的行为；先抽样确认，不直接判为要改 skill。',
+  skill_asset_unavailable: '读取该 skill 自身资源失败，可能是路径错位、资源未提交或 ignore 配置问题。',
   soft_hedging_signal: '模型文本里出现了不确定表达，属于低置信文本信号，需要结合上下文人工判断。',
   tool_or_runtime_noise: '更像路径、权限、文件太大、临时文件或工具运行问题；通常不作为 skill 内容缺失。',
 };
@@ -274,6 +286,7 @@ const SEVERITY_REASON_EN: Record<ObservationSeverityReasonCode, string> = {
   explicit_gap_marker: 'The agent explicitly marked an unknown or knowledge gap; review this first.',
   knowledge_gap_suspected: '{tool}failed and no later same-topic success was found in the session.',
   exploratory_probe: 'The event looks like path probing, directory probing, or an earlier miss followed by later success; sample it before changing the skill.',
+  skill_asset_unavailable: 'The agent failed to read an asset inside the skill itself; check path alignment, committed resources, or ignore rules.',
   soft_hedging_signal: 'The agent used uncertain wording; treat this as a low-confidence text signal.',
   tool_or_runtime_noise: 'This looks like a path, permission, token limit, transient file, or runtime tool issue rather than missing skill content.',
 };
@@ -307,6 +320,7 @@ export function severityReasonCodeFor(item: Pick<ObservationInboxItem, 'signalTy
   if (item.signalSubtype === 'repeated_failure') return 'repeated_failure_suspected';
   if (item.signalType === 'explicit_marker') return 'explicit_gap_marker';
   if (item.signalSubtype === 'hard_miss') return 'knowledge_gap_suspected';
+  if (item.signalSubtype === 'skill_asset_read_failed') return 'skill_asset_unavailable';
   if (item.signalSubtype === 'exploratory_miss' || item.signalSubtype === 'bash_probe') return 'exploratory_probe';
   if (item.signalType === 'hedging') return 'soft_hedging_signal';
   return 'tool_or_runtime_noise';
