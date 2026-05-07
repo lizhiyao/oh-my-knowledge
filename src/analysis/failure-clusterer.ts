@@ -325,7 +325,7 @@ function normalizeClusters(parsed: JudgeClusterResponse, fed: FailureCase[]): Fa
 export function formatFailureClusterReport(r: FailureClusterReport): string {
   const lines: string[] = [];
   lines.push('');
-  lines.push(`  失败聚类 — ${r.totalFailures} 条失败${r.truncated ? ` (取最差 ${r.failures.length} 条做聚类)` : ''}`);
+  lines.push(`  失败聚类——${r.totalFailures} 条失败${r.truncated ? ` (取最差 ${r.failures.length} 条做聚类)` : ''}`);
   lines.push('');
   if (r.clusters.length === 0) {
     lines.push('  (聚类失败,以下是原始失败列表)');

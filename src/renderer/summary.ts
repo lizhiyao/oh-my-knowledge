@@ -22,11 +22,11 @@ function verdictOneLine(level: VerdictLevel, lang: Lang, treatment?: string, con
   const c = control ?? (lang === 'zh' ? '对照组' : 'control');
   if (lang === 'zh') {
     switch (level) {
-      case 'PROGRESS':     return `${t} 比 ${c} 明显更好 — 可以发布`;
-      case 'CAUTIOUS':     return `${t} 比 ${c} 略好 — 但建议再仔细看,差距很小或某层未达标`;
-      case 'REGRESS':      return `${t} 比 ${c} 明显更差 — 不要发布`;
-      case 'NOISE':        return `${t} 和 ${c} 没看出明显差别 — 可以多加几条用例再试`;
-      case 'UNDERPOWERED': return `评测用例数太少,看不出 ${t} 和 ${c} 的差别 — 多跑几个再看`;
+      case 'PROGRESS':     return `${t} 比 ${c} 明显更好——可以发布`;
+      case 'CAUTIOUS':     return `${t} 比 ${c} 略好——但建议再仔细看，差距很小或某层未达标`;
+      case 'REGRESS':      return `${t} 比 ${c} 明显更差——不要发布`;
+      case 'NOISE':        return `${t} 和 ${c} 没看出明显差别——可以多加几条用例再试`;
+      case 'UNDERPOWERED': return `评测用例数太少，看不出 ${t} 和 ${c} 的差别——多跑几个再看`;
       case 'SOLO':         return `只跑了一组,需要加对照组才能对比`;
     }
   }
@@ -81,17 +81,38 @@ export function levelTooltip(level: VerdictLevel, lang: Lang): string {
   }
 }
 
-// v0.21 B.4 — Verdict pill 重写. 行业领先 status banner 三段式:
-//   1. Banner: 强信号(色 + 词) + 核心 metric (Δ + CI) + meta (pair / N / α)
-//   2. CTA: emoji + 加粗 action + 详情 (从 shipRecommendation 拆)
-//   3. Layers strip: fact/behavior/judge 一行带过, 不堆 bullets
-// 去掉旧版 headline 和 significance 的内容重复 (perPair[0].headline 是干净的
-// Δ+CI 核心, headline 拼装版只在 SOLO mode 用).
-//
-// computeVerdict 在历史混合批量 report 上有 NPE 风险 (顶层 summary
-// 缺 variant 数据时 evaluateLayerGates 访问 .avgFactScore 炸). 加 try/catch
-// 让 renderer 不 crash, 改为静默 skip pill — 这是 v0.21 B.4 的 scope 范围,
-// verdict.ts/layer-gates.ts 的 defensive 修复留作单独 task.
+// Verdict hero — verdict 是报告的「答案」，应在头部抢眼可读：
+//   行 1: 状态 badge (明显进步 / PROGRESS) + 自然语言句子 (含 ship action)
+//   行 2: 分差 + 评测规模 — 最直观的两个数字, "差多少 / 跑了多少"
+// machine-readable enum 通过 data-verdict-level 属性挂在 section 上，给 CI/工具用；
+// ship-action token 写进 aria-label 给 screen reader,但不放进 badge 显示文字 ——
+// 因为 verdictOneLine 的中文句子已经包含 "可以发布 / 不要发布" 这类 action,
+// badge 再放一遍是重复。CI / CV 这种统计学专名挪到 variance 表 + tooltip,hero
+// 不堆 jargon. 想看精确边界值的工程师下滑到下方的配对对比 / 波动检验表里看。
+// computeVerdict 在历史混合批量 report 上有 NPE 风险，try/catch 让 renderer 不 crash。
+const SHIP_LABEL: Record<VerdictLevel, { zh: string; en: string }> = {
+  PROGRESS:     { zh: '可发布',   en: 'SHIP' },
+  CAUTIOUS:     { zh: '需排查',   en: 'INVESTIGATE' },
+  REGRESS:      { zh: '勿发布',   en: 'DO NOT SHIP' },
+  NOISE:        { zh: '不下结论', en: 'NO CALL' },
+  UNDERPOWERED: { zh: '数据不足', en: 'INSUFFICIENT DATA' },
+  SOLO:         { zh: '缺对照',   en: 'ADD CONTROL' },
+};
+
+function computeMedianCVPercent(report: Report): number | null {
+  const variance = report.variance;
+  if (!variance || (variance.runs ?? 0) < 2) return null;
+  const cvs: number[] = [];
+  for (const v of Object.values(variance.perVariant ?? {})) {
+    if (typeof v.stddev === 'number' && typeof v.mean === 'number' && v.mean > 0) {
+      cvs.push((v.stddev / v.mean) * 100);
+    }
+  }
+  if (cvs.length === 0) return null;
+  cvs.sort((a, b) => a - b);
+  return cvs[Math.floor(cvs.length / 2)];
+}
+
 export function renderVerdictPill(report: Report, lang: Lang): string {
   let result: VerdictResult;
   try {
@@ -104,13 +125,53 @@ export function renderVerdictPill(report: Report, lang: Lang): string {
   const oneLine = verdictOneLine(level, lang, pair?.treatment, pair?.control);
   const tooltip = levelTooltip(level, lang);
   const prefix = lang === 'zh' ? '测评结论' : 'Verdict';
-  // v0.21 B.4 — verdict 融入标题副标. 去 icon, 用 "测评结论:" 前缀引导, 让用户
-  // 一眼读到 "label : 结论" 的语义结构. 状态色信号通过 verdictOneLine 的中文
-  // 措辞 ("明显更好" / "明显更差" / "没看出差别") 传达, 不再依赖颜色 dot.
-  return `<p class="page-verdict verdict-${level}" role="status" aria-label="${e(prefix)}: ${e(oneLine)}" title="${e(tooltip)}">
-    <span class="page-verdict-label">${e(prefix)}:</span>
-    <span class="page-verdict-text">${e(oneLine)}</span>
-  </p>`;
+  // 机器可读 enum 永远是 level token; 显示给用户的文字按 lang i18n.
+  const levelDisplay = lang === 'zh' ? levelLabel(level, lang) : level;
+  const shipAria = lang === 'zh' ? SHIP_LABEL[level].zh : SHIP_LABEL[level].en;
+
+  const ci = report.meta?.pairComparisons?.[0]?.diffBootstrapCI;
+  const N = report.meta?.sampleCount ?? 0;
+  const runs = report.variance?.runs ?? report.meta?.request?.repeat ?? 1;
+  const cvPct = computeMedianCVPercent(report);
+
+  const metrics: Array<{ label: string; value: string; tip?: string }> = [];
+  if (ci) {
+    const sign = ci.estimate >= 0 ? '+' : '';
+    const ciTipBase = lang === 'zh'
+      ? `实验组与对照组综合分均值差(Δ)。bootstrap 95% 可信区间 [${ci.low}, ${ci.high}],${ci.significant ? '不含 0 = 差异显著' : '跨过 0 = 差异不显著'}`
+      : `Treatment minus control mean composite score (Δ). Bootstrap 95% CI [${ci.low}, ${ci.high}], ${ci.significant ? 'excludes 0 ⇒ significant' : 'spans 0 ⇒ not significant'}`;
+    metrics.push({
+      label: lang === 'zh' ? '分差' : 'Δ',
+      value: `${sign}${ci.estimate}`,
+      tip: ciTipBase,
+    });
+  }
+  const cvSuffix = cvPct != null
+    ? (lang === 'zh' ? ` · 多轮稳定性 CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? '稳' : cvPct < 15 ? '中' : '不稳'})` : ` · CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? 'stable' : cvPct < 15 ? 'moderate' : 'unstable'})`)
+    : '';
+  metrics.push({
+    label: lang === 'zh' ? '评测规模' : 'Scale',
+    value: lang === 'zh'
+      ? (runs > 1 ? `${N} 用例 × ${runs} 轮` : `${N} 用例`)
+      : (runs > 1 ? `${N} × ${runs} runs` : `${N} samples`),
+    tip: lang === 'zh'
+      ? `共 ${N * runs} 次模型调用 = 用例数 ${N} × 重复轮次 ${runs}${cvSuffix}`
+      : `${N * runs} executions = ${N} samples × ${runs} runs${cvSuffix}`,
+  });
+
+  const metricChips = metrics.map((m) =>
+    `<span class="verdict-metric"${m.tip ? ` title="${e(m.tip)}"` : ''}>` +
+    `<span class="verdict-metric-label">${e(m.label)}</span>` +
+    `<span class="verdict-metric-value">${e(m.value)}</span></span>`,
+  ).join('');
+
+  return `<section class="page-verdict verdict-${level}" role="status" data-verdict-level="${e(level)}" aria-label="${e(prefix)}: ${e(levelDisplay)} · ${e(shipAria)} · ${e(oneLine)}" title="${e(tooltip)}">
+    <div class="page-verdict-head">
+      <span class="page-verdict-badge"><span class="page-verdict-badge-dot" aria-hidden="true">●</span>${e(levelDisplay)}</span>
+      <span class="page-verdict-text">${e(oneLine)}</span>
+    </div>
+    ${metricChips ? `<div class="page-verdict-metrics">${metricChips}</div>` : ''}
+  </section>`;
 }
 
 
@@ -175,11 +236,11 @@ export function renderHumanAgreement(agreement: ReportHumanAgreement | undefined
   const interpret = lang === 'zh'
     ? (Number.isNaN(a.alpha)
       ? '评分多样性不足，α 未定义'
-      : a.alpha >= 0.8 ? '高度一致 — 结论可放心使用'
-      : a.alpha >= 0.667 ? '可接受 — 谨慎结论'
-      : a.alpha >= 0.4 ? '较弱一致 — 结论需配合 CI 与人工抽检'
-      : a.alpha >= 0 ? '偏差较大 — 排查 rubric / prompt'
-      : '系统性反向 — 重新审视判分逻辑')
+      : a.alpha >= 0.8 ? '高度一致——结论可放心使用'
+      : a.alpha >= 0.667 ? '可接受——谨慎结论'
+      : a.alpha >= 0.4 ? '较弱一致——结论需配合 CI 与人工抽检'
+      : a.alpha >= 0 ? '偏差较大——排查 rubric / prompt'
+      : '系统性反向——重新审视判分逻辑')
     : (Number.isNaN(a.alpha)
       ? 'insufficient rating variance for α'
       : a.alpha >= 0.8 ? 'high agreement — conclusions trustworthy'
@@ -541,8 +602,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       <thead>${thead}</thead>
       <tbody>${rows}</tbody>
     </table>
-    </div>
-    ${renderJudgeAgreementBlock(variants, summary, lang)}`;
+    </div>`;
 }
 
 /**
@@ -551,7 +611,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
  * Pearson + MAD across the whole sample set, the metric that refutes "Claude judge
  * Claude same-modality bias".
  */
-function renderJudgeAgreementBlock(variants: string[], summary: Record<string, VariantSummary>, lang: Lang): string {
+export function renderJudgeAgreementBlock(variants: string[], summary: Record<string, VariantSummary>, lang: Lang): string {
   const variantsWithEnsemble = variants.filter((v) => summary[v]?.judgeAgreement);
   if (variantsWithEnsemble.length === 0) return '';
 
@@ -589,6 +649,144 @@ function renderJudgeAgreementBlock(variants: string[], summary: Record<string, V
       <tbody>${rows}</tbody>
     </table>
     </div>`;
+}
+
+// 方法学审计 — 把「评测本身可靠不」的证据从一级 H2 收进折叠区。
+// 用户读完 hero verdict + 实验配置 + 测评结果 已经能下「skill 行不行」的判断；
+// 这里包的 4 块是「想验流程的人」才需要的二级证据：
+//   1. 评委一致 (judge ensemble Pearson/MAD)
+//   2. 差异显著 (pairwise CI)
+//   3. 已饱和 (saturation verdict)
+//   4. 人工对齐 (Krippendorff α vs gold; 仅当配过 --gold-dir 时存在)
+// summary 行用 badge 直接告诉用户「方法学体检结果」,绿勾代表流程健康,
+// 任何 ⚠/✗ 立刻把方法学问题暴露出来,用户会主动展开核实。
+type AuditBadgeStatus = 'pass' | 'warn' | 'fail' | 'skip';
+interface AuditBadge {
+  key: string;
+  label: string;
+  status: AuditBadgeStatus;
+  detail: string;
+}
+
+function badgeIcon(status: AuditBadgeStatus): string {
+  switch (status) {
+    case 'pass': return '✓';
+    case 'warn': return '⚠';
+    case 'fail': return '✗';
+    case 'skip': return '—';
+  }
+}
+
+function computeJudgeAgreementBadge(variants: string[], summary: Record<string, VariantSummary>, lang: Lang): AuditBadge | null {
+  const treatment = variants[1] ?? variants[0];
+  const ag = summary[treatment]?.judgeAgreement;
+  if (!ag || ag.pearson == null) return null;
+  const p = ag.pearson;
+  const status: AuditBadgeStatus = p >= 0.7 ? 'pass' : p >= 0.4 ? 'warn' : 'fail';
+  const verdict = status === 'pass'
+    ? (lang === 'zh' ? '评委一致' : 'judges agree')
+    : status === 'warn'
+      ? (lang === 'zh' ? '评委偏弱一致' : 'judges weakly agree')
+      : (lang === 'zh' ? '评委分歧大' : 'judges diverge');
+  return {
+    key: 'judge',
+    label: verdict,
+    status,
+    detail: lang === 'zh' ? `Pearson ${p}（≥0.7 一致 / 0.4-0.7 偏弱 / <0.4 分歧）` : `Pearson ${p} (≥0.7 agree / 0.4-0.7 weak / <0.4 diverge)`,
+  };
+}
+
+function computeSignificanceBadge(report: Report, lang: Lang): AuditBadge | null {
+  const ci = report.meta?.pairComparisons?.[0]?.diffBootstrapCI;
+  if (!ci) return null;
+  const status: AuditBadgeStatus = ci.significant ? 'pass' : 'warn';
+  const label = ci.significant
+    ? (lang === 'zh' ? '差异显著' : 'significant')
+    : (lang === 'zh' ? '差异不显著' : 'not significant');
+  return {
+    key: 'sig',
+    label,
+    status,
+    detail: lang === 'zh' ? `bootstrap 95% CI [${ci.low}, ${ci.high}]${ci.significant ? '（不含 0）' : '（跨过 0）'}` : `Bootstrap 95% CI [${ci.low}, ${ci.high}]${ci.significant ? ' (excludes 0)' : ' (spans 0)'}`,
+  };
+}
+
+function computeSaturationBadge(report: Report, variants: string[], lang: Lang): AuditBadge | null {
+  const sat = report.variance?.saturation?.verdicts;
+  if (!sat) return null;
+  const treatment = variants[1] ?? variants[0];
+  const v = sat[treatment];
+  if (!v) return null;
+  const status: AuditBadgeStatus = v.saturated
+    ? (v.confidence === 'high' ? 'pass' : 'warn')
+    : 'warn';
+  const label = v.saturated
+    ? (lang === 'zh' ? '已饱和' : 'saturated')
+    : (lang === 'zh' ? '未饱和' : 'not saturated');
+  return {
+    key: 'sat',
+    label,
+    status,
+    detail: lang === 'zh'
+      ? `${v.saturated ? `于 N=${v.atN ?? '?'} 饱和` : '尚未饱和'}（${v.confidence} confidence）`
+      : `${v.saturated ? `saturates at N=${v.atN ?? '?'}` : 'not yet saturated'} (${v.confidence} confidence)`,
+  };
+}
+
+function computeHumanAlignmentBadge(report: Report, lang: Lang): AuditBadge | null {
+  const a = report.meta?.humanAgreement;
+  if (!a || a.sampleCount === 0 || Number.isNaN(a.alpha)) return null;
+  const status: AuditBadgeStatus = a.alpha >= 0.667 ? 'pass' : a.alpha >= 0.4 ? 'warn' : 'fail';
+  const label = status === 'pass'
+    ? (lang === 'zh' ? '人工对齐' : 'aligns with humans')
+    : status === 'warn'
+      ? (lang === 'zh' ? '人工对齐偏弱' : 'weakly aligns')
+      : (lang === 'zh' ? '与人工分歧' : 'diverges from humans');
+  return {
+    key: 'human',
+    label,
+    status,
+    detail: lang === 'zh' ? `Krippendorff α=${a.alpha.toFixed(3)} vs ${a.goldAnnotator}` : `Krippendorff α=${a.alpha.toFixed(3)} vs ${a.goldAnnotator}`,
+  };
+}
+
+export function renderMethodologyAudit(
+  report: Report,
+  variants: string[],
+  summary: Record<string, VariantSummary>,
+  lang: Lang,
+): string {
+  const judgeBlock = renderJudgeAgreementBlock(variants, summary, lang);
+  const pairwiseBlock = renderPairwiseDiff(report.meta?.pairComparisons, lang);
+  const humanBlock = renderHumanAgreement(report.meta?.humanAgreement, lang);
+  const saturationBlock = renderSaturationCurve(report.variance?.saturation, variants, lang);
+  if (!judgeBlock && !pairwiseBlock && !humanBlock && !saturationBlock) return '';
+
+  const badges = [
+    computeJudgeAgreementBadge(variants, summary, lang),
+    computeSignificanceBadge(report, lang),
+    computeSaturationBadge(report, variants, lang),
+    computeHumanAlignmentBadge(report, lang),
+  ].filter((b): b is AuditBadge => b !== null);
+
+  // 若至少有一个 ⚠/✗,默认展开 — 方法学有警告时强制让用户看到证据。
+  const hasIssue = badges.some((b) => b.status === 'warn' || b.status === 'fail');
+  const openAttr = hasIssue ? ' open' : '';
+  const summaryLabel = lang === 'zh' ? '方法学审计' : 'Methodology audit';
+  const summaryHint = lang === 'zh' ? '点击展开看评委 / 显著性 / 饱和度 / 人工对齐的支撑证据' : 'click to expand judge / significance / saturation / human alignment evidence';
+
+  const badgesHtml = badges.length > 0
+    ? `<span class="methodology-badges">${badges.map((b) =>
+        `<span class="methodology-badge methodology-badge-${b.status}" title="${e(b.detail)}">${badgeIcon(b.status)} ${e(b.label)}</span>`,
+      ).join('')}</span>`
+    : '';
+
+  const innerSections = [judgeBlock, pairwiseBlock, humanBlock, saturationBlock].filter(Boolean).join('');
+
+  return `<details class="methodology-audit"${openAttr}>
+    <summary><span class="methodology-summary-label">${e(summaryLabel)}</span>${badgesHtml}<span class="methodology-summary-hint">${e(summaryHint)}</span></summary>
+    <div class="methodology-body">${innerSections}</div>
+  </details>`;
 }
 
 interface DiagnosticEntry {
@@ -1491,6 +1689,13 @@ export function renderKnowledgeInteractionSection(
   const hasCov = coverage && Object.keys(coverage).length > 0;
   const hasGap = gapReports && Object.keys(gapReports).length > 0;
   if (!hasCov && !hasGap) return '';
+
+  // 所有 variant 的 coverage 都不可用 (filesTotal === 0) 且所有 gap 都是 0%(无信号)
+  // 时,整个 section 没有可读信息 — 渲染只会占大段纵向空间显示「数据不可用 / 0%」
+  // 干扰用户阅读流。直接跳过比强行展示「显式无信号」更尊重读者。
+  const usefulCoverage = hasCov && Object.values(coverage!).some((c) => c.filesTotal > 0);
+  const usefulGap = hasGap && Object.values(gapReports!).some((g) => g.gapRate > 0 || g.signals.length > 0);
+  if (!usefulCoverage && !usefulGap) return '';
 
   const title = lang === 'zh' ? '本次测评：评测用例 × 知识库' : 'This Evaluation: Test Set × Knowledge Base';
   const desc = lang === 'zh'

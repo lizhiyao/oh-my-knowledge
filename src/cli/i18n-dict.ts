@@ -240,7 +240,7 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '  3. Run: omk eval --control code-review-v1 --treatment code-review-v2',
   },
   'cli.init.note_codex_executor': {
-    zh: '\n注: omk 评测时把 SKILL.md 整文(含 frontmatter)作为 system prompt 注入 — 跨 executor 一致(claude / codex / openai-api / gemini 都走同一条路径,不依赖任何 executor 的 native skill auto-discovery 或 Skill 工具机制)。frontmatter 在 prompt 头部对 model 行为无显著影响。\n模板带 Claude Code 兼容的 frontmatter(name + description)是为了让同一份 directory-skill 也能 deploy 到 Claude Code:把整个目录复制到 ~/.claude/skills/code-review-v1/(整目录,不是单个 SKILL.md),Claude SDK 才能识别。这是 omk 评测之外的 bonus,一份文件双向 dogfood。',
+    zh: '\n注: omk 评测时把 SKILL.md 整文(含 frontmatter)作为 system prompt 注入——跨 executor 一致(claude / codex / openai-api / gemini 都走同一条路径,不依赖任何 executor 的 native skill auto-discovery 或 Skill 工具机制)。frontmatter 在 prompt 头部对 model 行为无显著影响。\n模板带 Claude Code 兼容的 frontmatter(name + description)是为了让同一份 directory-skill 也能 deploy 到 Claude Code:把整个目录复制到 ~/.claude/skills/code-review-v1/(整目录,不是单个 SKILL.md),Claude SDK 才能识别。这是 omk 评测之外的 bonus,一份文件双向 dogfood。',
     en: '\nNote: during omk evaluation the full SKILL.md (frontmatter included) is injected as the system prompt — uniformly across executors (claude / codex / openai-api / gemini all take the same path; omk does not rely on any executor\'s native skill auto-discovery or Skill tool). Frontmatter has no measurable impact on model behavior in this position.\nThe template ships with Claude Code-compatible frontmatter (name + description) so the same directory-skill can also be deployed to Claude Code: copy the whole directory to ~/.claude/skills/code-review-v1/ (the directory, not just SKILL.md) so Claude SDK can recognize it. That is a bonus beyond omk evaluation — one source, two-way dogfood.',
   },
   'cli.update.new_version_available': {
@@ -525,7 +525,7 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   },
   'cli.help.product_main': {
     zh: `
-oh-my-knowledge — 知识载体工作台
+oh-my-knowledge——知识载体工作台
 
 用法：
   omk init [dir]                      初始化一个 skill 评测项目
@@ -575,7 +575,7 @@ Run 'omk <command> --help' for command-specific options.
   },
   'cli.help.init_usage': {
     zh: `
-omk init — 初始化 skill 评测项目
+omk init——初始化 skill 评测项目
 
 用法：
   omk init [dir]
@@ -609,7 +609,7 @@ Next steps:
   },
   'cli.help.eval': {
     zh: `
-omk eval — 离线评测 skill 版本，并给出 ship/no-ship verdict
+omk eval——离线评测 skill 版本，并给出 ship/no-ship verdict
 
 用法：
   omk eval --control <variant> --treatment <variant> [options]
@@ -673,7 +673,7 @@ Examples:
   },
   'cli.help.eval_gold': {
     zh: `
-omk eval gold — 管理 human-gold 标注集
+omk eval gold——管理 human-gold 标注集
 
 用法：
   omk eval gold init [--out <dir>] [--annotator <name>]
@@ -701,7 +701,7 @@ Options:
   },
   'cli.help.observe': {
     zh: `
-omk observe — 分析真实 session trace，生成 skill 健康度日报
+omk observe——分析真实 session trace，生成 skill 健康度日报
 
 用法：
   omk observe <sessions-dir> [options]
@@ -731,7 +731,7 @@ Options:
   },
   'cli.help.evolve': {
     zh: `
-omk evolve — 多轮自动迭代改进 skill
+omk evolve——多轮自动迭代改进 skill
 
 用法：
   omk evolve <skill-path> [options]
@@ -769,7 +769,7 @@ Examples:
   },
   'cli.help.sample': {
     zh: `
-omk sample — 生成或补齐 eval-samples 评测用例
+omk sample——生成或补齐 eval-samples 评测用例
 
 用法：
   omk sample <skill-path> [options]
@@ -797,7 +797,7 @@ Options:
   },
   'cli.help.studio': {
     zh: `
-omk studio — 打开本地知识工作台
+omk studio——打开本地知识工作台
 
 用法：
   omk studio [options]
@@ -1025,7 +1025,7 @@ Examples:
   // ============ omk doctor CLI level ============
   'cli.help.doctor_usage': {
     zh: `
-oh-my-knowledge — omk doctor 健康度体检 (LLM-judge)
+oh-my-knowledge——omk doctor 健康度体检 (LLM-judge)
 
 用法:
   omk doctor [path]                    在 path 上跑深度健康度体检
@@ -1111,7 +1111,7 @@ LLM connectivity for omk eval can be skipped with --skip-connectivity (auto on -
     en: '✓ Using eval samples file: {path}',
   },
   'cli.doctor.gate_blocked': {
-    zh: 'skill 健康检查未通过, 评测已中止。doctor 是评测必经环节, 无 skip 选项 — 请修复上述问题后重跑。',
+    zh: 'skill 健康检查未通过，评测已中止。doctor 是评测必经环节，无 skip 选项——请修复上述问题后重跑。',
     en: 'skill health check failed; evaluation aborted. doctor is mandatory and not skippable — fix the issues above and re-run.',
   },
   'cli.run.skip_connectivity_warning': {

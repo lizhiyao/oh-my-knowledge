@@ -6,10 +6,8 @@ import { e, fmtCost, fmtDuration, fmtKnownCost, COLORS, DEFAULT_LANG, t, layout 
 import {
   renderAgentOverview,
   renderAnalysis,
-  renderHumanAgreement,
   renderKnowledgeInteractionSection,
-  renderPairwiseDiff,
-  renderSaturationCurve,
+  renderMethodologyAudit,
   renderSummaryCards,
   renderVarianceComparisons,
   renderVerdictPill,
@@ -51,34 +49,6 @@ function improvementOf(baselineScore: number | null, skillScore: number | null):
   return skillScore >= baselineScore ? `+${delta}%` : `${delta}%`;
 }
 
-function renderRuntimeTag(runtime: ExecutorRuntimeFingerprint | null | undefined, label: string, lang: Lang): string {
-  if (!runtime) return '';
-  const versions: string[] = [];
-  if (runtime.binary?.version) versions.push(`${lang === 'zh' ? '二进制' : 'binary'} ${runtime.binary.version}`);
-  if (runtime.sdk?.version) versions.push(`sdk ${runtime.sdk.version}`);
-  const versionText = versions.length > 0 ? ` · ${versions.map(e).join(' · ')}` : '';
-  const title = lang === 'zh'
-    ? [
-      `executor=${runtime.executor}`,
-      `model=${runtime.model}`,
-      `kind=${runtime.kind}`,
-      `system=${runtime.capabilities.systemPrompt}`,
-      `cost=${runtime.capabilities.costUSD}`,
-      `trace=${runtime.capabilities.trace}`,
-      `skillIsolation=${runtime.capabilities.skillIsolation}`,
-    ].join('; ')
-    : [
-      `executor=${runtime.executor}`,
-      `model=${runtime.model}`,
-      `kind=${runtime.kind}`,
-      `system=${runtime.capabilities.systemPrompt}`,
-      `cost=${runtime.capabilities.costUSD}`,
-      `trace=${runtime.capabilities.trace}`,
-      `skillIsolation=${runtime.capabilities.skillIsolation}`,
-    ].join('; ');
-  return `<span class="meta-tag" title="${e(title)}">${e(label)}: <code>${e(runtime.fingerprint)}</code>${versionText}</span>`;
-}
-
 function costCompletenessTooltip(lang: Lang): string {
   return lang === 'zh'
     ? '部分 executor 或评委不回传 USD 成本。这里显示的是已上报成本下界,真实花费可能更高。'
@@ -102,36 +72,82 @@ function pluralizeEn(count: number, singular: string, plural = `${singular}s`): 
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
-function renderJudgeRuntimeTags(meta: RuntimeMeta, lang: Lang): string {
-  if (meta.noJudge) return '';
-  const entries = meta.judgeModels ?? [];
-  if (entries.length === 0) return '';
-  if (entries.length === 1) {
-    return renderRuntimeTag(entries[0].runtime, lang === 'zh' ? '评委指纹' : 'Judge runtime', lang);
-  }
-  return entries
-    .slice()
-    .sort((a, b) => `${a.executor}:${a.model}`.localeCompare(`${b.executor}:${b.model}`))
-    .map((entry) => renderRuntimeTag(
-      entry.runtime,
-      lang === 'zh' ? `评委指纹 ${entry.executor}:${entry.model}` : `Judge runtime ${entry.executor}:${entry.model}`,
-      lang,
-    ))
-    .join('');
+interface RuntimeScope {
+  role: 'executor' | 'judge';
+  scope: string;
+  runtime: ExecutorRuntimeFingerprint;
 }
 
-function renderExecutorRuntimeTags(meta: RuntimeMeta, lang: Lang): string {
+function gatherRuntimeScopes(meta: RuntimeMeta): RuntimeScope[] {
+  const scopes: RuntimeScope[] = [];
   if (meta.executorRuntimes && Object.keys(meta.executorRuntimes).length > 0) {
-    return Object.entries(meta.executorRuntimes)
+    Object.entries(meta.executorRuntimes)
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, runtime]) => renderRuntimeTag(
-        runtime,
-        lang === 'zh' ? `执行器指纹 ${key}` : `Executor runtime ${key}`,
-        lang,
-      ))
-      .join('');
+      .forEach(([key, runtime]) => {
+        if (runtime) scopes.push({ role: 'executor', scope: key, runtime });
+      });
+  } else if (meta.executorRuntime) {
+    scopes.push({ role: 'executor', scope: '', runtime: meta.executorRuntime });
   }
-  return renderRuntimeTag(meta.executorRuntime, lang === 'zh' ? '执行器指纹' : 'Executor runtime', lang);
+  if (!meta.noJudge) {
+    (meta.judgeModels ?? [])
+      .slice()
+      .sort((a, b) => `${a.executor}:${a.model}`.localeCompare(`${b.executor}:${b.model}`))
+      .forEach((entry) => {
+        if (entry.runtime) scopes.push({ role: 'judge', scope: `${entry.executor}:${entry.model}`, runtime: entry.runtime });
+      });
+  }
+  return scopes;
+}
+
+function runtimeVersionText(runtime: ExecutorRuntimeFingerprint, lang: Lang): string {
+  const versions: string[] = [];
+  if (runtime.binary?.version) versions.push(`${lang === 'zh' ? '二进制' : 'binary'} ${runtime.binary.version}`);
+  if (runtime.sdk?.version) versions.push(`sdk ${runtime.sdk.version}`);
+  return versions.length > 0 ? ` · ${versions.map(e).join(' · ')}` : '';
+}
+
+function runtimeTooltip(runtime: ExecutorRuntimeFingerprint): string {
+  return [
+    `executor=${runtime.executor}`,
+    `model=${runtime.model}`,
+    `kind=${runtime.kind}`,
+    `system=${runtime.capabilities.systemPrompt}`,
+    `cost=${runtime.capabilities.costUSD}`,
+    `trace=${runtime.capabilities.trace}`,
+    `skillIsolation=${runtime.capabilities.skillIsolation}`,
+  ].join('; ');
+}
+
+// 同 fingerprint + 同 binary/sdk 版本 = 同一执行环境，合并为一条 tag。
+// 旧版给每个 executor / judge 单独一条 pill，3 个角色用同一 binary 时
+// fingerprint 重复 3 遍，扫读成本高。新版按 (fingerprint, versionText)
+// 分组，scope 合并到 tag 内 "适用于 ..." 后缀。
+function renderRuntimeFingerprintTags(meta: RuntimeMeta, lang: Lang): string {
+  const scopes = gatherRuntimeScopes(meta);
+  if (scopes.length === 0) return '';
+
+  const groups = new Map<string, { runtime: ExecutorRuntimeFingerprint; versionText: string; executors: string[]; judges: string[] }>();
+  for (const s of scopes) {
+    const versionText = runtimeVersionText(s.runtime, lang);
+    const key = `${s.runtime.fingerprint}|${versionText}`;
+    let g = groups.get(key);
+    if (!g) {
+      g = { runtime: s.runtime, versionText, executors: [], judges: [] };
+      groups.set(key, g);
+    }
+    if (s.role === 'executor') g.executors.push(s.scope || (lang === 'zh' ? '默认' : 'default'));
+    else g.judges.push(s.scope);
+  }
+
+  const groupLabel = lang === 'zh' ? '执行环境指纹' : 'Runtime fingerprint';
+  return Array.from(groups.values()).map((g) => {
+    const scopeBits: string[] = [];
+    if (g.executors.length > 0) scopeBits.push(`${lang === 'zh' ? '执行器' : 'executor'} ${g.executors.join(', ')}`);
+    if (g.judges.length > 0) scopeBits.push(`${lang === 'zh' ? '评委' : 'judge'} ${g.judges.join(', ')}`);
+    const scopeText = scopeBits.length > 0 ? ` · ${lang === 'zh' ? '适用' : 'used by'} ${e(scopeBits.join('; '))}` : '';
+    return `<span class="meta-tag" title="${e(runtimeTooltip(g.runtime))}">${e(groupLabel)}: <code>${e(g.runtime.fingerprint)}</code>${g.versionText}${scopeText}</span>`;
+  }).join('');
 }
 
 export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG): string {
@@ -345,9 +361,7 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
   const results = report.results || [];
 
   const cards = renderSummaryCards(variants, summary, lang, report.variance);
-  const pairwiseDiff = renderPairwiseDiff(report.meta.pairComparisons, lang);
-  const humanAgreement = renderHumanAgreement(report.meta.humanAgreement, lang);
-  const saturationCurve = renderSaturationCurve(report.variance?.saturation, variants, lang);
+  const methodologyAudit = renderMethodologyAudit(report, variants, summary, lang);
   const verdictPill = renderVerdictPill(report, lang);
   const sampleTable = renderSampleTable(variants, results, lang);
   const totalExecCost = Object.values(summary).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
@@ -453,6 +467,17 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
     <main>
     <nav class="nav"><a href="/${langQ}" data-i18n="backToList">${t('backToList', lang)}</a></nav>
     <h1>${e(report.id)}</h1>
+    ${(() => {
+      // Run ID 形如 `<name>-YYYYMMDD-HHMM`,把时间戳解出来作为人类可读的副标小字
+      // (报告什么时候跑的)。完整 run-id 仍是 H1,与列表页保持一致。
+      const idMatch = /^.+?-(\d{8})-(\d{4})$/.exec(report.id);
+      if (idMatch) {
+        const [, ymd, hm] = idMatch;
+        const stamp = `${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6, 8)} ${hm.slice(0, 2)}:${hm.slice(2, 4)}`;
+        return `<p class="run-id-stamp">${lang === 'zh' ? '运行时间' : 'ran at'}: ${e(stamp)}</p>`;
+      }
+      return '';
+    })()}
     ${verdictPill}
     <div class="meta-tags">
       <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
@@ -469,12 +494,21 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
       <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${t('totalCost', lang)}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>
       <span class="meta-tag">${lang === 'zh' ? '耗时' : 'Duration'}: ${fmtDuration(totalDurationMs)}</span>
       ${m.gitInfo ? `<span class="meta-tag">${lang === 'zh' ? '提交' : 'commit'}: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
-      ${m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : ''}${renderExecutorRuntimeTags(m, lang)}${renderJudgeRuntimeTags(m, lang)}
-      ${m.sampleHashes ? `<span class="meta-tag" style="color:var(--text-muted)" title="${t('sampleHashCountDesc', lang)}">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}/${m.sampleCount}</span>` : ''}
+      ${m.sampleHashes ? `<span class="meta-tag" title="${t('sampleHashCountDesc', lang)}">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}/${m.sampleCount}</span>` : ''}
       ${m.evaluationFramework ? `<span class="meta-tag" title="${t('evalFrameworkDesc', lang)}">${t('evalFrameworkLabel', lang)}: ${m.evaluationFramework === 'bootstrap' ? t('evalFrameworkBootstrap', lang) : m.evaluationFramework === 'both' ? t('evalFrameworkBoth', lang) : t('evalFrameworkTTest', lang)}</span>` : ''}
       ${renderDebiasModeTag(m.debiasMode, lang)}
       ${m.blind ? `<span class="meta-tag" style="color:var(--green)" data-i18n="blindLabel">${t('blindLabel', lang)}</span>` : ''}
     </div>
+    ${(() => {
+      // 审计指纹 (评委 prompt hash + 执行环境 fingerprint) 默认折叠 ——
+      // 平日 review 不需要看, 复现时再展开。同 fingerprint 多次出现已合并。
+      const auditTags = [
+        m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : '',
+        renderRuntimeFingerprintTags(m, lang),
+      ].join('');
+      if (!auditTags) return '';
+      return `<details class="audit-fingerprints"><summary>${lang === 'zh' ? '审计指纹（用于复现校验）' : 'Audit fingerprints (for reproducibility)'}</summary><div class="meta-tags">${auditTags}</div></details>`;
+    })()}
     ${m.blind ? `
     <div style="margin:12px 0">
       <button onclick="document.getElementById('blind-reveal').style.display=document.getElementById('blind-reveal').style.display==='none'?'block':'none'" data-i18n="revealBlind">${t('revealBlind', lang)}</button>
@@ -485,7 +519,8 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
 
     ${variantConfigSection}
 
-    <section>${cards}${pairwiseDiff}${humanAgreement}${saturationCurve}</section>
+    <section>${cards}</section>
+    ${methodologyAudit}
 
     ${renderVarianceComparisons(report.variance, lang, Boolean(report.meta.layeredStats), summary)}
 
@@ -557,9 +592,13 @@ export function renderBatchEvaluationDetail(report: BatchEvaluationReport | null
         return `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${list.map((j) => e(`${j.executor}:${j.model}`)).join(' · ')}</span>`;
       })()}
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
-      ${renderExecutorRuntimeTags(m, lang)}${renderJudgeRuntimeTags(m, lang)}
       <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${t('totalCost', lang)}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>
     </div>
+    ${(() => {
+      const auditTags = renderRuntimeFingerprintTags(m, lang);
+      if (!auditTags) return '';
+      return `<details class="audit-fingerprints"><summary>${lang === 'zh' ? '审计指纹（用于复现校验）' : 'Audit fingerprints (for reproducibility)'}</summary><div class="meta-tags">${auditTags}</div></details>`;
+    })()}
 
     <section>
     <h2>${t('batchOverview', lang)}</h2>

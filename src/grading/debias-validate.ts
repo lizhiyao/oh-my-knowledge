@@ -73,12 +73,12 @@ function classifyVerdict(diff: BootstrapDiffCI): DebiasValidateResult['verdict']
   }
   const mag = Math.min(Math.abs(diff.low), Math.abs(diff.high));
   if (mag >= 0.5) {
-    return { zh: '强差异 — prompt 改动对评分影响大', en: 'strong shift', level: 'strong' };
+    return { zh: '强差异——prompt 改动对评分影响大', en: 'strong shift', level: 'strong' };
   }
   if (mag >= 0.2) {
-    return { zh: '中等差异 — 校正对结论有实质影响', en: 'medium shift', level: 'medium' };
+    return { zh: '中等差异——校正对结论有实质影响', en: 'medium shift', level: 'medium' };
   }
-  return { zh: '弱差异 — 显著但幅度小', en: 'weak shift', level: 'weak' };
+  return { zh: '弱差异——显著但幅度小', en: 'weak shift', level: 'weak' };
 }
 
 /**
@@ -194,7 +194,7 @@ export function formatDebiasValidate(result: DebiasValidateResult): string {
   lines.push(`  对照 prompt:    ${dirAlt}`);
   lines.push(`  用例数:         ${result.pairs.length}`);
   if (result.pairs.length === 0) {
-    lines.push('  无可比对用例 — 检查报告是否含 fullOutput / rubric。');
+    lines.push('  无可比对用例——检查报告是否含 fullOutput / rubric。');
     return lines.join('\n');
   }
   lines.push(`  原均值:         ${result.meanOriginal.toFixed(3)}`);

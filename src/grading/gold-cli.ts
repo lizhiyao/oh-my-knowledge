@@ -128,7 +128,7 @@ export function formatGoldCompare(result: GoldCompareResult, gold: GoldDataset):
   lines.push(`\n  人工锚点对比 (variant: ${result.variant})\n`);
   lines.push(`  用例数:           ${a.sampleCount}`);
   if (a.sampleCount === 0) {
-    lines.push('  无可比对用例 — 检查 sample_id 是否对应。');
+    lines.push('  无可比对用例——检查 sample_id 是否对应。');
     if (result.missing.length) lines.push(`  报告缺失:         ${result.missing.join(', ')}`);
     return lines.join('\n');
   }
@@ -214,7 +214,7 @@ export function initGoldDataset(targetDir: string, options: { annotator?: string
     '- `annotations.yaml`: 每条 `{ sample_id, score, reason? }`，按 sample_id 拼接',
     '',
     '## 重要约束',
-    '1. annotator 不应与 omk judge 模型同名 — CLI 检测到会警告',
+    '1. annotator 不应与 omk judge 模型同名——CLI 检测到会警告',
     '2. 单标注者只反映一个视角；30 条以下的 demo 不构成基准',
     '3. score 必须在 metadata.scale 范围内 (默认 1-5)',
     '',
