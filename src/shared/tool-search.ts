@@ -27,9 +27,21 @@ function bashStructuredQuery(command: string): { query?: string; path?: string }
     while (i < tokens.length) {
       const tok = tokens[i];
       if (tok.startsWith('-')) {
-        // skip flag; if it's a value-taking flag (-e/-f/-i 不需要值,但 -e 后跟 pattern,统一跳一格)
-        if (/^-(?:e|f|m|A|B|C)$/.test(tok)) i += 2;
-        else i += 1;
+        // -e <pat> / --regexp=<pat>: 显式指定 pattern,优先使用它
+        if (tok === '-e' || tok === '--regexp') {
+          if (pattern == null && i + 1 < tokens.length) {
+            pattern = tokens[i + 1].replace(/^['"]|['"]$/g, '');
+          }
+          i += 2;
+          continue;
+        }
+        // 带值 flag 跳两格 (-f file / -m N / -A/-B/-C N / --include=... 已自带值)
+        if (/^-(?:f|m|A|B|C)$/.test(tok)) {
+          i += 2;
+          continue;
+        }
+        // 其他 flag (-r/-R/-i/-l/-n/-v/-w/--include=*.ts 等) 跳一格
+        i += 1;
         continue;
       }
       if (pattern == null) pattern = tok.replace(/^['"]|['"]$/g, '');
@@ -38,10 +50,14 @@ function bashStructuredQuery(command: string): { query?: string; path?: string }
     }
     if (pattern) return { query: pattern, ...(path ? { path } : {}) };
   }
-  const findName = /\bfind\b[^|;&]*?-name\s+['"]?([^'"\s]+)/.exec(command);
+  // find: 支持 -name / -iname / -path / -wholename
+  const findName = /\bfind\b[^|;&]*?-(?:i?name|path|wholename)\s+['"]?([^'"\s]+)/.exec(command);
   if (findName) return { query: findName[1] };
-  // ls / cat / test / head / tail / wc / file / stat / du / tree → path-only
-  const pathOnly = /\b(?:ls|cat|test|head|tail|wc|file|stat|du|tree)\b\s+(?:-\w+\s+)*([^\s|;&]+)/.exec(command);
+  // ls / cat / test / head / tail / wc / file / stat / du / tree → path-only。
+  // 路径首字符限制 [\w./~]:
+  //   - 排除 flag (`-` 开头) 防 `npm run test --watch` 把 `--watch` 当 path
+  //   - 允许字母/数字/`.`/`/`/`~` 开头的 path token (foo / ./foo / /foo / ~/foo)
+  const pathOnly = /\b(?:ls|cat|test|head|tail|wc|file|stat|du|tree)\b\s+(?:-\w+\s+)*([\w./~][^\s|;&]*)/.exec(command);
   if (pathOnly) return { path: pathOnly[1] };
   return {};
 }
