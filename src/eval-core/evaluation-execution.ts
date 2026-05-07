@@ -158,6 +158,7 @@ export async function executeTasks({
     // include allowedSkills in cache key so isolation-on / isolation-off runs
     // don't share cache entries, and include runtime fingerprint so a binary/SDK bump
     // cannot replay old-runtime outputs under new-runtime report metadata.
+    // 同时把 mocks + mocksStrict 进 key:改 mock 配置必须重跑,不能命中老 cache。
     const key = cacheKey(
       model,
       executionPlan.cacheSystem,
@@ -166,6 +167,8 @@ export async function executeTasks({
       task.artifact.allowedSkills,
       effectiveExecutorName,
       executorRuntime.fingerprint,
+      executionPlan.input.mocks,
+      executionPlan.input.mocksStrict,
     );
     const cached = cache?.get(key);
     const execStart = Date.now();
@@ -236,6 +239,7 @@ export async function executeTasks({
               numTurns: execResult!.numTurns,
               toolCalls: execResult!.toolCalls,
               turns: execResult!.turns,
+              mockStats: execResult!.mockStats,
             },
             samplesDir: dirname(resolve(samplesPath)),
             judgeRepeat,
@@ -307,7 +311,7 @@ export async function executeTasks({
   return { results, totalCostUSD, skipped, budgetExhausted };
 }
 
-export async function preflight(executor: ExecutorFn, model: string, timeoutMs: number = 15000): Promise<void> {
+export async function preflight(executor: ExecutorFn, model: string, timeoutMs: number = 180000): Promise<void> {
   const result = await executor({
     model,
     system: '',

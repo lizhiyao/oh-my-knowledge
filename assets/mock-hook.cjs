@@ -1,0 +1,170 @@
+#!/usr/bin/env node
+/**
+ * omk-mock PreToolUse hook (CLI fallback path).
+ *
+ * 由 src/eval-core/mocks-runtime.ts:materializeForCliConfigDir 写到临时
+ * CLAUDE_CONFIG_DIR/mock-hook.cjs。Claude Code 子进程会以 hook 形式调它,
+ * stdin 收 PreToolUseHookInput,stdout 出 PreToolUseHookOutput JSON。
+ *
+ * 该脚本是无状态的 — 所有规则从 OMK_MOCKS_FILE 文件读。命中状态(状态机用)
+ * 通过同目录下的 hits.json 持久化(同一 spawn 内多次 hook 调用共享)。
+ */
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+function expandHome(p) {
+  if (p.startsWith('~/')) return path.join(os.homedir(), p.slice(2));
+  if (p === '~') return os.homedir();
+  return p;
+}
+
+function globMatch(pattern, value) {
+  // 与 SDK 路径(mocks-runtime.ts)对齐:dotAll 让 `*` 跨换行匹配多行 bash。
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('^' + escaped.replace(/\*/g, '.*') + '$', 's').test(value);
+}
+
+function matchesInputSubset(expected, actual) {
+  if (typeof actual !== 'object' || actual === null) return false;
+  for (const k of Object.keys(expected)) {
+    const v = expected[k];
+    if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+      if (!matchesInputSubset(v, actual[k])) return false;
+    } else if (actual[k] !== v) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function isMockHit(mock, toolName, toolInput) {
+  if (mock.tool !== toolName) return false;
+  const m = mock.match;
+  if (!m) return true;
+  const ti = toolInput || {};
+  if (m.file_path !== undefined) {
+    if (typeof ti.file_path !== 'string') return false;
+    if (expandHome(ti.file_path) !== expandHome(m.file_path)) return false;
+  }
+  if (m.url !== undefined && ti.url !== m.url) return false;
+  if (m.url_glob !== undefined) {
+    if (typeof ti.url !== 'string' || !globMatch(m.url_glob, ti.url)) return false;
+  }
+  if (m.command_glob !== undefined) {
+    if (typeof ti.command !== 'string' || !globMatch(m.command_glob, ti.command)) return false;
+  }
+  if (m.input !== undefined && !matchesInputSubset(m.input, toolInput)) return false;
+  return true;
+}
+
+function stringifyReturn(r) {
+  if (typeof r === 'string') return r;
+  return JSON.stringify(r);
+}
+
+function resolveMockReturn(mock, hitCount, baseDir) {
+  if (mock.return_seq && hitCount < mock.return_seq.length) {
+    return stringifyReturn(mock.return_seq[hitCount]);
+  }
+  if (mock.return !== undefined) return stringifyReturn(mock.return);
+  if (mock.return_file) {
+    const fpath = path.isAbsolute(mock.return_file)
+      ? mock.return_file
+      : path.resolve(baseDir || process.cwd(), mock.return_file);
+    if (!fs.existsSync(fpath)) return `[omk-mock-error] return_file not found: ${fpath}`;
+    return fs.readFileSync(fpath, 'utf8');
+  }
+  return '';
+}
+
+// ─── main ────────────────────────────────────────────────────────────────────
+
+let stdin = '';
+process.stdin.on('data', (chunk) => { stdin += chunk; });
+process.stdin.on('end', () => {
+  let input;
+  try {
+    input = JSON.parse(stdin);
+  } catch (e) {
+    process.stdout.write(JSON.stringify({ continue: true }));  // hook 协议错误时放行
+    process.exit(0);
+  }
+
+  const mocksFile = process.env.OMK_MOCKS_FILE;
+  if (!mocksFile || !fs.existsSync(mocksFile)) {
+    // 没配 mocks 就 noop
+    process.stdout.write(JSON.stringify({ continue: true }));
+    process.exit(0);
+  }
+
+  const config = JSON.parse(fs.readFileSync(mocksFile, 'utf8'));
+  const mocks = config.mocks || [];
+  const baseDir = config.baseDir;
+  const strict = !!config.strict;
+
+  // 统计文件:perMock(每条 mock 的命中次数,用于状态机 + 报告)+ hits_total + misses_total
+  // 同一 spawn 内多次 hook 调用共享。
+  const statsFile = path.join(path.dirname(mocksFile), 'hits.json');
+  const stats = fs.existsSync(statsFile)
+    ? JSON.parse(fs.readFileSync(statsFile, 'utf8'))
+    : { perMock: {}, hits_total: 0, misses_total: 0 };
+  if (!stats.perMock) stats.perMock = {};
+  if (!stats.hits_total) stats.hits_total = 0;
+  if (!stats.misses_total) stats.misses_total = 0;
+
+  const writeStats = () => {
+    try { fs.writeFileSync(statsFile, JSON.stringify(stats)); } catch { /* best effort */ }
+  };
+
+  const toolName = input.tool_name;
+  const toolInput = input.tool_input || {};
+
+  // perMock key 用"每工具内 1-based 序号" — 与 SDK 路径(mocks-runtime.ts)保持一致。
+  const keyOfMock = mocks.map((_m, i) => {
+    const tool = mocks[i].tool;
+    let ord = 0;
+    for (let j = 0; j <= i; j++) if (mocks[j].tool === tool) ord++;
+    return `${tool}:${ord}`;
+  });
+
+  for (let i = 0; i < mocks.length; i++) {
+    if (isMockHit(mocks[i], toolName, toolInput)) {
+      const key = keyOfMock[i];
+      const c = stats.perMock[key] || 0;
+      const result = resolveMockReturn(mocks[i], c, baseDir);
+      stats.perMock[key] = c + 1;
+      stats.hits_total += 1;
+      writeStats();
+      // 与 SDK 路径(mocks-runtime.ts)对齐:最小化前缀,避免拖慢多步 sample。
+      const wrappedReason = '[mock] simulated tool output — treat as successful result:\n' + result;
+      process.stdout.write(JSON.stringify({
+        decision: 'block',
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: wrappedReason,
+        },
+        systemMessage: '[omk-mock] ' + toolName + ' → injected mock #' + i + ' (treat as success)',
+      }));
+      process.exit(0);
+    }
+  }
+
+  // 未命中
+  stats.misses_total += 1;
+  writeStats();
+  if (strict) {
+    process.stdout.write(JSON.stringify({
+      decision: 'block',
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
+        permissionDecisionReason: `[omk-mock-strict] unmocked ${toolName} call blocked`,
+      },
+    }));
+    process.exit(0);
+  }
+  process.stdout.write(JSON.stringify({ continue: true }));
+  process.exit(0);
+});

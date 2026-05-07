@@ -31,6 +31,53 @@ export type SampleProvenance = 'human' | 'llm-generated' | 'production-trace';
 /** sample 难度等级。简单分桶,跟 IRT 风格 fine-grained difficulty 不同。 */
 export type SampleDifficulty = 'easy' | 'medium' | 'hard';
 
+/** Sample 评测环境前置:声明性"已就绪"清单,LLM 看到后跳过环境探测,直接进入工作流。
+ *  类比 unit test 的 fixture / setup —— 评测是测 skill 工作流,不是测环境探测能力。 */
+export interface SampleEnvironment {
+  /** 假定已在 PATH 上的 CLI,LLM 不再 which / find / type / command -v 探测。 */
+  cli_available?: string[];
+  /** 假定存在的文件/脚本(支持 ~ / $SKILL_DIR / 绝对路径),LLM 不再 Glob / Read / test -f 探测。 */
+  files_available?: string[];
+  /** 自由文本兜底,场景特殊说明(如"凭证已配""设备 SN xxx 已租"等)。 */
+  notes?: string;
+}
+
+/** Mock 命中规则(所有字段 AND,字段未填即不限制)。 */
+export interface MockMatch {
+  /** 精确匹配 file_path(用于 Read / Edit / Write,支持 ~ 自动展开)。 */
+  file_path?: string;
+  /** 精确匹配 url(用于 WebFetch / WebSearch)。 */
+  url?: string;
+  /** glob 匹配 url(支持 *)。url 与 url_glob 二选一。 */
+  url_glob?: string;
+  /** glob 匹配 command(用于 Bash 拦 mcporter / cli;支持 *)。 */
+  command_glob?: string;
+  /** 通用匹配:对 tool_input 任意字段做 deep equal,优先级高于上面的 sugar 字段。 */
+  input?: Record<string, unknown>;
+}
+
+/** Mock 返回值(三选一)。 */
+export type MockReturn =
+  | { stdout?: string; stderr?: string; exit?: number; [k: string]: unknown }
+  | string;
+
+/** 单条 Mock 规则。runtime 拦到匹配的 tool 调用即返回 mocked 结果,不放出去。 */
+export interface Mock {
+  /** 拦截的工具名,如 "Read" / "Bash" / "WebFetch" / "Edit" / "Write" / "Grep" / "Glob"。 */
+  tool: string;
+  /** 命中规则。所有字段 AND,字段未填即不限制。 */
+  match?: MockMatch;
+  /** 返回内容(LLM 看到的 tool_result),与 return_file / return_seq 三选一。
+   *  - string:直接当字符串返回
+   *  - { stdout, stderr, exit }:模拟 Bash 工具结果(若 exit !=0 表示失败) */
+  return?: MockReturn;
+  /** 从外部 fixture 文件读返回内容(路径相对 sample 目录;大响应建议外置)。 */
+  return_file?: string;
+  /** 同 mock 多次命中按序返回(状态机场景:第 1 次 PENDING → 第 2 次 SUCCESS)。
+   *  超出序列长度时回退到 return / return_file。 */
+  return_seq?: MockReturn[];
+}
+
 export interface Sample {
   sample_id: string;
   prompt: string;
@@ -56,6 +103,16 @@ export interface Sample {
    *  curated 用 `'human'`,production trace 抽样用 `'production-trace'`。
    *  纯文档 / 诊断用。 */
   provenance?: SampleProvenance;
+  /** 评测时拦截的工具调用 + mock 返回值。runtime 在 executor 入口安装 PreToolUse hook。
+   *  详见 docs/sample-mocks.md(命中规则、状态机、fixture 文件)。 */
+  mocks?: Mock[];
+  /** mocks 严格模式。
+   *  - false / undefined(default):未命中的 tool 调用透传(继续真跑底层)
+   *  - true:未命中即 deny(防意外真调外部接口/CLI/MCP/写状态)。
+   *  全 mock 评测场景建议 true,部分 mock 探索场景留 false。 */
+  mocksStrict?: boolean;
+  /** 环境前置:声明性"已就绪"清单,LLM 跳过探测直接干活。详见 SampleEnvironment。 */
+  environment?: SampleEnvironment;
   [key: string]: unknown;  // allow extra fields like mutated prompt/context from URL resolution
 }
 

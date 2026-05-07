@@ -20,6 +20,7 @@ export async function execute(argv: string[]): Promise<void> {
       count: { type: 'string', default: '5' },
       model: { type: 'string', default: 'sonnet' },
       'skill-dir': { type: 'string', default: 'skills' },
+      focus: { type: 'string' },
     },
     allowPositionals: true,
   });
@@ -28,6 +29,11 @@ export async function execute(argv: string[]): Promise<void> {
   const { readFileSync, writeFileSync } = await import('node:fs');
   const count: number = Math.max(1, Number(values.count) || 5);
   const model: string = values.model as string;
+  const focus: string | undefined = (values.focus as string | undefined) || undefined;
+
+  if (focus) {
+    process.stderr.write(tCli('cli.gen.focus_applied', lang, { focus }));
+  }
 
   if (values.batch) {
     // Batch mode: generate for all skills missing eval-samples
@@ -70,7 +76,7 @@ export async function execute(argv: string[]): Promise<void> {
       try {
         const skillContent: string = readFileSync(skillPath, 'utf-8');
         const { samples, costUSD }: GenerateSamplesResult =
-          await generateSamples({ skillContent, count, model });
+          await generateSamples({ skillContent, count, model, focus });
         writeFileSync(samplesPath, JSON.stringify(samples, null, 2));
         const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
         process.stderr.write(tCli('cli.gen.skill_done', lang, {
@@ -114,7 +120,7 @@ export async function execute(argv: string[]): Promise<void> {
     process.stderr.write(tCli('cli.gen.single_generating', lang, { count }));
     try {
       const { samples, costUSD }: GenerateSamplesResult =
-        await generateSamples({ skillContent, count, model });
+        await generateSamples({ skillContent, count, model, focus });
       writeFileSync(outputPath, JSON.stringify(samples, null, 2));
       const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
       process.stderr.write(tCli('cli.gen.single_done', lang, {

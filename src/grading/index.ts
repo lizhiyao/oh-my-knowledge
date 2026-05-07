@@ -30,7 +30,7 @@ interface GradeOptions {
    */
   judgeExecutors?: Record<string, ExecutorFn>;
   allowLlmJudge?: boolean;
-  execMetrics?: { costUSD?: number; durationMs?: number; numTurns?: number; toolCalls?: ToolCallInfo[]; turns?: TurnInfo[] };
+  execMetrics?: { costUSD?: number; durationMs?: number; numTurns?: number; toolCalls?: ToolCallInfo[]; turns?: TurnInfo[]; mockStats?: { hits: number; misses: number; perMock: Record<string, number> } };
   samplesDir?: string;
   /**
    * Run the LLM judge N times per (sample × dimension) pair and report mean + stddev.

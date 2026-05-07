@@ -162,7 +162,7 @@ export function validateJsonSchema(data: unknown, schema: Record<string, unknown
 function evalAssertion(
   output: string,
   assertion: Assertion,
-  ctx: { outputLower: string; toolCalls: ToolCallInfo[]; toolNames: string[]; costUSD?: number; durationMs?: number; numTurns?: number },
+  ctx: { outputLower: string; toolCalls: ToolCallInfo[]; toolNames: string[]; costUSD?: number; durationMs?: number; numTurns?: number; mockStats?: { hits: number; misses: number; perMock: Record<string, number> } },
 ): boolean {
   const { outputLower, toolCalls, toolNames } = ctx;
 
@@ -250,6 +250,18 @@ function evalAssertion(
         JSON.stringify(tc.input || '').toLowerCase().includes(expected),
       );
     }
+    // mock_hit:校验"驱动流程"——指定 mock 是否被命中至少 N 次
+    // value 是 mockStats.perMock 的 key,格式 "Tool:N"(N 为 sample.mocks 数组里的 1-based 序号)
+    // threshold 可选,默认 >=1
+    // 例: { type: 'mock_hit', value: 'Bash:2' } 检查第 2 条 Bash mock 被调过
+    case 'mock_hit': {
+      const stats = ctx.mockStats;
+      if (!stats) return false;
+      const key = String(assertion.value);
+      const hits = stats.perMock[key] ?? 0;
+      const min = assertion.threshold ?? 1;
+      return hits >= min;
+    }
     case 'rouge_n_min':
       return rougeN(output, String(assertion.reference ?? assertion.value ?? ''), assertion.n ?? 1)
         >= (assertion.threshold ?? 0.5);
@@ -267,12 +279,12 @@ function evalAssertion(
 export function runAssertions(
   output: string,
   assertions: Assertion[],
-  context: { costUSD?: number; durationMs?: number; numTurns?: number; toolCalls?: ToolCallInfo[] } = {},
+  context: { costUSD?: number; durationMs?: number; numTurns?: number; toolCalls?: ToolCallInfo[]; mockStats?: { hits: number; misses: number; perMock: Record<string, number> } } = {},
 ): AssertionResults {
   const outputLower = output.toLowerCase();
   const toolCalls = context.toolCalls || [];
   const toolNames = toolCalls.map((tc) => tc.tool.toLowerCase());
-  const ctx = { outputLower, toolCalls, toolNames, costUSD: context.costUSD, durationMs: context.durationMs, numTurns: context.numTurns };
+  const ctx = { outputLower, toolCalls, toolNames, costUSD: context.costUSD, durationMs: context.durationMs, numTurns: context.numTurns, mockStats: context.mockStats };
 
   const details: AssertionDetail[] = [];
   for (const assertion of assertions) {

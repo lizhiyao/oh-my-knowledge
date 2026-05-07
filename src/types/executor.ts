@@ -35,6 +35,13 @@ export interface ExecResult {
   cached?: boolean;
   turns?: TurnInfo[];
   toolCalls?: ToolCallInfo[];
+  /** Sample.mocks 命中统计。仅当 input.mocks 非空时有值。
+   *  perMock 的 key 格式:`<tool>:<mock-index>`(与 mocks 数组下标对应) */
+  mockStats?: {
+    hits: number;
+    misses: number;
+    perMock: Record<string, number>;
+  };
 }
 
 export interface ExecutorInput {
@@ -50,6 +57,15 @@ export interface ExecutorInput {
   //   []        → SDK skills:[] + disallowedTools:['Skill'](main session + subagent 双堵)
   //   [...]     → SDK skills:[...](白名单)
   allowedSkills?: string[];
+  /** 评测时拦截的工具调用 + mock 返回值。来源:Sample.mocks。
+   *  - claude-sdk:转 in-process HookCallback 装到 SDK options.hooks.PreToolUse
+   *  - claude-cli:物化为临时 CLAUDE_CONFIG_DIR + on-disk hook 脚本,跑完清理
+   *  - 其他 executor:暂不支持(WARN 后透传) */
+  mocks?: import('./eval.js').Mock[];
+  /** 解析 mock.return_file 的相对路径锚点(默认 sample 文件所在目录)。 */
+  mocksBaseDir?: string;
+  /** strict 模式:未命中 mock 的 tool 调用直接 deny。来源:Sample.mocksStrict。 */
+  mocksStrict?: boolean;
 }
 
 export type ExecutorFn = (input: ExecutorInput) => Promise<ExecResult>;

@@ -1,6 +1,6 @@
 import { describe, it, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { writeFileSync, unlinkSync } from 'node:fs';
+import { writeFileSync, unlinkSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadSamples } from '../../src/inputs/load-samples.js';
@@ -123,6 +123,73 @@ describe('loadSamples', () => {
       const p = writeJsonSamples('custom-construct.json', [{ sample_id: 's1', prompt: 'p', construct: 'my-custom-thing' }]);
       const { samples } = loadSamples(p);
       assert.equal(samples[0].construct, 'my-custom-thing');
+    });
+  });
+
+  // Directory mode (`.omk/` 多文件 bundle):loadSamples 接收目录路径时,
+  // glob 当中的 *.json/*.yaml,排除 report*/health*/_*,合并 samples,sample_id 跨文件去重。
+  describe('directory mode (.omk/ bundle)', () => {
+    const dirCleanups: string[] = [];
+    function makeDir(name: string): string {
+      const d = join(tmpdir(), `omk-test-dir-${Date.now()}-${Math.random().toString(36).slice(2,8)}-${name}`);
+      mkdirSync(d, { recursive: true });
+      dirCleanups.push(d);
+      return d;
+    }
+    afterEach(() => {
+      for (const d of dirCleanups) {
+        try { rmSync(d, { recursive: true, force: true }); } catch { /* ignore */ }
+      }
+      dirCleanups.length = 0;
+    });
+
+    it('merges samples from multiple json files in deterministic name-sorted order', () => {
+      const d = makeDir('multi');
+      writeFileSync(join(d, 'workflow.json'), JSON.stringify([{ sample_id: 's001', prompt: 'a' }]));
+      writeFileSync(join(d, 'platform.json'), JSON.stringify([{ sample_id: 's002', prompt: 'b' }]));
+      writeFileSync(join(d, 'ironlaw.json'),  JSON.stringify([{ sample_id: 's003', prompt: 'c' }]));
+      const { samples } = loadSamples(d);
+      // sorted: ironlaw < platform < workflow
+      assert.deepEqual(samples.map((s) => s.sample_id), ['s003', 's002', 's001']);
+    });
+
+    it('skips reserved file prefixes (report*, health*, _*)', () => {
+      const d = makeDir('reserved');
+      writeFileSync(join(d, 'samples.json'),       JSON.stringify([{ sample_id: 's1', prompt: 'a' }]));
+      writeFileSync(join(d, 'report-2026.json'),    JSON.stringify([{ sample_id: 'should-skip-1', prompt: 'x' }]));
+      writeFileSync(join(d, 'health.json'),         JSON.stringify([{ sample_id: 'should-skip-2', prompt: 'x' }]));
+      writeFileSync(join(d, '_scratch.json'),       JSON.stringify([{ sample_id: 'should-skip-3', prompt: 'x' }]));
+      const { samples } = loadSamples(d);
+      assert.deepEqual(samples.map((s) => s.sample_id), ['s1']);
+    });
+
+    it('rejects duplicate sample_id across files', () => {
+      const d = makeDir('dup');
+      writeFileSync(join(d, 'a.json'), JSON.stringify([{ sample_id: 'shared', prompt: 'one' }]));
+      writeFileSync(join(d, 'b.json'), JSON.stringify([{ sample_id: 'shared', prompt: 'two' }]));
+      assert.throws(() => loadSamples(d), /duplicate sample_id "shared"/);
+    });
+
+    it('errors when directory has no eligible sample files', () => {
+      const d = makeDir('empty');
+      writeFileSync(join(d, 'report.json'), JSON.stringify([{ sample_id: 's1', prompt: 'p' }]));
+      assert.throws(() => loadSamples(d), /no sample files found in directory/);
+    });
+
+    it('unions requires from object-wrapper format across files', () => {
+      const d = makeDir('requires-merge');
+      writeFileSync(join(d, 'a.json'), JSON.stringify({
+        requires: { tools: ['integration-tool'], env: ['FOO'] },
+        samples: [{ sample_id: 's1', prompt: 'a' }],
+      }));
+      writeFileSync(join(d, 'b.json'), JSON.stringify({
+        requires: { tools: ['integration-tool', 'git'], files: ['x.txt'] },
+        samples: [{ sample_id: 's2', prompt: 'b' }],
+      }));
+      const { requires } = loadSamples(d);
+      assert.deepEqual(new Set(requires?.tools), new Set(['integration-tool', 'git']));
+      assert.deepEqual(requires?.env, ['FOO']);
+      assert.deepEqual(requires?.files, ['x.txt']);
     });
   });
 });

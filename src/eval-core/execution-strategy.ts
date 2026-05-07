@@ -109,6 +109,14 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
     // SDK default; [] = strict isolation (skills:[] + disallowedTools:['Skill']);
     // [...] = whitelist (skills:[...] only).
     ...(task.artifact.allowedSkills !== undefined && { allowedSkills: task.artifact.allowedSkills }),
+    // Sample.mocks 透传到 executor。executor(claude-sdk / claude-cli)
+    // 自决定怎么落地(in-process hook vs 临时 CLAUDE_CONFIG_DIR + on-disk hook)。
+    // mocksBaseDir 用 skillDir 兜底,让 mock.return_file 的相对路径相对 skill 目录解析。
+    ...(task._sample.mocks && task._sample.mocks.length > 0 && {
+      mocks: task._sample.mocks,
+      mocksBaseDir: skillDir || effectiveCwd || undefined,
+      ...(task._sample.mocksStrict && { mocksStrict: true }),
+    }),
   };
 
   switch (task.artifact.kind) {

@@ -126,6 +126,7 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     ...(execResult.output && { fullOutput: execResult.output }),
     ...(execResult.turns && execResult.turns.length > 0 && { turns: truncateTurns(execResult.turns) }),
     ...(execResult.toolCalls && execResult.toolCalls.length > 0 && { toolCalls: truncateToolCalls(execResult.toolCalls) }),
+    ...(execResult.mockStats && { mockStats: execResult.mockStats }),
     timing: { execMs, gradeMs, totalMs: execMs + gradeMs },
   };
 }

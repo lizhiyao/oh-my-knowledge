@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { generateSamples, sanitizeGeneratedSamples } from '../../src/authoring/generator.js';
+import { generateSamples, sanitizeGeneratedSamples, buildSamplesPrompt } from '../../src/authoring/generator.js';
 import type { Sample } from '../../src/types/index.js';
 
 describe('generateSamples', () => {
@@ -13,6 +13,39 @@ describe('generateSamples', () => {
       () => generateSamples({ skillContent: 'test', count: 1, executorName: 'nonexistent' }),
       /ENOENT|failed/,
     );
+  });
+});
+
+describe('buildSamplesPrompt', () => {
+  it('embeds skill content and count', () => {
+    const prompt = buildSamplesPrompt({ skillContent: '# my skill', count: 7 });
+    assert.ok(prompt.includes('# my skill'));
+    assert.ok(prompt.includes('生成 7 个评测用例'));
+  });
+
+  it('omits the focus block when focus is undefined', () => {
+    const prompt = buildSamplesPrompt({ skillContent: 's', count: 3 });
+    assert.ok(!prompt.includes('额外要求'));
+  });
+
+  it('omits the focus block when focus is whitespace-only', () => {
+    const prompt = buildSamplesPrompt({ skillContent: 's', count: 3, focus: '   \n  ' });
+    assert.ok(!prompt.includes('额外要求'));
+  });
+
+  it('injects focus text into the prompt when provided', () => {
+    const focus = '重点覆盖 PROJECT 空 → WORKSPACE 兜底的多步流程';
+    const prompt = buildSamplesPrompt({ skillContent: 's', count: 5, focus });
+    assert.ok(prompt.includes('额外要求'), 'should include the focus header');
+    assert.ok(prompt.includes(focus), 'should include the focus body verbatim');
+    // focus 须排在 count 指令之后,作为追加约束(避免 LLM 把 focus 当主指令而忽略 count)
+    assert.ok(prompt.indexOf('生成 5 个评测用例') < prompt.indexOf('额外要求'));
+  });
+
+  it('trims surrounding whitespace from focus', () => {
+    const prompt = buildSamplesPrompt({ skillContent: 's', count: 3, focus: '  scenario X  \n' });
+    assert.ok(prompt.includes('scenario X'));
+    assert.ok(!prompt.includes('  scenario X  '));
   });
 });
 

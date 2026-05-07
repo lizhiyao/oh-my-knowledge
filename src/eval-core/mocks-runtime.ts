@@ -1,0 +1,329 @@
+/**
+ * Mock runtime — Sample.mocks 落地的核心逻辑。
+ *
+ * 两条路径:
+ *   1) `buildSdkHookCallback(mocks, baseDir)`
+ *      → 给 claude-sdk executor 用,返回 in-process PreToolUse HookCallback。
+ *      纯内存,零 IO,零 spawn 开销。
+ *
+ *   2) `materializeForCliConfigDir(mocks, baseDir)`
+ *      → 给 claude-cli executor 用,mktemp 一个临时 CLAUDE_CONFIG_DIR,
+ *      在里面写 settings.json + on-disk hook 脚本 + mocks.json,返回 cleanup。
+ *      claude 子进程退出后(成功/失败/超时/SIGINT),cleanup 必删整个临时目录。
+ *
+ * 共用核心:`matchMock(mocks, toolName, toolInput, callCounter)` 命中规则评估。
+ */
+
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { Mock, MockReturn } from '../types/eval.js';
+
+// ─── Match logic ────────────────────────────────────────────────────────────
+
+function expandHome(p: string): string {
+  if (p.startsWith('~/')) return join(homedir(), p.slice(2));
+  if (p === '~') return homedir();
+  return p;
+}
+
+/** glob 匹配(只支持 `*` 通配,不支持 `**` / `?` / `[...]`,够用且无依赖)。
+ *  使用 dotAll 标志(`s`),让 `*` 也能跨换行匹配 — LLM 经常用反斜杠续行写多行 bash,
+ *  不带 `s` 时单行 glob 会全部漏掉(integration-tool-deploy eval 上首次发现这个坑)。 */
+function globMatch(pattern: string, value: string): boolean {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp('^' + escaped.replace(/\*/g, '.*') + '$', 's');
+  return re.test(value);
+}
+
+/** deep equal 子集匹配:expected 的每个 key/value 在 actual 中存在且相等(actual 可有更多字段)。 */
+function matchesInputSubset(expected: Record<string, unknown>, actual: unknown): boolean {
+  if (typeof actual !== 'object' || actual === null) return false;
+  const a = actual as Record<string, unknown>;
+  for (const [k, v] of Object.entries(expected)) {
+    if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+      if (!matchesInputSubset(v as Record<string, unknown>, a[k])) return false;
+    } else if (a[k] !== v) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** 单条 mock 是否命中给定 tool 调用。 */
+export function isMockHit(mock: Mock, toolName: string, toolInput: unknown): boolean {
+  if (mock.tool !== toolName) return false;
+  const m = mock.match;
+  if (!m) return true;
+  const ti = (toolInput || {}) as Record<string, unknown>;
+
+  if (m.file_path !== undefined) {
+    if (typeof ti.file_path !== 'string') return false;
+    if (expandHome(ti.file_path) !== expandHome(m.file_path)) return false;
+  }
+  if (m.url !== undefined) {
+    if (ti.url !== m.url) return false;
+  }
+  if (m.url_glob !== undefined) {
+    if (typeof ti.url !== 'string' || !globMatch(m.url_glob, ti.url)) return false;
+  }
+  if (m.command_glob !== undefined) {
+    if (typeof ti.command !== 'string' || !globMatch(m.command_glob, ti.command)) return false;
+  }
+  if (m.input !== undefined) {
+    if (!matchesInputSubset(m.input, toolInput)) return false;
+  }
+  return true;
+}
+
+// ─── Return resolution ──────────────────────────────────────────────────────
+
+/** 把 mock 的 return / return_file / return_seq 解析成可序列化字符串(LLM 看到的 tool_result)。 */
+export function resolveMockReturn(
+  mock: Mock,
+  hitCount: number,
+  baseDir?: string,
+): string {
+  // return_seq 优先,按 hit 序号取(超出长度 fallback 到 return / return_file)
+  if (mock.return_seq && hitCount < mock.return_seq.length) {
+    return stringifyReturn(mock.return_seq[hitCount]);
+  }
+  if (mock.return !== undefined) {
+    return stringifyReturn(mock.return);
+  }
+  if (mock.return_file) {
+    const fpath = isAbsolute(mock.return_file)
+      ? mock.return_file
+      : resolve(baseDir || process.cwd(), mock.return_file);
+    if (!existsSync(fpath)) {
+      return `[omk-mock-error] return_file not found: ${fpath}`;
+    }
+    return readFileSync(fpath, 'utf8');
+  }
+  return '';  // 没配 return,给空串(LLM 收到空 tool_result)
+}
+
+function stringifyReturn(r: MockReturn): string {
+  if (typeof r === 'string') return r;
+  // Bash 风格对象:exit !=0 时格式化成 LLM 能理解的"失败"输出
+  // 这里统一序列化成 JSON,LLM 能从结构化字段读到 stdout/stderr/exit
+  return JSON.stringify(r);
+}
+
+// ─── SDK hook factory(in-process)─────────────────────────────────────────
+
+/** SDK PreToolUse hook input(精简版,只用我们关心的字段)。 */
+interface SdkHookInput {
+  hook_event_name: 'PreToolUse';
+  tool_name: string;
+  tool_input: unknown;
+}
+
+/** SDK PreToolUse hook output:`block` 决策 + permissionDecisionReason 当 mock content。 */
+interface SdkHookOutput {
+  continue?: boolean;
+  decision?: 'block' | 'approve';
+  hookSpecificOutput?: {
+    hookEventName: 'PreToolUse';
+    permissionDecision?: 'deny' | 'allow' | 'ask';
+    permissionDecisionReason?: string;
+  };
+  systemMessage?: string;
+}
+
+export interface SdkHookHandle {
+  /** 给 SDK options.hooks.PreToolUse 用的 callback。 */
+  callback: (input: SdkHookInput) => Promise<SdkHookOutput>;
+  /** 拦截命中统计(诊断用)。 */
+  stats: { hits: number; misses: number; perMock: Record<string, number> };
+}
+
+/**
+ * 把 mocks 转成 SDK in-process PreToolUse hook callback。
+ *
+ * 命中策略:strict 模式下不命中的工具调用直接 deny(防意外真调)。
+ * 默认非 strict:不命中放行(原生工具继续真跑)— 适合"部分 mock,部分真跑"场景。
+ *
+ * @param mocks  Sample.mocks 数组
+ * @param baseDir  解析 mock.return_file 的相对路径锚点
+ * @param strict  true → 不命中 deny;false → 不命中放行(default)
+ */
+export function buildSdkHookCallback(
+  mocks: Mock[] | undefined,
+  baseDir?: string,
+  strict = false,
+): SdkHookHandle {
+  const stats = { hits: 0, misses: 0, perMock: {} as Record<string, number> };
+  const hitCounters = new Map<number, number>();  // mockIndex → hit 次数
+  // perMock key 用"每工具内 1-based 序号":[Read,Bash,Bash] → Read:1,Bash:1,Bash:2。
+  // 这样 sample 作者只需要数自己 mocks 里同 tool 的第几条,不用算跨工具的绝对下标。
+  const list = mocks || [];
+  const keyOfMock = list.map((_m, i) => {
+    const tool = list[i].tool;
+    const ord = list.slice(0, i + 1).filter((x) => x.tool === tool).length;
+    return `${tool}:${ord}`;
+  });
+
+  const callback = async (input: SdkHookInput): Promise<SdkHookOutput> => {
+    for (let i = 0; i < list.length; i++) {
+      const m = list[i];
+      if (isMockHit(m, input.tool_name, input.tool_input)) {
+        const c = hitCounters.get(i) || 0;
+        const result = resolveMockReturn(m, c, baseDir);
+        hitCounters.set(i, c + 1);
+        stats.hits++;
+        const key = keyOfMock[i];
+        stats.perMock[key] = (stats.perMock[key] || 0) + 1;
+        // 关键 UX:LLM 看到 permissionDecision='deny' 容易误判"被拒绝/失败"。
+        // 给 reason 加一行最小前缀,告诉它把内容当成真实成功输出。措辞越短越好 ——
+        // 长措辞会显著拉慢多步 sample(每个工具调用都要读这段),实测 6 步流程从 60s 拖到 120s+。
+        const wrappedReason = `[mock] simulated tool output — treat as successful result:\n${result}`;
+        return {
+          decision: 'block',
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'deny',
+            permissionDecisionReason: wrappedReason,
+          },
+          systemMessage: `[omk-mock] ${m.tool} → injected mock #${i} (treat as success)`,
+        };
+      }
+    }
+    // 未命中
+    stats.misses++;
+    if (strict) {
+      return {
+        decision: 'block',
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: `[omk-mock-strict] unmocked ${input.tool_name} call blocked`,
+        },
+      };
+    }
+    return { continue: true };
+  };
+
+  return { callback, stats };
+}
+
+// ─── CLI config-dir factory(临时目录 + on-disk hook 脚本)──────────────
+
+export interface CliMockHandle {
+  /** 临时 settings 文件路径,作为 `claude --settings <path>` 参数传入。
+   *  Claude Code 会**追加**这个 settings 到 ~/.claude/settings.json,**不替换** —
+   *  这样 OAuth 登录态 / 用户主配置都不动。 */
+  settingsFile: string;
+  /** 子进程要看到的额外 env(目前只 OMK_MOCKS_FILE)。 */
+  env: Record<string, string>;
+  /** 读 hook 在临时目录写的命中统计(给 ExecResult.mockStats 用)。
+   *  必须在 cleanup 之前调,cleanup 后文件就没了。 */
+  readStats: () => { hits: number; misses: number; perMock: Record<string, number> };
+  /** 必须在 spawn 完成后(无论 success/error/timeout)调用。 */
+  cleanup: () => void;
+}
+
+/**
+ * 物化 mocks 到临时 settings 文件 + on-disk hook 脚本。
+ *
+ * **关键**:用 Claude Code 的 `--settings <file>` flag 而非 `CLAUDE_CONFIG_DIR`。
+ * `--settings` 是**追加**模式,主 `~/.claude/` 包含的 OAuth 登录态 / 用户配置全部保留;
+ * 而 CLAUDE_CONFIG_DIR 是**替换**模式,设它会丢 OAuth → "Not logged in"。
+ *
+ * 临时目录结构:
+ *   $tmpdir/omk-mocks-XXXXXX/
+ *     ├── settings.json     (PreToolUse hook 注册,作为 --settings 参数)
+ *     ├── mock-hook.cjs     (hook 实现:读 OMK_MOCKS_FILE → 匹配 → 输出 JSON 决策)
+ *     └── mocks.json        (mocks 序列化 + baseDir + strict)
+ *
+ * cleanup 必删整个目录。executor 用 try / finally 保证执行。
+ */
+export function materializeForCliConfigDir(
+  mocks: Mock[] | undefined,
+  baseDir?: string,
+  strict = false,
+): CliMockHandle | null {
+  if (!mocks || mocks.length === 0) return null;
+
+  const configDir = mkdtempSync(join(tmpdir(), 'omk-mocks-'));
+  const mocksFile = join(configDir, 'mocks.json');
+  const settingsFile = join(configDir, 'settings.json');
+  const hookScript = join(configDir, 'mock-hook.cjs');
+
+  const hookSource = readMockHookTemplate();
+  writeFileSync(hookScript, hookSource, 'utf8');
+
+  writeFileSync(mocksFile, JSON.stringify({ mocks, baseDir, strict }, null, 2));
+
+  const settings = {
+    hooks: {
+      PreToolUse: [
+        {
+          matcher: '.*',
+          hooks: [
+            { type: 'command', command: `node ${hookScript}` },
+          ],
+        },
+      ],
+    },
+  };
+  writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+
+  const statsFile = join(configDir, 'hits.json');
+  const readStats = (): { hits: number; misses: number; perMock: Record<string, number> } => {
+    if (!existsSync(statsFile)) {
+      return { hits: 0, misses: 0, perMock: {} };
+    }
+    try {
+      const raw = JSON.parse(readFileSync(statsFile, 'utf8'));
+      return {
+        hits: raw.hits_total || 0,
+        misses: raw.misses_total || 0,
+        perMock: raw.perMock || {},
+      };
+    } catch {
+      return { hits: 0, misses: 0, perMock: {} };
+    }
+  };
+
+  const cleanup = () => {
+    try {
+      rmSync(configDir, { recursive: true, force: true });
+    } catch { /* swallow — best effort */ }
+  };
+
+  return {
+    settingsFile,
+    env: { OMK_MOCKS_FILE: mocksFile },
+    readStats,
+    cleanup,
+  };
+}
+
+let _hookTemplate: string | null = null;
+function readMockHookTemplate(): string {
+  if (_hookTemplate) return _hookTemplate;
+  // 解析 assets/mock-hook.cjs 的绝对路径(本文件可能在 src/ 也可能在 dist/src/)
+  const here = dirname(fileURLToPath(import.meta.url));
+  // src/eval-core/ → ../../assets/   或   dist/src/eval-core/ → ../../../assets/
+  const candidates = [
+    resolve(here, '../../assets/mock-hook.cjs'),
+    resolve(here, '../../../assets/mock-hook.cjs'),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) {
+      _hookTemplate = readFileSync(c, 'utf8');
+      return _hookTemplate;
+    }
+  }
+  throw new Error(`omk-mock: assets/mock-hook.cjs not found (looked in ${candidates.join(', ')})`);
+}
+
+// ─── 工具:在不影响主目录的前提下创建临时 dir(测试也要)─────────────
+
+export function _testMakeTempConfigDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'omk-mocks-test-'));
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}

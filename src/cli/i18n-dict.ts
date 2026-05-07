@@ -130,6 +130,7 @@ export type CliMessageKey =
   | 'cli.gen.single_done'
   | 'cli.gen.review_hint'
   | 'cli.gen.failed'
+  | 'cli.gen.focus_applied'
   // improve skill
   | 'cli.evolve.specify_skill_path'
   | 'cli.evolve.section_header'
@@ -517,6 +518,10 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.gen.failed': {
     zh: '生成失败: {message}',
     en: 'Generation failed: {message}',
+  },
+  'cli.gen.focus_applied': {
+    zh: '🎯 场景重点（--focus）：{focus}\n',
+    en: '🎯 Focus scenarios (--focus): {focus}\n',
   },
   'cli.evolve.specify_skill_path': {
     zh: '请指定 skill 文件路径, 例如: omk improve skill skills/my-skill.md',
@@ -907,8 +912,13 @@ omk improve samples — 生成或补齐 eval-samples 评测用例
 选项：
   --count <n>                         生成用例数量（默认：5）
   --model <name>                      生成模型（默认：sonnet）
+  --focus <text>                      自然语言指定希望覆盖的场景（追加到 prompt，优先级高于自由发挥）
   --batch                             为 skill 目录下缺少 eval-samples 的 skill 批量生成
   --skill-dir <path>                  skill 目录（batch 使用，默认：skills）
+
+示例：
+  omk improve samples skills/req-tool.md --count 8 \\
+    --focus "重点覆盖 tag 查询走 PROJECT 空 → WORKSPACE 兜底的多步流程，以及 search 失败的错误路径"
 `,
     en: `
 omk improve samples — generate or fill eval-samples test cases
@@ -920,8 +930,13 @@ Usage:
 Options:
   --count <n>                         Number of test cases to generate (default: 5)
   --model <name>                      Generation model (default: sonnet)
+  --focus <text>                      Natural-language scenario hints appended to the prompt (overrides freeform diversity)
   --batch                             Generate for skills that are missing eval-samples
   --skill-dir <path>                  Skill directory for batch mode (default: skills)
+
+Examples:
+  omk improve samples skills/req-tool.md --count 8 \\
+    --focus "Cover PROJECT-empty → WORKSPACE-fallback multi-step tag lookup and the search-failure error path"
 `,
   },
   'cli.help.improve_skill': {

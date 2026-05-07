@@ -62,6 +62,12 @@ export interface VariantResult {
   fullOutput?: string;
   turns?: TurnInfo[];
   toolCalls?: ToolCallInfo[];
+  /** Sample.mocks 命中统计(从 ExecResult.mockStats 透传)。仅当 sample 配了 mocks 时有值。 */
+  mockStats?: {
+    hits: number;
+    misses: number;
+    perMock: Record<string, number>;
+  };
   timing?: { execMs: number; gradeMs: number; totalMs: number };
 }
 

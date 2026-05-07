@@ -1,5 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import yaml from 'js-yaml';
 import type { Sample } from '../types/index.js';
 import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
@@ -26,14 +26,93 @@ export interface LoadSamplesResult {
 }
 
 /**
- * Load samples from a JSON or YAML file.
+ * Load samples from a single file OR a directory of sample files.
  *
- * Supports two formats:
+ * File mode (.json / .yaml / .yml):
  * - Array: `[ { sample_id, prompt, ... } ]` (legacy)
  * - Object wrapper: `{ requires?: { tools, files, env }, samples: [...] }`
+ *
+ * Directory mode (e.g. `<skill>/.omk/`):
+ * - Glob `*.{json,yaml,yml}` minus reserved prefixes (report*, health*, _*)
+ * - Concat samples in deterministic name-sorted order
+ * - Cross-file `sample_id` must be unique
+ * - `requires` from each file unioned together
  */
 export function loadSamples(samplesPath: string): LoadSamplesResult {
-  const rawContent = readFileSync(resolve(samplesPath), 'utf-8');
+  const abs = resolve(samplesPath);
+  if (statSync(abs).isDirectory()) {
+    return loadSamplesFromDir(abs);
+  }
+  return loadSampleFile(abs);
+}
+
+/** Pull `.json/.yaml/.yml` siblings out of a directory, skipping omk's own report/health
+ *  artifacts and any underscore-prefixed file (the convention for "not a sample"). */
+function listSampleFilesInDir(dir: string): string[] {
+  const RESERVED = /^(report|health|_)/i;
+  return readdirSync(dir)
+    .filter((f) => /\.(json|ya?ml)$/i.test(f))
+    .filter((f) => !RESERVED.test(f))
+    .sort();  // deterministic merge order
+}
+
+function loadSamplesFromDir(dir: string): LoadSamplesResult {
+  const files = listSampleFilesInDir(dir);
+  if (files.length === 0) {
+    throw new Error(
+      `no sample files found in directory: ${dir} ` +
+      `(looking for *.json/*.yaml/*.yml, excluding report*/health*/_* names)`,
+    );
+  }
+
+  const allSamples: Sample[] = [];
+  const seenIds = new Map<string, string>();  // sample_id → first file that defined it
+  let mergedRequires: DependencyRequirements | undefined;
+
+  for (const f of files) {
+    const path = join(dir, f);
+    const single = loadSampleFile(path);
+    for (const s of single.samples) {
+      const prev = seenIds.get(s.sample_id);
+      if (prev) {
+        throw new Error(
+          `duplicate sample_id "${s.sample_id}" in ${dir}: ` +
+          `defined in both "${prev}" and "${f}"`,
+        );
+      }
+      seenIds.set(s.sample_id, f);
+    }
+    allSamples.push(...single.samples);
+    mergedRequires = mergeRequires(mergedRequires, single.requires);
+  }
+  return { samples: allSamples, requires: mergedRequires };
+}
+
+/** Union of string arrays for tools/files/env/preflight; undef when both sides empty. */
+function mergeRequires(
+  a: DependencyRequirements | undefined,
+  b: DependencyRequirements | undefined,
+): DependencyRequirements | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  const u = (xs?: string[], ys?: string[]): string[] | undefined => {
+    if (!xs && !ys) return undefined;
+    return [...new Set([...(xs ?? []), ...(ys ?? [])])];
+  };
+  const out: DependencyRequirements = {};
+  const tools = u(a.tools, b.tools);
+  const files = u(a.files, b.files);
+  const env = u(a.env, b.env);
+  const preflight = u(a.preflight, b.preflight);
+  if (tools) out.tools = tools;
+  if (files) out.files = files;
+  if (env) out.env = env;
+  if (preflight) out.preflight = preflight;
+  return out;
+}
+
+function loadSampleFile(samplesPath: string): LoadSamplesResult {
+  const rawContent = readFileSync(samplesPath, 'utf-8');
   const isYaml = samplesPath.endsWith('.yaml') || samplesPath.endsWith('.yml');
   const parsed: unknown = isYaml ? parseYaml(rawContent) : JSON.parse(rawContent);
 

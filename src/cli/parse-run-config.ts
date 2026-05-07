@@ -159,6 +159,35 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   'no-strict-baseline': { type: 'boolean' },
 };
 
+/**
+ * When --samples isn't given, try to discover from `<skillDir>/<treatment>/.omk/`.
+ * `loadSamples` handles dir mode internally — globs `*.{json,yaml,yml}` and merges,
+ * skipping reserved prefixes (report-, health-, underscore-). No filename is special:
+ * drop a single `samples.json` or split across `workflow.json` + `platform.json` etc.
+ * Both work the same.
+ *
+ * Falls back to legacy cwd defaults (`eval-samples.{json,yaml,yml}`) if `.omk/` isn't
+ * present. Multi-treatment evals must pass --samples explicitly.
+ */
+function discoverSamplesPath(values: Record<string, unknown>, skillDir: string): string {
+  const treatmentRaw = values.treatment as string | undefined;
+  const treatments = treatmentRaw
+    ? treatmentRaw.split(',').map((v) => v.trim()).filter(Boolean)
+    : [];
+  if (treatments.length === 1) {
+    const tname = parseVariantCwd(treatments[0]).name;
+    const omkDir = join(skillDir, tname, '.omk');
+    if (existsSync(omkDir)) return omkDir;
+  }
+  // Legacy cwd defaults
+  let cwdFile = 'eval-samples.json';
+  if (!existsSync(resolve(cwdFile))) {
+    if (existsSync(resolve('eval-samples.yaml'))) cwdFile = 'eval-samples.yaml';
+    else if (existsSync(resolve('eval-samples.yml'))) cwdFile = 'eval-samples.yml';
+  }
+  return cwdFile;
+}
+
 export function parseRunConfig(
   argv: string[],
   extraOptions: ParseArgsConfig['options'] = {},
@@ -182,7 +211,12 @@ export function parseRunConfig(
     ? loadEvalConfig(values.config as string)
     : null;
 
-  // 2) Resolve samples path: CLI > config > auto-detect .json/.yaml/.yml in cwd.
+  const skillDir: string = resolve((values['skill-dir'] as string | undefined) ?? 'skills');
+
+  // 2) Resolve samples path: CLI > config > <skillDir>/<treatment>/.omk/ discovery > cwd default.
+  // The .omk/ discovery only fires when exactly one --treatment is given, so omk knows
+  // which skill's bundled samples to use. The dir form (loadSamples handles both file + dir)
+  // means a skill can split samples across multiple files (workflow.json / platform.json / ...).
   const cliSamples = values.samples as string | undefined;
   let samplesFile: string;
   if (cliSamples) {
@@ -190,14 +224,8 @@ export function parseRunConfig(
   } else if (evalConfig?.samples) {
     samplesFile = evalConfig.samples;  // already resolved against config file dir
   } else {
-    samplesFile = 'eval-samples.json';
-    if (!existsSync(resolve(samplesFile))) {
-      if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
-      else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
-    }
+    samplesFile = discoverSamplesPath(values, skillDir);
   }
-
-  const skillDir: string = resolve((values['skill-dir'] as string | undefined) ?? 'skills');
 
   // 3) Resolve variantSpecs: CLI > config. If neither, error with a helpful hint.
   const controlExpr = values.control as string | undefined;
