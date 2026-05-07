@@ -374,31 +374,31 @@ export function formatSampleIssue(issue: SampleIssue, lang: DiagnosticLang = 'zh
   switch (issue.kind) {
     case 'all_pass':
       return lang === 'zh'
-        ? '所有 variant 得分均为 5 — 用例可能太简单或断言过宽'
+        ? '所有 variant 得分均为 5——用例可能太简单或断言过宽'
         : 'All variants scored 5; this sample may be too easy or the assertions may be too loose';
     case 'all_fail':
       return lang === 'zh'
-        ? '所有 variant 得分均为 1 — 用例可能 broken / rubric 不可达'
+        ? '所有 variant 得分均为 1——用例可能 broken / rubric 不可达'
         : 'All variants scored 1; this sample may be broken or the rubric may be unreachable';
     case 'flat_scores': {
       const spread = evidenceNumber(evidence, 'spread').toFixed(2);
       const threshold = evidenceNumber(evidence, 'threshold').toString();
       return lang === 'zh'
-        ? `分差 ${spread} < ${threshold} — 区分度低,该用例对结论贡献小`
+        ? `分差 ${spread} < ${threshold}——区分度低，该用例对结论贡献小`
         : `Score spread ${spread} < ${threshold}; low discrimination, so this sample contributes little to the conclusion`;
     }
     case 'error_prone': {
       const errors = evidenceNumber(evidence, 'errorCount');
       const variants = evidenceNumber(evidence, 'variantCount');
       return lang === 'zh'
-        ? `${errors}/${variants} variant 执行失败 — 检查用例配置 / 环境依赖`
+        ? `${errors}/${variants} variant 执行失败——检查用例配置 / 环境依赖`
         : `${errors}/${variants} variants failed; check sample config and environment dependencies`;
     }
     case 'ambiguous_rubric': {
       const maxStddev = evidenceNumber(evidence, 'maxStddev').toFixed(2);
       const threshold = evidenceNumber(evidence, 'threshold').toString();
       return lang === 'zh'
-        ? `LLM 评委多次评分 stddev ${maxStddev} ≥ ${threshold} — rubric 可能存在歧义`
+        ? `LLM 评委多次评分 stddev ${maxStddev} ≥ ${threshold}——rubric 可能存在歧义`
         : `LLM judge score stddev ${maxStddev} >= ${threshold}; the rubric may be ambiguous`;
     }
     case 'cost_outlier': {
@@ -428,7 +428,7 @@ export function formatSampleIssue(issue: SampleIssue, lang: DiagnosticLang = 'zh
     case 'rubric_clarity_low': {
       const rubricLength = evidenceNumber(evidence, 'rubricLength');
       return lang === 'zh'
-        ? `rubric 仅 ${rubricLength} 字且未含评分级别词 — 评委标准模糊,可能 judge 分数不稳`
+        ? `rubric 仅 ${rubricLength} 字且未含评分级别词——评委标准模糊，可能 judge 分数不稳`
         : `Rubric is only ${rubricLength} characters and has no grading-level terms; judge scores may be unstable`;
     }
     case 'capability_thin': {
@@ -436,7 +436,7 @@ export function formatSampleIssue(issue: SampleIssue, lang: DiagnosticLang = 'zh
       const sampleCount = evidenceNumber(evidence, 'sampleCount');
       const threshold = evidenceNumber(evidence, 'threshold');
       return lang === 'zh'
-        ? `capability "${capability}" 只 ${sampleCount} 个 sample 撑(阈值 ${threshold}) — 单 sample 失败会让该维度结论不稳`
+        ? `capability "${capability}" 只 ${sampleCount} 个 sample 撑(阈值 ${threshold})——单 sample 失败会让该维度结论不稳`
         : `Capability "${capability}" is covered by only ${sampleCount} samples (threshold ${threshold}); one failed sample can destabilize this dimension`;
     }
     default:
@@ -454,7 +454,7 @@ export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: {
   const { topN, lang = 'zh' } = options;
   lines.push('');
   lines.push(lang === 'zh'
-    ? `  用例质量诊断 — health score ${diag.healthScore}/100`
+    ? `  用例质量诊断——health score ${diag.healthScore}/100`
     : `  Sample quality diagnostics — health score ${diag.healthScore}/100`);
   lines.push(lang === 'zh'
     ? `  用例总数: ${diag.totals.samples}, flagged: ${diag.totals.flagged} (errors=${diag.totals.errors}, warnings=${diag.totals.warnings}, infos=${diag.totals.infos})`
@@ -491,12 +491,12 @@ export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: {
   lines.push(lang === 'zh' ? '  建议:' : '  Recommendations:');
   if (diag.byKind.all_pass && diag.byKind.all_pass.length > diag.totals.samples * 0.3) {
     lines.push(lang === 'zh'
-      ? '  - 用例太简单 (>30% all-pass) — 加难度 / 加更严断言来拉开 variant 差距'
+      ? '  - 用例太简单 (>30% all-pass)——加难度 / 加更严断言来拉开 variant 差距'
       : '  - Samples are too easy (>30% all-pass); add difficulty or stricter assertions to separate variants');
   }
   if (diag.byKind.flat_scores && diag.byKind.flat_scores.length > diag.totals.samples * 0.3) {
     lines.push(lang === 'zh'
-      ? '  - 多数用例区分度低 — 当前评分维度可能与 skill 差异不正交'
+      ? '  - 多数用例区分度低——当前评分维度可能与 skill 差异不正交'
       : '  - Many samples have low discrimination; the scoring dimensions may not isolate skill differences');
   }
   if (diag.byKind.near_duplicate) {
@@ -506,23 +506,23 @@ export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: {
   }
   if (diag.byKind.ambiguous_rubric) {
     lines.push(lang === 'zh'
-      ? '  - rubric 在这些用例上歧义大 — 改写 rubric 或加更多确定性断言锚定'
+      ? '  - rubric 在这些用例上歧义大——改写 rubric 或加更多确定性断言锚定'
       : '  - Rubrics are ambiguous on these samples; rewrite them or add deterministic assertions');
   }
   if (diag.byKind.error_prone) {
     lines.push(lang === 'zh'
-      ? '  - 这些用例执行失败 — 检查环境依赖 / executor 配置 / 用例本身是否过期'
+      ? '  - 这些用例执行失败——检查环境依赖 / executor 配置 / 用例本身是否过期'
       : '  - These samples failed during execution; check environment dependencies, executor config, or stale samples');
   }
   // sample design science signals
   if (diag.byKind.rubric_clarity_low) {
     lines.push(lang === 'zh'
-      ? '  - rubric 太短 / 无评分级别词 — 把 rubric 写成"应识别 X / 必须包含 Y / 至少 N 项"这样的判分细则,让 judge 有可执行标准'
+      ? '  - rubric 太短 / 无评分级别词——把 rubric 写成"应识别 X / 必须包含 Y / 至少 N 项"这样的判分细则，让 judge 有可执行标准'
       : '  - Rubrics are too short or lack grading-level terms; write actionable criteria such as "must identify X", "must include Y", or "at least N items"');
   }
   if (diag.byKind.capability_thin) {
     lines.push(lang === 'zh'
-      ? '  - 某 capability 维度只 1-2 用例撑 — 要么补 sample 加厚该维度,要么删该 capability(明确不在测试范围),避免单 sample 失败让该维度结论不稳'
+      ? '  - 某 capability 维度只 1-2 用例撑——要么补 sample 加厚该维度，要么删该 capability(明确不在测试范围)，避免单 sample 失败让该维度结论不稳'
       : '  - Some capability dimensions have only 1-2 samples; add coverage or remove the capability from scope to avoid single-sample instability');
   }
 

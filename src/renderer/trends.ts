@@ -1,4 +1,5 @@
 import { e, fmtCost, fmtLocalTime, t } from './layout.js';
+import { renderScoringModal } from './summary.js';
 import type { Lang, Report, ReportMeta, VariantSummary } from '../types/index.js';
 
 interface ChartPoint {
@@ -112,7 +113,7 @@ function renderTable(variantName: string, runs: Report[], lang: Lang): string {
     <table>
       <thead><tr>
         <th>${t('time', lang)}</th>
-        <th>${t('score', lang)}</th>
+        <th>${t('score', lang)} <button type="button" class="hint-btn" onclick="openModal('guide-scoring-trends')" aria-label="${e(lang === 'zh' ? '综合分怎么算的？' : 'How is composite computed?')}" aria-haspopup="dialog">?</button></th>
         <th>${gapHeader}</th>
         <th>${t('avgTurns', lang)}</th>
         <th>${t('cost', lang)}</th>
@@ -148,6 +149,7 @@ export function renderTrendsBody(variantName: string, runs: Report[], lang: Lang
     <nav class="nav"><a href="/${langQ}" data-i18n="backToList">${t('backToList', lang)}</a></nav>
     <h1>${title}</h1>
     <p class="subtitle">${countLabel}</p>
+    ${renderScoringModal('guide-scoring-trends', lang)}
     ${chart}
     ${table}
   `;
