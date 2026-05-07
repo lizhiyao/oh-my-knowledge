@@ -8,6 +8,7 @@ import {
   renderAnalysis,
   renderKnowledgeInteractionSection,
   renderMethodologyAudit,
+  renderScoringModal,
   renderSummaryCards,
   renderVarianceComparisons,
   renderVerdictPill,
@@ -300,13 +301,14 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
       <input id="filter-input" type="text" placeholder="${lang === 'zh' ? '搜索报告名称、变体...' : 'Filter by name, variant...'}" style="flex:1;max-width:320px;padding:6px 10px;font-size:13px;background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius);outline:none" oninput="filterTable(this.value)">
       <span id="filter-count" style="font-size:11px;color:var(--text-muted)"></span>
     </div>
+    ${renderScoringModal('guide-scoring-list', lang)}
     <div class="table-wrap">
     <table id="report-table">
       <thead><tr>
         <th data-i18n="runId">${t('runId', lang)}</th>
         <th data-i18n="model">${t('model', lang)}</th>
         <th data-i18n="samples">${t('samples', lang)}</th>
-        <th data-i18n="score">${t('score', lang)}</th>
+        <th data-i18n="score">${t('score', lang)} <button type="button" class="hint-btn" onclick="openModal('guide-scoring-list')" aria-label="${e(lang === 'zh' ? '综合分怎么算的？' : 'How is composite computed?')}" aria-haspopup="dialog">?</button></th>
         <th data-i18n="cost">${t('cost', lang)}</th>
         <th>${lang === 'zh' ? '耗时' : 'Duration'}</th>
         <th></th>
