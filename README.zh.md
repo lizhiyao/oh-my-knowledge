@@ -464,7 +464,7 @@ omk observe show <inbox_id>
 每条 observation 自带：
 
 + `confidence` 与 `attributionConfidence`：信号可信度 + skill 归因可信度，并列展示
-+ `severityReasonCode` + `severityReason`：判断为该 severity 的结构化原因 + 中文说明
++ `severityReasonCode`：判断为该 severity 的稳定结构化原因；人类可读说明由 CLI / studio 渲染时生成
 + `messageWindow`：前 3 条 / 触发点 / 后 3 条 message 上下文 + `resolutionAfter`（后续是否解决）
 + `evidence.{messageIndex,messageUuid,toolUseId}`：可反向回到原始 jsonl 的锚点
 

@@ -229,7 +229,7 @@ function isSameTopicSearch(a: ToolCallInfo, b: ToolCallInfo): boolean {
   if (qa.query) {
     const queryTokens = topicTokens(qa.query);
     if (queryTokens.size === 0) return false;
-    const laterText = qb.query ?? qb.path ?? '';
+    const laterText = qb.query ?? `${basenameForTopic(qb.path)} ${snippet(b.output, 1000) ?? ''}`;
     const laterTokens = topicTokens(laterText);
     for (const token of queryTokens) {
       if (laterTokens.has(token) || normalizeObservationKeyInput(laterText).includes(token)) return true;
@@ -244,6 +244,11 @@ function isSameTopicSearch(a: ToolCallInfo, b: ToolCallInfo): boolean {
     if (bTokens.has(token)) return true;
   }
   return false;
+}
+
+function basenameForTopic(value: string | undefined): string {
+  if (!value) return '';
+  return value.split(/[\\/]/).filter(Boolean).pop() ?? '';
 }
 
 function confidenceForSubtype(subtype: ObservationSignalSubtype, signal?: GapSignalRef): number {

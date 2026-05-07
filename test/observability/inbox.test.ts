@@ -516,6 +516,59 @@ describe('observe inbox', () => {
     assert.equal(revenue.severity, 'high');
   });
 
+  it('keeps query hard_miss when query token appears only in repository directory name', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repos/payment-app',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind payment config' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repos/payment-app',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'payment', path: '/repos/payment-app' } },
+            { type: 'tool_use', id: 't2', name: 'Read', input: { file_path: '/repos/payment-app/src/auth.ts' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repos/payment-app',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
+            { type: 'tool_result', tool_use_id: 't2', content: 'export const auth = true;', is_error: false },
+          ],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const payment = report.items.find((item) => item.evidence.query === 'payment');
+    assert.ok(payment);
+    assert.equal(payment.signalSubtype, 'hard_miss');
+    assert.equal(payment.severity, 'high');
+  });
+
   it('uses a dedicated reason code for skill asset read failures', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'session.jsonl');

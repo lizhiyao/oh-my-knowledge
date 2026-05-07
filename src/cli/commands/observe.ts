@@ -76,7 +76,18 @@ async function executeInbox(argv: string[]): Promise<void> {
     items = items.filter((item) => item.skillName === values.skill);
   }
   if (values['by-skill'] === true) {
-    const reports = loadLatestObservationInboxReports(dir);
+    const reports = values.skill
+      ? loadLatestObservationInboxReports(dir).map((report) => ({
+        ...report,
+        meta: {
+          ...report.meta,
+          skillInvocationCounts: pickSkillCount(report.meta.skillInvocationCounts, String(values.skill)),
+          skillSessionCounts: pickSkillCount(report.meta.skillSessionCounts, String(values.skill)),
+          skillInvocationLastSeen: pickSkillString(report.meta.skillInvocationLastSeen, String(values.skill)),
+          skillToolCallCounts: pickSkillToolCounts(report.meta.skillToolCallCounts, String(values.skill)),
+        },
+      }))
+      : loadLatestObservationInboxReports(dir);
     const rows = summarizeObservationInboxBySkill(items, reports);
     if (values.json) {
       console.log(JSON.stringify({ kind: 'observe-inbox-by-skill', rows }, null, 2));
@@ -123,6 +134,21 @@ async function executeInbox(argv: string[]): Promise<void> {
   console.log(lang === 'zh'
     ? 'Tip: omk observe inbox --explore 10 --include-noise  # 显式包含 noise 桶'
     : 'Tip: omk observe inbox --explore 10 --include-noise  # explicitly include the noise bucket');
+}
+
+function pickSkillCount(value: Record<string, number> | undefined, skillName: string): Record<string, number> | undefined {
+  if (!value || value[skillName] == null) return undefined;
+  return { [skillName]: value[skillName] };
+}
+
+function pickSkillString(value: Record<string, string> | undefined, skillName: string): Record<string, string> | undefined {
+  if (!value || value[skillName] == null) return undefined;
+  return { [skillName]: value[skillName] };
+}
+
+function pickSkillToolCounts(value: Record<string, Record<string, number>> | undefined, skillName: string): Record<string, Record<string, number>> | undefined {
+  if (!value || value[skillName] == null) return undefined;
+  return { [skillName]: value[skillName] };
 }
 
 async function executeShow(argv: string[]): Promise<void> {
