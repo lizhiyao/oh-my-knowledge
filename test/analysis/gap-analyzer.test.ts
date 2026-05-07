@@ -54,6 +54,8 @@ describe('isFailedSearchTool', () => {
     { name: 'successful Grep with actual matches', call: tc('Grep', { pattern: 'foo' }, 'src/foo.ts:10: foo', true), expected: false },
     { name: 'Bash grep with empty output', call: tc('Bash', { command: 'grep -r foo /src' }, '', true), expected: true },
     { name: 'Bash rg with failure', call: tc('Bash', { command: 'rg foo' }, '', false), expected: true },
+    { name: 'Bash ls probe with explicit stderr suppression', call: tc('Bash', { command: 'ls /missing/path 2>/dev/null' }, '', true), expected: true },
+    { name: 'Bash test probe with tolerant fallback', call: tc('Bash', { command: 'test -f /missing/file || true' }, '', true), expected: true },
     { name: 'Bash without grep/rg/find', call: tc('Bash', { command: 'ls -la' }, '', false), expected: false },
     { name: 'Write or other non-search tools', call: tc('Write', { file_path: '/x.md' }, '', false), expected: false },
   ];

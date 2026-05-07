@@ -6,7 +6,11 @@ import { tmpdir } from 'node:os';
 import {
   aggregateInboxItems,
   buildObservationInboxReport,
+  formatObservationShow,
+  loadLatestObservationInboxReports,
   normalizeObservationKeyInput,
+  queryObservationInbox,
+  saveObservationInboxReport,
   selectExploreInboxItems,
   type ObservationInboxItem,
 } from '../../src/observability/inbox.js';
@@ -61,6 +65,96 @@ describe('observe inbox', () => {
     assert.equal(items.length, 2);
     assert.equal(items[0].occurrences, 2);
     assert.deepEqual(items[0].recentSessionIds, ['s2', 's1']);
+  });
+
+  it('queries only the latest saved report by default', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const oldReport = {
+      kind: 'observe-inbox' as const,
+      schemaVersion: 1 as const,
+      meta: {
+        generatedAt: '2026-05-01T00:00:00.000Z',
+        tracePath: '/tmp/old',
+        sourceKind: 'claude' as const,
+        sessionCount: 1,
+        segmentCount: 1,
+        itemCount: 1,
+        skillInvocationCounts: { old_skill: 1 },
+      },
+      items: [baseItem({ id: 'old', skillName: 'old_skill', lastSeen: '2026-05-01T00:00:00.000Z' })],
+    };
+    const latestReport = {
+      kind: 'observe-inbox' as const,
+      schemaVersion: 1 as const,
+      meta: {
+        generatedAt: '2026-05-02T00:00:00.000Z',
+        tracePath: '/tmp/latest',
+        sourceKind: 'claude' as const,
+        sessionCount: 1,
+        segmentCount: 1,
+        itemCount: 1,
+        skillInvocationCounts: { latest_skill: 1 },
+      },
+      items: [baseItem({ id: 'latest', skillName: 'latest_skill', lastSeen: '2026-05-02T00:00:00.000Z' })],
+    };
+
+    saveObservationInboxReport(oldReport, dir);
+    saveObservationInboxReport(latestReport, dir);
+
+    assert.equal(loadLatestObservationInboxReports(dir)[0].meta.tracePath, '/tmp/latest');
+    assert.deepEqual(queryObservationInbox(dir).map((item) => item.skillName), ['latest_skill']);
+  });
+
+  it('keeps streaming report aggregation equivalent to direct aggregation', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
+            { type: 'tool_use', id: 't2', name: 'Grep', input: { pattern: ' revenue_schema ', path: '/repo-a' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
+            { type: 'tool_result', tool_use_id: 't2', content: 'No matches found', is_error: false },
+          ],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    assert.equal(report.items.length, 1);
+    assert.equal(report.items[0].occurrences, 2);
+    assert.equal(report.items[0].severityReasonCode, 'knowledge_gap_suspected');
   });
 
   it('aggregates bash_probe by skill/cwd/subtype without full command precision', () => {
@@ -147,7 +241,10 @@ describe('observe inbox', () => {
 
     const report = buildObservationInboxReport(file);
     assert.equal(report.kind, 'observe-inbox');
+    assert.equal(report.schemaVersion, 1);
     assert.equal(report.items.length, 1);
+    assert.equal(report.items[0].severityReason, undefined);
+    assert.equal(report.items[0].severityReasonCode, 'knowledge_gap_suspected');
     assert.equal(report.items[0].skillName, 'audit');
     assert.equal(report.items[0].sourceKind, 'claude');
     assert.equal(report.meta.skillInvocationCounts?.audit, 1);
@@ -260,6 +357,159 @@ describe('observe inbox', () => {
     assert.equal(report.items[0].signalSubtype, 'bash_probe');
     assert.equal(report.items[0].severity, 'medium');
     assert.equal(report.items[0].confidence, 0.4);
+    assert.equal(report.items[0].evidence.messageIndex, 1);
+    assert.equal(report.items[0].evidence.messageUuid, 'a1');
+    assert.equal(report.items[0].evidence.toolUseId, 't1');
+    assert.ok(report.items[0].messageWindow);
+  });
+
+  it('classifies pure ls probes as bash_probe when they use explicit tolerant markers', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind config' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls /repo/config 2>/dev/null' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: '', is_error: false }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    assert.equal(report.items[0].signalSubtype, 'bash_probe');
+    assert.equal(report.items[0].severity, 'medium');
+  });
+
+  it('keeps hard_miss when a later successful search is unrelated', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
+            { type: 'tool_use', id: 't2', name: 'Grep', input: { pattern: 'auth_router', path: '/repo-a' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
+            { type: 'tool_result', tool_use_id: 't2', content: 'src/auth/router.ts:1: auth_router', is_error: false },
+          ],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const revenue = report.items.find((item) => item.evidence.query === 'revenue_schema');
+    assert.ok(revenue);
+    assert.equal(revenue.signalSubtype, 'hard_miss');
+    assert.equal(revenue.severity, 'high');
+  });
+
+  it('formats observation show output with message window context', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind routes' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'ls /repo/config 2>/dev/null' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: '', is_error: false }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const output = formatObservationShow(report.items[0]);
+    assert.match(output, /--- 上文 ---/);
+    assert.match(output, /--- 失败点 \/ 触发点 ---/);
+    assert.match(output, /tool_use Bash t1/);
   });
 
   it('does not degrade plain Bash find misses without explicit probe markers', () => {

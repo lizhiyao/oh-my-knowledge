@@ -18,6 +18,7 @@
 
 import type { ExecutorFn, GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types/index.js';
 import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
+import { isFailedSearchToolCall, toolCallQuery } from '../observability/tool-search.js';
 
 export type GapSignalType = GapSignalRef['type'];
 export type GapSignal = GapSignalRef;
@@ -85,43 +86,16 @@ export const SIGNAL_WEIGHTS: Record<GapSignalType, number> = {
  *   - Read with success: false
  *   - Grep with success: false
  *   - Grep with success but empty/"No matches found" output (still a miss)
- *   - Bash with grep/rg/find in the command and either failure or empty output
+ *   - Bash with grep/rg/find or explicit probe commands that returned empty or failed
  */
 export function isFailedSearchTool(tc: ToolCallInfo): boolean {
-  const output = typeof tc.output === 'string' ? tc.output : String(tc.output ?? '');
-  const emptyOutput = output.trim() === '' || /No matches found/i.test(output);
-
-  if (tc.tool === 'Read') {
-    return tc.success === false;
-  }
-
-  if (tc.tool === 'Grep') {
-    if (tc.success === false) return true;
-    return emptyOutput;
-  }
-
-  if (tc.tool === 'Bash') {
-    const cmd = ((tc.input as { command?: string } | null)?.command) || '';
-    if (!/\b(grep|rg|find)\b/.test(cmd)) return false;
-    if (tc.success === false) return true;
-    return emptyOutput;
-  }
-
-  return false;
+  return isFailedSearchToolCall(tc);
 }
 
 function formatToolEvidence(tc: ToolCallInfo): { pattern: string; path: string; context: string } {
-  const input = (tc.input as Record<string, unknown> | null) || {};
-  let pattern = '';
-  let path = '';
-  if (tc.tool === 'Grep') {
-    pattern = String(input.pattern ?? '');
-    path = String(input.path ?? '');
-  } else if (tc.tool === 'Read') {
-    path = String(input.file_path ?? '');
-  } else if (tc.tool === 'Bash') {
-    pattern = String(input.command ?? '').slice(0, 120);
-  }
+  const query = toolCallQuery(tc);
+  const pattern = (query.query ?? '').slice(0, 120);
+  const path = query.path ?? '';
   const context = `${tc.tool}: ${pattern || path}`.slice(0, 160);
   return { pattern, path, context };
 }
@@ -165,6 +139,14 @@ function collectAssistantText(vr: VariantResult): string {
   }
   // Fallback: fullOutput if turns are missing (some executors only emit final text)
   if (parts.length === 0 && vr.fullOutput) parts.push(vr.fullOutput);
+  return parts.join('\n');
+}
+
+export function collectAssistantTextFromTurns(turns: TurnInfo[] | undefined): string {
+  const parts: string[] = [];
+  for (const turn of turns ?? []) {
+    if (turn.role === 'assistant' && turn.content) parts.push(turn.content);
+  }
   return parts.join('\n');
 }
 
@@ -319,6 +301,31 @@ export function extractGapSignalsFromSample(variantResult: VariantResult, sample
 
   const all = [...failedSearchSignals, ...markerSignals, ...hedgingSignals, ...repeatedFailureSignals];
   return all.map((s) => ({ ...s, sampleId }));
+}
+
+export function extractGapSignalsFromTrace(input: {
+  sampleId: string;
+  turns?: TurnInfo[];
+  toolCalls?: ToolCallInfo[];
+  assistantText?: string;
+}): GapSignal[] {
+  const toolCalls: ToolCallInfo[] = [];
+  if (input.turns) {
+    for (const turn of input.turns) {
+      if (turn.toolCalls) toolCalls.push(...turn.toolCalls);
+    }
+  }
+  if (toolCalls.length === 0 && input.toolCalls) {
+    toolCalls.push(...input.toolCalls);
+  }
+  const assistantText = input.assistantText ?? collectAssistantTextFromTurns(input.turns);
+  const all = [
+    ...extractFailedSearchSignals(toolCalls),
+    ...extractMarkerSignals(assistantText),
+    ...extractHedgingSignals(assistantText),
+    ...extractRepeatedFailureSignals(input.turns),
+  ];
+  return all.map((s) => ({ ...s, sampleId: input.sampleId }));
 }
 
 // ---------- Report-level aggregation ----------

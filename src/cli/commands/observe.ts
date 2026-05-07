@@ -15,6 +15,10 @@ export async function execute(argv: string[]): Promise<void> {
     await executeInbox(rest);
     return;
   }
+  if (sub === 'show') {
+    await executeShow(rest);
+    return;
+  }
 
   await executeHealth(argv);
 }
@@ -60,15 +64,33 @@ async function executeInbox(argv: string[]): Promise<void> {
       limit: { type: 'string' },
       explore: { type: 'string' },
       'include-noise': { type: 'boolean' },
+      'by-skill': { type: 'boolean' },
       json: { type: 'boolean' },
     },
   });
   const values = rawValues as Record<string, string | boolean | undefined>;
-  const { queryObservationInbox, selectExploreInboxItems, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
+  const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
   const dir = resolve((values['input-dir'] as string | undefined) || DEFAULT_OBSERVATIONS_DIR);
   let items = queryObservationInbox(dir);
   if (values.skill) {
     items = items.filter((item) => item.skillName === values.skill);
+  }
+  if (values['by-skill'] === true) {
+    const reports = loadLatestObservationInboxReports(dir);
+    const rows = summarizeObservationInboxBySkill(items, reports);
+    if (values.json) {
+      console.log(JSON.stringify({ kind: 'observe-inbox-by-skill', rows }, null, 2));
+      return;
+    }
+    if (rows.length === 0) {
+      console.log(lang === 'zh' ? 'observe inbox 为空' : 'observe inbox is empty');
+      return;
+    }
+    console.log(lang === 'zh' ? 'observe inbox by skill:' : 'observe inbox by skill:');
+    for (const row of rows) {
+      console.log(`- ${row.skillName} invocations=${row.invocationCount} sessions=${row.sessionCount} processFindings=${row.observationCount} high=${row.highCount} medium=${row.mediumCount} low=${row.lowCount} noise=${row.noiseCount}${row.latestSeen ? ` latest=${row.latestSeen}` : ''}`);
+    }
+    return;
   }
   if (values.explore) {
     const n = Math.max(1, Number(values.explore) || 10);
@@ -91,7 +113,7 @@ async function executeInbox(argv: string[]): Promise<void> {
     const artifactVersion = item.artifactVersion === 'unknown' ? '⚠ unknown' : item.artifactVersion;
     console.log(`- [${item.severity}] (${item.sourceKind}) ${item.skillName} ${item.signalType}/${item.signalSubtype} x${item.occurrences} confidence=${item.confidence.toFixed(2)} attribution=${item.attributionConfidence.toFixed(2)}`);
     console.log(`  lastSeen=${item.lastSeen} version=${artifactVersion}`);
-    if (item.severityReason) console.log(`  reason=${item.severityReason}`);
+    console.log(`  reason=${item.severityReasonCode ?? 'unknown'}`);
     if (evidence) console.log(`  evidence=${evidence.slice(0, 180)}`);
   }
   console.log('');
@@ -101,6 +123,32 @@ async function executeInbox(argv: string[]): Promise<void> {
   console.log(lang === 'zh'
     ? 'Tip: omk observe inbox --explore 10 --include-noise  # 显式包含 noise 桶'
     : 'Tip: omk observe inbox --explore 10 --include-noise  # explicitly include the noise bucket');
+}
+
+async function executeShow(argv: string[]): Promise<void> {
+  const lang = langFromArgv(argv);
+  const { values: rawValues, positionals } = parseArgsStrictOrExit({
+    args: argv,
+    allowPositionals: true,
+    options: {
+      ...COMMON_OPTIONS,
+      'input-dir': { type: 'string' },
+    },
+  });
+  const id = positionals[0];
+  if (!id) {
+    console.error(lang === 'zh' ? '用法：omk observe show <inbox_id> [--input-dir <path>]' : 'Usage: omk observe show <inbox_id> [--input-dir <path>]');
+    throw new CliExit(1);
+  }
+  const values = rawValues as Record<string, string | undefined>;
+  const { findObservationInboxItem, formatObservationShow, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
+  const dir = resolve(values['input-dir'] || DEFAULT_OBSERVATIONS_DIR);
+  const item = findObservationInboxItem(id, dir);
+  if (!item) {
+    console.error(lang === 'zh' ? `未找到 observation：${id}` : `Observation not found: ${id}`);
+    throw new CliExit(1);
+  }
+  console.log(formatObservationShow(item));
 }
 
 async function executeHealth(argv: string[]): Promise<void> {

@@ -31,6 +31,7 @@ export const PRODUCT_COMMANDS: Record<string, CommandModule> = {
     subHelp: {
       ingest: 'cli.help.observe_ingest',
       inbox: 'cli.help.observe_inbox',
+      show: 'cli.help.observe_show',
     },
     execute: observe,
   },
