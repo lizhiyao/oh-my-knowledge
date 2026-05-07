@@ -8,6 +8,7 @@ import {
   buildObservationInboxReport,
   formatObservationShow,
   loadLatestObservationInboxReports,
+  loadObservationInboxReports,
   normalizeObservationKeyInput,
   queryObservationInbox,
   saveObservationInboxReport,
@@ -567,6 +568,101 @@ describe('observe inbox', () => {
     assert.ok(payment);
     assert.equal(payment.signalSubtype, 'hard_miss');
     assert.equal(payment.severity, 'high');
+  });
+
+  it('keeps query hard_miss when later Bash ls only shares repo path tokens', () => {
+    // 回归: Grep("payment") 失败后, 后续 Bash(ls /repos/payment-app/src/auth.ts) 成功。
+    // 旧逻辑把 Bash command 全文当 query, 命中 "payment" token 把 hard_miss 误降级为
+    // exploratory_miss。新结构化解析里 Bash ls 走 path-only 不污染 query 维度。
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repos/payment-app',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind payment config' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repos/payment-app',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'payment', path: '/repos/payment-app' } },
+            { type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'ls /repos/payment-app/src/auth.ts' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repos/payment-app',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false },
+            { type: 'tool_result', tool_use_id: 't2', content: '/repos/payment-app/src/auth.ts', is_error: false },
+          ],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const payment = report.items.find((item) => item.evidence.query === 'payment');
+    assert.ok(payment);
+    assert.equal(payment.signalSubtype, 'hard_miss');
+    assert.equal(payment.severity, 'high');
+  });
+
+  it('saves two same-second observe-inbox reports without overwriting', () => {
+    // 回归: report 文件名以前 slice(0, 19) 把毫秒砍掉, 导致 .111Z 和 .999Z 两份同秒
+    // 不同毫秒的 report 共用同一文件名, 第二份静默覆盖第一份。修复后保留毫秒。
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const reportA = {
+      kind: 'observe-inbox' as const,
+      schemaVersion: 1 as const,
+      meta: {
+        generatedAt: '2026-05-07T12:00:00.111Z',
+        tracePath: '/tmp/A',
+        sourceKind: 'claude' as const,
+        sessionCount: 1,
+        segmentCount: 1,
+        itemCount: 1,
+        skillInvocationCounts: { skill_a: 1 },
+      },
+      items: [baseItem({ id: 'a', skillName: 'skill_a', lastSeen: '2026-05-07T12:00:00.111Z' })],
+    };
+    const reportB = {
+      ...reportA,
+      meta: {
+        ...reportA.meta,
+        generatedAt: '2026-05-07T12:00:00.999Z',
+        tracePath: '/tmp/B',
+      },
+      items: [baseItem({ id: 'b', skillName: 'skill_a', lastSeen: '2026-05-07T12:00:00.999Z' })],
+    };
+
+    const pathA = saveObservationInboxReport(reportA, dir);
+    const pathB = saveObservationInboxReport(reportB, dir);
+
+    assert.notEqual(pathA, pathB);
+    const reports = loadObservationInboxReports(dir);
+    assert.equal(reports.length, 2);
+    const tracePaths = new Set(reports.map((r) => r.meta.tracePath));
+    assert.ok(tracePaths.has('/tmp/A'));
+    assert.ok(tracePaths.has('/tmp/B'));
   });
 
   it('uses a dedicated reason code for skill asset read failures', () => {

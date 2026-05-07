@@ -229,7 +229,14 @@ function isSameTopicSearch(a: ToolCallInfo, b: ToolCallInfo): boolean {
   if (qa.query) {
     const queryTokens = topicTokens(qa.query);
     if (queryTokens.size === 0) return false;
-    const laterText = qb.query ?? `${basenameForTopic(qb.path)} ${snippet(b.output, 1000) ?? ''}`;
+    // Bash 的 output 通常只是 path-echo (ls/cat/test 直接打印路径), 路径里的 cwd / repo
+    // token 会污染同主题判定。所以 Bash later success 只用 basename(structured path) 比对,
+    // 不读 output。Read 的 output 是文件内容, 用基名 + 内容做比对更可信。
+    const isBashLater = b.tool === 'Bash';
+    const laterText = qb.query
+      ?? (isBashLater
+        ? basenameForTopic(qb.path)
+        : `${basenameForTopic(qb.path)} ${snippet(b.output, 1000) ?? ''}`);
     const laterTokens = topicTokens(laterText);
     for (const token of queryTokens) {
       if (laterTokens.has(token) || normalizeObservationKeyInput(laterText).includes(token)) return true;
@@ -555,7 +562,9 @@ function compareInboxItems(a: ObservationInboxItem, b: ObservationInboxItem): nu
 
 export function saveObservationInboxReport(report: ObservationInboxReport, outDir: string = DEFAULT_OBSERVATIONS_DIR): string {
   mkdirSync(outDir, { recursive: true });
-  const stamp = report.meta.generatedAt.replace(/[:.]/g, '-').slice(0, 19);
+  // 保留毫秒;同秒不同毫秒生成的两份 report 不应静默互相覆盖。
+  // 例: '2026-05-07T12:00:00.999Z' → '2026-05-07T12-00-00-999'
+  const stamp = report.meta.generatedAt.replace(/[:.]/g, '-').replace(/Z$/, '');
   const path = join(outDir, `${stamp}-observe-inbox.json`);
   writeFileSync(path, JSON.stringify(report, null, 2));
   return path;
