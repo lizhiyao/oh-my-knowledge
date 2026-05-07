@@ -304,7 +304,6 @@ function renderObservationInboxPage(observationsDir: string, lang: Lang = DEFAUL
     </details>`;
   }).join('');
   const rawRows = reports.flatMap((report, reportIndex) => report.items.map((item, itemIndex) => {
-    const evidence = semanticEvidence(item);
     const rawId = `obs-raw-${reportIndex}-${itemIndex}`;
     const color = item.severity === 'high' ? 'var(--red)' : item.severity === 'medium' ? 'var(--yellow)' : item.severity === 'noise' ? 'var(--text-muted)' : 'var(--accent)';
     return `<tr>
