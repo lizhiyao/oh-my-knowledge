@@ -48,7 +48,7 @@ const HEDGING_PATTERNS: RegExp[] = [
 ];
 
 const MARKER_META_DISCUSSION_RE =
-  /\b(explicit_marker|hedging|failed_search|repeated_failure|signal|severity|confidence|regex|marker|gap)\b|检测|规则|正则|打标|信号|判断标准|评分标准|分类|噪声|假阳|误报|命中/g;
+  /\b(explicit_marker|hedging|failed_search|repeated_failure|signal|severity|confidence|regex|marker|gap\s+signal|knowledge\s+gap\s+signal)\b|检测|规则|正则|打标|信号|判断标准|评分标准|分类|噪声|假阳|误报|命中/g;
 const MARKER_QUOTATION_RE =
   /比如|例如|示例|转述|引用|文档里|表格|出现(?:了|过)?(?:多处)?[`【\[]|AI\s*输出里出现|assistant\s*文本里/i;
 
@@ -209,8 +209,10 @@ function shouldIgnoreMarkerOccurrence(text: string, index: number, marker: strin
   if (/^\|.*\|$/.test(trimmedLine)) return true;
   if (trimmedLine.includes(`\`${marker}\``)) return true;
 
-  const window = text
-    .slice(Math.max(0, index - 90), Math.min(text.length, index + marker.length + 90))
+  const windowStart = Math.max(0, index - 90);
+  const markerOffset = index - windowStart;
+  const rawWindow = text.slice(windowStart, Math.min(text.length, index + marker.length + 90));
+  const window = (rawWindow.slice(0, markerOffset) + rawWindow.slice(markerOffset + marker.length))
     .replace(/\s+/g, ' ');
   MARKER_META_DISCUSSION_RE.lastIndex = 0;
   if (MARKER_META_DISCUSSION_RE.test(window)) return true;

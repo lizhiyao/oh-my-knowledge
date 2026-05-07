@@ -2,7 +2,7 @@
  * cc session JSONL → omk ResultEntry adapter (v0.18 skill-health)。
  *
  * 核心职责:
- *   1. 读 cc session JSONL / OpenClaw SDK log 文件 / 目录
+ *   1. 读 cc session JSONL / agent markdown log 文件 / 目录
  *   2. 按 session 拆分、按 skill 信号切段(见 docs/skill-health-spec.md §四)
  *   3. 每段输出为一个 ResultEntry, variant key = skill 名
  *
@@ -125,9 +125,9 @@ export interface SkillSegment {
 // ---------- Load ----------
 
 /**
- * 加载一个目录(或单个 JSONL/OpenClaw SDK log 文件)下的所有 session。
+ * 加载一个目录(或单个 JSONL/agent markdown log 文件)下的所有 session。
  * 递归扫描目录,覆盖 Claude Code 主 session 旁边的 subagents/*.jsonl,
- * 也支持 OpenClaw workspace/logs/*.log 里的 Markdown 对话记录。
+ * 也支持 agent workspace/logs/*.log 里的 Markdown 对话记录。
  */
 export function loadCcSessions(path: string): CcSession[] {
   const stat = statSync(path);
@@ -161,7 +161,7 @@ function collectTraceFiles(dir: string): string[] {
 
 function parseTraceFile(filePath: string): CcSession | null {
   if (filePath.endsWith('.jsonl')) return parseCcSessionFile(filePath);
-  if (filePath.endsWith('.log')) return parseOpenClawLogFile(filePath);
+  if (filePath.endsWith('.log')) return parseMarkdownLogFile(filePath);
   return null;
 }
 
@@ -194,9 +194,9 @@ function parseCcSessionFile(filePath: string): CcSession {
   };
 }
 
-const OPENCLAW_BLOCK_RE = /(?:^|\n)---\s*\n## \[([^\]]+)\] 对话记录[^\n]*\n([\s\S]*?)(?=\n---\s*\n## \[|$)/g;
+const MARKDOWN_LOG_BLOCK_RE = /(?:^|\n)---\s*\n## \[([^\]]+)\] 对话记录[^\n]*\n([\s\S]*?)(?=\n---\s*\n## \[|$)/g;
 
-function parseOpenClawLogFile(filePath: string): CcSession | null {
+function parseMarkdownLogFile(filePath: string): CcSession | null {
   const content = readFileSync(filePath, 'utf-8');
   if (!content.includes('### 用户输入') || !content.includes('### AI 回复')) return null;
 
@@ -207,26 +207,26 @@ function parseOpenClawLogFile(filePath: string): CcSession | null {
   let lastTimestamp: string | undefined;
   let index = 0;
 
-  for (const match of content.matchAll(OPENCLAW_BLOCK_RE)) {
-    const timestamp = openClawTimestampToIso(match[1]);
+  for (const match of content.matchAll(MARKDOWN_LOG_BLOCK_RE)) {
+    const timestamp = markdownLogTimestampToIso(match[1]);
     const body = match[2] ?? '';
     const blockCwd = body.match(/^\*\*工作目录\*\*:\s*(.+)$/m)?.[1]?.trim();
     const blockSessionId = body.match(/^\*\*会话 ID\*\*:\s*(.+)$/m)?.[1]?.trim();
     const requestId = body.match(/^\*\*请求 ID\*\*:\s*(.+)$/m)?.[1]?.trim() ?? String(index);
-    const userText = extractOpenClawSection(body, '### 用户输入', '### AI 回复');
-    const assistantText = extractOpenClawSection(body, '### AI 回复');
+    const userText = extractMarkdownLogSection(body, '### 用户输入', '### AI 回复');
+    const assistantText = extractMarkdownLogSection(body, '### AI 回复');
     if (!userText && !assistantText) continue;
 
     if (blockSessionId) sessionId = blockSessionId;
     if (blockCwd) cwd = blockCwd;
     if (!firstTimestamp) firstTimestamp = timestamp;
     lastTimestamp = timestamp;
-    const skill = extractOpenClawSkill(`${userText}\n${assistantText}`);
+    const skill = extractMarkdownLogSkill(`${userText}\n${assistantText}`);
     const userContent = skill ? `<command-name>/${skill}</command-name>\n${userText}` : userText;
 
     records.push({
       type: 'user',
-      uuid: `openclaw-${requestId}-user-${index}`,
+      uuid: `markdown-log-${requestId}-user-${index}`,
       parentUuid: null,
       sessionId,
       timestamp,
@@ -234,8 +234,8 @@ function parseOpenClawLogFile(filePath: string): CcSession | null {
     } as CcUserRecord);
     records.push({
       type: 'assistant',
-      uuid: `openclaw-${requestId}-assistant-${index}`,
-      parentUuid: `openclaw-${requestId}-user-${index}`,
+      uuid: `markdown-log-${requestId}-assistant-${index}`,
+      parentUuid: `markdown-log-${requestId}-user-${index}`,
       sessionId,
       timestamp,
       cwd,
@@ -260,13 +260,13 @@ function parseOpenClawLogFile(filePath: string): CcSession | null {
   };
 }
 
-function openClawTimestampToIso(value: string): string {
+function markdownLogTimestampToIso(value: string): string {
   const m = value.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})$/);
   if (!m) return new Date().toISOString();
   return `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}+08:00`;
 }
 
-function extractOpenClawSection(body: string, startMarker: string, endMarker?: string): string {
+function extractMarkdownLogSection(body: string, startMarker: string, endMarker?: string): string {
   const start = body.indexOf(startMarker);
   if (start < 0) return '';
   const from = start + startMarker.length;
@@ -274,8 +274,9 @@ function extractOpenClawSection(body: string, startMarker: string, endMarker?: s
   return body.slice(from, end >= 0 ? end : undefined).trim();
 }
 
-function extractOpenClawSkill(text: string): string | null {
+function extractMarkdownLogSkill(text: string): string | null {
   const patterns = [
+    /\b(?:prefer|use|call|invoke)\s+`?([a-zA-Z0-9][\w.-]*)`?\s+skill\b/i,
     /优先调用\s+`?([a-zA-Z0-9][\w.-]*)`?\s+skill/i,
     /调用\s+`?([a-zA-Z0-9][\w.-]*)`?\s+skill/i,
     /使用\s+`?([a-zA-Z0-9][\w.-]*)`?\s+skill/i,

@@ -26,7 +26,14 @@ export const PRODUCT_COMMANDS: Record<string, CommandModule> = {
     },
     execute: evalCommand,
   },
-  observe: { helpKey: 'cli.help.observe', execute: observe },
+  observe: {
+    helpKey: 'cli.help.observe',
+    subHelp: {
+      ingest: 'cli.help.observe_ingest',
+      inbox: 'cli.help.observe_inbox',
+    },
+    execute: observe,
+  },
   evolve:  { helpKey: 'cli.help.evolve', execute: evolve },
   sample:  { helpKey: 'cli.help.sample', execute: sample },
   studio:  { helpKey: 'cli.help.studio',  execute: studio },

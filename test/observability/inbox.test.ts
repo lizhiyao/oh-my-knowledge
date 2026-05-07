@@ -152,6 +152,7 @@ describe('observe inbox', () => {
     assert.equal(report.items[0].sourceKind, 'claude');
     assert.equal(report.meta.skillInvocationCounts?.audit, 1);
     assert.equal(report.meta.skillSessionCounts?.audit, 1);
+    assert.equal(report.meta.skillToolCallCounts?.audit?.Grep, 1);
     assert.equal(report.items[0].signalSubtype, 'hard_miss');
     assert.equal(report.items[0].confidence, 0.9);
     assert.equal(report.items[0].attributionConfidence, 0.85);
@@ -259,5 +260,53 @@ describe('observe inbox', () => {
     assert.equal(report.items[0].signalSubtype, 'bash_probe');
     assert.equal(report.items[0].severity, 'medium');
     assert.equal(report.items[0].confidence, 0.4);
+  });
+
+  it('does not degrade plain Bash find misses without explicit probe markers', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind routes' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'find . -name routes.ts' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    assert.equal(report.items[0].signalSubtype, 'hard_miss');
+    assert.equal(report.items[0].severity, 'high');
+    assert.equal(report.items[0].confidence, 0.9);
   });
 });

@@ -7,3 +7,4 @@ package-lock.json
 *.local.json
 .claude/settings.local.json
 .claude/outputs/
+.omk/

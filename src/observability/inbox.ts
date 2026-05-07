@@ -11,9 +11,10 @@ export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(homedir(), '.oh-my-knowledge
 export const DEFAULT_OBSERVATIONS_DIR = DEFAULT_PROJECT_OBSERVATIONS_DIR;
 
 export type ObservationSignalType = 'failed_search' | 'repeated_failure' | 'hedging' | 'explicit_marker';
-export type ObservationSourceKind = 'claude' | 'openclaw' | 'unknown';
+export type ObservationSourceKind = 'claude' | 'markdown_log' | 'unknown';
 export type ObservationSignalSubtype =
   | 'hard_miss'
+  | 'repeated_failure'
   | 'exploratory_miss'
   | 'tool_error'
   | 'permission_error'
@@ -67,6 +68,8 @@ export interface ObservationInboxReport {
     itemCount: number;
     skillInvocationCounts?: Record<string, number>;
     skillSessionCounts?: Record<string, number>;
+    skillInvocationLastSeen?: Record<string, string>;
+    skillToolCallCounts?: Record<string, Record<string, number>>;
   };
   items: ObservationInboxItem[];
 }
@@ -91,7 +94,7 @@ export function normalizeObservationKeyInput(value: string): string {
 
 export function inferObservationSourceKind(sourceTrace: string): ObservationSourceKind {
   if (sourceTrace.endsWith('.jsonl')) return 'claude';
-  if (sourceTrace.endsWith('.log')) return 'openclaw';
+  if (sourceTrace.endsWith('.log')) return 'markdown_log';
   return 'unknown';
 }
 
@@ -155,7 +158,7 @@ function bashCommand(tc: ToolCallInfo): string {
 function isBashProbe(tc: ToolCallInfo): boolean {
   if (tc.tool !== 'Bash') return false;
   const command = bashCommand(tc);
-  return /2>\s*\/dev\/null|\|\|\s*(true|echo\b)|\b(ls|find|test)\b/.test(command);
+  return /2>\s*\/dev\/null|\|\|\s*(true|echo\b)/.test(command);
 }
 
 function failedSearchSubtype(tc: ToolCallInfo, allCalls: ToolCallInfo[], index: number): ObservationSignalSubtype {
@@ -171,6 +174,7 @@ function failedSearchSubtype(tc: ToolCallInfo, allCalls: ToolCallInfo[], index: 
 
 function confidenceForSubtype(subtype: ObservationSignalSubtype, signal?: GapSignalRef): number {
   if (signal?.type === 'repeated_failure') return 0.95;
+  if (subtype === 'repeated_failure') return 0.95;
   if (subtype === 'hard_miss') return 0.9;
   if (subtype === 'exploratory_miss' || subtype === 'bash_probe') return 0.4;
   if (subtype === 'tool_error' || subtype === 'permission_error' || subtype === 'not_found' || subtype === 'permission_denied' || subtype === 'tool_limit' || subtype === 'tool_failure') return 0.2;
@@ -196,7 +200,7 @@ export function severityReasonFor(item: Pick<ObservationInboxItem, 'signalType' 
   if (item.signalType === 'repeated_failure') return '同类搜索连续失败 3 次以上，是强缺口信号，高于单次 hard_miss。';
   if (item.signalType === 'explicit_marker') return 'agent 主动输出了知识缺口/未知标记，需要优先人工确认。';
   if (item.signalSubtype === 'hard_miss') return `${tool}失败后，session 内未找到同主题成功证据，疑似知识缺口。`;
-  if (item.signalSubtype === 'bash_probe') return 'Bash 命令包含 2>/dev/null、|| true/echo 或 ls/find/test 等探测模式，更像目录探索，不直接判为知识缺口。';
+  if (item.signalSubtype === 'bash_probe') return 'skill 运行过程中，agent 调用了一条 Bash 命令；命令里用了 2>/dev/null 或 || true/echo 这类“失败也继续”的写法，更像是在试路径，不直接判为要改 skill。';
   if (item.signalSubtype === 'exploratory_miss') return '前序搜索失败，但后续出现成功搜索证据，更像探索性试错。';
   if (item.signalSubtype === 'tool_limit') return `${tool}触发 token/超时等工具限制，与知识库覆盖无直接关系。`;
   if (item.signalSubtype === 'not_found') return `${tool}访问的文件或路径不存在，先按路径/环境噪声处理。`;
@@ -261,16 +265,21 @@ function itemsFromSegment(segment: SkillSegment): ObservationInboxItem[] {
       if (matchIndex >= 0) failedSignalsSeen.add(matchIndex);
       subtype = tc ? failedSearchSubtype(tc, toolCalls, matchIndex) : 'hard_miss';
       const q = tc ? queryFromToolCall(tc) : { query: String(signal.evidence?.pattern ?? ''), path: String(signal.evidence?.path ?? '') };
-      evidence = { tool: String(signal.evidence?.tool ?? tc?.tool ?? ''), ...q, outputSnippet: snippet(tc?.output) };
+      evidence = {
+        tool: snippet(signal.evidence?.tool ?? tc?.tool, 80),
+        query: snippet(q.query),
+        path: snippet(q.path),
+        outputSnippet: snippet(tc?.output),
+      };
     } else if (signal.type === 'repeated_failure') {
-      subtype = 'hard_miss';
-      evidence = { tool: String(signal.evidence?.tool ?? ''), outputSnippet: signal.context };
+      subtype = 'repeated_failure';
+      evidence = { tool: snippet(signal.evidence?.tool, 80), outputSnippet: snippet(signal.context) };
     } else if (signal.type === 'hedging') {
       subtype = signal.classifierVerdict ? 'llm_classified' : 'regex_only';
-      evidence = { assistantSnippet: signal.context };
+      evidence = { assistantSnippet: snippet(signal.context) };
     } else {
       subtype = 'marker';
-      evidence = { markerToken: markerTokenFromSignal(signal), assistantSnippet: signal.context };
+      evidence = { markerToken: snippet(markerTokenFromSignal(signal), 80), assistantSnippet: snippet(signal.context) };
     }
 
     const signalType = signal.type as ObservationSignalType;
@@ -307,10 +316,20 @@ export function buildObservationInboxReport(tracePath: string): ObservationInbox
   const { sessions, segments } = ccTracesToResultEntries(tracePath);
   const sourceBySession = new Map(sessions.map((s) => [s.sessionId, s.sourcePath]));
   const skillInvocationCounts: Record<string, number> = {};
+  const skillInvocationLastSeen: Record<string, string> = {};
+  const skillToolCallCounts: Record<string, Record<string, number>> = {};
   const sessionsBySkill = new Map<string, Set<string>>();
   for (const segment of segments) {
     if (segment.skillName === 'general') continue;
     skillInvocationCounts[segment.skillName] = (skillInvocationCounts[segment.skillName] ?? 0) + 1;
+    if (!skillInvocationLastSeen[segment.skillName] || segment.endTimestamp > skillInvocationLastSeen[segment.skillName]) {
+      skillInvocationLastSeen[segment.skillName] = segment.endTimestamp;
+    }
+    const toolCounts = skillToolCallCounts[segment.skillName] ?? {};
+    for (const toolCall of segment.toolCalls) {
+      toolCounts[toolCall.tool] = (toolCounts[toolCall.tool] ?? 0) + 1;
+    }
+    skillToolCallCounts[segment.skillName] = toolCounts;
     const set = sessionsBySkill.get(segment.skillName) ?? new Set<string>();
     set.add(segment.sessionId);
     sessionsBySkill.set(segment.skillName, set);
@@ -333,6 +352,8 @@ export function buildObservationInboxReport(tracePath: string): ObservationInbox
       itemCount: items.length,
       skillInvocationCounts,
       skillSessionCounts,
+      skillInvocationLastSeen,
+      skillToolCallCounts,
     },
     items,
   };
@@ -340,8 +361,15 @@ export function buildObservationInboxReport(tracePath: string): ObservationInbox
 
 export function aggregateInboxItems(items: ObservationInboxItem[]): ObservationInboxItem[] {
   const byKey = new Map<string, ObservationInboxItem>();
+  const sessionLastSeenByKey = new Map<string, Map<string, string>>();
   for (const item of items) {
     const key = keyFor(item);
+    const sessionLastSeen = sessionLastSeenByKey.get(key) ?? new Map<string, string>();
+    const previousSessionLastSeen = sessionLastSeen.get(item.sessionId);
+    if (!previousSessionLastSeen || item.lastSeen > previousSessionLastSeen) {
+      sessionLastSeen.set(item.sessionId, item.lastSeen);
+    }
+    sessionLastSeenByKey.set(key, sessionLastSeen);
     const existing = byKey.get(key);
     if (!existing) {
       byKey.set(key, { ...item, representativeEvidence: [item.evidence], recentSessionIds: [item.sessionId] });
@@ -352,14 +380,17 @@ export function aggregateInboxItems(items: ObservationInboxItem[]): ObservationI
     if (item.lastSeen > existing.lastSeen) existing.lastSeen = item.lastSeen;
     existing.confidence = Math.max(existing.confidence, item.confidence);
     existing.attributionConfidence = Math.max(existing.attributionConfidence, item.attributionConfidence);
-    if (severityRank(item.severity) > severityRank(existing.severity)) {
+    if (
+      severityRank(item.severity) > severityRank(existing.severity)
+      || (item.severity === existing.severity && item.confidence > existing.confidence)
+    ) {
       existing.severity = item.severity;
       existing.severityReason = item.severityReason;
     }
-    if (!existing.recentSessionIds.includes(item.sessionId)) {
-      existing.recentSessionIds.unshift(item.sessionId);
-      existing.recentSessionIds = existing.recentSessionIds.slice(0, 3);
-    }
+    existing.recentSessionIds = Array.from(sessionLastSeen.entries())
+      .sort((a, b) => b[1].localeCompare(a[1]))
+      .map(([sessionId]) => sessionId)
+      .slice(0, 3);
     existing.representativeEvidence.push(item.evidence);
     existing.representativeEvidence = existing.representativeEvidence.slice(0, 50);
   }
@@ -376,9 +407,11 @@ function severityRank(severity: ObservationInboxItem['severity']): number {
 function compareInboxItems(a: ObservationInboxItem, b: ObservationInboxItem): number {
   const severity = severityRank(b.severity) - severityRank(a.severity);
   if (severity !== 0) return severity;
-  const occurrences = b.occurrences - a.occurrences;
-  if (occurrences !== 0) return occurrences;
-  return b.confidence - a.confidence;
+  const confidence = b.confidence - a.confidence;
+  if (confidence !== 0) return confidence;
+  const lastSeen = b.lastSeen.localeCompare(a.lastSeen);
+  if (lastSeen !== 0) return lastSeen;
+  return b.occurrences - a.occurrences;
 }
 
 export function saveObservationInboxReport(report: ObservationInboxReport, outDir: string = DEFAULT_OBSERVATIONS_DIR): string {
@@ -401,10 +434,15 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
     .map((file) => {
       try {
         const report = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as ObservationInboxReport;
-        report.items = report.items.map((item) => ({
-          ...item,
-          sourceKind: item.sourceKind ?? inferObservationSourceKind(item.sourceTrace),
-        }));
+        report.items = report.items.map((item) => {
+          const sourceKind = (item as { sourceKind?: string }).sourceKind;
+          return {
+            ...item,
+            sourceKind: sourceKind === 'openclaw'
+              ? 'markdown_log'
+              : (item.sourceKind ?? inferObservationSourceKind(item.sourceTrace)),
+          };
+        });
         return report;
       } catch {
         return null;

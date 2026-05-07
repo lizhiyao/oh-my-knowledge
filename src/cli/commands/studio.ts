@@ -31,6 +31,7 @@ export async function execute(argv: string[]): Promise<void> {
     options: {
       ...COMMON_OPTIONS,
       port: { type: 'string', default: '7799' },
+      host: { type: 'string' },
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       'analyses-dir': { type: 'string' },
       'observations-dir': { type: 'string' },
@@ -49,6 +50,7 @@ export async function execute(argv: string[]): Promise<void> {
       cliPath,
       'studio',
       '--port', values.port as string,
+      ...(values.host ? ['--host', values.host as string] : []),
       '--reports-dir', values['reports-dir'] as string,
     ];
     if (values['analyses-dir']) {
@@ -71,6 +73,7 @@ export async function execute(argv: string[]): Promise<void> {
   const { createReportServer } = await import('../../server/report-server.js');
   const server: ReportServer = createReportServer({
     port: Number(values.port),
+    ...(values.host ? { host: values.host as string } : {}),
     reportsDir: resolve(values['reports-dir'] as string),
     ...(values['analyses-dir'] ? { analysesDir: resolve(values['analyses-dir'] as string) } : {}),
     ...(values['observations-dir'] ? { observationsDir: resolve(values['observations-dir'] as string) } : {}),

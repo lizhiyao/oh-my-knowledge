@@ -80,11 +80,11 @@ describe('loadCcSessions', () => {
     assert.deepEqual(ids, ['sa', 'sb']);
   });
 
-  it('loads OpenClaw SDK markdown logs', () => {
-    const path = join(tmpDir, 'openclaw.log');
+  it('loads agent markdown logs', () => {
+    const path = join(tmpDir, 'agent.log');
     writeFileSync(path, `---
 ## [2026/04/09 16:22:55] 对话记录 (SDK)
-**工作目录**: /tmp/openclaw
+**工作目录**: /tmp/agent
 **会话 ID**: oc-1
 **请求 ID**: r1
 
@@ -97,7 +97,7 @@ describe('loadCcSessions', () => {
     const sessions = loadCcSessions(path);
     assert.equal(sessions.length, 1);
     assert.equal(sessions[0].sessionId, 'oc-1');
-    assert.equal(sessions[0].cwd, '/tmp/openclaw');
+    assert.equal(sessions[0].cwd, '/tmp/agent');
     const segs = segmentBySkill(sessions[0]);
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'design-coding-create-template');

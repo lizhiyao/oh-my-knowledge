@@ -141,6 +141,8 @@ export type CliMessageKey =
   | 'cli.help.eval'
   | 'cli.help.eval_gold'
   | 'cli.help.observe'
+  | 'cli.help.observe_ingest'
+  | 'cli.help.observe_inbox'
   | 'cli.help.evolve'
   | 'cli.help.sample'
   | 'cli.help.studio'
@@ -749,6 +751,64 @@ Inbox:
   inbox --explore <n>                  Sample long-tail issues from the latest 50 medium/low items
   inbox --include-noise                Explicitly include the noise bucket with --explore
   inbox --json                         Print JSON
+`,
+  },
+  'cli.help.observe_ingest': {
+    zh: `
+omk observe ingest — 读取真实 session trace，写入 observe inbox 数据
+
+用法：
+  omk observe ingest <sessions-dir-or-file> [options]
+
+选项：
+  --output-dir <path>                输出目录（默认：.omk/observations；读取时兜底到 ~/.oh-my-knowledge/observations）
+
+支持：
+  Claude Code JSONL
+  Markdown 对话日志（.log）
+`,
+    en: `
+omk observe ingest — read real session traces and write observe inbox data
+
+Usage:
+  omk observe ingest <sessions-dir-or-file> [options]
+
+Options:
+  --output-dir <path>                Output directory (default: .omk/observations; read fallback: ~/.oh-my-knowledge/observations)
+
+Supported:
+  Claude Code JSONL
+  Markdown conversation logs (.log)
+`,
+  },
+  'cli.help.observe_inbox': {
+    zh: `
+omk observe inbox — 查看已写入的 observe inbox 问题列表
+
+用法：
+  omk observe inbox [options]
+
+选项：
+  --input-dir <path>                 读取目录（默认：.omk/observations；兜底到 ~/.oh-my-knowledge/observations）
+  --limit <n>                        展示 top N（默认：20）
+  --skill <name>                     只看指定 skill
+  --explore <n>                      从最近 50 条 medium/low 问题里抽样查看长尾
+  --include-noise                    --explore 时显式包含 noise 桶
+  --json                             输出 JSON
+`,
+    en: `
+omk observe inbox — inspect previously ingested observe inbox items
+
+Usage:
+  omk observe inbox [options]
+
+Options:
+  --input-dir <path>                 Input directory (default: .omk/observations; fallback: ~/.oh-my-knowledge/observations)
+  --limit <n>                        Show top N (default: 20)
+  --skill <name>                     Only show one skill
+  --explore <n>                      Sample long-tail issues from the latest 50 medium/low items
+  --include-noise                    Explicitly include the noise bucket with --explore
+  --json                             Print JSON
 `,
   },
   'cli.help.evolve': {

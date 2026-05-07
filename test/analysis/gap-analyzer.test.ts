@@ -135,6 +135,12 @@ describe('extractMarkerSignals', () => {
     assert.equal(extractMarkerSignals(text).length, 0);
   });
 
+  it('keeps real English knowledge gap markers', () => {
+    const signals = extractMarkerSignals('This answer has [knowledge gap] around billing schema.');
+    assert.equal(signals.length, 1);
+    assert.equal(signals[0].type, 'explicit_marker');
+  });
+
   it('ignores marker examples in markdown quote, table, code fence and backtick mention', () => {
     assert.equal(extractMarkerSignals('> 【推断】这是文档引用里的例子').length, 0);
     assert.equal(extractMarkerSignals('| signal | marker |\n| explicit_marker | 【知识缺口】 |').length, 0);
