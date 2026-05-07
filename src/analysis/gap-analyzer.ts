@@ -18,6 +18,7 @@
 
 import type { ExecutorFn, GapReport, GapSignalRef, ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types/index.js';
 import { classifyHedgingCandidates, type ClassifyOptions, type HedgingCandidate } from './hedging-classifier.js';
+import { isFailedSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
 
 export type GapSignalType = GapSignalRef['type'];
 export type GapSignal = GapSignalRef;
@@ -46,6 +47,11 @@ const HEDGING_PATTERNS: RegExp[] = [
   /\bneed to verify\b/gi,
   /\bpresumably\b/gi,
 ];
+
+const MARKER_META_DISCUSSION_RE =
+  /\b(explicit_marker|hedging|failed_search|repeated_failure|signal|severity|confidence|regex|marker|gap\s+signal|knowledge\s+gap\s+signal)\b|检测|规则|正则|打标|信号|判断标准|评分标准|分类|噪声|假阳|误报|命中/g;
+const MARKER_QUOTATION_RE =
+  /比如|例如|示例|转述|引用|文档里|表格|出现(?:了|过)?(?:多处)?[`【\[]|AI\s*输出里出现|assistant\s*文本里/i;
 
 /** Minimum consecutive failed-search count to trigger a repeated_failure signal. */
 const REPEATED_FAILURE_THRESHOLD = 3;
@@ -80,43 +86,16 @@ export const SIGNAL_WEIGHTS: Record<GapSignalType, number> = {
  *   - Read with success: false
  *   - Grep with success: false
  *   - Grep with success but empty/"No matches found" output (still a miss)
- *   - Bash with grep/rg/find in the command and either failure or empty output
+ *   - Bash with grep/rg/find or explicit probe commands that returned empty or failed
  */
 export function isFailedSearchTool(tc: ToolCallInfo): boolean {
-  const output = typeof tc.output === 'string' ? tc.output : String(tc.output ?? '');
-  const emptyOutput = output.trim() === '' || /No matches found/i.test(output);
-
-  if (tc.tool === 'Read') {
-    return tc.success === false;
-  }
-
-  if (tc.tool === 'Grep') {
-    if (tc.success === false) return true;
-    return emptyOutput;
-  }
-
-  if (tc.tool === 'Bash') {
-    const cmd = ((tc.input as { command?: string } | null)?.command) || '';
-    if (!/\b(grep|rg|find)\b/.test(cmd)) return false;
-    if (tc.success === false) return true;
-    return emptyOutput;
-  }
-
-  return false;
+  return isFailedSearchToolCall(tc);
 }
 
 function formatToolEvidence(tc: ToolCallInfo): { pattern: string; path: string; context: string } {
-  const input = (tc.input as Record<string, unknown> | null) || {};
-  let pattern = '';
-  let path = '';
-  if (tc.tool === 'Grep') {
-    pattern = String(input.pattern ?? '');
-    path = String(input.path ?? '');
-  } else if (tc.tool === 'Read') {
-    path = String(input.file_path ?? '');
-  } else if (tc.tool === 'Bash') {
-    pattern = String(input.command ?? '').slice(0, 120);
-  }
+  const query = toolCallQuery(tc);
+  const pattern = (query.query ?? '').slice(0, 120);
+  const path = query.path ?? '';
   const context = `${tc.tool}: ${pattern || path}`.slice(0, 160);
   return { pattern, path, context };
 }
@@ -163,6 +142,14 @@ function collectAssistantText(vr: VariantResult): string {
   return parts.join('\n');
 }
 
+export function collectAssistantTextFromTurns(turns: TurnInfo[] | undefined): string {
+  const parts: string[] = [];
+  for (const turn of turns ?? []) {
+    if (turn.role === 'assistant' && turn.content) parts.push(turn.content);
+  }
+  return parts.join('\n');
+}
+
 /**
  * Find explicit "I'm inferring / I don't know" markers in agent output text.
  * Each marker occurrence produces one signal; dedupe is at the sample level
@@ -177,6 +164,7 @@ export function extractMarkerSignals(text: string): GapSignal[] {
     pat.lastIndex = 0;
     while ((match = pat.exec(text)) !== null) {
       const idx = match.index;
+      if (shouldIgnoreMarkerOccurrence(text, idx, match[0])) continue;
       const snippet = text.slice(Math.max(0, idx - 20), Math.min(text.length, idx + match[0].length + 60));
       signals.push({
         sampleId: '',
@@ -188,6 +176,30 @@ export function extractMarkerSignals(text: string): GapSignal[] {
     }
   }
   return signals;
+}
+
+function shouldIgnoreMarkerOccurrence(text: string, index: number, marker: string): boolean {
+  const lineStart = text.lastIndexOf('\n', index) + 1;
+  const nextLine = text.indexOf('\n', index);
+  const lineEnd = nextLine === -1 ? text.length : nextLine;
+  const line = text.slice(lineStart, lineEnd);
+  const trimmedLine = line.trim();
+  const before = text.slice(0, index);
+  const fenceCount = (before.match(/```/g) ?? []).length;
+  if (fenceCount % 2 === 1) return true;
+  if (trimmedLine.startsWith('>')) return true;
+  if (/^\|.*\|$/.test(trimmedLine)) return true;
+  if (trimmedLine.includes(`\`${marker}\``)) return true;
+
+  const windowStart = Math.max(0, index - 90);
+  const markerOffset = index - windowStart;
+  const rawWindow = text.slice(windowStart, Math.min(text.length, index + marker.length + 90));
+  const window = (rawWindow.slice(0, markerOffset) + rawWindow.slice(markerOffset + marker.length))
+    .replace(/\s+/g, ' ');
+  MARKER_META_DISCUSSION_RE.lastIndex = 0;
+  if (MARKER_META_DISCUSSION_RE.test(window)) return true;
+  MARKER_QUOTATION_RE.lastIndex = 0;
+  return MARKER_QUOTATION_RE.test(window);
 }
 
 /**
@@ -289,6 +301,31 @@ export function extractGapSignalsFromSample(variantResult: VariantResult, sample
 
   const all = [...failedSearchSignals, ...markerSignals, ...hedgingSignals, ...repeatedFailureSignals];
   return all.map((s) => ({ ...s, sampleId }));
+}
+
+export function extractGapSignalsFromTrace(input: {
+  sampleId: string;
+  turns?: TurnInfo[];
+  toolCalls?: ToolCallInfo[];
+  assistantText?: string;
+}): GapSignal[] {
+  const toolCalls: ToolCallInfo[] = [];
+  if (input.turns) {
+    for (const turn of input.turns) {
+      if (turn.toolCalls) toolCalls.push(...turn.toolCalls);
+    }
+  }
+  if (toolCalls.length === 0 && input.toolCalls) {
+    toolCalls.push(...input.toolCalls);
+  }
+  const assistantText = input.assistantText ?? collectAssistantTextFromTurns(input.turns);
+  const all = [
+    ...extractFailedSearchSignals(toolCalls),
+    ...extractMarkerSignals(assistantText),
+    ...extractHedgingSignals(assistantText),
+    ...extractRepeatedFailureSignals(input.turns),
+  ];
+  return all.map((s) => ({ ...s, sampleId: input.sampleId }));
 }
 
 // ---------- Report-level aggregation ----------

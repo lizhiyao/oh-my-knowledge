@@ -3,6 +3,10 @@ export interface ToolCallInfo {
   input: unknown;
   output: unknown;
   success: boolean;
+  messageIndex?: number;
+  messageUuid?: string;
+  toolUseId?: string;
+  timestamp?: string;
 }
 
 export interface TurnInfo {

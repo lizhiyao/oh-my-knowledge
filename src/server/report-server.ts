@@ -4,12 +4,15 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { renderRunList, renderReportDocumentDetail, renderTrendsPage } from '../renderer/html-renderer.js';
 import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
+import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
 import type { Lang } from '../types/index.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
 import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
 import type { JobStore, ReportStore } from '../types/index.js';
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
+import { DEFAULT_OBSERVATIONS_DIR, findObservationInboxItem, formatObservationShow, queryObservationInbox } from '../observability/inbox.js';
+import { buildObservationInboxViewModel } from '../observability/inbox-view-model.js';
 import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;
@@ -19,8 +22,10 @@ const DEFAULT_ANALYSES_DIR = join(homedir(), '.oh-my-knowledge', 'analyses');
 
 interface ReportServerOptions {
   port?: number;
+  host?: string;
   reportsDir?: string;
   analysesDir?: string;
+  observationsDir?: string;
   jobsDir?: string;
   store?: ReportStore;
   jobStore?: JobStore;
@@ -432,7 +437,7 @@ export function formatListenError(p: number, err: unknown): Error | null {
   return null;
 }
 
-export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, analysesDir = DEFAULT_ANALYSES_DIR, jobsDir = DEFAULT_JOBS_DIR, store, jobStore }: ReportServerOptions = {}): ReportServer {
+export function createReportServer({ port, host: hostOption, reportsDir = DEFAULT_REPORTS_DIR, analysesDir = DEFAULT_ANALYSES_DIR, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, store, jobStore }: ReportServerOptions = {}): ReportServer {
   let server: Server | null = null;
   let serverUrl: string | null = null;
 
@@ -477,6 +482,34 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
       if (path === '/analyses') {
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderAnalysisList(listAnalyses(analysesDir), lang));
+        return;
+      }
+
+      if (path === '/observations' || path === '/observations/inbox') {
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderObservationInboxPage(buildObservationInboxViewModel(observationsDir), lang));
+        return;
+      }
+
+      if (path === '/api/observations/inbox') {
+        const severity = parsed.searchParams.get('severity');
+        const limitRaw = parsed.searchParams.get('limit');
+        const limit = limitRaw ? Math.max(1, Number(limitRaw) || 0) : 0;
+        let items = queryObservationInbox(observationsDir);
+        if (severity === 'high' || severity === 'medium' || severity === 'low' || severity === 'noise') {
+          items = items.filter((item) => item.severity === severity);
+        }
+        if (limit > 0) items = items.slice(0, limit);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(items));
+        return;
+      }
+
+      if (path === '/api/observations/show') {
+        const id = parsed.searchParams.get('id') || '';
+        const item = id ? findObservationInboxItem(id, observationsDir) : null;
+        res.writeHead(item ? 200 : 404, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(item ? { id, text: formatObservationShow(item) } : { error: 'observation not found' }));
         return;
       }
 
@@ -667,7 +700,7 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
     if (!existsSync(jobsDir)) mkdirSync(jobsDir, { recursive: true });
 
     const p = port ?? Number(process.env.OMK_REPORT_PORT || DEFAULT_PORT);
-    const host = '127.0.0.1';
+    const host = hostOption || process.env.OMK_REPORT_HOST || '127.0.0.1';
 
     const boot = (listenPort: number): Promise<Server> => new Promise((resolve, reject) => {
       const srv = createServer(handleRequest);
@@ -682,7 +715,8 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
       if (formatted) throw formatted;
 
       // EADDRINUSE — check if it's an existing omk service we can take over
-      const url = `http://${host}:${p}`;
+      const probeHost = host === '0.0.0.0' ? '127.0.0.1' : host;
+      const url = `http://${probeHost}:${p}`;
       let isOmk = false;
       try {
         const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
@@ -710,7 +744,8 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
     }
 
     const addr = server!.address() as AddressInfo;
-    serverUrl = `http://${host}:${addr.port}`;
+    const displayHost = host === '0.0.0.0' ? '127.0.0.1' : host;
+    serverUrl = `http://${displayHost}:${addr.port}`;
     return serverUrl;
   }
 

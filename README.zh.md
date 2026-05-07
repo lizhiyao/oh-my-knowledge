@@ -425,6 +425,10 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
 
 ### `omk observe`
 
+omk observe 提供两条工作流：默认的 skill 健康度报告，以及 reviewer 闭环用的 observe inbox。
+
+#### A. skill 健康度报告（默认）
+
 ```bash
 omk observe ~/.claude/projects/-Users-you-Documents-my-project
 omk observe ~/.claude/projects/my-project --last 7d
@@ -434,6 +438,37 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 ```
 
 把真实 Claude Code session trace 转成 skill 健康度报告：知识使用、gap 信号、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
+
+#### B. observe inbox：reviewer 闭环
+
+把真实 session trace 解析、聚合、降噪，输出可逐条 review 的 observation 列表。整条链路纯本地、零 LLM。
+
+```bash
+# 1. 把 trace 解析、聚合、落盘到 .omk/observations/
+omk observe ingest ~/.claude/projects/my-project
+omk observe ingest ~/.claude/projects/my-project --output-dir ./custom-dir
+
+# 2. 看 inbox（默认 top 20，按 severity / confidence / lastSeen 排序）
+omk observe inbox
+omk observe inbox --limit 50
+omk observe inbox --skill audit                    # 只看某个 skill
+omk observe inbox --by-skill                       # 按 skill 资产视图
+omk observe inbox --explore 10                     # 从 medium / low 桶抽 10 条长尾
+omk observe inbox --explore 10 --include-noise     # 显式包含 noise 桶
+omk observe inbox --json                           # JSON 输出，便于自动化消费
+
+# 3. 反向查单条 observation 的事件三元组（前后 message 上下文）
+omk observe show <inbox_id>
+```
+
+每条 observation 自带：
+
++ `confidence` 与 `attributionConfidence`：信号可信度 + skill 归因可信度，并列展示
++ `severityReasonCode`：判断为该 severity 的稳定结构化原因；人类可读说明由 CLI / studio 渲染时生成
++ `messageWindow`：前 3 条 / 触发点 / 后 3 条 message 上下文 + `resolutionAfter`（后续是否解决）
++ `evidence.{messageIndex,messageUuid,toolUseId}`：可反向回到原始 jsonl 的锚点
+
+支持 trace 格式：Claude Code session JSONL（`.jsonl`）+ markdown 对话日志（`.log`）。
 
 ### `omk evolve`
 
@@ -458,11 +493,15 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
 ```bash
 omk studio
 omk studio --port 7799
+omk studio --host 0.0.0.0                          # 局域网访问（默认 127.0.0.1）
 omk studio --reports-dir ~/.oh-my-knowledge/reports
+omk studio --observations-dir .omk/observations    # observe inbox 数据目录
 omk studio --no-open
 ```
 
 启动本地知识工作台浏览报告。verdict、样本回退、跨样本 diff、饱和曲线、单样本 drill-down 全部在 studio UI 里 —— omk 不提供 CLI 导出 / 分析子命令。CI gate 用 `omk eval` 的 exit code（PROGRESS 退 0、其他非 0），需要文字摘要自己 `jq` report JSON。
+
+访问 `/observations/inbox` 查看 observe inbox 看板：按 skill 资产视图（rollup）+ reviewer 待办建议 + 当前可观测漏斗 + 单 observation 详情面板（含事件三元组）。
 
 ## 执行器
 

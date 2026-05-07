@@ -79,6 +79,69 @@ describe('loadCcSessions', () => {
     const ids = sessions.map((s) => s.sessionId).sort();
     assert.deepEqual(ids, ['sa', 'sb']);
   });
+
+  it('loads agent markdown logs', () => {
+    const path = join(tmpDir, 'agent.log');
+    writeFileSync(path, `---
+## [2026/04/09 16:22:55] 对话记录 (SDK)
+**工作目录**: /tmp/agent
+**会话 ID**: oc-1
+**请求 ID**: r1
+
+### 用户输入
+请优先调用 design-coding-create-template skill 处理。
+
+### AI 回复
+我会先处理当前模板。
+`);
+    const sessions = loadCcSessions(path);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].sessionId, 'oc-1');
+    assert.equal(sessions[0].cwd, '/tmp/agent');
+    const segs = segmentBySkill(sessions[0]);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'design-coding-create-template');
+    assert.equal(segs[0].attribution?.source, 'command-name');
+  });
+
+  it('loads each markdown log block as its own session', () => {
+    const path = join(tmpDir, 'agent.log');
+    writeFileSync(path, `---
+## [2026/04/09 16:22:55] 对话记录 (SDK)
+**工作目录**: /repo-a
+**会话 ID**: s-a
+**请求 ID**: r-a
+
+### 用户输入
+请优先调用 audit skill 处理。
+
+### AI 回复
+审计完成。
+---
+## [2026/04/09 16:25:55] 对话记录 (SDK)
+**工作目录**: /repo-b
+**会话 ID**: s-b
+**请求 ID**: r-b
+
+### 用户输入
+请优先调用 polish skill 处理。
+
+### AI 回复
+润色完成。
+`);
+    const sessions = loadCcSessions(path).sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+    assert.equal(sessions.length, 2);
+    assert.equal(sessions[0].sessionId, 's-a');
+    assert.equal(sessions[0].cwd, '/repo-a');
+    assert.equal(sessions[1].sessionId, 's-b');
+    assert.equal(sessions[1].cwd, '/repo-b');
+
+    const segs = sessions.flatMap(segmentBySkill).sort((a, b) => a.skillName.localeCompare(b.skillName));
+    assert.deepEqual(segs.map((seg) => [seg.skillName, seg.sessionId, seg.cwd]), [
+      ['audit', 's-a', '/repo-a'],
+      ['polish', 's-b', '/repo-b'],
+    ]);
+  });
 });
 
 // ---------- Segment by skill ----------
