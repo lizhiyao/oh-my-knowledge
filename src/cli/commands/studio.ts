@@ -31,6 +31,7 @@ export async function execute(argv: string[]): Promise<void> {
     options: {
       ...COMMON_OPTIONS,
       port: { type: 'string', default: '7799' },
+      host: { type: 'string' },
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       'analyses-dir': { type: 'string' },
       'no-open': { type: 'boolean', default: false },
@@ -67,6 +68,7 @@ export async function execute(argv: string[]): Promise<void> {
   const { createReportServer } = await import('../../server/report-server.js');
   const server: ReportServer = createReportServer({
     port: Number(values.port),
+    ...(values.host ? { host: values.host as string } : {}),
     reportsDir: resolve(values['reports-dir'] as string),
     ...(values['analyses-dir'] ? { analysesDir: resolve(values['analyses-dir'] as string) } : {}),
   });

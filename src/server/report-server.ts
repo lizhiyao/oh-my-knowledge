@@ -19,6 +19,9 @@ const DEFAULT_ANALYSES_DIR = join(homedir(), '.oh-my-knowledge', 'analyses');
 
 interface ReportServerOptions {
   port?: number;
+  /** 监听 host。默认 '127.0.0.1'(只允许本机访问,容器/远程场景看不到)。
+   *  暴露到容器外 / 局域网用 '0.0.0.0'。也可走 OMK_REPORT_HOST 环境变量。 */
+  host?: string;
   reportsDir?: string;
   analysesDir?: string;
   jobsDir?: string;
@@ -432,7 +435,8 @@ export function formatListenError(p: number, err: unknown): Error | null {
   return null;
 }
 
-export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, analysesDir = DEFAULT_ANALYSES_DIR, jobsDir = DEFAULT_JOBS_DIR, store, jobStore }: ReportServerOptions = {}): ReportServer {
+export function createReportServer(options: ReportServerOptions = {}): ReportServer {
+  const { port, reportsDir = DEFAULT_REPORTS_DIR, analysesDir = DEFAULT_ANALYSES_DIR, jobsDir = DEFAULT_JOBS_DIR, store, jobStore } = options;
   let server: Server | null = null;
   let serverUrl: string | null = null;
 
@@ -667,7 +671,11 @@ export function createReportServer({ port, reportsDir = DEFAULT_REPORTS_DIR, ana
     if (!existsSync(jobsDir)) mkdirSync(jobsDir, { recursive: true });
 
     const p = port ?? Number(process.env.OMK_REPORT_PORT || DEFAULT_PORT);
-    const host = '127.0.0.1';
+    // host 默认 127.0.0.1(本机回环,默认安全)。容器/远程场景需对外暴露时:
+    //   - createReportServer({host: '0.0.0.0'}) — programmatic
+    //   - OMK_REPORT_HOST=0.0.0.0  omk studio  — 环境变量
+    //   - omk studio --host 0.0.0.0           — CLI flag
+    const host = options.host ?? process.env.OMK_REPORT_HOST ?? '127.0.0.1';
 
     const boot = (listenPort: number): Promise<Server> => new Promise((resolve, reject) => {
       const srv = createServer(handleRequest);
