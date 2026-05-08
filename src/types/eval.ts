@@ -99,7 +99,7 @@ export interface Sample {
    *  `'capability'`(测某具体能力维度)。free-form string,允许自定义。
    *  纯文档 / 诊断用,不参与 grading。 */
   construct?: string;
-  /** 数据来源。`improve samples` 自动注入 `'llm-generated'`,人工
+  /** 数据来源。`omk sample` 自动注入 `'llm-generated'`,人工
    *  curated 用 `'human'`,production trace 抽样用 `'production-trace'`。
    *  纯文档 / 诊断用。 */
   provenance?: SampleProvenance;

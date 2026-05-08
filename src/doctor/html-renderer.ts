@@ -2,7 +2,7 @@
  * doctor HTML 报告渲染器。
  *
  * 输出 single-file HTML(JSON inline,CSS/JS 内嵌,无外部依赖),双击可看,
- * 不需 http server。专为 --health 报告设计 — 重点展示 composer group 内的
+ * 不需 http server。专为 LLM 健康度审计报告设计 — 重点展示 composer group 内的
  * 维度结果,但也兼容显示静态 rule 段。
  *
  * 排序约定:

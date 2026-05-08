@@ -17,7 +17,7 @@ interface ExecError extends Error {
 }
 
 /**
- * eval / doctor / observe / improve 用 parseArgs strict:true。
+ * eval / doctor / observe / evolve / sample 用 parseArgs strict:true。
  * 任何未声明的 flag (含已删除的 --skip-doctor / --skip-preflight / --skip-smoke)
  * 都会 fail with Unknown option, 不静默吞掉。
  *
@@ -54,9 +54,9 @@ describe('strict unknown option rejection', () => {
     );
   });
 
-  it('omk improve samples --bogus exits 2 before generation work', async () => {
+  it('omk sample --bogus exits 2 before generation work', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'improve', 'samples', 'skills/v1.md', '--bogus']),
+      () => execFileAsync('node', [CLI, 'sample', 'skills/v1.md', '--bogus']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
@@ -96,9 +96,9 @@ describe('strict unknown option rejection', () => {
     );
   });
 
-  it('omk improve skill --bogus-flag exits 2 (sanity: helper covers improve skill handler)', async () => {
+  it('omk evolve --bogus-flag exits 2 (sanity: helper covers evolve handler)', async () => {
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'improve', 'skill', 'skills/v1.md', '--bogus-flag']),
+      () => execFileAsync('node', [CLI, 'evolve', 'skills/v1.md', '--bogus-flag']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
@@ -124,18 +124,6 @@ describe('strict unknown option rejection', () => {
     // 之前 handleInit 直接 argv[0] 当目录名, --bogus 被当成 dir 名写文件 (静默 garbage)。
     await assert.rejects(
       () => execFileAsync('node', [CLI, 'init', '--bogus']),
-      (err: unknown) => {
-        const e = err as ExecError;
-        assert.equal(e.code, 2);
-        assert.ok(e.stderr.includes('Unknown option') && e.stderr.includes('--bogus'));
-        return true;
-      },
-    );
-  });
-
-  it('omk improve failures <id> --bogus exits 2 (failure clustering handler stays strict)', async () => {
-    await assert.rejects(
-      () => execFileAsync('node', [CLI, 'improve', 'failures', 'fake-report-id', '--bogus']),
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);

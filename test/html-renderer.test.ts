@@ -411,12 +411,14 @@ describe('renderRunDetail', () => {
       },
     }];
     const html = renderRunDetail(runtimeReport);
-    assert.ok(html.includes('执行器指纹 v1'));
-    assert.ok(html.includes('执行器指纹 v2'));
+    // 同 fingerprint+versionText 合并 + scope 后缀展示「适用 执行器 X / 评委 Y」。
+    assert.ok(html.includes('执行环境指纹'));
+    assert.ok(html.includes('执行器 v1'));
+    assert.ok(html.includes('执行器 v2'));
     assert.ok(html.includes('abc123def456'));
     assert.ok(html.includes('abc123variant'));
     assert.ok(html.includes('二进制 0.128.0'));
-    assert.ok(html.includes('评委指纹'));
+    assert.ok(html.includes('评委 claude:haiku'));
     assert.ok(html.includes('def456abc123'));
   });
 

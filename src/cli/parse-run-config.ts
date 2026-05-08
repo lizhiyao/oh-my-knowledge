@@ -115,7 +115,7 @@ export function parseJudgeModelsArg(raw: string): JudgeConfig[] {
  * Friendly CLI wrapper around `parseJudgeModelsArg`. On parse error prints
  * `error: <msg>` to stderr and exits 2 — matching `parseArgsStrict` 对 unknown
  * option 的行为(exit 2 = parser/参数错误,区别于 doctor / gate eval failure 的
- * exit 1）。CLI 层 `eval` / `improve skill` / `improve failures` 共享这一份。
+ * exit 1）。CLI 层 `eval` / `evolve` 共享这一份。
  */
 export function parseJudgeModelsArgOrExit(raw: string): JudgeConfig[] {
   try {

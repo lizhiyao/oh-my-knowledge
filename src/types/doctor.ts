@@ -85,7 +85,8 @@ export interface DoctorContext {
   dependencyCwd?: string;
   lang: 'zh' | 'en';
   timeoutMs: number;
-  /** opt-in 深度健康检查(LLM-judge,多维度)。默认 false,只跑静态 rule;true 时
+  /** 深度健康检查(LLM-judge,多维度)开关。CLI doctor 默认 true,`--static-only`
+   *  会过滤 composer rule;programmatic API 默认 false,只跑静态 rule。true 时
    *  skill_health composer 才真正调 LLM。composer 不在 BUILTIN_RULES,必须先
    *  import './doctor/health/register.js' 让 registerRule 副作用生效。 */
   runHealthCheck?: boolean;
@@ -152,7 +153,8 @@ export interface DoctorRunOptions {
   /** 覆盖默认 rules(test 注入用)。生产路径走 getRegisteredRules() = BUILTIN + custom。
    *  既可以是普通 DoctorRule,也可以是 ComposerRule(健康度体检走这条)。 */
   rules?: DoctorRuleLike[];
-  /** opt-in 深度健康检查(7 维 LLM-judge)。透传给 DoctorContext.runHealthCheck。
-   *  CLI 层由 --health flag 控制。默认 false。 */
+  /** 深度健康检查(7 维 LLM-judge)。透传给 DoctorContext.runHealthCheck。
+   *  CLI doctor 默认开启;`--static-only` 通过过滤 composer rule 切到离线静态模式。
+   *  programmatic API 默认 false。 */
   runHealthCheck?: boolean;
 }

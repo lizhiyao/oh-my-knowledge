@@ -71,9 +71,39 @@ h2{margin:24px 0 8px;font-size:0.9375rem;color:var(--text-secondary);font-weight
 a{color:var(--accent);text-decoration:none}
 a:hover{color:var(--accent-hover);text-decoration:underline}
 
-/* Meta tags */
-.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 20px}
-.meta-tag{font-size:0.6875rem;color:var(--text-muted);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px}
+/* Meta tags — bumped from 11px/text-muted to 12px/text-secondary so contrast
+   passes WCAG AA on the dark surface. */
+.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}
+.meta-tag{font-size:0.75rem;color:var(--text-secondary);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
+.meta-tag code{font-size:0.7rem;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
+
+/* Run ID stamp — H1 保留完整 run-id (与列表页一致), 时间戳从 ID 解出来作为副标小字,
+   告诉用户「这次跑的时间」,无需用户自己解析 ID 后缀。 */
+.run-id-stamp{font-size:0.75rem;color:var(--text-muted);margin:2px 0 12px;font-variant-numeric:tabular-nums}
+
+/* Audit fingerprints — judge prompt hash + 执行环境 fingerprint 默认折叠,
+   平日 review 不需要看, 复现 / 审计时再展开。 */
+.audit-fingerprints{margin:0 0 18px}
+.audit-fingerprints>summary{cursor:pointer;font-size:0.75rem;color:var(--text-muted);padding:4px 0;list-style:revert;user-select:none;transition:color 0.15s}
+.audit-fingerprints>summary:hover{color:var(--text-secondary)}
+.audit-fingerprints[open]>summary{color:var(--text-secondary);margin-bottom:6px}
+.audit-fingerprints[open]>.meta-tags{margin-top:0}
+
+/* Methodology audit — 方法学证据 (评委一致 / 差异显著 / 已饱和 / 人工对齐) 默认折叠,
+   summary 行直接显示 4 个 badge: 全 ✓ = 流程健康,任一 ⚠/✗ = 强制 open. */
+.methodology-audit{margin:24px 0;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-elevated)}
+.methodology-audit>summary{cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 16px;font-size:13px;color:var(--text-primary);font-weight:600;list-style:revert;user-select:none}
+.methodology-audit>summary:hover{color:var(--accent)}
+.methodology-summary-label{font-size:14px;font-weight:600}
+.methodology-summary-hint{flex:1 1 auto;text-align:right;font-size:11px;color:var(--text-muted);font-weight:400}
+.methodology-badges{display:inline-flex;flex-wrap:wrap;gap:6px}
+.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
+.methodology-badge-pass{background:rgba(74,222,128,0.14);color:var(--green)}
+.methodology-badge-warn{background:rgba(251,191,36,0.16);color:var(--yellow)}
+.methodology-badge-fail{background:rgba(248,113,113,0.16);color:var(--red)}
+.methodology-badge-skip{background:rgba(148,163,184,0.12);color:var(--text-muted)}
+.methodology-body{padding:0 16px 14px;border-top:1px solid var(--border);margin-top:8px}
+.methodology-body>h2:first-child{margin-top:14px}
 
 /* Cards */
 .cards{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
@@ -195,24 +225,31 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .verdict-icon{font-size:12px;line-height:1;flex-shrink:0}
 .verdict-line{font-size:14px;font-weight:500;color:var(--text-primary);line-height:1.6;letter-spacing:-0.005em}
 
-/* v0.21 B.4 — page-verdict: verdict 融入标题副标行, 不再是独立 banner. 跟整页
-   扁平 + outline 风协调 (GitHub PR 标题下 status 一行的视觉模型).
-   "测评结论:" 前缀 muted 灰作 label, 句子主体 primary 色, 状态信号靠中文措辞
-   ("明显更好" / "明显更差") 自然传达, 不依赖 icon / 边框 / 背景块. */
-.page-verdict{display:flex;align-items:baseline;gap:8px;margin:4px 0 14px;padding:0;font-size:13.5px;line-height:1.6;flex-wrap:wrap}
-.page-verdict-label{color:var(--text-muted);font-weight:500;flex-shrink:0;font-size:13px;letter-spacing:0}
-.page-verdict-text{flex:1 1 auto;min-width:0;color:var(--text-primary);font-weight:400}
-.verdict-PROGRESS .verdict-icon{color:var(--green)}
-.verdict-REGRESS .verdict-icon{color:var(--red)}
-.verdict-CAUTIOUS .verdict-icon{color:var(--yellow)}
-.verdict-UNDERPOWERED .verdict-icon{color:var(--yellow)}
-.verdict-NOISE .verdict-icon{color:var(--text-secondary)}
-.verdict-SOLO .verdict-icon{color:var(--text-muted)}
-.verdict-level{font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em}
-.verdict-level-code{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;font-weight:500}
-.verdict-sep{color:var(--text-faint);font-size:12px}
-.verdict-metric{font-size:14px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
-.verdict-meta{font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+/* page-verdict: verdict 是报告的「答案」,头部 hero 形式呈现.
+   行 1: enum + ship-action badge (PROGRESS · SHIP) + 自然语言 ("明显更好,可以发布")
+   行 2: Δ / 95% CI / N / CV — 测量学核心数字, 不需要滚到下方表才看到.
+   颜色按 level 编码 (PROGRESS 绿 / REGRESS 红 / CAUTIOUS+UNDERPOWERED 黄 / NOISE+SOLO 中性). */
+.page-verdict{display:flex;flex-direction:column;gap:10px;margin:12px 0 18px;padding:14px 18px;border-left:4px solid var(--text-secondary);background:rgba(148,163,184,0.06);border-radius:var(--radius)}
+.page-verdict.verdict-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.07)}
+.page-verdict.verdict-REGRESS{border-left-color:var(--red);background:rgba(248,113,113,0.07)}
+.page-verdict.verdict-CAUTIOUS{border-left-color:var(--yellow);background:rgba(251,191,36,0.07)}
+.page-verdict.verdict-UNDERPOWERED{border-left-color:var(--yellow);background:rgba(251,191,36,0.04)}
+.page-verdict.verdict-NOISE{border-left-color:var(--text-secondary);background:rgba(148,163,184,0.06)}
+.page-verdict.verdict-SOLO{border-left-color:var(--border-hover);background:transparent}
+.page-verdict-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.page-verdict-badge{display:inline-flex;align-items:center;gap:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:700;letter-spacing:0.04em;padding:3px 10px;border-radius:14px;background:rgba(148,163,184,0.14);color:var(--text-primary);white-space:nowrap}
+.verdict-PROGRESS .page-verdict-badge{background:rgba(74,222,128,0.18);color:var(--green)}
+.verdict-REGRESS .page-verdict-badge{background:rgba(248,113,113,0.18);color:var(--red)}
+.verdict-CAUTIOUS .page-verdict-badge,
+.verdict-UNDERPOWERED .page-verdict-badge{background:rgba(251,191,36,0.18);color:var(--yellow)}
+.verdict-NOISE .page-verdict-badge,
+.verdict-SOLO .page-verdict-badge{background:rgba(148,163,184,0.16);color:var(--text-secondary)}
+.page-verdict-badge-dot{font-size:8px;line-height:1}
+.page-verdict-text{font-size:15px;font-weight:500;color:var(--text-primary);line-height:1.5;flex:1 1 auto;min-width:0}
+.page-verdict-metrics{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:baseline;padding-top:2px}
+.verdict-metric{display:inline-flex;align-items:baseline;gap:6px}
+.verdict-metric-label{font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;font-weight:600}
+.verdict-metric-value{font-size:15px;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
 
 .verdict-cta{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:10px 18px;margin:0;border-left:4px solid var(--accent);background:var(--bg-surface);border-top:1px solid var(--border);border-radius:0}
 .verdict-cta.verdict-cta-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.04)}
@@ -363,10 +400,14 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     <main>
     <nav class="nav"><a href="/?lang=en" data-i18n="backToList">← Back to list</a></nav>
     <h1>test-run-20260325-1000</h1>
-    <p class="page-verdict verdict-CAUTIOUS" role="status" aria-label="Verdict: v2 is slightly better than v1 — investigate, gap is small or a layer is below threshold" title="Treatment slightly above control — small gap or layer below gate">
-    <span class="page-verdict-label">Verdict:</span>
-    <span class="page-verdict-text">v2 is slightly better than v1 — investigate, gap is small or a layer is below threshold</span>
-  </p>
+    <p class="run-id-stamp">ran at: 2026-03-25 10:00</p>
+    <section class="page-verdict verdict-CAUTIOUS" role="status" data-verdict-level="CAUTIOUS" aria-label="Verdict: CAUTIOUS · INVESTIGATE · v2 is slightly better than v1 — investigate, gap is small or a layer is below threshold" title="Treatment slightly above control — small gap or layer below gate">
+    <div class="page-verdict-head">
+      <span class="page-verdict-badge"><span class="page-verdict-badge-dot" aria-hidden="true">●</span>CAUTIOUS</span>
+      <span class="page-verdict-text">v2 is slightly better than v1 — investigate, gap is small or a layer is below threshold</span>
+    </div>
+
+  </section>
     <div class="meta-tags">
       <span class="meta-tag">Task execution model: sonnet</span>
       <span class="meta-tag">Judge: claude:haiku</span>
@@ -381,8 +422,8 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
 
 
 
-
     </div>
+
 
 
     <div class="omk-view-tabs" role="tablist">
@@ -467,13 +508,31 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   </tbody></table>
       </div>
     </div>
+    <div id="guide-scoring" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="guide-scoring-title" onclick="if(event.target===this)closeModal('guide-scoring')">
+    <div class="modal-content">
+      <div class="modal-header">
+        <strong id="guide-scoring-title" style="font-size:1rem">How is composite computed?</strong>
+        <button type="button" class="modal-close" onclick="closeModal('guide-scoring')" aria-label="Close">✕</button>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">Composite = unweighted mean of {fact, behavior, LLM judge}. Scale 1-5.</p>
+      <table class="modal-table"><tbody>
+        <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">How it&#39;s computed</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">Fact / Behavior</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">Assertion pass-rate mapped to 1-5 via <code>1 + ratio × 4</code></td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">LLM judge</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">Judge model returns 1-5 score directly</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">Missing layer</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">Auto-collapse (mean over present layers)</td></tr>
+        <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">Limitations (frankly)</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">① Equal-weight aggregation</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">The 1/3 weight per layer is ad hoc, not derived from stakeholder needs; no explicit construct validity argument</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">② Mixed scales added directly</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">Fact is binary pass-rate stretched to 1-5; judge is true ordinal. Direct mean violates measurement scale homogeneity</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">③ Auto-collapse on missing</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">When variants/skills have different layer coverage, composite numbers look same but represent different constructs — <strong>not mechanically comparable across variants/skills</strong></td></tr>
+        <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">Recommended usage</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✓ Use for</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">A/B comparison on same eval-samples — read "diff + bootstrap CI + per-layer gate" jointly</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✗ Don&#39;t use as</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">Absolute psychometric measure (claiming "this skill is 4.28/5")</td></tr>
+      </tbody></table>
+      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a></p>
+    </div>
+  </div>
     <div class="table-wrap">
     <table class="summary-table">
-      <thead><tr><th data-i18n="variants">Variant</th><th data-i18n="dimFact">📋 Fact</th><th data-i18n="dimBehavior">🛠️ Behavior</th><th data-i18n="dimJudge">💬 LLM judge</th><th data-i18n="dimCost">💰 Exec cost</th><th data-i18n="dimEfficiency">⚡ Efficiency</th><th data-i18n="dimStability">🛡️ Stability</th></tr></thead>
-      <tbody><tr><td style="border-left:3px solid var(--chart-1);padding-left:12px"><strong>v1</strong></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.20</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--yellow)">3.80</div></td><td class="summary-cell"><div class="summary-value">$0.0200</div><div class="summary-detail">600 tokens/req</div></td><td class="summary-cell"><div class="summary-value">2.0s<span class="summary-unit">/req</span></div><div class="summary-detail">1 turns/req · total 4.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ Not measured</div><div class="summary-detail"><span style="color:var(--red)">single-run; needs --repeat ≥ 2 to measure CV</span></div></td></tr><tr><td style="border-left:3px solid var(--chart-2);padding-left:12px"><strong>v2</strong></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">5.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.80</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.60</div></td><td class="summary-cell"><div class="summary-value">$0.0180</div><div class="summary-detail">720 tokens/req</div></td><td class="summary-cell"><div class="summary-value">3.0s<span class="summary-unit">/req</span></div><div class="summary-detail">1 turns/req · total 6.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ Not measured</div><div class="summary-detail"><span style="color:var(--red)">single-run; needs --repeat ≥ 2 to measure CV</span></div></td></tr></tbody>
+      <thead><tr><th data-i18n="variants">Variant</th><th data-i18n="dimComposite" style="border-right:2px solid var(--border)">Composite <button type="button" class="hint-btn" onclick="openModal('guide-scoring')" aria-label="How is composite computed?" aria-haspopup="dialog">?</button></th><th data-i18n="dimFact">📋 Fact</th><th data-i18n="dimBehavior">🛠️ Behavior</th><th data-i18n="dimJudge">💬 LLM judge</th><th data-i18n="dimCost">💰 Exec cost</th><th data-i18n="dimEfficiency">⚡ Efficiency</th><th data-i18n="dimStability">🛡️ Stability</th></tr></thead>
+      <tbody><tr><td style="border-left:3px solid var(--chart-1);padding-left:12px"><strong>v1</strong></td><td class="summary-cell" style="border-right:2px solid var(--border)"><div class="summary-value summary-value-primary" style="color:var(--green);font-weight:700">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.20</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--yellow)">3.80</div></td><td class="summary-cell"><div class="summary-value">$0.0200</div><div class="summary-detail">600 tokens/req</div></td><td class="summary-cell"><div class="summary-value">2.0s<span class="summary-unit">/req</span></div><div class="summary-detail">1 turns/req · total 4.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ Not measured</div><div class="summary-detail"><span style="color:var(--red)">single-run; needs --repeat ≥ 2 to measure CV</span></div></td></tr><tr><td style="border-left:3px solid var(--chart-2);padding-left:12px"><strong>v2</strong></td><td class="summary-cell" style="border-right:2px solid var(--border)"><div class="summary-value summary-value-primary" style="color:var(--green);font-weight:700">4.80</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">5.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.80</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.60</div></td><td class="summary-cell"><div class="summary-value">$0.0180</div><div class="summary-detail">720 tokens/req</div></td><td class="summary-cell"><div class="summary-value">3.0s<span class="summary-unit">/req</span></div><div class="summary-detail">1 turns/req · total 6.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ Not measured</div><div class="summary-detail"><span style="color:var(--red)">single-run; needs --repeat ≥ 2 to measure CV</span></div></td></tr></tbody>
     </table>
-    </div>
-    </section>
+    </div></section>
+
 
 
 
@@ -839,9 +898,39 @@ h2{margin:24px 0 8px;font-size:0.9375rem;color:var(--text-secondary);font-weight
 a{color:var(--accent);text-decoration:none}
 a:hover{color:var(--accent-hover);text-decoration:underline}
 
-/* Meta tags */
-.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 20px}
-.meta-tag{font-size:0.6875rem;color:var(--text-muted);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px}
+/* Meta tags — bumped from 11px/text-muted to 12px/text-secondary so contrast
+   passes WCAG AA on the dark surface. */
+.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}
+.meta-tag{font-size:0.75rem;color:var(--text-secondary);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
+.meta-tag code{font-size:0.7rem;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
+
+/* Run ID stamp — H1 保留完整 run-id (与列表页一致), 时间戳从 ID 解出来作为副标小字,
+   告诉用户「这次跑的时间」,无需用户自己解析 ID 后缀。 */
+.run-id-stamp{font-size:0.75rem;color:var(--text-muted);margin:2px 0 12px;font-variant-numeric:tabular-nums}
+
+/* Audit fingerprints — judge prompt hash + 执行环境 fingerprint 默认折叠,
+   平日 review 不需要看, 复现 / 审计时再展开。 */
+.audit-fingerprints{margin:0 0 18px}
+.audit-fingerprints>summary{cursor:pointer;font-size:0.75rem;color:var(--text-muted);padding:4px 0;list-style:revert;user-select:none;transition:color 0.15s}
+.audit-fingerprints>summary:hover{color:var(--text-secondary)}
+.audit-fingerprints[open]>summary{color:var(--text-secondary);margin-bottom:6px}
+.audit-fingerprints[open]>.meta-tags{margin-top:0}
+
+/* Methodology audit — 方法学证据 (评委一致 / 差异显著 / 已饱和 / 人工对齐) 默认折叠,
+   summary 行直接显示 4 个 badge: 全 ✓ = 流程健康,任一 ⚠/✗ = 强制 open. */
+.methodology-audit{margin:24px 0;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-elevated)}
+.methodology-audit>summary{cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 16px;font-size:13px;color:var(--text-primary);font-weight:600;list-style:revert;user-select:none}
+.methodology-audit>summary:hover{color:var(--accent)}
+.methodology-summary-label{font-size:14px;font-weight:600}
+.methodology-summary-hint{flex:1 1 auto;text-align:right;font-size:11px;color:var(--text-muted);font-weight:400}
+.methodology-badges{display:inline-flex;flex-wrap:wrap;gap:6px}
+.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
+.methodology-badge-pass{background:rgba(74,222,128,0.14);color:var(--green)}
+.methodology-badge-warn{background:rgba(251,191,36,0.16);color:var(--yellow)}
+.methodology-badge-fail{background:rgba(248,113,113,0.16);color:var(--red)}
+.methodology-badge-skip{background:rgba(148,163,184,0.12);color:var(--text-muted)}
+.methodology-body{padding:0 16px 14px;border-top:1px solid var(--border);margin-top:8px}
+.methodology-body>h2:first-child{margin-top:14px}
 
 /* Cards */
 .cards{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
@@ -963,24 +1052,31 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .verdict-icon{font-size:12px;line-height:1;flex-shrink:0}
 .verdict-line{font-size:14px;font-weight:500;color:var(--text-primary);line-height:1.6;letter-spacing:-0.005em}
 
-/* v0.21 B.4 — page-verdict: verdict 融入标题副标行, 不再是独立 banner. 跟整页
-   扁平 + outline 风协调 (GitHub PR 标题下 status 一行的视觉模型).
-   "测评结论:" 前缀 muted 灰作 label, 句子主体 primary 色, 状态信号靠中文措辞
-   ("明显更好" / "明显更差") 自然传达, 不依赖 icon / 边框 / 背景块. */
-.page-verdict{display:flex;align-items:baseline;gap:8px;margin:4px 0 14px;padding:0;font-size:13.5px;line-height:1.6;flex-wrap:wrap}
-.page-verdict-label{color:var(--text-muted);font-weight:500;flex-shrink:0;font-size:13px;letter-spacing:0}
-.page-verdict-text{flex:1 1 auto;min-width:0;color:var(--text-primary);font-weight:400}
-.verdict-PROGRESS .verdict-icon{color:var(--green)}
-.verdict-REGRESS .verdict-icon{color:var(--red)}
-.verdict-CAUTIOUS .verdict-icon{color:var(--yellow)}
-.verdict-UNDERPOWERED .verdict-icon{color:var(--yellow)}
-.verdict-NOISE .verdict-icon{color:var(--text-secondary)}
-.verdict-SOLO .verdict-icon{color:var(--text-muted)}
-.verdict-level{font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em}
-.verdict-level-code{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;font-weight:500}
-.verdict-sep{color:var(--text-faint);font-size:12px}
-.verdict-metric{font-size:14px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
-.verdict-meta{font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+/* page-verdict: verdict 是报告的「答案」,头部 hero 形式呈现.
+   行 1: enum + ship-action badge (PROGRESS · SHIP) + 自然语言 ("明显更好,可以发布")
+   行 2: Δ / 95% CI / N / CV — 测量学核心数字, 不需要滚到下方表才看到.
+   颜色按 level 编码 (PROGRESS 绿 / REGRESS 红 / CAUTIOUS+UNDERPOWERED 黄 / NOISE+SOLO 中性). */
+.page-verdict{display:flex;flex-direction:column;gap:10px;margin:12px 0 18px;padding:14px 18px;border-left:4px solid var(--text-secondary);background:rgba(148,163,184,0.06);border-radius:var(--radius)}
+.page-verdict.verdict-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.07)}
+.page-verdict.verdict-REGRESS{border-left-color:var(--red);background:rgba(248,113,113,0.07)}
+.page-verdict.verdict-CAUTIOUS{border-left-color:var(--yellow);background:rgba(251,191,36,0.07)}
+.page-verdict.verdict-UNDERPOWERED{border-left-color:var(--yellow);background:rgba(251,191,36,0.04)}
+.page-verdict.verdict-NOISE{border-left-color:var(--text-secondary);background:rgba(148,163,184,0.06)}
+.page-verdict.verdict-SOLO{border-left-color:var(--border-hover);background:transparent}
+.page-verdict-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.page-verdict-badge{display:inline-flex;align-items:center;gap:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:700;letter-spacing:0.04em;padding:3px 10px;border-radius:14px;background:rgba(148,163,184,0.14);color:var(--text-primary);white-space:nowrap}
+.verdict-PROGRESS .page-verdict-badge{background:rgba(74,222,128,0.18);color:var(--green)}
+.verdict-REGRESS .page-verdict-badge{background:rgba(248,113,113,0.18);color:var(--red)}
+.verdict-CAUTIOUS .page-verdict-badge,
+.verdict-UNDERPOWERED .page-verdict-badge{background:rgba(251,191,36,0.18);color:var(--yellow)}
+.verdict-NOISE .page-verdict-badge,
+.verdict-SOLO .page-verdict-badge{background:rgba(148,163,184,0.16);color:var(--text-secondary)}
+.page-verdict-badge-dot{font-size:8px;line-height:1}
+.page-verdict-text{font-size:15px;font-weight:500;color:var(--text-primary);line-height:1.5;flex:1 1 auto;min-width:0}
+.page-verdict-metrics{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:baseline;padding-top:2px}
+.verdict-metric{display:inline-flex;align-items:baseline;gap:6px}
+.verdict-metric-label{font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;font-weight:600}
+.verdict-metric-value{font-size:15px;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
 
 .verdict-cta{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:10px 18px;margin:0;border-left:4px solid var(--accent);background:var(--bg-surface);border-top:1px solid var(--border);border-radius:0}
 .verdict-cta.verdict-cta-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.04)}
@@ -1131,10 +1227,14 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     <main>
     <nav class="nav"><a href="/" data-i18n="backToList">← 返回列表</a></nav>
     <h1>test-run-20260325-1000</h1>
-    <p class="page-verdict verdict-CAUTIOUS" role="status" aria-label="测评结论: v2 比 v1 略好 — 但建议再仔细看,差距很小或某层未达标" title="实验组略优于对照组,但差距小或某层未达 gate">
-    <span class="page-verdict-label">测评结论:</span>
-    <span class="page-verdict-text">v2 比 v1 略好 — 但建议再仔细看,差距很小或某层未达标</span>
-  </p>
+    <p class="run-id-stamp">运行时间: 2026-03-25 10:00</p>
+    <section class="page-verdict verdict-CAUTIOUS" role="status" data-verdict-level="CAUTIOUS" aria-label="测评结论: 略微进步 · 需排查 · v2 比 v1 略好——但建议再仔细看，差距很小或某层未达标" title="实验组略优于对照组,但差距小或某层未达 gate">
+    <div class="page-verdict-head">
+      <span class="page-verdict-badge"><span class="page-verdict-badge-dot" aria-hidden="true">●</span>略微进步</span>
+      <span class="page-verdict-text">v2 比 v1 略好——但建议再仔细看，差距很小或某层未达标</span>
+    </div>
+
+  </section>
     <div class="meta-tags">
       <span class="meta-tag">任务执行模型: sonnet</span>
       <span class="meta-tag">评委: claude:haiku</span>
@@ -1149,8 +1249,8 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
 
 
 
-
     </div>
+
 
 
     <div class="omk-view-tabs" role="tablist">
@@ -1235,13 +1335,31 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   </tbody></table>
       </div>
     </div>
+    <div id="guide-scoring" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="guide-scoring-title" onclick="if(event.target===this)closeModal('guide-scoring')">
+    <div class="modal-content">
+      <div class="modal-header">
+        <strong id="guide-scoring-title" style="font-size:1rem">综合分怎么算的？</strong>
+        <button type="button" class="modal-close" onclick="closeModal('guide-scoring')" aria-label="关闭">✕</button>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">综合分（composite）= 等权均值（{事实, 行为, LLM 评价}）。1-5 制。</p>
+      <table class="modal-table"><tbody>
+        <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">怎么算的</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">事实 / 行为</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">断言通过率经 <code>1 + 通过率 × 4</code> 线性映射到 1-5 制</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">LLM 评价</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">评委模型直接给 1-5 分</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">缺失某层</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">自动降维（参与计算的层取均值）</td></tr>
+        <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">局限（直白说）</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">① 等权聚合</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">三层各 1/3 权重不是从需求 derive 的，无显式构造效度论证</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">② 量尺不一致</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">事实是 binary 通过率 stretch 到 1-5；评委是真序数评分。直接均值违反量表理论（measurement scale homogeneity）</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">③ 缺失自动降维</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">不同 variant / skill 配的层数不同时，综合分数字相同但 construct 不同，<strong>不可机械跨 variant / 跨 skill 比较</strong></td></tr>
+        <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">推荐用法</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✓ 适用</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">同一份 eval-samples 上 A/B 比较，看「分差 + bootstrap CI + 三层独立 gate」联合判断</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✗ 不适用</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">当作 absolute psychometric measure（说「这 skill 4.28/5 分」）</td></tr>
+      </tbody></table>
+      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a></p>
+    </div>
+  </div>
     <div class="table-wrap">
     <table class="summary-table">
-      <thead><tr><th data-i18n="variants">实验分组</th><th data-i18n="dimFact">📋 事实</th><th data-i18n="dimBehavior">🛠️ 行为</th><th data-i18n="dimJudge">💬 LLM 评价</th><th data-i18n="dimCost">💰 执行成本</th><th data-i18n="dimEfficiency">⚡ 效率</th><th data-i18n="dimStability">🛡️ 稳定性</th></tr></thead>
-      <tbody><tr><td style="border-left:3px solid var(--chart-1);padding-left:12px"><strong>v1</strong></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.20</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--yellow)">3.80</div></td><td class="summary-cell"><div class="summary-value">$0.0200</div><div class="summary-detail">600 tokens/次</div></td><td class="summary-cell"><div class="summary-value">2.0s<span class="summary-unit">/次</span></div><div class="summary-detail">1 轮/次 · 总计 4.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ 未测量</div><div class="summary-detail"><span style="color:var(--red)">单轮评测,加 --repeat ≥ 2 才能测 CV</span></div></td></tr><tr><td style="border-left:3px solid var(--chart-2);padding-left:12px"><strong>v2</strong></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">5.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.80</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.60</div></td><td class="summary-cell"><div class="summary-value">$0.0180</div><div class="summary-detail">720 tokens/次</div></td><td class="summary-cell"><div class="summary-value">3.0s<span class="summary-unit">/次</span></div><div class="summary-detail">1 轮/次 · 总计 6.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ 未测量</div><div class="summary-detail"><span style="color:var(--red)">单轮评测,加 --repeat ≥ 2 才能测 CV</span></div></td></tr></tbody>
+      <thead><tr><th data-i18n="variants">实验分组</th><th data-i18n="dimComposite" style="border-right:2px solid var(--border)">综合分 <button type="button" class="hint-btn" onclick="openModal('guide-scoring')" aria-label="综合分怎么算的？" aria-haspopup="dialog">?</button></th><th data-i18n="dimFact">📋 事实</th><th data-i18n="dimBehavior">🛠️ 行为</th><th data-i18n="dimJudge">💬 LLM 评价</th><th data-i18n="dimCost">💰 执行成本</th><th data-i18n="dimEfficiency">⚡ 效率</th><th data-i18n="dimStability">🛡️ 稳定性</th></tr></thead>
+      <tbody><tr><td style="border-left:3px solid var(--chart-1);padding-left:12px"><strong>v1</strong></td><td class="summary-cell" style="border-right:2px solid var(--border)"><div class="summary-value summary-value-primary" style="color:var(--green);font-weight:700">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.20</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--yellow)">3.80</div></td><td class="summary-cell"><div class="summary-value">$0.0200</div><div class="summary-detail">600 tokens/次</div></td><td class="summary-cell"><div class="summary-value">2.0s<span class="summary-unit">/次</span></div><div class="summary-detail">1 轮/次 · 总计 4.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ 未测量</div><div class="summary-detail"><span style="color:var(--red)">单轮评测,加 --repeat ≥ 2 才能测 CV</span></div></td></tr><tr><td style="border-left:3px solid var(--chart-2);padding-left:12px"><strong>v2</strong></td><td class="summary-cell" style="border-right:2px solid var(--border)"><div class="summary-value summary-value-primary" style="color:var(--green);font-weight:700">4.80</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">5.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.80</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.60</div></td><td class="summary-cell"><div class="summary-value">$0.0180</div><div class="summary-detail">720 tokens/次</div></td><td class="summary-cell"><div class="summary-value">3.0s<span class="summary-unit">/次</span></div><div class="summary-detail">1 轮/次 · 总计 6.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ 未测量</div><div class="summary-detail"><span style="color:var(--red)">单轮评测,加 --repeat ≥ 2 才能测 CV</span></div></td></tr></tbody>
     </table>
-    </div>
-    </section>
+    </div></section>
+
 
 
 
@@ -1607,9 +1725,39 @@ h2{margin:24px 0 8px;font-size:0.9375rem;color:var(--text-secondary);font-weight
 a{color:var(--accent);text-decoration:none}
 a:hover{color:var(--accent-hover);text-decoration:underline}
 
-/* Meta tags */
-.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 20px}
-.meta-tag{font-size:0.6875rem;color:var(--text-muted);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px}
+/* Meta tags — bumped from 11px/text-muted to 12px/text-secondary so contrast
+   passes WCAG AA on the dark surface. */
+.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}
+.meta-tag{font-size:0.75rem;color:var(--text-secondary);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
+.meta-tag code{font-size:0.7rem;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
+
+/* Run ID stamp — H1 保留完整 run-id (与列表页一致), 时间戳从 ID 解出来作为副标小字,
+   告诉用户「这次跑的时间」,无需用户自己解析 ID 后缀。 */
+.run-id-stamp{font-size:0.75rem;color:var(--text-muted);margin:2px 0 12px;font-variant-numeric:tabular-nums}
+
+/* Audit fingerprints — judge prompt hash + 执行环境 fingerprint 默认折叠,
+   平日 review 不需要看, 复现 / 审计时再展开。 */
+.audit-fingerprints{margin:0 0 18px}
+.audit-fingerprints>summary{cursor:pointer;font-size:0.75rem;color:var(--text-muted);padding:4px 0;list-style:revert;user-select:none;transition:color 0.15s}
+.audit-fingerprints>summary:hover{color:var(--text-secondary)}
+.audit-fingerprints[open]>summary{color:var(--text-secondary);margin-bottom:6px}
+.audit-fingerprints[open]>.meta-tags{margin-top:0}
+
+/* Methodology audit — 方法学证据 (评委一致 / 差异显著 / 已饱和 / 人工对齐) 默认折叠,
+   summary 行直接显示 4 个 badge: 全 ✓ = 流程健康,任一 ⚠/✗ = 强制 open. */
+.methodology-audit{margin:24px 0;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-elevated)}
+.methodology-audit>summary{cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 16px;font-size:13px;color:var(--text-primary);font-weight:600;list-style:revert;user-select:none}
+.methodology-audit>summary:hover{color:var(--accent)}
+.methodology-summary-label{font-size:14px;font-weight:600}
+.methodology-summary-hint{flex:1 1 auto;text-align:right;font-size:11px;color:var(--text-muted);font-weight:400}
+.methodology-badges{display:inline-flex;flex-wrap:wrap;gap:6px}
+.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
+.methodology-badge-pass{background:rgba(74,222,128,0.14);color:var(--green)}
+.methodology-badge-warn{background:rgba(251,191,36,0.16);color:var(--yellow)}
+.methodology-badge-fail{background:rgba(248,113,113,0.16);color:var(--red)}
+.methodology-badge-skip{background:rgba(148,163,184,0.12);color:var(--text-muted)}
+.methodology-body{padding:0 16px 14px;border-top:1px solid var(--border);margin-top:8px}
+.methodology-body>h2:first-child{margin-top:14px}
 
 /* Cards */
 .cards{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
@@ -1731,24 +1879,31 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .verdict-icon{font-size:12px;line-height:1;flex-shrink:0}
 .verdict-line{font-size:14px;font-weight:500;color:var(--text-primary);line-height:1.6;letter-spacing:-0.005em}
 
-/* v0.21 B.4 — page-verdict: verdict 融入标题副标行, 不再是独立 banner. 跟整页
-   扁平 + outline 风协调 (GitHub PR 标题下 status 一行的视觉模型).
-   "测评结论:" 前缀 muted 灰作 label, 句子主体 primary 色, 状态信号靠中文措辞
-   ("明显更好" / "明显更差") 自然传达, 不依赖 icon / 边框 / 背景块. */
-.page-verdict{display:flex;align-items:baseline;gap:8px;margin:4px 0 14px;padding:0;font-size:13.5px;line-height:1.6;flex-wrap:wrap}
-.page-verdict-label{color:var(--text-muted);font-weight:500;flex-shrink:0;font-size:13px;letter-spacing:0}
-.page-verdict-text{flex:1 1 auto;min-width:0;color:var(--text-primary);font-weight:400}
-.verdict-PROGRESS .verdict-icon{color:var(--green)}
-.verdict-REGRESS .verdict-icon{color:var(--red)}
-.verdict-CAUTIOUS .verdict-icon{color:var(--yellow)}
-.verdict-UNDERPOWERED .verdict-icon{color:var(--yellow)}
-.verdict-NOISE .verdict-icon{color:var(--text-secondary)}
-.verdict-SOLO .verdict-icon{color:var(--text-muted)}
-.verdict-level{font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em}
-.verdict-level-code{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;font-weight:500}
-.verdict-sep{color:var(--text-faint);font-size:12px}
-.verdict-metric{font-size:14px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
-.verdict-meta{font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+/* page-verdict: verdict 是报告的「答案」,头部 hero 形式呈现.
+   行 1: enum + ship-action badge (PROGRESS · SHIP) + 自然语言 ("明显更好,可以发布")
+   行 2: Δ / 95% CI / N / CV — 测量学核心数字, 不需要滚到下方表才看到.
+   颜色按 level 编码 (PROGRESS 绿 / REGRESS 红 / CAUTIOUS+UNDERPOWERED 黄 / NOISE+SOLO 中性). */
+.page-verdict{display:flex;flex-direction:column;gap:10px;margin:12px 0 18px;padding:14px 18px;border-left:4px solid var(--text-secondary);background:rgba(148,163,184,0.06);border-radius:var(--radius)}
+.page-verdict.verdict-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.07)}
+.page-verdict.verdict-REGRESS{border-left-color:var(--red);background:rgba(248,113,113,0.07)}
+.page-verdict.verdict-CAUTIOUS{border-left-color:var(--yellow);background:rgba(251,191,36,0.07)}
+.page-verdict.verdict-UNDERPOWERED{border-left-color:var(--yellow);background:rgba(251,191,36,0.04)}
+.page-verdict.verdict-NOISE{border-left-color:var(--text-secondary);background:rgba(148,163,184,0.06)}
+.page-verdict.verdict-SOLO{border-left-color:var(--border-hover);background:transparent}
+.page-verdict-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.page-verdict-badge{display:inline-flex;align-items:center;gap:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:700;letter-spacing:0.04em;padding:3px 10px;border-radius:14px;background:rgba(148,163,184,0.14);color:var(--text-primary);white-space:nowrap}
+.verdict-PROGRESS .page-verdict-badge{background:rgba(74,222,128,0.18);color:var(--green)}
+.verdict-REGRESS .page-verdict-badge{background:rgba(248,113,113,0.18);color:var(--red)}
+.verdict-CAUTIOUS .page-verdict-badge,
+.verdict-UNDERPOWERED .page-verdict-badge{background:rgba(251,191,36,0.18);color:var(--yellow)}
+.verdict-NOISE .page-verdict-badge,
+.verdict-SOLO .page-verdict-badge{background:rgba(148,163,184,0.16);color:var(--text-secondary)}
+.page-verdict-badge-dot{font-size:8px;line-height:1}
+.page-verdict-text{font-size:15px;font-weight:500;color:var(--text-primary);line-height:1.5;flex:1 1 auto;min-width:0}
+.page-verdict-metrics{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:baseline;padding-top:2px}
+.verdict-metric{display:inline-flex;align-items:baseline;gap:6px}
+.verdict-metric-label{font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;font-weight:600}
+.verdict-metric-value{font-size:15px;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
 
 .verdict-cta{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:10px 18px;margin:0;border-left:4px solid var(--accent);background:var(--bg-surface);border-top:1px solid var(--border);border-radius:0}
 .verdict-cta.verdict-cta-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.04)}
@@ -1905,13 +2060,31 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <input id="filter-input" type="text" placeholder="Filter by name, variant..." style="flex:1;max-width:320px;padding:6px 10px;font-size:13px;background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius);outline:none" oninput="filterTable(this.value)">
       <span id="filter-count" style="font-size:11px;color:var(--text-muted)"></span>
     </div>
+    <div id="guide-scoring-list" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="guide-scoring-list-title" onclick="if(event.target===this)closeModal('guide-scoring-list')">
+    <div class="modal-content">
+      <div class="modal-header">
+        <strong id="guide-scoring-list-title" style="font-size:1rem">How is composite computed?</strong>
+        <button type="button" class="modal-close" onclick="closeModal('guide-scoring-list')" aria-label="Close">✕</button>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">Composite = unweighted mean of {fact, behavior, LLM judge}. Scale 1-5.</p>
+      <table class="modal-table"><tbody>
+        <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">How it&#39;s computed</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">Fact / Behavior</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">Assertion pass-rate mapped to 1-5 via <code>1 + ratio × 4</code></td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">LLM judge</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">Judge model returns 1-5 score directly</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">Missing layer</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">Auto-collapse (mean over present layers)</td></tr>
+        <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">Limitations (frankly)</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">① Equal-weight aggregation</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">The 1/3 weight per layer is ad hoc, not derived from stakeholder needs; no explicit construct validity argument</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">② Mixed scales added directly</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">Fact is binary pass-rate stretched to 1-5; judge is true ordinal. Direct mean violates measurement scale homogeneity</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">③ Auto-collapse on missing</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">When variants/skills have different layer coverage, composite numbers look same but represent different constructs — <strong>not mechanically comparable across variants/skills</strong></td></tr>
+        <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">Recommended usage</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✓ Use for</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">A/B comparison on same eval-samples — read "diff + bootstrap CI + per-layer gate" jointly</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✗ Don&#39;t use as</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">Absolute psychometric measure (claiming "this skill is 4.28/5")</td></tr>
+      </tbody></table>
+      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a></p>
+    </div>
+  </div>
     <div class="table-wrap">
     <table id="report-table">
       <thead><tr>
         <th data-i18n="runId">Report</th>
         <th data-i18n="model">Task execution model</th>
         <th data-i18n="samples">Samples</th>
-        <th data-i18n="score">Score</th>
+        <th data-i18n="score">Score <button type="button" class="hint-btn" onclick="openModal('guide-scoring-list')" aria-label="How is composite computed?" aria-haspopup="dialog">?</button></th>
         <th data-i18n="cost">Execution cost</th>
         <th>Duration</th>
         <th></th>
@@ -2065,9 +2238,39 @@ h2{margin:24px 0 8px;font-size:0.9375rem;color:var(--text-secondary);font-weight
 a{color:var(--accent);text-decoration:none}
 a:hover{color:var(--accent-hover);text-decoration:underline}
 
-/* Meta tags */
-.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 20px}
-.meta-tag{font-size:0.6875rem;color:var(--text-muted);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px}
+/* Meta tags — bumped from 11px/text-muted to 12px/text-secondary so contrast
+   passes WCAG AA on the dark surface. */
+.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}
+.meta-tag{font-size:0.75rem;color:var(--text-secondary);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
+.meta-tag code{font-size:0.7rem;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
+
+/* Run ID stamp — H1 保留完整 run-id (与列表页一致), 时间戳从 ID 解出来作为副标小字,
+   告诉用户「这次跑的时间」,无需用户自己解析 ID 后缀。 */
+.run-id-stamp{font-size:0.75rem;color:var(--text-muted);margin:2px 0 12px;font-variant-numeric:tabular-nums}
+
+/* Audit fingerprints — judge prompt hash + 执行环境 fingerprint 默认折叠,
+   平日 review 不需要看, 复现 / 审计时再展开。 */
+.audit-fingerprints{margin:0 0 18px}
+.audit-fingerprints>summary{cursor:pointer;font-size:0.75rem;color:var(--text-muted);padding:4px 0;list-style:revert;user-select:none;transition:color 0.15s}
+.audit-fingerprints>summary:hover{color:var(--text-secondary)}
+.audit-fingerprints[open]>summary{color:var(--text-secondary);margin-bottom:6px}
+.audit-fingerprints[open]>.meta-tags{margin-top:0}
+
+/* Methodology audit — 方法学证据 (评委一致 / 差异显著 / 已饱和 / 人工对齐) 默认折叠,
+   summary 行直接显示 4 个 badge: 全 ✓ = 流程健康,任一 ⚠/✗ = 强制 open. */
+.methodology-audit{margin:24px 0;border:1px solid var(--border);border-radius:var(--radius);background:var(--bg-elevated)}
+.methodology-audit>summary{cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;padding:12px 16px;font-size:13px;color:var(--text-primary);font-weight:600;list-style:revert;user-select:none}
+.methodology-audit>summary:hover{color:var(--accent)}
+.methodology-summary-label{font-size:14px;font-weight:600}
+.methodology-summary-hint{flex:1 1 auto;text-align:right;font-size:11px;color:var(--text-muted);font-weight:400}
+.methodology-badges{display:inline-flex;flex-wrap:wrap;gap:6px}
+.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
+.methodology-badge-pass{background:rgba(74,222,128,0.14);color:var(--green)}
+.methodology-badge-warn{background:rgba(251,191,36,0.16);color:var(--yellow)}
+.methodology-badge-fail{background:rgba(248,113,113,0.16);color:var(--red)}
+.methodology-badge-skip{background:rgba(148,163,184,0.12);color:var(--text-muted)}
+.methodology-body{padding:0 16px 14px;border-top:1px solid var(--border);margin-top:8px}
+.methodology-body>h2:first-child{margin-top:14px}
 
 /* Cards */
 .cards{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
@@ -2189,24 +2392,31 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .verdict-icon{font-size:12px;line-height:1;flex-shrink:0}
 .verdict-line{font-size:14px;font-weight:500;color:var(--text-primary);line-height:1.6;letter-spacing:-0.005em}
 
-/* v0.21 B.4 — page-verdict: verdict 融入标题副标行, 不再是独立 banner. 跟整页
-   扁平 + outline 风协调 (GitHub PR 标题下 status 一行的视觉模型).
-   "测评结论:" 前缀 muted 灰作 label, 句子主体 primary 色, 状态信号靠中文措辞
-   ("明显更好" / "明显更差") 自然传达, 不依赖 icon / 边框 / 背景块. */
-.page-verdict{display:flex;align-items:baseline;gap:8px;margin:4px 0 14px;padding:0;font-size:13.5px;line-height:1.6;flex-wrap:wrap}
-.page-verdict-label{color:var(--text-muted);font-weight:500;flex-shrink:0;font-size:13px;letter-spacing:0}
-.page-verdict-text{flex:1 1 auto;min-width:0;color:var(--text-primary);font-weight:400}
-.verdict-PROGRESS .verdict-icon{color:var(--green)}
-.verdict-REGRESS .verdict-icon{color:var(--red)}
-.verdict-CAUTIOUS .verdict-icon{color:var(--yellow)}
-.verdict-UNDERPOWERED .verdict-icon{color:var(--yellow)}
-.verdict-NOISE .verdict-icon{color:var(--text-secondary)}
-.verdict-SOLO .verdict-icon{color:var(--text-muted)}
-.verdict-level{font-size:16px;font-weight:700;color:var(--text-primary);letter-spacing:-0.01em}
-.verdict-level-code{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;font-weight:500}
-.verdict-sep{color:var(--text-faint);font-size:12px}
-.verdict-metric{font-size:14px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
-.verdict-meta{font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+/* page-verdict: verdict 是报告的「答案」,头部 hero 形式呈现.
+   行 1: enum + ship-action badge (PROGRESS · SHIP) + 自然语言 ("明显更好,可以发布")
+   行 2: Δ / 95% CI / N / CV — 测量学核心数字, 不需要滚到下方表才看到.
+   颜色按 level 编码 (PROGRESS 绿 / REGRESS 红 / CAUTIOUS+UNDERPOWERED 黄 / NOISE+SOLO 中性). */
+.page-verdict{display:flex;flex-direction:column;gap:10px;margin:12px 0 18px;padding:14px 18px;border-left:4px solid var(--text-secondary);background:rgba(148,163,184,0.06);border-radius:var(--radius)}
+.page-verdict.verdict-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.07)}
+.page-verdict.verdict-REGRESS{border-left-color:var(--red);background:rgba(248,113,113,0.07)}
+.page-verdict.verdict-CAUTIOUS{border-left-color:var(--yellow);background:rgba(251,191,36,0.07)}
+.page-verdict.verdict-UNDERPOWERED{border-left-color:var(--yellow);background:rgba(251,191,36,0.04)}
+.page-verdict.verdict-NOISE{border-left-color:var(--text-secondary);background:rgba(148,163,184,0.06)}
+.page-verdict.verdict-SOLO{border-left-color:var(--border-hover);background:transparent}
+.page-verdict-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.page-verdict-badge{display:inline-flex;align-items:center;gap:6px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;font-weight:700;letter-spacing:0.04em;padding:3px 10px;border-radius:14px;background:rgba(148,163,184,0.14);color:var(--text-primary);white-space:nowrap}
+.verdict-PROGRESS .page-verdict-badge{background:rgba(74,222,128,0.18);color:var(--green)}
+.verdict-REGRESS .page-verdict-badge{background:rgba(248,113,113,0.18);color:var(--red)}
+.verdict-CAUTIOUS .page-verdict-badge,
+.verdict-UNDERPOWERED .page-verdict-badge{background:rgba(251,191,36,0.18);color:var(--yellow)}
+.verdict-NOISE .page-verdict-badge,
+.verdict-SOLO .page-verdict-badge{background:rgba(148,163,184,0.16);color:var(--text-secondary)}
+.page-verdict-badge-dot{font-size:8px;line-height:1}
+.page-verdict-text{font-size:15px;font-weight:500;color:var(--text-primary);line-height:1.5;flex:1 1 auto;min-width:0}
+.page-verdict-metrics{display:flex;flex-wrap:wrap;gap:10px 20px;align-items:baseline;padding-top:2px}
+.verdict-metric{display:inline-flex;align-items:baseline;gap:6px}
+.verdict-metric-label{font-size:11px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.06em;font-weight:600}
+.verdict-metric-value{font-size:15px;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums;letter-spacing:-0.01em}
 
 .verdict-cta{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:10px 18px;margin:0;border-left:4px solid var(--accent);background:var(--bg-surface);border-top:1px solid var(--border);border-radius:0}
 .verdict-cta.verdict-cta-PROGRESS{border-left-color:var(--green);background:rgba(74,222,128,0.04)}
@@ -2363,13 +2573,31 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <input id="filter-input" type="text" placeholder="搜索报告名称、变体..." style="flex:1;max-width:320px;padding:6px 10px;font-size:13px;background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius);outline:none" oninput="filterTable(this.value)">
       <span id="filter-count" style="font-size:11px;color:var(--text-muted)"></span>
     </div>
+    <div id="guide-scoring-list" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="guide-scoring-list-title" onclick="if(event.target===this)closeModal('guide-scoring-list')">
+    <div class="modal-content">
+      <div class="modal-header">
+        <strong id="guide-scoring-list-title" style="font-size:1rem">综合分怎么算的？</strong>
+        <button type="button" class="modal-close" onclick="closeModal('guide-scoring-list')" aria-label="关闭">✕</button>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">综合分（composite）= 等权均值（{事实, 行为, LLM 评价}）。1-5 制。</p>
+      <table class="modal-table"><tbody>
+        <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">怎么算的</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">事实 / 行为</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">断言通过率经 <code>1 + 通过率 × 4</code> 线性映射到 1-5 制</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">LLM 评价</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">评委模型直接给 1-5 分</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">缺失某层</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">自动降维（参与计算的层取均值）</td></tr>
+        <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">局限（直白说）</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">① 等权聚合</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">三层各 1/3 权重不是从需求 derive 的，无显式构造效度论证</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">② 量尺不一致</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">事实是 binary 通过率 stretch 到 1-5；评委是真序数评分。直接均值违反量表理论（measurement scale homogeneity）</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">③ 缺失自动降维</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">不同 variant / skill 配的层数不同时，综合分数字相同但 construct 不同，<strong>不可机械跨 variant / 跨 skill 比较</strong></td></tr>
+        <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">推荐用法</td></tr>
+        <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✓ 适用</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">同一份 eval-samples 上 A/B 比较，看「分差 + bootstrap CI + 三层独立 gate」联合判断</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✗ 不适用</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">当作 absolute psychometric measure（说「这 skill 4.28/5 分」）</td></tr>
+      </tbody></table>
+      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a></p>
+    </div>
+  </div>
     <div class="table-wrap">
     <table id="report-table">
       <thead><tr>
         <th data-i18n="runId">报告名称</th>
         <th data-i18n="model">任务执行模型</th>
         <th data-i18n="samples">评测用例数</th>
-        <th data-i18n="score">分数</th>
+        <th data-i18n="score">分数 <button type="button" class="hint-btn" onclick="openModal('guide-scoring-list')" aria-label="综合分怎么算的？" aria-haspopup="dialog">?</button></th>
         <th data-i18n="cost">执行成本</th>
         <th>耗时</th>
         <th></th>

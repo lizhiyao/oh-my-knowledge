@@ -13,12 +13,12 @@ omk 的统计严谨性栈(Bootstrap CI / Krippendorff α / length-debias / satur
 | # | 行业 gap | 学/工业出处 | omk v1 状态 |
 |---|---|---|---|
 | 1 | **IRT item discrimination**:每题给 a (discrimination) / b (difficulty) / c (guessing) 三参数,a < 0.3 是垃圾题 | [IrtNet (2510.00844)](https://arxiv.org/pdf/2510.00844),[Columbia IRT primer](https://www.publichealth.columbia.edu/research/population-health-methods/item-response-theory) | **out-of-scope**(N<30 IRT 不可靠,留 follow-up;v1 启发式 `flat_scores` 已 cover 部分) |
-| 2 | **Difficulty stratification**:用例分层(MMLU-Pro 用多模型多数答对过滤难度) | [MMLU-Pro](https://intuitionlabs.ai/articles/mmlu-pro-ai-benchmark-explained) | **in-scope**:`Sample.difficulty` enum + `omk improve` 分桶呈现 |
+| 2 | **Difficulty stratification**:用例分层(MMLU-Pro 用多模型多数答对过滤难度) | [MMLU-Pro](https://intuitionlabs.ai/articles/mmlu-pro-ai-benchmark-explained) | **in-scope**:`Sample.difficulty` enum + studio 分桶呈现 |
 | 3 | **Construct validity 三件套**(structural / convergent / discriminant) | [Measuring what Matters (2511.04703)](https://arxiv.org/abs/2511.04703),[Measurement to Meaning (2505.10573)](https://arxiv.org/html/2505.10573v3) | **in-scope**:`Sample.construct` 字段(suggested:necessity / quality / capability)+ verdict 解读 callout;convergent / discriminant 自动检测 follow-up |
-| 4 | **Capability matrix coverage**(HELM 16×7 矩阵) | [HELM (2211.09110)](https://arxiv.org/abs/2211.09110) | **partial**:`Sample.capability` string[] 字段 + `omk improve` coverage 分桶 + `capability_thin` issue;详细矩阵可视化 follow-up |
+| 4 | **Capability matrix coverage**(HELM 16×7 矩阵) | [HELM (2211.09110)](https://arxiv.org/abs/2211.09110) | **partial**:`Sample.capability` string[] 字段 + studio coverage 分桶 + `capability_thin` issue;详细矩阵可视化 follow-up |
 | 5 | **Contamination 检测**(canary / paraphrase / timestamp-locked) | [BIG-Bench canary](https://www.lesswrong.com/posts/kSmHMoaLKGcGgyWzs/big-bench-canary-contamination-in-gpt-4),[LiveBench](https://livebench.ai/livebench.pdf),[contamination survey (2404.00699)](https://arxiv.org/html/2404.00699v4) | **partial**:`Sample.provenance` 做"声明式"contamination tracking,真正自动检测 follow-up(需要 embedding model 或训练数据访问) |
-| 6 | **Sample provenance / dataset card**(annotations_creators 标准) | [HF Dataset Cards](https://huggingface.co/docs/hub/datasets-cards),[Synthetic Data survey (2503.14023)](https://arxiv.org/html/2503.14023v1) | **in-scope**:`Sample.provenance` enum + `omk improve samples` 自动注入 `'llm-generated'` |
-| 7 | **Adversarial / failure-driven mining**(Dynabench) | [Dynabench (2104.14337)](https://arxiv.org/abs/2104.14337) | **out-of-scope**:`omk improve skill` 当前是单向演化;`omk improve adversarial-mine` follow-up |
+| 6 | **Sample provenance / dataset card**(annotations_creators 标准) | [HF Dataset Cards](https://huggingface.co/docs/hub/datasets-cards),[Synthetic Data survey (2503.14023)](https://arxiv.org/html/2503.14023v1) | **in-scope**:`Sample.provenance` enum + `omk sample` 自动注入 `'llm-generated'` |
+| 7 | **Adversarial / failure-driven mining**(Dynabench) | [Dynabench (2104.14337)](https://arxiv.org/abs/2104.14337) | **out-of-scope**:`omk evolve` 当前是单向演化;adversarial mining follow-up |
 | 8 | **Production trace 自然分布抽样** | [Chatbot Arena (2403.04132)](https://arxiv.org/pdf/2403.04132) | **out-of-scope**:依赖外部 trace 系统集成 |
 
 ## 三、Sample 元数据 schema
@@ -50,24 +50,24 @@ samples:
   - `necessity`(必要性):baseline-vs-skill,测 skill 是否必需。Δ 大不一定是 skill 写得好,可能只因为 baseline 不知道领域知识(自明结论)。
   - `quality`(质量):skill-v1 vs skill-v2,测同知识不同写法谁让模型答得更准。这才是 omk 测量学严谨真用武之地。
   - `capability`(能力):测某具体能力维度的差异。
-  允许自定义 string(比如 `regression-test` / `cost-efficiency` 等),`omk improve` 看到自定义值不报错。
-- **provenance**(enum):数据来源。`human`(人工 curated)/ `llm-generated`(omk `omk improve samples` 自动注入)/ `production-trace`(生产 trace 抽样,需用户自己导入)。
+  允许自定义 string(比如 `regression-test` / `cost-efficiency` 等),studio 看到自定义值不报错。
+- **provenance**(enum):数据来源。`human`(人工 curated)/ `llm-generated`(`omk sample` 自动注入)/ `production-trace`(生产 trace 抽样,需用户自己导入)。
 
 ### 不参与 grading / judge / verdict
 
 这 4 字段只用于:
-- `omk improve` 的 coverage 块 + `rubric_clarity_low` / `capability_thin` 两个新 issue 检测
+- studio coverage 块 + `rubric_clarity_low` / `capability_thin` 两个 issue 检测
 - `report.analysis.sampleQuality` 聚合数据(供工具读)
 
 **绝对不进 judge prompt**(`buildJudgePrompt(prompt, rubric, output, traceSummary)` signature 不含 sample 对象,且有 `test/grading/judge-prompt-isolation.test.ts` 防御回归)。**绝对不影响 verdict 算法**。这是构造效度保护的硬要求 — judge 看到 "construct: necessity" 等于知道试题答案。
 
-## 四、`omk improve` 用例设计相关功能
+## 四、用例设计相关分析功能
 
-### Coverage 块(在 issue 列表前输出)
+### Coverage 块(studio 报告页呈现)
+
+studio 把每份报告的 sample design coverage 渲染成下面这种摘要:
 
 ```
-$ omk improve <report-id>
-
   用例质量诊断 — health score 87/100
   用例总数: 20, flagged: 3 (errors=0, warnings=1, infos=2)
 
@@ -85,7 +85,9 @@ $ omk improve <report-id>
     ℹ s007: rubric 仅 12 字且未含评分级别词 — 评委标准模糊,可能 judge 分数不稳
 ```
 
-### 两个新 issue kind
+底层数据持久化在 `report.analysis.sampleQuality`,工具可直接读 JSON。
+
+### 两个 issue kind
 
 - **`rubric_clarity_low`**(severity: info):rubric 字符长度 < 20 **AND** 不含任何评分级别词(中英 22 词清单含"优秀/良好/合格/不合格/及格/满分/评分标准/至少包含"等;英文含"excellent/good/poor/criterion/must include/at least"等)。**AND** 而非 OR,避免长 rubric 没用关键词被误报。这是**先验/static 信号**,跟现有 `ambiguous_rubric`(后验/runtime,从 judge stddev 看)互补。
 - **`capability_thin`**(severity: warning):某 capability 只被 ≤ `max(2, totalSamples * 0.2)` 个 sample 声明 — 该维度 thin coverage,单 sample 失败会让结论不稳。**Small-N guard**:总 sample 数 < 10 时**完全跳过**此检测,避免小集合全报。
@@ -95,14 +97,14 @@ $ omk improve <report-id>
 跑评测前过一遍,任意"否"都该停下来想想:
 
 - [ ] **Construct 声明**:每个 sample 知道自己测的是 necessity / quality / capability 中哪一类吗?
-- [ ] **Capability 覆盖**:声称要测 N 个能力维度,sample 集真覆盖了 N 个吗?(`omk improve` coverage 块给出真实分布)
+- [ ] **Capability 覆盖**:声称要测 N 个能力维度,sample 集真覆盖了 N 个吗?(studio coverage 块给出真实分布)
 - [ ] **Difficulty 分层**:有 easy / medium / hard 都有吗?还是全 hard 让模型 noise 主导?
 - [ ] **Provenance 透明**:human-curated / LLM-generated / production-trace 比例合理吗?LLM-generated 占比 > 50% 时小心 self-instruct 风险(judge bias 自我循环)。
 - [ ] **Sample 数量**:`N < 5`(探索级)/ `N < 20`(只大效应可测)/ `N ≥ 20`(中等效应可测)— omk pre-flight 已警告。
 - [ ] **Rubric clarity**:rubric ≥ 20 字符,含至少一个评分级别词(优秀/良好/必须包含/至少包含 等),让 judge 有可执行的级别标准。
 - [ ] **Prompt 不泄露答案**:prompt 里的术语不应直接给出 rubric/assertion 期望的答案。如果 prompt 必须含某关键词(产品 / 库 / API 名)而 rubric 也要这词,就削弱了"baseline 无知识"假设 — 这是用例自然 trade-off,需要在 sample 设计时显式 callout。
 - [ ] **Construct 跟实验设计匹配**:跑 baseline-vs-skill 时,`construct: necessity` 才合理。跑 skill-v1-vs-skill-v2 时,应该 `construct: quality`。
-- [ ] **Provenance 防 contamination**:LLM-generated sample 跟模型自身训练数据可能同源(self-instruct 偏差);`omk improve samples` 标记 `'llm-generated'` 后,人工 review 一遍是 v1 的 contamination 防御。
+- [ ] **Provenance 防 contamination**:LLM-generated sample 跟模型自身训练数据可能同源(self-instruct 偏差);`omk sample` 标记 `'llm-generated'` 后,人工 review 一遍是 v1 的 contamination 防御。
 - [ ] **Capability_thin guard**:N≥10 时如果某 capability 只 1-2 sample 撑,该维度结论极不稳定。要么补 sample,要么删该 capability(明确不在测试范围)。
 
 ## 六、Verdict 解读如何配合 construct
@@ -116,7 +118,7 @@ $ omk improve <report-id>
 
 - IRT 风格 item discrimination(N≥30 + multi-model 数据)
 - Multi-judge convergent / discriminant test(需要 ≥ 2 judge ensemble + 聚合分析)
-- Adversarial mining loop(`omk improve adversarial-mine`)
+- Adversarial mining loop(对抗 sample 挖掘)
 - Production trace 自然分布抽样
 - HTML renderer 显示 sample design coverage(v1 只 CLI)
 - Evolve 演化策略升级(diversification signal / saturation-aware stop / health-weighted improvement)

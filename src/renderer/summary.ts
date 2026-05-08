@@ -22,11 +22,11 @@ function verdictOneLine(level: VerdictLevel, lang: Lang, treatment?: string, con
   const c = control ?? (lang === 'zh' ? '对照组' : 'control');
   if (lang === 'zh') {
     switch (level) {
-      case 'PROGRESS':     return `${t} 比 ${c} 明显更好 — 可以发布`;
-      case 'CAUTIOUS':     return `${t} 比 ${c} 略好 — 但建议再仔细看,差距很小或某层未达标`;
-      case 'REGRESS':      return `${t} 比 ${c} 明显更差 — 不要发布`;
-      case 'NOISE':        return `${t} 和 ${c} 没看出明显差别 — 可以多加几条用例再试`;
-      case 'UNDERPOWERED': return `评测用例数太少,看不出 ${t} 和 ${c} 的差别 — 多跑几个再看`;
+      case 'PROGRESS':     return `${t} 比 ${c} 明显更好——可以发布`;
+      case 'CAUTIOUS':     return `${t} 比 ${c} 略好——但建议再仔细看，差距很小或某层未达标`;
+      case 'REGRESS':      return `${t} 比 ${c} 明显更差——不要发布`;
+      case 'NOISE':        return `${t} 和 ${c} 没看出明显差别——可以多加几条用例再试`;
+      case 'UNDERPOWERED': return `评测用例数太少，看不出 ${t} 和 ${c} 的差别——多跑几个再看`;
       case 'SOLO':         return `只跑了一组,需要加对照组才能对比`;
     }
   }
@@ -81,17 +81,38 @@ export function levelTooltip(level: VerdictLevel, lang: Lang): string {
   }
 }
 
-// v0.21 B.4 — Verdict pill 重写. 行业领先 status banner 三段式:
-//   1. Banner: 强信号(色 + 词) + 核心 metric (Δ + CI) + meta (pair / N / α)
-//   2. CTA: emoji + 加粗 action + 详情 (从 shipRecommendation 拆)
-//   3. Layers strip: fact/behavior/judge 一行带过, 不堆 bullets
-// 去掉旧版 headline 和 significance 的内容重复 (perPair[0].headline 是干净的
-// Δ+CI 核心, headline 拼装版只在 SOLO mode 用).
-//
-// computeVerdict 在历史混合批量 report 上有 NPE 风险 (顶层 summary
-// 缺 variant 数据时 evaluateLayerGates 访问 .avgFactScore 炸). 加 try/catch
-// 让 renderer 不 crash, 改为静默 skip pill — 这是 v0.21 B.4 的 scope 范围,
-// verdict.ts/layer-gates.ts 的 defensive 修复留作单独 task.
+// Verdict hero — verdict 是报告的「答案」，应在头部抢眼可读：
+//   行 1: 状态 badge (明显进步 / PROGRESS) + 自然语言句子 (含 ship action)
+//   行 2: 分差 + 评测规模 — 最直观的两个数字, "差多少 / 跑了多少"
+// machine-readable enum 通过 data-verdict-level 属性挂在 section 上，给 CI/工具用；
+// ship-action token 写进 aria-label 给 screen reader,但不放进 badge 显示文字 ——
+// 因为 verdictOneLine 的中文句子已经包含 "可以发布 / 不要发布" 这类 action,
+// badge 再放一遍是重复。CI / CV 这种统计学专名挪到 variance 表 + tooltip,hero
+// 不堆 jargon. 想看精确边界值的工程师下滑到下方的配对对比 / 波动检验表里看。
+// computeVerdict 在历史混合批量 report 上有 NPE 风险，try/catch 让 renderer 不 crash。
+const SHIP_LABEL: Record<VerdictLevel, { zh: string; en: string }> = {
+  PROGRESS:     { zh: '可发布',   en: 'SHIP' },
+  CAUTIOUS:     { zh: '需排查',   en: 'INVESTIGATE' },
+  REGRESS:      { zh: '勿发布',   en: 'DO NOT SHIP' },
+  NOISE:        { zh: '不下结论', en: 'NO CALL' },
+  UNDERPOWERED: { zh: '数据不足', en: 'INSUFFICIENT DATA' },
+  SOLO:         { zh: '缺对照',   en: 'ADD CONTROL' },
+};
+
+function computeMedianCVPercent(report: Report): number | null {
+  const variance = report.variance;
+  if (!variance || (variance.runs ?? 0) < 2) return null;
+  const cvs: number[] = [];
+  for (const v of Object.values(variance.perVariant ?? {})) {
+    if (typeof v.stddev === 'number' && typeof v.mean === 'number' && v.mean > 0) {
+      cvs.push((v.stddev / v.mean) * 100);
+    }
+  }
+  if (cvs.length === 0) return null;
+  cvs.sort((a, b) => a - b);
+  return cvs[Math.floor(cvs.length / 2)];
+}
+
 export function renderVerdictPill(report: Report, lang: Lang): string {
   let result: VerdictResult;
   try {
@@ -104,13 +125,45 @@ export function renderVerdictPill(report: Report, lang: Lang): string {
   const oneLine = verdictOneLine(level, lang, pair?.treatment, pair?.control);
   const tooltip = levelTooltip(level, lang);
   const prefix = lang === 'zh' ? '测评结论' : 'Verdict';
-  // v0.21 B.4 — verdict 融入标题副标. 去 icon, 用 "测评结论:" 前缀引导, 让用户
-  // 一眼读到 "label : 结论" 的语义结构. 状态色信号通过 verdictOneLine 的中文
-  // 措辞 ("明显更好" / "明显更差" / "没看出差别") 传达, 不再依赖颜色 dot.
-  return `<p class="page-verdict verdict-${level}" role="status" aria-label="${e(prefix)}: ${e(oneLine)}" title="${e(tooltip)}">
-    <span class="page-verdict-label">${e(prefix)}:</span>
-    <span class="page-verdict-text">${e(oneLine)}</span>
-  </p>`;
+  // 机器可读 enum 永远是 level token; 显示给用户的文字按 lang i18n.
+  const levelDisplay = lang === 'zh' ? levelLabel(level, lang) : level;
+  const shipAria = lang === 'zh' ? SHIP_LABEL[level].zh : SHIP_LABEL[level].en;
+
+  // hero 只放「答案」: 分差是 verdict 的核心证据数字, 单独一枚 chip。
+  // 评测规模 (用例数 × 轮次) 走「实验配置」section 的 subtitle 那条 canonical 路径,
+  // 不在 hero 里重复; CV / CI 走 chip tooltip + 方法学审计 / 波动表。
+  const ci = report.meta?.pairComparisons?.[0]?.diffBootstrapCI;
+  const cvPct = computeMedianCVPercent(report);
+
+  const metrics: Array<{ label: string; value: string; tip?: string }> = [];
+  if (ci) {
+    const sign = ci.estimate >= 0 ? '+' : '';
+    const cvSuffix = cvPct != null
+      ? (lang === 'zh' ? `;多轮稳定性 CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? '稳' : cvPct < 15 ? '中' : '不稳'})` : `; CV=${cvPct.toFixed(1)}% (${cvPct < 5 ? 'stable' : cvPct < 15 ? 'moderate' : 'unstable'})`)
+      : '';
+    const ciTipBase = lang === 'zh'
+      ? `实验组与对照组综合分均值差(Δ)。bootstrap 95% 可信区间 [${ci.low}, ${ci.high}]，${ci.significant ? '不含 0 = 差异显著' : '跨过 0 = 差异不显著'}${cvSuffix}`
+      : `Treatment minus control mean composite score (Δ). Bootstrap 95% CI [${ci.low}, ${ci.high}], ${ci.significant ? 'excludes 0 ⇒ significant' : 'spans 0 ⇒ not significant'}${cvSuffix}`;
+    metrics.push({
+      label: lang === 'zh' ? '分差' : 'Δ',
+      value: `${sign}${ci.estimate}`,
+      tip: ciTipBase,
+    });
+  }
+
+  const metricChips = metrics.map((m) =>
+    `<span class="verdict-metric"${m.tip ? ` title="${e(m.tip)}"` : ''}>` +
+    `<span class="verdict-metric-label">${e(m.label)}</span>` +
+    `<span class="verdict-metric-value">${e(m.value)}</span></span>`,
+  ).join('');
+
+  return `<section class="page-verdict verdict-${level}" role="status" data-verdict-level="${e(level)}" aria-label="${e(prefix)}: ${e(levelDisplay)} · ${e(shipAria)} · ${e(oneLine)}" title="${e(tooltip)}">
+    <div class="page-verdict-head">
+      <span class="page-verdict-badge"><span class="page-verdict-badge-dot" aria-hidden="true">●</span>${e(levelDisplay)}</span>
+      <span class="page-verdict-text">${e(oneLine)}</span>
+    </div>
+    ${metricChips ? `<div class="page-verdict-metrics">${metricChips}</div>` : ''}
+  </section>`;
 }
 
 
@@ -175,11 +228,11 @@ export function renderHumanAgreement(agreement: ReportHumanAgreement | undefined
   const interpret = lang === 'zh'
     ? (Number.isNaN(a.alpha)
       ? '评分多样性不足，α 未定义'
-      : a.alpha >= 0.8 ? '高度一致 — 结论可放心使用'
-      : a.alpha >= 0.667 ? '可接受 — 谨慎结论'
-      : a.alpha >= 0.4 ? '较弱一致 — 结论需配合 CI 与人工抽检'
-      : a.alpha >= 0 ? '偏差较大 — 排查 rubric / prompt'
-      : '系统性反向 — 重新审视判分逻辑')
+      : a.alpha >= 0.8 ? '高度一致——结论可放心使用'
+      : a.alpha >= 0.667 ? '可接受——谨慎结论'
+      : a.alpha >= 0.4 ? '较弱一致——结论需配合 CI 与人工抽检'
+      : a.alpha >= 0 ? '偏差较大——排查 rubric / prompt'
+      : '系统性反向——重新审视判分逻辑')
     : (Number.isNaN(a.alpha)
       ? 'insufficient rating variance for α'
       : a.alpha >= 0.8 ? 'high agreement — conclusions trustworthy'
@@ -344,7 +397,10 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   //
   // composite 合成分 (= (fact + behavior + judge) / 3) 从 v0.16 起不再在此表主视觉呈现,
   // 仅保留在 report JSON 数据层 + Variance & Significance 表顶层 flat 字段(legacy)。
-  // 理由见 docs/terminology-spec.md 三-6 节:三层独立呈现避免合成分掩盖结构性差异。
+  // 综合分放在第一列, 紧贴 实验分组. 它是 fact/behavior/judge 三层的等权均值,
+  // 在 omk 内部承担「跨 run 排序 / bootstrap CI / verdict 比较信号」三个角色 ——
+  // 这里展示 + 表头 ? button 弹 modal 公开计算方式 + 局限, 让用户知情消费。
+  // 其余六列保持 layer-first (fact / behavior / judge / cost / efficiency / stability)。
   const headerCols = [
     { key: 'dimFact', label: t('dimFact', lang) },
     { key: 'dimBehavior', label: t('dimBehavior', lang) },
@@ -354,7 +410,10 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     { key: 'dimStability', label: t('dimStability', lang) },
   ];
 
-  const thead = `<tr><th data-i18n="variants">${t('variants', lang)}</th>${headerCols.map((c) => `<th data-i18n="${c.key}">${c.label}</th>`).join('')}</tr>`;
+  const scoringModalId = 'guide-scoring';
+  const compositeLabel = lang === 'zh' ? '综合分' : 'Composite';
+  const compositeHeader = `<th data-i18n="dimComposite" style="border-right:2px solid var(--border)">${e(compositeLabel)} <button type="button" class="hint-btn" onclick="openModal('${scoringModalId}')" aria-label="${e(lang === 'zh' ? '综合分怎么算的？' : 'How is composite computed?')}" aria-haspopup="dialog">?</button></th>`;
+  const thead = `<tr><th data-i18n="variants">${t('variants', lang)}</th>${compositeHeader}${headerCols.map((c) => `<th data-i18n="${c.key}">${c.label}</th>`).join('')}</tr>`;
 
   // 渲染单层分数 cell(事实/行为/LLM 评价通用)。
   // 优先读跨 run 均值(byLayer[key].mean),fallback 到 summary 的单 run avg。
@@ -484,7 +543,16 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
 
     const stabCell = `<td class="summary-cell"><div class="summary-value" style="color:${stabColor}">${stabValue}</div>${stabDetail}</td>`;
 
-    return `<tr><td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(v)}</strong></td>${factCell}${behaviorCell}${judgeCell}${costCell}${effCell}${stabCell}</tr>`;
+    // 综合分 cell. 颜色逻辑同其他质量列, 右侧加 2px border 跟分项分开视觉分组。
+    const composite = s.avgCompositeScore;
+    const compositeHasValue = typeof composite === 'number' && composite > 0;
+    const compositeColor = compositeHasValue
+      ? (composite >= 4 ? 'var(--green)' : composite >= 3 ? 'var(--yellow)' : 'var(--red)')
+      : 'var(--text-muted)';
+    const compositeDisplay = compositeHasValue ? composite.toFixed(2) : '—';
+    const compositeCell = `<td class="summary-cell" style="border-right:2px solid var(--border)"><div class="summary-value summary-value-primary" style="color:${compositeColor};font-weight:700">${compositeDisplay}</div></td>`;
+
+    return `<tr><td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(v)}</strong></td>${compositeCell}${factCell}${behaviorCell}${judgeCell}${costCell}${effCell}${stabCell}</tr>`;
   }).join('');
 
   const guideModalId = 'guide-six-dims';
@@ -524,6 +592,8 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
     <tr><td ${sub}>95% CI</td><td ${subDesc}>If you ran infinitely many times, the true mean has a 95% chance of falling in this range — narrower = you can trust the measured mean more</td></tr>
   `;
 
+  const scoringModalHtml = renderScoringModal(scoringModalId, lang);
+
   return `
     <h2 style="display:flex;align-items:center;gap:4px">${lang === 'zh' ? '六维对比' : 'Six-Dimension Comparison'} <button type="button" class="hint-btn" onclick="openModal('${guideModalId}')" aria-label="${e(guideTitle)}" aria-haspopup="dialog">?</button></h2>
     <div id="${guideModalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${guideModalId}-title" onclick="if(event.target===this)closeModal('${guideModalId}')">
@@ -536,13 +606,85 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
         <table class="modal-table"><tbody>${guideRows}</tbody></table>
       </div>
     </div>
+    ${scoringModalHtml}
     <div class="table-wrap">
     <table class="summary-table">
       <thead>${thead}</thead>
       <tbody>${rows}</tbody>
     </table>
+    </div>`;
+}
+
+/**
+ * 评分说明 modal — 公开 composite 计算方式 + 局限,所有展示综合分的地方都通向同一份说明
+ * (六维对比表头 / 列表页 score 列 / 趋势页 chart caption)。
+ *
+ * 测量学诚实性 ≠ 藏起来怕用户误用,而是展示 + 说清楚边界。这个 modal 是简版 (~10 行),
+ * 完整推导 (五层评分管道架构 / ratioToScore 公式 / 多层 gate 与 composite 关系)
+ * 在 docs/zh/scoring.md。
+ */
+export function renderScoringModal(id: string, lang: Lang): string {
+  const title = lang === 'zh' ? '综合分怎么算的？' : 'How is composite computed?';
+  const intro = lang === 'zh'
+    ? '综合分（composite）= 等权均值（{事实, 行为, LLM 评价}）。1-5 制。'
+    : 'Composite = unweighted mean of {fact, behavior, LLM judge}. Scale 1-5.';
+
+  const sectionHead = (text: string) => `<tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">${e(text)}</td></tr>`;
+  const row = (label: string, body: string) => `<tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">${e(label)}</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">${body}</td></tr>`;
+
+  const calcRows = lang === 'zh' ? [
+    row('事实 / 行为', '断言通过率经 <code>1 + 通过率 × 4</code> 线性映射到 1-5 制'),
+    row('LLM 评价', '评委模型直接给 1-5 分'),
+    row('缺失某层', '自动降维（参与计算的层取均值）'),
+  ] : [
+    row('Fact / Behavior', 'Assertion pass-rate mapped to 1-5 via <code>1 + ratio × 4</code>'),
+    row('LLM judge', 'Judge model returns 1-5 score directly'),
+    row('Missing layer', 'Auto-collapse (mean over present layers)'),
+  ];
+
+  const limitRows = lang === 'zh' ? [
+    row('① 等权聚合', '三层各 1/3 权重不是从需求 derive 的，无显式构造效度论证'),
+    row('② 量尺不一致', '事实是 binary 通过率 stretch 到 1-5；评委是真序数评分。直接均值违反量表理论（measurement scale homogeneity）'),
+    row('③ 缺失自动降维', '不同 variant / skill 配的层数不同时，综合分数字相同但 construct 不同，<strong>不可机械跨 variant / 跨 skill 比较</strong>'),
+  ] : [
+    row('① Equal-weight aggregation', 'The 1/3 weight per layer is ad hoc, not derived from stakeholder needs; no explicit construct validity argument'),
+    row('② Mixed scales added directly', 'Fact is binary pass-rate stretched to 1-5; judge is true ordinal. Direct mean violates measurement scale homogeneity'),
+    row('③ Auto-collapse on missing', 'When variants/skills have different layer coverage, composite numbers look same but represent different constructs — <strong>not mechanically comparable across variants/skills</strong>'),
+  ];
+
+  const usageRows = lang === 'zh' ? [
+    row('✓ 适用', '同一份 eval-samples 上 A/B 比较，看「分差 + bootstrap CI + 三层独立 gate」联合判断'),
+    row('✗ 不适用', '当作 absolute psychometric measure（说「这 skill 4.28/5 分」）'),
+  ] : [
+    row('✓ Use for', 'A/B comparison on same eval-samples — read "diff + bootstrap CI + per-layer gate" jointly'),
+    row('✗ Don\'t use as', 'Absolute psychometric measure (claiming "this skill is 4.28/5")'),
+  ];
+
+  const calcSection = lang === 'zh' ? '怎么算的' : 'How it\'s computed';
+  const limitSection = lang === 'zh' ? '局限（直白说）' : 'Limitations (frankly)';
+  const usageSection = lang === 'zh' ? '推荐用法' : 'Recommended usage';
+  const docsLink = lang === 'zh'
+    ? '完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a>'
+    : 'Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a>';
+
+  return `<div id="${id}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${id}-title" onclick="if(event.target===this)closeModal('${id}')">
+    <div class="modal-content">
+      <div class="modal-header">
+        <strong id="${id}-title" style="font-size:1rem">${e(title)}</strong>
+        <button type="button" class="modal-close" onclick="closeModal('${id}')" aria-label="${lang === 'zh' ? '关闭' : 'Close'}">✕</button>
+      </div>
+      <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 12px">${e(intro)}</p>
+      <table class="modal-table"><tbody>
+        ${sectionHead(calcSection)}
+        ${calcRows.join('')}
+        ${sectionHead(limitSection)}
+        ${limitRows.join('')}
+        ${sectionHead(usageSection)}
+        ${usageRows.join('')}
+      </tbody></table>
+      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">${docsLink}</p>
     </div>
-    ${renderJudgeAgreementBlock(variants, summary, lang)}`;
+  </div>`;
 }
 
 /**
@@ -551,7 +693,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
  * Pearson + MAD across the whole sample set, the metric that refutes "Claude judge
  * Claude same-modality bias".
  */
-function renderJudgeAgreementBlock(variants: string[], summary: Record<string, VariantSummary>, lang: Lang): string {
+export function renderJudgeAgreementBlock(variants: string[], summary: Record<string, VariantSummary>, lang: Lang): string {
   const variantsWithEnsemble = variants.filter((v) => summary[v]?.judgeAgreement);
   if (variantsWithEnsemble.length === 0) return '';
 
@@ -589,6 +731,145 @@ function renderJudgeAgreementBlock(variants: string[], summary: Record<string, V
       <tbody>${rows}</tbody>
     </table>
     </div>`;
+}
+
+// 方法学审计 — 把「评测本身可靠不」的证据从一级 H2 收进折叠区。
+// 用户读完 hero verdict + 实验配置 + 测评结果 已经能下「skill 行不行」的判断；
+// 这里包的 4 块是「想验流程的人」才需要的二级证据：
+//   1. 评委一致 (judge ensemble Pearson/MAD)
+//   2. 差异显著 (pairwise CI)
+//   3. 已饱和 (saturation verdict)
+//   4. 人工对齐 (Krippendorff α vs gold; 仅当配过 --gold-dir 时存在)
+// summary 行用 badge 直接告诉用户「方法学体检结果」,绿勾代表流程健康,
+// 任何 ⚠/✗ 立刻把方法学问题暴露出来,用户会主动展开核实。
+type AuditBadgeStatus = 'pass' | 'warn' | 'fail' | 'skip';
+interface AuditBadge {
+  key: string;
+  label: string;
+  status: AuditBadgeStatus;
+  detail: string;
+}
+
+function badgeIcon(status: AuditBadgeStatus): string {
+  switch (status) {
+    case 'pass': return '✓';
+    case 'warn': return '⚠';
+    case 'fail': return '✗';
+    case 'skip': return '—';
+  }
+}
+
+function computeJudgeAgreementBadge(variants: string[], summary: Record<string, VariantSummary>, lang: Lang): AuditBadge | null {
+  const treatment = variants[1] ?? variants[0];
+  const ag = summary[treatment]?.judgeAgreement;
+  if (!ag || ag.pearson == null) return null;
+  const p = ag.pearson;
+  const status: AuditBadgeStatus = p >= 0.7 ? 'pass' : p >= 0.4 ? 'warn' : 'fail';
+  const verdict = status === 'pass'
+    ? (lang === 'zh' ? '评委一致' : 'judges agree')
+    : status === 'warn'
+      ? (lang === 'zh' ? '评委偏弱一致' : 'judges weakly agree')
+      : (lang === 'zh' ? '评委分歧大' : 'judges diverge');
+  return {
+    key: 'judge',
+    label: verdict,
+    status,
+    detail: lang === 'zh' ? `Pearson ${p}（≥0.7 一致 / 0.4-0.7 偏弱 / <0.4 分歧）` : `Pearson ${p} (≥0.7 agree / 0.4-0.7 weak / <0.4 diverge)`,
+  };
+}
+
+function computeSignificanceBadge(report: Report, lang: Lang): AuditBadge | null {
+  const ci = report.meta?.pairComparisons?.[0]?.diffBootstrapCI;
+  if (!ci) return null;
+  const status: AuditBadgeStatus = ci.significant ? 'pass' : 'warn';
+  const label = ci.significant
+    ? (lang === 'zh' ? '差异显著' : 'significant')
+    : (lang === 'zh' ? '差异不显著' : 'not significant');
+  return {
+    key: 'sig',
+    label,
+    status,
+    detail: lang === 'zh' ? `bootstrap 95% CI [${ci.low}, ${ci.high}]${ci.significant ? '（不含 0）' : '（跨过 0）'}` : `Bootstrap 95% CI [${ci.low}, ${ci.high}]${ci.significant ? ' (excludes 0)' : ' (spans 0)'}`,
+  };
+}
+
+function computeSaturationBadge(report: Report, variants: string[], lang: Lang): AuditBadge | null {
+  const sat = report.variance?.saturation?.verdicts;
+  if (!sat) return null;
+  const treatment = variants[1] ?? variants[0];
+  const v = sat[treatment];
+  if (!v) return null;
+  const status: AuditBadgeStatus = v.saturated
+    ? (v.confidence === 'high' ? 'pass' : 'warn')
+    : 'warn';
+  const label = v.saturated
+    ? (lang === 'zh' ? '已饱和' : 'saturated')
+    : (lang === 'zh' ? '未饱和' : 'not saturated');
+  return {
+    key: 'sat',
+    label,
+    status,
+    detail: lang === 'zh'
+      ? `${v.saturated ? `于 N=${v.atN ?? '?'} 饱和` : '尚未饱和'}（${v.confidence} confidence）`
+      : `${v.saturated ? `saturates at N=${v.atN ?? '?'}` : 'not yet saturated'} (${v.confidence} confidence)`,
+  };
+}
+
+function computeHumanAlignmentBadge(report: Report, lang: Lang): AuditBadge | null {
+  const a = report.meta?.humanAgreement;
+  if (!a || a.sampleCount === 0 || Number.isNaN(a.alpha)) return null;
+  const status: AuditBadgeStatus = a.alpha >= 0.667 ? 'pass' : a.alpha >= 0.4 ? 'warn' : 'fail';
+  const label = status === 'pass'
+    ? (lang === 'zh' ? '人工对齐' : 'aligns with humans')
+    : status === 'warn'
+      ? (lang === 'zh' ? '人工对齐偏弱' : 'weakly aligns')
+      : (lang === 'zh' ? '与人工分歧' : 'diverges from humans');
+  return {
+    key: 'human',
+    label,
+    status,
+    detail: lang === 'zh' ? `Krippendorff α=${a.alpha.toFixed(3)} vs ${a.goldAnnotator}` : `Krippendorff α=${a.alpha.toFixed(3)} vs ${a.goldAnnotator}`,
+  };
+}
+
+export function renderMethodologyAudit(
+  report: Report,
+  variants: string[],
+  summary: Record<string, VariantSummary>,
+  lang: Lang,
+): string {
+  const judgeBlock = renderJudgeAgreementBlock(variants, summary, lang);
+  const pairwiseBlock = renderPairwiseDiff(report.meta?.pairComparisons, lang);
+  const humanBlock = renderHumanAgreement(report.meta?.humanAgreement, lang);
+  const saturationBlock = renderSaturationCurve(report.variance?.saturation, variants, lang);
+  if (!judgeBlock && !pairwiseBlock && !humanBlock && !saturationBlock) return '';
+
+  const badges = [
+    computeJudgeAgreementBadge(variants, summary, lang),
+    computeSignificanceBadge(report, lang),
+    computeSaturationBadge(report, variants, lang),
+    computeHumanAlignmentBadge(report, lang),
+  ].filter((b): b is AuditBadge => b !== null);
+
+  // 默认折叠;只有 ✗ fail (红色 badge) 才强制展开 — summary 行已经显示
+  // ⚠ warn 状态, 用户能自决是否展开; 但 fail 是危险信号必须让用户看证据。
+  const hasFailure = badges.some((b) => b.status === 'fail');
+  const openAttr = hasFailure ? ' open' : '';
+  const summaryLabel = lang === 'zh' ? '测评可信度' : 'Reliability check';
+  const summaryHint = lang === 'zh' ? '点击展开看支撑证据(评委一致 / 差异显著 / 饱和度 / 人工对齐)' : 'click to expand evidence (judge agreement / significance / saturation / human alignment)';
+
+  const badgesHtml = badges.length > 0
+    ? `<span class="methodology-badges">${badges.map((b) =>
+        `<span class="methodology-badge methodology-badge-${b.status}" title="${e(b.detail)}">${badgeIcon(b.status)} ${e(b.label)}</span>`,
+      ).join('')}</span>`
+    : '';
+
+  const innerSections = [judgeBlock, pairwiseBlock, humanBlock, saturationBlock].filter(Boolean).join('');
+
+  return `<details class="methodology-audit"${openAttr}>
+    <summary><span class="methodology-summary-label">${e(summaryLabel)}</span>${badgesHtml}<span class="methodology-summary-hint">${e(summaryHint)}</span></summary>
+    <div class="methodology-body">${innerSections}</div>
+  </details>`;
 }
 
 interface DiagnosticEntry {
@@ -1491,6 +1772,13 @@ export function renderKnowledgeInteractionSection(
   const hasCov = coverage && Object.keys(coverage).length > 0;
   const hasGap = gapReports && Object.keys(gapReports).length > 0;
   if (!hasCov && !hasGap) return '';
+
+  // 所有 variant 的 coverage 都不可用 (filesTotal === 0) 且所有 gap 都是 0%(无信号)
+  // 时,整个 section 没有可读信息 — 渲染只会占大段纵向空间显示「数据不可用 / 0%」
+  // 干扰用户阅读流。直接跳过比强行展示「显式无信号」更尊重读者。
+  const usefulCoverage = hasCov && Object.values(coverage!).some((c) => c.filesTotal > 0);
+  const usefulGap = hasGap && Object.values(gapReports!).some((g) => g.gapRate > 0 || g.signals.length > 0);
+  if (!usefulCoverage && !usefulGap) return '';
 
   const title = lang === 'zh' ? '本次测评：评测用例 × 知识库' : 'This Evaluation: Test Set × Knowledge Base';
   const desc = lang === 'zh'

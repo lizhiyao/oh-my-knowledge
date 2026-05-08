@@ -8,6 +8,7 @@ import { createReportServer } from '../../src/server/report-server.js';
 
 const TEST_DIR = join(tmpdir(), `omk-test-reports-${Date.now()}`);
 const JOBS_DIR = join(tmpdir(), `omk-test-jobs-${Date.now()}`);
+const OBSERVATIONS_DIR = join(tmpdir(), `omk-test-observations-${Date.now()}`);
 
 const SAMPLE_REPORT = {
   kind: 'evaluation',
@@ -133,10 +134,65 @@ describe('report-server', () => {
   beforeAll(async () => {
     mkdirSync(TEST_DIR, { recursive: true });
     mkdirSync(JOBS_DIR, { recursive: true });
+    mkdirSync(OBSERVATIONS_DIR, { recursive: true });
     writeFileSync(join(TEST_DIR, 'test-run-001.json'), JSON.stringify(SAMPLE_REPORT, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-001.json'), JSON.stringify(SAMPLE_JOB, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-002.json'), JSON.stringify(FAILED_JOB, null, 2));
-    server = createReportServer({ port: 0, reportsDir: TEST_DIR, jobsDir: JOBS_DIR });
+    writeFileSync(join(OBSERVATIONS_DIR, '2026-05-07T00-00-00-observe-inbox.json'), JSON.stringify({
+      kind: 'observe-inbox',
+      schemaVersion: 1,
+      meta: {
+        tracePath: '/tmp/trace',
+        generatedAt: '2026-05-07T00:00:00.000Z',
+        segmentCount: 2,
+        itemCount: 2,
+      },
+      items: [
+        {
+          id: 'obs-high',
+          skillName: 'audit',
+          artifactVersion: 'unknown',
+          cwd: '/repo',
+          sessionId: 's1',
+          sourceTrace: '/tmp/trace/session.jsonl',
+          sourceKind: 'claude',
+          signalType: 'failed_search',
+          signalSubtype: 'hard_miss',
+          confidence: 0.9,
+          attributionConfidence: 0.85,
+          severity: 'high',
+          severityReasonCode: 'knowledge_gap_suspected',
+          evidence: { tool: 'Grep', query: 'schema' },
+          firstSeen: '2026-05-07T00:00:00.000Z',
+          lastSeen: '2026-05-07T00:00:00.000Z',
+          occurrences: 1,
+          recentSessionIds: ['s1'],
+          representativeEvidence: [{ tool: 'Grep', query: 'schema' }],
+        },
+        {
+          id: 'obs-noise',
+          skillName: 'audit',
+          artifactVersion: 'unknown',
+          cwd: '/repo',
+          sessionId: 's2',
+          sourceTrace: '/tmp/trace/session.jsonl',
+          sourceKind: 'claude',
+          signalType: 'failed_search',
+          signalSubtype: 'tool_limit',
+          confidence: 0.2,
+          attributionConfidence: 0.85,
+          severity: 'noise',
+          severityReasonCode: 'tool_or_runtime_noise',
+          evidence: { tool: 'Read', path: '/repo/large.ts' },
+          firstSeen: '2026-05-07T00:00:01.000Z',
+          lastSeen: '2026-05-07T00:00:01.000Z',
+          occurrences: 1,
+          recentSessionIds: ['s2'],
+          representativeEvidence: [{ tool: 'Read', path: '/repo/large.ts' }],
+        },
+      ],
+    }, null, 2));
+    server = createReportServer({ port: 0, reportsDir: TEST_DIR, observationsDir: OBSERVATIONS_DIR, jobsDir: JOBS_DIR });
     baseUrl = await server.start();
   });
 
@@ -144,6 +200,7 @@ describe('report-server', () => {
     await server.stop();
     rmSync(TEST_DIR, { recursive: true, force: true });
     rmSync(JOBS_DIR, { recursive: true, force: true });
+    rmSync(OBSERVATIONS_DIR, { recursive: true, force: true });
   });
 
   it('GET /health returns ok', async () => {
@@ -185,6 +242,15 @@ describe('report-server', () => {
     const data = JSON.parse(res.body);
     assert.equal(data.length, 1);
     assert.equal(data[0].jobId, 'job-test-run-002');
+  });
+
+  it('GET /api/observations/inbox supports severity and limit query params', async () => {
+    const res = await fetch(`${baseUrl}/api/observations/inbox?severity=high&limit=1`);
+    assert.equal(res.status, 200);
+    const data = JSON.parse(res.body);
+    assert.equal(data.length, 1);
+    assert.equal(data[0].id, 'obs-high');
+    assert.equal(data[0].severity, 'high');
   });
 
   it('GET /api/jobs supports filtering by project and tag', async () => {

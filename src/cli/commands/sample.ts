@@ -12,7 +12,7 @@ interface GenerateSamplesResult {
 
 export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
-  const { values } = parseArgsStrictOrExit({
+  const { values, positionals } = parseArgsStrictOrExit({
     args: argv,
     options: {
       ...COMMON_OPTIONS,
@@ -108,8 +108,9 @@ export async function execute(argv: string[]): Promise<void> {
       console.log(tCli('cli.gen.batch_summary', lang, { n: generated }));
     }
   } else {
-    // Single skill mode
-    const skillPath: string | undefined = argv.find((a: string) => !a.startsWith('-'));
+    // Single skill mode — 必须显式传 <skill-path>;flag value (如 --count 3 里的 3)
+    // 不会被当成 positional,因为我们用的是 parser 返回的 positionals。
+    const skillPath: string | undefined = positionals[0];
     if (!skillPath) {
       console.error(tCli('cli.gen.specify_skill_path', lang));
       throw new CliExit(1);

@@ -1,8 +1,9 @@
 /**
  * omk doctor 内置规则注册表。
  *
- * doctor 是**纯静态/低成本检查**, 不碰 LLM 连通性 — executor / judge 连通性由
- * evaluation preflight 负责。边界清晰: doctor 静态(零 LLM 调用), eval 动态。
+ * BUILTIN_RULES 是**纯静态/低成本检查**, 不碰 LLM 连通性 — executor / judge
+ * 连通性由 evaluation preflight 负责。用户入口 `omk doctor` 默认还会跑
+ * skill_health composer 做 LLM 审计;`--static-only` 只暴露这里的静态规则。
  *
  * 每条 rule 回答一个独立的「skill 能不能被有意义评测」子问题:
  *   - skill_readable: 文件能读、内容非空且有最小长度

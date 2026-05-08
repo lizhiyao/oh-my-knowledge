@@ -34,6 +34,7 @@ export async function execute(argv: string[]): Promise<void> {
       host: { type: 'string' },
       'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
       'analyses-dir': { type: 'string' },
+      'observations-dir': { type: 'string' },
       'no-open': { type: 'boolean', default: false },
       dev: { type: 'boolean', default: false },
     },
@@ -49,10 +50,14 @@ export async function execute(argv: string[]): Promise<void> {
       cliPath,
       'studio',
       '--port', values.port as string,
+      ...(values.host ? ['--host', values.host as string] : []),
       '--reports-dir', values['reports-dir'] as string,
     ];
     if (values['analyses-dir']) {
       args.push('--analyses-dir', values['analyses-dir'] as string);
+    }
+    if (values['observations-dir']) {
+      args.push('--observations-dir', values['observations-dir'] as string);
     }
     if (values['no-open']) {
       args.push('--no-open');
@@ -71,6 +76,7 @@ export async function execute(argv: string[]): Promise<void> {
     ...(values.host ? { host: values.host as string } : {}),
     reportsDir: resolve(values['reports-dir'] as string),
     ...(values['analyses-dir'] ? { analysesDir: resolve(values['analyses-dir'] as string) } : {}),
+    ...(values['observations-dir'] ? { observationsDir: resolve(values['observations-dir'] as string) } : {}),
   });
 
   const url = await server.start();

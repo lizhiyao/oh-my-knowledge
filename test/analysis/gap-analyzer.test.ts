@@ -54,6 +54,8 @@ describe('isFailedSearchTool', () => {
     { name: 'successful Grep with actual matches', call: tc('Grep', { pattern: 'foo' }, 'src/foo.ts:10: foo', true), expected: false },
     { name: 'Bash grep with empty output', call: tc('Bash', { command: 'grep -r foo /src' }, '', true), expected: true },
     { name: 'Bash rg with failure', call: tc('Bash', { command: 'rg foo' }, '', false), expected: true },
+    { name: 'Bash ls probe with explicit stderr suppression', call: tc('Bash', { command: 'ls /missing/path 2>/dev/null' }, '', true), expected: true },
+    { name: 'Bash test probe with tolerant fallback', call: tc('Bash', { command: 'test -f /missing/file || true' }, '', true), expected: true },
     { name: 'Bash without grep/rg/find', call: tc('Bash', { command: 'ls -la' }, '', false), expected: false },
     { name: 'Write or other non-search tools', call: tc('Write', { file_path: '/x.md' }, '', false), expected: false },
   ];
@@ -128,6 +130,24 @@ describe('extractMarkerSignals', () => {
     if (expectedLength > 0) {
       assert.equal(signals[0].type, 'explicit_marker');
     }
+  });
+
+  it('ignores marker examples in meta discussion text', () => {
+    const text = 'AI 输出里出现【推断】【知识缺口】等 marker，会被 explicit_marker 捕获。';
+    assert.equal(extractMarkerSignals(text).length, 0);
+  });
+
+  it('keeps real English knowledge gap markers', () => {
+    const signals = extractMarkerSignals('This answer has [knowledge gap] around billing schema.');
+    assert.equal(signals.length, 1);
+    assert.equal(signals[0].type, 'explicit_marker');
+  });
+
+  it('ignores marker examples in markdown quote, table, code fence and backtick mention', () => {
+    assert.equal(extractMarkerSignals('> 【推断】这是文档引用里的例子').length, 0);
+    assert.equal(extractMarkerSignals('| signal | marker |\n| explicit_marker | 【知识缺口】 |').length, 0);
+    assert.equal(extractMarkerSignals('```md\n【未知】示例\n```').length, 0);
+    assert.equal(extractMarkerSignals('文档里出现了 `【推断】` 这个标记。').length, 0);
   });
 });
 

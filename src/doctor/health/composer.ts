@@ -136,7 +136,8 @@ async function composerCheckAll(
 ): Promise<ComposerOutcome[]> {
   const dims = getRegisteredHealthDimensions();
 
-  // opt-out: 没开 --health → 给 summary 一条 skipped,各维度不展开避免污染报告
+  // Programmatic opt-out: runHealthCheck=false → 给 summary 一条 skipped,
+  // 各维度不展开避免污染报告。CLI 的 --static-only 会直接过滤掉 composer rule。
   if (!ctx.runHealthCheck) {
     return [{
       subId: '_summary',
