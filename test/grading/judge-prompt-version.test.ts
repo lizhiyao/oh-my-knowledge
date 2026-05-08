@@ -3,22 +3,22 @@ import assert from 'node:assert/strict';
 import { buildJudgePrompt, getJudgePromptHash } from '../../src/grading/judge.js';
 
 describe('judge prompt versioning', () => {
-  it('default builds the v3-cot-length prompt', () => {
+  it('default builds the v4-cot-len-args prompt', () => {
     const text = buildJudgePrompt('p', 'r', 'o', null);
-    assert.match(text, /v3-cot-length/);
+    assert.match(text, /v4-cot-len-args/);
     assert.match(text, /长度不是质量信号/);
   });
 
-  it('lengthDebias=false builds the legacy v2-cot prompt without the debias section', () => {
+  it('lengthDebias=false builds the v3-cot-toolargs prompt without the debias section', () => {
     const text = buildJudgePrompt('p', 'r', 'o', null, false);
-    assert.match(text, /v2-cot/);
+    assert.match(text, /v3-cot-toolargs/);
     assert.doesNotMatch(text, /长度不是质量信号/);
   });
 
-  it('hashes differ between v2 and v3', () => {
-    const v3 = getJudgePromptHash(true);
-    const v2 = getJudgePromptHash(false);
-    assert.notEqual(v3, v2, `v2 and v3 hashes should differ (v3=${v3}, v2=${v2})`);
+  it('hashes differ between debias on / off', () => {
+    const on = getJudgePromptHash(true);
+    const off = getJudgePromptHash(false);
+    assert.notEqual(on, off, `debias on/off hashes should differ (on=${on}, off=${off})`);
   });
 
   it('hash is deterministic across calls for the same setting', () => {

@@ -67,8 +67,16 @@ function salvageJudgeResponse(text: string): JudgeResponse | null {
  * with the same hash are score-comparable; mismatched hashes mean "we changed how we
  * ask the judge to think" and should not be compared blind.
  */
-const JUDGE_PROMPT_VERSION_DEBIAS_OFF = 'v2-cot';
-const JUDGE_PROMPT_VERSION_DEBIAS_ON = 'v3-cot-length';
+// 版本字符串内嵌"判官能看到什么"的语义。bump 时机:
+//   v2-cot           : 仅看 output + rubric + 工具名分布(早期 buildTraceSummary)
+//   v3-cot-length    : 加了 length-debias 指令(v0.21)
+//   v3-cot-toolargs  : 加了 tool input 预览(本次,BREAKING-COMPARABILITY)
+//   v4-cot-len-args  : v3-cot-length 的同步升级(BREAKING-COMPARABILITY)
+//   bump 原因:之前 trace 只给 tool 名 + 分布,wrapper-style skill(mcporter / code-host CLI 等)
+//   被判官当成"只调了 Bash,没用 skill 指定的 MCP 工具"——结论事实错误。
+//   tool input 预览让判官能识别 `Bash: mcporter --tool skylark_xxx` 内的真实语义调用。
+const JUDGE_PROMPT_VERSION_DEBIAS_OFF = 'v3-cot-toolargs';
+const JUDGE_PROMPT_VERSION_DEBIAS_ON = 'v4-cot-len-args';
 
 const JUDGE_SYSTEM_PROMPT = '你是一个严格的 AI 输出质量评审员。先逐条对照评分标准做推理，再给最终分数。只返回 JSON，不要其他内容。';
 
@@ -153,6 +161,28 @@ function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * Tool input 单行预览。Bash 命令(input.command)直接拿;其它 tool 走 JSON 序列化。
+ * 截断到 INPUT_PREVIEW_MAX 字符,避免 prompt 膨胀过头。
+ *
+ * 关键:wrapper-style skill(mcporter / code-host CLI / git CLI 等)的真实语义调用
+ * 编码在 Bash 命令字符串里(`mcporter --tool X` / `code-host pr show Y`),判官看不到
+ * 就会下"没调指定工具"的错误结论。这个预览是判官识别这层语义的唯一通道。
+ */
+const INPUT_PREVIEW_MAX = 280;
+const TOOL_DETAIL_MAX_CALLS = 12;
+function previewToolInput(tc: ToolCallInfo): string {
+  const inp = tc.input as unknown;
+  if (inp == null) return '';
+  // Bash 是 wrapper 大头,优先显示 command 字段
+  if (typeof inp === 'object' && 'command' in inp && typeof (inp as { command: unknown }).command === 'string') {
+    const cmd = (inp as { command: string }).command;
+    return cmd.length > INPUT_PREVIEW_MAX ? cmd.slice(0, INPUT_PREVIEW_MAX) + '…' : cmd;
+  }
+  const repr = typeof inp === 'string' ? inp : JSON.stringify(inp);
+  return repr.length > INPUT_PREVIEW_MAX ? repr.slice(0, INPUT_PREVIEW_MAX) + '…' : repr;
+}
+
 export function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]): string | null {
   if ((!turns || turns.length === 0) && (!toolCalls || toolCalls.length === 0)) return null;
 
@@ -173,6 +203,19 @@ export function buildTraceSummary(turns?: TurnInfo[], toolCalls?: ToolCallInfo[]
     const failedTools = toolCalls.filter((tc) => !tc.success).map((tc) => tc.tool);
     if (failedTools.length > 0) {
       lines.push(`  失败工具：${[...new Set(failedTools)].join(', ')}`);
+    }
+
+    // Tool input 详情(critical for wrapper-style skill 的判官准确性,见 INPUT_PREVIEW_MAX 注释)。
+    // 截 TOOL_DETAIL_MAX_CALLS 条防止长 trace 膨胀 prompt。
+    lines.push(`  调用详情(注意:Bash 命令内的 \`mcporter --tool X\` / \`code-host Y\` 等才是真实语义调用):`);
+    const detailCap = Math.min(toolCalls.length, TOOL_DETAIL_MAX_CALLS);
+    for (let i = 0; i < detailCap; i++) {
+      const tc = toolCalls[i];
+      const status = tc.success ? '' : ' [失败]';
+      lines.push(`    [${i + 1}] ${tc.tool}${status} → ${previewToolInput(tc)}`);
+    }
+    if (toolCalls.length > TOOL_DETAIL_MAX_CALLS) {
+      lines.push(`    ... 还有 ${toolCalls.length - TOOL_DETAIL_MAX_CALLS} 次调用`);
     }
   }
 
