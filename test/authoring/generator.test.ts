@@ -23,6 +23,14 @@ describe('buildSamplesPrompt', () => {
     assert.ok(prompt.includes('生成 7 个评测用例'));
   });
 
+  it('omits explicit count when count is undefined (LLM auto-decides)', () => {
+    const prompt = buildSamplesPrompt({ skillContent: 's', count: undefined });
+    // 不应包含具体数字 + "个评测用例"的强制句式
+    assert.ok(!/生成 \d+ 个评测用例/.test(prompt), 'should not contain "生成 N 个评测用例"');
+    // 应明确告诉 LLM 自行判断
+    assert.ok(prompt.includes('自行判断'), 'should ask LLM to auto-decide count');
+  });
+
   it('omits the focus block when focus is undefined', () => {
     const prompt = buildSamplesPrompt({ skillContent: 's', count: 3 });
     assert.ok(!prompt.includes('额外要求'));
@@ -107,6 +115,46 @@ describe('sanitizeGeneratedSamples', () => {
     const samples: Sample[] = [{ prompt: 'p' } as Sample];
     sanitizeGeneratedSamples(samples);
     assert.equal(samples[0].sample_id, 's001');
+  });
+
+  it('auto-sets mocksStrict=true when mocks exist but mocksStrict missing', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1',
+      prompt: 'p',
+      mocks: [{ tool: 'Bash', match: { command_glob: '*foo*' }, return: 'ok' }],
+    }];
+    sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].mocksStrict, true, 'mocksStrict should default to true when mocks present');
+  });
+
+  it('preserves explicit mocksStrict=false (escape hatch)', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1',
+      prompt: 'p',
+      mocks: [{ tool: 'Bash', match: { command_glob: '*foo*' }, return: 'ok' }],
+      mocksStrict: false,
+    }];
+    sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].mocksStrict, false, 'explicit false must be preserved');
+  });
+
+  it('does not set mocksStrict when sample has no mocks', () => {
+    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p' }];
+    sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].mocksStrict, undefined);
+  });
+
+  it('preserves valid tripwire boolean', () => {
+    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p', tripwire: true }];
+    sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].tripwire, true);
+  });
+
+  it('strips non-boolean tripwire (LLM 偶尔返回 "true" 字符串)', () => {
+    const samples: Sample[] = [{ sample_id: 's1', prompt: 'p', tripwire: 'true' as unknown as boolean }];
+    const { stripped } = sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].tripwire, undefined);
+    assert.ok(stripped.some((s) => s.includes('tripwire')));
   });
 
   it('throws on missing prompt(required field)', () => {

@@ -1,7 +1,44 @@
-import { createExecutor, DEFAULT_MODEL } from '../executors/index.js';
+import { createExecutor } from '../executors/index.js';
 import type { Sample } from '../types/index.js';
 
+/**
+ * Generator 默认模型 'opus' (跟 eval 默认对齐)。
+ * lean=true 路径会自动追加 `--effort low`,关掉 opus 默认的扩展思考,
+ * 所以 opus + lean + effort-low 在 generator 场景下速度仍然可控(单 skill ~30-60s)。
+ * 成本约 sonnet 的 5x,但 opus 在结构化指令遵循 / 长 prompt 一致性上更稳。
+ * 用户想要省钱时显式 `--model sonnet` 即可。
+ */
+const GENERATOR_DEFAULT_MODEL = 'opus';
+
 const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。
+
+样本结构决策（必须先做）：先扫一遍 skill 内容判断它属于哪一类，按对应配比和数量生成。
+- **工作流型** — skill 含"典型工作流"/"端到端"/明确多步流程章节，或描述"用户做一件事要按顺序调多个工具"的领域（端上自动化 / CI 部署 / API 编排 / 多步业务查询等）。
+  → **建议 6-8 条**：约 70% 工作流样本 + 约 30% 诱错样本（tripwire，测反模式）。
+- **原子型** — skill 主要是知识点 / 查询规则 / 单步动作合集，各能力间无明显先后依赖（代码评审 / SQL 优化 / 术语解释等）。
+  → **建议 4-6 条**：全部用原子样本；若 skill 反模式 / 安全规则丰富（如强制白名单 / 红线检查），可拉到 6-8 条加诱错样本。
+- **混合型** — 同时有多步流程章节 + 独立反模式 / 规则。
+  → **建议 5-7 条**：约 60% 工作流 + 约 40% 原子样本（含诱错）。
+
+数量决策的优先级：
+1. 用户在 prompt 末尾若明确给定数量（"生成 N 个评测用例"），**优先按 N**，再按类型分配配比。
+2. 用户若让你"自行判断合适数量"，按上述类型对应范围自定。
+3. 数量 <= 4 时优先保证覆盖度而非配比，哪怕全用原子。
+
+**工作流样本要点**：
+- prompt 必须含编号步骤（"1. xxx  2. xxx  3. xxx"），不要写成"帮我做完整个流程"这种开放式任务
+- 一条样本覆盖 4-7 个原子能力，assertion 以 **mock_hit**（每个关键步骤一条）为骨干，不要靠 contains 兜底——mock_hit 能在中间步骤失败时仍然精确告诉评测系统"挂在第几步"
+- 工作流之间应彼此**正交**（各覆盖不同能力组合），不要重复测同一组
+
+**诱错样本（tripwire）要点**：
+- 短 prompt（1-2 句），prompt 故意藏与 skill 矛盾的诱导（"直接用 X 就行 / 不用检查 / 我已经知道是 Y..."），测 skill 文档里写明的反模式 / 边界 / "不要做 X"
+- 必须含 **tools_not_called**（测"baseline 会犯的错"） + 1 条 tool_input_contains（测正确做法）
+- 用于装不进工作流的反应式知识（如"不要用 CGEvent / 必须用 PTY 模式 / 架构兼容性提示"等）
+- **必须在 sample 顶层加 \`"tripwire": true\`** — 让 omk 诊断知道"LLM fail 是预期",不要建议改 skill 文档
+
+判断完后在内部规划好配比再开始生成。**不要**在输出 JSON 里说明判断过程或配比，直接按规划生成样本即可。
+
+---
 
 每个用例需包含以下字段：
 - sample_id: 唯一标识，格式为 s001, s002, ...
@@ -38,6 +75,10 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
   原则:
     凡是 skill 跑起来需要的环境(凭证文件 / 业务 CLI / 自带脚本 / API token 等),
     都写到这里,而不是在 mock 里 mock 它们的探测命令。这让 mock 只关注业务调用本身。
+- mocksStrict: **必填且必须设为 true**(只要 sample 配了 mocks)。
+  原因:mocksStrict=false 时,LLM 调到没匹配 mock 的命令会**透传到真 shell**,
+  既可能真调外部接口产生副作用,也可能因二进制不存在(如 mcporter)报噪声错误污染评测信号。
+  评测目的是在隔离环境下测 LLM 行为,不是测真接口可用性 — 总是 strict。
 - mocks: 可选,数组。该 sample 跑评测时拦截工具调用 + 返回 stub。**避免真调外部接口/CLI/MCP/写状态**。
   生成原则:
     1. **mocks 只覆盖业务调用,不覆盖环境探测** — 环境前置由 \`environment\` 字段声明,
@@ -93,8 +134,16 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 - capability: string[] — 该用例覆盖的能力维度，如 ["api-selection", "error-diagnosis"]
 - difficulty: "easy" | "medium" | "hard" — 难度等级
 - construct: string — 用例测的 construct 类型，建议值 "necessity"（测知识必要性）/ "quality"（测 skill 写得好不好）/ "capability"（测某具体能力）
+- **tripwire: true** — **此 sample 是诱错样本时必填**。诱错样本(tripwire)= 故意诱导 LLM 走错的样本(用户用错前提 / 跳步骤 / 用错参数类型),目的是测 skill 是否能让 LLM 识破并纠正,**LLM 失败是预期结果**。
+  影响:omk 评测时,diagnostic 看到 tripwire:true 不会建议改 skill(因为 LLM 该 fail),避免误导 skill 作者。
+  典型识别:prompt 含"直接用 X 就行了"/"不用检查"/"我已经知道是 Y"等用户错误前提诱导 + assertions 含 tools_not_called 或反模式断言 + construct 通常是 "necessity"。
+  规则:诱错样本必填 tripwire:true。普通 capability sample 不要写 tripwire 字段。
 
-直接输出 JSON 数组，不要包含 markdown 代码块标记或其他内容。`;
+**JSON 输出规范（必须遵守）**：
+- 直接输出 JSON 数组，不要包含 markdown 代码块标记或其他文字
+- 字符串字段（prompt / rubric / capability 等）内部如需引号，**必须用全角「」**而不是半角 \`""\`，避免漏转义破坏 JSON 解析
+- 例：错 → \`"prompt": "查询"Daily"标签..."\`（内部 \`"\` 未转义，JSON 解析失败）
+       对 → \`"prompt": "查询「Daily」标签..."\`（全角引号，无转义压力）`;
 
 interface GenerateSamplesOptions {
   skillContent: string;
@@ -110,48 +159,76 @@ interface GenerateSamplesOptions {
 
 /**
  * 拼出送给 LLM 的 user prompt。抽出来便于单测验证 focus 是否真的注入了。
+ *
+ * count 语义:
+ *   - number: 强制生成 N 条
+ *   - undefined: 让 LLM 按系统提示里"样本结构决策"的类型对应范围自行判断数量
  */
-export function buildSamplesPrompt({ skillContent, count, focus }: { skillContent: string; count: number; focus?: string }): string {
+export function buildSamplesPrompt({ skillContent, count, focus }: { skillContent: string; count?: number; focus?: string }): string {
   const focusBlock = focus && focus.trim()
     ? `\n\n额外要求（用户指定的场景重点）：\n${focus.trim()}\n生成的用例必须优先覆盖以上场景，再在剩余配额内补充其它能力维度。`
     : '';
+  const countLine = typeof count === 'number'
+    ? `请根据这个 skill 生成 ${count} 个评测用例。`
+    : `请根据这个 skill 自行判断合适的数量并生成评测用例（参考系统提示中"样本结构决策"对应类型的数量范围）。`;
   return `以下是需要评测的 skill 内容：
 
 ${skillContent}
 
-请根据这个 skill 生成 ${count} 个评测用例。直接输出 JSON 数组。${focusBlock}`;
+${countLine}直接输出 JSON 数组。${focusBlock}`;
 }
 
-export async function generateSamples({ skillContent, count = 5, model = DEFAULT_MODEL, executorName = 'claude', focus }: GenerateSamplesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
+export async function generateSamples({ skillContent, count, model = GENERATOR_DEFAULT_MODEL, executorName = 'claude', focus }: GenerateSamplesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
   const executor = createExecutor(executorName);
 
   const prompt = buildSamplesPrompt({ skillContent, count, focus });
 
-  const result = await executor({ model, system: SYSTEM_PROMPT, prompt });
+  // 生成场景比单次 eval 调用更重(LLM 要思考结构 + 输出大段 JSON),
+  // 默认 120s 对长 skill + count >= 8 经常不够,这里用 5 分钟兜底。
+  // lean=true 关掉 agent 工具循环 / skill 发现 — 生成只需要纯文本,不需要 Bash / Read 等工具。
+  // 重试机制:LLM 偶尔输出 JSON 内含未转义引号 / 截断 / 多余文字。最多 2 次额外尝试,
+  // 第二次起在 prompt 末尾追加上一次的错误反馈,引导模型自纠。
+  const MAX_ATTEMPTS = 3;
+  let lastErr = '';
+  let totalCost = 0;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const attemptPrompt = attempt === 1
+      ? prompt
+      : `${prompt}\n\n上一次输出解析失败:${lastErr}\n请严格按 JSON 规范输出(字符串内部用「」全角引号),只输出数组,不要包含其他文字。`;
+    const result = await executor({ model, system: SYSTEM_PROMPT, prompt: attemptPrompt, timeoutMs: 300_000, lean: true });
+    totalCost += result.costUSD || 0;
+    if (!result.ok) {
+      lastErr = result.error || 'unknown error';
+      if (attempt === MAX_ATTEMPTS) throw new Error(`generation failed after ${MAX_ATTEMPTS} attempts: ${lastErr}`);
+      continue;
+    }
+    let jsonStr = result.output!.trim();
+    const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) jsonStr = jsonMatch[1].trim();
 
-  if (!result.ok) {
-    throw new Error(`generation failed: ${result.error || 'unknown error'}`);
+    let samples: Sample[];
+    try {
+      samples = JSON.parse(jsonStr);
+    } catch (e) {
+      lastErr = `JSON 解析失败: ${(e as Error).message}`;
+      if (attempt === MAX_ATTEMPTS) throw new Error(`generation failed after ${MAX_ATTEMPTS} attempts (JSON invalid): ${lastErr}`);
+      process.stderr.write(`[omk improve samples] 第 ${attempt} 次输出 JSON 无效,重试中...\n`);
+      continue;
+    }
+    if (!Array.isArray(samples) || samples.length === 0) {
+      lastErr = '输出为空数组';
+      if (attempt === MAX_ATTEMPTS) throw new Error(`generation failed after ${MAX_ATTEMPTS} attempts: ${lastErr}`);
+      continue;
+    }
+    // 通过校验,跳出循环继续后续 sanitize
+    return await finalizeSamples(samples, totalCost);
   }
+  // 不可达 (循环里所有出口都 throw 或 return),保留是为了 TS 类型推断
+  throw new Error('unreachable');
+}
 
-  // Extract JSON from output (handle possible markdown code blocks)
-  let jsonStr = result.output!.trim();
-  const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (jsonMatch) {
-    jsonStr = jsonMatch[1].trim();
-  }
-
-  let samples: Sample[];
-  try {
-    samples = JSON.parse(jsonStr);
-  } catch {
-    throw new Error('generated content is not valid JSON, please retry');
-  }
-
-  if (!Array.isArray(samples) || samples.length === 0) {
-    throw new Error('generated result is empty, please retry');
-  }
-
-  // Validate required fields + sanitize  metadata enums *at generator boundary*
+async function finalizeSamples(samples: Sample[], costUSD: number): Promise<{ samples: Sample[]; costUSD: number }> {
+  // Validate required fields + sanitize metadata enums *at generator boundary*
   // (see sanitizeGeneratedSamples).
   const { stripped } = sanitizeGeneratedSamples(samples);
   if (stripped.length > 0) {
@@ -160,7 +237,7 @@ export async function generateSamples({ skillContent, count = 5, model = DEFAULT
     );
   }
 
-  return { samples, costUSD: result.costUSD };
+  return { samples, costUSD };
 }
 
 /**
@@ -219,6 +296,13 @@ export function sanitizeGeneratedSamples(samples: Sample[]): { stripped: string[
     // After stripping invalid provenance, auto-stamp the generator's authority value.
     if (!s.provenance) s.provenance = 'llm-generated';
 
+    // tripwire 校验:必须是 boolean(true / false 都允许,但 LLM 偶尔写 "true" 字符串)。
+    // 非 boolean 一律 strip。omk diagnostic 会查 sample.tripwire === true。
+    if (s.tripwire !== undefined && typeof s.tripwire !== 'boolean') {
+      stripped.push(`samples[${i}].tripwire (${typeof s.tripwire})`);
+      delete (s as { tripwire?: unknown }).tripwire;
+    }
+
     // environment 校验:必须是对象,内部字段要么是 string[] 要么是 string。
     // 非法字段 strip 掉,避免 runtime 注入时炸 prompt。
     if (s.environment !== undefined) {
@@ -269,6 +353,14 @@ export function sanitizeGeneratedSamples(samples: Sample[]): { stripped: string[
         if (validMocks.length > 0) (s as Record<string, unknown>).mocks = validMocks;
         else delete (s as { mocks?: unknown }).mocks;
       }
+    }
+
+    // mocksStrict 兜底:有 mocks 时强制 true。
+    // SYSTEM_PROMPT 已要求 LLM 必填,但偶尔 LLM 漏填 — 在 generator boundary 修掉,
+    // 避免运行时 mock 未命中透传到真 shell(报 mcporter not found 等噪声错误)。
+    // LLM 显式给 false 时尊重(罕见,但保留 escape hatch — 比如混合 mock + 真 fs 的特殊场景)。
+    if (s.mocks && s.mocks.length > 0 && s.mocksStrict === undefined) {
+      s.mocksStrict = true;
     }
   }
   return { stripped };
