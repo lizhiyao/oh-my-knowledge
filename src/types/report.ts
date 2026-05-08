@@ -60,6 +60,10 @@ export interface VariantResult {
   factCheck?: { verifiedCount: number; totalCount: number; verifiedRate: number; claims: Array<{ type: string; value: string; verified: boolean; evidence?: string }> };
   outputPreview: string | null;
   fullOutput?: string;
+  /** Functional-test 视角的诊断。与 Judge 评价(llmReason / llmReasoning)彻底独立:
+   *  judge 答"打几分",diagnostic 答"哪错了 + 怎么改"。
+   *  仅在至少有 1 条 failed assertion 时填充,且不受 --no-judge 影响(--no-diagnostic 控制)。 */
+  diagnostic?: import('./judge.js').DiagnosticResult;
   turns?: TurnInfo[];
   toolCalls?: ToolCallInfo[];
   /** Sample.mocks 命中统计(从 ExecResult.mockStats 透传)。仅当 sample 配了 mocks 时有值。 */
@@ -179,6 +183,10 @@ export interface ReportMeta {
   variants: string[];
   model: string;
   executor: string;
+  /** Reasoning effort 用于被评测的 executor LLM(不是 judge)。
+   *  缺位 = 未指定 / 走 executor 默认(historic)。值 'low'/'medium'/'high'/'xhigh'/'max'。
+   *  跨 effort 的 report 不可严格比较,renderer 在 meta-tag 显式标出。 */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   sampleCount: number;
   taskCount: number;
   totalCostUSD: number;
@@ -262,12 +270,43 @@ export interface ResultEntry {
   variants: Record<string, VariantResult>;
 }
 
+/**
+ * Per-sample 设计快照(测试契约),仅用于报告渲染 — 单测视角需要展示"用例长什么样、
+ * 期望什么、用了什么 mock 夹具"。Grading / judge 不参考这个字段。
+ *
+ * 内容是 Sample 的子集,只保留渲染需要的字段:
+ *   - prompt / rubric: 用例内容本身
+ *   - assertions: 期望(运行后的 pass/fail 结果在 VariantResult.assertions.details 里)
+ *   - mocks: 测试夹具(模拟工具调用返回)
+ *   - capability / construct / difficulty: 元数据
+ *   - context: 附加上下文(代码片段等)
+ *
+ * 旧 report 没有这个字段,renderer 据此 fallback(隐藏单测 tab 或提示"无设计快照")。
+ */
+export interface SampleSnapshot {
+  sample_id: string;
+  prompt: string;
+  rubric?: string;
+  context?: string;
+  assertions?: import('./eval.js').Assertion[];
+  mocks?: import('./eval.js').Mock[];
+  capability?: string[];
+  difficulty?: import('./eval.js').SampleDifficulty;
+  construct?: string;
+  provenance?: import('./eval.js').SampleProvenance;
+  /** Diagnostic 用 — tripwire sample 不该建议改 skill。 */
+  tripwire?: boolean;
+}
+
 export interface EvaluationReport {
   kind: 'evaluation';
   id: string;
   meta: ReportMeta;
   summary: Record<string, VariantSummary>;
   results: ResultEntry[];
+  /** 用例设计快照,按 sample_id 索引。供单测视角(test view)渲染"用例契约 + 期望"用,
+   *  不参与 grading。旧 report 缺位时单测 tab 显示降级提示。 */
+  sampleSnapshots?: Record<string, SampleSnapshot>;
   analysis?: AnalysisResult;
   variance?: VarianceData;
 }

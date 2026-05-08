@@ -372,6 +372,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <span class="meta-tag">Judge: claude:haiku</span>
 
       <span class="meta-tag">Executor: claude</span>
+
       <span class="meta-tag">Execution cost: $0.0380</span>
       <span class="meta-tag">Reported total cost: $0.0500</span>
       <span class="meta-tag">Duration: 10.0s</span>
@@ -384,6 +385,12 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     </div>
 
 
+    <div class="omk-view-tabs" role="tablist">
+      <button type="button" class="omk-view-tab omk-view-tab--active" data-view="score" onclick="omkSwitchView('score')">📊 Score</button>
+      <button type="button" class="omk-view-tab" data-view="test" onclick="omkSwitchView('test')">✅ Tests</button>
+    </div>
+
+    <div class="omk-view-panel" data-view="score">
 
     <section style="margin:20px 0">
       <h2 style="display:flex;align-items:center;gap:4px">Experiment Setup <button type="button" class="hint-btn" onclick="openModal('guide-variant-config')" aria-label="Confirm what is being compared before reading the score. This table explains the artifact and runtime context behind each variant." aria-haspopup="dialog">?</button></h2>
@@ -514,6 +521,211 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <tbody><tr><td><strong>s001</strong></td><td><span class="badge badge-ok">4</span><br><span style="font-size:11px;color:var(--text-muted)">Decent analysis</span></td><td>600</td><td>2.0s</td><td><span class="badge badge-ok">4.5</span><br><span style="font-size:11px;color:var(--text-muted)">Thorough review</span></td><td>700<span style="color:var(--red);font-size:11px;margin-left:4px">↑16.7%</span></td><td>2.5s<span style="color:var(--red);font-size:11px;margin-left:4px">↑25%</span></td></tr></tbody>
     </table>
     </div></section>
+    </div>
+
+    <div class="omk-view-panel" data-view="test" hidden>
+    <div class="tv-warn">⚠ Report has no sampleSnapshots (older format); only execution results shown</div>
+    <div class="tv-variant-tabs"><button type="button" class="tv-vtab tv-vtab--active" data-target="v1" onclick="omkSwitchVariant(this)">v1</button><button type="button" class="tv-vtab " data-target="v2" onclick="omkSwitchVariant(this)">v2</button></div>
+    <div class="tv-variant-panel" data-variant="v1" >
+      <div class="tv-variant-stats">
+        <span class="tv-stat tv-stat--pass">✓ 1 passed</span>
+        <span class="tv-stat tv-stat--fail">✗ 0 failed</span>
+
+        <span class="tv-stat">avg score 4.00/5</span>
+      </div>
+      <details class="tv-card tv-card--pass">
+    <summary class="tv-card-h">
+      <span class="tv-verdict tv-verdict--pass">✓ PASS</span>
+      <code class="tv-sample-id">s001</code>
+      <span class="tv-card-title">(no prompt snapshot)</span>
+      <span class="tv-card-stats">2/2 · 2.0s · $0.010 · score 4.0</span>
+    </summary>
+    <div class="tv-card-body">
+
+
+      <div class="tv-section tv-section--design">
+      <div class="tv-section-h">📋 Test design</div>
+      <div class="tv-empty">Report predates test-view support; no design snapshot</div>
+    </div>
+      <div class="tv-section tv-section--trace">
+      <div class="tv-section-h">🎬 Execution trace</div>
+      <div class="tv-empty">No turn trace from executor</div>
+    </div>
+      <div class="tv-section tv-section--asserts">
+      <div class="tv-section-h">📊 Assertion results <span class="tv-section-stat">(2/2)</span></div>
+      <div class="tv-assert tv-assert--pass">
+    ✅ <code>contains</code> <code class="tv-assert-value">SQL</code><span class="tv-turn-tag">@ full output</span>
+
+  </div><div class="tv-assert tv-assert--pass">
+    ✅ <code>min_length</code> <code class="tv-assert-value">50</code><span class="tv-turn-tag">@ full output</span>
+
+  </div>
+    </div>
+    </div>
+  </details>
+    </div><div class="tv-variant-panel" data-variant="v2" hidden>
+      <div class="tv-variant-stats">
+        <span class="tv-stat tv-stat--pass">✓ 1 passed</span>
+        <span class="tv-stat tv-stat--fail">✗ 0 failed</span>
+
+        <span class="tv-stat">avg score 4.50/5</span>
+      </div>
+      <details class="tv-card tv-card--pass">
+    <summary class="tv-card-h">
+      <span class="tv-verdict tv-verdict--pass">✓ PASS</span>
+      <code class="tv-sample-id">s001</code>
+      <span class="tv-card-title">(no prompt snapshot)</span>
+      <span class="tv-card-stats">2/2 · 2.5s · $0.010 · score 4.5</span>
+    </summary>
+    <div class="tv-card-body">
+
+
+      <div class="tv-section tv-section--design">
+      <div class="tv-section-h">📋 Test design</div>
+      <div class="tv-empty">Report predates test-view support; no design snapshot</div>
+    </div>
+      <div class="tv-section tv-section--trace">
+      <div class="tv-section-h">🎬 Execution trace</div>
+      <div class="tv-empty">No turn trace from executor</div>
+    </div>
+      <div class="tv-section tv-section--asserts">
+      <div class="tv-section-h">📊 Assertion results <span class="tv-section-stat">(2/2)</span></div>
+      <div class="tv-assert tv-assert--pass">
+    ✅ <code>contains</code> <code class="tv-assert-value">SQL</code><span class="tv-turn-tag">@ full output</span>
+
+  </div><div class="tv-assert tv-assert--pass">
+    ✅ <code>min_length</code> <code class="tv-assert-value">50</code><span class="tv-turn-tag">@ full output</span>
+
+  </div>
+    </div>
+    </div>
+  </details>
+    </div>
+    </div>
+
+    <style>
+.tv-variant-tabs { display:flex;gap:4px;margin:12px 0;border-bottom:1px solid var(--border) }
+.tv-vtab { padding:8px 16px;background:transparent;border:none;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;font-size:14px }
+.tv-vtab--active { color:var(--text-primary);border-bottom-color:var(--accent, #3b82f6);font-weight:600 }
+.tv-variant-stats { display:flex;gap:16px;padding:8px 12px;background:var(--bg-surface);border-radius:var(--radius);margin-bottom:12px;font-size:13px }
+.tv-stat { color:var(--text-secondary) }
+.tv-stat--pass { color:#10b981 }
+.tv-stat--fail { color:#ef4444 }
+.tv-stat--tripwire { color:#a855f7 }
+.tv-card { border:1px solid var(--border);border-radius:var(--radius);margin:8px 0;background:var(--bg-surface) }
+.tv-card[open] { background:var(--bg-elevated, var(--bg-surface)) }
+.tv-card--pass { border-left:3px solid #10b981 }
+.tv-card--fail { border-left:3px solid #ef4444 }
+/* 诱错样本(tripwire)— 紫色,与普通失败区分 */
+.tv-card--tripwire { border-left:3px solid #a855f7;background:#a855f708 }
+.tv-card-h { display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;font-size:14px;list-style:none }
+.tv-card-h::-webkit-details-marker { display:none }
+.tv-verdict { font-weight:700;font-size:11px;padding:2px 6px;border-radius:3px }
+.tv-verdict--pass { background:#10b98120;color:#10b981 }
+.tv-verdict--fail { background:#ef444420;color:#ef4444 }
+.tv-verdict--tripwire { background:#a855f720;color:#a855f7 }
+.tv-sample-id { color:var(--text-muted);font-size:12px }
+.tv-card-title { flex:1;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+.tv-card-stats { color:var(--text-muted);font-size:12px;font-family:var(--font-mono, ui-monospace, monospace) }
+.tv-card-body { padding:0 12px 12px }
+.tv-section { margin-top:12px;padding:10px 12px;background:var(--bg-base, var(--bg-surface));border-radius:var(--radius);border:1px solid var(--border) }
+.tv-section-h { font-weight:600;font-size:13px;margin-bottom:8px;color:var(--text-primary) }
+.tv-section-stat { color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px }
+/* 诊断区:与 Judge 评价独立(judge 在评分 tab,这里只负责"哪错了 + 怎么改")。
+   fail 用红色边 + 浅红底;empty 灰色;pass 用例不渲染此 section。 */
+.tv-section--diagnostic { border-left-width:4px }
+.tv-diag--fail { border-left-color:#ef4444;background:#ef444408 }
+.tv-diag--empty { border-left-color:var(--border);opacity:0.7 }
+.tv-diag-summary { font-size:13px;line-height:1.6;color:var(--text-primary);margin:4px 0;font-weight:500 }
+.tv-diag-score { background:var(--bg-surface);padding:2px 6px;border-radius:3px;font-size:11px;font-weight:600;color:var(--text-secondary);margin-left:8px;font-family:var(--font-mono, ui-monospace, monospace) }
+.tv-diag-cot-body { padding:8px;background:var(--bg-surface);border-radius:3px;color:var(--text-secondary);white-space:pre-wrap;font-size:12px;margin-top:6px;line-height:1.5 }
+/* rootCause pill — 5 类不同色 */
+.tv-diag-rootcause { display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 }
+.tv-diag-rc-pill { font-size:10px;padding:2px 6px;border-radius:3px;font-family:var(--font-mono, ui-monospace, monospace);background:var(--bg-surface);color:var(--text-secondary);border:1px solid var(--border) }
+.tv-diag-rc--skill_doc_unclear, .tv-diag-rc--skill_doc_missing, .tv-diag-rc--llm_misread { background:#f59e0b15;color:#f59e0b;border-color:#f59e0b40 }
+.tv-diag-rc--sample_design { background:#3b82f615;color:#3b82f6;border-color:#3b82f640 }
+.tv-diag-rc--tripwire_intentional { background:#a855f715;color:#a855f7;border-color:#a855f740 }
+/* 诱错横幅:卡片顶部解释"这是设计性失败" */
+.tv-tripwire-banner { margin-bottom:12px;padding:10px 12px;background:#a855f710;border:1px solid #a855f740;border-left:4px solid #a855f7;border-radius:var(--radius);font-size:13px;line-height:1.6 }
+.tv-tripwire-banner strong { color:#a855f7;display:block;margin-bottom:4px }
+.tv-tripwire-banner-body { color:var(--text-secondary) }
+/* 期望 vs 实际 — 并列两行 */
+.tv-diag-ea { margin-top:8px;padding:8px;background:var(--bg-surface);border-radius:3px;font-size:12px;line-height:1.5 }
+.tv-diag-ea-row { margin:2px 0;color:var(--text-secondary) }
+.tv-diag-ea-row strong { color:var(--text-primary);margin-right:4px }
+/* 建议 — 三类(skill / sample / none)tag + 文本 */
+.tv-diag-sugg { margin-top:8px;padding:8px;background:var(--bg-surface);border-radius:3px }
+.tv-diag-sugg-h { font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:6px }
+.tv-diag-sugg-row { font-size:12px;line-height:1.6;color:var(--text-secondary);margin:4px 0 }
+.tv-diag-sugg-tag { font-size:10px;padding:2px 6px;border-radius:3px;font-family:var(--font-mono, ui-monospace, monospace);margin-right:6px;font-weight:600 }
+.tv-diag-sugg-tag--skill { background:#f59e0b20;color:#f59e0b }
+.tv-diag-sugg-tag--sample { background:#3b82f620;color:#3b82f6 }
+.tv-diag-sugg-tag--none { background:#6b728020;color:#6b7280 }
+.tv-prompt, .tv-rubric { font-size:13px;line-height:1.5;margin:6px 0 }
+.tv-prompt strong, .tv-rubric strong { color:var(--text-primary);margin-right:6px }
+.tv-meta-pills { margin:8px 0;display:flex;flex-wrap:wrap;gap:6px }
+.tv-meta-pill { font-size:11px;padding:2px 6px;background:var(--bg-surface);border:1px solid var(--border);border-radius:3px;color:var(--text-secondary);font-family:var(--font-mono, ui-monospace, monospace) }
+.tv-expected { margin-top:8px }
+.tv-expected-h { font-size:12px;color:var(--text-muted);margin-bottom:4px }
+.tv-expect-line { font-size:12px;font-family:var(--font-mono, ui-monospace, monospace);color:var(--text-secondary);padding:2px 0 }
+.tv-collapsible { margin-top:8px;font-size:12px }
+.tv-collapsible summary { cursor:pointer;color:var(--text-muted) }
+.tv-mocks { margin-top:6px }
+.tv-mock-line { font-size:11px;font-family:var(--font-mono, ui-monospace, monospace);padding:2px 0;display:flex;flex-wrap:wrap;gap:4px;align-items:center }
+.tv-mock-idx { color:var(--text-muted);font-weight:600 }
+.tv-mock-tool { background:var(--bg-surface);padding:1px 4px;border-radius:2px }
+.tv-mock-match { color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;max-width:300px;white-space:nowrap }
+.tv-mock-arrow { color:var(--text-muted) }
+.tv-mock-return { color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;max-width:300px;white-space:nowrap }
+.tv-turn { margin:6px 0;padding:6px 8px;background:var(--bg-surface);border-radius:var(--radius);border-left:2px solid var(--border) }
+.tv-turn-h { font-size:12px;font-weight:600;color:var(--text-primary) }
+.tv-turn-dur { color:var(--text-muted);font-weight:400;font-size:11px;margin-left:6px }
+.tv-thinking { margin:4px 0;font-size:12px }
+.tv-thinking summary { cursor:pointer;color:var(--text-muted);font-style:italic }
+.tv-thinking-body { padding:6px 8px;background:var(--bg-base, var(--bg-surface));border-radius:3px;color:var(--text-secondary);white-space:pre-wrap;font-size:12px;margin-top:4px }
+.tv-call { margin:4px 0;padding:6px 8px;background:var(--bg-base, var(--bg-surface));border-radius:3px;font-size:12px }
+.tv-call--err { border-left:2px solid #ef4444 }
+.tv-call-h { font-weight:600;color:var(--text-primary);margin-bottom:4px }
+.tv-call details { margin:2px 0;font-size:11px }
+.tv-call summary { cursor:pointer;color:var(--text-muted);padding:2px 0 }
+.tv-pre { font-family:var(--font-mono, ui-monospace, monospace);font-size:11px;background:var(--bg-surface);padding:6px 8px;border-radius:3px;overflow:auto;max-height:300px;white-space:pre-wrap;margin:2px 0 }
+.tv-mock-badge { font-size:11px;color:#10b981;background:#10b98115;padding:1px 4px;border-radius:2px;margin-left:6px }
+.tv-trace-assert { font-size:11px;font-family:var(--font-mono, ui-monospace, monospace);padding:2px 0;margin-top:4px }
+.tv-trace-assert.tv-assert--fail { color:#ef4444 }
+.tv-trace-assert.tv-assert--pass { color:#10b981 }
+.tv-assert { font-size:12px;font-family:var(--font-mono, ui-monospace, monospace);padding:3px 0 }
+.tv-assert--pass { color:var(--text-secondary) }
+.tv-assert--fail { color:#ef4444 }
+.tv-assert-value { background:var(--bg-surface);padding:1px 4px;border-radius:2px;margin:0 2px }
+.tv-turn-tag { font-size:10px;color:var(--text-muted);margin-left:6px;font-style:italic }
+.tv-turn-tag--ok { color:#10b981 }
+.tv-turn-tag--miss { color:#ef4444 }
+.tv-assert-msg { font-size:11px;color:var(--text-muted);margin-left:18px;margin-top:2px }
+.tv-empty, .tv-empty-page { color:var(--text-muted);font-style:italic;padding:8px;font-size:13px }
+.tv-warn { color:#f59e0b;background:#f59e0b15;padding:8px 12px;border-radius:var(--radius);margin:8px 0;font-size:12px }
+.tv-final { margin-top:8px }
+.tv-final-h { font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:4px }
+
+.omk-view-tabs { display:flex;gap:8px;margin:16px 0 12px;border-bottom:1px solid var(--border) }
+.omk-view-tab { padding:8px 16px;background:transparent;border:none;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;font-size:14px;font-weight:500 }
+.omk-view-tab--active { color:var(--text-primary);border-bottom-color:var(--accent, #3b82f6);font-weight:600 }
+.omk-view-tab:hover:not(.omk-view-tab--active) { color:var(--text-secondary) }
+    </style>
+    <script>
+function omkSwitchVariant(btn) {
+  var target = btn.getAttribute('data-target');
+  var tabs = btn.parentElement.querySelectorAll('.tv-vtab');
+  tabs.forEach(function(t){ t.classList.toggle('tv-vtab--active', t === btn); });
+  var panels = btn.parentElement.parentElement.querySelectorAll('.tv-variant-panel');
+  panels.forEach(function(p){ p.hidden = (p.getAttribute('data-variant') !== target); });
+}
+function omkSwitchView(name) {
+  var tabs = document.querySelectorAll('.omk-view-tab');
+  tabs.forEach(function(t){ t.classList.toggle('omk-view-tab--active', t.getAttribute('data-view') === name); });
+  var panels = document.querySelectorAll('.omk-view-panel');
+  panels.forEach(function(p){ p.hidden = (p.getAttribute('data-view') !== name); });
+}
+</script>
 
     </main>
   <footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer>
@@ -928,6 +1140,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <span class="meta-tag">评委: claude:haiku</span>
 
       <span class="meta-tag">执行器: claude</span>
+
       <span class="meta-tag">执行成本: $0.0380</span>
       <span class="meta-tag">已上报总成本: $0.0500</span>
       <span class="meta-tag">耗时: 10.0s</span>
@@ -940,6 +1153,12 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     </div>
 
 
+    <div class="omk-view-tabs" role="tablist">
+      <button type="button" class="omk-view-tab omk-view-tab--active" data-view="score" onclick="omkSwitchView('score')">📊 评分</button>
+      <button type="button" class="omk-view-tab" data-view="test" onclick="omkSwitchView('test')">✅ 单测</button>
+    </div>
+
+    <div class="omk-view-panel" data-view="score">
 
     <section style="margin:20px 0">
       <h2 style="display:flex;align-items:center;gap:4px">实验配置 <button type="button" class="hint-btn" onclick="openModal('guide-variant-config')" aria-label="先看清楚在比较什么，再看分数。本表展示每个 variant 背后的 artifact 和运行环境。" aria-haspopup="dialog">?</button></h2>
@@ -1070,6 +1289,211 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <tbody><tr><td><strong>s001</strong></td><td><span class="badge badge-ok">4</span><br><span style="font-size:11px;color:var(--text-muted)">Decent analysis</span></td><td>600</td><td>2.0s</td><td><span class="badge badge-ok">4.5</span><br><span style="font-size:11px;color:var(--text-muted)">Thorough review</span></td><td>700<span style="color:var(--red);font-size:11px;margin-left:4px">↑16.7%</span></td><td>2.5s<span style="color:var(--red);font-size:11px;margin-left:4px">↑25%</span></td></tr></tbody>
     </table>
     </div></section>
+    </div>
+
+    <div class="omk-view-panel" data-view="test" hidden>
+    <div class="tv-warn">⚠ 该 report 缺 sampleSnapshots(早期版本生成),只能展示执行结果,无设计信息</div>
+    <div class="tv-variant-tabs"><button type="button" class="tv-vtab tv-vtab--active" data-target="v1" onclick="omkSwitchVariant(this)">v1</button><button type="button" class="tv-vtab " data-target="v2" onclick="omkSwitchVariant(this)">v2</button></div>
+    <div class="tv-variant-panel" data-variant="v1" >
+      <div class="tv-variant-stats">
+        <span class="tv-stat tv-stat--pass">✓ 1 通过</span>
+        <span class="tv-stat tv-stat--fail">✗ 0 失败</span>
+
+        <span class="tv-stat">平均评分 4.00/5</span>
+      </div>
+      <details class="tv-card tv-card--pass">
+    <summary class="tv-card-h">
+      <span class="tv-verdict tv-verdict--pass">✓ PASS</span>
+      <code class="tv-sample-id">s001</code>
+      <span class="tv-card-title">(无 prompt 快照)</span>
+      <span class="tv-card-stats">2/2 · 2.0s · $0.010 · 评分 4.0</span>
+    </summary>
+    <div class="tv-card-body">
+
+
+      <div class="tv-section tv-section--design">
+      <div class="tv-section-h">📋 用例设计</div>
+      <div class="tv-empty">该 report 早于单测视角支持时间,缺设计快照</div>
+    </div>
+      <div class="tv-section tv-section--trace">
+      <div class="tv-section-h">🎬 执行轨迹</div>
+      <div class="tv-empty">该 variant 无 turn 轨迹(executor 未上报)</div>
+    </div>
+      <div class="tv-section tv-section--asserts">
+      <div class="tv-section-h">📊 断言结果 <span class="tv-section-stat">(2/2)</span></div>
+      <div class="tv-assert tv-assert--pass">
+    ✅ <code>contains</code> <code class="tv-assert-value">SQL</code><span class="tv-turn-tag">@ 全文输出</span>
+
+  </div><div class="tv-assert tv-assert--pass">
+    ✅ <code>min_length</code> <code class="tv-assert-value">50</code><span class="tv-turn-tag">@ 全文输出</span>
+
+  </div>
+    </div>
+    </div>
+  </details>
+    </div><div class="tv-variant-panel" data-variant="v2" hidden>
+      <div class="tv-variant-stats">
+        <span class="tv-stat tv-stat--pass">✓ 1 通过</span>
+        <span class="tv-stat tv-stat--fail">✗ 0 失败</span>
+
+        <span class="tv-stat">平均评分 4.50/5</span>
+      </div>
+      <details class="tv-card tv-card--pass">
+    <summary class="tv-card-h">
+      <span class="tv-verdict tv-verdict--pass">✓ PASS</span>
+      <code class="tv-sample-id">s001</code>
+      <span class="tv-card-title">(无 prompt 快照)</span>
+      <span class="tv-card-stats">2/2 · 2.5s · $0.010 · 评分 4.5</span>
+    </summary>
+    <div class="tv-card-body">
+
+
+      <div class="tv-section tv-section--design">
+      <div class="tv-section-h">📋 用例设计</div>
+      <div class="tv-empty">该 report 早于单测视角支持时间,缺设计快照</div>
+    </div>
+      <div class="tv-section tv-section--trace">
+      <div class="tv-section-h">🎬 执行轨迹</div>
+      <div class="tv-empty">该 variant 无 turn 轨迹(executor 未上报)</div>
+    </div>
+      <div class="tv-section tv-section--asserts">
+      <div class="tv-section-h">📊 断言结果 <span class="tv-section-stat">(2/2)</span></div>
+      <div class="tv-assert tv-assert--pass">
+    ✅ <code>contains</code> <code class="tv-assert-value">SQL</code><span class="tv-turn-tag">@ 全文输出</span>
+
+  </div><div class="tv-assert tv-assert--pass">
+    ✅ <code>min_length</code> <code class="tv-assert-value">50</code><span class="tv-turn-tag">@ 全文输出</span>
+
+  </div>
+    </div>
+    </div>
+  </details>
+    </div>
+    </div>
+
+    <style>
+.tv-variant-tabs { display:flex;gap:4px;margin:12px 0;border-bottom:1px solid var(--border) }
+.tv-vtab { padding:8px 16px;background:transparent;border:none;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;font-size:14px }
+.tv-vtab--active { color:var(--text-primary);border-bottom-color:var(--accent, #3b82f6);font-weight:600 }
+.tv-variant-stats { display:flex;gap:16px;padding:8px 12px;background:var(--bg-surface);border-radius:var(--radius);margin-bottom:12px;font-size:13px }
+.tv-stat { color:var(--text-secondary) }
+.tv-stat--pass { color:#10b981 }
+.tv-stat--fail { color:#ef4444 }
+.tv-stat--tripwire { color:#a855f7 }
+.tv-card { border:1px solid var(--border);border-radius:var(--radius);margin:8px 0;background:var(--bg-surface) }
+.tv-card[open] { background:var(--bg-elevated, var(--bg-surface)) }
+.tv-card--pass { border-left:3px solid #10b981 }
+.tv-card--fail { border-left:3px solid #ef4444 }
+/* 诱错样本(tripwire)— 紫色,与普通失败区分 */
+.tv-card--tripwire { border-left:3px solid #a855f7;background:#a855f708 }
+.tv-card-h { display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;font-size:14px;list-style:none }
+.tv-card-h::-webkit-details-marker { display:none }
+.tv-verdict { font-weight:700;font-size:11px;padding:2px 6px;border-radius:3px }
+.tv-verdict--pass { background:#10b98120;color:#10b981 }
+.tv-verdict--fail { background:#ef444420;color:#ef4444 }
+.tv-verdict--tripwire { background:#a855f720;color:#a855f7 }
+.tv-sample-id { color:var(--text-muted);font-size:12px }
+.tv-card-title { flex:1;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+.tv-card-stats { color:var(--text-muted);font-size:12px;font-family:var(--font-mono, ui-monospace, monospace) }
+.tv-card-body { padding:0 12px 12px }
+.tv-section { margin-top:12px;padding:10px 12px;background:var(--bg-base, var(--bg-surface));border-radius:var(--radius);border:1px solid var(--border) }
+.tv-section-h { font-weight:600;font-size:13px;margin-bottom:8px;color:var(--text-primary) }
+.tv-section-stat { color:var(--text-muted);font-weight:400;font-size:12px;margin-left:8px }
+/* 诊断区:与 Judge 评价独立(judge 在评分 tab,这里只负责"哪错了 + 怎么改")。
+   fail 用红色边 + 浅红底;empty 灰色;pass 用例不渲染此 section。 */
+.tv-section--diagnostic { border-left-width:4px }
+.tv-diag--fail { border-left-color:#ef4444;background:#ef444408 }
+.tv-diag--empty { border-left-color:var(--border);opacity:0.7 }
+.tv-diag-summary { font-size:13px;line-height:1.6;color:var(--text-primary);margin:4px 0;font-weight:500 }
+.tv-diag-score { background:var(--bg-surface);padding:2px 6px;border-radius:3px;font-size:11px;font-weight:600;color:var(--text-secondary);margin-left:8px;font-family:var(--font-mono, ui-monospace, monospace) }
+.tv-diag-cot-body { padding:8px;background:var(--bg-surface);border-radius:3px;color:var(--text-secondary);white-space:pre-wrap;font-size:12px;margin-top:6px;line-height:1.5 }
+/* rootCause pill — 5 类不同色 */
+.tv-diag-rootcause { display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 }
+.tv-diag-rc-pill { font-size:10px;padding:2px 6px;border-radius:3px;font-family:var(--font-mono, ui-monospace, monospace);background:var(--bg-surface);color:var(--text-secondary);border:1px solid var(--border) }
+.tv-diag-rc--skill_doc_unclear, .tv-diag-rc--skill_doc_missing, .tv-diag-rc--llm_misread { background:#f59e0b15;color:#f59e0b;border-color:#f59e0b40 }
+.tv-diag-rc--sample_design { background:#3b82f615;color:#3b82f6;border-color:#3b82f640 }
+.tv-diag-rc--tripwire_intentional { background:#a855f715;color:#a855f7;border-color:#a855f740 }
+/* 诱错横幅:卡片顶部解释"这是设计性失败" */
+.tv-tripwire-banner { margin-bottom:12px;padding:10px 12px;background:#a855f710;border:1px solid #a855f740;border-left:4px solid #a855f7;border-radius:var(--radius);font-size:13px;line-height:1.6 }
+.tv-tripwire-banner strong { color:#a855f7;display:block;margin-bottom:4px }
+.tv-tripwire-banner-body { color:var(--text-secondary) }
+/* 期望 vs 实际 — 并列两行 */
+.tv-diag-ea { margin-top:8px;padding:8px;background:var(--bg-surface);border-radius:3px;font-size:12px;line-height:1.5 }
+.tv-diag-ea-row { margin:2px 0;color:var(--text-secondary) }
+.tv-diag-ea-row strong { color:var(--text-primary);margin-right:4px }
+/* 建议 — 三类(skill / sample / none)tag + 文本 */
+.tv-diag-sugg { margin-top:8px;padding:8px;background:var(--bg-surface);border-radius:3px }
+.tv-diag-sugg-h { font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:6px }
+.tv-diag-sugg-row { font-size:12px;line-height:1.6;color:var(--text-secondary);margin:4px 0 }
+.tv-diag-sugg-tag { font-size:10px;padding:2px 6px;border-radius:3px;font-family:var(--font-mono, ui-monospace, monospace);margin-right:6px;font-weight:600 }
+.tv-diag-sugg-tag--skill { background:#f59e0b20;color:#f59e0b }
+.tv-diag-sugg-tag--sample { background:#3b82f620;color:#3b82f6 }
+.tv-diag-sugg-tag--none { background:#6b728020;color:#6b7280 }
+.tv-prompt, .tv-rubric { font-size:13px;line-height:1.5;margin:6px 0 }
+.tv-prompt strong, .tv-rubric strong { color:var(--text-primary);margin-right:6px }
+.tv-meta-pills { margin:8px 0;display:flex;flex-wrap:wrap;gap:6px }
+.tv-meta-pill { font-size:11px;padding:2px 6px;background:var(--bg-surface);border:1px solid var(--border);border-radius:3px;color:var(--text-secondary);font-family:var(--font-mono, ui-monospace, monospace) }
+.tv-expected { margin-top:8px }
+.tv-expected-h { font-size:12px;color:var(--text-muted);margin-bottom:4px }
+.tv-expect-line { font-size:12px;font-family:var(--font-mono, ui-monospace, monospace);color:var(--text-secondary);padding:2px 0 }
+.tv-collapsible { margin-top:8px;font-size:12px }
+.tv-collapsible summary { cursor:pointer;color:var(--text-muted) }
+.tv-mocks { margin-top:6px }
+.tv-mock-line { font-size:11px;font-family:var(--font-mono, ui-monospace, monospace);padding:2px 0;display:flex;flex-wrap:wrap;gap:4px;align-items:center }
+.tv-mock-idx { color:var(--text-muted);font-weight:600 }
+.tv-mock-tool { background:var(--bg-surface);padding:1px 4px;border-radius:2px }
+.tv-mock-match { color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;max-width:300px;white-space:nowrap }
+.tv-mock-arrow { color:var(--text-muted) }
+.tv-mock-return { color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;max-width:300px;white-space:nowrap }
+.tv-turn { margin:6px 0;padding:6px 8px;background:var(--bg-surface);border-radius:var(--radius);border-left:2px solid var(--border) }
+.tv-turn-h { font-size:12px;font-weight:600;color:var(--text-primary) }
+.tv-turn-dur { color:var(--text-muted);font-weight:400;font-size:11px;margin-left:6px }
+.tv-thinking { margin:4px 0;font-size:12px }
+.tv-thinking summary { cursor:pointer;color:var(--text-muted);font-style:italic }
+.tv-thinking-body { padding:6px 8px;background:var(--bg-base, var(--bg-surface));border-radius:3px;color:var(--text-secondary);white-space:pre-wrap;font-size:12px;margin-top:4px }
+.tv-call { margin:4px 0;padding:6px 8px;background:var(--bg-base, var(--bg-surface));border-radius:3px;font-size:12px }
+.tv-call--err { border-left:2px solid #ef4444 }
+.tv-call-h { font-weight:600;color:var(--text-primary);margin-bottom:4px }
+.tv-call details { margin:2px 0;font-size:11px }
+.tv-call summary { cursor:pointer;color:var(--text-muted);padding:2px 0 }
+.tv-pre { font-family:var(--font-mono, ui-monospace, monospace);font-size:11px;background:var(--bg-surface);padding:6px 8px;border-radius:3px;overflow:auto;max-height:300px;white-space:pre-wrap;margin:2px 0 }
+.tv-mock-badge { font-size:11px;color:#10b981;background:#10b98115;padding:1px 4px;border-radius:2px;margin-left:6px }
+.tv-trace-assert { font-size:11px;font-family:var(--font-mono, ui-monospace, monospace);padding:2px 0;margin-top:4px }
+.tv-trace-assert.tv-assert--fail { color:#ef4444 }
+.tv-trace-assert.tv-assert--pass { color:#10b981 }
+.tv-assert { font-size:12px;font-family:var(--font-mono, ui-monospace, monospace);padding:3px 0 }
+.tv-assert--pass { color:var(--text-secondary) }
+.tv-assert--fail { color:#ef4444 }
+.tv-assert-value { background:var(--bg-surface);padding:1px 4px;border-radius:2px;margin:0 2px }
+.tv-turn-tag { font-size:10px;color:var(--text-muted);margin-left:6px;font-style:italic }
+.tv-turn-tag--ok { color:#10b981 }
+.tv-turn-tag--miss { color:#ef4444 }
+.tv-assert-msg { font-size:11px;color:var(--text-muted);margin-left:18px;margin-top:2px }
+.tv-empty, .tv-empty-page { color:var(--text-muted);font-style:italic;padding:8px;font-size:13px }
+.tv-warn { color:#f59e0b;background:#f59e0b15;padding:8px 12px;border-radius:var(--radius);margin:8px 0;font-size:12px }
+.tv-final { margin-top:8px }
+.tv-final-h { font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:4px }
+
+.omk-view-tabs { display:flex;gap:8px;margin:16px 0 12px;border-bottom:1px solid var(--border) }
+.omk-view-tab { padding:8px 16px;background:transparent;border:none;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;font-size:14px;font-weight:500 }
+.omk-view-tab--active { color:var(--text-primary);border-bottom-color:var(--accent, #3b82f6);font-weight:600 }
+.omk-view-tab:hover:not(.omk-view-tab--active) { color:var(--text-secondary) }
+    </style>
+    <script>
+function omkSwitchVariant(btn) {
+  var target = btn.getAttribute('data-target');
+  var tabs = btn.parentElement.querySelectorAll('.tv-vtab');
+  tabs.forEach(function(t){ t.classList.toggle('tv-vtab--active', t === btn); });
+  var panels = btn.parentElement.parentElement.querySelectorAll('.tv-variant-panel');
+  panels.forEach(function(p){ p.hidden = (p.getAttribute('data-variant') !== target); });
+}
+function omkSwitchView(name) {
+  var tabs = document.querySelectorAll('.omk-view-tab');
+  tabs.forEach(function(t){ t.classList.toggle('omk-view-tab--active', t.getAttribute('data-view') === name); });
+  var panels = document.querySelectorAll('.omk-view-panel');
+  panels.forEach(function(p){ p.hidden = (p.getAttribute('data-view') !== name); });
+}
+</script>
 
     </main>
   <footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer>

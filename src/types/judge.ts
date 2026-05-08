@@ -52,6 +52,46 @@ export interface JudgeAgreement {
   pairCount: number;
 }
 
+/**
+ * Diagnostic 结果 — 与 Judge 评价彻底独立的诊断视角。
+ *
+ * 触发条件:sample 至少有 1 条 failed assertion(无论 --no-judge 是否开启)。
+ * 输入:rubric / 期望的 assertions / skill 原文 / LLM 实际 trace+输出 / 失败的断言清单。
+ * 目的:告诉 skill 作者"哪错了 + 怎么改",而不是"打几分"。
+ *
+ * rootCause 五选(可多选):
+ *   skill_doc_unclear      文档本身缺 / 模糊
+ *   skill_doc_missing      skill 没覆盖该场景
+ *   llm_misread            skill 写了但 LLM 误读(可能要改 skill 措辞)
+ *   sample_design          sample 设计有 bug(rubric / mock 跟 skill 矛盾)
+ *   tripwire_intentional   sample 故意设计的反模式陷阱,LLM fail 是预期 — 不要建议改 skill
+ */
+export interface DiagnosticResult {
+  /** 失败本质,1-2 句。 */
+  summary: string;
+  /** rubric / assertions 期望什么具体行为。 */
+  expected: string;
+  /** LLM 实际做了什么。 */
+  actual: string;
+  /** 失败归因(允许多个,空数组当 'unknown')。 */
+  rootCause: Array<'skill_doc_unclear' | 'skill_doc_missing' | 'llm_misread' | 'sample_design' | 'tripwire_intentional'>;
+  /** 修改建议 — 三个角度都可以为空字符串(意味"该角度无需调整")。 */
+  suggestion: {
+    /** 改 skill 哪一节、加什么话(引用具体章节,带 patch 思路)。 */
+    skill: string;
+    /** sample 设计调整建议(如 mock match rule 太严 / rubric 跟 skill 不一致 / 等)。 */
+    sample: string;
+    /** "无需改动"的解释(如 tripwire 设计意图 + LLM 该 fail)。 */
+    none: string;
+  };
+  /** Diagnostic 自身花费(USD)。 */
+  costUSD?: number;
+  /** Diagnostic 是否成功(LLM JSON parse 失败时为 false,fallback 显示原始文本)。 */
+  ok: boolean;
+  /** Diagnostic 失败时的错误信息(ok=false 时使用)。 */
+  error?: string;
+}
+
 export interface AssertionDetail {
   type: string;
   value: string | number;

@@ -17,6 +17,7 @@ import {
   levelTooltip,
 } from './summary.js';
 import { renderSampleTable } from './table.js';
+import { renderTestView, TEST_VIEW_CSS, TEST_VIEW_JS } from './test-view.js';
 import { renderTrendsBody } from './trends.js';
 import { computeVerdict, type VerdictLevel } from '../eval-core/verdict.js';
 import type { BatchEvaluationReport, EvaluationReport, ExecutorRuntimeFingerprint, Report, ReportDocument, Lang, VariantSummary } from '../types/index.js';
@@ -465,6 +466,7 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
       })()}
       ${m.judgeRepeat && m.judgeRepeat > 1 ? `<span class="meta-tag" title="${t('judgeStddevDesc', lang)}">${t('judgeRepeatLabel', lang)}: ${m.judgeRepeat}</span>` : ''}
       <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
+      ${m.effort ? `<span class="meta-tag" title="${e(lang === 'zh' ? 'executor LLM 的扩展思考预算(--effort)。跨 effort 报告不可严格比较' : 'reasoning effort for executor LLM (--effort); reports across different efforts are not strictly comparable')}">effort: ${e(m.effort)}</span>` : ''}
       <span class="meta-tag"${execCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(totalExecCost, execCostReported)}</span>
       <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${t('totalCost', lang)}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>
       <span class="meta-tag">${lang === 'zh' ? '耗时' : 'Duration'}: ${fmtDuration(totalDurationMs)}</span>
@@ -483,6 +485,12 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
       </div>
     </div>` : ''}
 
+    <div class="omk-view-tabs" role="tablist">
+      <button type="button" class="omk-view-tab omk-view-tab--active" data-view="score" onclick="omkSwitchView('score')">${lang === 'zh' ? '📊 评分' : '📊 Score'}</button>
+      <button type="button" class="omk-view-tab" data-view="test" onclick="omkSwitchView('test')">${lang === 'zh' ? '✅ 单测' : '✅ Tests'}</button>
+    </div>
+
+    <div class="omk-view-panel" data-view="score">
     ${variantConfigSection}
 
     <section>${cards}${pairwiseDiff}${humanAgreement}${saturationCurve}</section>
@@ -496,6 +504,19 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
     ${renderKnowledgeInteractionSection(report.analysis?.coverage, report.analysis?.gapReports, lang)}
 
     <section>${sampleTable}</section>
+    </div>
+
+    <div class="omk-view-panel" data-view="test" hidden>
+    ${renderTestView(report, lang)}
+    </div>
+
+    <style>${TEST_VIEW_CSS}
+.omk-view-tabs { display:flex;gap:8px;margin:16px 0 12px;border-bottom:1px solid var(--border) }
+.omk-view-tab { padding:8px 16px;background:transparent;border:none;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;font-size:14px;font-weight:500 }
+.omk-view-tab--active { color:var(--text-primary);border-bottom-color:var(--accent, #3b82f6);font-weight:600 }
+.omk-view-tab:hover:not(.omk-view-tab--active) { color:var(--text-secondary) }
+    </style>
+    <script>${TEST_VIEW_JS}</script>
 
     </main>
   `, lang);
