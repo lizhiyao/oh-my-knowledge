@@ -84,6 +84,12 @@ interface CommonEvaluationOptions {
   /** hard budget caps. */
   budget?: import('../types/index.js').EvalBudget;
   noCache?: boolean;
+  /** Reasoning effort for executor LLM。透传到 ExecutorInput.effort。
+   *  默认 undefined → executor 内部走 claude CLI / SDK 自身默认(high);
+   *  CLI parseRunConfig 兜底 'low' 后这里就拿到 'low'。 */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** 关闭 diagnostic LLM call。Default false。跟 noJudge 完全独立。 */
+  noDiagnostic?: boolean;
 }
 
 export interface RunEvaluationOptions extends CommonEvaluationOptions {
@@ -190,6 +196,8 @@ export async function runEvaluation({
   budget,
   strictBaseline,
   variantAllowedSkills,
+  effort,
+  noDiagnostic,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
   // Unified judgeModels → derive single-judge fields for downstream pipeline / grading
   // (which still operate on string `judgeModel` + `judgeExecutorName` fields per call).
@@ -355,6 +363,8 @@ export async function runEvaluation({
     strictBaseline,
     runId,
     lang,
+    effort,
+    noDiagnostic,
   });
 }
 

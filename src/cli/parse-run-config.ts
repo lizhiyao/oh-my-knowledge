@@ -6,6 +6,7 @@ import { discoverVariants, parseVariantCwd } from '../inputs/skill-loader.js';
 import { CliExit } from './cli-exit.js';
 import { parseArgsStrictOrExit } from './parse-strict.js';
 import { loadEvalConfig, configVariantsToSpecs } from '../inputs/eval-config.js';
+import { DEFAULT_MODEL } from '../executors/shared.js';
 import type {
   EvalConfig,
   VariantSpec,
@@ -56,6 +57,14 @@ export interface RunConfig {
   /** Per-variant allowedSkills override extracted from eval.yaml. Always wins
    *  over strictBaseline default. Keyed by variant name. */
   variantAllowedSkills?: Record<string, string[]>;
+  /** Reasoning effort for the executor LLM(被评测的模型,不是 judge)。
+   *  Default 'low' — sonnet 默认会做大量扩展思考(13K thinking tokens / 单次),
+   *  对结构化任务是浪费。低 effort 大幅省时间/成本但可能损失复杂推理质量,
+   *  跨 effort 的报告不能严格比较。`undefined` 走 claude CLI / SDK 自身默认。 */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** 关闭 diagnostic LLM call。Default false(总是给 failed sample 跑诊断)。
+   *  跟 noJudge 完全独立 — judge 答打分,diagnostic 答怎么改。 */
+  noDiagnostic?: boolean;
   onProgress?: ProgressCallback | null;
 }
 
@@ -157,6 +166,14 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   // parseRunConfig (后者赢)。strict-baseline 没传 + no-strict-baseline 没传 = default true。
   'strict-baseline': { type: 'boolean' },
   'no-strict-baseline': { type: 'boolean' },
+  // effort:被评测 LLM 的扩展思考预算(low/medium/high/xhigh/max)。
+  // 默认 low — 关 thinking 大幅省时间/成本。改 high 时同 prompt 同 model 输出会变,
+  // 跨 effort 报告不可严格比较(renderer 在 meta-tag 显示并打提示)。
+  effort: { type: 'string' },
+  // 诊断:对 failed sample 跑一次 LLM,产出"哪错了 + skill 怎么改"的针对性建议。
+  // 跟 --no-judge 完全独立 — 想要纯功能性视角(assertion + diagnostic 但无评分)
+  // 用 `--no-judge`;想要不跑诊断只跑评测 + judge 用 `--no-diagnostic`。
+  'no-diagnostic': { type: 'boolean' },
 };
 
 /**
@@ -272,7 +289,9 @@ export function parseRunConfig(
 
   // 4) Apply CLI > config > hard-coded default for all other fields.
   const executorName = (values.executor as string | undefined) ?? evalConfig?.executor ?? 'claude';
-  const model = (values.model as string | undefined) ?? evalConfig?.model ?? 'sonnet';
+  // model fallback 链:CLI > eval.yaml > DEFAULT_MODEL(opus 4.7)。
+  // 改 default 时同步更新 cli.help.eval 文案("默认：claude-opus-4-7")。
+  const model = (values.model as string | undefined) ?? evalConfig?.model ?? DEFAULT_MODEL;
 
   // judgeModels: unified judge config. Parse --judge-models (CLI) or evalConfig.judgeModels (yaml).
   // 1 entry = single judge, ≥ 2 entries = ensemble. Format `executor:model[,executor:model]`.
@@ -327,6 +346,16 @@ export function parseRunConfig(
     }
   }
 
+  // effort:CLI > evalConfig > 默认 'low'。校验合法值,不合法就 throw(early surface error)。
+  const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+  const effortRaw = (values.effort as string | undefined) ?? evalConfig?.effort ?? 'low';
+  if (!VALID_EFFORTS.has(effortRaw)) {
+    throw new Error(`--effort must be one of low/medium/high/xhigh/max (got "${effortRaw}")`);
+  }
+  const effort = effortRaw as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+  const noDiagnostic = (values['no-diagnostic'] as boolean | undefined) ?? evalConfig?.noDiagnostic ?? false;
+
   return {
     values,
     config: {
@@ -352,6 +381,8 @@ export function parseRunConfig(
       budget: evalConfig?.budget,
       strictBaseline,
       judgeModels,
+      effort,
+      noDiagnostic,
       ...(Object.keys(variantAllowedSkills).length > 0 && { variantAllowedSkills }),
     },
     evalConfig,

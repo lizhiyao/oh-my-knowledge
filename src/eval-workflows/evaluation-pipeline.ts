@@ -78,6 +78,7 @@ async function initializeEvaluationRunState({
   bootstrapSamples,
   lengthDebias,
   budget,
+  effort,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -105,6 +106,7 @@ async function initializeEvaluationRunState({
   bootstrapSamples?: number;
   lengthDebias?: boolean;
   budget?: import('../types/index.js').EvalBudget;
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }): Promise<EvaluationRunState> {
   const effectiveJudges: import('../types/index.js').JudgeConfig[] = judgeModels && judgeModels.length > 0
     ? judgeModels
@@ -132,6 +134,7 @@ async function initializeEvaluationRunState({
     bootstrapSamples,
     lengthDebias,
     budget,
+    effort,
   });
   const createdAt = new Date().toISOString();
   const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
@@ -378,6 +381,10 @@ export interface EvaluationPipelineOptions {
   runId?: string;
   /** CLI output language for warnings emitted by the pipeline. */
   lang?: CliLang;
+  /** Reasoning effort 透传到 executor。默认 'low'(由 RunConfig 兜底)。 */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** 关闭 diagnostic。Default false。 */
+  noDiagnostic?: boolean;
 }
 
 export async function executeEvaluationPipeline({
@@ -423,6 +430,8 @@ export async function executeEvaluationPipeline({
   strictBaseline,
   runId,
   lang = 'zh',
+  effort,
+  noDiagnostic,
 }: EvaluationPipelineOptions): Promise<{ report: Report; filePath: string | null }> {
   const variantNames = artifacts.map((artifact) => artifact.name);
   const runState = await initializeEvaluationRunState({
@@ -452,6 +461,7 @@ export async function executeEvaluationPipeline({
     bootstrapSamples,
     lengthDebias,
     budget,
+    effort,
   });
 
   try {
@@ -515,6 +525,8 @@ export async function executeEvaluationPipeline({
       judgeExecutors: resolvedJudgeExecutors,
       lengthDebias,
       budget,
+      effort,
+      noDiagnostic,
     });
     if (skipped > 0 && onProgress) {
       onProgress({ phase: 'done', completed: tasks.length, total: tasks.length, sample_id: '', variant: '', skipped: true });

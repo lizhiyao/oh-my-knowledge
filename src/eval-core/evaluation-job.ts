@@ -27,6 +27,7 @@ export function buildEvaluationRequest({
   bootstrapSamples,
   lengthDebias,
   budget,
+  effort,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -50,6 +51,7 @@ export function buildEvaluationRequest({
   bootstrapSamples?: number;
   lengthDebias?: boolean;
   budget?: import('../types/index.js').EvalBudget;
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }): EvaluationRequest {
   return {
     samplesPath,
@@ -74,6 +76,7 @@ export function buildEvaluationRequest({
     bootstrapSamples,
     lengthDebias,
     budget,
+    ...(effort ? { effort } : {}),
   };
 }
 

@@ -47,12 +47,23 @@ function parseStreamJson(stdout: string): ClaudeSdkBaseMessage[] {
   return messages;
 }
 
-export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict }: ExecutorInput): Promise<ExecResult> {
+export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict, lean, effort }: ExecutorInput): Promise<ExecResult> {
   const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--model', model,
     // 评测必须 bypass permission,否则 Bash / Edit / Write 等工具调用会卡在交互式确认。
     // sdk executor 用 options.permissionMode='bypassPermissions',cli 用此 flag 等价。
     '--permission-mode', 'bypassPermissions'];
   if (system) args.push('--system-prompt', system);
+  // effort 决策:
+  //   - lean=true(纯文本生成):强制 'low' — 生成结构化 JSON 不需要思考,默认 high 浪费 13K tokens / 单次。
+  //   - 否则用调用方传入的 effort,或 sonnet 默认(不传 flag = claude CLI 自己定)。
+  // 实测 sonnet count=3 data-warehouse: 默认 effort 240s/$0.28; --effort low 31s/$0.07。
+  const effectiveEffort = lean ? 'low' : effort;
+  if (lean) {
+    args.push('--tools', '', '--disable-slash-commands');
+  }
+  if (effectiveEffort) {
+    args.push('--effort', effectiveEffort);
+  }
   applySkillIsolationToCliArgs(args, allowedSkills);
 
   const env = buildExecEnv(skillDir);

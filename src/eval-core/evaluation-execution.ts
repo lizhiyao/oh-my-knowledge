@@ -50,6 +50,12 @@ export interface ExecuteTasksOptions {
    *  budgetExhausted: true. Per-sample caps don't abort but mark offending
    *  tasks as failed. */
   budget?: import('../types/index.js').EvalBudget;
+  /** Reasoning effort for executor LLM。透传到 ExecutorInput.effort,
+   *  默认 'low'(在 parseRunConfig 兜底)。 */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** 关闭 diagnostic LLM call。Default false。失败用例(任意 assertion fail)
+   *  默认会跑 diagnostic 给"哪错了 + 怎么改 skill"建议。跟 noJudge 完全独立。 */
+  noDiagnostic?: boolean;
 }
 
 async function runWithConcurrency<T>(tasks: T[], concurrency: number, fn: (task: T) => Promise<void>): Promise<void> {
@@ -104,6 +110,8 @@ export async function executeTasks({
   judgeExecutors,
   lengthDebias = true,
   budget,
+  effort,
+  noDiagnostic = false,
 }: ExecuteTasksOptions): Promise<{ results: Record<string, Record<string, VariantResult>>; totalCostUSD: number; skipped: number; budgetExhausted: boolean }> {
   const results: Record<string, Record<string, VariantResult>> = {};
   let started = 0;
@@ -148,7 +156,7 @@ export async function executeTasks({
     const total = tasks.length;
     onProgress?.({ phase: 'start', completed: idx, total, sample_id: task.sample_id, variant: task.variant });
 
-    const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose);
+    const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose, effort);
     const effectiveExecutorName = executorName || 'claude';
     const executorRuntime = getExecutorRuntimeFingerprint(effectiveExecutorName, model, {
       skillDir: executionPlan.input.skillDir,
@@ -262,6 +270,46 @@ export async function executeTasks({
 
     if (!results[task.sample_id]) results[task.sample_id] = {};
     const variantResult = buildVariantResult(execResult!, gradeResult, { execMs, gradeMs, factCheck });
+
+    // Diagnostic — 与 judge 完全独立的"哪错了 + skill 怎么改"诊断。
+    // 触发条件:noDiagnostic=false + 至少 1 条 assertion fail + sample 跑成功(有 fullOutput)。
+    // 用 haiku(便宜),给 failed sample 生成针对性建议。
+    const failedDetails = (gradeResult?.assertions?.details || []).filter((d) => !d.passed);
+    const shouldDiagnose = !noDiagnostic && execResult!.ok && failedDetails.length > 0;
+    if (shouldDiagnose) {
+      try {
+        const { runDiagnostic } = await import('../grading/diagnostic.js');
+        // 默认 diagnostic 用 haiku — 便宜 + 解释类任务足够。
+        // 用 judgeExecutors 里的 claude executor(已经初始化好);如果只配了非 claude
+        // judge 也走那个,反正 lean 模式跨 model 都能跑。
+        const diagExecutor = judgeExecutors['claude'] || Object.values(judgeExecutors)[0] || executor;
+        const diagnostic = await runDiagnostic({
+          sample: task._sample,
+          skillContent: task.artifact.content || null,
+          skillName: task.artifact.name || task.variant,
+          toolCalls: execResult!.toolCalls,
+          turns: execResult!.turns,
+          fullOutput: execResult!.output || undefined,
+          assertionDetails: gradeResult?.assertions?.details || [],
+          executor: diagExecutor,
+          model: 'haiku',
+        });
+        variantResult.diagnostic = diagnostic;
+        if (diagnostic.costUSD) totalCostUSD += diagnostic.costUSD;
+      } catch (err) {
+        // diagnostic 失败不影响主评测,降级成 minimal 错误对象
+        const msg = err instanceof Error ? err.message : String(err);
+        variantResult.diagnostic = {
+          ok: false,
+          error: msg,
+          summary: '',
+          expected: '',
+          actual: '',
+          rootCause: [],
+          suggestion: { skill: '', sample: '', none: '' },
+        };
+      }
+    }
 
     //  per-sample budget enforcement. If a sample's cost or latency
     // exceeds the per-sample cap, the result is kept (so the user can see

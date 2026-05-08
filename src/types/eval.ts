@@ -103,6 +103,12 @@ export interface Sample {
    *  curated 用 `'human'`,production trace 抽样用 `'production-trace'`。
    *  纯文档 / 诊断用。 */
   provenance?: SampleProvenance;
+  /** 诱错样本(tripwire)标记。true = 此 sample 故意设计成 LLM 应该 fail 的诱导陷阱
+   *  (如:用户用错误前提诱导 / 跳步骤 / 用错参数类型),用于测 skill 是否能让 LLM
+   *  识破并纠正。Diagnostic 看到 tripwire:true 时会建议"无需改 skill"(rootCause:
+   *  tripwire_intentional),避免误导 skill 作者改文档去"修"一个故意的失败。
+   *  UI 用户可见文案统一中文叫"诱错样本",字段名保留 tripwire 不变(API 契约)。 */
+  tripwire?: boolean;
   /** 评测时拦截的工具调用 + mock 返回值。runtime 在 executor 入口安装 PreToolUse hook。
    *  详见 docs/sample-mocks.md(命中规则、状态机、fixture 文件)。 */
   mocks?: Mock[];
@@ -191,6 +197,12 @@ export interface EvalConfig {
   samples: string;
   executor?: string;
   model?: string;
+  /** Reasoning effort for the executor LLM. low/medium/high/xhigh/max。
+   *  Default 'low'(parseRunConfig 兜底)。跨 effort 报告不可严格比较。 */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** 关闭 diagnostic LLM call。Default false。跟 noJudge 独立 — judge 答打分,
+   *  diagnostic 答怎么改 skill。 */
+  noDiagnostic?: boolean;
   /** Judge configuration. 1 entry = single judge (no ensemble); ≥ 2 entries = ensemble
    *  with inter-judge agreement. Replaces v0.1 split `judgeModel` + `judgeExecutor` —
    *  unified as a single first-class concept (single judge is the degenerate case of
@@ -279,6 +291,8 @@ export interface EvaluationRequest {
    *  false = 全部 variants 没显式 allowedSkills 时保持 undefined(旧行为)。
    *  显式 eval.yaml `allowedSkills` 总是优先于此默认。 */
   strictBaseline?: boolean;
+  /** Reasoning effort for executor LLM。透传到 ExecutorInput.effort。 */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }
 
 export type EvaluationJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';

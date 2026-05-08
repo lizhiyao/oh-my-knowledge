@@ -66,6 +66,29 @@ export interface ExecutorInput {
   mocksBaseDir?: string;
   /** strict 模式:未命中 mock 的 tool 调用直接 deny。来源:Sample.mocksStrict。 */
   mocksStrict?: boolean;
+  /**
+   * Lean 模式:不需要 agent 工具循环的纯文本生成路径(如 sample 生成 / skill 改写),
+   * executor 会跳过 skill 发现 / 工具加载等 agent 启动开销。
+   * 实现细节:
+   *   - claude-cli: 追加 `--tools "" --disable-slash-commands`
+   *   - claude-sdk: 设 `disallowedTools: ['*']`,`skills: []`
+   *   - 其他 executor: 透传忽略
+   * 评测调用(eval / judge)绝不能开 lean,否则 LLM 调不了工具。
+   */
+  lean?: boolean;
+  /**
+   * Reasoning effort:控制扩展思考(extended thinking)的预算。
+   *   - 'low': 几乎不思考,直接出答案。最快最便宜,适合结构化任务 / 生成场景。
+   *   - 'medium': 中等思考预算。
+   *   - 'high': 默认 sonnet 行为,大量思考。质量最高但慢/贵。
+   *   - 'xhigh' / 'max': 更深(opus 系列)。
+   * 实现:
+   *   - claude-cli: 追加 `--effort <level>`
+   *   - claude-sdk: 设对应 SDK option(@anthropic-ai/claude-agent-sdk 暂不公开,跳过)
+   *   - 其他 executor: 透传忽略
+   * lean=true 时 effort 一定 = 'low'(lean 路径强制省思考),即使外面传了 high 也以 lean 为准。
+   */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }
 
 export type ExecutorFn = (input: ExecutorInput) => Promise<ExecResult>;

@@ -35,7 +35,7 @@ async function getSdkQuery(): Promise<ClaudeSdkModule['query']> {
   return sdkQuery;
 }
 
-export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, verbose = false, allowedSkills, mocks, mocksBaseDir, mocksStrict }: ExecutorInput): Promise<ExecResult> {
+export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, verbose = false, allowedSkills, mocks, mocksBaseDir, mocksStrict, lean, effort }: ExecutorInput): Promise<ExecResult> {
   const start = Date.now();
   const abortController = new AbortController();
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
@@ -56,7 +56,15 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
 
   try {
     const query = await getSdkQuery();
-    const isolationOpts = buildSdkIsolationOptions(allowedSkills);
+    // lean 模式:纯文本生成路径,不需要工具循环 / skill 发现,
+    // 用 disallowedTools:['*'] + skills:[] 直接堵住,优先级高于 isolationOpts。
+    const isolationOpts = lean
+      ? { skills: [] as string[], disallowedTools: ['*'] }
+      : buildSdkIsolationOptions(allowedSkills);
+    // effort:lean 强制 'low'(生成路径不需要思考),否则透传调用方传入。
+    // SDK 暴露 EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max',直接对应。
+    const effectiveEffort = lean ? 'low' : effort;
+    const effortOpts = effectiveEffort ? { effort: effectiveEffort } : {};
     const stream = query({
       prompt,
       options: {
@@ -68,6 +76,7 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
         abortController,
         env,
         ...isolationOpts,
+        ...effortOpts,
         ...hooksOpts,
       },
     });
