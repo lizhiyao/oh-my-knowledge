@@ -885,7 +885,14 @@ const SKILL_DETAIL_CSS = `
 .si-trend-canvas-wrap > canvas { position:absolute;left:0;top:0;width:100% !important;height:100% !important }
 .si-trend-hint { font-size:10.5px;color:var(--text-muted);text-align:center;margin-top:6px;font-style:italic }
 
+/* 三视角当前状态区:跟趋势图区域并列,加标题让用户一眼知道这是"当前快照速览" */
+.si-stages-block { background:var(--bg-surface);border-radius:8px;padding:12px 14px;box-shadow:var(--shadow-sm) }
+.si-stages-h { display:flex;flex-direction:column;gap:1px;margin-bottom:10px }
+.si-stages-title { font-size:13px;font-weight:600;color:var(--text-primary) }
+.si-stages-sub { font-size:11px;color:var(--text-muted);font-style:italic }
 .si-stagecards { display:flex;flex-direction:column;gap:8px }
+.si-stages-block .si-stagecard { box-shadow:none;background:var(--bg-soft) }
+.si-stages-block .si-stagecard:hover { box-shadow:var(--shadow-sm) }
 .si-stagecard { all:unset;cursor:pointer;display:grid;grid-template-columns:32px 1fr auto auto;gap:10px;align-items:center;padding:10px 14px;background:var(--bg-surface);border-radius:7px;box-shadow:var(--shadow-sm);transition:transform .12s,box-shadow .12s;border-left:4px solid var(--border) }
 .si-stagecard:hover { transform:translateX(2px);box-shadow:var(--shadow-md) }
 .si-stagecard:focus-visible { outline:2px solid var(--accent);outline-offset:1px }
@@ -1146,7 +1153,13 @@ export function renderSkillDetail(
             <div class="si-trend-h">📈 ${lang === 'zh' ? '健康趋势(0-100%,越高越好)' : 'Health trend (0-100%, higher is better)'}</div>
             ${renderTrendChart(entry, langQ, lang)}
           </div>
-          ${renderStageCards(entry, lang)}
+          <div class="si-stages-block">
+            <div class="si-stages-h">
+              <span class="si-stages-title">🔍 ${lang === 'zh' ? '三视角当前状态' : 'Current state by perspective'}</span>
+              <span class="si-stages-sub">${lang === 'zh' ? '最新一份的速览,点击看完整数据' : 'Latest snapshot — click for full details'}</span>
+            </div>
+            ${renderStageCards(entry, lang)}
+          </div>
         </section>
       </div>
 
