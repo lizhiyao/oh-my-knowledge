@@ -538,14 +538,33 @@ function renderDoctorHistorySection(snap: SkillDoctorSnapshot | null, history: S
     <ul class="si-history-list">
       ${[...older].reverse().map((h) => {
         const total = h.passCount + h.warnCount + h.failCount;
-        return `<li>
+        const cls = h.status === 'fail' ? 'red' : h.status === 'warn' ? 'yellow' : 'green';
+        return `<li><button type="button" class="si-history-row" onclick="openModal('modal-doctor-h-${e(h.reportId)}')">
           <span class="si-history-date">${fmtDateShort(h.timestamp)}</span>
           <span class="si-history-meta">${h.passCount}/${total} ✓ · ${h.warnCount} ⚠ · ${h.failCount} ✗</span>
-          <span class="si-history-status si-history-status--${h.status === 'fail' ? 'red' : h.status === 'warn' ? 'yellow' : 'green'}">${e(h.status)}</span>
-        </li>`;
+          <span class="si-history-status si-history-status--${cls}">${e(h.status)}</span>
+          <span class="si-history-arrow">›</span>
+        </button></li>`;
       }).join('')}
     </ul>
   </details>`;
+}
+
+function renderDoctorHistoryModals(snap: SkillDoctorSnapshot | null, history: SkillDoctorSnapshot[], lang: Lang): string {
+  const older = snap ? history.filter((h) => h.reportId !== snap.reportId) : history;
+  return older.map((h) => {
+    const id = `modal-doctor-h-${h.reportId}`;
+    return `<div id="${e(id)}" class="modal-overlay" onclick="if(event.target===this)closeModal('${e(id)}')">
+      <div class="modal-content si-modal">
+        <div class="modal-header">
+          <h3 class="si-modal-title">🩺 ${lang === 'zh' ? 'Doctor 历史' : 'Doctor history'} · ${fmtDateShort(h.timestamp)}</h3>
+          <button class="modal-close" onclick="closeModal('${e(id)}')">✕</button>
+        </div>
+        <div class="si-modal-stats">${h.passCount} ✓ · ${h.warnCount} ⚠ · ${h.failCount} ✗ · ${relTime(h.timestamp, lang)}</div>
+        <ul class="si-rules">${h.results.map((r) => renderRuleResult(r)).join('')}</ul>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function renderDoctorModal(snap: SkillDoctorSnapshot | null, history: SkillDoctorSnapshot[], lang: Lang): string {
@@ -597,12 +616,12 @@ function renderEvalHistorySection(snap: SkillEvalSnapshot | null, history: Skill
         const total = h.passCount + h.failCount;
         const pct = total > 0 ? Math.round((h.passCount / total) * 100) : 0;
         const cls = h.failCount === 0 ? 'green' : h.passCount === 0 ? 'red' : 'yellow';
-        return `<li>
+        return `<li><a class="si-history-row" href="/reports/${e(h.reportId)}${langQ}">
           <span class="si-history-date">${fmtDateShort(h.timestamp)}</span>
           <span class="si-history-meta">${h.compositeScore != null ? h.compositeScore.toFixed(2) : '—'}/5 · ${pct}% ${lang === 'zh' ? '通过' : 'pass'}</span>
           <span class="si-history-status si-history-status--${cls}">${e(h.verdictLevel)}</span>
-          <a class="si-history-link" href="/reports/${e(h.reportId)}${langQ}">${lang === 'zh' ? '看报告 →' : 'open →'}</a>
-        </li>`;
+          <span class="si-history-arrow">›</span>
+        </a></li>`;
       }).join('')}
     </ul>
   </details>`;
@@ -692,12 +711,12 @@ function renderObserveHistorySection(snap: SkillObserveSnapshot | null, history:
   return `<details class="si-history">
     <summary>${lang === 'zh' ? `📅 历史观测 ${older.length} 期` : `📅 History (${older.length})`}</summary>
     <ul class="si-history-list">
-      ${[...older].reverse().map((h) => `<li>
+      ${[...older].reverse().map((h) => `<li><a class="si-history-row" href="/analyses/${e(h.analysisId)}${langQ}">
         <span class="si-history-date">${fmtDateShort(h.generatedAt)}</span>
         <span class="si-history-meta">${h.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · gap ${(h.gapRate * 100).toFixed(0)}% · fail ${(h.failureRate * 100).toFixed(1)}%</span>
         <span class="si-history-status si-history-status--${h.healthBand}">${e(h.healthBand)}</span>
-        <a class="si-history-link" href="/analyses/${e(h.analysisId)}${langQ}">${lang === 'zh' ? '看报告 →' : 'open →'}</a>
-      </li>`).join('')}
+        <span class="si-history-arrow">›</span>
+      </a></li>`).join('')}
     </ul>
   </details>`;
 }
@@ -915,18 +934,21 @@ const SKILL_DETAIL_CSS = `
 .si-history[open] > summary::before { content:'▾ ' }
 .si-history > summary:hover { color:var(--text-primary) }
 .si-history-list { margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px }
-.si-history-list li { display:grid;grid-template-columns:64px 1fr auto auto;gap:10px;align-items:center;padding:7px 10px;background:var(--bg-soft);border-radius:5px;font-size:12.5px;line-height:1.45 }
+.si-history-list li { padding:0;background:transparent }
+/* 整行可点击:eval/observe 用 <a>,doctor 历史用 <button>(走 inline modal),样式完全一致 */
+.si-history-row { all:unset;cursor:pointer;display:grid;grid-template-columns:64px 1fr auto auto;gap:10px;align-items:center;padding:7px 10px;background:var(--bg-soft);border-radius:5px;font-size:12.5px;line-height:1.45;transition:background .12s,transform .12s;text-align:left;width:100%;box-sizing:border-box;color:var(--text-primary) }
+.si-history-row:hover { background:var(--bg-elevated);transform:translateX(2px) }
+.si-history-row:focus-visible { outline:2px solid var(--accent);outline-offset:1px }
 .si-history-date { font-variant-numeric:tabular-nums;font-weight:600;color:var(--text-secondary) }
 .si-history-meta { color:var(--text-secondary);font-variant-numeric:tabular-nums }
-.si-history-status { font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:8px;letter-spacing:0.02em }
+.si-history-status { font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:8px;letter-spacing:0.02em;justify-self:end }
 .si-history-status--green { background:rgba(94,130,82,.18);color:#5e8252 }
 .si-history-status--yellow { background:rgba(176,128,48,.16);color:#b08030 }
 .si-history-status--red { background:rgba(156,74,63,.18);color:#9c4a3f }
-.si-history-link { font-size:11.5px;color:var(--accent);text-decoration:none;font-weight:500;white-space:nowrap }
-.si-history-link:hover { text-decoration:underline }
+.si-history-arrow { color:var(--text-muted);font-size:14px;font-weight:300 }
 @media(max-width:640px){
-  .si-history-list li { grid-template-columns:56px 1fr;gap:6px }
-  .si-history-status, .si-history-link { grid-column:auto;justify-self:end }
+  .si-history-row { grid-template-columns:56px 1fr auto;gap:6px }
+  .si-history-arrow { display:none }
 }
 
 /* Eval modal blocks */
@@ -1050,6 +1072,7 @@ export function renderSkillDetail(
 
       ${insightModals}
       ${renderDoctorModal(entry.doctor, entry.doctorHistory, lang)}
+      ${renderDoctorHistoryModals(entry.doctor, entry.doctorHistory, lang)}
       ${renderEvalModal(entry.eval, entry.evalHistory, evalReport, langQ, lang)}
       ${renderObserveModal(entry.observe, entry.observeHistory, langQ, lang)}
     </main>
