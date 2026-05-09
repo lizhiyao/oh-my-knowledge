@@ -1155,8 +1155,8 @@ export function renderSkillDetail(
           </div>
           <div class="si-stages-block">
             <div class="si-stages-h">
-              <span class="si-stages-title">🔍 ${lang === 'zh' ? '三视角当前状态' : 'Current state by perspective'}</span>
-              <span class="si-stages-sub">${lang === 'zh' ? '最新一份的速览,点击看完整数据' : 'Latest snapshot — click for full details'}</span>
+              <span class="si-stages-title">📋 ${lang === 'zh' ? '最新指标速览' : 'Latest metrics'}</span>
+              <span class="si-stages-sub">${lang === 'zh' ? '点击卡片看完整数据' : 'Click any card for full details'}</span>
             </div>
             ${renderStageCards(entry, lang)}
           </div>
