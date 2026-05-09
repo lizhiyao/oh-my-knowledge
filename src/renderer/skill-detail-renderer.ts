@@ -406,21 +406,25 @@ function renderStageCards(entry: SkillIndexEntry, lang: Lang): string {
     ? (entry.eval.failCount === 0 ? 'green' : entry.eval.passCount === 0 ? 'red' : 'yellow') : 'gray';
   const observeBand: 'green' | 'yellow' | 'red' | 'gray' = entry.observe?.healthBand ?? 'gray';
 
+  const nameDoctor = lang === 'zh' ? '结构规范 (doctor)' : 'Structure (doctor)';
+  const nameEval = lang === 'zh' ? '实测得分 (eval)' : 'Test score (eval)';
+  const nameObserve = lang === 'zh' ? '线上稳定 (observe)' : 'Live stability (observe)';
+
   return `<div class="si-stagecards">
     ${card({
-      icon: '🩺', name: 'Doctor', modalId: 'modal-doctor', band: doctorBand,
+      icon: '🩺', name: nameDoctor, modalId: 'modal-doctor', band: doctorBand,
       statusText: entry.doctor ? `${entry.doctor.passCount}✓ ${entry.doctor.warnCount}⚠ ${entry.doctor.failCount}✗` : (lang === 'zh' ? '未运行' : 'not run'),
       metaText: relTime(entry.doctor?.timestamp, lang),
     })}
     ${card({
-      icon: '🧪', name: 'Eval', modalId: 'modal-eval', band: evalBand,
+      icon: '🧪', name: nameEval, modalId: 'modal-eval', band: evalBand,
       statusText: entry.eval && (entry.eval.passCount + entry.eval.failCount) > 0
         ? `${entry.eval.totalSamples} ${lang === 'zh' ? '用例' : 'samples'} · ${Math.round((entry.eval.passCount / (entry.eval.passCount + entry.eval.failCount)) * 100)}% ${lang === 'zh' ? '通过' : 'pass'}${entry.eval.compositeScore != null ? ` · ${entry.eval.compositeScore.toFixed(2)}/5` : ''}`
         : (lang === 'zh' ? '未运行' : 'not run'),
       metaText: relTime(entry.eval?.timestamp, lang),
     })}
     ${card({
-      icon: '👁', name: 'Observe', modalId: 'modal-observe', band: observeBand,
+      icon: '👁', name: nameObserve, modalId: 'modal-observe', band: observeBand,
       statusText: entry.observe ? `${(entry.observe.gapRate * 100).toFixed(0)}% gap · ${entry.observe.segmentCount} ${lang === 'zh' ? '段' : 'segs'}` : (lang === 'zh' ? '未运行' : 'not run'),
       metaText: relTime(entry.observe?.generatedAt, lang),
     })}
