@@ -108,7 +108,7 @@ describe('detectInsights — dependency-doc-issue', () => {
       mkResult('s2', 'test-skill', { rootCause: ['skill_doc_unclear'], failureModes: [] }),
     ]);
     const insights = detectInsights(entry, report);
-    const dep = insights.find((i) => i.id === 'dep-doc-issue');
+    const dep = insights.find((i) => i.id === 'skill-doc-gap');
     assert.ok(dep, 'should detect dependency-doc-issue');
     assert.equal(dep!.affectedCount, 2);
     assert.equal(dep!.severity, 'high');
@@ -131,7 +131,7 @@ describe('detectInsights — dependency-doc-issue', () => {
       mkResult('s1', 'test-skill', { rootCause: ['skill_doc_missing'] }),
     ]);
     const insights = detectInsights(entry, report);
-    const dep = insights.find((i) => i.id === 'dep-doc-issue');
+    const dep = insights.find((i) => i.id === 'skill-doc-gap');
     assert.ok(dep);
     const doctorEv = dep!.evidence.find((e) => e.perspective === 'doctor')!;
     assert.equal(doctorEv.status, 'blind', '应标 doctor 盲区');
@@ -149,7 +149,7 @@ describe('detectInsights — dependency-doc-issue', () => {
       mkResult('s1', 'test-skill', { passedAssertions: true }),
     ]);
     const insights = detectInsights(entry, report);
-    assert.equal(insights.find((i) => i.id === 'dep-doc-issue'), undefined);
+    assert.equal(insights.find((i) => i.id === 'skill-doc-gap'), undefined);
   });
 });
 
@@ -161,10 +161,12 @@ describe('detectInsights — doctor-blindspot', () => {
       mkResult('s3', 'test-skill', { failureModes: ['硬编码值'] }),
     ]);
     const insights = detectInsights(mkEntry({ doctor: null }), report);
-    const blind = insights.find((i) => i.id === 'doctor-blindspot');
+    const blind = insights.find((i) => i.id === 'omk-doctor-blindspot');
     assert.ok(blind, '应检测到 doctor-blindspot');
     assert.equal(blind!.affectedCount, 3);
-    assert.equal(blind!.severity, 'high');
+    // omk-doctor-blindspot 是 omk 维护者待办,不是 skill 开发者的高优先 — 故意降级 medium
+    assert.equal(blind!.severity, 'medium');
+    assert.equal(blind!.audience, 'omk-maintainer');
   });
 
   it('同失败模式但只 1 条 → 不达 cluster 阈值,不触发', () => {
@@ -172,7 +174,7 @@ describe('detectInsights — doctor-blindspot', () => {
       mkResult('s1', 'test-skill', { failureModes: ['硬编码值'] }),
     ]);
     const insights = detectInsights(mkEntry(), report);
-    assert.equal(insights.find((i) => i.id === 'doctor-blindspot'), undefined);
+    assert.equal(insights.find((i) => i.id === 'omk-doctor-blindspot'), undefined);
   });
 
   it('skill_doc_missing 类已被 dep-doc-issue 覆盖,不重复算 blindspot', () => {
@@ -181,7 +183,7 @@ describe('detectInsights — doctor-blindspot', () => {
       mkResult('s2', 'test-skill', { rootCause: ['skill_doc_missing'], failureModes: ['硬编码值'] }),
     ]);
     const insights = detectInsights(mkEntry(), report);
-    assert.equal(insights.find((i) => i.id === 'doctor-blindspot'), undefined);
+    assert.equal(insights.find((i) => i.id === 'omk-doctor-blindspot'), undefined);
   });
 });
 
@@ -192,7 +194,7 @@ describe('detectInsights — failure-mode-cluster', () => {
       mkResult('s2', 'test-skill', { failureModes: ['工作流跳步'] }),
     ]);
     const insights = detectInsights(mkEntry(), report);
-    const cluster = insights.find((i) => i.id.startsWith('failure-mode:'));
+    const cluster = insights.find((i) => i.id.startsWith('failure-mode-skill:'));
     assert.ok(cluster);
     assert.equal(cluster!.affectedCount, 2);
     assert.equal(cluster!.severity, 'medium');
@@ -203,7 +205,7 @@ describe('detectInsights — failure-mode-cluster', () => {
       mkResult('s1', 'test-skill', { passedAssertions: true }),
     ]);
     const insights = detectInsights(mkEntry(), report);
-    assert.equal(insights.find((i) => i.id.startsWith('failure-mode:')), undefined);
+    assert.equal(insights.find((i) => i.id.startsWith('failure-mode-skill:')), undefined);
   });
 });
 
@@ -310,9 +312,11 @@ describe('detectInsights — coverage-gap', () => {
 describe('flattenRecommendations', () => {
   it('去重 + 按 priority 排序', () => {
     const insights = [
-      { id: 'a', category: 'other' as const, title: 'x', severity: 'low' as const, affectedCount: 0, evidence: [],
+      { id: 'a', category: 'other' as const, audience: 'skill-author' as const,
+        title: 'x', severity: 'low' as const, affectedCount: 0, evidence: [],
         recommendations: [{ action: 'X', priority: 'low' as const }] },
-      { id: 'b', category: 'other' as const, title: 'y', severity: 'high' as const, affectedCount: 0, evidence: [],
+      { id: 'b', category: 'other' as const, audience: 'skill-author' as const,
+        title: 'y', severity: 'high' as const, affectedCount: 0, evidence: [],
         recommendations: [
           { action: 'X', priority: 'high' as const },  // 同名,优先级高的取代
           { action: 'Y', priority: 'medium' as const },
