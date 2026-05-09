@@ -415,7 +415,7 @@ function renderStageCards(entry: SkillIndexEntry, lang: Lang): string {
     ${card({
       icon: '🧪', name: 'Eval', modalId: 'modal-eval', band: evalBand,
       statusText: entry.eval && (entry.eval.passCount + entry.eval.failCount) > 0
-        ? `${Math.round((entry.eval.passCount / (entry.eval.passCount + entry.eval.failCount)) * 100)}% ${lang === 'zh' ? '通过' : 'pass'}${entry.eval.compositeScore != null ? ` · ${entry.eval.compositeScore.toFixed(2)}/5` : ''}`
+        ? `${entry.eval.totalSamples} ${lang === 'zh' ? '用例' : 'samples'} · ${Math.round((entry.eval.passCount / (entry.eval.passCount + entry.eval.failCount)) * 100)}% ${lang === 'zh' ? '通过' : 'pass'}${entry.eval.compositeScore != null ? ` · ${entry.eval.compositeScore.toFixed(2)}/5` : ''}`
         : (lang === 'zh' ? '未运行' : 'not run'),
       metaText: relTime(entry.eval?.timestamp, lang),
     })}
@@ -609,6 +609,53 @@ function collectFailedSamples(report: EvaluationReport, variant: string): Failed
   return out;
 }
 
+interface SampleListRow {
+  sampleId: string;
+  kind: 'pass' | 'fail' | 'tripwire';
+  composite: number | null;
+  description: string;
+}
+
+function collectAllSamples(report: EvaluationReport, variant: string): SampleListRow[] {
+  const out: SampleListRow[] = [];
+  for (const r of report.results) {
+    const v: VariantResult | undefined = r.variants?.[variant];
+    if (!v) continue;
+    const passed = (v.assertions?.details ?? []).every((d) => d.passed);
+    const isTripwire = (v.diagnostic?.rootCause ?? []).includes('tripwire_intentional')
+      || report.sampleSnapshots?.[r.sample_id]?.tripwire === true;
+    const kind: SampleListRow['kind'] = isTripwire ? 'tripwire' : passed ? 'pass' : 'fail';
+    const layered = v.layeredScores ?? {};
+    const parts = [layered.factScore, layered.behaviorScore, layered.judgeScore].filter((x): x is number => x != null);
+    const composite = parts.length > 0 ? parts.reduce((s, x) => s + x, 0) / parts.length : null;
+    const promptSnippet = report.sampleSnapshots?.[r.sample_id]?.prompt?.slice(0, 70).replace(/\n+/g, ' ') ?? '';
+    out.push({ sampleId: r.sample_id, kind, composite, description: promptSnippet });
+  }
+  return out;
+}
+
+function renderSampleListSection(samples: SampleListRow[], reportId: string, langQ: string, lang: Lang): string {
+  const passCount = samples.filter((s) => s.kind === 'pass').length;
+  const failCount = samples.filter((s) => s.kind === 'fail').length;
+  const tripCount = samples.filter((s) => s.kind === 'tripwire').length;
+  const summary = lang === 'zh'
+    ? `${samples.length} 条 (${passCount} ✓ ${failCount} ✗${tripCount > 0 ? ` ${tripCount} ⚡` : ''})`
+    : `${samples.length} (${passCount} ✓ ${failCount} ✗${tripCount > 0 ? ` ${tripCount} ⚡` : ''})`;
+  const iconOf = (k: SampleListRow['kind']): string => k === 'pass' ? '✓' : k === 'tripwire' ? '⚡' : '✗';
+  return `<details class="si-history" open>
+    <summary>${lang === 'zh' ? `📝 全部用例 ${summary}` : `📝 All samples ${summary}`}</summary>
+    <ul class="si-history-list si-sample-list">
+      ${samples.map((s) => `<li><a class="si-history-row si-sample-row si-sample-row--${s.kind}" href="/reports/${e(reportId)}${langQ}#sample-${e(s.sampleId)}">
+        <span class="si-sample-icon si-sample-icon--${s.kind}">${iconOf(s.kind)}</span>
+        <code class="si-sample-id">${e(s.sampleId)}</code>
+        <span class="si-sample-score">${s.composite != null ? s.composite.toFixed(2) + '/5' : '—'}</span>
+        <span class="si-sample-desc">${e(s.description)}${s.description.length >= 70 ? '…' : ''}</span>
+        <span class="si-history-arrow">›</span>
+      </a></li>`).join('')}
+    </ul>
+  </details>`;
+}
+
 function renderEvalHistorySection(snap: SkillEvalSnapshot | null, history: SkillEvalSnapshot[], langQ: string, lang: Lang): string {
   const older = snap ? history.filter((h) => h.reportId !== snap.reportId) : history;
   if (older.length === 0) return '';
@@ -644,6 +691,7 @@ function renderEvalModal(snap: SkillEvalSnapshot | null, history: SkillEvalSnaps
   }
   let layered: { factScore?: number; behaviorScore?: number; judgeScore?: number } | undefined;
   let failedSamples: FailedSampleRow[] = [];
+  let allSamples: SampleListRow[] = [];
   if (evalReport && snap.variantName) {
     const factVals: number[] = [], behavVals: number[] = [], judgeVals: number[] = [];
     for (const r of evalReport.results) {
@@ -656,6 +704,7 @@ function renderEvalModal(snap: SkillEvalSnapshot | null, history: SkillEvalSnaps
     const mean = (xs: number[]): number | undefined => xs.length > 0 ? xs.reduce((s, x) => s + x, 0) / xs.length : undefined;
     layered = { factScore: mean(factVals), behaviorScore: mean(behavVals), judgeScore: mean(judgeVals) };
     failedSamples = collectFailedSamples(evalReport, snap.variantName);
+    allSamples = collectAllSamples(evalReport, snap.variantName);
   }
 
   const renderLayer = (label: string, val?: number): string => {
@@ -703,6 +752,7 @@ function renderEvalModal(snap: SkillEvalSnapshot | null, history: SkillEvalSnaps
         </ul>
         <a class="si-eval-link" href="/reports/${e(snap.reportId)}${langQ}#test-view">${lang === 'zh' ? '展开单测视角 →' : 'Open functional view →'}</a>
       </div>` : ''}
+      ${allSamples.length > 0 ? renderSampleListSection(allSamples, snap.reportId, langQ, lang) : ''}
       ${renderEvalHistorySection(snap, history, langQ, lang)}
     </div>
   </div>`;
@@ -928,6 +978,25 @@ const SKILL_DETAIL_CSS = `
 .si-rule-id { font-size:11px;color:var(--text-muted);background:var(--bg-soft);padding:1px 5px;border-radius:3px;margin-right:6px }
 .si-rule-msg { color:var(--text-primary) }
 .si-rule-hint { font-size:12px;color:var(--text-secondary);margin-top:3px;line-height:1.55 }
+
+/* Sample list (eval modal — 全部用例清单)。复用 si-history-row 大部分样式,只重写 grid */
+.si-sample-list { max-height:340px;overflow-y:auto }
+.si-sample-row { grid-template-columns:18px 100px 56px 1fr auto !important;gap:8px !important }
+.si-sample-row--pass { background:rgba(94,130,82,.06) }
+.si-sample-row--fail { background:rgba(156,74,63,.06);border-left:2px solid #9c4a3f }
+.si-sample-row--tripwire { background:rgba(122,107,137,.06);border-left:2px solid #7a6b89 }
+.si-sample-icon { font-weight:700;text-align:center;font-size:13px }
+.si-sample-icon--pass { color:#5e8252 }
+.si-sample-icon--fail { color:#9c4a3f }
+.si-sample-icon--tripwire { color:#7a6b89 }
+.si-sample-id { font-size:11px;color:var(--text-secondary);background:transparent;padding:0;font-family:"SF Mono",Menlo,monospace;font-weight:600 }
+.si-sample-score { font-variant-numeric:tabular-nums;font-size:12px;color:var(--text-secondary);font-weight:600;text-align:right }
+.si-sample-desc { color:var(--text-secondary);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0 }
+@media(max-width:640px){
+  .si-sample-row { grid-template-columns:18px 1fr auto !important }
+  .si-sample-id { grid-column:2/3 }
+  .si-sample-score, .si-sample-desc { display:none }
+}
 
 /* History section in stage modals */
 .si-history { margin-top:14px;border-top:1px solid var(--border);padding-top:10px }
