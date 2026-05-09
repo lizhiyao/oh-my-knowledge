@@ -78,6 +78,15 @@ export interface InsightRecommendation {
   patch?: InsightPatch;
 }
 
+/** 该 insight 关联的具体阶段元素 — UI 渲染 timeline 时用来在阶段卡内挂 #N 徽章。 */
+export interface InsightStageRefs {
+  doctorRuleIds?: string[];
+  evalSampleIds?: string[];
+  /** observe 信号类型标签:'high-failure-rate' / 'gap' / 'uncovered-files'。
+   *  observe 内单条信号没像 doctor rule / eval sample 那么细的 id,用类型标即可。 */
+  observeRefs?: string[];
+}
+
 export interface Insight {
   id: string;
   category: InsightCategory;
@@ -90,6 +99,8 @@ export interface Insight {
   affectedCount: number;
   evidence: InsightEvidence[];
   recommendations: InsightRecommendation[];
+  /** 关联到 timeline 哪些阶段元素 — renderer 据此在阶段卡内插入 #N 徽章。 */
+  stageRefs?: InsightStageRefs;
 }
 
 // ────────── helpers ──────────
@@ -186,6 +197,7 @@ function detectEnvironmentBlocked(evalReport: EvaluationReport | null): Insight 
     description: 'LLM 行为正确但工具调用被 mock-strict 拦截 — 这是 sample 设计问题,不是 skill 问题。要么 mock 列表漏写,要么 command_glob/file_path 写得太严没匹配到 LLM 真实调用。',
     severity: severityOfCount(blocked.length),
     affectedCount: blocked.length,
+    stageRefs: { evalSampleIds: blocked.map((s) => s.sampleId) },
     evidence: [
       {
         perspective: 'eval-functional', status: 'flagged',
@@ -333,6 +345,11 @@ function detectSkillDocGap(
     description: 'skill 文档提到某些前置文件,但 sample 没标"已就绪"。LLM 看 prompt 时会试图先探测/Read 这些文件,在 mocks-strict 环境下被拦,流程在第一步就停。',
     severity,
     affectedCount: failedDocSamples.length || 1,
+    stageRefs: {
+      ...(depRule ? { doctorRuleIds: ['dependencies_present'] } : {}),
+      ...(failedDocSamples.length > 0 ? { evalSampleIds: failedDocSamples.map((f) => f.sampleId) } : {}),
+      ...((observe?.gapRate ?? 0) >= 0.2 ? { observeRefs: ['gap'] } : {}),
+    },
     evidence,
     recommendations: recs,
   };
@@ -432,6 +449,7 @@ NAMESPACE=$(<your-cli> auth status -o json | jq -r '.username')
     description: MODE_USERFACING_DESC[topMode] ?? `多 sample 共享 failureMode 「${topMode}」,skill 文档对此没抑制`,
     severity: severityOfCount(topSamples.length),
     affectedCount: topSamples.length,
+    stageRefs: { evalSampleIds: topSamples.map((s) => s.sampleId) },
     evidence: [
       {
         perspective: 'eval-functional', status: 'flagged',
@@ -477,6 +495,10 @@ function detectProductionInstability(
     description: '真实用户用这个 skill,LLM 调出去的工具经常报错。可能是凭证/网络/上游 SLA 问题,也可能是 skill 教错了用什么工具/参数。',
     severity: 'high',
     affectedCount: Math.round(observe.segmentCount * observe.failureRate),
+    stageRefs: {
+      observeRefs: ['high-failure-rate'],
+      ...(depRule ? { doctorRuleIds: ['dependencies_present'] } : {}),
+    },
     evidence: [
       {
         perspective: 'observe', status: 'flagged',
@@ -564,6 +586,7 @@ function detectCoverageGap(
     description: '观测到生产用户访问了 skill 引用的某些文件,但你的评测 sample 没测到这些路径 — sample 设计跟真实使用脱节。',
     severity,
     affectedCount: Math.max(evalUncovered.length, Math.round(observe.segmentCount * observe.gapRate)),
+    stageRefs: { observeRefs: ['gap', 'uncovered-files'] },
     evidence,
     recommendations: [
       ...(evalUncovered.length > 0
@@ -618,6 +641,10 @@ function detectSkillTooLong(
     description: 'skill 内容超过推荐上限。长 skill 在 LLM 上下文里会被压缩注意力,LLM 跟着前几段走,后面的关键约束容易漏读。',
     severity: observe && observe.gapRate >= 0.3 ? 'medium' : 'low',
     affectedCount: 1,
+    stageRefs: {
+      doctorRuleIds: ['skill_readable'],
+      ...(observe && observe.gapRate >= 0.2 ? { observeRefs: ['gap'] } : {}),
+    },
     evidence,
     recommendations: [
       {
@@ -674,6 +701,7 @@ function detectOmkDoctorBlindspot(
     description: '本次评测里 ≥ 2 条 sample 因这些行为反模式失败,但 doctor 跑下来全 pass。说明 doctor 当前规则覆盖不到这类问题 — 给 omk 仓库提 issue 加 composer rule 即可。普通 skill 开发者可忽略本条。',
     severity: candidates.length >= 3 ? 'medium' : 'low',
     affectedCount: candidates.length,
+    stageRefs: { evalSampleIds: candidates.map((c) => c.sampleId) },
     evidence: [
       {
         perspective: 'eval-functional', status: 'flagged',
