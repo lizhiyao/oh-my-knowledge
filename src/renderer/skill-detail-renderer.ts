@@ -359,9 +359,9 @@ function buildTrendData(entry: SkillIndexEntry): TrendDatum[] {
 
 function renderTrendChart(entry: SkillIndexEntry, langQ: string, lang: Lang): string {
   const data = buildTrendData(entry);
-  const labelDoctor = lang === 'zh' ? 'Doctor 通过率' : 'Doctor pass %';
-  const labelEval = lang === 'zh' ? 'Eval 综合分(归一)' : 'Eval composite (norm)';
-  const labelObserve = lang === 'zh' ? 'Observe 稳定度' : 'Observe stability %';
+  const labelDoctor = lang === 'zh' ? '🩺 结构规范' : '🩺 Structure';
+  const labelEval = lang === 'zh' ? '🧪 实测得分' : '🧪 Test score';
+  const labelObserve = lang === 'zh' ? '👁 线上稳定' : '👁 Live stability';
 
   if (data.length < 2) {
     return `<div class="si-trend-empty">${lang === 'zh' ? '📈 还没有足够的历史数据画趋势(至少 2 个时间点)' : '📈 Need at least 2 data points for trend'}</div>`;
@@ -369,19 +369,22 @@ function renderTrendChart(entry: SkillIndexEntry, langQ: string, lang: Lang): st
   const linksDoctor = data.map(() => null);
   const linksEval = data.map((d) => d.evalReportId ? `/reports/${d.evalReportId}${langQ}` : null);
   const linksObserve = data.map((d) => d.observeAnalysisId ? `/analyses/${d.observeAnalysisId}${langQ}` : null);
+  const explainDoctor = lang === 'zh' ? 'omk doctor 通过率' : 'omk doctor pass-rate';
+  const explainEval = lang === 'zh' ? 'omk eval 综合分(归一)' : 'omk eval composite (normalized)';
+  const explainObserve = lang === 'zh' ? 'omk observe 真实使用稳定度' : 'omk observe production stability';
   const json = JSON.stringify({
     labels: data.map((d) => fmtDateShort(d.x)),
     datasets: [
-      { label: labelDoctor, data: data.map((d) => d.doctorPct), borderColor: '#5e8252', backgroundColor: 'rgba(94,130,82,.1)', tension: 0.3, spanGaps: true },
-      { label: labelEval, data: data.map((d) => d.evalPct), borderColor: '#5a7a93', backgroundColor: 'rgba(90,122,147,.1)', tension: 0.3, spanGaps: true },
-      { label: labelObserve, data: data.map((d) => d.observePct), borderColor: '#b08030', backgroundColor: 'rgba(176,128,48,.1)', tension: 0.3, spanGaps: true },
+      { label: labelDoctor, data: data.map((d) => d.doctorPct), borderColor: '#5e8252', backgroundColor: 'rgba(94,130,82,.1)', tension: 0.3, spanGaps: true, _hint: explainDoctor },
+      { label: labelEval, data: data.map((d) => d.evalPct), borderColor: '#5a7a93', backgroundColor: 'rgba(90,122,147,.1)', tension: 0.3, spanGaps: true, _hint: explainEval },
+      { label: labelObserve, data: data.map((d) => d.observePct), borderColor: '#b08030', backgroundColor: 'rgba(176,128,48,.1)', tension: 0.3, spanGaps: true, _hint: explainObserve },
     ],
   });
   const links = JSON.stringify([linksDoctor, linksEval, linksObserve]);
   return `<div class="si-trend-canvas-wrap">
     <canvas id="trend-chart" data-chart='${json.replace(/'/g, '&#39;')}' data-links='${links.replace(/'/g, '&#39;')}'></canvas>
   </div>
-  <div class="si-trend-hint">${lang === 'zh' ? '点击 Eval / Observe 数据点跳到那期报告;Doctor 无对应详情页' : 'Click an Eval / Observe data point to open that report'}</div>`;
+  <div class="si-trend-hint">${lang === 'zh' ? '点击实测得分 / 线上稳定的数据点跳到那期报告(结构规范无对应详情页)' : 'Click a Test score / Live stability point to open that report'}</div>`;
 }
 
 function renderStageCards(entry: SkillIndexEntry, lang: Lang): string {
@@ -1005,9 +1008,13 @@ const TREND_INIT_SCRIPT = `
             tooltip: { callbacks: {
               label: function(ctx){ return ctx.dataset.label + ': ' + (ctx.parsed.y == null ? '—' : ctx.parsed.y.toFixed(1) + '%'); },
               afterLabel: function(ctx){
-                if (!links) return '';
-                var url = links[ctx.datasetIndex] && links[ctx.datasetIndex][ctx.dataIndex];
-                return url ? '点击看报告' : '';
+                var hint = ctx.dataset._hint || '';
+                var lines = hint ? [hint] : [];
+                if (links) {
+                  var url = links[ctx.datasetIndex] && links[ctx.datasetIndex][ctx.dataIndex];
+                  if (url) lines.push('→ 点击看那期报告');
+                }
+                return lines;
               }
             } }
           },
@@ -1063,7 +1070,7 @@ export function renderSkillDetail(
         </section>
         <section class="si-right">
           <div class="si-trend">
-            <div class="si-trend-h">📈 ${lang === 'zh' ? '健康趋势(归一到 0-100%,越高越好)' : 'Health trend (normalized 0-100%)'}</div>
+            <div class="si-trend-h">📈 ${lang === 'zh' ? '健康趋势(0-100%,越高越好)' : 'Health trend (0-100%, higher is better)'}</div>
             ${renderTrendChart(entry, langQ, lang)}
           </div>
           ${renderStageCards(entry, lang)}
