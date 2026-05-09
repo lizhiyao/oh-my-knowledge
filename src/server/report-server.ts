@@ -1,5 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http';
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { renderReportDocumentDetail, renderTrendsPage } from '../renderer/html-renderer.js';
@@ -45,6 +46,23 @@ interface AnalysisListItem {
   segmentCount: number;
   skillCount: number;
   healthBand: 'green' | 'yellow' | 'red';
+}
+
+let cachedChartJsBytes: string | null | undefined;
+function loadChartJsBundle(): string | null {
+  if (cachedChartJsBytes !== undefined) return cachedChartJsBytes;
+  try {
+    // chart.js 的 exports 字段不允许直接 resolve 子路径,先 resolve 主入口拿到包目录,
+    // 再拼到 dist/chart.umd.min.js(这个 UMD 在 sideEffects 里声明,实际存在)。
+    const req = createRequire(import.meta.url);
+    const mainPath = req.resolve('chart.js');
+    const distDir = mainPath.replace(/[/\\]chart\.cjs$/, '').replace(/[/\\]chart\.js$/, '');
+    const umdPath = join(distDir, 'chart.umd.min.js');
+    cachedChartJsBytes = readFileSync(umdPath, 'utf-8');
+  } catch {
+    cachedChartJsBytes = null;
+  }
+  return cachedChartJsBytes;
 }
 
 function listAnalyses(dir: string): AnalysisListItem[] {
@@ -462,6 +480,20 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
       if (path === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, service: 'omk' }));
+        return;
+      }
+
+      // 静态资源:chart.js UMD bundle(供详情页趋势大图使用)。
+      // 用 require.resolve 拿包路径,避开 dist 相对路径脆弱性。
+      if (path === '/static/chart.js') {
+        const bytes = loadChartJsBundle();
+        if (!bytes) {
+          res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('chart.js asset unavailable');
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
+        res.end(bytes);
         return;
       }
 
