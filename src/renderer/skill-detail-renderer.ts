@@ -206,7 +206,7 @@ function renderTrendChart(entry: SkillIndexEntry, lang: Lang): string {
       { label: labelObserve, data: data.map((d) => d.observePct), borderColor: '#b08030', backgroundColor: 'rgba(176,128,48,.1)', tension: 0.3, spanGaps: true },
     ],
   });
-  return `<canvas id="trend-chart" width="420" height="240" data-chart='${json.replace(/'/g, '&#39;')}'></canvas>`;
+  return `<div class="si-trend-canvas-wrap"><canvas id="trend-chart" data-chart='${json.replace(/'/g, '&#39;')}'></canvas></div>`;
 }
 
 function renderStageCards(entry: SkillIndexEntry, lang: Lang): string {
@@ -539,7 +539,10 @@ const SKILL_DETAIL_CSS = `
 .si-trend { background:var(--bg-surface);border-radius:8px;padding:14px 16px;box-shadow:var(--shadow-sm) }
 .si-trend-h { display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px }
 .si-trend-empty { padding:24px;text-align:center;color:var(--text-muted);font-size:13px }
-#trend-chart { width:100% !important;max-width:100%;height:auto !important }
+/* chart.js responsive 要求父容器有确定的高度,否则 canvas 会无限拉高(每次 resize 让父元素变大,触发新 resize)。
+   用 position:relative + 固定 height,让 canvas 在内部以 absolute 填充。 */
+.si-trend-canvas-wrap { position:relative;width:100%;height:240px }
+.si-trend-canvas-wrap > canvas { position:absolute;left:0;top:0;width:100% !important;height:100% !important }
 
 .si-stagecards { display:flex;flex-direction:column;gap:8px }
 .si-stagecard { all:unset;cursor:pointer;display:grid;grid-template-columns:32px 1fr auto auto;gap:10px;align-items:center;padding:10px 14px;background:var(--bg-surface);border-radius:7px;box-shadow:var(--shadow-sm);transition:transform .12s,box-shadow .12s;border-left:4px solid var(--border) }
