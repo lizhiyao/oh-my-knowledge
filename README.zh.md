@@ -399,15 +399,18 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
 常用选项：
 
 ```text
-  --samples <路径>       样本文件（默认：eval-samples.json，也自动检测 .yaml/.yml）
+  --samples <路径>       样本文件（默认：eval-samples.json，也自动检测 .yaml/.yml；--skill-dir 下的 <skill>/.omk/samples.json 会被自动发现）
   --skill-dir <路径>     artifact 目录（默认：skills）
   --control <expr>       对照组 variant 表达式
   --treatment <v1,v2>    实验组 variants，逗号分隔
   --config <路径>        YAML/JSON 评测配置
-  --model <名称>         任务执行模型（默认：sonnet）
+  --model <名称>         任务执行模型（默认：opus alias）
+  --effort <level>       执行模型扩展思考预算 low/medium/high/xhigh/max（默认：low；高 effort 跨报告不可严格比较）
   --judge-models <list>  评委配置，例如 claude:haiku 或 claude:opus,openai:gpt-4o
   --executor <名称>      claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom
-  --no-judge             跳过 LLM 评委
+  --no-judge             跳过 LLM 评委主观评分
+  --no-diagnostic        关闭 diagnostic 诊断 LLM 调用（默认开启，给 failed sample 出"哪错了 + 怎么改"建议）
+  --skip-doctor          escape hatch：跳过 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险由调用方承担
   --dry-run              仅预览
   --blind                盲测模式
   --concurrency <n>      并行任务数
@@ -422,6 +425,10 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --skip-connectivity    跳过模型连通性检查（内部静态 gate 仍强制执行）
   --no-serve             评测后不自动启动报告服务
 ```
+
+HTML 报告有两个 tab：
+- **📊 评分视角** — verdict 驱动的 A/B 对比（事实/行为/judge 三层、bootstrap CI、length-debias）。
+- **✅ 功能视角** — 每条 sample 当一条单测看：用例设计（prompt / rubric / 工具调用 mock / environment）+ 执行轨迹 + 断言结果 + 可操作的 diagnostic 建议。诊断给出归因（skill 文档模糊 / LLM 误读 / sample 设计 bug / 诱错样本 / ...）、工作流校验（rubric 每步 ✓/✗ + 证据）和失败模式标签（工作流跳步 / 硬编码值 / 幻觉输出 / 工具误用 / 环境拦截 / 误读约束 / 其他）。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [docs/sample-design-spec.md §三](./docs/sample-design-spec.md)。
 
 ### `omk observe`
 

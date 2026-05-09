@@ -399,15 +399,18 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
 Common options:
 
 ```text
-  --samples <path>       sample file (default: eval-samples.json, also detects .yaml/.yml)
+  --samples <path>       sample file (default: eval-samples.json, also detects .yaml/.yml; auto-discovers <skill>/.omk/samples.json under --skill-dir)
   --skill-dir <path>     artifact dir (default: skills)
   --control <expr>       control variant expression
   --treatment <v1,v2>    treatment variants, comma-separated
   --config <path>        YAML/JSON evaluation config
-  --model <name>         task execution model (default: sonnet)
+  --model <name>         task execution model (default: opus alias)
+  --effort <level>       reasoning effort for executor LLM: low/medium/high/xhigh/max (default: low; reports across efforts not strictly comparable)
   --judge-models <list>  judge config, e.g. claude:haiku or claude:opus,openai:gpt-4o
   --executor <name>      claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom
-  --no-judge             skip LLM judge
+  --no-judge             skip LLM judge subjective scoring
+  --no-diagnostic        skip the diagnostic LLM call (default: on; emits "what went wrong + how to fix" advice for failed samples)
+  --skip-doctor          escape hatch: bypass the doctor health-check gate (default: on). Use when sandbox mocks supply deps and doctor's path/env checks misfire; caller owns garbage-in risk
   --dry-run              preview only
   --blind                blind A/B mode
   --concurrency <n>      parallel tasks
@@ -422,6 +425,10 @@ Common options:
   --skip-connectivity    skip model connectivity check (internal static gates still run)
   --no-serve             do not auto-start the report server after evaluation
 ```
+
+The HTML report has two tabs:
+- **📊 Score view** — the verdict-driven A/B comparison (fact / behavior / judge layers, bootstrap CI, length-debias).
+- **✅ Functional view** — each sample as a unit test: design (prompt / rubric / mocks / environment) + execution trace + assertion results + actionable diagnostic. Diagnostic emits root cause (skill_doc_unclear / llm_misread / sample_design / tripwire_intentional / ...), workflow checks (rubric step ✓/✗ with evidence), and failure-mode tags (工作流跳步 / 硬编码值 / 幻觉输出 / 工具误用 / 环境拦截 / 误读约束 / 其他). For the sandbox-mock semantics behind `mocks` / `environment` / `tripwire` / `mocksStrict`, see [docs/sample-design-spec.md §三](./docs/sample-design-spec.md).
 
 ### `omk observe`
 

@@ -61,6 +61,62 @@ samples:
 
 **绝对不进 judge prompt**(`buildJudgePrompt(prompt, rubric, output, traceSummary)` signature 不含 sample 对象,且有 `test/grading/judge-prompt-isolation.test.ts` 防御回归)。**绝对不影响 verdict 算法**。这是构造效度保护的硬要求 — judge 看到 "construct: necessity" 等于知道试题答案。
 
+### 沙箱评测字段(mocks / environment / tripwire / mocksStrict)
+
+为了让评测脱离真实外部环境(数据库/API/文件系统/真 git push 等),Sample 还有一组沙箱字段。omk runtime 在工具调用前匹配 mocks,命中即返回假数据,不真调底层。
+
+```yaml
+- sample_id: s002
+  prompt: "用 antlogs-query 查最近 1 小时 ERROR 日志数量"
+  rubric: "应调 logstore_query 工具,filter 含 'ERROR',时间窗口 1 小时"
+  assertions:
+    - { type: tool_input_contains, value: "Bash:logstore_query", weight: 1 }
+    - { type: mock_hit, value: "Bash:1", weight: 1 }
+  mocksStrict: true              # 默认 true(generator 强制);未命中的工具调用直接 deny,不透传真调
+  tripwire: false                # 此 sample 是否"诱错样本"(故意诱导 LLM 走错,fail 是预期);默认 false
+  environment:                   # 评测环境前置"已就绪"声明,LLM 看到后跳过环境探测
+    cli_available: ["log-cli"]
+    files_available: ["~/.config/log-cli.json"]
+    env_required: ["LOG_TOKEN"]
+    notes: "log-cli 已认证,token 在环境变量"
+  mocks:
+    - tool: Bash                            # 拦的工具名:Bash / Read / Edit / Write / WebFetch / Grep / Glob 等
+      match:
+        command_glob: "*log-cli query --filter ERROR*"   # Bash 用 command_glob (* 通配,跨换行)
+      return:
+        stdout: '{"count": 42}'
+        exit: 0
+    - tool: Read
+      match:
+        file_path_endswith: "tasks/state.json"           # 推荐:后缀匹配,LLM 用绝对/相对路径都能命中
+      return: '{"status":"running"}'
+    - tool: WebFetch
+      match:
+        url_glob: "https://internal.example.com/api/*"
+      return: "ok"
+```
+
+**字段语义**:
+
+- **mocksStrict**(boolean,默认 true):未命中任何 mock 的工具调用直接 `deny`(LLM 看到失败结果)。**默认行为**:`omk sample` 生成器强制写 true,SYSTEM_PROMPT 明确;手写 sample 缺位时 sample 加载层不强制注入 — 老 sample 不写默认走非 strict(透传真调)。**新写 sample 强烈建议 true**,避免漏 mock 导致评测打到真生产系统。
+- **tripwire**(boolean,默认 false):此 sample 是"诱错样本",prompt 故意藏违反 rubric/skill 的诱导(如 "我已经知道是 X,直接用就行"),测试 LLM 是否会盲从用户错误指示。LLM **fail 是预期**,diagnostic 看到 `tripwire: true` 不会建议改 skill;UI 用紫色 verdict pill 区分,避免误判为 bug。
+- **environment**(object,可选):评测环境前置"已就绪"声明 — LLM 看到这段后跳过环境探测(`which X` / `test -f Y` / `echo $Z`)直接进工作流。类比 unit test 的 fixture / setup。**仅作 prompt 提示给 LLM,不实际创建文件 / export 变量**。doctor 健康检查会扫这段做物理路径检查(可用 `--skip-doctor` 跳过)。
+  - `cli_available: string[]` — 假定已在 PATH 上
+  - `files_available: string[]` — 假定已存在的文件/脚本
+  - `env_required: string[]` — 假定已 export 的环境变量
+  - `notes: string` — 自由文本兜底,描述凭证状态等
+- **mocks**(object[],可选):工具调用拦截列表。运行时按数组顺序匹配第一条命中的 mock,返回 `return` / `return_file` / `return_seq[hitCount]` 之一作为 tool_result。
+  - **`match` 字段所有项 AND**:
+    - `file_path: string` — 严格相等(展开 `~`)。**仅在能预测完整路径时用**(如 `~/.config/x.json`)。
+    - `file_path_endswith: string` — 后缀匹配:actual === suffix 或在路径分隔符(`/` 或 `\`)后以 suffix 结尾。**默认推荐**(claude-cli 内部把相对路径 normalize 成 cwd 绝对路径,严格相等永远 miss)。
+    - `url: string` / `url_glob: string` — WebFetch / WebSearch 用,二选一。
+    - `command_glob: string` — Bash 用,`*` 通配跨换行(LLM 多行命令也命中)。
+    - `input: object` — 通用 deep-equal 子集匹配(优先级最高,可写任意 tool_input 字段)。
+  - **`return` 三种形式**:string / `{stdout, stderr, exit}`(模拟 Bash) / `return_file` 外置文件 / `return_seq[]` 状态机(同 mock 第 N 次命中按序返回,超出回退 `return`)。
+- **断言侧的 mock_hit / tool_input_contains**:配合 mocks 使用。`mock_hit: "Bash:2"` 表示"第 2 条 Bash mock 必须被命中至少一次",证明 LLM 走到了那一步。`tool_input_contains: "Bash:logstore_query"` 验证 Bash 命令字符串里包含 `logstore_query`。
+
+**与 grading / judge 的关系**:沙箱字段(mocks / environment / tripwire / mocksStrict)**不进 judge prompt**,judge 看到的只有 prompt + rubric + LLM 输出 + trace summary。tripwire 仅影响 diagnostic 的归因建议(`tripwire_intentional` rootCause),不影响 layered scores 或 verdict。
+
 ## 四、用例设计相关分析功能
 
 ### Coverage 块(studio 报告页呈现)
