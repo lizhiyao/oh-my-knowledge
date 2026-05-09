@@ -19,7 +19,18 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ReportDocument, EvaluationReport, AssertionDetail } from '../types/index.js';
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
+import type { DoctorReport, DoctorRuleResult, DoctorSkillStatus } from '../types/doctor.js';
 import { computeVerdict } from '../eval-core/verdict.js';
+
+export interface SkillDoctorSnapshot {
+  reportId: string;
+  timestamp: string;
+  status: DoctorSkillStatus;
+  passCount: number;
+  warnCount: number;
+  failCount: number;
+  results: DoctorRuleResult[];
+}
 
 export interface SkillEvalSnapshot {
   reportId: string;
@@ -45,11 +56,10 @@ export interface SkillObserveSnapshot {
 
 export interface SkillIndexEntry {
   skillName: string;
-  /** v1 占位;后续 doctor 持久化后回填。 */
-  doctor: null;
+  doctor: SkillDoctorSnapshot | null;
   eval: SkillEvalSnapshot | null;
   observe: SkillObserveSnapshot | null;
-  /** 综合健康灯。eval / observe 任一红 → red;任一黄 → yellow;
+  /** 综合健康灯。doctor / eval / observe 任一红 → red;任一黄 → yellow;
    *  全绿 → green;皆未跑 → gray。 */
   band: 'green' | 'yellow' | 'red' | 'gray';
 }
@@ -124,10 +134,17 @@ function bandFromObserveHealth(h: { gap?: { weightedGapRate?: number }; toolFail
 }
 
 function combineBand(
+  doctor: SkillDoctorSnapshot | null,
   evalSnap: SkillEvalSnapshot | null,
   observe: SkillObserveSnapshot | null,
 ): 'green' | 'yellow' | 'red' | 'gray' {
-  if (!evalSnap && !observe) return 'gray';
+  if (!doctor && !evalSnap && !observe) return 'gray';
+  // doctor band: status fail → red, warn → yellow, pass → green
+  const doctorBand: 'green' | 'yellow' | 'red' | 'gray' = !doctor
+    ? 'gray'
+    : doctor.status === 'fail' ? 'red'
+    : doctor.status === 'warn' ? 'yellow'
+    : 'green';
   // eval band:按真实 fail 占比(诱错不算,total 不含)估色。
   const evalDenom = evalSnap ? evalSnap.passCount + evalSnap.failCount : 0;
   const failRatio = evalDenom > 0 ? (evalSnap!.failCount / evalDenom) : 0;
@@ -137,15 +154,49 @@ function combineBand(
     : failRatio >= 0.2 ? 'yellow'
     : 'green';
   const obsBand: 'green' | 'yellow' | 'red' | 'gray' = observe?.healthBand ?? 'gray';
-  if (evalBand === 'red' || obsBand === 'red') return 'red';
-  if (evalBand === 'yellow' || obsBand === 'yellow') return 'yellow';
-  if (evalBand === 'green' || obsBand === 'green') return 'green';
+  if (doctorBand === 'red' || evalBand === 'red' || obsBand === 'red') return 'red';
+  if (doctorBand === 'yellow' || evalBand === 'yellow' || obsBand === 'yellow') return 'yellow';
+  if (doctorBand === 'green' || evalBand === 'green' || obsBand === 'green') return 'green';
   return 'gray';
 }
 
 function latestActivityTs(e: SkillIndexEntry): string {
-  const candidates = [e.eval?.timestamp, e.observe?.generatedAt].filter((s): s is string => Boolean(s));
+  const candidates = [e.doctor?.timestamp, e.eval?.timestamp, e.observe?.generatedAt]
+    .filter((s): s is string => Boolean(s));
   return candidates.sort().pop() || '';
+}
+
+/** 扫 doctorsDir/*.json,按 skill 名分桶,取最新 timestamp。每个 DoctorReport 通常只
+ *  含 1 个 skill(omk eval 嵌入式 doctor 单 skill;omk doctor target 也常常单文件),
+ *  极少 N 个混在同一份。简单按 skill 名查单条。 */
+function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot> {
+  const out: Record<string, SkillDoctorSnapshot> = {};
+  if (!existsSync(dir)) return out;
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.json')) continue;
+    try {
+      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as DoctorReport;
+      if (data?.kind !== 'doctor' || !Array.isArray(data.skills)) continue;
+      const ts = data.timestamp;
+      for (const sr of data.skills) {
+        const passN = sr.results.filter((r) => r.status === 'pass').length;
+        const warnN = sr.results.filter((r) => r.status === 'warn').length;
+        const failN = sr.results.filter((r) => r.status === 'fail').length;
+        const snap: SkillDoctorSnapshot = {
+          reportId: data.id,
+          timestamp: ts,
+          status: sr.status,
+          passCount: passN,
+          warnCount: warnN,
+          failCount: failN,
+          results: sr.results,
+        };
+        const prev = out[sr.skillName];
+        if (!prev || snap.timestamp > prev.timestamp) out[sr.skillName] = snap;
+      }
+    } catch { /* skip corrupt */ }
+  }
+  return out;
 }
 
 /**
@@ -157,6 +208,7 @@ function latestActivityTs(e: SkillIndexEntry): string {
 export function buildSkillIndex(
   reports: ReportDocument[],
   analysesDir: string,
+  doctorsDir: string,
 ): SkillIndex {
   // ── eval 聚合 ──────────────────────────────────────────────
   const evalBy: Record<string, SkillEvalSnapshot> = {};
@@ -199,18 +251,26 @@ export function buildSkillIndex(
     }
   }
 
+  // ── doctor 聚合 ──────────────────────────────────────────
+  const doctorBy = scanDoctorReports(doctorsDir);
+
   // ── 合并 ──────────────────────────────────────────────────
-  const allSkills = new Set<string>([...Object.keys(evalBy), ...Object.keys(observeBy)]);
+  const allSkills = new Set<string>([
+    ...Object.keys(evalBy),
+    ...Object.keys(observeBy),
+    ...Object.keys(doctorBy),
+  ]);
   const entries: SkillIndexEntry[] = [];
   for (const name of allSkills) {
+    const doctor = doctorBy[name] ?? null;
     const evalSnap = evalBy[name] ?? null;
     const observe = observeBy[name] ?? null;
     entries.push({
       skillName: name,
-      doctor: null,
+      doctor,
       eval: evalSnap,
       observe,
-      band: combineBand(evalSnap, observe),
+      band: combineBand(doctor, evalSnap, observe),
     });
   }
   entries.sort((a, b) => latestActivityTs(b).localeCompare(latestActivityTs(a)));
@@ -220,7 +280,7 @@ export function buildSkillIndex(
     totalSkills: entries.length,
     withEval: entries.filter((e) => e.eval).length,
     withObserve: entries.filter((e) => e.observe).length,
-    withDoctor: 0, // v1 占位
+    withDoctor: entries.filter((e) => e.doctor).length,
     red: entries.filter((e) => e.band === 'red').length,
     yellow: entries.filter((e) => e.band === 'yellow').length,
     green: entries.filter((e) => e.band === 'green').length,
@@ -228,4 +288,9 @@ export function buildSkillIndex(
   };
 
   return { entries, summary };
+}
+
+/** 单 skill 详情查询(用于 /skills/&lt;name&gt; 详情页)— 复用 buildSkillIndex 的扫描结果。 */
+export function getSkillEntry(idx: SkillIndex, skillName: string): SkillIndexEntry | null {
+  return idx.entries.find((e) => e.skillName === skillName) ?? null;
 }

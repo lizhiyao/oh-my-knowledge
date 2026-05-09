@@ -10,7 +10,7 @@
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
 import type { Lang } from '../types/index.js';
-import type { SkillIndex, SkillIndexEntry, SkillEvalSnapshot, SkillObserveSnapshot } from '../server/skill-index.js';
+import type { SkillIndex, SkillIndexEntry, SkillEvalSnapshot, SkillObserveSnapshot, SkillDoctorSnapshot } from '../server/skill-index.js';
 
 const BAND_DOT: Record<'green' | 'yellow' | 'red' | 'gray', string> = {
   green: '🟢',
@@ -95,24 +95,34 @@ function renderObserveCell(snap: SkillObserveSnapshot | null, langQ: string, lan
   </a>`;
 }
 
-function renderDoctorCell(_doctor: null, lang: Lang): string {
-  return `<div class="sl-cell sl-cell-empty" title="${e(lang === 'zh' ? '独立 omk doctor 报告暂不持久化;omk eval 内部嵌入式跑了 doctor preflight。后续 commit 加默认输出路径。' : 'Standalone omk doctor reports are not yet persisted; omk eval runs doctor preflight inline. Future commit will add a default output path.')}">${lang === 'zh' ? '⚪ 未独立运行' : '⚪ not run'}</div>`;
+function renderDoctorCell(snap: SkillDoctorSnapshot | null, skillName: string, langQ: string, lang: Lang): string {
+  if (!snap) {
+    return `<div class="sl-cell sl-cell-empty">${lang === 'zh' ? '⚪ 未跑' : '⚪ never'}</div>`;
+  }
+  const statusCls = snap.status === 'fail' ? 'fail' : snap.status === 'warn' ? 'warn' : 'pass';
+  const statusText = snap.status === 'fail'
+    ? (lang === 'zh' ? '✗ 失败' : '✗ fail')
+    : snap.status === 'warn'
+      ? (lang === 'zh' ? '⚠ 警告' : '⚠ warn')
+      : (lang === 'zh' ? '✓ 通过' : '✓ pass');
+  // doctor 没独立 report viewer,跳详情页的 doctor 锚点。
+  return `<a class="sl-cell" href="/skills/${encodeURIComponent(skillName)}${langQ}#doctor">
+    <span class="sl-pill sl-pill--${statusCls}">${statusText}</span>
+    <span class="sl-cell-num">${snap.passCount}✓ ${snap.warnCount}⚠ ${snap.failCount}✗</span>
+    <span class="sl-cell-time">${e(relTime(snap.timestamp, lang))}</span>
+  </a>`;
 }
 
 function renderRow(entry: SkillIndexEntry, langQ: string, lang: Lang): string {
   const dot = BAND_DOT[entry.band];
-  // 主链接:跳到第一个可用的报告(eval > observe);都没就 # 锚点(灰色)。
-  const primaryHref = entry.eval
-    ? `/reports/${entry.eval.reportId}${langQ}`
-    : entry.observe
-      ? `/analyses/${entry.observe.analysisId}${langQ}`
-      : '#';
+  // 主链接:进 skill 详情页(4 卡片汇总 + cross-link)。各列单元格仍可直跳具体报告。
+  const detailHref = `/skills/${encodeURIComponent(entry.skillName)}${langQ}`;
   return `<div class="sl-row sl-row--${entry.band}">
     <div class="sl-name">
       <span class="sl-dot">${dot}</span>
-      <a class="sl-name-link" href="${e(primaryHref)}">${e(entry.skillName)}</a>
+      <a class="sl-name-link" href="${e(detailHref)}">${e(entry.skillName)}</a>
     </div>
-    <div class="sl-col">${renderDoctorCell(entry.doctor, lang)}</div>
+    <div class="sl-col">${renderDoctorCell(entry.doctor, entry.skillName, langQ, lang)}</div>
     <div class="sl-col">${renderEvalCell(entry.eval, langQ, lang)}</div>
     <div class="sl-col">${renderEvalFuncCell(entry.eval, langQ, lang)}</div>
     <div class="sl-col">${renderObserveCell(entry.observe, langQ, lang)}</div>
@@ -157,18 +167,7 @@ function renderNextSteps(idx: SkillIndex, lang: Lang): string {
   </div>`;
 }
 
-function renderViewTabs(active: 'skills' | 'runs', langQ: string, lang: Lang): string {
-  return `<div class="sl-view-tabs">
-    <a class="sl-view-tab ${active === 'skills' ? 'sl-view-tab--active' : ''}" href="/${langQ}">${lang === 'zh' ? '📚 Skills' : '📚 Skills'}</a>
-    <a class="sl-view-tab ${active === 'runs' ? 'sl-view-tab--active' : ''}" href="/runs${langQ}">${lang === 'zh' ? '📋 Runs' : '📋 Runs'}</a>
-  </div>`;
-}
-
 const SKILL_LIST_CSS = `
-.sl-view-tabs { display:flex;gap:0;margin:8px 0 24px;border-bottom:1px solid var(--border) }
-.sl-view-tab { padding:10px 18px;color:var(--text-secondary);text-decoration:none;border-bottom:2px solid transparent;font-weight:500;font-size:14px;margin-bottom:-1px }
-.sl-view-tab:hover { color:var(--text-primary) }
-.sl-view-tab--active { color:var(--text-primary);border-bottom-color:var(--accent);font-weight:600 }
 .sl-summary { font-size:13px;color:var(--text-secondary);margin:0 0 12px;font-variant-numeric:tabular-nums }
 .sl-table-h { display:grid;grid-template-columns:minmax(180px,2fr) repeat(4,1fr);gap:12px;padding:8px 14px;font-size:12px;color:var(--text-muted);font-weight:600;letter-spacing:0.04em;text-transform:uppercase;border-bottom:1px solid var(--border) }
 .sl-row { display:grid;grid-template-columns:minmax(180px,2fr) repeat(4,1fr);gap:12px;padding:14px;border-radius:6px;align-items:center;transition:background .12s }
@@ -233,16 +232,10 @@ export function renderSkillList(idx: SkillIndex, lang: Lang = DEFAULT_LANG): str
     <main>
     <h1>${title}</h1>
     <p class="subtitle">${subtitle}</p>
-    ${renderViewTabs('skills', langQ, lang)}
     ${renderSummaryBar(idx, lang)}
     ${body}
     ${renderNextSteps(idx, lang)}
     </main>
     <style>${SKILL_LIST_CSS}</style>
   `, lang);
-}
-
-/** 单独导出给 / 与 /runs 切换的 view tabs 渲染函数,让 run-list 也能挂上同一个 tabs 头。 */
-export function renderRunListViewTabs(langQ: string, lang: Lang): string {
-  return renderViewTabs('runs', langQ, lang);
 }

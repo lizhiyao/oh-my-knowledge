@@ -160,10 +160,6 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
       <main>
       <h1>${t('title', lang)}</h1>
       <p class="subtitle">${t('subtitle', lang)}</p>
-      <div class="run-list-view-tabs" style="margin:8px 0 16px;border-bottom:1px solid var(--border);display:flex;gap:0">
-        <a href="/${langQ}" style="padding:10px 18px;color:var(--text-secondary);text-decoration:none;border-bottom:2px solid transparent;font-weight:500;font-size:14px;margin-bottom:-1px">📚 Skills</a>
-        <a href="/runs${langQ}" style="padding:10px 18px;color:var(--text-primary);text-decoration:none;border-bottom:2px solid var(--accent);font-weight:600;font-size:14px;margin-bottom:-1px">📋 Runs</a>
-      </div>
       <div style="margin-top:16px">${skillHealthLink}</div>
       <p style="color:var(--text-muted);margin-top:40px">${t('noRuns', lang)}</p>
       </main>
@@ -271,17 +267,10 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
     .join('');
   const trendsSection = trendLinks ? `<div style="margin:12px 0"><span style="font-size:12px;color:var(--text-muted);margin-right:8px">${lang === 'zh' ? '📈 趋势：' : '📈 Trends:'}</span>${trendLinks}</div>` : '';
 
-  // v0.30 — 顶部加 skills / runs view 切换。skills 默认页;runs 是兼容入口。
-  const viewTabs = `<div class="run-list-view-tabs">
-    <a class="run-list-view-tab" href="/${langQ}">📚 Skills</a>
-    <a class="run-list-view-tab run-list-view-tab--active" href="/runs${langQ}">📋 Runs</a>
-  </div>`;
-
   return layout(t('title', lang), `
     <main>
     <h1>${t('title', lang)}</h1>
     <p class="subtitle" data-i18n="subtitle">${t('subtitle', lang)} &middot; ${runCount}</p>
-    ${viewTabs}
     ${trendsSection}
     <div style="margin:12px 0">${skillHealthLink}</div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
@@ -294,10 +283,6 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
     /* 列表页 — 卡片式布局,顶部 verdict pill 主导,底部 hover 露出 delete */
     .page-secondary-link { color:var(--text-secondary);font-size:13px;text-decoration:none;border:1px solid var(--border);padding:6px 14px;border-radius:var(--radius);display:inline-block;background:var(--bg-surface);transition:border-color .15s,color .15s }
     .page-secondary-link:hover { color:var(--text-primary);border-color:var(--border-hover);text-decoration:none }
-    .run-list-view-tabs { display:flex;gap:0;margin:8px 0 16px;border-bottom:1px solid var(--border) }
-    .run-list-view-tab { padding:10px 18px;color:var(--text-secondary);text-decoration:none;border-bottom:2px solid transparent;font-weight:500;font-size:14px;margin-bottom:-1px }
-    .run-list-view-tab:hover { color:var(--text-primary) }
-    .run-list-view-tab--active { color:var(--text-primary);border-bottom-color:var(--accent);font-weight:600 }
     .run-list { display:flex;flex-direction:column;gap:12px;margin:16px 0 }
     /* verdict 用左边粗带 + 浅色填充背景双重视觉提示,远看也能区分。
        PROGRESS = sage 绿(进步),REGRESS = 砖红(回归),CAUTIOUS = 琥珀(警示),其他 = 灰(无信号) */

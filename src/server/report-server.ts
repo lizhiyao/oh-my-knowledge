@@ -2,8 +2,9 @@ import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http
 import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { renderRunList, renderReportDocumentDetail, renderTrendsPage } from '../renderer/html-renderer.js';
+import { renderReportDocumentDetail, renderTrendsPage } from '../renderer/html-renderer.js';
 import { renderSkillList } from '../renderer/skill-list-renderer.js';
+import { renderSkillDetail } from '../renderer/skill-detail-renderer.js';
 import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
 import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
@@ -21,6 +22,7 @@ const DEFAULT_PORT = 7799;
 const PORT_HINT = `OMK_REPORT_PORT=${DEFAULT_PORT} omk eval ...`;
 const DEFAULT_REPORTS_DIR = join(homedir(), '.oh-my-knowledge', 'reports');
 const DEFAULT_ANALYSES_DIR = join(homedir(), '.oh-my-knowledge', 'analyses');
+const DEFAULT_DOCTORS_DIR = join(homedir(), '.oh-my-knowledge', 'doctors');
 
 interface ReportServerOptions {
   port?: number;
@@ -29,6 +31,7 @@ interface ReportServerOptions {
   host?: string;
   reportsDir?: string;
   analysesDir?: string;
+  doctorsDir?: string;
   observationsDir?: string;
   jobsDir?: string;
   store?: ReportStore;
@@ -441,7 +444,7 @@ export function formatListenError(p: number, err: unknown): Error | null {
   return null;
 }
 
-export function createReportServer({ port, host: hostOption, reportsDir = DEFAULT_REPORTS_DIR, analysesDir = DEFAULT_ANALYSES_DIR, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, store, jobStore }: ReportServerOptions = {}): ReportServer {
+export function createReportServer({ port, host: hostOption, reportsDir = DEFAULT_REPORTS_DIR, analysesDir = DEFAULT_ANALYSES_DIR, doctorsDir = DEFAULT_DOCTORS_DIR, observationsDir = DEFAULT_OBSERVATIONS_DIR, jobsDir = DEFAULT_JOBS_DIR, store, jobStore }: ReportServerOptions = {}): ReportServer {
   let server: Server | null = null;
   let serverUrl: string | null = null;
 
@@ -682,22 +685,36 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
-      // 根路径默认走 skill-centric 列表页(v0.30 起 studio 顶级实体翻成"skill")。
-      // 老用户想看 run 列表用 /runs 兼容。
+      // 根路径走 skill-centric 列表页 — studio 顶级实体是 skill。
       if (path === '/') {
         const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir);
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderSkillList(idx, lang));
         return;
       }
 
-      // /runs 显示原 run-card 列表(等价于 v0.29 及之前的 /)。skills 列表底部 /
-      // 顶部 view 切换器都链到这里。
-      if (path === '/runs') {
+      // /skills/<name> 详情页 — 4 张卡片(doctor / eval-评分 / eval-功能 / observe)
+      // + 跨报告 cross-link + 行动建议。
+      const skillDetailMatch = path.match(/^\/skills\/(.+)$/);
+      if (skillDetailMatch) {
+        const skillName = decodeURIComponent(skillDetailMatch[1]);
         const runs = await reportStore.list();
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir);
+        const entry = idx.entries.find((e) => e.skillName === skillName);
+        if (!entry) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end(`Skill not found: ${skillName}`);
+          return;
+        }
+        // 加载完整 eval 报告(为详情页提供 layered scores / coverage / per-sample diagnostic)
+        let evalReport = null;
+        if (entry.eval) {
+          const r = await reportStore.get(entry.eval.reportId);
+          if (r && r.kind === 'evaluation') evalReport = r;
+        }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderRunList(runs, lang));
+        res.end(renderSkillDetail(entry, evalReport, lang));
         return;
       }
 
