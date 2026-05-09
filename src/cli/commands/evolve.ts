@@ -27,6 +27,19 @@ interface TrajectoryEntry {
   costUSD: number;
 }
 
+const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+
+function validateEvolveEffort(raw: string, lang: 'zh' | 'en'): 'low' | 'medium' | 'high' | 'xhigh' | 'max' {
+  if (!VALID_EFFORTS.has(raw)) {
+    const msg = lang === 'zh'
+      ? `--effort 必须是 low / medium / high / xhigh / max 之一(实际:"${raw}")`
+      : `--effort must be one of low/medium/high/xhigh/max (got "${raw}")`;
+    console.error(msg);
+    throw new CliExit(2);
+  }
+  return raw as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+}
+
 interface EvolveResult {
   startScore: number;
   finalScore: number;
@@ -56,6 +69,9 @@ export async function execute(argv: string[]): Promise<void> {
       timeout: { type: 'string', default: '120' },
       executor: { type: 'string', default: 'claude' },
       'skip-connectivity': { type: 'boolean', default: false },
+      effort: { type: 'string' },
+      'no-diagnostic': { type: 'boolean', default: false },
+      'skip-doctor': { type: 'boolean', default: false },
     },
     allowPositionals: true,
   });
@@ -98,6 +114,9 @@ export async function execute(argv: string[]): Promise<void> {
       concurrency: Math.max(1, Number(values.concurrency) || 1),
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
       skipConnectivity: values['skip-connectivity'] as boolean,
+      effort: values.effort ? validateEvolveEffort(values.effort as string, lang) : undefined,
+      noDiagnostic: values['no-diagnostic'] as boolean,
+      skipDoctor: values['skip-doctor'] as boolean,
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error }: RoundProgressInfo): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。

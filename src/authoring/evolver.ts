@@ -131,6 +131,12 @@ interface EvolveOptions {
   concurrency?: number;
   timeoutMs?: number;
   skipConnectivity?: boolean;
+  /** 控被评测 LLM 的扩展思考预算。默认 'low' 跟 omk eval 一致。 */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** 关闭 diagnostic LLM 调用。默认 false。 */
+  noDiagnostic?: boolean;
+  /** 跳过 doctor 健康检查门禁。默认 false。 */
+  skipDoctor?: boolean;
   onProgress?: ProgressCallback | null;
   onRoundProgress?: ((progress: EvolveRoundProgressInfo) => void) | null;
 }
@@ -250,6 +256,9 @@ export async function evolveSkill({
   concurrency = 1,
   timeoutMs,
   skipConnectivity = false,
+  effort,
+  noDiagnostic,
+  skipDoctor,
   onProgress = null,
   onRoundProgress = null,
 }: EvolveOptions): Promise<EvolveResult> {
@@ -294,7 +303,7 @@ export async function evolveSkill({
 
   // Round 0: baseline evaluation
   const baselineReport = await evaluate(r0Path, {
-    samplesPath: absSamplesPath, skillDir, model, judgeModels: effectiveJudgeModels, executorName, concurrency, timeoutMs, skipConnectivity, onProgress,
+    samplesPath: absSamplesPath, skillDir, model, judgeModels: effectiveJudgeModels, executorName, concurrency, timeoutMs, skipConnectivity, effort, noDiagnostic, skipDoctor, onProgress,
   });
   const baselineVariantKey = Object.keys(baselineReport.summary)[0];
   bestScore = baselineReport.summary[baselineVariantKey]?.avgCompositeScore ?? 0;
@@ -319,7 +328,7 @@ export async function evolveSkill({
       lastReport = baselineReport;
     } else {
       lastReport = await evaluate(allVersions[bestRound], {
-        samplesPath: absSamplesPath, skillDir, model, judgeModels: effectiveJudgeModels, executorName, concurrency, timeoutMs, skipConnectivity, onProgress,
+        samplesPath: absSamplesPath, skillDir, model, judgeModels: effectiveJudgeModels, executorName, concurrency, timeoutMs, skipConnectivity, effort, noDiagnostic, skipDoctor, onProgress,
       });
       totalCostUSD += lastReport.meta.totalCostUSD;
       if (reportHasUnreportedCost(lastReport)) totalCostReported = false;
@@ -350,7 +359,7 @@ export async function evolveSkill({
 
     // Evaluate candidate
     const candidateReport = await evaluate(candidatePath, {
-      samplesPath: absSamplesPath, skillDir, model, judgeModels: effectiveJudgeModels, executorName, concurrency, timeoutMs, skipConnectivity, onProgress,
+      samplesPath: absSamplesPath, skillDir, model, judgeModels: effectiveJudgeModels, executorName, concurrency, timeoutMs, skipConnectivity, effort, noDiagnostic, skipDoctor, onProgress,
     });
     const candidateVariantKey = Object.keys(candidateReport.summary)[0];
     const candidateScore = candidateReport.summary[candidateVariantKey]?.avgCompositeScore ?? 0;
@@ -416,10 +425,18 @@ interface EvaluateOptions {
   concurrency: number;
   timeoutMs?: number;
   skipConnectivity?: boolean;
+  /** 跟 omk eval 同档:控被评测 LLM 的扩展思考预算。默认 'low' 跟 eval 一致,
+   *  否则 evolve 隐式跑 high effort,跟 eval 默认配置不一致(用户会觉得"omk
+   *  evolve 比 omk eval 慢 8x")。 */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** 关闭 diagnostic LLM 调用。默认 false(跑诊断)。 */
+  noDiagnostic?: boolean;
+  /** 跳过 doctor 健康检查。默认 false。 */
+  skipDoctor?: boolean;
   onProgress: ((progress: EvolveProgressInfo) => void) | null;
 }
 
-async function evaluate(skillFilePath: string, { samplesPath, skillDir, model, judgeModels, executorName, concurrency, timeoutMs, skipConnectivity, onProgress }: EvaluateOptions): Promise<Report> {
+async function evaluate(skillFilePath: string, { samplesPath, skillDir, model, judgeModels, executorName, concurrency, timeoutMs, skipConnectivity, effort, noDiagnostic, skipDoctor, onProgress }: EvaluateOptions): Promise<Report> {
   const { report } = await runEvaluation({
     samplesPath,
     skillDir,
@@ -432,6 +449,9 @@ async function evaluate(skillFilePath: string, { samplesPath, skillDir, model, j
     timeoutMs,
     executorName,
     skipConnectivity,
+    effort,
+    noDiagnostic,
+    skipDoctor,
     onProgress,
   });
   return report as Report;
