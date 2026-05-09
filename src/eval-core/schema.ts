@@ -5,6 +5,7 @@
 
 import type { ExecResult, GradeResult, JudgeConfig, VariantResult, VariantSummary, TurnInfo, ToolCallInfo } from '../types/index.js';
 import { computeJudgeAgreement } from '../grading/judge.js';
+import { safeSliceForJson } from '../util/safe-slice.js';
 
 function ratioToScore(ratio: number): number {
   return Number((1 + ratio * 4).toFixed(2));
@@ -16,7 +17,7 @@ const MAX_TOOL_OUTPUT = 1000;
 function truncateTurns(turns: TurnInfo[]): TurnInfo[] {
   return turns.map((t) => ({
     ...t,
-    content: t.content.length > MAX_TURN_CONTENT ? t.content.slice(0, MAX_TURN_CONTENT) + '…' : t.content,
+    content: safeSliceForJson(t.content, MAX_TURN_CONTENT),
     ...(t.toolCalls && { toolCalls: truncateToolCalls(t.toolCalls) }),
   }));
 }
@@ -24,8 +25,8 @@ function truncateTurns(turns: TurnInfo[]): TurnInfo[] {
 function truncateToolCalls(toolCalls: ToolCallInfo[]): ToolCallInfo[] {
   return toolCalls.map((tc) => ({
     ...tc,
-    output: typeof tc.output === 'string' && tc.output.length > MAX_TOOL_OUTPUT
-      ? tc.output.slice(0, MAX_TOOL_OUTPUT) + '…'
+    output: typeof tc.output === 'string'
+      ? safeSliceForJson(tc.output, MAX_TOOL_OUTPUT)
       : tc.output,
   }));
 }
@@ -122,7 +123,7 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
       };
     })()),
     ...(options?.factCheck && options.factCheck.totalCount > 0 && { factCheck: options.factCheck }),
-    outputPreview: execResult.output ? execResult.output.slice(0, 200) : null,
+    outputPreview: execResult.output ? safeSliceForJson(execResult.output, 200, '') : null,
     ...(execResult.output && { fullOutput: execResult.output }),
     ...(execResult.turns && execResult.turns.length > 0 && { turns: truncateTurns(execResult.turns) }),
     ...(execResult.toolCalls && execResult.toolCalls.length > 0 && { toolCalls: truncateToolCalls(execResult.toolCalls) }),

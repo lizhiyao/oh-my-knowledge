@@ -1,5 +1,6 @@
 import { createCache, cacheKey } from './cache.js';
 import { buildVariantResult } from './schema.js';
+import { safeSliceForJson } from '../util/safe-slice.js';
 import { grade } from '../grading/index.js';
 import { checkFacts } from './fact-checker.js';
 import type { FactCheckResult } from './fact-checker.js';
@@ -214,7 +215,7 @@ export async function executeTasks({
         inputTokens: execResult!.inputTokens,
         outputTokens: execResult!.outputTokens,
         costUSD: execResult!.costUSD,
-        outputPreview: execResult!.output ? execResult!.output.slice(0, 200) : null,
+        outputPreview: execResult!.output ? safeSliceForJson(execResult!.output, 200, '') : null,
       });
     }
 

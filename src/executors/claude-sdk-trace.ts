@@ -1,5 +1,6 @@
 import type { ToolCallInfo, TurnInfo } from '../types/index.js';
 import type { ClaudeSdkBaseMessage } from './shared.js';
+import { safeSliceForJson } from '../util/safe-slice.js';
 
 export function isClaudeSdkResultMessage(message: ClaudeSdkBaseMessage): boolean {
   return message.type === 'result';
@@ -75,7 +76,7 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?:
         const tc: ToolCallInfo = {
           tool: pending?.tool || 'unknown',
           input: pending?.input || null,
-          output: outputText.slice(0, 500),
+          output: safeSliceForJson(outputText, 500, ''),
           success: effectiveSuccess,
         };
         toolCalls.push(tc);
@@ -97,7 +98,7 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?:
         const toolDur = msgTs && lastTurnTs ? msgTs - lastTurnTs : undefined;
         turns.push({
           role: 'tool',
-          content: outputText.slice(0, 500),
+          content: safeSliceForJson(outputText, 500, ''),
           ...(toolDur != null && toolDur > 0 && { durationMs: toolDur }),
         });
         if (msgTs) lastTurnTs = msgTs;
