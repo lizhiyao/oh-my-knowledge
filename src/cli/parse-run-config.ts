@@ -323,7 +323,7 @@ export function parseRunConfig(
   const noCache = (values['no-cache'] as boolean | undefined) ?? evalConfig?.noCache ?? false;
   const dryRun = (values['dry-run'] as boolean | undefined) ?? false;
   const skipConnectivity = (values['skip-connectivity'] as boolean | undefined) ?? false;
-  const skipDoctor = (values['skip-doctor'] as boolean | undefined) ?? false;
+  const skipDoctor = (values['skip-doctor'] as boolean | undefined) ?? evalConfig?.skipDoctor ?? false;
   const mcpConfig = (values['mcp-config'] as string | undefined) ?? evalConfig?.mcpConfig;
   const verbose = (values.verbose as boolean | undefined) ?? false;
   const retry = Math.max(0, Number(values.retry ?? 0) || 0);

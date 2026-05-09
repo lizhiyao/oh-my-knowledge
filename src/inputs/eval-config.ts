@@ -215,6 +215,24 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     };
   }
 
+  // effort 字段:可选,合法值检查
+  let effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined;
+  if (obj.effort !== undefined) {
+    const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+    if (typeof obj.effort !== 'string' || !VALID_EFFORTS.has(obj.effort)) {
+      throw new Error(`${configPath}: effort must be one of low/medium/high/xhigh/max (got ${JSON.stringify(obj.effort)})`);
+    }
+    effort = obj.effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  }
+
+  // noDiagnostic / skipDoctor:可选 boolean
+  if (obj.noDiagnostic !== undefined && typeof obj.noDiagnostic !== 'boolean') {
+    throw new Error(`${configPath}: noDiagnostic must be boolean (got ${typeof obj.noDiagnostic})`);
+  }
+  if (obj.skipDoctor !== undefined && typeof obj.skipDoctor !== 'boolean') {
+    throw new Error(`${configPath}: skipDoctor must be boolean (got ${typeof obj.skipDoctor})`);
+  }
+
   return {
     samples: obj.samples as string,
     executor: obj.executor as string | undefined,
@@ -235,6 +253,9 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     goldDir: obj.goldDir as string | undefined,
     lengthDebias: obj.lengthDebias as boolean | undefined,
     strictBaseline: obj.strictBaseline as boolean | undefined,
+    effort,
+    noDiagnostic: obj.noDiagnostic as boolean | undefined,
+    skipDoctor: obj.skipDoctor as boolean | undefined,
   };
 }
 

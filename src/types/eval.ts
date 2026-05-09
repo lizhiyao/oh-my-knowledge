@@ -212,6 +212,10 @@ export interface EvalConfig {
   /** 关闭 diagnostic LLM call。Default false。跟 noJudge 独立 — judge 答打分,
    *  diagnostic 答怎么改 skill。 */
   noDiagnostic?: boolean;
+  /** 跳过 doctor 健康检查门禁。Default false。 评测环境用 mock/stub 提供依赖时,
+   *  doctor 物理路径检查会误报中断 eval — 加这个 escape hatch。判分管道、verdict、
+   *  judge prompt hash 不动,跨报告可比性不变。 */
+  skipDoctor?: boolean;
   /** Judge configuration. 1 entry = single judge (no ensemble); ≥ 2 entries = ensemble
    *  with inter-judge agreement. Replaces v0.1 split `judgeModel` + `judgeExecutor` —
    *  unified as a single first-class concept (single judge is the degenerate case of
