@@ -412,7 +412,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body><button id="lang-toggle" onclick="switchLang()" class="lang-toggle">Chinese</button>
+</style></head><body>
     <main>
     <nav class="nav"><a href="/?lang=en" data-i18n="backToList">← Back to list</a></nav>
     <div class="report-id-line">
@@ -1447,7 +1447,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body><button id="lang-toggle" onclick="switchLang()" class="lang-toggle">英文</button>
+</style></head><body>
     <main>
     <nav class="nav"><a href="/" data-i18n="backToList">← 返回列表</a></nav>
     <div class="report-id-line">
@@ -2482,7 +2482,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body><button id="lang-toggle" onclick="switchLang()" class="lang-toggle">Chinese</button>
+</style></head><body>
     <main>
     <h1>Evaluation Reports</h1>
     <p class="subtitle" data-i18n="subtitle">Knowledge Artifact Evaluation &middot; 1 runs</p>
@@ -3040,7 +3040,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body><button id="lang-toggle" onclick="switchLang()" class="lang-toggle">英文</button>
+</style></head><body>
     <main>
     <h1>评测报告</h1>
     <p class="subtitle" data-i18n="subtitle">知识载体评测 &middot; 1 次评测</p>

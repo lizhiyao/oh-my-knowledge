@@ -304,10 +304,10 @@ export function renderSkillList(idx: SkillIndex, lang: Lang = DEFAULT_LANG): str
       </div>`
     : `<div class="sl-cards">${idx.entries.map((ent) => renderCard(ent, langQ, lang)).join('')}</div>`;
 
-  const title = lang === 'zh' ? '📚 Skills 概览' : '📚 Skills overview';
+  const title = lang === 'zh' ? '🧭 Skill 健康仪表盘' : '🧭 Skill Health Dashboard';
   const subtitle = lang === 'zh'
-    ? '按 skill 聚合的健康看板:点卡片看详情(问题清单 / 趋势 / 历史评测)'
-    : 'Per-skill health board — click a card for issues, trends, and history';
+    ? '一站式查看每个 skill 的健康状况、待优化项和历史趋势'
+    : 'One-stop view of every skill — health, issues, and historical trends';
 
   return layout(title, `
     <main>

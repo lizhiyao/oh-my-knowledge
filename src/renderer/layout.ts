@@ -364,6 +364,9 @@ function langToggleButton(lang: Lang): string {
 export function layout(title: string, body: string, lang: Lang = DEFAULT_LANG): string {
   const htmlLang = lang === 'zh' ? 'zh-CN' : 'en';
   const favicon = encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#a78bfa"/></linearGradient></defs><circle cx="16" cy="16" r="15" fill="#0f172a"/><circle cx="16" cy="16" r="8" stroke="url(#g)" stroke-width="3.5" fill="none"/></svg>');
+  // 中英文切换按钮临时隐藏(URL ?lang= / localStorage 切换逻辑保留,按钮 UI 不渲染)。
+  // 想恢复:在 body 模板里加回 ${langToggleButton(lang)}。
+  void langToggleButton;
   return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${title}</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">${globalKeyboardScript()}
 <style>
@@ -749,5 +752,5 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body>${langToggleButton(lang)}${body}<footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer>${langToggleScript()}</body></html>`;
+</style></head><body>${body}<footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer>${langToggleScript()}</body></html>`;
 }
