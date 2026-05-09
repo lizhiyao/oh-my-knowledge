@@ -131,9 +131,9 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
    保证评测时 0 真调底层。query 类返回贴近真实 schema 的示例数据,write 类返回 success。
 
 可选元数据字段如能判断顺便填，无法判断时省略整个字段即可）：
-- capability: string[] — 该用例覆盖的能力维度，如 ["api-selection", "error-diagnosis"]
-- difficulty: "easy" | "medium" | "hard" — 难度等级
-- construct: string — 用例测的 construct 类型，建议值 "necessity"（测知识必要性）/ "quality"（测 skill 写得好不好）/ "capability"（测某具体能力）
+- capability: string[] — 该用例覆盖的能力维度。**值必须是中文短语**，描述这条 sample 在测什么能力，如 ["接口选择", "错误诊断", "PR 编号解析", "多步工作流"]。**不要用英文 slug 形式**(如 ❌ "api-selection" / "pr-iid-resolution")。专有名词(API / PR / SQL / SDK)可以保留英文,但短语主体用中文。
+- difficulty: "easy" | "medium" | "hard" — 难度等级。**值保持英文 enum**(系统识别符,UI 会自动展示成"容易/中等/困难")。
+- construct: string — 用例测的 construct 类型。**值用中文**,三选一:"必要性"(测知识必要性,LLM 没 skill 时该 fail)/"质量"(测 skill 写得好不好)/"能力"(测某具体能力)。
 - **tripwire: true** — **此 sample 是诱错样本时必填**。诱错样本(tripwire)= 故意诱导 LLM 走错的样本(用户用错前提 / 跳步骤 / 用错参数类型),目的是测 skill 是否能让 LLM 识破并纠正,**LLM 失败是预期结果**。
   影响:omk 评测时,diagnostic 看到 tripwire:true 不会建议改 skill(因为 LLM 该 fail),避免误导 skill 作者。
   典型识别:prompt 含"直接用 X 就行了"/"不用检查"/"我已经知道是 Y"等用户错误前提诱导 + assertions 含 tools_not_called 或反模式断言 + construct 通常是 "necessity"。
