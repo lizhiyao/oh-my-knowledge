@@ -13,7 +13,8 @@
  */
 
 import type { ExecutorFn, ToolCallInfo, TurnInfo, Assertion, Sample } from '../types/index.js';
-import type { AssertionDetail, DiagnosticResult } from '../types/judge.js';
+import type { AssertionDetail, DiagnosticResult, WorkflowCheck, FailureMode } from '../types/judge.js';
+import { FAILURE_MODES } from '../types/judge.js';
 
 const SYSTEM_PROMPT = `你是 skill 评测诊断助手。基于失败用例的 expected/actual 差异,给 skill 作者具体可操作的改进建议。
 
@@ -44,6 +45,27 @@ const SYSTEM_PROMPT = `你是 skill 评测诊断助手。基于失败用例的 e
   **不要**复述 rubric 原文。
 - suggestion 给具体改动:引用章节标题 + 写明"加什么话"或"改成什么",
   避免"建议优化 / 建议明确"这种空话。
+- workflowChecks / failureModes 的描述全部用中文,evidence 引用具体的工具调用编号([N] 这种),不要用英文枚举名以外的英文表达。
+
+**工作流校验(workflowChecks)**:
+把 rubric / skill 规定的关键步骤拆成可勾选的清单,每条给:
+- step: 中文描述这一步要干啥(如"调 code-host auth status 拿当前 username")
+- passed: LLM 是否做了该步骤
+- evidence: 引用 trace 里的具体证据。passed=true 时点名是哪一步工具调用做的;passed=false 时说明哪里偏离了(漏调 / 调错 / 参数错)
+不是工作流型任务(rubric 是开放式问答 / 单纯文本生成)就给空数组 []。
+
+**失败模式标签(failureModes)**:
+从下面 7 个里选(可多选),用来一眼归类 LLM 是怎么错的:
+${FAILURE_MODES.map((m, i) => `  ${i + 1}. ${m}`).join('\n')}
+含义:
+- 工作流跳步: 没按 rubric/skill 规定的步骤顺序执行
+- 硬编码值: 该用前面变量传递的字段写死成具体值(如 namespace、id 直接写 testuser001)
+- 幻觉输出: 声称完成 / 给出实际不存在的结果(虚构 commit hash、虚构文件路径、虚构 id)
+- 工具误用: 选错工具 / 参数错 / 重复尝试同一失败动作
+- 环境拦截: mock-strict 或工具不可用导致 LLM 行为正确但仍 fail(诊断要把这种和真错区分)
+- 误读约束: skill 写清楚的约束被 LLM 漏掉 / 误读(常和 llm_misread rootCause 搭)
+- 其他: 兜底,不属于以上任何类
+全过的 sample 给空数组 []。
 
 只返回 JSON,不要其他内容。`;
 
@@ -156,6 +178,10 @@ ${failedDetails || '(无失败断言?)'}${tripwireHint}
   "summary": "<失败本质,1-2 句>",
   "expected": "<rubric/assertions 期望什么具体行为>",
   "actual": "<LLM 实际做了什么>",
+  "workflowChecks": [
+    {"step": "<rubric/skill 规定的一步,中文>", "passed": true, "evidence": "<引 trace 中 [N] 工具调用编号或简短中文证据>"}
+  ],
+  "failureModes": ["<从 7 个中文标签里选,可多选;无可归类则空数组>"],
   "rootCause": ["<上述 5 选>"],
   "suggestion": {
     "skill": "<如归因到 skill,具体改哪段、加什么话(引用章节标题)。否则空字符串>",
@@ -163,6 +189,160 @@ ${failedDetails || '(无失败断言?)'}${tripwireHint}
     "none": "<如诱错样本 / LLM 行为本身不该改,解释为什么不用动 skill。否则空字符串>"
   }
 }`;
+}
+
+/**
+ * 字段级 salvage:LLM 诊断输出在字符串中间被截断时(unterminated string),
+ * JSON.parse 整条丢; 这里用正则按字段名抽取已写完(或截断到 EOF)的内容,
+ * 至少把 summary/expected/actual 露出来让用户看到。
+ *
+ * 策略:
+ *   - 顶层字符串字段(summary/expected/actual):匹配 `"key"\s*:\s*"((?:[^"\\]|\\.)*)("|$)`,
+ *     允许字符串没有闭合引号(走 `$` 分支吃到 EOF)。
+ *   - rootCause(数组):匹配方括号内容,按字符串元素逐个解析。
+ *   - suggestion(嵌套对象):取出花括号内容后用相同策略递归提取 skill/sample/none。
+ *
+ * 不试图重建完整 JSON,只挑能挑出的字段。
+ */
+function unescapeJsonString(s: string): string {
+  // 单次扫描:顺序替换会导致 `\\t` 先被处理成 `\` + `t`,再被当成转义符二次处理。
+  // 对每个反斜杠序列只解码一次。截断到悬空 `\` 时按原样保留(避免吃掉合法尾字符)。
+  return s.replace(/\\(["\\/bnrt]|u[0-9a-fA-F]{4})/g, (_match, esc: string) => {
+    if (esc.startsWith('u')) {
+      return String.fromCharCode(parseInt(esc.slice(1), 16));
+    }
+    const map: Record<string, string> = {
+      '"': '"',
+      '\\': '\\',
+      '/': '/',
+      b: '\b',
+      n: '\n',
+      r: '\r',
+      t: '\t',
+    };
+    return map[esc] ?? esc;
+  });
+}
+
+function extractStringField(blob: string, key: string): string | undefined {
+  // 匹配 "key": "...content..."  允许末尾没有闭合引号(被截断的情况)。
+  // 内容部分允许转义对(\\ 任意字符)和非引号非反斜杠字符。
+  const re = new RegExp(
+    `"${key}"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*?)(?:"|$)`,
+    's',
+  );
+  const m = blob.match(re);
+  if (!m) return undefined;
+  return unescapeJsonString(m[1]);
+}
+
+function extractRootCause(blob: string): DiagnosticResult['rootCause'] | undefined {
+  const re = /"rootCause"\s*:\s*\[([^\]]*)/s;
+  const m = blob.match(re);
+  if (!m) return undefined;
+  const inner = m[1];
+  const valid = new Set(['skill_doc_unclear', 'skill_doc_missing', 'llm_misread', 'sample_design', 'tripwire_intentional']);
+  const items: DiagnosticResult['rootCause'] = [];
+  for (const sm of inner.matchAll(/"([^"]+)"/g)) {
+    if (valid.has(sm[1])) items.push(sm[1] as DiagnosticResult['rootCause'][number]);
+  }
+  return items;
+}
+
+function extractSuggestion(blob: string): DiagnosticResult['suggestion'] | undefined {
+  // suggestion 是嵌套对象。先抓 "suggestion": { ... 直到 EOF 或匹配的 } ,
+  // 然后在那段 blob 里按 key 抽 string 字段。
+  const start = blob.search(/"suggestion"\s*:\s*\{/);
+  if (start < 0) return undefined;
+  const tail = blob.slice(start);
+  // 取从 "suggestion": { 后到 EOF / 闭合花括号 / 下一个顶层 key 之前的内容
+  const inner = tail;
+  const skill = extractStringField(inner, 'skill');
+  const sample = extractStringField(inner, 'sample');
+  const none = extractStringField(inner, 'none');
+  if (skill === undefined && sample === undefined && none === undefined) return undefined;
+  return {
+    skill: skill ?? '',
+    sample: sample ?? '',
+    none: none ?? '',
+  };
+}
+
+function extractWorkflowChecks(blob: string): WorkflowCheck[] | undefined {
+  // 抓 "workflowChecks": [ ... ] 内部内容,容忍 ] 缺失(被截断的情况)。
+  const headIdx = blob.search(/"workflowChecks"\s*:\s*\[/);
+  if (headIdx < 0) return undefined;
+  const tail = blob.slice(headIdx);
+  const innerStart = tail.indexOf('[');
+  if (innerStart < 0) return undefined;
+  const innerBlob = tail.slice(innerStart + 1);
+  // 按对象边界拆 — 用括号深度计数从 { 到匹配的 } 切片。
+  // 截断在某个对象中间时,该对象丢弃,前面完整的保留。
+  const items: WorkflowCheck[] = [];
+  let depth = 0, objStart = -1;
+  for (let i = 0; i < innerBlob.length; i++) {
+    const ch = innerBlob[i];
+    if (ch === '{') {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && objStart >= 0) {
+        const objStr = innerBlob.slice(objStart, i + 1);
+        const step = extractStringField(objStr, 'step');
+        const evidence = extractStringField(objStr, 'evidence');
+        const passedMatch = objStr.match(/"passed"\s*:\s*(true|false)/);
+        if (step) {
+          items.push({
+            step,
+            passed: passedMatch?.[1] === 'true',
+            evidence: evidence ?? '',
+          });
+        }
+        objStart = -1;
+      }
+    } else if (ch === ']' && depth === 0) {
+      break;
+    }
+  }
+  return items;
+}
+
+function extractFailureModes(blob: string): FailureMode[] | undefined {
+  const re = /"failureModes"\s*:\s*\[([^\]]*)/s;
+  const m = blob.match(re);
+  if (!m) return undefined;
+  const inner = m[1];
+  const valid = new Set<string>(FAILURE_MODES);
+  const seen = new Set<FailureMode>();
+  const items: FailureMode[] = [];
+  for (const sm of inner.matchAll(/"([^"]+)"/g)) {
+    if (valid.has(sm[1]) && !seen.has(sm[1] as FailureMode)) {
+      seen.add(sm[1] as FailureMode);
+      items.push(sm[1] as FailureMode);
+    }
+  }
+  return items;
+}
+
+export function salvagePartialJson(blob: string): {
+  summary?: string;
+  expected?: string;
+  actual?: string;
+  rootCause?: DiagnosticResult['rootCause'];
+  workflowChecks?: WorkflowCheck[];
+  failureModes?: FailureMode[];
+  suggestion?: DiagnosticResult['suggestion'];
+} {
+  return {
+    summary: extractStringField(blob, 'summary'),
+    expected: extractStringField(blob, 'expected'),
+    actual: extractStringField(blob, 'actual'),
+    rootCause: extractRootCause(blob),
+    workflowChecks: extractWorkflowChecks(blob),
+    failureModes: extractFailureModes(blob),
+    suggestion: extractSuggestion(blob),
+  };
 }
 
 export async function runDiagnostic(opts: RunDiagnosticOptions): Promise<DiagnosticResult> {
@@ -198,6 +378,35 @@ export async function runDiagnostic(opts: RunDiagnosticOptions): Promise<Diagnos
   try {
     parsed = JSON.parse(jsonStr);
   } catch (e) {
+    // LLM 输出可能在字符串中间被截断(例如 max_output_tokens 命中、模型 stop 早),
+    // 完整 JSON.parse 会失败但前面写完的字段可能已经有用。做字段级 salvage。
+    const salvaged = salvagePartialJson(jsonStr);
+    const hasContent = !!(salvaged.summary || salvaged.expected || salvaged.actual
+      || (salvaged.workflowChecks && salvaged.workflowChecks.length > 0));
+    if (hasContent) {
+      return {
+        ok: true,
+        // 把 parse error 放在 error 里,UI 仍能区分"完整诊断"和"截断 salvage";
+        // 但 ok=true 让 summary/expected/actual 正常展示给用户。
+        error: `partial: JSON parse failed (${(e as Error).message}), salvaged ${
+          [
+            salvaged.summary && 'summary',
+            salvaged.expected && 'expected',
+            salvaged.actual && 'actual',
+            salvaged.workflowChecks?.length && 'workflowChecks',
+            salvaged.failureModes?.length && 'failureModes',
+          ].filter(Boolean).join('/')
+        }`,
+        summary: salvaged.summary ?? '',
+        expected: salvaged.expected ?? '',
+        actual: salvaged.actual ?? '',
+        rootCause: salvaged.rootCause ?? [],
+        workflowChecks: salvaged.workflowChecks ?? [],
+        failureModes: salvaged.failureModes ?? [],
+        suggestion: salvaged.suggestion ?? { skill: '', sample: '', none: '' },
+        costUSD: result.costUSD,
+      };
+    }
     return {
       ok: false,
       error: `JSON parse failed: ${(e as Error).message}; raw: ${raw.slice(0, 300)}`,
@@ -217,6 +426,8 @@ export async function runDiagnostic(opts: RunDiagnosticOptions): Promise<Diagnos
     ? rootCauseRaw.filter((c): c is DiagnosticResult['rootCause'][number] =>
         ['skill_doc_unclear', 'skill_doc_missing', 'llm_misread', 'sample_design', 'tripwire_intentional'].includes(String(c)))
     : [];
+  const workflowChecks = parseWorkflowChecks(obj.workflowChecks);
+  const failureModes = parseFailureModes(obj.failureModes);
 
   return {
     ok: true,
@@ -224,6 +435,8 @@ export async function runDiagnostic(opts: RunDiagnosticOptions): Promise<Diagnos
     expected: String(obj.expected ?? ''),
     actual: String(obj.actual ?? ''),
     rootCause,
+    workflowChecks,
+    failureModes,
     suggestion: {
       skill: String(sug.skill ?? ''),
       sample: String(sug.sample ?? ''),
@@ -231,4 +444,37 @@ export async function runDiagnostic(opts: RunDiagnosticOptions): Promise<Diagnos
     },
     costUSD: result.costUSD,
   };
+}
+
+function parseWorkflowChecks(raw: unknown): WorkflowCheck[] {
+  if (!Array.isArray(raw)) return [];
+  const out: WorkflowCheck[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Record<string, unknown>;
+    const step = typeof r.step === 'string' ? r.step.trim() : '';
+    const evidence = typeof r.evidence === 'string' ? r.evidence.trim() : '';
+    if (!step) continue;  // 没 step 描述就丢掉
+    out.push({
+      step,
+      passed: r.passed === true,
+      evidence,
+    });
+  }
+  return out;
+}
+
+function parseFailureModes(raw: unknown): FailureMode[] {
+  if (!Array.isArray(raw)) return [];
+  const valid = new Set<string>(FAILURE_MODES);
+  const seen = new Set<FailureMode>();
+  const out: FailureMode[] = [];
+  for (const item of raw) {
+    const s = typeof item === 'string' ? item.trim() : '';
+    if (valid.has(s) && !seen.has(s as FailureMode)) {
+      seen.add(s as FailureMode);
+      out.push(s as FailureMode);
+    }
+  }
+  return out;
 }

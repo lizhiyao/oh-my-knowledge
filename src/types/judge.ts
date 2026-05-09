@@ -66,6 +66,46 @@ export interface JudgeAgreement {
  *   sample_design          sample 设计有 bug(rubric / mock 跟 skill 矛盾)
  *   tripwire_intentional   sample 故意设计的反模式陷阱,LLM fail 是预期 — 不要建议改 skill
  */
+
+/**
+ * 单步工作流校验项 — 把 rubric / skill 规定的步骤拆出来,逐条对 LLM 实际 trace 勾选。
+ * 让用户用看 checklist 的方式快速判断 LLM 走对了哪几步、哪一步出了问题,
+ * 不用从 judge / diagnostic 的散文段落里自己拼工作流。
+ */
+export interface WorkflowCheck {
+  /** 该步骤的中文描述,如"调 code-host auth status 拿 username"。 */
+  step: string;
+  /** LLM 是否完成该步骤。 */
+  passed: boolean;
+  /** 中文证据:passed=true 时引用 trace 中相应工具调用 / 输出片段;passed=false 时说明哪里偏离。 */
+  evidence: string;
+}
+
+/**
+ * 失败模式标签 — LLM 在该 sample 上"是怎么错的"的行为分类(可多选)。
+ * 跟 rootCause 的区别:rootCause 答"是 skill 还是 LLM 的责任",failureMode 答"行为本身是什么类别的错"。
+ *
+ *   工作流跳步     没按 rubric/skill 规定的步骤顺序执行
+ *   硬编码值       该用变量传递的字段写死成具体值
+ *   幻觉输出       声称完成 / 给出实际不存在的结果(commit hash / 文件 / id 等)
+ *   工具误用       选错工具 / 参数错 / 重复尝试同一失败动作
+ *   环境拦截       mock-strict / 工具不可用导致 LLM 行为正确但仍 fail
+ *   误读约束       skill 写清楚的约束被 LLM 漏掉 / 误读
+ *   其他           兜底,不属于以上任何类
+ */
+export type FailureMode =
+  | '工作流跳步'
+  | '硬编码值'
+  | '幻觉输出'
+  | '工具误用'
+  | '环境拦截'
+  | '误读约束'
+  | '其他';
+
+export const FAILURE_MODES: readonly FailureMode[] = [
+  '工作流跳步', '硬编码值', '幻觉输出', '工具误用', '环境拦截', '误读约束', '其他',
+] as const;
+
 export interface DiagnosticResult {
   /** 失败本质,1-2 句。 */
   summary: string;
@@ -75,6 +115,16 @@ export interface DiagnosticResult {
   actual: string;
   /** 失败归因(允许多个,空数组当 'unknown')。 */
   rootCause: Array<'skill_doc_unclear' | 'skill_doc_missing' | 'llm_misread' | 'sample_design' | 'tripwire_intentional'>;
+  /**
+   * rubric / skill 规定的步骤逐条勾选。空数组表示 LLM 没拆出可勾选的工作流(rubric 是开放式描述、
+   * 或 sample 不是工作流型任务)。该字段是 v0.30 新增,旧报告无此字段(可选)。
+   */
+  workflowChecks?: WorkflowCheck[];
+  /**
+   * 失败模式标签(中文枚举,可多选)。空数组表示诊断不归类任何模式。
+   * 该字段是 v0.30 新增,旧报告无此字段(可选)。
+   */
+  failureModes?: FailureMode[];
   /** 修改建议 — 三个角度都可以为空字符串(意味"该角度无需调整")。 */
   suggestion: {
     /** 改 skill 哪一节、加什么话(引用具体章节,带 patch 思路)。 */
