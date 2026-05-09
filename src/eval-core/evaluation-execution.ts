@@ -274,16 +274,29 @@ export async function executeTasks({
 
     // Diagnostic — 与 judge 完全独立的"哪错了 + skill 怎么改"诊断。
     // 触发条件:noDiagnostic=false + 至少 1 条 assertion fail + sample 跑成功(有 fullOutput)。
-    // 用 haiku(便宜),给 failed sample 生成针对性建议。
+    //
+    // executor / model 选择:
+    //   - 优先用 judgeExecutors['claude'](已初始化好) + 'haiku' 模型 — 最便宜的标配。
+    //   - 用户没配 claude judge(只配了 openai / gemini 等)时,沿用第一个 judge 的
+    //     executor + 它对应的 model 名。硬写 'haiku' 会导致非 claude executor 拒绝
+    //     (model not found),诊断整段挂掉。
+    //   - 实在没有 judge executor 配置时回退主 executor(虽然不是 lean 也能跑)。
     const failedDetails = (gradeResult?.assertions?.details || []).filter((d) => !d.passed);
     const shouldDiagnose = !noDiagnostic && execResult!.ok && failedDetails.length > 0;
     if (shouldDiagnose) {
       try {
         const { runDiagnostic } = await import('../grading/diagnostic.js');
-        // 默认 diagnostic 用 haiku — 便宜 + 解释类任务足够。
-        // 用 judgeExecutors 里的 claude executor(已经初始化好);如果只配了非 claude
-        // judge 也走那个,反正 lean 模式跨 model 都能跑。
-        const diagExecutor = judgeExecutors['claude'] || Object.values(judgeExecutors)[0] || executor;
+        const claudeJudgeName = Object.keys(judgeExecutors).find((name) => name === 'claude');
+        const firstJudgeName = Object.keys(judgeExecutors)[0];
+        const diagExecutorName = claudeJudgeName || firstJudgeName;
+        const diagExecutor = diagExecutorName ? judgeExecutors[diagExecutorName] : executor;
+        // 模型选择:claude executor 走 'haiku' 标配;非 claude executor 沿用它在
+        // judgeModels 里配的 model(用户已经验证可用)。
+        let diagModel = 'haiku';
+        if (diagExecutorName && diagExecutorName !== 'claude') {
+          const judgeEntry = judgeModels.find((j) => j.executor === diagExecutorName);
+          if (judgeEntry) diagModel = judgeEntry.model;
+        }
         const diagnostic = await runDiagnostic({
           sample: task._sample,
           skillContent: task.artifact.content || null,
@@ -293,7 +306,7 @@ export async function executeTasks({
           fullOutput: execResult!.output || undefined,
           assertionDetails: gradeResult?.assertions?.details || [],
           executor: diagExecutor,
-          model: 'haiku',
+          model: diagModel,
         });
         variantResult.diagnostic = diagnostic;
         if (diagnostic.costUSD) totalCostUSD += diagnostic.costUSD;
