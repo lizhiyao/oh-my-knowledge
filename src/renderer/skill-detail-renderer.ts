@@ -317,30 +317,47 @@ function renderInsightList(insights: Insight[], idx: InsightIndex, entry: SkillI
 
 // ────────── 右栏:趋势大图 + 阶段卡 ──────────
 
-interface TrendDatum { x: string; doctorPct: number | null; evalPct: number | null; observePct: number | null }
+interface TrendDatum {
+  x: string;
+  doctorPct: number | null;
+  evalPct: number | null;
+  observePct: number | null;
+  /** 该时间点 doctor 报告 id(无对应单独页面,记下供 tooltip 用)。 */
+  doctorReportId: string | null;
+  evalReportId: string | null;
+  observeAnalysisId: string | null;
+}
 
 function buildTrendData(entry: SkillIndexEntry): TrendDatum[] {
   const dateMap = new Map<string, TrendDatum>();
   const dateOf = (ts: string): string => ts.slice(0, 10);
   const get = (date: string): TrendDatum => {
-    if (!dateMap.has(date)) dateMap.set(date, { x: date, doctorPct: null, evalPct: null, observePct: null });
+    if (!dateMap.has(date)) {
+      dateMap.set(date, { x: date, doctorPct: null, evalPct: null, observePct: null, doctorReportId: null, evalReportId: null, observeAnalysisId: null });
+    }
     return dateMap.get(date)!;
   };
   for (const h of entry.doctorHistory) {
     const total = h.passCount + h.warnCount + h.failCount;
-    get(dateOf(h.timestamp)).doctorPct = total > 0 ? (h.passCount / total) * 100 : null;
+    const d = get(dateOf(h.timestamp));
+    d.doctorPct = total > 0 ? (h.passCount / total) * 100 : null;
+    d.doctorReportId = h.reportId;
   }
   for (const h of entry.evalHistory) {
     const c = h.compositeScore;
-    get(dateOf(h.timestamp)).evalPct = c != null ? (c / 5) * 100 : null;
+    const d = get(dateOf(h.timestamp));
+    d.evalPct = c != null ? (c / 5) * 100 : null;
+    d.evalReportId = h.reportId;
   }
   for (const h of entry.observeHistory) {
-    get(dateOf(h.generatedAt)).observePct = (1 - h.gapRate) * 100;
+    const d = get(dateOf(h.generatedAt));
+    d.observePct = (1 - h.gapRate) * 100;
+    d.observeAnalysisId = h.analysisId;
   }
   return Array.from(dateMap.values()).sort((a, b) => a.x.localeCompare(b.x));
 }
 
-function renderTrendChart(entry: SkillIndexEntry, lang: Lang): string {
+function renderTrendChart(entry: SkillIndexEntry, langQ: string, lang: Lang): string {
   const data = buildTrendData(entry);
   const labelDoctor = lang === 'zh' ? 'Doctor 通过率' : 'Doctor pass %';
   const labelEval = lang === 'zh' ? 'Eval 综合分(归一)' : 'Eval composite (norm)';
@@ -349,6 +366,9 @@ function renderTrendChart(entry: SkillIndexEntry, lang: Lang): string {
   if (data.length < 2) {
     return `<div class="si-trend-empty">${lang === 'zh' ? '📈 还没有足够的历史数据画趋势(至少 2 个时间点)' : '📈 Need at least 2 data points for trend'}</div>`;
   }
+  const linksDoctor = data.map(() => null);
+  const linksEval = data.map((d) => d.evalReportId ? `/reports/${d.evalReportId}${langQ}` : null);
+  const linksObserve = data.map((d) => d.observeAnalysisId ? `/analyses/${d.observeAnalysisId}${langQ}` : null);
   const json = JSON.stringify({
     labels: data.map((d) => fmtDateShort(d.x)),
     datasets: [
@@ -357,7 +377,11 @@ function renderTrendChart(entry: SkillIndexEntry, lang: Lang): string {
       { label: labelObserve, data: data.map((d) => d.observePct), borderColor: '#b08030', backgroundColor: 'rgba(176,128,48,.1)', tension: 0.3, spanGaps: true },
     ],
   });
-  return `<div class="si-trend-canvas-wrap"><canvas id="trend-chart" data-chart='${json.replace(/'/g, '&#39;')}'></canvas></div>`;
+  const links = JSON.stringify([linksDoctor, linksEval, linksObserve]);
+  return `<div class="si-trend-canvas-wrap">
+    <canvas id="trend-chart" data-chart='${json.replace(/'/g, '&#39;')}' data-links='${links.replace(/'/g, '&#39;')}'></canvas>
+  </div>
+  <div class="si-trend-hint">${lang === 'zh' ? '点击 Eval / Observe 数据点跳到那期报告;Doctor 无对应详情页' : 'Click an Eval / Observe data point to open that report'}</div>`;
 }
 
 function renderStageCards(entry: SkillIndexEntry, lang: Lang): string {
@@ -506,7 +530,25 @@ function renderRuleResult(r: DoctorRuleResult): string {
   </li>`;
 }
 
-function renderDoctorModal(snap: SkillDoctorSnapshot | null, lang: Lang): string {
+function renderDoctorHistorySection(snap: SkillDoctorSnapshot | null, history: SkillDoctorSnapshot[], lang: Lang): string {
+  const older = snap ? history.filter((h) => h.reportId !== snap.reportId) : history;
+  if (older.length === 0) return '';
+  return `<details class="si-history">
+    <summary>${lang === 'zh' ? `📅 历史体检 ${older.length} 期` : `📅 History (${older.length})`}</summary>
+    <ul class="si-history-list">
+      ${[...older].reverse().map((h) => {
+        const total = h.passCount + h.warnCount + h.failCount;
+        return `<li>
+          <span class="si-history-date">${fmtDateShort(h.timestamp)}</span>
+          <span class="si-history-meta">${h.passCount}/${total} ✓ · ${h.warnCount} ⚠ · ${h.failCount} ✗</span>
+          <span class="si-history-status si-history-status--${h.status === 'fail' ? 'red' : h.status === 'warn' ? 'yellow' : 'green'}">${e(h.status)}</span>
+        </li>`;
+      }).join('')}
+    </ul>
+  </details>`;
+}
+
+function renderDoctorModal(snap: SkillDoctorSnapshot | null, history: SkillDoctorSnapshot[], lang: Lang): string {
   const body = snap ? `
     <div class="si-modal-stats">${snap.passCount} ✓ · ${snap.warnCount} ⚠ · ${snap.failCount} ✗ · ${relTime(snap.timestamp, lang)}</div>
     <ul class="si-rules">${snap.results.map((r) => renderRuleResult(r)).join('')}</ul>
@@ -519,6 +561,7 @@ function renderDoctorModal(snap: SkillDoctorSnapshot | null, lang: Lang): string
       </div>
       <p class="si-modal-purpose">${lang === 'zh' ? '在跑评测前先做基础检查:文件能不能读、元数据齐不齐、引用的依赖在不在。' : 'Pre-eval static checks: file readable, metadata complete, dependencies declared.'}</p>
       ${body}
+      ${renderDoctorHistorySection(snap, history, lang)}
     </div>
   </div>`;
 }
@@ -544,7 +587,28 @@ function collectFailedSamples(report: EvaluationReport, variant: string): Failed
   return out;
 }
 
-function renderEvalModal(snap: SkillEvalSnapshot | null, evalReport: EvaluationReport | null, langQ: string, lang: Lang): string {
+function renderEvalHistorySection(snap: SkillEvalSnapshot | null, history: SkillEvalSnapshot[], langQ: string, lang: Lang): string {
+  const older = snap ? history.filter((h) => h.reportId !== snap.reportId) : history;
+  if (older.length === 0) return '';
+  return `<details class="si-history">
+    <summary>${lang === 'zh' ? `📅 历史评测 ${older.length} 期` : `📅 History (${older.length})`}</summary>
+    <ul class="si-history-list">
+      ${[...older].reverse().map((h) => {
+        const total = h.passCount + h.failCount;
+        const pct = total > 0 ? Math.round((h.passCount / total) * 100) : 0;
+        const cls = h.failCount === 0 ? 'green' : h.passCount === 0 ? 'red' : 'yellow';
+        return `<li>
+          <span class="si-history-date">${fmtDateShort(h.timestamp)}</span>
+          <span class="si-history-meta">${h.compositeScore != null ? h.compositeScore.toFixed(2) : '—'}/5 · ${pct}% ${lang === 'zh' ? '通过' : 'pass'}</span>
+          <span class="si-history-status si-history-status--${cls}">${e(h.verdictLevel)}</span>
+          <a class="si-history-link" href="/reports/${e(h.reportId)}${langQ}">${lang === 'zh' ? '看报告 →' : 'open →'}</a>
+        </li>`;
+      }).join('')}
+    </ul>
+  </details>`;
+}
+
+function renderEvalModal(snap: SkillEvalSnapshot | null, history: SkillEvalSnapshot[], evalReport: EvaluationReport | null, langQ: string, lang: Lang): string {
   if (!snap) {
     return `<div id="modal-eval" class="modal-overlay" onclick="if(event.target===this)closeModal('modal-eval')">
       <div class="modal-content si-modal">
@@ -617,11 +681,28 @@ function renderEvalModal(snap: SkillEvalSnapshot | null, evalReport: EvaluationR
         </ul>
         <a class="si-eval-link" href="/reports/${e(snap.reportId)}${langQ}#test-view">${lang === 'zh' ? '展开单测视角 →' : 'Open functional view →'}</a>
       </div>` : ''}
+      ${renderEvalHistorySection(snap, history, langQ, lang)}
     </div>
   </div>`;
 }
 
-function renderObserveModal(snap: SkillObserveSnapshot | null, langQ: string, lang: Lang): string {
+function renderObserveHistorySection(snap: SkillObserveSnapshot | null, history: SkillObserveSnapshot[], langQ: string, lang: Lang): string {
+  const older = snap ? history.filter((h) => h.analysisId !== snap.analysisId) : history;
+  if (older.length === 0) return '';
+  return `<details class="si-history">
+    <summary>${lang === 'zh' ? `📅 历史观测 ${older.length} 期` : `📅 History (${older.length})`}</summary>
+    <ul class="si-history-list">
+      ${[...older].reverse().map((h) => `<li>
+        <span class="si-history-date">${fmtDateShort(h.generatedAt)}</span>
+        <span class="si-history-meta">${h.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · gap ${(h.gapRate * 100).toFixed(0)}% · fail ${(h.failureRate * 100).toFixed(1)}%</span>
+        <span class="si-history-status si-history-status--${h.healthBand}">${e(h.healthBand)}</span>
+        <a class="si-history-link" href="/analyses/${e(h.analysisId)}${langQ}">${lang === 'zh' ? '看报告 →' : 'open →'}</a>
+      </li>`).join('')}
+    </ul>
+  </details>`;
+}
+
+function renderObserveModal(snap: SkillObserveSnapshot | null, history: SkillObserveSnapshot[], langQ: string, lang: Lang): string {
   const body = snap ? `
     <div class="si-modal-stats">
       ${snap.segmentCount} ${lang === 'zh' ? '段' : 'segments'} ·
@@ -639,6 +720,7 @@ function renderObserveModal(snap: SkillObserveSnapshot | null, langQ: string, la
       </div>
       <p class="si-modal-purpose">${lang === 'zh' ? '接入真实用户的使用记录,看 skill 上线后跑得稳不稳、哪些内容真的被用到了。' : 'Real-world usage: stability + coverage in production.'}</p>
       ${body}
+      ${renderObserveHistorySection(snap, history, langQ, lang)}
     </div>
   </div>`;
 }
@@ -725,6 +807,7 @@ const SKILL_DETAIL_CSS = `
    用 position:relative + 固定 height,让 canvas 在内部以 absolute 填充。 */
 .si-trend-canvas-wrap { position:relative;width:100%;height:240px }
 .si-trend-canvas-wrap > canvas { position:absolute;left:0;top:0;width:100% !important;height:100% !important }
+.si-trend-hint { font-size:10.5px;color:var(--text-muted);text-align:center;margin-top:6px;font-style:italic }
 
 .si-stagecards { display:flex;flex-direction:column;gap:8px }
 .si-stagecard { all:unset;cursor:pointer;display:grid;grid-template-columns:32px 1fr auto auto;gap:10px;align-items:center;padding:10px 14px;background:var(--bg-surface);border-radius:7px;box-shadow:var(--shadow-sm);transition:transform .12s,box-shadow .12s;border-left:4px solid var(--border) }
@@ -824,6 +907,28 @@ const SKILL_DETAIL_CSS = `
 .si-rule-msg { color:var(--text-primary) }
 .si-rule-hint { font-size:12px;color:var(--text-secondary);margin-top:3px;line-height:1.55 }
 
+/* History section in stage modals */
+.si-history { margin-top:14px;border-top:1px solid var(--border);padding-top:10px }
+.si-history > summary { cursor:pointer;list-style:none;padding:6px 4px;font-size:12.5px;font-weight:600;color:var(--text-secondary);user-select:none;display:flex;align-items:center;gap:6px }
+.si-history > summary::-webkit-details-marker { display:none }
+.si-history > summary::before { content:'▸ ';color:var(--text-muted);font-size:11px }
+.si-history[open] > summary::before { content:'▾ ' }
+.si-history > summary:hover { color:var(--text-primary) }
+.si-history-list { margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px }
+.si-history-list li { display:grid;grid-template-columns:64px 1fr auto auto;gap:10px;align-items:center;padding:7px 10px;background:var(--bg-soft);border-radius:5px;font-size:12.5px;line-height:1.45 }
+.si-history-date { font-variant-numeric:tabular-nums;font-weight:600;color:var(--text-secondary) }
+.si-history-meta { color:var(--text-secondary);font-variant-numeric:tabular-nums }
+.si-history-status { font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:8px;letter-spacing:0.02em }
+.si-history-status--green { background:rgba(94,130,82,.18);color:#5e8252 }
+.si-history-status--yellow { background:rgba(176,128,48,.16);color:#b08030 }
+.si-history-status--red { background:rgba(156,74,63,.18);color:#9c4a3f }
+.si-history-link { font-size:11.5px;color:var(--accent);text-decoration:none;font-weight:500;white-space:nowrap }
+.si-history-link:hover { text-decoration:underline }
+@media(max-width:640px){
+  .si-history-list li { grid-template-columns:56px 1fr;gap:6px }
+  .si-history-status, .si-history-link { grid-column:auto;justify-self:end }
+}
+
 /* Eval modal blocks */
 .si-eval-block { background:var(--bg-soft);padding:12px 14px;border-radius:6px;margin-bottom:12px }
 .si-eval-block:last-child { margin-bottom:0 }
@@ -863,9 +968,11 @@ const TREND_INIT_SCRIPT = `
     var canvas = document.getElementById('trend-chart');
     if (!canvas || !window.Chart) return;
     var raw = canvas.getAttribute('data-chart');
+    var rawLinks = canvas.getAttribute('data-links');
     if (!raw) return;
     try {
       var data = JSON.parse(raw);
+      var links = rawLinks ? JSON.parse(rawLinks) : null;
       new Chart(canvas, {
         type: 'line',
         data: data,
@@ -873,13 +980,31 @@ const TREND_INIT_SCRIPT = `
           responsive: true, maintainAspectRatio: false,
           plugins: {
             legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 }, color: '#7a7a7a' } },
-            tooltip: { callbacks: { label: function(ctx){ return ctx.dataset.label + ': ' + (ctx.parsed.y == null ? '—' : ctx.parsed.y.toFixed(1) + '%'); } } }
+            tooltip: { callbacks: {
+              label: function(ctx){ return ctx.dataset.label + ': ' + (ctx.parsed.y == null ? '—' : ctx.parsed.y.toFixed(1) + '%'); },
+              afterLabel: function(ctx){
+                if (!links) return '';
+                var url = links[ctx.datasetIndex] && links[ctx.datasetIndex][ctx.dataIndex];
+                return url ? '点击看报告' : '';
+              }
+            } }
           },
           scales: {
             y: { min: 0, max: 100, ticks: { callback: function(v){ return v + '%'; }, color: '#a8a8a8', font: { size: 10 } }, grid: { color: 'rgba(58,58,58,.06)' } },
             x: { ticks: { color: '#a8a8a8', font: { size: 10 } }, grid: { display: false } }
           },
-          elements: { point: { radius: 3, hoverRadius: 5 } }
+          elements: { point: { radius: 3, hoverRadius: 5 } },
+          onClick: function(_evt, elements){
+            if (!links || !elements || elements.length === 0) return;
+            var el = elements[0];
+            var url = links[el.datasetIndex] && links[el.datasetIndex][el.index];
+            if (url) window.location.href = url;
+          },
+          onHover: function(evt, elements){
+            if (!links) return;
+            var any = elements && elements.some(function(el){ return links[el.datasetIndex] && links[el.datasetIndex][el.index]; });
+            evt.native.target.style.cursor = any ? 'pointer' : 'default';
+          }
         }
       });
     } catch(e) { console.warn('trend chart init failed:', e); }
@@ -917,16 +1042,16 @@ export function renderSkillDetail(
         <section class="si-right">
           <div class="si-trend">
             <div class="si-trend-h">📈 ${lang === 'zh' ? '健康趋势(归一到 0-100%,越高越好)' : 'Health trend (normalized 0-100%)'}</div>
-            ${renderTrendChart(entry, lang)}
+            ${renderTrendChart(entry, langQ, lang)}
           </div>
           ${renderStageCards(entry, lang)}
         </section>
       </div>
 
       ${insightModals}
-      ${renderDoctorModal(entry.doctor, lang)}
-      ${renderEvalModal(entry.eval, evalReport, langQ, lang)}
-      ${renderObserveModal(entry.observe, langQ, lang)}
+      ${renderDoctorModal(entry.doctor, entry.doctorHistory, lang)}
+      ${renderEvalModal(entry.eval, entry.evalHistory, evalReport, langQ, lang)}
+      ${renderObserveModal(entry.observe, entry.observeHistory, langQ, lang)}
     </main>
     <style>${SKILL_DETAIL_CSS}</style>
     ${TREND_INIT_SCRIPT}
