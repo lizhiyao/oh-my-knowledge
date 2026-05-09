@@ -651,6 +651,8 @@ omk eval——离线评测 skill 版本，并给出 ship/no-ship verdict
   --trivial-diff <number>             实际可忽略 diff（默认：0.1）
   --report-only / --no-gate           生成报告并打印 verdict，但始终 exit 0
   --no-serve                          评测后不自动启动报告 server
+  --no-judge                          关闭 judge 主观评分（仍跑断言；layered 评分可能塌缩到事实/行为层）
+  --no-diagnostic                     关闭 diagnostic 诊断 LLM 调用（默认开启，给 failed sample 出"哪错了 + 怎么改"建议）
   --skip-doctor                       escape hatch：跳过 doctor 健康检查门禁（默认强制启用）。评测环境用 mock/stub 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险由调用方承担
 
 示例：
@@ -684,6 +686,8 @@ Common options:
   --trivial-diff <number>             Practically negligible diff (default: 0.1)
   --report-only / --no-gate           Produce the report and print verdict, but always exit 0
   --no-serve                          Do not auto-start report server after evaluation
+  --no-judge                          Disable judge subjective scoring (assertions still run; layered scoring may collapse to fact/behavior layers)
+  --no-diagnostic                     Disable diagnostic LLM call (on by default; emits "what went wrong + how to fix" advice for failed samples)
   --skip-doctor                       Escape hatch: bypass the doctor health check gate (default on). Useful when the eval environment supplies dependencies via mocks/stubs and doctor's physical-path checks misfire; caller owns garbage-in risk
 
 Examples:
