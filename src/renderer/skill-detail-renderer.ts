@@ -98,9 +98,9 @@ function fmtDateShort(ts: string | null | undefined): string {
 
 // ────────── 健康等级评估 ──────────
 
-type HealthGrade = 'excellent' | 'good' | 'fair' | 'unhealthy' | 'unscored';
+export type HealthGrade = 'excellent' | 'good' | 'fair' | 'unhealthy' | 'unscored';
 
-interface HealthAssessment {
+export interface HealthAssessment {
   grade: HealthGrade;
   /** 0-100 参考分,各维度归一平均;无任何维度跑过时为 null。 */
   score: number | null;
@@ -109,7 +109,7 @@ interface HealthAssessment {
   color: 'green' | 'yellow' | 'red' | 'gray';
 }
 
-function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: Lang): HealthAssessment {
+export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: Lang): HealthAssessment {
   const ran = [entry.doctor, entry.eval, entry.observe].filter(Boolean).length;
   if (ran === 0) {
     return { grade: 'unscored', score: null, label: lang === 'zh' ? '未评估' : 'Unscored', emoji: '⚪', color: 'gray' };
