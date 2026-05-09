@@ -82,11 +82,15 @@ function mkEntry(opts: {
   observe?: SkillIndexEntry['observe'];
   evalSnap?: SkillIndexEntry['eval'];
 } = {}): SkillIndexEntry {
+  const d = opts.doctor ?? null;
+  const e = opts.evalSnap ?? null;
+  const o = opts.observe ?? null;
   return {
     skillName: 'test-skill',
-    doctor: opts.doctor ?? null,
-    eval: opts.evalSnap ?? null,
-    observe: opts.observe ?? null,
+    doctor: d, eval: e, observe: o,
+    doctorHistory: d ? [d] : [],
+    evalHistory: e ? [e] : [],
+    observeHistory: o ? [o] : [],
     band: 'gray',
   };
 }

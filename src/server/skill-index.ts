@@ -56,9 +56,15 @@ export interface SkillObserveSnapshot {
 
 export interface SkillIndexEntry {
   skillName: string;
+  /** 当前(最新)snapshot — 等价于对应 history 的最后一项,空时为 null。renderer
+   *  老路径直接读这个,不必动 history。 */
   doctor: SkillDoctorSnapshot | null;
   eval: SkillEvalSnapshot | null;
   observe: SkillObserveSnapshot | null;
+  /** 历史 snapshot,chronological 升序(最早 → 最近)。renderer 用它画 sparkline 趋势。 */
+  doctorHistory: SkillDoctorSnapshot[];
+  evalHistory: SkillEvalSnapshot[];
+  observeHistory: SkillObserveSnapshot[];
   /** 综合健康灯。doctor / eval / observe 任一红 → red;任一黄 → yellow;
    *  全绿 → green;皆未跑 → gray。 */
   band: 'green' | 'yellow' | 'red' | 'gray';
@@ -166,11 +172,10 @@ function latestActivityTs(e: SkillIndexEntry): string {
   return candidates.sort().pop() || '';
 }
 
-/** 扫 doctorsDir/*.json,按 skill 名分桶,取最新 timestamp。每个 DoctorReport 通常只
- *  含 1 个 skill(omk eval 嵌入式 doctor 单 skill;omk doctor target 也常常单文件),
- *  极少 N 个混在同一份。简单按 skill 名查单条。 */
-function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot> {
-  const out: Record<string, SkillDoctorSnapshot> = {};
+/** 扫 doctorsDir/*.json,按 skill 名分桶,**返回该 skill 的所有历史 snapshot**(asc 时序)。
+ *  renderer 用最后一项做"当前",前面项画 sparkline。 */
+function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot[]> {
+  const out: Record<string, SkillDoctorSnapshot[]> = {};
   if (!existsSync(dir)) return out;
   for (const file of readdirSync(dir)) {
     if (!file.endsWith('.json')) continue;
@@ -183,19 +188,15 @@ function scanDoctorReports(dir: string): Record<string, SkillDoctorSnapshot> {
         const warnN = sr.results.filter((r) => r.status === 'warn').length;
         const failN = sr.results.filter((r) => r.status === 'fail').length;
         const snap: SkillDoctorSnapshot = {
-          reportId: data.id,
-          timestamp: ts,
-          status: sr.status,
-          passCount: passN,
-          warnCount: warnN,
-          failCount: failN,
-          results: sr.results,
+          reportId: data.id, timestamp: ts, status: sr.status,
+          passCount: passN, warnCount: warnN, failCount: failN, results: sr.results,
         };
-        const prev = out[sr.skillName];
-        if (!prev || snap.timestamp > prev.timestamp) out[sr.skillName] = snap;
+        if (!out[sr.skillName]) out[sr.skillName] = [];
+        out[sr.skillName].push(snap);
       }
     } catch { /* skip corrupt */ }
   }
+  for (const list of Object.values(out)) list.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   return out;
 }
 
@@ -210,23 +211,23 @@ export function buildSkillIndex(
   analysesDir: string,
   doctorsDir: string,
 ): SkillIndex {
-  // ── eval 聚合 ──────────────────────────────────────────────
-  const evalBy: Record<string, SkillEvalSnapshot> = {};
+  // ── eval 聚合(历史 list)─────────────────────────────────
+  const evalBy: Record<string, SkillEvalSnapshot[]> = {};
   for (const r of reports) {
     if (r.kind !== 'evaluation') continue;
     const variants = r.meta.variants || [];
     for (const v of variants) {
-      // baseline 是保留 variant 名,代表"不注入 skill 的裸基线",不当 skill 看。
       if (v === 'baseline') continue;
       const snap = buildEvalSnapshot(r, v);
       if (!snap) continue;
-      const prev = evalBy[v];
-      if (!prev || snap.timestamp > prev.timestamp) evalBy[v] = snap;
+      if (!evalBy[v]) evalBy[v] = [];
+      evalBy[v].push(snap);
     }
   }
+  for (const list of Object.values(evalBy)) list.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
 
-  // ── observe 聚合 ──────────────────────────────────────────
-  const observeBy: Record<string, SkillObserveSnapshot> = {};
+  // ── observe 聚合(历史 list)──────────────────────────────
+  const observeBy: Record<string, SkillObserveSnapshot[]> = {};
   if (existsSync(analysesDir)) {
     for (const file of readdirSync(analysesDir)) {
       if (!file.endsWith('.json')) continue;
@@ -237,39 +238,39 @@ export function buildSkillIndex(
         const id = file.replace(/\.json$/, '');
         for (const [skill, h] of Object.entries(data.bySkill)) {
           const snap: SkillObserveSnapshot = {
-            analysisId: id,
-            generatedAt,
+            analysisId: id, generatedAt,
             healthBand: bandFromObserveHealth(h),
             failureRate: h.toolFailureRate,
             segmentCount: h.segmentCount,
             gapRate: h.gap?.weightedGapRate ?? 0,
           };
-          const prev = observeBy[skill];
-          if (!prev || snap.generatedAt > prev.generatedAt) observeBy[skill] = snap;
+          if (!observeBy[skill]) observeBy[skill] = [];
+          observeBy[skill].push(snap);
         }
       } catch { /* skip corrupt */ }
     }
   }
+  for (const list of Object.values(observeBy)) list.sort((a, b) => a.generatedAt.localeCompare(b.generatedAt));
 
-  // ── doctor 聚合 ──────────────────────────────────────────
+  // ── doctor 聚合(历史 list)──────────────────────────────
   const doctorBy = scanDoctorReports(doctorsDir);
 
   // ── 合并 ──────────────────────────────────────────────────
   const allSkills = new Set<string>([
-    ...Object.keys(evalBy),
-    ...Object.keys(observeBy),
-    ...Object.keys(doctorBy),
+    ...Object.keys(evalBy), ...Object.keys(observeBy), ...Object.keys(doctorBy),
   ]);
   const entries: SkillIndexEntry[] = [];
   for (const name of allSkills) {
-    const doctor = doctorBy[name] ?? null;
-    const evalSnap = evalBy[name] ?? null;
-    const observe = observeBy[name] ?? null;
+    const doctorHistory = doctorBy[name] ?? [];
+    const evalHistory = evalBy[name] ?? [];
+    const observeHistory = observeBy[name] ?? [];
+    const doctor = doctorHistory.length > 0 ? doctorHistory[doctorHistory.length - 1] : null;
+    const evalSnap = evalHistory.length > 0 ? evalHistory[evalHistory.length - 1] : null;
+    const observe = observeHistory.length > 0 ? observeHistory[observeHistory.length - 1] : null;
     entries.push({
       skillName: name,
-      doctor,
-      eval: evalSnap,
-      observe,
+      doctor, eval: evalSnap, observe,
+      doctorHistory, evalHistory, observeHistory,
       band: combineBand(doctor, evalSnap, observe),
     });
   }

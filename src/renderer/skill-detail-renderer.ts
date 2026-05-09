@@ -47,14 +47,14 @@ const STATUS_ICON: Record<InsightEvidence['status'], string> = {
 };
 
 const AUDIENCE_INFO_ZH: Record<InsightAudience, { icon: string; title: string; subtitle: string }> = {
-  'skill-author': { icon: '📝', title: '改我的 skill', subtitle: '主要改 SKILL.md' },
-  'sample-author': { icon: '🔧', title: '改我的 sample', subtitle: '主要改 samples.json,不动 skill' },
-  'omk-maintainer': { icon: '⚙️', title: 'omk 工具反馈', subtitle: '给 omk 维护者的待办,普通用户可忽略' },
+  'skill-author': { icon: '📝', title: 'Skill 优化项', subtitle: 'skill 文档需要调整,主要改 SKILL.md' },
+  'sample-author': { icon: '🔧', title: '用例优化项', subtitle: 'sample / mock 设计需要调整,改 samples.json,不动 skill' },
+  'omk-maintainer': { icon: '⚙️', title: '工具反馈', subtitle: '给 omk 维护者的待办,普通用户可忽略' },
 };
 const AUDIENCE_INFO_EN: Record<InsightAudience, { icon: string; title: string; subtitle: string }> = {
-  'skill-author': { icon: '📝', title: 'Changes to my skill', subtitle: 'Update SKILL.md' },
-  'sample-author': { icon: '🔧', title: 'Changes to my sample', subtitle: 'Update samples.json (skill stays unchanged)' },
-  'omk-maintainer': { icon: '⚙️', title: 'omk tool feedback', subtitle: 'For omk maintainers; regular users may skip' },
+  'skill-author': { icon: '📝', title: 'Skill optimization', subtitle: 'Update SKILL.md content' },
+  'sample-author': { icon: '🔧', title: 'Sample optimization', subtitle: 'Update samples.json (skill stays unchanged)' },
+  'omk-maintainer': { icon: '⚙️', title: 'Tool feedback', subtitle: 'For omk maintainers; skill authors may skip' },
 };
 
 const PATCH_TARGET_ZH: Record<InsightPatch['target'], string> = {
@@ -69,6 +69,52 @@ const PATCH_TARGET_EN: Record<InsightPatch['target'], string> = {
   'sample-mocks': 'samples.json (mocks)',
   'doctor-rule': 'omk doctor rule (omk repo)',
 };
+
+// ────────── Sparkline + Flow chart helpers ──────────
+
+interface SparklineOpts {
+  width?: number;
+  height?: number;
+  color?: string;
+  /** 强制 y 轴范围。默认按数据自动算 min/max。 */
+  yMin?: number;
+  yMax?: number;
+  /** 把数据点之间的下方区域填色(area chart)。 */
+  fillArea?: boolean;
+}
+
+function renderSparkline(values: number[], opts: SparklineOpts = {}): string {
+  if (values.length === 0) {
+    return `<svg class="si-spark si-spark--empty" width="${opts.width ?? 120}" height="${opts.height ?? 28}" xmlns="http://www.w3.org/2000/svg"><text x="50%" y="50%" text-anchor="middle" dy=".35em" fill="#a8a8a8" font-size="10">no data</text></svg>`;
+  }
+  const w = opts.width ?? 120;
+  const h = opts.height ?? 28;
+  const pad = 3;
+  const color = opts.color ?? '#5a7a93';
+  const min = opts.yMin ?? Math.min(...values);
+  const max = opts.yMax ?? Math.max(...values);
+  const range = (max - min) || 1;
+  const innerW = w - 2 * pad;
+  const innerH = h - 2 * pad;
+  const dx = values.length > 1 ? innerW / (values.length - 1) : 0;
+  const points = values.map((v, i) => {
+    const x = pad + i * dx;
+    const y = pad + innerH * (1 - (v - min) / range);
+    return [x, y] as const;
+  });
+  const polyPts = points.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const areaPath = opts.fillArea
+    ? `M ${points[0][0].toFixed(1)},${(h - pad).toFixed(1)} ` +
+      points.map((p) => `L ${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ') +
+      ` L ${points[points.length - 1][0].toFixed(1)},${(h - pad).toFixed(1)} Z`
+    : '';
+  const lastIdx = values.length - 1;
+  return `<svg class="si-spark" width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}">
+    ${opts.fillArea ? `<path d="${areaPath}" fill="${color}" fill-opacity="0.10"/>` : ''}
+    <polyline points="${polyPts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    ${points.map((p, i) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="${i === lastIdx ? 2.5 : 1.5}" fill="${color}" ${i === lastIdx ? `stroke="white" stroke-width="1"` : ''}/>`).join('')}
+  </svg>`;
+}
 
 function relTime(ts: string | null | undefined, lang: Lang): string {
   if (!ts) return lang === 'zh' ? '未跑' : 'never';
@@ -155,15 +201,47 @@ function renderRuleResult(r: DoctorRuleResult, idx: InsightIndex, lang: Lang): s
   void lang;
 }
 
-function renderDoctorStage(snap: SkillDoctorSnapshot | null, idx: InsightIndex, lang: Lang): string {
+// ────────── 顶部水平流程图 ──────────
+
+interface FlowNodeData {
+  num: number;
+  icon: string;
+  name: string;
+  band: 'green' | 'yellow' | 'red' | 'gray';
+  statusText: string;
+  timeText: string;
+  badges: Set<number>;
+  anchor: string;
+}
+
+function renderFlowChart(nodes: FlowNodeData[], idx: InsightIndex, lang: Lang): string {
+  return `<section class="si-flow">
+    <div class="si-flow-h">${lang === 'zh' ? '流程概览' : 'Pipeline overview'}</div>
+    <div class="si-flow-body">
+      ${nodes.map((n, i) => `
+        <a class="si-flow-node si-flow-node--${n.band}" href="#${e(n.anchor)}">
+          <div class="si-flow-num">${n.num}</div>
+          <div class="si-flow-icon">${n.icon}</div>
+          <div class="si-flow-name">${e(n.name)}</div>
+          <div class="si-flow-status">${e(n.statusText)}</div>
+          <div class="si-flow-time">${e(n.timeText)}</div>
+          ${n.badges.size > 0 ? `<div class="si-flow-badges">${renderInsightBadges(n.badges, idx)}</div>` : ''}
+        </a>
+        ${i < nodes.length - 1 ? `<div class="si-flow-arrow">→</div>` : ''}
+      `).join('')}
+    </div>
+  </section>`;
+}
+
+function renderDoctorStage(snap: SkillDoctorSnapshot | null, history: SkillDoctorSnapshot[], idx: InsightIndex, lang: Lang): string {
   if (!snap) {
-    return `<section class="si-stage si-stage--gray">
+    return `<section id="stage-doctor" class="si-stage si-stage--gray">
       <header class="si-stage-h">
         <span class="si-stage-num">1️⃣</span>
         <h2>${lang === 'zh' ? 'Doctor 静态体检' : 'Doctor (static check)'}</h2>
         <span class="si-stage-status si-stage-status--gray">${lang === 'zh' ? '⚪ 未运行' : '⚪ not run'}</span>
       </header>
-      <p class="si-stage-purpose">${lang === 'zh' ? '这阶段干嘛的:在写完 skill 但没跑评测前,扫静态结构 / 元数据 / 前置依赖,把规范问题挡在评测之前' : 'Purpose: scan structure / metadata / dependencies BEFORE eval to catch spec issues early'}</p>
+      <p class="si-stage-purpose">${lang === 'zh' ? '在跑评测前先做基础检查:文件能不能读、元数据齐不齐、引用的依赖在不在,把规范问题先排掉' : 'Run basic checks before evaluation: file readable, metadata complete, dependencies declared'}</p>
       <p class="si-stage-empty">${lang === 'zh' ? '运行 omk doctor 后这里会显示静态体检结果。' : 'Run omk doctor to populate static check results.'}</p>
     </section>`;
   }
@@ -172,14 +250,30 @@ function renderDoctorStage(snap: SkillDoctorSnapshot | null, idx: InsightIndex, 
     ? (lang === 'zh' ? '✗ 有失败' : '✗ failures')
     : snap.status === 'warn' ? (lang === 'zh' ? '⚠ 有警告' : '⚠ warnings')
     : (lang === 'zh' ? '✓ 全部通过' : '✓ all pass');
-  return `<section class="si-stage si-stage--${statusCls}">
+
+  // 趋势:历史 pass rate (pass / total rules) 百分比
+  const passRates = history.map((h) => {
+    const total = h.passCount + h.warnCount + h.failCount;
+    return total > 0 ? (h.passCount / total) * 100 : 0;
+  });
+  const sparkColor = statusCls === 'green' ? '#5e8252' : statusCls === 'yellow' ? '#b08030' : '#9c4a3f';
+  const trendText = history.length >= 2
+    ? `${passRates[0].toFixed(0)}% → ${passRates[passRates.length - 1].toFixed(0)}%`
+    : `${passRates[0]?.toFixed(0) ?? '—'}%`;
+
+  return `<section id="stage-doctor" class="si-stage si-stage--${statusCls}">
     <header class="si-stage-h">
       <span class="si-stage-num">1️⃣</span>
       <h2>${lang === 'zh' ? 'Doctor 静态体检' : 'Doctor (static check)'}</h2>
       <span class="si-stage-status si-stage-status--${statusCls}">${statusText}</span>
       <span class="si-stage-time">${relTime(snap.timestamp, lang)}</span>
     </header>
-    <p class="si-stage-purpose">${lang === 'zh' ? '这阶段干嘛的:扫静态结构 / 元数据 / 前置依赖,把规范问题挡在评测之前' : 'Purpose: scan structure / metadata / dependencies BEFORE eval to catch spec issues early'}</p>
+    <p class="si-stage-purpose">${lang === 'zh' ? '在跑评测前先做基础检查:文件能不能读、元数据齐不齐、引用的依赖在不在,把规范问题先排掉' : 'Run basic checks before evaluation: file readable, metadata complete, dependencies declared'}</p>
+    ${history.length >= 2 ? `<div class="si-trend">
+      <div class="si-trend-label">${lang === 'zh' ? '通过率趋势' : 'Pass-rate trend'}<span class="si-trend-detail">(${history.length} ${lang === 'zh' ? '次体检' : 'checks'})</span></div>
+      ${renderSparkline(passRates, { color: sparkColor, yMin: 0, yMax: 100, fillArea: true })}
+      <div class="si-trend-text">${e(trendText)}</div>
+    </div>` : ''}
     <div class="si-stage-stats">${snap.passCount} ✓ · ${snap.warnCount} ⚠ · ${snap.failCount} ✗</div>
     <ul class="si-rules">${snap.results.map((r) => renderRuleResult(r, idx, lang)).join('')}</ul>
   </section>`;
@@ -214,19 +308,20 @@ function collectFailedSamples(report: EvaluationReport, variant: string): Failed
 
 function renderEvalStage(
   snap: SkillEvalSnapshot | null,
+  history: SkillEvalSnapshot[],
   evalReport: EvaluationReport | null,
   idx: InsightIndex,
   langQ: string,
   lang: Lang,
 ): string {
   if (!snap) {
-    return `<section class="si-stage si-stage--gray">
+    return `<section id="stage-eval" class="si-stage si-stage--gray">
       <header class="si-stage-h">
         <span class="si-stage-num">2️⃣</span>
         <h2>${lang === 'zh' ? 'Eval 评测' : 'Eval'}</h2>
         <span class="si-stage-status si-stage-status--gray">${lang === 'zh' ? '⚪ 未运行' : '⚪ not run'}</span>
       </header>
-      <p class="si-stage-purpose">${lang === 'zh' ? '这阶段干嘛的:写 sample 后跑评测,看 LLM 用这 skill 做题做得怎么样,既出 ship/no-ship verdict 也定位每条 sample 的失败模式' : 'Purpose: run samples to score the skill (ship/no-ship verdict) AND locate per-sample failure modes'}</p>
+      <p class="si-stage-purpose">${lang === 'zh' ? '用 LLM 实跑用例,既给 skill 整体打分(能否上线),也定位每条用例失败的原因' : 'Run samples with LLM: score the skill (ship-ready?) AND pinpoint why each sample failed'}</p>
     </section>`;
   }
   const verdictCls = snap.verdictLevel === 'ship' || snap.verdictLevel === 'progress' || snap.verdictLevel === 'ship_with_caveat' ? 'green'
@@ -260,14 +355,26 @@ function renderEvalStage(
     </div>`;
   };
 
-  return `<section class="si-stage si-stage--${verdictCls}">
+  // 趋势:历史综合分
+  const compositeHistory = history.map((h) => h.compositeScore ?? 0);
+  const sparkColor = verdictCls === 'green' ? '#5e8252' : verdictCls === 'yellow' ? '#b08030' : verdictCls === 'red' ? '#9c4a3f' : '#a8a8a8';
+  const trendText = history.length >= 2
+    ? `${compositeHistory[0].toFixed(1)} → ${compositeHistory[compositeHistory.length - 1].toFixed(1)}`
+    : `${compositeHistory[0]?.toFixed(2) ?? '—'}`;
+
+  return `<section id="stage-eval" class="si-stage si-stage--${verdictCls}">
     <header class="si-stage-h">
       <span class="si-stage-num">2️⃣</span>
       <h2>${lang === 'zh' ? 'Eval 评测' : 'Eval'}</h2>
       <span class="si-stage-status si-stage-status--${verdictCls}">${e(snap.verdictLevel.replace(/_/g, ' ').toUpperCase())}</span>
       <span class="si-stage-time">${relTime(snap.timestamp, lang)}</span>
     </header>
-    <p class="si-stage-purpose">${lang === 'zh' ? '这阶段干嘛的:LLM 用这 skill 做评测题,既出 ship/no-ship verdict 也定位每条 sample 的失败模式' : 'Purpose: LLM runs samples; produces ship/no-ship verdict AND per-sample failure modes'}</p>
+    <p class="si-stage-purpose">${lang === 'zh' ? '用 LLM 实跑用例,既给 skill 整体打分(能否上线),也定位每条用例失败的原因' : 'Run samples with LLM: score the skill (ship-ready?) AND pinpoint why each sample failed'}</p>
+    ${history.length >= 2 ? `<div class="si-trend">
+      <div class="si-trend-label">${lang === 'zh' ? '综合分趋势' : 'Composite trend'}<span class="si-trend-detail">(${history.length} ${lang === 'zh' ? '次评测' : 'runs'})</span></div>
+      ${renderSparkline(compositeHistory, { color: sparkColor, yMin: 0, yMax: 5, fillArea: true })}
+      <div class="si-trend-text">${e(trendText)}</div>
+    </div>` : ''}
 
     <div class="si-eval-block">
       <h3 class="si-eval-h">📊 ${lang === 'zh' ? '评分视角' : 'Score view'}</h3>
@@ -310,6 +417,7 @@ function renderEvalStage(
 
 function renderObserveStage(
   snap: SkillObserveSnapshot | null,
+  history: SkillObserveSnapshot[],
   doctor: SkillDoctorSnapshot | null,
   evalSnap: SkillEvalSnapshot | null,
   idx: InsightIndex,
@@ -317,13 +425,13 @@ function renderObserveStage(
   lang: Lang,
 ): string {
   if (!snap) {
-    return `<section class="si-stage si-stage--gray">
+    return `<section id="stage-observe" class="si-stage si-stage--gray">
       <header class="si-stage-h">
         <span class="si-stage-num">3️⃣</span>
         <h2>${lang === 'zh' ? 'Observe 线上观测' : 'Observe (production)'}</h2>
         <span class="si-stage-status si-stage-status--gray">${lang === 'zh' ? '⚪ 未运行' : '⚪ not run'}</span>
       </header>
-      <p class="si-stage-purpose">${lang === 'zh' ? '这阶段干嘛的:把真实生产 session 接进来,验证 skill 在真用户场景下的稳定性 / 知识库覆盖' : 'Purpose: ingest production sessions to validate stability / knowledge-base coverage in real usage'}</p>
+      <p class="si-stage-purpose">${lang === 'zh' ? '接入真实用户的使用记录,看 skill 上线后跑得稳不稳、哪些内容真的被用到了' : 'Ingest real user sessions: stability in production, which content actually gets used'}</p>
       <p class="si-stage-empty">${lang === 'zh' ? '运行 omk observe <trace-dir> 后这里会显示生产健康度。' : 'Run omk observe <trace-dir> to populate.'}</p>
     </section>`;
   }
@@ -349,14 +457,26 @@ function renderObserveStage(
     idx,
   );
 
-  return `<section class="si-stage si-stage--${snap.healthBand}">
+  // 趋势:gap rate 历史(越低越好,直接展示"未访问的比例")
+  const gapHistory = history.map((h) => h.gapRate * 100);
+  const sparkColor = snap.healthBand === 'green' ? '#5e8252' : snap.healthBand === 'yellow' ? '#b08030' : '#9c4a3f';
+  const trendText = history.length >= 2
+    ? `${gapHistory[0].toFixed(0)}% → ${gapHistory[gapHistory.length - 1].toFixed(0)}%`
+    : `${gapHistory[0]?.toFixed(0) ?? '—'}%`;
+
+  return `<section id="stage-observe" class="si-stage si-stage--${snap.healthBand}">
     <header class="si-stage-h">
       <span class="si-stage-num">3️⃣</span>
       <h2>${lang === 'zh' ? 'Observe 线上观测' : 'Observe (production)'}</h2>
       <span class="si-stage-status si-stage-status--${snap.healthBand}">${BAND_DOT[snap.healthBand]} ${snap.healthBand}</span>
       <span class="si-stage-time">${relTime(snap.generatedAt, lang)}</span>
     </header>
-    <p class="si-stage-purpose">${lang === 'zh' ? '这阶段干嘛的:验证 skill 在真用户场景下的稳定性 / 知识库覆盖,跟 doctor 评测做对比' : 'Purpose: validate skill in real user sessions, cross-reference with doctor & eval'}</p>
+    <p class="si-stage-purpose">${lang === 'zh' ? '接入真实用户的使用记录,看 skill 上线后跑得稳不稳、哪些内容真的被用到了' : 'Ingest real user sessions: stability in production, which content actually gets used'}</p>
+    ${history.length >= 2 ? `<div class="si-trend">
+      <div class="si-trend-label">${lang === 'zh' ? '知识库 gap 趋势' : 'KB gap trend'}<span class="si-trend-detail">(${history.length} ${lang === 'zh' ? '次观测' : 'snapshots'};数值越低越好)</span></div>
+      ${renderSparkline(gapHistory, { color: sparkColor, yMin: 0, yMax: Math.max(50, ...gapHistory), fillArea: true })}
+      <div class="si-trend-text">${e(trendText)}</div>
+    </div>` : ''}
     <div class="si-stage-stats">
       ${snap.segmentCount} ${lang === 'zh' ? '段' : 'segments'}
       · ${lang === 'zh' ? '工具失败率' : 'tool fail'} ${failPct}%
@@ -538,7 +658,7 @@ function renderActionTodos(insights: Insight[], lang: Lang): string {
   }
   if (buckets.length === 0) return '';
   return `<section class="si-todos">
-    <h2>${lang === 'zh' ? '🎯 行动 todo' : '🎯 Action items'}</h2>
+    <h2>${lang === 'zh' ? '🎯 优化清单' : '🎯 Optimization list'}</h2>
     <p class="si-todos-note">${lang === 'zh' ? '按受众分桶,各组内按优先级排' : 'Bucketed by audience, sorted by priority'}</p>
     ${buckets.map(({ audience, recs }) => {
       const info = lang === 'zh' ? AUDIENCE_INFO_ZH[audience] : AUDIENCE_INFO_EN[audience];
@@ -566,14 +686,37 @@ const SKILL_DETAIL_CSS = `
 .si-overall-name { font-size:22px;font-weight:600;color:var(--text-primary) }
 .si-overall-meta { color:var(--text-muted);font-size:13px;margin-left:auto }
 
-.si-timeline-h { font-size:13px;color:var(--text-secondary);margin:24px 0 14px;letter-spacing:0.04em;text-transform:uppercase;font-weight:600;padding-bottom:8px;border-bottom:1px solid var(--border) }
+/* 顶部流程图 */
+.si-flow { background:var(--bg-surface);border-radius:8px;padding:18px 22px;margin:8px 0 24px;box-shadow:var(--shadow-sm) }
+.si-flow-h { font-size:12px;color:var(--text-secondary);font-weight:600;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:14px }
+.si-flow-body { display:flex;align-items:stretch;gap:8px;flex-wrap:nowrap }
+.si-flow-node { flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 10px;background:var(--bg-soft);border-radius:8px;text-decoration:none;color:var(--text-primary);transition:transform .12s,box-shadow .12s;border-top:4px solid var(--border);min-width:0 }
+.si-flow-node:hover { transform:translateY(-2px);box-shadow:var(--shadow-md) }
+.si-flow-node--green { border-top-color:#5e8252;background:rgba(94,130,82,.06) }
+.si-flow-node--yellow { border-top-color:#b08030;background:rgba(176,128,48,.06) }
+.si-flow-node--red { border-top-color:#9c4a3f;background:rgba(156,74,63,.06) }
+.si-flow-node--gray { border-top-color:var(--border) }
+.si-flow-num { font-size:11px;color:var(--text-muted);font-weight:600;letter-spacing:0.05em }
+.si-flow-icon { font-size:24px;line-height:1 }
+.si-flow-name { font-size:14px;font-weight:600;color:var(--text-primary) }
+.si-flow-status { font-size:12.5px;color:var(--text-secondary);font-variant-numeric:tabular-nums }
+.si-flow-time { font-size:11px;color:var(--text-muted) }
+.si-flow-badges { margin-top:4px;display:flex;gap:3px;flex-wrap:wrap;justify-content:center }
+.si-flow-arrow { display:flex;align-items:center;color:var(--text-muted);font-size:20px;font-weight:300;line-height:1;flex-shrink:0 }
 
-/* Stage 卡 */
+/* Sparkline trend */
+.si-trend { display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--bg-soft);border-radius:6px;margin-bottom:12px;flex-wrap:wrap }
+.si-trend-label { font-size:11.5px;color:var(--text-secondary);font-weight:500;letter-spacing:0.02em;display:flex;align-items:center;gap:6px;flex-shrink:0 }
+.si-trend-detail { color:var(--text-muted);font-weight:normal;font-size:10.5px }
+.si-spark { display:block;flex-shrink:0 }
+.si-trend-text { font-size:11.5px;color:var(--text-secondary);font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace }
+
+/* Stage 卡(视觉强化:色带 6px,warn/fail 加微弱填充背景)*/
 .si-stage { background:var(--bg-surface);padding:18px 22px;border-radius:8px;box-shadow:var(--shadow-sm);margin-bottom:8px;position:relative }
-.si-stage--green   { border-left:3px solid #5e8252 }
-.si-stage--yellow  { border-left:3px solid #b08030 }
-.si-stage--red     { border-left:3px solid #9c4a3f }
-.si-stage--gray    { border-left:3px solid var(--border) }
+.si-stage--green   { border-left:6px solid #5e8252 }
+.si-stage--yellow  { border-left:6px solid #b08030;background:linear-gradient(to right,rgba(176,128,48,.04) 0%,var(--bg-surface) 30%) }
+.si-stage--red     { border-left:6px solid #9c4a3f;background:linear-gradient(to right,rgba(156,74,63,.05) 0%,var(--bg-surface) 30%) }
+.si-stage--gray    { border-left:6px solid var(--border) }
 .si-stage-h { display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap }
 .si-stage-num { font-size:18px }
 .si-stage-h h2 { margin:0;font-size:16px;font-weight:600;color:var(--text-primary) }
@@ -591,17 +734,19 @@ const SKILL_DETAIL_CSS = `
 /* Stage 间箭头 */
 .si-stage + .si-arrow { display:flex;justify-content:center;color:var(--text-muted);font-size:18px;line-height:1;margin:6px 0;font-family:monospace }
 
-/* Doctor rule list(在 stage 内) */
-.si-rules { list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px }
-.si-rule { display:flex;gap:10px;font-size:13.5px;line-height:1.55;align-items:flex-start;padding:6px 0;border-bottom:1px dashed var(--border) }
-.si-rule:last-child { border-bottom:none }
-.si-rule-icon { flex-shrink:0;font-weight:700;width:16px;text-align:center;margin-top:1px }
+/* Doctor rule list(在 stage 内 — warn/fail 行加底色突出)*/
+.si-rules { list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:4px }
+.si-rule { display:flex;gap:10px;font-size:13.5px;line-height:1.55;align-items:flex-start;padding:8px 10px;border-radius:4px;transition:background .1s }
+.si-rule--warn { background:rgba(176,128,48,.07) }
+.si-rule--fail { background:rgba(156,74,63,.08) }
+.si-rule-icon { flex-shrink:0;font-weight:700;width:16px;text-align:center;margin-top:1px;font-size:14px }
 .si-rule--pass .si-rule-icon { color:#5e8252 }
 .si-rule--warn .si-rule-icon { color:#b08030 }
 .si-rule--fail .si-rule-icon { color:#9c4a3f }
 .si-rule-body { flex:1;min-width:0 }
 .si-rule-id { font-size:11px;color:var(--text-muted);background:var(--bg-soft);padding:1px 5px;border-radius:3px;margin-right:6px }
 .si-rule-msg { color:var(--text-primary) }
+.si-rule--warn .si-rule-msg, .si-rule--fail .si-rule-msg { font-weight:500 }
 .si-rule-badges { margin-left:6px }
 .si-rule-hint { font-size:12.5px;color:var(--text-secondary);margin-top:3px;line-height:1.55 }
 
@@ -634,21 +779,21 @@ const SKILL_DETAIL_CSS = `
 .si-failed { margin-bottom:10px }
 .si-failed-h { font-size:12px;font-weight:600;color:var(--text-secondary);margin:0 0 8px }
 .si-failed-list { margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px }
-.si-failed-list li { font-size:12.5px;line-height:1.5;display:flex;flex-wrap:wrap;gap:6px;align-items:baseline }
-.si-fs-id { font-size:11px;background:var(--bg-surface);padding:1px 5px;border-radius:3px;color:var(--text-secondary) }
-.si-fs-mode { font-size:10.5px;color:#b08030;background:rgba(176,128,48,.10);padding:1px 5px;border-radius:8px }
+.si-failed-list li { font-size:12.5px;line-height:1.5;display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;padding:6px 10px;border-radius:4px;background:rgba(156,74,63,.06);border-left:2px solid #9c4a3f }
+.si-fs-id { font-size:11px;background:var(--bg-surface);padding:1px 5px;border-radius:3px;color:#9c4a3f;font-weight:600 }
+.si-fs-mode { font-size:10.5px;color:#b08030;background:rgba(176,128,48,.14);padding:1px 6px;border-radius:8px;font-weight:500 }
 .si-fs-summary { color:var(--text-secondary);font-size:12px;flex:1;min-width:0 }
 
 /* Observe cross-stage notes */
 .si-observe-cross { margin:0 0 10px;padding:0;list-style:none }
 .si-observe-cross li { font-size:12.5px;color:var(--text-secondary);padding:4px 0;line-height:1.55 }
 
-/* Insight 编号徽章(挂在 timeline 内元素旁) */
-.si-badge { display:inline-block;padding:1px 7px;border-radius:8px;font-size:10.5px;font-weight:600;text-decoration:none;margin-left:4px;font-variant-numeric:tabular-nums }
-.si-badge--high { background:rgba(156,74,63,.14);color:#9c4a3f }
-.si-badge--medium { background:rgba(176,128,48,.12);color:#b08030 }
-.si-badge--low { background:rgba(94,130,82,.14);color:#5e8252 }
-.si-badge:hover { text-decoration:underline }
+/* Insight 编号徽章(挂在 timeline 内元素旁 — 加大加阴影更醒目)*/
+.si-badge { display:inline-block;padding:2px 8px;border-radius:10px;font-size:11.5px;font-weight:700;text-decoration:none;margin-left:5px;font-variant-numeric:tabular-nums;box-shadow:0 1px 2px rgba(58,58,58,.08);border:1px solid transparent }
+.si-badge--high { background:rgba(156,74,63,.18);color:#9c4a3f;border-color:rgba(156,74,63,.25) }
+.si-badge--medium { background:rgba(176,128,48,.16);color:#b08030;border-color:rgba(176,128,48,.22) }
+.si-badge--low { background:rgba(94,130,82,.18);color:#5e8252;border-color:rgba(94,130,82,.22) }
+.si-badge:hover { text-decoration:none;transform:translateY(-1px);box-shadow:0 2px 4px rgba(58,58,58,.12) }
 
 /* 底部 SKILL 问题汇总 */
 .si-summary { margin-top:32px }
@@ -781,12 +926,49 @@ export function renderSkillDetail(
         </span>
       </div>
 
-      <div class="si-timeline-h">${lang === 'zh' ? 'SKILL 生命周期:Doctor → Eval → Observe' : 'Skill lifecycle: Doctor → Eval → Observe'}</div>
-      ${renderDoctorStage(entry.doctor, idx, lang)}
+      ${renderFlowChart([
+        {
+          num: 1, icon: '🩺',
+          name: lang === 'zh' ? 'Doctor' : 'Doctor',
+          band: entry.doctor ? (entry.doctor.status === 'fail' ? 'red' : entry.doctor.status === 'warn' ? 'yellow' : 'green') : 'gray',
+          statusText: entry.doctor
+            ? `${entry.doctor.passCount}✓ ${entry.doctor.warnCount}⚠ ${entry.doctor.failCount}✗`
+            : (lang === 'zh' ? '未运行' : 'not run'),
+          timeText: relTime(entry.doctor?.timestamp, lang),
+          badges: new Set([...idx.byDoctorRule.values()].flatMap((s) => [...s])),
+          anchor: 'stage-doctor',
+        },
+        {
+          num: 2, icon: '🧪',
+          name: lang === 'zh' ? 'Eval' : 'Eval',
+          band: entry.eval
+            ? (entry.eval.failCount === 0 ? 'green' : entry.eval.passCount === 0 ? 'red' : 'yellow')
+            : 'gray',
+          statusText: entry.eval
+            ? `${entry.eval.passCount}/${entry.eval.passCount + entry.eval.failCount} ${lang === 'zh' ? '通过' : 'pass'}`
+            : (lang === 'zh' ? '未运行' : 'not run'),
+          timeText: relTime(entry.eval?.timestamp, lang),
+          badges: new Set([...idx.byEvalSample.values()].flatMap((s) => [...s])),
+          anchor: 'stage-eval',
+        },
+        {
+          num: 3, icon: '👁',
+          name: lang === 'zh' ? 'Observe' : 'Observe',
+          band: entry.observe?.healthBand ?? 'gray',
+          statusText: entry.observe
+            ? `${(entry.observe.gapRate * 100).toFixed(0)}% gap`
+            : (lang === 'zh' ? '未运行' : 'not run'),
+          timeText: relTime(entry.observe?.generatedAt, lang),
+          badges: new Set([...idx.byObserveRef.values()].flatMap((s) => [...s])),
+          anchor: 'stage-observe',
+        },
+      ], idx, lang)}
+
+      ${renderDoctorStage(entry.doctor, entry.doctorHistory, idx, lang)}
       <div class="si-arrow">↓</div>
-      ${renderEvalStage(entry.eval, evalReport, idx, langQ, lang)}
+      ${renderEvalStage(entry.eval, entry.evalHistory, evalReport, idx, langQ, lang)}
       <div class="si-arrow">↓</div>
-      ${renderObserveStage(entry.observe, entry.doctor, entry.eval, idx, langQ, lang)}
+      ${renderObserveStage(entry.observe, entry.observeHistory, entry.doctor, entry.eval, idx, langQ, lang)}
 
       ${renderSummarySection(insights, idx, lang)}
       ${insights.length > 0 ? renderActionTodos(insights, lang) : ''}
