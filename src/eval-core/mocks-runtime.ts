@@ -28,6 +28,20 @@ function expandHome(p: string): string {
   return p;
 }
 
+/** file_path 后缀匹配:actual 完全等于 suffix,或 actual 在 path-separator 后以 suffix 结尾。
+ *  避免 'state.json' 误匹配 'bad-state.json'。两端都先 expandHome。
+ *  例:suffix='tasks/foo/state.json' 命中 'tasks/foo/state.json' / '/abs/x/tasks/foo/state.json' /
+ *      'C:\\proj\\tasks\\foo\\state.json' (Windows backslash 也接受)。 */
+function matchesFilePathSuffix(actualRaw: string, suffixRaw: string): boolean {
+  const actual = expandHome(actualRaw);
+  const suffix = expandHome(suffixRaw);
+  if (actual === suffix) return true;
+  if (!actual.endsWith(suffix)) return false;
+  const boundaryIdx = actual.length - suffix.length - 1;
+  const sep = actual.charAt(boundaryIdx);
+  return sep === '/' || sep === '\\';
+}
+
 /** glob 匹配(只支持 `*` 通配,不支持 `**` / `?` / `[...]`,够用且无依赖)。
  *  使用 dotAll 标志(`s`),让 `*` 也能跨换行匹配 — LLM 经常用反斜杠续行写多行 bash,
  *  不带 `s` 时单行 glob 会全部漏掉(integration-tool-deploy eval 上首次发现这个坑)。 */
@@ -61,6 +75,10 @@ export function isMockHit(mock: Mock, toolName: string, toolInput: unknown): boo
   if (m.file_path !== undefined) {
     if (typeof ti.file_path !== 'string') return false;
     if (expandHome(ti.file_path) !== expandHome(m.file_path)) return false;
+  }
+  if (m.file_path_endswith !== undefined) {
+    if (typeof ti.file_path !== 'string') return false;
+    if (!matchesFilePathSuffix(ti.file_path, m.file_path_endswith)) return false;
   }
   if (m.url !== undefined) {
     if (ti.url !== m.url) return false;

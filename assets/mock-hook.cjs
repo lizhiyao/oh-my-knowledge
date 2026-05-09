@@ -19,6 +19,16 @@ function expandHome(p) {
   return p;
 }
 
+/** 与 mocks-runtime.ts 的 matchesFilePathSuffix 对齐 — 完全相等或路径分隔符后缀。 */
+function matchesFilePathSuffix(actualRaw, suffixRaw) {
+  const actual = expandHome(actualRaw);
+  const suffix = expandHome(suffixRaw);
+  if (actual === suffix) return true;
+  if (!actual.endsWith(suffix)) return false;
+  const sep = actual.charAt(actual.length - suffix.length - 1);
+  return sep === '/' || sep === '\\';
+}
+
 function globMatch(pattern, value) {
   // 与 SDK 路径(mocks-runtime.ts)对齐:dotAll 让 `*` 跨换行匹配多行 bash。
   const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
@@ -46,6 +56,10 @@ function isMockHit(mock, toolName, toolInput) {
   if (m.file_path !== undefined) {
     if (typeof ti.file_path !== 'string') return false;
     if (expandHome(ti.file_path) !== expandHome(m.file_path)) return false;
+  }
+  if (m.file_path_endswith !== undefined) {
+    if (typeof ti.file_path !== 'string') return false;
+    if (!matchesFilePathSuffix(ti.file_path, m.file_path_endswith)) return false;
   }
   if (m.url !== undefined && ti.url !== m.url) return false;
   if (m.url_glob !== undefined) {

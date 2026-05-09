@@ -25,6 +25,50 @@ describe('isMockHit', () => {
     assert.equal(isMockHit(m, 'Read', { file_path: '/wrong/path' }), false);
   });
 
+  it('matches file_path_endswith — exact, absolute, and ~ all hit', () => {
+    const m: Mock = { tool: 'Read', match: { file_path_endswith: 'tasks/foo/state.json' }, return: 'x' };
+    // exact relative
+    assert.equal(isMockHit(m, 'Read', { file_path: 'tasks/foo/state.json' }), true);
+    // absolute path containing the suffix
+    assert.equal(isMockHit(m, 'Read', { file_path: '/Users/anon/proj/tasks/foo/state.json' }), true);
+    // ~ prefix should expand
+    assert.equal(isMockHit(m, 'Read', { file_path: '~/proj/tasks/foo/state.json' }), true);
+  });
+
+  it('file_path_endswith requires path-separator boundary (state.json !== bad-state.json)', () => {
+    const m: Mock = { tool: 'Read', match: { file_path_endswith: 'state.json' }, return: 'x' };
+    // 完全相等 OK
+    assert.equal(isMockHit(m, 'Read', { file_path: 'state.json' }), true);
+    // /state.json 边界 OK
+    assert.equal(isMockHit(m, 'Read', { file_path: '/abs/state.json' }), true);
+    // bad-state.json 不应该命中(没有路径分隔符边界)
+    assert.equal(isMockHit(m, 'Read', { file_path: 'bad-state.json' }), false);
+    assert.equal(isMockHit(m, 'Read', { file_path: '/abs/bad-state.json' }), false);
+  });
+
+  it('file_path_endswith accepts Windows backslash boundary', () => {
+    const m: Mock = { tool: 'Read', match: { file_path_endswith: 'tasks/state.json' }, return: 'x' };
+    assert.equal(isMockHit(m, 'Read', { file_path: 'C:\\proj\\tasks/state.json' }), true);
+  });
+
+  it('file_path_endswith returns false when input.file_path missing or non-string', () => {
+    const m: Mock = { tool: 'Read', match: { file_path_endswith: 'state.json' }, return: 'x' };
+    assert.equal(isMockHit(m, 'Read', {}), false);
+    assert.equal(isMockHit(m, 'Read', { file_path: 123 }), false);
+  });
+
+  it('file_path + file_path_endswith are AND (both must pass when both given)', () => {
+    const m: Mock = {
+      tool: 'Read',
+      match: { file_path: 'a/b.json', file_path_endswith: 'b.json' },
+      return: 'x',
+    };
+    // 严格相等 + 后缀都命中
+    assert.equal(isMockHit(m, 'Read', { file_path: 'a/b.json' }), true);
+    // 后缀对、严格不对 → fail(因为 file_path 严格等于 'a/b.json')
+    assert.equal(isMockHit(m, 'Read', { file_path: '/abs/a/b.json' }), false);
+  });
+
   it('matches command_glob with *', () => {
     const m: Mock = { tool: 'Bash', match: { command_glob: 'mcporter call *--tool find_drm_value*' }, return: 'x' };
     assert.equal(isMockHit(m, 'Bash', { command: 'mcporter call --stdio foo --tool find_drm_value --args {}' }), true);

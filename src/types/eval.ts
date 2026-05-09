@@ -44,8 +44,17 @@ export interface SampleEnvironment {
 
 /** Mock 命中规则(所有字段 AND,字段未填即不限制)。 */
 export interface MockMatch {
-  /** 精确匹配 file_path(用于 Read / Edit / Write,支持 ~ 自动展开)。 */
+  /** 精确匹配 file_path(用于 Read / Edit / Write,支持 ~ 自动展开)。
+   *  注意:claude-cli / claude-sdk 的 PreToolUse hook 拿到的 file_path 是 LLM 调
+   *  Read/Edit/Write 时实际传入的字符串。LLM 经常把相对路径写成 cwd 绝对路径
+   *  (尤其当 sample.environment.notes 里给了 cwd 提示),mock 用 `file_path` 精确
+   *  匹配会 miss。**新 sample 推荐用 `file_path_endswith` 做后缀匹配**,匹配更稳。 */
   file_path?: string;
+  /** 后缀匹配 file_path:actual.endsWith(suffix) 且边界为路径分隔符或完全相等。
+   *  例如 suffix='tasks/foo/state.json' 命中 'tasks/foo/state.json' /
+   *  '/abs/cwd/tasks/foo/state.json' / '~/proj/tasks/foo/state.json' 但不命中
+   *  'bad-state.json'。`~` 自动展开。**绝对路径 cwd 不可预测时首选这个字段**。 */
+  file_path_endswith?: string;
   /** 精确匹配 url(用于 WebFetch / WebSearch)。 */
   url?: string;
   /** glob 匹配 url(支持 *)。url 与 url_glob 二选一。 */

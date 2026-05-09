@@ -100,7 +100,8 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
     {
       "tool": "Bash" | "Read" | "Edit" | "Write" | "WebFetch" | "Grep" | "Glob",
       "match": {
-        "file_path": "<absolute-or-~-prefixed path>",  // Read/Edit/Write
+        "file_path_endswith": "<相对路径后缀,如 tasks/foo/state.json>",  // 推荐用这条 (Read/Edit/Write)
+        "file_path": "<完整路径,~ 或绝对>",            // 仅当能预测完整 path 时用,否则首选 _endswith
         "url": "<exact url>" or "url_glob": "<glob>",  // WebFetch
         "command_glob": "<glob>",                       // Bash 拦 mcporter / cli
         "input": { "<key>": "<value>" }                // generic deep-equal subset
@@ -108,6 +109,13 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
       "return": "<string>" or { "stdout": "...", "exit": 0 },
       "return_seq": [<r1>, <r2>]   // optional 状态机:同 mock 多次命中按序返回
     }
+  **file_path 匹配的关键陷阱**:
+    - claude-cli / claude-sdk 的 PreToolUse hook 拿到的 file_path 是 LLM 原话 — LLM 经常把
+      相对路径写成绝对(尤其当 environment.notes 给了 cwd 提示),mock 用 file_path 严格相等
+      会 miss 整条 sample。**默认用 file_path_endswith 后缀匹配**(actual 等于 suffix
+      或在路径分隔符后以 suffix 结尾即命中),无论 LLM 传相对、绝对、~ 起头都能命中。
+    - 仅当 sample 明确给了 absolute path 且要测 LLM 用对完整路径(如 ~/.config/x.json)时才
+      用 file_path 严格相等。
   command_glob 示例:
     - "mcporter call * --tool find_drm_value*"   (拦 MCP find_drm_value 调用)
     - "code-host pr show *"                         (拦 code-host CLI)
