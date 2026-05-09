@@ -27,9 +27,13 @@ export interface RunConfig {
   concurrency: number;
   timeoutMs: number;
   executorName: string | undefined;
-  /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。
-   *  doctor 是 mandatory 不提供 skip — 静态检查无成本理由跳过。 */
+  /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。 */
   skipConnectivity: boolean | undefined;
+  /** 跳过 doctor 健康检查门禁(--skip-doctor)。escape hatch — 默认 false。
+   *  开启后 doctor 整段不跑(节省静态检查时间);doctor 失败也不再阻断 eval。
+   *  典型场景:依赖在评测环境中通过 mock / stub 提供,doctor 的物理路径检查
+   *  会误报。开启意味着用户接受 garbage-in 风险,自己负责依赖正确性。 */
+  skipDoctor: boolean | undefined;
   /** 用户语言, 透传给 doctor 报告渲染。 */
   lang: 'zh' | 'en' | undefined;
   mcpConfig: string | undefined;
@@ -156,6 +160,7 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   executor: { type: 'string' },
   batch: { type: 'boolean' },
   'skip-connectivity': { type: 'boolean' },
+  'skip-doctor': { type: 'boolean' },
   'mcp-config': { type: 'string' },
   'no-serve': { type: 'boolean' },
   verbose: { type: 'boolean' },
@@ -318,6 +323,7 @@ export function parseRunConfig(
   const noCache = (values['no-cache'] as boolean | undefined) ?? evalConfig?.noCache ?? false;
   const dryRun = (values['dry-run'] as boolean | undefined) ?? false;
   const skipConnectivity = (values['skip-connectivity'] as boolean | undefined) ?? false;
+  const skipDoctor = (values['skip-doctor'] as boolean | undefined) ?? false;
   const mcpConfig = (values['mcp-config'] as string | undefined) ?? evalConfig?.mcpConfig;
   const verbose = (values.verbose as boolean | undefined) ?? false;
   const retry = Math.max(0, Number(values.retry ?? 0) || 0);
@@ -371,6 +377,7 @@ export function parseRunConfig(
       timeoutMs,
       executorName,
       skipConnectivity,
+      skipDoctor,
       lang: undefined, // CLI 入口在 commands/eval-runner.ts 里注入
       mcpConfig,
       verbose,

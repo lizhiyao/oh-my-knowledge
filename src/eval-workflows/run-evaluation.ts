@@ -53,6 +53,10 @@ interface CommonEvaluationOptions {
   onProgress?: ProgressCallback | null;
   /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。 */
   skipConnectivity?: boolean;
+  /** 跳过 doctor 健康检查门禁(escape hatch, 默认 false)。
+   *  开启后 doctor 整段不跑,失败也不阻断 eval — 评测环境用 mock/stub 提供
+   *  依赖时绕开 doctor 的物理路径检查误报。开启意味着接受 garbage-in 风险。 */
+  skipDoctor?: boolean;
   /** 用户语言, 透传给 doctor 报告渲染。 */
   lang?: 'zh' | 'en';
   mcpConfig?: string;
@@ -179,6 +183,7 @@ export async function runEvaluation({
   persistJob = true,
   onProgress = null,
   skipConnectivity = false,
+  skipDoctor = false,
   lang = 'zh',
   mcpConfig,
   verbose = false,
@@ -219,12 +224,19 @@ export async function runEvaluation({
 
   // doctor 强制门禁: skill 静态结构 + 元数据 + 依赖 + 用例契约。
   // 在 dryRun 分支之前跑, 让 dry-run 也得到 doctor 覆盖(保护 garbage-in 的 verdict)。
-  // doctor 不可 skip — 静态检查无成本理由跳过, 也无 escape hatch flag。
+  // 默认强制启用; --skip-doctor 提供 escape hatch,典型场景是评测环境用 mock/stub
+  // 提供依赖,doctor 的物理路径检查会误报。开启 escape hatch 意味着接受 garbage-in 风险。
   // LLM 连通性是另一回事, 由独立的 skipConnectivity 控制。
   //
   // 路径推断收口在 buildDoctorPreflightContext：doctor engine 不再自己猜 eval 的
   // artifact 形态 / cwd 优先级，任何 eval 路径语义边界变化只改 builder 一处。
-  {
+  if (skipDoctor) {
+    process.stderr.write(
+      lang === 'zh'
+        ? '\n⚠ --skip-doctor 已开启,doctor 健康检查整段跳过 — 依赖正确性由用户自己保证。\n'
+        : '\n⚠ --skip-doctor enabled; doctor health check entirely bypassed — caller owns dependency correctness.\n'
+    );
+  } else {
     const { buildDoctorPreflightContext } = await import('../doctor/preflight.js');
     const doctorCtx = buildDoctorPreflightContext({
       artifacts: resolvedArtifacts,
@@ -596,6 +608,7 @@ export async function runBatchEvaluation({
   onProgress = null,
   onSkillProgress = null,
   skipConnectivity = false,
+  skipDoctor = false,
   lang = 'zh',
   mcpConfig,
   verbose = false,
@@ -668,6 +681,7 @@ export async function runBatchEvaluation({
           verbose,
           concurrency,
           skipConnectivity,
+          skipDoctor,
           // batch dry-run 关闭真实 run only 路径
           jobStore: null,
           persistJob: false,
@@ -724,6 +738,7 @@ export async function runBatchEvaluation({
     onProgress,
     onSkillProgress,
     skipConnectivity,
+    skipDoctor,
     lang,
     mcpConfig,
     verbose,
