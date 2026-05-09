@@ -3,9 +3,11 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { renderRunList, renderReportDocumentDetail, renderTrendsPage } from '../renderer/html-renderer.js';
+import { renderSkillList } from '../renderer/skill-list-renderer.js';
 import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
 import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
+import { buildSkillIndex } from './skill-index.js';
 import type { Lang } from '../types/index.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
 import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
@@ -680,7 +682,19 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
+      // 根路径默认走 skill-centric 列表页(v0.30 起 studio 顶级实体翻成"skill")。
+      // 老用户想看 run 列表用 /runs 兼容。
       if (path === '/') {
+        const runs = await reportStore.list();
+        const idx = buildSkillIndex(runs, analysesDir);
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderSkillList(idx, lang));
+        return;
+      }
+
+      // /runs 显示原 run-card 列表(等价于 v0.29 及之前的 /)。skills 列表底部 /
+      // 顶部 view 切换器都链到这里。
+      if (path === '/runs') {
         const runs = await reportStore.list();
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderRunList(runs, lang));

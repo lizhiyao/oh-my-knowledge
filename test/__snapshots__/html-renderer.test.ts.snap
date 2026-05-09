@@ -2486,6 +2486,10 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     <main>
     <h1>Evaluation Reports</h1>
     <p class="subtitle" data-i18n="subtitle">Knowledge Artifact Evaluation &middot; 1 runs</p>
+    <div class="run-list-view-tabs">
+    <a class="run-list-view-tab" href="/?lang=en">📚 Skills</a>
+    <a class="run-list-view-tab run-list-view-tab--active" href="/runs?lang=en">📋 Runs</a>
+  </div>
 
     <div style="margin:12px 0"><a class="page-secondary-link" href="/analyses?lang=en">📊 <span data-i18n="skillHealthTitle">Skill Health Reports</span> →</a></div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
@@ -2527,6 +2531,10 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     /* 列表页 — 卡片式布局,顶部 verdict pill 主导,底部 hover 露出 delete */
     .page-secondary-link { color:var(--text-secondary);font-size:13px;text-decoration:none;border:1px solid var(--border);padding:6px 14px;border-radius:var(--radius);display:inline-block;background:var(--bg-surface);transition:border-color .15s,color .15s }
     .page-secondary-link:hover { color:var(--text-primary);border-color:var(--border-hover);text-decoration:none }
+    .run-list-view-tabs { display:flex;gap:0;margin:8px 0 16px;border-bottom:1px solid var(--border) }
+    .run-list-view-tab { padding:10px 18px;color:var(--text-secondary);text-decoration:none;border-bottom:2px solid transparent;font-weight:500;font-size:14px;margin-bottom:-1px }
+    .run-list-view-tab:hover { color:var(--text-primary) }
+    .run-list-view-tab--active { color:var(--text-primary);border-bottom-color:var(--accent);font-weight:600 }
     .run-list { display:flex;flex-direction:column;gap:12px;margin:16px 0 }
     /* verdict 用左边粗带 + 浅色填充背景双重视觉提示,远看也能区分。
        PROGRESS = sage 绿(进步),REGRESS = 砖红(回归),CAUTIOUS = 琥珀(警示),其他 = 灰(无信号) */
@@ -3044,6 +3052,10 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     <main>
     <h1>评测报告</h1>
     <p class="subtitle" data-i18n="subtitle">知识载体评测 &middot; 1 次评测</p>
+    <div class="run-list-view-tabs">
+    <a class="run-list-view-tab" href="/">📚 Skills</a>
+    <a class="run-list-view-tab run-list-view-tab--active" href="/runs">📋 Runs</a>
+  </div>
 
     <div style="margin:12px 0"><a class="page-secondary-link" href="/analyses">📊 <span data-i18n="skillHealthTitle">Skill 健康度日报</span> →</a></div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
@@ -3085,6 +3097,10 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
     /* 列表页 — 卡片式布局,顶部 verdict pill 主导,底部 hover 露出 delete */
     .page-secondary-link { color:var(--text-secondary);font-size:13px;text-decoration:none;border:1px solid var(--border);padding:6px 14px;border-radius:var(--radius);display:inline-block;background:var(--bg-surface);transition:border-color .15s,color .15s }
     .page-secondary-link:hover { color:var(--text-primary);border-color:var(--border-hover);text-decoration:none }
+    .run-list-view-tabs { display:flex;gap:0;margin:8px 0 16px;border-bottom:1px solid var(--border) }
+    .run-list-view-tab { padding:10px 18px;color:var(--text-secondary);text-decoration:none;border-bottom:2px solid transparent;font-weight:500;font-size:14px;margin-bottom:-1px }
+    .run-list-view-tab:hover { color:var(--text-primary) }
+    .run-list-view-tab--active { color:var(--text-primary);border-bottom-color:var(--accent);font-weight:600 }
     .run-list { display:flex;flex-direction:column;gap:12px;margin:16px 0 }
     /* verdict 用左边粗带 + 浅色填充背景双重视觉提示,远看也能区分。
        PROGRESS = sage 绿(进步),REGRESS = 砖红(回归),CAUTIOUS = 琥珀(警示),其他 = 灰(无信号) */
