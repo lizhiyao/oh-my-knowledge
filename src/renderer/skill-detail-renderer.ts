@@ -96,7 +96,95 @@ function fmtDateShort(ts: string | null | undefined): string {
   } catch { return ''; }
 }
 
-// ────────── Hero:band + 名称 + 健康摘要 ──────────
+// ────────── 健康等级评估 ──────────
+
+type HealthGrade = 'excellent' | 'good' | 'fair' | 'unhealthy' | 'unscored';
+
+interface HealthAssessment {
+  grade: HealthGrade;
+  /** 0-100 参考分,各维度归一平均;无任何维度跑过时为 null。 */
+  score: number | null;
+  label: string;
+  emoji: string;
+  color: 'green' | 'yellow' | 'red' | 'gray';
+}
+
+function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: Lang): HealthAssessment {
+  const ran = [entry.doctor, entry.eval, entry.observe].filter(Boolean).length;
+  if (ran === 0) {
+    return { grade: 'unscored', score: null, label: lang === 'zh' ? '未评估' : 'Unscored', emoji: '⚪', color: 'gray' };
+  }
+
+  let doctorPct: number | null = null;
+  if (entry.doctor) {
+    const total = entry.doctor.passCount + entry.doctor.warnCount + entry.doctor.failCount;
+    doctorPct = total > 0
+      ? ((entry.doctor.passCount + entry.doctor.warnCount * 0.5) / total) * 100
+      : 100;
+  }
+  let evalPct: number | null = null;
+  if (entry.eval) {
+    if (entry.eval.compositeScore != null) {
+      evalPct = (entry.eval.compositeScore / 5) * 100;
+    } else {
+      const total = entry.eval.passCount + entry.eval.failCount;
+      if (total > 0) evalPct = (entry.eval.passCount / total) * 100;
+    }
+  }
+  let observePct: number | null = null;
+  if (entry.observe) {
+    const coverage = (1 - entry.observe.gapRate) * 100;
+    const bandMul = entry.observe.healthBand === 'red' ? 0.6 : entry.observe.healthBand === 'yellow' ? 0.85 : 1;
+    observePct = coverage * bandMul;
+  }
+  const dims = [doctorPct, evalPct, observePct].filter((x): x is number => x != null);
+  const score = dims.length > 0 ? Math.round(dims.reduce((s, x) => s + x, 0) / dims.length) : null;
+
+  const hasFail = (entry.doctor != null && entry.doctor.failCount > 0)
+    || (entry.eval != null && entry.eval.passCount === 0 && entry.eval.failCount > 0)
+    || (entry.observe != null && entry.observe.healthBand === 'red');
+  const hasWarn = (entry.doctor != null && entry.doctor.warnCount > 0)
+    || (entry.eval != null && entry.eval.compositeScore != null && entry.eval.compositeScore < 4)
+    || (entry.observe != null && entry.observe.healthBand === 'yellow');
+  const high = insights.filter((i) => i.severity === 'high').length;
+  const med = insights.filter((i) => i.severity === 'medium').length;
+
+  if (high > 0 || hasFail) {
+    return { grade: 'unhealthy', score, label: lang === 'zh' ? '不健康' : 'Unhealthy', emoji: '🔴', color: 'red' };
+  }
+  if (med > 0 || hasWarn) {
+    return { grade: 'fair', score, label: lang === 'zh' ? '待改进' : 'Fair', emoji: '🟡', color: 'yellow' };
+  }
+  if (insights.length === 0 && !hasWarn) {
+    return { grade: 'excellent', score, label: lang === 'zh' ? '健康' : 'Excellent', emoji: '🟢', color: 'green' };
+  }
+  return { grade: 'good', score, label: lang === 'zh' ? '良好' : 'Good', emoji: '🟢', color: 'green' };
+}
+
+// ────────── Hero:健康等级 + 名称 + 摘要 ──────────
+
+function renderHero(entry: SkillIndexEntry, insights: Insight[], lastTs: string | undefined, reportCount: number, lang: Lang): string {
+  const h = assessHealth(entry, insights, lang);
+  const scoreTip = lang === 'zh'
+    ? '参考分:doctor 通过率、eval 综合分、observe 稳定度归一到 0-100 后取平均(warn/告警按 0.5 折算)。同一 skill 跨时间可比;不同 skill 之间因 sample 难度不同不严格可比'
+    : 'Reference score: average of doctor pass-rate, eval composite, and observe stability normalized to 0-100. Comparable within a skill over time; not strictly comparable across skills (sample difficulty differs)';
+  const scoreBlock = h.score != null
+    ? `<span class="si-hero-score" title="${e(scoreTip)}"><span class="si-hero-score-num">${h.score}</span><span class="si-hero-score-unit">/100</span></span>`
+    : `<span class="si-hero-score si-hero-score--empty" title="${e(scoreTip)}">—</span>`;
+
+  return `<div class="si-hero">
+    <div class="si-hero-grade si-hero-grade--${h.color}">
+      <span class="si-hero-grade-emoji">${h.emoji}</span>
+      <span class="si-hero-grade-label">${e(h.label)}</span>
+      ${scoreBlock}
+    </div>
+    <div class="si-hero-info">
+      <div class="si-hero-name">${e(entry.skillName)}</div>
+      <div class="si-hero-summary">${renderHealthSummary(entry, insights, lang)}</div>
+    </div>
+    <div class="si-hero-meta">${reportCount}/3 · ${relTime(lastTs, lang)}</div>
+  </div>`;
+}
 
 function renderHealthSummary(entry: SkillIndexEntry, insights: Insight[], lang: Lang): string {
   const parts: string[] = [];
@@ -498,12 +586,31 @@ const SKILL_DETAIL_CSS = `
 .si-back { display:inline-block;margin-bottom:8px;color:var(--text-muted);font-size:13px;text-decoration:none }
 .si-back:hover { color:var(--text-primary) }
 
-/* Hero — band + 名称 + 健康摘要,紧凑一行式 */
-.si-hero { display:flex;align-items:center;gap:14px;padding:14px 18px;background:var(--bg-surface);border-radius:8px;box-shadow:var(--shadow-sm);margin:8px 0 14px;flex-wrap:wrap }
-.si-hero-band { font-size:24px;line-height:1 }
-.si-hero-name { font-size:20px;font-weight:600;color:var(--text-primary) }
-.si-hero-summary { color:var(--text-secondary);font-size:13px;flex:1;min-width:240px;line-height:1.5 }
-.si-hero-meta { color:var(--text-muted);font-size:12px;font-variant-numeric:tabular-nums }
+/* Hero — grade 卡 + 信息块,grid 布局让 grade 卡固定宽度 */
+.si-hero { display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;padding:14px 18px;background:var(--bg-surface);border-radius:8px;box-shadow:var(--shadow-sm);margin:8px 0 14px }
+@media(max-width:640px){ .si-hero { grid-template-columns:auto 1fr;gap:12px } .si-hero-meta { grid-column:1/-1;text-align:right } }
+
+/* 健康等级卡 — 左侧色卡,emoji + 等级 + 参考分纵向堆叠 */
+.si-hero-grade { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-width:96px;padding:10px 14px;border-radius:8px;background:var(--bg-soft);border-left:4px solid var(--border) }
+.si-hero-grade--green { border-left-color:#5e8252;background:rgba(94,130,82,.08) }
+.si-hero-grade--yellow { border-left-color:#b08030;background:rgba(176,128,48,.08) }
+.si-hero-grade--red { border-left-color:#9c4a3f;background:rgba(156,74,63,.08) }
+.si-hero-grade--gray { border-left-color:var(--border);background:var(--bg-soft) }
+.si-hero-grade-emoji { font-size:20px;line-height:1 }
+.si-hero-grade-label { font-size:13px;font-weight:600;color:var(--text-primary);letter-spacing:0.02em }
+.si-hero-score { font-variant-numeric:tabular-nums;cursor:help;display:flex;align-items:baseline;gap:1px;margin-top:1px }
+.si-hero-score-num { font-size:22px;font-weight:700;line-height:1 }
+.si-hero-grade--green  .si-hero-score-num { color:#5e8252 }
+.si-hero-grade--yellow .si-hero-score-num { color:#b08030 }
+.si-hero-grade--red    .si-hero-score-num { color:#9c4a3f }
+.si-hero-grade--gray   .si-hero-score-num { color:var(--text-muted) }
+.si-hero-score-unit { font-size:11px;color:var(--text-muted);font-weight:500 }
+.si-hero-score--empty { font-size:18px;color:var(--text-muted) }
+
+.si-hero-info { display:flex;flex-direction:column;gap:4px;min-width:0 }
+.si-hero-name { font-size:20px;font-weight:600;color:var(--text-primary);line-height:1.3 }
+.si-hero-summary { color:var(--text-secondary);font-size:13px;line-height:1.5 }
+.si-hero-meta { color:var(--text-muted);font-size:12px;font-variant-numeric:tabular-nums;align-self:center }
 
 /* 主网格:左 6/12 右 6/12,移动端单列 */
 .si-grid { display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start }
@@ -726,12 +833,7 @@ export function renderSkillDetail(
   return layout(entry.skillName, `
     <main>
       <a class="si-back" href="/${langQ}">${lang === 'zh' ? '← 返回 Skills' : '← Back to Skills'}</a>
-      <div class="si-hero">
-        <span class="si-hero-band">${BAND_DOT[entry.band]}</span>
-        <span class="si-hero-name">${e(entry.skillName)}</span>
-        <span class="si-hero-summary">${renderHealthSummary(entry, insights, lang)}</span>
-        <span class="si-hero-meta">${reportCount}/3 · ${relTime(lastTs, lang)}</span>
-      </div>
+      ${renderHero(entry, insights, lastTs, reportCount, lang)}
 
       <div class="si-grid">
         <section class="si-list" aria-label="${lang === 'zh' ? '问题列表' : 'Issues'}">
