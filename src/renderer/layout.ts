@@ -367,52 +367,59 @@ export function layout(title: string, body: string, lang: Lang = DEFAULT_LANG): 
   return `<!doctype html><html lang="${htmlLang}" data-lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OMK · ${title}</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${favicon}">${globalKeyboardScript()}
 <style>
+/* Pantone-inspired light theme(2026-05 全站浅色化)。
+   设计原则:暖白底 + 哑色调,不刺眼;字号 14-15px 起;subtle box-shadow 替代 border。
+   旧的深色蓝灰主题已迁移,语义保留但色值翻转。 */
 :root{
-  --bg-base:#0f172a;
-  --bg-surface:rgba(30,41,59,0.7);
-  --bg-elevated:rgba(15,23,42,0.6);
-  --border:rgba(148,163,184,0.1);
-  --border-hover:rgba(148,163,184,0.25);
-  --text-primary:#e2e8f0;
-  --text-secondary:#94a3b8;
-  --text-muted:#64748b;
-  --text-faint:#475569;
-  --accent:#60a5fa;
-  --accent-hover:#93bbfd;
-  --green:#4ade80;
-  --green-bg:rgba(34,197,94,0.12);
-  --red:#f87171;
-  --red-bg:rgba(239,68,68,0.12);
-  --yellow:#fbbf24;
-  --yellow-bg:rgba(245,158,11,0.12);
-  --info-bg:rgba(96,165,250,0.1);
-  --chart-1:#60a5fa;
-  --chart-2:#a78bfa;
-  --chart-3:#34d399;
-  --chart-4:#fb923c;
-  --chart-5:#f472b6;
-  --chart-6:#fbbf24;
-  --bg-card:#1e293b;
+  --bg-base:#fbfaf7;            /* 暖白纸感 */
+  --bg-surface:#ffffff;          /* 卡片白 */
+  --bg-elevated:rgba(58,58,58,.025);
+  --bg-soft:rgba(58,58,58,.04);
+  --border:#e8e3da;              /* 暖灰分隔 */
+  --border-hover:#d4ccbf;
+  --text-primary:#3a3a3a;        /* 深炭灰 */
+  --text-secondary:#7a7a7a;
+  --text-muted:#a8a8a8;
+  --text-faint:#c8c8c8;
+  --accent:#5a7a93;              /* 板岩蓝(slate) */
+  --accent-hover:#3f5d76;
+  --green:#5e8252;               /* 鼠尾草绿(sage) */
+  --green-bg:rgba(94,130,82,.10);
+  --red:#9c4a3f;                 /* 砖红土陶(terracotta) */
+  --red-bg:rgba(156,74,63,.10);
+  --yellow:#b08030;              /* 暖琥珀 */
+  --yellow-bg:rgba(176,128,48,.10);
+  --info-bg:rgba(90,122,147,.08);
+  /* 图表色 — 全部哑色调,跨色相区分但饱和度统一在 ~50% */
+  --chart-1:#5a7a93;
+  --chart-2:#7a6b89;
+  --chart-3:#5e8252;
+  --chart-4:#b08030;
+  --chart-5:#9c6478;
+  --chart-6:#937846;
+  --bg-card:#ffffff;
   --radius:8px;
   --radius-lg:12px;
-  --fs-micro:11px;
-  --fs-detail:12px;
-  --fs-label:12px;
-  --fs-body:13px;
+  /* 字号上调:正文 14px / 标签 13px / 详情 13px / 微元数据 12px */
+  --fs-micro:12px;
+  --fs-detail:13px;
+  --fs-label:13px;
+  --fs-body:14.5px;
+  --shadow-sm:0 1px 3px rgba(58,58,58,.06);
+  --shadow-md:0 2px 8px rgba(58,58,58,.10);
 }
 *{box-sizing:border-box;margin:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:32px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.5;max-width:1100px;margin:0 auto}
-h1{margin:0 0 6px;font-size:1.5rem;font-weight:700;color:var(--text-primary);letter-spacing:-0.02em}
-h2{margin:24px 0 8px;font-size:0.9375rem;color:var(--text-secondary);font-weight:600}
-.subtitle{color:var(--text-muted);font-size:0.8125rem;margin:0 0 20px}
-a{color:var(--accent);text-decoration:none}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;padding:32px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.7;max-width:1100px;margin:0 auto;font-size:var(--fs-body)}
+h1{margin:0 0 8px;font-size:1.75rem;font-weight:600;color:var(--text-primary);letter-spacing:-0.01em;line-height:1.3}
+h2{margin:32px 0 12px;font-size:1.0625rem;color:var(--text-primary);font-weight:600;line-height:1.4}
+.subtitle{color:var(--text-secondary);font-size:0.875rem;margin:0 0 24px}
+a{color:var(--accent);text-decoration:none;transition:color .15s}
 a:hover{color:var(--accent-hover);text-decoration:underline}
 
-/* Meta tags — bumped from 11px/text-muted to 12px/text-secondary so contrast
-   passes WCAG AA on the dark surface. */
-.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}
-.meta-tag{font-size:0.75rem;color:var(--text-secondary);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
-.meta-tag code{font-size:0.7rem;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
+/* Meta tags — 浅色主题下加大对比度,小一点的字号也清晰可读 */
+.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 20px}
+.meta-tag{font-size:13px;color:var(--text-secondary);padding:4px 12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
+.meta-tag code{font-size:12px;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
 
 /* Run ID stamp — H1 保留完整 run-id (与列表页一致), 时间戳从 ID 解出来作为副标小字,
    告诉用户「这次跑的时间」,无需用户自己解析 ID 后缀。 */
@@ -434,11 +441,12 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .methodology-summary-label{font-size:14px;font-weight:600}
 .methodology-summary-hint{flex:1 1 auto;text-align:right;font-size:11px;color:var(--text-muted);font-weight:400}
 .methodology-badges{display:inline-flex;flex-wrap:wrap;gap:6px}
-.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
-.methodology-badge-pass{background:rgba(74,222,128,0.14);color:var(--green)}
-.methodology-badge-warn{background:rgba(251,191,36,0.16);color:var(--yellow)}
-.methodology-badge-fail{background:rgba(248,113,113,0.16);color:var(--red)}
-.methodology-badge-skip{background:rgba(148,163,184,0.12);color:var(--text-muted)}
+.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
+/* Pantone 哑色 — 用 var(--green-bg) 等(浅色主题已重定义) */
+.methodology-badge-pass{background:var(--green-bg);color:var(--green)}
+.methodology-badge-warn{background:var(--yellow-bg);color:var(--yellow)}
+.methodology-badge-fail{background:var(--red-bg);color:var(--red)}
+.methodology-badge-skip{background:var(--bg-soft);color:var(--text-muted)}
 .methodology-body{padding:0 16px 14px;border-top:1px solid var(--border);margin-top:8px}
 .methodology-body>h2:first-child{margin-top:14px}
 
@@ -446,20 +454,23 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .cards{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
 .card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;min-width:140px;flex:1;transition:border-color 0.15s}
 .card:hover{border-color:var(--border-hover)}
-.card-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px}
-.card-value{font-size:22px;font-weight:700;margin:2px 0;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.card-sub{font-size:11px;color:var(--text-muted)}
+/* 卡片标签:de-uppercase(uppercase 在 pantone 哑色调里太"科技报"),轻微 letter-spacing
+   保留排版感,字号上调到 12 让读者看清。值/数字改 weight 600(700 在浅色配色里太硬)。 */
+.card-label{font-size:12px;color:var(--text-muted);letter-spacing:0.02em;margin-bottom:4px;font-weight:500}
+.card-value{font-size:20px;font-weight:600;margin:2px 0;color:var(--text-primary);font-variant-numeric:tabular-nums;line-height:1.3}
+.card-sub{font-size:12px;color:var(--text-muted);line-height:1.5}
 /* Summary table — inherits the global center + middle from the base td/th. */
-.summary-cell{min-width:100px}
-.summary-value-primary{font-size:1.375rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
+.summary-cell{min-width:96px}
+.summary-value-primary{font-size:1.25rem;font-weight:600;font-variant-numeric:tabular-nums}
 
 /* Hint tooltip (legacy span-based, kept for hover-only hints) */
 .hint{position:relative;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;font-size:10px;font-weight:600;color:var(--text-muted);border:1px solid var(--border-hover);border-radius:50%;cursor:help;margin-left:6px;vertical-align:middle}
 .hint-click{cursor:pointer}
 
 /* Hint button — accessible, keyboard-focusable replacement for click-to-open-modal hints */
-button.hint-btn{display:inline-flex;align-items:center;justify-content:center;min-width:22px;min-height:22px;padding:3px;font-size:var(--fs-micro);font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border-hover);border-radius:50%;cursor:pointer;margin-left:6px;vertical-align:middle;line-height:1;transition:color 0.15s,border-color 0.15s}
-button.hint-btn:hover{color:var(--text-primary);border-color:var(--text-primary)}
+button.hint-btn{display:inline-flex;align-items:center;justify-content:center;min-width:20px;min-height:20px;padding:2px;font-size:11px;font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border);border-radius:50%;cursor:pointer;margin-left:6px;vertical-align:middle;line-height:1;transition:color 0.15s,border-color 0.15s;outline:none;appearance:none}
+button.hint-btn:hover{color:var(--text-primary);border-color:var(--text-secondary)}
+button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* Verdict + detail pattern used in variance & significance cells */
@@ -636,9 +647,9 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 @media(max-width:480px){.modal-table td{display:block;padding:3px 0}.modal-table td:first-child{font-weight:600}}
 .hint-tip{display:none;position:absolute;bottom:calc(100% + 6px);right:0;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:var(--radius);padding:6px 10px;font-size:11px;font-weight:400;color:var(--text-secondary);white-space:normal;max-width:280px;width:max-content;z-index:10}
 .hint:hover .hint-tip,.hint:focus .hint-tip{display:block}
-.summary-value{font-size:1rem;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.summary-detail{font-size:0.6875rem;color:var(--text-muted);margin-top:3px}
-.summary-unit{font-size:0.75rem;font-weight:400;color:var(--text-muted)}
+.summary-value{font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.summary-detail{font-size:12px;color:var(--text-muted);margin-top:4px;line-height:1.5}
+.summary-unit{font-size:12px;font-weight:400;color:var(--text-muted)}
 .card-detail{margin-top:8px;font-size:12px;color:var(--text-secondary)}
 .card-detail div{margin:2px 0}
 
@@ -649,9 +660,12 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 @media(max-width:768px){
   .table-wrap::after{content:'';position:sticky;right:0;top:0;display:block;float:right;width:32px;height:100%;margin-left:-32px;margin-top:-100%;pointer-events:none;background:linear-gradient(to right,transparent,var(--bg-card) 85%);z-index:2}
 }
-table{border-collapse:collapse;width:100%;font-size:0.8125rem;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;line-height:1.4}
-th{background:var(--bg-elevated);padding:8px 14px;text-align:center;vertical-align:middle;font-weight:500;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap}
-td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
+/* 表格 — 稍紧凑(padding 7px 12px),正文 13px,字号上调跟全站对齐;
+   非数字列保留 left-align(td.text 类),其它默认居中。 */
+table{border-collapse:collapse;width:100%;font-size:13px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;line-height:1.5}
+th{background:var(--bg-elevated);padding:8px 12px;text-align:center;vertical-align:middle;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border);font-size:12px;letter-spacing:0.02em;white-space:nowrap}
+td{padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
+td:first-child, th:first-child { text-align:left }
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(148,163,184,0.04)}
 
@@ -683,9 +697,11 @@ tr:hover td{background:rgba(148,163,184,0.04)}
 .bar-value{flex:0 0 auto;font-size:12px;color:var(--text-secondary)}
 
 /* Forms */
-input[type="text"]{background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius);padding:4px 8px;font-size:12px}
-input[type="text"]:focus{outline-color:transparent;border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
-button{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius);cursor:pointer;padding:4px 12px;font-size:12px;transition:border-color 0.15s,color 0.15s}
+input[type="text"]{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius);padding:6px 12px;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
+input[type="text"]:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--info-bg)}
+/* 通用 button — 浅色主题里默认 transparent + 边框更细。子样式(.run-card-delete, .tv-vtab,
+   .omk-view-tab, .hint-btn 等)各自有显式 reset 覆盖默认样式。 */
+button{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius);cursor:pointer;padding:6px 14px;font-size:13px;font-family:inherit;transition:border-color .15s,color .15s,background .15s;outline:none;appearance:none;-webkit-appearance:none}
 button:hover{border-color:var(--border-hover);color:var(--text-primary)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 

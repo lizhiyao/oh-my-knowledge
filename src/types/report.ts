@@ -272,12 +272,12 @@ export interface ResultEntry {
 
 /**
  * Per-sample 设计快照(测试契约),仅用于报告渲染 — 单测视角需要展示"用例长什么样、
- * 期望什么、用了什么 mock 夹具"。Grading / judge 不参考这个字段。
+ * 期望什么、用了哪些工具调用 mock"。Grading / judge 不参考这个字段。
  *
  * 内容是 Sample 的子集,只保留渲染需要的字段:
  *   - prompt / rubric: 用例内容本身
  *   - assertions: 期望(运行后的 pass/fail 结果在 VariantResult.assertions.details 里)
- *   - mocks: 测试夹具(模拟工具调用返回)
+ *   - mocks: 工具调用模拟返回(LLM 调到匹配的 tool/参数时拿到这段假返回,而不是真去调外部系统)
  *   - capability / construct / difficulty: 元数据
  *   - context: 附加上下文(代码片段等)
  *

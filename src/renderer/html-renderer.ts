@@ -154,7 +154,7 @@ function renderRuntimeFingerprintTags(meta: RuntimeMeta, lang: Lang): string {
 
 export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
-  const skillHealthLink = `<a href="/analyses${langQ}" style="color:var(--text-muted);font-size:12px;text-decoration:none;border:1px solid var(--border);padding:4px 10px;border-radius:var(--radius);display:inline-block">📊 <span data-i18n="skillHealthTitle">${t('skillHealthTitle', lang)}</span> →</a>`;
+  const skillHealthLink = `<a class="page-secondary-link" href="/analyses${langQ}">📊 <span data-i18n="skillHealthTitle">${t('skillHealthTitle', lang)}</span> →</a>`;
   if (!runs || runs.length === 0) {
     return layout(t('title', lang), `
       <main>
@@ -166,117 +166,92 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
     `, lang);
   }
 
-  const rows = runs.map((run) => {
+  // v0.30 — 卡片式列表(取代 7 列 dense table),每条占 4-5 行垂直空间但信息密度更可读。
+  // 顶部 verdict pill 主导视觉,id+date 是身份,scores 是成绩,底部 meta 是元数据,
+  // delete 默认隐藏在 hover 出现避免误点。批量报告共用同一组件,batch pill 替代 verdict。
+  const formatDateFromId = (id: string, fallbackTs?: string): string => {
+    const idMatch = id.match(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
+    if (idMatch) return `${idMatch[2]}/${idMatch[3]} ${idMatch[4]}:${idMatch[5]}`;
+    return fallbackTs ? new Date(fallbackTs).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  };
+  const renderScoreBar = (label: string, score: number | null): string => {
+    if (score == null) return `<span class="rc-score-empty">${e(label)}: —</span>`;
+    const cls = score >= 4 ? 'pass' : score >= 3 ? 'warn' : 'fail';
+    const barW = Math.round((score / 5) * 100);
+    return `<div class="rc-score-row"><span class="rc-score-label" title="${e(label)}">${e(label)}</span>` +
+      `<div class="rc-score-bar"><div class="rc-score-bar-fill rc-score-bar-fill--${cls}" style="width:${barW}%"></div></div>` +
+      `<span class="rc-score-num rc-score-num--${cls}">${score.toFixed(2)}</span></div>`;
+  };
+
+  const cards = runs.map((run) => {
     if (run.kind === 'batch-evaluation') {
       const m = run.meta;
-      const scoreCol = run.items.length > 0
+      const scores = run.items.length > 0
         ? run.items.map((item) => {
           const baselineScore = scoreOf(item.summary.baseline);
           const skillScore = scoreOf(item.summary[item.name]);
-          const score = skillScore ?? baselineScore;
-          if (score == null) return `<span style="color:var(--text-muted)">${e(item.name)}: -</span>`;
-          const color = score >= 4 ? 'var(--green)' : score >= 3 ? 'var(--yellow)' : 'var(--red)';
-          const barW = Math.round((score / 5) * 100);
-          return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">` +
-            `<span title="${e(item.name)}" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">${e(item.name)}</span>` +
-            `<div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0">` +
-            `<div style="width:${barW}%;height:100%;background:${color};border-radius:3px"></div></div>` +
-            `<span style="font-size:12px;font-weight:600;color:${color};min-width:24px">${score.toFixed(2)}</span></div>`;
+          return renderScoreBar(item.name, skillScore ?? baselineScore);
         }).join('')
-        : '<div style="color:var(--text-faint);font-size:0.6875rem;text-align:center">no score</div>';
-      const allCostReported = run.items.every((item) =>
-        Object.values(item.summary || {}).every((v) => v.execCostReported !== false && v.judgeCostReported !== false));
-      const totalCostReported = m.totalCostReported !== false && allCostReported;
+        : `<div class="rc-score-empty">${lang === 'zh' ? '无分数' : 'no score'}</div>`;
       const totalDurationMs = run.items.reduce((sum, item) => (
         sum + Object.values(item.summary || {}).reduce((inner, v) => inner + (v.avgDurationMs || 0) * (v.successCount || 0), 0)
       ), 0);
       const statusPill = `<span class="run-status" title="${lang === 'zh' ? '批量评测' : 'batch evaluation'}"><span class="run-status-dot" aria-hidden="true">◇</span>${lang === 'zh' ? '批量' : 'Batch'}</span>`;
-      return `<tr>
-      <td>${statusPill}<a href="/reports/${e(run.id)}${langQ}"><span style="color:var(--text-primary)">${e(run.id)}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : e(run.id)}</span></a></td>
-      <td>${e(m.model || '-')}</td>
-      <td>${m.sampleCount || 0}</td>
-      <td>${scoreCol}</td>
-      <td title="${totalCostReported ? '' : e(costCompletenessTooltip(lang))}">${fmtKnownCost(m.totalCostUSD || 0, totalCostReported)}</td>
-      <td>${fmtDuration(totalDurationMs)}</td>
-      <td style="white-space:nowrap"><button onclick="deleteRun('${e(run.id)}',this)" class="btn-danger" data-i18n="deleteBtnText">${t('deleteBtnText', lang)}</button></td>
-    </tr>`;
+      const date = formatDateFromId(run.id, m.timestamp);
+      return `<a class="run-card" href="/reports/${e(run.id)}${langQ}">
+        <div class="run-card-h">
+          ${statusPill}
+          <span class="run-card-id">${e(run.id)}</span>
+          ${date ? `<span class="run-card-date">${e(date)}</span>` : ''}
+        </div>
+        <div class="run-card-meta">${e(m.model || '-')} · ${m.sampleCount || 0} ${lang === 'zh' ? '用例' : 'samples'} · ${run.items.length} skills</div>
+        <div class="run-card-scores">${scores}</div>
+        <div class="run-card-foot">
+          <span class="run-card-stat">${fmtDuration(totalDurationMs)}</span>
+          <button class="run-card-delete" onclick="event.preventDefault();event.stopPropagation();deleteRun('${e(run.id)}',this)" data-i18n="deleteBtnText" aria-label="${e(t('deleteBtnText', lang))}">×</button>
+        </div>
+      </a>`;
     }
 
     const m = run.meta;
-    const hasScores = Object.values(run.summary || {}).some((s) =>
+    const summary = run.summary || {};
+    const hasScores = Object.values(summary).some((s) =>
       typeof s.avgCompositeScore === 'number' || typeof s.avgLlmScore === 'number'
     );
-    const scoreCol = hasScores
-      ? Object.entries(run.summary || {}).map(([v, s]) => {
-        const score = s.avgCompositeScore ?? s.avgLlmScore ?? null;
-        if (score == null) return `<span style="color:var(--text-muted)">${e(v)}: -</span>`;
-        const color = score >= 4 ? 'var(--green)' : score >= 3 ? 'var(--yellow)' : 'var(--red)';
-        const barW = Math.round((score / 5) * 100);
-        return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">` +
-          `<span title="${e(v)}" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">${e(v)}</span>` +
-          `<div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0">` +
-          `<div style="width:${barW}%;height:100%;background:${color};border-radius:3px"></div></div>` +
-          `<span style="font-size:12px;font-weight:600;color:${color};min-width:24px">${score}</span></div>`;
-      }).join('')
-      : '<div style="color:var(--text-faint);font-size:0.6875rem;text-align:center">no score</div>';
-    const badges = ''; // TODO: artifact kind 体系完善后，按 kind 显示评测类型标签
+    const scoresHtml = hasScores
+      ? Object.entries(summary).map(([v, s]) => renderScoreBar(v, s.avgCompositeScore ?? s.avgLlmScore ?? null)).join('')
+      : `<div class="rc-score-empty">${lang === 'zh' ? '无分数' : 'no score'}</div>`;
 
-    // v0.21 B.4 — 列表页 verdict pill: 一眼分辨 progress / regress / noise.
-    // computeVerdict 是同步纯函数(report -> level),per row 跑成本 O(samples).
-    // 脏报告可能让 layer-gates 访问 undefined.avgFactScore 抛 NPE。
-    // try/catch 兜底,失败的 row 不显示 pill,避免一个坏 report 撤掉整页。
     let statusPill = '';
+    let verdictLvl: VerdictLevel | '' = '';
     try {
       const verdict = computeVerdict(run);
-      const lvl = verdict.level;
-      statusPill = `<span class="run-status verdict-${lvl}" title="${e(levelTooltip(lvl, lang))}" aria-label="${e(levelLabel(lvl, lang))} — ${e(levelTooltip(lvl, lang))}"><span class="run-status-dot" aria-hidden="true">${levelDot(lvl)}</span>${e(levelLabel(lvl, lang))}</span>`;
+      verdictLvl = verdict.level;
+      statusPill = `<span class="run-status verdict-${verdictLvl}" title="${e(levelTooltip(verdictLvl, lang))}" aria-label="${e(levelLabel(verdictLvl, lang))} — ${e(levelTooltip(verdictLvl, lang))}"><span class="run-status-dot" aria-hidden="true">${levelDot(verdictLvl)}</span>${e(levelLabel(verdictLvl, lang))}</span>`;
     } catch { /* skip pill on this row */ }
 
-    return `<tr>
-      <td>${statusPill}<a href="/reports/${e(run.id)}${langQ}"><span style="color:var(--text-primary)">${e(run.id)}${badges}</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">${(() => {
-        // Extract date/time from report ID: ...-YYYYMMDD-HHmm
-        const idMatch = run.id.match(/(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$/);
-        if (idMatch) return `${idMatch[2]}/${idMatch[3]} ${idMatch[4]}:${idMatch[5]}`;
-        return m.timestamp ? new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : e(run.id);
-      })()}</span></a></td>
-      <td>${e(m.model || '-')}</td>
-      <td>${m.sampleCount || 0}</td>
-      <td>${scoreCol}</td>
-      <td>${(() => {
-        const cost = Object.values(run.summary || {}).reduce((s, v) => s + (v.totalExecCostUSD || 0), 0);
-        const reported = Object.values(run.summary || {}).every((v) => v.execCostReported !== false);
-        return fmtCost(cost, reported);
-      })()}</td>
-      <td>${fmtDuration(Object.values(run.summary || {}).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0))}</td>
-      <td style="white-space:nowrap"><button onclick="deleteRun('${e(run.id)}',this)" class="btn-danger" data-i18n="deleteBtnText">${t('deleteBtnText', lang)}</button></td>
-    </tr>`;
+    const date = formatDateFromId(run.id, m.timestamp);
+    const variants = (m.variants || []).join(' · ');
+    const dur = Object.values(summary).reduce((s, v) => s + (v.avgDurationMs || 0) * (v.successCount || 0), 0);
+
+    return `<a class="run-card${verdictLvl ? ` verdict-${verdictLvl}` : ''}" href="/reports/${e(run.id)}${langQ}">
+      <div class="run-card-h">
+        ${statusPill}
+        <span class="run-card-id">${e(run.id)}</span>
+        ${date ? `<span class="run-card-date">${e(date)}</span>` : ''}
+      </div>
+      <div class="run-card-meta">${e(m.model || '-')} · ${m.sampleCount || 0} ${lang === 'zh' ? '用例' : 'samples'}${variants ? ` · ${e(variants)}` : ''}</div>
+      <div class="run-card-scores">${scoresHtml}</div>
+      <div class="run-card-foot">
+        <span class="run-card-stat">${fmtDuration(dur)}</span>
+        <button class="run-card-delete" onclick="event.preventDefault();event.stopPropagation();deleteRun('${e(run.id)}',this)" data-i18n="deleteBtnText" aria-label="${e(t('deleteBtnText', lang))}">×</button>
+      </div>
+    </a>`;
   }).join('');
 
   const runCount = lang === 'zh' ? `${runs.length} 次评测` : `${runs.length} runs`;
-  // 列表累计:只 sum 那些"全 variant 都报告了 cost"的 run,跳过任一 variant not reported 的。
-  // 排除 not reported(而不是把整体压成「—」)是因为列表常含数十个 run 仅 1-2 个是 codex,
-  // 把全部 sum 抹成「—」会丢掉绝大多数有效成本信息。
+  // v0.30 — 列表页移除累计金额展示(用户反馈无须暴露);保留 evaluationRuns 用于 trend links
   const evaluationRuns = runs.filter(isEvaluationReport);
-  const reportableRuns = evaluationRuns.filter((r) =>
-    Object.values(r.summary || {}).every((v) => v.execCostReported !== false));
-  const unmeasuredRunsCount = evaluationRuns.length - reportableRuns.length;
-  const totalCost = reportableRuns.reduce((s, r) => s + Object.values(r.summary || {}).reduce((sv, v) => sv + (v.totalExecCostUSD || 0), 0), 0);
-  // partial:有 reported 就显示数字 + tooltip;全部 not reported 才显示「—」;
-  // 全 reported(unmeasuredRunsCount=0)走老格式不包 span,保持 HTML snapshot 向后兼容。
-  // X/N 限定信息只放 tooltip,不挂在显眼位置 — 累计行视觉应该是单纯的数字。
-  const allUnmeasured = reportableRuns.length === 0 && runs.length > 0;
-  const baseLabel = lang === 'zh' ? '累计' : 'Total';
-  const costNumber = fmtCost(totalCost, !allUnmeasured);
-  let costLabel: string;
-  if (unmeasuredRunsCount === 0) {
-    // 全 reported → 跟旧版字节级一致,不破 snapshot
-    costLabel = `${baseLabel} ${costNumber}`;
-  } else {
-    const tip = lang === 'zh'
-      ? `${reportableRuns.length}/${evaluationRuns.length} 次单次报告了 USD 成本;${unmeasuredRunsCount} 次 executor 不报(如 codex CLI),batch index 不计入累计以避免重复`
-      : `${reportableRuns.length}/${evaluationRuns.length} evaluation reports reported USD cost; ${unmeasuredRunsCount} excluded (executor doesn't report, e.g. codex CLI); batch indexes are excluded to avoid double counting`;
-    costLabel = `<span title="${e(tip)}">${baseLabel} ${costNumber}</span>`;
-  }
 
   // Collect variants with ≥2 reports for trend links
   const variantCounts: Record<string, number> = {};
@@ -295,7 +270,7 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
   return layout(t('title', lang), `
     <main>
     <h1>${t('title', lang)}</h1>
-    <p class="subtitle" data-i18n="subtitle">${t('subtitle', lang)} &middot; ${runCount} &middot; ${costLabel}</p>
+    <p class="subtitle" data-i18n="subtitle">${t('subtitle', lang)} &middot; ${runCount}</p>
     ${trendsSection}
     <div style="margin:12px 0">${skillHealthLink}</div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
@@ -303,29 +278,54 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
       <span id="filter-count" style="font-size:11px;color:var(--text-muted)"></span>
     </div>
     ${renderScoringModal('guide-scoring-list', lang)}
-    <div class="table-wrap">
-    <table id="report-table">
-      <thead><tr>
-        <th data-i18n="runId">${t('runId', lang)}</th>
-        <th data-i18n="model">${t('model', lang)}</th>
-        <th data-i18n="samples">${t('samples', lang)}</th>
-        <th data-i18n="score">${t('score', lang)} <button type="button" class="hint-btn" onclick="openModal('guide-scoring-list')" aria-label="${e(lang === 'zh' ? '综合分怎么算的？' : 'How is composite computed?')}" aria-haspopup="dialog">?</button></th>
-        <th data-i18n="cost">${t('cost', lang)}</th>
-        <th>${lang === 'zh' ? '耗时' : 'Duration'}</th>
-        <th></th>
-      </tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    </div>
+    <div id="run-list" class="run-list">${cards}</div>
+    <style>
+    /* 列表页 — 卡片式布局,顶部 verdict pill 主导,底部 hover 露出 delete */
+    .page-secondary-link { color:var(--text-secondary);font-size:13px;text-decoration:none;border:1px solid var(--border);padding:6px 14px;border-radius:var(--radius);display:inline-block;background:var(--bg-surface);transition:border-color .15s,color .15s }
+    .page-secondary-link:hover { color:var(--text-primary);border-color:var(--border-hover);text-decoration:none }
+    .run-list { display:flex;flex-direction:column;gap:12px;margin:16px 0 }
+    /* verdict 用左边粗带 + 浅色填充背景双重视觉提示,远看也能区分。
+       PROGRESS = sage 绿(进步),REGRESS = 砖红(回归),CAUTIOUS = 琥珀(警示),其他 = 灰(无信号) */
+    .run-card { display:block;padding:18px 22px;background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);text-decoration:none;color:inherit;transition:box-shadow .15s,transform .05s;border-left:5px solid transparent;position:relative }
+    .run-card:hover { box-shadow:var(--shadow-md);text-decoration:none }
+    .run-card:hover .run-card-delete { opacity:1 }
+    .run-card.verdict-PROGRESS { border-left-color:var(--green);background:linear-gradient(90deg,var(--green-bg) 0%,var(--bg-surface) 80%) }
+    .run-card.verdict-REGRESS { border-left-color:var(--red);background:linear-gradient(90deg,var(--red-bg) 0%,var(--bg-surface) 80%) }
+    .run-card.verdict-CAUTIOUS { border-left-color:var(--yellow);background:linear-gradient(90deg,var(--yellow-bg) 0%,var(--bg-surface) 80%) }
+    .run-card.verdict-NOISE, .run-card.verdict-UNDERPOWERED { border-left-color:var(--text-faint);opacity:0.85 }
+    .run-card.verdict-SOLO { border-left-color:var(--accent);background:linear-gradient(90deg,var(--info-bg) 0%,var(--bg-surface) 80%) }
+    .run-card-h { display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap }
+    .run-card-id { font-size:15px;font-weight:600;color:var(--text-primary);font-family:"SF Mono",Menlo,Consolas,monospace;letter-spacing:-0.01em }
+    .run-card-date { font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums;margin-left:auto }
+    .run-card-meta { font-size:13px;color:var(--text-secondary);margin:6px 0 12px;line-height:1.6 }
+    .run-card-scores { display:flex;flex-direction:column;gap:4px;margin:8px 0 }
+    .run-card-foot { display:flex;gap:16px;margin-top:10px;align-items:center;font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums }
+    .run-card-stat { font-family:"SF Mono",Menlo,monospace }
+    .run-card-delete { margin-left:auto;background:transparent;border:none;color:var(--text-muted);font-size:18px;line-height:1;width:28px;height:28px;border-radius:14px;cursor:pointer;opacity:0;transition:opacity .15s,background .15s,color .15s;outline:none;appearance:none }
+    .run-card-delete:hover { background:var(--red-bg);color:var(--red) }
+    /* 分数行(每个 variant 一行) */
+    .rc-score-row { display:flex;align-items:center;gap:10px;font-size:13px;line-height:1.6 }
+    .rc-score-label { font-size:12px;color:var(--text-secondary);min-width:80px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0 }
+    .rc-score-bar { width:120px;height:6px;background:var(--bg-soft);border-radius:3px;flex-shrink:0;overflow:hidden }
+    .rc-score-bar-fill { height:100%;border-radius:3px;transition:width .2s }
+    .rc-score-bar-fill--pass { background:var(--green) }
+    .rc-score-bar-fill--warn { background:var(--yellow) }
+    .rc-score-bar-fill--fail { background:var(--red) }
+    .rc-score-num { font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace;min-width:36px }
+    .rc-score-num--pass { color:var(--green) }
+    .rc-score-num--warn { color:var(--yellow) }
+    .rc-score-num--fail { color:var(--red) }
+    .rc-score-empty { color:var(--text-faint);font-size:12px;font-style:italic }
+    </style>
     <script>
     function filterTable(q) {
-      var rows = document.querySelectorAll('#report-table tbody tr');
+      var cards = document.querySelectorAll('#run-list .run-card');
       var lower = q.toLowerCase();
       var shown = 0;
-      rows.forEach(function(row) {
-        var text = row.textContent.toLowerCase();
+      cards.forEach(function(card) {
+        var text = card.textContent.toLowerCase();
         var match = !q || text.indexOf(lower) !== -1;
-        row.style.display = match ? '' : 'none';
+        card.style.display = match ? '' : 'none';
         if (match) shown++;
       });
       var countEl = document.getElementById('filter-count');
@@ -337,7 +337,7 @@ export function renderRunList(runs: ReportDocument[], lang: Lang = DEFAULT_LANG)
       fetch('/api/reports/' + encodeURIComponent(id), { method: 'DELETE' })
         .then(function(r) { return r.json(); })
         .then(function(d) {
-          if (d.ok) { btn.closest('tr').remove(); }
+          if (d.ok) { btn.closest('.run-card').remove(); }
           else { alert(I18N[lang].deleteFail + ': ' + (d.error || 'unknown')); }
         })
         .catch(function(err) { alert(I18N[lang].deleteFail + ': ' + err.message); });
@@ -391,53 +391,42 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
     en: { baseline: 'Baseline', skill: 'Skill', prompt: 'Prompt', agent: 'Agent', workflow: 'Workflow' },
   };
 
+  // v0.30 — 实验配置弱化:单行 inline 摘要,跟 Agent 执行概览并排放(context-strip)。
+  // 每变体一行:左 3px 颜色条 + variant 名 + type/kind/source/strategy/cwd 用 · 分隔。
+  // 完整 key 名通过 hover tooltip 提供。视觉权重远低于综合分 hero。
   const variantConfigRows = (m.variantConfigs || []).map((config, i) => {
     const expTypeRaw = config.experimentType || '-';
     const expType = (typeLabels[lang] || typeLabels.en)[String(expTypeRaw)] || expTypeRaw;
     const source = config.artifactKind === 'baseline'
-      ? (lang === 'zh' ? '无' : 'None')
+      ? (lang === 'zh' ? '无来源' : 'no source')
       : (sourceLabels[lang] || sourceLabels.en)[config.artifactSource] || config.artifactSource;
     const strategy = (strategyLabels[lang] || strategyLabels.en)[config.executionStrategy] || config.executionStrategy;
     const cwdRaw = config.cwd || '';
     const runtimeContext = cwdRaw
       ? cwdRaw.replace(/.*\/Projects\//, '').replace(/.*\/Documents\//, '').replace(/\/Users\/[^/]+\//, '~/')
-      : (lang === 'zh' ? '默认' : 'default');
+      : (lang === 'zh' ? '默认 cwd' : 'default cwd');
     const color = COLORS[i % COLORS.length];
-    return `<tr>
-      <td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(config.variant)}</strong></td>
-      <td>${e(expType)}</td>
-      <td>${e((artifactKindLabels[lang] || artifactKindLabels.en)[config.artifactKind] || config.artifactKind)}</td>
-      <td>${e(source)}</td>
-      <td>${e(strategy)}</td>
-      <td title="${e(cwdRaw)}">${e(runtimeContext)}</td>
-    </tr>`;
+    const artifactKindLabel = e((artifactKindLabels[lang] || artifactKindLabels.en)[config.artifactKind] || config.artifactKind);
+    const tooltip = `${t('variantType', lang)}: ${expType} · ${t('variantArtifactKind', lang)}: ${artifactKindLabel} · ${t('variantArtifactSource', lang)}: ${source} · ${t('variantExecutionStrategy', lang)}: ${strategy} · ${t('variantRuntimeContext', lang)}: ${cwdRaw || (lang === 'zh' ? '默认' : 'default')}`;
+    return `<div class="ctx-row" style="border-left:3px solid ${color}" title="${e(tooltip)}">
+      <span class="ctx-row-name">${e(config.variant)}</span>
+      <span class="ctx-row-bits">${e(expType)} <span class="ctx-sep">·</span> ${artifactKindLabel} <span class="ctx-sep">·</span> ${e(source)} <span class="ctx-sep">·</span> ${e(strategy)} <span class="ctx-sep">·</span> ${e(runtimeContext)}</span>
+    </div>`;
   }).join('');
   const configModalId = 'guide-variant-config';
   const repeatSuffix = report.variance
     ? (lang === 'zh' ? ` × ${report.variance.runs} 轮` : ` × ${report.variance.runs} runs`)
     : '';
   const experimentSummary = lang === 'zh'
-    ? `${m.sampleCount} 个评测用例 × ${variants.length} 组实验${repeatSuffix}`
+    ? `${m.sampleCount} 个用例 × ${variants.length} 组实验${repeatSuffix}`
     : `${pluralizeEn(m.sampleCount, 'sample')} × ${pluralizeEn(variants.length, 'variant')}${repeatSuffix}`;
 
   const variantConfigSection = variantConfigRows ? `
-    <section style="margin:20px 0">
-      <h2 style="display:flex;align-items:center;gap:4px">${t('variantConfig', lang)} <button type="button" class="hint-btn" onclick="openModal('${configModalId}')" aria-label="${e(t('variantConfigDesc', lang))}" aria-haspopup="dialog">?</button></h2>
-      <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">${experimentSummary}</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>🏷️ ${t('variants', lang)}</th>
-            <th>🧪 ${t('variantType', lang)}</th>
-            <th>📦 ${t('variantArtifactKind', lang)}</th>
-            <th>📂 ${t('variantArtifactSource', lang)}</th>
-            <th>⚙️ ${t('variantExecutionStrategy', lang)}</th>
-            <th>🖥️ ${t('variantRuntimeContext', lang)}</th>
-          </tr></thead>
-          <tbody>${variantConfigRows}</tbody>
-        </table>
-      </div>
-    </section>
+    <div class="ctx-block">
+      <div class="ctx-h">${t('variantConfig', lang)} <button type="button" class="hint-btn" onclick="openModal('${configModalId}')" aria-label="${e(t('variantConfigDesc', lang))}" aria-haspopup="dialog">?</button></div>
+      <div class="ctx-sub">${experimentSummary}</div>
+      <div class="ctx-rows">${variantConfigRows}</div>
+    </div>
     <div id="${configModalId}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${configModalId}-title" onclick="if(event.target===this)closeModal('${configModalId}')">
       <div class="modal-content">
         <div class="modal-header">
@@ -466,77 +455,103 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
     </div>
   ` : '';
 
-  return layout(`${report.id}`, `
-    <main>
-    <nav class="nav"><a href="/${langQ}" data-i18n="backToList">${t('backToList', lang)}</a></nav>
-    <h1>${e(report.id)}</h1>
+  // v0.30 重设计 — 评分/单测各自独立 title + meta strip(不共享头部)。
+  // 顶部只保留极简身份带:返回链接 + run-id pill。完整 H1 + meta tags 移进各自 tab 面板。
+  const idStamp = (() => {
+    const idMatch = /^.+?-(\d{8})-(\d{4})$/.exec(report.id);
+    if (idMatch) {
+      const [, ymd, hm] = idMatch;
+      return `${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6, 8)} ${hm.slice(0, 2)}:${hm.slice(2, 4)}`;
+    }
+    return '';
+  })();
+
+  // ──────────── 评分 tab 的 meta tags(原版全部留这里) ────────────
+  const scoreMetaTags = `<div class="meta-tags">
+    <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
     ${(() => {
-      // Run ID 形如 `<name>-YYYYMMDD-HHMM`,把时间戳解出来作为人类可读的副标小字
-      // (报告什么时候跑的)。完整 run-id 仍是 H1,与列表页保持一致。
-      const idMatch = /^.+?-(\d{8})-(\d{4})$/.exec(report.id);
-      if (idMatch) {
-        const [, ymd, hm] = idMatch;
-        const stamp = `${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6, 8)} ${hm.slice(0, 2)}:${hm.slice(2, 4)}`;
-        return `<p class="run-id-stamp">${lang === 'zh' ? '运行时间' : 'ran at'}: ${e(stamp)}</p>`;
-      }
-      return '';
+      if (m.noJudge) return `<span class="meta-tag">${t('judge', lang)}: none</span>`;
+      const list = m.judgeModels ?? [];
+      if (list.length === 0) return `<span class="meta-tag">${t('judge', lang)}: —</span>`;
+      if (list.length === 1) return `<span class="meta-tag">${t('judge', lang)}: ${e(`${list[0].executor}:${list[0].model}`)}</span>`;
+      return `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${list.map((j) => e(`${j.executor}:${j.model}`)).join(' · ')}</span>`;
     })()}
-    ${verdictPill}
-    <div class="meta-tags">
-      <span class="meta-tag">${t('model', lang)}: ${e(m.model)}</span>
-      ${(() => {
-        if (m.noJudge) return `<span class="meta-tag">${t('judge', lang)}: none</span>`;
-        const list = m.judgeModels ?? [];
-        if (list.length === 0) return `<span class="meta-tag">${t('judge', lang)}: —</span>`;
-        if (list.length === 1) return `<span class="meta-tag">${t('judge', lang)}: ${e(`${list[0].executor}:${list[0].model}`)}</span>`;
-        return `<span class="meta-tag" title="${t('ensembleDesc', lang)}">${t('judgeModelsLabel', lang)}: ${list.map((j) => e(`${j.executor}:${j.model}`)).join(' · ')}</span>`;
-      })()}
-      ${m.judgeRepeat && m.judgeRepeat > 1 ? `<span class="meta-tag" title="${t('judgeStddevDesc', lang)}">${t('judgeRepeatLabel', lang)}: ${m.judgeRepeat}</span>` : ''}
-      <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
-      ${m.effort ? `<span class="meta-tag" title="${e(lang === 'zh' ? 'executor LLM 的扩展思考预算(--effort)。跨 effort 报告不可严格比较' : 'reasoning effort for executor LLM (--effort); reports across different efforts are not strictly comparable')}">effort: ${e(m.effort)}</span>` : ''}
-      <span class="meta-tag"${execCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(totalExecCost, execCostReported)}</span>
-      <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${t('totalCost', lang)}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>
-      <span class="meta-tag">${lang === 'zh' ? '耗时' : 'Duration'}: ${fmtDuration(totalDurationMs)}</span>
-      ${m.gitInfo ? `<span class="meta-tag">${lang === 'zh' ? '提交' : 'commit'}: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
-      ${m.sampleHashes ? `<span class="meta-tag" title="${t('sampleHashCountDesc', lang)}">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}/${m.sampleCount}</span>` : ''}
-      ${m.evaluationFramework ? `<span class="meta-tag" title="${t('evalFrameworkDesc', lang)}">${t('evalFrameworkLabel', lang)}: ${m.evaluationFramework === 'bootstrap' ? t('evalFrameworkBootstrap', lang) : m.evaluationFramework === 'both' ? t('evalFrameworkBoth', lang) : t('evalFrameworkTTest', lang)}</span>` : ''}
-      ${renderDebiasModeTag(m.debiasMode, lang)}
-      ${m.blind ? `<span class="meta-tag" style="color:var(--green)" data-i18n="blindLabel">${t('blindLabel', lang)}</span>` : ''}
-    </div>
-    ${(() => {
-      // 审计指纹 (评委 prompt hash + 执行环境 fingerprint) 默认折叠 ——
-      // 平日 review 不需要看, 复现时再展开。同 fingerprint 多次出现已合并。
-      const auditTags = [
-        m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : '',
-        renderRuntimeFingerprintTags(m, lang),
-      ].join('');
-      if (!auditTags) return '';
-      return `<details class="audit-fingerprints"><summary>${lang === 'zh' ? '审计指纹（用于复现校验）' : 'Audit fingerprints (for reproducibility)'}</summary><div class="meta-tags">${auditTags}</div></details>`;
-    })()}
-    ${m.blind ? `
+    ${m.judgeRepeat && m.judgeRepeat > 1 ? `<span class="meta-tag" title="${t('judgeStddevDesc', lang)}">${t('judgeRepeatLabel', lang)}: ${m.judgeRepeat}</span>` : ''}
+    <span class="meta-tag">${t('executor', lang)}: ${e(m.executor || 'claude')}</span>
+    ${m.effort ? `<span class="meta-tag" title="${e(lang === 'zh' ? 'executor LLM 的扩展思考预算(--effort)。跨 effort 报告不可严格比较' : 'reasoning effort for executor LLM (--effort); reports across different efforts are not strictly comparable')}">effort: ${e(m.effort)}</span>` : ''}
+    <span class="meta-tag"${execCostReported ? '' : ` title="${e(lang === 'zh' ? 'executor 不报 USD 成本(如 codex CLI),无法估算' : 'executor does not report USD cost (e.g. codex CLI); not measurable')}"`}>${t('cost', lang)}: ${fmtCost(totalExecCost, execCostReported)}</span>
+    <span class="meta-tag"${totalCostReported ? '' : ` title="${e(costCompletenessTooltip(lang))}"`}>${t('totalCost', lang)}: ${fmtKnownCost(m.totalCostUSD, totalCostReported)}</span>
+    <span class="meta-tag">${lang === 'zh' ? '耗时' : 'Duration'}: ${fmtDuration(totalDurationMs)}</span>
+    ${m.gitInfo ? `<span class="meta-tag">${lang === 'zh' ? '提交' : 'commit'}: ${e(m.gitInfo.commitShort)}${m.gitInfo.dirty ? '*' : ''} (${e(m.gitInfo.branch)})</span>` : ''}
+    ${m.sampleHashes ? `<span class="meta-tag" title="${t('sampleHashCountDesc', lang)}">${t('sampleHashCount', lang)}: ${Object.keys(m.sampleHashes).length}/${m.sampleCount}</span>` : ''}
+    ${m.evaluationFramework ? `<span class="meta-tag" title="${t('evalFrameworkDesc', lang)}">${t('evalFrameworkLabel', lang)}: ${m.evaluationFramework === 'bootstrap' ? t('evalFrameworkBootstrap', lang) : m.evaluationFramework === 'both' ? t('evalFrameworkBoth', lang) : t('evalFrameworkTTest', lang)}</span>` : ''}
+    ${renderDebiasModeTag(m.debiasMode, lang)}
+    ${m.blind ? `<span class="meta-tag" style="color:var(--green)" data-i18n="blindLabel">${t('blindLabel', lang)}</span>` : ''}
+  </div>`;
+
+  const auditFingerprints = (() => {
+    const auditTags = [
+      m.judgePromptHash ? `<span class="meta-tag" title="${t('judgePromptHashDesc', lang)}">${t('judgePromptHashLabel', lang)}: <code>${e(m.judgePromptHash)}</code></span>` : '',
+      renderRuntimeFingerprintTags(m, lang),
+    ].join('');
+    if (!auditTags) return '';
+    return `<details class="audit-fingerprints"><summary>${lang === 'zh' ? '审计指纹（用于复现校验）' : 'Audit fingerprints (for reproducibility)'}</summary><div class="meta-tags">${auditTags}</div></details>`;
+  })();
+
+  const blindReveal = m.blind ? `
     <div style="margin:12px 0">
       <button onclick="document.getElementById('blind-reveal').style.display=document.getElementById('blind-reveal').style.display==='none'?'block':'none'" data-i18n="revealBlind">${t('revealBlind', lang)}</button>
       <div id="blind-reveal" style="display:none;margin-top:8px;padding:12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius)" role="region" aria-label="Blind variant mapping">
         ${Object.entries(m.blindMap || {}).map(([label, real]) => `<div style="font-size:13px;color:var(--text-secondary)"><strong>Variant ${e(label)}</strong> → ${e(real)}</div>`).join('')}
       </div>
-    </div>` : ''}
+    </div>` : '';
+
+  // ──────────── 单测 tab 的 meta tags(只有 sample 维度数据,不含 cost / model) ────────────
+  const sampleSnaps = report.sampleSnapshots ?? {};
+  let testPassed = 0; let testFailed = 0; let testTripwire = 0;
+  for (const r of (report.results || [])) {
+    const v = m.variants?.[0] ? r.variants[m.variants[0]] : null;
+    if (!v) continue;
+    const passed = (v.assertions?.details ?? []).every((d) => d.passed);
+    if (passed) testPassed += 1;
+    else if (sampleSnaps[r.sample_id]?.tripwire || (v.diagnostic?.rootCause ?? []).includes('tripwire_intentional')) testTripwire += 1;
+    else testFailed += 1;
+  }
+  const testMetaTags = `<div class="meta-tags">
+    <span class="meta-tag">${m.sampleCount} ${lang === 'zh' ? '用例' : 'samples'}</span>
+    <span class="meta-tag" style="color:var(--green)">✓ ${testPassed} ${lang === 'zh' ? '通过' : 'passed'}</span>
+    ${testFailed > 0 ? `<span class="meta-tag" style="color:var(--red)">✗ ${testFailed} ${lang === 'zh' ? '失败' : 'failed'}</span>` : ''}
+    ${testTripwire > 0 ? `<span class="meta-tag" style="color:#7a6b89">◆ ${testTripwire} ${lang === 'zh' ? '诱错触发' : 'tripwire'}</span>` : ''}
+    <span class="meta-tag">${(m.variants || []).join(' · ')}</span>
+  </div>`;
+
+  return layout(`${report.id}`, `
+    <main>
+    <nav class="nav"><a href="/${langQ}" data-i18n="backToList">${t('backToList', lang)}</a></nav>
+    <div class="report-id-line">
+      <code class="report-id-pill">${e(report.id)}</code>
+      ${idStamp ? `<span class="report-id-stamp">${e(idStamp)}</span>` : ''}
+    </div>
 
     <div class="omk-view-tabs" role="tablist">
-      <button type="button" class="omk-view-tab omk-view-tab--active" data-view="score" onclick="omkSwitchView('score')">${lang === 'zh' ? '📊 评分' : '📊 Score'}</button>
-      <button type="button" class="omk-view-tab" data-view="test" onclick="omkSwitchView('test')">${lang === 'zh' ? '✅ 单测' : '✅ Tests'}</button>
+      <button type="button" class="omk-view-tab omk-view-tab--active" data-view="score" onclick="omkSwitchView('score')">${lang === 'zh' ? '📊 评测视角' : '📊 Score view'}</button>
+      <button type="button" class="omk-view-tab" data-view="test" onclick="omkSwitchView('test')">${lang === 'zh' ? '✅ 功能视角' : '✅ Functional view'}</button>
     </div>
 
     <div class="omk-view-panel" data-view="score">
-    ${variantConfigSection}
+    <p class="subtitle">${lang === 'zh' ? '主观质量打分(judge)+ 客观断言聚合,产出综合评分与 verdict' : 'Subjective judge + objective assertions aggregated into composite + verdict'}</p>
+    ${verdictPill}
+    ${scoreMetaTags}
+    ${blindReveal}
 
     <section>${cards}</section>
+    <div class="ctx-strip">${variantConfigSection}${renderAgentOverview(variants, summary, lang)}</div>
+    ${auditFingerprints}
     ${methodologyAudit}
 
     ${renderVarianceComparisons(report.variance, lang, Boolean(report.meta.layeredStats), summary)}
 
     ${renderAnalysis(report, lang)}
-
-    ${renderAgentOverview(variants, summary, lang)}
 
     ${renderKnowledgeInteractionSection(report.analysis?.coverage, report.analysis?.gapReports, lang)}
 
@@ -544,14 +559,37 @@ export function renderRunDetail(report: EvaluationReport | null, lang: Lang = DE
     </div>
 
     <div class="omk-view-panel" data-view="test" hidden>
+    <p class="subtitle">${lang === 'zh' ? '每条用例当一条功能测试看:期望(rubric/assertions/mocks)、实际执行(trace)、失败时给诊断建议' : 'Each sample as a functional test: expected(rubric/assertions/mocks), actual(trace), diagnostic suggestions on failure'}</p>
+    ${testMetaTags}
     ${renderTestView(report, lang)}
     </div>
 
     <style>${TEST_VIEW_CSS}
-.omk-view-tabs { display:flex;gap:8px;margin:16px 0 12px;border-bottom:1px solid var(--border) }
-.omk-view-tab { padding:8px 16px;background:transparent;border:none;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;font-size:14px;font-weight:500 }
-.omk-view-tab--active { color:var(--text-primary);border-bottom-color:var(--accent, #3b82f6);font-weight:600 }
-.omk-view-tab:hover:not(.omk-view-tab--active) { color:var(--text-secondary) }
+/* Context strip — 实验配置 + Agent 概览并排,作为辅助元数据,视觉权重低于综合分 hero / 六维 / 用例详情 */
+.ctx-strip { display:grid;gap:14px;grid-template-columns:1fr 1fr;margin:14px 0 24px }
+@media (max-width:760px) { .ctx-strip { grid-template-columns:1fr } }
+.ctx-block { background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:12px 16px }
+.ctx-h { font-size:13px;color:var(--text-secondary);font-weight:600;margin-bottom:2px;display:flex;align-items:center;gap:4px;letter-spacing:0.02em }
+.ctx-sub { font-size:12px;color:var(--text-muted);margin-bottom:10px }
+.ctx-rows { display:flex;flex-direction:column;gap:6px }
+.ctx-row { padding:8px 12px;background:var(--bg-soft);border-radius:4px;display:flex;align-items:center;gap:10px;font-size:13px;line-height:1.5;flex-wrap:wrap }
+.ctx-row-name { font-weight:600;color:var(--text-primary);font-family:"SF Mono",Menlo,monospace;font-size:12.5px;letter-spacing:-0.01em }
+.ctx-row-bits { color:var(--text-secondary);flex:1;min-width:0;font-size:12.5px }
+.ctx-sep { color:var(--text-muted);margin:0 2px;opacity:0.6 }
+/* 报告身份带 — 极简一行,run-id pill + 时间戳 + verdict pill。完整 H1 + meta 移进各 tab 自己的 panel。 */
+.report-id-line { display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 18px }
+.report-id-pill { font-size:14px;font-family:"SF Mono",Menlo,monospace;color:var(--text-primary);background:var(--bg-surface);padding:5px 12px;border-radius:14px;border:1px solid var(--border);letter-spacing:-0.01em;font-weight:500 }
+.report-id-stamp { font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums }
+/* 顶部 tab 切换器 — 显式 reset border-radius / appearance / outline,
+   防止全局 button 规则给底部加奇怪圆角和深色背景。 */
+.omk-view-tabs { display:flex;gap:0;margin:16px 0 24px;border-bottom:1px solid var(--border) }
+.omk-view-tab { padding:12px 20px;background:transparent;border:none;border-radius:0;cursor:pointer;color:var(--text-secondary);border-bottom:2px solid transparent;font-size:14px;font-weight:500;outline:none;appearance:none;-webkit-appearance:none;margin-bottom:-1px;font-family:inherit }
+.omk-view-tab--active { color:var(--text-primary);border-bottom-color:var(--accent);font-weight:600 }
+.omk-view-tab:hover:not(.omk-view-tab--active) { color:var(--text-primary) }
+.omk-view-tab:focus-visible { outline:2px solid var(--accent);outline-offset:-4px;border-radius:4px }
+/* tab 面板内的 H1 — 跟列表 H1 同级别但加 emoji 区分视角 */
+.omk-view-panel h1 { font-size:1.5rem;margin:0 0 6px }
+.omk-view-panel .subtitle { font-size:14px;color:var(--text-secondary);margin:0 0 20px;line-height:1.6 }
     </style>
     <script>${TEST_VIEW_JS}</script>
 
