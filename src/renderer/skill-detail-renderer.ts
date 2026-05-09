@@ -1,26 +1,82 @@
 /**
- * 单 skill 详情页 — 4 张卡片(doctor / eval 评分 / eval 功能 / observe)垂直排列,
- * 顶部综合 status,中间 4 张卡共用一套 cross-link heuristic,底部行动建议汇总。
+ * Skill 详情页(insight-first)— 把"问题"作为一等公民,4 个 perspective 退化成
+ * Insight 的证据来源。布局:
  *
- * cross-link 触发:
- *   - doctor 的 dependencies_present 规则 warn/fail 且 eval 有 sample 失败
- *     rootCause=skill_doc_missing/skill_doc_unclear → 双向插一行 "↔ 关联"
- *   - observe 的 gap.uncoveredFiles 与 eval coverage.uncoveredFiles 取交集 →
- *     两端列出"产线 + 评测都没覆盖到"的文件
- *   - observe.toolFailureRate >= 0.4 且 doctor 的 dependencies_present warn/fail →
- *     observe 卡里挂一行"doctor 也警告"
+ *   ╭─ skill 综合 status / 名称 / 报告统计 ──────────╮
+ *   ├─ 🔴 高风险 insight 列表 ───────────────────────┤
+ *   │   每条 insight = 标题 + 严重度 + 影响范围 +
+ *   │   证据 row(每个 perspective 单行,显示 flagged /
+ *   │   blind / silent / na)+ 建议 list                │
+ *   ├─ 🟡 中风险 insight ────────────────────────────┤
+ *   ├─ 🟢 低风险 insight ────────────────────────────┤
+ *   ├─ ✅ 已通过 / 健康项 提示 ──────────────────────┤
+ *   ├─ 🎯 行动 todo(insight 推荐去重 + 按优先级)─────┤
+ *   ╰─ ▾ 逐 perspective 原始数据(默认折叠)─────────╯
  *
- * 行动建议直接从 cross-link 命中 + 单卡内最重要信号 derive。
+ * 不再分 4 张独立卡平铺,卡片内容折叠到底部。
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
 import type { Lang, EvaluationReport } from '../types/index.js';
-import type {
-  SkillIndexEntry, SkillDoctorSnapshot, SkillEvalSnapshot, SkillObserveSnapshot,
-} from '../server/skill-index.js';
+import type { SkillIndexEntry, SkillDoctorSnapshot, SkillEvalSnapshot, SkillObserveSnapshot } from '../server/skill-index.js';
+import type { Insight, InsightSeverity, InsightEvidence, InsightPerspective } from '../server/skill-insights.js';
+import { detectInsights, flattenRecommendations } from '../server/skill-insights.js';
 import type { DoctorRuleResult } from '../types/doctor.js';
 
 const BAND_DOT: Record<'green' | 'yellow' | 'red' | 'gray', string> = {
   green: '🟢', yellow: '🟡', red: '🔴', gray: '⚪',
+};
+
+const SEVERITY_ICON: Record<InsightSeverity, string> = {
+  high: '🔴',
+  medium: '🟡',
+  low: '🟢',
+};
+
+const SEVERITY_LABEL_ZH: Record<InsightSeverity, string> = {
+  high: '高风险',
+  medium: '中风险',
+  low: '低风险',
+};
+
+const SEVERITY_LABEL_EN: Record<InsightSeverity, string> = {
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+};
+
+const PERSPECTIVE_ZH: Record<InsightPerspective, string> = {
+  doctor: '静态体检',
+  'eval-score': '评分视角',
+  'eval-functional': '功能视角',
+  observe: '线上观测',
+};
+
+const PERSPECTIVE_EN: Record<InsightPerspective, string> = {
+  doctor: 'Static check',
+  'eval-score': 'Score view',
+  'eval-functional': 'Functional view',
+  observe: 'Production',
+};
+
+const STATUS_ICON: Record<InsightEvidence['status'], string> = {
+  flagged: '✗',
+  blind: '👁',
+  silent: '○',
+  na: '—',
+};
+
+const STATUS_HINT_ZH: Record<InsightEvidence['status'], string> = {
+  flagged: '此 perspective 报了该问题',
+  blind: '盲区:本应卡住却没卡 — 改进信号',
+  silent: '检查过但无信号',
+  na: '未运行,无法对照',
+};
+
+const STATUS_HINT_EN: Record<InsightEvidence['status'], string> = {
+  flagged: 'This perspective flagged the issue',
+  blind: 'Blind spot: should have caught it but did not — signal to improve',
+  silent: 'Checked but no signal',
+  na: 'Not run, no comparison available',
 };
 
 function relTime(ts: string | null | undefined, lang: Lang): string {
@@ -37,138 +93,111 @@ function relTime(ts: string | null | undefined, lang: Lang): string {
   } catch { return ''; }
 }
 
-// ────────────── Cross-link 触发判定 ──────────────
+// ────────── Insight 卡片渲染 ──────────
 
-interface CrossLinkSignals {
-  doctorHasDepWarning: boolean;
-  evalHasSkillDocIssue: boolean;
-  failedSamplesWithDocIssue: Array<{ sampleId: string; rootCause: string[]; summary: string }>;
-  bothMissingFiles: string[];      // observe + eval 都漏的文件
-  observeUnstable: boolean;        // toolFailureRate >= 0.4 视为产线明显不稳
+function renderEvidenceRow(ev: InsightEvidence, lang: Lang): string {
+  const persp = lang === 'zh' ? PERSPECTIVE_ZH[ev.perspective] : PERSPECTIVE_EN[ev.perspective];
+  const hint = lang === 'zh' ? STATUS_HINT_ZH[ev.status] : STATUS_HINT_EN[ev.status];
+  return `<div class="si-ev si-ev--${ev.status}">
+    <span class="si-ev-icon" title="${e(hint)}">${STATUS_ICON[ev.status]}</span>
+    <span class="si-ev-perspective">${e(persp)}</span>
+    <span class="si-ev-msg">${e(ev.message)}</span>
+  </div>`;
 }
 
-function computeCrossLinks(
-  doctor: SkillDoctorSnapshot | null,
-  evalReport: EvaluationReport | null,
-  observe: SkillObserveSnapshot | null,
-): CrossLinkSignals {
-  const doctorHasDepWarning = !!doctor?.results.find((r) =>
-    r.ruleId === 'dependencies_present' && (r.status === 'warn' || r.status === 'fail'),
-  );
-
-  const failedSamplesWithDocIssue: Array<{ sampleId: string; rootCause: string[]; summary: string }> = [];
-  if (evalReport) {
-    const variantName = evalReport.meta.variants?.find((v) => v !== 'baseline');
-    if (variantName) {
-      for (const r of evalReport.results) {
-        const v = r.variants?.[variantName];
-        if (!v) continue;
-        const passed = (v.assertions?.details ?? []).every((d) => d.passed);
-        if (passed) continue;
-        const rc = v.diagnostic?.rootCause || [];
-        if (rc.includes('skill_doc_missing') || rc.includes('skill_doc_unclear')) {
-          failedSamplesWithDocIssue.push({
-            sampleId: r.sample_id,
-            rootCause: rc as string[],
-            summary: v.diagnostic?.summary?.slice(0, 100) || '',
-          });
-        }
-      }
-    }
-  }
-  const evalHasSkillDocIssue = failedSamplesWithDocIssue.length > 0;
-
-  // 跨报告漏的文件:observe.uncoveredFiles ∩ eval.coverage.uncoveredFiles
-  let bothMissingFiles: string[] = [];
-  if (observe && evalReport?.analysis?.coverage) {
-    // observe 端 uncoveredFiles 在 SkillHealthReport.bySkill[name].coverage.uncoveredFiles —
-    // 这里 SkillObserveSnapshot 没存,但可从 doctor 端不动,先按"如果 observe.gapRate > 0
-    // 就当 observe 有 gap"近似处理。真正的交集需要扩展 SkillObserveSnapshot 字段;
-    // v1 简化:不算精确交集,只显示 eval 的 uncoveredFiles 让作者自查。
-    const variantKey = Object.keys(evalReport.analysis.coverage)[0];
-    const cov = variantKey ? evalReport.analysis.coverage[variantKey] : null;
-    bothMissingFiles = cov?.uncoveredFiles ?? [];
-  }
-
-  return {
-    doctorHasDepWarning,
-    evalHasSkillDocIssue,
-    failedSamplesWithDocIssue,
-    bothMissingFiles,
-    observeUnstable: (observe?.failureRate ?? 0) >= 0.4,
-  };
-}
-
-// ────────────── Card renderer ──────────────
-
-function renderRuleResult(r: DoctorRuleResult, lang: Lang): string {
-  const icon = r.status === 'pass' ? '✓' : r.status === 'warn' ? '⚠' : r.status === 'fail' ? '✗' : '○';
-  const cls = r.status === 'pass' ? 'pass' : r.status === 'warn' ? 'warn' : r.status === 'fail' ? 'fail' : 'gray';
-  return `<li class="sd-rule sd-rule--${cls}">
-    <span class="sd-rule-icon">${icon}</span>
-    <div class="sd-rule-body">
-      <code class="sd-rule-id">${e(r.ruleId)}</code>
-      <span class="sd-rule-msg">${e(r.message)}</span>
-      ${r.hint ? `<div class="sd-rule-hint">${lang === 'zh' ? '💡 ' : '💡 '}${e(r.hint)}</div>` : ''}
-    </div>
-  </li>`;
-}
-
-function renderDoctorCard(snap: SkillDoctorSnapshot | null, links: CrossLinkSignals, lang: Lang): string {
-  if (!snap) {
-    return `<section class="sd-card sd-card--empty">
-      <div class="sd-card-head">
-        <span class="sd-card-num">1️⃣</span>
-        <h2 class="sd-card-title">${lang === 'zh' ? 'Doctor 静态体检' : 'Doctor (static check)'}</h2>
-        <span class="sd-card-status sd-card-status--gray">${lang === 'zh' ? '⚪ 未运行' : '⚪ not run'}</span>
-      </div>
-      <p class="sd-card-empty-note">${lang === 'zh' ? '运行 omk doctor 后会出现:静态结构 / 元数据 / 前置依赖 / 用例契约 等多维度健康检查。' : 'Run omk doctor to populate this card: structural / metadata / dependency / sample-contract checks.'}</p>
-    </section>`;
-  }
-  const statusCls = snap.status === 'fail' ? 'red' : snap.status === 'warn' ? 'yellow' : 'green';
-  const statusText = snap.status === 'fail'
-    ? (lang === 'zh' ? '✗ 失败' : '✗ fail')
-    : snap.status === 'warn' ? (lang === 'zh' ? '⚠ 警告' : '⚠ warn')
-    : (lang === 'zh' ? '✓ 全部通过' : '✓ all pass');
-
-  const crossLink = links.doctorHasDepWarning && links.evalHasSkillDocIssue
-    ? `<div class="sd-cross">↔ ${lang === 'zh' ? '关联' : 'related'}: ${
-      lang === 'zh'
-        ? `${links.failedSamplesWithDocIssue.length} 条 eval 失败 sample 的 rootCause 是 skill_doc_missing/unclear,跟 doctor 这条警告相印证`
-        : `${links.failedSamplesWithDocIssue.length} eval sample(s) failed with skill_doc_missing/unclear root cause, corroborating this doctor warning`
-    }</div>`
+function renderInsightCard(ins: Insight, lang: Lang): string {
+  const severityIcon = SEVERITY_ICON[ins.severity];
+  const severityLabel = lang === 'zh' ? SEVERITY_LABEL_ZH[ins.severity] : SEVERITY_LABEL_EN[ins.severity];
+  const affectedLabel = ins.affectedCount > 0
+    ? (lang === 'zh' ? `影响 ${ins.affectedCount}` : `affects ${ins.affectedCount}`)
     : '';
+  return `<article class="si-insight si-insight--${ins.severity}">
+    <header class="si-h">
+      <span class="si-sev">${severityIcon}</span>
+      <h3 class="si-title">${e(ins.title)}</h3>
+      <span class="si-sev-tag si-sev-tag--${ins.severity}">${e(severityLabel)}</span>
+      ${affectedLabel ? `<span class="si-affect">· ${e(affectedLabel)}</span>` : ''}
+    </header>
+    <section class="si-evidence">
+      <div class="si-evidence-h">${lang === 'zh' ? '⛳ 证据' : '⛳ Evidence'}</div>
+      ${ins.evidence.map((ev) => renderEvidenceRow(ev, lang)).join('')}
+    </section>
+    ${ins.recommendations.length > 0 ? `<section class="si-recs">
+      <div class="si-recs-h">${lang === 'zh' ? '💡 建议' : '💡 Recommendations'}</div>
+      <ul>${ins.recommendations.map((r) =>
+        `<li><span class="si-rec-pri si-rec-pri--${r.priority}">${e(SEVERITY_LABEL_ZH[r.priority])}</span> ${e(r.action)}</li>`,
+      ).join('')}</ul>
+    </section>` : ''}
+  </article>`;
+}
 
-  return `<section class="sd-card sd-card--${statusCls}">
-    <div class="sd-card-head">
-      <span class="sd-card-num">1️⃣</span>
-      <h2 class="sd-card-title">${lang === 'zh' ? 'Doctor 静态体检' : 'Doctor (static check)'}</h2>
-      <span class="sd-card-status sd-card-status--${statusCls}">${statusText}</span>
-      <span class="sd-card-time">${relTime(snap.timestamp, lang)}</span>
-    </div>
-    <div class="sd-card-stats">${snap.passCount} ✓ · ${snap.warnCount} ⚠ · ${snap.failCount} ✗</div>
-    <ul class="sd-rules">${snap.results.map((r) => renderRuleResult(r, lang)).join('')}</ul>
-    ${crossLink}
+function renderInsightGroup(insights: Insight[], severity: InsightSeverity, lang: Lang): string {
+  const filtered = insights.filter((i) => i.severity === severity);
+  if (filtered.length === 0) return '';
+  const heading = lang === 'zh'
+    ? `${SEVERITY_ICON[severity]} ${SEVERITY_LABEL_ZH[severity]} (${filtered.length})`
+    : `${SEVERITY_ICON[severity]} ${SEVERITY_LABEL_EN[severity]} (${filtered.length})`;
+  return `<section class="si-group si-group--${severity}">
+    <h2 class="si-group-h">${heading}</h2>
+    ${filtered.map((i) => renderInsightCard(i, lang)).join('')}
   </section>`;
 }
 
-function renderEvalScoreCard(
+// ────────── 行动 todo ──────────
+
+function renderActionTodos(insights: Insight[], lang: Lang): string {
+  const recs = flattenRecommendations(insights);
+  if (recs.length === 0) {
+    return `<section class="si-todos">
+      <h2>${lang === 'zh' ? '🎯 行动 todo' : '🎯 Action items'}</h2>
+      <p class="si-todos-empty">${lang === 'zh' ? '暂无自动 detect 出的待办。' : 'No auto-detected actions.'}</p>
+    </section>`;
+  }
+  return `<section class="si-todos">
+    <h2>${lang === 'zh' ? '🎯 行动 todo' : '🎯 Action items'}</h2>
+    <p class="si-todos-note">${lang === 'zh' ? '从所有 insight 推荐去重汇总,按优先级排' : 'Deduplicated across all insights, sorted by priority'}</p>
+    <ul class="si-todos-list">
+      ${recs.map((r) => `<li>
+        <span class="si-todos-pri si-todos-pri--${r.priority}">${e(lang === 'zh' ? SEVERITY_LABEL_ZH[r.priority] : SEVERITY_LABEL_EN[r.priority])}</span>
+        <span class="si-todos-action">${e(r.action)}</span>
+      </li>`).join('')}
+    </ul>
+  </section>`;
+}
+
+// ────────── 折叠的逐 perspective 原始数据 ──────────
+
+function renderRuleResultLine(r: DoctorRuleResult, lang: Lang): string {
+  const icon = r.status === 'pass' ? '✓' : r.status === 'warn' ? '⚠' : r.status === 'fail' ? '✗' : '○';
+  const cls = r.status === 'pass' ? 'pass' : r.status === 'warn' ? 'warn' : r.status === 'fail' ? 'fail' : 'gray';
+  return `<li class="si-rule si-rule--${cls}">
+    <span class="si-rule-icon">${icon}</span>
+    <code class="si-rule-id">${e(r.ruleId)}</code>
+    <span class="si-rule-msg">${e(r.message)}</span>
+    ${r.hint ? `<div class="si-rule-hint">💡 ${e(r.hint)}</div>` : ''}
+  </li>`;
+  void lang;
+}
+
+function renderDoctorRaw(snap: SkillDoctorSnapshot | null, lang: Lang): string {
+  if (!snap) {
+    return `<div class="si-raw-empty">${lang === 'zh' ? '⚪ 未运行 omk doctor' : '⚪ omk doctor not run'}</div>`;
+  }
+  return `<div class="si-raw-block">
+    <div class="si-raw-meta">${snap.passCount}✓ · ${snap.warnCount}⚠ · ${snap.failCount}✗ · ${relTime(snap.timestamp, lang)}</div>
+    <ul class="si-rules">${snap.results.map((r) => renderRuleResultLine(r, lang)).join('')}</ul>
+  </div>`;
+}
+
+function renderEvalScoreRaw(
   snap: SkillEvalSnapshot | null,
   evalReport: EvaluationReport | null,
   langQ: string,
   lang: Lang,
 ): string {
   if (!snap) {
-    return `<section class="sd-card sd-card--empty">
-      <div class="sd-card-head">
-        <span class="sd-card-num">2️⃣</span>
-        <h2 class="sd-card-title">${lang === 'zh' ? 'Eval 评分视角' : 'Eval (score view)'}</h2>
-        <span class="sd-card-status sd-card-status--gray">${lang === 'zh' ? '⚪ 未运行' : '⚪ not run'}</span>
-      </div>
-      <p class="sd-card-empty-note">${lang === 'zh' ? '运行 omk eval --treatment <skill> 看 verdict + 综合分 + 三层评分 + bootstrap CI。' : 'Run omk eval --treatment <skill> to populate verdict + composite score + 3-layer scoring + bootstrap CI.'}</p>
-    </section>`;
+    return `<div class="si-raw-empty">${lang === 'zh' ? '⚪ 未运行 omk eval' : '⚪ omk eval not run'}</div>`;
   }
-  // 取每条 sample 的 layeredScores 平均(VariantSummary 没存聚合层分,这里现算)
   let layered: { factScore?: number; behaviorScore?: number; judgeScore?: number } | undefined;
   if (evalReport && snap.variantName) {
     const factVals: number[] = [];
@@ -182,67 +211,31 @@ function renderEvalScoreCard(
       if (v.layeredScores.judgeScore != null) judgeVals.push(v.layeredScores.judgeScore);
     }
     const mean = (xs: number[]): number | undefined => xs.length > 0 ? xs.reduce((s, x) => s + x, 0) / xs.length : undefined;
-    layered = {
-      factScore: mean(factVals),
-      behaviorScore: mean(behaviorVals),
-      judgeScore: mean(judgeVals),
-    };
+    layered = { factScore: mean(factVals), behaviorScore: mean(behaviorVals), judgeScore: mean(judgeVals) };
   }
-  const verdictCls = snap.verdictLevel === 'ship' ? 'green'
-    : snap.verdictLevel === 'no_ship' || snap.verdictLevel === 'regress' ? 'red'
-    : snap.verdictLevel === 'progress' || snap.verdictLevel === 'ship_with_caveat' ? 'green'
-    : snap.verdictLevel === 'neutral' ? 'yellow' : 'gray';
-  const verdictTxt = snap.verdictLevel.replace(/_/g, ' ').toUpperCase();
-  const score = snap.compositeScore != null ? snap.compositeScore.toFixed(2) : '—';
-
-  const renderLayerBar = (label: string, val: number | undefined): string => {
-    if (val == null) return `<div class="sd-layer-row"><span class="sd-layer-label">${e(label)}</span><span class="sd-layer-num">—</span></div>`;
-    const cls = val >= 4 ? 'pass' : val >= 3 ? 'warn' : 'fail';
-    const w = Math.round((val / 5) * 100);
-    return `<div class="sd-layer-row"><span class="sd-layer-label">${e(label)}</span><div class="sd-layer-bar"><div class="sd-layer-fill sd-layer-fill--${cls}" style="width:${w}%"></div></div><span class="sd-layer-num sd-layer-num--${cls}">${val.toFixed(2)}</span></div>`;
-  };
-
-  return `<section class="sd-card sd-card--${verdictCls}">
-    <div class="sd-card-head">
-      <span class="sd-card-num">2️⃣</span>
-      <h2 class="sd-card-title">${lang === 'zh' ? 'Eval 评分视角' : 'Eval (score view)'}</h2>
-      <span class="sd-card-status sd-card-status--${verdictCls}">${e(verdictTxt)}</span>
-      <span class="sd-card-time">${relTime(snap.timestamp, lang)}</span>
+  const fmt = (v?: number): string => v != null ? v.toFixed(2) : '—';
+  return `<div class="si-raw-block">
+    <div class="si-raw-meta">verdict <strong>${e(snap.verdictLevel.replace(/_/g, ' ').toUpperCase())}</strong> · ${lang === 'zh' ? '综合分' : 'composite'} ${fmt(snap.compositeScore ?? undefined)} · ${relTime(snap.timestamp, lang)}</div>
+    <div class="si-raw-bars">
+      <div>${lang === 'zh' ? '事实层' : 'fact'} ${fmt(layered?.factScore)}</div>
+      <div>${lang === 'zh' ? '行为层' : 'behavior'} ${fmt(layered?.behaviorScore)}</div>
+      <div>${lang === 'zh' ? 'LLM 评价' : 'judge'} ${fmt(layered?.judgeScore)}</div>
     </div>
-    <div class="sd-score-hero">
-      <div class="sd-score-num">${score}</div>
-      <div class="sd-score-label">${lang === 'zh' ? '综合分' : 'composite'}<br><span class="sd-score-sub">${lang === 'zh' ? `共 ${snap.totalSamples} 条用例` : `${snap.totalSamples} samples`}</span></div>
-    </div>
-    <div class="sd-layers">
-      ${renderLayerBar(lang === 'zh' ? '事实层' : 'fact', layered?.factScore)}
-      ${renderLayerBar(lang === 'zh' ? '行为层' : 'behavior', layered?.behaviorScore)}
-      ${renderLayerBar(lang === 'zh' ? 'LLM 评价' : 'judge', layered?.judgeScore)}
-    </div>
-    ${snap.verdictHeadline ? `<p class="sd-verdict-headline">${e(snap.verdictHeadline)}</p>` : ''}
-    <a class="sd-card-link" href="/reports/${e(snap.reportId)}${langQ}">${lang === 'zh' ? '查看完整 A/B 报告 →' : 'Open full A/B report →'}</a>
-  </section>`;
+    ${snap.verdictHeadline ? `<p class="si-raw-headline">${e(snap.verdictHeadline)}</p>` : ''}
+    <a class="si-raw-link" href="/reports/${e(snap.reportId)}${langQ}">${lang === 'zh' ? '完整 A/B 报告 →' : 'Full A/B report →'}</a>
+  </div>`;
 }
 
-function renderEvalFuncCard(
+function renderEvalFuncRaw(
   snap: SkillEvalSnapshot | null,
   evalReport: EvaluationReport | null,
-  links: CrossLinkSignals,
   langQ: string,
   lang: Lang,
 ): string {
   if (!snap) {
-    return `<section class="sd-card sd-card--empty">
-      <div class="sd-card-head">
-        <span class="sd-card-num">3️⃣</span>
-        <h2 class="sd-card-title">${lang === 'zh' ? 'Eval 功能视角' : 'Eval (functional view)'}</h2>
-        <span class="sd-card-status sd-card-status--gray">${lang === 'zh' ? '⚪ 未运行' : '⚪ not run'}</span>
-      </div>
-      <p class="sd-card-empty-note">${lang === 'zh' ? '同一份 eval 报告也驱动单测视角:每条 sample 的 pass/fail + 失败模式分类 + 诊断建议。' : 'The same eval report also drives the functional view: per-sample pass/fail + failure-mode tags + actionable diagnostic.'}</p>
-    </section>`;
+    return `<div class="si-raw-empty">${lang === 'zh' ? '⚪ 未运行 omk eval' : '⚪ omk eval not run'}</div>`;
   }
-  // 失败模式聚合
-  const modeCounts: Record<string, number> = {};
-  const failedSamples: Array<{ sampleId: string; mode: string[]; summary: string }> = [];
+  const failed: Array<{ id: string; modes: string[]; summary: string }> = [];
   if (evalReport && snap.variantName) {
     for (const r of evalReport.results) {
       const v = r.variants?.[snap.variantName];
@@ -250,245 +243,160 @@ function renderEvalFuncCard(
       const passed = (v.assertions?.details ?? []).every((d) => d.passed);
       if (passed) continue;
       const isTripwire = (v.diagnostic?.rootCause || []).includes('tripwire_intentional')
-        || (evalReport.sampleSnapshots?.[r.sample_id]?.tripwire === true);
+        || evalReport.sampleSnapshots?.[r.sample_id]?.tripwire === true;
       if (isTripwire) continue;
-      const modes = v.diagnostic?.failureModes ?? [];
-      for (const m of modes) modeCounts[m] = (modeCounts[m] || 0) + 1;
-      failedSamples.push({
-        sampleId: r.sample_id,
-        mode: modes as string[],
+      failed.push({
+        id: r.sample_id,
+        modes: (v.diagnostic?.failureModes ?? []) as string[],
         summary: v.diagnostic?.summary?.slice(0, 80) || '',
       });
     }
   }
-  const failCls = snap.failCount === 0 ? 'green' : snap.passCount === 0 ? 'red' : 'yellow';
-  const denom = snap.passCount + snap.failCount;
-
-  const modesLine = Object.keys(modeCounts).length > 0
-    ? `<div class="sd-modes">
-        ${lang === 'zh' ? '失败模式分布:' : 'failure mode distribution:'}
-        ${Object.entries(modeCounts).sort((a, b) => b[1] - a[1]).map(([m, n]) =>
-          `<span class="sd-mode-chip">${e(m)} ×${n}</span>`).join('')}
-      </div>`
-    : '';
-
-  const failedSamplesHtml = failedSamples.length > 0
-    ? `<div class="sd-failed-samples">
-        <div class="sd-failed-h">${lang === 'zh' ? '失败用例' : 'failed samples'}:</div>
-        <ul>${failedSamples.slice(0, 6).map((f) => `<li>
-          <code class="sd-fs-id">${e(f.sampleId)}</code>
-          ${f.mode.length > 0 ? f.mode.map((m) => `<span class="sd-fs-mode">${e(m)}</span>`).join('') : ''}
-          ${f.summary ? `<span class="sd-fs-summary">${e(f.summary)}${f.summary.length >= 80 ? '…' : ''}</span>` : ''}
-        </li>`).join('')}
-        </ul>
-      </div>`
-    : '';
-
-  const crossLink = links.evalHasSkillDocIssue && links.doctorHasDepWarning
-    ? `<div class="sd-cross">↔ ${lang === 'zh' ? '关联' : 'related'}: ${
-      lang === 'zh'
-        ? 'Doctor 也警告了「前置依赖」未声明,失败 sample 多半因为 skill 没把这条说清'
-        : 'Doctor also warns about missing dependency declaration; failures likely stem from skill doc gaps'
-    }</div>`
-    : '';
-
-  return `<section class="sd-card sd-card--${failCls}">
-    <div class="sd-card-head">
-      <span class="sd-card-num">3️⃣</span>
-      <h2 class="sd-card-title">${lang === 'zh' ? 'Eval 功能视角' : 'Eval (functional view)'}</h2>
-      <span class="sd-card-status sd-card-status--${failCls}">${snap.passCount}/${denom} ${lang === 'zh' ? '通过' : 'pass'}</span>
-      <span class="sd-card-time">${relTime(snap.timestamp, lang)}</span>
-    </div>
-    <div class="sd-card-stats">
-      <span class="sd-stat-pass">${snap.passCount} ✓</span>
-      <span class="sd-stat-fail">${snap.failCount} ✗</span>
-      ${snap.tripwireCount > 0 ? `<span class="sd-stat-trip">${snap.tripwireCount} ${lang === 'zh' ? '诱错' : 'tripwire'}</span>` : ''}
-    </div>
-    ${modesLine}
-    ${failedSamplesHtml}
-    ${crossLink}
-    <a class="sd-card-link" href="/reports/${e(snap.reportId)}${langQ}#test-view">${lang === 'zh' ? '展开单测视角 →' : 'Open functional view →'}</a>
-  </section>`;
+  return `<div class="si-raw-block">
+    <div class="si-raw-meta">${snap.passCount}✓ · ${snap.failCount}✗ · ${snap.tripwireCount > 0 ? `${snap.tripwireCount} ${lang === 'zh' ? '诱错' : 'tripwire'} · ` : ''}${relTime(snap.timestamp, lang)}</div>
+    ${failed.length > 0 ? `<ul class="si-failed-list">${failed.slice(0, 6).map((f) =>
+      `<li><code>${e(f.id)}</code> ${f.modes.map((m) => `<span class="si-mode">${e(m)}</span>`).join('')} ${f.summary ? `<span class="si-fs-summary">${e(f.summary)}${f.summary.length >= 80 ? '…' : ''}</span>` : ''}</li>`,
+    ).join('')}</ul>` : ''}
+    <a class="si-raw-link" href="/reports/${e(snap.reportId)}${langQ}#test-view">${lang === 'zh' ? '展开单测视角 →' : 'Open functional view →'}</a>
+  </div>`;
 }
 
-function renderObserveCard(
-  snap: SkillObserveSnapshot | null,
-  links: CrossLinkSignals,
+function renderObserveRaw(snap: SkillObserveSnapshot | null, langQ: string, lang: Lang): string {
+  if (!snap) {
+    return `<div class="si-raw-empty">${lang === 'zh' ? '⚪ 未运行 omk observe' : '⚪ omk observe not run'}</div>`;
+  }
+  return `<div class="si-raw-block">
+    <div class="si-raw-meta">${BAND_DOT[snap.healthBand]} ${snap.healthBand} · ${snap.segmentCount} ${lang === 'zh' ? '段' : 'segments'} · ${lang === 'zh' ? '工具失败率' : 'tool failure'} ${(snap.failureRate * 100).toFixed(1)}% · ${lang === 'zh' ? '知识库 gap' : 'KB gap'} ${(snap.gapRate * 100).toFixed(0)}% · ${relTime(snap.generatedAt, lang)}</div>
+    <a class="si-raw-link" href="/analyses/${e(snap.analysisId)}${langQ}">${lang === 'zh' ? '完整观测报告 →' : 'Full observation report →'}</a>
+  </div>`;
+}
+
+function renderRawDataSection(
+  entry: SkillIndexEntry,
+  evalReport: EvaluationReport | null,
   langQ: string,
   lang: Lang,
 ): string {
-  if (!snap) {
-    return `<section class="sd-card sd-card--empty">
-      <div class="sd-card-head">
-        <span class="sd-card-num">4️⃣</span>
-        <h2 class="sd-card-title">${lang === 'zh' ? 'Observe 线上观测' : 'Observe (production)'}</h2>
-        <span class="sd-card-status sd-card-status--gray">${lang === 'zh' ? '⚪ 未运行' : '⚪ not run'}</span>
+  return `<details class="si-raw-section">
+    <summary>${lang === 'zh' ? '▾ 逐 perspective 原始数据' : '▾ Raw data per perspective'}</summary>
+    <div class="si-raw-grid">
+      <div class="si-raw-card">
+        <h4>${lang === 'zh' ? '1️⃣ 静态体检 (doctor)' : '1️⃣ Static (doctor)'}</h4>
+        ${renderDoctorRaw(entry.doctor, lang)}
       </div>
-      <p class="sd-card-empty-note">${lang === 'zh' ? '运行 omk observe <trace-dir> 把真实 session 流量喂进来,看 skill 在生产里的健康度 / 失败率 / 知识库 gap。' : 'Run omk observe <trace-dir> to feed real session traces in and see production health / failure rate / knowledge-base gap.'}</p>
-    </section>`;
-  }
-  const failPct = (snap.failureRate * 100).toFixed(1);
-  const gapPct = (snap.gapRate * 100).toFixed(0);
-
-  const sharedFiles = links.bothMissingFiles.length > 0 && (snap.gapRate > 0)
-    ? `<div class="sd-cross">↔ ${lang === 'zh' ? '产线 + 评测都没覆盖到的文件' : 'files missed by both production and eval'}: <ul class="sd-files-list">${links.bothMissingFiles.slice(0, 5).map((f) => `<li><code>${e(f)}</code></li>`).join('')}</ul></div>`
-    : '';
-
-  const unstableLink = links.observeUnstable && links.doctorHasDepWarning
-    ? `<div class="sd-cross">↔ ${lang === 'zh' ? '产线工具失败率高,doctor 也标了前置依赖警告 — 大概率是真依赖问题,不是 mock 配错' : 'high production tool failure rate; doctor also warned about deps — likely a real dep issue, not mock misconfig'}</div>`
-    : '';
-
-  return `<section class="sd-card sd-card--${snap.healthBand}">
-    <div class="sd-card-head">
-      <span class="sd-card-num">4️⃣</span>
-      <h2 class="sd-card-title">${lang === 'zh' ? 'Observe 线上观测' : 'Observe (production)'}</h2>
-      <span class="sd-card-status sd-card-status--${snap.healthBand}">${BAND_DOT[snap.healthBand]} ${snap.healthBand}</span>
-      <span class="sd-card-time">${relTime(snap.generatedAt, lang)}</span>
+      <div class="si-raw-card">
+        <h4>${lang === 'zh' ? '2️⃣ 评分视角' : '2️⃣ Score view'}</h4>
+        ${renderEvalScoreRaw(entry.eval, evalReport, langQ, lang)}
+      </div>
+      <div class="si-raw-card">
+        <h4>${lang === 'zh' ? '3️⃣ 功能视角' : '3️⃣ Functional view'}</h4>
+        ${renderEvalFuncRaw(entry.eval, evalReport, langQ, lang)}
+      </div>
+      <div class="si-raw-card">
+        <h4>${lang === 'zh' ? '4️⃣ 线上观测' : '4️⃣ Production observation'}</h4>
+        ${renderObserveRaw(entry.observe, langQ, lang)}
+      </div>
     </div>
-    <div class="sd-card-stats">
-      <span>${snap.segmentCount} ${lang === 'zh' ? '段' : 'segments'}</span>
-      <span>${lang === 'zh' ? '工具失败率' : 'tool failure'} ${failPct}%</span>
-      <span>${lang === 'zh' ? '知识库 gap' : 'KB gap'} ${gapPct}%</span>
-    </div>
-    ${sharedFiles}
-    ${unstableLink}
-    <a class="sd-card-link" href="/analyses/${e(snap.analysisId)}${langQ}">${lang === 'zh' ? '查看完整观测报告 →' : 'Open full observation report →'}</a>
-  </section>`;
+  </details>`;
 }
 
-function renderRecommendations(
-  entry: SkillIndexEntry,
-  links: CrossLinkSignals,
-  lang: Lang,
-): string {
-  const items: string[] = [];
+// ────────── CSS ──────────
 
-  if (links.doctorHasDepWarning && links.evalHasSkillDocIssue) {
-    items.push(lang === 'zh'
-      ? `🔧 改 skill:doctor 标的「前置依赖」段落,补上 ${links.failedSamplesWithDocIssue.length} 条失败 sample 共同缺的内容(看 eval 功能视角的 rootCause 详情)`
-      : `🔧 Update skill: address the "dependencies present" warning to fix the ${links.failedSamplesWithDocIssue.length} sample(s) failing on skill_doc_missing/unclear`);
-  }
-  if (links.observeUnstable && entry.observe) {
-    items.push(lang === 'zh'
-      ? `⚡ 排查产线:工具失败率 ${(entry.observe.failureRate * 100).toFixed(0)}% 偏高,先确认 CLI / 凭证 / 网络是否健康`
-      : `⚡ Investigate production: tool failure rate ${(entry.observe.failureRate * 100).toFixed(0)}% is high — verify CLI / credentials / network health`);
-  }
-  if (links.bothMissingFiles.length > 0) {
-    items.push(lang === 'zh'
-      ? `📝 补 sample:${links.bothMissingFiles.length} 个文件产线 + 评测都没用到,如果是必读文档要加 capability 覆盖,否则可以从 skill 里删掉`
-      : `📝 Add samples: ${links.bothMissingFiles.length} file(s) covered by neither production traces nor eval samples — if essential, add a capability; otherwise consider removing from skill`);
-  }
-  if (entry.eval && entry.eval.failCount === 0 && entry.eval.totalSamples > 0) {
-    items.push(lang === 'zh'
-      ? '✅ 当前 eval 全过,可以考虑加诱错样本(tripwire)测对反模式的免疫'
-      : '✅ All eval samples pass — consider adding tripwire samples to test resistance against anti-patterns');
-  }
-  if (!entry.observe) {
-    items.push(lang === 'zh'
-      ? '👀 跑 omk observe 把生产 session 接进来 — 现在只有评测视角,没有真实使用数据'
-      : '👀 Run omk observe to ingest production sessions — currently only have evaluation perspective, no real usage data');
-  }
-  if (!entry.doctor) {
-    items.push(lang === 'zh'
-      ? '🩺 跑 omk doctor 做静态体检 — 在评测之前先确认 skill 写得规范'
-      : '🩺 Run omk doctor for static checks — verify skill structure before evaluation');
-  }
+const SKILL_INSIGHT_CSS = `
+.si-back { display:inline-block;margin-bottom:8px;color:var(--text-muted);font-size:13px;text-decoration:none }
+.si-back:hover { color:var(--text-primary) }
 
-  if (items.length === 0) {
-    items.push(lang === 'zh'
-      ? '✅ 当前没有自动 detect 到的待办;手动看下三张卡片的 detail 决定下一步'
-      : '✅ No auto-detected actions; review the three card details for manual next steps');
-  }
+/* 顶部综合 */
+.si-overall { display:flex;align-items:center;gap:14px;padding:18px 22px;background:var(--bg-soft);border-radius:8px;margin:8px 0 24px }
+.si-overall-band { font-size:26px }
+.si-overall-name { font-size:22px;font-weight:600;color:var(--text-primary) }
+.si-overall-meta { color:var(--text-muted);font-size:13px;margin-left:auto }
 
-  return `<section class="sd-card sd-recommendations">
-    <h2 class="sd-card-title">${lang === 'zh' ? '🎯 行动建议' : '🎯 Recommended actions'}</h2>
-    <p class="sd-rec-note">${lang === 'zh' ? '从 4 份报告 derive,按影响面排序' : 'Derived from the 4 reports, sorted by impact'}</p>
-    <ul class="sd-rec-list">${items.map((x) => `<li>${e(x)}</li>`).join('')}</ul>
-  </section>`;
-}
+/* Insight 列表 */
+.si-empty-state { text-align:center;color:var(--text-muted);padding:40px 20px;font-size:14px }
+.si-group { margin-bottom:24px }
+.si-group-h { font-size:14px;font-weight:600;color:var(--text-secondary);margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border);letter-spacing:0.02em }
+.si-insight { background:var(--bg-surface);padding:18px 22px;margin-bottom:12px;border-radius:8px;box-shadow:var(--shadow-sm) }
+.si-insight--high { border-left:3px solid #9c4a3f }
+.si-insight--medium { border-left:3px solid #b08030 }
+.si-insight--low { border-left:3px solid #5e8252 }
+.si-h { display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap }
+.si-sev { font-size:18px }
+.si-title { margin:0;font-size:16px;font-weight:600;color:var(--text-primary);flex:1;min-width:200px }
+.si-sev-tag { padding:2px 8px;border-radius:11px;font-size:11px;font-weight:600 }
+.si-sev-tag--high { background:rgba(156,74,63,.14);color:#9c4a3f }
+.si-sev-tag--medium { background:rgba(176,128,48,.12);color:#b08030 }
+.si-sev-tag--low { background:rgba(94,130,82,.14);color:#5e8252 }
+.si-affect { color:var(--text-muted);font-size:12.5px }
 
-const SKILL_DETAIL_CSS = `
-.sd-back { display:inline-block;margin-bottom:8px;color:var(--text-muted);font-size:13px;text-decoration:none }
-.sd-back:hover { color:var(--text-primary) }
-.sd-overall { display:flex;align-items:center;gap:14px;padding:16px 20px;background:var(--bg-soft);border-radius:8px;margin:8px 0 24px }
-.sd-overall-band { font-size:24px }
-.sd-overall-name { font-size:22px;font-weight:600;color:var(--text-primary) }
-.sd-overall-meta { color:var(--text-muted);font-size:13px;margin-left:auto }
-.sd-card { background:var(--bg-surface);border-radius:8px;padding:18px 22px;margin-bottom:16px;box-shadow:var(--shadow-sm) }
-.sd-card--green   { border-left:3px solid #5e8252 }
-.sd-card--yellow  { border-left:3px solid #b08030 }
-.sd-card--red     { border-left:3px solid #9c4a3f }
-.sd-card--gray    { border-left:3px solid var(--border) }
-.sd-card--empty   { border-left:3px dashed var(--border);background:var(--bg-soft) }
-.sd-card-head { display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap }
-.sd-card-num { font-size:18px }
-.sd-card-title { margin:0;font-size:16px;font-weight:600;color:var(--text-primary) }
-.sd-card-status { padding:3px 10px;border-radius:11px;font-size:12px;font-weight:600 }
-.sd-card-status--green { background:rgba(94,130,82,.14);color:#5e8252 }
-.sd-card-status--yellow { background:rgba(176,128,48,.12);color:#b08030 }
-.sd-card-status--red { background:rgba(156,74,63,.14);color:#9c4a3f }
-.sd-card-status--gray { background:var(--bg-soft);color:var(--text-muted) }
-.sd-card-time { color:var(--text-muted);font-size:12px;margin-left:auto }
-.sd-card-stats { color:var(--text-secondary);font-size:13.5px;margin-bottom:12px;display:flex;gap:16px;flex-wrap:wrap }
-.sd-stat-pass { color:#5e8252;font-weight:600 }
-.sd-stat-fail { color:#9c4a3f;font-weight:600 }
-.sd-stat-trip { color:#7a6b89;font-weight:600 }
-.sd-card-empty-note { color:var(--text-muted);font-size:13px;line-height:1.6;margin:8px 0 0 }
-.sd-card-link { display:inline-block;margin-top:12px;color:var(--accent);font-size:13px;text-decoration:none;font-weight:500 }
-.sd-card-link:hover { text-decoration:underline }
+/* 证据 row */
+.si-evidence { background:var(--bg-soft);padding:12px 14px;border-radius:6px;margin-bottom:10px }
+.si-evidence-h { font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px;letter-spacing:0.02em }
+.si-ev { display:grid;grid-template-columns:24px 100px 1fr;gap:10px;align-items:start;padding:4px 0;font-size:13px;line-height:1.55 }
+.si-ev-icon { text-align:center;font-weight:600;flex-shrink:0;cursor:help }
+.si-ev--flagged .si-ev-icon { color:#9c4a3f }
+.si-ev--blind .si-ev-icon { color:#7a6b89 }
+.si-ev--silent .si-ev-icon { color:#7a9270 }
+.si-ev--na .si-ev-icon { color:var(--text-muted) }
+.si-ev-perspective { color:var(--text-secondary);font-weight:500 }
+.si-ev-msg { color:var(--text-primary);min-width:0 }
 
-/* Doctor rule list */
-.sd-rules { list-style:none;padding:0;margin:0 0 8px;display:flex;flex-direction:column;gap:6px }
-.sd-rule { display:flex;gap:10px;font-size:13.5px;line-height:1.6;align-items:flex-start;padding:6px 0 }
-.sd-rule-icon { flex-shrink:0;font-weight:700;width:16px;text-align:center }
-.sd-rule--pass .sd-rule-icon { color:#5e8252 }
-.sd-rule--warn .sd-rule-icon { color:#b08030 }
-.sd-rule--fail .sd-rule-icon { color:#9c4a3f }
-.sd-rule-body { flex:1;min-width:0 }
-.sd-rule-id { font-size:11.5px;color:var(--text-muted);background:var(--bg-soft);padding:1px 5px;border-radius:3px;margin-right:6px }
-.sd-rule-msg { color:var(--text-primary) }
-.sd-rule-hint { font-size:12.5px;color:var(--text-secondary);margin-top:3px;line-height:1.55 }
+/* 建议 */
+.si-recs { padding:8px 0 0 }
+.si-recs-h { font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;letter-spacing:0.02em }
+.si-recs ul { margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:5px }
+.si-recs li { display:flex;gap:8px;align-items:flex-start;font-size:13.5px;line-height:1.55;color:var(--text-primary) }
+.si-rec-pri { padding:1px 6px;border-radius:8px;font-size:10.5px;font-weight:600;flex-shrink:0;margin-top:2px }
+.si-rec-pri--high { background:rgba(156,74,63,.14);color:#9c4a3f }
+.si-rec-pri--medium { background:rgba(176,128,48,.12);color:#b08030 }
+.si-rec-pri--low { background:rgba(94,130,82,.14);color:#5e8252 }
 
-/* Eval score card */
-.sd-score-hero { display:flex;align-items:baseline;gap:14px;margin:8px 0 16px }
-.sd-score-num { font-size:48px;font-weight:700;color:var(--text-primary);font-variant-numeric:tabular-nums }
-.sd-score-label { color:var(--text-secondary);font-size:13.5px;line-height:1.4 }
-.sd-score-sub { color:var(--text-muted);font-size:11.5px }
-.sd-layers { display:flex;flex-direction:column;gap:6px;margin-bottom:12px }
-.sd-layer-row { display:grid;grid-template-columns:80px 1fr 60px;gap:10px;align-items:center;font-size:13px }
-.sd-layer-label { color:var(--text-secondary) }
-.sd-layer-bar { background:var(--bg-soft);border-radius:4px;height:10px;overflow:hidden }
-.sd-layer-fill { height:100%;border-radius:4px;transition:width .3s }
-.sd-layer-fill--pass { background:#5e8252 }
-.sd-layer-fill--warn { background:#b08030 }
-.sd-layer-fill--fail { background:#9c4a3f }
-.sd-layer-num { font-variant-numeric:tabular-nums;font-weight:600;text-align:right }
-.sd-layer-num--pass { color:#5e8252 }
-.sd-layer-num--warn { color:#b08030 }
-.sd-layer-num--fail { color:#9c4a3f }
-.sd-verdict-headline { font-size:13px;color:var(--text-secondary);margin:8px 0;line-height:1.5;font-style:italic }
+/* 行动 todo */
+.si-todos { background:rgba(94,130,82,.04);border-left:3px solid #5e8252;padding:18px 22px;margin:24px 0 16px;border-radius:8px }
+.si-todos h2 { margin:0 0 6px;font-size:16px;color:var(--text-primary) }
+.si-todos-note { color:var(--text-muted);font-size:12px;margin:0 0 12px }
+.si-todos-empty { color:var(--text-muted);font-size:13px;font-style:italic }
+.si-todos-list { margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:8px }
+.si-todos-list li { display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.6 }
+.si-todos-pri { padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;flex-shrink:0;margin-top:1px }
+.si-todos-pri--high { background:rgba(156,74,63,.14);color:#9c4a3f }
+.si-todos-pri--medium { background:rgba(176,128,48,.12);color:#b08030 }
+.si-todos-pri--low { background:rgba(94,130,82,.14);color:#5e8252 }
+.si-todos-action { color:var(--text-primary) }
 
-/* Eval functional card */
-.sd-modes { font-size:12.5px;color:var(--text-secondary);margin-bottom:10px;display:flex;flex-wrap:wrap;gap:6px;align-items:center }
-.sd-mode-chip { background:rgba(176,128,48,.10);color:#b08030;padding:2px 8px;border-radius:10px;font-size:11.5px }
-.sd-failed-samples { margin-bottom:10px }
-.sd-failed-h { font-size:12.5px;color:var(--text-secondary);font-weight:500;margin-bottom:6px }
-.sd-failed-samples ul { margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:6px }
-.sd-failed-samples li { font-size:13px;line-height:1.5;color:var(--text-primary);display:flex;flex-wrap:wrap;gap:6px;align-items:baseline }
-.sd-fs-id { font-size:11.5px;background:var(--bg-soft);padding:1px 6px;border-radius:3px }
-.sd-fs-mode { font-size:11px;color:#b08030;background:rgba(176,128,48,.10);padding:1px 6px;border-radius:8px }
-.sd-fs-summary { color:var(--text-secondary);font-size:12.5px;flex:1;min-width:0 }
-
-/* Cross-link bar */
-.sd-cross { background:rgba(90,122,147,.08);border-left:2px solid var(--accent);padding:8px 12px;border-radius:4px;font-size:12.5px;color:var(--text-secondary);margin:8px 0;line-height:1.6 }
-.sd-files-list { margin:4px 0 0 0;padding-left:16px }
-.sd-files-list code { background:var(--bg-soft);padding:1px 5px;border-radius:3px;font-size:11.5px }
-
-/* Recommendations */
-.sd-recommendations { background:rgba(94,130,82,.04);border-left:3px solid #5e8252 }
-.sd-rec-note { color:var(--text-muted);font-size:12px;margin:4px 0 12px }
-.sd-rec-list { margin:0;padding-left:18px;color:var(--text-primary);font-size:14px;line-height:1.85 }
+/* 折叠的 raw 数据 */
+.si-raw-section { margin-top:24px;padding:14px 18px;background:var(--bg-soft);border-radius:8px }
+.si-raw-section > summary { cursor:pointer;font-size:13.5px;font-weight:600;color:var(--text-secondary);list-style:none;padding:4px 0 }
+.si-raw-section > summary::-webkit-details-marker { display:none }
+.si-raw-section[open] > summary { margin-bottom:14px }
+.si-raw-grid { display:grid;grid-template-columns:1fr 1fr;gap:14px }
+@media (max-width:760px) { .si-raw-grid { grid-template-columns:1fr } }
+.si-raw-card { background:var(--bg-surface);border-radius:6px;padding:14px 16px;box-shadow:var(--shadow-sm) }
+.si-raw-card h4 { margin:0 0 10px;font-size:13px;color:var(--text-primary);font-weight:600 }
+.si-raw-empty { color:var(--text-muted);font-size:12.5px;font-style:italic }
+.si-raw-block { font-size:13px;line-height:1.6 }
+.si-raw-meta { color:var(--text-secondary);font-size:12.5px;margin-bottom:10px }
+.si-raw-bars { display:flex;gap:14px;font-size:12.5px;color:var(--text-secondary);margin-bottom:8px;flex-wrap:wrap }
+.si-raw-headline { font-size:12.5px;color:var(--text-secondary);font-style:italic;margin:6px 0;line-height:1.5 }
+.si-raw-link { display:inline-block;margin-top:8px;color:var(--accent);font-size:12.5px;text-decoration:none;font-weight:500 }
+.si-raw-link:hover { text-decoration:underline }
+.si-rules { list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px }
+.si-rule { display:grid;grid-template-columns:16px auto 1fr;gap:8px;font-size:12.5px;line-height:1.5;align-items:start;padding:4px 0 }
+.si-rule-icon { font-weight:600;text-align:center }
+.si-rule--pass .si-rule-icon { color:#5e8252 }
+.si-rule--warn .si-rule-icon { color:#b08030 }
+.si-rule--fail .si-rule-icon { color:#9c4a3f }
+.si-rule-id { font-size:11px;background:var(--bg-soft);padding:1px 5px;border-radius:3px;color:var(--text-muted);grid-column:2 }
+.si-rule-msg { color:var(--text-primary);grid-column:3 }
+.si-rule-hint { grid-column:2 / 4;color:var(--text-secondary);font-size:11.5px;margin-top:2px }
+.si-failed-list { margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:5px;margin-bottom:8px }
+.si-failed-list li { font-size:12.5px;line-height:1.5;display:flex;flex-wrap:wrap;gap:5px;align-items:baseline }
+.si-failed-list code { font-size:11px;background:var(--bg-soft);padding:1px 5px;border-radius:3px }
+.si-mode { font-size:10.5px;background:rgba(176,128,48,.10);color:#b08030;padding:1px 5px;border-radius:8px }
+.si-fs-summary { color:var(--text-secondary);font-size:11.5px;flex:1;min-width:0 }
 `;
+
+// ────────── 入口 ──────────
 
 export function renderSkillDetail(
   entry: SkillIndexEntry,
@@ -496,28 +404,39 @@ export function renderSkillDetail(
   lang: Lang = DEFAULT_LANG,
 ): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
-  const links = computeCrossLinks(entry.doctor, evalReport, entry.observe);
+  const insights = detectInsights(entry, evalReport);
+
   const reportCount = [entry.doctor, entry.eval, entry.observe].filter(Boolean).length;
   const lastTs = [entry.doctor?.timestamp, entry.eval?.timestamp, entry.observe?.generatedAt]
     .filter((s): s is string => Boolean(s)).sort().pop();
 
+  const insightsHtml = insights.length === 0
+    ? `<section class="si-empty-state">
+        <p>${lang === 'zh' ? '✅ 没检测到自动可识别的问题。' : '✅ No auto-detected issues.'}</p>
+        <p>${lang === 'zh' ? '展开下方"逐 perspective 原始数据"看完整报告。' : 'Expand the raw data section below to see full reports.'}</p>
+      </section>`
+    : [
+        renderInsightGroup(insights, 'high', lang),
+        renderInsightGroup(insights, 'medium', lang),
+        renderInsightGroup(insights, 'low', lang),
+      ].join('');
+
   return layout(entry.skillName, `
     <main>
-      <a class="sd-back" href="/${langQ}">${lang === 'zh' ? '← 返回 Skills' : '← Back to Skills'}</a>
-      <div class="sd-overall">
-        <span class="sd-overall-band">${BAND_DOT[entry.band]}</span>
-        <span class="sd-overall-name">${e(entry.skillName)}</span>
-        <span class="sd-overall-meta">
+      <a class="si-back" href="/${langQ}">${lang === 'zh' ? '← 返回 Skills' : '← Back to Skills'}</a>
+      <div class="si-overall">
+        <span class="si-overall-band">${BAND_DOT[entry.band]}</span>
+        <span class="si-overall-name">${e(entry.skillName)}</span>
+        <span class="si-overall-meta">
           ${lang === 'zh' ? '已有报告' : 'reports'}: ${reportCount} / 3
           · ${lang === 'zh' ? '最近活动' : 'last activity'}: ${relTime(lastTs, lang)}
+          · ${lang === 'zh' ? '检测到 insight' : 'insights'}: ${insights.length}
         </span>
       </div>
-      ${renderDoctorCard(entry.doctor, links, lang)}
-      ${renderEvalScoreCard(entry.eval, evalReport, langQ, lang)}
-      ${renderEvalFuncCard(entry.eval, evalReport, links, langQ, lang)}
-      ${renderObserveCard(entry.observe, links, langQ, lang)}
-      ${renderRecommendations(entry, links, lang)}
+      ${insightsHtml}
+      ${insights.length > 0 ? renderActionTodos(insights, lang) : ''}
+      ${renderRawDataSection(entry, evalReport, langQ, lang)}
     </main>
-    <style>${SKILL_DETAIL_CSS}</style>
+    <style>${SKILL_INSIGHT_CSS}</style>
   `, lang);
 }
