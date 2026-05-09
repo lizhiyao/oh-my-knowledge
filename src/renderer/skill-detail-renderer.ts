@@ -229,9 +229,72 @@ function renderInsightRow(ins: Insight, num: number, lang: Lang): string {
   </button>`;
 }
 
-function renderInsightList(insights: Insight[], idx: InsightIndex, lang: Lang): string {
+function renderInsightListEmpty(entry: SkillIndexEntry, lang: Lang): string {
+  const passed: string[] = [];
+  const suggestions: string[] = [];
+
+  if (entry.doctor) {
+    const total = entry.doctor.passCount + entry.doctor.warnCount + entry.doctor.failCount;
+    passed.push(lang === 'zh' ? `Doctor ${entry.doctor.passCount}/${total} 通过` : `Doctor ${entry.doctor.passCount}/${total} pass`);
+  } else {
+    suggestions.push(lang === 'zh' ? '跑 <code>omk doctor</code> 做静态体检' : 'Run <code>omk doctor</code> for static checks');
+  }
+  if (entry.eval) {
+    const total = entry.eval.passCount + entry.eval.failCount;
+    const pct = total > 0 ? Math.round((entry.eval.passCount / total) * 100) : 0;
+    const score = entry.eval.compositeScore != null ? `(${entry.eval.compositeScore.toFixed(2)}/5)` : '';
+    passed.push(lang === 'zh' ? `Eval 通过率 ${pct}% ${score}` : `Eval ${pct}% pass ${score}`);
+  } else {
+    suggestions.push(lang === 'zh' ? '跑 <code>omk eval</code> 评测 skill 表现' : 'Run <code>omk eval</code> to score the skill');
+  }
+  if (entry.observe) {
+    passed.push(lang === 'zh'
+      ? `Observe ${entry.observe.segmentCount} 段,稳定度 ${((1 - entry.observe.gapRate) * 100).toFixed(0)}%`
+      : `Observe ${entry.observe.segmentCount} segs, ${((1 - entry.observe.gapRate) * 100).toFixed(0)}% stable`);
+  } else {
+    suggestions.push(lang === 'zh' ? '跑 <code>omk observe &lt;trace-dir&gt;</code> 接生产数据' : 'Run <code>omk observe</code> on production traces');
+  }
+
+  const evalLow = entry.eval && entry.eval.totalSamples < 5;
+  if (evalLow) {
+    suggestions.push(lang === 'zh'
+      ? `当前只有 ${entry.eval!.totalSamples} 个 sample,加到 ≥ 5 提高代表性`
+      : `Only ${entry.eval!.totalSamples} samples — add more (≥ 5) for better coverage`);
+  }
+  const trendPoints = entry.doctorHistory.length + entry.evalHistory.length + entry.observeHistory.length;
+  if (trendPoints >= 3) {
+    suggestions.push(lang === 'zh' ? '看右侧趋势曲线,确认健康度在长期保持' : 'Check the trend chart on the right to confirm long-term stability');
+  }
+  // 三个 perspective 都跑过且没有其他建议时,fallback 一条引导,避免左下空白
+  if (suggestions.length === 0) {
+    suggestions.push(lang === 'zh'
+      ? '保持现状即可。建议在每次发版或调整 SKILL.md 后再跑一轮确认无回退'
+      : 'Keep going. Re-run after each release or SKILL.md change to confirm no regression');
+  }
+
+  return `<div class="si-empty">
+    <div class="si-empty-h">
+      <span class="si-empty-emoji">✨</span>
+      <span class="si-empty-title">${lang === 'zh' ? '当前没有自动检测到的待优化项' : 'No auto-detected issues right now'}</span>
+    </div>
+    ${passed.length > 0 ? `<div class="si-empty-section">
+      <div class="si-empty-section-h">${lang === 'zh' ? '已完成的检查' : 'Checks completed'}</div>
+      <ul class="si-empty-list si-empty-list--pass">
+        ${passed.map((p) => `<li><span class="si-empty-icon">✓</span><span>${p}</span></li>`).join('')}
+      </ul>
+    </div>` : ''}
+    ${suggestions.length > 0 ? `<div class="si-empty-section">
+      <div class="si-empty-section-h">${lang === 'zh' ? '还可以补充' : 'Could still do'}</div>
+      <ul class="si-empty-list si-empty-list--next">
+        ${suggestions.map((s) => `<li><span class="si-empty-icon">→</span><span>${s}</span></li>`).join('')}
+      </ul>
+    </div>` : ''}
+  </div>`;
+}
+
+function renderInsightList(insights: Insight[], idx: InsightIndex, entry: SkillIndexEntry, lang: Lang): string {
   if (insights.length === 0) {
-    return `<div class="si-list-empty">${lang === 'zh' ? '✅ 没检测到自动可识别的问题。' : '✅ No auto-detected issues.'}</div>`;
+    return renderInsightListEmpty(entry, lang);
   }
   const grouped = groupInsightsByAudience(insights);
   const order: InsightAudience[] = ['skill-author', 'sample-author', 'omk-maintainer'];
@@ -618,7 +681,19 @@ const SKILL_DETAIL_CSS = `
 
 /* 左栏:问题列表 */
 .si-list { background:var(--bg-surface);border-radius:8px;padding:12px 14px;box-shadow:var(--shadow-sm) }
-.si-list-empty { padding:20px;text-align:center;color:var(--text-muted);font-size:14px }
+
+/* 空态 — 不喊"恭喜",用已有数据证明它健康 + 给可补充的下一步,有视觉重量 */
+.si-empty { display:flex;flex-direction:column;gap:14px;padding:6px 4px }
+.si-empty-h { display:flex;align-items:center;gap:10px;padding:10px 14px;background:rgba(94,130,82,.08);border-left:3px solid #5e8252;border-radius:6px }
+.si-empty-emoji { font-size:22px;line-height:1 }
+.si-empty-title { font-size:14px;font-weight:600;color:var(--text-primary) }
+.si-empty-section-h { font-size:11.5px;font-weight:600;color:var(--text-muted);letter-spacing:0.04em;margin-bottom:6px;text-transform:uppercase }
+.si-empty-list { margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px }
+.si-empty-list li { display:grid;grid-template-columns:18px 1fr;gap:8px;align-items:start;font-size:13px;line-height:1.55;color:var(--text-primary) }
+.si-empty-list code { background:var(--bg-soft);padding:1px 6px;border-radius:3px;font-family:"SF Mono",Menlo,monospace;font-size:11.5px;color:var(--text-primary) }
+.si-empty-icon { font-weight:700;text-align:center }
+.si-empty-list--pass .si-empty-icon { color:#5e8252 }
+.si-empty-list--next .si-empty-icon { color:var(--accent) }
 .si-aud { margin-bottom:12px }
 .si-aud:last-child { margin-bottom:0 }
 .si-aud-h { display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg-soft);border-radius:5px;margin-bottom:6px }
@@ -837,7 +912,7 @@ export function renderSkillDetail(
 
       <div class="si-grid">
         <section class="si-list" aria-label="${lang === 'zh' ? '问题列表' : 'Issues'}">
-          ${renderInsightList(insights, idx, lang)}
+          ${renderInsightList(insights, idx, entry, lang)}
         </section>
         <section class="si-right">
           <div class="si-trend">
