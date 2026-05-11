@@ -13,7 +13,7 @@
     "dist/src/"
   ],
   "scripts": {
-    "build": "tsc && node -e \"require('node:fs').copyFileSync('src/eval-core/mock-hook.cjs','dist/src/eval-core/mock-hook.cjs')\"",
+    "build": "tsc && node -e \"const fs=require('node:fs'),p=require('node:path');const d='dist/src/eval-core/mock-hook.cjs';fs.mkdirSync(p.dirname(d),{recursive:true});fs.copyFileSync('src/eval-core/mock-hook.cjs',d)\"",
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0",
     "test": "vitest run",
