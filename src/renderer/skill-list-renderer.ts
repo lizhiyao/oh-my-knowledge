@@ -11,8 +11,7 @@
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
 import { assessHealth } from './skill-detail-renderer.js';
-import { detectInsights } from '../server/skill-insights.js';
-import type { Lang, EvaluationReport } from '../types/index.js';
+import type { Lang } from '../types/index.js';
 import type { SkillIndex, SkillIndexEntry } from '../server/skill-index.js';
 import type { Insight } from '../server/skill-insights.js';
 
@@ -111,12 +110,10 @@ function renderTrendBadge(t: CardSummary, lang: Lang): string {
   if (t.trendDir === 'none') return '';
   const arrow = t.trendDir === 'up' ? '↗' : t.trendDir === 'down' ? '↘' : '→';
   const cls = t.trendDir === 'up' ? 'up' : t.trendDir === 'down' ? 'down' : 'flat';
-  const lbl = lang === 'zh'
-    ? (t.trendDir === 'up' ? '上升' : t.trendDir === 'down' ? 'регрес' : '持平')
-    : (t.trendDir === 'up' ? 'rising' : t.trendDir === 'down' ? 'falling' : 'flat');
-  const labelZh = t.trendDir === 'up' ? '上升' : t.trendDir === 'down' ? '下降' : '持平';
-  void lbl;
-  return `<span class="sl-trend sl-trend--${cls}" title="${lang === 'zh' ? '基于历史评测综合分变化' : 'Based on historical eval composite delta'}">${arrow} ${lang === 'zh' ? labelZh : (t.trendDir === 'up' ? 'up' : t.trendDir === 'down' ? 'down' : 'flat')}${t.trendDelta ? ` (${e(t.trendDelta)})` : ''}</span>`;
+  const label = lang === 'zh'
+    ? (t.trendDir === 'up' ? '上升' : t.trendDir === 'down' ? '下降' : '持平')
+    : (t.trendDir === 'up' ? 'up' : t.trendDir === 'down' ? 'down' : 'flat');
+  return `<span class="sl-trend sl-trend--${cls}" title="${lang === 'zh' ? '基于历史评测综合分变化' : 'Based on historical eval composite delta'}">${arrow} ${label}${t.trendDelta ? ` (${e(t.trendDelta)})` : ''}</span>`;
 }
 
 function renderCard(entry: SkillIndexEntry, insights: Insight[], langQ: string, lang: Lang): string {
@@ -296,16 +293,12 @@ const SKILL_LIST_CSS = `
 
 export function renderSkillList(
   idx: SkillIndex,
-  evalReportsBySkill: Map<string, EvaluationReport> = new Map(),
   lang: Lang = DEFAULT_LANG,
 ): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
-  // 给每个 entry 跑一次 detectInsights — 跟详情页用同一份输入,健康等级 / 待优化数口径一致。
-  const insightsByEntry = new Map<string, Insight[]>();
-  for (const ent of idx.entries) {
-    const er = evalReportsBySkill.get(ent.skillName) ?? null;
-    insightsByEntry.set(ent.skillName, detectInsights(ent, er));
-  }
+  // insightsBySkill 在 buildSkillIndex 里跟 SkillIndex 一起算好(共享缓存)。
+  // list renderer 直接消费,不再每请求 N×detectInsights 重算。
+  const insightsByEntry = idx.insightsBySkill;
   const body = idx.entries.length === 0
     ? `<div class="sl-empty-state">
         <p>${lang === 'zh' ? '暂无 skill 报告。先跑一次评测:' : 'No skill reports yet. Run an evaluation first:'}</p>
