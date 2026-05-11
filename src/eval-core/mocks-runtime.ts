@@ -322,21 +322,21 @@ export function materializeForCliConfigDir(
 let _hookTemplate: string | null = null;
 function readMockHookTemplate(): string {
   if (_hookTemplate) return _hookTemplate;
-  // 解析 assets/mock-hook.cjs 的绝对路径(本文件可能在 src/ 也可能在 dist/src/)
+  // hook 跟本文件共置在 src/eval-core/(开发模式)或 dist/src/eval-core/(npm 安装模式),
+  // build script 把 mock-hook.cjs 复制到 dist/。读 sibling 路径就行,不再依赖外层 assets/。
   const here = dirname(fileURLToPath(import.meta.url));
-  // src/eval-core/ → ../../assets/   或   dist/src/eval-core/ → ../../../assets/
-  const candidates = [
-    resolve(here, '../../assets/mock-hook.cjs'),
-    resolve(here, '../../../assets/mock-hook.cjs'),
-  ];
-  for (const c of candidates) {
-    if (existsSync(c)) {
-      _hookTemplate = readFileSync(c, 'utf8');
-      return _hookTemplate;
-    }
+  const hookPath = resolve(here, 'mock-hook.cjs');
+  if (!existsSync(hookPath)) {
+    throw new Error(`omk-mock: mock-hook.cjs not found at ${hookPath}. ` +
+      `如果是从源码运行,确认 src/eval-core/mock-hook.cjs 存在;如果是 npm 安装,` +
+      `package 漏发了 hook,提 issue 并附 omk 版本。`);
   }
-  throw new Error(`omk-mock: assets/mock-hook.cjs not found (looked in ${candidates.join(', ')})`);
+  _hookTemplate = readFileSync(hookPath, 'utf8');
+  return _hookTemplate;
 }
+
+// 测试用 export:供 packaging smoke test 验证 hook 能被解析
+export const _readMockHookTemplateForTest = readMockHookTemplate;
 
 // ─── 工具:在不影响主目录的前提下创建临时 dir(测试也要)─────────────
 
