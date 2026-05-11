@@ -14,7 +14,7 @@
 import { layout, e, DEFAULT_LANG } from './layout.js';
 import type { Lang, EvaluationReport, VariantResult } from '../types/index.js';
 import type { SkillIndexEntry, SkillDoctorSnapshot, SkillEvalSnapshot, SkillObserveSnapshot } from '../server/skill-index.js';
-import type { Insight, InsightSeverity, InsightEvidence, InsightPerspective, InsightAudience, InsightIllustration, InsightPatch } from '../server/skill-insights.js';
+import type { Insight, InsightSeverity, InsightAudience, InsightIllustration, InsightPatch } from '../server/skill-insights.js';
 import { detectInsights, groupInsightsByAudience } from '../server/skill-insights.js';
 import type { DoctorRuleResult } from '../types/doctor.js';
 
@@ -25,16 +25,8 @@ const SEVERITY_ICON: Record<InsightSeverity, string> = { high: '🔴', medium: '
 const SEVERITY_LABEL_ZH: Record<InsightSeverity, string> = { high: '高', medium: '中', low: '低' };
 const SEVERITY_LABEL_EN: Record<InsightSeverity, string> = { high: 'High', medium: 'Med', low: 'Low' };
 
-const PERSPECTIVE_ZH: Record<InsightPerspective, string> = {
-  doctor: '静态体检', 'eval-score': '评分视角', 'eval-functional': '功能视角', observe: '线上观测',
-};
-const PERSPECTIVE_EN: Record<InsightPerspective, string> = {
-  doctor: 'Static check', 'eval-score': 'Score view', 'eval-functional': 'Functional view', observe: 'Production',
-};
-
-const STATUS_ICON: Record<InsightEvidence['status'], string> = {
-  flagged: '✗', blind: '👁', silent: '○', na: '—',
-};
+// PERSPECTIVE_* / STATUS_ICON 用于"三视角"展示,modal v4 极简后从 UI 撤掉,
+// 这两个常量及 InsightPerspective 标签等到将来诊断 / 调试 UI 需要时再恢复。
 
 const AUDIENCE_INFO_ZH: Record<InsightAudience, { icon: string; title: string; subtitle: string }> = {
   'skill-author': { icon: '📝', title: 'Skill 优化项', subtitle: '改 SKILL.md 内容' },
@@ -517,36 +509,6 @@ function collectFailedSamplesForInsight(
 
 const _SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low: 1 };
 
-/** "先做这件"主推动作卡:取 priority 最高的 recommendation + 影响范围 */
-function renderPrimaryAction(
-  ins: Insight,
-  failedSamples: FailedSampleDetail[],
-  lang: Lang,
-): string {
-  if (ins.recommendations.length === 0) return '';
-  const primary = [...ins.recommendations].sort(
-    (a, b) => _SEVERITY_RANK[b.priority] - _SEVERITY_RANK[a.priority],
-  )[0];
-  let impactText = '';
-  if (failedSamples.length > 0) {
-    const sids = failedSamples.map((s) => s.sampleId);
-    const preview = sids.slice(0, 3).join(', ');
-    const more = sids.length > 3 ? '…' : '';
-    impactText = lang === 'zh'
-      ? `预计可修复 ${sids.length} 条失败样本(${preview}${more})`
-      : `Likely fixes ${sids.length} failed samples (${preview}${more})`;
-  } else if (ins.affectedCount > 0) {
-    impactText = lang === 'zh'
-      ? `影响 ${ins.affectedCount} 项`
-      : `Affects ${ins.affectedCount}`;
-  }
-  return `<div class="si-primary">
-    <div class="si-primary-label">🎯 ${lang === 'zh' ? '先做这件' : 'Do this first'}</div>
-    <div class="si-primary-action">${e(primary.action)}</div>
-    ${impactText ? `<div class="si-primary-impact">${e(impactText)}</div>` : ''}
-  </div>`;
-}
-
 /** 失败用例 section:sample 视角,每条 1 行(id + 一句话错因),
  *  第一条默认展开看真实 prompt/output;其他折叠 details */
 function renderFailedSamplesSection(
@@ -593,41 +555,9 @@ function renderFailedSamplesSection(
   </section>`;
 }
 
-/** 三视角降级:小折叠条放底部"omk 内部信号一致性",展开看完整 evidence message */
-function renderSignalConsistencyFooter(evidences: InsightEvidence[], lang: Lang): string {
-  const hitCount = evidences.filter((ev) => ev.status === 'flagged').length;
-  const totalActive = evidences.filter((ev) => ev.status !== 'na').length;
-  const summary = hitCount >= 3
-    ? (lang === 'zh' ? '三视角一致(强信号)' : 'all 3 sources flagged (strong)')
-    : hitCount >= 2
-      ? (lang === 'zh' ? `${hitCount}/${totalActive} 命中(较强信号)` : `${hitCount}/${totalActive} flagged`)
-      : hitCount === 1
-        ? (lang === 'zh' ? '单源信号(单视角看到,仅参考)' : 'single-source signal (reference only)')
-        : (lang === 'zh' ? '无明确信号(insight 由别的规则触发)' : 'no source flagged');
-
-  return `<details class="si-modal-detail">
-    <summary>
-      <span class="si-signal-footer-label">📡 ${lang === 'zh' ? 'omk 内部信号' : 'omk signal'}:</span>
-      <span class="si-signal-footer-summary">${e(summary)}</span>
-    </summary>
-    <div class="si-modal-detail-body">
-      ${evidences.map((ev) => {
-        const persp = lang === 'zh' ? PERSPECTIVE_ZH[ev.perspective] : PERSPECTIVE_EN[ev.perspective];
-        return `<div class="si-ev si-ev--${ev.status}">
-          <div class="si-ev-line">
-            <span class="si-ev-icon">${STATUS_ICON[ev.status]}</span>
-            <span class="si-ev-perspective">${e(persp)}</span>
-            <span class="si-ev-msg">${e(ev.message)}</span>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>
-  </details>`;
-}
-
 /** 单条建议 + patch 直接铺。patch 里若含占位符(&lt;...&gt; / XXX.xxx)用 <mark> 高亮,
- *  按钮文案区分"复制 vs 复制模板"。 */
-function renderRecommendation(rec: { action: string; priority: InsightSeverity; patch?: InsightPatch }, idx: number, lang: Lang): string {
+ *  按钮文案区分"复制 vs 复制模板"。isPrimary 时加"⭐ 推荐先做"标记。 */
+function renderRecommendation(rec: { action: string; priority: InsightSeverity; patch?: InsightPatch }, idx: number, lang: Lang, isPrimary = false): string {
   const priLabel = lang === 'zh' ? SEVERITY_LABEL_ZH[rec.priority] : SEVERITY_LABEL_EN[rec.priority];
   let patchBlock = '';
   if (rec.patch) {
@@ -651,10 +581,11 @@ function renderRecommendation(rec: { action: string; priority: InsightSeverity; 
       <pre class="si-rec-patch-snippet"><code id="${snippetId}">${snippetHtml}</code></pre>
     </div>`;
   }
-  return `<div class="si-rec-item">
+  return `<div class="si-rec-item${isPrimary ? ' si-rec-item--primary' : ''}">
     <div class="si-rec-head">
       <span class="si-rec-num">${idx + 1}</span>
       <span class="si-rec-pri si-rec-pri--${rec.priority}">${e(priLabel)}</span>
+      ${isPrimary ? `<span class="si-rec-star" title="${lang === 'zh' ? '推荐先做' : 'do this first'}">⭐ ${lang === 'zh' ? '推荐' : 'recommended'}</span>` : ''}
       <span class="si-rec-action">${e(rec.action)}</span>
     </div>
     ${patchBlock}
@@ -671,9 +602,11 @@ function renderInsightModal(
   lang: Lang,
 ): string {
   const sevIcon = SEVERITY_ICON[ins.severity];
-  const sevLabel = lang === 'zh' ? SEVERITY_LABEL_ZH[ins.severity] : SEVERITY_LABEL_EN[ins.severity];
-  const audInfo = lang === 'zh' ? AUDIENCE_INFO_ZH[ins.audience] : AUDIENCE_INFO_EN[ins.audience];
   const failedSamples = collectFailedSamplesForInsight(ins, evalReport);
+  // 建议按 priority 降序,第一条标"⭐ 推荐先做"
+  const sortedRecs = [...ins.recommendations].sort(
+    (a, b) => _SEVERITY_RANK[b.priority] - _SEVERITY_RANK[a.priority],
+  );
   return `<div id="insight-${num}" class="modal-overlay" onclick="if(event.target===this)closeModal('insight-${num}')">
     <div class="modal-content si-modal">
       <div class="modal-header">
@@ -684,23 +617,14 @@ function renderInsightModal(
         </div>
         <button class="modal-close" onclick="closeModal('insight-${num}')">✕</button>
       </div>
-      <div class="si-modal-tags">
-        <span class="si-sev-tag si-sev-tag--${ins.severity}">${e(sevLabel)}</span>
-        <span class="si-aud-tag">${audInfo.icon} ${e(audInfo.title)}</span>
-        ${ins.affectedCount > 0 ? `<span class="si-modal-affect">${lang === 'zh' ? '影响' : 'affects'} ${ins.affectedCount}</span>` : ''}
-      </div>
       ${ins.description ? `<p class="si-modal-desc">${e(ins.description)}</p>` : ''}
-
-      ${renderPrimaryAction(ins, failedSamples, lang)}
 
       ${renderFailedSamplesSection(failedSamples, reportId, langQ, lang)}
 
-      ${ins.recommendations.length > 0 ? `<section class="si-recs">
-        <div class="si-recs-h">💡 ${lang === 'zh' ? '建议怎么改' : 'How to fix'}</div>
-        ${ins.recommendations.map((r, i) => renderRecommendation(r, i, lang)).join('')}
+      ${sortedRecs.length > 0 ? `<section class="si-recs">
+        <div class="si-recs-h">💡 ${lang === 'zh' ? '怎么改' : 'How to fix'}</div>
+        ${sortedRecs.map((r, i) => renderRecommendation(r, i, lang, i === 0)).join('')}
       </section>` : ''}
-
-      ${renderSignalConsistencyFooter(ins.evidence, lang)}
     </div>
   </div>`;
 }
@@ -1094,16 +1018,11 @@ const SKILL_DETAIL_CSS = `
 .si-stagecard-meta { font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums }
 .si-stagecard-arrow { color:var(--text-muted);font-size:16px;font-weight:300 }
 
-/* ── Insight modal v3:从 detector × 三视角 翻到 sample × 行为 ──────────
- * 顺序:tags → desc → 主推动作(🎯 先做这件) → 失败用例(sample 视角) →
- *      建议(patch 含占位符标识) → omk 内部信号(降级折叠到底)
+/* ── Insight modal v4:极简 — 只展示问题 + 解决 ──────────
+ * 顺序:title + desc(问题) → 失败用例(具体哪些用例 + 错因) → 怎么改(建议 + patch)
+ * 删:严重度 tag / audience tag / 影响数 / 主推动作卡 / 三视角折叠
+ * 第一条 recommendation 加 ⭐ 推荐标记
  */
-
-/* 主推动作卡(顶部最显眼)*/
-.si-primary { margin:14px 0 12px;padding:12px 14px;border-left:4px solid #5e8252;background:rgba(94,130,82,.07);border-radius:5px }
-.si-primary-label { font-size:11.5px;font-weight:700;color:#5e8252;letter-spacing:0.04em;margin-bottom:4px }
-.si-primary-action { font-size:14px;color:var(--text-primary);font-weight:600;line-height:1.5 }
-.si-primary-impact { font-size:12px;color:var(--text-secondary);margin-top:4px;font-style:italic }
 
 /* 失败用例 section(sample 视角主信息)*/
 .si-failures { margin:14px 0;padding:12px 14px;background:var(--bg-soft);border-radius:6px }
@@ -1130,9 +1049,9 @@ details.si-failure-item[open] > summary.si-failure-head::before { content:'▾ '
 .si-rec-patch-hint { font-size:11.5px;color:#7a5810;background:rgba(176,128,48,.10);padding:6px 10px;border-radius:4px;margin-bottom:6px;line-height:1.5 }
 .si-rec-patch-hint .si-placeholder { background:rgba(176,128,48,.30) }
 
-/* 三视角降级:底部信号一致性折叠 */
-.si-signal-footer-label { font-weight:600;color:var(--text-secondary) }
-.si-signal-footer-summary { color:var(--text-primary);margin-left:6px }
+/* 第一条建议的"⭐ 推荐先做"标记 */
+.si-rec-item--primary { border-left-color:#5e8252;background:rgba(94,130,82,.06) }
+.si-rec-star { font-size:10.5px;font-weight:700;color:#5e8252;background:rgba(94,130,82,.16);padding:2px 8px;border-radius:9px;letter-spacing:0.02em;flex-shrink:0 }
 
 /* 建议 + patch 直接铺(去掉 details 折叠)*/
 .si-recs { margin:14px 0 }
@@ -1169,9 +1088,7 @@ details.si-failure-item[open] > summary.si-failure-head::before { content:'▾ '
 .si-modal-num { font-size:12px;font-weight:700;color:var(--text-muted);background:var(--bg-soft);padding:2px 8px;border-radius:4px }
 .si-modal-sev { font-size:18px }
 .si-modal-title { margin:0;font-size:17px;font-weight:600;color:var(--text-primary) }
-.si-modal-tags { display:flex;gap:8px;align-items:center;margin:6px 0 10px;flex-wrap:wrap }
-.si-modal-affect { font-size:11.5px;color:var(--text-muted) }
-.si-aud-tag { font-size:11.5px;color:var(--text-secondary);background:var(--bg-soft);padding:2px 8px;border-radius:8px }
+/* si-modal-tags / si-modal-affect / si-aud-tag — modal v4 极简后不再使用,保留 placeholder 防回退 */
 .si-modal-desc { color:var(--text-secondary);font-size:13px;line-height:1.6;margin:0 0 14px }
 .si-modal-purpose { color:var(--text-secondary);font-size:13px;line-height:1.6;margin:6px 0 12px;font-style:italic }
 .si-modal-stats { color:var(--text-secondary);font-size:13px;margin-bottom:14px;padding:8px 12px;background:var(--bg-soft);border-radius:5px;font-variant-numeric:tabular-nums }
