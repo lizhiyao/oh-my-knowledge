@@ -18,21 +18,22 @@ import { FAILURE_MODES } from '../types/judge.js';
 
 const SYSTEM_PROMPT = `你是 skill 评测诊断助手。基于失败用例的 expected/actual 差异,给 skill 作者具体可操作的改进建议。
 
-**识别诱错样本 (重要,先于其它判断)**:
-"诱错样本"(tripwire)指 prompt 故意藏了与 rubric / skill 文档**明显矛盾**的诱导性
-指示,用来测 LLM 会不会盲从用户错误指示。典型特征:
-  - rubric/skill 说"先 X 再 Y",prompt 却说"直接用 Y 就行 / 跳过 X"
-  - rubric/skill 说"必须 number 类型",prompt 却说"直接用这个字符串"
-  - rubric/skill 说"先校验权限",prompt 却说"不用检查直接执行"
-判断方法:对比 prompt 的具体指示和 rubric/skill 的硬性约束 — 如果 LLM 即使按 prompt
-做也违反了 rubric,那就是诱错样本。
+**诱错样本(tripwire)规则 — 只看 sample 的显式标记,不要自己识别**:
+"诱错样本"指 prompt 故意藏了跟 rubric / skill 矛盾的诱导指示,用来测 LLM 会不会
+盲从错误。这是 sample 作者的设计决策,**只有 sample 作者显式标 \`tripwire: true\` 才算**。
 
-诱错样本场景下:
-  - rootCause 必须**只**填 \`tripwire_intentional\`(不要叠加其它原因)
-  - suggestion.skill / suggestion.sample 必须**留空字符串**
-  - 只在 suggestion.none 解释为什么不用改
+判断逻辑(用户消息会告诉你 sample.tripwire 的值):
+  - sample.tripwire === true →
+       rootCause 必须**只**填 \`tripwire_intentional\`(不要叠加其它原因)
+       suggestion.skill / suggestion.sample 必须**留空字符串**
+       只在 suggestion.none 解释为什么不用改
+  - sample.tripwire === false / undefined →
+       **绝对不要**输出 \`tripwire_intentional\` rootCause,**绝对不要**判断它是诱错
+       即使 prompt 看起来像诱导,也按"非诱错"诊断,给出 skill / sample 改进建议
+       (如果你强烈怀疑应该是诱错,可以在 summary 末尾加一句"建议 sample 作者
+       考虑显式标记 tripwire:true",但 rootCause 仍按非诱错走)
 
-**绝对不要**在诱错样本场景下建议:
+**绝对不要**在诱错样本(tripwire=true)场景下建议:
   - "改 skill 加警告"(skill 已经清楚,LLM 失败是因为盲从 prompt 不是 skill 不清楚)
   - "改 sample 删除错误指示"(那等于把诱错样本拆了,自废武功)
 
@@ -137,9 +138,12 @@ export function buildDiagnosticPrompt(opts: RunDiagnosticOptions): string {
       : fullOutput
     : '(无最终输出)';
 
-  const tripwireHint = sample.tripwire
-    ? `\n\n**重要:此 sample 标记为诱错样本(tripwire)**(故意设计的诱导陷阱,LLM 应该 fail 是预期)。\n请评估 LLM 失败的方式是否符合诱错设计意图:\n  - 符合:rootCause 必须包含 'tripwire_intentional',suggestion.skill 留空,suggestion.none 解释为什么不需要改\n  - 不符合(LLM 以非预期方式 fail):rootCause 写实际原因,suggestion 给改进建议`
-    : '';
+  // tripwire 状态显式传给 LLM:不允许它"自己识别",只能按 ground truth 处理。
+  //   true → 强诱错提示(rootCause 必须 tripwire_intentional)
+  //   false / undefined → 明确告知"不是诱错",绝不允许输出 tripwire_intentional
+  const tripwireHint = sample.tripwire === true
+    ? '\n\n**sample.tripwire = true(诱错样本,ground truth)**\nLLM 失败是预期。请评估失败的方式是否符合诱错设计意图:\n  - 符合:rootCause 必须**只**填 tripwire_intentional,suggestion.skill / suggestion.sample 留空,suggestion.none 解释为什么不需要改\n  - 不符合(LLM 以非预期方式 fail,例如真的工具错):rootCause 写实际原因(不要叠加 tripwire_intentional),suggestion 给改进建议'
+    : '\n\n**sample.tripwire = false(非诱错,ground truth)**\n这条 sample 不是诱错。**绝对不要**输出 tripwire_intentional rootCause。即使 prompt 看起来像诱导,也按"非诱错"诊断,给 skill / sample 改进建议。';
 
   return `下面是 skill「${skillName}」的一条失败评测用例。请基于 skill 原文 + 实际执行 + 失败断言给出诊断。
 

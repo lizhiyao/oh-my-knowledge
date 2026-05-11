@@ -70,13 +70,13 @@ describe('buildDiagnosticPrompt', () => {
       executor: (() => Promise.reject(new Error('x'))) as ExecutorFn,
       model: 'haiku',
     });
-    // 顶部专用 hint 段(强调"此 sample 标记为诱错样本")
-    assert.ok(prompt.includes('此 sample 标记为诱错样本'), 'should include tripwire-specific top hint');
+    // tripwire=true 时插入 ground-truth 提示,要求 LLM 走 tripwire_intentional 路径
+    assert.ok(prompt.includes('sample.tripwire = true'), 'should include tripwire=true ground-truth hint');
     // 5 类 rootCause 列表里也有 tripwire_intentional(任何样本都有)
     assert.ok(prompt.includes('tripwire_intentional'));
   });
 
-  it('does NOT insert tripwire-specific top hint for normal sample', () => {
+  it('inserts non-tripwire explicit hint for normal sample (sample.tripwire=undefined / false)', () => {
     const prompt = buildDiagnosticPrompt({
       sample: baseSample(),
       skillContent: 'skill',
@@ -88,8 +88,10 @@ describe('buildDiagnosticPrompt', () => {
       executor: (() => Promise.reject(new Error('x'))) as ExecutorFn,
       model: 'haiku',
     });
-    // 顶部专用 hint 不该出现(避免误导 LLM 把普通 sample 当诱错样本处理)
-    assert.ok(!prompt.includes('此 sample 标记为诱错样本'));
+    // P3-2:非诱错也显式标 "sample.tripwire = false",禁止 LLM 自己识别诱错
+    assert.ok(prompt.includes('sample.tripwire = false'), 'should include explicit non-tripwire ground-truth hint');
+    // 不要带 tripwire=true 那段 ground-truth hint
+    assert.ok(!prompt.includes('sample.tripwire = true'));
     // 但 rootCause 候选列表里仍可见(那是给所有样本看的全选)
     assert.ok(prompt.includes('tripwire_intentional'));
   });
