@@ -470,13 +470,17 @@ function highlightPlaceholders(text: string): { html: string; count: number } {
 interface FailedSampleDetail {
   sampleId: string;
   diagnosticSummary: string;
+  /** rubric / assertion 期望的具体行为(diagnostic LLM 写的一段). */
+  expected: string;
+  /** LLM 实际做了什么(diagnostic LLM 写的一段). */
+  actual: string;
   failureModes: string[];
   illustration: InsightIllustration | null;
 }
 
 /** 给一个 insight,从 stageRefs.evalSampleIds + evalReport 拿完整的失败样本详情。
  *  illustration 是 detector 挑出的(最多 2 条)代表性样本,带 prompt/output/工具调用;
- *  其他样本没 illustration 但有 sample_id + diagnostic.summary。 */
+ *  diagnostic.expected / actual 是诊断 LLM 写的"期望 vs 实际"对照,用户最想看的。 */
 function collectFailedSamplesForInsight(
   ins: Insight,
   evalReport: EvaluationReport | null,
@@ -501,6 +505,8 @@ function collectFailedSamplesForInsight(
     return {
       sampleId: sid,
       diagnosticSummary: vr?.diagnostic?.summary ?? '',
+      expected: vr?.diagnostic?.expected ?? '',
+      actual: vr?.diagnostic?.actual ?? '',
       failureModes: (vr?.diagnostic?.failureModes ?? []) as string[],
       illustration: illsBySampleId.get(sid) ?? null,
     };
@@ -509,8 +515,60 @@ function collectFailedSamplesForInsight(
 
 const _SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low: 1 };
 
+/** 单条 sample 的 diff 对照视图(modal v5 核心):用 diagnostic.expected/actual
+ *  + illustration.failedAssertion 做三段"期望 vs 实际 vs 卡在哪"对照,把原始
+ *  prompt/输出/工具调用降级到二级 details(高级用户才看)。 */
+function renderSampleDiff(s: FailedSampleDetail, lang: Lang): string {
+  const hasExpected = s.expected && s.expected.trim().length > 0;
+  const hasActual = s.actual && s.actual.trim().length > 0;
+  const hasFailed = s.illustration?.failedAssertion;
+  const rawData = s.illustration && (s.illustration.samplePrompt || s.illustration.llmOutput || (s.illustration.toolCalls && s.illustration.toolCalls.length > 0));
+
+  // 如果连 expected/actual 都没有,fallback 显示原始 illustration(老路径)
+  if (!hasExpected && !hasActual && !hasFailed) {
+    return s.illustration
+      ? renderIllustration(s.illustration, lang)
+      : `<div class="si-failure-no-detail">${lang === 'zh' ? '此样本没诊断信息,看完整报告' : 'no diagnostic info'}</div>`;
+  }
+
+  const rows: string[] = [];
+  if (hasExpected) {
+    rows.push(`<div class="si-diff-row si-diff-row--expected">
+      <span class="si-diff-icon">🎯</span>
+      <span class="si-diff-label">${lang === 'zh' ? '期望' : 'Expected'}</span>
+      <span class="si-diff-text">${e(s.expected)}</span>
+    </div>`);
+  }
+  if (hasActual) {
+    rows.push(`<div class="si-diff-row si-diff-row--actual">
+      <span class="si-diff-icon">⚠️</span>
+      <span class="si-diff-label">${lang === 'zh' ? '实际' : 'Actual'}</span>
+      <span class="si-diff-text">${e(s.actual)}</span>
+    </div>`);
+  }
+  if (hasFailed) {
+    rows.push(`<div class="si-diff-row si-diff-row--failed">
+      <span class="si-diff-icon">💥</span>
+      <span class="si-diff-label">${lang === 'zh' ? '卡在' : 'Failed'}</span>
+      <span class="si-diff-text si-diff-text--mono">${e(s.illustration!.failedAssertion!)}</span>
+    </div>`);
+  }
+
+  const rawBlock = rawData
+    ? `<details class="si-diff-raw">
+        <summary>${lang === 'zh' ? '▸ 看原始 prompt / LLM 输出 / 工具调用' : '▸ Raw prompt / LLM output / tool calls'}</summary>
+        <div class="si-diff-raw-body">${renderIllustration(s.illustration!, lang)}</div>
+      </details>`
+    : '';
+
+  return `<div class="si-diff">
+    ${rows.join('')}
+    ${rawBlock}
+  </div>`;
+}
+
 /** 失败用例 section:sample 视角,每条 1 行(id + 一句话错因),
- *  第一条默认展开看真实 prompt/output;其他折叠 details */
+ *  第一条默认展开看 diff 对照;其他折叠 details */
 function renderFailedSamplesSection(
   failedSamples: FailedSampleDetail[],
   reportId: string | null,
@@ -528,29 +586,28 @@ function renderFailedSamplesSection(
     const modeTags = s.failureModes.length > 0
       ? `<span class="si-failure-modes">${s.failureModes.map((m) => `<span class="si-failure-mode">${e(m)}</span>`).join('')}</span>`
       : '';
-    const detail = s.illustration
-      ? renderIllustration(s.illustration, lang)
-      : `<div class="si-failure-no-detail">${lang === 'zh' ? '此样本没挑作"现场证据",完整 prompt / LLM 输出请看' : 'no inline detail, see'} ${traceLink || (lang === 'zh' ? '完整报告' : 'full report')}</div>`;
 
     const headInner = `<code class="si-failure-id">${e(s.sampleId)}</code>
       ${modeTags}
       <span class="si-failure-summary">${e(summary)}</span>
       ${traceLink}`;
 
+    const body = renderSampleDiff(s, lang);
+
     if (expanded) {
       return `<div class="si-failure-item si-failure-item--open">
         <div class="si-failure-head">${headInner}</div>
-        <div class="si-failure-detail">${detail}</div>
+        <div class="si-failure-detail">${body}</div>
       </div>`;
     }
     return `<details class="si-failure-item">
       <summary class="si-failure-head">${headInner}</summary>
-      <div class="si-failure-detail">${detail}</div>
+      <div class="si-failure-detail">${body}</div>
     </details>`;
   };
 
   return `<section class="si-failures">
-    <div class="si-failures-h">📋 ${lang === 'zh' ? `失败用例(${failedSamples.length} 条)` : `Failed samples (${failedSamples.length})`}</div>
+    <div class="si-failures-h">📋 ${lang === 'zh' ? `哪几条用例挂了(${failedSamples.length} 条)` : `Failed samples (${failedSamples.length})`}</div>
     ${failedSamples.map((s, i) => renderRow(s, i === 0)).join('')}
   </section>`;
 }
@@ -1043,6 +1100,26 @@ details.si-failure-item[open] > summary.si-failure-head::before { content:'▾ '
 .si-failure-detail { padding:0 12px 10px;border-top:1px solid var(--border) }
 .si-failure-detail .si-illustration { border-left:none;background:transparent;padding:8px 0 0 0 }
 .si-failure-no-detail { padding:6px 0;font-size:12px;color:var(--text-muted);font-style:italic }
+
+/* 单条 sample 的"期望 vs 实际 vs 卡在哪"diff 对照视图(modal v5 核心)*/
+.si-diff { display:flex;flex-direction:column;gap:8px;padding:10px 0 }
+.si-diff-row { display:grid;grid-template-columns:24px 50px 1fr;gap:10px;align-items:start;padding:8px 12px;border-radius:5px;line-height:1.55 }
+.si-diff-row--expected { background:rgba(94,130,82,.07);border-left:3px solid #5e8252 }
+.si-diff-row--actual   { background:rgba(176,128,48,.08);border-left:3px solid #b08030 }
+.si-diff-row--failed   { background:rgba(156,74,63,.07);border-left:3px solid #9c4a3f }
+.si-diff-icon { font-size:14px;line-height:1.5 }
+.si-diff-label { font-size:11.5px;font-weight:700;letter-spacing:0.04em;color:var(--text-secondary);padding-top:2px }
+.si-diff-row--expected .si-diff-label { color:#5e8252 }
+.si-diff-row--actual   .si-diff-label { color:#b08030 }
+.si-diff-row--failed   .si-diff-label { color:#9c4a3f }
+.si-diff-text { color:var(--text-primary);font-size:13px;word-break:break-word }
+.si-diff-text--mono { font-family:"SF Mono",Menlo,monospace;font-size:12px;background:var(--bg-surface);padding:2px 7px;border-radius:3px;width:fit-content }
+/* 原始 prompt/output 降级到二级折叠 */
+.si-diff-raw { margin-top:6px;border-top:1px dashed var(--border);padding-top:8px }
+.si-diff-raw > summary { cursor:pointer;font-size:11.5px;color:var(--text-muted);user-select:none;list-style:none }
+.si-diff-raw > summary::-webkit-details-marker { display:none }
+.si-diff-raw > summary:hover { color:var(--text-secondary) }
+.si-diff-raw-body { padding:6px 0 }
 
 /* 占位符标识 */
 .si-placeholder { background:rgba(176,128,48,.20);color:#7a5810;padding:1px 4px;border-radius:3px;font-weight:600;font-style:italic }
