@@ -191,5 +191,27 @@ describe('loadSamples', () => {
       assert.deepEqual(requires?.env, ['FOO']);
       assert.deepEqual(requires?.files, ['x.txt']);
     });
+
+    // P2-1 source-aware:目录模式下 baseDir = 目录自身,sourceFiles 列所有合并的文件
+    it('directory mode: baseDir 等于目录自身;sourceFiles 含所有合并文件(已排序)', () => {
+      const d = makeDir('source-aware');
+      writeFileSync(join(d, 'b.json'), JSON.stringify([{ sample_id: 's1', prompt: 'a' }]));
+      writeFileSync(join(d, 'a.json'), JSON.stringify([{ sample_id: 's2', prompt: 'b' }]));
+      const { baseDir, sourceFiles } = loadSamples(d);
+      assert.equal(baseDir, d);
+      assert.equal(sourceFiles.length, 2);
+      // 排序后:a.json 在前,b.json 在后
+      assert.ok(sourceFiles[0].endsWith('a.json'));
+      assert.ok(sourceFiles[1].endsWith('b.json'));
+    });
+
+    it('single-file mode: baseDir 等于 dirname(file);sourceFiles = [file]', () => {
+      const d = makeDir('singlefile');
+      const f = join(d, 'samples.json');
+      writeFileSync(f, JSON.stringify([{ sample_id: 's1', prompt: 'a' }]));
+      const { baseDir, sourceFiles } = loadSamples(f);
+      assert.equal(baseDir, d);
+      assert.deepEqual(sourceFiles, [f]);
+    });
   });
 });

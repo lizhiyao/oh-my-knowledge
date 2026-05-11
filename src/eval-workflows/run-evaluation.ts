@@ -211,7 +211,7 @@ export async function runEvaluation({
     : [{ executor: executorName, model: JUDGE_MODEL }];
   const judgeModel = effectiveJudgeModels[0].model;
   const judgeExecutorName = effectiveJudgeModels[0].executor;
-  const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires } = await prepareEvaluationRun({
+  const { samples, artifacts: resolvedArtifacts, tasks, variantNames, requires, samplesBaseDir, samplesSourceFiles } = await prepareEvaluationRun({
     samplesPath,
     skillDir,
     variantSpecs,
@@ -336,6 +336,8 @@ export async function runEvaluation({
   const judgeExecutor: ExecutorFn = createExecutor(judgeExecutorName || executorName);
   return executeEvaluationPipeline({
     samplesPath,
+    samplesBaseDir,
+    samplesSourceFiles,
     skillDir,
     samples,
     tasks,

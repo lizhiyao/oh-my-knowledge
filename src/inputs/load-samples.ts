@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import yaml from 'js-yaml';
 import type { Sample } from '../types/index.js';
 import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
@@ -23,6 +23,17 @@ export function parseYaml(text: string): unknown {
 export interface LoadSamplesResult {
   samples: Sample[];
   requires?: DependencyRequirements;
+  /** Samples bundle 的根目录,后续相对路径(mock.return_file / custom assertion fn /
+   *  test set hash 等)都该锚到这里:
+   *  - 单文件模式(samplesPath 指 .json/.yaml):baseDir = 文件所在目录
+   *  - 目录模式(samplesPath 指目录):baseDir = 目录自身
+   *  之前下游代码用 dirname(samplesPath) 算 baseDir,目录模式下得到的是上层目录(<skill>/),
+   *  导致 .omk/fixtures/*.json 这种自然布局找不到。 */
+  baseDir: string;
+  /** 当 baseDir 是目录模式(用户传的是目录而不是单文件),目录里参与合并的所有 sample 文件
+   *  绝对路径列表(已按文件名排序)。computeTestSetHash 用它枚举,不再对目录 readFileSync 抛 EISDIR。
+   *  单文件模式下是 [samplesPath]。 */
+  sourceFiles: string[];
 }
 
 /**
@@ -43,7 +54,8 @@ export function loadSamples(samplesPath: string): LoadSamplesResult {
   if (statSync(abs).isDirectory()) {
     return loadSamplesFromDir(abs);
   }
-  return loadSampleFile(abs);
+  const inner = loadSampleFile(abs);
+  return { ...inner, baseDir: dirname(abs), sourceFiles: [abs] };
 }
 
 /** Pull `.json/.yaml/.yml` siblings out of a directory, skipping omk's own report/health
@@ -68,9 +80,11 @@ function loadSamplesFromDir(dir: string): LoadSamplesResult {
   const allSamples: Sample[] = [];
   const seenIds = new Map<string, string>();  // sample_id → first file that defined it
   let mergedRequires: DependencyRequirements | undefined;
+  const sourceFiles: string[] = [];
 
   for (const f of files) {
     const path = join(dir, f);
+    sourceFiles.push(path);
     const single = loadSampleFile(path);
     for (const s of single.samples) {
       const prev = seenIds.get(s.sample_id);
@@ -85,7 +99,7 @@ function loadSamplesFromDir(dir: string): LoadSamplesResult {
     allSamples.push(...single.samples);
     mergedRequires = mergeRequires(mergedRequires, single.requires);
   }
-  return { samples: allSamples, requires: mergedRequires };
+  return { samples: allSamples, requires: mergedRequires, baseDir: dir, sourceFiles };
 }
 
 /** Union of string arrays for tools/files/env/preflight; undef when both sides empty. */
@@ -111,7 +125,9 @@ function mergeRequires(
   return out;
 }
 
-function loadSampleFile(samplesPath: string): LoadSamplesResult {
+interface LoadSamplesInner { samples: Sample[]; requires?: DependencyRequirements }
+
+function loadSampleFile(samplesPath: string): LoadSamplesInner {
   const rawContent = readFileSync(samplesPath, 'utf-8');
   const isYaml = samplesPath.endsWith('.yaml') || samplesPath.endsWith('.yml');
   const parsed: unknown = isYaml ? parseYaml(rawContent) : JSON.parse(rawContent);

@@ -182,15 +182,37 @@ async function persistFailedJob(state: EvaluationRunState, err: unknown): Promis
 }
 
 /**
- * Compute the mandatory test set watermark hash (spec §7.1). Returns the first
- * 12 hex chars of SHA-256 over the samples file contents, or null if the file
- * can't be read.
+ * Compute the mandatory test set watermark hash (spec §7.1).
+ *
+ * - 单文件 / sourceFiles 单元素:hash 该文件内容
+ * - 多文件(目录模式):按文件名排序后,把每个文件 basename + sha256 拼成 manifest,
+ *   对 manifest 再 sha256,前 12 hex chars。这样:
+ *     1) 加 / 删 sample 文件 → hash 变
+ *     2) 任一文件内容改 → hash 变
+ *     3) 同样文件不同顺序 → hash 不变(排序后稳定)
+ *
+ * 之前对目录 readFileSync() 抛 EISDIR → 返回 null,gap report 水印丢失。
  */
-function computeTestSetHash(samplesPath: string): string | null {
-  if (!samplesPath || !existsSync(samplesPath)) return null;
+export function _computeTestSetHashForTest(samplesPath: string, sourceFiles?: string[]): string | null {
+  return computeTestSetHash(samplesPath, sourceFiles);
+}
+
+function computeTestSetHash(samplesPath: string, sourceFiles?: string[]): string | null {
+  // 优先 sourceFiles(目录模式可靠),fallback samplesPath 兼容老调用
+  const files = sourceFiles && sourceFiles.length > 0
+    ? [...sourceFiles].sort()
+    : (samplesPath && existsSync(samplesPath) ? [samplesPath] : []);
+  if (files.length === 0) return null;
   try {
-    const content = readFileSync(samplesPath, 'utf-8');
-    return createHash('sha256').update(content).digest('hex').slice(0, 12);
+    if (files.length === 1) {
+      return createHash('sha256').update(readFileSync(files[0], 'utf-8')).digest('hex').slice(0, 12);
+    }
+    const manifest = files.map((f) => {
+      const base = f.split(/[/\\]/).pop() ?? f;
+      const inner = createHash('sha256').update(readFileSync(f, 'utf-8')).digest('hex');
+      return `${base}:${inner}`;
+    }).join('\n');
+    return createHash('sha256').update(manifest).digest('hex').slice(0, 12);
   } catch {
     return null;
   }
@@ -278,6 +300,7 @@ function finalizeEvaluationReport({
   variantNames,
   blind,
   samplesPath,
+  samplesSourceFiles,
   samples,
 }: {
   report: Report;
@@ -286,6 +309,8 @@ function finalizeEvaluationReport({
   variantNames: string[];
   blind: boolean;
   samplesPath: string;
+  /** 目录模式下,bundle 内所有源文件;单文件模式下 [samplesPath]。computeTestSetHash 用。 */
+  samplesSourceFiles?: string[];
   samples: Sample[];
 }): Report {
   // pass samples so analyzeResults can populate analysis.sampleQuality
@@ -310,7 +335,7 @@ function finalizeEvaluationReport({
   // apply. The samples-file SHA is the mandatory watermark required by spec §7.1.
   const gapReports = computeReportGapRates(report.results, variantNames);
   if (Object.keys(gapReports).length > 0) {
-    const testSetHash = computeTestSetHash(samplesPath);
+    const testSetHash = computeTestSetHash(samplesPath, samplesSourceFiles);
     for (const variant of variantNames) {
       const gr = gapReports[variant];
       if (!gr) continue;
@@ -329,6 +354,10 @@ function finalizeEvaluationReport({
 
 export interface EvaluationPipelineOptions {
   samplesPath: string;
+  /** Sample bundle 根目录。loadSamples 输出,缺省时 fallback dirname(samplesPath)。 */
+  samplesBaseDir?: string;
+  /** Sample bundle 内合并的源文件绝对路径列表。目录模式下用于 computeTestSetHash 遍历。 */
+  samplesSourceFiles?: string[];
   skillDir: string;
   samples: Sample[];
   tasks: Task[];
@@ -389,6 +418,8 @@ export interface EvaluationPipelineOptions {
 
 export async function executeEvaluationPipeline({
   samplesPath,
+  samplesBaseDir,
+  samplesSourceFiles,
   skillDir,
   samples,
   tasks,
@@ -513,6 +544,7 @@ export async function executeEvaluationPipeline({
       model,
       noJudge,
       samplesPath,
+      samplesBaseDir,
       concurrency,
       timeoutMs,
       noCache,
@@ -556,6 +588,7 @@ export async function executeEvaluationPipeline({
       variantNames,
       blind,
       samplesPath,
+      samplesSourceFiles,
       samples,
     });
     if (budgetExhausted) {

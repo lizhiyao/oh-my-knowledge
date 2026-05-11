@@ -27,6 +27,10 @@ export interface ExecuteTasksOptions {
   model: string;
   noJudge: boolean;
   samplesPath: string;
+  /** Sample bundle 根目录 — 单文件模式 = dirname(samplesPath),目录模式 = 目录自身。
+   *  传给 grade 当 samplesDir(custom assertion fn 相对路径锚点),也用作 mocksBaseDir 兜底。
+   *  缺省时仍 fallback dirname(resolve(samplesPath)),不破单文件老用法。 */
+  samplesBaseDir?: string;
   concurrency: number;
   timeoutMs?: number;
   noCache: boolean;
@@ -99,6 +103,7 @@ export async function executeTasks({
   model,
   noJudge,
   samplesPath,
+  samplesBaseDir,
   concurrency,
   timeoutMs,
   noCache,
@@ -157,7 +162,7 @@ export async function executeTasks({
     const total = tasks.length;
     onProgress?.({ phase: 'start', completed: idx, total, sample_id: task.sample_id, variant: task.variant });
 
-    const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose, effort);
+    const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose, effort, samplesBaseDir);
     const effectiveExecutorName = executorName || 'claude';
     const executorRuntime = getExecutorRuntimeFingerprint(effectiveExecutorName, model, {
       skillDir: executionPlan.input.skillDir,
@@ -251,7 +256,10 @@ export async function executeTasks({
               turns: execResult!.turns,
               mockStats: execResult!.mockStats,
             },
-            samplesDir: dirname(resolve(samplesPath)),
+            // 优先用 samplesBaseDir(sample bundle 根目录);未传时 fallback 老路径,
+            // 保证单文件 samples 老用法不破。samplesBaseDir 在目录模式下指向目录自身,
+            // 让 custom assertion fn 相对路径正确锚到 .omk/。
+            samplesDir: samplesBaseDir ?? dirname(resolve(samplesPath)),
             judgeRepeat,
             lengthDebias,
           });

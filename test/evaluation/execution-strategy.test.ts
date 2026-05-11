@@ -113,6 +113,26 @@ describe('resolveExecutionStrategy', () => {
     const plan = resolveExecutionStrategy(t, 'sonnet');
     assert.equal(plan.input.cwd, '/some/skill/root');
   });
+
+  // P2-1 source-aware:samplesBaseDir 优先级 > skillDir > cwd 当 mocksBaseDir 兜底
+  it('mocksBaseDir 优先用 samplesBaseDir(sample bundle 根),让 return_file 锚到 .omk/', () => {
+    const t = mockTask('skill', 'sys');
+    t._sample.mocks = [{ tool: 'Read', return: 'x' }];
+    t.cwd = '/some/cwd';
+    t.artifact.locator = '/skill-root/SKILL.md';
+    // samplesBaseDir 传入 .omk/ 目录,应该胜过 skillDir / cwd
+    const plan = resolveExecutionStrategy(t, 'sonnet', undefined, undefined, undefined, '/skill-root/.omk');
+    assert.equal(plan.input.mocksBaseDir, '/skill-root/.omk');
+  });
+
+  it('mocksBaseDir 没 samplesBaseDir 时 fallback skillDir(老行为)', () => {
+    const t = mockTask('skill', 'sys');
+    t._sample.mocks = [{ tool: 'Read', return: 'x' }];
+    t.cwd = '/some/cwd';
+    t.artifact.locator = '/skill-root/SKILL.md';
+    const plan = resolveExecutionStrategy(t, 'sonnet');
+    assert.equal(plan.input.mocksBaseDir, '/skill-root');
+  });
 });
 
 describe('buildVariantConfig skill isolation', () => {
