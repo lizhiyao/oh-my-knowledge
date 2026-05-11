@@ -109,12 +109,21 @@ function buildEvalSnapshot(report: EvaluationReport, variant: string): SkillEval
   }
 
   // verdict 是运行期计算的,不进 report,这里现算。
+  // multi-treatment 报告:computeVerdict 顶层 level 是 worst-of perPair,headline 也是
+  // worst pair 的描述;我们要的是"当前这个 variant 对应的 pair"。优先从 perPair 找,
+  // 找不到再 fallback report-level(单 treatment 时 perPair 也只有一条,等价)。
   let verdictLevel = 'unknown';
   let verdictHeadline = '';
   try {
     const v = computeVerdict(report);
-    verdictLevel = v.level;
-    verdictHeadline = v.headline;
+    const myPair = v.perPair?.find((p) => p.treatment === variant);
+    if (myPair) {
+      verdictLevel = myPair.level;
+      verdictHeadline = myPair.headline;
+    } else {
+      verdictLevel = v.level;
+      verdictHeadline = v.headline;
+    }
   } catch { /* 单 variant 报告 / control 缺失等情况 — 留 unknown 默认 */ }
 
   return {

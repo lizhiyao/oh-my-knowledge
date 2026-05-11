@@ -116,8 +116,14 @@ interface FailedSample {
   firstFailedAssertion?: string;
 }
 
-function getVariantName(report: EvaluationReport): string | null {
-  return report.meta.variants?.find((v) => v !== 'baseline') ?? null;
+/** Resolve which variant in `report` 是这个 entry / insight 关注的。
+ *  优先用调用方传的 `preferred`(entry.eval?.variantName);找不到再 fallback 到第一个非 baseline。
+ *  这避免 multi-treatment 报告里所有 detector 都默认拿第一个 treatment 的数据,导致
+ *  /skills/<treatment-2> 的详情页加载的是 treatment-1 的 failureModes / coverage / illustrations。 */
+function resolveVariant(report: EvaluationReport, preferred?: string | null): string | null {
+  const all = report.meta.variants ?? [];
+  if (preferred && all.includes(preferred)) return preferred;
+  return all.find((v) => v !== 'baseline') ?? null;
 }
 
 function summarizeToolCall(tc: ToolCallInfo): string {
@@ -161,6 +167,18 @@ function getFailedSamples(report: EvaluationReport, variant: string): FailedSamp
   return out;
 }
 
+/**
+ * 阈值依据:
+ *   >= 3:high — 同 failure mode 重复 3 次以上,可以排除偶发,定为强信号;
+ *   >= 2:medium — 重复出现意味着不是单条 sample 抽风,但 2 次还不算稳定模式;
+ *   1:low — 单条命中,可能是 sample 设计问题或 LLM 一次性失误,不阻塞但记录。
+ *
+ * 各 detector 内部一般也用 `>= 2` 作为 cluster 阈值(详情参考各 detector 注释)。
+ *
+ * 采样不足提醒:单 skill < 2 个非诱错 sample 时不会触发任何 cluster-based insight,
+ * 这是设计行为(没数据不下结论),用户层面应该看到"用例数 < 5,建议补样本"提示
+ * (在 detail page 空态有,list 页面 todo)。
+ */
 function severityOfCount(n: number): InsightSeverity {
   if (n >= 3) return 'high';
   if (n >= 2) return 'medium';
@@ -180,9 +198,9 @@ function pickIllustrations(samples: FailedSample[], n = 2): InsightIllustration[
 // ────────── 7 类 detection ──────────
 
 /** failureMode `环境拦截` cluster — 实际是 sample 设计问题,不是 skill 问题。 */
-function detectEnvironmentBlocked(evalReport: EvaluationReport | null): Insight | null {
+function detectEnvironmentBlocked(evalReport: EvaluationReport | null, variantName: string | null): Insight | null {
   if (!evalReport) return null;
-  const variant = getVariantName(evalReport);
+  const variant = resolveVariant(evalReport, variantName);
   if (!variant) return null;
   const failed = getFailedSamples(evalReport, variant);
   const blocked = failed.filter((f) => f.failureModes.includes('环境拦截'));
@@ -245,12 +263,13 @@ function detectSkillDocGap(
   doctor: SkillDoctorSnapshot | null,
   evalReport: EvaluationReport | null,
   observe: SkillObserveSnapshot | null,
+  variantName: string | null,
 ): Insight | null {
   const depRule = doctor?.results.find((r) => r.ruleId === 'dependencies_present'
     && (r.status === 'warn' || r.status === 'fail'));
   let failedDocSamples: FailedSample[] = [];
   if (evalReport) {
-    const variant = getVariantName(evalReport);
+    const variant = resolveVariant(evalReport, variantName);
     if (variant) {
       failedDocSamples = getFailedSamples(evalReport, variant).filter((f) =>
         f.rootCause.includes('skill_doc_missing') || f.rootCause.includes('skill_doc_unclear'),
@@ -356,9 +375,9 @@ function detectSkillDocGap(
 }
 
 /** failureMode 是 skill 写法层反模式(硬编码/幻觉/跳步/误读) — 真要改 skill。 */
-function detectFailureModeSkillIssue(evalReport: EvaluationReport | null): Insight | null {
+function detectFailureModeSkillIssue(evalReport: EvaluationReport | null, variantName: string | null): Insight | null {
   if (!evalReport) return null;
-  const variant = getVariantName(evalReport);
+  const variant = resolveVariant(evalReport, variantName);
   if (!variant) return null;
   const failed = getFailedSamples(evalReport, variant);
   if (failed.length === 0) return null;
@@ -547,11 +566,12 @@ function detectProductionInstability(
 function detectCoverageGap(
   evalReport: EvaluationReport | null,
   observe: SkillObserveSnapshot | null,
+  variantName: string | null,
 ): Insight | null {
   if (!observe || observe.gapRate === 0) return null;
   let evalUncovered: string[] = [];
   if (evalReport?.analysis?.coverage) {
-    const variant = getVariantName(evalReport);
+    const variant = resolveVariant(evalReport, variantName);
     if (variant && evalReport.analysis.coverage[variant]) {
       evalUncovered = evalReport.analysis.coverage[variant].uncoveredFiles || [];
     }
@@ -677,9 +697,10 @@ function detectSkillTooLong(
 function detectOmkDoctorBlindspot(
   doctor: SkillDoctorSnapshot | null,
   evalReport: EvaluationReport | null,
+  variantName: string | null,
 ): Insight | null {
   if (!evalReport) return null;
-  const variant = getVariantName(evalReport);
+  const variant = resolveVariant(evalReport, variantName);
   if (!variant) return null;
   const failed = getFailedSamples(evalReport, variant);
   const SKILL_MODES = new Set(['硬编码值', '幻觉输出', '工作流跳步', '误读约束']);
@@ -748,15 +769,20 @@ export function detectInsights(
   entry: SkillIndexEntry,
   evalReport: EvaluationReport | null,
 ): Insight[] {
+  // entry.eval.variantName 是当前 skill entry 对应的 treatment variant 名;
+  // multi-treatment 报告里同一份 evalReport 会被 N 个 entry 共用,每个 entry 都该
+  // 只看自己 variant 那部分数据,否则 /skills/<treatment-2> 会看到 treatment-1 的
+  // failureModes / coverage / illustrations / verdict。
+  const variantName = entry.eval?.variantName ?? null;
   const out: Insight[] = [];
   const detectors: Array<() => Insight | null> = [
-    () => detectEnvironmentBlocked(evalReport),
-    () => detectSkillDocGap(entry.doctor, evalReport, entry.observe),
-    () => detectFailureModeSkillIssue(evalReport),
-    () => detectCoverageGap(evalReport, entry.observe),
+    () => detectEnvironmentBlocked(evalReport, variantName),
+    () => detectSkillDocGap(entry.doctor, evalReport, entry.observe, variantName),
+    () => detectFailureModeSkillIssue(evalReport, variantName),
+    () => detectCoverageGap(evalReport, entry.observe, variantName),
     () => detectProductionInstability(entry.doctor, entry.observe),
     () => detectSkillTooLong(entry.doctor, entry.observe),
-    () => detectOmkDoctorBlindspot(entry.doctor, evalReport),
+    () => detectOmkDoctorBlindspot(entry.doctor, evalReport, variantName),
   ];
   for (const detect of detectors) {
     const ins = detect();
