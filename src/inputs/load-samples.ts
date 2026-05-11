@@ -194,6 +194,22 @@ function loadSampleFile(samplesPath: string): LoadSamplesInner {
         `samples[${i}] (${sample.sample_id}) invalid construct: must be a string (got ${typeof sample.construct})`,
       );
     }
+
+    // tools_called / tools_not_called: values 必须非空。空 values 在 grader 里
+    // 永远 passed=true 但 weight=0,是无意义占位,污染断言计数(N/M 看上去比真实
+    // 通过率高)+ 让 generator 输出可观测的 garbage 沉淀到磁盘。直接拒掉,作者
+    // 应改成具体工具名或删除这条断言。
+    const assertions = Array.isArray(sample.assertions) ? sample.assertions : [];
+    for (const [j, a] of assertions.entries()) {
+      if (a?.type !== 'tools_called' && a?.type !== 'tools_not_called') continue;
+      const vals = Array.isArray(a.values) ? a.values : [];
+      if (vals.length === 0 || !vals.every((v) => typeof v === 'string' && v.length > 0)) {
+        throw new Error(
+          `samples[${i}] (${sample.sample_id}) assertions[${j}] ${a.type}: values 必须是非空字符串数组 — ` +
+          `写出要检查的具体工具名(如 ["Bash", "Read"]),或删除这条断言`,
+        );
+      }
+    }
   }
 
   return { samples, requires };

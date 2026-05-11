@@ -291,4 +291,28 @@ describe('loadSamples 对象包装格式', async () => {
     for (const f of cleanups) { try { unlinkSync(f); } catch {} }
     cleanups.length = 0;
   });
+
+  it('拒绝 tools_not_called values 为空数组', () => {
+    const p = join(tmpdir(), `omk-noise-assertion-${Date.now()}.json`);
+    cleanups.push(p);
+    writeFileSync(p, JSON.stringify([{
+      sample_id: 's1', prompt: 'p',
+      assertions: [{ type: 'tools_not_called', values: [], weight: 0 }],
+    }]));
+    assert.throws(() => loadSamples(p), /tools_not_called.*非空/);
+    for (const f of cleanups) { try { unlinkSync(f); } catch {} }
+    cleanups.length = 0;
+  });
+
+  it('拒绝 tools_called values 缺失', () => {
+    const p = join(tmpdir(), `omk-noise-assertion-${Date.now()}.json`);
+    cleanups.push(p);
+    writeFileSync(p, JSON.stringify([{
+      sample_id: 's1', prompt: 'p',
+      assertions: [{ type: 'tools_called', weight: 1 }],
+    }]));
+    assert.throws(() => loadSamples(p), /tools_called.*非空/);
+    for (const f of cleanups) { try { unlinkSync(f); } catch {} }
+    cleanups.length = 0;
+  });
 });

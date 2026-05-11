@@ -250,6 +250,16 @@ function evalAssertion(
         JSON.stringify(tc.input || '').toLowerCase().includes(expected),
       );
     }
+    case 'tool_input_not_contains': {
+      const sep = String(assertion.value).indexOf(':');
+      if (sep <= 0) return false;
+      const targetTool = String(assertion.value).slice(0, sep).toLowerCase();
+      const expected = String(assertion.value).slice(sep + 1).toLowerCase();
+      return !toolCalls.some((tc) =>
+        tc.tool.toLowerCase() === targetTool &&
+        JSON.stringify(tc.input || '').toLowerCase().includes(expected),
+      );
+    }
     // mock_hit:校验"驱动流程"——指定 mock 是否被命中至少 N 次
     // value 是 mockStats.perMock 的 key,格式 "Tool:N"(N 为 sample.mocks 数组里的 1-based 序号)
     // threshold 可选,默认 >=1

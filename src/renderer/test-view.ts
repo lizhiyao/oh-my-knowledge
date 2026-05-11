@@ -64,14 +64,14 @@ export function findAssertionTurn(
   turnByCallSig: Map<string, number>,
 ): { turn: number | null; matchedCall?: ToolCallInfo } {
   const type = assertion.type;
-  if (type === 'tool_input_contains' || type === 'tool_output_contains') {
+  if (type === 'tool_input_contains' || type === 'tool_output_contains' || type === 'tool_input_not_contains') {
     const value = String(assertion.value ?? detail.value ?? '');
     const { tool, needle } = parseToolColonValue(value);
     for (const tc of toolCalls) {
       if (tool && tc.tool !== tool) continue;
-      const target = type === 'tool_input_contains'
-        ? JSON.stringify(tc.input ?? '')
-        : JSON.stringify(tc.output ?? '');
+      const target = type === 'tool_output_contains'
+        ? JSON.stringify(tc.output ?? '')
+        : JSON.stringify(tc.input ?? '');
       if (target.includes(needle)) {
         return { turn: turnByCallSig.get(toolCallSignature(tc)) ?? null, matchedCall: tc };
       }

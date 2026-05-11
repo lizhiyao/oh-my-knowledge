@@ -44,18 +44,42 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 - sample_id: 唯一标识，格式为 s001, s002, ...
 - prompt: 用户会向使用此 skill 的 AI 提出的典型问题或指令
 - context: 可选，附加上下文信息（如代码片段、文档段落等），仅在需要时提供
-- rubric: 评分标准，描述一个好的回答应该具备什么特征（1-2 句话）
+- rubric: 评分标准，描述一个好的回答应该具备什么特征（1-2 句话）。
+  **禁忌(时间敏感数据)**: 不要在 rubric 里硬编码具体日期 / 时间戳 / 工号 / IP / 临时 token 等
+  会随评测时刻变化的具体值 — 跑评测时这些值会跟当时实际值不符,assertion 必挂。
+  - 错(❌): "应写入 temp/2026-05-07/technical/ 目录" — 2026-05-08 跑就过期
+  - 对(✅): "应写入 temp/<today>/technical/ 目录(today=评测当天日期)" — 用占位描述,
+    对应 assertion 也用 regex / tool_input_contains 抓**模式**(如 \`temp/\\d{4}-\\d{2}-\\d{2}/technical/\`)
+    而不是精确字符串。
+  - 占位符约定: \`<today>\` / \`<now>\` / \`<current_user>\` / \`<random_id>\` 等用尖括号包,
+    跟 LLM 说"这是占位,跑时用当时实际值替换"。
 - assertions: 3-5 个断言检查。**优先选能直接验证工具调用/流程的类型,把"LLM 文本输出"当兜底**:
   工具/流程类(强信号,首选):
   - { "type": "tool_input_contains", "value": "Bash:tag-list", "weight": 1 }
         ↑ 检查某 toolCall 的 input(JSON.stringify 后)包含子串。格式: "Tool:期望子串"。
         用于断言"LLM 调对了命令/参数"——这才是 skill 知识的真凭据。
+        **子串选词原则**: 选**语义关键词**(命令名 / 关键工具名 / 关键参数 / SDK 函数名),
+        不要选**完整命令字符串 / 精确路径 / flag 完整形态**。因为 LLM 写法常有等价变体,
+        精确字符串会让正确行为也判挂。
+        - 错(❌): \`tool_input_contains "Bash:grep '^temp/$' .gitignore"\` —
+          LLM 用 \`grep -q\` 或加 \`~/\` 前缀就挂(全是等价写法)
+        - 对(✅): \`tool_input_contains "Bash:grep"\` + \`tool_input_contains "Bash:.gitignore"\` —
+          抓"用了 grep" + "操作的是 .gitignore" 这两件语义事
+        - 错(❌): \`tool_input_contains "Bash:git push origin master"\` — 分支名 / remote 名都有变体
+        - 对(✅): \`tool_input_contains "Bash:git push"\` — 只抓核心动作 "git push"
+        路径类同理:用 \`temp/\` 而不是 \`/abs/path/to/temp/\`,用 \`.json\` 而不是完整文件名。
   - { "type": "tool_output_contains", "value": "Read:DevAPI", "weight": 0.5 }
         ↑ 检查某工具返回(被 mock 的内容)的子串,格式同上。验证"LLM 看到了关键中间产物"。
   - { "type": "tools_called", "values": ["Bash", "Read"], "weight": 0.5 }
         ↑ 必须调过这些工具。
   - { "type": "tools_not_called", "values": ["searchWorkItem"], "weight": 0.5 }
-        ↑ 不得调用某工具(典型场景:不要走错的 MCP / 旧接口)。
+        ↑ 不得调用某工具(典型场景:不要走错的 MCP / 旧接口)。values 必须非空,
+        否则 loader 直接拒;如果想表达"不要写到某路径",用 tool_input_not_contains。
+  - { "type": "tool_input_not_contains", "value": "Write:/tmp/", "weight": 0.5 }
+        ↑ **反向**版 tool_input_contains:某工具的输入参数**不应**包含某子串。
+        典型场景:工作流不应踩到某路径 / 不该传某 flag / 临时文件不应进永久目录。
+        和 not_contains 的区别 — 这条只看工具调用参数,**不看 LLM 最终文本**,
+        所以 LLM 在总结里说"我没写到 X" 不会假阳性触发。
   - { "type": "mock_hit", "value": "Bash:2", "weight": 1 }
         ↑ 校验"驱动流程": sample.mocks 数组里第 N 条(1-based)是否被命中至少一次。
         例: mocks=[A,B,C](A=PROJECT 空 / B=WORKSPACE 命中 / C=search),
@@ -66,6 +90,9 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
         ↑ 只查 LLM 给用户的最终文本,**不查 toolCall**。命令名/参数大概率不出现在最终回答里,
         所以"LLM 是否调对工具"绝不要用 contains,要用 tool_input_contains。
   - { "type": "not_contains", "value": "...", "weight": 0.5 }
+        ↑ 只查 LLM **最终文本**不应出现某词(如 hedging 用语 "I'm not sure")。
+        **不要**用它表达"工作流不应踩到 X" — LLM 在总结里复述"已避开 X" 会自触发。
+        要测"工具调用层面不该走" → 用 tool_input_not_contains 或 tools_not_called。
   - { "type": "regex", "pattern": "...", "weight": 1 }
 - environment: 可选,对象。**评测环境的"已就绪"声明**,LLM 看到后跳过环境探测直接进工作流。
   字段:
@@ -81,8 +108,22 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
   评测目的是在隔离环境下测 LLM 行为,不是测真接口可用性 — 总是 strict。
 - mocks: 可选,数组。该 sample 跑评测时拦截工具调用 + 返回 stub。**避免真调外部接口/CLI/MCP/写状态**。
   生成原则:
-    1. **mocks 只覆盖业务调用,不覆盖环境探测** — 环境前置由 \`environment\` 字段声明,
-       LLM 不会再做 Glob / find / which / test -f / Read 这些探测,所以也不需要 mock。
+    1. **mocks 覆盖范围 = 业务调用 + 工作流前置 / 校验步骤** —
+       (a) 业务调用(submit / create / push / search ...) 必 mock
+       (b) **工作流前置 / 校验步骤**(skill 强制要求的检查动作,如 \`ls -la\` 检查目录是否存在、
+           \`grep -q\` 检查 .gitignore、\`git status\` 看是否干净等)**也必须 mock**,因为它们
+           会被 mocks-strict 拦截 — 这是 obsidian / 知识库整理 / 部署类 skill 大量挂在
+           "环境拦截"的根因。
+           **关键**:这些前置步骤的 assertion 通常是 \`tools_called: ["Bash"]\` 或
+           \`tool_input_contains "ls -la"\`,意味 LLM 必须真调这些命令。如果 mock 没盖,
+           LLM 行为完全正确还是会因为 mocks-strict 拦截而挂。
+           - 错(❌):rubric 要求"先 ls -la 检查目录",但 mocks 数组里没 \`{tool:"Bash",
+             match:{command_glob:"ls *"},return:{...}}\`,LLM 调 ls 就被拦,工作流断在第 0 步
+           - 对(✅):写一条宽 mock:\`{tool:"Bash", match:{command_glob:"ls *"},
+             return:{stdout:"<模拟目录列表>", exit:0}}\` — \`command_glob\` 用 \`*\` 兜底各种
+             ls 参数变体(\`ls\` / \`ls -la\` / \`ls -d\` / \`ls /xx\` 全命中)
+       (c) 单纯"已就绪"声明(凭证文件 / 业务 CLI 是否安装)还是走 \`environment\` 字段,
+           不需要 LLM 真调命令检查 — environment 字段就是告诉 LLM "这些不用检查"。
     2. **mock 数据要"驱动流程"而非"提前给答案"** — 这是关键:
        - 如果 skill 描述的工作流是多步的(A→B→C),mock 数据要**让最终答案只在最后一步出现**,
          前面的 mock 只能给出"推进到下一步必需的中间产物",不能直接揭示完整答案。
@@ -132,7 +173,10 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
    **断言类型选择口诀**:
    - 测"LLM 调了哪个工具/什么命令" → 用 tool_input_contains 或 tools_called(不要用 contains)
    - 测"LLM 走完了流程的某一步" → 用 mock_hit(配合 sample.mocks 的"驱动流程"设计,见下文)
-   - 测"LLM 没用错误的工具" → 用 tools_not_called
+   - 测"LLM 没用错误的工具" → 用 tools_not_called(values 必须给具体工具名,不能空数组)
+   - 测"LLM 工作流不应踩到某路径 / 不该传某 flag" → 用 tool_input_not_contains
+        (注意:**不要**用 not_contains 表达这件事 — not_contains 扫的是 LLM 最终文本,
+         LLM 在总结里写"已排除 X" 会自触发假阳性,这是 obsidian / 知识库类 sample 的高频坑)
    - 测"LLM 最终回答提到了某事实/数值" → 用 contains(只在最终文本上有意义的场景用)
    优先组合使用,典型 sample 通常有 2 条 tool_input_contains + 1 条 tools_not_called + 1 条 contains。
 7. 如果 skill 涉及外部调用(MCP/CLI/HTTP/文件读),**必须**为本 sample 生成 mocks 数组,
@@ -309,6 +353,24 @@ export function sanitizeGeneratedSamples(samples: Sample[]): { stripped: string[
     if (s.tripwire !== undefined && typeof s.tripwire !== 'boolean') {
       stripped.push(`samples[${i}].tripwire (${typeof s.tripwire})`);
       delete (s as { tripwire?: unknown }).tripwire;
+    }
+
+    // assertions 内 tools_called / tools_not_called 的 values 必须非空。
+    // 空 values 在 grader 里恒过 weight=0,是 noise 占位 — loader 会直接拒,
+    // 在 generator boundary 提前 strip 这条 assertion,避免落盘的 sample 跑不动。
+    if (Array.isArray(s.assertions)) {
+      const before = s.assertions.length;
+      s.assertions = s.assertions.filter((a, j) => {
+        if (a?.type !== 'tools_called' && a?.type !== 'tools_not_called') return true;
+        const vals = Array.isArray(a.values) ? a.values : [];
+        const ok = vals.length > 0 && vals.every((v) => typeof v === 'string' && v.length > 0);
+        if (!ok) stripped.push(`samples[${i}].assertions[${j}].${a.type} (empty values)`);
+        return ok;
+      });
+      // 全部 assertions 被 strip 完留空数组也保留 — sample 仍可用纯 LLM judge 评。
+      if (s.assertions.length === 0 && before > 0) {
+        delete (s as { assertions?: unknown }).assertions;
+      }
     }
 
     // environment 校验:必须是对象,内部字段要么是 string[] 要么是 string。

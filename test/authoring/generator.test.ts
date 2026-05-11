@@ -117,6 +117,31 @@ describe('sanitizeGeneratedSamples', () => {
     assert.equal(samples[0].sample_id, 's001');
   });
 
+  it('strips tools_not_called with empty values (noise assertion)', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [
+        { type: 'tool_input_contains', value: 'Bash:foo', weight: 1 },
+        { type: 'tools_not_called', values: [], weight: 0 },
+      ],
+    }];
+    const { stripped } = sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].assertions?.length, 1, 'empty tools_not_called dropped');
+    assert.equal(samples[0].assertions?.[0].type, 'tool_input_contains');
+    assert.ok(stripped.some((s) => s.includes('tools_not_called')), 'should warn');
+  });
+
+  it('strips tools_called with non-string entries', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [
+        { type: 'tools_called', values: ['Bash', '', null as unknown as string], weight: 1 },
+      ],
+    }];
+    sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].assertions, undefined, 'all assertions stripped → undefined');
+  });
+
   it('auto-sets mocksStrict=true when mocks exist but mocksStrict missing', () => {
     const samples: Sample[] = [{
       sample_id: 's1',
