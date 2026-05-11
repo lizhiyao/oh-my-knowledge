@@ -2,7 +2,8 @@
  * Executor result cache.
  *
  * Caches successful executor results to disk to avoid redundant API calls.
- * Cache key v4 = sha256(model + system + prompt + cwd + allowedSkills + executor + runtime).
+ * Cache key v5 = sha256(model + system + prompt + cwd + allowedSkills + executor +
+ *                       runtime + mocks + mocksStrict + effort).
  * Loaded into memory on init, flushed to disk on save().
  *
  * Prefix bumps intentionally invalidate old entries when construct-validity
@@ -10,6 +11,10 @@
  * - v2: allowedSkills / strict isolation
  * - v3: executor name
  * - v4: executor runtime fingerprint
+ * - v5: effort(同 model/prompt 不同 effort 的输出本就该独立 cache,旧 cache 命中会让
+ *       报告 meta 标的 effort 跟实际跑的 effort 不一致 — 测量可比性污染);
+ *       同时 cache.set 不再砍 turns / toolCalls — 工具类断言 + diagnostic 要看 trace,
+ *       砍掉的话 cached rerun 会让工具断言为空、diagnostic 没真实证据,跟 cold run 不一致
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -40,10 +45,10 @@ export function createCache(cacheDir: string): ExecutorCache {
     },
 
     set(key: string, value: ExecResult): void {
-      const cacheable = { ...value };
-      delete cacheable.turns;
-      delete cacheable.toolCalls;
-      store[key] = cacheable;
+      // 保留完整 ExecResult(含 turns / toolCalls):工具类 assertion (tool_called /
+      // tool_input_contains / tools_called)和 diagnostic 要看 trace,砍掉的话 cached
+      // rerun 进 grade() 时工具断言为空、diagnostic 没真实证据,跟 cold run 不一致。
+      store[key] = { ...value };
       dirty = true;
     },
 
@@ -72,6 +77,10 @@ export function cacheKey(
   mocks?: unknown,
   /** Sample.mocksStrict 也进 key:strict on/off 行为不同,不能共享 cache。 */
   mocksStrict?: boolean,
+  /** Executor effort 也进 key:effort 'low'/'medium'/'high' 改变 LLM 思考预算,
+   *  输出/工具调用/分数都可能不同,跨 effort 共享 cache 会让报告 meta 标的 effort
+   *  跟实际生成的 effort 不一致,违反"两份报告比分数前先比 cliVersion / effort"语义。 */
+  effort?: string,
 ): string {
   // allowedSkills 序列化:undefined → "" / [] → "[]" / [...] → 排序后 JSON。
   // 排序保证 ["a","b"] 和 ["b","a"] 命中同一缓存(语义等价)。
@@ -84,11 +93,12 @@ export function cacheKey(
     ? ''
     : JSON.stringify(mocks);
   const strictStr = mocksStrict ? '1' : '';
-  // executor + runtime 进 cache key:同 model 名走不同 executor 或同 executor
+  const effortStr = effort || '';
+  // executor + runtime + effort 进 cache key:同 model 名走不同 executor 或同 executor
   // 换 binary/SDK 版本时输出可能不同,旧 cache 不可复用。
   const hash = createHash('sha256')
-    .update(`${model || ''}\n${system || ''}\n${prompt || ''}\n${cwd || ''}\n${isoStr}\n${executor || ''}\n${runtimeFingerprint || ''}\n${mockStr}\n${strictStr}`)
+    .update(`${model || ''}\n${system || ''}\n${prompt || ''}\n${cwd || ''}\n${isoStr}\n${executor || ''}\n${runtimeFingerprint || ''}\n${mockStr}\n${strictStr}\n${effortStr}`)
     .digest('hex')
     .slice(0, 16);
-  return `v4:${hash}`;
+  return `v5:${hash}`;
 }

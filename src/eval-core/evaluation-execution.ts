@@ -178,6 +178,7 @@ export async function executeTasks({
       executorRuntime.fingerprint,
       executionPlan.input.mocks,
       executionPlan.input.mocksStrict,
+      effort,
     );
     const cached = cache?.get(key);
     const execStart = Date.now();
