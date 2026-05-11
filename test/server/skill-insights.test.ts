@@ -191,6 +191,55 @@ describe('detectInsights — doctor-blindspot', () => {
   });
 });
 
+describe('detectInsights — environment-blocked-mocks (sample-author)', () => {
+  it('两条 sample 共享 环境拦截 failureMode → medium severity + sample-author audience', () => {
+    const report = mkEvalReport('test-skill', [
+      mkResult('s1', 'test-skill', { failureModes: ['环境拦截'] }),
+      mkResult('s2', 'test-skill', { failureModes: ['环境拦截'] }),
+    ]);
+    const insights = detectInsights(mkEntry(), report);
+    const blocked = insights.find((i) => i.id === 'environment-blocked-mocks');
+    assert.ok(blocked, 'should detect environment-blocked-mocks insight');
+    assert.equal(blocked!.affectedCount, 2);
+    assert.equal(blocked!.severity, 'medium');
+    assert.equal(blocked!.audience, 'sample-author', '应归 sample-author 不是 skill-author');
+    assert.deepEqual(blocked!.stageRefs?.evalSampleIds, ['s1', 's2']);
+  });
+
+  it('三条以上 → high severity', () => {
+    const report = mkEvalReport('test-skill', [
+      mkResult('s1', 'test-skill', { failureModes: ['环境拦截'] }),
+      mkResult('s2', 'test-skill', { failureModes: ['环境拦截'] }),
+      mkResult('s3', 'test-skill', { failureModes: ['环境拦截'] }),
+    ]);
+    const insights = detectInsights(mkEntry(), report);
+    const blocked = insights.find((i) => i.id === 'environment-blocked-mocks');
+    assert.ok(blocked);
+    assert.equal(blocked!.severity, 'high');
+  });
+
+  it('单条 sample 不触发(cluster 阈值 < 2 return null)', () => {
+    const report = mkEvalReport('test-skill', [
+      mkResult('s1', 'test-skill', { failureModes: ['环境拦截'] }),
+    ]);
+    const insights = detectInsights(mkEntry(), report);
+    assert.equal(insights.find((i) => i.id === 'environment-blocked-mocks'), undefined);
+  });
+
+  it('环境拦截 + 其它 failureMode 混合,只统计 环境拦截 那部分', () => {
+    const report = mkEvalReport('test-skill', [
+      mkResult('s1', 'test-skill', { failureModes: ['环境拦截'] }),
+      mkResult('s2', 'test-skill', { failureModes: ['环境拦截', '工具误用'] }),
+      mkResult('s3', 'test-skill', { failureModes: ['工作流跳步'] }), // 不算
+    ]);
+    const insights = detectInsights(mkEntry(), report);
+    const blocked = insights.find((i) => i.id === 'environment-blocked-mocks');
+    assert.ok(blocked);
+    assert.equal(blocked!.affectedCount, 2);
+    assert.deepEqual(blocked!.stageRefs?.evalSampleIds, ['s1', 's2']);
+  });
+});
+
 describe('detectInsights — failure-mode-cluster', () => {
   it('两条 sample 共享 工作流跳步 → medium', () => {
     const report = mkEvalReport('test-skill', [

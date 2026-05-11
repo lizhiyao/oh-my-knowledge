@@ -1076,13 +1076,24 @@ const TREND_INIT_SCRIPT = `
   function showFallback(canvas, msg){
     if (!canvas) return;
     var wrap = canvas.parentElement;
-    if (!wrap) return;
+    if (!wrap || wrap.dataset.omkFallback === '1') return;
+    wrap.dataset.omkFallback = '1'; // 防止异步路径多次写入
     wrap.innerHTML = '<div class="si-trend-fallback">' +
       '<div class="si-trend-fallback-icon">📉</div>' +
       '<div class="si-trend-fallback-msg">' + msg + '</div>' +
-      '<div class="si-trend-fallback-hint">/static/chart.js 没加载成功;数据仍可从下方"最新指标速览"看,或在浏览器控制台看具体错误。</div>' +
+      '<div class="si-trend-fallback-hint">数据仍可从下方"最新指标速览"看,或在浏览器控制台看具体错误。</div>' +
       '</div>';
   }
+  // 异步兜底:Chart 内部 RAF / setTimeout 抛错会冒泡到 window.error,这里捕获后
+  // 把 trend canvas 区域降级,不让"图表 init 看似成功但渲染失败"留出空白。
+  window.addEventListener('error', function(ev){
+    var canvas = document.getElementById('trend-chart');
+    if (!canvas) return;
+    var msg = (ev && ev.message) || '';
+    if (/chart/i.test(msg) || (ev.filename && /chart\\.js$/i.test(ev.filename))) {
+      showFallback(canvas, '趋势图渲染异常');
+    }
+  });
   function init(){
     var canvas = document.getElementById('trend-chart');
     if (!canvas) return;
@@ -1096,6 +1107,16 @@ const TREND_INIT_SCRIPT = `
     try {
       var data = JSON.parse(raw);
       var links = rawLinks ? JSON.parse(rawLinks) : null;
+      // 防御:dataset data 长度跟 labels 严重不一致直接降级,别让 chart 静默画空 canvas
+      if (data && Array.isArray(data.labels) && Array.isArray(data.datasets)) {
+        var bad = data.datasets.some(function(ds){
+          return !Array.isArray(ds.data) || ds.data.length !== data.labels.length;
+        });
+        if (bad) {
+          showFallback(canvas, '趋势图数据格式异常');
+          return;
+        }
+      }
       new Chart(canvas, {
         type: 'line',
         data: data,

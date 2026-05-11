@@ -171,11 +171,25 @@ function buildEvalSnapshot(report: EvaluationReport, variant: string): SkillEval
   };
 }
 
+/**
+ * Per-skill 健康色带。**这跟 skill-health-analyzer 的 overall.healthBand 是两个视角**:
+ *   - overall.healthBand(skill-health-analyzer.ts:healthBandOf):只看 weightedGapRate,
+ *     回答"用户问题是否被知识库覆盖"(对外能力,跨 skill 平均)
+ *   - PER_SKILL_BAND(本函数):综合 toolFailureRate + gap,回答"这个 skill 自身跑得稳不稳"
+ *     (skill 内视角,失败工具调用 + 缺知识都算)
+ * 不要把两边合并 — 语义不同,跨版本可比性也独立维护。
+ *
+ * 调整阈值会让历史 observe report 的 band 重新分类,UI 颜色变;
+ * **不算 BREAKING-COMPARABILITY**(只影响 Studio 列表视觉,不动 grading/judge 输出)。
+ */
+const PER_SKILL_BAND_RED_FAILURE_RATE = 0.4;       // 工具失败率 ≥ 40% → red
+const PER_SKILL_BAND_YELLOW_FAILURE_RATE = 0.2;    // ≥ 20% → yellow
+const PER_SKILL_BAND_YELLOW_GAP_RATE = 0.3;        // 加权 gap ≥ 30% → yellow
+
 function bandFromObserveHealth(h: { gap?: { weightedGapRate?: number }; toolFailureRate: number }): 'green' | 'yellow' | 'red' {
-  // 跟 observability/skill-health-analyzer.ts 的阈值口径对齐。
-  if (h.toolFailureRate >= 0.4) return 'red';
+  if (h.toolFailureRate >= PER_SKILL_BAND_RED_FAILURE_RATE) return 'red';
   const gap = h.gap?.weightedGapRate ?? 0;
-  if (gap >= 0.3 || h.toolFailureRate >= 0.2) return 'yellow';
+  if (gap >= PER_SKILL_BAND_YELLOW_GAP_RATE || h.toolFailureRate >= PER_SKILL_BAND_YELLOW_FAILURE_RATE) return 'yellow';
   return 'green';
 }
 

@@ -295,9 +295,10 @@ export async function executeTasks({
     if (shouldDiagnose) {
       try {
         const { runDiagnostic } = await import('../grading/diagnostic.js');
-        const claudeJudgeName = Object.keys(judgeExecutors).find((name) => name === 'claude');
+        // diagnostic 优先用 'claude' executor(claude 模型上跑 diagnostic 历史校准最好);
+        // 没有就用第一个可用的 judge executor 兜底。
         const firstJudgeName = Object.keys(judgeExecutors)[0];
-        const diagExecutorName = claudeJudgeName || firstJudgeName;
+        const diagExecutorName = ('claude' in judgeExecutors) ? 'claude' : firstJudgeName;
         const diagExecutor = diagExecutorName ? judgeExecutors[diagExecutorName] : executor;
         // 模型选择:claude executor 走 'haiku' 标配;非 claude executor 沿用它在
         // judgeModels 里配的 model(用户已经验证可用)。
