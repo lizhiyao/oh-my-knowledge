@@ -75,6 +75,16 @@ function salvageJudgeResponse(text: string): JudgeResponse | null {
 //   bump 原因:之前 trace 只给 tool 名 + 分布,wrapper-style skill(mcporter / code-host CLI 等)
 //   被判官当成"只调了 Bash,没用 skill 指定的 MCP 工具"——结论事实错误。
 //   tool input 预览让判官能识别 `Bash: mcporter --tool skylark_xxx` 内的真实语义调用。
+//
+// ⚠️ 命名约定(下次 bump 时执行):
+//   当前 debias OFF: v3-* / debias ON: v4-* 编号不对称(历史上 debias OFF 跑 v2→v3,
+//   debias ON 跑 v3→v4)。这次再 bump 会让两条线持续偏移 v4/v5、v5/v6、…
+//
+//   下次 bump 时统一为单一主序号 + features 后缀,如:
+//     JUDGE_PROMPT_VERSION_DEBIAS_OFF = 'v5-cot-<features>'
+//     JUDGE_PROMPT_VERSION_DEBIAS_ON  = 'v5-cot-<features>-len'
+//   这样 hash 测试自然分两条,主序号清晰对齐,features 字段独立描述差异。
+//   本 PR 不在意命名,只是把约定写下来,避免下次又跟着错误偏移走。
 const JUDGE_PROMPT_VERSION_DEBIAS_OFF = 'v3-cot-toolargs';
 const JUDGE_PROMPT_VERSION_DEBIAS_ON = 'v4-cot-len-args';
 
