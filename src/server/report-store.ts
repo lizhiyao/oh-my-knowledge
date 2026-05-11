@@ -4,7 +4,7 @@
  * Can be replaced with database, S3, etc.
  */
 
-import { readdir, readFile, writeFile, unlink, access, mkdir, rename } from 'node:fs/promises';
+import { readdir, readFile, writeFile, unlink, access, mkdir, rename, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { BatchEvaluationReport, EvaluationJob, EvaluationReport, JobStore, ReportDocument, ReportMeta, ReportStore, VariantSummary } from '../types/index.js';
 
@@ -71,12 +71,35 @@ export function createFileStore(dir: string): ReportStore {
     return report.kind === 'evaluation';
   }
 
+  // Studio 每个 / 和 /skills/<name> 请求都调 list(),里面对每个 .json 同步 readFile +
+  // JSON.parse。报告数上来后这是主性能瓶颈。缓存策略:fingerprint = dir mtime + 文件名
+  // 排序串 + 每个文件 mtime;任一变化 invalidate。fingerprint 算 cheap(只 stat),命中后
+  // 完全跳过 readFile。
+  let cachedFingerprint = '';
+  let cachedRuns: ReportDocument[] | null = null;
+  async function computeListFingerprint(): Promise<string | null> {
+    try {
+      const dirStat = await stat(dir);
+      const files = (await readdir(dir)).filter((f) => f.endsWith('.json')).sort();
+      const parts = await Promise.all(files.map(async (f) => {
+        try {
+          const s = await stat(join(dir, f));
+          return `${f}:${s.mtimeMs}:${s.size}`;
+        } catch { return `${f}:?`; }
+      }));
+      return `${dirStat.mtimeMs}|${parts.join(',')}`;
+    } catch { return null; }
+  }
+
   async function list(): Promise<ReportDocument[]> {
     try {
       await access(dir);
     } catch {
       return [];
     }
+    const fp = await computeListFingerprint();
+    if (fp != null && fp === cachedFingerprint && cachedRuns) return cachedRuns;
+
     const files = (await readdir(dir))
       .filter((f) => f.endsWith('.json'))
       .sort()
@@ -94,6 +117,10 @@ export function createFileStore(dir: string): ReportStore {
       const tb = b.meta?.timestamp || '';
       return tb.localeCompare(ta);
     });
+    if (fp != null) {
+      cachedFingerprint = fp;
+      cachedRuns = runs;
+    }
     return runs;
   }
 

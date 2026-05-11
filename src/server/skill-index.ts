@@ -21,6 +21,7 @@ import type { ReportDocument, EvaluationReport, AssertionDetail } from '../types
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import type { DoctorReport, DoctorRuleResult, DoctorSkillStatus } from '../types/doctor.js';
 import { computeVerdict } from '../eval-core/verdict.js';
+import { detectInsights, type Insight } from './skill-insights.js';
 
 // ── 模块级缓存:Studio 每次请求都跑 buildSkillIndex,扫盘成本随 skill 数线性,
 // 数据量大后列表 / 详情页响应变慢(参考 PR #95 review P2-4)。
@@ -110,6 +111,10 @@ export interface SkillIndexSummary {
 export interface SkillIndex {
   entries: SkillIndexEntry[];
   summary: SkillIndexSummary;
+  /** detectInsights 结果按 skillName 索引。在 buildSkillIndex 时同步算好,跟 SkillIndex
+   *  本身共享同一 fingerprint 缓存(reports 数组 + dir mtime 任一变就 invalidate)。
+   *  list 页 N×detectInsights 重算的 CPU 开销由此消除。 */
+  insightsBySkill: Map<string, Insight[]>;
 }
 
 function sampleAllPassed(details: AssertionDetail[] | undefined): boolean {
@@ -329,7 +334,15 @@ export function buildSkillIndex(
     gray: entries.filter((e) => e.band === 'gray').length,
   };
 
-  const result: SkillIndex = { entries, summary };
+  // 跟 SkillIndex 一起算 insightsBySkill,享受同一份 fingerprint 缓存。
+  // list 页对每个 entry 跑 detectInsights 的 CPU 开销迁移到这里,只 miss 时算一次。
+  const insightsBySkill = new Map<string, Insight[]>();
+  for (const ent of entries) {
+    const evalReport = ent.eval ? reports.find((r) => r.id === ent.eval!.reportId && r.kind === 'evaluation') as EvaluationReport | undefined : undefined;
+    insightsBySkill.set(ent.skillName, detectInsights(ent, evalReport ?? null));
+  }
+
+  const result: SkillIndex = { entries, summary, insightsBySkill };
   _indexCache = { fingerprint: fp, result };
   return result;
 }

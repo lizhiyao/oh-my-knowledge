@@ -10,7 +10,7 @@ import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
 import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
 import { buildSkillIndex } from './skill-index.js';
-import type { Lang, EvaluationReport } from '../types/index.js';
+import type { Lang } from '../types/index.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
 import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
 import type { JobStore, ReportStore } from '../types/index.js';
@@ -726,19 +726,13 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
       }
 
       // 根路径走 skill-centric 列表页 — studio 顶级实体是 skill。
+      // insightsBySkill 在 buildSkillIndex 里跟 SkillIndex 一起算好并享受同一份缓存,
+      // list renderer 直接消费,不再每请求 N×detectInsights 重算。
       if (path === '/') {
         const runs = await reportStore.list();
         const idx = buildSkillIndex(runs, analysesDir, doctorsDir);
-        // 为每个 entry 找对应的 evalReport,让 list 渲染时也能跑 detectInsights,
-        // 跟详情页 assessHealth 用同一份输入(避免列表绿 / 详情红的口径不一致)。
-        const evalReportsBySkill = new Map<string, EvaluationReport>();
-        for (const ent of idx.entries) {
-          if (!ent.eval) continue;
-          const r = runs.find((x) => x.id === ent.eval!.reportId);
-          if (r && r.kind === 'evaluation') evalReportsBySkill.set(ent.skillName, r);
-        }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderSkillList(idx, evalReportsBySkill, lang));
+        res.end(renderSkillList(idx, lang));
         return;
       }
 
