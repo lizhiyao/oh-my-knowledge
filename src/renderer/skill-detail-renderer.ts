@@ -454,127 +454,162 @@ function renderIllustration(ill: InsightIllustration, lang: Lang): string {
   </div>`;
 }
 
-// ── 新 modal 结构辅助函数 ───────────────────────────────────────
+// ── modal 结构辅助函数(v3,sample 视角)───────────────────────────────────────
 
-/** 三视角"信号"速读卡:体检/评测/线上 各一格,状态用色+词,detail 截 message 前一句 */
-function renderSignalStrip(evidences: InsightEvidence[], lang: Lang): string {
-  // perspective → 卡片配置
-  const cards: Array<{ key: 'doctor' | 'eval' | 'observe'; icon: string; name: string; ev: InsightEvidence | null }> = [
-    { key: 'doctor',  icon: '🩺', name: lang === 'zh' ? '静态体检' : 'Doctor', ev: null },
-    { key: 'eval',    icon: '🧪', name: lang === 'zh' ? '评测样本' : 'Eval', ev: null },
-    { key: 'observe', icon: '👁', name: lang === 'zh' ? '线上观测' : 'Observe', ev: null },
-  ];
-  for (const ev of evidences) {
-    if (ev.perspective === 'doctor') cards[0].ev = ev;
-    else if (ev.perspective === 'eval-functional' || ev.perspective === 'eval-score') cards[1].ev = ev;
-    else if (ev.perspective === 'observe') cards[2].ev = ev;
-  }
-  const statusLabel = (s: InsightEvidence['status']): { label: string; cls: string } => {
-    if (lang === 'zh') {
-      if (s === 'flagged') return { label: '命中', cls: 'hit' };
-      if (s === 'blind') return { label: '盲区', cls: 'blind' };
-      if (s === 'silent') return { label: '无信号', cls: 'silent' };
-      return { label: '未跑', cls: 'na' };
+/** 把 patch.snippet 里的占位符(<...>、XXX.xxx)用 <mark> 包起来,顺便返回占位符数。
+ *  注意:textContent 抹掉 <mark>,所以复制按钮拿到的还是原始片段(含占位符),
+ *  用户复制后能看到 <章节名> 等占位符自行替换。 */
+function highlightPlaceholders(text: string): { html: string; count: number } {
+  const escaped = e(text);
+  let count = 0;
+  // 1. 角括号占位符 &lt;.....&gt;(已 HTML escape 过,这里识别 escape 后的形式)
+  let html = escaped.replace(/&lt;([^&]+?)&gt;/g, (_, inner: string) => {
+    count++;
+    return `<mark class="si-placeholder">&lt;${inner}&gt;</mark>`;
+  });
+  // 2. 大写 XXX 占位符(XXX / XXX.md / XXX.xxx 等)
+  html = html.replace(/\bXXX(\.\w+)?\b/g, (m: string) => {
+    count++;
+    return `<mark class="si-placeholder">${m}</mark>`;
+  });
+  return { html, count };
+}
+
+interface FailedSampleDetail {
+  sampleId: string;
+  diagnosticSummary: string;
+  failureModes: string[];
+  illustration: InsightIllustration | null;
+}
+
+/** 给一个 insight,从 stageRefs.evalSampleIds + evalReport 拿完整的失败样本详情。
+ *  illustration 是 detector 挑出的(最多 2 条)代表性样本,带 prompt/output/工具调用;
+ *  其他样本没 illustration 但有 sample_id + diagnostic.summary。 */
+function collectFailedSamplesForInsight(
+  ins: Insight,
+  evalReport: EvaluationReport | null,
+): FailedSampleDetail[] {
+  const sampleIds = ins.stageRefs?.evalSampleIds ?? [];
+  if (sampleIds.length === 0 || !evalReport) return [];
+
+  const variant = evalReport.meta.variants?.find((v) => v !== 'baseline');
+  if (!variant) return [];
+
+  // 把 evidence 里的 illustration 按 sampleId 索引
+  const illsBySampleId = new Map<string, InsightIllustration>();
+  for (const ev of ins.evidence) {
+    for (const ill of (ev.illustrations ?? [])) {
+      illsBySampleId.set(ill.sampleId, ill);
     }
-    if (s === 'flagged') return { label: 'hit', cls: 'hit' };
-    if (s === 'blind') return { label: 'blind', cls: 'blind' };
-    if (s === 'silent') return { label: 'no signal', cls: 'silent' };
-    return { label: 'not run', cls: 'na' };
-  };
-  // 从 message 抽前一句当 detail(到第一个句号 / 中文逗号 / 冒号 / 30 字止)
-  const briefOf = (msg: string): string => {
-    if (!msg) return '';
-    const cut = msg.split(/[。,,:：]/)[0];
-    return cut.length > 32 ? cut.slice(0, 32) + '…' : cut;
-  };
-  const hitCount = cards.filter((c) => c.ev?.status === 'flagged').length;
-  const totalActive = cards.filter((c) => c.ev && c.ev.status !== 'na').length;
-  const summary = hitCount >= 3
-    ? (lang === 'zh' ? '三视角全部命中 → 高置信' : 'All 3 sources flagged → high confidence')
-    : hitCount >= 2
-      ? (lang === 'zh' ? `${hitCount}/${totalActive} 命中 → 较高置信` : `${hitCount}/${totalActive} flagged`)
-      : hitCount === 1
-        ? (lang === 'zh' ? '仅 1 视角命中 → 单源信号,留意但不一定要重点修' : '1 source flagged — single-source signal')
-        : (lang === 'zh' ? '尚无视角命中(此 insight 由别的规则触发)' : 'no source flagged');
+  }
 
-  return `<div class="si-signal-strip">
-    ${cards.map((c) => {
-      if (!c.ev) {
-        return `<div class="si-signal si-signal--na">
-          <div class="si-signal-head"><span class="si-signal-icon">${c.icon}</span><span class="si-signal-name">${e(c.name)}</span></div>
-          <div class="si-signal-status si-signal-status--na">${lang === 'zh' ? '未跑' : 'not run'}</div>
-        </div>`;
-      }
-      const st = statusLabel(c.ev.status);
-      return `<div class="si-signal si-signal--${st.cls}">
-        <div class="si-signal-head"><span class="si-signal-icon">${c.icon}</span><span class="si-signal-name">${e(c.name)}</span></div>
-        <div class="si-signal-status si-signal-status--${st.cls}">${e(st.label)}</div>
-        <div class="si-signal-detail">${e(briefOf(c.ev.message))}</div>
-      </div>`;
-    }).join('')}
-  </div>
-  <div class="si-signal-summary">${e(summary)}</div>`;
+  return sampleIds.map((sid) => {
+    const result = evalReport.results.find((r) => r.sample_id === sid);
+    const vr = result?.variants?.[variant];
+    return {
+      sampleId: sid,
+      diagnosticSummary: vr?.diagnostic?.summary ?? '',
+      failureModes: (vr?.diagnostic?.failureModes ?? []) as string[],
+      illustration: illsBySampleId.get(sid) ?? null,
+    };
+  });
 }
 
-/** 把分散在多条 evidence 上的 illustration 汇成一段 — 这是 modal 里用户最想看的"真实现场" */
-function renderIncidentSection(evidences: InsightEvidence[], reportId: string | null, langQ: string, lang: Lang): string {
-  const ills: InsightIllustration[] = [];
-  for (const ev of evidences) {
-    if (ev.illustrations) ills.push(...ev.illustrations);
-  }
-  if (ills.length === 0) return '';
+const _SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low: 1 };
 
-  return `<section class="si-incidents">
-    <div class="si-incidents-h">🔬 ${lang === 'zh' ? '看 LLM 实际怎么错的' : 'What LLM actually did'}</div>
-    ${ills.map((ill, idx) => {
-      const trailingLink = reportId
-        ? `<a class="si-incident-link" href="/reports/${e(reportId)}${langQ}#sample-${e(ill.sampleId)}">${lang === 'zh' ? '看完整 trace →' : 'full trace →'}</a>`
-        : '';
-      // 第一条默认展开,后续条目折叠
-      if (idx === 0) {
-        return `<div class="si-incident si-incident--open">
-          <div class="si-incident-head"><code class="si-incident-id">${e(ill.sampleId)}</code>${trailingLink}</div>
-          ${renderIllustration(ill, lang)}
-        </div>`;
-      }
-      return `<details class="si-incident">
-        <summary class="si-incident-head"><code class="si-incident-id">${e(ill.sampleId)}</code>${trailingLink}</summary>
-        <div class="si-incident-body">${renderIllustration(ill, lang)}</div>
-      </details>`;
-    }).join('')}
-  </section>`;
-}
-
-/** 单条建议 + patch 直接铺,加可见的"复制片段"按钮 */
-function renderRecommendation(rec: { action: string; priority: InsightSeverity; patch?: InsightPatch }, idx: number, lang: Lang): string {
-  const priLabel = lang === 'zh' ? SEVERITY_LABEL_ZH[rec.priority] : SEVERITY_LABEL_EN[rec.priority];
-  let patchBlock = '';
-  if (rec.patch) {
-    const targetLabel = lang === 'zh' ? PATCH_TARGET_ZH[rec.patch.target] : PATCH_TARGET_EN[rec.patch.target];
-    const snippetId = `snippet-${Math.random().toString(36).slice(2, 10)}`;
-    patchBlock = `<div class="si-rec-patch">
-      <div class="si-rec-patch-meta">
-        <span class="si-rec-patch-target">${e(targetLabel)}</span>
-        <span class="si-rec-patch-loc">${e(rec.patch.location)}</span>
-        <button class="si-rec-patch-copy" onclick="omkCopySnippet('${snippetId}', this)" type="button">${lang === 'zh' ? '📋 复制片段' : '📋 Copy'}</button>
-      </div>
-      <pre class="si-rec-patch-snippet"><code id="${snippetId}">${e(rec.patch.snippet)}</code></pre>
-    </div>`;
+/** "先做这件"主推动作卡:取 priority 最高的 recommendation + 影响范围 */
+function renderPrimaryAction(
+  ins: Insight,
+  failedSamples: FailedSampleDetail[],
+  lang: Lang,
+): string {
+  if (ins.recommendations.length === 0) return '';
+  const primary = [...ins.recommendations].sort(
+    (a, b) => _SEVERITY_RANK[b.priority] - _SEVERITY_RANK[a.priority],
+  )[0];
+  let impactText = '';
+  if (failedSamples.length > 0) {
+    const sids = failedSamples.map((s) => s.sampleId);
+    const preview = sids.slice(0, 3).join(', ');
+    const more = sids.length > 3 ? '…' : '';
+    impactText = lang === 'zh'
+      ? `预计可修复 ${sids.length} 条失败样本(${preview}${more})`
+      : `Likely fixes ${sids.length} failed samples (${preview}${more})`;
+  } else if (ins.affectedCount > 0) {
+    impactText = lang === 'zh'
+      ? `影响 ${ins.affectedCount} 项`
+      : `Affects ${ins.affectedCount}`;
   }
-  return `<div class="si-rec-item">
-    <div class="si-rec-head">
-      <span class="si-rec-num">${idx + 1}</span>
-      <span class="si-rec-pri si-rec-pri--${rec.priority}">${e(priLabel)}</span>
-      <span class="si-rec-action">${e(rec.action)}</span>
-    </div>
-    ${patchBlock}
+  return `<div class="si-primary">
+    <div class="si-primary-label">🎯 ${lang === 'zh' ? '先做这件' : 'Do this first'}</div>
+    <div class="si-primary-action">${e(primary.action)}</div>
+    ${impactText ? `<div class="si-primary-impact">${e(impactText)}</div>` : ''}
   </div>`;
 }
 
-/** 三视角细节折叠(放在 modal 最下),供想看每段完整 message 的高级用户展开 */
-function renderEvidenceDetail(evidences: InsightEvidence[], lang: Lang): string {
+/** 失败用例 section:sample 视角,每条 1 行(id + 一句话错因),
+ *  第一条默认展开看真实 prompt/output;其他折叠 details */
+function renderFailedSamplesSection(
+  failedSamples: FailedSampleDetail[],
+  reportId: string | null,
+  langQ: string,
+  lang: Lang,
+): string {
+  if (failedSamples.length === 0) return '';
+  const renderRow = (s: FailedSampleDetail, expanded: boolean): string => {
+    const summary = s.diagnosticSummary
+      ? (s.diagnosticSummary.length > 100 ? s.diagnosticSummary.slice(0, 100) + '…' : s.diagnosticSummary)
+      : (lang === 'zh' ? '(无诊断摘要,看完整 trace)' : '(no diagnostic summary)');
+    const traceLink = reportId
+      ? `<a class="si-failure-trace" href="/reports/${e(reportId)}${langQ}#sample-${e(s.sampleId)}" onclick="event.stopPropagation()">${lang === 'zh' ? '完整 trace →' : 'full trace →'}</a>`
+      : '';
+    const modeTags = s.failureModes.length > 0
+      ? `<span class="si-failure-modes">${s.failureModes.map((m) => `<span class="si-failure-mode">${e(m)}</span>`).join('')}</span>`
+      : '';
+    const detail = s.illustration
+      ? renderIllustration(s.illustration, lang)
+      : `<div class="si-failure-no-detail">${lang === 'zh' ? '此样本没挑作"现场证据",完整 prompt / LLM 输出请看' : 'no inline detail, see'} ${traceLink || (lang === 'zh' ? '完整报告' : 'full report')}</div>`;
+
+    const headInner = `<code class="si-failure-id">${e(s.sampleId)}</code>
+      ${modeTags}
+      <span class="si-failure-summary">${e(summary)}</span>
+      ${traceLink}`;
+
+    if (expanded) {
+      return `<div class="si-failure-item si-failure-item--open">
+        <div class="si-failure-head">${headInner}</div>
+        <div class="si-failure-detail">${detail}</div>
+      </div>`;
+    }
+    return `<details class="si-failure-item">
+      <summary class="si-failure-head">${headInner}</summary>
+      <div class="si-failure-detail">${detail}</div>
+    </details>`;
+  };
+
+  return `<section class="si-failures">
+    <div class="si-failures-h">📋 ${lang === 'zh' ? `失败用例(${failedSamples.length} 条)` : `Failed samples (${failedSamples.length})`}</div>
+    ${failedSamples.map((s, i) => renderRow(s, i === 0)).join('')}
+  </section>`;
+}
+
+/** 三视角降级:小折叠条放底部"omk 内部信号一致性",展开看完整 evidence message */
+function renderSignalConsistencyFooter(evidences: InsightEvidence[], lang: Lang): string {
+  const hitCount = evidences.filter((ev) => ev.status === 'flagged').length;
+  const totalActive = evidences.filter((ev) => ev.status !== 'na').length;
+  const summary = hitCount >= 3
+    ? (lang === 'zh' ? '三视角一致(强信号)' : 'all 3 sources flagged (strong)')
+    : hitCount >= 2
+      ? (lang === 'zh' ? `${hitCount}/${totalActive} 命中(较强信号)` : `${hitCount}/${totalActive} flagged`)
+      : hitCount === 1
+        ? (lang === 'zh' ? '单源信号(单视角看到,仅参考)' : 'single-source signal (reference only)')
+        : (lang === 'zh' ? '无明确信号(insight 由别的规则触发)' : 'no source flagged');
+
   return `<details class="si-modal-detail">
-    <summary>${lang === 'zh' ? '▸ 三视角细节(完整说明)' : '▸ Per-perspective details'}</summary>
+    <summary>
+      <span class="si-signal-footer-label">📡 ${lang === 'zh' ? 'omk 内部信号' : 'omk signal'}:</span>
+      <span class="si-signal-footer-summary">${e(summary)}</span>
+    </summary>
     <div class="si-modal-detail-body">
       ${evidences.map((ev) => {
         const persp = lang === 'zh' ? PERSPECTIVE_ZH[ev.perspective] : PERSPECTIVE_EN[ev.perspective];
@@ -590,10 +625,55 @@ function renderEvidenceDetail(evidences: InsightEvidence[], lang: Lang): string 
   </details>`;
 }
 
-function renderInsightModal(ins: Insight, num: number, reportId: string | null, langQ: string, lang: Lang): string {
+/** 单条建议 + patch 直接铺。patch 里若含占位符(&lt;...&gt; / XXX.xxx)用 <mark> 高亮,
+ *  按钮文案区分"复制 vs 复制模板"。 */
+function renderRecommendation(rec: { action: string; priority: InsightSeverity; patch?: InsightPatch }, idx: number, lang: Lang): string {
+  const priLabel = lang === 'zh' ? SEVERITY_LABEL_ZH[rec.priority] : SEVERITY_LABEL_EN[rec.priority];
+  let patchBlock = '';
+  if (rec.patch) {
+    const targetLabel = lang === 'zh' ? PATCH_TARGET_ZH[rec.patch.target] : PATCH_TARGET_EN[rec.patch.target];
+    const snippetId = `snippet-${Math.random().toString(36).slice(2, 10)}`;
+    const { html: snippetHtml, count: phCount } = highlightPlaceholders(rec.patch.snippet);
+    const isTemplate = phCount > 0;
+    const copyLabel = isTemplate
+      ? (lang === 'zh' ? `📋 复制模板(含 ${phCount} 处待填)` : `📋 Copy template (${phCount} blanks)`)
+      : (lang === 'zh' ? '📋 复制' : '📋 Copy');
+    const templateHint = isTemplate
+      ? `<div class="si-rec-patch-hint">⚠️ ${lang === 'zh' ? `模板含 ${phCount} 处待填,粘贴前请替换 ` : `Template has ${phCount} placeholders, replace `}<mark class="si-placeholder">${lang === 'zh' ? '高亮' : 'highlighted'}</mark>${lang === 'zh' ? ' 部分' : ' parts before pasting'}</div>`
+      : '';
+    patchBlock = `<div class="si-rec-patch${isTemplate ? ' si-rec-patch--template' : ''}">
+      <div class="si-rec-patch-meta">
+        <span class="si-rec-patch-target">${e(targetLabel)}</span>
+        <span class="si-rec-patch-loc">${e(rec.patch.location)}</span>
+        <button class="si-rec-patch-copy" onclick="omkCopySnippet('${snippetId}', this)" type="button">${copyLabel}</button>
+      </div>
+      ${templateHint}
+      <pre class="si-rec-patch-snippet"><code id="${snippetId}">${snippetHtml}</code></pre>
+    </div>`;
+  }
+  return `<div class="si-rec-item">
+    <div class="si-rec-head">
+      <span class="si-rec-num">${idx + 1}</span>
+      <span class="si-rec-pri si-rec-pri--${rec.priority}">${e(priLabel)}</span>
+      <span class="si-rec-action">${e(rec.action)}</span>
+    </div>
+    ${patchBlock}
+  </div>`;
+}
+
+
+function renderInsightModal(
+  ins: Insight,
+  num: number,
+  evalReport: EvaluationReport | null,
+  reportId: string | null,
+  langQ: string,
+  lang: Lang,
+): string {
   const sevIcon = SEVERITY_ICON[ins.severity];
   const sevLabel = lang === 'zh' ? SEVERITY_LABEL_ZH[ins.severity] : SEVERITY_LABEL_EN[ins.severity];
   const audInfo = lang === 'zh' ? AUDIENCE_INFO_ZH[ins.audience] : AUDIENCE_INFO_EN[ins.audience];
+  const failedSamples = collectFailedSamplesForInsight(ins, evalReport);
   return `<div id="insight-${num}" class="modal-overlay" onclick="if(event.target===this)closeModal('insight-${num}')">
     <div class="modal-content si-modal">
       <div class="modal-header">
@@ -611,16 +691,16 @@ function renderInsightModal(ins: Insight, num: number, reportId: string | null, 
       </div>
       ${ins.description ? `<p class="si-modal-desc">${e(ins.description)}</p>` : ''}
 
-      ${renderSignalStrip(ins.evidence, lang)}
+      ${renderPrimaryAction(ins, failedSamples, lang)}
 
-      ${renderIncidentSection(ins.evidence, reportId, langQ, lang)}
+      ${renderFailedSamplesSection(failedSamples, reportId, langQ, lang)}
 
       ${ins.recommendations.length > 0 ? `<section class="si-recs">
         <div class="si-recs-h">💡 ${lang === 'zh' ? '建议怎么改' : 'How to fix'}</div>
         ${ins.recommendations.map((r, i) => renderRecommendation(r, i, lang)).join('')}
       </section>` : ''}
 
-      ${renderEvidenceDetail(ins.evidence, lang)}
+      ${renderSignalConsistencyFooter(ins.evidence, lang)}
     </div>
   </div>`;
 }
@@ -1014,45 +1094,45 @@ const SKILL_DETAIL_CSS = `
 .si-stagecard-meta { font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums }
 .si-stagecard-arrow { color:var(--text-muted);font-size:16px;font-weight:300 }
 
-/* ── Insight modal v2:信息分层重设 ──────────────────────────────────
- * 顺序:tags → desc → signal-strip(三视角速读卡)→ incidents(LLM 实际怎么错的)
- *      → recommendations(建议 + patch 直接铺)→ evidence-detail(可展开看完整 message)
+/* ── Insight modal v3:从 detector × 三视角 翻到 sample × 行为 ──────────
+ * 顺序:tags → desc → 主推动作(🎯 先做这件) → 失败用例(sample 视角) →
+ *      建议(patch 含占位符标识) → omk 内部信号(降级折叠到底)
  */
 
-/* 三视角速读卡 */
-.si-signal-strip { display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 6px }
-.si-signal { padding:10px 12px;border-radius:6px;background:var(--bg-soft);border-left:3px solid var(--border);display:flex;flex-direction:column;gap:4px;min-width:0 }
-.si-signal--hit    { border-left-color:#9c4a3f;background:rgba(156,74,63,.06) }
-.si-signal--blind  { border-left-color:#7a6b89;background:rgba(122,107,137,.06) }
-.si-signal--silent { border-left-color:var(--text-muted);background:var(--bg-soft) }
-.si-signal--na     { border-left-color:var(--border);background:var(--bg-soft);opacity:.7 }
-.si-signal-head { display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);font-weight:500 }
-.si-signal-icon { font-size:14px;line-height:1 }
-.si-signal-name { font-weight:600 }
-.si-signal-status { font-size:11.5px;font-weight:700;letter-spacing:0.02em;width:fit-content;padding:2px 8px;border-radius:9px }
-.si-signal-status--hit    { background:rgba(156,74,63,.16);color:#9c4a3f }
-.si-signal-status--blind  { background:rgba(122,107,137,.16);color:#7a6b89 }
-.si-signal-status--silent { background:var(--bg-surface);color:var(--text-muted) }
-.si-signal-status--na     { background:var(--bg-surface);color:var(--text-muted) }
-.si-signal-detail { font-size:12px;color:var(--text-secondary);line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word }
-.si-signal-summary { font-size:12px;color:var(--text-secondary);text-align:center;margin:2px 0 14px;padding:6px 12px;background:var(--bg-soft);border-radius:5px;font-style:italic }
-@media(max-width:560px){ .si-signal-strip { grid-template-columns:1fr;gap:6px } }
+/* 主推动作卡(顶部最显眼)*/
+.si-primary { margin:14px 0 12px;padding:12px 14px;border-left:4px solid #5e8252;background:rgba(94,130,82,.07);border-radius:5px }
+.si-primary-label { font-size:11.5px;font-weight:700;color:#5e8252;letter-spacing:0.04em;margin-bottom:4px }
+.si-primary-action { font-size:14px;color:var(--text-primary);font-weight:600;line-height:1.5 }
+.si-primary-impact { font-size:12px;color:var(--text-secondary);margin-top:4px;font-style:italic }
 
-/* 实际现场(原 illustration 块,提升为一级 section)*/
-.si-incidents { margin:14px 0;padding:12px 14px;background:var(--bg-soft);border-radius:6px }
-.si-incidents-h { font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:10px }
-.si-incident { background:var(--bg-surface);border-radius:5px;margin-bottom:8px;border-left:3px solid var(--accent) }
-.si-incident:last-child { margin-bottom:0 }
-.si-incident-head { display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:default;justify-content:space-between }
-details.si-incident > summary.si-incident-head { cursor:pointer;list-style:none;user-select:none }
-details.si-incident > summary.si-incident-head::-webkit-details-marker { display:none }
-details.si-incident > summary.si-incident-head::before { content:'▸ ';color:var(--text-muted);margin-right:-4px }
-details.si-incident[open] > summary.si-incident-head::before { content:'▾ ' }
-.si-incident-id { font-size:11.5px;font-weight:600;color:var(--text-secondary);background:var(--bg-soft);padding:1px 7px;border-radius:3px;font-family:"SF Mono",Menlo,monospace }
-.si-incident-link { font-size:11px;color:var(--accent);text-decoration:none;font-weight:500 }
-.si-incident-link:hover { text-decoration:underline }
-.si-incident--open .si-illustration,
-.si-incident-body .si-illustration { border-left:none;background:transparent;padding:0 12px 10px 12px }
+/* 失败用例 section(sample 视角主信息)*/
+.si-failures { margin:14px 0;padding:12px 14px;background:var(--bg-soft);border-radius:6px }
+.si-failures-h { font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:10px }
+.si-failure-item { background:var(--bg-surface);border-radius:5px;margin-bottom:8px;border-left:3px solid #9c4a3f }
+.si-failure-item:last-child { margin-bottom:0 }
+.si-failure-head { display:grid;grid-template-columns:auto auto 1fr auto;gap:10px;align-items:center;padding:8px 12px;cursor:default;flex-wrap:wrap }
+details.si-failure-item > summary.si-failure-head { cursor:pointer;list-style:none;user-select:none }
+details.si-failure-item > summary.si-failure-head::-webkit-details-marker { display:none }
+details.si-failure-item > summary.si-failure-head::before { content:'▸ ';color:var(--text-muted);font-size:11px }
+details.si-failure-item[open] > summary.si-failure-head::before { content:'▾ ' }
+.si-failure-id { font-size:11.5px;font-weight:600;color:#9c4a3f;background:var(--bg-soft);padding:1px 7px;border-radius:3px;font-family:"SF Mono",Menlo,monospace }
+.si-failure-modes { display:flex;gap:4px;flex-wrap:wrap }
+.si-failure-mode { font-size:10.5px;color:#b08030;background:rgba(176,128,48,.14);padding:1px 6px;border-radius:8px;font-weight:500 }
+.si-failure-summary { font-size:12.5px;color:var(--text-secondary);line-height:1.5;min-width:0 }
+.si-failure-trace { font-size:11px;color:var(--accent);text-decoration:none;font-weight:500;white-space:nowrap }
+.si-failure-trace:hover { text-decoration:underline }
+.si-failure-detail { padding:0 12px 10px;border-top:1px solid var(--border) }
+.si-failure-detail .si-illustration { border-left:none;background:transparent;padding:8px 0 0 0 }
+.si-failure-no-detail { padding:6px 0;font-size:12px;color:var(--text-muted);font-style:italic }
+
+/* 占位符标识 */
+.si-placeholder { background:rgba(176,128,48,.20);color:#7a5810;padding:1px 4px;border-radius:3px;font-weight:600;font-style:italic }
+.si-rec-patch-hint { font-size:11.5px;color:#7a5810;background:rgba(176,128,48,.10);padding:6px 10px;border-radius:4px;margin-bottom:6px;line-height:1.5 }
+.si-rec-patch-hint .si-placeholder { background:rgba(176,128,48,.30) }
+
+/* 三视角降级:底部信号一致性折叠 */
+.si-signal-footer-label { font-weight:600;color:var(--text-secondary) }
+.si-signal-footer-summary { color:var(--text-primary);margin-left:6px }
 
 /* 建议 + patch 直接铺(去掉 details 折叠)*/
 .si-recs { margin:14px 0 }
@@ -1352,7 +1432,7 @@ export function renderSkillDetail(
     .filter((s): s is string => Boolean(s)).sort().pop();
 
   const insightReportId = entry.eval?.reportId ?? null;
-  const insightModals = insights.map((ins) => renderInsightModal(ins, idx.byInsightId.get(ins.id) ?? 0, insightReportId, langQ, lang)).join('');
+  const insightModals = insights.map((ins) => renderInsightModal(ins, idx.byInsightId.get(ins.id) ?? 0, evalReport, insightReportId, langQ, lang)).join('');
 
   return layout(entry.skillName, `
     <main>
