@@ -454,37 +454,143 @@ function renderIllustration(ill: InsightIllustration, lang: Lang): string {
   </div>`;
 }
 
-function renderEvidenceBlock(ev: InsightEvidence, lang: Lang): string {
-  const persp = lang === 'zh' ? PERSPECTIVE_ZH[ev.perspective] : PERSPECTIVE_EN[ev.perspective];
-  const ills = ev.illustrations && ev.illustrations.length > 0
-    ? `<details class="si-ev-ill"><summary>${lang === 'zh' ? '展开实际现场' : 'Show what happened'}</summary>
-       <div class="si-ev-ill-body">${ev.illustrations.map((i) => renderIllustration(i, lang)).join('')}</div></details>`
-    : '';
-  return `<div class="si-ev si-ev--${ev.status}">
-    <div class="si-ev-line">
-      <span class="si-ev-icon">${STATUS_ICON[ev.status]}</span>
-      <span class="si-ev-perspective">${e(persp)}</span>
-      <span class="si-ev-msg">${e(ev.message)}</span>
+// ── 新 modal 结构辅助函数 ───────────────────────────────────────
+
+/** 三视角"信号"速读卡:体检/评测/线上 各一格,状态用色+词,detail 截 message 前一句 */
+function renderSignalStrip(evidences: InsightEvidence[], lang: Lang): string {
+  // perspective → 卡片配置
+  const cards: Array<{ key: 'doctor' | 'eval' | 'observe'; icon: string; name: string; ev: InsightEvidence | null }> = [
+    { key: 'doctor',  icon: '🩺', name: lang === 'zh' ? '静态体检' : 'Doctor', ev: null },
+    { key: 'eval',    icon: '🧪', name: lang === 'zh' ? '评测样本' : 'Eval', ev: null },
+    { key: 'observe', icon: '👁', name: lang === 'zh' ? '线上观测' : 'Observe', ev: null },
+  ];
+  for (const ev of evidences) {
+    if (ev.perspective === 'doctor') cards[0].ev = ev;
+    else if (ev.perspective === 'eval-functional' || ev.perspective === 'eval-score') cards[1].ev = ev;
+    else if (ev.perspective === 'observe') cards[2].ev = ev;
+  }
+  const statusLabel = (s: InsightEvidence['status']): { label: string; cls: string } => {
+    if (lang === 'zh') {
+      if (s === 'flagged') return { label: '命中', cls: 'hit' };
+      if (s === 'blind') return { label: '盲区', cls: 'blind' };
+      if (s === 'silent') return { label: '无信号', cls: 'silent' };
+      return { label: '未跑', cls: 'na' };
+    }
+    if (s === 'flagged') return { label: 'hit', cls: 'hit' };
+    if (s === 'blind') return { label: 'blind', cls: 'blind' };
+    if (s === 'silent') return { label: 'no signal', cls: 'silent' };
+    return { label: 'not run', cls: 'na' };
+  };
+  // 从 message 抽前一句当 detail(到第一个句号 / 中文逗号 / 冒号 / 30 字止)
+  const briefOf = (msg: string): string => {
+    if (!msg) return '';
+    const cut = msg.split(/[。,,:：]/)[0];
+    return cut.length > 32 ? cut.slice(0, 32) + '…' : cut;
+  };
+  const hitCount = cards.filter((c) => c.ev?.status === 'flagged').length;
+  const totalActive = cards.filter((c) => c.ev && c.ev.status !== 'na').length;
+  const summary = hitCount >= 3
+    ? (lang === 'zh' ? '三视角全部命中 → 高置信' : 'All 3 sources flagged → high confidence')
+    : hitCount >= 2
+      ? (lang === 'zh' ? `${hitCount}/${totalActive} 命中 → 较高置信` : `${hitCount}/${totalActive} flagged`)
+      : hitCount === 1
+        ? (lang === 'zh' ? '仅 1 视角命中 → 单源信号,留意但不一定要重点修' : '1 source flagged — single-source signal')
+        : (lang === 'zh' ? '尚无视角命中(此 insight 由别的规则触发)' : 'no source flagged');
+
+  return `<div class="si-signal-strip">
+    ${cards.map((c) => {
+      if (!c.ev) {
+        return `<div class="si-signal si-signal--na">
+          <div class="si-signal-head"><span class="si-signal-icon">${c.icon}</span><span class="si-signal-name">${e(c.name)}</span></div>
+          <div class="si-signal-status si-signal-status--na">${lang === 'zh' ? '未跑' : 'not run'}</div>
+        </div>`;
+      }
+      const st = statusLabel(c.ev.status);
+      return `<div class="si-signal si-signal--${st.cls}">
+        <div class="si-signal-head"><span class="si-signal-icon">${c.icon}</span><span class="si-signal-name">${e(c.name)}</span></div>
+        <div class="si-signal-status si-signal-status--${st.cls}">${e(st.label)}</div>
+        <div class="si-signal-detail">${e(briefOf(c.ev.message))}</div>
+      </div>`;
+    }).join('')}
+  </div>
+  <div class="si-signal-summary">${e(summary)}</div>`;
+}
+
+/** 把分散在多条 evidence 上的 illustration 汇成一段 — 这是 modal 里用户最想看的"真实现场" */
+function renderIncidentSection(evidences: InsightEvidence[], reportId: string | null, langQ: string, lang: Lang): string {
+  const ills: InsightIllustration[] = [];
+  for (const ev of evidences) {
+    if (ev.illustrations) ills.push(...ev.illustrations);
+  }
+  if (ills.length === 0) return '';
+
+  return `<section class="si-incidents">
+    <div class="si-incidents-h">🔬 ${lang === 'zh' ? '看 LLM 实际怎么错的' : 'What LLM actually did'}</div>
+    ${ills.map((ill, idx) => {
+      const trailingLink = reportId
+        ? `<a class="si-incident-link" href="/reports/${e(reportId)}${langQ}#sample-${e(ill.sampleId)}">${lang === 'zh' ? '看完整 trace →' : 'full trace →'}</a>`
+        : '';
+      // 第一条默认展开,后续条目折叠
+      if (idx === 0) {
+        return `<div class="si-incident si-incident--open">
+          <div class="si-incident-head"><code class="si-incident-id">${e(ill.sampleId)}</code>${trailingLink}</div>
+          ${renderIllustration(ill, lang)}
+        </div>`;
+      }
+      return `<details class="si-incident">
+        <summary class="si-incident-head"><code class="si-incident-id">${e(ill.sampleId)}</code>${trailingLink}</summary>
+        <div class="si-incident-body">${renderIllustration(ill, lang)}</div>
+      </details>`;
+    }).join('')}
+  </section>`;
+}
+
+/** 单条建议 + patch 直接铺,加可见的"复制片段"按钮 */
+function renderRecommendation(rec: { action: string; priority: InsightSeverity; patch?: InsightPatch }, idx: number, lang: Lang): string {
+  const priLabel = lang === 'zh' ? SEVERITY_LABEL_ZH[rec.priority] : SEVERITY_LABEL_EN[rec.priority];
+  let patchBlock = '';
+  if (rec.patch) {
+    const targetLabel = lang === 'zh' ? PATCH_TARGET_ZH[rec.patch.target] : PATCH_TARGET_EN[rec.patch.target];
+    const snippetId = `snippet-${Math.random().toString(36).slice(2, 10)}`;
+    patchBlock = `<div class="si-rec-patch">
+      <div class="si-rec-patch-meta">
+        <span class="si-rec-patch-target">${e(targetLabel)}</span>
+        <span class="si-rec-patch-loc">${e(rec.patch.location)}</span>
+        <button class="si-rec-patch-copy" onclick="omkCopySnippet('${snippetId}', this)" type="button">${lang === 'zh' ? '📋 复制片段' : '📋 Copy'}</button>
+      </div>
+      <pre class="si-rec-patch-snippet"><code id="${snippetId}">${e(rec.patch.snippet)}</code></pre>
+    </div>`;
+  }
+  return `<div class="si-rec-item">
+    <div class="si-rec-head">
+      <span class="si-rec-num">${idx + 1}</span>
+      <span class="si-rec-pri si-rec-pri--${rec.priority}">${e(priLabel)}</span>
+      <span class="si-rec-action">${e(rec.action)}</span>
     </div>
-    ${ills}
+    ${patchBlock}
   </div>`;
 }
 
-function renderPatchBlock(patch: InsightPatch, lang: Lang): string {
-  const targetLabel = lang === 'zh' ? PATCH_TARGET_ZH[patch.target] : PATCH_TARGET_EN[patch.target];
-  return `<details class="si-patch">
-    <summary>${lang === 'zh' ? '📋 可粘贴片段' : '📋 Paste-ready snippet'}</summary>
-    <div class="si-patch-body">
-      <div class="si-patch-meta">
-        <span class="si-patch-target">${e(targetLabel)}</span>
-        <span class="si-patch-loc">${e(patch.location)}</span>
-      </div>
-      <pre class="si-patch-snippet"><code>${e(patch.snippet)}</code></pre>
+/** 三视角细节折叠(放在 modal 最下),供想看每段完整 message 的高级用户展开 */
+function renderEvidenceDetail(evidences: InsightEvidence[], lang: Lang): string {
+  return `<details class="si-modal-detail">
+    <summary>${lang === 'zh' ? '▸ 三视角细节(完整说明)' : '▸ Per-perspective details'}</summary>
+    <div class="si-modal-detail-body">
+      ${evidences.map((ev) => {
+        const persp = lang === 'zh' ? PERSPECTIVE_ZH[ev.perspective] : PERSPECTIVE_EN[ev.perspective];
+        return `<div class="si-ev si-ev--${ev.status}">
+          <div class="si-ev-line">
+            <span class="si-ev-icon">${STATUS_ICON[ev.status]}</span>
+            <span class="si-ev-perspective">${e(persp)}</span>
+            <span class="si-ev-msg">${e(ev.message)}</span>
+          </div>
+        </div>`;
+      }).join('')}
     </div>
   </details>`;
 }
 
-function renderInsightModal(ins: Insight, num: number, lang: Lang): string {
+function renderInsightModal(ins: Insight, num: number, reportId: string | null, langQ: string, lang: Lang): string {
   const sevIcon = SEVERITY_ICON[ins.severity];
   const sevLabel = lang === 'zh' ? SEVERITY_LABEL_ZH[ins.severity] : SEVERITY_LABEL_EN[ins.severity];
   const audInfo = lang === 'zh' ? AUDIENCE_INFO_ZH[ins.audience] : AUDIENCE_INFO_EN[ins.audience];
@@ -504,20 +610,17 @@ function renderInsightModal(ins: Insight, num: number, lang: Lang): string {
         ${ins.affectedCount > 0 ? `<span class="si-modal-affect">${lang === 'zh' ? '影响' : 'affects'} ${ins.affectedCount}</span>` : ''}
       </div>
       ${ins.description ? `<p class="si-modal-desc">${e(ins.description)}</p>` : ''}
-      <section class="si-evidence">
-        <div class="si-evidence-h">${lang === 'zh' ? '⛳ 证据' : '⛳ Evidence'}</div>
-        ${ins.evidence.map((ev) => renderEvidenceBlock(ev, lang)).join('')}
-      </section>
+
+      ${renderSignalStrip(ins.evidence, lang)}
+
+      ${renderIncidentSection(ins.evidence, reportId, langQ, lang)}
+
       ${ins.recommendations.length > 0 ? `<section class="si-recs">
-        <div class="si-recs-h">${lang === 'zh' ? '💡 建议' : '💡 Recommendations'}</div>
-        <ul>${ins.recommendations.map((r) => `<li>
-          <div class="si-rec-line">
-            <span class="si-rec-pri si-rec-pri--${r.priority}">${e(lang === 'zh' ? SEVERITY_LABEL_ZH[r.priority] : SEVERITY_LABEL_EN[r.priority])}</span>
-            <span class="si-rec-action">${e(r.action)}</span>
-          </div>
-          ${r.patch ? renderPatchBlock(r.patch, lang) : ''}
-        </li>`).join('')}</ul>
+        <div class="si-recs-h">💡 ${lang === 'zh' ? '建议怎么改' : 'How to fix'}</div>
+        ${ins.recommendations.map((r, i) => renderRecommendation(r, i, lang)).join('')}
       </section>` : ''}
+
+      ${renderEvidenceDetail(ins.evidence, lang)}
     </div>
   </div>`;
 }
@@ -911,6 +1014,75 @@ const SKILL_DETAIL_CSS = `
 .si-stagecard-meta { font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums }
 .si-stagecard-arrow { color:var(--text-muted);font-size:16px;font-weight:300 }
 
+/* ── Insight modal v2:信息分层重设 ──────────────────────────────────
+ * 顺序:tags → desc → signal-strip(三视角速读卡)→ incidents(LLM 实际怎么错的)
+ *      → recommendations(建议 + patch 直接铺)→ evidence-detail(可展开看完整 message)
+ */
+
+/* 三视角速读卡 */
+.si-signal-strip { display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 6px }
+.si-signal { padding:10px 12px;border-radius:6px;background:var(--bg-soft);border-left:3px solid var(--border);display:flex;flex-direction:column;gap:4px;min-width:0 }
+.si-signal--hit    { border-left-color:#9c4a3f;background:rgba(156,74,63,.06) }
+.si-signal--blind  { border-left-color:#7a6b89;background:rgba(122,107,137,.06) }
+.si-signal--silent { border-left-color:var(--text-muted);background:var(--bg-soft) }
+.si-signal--na     { border-left-color:var(--border);background:var(--bg-soft);opacity:.7 }
+.si-signal-head { display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);font-weight:500 }
+.si-signal-icon { font-size:14px;line-height:1 }
+.si-signal-name { font-weight:600 }
+.si-signal-status { font-size:11.5px;font-weight:700;letter-spacing:0.02em;width:fit-content;padding:2px 8px;border-radius:9px }
+.si-signal-status--hit    { background:rgba(156,74,63,.16);color:#9c4a3f }
+.si-signal-status--blind  { background:rgba(122,107,137,.16);color:#7a6b89 }
+.si-signal-status--silent { background:var(--bg-surface);color:var(--text-muted) }
+.si-signal-status--na     { background:var(--bg-surface);color:var(--text-muted) }
+.si-signal-detail { font-size:12px;color:var(--text-secondary);line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word }
+.si-signal-summary { font-size:12px;color:var(--text-secondary);text-align:center;margin:2px 0 14px;padding:6px 12px;background:var(--bg-soft);border-radius:5px;font-style:italic }
+@media(max-width:560px){ .si-signal-strip { grid-template-columns:1fr;gap:6px } }
+
+/* 实际现场(原 illustration 块,提升为一级 section)*/
+.si-incidents { margin:14px 0;padding:12px 14px;background:var(--bg-soft);border-radius:6px }
+.si-incidents-h { font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:10px }
+.si-incident { background:var(--bg-surface);border-radius:5px;margin-bottom:8px;border-left:3px solid var(--accent) }
+.si-incident:last-child { margin-bottom:0 }
+.si-incident-head { display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:default;justify-content:space-between }
+details.si-incident > summary.si-incident-head { cursor:pointer;list-style:none;user-select:none }
+details.si-incident > summary.si-incident-head::-webkit-details-marker { display:none }
+details.si-incident > summary.si-incident-head::before { content:'▸ ';color:var(--text-muted);margin-right:-4px }
+details.si-incident[open] > summary.si-incident-head::before { content:'▾ ' }
+.si-incident-id { font-size:11.5px;font-weight:600;color:var(--text-secondary);background:var(--bg-soft);padding:1px 7px;border-radius:3px;font-family:"SF Mono",Menlo,monospace }
+.si-incident-link { font-size:11px;color:var(--accent);text-decoration:none;font-weight:500 }
+.si-incident-link:hover { text-decoration:underline }
+.si-incident--open .si-illustration,
+.si-incident-body .si-illustration { border-left:none;background:transparent;padding:0 12px 10px 12px }
+
+/* 建议 + patch 直接铺(去掉 details 折叠)*/
+.si-recs { margin:14px 0 }
+.si-recs-h { font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:10px }
+.si-rec-item { background:var(--bg-soft);border-radius:6px;padding:10px 12px;margin-bottom:8px;border-left:3px solid var(--accent) }
+.si-rec-item:last-child { margin-bottom:0 }
+.si-rec-head { display:flex;align-items:flex-start;gap:8px;margin-bottom:8px }
+.si-rec-num { font-size:11px;font-weight:700;color:var(--text-muted);background:var(--bg-surface);padding:1px 7px;border-radius:9px;flex-shrink:0;margin-top:1px;font-variant-numeric:tabular-nums }
+.si-rec-pri { padding:1px 7px;border-radius:8px;font-size:10.5px;font-weight:600;flex-shrink:0;margin-top:1px }
+.si-rec-pri--high { background:rgba(156,74,63,.14);color:#9c4a3f }
+.si-rec-pri--medium { background:rgba(176,128,48,.12);color:#b08030 }
+.si-rec-pri--low { background:rgba(94,130,82,.14);color:#5e8252 }
+.si-rec-action { flex:1;color:var(--text-primary);font-size:13px;line-height:1.55 }
+.si-rec-patch { margin-left:0 }
+.si-rec-patch-meta { display:flex;gap:8px;align-items:center;font-size:11px;color:var(--text-muted);margin-bottom:5px;flex-wrap:wrap }
+.si-rec-patch-target { font-weight:600;color:var(--text-secondary) }
+.si-rec-patch-loc { font-family:"SF Mono",Menlo,monospace;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+.si-rec-patch-copy { background:var(--accent);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;font-weight:500;transition:background .1s;flex-shrink:0 }
+.si-rec-patch-copy:hover { background:var(--accent-hover) }
+.si-rec-patch-copy.copied { background:#5e8252 }
+.si-rec-patch-snippet { background:var(--bg-surface);padding:10px 12px;border-radius:4px;border-left:2px solid var(--accent);font-size:11.5px;line-height:1.55;overflow-x:auto;margin:0 }
+.si-rec-patch-snippet code { font-family:"SF Mono",Menlo,monospace;color:var(--text-primary);white-space:pre;display:block }
+
+/* 三视角细节折叠(底部)*/
+.si-modal-detail { margin-top:14px;border-top:1px solid var(--border);padding-top:10px }
+.si-modal-detail > summary { cursor:pointer;font-size:12px;font-weight:600;color:var(--text-secondary);user-select:none;list-style:none;padding:4px 0 }
+.si-modal-detail > summary::-webkit-details-marker { display:none }
+.si-modal-detail > summary:hover { color:var(--text-primary) }
+.si-modal-detail-body { margin-top:8px;padding:8px 10px;background:var(--bg-soft);border-radius:5px }
+
 /* Modal 内的样式(沿用 modal-overlay/modal-content,只补本页特有的)*/
 .si-modal { max-width:760px;width:90% }
 .si-modal-h { display:flex;align-items:center;gap:10px;flex-wrap:wrap }
@@ -1179,7 +1351,8 @@ export function renderSkillDetail(
   const lastTs = [entry.doctor?.timestamp, entry.eval?.timestamp, entry.observe?.generatedAt]
     .filter((s): s is string => Boolean(s)).sort().pop();
 
-  const insightModals = insights.map((ins) => renderInsightModal(ins, idx.byInsightId.get(ins.id) ?? 0, lang)).join('');
+  const insightReportId = entry.eval?.reportId ?? null;
+  const insightModals = insights.map((ins) => renderInsightModal(ins, idx.byInsightId.get(ins.id) ?? 0, insightReportId, langQ, lang)).join('');
 
   return layout(entry.skillName, `
     <main>

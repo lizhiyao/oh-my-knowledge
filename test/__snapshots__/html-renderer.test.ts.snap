@@ -28,6 +28,30 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunDetail en 1`] 
       });
     }
   });
+  // 复制 paste-ready 片段到剪贴板:供 insight modal 的"复制片段"按钮调用。
+  // 元素 id 指 <code> 节点;复制后按钮加 .copied 类做 1.5s 视觉反馈。
+  window.omkCopySnippet = function(elementId, btn) {
+    var el = document.getElementById(elementId);
+    if (!el) return;
+    var text = el.textContent || '';
+    var done = function() {
+      if (!btn) return;
+      var orig = btn.textContent;
+      btn.textContent = '✓ 已复制';
+      btn.classList.add('copied');
+      setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function() { /* swallow */ });
+    } else {
+      // 老浏览器兜底:execCommand fallback
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch(e) { /* swallow */ }
+      document.body.removeChild(ta);
+    }
+  };
   </script>
 <style>
 /* Pantone-inspired light theme(2026-05 全站浅色化)。
@@ -1063,6 +1087,30 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunDetail zh 1`] 
       });
     }
   });
+  // 复制 paste-ready 片段到剪贴板:供 insight modal 的"复制片段"按钮调用。
+  // 元素 id 指 <code> 节点;复制后按钮加 .copied 类做 1.5s 视觉反馈。
+  window.omkCopySnippet = function(elementId, btn) {
+    var el = document.getElementById(elementId);
+    if (!el) return;
+    var text = el.textContent || '';
+    var done = function() {
+      if (!btn) return;
+      var orig = btn.textContent;
+      btn.textContent = '✓ 已复制';
+      btn.classList.add('copied');
+      setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function() { /* swallow */ });
+    } else {
+      // 老浏览器兜底:execCommand fallback
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch(e) { /* swallow */ }
+      document.body.removeChild(ta);
+    }
+  };
   </script>
 <style>
 /* Pantone-inspired light theme(2026-05 全站浅色化)。
@@ -2098,6 +2146,30 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunList en 1`] = 
       });
     }
   });
+  // 复制 paste-ready 片段到剪贴板:供 insight modal 的"复制片段"按钮调用。
+  // 元素 id 指 <code> 节点;复制后按钮加 .copied 类做 1.5s 视觉反馈。
+  window.omkCopySnippet = function(elementId, btn) {
+    var el = document.getElementById(elementId);
+    if (!el) return;
+    var text = el.textContent || '';
+    var done = function() {
+      if (!btn) return;
+      var orig = btn.textContent;
+      btn.textContent = '✓ 已复制';
+      btn.classList.add('copied');
+      setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function() { /* swallow */ });
+    } else {
+      // 老浏览器兜底:execCommand fallback
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch(e) { /* swallow */ }
+      document.body.removeChild(ta);
+    }
+  };
   </script>
 <style>
 /* Pantone-inspired light theme(2026-05 全站浅色化)。
@@ -2656,6 +2728,30 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunList zh 1`] = 
       });
     }
   });
+  // 复制 paste-ready 片段到剪贴板:供 insight modal 的"复制片段"按钮调用。
+  // 元素 id 指 <code> 节点;复制后按钮加 .copied 类做 1.5s 视觉反馈。
+  window.omkCopySnippet = function(elementId, btn) {
+    var el = document.getElementById(elementId);
+    if (!el) return;
+    var text = el.textContent || '';
+    var done = function() {
+      if (!btn) return;
+      var orig = btn.textContent;
+      btn.textContent = '✓ 已复制';
+      btn.classList.add('copied');
+      setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function() { /* swallow */ });
+    } else {
+      // 老浏览器兜底:execCommand fallback
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch(e) { /* swallow */ }
+      document.body.removeChild(ta);
+    }
+  };
   </script>
 <style>
 /* Pantone-inspired light theme(2026-05 全站浅色化)。
