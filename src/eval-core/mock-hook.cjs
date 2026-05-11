@@ -35,11 +35,30 @@ function globMatch(pattern, value) {
   return new RegExp('^' + escaped.replace(/\*/g, '.*') + '$', 's').test(value);
 }
 
+function arraysDeepEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (!deepEqual(a[i], b[i])) return false;
+  return true;
+}
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) return arraysDeepEqual(a, b);
+  if (typeof a === 'object' && a !== null && typeof b === 'object' && b !== null
+      && !Array.isArray(a) && !Array.isArray(b)) {
+    const ak = Object.keys(a), bk = Object.keys(b);
+    if (ak.length !== bk.length) return false;
+    for (const k of ak) if (!deepEqual(a[k], b[k])) return false;
+    return true;
+  }
+  return false;
+}
 function matchesInputSubset(expected, actual) {
   if (typeof actual !== 'object' || actual === null) return false;
   for (const k of Object.keys(expected)) {
     const v = expected[k];
-    if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+    if (Array.isArray(v)) {
+      if (!Array.isArray(actual[k]) || !arraysDeepEqual(v, actual[k])) return false;
+    } else if (typeof v === 'object' && v !== null) {
       if (!matchesInputSubset(v, actual[k])) return false;
     } else if (actual[k] !== v) {
       return false;

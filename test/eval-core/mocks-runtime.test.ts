@@ -95,6 +95,21 @@ describe('isMockHit', () => {
     assert.equal(isMockHit(m, 'Bash', { command: 'git push origin master', timeout: 30 }), true);
     assert.equal(isMockHit(m, 'Bash', { command: 'git push other' }), false);
   });
+
+  // 修 PR #95 review P2-3:之前 match.input 含数组字段会走引用比较永远 miss
+  it('matches input subset 含数组字段(deep equal 而非 === 引用比较)', () => {
+    const m: Mock = { tool: 'X', match: { input: { args: ['a', 'b', 'c'] } }, return: 'ok' };
+    assert.equal(isMockHit(m, 'X', { args: ['a', 'b', 'c'] }), true);
+    assert.equal(isMockHit(m, 'X', { args: ['a', 'b'] }), false);
+    assert.equal(isMockHit(m, 'X', { args: ['a', 'b', 'd'] }), false);
+    assert.equal(isMockHit(m, 'X', { args: 'a' }), false); // 不是数组
+  });
+
+  it('matches input subset 含嵌套数组(数组里套 object)', () => {
+    const m: Mock = { tool: 'X', match: { input: { items: [{ name: 'a' }, { name: 'b' }] } }, return: 'ok' };
+    assert.equal(isMockHit(m, 'X', { items: [{ name: 'a' }, { name: 'b' }] }), true);
+    assert.equal(isMockHit(m, 'X', { items: [{ name: 'a' }, { name: 'c' }] }), false);
+  });
 });
 
 describe('resolveMockReturn', () => {

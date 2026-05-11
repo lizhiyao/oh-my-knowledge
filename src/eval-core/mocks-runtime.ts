@@ -52,11 +52,41 @@ function globMatch(pattern: string, value: string): boolean {
 }
 
 /** deep equal 子集匹配:expected 的每个 key/value 在 actual 中存在且相等(actual 可有更多字段)。 */
+/** 数组 deep-equal:长度相等 + 每个元素递归比较(支持嵌套数组 / object)。 */
+function arraysDeepEqual(a: unknown[], b: unknown[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (!deepEqual(a[i], b[i])) return false;
+  }
+  return true;
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) return arraysDeepEqual(a, b);
+  if (typeof a === 'object' && a !== null && typeof b === 'object' && b !== null
+      && !Array.isArray(a) && !Array.isArray(b)) {
+    const ao = a as Record<string, unknown>;
+    const bo = b as Record<string, unknown>;
+    const ak = Object.keys(ao);
+    const bk = Object.keys(bo);
+    if (ak.length !== bk.length) return false;
+    for (const k of ak) {
+      if (!deepEqual(ao[k], bo[k])) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
 function matchesInputSubset(expected: Record<string, unknown>, actual: unknown): boolean {
   if (typeof actual !== 'object' || actual === null) return false;
   const a = actual as Record<string, unknown>;
   for (const [k, v] of Object.entries(expected)) {
-    if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+    if (Array.isArray(v)) {
+      // 数组 deep-equal,不要靠 === 引用比较 — 不同 sample 实例的同样数组永远不会等
+      if (!Array.isArray(a[k]) || !arraysDeepEqual(v, a[k] as unknown[])) return false;
+    } else if (typeof v === 'object' && v !== null) {
       if (!matchesInputSubset(v as Record<string, unknown>, a[k])) return false;
     } else if (a[k] !== v) {
       return false;
