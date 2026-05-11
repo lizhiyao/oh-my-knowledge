@@ -884,6 +884,10 @@ const SKILL_DETAIL_CSS = `
 .si-trend-canvas-wrap { position:relative;width:100%;height:240px }
 .si-trend-canvas-wrap > canvas { position:absolute;left:0;top:0;width:100% !important;height:100% !important }
 .si-trend-hint { font-size:10.5px;color:var(--text-muted);text-align:center;margin-top:6px;font-style:italic }
+.si-trend-fallback { position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:var(--bg-soft);border-radius:6px;padding:14px;text-align:center }
+.si-trend-fallback-icon { font-size:24px;line-height:1 }
+.si-trend-fallback-msg { font-size:13px;font-weight:600;color:#9c4a3f }
+.si-trend-fallback-hint { font-size:11px;color:var(--text-muted);max-width:80% }
 
 /* 三视角当前状态区:跟趋势图区域并列,加标题让用户一眼知道这是"当前快照速览" */
 .si-stages-block { background:var(--bg-surface);border-radius:8px;padding:12px 14px;box-shadow:var(--shadow-sm) }
@@ -1066,12 +1070,26 @@ const SKILL_DETAIL_CSS = `
 // ────────── chart.js init script ──────────
 
 const TREND_INIT_SCRIPT = `
-<script src="/static/chart.js"></script>
+<script src="/static/chart.js" onerror="window.__omkChartLoadError=true"></script>
 <script>
 (function(){
+  function showFallback(canvas, msg){
+    if (!canvas) return;
+    var wrap = canvas.parentElement;
+    if (!wrap) return;
+    wrap.innerHTML = '<div class="si-trend-fallback">' +
+      '<div class="si-trend-fallback-icon">📉</div>' +
+      '<div class="si-trend-fallback-msg">' + msg + '</div>' +
+      '<div class="si-trend-fallback-hint">/static/chart.js 没加载成功;数据仍可从下方"最新指标速览"看,或在浏览器控制台看具体错误。</div>' +
+      '</div>';
+  }
   function init(){
     var canvas = document.getElementById('trend-chart');
-    if (!canvas || !window.Chart) return;
+    if (!canvas) return;
+    if (window.__omkChartLoadError || !window.Chart) {
+      showFallback(canvas, '趋势图加载失败');
+      return;
+    }
     var raw = canvas.getAttribute('data-chart');
     var rawLinks = canvas.getAttribute('data-links');
     if (!raw) return;
@@ -1116,7 +1134,10 @@ const TREND_INIT_SCRIPT = `
           }
         }
       });
-    } catch(e) { console.warn('trend chart init failed:', e); }
+    } catch(e) {
+      console.warn('trend chart init failed:', e);
+      showFallback(canvas, '趋势图渲染异常');
+    }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
