@@ -11,8 +11,10 @@
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
 import { assessHealth } from './skill-detail-renderer.js';
-import type { Lang } from '../types/index.js';
+import { detectInsights } from '../server/skill-insights.js';
+import type { Lang, EvaluationReport } from '../types/index.js';
 import type { SkillIndex, SkillIndexEntry } from '../server/skill-index.js';
+import type { Insight } from '../server/skill-insights.js';
 
 function relTime(ts: string | null | undefined, lang: Lang): string {
   if (!ts) return lang === 'zh' ? '未跑' : 'never';
@@ -34,16 +36,10 @@ interface CardSummary {
   trendDelta: string;
 }
 
-function summarizeCard(entry: SkillIndexEntry): CardSummary {
-  // 待优化粗略计数(不依赖 evalReport,详情页有精准 insight 数):
-  // doctor warn/fail + eval failCount + observe non-green。
-  const docFails = entry.doctor ? entry.doctor.failCount + entry.doctor.warnCount : 0;
-  const evalFails = entry.eval?.failCount ?? 0;
-  const obsNonGreen = entry.observe && entry.observe.healthBand !== 'green' ? 1 : 0;
-  const warnCount = docFails + evalFails + obsNonGreen;
-  const highWarn = (entry.doctor?.failCount ?? 0)
-    + (entry.eval && entry.eval.passCount === 0 && entry.eval.failCount > 0 ? 1 : 0)
-    + (entry.observe?.healthBand === 'red' ? 1 : 0);
+function summarizeCard(entry: SkillIndexEntry, insights: Insight[]): CardSummary {
+  // 待优化数 = detectInsights 数(跟详情页用同一份输入,避免列表/详情口径不一致)。
+  const warnCount = insights.length;
+  const highWarn = insights.filter((i) => i.severity === 'high').length;
 
   // 趋势:用 eval 综合分历史第一份 vs 最后一份比较;无 history 用 doctor pass-rate fallback。
   let trendDir: CardSummary['trendDir'] = 'none';
@@ -123,9 +119,9 @@ function renderTrendBadge(t: CardSummary, lang: Lang): string {
   return `<span class="sl-trend sl-trend--${cls}" title="${lang === 'zh' ? '基于历史评测综合分变化' : 'Based on historical eval composite delta'}">${arrow} ${lang === 'zh' ? labelZh : (t.trendDir === 'up' ? 'up' : t.trendDir === 'down' ? 'down' : 'flat')}${t.trendDelta ? ` (${e(t.trendDelta)})` : ''}</span>`;
 }
 
-function renderCard(entry: SkillIndexEntry, langQ: string, lang: Lang): string {
-  const h = assessHealth(entry, [], lang);
-  const summary = summarizeCard(entry);
+function renderCard(entry: SkillIndexEntry, insights: Insight[], langQ: string, lang: Lang): string {
+  const h = assessHealth(entry, insights, lang);
+  const summary = summarizeCard(entry, insights);
   const lastTs = [entry.doctor?.timestamp, entry.eval?.timestamp, entry.observe?.generatedAt]
     .filter((s): s is string => Boolean(s)).sort().pop();
   const detailHref = `/skills/${encodeURIComponent(entry.skillName)}${langQ}`;
@@ -158,19 +154,20 @@ function renderCard(entry: SkillIndexEntry, langQ: string, lang: Lang): string {
   </a>`;
 }
 
-function renderSummaryBar(idx: SkillIndex, allEntries: SkillIndexEntry[], lang: Lang): string {
+function renderSummaryBar(idx: SkillIndex, allEntries: SkillIndexEntry[], insightsByEntry: Map<string, Insight[]>, lang: Lang): string {
   const s = idx.summary;
   if (s.totalSkills === 0) return '';
 
   // grade 重新统计(用 assessHealth 而不是 entry.band,跟卡片显示一致)
   const gradeCounts = { excellent: 0, good: 0, fair: 0, unhealthy: 0, unscored: 0 };
   for (const ent of allEntries) {
-    const h = assessHealth(ent, [], lang);
+    const ins = insightsByEntry.get(ent.skillName) ?? [];
+    const h = assessHealth(ent, ins, lang);
     gradeCounts[h.grade]++;
   }
   const totalSamples = allEntries.reduce((sum, ent) => sum + (ent.eval?.totalSamples ?? 0), 0);
-  const totalWarn = allEntries.reduce((sum, ent) => sum + summarizeCard(ent).warnCount, 0);
-  const totalHighWarn = allEntries.reduce((sum, ent) => sum + summarizeCard(ent).highWarn, 0);
+  const totalWarn = allEntries.reduce((sum, ent) => sum + (insightsByEntry.get(ent.skillName)?.length ?? 0), 0);
+  const totalHighWarn = allEntries.reduce((sum, ent) => sum + (insightsByEntry.get(ent.skillName)?.filter((i) => i.severity === 'high').length ?? 0), 0);
   const lastTs = allEntries.flatMap((ent) => [ent.doctor?.timestamp, ent.eval?.timestamp, ent.observe?.generatedAt])
     .filter((x): x is string => Boolean(x)).sort().pop();
 
@@ -190,9 +187,9 @@ function renderSummaryBar(idx: SkillIndex, allEntries: SkillIndexEntry[], lang: 
   </div>`;
 }
 
-function renderNextSteps(idx: SkillIndex, allEntries: SkillIndexEntry[], lang: Lang): string {
+function renderNextSteps(idx: SkillIndex, allEntries: SkillIndexEntry[], insightsByEntry: Map<string, Insight[]>, lang: Lang): string {
   const items: string[] = [];
-  const unhealthy = allEntries.filter((ent) => assessHealth(ent, [], lang).grade === 'unhealthy').length;
+  const unhealthy = allEntries.filter((ent) => assessHealth(ent, insightsByEntry.get(ent.skillName) ?? [], lang).grade === 'unhealthy').length;
   if (unhealthy > 0) {
     items.push(lang === 'zh'
       ? `🔴 ${unhealthy} 个 skill 不健康 — 点开"不健康"卡片看待优化项,优先 high`
@@ -280,6 +277,8 @@ const SKILL_LIST_CSS = `
 .sl-next-steps ul { margin:0;padding-left:18px;color:var(--text-secondary);font-size:13.5px;line-height:1.8 }
 .sl-empty-state { text-align:center;padding:60px 20px;color:var(--text-muted) }
 .sl-empty-state code { background:var(--bg-soft);padding:2px 6px;border-radius:3px;font-family:"SF Mono",Menlo,monospace;font-size:13px }
+.sl-legacy-hint { margin-top:24px;text-align:center;font-size:11.5px;color:var(--text-muted) }
+.sl-legacy-hint a { color:var(--accent) }
 
 /* 响应式:窄屏堆叠 */
 @media(max-width:880px){
@@ -295,14 +294,24 @@ const SKILL_LIST_CSS = `
 }
 `;
 
-export function renderSkillList(idx: SkillIndex, lang: Lang = DEFAULT_LANG): string {
+export function renderSkillList(
+  idx: SkillIndex,
+  evalReportsBySkill: Map<string, EvaluationReport> = new Map(),
+  lang: Lang = DEFAULT_LANG,
+): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
+  // 给每个 entry 跑一次 detectInsights — 跟详情页用同一份输入,健康等级 / 待优化数口径一致。
+  const insightsByEntry = new Map<string, Insight[]>();
+  for (const ent of idx.entries) {
+    const er = evalReportsBySkill.get(ent.skillName) ?? null;
+    insightsByEntry.set(ent.skillName, detectInsights(ent, er));
+  }
   const body = idx.entries.length === 0
     ? `<div class="sl-empty-state">
         <p>${lang === 'zh' ? '暂无 skill 报告。先跑一次评测:' : 'No skill reports yet. Run an evaluation first:'}</p>
         <p><code>omk eval --treatment my-skill</code></p>
       </div>`
-    : `<div class="sl-cards">${idx.entries.map((ent) => renderCard(ent, langQ, lang)).join('')}</div>`;
+    : `<div class="sl-cards">${idx.entries.map((ent) => renderCard(ent, insightsByEntry.get(ent.skillName) ?? [], langQ, lang)).join('')}</div>`;
 
   const title = lang === 'zh' ? '🧭 Skill 健康仪表盘' : '🧭 Skill Health Dashboard';
   const subtitle = lang === 'zh'
@@ -313,9 +322,12 @@ export function renderSkillList(idx: SkillIndex, lang: Lang = DEFAULT_LANG): str
     <main>
     <h1>${title}</h1>
     <p class="subtitle">${subtitle}</p>
-    ${renderSummaryBar(idx, idx.entries, lang)}
+    ${renderSummaryBar(idx, idx.entries, insightsByEntry, lang)}
     ${body}
-    ${renderNextSteps(idx, idx.entries, lang)}
+    ${renderNextSteps(idx, idx.entries, insightsByEntry, lang)}
+    <div class="sl-legacy-hint">
+      ${lang === 'zh' ? '找老的 run 列表?' : 'Looking for the old run list?'} <a href="/runs${langQ}">/runs</a>
+    </div>
     </main>
     <style>${SKILL_LIST_CSS}</style>
   `, lang);

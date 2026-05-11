@@ -3,14 +3,14 @@ import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { renderReportDocumentDetail, renderTrendsPage } from '../renderer/html-renderer.js';
+import { renderReportDocumentDetail, renderTrendsPage, renderRunList } from '../renderer/html-renderer.js';
 import { renderSkillList } from '../renderer/skill-list-renderer.js';
 import { renderSkillDetail } from '../renderer/skill-detail-renderer.js';
 import { renderSkillHealthReport } from '../renderer/skill-health-renderer.js';
 import { renderObservationInboxPage } from '../renderer/observation-inbox-renderer.js';
 import { DEFAULT_LANG, t, layout } from '../renderer/layout.js';
 import { buildSkillIndex } from './skill-index.js';
-import type { Lang } from '../types/index.js';
+import type { Lang, EvaluationReport } from '../types/index.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
 import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
 import type { JobStore, ReportStore } from '../types/index.js';
@@ -717,12 +717,28 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
+      // 老 run 列表 — 兼容老书签。/skills/ 切换为默认后,run 列表挪这里。
+      if (path === '/runs') {
+        const runs = await reportStore.list();
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(renderRunList(runs, lang));
+        return;
+      }
+
       // 根路径走 skill-centric 列表页 — studio 顶级实体是 skill。
       if (path === '/') {
         const runs = await reportStore.list();
         const idx = buildSkillIndex(runs, analysesDir, doctorsDir);
+        // 为每个 entry 找对应的 evalReport,让 list 渲染时也能跑 detectInsights,
+        // 跟详情页 assessHealth 用同一份输入(避免列表绿 / 详情红的口径不一致)。
+        const evalReportsBySkill = new Map<string, EvaluationReport>();
+        for (const ent of idx.entries) {
+          if (!ent.eval) continue;
+          const r = runs.find((x) => x.id === ent.eval!.reportId);
+          if (r && r.kind === 'evaluation') evalReportsBySkill.set(ent.skillName, r);
+        }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderSkillList(idx, lang));
+        res.end(renderSkillList(idx, evalReportsBySkill, lang));
         return;
       }
 
