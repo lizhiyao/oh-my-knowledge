@@ -23,17 +23,38 @@ import { createHash } from 'node:crypto';
 import type { ExecResult, ExecutorCache } from '../types/index.js';
 
 const CACHE_FILE = 'executor-cache.json';
+/** v5 保留 turns / toolCalls 后单 entry 可达 5–50 KB,长期使用会无界膨胀。
+ *  Map iteration 是插入序,set() 时若 key 已存在先 delete 再 set 把它移到末尾 → 实现 LRU。
+ *  超过 cap 时淘汰最旧条目(Map iterator 第一个)。
+ *  默认 2000 条按平均 20 KB 算 ~40 MB,撑住"大半年评测史"的同时保证不爆盘。
+ *  用户用 `OMK_CACHE_MAX_ENTRIES` 调:0 / 负数 → 不限制(回到老行为)。 */
+const DEFAULT_MAX_ENTRIES = 2000;
+function resolveCacheCap(): number {
+  const raw = process.env.OMK_CACHE_MAX_ENTRIES;
+  if (raw == null || raw === '') return DEFAULT_MAX_ENTRIES;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_MAX_ENTRIES;
+  if (n <= 0) return Infinity;
+  return Math.floor(n);
+}
 
 export function createCache(cacheDir: string): ExecutorCache {
   mkdirSync(cacheDir, { recursive: true });
   const filePath = join(cacheDir, CACHE_FILE);
+  const cap = resolveCacheCap();
 
-  let store: Record<string, ExecResult> = {};
+  // 用 Map 替代 Record:Map 保证 iteration 顺序 = 插入顺序,LRU 淘汰用得上。
+  // 老 JSON cache 文件仍按 Record<string, ExecResult> 写,反序列化时 Object.entries
+  // 转 Map(Object 字段顺序在主流引擎里也是插入序,所以 LRU 信号不丢)。
+  const store = new Map<string, ExecResult>();
   if (existsSync(filePath)) {
     try {
-      store = JSON.parse(readFileSync(filePath, 'utf-8'));
+      const raw = JSON.parse(readFileSync(filePath, 'utf-8')) as Record<string, ExecResult>;
+      for (const [k, v] of Object.entries(raw)) store.set(k, v);
+      // 加载完也 enforce 一次 cap,处理上次 process exit 前没保存到的极端膨胀。
+      evictUntilWithinCap(store, cap);
     } catch {
-      store = {};
+      // 老 cache 坏了忽略 — 重跑会重建。
     }
   }
 
@@ -41,27 +62,48 @@ export function createCache(cacheDir: string): ExecutorCache {
 
   return {
     get(key: string): ExecResult | null {
-      return store[key] || null;
+      const v = store.get(key);
+      if (v == null) return null;
+      // LRU touch:命中时移到末尾(最新)。这样 evict 时永远从最旧端拿。
+      store.delete(key);
+      store.set(key, v);
+      dirty = true;
+      return v;
     },
 
     set(key: string, value: ExecResult): void {
       // 保留完整 ExecResult(含 turns / toolCalls):工具类 assertion (tool_called /
       // tool_input_contains / tools_called)和 diagnostic 要看 trace,砍掉的话 cached
       // rerun 进 grade() 时工具断言为空、diagnostic 没真实证据,跟 cold run 不一致。
-      store[key] = { ...value };
+      if (store.has(key)) store.delete(key);
+      store.set(key, { ...value });
+      evictUntilWithinCap(store, cap);
       dirty = true;
     },
 
     save(): void {
       if (!dirty) return;
-      writeFileSync(filePath, JSON.stringify(store, null, 2));
+      // 序列化时用普通 object,跟老 cache 文件格式兼容(读老报告不破)。
+      // Map iteration 是插入序,生成的 object 字段顺序也保留 LRU 状态,下次加载继续生效。
+      const obj: Record<string, ExecResult> = {};
+      for (const [k, v] of store) obj[k] = v;
+      writeFileSync(filePath, JSON.stringify(obj, null, 2));
       dirty = false;
     },
 
     size(): number {
-      return Object.keys(store).length;
+      return store.size;
     },
   };
+}
+
+function evictUntilWithinCap(store: Map<string, ExecResult>, cap: number): void {
+  if (!Number.isFinite(cap)) return;
+  while (store.size > cap) {
+    const oldest = store.keys().next().value;
+    if (oldest == null) break;
+    store.delete(oldest);
+  }
 }
 
 export function cacheKey(

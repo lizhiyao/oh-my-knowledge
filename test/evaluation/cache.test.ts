@@ -119,3 +119,69 @@ describe('createCache:cache.set 保留 turns / toolCalls', () => {
     }
   });
 });
+
+describe('createCache:LRU + max entries cap(防 cache 文件无界膨胀)', () => {
+  const baseValue: ExecResult = {
+    ok: true, output: 'x', durationMs: 1, durationApiMs: 1,
+    inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0,
+    costUSD: 0, stopReason: 'end_turn', numTurns: 1,
+  };
+
+  it('OMK_CACHE_MAX_ENTRIES=3:超过 cap 时淘汰最旧条目', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-cache-lru-'));
+    const orig = process.env.OMK_CACHE_MAX_ENTRIES;
+    process.env.OMK_CACHE_MAX_ENTRIES = '3';
+    try {
+      const cache = createCache(dir);
+      cache.set('a', baseValue);
+      cache.set('b', baseValue);
+      cache.set('c', baseValue);
+      assert.equal(cache.size(), 3);
+      cache.set('d', baseValue);
+      assert.equal(cache.size(), 3, '加 4 个 cap 3 应该剩 3');
+      // 'a' 是最旧的,被淘汰
+      assert.equal(cache.get('a'), null);
+      assert.ok(cache.get('d'));
+    } finally {
+      if (orig === undefined) delete process.env.OMK_CACHE_MAX_ENTRIES;
+      else process.env.OMK_CACHE_MAX_ENTRIES = orig;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('get 命中刷新 LRU 位:被命中的不会被淘汰', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-cache-lru-'));
+    const orig = process.env.OMK_CACHE_MAX_ENTRIES;
+    process.env.OMK_CACHE_MAX_ENTRIES = '3';
+    try {
+      const cache = createCache(dir);
+      cache.set('a', baseValue);
+      cache.set('b', baseValue);
+      cache.set('c', baseValue);
+      cache.get('a'); // 把 a 刷新到 MRU
+      cache.set('d', baseValue);
+      // 现在最旧是 b
+      assert.ok(cache.get('a'), 'a 因为被 get 刷新过,不该被淘汰');
+      assert.equal(cache.get('b'), null);
+    } finally {
+      if (orig === undefined) delete process.env.OMK_CACHE_MAX_ENTRIES;
+      else process.env.OMK_CACHE_MAX_ENTRIES = orig;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('OMK_CACHE_MAX_ENTRIES=0 表示无限制(回老行为)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-cache-nocap-'));
+    const orig = process.env.OMK_CACHE_MAX_ENTRIES;
+    process.env.OMK_CACHE_MAX_ENTRIES = '0';
+    try {
+      const cache = createCache(dir);
+      for (let i = 0; i < 50; i++) cache.set(`k${i}`, baseValue);
+      assert.equal(cache.size(), 50);
+    } finally {
+      if (orig === undefined) delete process.env.OMK_CACHE_MAX_ENTRIES;
+      else process.env.OMK_CACHE_MAX_ENTRIES = orig;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
