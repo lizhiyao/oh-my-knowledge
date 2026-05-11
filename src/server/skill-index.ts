@@ -15,12 +15,38 @@
  *
  * 综合 band:eval / observe 任一红 → 红,任一黄 → 黄,全绿 → 绿,皆未跑 → gray。
  */
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ReportDocument, EvaluationReport, AssertionDetail } from '../types/index.js';
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import type { DoctorReport, DoctorRuleResult, DoctorSkillStatus } from '../types/doctor.js';
 import { computeVerdict } from '../eval-core/verdict.js';
+
+// ── 模块级缓存:Studio 每次请求都跑 buildSkillIndex,扫盘成本随 skill 数线性,
+// 数据量大后列表 / 详情页响应变慢(参考 PR #95 review P2-4)。
+// 缓存策略:对 reports id+timestamp 拼接 + 两个 dir 的 mtime + 文件数算 fingerprint,
+// 三者任一变化 invalidate。这是 cheap 检查(只 stat + readdir,不读文件内容)。
+interface SkillIndexCache {
+  fingerprint: string;
+  result: SkillIndex;
+}
+let _indexCache: SkillIndexCache | null = null;
+
+function safeStatMtime(dir: string): number {
+  try { return statSync(dir).mtimeMs; } catch { return 0; }
+}
+function safeFileCount(dir: string): number {
+  try { return readdirSync(dir).filter((f) => f.endsWith('.json')).length; } catch { return 0; }
+}
+function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, doctorsDir: string): string {
+  const reportIds = reports.map((r) => `${r.id}:${r.meta?.timestamp ?? ''}`).join(',');
+  return `${reportIds}|d:${safeStatMtime(doctorsDir)}-${safeFileCount(doctorsDir)}|o:${safeStatMtime(analysesDir)}-${safeFileCount(analysesDir)}`;
+}
+
+/** 测试 / 调试用:强制清掉 in-process skill-index 缓存。 */
+export function _resetSkillIndexCache(): void {
+  _indexCache = null;
+}
 
 export interface SkillDoctorSnapshot {
   reportId: string;
@@ -220,6 +246,12 @@ export function buildSkillIndex(
   analysesDir: string,
   doctorsDir: string,
 ): SkillIndex {
+  // 命中缓存就直接返回(fingerprint 覆盖 reports + 两个 dir 的变化信号)
+  const fp = buildIndexFingerprint(reports, analysesDir, doctorsDir);
+  if (_indexCache && _indexCache.fingerprint === fp) {
+    return _indexCache.result;
+  }
+
   // ── eval 聚合(历史 list)─────────────────────────────────
   const evalBy: Record<string, SkillEvalSnapshot[]> = {};
   for (const r of reports) {
@@ -297,7 +329,9 @@ export function buildSkillIndex(
     gray: entries.filter((e) => e.band === 'gray').length,
   };
 
-  return { entries, summary };
+  const result: SkillIndex = { entries, summary };
+  _indexCache = { fingerprint: fp, result };
+  return result;
 }
 
 /** 单 skill 详情查询(用于 /skills/&lt;name&gt; 详情页)— 复用 buildSkillIndex 的扫描结果。 */
