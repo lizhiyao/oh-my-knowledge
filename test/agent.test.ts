@@ -286,6 +286,16 @@ describe('agent assertions', () => {
     assert.equal(result.passed, 1);
   });
 
+  it('tool_input_not_contains: trivially pass when value misses Tool: prefix', () => {
+    // bug 修复:无冒号 value(如 "--force")在 grader 拿不到工具上下文,
+    // 之前默默 false 导致假阳性失败。改为 trivially pass。
+    // loader 会从源头拒,grader 这里是兜底。
+    const result = runAssertions('output', [
+      { type: 'tool_input_not_contains', value: '--force' },
+    ], { toolCalls });
+    assert.equal(result.passed, 1, 'malformed value must not cause false negative');
+  });
+
   it('turns_min: passes when enough turns', () => {
     const result = runAssertions('output', [
       { type: 'turns_min', value: 2 },

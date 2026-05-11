@@ -80,6 +80,10 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
         典型场景:工作流不应踩到某路径 / 不该传某 flag / 临时文件不应进永久目录。
         和 not_contains 的区别 — 这条只看工具调用参数,**不看 LLM 最终文本**,
         所以 LLM 在总结里说"我没写到 X" 不会假阳性触发。
+        **格式硬约束**: tool_input_contains / tool_input_not_contains / tool_output_contains /
+        mock_hit 的 value **必须**是 "Tool:needle" 格式(冒号分隔,工具名 + 子串两侧均非空)。
+        不要写成 \`"--force"\` / \`"lastTaskPatrol"\` 这种裸 needle — 没有工具上下文,
+        loader 会直接拒。要表达"任何 Bash 调用都不该含 --force":写 \`"Bash:--force"\`。
   - { "type": "mock_hit", "value": "Bash:2", "weight": 1 }
         ↑ 校验"驱动流程": sample.mocks 数组里第 N 条(1-based)是否被命中至少一次。
         例: mocks=[A,B,C](A=PROJECT 空 / B=WORKSPACE 命中 / C=search),
@@ -355,17 +359,36 @@ export function sanitizeGeneratedSamples(samples: Sample[]): { stripped: string[
       delete (s as { tripwire?: unknown }).tripwire;
     }
 
-    // assertions 内 tools_called / tools_not_called 的 values 必须非空。
-    // 空 values 在 grader 里恒过 weight=0,是 noise 占位 — loader 会直接拒,
-    // 在 generator boundary 提前 strip 这条 assertion,避免落盘的 sample 跑不动。
+    // assertions 校验:loader 会拒掉两类无效断言 — 在 generator boundary 提前 strip,
+    // 避免落盘的 sample 跑不动:
+    //   1. tools_called / tools_not_called 的 values 必须非空
+    //   2. tool_input_contains / tool_input_not_contains / tool_output_contains / mock_hit
+    //      的 value 必须是 "Tool:needle" 格式(冒号分隔,两侧非空)
     if (Array.isArray(s.assertions)) {
       const before = s.assertions.length;
+      const TOOL_COLON = new Set([
+        'tool_input_contains', 'tool_input_not_contains', 'tool_output_contains', 'mock_hit',
+      ]);
       s.assertions = s.assertions.filter((a, j) => {
-        if (a?.type !== 'tools_called' && a?.type !== 'tools_not_called') return true;
-        const vals = Array.isArray(a.values) ? a.values : [];
-        const ok = vals.length > 0 && vals.every((v) => typeof v === 'string' && v.length > 0);
-        if (!ok) stripped.push(`samples[${i}].assertions[${j}].${a.type} (empty values)`);
-        return ok;
+        if (a?.type === 'tools_called' || a?.type === 'tools_not_called') {
+          const vals = Array.isArray(a.values) ? a.values : [];
+          const ok = vals.length > 0 && vals.every((v) => typeof v === 'string' && v.length > 0);
+          if (!ok) stripped.push(`samples[${i}].assertions[${j}].${a.type} (empty values)`);
+          return ok;
+        }
+        if (TOOL_COLON.has(a?.type)) {
+          const v = a?.value;
+          if (typeof v !== 'string' || v.length === 0) {
+            stripped.push(`samples[${i}].assertions[${j}].${a.type} (missing value)`);
+            return false;
+          }
+          const sep = v.indexOf(':');
+          if (sep <= 0 || sep === v.length - 1) {
+            stripped.push(`samples[${i}].assertions[${j}].${a.type} (value not "Tool:needle": ${JSON.stringify(v)})`);
+            return false;
+          }
+        }
+        return true;
       });
       // 全部 assertions 被 strip 完留空数组也保留 — sample 仍可用纯 LLM judge 评。
       if (s.assertions.length === 0 && before > 0) {

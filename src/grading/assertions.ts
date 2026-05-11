@@ -252,7 +252,11 @@ function evalAssertion(
     }
     case 'tool_input_not_contains': {
       const sep = String(assertion.value).indexOf(':');
-      if (sep <= 0) return false;
+      // value 必须是 "Tool:needle" 格式。无冒号(generator 偶尔产 "--force" / "lastTaskPatrol"
+      // 这种裸 needle)在 _contains 语义里算 false(没法判定哪个工具),但 _not_contains 语义
+      // 应该 trivially pass(没有匹配 = 没传 needle = 满足"不应包含"约束)。否则会变成
+      // 假阳性失败,扭曲通过率。loader 已加格式校验拒绝这种 value,这里是 grader 兜底。
+      if (sep <= 0) return true;
       const targetTool = String(assertion.value).slice(0, sep).toLowerCase();
       const expected = String(assertion.value).slice(sep + 1).toLowerCase();
       return !toolCalls.some((tc) =>

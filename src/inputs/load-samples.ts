@@ -200,14 +200,38 @@ function loadSampleFile(samplesPath: string): LoadSamplesInner {
     // 通过率高)+ 让 generator 输出可观测的 garbage 沉淀到磁盘。直接拒掉,作者
     // 应改成具体工具名或删除这条断言。
     const assertions = Array.isArray(sample.assertions) ? sample.assertions : [];
+    const TOOL_COLON_TYPES = new Set([
+      'tool_input_contains', 'tool_input_not_contains', 'tool_output_contains', 'mock_hit',
+    ]);
     for (const [j, a] of assertions.entries()) {
-      if (a?.type !== 'tools_called' && a?.type !== 'tools_not_called') continue;
-      const vals = Array.isArray(a.values) ? a.values : [];
-      if (vals.length === 0 || !vals.every((v) => typeof v === 'string' && v.length > 0)) {
-        throw new Error(
-          `samples[${i}] (${sample.sample_id}) assertions[${j}] ${a.type}: values 必须是非空字符串数组 — ` +
-          `写出要检查的具体工具名(如 ["Bash", "Read"]),或删除这条断言`,
-        );
+      if (a?.type === 'tools_called' || a?.type === 'tools_not_called') {
+        const vals = Array.isArray(a.values) ? a.values : [];
+        if (vals.length === 0 || !vals.every((v) => typeof v === 'string' && v.length > 0)) {
+          throw new Error(
+            `samples[${i}] (${sample.sample_id}) assertions[${j}] ${a.type}: values 必须是非空字符串数组 — ` +
+            `写出要检查的具体工具名(如 ["Bash", "Read"]),或删除这条断言`,
+          );
+        }
+      }
+      // tool_input_contains / tool_input_not_contains / tool_output_contains / mock_hit:
+      // value 必须是 "Tool:needle" 格式(冒号分隔,左半工具名非空,右半子串非空)。
+      // generator 偶发产 "--force" / "lastTaskPatrol" 这种裸 needle —
+      // grader 拿不到工具上下文,_contains 会默默 false、_not_contains 现已 trivially
+      // true,无论哪头都不是作者真实意图。loader 直接拒,逼作者写完整。
+      if (TOOL_COLON_TYPES.has(a?.type)) {
+        const v = a.value;
+        if (typeof v !== 'string' || v.length === 0) {
+          throw new Error(
+            `samples[${i}] (${sample.sample_id}) assertions[${j}] ${a.type}: value 必须是非空字符串`,
+          );
+        }
+        const sep = v.indexOf(':');
+        if (sep <= 0 || sep === v.length - 1) {
+          throw new Error(
+            `samples[${i}] (${sample.sample_id}) assertions[${j}] ${a.type}: value 必须是 "Tool:needle" 格式 ` +
+            `(冒号分隔工具名和子串,两侧均非空),实际: ${JSON.stringify(v)}`,
+          );
+        }
       }
     }
   }

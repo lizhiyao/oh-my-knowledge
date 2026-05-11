@@ -315,4 +315,28 @@ describe('loadSamples 对象包装格式', async () => {
     for (const f of cleanups) { try { unlinkSync(f); } catch {} }
     cleanups.length = 0;
   });
+
+  it('拒绝 tool_input_not_contains 缺 Tool: 前缀', () => {
+    const p = join(tmpdir(), `omk-bad-value-${Date.now()}.json`);
+    cleanups.push(p);
+    writeFileSync(p, JSON.stringify([{
+      sample_id: 's1', prompt: 'p',
+      assertions: [{ type: 'tool_input_not_contains', value: '--force', weight: 1 }],
+    }]));
+    assert.throws(() => loadSamples(p), /Tool:needle/);
+    for (const f of cleanups) { try { unlinkSync(f); } catch {} }
+    cleanups.length = 0;
+  });
+
+  it('拒绝 tool_input_contains 冒号位置在末尾', () => {
+    const p = join(tmpdir(), `omk-bad-value-${Date.now()}.json`);
+    cleanups.push(p);
+    writeFileSync(p, JSON.stringify([{
+      sample_id: 's1', prompt: 'p',
+      assertions: [{ type: 'tool_input_contains', value: 'Bash:', weight: 1 }],
+    }]));
+    assert.throws(() => loadSamples(p), /Tool:needle/);
+    for (const f of cleanups) { try { unlinkSync(f); } catch {} }
+    cleanups.length = 0;
+  });
 });

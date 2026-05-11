@@ -142,6 +142,21 @@ describe('sanitizeGeneratedSamples', () => {
     assert.equal(samples[0].assertions, undefined, 'all assertions stripped → undefined');
   });
 
+  it('strips tool_input_not_contains with bare needle (no Tool: prefix)', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [
+        { type: 'tool_input_contains', value: 'Bash:foo', weight: 1 },
+        { type: 'tool_input_not_contains', value: '--force', weight: 0.5 },
+        { type: 'tool_input_contains', value: 'Bash:', weight: 0.5 },
+      ],
+    }];
+    const { stripped } = sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].assertions?.length, 1, 'only valid Tool:needle kept');
+    assert.equal(samples[0].assertions?.[0].value, 'Bash:foo');
+    assert.ok(stripped.some((s) => s.includes('--force')), 'should warn about bare needle');
+  });
+
   it('auto-sets mocksStrict=true when mocks exist but mocksStrict missing', () => {
     const samples: Sample[] = [{
       sample_id: 's1',
