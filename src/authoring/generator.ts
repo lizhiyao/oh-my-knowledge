@@ -90,11 +90,21 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
         用 mock_hit "Bash:2" 强制 LLM 必须走到第 2 步(WORKSPACE 兜底),否则失分。
         threshold 字段可选,默认 >=1。
   文本类(兜底,不要单用):
-  - { "type": "contains", "value": "English keyword or code token", "weight": 1 }
-        ↑ 只查 LLM 给用户的最终文本,**不查 toolCall**。命令名/参数大概率不出现在最终回答里,
-        所以"LLM 是否调对工具"绝不要用 contains,要用 tool_input_contains。
+  - { "type": "contains_any", "values": ["建议","推荐","可考虑"], "weight": 0.5 }
+        ↑ **首选的文本类断言**:LLM 最终文本中至少包含一个候选词即过。
+        关键 — 单关键词 contains 不稳:LLM 每次发挥不一样,"建议"/"推荐"/"可考虑"
+        语义等价但字面不同,字面匹配 single keyword 会让正确行为也判挂。
+        永远用 contains_any 给 3-5 个同义词,而不是一个 contains。
+  - { "type": "contains_all", "values": ["X","Y"], "weight": 1 }
+        ↑ 必须同时包含全部候选(LLM 总结中要点多到合一)。
+  - { "type": "contains", "value": "code-token", "weight": 1 }
+        ↑ **只在抓代码 token / 数值 / 不可替换字面量**时用(如 SDK 函数名、错误码、
+        路径片段)。**绝不**用它来抓中文/英文短语 — 单关键词 LLM 同义改写就挂。
+        如果想抓"概念是否被提到",改用 contains_any 多候选。
+        命令名/参数也不要用 contains(它只看 LLM 文本,不看 toolCall),用 tool_input_contains。
   - { "type": "not_contains", "value": "...", "weight": 0.5 }
         ↑ 只查 LLM **最终文本**不应出现某词(如 hedging 用语 "I'm not sure")。
+        同样建议改用反向多候选(用 contains_any + not 字段),除非字面 token 唯一可识别。
         **不要**用它表达"工作流不应踩到 X" — LLM 在总结里复述"已避开 X" 会自触发。
         要测"工具调用层面不该走" → 用 tool_input_not_contains 或 tools_not_called。
   - { "type": "regex", "pattern": "...", "weight": 1 }
@@ -181,8 +191,14 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
    - 测"LLM 工作流不应踩到某路径 / 不该传某 flag" → 用 tool_input_not_contains
         (注意:**不要**用 not_contains 表达这件事 — not_contains 扫的是 LLM 最终文本,
          LLM 在总结里写"已排除 X" 会自触发假阳性,这是 obsidian / 知识库类 sample 的高频坑)
-   - 测"LLM 最终回答提到了某事实/数值" → 用 contains(只在最终文本上有意义的场景用)
-   优先组合使用,典型 sample 通常有 2 条 tool_input_contains + 1 条 tools_not_called + 1 条 contains。
+   - 测"LLM 最终回答提到了某概念/论点" → 用 contains_any **多个同义词**(3-5 个)
+        ↑ 关键稳定性原则:LLM 每次回答用词都会变(建议/推荐/可考虑等价),
+        单关键词 contains 在 N 次 run 里通过率不稳。多候选 contains_any 才能
+        测"语义意图覆盖到"而不是"刚好用了某个字"。
+   - 测"LLM 最终回答包含代码 token / 错误码 / 不可替换字面量" → 用 contains(单值,只在
+        token 唯一不会同义改写时用,如 SDK 函数名 "skylark_doc_create")
+   优先组合使用,典型 sample 通常有 2 条 tool_input_contains + 1 条 tools_not_called +
+   1 条 contains_any(同义词多候选)。**单一字面 contains 用得越少越好**。
 7. 如果 skill 涉及外部调用(MCP/CLI/HTTP/文件读),**必须**为本 sample 生成 mocks 数组,
    保证评测时 0 真调底层。query 类返回贴近真实 schema 的示例数据,write 类返回 success。
 
