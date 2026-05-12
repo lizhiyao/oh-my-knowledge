@@ -480,15 +480,30 @@ interface FailedSampleDetail {
 
 /** 给一个 insight,从 stageRefs.evalSampleIds + evalReport 拿完整的失败样本详情。
  *  illustration 是 detector 挑出的(最多 2 条)代表性样本,带 prompt/output/工具调用;
- *  diagnostic.expected / actual 是诊断 LLM 写的"期望 vs 实际"对照,用户最想看的。 */
-function collectFailedSamplesForInsight(
+ *  diagnostic.expected / actual 是诊断 LLM 写的"期望 vs 实际"对照,用户最想看的。
+ *
+ *  currentVariant 是顶层 entry.eval.variantName 沿调用链透下来的"当前页面对应的
+ *  variant 名",用于在 multi-treatment 报告(baseline + skill-a + skill-b)下正确
+ *  挑出 results[i].variants[variant] 这一档的 diagnostic 文本——否则 detector
+ *  挑 stageRefs.evalSampleIds 时是按 entry.eval.variantName 走的,这里再硬找
+ *  "第一个非 baseline" 就会跟 detector 错位,/skills/skill-b 的 modal 显示出
+ *  skill-a 的 diagnostic（PR #95 reviewer 5/11 CR 的 P1 ship-blocker)。
+ *  currentVariant 为 null 时退到 "第一个非 baseline" 的老兜底,保持单 treatment
+ *  报告(只有 baseline + 一个 treatment 的常见场景)的行为跟修法前一致。
+ *  作为 namespace-level export 是为了 test/renderer/insight-modal-variant-thread.test.ts
+ *  能直接 import 这个函数做 variant-thread-through 的契约测,跟同模块
+ *  src/server/skill-index.ts:51 的 `_resetSkillIndexCache` 的 for-test export
+ *  风格一致。 */
+export function collectFailedSamplesForInsight(
   ins: Insight,
   evalReport: EvaluationReport | null,
+  currentVariant: string | null,
 ): FailedSampleDetail[] {
   const sampleIds = ins.stageRefs?.evalSampleIds ?? [];
   if (sampleIds.length === 0 || !evalReport) return [];
 
-  const variant = evalReport.meta.variants?.find((v) => v !== 'baseline');
+  const variant: string | undefined = currentVariant
+    ?? evalReport.meta.variants?.find((v) => v !== 'baseline');
   if (!variant) return [];
 
   // 把 evidence 里的 illustration 按 sampleId 索引
@@ -657,9 +672,13 @@ function renderInsightModal(
   reportId: string | null,
   langQ: string,
   lang: Lang,
+  currentVariant: string | null,
 ): string {
   const sevIcon = SEVERITY_ICON[ins.severity];
-  const failedSamples = collectFailedSamplesForInsight(ins, evalReport);
+  // currentVariant 从顶层 batch map 入口的 entry.eval?.variantName 透下来,
+  // 让 collectFailedSamplesForInsight 在 multi-treatment 报告下选当前 variant 而不是
+  // 数组里第一个非 baseline 那个(PR #95 reviewer 5/11 CR 的 P1)。
+  const failedSamples = collectFailedSamplesForInsight(ins, evalReport, currentVariant);
   // 建议按 priority 降序,第一条标"⭐ 推荐先做"
   const sortedRecs = [...ins.recommendations].sort(
     (a, b) => _SEVERITY_RANK[b.priority] - _SEVERITY_RANK[a.priority],
@@ -1426,7 +1445,13 @@ export function renderSkillDetail(
     .filter((s): s is string => Boolean(s)).sort().pop();
 
   const insightReportId = entry.eval?.reportId ?? null;
-  const insightModals = insights.map((ins) => renderInsightModal(ins, idx.byInsightId.get(ins.id) ?? 0, evalReport, insightReportId, langQ, lang)).join('');
+  // currentVariant 沿调用链透到 renderInsightModal → collectFailedSamplesForInsight,
+  // 让 multi-treatment 报告(baseline + skill-a + skill-b 这种)的 /skills/<name> 详情
+  // 页 modal 正确取当前 entry 对应那个 variant 的 diagnostic 文本,不再永远拿数组里
+  // 第一个非 baseline 那个(PR #95 reviewer 5/11 CR 的 P1)。entry.eval 不存在 entry
+  // 也根本不会进 insight pipeline,这里 ?? null 是 TypeScript 保守 fallback。
+  const currentVariant = entry.eval?.variantName ?? null;
+  const insightModals = insights.map((ins) => renderInsightModal(ins, idx.byInsightId.get(ins.id) ?? 0, evalReport, insightReportId, langQ, lang, currentVariant)).join('');
 
   return layout(entry.skillName, `
     <main>
