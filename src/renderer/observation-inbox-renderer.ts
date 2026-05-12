@@ -4,6 +4,7 @@ import { severityReasonFor } from '../observability/inbox.js';
 import type { ObservationInboxItem } from '../observability/inbox.js';
 import type { ObservationInboxViewModel } from '../observability/inbox-view-model.js';
 import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorrectionMatches, findUserGoalShiftMatches, hasUserCorrectionSignal, hasUserGoalShiftSignal } from '../observability/experience.js';
+import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from '../observability/problem-patterns.js';
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
 import type {
@@ -395,6 +396,66 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     };
     return labels[value] ?? value;
   };
+  const problemBucketLabels: Record<ExperienceProblemBucket, string> = {
+    output_format: '输出格式不符合预期',
+    content_accuracy: '内容理解可能不对',
+    missing_context: '可能没读到关键资料',
+    rule_violation: '用户明确提出要求',
+    workflow_mismatch: '可能走错流程',
+    tool_runtime: '工具/环境问题',
+    goal_shift: '用户中途改了目标',
+    unclear: '问题类型不明确',
+  };
+  const problemSignalLabels: Record<ExperienceProblemSignal, string> = {
+    user_correction: '用户纠正',
+    negative_feedback: '负向反馈',
+    user_interruption: '人工中断',
+    hard_rule: '用户硬性要求',
+    user_goal_shift: '目标变化',
+    tool_failure: '工具失败',
+  };
+  const timelineTagForProblemPattern = (pattern: ExperienceProblemPattern): string => {
+    if (pattern.signalTypes.includes('user_correction')) return 'user_correction';
+    if (pattern.signalTypes.includes('negative_feedback')) return 'negative_feedback';
+    if (pattern.signalTypes.includes('user_interruption')) return 'user_interruption';
+    if (pattern.signalTypes.includes('hard_rule')) return 'hard_rule';
+    if (pattern.signalTypes.includes('user_goal_shift')) return 'user_goal_shift';
+    if (pattern.signalTypes.includes('tool_failure')) return 'tool_failure';
+    return '';
+  };
+  const patternKeywordLabel = (pattern: ExperienceProblemPattern): string => {
+    const raw = pattern.patternKey.split(':').slice(1).join(':');
+    const labels: Record<string, string> = {
+      prd: 'PRD',
+      demo: 'Demo',
+      format: '格式/模板',
+      figma: '设计稿',
+      context: '上下文/资料',
+      schema: '字段/接口/路径',
+      workflow: '流程',
+      rule: '规则',
+      wrong: '不符合预期',
+      tool_limit: '工具限制',
+      tool_failure: '工具失败',
+      not_found: '文件/路径不存在',
+      permission: '权限问题',
+      timeout: '超时',
+    };
+    const parts = raw.split('+').map((part) => labels[part] ?? part).filter(Boolean);
+    return parts.length > 0 ? parts.slice(0, 3).join(' + ') : problemBucketLabels[pattern.bucket];
+  };
+  const renderSkillProblemPatterns = (skillName: string, patterns: ExperienceProblemPattern[] | undefined): string => {
+    const top = (patterns ?? []).slice(0, 3);
+    if (top.length === 0) return '';
+    return `<div class="summary-row problem-pattern-row"><span class="summary-title">【发现问题线索】</span><span class="problem-pattern-list">${top.map((pattern) => {
+      const rawSessionId = pattern.recentSessionIds[0] ?? '';
+      const sessionId = experienceSessionIdBySkillAndSession.get(`${skillName}\u0000${rawSessionId}`) ?? '';
+      const tag = timelineTagForProblemPattern(pattern);
+      const signals = pattern.signalTypes.map((signal) => problemSignalLabels[signal]).join('、');
+      const title = `${problemBucketLabels[pattern.bucket]}：${patternKeywordLabel(pattern)}。命中 ${pattern.count} 次，涉及 ${pattern.sessionCount} 个 session。来源：${signals || '规则聚合'}。`;
+      return `<button type="button" class="problem-pattern-chip" data-no-rollup-click="1"${sessionId ? ` data-open-experience-session="${e(sessionId)}"` : ''}${tag ? ` data-open-timeline-tag="${e(tag)}"` : ''} title="${e(title)}"><span class="pattern-bucket">${e(problemBucketLabels[pattern.bucket])}</span><span class="pattern-key">${e(patternKeywordLabel(pattern))}</span><span class="pattern-count">${pattern.count} 次 / ${pattern.sessionCount} 个 session</span></button>`;
+    }).join('')}</span></div>`;
+  };
   const ZERO_DISPLAY_INDICATORS: ExperienceReviewIndicators = {
     userMessageCount: 0,
     userFollowUpCount: 0,
@@ -635,6 +696,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <div class="summary-row"><span class="summary-title">【用户交互】</span>${renderDecisionMetric('用户纠正', indicators.userCorrectionCount, 'priority')}${renderDecisionMetric('人工中断', indicators.userInterruptionCount, 'priority')}${renderMetric('追问', indicators.userFollowUpCount)}${renderDecisionMetric('负向反馈', indicators.negativeFeedbackCount ?? 0, 'priority')}${renderMetric('正向反馈', indicators.positiveFeedbackCount ?? 0)}${renderMetric('目标切换', indicators.userGoalShiftCount ?? 0)}</div>
       <div class="summary-row"><span class="summary-title">【工具调用】</span>${renderMetric('总计', total, '次')}<span class="summary-detail">(${renderRankedCounts(displayToolCounts, total)})</span>${renderDecisionMetricShare('工具执行失败', failed, total, 'sample')}</div>
       <div class="summary-row"><span class="summary-title">【过程发现】</span>${processMetrics || '<span class="summary-muted">未发现需要展示的过程信号</span>'}</div>
+      ${renderSkillProblemPatterns(skill.skillName, skill.problemPatterns)}
     </div>`;
   };
   const renderSkillChainSummary = (skillName: string): string => {
@@ -664,14 +726,16 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   };
   const renderSkillChainButton = (skillName: string, templateId: string): string => {
     const chain = skillChains[skillName];
-    const advisoryCount = collectSkillChainAdvisoryCodes(skillName).length;
+    const advisoryCodes = collectSkillChainAdvisoryCodes(skillName);
+    const advisoryCount = advisoryCodes.length;
     const hasAdvisory = advisoryCount > 0;
+    const advisoryLabels = advisoryCodes.map((code) => getSkillChainAdvisory(code).shortLabel);
     const title = chain?.definition.found
       ? (hasAdvisory
-        ? `点开查看 skill 标准定义、健康检查、运行时证据；当前有 ${advisoryCount} 项 advisory 待看（缺 hardRules / 缺 workflows）。`
-        : '点开查看 skill 的标准定义、健康检查、运行时证据三维对照。')
+        ? `点开查看 skill 定义、标准规则和运行时证据；当前缺：${advisoryLabels.join('、')}。`
+        : '点开查看 skill 定义、标准规则和运行时证据。')
       : '本机目录里没有这个 skill 的 SKILL.md。点开看建议怎么补，或试试 omk doctor。';
-    return `<button type="button" class="context-chain-button${hasAdvisory ? ' has-advisory' : ''}" onclick="event.stopPropagation(); openContextChainModal('${e(templateId)}', this)" title="${e(title)}"><span class="context-chain-button-icon" aria-hidden="true">🔍</span><span>skill 体检</span>${hasAdvisory ? `<span class="context-chain-button-badge" aria-label="${advisoryCount} 项 advisory">${advisoryCount}</span>` : ''}</button>`;
+    return `<button type="button" class="context-chain-button${hasAdvisory ? ' has-advisory' : ''}" onclick="event.stopPropagation(); openContextChainModal('${e(templateId)}', this)" title="${e(title)}"><span class="context-chain-button-icon" aria-hidden="true">🔗</span><span class="context-chain-button-main">定义链路</span>${hasAdvisory ? `<span class="context-chain-button-advisory-list">${advisoryLabels.map((label) => `<span class="context-chain-button-advisory">${e(label)}</span>`).join('')}</span>` : '<span class="context-chain-button-ok">标准已声明</span>'}</button>`;
   };
   const renderSkillChainTemplate = (skillName: string): string => {
     const chain = skillChains[skillName];
@@ -1922,6 +1986,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </section>
   `).join('');
   const experienceGoalById = new Map((experience?.goalSlices ?? []).map((goal) => [goal.id, goal]));
+  const experienceSessionIdBySkillAndSession = new Map((experience?.sessions ?? []).map((session) => [`${session.skillName}\u0000${session.sessionId}`, session.id]));
   const metricGuideSections: Array<{ title: string; keys: IndicatorHelpKey[] }> = [
     { title: '用户交互', keys: ['userCorrection', 'userInterruption', 'userFollowUp', 'negativeFeedback', 'positiveFeedback', 'userGoalShift', 'hardRule'] },
     { title: 'Skill 执行', keys: ['toolCall', 'toolFailure', 'bash', 'read', 'grep'] },
@@ -2191,8 +2256,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                 <col style="width:4%">
                 <col style="width:4%">
                 <col style="width:4%">
-                <col style="width:6%">
-                <col style="width:39%">
+                <col style="width:9%">
+                <col style="width:36%">
                 <col style="width:9%">
                 <col style="width:13%">
                 <col style="width:5%">
@@ -2203,7 +2268,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                 <th title="skill 调用段数：同一个 session 内多次触发同一个 skill，会累计为多次调用段。" style="text-align:right;padding:9px 10px;border-bottom:1px solid var(--border)">调用段</th>
                 <th title="需要优先打开看证据的 session 数" style="text-align:right;padding:9px 6px;border-bottom:1px solid var(--border)">优先复盘</th>
                 <th title="适合抽样确认的 session 数" style="text-align:right;padding:9px 6px;border-bottom:1px solid var(--border)">抽样复盘</th>
-                <th title="点开看 skill 的标准定义、健康检查、运行时证据三维对照。有红点表示存在 advisory（缺标准定义或本地找不到 SKILL.md）。" style="text-align:center;padding:9px 10px;border-bottom:1px solid var(--border)">skill 体检</th>
+                <th title="点开看 skill 定义、标准规则和运行时证据三维对照；如果缺 hardRules / workflows，会直接标出来。" style="text-align:center;padding:9px 10px;border-bottom:1px solid var(--border)">定义链路</th>
                 <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">用户交互 / 执行证据</th>
                 <th title="来自 SKILL.md frontmatter 的结构化 hardRules / workflows；同时展示非 LLM 的运行时证据检查结果。" style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">标准定义</th>
                 <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">入口 / 来源 / 归因</th>
@@ -2405,8 +2470,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .experience-skill-table col:nth-child(2) { width: 4% !important; }
         .experience-skill-table col:nth-child(3) { width: 4% !important; }
         .experience-skill-table col:nth-child(4) { width: 4% !important; }
-        .experience-skill-table col:nth-child(5) { width: 6% !important; }
-        .experience-skill-table col:nth-child(6) { width: 39% !important; }
+        .experience-skill-table col:nth-child(5) { width: 9% !important; }
+        .experience-skill-table col:nth-child(6) { width: 36% !important; }
         .experience-skill-table col:nth-child(7) { width: 9% !important; }
         .experience-skill-table col:nth-child(8) { width: 13% !important; }
         .experience-skill-table col:nth-child(9) { width: 5% !important; }
@@ -2577,17 +2642,22 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         .context-chain-button {
           display: inline-flex;
+          flex-direction: column;
           align-items: center;
-          gap: 4px;
+          gap: 2px;
           border: 1px solid rgba(37,99,235,.28);
           background: rgba(37,99,235,.09);
           color: var(--accent);
           border-radius: 7px;
-          padding: 5px 9px;
+          padding: 5px 7px;
           font-size: 11px;
           font-weight: 700;
           cursor: pointer;
           white-space: nowrap;
+          max-width: 100%;
+        }
+        .context-chain-button > span {
+          max-width: 100%;
         }
         .context-chain-button:hover {
           background: rgba(37,99,235,.14);
@@ -2604,19 +2674,40 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           font-size: 12px;
           line-height: 1;
         }
-        .context-chain-button-badge {
+        .context-chain-button-main {
           display: inline-flex;
           align-items: center;
-          justify-content: center;
-          min-width: 16px;
-          height: 16px;
-          padding: 0 4px;
-          border-radius: 8px;
-          background: var(--red);
-          color: #fff;
+          gap: 3px;
+        }
+        .context-chain-button-ok {
+          display: block;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          color: var(--text-muted);
           font-size: 10px;
-          font-weight: 700;
-          line-height: 1;
+          font-weight: 650;
+          line-height: 1.2;
+        }
+        .context-chain-button-advisory-list {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+          max-width: 100%;
+          min-width: 0;
+        }
+        .context-chain-button-advisory {
+          display: block;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          font-size: 10px;
+          font-weight: 650;
+          line-height: 1.2;
+          color: #a16207;
+        }
+        .context-chain-button-ok {
+          color: var(--green);
         }
         .context-chain-grid {
           height: 100%;
@@ -3580,6 +3671,44 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           display: inline-flex;
           align-items: baseline;
           white-space: nowrap;
+        }
+        .problem-pattern-list {
+          display: inline-flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          min-width: 0;
+        }
+        .problem-pattern-chip {
+          display: inline-flex;
+          align-items: baseline;
+          gap: 4px;
+          max-width: 100%;
+          border: 1px solid rgba(37,99,235,.18);
+          border-radius: 999px;
+          background: rgba(37,99,235,.05);
+          color: var(--text-secondary);
+          padding: 2px 7px;
+          font-size: 10.5px !important;
+          line-height: 1.35;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .problem-pattern-chip:hover {
+          border-color: rgba(37,99,235,.34);
+          color: var(--accent);
+          background: rgba(37,99,235,.09);
+        }
+        .problem-pattern-chip .pattern-bucket {
+          color: var(--text-primary);
+          font-weight: 700;
+        }
+        .problem-pattern-chip .pattern-key {
+          color: var(--text-muted);
+        }
+        .problem-pattern-chip .pattern-count {
+          color: var(--accent);
+          font-weight: 700;
+          font-variant-numeric: tabular-nums;
         }
         .skill-evidence-summary .summary-impact {
           padding: 1px 5px;

@@ -1,5 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { ObservationInboxItem, ObservationSourceKind } from './inbox.js';
+import {
+  buildExperienceProblemPatterns,
+  mergeExperienceProblemPatterns,
+  type ExperienceProblemPattern,
+} from './problem-patterns.js';
 import { observationMetricAnnotationVerdict, type ObservationMetricKey, type ObservationReviewState } from './review-state.js';
 import type { CcAssistantRecord, CcRecord, CcSession, CcUserRecord, TraceSourceMetadata } from './trace-source.js';
 import type { SkillSegment } from './trace-segmenter.js';
@@ -184,6 +189,7 @@ export interface ExperienceInvocation {
   evidenceChain: ExperienceEvidenceChain;
   ruleFindings: ExperienceRuleFinding[];
   assistiveInference: ExperienceAssistiveInference;
+  problemPatterns: ExperienceProblemPattern[];
   relatedObservationIds: string[];
   evidenceRefs: ExperienceEvidenceRef[];
   timeline: ExperienceTimelineEvent[];
@@ -209,6 +215,7 @@ export interface ExperienceSessionSummary {
   evidenceChain: ExperienceEvidenceChain;
   ruleFindings: ExperienceRuleFinding[];
   assistiveInference: ExperienceAssistiveInference;
+  problemPatterns: ExperienceProblemPattern[];
   relatedObservationIds: string[];
   timelinePreview: ExperienceTimelineEvent[];
   fullSessionTimeline: ExperienceTimelineEvent[];
@@ -260,6 +267,7 @@ export interface ExperienceSkillSummary {
   evidenceChain: ExperienceEvidenceChain;
   ruleFindings: ExperienceRuleFinding[];
   assistiveInference: ExperienceAssistiveInference;
+  problemPatterns: ExperienceProblemPattern[];
   relatedObservationIds: string[];
 }
 
@@ -432,6 +440,12 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
     const evidenceChain = evidenceChainForTimeline(timeline, observationRefs);
     const ruleFindings = ruleFindingsForEvidence(indicators, timeline, observationRefs, evidenceChain, input.reviewState);
     const assistiveInference = assistiveInferenceForEvidence(indicators, evidenceChain, ruleFindings);
+    const problemPatterns = buildExperienceProblemPatterns({
+      skillName: segment.skillName,
+      sessionId: segment.sessionId,
+      timeline,
+      reviewState: input.reviewState,
+    });
     const hasGoalShift = userRefs.some((ref) => hasUserGoalShiftSignal(ref.snippet ?? ''));
     // 包含 sourceTrace 防止 main + subagent 因 segmentIndex 各自从 0 计数而撞 hash
     // （segmenter 给 segment.sessionId = sessionGroupId，main 和 subagent 共享）
@@ -478,6 +492,7 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
       evidenceChain,
       ruleFindings,
       assistiveInference,
+      problemPatterns,
       relatedObservationIds: relatedItems.map((item) => item.id),
       evidenceRefs: [
         ...observationRefs,
@@ -1068,6 +1083,7 @@ function summarizeExperienceSessions(invocations: ExperienceInvocation[], sessio
     const evidenceChain = evidenceChainForTimeline(timeline, observationRefs);
     const ruleFindings = ruleFindingsForEvidence(indicators, timeline, observationRefs, evidenceChain);
     const assistiveInference = assistiveInferenceForEvidence(indicators, evidenceChain, ruleFindings);
+    const problemPatterns = mergeExperienceProblemPatterns(group.flatMap((invocation) => invocation.problemPatterns));
     return {
       id: hashParts('session', first.skillName, first.sessionId),
       skillName: first.skillName,
@@ -1088,6 +1104,7 @@ function summarizeExperienceSessions(invocations: ExperienceInvocation[], sessio
       evidenceChain,
       ruleFindings,
       assistiveInference,
+      problemPatterns,
       relatedObservationIds,
       timelinePreview: previewEvents,
       fullSessionTimeline,
@@ -1144,6 +1161,7 @@ function summarizeExperienceSkills(
     const indicators = sumIndicators(group.map((session) => session.indicators));
     const evidenceChain = sumEvidenceChains(group.map((session) => session.evidenceChain));
     const ruleFindings = mergeRuleFindings(group.flatMap((session) => session.ruleFindings));
+    const problemPatterns = mergeExperienceProblemPatterns(group.flatMap((session) => session.problemPatterns));
     return {
       skillName,
       invocationCount: invocationCountBySkill[skillName] ?? 0,
@@ -1165,6 +1183,7 @@ function summarizeExperienceSkills(
       evidenceChain,
       ruleFindings,
       assistiveInference: assistiveInferenceForEvidence(indicators, evidenceChain, ruleFindings),
+      problemPatterns,
       relatedObservationIds: unique(group.flatMap((session) => session.relatedObservationIds)),
     };
   }).sort((a, b) => {

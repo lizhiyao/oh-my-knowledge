@@ -1056,6 +1056,9 @@ describe('observe inbox', () => {
     assert.equal(experience.invocations[0].indicators.negativeFeedbackCount, 0);
     assert.equal(experience.invocations[0].indicators.userCorrectionCount, 1);
     assert.equal(experience.invocations[0].indicators.userInterruptionCount, 1);
+    assert.ok(experience.invocations[0].problemPatterns.some((pattern) => pattern.bucket === 'missing_context'));
+    assert.ok(experience.sessions[0].problemPatterns.some((pattern) => pattern.bucket === 'rule_violation'));
+    assert.ok(experience.skills[0].problemPatterns.some((pattern) => pattern.bucket === 'workflow_mismatch'));
     assert.equal('verdict' in experience.sessions[0], false);
 
     const correctionTargetId = observationMetricAnnotationTargetId({
@@ -1095,6 +1098,8 @@ describe('observe inbox', () => {
     });
     assert.equal(annotatedReport.experience?.invocations[0].indicators.userCorrectionCount, 0);
     assert.equal(annotatedReport.experience?.invocations[0].indicators.userGoalShiftCount, 1);
+    assert.equal(annotatedReport.experience?.invocations[0].problemPatterns.some((pattern) => pattern.signalTypes.includes('user_correction')), false);
+    assert.equal(annotatedReport.experience?.invocations[0].problemPatterns.some((pattern) => pattern.signalTypes.includes('user_goal_shift')), true);
   });
 
   it('keeps skill timeline open through skill context until the next skill starts', () => {

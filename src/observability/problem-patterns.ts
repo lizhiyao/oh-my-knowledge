@@ -1,0 +1,281 @@
+import { createHash } from 'node:crypto';
+import { observationMetricAnnotationVerdict, type ObservationMetricKey, type ObservationReviewState } from './review-state.js';
+
+export type ExperienceProblemBucket =
+  | 'output_format'
+  | 'content_accuracy'
+  | 'missing_context'
+  | 'rule_violation'
+  | 'workflow_mismatch'
+  | 'tool_runtime'
+  | 'goal_shift'
+  | 'unclear';
+
+export type ExperienceProblemSignal =
+  | 'user_correction'
+  | 'negative_feedback'
+  | 'user_interruption'
+  | 'hard_rule'
+  | 'user_goal_shift'
+  | 'tool_failure';
+
+export interface ExperienceProblemEvidenceRef {
+  id: string;
+  kind: string;
+  sourceTrace: string;
+  sessionId: string;
+  messageIndex?: number;
+  messageUuid?: string;
+  toolUseId?: string;
+  timestamp?: string;
+  role?: 'user' | 'assistant' | 'tool' | 'other';
+  label?: string;
+  snippet?: string;
+}
+
+export interface ExperienceProblemPattern {
+  id: string;
+  bucket: ExperienceProblemBucket;
+  patternKey: string;
+  count: number;
+  sessionCount: number;
+  recentSessionIds: string[];
+  signalTypes: ExperienceProblemSignal[];
+  evidenceRefs: ExperienceProblemEvidenceRef[];
+  lastSeen?: string;
+}
+
+export interface ProblemTimelineEvent {
+  id: string;
+  kind: string;
+  sourceTrace: string;
+  sessionId: string;
+  messageIndex?: number;
+  messageUuid?: string;
+  toolUseId?: string;
+  timestamp?: string;
+  role?: 'user' | 'assistant' | 'tool' | 'other';
+  label?: string;
+  snippet?: string;
+  fullText?: string;
+  toolName?: string;
+  isError?: boolean;
+}
+
+interface PatternDraft {
+  bucket: ExperienceProblemBucket;
+  patternKey: string;
+  signalType: ExperienceProblemSignal;
+  event: ProblemTimelineEvent;
+}
+
+const CORRECTION_RE = /不是这个|不要这样|理解错|看错|你应该|应该是|直接用|直接按|改成|重来|不对|不是|错了/i;
+const NEGATIVE_RE = /没有用|没用|不行|太慢|看不懂|不需要|别再|怎么又|有问题|不符合|做错|完全错|垃圾|乱来|瞎搞|白干|浪费时间|没价值|没有价值|没意义|不好用|用不了|没帮助|没有帮助|菜/i;
+const INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断/i;
+const HARD_RULE_RE = /hard rules?|必须|不要|禁止|严格|一定要|务必|不得|不能|只允许/i;
+const GOAL_SHIFT_RE = /换个方向|重新来|重来|先不|不用这个|先不用|暂时不用|不看这个|换一个|换下一个|另一个问题|另外一个问题|先看别的|先处理别的/i;
+
+const KEYWORD_GROUPS: Array<{ token: string; re: RegExp }> = [
+  { token: 'prd', re: /PRD|prd|需求文档|产品文档/i },
+  { token: 'demo', re: /demo|Demo|原型|页面|交互/i },
+  { token: 'format', re: /格式|模板|字段|结构|排版|表格|markdown|md|样式|对齐|标题|层级/i },
+  { token: 'figma', re: /figma|motiff|设计稿|节点|截图|还原/i },
+  { token: 'context', re: /没看|没读|重新读|重读|先看|看一下|参考|上下文|领域|知识|文档|资料|说明|背景/i },
+  { token: 'schema', re: /schema|接口|字段|配置|路径|目录|文件|定义|类型|模型/i },
+  { token: 'workflow', re: /流程|分支|链路|步骤|顺序|先.+再|不要先|直接走|route|workflow|模式/i },
+  { token: 'rule', re: /必须|不要|禁止|严格|一定要|务必|不得|不能|只允许/i },
+  { token: 'wrong', re: /不对|不是|错了|错误|理解错|看错|不符合|不一致|漏|缺|少了|多了/i },
+  { token: 'tool_limit', re: /exceeds maximum allowed tokens|too many tokens|timeout|timed out|EACCES|ENOENT|permission denied|No such file|not found|失败|error/i },
+];
+
+export function buildExperienceProblemPatterns(input: {
+  skillName: string;
+  sessionId: string;
+  timeline: ProblemTimelineEvent[];
+  reviewState?: ObservationReviewState;
+}): ExperienceProblemPattern[] {
+  const drafts: PatternDraft[] = [];
+  for (const event of input.timeline) {
+    const text = event.snippet ?? event.fullText ?? '';
+    if (event.kind === 'user_message') {
+      if (metricActive(event, 'user_correction', CORRECTION_RE.test(text), input.reviewState)) {
+        drafts.push(patternDraft(input.skillName, 'user_correction', event));
+      }
+      if (metricActive(event, 'negative_feedback', NEGATIVE_RE.test(text), input.reviewState)) {
+        drafts.push(patternDraft(input.skillName, 'negative_feedback', event));
+      }
+      if (metricActive(event, 'user_interruption', INTERRUPTION_RE.test(text), input.reviewState)) {
+        drafts.push(patternDraft(input.skillName, 'user_interruption', event));
+      }
+      if (metricActive(event, 'hard_rule', HARD_RULE_RE.test(text), input.reviewState)) {
+        drafts.push(patternDraft(input.skillName, 'hard_rule', event));
+      }
+      if (metricActive(event, 'user_goal_shift', GOAL_SHIFT_RE.test(text), input.reviewState)) {
+        drafts.push(patternDraft(input.skillName, 'user_goal_shift', event));
+      }
+    } else if (event.kind === 'tool_result' && event.isError === true) {
+      drafts.push(patternDraft(input.skillName, 'tool_failure', event));
+    }
+  }
+  return mergeExperienceProblemPatterns(drafts.map((draft) => patternFromDraft(input.skillName, input.sessionId, draft)));
+}
+
+export function mergeExperienceProblemPatterns(patterns: ExperienceProblemPattern[]): ExperienceProblemPattern[] {
+  const byKey = new Map<string, ExperienceProblemPattern>();
+  for (const pattern of patterns) {
+    const key = `${pattern.bucket}\u0000${pattern.patternKey}`;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, {
+        ...pattern,
+        recentSessionIds: unique(pattern.recentSessionIds).slice(0, 5),
+        signalTypes: unique(pattern.signalTypes),
+        evidenceRefs: uniqueEvidenceRefs(pattern.evidenceRefs).slice(0, 5),
+        sessionCount: unique(pattern.recentSessionIds).length,
+        count: uniqueEvidenceRefs(pattern.evidenceRefs).length || pattern.count,
+      });
+      continue;
+    }
+    const evidenceRefs = uniqueEvidenceRefs([...existing.evidenceRefs, ...pattern.evidenceRefs]);
+    const sessions = unique([...existing.recentSessionIds, ...pattern.recentSessionIds]);
+    existing.count = evidenceRefs.length;
+    existing.sessionCount = sessions.length;
+    existing.recentSessionIds = sessions.slice(0, 5);
+    existing.signalTypes = unique([...existing.signalTypes, ...pattern.signalTypes]);
+    existing.evidenceRefs = evidenceRefs.slice(0, 5);
+    existing.lastSeen = maxTimestamp(existing.lastSeen, pattern.lastSeen);
+  }
+  return Array.from(byKey.values()).sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    if (b.sessionCount !== a.sessionCount) return b.sessionCount - a.sessionCount;
+    return (b.lastSeen ?? '').localeCompare(a.lastSeen ?? '');
+  });
+}
+
+function patternDraft(skillName: string, signalType: ExperienceProblemSignal, event: ProblemTimelineEvent): PatternDraft {
+  const text = event.snippet ?? event.fullText ?? '';
+  const bucket = bucketFor(signalType, text);
+  return {
+    bucket,
+    patternKey: patternKeyFor(skillName, bucket, signalType, text, event),
+    signalType,
+    event,
+  };
+}
+
+function patternFromDraft(skillName: string, sessionId: string, draft: PatternDraft): ExperienceProblemPattern {
+  const evidenceRef = evidenceRefFromEvent(draft.event);
+  return {
+    id: hashParts('problem-pattern', skillName, draft.bucket, draft.patternKey),
+    bucket: draft.bucket,
+    patternKey: draft.patternKey,
+    count: 1,
+    sessionCount: 1,
+    recentSessionIds: [sessionId],
+    signalTypes: [draft.signalType],
+    evidenceRefs: [evidenceRef],
+    lastSeen: draft.event.timestamp,
+  };
+}
+
+function bucketFor(signalType: ExperienceProblemSignal, text: string): ExperienceProblemBucket {
+  if (signalType === 'tool_failure') return 'tool_runtime';
+  if (signalType === 'user_goal_shift') return 'goal_shift';
+  if (signalType === 'user_interruption') return 'workflow_mismatch';
+  if (signalType === 'hard_rule') return 'rule_violation';
+  if (/格式|模板|字段|结构|排版|表格|markdown|md|样式|对齐|标题|层级|PRD|prd/i.test(text)) return 'output_format';
+  if (/没看|没读|重新读|重读|先看|看一下|参考|上下文|领域|知识|文档|资料|schema|接口|配置|路径|目录|文件|定义/i.test(text)) return 'missing_context';
+  if (/流程|分支|链路|步骤|顺序|先.+再|不要先|直接走|route|workflow|模式/i.test(text)) return 'workflow_mismatch';
+  if (/必须|不要|禁止|严格|一定要|务必|不得|不能|只允许/i.test(text)) return 'rule_violation';
+  if (/不对|不是|错了|错误|理解错|看错|不符合|不一致|漏|缺|少了|多了|做错/i.test(text)) return 'content_accuracy';
+  return 'unclear';
+}
+
+function patternKeyFor(
+  skillName: string,
+  bucket: ExperienceProblemBucket,
+  signalType: ExperienceProblemSignal,
+  text: string,
+  event: ProblemTimelineEvent,
+): string {
+  if (bucket === 'tool_runtime') {
+    return `${bucket}:${normalizeToken(event.toolName || errorToken(text) || 'tool_failure')}`;
+  }
+  const tokens = KEYWORD_GROUPS
+    .filter((group) => group.re.test(text))
+    .map((group) => group.token);
+  if (tokens.length > 0) return `${bucket}:${unique(tokens).slice(0, 3).join('+')}`;
+  const normalized = normalizeText(text).slice(0, 28);
+  return `${bucket}:${signalType}:${normalized || normalizeToken(skillName) || 'unknown'}`;
+}
+
+function errorToken(text: string): string {
+  if (/exceeds maximum allowed tokens|too many tokens/i.test(text)) return 'tool_limit';
+  if (/ENOENT|No such file|not found/i.test(text)) return 'not_found';
+  if (/EACCES|permission denied/i.test(text)) return 'permission';
+  if (/timeout|timed out/i.test(text)) return 'timeout';
+  return 'tool_failure';
+}
+
+function metricActive(
+  event: ProblemTimelineEvent,
+  metricKey: ObservationMetricKey,
+  ruleDetected: boolean,
+  reviewState?: ObservationReviewState,
+): boolean {
+  const verdict = observationMetricAnnotationVerdict(reviewState, event, metricKey);
+  if (verdict === 'confirmed') return true;
+  if (verdict === 'rejected') return false;
+  return ruleDetected;
+}
+
+function evidenceRefFromEvent(event: ProblemTimelineEvent): ExperienceProblemEvidenceRef {
+  return {
+    id: event.id,
+    kind: event.kind,
+    sourceTrace: event.sourceTrace,
+    sessionId: event.sessionId,
+    messageIndex: event.messageIndex,
+    messageUuid: event.messageUuid,
+    toolUseId: event.toolUseId,
+    timestamp: event.timestamp,
+    role: event.role,
+    label: event.label,
+    snippet: event.snippet,
+  };
+}
+
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, ' url ')
+    .replace(/[a-f0-9]{8,}/g, ' id ')
+    .replace(/[0-9]+/g, ' n ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .replace(/\s+/g, '_');
+}
+
+function normalizeToken(value: string): string {
+  return normalizeText(value).slice(0, 32) || 'unknown';
+}
+
+function unique<T>(values: T[]): T[] {
+  return Array.from(new Set(values));
+}
+
+function uniqueEvidenceRefs(refs: ExperienceProblemEvidenceRef[]): ExperienceProblemEvidenceRef[] {
+  const byId = new Map<string, ExperienceProblemEvidenceRef>();
+  for (const ref of refs) byId.set(ref.id, ref);
+  return Array.from(byId.values());
+}
+
+function maxTimestamp(a?: string, b?: string): string | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return a > b ? a : b;
+}
+
+function hashParts(...parts: string[]): string {
+  return createHash('sha256').update(parts.join('\u0000')).digest('hex').slice(0, 16);
+}
