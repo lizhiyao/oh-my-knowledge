@@ -28,6 +28,7 @@ export function extractMarkdownLogSkill(text: string): string | null {
 }
 
 const COMMAND_NAME_RE = /<command-name>\/([^<]+)<\/command-name>/;
+const AIMA_CMD_RE = /<aima-cmd\b[^>]*\bname=["']([^"']+)["'][^>]*>/;
 const COMMAND_ENVELOPE_RE = /<command-(?:name|message)>[\s\S]*?<\/command-(?:name|message)>/g;
 
 // cc 内置 CLI 命令(不是 skill)。dogfood 数据中这些词频繁以 <command-name> 出现,
@@ -98,6 +99,35 @@ export function extractCommandSkillRef(record: CcUserRecord): SkillRef | null {
 }
 
 /**
+ * 从 OpenClaw / AIMA user message 里提取 aima-cmd skill 名字(信号 4)。
+ *
+ * 注意: 真实 OpenClaw 数据里 name 可能是业务动作展示名, 例如 "生成PRD" / "生成Demo",
+ * 这不是稳定 skill id。只有 name 本身像 "prd-create" 这种 slug 时才用于 skill 归因;
+ * 中文动作名继续保留在 sourceMetadata.aimaCommands 里, 不切 skill。
+ */
+export function extractAimaCmdSkillRef(record: CcUserRecord): SkillRef | null {
+  const content = record.message.content;
+  let raw: string | null = null;
+  if (typeof content === 'string') {
+    const m = AIMA_CMD_RE.exec(content);
+    raw = m ? m[1] : null;
+  } else {
+    for (const part of content) {
+      if (part.type === 'text') {
+        const m = AIMA_CMD_RE.exec(part.text);
+        if (m) { raw = m[1]; break; }
+      }
+    }
+  }
+  return raw && isStableSkillSlug(raw) ? parseSkillRef(raw) : null;
+}
+
+function isStableSkillSlug(raw: string): boolean {
+  const trimmed = raw.trim();
+  return /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(trimmed) && /[-_.]/.test(trimmed);
+}
+
+/**
  * 从 assistant message 的 tool_use 里提取 Skill tool 调用的 skill 名字(信号 1)。
  * 返回 null 表示没命中。
  */
@@ -124,11 +154,12 @@ export function extractAttributionSkillRef(record: CcAssistantRecord): SkillRef 
   return record.attributionSkill ? parseSkillRef(record.attributionSkill) : null;
 }
 
-const SKILL_READ_FILE_RE = /\.claude\/skills\/([^/]+)\/SKILL\.md$/;
+const SKILL_READ_FILE_RE = /(?:\.claude\/skills|\.openclaw\/workspace\/skills)\/([^/]+)\/SKILL\.md$/;
 
 /**
  * 从 assistant message 的 Read tool_use 里提取 skill 名字(信号 3, fallback)。
- * 匹配 file_path 形如 ".claude/skills/<name>/SKILL.md" 的模式。
+ * 匹配 file_path 形如 ".claude/skills/<name>/SKILL.md"
+ * 或 ".openclaw/workspace/skills/<name>/SKILL.md" 的模式。
  * 返回 null 表示没命中。
  */
 export function extractSkillReadFile(record: CcAssistantRecord): string | null {

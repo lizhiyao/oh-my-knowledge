@@ -14,7 +14,7 @@ export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(homedir(), '.oh-my-knowledge
 export const DEFAULT_OBSERVATIONS_DIR = DEFAULT_PROJECT_OBSERVATIONS_DIR;
 
 export type ObservationSignalType = 'failed_search' | 'repeated_failure' | 'hedging' | 'explicit_marker';
-export type ObservationSourceKind = 'claude' | 'markdown_log' | 'unknown';
+export type ObservationSourceKind = 'claude' | 'openclaw' | 'markdown_log' | 'unknown';
 export type ObservationSeverityReasonCode =
   | 'knowledge_gap_suspected'
   | 'repeated_failure_suspected'
@@ -145,6 +145,7 @@ export function normalizeObservationKeyInput(value: string): string {
 }
 
 export function inferObservationSourceKind(sourceTrace: string): ObservationSourceKind {
+  if (sourceTrace.includes('/openclaw') || sourceTrace.includes('/.openclaw/')) return 'openclaw';
   if (sourceTrace.endsWith('.jsonl')) return 'claude';
   if (sourceTrace.endsWith('.log')) return 'markdown_log';
   return 'unknown';
@@ -218,7 +219,10 @@ function isTransientPath(value: string): boolean {
 
 function isSkillAssetPath(value: string, skillName: string): boolean {
   if (!value || !skillName) return false;
-  return value.includes(`/.claude/skills/${skillName}/`) || value.includes(`.claude/skills/${skillName}/`);
+  return value.includes(`/.claude/skills/${skillName}/`)
+    || value.includes(`.claude/skills/${skillName}/`)
+    || value.includes(`/.openclaw/workspace/skills/${skillName}/`)
+    || value.includes(`.openclaw/workspace/skills/${skillName}/`);
 }
 
 function topicTokens(value: string): Set<string> {
@@ -464,7 +468,7 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
       const withSource = {
         ...item,
         sourceTrace,
-        sourceKind: inferObservationSourceKind(sourceTrace),
+        sourceKind: segment.sourceKind ?? inferObservationSourceKind(sourceTrace),
       };
       return {
         ...withSource,
@@ -596,7 +600,7 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
           return {
             ...item,
             sourceKind: sourceKind === 'openclaw'
-              ? 'markdown_log'
+              ? 'openclaw'
               : (item.sourceKind ?? inferObservationSourceKind(item.sourceTrace)),
             severityReasonCode: item.severityReasonCode ?? severityReasonCodeFor(item),
             severityReason: undefined,

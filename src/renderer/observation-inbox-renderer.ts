@@ -5,6 +5,7 @@ import type { ObservationInboxItem } from '../observability/inbox.js';
 import type { ObservationInboxViewModel } from '../observability/inbox-view-model.js';
 import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorrectionMatches, findUserGoalShiftMatches, hasUserCorrectionSignal, hasUserGoalShiftSignal } from '../observability/experience.js';
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
+import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
 import type {
   ExperienceAssistiveInference,
   ExperienceAssistiveInferenceCautionCode,
@@ -191,8 +192,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </div>`;
   };
   const renderSourceBadge = (item: ObservationInboxItem): string => {
-    const label = item.sourceKind === 'markdown_log' ? 'Markdown log' : item.sourceKind === 'claude' ? 'Claude' : 'Unknown';
-    const color = item.sourceKind === 'markdown_log' ? 'var(--green)' : item.sourceKind === 'claude' ? 'var(--accent)' : 'var(--text-muted)';
+    const label = item.sourceKind === 'openclaw' ? 'OpenClaw' : item.sourceKind === 'markdown_log' ? 'Markdown log' : item.sourceKind === 'claude' ? 'Claude' : 'Unknown';
+    const color = item.sourceKind === 'openclaw' ? '#7c3aed' : item.sourceKind === 'markdown_log' ? 'var(--green)' : item.sourceKind === 'claude' ? 'var(--accent)' : 'var(--text-muted)';
     return `<span title="调用日志来源：${e(label)}" style="display:inline-flex;margin-top:4px;padding:2px 6px;border-radius:999px;background:var(--bg-muted);color:${color};font-size:11px;font-weight:650">${e(label)}</span>`;
   };
   const confidenceHeaderHelp = '判断把握：OMK 对“这条 过程发现 是否需要处理/是否高风险/需关注”的规则判断有多确定。归属把握：OMK 把这条 过程发现 归到当前 skill 名下有多确定，例如明确调用 skill 通常更高。';
@@ -249,12 +250,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       'claude-desktop': 'Claude Code App',
       cli: 'Claude CLI',
       'sdk-ts': 'Claude SDK',
+      openclaw: 'OpenClaw',
       markdown_log: 'Markdown 日志',
     };
     return value ? (labels[value] ?? value) : '未记录';
   };
   const formatAttributionSource = (value?: string): string => {
     if (value === 'command-name') return '通过斜杠命令触发';
+    if (value === 'aima-cmd') return '通过 AIMA 业务动作触发';
     if (value === 'skill-tool') return '通过 Skill 工具启动';
     if (value === 'read-skill-md') return '通过读取 Skill 文档推断';
     if (value === 'general') return '未识别到具体 skill';
@@ -280,14 +283,42 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </div>`;
   };
   const pct = (value: number, total: number): string => total > 0 ? `${Math.round(value / total * 100)}%` : '—';
+  const EMPTY_VALUE = '—';
   const renderShare = (count: number, total: number): string => {
+    if (count <= 0 && total <= 0) {
+      return `<span class="summary-count">${EMPTY_VALUE}</span>`;
+    }
     const safeTotal = Math.max(total, count);
     return `<span class="summary-count">${count}</span><span class="summary-pct">/ ${pct(count, safeTotal)}</span>`;
   };
-  const renderMetric = (label: string, count: number, unit = ''): string =>
-    `<span class="summary-metric"><span class="summary-name">${e(label)}</span><span class="summary-count">${count}</span>${unit ? `<span class="summary-unit-text">${e(unit)}</span>` : ''}</span>`;
-  const renderMetricShare = (label: string, count: number, total: number): string =>
-    `<span class="summary-metric"><span class="summary-name">${e(label)}</span>${renderShare(count, total)}</span>`;
+  const renderMetric = (label: string, count: number, unit = ''): string => {
+    const empty = count <= 0;
+    return `<span class="summary-metric${empty ? ' summary-metric-empty' : ''}"><span class="summary-name">${e(label)}</span><span class="summary-count">${empty ? EMPTY_VALUE : count}</span>${unit && !empty ? `<span class="summary-unit-text">${e(unit)}</span>` : ''}</span>`;
+  };
+  const renderMetricShare = (label: string, count: number, total: number): string => {
+    const empty = count <= 0;
+    return `<span class="summary-metric${empty ? ' summary-metric-empty' : ''}"><span class="summary-name">${e(label)}</span>${renderShare(count, total)}</span>`;
+  };
+  const reviewImpactTitle = (level: 'priority' | 'sample'): string =>
+    level === 'priority'
+      ? '命中后会影响“优先复盘”：建议先打开上下文看证据。'
+      : '命中后会影响“抽样复盘”：建议抽样打开上下文确认。';
+  const renderDecisionMetric = (label: string, count: number, level: 'priority' | 'sample', unit = ''): string => {
+    const active = count > 0;
+    return `<span class="summary-metric${active ? ` summary-impact summary-impact-${level}` : ' summary-metric-empty'}"${active ? ` title="${e(reviewImpactTitle(level))}"` : ''}><span class="summary-name">${e(label)}</span><span class="summary-count">${active ? count : EMPTY_VALUE}</span>${unit && active ? `<span class="summary-unit-text">${e(unit)}</span>` : ''}</span>`;
+  };
+  const renderDecisionMetricIfPositive = (label: string, count: number, level: 'priority' | 'sample', unit = ''): string =>
+    count > 0 ? renderDecisionMetric(label, count, level, unit) : '';
+  const renderDecisionMetricShare = (label: string, count: number, total: number, level: 'priority' | 'sample'): string => {
+    const active = count > 0;
+    return `<span class="summary-metric${active ? ` summary-impact summary-impact-${level}` : ' summary-metric-empty'}"${active ? ` title="${e(reviewImpactTitle(level))}"` : ''}><span class="summary-name">${e(label)}</span>${renderShare(count, total)}</span>`;
+  };
+  // 「疑似完成」等观察性指标：>0 时显示轻微 tag（complete chip 视觉），
+  // =0 时与其他指标一样走 summary-metric-empty。不接入复盘评分。
+  const renderSoftMetric = (label: string, count: number, title?: string): string => {
+    const active = count > 0;
+    return `<span class="summary-metric${active ? ' summary-impact summary-impact-soft' : ' summary-metric-empty'}"${active && title ? ` title="${e(title)}"` : ''}><span class="summary-name">${e(label)}</span><span class="summary-count">${active ? count : EMPTY_VALUE}</span></span>`;
+  };
   const renderRankedCounts = (
     counts: Record<string, number> | undefined,
     total: number,
@@ -300,6 +331,24 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (entries.length === 0) return '<span class="summary-muted">无明细</span>';
     return entries.map(([key, count]) => renderMetricShare(options.label ? options.label(key) : key, count, total)).join('<span class="summary-sep">，</span>');
   };
+  const userFacingToolLabel = (tool: string): string => {
+    const lower = tool.toLowerCase();
+    if (['exec', 'process', 'bash', 'shell', 'run'].includes(lower)) return '命令执行';
+    if (lower === 'read') return '读取文件';
+    if (['grep', 'glob', 'search', 'find'].includes(lower)) return '搜索文件';
+    if (['edit', 'write', 'multiedit'].includes(lower)) return '修改文件';
+    if (lower === 'todowrite') return '记录待办';
+    if (lower === 'skill') return '启动 skill';
+    return tool;
+  };
+  const mergeCountsByLabel = (counts: Record<string, number> | undefined, label: (key: string) => string): Record<string, number> => {
+    const next: Record<string, number> = {};
+    for (const [key, count] of Object.entries(counts ?? {})) {
+      const display = label(key);
+      next[display] = (next[display] ?? 0) + count;
+    }
+    return next;
+  };
   const compactRankedCountText = (
     counts: Record<string, number> | undefined,
     options: { max?: number; label?: (key: string) => string } = {},
@@ -311,6 +360,41 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (entries.length === 0) return '未记录';
     return entries.map(([key, count]) => `${options.label ? options.label(key) : key} ${count}`).join('、');
   };
+  const sourceMetadataLine = (label: string, counts: Record<string, number> | undefined, options: { max?: number; valueLabel?: (value: string) => string } = {}): string => {
+    const text = compactRankedCountText(counts, { max: options.max ?? 2, label: options.valueLabel });
+    return text === '未记录' ? '' : `<div>${e(label)}：${e(text)}</div>`;
+  };
+  const renderOpenClawSourceMetadata = (counts: NonNullable<NonNullable<typeof experience>['skills'][number]['sourceMetadataCounts']> | undefined): string => {
+    if (!counts) return '';
+    const lines = [
+      sourceMetadataLine('渠道', counts.channels, { valueLabel: formatChannel }),
+      sourceMetadataLine('用户', counts.senders, { max: 1 }),
+      sourceMetadataLine('业务动作', counts.aimaCommands),
+      sourceMetadataLine('模型', counts.models),
+      sourceMetadataLine('供应商', counts.providers),
+    ].filter(Boolean);
+    return lines.length > 0 ? `<div class="openclaw-source-meta">${lines.join('')}</div>` : '';
+  };
+  const renderSessionOpenClawSourceMetadata = (session: ExperienceSessionSummary): string => {
+    const meta = session.sourceMetadata;
+    if (!meta) return '';
+    const lines = [
+      meta.channel ? `渠道：${formatChannel(meta.channel)}` : '',
+      meta.sender || meta.senderId ? `用户：${meta.sender ?? ''}${meta.senderId ? `(${meta.senderId})` : ''}` : '',
+      meta.aimaCommands?.length ? `业务动作：${meta.aimaCommands.join('、')}` : '',
+      meta.model ? `模型：${meta.model}` : '',
+      meta.provider ? `供应商：${meta.provider}` : '',
+    ].filter(Boolean);
+    return lines.length > 0 ? `<span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--text-muted)">${e(lines.join(' · '))}</span>` : '';
+  };
+  const formatChannel = (value: string): string => {
+    const labels: Record<string, string> = {
+      aima: 'AIMA',
+      dingtalk: '钉钉',
+      cli: 'CLI',
+    };
+    return labels[value] ?? value;
+  };
   const ZERO_DISPLAY_INDICATORS: ExperienceReviewIndicators = {
     userMessageCount: 0,
     userFollowUpCount: 0,
@@ -320,6 +404,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     positiveFeedbackCount: 0,
     userGoalShiftCount: 0,
     hardRuleTextHitCount: 0,
+    assistantDeliverySignalCount: 0,
     toolCallCount: 0,
     toolFailureCount: 0,
     highObservationCount: 0,
@@ -417,6 +502,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       positiveFeedbackCount: current.positiveFeedbackCount + next.positiveFeedbackCount,
       userGoalShiftCount: current.userGoalShiftCount + next.userGoalShiftCount,
       hardRuleTextHitCount: current.hardRuleTextHitCount + next.hardRuleTextHitCount,
+      assistantDeliverySignalCount: current.assistantDeliverySignalCount + (next.assistantDeliverySignalCount ?? 0),
       toolCallCount: current.toolCallCount + next.toolCallCount,
       toolFailureCount: current.toolFailureCount + next.toolFailureCount,
       highObservationCount: current.highObservationCount + next.highObservationCount,
@@ -440,7 +526,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   };
   const displayPriority = (indicators: ExperienceReviewIndicators): ExperienceReviewPriority => {
     if (indicators.highObservationCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0 || indicators.negativeFeedbackCount > 0) return 'review_first';
-    if (indicators.mediumObservationCount > 0 || indicators.toolFailureCount > 0 || indicators.hedgingCount > 0 || indicators.explicitMarkerCount > 0 || indicators.userGoalShiftCount > 0) return 'sample_review';
+    if (indicators.mediumObservationCount > 0 || indicators.toolFailureCount > 0 || indicators.hedgingCount > 0 || indicators.explicitMarkerCount > 0 || indicators.hardRuleTextHitCount > 0) return 'sample_review';
     return 'routine_sample';
   };
   const displayInferenceBasisCodes = (indicators: ExperienceReviewIndicators): ExperienceRuleFindingCode[] => {
@@ -466,7 +552,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const code: ExperienceAssistiveInferenceCode =
       indicators.highObservationCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0 || indicators.negativeFeedbackCount > 0
         ? 'review_recommended'
-        : indicators.mediumObservationCount > 0 || indicators.toolFailureCount > 0 || indicators.hedgingCount > 0 || indicators.explicitMarkerCount > 0
+        : indicators.mediumObservationCount > 0 || indicators.toolFailureCount > 0 || indicators.hedgingCount > 0 || indicators.explicitMarkerCount > 0 || indicators.hardRuleTextHitCount > 0
           ? 'sample_recommended'
           : indicators.positiveFeedbackCount > 0
             ? 'positive_signal_observed'
@@ -502,7 +588,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     push('medium_observation_seen', 'sample', indicators.mediumObservationCount);
     push('hedging_seen', 'sample', indicators.hedgingCount);
     push('explicit_marker_seen', 'sample', indicators.explicitMarkerCount);
-    push('hard_rule_seen', 'normal', indicators.hardRuleTextHitCount);
+    push('hard_rule_seen', 'sample', indicators.hardRuleTextHitCount);
     push('positive_feedback_seen', 'normal', indicators.positiveFeedbackCount);
     push('user_goal_shift_seen', 'normal', indicators.userGoalShiftCount);
     for (const finding of old) {
@@ -532,53 +618,131 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const toolCounts = Object.keys(skill.toolCounts ?? {}).length > 0
       ? skill.toolCounts
       : experienceToolCountsBySkill.get(skill.skillName);
+    const displayToolCounts = mergeCountsByLabel(toolCounts, userFacingToolLabel);
     const total = indicators.toolCallCount;
     const failed = Math.max(0, indicators.toolFailureCount);
     const interrupted = Math.max(0, indicators.userInterruptionCount);
     const success = Math.max(0, total - failed);
+    const processMetrics = [
+      renderDecisionMetricIfPositive('高优先级', indicators.highObservationCount, 'priority'),
+      renderDecisionMetricIfPositive('抽样过程发现', indicators.mediumObservationCount, 'sample'),
+      renderDecisionMetricIfPositive('用户硬性要求', indicators.hardRuleTextHitCount, 'sample'),
+      renderDecisionMetricIfPositive('不确定表达', indicators.hedgingCount, 'sample'),
+      renderDecisionMetricIfPositive('显式缺口', indicators.explicitMarkerCount, 'sample'),
+    ].filter(Boolean).join('');
     return `<div class="skill-evidence-summary">
-      <div class="summary-row"><span class="summary-title">【skill 运行】</span>${renderMetric('调用段', skill.invocationCount, '次')}<span class="summary-muted">分布 ${skill.sessionCount} 个 session</span>${renderMetric('工具调用', total, '次')}${renderMetricShare('成功', success, total)}${renderMetricShare('失败', failed, total)}${renderMetricShare('人工中断', interrupted, total)}</div>
-      <div class="summary-row"><span class="summary-title">【用户交互】</span>${renderMetric('用户纠正', indicators.userCorrectionCount)}${renderMetric('人工中断', indicators.userInterruptionCount)}${renderMetric('追问', indicators.userFollowUpCount)}${renderMetric('负向反馈', indicators.negativeFeedbackCount ?? 0)}${renderMetric('正向反馈', indicators.positiveFeedbackCount ?? 0)}${renderMetric('目标切换', indicators.userGoalShiftCount ?? 0)}</div>
-      <div class="summary-row"><span class="summary-title">【工具调用】</span>${renderMetric('总计', total, '次')}<span class="summary-detail">(${renderRankedCounts(toolCounts, total)})</span>${renderMetricShare('工具执行失败', failed, total)}</div>
-      <div class="summary-row"><span class="summary-title">【过程发现】</span>${renderMetric('高优先级', indicators.highObservationCount)}${renderMetric('用户硬性要求', indicators.hardRuleTextHitCount)}${renderMetric('不确定表达', indicators.hedgingCount)}${renderMetric('显式缺口', indicators.explicitMarkerCount)}</div>
+      <div class="summary-row"><span class="summary-title">【skill 运行】</span>${renderMetric('调用段', skill.invocationCount, '次')}<span class="summary-muted">分布 ${skill.sessionCount} 个 session</span>${renderMetric('工具调用', total, '次')}${renderMetricShare('成功', success, total)}${renderDecisionMetricShare('失败', failed, total, 'sample')}${renderDecisionMetricShare('人工中断', interrupted, total, 'priority')}${renderSoftMetric('疑似完成', indicators.assistantDeliverySignalCount ?? 0, '助手回复里出现代码块、直接生成、结果如下、完成等交付信号。表示当前目标可能完成，不直接等同于整个 skill 生命周期结束。')}</div>
+      <div class="summary-row"><span class="summary-title">【用户交互】</span>${renderDecisionMetric('用户纠正', indicators.userCorrectionCount, 'priority')}${renderDecisionMetric('人工中断', indicators.userInterruptionCount, 'priority')}${renderMetric('追问', indicators.userFollowUpCount)}${renderDecisionMetric('负向反馈', indicators.negativeFeedbackCount ?? 0, 'priority')}${renderMetric('正向反馈', indicators.positiveFeedbackCount ?? 0)}${renderMetric('目标切换', indicators.userGoalShiftCount ?? 0)}</div>
+      <div class="summary-row"><span class="summary-title">【工具调用】</span>${renderMetric('总计', total, '次')}<span class="summary-detail">(${renderRankedCounts(displayToolCounts, total)})</span>${renderDecisionMetricShare('工具执行失败', failed, total, 'sample')}</div>
+      <div class="summary-row"><span class="summary-title">【过程发现】</span>${processMetrics || '<span class="summary-muted">未发现需要展示的过程信号</span>'}</div>
     </div>`;
   };
   const renderSkillChainSummary = (skillName: string): string => {
     const chain = skillChains[skillName];
     if (!chain?.definition.found) {
-      return `<span class="summary-muted">暂无输入来源</span>`;
+      return `<span class="summary-muted">未找到 SKILL.md：当前日志能识别调用，但本机目录里没有对应 skill 定义，无法做 doctor 检查。</span>`;
     }
     const hard = chain.healthCheck.hardRules;
     const workflows = chain.healthCheck.workflows;
+    const runtime = chain.runtime.summary;
     const hardText = hard.declared
-      ? `hardRules ${hard.count}（执行：暂不支持）${hard.valid ? '' : ' · 结构异常'}`
-      : 'hardRules：暂无输入来源';
+      ? `hardRules ${hard.count}（证据符合 ${runtime.passedCount} / 需关注 ${runtime.attentionCount} / 无法自动判断 ${runtime.manualReviewCount}）${hard.valid ? '' : ' · 结构异常'}`
+      : 'hardRules：SKILL.md 未声明，建议 skill 作者补结构化 hardRules';
     const workflowText = workflows.declared
-      ? `workflow 分支链路 ${workflows.branchCount}（执行节点：${workflows.nodeCount}）${workflows.valid ? '' : ' · 结构异常'}`
-      : 'workflow：暂无输入来源';
+      ? `workflow 分支链路 ${workflows.branchCount}（节点 ${workflows.nodeCount}，非 LLM 证据检查）${workflows.valid ? '' : ' · 结构异常'}`
+      : 'workflow：SKILL.md 未声明，建议 skill 作者补结构化 workflow';
     return `<div class="summary-detail">${e(hardText)}</div><div class="summary-detail" style="margin-top:3px">${e(workflowText)}</div>`;
+  };
+  const collectSkillChainAdvisoryCodes = (skillName: string): SkillChainAdvisoryCode[] => {
+    const chain = skillChains[skillName];
+    if (!chain) return [];
+    if (!chain.definition.found) return ['skill_md_not_found'];
+    const codes: SkillChainAdvisoryCode[] = [];
+    if (chain.healthCheck.hardRules.advisoryCode) codes.push(chain.healthCheck.hardRules.advisoryCode);
+    if (chain.healthCheck.workflows.advisoryCode) codes.push(chain.healthCheck.workflows.advisoryCode);
+    return codes;
   };
   const renderSkillChainButton = (skillName: string, templateId: string): string => {
     const chain = skillChains[skillName];
+    const advisoryCount = collectSkillChainAdvisoryCodes(skillName).length;
+    const hasAdvisory = advisoryCount > 0;
     const title = chain?.definition.found
-      ? '查看 skill 定义、doctor 静态检查和 observe 运行时边界'
-      : '当前没有找到该 skill 的 SKILL.md，只能显示暂无输入来源';
-    return `<button type="button" class="context-chain-button" onclick="event.stopPropagation(); openContextChainModal('${e(templateId)}', this)" title="${e(title)}">运行时链路</button>`;
+      ? (hasAdvisory
+        ? `点开查看 skill 标准定义、健康检查、运行时证据；当前有 ${advisoryCount} 项 advisory 待看（缺 hardRules / 缺 workflows）。`
+        : '点开查看 skill 的标准定义、健康检查、运行时证据三维对照。')
+      : '本机目录里没有这个 skill 的 SKILL.md。点开看建议怎么补，或试试 omk doctor。';
+    return `<button type="button" class="context-chain-button${hasAdvisory ? ' has-advisory' : ''}" onclick="event.stopPropagation(); openContextChainModal('${e(templateId)}', this)" title="${e(title)}"><span class="context-chain-button-icon" aria-hidden="true">🔍</span><span>skill 体检</span>${hasAdvisory ? `<span class="context-chain-button-badge" aria-label="${advisoryCount} 项 advisory">${advisoryCount}</span>` : ''}</button>`;
   };
   const renderSkillChainTemplate = (skillName: string): string => {
     const chain = skillChains[skillName];
-    if (!chain) return `<div class="context-chain-grid"><section><h3>① skill 定义</h3><p>暂无输入来源。</p></section><section><h3>② 健康检查</h3><p>暂无输入来源。</p></section><section><h3>③ 运行时</h3><p>暂不支持。</p></section></div>`;
+    const renderAdvisoryBlock = (advisoryCode?: SkillChainAdvisoryCode, skillNameForCmd?: string): string => {
+      if (!advisoryCode) return '';
+      const advisory = getSkillChainAdvisory(advisoryCode);
+      const exampleBlock = advisory.exampleYaml
+        ? `<details class="skill-chain-advisory-example">
+            <summary>查看建议示例</summary>
+            <pre>${e(advisory.exampleYaml)}</pre>
+          </details>`
+        : '';
+      const resolvedCommand = skillNameForCmd ? resolveAdvisoryCommand(advisory, skillNameForCmd) : undefined;
+      const commandBlock = resolvedCommand
+        ? `<div class="skill-chain-advisory-cmd-wrap">
+            <div class="skill-chain-advisory-cmd-label">如需更多体检维度（依赖检查、可读性等），可以试试 omk doctor（非必须）：</div>
+            <div class="skill-chain-advisory-cmd-row">
+              <code class="skill-chain-advisory-cmd" data-copy-target="${e(resolvedCommand)}">${e(resolvedCommand)}</code>
+              <button type="button" class="skill-chain-advisory-copy-btn" data-copy-source="${e(resolvedCommand)}" title="复制命令到剪贴板">复制</button>
+            </div>
+          </div>`
+        : '';
+      return `<div class="skill-chain-advisory">
+        <div class="skill-chain-advisory-message">⚠️ ${e(advisory.message)}</div>
+        ${exampleBlock}
+        ${commandBlock}
+      </div>`;
+    };
+    if (!chain) {
+      // SKILL.md 找不到也是一种 advisory，统一用 advisory block 渲染；
+      // 同时给出（非强制的）omk doctor 建议命令。
+      const notFoundAdvisory = renderAdvisoryBlock('skill_md_not_found', skillName);
+      return `<div class="context-chain-grid">
+        <section class="context-chain-panel">
+          <h3>① skill 定义</h3>
+          ${notFoundAdvisory}
+        </section>
+        <section class="context-chain-panel">
+          <h3>② 健康检查</h3>
+          <p class="context-muted">缺少本地 SKILL.md，inbox 跑不了静态检查。这不代表作者没声明 hardRules，只是本地看不到。</p>
+        </section>
+        <section class="context-chain-panel">
+          <h3>③ 运行时</h3>
+          <p class="context-muted">运行时证据可从 observe 时间线查看；静态定义链路在本地暂不可用。</p>
+        </section>
+      </div>`;
+    }
     const hard = chain.healthCheck.hardRules;
     const workflows = chain.healthCheck.workflows;
     const hardRulesList = hard.rules.length > 0
       ? `<ol>${hard.rules.map((rule) => `<li><strong>${e(rule.id)}</strong><div>${e(rule.rule)}</div><small>期望行为：${e(rule.expectedBehavior)}</small></li>`).join('')}</ol>`
-      : '<p class="context-muted">暂无输入来源：该 skill 未声明结构化 hardRules。</p>';
+      : renderAdvisoryBlock(hard.advisoryCode, skillName);
     const workflowList = workflows.workflows.length > 0
       ? `<ol>${workflows.workflows.map((workflow) => `<li><strong>${e(workflow.id)}</strong>${workflow.description ? `<div>${e(workflow.description)}</div>` : ''}<small>执行节点：${workflow.nodes.length}</small><ul>${workflow.nodes.map((node) => `<li><code>${e(node.id)}</code> ${e(node.action)}</li>`).join('')}</ul></li>`).join('')}</ol>`
-      : '<p class="context-muted">暂无输入来源：该 skill 未声明结构化 workflows。</p>';
-    const healthRows = [
-      ['hardRules', hard.declared ? `${hard.count} 条` : '暂无输入来源', hard.valid ? '结构合法' : `结构异常：${hard.errors.join('; ')}`],
-      ['workflows', workflows.declared ? `${workflows.branchCount} 条分支链路 / ${workflows.nodeCount} 个执行节点` : '暂无输入来源', workflows.valid ? '结构合法' : `结构异常：${workflows.errors.join('; ')}`],
+      : renderAdvisoryBlock(workflows.advisoryCode, skillName);
+    const runtimeStatusLabel = (status: string): string =>
+      status === 'passed' ? '证据符合'
+        : status === 'attention' ? '需关注'
+          : '无法自动判断';
+    const runtimeCheckList = (checks: typeof chain.runtime.hardRules): string => checks.length > 0
+      ? `<ol>${checks.map((check) => `<li class="runtime-check runtime-${e(check.status)}"><strong>${e(check.id)}</strong><span class="runtime-check-status">${e(runtimeStatusLabel(check.status))}</span><div>${e(check.title)}</div><small>${e(check.reason)}</small>${check.evidenceSnippets.length > 0 ? `<ul>${check.evidenceSnippets.map((snippet) => `<li>${e(snippet)}</li>`).join('')}</ul>` : ''}</li>`).join('')}</ol>`
+      : '<p class="context-muted">暂无可检查项。</p>';
+    // 未声明时不要再展示「结构合法」——已声明且 valid 才有意义。
+    // 未声明时第三列改为「无可校验（建议补充）」让语义对得齐。
+    const healthRows: Array<[string, string, string]> = [
+      ['hardRules',
+        hard.declared ? `${hard.count} 条` : 'SKILL.md 未声明',
+        hard.declared ? (hard.valid ? '结构合法' : `结构异常：${hard.errors.join('; ')}`) : '无可校验（建议补充）'],
+      ['workflows',
+        workflows.declared ? `${workflows.branchCount} 条分支链路 / ${workflows.nodeCount} 个执行节点` : 'SKILL.md 未声明',
+        workflows.declared ? (workflows.valid ? '结构合法' : `结构异常：${workflows.errors.join('; ')}`) : '无可校验（建议补充）'],
     ];
     return `<div class="context-chain-grid">
       <section class="context-chain-panel">
@@ -589,11 +753,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
              <h4>workflows</h4>${workflowList}
              <h4>SKILL.md 原文</h4>
              <pre>${e(chain.definition.content ?? '')}${chain.definition.truncated ? '\n\n... 已截断，仅展示前 12000 字符' : ''}</pre>`
-          : '<p class="context-muted">暂无输入来源：没有在当前工作目录或本机常见 skill 目录中找到对应 SKILL.md。</p>'}
+          : '<p class="context-muted">未找到 SKILL.md：当前 harness 日志里出现了这个 skill，但本机常见 skill 目录没有对应定义。这里属于“定义不可用”，不是“作者没声明规则”。</p>'}
       </section>
       <section class="context-chain-panel">
         <h3>② 健康检查</h3>
-        <p class="context-muted">复用 doctor 的静态检查规则；这里只判断 SKILL.md 结构是否机器可读，不判断运行时是否遵守。</p>
+        <p class="context-muted">复用 doctor 的静态检查规则；这里只判断 SKILL.md 结构是否机器可读。运行时遵守情况看右侧“③ 运行时”。</p>
         <table>
           <tbody>
             ${healthRows.map(([name, count, status]) => `<tr><th>${e(name)}</th><td>${e(count)}</td><td>${e(status)}</td></tr>`).join('')}
@@ -603,7 +767,20 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <section class="context-chain-panel">
         <h3>③ 运行时</h3>
         <p class="context-muted">${e(chain.runtime.message)}</p>
-        <div class="context-runtime-placeholder">暂不支持</div>
+        <table>
+          <tbody>
+            <tr><th>调用段</th><td>${chain.runtime.summary.invocationCount}</td></tr>
+            <tr><th>工具调用</th><td>${chain.runtime.summary.toolCallCount}</td></tr>
+            <tr><th>工具失败</th><td>${chain.runtime.summary.toolFailureCount}</td></tr>
+            <tr><th>证据符合</th><td>${chain.runtime.summary.passedCount}</td></tr>
+            <tr><th>需关注</th><td>${chain.runtime.summary.attentionCount}</td></tr>
+            <tr><th>无法自动判断</th><td>${chain.runtime.summary.manualReviewCount}</td></tr>
+          </tbody>
+        </table>
+        <h4>hardRules 运行时证据</h4>
+        ${runtimeCheckList(chain.runtime.hardRules)}
+        <h4>workflow 节点运行时证据</h4>
+        ${runtimeCheckList(chain.runtime.workflowNodes)}
       </section>
     </div>`;
   };
@@ -686,21 +863,31 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     };
     return labels[code];
   };
-  const renderAssistiveInference = (inference?: ExperienceAssistiveInference, compact = false): string => {
+  const renderAssistiveInference = (inference?: ExperienceAssistiveInference, compact = false, skillNameForAdvisory?: string): string => {
     if (!inference) return '<span style="color:var(--text-muted)">暂无辅助推断</span>';
     const meta = assistiveInferenceMeta(inference.code);
     const basis = inference.basisRuleCodes.length > 0
       ? inference.basisRuleCodes.map((code) => ruleFindingMeta(code).label).join('、')
       : '未命中优先规则';
-    const cautions = inference.cautionCodes.map(assistiveCautionLabel).join('、');
+    // 把 skill 级 advisory（缺 hardRules / 缺 workflows / SKILL.md 找不到）合并进 cautions：
+    // 这样 L1 表格里不点开 modal 也能从 hover 看到「标准缺失」这件事。
+    const skillAdvisoryCodes = skillNameForAdvisory ? collectSkillChainAdvisoryCodes(skillNameForAdvisory) : [];
+    const advisoryShortLabels = skillAdvisoryCodes.map((code) => getSkillChainAdvisory(code).shortLabel);
+    const cautionLabels = inference.cautionCodes.map(assistiveCautionLabel);
+    const cautions = [...advisoryShortLabels, ...cautionLabels].join('、') || '无';
     const title = `${meta.description}\n依据：${basis}\n边界：${cautions}`;
     if (compact) {
+      // L1 compact 模式不再展示「规则把握 high/medium/low」chip：
+      // 它与 assistive label 是同一份数据的复读，cautionCodes 在 hover title 里仍可见。
+      const advisoryChips = advisoryShortLabels.length > 0
+        ? `<div class="assistive-advisory-row">${advisoryShortLabels.map((label) => `<span class="assistive-advisory-chip" title="点开右侧「skill 体检」查看建议">⚠️ ${e(label)}</span>`).join('')}</div>`
+        : '';
       return `<div class="assistive-box compact ${meta.className}" title="${e(title)}">
         <div class="assistive-main">
           <span>${e(meta.label)}</span>
-          <strong>${e(assistiveConfidenceLabel(inference.confidence))}</strong>
           <span class="signal-help assistive-help" tabindex="0" data-signal-title="${e(meta.label)}" data-signal-description="${e(title)}" aria-label="${e(title)}">?</span>
         </div>
+        ${advisoryChips}
       </div>`;
     }
     return `<div class="assistive-box ${meta.className}" title="${e(title)}">
@@ -833,6 +1020,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     label: string;
     tone: string;
   }
+  interface TimelineRenderOptions {
+    reviewSessionId?: string;
+    activeSourceTrace?: string;
+    activeStartRecordIndex?: number;
+    activeEndRecordIndex?: number;
+    showSkillWindowMarkers?: boolean;
+    suppressMetricTagsOutsideSkillWindow?: boolean;
+  }
   interface TimelineHighlightRule {
     pattern?: RegExp;
     ranges?: (value: string) => Array<{ start: number; end: number }>;
@@ -923,7 +1118,32 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  };
 	  const evidenceMetricBadgeLabel = (base: string, event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean): string =>
 	    evidenceMetricVerdictFor(event, metricKey) === 'confirmed' && !ruleDetected ? `人工确认：${base}` : base;
-	  const timelineMetricBadges = (event: ExperienceTimelineEvent, userIndex: number): string[] => {
+  const timelineSearchTags = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags: boolean): string[] => {
+    if (!allowMetricTags) return [];
+    const text = event.fullText ?? event.snippet ?? '';
+    const metricText = event.snippet ?? '';
+    const tags: string[] = [];
+    if (event.kind === 'user_message') {
+      tags.push('user_message');
+      if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) tags.push('user_follow_up');
+      if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText))) tags.push('user_correction');
+      if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText))) tags.push('user_goal_shift');
+      if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText))) tags.push('user_interruption');
+      if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0)) tags.push('negative_feedback');
+      if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) tags.push('positive_feedback');
+      if (evidenceMetricIsActive(event, 'hard_rule', matches(HARD_RULE_RE, metricText))) tags.push('hard_rule');
+    }
+    if (event.kind === 'assistant_message') {
+      if (isAssistantDeliverySignal(event)) tags.push('completion');
+      if (matches(HEDGING_RE, text)) tags.push('hedging');
+      if (matches(EXPLICIT_MARKER_RE, text)) tags.push('explicit_marker');
+    }
+    if (event.kind === 'tool_result' && event.isError) tags.push('tool_failure');
+    if (event.kind === 'observation') tags.push('observation');
+    return Array.from(new Set(tags));
+  };
+	  const timelineMetricBadges = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags = true): string[] => {
+    if (!allowMetricTags) return [];
 	    const text = event.fullText ?? event.snippet ?? '';
 	    const metricText = event.snippet ?? '';
 	    const badges: Array<{ label: string; className: string; title: string }> = [];
@@ -944,16 +1164,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      if (badges.length === 0) badges.push({ label: '助手回复上下文', className: 'metric-neutral', title: '这条助手回复用于回溯上下文，当前没有额外文本指标判断。' });
     }
     if (event.kind === 'tool_use') {
-      badges.push({ label: '工具调用来源', className: 'metric-tool-use', title: '这条 tool_use 计入工具调用数。' });
-      if (event.toolName) {
-        const tool = event.toolName;
-        const knownTool = ['Bash', 'Read', 'Grep', 'Glob', 'Edit', 'Write'].includes(tool);
-        badges.push({
-          label: `${tool} 来源`,
-          className: knownTool ? `metric-tool-${tool.toLowerCase()}` : 'metric-tool-use',
-          title: `这条 tool_use 计入 ${tool} 工具调用明细。`,
-        });
-      }
+      badges.push({
+        label: '工具调用',
+        className: 'metric-tool-use',
+        title: event.toolName
+          ? `这条记录表示 agent 调用了一个工具。原始工具名：${event.toolName}。`
+          : '这条记录表示 agent 调用了一个工具。',
+      });
     }
 	    if (event.kind === 'tool_result') {
 	      if (event.isError) {
@@ -978,9 +1195,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     }
     return badges.map((badge) => `<span class="timeline-badge ${badge.className}" title="${e(badge.title)}">${e(badge.label)}</span>`);
   };
-	  const highlightTimelineSnippet = (event: ExperienceTimelineEvent, userIndex: number): string => {
+	  const highlightTimelineSnippet = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags = true): string => {
 	    const rules: TimelineHighlightRule[] = [];
 	    const value = event.snippet ?? '';
+    if (!allowMetricTags) return e(value);
 	    if (event.kind === 'user_message') {
       if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(value))) rules.push({ ranges: findUserCorrectionMatches, className: 'metric-correction', title: '用户纠正命中词' });
       if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(value))) rules.push({ ranges: findUserGoalShiftMatches, className: 'metric-goal-shift', title: '目标切换命中词' });
@@ -1029,7 +1247,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const entry = reviewState.entries[reviewStateKey('evidence_metric', targetId)];
 	    return typeof entry?.reason === 'string' ? entry.reason : '';
 	  };
-	  const renderMetricCalibration = (event: ExperienceTimelineEvent, userIndex: number): string => {
+  const renderMetricCalibration = (event: ExperienceTimelineEvent, userIndex: number): string => {
 	    if (event.kind !== 'user_message') return '';
 	    const buttons = evidenceMetricKeys.map((metricKey) => {
 	      const targetId = metricAnnotationTarget(event, metricKey);
@@ -1062,17 +1280,55 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <div class="metric-calibration-actions">${buttons}</div>
     </div>`;
   };
+  const goalSliceCorrectionAction = (sessionId: string, event: ExperienceTimelineEvent): 'split_goal_slice' | 'add_to_current_skill_window' | '' => {
+    const targetId = `${sessionId}:${event.messageIndex ?? event.id}`;
+    const key = reviewStateKey('goal_slice_correction', targetId);
+    const note = reviewState.entries[key]?.note ?? '';
+    if (note.includes('add_to_current_skill_window')) return 'add_to_current_skill_window';
+    if (reviewState.entries[key]) return 'split_goal_slice';
+    return '';
+  };
   const renderGoalSliceCorrectionButton = (sessionId: string, event: ExperienceTimelineEvent): string => {
     const targetId = `${sessionId}:${event.messageIndex ?? event.id}`;
     const key = reviewStateKey('goal_slice_correction', targetId);
-    const marked = Boolean(reviewState.entries[key]);
-    const help = marked
-      ? '已记录为目标切片边界候选。再次点击会取消这个本地标记；当前不会自动重新切片或改变本报告指标。'
-      : '点击后会把这一行记录为目标切片边界候选，写入本地 review-state.json；当前不会自动重新切片或改变本报告指标。';
-    return `<button type="button" class="goal-slice-correction-button ${marked ? 'is-marked' : ''}" data-goal-slice-correction-key="${e(key)}" data-goal-slice-correction-marked="${marked ? '1' : '0'}" onclick="toggleGoalSliceCorrection('${e(targetId)}', this)" title="${e(help)}" aria-label="${e(help)}">${marked ? '已标记 · 点击取消' : '人工标记切片点'}</button>`;
+    const action = goalSliceCorrectionAction(sessionId, event);
+    const label = action === 'split_goal_slice'
+      ? '已标记：拆分'
+      : action === 'add_to_current_skill_window'
+        ? '已标记：加入窗口'
+        : '人工标记';
+    const help = '点击后可选择：拆分目标切片、取消打标、添加至当前 skill 窗口。写入 review-state.json 后，需要重新执行脚本让报告重算生效。';
+    return `<button type="button"
+      class="goal-slice-correction-button ${action ? 'is-marked' : ''}"
+      data-goal-slice-correction-key="${e(key)}"
+      data-goal-slice-correction-action="${e(action)}"
+      data-goal-slice-correction-target="${e(targetId)}"
+      data-source-trace="${e(event.sourceTrace)}"
+      data-session-id="${e(event.sessionId)}"
+      data-message-index="${event.messageIndex ?? ''}"
+      data-message-uuid="${e(event.messageUuid ?? '')}"
+      data-tool-use-id="${e(event.toolUseId ?? '')}"
+      data-snippet="${e((event.snippet ?? '').slice(0, 240))}"
+      onclick="openGoalSliceCorrectionPopover('${e(targetId)}', this)"
+      title="${e(help)}"
+      aria-label="${e(help)}">${e(label)}</button>`;
   };
-	  const renderExperienceTimeline = (events: ExperienceTimelineEvent[], sessionId: string): string => {
+	  const renderExperienceTimeline = (events: ExperienceTimelineEvent[], sessionId: string, options: TimelineRenderOptions = {}): string => {
     if (events.length === 0) return '<div style="color:var(--text-muted);font-size:12px">没有可展示的时间线片段。</div>';
+    const reviewSessionId = options.reviewSessionId ?? sessionId;
+    const isInsideSkillWindow = (event: ExperienceTimelineEvent): boolean => {
+      if (options.activeSourceTrace && event.sourceTrace !== options.activeSourceTrace) return false;
+      if (typeof event.messageIndex !== 'number') return true;
+      const start = options.activeStartRecordIndex;
+      const end = options.activeEndRecordIndex;
+      if (typeof start === 'number' && event.messageIndex < start) return false;
+      if (typeof end === 'number' && event.messageIndex > end) return false;
+      return true;
+    };
+    const isAddedToSkillWindow = (event: ExperienceTimelineEvent): boolean =>
+      goalSliceCorrectionAction(reviewSessionId, event) === 'add_to_current_skill_window';
+    const allowMetricTagsFor = (event: ExperienceTimelineEvent): boolean =>
+      !options.suppressMetricTagsOutsideSkillWindow || isInsideSkillWindow(event) || isAddedToSkillWindow(event);
     let userIndex = 0;
     const decorated = events.map((event) => ({
       event,
@@ -1082,8 +1338,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     let current: typeof decorated = [];
     let currentBoundary: ExperienceTimelineEvent | undefined;
     for (const item of decorated) {
-      const boundaryTargetId = `${sessionId}:${item.event.messageIndex ?? item.event.id}`;
-      const isManualBoundary = Boolean(reviewState.entries[reviewStateKey('goal_slice_correction', boundaryTargetId)]);
+      const isManualBoundary = goalSliceCorrectionAction(reviewSessionId, item.event) === 'split_goal_slice';
       if (isManualBoundary && current.length > 0) {
         groups.push({ boundary: currentBoundary, items: current });
         current = [];
@@ -1108,14 +1363,16 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     };
 	    const renderRow = ({ event, userIndex: currentUserIndex }: typeof decorated[number]): string => {
 	      const meta = timelineEventMeta(event);
-	      const badges = timelineMetricBadges(event, currentUserIndex).join('');
+      const allowMetricTags = allowMetricTagsFor(event);
+      const searchTags = timelineSearchTags(event, currentUserIndex, allowMetricTags);
+	      const badges = timelineMetricBadges(event, currentUserIndex, allowMetricTags).join('');
 	      const visibleText = event.snippet ?? '';
 	      const fullText = event.fullText ?? visibleText;
 	      const hasMoreFullText = Boolean(fullText && fullText.trim() !== visibleText.trim());
 	      const fullTextAttrs = fullText
 	        ? ` data-timeline-fulltext="${e(fullText)}" data-timeline-fulltext-title="${e(meta.label)} #${event.messageIndex ?? '—'}" data-timeline-has-more="${hasMoreFullText ? '1' : '0'}" tabindex="${hasMoreFullText ? '0' : '-1'}"`
 	        : '';
-	      return `<div class="timeline-row timeline-${meta.tone}">
+	      return `<div class="timeline-row timeline-${meta.tone}" data-timeline-tags="${e(searchTags.join(' '))}" data-current-skill-window="${allowMetricTags ? '1' : '0'}">
         <div class="timeline-marker">
           <span class="timeline-icon">${e(meta.icon)}</span>
           <span class="timeline-index" title="messageIndex 是各自 jsonl 文件内的索引，跨链路不可直接比较">${event.traceRole === 'subagent' ? '[sub] ' : event.traceRole === 'main' ? '[main] ' : ''}#${event.messageIndex ?? '—'}</span>
@@ -1129,10 +1386,35 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <div class="timeline-badges">${badges}</div>
             ${renderGoalSliceCorrectionButton(sessionId, event)}
           </header>
-	          <pre class="timeline-snippet ${event.isError ? 'is-tool-error' : ''}"${fullTextAttrs}>${highlightTimelineSnippet(event, currentUserIndex)}</pre>
-          ${renderMetricCalibration(event, currentUserIndex)}
+	          <pre class="timeline-snippet ${event.isError ? 'is-tool-error' : ''}"${fullTextAttrs}>${highlightTimelineSnippet(event, currentUserIndex, allowMetricTags)}</pre>
+          ${allowMetricTags ? renderMetricCalibration(event, currentUserIndex) : ''}
         </article>
       </div>`;
+    };
+    const renderWindowMarker = (kind: 'start' | 'end'): string => {
+      const label = kind === 'start' ? '当前 skill 目标分片开始' : '当前 skill 目标分片结束';
+      return `<div class="timeline-window-marker timeline-window-${kind}" data-timeline-window-marker="${kind}">
+        <span>${e(label)}</span>
+      </div>`;
+    };
+    const renderRowsWithWindowMarkers = (items: typeof decorated): string => {
+      let startRendered = false;
+      let output = '';
+      for (let index = 0; index < items.length; index += 1) {
+        const item = items[index];
+        const inside = isInsideSkillWindow(item.event) || isAddedToSkillWindow(item.event);
+        if (options.showSkillWindowMarkers && inside && !startRendered) {
+          output += renderWindowMarker('start');
+          startRendered = true;
+        }
+        output += renderRow(item);
+        const next = items[index + 1];
+        const nextInside = next ? (isInsideSkillWindow(next.event) || isAddedToSkillWindow(next.event)) : false;
+        if (options.showSkillWindowMarkers && inside && !nextInside) {
+          output += renderWindowMarker('end');
+        }
+      }
+      return output;
     };
     const tabBaseId = `timeline-tabs-${sessionId.replace(/[^a-zA-Z0-9_-]+/g, '-')}`;
     return `<div class="timeline-goal-tabs" data-timeline-tabs="${e(tabBaseId)}">
@@ -1159,16 +1441,24 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           <span>${e(label)}</span>
         </header>
         ${firstUser ? `<div class="timeline-goal-summary">${e(firstUser.slice(0, 180))}</div>` : ''}
-        <div class="experience-timeline">${groupItems.map(renderRow).join('')}</div>
+        <div class="experience-timeline">${renderRowsWithWindowMarkers(groupItems)}</div>
       </section>`;
     }).join('')}
       </div>
     </div>`;
   };
   const renderSessionTimelineTree = (session: ExperienceSessionSummary): string => {
+    const fullTimelineOptions: TimelineRenderOptions = {
+      reviewSessionId: session.id,
+      activeSourceTrace: session.sourceTrace,
+      activeStartRecordIndex: session.timelineScope?.segmentStartRecordIndex,
+      activeEndRecordIndex: session.timelineScope?.segmentEndRecordIndex,
+      showSkillWindowMarkers: true,
+      suppressMetricTagsOutsideSkillWindow: true,
+    };
     const tree = session.timelineTree;
     if (!tree || tree.branches.length === 0) {
-      return renderExperienceTimeline(session.fullSessionTimeline ?? session.timelinePreview, `${session.id}-full`);
+      return renderExperienceTimeline(session.fullSessionTimeline ?? session.timelinePreview, `${session.id}-full`, fullTimelineOptions);
     }
     const main = tree.main;
     return `<div class="session-timeline-tree">
@@ -1177,7 +1467,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           <strong>主线 main</strong>
           <span>${main.length > 0 ? `${main.length} 条事件` : '未发现主线 jsonl'}</span>
         </header>
-        ${main.length > 0 ? renderExperienceTimeline(main, `${session.id}-main`) : '<div style="color:var(--text-muted);font-size:12px;padding:10px;border:1px solid var(--border);border-radius:8px">这个 session 只发现 subagents 子链路，未发现可作为主线的 jsonl。</div>'}
+        ${main.length > 0 ? renderExperienceTimeline(main, `${session.id}-main`, fullTimelineOptions) : '<div style="color:var(--text-muted);font-size:12px;padding:10px;border:1px solid var(--border);border-radius:8px">这个 session 只发现 subagents 子链路，未发现可作为主线的 jsonl。</div>'}
       </section>
       <section class="timeline-branch-list">
         <header class="timeline-chain-header">
@@ -1193,7 +1483,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               <span>${e(branch.label)}</span>
               <small>${e(attach)} · ${branch.events.length} 条事件</small>
             </summary>
-            ${renderExperienceTimeline(branch.events, `${session.id}-branch-${index}`)}
+            ${renderExperienceTimeline(branch.events, `${session.id}-branch-${index}`, fullTimelineOptions)}
           </details>`;
         }).join('')}
       </section>
@@ -1231,7 +1521,25 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   };
   const renderTimelinePair = (session: ExperienceSessionSummary): string => `
     ${renderTimelineScopeNotice(session)}
-    <div data-timeline-view="segment">${renderExperienceTimeline(session.timelinePreview, session.id)}</div>
+    <div class="timeline-filter-toolbar" data-timeline-filter-toolbar>
+      <label>搜索标签</label>
+      <select data-timeline-tag-filter onchange="filterTimelineByTag(this)">
+        <option value="">全部标签</option>
+        <option value="completion">疑似完成 / 产出结果</option>
+        <option value="positive_feedback">用户正向反馈</option>
+        <option value="negative_feedback">用户负向反馈</option>
+        <option value="user_correction">用户纠正</option>
+        <option value="user_follow_up">追问 / 补充</option>
+        <option value="user_interruption">人工中断</option>
+        <option value="user_goal_shift">目标切换</option>
+        <option value="hard_rule">用户硬性要求</option>
+        <option value="tool_failure">工具执行失败</option>
+        <option value="hedging">不确定表达</option>
+        <option value="explicit_marker">显式缺口</option>
+      </select>
+      <span data-timeline-filter-count>选择标签后，只显示当前回溯里的命中事件。</span>
+    </div>
+    <div data-timeline-view="segment">${renderExperienceTimeline(session.timelinePreview, session.id, { reviewSessionId: session.id })}</div>
     <div data-timeline-view="full-session" style="display:none">${renderSessionTimelineTree(session)}</div>
   `;
   const renderReviewRows = (groupItems: ObservationInboxItem[], idPrefix: string): string => groupItems.map((item, index) => {
@@ -1645,7 +1953,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   };
   const experienceSkillRows = (experience?.skills ?? []).map((skill) => {
     const indicators = displayIndicatorsBySkill.get(skill.skillName) ?? skill.indicators;
-    const shownPriority = displayPriority(indicators);
+    // L1 不再展示 priority badge（与左侧"优先复盘/抽样复盘"列冗余）；priority 仍在 L2 / 详情 modal 使用。
     const shownInference = displayAssistiveInference(indicators, skill.assistiveInference);
     const chainId = `context-chain-${experienceSkillAnchor(skill.skillName)}`;
     const entrypointText = compactRankedCountText(skill.entrypointCounts, { label: formatEntrypoint });
@@ -1659,25 +1967,36 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         ? Object.fromEntries(Object.entries(skill.attributionCounts).map(([key, count]) => [formatAttributionSource(key), count]))
         : {}
     ));
+    const sourceMetadataHtml = renderOpenClawSourceMetadata(skill.sourceMetadataCounts);
+    const hardRuleSession = (experience?.sessions ?? []).find((session) =>
+      session.skillName === skill.skillName && (displayIndicatorsForSession(session).hardRuleTextHitCount ?? 0) > 0
+    );
+    // 旧版按钮挂的是 onclick="event.stopPropagation()"，
+    // 这会阻止冒泡到 document 上的 [data-open-experience-session] 全局监听器，
+    // 导致点击没反应。改用 data-no-rollup-click 让外层 rollup row 监听器忽略本元素，
+    // 但允许冒泡到 document 把 modal 打开。
+    const sampleReviewCta = hardRuleSession
+      ? `<button type="button" class="review-inline-cta" data-no-rollup-click="1" data-open-experience-session="${e(hardRuleSession.id)}" data-open-timeline-tag="hard_rule">查看详情</button>`
+      : '';
     return `<tr data-observe-rollup-row data-skill-anchor="${e(experienceSkillAnchor(skill.skillName))}" style="cursor:pointer">
       <td style="padding:9px 10px;font-family:ui-monospace,monospace;font-weight:650;word-break:break-all">${e(skill.skillName)}</td>
       <td class="num" title="skill 调用段数：同一个 session 内多次触发同一个 skill，会累计为多次调用段。" style="padding:9px 10px;text-align:right;font-weight:700">${skill.invocationCount}<br><span style="color:var(--text-muted);font-size:10px;font-weight:400">调用段</span></td>
       <td class="num" title="需要优先打开看证据的 session 数" style="padding:9px 6px;text-align:right;color:var(--red);font-weight:650">${skill.reviewFirstSessionCount}</td>
-      <td class="num" title="适合抽样确认的 session 数" style="padding:9px 6px;text-align:right;color:var(--yellow);font-weight:650">${skill.sampleReviewSessionCount}</td>
+      <td class="num" title="适合抽样确认的 session 数" style="padding:9px 6px;text-align:right;color:var(--yellow);font-weight:650">${skill.sampleReviewSessionCount}${sampleReviewCta ? `<br>${sampleReviewCta}` : ''}</td>
+      <td data-no-rollup-click="1" style="padding:9px 10px;text-align:center">${renderSkillChainButton(skill.skillName, chainId)}</td>
       <td class="experience-evidence-cell" data-no-rollup-click="1" style="padding:8px 10px;color:var(--text-secondary);font-size:11px;line-height:1.45">
         ${renderSkillEvidenceSummary(skill)}
       </td>
       <td data-no-rollup-click="1" style="padding:9px 10px;color:var(--text-secondary);font-size:11px;line-height:1.45">${renderSkillChainSummary(skill.skillName)}</td>
-      <td data-no-rollup-click="1" style="padding:9px 10px;text-align:center">${renderSkillChainButton(skill.skillName, chainId)}</td>
       <td style="padding:9px 10px;color:var(--text-muted);font-size:11px;line-height:1.45">
         <div>入口：${e(entrypointText)}</div>
         <div>${e(originText)}</div>
         <div>触发判断：${e(attributionText)}</div>
+        ${sourceMetadataHtml}
       </td>
       <td style="padding:9px 10px;color:var(--text-muted);font-size:12px">${e(skill.lastSeen.slice(0, 19).replace('T', ' '))}</td>
       <td data-no-rollup-click="1" style="padding:9px 10px;text-align:right">
-        ${renderPriorityBadge(shownPriority)}
-        <div style="margin-top:5px;text-align:left">${renderAssistiveInference(shownInference, true)}</div>
+        <div style="text-align:left">${renderAssistiveInference(shownInference, true, skill.skillName)}</div>
       </td>
     </tr>
     <tr id="${e(chainId)}" data-context-chain-template style="display:none">
@@ -1699,13 +2018,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const sessionAttributionText = commandNames.length > 0
       ? `触发判断：通过斜杠命令触发 ${commandNames.join('、')}`
       : `触发判断：${attributionSources.map(formatAttributionSource).join('、') || '未记录'}`;
-    return `<tr data-observe-experience-session>
+    const sessionOpenClawMetadata = renderSessionOpenClawSourceMetadata(session);
+    return `<tr data-observe-experience-session data-experience-session-id="${e(session.id)}">
       <td style="padding:9px 10px">
         ${renderPriorityBadge(shownPriority)}
         <div style="margin-top:6px">${renderAssistiveInference(shownInference, true)}</div>
         <div style="margin-top:7px">${renderReviewStateControls('experience_session', session.id)}</div>
       </td>
-      <td style="padding:9px 10px;font-family:ui-monospace,monospace;font-size:12px;color:var(--text-muted);word-break:break-all">${e(session.sessionId)}<br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--accent)">入口：${e(formatEntrypoint(session.entrypoint))}</span><br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--text-muted)">${e(sessionOriginText)}</span><br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--text-muted)">${e(sessionAttributionText)}</span></td>
+      <td style="padding:9px 10px;font-family:ui-monospace,monospace;font-size:12px;color:var(--text-muted);word-break:break-all">${e(session.sessionId)}<br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--accent)">入口：${e(formatEntrypoint(session.entrypoint))}</span><br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--text-muted)">${e(sessionOriginText)}</span><br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--text-muted)">${e(sessionAttributionText)}</span>${sessionOpenClawMetadata ? `<br>${sessionOpenClawMetadata}` : ''}</td>
       <td style="padding:9px 10px">${renderInvocationSummary(indicators, session.invocationIds.length)}</td>
       <td style="padding:9px 10px;color:var(--text-secondary);line-height:1.45">${renderSessionGoals(session.goalSliceIds)}</td>
       <td style="padding:9px 10px">${renderRuleFindings(shownRuleFindings, true)}</td>
@@ -1720,7 +2040,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         ${metric('高优先级过程发现', indicators.highObservationCount, 'highObservation')}
       </td>
       <td style="padding:9px 10px;color:var(--text-muted);font-size:12px;white-space:normal">${e(session.endTimestamp.slice(0, 19).replace('T', ' '))}</td>
-      <td class="num" style="padding:9px 10px;text-align:right"><button type="button" onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this)" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer;white-space:nowrap">回溯详情</button></td>
+      <td class="num" style="padding:9px 10px;text-align:right"><button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this)" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer;white-space:nowrap">回溯详情</button></td>
     </tr>
     <tr id="${detailId}" data-experience-detail-template style="display:none;background:var(--bg-muted)">
       <td colspan="8" style="padding:0;border-bottom:1px solid var(--border);text-align:left">
@@ -1745,7 +2065,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               <div>关联过程发现：${session.relatedObservationIds.length}</div>
               <div style="margin-top:8px">${renderExperienceBasis(shownBasisCodes)}</div>
             </div>
-            ${renderJson({ id: session.id, sourceTrace: session.sourceTrace, cwd: session.cwd, evidenceChain, ruleFindings: shownRuleFindings, assistiveInference: shownInference, reviewState: reviewState.entries[reviewStateKey('experience_session', session.id)], indicators, relatedObservationIds: session.relatedObservationIds })}
+            ${renderJson({ id: session.id, sourceTrace: session.sourceTrace, sourceMetadata: session.sourceMetadata, cwd: session.cwd, evidenceChain, ruleFindings: shownRuleFindings, assistiveInference: shownInference, reviewState: reviewState.entries[reviewStateKey('experience_session', session.id)], indicators, relatedObservationIds: session.relatedObservationIds })}
           </section>
           <section class="experience-detail-right">
             <h3 style="font-size:13px;margin:0 0 8px;color:var(--text-primary)">C1 上下文时间线片段</h3>
@@ -1809,6 +2129,33 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const experienceReviewSessionCount = experience?.sessions.filter((session) => session.reviewPriority !== 'routine_sample').length ?? 0;
   const experienceReviewFirstSessionCount = experience?.sessions.filter((session) => session.reviewPriority === 'review_first').length ?? 0;
   const experienceSampleReviewSessionCount = experience?.sessions.filter((session) => session.reviewPriority === 'sample_review').length ?? 0;
+  const experienceHardRuleCount = experience?.sessions.reduce((sum, session) =>
+    sum + (displayIndicatorsForSession(session).hardRuleTextHitCount ?? 0), 0
+  ) ?? 0;
+  const experienceFirstHardRuleSession = experience?.sessions.find((session) =>
+    (displayIndicatorsForSession(session).hardRuleTextHitCount ?? 0) > 0
+  );
+  const experienceFirstReviewSession = experienceFirstHardRuleSession
+    ?? experience?.sessions.find((session) => displayPriority(displayIndicatorsForSession(session)) !== 'routine_sample');
+  const experienceInsightText = experienceReviewFirstSessionCount > 0
+    ? `这次 trace 有 ${experienceReviewFirstSessionCount} 个优先复盘 session，建议先看异常证据。`
+    : experienceHardRuleCount > 0
+      ? `这次 trace 整体未发现明显高风险异常，但有 ${experienceHardRuleCount} 条用户硬性要求值得抽样确认。`
+      : experienceSampleReviewSessionCount > 0
+        ? `这次 trace 整体未发现明显高风险异常，有 ${experienceSampleReviewSessionCount} 个 session 建议抽样确认。`
+        : '这次 trace 未发现明显高风险异常，可以常规抽样。';
+  const experienceInsightCta = experienceFirstReviewSession
+    ? `<button type="button" class="experience-insight-cta" data-open-experience-session="${e(experienceFirstReviewSession.id)}" data-open-timeline-tag="${experienceFirstHardRuleSession ? 'hard_rule' : ''}">${experienceFirstHardRuleSession ? '看这条用户硬性要求是什么' : '打开建议复盘 session'}</button>`
+    : '';
+  const experienceTopInsightHtml = experience
+    ? `<div class="experience-top-insight">
+        <div>
+          <strong>复盘建议</strong>
+          <span>${e(experienceInsightText)}</span>
+        </div>
+        ${experienceInsightCta}
+      </div>`
+    : '';
 	  const experienceSection = experience ? `
 	      <section style="margin-top:16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);overflow:hidden">
 	        <div style="padding:13px 14px;border-bottom:1px solid var(--border)">
@@ -1818,6 +2165,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           </div>
         </div>
         <div style="padding:12px 14px">
+          ${experienceTopInsightHtml}
           <div class="experience-stat-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px">
             <div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted)" title="这里的成功/失败是工具调用结果统计，不等同于 LLM 判断 skill 最终成功或失败。">
               <div style="color:var(--text-muted);font-size:12px">调用概览</div>
@@ -1843,9 +2191,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                 <col style="width:4%">
                 <col style="width:4%">
                 <col style="width:4%">
+                <col style="width:6%">
                 <col style="width:39%">
                 <col style="width:9%">
-                <col style="width:6%">
                 <col style="width:13%">
                 <col style="width:5%">
                 <col style="width:5%">
@@ -1855,12 +2203,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                 <th title="skill 调用段数：同一个 session 内多次触发同一个 skill，会累计为多次调用段。" style="text-align:right;padding:9px 10px;border-bottom:1px solid var(--border)">调用段</th>
                 <th title="需要优先打开看证据的 session 数" style="text-align:right;padding:9px 6px;border-bottom:1px solid var(--border)">优先复盘</th>
                 <th title="适合抽样确认的 session 数" style="text-align:right;padding:9px 6px;border-bottom:1px solid var(--border)">抽样复盘</th>
+                <th title="点开看 skill 的标准定义、健康检查、运行时证据三维对照。有红点表示存在 advisory（缺标准定义或本地找不到 SKILL.md）。" style="text-align:center;padding:9px 10px;border-bottom:1px solid var(--border)">skill 体检</th>
                 <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">用户交互 / 执行证据</th>
-                <th title="来自 SKILL.md frontmatter 的结构化 hardRules / workflows；这里只做静态输入检查，运行时遵守情况暂不判断。" style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">标准定义</th>
-                <th title="查看 skill 定义、doctor 静态检查和 observe 运行时边界" style="text-align:center;padding:9px 10px;border-bottom:1px solid var(--border)">运行时链路</th>
+                <th title="来自 SKILL.md frontmatter 的结构化 hardRules / workflows；同时展示非 LLM 的运行时证据检查结果。" style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">标准定义</th>
                 <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">入口 / 来源 / 归因</th>
                 <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">最近使用</th>
-                <th style="text-align:right;padding:9px 10px;border-bottom:1px solid var(--border)">复盘优先级</th>
+                <th style="text-align:right;padding:9px 10px;border-bottom:1px solid var(--border)">辅助推断</th>
               </tr></thead>
               <tbody>${experienceSkillRows}</tbody>
             </table>
@@ -1943,6 +2291,16 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .observe-report-root h1 { font-size: 20px !important; }
         .observe-report-root h2 { font-size: 14px !important; }
         .observe-report-root h3 { font-size: 12px !important; }
+        .lang-toggle {
+          top: auto !important;
+          right: 16px !important;
+          bottom: 16px !important;
+          padding: 5px 10px !important;
+          font-size: 11px !important;
+          opacity: .72;
+          z-index: 90;
+        }
+        .lang-toggle:hover { opacity: 1; }
         .observe-report-root table { font-size: 12px !important; }
         .observe-report-root th {
           font-size: 10.5px !important;
@@ -1982,6 +2340,49 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           overflow: auto !important;
           overscroll-behavior: contain;
         }
+        .experience-top-insight {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          margin: 0 0 12px;
+          padding: 10px 12px;
+          border: 1px solid rgba(37,99,235,.22);
+          border-radius: 8px;
+          background: rgba(37,99,235,.06);
+          color: var(--text-secondary);
+          font-size: 12px;
+          line-height: 1.5;
+        }
+        .experience-top-insight strong {
+          margin-right: 8px;
+          color: var(--text-primary);
+          font-weight: 750;
+        }
+        .experience-insight-cta,
+        .review-inline-cta {
+          border: 1px solid rgba(37,99,235,.30);
+          border-radius: 999px;
+          background: var(--accent);
+          color: #fff;
+          cursor: pointer;
+          font-weight: 750;
+          white-space: nowrap;
+        }
+        .experience-insight-cta {
+          padding: 5px 10px;
+          font-size: 12px;
+        }
+        .review-inline-cta {
+          margin-top: 4px;
+          padding: 2px 6px;
+          font-size: 10px !important;
+          line-height: 1.25;
+        }
+        .experience-insight-cta:hover,
+        .review-inline-cta:hover {
+          filter: brightness(.96);
+        }
         .observe-fit-table,
         #observe-tab-review table,
         #observe-tab-raw table {
@@ -2004,9 +2405,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .experience-skill-table col:nth-child(2) { width: 4% !important; }
         .experience-skill-table col:nth-child(3) { width: 4% !important; }
         .experience-skill-table col:nth-child(4) { width: 4% !important; }
-        .experience-skill-table col:nth-child(5) { width: 39% !important; }
-        .experience-skill-table col:nth-child(6) { width: 9% !important; }
-        .experience-skill-table col:nth-child(7) { width: 6% !important; }
+        .experience-skill-table col:nth-child(5) { width: 6% !important; }
+        .experience-skill-table col:nth-child(6) { width: 39% !important; }
+        .experience-skill-table col:nth-child(7) { width: 9% !important; }
         .experience-skill-table col:nth-child(8) { width: 13% !important; }
         .experience-skill-table col:nth-child(9) { width: 5% !important; }
         .experience-skill-table col:nth-child(10) { width: 5% !important; }
@@ -2175,6 +2576,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           overflow: hidden;
         }
         .context-chain-button {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
           border: 1px solid rgba(37,99,235,.28);
           background: rgba(37,99,235,.09);
           color: var(--accent);
@@ -2187,6 +2591,32 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         .context-chain-button:hover {
           background: rgba(37,99,235,.14);
+        }
+        .context-chain-button.has-advisory {
+          border-color: rgba(202,138,4,.40);
+          background: rgba(202,138,4,.10);
+          color: #a16207;
+        }
+        .context-chain-button.has-advisory:hover {
+          background: rgba(202,138,4,.18);
+        }
+        .context-chain-button-icon {
+          font-size: 12px;
+          line-height: 1;
+        }
+        .context-chain-button-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 16px;
+          height: 16px;
+          padding: 0 4px;
+          border-radius: 8px;
+          background: var(--red);
+          color: #fff;
+          font-size: 10px;
+          font-weight: 700;
+          line-height: 1;
         }
         .context-chain-grid {
           height: 100%;
@@ -2241,6 +2671,118 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           font-size: 12px;
           line-height: 1.5;
         }
+        .skill-chain-advisory {
+          margin: 6px 0 0;
+          padding: 10px 12px;
+          border: 1px solid rgba(202, 138, 4, .35);
+          border-radius: 8px;
+          background: rgba(202, 138, 4, .08);
+          color: var(--text-secondary);
+          font-size: 12px;
+          line-height: 1.55;
+        }
+        .skill-chain-advisory-message {
+          color: var(--text-primary);
+          font-weight: 600;
+        }
+        .skill-chain-advisory-example {
+          margin-top: 6px;
+        }
+        .skill-chain-advisory-example > summary {
+          cursor: pointer;
+          color: var(--accent);
+          font-size: 11px;
+          font-weight: 600;
+          list-style: none;
+          user-select: none;
+        }
+        .skill-chain-advisory-example > summary::marker { content: ''; }
+        .skill-chain-advisory-example > summary::-webkit-details-marker { display: none; }
+        .skill-chain-advisory-example > summary::before {
+          content: '▸ ';
+          display: inline-block;
+          margin-right: 2px;
+        }
+        .skill-chain-advisory-example[open] > summary::before { content: '▾ '; }
+        .skill-chain-advisory-example pre {
+          margin: 6px 0 0;
+          padding: 10px;
+          max-height: 280px;
+          overflow: auto;
+          white-space: pre;
+          word-break: keep-all;
+          border: 1px solid #334155;
+          border-radius: 7px;
+          background: #020617;
+          color: #cbd5e1;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 11px;
+          line-height: 1.55;
+        }
+        .skill-chain-advisory-cmd-wrap {
+          margin-top: 8px;
+        }
+        .skill-chain-advisory-cmd-label {
+          font-size: 11px;
+          color: var(--text-muted);
+          margin-bottom: 4px;
+        }
+        .skill-chain-advisory-cmd-row {
+          display: flex;
+          align-items: stretch;
+          gap: 6px;
+        }
+        .skill-chain-advisory-cmd {
+          flex: 1;
+          padding: 6px 8px;
+          border-radius: 6px;
+          border: 1px solid #334155;
+          background: #020617;
+          color: #cbd5e1;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+          font-size: 11px;
+          line-height: 1.4;
+          overflow-x: auto;
+          white-space: nowrap;
+        }
+        .skill-chain-advisory-copy-btn {
+          padding: 4px 10px;
+          border-radius: 6px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+        }
+        .skill-chain-advisory-copy-btn:hover {
+          background: rgba(37,99,235,.10);
+          border-color: rgba(37,99,235,.30);
+          color: var(--accent);
+        }
+        .skill-chain-advisory-copy-btn.is-copied {
+          background: rgba(34,197,94,.10);
+          border-color: rgba(34,197,94,.32);
+          color: var(--green);
+        }
+        .assistive-advisory-row {
+          margin-top: 5px;
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+        }
+        .assistive-advisory-chip {
+          display: inline-flex;
+          align-items: center;
+          padding: 1px 6px;
+          border-radius: 5px;
+          background: rgba(202,138,4,.10);
+          border: 1px solid rgba(202,138,4,.28);
+          color: #a16207;
+          font-size: 10px;
+          line-height: 1.5;
+          white-space: nowrap;
+        }
         .context-chain-panel small,
         .context-muted,
         .context-meta {
@@ -2271,6 +2813,29 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           border-radius: 8px;
           color: var(--text-muted);
           text-align: center;
+        }
+        .runtime-check {
+          border-left: 3px solid #475569;
+          padding-left: 8px;
+        }
+        .runtime-passed { border-left-color: #16a34a; }
+        .runtime-attention { border-left-color: #dc2626; }
+        .runtime-manual_review { border-left-color: #2563eb; }
+        .runtime-check-status {
+          display: inline-flex;
+          margin-left: 6px;
+          padding: 1px 6px;
+          border-radius: 999px;
+          background: rgba(148,163,184,.14);
+          color: var(--text-muted);
+          font-size: 10px;
+          font-weight: 700;
+        }
+        .openclaw-source-meta {
+          margin-top: 4px;
+          padding-top: 4px;
+          border-top: 1px dashed var(--border);
+          color: var(--text-muted);
         }
         .timeline-scope-notice {
           display: flex;
@@ -2304,6 +2869,39 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           padding: 5px 9px;
           cursor: pointer;
           font-size: 12px;
+          white-space: nowrap;
+        }
+        .timeline-filter-toolbar {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 0 0 8px;
+          padding: 8px 10px;
+          border: 1px solid #334155;
+          border-radius: 8px;
+          background: #0f172a;
+          color: var(--text-secondary);
+          font-size: 11px;
+        }
+        .timeline-filter-toolbar label {
+          flex: 0 0 auto;
+          color: var(--text-muted);
+          font-weight: 700;
+        }
+        .timeline-filter-toolbar select {
+          min-width: 190px;
+          border: 1px solid #475569;
+          border-radius: 6px;
+          background: #111827;
+          color: var(--text-primary);
+          padding: 5px 8px;
+          font-size: 12px;
+        }
+        .timeline-filter-toolbar span {
+          min-width: 0;
+          color: var(--text-muted);
+          overflow: hidden;
+          text-overflow: ellipsis;
           white-space: nowrap;
         }
         .experience-detail-right [data-timeline-view] {
@@ -2540,6 +3138,47 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .timeline-row:last-child::before {
           display: none;
         }
+        .timeline-row.is-filter-hidden {
+          display: none;
+        }
+        .timeline-row.is-filter-match .timeline-card {
+          border-color: rgba(37,99,235,.55);
+          box-shadow: 0 0 0 1px rgba(37,99,235,.18);
+        }
+        .timeline-window-marker {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 4px 0;
+          color: var(--accent);
+          font-size: 11px;
+          font-weight: 800;
+        }
+        .timeline-window-marker::before,
+        .timeline-window-marker::after {
+          content: "";
+          height: 1px;
+          flex: 1 1 auto;
+          background: rgba(37,99,235,.35);
+        }
+        .timeline-window-marker span {
+          flex: 0 0 auto;
+          padding: 3px 8px;
+          border: 1px solid rgba(37,99,235,.30);
+          border-radius: 999px;
+          background: rgba(37,99,235,.10);
+        }
+        .timeline-window-end {
+          color: var(--yellow);
+        }
+        .timeline-window-end::before,
+        .timeline-window-end::after {
+          background: rgba(202,138,4,.38);
+        }
+        .timeline-window-end span {
+          border-color: rgba(202,138,4,.34);
+          background: rgba(202,138,4,.12);
+        }
         .timeline-marker {
           display: flex;
           flex-direction: column;
@@ -2578,6 +3217,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           overflow: hidden;
         }
         .timeline-card-header {
+          position: relative;
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
@@ -2614,7 +3254,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           border-radius: 999px;
           font-size: 11px;
           line-height: 1.35;
-          border: 1px solid transparent;
+          border: 1px solid rgba(148,163,184,.16);
+          background: rgba(148,163,184,.08);
+          color: var(--text-secondary);
           white-space: nowrap;
           flex-shrink: 0;
         }
@@ -2623,11 +3265,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           border: 1px solid rgba(255,255,255,.80);
           background: var(--accent);
           color: #fff;
-          border-radius: 8px;
-          padding: 5px 9px;
-          font-size: 11px;
-          font-weight: 750;
-          box-shadow: 0 4px 12px rgba(37,99,235,.22);
+          border-radius: 6px;
+          padding: 3px 6px;
+          font-size: 10px;
+          line-height: 1.25;
+          font-weight: 700;
+          box-shadow: 0 2px 8px rgba(37,99,235,.18);
           cursor: pointer;
           white-space: nowrap;
         }
@@ -2638,7 +3281,53 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           border-color: rgba(255,255,255,.80);
           background: var(--green);
           color: #fff;
-          box-shadow: 0 4px 12px rgba(22,163,74,.22);
+          box-shadow: 0 2px 8px rgba(22,163,74,.18);
+        }
+        .goal-slice-popover {
+          position: fixed;
+          z-index: 2147483600;
+          width: min(320px, calc(100vw - 32px));
+          border: 1px solid rgba(37,99,235,.26);
+          border-radius: 9px;
+          background: #0f172a;
+          color: #e2e8f0;
+          box-shadow: 0 18px 48px rgba(0,0,0,.55);
+          padding: 10px;
+          opacity: 1;
+        }
+        .goal-slice-popover-title {
+          font-size: 12px;
+          font-weight: 800;
+          color: #f8fafc;
+          margin-bottom: 4px;
+        }
+        .goal-slice-popover-hint {
+          color: #94a3b8;
+          font-size: 11px;
+          line-height: 1.45;
+          margin-bottom: 9px;
+        }
+        .goal-slice-popover-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .goal-slice-popover-actions button {
+          text-align: center;
+          border: 1px solid #475569;
+          border-radius: 999px;
+          background: #1e293b;
+          color: #e2e8f0;
+          padding: 4px 8px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .goal-slice-popover-actions button:hover {
+          border-color: #60a5fa;
+          color: #bfdbfe;
+          background: #1d4ed8;
         }
         .timeline-snippet {
           position: relative;
@@ -2675,29 +3364,30 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .metric-calibration-row {
           display: flex;
           align-items: flex-start;
-          gap: 8px;
-          padding: 7px 10px;
+          gap: 6px;
+          padding: 5px 8px;
           border-top: 1px solid var(--border);
           background: var(--bg-muted);
         }
         .metric-calibration-title {
           flex: 0 0 auto;
           color: var(--text-muted);
-          font-size: 11px;
-          line-height: 22px;
+          font-size: 10px;
+          line-height: 18px;
         }
         .metric-calibration-actions {
           display: flex;
           flex-wrap: wrap;
-          gap: 5px;
+          gap: 4px;
         }
         .metric-calibration-button {
           border: 1px solid var(--border);
-          border-radius: 7px;
+          border-radius: 6px;
           background: var(--bg);
           color: var(--text-muted);
-          padding: 3px 6px;
-          font-size: 10.5px;
+          padding: 2px 5px;
+          font-size: 9.5px;
+          line-height: 1.25;
           font-weight: 650;
           cursor: pointer;
         }
@@ -2890,6 +3580,40 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           display: inline-flex;
           align-items: baseline;
           white-space: nowrap;
+        }
+        .skill-evidence-summary .summary-impact {
+          padding: 1px 5px;
+          border-radius: 6px;
+          border: 1px solid transparent;
+        }
+        .skill-evidence-summary .summary-impact-priority {
+          background: rgba(220,38,38,.08);
+          border-color: rgba(220,38,38,.20);
+        }
+        .skill-evidence-summary .summary-impact-priority .summary-name,
+        .skill-evidence-summary .summary-impact-priority .summary-count {
+          color: var(--red);
+        }
+        .skill-evidence-summary .summary-impact-sample {
+          background: rgba(148,163,184,.08);
+          border-color: rgba(148,163,184,.16);
+        }
+        .skill-evidence-summary .summary-impact-sample .summary-name,
+        .skill-evidence-summary .summary-impact-sample .summary-count {
+          color: var(--text-secondary);
+        }
+        .skill-evidence-summary .summary-impact-soft {
+          background: rgba(99,102,241,.08);
+          border-color: rgba(99,102,241,.18);
+        }
+        .skill-evidence-summary .summary-impact-soft .summary-name,
+        .skill-evidence-summary .summary-impact-soft .summary-count {
+          color: var(--text-secondary);
+        }
+        .skill-evidence-summary .summary-metric-empty .summary-name,
+        .skill-evidence-summary .summary-metric-empty .summary-count {
+          color: var(--text-muted);
+          opacity: .55;
         }
         .invocation-summary {
           display: block;
@@ -3189,14 +3913,16 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         #metric-guide-toolbar button {
           letter-spacing: 0;
-          padding: 12px 15px;
+          width: 42px;
+          height: 42px;
+          padding: 0;
           border: 2px solid rgba(255,255,255,.86);
-          border-radius: 10px;
+          border-radius: 999px;
           background: var(--accent);
           color: #fff;
           box-shadow: 0 10px 28px rgba(0,0,0,.32);
           cursor: pointer;
-          font-size: 13px;
+          font-size: 18px;
           font-weight: 800;
           white-space: nowrap;
         }
@@ -3337,12 +4063,42 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .metric-tool-failure { background: rgba(220,38,38,.14); color: var(--red); border-color: rgba(220,38,38,.28); }
         .metric-skill-context { background: var(--bg-muted); color: var(--text-muted); border-color: var(--border); }
         .metric-neutral { background: var(--bg-muted); color: var(--text-muted); border-color: var(--border); }
+        .timeline-badge.metric-followup,
+        .timeline-badge.metric-user-message,
+        .timeline-badge.metric-correction,
+        .timeline-badge.metric-goal-shift,
+        .timeline-badge.metric-interruption,
+        .timeline-badge.metric-negative,
+        .timeline-badge.metric-positive,
+        .timeline-badge.metric-completion,
+        .timeline-badge.metric-hard-rule,
+        .timeline-badge.metric-hedging,
+        .timeline-badge.metric-explicit,
+        .timeline-badge.metric-tool-use,
+        .timeline-badge.metric-tool-success,
+        .timeline-badge.metric-tool-bash,
+        .timeline-badge.metric-tool-read,
+        .timeline-badge.metric-tool-grep,
+        .timeline-badge.metric-tool-glob,
+        .timeline-badge.metric-tool-edit,
+        .timeline-badge.metric-tool-write,
+        .timeline-badge.metric-tool-failure,
+        .timeline-badge.metric-skill-context,
+        .timeline-badge.metric-neutral {
+          background: rgba(148,163,184,.08);
+          color: var(--text-secondary);
+          border-color: rgba(148,163,184,.16);
+        }
+        .timeline-row.is-cta-focus .timeline-card {
+          border-color: rgba(37,99,235,.62);
+          box-shadow: 0 0 0 2px rgba(37,99,235,.18);
+        }
       </style>
       <div id="signal-global-tooltip" role="tooltip"></div>
       <div id="timeline-fulltext-tooltip" role="dialog" aria-modal="true" aria-hidden="true" aria-label="时间线消息详情"></div>
       <div id="experience-detail-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Session 回溯详情"></div>
       <div id="metric-guide-toolbar" aria-label="指标说明工具栏">
-        <button type="button" onclick="window.toggleMetricGuide && window.toggleMetricGuide()">指标说明</button>
+        <button type="button" title="指标说明" aria-label="指标说明" onclick="window.toggleMetricGuide && window.toggleMetricGuide()">?</button>
       </div>
       <aside id="metric-guide-panel" aria-label="指标含义和评判标准">
         <div class="metric-guide-header">
@@ -3546,6 +4302,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         function closeExperienceDetailModal() {
           var modal = document.getElementById('experience-detail-modal');
           if (!modal) return;
+          if (window.closeGoalSliceCorrectionPopovers) window.closeGoalSliceCorrectionPopovers();
           modal.classList.remove('is-open');
           modal.setAttribute('aria-hidden', 'true');
           modal.innerHTML = '';
@@ -3619,6 +4376,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           for (var j = 0; j < panels.length; j++) {
             panels[j].classList.toggle('is-active', panels[j].getAttribute('data-timeline-panel') === target);
           }
+          var toolbar = root.closest ? root.closest('.experience-detail-right') : null;
+          var select = toolbar ? toolbar.querySelector('[data-timeline-tag-filter]') : null;
+          if (select) filterTimelineByTag(select);
         }
         function toggleFullSessionTimeline(btn) {
           var root = btn && btn.closest ? btn.closest('.experience-detail-right') : null;
@@ -3636,14 +4396,71 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               var base = tabs[i].getAttribute('data-timeline-tabs');
               if (base) switchTimelineGoalTab(base, 0);
             }
+            var select = root.querySelector('[data-timeline-tag-filter]');
+            if (select) filterTimelineByTag(select);
             if (window.refreshTimelineFullTextState) window.refreshTimelineFullTextState();
           });
+        }
+        function filterTimelineByTag(select) {
+          var root = select && select.closest ? select.closest('.experience-detail-right') : null;
+          if (!root) root = document;
+          var value = select ? String(select.value || '') : '';
+          var rows = root.querySelectorAll('.timeline-row');
+          var markers = root.querySelectorAll('.timeline-window-marker');
+          var count = 0;
+          for (var i = 0; i < rows.length; i++) {
+            var tags = String(rows[i].getAttribute('data-timeline-tags') || '').split(/\\s+/);
+            var match = !value || tags.indexOf(value) !== -1;
+            rows[i].classList.toggle('is-filter-hidden', !match);
+            rows[i].classList.toggle('is-filter-match', Boolean(value && match));
+            if (match && value) count += 1;
+          }
+          for (var j = 0; j < markers.length; j++) {
+            markers[j].style.display = value ? 'none' : '';
+          }
+          var text = root.querySelector('[data-timeline-filter-count]');
+          if (text) text.textContent = value ? ('命中 ' + count + ' 条；只统计当前 skill 相关标签。') : '选择标签后，只显示当前回溯里的命中事件。';
+        }
+        function openExperienceSessionById(sessionId, tag) {
+          if (!sessionId) return;
+          var rows = document.querySelectorAll('[data-observe-experience-session]');
+          var row = null;
+          for (var i = 0; i < rows.length; i++) {
+            if (rows[i].getAttribute('data-experience-session-id') === sessionId) {
+              row = rows[i];
+              break;
+            }
+          }
+          if (!row) return;
+          var details = row.closest ? row.closest('details') : null;
+          if (details) details.open = true;
+          var top = row.getBoundingClientRect().top + window.pageYOffset - 90;
+          window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+          var button = row.querySelector('[data-open-experience-detail]');
+          if (button) button.click();
+          window.setTimeout(function () {
+            var modal = document.getElementById('experience-detail-modal');
+            if (!modal || !modal.classList.contains('is-open')) return;
+            var select = modal.querySelector('[data-timeline-tag-filter]');
+            if (select && tag) {
+              select.value = tag;
+              filterTimelineByTag(select);
+            }
+            var target = tag ? modal.querySelector('.timeline-row.is-filter-match') : modal.querySelector('.timeline-row');
+            if (!target) return;
+            target.classList.add('is-cta-focus');
+            var panel = target.closest('.timeline-tab-panel') || target.closest('.experience-detail-right');
+            if (panel) panel.scrollTop = Math.max(0, target.offsetTop - 80);
+            window.setTimeout(function () { target.classList.remove('is-cta-focus'); }, 1800);
+          }, 160);
         }
         window.openExperienceDetailModal = openExperienceDetailModal;
         window.openContextChainModal = openContextChainModal;
         window.closeExperienceDetailModal = closeExperienceDetailModal;
         window.switchTimelineGoalTab = switchTimelineGoalTab;
         window.toggleFullSessionTimeline = toggleFullSessionTimeline;
+        window.filterTimelineByTag = filterTimelineByTag;
+        window.openExperienceSessionById = openExperienceSessionById;
         (function setupExperienceDetailModal() {
           var modal = document.getElementById('experience-detail-modal');
           if (!modal) return;
@@ -3654,6 +4471,51 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             if (event.key === 'Escape' && modal.classList.contains('is-open')) closeExperienceDetailModal();
           });
         })();
+        document.addEventListener('click', function (event) {
+          var target = event.target;
+          var trigger = target && target.closest ? target.closest('[data-open-experience-session]') : null;
+          if (!trigger) return;
+          event.preventDefault();
+          event.stopPropagation();
+          openExperienceSessionById(trigger.getAttribute('data-open-experience-session'), trigger.getAttribute('data-open-timeline-tag') || '');
+        });
+        // 复制 advisory 命令到剪贴板：data-copy-source 上挂命令文本。
+        document.addEventListener('click', function (event) {
+          var target = event.target;
+          var btn = target && target.closest ? target.closest('[data-copy-source]') : null;
+          if (!btn) return;
+          event.preventDefault();
+          event.stopPropagation();
+          var cmd = btn.getAttribute('data-copy-source') || '';
+          var done = function () {
+            var prev = btn.textContent;
+            btn.classList.add('is-copied');
+            btn.textContent = '已复制';
+            setTimeout(function () {
+              btn.classList.remove('is-copied');
+              btn.textContent = prev;
+            }, 1500);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(cmd).then(done).catch(function () {
+              fallbackCopy(cmd); done();
+            });
+          } else {
+            fallbackCopy(cmd); done();
+          }
+        });
+        function fallbackCopy(text) {
+          try {
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          } catch (err) {}
+        }
         function toggleScoringGuide(btn) {
           var guide = document.getElementById('observe-scoring-guide');
           if (!guide) return;
@@ -3744,42 +4606,121 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             if (btn) btn.disabled = false;
           }
         }
-        async function toggleGoalSliceCorrection(targetId, btn) {
+        function closeGoalSliceCorrectionPopovers() {
+          var popovers = document.querySelectorAll('.goal-slice-popover');
+          for (var i = 0; i < popovers.length; i++) popovers[i].remove();
+          var buttons = document.querySelectorAll('.goal-slice-correction-button.is-editing');
+          for (var j = 0; j < buttons.length; j++) buttons[j].classList.remove('is-editing');
+        }
+        function updateGoalSliceCorrectionButtons(targetId, action) {
+          var key = 'goal_slice_correction:' + targetId;
+          var buttons = document.querySelectorAll('[data-goal-slice-correction-key="' + key.replace(/"/g, '\\"') + '"]');
+          var label = action === 'split_goal_slice'
+            ? '已标记：拆分'
+            : action === 'add_to_current_skill_window'
+              ? '已标记：加入窗口'
+              : '人工标记';
+          for (var i = 0; i < buttons.length; i++) {
+            buttons[i].textContent = label;
+            buttons[i].setAttribute('data-goal-slice-correction-action', action || '');
+            buttons[i].classList.toggle('is-marked', Boolean(action));
+          }
+        }
+        async function submitGoalSliceCorrection(targetId, action, btn) {
           if (btn) btn.disabled = true;
-          var isMarked = btn && btn.getAttribute('data-goal-slice-correction-marked') === '1';
           try {
-            var url = '/api/observations/review-state?targetType=goal_slice_correction&targetId=' + encodeURIComponent(targetId);
-            var res = isMarked
-              ? await fetch(url, { method: 'DELETE' })
-              : await fetch('/api/observations/review-state', {
+            var res;
+            if (!action) {
+              res = await fetch('/api/observations/review-state?targetType=goal_slice_correction&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' });
+            } else {
+              res = await fetch('/api/observations/review-state', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   targetType: 'goal_slice_correction',
                   targetId: targetId,
                   verdict: 'reviewed',
-                  note: 'reviewer marked this timeline event as a goal-slice boundary candidate'
+                  note: action,
+                  sourceTrace: btn ? btn.getAttribute('data-source-trace') || undefined : undefined,
+                  sessionId: btn ? btn.getAttribute('data-session-id') || undefined : undefined,
+                  messageIndex: btn && btn.getAttribute('data-message-index') ? Number(btn.getAttribute('data-message-index')) : undefined,
+                  messageUuid: btn ? btn.getAttribute('data-message-uuid') || undefined : undefined,
+                  toolUseId: btn ? btn.getAttribute('data-tool-use-id') || undefined : undefined,
+                  snippet: btn ? btn.getAttribute('data-snippet') || undefined : undefined
                 })
               });
+            }
             if (!res.ok) throw new Error('goal slice correction update failed: ' + res.status);
             await res.json();
-            var key = 'goal_slice_correction:' + targetId;
-            var buttons = document.querySelectorAll('[data-goal-slice-correction-key="' + key.replace(/"/g, '\\"') + '"]');
-            for (var i = 0; i < buttons.length; i++) {
-              buttons[i].textContent = isMarked ? '人工标记切片点' : '已标记 · 点击取消';
-              buttons[i].setAttribute('data-goal-slice-correction-marked', isMarked ? '0' : '1');
-              buttons[i].classList.toggle('is-marked', !isMarked);
-              buttons[i].setAttribute('title', isMarked
-                ? '点击后会把这一行记录为目标切片边界候选，写入本地 review-state.json；当前不会自动重新切片或改变本报告指标。'
-                : '已记录为目标切片边界候选。再次点击会取消这个本地标记；当前不会自动重新切片或改变本报告指标。');
-            }
-            window.setTimeout(function () { window.location.reload(); }, 150);
+            updateGoalSliceCorrectionButtons(targetId, action);
+            closeGoalSliceCorrectionPopovers();
+            alert('已写入 review-state.json。需要重新执行脚本，新的目标切片和 skill 窗口才会在报告里重算生效。');
           } catch (err) {
             alert(String(err && err.message ? err.message : err));
           } finally {
             if (btn) btn.disabled = false;
           }
-	        }
+        }
+        function positionGoalSlicePopover(popover, btn) {
+          var rect = btn.getBoundingClientRect();
+          var width = Math.min(320, Math.max(220, window.innerWidth - 32));
+          popover.style.width = width + 'px';
+          var left = Math.min(window.innerWidth - width - 12, Math.max(12, rect.right - width));
+          var top = rect.bottom + 8;
+          document.body.appendChild(popover);
+          var popRect = popover.getBoundingClientRect();
+          if (top + popRect.height > window.innerHeight - 12) {
+            top = Math.max(12, rect.top - popRect.height - 8);
+          }
+          popover.style.left = left + 'px';
+          popover.style.top = top + 'px';
+        }
+        function openGoalSliceCorrectionPopover(targetId, btn) {
+          closeGoalSliceCorrectionPopovers();
+          if (!btn) return;
+          btn.classList.add('is-editing');
+          var popover = document.createElement('div');
+          popover.className = 'goal-slice-popover';
+          var title = document.createElement('div');
+          title.className = 'goal-slice-popover-title';
+          title.textContent = '人工标记';
+          var hint = document.createElement('div');
+          hint.className = 'goal-slice-popover-hint';
+          hint.textContent = '这个标记会写入 review-state.json。修改后需要重新执行脚本，报告才会按新切片或新窗口重算。';
+          var actions = document.createElement('div');
+          actions.className = 'goal-slice-popover-actions';
+          var split = document.createElement('button');
+          split.type = 'button';
+          split.textContent = '拆分目标切片';
+          split.title = '把这条 message 作为新的目标片段起点候选。';
+          var clear = document.createElement('button');
+          clear.type = 'button';
+          clear.textContent = '取消打标';
+          clear.title = '删除这条 message 的人工切片/窗口标记。';
+          var add = document.createElement('button');
+          add.type = 'button';
+          add.textContent = '添加至当前 skill 窗口';
+          add.title = '把这条 message 作为当前 skill 的上下文候选。';
+          actions.appendChild(split);
+          actions.appendChild(clear);
+          actions.appendChild(add);
+          popover.appendChild(title);
+          popover.appendChild(hint);
+          popover.appendChild(actions);
+          positionGoalSlicePopover(popover, btn);
+          setTimeout(function () {
+            document.addEventListener('click', function closeOnOutsideClick(event) {
+              if (popover.contains(event.target) || btn.contains(event.target)) return;
+              closeGoalSliceCorrectionPopovers();
+              document.removeEventListener('click', closeOnOutsideClick);
+            });
+          }, 0);
+          split.addEventListener('click', function () { submitGoalSliceCorrection(targetId, 'split_goal_slice', btn); });
+          clear.addEventListener('click', function () { submitGoalSliceCorrection(targetId, '', btn); });
+          add.addEventListener('click', function () { submitGoalSliceCorrection(targetId, 'add_to_current_skill_window', btn); });
+        }
+        window.closeGoalSliceCorrectionPopovers = closeGoalSliceCorrectionPopovers;
+        window.openGoalSliceCorrectionPopover = openGoalSliceCorrectionPopover;
 	        function evidenceMetricText(label, annotation, ruleDetected) {
 	          if (annotation === 'confirmed') return '人工同意 · ' + label;
 	          if (annotation === 'rejected') return '人工反对 · ' + label;

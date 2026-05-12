@@ -3,6 +3,7 @@
 import type { ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types/index.js';
 import type { CcAssistantRecord, CcSession, CcUserRecord } from './trace-source.js';
 import {
+  extractAimaCmdSkillRef,
   extractAttributionSkillRef,
   extractCommandSkillRef,
   extractSkillReadFileRef,
@@ -14,7 +15,7 @@ import {
 export interface SkillSegment {
   skillName: string;
   attribution?: {
-    source: 'skill-tool' | 'command-name' | 'read-skill-md' | 'general';
+    source: 'skill-tool' | 'command-name' | 'aima-cmd' | 'read-skill-md' | 'general';
     confidence: number;
     rawSkillRef?: string;
     pluginName?: string;
@@ -23,6 +24,7 @@ export interface SkillSegment {
   sessionId: string;
   traceSessionId?: string;
   sourceTrace?: string;
+  sourceKind?: 'claude' | 'openclaw' | 'markdown_log' | 'unknown';
   traceRole?: 'standalone' | 'main' | 'subagent';
   traceLabel?: string;
   segmentIndex: number;
@@ -108,6 +110,17 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
           pluginName: cmdSkill.pluginName,
           commandName: `/${cmdSkill.rawSkillRef}`,
         });
+      } else if (!cmdSkill) {
+        const aimaCmdSkill = extractAimaCmdSkillRef(u);
+        if (aimaCmdSkill && !isCurrentSkillRef(aimaCmdSkill)) {
+          startNewSegment(aimaCmdSkill, recordIndex, u.timestamp, {
+            source: 'aima-cmd',
+            confidence: 0.85,
+            rawSkillRef: aimaCmdSkill.rawSkillRef,
+            pluginName: aimaCmdSkill.pluginName,
+            commandName: aimaCmdSkill.rawSkillRef,
+          });
+        }
       }
       // 处理 tool_result(回填之前的 tool_use)
       if (typeof u.message.content !== 'string') {
@@ -137,8 +150,9 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
     }
     if (rec.type === 'assistant') {
       const a = rec as CcAssistantRecord;
-      // 检测 skill 信号 1 (Skill tool_use); 信号 3 (Read SKILL.md) 作 fallback,
-      // 仅在当前段仍是 'general'(未被信号 1/2 命中过)时触发,避免压过更强信号。
+      // 检测 skill 信号 1 (Skill tool_use); 信号 3 (Read SKILL.md) 作 fallback。
+      // OpenClaw/AIMA 场景里一条用户消息可能包含多个业务动作(如 生成PRD + 生成Demo),
+      // 后续读取不同 SKILL.md 才是实际运行到哪个 skill 的稳定边界。
       const skillTool = extractSkillToolUseRef(a);
       if (skillTool && !isCurrentSkillRef(skillTool)) {
         startNewSegment(skillTool, recordIndex, a.timestamp, {
@@ -157,9 +171,9 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
             pluginName: attrSkill.pluginName,
             commandName: `/${attrSkill.rawSkillRef}`,
           });
-        } else if (currentSkill === 'general') {
+        } else {
           const readSkill = extractSkillReadFileRef(a);
-          if (readSkill) {
+          if (readSkill && !isCurrentSkillRef(readSkill) && shouldCutOnReadSkill(session, currentSegment)) {
             startNewSegment(readSkill, recordIndex, a.timestamp, {
               source: 'read-skill-md',
               confidence: 0.5,
@@ -186,6 +200,7 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
             toolUseId: part.id,
             timestamp: a.timestamp,
             sourceTrace: session.sourcePath,
+            sourceKind: session.sourceKind,
             traceRole: session.traceRole,
             traceLabel: session.traceLabel,
           };
@@ -233,6 +248,7 @@ function createEmptySegment(session: CcSession, skillName: string, index: number
     sessionId: session.sessionGroupId ?? session.sessionId,
     traceSessionId: session.sessionId,
     sourceTrace: session.sourcePath,
+    sourceKind: session.sourceKind,
     traceRole: session.traceRole,
     traceLabel: session.traceLabel,
     segmentIndex: index,
@@ -265,6 +281,12 @@ function updateSegmentTimestamp(seg: SkillSegment, timestamp?: string): void {
     const end = new Date(seg.endTimestamp).getTime();
     if (!Number.isNaN(start) && !Number.isNaN(end)) seg.metrics.durationMs = Math.max(0, end - start);
   } catch { /* skip */ }
+}
+
+function shouldCutOnReadSkill(session: CcSession, currentSegment: SkillSegment): boolean {
+  return currentSegment.skillName === 'general'
+    || currentSegment.attribution?.source === 'read-skill-md'
+    || session.sourceKind === 'openclaw';
 }
 
 function extractUserText(record: CcUserRecord): string {

@@ -131,6 +131,152 @@ describe('loadCcSessions', () => {
     assert.equal(segs[0].attribution?.source, 'command-name');
   });
 
+  it('loads OpenClaw JSONL and adapts toolCall/toolResult records', () => {
+    const path = join(tmpDir, 'openclaw.jsonl');
+    writeFileSync(path, jsonl([
+      { type: 'session', version: 3, id: 'oc-1', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/Users/test-user/.openclaw/workspace' },
+      {
+        type: 'message',
+        id: 'u1',
+        parentId: null,
+        timestamp: '2026-05-12T00:00:01.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'Conversation info (untrusted metadata):\n```json\n{"channel":"aima","sender":"测试用户","sender_id":"xxxx"}\n```\n\n帮我写一个 PRD\n<aima-cmd name="prd-create">请生成 PRD</aima-cmd>' }],
+        },
+      },
+      {
+        type: 'message',
+        id: 'a1',
+        parentId: 'u1',
+        timestamp: '2026-05-12T00:00:02.000Z',
+        message: {
+          role: 'assistant',
+          model: 'gpt-5.5',
+          provider: 'openai-codex',
+          content: [
+            { type: 'toolCall', id: 'call-read-skill', name: 'read', arguments: { path: '~/.openclaw/workspace/skills/prd-create/SKILL.md' } },
+          ],
+          usage: { input: 10, output: 2, cacheRead: 3, cacheWrite: 0 },
+        },
+      },
+      {
+        type: 'message',
+        id: 'tr1',
+        parentId: 'a1',
+        timestamp: '2026-05-12T00:00:03.000Z',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'call-read-skill',
+          toolName: 'read',
+          content: [{ type: 'text', text: '# PRD Creation Skill' }],
+          isError: false,
+        },
+      },
+    ]));
+
+    const sessions = loadCcSessions(path);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].sessionId, 'oc-1');
+    assert.equal(sessions[0].sourceKind, 'openclaw');
+    assert.equal(sessions[0].entrypoint, 'openclaw');
+    assert.equal(sessions[0].cwd, '/Users/test-user/.openclaw/workspace');
+    assert.deepEqual(sessions[0].sourceMetadata, {
+      channel: 'aima',
+      sender: '测试用户',
+      senderId: 'xxxx',
+      provider: 'openai-codex',
+      model: 'gpt-5.5',
+      aimaCommands: ['prd-create'],
+    });
+    const segs = segmentBySkill(sessions[0]);
+    const skill = segs.find((seg) => seg.skillName === 'prd-create');
+    assert.ok(skill);
+    assert.equal(skill.sourceKind, 'openclaw');
+    assert.equal(skill.attribution?.source, 'aima-cmd');
+    assert.equal(skill.attribution?.commandName, 'prd-create');
+    assert.equal(skill.toolCalls[0].tool, 'Read');
+    assert.equal((skill.toolCalls[0].input as { file_path?: string }).file_path, '~/.openclaw/workspace/skills/prd-create/SKILL.md');
+    assert.equal(skill.toolCalls[0].success, true);
+    assert.equal(skill.metrics.inputTokens, 10);
+    assert.equal(skill.metrics.cacheReadTokens, 3);
+  });
+
+  it('keeps OpenClaw aima-cmd labels as business actions and splits by SKILL.md reads', () => {
+    const path = join(tmpDir, 'openclaw-multi-action.jsonl');
+    writeFileSync(path, jsonl([
+      { type: 'session', version: 3, id: 'oc-actions', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/Users/test-user/.openclaw/workspace' },
+      {
+        type: 'message',
+        id: 'u1',
+        parentId: null,
+        timestamp: '2026-05-12T00:00:01.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: '帮我写底仓货架需求\n<aima-cmd name="生成PRD">请根据以上需求生成 PRD 文档。</aima-cmd>\n<aima-cmd name="生成Demo">请根据以上需求生成可交互的 Demo。</aima-cmd>' }],
+        },
+      },
+      {
+        type: 'message',
+        id: 'a1',
+        parentId: 'u1',
+        timestamp: '2026-05-12T00:00:02.000Z',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'toolCall', id: 'read-prd', name: 'read', arguments: { path: '~/.openclaw/workspace/skills/prd-create/SKILL.md' } },
+          ],
+        },
+      },
+      {
+        type: 'message',
+        id: 'tr1',
+        parentId: 'a1',
+        timestamp: '2026-05-12T00:00:03.000Z',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'read-prd',
+          toolName: 'read',
+          content: [{ type: 'text', text: '# PRD Creation Skill' }],
+          isError: false,
+        },
+      },
+      {
+        type: 'message',
+        id: 'a2',
+        parentId: 'tr1',
+        timestamp: '2026-05-12T00:00:04.000Z',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'toolCall', id: 'read-demo', name: 'read', arguments: { path: '~/.openclaw/workspace/skills/demo-create/SKILL.md' } },
+          ],
+        },
+      },
+      {
+        type: 'message',
+        id: 'tr2',
+        parentId: 'a2',
+        timestamp: '2026-05-12T00:00:05.000Z',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'read-demo',
+          toolName: 'read',
+          content: [{ type: 'text', text: '# Demo Creation Skill' }],
+          isError: false,
+        },
+      },
+    ]));
+
+    const [session] = loadCcSessions(path);
+    assert.deepEqual(session.sourceMetadata?.aimaCommands, ['生成Demo', '生成PRD']);
+    const segs = segmentBySkill(session);
+    assert.deepEqual(segs.filter((seg) => seg.skillName !== 'general').map((seg) => seg.skillName), ['prd-create', 'demo-create']);
+    assert.equal(segs.some((seg) => seg.skillName === '生成PRD' || seg.skillName === '生成Demo'), false);
+    assert.equal(segs.find((seg) => seg.skillName === 'prd-create')?.attribution?.source, 'read-skill-md');
+    assert.equal(segs.find((seg) => seg.skillName === 'demo-create')?.attribution?.source, 'read-skill-md');
+  });
+
   it('loads each markdown log block as its own session', () => {
     const path = join(tmpDir, 'agent.log');
     writeFileSync(path, `---

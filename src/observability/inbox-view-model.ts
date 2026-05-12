@@ -80,7 +80,7 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
     ...allItems.map((item) => item.skillName),
     ...experienceReports.flatMap((report) => report.skills.map((skill) => skill.skillName)),
   ]));
-  const skillChains = buildObservationSkillChains(skillNames);
+  const skillChains = buildObservationSkillChains(skillNames, process.cwd(), experienceReports);
   const latestSeen = allItems.reduce((latest, item) => item.lastSeen > latest ? item.lastSeen : latest, '');
   const reportCount = reports.length;
   const latestSeenLabel = latestSeen ? latestSeen.slice(0, 19).replace('T', ' ') : '—';

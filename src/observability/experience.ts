@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { ObservationInboxItem, ObservationSourceKind } from './inbox.js';
 import { observationMetricAnnotationVerdict, type ObservationMetricKey, type ObservationReviewState } from './review-state.js';
-import type { CcAssistantRecord, CcRecord, CcSession, CcUserRecord } from './trace-source.js';
+import type { CcAssistantRecord, CcRecord, CcSession, CcUserRecord, TraceSourceMetadata } from './trace-source.js';
 import type { SkillSegment } from './trace-segmenter.js';
 import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-attribution.js';
 
@@ -149,6 +149,7 @@ export interface ExperienceReviewIndicators {
   positiveFeedbackCount: number;
   userGoalShiftCount: number;
   hardRuleTextHitCount: number;
+  assistantDeliverySignalCount: number;
   toolCallCount: number;
   toolFailureCount: number;
   highObservationCount: number;
@@ -164,6 +165,7 @@ export interface ExperienceInvocation {
   sourceTrace: string;
   sourceKind: ObservationSourceKind;
   entrypoint?: string;
+  sourceMetadata?: TraceSourceMetadata;
   cwd?: string;
   segmentIndex: number;
   goalSliceId: string;
@@ -194,6 +196,7 @@ export interface ExperienceSessionSummary {
   sourceTrace: string;
   sourceKind: ObservationSourceKind;
   entrypoint?: string;
+  sourceMetadata?: TraceSourceMetadata;
   cwd?: string;
   startTimestamp: string;
   endTimestamp: string;
@@ -237,6 +240,13 @@ export interface ExperienceSkillSummary {
   sourceKinds: ObservationSourceKind[];
   entrypoints: string[];
   entrypointCounts: Record<string, number>;
+  sourceMetadataCounts: {
+    channels: Record<string, number>;
+    senders: Record<string, number>;
+    aimaCommands: Record<string, number>;
+    providers: Record<string, number>;
+    models: Record<string, number>;
+  };
   attributionCounts: Record<string, number>;
   pluginNames: string[];
   rawSkillRefs: string[];
@@ -375,6 +385,7 @@ const POSITIVE_FEEDBACK_TERMS = [
 ];
 const USER_INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断/i;
 const HARD_RULE_RE = /hard rules?|必须|不要|禁止|严格|一定要|务必|不得|不能|只允许/i;
+const TIMELINE_PREVIEW_EVENT_LIMIT = 240;
 
 interface BuildExperienceInput {
   sessions: CcSession[];
@@ -393,6 +404,7 @@ const ZERO_INDICATORS: ExperienceReviewIndicators = {
   positiveFeedbackCount: 0,
   userGoalShiftCount: 0,
   hardRuleTextHitCount: 0,
+  assistantDeliverySignalCount: 0,
   toolCallCount: 0,
   toolFailureCount: 0,
   highObservationCount: 0,
@@ -415,7 +427,7 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
     const bounds = session ? segmentRecordBounds(session, segment) : { start: 0, end: 0 };
     const timeline = session ? buildTimeline(session, bounds.start, bounds.end) : [];
     const userRefs = timeline.filter((event) => event.kind === 'user_message');
-    const indicators = indicatorsForSegment(segment, relatedItems, userRefs, input.reviewState);
+    const indicators = indicatorsForSegment(segment, relatedItems, timeline, input.reviewState);
     const observationRefs = relatedItems.map(observationEvidenceRef);
     const evidenceChain = evidenceChainForTimeline(timeline, observationRefs);
     const ruleFindings = ruleFindingsForEvidence(indicators, timeline, observationRefs, evidenceChain, input.reviewState);
@@ -445,8 +457,9 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
       skillName: segment.skillName,
       sessionId: segment.sessionId,
       sourceTrace,
-      sourceKind: sourceKindForPath(sourceTrace),
+      sourceKind: segment.sourceKind ?? sourceKindForPath(sourceTrace),
       entrypoint: session ? session.entrypoint ?? inferEntrypointFromRecords(session) : undefined,
+      sourceMetadata: session?.sourceMetadata,
       cwd: segment.cwd,
       segmentIndex: segment.segmentIndex,
       goalSliceId,
@@ -542,7 +555,7 @@ function segmentRecordBounds(session: CcSession, segment: SkillSegment): { start
     const humanStart = Math.min(rawStart, previousHumanUserRecordIndex(session, rawStart) ?? rawStart);
     return {
       start: includeLeadingRuntimeContext(session, humanStart),
-      end: Math.min(session.records.length, rawEnd + 1),
+      end: includeTrailingDeliveryContext(session, Math.min(session.records.length, rawEnd + 1)),
     };
   }
   const indexes = segment.toolCalls
@@ -552,7 +565,7 @@ function segmentRecordBounds(session: CcSession, segment: SkillSegment): { start
     const start = Math.max(0, Math.min(...indexes) - 3);
     return {
       start: Math.min(start, previousHumanUserRecordIndex(session, start) ?? start),
-      end: Math.min(session.records.length, Math.max(...indexes) + 5),
+      end: includeTrailingDeliveryContext(session, Math.min(session.records.length, Math.max(...indexes) + 5)),
     };
   }
   const timestampIndexes: number[] = [];
@@ -564,7 +577,7 @@ function segmentRecordBounds(session: CcSession, segment: SkillSegment): { start
   const start = Math.max(0, Math.min(...timestampIndexes) - 2);
   return {
     start: Math.min(start, previousHumanUserRecordIndex(session, start) ?? start),
-    end: Math.min(session.records.length, Math.max(...timestampIndexes) + 3),
+    end: includeTrailingDeliveryContext(session, Math.min(session.records.length, Math.max(...timestampIndexes) + 3)),
   };
 }
 
@@ -586,6 +599,17 @@ function includeLeadingRuntimeContext(session: CcSession, start: number): number
   return nextStart;
 }
 
+function includeTrailingDeliveryContext(session: CcSession, end: number): number {
+  const safeEnd = Math.min(session.records.length, Math.max(0, end));
+  const lookaheadEnd = Math.min(session.records.length, safeEnd + 8);
+  for (let index = safeEnd; index < lookaheadEnd; index += 1) {
+    const events = timelineEventsFromRecord(session, session.records[index], index);
+    if (events.some((event) => event.kind === 'user_message')) break;
+    if (events.some(isAssistantDeliveryEvent)) return index + 1;
+  }
+  return safeEnd;
+}
+
 function previousHumanUserRecordIndex(session: CcSession, start: number): number | undefined {
   for (let index = Math.min(start, session.records.length - 1); index >= 0; index -= 1) {
     const events = timelineEventsFromRecord(session, session.records[index], index);
@@ -594,8 +618,15 @@ function previousHumanUserRecordIndex(session: CcSession, start: number): number
   return undefined;
 }
 
+function isAssistantDeliveryEvent(event: ExperienceTimelineEvent): boolean {
+  if (event.kind !== 'assistant_message') return false;
+  const text = event.fullText ?? event.snippet ?? '';
+  return /```(?:mermaid|plantuml|json|tsx?|jsx?|html|css|excalidraw|markdown)?/i.test(text)
+    || /(?:直接生成|已生成|生成如下|结果如下|如下|完成|已完成|这里是|给出|输出)/i.test(text);
+}
+
 function buildTimeline(session: CcSession, start: number, end: number): ExperienceTimelineEvent[] {
-  return buildTimelineWindow(session, start, end).slice(0, 80);
+  return buildTimelineWindow(session, start, end).slice(0, TIMELINE_PREVIEW_EVENT_LIMIT);
 }
 
 function buildTimelineWindow(session: CcSession, start: number, end: number): ExperienceTimelineEvent[] {
@@ -864,7 +895,7 @@ function ruleFindingsForEvidence(
   push('medium_observation_seen', 'sample', indicators.mediumObservationCount, observationRefs);
   push('hedging_seen', 'sample', indicators.hedgingCount, observationRefs);
   push('explicit_marker_seen', 'sample', indicators.explicitMarkerCount, observationRefs);
-  push('hard_rule_seen', 'normal', indicators.hardRuleTextHitCount, refs(userEvents.filter((event) => metricIsActive(event, 'hard_rule', HARD_RULE_RE.test(event.snippet ?? ''), reviewState))));
+  push('hard_rule_seen', 'sample', indicators.hardRuleTextHitCount, refs(userEvents.filter((event) => metricIsActive(event, 'hard_rule', HARD_RULE_RE.test(event.snippet ?? ''), reviewState))));
   push('positive_feedback_seen', 'normal', indicators.positiveFeedbackCount, refs(userEvents.filter((event) => metricIsActive(event, 'positive_feedback', hasPositiveFeedbackSignal(event.snippet ?? ''), reviewState))));
   push('user_goal_shift_seen', 'normal', indicators.userGoalShiftCount, refs(userEvents.filter((event) => metricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(event.snippet ?? ''), reviewState))));
   push('runtime_context_excluded', 'normal', evidenceChain.runtimeContextCount, evidenceChain.firstRuntimeContext ? [evidenceChain.firstRuntimeContext] : []);
@@ -941,9 +972,10 @@ function assistiveInferenceForEvidence(
 function indicatorsForSegment(
   segment: SkillSegment,
   relatedItems: ObservationInboxItem[],
-  userRefs: ExperienceTimelineEvent[],
+  timeline: ExperienceTimelineEvent[],
   reviewState?: ObservationReviewState,
 ): ExperienceReviewIndicators {
+  const userRefs = timeline.filter((event) => event.kind === 'user_message');
   const humanUserRefs = userRefs.filter((ref) => Boolean(ref.snippet));
   return {
     userMessageCount: humanUserRefs.length,
@@ -954,6 +986,7 @@ function indicatorsForSegment(
     positiveFeedbackCount: humanUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'positive_feedback', findPositiveFeedbackMatches(ref.snippet ?? '').length, reviewState), 0),
     userGoalShiftCount: humanUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_goal_shift', findUserGoalShiftMatches(ref.snippet ?? '').length, reviewState), 0),
     hardRuleTextHitCount: humanUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'hard_rule', HARD_RULE_RE.test(ref.snippet ?? ''), reviewState) ? 1 : 0), 0),
+    assistantDeliverySignalCount: timeline.filter(isAssistantDeliveryEvent).length,
     toolCallCount: segment.metrics.numToolCalls,
     toolFailureCount: segment.metrics.numToolFailures,
     highObservationCount: relatedItems.filter((item) => item.severity === 'high').length,
@@ -1012,7 +1045,7 @@ function summarizeExperienceSessions(invocations: ExperienceInvocation[], sessio
       ]).sort(compareTimelineEvents)
       : timeline;
     const fullSessionEventCount = fullSessionTimeline.length;
-    const previewEvents = timeline.slice(0, 80);
+    const previewEvents = timeline.slice(0, TIMELINE_PREVIEW_EVENT_LIMIT);
     const previewIndexes = previewEvents
       .map((event) => event.messageIndex)
       .filter((index): index is number => typeof index === 'number');
@@ -1042,6 +1075,7 @@ function summarizeExperienceSessions(invocations: ExperienceInvocation[], sessio
       sourceTrace: first.sourceTrace,
       sourceKind: first.sourceKind,
       entrypoint: first.entrypoint,
+      sourceMetadata: mergeSourceMetadata(group.map((invocation) => invocation.sourceMetadata)),
       cwd: first.cwd,
       startTimestamp: group.reduce((min, invocation) => invocation.startTimestamp < min ? invocation.startTimestamp : min, first.startTimestamp),
       endTimestamp: group.reduce((max, invocation) => invocation.endTimestamp > max ? invocation.endTimestamp : max, first.endTimestamp),
@@ -1117,6 +1151,7 @@ function summarizeExperienceSkills(
       sourceKinds: unique(group.map((session) => session.sourceKind)).sort(),
       entrypoints: unique(group.map((session) => session.entrypoint).filter((value): value is string => Boolean(value))).sort(),
       entrypointCounts: countBy(skillInvocations.map((invocation) => invocation.entrypoint ?? invocation.sourceKind ?? 'unknown')),
+      sourceMetadataCounts: summarizeSourceMetadataCounts(skillInvocations.map((invocation) => invocation.sourceMetadata)),
       attributionCounts: countBy(skillInvocations.map((invocation) => invocation.attribution.source || 'unknown')),
       pluginNames: unique(skillInvocations.map((invocation) => invocation.attribution.pluginName).filter((value): value is string => Boolean(value))).sort(),
       rawSkillRefs: unique(skillInvocations.map((invocation) => invocation.attribution.rawSkillRef).filter((value): value is string => Boolean(value))).sort(),
@@ -1138,6 +1173,41 @@ function summarizeExperienceSkills(
     if (bScore !== aScore) return bScore - aScore;
     return b.invocationCount - a.invocationCount;
   });
+}
+
+function mergeSourceMetadata(values: Array<TraceSourceMetadata | undefined>): TraceSourceMetadata | undefined {
+  const channels = unique(values.map((value) => value?.channel).filter((value): value is string => Boolean(value)));
+  const senders = unique(values.map((value) => value?.sender).filter((value): value is string => Boolean(value)));
+  const senderIds = unique(values.map((value) => value?.senderId).filter((value): value is string => Boolean(value)));
+  const providers = unique(values.map((value) => value?.provider).filter((value): value is string => Boolean(value)));
+  const models = unique(values.map((value) => value?.model).filter((value): value is string => Boolean(value)));
+  const modelApis = unique(values.map((value) => value?.modelApi).filter((value): value is string => Boolean(value)));
+  const aimaCommands = unique(values.flatMap((value) => value?.aimaCommands ?? []));
+  const merged: TraceSourceMetadata = {};
+  if (channels.length > 0) merged.channel = channels.join(', ');
+  if (senders.length > 0) merged.sender = senders.join(', ');
+  if (senderIds.length > 0) merged.senderId = senderIds.join(', ');
+  if (providers.length > 0) merged.provider = providers.join(', ');
+  if (models.length > 0) merged.model = models.join(', ');
+  if (modelApis.length > 0) merged.modelApi = modelApis.join(', ');
+  if (aimaCommands.length > 0) merged.aimaCommands = aimaCommands.sort();
+  return Object.keys(merged).length > 0 ? merged : undefined;
+}
+
+function summarizeSourceMetadataCounts(values: Array<TraceSourceMetadata | undefined>): ExperienceSkillSummary['sourceMetadataCounts'] {
+  return {
+    channels: countBy(values.map((value) => value?.channel).filter((value): value is string => Boolean(value))),
+    senders: countBy(values.map((value) => sourceSenderLabel(value)).filter((value): value is string => Boolean(value))),
+    aimaCommands: countBy(values.flatMap((value) => value?.aimaCommands ?? [])),
+    providers: countBy(values.map((value) => value?.provider).filter((value): value is string => Boolean(value))),
+    models: countBy(values.map((value) => value?.model).filter((value): value is string => Boolean(value))),
+  };
+}
+
+function sourceSenderLabel(value?: TraceSourceMetadata): string | undefined {
+  if (!value?.sender && !value?.senderId) return undefined;
+  if (value.sender && value.senderId) return `${value.sender}(${value.senderId})`;
+  return value.sender ?? value.senderId;
 }
 
 function scoreForIndicators(indicators: ExperienceReviewIndicators): number {
@@ -1208,6 +1278,7 @@ function sumIndicators(values: ExperienceReviewIndicators[]): ExperienceReviewIn
     positiveFeedbackCount: acc.positiveFeedbackCount + (value.positiveFeedbackCount ?? 0),
     userGoalShiftCount: acc.userGoalShiftCount + (value.userGoalShiftCount ?? 0),
     hardRuleTextHitCount: acc.hardRuleTextHitCount + value.hardRuleTextHitCount,
+    assistantDeliverySignalCount: acc.assistantDeliverySignalCount + (value.assistantDeliverySignalCount ?? 0),
     toolCallCount: acc.toolCallCount + value.toolCallCount,
     toolFailureCount: acc.toolFailureCount + value.toolFailureCount,
     highObservationCount: acc.highObservationCount + value.highObservationCount,
@@ -1439,6 +1510,7 @@ function isSkillContextRecord(record: CcUserRecord, text: string): boolean {
 
 function isRuntimeContextRecord(record: CcUserRecord, text: string): boolean {
   const meta = record as CcUserRecord & { entrypoint?: unknown; promptId?: unknown; parentUuid?: unknown };
+  if (/^Conversation info \(untrusted metadata\):\s*```json/i.test(text)) return true;
   if (meta.entrypoint !== 'sdk-ts' || typeof meta.promptId !== 'string') return false;
   return /^进入.+流程。当前页面已经完成本地工作区恢复/.test(text)
     || /gui-workflow route/.test(text)
@@ -1452,6 +1524,7 @@ function timestampOf(record: unknown): string | undefined {
 }
 
 function sourceKindForPath(path: string): ObservationSourceKind {
+  if (path.includes('/openclaw') || path.includes('/.openclaw/')) return 'openclaw';
   if (path.endsWith('.jsonl')) return 'claude';
   if (path.endsWith('.log')) return 'markdown_log';
   return 'unknown';
@@ -1463,6 +1536,9 @@ function inferEntrypointFromRecords(session: CcSession): string | undefined {
     const entrypoint = (record as { entrypoint?: unknown }).entrypoint;
     if (typeof entrypoint === 'string' && entrypoint.trim()) return entrypoint;
   }
+  if (session.entrypoint) return session.entrypoint;
+  if (session.sourceKind === 'openclaw') return 'openclaw';
+  if (session.sourceKind === 'markdown_log') return 'markdown_log';
   if (session.sourcePath.endsWith('.log')) return 'markdown_log';
   return undefined;
 }
