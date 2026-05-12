@@ -24,24 +24,94 @@ import { computeVerdict } from '../eval-core/verdict.js';
 import { detectInsights, type Insight } from './skill-insights.js';
 
 // ── 模块级缓存:Studio 每次请求都跑 buildSkillIndex,扫盘成本随 skill 数线性,
-// 数据量大后列表 / 详情页响应变慢(参考 PR #95 review P2-4)。
-// 缓存策略:对 reports id+timestamp 拼接 + 两个 dir 的 mtime + 文件数算 fingerprint,
-// 三者任一变化 invalidate。这是 cheap 检查(只 stat + readdir,不读文件内容)。
+// 数据量大后列表 / 详情页响应变慢(PR #95 review P2-4 — cache 引入本身那一条)。
+//
+// 缓存策略:对 reports id+timestamp 拼接 + `doctorsDir` 跟 `analysesDir` 各自
+// 下"每个 .json 文件的 name:mtimeMs:size 三元组按 filename 排序拼接"的
+// **content-aware** fingerprint key。三类变化都会让 fingerprint 字符串变让
+// cache 失效:
+//
+//   (1) reports 数组改变(新 run id 进列表 / 现有 entry 的 meta.timestamp 变)
+//   (2) doctorsDir / analysesDir 里 .json 文件**增删改名**(dir 本身 mtime
+//       随 dirent 变化变,且排序后的 filename 序列变,fingerprint 字符串里那
+//       两段都变)
+//   (3) doctorsDir / analysesDir 里**同名 .json 文件被原地覆写内容**(Unix
+//       目录 mtime 不变因为 dirent 表项没动,但被覆写的那个 file 自己的
+//       mtimeMs 跟 byte size 都会变 — fingerprint 字符串里那一行
+//       `<filename>:<mtimeMs>:<size>` 的后缀变,整体字符串变,cache miss
+//       触发重新 build)
+//
+// (3) 是 PR #95 reviewer lizhiyao 2026-05-11 顶部 issue-comment 的 🟡 P2 第
+// 一条 ship-blocker(P2-a) — pre-fix 时 fingerprint 只看 dir 本身的 mtime
+// 跟 .json 文件数两个量,前面 (1) (2) 信号能命中,但 (3) 这种"外部 process
+// 把同一个 analysis JSON 从 toolFailureRate=0 覆写成 0.9 这种 in-place 内容
+// 更新"既不动目录 dirent 也不改文件名所以两个量都不变,fingerprint 命中老
+// key,server 进程内 `_indexCache` 复用旧引用,Studio 端拿到的 SkillIndex
+// 是 cache 那份 stale 的 failureRate=0。reviewer 本地复现过这一步。
+//
+// reviewer 给的 fix 是"仿 src/server/report-store.ts:80-90 那一侧已有的 per-
+// file mtime+size hash pattern(那一段是 ReportStore.list 的 cache 失效信号
+// computeListFingerprint 用的格式),fingerprint key 含 doctorsDir /
+// analysesDir 下每个 JSON 文件的 mtimeMs+size"。本仓两侧 report store 索引
+// 现在 fingerprint 失效信号统一为同一种 content-aware hash 字符串格式,
+// `<dir-mtimeMs>|<file1>:<mtimeMs1>:<size1>,<file2>:<mtimeMs2>:<size2>,...`,
+// report-store 那一侧是 async fs/promises 跑的,skill-index 这一侧是 sync
+// (buildSkillIndex 是 sync caller),除了 fs API 同步异步差别字符串 schema
+// 一致。
 interface SkillIndexCache {
   fingerprint: string;
   result: SkillIndex;
 }
 let _indexCache: SkillIndexCache | null = null;
 
-function safeStatMtime(dir: string): number {
-  try { return statSync(dir).mtimeMs; } catch { return 0; }
+/**
+ * Sync 版 dir-content fingerprint helper,仿 `src/server/report-store.ts:80-92`
+ * 的 async `computeListFingerprint` — 把目录本身的 mtime 跟目录下每个 `.json`
+ * 文件的 "filename:mtimeMs:size" 三元组排序拼接成 stable 字符串作为 dir-level
+ * 的 content-aware fingerprint。
+ *
+ * - 目录下任何 .json 文件**新增 / 删除 / 重命名** → 目录 mtime 跟着变,且
+ *   sorted-filenames 列表变,字符串变 → cache invalidate。
+ * - 任何**已有同名 .json 文件被外部进程原地覆写内容** → 该文件自己的 mtimeMs
+ *   跟通常情况下 size 都变(byte 长度跟内容相关),字符串里那一 entry 的后缀
+ *   变,整体字符串变 → cache invalidate。这是 pre-fix 的 fingerprint(只看
+ *   dir mtime+文件数)漏掉的信号(reviewer 2026-05-11 P2-a)。
+ * - 单个文件 stat fail(临时权限错或 race condition 删除)用 `<filename>:?`
+ *   占位字面,跟 report-store.ts 那一侧的 sentinel 字面对齐。整个 dir-stat
+ *   fail(目录不存在 / 权限错)返回固定 sentinel "missing",这样"目录持续不存
+ *   在"的多次连续调用 fingerprint 字符串稳定一致 cache 复用合理(行为跟旧
+ *   helper 在两个 try 的 catch 分支都返 0 拼接出"0-0"的稳定 sentinel 等价)。
+ */
+function safeDirJsonContentFingerprint(dir: string): string {
+  let dirMtimeMs: number;
+  let jsonFiles: string[];
+  try {
+    dirMtimeMs = statSync(dir).mtimeMs;
+    jsonFiles = readdirSync(dir).filter((f) => f.endsWith('.json')).sort();
+  } catch {
+    return 'missing';
+  }
+  const fileParts = jsonFiles.map((f) => {
+    try {
+      const fStat = statSync(join(dir, f));
+      return `${f}:${fStat.mtimeMs}:${fStat.size}`;
+    } catch {
+      return `${f}:?`;
+    }
+  });
+  return `${dirMtimeMs}|${fileParts.join(',')}`;
 }
-function safeFileCount(dir: string): number {
-  try { return readdirSync(dir).filter((f) => f.endsWith('.json')).length; } catch { return 0; }
-}
+
 function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, doctorsDir: string): string {
+  // `d:` 跟 `o:` 前缀("d for doctors / o for observability analyses")沿用 pre-fix
+  // 字面格式,避免外部 logging / debug 时 grep fingerprint 字符串的格式漂移。
+  // 每一段的 right-hand-side 从旧的 "{dir-mtime}-{file-count}" 双标量升级成
+  // safeDirJsonContentFingerprint 返回的 "{dir-mtime}|{file1}:{m}:{s},..."
+  // content-aware 字符串。
   const reportIds = reports.map((r) => `${r.id}:${r.meta?.timestamp ?? ''}`).join(',');
-  return `${reportIds}|d:${safeStatMtime(doctorsDir)}-${safeFileCount(doctorsDir)}|o:${safeStatMtime(analysesDir)}-${safeFileCount(analysesDir)}`;
+  const doctorsFp = safeDirJsonContentFingerprint(doctorsDir);
+  const analysesFp = safeDirJsonContentFingerprint(analysesDir);
+  return `${reportIds}|d:${doctorsFp}|o:${analysesFp}`;
 }
 
 /** 测试 / 调试用:强制清掉 in-process skill-index 缓存。 */
