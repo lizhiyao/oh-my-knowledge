@@ -233,6 +233,22 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
    判断标准:**写 sample 时,如果你需要去 SKILL.md 外的知识(推断"语雀对应什么工具"、
    "通知钉钉用什么 API")才能写出 fact 层断言,这条断言就不该存在,应该归到 rubric。**
 
+   📌 **URL/路径出现在 SKILL.md 里 ≠ 知道用什么工具访问它**(高频陷阱):
+   SKILL.md 文档里出现 \`https://yuque.antfin.com/xxx/yyy\` 这种 URL,**不代表**
+   该步骤就走 WebFetch。WebFetch / WebSearch 是 readonly GET 类工具,**只用于
+   "读取 / 抓取 / 查询 / 搜索" 语义**。SKILL.md 描述是"留档 / 写入 / 创建 / 推送 /
+   通知 / 上传"这类**写动作**,而又没明文说"用 X 工具调"时:
+   - ❌ 不要产 \`tool_input_contains "WebFetch:irk5ik/kg7h1z"\` —— WebFetch 不写入,
+        LLM 调它也是 GET,断言铁定挂
+   - ❌ 不要假设 "URL 出现 = 该用 WebFetch" 的联想链,SKILL.md 给 URL 经常只是
+        说明性指向(告诉读者"我们的知识库地址"),不是规定 LLM 必须 fetch 它
+   - ✅ 把"应当留档到 X"写进 rubric,工具留给 LLM/judge 决定。如果作者真的知道
+        写语雀用什么 CLI/MCP(比如 \`skylark-doc\`),要么 SKILL.md 明文写,要么
+        sample.environment.cli_available 加上,fact 层断言才有依据
+   - ✅ 自检:在产 \`tool_input_contains "T:needle"\` 之前,grep 一下 SKILL.md
+        看有没有出现过工具名 T(WebFetch / Bash / Read / Edit / Write / Glob /
+        Grep / 某 MCP 名),没出现就别用这个工具名 — 不许猜
+
 
    **断言类型选择口诀**(fact 层只测 deterministic 事实,语义/论点交给 judge 评 rubric):
    - 测"LLM 调了哪个工具/什么命令" → 用 tool_input_contains 或 tools_called(不要用 contains)
