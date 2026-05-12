@@ -1334,10 +1334,27 @@ details.si-failure-item[open] > summary.si-failure-head::before { content:'▾ '
 
 // ────────── chart.js init script ──────────
 
+// trend init script — i18n 走 document.documentElement.dataset.lang(layout.ts 落在 <html> 上,
+// langToggleScript 切换时同步),script 自己在 IIFE 顶上读一次。dataset 没设 ⇒ 走 'zh'(默认)。
+// 文案以前是写死中文,导致 ?lang=en 的英文页面 fallback 仍冒中文(PR#95 reviewer P3)。
 const TREND_INIT_SCRIPT = `
 <script src="/static/chart.js" onerror="window.__omkChartLoadError=true"></script>
 <script>
 (function(){
+  var __omkLang = document.documentElement.dataset.lang || 'zh';
+  var __omkStr = __omkLang === 'en' ? {
+    renderErr: 'Trend chart render error',
+    loadErr: 'Trend chart failed to load',
+    dataErr: 'Trend chart data malformed',
+    hint: 'Data is still available in "Latest metrics" below, or check the browser console for the underlying error.',
+    clickReport: '→ Click to open that report',
+  } : {
+    renderErr: '趋势图渲染异常',
+    loadErr: '趋势图加载失败',
+    dataErr: '趋势图数据格式异常',
+    hint: '数据仍可从下方"最新指标速览"看,或在浏览器控制台看具体错误。',
+    clickReport: '→ 点击看那期报告',
+  };
   function showFallback(canvas, msg){
     if (!canvas) return;
     var wrap = canvas.parentElement;
@@ -1346,7 +1363,7 @@ const TREND_INIT_SCRIPT = `
     wrap.innerHTML = '<div class="si-trend-fallback">' +
       '<div class="si-trend-fallback-icon">📉</div>' +
       '<div class="si-trend-fallback-msg">' + msg + '</div>' +
-      '<div class="si-trend-fallback-hint">数据仍可从下方"最新指标速览"看,或在浏览器控制台看具体错误。</div>' +
+      '<div class="si-trend-fallback-hint">' + __omkStr.hint + '</div>' +
       '</div>';
   }
   // 异步兜底:Chart 内部 RAF / setTimeout 抛错会冒泡到 window.error,这里捕获后
@@ -1356,14 +1373,14 @@ const TREND_INIT_SCRIPT = `
     if (!canvas) return;
     var msg = (ev && ev.message) || '';
     if (/chart/i.test(msg) || (ev.filename && /chart\\.js$/i.test(ev.filename))) {
-      showFallback(canvas, '趋势图渲染异常');
+      showFallback(canvas, __omkStr.renderErr);
     }
   });
   function init(){
     var canvas = document.getElementById('trend-chart');
     if (!canvas) return;
     if (window.__omkChartLoadError || !window.Chart) {
-      showFallback(canvas, '趋势图加载失败');
+      showFallback(canvas, __omkStr.loadErr);
       return;
     }
     var raw = canvas.getAttribute('data-chart');
@@ -1378,7 +1395,7 @@ const TREND_INIT_SCRIPT = `
           return !Array.isArray(ds.data) || ds.data.length !== data.labels.length;
         });
         if (bad) {
-          showFallback(canvas, '趋势图数据格式异常');
+          showFallback(canvas, __omkStr.dataErr);
           return;
         }
       }
@@ -1396,7 +1413,7 @@ const TREND_INIT_SCRIPT = `
                 var lines = hint ? [hint] : [];
                 if (links) {
                   var url = links[ctx.datasetIndex] && links[ctx.datasetIndex][ctx.dataIndex];
-                  if (url) lines.push('→ 点击看那期报告');
+                  if (url) lines.push(__omkStr.clickReport);
                 }
                 return lines;
               }
@@ -1422,7 +1439,7 @@ const TREND_INIT_SCRIPT = `
       });
     } catch(e) {
       console.warn('trend chart init failed:', e);
-      showFallback(canvas, '趋势图渲染异常');
+      showFallback(canvas, __omkStr.renderErr);
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

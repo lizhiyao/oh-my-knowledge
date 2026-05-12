@@ -30,14 +30,18 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunDetail en 1`] 
   });
   // 复制 paste-ready 片段到剪贴板:供 insight modal 的"复制片段"按钮调用。
   // 元素 id 指 <code> 节点;复制后按钮加 .copied 类做 1.5s 视觉反馈。
+  // i18n:按钮反馈文案随页面 data-lang(layout 写在 <html> 上,langToggleScript 切换时更新)。
+  // 未设 dataset 时按 DEFAULT_LANG(zh)兜底,跟旧报告/无 toggle 入口的页面一致。
   window.omkCopySnippet = function(elementId, btn) {
     var el = document.getElementById(elementId);
     if (!el) return;
     var text = el.textContent || '';
+    var pageLang = document.documentElement.dataset.lang || 'zh';
+    var copiedLabel = pageLang === 'en' ? '✓ Copied' : '✓ 已复制';
     var done = function() {
       if (!btn) return;
       var orig = btn.textContent;
-      btn.textContent = '✓ 已复制';
+      btn.textContent = copiedLabel;
       btn.classList.add('copied');
       setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
     };
@@ -1089,14 +1093,18 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunDetail zh 1`] 
   });
   // 复制 paste-ready 片段到剪贴板:供 insight modal 的"复制片段"按钮调用。
   // 元素 id 指 <code> 节点;复制后按钮加 .copied 类做 1.5s 视觉反馈。
+  // i18n:按钮反馈文案随页面 data-lang(layout 写在 <html> 上,langToggleScript 切换时更新)。
+  // 未设 dataset 时按 DEFAULT_LANG(zh)兜底,跟旧报告/无 toggle 入口的页面一致。
   window.omkCopySnippet = function(elementId, btn) {
     var el = document.getElementById(elementId);
     if (!el) return;
     var text = el.textContent || '';
+    var pageLang = document.documentElement.dataset.lang || 'zh';
+    var copiedLabel = pageLang === 'en' ? '✓ Copied' : '✓ 已复制';
     var done = function() {
       if (!btn) return;
       var orig = btn.textContent;
-      btn.textContent = '✓ 已复制';
+      btn.textContent = copiedLabel;
       btn.classList.add('copied');
       setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
     };
@@ -2148,14 +2156,18 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunList en 1`] = 
   });
   // 复制 paste-ready 片段到剪贴板:供 insight modal 的"复制片段"按钮调用。
   // 元素 id 指 <code> 节点;复制后按钮加 .copied 类做 1.5s 视觉反馈。
+  // i18n:按钮反馈文案随页面 data-lang(layout 写在 <html> 上,langToggleScript 切换时更新)。
+  // 未设 dataset 时按 DEFAULT_LANG(zh)兜底,跟旧报告/无 toggle 入口的页面一致。
   window.omkCopySnippet = function(elementId, btn) {
     var el = document.getElementById(elementId);
     if (!el) return;
     var text = el.textContent || '';
+    var pageLang = document.documentElement.dataset.lang || 'zh';
+    var copiedLabel = pageLang === 'en' ? '✓ Copied' : '✓ 已复制';
     var done = function() {
       if (!btn) return;
       var orig = btn.textContent;
-      btn.textContent = '✓ 已复制';
+      btn.textContent = copiedLabel;
       btn.classList.add('copied');
       setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
     };
@@ -2730,14 +2742,18 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunList zh 1`] = 
   });
   // 复制 paste-ready 片段到剪贴板:供 insight modal 的"复制片段"按钮调用。
   // 元素 id 指 <code> 节点;复制后按钮加 .copied 类做 1.5s 视觉反馈。
+  // i18n:按钮反馈文案随页面 data-lang(layout 写在 <html> 上,langToggleScript 切换时更新)。
+  // 未设 dataset 时按 DEFAULT_LANG(zh)兜底,跟旧报告/无 toggle 入口的页面一致。
   window.omkCopySnippet = function(elementId, btn) {
     var el = document.getElementById(elementId);
     if (!el) return;
     var text = el.textContent || '';
+    var pageLang = document.documentElement.dataset.lang || 'zh';
+    var copiedLabel = pageLang === 'en' ? '✓ Copied' : '✓ 已复制';
     var done = function() {
       if (!btn) return;
       var orig = btn.textContent;
-      btn.textContent = '✓ 已复制';
+      btn.textContent = copiedLabel;
       btn.classList.add('copied');
       setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
     };
