@@ -142,6 +142,137 @@ describe('sanitizeGeneratedSamples', () => {
     assert.equal(samples[0].assertions, undefined, 'all assertions stripped → undefined');
   });
 
+  // Rule A: text-class value content guard (CJK / fullwidth / whitespace / length).
+  it('rule A: strips contains with CJK value (LLM-output literal Chinese unstable)', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [
+        { type: 'contains', value: '留档', weight: 1 },
+        { type: 'contains', value: 'ECONNREFUSED', weight: 1 },
+      ],
+    }];
+    const { stripped } = sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].assertions?.length, 1, 'only ASCII token kept');
+    assert.equal(samples[0].assertions?.[0].value, 'ECONNREFUSED');
+    assert.ok(stripped.some((s) => s.includes('留档')), 'warn about CJK value');
+  });
+
+  it('rule A: strips contains with fullwidth bracket "【...】"', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [{ type: 'contains', value: '【需求文档】', weight: 1 }],
+    }];
+    const { stripped } = sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].assertions, undefined, 'all assertions stripped');
+    assert.ok(stripped.some((s) => /[全角中文]/.test(s) || s.includes('需求文档')));
+  });
+
+  it('rule A: strips contains_any whose any entry violates value rule', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [
+        // 第一项 ASCII OK，第二项中文 → 整条挂(短路即可,因为该断言语义不能"部分容忍")
+        { type: 'contains_any', values: ['ECONNRESET', '连接重置'], weight: 1 },
+      ],
+    }];
+    const { stripped } = sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].assertions, undefined);
+    assert.ok(stripped.some((s) => s.includes('contains_any')));
+  });
+
+  it('rule A: strips contains with internal whitespace (phrase, not token)', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [
+        { type: 'contains', value: 'git push origin', weight: 1 },     // phrase → strip
+        { type: 'contains', value: 'git-push-origin', weight: 1 },     // hyphenated token → keep
+      ],
+    }];
+    sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].assertions?.length, 1);
+    assert.equal(samples[0].assertions?.[0].value, 'git-push-origin');
+  });
+
+  it('rule A: strips regex pattern containing CJK characters', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [{ type: 'regex', pattern: '风险等级:\\s*(高|中|低)', weight: 1 }],
+    }];
+    const { stripped } = sanitizeGeneratedSamples(samples);
+    assert.equal(samples[0].assertions, undefined);
+    assert.ok(stripped.some((s) => s.toLowerCase().includes('regex')));
+  });
+
+  // Rule B: positive tool-bound assertion's tool name must be in SKILL.md.
+  it('rule B: strips tool_input_contains whose tool name not in SKILL.md', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [
+        { type: 'tool_input_contains', value: 'WebFetch:irk5ik/kg7h1z', weight: 1 },
+        { type: 'tool_input_contains', value: 'Read:checks/x.md', weight: 1 },
+      ],
+    }];
+    // SKILL.md 提到 Read 但没提 WebFetch
+    const skill = 'Step 1: Read the requirement spec from checks/requirement.md ...';
+    const { stripped } = sanitizeGeneratedSamples(samples, { skillContent: skill });
+    assert.equal(samples[0].assertions?.length, 1);
+    assert.equal(samples[0].assertions?.[0].value, 'Read:checks/x.md');
+    assert.ok(stripped.some((s) => s.includes('WebFetch')), 'warn about hallucinated tool');
+  });
+
+  it('rule B: keeps tool_input_contains when tool name appears in SKILL.md (case-insensitive)', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [
+        { type: 'tool_input_contains', value: 'Bash:git push', weight: 1 },
+        { type: 'tool_input_contains', value: 'webfetch:https://example.com', weight: 1 },
+      ],
+    }];
+    const skill = '## Tools\n- bash for shell\n- WebFetch for HTTP GET\nStep: invoke WebFetch on the docs URL.';
+    sanitizeGeneratedSamples(samples, { skillContent: skill });
+    assert.equal(samples[0].assertions?.length, 2, 'both tools mentioned in skill (case-insensitive match)');
+  });
+
+  it('rule B: tool_input_not_contains is exempt (forbidden tools need not be in SKILL.md)', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [
+        // git-push-with-force is a forbidden action, "--force" / "git push --force"
+        // tool may not be mentioned in the doc even though the negative-rule sample
+        // wants to prove the LLM never invoked it.
+        { type: 'tool_input_not_contains', value: 'Bash:--force', weight: 1 },
+        // Read 也不需要在 SKILL.md 出现因为这是"不该 read 某文件"的负向断言
+        { type: 'tool_input_not_contains', value: 'CustomMcpTool:dangerous-op', weight: 1 },
+      ],
+    }];
+    const skill = '# Skill\nDescription without mentioning Bash or CustomMcpTool by name.';
+    sanitizeGeneratedSamples(samples, { skillContent: skill });
+    assert.equal(samples[0].assertions?.length, 2, 'negative variants exempt from rule B');
+  });
+
+  it('rule B: when skillContent omitted, rule B silently passes (loader path)', () => {
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [{ type: 'tool_input_contains', value: 'Mystery:foo', weight: 1 }],
+    }];
+    sanitizeGeneratedSamples(samples /* no opts */);
+    assert.equal(samples[0].assertions?.length, 1, 'no skill content → rule B inert');
+  });
+
+  it('rule A: tool_input_contains/not_contains are NOT subject to text-value CJK rule', () => {
+    // tool_input_(not_)contains 的 value 是 "Tool:needle" 格式,needle 部分可能本就该是
+    // 字面 token(命令名 / flag / 路径片段),不走 TEXT_VALUE_TYPES 的 ASCII-token 校验。
+    // 走的是规则 B 的"Tool 名是否在 SKILL.md"+ 已有的"Tool:needle 格式"校验。
+    const samples: Sample[] = [{
+      sample_id: 's1', prompt: 'p',
+      assertions: [
+        { type: 'tool_input_contains', value: 'Bash:git stash', weight: 1 },   // needle 含空格 OK
+      ],
+    }];
+    sanitizeGeneratedSamples(samples, { skillContent: '## flow\nrun Bash: git stash before pull' });
+    assert.equal(samples[0].assertions?.length, 1);
+  });
+
   it('strips tool_input_not_contains with bare needle (no Tool: prefix)', () => {
     const samples: Sample[] = [{
       sample_id: 's1', prompt: 'p',

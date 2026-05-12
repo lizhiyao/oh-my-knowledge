@@ -360,19 +360,28 @@ export async function generateSamples({ skillContent, count, model = GENERATOR_D
       continue;
     }
     // 通过校验,跳出循环继续后续 sanitize
-    return await finalizeSamples(samples, totalCost);
+    return await finalizeSamples(samples, totalCost, skillContent);
   }
   // 不可达 (循环里所有出口都 throw 或 return),保留是为了 TS 类型推断
   throw new Error('unreachable');
 }
 
-async function finalizeSamples(samples: Sample[], costUSD: number): Promise<{ samples: Sample[]; costUSD: number }> {
+async function finalizeSamples(
+  samples: Sample[],
+  costUSD: number,
+  skillContent: string,
+): Promise<{ samples: Sample[]; costUSD: number }> {
   // Validate required fields + sanitize metadata enums *at generator boundary*
-  // (see sanitizeGeneratedSamples).
-  const { stripped } = sanitizeGeneratedSamples(samples);
+  // (see sanitizeGeneratedSamples). skillContent is passed so the function can
+  // strip "脑补"-style fact assertions whose tool name has no literal mention
+  // in SKILL.md — closes the prompt-can't-fully-suppress-this gap exposed by
+  // the data-security-review v1-v5 regen series (generator kept producing
+  // tool_input_contains "WebFetch:语雀URL" even after 7 prompt iterations,
+  // because LLM's "URL → fetch" training prior overrides instructional text).
+  const { stripped } = sanitizeGeneratedSamples(samples, { skillContent });
   if (stripped.length > 0) {
     process.stderr.write(
-      `[omk sample] LLM-output 含 ${stripped.length} 个非法元数据字段，已剥离避免污染：\n  - ${stripped.join('\n  - ')}\n`,
+      `[omk sample] LLM-output 含 ${stripped.length} 个非法元数据/断言字段，已剥离避免污染：\n  - ${stripped.join('\n  - ')}\n`,
     );
   }
 
@@ -389,6 +398,30 @@ async function finalizeSamples(samples: Sample[], costUSD: number): Promise<{ sa
  *   with a stderr warn (don't throw — valid required fields should still
  *   produce usable samples).
  *
+ * Assertion-level sanitize (hard rules complementing SYSTEM_PROMPT soft guidance —
+ * prompt-only path was proven insufficient: data-security-review v1-v5 regens kept
+ * producing the same WebFetch-on-URL hallucination across 7 prompt revisions):
+ *
+ *   A. Text-class assertion value (contains / not_contains / contains_any /
+ *      contains_all / regex.pattern) must not contain CJK characters,
+ *      fullwidth punctuation, internal ASCII whitespace, or be out of
+ *      length range [2, 40]. LLM's natural text matches are unstable under
+ *      synonym rewriting, so a literal Chinese-phrase contains is guaranteed
+ *      noise — it either misses on every alternative phrasing the LLM picks
+ *      next run, or triggers on the LLM's own summary mentioning the
+ *      forbidden word.
+ *
+ *   B. Positive tool-bound assertion (tool_input_contains / tool_output_contains /
+ *      mock_hit) must have a tool name (left half of "Tool:needle") that
+ *      literally appears (case-insensitive, word-boundary) somewhere in the
+ *      provided SKILL.md content. Rationale: if the SKILL.md author meant the
+ *      step to involve a specific tool, the tool name appears in the doc.
+ *      Generator inferring "URL → WebFetch" or "Slack notification → curl" is
+ *      hallucination that turns into 100% false-negative pressure on fact
+ *      score. Negative variants (tool_input_not_contains, tools_not_called) are
+ *      exempt — they encode forbidden actions, which by definition aren't in
+ *      the SKILL.md.
+ *
  * Behavior:
  *   - `sample_id` defaulted if missing
  *   - `prompt` missing → throw (required)
@@ -396,13 +429,51 @@ async function finalizeSamples(samples: Sample[], costUSD: number): Promise<{ sa
  *   - `difficulty` not in enum → strip
  *   - `construct` not non-empty string → strip
  *   - `provenance` not in enum → strip,then auto-stamp 'llm-generated'
+ *   - assertion violating rules A or B above → strip that one assertion
+ *     (keep the sample, since the rest of its assertions / judge rubric
+ *     are still valid signal sources)
+ *
+ * `opts.skillContent` is the raw SKILL.md text the generator fed to the
+ * authoring LLM. When omitted, rule B silently passes (loader-side tests
+ * and unit-level callers that don't have a SKILL.md handy still work).
  *
  * Mutates the samples array in-place (matches generator's existing style).
  * Returns `{ stripped: string[] }` for warning aggregation + tests.
  */
-export function sanitizeGeneratedSamples(samples: Sample[]): { stripped: string[] } {
+const CJK_OR_FULLWIDTH = /[　-〿一-鿿㐀-䶿＀-￯]/;
+const TEXT_VALUE_TYPES = new Set([
+  'contains', 'not_contains', 'contains_all', 'contains_any', 'equals', 'not_equals',
+]);
+const TOOL_POSITIVE_TYPES = new Set([
+  'tool_input_contains', 'tool_output_contains', 'mock_hit',
+]);
+
+function isAsciiTokenLike(v: unknown): boolean {
+  if (typeof v !== 'string') return false;
+  const s = v.trim();
+  if (s.length < 2 || s.length > 40) return false;
+  if (CJK_OR_FULLWIDTH.test(s)) return false;
+  // 含内部空白(多 token 短语)拒,但允许首尾空格被 trim 已忽略
+  if (/\s/.test(s)) return false;
+  return true;
+}
+
+function toolNameAppearsInSkill(tool: string, skillContent: string): boolean {
+  if (!skillContent) return true; // no skill context — let it through (loader-side)
+  // case-insensitive word-boundary match. tool 名是 ASCII 标识符 (Bash/Read/WebFetch/MCP 名),
+  // 不会含正则元字符,直接拼即可 — 但 hyphen 在某些 MCP 名里出现(如 skylark-doc),
+  // hyphen 不是正则特殊字符,RegExp 构造也无需转义。
+  const esc = tool.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+  return new RegExp(`(?:^|[^A-Za-z0-9_-])${esc}(?:$|[^A-Za-z0-9_-])`, 'i').test(skillContent);
+}
+
+export function sanitizeGeneratedSamples(
+  samples: Sample[],
+  opts: { skillContent?: string } = {},
+): { stripped: string[] } {
   const VALID_DIFFICULTY = new Set(['easy', 'medium', 'hard']);
   const VALID_PROVENANCE = new Set(['human', 'llm-generated', 'production-trace']);
+  const skillContent = opts.skillContent || '';
   const stripped: string[] = [];
   for (const [i, s] of samples.entries()) {
     // sample_id / prompt 必须是 non-empty string。LLM 偶尔返回 number / null,
@@ -470,6 +541,45 @@ export function sanitizeGeneratedSamples(samples: Sample[]): { stripped: string[
             stripped.push(`samples[${i}].assertions[${j}].${a.type} (value not "Tool:needle": ${JSON.stringify(v)})`);
             return false;
           }
+          // Rule B: positive tool-bound assertions — tool name must literally
+          // appear in SKILL.md. Negative variants (tool_input_not_contains) are
+          // exempt because forbidden tools won't be mentioned in the doc.
+          if (TOOL_POSITIVE_TYPES.has(a.type) && skillContent) {
+            const toolName = v.slice(0, sep);
+            if (!toolNameAppearsInSkill(toolName, skillContent)) {
+              stripped.push(
+                `samples[${i}].assertions[${j}].${a.type} 工具名 "${toolName}" 未在 SKILL.md 字面出现 — generator 凭空联想,断言去归 rubric`,
+              );
+              return false;
+            }
+          }
+        }
+        // Rule A: text-class value content guard — reject CJK chars, fullwidth
+        // punctuation, internal whitespace, or out-of-range length [2, 40].
+        // LLM text output is unstable under synonym/句式 rewriting; literal
+        // matches on Chinese phrases are guaranteed noise.
+        if (TEXT_VALUE_TYPES.has(a?.type)) {
+          const items = Array.isArray(a.values) ? a.values
+            : a.value !== undefined ? [a.value]
+            : [];
+          if (items.length === 0) {
+            stripped.push(`samples[${i}].assertions[${j}].${a.type} (empty value/values)`);
+            return false;
+          }
+          for (const v of items) {
+            if (!isAsciiTokenLike(v)) {
+              stripped.push(
+                `samples[${i}].assertions[${j}].${a.type} value 非 ASCII token (含中文/全角标点/空格/长度越界): ${JSON.stringify(v)}`,
+              );
+              return false;
+            }
+          }
+        }
+        if (a?.type === 'regex' && typeof a.pattern === 'string' && CJK_OR_FULLWIDTH.test(a.pattern)) {
+          stripped.push(
+            `samples[${i}].assertions[${j}].regex pattern 含 CJK/全角字符: ${JSON.stringify(a.pattern)}`,
+          );
+          return false;
         }
         return true;
       });

@@ -339,4 +339,120 @@ describe('loadSamples 对象包装格式', async () => {
     for (const f of cleanups) { try { unlinkSync(f); } catch {} }
     cleanups.length = 0;
   });
+
+  // Strict-mode helper: vitest config sets OMK_LENIENT_ASSERTIONS=1 globally
+  // (so historical fixtures keep loading), but these rule A loader tests need
+  // to verify the strict-throw path. Save/restore env around the assertion.
+  const withStrict = (fn: () => void): void => {
+    const orig = process.env.OMK_LENIENT_ASSERTIONS;
+    delete process.env.OMK_LENIENT_ASSERTIONS;
+    try { fn(); }
+    finally {
+      if (orig === undefined) delete process.env.OMK_LENIENT_ASSERTIONS;
+      else process.env.OMK_LENIENT_ASSERTIONS = orig;
+    }
+  };
+
+  it('rule A loader (strict): 拒绝 contains 含 CJK 字符', () => {
+    const p = join(tmpdir(), `omk-cjk-value-${Date.now()}.json`);
+    cleanups.push(p);
+    writeFileSync(p, JSON.stringify([{
+      sample_id: 's1', prompt: 'p',
+      assertions: [{ type: 'contains', value: '留档', weight: 1 }],
+    }]));
+    withStrict(() => assert.throws(() => loadSamples(p), /CJK|全角/));
+    for (const f of cleanups) { try { unlinkSync(f); } catch {} }
+    cleanups.length = 0;
+  });
+
+  it('rule A loader (strict): 拒绝 contains_any 数组中含全角标点元素', () => {
+    const p = join(tmpdir(), `omk-fw-value-${Date.now()}.json`);
+    cleanups.push(p);
+    writeFileSync(p, JSON.stringify([{
+      sample_id: 's1', prompt: 'p',
+      assertions: [{ type: 'contains_any', values: ['ECONNREFUSED', '【失败】'], weight: 1 }],
+    }]));
+    withStrict(() => assert.throws(() => loadSamples(p), /CJK|全角|contains_any/));
+    for (const f of cleanups) { try { unlinkSync(f); } catch {} }
+    cleanups.length = 0;
+  });
+
+  it('rule A loader (strict): 拒绝 contains 含内部空格的短语', () => {
+    const p = join(tmpdir(), `omk-phrase-value-${Date.now()}.json`);
+    cleanups.push(p);
+    writeFileSync(p, JSON.stringify([{
+      sample_id: 's1', prompt: 'p',
+      assertions: [{ type: 'contains', value: 'task completed', weight: 1 }],
+    }]));
+    withStrict(() => assert.throws(() => loadSamples(p), /空白|whitespace|short(er|ened)|内部/i));
+    for (const f of cleanups) { try { unlinkSync(f); } catch {} }
+    cleanups.length = 0;
+  });
+
+  it('rule A loader: 接受 ASCII token-style contains (in any mode)', () => {
+    const p = join(tmpdir(), `omk-ok-value-${Date.now()}.json`);
+    cleanups.push(p);
+    writeFileSync(p, JSON.stringify([{
+      sample_id: 's1', prompt: 'p',
+      assertions: [
+        { type: 'contains', value: 'ECONNREFUSED', weight: 1 },
+        { type: 'contains', value: 'skylark_doc_create', weight: 1 },
+        { type: 'contains_any', values: ['x-trace-id', 'request-id'], weight: 1 },
+      ],
+    }]));
+    withStrict(() => {
+      const r = loadSamples(p);
+      assert.equal(r.samples.length, 1);
+      assert.equal(r.samples[0].assertions?.length, 3);
+    });
+    for (const f of cleanups) { try { unlinkSync(f); } catch {} }
+    cleanups.length = 0;
+  });
+
+  it('rule A loader: lenient mode (OMK_LENIENT_ASSERTIONS=1) downgrades throws to stderr warn', () => {
+    const p = join(tmpdir(), `omk-lenient-${Date.now()}.json`);
+    cleanups.push(p);
+    writeFileSync(p, JSON.stringify([{
+      sample_id: 's1', prompt: 'p',
+      assertions: [
+        { type: 'contains', value: '留档', weight: 1 }, // would throw in strict mode
+        { type: 'contains', value: 'OK_TOKEN', weight: 1 },
+      ],
+    }]));
+    const orig = process.env.OMK_LENIENT_ASSERTIONS;
+    const origStderrWrite = process.stderr.write.bind(process.stderr);
+    let captured = '';
+    (process.stderr as unknown as { write: (s: string) => boolean }).write = (s: string): boolean => {
+      captured += s;
+      return true;
+    };
+    try {
+      process.env.OMK_LENIENT_ASSERTIONS = '1';
+      const r = loadSamples(p);
+      // 数据透传(不 strip,因为 loader 没改 sample,只 warn 给用户看);assertion 数应保留原样。
+      // 反而 generator boundary 的 sanitize 是 strip;loader 不动 sample 内容,只是宣告校验状态。
+      assert.equal(r.samples.length, 1);
+      assert.equal(r.samples[0].assertions?.length, 2, 'lenient mode keeps violating assertion in place');
+      assert.ok(captured.includes('lenient') || captured.includes('LENIENT') || captured.includes('CJK'),
+        'stderr should mention the violation: ' + JSON.stringify(captured).slice(0,200));
+    } finally {
+      (process.stderr as unknown as { write: (s: string) => boolean }).write = origStderrWrite;
+      if (orig === undefined) delete process.env.OMK_LENIENT_ASSERTIONS;
+      else process.env.OMK_LENIENT_ASSERTIONS = orig;
+    }
+    for (const f of cleanups) { try { unlinkSync(f); } catch {} }
+    cleanups.length = 0;
+  });
+
+  it('rule A loader (strict): 拒绝 regex pattern 含 CJK', () => {
+    const p = join(tmpdir(), `omk-regex-cjk-${Date.now()}.json`);
+    cleanups.push(p);
+    writeFileSync(p, JSON.stringify([{
+      sample_id: 's1', prompt: 'p',
+      assertions: [{ type: 'regex', pattern: '风险等级:\\s*(高|中|低)', weight: 1 }],
+    }]));
+    withStrict(() => assert.throws(() => loadSamples(p), /CJK|regex/i));
+    for (const f of cleanups) { try { unlinkSync(f); } catch {} }
+    cleanups.length = 0;
+  });
 });

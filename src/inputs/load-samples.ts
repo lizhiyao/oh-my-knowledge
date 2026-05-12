@@ -198,11 +198,37 @@ function loadSampleFile(samplesPath: string): LoadSamplesInner {
     // tools_called / tools_not_called: values 必须非空。空 values 在 grader 里
     // 永远 passed=true 但 weight=0,是无意义占位,污染断言计数(N/M 看上去比真实
     // 通过率高)+ 让 generator 输出可观测的 garbage 沉淀到磁盘。直接拒掉,作者
-    // 应改成具体工具名或删除这条断言。
+    // 应改成具体字串名或删除这条断言。
     const assertions = Array.isArray(sample.assertions) ? sample.assertions : [];
     const TOOL_COLON_TYPES = new Set([
       'tool_input_contains', 'tool_input_not_contains', 'tool_output_contains', 'mock_hit',
     ]);
+    // Rule A (loader-side mirror of sanitizeGeneratedSamples rule A): text-class
+    // assertion values must not contain CJK / fullwidth punctuation / internal
+    // whitespace, and length ∈ [2, 40]. Loader has no SKILL.md context here so
+    // rule B (tool-name-must-exist-in-SKILL.md) is left to generator boundary.
+    // Lenient escape hatch: OMK_LENIENT_ASSERTIONS=1 downgrades these violations
+    // to stderr warnings for legacy sample files.
+    const TEXT_VALUE_TYPES_LOADER = new Set([
+      'contains', 'not_contains', 'contains_all', 'contains_any', 'equals', 'not_equals',
+    ]);
+    const LOADER_CJK = /[　-〿一-鿿㐀-䶿＀-￯]/;
+    const isLenient = process.env.OMK_LENIENT_ASSERTIONS === '1';
+    const checkAsciiTokenValue = (label: string, raw: unknown): string | null => {
+      if (typeof raw !== 'string') return `${label} value 必须是字符串 (实际类型 ${typeof raw})`;
+      const s = raw.trim();
+      if (s.length < 2 || s.length > 40) return `${label} value 长度必须在 [2,40] 之间 (实际 ${s.length}): ${JSON.stringify(raw)}`;
+      if (LOADER_CJK.test(s)) return `${label} value 含 CJK 字符或全角标点 — 文本字面匹配在 LLM 输出上不稳,应改用 sample.rubric → judge 评分: ${JSON.stringify(raw)}`;
+      if (/\s/.test(s)) return `${label} value 含内部空白(短语),应只测单个 ASCII token,语义匹配走 rubric: ${JSON.stringify(raw)}`;
+      return null;
+    };
+    const emitViolation = (msg: string): void => {
+      if (isLenient) {
+        process.stderr.write(`[omk loadSamples] ⚠ lenient mode: ${msg}\n`);
+      } else {
+        throw new Error(msg + '\n  (设 OMK_LENIENT_ASSERTIONS=1 改为 warning 给历史 sample 留迁移逃生口)');
+      }
+    };
     for (const [j, a] of assertions.entries()) {
       if (a?.type === 'tools_called' || a?.type === 'tools_not_called') {
         const vals = Array.isArray(a.values) ? a.values : [];
@@ -232,6 +258,27 @@ function loadSampleFile(samplesPath: string): LoadSamplesInner {
             `(冒号分隔工具名和子串,两侧均非空),实际: ${JSON.stringify(v)}`,
           );
         }
+      }
+
+      // Rule A: text-class assertion value content guard.
+      const label = `samples[${i}] (${sample.sample_id}) assertions[${j}] ${a?.type}`;
+      if (TEXT_VALUE_TYPES_LOADER.has(a?.type)) {
+        const items: unknown[] = Array.isArray(a.values) ? a.values
+          : a.value !== undefined ? [a.value]
+          : [];
+        if (items.length === 0) {
+          emitViolation(`${label}: value/values 不能为空`);
+          continue;
+        }
+        for (const item of items) {
+          const err = checkAsciiTokenValue(label, item);
+          if (err) {
+            emitViolation(err);
+            break;
+          }
+        }
+      } else if (a?.type === 'regex' && typeof a.pattern === 'string' && LOADER_CJK.test(a.pattern)) {
+        emitViolation(`${label}: regex pattern 含 CJK 字符 — 同样的语义匹配应走 rubric → judge,而不是字面正则: ${JSON.stringify(a.pattern)}`);
       }
     }
   }
