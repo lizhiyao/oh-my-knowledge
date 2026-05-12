@@ -44,16 +44,81 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 - sample_id: 唯一标识，格式为 s001, s002, ...
 - prompt: 用户会向使用此 skill 的 AI 提出的典型问题或指令
 - context: 可选，附加上下文信息（如代码片段、文档段落等），仅在需要时提供
-- rubric: 评分标准，描述一个好的回答应该具备什么特征（1-2 句话）。
-  **禁忌(时间敏感数据)**: 不要在 rubric 里硬编码具体日期 / 时间戳 / 工号 / IP / 临时 token 等
-  会随评测时刻变化的具体值 — 跑评测时这些值会跟当时实际值不符,assertion 必挂。
-  - 错(❌): "应写入 temp/2026-05-07/technical/ 目录" — 2026-05-08 跑就过期
-  - 对(✅): "应写入 temp/<today>/technical/ 目录(today=评测当天日期)" — 用占位描述,
-    对应 assertion 也用 regex / tool_input_contains 抓**模式**(如 \`temp/\\d{4}-\\d{2}-\\d{2}/technical/\`)
+- rubric: **judge 评分的输入**，要写 3-5 个**可分辨好坏的判分维度**，不要写一句话总结。
+  omk 的 judge pipeline 拿 rubric 让 judge LLM 看完整 trace（toolCalls + 最终输出 +
+  关键中间产物）后按 rubric 每个维度逐项打 1-5 分,取均值作为该 sample 的 judge 综合分。
+  rubric 写得越具体 / 越多维度,judge 给的分数区分度越高;写得空泛(如"应当正确完成
+  任务")则 judge 倾向给所有 sample 都 3-4 分中位,verdict 失去信号。
+
+  **rubric 应当涵盖的维度类型**(选 3-5 个相关的):
+  1. **流程顺序**:"应先 X 再 Y"、"遇到 X 失败应当 fallback 到 Y"、"不应跳过 Z 步"
+  2. **关键决策**:"识别请求属于 A 类还是 B 类"、"对边界情况(空输入 / 已存在文件)
+     应当如何处理"、"用户诱导跳过 X 时应当坚持原流程"
+  3. **输出结构**:"最终回答应当包含 [字段名 / 段落标题] 这几个组成部分"、"应当
+     给用户明确的 next-step 指引而非含糊"
+  4. **错误处理**:"工具失败时应当如实报告 + 给出降级方案,不应虚构成功"、"对
+     不支持的请求应当拒绝并说明原因"
+  5. **范围边界**:"应当严格遵守 skill 描述的职责边界,不主动越界做 Y 操作"
+
+  示例:
+    弱 rubric(❌): "应当正确生成评审报告"(judge 看不出"正确"是什么,只能给个中位分)
+    强 rubric(✅): "应当:(1) 第一步识别当前评审属于需求阶段还是编码阶段并据此
+      选 checks/ 下对应的检查清单文件,(2) 用户说'不用 git push'时仍按 SKILL.md
+      默认规则把结果留档到知识库(因为'不 push'不在'temp 模式'触发词列表里),
+      (3) 报告里不向用户透出红线检查的逐项细节,只给最终风险等级 + 留档链接"
+
+  **禁忌(时间敏感数据)**: 不要在 rubric 里硬编码具体日期 / 时间戳 / 工号 / IP /
+  临时 token 等会随评测时刻变化的具体值。
+  - 错(❌): "应写入 temp/2026-05-07/technical/ 目录" — 跨日跑就过期
+  - 对(✅): "应写入 temp/<today>/technical/ 目录(today=评测当天日期)" — 用占位
+    描述,对应 assertion 用 regex 抓**模式**(如 \`temp/\\d{4}-\\d{2}-\\d{2}/technical/\`)
     而不是精确字符串。
   - 占位符约定: \`<today>\` / \`<now>\` / \`<current_user>\` / \`<random_id>\` 等用尖括号包,
-    跟 LLM 说"这是占位,跑时用当时实际值替换"。
-- assertions: 3-5 个断言检查。**优先选能直接验证工具调用/流程的类型,把"LLM 文本输出"当兜底**:
+    跟 judge 说"这是占位,实际值看 trace 即可"。
+- assertions: **fact 层硬验证清单**,**总数 2-4 条 hard cap**(不许靠堆"测每一步参数"
+  来涨数量)。omk 的评分体系是 layered scoring: **fact 层**(deterministic 字面/工具断言)
+  + **behavior 层**(代价指标如 turn 数 / 工具失败率) + **judge 层**(主观语义评分,从
+  sample.rubric 派生维度,judge LLM 看 trace 评 1-5)三层独立计分,verdict 是三层
+  独立过 threshold(默认 3.5)。**fact 层的本职是测 deterministic 端点,不是测轨迹**。
+
+  **断言哲学(关键):fact 测结果+里程碑,过程质量交 judge**
+  ─────────────────────────────────────────────────────────────
+  fact 层断言**只测两类东西**:
+    A. **结果断言**(最终产物)
+       - 最终写入的文件路径/内容 → \`tool_input_contains "Write:11-knowledge-base/X.md"\`
+       - 关键中间产物的字段 → \`tool_output_contains "Read:<expected-token-in-mock>"\`
+       - 最终回答应当包含的不可替换字面 token(错误码 / SDK 名 / 路径片段)
+       - JSON schema 命中(返回值结构正确) → \`json_schema\` 或 regex 抓固定模式
+    B. **里程碑断言**(流程必经瓶颈)
+       - **只有 SKILL.md 明文强约束**("必须 git push"、"必须先读 checks/X.md")
+         的步骤算"里程碑",这种 sample 通常 0-2 条即够 → \`mock_hit "Tool:N"\`
+         或 \`tools_called: ["Bash"]\`
+       - 判别标准:你能在 SKILL.md 里 grep 到原话说"必须做 X"或"流程第 N 步要
+         调 X 工具",才算里程碑。**你"觉得应该重要"** 的步骤不算 — 那是过程,
+         归 judge 评。
+
+  **fact 层不测的**(转给 sample.rubric → judge):
+    - 中间步骤的具体命令/参数字面("git diff 用的是 --name-only 还是 --stat") —
+      命令变体等价,字面匹配是 false-negative 噪音源
+    - 工具调用顺序("应该先 stash 再 pull 还是先 pull 再 stash") — 顺序质量是
+      judge 看完整 trace 才能判的语义判断
+    - 错误处理路径("API 失败时应当 retry 几次" / "应当 fallback 到 X") — 同理,
+      是行为质量,judge 拿 rubric 维度评分
+    - "应当礼貌拒绝用户的诱导改代码请求" — 这是语义意图,rubric 维度,不是字面 token
+
+  **典型分布**(单 sample):
+    - 结果断言 1-2 条(最终产物 / 关键字段 / 错误码)
+    - 里程碑断言 0-2 条(SKILL.md 明写的必经步)
+    - tools_not_called 反模式断言 0-1 条(禁止接触某禁忌工具,如 tripwire sample)
+    - rubric 3-5 个判分维度(细致写明 judge 该看什么),由 sample.rubric 字段承载
+
+  *测量学背景:* 当前 omk verdict 三层独立 threshold(默认 3.5),fact 条目少之后单条
+  权重大、单次评测方差大,**强烈建议** 评测时带 \`--repeat 2\` 或更大测稳定性(coefficient
+  of variation),并参考 bootstrap CI 而非点估计。这是 fact 层稀疏化的代价,换来的是
+  fact 信号干净(不被 trajectory 字面噪音污染)。
+
+  各 fact 类型详解(下面这些都属于"结果"或"里程碑"范畴,不是"过程"):
+
   工具/流程类(强信号,首选):
   - { "type": "tool_input_contains", "value": "Bash:tag-list", "weight": 1 }
         ↑ 检查某 toolCall 的 input(JSON.stringify 后)包含子串。格式: "Tool:期望子串"。
@@ -250,22 +315,38 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
         Grep / 某 MCP 名),没出现就别用这个工具名 — 不许猜
 
 
-   **断言类型选择口诀**(fact 层只测 deterministic 事实,语义/论点交给 judge 评 rubric):
-   - 测"LLM 调了哪个工具/什么命令" → 用 tool_input_contains 或 tools_called(不要用 contains)
-   - 测"LLM 走完了流程的某一步" → 用 mock_hit(配合 sample.mocks 的"驱动流程"设计,见下文)
-   - 测"LLM 没用错误的工具" → 用 tools_not_called(values 必须给具体工具名,不能空数组)
-   - 测"LLM 工作流不应踩到某路径 / 不该传某 flag" → 用 tool_input_not_contains
-        (注意:**不要**用 not_contains 表达这件事 — not_contains 扫的是 LLM 最终文本,
-         LLM 在总结里写"已排除 X" 会自触发假阳性,这是 obsidian / 知识库类 sample 的高频坑)
-   - 测"LLM 最终回答包含代码 token / 错误码 / 不可替换字面量" → 用 contains(单值)
-   - 测"LLM 最终回答提到某概念/做出某判断/给了某类建议" → **完全不要用 contains/_any** →
-        把这条"应该做到 X" 写进 sample.rubric,让 judge 评分。judge 看意图不看字面,
-        天然稳定;judge 自身有方差但 omk 支持 ensemble / --repeat 降方差,是测量学
-        认可的语义评估方式。**这是 fact 层和 judge 层的分工**:fact 测 deterministic
-        机器可验证的事(工具/路径/代码 token),judge 测 deterministic 不可表达的
-        语义意图。把语义塞 fact 层用 contains/_any 是反模式 — 每次跑结果飘。
-   优先组合:典型 sample 通常 2 条 tool_input_contains + 1 条 tools_not_called +
-   1-2 条 mock_hit。**contains 系列出现 0-1 次最好**,只用于代码 token 这种唯一字面量。
+   **断言类型选择口诀**(fact 层只测**结果 + 必经里程碑**,过程质量交给 judge 评 rubric):
+
+   ✅ fact 应该测的(结果 / 里程碑):
+   - 测"最终产物是否写对" → tool_input_contains 抓 Write 的目标路径片段 /
+     tool_output_contains 抓 Read 命中的关键字段
+   - 测"最终回答包含某不可替换字面"(错误码 / SDK 函数名 / 路径 token) → contains(单值,
+     value 必须是 ASCII token 形态,见上方"绝对禁止"清单)
+   - 测"必经的工具调用里程碑"(SKILL.md 明文强约束的步骤) → mock_hit "Tool:N" 或
+     tools_called: ["Bash", "Read"]
+   - 测"必须**没**调用某禁忌工具"(tripwire / 反模式) → tools_not_called(values 必须
+     给具体工具名,不能空数组,见上方 loader 校验)
+   - 测"工作流不应踩到某路径或 flag" → tool_input_not_contains "Tool:needle"(注意
+     不要用 not_contains — 那是扫文本输出的,LLM 在总结里复述就自触发)
+
+   ❌ fact **不应该**测的(都属于"过程/语义",归 rubric → judge 评):
+   - "中间步骤的具体命令字面"("git diff 用了 --name-only 没") — 命令变体太多
+   - "工具调用的顺序"("先 stash 再 pull" / "先识别阶段再读 checks") — 顺序质量是
+     judge 看完整 trace 的活,不是 fact 层一条 assertion 能表达的
+   - "错误处理路径"("API 失败时是否重试 / 是否 fallback") — 行为质量,rubric 维度
+   - "LLM 是否礼貌拒绝用户的诱导请求" — 语义意图,rubric 维度,judge 看意图不看字面
+   - "LLM 是否在解释中说明了 X 概念" — contains 字面挂"不阻塞"/"暂停"这种汉字 token
+     在 7 道 prompt 演进 + hardcode sanitize 之后已经被 strip 干净了,不要再尝试
+
+   **数量配额**(hard cap):**每个 sample 总共 2-4 条 fact 断言** — 不许靠堆"测每一步
+   工具参数"涨数量,多出来的都是 trajectory 噪音。如果你觉得 2-4 条覆盖不完作者意图
+   的细节,把那些细节写进 sample.rubric 让 judge 按维度评分 — judge 信号本来就比"某
+   汉字是否出现在 trace"更接近"任务做没做对"。
+
+   *跟测量学的关联:* fact 条目稀疏化后单条权重相对大、单次评测方差变大,跑评测时
+   建议带 \`--repeat 2\`(或更大)测同 variant 内部 coefficient of variation,看 bootstrap
+   CI 下限而非点估计。这是 fact 干净换稳定性的等价交换,omk eval CLI 在 N<20 且
+   --repeat=1 时已有 stderr 警告提醒。
 7. 如果 skill 涉及外部调用(MCP/CLI/HTTP/文件读),**必须**为本 sample 生成 mocks 数组,
    保证评测时 0 真调底层。query 类返回贴近真实 schema 的示例数据,write 类返回 success。
 
