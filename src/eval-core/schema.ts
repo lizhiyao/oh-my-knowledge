@@ -5,6 +5,7 @@
 
 import type { ExecResult, GradeResult, JudgeConfig, VariantResult, VariantSummary, TurnInfo, ToolCallInfo } from '../types/index.js';
 import { computeJudgeAgreement } from '../grading/judge.js';
+import { safeSliceForJson } from '../util/safe-slice.js';
 
 function ratioToScore(ratio: number): number {
   return Number((1 + ratio * 4).toFixed(2));
@@ -16,7 +17,7 @@ const MAX_TOOL_OUTPUT = 1000;
 function truncateTurns(turns: TurnInfo[]): TurnInfo[] {
   return turns.map((t) => ({
     ...t,
-    content: t.content.length > MAX_TURN_CONTENT ? t.content.slice(0, MAX_TURN_CONTENT) + '…' : t.content,
+    content: safeSliceForJson(t.content, MAX_TURN_CONTENT),
     ...(t.toolCalls && { toolCalls: truncateToolCalls(t.toolCalls) }),
   }));
 }
@@ -24,8 +25,8 @@ function truncateTurns(turns: TurnInfo[]): TurnInfo[] {
 function truncateToolCalls(toolCalls: ToolCallInfo[]): ToolCallInfo[] {
   return toolCalls.map((tc) => ({
     ...tc,
-    output: typeof tc.output === 'string' && tc.output.length > MAX_TOOL_OUTPUT
-      ? tc.output.slice(0, MAX_TOOL_OUTPUT) + '…'
+    output: typeof tc.output === 'string'
+      ? safeSliceForJson(tc.output, MAX_TOOL_OUTPUT)
       : tc.output,
   }));
 }
@@ -66,7 +67,11 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
     cacheCreationTokens: execResult.cacheCreationTokens,
     execCostUSD,
     judgeCostUSD,
-    costUSD: execCostUSD + judgeCostUSD, // Total = execution + grading
+    // 初值 = exec + judge。diagnostic 在 evaluation-execution.ts 跑完后会把
+    // diagnostic.costUSD 加回 `variantResult.costUSD` 并写入 `diagnosticCostUSD` —
+    // 让 per-sample budget 检查跟 summary.totalCostUSD 都按"三段合计"语义工作。
+    // 没有 failed assertion 的 sample 不触发 diagnostic,这里就是最终值。
+    costUSD: execCostUSD + judgeCostUSD,
     // 透传 executor 是否报告了 cost。undefined 当 reported(向后兼容)。
     // false 时 renderer 应显示「—」而不是 $0.0000;codex 0.125 binary 不报 cost。
     ...(execResult.costReportedByExecutor === false && { costReportedByExecutor: false }),
@@ -122,10 +127,11 @@ export function buildVariantResult(execResult: ExecResult, gradeResult: GradeRes
       };
     })()),
     ...(options?.factCheck && options.factCheck.totalCount > 0 && { factCheck: options.factCheck }),
-    outputPreview: execResult.output ? execResult.output.slice(0, 200) : null,
+    outputPreview: execResult.output ? safeSliceForJson(execResult.output, 200, '') : null,
     ...(execResult.output && { fullOutput: execResult.output }),
     ...(execResult.turns && execResult.turns.length > 0 && { turns: truncateTurns(execResult.turns) }),
     ...(execResult.toolCalls && execResult.toolCalls.length > 0 && { toolCalls: truncateToolCalls(execResult.toolCalls) }),
+    ...(execResult.mockStats && { mockStats: execResult.mockStats }),
     timing: { execMs, gradeMs, totalMs: execMs + gradeMs },
   };
 }
@@ -152,6 +158,13 @@ export function buildVariantSummary(entries: VariantResult[]): VariantSummary {
     totalCostUSD: ok.reduce((s, e) => s + (e.costUSD || 0), 0),
     totalExecCostUSD: ok.reduce((s, e) => s + (e.execCostUSD || 0), 0),
     totalJudgeCostUSD: ok.reduce((s, e) => s + (e.judgeCostUSD || 0), 0),
+    // diagnostic 触发概率 = 有 failed assertion 的 sample 比例,大多数 ok variant 是 0。
+    // 把字段做成 optional + "全是 0 时省略" 是为了让旧 report-roundtrip 测试 / 报告 diff
+    // 在没 diagnostic 的运行下看不到新字段,跨版本对比器不需要兼容 "0 vs missing"。
+    ...(() => {
+      const total = ok.reduce((s, e) => s + (e.diagnosticCostUSD || 0), 0);
+      return total > 0 ? { totalDiagnosticCostUSD: Number(total.toFixed(6)) } : {};
+    })(),
     avgCostPerSample: ok.length > 0 ? Number((ok.reduce((s, e) => s + (e.costUSD || 0), 0) / ok.length).toFixed(6)) : 0,
     // 任一 sample(含失败 sample)exec cost 未报告 → variant 整体标 false。
     // 用 entries 而不是 ok:codex 全 error 的场景 ok=[],但 entries 里 every 个都是

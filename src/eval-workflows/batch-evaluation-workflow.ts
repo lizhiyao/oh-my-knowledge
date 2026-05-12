@@ -32,6 +32,8 @@ interface RunSingleEvaluationOptions {
   persistJob: false;
   onProgress: ProgressCallback | null;
   skipConnectivity: boolean;
+  /** --skip-doctor escape hatch (forwarded to per-skill runEvaluation). */
+  skipDoctor?: boolean;
   lang?: 'zh' | 'en';
   mcpConfig?: string;
   verbose: boolean;
@@ -278,6 +280,7 @@ export async function executeBatchEvaluationRuns({
   onProgress = null,
   onSkillProgress = null,
   skipConnectivity = false,
+  skipDoctor = false,
   lang = 'zh',
   mcpConfig,
   verbose = false,
@@ -311,6 +314,8 @@ export async function executeBatchEvaluationRuns({
   onProgress?: ProgressCallback | null;
   onSkillProgress?: ((info: { phase: string; skill: string; current: number; total: number }) => void) | null;
   skipConnectivity?: boolean;
+  /** --skip-doctor escape hatch. */
+  skipDoctor?: boolean;
   lang?: 'zh' | 'en';
   mcpConfig?: string;
   verbose?: boolean;
@@ -368,6 +373,7 @@ export async function executeBatchEvaluationRuns({
       persistJob: false,
       onProgress,
       skipConnectivity: skipConnectivity || i > 0,
+      skipDoctor,
       lang,
       mcpConfig,
       verbose,

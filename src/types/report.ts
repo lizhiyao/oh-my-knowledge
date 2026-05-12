@@ -13,15 +13,24 @@ export interface VariantResult {
   cacheCreationTokens: number;
   execCostUSD: number;
   judgeCostUSD: number;
+  /** Diagnostic 自身花费(USD)。仅在 failed-assertion 触发 diagnostic 且 executor 报告了 cost 时有值。
+   *  Diagnostic 一般跑在 judge executor 上(claude:haiku 标配),所以 cost-reported 语义随
+   *  `judgeCostReportedByExecutor`,不再单独引一个 flag。
+   *  v0.32 新增,旧报告无此字段 — 老 costUSD 仍等于 execCostUSD + judgeCostUSD,新 costUSD
+   *  含 diagnostic,跨版本汇总时按字段是否存在判断。 */
+  diagnosticCostUSD?: number;
+  /** sample 一行的真实总花费 = execCostUSD + judgeCostUSD + (diagnosticCostUSD ?? 0)。
+   *  budget.perSampleUSD 的 cap 也是基于这个总值检查 — 任一子项把样本顶上限都算 overrun。 */
   costUSD: number;
   /** Whether `execCostUSD` came from a real cost number reported by the executor.
    *  Mirrors `ExecResult.costReportedByExecutor`. False ⇒ `execCostUSD` is a 0
    *  placeholder, renderer should show 「未报告」 instead of $0.0000. Default
    *  undefined ⇒ reported (preserves backward-compat for old reports). */
   costReportedByExecutor?: boolean;
-  /** Whether `judgeCostUSD` came from a real cost number reported by the judge executor.
-   *  False ⇒ at least one judge call (single rubric / dimension / async assertion / ensemble member)
-   *  was made through an executor that doesn't report cost (currently codex). Default undefined ⇒ reported. */
+  /** Whether `judgeCostUSD`(以及随之的 `diagnosticCostUSD`,因为它们走同一类 judge executor)
+   *  came from a real cost number reported by the underlying executor.
+   *  False ⇒ at least one judge / diagnostic call was made through an executor that doesn't
+   *  report cost (currently codex). Default undefined ⇒ reported. */
   judgeCostReportedByExecutor?: boolean;
   numTurns: number;
   fullNumTurns?: number;
@@ -60,8 +69,18 @@ export interface VariantResult {
   factCheck?: { verifiedCount: number; totalCount: number; verifiedRate: number; claims: Array<{ type: string; value: string; verified: boolean; evidence?: string }> };
   outputPreview: string | null;
   fullOutput?: string;
+  /** Functional-test 视角的诊断。与 Judge 评价(llmReason / llmReasoning)彻底独立:
+   *  judge 答"打几分",diagnostic 答"哪错了 + 怎么改"。
+   *  仅在至少有 1 条 failed assertion 时填充,且不受 --no-judge 影响(--no-diagnostic 控制)。 */
+  diagnostic?: import('./judge.js').DiagnosticResult;
   turns?: TurnInfo[];
   toolCalls?: ToolCallInfo[];
+  /** Sample.mocks 命中统计(从 ExecResult.mockStats 透传)。仅当 sample 配了 mocks 时有值。 */
+  mockStats?: {
+    hits: number;
+    misses: number;
+    perMock: Record<string, number>;
+  };
   timing?: { execMs: number; gradeMs: number; totalMs: number };
 }
 
@@ -74,9 +93,16 @@ export interface VariantSummary {
   avgInputTokens: number;
   avgOutputTokens: number;
   avgTotalTokens: number;
+  /** sum(ok-sample 的 costUSD)。等于 totalExecCostUSD + totalJudgeCostUSD + totalDiagnosticCostUSD。
+   *  注意:仅含执行成功且未被 per-sample budget 标 overrun 的 sample,跟 meta.totalCostUSD(全量
+   *  累计,含失败 sample)语义不同 — 那是历史 ok-filter 行为,跟 v0.32 的 diagnostic 引入无关。 */
   totalCostUSD: number;
   totalExecCostUSD: number;
   totalJudgeCostUSD: number;
+  /** sum(ok-sample 的 diagnosticCostUSD)。0 / 缺位 ⇒ 没有 sample 触发 diagnostic。
+   *  跟 totalJudgeCostUSD 一样吃 `judgeCostReported === false` 那一行的"未报告"语义,因为
+   *  diagnostic executor 默认就是 judge executor。 */
+  totalDiagnosticCostUSD?: number;
   avgCostPerSample: number;
   /** Whether every sample had its exec cost reported by the executor.
    *  - undefined / true : 所有样本 exec cost 都报告了 (默认,向后兼容)
@@ -173,6 +199,10 @@ export interface ReportMeta {
   variants: string[];
   model: string;
   executor: string;
+  /** Reasoning effort 用于被评测的 executor LLM(不是 judge)。
+   *  缺位 = 未指定 / 走 executor 默认(historic)。值 'low'/'medium'/'high'/'xhigh'/'max'。
+   *  跨 effort 的 report 不可严格比较,renderer 在 meta-tag 显式标出。 */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   sampleCount: number;
   taskCount: number;
   totalCostUSD: number;
@@ -256,12 +286,43 @@ export interface ResultEntry {
   variants: Record<string, VariantResult>;
 }
 
+/**
+ * Per-sample 设计快照(测试契约),仅用于报告渲染 — 单测视角需要展示"用例长什么样、
+ * 期望什么、用了哪些工具调用 mock"。Grading / judge 不参考这个字段。
+ *
+ * 内容是 Sample 的子集,只保留渲染需要的字段:
+ *   - prompt / rubric: 用例内容本身
+ *   - assertions: 期望(运行后的 pass/fail 结果在 VariantResult.assertions.details 里)
+ *   - mocks: 工具调用模拟返回(LLM 调到匹配的 tool/参数时拿到这段假返回,而不是真去调外部系统)
+ *   - capability / construct / difficulty: 元数据
+ *   - context: 附加上下文(代码片段等)
+ *
+ * 旧 report 没有这个字段,renderer 据此 fallback(隐藏单测 tab 或提示"无设计快照")。
+ */
+export interface SampleSnapshot {
+  sample_id: string;
+  prompt: string;
+  rubric?: string;
+  context?: string;
+  assertions?: import('./eval.js').Assertion[];
+  mocks?: import('./eval.js').Mock[];
+  capability?: string[];
+  difficulty?: import('./eval.js').SampleDifficulty;
+  construct?: string;
+  provenance?: import('./eval.js').SampleProvenance;
+  /** Diagnostic 用 — tripwire sample 不该建议改 skill。 */
+  tripwire?: boolean;
+}
+
 export interface EvaluationReport {
   kind: 'evaluation';
   id: string;
   meta: ReportMeta;
   summary: Record<string, VariantSummary>;
   results: ResultEntry[];
+  /** 用例设计快照,按 sample_id 索引。供单测视角(test view)渲染"用例契约 + 期望"用,
+   *  不参与 grading。旧 report 缺位时单测 tab 显示降级提示。 */
+  sampleSnapshots?: Record<string, SampleSnapshot>;
   analysis?: AnalysisResult;
   variance?: VarianceData;
 }

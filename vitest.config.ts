@@ -4,5 +4,17 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
     testTimeout: 30000,
+    // Default the test suite to lenient assertion-language enforcement so that
+    // legacy fixture sample files (e.g. examples/code-review/eval-samples.json
+    // containing `not_contains "looks good"`) keep loading via stderr-warning
+    // path. The generator-boundary hard strip inside sanitizeGeneratedSamples
+    // is unaffected by this env — that pipeline still gives the strict
+    // guarantee for newly authored samples. Tests that specifically verify
+    // the loader's strict-throw behavior toggle this off case-locally via
+    // the withStrict helper in dependency-checker.test.ts. The "[omk
+    // loadSamples] ⚠ lenient mode" stderr lines that appear during test runs
+    // are diagnostic noise — they confirm which fixtures contain legacy-style
+    // text-class assertions and are not failures.
+    env: { OMK_LENIENT_ASSERTIONS: '1' },
   },
 });

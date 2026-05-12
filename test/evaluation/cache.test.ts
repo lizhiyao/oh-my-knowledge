@@ -1,6 +1,10 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { cacheKey } from '../../src/eval-core/cache.js';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { cacheKey, createCache } from '../../src/eval-core/cache.js';
+import type { ExecResult } from '../../src/types/executor.js';
 
 describe('cacheKey', () => {
   it('不同 cwd 生成不同缓存键', () => {
@@ -34,9 +38,24 @@ describe('cacheKey', () => {
     assert.equal(a, b);
   });
 
-  it('cache key 带 v4: 前缀(invalidates old runtime-blind cache entries)', () => {
+  it('cache key 带 v5: 前缀(invalidates older cache entries — effort 加进 key)', () => {
     const key = cacheKey('sonnet', '', 'p', '/tmp/p');
-    assert.match(key, /^v4:/);
+    assert.match(key, /^v5:/);
+  });
+
+  // effort 必须进 cache key:同 model/prompt 不同 effort('low' vs 'high')改变 LLM 思考预算,
+  // 输出 / 工具调用 / 分数都可能不同;跨 effort 共享 cache 会让报告 meta 标的 effort 跟实际
+  // 跑的 effort 不一致(测量可比性污染)。
+  it('effort 进 cache key:low vs high 不同键', () => {
+    const low = cacheKey('sonnet', '', 'p', '/tmp/p', undefined, 'claude', 'rt1', undefined, undefined, 'low');
+    const high = cacheKey('sonnet', '', 'p', '/tmp/p', undefined, 'claude', 'rt1', undefined, undefined, 'high');
+    assert.notEqual(low, high);
+  });
+
+  it('effort 进 cache key:undefined 跟空串等价(默认 fallback)', () => {
+    const noEffort = cacheKey('sonnet', '', 'p', '/tmp/p', undefined, 'claude', 'rt1');
+    const emptyEffort = cacheKey('sonnet', '', 'p', '/tmp/p', undefined, 'claude', 'rt1', undefined, undefined, '');
+    assert.equal(noEffort, emptyEffort);
   });
 
   // executor 进 cache key:同 model 名(如 'gpt-4o')走 openai-api vs codex 输出不同,
@@ -63,5 +82,106 @@ describe('cacheKey', () => {
     const a = cacheKey('sonnet', '', 'p', '/tmp/p', undefined, 'claude', 'runtime111111');
     const b = cacheKey('sonnet', '', 'p', '/tmp/p', undefined, 'claude', 'runtime222222');
     assert.notEqual(a, b);
+  });
+});
+
+describe('createCache:cache.set 保留 turns / toolCalls', () => {
+  // 工具类断言(tool_called / tool_input_contains / tools_called)和 diagnostic 都要 trace。
+  // 之前 cache.set 砍掉 turns + toolCalls,cached rerun 进 grade() 时工具断言为空、
+  // diagnostic 没真实证据,跟 cold run 不一致。这里 lock 保留行为(参考 PR #95 review P1-2)。
+  it('set 后 get 回来的 ExecResult 含 toolCalls 和 turns', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-cache-test-'));
+    try {
+      const cache = createCache(dir);
+      const value: ExecResult = {
+        ok: true,
+        output: 'hello',
+        durationMs: 1000,
+        durationApiMs: 800,
+        inputTokens: 100,
+        outputTokens: 50,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUSD: 0.001,
+        stopReason: 'end_turn',
+        numTurns: 2,
+        toolCalls: [{ tool: 'Read', input: { file_path: '/tmp/x' }, output: 'ok', success: true }],
+        turns: [{ role: 'assistant', content: 'ok' }],
+      };
+      cache.set('k', value);
+      const got = cache.get('k');
+      assert.ok(got);
+      assert.equal(got!.toolCalls?.length, 1);
+      assert.equal(got!.toolCalls?.[0].tool, 'Read');
+      assert.equal(got!.turns?.length, 1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('createCache:LRU + max entries cap(防 cache 文件无界膨胀)', () => {
+  const baseValue: ExecResult = {
+    ok: true, output: 'x', durationMs: 1, durationApiMs: 1,
+    inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0,
+    costUSD: 0, stopReason: 'end_turn', numTurns: 1,
+  };
+
+  it('OMK_CACHE_MAX_ENTRIES=3:超过 cap 时淘汰最旧条目', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-cache-lru-'));
+    const orig = process.env.OMK_CACHE_MAX_ENTRIES;
+    process.env.OMK_CACHE_MAX_ENTRIES = '3';
+    try {
+      const cache = createCache(dir);
+      cache.set('a', baseValue);
+      cache.set('b', baseValue);
+      cache.set('c', baseValue);
+      assert.equal(cache.size(), 3);
+      cache.set('d', baseValue);
+      assert.equal(cache.size(), 3, '加 4 个 cap 3 应该剩 3');
+      // 'a' 是最旧的,被淘汰
+      assert.equal(cache.get('a'), null);
+      assert.ok(cache.get('d'));
+    } finally {
+      if (orig === undefined) delete process.env.OMK_CACHE_MAX_ENTRIES;
+      else process.env.OMK_CACHE_MAX_ENTRIES = orig;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('get 命中刷新 LRU 位:被命中的不会被淘汰', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-cache-lru-'));
+    const orig = process.env.OMK_CACHE_MAX_ENTRIES;
+    process.env.OMK_CACHE_MAX_ENTRIES = '3';
+    try {
+      const cache = createCache(dir);
+      cache.set('a', baseValue);
+      cache.set('b', baseValue);
+      cache.set('c', baseValue);
+      cache.get('a'); // 把 a 刷新到 MRU
+      cache.set('d', baseValue);
+      // 现在最旧是 b
+      assert.ok(cache.get('a'), 'a 因为被 get 刷新过,不该被淘汰');
+      assert.equal(cache.get('b'), null);
+    } finally {
+      if (orig === undefined) delete process.env.OMK_CACHE_MAX_ENTRIES;
+      else process.env.OMK_CACHE_MAX_ENTRIES = orig;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('OMK_CACHE_MAX_ENTRIES=0 表示无限制(回老行为)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-cache-nocap-'));
+    const orig = process.env.OMK_CACHE_MAX_ENTRIES;
+    process.env.OMK_CACHE_MAX_ENTRIES = '0';
+    try {
+      const cache = createCache(dir);
+      for (let i = 0; i < 50; i++) cache.set(`k${i}`, baseValue);
+      assert.equal(cache.size(), 50);
+    } finally {
+      if (orig === undefined) delete process.env.OMK_CACHE_MAX_ENTRIES;
+      else process.env.OMK_CACHE_MAX_ENTRIES = orig;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

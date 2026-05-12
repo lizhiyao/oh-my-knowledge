@@ -11,6 +11,7 @@ import {
   timeoutExecResult,
   type SpawnHelperError,
 } from './shared.js';
+import { materializeForCliConfigDir } from '../eval-core/mocks-runtime.js';
 
 // claude CLI 用 `--disable-slash-commands` (文档:"Disable all skills") +
 // `--disallowedTools Skill` 实现与 SDK 等价的完全隔离。但 CLI 没有 partial whitelist
@@ -46,12 +47,41 @@ function parseStreamJson(stdout: string): ClaudeSdkBaseMessage[] {
   return messages;
 }
 
-export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills }: ExecutorInput): Promise<ExecResult> {
-  const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--model', model];
+export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, allowedSkills, mocks, mocksBaseDir, mocksStrict, lean, effort }: ExecutorInput): Promise<ExecResult> {
+  const args = ['-p', prompt, '--output-format', 'stream-json', '--verbose', '--model', model,
+    // 评测必须 bypass permission,否则 Bash / Edit / Write 等工具调用会卡在交互式确认。
+    // sdk executor 用 options.permissionMode='bypassPermissions',cli 用此 flag 等价。
+    '--permission-mode', 'bypassPermissions'];
   if (system) args.push('--system-prompt', system);
+  // effort 决策:
+  //   - lean=true(纯文本生成):强制 'low' — 生成结构化 JSON 不需要思考,默认 high 浪费 13K tokens / 单次。
+  //   - 否则用调用方传入的 effort,或 sonnet 默认(不传 flag = claude CLI 自己定)。
+  // 实测 sonnet count=3 data-warehouse: 默认 effort 240s/$0.28; --effort low 31s/$0.07。
+  const effectiveEffort = lean ? 'low' : effort;
+  if (lean) {
+    args.push('--tools', '', '--disable-slash-commands');
+  }
+  if (effectiveEffort) {
+    args.push('--effort', effectiveEffort);
+  }
   applySkillIsolationToCliArgs(args, allowedSkills);
 
   const env = buildExecEnv(skillDir);
+
+  // mock 注入:mktemp 临时 settings.json,通过 `claude --settings <file>` 追加(不覆盖 ~/.claude/)
+  // 这样 OAuth 登录态 / 用户主配置全部保留,只往里加 PreToolUse hook。
+  // 跑完(成功/失败/超时/abort)cleanup 必删整个临时目录。
+  const mockHandle = mocks && mocks.length > 0
+    ? materializeForCliConfigDir(mocks, mocksBaseDir, !!mocksStrict)
+    : null;
+  if (mockHandle) {
+    args.push('--settings', mockHandle.settingsFile);
+    Object.assign(env, mockHandle.env);
+  }
+  const captureMockStats = (): ExecResult['mockStats'] | undefined => {
+    if (!mockHandle) return undefined;
+    try { return mockHandle.readStats(); } catch { return undefined; }
+  };
 
   const start = Date.now();
   try {
@@ -70,11 +100,13 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
     // 提取 result 消息
     const resultMsgs = messages.filter(isClaudeSdkResultMessage) as ClaudeSdkResultMessage[];
     if (resultMsgs.length === 0) {
+      const ms = captureMockStats();
       return {
         ok: false, error: 'no result message in stream-json output',
         durationMs, durationApiMs: 0,
         inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
         costUSD: 0, output: null, stopReason: 'error', numTurns: 0,
+        ...(ms && { mockStats: ms }),
       };
     }
 
@@ -84,6 +116,7 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
     // 提取 trace
     const trace = extractAgentTrace(messages);
 
+    const ms = captureMockStats();
     return {
       ok: !last.errors?.length && last.subtype !== 'error',
       durationMs: last.duration_ms || durationMs,
@@ -100,12 +133,19 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
       numSubAgents: trace.numSubAgents,
       ...(trace.turns.length > 0 && { turns: trace.turns }),
       ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
+      ...(ms && { mockStats: ms }),
     };
   } catch (err: unknown) {
     const durationMs = Date.now() - start;
     const details = err as SpawnHelperError;
-    if (details.killedByTimeout) return timeoutExecResult(timeoutMs, durationMs);
-    if (details.killedBySignal) return interruptedExecResult(durationMs);
+    if (details.killedByTimeout) {
+      const ms = captureMockStats();
+      return { ...timeoutExecResult(timeoutMs, durationMs), ...(ms && { mockStats: ms }) };
+    }
+    if (details.killedBySignal) {
+      const ms = captureMockStats();
+      return { ...interruptedExecResult(durationMs), ...(ms && { mockStats: ms }) };
+    }
 
     // 尝试从 stdout 解析 stream-json(即使进程退出码非 0 也可能有 result)
     const messages = parseStreamJson(details.stdout || '');
@@ -114,6 +154,7 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
       const last = resultMsgs[resultMsgs.length - 1];
       const usage = last.usage || {};
       const trace = extractAgentTrace(messages);
+      const ms = captureMockStats();
       return {
         ok: false,
         error: last.errors?.join('; ') || last.result || errorMessage(err),
@@ -131,15 +172,21 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
         numSubAgents: trace.numSubAgents,
         ...(trace.turns.length > 0 && { turns: trace.turns }),
         ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
+        ...(ms && { mockStats: ms }),
       };
     }
 
+    const ms = captureMockStats();
     return {
       ok: false,
       error: errorMessage(err),
       durationMs, durationApiMs: 0,
       inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
       costUSD: 0, output: null, stopReason: 'error', numTurns: 0,
+      ...(ms && { mockStats: ms }),
     };
+  } finally {
+    // mock 注入路径:无论 try 走哪条出口,cleanup 必删临时 CLAUDE_CONFIG_DIR
+    mockHandle?.cleanup();
   }
 }

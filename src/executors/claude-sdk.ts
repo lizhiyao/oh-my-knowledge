@@ -5,6 +5,7 @@ import type { ExecResult, ExecutorInput } from '../types/index.js';
 import { extractAgentTrace, isClaudeSdkResultMessage } from './claude-sdk-trace.js';
 import type { ClaudeSdkBaseMessage, ClaudeSdkModule, ClaudeSdkResultMessage } from './shared.js';
 import { asErrorLike, buildExecEnv, DEFAULT_TIMEOUT_MS, errorMessage } from './shared.js';
+import { buildSdkHookCallback } from '../eval-core/mocks-runtime.js';
 
 let sdkQuery: ClaudeSdkModule['query'] | null = null;
 
@@ -34,7 +35,7 @@ async function getSdkQuery(): Promise<ClaudeSdkModule['query']> {
   return sdkQuery;
 }
 
-export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, verbose = false, allowedSkills }: ExecutorInput): Promise<ExecResult> {
+export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, timeoutMs = DEFAULT_TIMEOUT_MS, verbose = false, allowedSkills, mocks, mocksBaseDir, mocksStrict, lean, effort }: ExecutorInput): Promise<ExecResult> {
   const start = Date.now();
   const abortController = new AbortController();
   const timer = setTimeout(() => abortController.abort(), timeoutMs);
@@ -44,9 +45,26 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
   const messages: ClaudeSdkBaseMessage[] = [];
   const messageTimestamps: number[] = [];
 
+  // mock 注入:in-process PreToolUse hook,无 spawn / 无文件 IO,跑完就消失。
+  const hookHandle = mocks && mocks.length > 0
+    ? buildSdkHookCallback(mocks, mocksBaseDir, !!mocksStrict)
+    : null;
+  const hooksOpts = hookHandle
+    ? { hooks: { PreToolUse: [{ hooks: [hookHandle.callback] }] } as Record<string, unknown> }
+    : {};
+  const mockStatsOf = (): ExecResult['mockStats'] | undefined => hookHandle ? { ...hookHandle.stats } : undefined;
+
   try {
     const query = await getSdkQuery();
-    const isolationOpts = buildSdkIsolationOptions(allowedSkills);
+    // lean 模式:纯文本生成路径,不需要工具循环 / skill 发现,
+    // 用 disallowedTools:['*'] + skills:[] 直接堵住,优先级高于 isolationOpts。
+    const isolationOpts = lean
+      ? { skills: [] as string[], disallowedTools: ['*'] }
+      : buildSdkIsolationOptions(allowedSkills);
+    // effort:lean 强制 'low'(生成路径不需要思考),否则透传调用方传入。
+    // SDK 暴露 EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max',直接对应。
+    const effectiveEffort = lean ? 'low' : effort;
+    const effortOpts = effectiveEffort ? { effort: effectiveEffort } : {};
     const stream = query({
       prompt,
       options: {
@@ -58,6 +76,8 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
         abortController,
         env,
         ...isolationOpts,
+        ...effortOpts,
+        ...hooksOpts,
       },
     });
 
@@ -88,6 +108,7 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
         durationMs, durationApiMs: 0,
         inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0,
         costUSD: 0, output: null, stopReason: 'error', numTurns: 0,
+        ...(mockStatsOf() && { mockStats: mockStatsOf()! }),
       };
     }
 
@@ -145,6 +166,7 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
         numSubAgents: trace.numSubAgents,
         ...(trace.turns.length > 0 && { turns: trace.turns }),
         ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
+        ...(mockStatsOf() && { mockStats: mockStatsOf()! }),
       };
     }
 
@@ -164,6 +186,7 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
       numSubAgents: trace.numSubAgents,
       ...(trace.turns.length > 0 && { turns: trace.turns }),
       ...(trace.toolCalls.length > 0 && { toolCalls: trace.toolCalls }),
+      ...(mockStatsOf() && { mockStats: mockStatsOf()! }),
     };
   } catch (err: unknown) {
     clearTimeout(timer);
@@ -183,6 +206,7 @@ export async function claudeSdkExecutor({ model, system, prompt, cwd, skillDir, 
       costUSD: 0, output: null,
       stopReason: isAbort ? 'timeout' : 'error',
       numTurns: 0,
+      ...(mockStatsOf() && { mockStats: mockStatsOf()! }),
     };
   }
 }

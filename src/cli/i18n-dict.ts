@@ -115,6 +115,7 @@ export type CliMessageKey =
   // sample (generate eval-samples)
   | 'cli.gen.skill_skipped_existing'
   | 'cli.gen.skill_generating'
+  | 'cli.gen.skill_generating_auto'
   | 'cli.gen.skill_done'
   | 'cli.gen.skill_failed'
   | 'cli.gen.batch_none_needed'
@@ -122,9 +123,11 @@ export type CliMessageKey =
   | 'cli.gen.specify_skill_path'
   | 'cli.gen.samples_already_exists'
   | 'cli.gen.single_generating'
+  | 'cli.gen.single_generating_auto'
   | 'cli.gen.single_done'
   | 'cli.gen.review_hint'
   | 'cli.gen.failed'
+  | 'cli.gen.focus_applied'
   // evolve (auto-iterate skill)
   | 'cli.evolve.specify_skill_path'
   | 'cli.evolve.section_header'
@@ -450,6 +453,10 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     zh: '🔄 {name}: 正在生成 {count} 条评测用例...\n',
     en: '🔄 {name}: generating {count} test cases...\n',
   },
+  'cli.gen.skill_generating_auto': {
+    zh: '🔄 {name}: 正在生成评测用例（数量由 LLM 按 skill 类型自动判断）...\n',
+    en: '🔄 {name}: generating test cases (count auto-decided by LLM based on skill type)...\n',
+  },
   'cli.gen.skill_done': {
     zh: '✅ {name}: 已生成 {n} 条用例 → {path}{cost}\n',
     en: '✅ {name}: generated {n} samples → {path}{cost}\n',
@@ -478,6 +485,10 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     zh: '🔄 正在生成 {count} 条评测用例...\n',
     en: '🔄 Generating {count} test cases...\n',
   },
+  'cli.gen.single_generating_auto': {
+    zh: '🔄 正在生成评测用例（数量由 LLM 按 skill 类型自动判断）...\n',
+    en: '🔄 Generating test cases (count auto-decided by LLM based on skill type)...\n',
+  },
   'cli.gen.single_done': {
     zh: '✅ 已生成 {n} 条用例 → {path}{cost}\n',
     en: '✅ Generated {n} samples → {path}{cost}\n',
@@ -489,6 +500,10 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.gen.failed': {
     zh: '生成失败: {message}',
     en: 'Generation failed: {message}',
+  },
+  'cli.gen.focus_applied': {
+    zh: '🎯 场景重点（--focus）：{focus}\n',
+    en: '🎯 Focus scenarios (--focus): {focus}\n',
   },
   'cli.evolve.specify_skill_path': {
     zh: '请指定 skill 文件路径, 例如: omk evolve skills/my-skill.md',
@@ -625,7 +640,8 @@ omk eval——离线评测 skill 版本，并给出 ship/no-ship verdict
   --treatment <v1,v2>                 实验组 variant，逗号分隔
   --config <path>                     eval.yaml / JSON 配置
   --executor <name>                   执行器：claude / claude-sdk / codex / openai / gemini / custom
-  --model <name>                      任务执行模型（默认：sonnet）
+  --model <name>                      任务执行模型（默认：opus；想要省钱可改 sonnet / haiku；想钉版本可写 claude-opus-4-7）
+  --effort <level>                    执行模型扩展思考预算 low / medium / high / xhigh / max（默认：low；高 effort 跨报告不可严格比较）
   --judge-models <list>               评委配置，例如 claude:haiku 或 claude:opus,openai:gpt-4o
   --dry-run                           预览任务，不调用模型
   --batch                             批量评测：每个 skill 独立 vs baseline
@@ -635,6 +651,9 @@ omk eval——离线评测 skill 版本，并给出 ship/no-ship verdict
   --trivial-diff <number>             实际可忽略 diff（默认：0.1）
   --report-only / --no-gate           生成报告并打印 verdict，但始终 exit 0
   --no-serve                          评测后不自动启动报告 server
+  --no-judge                          关闭 judge 主观评分（仍跑断言；layered 评分可能塌缩到事实/行为层）
+  --no-diagnostic                     关闭 diagnostic 诊断 LLM 调用（默认开启，给 failed sample 出"哪错了 + 怎么改"建议）
+  --skip-doctor                       escape hatch：跳过 doctor 健康检查门禁（默认强制启用）。评测环境用 mock/stub 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险由调用方承担
 
 示例：
   omk eval --control baseline --treatment my-skill                # 单 skill 必要性测试（baseline 是保留 variant 名，代表「不注入 skill 的裸基线」）
@@ -656,7 +675,8 @@ Common options:
   --treatment <v1,v2>                 Treatment variants, comma-separated
   --config <path>                     eval.yaml / JSON config
   --executor <name>                   Executor: claude / claude-sdk / codex / openai / gemini / custom
-  --model <name>                      Task execution model (default: sonnet)
+  --model <name>                      Task execution model (default: opus; pass --model sonnet/haiku to save cost, or claude-opus-4-7 to pin)
+  --effort <level>                    Reasoning effort for executor LLM: low / medium / high / xhigh / max (default: low; reports across efforts not strictly comparable)
   --judge-models <list>               Judge config, e.g. claude:haiku or claude:opus,openai:gpt-4o
   --dry-run                           Preview tasks without model calls
   --batch                             Batch evaluation: each skill independently against baseline
@@ -666,6 +686,9 @@ Common options:
   --trivial-diff <number>             Practically negligible diff (default: 0.1)
   --report-only / --no-gate           Produce the report and print verdict, but always exit 0
   --no-serve                          Do not auto-start report server after evaluation
+  --no-judge                          Disable judge subjective scoring (assertions still run; layered scoring may collapse to fact/behavior layers)
+  --no-diagnostic                     Disable diagnostic LLM call (on by default; emits "what went wrong + how to fix" advice for failed samples)
+  --skip-doctor                       Escape hatch: bypass the doctor health check gate (default on). Useful when the eval environment supplies dependencies via mocks/stubs and doctor's physical-path checks misfire; caller owns garbage-in risk
 
 Examples:
   omk eval --control baseline --treatment my-skill                # Single-skill necessity test (baseline is a reserved variant — "no skill injected")
@@ -886,11 +909,22 @@ omk sample——生成或补齐 eval-samples 评测用例
   omk sample <skill-path> [options]
   omk sample --batch [--skill-dir <dir>] [options]
 
+输出位置（默认）：
+  <skill>/SKILL.md  → <skill>/.omk/samples.json（omk 标准约定）
+  其他 .md 路径    → 当前目录的 eval-samples.json（兜底）
+
 选项：
-  --count <n>                         生成用例数量（默认：5）
-  --model <name>                      生成模型（默认：sonnet）
+  --count <n>                         强制生成 N 条（不指定时由 LLM 按 skill 类型自动判断：
+                                       工作流型 6-8 条 / 原子型 4-6 条 / 混合型 5-7 条）
+  --model <name>                      生成模型（默认：opus；lean+effort-low 已自动开,想省钱可改 sonnet/haiku）
+  --focus <text>                      自然语言指定希望覆盖的场景（追加到 prompt，优先级高于自由发挥）
   --batch                             为 skill 目录下缺少 eval-samples 的 skill 批量生成
   --skill-dir <path>                  skill 目录（batch 使用，默认：skills）
+
+示例：
+  omk improve samples skills/req-tool.md
+  omk improve samples skills/req-tool.md --count 8 \\
+    --focus "重点覆盖 tag 查询走 PROJECT 空 → WORKSPACE 兜底的多步流程，以及 search 失败的错误路径"
 `,
     en: `
 omk sample — generate or fill eval-samples test cases
@@ -899,11 +933,22 @@ Usage:
   omk sample <skill-path> [options]
   omk sample --batch [--skill-dir <dir>] [options]
 
+Output path (default):
+  <skill>/SKILL.md  → <skill>/.omk/samples.json (omk standard layout)
+  other .md paths   → ./eval-samples.json in current directory (fallback)
+
 Options:
-  --count <n>                         Number of test cases to generate (default: 5)
-  --model <name>                      Generation model (default: sonnet)
+  --count <n>                         Force N samples (omit to let LLM auto-decide by skill type:
+                                       workflow 6-8 / atomic 4-6 / mixed 5-7)
+  --model <name>                      Generation model (default: opus; lean+effort-low applied; pass --model sonnet/haiku to save cost)
+  --focus <text>                      Natural-language scenario hints appended to the prompt (overrides freeform diversity)
   --batch                             Generate for skills that are missing eval-samples
   --skill-dir <path>                  Skill directory for batch mode (default: skills)
+
+Examples:
+  omk improve samples skills/req-tool.md
+  omk improve samples skills/req-tool.md --count 8 \\
+    --focus "Cover PROJECT-empty → WORKSPACE-fallback multi-step tag lookup and the search-failure error path"
 `,
   },
   'cli.help.studio': {

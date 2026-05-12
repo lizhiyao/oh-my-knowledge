@@ -263,6 +263,39 @@ describe('agent assertions', () => {
     assert.equal(result.passed, 1);
   });
 
+  it('tool_input_not_contains: passes when no matching call', () => {
+    const result = runAssertions('output', [
+      { type: 'tool_input_not_contains', value: 'Read:forbidden.ts' },
+    ], { toolCalls });
+    assert.equal(result.passed, 1);
+  });
+
+  it('tool_input_not_contains: fails when forbidden input present', () => {
+    const result = runAssertions('output', [
+      { type: 'tool_input_not_contains', value: 'Read:a.ts' },
+    ], { toolCalls });
+    assert.equal(result.passed, 0);
+  });
+
+  it('tool_input_not_contains: not influenced by final text output', () => {
+    // 关键 contrast:final text 提到 'forbidden-thing',但工具调用没传它 → 通过。
+    // 这正是 not_contains 做不到的——后者会扫文本输出导致误判。
+    const result = runAssertions('I will avoid forbidden-thing', [
+      { type: 'tool_input_not_contains', value: 'Read:forbidden-thing' },
+    ], { toolCalls });
+    assert.equal(result.passed, 1);
+  });
+
+  it('tool_input_not_contains: trivially pass when value misses Tool: prefix', () => {
+    // bug 修复:无冒号 value(如 "--force")在 grader 拿不到工具上下文,
+    // 之前默默 false 导致假阳性失败。改为 trivially pass。
+    // loader 会从源头拒,grader 这里是兜底。
+    const result = runAssertions('output', [
+      { type: 'tool_input_not_contains', value: '--force' },
+    ], { toolCalls });
+    assert.equal(result.passed, 1, 'malformed value must not cause false negative');
+  });
+
   it('turns_min: passes when enough turns', () => {
     const result = runAssertions('output', [
       { type: 'turns_min', value: 2 },

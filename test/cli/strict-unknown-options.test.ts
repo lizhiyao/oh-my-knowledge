@@ -18,27 +18,14 @@ interface ExecError extends Error {
 
 /**
  * eval / doctor / observe / evolve / sample 用 parseArgs strict:true。
- * 任何未声明的 flag (含已删除的 --skip-doctor / --skip-preflight / --skip-smoke)
- * 都会 fail with Unknown option, 不静默吞掉。
+ * 任何未声明的 flag (含已删除的 --skip-preflight / --skip-smoke) 都会 fail with
+ * Unknown option, 不静默吞掉。
+ *
+ * 注意: --skip-doctor 在 v0.30 重新作为 escape hatch 引入,合法 flag 见 RUN_OPTIONS。
  *
  * exit 2 = parser 失败 (区分 doctor / gate eval failure 用的 exit 1)。
  */
 describe('strict unknown option rejection', () => {
-  it('omk eval --skip-doctor exits 2 with Unknown option', async () => {
-    await assert.rejects(
-      () => execFileAsync('node', [CLI, 'eval', '--skip-doctor', '--dry-run']),
-      (err: unknown) => {
-        const e = err as ExecError;
-        assert.equal(e.code, 2, 'unknown option should exit 2');
-        assert.ok(
-          e.stderr.includes('Unknown option') && e.stderr.includes('--skip-doctor'),
-          `stderr should name unknown option: ${e.stderr.slice(0, 300)}`,
-        );
-        return true;
-      },
-    );
-  });
-
   it('omk eval --skip-preflight (renamed) exits 2 with Unknown option', async () => {
     await assert.rejects(
       () => execFileAsync('node', [CLI, 'eval', '--skip-preflight', '--dry-run']),
@@ -148,5 +135,25 @@ describe('strict unknown option rejection', () => {
       '--lang', 'zh',
     ]);
     assert.ok(stdout.includes('eval dry-run'));
+  });
+
+  it('omk eval --skip-doctor parses as valid flag (escape hatch)', async () => {
+    // --skip-doctor 是 v0.30 重新引入的 escape hatch (parse-run-config 注册);
+    // strict:true 下必须能被识别,不报 Unknown option。
+    const SAMPLES = join(PROJECT_ROOT, 'examples', 'code-review', 'eval-samples.json');
+    const SKILLS = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
+    const { stdout, stderr } = await execFileAsync('node', [
+      CLI, 'eval',
+      '--samples', SAMPLES,
+      '--skill-dir', SKILLS,
+      '--control', 'v1',
+      '--treatment', 'v2',
+      '--dry-run',
+      '--skip-connectivity',
+      '--skip-doctor',
+      '--lang', 'zh',
+    ]);
+    assert.ok(stdout.includes('eval dry-run'), 'dry-run reaches task-planning output');
+    assert.ok(stderr.includes('--skip-doctor'), 'stderr emits the escape-hatch warning');
   });
 });

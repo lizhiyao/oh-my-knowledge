@@ -28,54 +28,89 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunDetail en 1`] 
       });
     }
   });
+  // 复制 paste-ready 片段到剪贴板:供 insight modal 的"复制片段"按钮调用。
+  // 元素 id 指 <code> 节点;复制后按钮加 .copied 类做 1.5s 视觉反馈。
+  // i18n:按钮反馈文案随页面 data-lang(layout 写在 <html> 上,langToggleScript 切换时更新)。
+  // 未设 dataset 时按 DEFAULT_LANG(zh)兜底,跟旧报告/无 toggle 入口的页面一致。
+  window.omkCopySnippet = function(elementId, btn) {
+    var el = document.getElementById(elementId);
+    if (!el) return;
+    var text = el.textContent || '';
+    var pageLang = document.documentElement.dataset.lang || 'zh';
+    var copiedLabel = pageLang === 'en' ? '✓ Copied' : '✓ 已复制';
+    var done = function() {
+      if (!btn) return;
+      var orig = btn.textContent;
+      btn.textContent = copiedLabel;
+      btn.classList.add('copied');
+      setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function() { /* swallow */ });
+    } else {
+      // 老浏览器兜底:execCommand fallback
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch(e) { /* swallow */ }
+      document.body.removeChild(ta);
+    }
+  };
   </script>
 <style>
+/* Pantone-inspired light theme(2026-05 全站浅色化)。
+   设计原则:暖白底 + 哑色调,不刺眼;字号 14-15px 起;subtle box-shadow 替代 border。
+   旧的深色蓝灰主题已迁移,语义保留但色值翻转。 */
 :root{
-  --bg-base:#0f172a;
-  --bg-surface:rgba(30,41,59,0.7);
-  --bg-elevated:rgba(15,23,42,0.6);
-  --border:rgba(148,163,184,0.1);
-  --border-hover:rgba(148,163,184,0.25);
-  --text-primary:#e2e8f0;
-  --text-secondary:#94a3b8;
-  --text-muted:#64748b;
-  --text-faint:#475569;
-  --accent:#60a5fa;
-  --accent-hover:#93bbfd;
-  --green:#4ade80;
-  --green-bg:rgba(34,197,94,0.12);
-  --red:#f87171;
-  --red-bg:rgba(239,68,68,0.12);
-  --yellow:#fbbf24;
-  --yellow-bg:rgba(245,158,11,0.12);
-  --info-bg:rgba(96,165,250,0.1);
-  --chart-1:#60a5fa;
-  --chart-2:#a78bfa;
-  --chart-3:#34d399;
-  --chart-4:#fb923c;
-  --chart-5:#f472b6;
-  --chart-6:#fbbf24;
-  --bg-card:#1e293b;
+  --bg-base:#fbfaf7;            /* 暖白纸感 */
+  --bg-surface:#ffffff;          /* 卡片白 */
+  --bg-elevated:rgba(58,58,58,.025);
+  --bg-soft:rgba(58,58,58,.04);
+  --border:#e8e3da;              /* 暖灰分隔 */
+  --border-hover:#d4ccbf;
+  --text-primary:#3a3a3a;        /* 深炭灰 */
+  --text-secondary:#7a7a7a;
+  --text-muted:#a8a8a8;
+  --text-faint:#c8c8c8;
+  --accent:#5a7a93;              /* 板岩蓝(slate) */
+  --accent-hover:#3f5d76;
+  --green:#5e8252;               /* 鼠尾草绿(sage) */
+  --green-bg:rgba(94,130,82,.10);
+  --red:#9c4a3f;                 /* 砖红土陶(terracotta) */
+  --red-bg:rgba(156,74,63,.10);
+  --yellow:#b08030;              /* 暖琥珀 */
+  --yellow-bg:rgba(176,128,48,.10);
+  --info-bg:rgba(90,122,147,.08);
+  /* 图表色 — 全部哑色调,跨色相区分但饱和度统一在 ~50% */
+  --chart-1:#5a7a93;
+  --chart-2:#7a6b89;
+  --chart-3:#5e8252;
+  --chart-4:#b08030;
+  --chart-5:#9c6478;
+  --chart-6:#937846;
+  --bg-card:#ffffff;
   --radius:8px;
   --radius-lg:12px;
-  --fs-micro:11px;
-  --fs-detail:12px;
-  --fs-label:12px;
-  --fs-body:13px;
+  /* 字号上调:正文 14px / 标签 13px / 详情 13px / 微元数据 12px */
+  --fs-micro:12px;
+  --fs-detail:13px;
+  --fs-label:13px;
+  --fs-body:14.5px;
+  --shadow-sm:0 1px 3px rgba(58,58,58,.06);
+  --shadow-md:0 2px 8px rgba(58,58,58,.10);
 }
 *{box-sizing:border-box;margin:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:32px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.5;max-width:1100px;margin:0 auto}
-h1{margin:0 0 6px;font-size:1.5rem;font-weight:700;color:var(--text-primary);letter-spacing:-0.02em}
-h2{margin:24px 0 8px;font-size:0.9375rem;color:var(--text-secondary);font-weight:600}
-.subtitle{color:var(--text-muted);font-size:0.8125rem;margin:0 0 20px}
-a{color:var(--accent);text-decoration:none}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;padding:32px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.7;max-width:1100px;margin:0 auto;font-size:var(--fs-body)}
+h1{margin:0 0 8px;font-size:1.75rem;font-weight:600;color:var(--text-primary);letter-spacing:-0.01em;line-height:1.3}
+h2{margin:32px 0 12px;font-size:1.0625rem;color:var(--text-primary);font-weight:600;line-height:1.4}
+.subtitle{color:var(--text-secondary);font-size:0.875rem;margin:0 0 24px}
+a{color:var(--accent);text-decoration:none;transition:color .15s}
 a:hover{color:var(--accent-hover);text-decoration:underline}
 
-/* Meta tags — bumped from 11px/text-muted to 12px/text-secondary so contrast
-   passes WCAG AA on the dark surface. */
-.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}
-.meta-tag{font-size:0.75rem;color:var(--text-secondary);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
-.meta-tag code{font-size:0.7rem;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
+/* Meta tags — 浅色主题下加大对比度,小一点的字号也清晰可读 */
+.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 20px}
+.meta-tag{font-size:13px;color:var(--text-secondary);padding:4px 12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
+.meta-tag code{font-size:12px;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
 
 /* Run ID stamp — H1 保留完整 run-id (与列表页一致), 时间戳从 ID 解出来作为副标小字,
    告诉用户「这次跑的时间」,无需用户自己解析 ID 后缀。 */
@@ -97,11 +132,12 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .methodology-summary-label{font-size:14px;font-weight:600}
 .methodology-summary-hint{flex:1 1 auto;text-align:right;font-size:11px;color:var(--text-muted);font-weight:400}
 .methodology-badges{display:inline-flex;flex-wrap:wrap;gap:6px}
-.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
-.methodology-badge-pass{background:rgba(74,222,128,0.14);color:var(--green)}
-.methodology-badge-warn{background:rgba(251,191,36,0.16);color:var(--yellow)}
-.methodology-badge-fail{background:rgba(248,113,113,0.16);color:var(--red)}
-.methodology-badge-skip{background:rgba(148,163,184,0.12);color:var(--text-muted)}
+.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
+/* Pantone 哑色 — 用 var(--green-bg) 等(浅色主题已重定义) */
+.methodology-badge-pass{background:var(--green-bg);color:var(--green)}
+.methodology-badge-warn{background:var(--yellow-bg);color:var(--yellow)}
+.methodology-badge-fail{background:var(--red-bg);color:var(--red)}
+.methodology-badge-skip{background:var(--bg-soft);color:var(--text-muted)}
 .methodology-body{padding:0 16px 14px;border-top:1px solid var(--border);margin-top:8px}
 .methodology-body>h2:first-child{margin-top:14px}
 
@@ -109,20 +145,23 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .cards{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
 .card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;min-width:140px;flex:1;transition:border-color 0.15s}
 .card:hover{border-color:var(--border-hover)}
-.card-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px}
-.card-value{font-size:22px;font-weight:700;margin:2px 0;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.card-sub{font-size:11px;color:var(--text-muted)}
+/* 卡片标签:de-uppercase(uppercase 在 pantone 哑色调里太"科技报"),轻微 letter-spacing
+   保留排版感,字号上调到 12 让读者看清。值/数字改 weight 600(700 在浅色配色里太硬)。 */
+.card-label{font-size:12px;color:var(--text-muted);letter-spacing:0.02em;margin-bottom:4px;font-weight:500}
+.card-value{font-size:20px;font-weight:600;margin:2px 0;color:var(--text-primary);font-variant-numeric:tabular-nums;line-height:1.3}
+.card-sub{font-size:12px;color:var(--text-muted);line-height:1.5}
 /* Summary table — inherits the global center + middle from the base td/th. */
-.summary-cell{min-width:100px}
-.summary-value-primary{font-size:1.375rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
+.summary-cell{min-width:96px}
+.summary-value-primary{font-size:1.25rem;font-weight:600;font-variant-numeric:tabular-nums}
 
 /* Hint tooltip (legacy span-based, kept for hover-only hints) */
 .hint{position:relative;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;font-size:10px;font-weight:600;color:var(--text-muted);border:1px solid var(--border-hover);border-radius:50%;cursor:help;margin-left:6px;vertical-align:middle}
 .hint-click{cursor:pointer}
 
 /* Hint button — accessible, keyboard-focusable replacement for click-to-open-modal hints */
-button.hint-btn{display:inline-flex;align-items:center;justify-content:center;min-width:22px;min-height:22px;padding:3px;font-size:var(--fs-micro);font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border-hover);border-radius:50%;cursor:pointer;margin-left:6px;vertical-align:middle;line-height:1;transition:color 0.15s,border-color 0.15s}
-button.hint-btn:hover{color:var(--text-primary);border-color:var(--text-primary)}
+button.hint-btn{display:inline-flex;align-items:center;justify-content:center;min-width:20px;min-height:20px;padding:2px;font-size:11px;font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border);border-radius:50%;cursor:pointer;margin-left:6px;vertical-align:middle;line-height:1;transition:color 0.15s,border-color 0.15s;outline:none;appearance:none}
+button.hint-btn:hover{color:var(--text-primary);border-color:var(--text-secondary)}
+button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* Verdict + detail pattern used in variance & significance cells */
@@ -299,9 +338,9 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 @media(max-width:480px){.modal-table td{display:block;padding:3px 0}.modal-table td:first-child{font-weight:600}}
 .hint-tip{display:none;position:absolute;bottom:calc(100% + 6px);right:0;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:var(--radius);padding:6px 10px;font-size:11px;font-weight:400;color:var(--text-secondary);white-space:normal;max-width:280px;width:max-content;z-index:10}
 .hint:hover .hint-tip,.hint:focus .hint-tip{display:block}
-.summary-value{font-size:1rem;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.summary-detail{font-size:0.6875rem;color:var(--text-muted);margin-top:3px}
-.summary-unit{font-size:0.75rem;font-weight:400;color:var(--text-muted)}
+.summary-value{font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.summary-detail{font-size:12px;color:var(--text-muted);margin-top:4px;line-height:1.5}
+.summary-unit{font-size:12px;font-weight:400;color:var(--text-muted)}
 .card-detail{margin-top:8px;font-size:12px;color:var(--text-secondary)}
 .card-detail div{margin:2px 0}
 
@@ -312,9 +351,12 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 @media(max-width:768px){
   .table-wrap::after{content:'';position:sticky;right:0;top:0;display:block;float:right;width:32px;height:100%;margin-left:-32px;margin-top:-100%;pointer-events:none;background:linear-gradient(to right,transparent,var(--bg-card) 85%);z-index:2}
 }
-table{border-collapse:collapse;width:100%;font-size:0.8125rem;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;line-height:1.4}
-th{background:var(--bg-elevated);padding:8px 14px;text-align:center;vertical-align:middle;font-weight:500;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap}
-td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
+/* 表格 — 稍紧凑(padding 7px 12px),正文 13px,字号上调跟全站对齐;
+   非数字列保留 left-align(td.text 类),其它默认居中。 */
+table{border-collapse:collapse;width:100%;font-size:13px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;line-height:1.5}
+th{background:var(--bg-elevated);padding:8px 12px;text-align:center;vertical-align:middle;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border);font-size:12px;letter-spacing:0.02em;white-space:nowrap}
+td{padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
+td:first-child, th:first-child { text-align:left }
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(148,163,184,0.04)}
 
@@ -346,9 +388,11 @@ tr:hover td{background:rgba(148,163,184,0.04)}
 .bar-value{flex:0 0 auto;font-size:12px;color:var(--text-secondary)}
 
 /* Forms */
-input[type="text"]{background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius);padding:4px 8px;font-size:12px}
-input[type="text"]:focus{outline-color:transparent;border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
-button{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius);cursor:pointer;padding:4px 12px;font-size:12px;transition:border-color 0.15s,color 0.15s}
+input[type="text"]{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius);padding:6px 12px;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
+input[type="text"]:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--info-bg)}
+/* 通用 button — 浅色主题里默认 transparent + 边框更细。子样式(.run-card-delete, .tv-vtab,
+   .omk-view-tab, .hint-btn 等)各自有显式 reset 覆盖默认样式。 */
+button{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius);cursor:pointer;padding:6px 14px;font-size:13px;font-family:inherit;transition:border-color .15s,color .15s,background .15s;outline:none;appearance:none;-webkit-appearance:none}
 button:hover{border-color:var(--border-hover);color:var(--text-primary)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
@@ -396,11 +440,21 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body><button id="lang-toggle" onclick="switchLang()" class="lang-toggle">Chinese</button>
+</style></head><body>
     <main>
     <nav class="nav"><a href="/?lang=en" data-i18n="backToList">← Back to list</a></nav>
-    <h1>test-run-20260325-1000</h1>
-    <p class="run-id-stamp">ran at: 2026-03-25 10:00</p>
+    <div class="report-id-line">
+      <code class="report-id-pill">test-run-20260325-1000</code>
+      <span class="report-id-stamp">2026-03-25 10:00</span>
+    </div>
+
+    <div class="omk-view-tabs" role="tablist">
+      <button type="button" class="omk-view-tab omk-view-tab--active" data-view="score" onclick="omkSwitchView('score')">📊 Score view</button>
+      <button type="button" class="omk-view-tab" data-view="test" onclick="omkSwitchView('test')">✅ Functional view</button>
+    </div>
+
+    <div class="omk-view-panel" data-view="score">
+    <p class="subtitle">Subjective judge + objective assertions aggregated into composite + verdict</p>
     <section class="page-verdict verdict-CAUTIOUS" role="status" data-verdict-level="CAUTIOUS" aria-label="Verdict: CAUTIOUS · INVESTIGATE · v2 is slightly better than v1 — investigate, gap is small or a layer is below threshold" title="Treatment slightly above control — small gap or layer below gate">
     <div class="page-verdict-head">
       <span class="page-verdict-badge"><span class="page-verdict-badge-dot" aria-hidden="true">●</span>CAUTIOUS</span>
@@ -409,73 +463,20 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
 
   </section>
     <div class="meta-tags">
-      <span class="meta-tag">Task execution model: sonnet</span>
-      <span class="meta-tag">Judge: claude:haiku</span>
+    <span class="meta-tag">Task execution model: sonnet</span>
+    <span class="meta-tag">Judge: claude:haiku</span>
 
-      <span class="meta-tag">Executor: claude</span>
-      <span class="meta-tag">Execution cost: $0.0380</span>
-      <span class="meta-tag">Reported total cost: $0.0500</span>
-      <span class="meta-tag">Duration: 10.0s</span>
+    <span class="meta-tag">Executor: claude</span>
 
-
-
-
-
-    </div>
+    <span class="meta-tag">Execution cost: $0.0380</span>
+    <span class="meta-tag">Reported total cost: $0.0500</span>
+    <span class="meta-tag">Duration: 10.0s</span>
 
 
 
 
-    <section style="margin:20px 0">
-      <h2 style="display:flex;align-items:center;gap:4px">Experiment Setup <button type="button" class="hint-btn" onclick="openModal('guide-variant-config')" aria-label="Confirm what is being compared before reading the score. This table explains the artifact and runtime context behind each variant." aria-haspopup="dialog">?</button></h2>
-      <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">2 samples × 2 variants</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>🏷️ Variant</th>
-            <th>🧪 Role</th>
-            <th>📦 Artifact Kind</th>
-            <th>📂 Source</th>
-            <th>⚙️ Execution Strategy</th>
-            <th>🖥️ Runtime Context</th>
-          </tr></thead>
-          <tbody><tr>
-      <td style="border-left:3px solid var(--chart-1);padding-left:12px"><strong>v1</strong></td>
-      <td>Artifact injection</td>
-      <td>Skill</td>
-      <td>Local file</td>
-      <td>System prompt</td>
-      <td title="">default</td>
-    </tr><tr>
-      <td style="border-left:3px solid var(--chart-2);padding-left:12px"><strong>v2</strong></td>
-      <td>Runtime context only</td>
-      <td>Baseline</td>
-      <td>None</td>
-      <td>None</td>
-      <td title="/tmp/project-a">/tmp/project-a</td>
-    </tr></tbody>
-        </table>
-      </div>
-    </section>
-    <div id="guide-variant-config" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="guide-variant-config-title" onclick="if(event.target===this)closeModal('guide-variant-config')">
-      <div class="modal-content">
-        <div class="modal-header">
-          <strong id="guide-variant-config-title" style="font-size:1rem">How to read experiment setup?</strong>
-          <button type="button" class="modal-close" onclick="closeModal('guide-variant-config')" aria-label="Close">✕</button>
-        </div>
-        <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 16px">Confirm what is being compared before reading the score. This table explains the artifact and runtime context behind each variant.</p>
-        <table class="modal-table"><tbody>
 
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Variant</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Name label for this experiment group</td></tr>
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Role</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Role in the experiment (baseline / runtime-context-only / artifact-injection)</td></tr>
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Artifact Kind</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Type of artifact being evaluated (skill / agent / workflow / baseline)</td></tr>
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Source</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Where the artifact comes from (local file / git ref / inline)</td></tr>
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Execution Strategy</strong></td><td style="padding:6px 0;color:var(--text-secondary)">How the artifact is injected (system-prompt / user-prompt / agent-session)</td></tr>
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Runtime Context</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Working directory the agent runs in (affects accessible files and tools)</td></tr>
-
-        </tbody></table>
-      </div>
-    </div>
+  </div>
 
 
     <section>
@@ -519,12 +520,75 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a></p>
     </div>
   </div>
+    <div class="sm-hero-list">
+    <div class="sm-hero-h">
+      Composite
+      <button type="button" class="hint-btn" onclick="openModal('guide-scoring')" aria-label="How is composite computed?" aria-haspopup="dialog">?</button>
+    </div>
+    <div class="sm-hero" style="border-left:3px solid var(--chart-1)">
+      <div class="sm-hero-name">v1</div>
+      <div class="sm-hero-score" style="color:var(--green)">4.00<span class="sm-hero-unit">/ 5</span></div>
+      <span class="sm-hero-delta-placeholder"></span>
+    </div><div class="sm-hero" style="border-left:3px solid var(--chart-2)">
+      <div class="sm-hero-name">v2</div>
+      <div class="sm-hero-score" style="color:var(--green)">4.80<span class="sm-hero-unit">/ 5</span></div>
+      <span class="sm-hero-delta" style="color:var(--green)">+0.80 ↑</span>
+    </div>
+  </div>
     <div class="table-wrap">
     <table class="summary-table">
-      <thead><tr><th data-i18n="variants">Variant</th><th data-i18n="dimComposite" style="border-right:2px solid var(--border)">Composite <button type="button" class="hint-btn" onclick="openModal('guide-scoring')" aria-label="How is composite computed?" aria-haspopup="dialog">?</button></th><th data-i18n="dimFact">📋 Fact</th><th data-i18n="dimBehavior">🛠️ Behavior</th><th data-i18n="dimJudge">💬 LLM judge</th><th data-i18n="dimCost">💰 Exec cost</th><th data-i18n="dimEfficiency">⚡ Efficiency</th><th data-i18n="dimStability">🛡️ Stability</th></tr></thead>
-      <tbody><tr><td style="border-left:3px solid var(--chart-1);padding-left:12px"><strong>v1</strong></td><td class="summary-cell" style="border-right:2px solid var(--border)"><div class="summary-value summary-value-primary" style="color:var(--green);font-weight:700">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.20</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--yellow)">3.80</div></td><td class="summary-cell"><div class="summary-value">$0.0200</div><div class="summary-detail">600 tokens/req</div></td><td class="summary-cell"><div class="summary-value">2.0s<span class="summary-unit">/req</span></div><div class="summary-detail">1 turns/req · total 4.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ Not measured</div><div class="summary-detail"><span style="color:var(--red)">single-run; needs --repeat ≥ 2 to measure CV</span></div></td></tr><tr><td style="border-left:3px solid var(--chart-2);padding-left:12px"><strong>v2</strong></td><td class="summary-cell" style="border-right:2px solid var(--border)"><div class="summary-value summary-value-primary" style="color:var(--green);font-weight:700">4.80</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">5.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.80</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.60</div></td><td class="summary-cell"><div class="summary-value">$0.0180</div><div class="summary-detail">720 tokens/req</div></td><td class="summary-cell"><div class="summary-value">3.0s<span class="summary-unit">/req</span></div><div class="summary-detail">1 turns/req · total 6.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ Not measured</div><div class="summary-detail"><span style="color:var(--red)">single-run; needs --repeat ≥ 2 to measure CV</span></div></td></tr></tbody>
+      <thead><tr><th data-i18n="variants">Variant</th><th data-i18n="dimFact">📋 Fact</th><th data-i18n="dimBehavior">🛠️ Behavior</th><th data-i18n="dimJudge">💬 LLM judge</th><th data-i18n="dimCost">💰 Exec cost</th><th data-i18n="dimEfficiency">⚡ Efficiency</th><th data-i18n="dimStability">🛡️ Stability</th></tr></thead>
+      <tbody><tr><td style="border-left:3px solid var(--chart-1);padding-left:12px"><strong>v1</strong></td><td class="summary-cell sm-heat-pass"><div class="summary-value summary-value-primary" style="color:var(--green)">4.20</div></td><td class="summary-cell sm-heat-pass"><div class="summary-value summary-value-primary" style="color:var(--green)">4.00</div></td><td class="summary-cell sm-heat-warn"><div class="summary-value summary-value-primary" style="color:var(--yellow)">3.80</div></td><td class="summary-cell"><div class="summary-value">$0.0200</div><div class="summary-detail">600 tokens/req</div></td><td class="summary-cell"><div class="summary-value">2.0s<span class="summary-unit">/req</span></div><div class="summary-detail">1 turns/req · total 4.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ Not measured</div><div class="summary-detail"><span style="color:var(--red)">single-run; needs --repeat ≥ 2 to measure CV</span></div></td></tr><tr><td style="border-left:3px solid var(--chart-2);padding-left:12px"><strong>v2</strong></td><td class="summary-cell sm-heat-pass"><div class="summary-value summary-value-primary" style="color:var(--green)">5.00</div></td><td class="summary-cell sm-heat-pass"><div class="summary-value summary-value-primary" style="color:var(--green)">4.80</div></td><td class="summary-cell sm-heat-pass"><div class="summary-value summary-value-primary" style="color:var(--green)">4.60</div></td><td class="summary-cell"><div class="summary-value">$0.0180</div><div class="summary-detail">720 tokens/req</div></td><td class="summary-cell"><div class="summary-value">3.0s<span class="summary-unit">/req</span></div><div class="summary-detail">1 turns/req · total 6.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ Not measured</div><div class="summary-detail"><span style="color:var(--red)">single-run; needs --repeat ≥ 2 to measure CV</span></div></td></tr></tbody>
     </table>
-    </div></section>
+    </div>
+    <style>
+    /* 六维对比 — Hero 区(每 variant 综合分 + delta) */
+    .sm-hero-list { display:flex;flex-direction:column;gap:8px;margin:14px 0 18px }
+    .sm-hero-h { font-size:13px;color:var(--text-muted);margin-bottom:4px;letter-spacing:0.02em }
+    .sm-hero { display:flex;align-items:baseline;gap:16px;padding:14px 18px;background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm) }
+    .sm-hero-name { flex:1;font-size:14.5px;font-weight:500;color:var(--text-primary) }
+    .sm-hero-score { font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1 }
+    .sm-hero-unit { font-size:13px;color:var(--text-muted);margin-left:4px;font-weight:400 }
+    .sm-hero-delta { font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace;min-width:60px;text-align:right }
+    .sm-hero-delta-placeholder { display:inline-block;min-width:60px }
+    /* 六维 heatmap — 每格按分数浅色填充,便于远看识别弱维度 */
+    .sm-heat-pass { background:linear-gradient(0deg,var(--green-bg),var(--green-bg)) }
+    .sm-heat-warn { background:linear-gradient(0deg,var(--yellow-bg),var(--yellow-bg)) }
+    .sm-heat-fail { background:linear-gradient(0deg,var(--red-bg),var(--red-bg)) }
+    </style></section>
+    <div class="ctx-strip">
+    <div class="ctx-block">
+      <div class="ctx-h">Experiment Setup <button type="button" class="hint-btn" onclick="openModal('guide-variant-config')" aria-label="Confirm what is being compared before reading the score. This table explains the artifact and runtime context behind each variant." aria-haspopup="dialog">?</button></div>
+      <div class="ctx-sub">2 samples × 2 variants</div>
+      <div class="ctx-rows"><div class="ctx-row" style="border-left:3px solid var(--chart-1)" title="Role: Artifact injection · Artifact Kind: Skill · Source: Local file · Execution Strategy: System prompt · Runtime Context: default">
+      <span class="ctx-row-name">v1</span>
+      <span class="ctx-row-bits">Artifact injection <span class="ctx-sep">·</span> Skill <span class="ctx-sep">·</span> Local file <span class="ctx-sep">·</span> System prompt <span class="ctx-sep">·</span> default cwd</span>
+    </div><div class="ctx-row" style="border-left:3px solid var(--chart-2)" title="Role: Runtime context only · Artifact Kind: Baseline · Source: no source · Execution Strategy: None · Runtime Context: /tmp/project-a">
+      <span class="ctx-row-name">v2</span>
+      <span class="ctx-row-bits">Runtime context only <span class="ctx-sep">·</span> Baseline <span class="ctx-sep">·</span> no source <span class="ctx-sep">·</span> None <span class="ctx-sep">·</span> /tmp/project-a</span>
+    </div></div>
+    </div>
+    <div id="guide-variant-config" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="guide-variant-config-title" onclick="if(event.target===this)closeModal('guide-variant-config')">
+      <div class="modal-content">
+        <div class="modal-header">
+          <strong id="guide-variant-config-title" style="font-size:1rem">How to read experiment setup?</strong>
+          <button type="button" class="modal-close" onclick="closeModal('guide-variant-config')" aria-label="Close">✕</button>
+        </div>
+        <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 16px">Confirm what is being compared before reading the score. This table explains the artifact and runtime context behind each variant.</p>
+        <table class="modal-table"><tbody>
+
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Variant</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Name label for this experiment group</td></tr>
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Role</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Role in the experiment (baseline / runtime-context-only / artifact-injection)</td></tr>
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Artifact Kind</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Type of artifact being evaluated (skill / agent / workflow / baseline)</td></tr>
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Source</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Where the artifact comes from (local file / git ref / inline)</td></tr>
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Execution Strategy</strong></td><td style="padding:6px 0;color:var(--text-secondary)">How the artifact is injected (system-prompt / user-prompt / agent-session)</td></tr>
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>Runtime Context</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Working directory the agent runs in (affects accessible files and tools)</td></tr>
+
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+
 
 
 
@@ -563,16 +627,400 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
 
 
 
-
-
     <section>
     <h2 data-i18n="perSampleDetail">Per-Sample Detail</h2>
-    <div class="table-wrap">
-    <table>
-      <thead><tr><th data-i18n="sample">Sample</th><th>v1 <span data-i18n="scoreCol">Score</span></th><th>v1 <span data-i18n="tokensCol">Tokens</span></th><th>v1 <span data-i18n="msCol">ms</span></th><th>v2 <span data-i18n="scoreCol">Score</span></th><th>v2 <span data-i18n="tokensCol">Tokens</span></th><th>v2 <span data-i18n="msCol">ms</span></th></tr></thead>
-      <tbody><tr><td><strong>s001</strong></td><td><span class="badge badge-ok">4</span><br><span style="font-size:11px;color:var(--text-muted)">Decent analysis</span></td><td>600</td><td>2.0s</td><td><span class="badge badge-ok">4.5</span><br><span style="font-size:11px;color:var(--text-muted)">Thorough review</span></td><td>700<span style="color:var(--red);font-size:11px;margin-left:4px">↑16.7%</span></td><td>2.5s<span style="color:var(--red);font-size:11px;margin-left:4px">↑25%</span></td></tr></tbody>
-    </table>
-    </div></section>
+    <div class="sc-sample-list"><details class="sc-sample-card">
+      <summary class="sc-sample-h">
+        <code class="sc-sample-id">s001</code>
+        <span class="sc-sample-scores"><span class="sc-summary-score" style="color:var(--green)">v1 4.00</span><span class="sc-summary-sep">·</span><span class="sc-summary-score" style="color:var(--green)">v2 4.50</span></span>
+      </summary>
+      <div class="sc-sample-body">
+        <div class="sc-variants" data-cols="2"><div class="sc-variant">
+    <div class="sc-variant-h">v1</div>
+    <div class="sc-score-line"><span class="sc-score" style="color:var(--green)">4</span><span class="sc-score-unit">/ 5</span></div>
+
+
+    <div class="sc-section sc-section--muted">All passed <span class="sc-stat">2/2</span></div>
+
+    <div class="sc-section"><div class="sc-section-h">Judge</div><div class="sc-judge-text">Decent analysis</div></div>
+
+
+    <div class="sc-meta"><div class="sc-meta-row"><span class="sc-meta-name">Tokens</span>600</div><div class="sc-meta-row"><span class="sc-meta-name">Duration</span>2.0s</div></div>
+  </div><div class="sc-variant">
+    <div class="sc-variant-h">v2</div>
+    <div class="sc-score-line"><span class="sc-score" style="color:var(--green)">4.5</span><span class="sc-score-unit">/ 5</span><span style="color:var(--green);font-size:13px;margin-left:8px;font-weight:600">+0.50</span></div>
+
+
+    <div class="sc-section sc-section--muted">All passed <span class="sc-stat">2/2</span></div>
+
+    <div class="sc-section"><div class="sc-section-h">Judge</div><div class="sc-judge-text">Thorough review</div></div>
+
+
+    <div class="sc-meta"><div class="sc-meta-row"><span class="sc-meta-name">Tokens</span>700</div><div class="sc-meta-row"><span class="sc-meta-name">Duration</span>2.5s</div></div>
+  </div></div>
+      </div>
+    </details></div>
+    <style>
+    /* 评分页 — 逐用例详情卡片(替代旧 table)
+       结构:
+         .sc-sample-list   外层 stack
+           .sc-sample-card    一条用例,可折叠 details
+             .sc-sample-h     头(id + 各 variant 分数摘要)
+             .sc-sample-body  体
+               .sc-variants    grid 多列(每 variant 一栏)
+                 .sc-variant     单 variant 评分块
+       关键:文本左对齐,数字右对齐 + tabular-nums,分段而非表格,
+       减少居中混排和长短文本拥挤。 */
+    .sc-sample-list { display:flex;flex-direction:column;gap:8px;margin:12px 0 }
+    .sc-sample-card { background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);transition:box-shadow .15s }
+    .sc-sample-card:hover { box-shadow:var(--shadow-md) }
+    .sc-sample-card[open] { box-shadow:var(--shadow-md) }
+    .sc-sample-h { display:flex;align-items:center;gap:14px;padding:14px 18px;cursor:pointer;list-style:none;font-size:14.5px }
+    .sc-sample-h::-webkit-details-marker { display:none }
+    .sc-sample-h::after { content:'›';margin-left:auto;color:var(--text-muted);font-size:18px;transition:transform .15s }
+    .sc-sample-card[open] .sc-sample-h::after { transform:rotate(90deg) }
+    .sc-sample-id { font-family:"SF Mono",Menlo,monospace;color:var(--text-muted);font-size:13px;font-weight:500;letter-spacing:-0.01em }
+    .sc-sample-scores { display:flex;align-items:center;gap:8px;font-size:13px;font-variant-numeric:tabular-nums;color:var(--text-secondary) }
+    .sc-summary-score { font-family:"SF Mono",Menlo,monospace;font-weight:500 }
+    .sc-summary-score--muted { color:var(--text-muted) }
+    .sc-summary-sep { color:var(--text-muted) }
+    .sc-sample-body { padding:0 18px 18px;border-top:1px solid var(--border) }
+    /* 多列 grid:1 variant 用单列;2 用 1fr 1fr;>=3 自适应 */
+    .sc-variants { display:grid;gap:24px;margin-top:18px;grid-template-columns:1fr }
+    .sc-variants[data-cols="2"] { grid-template-columns:1fr 1fr }
+    .sc-variants[data-cols="3"] { grid-template-columns:repeat(3,1fr) }
+    .sc-variants[data-cols="4"] { grid-template-columns:repeat(2,1fr) }
+    @media (max-width:760px){ .sc-variants, .sc-variants[data-cols="2"], .sc-variants[data-cols="3"], .sc-variants[data-cols="4"] { grid-template-columns:1fr } }
+    .sc-variant { background:var(--bg-soft);border-radius:6px;padding:14px 16px;font-size:14px;line-height:1.7 }
+    .sc-variant-h { font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:8px;letter-spacing:0.02em;font-family:"SF Mono",Menlo,monospace }
+    .sc-score-line { display:flex;align-items:baseline;gap:6px;margin-bottom:14px }
+    .sc-score { font-size:32px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1 }
+    .sc-score-unit { font-size:14px;color:var(--text-muted);font-weight:400 }
+    .sc-stab { font-size:12px;color:var(--text-muted);margin-left:8px;font-family:"SF Mono",Menlo,monospace;background:var(--bg-soft);padding:2px 6px;border-radius:3px }
+    .sc-stab--fail { color:var(--red);background:var(--red-bg) }
+    .sc-layers { display:flex;flex-direction:column;gap:4px;margin-bottom:8px }
+    .sc-layer-row { display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px;line-height:1.6 }
+    .sc-layer-name { color:var(--text-secondary) }
+    .sc-layer-val { font-weight:600;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace }
+    .sc-section { margin-top:14px }
+    .sc-section--muted { color:var(--text-muted);font-size:13px }
+    .sc-section-h { font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:6px }
+    .sc-stat { color:var(--text-muted);font-weight:400;margin-left:6px;font-variant-numeric:tabular-nums }
+    .sc-assert-list { margin:0;padding-left:20px;font-size:13px;line-height:1.7;color:var(--text-secondary) }
+    .sc-assert-list li { margin:3px 0 }
+    .sc-assert-list code { font-family:"SF Mono",Menlo,monospace;background:var(--bg-surface);padding:1px 6px;border-radius:3px;font-size:12px }
+    .sc-judge-text { font-size:13.5px;line-height:1.7;color:var(--text-primary);white-space:pre-wrap;word-break:break-word }
+    .sc-cot { margin-top:8px;font-size:12px }
+    .sc-cot summary { cursor:pointer;color:var(--text-muted) }
+    .sc-cot-body { font-size:12.5px;line-height:1.7;color:var(--text-secondary);white-space:pre-wrap;font-family:inherit;background:var(--bg-surface);padding:10px 14px;border-radius:4px;margin-top:6px;max-height:400px;overflow-y:auto }
+    .sc-meta { margin-top:14px;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px }
+    .sc-meta-row { display:flex;justify-content:space-between;font-size:12.5px;color:var(--text-muted);font-variant-numeric:tabular-nums }
+    .sc-meta-name { color:var(--text-muted) }
+    .sc-error { margin-top:10px;padding:10px 14px;background:var(--red-bg);border-left:3px solid var(--red);border-radius:4px;font-size:13px;color:var(--red);line-height:1.6 }
+    .sc-empty { color:var(--text-muted);font-style:italic;padding:14px 0 }
+    </style></section>
+    </div>
+
+    <div class="omk-view-panel" data-view="test" hidden>
+    <p class="subtitle">Each sample as a functional test: expected(rubric/assertions/mocks), actual(trace), diagnostic suggestions on failure</p>
+    <div class="meta-tags">
+    <span class="meta-tag">2 samples</span>
+    <span class="meta-tag" style="color:var(--green)">✓ 1 passed</span>
+
+
+    <span class="meta-tag">v1 · v2</span>
+  </div>
+    <div class="tv-root"><div class="tv-warn">⚠ Report has no sampleSnapshots (older format); only execution results shown</div>
+    <div class="tv-variant-tabs"><button type="button" class="tv-vtab tv-vtab--active" data-target="v1" onclick="omkSwitchVariant(this)">v1</button><button type="button" class="tv-vtab " data-target="v2" onclick="omkSwitchVariant(this)">v2</button></div>
+    <div class="tv-variant-panel" data-variant="v1" >
+      <div class="tv-variant-stats">
+        <span class="tv-stat tv-stat--pass"><span class="tv-stat-num">1</span>passed</span>
+        <span class="tv-stat tv-stat--fail"><span class="tv-stat-num">0</span>failed</span>
+
+        <span class="tv-stat"><span class="tv-stat-num">4.0</span>avg / 5</span>
+      </div>
+
+
+      <div class="tv-group-sep">Passed</div>
+         <div class="tv-rows"><details class="tv-row tv-row--pass">
+    <summary class="tv-row-h">
+    <span class="tv-dot tv-dot--pass"></span>
+    <code class="tv-id">s001</code>
+    <span class="tv-title">(no prompt snapshot)</span>
+    <span class="tv-meta">2.0s</span>
+  </summary>
+    <div class="tv-row-body">
+    <details class="tv-section"><summary>Test design</summary><div class="tv-section-body"><div class="tv-empty">Report predates test-view support; no design snapshot</div></div></details>
+    <details class="tv-section"><summary>Execution trace<span class="tv-section-stat">(0 steps · 0 tool calls)</span></summary><div class="tv-section-body"><div class="tv-section tv-section--trace">
+      <div class="tv-section-h">🎬 Execution trace</div>
+      <div class="tv-empty">No turn trace from executor</div>
+    </div></div></details>
+    <details class="tv-section"><summary>Assertion results<span class="tv-section-stat">(2/2)</span></summary><div class="tv-section-body"><div class="tv-section tv-section--asserts">
+      <div class="tv-section-h">📊 Assertion results <span class="tv-section-stat">(2/2)</span></div>
+      <div class="tv-assert tv-assert--pass">
+    ✅ <code>contains</code> <code class="tv-assert-value">SQL</code><span class="tv-turn-tag">@ full output</span>
+
+  </div><div class="tv-assert tv-assert--pass">
+    ✅ <code>min_length</code> <code class="tv-assert-value">50</code><span class="tv-turn-tag">@ full output</span>
+
+  </div>
+    </div></div></details>
+  </div>
+  </details></div>
+    </div><div class="tv-variant-panel" data-variant="v2" hidden>
+      <div class="tv-variant-stats">
+        <span class="tv-stat tv-stat--pass"><span class="tv-stat-num">1</span>passed</span>
+        <span class="tv-stat tv-stat--fail"><span class="tv-stat-num">0</span>failed</span>
+
+        <span class="tv-stat"><span class="tv-stat-num">4.5</span>avg / 5</span>
+      </div>
+
+
+      <div class="tv-group-sep">Passed</div>
+         <div class="tv-rows"><details class="tv-row tv-row--pass">
+    <summary class="tv-row-h">
+    <span class="tv-dot tv-dot--pass"></span>
+    <code class="tv-id">s001</code>
+    <span class="tv-title">(no prompt snapshot)</span>
+    <span class="tv-meta">2.5s</span>
+  </summary>
+    <div class="tv-row-body">
+    <details class="tv-section"><summary>Test design</summary><div class="tv-section-body"><div class="tv-empty">Report predates test-view support; no design snapshot</div></div></details>
+    <details class="tv-section"><summary>Execution trace<span class="tv-section-stat">(0 steps · 0 tool calls)</span></summary><div class="tv-section-body"><div class="tv-section tv-section--trace">
+      <div class="tv-section-h">🎬 Execution trace</div>
+      <div class="tv-empty">No turn trace from executor</div>
+    </div></div></details>
+    <details class="tv-section"><summary>Assertion results<span class="tv-section-stat">(2/2)</span></summary><div class="tv-section-body"><div class="tv-section tv-section--asserts">
+      <div class="tv-section-h">📊 Assertion results <span class="tv-section-stat">(2/2)</span></div>
+      <div class="tv-assert tv-assert--pass">
+    ✅ <code>contains</code> <code class="tv-assert-value">SQL</code><span class="tv-turn-tag">@ full output</span>
+
+  </div><div class="tv-assert tv-assert--pass">
+    ✅ <code>min_length</code> <code class="tv-assert-value">50</code><span class="tv-turn-tag">@ full output</span>
+
+  </div>
+    </div></div></details>
+  </div>
+  </details></div>
+    </div></div>
+    </div>
+
+    <style>
+/* tv-root: 浅色岛,scoped 覆盖外层深色 layout */
+.tv-root {
+  --tv-bg:#fbfaf7; --tv-bg-card:#ffffff; --tv-bg-soft:rgba(58,58,58,.025);
+  --tv-text:#3a3a3a; --tv-text-2:#7a7a7a; --tv-text-3:#a8a8a8;
+  --tv-divider:#e8e3da;
+  /* 加大 pass / fail / tripwire 的色相距离 + 暗度差,避免远看雷同。
+     pass: 鼠尾草绿(暗一档,靠近林地);fail: 砖红土陶(暗一档,远离 pink);tripwire: 紫罗兰(独立色相)。 */
+  --tv-pass:#5e8252; --tv-fail:#9c4a3f; --tv-tripwire:#7a6b89;
+  --tv-pass-soft:rgba(94,130,82,.10); --tv-fail-soft:rgba(156,74,63,.10); --tv-tripwire-soft:rgba(122,107,137,.10);
+  --tv-accent:#5a7a93; --tv-warn:#b08030;
+  --tv-shadow:0 1px 3px rgba(58,58,58,.06);
+  --tv-shadow-hover:0 2px 8px rgba(58,58,58,.10);
+  background:var(--tv-bg); color:var(--tv-text);
+  padding:32px 0; margin:-16px 0 0; border-radius:6px;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+  font-size:15px; line-height:1.75;
+}
+/* Variant tabs — 显式 reset 浏览器默认 button 样式(border-radius / outline / appearance)
+   防止 layout 那边的全局 button 规则给底部加了奇怪圆角和深色背景。 */
+.tv-root .tv-variant-tabs { display:flex;gap:0;margin:0 0 24px;border-bottom:1px solid var(--tv-divider) }
+.tv-root .tv-vtab { padding:12px 20px;background:transparent;border:none;border-radius:0;cursor:pointer;color:var(--tv-text-2);border-bottom:2px solid transparent;font-size:14px;font-family:inherit;font-weight:500;outline:none;appearance:none;-webkit-appearance:none;margin-bottom:-1px }
+.tv-root .tv-vtab:hover { color:var(--tv-text) }
+.tv-root .tv-vtab--active { color:var(--tv-text);border-bottom-color:var(--tv-accent);font-weight:600 }
+.tv-root .tv-vtab:focus-visible { outline:2px solid var(--tv-accent);outline-offset:-4px;border-radius:4px }
+/* tv-variant-panel: 不打横向 padding,内容直接对齐 .tv-root 边界,跟外层 omk-view-panel 的 h1/subtitle 同基线。 */
+/* Stats — 更扁平的数字+标签布局 */
+.tv-root .tv-variant-stats { display:flex;gap:32px;margin:0 0 24px;font-size:14px;color:var(--tv-text-2);align-items:baseline }
+.tv-root .tv-stat { display:flex;align-items:baseline;gap:6px }
+.tv-root .tv-stat-num { color:var(--tv-text);font-weight:600;font-size:18px;font-variant-numeric:tabular-nums }
+.tv-root .tv-stat--pass .tv-stat-num { color:var(--tv-pass) }
+.tv-root .tv-stat--fail .tv-stat-num { color:var(--tv-fail) }
+.tv-root .tv-stat--tripwire .tv-stat-num { color:var(--tv-tripwire) }
+/* Group separator */
+.tv-root .tv-group-sep { display:flex;align-items:center;gap:14px;margin:32px 0 16px;color:var(--tv-text-3);font-size:12px;text-transform:uppercase;letter-spacing:0.08em;font-weight:500 }
+.tv-root .tv-group-sep::after { content:'';flex:1;height:1px;background:var(--tv-divider) }
+/* Pass rows — one-line list,左边一道淡 sage 色条做"通过"暗示 */
+.tv-root .tv-rows { display:flex;flex-direction:column;gap:6px;margin:0 }
+.tv-root .tv-row { background:var(--tv-bg-card);border-radius:6px;box-shadow:var(--tv-shadow);transition:box-shadow .15s;border-left:3px solid var(--tv-pass) }
+.tv-root .tv-row:hover { box-shadow:var(--tv-shadow-hover) }
+.tv-root .tv-row[open] { box-shadow:var(--tv-shadow-hover) }
+.tv-root .tv-row-h { display:flex;align-items:center;gap:14px;padding:14px 20px;cursor:pointer;list-style:none;font-size:15px }
+.tv-root .tv-row-h::-webkit-details-marker { display:none }
+.tv-root .tv-row-h::after { content:'›';margin-left:8px;color:var(--tv-text-3);font-size:18px;transition:transform .15s }
+.tv-root .tv-row[open] .tv-row-h::after { transform:rotate(90deg) }
+/* Cards (fail / tripwire) — 默认折叠,跟 pass row 一致;头部下面加一行 preview 让折叠态也有信息密度 */
+.tv-root .tv-card { background:var(--tv-bg-card);border-radius:8px;box-shadow:var(--tv-shadow);margin:0 0 12px;transition:box-shadow .15s }
+.tv-root .tv-card:hover { box-shadow:var(--tv-shadow-hover) }
+.tv-root .tv-card--fail { border-left:3px solid var(--tv-fail) }
+.tv-root .tv-card--tripwire { border-left:3px solid var(--tv-tripwire) }
+.tv-root .tv-card-h { display:flex;align-items:center;gap:14px;padding:16px 22px;cursor:pointer;list-style:none;font-size:15px }
+.tv-root .tv-card-h::-webkit-details-marker { display:none }
+.tv-root .tv-card-h::after { content:'›';margin-left:8px;color:var(--tv-text-3);font-size:18px;transition:transform .15s }
+.tv-root .tv-card[open] .tv-card-h::after { transform:rotate(90deg) }
+.tv-root .tv-card[open] .tv-card-h { border-bottom:1px solid var(--tv-divider) }
+.tv-root .tv-card-preview { padding:0 22px 14px;color:var(--tv-text-2);font-size:14px;line-height:1.7;border-bottom:1px solid var(--tv-divider) }
+.tv-root .tv-card[open] .tv-card-preview { display:none }
+/* Status dots — 用形状 + 色 + 字符的三重区分,避免色盲 / 远看雷同。
+   pass: 实心圆 sage;fail: 红 ✗ 字符(更显眼);tripwire: 紫色 ◆ 菱形。 */
+.tv-root .tv-dot { display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0;font-size:14px;font-weight:700;line-height:1 }
+.tv-root .tv-dot--pass::before { content:'';width:10px;height:10px;border-radius:50%;background:var(--tv-pass);box-shadow:0 0 0 3px var(--tv-pass-soft) }
+.tv-root .tv-dot--fail::before { content:'✗';color:var(--tv-fail);font-size:16px;font-weight:700 }
+.tv-root .tv-dot--tripwire::before { content:'◆';color:var(--tv-tripwire);font-size:13px }
+.tv-root .tv-id { font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:13px;color:var(--tv-text-3) }
+.tv-root .tv-title { flex:1;font-size:15px;color:var(--tv-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+.tv-root .tv-meta { font-size:13px;color:var(--tv-text-3);font-variant-numeric:tabular-nums;font-family:"SF Mono","JetBrains Mono",Menlo,monospace }
+/* Body padding */
+.tv-root .tv-card-body, .tv-root .tv-row-body { padding:22px }
+/* Tripwire banner — 卡片顶部的紫色解释带 */
+.tv-root .tv-tripwire-banner { margin:-22px -22px 20px;padding:18px 22px;background:rgba(139,124,147,.08);border-radius:8px 8px 0 0;border-bottom:1px solid var(--tv-divider) }
+.tv-root .tv-tripwire-banner-title { font-size:14px;font-weight:600;color:var(--tv-tripwire);margin-bottom:6px;letter-spacing:0.02em }
+.tv-root .tv-tripwire-banner-body { font-size:14px;color:var(--tv-text-2);line-height:1.7 }
+/* Diagnosis — 一段白话 + 单一蓝色建议块 + 折叠细节 */
+.tv-root .tv-diag { margin:4px 0 16px }
+.tv-root .tv-diag-text { font-size:15px;line-height:1.75;color:var(--tv-text);margin:0 0 16px }
+.tv-root .tv-suggestion { background:rgba(90,122,147,.06);border-left:3px solid var(--tv-accent);padding:14px 18px;margin:12px 0;border-radius:0 4px 4px 0 }
+.tv-root .tv-suggestion-label { display:inline-block;color:var(--tv-accent);font-weight:600;font-size:13px;margin-right:8px;letter-spacing:0.02em }
+.tv-root .tv-suggestion-body { margin:6px 0 0;font-size:14.5px;line-height:1.7;color:var(--tv-text) }
+.tv-root .tv-diag-details { margin-top:14px }
+.tv-root .tv-diag-details > summary { cursor:pointer;font-size:13px;color:var(--tv-text-2);list-style:none }
+.tv-root .tv-diag-details > summary::-webkit-details-marker { display:none }
+.tv-root .tv-diag-details > summary::before { content:'▸ ';color:var(--tv-text-3);display:inline-block;width:16px }
+.tv-root .tv-diag-details[open] > summary::before { content:'▾ ' }
+.tv-root .tv-diag-details-body { padding:10px 0 0 16px;font-size:14px;line-height:1.7;color:var(--tv-text-2) }
+.tv-root .tv-diag-details-body p { margin:6px 0 }
+.tv-root .tv-diag-details-body strong { color:var(--tv-text);margin-right:6px }
+/* RootCause inline pill */
+.tv-root .tv-diag-rc-pill { font-size:11px;padding:2px 8px;border-radius:10px;background:var(--tv-bg-soft);color:var(--tv-text-2);margin-right:6px;display:inline-block }
+.tv-root .tv-diag-rc--tripwire_intentional { background:rgba(139,124,147,.12);color:var(--tv-tripwire) }
+.tv-root .tv-diag-rc--sample_design { background:rgba(90,122,147,.10);color:var(--tv-accent) }
+.tv-root .tv-diag-rc--skill_doc_unclear, .tv-diag-rc--skill_doc_missing, .tv-root .tv-diag-rc--llm_misread { background:rgba(176,128,48,.10);color:var(--tv-warn) }
+/* Failure-mode chips — 中文标签,显著展示在 summary 下 */
+.tv-root .tv-diag-modes { display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 14px }
+.tv-root .tv-diag-modes-label { font-size:12px;color:var(--tv-text-2);margin-right:4px }
+.tv-root .tv-diag-mode-pill { font-size:12px;padding:3px 10px;border-radius:11px;background:var(--tv-bg-soft);color:var(--tv-text);font-weight:500 }
+.tv-root .tv-diag-mode--workflow-skip   { background:rgba(176,128,48,.12);color:var(--tv-warn) }
+.tv-root .tv-diag-mode--hardcoded       { background:rgba(176,128,48,.12);color:var(--tv-warn) }
+.tv-root .tv-diag-mode--hallucination   { background:rgba(180,75,75,.14);color:#b44b4b }
+.tv-root .tv-diag-mode--tool-misuse     { background:rgba(176,128,48,.12);color:var(--tv-warn) }
+.tv-root .tv-diag-mode--env-blocked     { background:rgba(90,122,147,.12);color:var(--tv-accent) }
+.tv-root .tv-diag-mode--misread         { background:rgba(176,128,48,.12);color:var(--tv-warn) }
+.tv-root .tv-diag-mode--other           { background:var(--tv-bg-soft);color:var(--tv-text-2) }
+/* Workflow checklist — 默认展开,放在 suggestion 之上,直观展示 LLM 走对哪几步 */
+.tv-root .tv-diag-workflow { margin:14px 0;padding:12px 14px;background:var(--tv-bg-soft);border-radius:6px }
+.tv-root .tv-diag-workflow-title { font-size:13px;font-weight:600;color:var(--tv-text);margin:0 0 10px;letter-spacing:0.02em }
+.tv-root .tv-diag-workflow-list { list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px }
+.tv-root .tv-diag-workflow-item { display:flex;align-items:flex-start;gap:10px;line-height:1.6 }
+.tv-root .tv-diag-workflow-icon { flex-shrink:0;font-weight:700;font-size:14px;width:16px;text-align:center;margin-top:2px }
+.tv-root .tv-diag-workflow-item--pass .tv-diag-workflow-icon { color:#3a8a3a }
+.tv-root .tv-diag-workflow-item--fail .tv-diag-workflow-icon { color:#b44b4b }
+.tv-root .tv-diag-workflow-body { display:flex;flex-direction:column;gap:2px;flex:1 }
+.tv-root .tv-diag-workflow-step { font-size:14px;color:var(--tv-text) }
+.tv-root .tv-diag-workflow-evidence { font-size:12.5px;color:var(--tv-text-2);line-height:1.55 }
+.tv-root .tv-diag-workflow-item--fail .tv-diag-workflow-step { color:#b44b4b }
+/* Partial salvage 提示 */
+.tv-root .tv-diag-partial { font-size:12px;color:var(--tv-text-3);margin:0 0 8px;font-style:italic }
+/* Sub-sections — design / trace / assertions, 全部默认折叠 */
+.tv-root .tv-section { margin-top:6px;border-top:1px solid var(--tv-divider);padding-top:14px }
+.tv-root .tv-section > summary { cursor:pointer;font-size:14px;font-weight:500;color:var(--tv-text);padding:6px 0;list-style:none }
+.tv-root .tv-section > summary::-webkit-details-marker { display:none }
+.tv-root .tv-section > summary::before { content:'▸ ';color:var(--tv-text-3);display:inline-block;width:16px;font-weight:400 }
+.tv-root .tv-section[open] > summary::before { content:'▾ ' }
+.tv-root .tv-section-stat { font-weight:400;color:var(--tv-text-3);margin-left:6px;font-size:13px }
+.tv-root .tv-section-body { padding:14px 0 0 16px;font-size:14.5px;line-height:1.7 }
+/* Design fields */
+.tv-root .tv-prompt, .tv-root .tv-rubric { font-size:14.5px;line-height:1.75;margin:8px 0;color:var(--tv-text-2) }
+.tv-root .tv-prompt strong, .tv-root .tv-rubric strong { color:var(--tv-text);margin-right:6px;font-weight:600 }
+.tv-root .tv-meta-pills { margin:10px 0;display:flex;flex-wrap:wrap;gap:8px }
+.tv-root .tv-meta-pill { font-size:12px;padding:3px 10px;background:var(--tv-bg-soft);border-radius:10px;color:var(--tv-text-2);font-family:"SF Mono",Menlo,monospace }
+.tv-root .tv-expected { margin-top:12px }
+.tv-root .tv-expected-h { font-size:13px;color:var(--tv-text-2);margin-bottom:6px }
+.tv-root .tv-expect-line { font-size:13px;font-family:"SF Mono",Menlo,monospace;color:var(--tv-text-2);padding:3px 0;line-height:1.6 }
+.tv-root .tv-collapsible { margin-top:10px;font-size:13px }
+.tv-root .tv-collapsible > summary { cursor:pointer;color:var(--tv-text-2) }
+/* Mocks */
+.tv-root .tv-mocks { margin-top:8px }
+.tv-root .tv-mock-line { font-size:12px;font-family:"SF Mono",Menlo,monospace;padding:3px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;line-height:1.6 }
+.tv-root .tv-mock-idx { color:var(--tv-text-3);font-weight:600 }
+.tv-root .tv-mock-tool { background:var(--tv-bg-soft);padding:2px 6px;border-radius:3px }
+.tv-root .tv-mock-match, .tv-root .tv-mock-return { color:var(--tv-text-2);overflow:hidden;text-overflow:ellipsis;max-width:340px;white-space:nowrap }
+.tv-root .tv-mock-arrow { color:var(--tv-text-3) }
+/* Trace turns */
+.tv-root .tv-turn { margin:10px 0;padding:12px 16px;background:var(--tv-bg-soft);border-radius:4px;border-left:2px solid var(--tv-divider) }
+.tv-root .tv-turn-h { font-size:14px;font-weight:500;color:var(--tv-text);margin-bottom:6px }
+.tv-root .tv-turn-dur { color:var(--tv-text-3);font-weight:400;font-size:12px;margin-left:6px }
+.tv-root .tv-thinking { margin:6px 0;font-size:13px }
+.tv-root .tv-thinking summary { cursor:pointer;color:var(--tv-text-3);font-style:italic }
+.tv-root .tv-thinking-body { padding:10px 14px;background:rgba(58,58,58,.04);border-radius:4px;color:var(--tv-text-2);white-space:pre-wrap;font-size:13px;line-height:1.7;margin-top:6px }
+/* Tool calls */
+.tv-root .tv-call { margin:6px 0;padding:10px 14px;background:rgba(58,58,58,.03);border-radius:4px;font-size:13px }
+.tv-root .tv-call--err { border-left:2px solid var(--tv-fail) }
+.tv-root .tv-call-h { font-weight:500;color:var(--tv-text);margin-bottom:4px;font-size:14px }
+.tv-root .tv-call details { margin:4px 0;font-size:12px }
+.tv-root .tv-call summary { cursor:pointer;color:var(--tv-text-3);padding:2px 0 }
+.tv-root .tv-pre { font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:13px;background:rgba(58,58,58,.04);padding:10px 14px;border-radius:4px;overflow:auto;max-height:320px;white-space:pre-wrap;margin:4px 0;color:var(--tv-text-2);line-height:1.55 }
+.tv-root .tv-mock-badge { font-size:12px;color:var(--tv-pass);background:rgba(125,155,118,.12);padding:2px 8px;border-radius:10px;margin-left:8px }
+.tv-root .tv-trace-assert { font-size:13px;font-family:"SF Mono",Menlo,monospace;padding:3px 0;margin-top:6px;line-height:1.5 }
+.tv-root .tv-trace-assert.tv-assert--fail { color:var(--tv-fail) }
+.tv-root .tv-trace-assert.tv-assert--pass { color:var(--tv-text-2) }
+/* Final answer */
+.tv-root .tv-final { margin-top:14px }
+.tv-root .tv-final-h { font-size:14px;font-weight:500;color:var(--tv-text);margin-bottom:6px }
+/* Assertions */
+.tv-root .tv-assert { font-size:14px;font-family:"SF Mono",Menlo,monospace;padding:5px 0;line-height:1.6 }
+.tv-root .tv-assert--pass { color:var(--tv-text-2) }
+.tv-root .tv-assert--fail { color:var(--tv-fail) }
+.tv-root .tv-assert-value { background:rgba(58,58,58,.04);padding:2px 6px;border-radius:3px;margin:0 2px }
+.tv-root .tv-turn-tag { font-size:12px;color:var(--tv-text-3);margin-left:8px;font-style:italic;font-family:-apple-system,sans-serif }
+.tv-root .tv-turn-tag--ok { color:var(--tv-pass) }
+.tv-root .tv-turn-tag--miss { color:var(--tv-fail) }
+.tv-root .tv-assert-msg { font-size:13px;color:var(--tv-text-3);margin-left:20px;margin-top:3px }
+/* Empty/warn states */
+.tv-root .tv-empty, .tv-root .tv-empty-page { color:var(--tv-text-3);font-style:italic;padding:14px 0;font-size:14px }
+.tv-root .tv-warn { color:var(--tv-warn);background:rgba(176,128,48,.08);padding:14px 18px;border-radius:4px;margin:8px 24px;font-size:14px;line-height:1.7 }
+
+/* Context strip — 实验配置 + Agent 概览并排,作为辅助元数据,视觉权重低于综合分 hero / 六维 / 用例详情 */
+.ctx-strip { display:grid;gap:14px;grid-template-columns:1fr 1fr;margin:14px 0 24px }
+@media (max-width:760px) { .ctx-strip { grid-template-columns:1fr } }
+.ctx-block { background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:12px 16px }
+.ctx-h { font-size:13px;color:var(--text-secondary);font-weight:600;margin-bottom:2px;display:flex;align-items:center;gap:4px;letter-spacing:0.02em }
+.ctx-sub { font-size:12px;color:var(--text-muted);margin-bottom:10px }
+.ctx-rows { display:flex;flex-direction:column;gap:6px }
+.ctx-row { padding:8px 12px;background:var(--bg-soft);border-radius:4px;display:flex;align-items:center;gap:10px;font-size:13px;line-height:1.5;flex-wrap:wrap }
+.ctx-row-name { font-weight:600;color:var(--text-primary);font-family:"SF Mono",Menlo,monospace;font-size:12.5px;letter-spacing:-0.01em }
+.ctx-row-bits { color:var(--text-secondary);flex:1;min-width:0;font-size:12.5px }
+.ctx-sep { color:var(--text-muted);margin:0 2px;opacity:0.6 }
+/* 报告身份带 — 极简一行,run-id pill + 时间戳 + verdict pill。完整 H1 + meta 移进各 tab 自己的 panel。 */
+.report-id-line { display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 18px }
+.report-id-pill { font-size:14px;font-family:"SF Mono",Menlo,monospace;color:var(--text-primary);background:var(--bg-surface);padding:5px 12px;border-radius:14px;border:1px solid var(--border);letter-spacing:-0.01em;font-weight:500 }
+.report-id-stamp { font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums }
+/* 顶部 tab 切换器 — 显式 reset border-radius / appearance / outline,
+   防止全局 button 规则给底部加奇怪圆角和深色背景。 */
+.omk-view-tabs { display:flex;gap:0;margin:16px 0 24px;border-bottom:1px solid var(--border) }
+.omk-view-tab { padding:12px 20px;background:transparent;border:none;border-radius:0;cursor:pointer;color:var(--text-secondary);border-bottom:2px solid transparent;font-size:14px;font-weight:500;outline:none;appearance:none;-webkit-appearance:none;margin-bottom:-1px;font-family:inherit }
+.omk-view-tab--active { color:var(--text-primary);border-bottom-color:var(--accent);font-weight:600 }
+.omk-view-tab:hover:not(.omk-view-tab--active) { color:var(--text-primary) }
+.omk-view-tab:focus-visible { outline:2px solid var(--accent);outline-offset:-4px;border-radius:4px }
+/* tab 面板内的 H1 — 跟列表 H1 同级别但加 emoji 区分视角 */
+.omk-view-panel h1 { font-size:1.5rem;margin:0 0 6px }
+.omk-view-panel .subtitle { font-size:14px;color:var(--text-secondary);margin:0 0 20px;line-height:1.6 }
+    </style>
+    <script>
+function omkSwitchVariant(btn) {
+  var target = btn.getAttribute('data-target');
+  var tabs = btn.parentElement.querySelectorAll('.tv-vtab');
+  tabs.forEach(function(t){ t.classList.toggle('tv-vtab--active', t === btn); });
+  var panels = btn.parentElement.parentElement.querySelectorAll('.tv-variant-panel');
+  panels.forEach(function(p){ p.hidden = (p.getAttribute('data-variant') !== target); });
+}
+function omkSwitchView(name) {
+  var tabs = document.querySelectorAll('.omk-view-tab');
+  tabs.forEach(function(t){ t.classList.toggle('omk-view-tab--active', t.getAttribute('data-view') === name); });
+  var panels = document.querySelectorAll('.omk-view-panel');
+  panels.forEach(function(p){ p.hidden = (p.getAttribute('data-view') !== name); });
+}
+</script>
 
     </main>
   <footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer>
@@ -643,54 +1091,89 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunDetail zh 1`] 
       });
     }
   });
+  // 复制 paste-ready 片段到剪贴板:供 insight modal 的"复制片段"按钮调用。
+  // 元素 id 指 <code> 节点;复制后按钮加 .copied 类做 1.5s 视觉反馈。
+  // i18n:按钮反馈文案随页面 data-lang(layout 写在 <html> 上,langToggleScript 切换时更新)。
+  // 未设 dataset 时按 DEFAULT_LANG(zh)兜底,跟旧报告/无 toggle 入口的页面一致。
+  window.omkCopySnippet = function(elementId, btn) {
+    var el = document.getElementById(elementId);
+    if (!el) return;
+    var text = el.textContent || '';
+    var pageLang = document.documentElement.dataset.lang || 'zh';
+    var copiedLabel = pageLang === 'en' ? '✓ Copied' : '✓ 已复制';
+    var done = function() {
+      if (!btn) return;
+      var orig = btn.textContent;
+      btn.textContent = copiedLabel;
+      btn.classList.add('copied');
+      setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function() { /* swallow */ });
+    } else {
+      // 老浏览器兜底:execCommand fallback
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch(e) { /* swallow */ }
+      document.body.removeChild(ta);
+    }
+  };
   </script>
 <style>
+/* Pantone-inspired light theme(2026-05 全站浅色化)。
+   设计原则:暖白底 + 哑色调,不刺眼;字号 14-15px 起;subtle box-shadow 替代 border。
+   旧的深色蓝灰主题已迁移,语义保留但色值翻转。 */
 :root{
-  --bg-base:#0f172a;
-  --bg-surface:rgba(30,41,59,0.7);
-  --bg-elevated:rgba(15,23,42,0.6);
-  --border:rgba(148,163,184,0.1);
-  --border-hover:rgba(148,163,184,0.25);
-  --text-primary:#e2e8f0;
-  --text-secondary:#94a3b8;
-  --text-muted:#64748b;
-  --text-faint:#475569;
-  --accent:#60a5fa;
-  --accent-hover:#93bbfd;
-  --green:#4ade80;
-  --green-bg:rgba(34,197,94,0.12);
-  --red:#f87171;
-  --red-bg:rgba(239,68,68,0.12);
-  --yellow:#fbbf24;
-  --yellow-bg:rgba(245,158,11,0.12);
-  --info-bg:rgba(96,165,250,0.1);
-  --chart-1:#60a5fa;
-  --chart-2:#a78bfa;
-  --chart-3:#34d399;
-  --chart-4:#fb923c;
-  --chart-5:#f472b6;
-  --chart-6:#fbbf24;
-  --bg-card:#1e293b;
+  --bg-base:#fbfaf7;            /* 暖白纸感 */
+  --bg-surface:#ffffff;          /* 卡片白 */
+  --bg-elevated:rgba(58,58,58,.025);
+  --bg-soft:rgba(58,58,58,.04);
+  --border:#e8e3da;              /* 暖灰分隔 */
+  --border-hover:#d4ccbf;
+  --text-primary:#3a3a3a;        /* 深炭灰 */
+  --text-secondary:#7a7a7a;
+  --text-muted:#a8a8a8;
+  --text-faint:#c8c8c8;
+  --accent:#5a7a93;              /* 板岩蓝(slate) */
+  --accent-hover:#3f5d76;
+  --green:#5e8252;               /* 鼠尾草绿(sage) */
+  --green-bg:rgba(94,130,82,.10);
+  --red:#9c4a3f;                 /* 砖红土陶(terracotta) */
+  --red-bg:rgba(156,74,63,.10);
+  --yellow:#b08030;              /* 暖琥珀 */
+  --yellow-bg:rgba(176,128,48,.10);
+  --info-bg:rgba(90,122,147,.08);
+  /* 图表色 — 全部哑色调,跨色相区分但饱和度统一在 ~50% */
+  --chart-1:#5a7a93;
+  --chart-2:#7a6b89;
+  --chart-3:#5e8252;
+  --chart-4:#b08030;
+  --chart-5:#9c6478;
+  --chart-6:#937846;
+  --bg-card:#ffffff;
   --radius:8px;
   --radius-lg:12px;
-  --fs-micro:11px;
-  --fs-detail:12px;
-  --fs-label:12px;
-  --fs-body:13px;
+  /* 字号上调:正文 14px / 标签 13px / 详情 13px / 微元数据 12px */
+  --fs-micro:12px;
+  --fs-detail:13px;
+  --fs-label:13px;
+  --fs-body:14.5px;
+  --shadow-sm:0 1px 3px rgba(58,58,58,.06);
+  --shadow-md:0 2px 8px rgba(58,58,58,.10);
 }
 *{box-sizing:border-box;margin:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:32px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.5;max-width:1100px;margin:0 auto}
-h1{margin:0 0 6px;font-size:1.5rem;font-weight:700;color:var(--text-primary);letter-spacing:-0.02em}
-h2{margin:24px 0 8px;font-size:0.9375rem;color:var(--text-secondary);font-weight:600}
-.subtitle{color:var(--text-muted);font-size:0.8125rem;margin:0 0 20px}
-a{color:var(--accent);text-decoration:none}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;padding:32px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.7;max-width:1100px;margin:0 auto;font-size:var(--fs-body)}
+h1{margin:0 0 8px;font-size:1.75rem;font-weight:600;color:var(--text-primary);letter-spacing:-0.01em;line-height:1.3}
+h2{margin:32px 0 12px;font-size:1.0625rem;color:var(--text-primary);font-weight:600;line-height:1.4}
+.subtitle{color:var(--text-secondary);font-size:0.875rem;margin:0 0 24px}
+a{color:var(--accent);text-decoration:none;transition:color .15s}
 a:hover{color:var(--accent-hover);text-decoration:underline}
 
-/* Meta tags — bumped from 11px/text-muted to 12px/text-secondary so contrast
-   passes WCAG AA on the dark surface. */
-.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}
-.meta-tag{font-size:0.75rem;color:var(--text-secondary);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
-.meta-tag code{font-size:0.7rem;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
+/* Meta tags — 浅色主题下加大对比度,小一点的字号也清晰可读 */
+.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 20px}
+.meta-tag{font-size:13px;color:var(--text-secondary);padding:4px 12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
+.meta-tag code{font-size:12px;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
 
 /* Run ID stamp — H1 保留完整 run-id (与列表页一致), 时间戳从 ID 解出来作为副标小字,
    告诉用户「这次跑的时间」,无需用户自己解析 ID 后缀。 */
@@ -712,11 +1195,12 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .methodology-summary-label{font-size:14px;font-weight:600}
 .methodology-summary-hint{flex:1 1 auto;text-align:right;font-size:11px;color:var(--text-muted);font-weight:400}
 .methodology-badges{display:inline-flex;flex-wrap:wrap;gap:6px}
-.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
-.methodology-badge-pass{background:rgba(74,222,128,0.14);color:var(--green)}
-.methodology-badge-warn{background:rgba(251,191,36,0.16);color:var(--yellow)}
-.methodology-badge-fail{background:rgba(248,113,113,0.16);color:var(--red)}
-.methodology-badge-skip{background:rgba(148,163,184,0.12);color:var(--text-muted)}
+.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
+/* Pantone 哑色 — 用 var(--green-bg) 等(浅色主题已重定义) */
+.methodology-badge-pass{background:var(--green-bg);color:var(--green)}
+.methodology-badge-warn{background:var(--yellow-bg);color:var(--yellow)}
+.methodology-badge-fail{background:var(--red-bg);color:var(--red)}
+.methodology-badge-skip{background:var(--bg-soft);color:var(--text-muted)}
 .methodology-body{padding:0 16px 14px;border-top:1px solid var(--border);margin-top:8px}
 .methodology-body>h2:first-child{margin-top:14px}
 
@@ -724,20 +1208,23 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .cards{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
 .card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;min-width:140px;flex:1;transition:border-color 0.15s}
 .card:hover{border-color:var(--border-hover)}
-.card-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px}
-.card-value{font-size:22px;font-weight:700;margin:2px 0;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.card-sub{font-size:11px;color:var(--text-muted)}
+/* 卡片标签:de-uppercase(uppercase 在 pantone 哑色调里太"科技报"),轻微 letter-spacing
+   保留排版感,字号上调到 12 让读者看清。值/数字改 weight 600(700 在浅色配色里太硬)。 */
+.card-label{font-size:12px;color:var(--text-muted);letter-spacing:0.02em;margin-bottom:4px;font-weight:500}
+.card-value{font-size:20px;font-weight:600;margin:2px 0;color:var(--text-primary);font-variant-numeric:tabular-nums;line-height:1.3}
+.card-sub{font-size:12px;color:var(--text-muted);line-height:1.5}
 /* Summary table — inherits the global center + middle from the base td/th. */
-.summary-cell{min-width:100px}
-.summary-value-primary{font-size:1.375rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
+.summary-cell{min-width:96px}
+.summary-value-primary{font-size:1.25rem;font-weight:600;font-variant-numeric:tabular-nums}
 
 /* Hint tooltip (legacy span-based, kept for hover-only hints) */
 .hint{position:relative;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;font-size:10px;font-weight:600;color:var(--text-muted);border:1px solid var(--border-hover);border-radius:50%;cursor:help;margin-left:6px;vertical-align:middle}
 .hint-click{cursor:pointer}
 
 /* Hint button — accessible, keyboard-focusable replacement for click-to-open-modal hints */
-button.hint-btn{display:inline-flex;align-items:center;justify-content:center;min-width:22px;min-height:22px;padding:3px;font-size:var(--fs-micro);font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border-hover);border-radius:50%;cursor:pointer;margin-left:6px;vertical-align:middle;line-height:1;transition:color 0.15s,border-color 0.15s}
-button.hint-btn:hover{color:var(--text-primary);border-color:var(--text-primary)}
+button.hint-btn{display:inline-flex;align-items:center;justify-content:center;min-width:20px;min-height:20px;padding:2px;font-size:11px;font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border);border-radius:50%;cursor:pointer;margin-left:6px;vertical-align:middle;line-height:1;transition:color 0.15s,border-color 0.15s;outline:none;appearance:none}
+button.hint-btn:hover{color:var(--text-primary);border-color:var(--text-secondary)}
+button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* Verdict + detail pattern used in variance & significance cells */
@@ -914,9 +1401,9 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 @media(max-width:480px){.modal-table td{display:block;padding:3px 0}.modal-table td:first-child{font-weight:600}}
 .hint-tip{display:none;position:absolute;bottom:calc(100% + 6px);right:0;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:var(--radius);padding:6px 10px;font-size:11px;font-weight:400;color:var(--text-secondary);white-space:normal;max-width:280px;width:max-content;z-index:10}
 .hint:hover .hint-tip,.hint:focus .hint-tip{display:block}
-.summary-value{font-size:1rem;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.summary-detail{font-size:0.6875rem;color:var(--text-muted);margin-top:3px}
-.summary-unit{font-size:0.75rem;font-weight:400;color:var(--text-muted)}
+.summary-value{font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.summary-detail{font-size:12px;color:var(--text-muted);margin-top:4px;line-height:1.5}
+.summary-unit{font-size:12px;font-weight:400;color:var(--text-muted)}
 .card-detail{margin-top:8px;font-size:12px;color:var(--text-secondary)}
 .card-detail div{margin:2px 0}
 
@@ -927,9 +1414,12 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 @media(max-width:768px){
   .table-wrap::after{content:'';position:sticky;right:0;top:0;display:block;float:right;width:32px;height:100%;margin-left:-32px;margin-top:-100%;pointer-events:none;background:linear-gradient(to right,transparent,var(--bg-card) 85%);z-index:2}
 }
-table{border-collapse:collapse;width:100%;font-size:0.8125rem;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;line-height:1.4}
-th{background:var(--bg-elevated);padding:8px 14px;text-align:center;vertical-align:middle;font-weight:500;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap}
-td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
+/* 表格 — 稍紧凑(padding 7px 12px),正文 13px,字号上调跟全站对齐;
+   非数字列保留 left-align(td.text 类),其它默认居中。 */
+table{border-collapse:collapse;width:100%;font-size:13px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;line-height:1.5}
+th{background:var(--bg-elevated);padding:8px 12px;text-align:center;vertical-align:middle;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border);font-size:12px;letter-spacing:0.02em;white-space:nowrap}
+td{padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
+td:first-child, th:first-child { text-align:left }
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(148,163,184,0.04)}
 
@@ -961,9 +1451,11 @@ tr:hover td{background:rgba(148,163,184,0.04)}
 .bar-value{flex:0 0 auto;font-size:12px;color:var(--text-secondary)}
 
 /* Forms */
-input[type="text"]{background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius);padding:4px 8px;font-size:12px}
-input[type="text"]:focus{outline-color:transparent;border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
-button{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius);cursor:pointer;padding:4px 12px;font-size:12px;transition:border-color 0.15s,color 0.15s}
+input[type="text"]{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius);padding:6px 12px;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
+input[type="text"]:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--info-bg)}
+/* 通用 button — 浅色主题里默认 transparent + 边框更细。子样式(.run-card-delete, .tv-vtab,
+   .omk-view-tab, .hint-btn 等)各自有显式 reset 覆盖默认样式。 */
+button{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius);cursor:pointer;padding:6px 14px;font-size:13px;font-family:inherit;transition:border-color .15s,color .15s,background .15s;outline:none;appearance:none;-webkit-appearance:none}
 button:hover{border-color:var(--border-hover);color:var(--text-primary)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
@@ -1011,11 +1503,21 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body><button id="lang-toggle" onclick="switchLang()" class="lang-toggle">英文</button>
+</style></head><body>
     <main>
     <nav class="nav"><a href="/" data-i18n="backToList">← 返回列表</a></nav>
-    <h1>test-run-20260325-1000</h1>
-    <p class="run-id-stamp">运行时间: 2026-03-25 10:00</p>
+    <div class="report-id-line">
+      <code class="report-id-pill">test-run-20260325-1000</code>
+      <span class="report-id-stamp">2026-03-25 10:00</span>
+    </div>
+
+    <div class="omk-view-tabs" role="tablist">
+      <button type="button" class="omk-view-tab omk-view-tab--active" data-view="score" onclick="omkSwitchView('score')">📊 评测视角</button>
+      <button type="button" class="omk-view-tab" data-view="test" onclick="omkSwitchView('test')">✅ 功能视角</button>
+    </div>
+
+    <div class="omk-view-panel" data-view="score">
+    <p class="subtitle">主观质量打分(judge)+ 客观断言聚合,产出综合评分与 verdict</p>
     <section class="page-verdict verdict-CAUTIOUS" role="status" data-verdict-level="CAUTIOUS" aria-label="测评结论: 略微进步 · 需排查 · v2 比 v1 略好——但建议再仔细看，差距很小或某层未达标" title="实验组略优于对照组,但差距小或某层未达 gate">
     <div class="page-verdict-head">
       <span class="page-verdict-badge"><span class="page-verdict-badge-dot" aria-hidden="true">●</span>略微进步</span>
@@ -1024,73 +1526,20 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
 
   </section>
     <div class="meta-tags">
-      <span class="meta-tag">任务执行模型: sonnet</span>
-      <span class="meta-tag">评委: claude:haiku</span>
+    <span class="meta-tag">任务执行模型: sonnet</span>
+    <span class="meta-tag">评委: claude:haiku</span>
 
-      <span class="meta-tag">执行器: claude</span>
-      <span class="meta-tag">执行成本: $0.0380</span>
-      <span class="meta-tag">已上报总成本: $0.0500</span>
-      <span class="meta-tag">耗时: 10.0s</span>
+    <span class="meta-tag">执行器: claude</span>
 
-
-
-
-
-    </div>
+    <span class="meta-tag">执行成本: $0.0380</span>
+    <span class="meta-tag">已上报总成本: $0.0500</span>
+    <span class="meta-tag">耗时: 10.0s</span>
 
 
 
 
-    <section style="margin:20px 0">
-      <h2 style="display:flex;align-items:center;gap:4px">实验配置 <button type="button" class="hint-btn" onclick="openModal('guide-variant-config')" aria-label="先看清楚在比较什么，再看分数。本表展示每个 variant 背后的 artifact 和运行环境。" aria-haspopup="dialog">?</button></h2>
-      <p style="font-size:12px;color:var(--text-muted);margin-bottom:8px">2 个评测用例 × 2 组实验</p>
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>🏷️ 实验分组</th>
-            <th>🧪 实验类型</th>
-            <th>📦 知识类型</th>
-            <th>📂 知识来源</th>
-            <th>⚙️ 执行策略</th>
-            <th>🖥️ 运行环境</th>
-          </tr></thead>
-          <tbody><tr>
-      <td style="border-left:3px solid var(--chart-1);padding-left:12px"><strong>v1</strong></td>
-      <td>知识注入</td>
-      <td>Skill</td>
-      <td>本地文件</td>
-      <td>系统提示词</td>
-      <td title="">默认</td>
-    </tr><tr>
-      <td style="border-left:3px solid var(--chart-2);padding-left:12px"><strong>v2</strong></td>
-      <td>仅运行环境</td>
-      <td>基线</td>
-      <td>无</td>
-      <td>无注入</td>
-      <td title="/tmp/project-a">/tmp/project-a</td>
-    </tr></tbody>
-        </table>
-      </div>
-    </section>
-    <div id="guide-variant-config" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="guide-variant-config-title" onclick="if(event.target===this)closeModal('guide-variant-config')">
-      <div class="modal-content">
-        <div class="modal-header">
-          <strong id="guide-variant-config-title" style="font-size:1rem">如何阅读实验配置？</strong>
-          <button type="button" class="modal-close" onclick="closeModal('guide-variant-config')" aria-label="关闭">✕</button>
-        </div>
-        <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 16px">先看清楚在比较什么，再看分数。本表展示每个 variant 背后的 artifact 和运行环境。</p>
-        <table class="modal-table"><tbody>
 
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>实验分组</strong></td><td style="padding:6px 0;color:var(--text-secondary)">实验分组的名称标签</td></tr>
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>实验类型</strong></td><td style="padding:6px 0;color:var(--text-secondary)">该分组属于哪种实验类型（baseline / 仅运行环境 / 知识注入）</td></tr>
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>知识类型</strong></td><td style="padding:6px 0;color:var(--text-secondary)">被评测对象的类型（skill / agent / workflow / baseline）</td></tr>
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>知识来源</strong></td><td style="padding:6px 0;color:var(--text-secondary)">知识从哪里加载（本地文件 / Git 版本 / 内联）</td></tr>
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>执行策略</strong></td><td style="padding:6px 0;color:var(--text-secondary)">知识如何注入执行（system-prompt / user-prompt / agent-session）</td></tr>
-          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>运行环境</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Agent 运行的工作目录（影响可访问的文件和工具）</td></tr>
-
-        </tbody></table>
-      </div>
-    </div>
+  </div>
 
 
     <section>
@@ -1134,12 +1583,75 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a></p>
     </div>
   </div>
+    <div class="sm-hero-list">
+    <div class="sm-hero-h">
+      综合分
+      <button type="button" class="hint-btn" onclick="openModal('guide-scoring')" aria-label="综合分怎么算的？" aria-haspopup="dialog">?</button>
+    </div>
+    <div class="sm-hero" style="border-left:3px solid var(--chart-1)">
+      <div class="sm-hero-name">v1</div>
+      <div class="sm-hero-score" style="color:var(--green)">4.00<span class="sm-hero-unit">/ 5</span></div>
+      <span class="sm-hero-delta-placeholder"></span>
+    </div><div class="sm-hero" style="border-left:3px solid var(--chart-2)">
+      <div class="sm-hero-name">v2</div>
+      <div class="sm-hero-score" style="color:var(--green)">4.80<span class="sm-hero-unit">/ 5</span></div>
+      <span class="sm-hero-delta" style="color:var(--green)">+0.80 ↑</span>
+    </div>
+  </div>
     <div class="table-wrap">
     <table class="summary-table">
-      <thead><tr><th data-i18n="variants">实验分组</th><th data-i18n="dimComposite" style="border-right:2px solid var(--border)">综合分 <button type="button" class="hint-btn" onclick="openModal('guide-scoring')" aria-label="综合分怎么算的？" aria-haspopup="dialog">?</button></th><th data-i18n="dimFact">📋 事实</th><th data-i18n="dimBehavior">🛠️ 行为</th><th data-i18n="dimJudge">💬 LLM 评价</th><th data-i18n="dimCost">💰 执行成本</th><th data-i18n="dimEfficiency">⚡ 效率</th><th data-i18n="dimStability">🛡️ 稳定性</th></tr></thead>
-      <tbody><tr><td style="border-left:3px solid var(--chart-1);padding-left:12px"><strong>v1</strong></td><td class="summary-cell" style="border-right:2px solid var(--border)"><div class="summary-value summary-value-primary" style="color:var(--green);font-weight:700">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.20</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--yellow)">3.80</div></td><td class="summary-cell"><div class="summary-value">$0.0200</div><div class="summary-detail">600 tokens/次</div></td><td class="summary-cell"><div class="summary-value">2.0s<span class="summary-unit">/次</span></div><div class="summary-detail">1 轮/次 · 总计 4.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ 未测量</div><div class="summary-detail"><span style="color:var(--red)">单轮评测,加 --repeat ≥ 2 才能测 CV</span></div></td></tr><tr><td style="border-left:3px solid var(--chart-2);padding-left:12px"><strong>v2</strong></td><td class="summary-cell" style="border-right:2px solid var(--border)"><div class="summary-value summary-value-primary" style="color:var(--green);font-weight:700">4.80</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">5.00</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.80</div></td><td class="summary-cell"><div class="summary-value summary-value-primary" style="color:var(--green)">4.60</div></td><td class="summary-cell"><div class="summary-value">$0.0180</div><div class="summary-detail">720 tokens/次</div></td><td class="summary-cell"><div class="summary-value">3.0s<span class="summary-unit">/次</span></div><div class="summary-detail">1 轮/次 · 总计 6.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ 未测量</div><div class="summary-detail"><span style="color:var(--red)">单轮评测,加 --repeat ≥ 2 才能测 CV</span></div></td></tr></tbody>
+      <thead><tr><th data-i18n="variants">实验分组</th><th data-i18n="dimFact">📋 事实</th><th data-i18n="dimBehavior">🛠️ 行为</th><th data-i18n="dimJudge">💬 LLM 评价</th><th data-i18n="dimCost">💰 执行成本</th><th data-i18n="dimEfficiency">⚡ 效率</th><th data-i18n="dimStability">🛡️ 稳定性</th></tr></thead>
+      <tbody><tr><td style="border-left:3px solid var(--chart-1);padding-left:12px"><strong>v1</strong></td><td class="summary-cell sm-heat-pass"><div class="summary-value summary-value-primary" style="color:var(--green)">4.20</div></td><td class="summary-cell sm-heat-pass"><div class="summary-value summary-value-primary" style="color:var(--green)">4.00</div></td><td class="summary-cell sm-heat-warn"><div class="summary-value summary-value-primary" style="color:var(--yellow)">3.80</div></td><td class="summary-cell"><div class="summary-value">$0.0200</div><div class="summary-detail">600 tokens/次</div></td><td class="summary-cell"><div class="summary-value">2.0s<span class="summary-unit">/次</span></div><div class="summary-detail">1 轮/次 · 总计 4.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ 未测量</div><div class="summary-detail"><span style="color:var(--red)">单轮评测,加 --repeat ≥ 2 才能测 CV</span></div></td></tr><tr><td style="border-left:3px solid var(--chart-2);padding-left:12px"><strong>v2</strong></td><td class="summary-cell sm-heat-pass"><div class="summary-value summary-value-primary" style="color:var(--green)">5.00</div></td><td class="summary-cell sm-heat-pass"><div class="summary-value summary-value-primary" style="color:var(--green)">4.80</div></td><td class="summary-cell sm-heat-pass"><div class="summary-value summary-value-primary" style="color:var(--green)">4.60</div></td><td class="summary-cell"><div class="summary-value">$0.0180</div><div class="summary-detail">720 tokens/次</div></td><td class="summary-cell"><div class="summary-value">3.0s<span class="summary-unit">/次</span></div><div class="summary-detail">1 轮/次 · 总计 6.0s</div></td><td class="summary-cell"><div class="summary-value" style="color:var(--red)">⚠ 未测量</div><div class="summary-detail"><span style="color:var(--red)">单轮评测,加 --repeat ≥ 2 才能测 CV</span></div></td></tr></tbody>
     </table>
-    </div></section>
+    </div>
+    <style>
+    /* 六维对比 — Hero 区(每 variant 综合分 + delta) */
+    .sm-hero-list { display:flex;flex-direction:column;gap:8px;margin:14px 0 18px }
+    .sm-hero-h { font-size:13px;color:var(--text-muted);margin-bottom:4px;letter-spacing:0.02em }
+    .sm-hero { display:flex;align-items:baseline;gap:16px;padding:14px 18px;background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm) }
+    .sm-hero-name { flex:1;font-size:14.5px;font-weight:500;color:var(--text-primary) }
+    .sm-hero-score { font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1 }
+    .sm-hero-unit { font-size:13px;color:var(--text-muted);margin-left:4px;font-weight:400 }
+    .sm-hero-delta { font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace;min-width:60px;text-align:right }
+    .sm-hero-delta-placeholder { display:inline-block;min-width:60px }
+    /* 六维 heatmap — 每格按分数浅色填充,便于远看识别弱维度 */
+    .sm-heat-pass { background:linear-gradient(0deg,var(--green-bg),var(--green-bg)) }
+    .sm-heat-warn { background:linear-gradient(0deg,var(--yellow-bg),var(--yellow-bg)) }
+    .sm-heat-fail { background:linear-gradient(0deg,var(--red-bg),var(--red-bg)) }
+    </style></section>
+    <div class="ctx-strip">
+    <div class="ctx-block">
+      <div class="ctx-h">实验配置 <button type="button" class="hint-btn" onclick="openModal('guide-variant-config')" aria-label="先看清楚在比较什么，再看分数。本表展示每个 variant 背后的 artifact 和运行环境。" aria-haspopup="dialog">?</button></div>
+      <div class="ctx-sub">2 个用例 × 2 组实验</div>
+      <div class="ctx-rows"><div class="ctx-row" style="border-left:3px solid var(--chart-1)" title="实验类型: 知识注入 · 知识类型: Skill · 知识来源: 本地文件 · 执行策略: 系统提示词 · 运行环境: 默认">
+      <span class="ctx-row-name">v1</span>
+      <span class="ctx-row-bits">知识注入 <span class="ctx-sep">·</span> Skill <span class="ctx-sep">·</span> 本地文件 <span class="ctx-sep">·</span> 系统提示词 <span class="ctx-sep">·</span> 默认 cwd</span>
+    </div><div class="ctx-row" style="border-left:3px solid var(--chart-2)" title="实验类型: 仅运行环境 · 知识类型: 基线 · 知识来源: 无来源 · 执行策略: 无注入 · 运行环境: /tmp/project-a">
+      <span class="ctx-row-name">v2</span>
+      <span class="ctx-row-bits">仅运行环境 <span class="ctx-sep">·</span> 基线 <span class="ctx-sep">·</span> 无来源 <span class="ctx-sep">·</span> 无注入 <span class="ctx-sep">·</span> /tmp/project-a</span>
+    </div></div>
+    </div>
+    <div id="guide-variant-config" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="guide-variant-config-title" onclick="if(event.target===this)closeModal('guide-variant-config')">
+      <div class="modal-content">
+        <div class="modal-header">
+          <strong id="guide-variant-config-title" style="font-size:1rem">如何阅读实验配置？</strong>
+          <button type="button" class="modal-close" onclick="closeModal('guide-variant-config')" aria-label="关闭">✕</button>
+        </div>
+        <p style="font-size:13px;color:var(--text-secondary);margin:4px 0 16px">先看清楚在比较什么，再看分数。本表展示每个 variant 背后的 artifact 和运行环境。</p>
+        <table class="modal-table"><tbody>
+
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>实验分组</strong></td><td style="padding:6px 0;color:var(--text-secondary)">实验分组的名称标签</td></tr>
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>实验类型</strong></td><td style="padding:6px 0;color:var(--text-secondary)">该分组属于哪种实验类型（baseline / 仅运行环境 / 知识注入）</td></tr>
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>知识类型</strong></td><td style="padding:6px 0;color:var(--text-secondary)">被评测对象的类型（skill / agent / workflow / baseline）</td></tr>
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>知识来源</strong></td><td style="padding:6px 0;color:var(--text-secondary)">知识从哪里加载（本地文件 / Git 版本 / 内联）</td></tr>
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>执行策略</strong></td><td style="padding:6px 0;color:var(--text-secondary)">知识如何注入执行（system-prompt / user-prompt / agent-session）</td></tr>
+          <tr><td style="padding:6px 0;color:var(--text-primary)"><strong>运行环境</strong></td><td style="padding:6px 0;color:var(--text-secondary)">Agent 运行的工作目录（影响可访问的文件和工具）</td></tr>
+
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+
 
 
 
@@ -1178,16 +1690,400 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
 
 
 
-
-
     <section>
     <h2 data-i18n="perSampleDetail">逐用例详情</h2>
-    <div class="table-wrap">
-    <table>
-      <thead><tr><th data-i18n="sample">用例</th><th>v1 <span data-i18n="scoreCol">分数</span></th><th>v1 <span data-i18n="tokensCol">Tokens</span></th><th>v1 <span data-i18n="msCol">延迟(ms)</span></th><th>v2 <span data-i18n="scoreCol">分数</span></th><th>v2 <span data-i18n="tokensCol">Tokens</span></th><th>v2 <span data-i18n="msCol">延迟(ms)</span></th></tr></thead>
-      <tbody><tr><td><strong>s001</strong></td><td><span class="badge badge-ok">4</span><br><span style="font-size:11px;color:var(--text-muted)">Decent analysis</span></td><td>600</td><td>2.0s</td><td><span class="badge badge-ok">4.5</span><br><span style="font-size:11px;color:var(--text-muted)">Thorough review</span></td><td>700<span style="color:var(--red);font-size:11px;margin-left:4px">↑16.7%</span></td><td>2.5s<span style="color:var(--red);font-size:11px;margin-left:4px">↑25%</span></td></tr></tbody>
-    </table>
-    </div></section>
+    <div class="sc-sample-list"><details class="sc-sample-card">
+      <summary class="sc-sample-h">
+        <code class="sc-sample-id">s001</code>
+        <span class="sc-sample-scores"><span class="sc-summary-score" style="color:var(--green)">v1 4.00</span><span class="sc-summary-sep">·</span><span class="sc-summary-score" style="color:var(--green)">v2 4.50</span></span>
+      </summary>
+      <div class="sc-sample-body">
+        <div class="sc-variants" data-cols="2"><div class="sc-variant">
+    <div class="sc-variant-h">v1</div>
+    <div class="sc-score-line"><span class="sc-score" style="color:var(--green)">4</span><span class="sc-score-unit">/ 5</span></div>
+
+
+    <div class="sc-section sc-section--muted">断言全过 <span class="sc-stat">2/2</span></div>
+
+    <div class="sc-section"><div class="sc-section-h">Judge 评价</div><div class="sc-judge-text">Decent analysis</div></div>
+
+
+    <div class="sc-meta"><div class="sc-meta-row"><span class="sc-meta-name">Tokens</span>600</div><div class="sc-meta-row"><span class="sc-meta-name">耗时</span>2.0s</div></div>
+  </div><div class="sc-variant">
+    <div class="sc-variant-h">v2</div>
+    <div class="sc-score-line"><span class="sc-score" style="color:var(--green)">4.5</span><span class="sc-score-unit">/ 5</span><span style="color:var(--green);font-size:13px;margin-left:8px;font-weight:600">+0.50</span></div>
+
+
+    <div class="sc-section sc-section--muted">断言全过 <span class="sc-stat">2/2</span></div>
+
+    <div class="sc-section"><div class="sc-section-h">Judge 评价</div><div class="sc-judge-text">Thorough review</div></div>
+
+
+    <div class="sc-meta"><div class="sc-meta-row"><span class="sc-meta-name">Tokens</span>700</div><div class="sc-meta-row"><span class="sc-meta-name">耗时</span>2.5s</div></div>
+  </div></div>
+      </div>
+    </details></div>
+    <style>
+    /* 评分页 — 逐用例详情卡片(替代旧 table)
+       结构:
+         .sc-sample-list   外层 stack
+           .sc-sample-card    一条用例,可折叠 details
+             .sc-sample-h     头(id + 各 variant 分数摘要)
+             .sc-sample-body  体
+               .sc-variants    grid 多列(每 variant 一栏)
+                 .sc-variant     单 variant 评分块
+       关键:文本左对齐,数字右对齐 + tabular-nums,分段而非表格,
+       减少居中混排和长短文本拥挤。 */
+    .sc-sample-list { display:flex;flex-direction:column;gap:8px;margin:12px 0 }
+    .sc-sample-card { background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);transition:box-shadow .15s }
+    .sc-sample-card:hover { box-shadow:var(--shadow-md) }
+    .sc-sample-card[open] { box-shadow:var(--shadow-md) }
+    .sc-sample-h { display:flex;align-items:center;gap:14px;padding:14px 18px;cursor:pointer;list-style:none;font-size:14.5px }
+    .sc-sample-h::-webkit-details-marker { display:none }
+    .sc-sample-h::after { content:'›';margin-left:auto;color:var(--text-muted);font-size:18px;transition:transform .15s }
+    .sc-sample-card[open] .sc-sample-h::after { transform:rotate(90deg) }
+    .sc-sample-id { font-family:"SF Mono",Menlo,monospace;color:var(--text-muted);font-size:13px;font-weight:500;letter-spacing:-0.01em }
+    .sc-sample-scores { display:flex;align-items:center;gap:8px;font-size:13px;font-variant-numeric:tabular-nums;color:var(--text-secondary) }
+    .sc-summary-score { font-family:"SF Mono",Menlo,monospace;font-weight:500 }
+    .sc-summary-score--muted { color:var(--text-muted) }
+    .sc-summary-sep { color:var(--text-muted) }
+    .sc-sample-body { padding:0 18px 18px;border-top:1px solid var(--border) }
+    /* 多列 grid:1 variant 用单列;2 用 1fr 1fr;>=3 自适应 */
+    .sc-variants { display:grid;gap:24px;margin-top:18px;grid-template-columns:1fr }
+    .sc-variants[data-cols="2"] { grid-template-columns:1fr 1fr }
+    .sc-variants[data-cols="3"] { grid-template-columns:repeat(3,1fr) }
+    .sc-variants[data-cols="4"] { grid-template-columns:repeat(2,1fr) }
+    @media (max-width:760px){ .sc-variants, .sc-variants[data-cols="2"], .sc-variants[data-cols="3"], .sc-variants[data-cols="4"] { grid-template-columns:1fr } }
+    .sc-variant { background:var(--bg-soft);border-radius:6px;padding:14px 16px;font-size:14px;line-height:1.7 }
+    .sc-variant-h { font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:8px;letter-spacing:0.02em;font-family:"SF Mono",Menlo,monospace }
+    .sc-score-line { display:flex;align-items:baseline;gap:6px;margin-bottom:14px }
+    .sc-score { font-size:32px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1 }
+    .sc-score-unit { font-size:14px;color:var(--text-muted);font-weight:400 }
+    .sc-stab { font-size:12px;color:var(--text-muted);margin-left:8px;font-family:"SF Mono",Menlo,monospace;background:var(--bg-soft);padding:2px 6px;border-radius:3px }
+    .sc-stab--fail { color:var(--red);background:var(--red-bg) }
+    .sc-layers { display:flex;flex-direction:column;gap:4px;margin-bottom:8px }
+    .sc-layer-row { display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px;line-height:1.6 }
+    .sc-layer-name { color:var(--text-secondary) }
+    .sc-layer-val { font-weight:600;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace }
+    .sc-section { margin-top:14px }
+    .sc-section--muted { color:var(--text-muted);font-size:13px }
+    .sc-section-h { font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:6px }
+    .sc-stat { color:var(--text-muted);font-weight:400;margin-left:6px;font-variant-numeric:tabular-nums }
+    .sc-assert-list { margin:0;padding-left:20px;font-size:13px;line-height:1.7;color:var(--text-secondary) }
+    .sc-assert-list li { margin:3px 0 }
+    .sc-assert-list code { font-family:"SF Mono",Menlo,monospace;background:var(--bg-surface);padding:1px 6px;border-radius:3px;font-size:12px }
+    .sc-judge-text { font-size:13.5px;line-height:1.7;color:var(--text-primary);white-space:pre-wrap;word-break:break-word }
+    .sc-cot { margin-top:8px;font-size:12px }
+    .sc-cot summary { cursor:pointer;color:var(--text-muted) }
+    .sc-cot-body { font-size:12.5px;line-height:1.7;color:var(--text-secondary);white-space:pre-wrap;font-family:inherit;background:var(--bg-surface);padding:10px 14px;border-radius:4px;margin-top:6px;max-height:400px;overflow-y:auto }
+    .sc-meta { margin-top:14px;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px }
+    .sc-meta-row { display:flex;justify-content:space-between;font-size:12.5px;color:var(--text-muted);font-variant-numeric:tabular-nums }
+    .sc-meta-name { color:var(--text-muted) }
+    .sc-error { margin-top:10px;padding:10px 14px;background:var(--red-bg);border-left:3px solid var(--red);border-radius:4px;font-size:13px;color:var(--red);line-height:1.6 }
+    .sc-empty { color:var(--text-muted);font-style:italic;padding:14px 0 }
+    </style></section>
+    </div>
+
+    <div class="omk-view-panel" data-view="test" hidden>
+    <p class="subtitle">每条用例当一条功能测试看:期望(rubric/assertions/mocks)、实际执行(trace)、失败时给诊断建议</p>
+    <div class="meta-tags">
+    <span class="meta-tag">2 用例</span>
+    <span class="meta-tag" style="color:var(--green)">✓ 1 通过</span>
+
+
+    <span class="meta-tag">v1 · v2</span>
+  </div>
+    <div class="tv-root"><div class="tv-warn">⚠ 该 report 缺 sampleSnapshots(早期版本生成),只能展示执行结果,无设计信息</div>
+    <div class="tv-variant-tabs"><button type="button" class="tv-vtab tv-vtab--active" data-target="v1" onclick="omkSwitchVariant(this)">v1</button><button type="button" class="tv-vtab " data-target="v2" onclick="omkSwitchVariant(this)">v2</button></div>
+    <div class="tv-variant-panel" data-variant="v1" >
+      <div class="tv-variant-stats">
+        <span class="tv-stat tv-stat--pass"><span class="tv-stat-num">1</span>通过</span>
+        <span class="tv-stat tv-stat--fail"><span class="tv-stat-num">0</span>失败</span>
+
+        <span class="tv-stat"><span class="tv-stat-num">4.0</span>平均分</span>
+      </div>
+
+
+      <div class="tv-group-sep">通过用例</div>
+         <div class="tv-rows"><details class="tv-row tv-row--pass">
+    <summary class="tv-row-h">
+    <span class="tv-dot tv-dot--pass"></span>
+    <code class="tv-id">s001</code>
+    <span class="tv-title">(无 prompt 快照)</span>
+    <span class="tv-meta">2.0s</span>
+  </summary>
+    <div class="tv-row-body">
+    <details class="tv-section"><summary>用例设计</summary><div class="tv-section-body"><div class="tv-empty">该 report 早于单测视角支持时间,缺设计快照</div></div></details>
+    <details class="tv-section"><summary>执行轨迹<span class="tv-section-stat">(0 步 · 0 工具调用)</span></summary><div class="tv-section-body"><div class="tv-section tv-section--trace">
+      <div class="tv-section-h">🎬 执行轨迹</div>
+      <div class="tv-empty">该 variant 无 turn 轨迹(executor 未上报)</div>
+    </div></div></details>
+    <details class="tv-section"><summary>断言结果<span class="tv-section-stat">(2/2)</span></summary><div class="tv-section-body"><div class="tv-section tv-section--asserts">
+      <div class="tv-section-h">📊 断言结果 <span class="tv-section-stat">(2/2)</span></div>
+      <div class="tv-assert tv-assert--pass">
+    ✅ <code>contains</code> <code class="tv-assert-value">SQL</code><span class="tv-turn-tag">@ 全文输出</span>
+
+  </div><div class="tv-assert tv-assert--pass">
+    ✅ <code>min_length</code> <code class="tv-assert-value">50</code><span class="tv-turn-tag">@ 全文输出</span>
+
+  </div>
+    </div></div></details>
+  </div>
+  </details></div>
+    </div><div class="tv-variant-panel" data-variant="v2" hidden>
+      <div class="tv-variant-stats">
+        <span class="tv-stat tv-stat--pass"><span class="tv-stat-num">1</span>通过</span>
+        <span class="tv-stat tv-stat--fail"><span class="tv-stat-num">0</span>失败</span>
+
+        <span class="tv-stat"><span class="tv-stat-num">4.5</span>平均分</span>
+      </div>
+
+
+      <div class="tv-group-sep">通过用例</div>
+         <div class="tv-rows"><details class="tv-row tv-row--pass">
+    <summary class="tv-row-h">
+    <span class="tv-dot tv-dot--pass"></span>
+    <code class="tv-id">s001</code>
+    <span class="tv-title">(无 prompt 快照)</span>
+    <span class="tv-meta">2.5s</span>
+  </summary>
+    <div class="tv-row-body">
+    <details class="tv-section"><summary>用例设计</summary><div class="tv-section-body"><div class="tv-empty">该 report 早于单测视角支持时间,缺设计快照</div></div></details>
+    <details class="tv-section"><summary>执行轨迹<span class="tv-section-stat">(0 步 · 0 工具调用)</span></summary><div class="tv-section-body"><div class="tv-section tv-section--trace">
+      <div class="tv-section-h">🎬 执行轨迹</div>
+      <div class="tv-empty">该 variant 无 turn 轨迹(executor 未上报)</div>
+    </div></div></details>
+    <details class="tv-section"><summary>断言结果<span class="tv-section-stat">(2/2)</span></summary><div class="tv-section-body"><div class="tv-section tv-section--asserts">
+      <div class="tv-section-h">📊 断言结果 <span class="tv-section-stat">(2/2)</span></div>
+      <div class="tv-assert tv-assert--pass">
+    ✅ <code>contains</code> <code class="tv-assert-value">SQL</code><span class="tv-turn-tag">@ 全文输出</span>
+
+  </div><div class="tv-assert tv-assert--pass">
+    ✅ <code>min_length</code> <code class="tv-assert-value">50</code><span class="tv-turn-tag">@ 全文输出</span>
+
+  </div>
+    </div></div></details>
+  </div>
+  </details></div>
+    </div></div>
+    </div>
+
+    <style>
+/* tv-root: 浅色岛,scoped 覆盖外层深色 layout */
+.tv-root {
+  --tv-bg:#fbfaf7; --tv-bg-card:#ffffff; --tv-bg-soft:rgba(58,58,58,.025);
+  --tv-text:#3a3a3a; --tv-text-2:#7a7a7a; --tv-text-3:#a8a8a8;
+  --tv-divider:#e8e3da;
+  /* 加大 pass / fail / tripwire 的色相距离 + 暗度差,避免远看雷同。
+     pass: 鼠尾草绿(暗一档,靠近林地);fail: 砖红土陶(暗一档,远离 pink);tripwire: 紫罗兰(独立色相)。 */
+  --tv-pass:#5e8252; --tv-fail:#9c4a3f; --tv-tripwire:#7a6b89;
+  --tv-pass-soft:rgba(94,130,82,.10); --tv-fail-soft:rgba(156,74,63,.10); --tv-tripwire-soft:rgba(122,107,137,.10);
+  --tv-accent:#5a7a93; --tv-warn:#b08030;
+  --tv-shadow:0 1px 3px rgba(58,58,58,.06);
+  --tv-shadow-hover:0 2px 8px rgba(58,58,58,.10);
+  background:var(--tv-bg); color:var(--tv-text);
+  padding:32px 0; margin:-16px 0 0; border-radius:6px;
+  font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",sans-serif;
+  font-size:15px; line-height:1.75;
+}
+/* Variant tabs — 显式 reset 浏览器默认 button 样式(border-radius / outline / appearance)
+   防止 layout 那边的全局 button 规则给底部加了奇怪圆角和深色背景。 */
+.tv-root .tv-variant-tabs { display:flex;gap:0;margin:0 0 24px;border-bottom:1px solid var(--tv-divider) }
+.tv-root .tv-vtab { padding:12px 20px;background:transparent;border:none;border-radius:0;cursor:pointer;color:var(--tv-text-2);border-bottom:2px solid transparent;font-size:14px;font-family:inherit;font-weight:500;outline:none;appearance:none;-webkit-appearance:none;margin-bottom:-1px }
+.tv-root .tv-vtab:hover { color:var(--tv-text) }
+.tv-root .tv-vtab--active { color:var(--tv-text);border-bottom-color:var(--tv-accent);font-weight:600 }
+.tv-root .tv-vtab:focus-visible { outline:2px solid var(--tv-accent);outline-offset:-4px;border-radius:4px }
+/* tv-variant-panel: 不打横向 padding,内容直接对齐 .tv-root 边界,跟外层 omk-view-panel 的 h1/subtitle 同基线。 */
+/* Stats — 更扁平的数字+标签布局 */
+.tv-root .tv-variant-stats { display:flex;gap:32px;margin:0 0 24px;font-size:14px;color:var(--tv-text-2);align-items:baseline }
+.tv-root .tv-stat { display:flex;align-items:baseline;gap:6px }
+.tv-root .tv-stat-num { color:var(--tv-text);font-weight:600;font-size:18px;font-variant-numeric:tabular-nums }
+.tv-root .tv-stat--pass .tv-stat-num { color:var(--tv-pass) }
+.tv-root .tv-stat--fail .tv-stat-num { color:var(--tv-fail) }
+.tv-root .tv-stat--tripwire .tv-stat-num { color:var(--tv-tripwire) }
+/* Group separator */
+.tv-root .tv-group-sep { display:flex;align-items:center;gap:14px;margin:32px 0 16px;color:var(--tv-text-3);font-size:12px;text-transform:uppercase;letter-spacing:0.08em;font-weight:500 }
+.tv-root .tv-group-sep::after { content:'';flex:1;height:1px;background:var(--tv-divider) }
+/* Pass rows — one-line list,左边一道淡 sage 色条做"通过"暗示 */
+.tv-root .tv-rows { display:flex;flex-direction:column;gap:6px;margin:0 }
+.tv-root .tv-row { background:var(--tv-bg-card);border-radius:6px;box-shadow:var(--tv-shadow);transition:box-shadow .15s;border-left:3px solid var(--tv-pass) }
+.tv-root .tv-row:hover { box-shadow:var(--tv-shadow-hover) }
+.tv-root .tv-row[open] { box-shadow:var(--tv-shadow-hover) }
+.tv-root .tv-row-h { display:flex;align-items:center;gap:14px;padding:14px 20px;cursor:pointer;list-style:none;font-size:15px }
+.tv-root .tv-row-h::-webkit-details-marker { display:none }
+.tv-root .tv-row-h::after { content:'›';margin-left:8px;color:var(--tv-text-3);font-size:18px;transition:transform .15s }
+.tv-root .tv-row[open] .tv-row-h::after { transform:rotate(90deg) }
+/* Cards (fail / tripwire) — 默认折叠,跟 pass row 一致;头部下面加一行 preview 让折叠态也有信息密度 */
+.tv-root .tv-card { background:var(--tv-bg-card);border-radius:8px;box-shadow:var(--tv-shadow);margin:0 0 12px;transition:box-shadow .15s }
+.tv-root .tv-card:hover { box-shadow:var(--tv-shadow-hover) }
+.tv-root .tv-card--fail { border-left:3px solid var(--tv-fail) }
+.tv-root .tv-card--tripwire { border-left:3px solid var(--tv-tripwire) }
+.tv-root .tv-card-h { display:flex;align-items:center;gap:14px;padding:16px 22px;cursor:pointer;list-style:none;font-size:15px }
+.tv-root .tv-card-h::-webkit-details-marker { display:none }
+.tv-root .tv-card-h::after { content:'›';margin-left:8px;color:var(--tv-text-3);font-size:18px;transition:transform .15s }
+.tv-root .tv-card[open] .tv-card-h::after { transform:rotate(90deg) }
+.tv-root .tv-card[open] .tv-card-h { border-bottom:1px solid var(--tv-divider) }
+.tv-root .tv-card-preview { padding:0 22px 14px;color:var(--tv-text-2);font-size:14px;line-height:1.7;border-bottom:1px solid var(--tv-divider) }
+.tv-root .tv-card[open] .tv-card-preview { display:none }
+/* Status dots — 用形状 + 色 + 字符的三重区分,避免色盲 / 远看雷同。
+   pass: 实心圆 sage;fail: 红 ✗ 字符(更显眼);tripwire: 紫色 ◆ 菱形。 */
+.tv-root .tv-dot { display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex-shrink:0;font-size:14px;font-weight:700;line-height:1 }
+.tv-root .tv-dot--pass::before { content:'';width:10px;height:10px;border-radius:50%;background:var(--tv-pass);box-shadow:0 0 0 3px var(--tv-pass-soft) }
+.tv-root .tv-dot--fail::before { content:'✗';color:var(--tv-fail);font-size:16px;font-weight:700 }
+.tv-root .tv-dot--tripwire::before { content:'◆';color:var(--tv-tripwire);font-size:13px }
+.tv-root .tv-id { font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:13px;color:var(--tv-text-3) }
+.tv-root .tv-title { flex:1;font-size:15px;color:var(--tv-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap }
+.tv-root .tv-meta { font-size:13px;color:var(--tv-text-3);font-variant-numeric:tabular-nums;font-family:"SF Mono","JetBrains Mono",Menlo,monospace }
+/* Body padding */
+.tv-root .tv-card-body, .tv-root .tv-row-body { padding:22px }
+/* Tripwire banner — 卡片顶部的紫色解释带 */
+.tv-root .tv-tripwire-banner { margin:-22px -22px 20px;padding:18px 22px;background:rgba(139,124,147,.08);border-radius:8px 8px 0 0;border-bottom:1px solid var(--tv-divider) }
+.tv-root .tv-tripwire-banner-title { font-size:14px;font-weight:600;color:var(--tv-tripwire);margin-bottom:6px;letter-spacing:0.02em }
+.tv-root .tv-tripwire-banner-body { font-size:14px;color:var(--tv-text-2);line-height:1.7 }
+/* Diagnosis — 一段白话 + 单一蓝色建议块 + 折叠细节 */
+.tv-root .tv-diag { margin:4px 0 16px }
+.tv-root .tv-diag-text { font-size:15px;line-height:1.75;color:var(--tv-text);margin:0 0 16px }
+.tv-root .tv-suggestion { background:rgba(90,122,147,.06);border-left:3px solid var(--tv-accent);padding:14px 18px;margin:12px 0;border-radius:0 4px 4px 0 }
+.tv-root .tv-suggestion-label { display:inline-block;color:var(--tv-accent);font-weight:600;font-size:13px;margin-right:8px;letter-spacing:0.02em }
+.tv-root .tv-suggestion-body { margin:6px 0 0;font-size:14.5px;line-height:1.7;color:var(--tv-text) }
+.tv-root .tv-diag-details { margin-top:14px }
+.tv-root .tv-diag-details > summary { cursor:pointer;font-size:13px;color:var(--tv-text-2);list-style:none }
+.tv-root .tv-diag-details > summary::-webkit-details-marker { display:none }
+.tv-root .tv-diag-details > summary::before { content:'▸ ';color:var(--tv-text-3);display:inline-block;width:16px }
+.tv-root .tv-diag-details[open] > summary::before { content:'▾ ' }
+.tv-root .tv-diag-details-body { padding:10px 0 0 16px;font-size:14px;line-height:1.7;color:var(--tv-text-2) }
+.tv-root .tv-diag-details-body p { margin:6px 0 }
+.tv-root .tv-diag-details-body strong { color:var(--tv-text);margin-right:6px }
+/* RootCause inline pill */
+.tv-root .tv-diag-rc-pill { font-size:11px;padding:2px 8px;border-radius:10px;background:var(--tv-bg-soft);color:var(--tv-text-2);margin-right:6px;display:inline-block }
+.tv-root .tv-diag-rc--tripwire_intentional { background:rgba(139,124,147,.12);color:var(--tv-tripwire) }
+.tv-root .tv-diag-rc--sample_design { background:rgba(90,122,147,.10);color:var(--tv-accent) }
+.tv-root .tv-diag-rc--skill_doc_unclear, .tv-diag-rc--skill_doc_missing, .tv-root .tv-diag-rc--llm_misread { background:rgba(176,128,48,.10);color:var(--tv-warn) }
+/* Failure-mode chips — 中文标签,显著展示在 summary 下 */
+.tv-root .tv-diag-modes { display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:8px 0 14px }
+.tv-root .tv-diag-modes-label { font-size:12px;color:var(--tv-text-2);margin-right:4px }
+.tv-root .tv-diag-mode-pill { font-size:12px;padding:3px 10px;border-radius:11px;background:var(--tv-bg-soft);color:var(--tv-text);font-weight:500 }
+.tv-root .tv-diag-mode--workflow-skip   { background:rgba(176,128,48,.12);color:var(--tv-warn) }
+.tv-root .tv-diag-mode--hardcoded       { background:rgba(176,128,48,.12);color:var(--tv-warn) }
+.tv-root .tv-diag-mode--hallucination   { background:rgba(180,75,75,.14);color:#b44b4b }
+.tv-root .tv-diag-mode--tool-misuse     { background:rgba(176,128,48,.12);color:var(--tv-warn) }
+.tv-root .tv-diag-mode--env-blocked     { background:rgba(90,122,147,.12);color:var(--tv-accent) }
+.tv-root .tv-diag-mode--misread         { background:rgba(176,128,48,.12);color:var(--tv-warn) }
+.tv-root .tv-diag-mode--other           { background:var(--tv-bg-soft);color:var(--tv-text-2) }
+/* Workflow checklist — 默认展开,放在 suggestion 之上,直观展示 LLM 走对哪几步 */
+.tv-root .tv-diag-workflow { margin:14px 0;padding:12px 14px;background:var(--tv-bg-soft);border-radius:6px }
+.tv-root .tv-diag-workflow-title { font-size:13px;font-weight:600;color:var(--tv-text);margin:0 0 10px;letter-spacing:0.02em }
+.tv-root .tv-diag-workflow-list { list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px }
+.tv-root .tv-diag-workflow-item { display:flex;align-items:flex-start;gap:10px;line-height:1.6 }
+.tv-root .tv-diag-workflow-icon { flex-shrink:0;font-weight:700;font-size:14px;width:16px;text-align:center;margin-top:2px }
+.tv-root .tv-diag-workflow-item--pass .tv-diag-workflow-icon { color:#3a8a3a }
+.tv-root .tv-diag-workflow-item--fail .tv-diag-workflow-icon { color:#b44b4b }
+.tv-root .tv-diag-workflow-body { display:flex;flex-direction:column;gap:2px;flex:1 }
+.tv-root .tv-diag-workflow-step { font-size:14px;color:var(--tv-text) }
+.tv-root .tv-diag-workflow-evidence { font-size:12.5px;color:var(--tv-text-2);line-height:1.55 }
+.tv-root .tv-diag-workflow-item--fail .tv-diag-workflow-step { color:#b44b4b }
+/* Partial salvage 提示 */
+.tv-root .tv-diag-partial { font-size:12px;color:var(--tv-text-3);margin:0 0 8px;font-style:italic }
+/* Sub-sections — design / trace / assertions, 全部默认折叠 */
+.tv-root .tv-section { margin-top:6px;border-top:1px solid var(--tv-divider);padding-top:14px }
+.tv-root .tv-section > summary { cursor:pointer;font-size:14px;font-weight:500;color:var(--tv-text);padding:6px 0;list-style:none }
+.tv-root .tv-section > summary::-webkit-details-marker { display:none }
+.tv-root .tv-section > summary::before { content:'▸ ';color:var(--tv-text-3);display:inline-block;width:16px;font-weight:400 }
+.tv-root .tv-section[open] > summary::before { content:'▾ ' }
+.tv-root .tv-section-stat { font-weight:400;color:var(--tv-text-3);margin-left:6px;font-size:13px }
+.tv-root .tv-section-body { padding:14px 0 0 16px;font-size:14.5px;line-height:1.7 }
+/* Design fields */
+.tv-root .tv-prompt, .tv-root .tv-rubric { font-size:14.5px;line-height:1.75;margin:8px 0;color:var(--tv-text-2) }
+.tv-root .tv-prompt strong, .tv-root .tv-rubric strong { color:var(--tv-text);margin-right:6px;font-weight:600 }
+.tv-root .tv-meta-pills { margin:10px 0;display:flex;flex-wrap:wrap;gap:8px }
+.tv-root .tv-meta-pill { font-size:12px;padding:3px 10px;background:var(--tv-bg-soft);border-radius:10px;color:var(--tv-text-2);font-family:"SF Mono",Menlo,monospace }
+.tv-root .tv-expected { margin-top:12px }
+.tv-root .tv-expected-h { font-size:13px;color:var(--tv-text-2);margin-bottom:6px }
+.tv-root .tv-expect-line { font-size:13px;font-family:"SF Mono",Menlo,monospace;color:var(--tv-text-2);padding:3px 0;line-height:1.6 }
+.tv-root .tv-collapsible { margin-top:10px;font-size:13px }
+.tv-root .tv-collapsible > summary { cursor:pointer;color:var(--tv-text-2) }
+/* Mocks */
+.tv-root .tv-mocks { margin-top:8px }
+.tv-root .tv-mock-line { font-size:12px;font-family:"SF Mono",Menlo,monospace;padding:3px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center;line-height:1.6 }
+.tv-root .tv-mock-idx { color:var(--tv-text-3);font-weight:600 }
+.tv-root .tv-mock-tool { background:var(--tv-bg-soft);padding:2px 6px;border-radius:3px }
+.tv-root .tv-mock-match, .tv-root .tv-mock-return { color:var(--tv-text-2);overflow:hidden;text-overflow:ellipsis;max-width:340px;white-space:nowrap }
+.tv-root .tv-mock-arrow { color:var(--tv-text-3) }
+/* Trace turns */
+.tv-root .tv-turn { margin:10px 0;padding:12px 16px;background:var(--tv-bg-soft);border-radius:4px;border-left:2px solid var(--tv-divider) }
+.tv-root .tv-turn-h { font-size:14px;font-weight:500;color:var(--tv-text);margin-bottom:6px }
+.tv-root .tv-turn-dur { color:var(--tv-text-3);font-weight:400;font-size:12px;margin-left:6px }
+.tv-root .tv-thinking { margin:6px 0;font-size:13px }
+.tv-root .tv-thinking summary { cursor:pointer;color:var(--tv-text-3);font-style:italic }
+.tv-root .tv-thinking-body { padding:10px 14px;background:rgba(58,58,58,.04);border-radius:4px;color:var(--tv-text-2);white-space:pre-wrap;font-size:13px;line-height:1.7;margin-top:6px }
+/* Tool calls */
+.tv-root .tv-call { margin:6px 0;padding:10px 14px;background:rgba(58,58,58,.03);border-radius:4px;font-size:13px }
+.tv-root .tv-call--err { border-left:2px solid var(--tv-fail) }
+.tv-root .tv-call-h { font-weight:500;color:var(--tv-text);margin-bottom:4px;font-size:14px }
+.tv-root .tv-call details { margin:4px 0;font-size:12px }
+.tv-root .tv-call summary { cursor:pointer;color:var(--tv-text-3);padding:2px 0 }
+.tv-root .tv-pre { font-family:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;font-size:13px;background:rgba(58,58,58,.04);padding:10px 14px;border-radius:4px;overflow:auto;max-height:320px;white-space:pre-wrap;margin:4px 0;color:var(--tv-text-2);line-height:1.55 }
+.tv-root .tv-mock-badge { font-size:12px;color:var(--tv-pass);background:rgba(125,155,118,.12);padding:2px 8px;border-radius:10px;margin-left:8px }
+.tv-root .tv-trace-assert { font-size:13px;font-family:"SF Mono",Menlo,monospace;padding:3px 0;margin-top:6px;line-height:1.5 }
+.tv-root .tv-trace-assert.tv-assert--fail { color:var(--tv-fail) }
+.tv-root .tv-trace-assert.tv-assert--pass { color:var(--tv-text-2) }
+/* Final answer */
+.tv-root .tv-final { margin-top:14px }
+.tv-root .tv-final-h { font-size:14px;font-weight:500;color:var(--tv-text);margin-bottom:6px }
+/* Assertions */
+.tv-root .tv-assert { font-size:14px;font-family:"SF Mono",Menlo,monospace;padding:5px 0;line-height:1.6 }
+.tv-root .tv-assert--pass { color:var(--tv-text-2) }
+.tv-root .tv-assert--fail { color:var(--tv-fail) }
+.tv-root .tv-assert-value { background:rgba(58,58,58,.04);padding:2px 6px;border-radius:3px;margin:0 2px }
+.tv-root .tv-turn-tag { font-size:12px;color:var(--tv-text-3);margin-left:8px;font-style:italic;font-family:-apple-system,sans-serif }
+.tv-root .tv-turn-tag--ok { color:var(--tv-pass) }
+.tv-root .tv-turn-tag--miss { color:var(--tv-fail) }
+.tv-root .tv-assert-msg { font-size:13px;color:var(--tv-text-3);margin-left:20px;margin-top:3px }
+/* Empty/warn states */
+.tv-root .tv-empty, .tv-root .tv-empty-page { color:var(--tv-text-3);font-style:italic;padding:14px 0;font-size:14px }
+.tv-root .tv-warn { color:var(--tv-warn);background:rgba(176,128,48,.08);padding:14px 18px;border-radius:4px;margin:8px 24px;font-size:14px;line-height:1.7 }
+
+/* Context strip — 实验配置 + Agent 概览并排,作为辅助元数据,视觉权重低于综合分 hero / 六维 / 用例详情 */
+.ctx-strip { display:grid;gap:14px;grid-template-columns:1fr 1fr;margin:14px 0 24px }
+@media (max-width:760px) { .ctx-strip { grid-template-columns:1fr } }
+.ctx-block { background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:12px 16px }
+.ctx-h { font-size:13px;color:var(--text-secondary);font-weight:600;margin-bottom:2px;display:flex;align-items:center;gap:4px;letter-spacing:0.02em }
+.ctx-sub { font-size:12px;color:var(--text-muted);margin-bottom:10px }
+.ctx-rows { display:flex;flex-direction:column;gap:6px }
+.ctx-row { padding:8px 12px;background:var(--bg-soft);border-radius:4px;display:flex;align-items:center;gap:10px;font-size:13px;line-height:1.5;flex-wrap:wrap }
+.ctx-row-name { font-weight:600;color:var(--text-primary);font-family:"SF Mono",Menlo,monospace;font-size:12.5px;letter-spacing:-0.01em }
+.ctx-row-bits { color:var(--text-secondary);flex:1;min-width:0;font-size:12.5px }
+.ctx-sep { color:var(--text-muted);margin:0 2px;opacity:0.6 }
+/* 报告身份带 — 极简一行,run-id pill + 时间戳 + verdict pill。完整 H1 + meta 移进各 tab 自己的 panel。 */
+.report-id-line { display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 18px }
+.report-id-pill { font-size:14px;font-family:"SF Mono",Menlo,monospace;color:var(--text-primary);background:var(--bg-surface);padding:5px 12px;border-radius:14px;border:1px solid var(--border);letter-spacing:-0.01em;font-weight:500 }
+.report-id-stamp { font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums }
+/* 顶部 tab 切换器 — 显式 reset border-radius / appearance / outline,
+   防止全局 button 规则给底部加奇怪圆角和深色背景。 */
+.omk-view-tabs { display:flex;gap:0;margin:16px 0 24px;border-bottom:1px solid var(--border) }
+.omk-view-tab { padding:12px 20px;background:transparent;border:none;border-radius:0;cursor:pointer;color:var(--text-secondary);border-bottom:2px solid transparent;font-size:14px;font-weight:500;outline:none;appearance:none;-webkit-appearance:none;margin-bottom:-1px;font-family:inherit }
+.omk-view-tab--active { color:var(--text-primary);border-bottom-color:var(--accent);font-weight:600 }
+.omk-view-tab:hover:not(.omk-view-tab--active) { color:var(--text-primary) }
+.omk-view-tab:focus-visible { outline:2px solid var(--accent);outline-offset:-4px;border-radius:4px }
+/* tab 面板内的 H1 — 跟列表 H1 同级别但加 emoji 区分视角 */
+.omk-view-panel h1 { font-size:1.5rem;margin:0 0 6px }
+.omk-view-panel .subtitle { font-size:14px;color:var(--text-secondary);margin:0 0 20px;line-height:1.6 }
+    </style>
+    <script>
+function omkSwitchVariant(btn) {
+  var target = btn.getAttribute('data-target');
+  var tabs = btn.parentElement.querySelectorAll('.tv-vtab');
+  tabs.forEach(function(t){ t.classList.toggle('tv-vtab--active', t === btn); });
+  var panels = btn.parentElement.parentElement.querySelectorAll('.tv-variant-panel');
+  panels.forEach(function(p){ p.hidden = (p.getAttribute('data-variant') !== target); });
+}
+function omkSwitchView(name) {
+  var tabs = document.querySelectorAll('.omk-view-tab');
+  tabs.forEach(function(t){ t.classList.toggle('omk-view-tab--active', t.getAttribute('data-view') === name); });
+  var panels = document.querySelectorAll('.omk-view-panel');
+  panels.forEach(function(p){ p.hidden = (p.getAttribute('data-view') !== name); });
+}
+</script>
 
     </main>
   <footer class="footer" style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--text-faint);text-align:center">Powered by oh-my-knowledge</footer>
@@ -1258,54 +2154,89 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunList en 1`] = 
       });
     }
   });
+  // 复制 paste-ready 片段到剪贴板:供 insight modal 的"复制片段"按钮调用。
+  // 元素 id 指 <code> 节点;复制后按钮加 .copied 类做 1.5s 视觉反馈。
+  // i18n:按钮反馈文案随页面 data-lang(layout 写在 <html> 上,langToggleScript 切换时更新)。
+  // 未设 dataset 时按 DEFAULT_LANG(zh)兜底,跟旧报告/无 toggle 入口的页面一致。
+  window.omkCopySnippet = function(elementId, btn) {
+    var el = document.getElementById(elementId);
+    if (!el) return;
+    var text = el.textContent || '';
+    var pageLang = document.documentElement.dataset.lang || 'zh';
+    var copiedLabel = pageLang === 'en' ? '✓ Copied' : '✓ 已复制';
+    var done = function() {
+      if (!btn) return;
+      var orig = btn.textContent;
+      btn.textContent = copiedLabel;
+      btn.classList.add('copied');
+      setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function() { /* swallow */ });
+    } else {
+      // 老浏览器兜底:execCommand fallback
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch(e) { /* swallow */ }
+      document.body.removeChild(ta);
+    }
+  };
   </script>
 <style>
+/* Pantone-inspired light theme(2026-05 全站浅色化)。
+   设计原则:暖白底 + 哑色调,不刺眼;字号 14-15px 起;subtle box-shadow 替代 border。
+   旧的深色蓝灰主题已迁移,语义保留但色值翻转。 */
 :root{
-  --bg-base:#0f172a;
-  --bg-surface:rgba(30,41,59,0.7);
-  --bg-elevated:rgba(15,23,42,0.6);
-  --border:rgba(148,163,184,0.1);
-  --border-hover:rgba(148,163,184,0.25);
-  --text-primary:#e2e8f0;
-  --text-secondary:#94a3b8;
-  --text-muted:#64748b;
-  --text-faint:#475569;
-  --accent:#60a5fa;
-  --accent-hover:#93bbfd;
-  --green:#4ade80;
-  --green-bg:rgba(34,197,94,0.12);
-  --red:#f87171;
-  --red-bg:rgba(239,68,68,0.12);
-  --yellow:#fbbf24;
-  --yellow-bg:rgba(245,158,11,0.12);
-  --info-bg:rgba(96,165,250,0.1);
-  --chart-1:#60a5fa;
-  --chart-2:#a78bfa;
-  --chart-3:#34d399;
-  --chart-4:#fb923c;
-  --chart-5:#f472b6;
-  --chart-6:#fbbf24;
-  --bg-card:#1e293b;
+  --bg-base:#fbfaf7;            /* 暖白纸感 */
+  --bg-surface:#ffffff;          /* 卡片白 */
+  --bg-elevated:rgba(58,58,58,.025);
+  --bg-soft:rgba(58,58,58,.04);
+  --border:#e8e3da;              /* 暖灰分隔 */
+  --border-hover:#d4ccbf;
+  --text-primary:#3a3a3a;        /* 深炭灰 */
+  --text-secondary:#7a7a7a;
+  --text-muted:#a8a8a8;
+  --text-faint:#c8c8c8;
+  --accent:#5a7a93;              /* 板岩蓝(slate) */
+  --accent-hover:#3f5d76;
+  --green:#5e8252;               /* 鼠尾草绿(sage) */
+  --green-bg:rgba(94,130,82,.10);
+  --red:#9c4a3f;                 /* 砖红土陶(terracotta) */
+  --red-bg:rgba(156,74,63,.10);
+  --yellow:#b08030;              /* 暖琥珀 */
+  --yellow-bg:rgba(176,128,48,.10);
+  --info-bg:rgba(90,122,147,.08);
+  /* 图表色 — 全部哑色调,跨色相区分但饱和度统一在 ~50% */
+  --chart-1:#5a7a93;
+  --chart-2:#7a6b89;
+  --chart-3:#5e8252;
+  --chart-4:#b08030;
+  --chart-5:#9c6478;
+  --chart-6:#937846;
+  --bg-card:#ffffff;
   --radius:8px;
   --radius-lg:12px;
-  --fs-micro:11px;
-  --fs-detail:12px;
-  --fs-label:12px;
-  --fs-body:13px;
+  /* 字号上调:正文 14px / 标签 13px / 详情 13px / 微元数据 12px */
+  --fs-micro:12px;
+  --fs-detail:13px;
+  --fs-label:13px;
+  --fs-body:14.5px;
+  --shadow-sm:0 1px 3px rgba(58,58,58,.06);
+  --shadow-md:0 2px 8px rgba(58,58,58,.10);
 }
 *{box-sizing:border-box;margin:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:32px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.5;max-width:1100px;margin:0 auto}
-h1{margin:0 0 6px;font-size:1.5rem;font-weight:700;color:var(--text-primary);letter-spacing:-0.02em}
-h2{margin:24px 0 8px;font-size:0.9375rem;color:var(--text-secondary);font-weight:600}
-.subtitle{color:var(--text-muted);font-size:0.8125rem;margin:0 0 20px}
-a{color:var(--accent);text-decoration:none}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;padding:32px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.7;max-width:1100px;margin:0 auto;font-size:var(--fs-body)}
+h1{margin:0 0 8px;font-size:1.75rem;font-weight:600;color:var(--text-primary);letter-spacing:-0.01em;line-height:1.3}
+h2{margin:32px 0 12px;font-size:1.0625rem;color:var(--text-primary);font-weight:600;line-height:1.4}
+.subtitle{color:var(--text-secondary);font-size:0.875rem;margin:0 0 24px}
+a{color:var(--accent);text-decoration:none;transition:color .15s}
 a:hover{color:var(--accent-hover);text-decoration:underline}
 
-/* Meta tags — bumped from 11px/text-muted to 12px/text-secondary so contrast
-   passes WCAG AA on the dark surface. */
-.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}
-.meta-tag{font-size:0.75rem;color:var(--text-secondary);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
-.meta-tag code{font-size:0.7rem;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
+/* Meta tags — 浅色主题下加大对比度,小一点的字号也清晰可读 */
+.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 20px}
+.meta-tag{font-size:13px;color:var(--text-secondary);padding:4px 12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
+.meta-tag code{font-size:12px;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
 
 /* Run ID stamp — H1 保留完整 run-id (与列表页一致), 时间戳从 ID 解出来作为副标小字,
    告诉用户「这次跑的时间」,无需用户自己解析 ID 后缀。 */
@@ -1327,11 +2258,12 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .methodology-summary-label{font-size:14px;font-weight:600}
 .methodology-summary-hint{flex:1 1 auto;text-align:right;font-size:11px;color:var(--text-muted);font-weight:400}
 .methodology-badges{display:inline-flex;flex-wrap:wrap;gap:6px}
-.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
-.methodology-badge-pass{background:rgba(74,222,128,0.14);color:var(--green)}
-.methodology-badge-warn{background:rgba(251,191,36,0.16);color:var(--yellow)}
-.methodology-badge-fail{background:rgba(248,113,113,0.16);color:var(--red)}
-.methodology-badge-skip{background:rgba(148,163,184,0.12);color:var(--text-muted)}
+.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
+/* Pantone 哑色 — 用 var(--green-bg) 等(浅色主题已重定义) */
+.methodology-badge-pass{background:var(--green-bg);color:var(--green)}
+.methodology-badge-warn{background:var(--yellow-bg);color:var(--yellow)}
+.methodology-badge-fail{background:var(--red-bg);color:var(--red)}
+.methodology-badge-skip{background:var(--bg-soft);color:var(--text-muted)}
 .methodology-body{padding:0 16px 14px;border-top:1px solid var(--border);margin-top:8px}
 .methodology-body>h2:first-child{margin-top:14px}
 
@@ -1339,20 +2271,23 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .cards{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
 .card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;min-width:140px;flex:1;transition:border-color 0.15s}
 .card:hover{border-color:var(--border-hover)}
-.card-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px}
-.card-value{font-size:22px;font-weight:700;margin:2px 0;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.card-sub{font-size:11px;color:var(--text-muted)}
+/* 卡片标签:de-uppercase(uppercase 在 pantone 哑色调里太"科技报"),轻微 letter-spacing
+   保留排版感,字号上调到 12 让读者看清。值/数字改 weight 600(700 在浅色配色里太硬)。 */
+.card-label{font-size:12px;color:var(--text-muted);letter-spacing:0.02em;margin-bottom:4px;font-weight:500}
+.card-value{font-size:20px;font-weight:600;margin:2px 0;color:var(--text-primary);font-variant-numeric:tabular-nums;line-height:1.3}
+.card-sub{font-size:12px;color:var(--text-muted);line-height:1.5}
 /* Summary table — inherits the global center + middle from the base td/th. */
-.summary-cell{min-width:100px}
-.summary-value-primary{font-size:1.375rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
+.summary-cell{min-width:96px}
+.summary-value-primary{font-size:1.25rem;font-weight:600;font-variant-numeric:tabular-nums}
 
 /* Hint tooltip (legacy span-based, kept for hover-only hints) */
 .hint{position:relative;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;font-size:10px;font-weight:600;color:var(--text-muted);border:1px solid var(--border-hover);border-radius:50%;cursor:help;margin-left:6px;vertical-align:middle}
 .hint-click{cursor:pointer}
 
 /* Hint button — accessible, keyboard-focusable replacement for click-to-open-modal hints */
-button.hint-btn{display:inline-flex;align-items:center;justify-content:center;min-width:22px;min-height:22px;padding:3px;font-size:var(--fs-micro);font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border-hover);border-radius:50%;cursor:pointer;margin-left:6px;vertical-align:middle;line-height:1;transition:color 0.15s,border-color 0.15s}
-button.hint-btn:hover{color:var(--text-primary);border-color:var(--text-primary)}
+button.hint-btn{display:inline-flex;align-items:center;justify-content:center;min-width:20px;min-height:20px;padding:2px;font-size:11px;font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border);border-radius:50%;cursor:pointer;margin-left:6px;vertical-align:middle;line-height:1;transition:color 0.15s,border-color 0.15s;outline:none;appearance:none}
+button.hint-btn:hover{color:var(--text-primary);border-color:var(--text-secondary)}
+button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* Verdict + detail pattern used in variance & significance cells */
@@ -1529,9 +2464,9 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 @media(max-width:480px){.modal-table td{display:block;padding:3px 0}.modal-table td:first-child{font-weight:600}}
 .hint-tip{display:none;position:absolute;bottom:calc(100% + 6px);right:0;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:var(--radius);padding:6px 10px;font-size:11px;font-weight:400;color:var(--text-secondary);white-space:normal;max-width:280px;width:max-content;z-index:10}
 .hint:hover .hint-tip,.hint:focus .hint-tip{display:block}
-.summary-value{font-size:1rem;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.summary-detail{font-size:0.6875rem;color:var(--text-muted);margin-top:3px}
-.summary-unit{font-size:0.75rem;font-weight:400;color:var(--text-muted)}
+.summary-value{font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.summary-detail{font-size:12px;color:var(--text-muted);margin-top:4px;line-height:1.5}
+.summary-unit{font-size:12px;font-weight:400;color:var(--text-muted)}
 .card-detail{margin-top:8px;font-size:12px;color:var(--text-secondary)}
 .card-detail div{margin:2px 0}
 
@@ -1542,9 +2477,12 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 @media(max-width:768px){
   .table-wrap::after{content:'';position:sticky;right:0;top:0;display:block;float:right;width:32px;height:100%;margin-left:-32px;margin-top:-100%;pointer-events:none;background:linear-gradient(to right,transparent,var(--bg-card) 85%);z-index:2}
 }
-table{border-collapse:collapse;width:100%;font-size:0.8125rem;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;line-height:1.4}
-th{background:var(--bg-elevated);padding:8px 14px;text-align:center;vertical-align:middle;font-weight:500;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap}
-td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
+/* 表格 — 稍紧凑(padding 7px 12px),正文 13px,字号上调跟全站对齐;
+   非数字列保留 left-align(td.text 类),其它默认居中。 */
+table{border-collapse:collapse;width:100%;font-size:13px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;line-height:1.5}
+th{background:var(--bg-elevated);padding:8px 12px;text-align:center;vertical-align:middle;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border);font-size:12px;letter-spacing:0.02em;white-space:nowrap}
+td{padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
+td:first-child, th:first-child { text-align:left }
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(148,163,184,0.04)}
 
@@ -1576,9 +2514,11 @@ tr:hover td{background:rgba(148,163,184,0.04)}
 .bar-value{flex:0 0 auto;font-size:12px;color:var(--text-secondary)}
 
 /* Forms */
-input[type="text"]{background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius);padding:4px 8px;font-size:12px}
-input[type="text"]:focus{outline-color:transparent;border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
-button{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius);cursor:pointer;padding:4px 12px;font-size:12px;transition:border-color 0.15s,color 0.15s}
+input[type="text"]{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius);padding:6px 12px;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
+input[type="text"]:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--info-bg)}
+/* 通用 button — 浅色主题里默认 transparent + 边框更细。子样式(.run-card-delete, .tv-vtab,
+   .omk-view-tab, .hint-btn 等)各自有显式 reset 覆盖默认样式。 */
+button{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius);cursor:pointer;padding:6px 14px;font-size:13px;font-family:inherit;transition:border-color .15s,color .15s,background .15s;outline:none;appearance:none;-webkit-appearance:none}
 button:hover{border-color:var(--border-hover);color:var(--text-primary)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
@@ -1626,12 +2566,12 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body><button id="lang-toggle" onclick="switchLang()" class="lang-toggle">Chinese</button>
+</style></head><body>
     <main>
     <h1>Evaluation Reports</h1>
-    <p class="subtitle" data-i18n="subtitle">Knowledge Artifact Evaluation &middot; 1 runs &middot; Total $0.0380</p>
+    <p class="subtitle" data-i18n="subtitle">Knowledge Artifact Evaluation &middot; 1 runs</p>
 
-    <div style="margin:12px 0"><a href="/analyses?lang=en" style="color:var(--text-muted);font-size:12px;text-decoration:none;border:1px solid var(--border);padding:4px 10px;border-radius:var(--radius);display:inline-block">📊 <span data-i18n="skillHealthTitle">Skill Health Reports</span> →</a></div>
+    <div style="margin:12px 0"><a class="page-secondary-link" href="/analyses?lang=en">📊 <span data-i18n="skillHealthTitle">Skill Health Reports</span> →</a></div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
       <input id="filter-input" type="text" placeholder="Filter by name, variant..." style="flex:1;max-width:320px;padding:6px 10px;font-size:13px;background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius);outline:none" oninput="filterTable(this.value)">
       <span id="filter-count" style="font-size:11px;color:var(--text-muted)"></span>
@@ -1654,37 +2594,66 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a></p>
     </div>
   </div>
-    <div class="table-wrap">
-    <table id="report-table">
-      <thead><tr>
-        <th data-i18n="runId">Report</th>
-        <th data-i18n="model">Task execution model</th>
-        <th data-i18n="samples">Samples</th>
-        <th data-i18n="score">Score <button type="button" class="hint-btn" onclick="openModal('guide-scoring-list')" aria-label="How is composite computed?" aria-haspopup="dialog">?</button></th>
-        <th data-i18n="cost">Execution cost</th>
-        <th>Duration</th>
-        <th></th>
-      </tr></thead>
-      <tbody><tr>
-      <td><span class="run-status verdict-CAUTIOUS" title="Treatment slightly above control — small gap or layer below gate" aria-label="CAUTIOUS — Treatment slightly above control — small gap or layer below gate"><span class="run-status-dot" aria-hidden="true">▲</span>CAUTIOUS</span><a href="/reports/test-run-20260325-1000?lang=en"><span style="color:var(--text-primary)">test-run-20260325-1000</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">03/25 10:00</span></a></td>
-      <td>sonnet</td>
-      <td>2</td>
-      <td><div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span title="v1" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">v1</span><div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0"><div style="width:80%;height:100%;background:var(--green);border-radius:3px"></div></div><span style="font-size:12px;font-weight:600;color:var(--green);min-width:24px">4</span></div><div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span title="v2" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">v2</span><div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0"><div style="width:96%;height:100%;background:var(--green);border-radius:3px"></div></div><span style="font-size:12px;font-weight:600;color:var(--green);min-width:24px">4.8</span></div></td>
-      <td>$0.0380</td>
-      <td>10.0s</td>
-      <td style="white-space:nowrap"><button onclick="deleteRun('test-run-20260325-1000',this)" class="btn-danger" data-i18n="deleteBtnText">Delete</button></td>
-    </tr></tbody>
-    </table>
-    </div>
+    <div id="run-list" class="run-list"><a class="run-card verdict-CAUTIOUS" href="/reports/test-run-20260325-1000?lang=en">
+      <div class="run-card-h">
+        <span class="run-status verdict-CAUTIOUS" title="Treatment slightly above control — small gap or layer below gate" aria-label="CAUTIOUS — Treatment slightly above control — small gap or layer below gate"><span class="run-status-dot" aria-hidden="true">▲</span>CAUTIOUS</span>
+        <span class="run-card-id">test-run-20260325-1000</span>
+        <span class="run-card-date">03/25 10:00</span>
+      </div>
+      <div class="run-card-meta">sonnet · 2 samples · v1 · v2</div>
+      <div class="run-card-scores"><div class="rc-score-row"><span class="rc-score-label" title="v1">v1</span><div class="rc-score-bar"><div class="rc-score-bar-fill rc-score-bar-fill--pass" style="width:80%"></div></div><span class="rc-score-num rc-score-num--pass">4.00</span></div><div class="rc-score-row"><span class="rc-score-label" title="v2">v2</span><div class="rc-score-bar"><div class="rc-score-bar-fill rc-score-bar-fill--pass" style="width:96%"></div></div><span class="rc-score-num rc-score-num--pass">4.80</span></div></div>
+      <div class="run-card-foot">
+        <span class="run-card-stat">10.0s</span>
+        <button class="run-card-delete" onclick="event.preventDefault();event.stopPropagation();deleteRun('test-run-20260325-1000',this)" data-i18n="deleteBtnText" aria-label="Delete">×</button>
+      </div>
+    </a></div>
+    <style>
+    /* 列表页 — 卡片式布局,顶部 verdict pill 主导,底部 hover 露出 delete */
+    .page-secondary-link { color:var(--text-secondary);font-size:13px;text-decoration:none;border:1px solid var(--border);padding:6px 14px;border-radius:var(--radius);display:inline-block;background:var(--bg-surface);transition:border-color .15s,color .15s }
+    .page-secondary-link:hover { color:var(--text-primary);border-color:var(--border-hover);text-decoration:none }
+    .run-list { display:flex;flex-direction:column;gap:12px;margin:16px 0 }
+    /* verdict 用左边粗带 + 浅色填充背景双重视觉提示,远看也能区分。
+       PROGRESS = sage 绿(进步),REGRESS = 砖红(回归),CAUTIOUS = 琥珀(警示),其他 = 灰(无信号) */
+    .run-card { display:block;padding:18px 22px;background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);text-decoration:none;color:inherit;transition:box-shadow .15s,transform .05s;border-left:5px solid transparent;position:relative }
+    .run-card:hover { box-shadow:var(--shadow-md);text-decoration:none }
+    .run-card:hover .run-card-delete { opacity:1 }
+    .run-card.verdict-PROGRESS { border-left-color:var(--green);background:linear-gradient(90deg,var(--green-bg) 0%,var(--bg-surface) 80%) }
+    .run-card.verdict-REGRESS { border-left-color:var(--red);background:linear-gradient(90deg,var(--red-bg) 0%,var(--bg-surface) 80%) }
+    .run-card.verdict-CAUTIOUS { border-left-color:var(--yellow);background:linear-gradient(90deg,var(--yellow-bg) 0%,var(--bg-surface) 80%) }
+    .run-card.verdict-NOISE, .run-card.verdict-UNDERPOWERED { border-left-color:var(--text-faint);opacity:0.85 }
+    .run-card.verdict-SOLO { border-left-color:var(--accent);background:linear-gradient(90deg,var(--info-bg) 0%,var(--bg-surface) 80%) }
+    .run-card-h { display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap }
+    .run-card-id { font-size:15px;font-weight:600;color:var(--text-primary);font-family:"SF Mono",Menlo,Consolas,monospace;letter-spacing:-0.01em }
+    .run-card-date { font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums;margin-left:auto }
+    .run-card-meta { font-size:13px;color:var(--text-secondary);margin:6px 0 12px;line-height:1.6 }
+    .run-card-scores { display:flex;flex-direction:column;gap:4px;margin:8px 0 }
+    .run-card-foot { display:flex;gap:16px;margin-top:10px;align-items:center;font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums }
+    .run-card-stat { font-family:"SF Mono",Menlo,monospace }
+    .run-card-delete { margin-left:auto;background:transparent;border:none;color:var(--text-muted);font-size:18px;line-height:1;width:28px;height:28px;border-radius:14px;cursor:pointer;opacity:0;transition:opacity .15s,background .15s,color .15s;outline:none;appearance:none }
+    .run-card-delete:hover { background:var(--red-bg);color:var(--red) }
+    /* 分数行(每个 variant 一行) */
+    .rc-score-row { display:flex;align-items:center;gap:10px;font-size:13px;line-height:1.6 }
+    .rc-score-label { font-size:12px;color:var(--text-secondary);min-width:80px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0 }
+    .rc-score-bar { width:120px;height:6px;background:var(--bg-soft);border-radius:3px;flex-shrink:0;overflow:hidden }
+    .rc-score-bar-fill { height:100%;border-radius:3px;transition:width .2s }
+    .rc-score-bar-fill--pass { background:var(--green) }
+    .rc-score-bar-fill--warn { background:var(--yellow) }
+    .rc-score-bar-fill--fail { background:var(--red) }
+    .rc-score-num { font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace;min-width:36px }
+    .rc-score-num--pass { color:var(--green) }
+    .rc-score-num--warn { color:var(--yellow) }
+    .rc-score-num--fail { color:var(--red) }
+    .rc-score-empty { color:var(--text-faint);font-size:12px;font-style:italic }
+    </style>
     <script>
     function filterTable(q) {
-      var rows = document.querySelectorAll('#report-table tbody tr');
+      var cards = document.querySelectorAll('#run-list .run-card');
       var lower = q.toLowerCase();
       var shown = 0;
-      rows.forEach(function(row) {
-        var text = row.textContent.toLowerCase();
+      cards.forEach(function(card) {
+        var text = card.textContent.toLowerCase();
         var match = !q || text.indexOf(lower) !== -1;
-        row.style.display = match ? '' : 'none';
+        card.style.display = match ? '' : 'none';
         if (match) shown++;
       });
       var countEl = document.getElementById('filter-count');
@@ -1696,7 +2665,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       fetch('/api/reports/' + encodeURIComponent(id), { method: 'DELETE' })
         .then(function(r) { return r.json(); })
         .then(function(d) {
-          if (d.ok) { btn.closest('tr').remove(); }
+          if (d.ok) { btn.closest('.run-card').remove(); }
           else { alert(I18N[lang].deleteFail + ': ' + (d.error || 'unknown')); }
         })
         .catch(function(err) { alert(I18N[lang].deleteFail + ': ' + err.message); });
@@ -1771,54 +2740,89 @@ exports[`snapshot baselines (zh / en × list / detail) > renderRunList zh 1`] = 
       });
     }
   });
+  // 复制 paste-ready 片段到剪贴板:供 insight modal 的"复制片段"按钮调用。
+  // 元素 id 指 <code> 节点;复制后按钮加 .copied 类做 1.5s 视觉反馈。
+  // i18n:按钮反馈文案随页面 data-lang(layout 写在 <html> 上,langToggleScript 切换时更新)。
+  // 未设 dataset 时按 DEFAULT_LANG(zh)兜底,跟旧报告/无 toggle 入口的页面一致。
+  window.omkCopySnippet = function(elementId, btn) {
+    var el = document.getElementById(elementId);
+    if (!el) return;
+    var text = el.textContent || '';
+    var pageLang = document.documentElement.dataset.lang || 'zh';
+    var copiedLabel = pageLang === 'en' ? '✓ Copied' : '✓ 已复制';
+    var done = function() {
+      if (!btn) return;
+      var orig = btn.textContent;
+      btn.textContent = copiedLabel;
+      btn.classList.add('copied');
+      setTimeout(function() { btn.textContent = orig; btn.classList.remove('copied'); }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function() { /* swallow */ });
+    } else {
+      // 老浏览器兜底:execCommand fallback
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch(e) { /* swallow */ }
+      document.body.removeChild(ta);
+    }
+  };
   </script>
 <style>
+/* Pantone-inspired light theme(2026-05 全站浅色化)。
+   设计原则:暖白底 + 哑色调,不刺眼;字号 14-15px 起;subtle box-shadow 替代 border。
+   旧的深色蓝灰主题已迁移,语义保留但色值翻转。 */
 :root{
-  --bg-base:#0f172a;
-  --bg-surface:rgba(30,41,59,0.7);
-  --bg-elevated:rgba(15,23,42,0.6);
-  --border:rgba(148,163,184,0.1);
-  --border-hover:rgba(148,163,184,0.25);
-  --text-primary:#e2e8f0;
-  --text-secondary:#94a3b8;
-  --text-muted:#64748b;
-  --text-faint:#475569;
-  --accent:#60a5fa;
-  --accent-hover:#93bbfd;
-  --green:#4ade80;
-  --green-bg:rgba(34,197,94,0.12);
-  --red:#f87171;
-  --red-bg:rgba(239,68,68,0.12);
-  --yellow:#fbbf24;
-  --yellow-bg:rgba(245,158,11,0.12);
-  --info-bg:rgba(96,165,250,0.1);
-  --chart-1:#60a5fa;
-  --chart-2:#a78bfa;
-  --chart-3:#34d399;
-  --chart-4:#fb923c;
-  --chart-5:#f472b6;
-  --chart-6:#fbbf24;
-  --bg-card:#1e293b;
+  --bg-base:#fbfaf7;            /* 暖白纸感 */
+  --bg-surface:#ffffff;          /* 卡片白 */
+  --bg-elevated:rgba(58,58,58,.025);
+  --bg-soft:rgba(58,58,58,.04);
+  --border:#e8e3da;              /* 暖灰分隔 */
+  --border-hover:#d4ccbf;
+  --text-primary:#3a3a3a;        /* 深炭灰 */
+  --text-secondary:#7a7a7a;
+  --text-muted:#a8a8a8;
+  --text-faint:#c8c8c8;
+  --accent:#5a7a93;              /* 板岩蓝(slate) */
+  --accent-hover:#3f5d76;
+  --green:#5e8252;               /* 鼠尾草绿(sage) */
+  --green-bg:rgba(94,130,82,.10);
+  --red:#9c4a3f;                 /* 砖红土陶(terracotta) */
+  --red-bg:rgba(156,74,63,.10);
+  --yellow:#b08030;              /* 暖琥珀 */
+  --yellow-bg:rgba(176,128,48,.10);
+  --info-bg:rgba(90,122,147,.08);
+  /* 图表色 — 全部哑色调,跨色相区分但饱和度统一在 ~50% */
+  --chart-1:#5a7a93;
+  --chart-2:#7a6b89;
+  --chart-3:#5e8252;
+  --chart-4:#b08030;
+  --chart-5:#9c6478;
+  --chart-6:#937846;
+  --bg-card:#ffffff;
   --radius:8px;
   --radius-lg:12px;
-  --fs-micro:11px;
-  --fs-detail:12px;
-  --fs-label:12px;
-  --fs-body:13px;
+  /* 字号上调:正文 14px / 标签 13px / 详情 13px / 微元数据 12px */
+  --fs-micro:12px;
+  --fs-detail:13px;
+  --fs-label:13px;
+  --fs-body:14.5px;
+  --shadow-sm:0 1px 3px rgba(58,58,58,.06);
+  --shadow-md:0 2px 8px rgba(58,58,58,.10);
 }
 *{box-sizing:border-box;margin:0}
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:32px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.5;max-width:1100px;margin:0 auto}
-h1{margin:0 0 6px;font-size:1.5rem;font-weight:700;color:var(--text-primary);letter-spacing:-0.02em}
-h2{margin:24px 0 8px;font-size:0.9375rem;color:var(--text-secondary);font-weight:600}
-.subtitle{color:var(--text-muted);font-size:0.8125rem;margin:0 0 20px}
-a{color:var(--accent);text-decoration:none}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei","Segoe UI",Roboto,sans-serif;padding:32px;background:var(--bg-base);color:var(--text-primary);min-height:100vh;line-height:1.7;max-width:1100px;margin:0 auto;font-size:var(--fs-body)}
+h1{margin:0 0 8px;font-size:1.75rem;font-weight:600;color:var(--text-primary);letter-spacing:-0.01em;line-height:1.3}
+h2{margin:32px 0 12px;font-size:1.0625rem;color:var(--text-primary);font-weight:600;line-height:1.4}
+.subtitle{color:var(--text-secondary);font-size:0.875rem;margin:0 0 24px}
+a{color:var(--accent);text-decoration:none;transition:color .15s}
 a:hover{color:var(--accent-hover);text-decoration:underline}
 
-/* Meta tags — bumped from 11px/text-muted to 12px/text-secondary so contrast
-   passes WCAG AA on the dark surface. */
-.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 16px}
-.meta-tag{font-size:0.75rem;color:var(--text-secondary);padding:3px 10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
-.meta-tag code{font-size:0.7rem;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
+/* Meta tags — 浅色主题下加大对比度,小一点的字号也清晰可读 */
+.meta-tags{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 20px}
+.meta-tag{font-size:13px;color:var(--text-secondary);padding:4px 12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:20px;line-height:1.5}
+.meta-tag code{font-size:12px;color:var(--text-secondary);background:transparent;padding:0;letter-spacing:0.02em}
 
 /* Run ID stamp — H1 保留完整 run-id (与列表页一致), 时间戳从 ID 解出来作为副标小字,
    告诉用户「这次跑的时间」,无需用户自己解析 ID 后缀。 */
@@ -1840,11 +2844,12 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .methodology-summary-label{font-size:14px;font-weight:600}
 .methodology-summary-hint{flex:1 1 auto;text-align:right;font-size:11px;color:var(--text-muted);font-weight:400}
 .methodology-badges{display:inline-flex;flex-wrap:wrap;gap:6px}
-.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
-.methodology-badge-pass{background:rgba(74,222,128,0.14);color:var(--green)}
-.methodology-badge-warn{background:rgba(251,191,36,0.16);color:var(--yellow)}
-.methodology-badge-fail{background:rgba(248,113,113,0.16);color:var(--red)}
-.methodology-badge-skip{background:rgba(148,163,184,0.12);color:var(--text-muted)}
+.methodology-badge{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:12px;letter-spacing:0.02em;line-height:1.5;white-space:nowrap}
+/* Pantone 哑色 — 用 var(--green-bg) 等(浅色主题已重定义) */
+.methodology-badge-pass{background:var(--green-bg);color:var(--green)}
+.methodology-badge-warn{background:var(--yellow-bg);color:var(--yellow)}
+.methodology-badge-fail{background:var(--red-bg);color:var(--red)}
+.methodology-badge-skip{background:var(--bg-soft);color:var(--text-muted)}
 .methodology-body{padding:0 16px 14px;border-top:1px solid var(--border);margin-top:8px}
 .methodology-body>h2:first-child{margin-top:14px}
 
@@ -1852,20 +2857,23 @@ a:hover{color:var(--accent-hover);text-decoration:underline}
 .cards{display:flex;gap:12px;flex-wrap:wrap;margin:10px 0}
 .card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;min-width:140px;flex:1;transition:border-color 0.15s}
 .card:hover{border-color:var(--border-hover)}
-.card-label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px}
-.card-value{font-size:22px;font-weight:700;margin:2px 0;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.card-sub{font-size:11px;color:var(--text-muted)}
+/* 卡片标签:de-uppercase(uppercase 在 pantone 哑色调里太"科技报"),轻微 letter-spacing
+   保留排版感,字号上调到 12 让读者看清。值/数字改 weight 600(700 在浅色配色里太硬)。 */
+.card-label{font-size:12px;color:var(--text-muted);letter-spacing:0.02em;margin-bottom:4px;font-weight:500}
+.card-value{font-size:20px;font-weight:600;margin:2px 0;color:var(--text-primary);font-variant-numeric:tabular-nums;line-height:1.3}
+.card-sub{font-size:12px;color:var(--text-muted);line-height:1.5}
 /* Summary table — inherits the global center + middle from the base td/th. */
-.summary-cell{min-width:100px}
-.summary-value-primary{font-size:1.375rem;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
+.summary-cell{min-width:96px}
+.summary-value-primary{font-size:1.25rem;font-weight:600;font-variant-numeric:tabular-nums}
 
 /* Hint tooltip (legacy span-based, kept for hover-only hints) */
 .hint{position:relative;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;font-size:10px;font-weight:600;color:var(--text-muted);border:1px solid var(--border-hover);border-radius:50%;cursor:help;margin-left:6px;vertical-align:middle}
 .hint-click{cursor:pointer}
 
 /* Hint button — accessible, keyboard-focusable replacement for click-to-open-modal hints */
-button.hint-btn{display:inline-flex;align-items:center;justify-content:center;min-width:22px;min-height:22px;padding:3px;font-size:var(--fs-micro);font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border-hover);border-radius:50%;cursor:pointer;margin-left:6px;vertical-align:middle;line-height:1;transition:color 0.15s,border-color 0.15s}
-button.hint-btn:hover{color:var(--text-primary);border-color:var(--text-primary)}
+button.hint-btn{display:inline-flex;align-items:center;justify-content:center;min-width:20px;min-height:20px;padding:2px;font-size:11px;font-weight:600;color:var(--text-muted);background:transparent;border:1px solid var(--border);border-radius:50%;cursor:pointer;margin-left:6px;vertical-align:middle;line-height:1;transition:color 0.15s,border-color 0.15s;outline:none;appearance:none}
+button.hint-btn:hover{color:var(--text-primary);border-color:var(--text-secondary)}
+button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* Verdict + detail pattern used in variance & significance cells */
@@ -2042,9 +3050,9 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 @media(max-width:480px){.modal-table td{display:block;padding:3px 0}.modal-table td:first-child{font-weight:600}}
 .hint-tip{display:none;position:absolute;bottom:calc(100% + 6px);right:0;background:var(--bg-elevated);border:1px solid var(--border-hover);border-radius:var(--radius);padding:6px 10px;font-size:11px;font-weight:400;color:var(--text-secondary);white-space:normal;max-width:280px;width:max-content;z-index:10}
 .hint:hover .hint-tip,.hint:focus .hint-tip{display:block}
-.summary-value{font-size:1rem;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
-.summary-detail{font-size:0.6875rem;color:var(--text-muted);margin-top:3px}
-.summary-unit{font-size:0.75rem;font-weight:400;color:var(--text-muted)}
+.summary-value{font-size:15px;font-weight:600;color:var(--text-primary);font-variant-numeric:tabular-nums}
+.summary-detail{font-size:12px;color:var(--text-muted);margin-top:4px;line-height:1.5}
+.summary-unit{font-size:12px;font-weight:400;color:var(--text-muted)}
 .card-detail{margin-top:8px;font-size:12px;color:var(--text-secondary)}
 .card-detail div{margin:2px 0}
 
@@ -2055,9 +3063,12 @@ button.hint-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 @media(max-width:768px){
   .table-wrap::after{content:'';position:sticky;right:0;top:0;display:block;float:right;width:32px;height:100%;margin-left:-32px;margin-top:-100%;pointer-events:none;background:linear-gradient(to right,transparent,var(--bg-card) 85%);z-index:2}
 }
-table{border-collapse:collapse;width:100%;font-size:0.8125rem;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;line-height:1.4}
-th{background:var(--bg-elevated);padding:8px 14px;text-align:center;vertical-align:middle;font-weight:500;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:0.6875rem;text-transform:uppercase;letter-spacing:0.04em;white-space:nowrap}
-td{padding:10px 14px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
+/* 表格 — 稍紧凑(padding 7px 12px),正文 13px,字号上调跟全站对齐;
+   非数字列保留 left-align(td.text 类),其它默认居中。 */
+table{border-collapse:collapse;width:100%;font-size:13px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;line-height:1.5}
+th{background:var(--bg-elevated);padding:8px 12px;text-align:center;vertical-align:middle;font-weight:600;color:var(--text-secondary);border-bottom:1px solid var(--border);font-size:12px;letter-spacing:0.02em;white-space:nowrap}
+td{padding:7px 12px;border-bottom:1px solid var(--border);color:var(--text-secondary);font-variant-numeric:tabular-nums;text-align:center;vertical-align:middle}
+td:first-child, th:first-child { text-align:left }
 tr:last-child td{border-bottom:none}
 tr:hover td{background:rgba(148,163,184,0.04)}
 
@@ -2089,9 +3100,11 @@ tr:hover td{background:rgba(148,163,184,0.04)}
 .bar-value{flex:0 0 auto;font-size:12px;color:var(--text-secondary)}
 
 /* Forms */
-input[type="text"]{background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius);padding:4px 8px;font-size:12px}
-input[type="text"]:focus{outline-color:transparent;border-color:var(--accent);box-shadow:0 0 0 2px rgba(96,165,250,0.15)}
-button{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius);cursor:pointer;padding:4px 12px;font-size:12px;transition:border-color 0.15s,color 0.15s}
+input[type="text"]{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-primary);border-radius:var(--radius);padding:6px 12px;font-size:13px;font-family:inherit;outline:none;transition:border-color .15s,box-shadow .15s}
+input[type="text"]:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--info-bg)}
+/* 通用 button — 浅色主题里默认 transparent + 边框更细。子样式(.run-card-delete, .tv-vtab,
+   .omk-view-tab, .hint-btn 等)各自有显式 reset 覆盖默认样式。 */
+button{background:var(--bg-surface);border:1px solid var(--border);color:var(--text-secondary);border-radius:var(--radius);cursor:pointer;padding:6px 14px;font-size:13px;font-family:inherit;transition:border-color .15s,color .15s,background .15s;outline:none;appearance:none;-webkit-appearance:none}
 button:hover{border-color:var(--border-hover);color:var(--text-primary)}
 button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
@@ -2139,12 +3152,12 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
   .hint-tip{display:none}
   .footer{color:#475569}
 }
-</style></head><body><button id="lang-toggle" onclick="switchLang()" class="lang-toggle">英文</button>
+</style></head><body>
     <main>
     <h1>评测报告</h1>
-    <p class="subtitle" data-i18n="subtitle">知识载体评测 &middot; 1 次评测 &middot; 累计 $0.0380</p>
+    <p class="subtitle" data-i18n="subtitle">知识载体评测 &middot; 1 次评测</p>
 
-    <div style="margin:12px 0"><a href="/analyses" style="color:var(--text-muted);font-size:12px;text-decoration:none;border:1px solid var(--border);padding:4px 10px;border-radius:var(--radius);display:inline-block">📊 <span data-i18n="skillHealthTitle">Skill 健康度日报</span> →</a></div>
+    <div style="margin:12px 0"><a class="page-secondary-link" href="/analyses">📊 <span data-i18n="skillHealthTitle">Skill 健康度日报</span> →</a></div>
     <div style="margin:12px 0;display:flex;gap:8px;align-items:center">
       <input id="filter-input" type="text" placeholder="搜索报告名称、变体..." style="flex:1;max-width:320px;padding:6px 10px;font-size:13px;background:var(--bg-surface);color:var(--text-primary);border:1px solid var(--border);border-radius:var(--radius);outline:none" oninput="filterTable(this.value)">
       <span id="filter-count" style="font-size:11px;color:var(--text-muted)"></span>
@@ -2167,37 +3180,66 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a></p>
     </div>
   </div>
-    <div class="table-wrap">
-    <table id="report-table">
-      <thead><tr>
-        <th data-i18n="runId">报告名称</th>
-        <th data-i18n="model">任务执行模型</th>
-        <th data-i18n="samples">评测用例数</th>
-        <th data-i18n="score">分数 <button type="button" class="hint-btn" onclick="openModal('guide-scoring-list')" aria-label="综合分怎么算的？" aria-haspopup="dialog">?</button></th>
-        <th data-i18n="cost">执行成本</th>
-        <th>耗时</th>
-        <th></th>
-      </tr></thead>
-      <tbody><tr>
-      <td><span class="run-status verdict-CAUTIOUS" title="实验组略优于对照组,但差距小或某层未达 gate" aria-label="略微进步 — 实验组略优于对照组,但差距小或某层未达 gate"><span class="run-status-dot" aria-hidden="true">▲</span>略微进步</span><a href="/reports/test-run-20260325-1000"><span style="color:var(--text-primary)">test-run-20260325-1000</span><br><span style="font-size:0.6875rem;color:var(--text-muted)">03/25 10:00</span></a></td>
-      <td>sonnet</td>
-      <td>2</td>
-      <td><div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span title="v1" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">v1</span><div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0"><div style="width:80%;height:100%;background:var(--green);border-radius:3px"></div></div><span style="font-size:12px;font-weight:600;color:var(--green);min-width:24px">4</span></div><div style="display:flex;align-items:center;gap:6px;margin:2px 0"><span title="v2" style="font-size:11px;color:var(--text-muted);width:56px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0">v2</span><div style="width:64px;height:6px;background:var(--bg-surface);border-radius:3px;flex-shrink:0"><div style="width:96%;height:100%;background:var(--green);border-radius:3px"></div></div><span style="font-size:12px;font-weight:600;color:var(--green);min-width:24px">4.8</span></div></td>
-      <td>$0.0380</td>
-      <td>10.0s</td>
-      <td style="white-space:nowrap"><button onclick="deleteRun('test-run-20260325-1000',this)" class="btn-danger" data-i18n="deleteBtnText">删除</button></td>
-    </tr></tbody>
-    </table>
-    </div>
+    <div id="run-list" class="run-list"><a class="run-card verdict-CAUTIOUS" href="/reports/test-run-20260325-1000">
+      <div class="run-card-h">
+        <span class="run-status verdict-CAUTIOUS" title="实验组略优于对照组,但差距小或某层未达 gate" aria-label="略微进步 — 实验组略优于对照组,但差距小或某层未达 gate"><span class="run-status-dot" aria-hidden="true">▲</span>略微进步</span>
+        <span class="run-card-id">test-run-20260325-1000</span>
+        <span class="run-card-date">03/25 10:00</span>
+      </div>
+      <div class="run-card-meta">sonnet · 2 用例 · v1 · v2</div>
+      <div class="run-card-scores"><div class="rc-score-row"><span class="rc-score-label" title="v1">v1</span><div class="rc-score-bar"><div class="rc-score-bar-fill rc-score-bar-fill--pass" style="width:80%"></div></div><span class="rc-score-num rc-score-num--pass">4.00</span></div><div class="rc-score-row"><span class="rc-score-label" title="v2">v2</span><div class="rc-score-bar"><div class="rc-score-bar-fill rc-score-bar-fill--pass" style="width:96%"></div></div><span class="rc-score-num rc-score-num--pass">4.80</span></div></div>
+      <div class="run-card-foot">
+        <span class="run-card-stat">10.0s</span>
+        <button class="run-card-delete" onclick="event.preventDefault();event.stopPropagation();deleteRun('test-run-20260325-1000',this)" data-i18n="deleteBtnText" aria-label="删除">×</button>
+      </div>
+    </a></div>
+    <style>
+    /* 列表页 — 卡片式布局,顶部 verdict pill 主导,底部 hover 露出 delete */
+    .page-secondary-link { color:var(--text-secondary);font-size:13px;text-decoration:none;border:1px solid var(--border);padding:6px 14px;border-radius:var(--radius);display:inline-block;background:var(--bg-surface);transition:border-color .15s,color .15s }
+    .page-secondary-link:hover { color:var(--text-primary);border-color:var(--border-hover);text-decoration:none }
+    .run-list { display:flex;flex-direction:column;gap:12px;margin:16px 0 }
+    /* verdict 用左边粗带 + 浅色填充背景双重视觉提示,远看也能区分。
+       PROGRESS = sage 绿(进步),REGRESS = 砖红(回归),CAUTIOUS = 琥珀(警示),其他 = 灰(无信号) */
+    .run-card { display:block;padding:18px 22px;background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);text-decoration:none;color:inherit;transition:box-shadow .15s,transform .05s;border-left:5px solid transparent;position:relative }
+    .run-card:hover { box-shadow:var(--shadow-md);text-decoration:none }
+    .run-card:hover .run-card-delete { opacity:1 }
+    .run-card.verdict-PROGRESS { border-left-color:var(--green);background:linear-gradient(90deg,var(--green-bg) 0%,var(--bg-surface) 80%) }
+    .run-card.verdict-REGRESS { border-left-color:var(--red);background:linear-gradient(90deg,var(--red-bg) 0%,var(--bg-surface) 80%) }
+    .run-card.verdict-CAUTIOUS { border-left-color:var(--yellow);background:linear-gradient(90deg,var(--yellow-bg) 0%,var(--bg-surface) 80%) }
+    .run-card.verdict-NOISE, .run-card.verdict-UNDERPOWERED { border-left-color:var(--text-faint);opacity:0.85 }
+    .run-card.verdict-SOLO { border-left-color:var(--accent);background:linear-gradient(90deg,var(--info-bg) 0%,var(--bg-surface) 80%) }
+    .run-card-h { display:flex;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap }
+    .run-card-id { font-size:15px;font-weight:600;color:var(--text-primary);font-family:"SF Mono",Menlo,Consolas,monospace;letter-spacing:-0.01em }
+    .run-card-date { font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums;margin-left:auto }
+    .run-card-meta { font-size:13px;color:var(--text-secondary);margin:6px 0 12px;line-height:1.6 }
+    .run-card-scores { display:flex;flex-direction:column;gap:4px;margin:8px 0 }
+    .run-card-foot { display:flex;gap:16px;margin-top:10px;align-items:center;font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums }
+    .run-card-stat { font-family:"SF Mono",Menlo,monospace }
+    .run-card-delete { margin-left:auto;background:transparent;border:none;color:var(--text-muted);font-size:18px;line-height:1;width:28px;height:28px;border-radius:14px;cursor:pointer;opacity:0;transition:opacity .15s,background .15s,color .15s;outline:none;appearance:none }
+    .run-card-delete:hover { background:var(--red-bg);color:var(--red) }
+    /* 分数行(每个 variant 一行) */
+    .rc-score-row { display:flex;align-items:center;gap:10px;font-size:13px;line-height:1.6 }
+    .rc-score-label { font-size:12px;color:var(--text-secondary);min-width:80px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0 }
+    .rc-score-bar { width:120px;height:6px;background:var(--bg-soft);border-radius:3px;flex-shrink:0;overflow:hidden }
+    .rc-score-bar-fill { height:100%;border-radius:3px;transition:width .2s }
+    .rc-score-bar-fill--pass { background:var(--green) }
+    .rc-score-bar-fill--warn { background:var(--yellow) }
+    .rc-score-bar-fill--fail { background:var(--red) }
+    .rc-score-num { font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace;min-width:36px }
+    .rc-score-num--pass { color:var(--green) }
+    .rc-score-num--warn { color:var(--yellow) }
+    .rc-score-num--fail { color:var(--red) }
+    .rc-score-empty { color:var(--text-faint);font-size:12px;font-style:italic }
+    </style>
     <script>
     function filterTable(q) {
-      var rows = document.querySelectorAll('#report-table tbody tr');
+      var cards = document.querySelectorAll('#run-list .run-card');
       var lower = q.toLowerCase();
       var shown = 0;
-      rows.forEach(function(row) {
-        var text = row.textContent.toLowerCase();
+      cards.forEach(function(card) {
+        var text = card.textContent.toLowerCase();
         var match = !q || text.indexOf(lower) !== -1;
-        row.style.display = match ? '' : 'none';
+        card.style.display = match ? '' : 'none';
         if (match) shown++;
       });
       var countEl = document.getElementById('filter-count');
@@ -2209,7 +3251,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
       fetch('/api/reports/' + encodeURIComponent(id), { method: 'DELETE' })
         .then(function(r) { return r.json(); })
         .then(function(d) {
-          if (d.ok) { btn.closest('tr').remove(); }
+          if (d.ok) { btn.closest('.run-card').remove(); }
           else { alert(I18N[lang].deleteFail + ': ' + (d.error || 'unknown')); }
         })
         .catch(function(err) { alert(I18N[lang].deleteFail + ': ' + err.message); });
