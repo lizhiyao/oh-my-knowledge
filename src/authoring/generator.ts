@@ -89,25 +89,28 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
         例: mocks=[A,B,C](A=PROJECT 空 / B=WORKSPACE 命中 / C=search),
         用 mock_hit "Bash:2" 强制 LLM 必须走到第 2 步(WORKSPACE 兜底),否则失分。
         threshold 字段可选,默认 >=1。
-  文本类(兜底,不要单用):
-  - { "type": "contains_any", "values": ["建议","推荐","可考虑"], "weight": 0.5 }
-        ↑ **首选的文本类断言**:LLM 最终文本中至少包含一个候选词即过。
-        关键 — 单关键词 contains 不稳:LLM 每次发挥不一样,"建议"/"推荐"/"可考虑"
-        语义等价但字面不同,字面匹配 single keyword 会让正确行为也判挂。
-        永远用 contains_any 给 3-5 个同义词,而不是一个 contains。
-  - { "type": "contains_all", "values": ["X","Y"], "weight": 1 }
-        ↑ 必须同时包含全部候选(LLM 总结中要点多到合一)。
+  文本类(**严格限定:只测不可替换字面量,不要测语义/论点**):
+        关键原则 — 字面字符串匹配在 LLM 输出上**永远不稳**:同义词("建议"/"推荐"/"可考虑")、
+        句式变体("不阻塞"/"禁止阻塞"/"不会阻塞")、否定式都会让正确行为判挂。
+        测"LLM 是否提到了某概念/某论点/某判断" → **不要用 contains** → 把这事写进 rubric,
+        让 judge 评 1-5 分(judge 看意图不看字面,LLM 同义改写不会扣分,且 omk 支持
+        --judge-models ensemble / --repeat 取均值降方差,是测量学认可的稳定语义评估)。
   - { "type": "contains", "value": "code-token", "weight": 1 }
-        ↑ **只在抓代码 token / 数值 / 不可替换字面量**时用(如 SDK 函数名、错误码、
-        路径片段)。**绝不**用它来抓中文/英文短语 — 单关键词 LLM 同义改写就挂。
-        如果想抓"概念是否被提到",改用 contains_any 多候选。
-        命令名/参数也不要用 contains(它只看 LLM 文本,不看 toolCall),用 tool_input_contains。
+        ↑ **只在抓代码 token / 错误码 / SDK 函数名 / 不可替换字面量**时用(如
+        "skylark_doc_create" / "ECONNREFUSED" / "x-trace-id")。这些字面唯一,
+        LLM 没法同义改写。
+  - { "type": "contains_any", "values": ["x","y","z"], "weight": 0.5 }
+        ↑ 多候选字面任一命中即过。仅在**少数有限的字面变体**场景用 — 如错误码组
+        ["ECONNREFUSED","ETIMEDOUT","EHOSTUNREACH"]。**不要**用 contains_any 列同义词
+        来"测概念覆盖" — 同义词永远列不全,LLM 第 N+1 次发挥总能想出第 N+1 个写法。
+  - { "type": "contains_all", "values": ["X","Y"], "weight": 1 }
+        ↑ 必须同时包含全部字面 token(如某 API 响应应同时含两个具体字段名)。
   - { "type": "not_contains", "value": "...", "weight": 0.5 }
-        ↑ 只查 LLM **最终文本**不应出现某词(如 hedging 用语 "I'm not sure")。
-        同样建议改用反向多候选(用 contains_any + not 字段),除非字面 token 唯一可识别。
-        **不要**用它表达"工作流不应踩到 X" — LLM 在总结里复述"已避开 X" 会自触发。
-        要测"工具调用层面不该走" → 用 tool_input_not_contains 或 tools_not_called。
+        ↑ 只查 LLM **最终文本**不应出现某固定字面 token。**不要**用它表达"不应踩到 X" —
+        LLM 在总结里复述"已避开 X" 会自触发假阳性。"工具调用层面不该走"→
+        tool_input_not_contains 或 tools_not_called。
   - { "type": "regex", "pattern": "...", "weight": 1 }
+        ↑ 同 contains 限制:只用在固定格式字面量(如 SHA / UUID / 路径模板)。
 - environment: 可选,对象。**评测环境的"已就绪"声明**,LLM 看到后跳过环境探测直接进工作流。
   字段:
     - cli_available: string[],已在 PATH 上的 CLI(如 ["node", "git", "code-host"])
@@ -184,21 +187,22 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 5. assertions 的 value / pattern / values / reference 必须使用英文、数字或代码 token，不要使用中文关键词。
 6. 断言应检测 skill 文档中的具体细节（如特定参数名、配置值、工作流步骤），而非通用知识。
    避免使用 baseline 凭常识或搜索文件也能答对的断言（如 not_contains 通用错误写法）。
-   **断言类型选择口诀**:
+   **断言类型选择口诀**(fact 层只测 deterministic 事实,语义/论点交给 judge 评 rubric):
    - 测"LLM 调了哪个工具/什么命令" → 用 tool_input_contains 或 tools_called(不要用 contains)
    - 测"LLM 走完了流程的某一步" → 用 mock_hit(配合 sample.mocks 的"驱动流程"设计,见下文)
    - 测"LLM 没用错误的工具" → 用 tools_not_called(values 必须给具体工具名,不能空数组)
    - 测"LLM 工作流不应踩到某路径 / 不该传某 flag" → 用 tool_input_not_contains
         (注意:**不要**用 not_contains 表达这件事 — not_contains 扫的是 LLM 最终文本,
          LLM 在总结里写"已排除 X" 会自触发假阳性,这是 obsidian / 知识库类 sample 的高频坑)
-   - 测"LLM 最终回答提到了某概念/论点" → 用 contains_any **多个同义词**(3-5 个)
-        ↑ 关键稳定性原则:LLM 每次回答用词都会变(建议/推荐/可考虑等价),
-        单关键词 contains 在 N 次 run 里通过率不稳。多候选 contains_any 才能
-        测"语义意图覆盖到"而不是"刚好用了某个字"。
-   - 测"LLM 最终回答包含代码 token / 错误码 / 不可替换字面量" → 用 contains(单值,只在
-        token 唯一不会同义改写时用,如 SDK 函数名 "skylark_doc_create")
-   优先组合使用,典型 sample 通常有 2 条 tool_input_contains + 1 条 tools_not_called +
-   1 条 contains_any(同义词多候选)。**单一字面 contains 用得越少越好**。
+   - 测"LLM 最终回答包含代码 token / 错误码 / 不可替换字面量" → 用 contains(单值)
+   - 测"LLM 最终回答提到某概念/做出某判断/给了某类建议" → **完全不要用 contains/_any** →
+        把这条"应该做到 X" 写进 sample.rubric,让 judge 评分。judge 看意图不看字面,
+        天然稳定;judge 自身有方差但 omk 支持 ensemble / --repeat 降方差,是测量学
+        认可的语义评估方式。**这是 fact 层和 judge 层的分工**:fact 测 deterministic
+        机器可验证的事(工具/路径/代码 token),judge 测 deterministic 不可表达的
+        语义意图。把语义塞 fact 层用 contains/_any 是反模式 — 每次跑结果飘。
+   优先组合:典型 sample 通常 2 条 tool_input_contains + 1 条 tools_not_called +
+   1-2 条 mock_hit。**contains 系列出现 0-1 次最好**,只用于代码 token 这种唯一字面量。
 7. 如果 skill 涉及外部调用(MCP/CLI/HTTP/文件读),**必须**为本 sample 生成 mocks 数组,
    保证评测时 0 真调底层。query 类返回贴近真实 schema 的示例数据,write 类返回 success。
 
