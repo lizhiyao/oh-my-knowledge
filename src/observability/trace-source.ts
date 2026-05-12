@@ -1,7 +1,7 @@
 /** Trace source loading and parsing for Claude JSONL / generic markdown logs. */
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { extractMarkdownLogSkill } from './trace-attribution.js';
 
 // ---------- cc session JSONL raw schema (v0.18 subset) ----------
@@ -23,6 +23,7 @@ export interface CcAssistantRecord {
   timestamp: string;
   cwd?: string;
   gitBranch?: string;
+  entrypoint?: string;
   attributionSkill?: string;
   message: {
     role: 'assistant';
@@ -56,6 +57,7 @@ export interface CcUserRecord {
   parentUuid: string | null;
   sessionId: string;
   timestamp: string;
+  entrypoint?: string;
   message: {
     role: 'user';
     content: string | Array<CcUserTextContent | CcUserToolResultContent>;
@@ -68,6 +70,19 @@ export type CcRecord = CcAssistantRecord | CcUserRecord | { type: string; [k: st
 
 export interface CcSession {
   sessionId: string;
+  /**
+   * Logical parent session. For a directory shaped as:
+   *   A/main.jsonl
+   *   A/subagents/x1.jsonl
+   *   A/subagents/x2.jsonl
+   * all three traces share the same sessionGroupId, while sourcePath still
+   * points at the concrete evidence file.
+   */
+  sessionGroupId?: string;
+  sessionGroupPath?: string;
+  traceId?: string;
+  traceRole?: 'standalone' | 'main' | 'subagent';
+  traceLabel?: string;
   sourcePath: string;
   // records 用 unknown[] 是有意为之: cc JSONL 里 permission-mode / file-history-snapshot /
   // 未来可能新增的 record type 都会共存, 严格 union 会拒绝合法输入。
@@ -75,6 +90,7 @@ export interface CcSession {
   records: unknown[];
   cwd?: string;
   gitBranch?: string;
+  entrypoint?: string;
   startTimestamp?: string;
   endTimestamp?: string;
 }
@@ -89,10 +105,10 @@ export interface CcSession {
 export function loadCcSessions(path: string): CcSession[] {
   const stat = statSync(path);
   if (stat.isFile()) {
-    return parseTraceFile(path);
+    return parseTraceFile(path).map((session) => withStandaloneTraceMetadata(session));
   }
   const entries = collectTraceFiles(path);
-  return entries.flatMap(parseTraceFile);
+  return annotateSessionGroups(path, entries.flatMap(parseTraceFile));
 }
 
 function collectTraceFiles(dir: string): string[] {
@@ -121,6 +137,79 @@ function parseTraceFile(filePath: string): CcSession[] {
   return [];
 }
 
+function withStandaloneTraceMetadata(session: CcSession): CcSession {
+  return {
+    ...session,
+    sessionGroupId: session.sessionId,
+    sessionGroupPath: dirname(session.sourcePath),
+    traceId: traceIdFor(session),
+    traceRole: session.traceRole ?? 'standalone',
+    traceLabel: session.traceLabel ?? basename(session.sourcePath),
+  };
+}
+
+function annotateSessionGroups(rootPath: string, sessions: CcSession[]): CcSession[] {
+  const groupRoots = new Set<string>();
+  for (const session of sessions) {
+    const subagentRoot = subagentGroupRoot(session.sourcePath);
+    if (subagentRoot) groupRoots.add(subagentRoot);
+  }
+
+  if (groupRoots.size === 0) {
+    return sessions.map((session) => withStandaloneTraceMetadata(session));
+  }
+
+  const groupIdByRoot = new Map<string, string>();
+  for (const root of groupRoots) {
+    const mainSession = sessions
+      .filter((session) => groupRootForPath(session.sourcePath, groupRoots) === root && !isSubagentTrace(session.sourcePath))
+      .sort((a, b) => a.sourcePath.localeCompare(b.sourcePath))[0];
+    groupIdByRoot.set(root, mainSession?.sessionId || basename(root) || relative(dirname(rootPath), root) || root);
+  }
+
+  return sessions.map((session) => {
+    const groupRoot = groupRootForPath(session.sourcePath, groupRoots);
+    if (!groupRoot) return withStandaloneTraceMetadata(session);
+    const role = isSubagentTrace(session.sourcePath) ? 'subagent' : 'main';
+    return {
+      ...session,
+      sessionGroupId: groupIdByRoot.get(groupRoot) ?? session.sessionId,
+      sessionGroupPath: groupRoot,
+      traceId: traceIdFor(session),
+      traceRole: role,
+      traceLabel: traceLabelFor(session.sourcePath, groupRoot, role),
+    };
+  });
+}
+
+function traceIdFor(session: CcSession): string {
+  return `${session.sessionId}\u0000${session.sourcePath}`;
+}
+
+function isSubagentTrace(filePath: string): boolean {
+  return filePath.split('/').includes('subagents');
+}
+
+function subagentGroupRoot(filePath: string): string | undefined {
+  const marker = '/subagents/';
+  const index = filePath.indexOf(marker);
+  if (index < 0) return undefined;
+  return filePath.slice(0, index);
+}
+
+function groupRootForPath(filePath: string, groupRoots: Set<string>): string | undefined {
+  const subagentRoot = subagentGroupRoot(filePath);
+  if (subagentRoot && groupRoots.has(subagentRoot)) return subagentRoot;
+  const parent = dirname(filePath);
+  if (groupRoots.has(parent)) return parent;
+  return undefined;
+}
+
+function traceLabelFor(filePath: string, groupRoot: string, role: 'main' | 'subagent'): string {
+  const rel = relative(groupRoot, filePath) || basename(filePath);
+  return role === 'subagent' ? rel : `main/${basename(filePath)}`;
+}
+
 function parseCcSessionFile(filePath: string): CcSession {
   const content = readFileSync(filePath, 'utf-8');
   const records: CcRecord[] = [];
@@ -134,7 +223,7 @@ function parseCcSessionFile(filePath: string): CcSession {
     }
   }
   const first = records.find((r) => 'sessionId' in r && typeof r.sessionId === 'string') as
-    | (CcRecord & { sessionId: string; cwd?: string; gitBranch?: string; timestamp?: string })
+    | (CcRecord & { sessionId: string; cwd?: string; gitBranch?: string; entrypoint?: string; timestamp?: string })
     | undefined;
   const last = [...records].reverse().find((r) => 'timestamp' in r && typeof r.timestamp === 'string') as
     | (CcRecord & { timestamp?: string })
@@ -145,6 +234,7 @@ function parseCcSessionFile(filePath: string): CcSession {
     records,
     cwd: first?.cwd,
     gitBranch: first?.gitBranch,
+    entrypoint: first?.entrypoint,
     startTimestamp: first?.timestamp,
     endTimestamp: last?.timestamp,
   };
@@ -199,6 +289,7 @@ function parseMarkdownLogFile(filePath: string): CcSession[] {
       sourcePath: filePath,
       records,
       cwd,
+      entrypoint: 'markdown_log',
       startTimestamp: timestamp,
       endTimestamp: timestamp,
     });

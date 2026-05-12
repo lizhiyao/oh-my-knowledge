@@ -15,6 +15,22 @@ import {
   selectExploreInboxItems,
   type ObservationInboxItem,
 } from '../../src/observability/inbox.js';
+import {
+  findNegativeFeedbackMatches,
+  findPositiveFeedbackMatches,
+  findUserCorrectionMatches,
+  findUserGoalShiftMatches,
+  hasNegativeFeedbackSignal,
+  hasPositiveFeedbackSignal,
+  hasUserCorrectionSignal,
+} from '../../src/observability/experience.js';
+import {
+  deleteObservationReviewState,
+  loadObservationReviewState,
+  observationMetricAnnotationTargetId,
+  observationReviewStateKey,
+  updateObservationReviewState,
+} from '../../src/observability/review-state.js';
 
 function baseItem(partial: Partial<ObservationInboxItem>): ObservationInboxItem {
   return {
@@ -40,6 +56,34 @@ function baseItem(partial: Partial<ObservationInboxItem>): ObservationInboxItem 
 }
 
 describe('observe inbox', () => {
+  it('does not count embedded words as user correction signals', () => {
+    assert.equal(hasUserCorrectionSignal('这里的拆解不对称，是不是需要换一种图形？'), false);
+    assert.equal(hasUserCorrectionSignal('不对，应该直接使用原来的分组。'), true);
+    assert.equal(hasUserCorrectionSignal('这里不是；重来。'), true);
+    const text = '这里的拆解不对称。不是，重新看。';
+    assert.deepEqual(findUserCorrectionMatches(text).map((range) => text.slice(range.start, range.end)), ['不是']);
+  });
+
+  it('detects neutral user goal shift separately from correction', () => {
+    const text = '先不看这个，换个方向，另外一个问题后面再处理。';
+    assert.deepEqual(findUserGoalShiftMatches(text).map((range) => text.slice(range.start, range.end)), ['先不', '换个方向', '另外一个问题']);
+    assert.equal(hasUserCorrectionSignal(text), false);
+  });
+
+  it('detects negative and positive emotional feedback signals', () => {
+    const negative = '这个做错了，没用，太垃圾了。';
+    assert.equal(hasNegativeFeedbackSignal(negative), true);
+    assert.deepEqual(findNegativeFeedbackMatches(negative).map((range) => negative.slice(range.start, range.end)), ['做错了', '没用', '太垃圾']);
+    assert.equal(hasNegativeFeedbackSignal('若设计工具链因为登录态失败且存在 token，则改走回退。'), false);
+    assert.equal(hasNegativeFeedbackSignal('这个菜单入口在哪里？'), false);
+    assert.equal(hasNegativeFeedbackSignal('垃圾桶的位置在哪里？'), false);
+    assert.equal(hasNegativeFeedbackSignal('垃圾，重做。'), true);
+
+    const positive = '很好，good job，做的好，很棒，很有价值。';
+    assert.equal(hasPositiveFeedbackSignal(positive), true);
+    assert.deepEqual(findPositiveFeedbackMatches(positive).map((range) => positive.slice(range.start, range.end)), ['很好', 'good job', '做的好', '很棒', '很有价值']);
+  });
+
   it('normalizes dedup key input conservatively', () => {
     const cases: Array<[string, string]> = [
       ['', ''],
@@ -117,6 +161,7 @@ describe('observe inbox', () => {
         sessionId: 's1',
         timestamp: '2026-05-01T00:00:00.000Z',
         cwd: '/repo-a',
+        entrypoint: 'cli',
         message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
       },
       {
@@ -209,6 +254,7 @@ describe('observe inbox', () => {
         sessionId: 's1',
         timestamp: '2026-05-01T00:00:00.000Z',
         cwd: '/repo-a',
+        entrypoint: 'cli',
         message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
       },
       {
@@ -808,5 +854,317 @@ describe('observe inbox', () => {
     assert.equal(report.items[0].signalSubtype, 'hard_miss');
     assert.equal(report.items[0].severity, 'high');
     assert.equal(report.items[0].confidence, 0.9);
+  });
+
+  it('builds evidence-only experience report for 2.0 skill review', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u-runtime',
+        parentUuid: null,
+        promptId: 'p1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        entrypoint: 'sdk-ts',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: '进入新增模板流程。当前页面已经完成本地工作区恢复，请直接命中 gui-workflow route。若设计工具链因为登录态失败且存在 token，则改走回退，必须不要误判 token。' }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: 'u-runtime',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.500Z',
+        cwd: '/repo-a',
+        entrypoint: 'cli',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\nFind revenue schema' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: 't1', name: 'Grep', input: { pattern: 'revenue_schema', path: '/repo-a' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'No matches found', is_error: false }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u-meta',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.500Z',
+        cwd: '/repo-a',
+        isMeta: true,
+        sourceToolUseID: 'skill-tool-1',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'Base directory for this skill: /repo-a/.claude/skills/audit\n\n# audit\n\n不对，这里是 skill 文档里的规则，不是用户说的话。' }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u3',
+        parentUuid: 'u-meta',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:03.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '不对，必须直接找到 schema 定义，不要猜。' },
+      },
+      {
+        type: 'user',
+        uuid: 'u4',
+        parentUuid: 'u3',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:04.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '[Request interrupted by user]' },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const experience = report.experience;
+    assert.ok(experience);
+    assert.equal(experience.kind, 'observe-experience');
+    assert.equal(experience.scope, 'evidence-only');
+    assert.equal(experience.meta.skillCount, 1);
+    assert.equal(experience.goalSlices.length, 1);
+    assert.equal(experience.goalSlices[0].sliceReasonCode, 'skill_segment_boundary');
+    assert.equal(experience.goalSlices[0].sliceConfidence, 'high');
+    assert.equal(experience.sessions[0].entrypoint, 'sdk-ts');
+    assert.deepEqual(experience.skills[0].entrypoints, ['sdk-ts']);
+    assert.deepEqual(experience.skills[0].entrypointCounts, { 'sdk-ts': 1 });
+    assert.deepEqual(experience.skills[0].toolCounts, { Grep: 1 });
+    assert.equal(experience.sessions[0].reviewPriority, 'review_first');
+    assert.ok(experience.sessions[0].reviewBasisCodes.includes('has_high_observation'));
+    assert.ok(experience.sessions[0].reviewBasisCodes.includes('user_correction'));
+    assert.ok(experience.sessions[0].reviewBasisCodes.includes('user_interruption'));
+    assert.ok(experience.sessions[0].timelinePreview.some((event) => event.kind === 'tool_use' && event.toolUseId === 't1'));
+    assert.ok(experience.sessions[0].timelinePreview.some((event) => event.kind === 'skill_context'));
+    assert.ok(experience.sessions[0].timelinePreview.some((event) => event.kind === 'runtime_context'));
+    assert.equal(experience.sessions[0].evidenceChain.runtimeContextCount, 2);
+    assert.equal(experience.sessions[0].evidenceChain.skillContextCount, 1);
+    assert.equal(experience.sessions[0].evidenceChain.userMessageCount, 3);
+    assert.ok(experience.sessions[0].ruleFindings.some((finding) => finding.code === 'runtime_context_excluded'));
+    assert.ok(experience.sessions[0].ruleFindings.some((finding) => finding.code === 'user_correction_seen' && finding.level === 'attention'));
+    assert.ok(experience.sessions[0].ruleFindings.some((finding) => finding.code === 'tool_failure_seen') === false);
+    assert.equal(experience.sessions[0].assistiveInference.mode, 'deterministic_rules_only');
+    assert.equal(experience.sessions[0].assistiveInference.code, 'review_recommended');
+    assert.equal(experience.sessions[0].assistiveInference.confidence, 'high');
+    assert.ok(experience.sessions[0].assistiveInference.cautionCodes.includes('no_llm_judge'));
+    assert.equal(experience.skills[0].assistiveInference.code, 'review_recommended');
+    assert.equal(experience.skills[0].evidenceChain.runtimeContextCount, 2);
+    assert.equal(experience.goalSlices[0].inferredUserGoal?.startsWith('Base directory for this skill:'), false);
+    assert.equal(experience.invocations[0].indicators.negativeFeedbackCount, 0);
+    assert.equal(experience.invocations[0].indicators.userCorrectionCount, 1);
+    assert.equal(experience.invocations[0].indicators.userInterruptionCount, 1);
+    assert.equal('verdict' in experience.sessions[0], false);
+
+    const correctionTargetId = observationMetricAnnotationTargetId({
+      sourceTrace: file,
+      sessionId: 's1',
+      messageIndex: 5,
+      messageUuid: 'u3',
+    }, 'user_correction');
+    const goalShiftTargetId = observationMetricAnnotationTargetId({
+      sourceTrace: file,
+      sessionId: 's1',
+      messageIndex: 5,
+      messageUuid: 'u3',
+    }, 'user_goal_shift');
+    const annotatedReport = buildObservationInboxReport(file, {
+      reviewState: {
+        kind: 'observe-review-state',
+        schemaVersion: 1,
+        updatedAt: '2026-05-01T00:00:00.000Z',
+        entries: {
+          [observationReviewStateKey('evidence_metric', correctionTargetId)]: {
+            targetType: 'evidence_metric',
+            targetId: correctionTargetId,
+            verdict: 'rejected',
+            metricKey: 'user_correction',
+            reviewedAt: '2026-05-01T00:00:00.000Z',
+          },
+          [observationReviewStateKey('evidence_metric', goalShiftTargetId)]: {
+            targetType: 'evidence_metric',
+            targetId: goalShiftTargetId,
+            verdict: 'confirmed',
+            metricKey: 'user_goal_shift',
+            reviewedAt: '2026-05-01T00:00:00.000Z',
+          },
+        },
+      },
+    });
+    assert.equal(annotatedReport.experience?.invocations[0].indicators.userCorrectionCount, 0);
+    assert.equal(annotatedReport.experience?.invocations[0].indicators.userGoalShiftCount, 1);
+  });
+
+  it('keeps skill timeline open through skill context until the next skill starts', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-09T06:02:08.236Z',
+        cwd: '/repo-a',
+        entrypoint: 'cli',
+        message: { role: 'user', content: '画一个给老板汇报的时序图。步骤简单一点' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-09T06:02:15.646Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'skill-tool-1', name: 'Skill', input: { skill: 'my-diagram', args: '画时序图' } }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-09T06:02:16.500Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 'skill-tool-1', content: 'Launching skill: my-diagram' }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u3',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-09T06:02:16.115Z',
+        cwd: '/repo-a',
+        isMeta: true,
+        sourceToolUseID: 'skill-tool-1',
+        message: { role: 'user', content: 'Base directory for this skill: /repo-a/.claude/skills/my-diagram\n# my-diagram\n画图流程说明' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'u3',
+        sessionId: 's1',
+        timestamp: '2026-05-09T06:02:24.003Z',
+        cwd: '/repo-a',
+        message: { role: 'assistant', content: [{ type: 'text', text: '内容、类型、格式都已明确，直接生成 Mermaid 时序图。' }] },
+      },
+      {
+        type: 'user',
+        uuid: 'u4',
+        parentUuid: 'a2',
+        sessionId: 's1',
+        timestamp: '2026-05-09T06:03:28.380Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '把这个时序图的系统-工具改为 agent，做一个diff图' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a3',
+        parentUuid: 'u4',
+        sessionId: 's1',
+        timestamp: '2026-05-09T06:03:46.528Z',
+        cwd: '/repo-a',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'Diff 需要红色标注，推荐用 PlantUML。' }] },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a4',
+        parentUuid: 'u4',
+        sessionId: 's1',
+        timestamp: '2026-05-09T06:07:23.444Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'skill-tool-2', name: 'Skill', input: { skill: 'excalidraw-diagram', args: 'before after' } }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const myDiagramSession = report.experience?.sessions.find((session) => session.skillName === 'my-diagram');
+    assert.ok(myDiagramSession);
+    const timeline = myDiagramSession.timelinePreview;
+    assert.ok(timeline.some((event) => event.messageIndex === 3 && event.kind === 'skill_context'));
+    assert.ok(timeline.some((event) => event.messageIndex === 4 && event.kind === 'assistant_message' && event.snippet?.includes('直接生成 Mermaid')));
+    assert.ok(timeline.some((event) => event.messageIndex === 5 && event.kind === 'user_message' && event.snippet?.includes('做一个diff图')));
+    assert.ok(timeline.some((event) => event.messageIndex === 6 && event.kind === 'assistant_message' && event.snippet?.includes('PlantUML')));
+    assert.equal(timeline.some((event) => event.messageIndex === 7 && event.kind === 'tool_use' && event.toolName === 'Skill'), false);
+  });
+
+  it('persists local reviewer state for D1 workflow', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-review-state-'));
+    const state = updateObservationReviewState(dir, {
+      targetType: 'experience_session',
+      targetId: 'session-1',
+      verdict: 'not_issue',
+      note: 'probe only',
+    }, '2026-05-01T00:00:00.000Z');
+    const key = observationReviewStateKey('experience_session', 'session-1');
+    assert.equal(state.entries[key].verdict, 'not_issue');
+    assert.equal(state.entries[key].note, 'probe only');
+
+    const loaded = loadObservationReviewState(dir);
+    assert.equal(loaded.entries[key].targetType, 'experience_session');
+    assert.equal(loaded.entries[key].reviewedAt, '2026-05-01T00:00:00.000Z');
+
+    const correction = updateObservationReviewState(dir, {
+      targetType: 'goal_slice_correction',
+      targetId: 'session-1:42',
+      verdict: 'reviewed',
+      note: 'slice here',
+      reason: 'manual boundary',
+    }, '2026-05-01T00:01:00.000Z');
+    const correctionKey = observationReviewStateKey('goal_slice_correction', 'session-1:42');
+    assert.equal(correction.entries[correctionKey].targetType, 'goal_slice_correction');
+    assert.equal(correction.entries[correctionKey].note, 'slice here');
+    assert.equal(correction.entries[correctionKey].reason, 'manual boundary');
+
+    const metricTargetId = 'metric:user_correction:abc';
+    const metric = updateObservationReviewState(dir, {
+      targetType: 'evidence_metric',
+      targetId: metricTargetId,
+      verdict: 'confirmed',
+      metricKey: 'user_correction',
+      reason: '用户明确否定上一轮结果',
+    }, '2026-05-01T00:01:30.000Z');
+    const metricKey = observationReviewStateKey('evidence_metric', metricTargetId);
+    assert.equal(metric.entries[metricKey].metricKey, 'user_correction');
+    assert.equal(metric.entries[metricKey].reason, '用户明确否定上一轮结果');
+
+    const afterDelete = deleteObservationReviewState(dir, 'goal_slice_correction', 'session-1:42', '2026-05-01T00:02:00.000Z');
+    assert.equal(afterDelete.entries[correctionKey], undefined);
   });
 });

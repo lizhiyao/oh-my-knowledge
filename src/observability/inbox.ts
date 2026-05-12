@@ -6,6 +6,8 @@ import type { GapSignalRef, ToolCallInfo } from '../types/index.js';
 import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
 import { ccTracesToResultEntries, type SkillSegment } from './trace-adapter.js';
 import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
+import { buildObservationExperienceReport, type ObservationExperienceReport } from './experience.js';
+import type { ObservationReviewState } from './review-state.js';
 
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = join(process.cwd(), '.omk', 'observations');
 export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(homedir(), '.oh-my-knowledge', 'observations');
@@ -105,6 +107,7 @@ export interface ObservationInboxReport {
     skillToolCallCounts?: Record<string, Record<string, number>>;
   };
   items: ObservationInboxItem[];
+  experience?: ObservationExperienceReport;
 }
 
 export interface ObservationSkillRollup {
@@ -117,6 +120,10 @@ export interface ObservationSkillRollup {
   lowCount: number;
   noiseCount: number;
   latestSeen: string;
+}
+
+export interface BuildObservationInboxReportOptions {
+  reviewState?: ObservationReviewState;
 }
 
 function hashString(input: string): string {
@@ -399,7 +406,7 @@ function itemsFromSegment(segment: SkillSegment): ObservationInboxItem[] {
     const confidence = confidenceForSubtype(subtype, signal);
     const severity = severityFor(signalType, subtype, confidence);
     const item: ObservationInboxItem = {
-      id: hashString([segment.sessionId, segment.segmentIndex, signal.type, subtype, JSON.stringify(evidence)].join('\u0000')),
+      id: hashString([segment.sessionId, segment.sourceTrace ?? '', segment.segmentIndex, signal.type, subtype, JSON.stringify(evidence)].join('\u0000')),
       skillName: segment.skillName,
       artifactVersion: 'unknown',
       cwd: segment.cwd,
@@ -425,9 +432,9 @@ function itemsFromSegment(segment: SkillSegment): ObservationInboxItem[] {
   return items;
 }
 
-export function buildObservationInboxReport(tracePath: string): ObservationInboxReport {
+export function buildObservationInboxReport(tracePath: string, options: BuildObservationInboxReportOptions = {}): ObservationInboxReport {
   const { sessions, segments } = ccTracesToResultEntries(tracePath);
-  const sourceBySession = new Map(sessions.map((s) => [s.sessionId, s.sourcePath]));
+  const generatedAt = new Date().toISOString();
   const skillInvocationCounts: Record<string, number> = {};
   const skillInvocationLastSeen: Record<string, string> = {};
   const skillToolCallCounts: Record<string, Record<string, number>> = {};
@@ -452,7 +459,7 @@ export function buildObservationInboxReport(tracePath: string): ObservationInbox
   );
   const aggregationState = createInboxAggregationState();
   for (const segment of segments) {
-    const sourceTrace = sourceBySession.get(segment.sessionId) ?? tracePath;
+    const sourceTrace = segment.sourceTrace ?? tracePath;
     const segmentItems = itemsFromSegment(segment).map((item) => {
       const withSource = {
         ...item,
@@ -467,12 +474,13 @@ export function buildObservationInboxReport(tracePath: string): ObservationInbox
     addInboxItemsToState(aggregationState, segmentItems);
   }
   const items = finishInboxAggregation(aggregationState);
+  const experience = buildObservationExperienceReport({ sessions, segments, items, generatedAt, reviewState: options.reviewState });
   return {
     kind: 'observe-inbox',
     schemaVersion: 1,
     meta: {
       tracePath,
-      generatedAt: new Date().toISOString(),
+      generatedAt,
       segmentCount: segments.length,
       itemCount: items.length,
       skillInvocationCounts,
@@ -481,6 +489,7 @@ export function buildObservationInboxReport(tracePath: string): ObservationInbox
       skillToolCallCounts,
     },
     items,
+    experience,
   };
 }
 

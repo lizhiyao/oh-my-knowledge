@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -78,6 +78,33 @@ describe('loadCcSessions', () => {
     assert.equal(sessions.length, 2);
     const ids = sessions.map((s) => s.sessionId).sort();
     assert.deepEqual(ids, ['sa', 'sb']);
+  });
+
+  it('groups subagents JSONL under the parent session folder', () => {
+    const sessionDir = join(tmpDir, 'sessionA');
+    const subagentsDir = join(sessionDir, 'subagents');
+    mkdirSync(subagentsDir, { recursive: true });
+    writeSession(sessionDir, 'main.jsonl', [
+      userRec('u-main', '<command-name>/main-skill</command-name>', { sessionId: 'sessionA', timestamp: '2026-05-01T00:00:00.000Z' }),
+      asstRec('a-main', [{ type: 'tool_use', id: 'task1', name: 'Task', input: { prompt: 'delegate' } }], { sessionId: 'sessionA', timestamp: '2026-05-01T00:00:01.000Z' }),
+    ]);
+    writeSession(subagentsDir, 'x1.jsonl', [
+      userRec('u-x1', '<command-name>/child-skill</command-name>', { sessionId: 'child-1', timestamp: '2026-05-01T00:00:02.000Z' }),
+      asstRec('a-x1', [{ type: 'tool_use', id: 'read1', name: 'Read', input: { file_path: '/tmp/a.md' } }], { sessionId: 'child-1', timestamp: '2026-05-01T00:00:03.000Z' }),
+    ]);
+
+    const sessions = loadCcSessions(sessionDir).sort((a, b) => a.sourcePath.localeCompare(b.sourcePath));
+    assert.equal(sessions.length, 2);
+    assert.deepEqual(new Set(sessions.map((session) => session.sessionGroupId)), new Set(['sessionA']));
+    assert.deepEqual(sessions.map((session) => session.traceRole).sort(), ['main', 'subagent']);
+
+    const { segments } = ccTracesToResultEntries(sessionDir);
+    const child = segments.find((segment) => segment.skillName === 'child-skill');
+    assert.ok(child);
+    assert.equal(child.sessionId, 'sessionA');
+    assert.equal(child.traceSessionId, 'child-1');
+    assert.equal(child.traceRole, 'subagent');
+    assert.ok(child.sourceTrace?.endsWith('subagents/x1.jsonl'));
   });
 
   it('loads agent markdown logs', () => {
@@ -177,6 +204,9 @@ describe('segmentBySkill', () => {
     assert.equal(segs.length, 2);
     assert.equal(segs[0].skillName, 'general');
     assert.equal(segs[1].skillName, 'audit');
+    assert.equal(segs[1].attribution?.source, 'command-name');
+    assert.equal(segs[1].attribution?.commandName, '/audit');
+    assert.equal(segs[1].turns.some((turn) => turn.content.includes('<command-message>')), false);
     assert.equal(segs[1].toolCalls.length, 1);
     assert.equal(segs[1].toolCalls[0].tool, 'Read');
   });
@@ -343,7 +373,7 @@ describe('segmentBySkill', () => {
     assert.equal(segs[0].skillName, 'general', '/clear 是 cc 内置命令, 不切段');
   });
 
-  it('plugin-prefixed skill name is normalized (pbakaus/impeccable:audit → audit)', () => {
+  it('plugin-prefixed skill name keeps source metadata (pbakaus/impeccable:audit → audit from plugin)', () => {
     const s = {
       sessionId: 's1',
       sourcePath: '/t',
@@ -355,9 +385,32 @@ describe('segmentBySkill', () => {
       ],
     };
     const segs = segmentBySkill(s);
-    // 归一化后两个都是 "audit", 相邻同名不切段 → 1 段
-    assert.equal(segs.length, 1);
+    // skillName 仍归一化为 audit, 但 plugin 来源不同, 需要保留成两段。
+    assert.equal(segs.length, 2);
     assert.equal(segs[0].skillName, 'audit');
+    assert.equal(segs[0].attribution?.rawSkillRef, 'pbakaus/impeccable:audit');
+    assert.equal(segs[0].attribution?.pluginName, 'pbakaus/impeccable');
+    assert.equal(segs[1].skillName, 'audit');
+    assert.equal(segs[1].attribution?.rawSkillRef, 'impeccable:audit');
+    assert.equal(segs[1].attribution?.pluginName, 'impeccable');
+  });
+
+  it('plugin slash command keeps source metadata and command name', () => {
+    const s = {
+      sessionId: 's1',
+      sourcePath: '/t',
+      records: [
+        userRec('u1', '<command-name>/code-security:secure-coding</command-name>\n<command-message>code-security:secure-coding</command-message>'),
+        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
+      ],
+    };
+    const segs = segmentBySkill(s);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'secure-coding');
+    assert.equal(segs[0].attribution?.source, 'command-name');
+    assert.equal(segs[0].attribution?.rawSkillRef, 'code-security:secure-coding');
+    assert.equal(segs[0].attribution?.pluginName, 'code-security');
+    assert.equal(segs[0].attribution?.commandName, '/code-security:secure-coding');
   });
 
   it('repeated same-skill signal does not create spurious empty segments', () => {

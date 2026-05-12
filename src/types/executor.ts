@@ -7,6 +7,9 @@ export interface ToolCallInfo {
   messageUuid?: string;
   toolUseId?: string;
   timestamp?: string;
+  sourceTrace?: string;
+  traceRole?: 'standalone' | 'main' | 'subagent';
+  traceLabel?: string;
 }
 
 export interface TurnInfo {
