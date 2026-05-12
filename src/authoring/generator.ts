@@ -216,6 +216,24 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
 5. assertions 的 value / pattern / values / reference 必须使用英文、数字或代码 token，不要使用中文关键词。
 6. 断言应检测 skill 文档中的具体细节（如特定参数名、配置值、工作流步骤），而非通用知识。
    避免使用 baseline 凭常识或搜索文件也能答对的断言（如 not_contains 通用错误写法）。
+
+   ⛔ **不许凭空具体化** — 这是 generator 的最大反模式之一:
+   如果 SKILL.md 描述了某个步骤但**没明文指定该步用什么工具 / 什么命令 / 什么 API**
+   （只说"留档到 X"、"通知 Y"、"调用第三方服务 Z"这种意图描述,不说具体 tool / endpoint），
+   **fact 层断言不许猜测具体工具名**:
+   - ❌ 错的做法:SKILL.md 说"留档到语雀",generator 自己脑补"语雀 = URL = WebFetch",
+        产 \`tool_input_contains "WebFetch:语雀URL"\` + \`mock_hit "WebFetch:N"\` —
+        这是在测 generator 自己的脑补,不是 SKILL 实际要求,LLM 一选别的工具就判挂
+   - ❌ 错的做法:SKILL.md 说"通知钉钉",generator 假设走 Bash + 某个钉钉机器人 URL —
+        SKILL.md 没说就别假设
+   - ✅ 对的做法:把这个"应当完成的任务"写进 sample.rubric,让 judge 按 rubric 评分,
+        工具选择交给 LLM 自由发挥,judge 看意图(任务完成与否)而不是字面(用了哪个工具)
+   - ✅ 兜底做法:如果一定要测"必须调到某工具",也只在 SKILL.md 明文说过该工具时才用
+        tool_input_contains;否则用 tools_called 列一组"可接受工具"也比单写一个稳
+   判断标准:**写 sample 时,如果你需要去 SKILL.md 外的知识(推断"语雀对应什么工具"、
+   "通知钉钉用什么 API")才能写出 fact 层断言,这条断言就不该存在,应该归到 rubric。**
+
+
    **断言类型选择口诀**(fact 层只测 deterministic 事实,语义/论点交给 judge 评 rubric):
    - 测"LLM 调了哪个工具/什么命令" → 用 tool_input_contains 或 tools_called(不要用 contains)
    - 测"LLM 走完了流程的某一步" → 用 mock_hit(配合 sample.mocks 的"驱动流程"设计,见下文)
