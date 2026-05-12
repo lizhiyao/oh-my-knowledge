@@ -319,7 +319,18 @@ export async function executeTasks({
           model: diagModel,
         });
         variantResult.diagnostic = diagnostic;
-        if (diagnostic.costUSD) totalCostUSD += diagnostic.costUSD;
+        // diagnostic 成本三层对齐(reviewer PR#95 CR 2026-05-11 P2):
+        //   - meta.totalCostUSD 累加(下面 totalCostUSD += 这一行)
+        //   - variant summary 的 totalCostUSD / totalDiagnosticCostUSD 由 buildVariantSummary
+        //     sum 各 entry 的 costUSD / diagnosticCostUSD 得出 — 所以 entry 上必须也加回去
+        //   - 下面 line 341-343 的 budget.perSampleUSD 用 variantResult.costUSD 比上限,
+        //     diagnostic 必须算进 per-sample 的 cap 检查里(不然 cap 在 diagnostic 拉爆样本时漏判)
+        // 这三件要么都做要么都不做,任何一处漏就回到 reviewer 提到的"成本口径分裂"。
+        if (typeof diagnostic.costUSD === 'number' && diagnostic.costUSD > 0) {
+          variantResult.diagnosticCostUSD = diagnostic.costUSD;
+          variantResult.costUSD = (variantResult.costUSD || 0) + diagnostic.costUSD;
+          totalCostUSD += diagnostic.costUSD;
+        }
       } catch (err) {
         // diagnostic 失败不影响主评测,降级成 minimal 错误对象
         const msg = err instanceof Error ? err.message : String(err);

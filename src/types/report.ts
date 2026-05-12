@@ -13,15 +13,24 @@ export interface VariantResult {
   cacheCreationTokens: number;
   execCostUSD: number;
   judgeCostUSD: number;
+  /** Diagnostic 自身花费(USD)。仅在 failed-assertion 触发 diagnostic 且 executor 报告了 cost 时有值。
+   *  Diagnostic 一般跑在 judge executor 上(claude:haiku 标配),所以 cost-reported 语义随
+   *  `judgeCostReportedByExecutor`,不再单独引一个 flag。
+   *  v0.32 新增,旧报告无此字段 — 老 costUSD 仍等于 execCostUSD + judgeCostUSD,新 costUSD
+   *  含 diagnostic,跨版本汇总时按字段是否存在判断。 */
+  diagnosticCostUSD?: number;
+  /** sample 一行的真实总花费 = execCostUSD + judgeCostUSD + (diagnosticCostUSD ?? 0)。
+   *  budget.perSampleUSD 的 cap 也是基于这个总值检查 — 任一子项把样本顶上限都算 overrun。 */
   costUSD: number;
   /** Whether `execCostUSD` came from a real cost number reported by the executor.
    *  Mirrors `ExecResult.costReportedByExecutor`. False ⇒ `execCostUSD` is a 0
    *  placeholder, renderer should show 「未报告」 instead of $0.0000. Default
    *  undefined ⇒ reported (preserves backward-compat for old reports). */
   costReportedByExecutor?: boolean;
-  /** Whether `judgeCostUSD` came from a real cost number reported by the judge executor.
-   *  False ⇒ at least one judge call (single rubric / dimension / async assertion / ensemble member)
-   *  was made through an executor that doesn't report cost (currently codex). Default undefined ⇒ reported. */
+  /** Whether `judgeCostUSD`(以及随之的 `diagnosticCostUSD`,因为它们走同一类 judge executor)
+   *  came from a real cost number reported by the underlying executor.
+   *  False ⇒ at least one judge / diagnostic call was made through an executor that doesn't
+   *  report cost (currently codex). Default undefined ⇒ reported. */
   judgeCostReportedByExecutor?: boolean;
   numTurns: number;
   fullNumTurns?: number;
@@ -84,9 +93,16 @@ export interface VariantSummary {
   avgInputTokens: number;
   avgOutputTokens: number;
   avgTotalTokens: number;
+  /** sum(ok-sample 的 costUSD)。等于 totalExecCostUSD + totalJudgeCostUSD + totalDiagnosticCostUSD。
+   *  注意:仅含执行成功且未被 per-sample budget 标 overrun 的 sample,跟 meta.totalCostUSD(全量
+   *  累计,含失败 sample)语义不同 — 那是历史 ok-filter 行为,跟 v0.32 的 diagnostic 引入无关。 */
   totalCostUSD: number;
   totalExecCostUSD: number;
   totalJudgeCostUSD: number;
+  /** sum(ok-sample 的 diagnosticCostUSD)。0 / 缺位 ⇒ 没有 sample 触发 diagnostic。
+   *  跟 totalJudgeCostUSD 一样吃 `judgeCostReported === false` 那一行的"未报告"语义,因为
+   *  diagnostic executor 默认就是 judge executor。 */
+  totalDiagnosticCostUSD?: number;
   avgCostPerSample: number;
   /** Whether every sample had its exec cost reported by the executor.
    *  - undefined / true : 所有样本 exec cost 都报告了 (默认,向后兼容)
