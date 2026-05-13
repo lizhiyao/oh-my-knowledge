@@ -327,6 +327,74 @@ describe('loadCcSessions', () => {
     assert.equal((segs[0].toolCalls[0].input as { command?: string }).command?.includes('/skills/task-poller/scripts/run-poller.sh'), true);
   });
 
+  it('attributes OpenClaw script paths after punctuation boundaries', () => {
+    const path = join(tmpDir, 'openclaw-script-punctuation.jsonl');
+    writeFileSync(path, jsonl([
+      { type: 'session', version: 3, id: 'oc-cron-punctuation', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/tmp/example/.openclaw/workspace-main' },
+      {
+        type: 'message',
+        id: 'u1',
+        parentId: null,
+        timestamp: '2026-05-12T00:00:01.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'cron command:cmd:/tmp/example/.openclaw/workspace-main/skills/task-poller/scripts/run-poller.sh' }],
+        },
+      },
+      {
+        type: 'message',
+        id: 'a1',
+        parentId: 'u1',
+        timestamp: '2026-05-12T00:00:02.000Z',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'toolCall', id: 'run-poller', name: 'exec', arguments: { command: '(/tmp/example/.openclaw/workspace-main/skills/task-poller/scripts/run-poller.sh)', timeout: 120 } },
+          ],
+        },
+      },
+    ]));
+
+    const [session] = loadCcSessions(path);
+    const segs = segmentBySkill(session);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'task-poller');
+    assert.equal(segs[0].attribution?.source, 'skill-script');
+
+    const wrappedPath = join(tmpDir, 'openclaw-script-wrapped.jsonl');
+    writeFileSync(wrappedPath, jsonl([
+      { type: 'session', version: 3, id: 'oc-cron-wrapped', timestamp: '2026-05-12T00:01:00.000Z', cwd: '/tmp/example/.openclaw/workspace-main' },
+      {
+        type: 'message',
+        id: 'u1',
+        parentId: null,
+        timestamp: '2026-05-12T00:01:01.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'run scheduled task' }],
+        },
+      },
+      {
+        type: 'message',
+        id: 'a1',
+        parentId: 'u1',
+        timestamp: '2026-05-12T00:01:02.000Z',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'toolCall', id: 'run-poller', name: 'exec', arguments: { command: '(/tmp/example/.openclaw/workspace-main/skills/task-poller/scripts/run-poller.sh)', timeout: 120 } },
+          ],
+        },
+      },
+    ]));
+
+    const [wrappedSession] = loadCcSessions(wrappedPath);
+    const wrappedSegs = segmentBySkill(wrappedSession);
+    assert.equal(wrappedSegs.length, 2);
+    assert.equal(wrappedSegs[1].skillName, 'task-poller');
+    assert.equal(wrappedSegs[1].attribution?.source, 'skill-script');
+  });
+
   it('loads each markdown log block as its own session', () => {
     const path = join(tmpDir, 'agent.log');
     writeFileSync(path, `---

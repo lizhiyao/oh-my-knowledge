@@ -7,7 +7,7 @@ import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorre
 import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from '../observability/problem-patterns.js';
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
-import { hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE } from '../observability/text-signals.js';
+import { hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE, isScheduledTaskPromptText } from '../observability/text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 import type {
   ExperienceAssistiveInference,
@@ -528,15 +528,16 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   };
   const displayIndicatorsForSession = (session: ExperienceSessionSummary): ExperienceReviewIndicators => {
     const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet));
+    const interactionEvents = humanEvents.filter((event) => !isScheduledTaskPromptText(event.snippet ?? ''));
     return {
       ...session.indicators,
-      userFollowUpCount: humanEvents.reduce((sum, event, index) => sum + (displayMetricIsActive(event, 'user_follow_up', index > 0) ? 1 : 0), 0),
-      userCorrectionCount: humanEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_correction', findUserCorrectionMatches(event.snippet ?? '').length), 0),
-      userInterruptionCount: humanEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'user_interruption', displayRegexMatches(USER_INTERRUPTION_DISPLAY_RE, event.snippet ?? '')) ? 1 : 0), 0),
-      negativeFeedbackCount: humanEvents.reduce((sum, event) => sum + displayMetricCount(event, 'negative_feedback', findNegativeFeedbackMatches(event.snippet ?? '').length), 0),
-      positiveFeedbackCount: humanEvents.reduce((sum, event) => sum + displayMetricCount(event, 'positive_feedback', findPositiveFeedbackMatches(event.snippet ?? '').length), 0),
-      userGoalShiftCount: humanEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_goal_shift', findUserGoalShiftMatches(event.snippet ?? '').length), 0),
-      hardRuleTextHitCount: humanEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? '')) ? 1 : 0), 0),
+      userFollowUpCount: interactionEvents.reduce((sum, event, index) => sum + (displayMetricIsActive(event, 'user_follow_up', index > 0) ? 1 : 0), 0),
+      userCorrectionCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_correction', findUserCorrectionMatches(event.snippet ?? '').length), 0),
+      userInterruptionCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'user_interruption', displayRegexMatches(USER_INTERRUPTION_DISPLAY_RE, event.snippet ?? '')) ? 1 : 0), 0),
+      negativeFeedbackCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'negative_feedback', findNegativeFeedbackMatches(event.snippet ?? '').length), 0),
+      positiveFeedbackCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'positive_feedback', findPositiveFeedbackMatches(event.snippet ?? '').length), 0),
+      userGoalShiftCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_goal_shift', findUserGoalShiftMatches(event.snippet ?? '').length), 0),
+      hardRuleTextHitCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? '')) ? 1 : 0), 0),
     };
   };
   const sessionMetricSourceTitle = (session: ExperienceSessionSummary, metricKey: ObservationMetricKey, label: string): string => {
@@ -546,10 +547,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     let confirmed = 0;
     let rejected = 0;
     let finalCount = 0;
-    humanEvents.forEach((event, index) => {
+    let interactionIndex = 0;
+    humanEvents.forEach((event) => {
       const text = event.snippet ?? '';
+      if (isScheduledTaskPromptText(text)) return;
+      const effectiveIndex = interactionIndex;
+      interactionIndex += 1;
       const rule = metricKey === 'user_follow_up'
-        ? (index > 0 ? 1 : 0)
+        ? (effectiveIndex > 0 ? 1 : 0)
         : metricKey === 'user_correction'
           ? findUserCorrectionMatches(text).length
           : metricKey === 'user_interruption'
@@ -1218,13 +1223,16 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const tags: string[] = [];
     if (event.kind === 'user_message') {
       tags.push('user_message');
-      if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) tags.push('user_follow_up');
-      if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText))) tags.push('user_correction');
-      if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText))) tags.push('user_goal_shift');
-      if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText))) tags.push('user_interruption');
-      if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0)) tags.push('negative_feedback');
-      if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) tags.push('positive_feedback');
-      if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText))) tags.push('hard_rule');
+      if (isScheduledTaskPromptText(metricText)) tags.push('scheduled_task');
+      if (!isScheduledTaskPromptText(metricText)) {
+        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) tags.push('user_follow_up');
+        if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText))) tags.push('user_correction');
+        if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText))) tags.push('user_goal_shift');
+        if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText))) tags.push('user_interruption');
+        if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0)) tags.push('negative_feedback');
+        if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) tags.push('positive_feedback');
+        if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText))) tags.push('hard_rule');
+      }
     }
     if (event.kind === 'assistant_message') {
       if (isAssistantDeliverySignal(event)) tags.push('completion');
@@ -1239,16 +1247,25 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (!allowMetricTags) return [];
 	    const text = event.fullText ?? event.snippet ?? '';
 	    const metricText = event.snippet ?? '';
-	    const badges: Array<{ label: string; className: string; title: string }> = [];
+    const badges: Array<{ label: string; className: string; title: string }> = [];
     if (event.kind === 'user_message') {
-      badges.push({ label: '用户消息来源', className: 'metric-user-message', title: '这条人工用户消息计入用户消息数；同一 skill 片段内第 2 条及之后还会计入追问/补充。' });
-      if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) badges.push({ label: evidenceMetricBadgeLabel('追问/补充来源', event, 'user_follow_up', userIndex > 0), className: 'metric-followup', title: '同一 skill 复盘片段内，第 2 条及之后的人工用户消息计入追问/补充。' });
-      if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText))) badges.push({ label: evidenceMetricBadgeLabel('用户纠正来源', event, 'user_correction', hasUserCorrectionSignal(metricText)), className: 'metric-correction', title: '命中明确纠正表达；“不对/不是/错了”要求前后有标点、空格等分隔。人工反对后不会再显示。' });
-      if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText))) badges.push({ label: evidenceMetricBadgeLabel('目标切换来源', event, 'user_goal_shift', hasUserGoalShiftSignal(metricText)), className: 'metric-goal-shift', title: '命中“换个方向/先不/不用这个/另一个问题”等表达；表示用户可能切走当前目标。' });
-      if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText))) badges.push({ label: evidenceMetricBadgeLabel('人工中断来源', event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText)), className: 'metric-interruption', title: '用户主动中断了当前执行，通常表示当前路径需要纠偏或停止。' });
-      if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0)) badges.push({ label: evidenceMetricBadgeLabel('负向反馈来源', event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0), className: 'metric-negative', title: '命中“没用/垃圾/菜/做错了/不行/看不懂”等负向表达。' });
-      if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) badges.push({ label: evidenceMetricBadgeLabel('正向反馈来源', event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0), className: 'metric-positive', title: '命中“很好/good job/做得好/很棒/优秀/很有用”等正向表达。' });
-      if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText))) badges.push({ label: evidenceMetricBadgeLabel('用户硬性要求来源', event, 'hard_rule', hasUserHardRuleText(metricText)), className: 'metric-hard-rule', title: '命中“必须/不要/禁止/严格”等用户临时硬性要求。' });
+      const scheduledTask = isScheduledTaskPromptText(metricText);
+      badges.push({
+        label: scheduledTask ? '用户消息来源（定时任务）' : '用户消息来源',
+        className: scheduledTask ? 'metric-user-message metric-scheduled-task' : 'metric-user-message',
+        title: scheduledTask
+          ? '这是 cron 定时任务注入的用户侧任务入口，保留为用户消息来源，但不参与追问、负向反馈、硬性要求等人工交互指标。'
+          : '这条人工用户消息计入用户消息数；同一 skill 片段内第 2 条及之后还会计入追问/补充。',
+      });
+      if (!scheduledTask) {
+        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) badges.push({ label: evidenceMetricBadgeLabel('追问/补充来源', event, 'user_follow_up', userIndex > 0), className: 'metric-followup', title: '同一 skill 复盘片段内，第 2 条及之后的人工用户消息计入追问/补充。' });
+        if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText))) badges.push({ label: evidenceMetricBadgeLabel('用户纠正来源', event, 'user_correction', hasUserCorrectionSignal(metricText)), className: 'metric-correction', title: '命中明确纠正表达；“不对/不是/错了”要求前后有标点、空格等分隔。人工反对后不会再显示。' });
+        if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText))) badges.push({ label: evidenceMetricBadgeLabel('目标切换来源', event, 'user_goal_shift', hasUserGoalShiftSignal(metricText)), className: 'metric-goal-shift', title: '命中“换个方向/先不/不用这个/另一个问题”等表达；表示用户可能切走当前目标。' });
+        if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText))) badges.push({ label: evidenceMetricBadgeLabel('人工中断来源', event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText)), className: 'metric-interruption', title: '用户主动中断了当前执行，通常表示当前路径需要纠偏或停止。' });
+        if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0)) badges.push({ label: evidenceMetricBadgeLabel('负向反馈来源', event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0), className: 'metric-negative', title: '命中“没用/垃圾/菜/做错了/不行/看不懂”等负向表达。' });
+        if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) badges.push({ label: evidenceMetricBadgeLabel('正向反馈来源', event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0), className: 'metric-positive', title: '命中“很好/good job/做得好/很棒/优秀/很有用”等正向表达。' });
+        if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText))) badges.push({ label: evidenceMetricBadgeLabel('用户硬性要求来源', event, 'hard_rule', hasUserHardRuleText(metricText)), className: 'metric-hard-rule', title: '命中“必须/不要/禁止/严格”等用户临时硬性要求。' });
+      }
     }
 	    if (event.kind === 'assistant_message') {
 	      if (isAssistantDeliverySignal(event)) badges.push({ label: '产出结果/疑似完成', className: 'metric-completion', title: '助手回复里出现代码块、直接生成、结果如下、完成等交付信号。它表示当前目标可能完成，不等于整个 skill 生命周期结束。' });
@@ -1291,7 +1308,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const rules: TimelineHighlightRule[] = [];
 	    const value = event.snippet ?? '';
     if (!allowMetricTags) return e(value);
-	    if (event.kind === 'user_message') {
+	    if (event.kind === 'user_message' && !isScheduledTaskPromptText(value)) {
       if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(value))) rules.push({ ranges: findUserCorrectionMatches, className: 'metric-correction', title: '用户纠正命中词' });
       if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(value))) rules.push({ ranges: findUserGoalShiftMatches, className: 'metric-goal-shift', title: '目标切换命中词' });
       if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, value))) rules.push({ pattern: cloneRegex(USER_INTERRUPTION_RE), className: 'metric-interruption', title: '人工中断命中词' });
@@ -1310,7 +1327,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       rules.push({ pattern: cloneRegex(TOOL_FAILURE_RE), className: 'metric-tool-failure', title: '工具执行失败命中词' });
     }
 	    const html = highlightText(value, rules);
-    if (event.kind === 'user_message' && evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) {
+    if (event.kind === 'user_message' && !isScheduledTaskPromptText(value) && evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) {
       return `<span class="timeline-followup-source" title="整条消息计入追问/补充来源">${html}</span>`;
     }
     return html;
@@ -1318,6 +1335,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const evidenceMetricRuleDetected = (event: ExperienceTimelineEvent, userIndex: number, metricKey: ObservationMetricKey): boolean => {
     if (event.kind !== 'user_message') return false;
     const text = event.snippet ?? '';
+    if (isScheduledTaskPromptText(text)) return false;
     if (metricKey === 'user_correction') return hasUserCorrectionSignal(text);
     if (metricKey === 'user_interruption') return matches(USER_INTERRUPTION_RE, text);
     if (metricKey === 'user_follow_up') return userIndex > 0;
@@ -1422,10 +1440,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const allowMetricTagsFor = (event: ExperienceTimelineEvent): boolean =>
       !options.suppressMetricTagsOutsideSkillWindow || isInsideSkillWindow(event) || isAddedToSkillWindow(event);
     let userIndex = 0;
-    const decorated = events.map((event) => ({
-      event,
-      userIndex: event.kind === 'user_message' ? userIndex++ : -1,
-    }));
+    const decorated = events.map((event) => {
+      const scheduledTask = event.kind === 'user_message' && isScheduledTaskPromptText(event.snippet ?? '');
+      const nextUserIndex = event.kind === 'user_message' && !scheduledTask ? userIndex++ : -1;
+      return { event, userIndex: nextUserIndex };
+    });
     const groups: Array<{ boundary?: ExperienceTimelineEvent; items: typeof decorated }> = [];
     let current: typeof decorated = [];
     let currentBoundary: ExperienceTimelineEvent | undefined;

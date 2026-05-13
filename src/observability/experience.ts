@@ -9,7 +9,7 @@ import { observationMetricAnnotationVerdict, type ObservationMetricKey, type Obs
 import type { CcAssistantRecord, CcRecord, CcSession, CcUserRecord, TraceSourceMetadata } from './trace-source.js';
 import type { SkillSegment } from './trace-segmenter.js';
 import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-attribution.js';
-import { hasAssistantDeliverySignalText, hasUserHardRuleText } from './text-signals.js';
+import { hasAssistantDeliverySignalText, hasUserHardRuleText, isScheduledTaskPromptText } from './text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 
 export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
@@ -892,6 +892,7 @@ function ruleFindingsForEvidence(
 ): ExperienceRuleFinding[] {
   const events = uniqueTimelineEvents(timeline);
   const userEvents = events.filter((event) => event.kind === 'user_message');
+  const metricUserEvents = userEvents.filter((event) => !isScheduledTaskPromptText(event.snippet ?? ''));
   const refs = (matches: ExperienceTimelineEvent[]): ExperienceEvidenceRef[] =>
     matches.slice(0, 5).map(evidenceRefFromTimeline);
   const findings: ExperienceRuleFinding[] = [];
@@ -906,16 +907,16 @@ function ruleFindingsForEvidence(
   };
 
   push('high_observation_seen', 'attention', indicators.highObservationCount, observationRefs);
-  push('user_correction_seen', 'attention', indicators.userCorrectionCount, refs(userEvents.filter((event) => metricIsActive(event, 'user_correction', hasUserCorrectionSignal(event.snippet ?? ''), reviewState))));
-  push('user_interruption_seen', 'attention', indicators.userInterruptionCount, refs(userEvents.filter((event) => metricIsActive(event, 'user_interruption', USER_INTERRUPTION_RE.test(event.snippet ?? ''), reviewState))));
-  push('negative_feedback_seen', 'attention', indicators.negativeFeedbackCount, refs(userEvents.filter((event) => metricIsActive(event, 'negative_feedback', hasNegativeFeedbackSignal(event.snippet ?? ''), reviewState))));
+  push('user_correction_seen', 'attention', indicators.userCorrectionCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'user_correction', hasUserCorrectionSignal(event.snippet ?? ''), reviewState))));
+  push('user_interruption_seen', 'attention', indicators.userInterruptionCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'user_interruption', USER_INTERRUPTION_RE.test(event.snippet ?? ''), reviewState))));
+  push('negative_feedback_seen', 'attention', indicators.negativeFeedbackCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'negative_feedback', hasNegativeFeedbackSignal(event.snippet ?? ''), reviewState))));
   push('tool_failure_seen', 'sample', indicators.toolFailureCount, refs(events.filter((event) => event.kind === 'tool_result' && event.isError === true)));
   push('medium_observation_seen', 'sample', indicators.mediumObservationCount, observationRefs);
   push('hedging_seen', 'sample', indicators.hedgingCount, observationRefs);
   push('explicit_marker_seen', 'sample', indicators.explicitMarkerCount, observationRefs);
-  push('hard_rule_seen', 'sample', indicators.hardRuleTextHitCount, refs(userEvents.filter((event) => metricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? ''), reviewState))));
-  push('positive_feedback_seen', 'normal', indicators.positiveFeedbackCount, refs(userEvents.filter((event) => metricIsActive(event, 'positive_feedback', hasPositiveFeedbackSignal(event.snippet ?? ''), reviewState))));
-  push('user_goal_shift_seen', 'normal', indicators.userGoalShiftCount, refs(userEvents.filter((event) => metricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(event.snippet ?? ''), reviewState))));
+  push('hard_rule_seen', 'sample', indicators.hardRuleTextHitCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? ''), reviewState))));
+  push('positive_feedback_seen', 'normal', indicators.positiveFeedbackCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'positive_feedback', hasPositiveFeedbackSignal(event.snippet ?? ''), reviewState))));
+  push('user_goal_shift_seen', 'normal', indicators.userGoalShiftCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(event.snippet ?? ''), reviewState))));
   push('runtime_context_excluded', 'normal', evidenceChain.runtimeContextCount, evidenceChain.firstRuntimeContext ? [evidenceChain.firstRuntimeContext] : []);
   push('skill_context_excluded', 'normal', evidenceChain.skillContextCount, evidenceChain.firstSkillContext ? [evidenceChain.firstSkillContext] : []);
 
@@ -995,15 +996,16 @@ function indicatorsForSegment(
 ): ExperienceReviewIndicators {
   const userRefs = timeline.filter((event) => event.kind === 'user_message');
   const humanUserRefs = userRefs.filter((ref) => Boolean(ref.snippet));
+  const interactionUserRefs = humanUserRefs.filter((ref) => !isScheduledTaskPromptText(ref.snippet ?? ''));
   return {
     userMessageCount: humanUserRefs.length,
-    userFollowUpCount: humanUserRefs.reduce((sum, ref, index) => sum + (metricIsActive(ref, 'user_follow_up', index > 0, reviewState) ? 1 : 0), 0),
-    userCorrectionCount: humanUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_correction', findUserCorrectionMatches(ref.snippet ?? '').length, reviewState), 0),
-    userInterruptionCount: humanUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'user_interruption', USER_INTERRUPTION_RE.test(ref.snippet ?? ''), reviewState) ? 1 : 0), 0),
-    negativeFeedbackCount: humanUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'negative_feedback', findNegativeFeedbackMatches(ref.snippet ?? '').length, reviewState), 0),
-    positiveFeedbackCount: humanUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'positive_feedback', findPositiveFeedbackMatches(ref.snippet ?? '').length, reviewState), 0),
-    userGoalShiftCount: humanUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_goal_shift', findUserGoalShiftMatches(ref.snippet ?? '').length, reviewState), 0),
-    hardRuleTextHitCount: humanUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'hard_rule', hasUserHardRuleText(ref.snippet ?? ''), reviewState) ? 1 : 0), 0),
+    userFollowUpCount: interactionUserRefs.reduce((sum, ref, index) => sum + (metricIsActive(ref, 'user_follow_up', index > 0, reviewState) ? 1 : 0), 0),
+    userCorrectionCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_correction', findUserCorrectionMatches(ref.snippet ?? '').length, reviewState), 0),
+    userInterruptionCount: interactionUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'user_interruption', USER_INTERRUPTION_RE.test(ref.snippet ?? ''), reviewState) ? 1 : 0), 0),
+    negativeFeedbackCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'negative_feedback', findNegativeFeedbackMatches(ref.snippet ?? '').length, reviewState), 0),
+    positiveFeedbackCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'positive_feedback', findPositiveFeedbackMatches(ref.snippet ?? '').length, reviewState), 0),
+    userGoalShiftCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_goal_shift', findUserGoalShiftMatches(ref.snippet ?? '').length, reviewState), 0),
+    hardRuleTextHitCount: interactionUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'hard_rule', hasUserHardRuleText(ref.snippet ?? ''), reviewState) ? 1 : 0), 0),
     assistantDeliverySignalCount: timeline.filter(isAssistantDeliveryEvent).length,
     toolCallCount: segment.metrics.numToolCalls,
     toolFailureCount: segment.metrics.numToolFailures,

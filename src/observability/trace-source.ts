@@ -493,6 +493,7 @@ function normalizeOpenClawToolName(name: string): string {
   const lower = normalized.toLowerCase();
   if (lower === 'read') return 'Read';
   if (lower === 'grep' || lower === 'search') return 'Grep';
+  // OpenClaw uses exec/run/shell labels for command execution; collapse them for tool-count comparability.
   if (lower === 'bash' || lower === 'shell' || lower === 'run' || lower === 'exec') return 'Bash';
   if (lower === 'edit') return 'Edit';
   if (lower === 'write') return 'Write';

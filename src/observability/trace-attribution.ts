@@ -154,8 +154,9 @@ export function extractAttributionSkillRef(record: CcAssistantRecord): SkillRef 
   return record.attributionSkill ? parseSkillRef(record.attributionSkill) : null;
 }
 
+// OpenClaw traces may point at either workspace root; both layouts store skills under <workspace>/skills.
 const SKILL_READ_FILE_RE = /(?:\.claude\/skills|\.openclaw\/workspace(?:-main)?\/skills)\/([^/]+)\/SKILL\.md$/;
-const SKILL_SCRIPT_PATH_RE = /(?:^|[\s"'`])(?:~|\.|\/)?[^\s"'`]*\/skills\/([^/\s"'`]+)\/scripts\/[^\s"'`]*/;
+const SKILL_SCRIPT_PATH_RE = /(?:^|[\s"'`(\[{:,])(?:~|\.|\/)?[^\s"'`]*\/skills\/([^/\s"'`]+)\/scripts\/[^\s"'`]*/;
 
 /**
  * 从 assistant message 的 Read tool_use 里提取 skill 名字(信号 3, fallback)。

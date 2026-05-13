@@ -29,6 +29,7 @@ import {
   hasUserHardRuleText,
   isAssistantProgressUpdateText,
   isRuntimeProtocolPromptText,
+  isScheduledTaskPromptText,
 } from '../../src/observability/text-signals.js';
 import {
   deleteObservationReviewState,
@@ -97,6 +98,12 @@ describe('observe inbox', () => {
     assert.equal(hasUserHardRuleText('请严格按照表格输出，不要省略字段。'), true);
   });
 
+  it('detects cron prompts without treating them as interactive feedback', () => {
+    const cronPrompt = '[cron:example daily-report-yesterday] 使用 daily-report skill 生成前一天运行数据。执行完成后不需要发送消息。';
+    assert.equal(isScheduledTaskPromptText(cronPrompt), true);
+    assert.equal(hasUserHardRuleText(cronPrompt), false);
+  });
+
   it('excludes obvious progress updates from delivery signals', () => {
     const progress = '已发送进展：子 Claude 数据采集完成，正在整理咨询结果写入文件，即将完成。';
     assert.equal(isAssistantProgressUpdateText(progress), true);
@@ -159,6 +166,47 @@ describe('observe inbox', () => {
     assert.equal(indicators?.assistantDeliverySignalCount, 1);
     assert.equal(report.experience?.invocations[0].ruleFindings.some((finding) => finding.code === 'hard_rule_seen'), false);
     assert.equal(report.experience?.invocations[0].problemPatterns.some((pattern) => pattern.signalTypes.includes('hard_rule')), false);
+  });
+
+  it('keeps cron prompts as user messages while excluding interaction metrics', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '<command-name>/daily-report</command-name>\n[cron:example daily-report-yesterday] 使用 daily-report skill 生成前一天运行数据。要求：只生成前一天数据。执行完成后不需要发送消息。',
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:05.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '已完成，结果如下：日报已生成。' }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const indicators = report.experience?.invocations[0].indicators;
+    assert.equal(indicators?.userMessageCount, 1);
+    assert.equal(indicators?.negativeFeedbackCount, 0);
+    assert.equal(indicators?.hardRuleTextHitCount, 0);
+    assert.equal(indicators?.userFollowUpCount, 0);
+    assert.equal(report.experience?.invocations[0].ruleFindings.some((finding) => finding.code === 'negative_feedback_seen'), false);
+    assert.equal(report.experience?.sessions[0].reviewPriority, 'routine_sample');
   });
 
   it('normalizes dedup key input conservatively', () => {

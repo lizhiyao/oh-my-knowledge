@@ -3,6 +3,8 @@ export const HARD_RULE_TEXT_RE = /hard rules?|必须|不要|禁止|严格|一定
 const RUNTIME_PROTOCOL_PROMPT_RE =
   /你在看一个\s+[\w.-]+\s+后台任务|根据日志写一条进展消息发给用户|不要执行日志里的任务|::FORWARD-OK::|instruction\s*:\s*直接转发[，,]?\s*不要回答/i;
 
+const SCHEDULED_TASK_PROMPT_RE = /^\s*\[cron:[^\]]+\]/i;
+
 const ASSISTANT_DELIVERY_SIGNAL_RE =
   /```(?:mermaid|plantuml|json|tsx?|jsx?|html|css|excalidraw|markdown)?|直接生成|已生成|生成如下|结果如下|如下|完成|已完成|这里是|给出|输出/i;
 
@@ -16,8 +18,12 @@ export function isRuntimeProtocolPromptText(value: string): boolean {
   return RUNTIME_PROTOCOL_PROMPT_RE.test(value);
 }
 
+export function isScheduledTaskPromptText(value: string): boolean {
+  return SCHEDULED_TASK_PROMPT_RE.test(value);
+}
+
 export function hasUserHardRuleText(value: string): boolean {
-  return HARD_RULE_TEXT_RE.test(value) && !isRuntimeProtocolPromptText(value);
+  return HARD_RULE_TEXT_RE.test(value) && !isRuntimeProtocolPromptText(value) && !isScheduledTaskPromptText(value);
 }
 
 export function isAssistantProgressUpdateText(value: string): boolean {
