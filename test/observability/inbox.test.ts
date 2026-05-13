@@ -143,6 +143,8 @@ describe('observe inbox', () => {
 
     const report = buildObservationInboxReport(dir);
     assert.equal(report.meta.sessionCount, 2);
+    assert.ok(report.meta.sessionTimeRange);
+    assert.ok(report.meta.sessionTimeRanges);
     assert.equal(report.meta.sessionTimeRange.from, '2026-05-12T12:08:09.000Z');
     assert.equal(report.meta.sessionTimeRange.to, '2026-05-13T01:05:06.000Z');
     const rangesById = new Map(report.meta.sessionTimeRanges.map((range) => [range.sessionId, range]));

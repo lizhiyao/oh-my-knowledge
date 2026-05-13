@@ -113,13 +113,13 @@ export interface ObservationInboxReport {
   meta: {
     tracePath: string;
     generatedAt: string;
-    sessionCount: number;
-    sessionTimeRange: {
+    sessionCount?: number;
+    sessionTimeRange?: {
       from: string;
       to: string;
       durationMs?: number;
     };
-    sessionTimeRanges: ObservationSessionTimeRange[];
+    sessionTimeRanges?: ObservationSessionTimeRange[];
     segmentCount: number;
     itemCount: number;
     skillInvocationCounts?: Record<string, number>;

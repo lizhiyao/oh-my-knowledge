@@ -158,7 +158,7 @@ function filterReportBySkill(report: ObservationInboxReport, skillName?: string)
   };
 }
 
-function buildReportSessionTimeRange(ranges: ObservationInboxReport['meta']['sessionTimeRanges']): ObservationInboxReport['meta']['sessionTimeRange'] {
+function buildReportSessionTimeRange(ranges: ObservationInboxReport['meta']['sessionTimeRanges'] = []): NonNullable<ObservationInboxReport['meta']['sessionTimeRange']> {
   const starts = ranges.map((range) => range.startTimestamp).filter((value): value is string => Boolean(value));
   const ends = ranges.map((range) => range.endTimestamp).filter((value): value is string => Boolean(value));
   if (starts.length === 0 || ends.length === 0) return { from: '', to: '' };

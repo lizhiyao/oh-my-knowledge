@@ -7,6 +7,7 @@ import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorre
 import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from '../observability/problem-patterns.js';
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
+import { durationMsBetween } from '../shared/time.js';
 import type {
   ExperienceAssistiveInference,
   ExperienceAssistiveInferenceCautionCode,
@@ -92,16 +93,27 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     return `<div style="margin:4px 0;text-align:left"><span style="color:var(--text-muted);font-size:11px">${e(label)}</span><div style="font-family:ui-monospace,monospace;font-size:11px;word-break:break-all;text-align:left;color:var(--text-secondary)">${e(String(value))}</div></div>`;
   };
   const formatTimestamp = (value?: string): string => value ? value.slice(0, 19).replace('T', ' ') : '—';
+  const sessionTimeLabel = lang === 'zh' ? 'Session 时间' : 'Session time';
+  const sessionTimeRangeLabel = lang === 'zh' ? 'Session 时间范围' : 'Session time range';
+  const latestInvocationLabel = lang === 'zh' ? '最近调用' : 'Latest invocation';
+  const invocationWindowLabel = lang === 'zh' ? '调用窗口' : 'Invocation window';
   const formatDuration = (durationMs?: number): string => {
     if (!Number.isFinite(durationMs ?? Number.NaN) || durationMs == null) return '';
     const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+    if (totalSeconds === 0) return '';
     const days = Math.floor(totalSeconds / 86400);
     const hours = Math.floor((totalSeconds % 86400) / 3600);
     const minutes = Math.floor((totalSeconds % 3600) / 60);
-    if (days > 0) return `${days}天${hours > 0 ? ` ${hours}小时` : ''}`;
-    if (hours > 0) return `${hours}小时${minutes > 0 ? ` ${minutes}分钟` : ''}`;
-    if (minutes > 0) return `${minutes}分钟`;
-    return `${totalSeconds}秒`;
+    if (lang === 'zh') {
+      if (days > 0) return `${days}天${hours > 0 ? ` ${hours}小时` : ''}`;
+      if (hours > 0) return `${hours}小时${minutes > 0 ? ` ${minutes}分钟` : ''}`;
+      if (minutes > 0) return `${minutes}分钟`;
+      return `${totalSeconds}秒`;
+    }
+    if (days > 0) return `${days}d${hours > 0 ? ` ${hours}h` : ''}`;
+    if (hours > 0) return `${hours}h${minutes > 0 ? ` ${minutes}m` : ''}`;
+    if (minutes > 0) return `${minutes}m`;
+    return `${totalSeconds}s`;
   };
   const formatTimeRange = (start?: string, end?: string, durationMs?: number): string => {
     const range = `${formatTimestamp(start)} ~ ${formatTimestamp(end)}`;
@@ -2119,7 +2131,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       </td>
       <td class="session-time-cell" style="padding:9px 10px;color:var(--text-muted);font-size:12px;white-space:normal">
         <div>${e(formatTimeRange(session.sourceSessionStartTimestamp ?? session.startTimestamp, session.sourceSessionEndTimestamp ?? session.endTimestamp, session.sourceSessionDurationMs))}</div>
-        <div style="margin-top:3px;color:var(--text-muted);font-size:11px">调用窗口：${e(formatTimeRange(session.startTimestamp, session.endTimestamp))}</div>
+        <div style="margin-top:3px;color:var(--text-muted);font-size:11px">${e(invocationWindowLabel)}: ${e(formatTimeRange(session.startTimestamp, session.endTimestamp))}</div>
       </td>
       <td class="num" style="padding:9px 10px;text-align:right"><button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this)" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer;white-space:nowrap">回溯详情</button></td>
     </tr>
@@ -2181,7 +2193,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <summary>
         <div>
           <span class="experience-session-skill">${e(skillName)}</span>
-          <span class="experience-session-meta">${sessions.length} sessions · Session 时间 ${e(formatTimeRange(earliestSessionStart, latestSessionEnd))} · 最近调用 ${e(formatTimestamp(latest))}</span>
+          <span class="experience-session-meta">${sessions.length} sessions · ${e(sessionTimeLabel)} ${e(formatTimeRange(earliestSessionStart, latestSessionEnd))} · ${e(latestInvocationLabel)} ${e(formatTimestamp(latest))}</span>
         </div>
         <div class="experience-session-tags">
           <span style="color:var(--red)">优先复盘 ${reviewFirst}</span>
@@ -2200,7 +2212,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">用户目标切片</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">C2 规则判断</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">关键指标</th>
-            <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">Session 时间范围</th>
+            <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">${e(sessionTimeRangeLabel)}</th>
             <th style="text-align:right;padding:9px 10px;border-bottom:1px solid var(--border)">回溯</th>
           </tr></thead>
           <tbody>${renderExperienceSessionRows(sessions, `exp-skill-${groupIndex}`)}</tbody>
@@ -2244,7 +2256,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const reportSessionEnds = reportSessionRanges.map((range) => range.endTimestamp).filter((value): value is string => Boolean(value));
   const reportSessionFrom = reportSessionStarts.length > 0 ? reportSessionStarts.reduce((min, value) => value < min ? value : min, reportSessionStarts[0]) : undefined;
   const reportSessionTo = reportSessionEnds.length > 0 ? reportSessionEnds.reduce((max, value) => value > max ? value : max, reportSessionEnds[0]) : undefined;
-  const reportSessionDurationMs = reportSessionFrom && reportSessionTo ? Date.parse(reportSessionTo) - Date.parse(reportSessionFrom) : undefined;
+  const reportSessionDurationMs = durationMsBetween(reportSessionFrom, reportSessionTo);
   const reportSessionRangeLabel = reportSessionFrom || reportSessionTo
     ? formatTimeRange(reportSessionFrom, reportSessionTo, reportSessionDurationMs)
     : '—';
@@ -2271,7 +2283,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted)" title="这里的成功/失败是工具调用结果统计，不等同于 LLM 判断 skill 最终成功或失败。">
               <div style="color:var(--text-muted);font-size:12px">调用概览</div>
               <div style="font-size:20px;font-weight:700;margin-top:4px">Session ${experience.meta.sessionCount} · Skill 调用 ${experience.meta.invocationCount}</div>
-              <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Session 时间范围：${e(reportSessionRangeLabel)}</div>
+              <div style="color:var(--text-muted);font-size:12px;margin-top:4px">${e(sessionTimeRangeLabel)}: ${e(reportSessionRangeLabel)}</div>
               <div style="color:var(--text-muted);font-size:12px;margin-top:4px">工具执行成功 ${experienceToolSuccessCount} / ${pct(experienceToolSuccessCount, experienceIndicators.toolCallCount)} · 工具执行失败 ${experienceIndicators.toolFailureCount} / ${pct(experienceIndicators.toolFailureCount, experienceIndicators.toolCallCount)} · 人工中断 ${experienceIndicators.userInterruptionCount} / ${pct(experienceIndicators.userInterruptionCount, experienceIndicators.toolCallCount)}</div>
             </div>
             <div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted)">
@@ -2345,7 +2357,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           <div style="color:var(--text-muted);font-size:12px">数据范围</div>
           <div style="font-size:18px;font-weight:700;margin-top:6px">${skillCount} trace skills</div>
           <div style="color:var(--text-muted);font-size:12px">${reportSessionCount} sessions · ${totalSkillInvocations} skill 调用 · ${allItems.length} 过程发现</div>
-          <div style="color:var(--text-muted);font-size:12px">Session 时间：${e(reportSessionRangeLabel)}</div>
+          <div style="color:var(--text-muted);font-size:12px">${e(sessionTimeLabel)}: ${e(reportSessionRangeLabel)}</div>
           <div style="color:var(--text-muted);font-size:12px">${reportCount} reports · latest ${e(latestSeenLabel)}</div>
           <div style="color:var(--text-muted);font-size:12px">当前只展示最新一次 ingest 的结果</div>
         </div>

@@ -475,7 +475,7 @@ Every observation carries:
 - `messageWindow` — 3 messages before / trigger / 3 messages after, plus `resolutionAfter` (whether the agent recovered)
 - `evidence.{messageIndex,messageUuid,toolUseId}` — anchors for round-tripping back to the original jsonl
 
-Supported trace formats: Claude Code session JSONL (`.jsonl`) and markdown conversation logs (`.log`).
+Supported trace formats: Claude Code session JSONL (`.jsonl`), OpenClaw session JSONL (`.jsonl`), and markdown conversation logs (`.log`).
 
 ### `omk evolve`
 
