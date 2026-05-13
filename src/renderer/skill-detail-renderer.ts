@@ -93,7 +93,7 @@ export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: 
   const score = dims.length > 0 ? Math.round(dims.reduce((s, x) => s + x, 0) / dims.length) : null;
 
   const hasFail = (entry.doctor != null && entry.doctor.failCount > 0)
-    || (entry.eval != null && entry.eval.passCount === 0 && entry.eval.failCount > 0)
+    || (entry.eval != null && entry.eval.failCount > 0)
     || (entry.observe != null && entry.observe.healthBand === 'red');
   const hasWarn = (entry.doctor != null && entry.doctor.warnCount > 0)
     || (entry.eval != null && entry.eval.compositeScore != null && entry.eval.compositeScore < 3.5)

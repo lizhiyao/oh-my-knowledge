@@ -48,6 +48,9 @@ export const BUILTIN_HEALTH_DIMENSIONS: HealthDimensionSpec[] = [
 - 引用的脚本 / CLI / MCP 工具 / 其他 skill 实际存在
 - 不内联底层(应该引用某 skill 时却内联了它的实现)
 - **路径可移植**:不能硬编码具体版本号路径(eg. \`~/.nvm/versions/node/v22.22.0/...\`)、用户专属路径(eg. \`/Users/<具体人>/...\`)、机器专属位置——这些在换用户 / 换 Node 版本 / 换安装方式时**直接跑不通**,属于 \`错误\` 级。
+  **例外:以下路径不算硬编码,不要报错**:
+  - \`~/.<appname>/...\` 形式的用户配置/数据目录(如 \`~/.config/xxx\`、\`~/.local/bin/xxx\`)——这是 Unix 标准约定,\`~\` 会在运行时展开为当前用户 home,跨用户可移植。
+  - 环境变量引用(如 \`$HOME/...\`、\`$SKILL_DIR/...\`)。
 
   **改进建议必须用运行时中立的方案**:
   - **skill 内部资源**(\`scripts/\`、\`references/\`、\`mcp.json\` 等):**统一用 \`$SKILL_DIR\` 指代本 skill 加载后的实际根目录(即 SKILL.md 所在目录)**,执行命令时由调用方替换为绝对路径。SKILL.md 里只需在前置说明里加一句:"\`$SKILL_DIR\` 指代本 skill 加载后的实际根目录,执行命令时直接替换为该绝对路径"。
