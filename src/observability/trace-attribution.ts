@@ -154,7 +154,8 @@ export function extractAttributionSkillRef(record: CcAssistantRecord): SkillRef 
   return record.attributionSkill ? parseSkillRef(record.attributionSkill) : null;
 }
 
-const SKILL_READ_FILE_RE = /(?:\.claude\/skills|\.openclaw\/workspace\/skills)\/([^/]+)\/SKILL\.md$/;
+const SKILL_READ_FILE_RE = /(?:\.claude\/skills|\.openclaw\/workspace(?:-main)?\/skills)\/([^/]+)\/SKILL\.md$/;
+const SKILL_SCRIPT_PATH_RE = /(?:^|[\s"'`])(?:~|\.|\/)?[^\s"'`]*\/skills\/([^/\s"'`]+)\/scripts\/[^\s"'`]*/;
 
 /**
  * 从 assistant message 的 Read tool_use 里提取 skill 名字(信号 3, fallback)。
@@ -176,6 +177,34 @@ export function extractSkillReadFileRef(record: CcAssistantRecord): SkillRef | n
         if (m) return parseSkillRef(m[1]);
       }
     }
+  }
+  return null;
+}
+
+/**
+ * 从 OpenClaw cron/user 文本或 Bash/exec tool command 里提取 skill 脚本路径。
+ *
+ * cron 型 OpenClaw session 通常没有 <aima-cmd> 或 Skill tool_use,
+ * 只会直接执行 ~/.openclaw/workspace-main/skills/<skill>/scripts/*.sh。
+ */
+export function extractSkillScriptCommandRef(record: CcUserRecord | CcAssistantRecord): SkillRef | null {
+  const texts: string[] = [];
+  const content = record.message.content;
+  if (typeof content === 'string') {
+    texts.push(content);
+  } else {
+    for (const part of content) {
+      if (part.type === 'text' && typeof part.text === 'string') {
+        texts.push(part.text);
+      } else if (part.type === 'tool_use') {
+        const command = part.input?.command;
+        if (typeof command === 'string') texts.push(command);
+      }
+    }
+  }
+  for (const text of texts) {
+    const match = SKILL_SCRIPT_PATH_RE.exec(text);
+    if (match?.[1]) return parseSkillRef(match[1]);
   }
   return null;
 }

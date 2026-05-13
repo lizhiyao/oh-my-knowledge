@@ -278,6 +278,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (value === 'aima-cmd') return '通过 AIMA 业务动作触发';
     if (value === 'skill-tool') return '通过 Skill 工具启动';
     if (value === 'read-skill-md') return '通过读取 Skill 文档推断';
+    if (value === 'skill-script') return '通过 Skill 脚本路径推断';
     if (value === 'general') return '未识别到具体 skill';
     return value || '未记录';
   };

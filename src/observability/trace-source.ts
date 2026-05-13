@@ -493,7 +493,7 @@ function normalizeOpenClawToolName(name: string): string {
   const lower = normalized.toLowerCase();
   if (lower === 'read') return 'Read';
   if (lower === 'grep' || lower === 'search') return 'Grep';
-  if (lower === 'bash' || lower === 'shell' || lower === 'run') return 'Bash';
+  if (lower === 'bash' || lower === 'shell' || lower === 'run' || lower === 'exec') return 'Bash';
   if (lower === 'edit') return 'Edit';
   if (lower === 'write') return 'Write';
   return normalized;

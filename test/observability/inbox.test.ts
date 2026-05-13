@@ -396,7 +396,7 @@ describe('observe inbox', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const file = join(dir, 'caifu_openclaw.jsonl');
     const records = [
-      { type: 'session', version: 3, id: 'oc-1', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/Users/test-user/.openclaw/workspace' },
+      { type: 'session', version: 3, id: 'oc-1', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/tmp/example/.openclaw/workspace' },
       {
         type: 'message',
         id: 'u1',
@@ -404,7 +404,7 @@ describe('observe inbox', () => {
         timestamp: '2026-05-12T00:00:01.000Z',
         message: {
           role: 'user',
-          content: [{ type: 'text', text: 'Conversation info (untrusted metadata):\n```json\n{"channel":"aima","sender":"测试用户","sender_id":"xxxx"}\n```\n\n帮我写一个 PRD\n<aima-cmd name="生成PRD">请生成 PRD</aima-cmd>' }],
+          content: [{ type: 'text', text: 'Conversation info (untrusted metadata):\n```json\n{"channel":"aima","sender":"示例用户","sender_id":"example-sender"}\n```\n\n帮我写一个 PRD\n<aima-cmd name="生成PRD">请生成 PRD</aima-cmd>' }],
         },
       },
       {
@@ -417,7 +417,7 @@ describe('observe inbox', () => {
           provider: 'openai-codex',
           model: 'gpt-5.5',
           content: [
-            { type: 'toolCall', id: 'read-skill', name: 'read', arguments: { path: '~/.openclaw/workspace/skills/prd-create/SKILL.md' } },
+            { type: 'toolCall', id: 'read-skill', name: 'read', arguments: { path: '/tmp/example/.openclaw/workspace/skills/prd-create/SKILL.md' } },
             { type: 'toolCall', id: 'grep-1', name: 'grep', arguments: { pattern: 'missing_field', path: 'domain' } },
           ],
         },
@@ -460,7 +460,7 @@ describe('observe inbox', () => {
     assert.equal(report.experience?.invocations[0].attribution.source, 'read-skill-md');
     assert.equal(report.experience?.invocations[0].attribution.commandName, undefined);
     assert.equal(report.experience?.invocations[0].sourceMetadata?.channel, 'aima');
-    assert.equal(report.experience?.invocations[0].sourceMetadata?.sender, '测试用户');
+    assert.equal(report.experience?.invocations[0].sourceMetadata?.sender, '示例用户');
     assert.deepEqual(report.experience?.invocations[0].sourceMetadata?.aimaCommands, ['生成PRD']);
     assert.equal(report.experience?.skills[0].sourceMetadataCounts.channels.aima, 1);
     assert.equal(report.experience?.skills[0].sourceMetadataCounts.aimaCommands['生成PRD'], 1);

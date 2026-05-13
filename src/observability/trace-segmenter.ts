@@ -7,6 +7,7 @@ import {
   extractAttributionSkillRef,
   extractCommandSkillRef,
   extractSkillReadFileRef,
+  extractSkillScriptCommandRef,
   extractSkillToolUseRef,
   stripCommandEnvelopeText,
   type SkillRef,
@@ -15,7 +16,7 @@ import {
 export interface SkillSegment {
   skillName: string;
   attribution?: {
-    source: 'skill-tool' | 'command-name' | 'aima-cmd' | 'read-skill-md' | 'general';
+    source: 'skill-tool' | 'command-name' | 'aima-cmd' | 'read-skill-md' | 'skill-script' | 'general';
     confidence: number;
     rawSkillRef?: string;
     pluginName?: string;
@@ -120,6 +121,17 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
             pluginName: aimaCmdSkill.pluginName,
             commandName: aimaCmdSkill.rawSkillRef,
           });
+        } else {
+          const scriptSkill = extractSkillScriptCommandRef(u);
+          if (scriptSkill && !isCurrentSkillRef(scriptSkill)) {
+            startNewSegment(scriptSkill, recordIndex, u.timestamp, {
+              source: 'skill-script',
+              confidence: 0.75,
+              rawSkillRef: scriptSkill.rawSkillRef,
+              pluginName: scriptSkill.pluginName,
+              commandName: scriptSkill.rawSkillRef,
+            });
+          }
         }
       }
       // 处理 tool_result(回填之前的 tool_use)
@@ -172,14 +184,25 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
             commandName: `/${attrSkill.rawSkillRef}`,
           });
         } else {
-          const readSkill = extractSkillReadFileRef(a);
-          if (readSkill && !isCurrentSkillRef(readSkill) && shouldCutOnReadSkill(session, currentSegment)) {
-            startNewSegment(readSkill, recordIndex, a.timestamp, {
-              source: 'read-skill-md',
-              confidence: 0.5,
-              rawSkillRef: readSkill.rawSkillRef,
-              pluginName: readSkill.pluginName,
+          const scriptSkill = extractSkillScriptCommandRef(a);
+          if (scriptSkill && !isCurrentSkillRef(scriptSkill)) {
+            startNewSegment(scriptSkill, recordIndex, a.timestamp, {
+              source: 'skill-script',
+              confidence: 0.7,
+              rawSkillRef: scriptSkill.rawSkillRef,
+              pluginName: scriptSkill.pluginName,
+              commandName: scriptSkill.rawSkillRef,
             });
+          } else {
+            const readSkill = extractSkillReadFileRef(a);
+            if (readSkill && !isCurrentSkillRef(readSkill) && shouldCutOnReadSkill(session, currentSegment)) {
+              startNewSegment(readSkill, recordIndex, a.timestamp, {
+                source: 'read-skill-md',
+                confidence: 0.5,
+                rawSkillRef: readSkill.rawSkillRef,
+                pluginName: readSkill.pluginName,
+              });
+            }
           }
         }
       }

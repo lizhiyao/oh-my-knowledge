@@ -134,7 +134,7 @@ describe('loadCcSessions', () => {
   it('loads OpenClaw JSONL and adapts toolCall/toolResult records', () => {
     const path = join(tmpDir, 'openclaw.jsonl');
     writeFileSync(path, jsonl([
-      { type: 'session', version: 3, id: 'oc-1', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/Users/test-user/.openclaw/workspace' },
+      { type: 'session', version: 3, id: 'oc-1', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/tmp/example/.openclaw/workspace' },
       {
         type: 'message',
         id: 'u1',
@@ -142,7 +142,7 @@ describe('loadCcSessions', () => {
         timestamp: '2026-05-12T00:00:01.000Z',
         message: {
           role: 'user',
-          content: [{ type: 'text', text: 'Conversation info (untrusted metadata):\n```json\n{"channel":"aima","sender":"测试用户","sender_id":"xxxx"}\n```\n\n帮我写一个 PRD\n<aima-cmd name="prd-create">请生成 PRD</aima-cmd>' }],
+          content: [{ type: 'text', text: 'Conversation info (untrusted metadata):\n```json\n{"channel":"aima","sender":"示例用户","sender_id":"example-sender"}\n```\n\n帮我写一个 PRD\n<aima-cmd name="prd-create">请生成 PRD</aima-cmd>' }],
         },
       },
       {
@@ -155,7 +155,7 @@ describe('loadCcSessions', () => {
           model: 'gpt-5.5',
           provider: 'openai-codex',
           content: [
-            { type: 'toolCall', id: 'call-read-skill', name: 'read', arguments: { path: '~/.openclaw/workspace/skills/prd-create/SKILL.md' } },
+            { type: 'toolCall', id: 'call-read-skill', name: 'read', arguments: { path: '/tmp/example/.openclaw/workspace/skills/prd-create/SKILL.md' } },
           ],
           usage: { input: 10, output: 2, cacheRead: 3, cacheWrite: 0 },
         },
@@ -180,11 +180,11 @@ describe('loadCcSessions', () => {
     assert.equal(sessions[0].sessionId, 'oc-1');
     assert.equal(sessions[0].sourceKind, 'openclaw');
     assert.equal(sessions[0].entrypoint, 'openclaw');
-    assert.equal(sessions[0].cwd, '/Users/test-user/.openclaw/workspace');
+    assert.equal(sessions[0].cwd, '/tmp/example/.openclaw/workspace');
     assert.deepEqual(sessions[0].sourceMetadata, {
       channel: 'aima',
-      sender: '测试用户',
-      senderId: 'xxxx',
+      sender: '示例用户',
+      senderId: 'example-sender',
       provider: 'openai-codex',
       model: 'gpt-5.5',
       aimaCommands: ['prd-create'],
@@ -196,7 +196,7 @@ describe('loadCcSessions', () => {
     assert.equal(skill.attribution?.source, 'aima-cmd');
     assert.equal(skill.attribution?.commandName, 'prd-create');
     assert.equal(skill.toolCalls[0].tool, 'Read');
-    assert.equal((skill.toolCalls[0].input as { file_path?: string }).file_path, '~/.openclaw/workspace/skills/prd-create/SKILL.md');
+    assert.equal((skill.toolCalls[0].input as { file_path?: string }).file_path, '/tmp/example/.openclaw/workspace/skills/prd-create/SKILL.md');
     assert.equal(skill.toolCalls[0].success, true);
     assert.equal(skill.metrics.inputTokens, 10);
     assert.equal(skill.metrics.cacheReadTokens, 3);
@@ -205,7 +205,7 @@ describe('loadCcSessions', () => {
   it('keeps OpenClaw aima-cmd labels as business actions and splits by SKILL.md reads', () => {
     const path = join(tmpDir, 'openclaw-multi-action.jsonl');
     writeFileSync(path, jsonl([
-      { type: 'session', version: 3, id: 'oc-actions', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/Users/test-user/.openclaw/workspace' },
+      { type: 'session', version: 3, id: 'oc-actions', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/tmp/example/.openclaw/workspace' },
       {
         type: 'message',
         id: 'u1',
@@ -224,7 +224,7 @@ describe('loadCcSessions', () => {
         message: {
           role: 'assistant',
           content: [
-            { type: 'toolCall', id: 'read-prd', name: 'read', arguments: { path: '~/.openclaw/workspace/skills/prd-create/SKILL.md' } },
+            { type: 'toolCall', id: 'read-prd', name: 'read', arguments: { path: '/tmp/example/.openclaw/workspace/skills/prd-create/SKILL.md' } },
           ],
         },
       },
@@ -249,7 +249,7 @@ describe('loadCcSessions', () => {
         message: {
           role: 'assistant',
           content: [
-            { type: 'toolCall', id: 'read-demo', name: 'read', arguments: { path: '~/.openclaw/workspace/skills/demo-create/SKILL.md' } },
+            { type: 'toolCall', id: 'read-demo', name: 'read', arguments: { path: '/tmp/example/.openclaw/workspace/skills/demo-create/SKILL.md' } },
           ],
         },
       },
@@ -275,6 +275,56 @@ describe('loadCcSessions', () => {
     assert.equal(segs.some((seg) => seg.skillName === '生成PRD' || seg.skillName === '生成Demo'), false);
     assert.equal(segs.find((seg) => seg.skillName === 'prd-create')?.attribution?.source, 'read-skill-md');
     assert.equal(segs.find((seg) => seg.skillName === 'demo-create')?.attribution?.source, 'read-skill-md');
+  });
+
+  it('attributes OpenClaw cron script executions to the skill directory', () => {
+    const path = join(tmpDir, 'openclaw-cron-script.jsonl');
+    writeFileSync(path, jsonl([
+      { type: 'session', version: 3, id: 'oc-cron', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/tmp/example/.openclaw/workspace-main' },
+      {
+        type: 'message',
+        id: 'u1',
+        parentId: null,
+        timestamp: '2026-05-12T00:00:01.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: '[cron:6596 task-poller] 请执行任务拉取：bash /tmp/example/.openclaw/workspace-main/skills/task-poller/scripts/run-poller.sh /tmp/example/.openclaw/workspace-main' }],
+        },
+      },
+      {
+        type: 'message',
+        id: 'a1',
+        parentId: 'u1',
+        timestamp: '2026-05-12T00:00:02.000Z',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'toolCall', id: 'run-poller', name: 'exec', arguments: { command: 'bash /tmp/example/.openclaw/workspace-main/skills/task-poller/scripts/run-poller.sh /tmp/example/.openclaw/workspace-main', timeout: 120 } },
+          ],
+        },
+      },
+      {
+        type: 'message',
+        id: 'tr1',
+        parentId: 'a1',
+        timestamp: '2026-05-12T00:00:03.000Z',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'run-poller',
+          toolName: 'exec',
+          content: [{ type: 'text', text: 'done' }],
+          isError: false,
+        },
+      },
+    ]));
+
+    const [session] = loadCcSessions(path);
+    const segs = segmentBySkill(session);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'task-poller');
+    assert.equal(segs[0].attribution?.source, 'skill-script');
+    assert.equal(segs[0].toolCalls[0].tool, 'Bash');
+    assert.equal((segs[0].toolCalls[0].input as { command?: string }).command?.includes('/skills/task-poller/scripts/run-poller.sh'), true);
   });
 
   it('loads each markdown log block as its own session', () => {
