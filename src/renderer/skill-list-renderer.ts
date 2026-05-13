@@ -127,7 +127,7 @@ function renderCard(entry: SkillIndexEntry, insights: Insight[], langQ: string, 
     ? `<span class="sl-warn-badge sl-warn-badge--${summary.highWarn > 0 ? 'high' : 'med'}">${summary.highWarn > 0 ? '🔴' : '⚠'} ${summary.warnCount} ${lang === 'zh' ? '待优化' : 'todo'}</span>`
     : `<span class="sl-warn-badge sl-warn-badge--ok">✓ ${lang === 'zh' ? '无待优化' : 'no todo'}</span>`;
 
-  return `<a class="sl-card sl-card--${h.color}" href="${e(detailHref)}">
+  return `<a class="sl-card sl-card--${h.color}" data-color="${h.color}" href="${e(detailHref)}">
     <div class="sl-card-h">
       <span class="sl-card-emoji">${h.emoji}</span>
       <span class="sl-card-name">${e(entry.skillName)}</span>
@@ -167,11 +167,20 @@ function renderSummaryBar(idx: SkillIndex, allEntries: SkillIndexEntry[], insigh
     ? `${s.totalSkills} skill · ${lang === 'zh' ? '共' : 'across'} ${totalSamples} ${lang === 'zh' ? '用例' : 'samples'}${lastTs ? ` · ${lang === 'zh' ? '最近' : 'last'} ${relTime(lastTs, lang)}` : ''}${totalWarn > 0 ? ` · ⚠ ${totalWarn} ${lang === 'zh' ? '待优化' : 'todo'}${totalHighWarn > 0 ? `(${totalHighWarn} ${lang === 'zh' ? '高优' : 'high'})` : ''}` : ''}`
     : `${s.totalSkills} skills · ${totalSamples} samples${lastTs ? ` · last ${relTime(lastTs, lang)}` : ''}${totalWarn > 0 ? ` · ⚠ ${totalWarn} todo${totalHighWarn > 0 ? ` (${totalHighWarn} high)` : ''}` : ''}`;
 
+  const healthyCount = gradeCounts.good + gradeCounts.excellent + gradeCounts.fair;
+  const scoredCount = s.totalSkills - gradeCounts.unscored;
+  const healthRate = scoredCount > 0 ? Math.round((healthyCount / scoredCount) * 100) : 0;
+  const healthRateText = lang === 'zh'
+    ? `健康率 ${healthyCount}/${scoredCount} (${healthRate}%)`
+    : `Health ${healthyCount}/${scoredCount} (${healthRate}%)`;
+
   const gradeRow = `
-    <span class="sl-summary-pill sl-summary-pill--red">🔴 ${gradeCounts.unhealthy} ${lang === 'zh' ? '不健康' : 'unhealthy'}</span>
-    <span class="sl-summary-pill sl-summary-pill--yellow">🟡 ${gradeCounts.fair} ${lang === 'zh' ? '待改进' : 'fair'}</span>
-    <span class="sl-summary-pill sl-summary-pill--green">🟢 ${gradeCounts.good + gradeCounts.excellent} ${lang === 'zh' ? '良好/健康' : 'good'}</span>
-    <span class="sl-summary-pill sl-summary-pill--gray">⚪ ${gradeCounts.unscored} ${lang === 'zh' ? '未评估' : 'unscored'}</span>
+    <button class="sl-filter-pill sl-filter-pill--all sl-filter-pill--active" data-filter="all">${lang === 'zh' ? '全部' : 'All'} ${s.totalSkills}</button>
+    <button class="sl-filter-pill sl-filter-pill--red" data-filter="red">🔴 ${gradeCounts.unhealthy}</button>
+    <button class="sl-filter-pill sl-filter-pill--yellow" data-filter="yellow">🟡 ${gradeCounts.fair}</button>
+    <button class="sl-filter-pill sl-filter-pill--green" data-filter="green">🟢 ${healthyCount}</button>
+    <button class="sl-filter-pill sl-filter-pill--gray" data-filter="gray">⚪ ${gradeCounts.unscored}</button>
+    <span class="sl-health-rate">${healthRateText}</span>
   `;
   return `<div class="sl-summary-card">
     <div class="sl-summary-line">${overview}</div>
@@ -209,12 +218,17 @@ const SKILL_LIST_CSS = `
 /* 顶部汇总卡 */
 .sl-summary-card { background:var(--bg-surface);border-radius:8px;padding:14px 18px;box-shadow:var(--shadow-sm);margin:8px 0 18px;display:flex;flex-direction:column;gap:10px }
 .sl-summary-line { font-size:13.5px;color:var(--text-secondary);font-variant-numeric:tabular-nums;line-height:1.55 }
-.sl-summary-pills { display:flex;gap:8px;flex-wrap:wrap }
-.sl-summary-pill { display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:14px;font-size:12px;font-weight:600;background:var(--bg-soft);color:var(--text-secondary) }
-.sl-summary-pill--red { background:rgba(156,74,63,.10);color:#9c4a3f }
-.sl-summary-pill--yellow { background:rgba(176,128,48,.10);color:#b08030 }
-.sl-summary-pill--green { background:rgba(94,130,82,.10);color:#5e8252 }
-.sl-summary-pill--gray { background:var(--bg-soft);color:var(--text-muted) }
+.sl-summary-pills { display:flex;gap:8px;flex-wrap:wrap;align-items:center }
+.sl-filter-pill { display:inline-flex;align-items:center;gap:4px;padding:5px 12px;border-radius:14px;font-size:12px;font-weight:600;border:1.5px solid transparent;cursor:pointer;transition:all .15s;background:var(--bg-soft);color:var(--text-secondary) }
+.sl-filter-pill:hover { opacity:.85 }
+.sl-filter-pill--active { border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) }
+.sl-filter-pill--red { background:rgba(156,74,63,.10);color:#9c4a3f }
+.sl-filter-pill--yellow { background:rgba(176,128,48,.10);color:#b08030 }
+.sl-filter-pill--green { background:rgba(94,130,82,.10);color:#5e8252 }
+.sl-filter-pill--gray { background:var(--bg-soft);color:var(--text-muted) }
+.sl-filter-pill--all { background:var(--bg-soft);color:var(--text-primary) }
+.sl-health-rate { font-size:13px;font-weight:600;color:var(--text-secondary);margin-left:8px;padding:4px 10px;background:var(--bg-soft);border-radius:6px }
+.sl-card--hidden { display:none !important }
 
 /* 卡片列表 — 网格布局 */
 .sl-cards { display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px }
@@ -309,5 +323,22 @@ export function renderSkillList(
     </div>
     </main>
     <style>${SKILL_LIST_CSS}</style>
+    <script>
+    (function(){
+      var pills = document.querySelectorAll('.sl-filter-pill');
+      pills.forEach(function(pill){
+        pill.addEventListener('click', function(){
+          pills.forEach(function(p){ p.classList.remove('sl-filter-pill--active'); });
+          pill.classList.add('sl-filter-pill--active');
+          var filter = pill.getAttribute('data-filter');
+          var cards = document.querySelectorAll('.sl-card');
+          cards.forEach(function(card){
+            if (filter === 'all') { card.classList.remove('sl-card--hidden'); }
+            else { card.classList.toggle('sl-card--hidden', card.getAttribute('data-color') !== filter); }
+          });
+        });
+      });
+    })();
+    </script>
   `, lang);
 }
