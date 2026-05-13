@@ -9,6 +9,7 @@ import { observationMetricAnnotationVerdict, type ObservationMetricKey, type Obs
 import type { CcAssistantRecord, CcRecord, CcSession, CcUserRecord, TraceSourceMetadata } from './trace-source.js';
 import type { SkillSegment } from './trace-segmenter.js';
 import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-attribution.js';
+import { hasAssistantDeliverySignalText, hasUserHardRuleText } from './text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 
 export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
@@ -396,7 +397,6 @@ const POSITIVE_FEEDBACK_TERMS = [
   'awesome',
 ];
 const USER_INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断/i;
-const HARD_RULE_RE = /hard rules?|必须|不要|禁止|严格|一定要|务必|不得|不能|只允许/i;
 const TIMELINE_PREVIEW_EVENT_LIMIT = 240;
 
 interface BuildExperienceInput {
@@ -640,8 +640,7 @@ function previousHumanUserRecordIndex(session: CcSession, start: number): number
 function isAssistantDeliveryEvent(event: ExperienceTimelineEvent): boolean {
   if (event.kind !== 'assistant_message') return false;
   const text = event.fullText ?? event.snippet ?? '';
-  return /```(?:mermaid|plantuml|json|tsx?|jsx?|html|css|excalidraw|markdown)?/i.test(text)
-    || /(?:直接生成|已生成|生成如下|结果如下|如下|完成|已完成|这里是|给出|输出)/i.test(text);
+  return hasAssistantDeliverySignalText(text);
 }
 
 function buildTimeline(session: CcSession, start: number, end: number): ExperienceTimelineEvent[] {
@@ -914,7 +913,7 @@ function ruleFindingsForEvidence(
   push('medium_observation_seen', 'sample', indicators.mediumObservationCount, observationRefs);
   push('hedging_seen', 'sample', indicators.hedgingCount, observationRefs);
   push('explicit_marker_seen', 'sample', indicators.explicitMarkerCount, observationRefs);
-  push('hard_rule_seen', 'sample', indicators.hardRuleTextHitCount, refs(userEvents.filter((event) => metricIsActive(event, 'hard_rule', HARD_RULE_RE.test(event.snippet ?? ''), reviewState))));
+  push('hard_rule_seen', 'sample', indicators.hardRuleTextHitCount, refs(userEvents.filter((event) => metricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? ''), reviewState))));
   push('positive_feedback_seen', 'normal', indicators.positiveFeedbackCount, refs(userEvents.filter((event) => metricIsActive(event, 'positive_feedback', hasPositiveFeedbackSignal(event.snippet ?? ''), reviewState))));
   push('user_goal_shift_seen', 'normal', indicators.userGoalShiftCount, refs(userEvents.filter((event) => metricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(event.snippet ?? ''), reviewState))));
   push('runtime_context_excluded', 'normal', evidenceChain.runtimeContextCount, evidenceChain.firstRuntimeContext ? [evidenceChain.firstRuntimeContext] : []);
@@ -1004,7 +1003,7 @@ function indicatorsForSegment(
     negativeFeedbackCount: humanUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'negative_feedback', findNegativeFeedbackMatches(ref.snippet ?? '').length, reviewState), 0),
     positiveFeedbackCount: humanUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'positive_feedback', findPositiveFeedbackMatches(ref.snippet ?? '').length, reviewState), 0),
     userGoalShiftCount: humanUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_goal_shift', findUserGoalShiftMatches(ref.snippet ?? '').length, reviewState), 0),
-    hardRuleTextHitCount: humanUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'hard_rule', HARD_RULE_RE.test(ref.snippet ?? ''), reviewState) ? 1 : 0), 0),
+    hardRuleTextHitCount: humanUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'hard_rule', hasUserHardRuleText(ref.snippet ?? ''), reviewState) ? 1 : 0), 0),
     assistantDeliverySignalCount: timeline.filter(isAssistantDeliveryEvent).length,
     toolCallCount: segment.metrics.numToolCalls,
     toolFailureCount: segment.metrics.numToolFailures,

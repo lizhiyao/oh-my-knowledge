@@ -7,6 +7,7 @@ import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorre
 import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from '../observability/problem-patterns.js';
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
+import { hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE } from '../observability/text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 import type {
   ExperienceAssistiveInference,
@@ -504,7 +505,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     explicitMarkerCount: 0,
   };
   const USER_INTERRUPTION_DISPLAY_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断/i;
-  const HARD_RULE_DISPLAY_RE = /hard rules?|必须|不要|禁止|严格|一定要|务必|不得|不能|只允许/i;
   const displayRegexMatches = (pattern: RegExp, value: string): boolean => {
     pattern.lastIndex = 0;
     return pattern.test(value);
@@ -536,7 +536,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       negativeFeedbackCount: humanEvents.reduce((sum, event) => sum + displayMetricCount(event, 'negative_feedback', findNegativeFeedbackMatches(event.snippet ?? '').length), 0),
       positiveFeedbackCount: humanEvents.reduce((sum, event) => sum + displayMetricCount(event, 'positive_feedback', findPositiveFeedbackMatches(event.snippet ?? '').length), 0),
       userGoalShiftCount: humanEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_goal_shift', findUserGoalShiftMatches(event.snippet ?? '').length), 0),
-      hardRuleTextHitCount: humanEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'hard_rule', displayRegexMatches(HARD_RULE_DISPLAY_RE, event.snippet ?? '')) ? 1 : 0), 0),
+      hardRuleTextHitCount: humanEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? '')) ? 1 : 0), 0),
     };
   };
   const sessionMetricSourceTitle = (session: ExperienceSessionSummary, metricKey: ObservationMetricKey, label: string): string => {
@@ -559,7 +559,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               : metricKey === 'positive_feedback'
                 ? findPositiveFeedbackMatches(text).length
                 : metricKey === 'hard_rule'
-                  ? (displayRegexMatches(HARD_RULE_DISPLAY_RE, text) ? 1 : 0)
+                  ? (hasUserHardRuleText(text) ? 1 : 0)
                   : metricKey === 'user_goal_shift'
                     ? findUserGoalShiftMatches(text).length
                     : 0;
@@ -1129,7 +1129,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     title: string;
   }
   const USER_INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断/i;
-  const HARD_RULE_RE = /hard rules?|必须|不要|禁止|严格|一定要|务必|不得|不能|只允许/i;
+  const HARD_RULE_RE = HARD_RULE_TEXT_RE;
   const HEDGING_RE = /可能|不确定|需要确认|大概|也许|presumably|maybe|unclear|not sure/i;
   const EXPLICIT_MARKER_RE = /【推断】|【知识缺口】|【未知】|\[inferred\]|\[unknown\]|\[knowledge\s*gap\]/i;
   const TOOL_FAILURE_RE = /Error|error|failed|失败|Exception|ENOENT|EACCES|permission denied|No such file|exceeds maximum allowed tokens|timed out|timeout/i;
@@ -1196,8 +1196,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  const isAssistantDeliverySignal = (event: ExperienceTimelineEvent): boolean => {
 	    if (event.kind !== 'assistant_message') return false;
 	    const text = event.fullText ?? event.snippet ?? '';
-	    return /```(?:mermaid|plantuml|json|tsx?|jsx?|html|css|excalidraw|markdown)?/i.test(text)
-	      || /(?:直接生成|已生成|生成如下|结果如下|如下|完成|已完成|这里是|给出|输出)/i.test(text);
+	    return hasAssistantDeliverySignalText(text);
 	  };
 	  const evidenceMetricVerdictFor = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey): 'confirmed' | 'rejected' | '' => {
 	    const targetId = observationMetricAnnotationTargetId(event, metricKey);
@@ -1225,7 +1224,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText))) tags.push('user_interruption');
       if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0)) tags.push('negative_feedback');
       if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) tags.push('positive_feedback');
-      if (evidenceMetricIsActive(event, 'hard_rule', matches(HARD_RULE_RE, metricText))) tags.push('hard_rule');
+      if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText))) tags.push('hard_rule');
     }
     if (event.kind === 'assistant_message') {
       if (isAssistantDeliverySignal(event)) tags.push('completion');
@@ -1249,13 +1248,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText))) badges.push({ label: evidenceMetricBadgeLabel('人工中断来源', event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText)), className: 'metric-interruption', title: '用户主动中断了当前执行，通常表示当前路径需要纠偏或停止。' });
       if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0)) badges.push({ label: evidenceMetricBadgeLabel('负向反馈来源', event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0), className: 'metric-negative', title: '命中“没用/垃圾/菜/做错了/不行/看不懂”等负向表达。' });
       if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) badges.push({ label: evidenceMetricBadgeLabel('正向反馈来源', event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0), className: 'metric-positive', title: '命中“很好/good job/做得好/很棒/优秀/很有用”等正向表达。' });
-      if (evidenceMetricIsActive(event, 'hard_rule', matches(HARD_RULE_RE, metricText))) badges.push({ label: evidenceMetricBadgeLabel('用户硬性要求来源', event, 'hard_rule', matches(HARD_RULE_RE, metricText)), className: 'metric-hard-rule', title: '命中“必须/不要/禁止/严格”等用户临时硬性要求。' });
+      if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText))) badges.push({ label: evidenceMetricBadgeLabel('用户硬性要求来源', event, 'hard_rule', hasUserHardRuleText(metricText)), className: 'metric-hard-rule', title: '命中“必须/不要/禁止/严格”等用户临时硬性要求。' });
     }
 	    if (event.kind === 'assistant_message') {
 	      if (isAssistantDeliverySignal(event)) badges.push({ label: '产出结果/疑似完成', className: 'metric-completion', title: '助手回复里出现代码块、直接生成、结果如下、完成等交付信号。它表示当前目标可能完成，不等于整个 skill 生命周期结束。' });
 	      if (matches(HEDGING_RE, text)) badges.push({ label: '不确定表达来源', className: 'metric-hedging', title: '命中“可能/不确定/需要确认”等表达。' });
 	      if (matches(EXPLICIT_MARKER_RE, text)) badges.push({ label: '显式缺口来源', className: 'metric-explicit', title: '命中“【推断】/【未知】/知识缺口”等标记。' });
-	      if (badges.length === 0) badges.push({ label: '助手回复上下文', className: 'metric-neutral', title: '这条助手回复用于回溯上下文，当前没有额外文本指标判断。' });
     }
     if (event.kind === 'tool_use') {
       badges.push({
@@ -1284,7 +1282,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (event.kind === 'observation') {
       badges.push({ label: '过程发现来源', className: 'metric-explicit', title: '这条事件来自 observation 信号，会进入过程发现类指标。' });
     }
-    if (badges.length === 0) {
+    if (badges.length === 0 && event.kind !== 'assistant_message') {
       badges.push({ label: '上下文事件', className: 'metric-neutral', title: '这条时间线事件用于回溯上下文，当前没有额外指标判断。' });
     }
     return badges.map((badge) => `<span class="timeline-badge ${badge.className}" title="${e(badge.title)}">${e(badge.label)}</span>`);
@@ -1299,7 +1297,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, value))) rules.push({ pattern: cloneRegex(USER_INTERRUPTION_RE), className: 'metric-interruption', title: '人工中断命中词' });
       if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(value).length > 0)) rules.push({ ranges: findNegativeFeedbackMatches, className: 'metric-negative', title: '负向反馈命中词' });
       if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(value).length > 0)) rules.push({ ranges: findPositiveFeedbackMatches, className: 'metric-positive', title: '正向反馈命中词' });
-      if (evidenceMetricIsActive(event, 'hard_rule', matches(HARD_RULE_RE, value))) rules.push({ pattern: cloneRegex(HARD_RULE_RE), className: 'metric-hard-rule', title: '用户硬性要求命中词' });
+      if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(value))) rules.push({ pattern: cloneRegex(HARD_RULE_RE), className: 'metric-hard-rule', title: '用户硬性要求命中词' });
     }
 	    if (event.kind === 'assistant_message') {
 	      rules.push(
@@ -1325,7 +1323,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (metricKey === 'user_follow_up') return userIndex > 0;
     if (metricKey === 'negative_feedback') return findNegativeFeedbackMatches(text).length > 0;
     if (metricKey === 'positive_feedback') return findPositiveFeedbackMatches(text).length > 0;
-    if (metricKey === 'hard_rule') return matches(HARD_RULE_RE, text);
+    if (metricKey === 'hard_rule') return hasUserHardRuleText(text);
     if (metricKey === 'user_goal_shift') return hasUserGoalShiftSignal(text);
     return false;
   };

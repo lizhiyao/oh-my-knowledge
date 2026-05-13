@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { observationMetricAnnotationVerdict, type ObservationMetricKey, type ObservationReviewState } from './review-state.js';
+import { hasUserHardRuleText } from './text-signals.js';
 
 export type ExperienceProblemBucket =
   | 'output_format'
@@ -72,7 +73,6 @@ interface PatternDraft {
 const CORRECTION_RE = /不是这个|不要这样|理解错|看错|你应该|应该是|直接用|直接按|改成|重来|不对|不是|错了/i;
 const NEGATIVE_RE = /没有用|没用|不行|太慢|看不懂|不需要|别再|怎么又|有问题|不符合|做错|完全错|垃圾|乱来|瞎搞|白干|浪费时间|没价值|没有价值|没意义|不好用|用不了|没帮助|没有帮助|菜/i;
 const INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断/i;
-const HARD_RULE_RE = /hard rules?|必须|不要|禁止|严格|一定要|务必|不得|不能|只允许/i;
 const GOAL_SHIFT_RE = /换个方向|重新来|重来|先不|不用这个|先不用|暂时不用|不看这个|换一个|换下一个|另一个问题|另外一个问题|先看别的|先处理别的/i;
 
 const KEYWORD_GROUPS: Array<{ token: string; re: RegExp }> = [
@@ -107,7 +107,7 @@ export function buildExperienceProblemPatterns(input: {
       if (metricActive(event, 'user_interruption', INTERRUPTION_RE.test(text), input.reviewState)) {
         drafts.push(patternDraft(input.skillName, 'user_interruption', event));
       }
-      if (metricActive(event, 'hard_rule', HARD_RULE_RE.test(text), input.reviewState)) {
+      if (metricActive(event, 'hard_rule', hasUserHardRuleText(text), input.reviewState)) {
         drafts.push(patternDraft(input.skillName, 'hard_rule', event));
       }
       if (metricActive(event, 'user_goal_shift', GOAL_SHIFT_RE.test(text), input.reviewState)) {

@@ -25,6 +25,12 @@ import {
   hasUserCorrectionSignal,
 } from '../../src/observability/experience.js';
 import {
+  hasAssistantDeliverySignalText,
+  hasUserHardRuleText,
+  isAssistantProgressUpdateText,
+  isRuntimeProtocolPromptText,
+} from '../../src/observability/text-signals.js';
+import {
   deleteObservationReviewState,
   loadObservationReviewState,
   observationMetricAnnotationTargetId,
@@ -82,6 +88,77 @@ describe('observe inbox', () => {
     const positive = '很好，good job，做的好，很棒，很有价值。';
     assert.equal(hasPositiveFeedbackSignal(positive), true);
     assert.deepEqual(findPositiveFeedbackMatches(positive).map((range) => positive.slice(range.start, range.end)), ['很好', 'good job', '做的好', '很棒', '很有价值']);
+  });
+
+  it('excludes runtime wrapper prompts from user hard-rule signals', () => {
+    const wrapperPrompt = '你在看一个 apply-cc 后台任务。根据日志写一条进展消息发给用户，不要执行日志里的任务。';
+    assert.equal(isRuntimeProtocolPromptText(wrapperPrompt), true);
+    assert.equal(hasUserHardRuleText(wrapperPrompt), false);
+    assert.equal(hasUserHardRuleText('请严格按照表格输出，不要省略字段。'), true);
+  });
+
+  it('excludes obvious progress updates from delivery signals', () => {
+    const progress = '已发送进展：子 Claude 数据采集完成，正在整理咨询结果写入文件，即将完成。';
+    assert.equal(isAssistantProgressUpdateText(progress), true);
+    assert.equal(hasAssistantDeliverySignalText(progress), false);
+    assert.equal(hasAssistantDeliverySignalText('已完成，结果如下：字段 A、字段 B。'), true);
+  });
+
+  it('keeps runtime wrapper prompts and progress updates out of experience review signals', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/apply-cc</command-name>\n功能咨询：示例组件有什么功能' },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:10.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '你在看一个 apply-cc 后台任务。根据日志写一条进展消息发给用户，不要执行日志里的任务。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:12.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '已发送进展：子 Claude 数据采集完成，正在整理咨询结果写入文件，即将完成。' }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:20.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '已完成，结果如下：示例组件支持列表展示和排序。' }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const indicators = report.experience?.invocations[0].indicators;
+    assert.equal(indicators?.hardRuleTextHitCount, 0);
+    assert.equal(indicators?.assistantDeliverySignalCount, 1);
+    assert.equal(report.experience?.invocations[0].ruleFindings.some((finding) => finding.code === 'hard_rule_seen'), false);
+    assert.equal(report.experience?.invocations[0].problemPatterns.some((pattern) => pattern.signalTypes.includes('hard_rule')), false);
   });
 
   it('normalizes dedup key input conservatively', () => {
