@@ -1,5 +1,5 @@
-import { e, fmtNum, fmtDuration, delta, t } from './layout.js';
-import type { Lang, ResultEntry, TurnInfo, ToolCallInfo, EnsembleJudgeResult, JudgeAgreement, DimensionResult } from '../types/index.js';
+import { e, fmtNum, fmtDuration, t } from './layout.js';
+import type { Lang, ResultEntry, EnsembleJudgeResult, JudgeAgreement } from '../types/index.js';
 
 /** Render the multi-judge ensemble breakdown for a single (sample × rubric or dimension). */
 function renderEnsembleBlock(ensemble: EnsembleJudgeResult[] | undefined, agreement: JudgeAgreement | undefined, lang: Lang): string {
@@ -9,205 +9,246 @@ function renderEnsembleBlock(ensemble: EnsembleJudgeResult[] | undefined, agreem
       ? ` <span style="color:var(--text-muted)">±${judge.scoreStddev}</span>`
       : '';
     const fail = judge.judgeFailureCount && judge.judgeFailureCount > 0
-      ? ` <span style="color:var(--red);font-size:10px">${judge.judgeFailureCount}/${judge.scoreSamples?.length || '?'} fail</span>`
+      ? ` <span style="color:var(--red);font-size:11px">${judge.judgeFailureCount}/${judge.scoreSamples?.length || '?'} fail</span>`
       : '';
     const reasoning = judge.reasoning
-      ? `<details style="margin-top:2px"><summary style="font-size:10px;color:var(--text-muted);cursor:pointer">${t('judgeReasoning', lang)} ${t('judgeReasoningExpand', lang)}</summary><div style="font-size:11px;color:var(--text-muted);padding:4px;background:var(--bg-subtle);border-radius:3px;white-space:pre-wrap">${e(judge.reasoning)}</div></details>`
+      ? `<details class="sc-cot"><summary>${t('judgeReasoning', lang)} ${t('judgeReasoningExpand', lang)}</summary><pre class="sc-cot-body">${e(judge.reasoning)}</pre></details>`
       : '';
-    return `<div style="margin-top:3px;font-size:11px"><strong>${e(judge.judge)}</strong>: ${judge.score}${stddev}${fail}${reasoning}</div>`;
+    return `<div style="margin-top:6px;font-size:13px"><strong>${e(judge.judge)}</strong>: ${judge.score}${stddev}${fail}${reasoning}</div>`;
   }).join('');
   const agreementLine = agreement && agreement.pairCount > 0
-    ? `<div style="margin-top:4px;font-size:10px;color:var(--text-muted)" title="${t('madDesc', lang)}">MAD ${agreement.meanAbsDiff}${agreement.pearson != null ? ` · Pearson ${agreement.pearson}` : ''}</div>`
+    ? `<div style="margin-top:6px;font-size:12px;color:var(--text-muted)" title="${t('madDesc', lang)}">MAD ${agreement.meanAbsDiff}${agreement.pearson != null ? ` · Pearson ${agreement.pearson}` : ''}</div>`
     : '';
-  return `<details style="margin-top:6px;border-left:2px solid var(--accent);padding-left:6px"><summary style="font-size:11px;cursor:pointer;color:var(--text-muted)">${t('ensembleHeader', lang)} (${ensemble.length})</summary>${rows}${agreementLine}</details>`;
+  return `<details class="sc-section"><summary class="sc-section-h" style="cursor:pointer">${t('ensembleHeader', lang)} (${ensemble.length})</summary>${rows}${agreementLine}</details>`;
 }
 
-/** Render judge stddev / failure inline next to a score (single rubric or dim). */
-function renderJudgeStability(stddev: number | undefined, samples: number[] | undefined, failures: number | undefined, lang: Lang): string {
-  if (!samples || samples.length <= 1) return '';
-  const stddevTag = stddev != null
-    ? `<span class="dim-tag" title="${t('judgeStddevDesc', lang)}">±${stddev}</span>`
-    : '';
-  const failTag = failures && failures > 0
-    ? `<span class="dim-tag" style="background:var(--red-soft);color:var(--red)" title="${t('judgeFailuresDesc', lang)}">${failures}/${samples.length} fail</span>`
-    : '';
-  return stddevTag + failTag;
-}
+/**
+ * 渲染单个 variant 在某个 sample 上的"评分卡片块"。
+ * 结构化分段:综合分 → 三层分(事实/行为/LLM 评价)→ 失败断言 → judge 推理 → 工具调用统计。
+ * 每段独立展示,文本左对齐,数字 tabular-nums 对齐。
+ *
+ * delta(对比第 1 个 variant)只在多 variant 模式下显示。
+ */
+function renderVariantBlock(d: import('../types/index.js').VariantResult, variantName: string, comparedTo: import('../types/index.js').VariantResult | undefined, lang: Lang): string {
+  const score = d.compositeScore ?? d.llmScore;
+  const hasScore = typeof score === 'number';
+  const scoreText = hasScore ? score : (d.ok ? '—' : 'ERR');
+  const scoreColor = !d.ok ? 'var(--red)' : (hasScore && score >= 4) ? 'var(--green)' : (hasScore && score >= 3) ? 'var(--yellow)' : (hasScore ? 'var(--red)' : 'var(--text-muted)');
 
-/** Render CoT reasoning as a collapsed details block. */
-function renderReasoning(reasoning: string | undefined, lang: Lang): string {
-  if (!reasoning) return '';
-  return `<details style="margin-top:4px"><summary style="font-size:10px;color:var(--text-muted);cursor:pointer">${t('judgeReasoning', lang)} ${t('judgeReasoningExpand', lang)}</summary><div style="font-size:11px;color:var(--text-muted);padding:4px;background:var(--bg-subtle);border-radius:3px;white-space:pre-wrap">${e(reasoning)}</div></details>`;
-}
-
-function renderTrace(turns: TurnInfo[], toolCalls: ToolCallInfo[] | undefined, timing: { execMs: number; gradeMs: number; totalMs: number } | undefined, fullOutput: string | undefined, id: string, lang: Lang): string {
-  if (!turns || turns.length === 0) return '';
-
-  const timingHtml = timing
-    ? `<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">${t('traceExecMs', lang)} ${fmtDuration(timing.execMs)} · ${t('traceGradeMs', lang)} ${fmtDuration(timing.gradeMs)} · ${t('traceTotalMs', lang)} ${fmtDuration(timing.totalMs)}</div>`
-    : '';
-
-  const steps = turns.map((turn, i) => {
-    const durTag = turn.durationMs ? `<span style="color:var(--text-muted);font-size:10px;margin-left:6px">${fmtDuration(turn.durationMs)}</span>` : '';
-
-    if (turn.role === 'assistant') {
-      const toolTags = (turn.toolCalls || []).map((tc) => {
-        const statusColor = tc.success ? 'var(--green)' : 'var(--red)';
-        const inputPreview = typeof tc.input === 'string' ? tc.input.slice(0, 80) : JSON.stringify(tc.input || '').slice(0, 80);
-        return `<div style="margin:2px 0 2px 16px;font-size:11px"><span style="color:${statusColor}">●</span> <strong>${e(tc.tool)}</strong> <span style="color:var(--text-muted)">${e(inputPreview)}</span></div>`;
-      }).join('');
-      const textPreview = turn.content ? `<div style="font-size:11px;color:var(--text-secondary);margin-left:16px;white-space:pre-wrap;max-height:60px;overflow:hidden">${e(turn.content.slice(0, 200))}</div>` : '';
-      return `<div style="margin:4px 0;padding:4px 0;border-left:2px solid var(--accent)">
-        <div style="font-size:11px;padding-left:8px"><span style="color:var(--accent);font-weight:600">[${i + 1}] ${t('traceAssistant', lang)}</span>${durTag}</div>
-        ${toolTags}${textPreview}
-      </div>`;
+  // Judge 自一致性指标(单评分模式 ≥2 次评委时):stddev + failure count
+  let stabilityHtml = '';
+  if (d.llmScoreSamples && d.llmScoreSamples.length > 1) {
+    if (d.llmScoreStddev != null) {
+      stabilityHtml += ` <span class="sc-stab" title="${t('judgeStddevDesc', lang)}">±${d.llmScoreStddev}</span>`;
     }
-    // tool result
-    const statusIcon = turn.content.length > 0 ? '✓' : '✗';
-    return `<div style="margin:4px 0;padding:4px 0;border-left:2px solid var(--border)">
-      <div style="font-size:11px;padding-left:8px"><span style="color:var(--text-muted)">[${i + 1}] ${t('traceTool', lang)} ${statusIcon}</span>${durTag}</div>
-      <div style="font-size:11px;color:var(--text-muted);margin-left:16px;white-space:pre-wrap;max-height:40px;overflow:hidden">${e(turn.content.slice(0, 200))}</div>
-    </div>`;
-  }).join('');
+    if (d.llmScoreFailures && d.llmScoreFailures > 0) {
+      stabilityHtml += ` <span class="sc-stab sc-stab--fail" title="${t('judgeFailuresDesc', lang)}">${d.llmScoreFailures}/${d.llmScoreSamples.length} fail</span>`;
+    }
+  }
 
-  const outputBtn = fullOutput
-    ? `<button onclick="document.getElementById('modal-${id}').style.display='flex'" style="font-size:11px;margin-top:4px;padding:2px 8px;cursor:pointer;background:var(--bg-surface);color:var(--accent);border:1px solid var(--border);border-radius:var(--radius)">${t('traceFullOutput', lang)}</button>
-       <div id="modal-${id}" style="display:none;position:fixed;inset:0;z-index:999;background:rgba(0,0,0,0.6);align-items:center;justify-content:center" onclick="if(event.target===this)this.style.display='none'">
-         <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);max-width:800px;max-height:80vh;overflow:auto;padding:20px;margin:20px;width:90%">
-           <div style="display:flex;justify-content:space-between;margin-bottom:12px"><strong>${t('traceFullOutput', lang)}</strong><button onclick="this.closest('[id^=modal]').style.display='none'" style="cursor:pointer;background:none;border:none;color:var(--text-muted);font-size:16px">✕</button></div>
-           <pre style="font-size:12px;white-space:pre-wrap;word-break:break-word;color:var(--text-primary)">${e(fullOutput)}</pre>
-         </div>
-       </div>`
+  // delta 跟首 variant(通常是 baseline)的差值
+  let scoreDelta = '';
+  if (comparedTo && hasScore && typeof comparedTo.compositeScore === 'number') {
+    const diff = score - comparedTo.compositeScore;
+    if (Math.abs(diff) >= 0.05) {
+      const sign = diff > 0 ? '+' : '';
+      const dColor = diff > 0 ? 'var(--green)' : 'var(--red)';
+      scoreDelta = `<span style="color:${dColor};font-size:13px;margin-left:8px;font-weight:600">${sign}${diff.toFixed(2)}</span>`;
+    }
+  }
+
+  // 三层分
+  const ls = d.layeredScores;
+  const layerRows: string[] = [];
+  if (ls?.factScore != null) {
+    const dColor = ls.factScore >= 4 ? 'var(--green)' : ls.factScore >= 3 ? 'var(--yellow)' : 'var(--red)';
+    layerRows.push(`<div class="sc-layer-row"><span class="sc-layer-name">${lang === 'zh' ? '事实' : 'Fact'}</span><span class="sc-layer-val" style="color:${dColor}">${ls.factScore}</span></div>`);
+  }
+  if (ls?.behaviorScore != null) {
+    const dColor = ls.behaviorScore >= 4 ? 'var(--green)' : ls.behaviorScore >= 3 ? 'var(--yellow)' : 'var(--red)';
+    layerRows.push(`<div class="sc-layer-row"><span class="sc-layer-name">${lang === 'zh' ? '行为' : 'Behavior'}</span><span class="sc-layer-val" style="color:${dColor}">${ls.behaviorScore}</span></div>`);
+  }
+  if (ls?.judgeScore != null) {
+    const dColor = ls.judgeScore >= 4 ? 'var(--green)' : ls.judgeScore >= 3 ? 'var(--yellow)' : 'var(--red)';
+    layerRows.push(`<div class="sc-layer-row"><span class="sc-layer-name">${lang === 'zh' ? 'LLM 评价' : 'Judge'}</span><span class="sc-layer-val" style="color:${dColor}">${ls.judgeScore}</span></div>`);
+  }
+  const layeredHtml = layerRows.length > 0 ? `<div class="sc-layers">${layerRows.join('')}</div>` : '';
+
+  // 失败断言(只列 fail 的)
+  let assertionHtml = '';
+  if (d.assertions?.details) {
+    const failed = d.assertions.details.filter((a) => !a.passed);
+    const total = d.assertions.details.length;
+    if (failed.length > 0) {
+      const items = failed.map((a) => `<li><code>${e(a.type)}</code>: ${e(String(a.value))}</li>`).join('');
+      assertionHtml = `<div class="sc-section"><div class="sc-section-h">${lang === 'zh' ? '失败断言' : 'Failed assertions'} <span class="sc-stat">${failed.length}/${total}</span></div><ul class="sc-assert-list">${items}</ul></div>`;
+    } else if (total > 0) {
+      assertionHtml = `<div class="sc-section sc-section--muted">${lang === 'zh' ? '断言全过' : 'All passed'} <span class="sc-stat">${total}/${total}</span></div>`;
+    }
+  }
+
+  // Judge 评价
+  let judgeHtml = '';
+  if (d.llmReason) {
+    const reasonText = d.llmReason.length > 200 ? d.llmReason.slice(0, 200) + '…' : d.llmReason;
+    const cot = d.llmReasoning
+      ? `<details class="sc-cot"><summary>${lang === 'zh' ? '展开完整 CoT' : 'show full CoT'}</summary><pre class="sc-cot-body">${e(d.llmReasoning)}</pre></details>`
+      : '';
+    judgeHtml = `<div class="sc-section"><div class="sc-section-h">${lang === 'zh' ? 'Judge 评价' : 'Judge'}</div><div class="sc-judge-text">${e(reasonText)}</div>${cot}</div>`;
+  }
+  // Multi-judge ensemble (collapsed)
+  const ensembleHtml = renderEnsembleBlock(d.llmEnsemble, d.llmAgreement, lang);
+
+  // 维度评分(multi-rubric mode)
+  let dimHtml = '';
+  if (d.dimensions && Object.keys(d.dimensions).length > 0) {
+    const dimRows = Object.entries(d.dimensions).map(([dim, info]) => {
+      const s = typeof info === 'object' ? info.score : info;
+      const dColor = (typeof s === 'number' && s >= 4) ? 'var(--green)' : (typeof s === 'number' && s >= 3) ? 'var(--yellow)' : 'var(--red)';
+      return `<div class="sc-layer-row"><span class="sc-layer-name">${e(dim)}</span><span class="sc-layer-val" style="color:${dColor}">${s}</span></div>`;
+    }).join('');
+    dimHtml = `<div class="sc-section"><div class="sc-section-h">${lang === 'zh' ? '维度评分' : 'Dimensions'}</div><div class="sc-layers">${dimRows}</div></div>`;
+  }
+
+  // 事实校验
+  let factCheckHtml = '';
+  if (d.factCheck && d.factCheck.totalCount > 0) {
+    const fc = d.factCheck;
+    const fcColor = fc.verifiedRate >= 0.8 ? 'var(--green)' : fc.verifiedRate >= 0.5 ? 'var(--yellow)' : 'var(--red)';
+    factCheckHtml = `<div class="sc-meta-row"><span class="sc-meta-name">${lang === 'zh' ? '事实校验' : 'Fact verified'}</span><span style="color:${fcColor}">${fc.verifiedCount}/${fc.totalCount}</span></div>`;
+  }
+
+  // 工具调用 + tokens + 耗时
+  const totalMs = d.timing?.totalMs || d.durationMs;
+  const metaParts: string[] = [];
+  if (d.numToolCalls != null && d.numToolCalls > 0) {
+    const srColor = (d.toolSuccessRate ?? 1) >= 0.8 ? 'var(--green)' : 'var(--red)';
+    const srText = d.toolSuccessRate != null ? `${(d.toolSuccessRate * 100).toFixed(0)}%` : '—';
+    metaParts.push(`<div class="sc-meta-row"><span class="sc-meta-name">${lang === 'zh' ? '工具调用' : 'Tools'}</span>${d.numToolCalls} <span style="color:${srColor}">(${srText} OK)</span></div>`);
+  }
+  metaParts.push(`<div class="sc-meta-row"><span class="sc-meta-name">${lang === 'zh' ? 'Tokens' : 'Tokens'}</span>${fmtNum(d.totalTokens)}</div>`);
+  metaParts.push(`<div class="sc-meta-row"><span class="sc-meta-name">${lang === 'zh' ? '耗时' : 'Duration'}</span>${fmtDuration(totalMs)}</div>`);
+
+  // Error message
+  const errorHtml = !d.ok && d.error
+    ? `<div class="sc-error">⚠ ${e(d.error)}</div>`
     : '';
 
-  return `<details style="margin-top:6px">
-    <summary style="font-size:11px;color:var(--accent);cursor:pointer">${t('traceToggle', lang)} (${turns.length} steps)</summary>
-    <div style="margin-top:4px;padding:8px;background:var(--bg-surface);border-radius:var(--radius);max-height:400px;overflow-y:auto">
-      ${timingHtml}${steps}${outputBtn}
-    </div>
-  </details>`;
+  return `<div class="sc-variant">
+    <div class="sc-variant-h">${e(variantName)}</div>
+    <div class="sc-score-line"><span class="sc-score" style="color:${scoreColor}">${scoreText}</span><span class="sc-score-unit">/ 5</span>${scoreDelta}${stabilityHtml}</div>
+    ${layeredHtml}
+    ${errorHtml}
+    ${assertionHtml}
+    ${dimHtml}
+    ${judgeHtml}
+    ${ensembleHtml}
+    ${factCheckHtml ? `<div class="sc-section">${factCheckHtml}</div>` : ''}
+    <div class="sc-meta">${metaParts.join('')}</div>
+  </div>`;
 }
 
 export function renderSampleTable(variants: string[], results: ResultEntry[], lang: Lang): string {
-  const headerCols = variants.map((v) =>
-    `<th>${e(v)} <span data-i18n="scoreCol">${t('scoreCol', lang)}</span></th><th>${e(v)} <span data-i18n="tokensCol">${t('tokensCol', lang)}</span></th><th>${e(v)} <span data-i18n="msCol">${t('msCol', lang)}</span></th>`
-  ).join('');
+  // v0.30 — 不再用宽表格(每 td 塞 15 种内容居中显示乱);
+  // 改成"用例可折叠卡片",点击展开看 variant-by-variant 的结构化评分块。
+  // 每条用例先按综合分升序(差的在前),便于聚焦问题样本。
+  const sortedResults = [...results].sort((a, b) => {
+    // 取首 variant 的 composite,按升序排
+    const sa = a.variants?.[variants[0]]?.compositeScore ?? 0;
+    const sb = b.variants?.[variants[0]]?.compositeScore ?? 0;
+    return sa - sb;
+  });
 
-  const sampleRows = results.map((r) => {
-    const cols = variants.map((v, i) => {
+  const sampleCards = sortedResults.map((r) => {
+    // 头部摘要:sample_id + 各 variant 的 score 一行带过
+    const scoreSummary = variants.map((v) => {
       const d = r.variants?.[v];
-      if (!d) return '<td>-</td><td>-</td><td>-</td>';
+      const score = d?.compositeScore ?? d?.llmScore;
+      if (typeof score !== 'number') return `<span class="sc-summary-score sc-summary-score--muted">${e(v)} —</span>`;
+      const color = score >= 4 ? 'var(--green)' : score >= 3 ? 'var(--yellow)' : 'var(--red)';
+      return `<span class="sc-summary-score" style="color:${color}">${e(v)} ${score.toFixed(2)}</span>`;
+    }).join('<span class="sc-summary-sep">·</span>');
 
-      const score = d.compositeScore ?? d.llmScore;
-      const hasScore = typeof score === 'number';
-      const scoreClass = !d.ok ? 'badge-err' : hasScore ? 'badge-ok' : 'badge-muted';
-      const scoreText = hasScore ? score : (d.ok ? '-' : 'ERR');
-
-      // Layered score badges
-      let layeredHtml = '';
-      if (d.layeredScores) {
-        const ls = d.layeredScores;
-        const badges: string[] = [];
-        if (ls.factScore != null) badges.push(`<span class="dim-tag" title="${lang === 'zh' ? '事实：输出中的事实声明是否正确(规则验证)' : 'Fact: Are factual claims correct (rule-verified)'}">${lang === 'zh' ? '事实' : 'F'}:${ls.factScore}</span>`);
-        if (ls.behaviorScore != null) badges.push(`<span class="dim-tag" title="${lang === 'zh' ? '行为：执行路径是否符合预期(规则验证)' : 'Behavior: Is execution path compliant (rule-verified)'}">${lang === 'zh' ? '行为' : 'B'}:${ls.behaviorScore}</span>`);
-        if (ls.judgeScore != null) badges.push(`<span class="dim-tag" title="${lang === 'zh' ? 'LLM 评价：LLM 评委按预先写好的评分规则（英文叫 rubric）给输出打的主观分' : 'LLM judge: subjective score given by the judge LLM against a predefined rubric (scoring criteria)'}">${lang === 'zh' ? 'LLM 评价' : 'J'}:${ls.judgeScore}</span>`);
-        if (badges.length > 0) layeredHtml = `<div class="dim-scores">${badges.join('')}</div>`;
-      }
-
-      // Fact check badge
-      let factCheckHtml = '';
-      if (d.factCheck && d.factCheck.totalCount > 0) {
-        const fc = d.factCheck;
-        const fcColor = fc.verifiedRate >= 0.8 ? 'var(--green)' : fc.verifiedRate >= 0.5 ? 'var(--yellow)' : 'var(--red)';
-        factCheckHtml = `<div style="font-size:11px;margin-top:2px"><span style="color:${fcColor}">${lang === 'zh' ? '事实验证' : 'Verified'} ${fc.verifiedCount}/${fc.totalCount}</span></div>`;
-      }
-
-      const errorHtml = !d.ok && d.error
-        ? `<br><span class="error-detail">${e(d.error)}</span>`
-        : '';
-
-      // Only show failed assertions
-      let assertionHtml = '';
-      if (d.assertions?.details) {
-        const failed = d.assertions.details.filter((a) => !a.passed);
-        if (failed.length > 0) {
-          const items = failed.map((a) =>
-            `<li><span class="badge badge-fail" style="font-size:10px;padding:1px 4px">&#10007;</span> ${e(a.type)}: ${e(a.value)}</li>`
-          ).join('');
-          assertionHtml = `<ul class="assertion-list">${items}</ul>`;
-        }
-      }
-
-      let dimHtml = '';
-      let dimEnsembleHtml = '';
-      if (d.dimensions) {
-        const tags = Object.entries(d.dimensions).map(([dim, info]) => {
-          const s = typeof info === 'object' ? info.score : info;
-          const dr = typeof info === 'object' ? (info as DimensionResult) : undefined;
-          const stab = dr ? renderJudgeStability(dr.scoreStddev, dr.scoreSamples, dr.judgeFailureCount, lang) : '';
-          return `<span class="dim-tag">${e(dim)}: ${s}</span>${stab}`;
-        }).join('');
-        dimHtml = `<div class="dim-scores">${tags}</div>`;
-        // Per-dimension ensemble blocks (collapsed)
-        const ensBlocks = Object.entries(d.dimensions)
-          .map(([dim, info]) => {
-            if (typeof info !== 'object') return '';
-            const dr = info as DimensionResult;
-            const block = renderEnsembleBlock(dr.ensemble, dr.agreement, lang);
-            const reasoning = renderReasoning(dr.reasoning, lang);
-            if (!block && !reasoning) return '';
-            return `<div style="margin-top:4px"><strong style="font-size:11px">${e(dim)}</strong>${block}${reasoning}</div>`;
-          })
-          .filter(Boolean).join('');
-        if (ensBlocks) dimEnsembleHtml = ensBlocks;
-      }
-
-      // Single-rubric mode: stddev / failures / reasoning / ensemble inline
-      const stabilityHtml = renderJudgeStability(d.llmScoreStddev, d.llmScoreSamples, d.llmScoreFailures, lang);
-      const reasoningHtml = renderReasoning(d.llmReasoning, lang);
-      const ensembleHtml = renderEnsembleBlock(d.llmEnsemble, d.llmAgreement, lang);
-
-      const reasonHtml = d.llmReason
-        ? `<br><span style="font-size:11px;color:var(--text-muted)">${e(d.llmReason?.slice(0, 80))}</span>`
-        : '';
-
-      // Agent tool call summary
-      let toolHtml = '';
-      if (d.numToolCalls != null && d.numToolCalls > 0) {
-        const srColor = (d.toolSuccessRate ?? 1) >= 0.8 ? 'var(--green)' : 'var(--red)';
-        const srText = d.toolSuccessRate != null ? `${(d.toolSuccessRate * 100).toFixed(0)}%` : '-';
-        const toolList = (d.toolNames || []).join(', ');
-        const toolTip = toolList ? ` title="${e(toolList)}"` : '';
-        toolHtml = `<div style="font-size:11px;margin-top:2px;color:var(--text-muted)"${toolTip}>🔧 ${d.numToolCalls} calls · <span style="color:${srColor}">${srText} OK</span></div>`;
-      }
-
-      // Execution trace (expandable)
-      const traceId = `trace-${r.sample_id}-${v}`.replace(/[^a-zA-Z0-9-]/g, '_');
-      const traceHtml = d.turns ? renderTrace(d.turns, d.toolCalls, d.timing, d.fullOutput, traceId, lang) : '';
-
-      // Timing summary
-      const timingHtml = d.timing
-        ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">${t('traceExecMs', lang)} ${fmtDuration(d.timing.execMs)} · ${t('traceGradeMs', lang)} ${fmtDuration(d.timing.gradeMs)}</div>`
-        : '';
-
-      const firstV = r.variants?.[variants[0]];
-      const totalMs = d.timing?.totalMs || d.durationMs;
-      const firstTotalMs = firstV?.timing?.totalMs || firstV?.durationMs || 0;
-      const tokenDelta = i > 0 && firstV ? delta(firstV.totalTokens, d.totalTokens, true) : '';
-      const msDelta = i > 0 && firstTotalMs ? delta(firstTotalMs, totalMs, true) : '';
-
-      return `<td><span class="badge ${scoreClass}">${scoreText}</span>${stabilityHtml}${layeredHtml}${factCheckHtml}${errorHtml}${reasonHtml}${reasoningHtml}${ensembleHtml}${assertionHtml}${dimHtml}${dimEnsembleHtml}${toolHtml}${timingHtml}${traceHtml}</td><td>${fmtNum(d.totalTokens)}${tokenDelta}</td><td>${fmtDuration(totalMs)}${msDelta}</td>`;
+    // 体内每个 variant 一栏(side-by-side),传 baseline (variants[0]) 用于 delta
+    const baselineResult = r.variants?.[variants[0]];
+    const variantBlocks = variants.map((v, i) => {
+      const d = r.variants?.[v];
+      if (!d) return `<div class="sc-variant"><div class="sc-variant-h">${e(v)}</div><div class="sc-empty">—</div></div>`;
+      // 跟 baseline 比;baseline 自身不显示 delta
+      return renderVariantBlock(d, v, i === 0 ? undefined : baselineResult, lang);
     }).join('');
 
-    return `<tr><td><strong>${e(r.sample_id)}</strong></td>${cols}</tr>`;
+    return `<details class="sc-sample-card">
+      <summary class="sc-sample-h">
+        <code class="sc-sample-id">${e(r.sample_id)}</code>
+        <span class="sc-sample-scores">${scoreSummary}</span>
+      </summary>
+      <div class="sc-sample-body">
+        <div class="sc-variants" data-cols="${variants.length}">${variantBlocks}</div>
+      </div>
+    </details>`;
   }).join('');
 
   return `
     <h2 data-i18n="perSampleDetail">${t('perSampleDetail', lang)}</h2>
-    <div class="table-wrap">
-    <table>
-      <thead><tr><th data-i18n="sample">${t('sample', lang)}</th>${headerCols}</tr></thead>
-      <tbody>${sampleRows}</tbody>
-    </table>
-    </div>`;
+    <div class="sc-sample-list">${sampleCards}</div>
+    <style>
+    /* 评分页 — 逐用例详情卡片(替代旧 table)
+       结构:
+         .sc-sample-list   外层 stack
+           .sc-sample-card    一条用例,可折叠 details
+             .sc-sample-h     头(id + 各 variant 分数摘要)
+             .sc-sample-body  体
+               .sc-variants    grid 多列(每 variant 一栏)
+                 .sc-variant     单 variant 评分块
+       关键:文本左对齐,数字右对齐 + tabular-nums,分段而非表格,
+       减少居中混排和长短文本拥挤。 */
+    .sc-sample-list { display:flex;flex-direction:column;gap:8px;margin:12px 0 }
+    .sc-sample-card { background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm);transition:box-shadow .15s }
+    .sc-sample-card:hover { box-shadow:var(--shadow-md) }
+    .sc-sample-card[open] { box-shadow:var(--shadow-md) }
+    .sc-sample-h { display:flex;align-items:center;gap:14px;padding:14px 18px;cursor:pointer;list-style:none;font-size:14.5px }
+    .sc-sample-h::-webkit-details-marker { display:none }
+    .sc-sample-h::after { content:'›';margin-left:auto;color:var(--text-muted);font-size:18px;transition:transform .15s }
+    .sc-sample-card[open] .sc-sample-h::after { transform:rotate(90deg) }
+    .sc-sample-id { font-family:"SF Mono",Menlo,monospace;color:var(--text-muted);font-size:13px;font-weight:500;letter-spacing:-0.01em }
+    .sc-sample-scores { display:flex;align-items:center;gap:8px;font-size:13px;font-variant-numeric:tabular-nums;color:var(--text-secondary) }
+    .sc-summary-score { font-family:"SF Mono",Menlo,monospace;font-weight:500 }
+    .sc-summary-score--muted { color:var(--text-muted) }
+    .sc-summary-sep { color:var(--text-muted) }
+    .sc-sample-body { padding:0 18px 18px;border-top:1px solid var(--border) }
+    /* 多列 grid:1 variant 用单列;2 用 1fr 1fr;>=3 自适应 */
+    .sc-variants { display:grid;gap:24px;margin-top:18px;grid-template-columns:1fr }
+    .sc-variants[data-cols="2"] { grid-template-columns:1fr 1fr }
+    .sc-variants[data-cols="3"] { grid-template-columns:repeat(3,1fr) }
+    .sc-variants[data-cols="4"] { grid-template-columns:repeat(2,1fr) }
+    @media (max-width:760px){ .sc-variants, .sc-variants[data-cols="2"], .sc-variants[data-cols="3"], .sc-variants[data-cols="4"] { grid-template-columns:1fr } }
+    .sc-variant { background:var(--bg-soft);border-radius:6px;padding:14px 16px;font-size:14px;line-height:1.7 }
+    .sc-variant-h { font-size:13px;font-weight:600;color:var(--text-muted);margin-bottom:8px;letter-spacing:0.02em;font-family:"SF Mono",Menlo,monospace }
+    .sc-score-line { display:flex;align-items:baseline;gap:6px;margin-bottom:14px }
+    .sc-score { font-size:32px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1 }
+    .sc-score-unit { font-size:14px;color:var(--text-muted);font-weight:400 }
+    .sc-stab { font-size:12px;color:var(--text-muted);margin-left:8px;font-family:"SF Mono",Menlo,monospace;background:var(--bg-soft);padding:2px 6px;border-radius:3px }
+    .sc-stab--fail { color:var(--red);background:var(--red-bg) }
+    .sc-layers { display:flex;flex-direction:column;gap:4px;margin-bottom:8px }
+    .sc-layer-row { display:flex;justify-content:space-between;align-items:baseline;font-size:13.5px;line-height:1.6 }
+    .sc-layer-name { color:var(--text-secondary) }
+    .sc-layer-val { font-weight:600;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace }
+    .sc-section { margin-top:14px }
+    .sc-section--muted { color:var(--text-muted);font-size:13px }
+    .sc-section-h { font-size:13px;font-weight:600;color:var(--text-secondary);margin-bottom:6px }
+    .sc-stat { color:var(--text-muted);font-weight:400;margin-left:6px;font-variant-numeric:tabular-nums }
+    .sc-assert-list { margin:0;padding-left:20px;font-size:13px;line-height:1.7;color:var(--text-secondary) }
+    .sc-assert-list li { margin:3px 0 }
+    .sc-assert-list code { font-family:"SF Mono",Menlo,monospace;background:var(--bg-surface);padding:1px 6px;border-radius:3px;font-size:12px }
+    .sc-judge-text { font-size:13.5px;line-height:1.7;color:var(--text-primary);white-space:pre-wrap;word-break:break-word }
+    .sc-cot { margin-top:8px;font-size:12px }
+    .sc-cot summary { cursor:pointer;color:var(--text-muted) }
+    .sc-cot-body { font-size:12.5px;line-height:1.7;color:var(--text-secondary);white-space:pre-wrap;font-family:inherit;background:var(--bg-surface);padding:10px 14px;border-radius:4px;margin-top:6px;max-height:400px;overflow-y:auto }
+    .sc-meta { margin-top:14px;padding-top:12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px }
+    .sc-meta-row { display:flex;justify-content:space-between;font-size:12.5px;color:var(--text-muted);font-variant-numeric:tabular-nums }
+    .sc-meta-name { color:var(--text-muted) }
+    .sc-error { margin-top:10px;padding:10px 14px;background:var(--red-bg);border-left:3px solid var(--red);border-radius:4px;font-size:13px;color:var(--red);line-height:1.6 }
+    .sc-empty { color:var(--text-muted);font-style:italic;padding:14px 0 }
+    </style>`;
 }

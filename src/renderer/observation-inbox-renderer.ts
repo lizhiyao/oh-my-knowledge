@@ -2017,9 +2017,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     `).join('')}</div>`;
   };
   const experienceSkillRows = (experience?.skills ?? []).map((skill) => {
-    const indicators = displayIndicatorsBySkill.get(skill.skillName) ?? skill.indicators;
     // L1 不再展示 priority badge（与左侧"优先复盘/抽样复盘"列冗余）；priority 仍在 L2 / 详情 modal 使用。
-    const shownInference = displayAssistiveInference(indicators, skill.assistiveInference);
     const chainId = `context-chain-${experienceSkillAnchor(skill.skillName)}`;
     const entrypointText = compactRankedCountText(skill.entrypointCounts, { label: formatEntrypoint });
     const originText = compactRankedCountText(experienceSkillOriginCountsBySkill.get(skill.skillName) ?? (
@@ -2060,12 +2058,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         ${sourceMetadataHtml}
       </td>
       <td style="padding:9px 10px;color:var(--text-muted);font-size:12px">${e(skill.lastSeen.slice(0, 19).replace('T', ' '))}</td>
-      <td data-no-rollup-click="1" style="padding:9px 10px;text-align:right">
-        <div style="text-align:left">${renderAssistiveInference(shownInference, true, skill.skillName)}</div>
-      </td>
     </tr>
     <tr id="${e(chainId)}" data-context-chain-template style="display:none">
-      <td colspan="10">${renderSkillChainTemplate(skill.skillName)}</td>
+      <td colspan="9">${renderSkillChainTemplate(skill.skillName)}</td>
     </tr>`;
   }).join('');
   const renderExperienceSessionRows = (sessions: ExperienceSessionSummary[], idPrefix: string): string => sessions.map((session, index) => {
@@ -2257,10 +2252,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                 <col style="width:4%">
                 <col style="width:4%">
                 <col style="width:9%">
-                <col style="width:36%">
+                <col style="width:42%">
                 <col style="width:9%">
-                <col style="width:13%">
-                <col style="width:5%">
+                <col style="width:12%">
                 <col style="width:5%">
               </colgroup>
               <thead><tr>
@@ -2273,7 +2267,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                 <th title="来自 SKILL.md frontmatter 的结构化 hardRules / workflows；同时展示非 LLM 的运行时证据检查结果。" style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">标准定义</th>
                 <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">入口 / 来源 / 归因</th>
                 <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">最近使用</th>
-                <th style="text-align:right;padding:9px 10px;border-bottom:1px solid var(--border)">辅助推断</th>
               </tr></thead>
               <tbody>${experienceSkillRows}</tbody>
             </table>
@@ -2412,16 +2405,16 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           gap: 12px;
           margin: 0 0 12px;
           padding: 10px 12px;
-          border: 1px solid rgba(37,99,235,.22);
+          border: 1px solid rgba(202,138,4,.40);
           border-radius: 8px;
-          background: rgba(37,99,235,.06);
+          background: rgba(202,138,4,.10);
           color: var(--text-secondary);
           font-size: 12px;
           line-height: 1.5;
         }
         .experience-top-insight strong {
           margin-right: 8px;
-          color: var(--text-primary);
+          color: #a16207;
           font-weight: 750;
         }
         .experience-insight-cta,
@@ -2455,7 +2448,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           table-layout: fixed;
         }
         .review-bucket-table { min-width: 980px !important; }
-        .experience-skill-table { min-width: 1680px !important; }
+        .experience-skill-table { min-width: 1540px !important; }
         .experience-session-table { min-width: 1480px !important; }
         .skill-health-table { min-width: 1360px !important; }
         .action-table { min-width: 820px !important; }
@@ -2471,11 +2464,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .experience-skill-table col:nth-child(3) { width: 4% !important; }
         .experience-skill-table col:nth-child(4) { width: 4% !important; }
         .experience-skill-table col:nth-child(5) { width: 9% !important; }
-        .experience-skill-table col:nth-child(6) { width: 36% !important; }
+        .experience-skill-table col:nth-child(6) { width: 42% !important; }
         .experience-skill-table col:nth-child(7) { width: 9% !important; }
-        .experience-skill-table col:nth-child(8) { width: 13% !important; }
+        .experience-skill-table col:nth-child(8) { width: 12% !important; }
         .experience-skill-table col:nth-child(9) { width: 5% !important; }
-        .experience-skill-table col:nth-child(10) { width: 5% !important; }
         .experience-session-table col:nth-child(1) { width: 13% !important; }
         .experience-session-table col:nth-child(2) { width: 12% !important; }
         .experience-session-table col:nth-child(3) { width: 12% !important; }
@@ -2520,7 +2512,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	          align-items: center;
 	          justify-content: center;
 	          padding: 24px;
-	          background: #020617;
+	          background: rgba(15,23,42,.32);
 	          color: var(--text-primary);
 	        }
 	        #timeline-fulltext-tooltip.is-open {
@@ -2529,8 +2521,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        #timeline-fulltext-tooltip .timeline-fulltext-dialog {
 	          width: min(860px, calc(100vw - 48px));
 	          max-height: min(82vh, 760px);
-	          background: #111827;
-	          border: 1px solid #334155;
+	          background: var(--bg-surface);
+	          border: 1px solid var(--border);
 	          border-radius: 10px;
 	          box-shadow: 0 24px 72px rgba(15,23,42,.45);
 	          display: flex;
@@ -2545,23 +2537,23 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	          justify-content: space-between;
 	          gap: 12px;
 	          padding: 12px 14px;
-	          border-bottom: 1px solid #334155;
+	          border-bottom: 1px solid var(--border);
 	          font-family: system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;
-	          background: #0f172a;
+	          background: var(--bg-muted);
 	        }
 	        #timeline-fulltext-tooltip strong {
 	          display: block;
 	          margin: 0;
-	          color: #cbd5e1;
+	          color: var(--text-primary);
 	          font-family: system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;
 	          font-size: 12px;
 	        }
 	        #timeline-fulltext-tooltip .timeline-fulltext-close {
 	          flex: 0 0 auto;
-	          border: 1px solid #475569;
+	          border: 1px solid var(--border);
 	          border-radius: 6px;
-	          background: #1e293b;
-	          color: #e2e8f0;
+	          background: var(--bg);
+	          color: var(--text-secondary);
 	          padding: 4px 9px;
 	          cursor: pointer;
 	          font-size: 12px;
@@ -2585,7 +2577,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           align-items: center;
           justify-content: center;
           padding: 24px;
-          background: #020617;
+          background: rgba(15,23,42,.32);
         }
         #experience-detail-modal.is-open {
           display: flex;
@@ -2595,8 +2587,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           height: min(86vh, 900px);
           display: flex;
           flex-direction: column;
-          background: #111827;
-          border: 1px solid #334155;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
           border-radius: 10px;
           box-shadow: 0 24px 72px rgba(15,23,42,.45);
           overflow: hidden;
@@ -2607,8 +2599,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           justify-content: space-between;
           gap: 12px;
           padding: 12px 14px;
-          border-bottom: 1px solid #334155;
-          background: #0f172a;
+          border-bottom: 1px solid var(--border);
+          background: var(--bg-muted);
         }
         #experience-detail-modal .experience-detail-modal-title {
           min-width: 0;
@@ -2621,10 +2613,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         #experience-detail-modal .experience-detail-modal-close {
           flex: 0 0 auto;
-          border: 1px solid #475569;
+          border: 1px solid var(--border);
           border-radius: 6px;
-          background: #1e293b;
-          color: #e2e8f0;
+          background: var(--bg);
+          color: var(--text-secondary);
           padding: 4px 9px;
           cursor: pointer;
           font-size: 12px;
@@ -2721,9 +2713,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           min-width: 0;
           min-height: 0;
           overflow: auto;
-          border: 1px solid #334155;
-          border-radius: 9px;
-          background: #0f172a;
+	          border: 1px solid var(--border);
+	          border-radius: 9px;
+	          background: var(--bg-surface);
           padding: 12px;
           color: var(--text-secondary);
         }
@@ -2744,10 +2736,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           overflow: auto;
           white-space: pre-wrap;
           word-break: break-word;
-          border: 1px solid #334155;
-          border-radius: 7px;
-          background: #020617;
-          color: #cbd5e1;
+	          border: 1px solid var(--border);
+	          border-radius: 7px;
+	          background: var(--bg-muted);
+	          color: var(--text-primary);
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
           font-size: 11px;
           line-height: 1.55;
@@ -2802,10 +2794,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           overflow: auto;
           white-space: pre;
           word-break: keep-all;
-          border: 1px solid #334155;
-          border-radius: 7px;
-          background: #020617;
-          color: #cbd5e1;
+	          border: 1px solid var(--border);
+	          border-radius: 7px;
+	          background: var(--bg-muted);
+	          color: var(--text-primary);
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
           font-size: 11px;
           line-height: 1.55;
@@ -2827,9 +2819,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           flex: 1;
           padding: 6px 8px;
           border-radius: 6px;
-          border: 1px solid #334155;
-          background: #020617;
-          color: #cbd5e1;
+	          border: 1px solid var(--border);
+	          background: var(--bg-muted);
+	          color: var(--text-primary);
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
           font-size: 11px;
           line-height: 1.4;
@@ -2889,7 +2881,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .context-chain-panel th,
         .context-chain-panel td {
           padding: 8px 7px;
-          border-bottom: 1px solid #334155;
+	          border-bottom: 1px solid var(--border);
           text-align: left;
           vertical-align: top;
         }
@@ -2900,13 +2892,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .context-runtime-placeholder {
           margin-top: 10px;
           padding: 12px;
-          border: 1px dashed #475569;
+	          border: 1px dashed var(--border);
           border-radius: 8px;
           color: var(--text-muted);
           text-align: center;
         }
         .runtime-check {
-          border-left: 3px solid #475569;
+	          border-left: 3px solid var(--border);
           padding-left: 8px;
         }
         .runtime-passed { border-left-color: #16a34a; }
@@ -2935,9 +2927,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           gap: 10px;
           margin: 0 0 8px;
           padding: 9px 10px;
-          border: 1px solid #334155;
+          border: 1px solid rgba(202,138,4,.32);
           border-radius: 8px;
-          background: #0f172a;
+          background: rgba(202,138,4,.08);
           color: var(--text-secondary);
           font-size: 11px;
           line-height: 1.45;
@@ -2953,10 +2945,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         .timeline-scope-notice button {
           flex: 0 0 auto;
-          border: 1px solid #475569;
+          border: 1px solid var(--border);
           border-radius: 6px;
-          background: #1e293b;
-          color: #e2e8f0;
+          background: var(--bg);
+          color: var(--text-secondary);
           padding: 5px 9px;
           cursor: pointer;
           font-size: 12px;
@@ -2968,9 +2960,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           gap: 8px;
           margin: 0 0 8px;
           padding: 8px 10px;
-          border: 1px solid #334155;
+          border: 1px solid var(--border);
           border-radius: 8px;
-          background: #0f172a;
+          background: var(--bg-muted);
           color: var(--text-secondary);
           font-size: 11px;
         }
@@ -2981,9 +2973,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         .timeline-filter-toolbar select {
           min-width: 190px;
-          border: 1px solid #475569;
+          border: 1px solid var(--border);
           border-radius: 6px;
-          background: #111827;
+          background: var(--bg);
           color: var(--text-primary);
           padding: 5px 8px;
           font-size: 12px;
@@ -3380,20 +3372,20 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           width: min(320px, calc(100vw - 32px));
           border: 1px solid rgba(37,99,235,.26);
           border-radius: 9px;
-          background: #0f172a;
-          color: #e2e8f0;
-          box-shadow: 0 18px 48px rgba(0,0,0,.55);
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          box-shadow: 0 18px 48px rgba(15,23,42,.22);
           padding: 10px;
           opacity: 1;
         }
         .goal-slice-popover-title {
           font-size: 12px;
           font-weight: 800;
-          color: #f8fafc;
+          color: var(--text-primary);
           margin-bottom: 4px;
         }
         .goal-slice-popover-hint {
-          color: #94a3b8;
+          color: var(--text-muted);
           font-size: 11px;
           line-height: 1.45;
           margin-bottom: 9px;
@@ -3405,10 +3397,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         .goal-slice-popover-actions button {
           text-align: center;
-          border: 1px solid #475569;
+          border: 1px solid var(--border);
           border-radius: 999px;
-          background: #1e293b;
-          color: #e2e8f0;
+          background: var(--bg);
+          color: var(--text-secondary);
           padding: 4px 8px;
           font-size: 11px;
           font-weight: 700;
@@ -3416,9 +3408,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           white-space: nowrap;
         }
         .goal-slice-popover-actions button:hover {
-          border-color: #60a5fa;
-          color: #bfdbfe;
-          background: #1d4ed8;
+          border-color: rgba(37,99,235,.35);
+          color: var(--accent);
+          background: rgba(37,99,235,.08);
         }
         .timeline-snippet {
           position: relative;

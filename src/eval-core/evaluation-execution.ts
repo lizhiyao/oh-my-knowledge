@@ -1,5 +1,6 @@
 import { createCache, cacheKey } from './cache.js';
 import { buildVariantResult } from './schema.js';
+import { safeSliceForJson } from '../util/safe-slice.js';
 import { grade } from '../grading/index.js';
 import { checkFacts } from './fact-checker.js';
 import type { FactCheckResult } from './fact-checker.js';
@@ -26,6 +27,10 @@ export interface ExecuteTasksOptions {
   model: string;
   noJudge: boolean;
   samplesPath: string;
+  /** Sample bundle 根目录 — 单文件模式 = dirname(samplesPath),目录模式 = 目录自身。
+   *  传给 grade 当 samplesDir(custom assertion fn 相对路径锚点),也用作 mocksBaseDir 兜底。
+   *  缺省时仍 fallback dirname(resolve(samplesPath)),不破单文件老用法。 */
+  samplesBaseDir?: string;
   concurrency: number;
   timeoutMs?: number;
   noCache: boolean;
@@ -50,6 +55,12 @@ export interface ExecuteTasksOptions {
    *  budgetExhausted: true. Per-sample caps don't abort but mark offending
    *  tasks as failed. */
   budget?: import('../types/index.js').EvalBudget;
+  /** Reasoning effort for executor LLM。透传到 ExecutorInput.effort,
+   *  默认 'low'(在 parseRunConfig 兜底)。 */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** 关闭 diagnostic LLM call。Default false。失败用例(任意 assertion fail)
+   *  默认会跑 diagnostic 给"哪错了 + 怎么改 skill"建议。跟 noJudge 完全独立。 */
+  noDiagnostic?: boolean;
 }
 
 async function runWithConcurrency<T>(tasks: T[], concurrency: number, fn: (task: T) => Promise<void>): Promise<void> {
@@ -92,6 +103,7 @@ export async function executeTasks({
   model,
   noJudge,
   samplesPath,
+  samplesBaseDir,
   concurrency,
   timeoutMs,
   noCache,
@@ -104,6 +116,8 @@ export async function executeTasks({
   judgeExecutors,
   lengthDebias = true,
   budget,
+  effort,
+  noDiagnostic = false,
 }: ExecuteTasksOptions): Promise<{ results: Record<string, Record<string, VariantResult>>; totalCostUSD: number; skipped: number; budgetExhausted: boolean }> {
   const results: Record<string, Record<string, VariantResult>> = {};
   let started = 0;
@@ -148,7 +162,7 @@ export async function executeTasks({
     const total = tasks.length;
     onProgress?.({ phase: 'start', completed: idx, total, sample_id: task.sample_id, variant: task.variant });
 
-    const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose);
+    const executionPlan = resolveExecutionStrategy(task, model, timeoutMs, verbose, effort, samplesBaseDir);
     const effectiveExecutorName = executorName || 'claude';
     const executorRuntime = getExecutorRuntimeFingerprint(effectiveExecutorName, model, {
       skillDir: executionPlan.input.skillDir,
@@ -158,6 +172,7 @@ export async function executeTasks({
     // include allowedSkills in cache key so isolation-on / isolation-off runs
     // don't share cache entries, and include runtime fingerprint so a binary/SDK bump
     // cannot replay old-runtime outputs under new-runtime report metadata.
+    // 同时把 mocks + mocksStrict 进 key:改 mock 配置必须重跑,不能命中老 cache。
     const key = cacheKey(
       model,
       executionPlan.cacheSystem,
@@ -166,6 +181,9 @@ export async function executeTasks({
       task.artifact.allowedSkills,
       effectiveExecutorName,
       executorRuntime.fingerprint,
+      executionPlan.input.mocks,
+      executionPlan.input.mocksStrict,
+      effort,
     );
     const cached = cache?.get(key);
     const execStart = Date.now();
@@ -203,7 +221,7 @@ export async function executeTasks({
         inputTokens: execResult!.inputTokens,
         outputTokens: execResult!.outputTokens,
         costUSD: execResult!.costUSD,
-        outputPreview: execResult!.output ? execResult!.output.slice(0, 200) : null,
+        outputPreview: execResult!.output ? safeSliceForJson(execResult!.output, 200, '') : null,
       });
     }
 
@@ -236,8 +254,12 @@ export async function executeTasks({
               numTurns: execResult!.numTurns,
               toolCalls: execResult!.toolCalls,
               turns: execResult!.turns,
+              mockStats: execResult!.mockStats,
             },
-            samplesDir: dirname(resolve(samplesPath)),
+            // 优先用 samplesBaseDir(sample bundle 根目录);未传时 fallback 老路径,
+            // 保证单文件 samples 老用法不破。samplesBaseDir 在目录模式下指向目录自身,
+            // 让 custom assertion fn 相对路径正确锚到 .omk/。
+            samplesDir: samplesBaseDir ?? dirname(resolve(samplesPath)),
             judgeRepeat,
             lengthDebias,
           });
@@ -258,6 +280,71 @@ export async function executeTasks({
 
     if (!results[task.sample_id]) results[task.sample_id] = {};
     const variantResult = buildVariantResult(execResult!, gradeResult, { execMs, gradeMs, factCheck });
+
+    // Diagnostic — 与 judge 完全独立的"哪错了 + skill 怎么改"诊断。
+    // 触发条件:noDiagnostic=false + 至少 1 条 assertion fail + sample 跑成功(有 fullOutput)。
+    //
+    // executor / model 选择:
+    //   - 优先用 judgeExecutors['claude'](已初始化好) + 'haiku' 模型 — 最便宜的标配。
+    //   - 用户没配 claude judge(只配了 openai / gemini 等)时,沿用第一个 judge 的
+    //     executor + 它对应的 model 名。硬写 'haiku' 会导致非 claude executor 拒绝
+    //     (model not found),诊断整段挂掉。
+    //   - 实在没有 judge executor 配置时回退主 executor(虽然不是 lean 也能跑)。
+    const failedDetails = (gradeResult?.assertions?.details || []).filter((d) => !d.passed);
+    const shouldDiagnose = !noDiagnostic && execResult!.ok && failedDetails.length > 0;
+    if (shouldDiagnose) {
+      try {
+        const { runDiagnostic } = await import('../grading/diagnostic.js');
+        // diagnostic 优先用 'claude' executor(claude 模型上跑 diagnostic 历史校准最好);
+        // 没有就用第一个可用的 judge executor 兜底。
+        const firstJudgeName = Object.keys(judgeExecutors)[0];
+        const diagExecutorName = ('claude' in judgeExecutors) ? 'claude' : firstJudgeName;
+        const diagExecutor = diagExecutorName ? judgeExecutors[diagExecutorName] : executor;
+        // 模型选择:claude executor 走 'haiku' 标配;非 claude executor 沿用它在
+        // judgeModels 里配的 model(用户已经验证可用)。
+        let diagModel = 'haiku';
+        if (diagExecutorName && diagExecutorName !== 'claude') {
+          const judgeEntry = judgeModels.find((j) => j.executor === diagExecutorName);
+          if (judgeEntry) diagModel = judgeEntry.model;
+        }
+        const diagnostic = await runDiagnostic({
+          sample: task._sample,
+          skillContent: task.artifact.content || null,
+          skillName: task.artifact.name || task.variant,
+          toolCalls: execResult!.toolCalls,
+          turns: execResult!.turns,
+          fullOutput: execResult!.output || undefined,
+          assertionDetails: gradeResult?.assertions?.details || [],
+          executor: diagExecutor,
+          model: diagModel,
+        });
+        variantResult.diagnostic = diagnostic;
+        // diagnostic 成本三层对齐(reviewer PR#95 CR 2026-05-11 P2):
+        //   - meta.totalCostUSD 累加(下面 totalCostUSD += 这一行)
+        //   - variant summary 的 totalCostUSD / totalDiagnosticCostUSD 由 buildVariantSummary
+        //     sum 各 entry 的 costUSD / diagnosticCostUSD 得出 — 所以 entry 上必须也加回去
+        //   - 下面 line 341-343 的 budget.perSampleUSD 用 variantResult.costUSD 比上限,
+        //     diagnostic 必须算进 per-sample 的 cap 检查里(不然 cap 在 diagnostic 拉爆样本时漏判)
+        // 这三件要么都做要么都不做,任何一处漏就回到 reviewer 提到的"成本口径分裂"。
+        if (typeof diagnostic.costUSD === 'number' && diagnostic.costUSD > 0) {
+          variantResult.diagnosticCostUSD = diagnostic.costUSD;
+          variantResult.costUSD = (variantResult.costUSD || 0) + diagnostic.costUSD;
+          totalCostUSD += diagnostic.costUSD;
+        }
+      } catch (err) {
+        // diagnostic 失败不影响主评测,降级成 minimal 错误对象
+        const msg = err instanceof Error ? err.message : String(err);
+        variantResult.diagnostic = {
+          ok: false,
+          error: msg,
+          summary: '',
+          expected: '',
+          actual: '',
+          rootCause: [],
+          suggestion: { skill: '', sample: '', none: '' },
+        };
+      }
+    }
 
     //  per-sample budget enforcement. If a sample's cost or latency
     // exceeds the per-sample cap, the result is kept (so the user can see
@@ -307,7 +394,7 @@ export async function executeTasks({
   return { results, totalCostUSD, skipped, budgetExhausted };
 }
 
-export async function preflight(executor: ExecutorFn, model: string, timeoutMs: number = 15000): Promise<void> {
+export async function preflight(executor: ExecutorFn, model: string, timeoutMs: number = 180000): Promise<void> {
   const result = await executor({
     model,
     system: '',

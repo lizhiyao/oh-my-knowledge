@@ -13,4 +13,4 @@
 `RUNTIME:<第一行>|LINES:<行数>|ARTIFACT_OK|分析完成`
 
 不要补充解释，不要向用户确认，不要搜索整个仓库。
-不要访问 `/Users/lizhiyao/Documents/oh-my-knowledge/skills/runtime-context-check.md` 这种仓库根目录路径。
+不要访问 `/path/to/oh-my-knowledge/skills/runtime-context-check.md` 这种仓库根目录路径。

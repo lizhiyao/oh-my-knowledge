@@ -88,7 +88,7 @@ function extractSkillDir(artifact: Artifact): string | null {
   return dirname(artifact.locator);
 }
 
-export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: number, verbose?: boolean): ExecutionPlan {
+export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: number, verbose?: boolean, effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max', samplesBaseDir?: string): ExecutionPlan {
   const skillDir = extractSkillDir(task.artifact);
   // strict-baseline cwd 沙箱:baseline + allowedSkills===[] + 用户没显式
   // cwd 时,改用 isolated empty dir。否则 baseline 的 Glob/Read 会走进用户工作目录
@@ -105,10 +105,21 @@ export function resolveExecutionStrategy(task: Task, model: string, timeoutMs?: 
     skillDir,
     timeoutMs,
     verbose,
+    ...(effort && { effort }),
     // pass skill-isolation declaration to executors. undefined keeps
     // SDK default; [] = strict isolation (skills:[] + disallowedTools:['Skill']);
     // [...] = whitelist (skills:[...] only).
     ...(task.artifact.allowedSkills !== undefined && { allowedSkills: task.artifact.allowedSkills }),
+    // Sample.mocks 透传到 executor。executor(claude-sdk / claude-cli)
+    // 自决定怎么落地(in-process hook vs 临时 CLAUDE_CONFIG_DIR + on-disk hook)。
+    // mocksBaseDir 优先 samplesBaseDir(sample bundle 根,跟 ExecutorInput 类型注释一致),
+    // 让 mock.return_file 的相对路径相对 sample 文件所在目录解析;
+    // 没传时 fallback skillDir → effectiveCwd,兼容老调用。
+    ...(task._sample.mocks && task._sample.mocks.length > 0 && {
+      mocks: task._sample.mocks,
+      mocksBaseDir: samplesBaseDir || skillDir || effectiveCwd || undefined,
+      ...(task._sample.mocksStrict && { mocksStrict: true }),
+    }),
   };
 
   switch (task.artifact.kind) {

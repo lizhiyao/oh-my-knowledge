@@ -274,11 +274,13 @@ describe('report-server', () => {
     assert.equal(res.status, 404);
   });
 
-  it('GET / returns HTML run list', async () => {
+  it('GET / returns HTML skill list (variants become skill entries)', async () => {
     const res = await fetch(`${baseUrl}/`);
     assert.equal(res.status, 200);
     assert.ok(res.headers['content-type']!.includes('text/html'));
-    assert.ok(res.body.includes('test-run-001'));
+    // 列表页按 skill 聚合,SAMPLE_REPORT 的 variants v1/v2 各成一个 skill 条目;
+    // 跳转走 /skills/<name>,不再直接暴露 reportId。
+    assert.ok(res.body.includes('/skills/v1') || res.body.includes('/skills/v2'));
   });
 
   it('GET /reports/:id returns HTML detail page', async () => {
@@ -288,12 +290,12 @@ describe('report-server', () => {
     assert.ok(res.body.includes('test-run-001'));
   });
 
-  it('passes ?lang=en through report list and detail pages', async () => {
+  it('passes ?lang=en through skill list and detail pages', async () => {
     const list = await fetch(`${baseUrl}/?lang=en`);
     assert.equal(list.status, 200);
     assert.ok(list.body.includes('data-lang="en"'));
-    assert.ok(list.body.includes('Evaluation Reports'));
-    assert.ok(list.body.includes('/reports/test-run-001?lang=en'));
+    // skill 列表卡片链接到 /skills/<name> 并保留 ?lang=en
+    assert.ok(list.body.includes('/skills/v2?lang=en') || list.body.includes('/skills/v1?lang=en'));
 
     const detail = await fetch(`${baseUrl}/reports/test-run-001?lang=en`);
     assert.equal(detail.status, 200);

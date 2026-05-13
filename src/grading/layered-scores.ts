@@ -13,6 +13,7 @@ const FACTUAL_ASSERTION_TYPES = new Set([
   'semantic_similarity',
   'tool_output_contains',
   'tool_input_contains',
+  'tool_input_not_contains',
 ]);
 
 const BEHAVIORAL_ASSERTION_TYPES = new Set([

@@ -257,6 +257,7 @@ export function aggregateReport({
       variants,
       model,
       executor: executorName,
+      ...(request?.effort ? { effort: request.effort } : {}),
       sampleCount: samples.length,
       taskCount: tasks.length,
       totalCostUSD: Number(totalCostUSD.toFixed(6)),
@@ -293,6 +294,22 @@ export function aggregateReport({
       sample_id,
       variants: variantData,
     })),
+    // 用例设计快照,供单测视角渲染。只挑渲染需要的字段,跳过 cwd / allowedTools /
+    // expectedTools / dimensions / environment(对单测视图无附加价值)。Sample 字段
+    // 全选会让 report 体积接近翻倍,选子集 size 增长 ~10-20%。
+    sampleSnapshots: Object.fromEntries(samples.map((s) => [s.sample_id, {
+      sample_id: s.sample_id,
+      prompt: s.prompt,
+      ...(s.rubric ? { rubric: s.rubric } : {}),
+      ...(s.context ? { context: s.context } : {}),
+      ...(s.assertions && s.assertions.length > 0 ? { assertions: s.assertions } : {}),
+      ...(s.mocks && s.mocks.length > 0 ? { mocks: s.mocks } : {}),
+      ...(s.capability && s.capability.length > 0 ? { capability: s.capability } : {}),
+      ...(s.difficulty ? { difficulty: s.difficulty } : {}),
+      ...(s.construct ? { construct: s.construct } : {}),
+      ...(s.provenance ? { provenance: s.provenance } : {}),
+      ...(s.tripwire ? { tripwire: true } : {}),
+    }])),
   };
 }
 

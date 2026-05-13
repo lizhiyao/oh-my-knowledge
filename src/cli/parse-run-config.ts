@@ -6,6 +6,7 @@ import { discoverVariants, parseVariantCwd } from '../inputs/skill-loader.js';
 import { CliExit } from './cli-exit.js';
 import { parseArgsStrictOrExit } from './parse-strict.js';
 import { loadEvalConfig, configVariantsToSpecs } from '../inputs/eval-config.js';
+import { DEFAULT_MODEL } from '../executors/shared.js';
 import type {
   EvalConfig,
   VariantSpec,
@@ -26,9 +27,13 @@ export interface RunConfig {
   concurrency: number;
   timeoutMs: number;
   executorName: string | undefined;
-  /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。
-   *  doctor 是 mandatory 不提供 skip — 静态检查无成本理由跳过。 */
+  /** 跳过 LLM 模型连通性检测。--resume 时自动 true(已经验过)。 */
   skipConnectivity: boolean | undefined;
+  /** 跳过 doctor 健康检查门禁(--skip-doctor)。escape hatch — 默认 false。
+   *  开启后 doctor 整段不跑(节省静态检查时间);doctor 失败也不再阻断 eval。
+   *  典型场景:依赖在评测环境中通过 mock / stub 提供,doctor 的物理路径检查
+   *  会误报。开启意味着用户接受 garbage-in 风险,自己负责依赖正确性。 */
+  skipDoctor: boolean | undefined;
   /** 用户语言, 透传给 doctor 报告渲染。 */
   lang: 'zh' | 'en' | undefined;
   mcpConfig: string | undefined;
@@ -56,6 +61,14 @@ export interface RunConfig {
   /** Per-variant allowedSkills override extracted from eval.yaml. Always wins
    *  over strictBaseline default. Keyed by variant name. */
   variantAllowedSkills?: Record<string, string[]>;
+  /** Reasoning effort for the executor LLM(被评测的模型,不是 judge)。
+   *  Default 'low' — sonnet 默认会做大量扩展思考(13K thinking tokens / 单次),
+   *  对结构化任务是浪费。低 effort 大幅省时间/成本但可能损失复杂推理质量,
+   *  跨 effort 的报告不能严格比较。`undefined` 走 claude CLI / SDK 自身默认。 */
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  /** 关闭 diagnostic LLM call。Default false(总是给 failed sample 跑诊断)。
+   *  跟 noJudge 完全独立 — judge 答打分,diagnostic 答怎么改。 */
+  noDiagnostic?: boolean;
   onProgress?: ProgressCallback | null;
 }
 
@@ -147,6 +160,7 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   executor: { type: 'string' },
   batch: { type: 'boolean' },
   'skip-connectivity': { type: 'boolean' },
+  'skip-doctor': { type: 'boolean' },
   'mcp-config': { type: 'string' },
   'no-serve': { type: 'boolean' },
   verbose: { type: 'boolean' },
@@ -157,7 +171,44 @@ export const RUN_OPTIONS: ParseArgsConfig['options'] = {
   // parseRunConfig (后者赢)。strict-baseline 没传 + no-strict-baseline 没传 = default true。
   'strict-baseline': { type: 'boolean' },
   'no-strict-baseline': { type: 'boolean' },
+  // effort:被评测 LLM 的扩展思考预算(low/medium/high/xhigh/max)。
+  // 默认 low — 关 thinking 大幅省时间/成本。改 high 时同 prompt 同 model 输出会变,
+  // 跨 effort 报告不可严格比较(renderer 在 meta-tag 显示并打提示)。
+  effort: { type: 'string' },
+  // 诊断:对 failed sample 跑一次 LLM,产出"哪错了 + skill 怎么改"的针对性建议。
+  // 跟 --no-judge 完全独立 — 想要纯功能性视角(assertion + diagnostic 但无评分)
+  // 用 `--no-judge`;想要不跑诊断只跑评测 + judge 用 `--no-diagnostic`。
+  'no-diagnostic': { type: 'boolean' },
 };
+
+/**
+ * When --samples isn't given, try to discover from `<skillDir>/<treatment>/.omk/`.
+ * `loadSamples` handles dir mode internally — globs `*.{json,yaml,yml}` and merges,
+ * skipping reserved prefixes (report-, health-, underscore-). No filename is special:
+ * drop a single `samples.json` or split across `workflow.json` + `platform.json` etc.
+ * Both work the same.
+ *
+ * Falls back to legacy cwd defaults (`eval-samples.{json,yaml,yml}`) if `.omk/` isn't
+ * present. Multi-treatment evals must pass --samples explicitly.
+ */
+function discoverSamplesPath(values: Record<string, unknown>, skillDir: string): string {
+  const treatmentRaw = values.treatment as string | undefined;
+  const treatments = treatmentRaw
+    ? treatmentRaw.split(',').map((v) => v.trim()).filter(Boolean)
+    : [];
+  if (treatments.length === 1) {
+    const tname = parseVariantCwd(treatments[0]).name;
+    const omkDir = join(skillDir, tname, '.omk');
+    if (existsSync(omkDir)) return omkDir;
+  }
+  // Legacy cwd defaults
+  let cwdFile = 'eval-samples.json';
+  if (!existsSync(resolve(cwdFile))) {
+    if (existsSync(resolve('eval-samples.yaml'))) cwdFile = 'eval-samples.yaml';
+    else if (existsSync(resolve('eval-samples.yml'))) cwdFile = 'eval-samples.yml';
+  }
+  return cwdFile;
+}
 
 export function parseRunConfig(
   argv: string[],
@@ -182,7 +233,12 @@ export function parseRunConfig(
     ? loadEvalConfig(values.config as string)
     : null;
 
-  // 2) Resolve samples path: CLI > config > auto-detect .json/.yaml/.yml in cwd.
+  const skillDir: string = resolve((values['skill-dir'] as string | undefined) ?? 'skills');
+
+  // 2) Resolve samples path: CLI > config > <skillDir>/<treatment>/.omk/ discovery > cwd default.
+  // The .omk/ discovery only fires when exactly one --treatment is given, so omk knows
+  // which skill's bundled samples to use. The dir form (loadSamples handles both file + dir)
+  // means a skill can split samples across multiple files (workflow.json / platform.json / ...).
   const cliSamples = values.samples as string | undefined;
   let samplesFile: string;
   if (cliSamples) {
@@ -190,14 +246,8 @@ export function parseRunConfig(
   } else if (evalConfig?.samples) {
     samplesFile = evalConfig.samples;  // already resolved against config file dir
   } else {
-    samplesFile = 'eval-samples.json';
-    if (!existsSync(resolve(samplesFile))) {
-      if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
-      else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
-    }
+    samplesFile = discoverSamplesPath(values, skillDir);
   }
-
-  const skillDir: string = resolve((values['skill-dir'] as string | undefined) ?? 'skills');
 
   // 3) Resolve variantSpecs: CLI > config. If neither, error with a helpful hint.
   const controlExpr = values.control as string | undefined;
@@ -244,7 +294,9 @@ export function parseRunConfig(
 
   // 4) Apply CLI > config > hard-coded default for all other fields.
   const executorName = (values.executor as string | undefined) ?? evalConfig?.executor ?? 'claude';
-  const model = (values.model as string | undefined) ?? evalConfig?.model ?? 'sonnet';
+  // model fallback 链:CLI > eval.yaml > DEFAULT_MODEL(opus 4.7)。
+  // 改 default 时同步更新 cli.help.eval 文案("默认：claude-opus-4-7")。
+  const model = (values.model as string | undefined) ?? evalConfig?.model ?? DEFAULT_MODEL;
 
   // judgeModels: unified judge config. Parse --judge-models (CLI) or evalConfig.judgeModels (yaml).
   // 1 entry = single judge, ≥ 2 entries = ensemble. Format `executor:model[,executor:model]`.
@@ -271,6 +323,7 @@ export function parseRunConfig(
   const noCache = (values['no-cache'] as boolean | undefined) ?? evalConfig?.noCache ?? false;
   const dryRun = (values['dry-run'] as boolean | undefined) ?? false;
   const skipConnectivity = (values['skip-connectivity'] as boolean | undefined) ?? false;
+  const skipDoctor = (values['skip-doctor'] as boolean | undefined) ?? evalConfig?.skipDoctor ?? false;
   const mcpConfig = (values['mcp-config'] as string | undefined) ?? evalConfig?.mcpConfig;
   const verbose = (values.verbose as boolean | undefined) ?? false;
   const retry = Math.max(0, Number(values.retry ?? 0) || 0);
@@ -299,6 +352,16 @@ export function parseRunConfig(
     }
   }
 
+  // effort:CLI > evalConfig > 默认 'low'。校验合法值,不合法就 throw(early surface error)。
+  const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+  const effortRaw = (values.effort as string | undefined) ?? evalConfig?.effort ?? 'low';
+  if (!VALID_EFFORTS.has(effortRaw)) {
+    throw new Error(`--effort must be one of low/medium/high/xhigh/max (got "${effortRaw}")`);
+  }
+  const effort = effortRaw as 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+  const noDiagnostic = (values['no-diagnostic'] as boolean | undefined) ?? evalConfig?.noDiagnostic ?? false;
+
   return {
     values,
     config: {
@@ -314,6 +377,7 @@ export function parseRunConfig(
       timeoutMs,
       executorName,
       skipConnectivity,
+      skipDoctor,
       lang: undefined, // CLI 入口在 commands/eval-runner.ts 里注入
       mcpConfig,
       verbose,
@@ -324,6 +388,8 @@ export function parseRunConfig(
       budget: evalConfig?.budget,
       strictBaseline,
       judgeModels,
+      effort,
+      noDiagnostic,
       ...(Object.keys(variantAllowedSkills).length > 0 && { variantAllowedSkills }),
     },
     evalConfig,

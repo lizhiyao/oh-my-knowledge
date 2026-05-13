@@ -3,6 +3,40 @@ import assert from 'node:assert/strict';
 import { runAssertions, rougeN, levenshtein, bleu } from '../../src/grading/assertions.js';
 import type { Assertion } from '../../src/types/index.js';
 
+describe('mock_hit assertion', () => {
+  const mockStats = { hits: 4, misses: 1, perMock: { 'Bash:1': 1, 'Bash:2': 2, 'Read:1': 1 } };
+
+  it('passes when mock hit count >= 1 (default threshold)', () => {
+    const r = runAssertions('out', [{ type: 'mock_hit', value: 'Bash:1' }], { mockStats });
+    assert.equal(r.details[0].passed, true);
+  });
+
+  it('passes when count meets explicit threshold', () => {
+    const r = runAssertions('out', [{ type: 'mock_hit', value: 'Bash:2', threshold: 2 }], { mockStats });
+    assert.equal(r.details[0].passed, true);
+  });
+
+  it('fails when count below threshold', () => {
+    const r = runAssertions('out', [{ type: 'mock_hit', value: 'Bash:1', threshold: 5 }], { mockStats });
+    assert.equal(r.details[0].passed, false);
+  });
+
+  it('fails when mock key never hit (not in perMock map)', () => {
+    const r = runAssertions('out', [{ type: 'mock_hit', value: 'Bash:99' }], { mockStats });
+    assert.equal(r.details[0].passed, false);
+  });
+
+  it('fails when no mockStats provided in context', () => {
+    const r = runAssertions('out', [{ type: 'mock_hit', value: 'Bash:1' }]);
+    assert.equal(r.details[0].passed, false);
+  });
+
+  it('respects not: true inversion', () => {
+    const r = runAssertions('out', [{ type: 'mock_hit', value: 'Bash:99', not: true }], { mockStats });
+    assert.equal(r.details[0].passed, true);
+  });
+});
+
 describe('universal `not: true` field', () => {
   it('covers top-level not inversion behavior', () => {
     const r = runAssertions('hello world', [

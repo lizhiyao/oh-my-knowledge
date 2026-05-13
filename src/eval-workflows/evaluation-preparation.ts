@@ -14,6 +14,11 @@ export interface PreparedEvaluationRun {
   tasks: Task[];
   variantNames: string[];
   requires?: DependencyRequirements;
+  /** Sample bundle 根目录(单文件模式 = 文件所在 dir,目录模式 = 目录本身)。
+   *  传给 grade / mock / test set hash 当 base 锚点。 */
+  samplesBaseDir: string;
+  /** Sample bundle 内参与合并的所有源文件绝对路径(已排序)。test set hash 用它遍历。 */
+  samplesSourceFiles: string[];
 }
 
 export async function prepareEvaluationRun({
@@ -37,7 +42,7 @@ export async function prepareEvaluationRun({
   /**  — eval.yaml 显式 allowedSkills per variant (overrides strictBaseline default). */
   variantAllowedSkills?: Record<string, string[]>;
 }): Promise<PreparedEvaluationRun> {
-  const { samples, requires } = loadSamples(samplesPath);
+  const { samples, requires, baseDir: samplesBaseDir, sourceFiles: samplesSourceFiles } = loadSamples(samplesPath);
 
   // Build expressions from specs (preserving order) and resolve to artifacts.
   const variantExpressions = variantSpecs.map((spec) => spec.expr);
@@ -80,6 +85,8 @@ export async function prepareEvaluationRun({
     tasks,
     variantNames,
     requires,
+    samplesBaseDir,
+    samplesSourceFiles,
   };
 }
 

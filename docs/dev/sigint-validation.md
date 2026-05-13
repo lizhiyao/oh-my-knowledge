@@ -31,7 +31,7 @@ EOF
 ### 终端 A:跑长 eval
 
 ```bash
-cd /Users/lizhiyao/Documents/oh-my-knowledge
+cd /path/to/oh-my-knowledge
 node dist/src/cli/index.js omk eval \
   --samples /tmp/sigint-long.json \
   --control baseline \

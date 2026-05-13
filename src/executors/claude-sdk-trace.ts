@@ -1,5 +1,6 @@
 import type { ToolCallInfo, TurnInfo } from '../types/index.js';
 import type { ClaudeSdkBaseMessage } from './shared.js';
+import { safeSliceForJson } from '../util/safe-slice.js';
 
 export function isClaudeSdkResultMessage(message: ClaudeSdkBaseMessage): boolean {
   return message.type === 'result';
@@ -66,11 +67,17 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?:
             ? resultContent.map((c) => c.text || '').join('')
             : '';
 
+        // Mock 命中:omk 用 permissionDecision='deny' 把 stub 数据塞进 result.content,
+        // is_error 因此为 true,但语义上是"mock 成功返回"。识别前缀 → 覆盖 success=true。
+        // 见 src/eval-core/mocks-runtime.ts 的 wrappedReason 前缀。
+        const isMockHit = outputText.startsWith('[mock] simulated tool output');
+        const effectiveSuccess = isMockHit ? true : !isError;
+
         const tc: ToolCallInfo = {
           tool: pending?.tool || 'unknown',
           input: pending?.input || null,
-          output: outputText.slice(0, 500),
-          success: !isError,
+          output: safeSliceForJson(outputText, 500, ''),
+          success: effectiveSuccess,
         };
         toolCalls.push(tc);
 
@@ -81,7 +88,7 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?:
               const placeholder = turn.toolCalls.find((t) => t.tool === pending.tool && t.output === null);
               if (placeholder) {
                 placeholder.output = tc.output;
-                placeholder.success = !isError;
+                placeholder.success = effectiveSuccess;
                 break;
               }
             }
@@ -91,7 +98,7 @@ export function extractAgentTrace(messages: ClaudeSdkBaseMessage[], timestamps?:
         const toolDur = msgTs && lastTurnTs ? msgTs - lastTurnTs : undefined;
         turns.push({
           role: 'tool',
-          content: outputText.slice(0, 500),
+          content: safeSliceForJson(outputText, 500, ''),
           ...(toolDur != null && toolDur > 0 && { durationMs: toolDur }),
         });
         if (msgTs) lastTurnTs = msgTs;

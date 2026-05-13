@@ -411,21 +411,23 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
   ];
 
   const scoringModalId = 'guide-scoring';
-  const compositeLabel = lang === 'zh' ? '综合分' : 'Composite';
-  const compositeHeader = `<th data-i18n="dimComposite" style="border-right:2px solid var(--border)">${e(compositeLabel)} <button type="button" class="hint-btn" onclick="openModal('${scoringModalId}')" aria-label="${e(lang === 'zh' ? '综合分怎么算的？' : 'How is composite computed?')}" aria-haspopup="dialog">?</button></th>`;
-  const thead = `<tr><th data-i18n="variants">${t('variants', lang)}</th>${compositeHeader}${headerCols.map((c) => `<th data-i18n="${c.key}">${c.label}</th>`).join('')}</tr>`;
+  // v0.30 — 拆 hero(每变体综合分一行)+ heatmap 表(去 composite,加色块)。
+  // composite 从表里挪出来当 hero,大字号 + delta 跟 baseline 对比;
+  // 维度细节继续用表,但每格按 score 浅色填充,便于扫读弱维度。
+  const thead = `<tr><th data-i18n="variants">${t('variants', lang)}</th>${headerCols.map((c) => `<th data-i18n="${c.key}">${c.label}</th>`).join('')}</tr>`;
 
-  // 渲染单层分数 cell(事实/行为/LLM 评价通用)。
-  // 优先读跨 run 均值(byLayer[key].mean),fallback 到 summary 的单 run avg。
-  // 缺数据时显示 "—" + 灰色,让读者明确看到"这一层这批用例/评委没测到",不假装有值。
+  // 渲染单层分数 cell(事实/行为/LLM 评价通用)— 加 heatmap 浅色背景
   function renderLayerCell(varianceMean: number | undefined, summaryValue: number | undefined, detailHtml = ''): string {
     const v = varianceMean ?? summaryValue;
     const hasValue = typeof v === 'number' && v > 0;
+    const heatClass = hasValue
+      ? (v >= 4 ? 'sm-heat-pass' : v >= 3 ? 'sm-heat-warn' : 'sm-heat-fail')
+      : '';
     const color = hasValue
       ? (v >= 4 ? 'var(--green)' : v >= 3 ? 'var(--yellow)' : 'var(--red)')
       : 'var(--text-muted)';
     const display = hasValue ? v.toFixed(2) : '—';
-    return `<td class="summary-cell"><div class="summary-value summary-value-primary" style="color:${color}">${display}</div>${detailHtml}</td>`;
+    return `<td class="summary-cell ${heatClass}"><div class="summary-value summary-value-primary" style="color:${color}">${display}</div>${detailHtml}</td>`;
   }
 
   const rows = variants.map((v, i) => {
@@ -543,17 +545,44 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
 
     const stabCell = `<td class="summary-cell"><div class="summary-value" style="color:${stabColor}">${stabValue}</div>${stabDetail}</td>`;
 
-    // 综合分 cell. 颜色逻辑同其他质量列, 右侧加 2px border 跟分项分开视觉分组。
+    return `<tr><td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(v)}</strong></td>${factCell}${behaviorCell}${judgeCell}${costCell}${effCell}${stabCell}</tr>`;
+  }).join('');
+
+  // ──────────── Hero 行:每 variant 一行,综合分大字号 + delta vs baseline ────────────
+  // 每变体一行,左 variant 名 + 颜色条;中 大字号 composite;右 delta(vs variants[0])
+  const baselineComposite = summary[variants[0]]?.avgCompositeScore;
+  const heroRows = variants.map((v, i) => {
+    const s = summary[v] || {} as VariantSummary;
     const composite = s.avgCompositeScore;
     const compositeHasValue = typeof composite === 'number' && composite > 0;
     const compositeColor = compositeHasValue
       ? (composite >= 4 ? 'var(--green)' : composite >= 3 ? 'var(--yellow)' : 'var(--red)')
       : 'var(--text-muted)';
     const compositeDisplay = compositeHasValue ? composite.toFixed(2) : '—';
-    const compositeCell = `<td class="summary-cell" style="border-right:2px solid var(--border)"><div class="summary-value summary-value-primary" style="color:${compositeColor};font-weight:700">${compositeDisplay}</div></td>`;
-
-    return `<tr><td style="border-left:3px solid ${color};padding-left:12px"><strong>${e(v)}</strong></td>${compositeCell}${factCell}${behaviorCell}${judgeCell}${costCell}${effCell}${stabCell}</tr>`;
+    const color = COLORS[i % COLORS.length];
+    let deltaHtml = '';
+    if (i > 0 && compositeHasValue && typeof baselineComposite === 'number' && baselineComposite > 0) {
+      const diff = composite! - baselineComposite;
+      if (Math.abs(diff) >= 0.01) {
+        const sign = diff > 0 ? '+' : '';
+        const dColor = diff > 0 ? 'var(--green)' : 'var(--red)';
+        const arrow = diff > 0 ? '↑' : '↓';
+        deltaHtml = `<span class="sm-hero-delta" style="color:${dColor}">${sign}${diff.toFixed(2)} ${arrow}</span>`;
+      }
+    }
+    return `<div class="sm-hero" style="border-left:3px solid ${color}">
+      <div class="sm-hero-name">${e(v)}</div>
+      <div class="sm-hero-score" style="color:${compositeColor}">${compositeDisplay}<span class="sm-hero-unit">/ 5</span></div>
+      ${deltaHtml || '<span class="sm-hero-delta-placeholder"></span>'}
+    </div>`;
   }).join('');
+  const heroBlock = `<div class="sm-hero-list">
+    <div class="sm-hero-h">
+      ${lang === 'zh' ? '综合分' : 'Composite'}
+      <button type="button" class="hint-btn" onclick="openModal('${scoringModalId}')" aria-label="${e(lang === 'zh' ? '综合分怎么算的？' : 'How is composite computed?')}" aria-haspopup="dialog">?</button>
+    </div>
+    ${heroRows}
+  </div>`;
 
   const guideModalId = 'guide-six-dims';
   const guideTitle = lang === 'zh' ? '如何阅读六维对比？' : 'How to read this six-dimension comparison?';
@@ -607,12 +636,28 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
       </div>
     </div>
     ${scoringModalHtml}
+    ${heroBlock}
     <div class="table-wrap">
     <table class="summary-table">
       <thead>${thead}</thead>
       <tbody>${rows}</tbody>
     </table>
-    </div>`;
+    </div>
+    <style>
+    /* 六维对比 — Hero 区(每 variant 综合分 + delta) */
+    .sm-hero-list { display:flex;flex-direction:column;gap:8px;margin:14px 0 18px }
+    .sm-hero-h { font-size:13px;color:var(--text-muted);margin-bottom:4px;letter-spacing:0.02em }
+    .sm-hero { display:flex;align-items:baseline;gap:16px;padding:14px 18px;background:var(--bg-surface);border-radius:var(--radius);box-shadow:var(--shadow-sm) }
+    .sm-hero-name { flex:1;font-size:14.5px;font-weight:500;color:var(--text-primary) }
+    .sm-hero-score { font-size:28px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1 }
+    .sm-hero-unit { font-size:13px;color:var(--text-muted);margin-left:4px;font-weight:400 }
+    .sm-hero-delta { font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;font-family:"SF Mono",Menlo,monospace;min-width:60px;text-align:right }
+    .sm-hero-delta-placeholder { display:inline-block;min-width:60px }
+    /* 六维 heatmap — 每格按分数浅色填充,便于远看识别弱维度 */
+    .sm-heat-pass { background:linear-gradient(0deg,var(--green-bg),var(--green-bg)) }
+    .sm-heat-warn { background:linear-gradient(0deg,var(--yellow-bg),var(--yellow-bg)) }
+    .sm-heat-fail { background:linear-gradient(0deg,var(--red-bg),var(--red-bg)) }
+    </style>`;
 }
 
 /**
@@ -1621,57 +1666,40 @@ export function renderAgentOverview(variants: string[], summary: Record<string, 
   const hasAgentData = variants.some((variant) => summary[variant]?.avgToolCalls != null && summary[variant].avgToolCalls! > 0);
   if (!hasAgentData) return '';
 
-  const variantCards = variants.map((variant, i) => {
+  // v0.30 — Agent 执行概览弱化为 ctx-row(单行 inline)样式,跟实验配置并排放在 context-strip 里。
+  // 主要数字:轮次 / 工具调用数 / 成功率,加 tooltip 显示工具分布。
+  const variantRows = variants.map((variant, i) => {
     const stats = summary[variant];
     if (!stats) return '';
     const color = COLORS[i % COLORS.length];
     const avgTools = stats.avgToolCalls ?? 0;
-    const successRate = stats.toolSuccessRate != null ? `${(stats.toolSuccessRate * 100).toFixed(0)}%` : '-';
+    const successRate = stats.toolSuccessRate != null ? `${(stats.toolSuccessRate * 100).toFixed(0)}%` : '—';
     const successRateColor = (stats.toolSuccessRate ?? 1) >= 0.8 ? 'var(--green)' : 'var(--red)';
     const turns = stats.avgFullNumTurns ?? stats.avgNumTurns ?? 0;
     const distributionEntries = Object.entries(stats.toolDistribution || {}).sort((a, b) => b[1] - a[1]);
-    const maxCount = distributionEntries.length > 0 ? distributionEntries[0][1] : 0;
-    const distributionBars = distributionEntries.map(([tool, count]) => {
-      const pct = maxCount > 0 ? Math.max(8, (count / maxCount) * 100) : 0;
-      return `<div style="display:flex;align-items:center;gap:6px;margin:2px 0">
-        <span style="font-size:11px;color:var(--text-muted);width:100px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex-shrink:0" title="${e(tool)}">${e(tool)}</span>
-        <div style="flex:1;height:8px;background:var(--bg-surface);border-radius:4px">
-          <div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
-        </div>
-        <span style="font-size:11px;color:var(--text-secondary);min-width:20px">${count}</span>
-      </div>`;
-    }).join('');
+    const distSummary = distributionEntries.length > 0
+      ? distributionEntries.slice(0, 5).map(([tool, count]) => `${tool}×${count}`).join(' · ')
+      : '';
+    const tooltip = distSummary ? `${t('agentToolDist', lang)}: ${distSummary}` : '';
 
-    return `<div style="flex:1;min-width:240px;padding:16px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);border-left:3px solid ${color}">
-      <div style="font-weight:600;margin-bottom:12px">${e(variant)}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-        <div>
-          <div style="font-size:11px;color:var(--text-muted)">${t('agentAvgTurns', lang)}</div>
-          <div style="font-size:20px;font-weight:600">${turns}</div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--text-muted)">${t('agentAvgTools', lang)}</div>
-          <div style="font-size:20px;font-weight:600">${avgTools}</div>
-        </div>
-        <div>
-          <div style="font-size:11px;color:var(--text-muted)">${t('agentToolSuccess', lang)}</div>
-          <div style="font-size:20px;font-weight:600;color:${successRateColor}">${successRate}</div>
-        </div>
-      </div>
-      ${distributionEntries.length > 0 ? `
-        <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px">${t('agentToolDist', lang)}</div>
-        ${distributionBars}
-      ` : ''}
+    return `<div class="ctx-row" style="border-left:3px solid ${color}"${tooltip ? ` title="${e(tooltip)}"` : ''}>
+      <span class="ctx-row-name">${e(variant)}</span>
+      <span class="ctx-row-bits">
+        <span>${turns} ${t('turnsPerReq', lang)}</span>
+        <span class="ctx-sep">·</span>
+        <span>${avgTools} ${lang === 'zh' ? '工具/次' : 'tools/req'}</span>
+        <span class="ctx-sep">·</span>
+        <span style="color:${successRateColor}">${successRate} OK</span>
+      </span>
     </div>`;
   }).join('');
 
   return `
-    <section style="margin-top:24px">
-      <h2>${t('agentOverview', lang)}</h2>
-      <div style="display:flex;gap:16px;flex-wrap:wrap">
-        ${variantCards}
-      </div>
-    </section>
+    <div class="ctx-block">
+      <div class="ctx-h">${t('agentOverview', lang)}</div>
+      <div class="ctx-sub">${lang === 'zh' ? '工具调用统计 · 轮次 / 调用数 / 成功率' : 'Tool call stats · turns / calls / success rate'}</div>
+      <div class="ctx-rows">${variantRows}</div>
+    </div>
   `;
 }
 

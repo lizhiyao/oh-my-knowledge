@@ -1,9 +1,10 @@
-import { describe, it } from 'vitest';
+import { describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { getExecutorRuntimeFingerprint } from '../../src/executors/runtime-fingerprint.js';
+
+vi.unmock('node:child_process');
 
 function writeFakeBinary(dir: string, name: string, output: string): void {
   const fileName = process.platform === 'win32' ? `${name}.cmd` : name;
@@ -16,7 +17,9 @@ function writeFakeBinary(dir: string, name: string, output: string): void {
 }
 
 describe('runtime fingerprint', () => {
-  it('probes PATH from the same env shape executors use', () => {
+  it('probes PATH from the same env shape executors use', async () => {
+    vi.resetModules();
+    const { getExecutorRuntimeFingerprint } = await import('../../src/executors/runtime-fingerprint.js');
     const dirA = mkdtempSync(join(tmpdir(), 'omk-runtime-a-'));
     const dirB = mkdtempSync(join(tmpdir(), 'omk-runtime-b-'));
     try {

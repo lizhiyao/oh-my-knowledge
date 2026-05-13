@@ -86,9 +86,9 @@ describe('loadMcpConfig', () => {
     const configPath = join(tmpDir, '.mcp.json');
     writeFileSync(configPath, JSON.stringify({
       servers: {
-        dima: {
+        "req-tool": {
           command: 'node',
-          args: ['dima-server.js'],
+          args: ['req-tool-server.js'],
           urlPatterns: ['internal.example.com'],
           fetchTool: { name: 'query', urlParam: 'workItemId' },
         },
@@ -96,7 +96,7 @@ describe('loadMcpConfig', () => {
     }));
     const result = loadMcpConfig(configPath);
     assert.ok(result);
-    assert.deepEqual(Object.keys(result), ['dima']);
+    assert.deepEqual(Object.keys(result), ['req-tool']);
   });
 });
 
