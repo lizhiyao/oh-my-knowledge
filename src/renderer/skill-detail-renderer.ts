@@ -96,7 +96,7 @@ export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: 
     || (entry.eval != null && entry.eval.passCount === 0 && entry.eval.failCount > 0)
     || (entry.observe != null && entry.observe.healthBand === 'red');
   const hasWarn = (entry.doctor != null && entry.doctor.warnCount > 0)
-    || (entry.eval != null && entry.eval.compositeScore != null && entry.eval.compositeScore < 4)
+    || (entry.eval != null && entry.eval.compositeScore != null && entry.eval.compositeScore < 3.5)
     || (entry.observe != null && entry.observe.healthBand === 'yellow');
   const high = insights.filter((i) => i.severity === 'high').length;
   const med = insights.filter((i) => i.severity === 'medium').length;
