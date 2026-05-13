@@ -7,6 +7,7 @@ import {
 import type { ObservationExperienceReport } from './experience.js';
 import { loadObservationReviewState, type ObservationReviewState } from './review-state.js';
 import { buildObservationSkillChains, type ObservationSkillChain } from './skill-chain.js';
+import { durationMsBetween } from '../shared/time.js';
 
 export interface ObservationInboxViewModel {
   activeSkill?: string;
@@ -118,6 +119,7 @@ function pickRecordValue<T>(value: Record<string, T> | undefined, key: string): 
 function filterReportBySkill(report: ObservationInboxReport, skillName?: string): ObservationInboxReport {
   if (!skillName) return report;
   const items = report.items.filter((item) => item.skillName === skillName);
+  const relatedSessionIds = new Set<string>(items.flatMap((item) => [item.sessionId, ...item.recentSessionIds]));
   const experience = report.experience ? {
     ...report.experience,
     meta: {
@@ -132,11 +134,20 @@ function filterReportBySkill(report: ObservationInboxReport, skillName?: string)
     sessions: report.experience.sessions.filter((session) => session.skillName === skillName),
     skills: report.experience.skills.filter((skill) => skill.skillName === skillName),
   } : undefined;
+  for (const session of experience?.sessions ?? []) {
+    relatedSessionIds.add(session.sessionId);
+  }
+  const sessionTimeRanges = (report.meta.sessionTimeRanges ?? []).filter((range) =>
+    relatedSessionIds.has(range.sessionId) || (range.sessionGroupId ? relatedSessionIds.has(range.sessionGroupId) : false)
+  );
   return {
     ...report,
     meta: {
       ...report.meta,
       itemCount: items.length,
+      sessionCount: sessionTimeRanges.length,
+      sessionTimeRanges,
+      sessionTimeRange: buildReportSessionTimeRange(sessionTimeRanges),
       skillInvocationCounts: pickRecordValue(report.meta.skillInvocationCounts, skillName),
       skillSessionCounts: pickRecordValue(report.meta.skillSessionCounts, skillName),
       skillInvocationLastSeen: pickRecordValue(report.meta.skillInvocationLastSeen, skillName),
@@ -145,4 +156,13 @@ function filterReportBySkill(report: ObservationInboxReport, skillName?: string)
     items,
     experience,
   };
+}
+
+function buildReportSessionTimeRange(ranges: ObservationInboxReport['meta']['sessionTimeRanges']): ObservationInboxReport['meta']['sessionTimeRange'] {
+  const starts = ranges.map((range) => range.startTimestamp).filter((value): value is string => Boolean(value));
+  const ends = ranges.map((range) => range.endTimestamp).filter((value): value is string => Boolean(value));
+  if (starts.length === 0 || ends.length === 0) return { from: '', to: '' };
+  const from = starts.reduce((min, value) => value < min ? value : min, starts[0]);
+  const to = ends.reduce((max, value) => value > max ? value : max, ends[0]);
+  return { from, to, durationMs: durationMsBetween(from, to) };
 }

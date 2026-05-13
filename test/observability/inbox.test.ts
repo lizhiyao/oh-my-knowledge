@@ -100,6 +100,78 @@ describe('observe inbox', () => {
     }
   });
 
+  it('records raw session time ranges for Claude and OpenClaw traces', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-observe-session-range-'));
+    const claudeFile = join(dir, 'claude-session.jsonl');
+    const openClawFile = join(dir, 'openclaw-session.jsonl');
+    writeFileSync(claudeFile, [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 'claude-session-a',
+        timestamp: '2026-05-12T12:08:09.000Z',
+        cwd: '/repo/demo',
+        message: { role: 'user', content: '<command-name>/demo-skill</command-name>' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 'claude-session-a',
+        timestamp: '2026-05-12T12:10:00.000Z',
+        cwd: '/repo/demo',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+      },
+    ].map((record) => JSON.stringify(record)).join('\n'));
+    writeFileSync(openClawFile, [
+      { type: 'session', version: 3, id: 'openclaw-session-a', timestamp: '2026-05-13T01:00:00.000Z', cwd: '/repo/openclaw-demo' },
+      {
+        type: 'message',
+        id: 'oc-u1',
+        timestamp: '2026-05-13T01:02:03.000Z',
+        message: { role: 'user', content: [{ type: 'text', text: '<aima-cmd name="demo-skill">生成示例</aima-cmd>' }] },
+      },
+      {
+        type: 'message',
+        id: 'oc-a1',
+        parentId: 'oc-u1',
+        timestamp: '2026-05-13T01:05:06.000Z',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'done' }] },
+      },
+    ].map((record) => JSON.stringify(record)).join('\n'));
+
+    const report = buildObservationInboxReport(dir);
+    assert.equal(report.meta.sessionCount, 2);
+    assert.equal(report.meta.sessionTimeRange.from, '2026-05-12T12:08:09.000Z');
+    assert.equal(report.meta.sessionTimeRange.to, '2026-05-13T01:05:06.000Z');
+    const rangesById = new Map(report.meta.sessionTimeRanges.map((range) => [range.sessionId, range]));
+    assert.deepEqual(
+      {
+        sourceKind: rangesById.get('claude-session-a')?.sourceKind,
+        startTimestamp: rangesById.get('claude-session-a')?.startTimestamp,
+        endTimestamp: rangesById.get('claude-session-a')?.endTimestamp,
+      },
+      {
+        sourceKind: 'claude',
+        startTimestamp: '2026-05-12T12:08:09.000Z',
+        endTimestamp: '2026-05-12T12:10:00.000Z',
+      },
+    );
+    assert.deepEqual(
+      {
+        sourceKind: rangesById.get('openclaw-session-a')?.sourceKind,
+        startTimestamp: rangesById.get('openclaw-session-a')?.startTimestamp,
+        endTimestamp: rangesById.get('openclaw-session-a')?.endTimestamp,
+      },
+      {
+        sourceKind: 'openclaw',
+        startTimestamp: '2026-05-13T01:02:03.000Z',
+        endTimestamp: '2026-05-13T01:05:06.000Z',
+      },
+    );
+  });
+
   it('aggregates duplicate items by skill/cwd/signal/query', () => {
     const items = aggregateInboxItems([
       baseItem({ id: 'a', sessionId: 's1', evidence: { query: 'revenue_schema' } }),
@@ -122,6 +194,15 @@ describe('observe inbox', () => {
         tracePath: '/tmp/old',
         sourceKind: 'claude' as const,
         sessionCount: 1,
+        sessionTimeRange: { from: '2026-05-01T00:00:00.000Z', to: '2026-05-01T00:00:00.000Z', durationMs: 0 },
+        sessionTimeRanges: [{
+          sessionId: 'old-session',
+          sourceTrace: '/tmp/old',
+          sourceKind: 'claude' as const,
+          startTimestamp: '2026-05-01T00:00:00.000Z',
+          endTimestamp: '2026-05-01T00:00:00.000Z',
+          durationMs: 0,
+        }],
         segmentCount: 1,
         itemCount: 1,
         skillInvocationCounts: { old_skill: 1 },
@@ -136,6 +217,15 @@ describe('observe inbox', () => {
         tracePath: '/tmp/latest',
         sourceKind: 'claude' as const,
         sessionCount: 1,
+        sessionTimeRange: { from: '2026-05-02T00:00:00.000Z', to: '2026-05-02T00:00:00.000Z', durationMs: 0 },
+        sessionTimeRanges: [{
+          sessionId: 'latest-session',
+          sourceTrace: '/tmp/latest',
+          sourceKind: 'claude' as const,
+          startTimestamp: '2026-05-02T00:00:00.000Z',
+          endTimestamp: '2026-05-02T00:00:00.000Z',
+          durationMs: 0,
+        }],
         segmentCount: 1,
         itemCount: 1,
         skillInvocationCounts: { latest_skill: 1 },
@@ -759,6 +849,15 @@ describe('observe inbox', () => {
         tracePath: '/tmp/A',
         sourceKind: 'claude' as const,
         sessionCount: 1,
+        sessionTimeRange: { from: '2026-05-07T12:00:00.111Z', to: '2026-05-07T12:00:00.111Z', durationMs: 0 },
+        sessionTimeRanges: [{
+          sessionId: 'session-a',
+          sourceTrace: '/tmp/A',
+          sourceKind: 'claude' as const,
+          startTimestamp: '2026-05-07T12:00:00.111Z',
+          endTimestamp: '2026-05-07T12:00:00.111Z',
+          durationMs: 0,
+        }],
         segmentCount: 1,
         itemCount: 1,
         skillInvocationCounts: { skill_a: 1 },

@@ -9,6 +9,7 @@ import { observationMetricAnnotationVerdict, type ObservationMetricKey, type Obs
 import type { CcAssistantRecord, CcRecord, CcSession, CcUserRecord, TraceSourceMetadata } from './trace-source.js';
 import type { SkillSegment } from './trace-segmenter.js';
 import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-attribution.js';
+import { durationMsBetween } from '../shared/time.js';
 
 export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
 export type ExperienceGoalSliceReasonCode = 'skill_segment_boundary' | 'explicit_user_goal_shift' | 'default_session_slice';
@@ -204,6 +205,9 @@ export interface ExperienceSessionSummary {
   entrypoint?: string;
   sourceMetadata?: TraceSourceMetadata;
   cwd?: string;
+  sourceSessionStartTimestamp?: string;
+  sourceSessionEndTimestamp?: string;
+  sourceSessionDurationMs?: number;
   startTimestamp: string;
   endTimestamp: string;
   invocationIds: string[];
@@ -1052,6 +1056,8 @@ function summarizeExperienceSessions(invocations: ExperienceInvocation[], sessio
     const reviewPriorityScore = scoreForIndicators(indicators);
     const timeline = uniqueTimelineEvents(group.flatMap((invocation) => invocation.timeline)).sort(compareTimelineEvents);
     const sessionGroup = sessionGroupsById.get(first.sessionId) ?? [];
+    const sourceSessionStartTimestamp = minString(sessionGroup.map((session) => session.startTimestamp));
+    const sourceSessionEndTimestamp = maxString(sessionGroup.map((session) => session.endTimestamp));
     const timelineTree = sessionGroup.length > 0 ? buildSessionTimelineTree(first.sessionId, sessionGroup) : undefined;
     const fullSessionTimeline = timelineTree
       ? uniqueTimelineEvents([
@@ -1093,6 +1099,9 @@ function summarizeExperienceSessions(invocations: ExperienceInvocation[], sessio
       entrypoint: first.entrypoint,
       sourceMetadata: mergeSourceMetadata(group.map((invocation) => invocation.sourceMetadata)),
       cwd: first.cwd,
+      sourceSessionStartTimestamp,
+      sourceSessionEndTimestamp,
+      sourceSessionDurationMs: durationMsBetween(sourceSessionStartTimestamp, sourceSessionEndTimestamp),
       startTimestamp: group.reduce((min, invocation) => invocation.startTimestamp < min ? invocation.startTimestamp : min, first.startTimestamp),
       endTimestamp: group.reduce((max, invocation) => invocation.endTimestamp > max ? invocation.endTimestamp : max, first.endTimestamp),
       invocationIds: group.map((invocation) => invocation.id),
@@ -1433,6 +1442,16 @@ function minDefined(values: Array<number | undefined>): number | undefined {
 function maxDefined(values: Array<number | undefined>): number | undefined {
   const filtered = values.filter((value): value is number => typeof value === 'number');
   return filtered.length > 0 ? Math.max(...filtered) : undefined;
+}
+
+function minString(values: Array<string | undefined>): string | undefined {
+  const filtered = values.filter((value): value is string => Boolean(value));
+  return filtered.length > 0 ? filtered.reduce((min, value) => value < min ? value : min, filtered[0]) : undefined;
+}
+
+function maxString(values: Array<string | undefined>): string | undefined {
+  const filtered = values.filter((value): value is string => Boolean(value));
+  return filtered.length > 0 ? filtered.reduce((max, value) => value > max ? value : max, filtered[0]) : undefined;
 }
 
 function uniqueEvidenceRefs(refs: ExperienceEvidenceRef[]): ExperienceEvidenceRef[] {

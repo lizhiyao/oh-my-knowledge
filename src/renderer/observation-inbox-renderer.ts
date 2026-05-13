@@ -91,6 +91,23 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (value == null || value === '') return '';
     return `<div style="margin:4px 0;text-align:left"><span style="color:var(--text-muted);font-size:11px">${e(label)}</span><div style="font-family:ui-monospace,monospace;font-size:11px;word-break:break-all;text-align:left;color:var(--text-secondary)">${e(String(value))}</div></div>`;
   };
+  const formatTimestamp = (value?: string): string => value ? value.slice(0, 19).replace('T', ' ') : '—';
+  const formatDuration = (durationMs?: number): string => {
+    if (!Number.isFinite(durationMs ?? Number.NaN) || durationMs == null) return '';
+    const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    if (days > 0) return `${days}天${hours > 0 ? ` ${hours}小时` : ''}`;
+    if (hours > 0) return `${hours}小时${minutes > 0 ? ` ${minutes}分钟` : ''}`;
+    if (minutes > 0) return `${minutes}分钟`;
+    return `${totalSeconds}秒`;
+  };
+  const formatTimeRange = (start?: string, end?: string, durationMs?: number): string => {
+    const range = `${formatTimestamp(start)} ~ ${formatTimestamp(end)}`;
+    const duration = formatDuration(durationMs);
+    return duration ? `${range} · ${duration}` : range;
+  };
   const renderArtifactVersion = (value: string): string => {
     if (value === 'unknown') {
       return `<div style="margin:4px 0;text-align:left"><span style="color:var(--text-muted);font-size:11px">artifactVersion</span><div style="font-family:ui-monospace,monospace;font-size:11px;word-break:break-all;color:var(--yellow);font-weight:600;text-align:left">⚠ unknown</div></div>`;
@@ -2099,7 +2116,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         ${metric('工具执行失败', indicators.toolFailureCount, 'toolFailure')} ·
         ${metric('高优先级过程发现', indicators.highObservationCount, 'highObservation')}
       </td>
-      <td style="padding:9px 10px;color:var(--text-muted);font-size:12px;white-space:normal">${e(session.endTimestamp.slice(0, 19).replace('T', ' '))}</td>
+      <td class="session-time-cell" style="padding:9px 10px;color:var(--text-muted);font-size:12px;white-space:normal">
+        <div>${e(formatTimeRange(session.sourceSessionStartTimestamp ?? session.startTimestamp, session.sourceSessionEndTimestamp ?? session.endTimestamp, session.sourceSessionDurationMs))}</div>
+        <div style="margin-top:3px;color:var(--text-muted);font-size:11px">调用窗口：${e(formatTimeRange(session.startTimestamp, session.endTimestamp))}</div>
+      </td>
       <td class="num" style="padding:9px 10px;text-align:right"><button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this)" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer;white-space:nowrap">回溯详情</button></td>
     </tr>
     <tr id="${detailId}" data-experience-detail-template style="display:none;background:var(--bg-muted)">
@@ -2125,7 +2145,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               <div>关联过程发现：${session.relatedObservationIds.length}</div>
               <div style="margin-top:8px">${renderExperienceBasis(shownBasisCodes)}</div>
             </div>
-            ${renderJson({ id: session.id, sourceTrace: session.sourceTrace, sourceMetadata: session.sourceMetadata, cwd: session.cwd, evidenceChain, ruleFindings: shownRuleFindings, assistiveInference: shownInference, reviewState: reviewState.entries[reviewStateKey('experience_session', session.id)], indicators, relatedObservationIds: session.relatedObservationIds })}
+            ${renderJson({ id: session.id, sourceTrace: session.sourceTrace, sourceMetadata: session.sourceMetadata, cwd: session.cwd, sourceSessionStartTimestamp: session.sourceSessionStartTimestamp, sourceSessionEndTimestamp: session.sourceSessionEndTimestamp, sourceSessionDurationMs: session.sourceSessionDurationMs, invocationStartTimestamp: session.startTimestamp, invocationEndTimestamp: session.endTimestamp, evidenceChain, ruleFindings: shownRuleFindings, assistiveInference: shownInference, reviewState: reviewState.entries[reviewStateKey('experience_session', session.id)], indicators, relatedObservationIds: session.relatedObservationIds })}
           </section>
           <section class="experience-detail-right">
             <h3 style="font-size:13px;margin:0 0 8px;color:var(--text-primary)">C1 上下文时间线片段</h3>
@@ -2146,13 +2166,21 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     .sort((a, b) => (sessionSkillOrder.get(a[0]) ?? Number.MAX_SAFE_INTEGER) - (sessionSkillOrder.get(b[0]) ?? Number.MAX_SAFE_INTEGER));
   const experienceSessionGroupsHtml = experienceSessionGroups.map(([skillName, sessions], groupIndex) => {
     const latest = sessions.reduce((max, session) => session.endTimestamp > max ? session.endTimestamp : max, sessions[0]?.endTimestamp ?? '');
+    const earliestSessionStart = sessions.reduce((min, session) => {
+      const value = session.sourceSessionStartTimestamp ?? session.startTimestamp;
+      return value && value < min ? value : min;
+    }, sessions[0]?.sourceSessionStartTimestamp ?? sessions[0]?.startTimestamp ?? '');
+    const latestSessionEnd = sessions.reduce((max, session) => {
+      const value = session.sourceSessionEndTimestamp ?? session.endTimestamp;
+      return value && value > max ? value : max;
+    }, sessions[0]?.sourceSessionEndTimestamp ?? sessions[0]?.endTimestamp ?? '');
     const reviewFirst = sessions.filter((session) => session.reviewPriority === 'review_first').length;
     const sampleReview = sessions.filter((session) => session.reviewPriority === 'sample_review').length;
     return `<details id="${e(experienceSkillAnchor(skillName))}" class="experience-session-group" open style="scroll-margin-top:16px">
       <summary>
         <div>
           <span class="experience-session-skill">${e(skillName)}</span>
-          <span class="experience-session-meta">${sessions.length} sessions · 最近 ${e(latest.slice(0, 19).replace('T', ' '))}</span>
+          <span class="experience-session-meta">${sessions.length} sessions · Session 时间 ${e(formatTimeRange(earliestSessionStart, latestSessionEnd))} · 最近调用 ${e(formatTimestamp(latest))}</span>
         </div>
         <div class="experience-session-tags">
           <span style="color:var(--red)">优先复盘 ${reviewFirst}</span>
@@ -2171,7 +2199,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">用户目标切片</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">C2 规则判断</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">关键指标</th>
-            <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">最近时间</th>
+            <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">Session 时间范围</th>
             <th style="text-align:right;padding:9px 10px;border-bottom:1px solid var(--border)">回溯</th>
           </tr></thead>
           <tbody>${renderExperienceSessionRows(sessions, `exp-skill-${groupIndex}`)}</tbody>
@@ -2207,6 +2235,18 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const experienceInsightCta = experienceFirstReviewSession
     ? `<button type="button" class="experience-insight-cta" data-open-experience-session="${e(experienceFirstReviewSession.id)}" data-open-timeline-tag="${experienceFirstHardRuleSession ? 'hard_rule' : ''}">${experienceFirstHardRuleSession ? '看这条用户硬性要求是什么' : '打开建议复盘 session'}</button>`
     : '';
+  const reportSessionRanges = reports.flatMap((report) => report.meta.sessionTimeRanges ?? []);
+  const reportSessionCount = reportSessionRanges.length > 0
+    ? new Set(reportSessionRanges.map((range) => `${range.sessionId}\u0000${range.sourceTrace}`)).size
+    : (experience?.meta.sessionCount ?? 0);
+  const reportSessionStarts = reportSessionRanges.map((range) => range.startTimestamp).filter((value): value is string => Boolean(value));
+  const reportSessionEnds = reportSessionRanges.map((range) => range.endTimestamp).filter((value): value is string => Boolean(value));
+  const reportSessionFrom = reportSessionStarts.length > 0 ? reportSessionStarts.reduce((min, value) => value < min ? value : min, reportSessionStarts[0]) : undefined;
+  const reportSessionTo = reportSessionEnds.length > 0 ? reportSessionEnds.reduce((max, value) => value > max ? value : max, reportSessionEnds[0]) : undefined;
+  const reportSessionDurationMs = reportSessionFrom && reportSessionTo ? Date.parse(reportSessionTo) - Date.parse(reportSessionFrom) : undefined;
+  const reportSessionRangeLabel = reportSessionFrom || reportSessionTo
+    ? formatTimeRange(reportSessionFrom, reportSessionTo, reportSessionDurationMs)
+    : '—';
   const experienceTopInsightHtml = experience
     ? `<div class="experience-top-insight">
         <div>
@@ -2230,6 +2270,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted)" title="这里的成功/失败是工具调用结果统计，不等同于 LLM 判断 skill 最终成功或失败。">
               <div style="color:var(--text-muted);font-size:12px">调用概览</div>
               <div style="font-size:20px;font-weight:700;margin-top:4px">Session ${experience.meta.sessionCount} · Skill 调用 ${experience.meta.invocationCount}</div>
+              <div style="color:var(--text-muted);font-size:12px;margin-top:4px">Session 时间范围：${e(reportSessionRangeLabel)}</div>
               <div style="color:var(--text-muted);font-size:12px;margin-top:4px">工具执行成功 ${experienceToolSuccessCount} / ${pct(experienceToolSuccessCount, experienceIndicators.toolCallCount)} · 工具执行失败 ${experienceIndicators.toolFailureCount} / ${pct(experienceIndicators.toolFailureCount, experienceIndicators.toolCallCount)} · 人工中断 ${experienceIndicators.userInterruptionCount} / ${pct(experienceIndicators.userInterruptionCount, experienceIndicators.toolCallCount)}</div>
             </div>
             <div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted)">
@@ -2302,7 +2343,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         <div style="padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface)">
           <div style="color:var(--text-muted);font-size:12px">数据范围</div>
           <div style="font-size:18px;font-weight:700;margin-top:6px">${skillCount} trace skills</div>
-          <div style="color:var(--text-muted);font-size:12px">${totalSkillInvocations} skill 调用 · ${allItems.length} 过程发现</div>
+          <div style="color:var(--text-muted);font-size:12px">${reportSessionCount} sessions · ${totalSkillInvocations} skill 调用 · ${allItems.length} 过程发现</div>
+          <div style="color:var(--text-muted);font-size:12px">Session 时间：${e(reportSessionRangeLabel)}</div>
           <div style="color:var(--text-muted);font-size:12px">${reportCount} reports · latest ${e(latestSeenLabel)}</div>
           <div style="color:var(--text-muted);font-size:12px">当前只展示最新一次 ingest 的结果</div>
         </div>
@@ -2449,7 +2491,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         .review-bucket-table { min-width: 980px !important; }
         .experience-skill-table { min-width: 1540px !important; }
-        .experience-session-table { min-width: 1480px !important; }
+        .experience-session-table { min-width: 1680px !important; }
         .skill-health-table { min-width: 1360px !important; }
         .action-table { min-width: 820px !important; }
         .raw-observation-table { min-width: 1040px !important; }
@@ -2468,14 +2510,24 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .experience-skill-table col:nth-child(7) { width: 9% !important; }
         .experience-skill-table col:nth-child(8) { width: 12% !important; }
         .experience-skill-table col:nth-child(9) { width: 5% !important; }
-        .experience-session-table col:nth-child(1) { width: 13% !important; }
+        .experience-session-table col:nth-child(1) { width: 12% !important; }
         .experience-session-table col:nth-child(2) { width: 12% !important; }
-        .experience-session-table col:nth-child(3) { width: 12% !important; }
-        .experience-session-table col:nth-child(4) { width: 20% !important; }
-        .experience-session-table col:nth-child(5) { width: 17% !important; }
+        .experience-session-table col:nth-child(3) { width: 10% !important; }
+        .experience-session-table col:nth-child(4) { width: 16% !important; }
+        .experience-session-table col:nth-child(5) { width: 14% !important; }
         .experience-session-table col:nth-child(6) { width: 10% !important; }
-        .experience-session-table col:nth-child(7) { width: 9% !important; }
+        .experience-session-table col:nth-child(7) { width: 20% !important; }
         .experience-session-table col:nth-child(8) { width: 6% !important; }
+        .session-time-cell {
+          min-width: 300px;
+          line-height: 1.45;
+        }
+        .session-time-cell div:first-child {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+          color: var(--text-secondary);
+          word-break: keep-all;
+          overflow-wrap: normal;
+        }
         .observe-fit-table th,
         .observe-fit-table td,
         #observe-tab-review table th,

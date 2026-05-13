@@ -4,8 +4,9 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { GapSignalRef, ToolCallInfo } from '../types/index.js';
 import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
-import { ccTracesToResultEntries, type SkillSegment } from './trace-adapter.js';
+import { ccTracesToResultEntries, type CcSession, type SkillSegment } from './trace-adapter.js';
 import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
+import { durationMsBetween } from '../shared/time.js';
 import { buildObservationExperienceReport, type ObservationExperienceReport } from './experience.js';
 import type { ObservationReviewState } from './review-state.js';
 
@@ -93,12 +94,32 @@ export interface ObservationInboxItem {
   representativeEvidence: ObservationEvidence[];
 }
 
+export interface ObservationSessionTimeRange {
+  sessionId: string;
+  sessionGroupId?: string;
+  sourceTrace: string;
+  sourceKind: ObservationSourceKind;
+  traceRole?: 'standalone' | 'main' | 'subagent';
+  traceLabel?: string;
+  cwd?: string;
+  startTimestamp?: string;
+  endTimestamp?: string;
+  durationMs?: number;
+}
+
 export interface ObservationInboxReport {
   kind: 'observe-inbox';
   schemaVersion: 1;
   meta: {
     tracePath: string;
     generatedAt: string;
+    sessionCount: number;
+    sessionTimeRange: {
+      from: string;
+      to: string;
+      durationMs?: number;
+    };
+    sessionTimeRanges: ObservationSessionTimeRange[];
     segmentCount: number;
     itemCount: number;
     skillInvocationCounts?: Record<string, number>;
@@ -294,6 +315,33 @@ function severityFor(signalType: ObservationSignalType, subtype: ObservationSign
   return 'low';
 }
 
+function buildSessionTimeRanges(sessions: CcSession[]): ObservationSessionTimeRange[] {
+  return sessions.map((session): ObservationSessionTimeRange => ({
+    sessionId: session.sessionId,
+    sessionGroupId: session.sessionGroupId,
+    sourceTrace: session.sourcePath,
+    sourceKind: session.sourceKind ?? inferObservationSourceKind(session.sourcePath),
+    traceRole: session.traceRole,
+    traceLabel: session.traceLabel,
+    cwd: session.cwd,
+    startTimestamp: session.startTimestamp,
+    endTimestamp: session.endTimestamp,
+    durationMs: durationMsBetween(session.startTimestamp, session.endTimestamp),
+  })).sort((a, b) =>
+    (a.startTimestamp ?? '').localeCompare(b.startTimestamp ?? '')
+    || a.sourceTrace.localeCompare(b.sourceTrace)
+  );
+}
+
+function buildOverallSessionTimeRange(ranges: ObservationSessionTimeRange[]): ObservationInboxReport['meta']['sessionTimeRange'] {
+  const starts = ranges.map((range) => range.startTimestamp).filter((value): value is string => Boolean(value));
+  const ends = ranges.map((range) => range.endTimestamp).filter((value): value is string => Boolean(value));
+  if (starts.length === 0 || ends.length === 0) return { from: '', to: '' };
+  const from = starts.reduce((min, value) => value < min ? value : min, starts[0]);
+  const to = ends.reduce((max, value) => value > max ? value : max, ends[0]);
+  return { from, to, durationMs: durationMsBetween(from, to) };
+}
+
 const SEVERITY_REASON_ZH: Record<ObservationSeverityReasonCode, string> = {
   repeated_failure_suspected: '同类搜索连续失败 3 次以上，是强缺口信号，高于单次 hard_miss。',
   explicit_gap_marker: 'agent 主动输出了知识缺口/未知标记，需要优先人工确认。',
@@ -439,6 +487,8 @@ function itemsFromSegment(segment: SkillSegment): ObservationInboxItem[] {
 export function buildObservationInboxReport(tracePath: string, options: BuildObservationInboxReportOptions = {}): ObservationInboxReport {
   const { sessions, segments } = ccTracesToResultEntries(tracePath);
   const generatedAt = new Date().toISOString();
+  const sessionTimeRanges = buildSessionTimeRanges(sessions);
+  const sessionTimeRange = buildOverallSessionTimeRange(sessionTimeRanges);
   const skillInvocationCounts: Record<string, number> = {};
   const skillInvocationLastSeen: Record<string, string> = {};
   const skillToolCallCounts: Record<string, Record<string, number>> = {};
@@ -485,6 +535,9 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
     meta: {
       tracePath,
       generatedAt,
+      sessionCount: sessions.length,
+      sessionTimeRange,
+      sessionTimeRanges,
       segmentCount: segments.length,
       itemCount: items.length,
       skillInvocationCounts,
