@@ -88,9 +88,9 @@ ${sections.join('\n\n')}`;
 function renderBlock3CommonRules(): string {
   return `# 同根因合并(去重规则)
 
-多个 finding 如果**根因相同 + 修复方式相同**,必须合并成**一条** finding(可以跨维度合并)。在 \`evidence\` 字段里把所有出现位置列全(用 \` ; \` 分隔),\`description\` 里点明"在 N 处出现"。
+多个 finding 如果**根因相同 + 修复方式相同**,必须合并成**一条** finding(可以跨维度合并)。在 \`description\` 里点明"在 N 处出现",\`suggestion\` 给统一修法。
 
-合并后,该 finding 的 \`level\` 取所有出现位置中**最严重的一个**。\`suggestions\` 给统一修法。
+合并后,该 finding 的 \`level\` 取所有出现位置中**最严重的一个**。
 
 # Finding level 判定(严格控制数量)
 

@@ -99,7 +99,7 @@ function safeDirJsonContentFingerprint(dir: string): string {
       return `${f}:?`;
     }
   });
-  return `${dirMtimeMs}|${fileParts.join(',')}`;
+  return `${dir}:${dirMtimeMs}|${fileParts.join(',')}`;
 }
 
 function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, doctorsDir: string): string {

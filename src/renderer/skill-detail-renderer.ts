@@ -791,6 +791,7 @@ const TREND_INIT_SCRIPT = `
 <script src="/static/chart.js" onerror="window.__omkChartLoadError=true"></script>
 <script>
 (function(){
+  var L = (document.documentElement.dataset.lang || 'zh');
   function showFallback(canvas, msg){
     if (!canvas) return;
     var wrap = canvas.parentElement;
@@ -799,7 +800,7 @@ const TREND_INIT_SCRIPT = `
     wrap.innerHTML = '<div class="si-trend-fallback">' +
       '<div class="si-trend-fallback-icon">📉</div>' +
       '<div class="si-trend-fallback-msg">' + msg + '</div>' +
-      '<div class="si-trend-fallback-hint">数据仍可从下方"最新指标速览"看,或在浏览器控制台看具体错误。</div>' +
+      '<div class="si-trend-fallback-hint">' + (L === 'en' ? 'Check browser console for details.' : '数据仍可从下方指标速览看,或在浏览器控制台看具体错误。') + '</div>' +
       '</div>';
   }
   // 异步兜底:Chart 内部 RAF / setTimeout 抛错会冒泡到 window.error,这里捕获后
@@ -809,14 +810,14 @@ const TREND_INIT_SCRIPT = `
     if (!canvas) return;
     var msg = (ev && ev.message) || '';
     if (/chart/i.test(msg) || (ev.filename && /chart\\.js$/i.test(ev.filename))) {
-      showFallback(canvas, '趋势图渲染异常');
+      showFallback(canvas, L === 'en' ? 'Trend chart error' : '趋势图渲染异常');
     }
   });
   function init(){
     var canvas = document.getElementById('trend-chart');
     if (!canvas) return;
     if (window.__omkChartLoadError || !window.Chart) {
-      showFallback(canvas, '趋势图加载失败');
+      showFallback(canvas, L === 'en' ? 'Chart failed to load' : '趋势图加载失败');
       return;
     }
     var raw = canvas.getAttribute('data-chart');
@@ -831,7 +832,7 @@ const TREND_INIT_SCRIPT = `
           return !Array.isArray(ds.data) || ds.data.length !== data.labels.length;
         });
         if (bad) {
-          showFallback(canvas, '趋势图数据格式异常');
+          showFallback(canvas, L === 'en' ? 'Chart data format error' : '趋势图数据格式异常');
           return;
         }
       }
@@ -849,7 +850,7 @@ const TREND_INIT_SCRIPT = `
                 var lines = hint ? [hint] : [];
                 if (links) {
                   var url = links[ctx.datasetIndex] && links[ctx.datasetIndex][ctx.dataIndex];
-                  if (url) lines.push('→ 点击看那期报告');
+                  if (url) lines.push(L === 'en' ? '→ Click to view report' : '→ 点击看那期报告');
                 }
                 return lines;
               }
@@ -875,7 +876,7 @@ const TREND_INIT_SCRIPT = `
       });
     } catch(e) {
       console.warn('trend chart init failed:', e);
-      showFallback(canvas, '趋势图渲染异常');
+      showFallback(canvas, L === 'en' ? 'Trend chart error' : '趋势图渲染异常');
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
@@ -1292,6 +1293,7 @@ export function renderSkillDetail(
   entry: SkillIndexEntry,
   evalReport: EvaluationReport | null,
   lang: Lang = DEFAULT_LANG,
+  insights: Insight[] = [],
 ): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
   const reportCount = [entry.doctor, entry.eval, entry.observe].filter(Boolean).length;
@@ -1301,7 +1303,7 @@ export function renderSkillDetail(
   return layout(entry.skillName, `
     <main>
       <a class="si-back" href="/${langQ}">${lang === 'zh' ? '← 返回 Skills' : '← Back to Skills'}</a>
-      ${renderHero(entry, [], lastTs, reportCount, lang)}
+      ${renderHero(entry, insights, lastTs, reportCount, lang)}
 
       <div class="si-overview">
         <section class="si-overview-cards" aria-label="${lang === 'zh' ? '三视角速览' : 'View summary'}">
