@@ -112,6 +112,129 @@ skill body content here.`;
     assert.equal(r.status, 'pass');
   });
 
+  it('passes and reports structured hardRules when front-matter hardRules are valid', async () => {
+    const content = `---
+name: v1
+description: code review skill
+hardRules:
+  - id: must-run-tests
+    rule: Run the project tests before finalizing code changes.
+    expectedBehavior: Invoke the configured test command or explain why it cannot run.
+  - id: cite-files
+    rule: Reference changed files in the final response.
+    expectedBehavior: Final response includes concrete file paths.
+---
+
+skill body content here.`;
+    const r = await skillMetadataRule.check(ctxWith(sampleSkill({ content })));
+    assert.equal(r.status, 'pass');
+    assert.deepEqual(r.detail, {
+      hardRulesDeclared: true,
+      hardRulesCount: 2,
+      workflowsDeclared: false,
+      workflowsCount: 0,
+      workflowNodeCount: 0,
+    });
+  });
+
+  it('passes and reports structured workflows when front-matter workflows are valid', async () => {
+    const content = `---
+name: v1
+description: workflow skill
+workflows:
+  - id: figma-route
+    description: Restore a component from design input.
+    nodes:
+      - id: read-design
+        action: Read the design source.
+      - id: render-draft
+        action: Render the draft component.
+---
+
+skill body content here.`;
+    const r = await skillMetadataRule.check(ctxWith(sampleSkill({ content })));
+    assert.equal(r.status, 'pass');
+    assert.deepEqual(r.detail, {
+      hardRulesDeclared: false,
+      hardRulesCount: 0,
+      workflowsDeclared: true,
+      workflowsCount: 1,
+      workflowNodeCount: 2,
+    });
+  });
+
+  it('fails when workflows is present but not a list', async () => {
+    const content = `---
+name: v1
+workflows: use the happy path
+---
+
+skill body content here.`;
+    const r = await skillMetadataRule.check(ctxWith(sampleSkill({ content })));
+    assert.equal(r.status, 'fail');
+    assert.match(r.message, /workflows/);
+  });
+
+  it('fails when workflow nodes are missing action', async () => {
+    const content = `---
+name: v1
+workflows:
+  - id: figma-route
+    nodes:
+      - id: read-design
+---
+
+skill body content here.`;
+    const r = await skillMetadataRule.check(ctxWith(sampleSkill({ content })));
+    assert.equal(r.status, 'fail');
+    assert.match(r.message, /action/);
+  });
+
+  it('fails when hardRules is present but not a list', async () => {
+    const content = `---
+name: v1
+hardRules: must run tests
+---
+
+skill body content here.`;
+    const r = await skillMetadataRule.check(ctxWith(sampleSkill({ content })));
+    assert.equal(r.status, 'fail');
+    assert.match(r.message, /hardRules/);
+    assert.ok(Array.isArray((r.detail as { errors?: unknown[] }).errors));
+  });
+
+  it('fails when hardRules entries miss expectedBehavior', async () => {
+    const content = `---
+name: v1
+hardRules:
+  - id: must-run-tests
+    rule: Run tests before finalizing.
+---
+
+skill body content here.`;
+    const r = await skillMetadataRule.check(ctxWith(sampleSkill({ content })));
+    assert.equal(r.status, 'fail');
+    assert.match(r.message, /expectedBehavior/);
+  });
+
+  it('fails when hardRules ids are duplicated', async () => {
+    const content = `---
+name: v1
+hardRules:
+  - id: must-run-tests
+    rule: Run tests before finalizing.
+    expectedBehavior: Invoke the test command.
+  - id: must-run-tests
+    rule: Run lint before finalizing.
+    expectedBehavior: Invoke the lint command.
+---
+
+skill body content here.`;
+    const r = await skillMetadataRule.check(ctxWith(sampleSkill({ content })));
+    assert.equal(r.status, 'fail');
+    assert.match(r.message, /duplicates/);
+  });
+
   it('fails for skill with malformed front-matter (unterminated YAML flow)', async () => {
     // js-yaml will reject unterminated flow collections like `[unterminated`
     const content = `---

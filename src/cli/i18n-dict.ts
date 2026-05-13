@@ -198,8 +198,12 @@ export type CliMessageKey =
   | 'cli.doctor.skill_readable.hint.too_short'
   // doctor — skill_metadata rule
   | 'cli.doctor.skill_metadata.fail.frontmatter_invalid'
+  | 'cli.doctor.skill_metadata.fail.hardrules_invalid'
+  | 'cli.doctor.skill_metadata.fail.workflows_invalid'
   | 'cli.doctor.skill_metadata.fail.missing_skillmd'
   | 'cli.doctor.skill_metadata.hint.frontmatter'
+  | 'cli.doctor.skill_metadata.hint.hardrules'
+  | 'cli.doctor.skill_metadata.hint.workflows'
   | 'cli.doctor.skill_metadata.hint.missing_skillmd'
   // doctor — dependencies rule
   | 'cli.doctor.dependencies.fail'
@@ -1116,6 +1120,14 @@ Examples:
     zh: 'front-matter 格式错误: {error}',
     en: 'front-matter format error: {error}',
   },
+  'cli.doctor.skill_metadata.fail.hardrules_invalid': {
+    zh: 'hardRules 结构错误: {error}',
+    en: 'hardRules schema error: {error}',
+  },
+  'cli.doctor.skill_metadata.fail.workflows_invalid': {
+    zh: 'workflows 结构错误: {error}',
+    en: 'workflows schema error: {error}',
+  },
   'cli.doctor.skill_metadata.fail.missing_skillmd': {
     zh: 'directory-skill 缺少 SKILL.md 入口文件',
     en: 'directory-skill missing SKILL.md entry file',
@@ -1123,6 +1135,14 @@ Examples:
   'cli.doctor.skill_metadata.hint.frontmatter': {
     zh: 'front-matter 用 YAML 语法,key: value 或 - item 形式。可参考 examples/multi-skills 下的 skill 写法',
     en: 'front-matter uses YAML syntax (key: value or - item). See examples/multi-skills for reference',
+  },
+  'cli.doctor.skill_metadata.hint.hardrules': {
+    zh: 'hardRules 必须写在 SKILL.md front-matter 中,格式为 hardRules: [{ id, rule, expectedBehavior }]；id 要稳定且唯一,expectedBehavior 写可观察行为。',
+    en: 'hardRules must live in SKILL.md front-matter as hardRules: [{ id, rule, expectedBehavior }]; id must be stable and unique, expectedBehavior should describe observable behavior.',
+  },
+  'cli.doctor.skill_metadata.hint.workflows': {
+    zh: 'workflows 必须写在 SKILL.md front-matter 中,格式为 workflows: [{ id, description, nodes: [{ id, action }] }]；nodes 也兼容 steps 别名。',
+    en: 'workflows must live in SKILL.md front-matter as workflows: [{ id, description, nodes: [{ id, action }] }]; nodes also accepts the steps alias.',
   },
   'cli.doctor.skill_metadata.hint.missing_skillmd': {
     zh: 'directory-skill 必须有 SKILL.md 文件作为入口。或将 skill 写成单文件 .md',

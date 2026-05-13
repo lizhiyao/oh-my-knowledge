@@ -46,8 +46,9 @@ async function executeIngest(argv: string[]): Promise<void> {
     throw new CliExit(1);
   }
   const { buildObservationInboxReport, saveObservationInboxReport, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
-  const report = buildObservationInboxReport(tracePath);
   const outDir = resolve(values['output-dir'] || DEFAULT_OBSERVATIONS_DIR);
+  const { loadObservationReviewState } = await import('../../observability/review-state.js');
+  const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
   const path = saveObservationInboxReport(report, outDir);
   console.log(JSON.stringify(report, null, 2));
   process.stderr.write(`observe inbox written to: ${path}\n`);

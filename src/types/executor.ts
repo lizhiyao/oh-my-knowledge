@@ -7,6 +7,10 @@ export interface ToolCallInfo {
   messageUuid?: string;
   toolUseId?: string;
   timestamp?: string;
+  sourceTrace?: string;
+  sourceKind?: 'claude' | 'openclaw' | 'markdown_log' | 'unknown';
+  traceRole?: 'standalone' | 'main' | 'subagent';
+  traceLabel?: string;
 }
 
 export interface TurnInfo {

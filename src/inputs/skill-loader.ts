@@ -1,6 +1,7 @@
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { resolve, join, relative, dirname, basename } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { extractSkillHardRules, extractSkillWorkflows } from '../shared/hard-rules.js';
 import type { Artifact } from '../types/index.js';
 
 function parseFrontmatterPreflight(content: string): string[] | undefined {
@@ -26,8 +27,13 @@ function parseFrontmatterPreflight(content: string): string[] | undefined {
 
 function buildMetadata(content: string): Record<string, unknown> | undefined {
   const preflight = parseFrontmatterPreflight(content);
-  if (!preflight || preflight.length === 0) return undefined;
-  return { preflight };
+  const hardRules = extractSkillHardRules(content);
+  const workflows = extractSkillWorkflows(content);
+  const metadata: Record<string, unknown> = {};
+  if (preflight && preflight.length > 0) metadata.preflight = preflight;
+  if (hardRules.length > 0) metadata.hardRules = hardRules;
+  if (workflows.length > 0) metadata.workflows = workflows;
+  return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
 
 function gitShowFile(ref: string, filePath: string): string | null {

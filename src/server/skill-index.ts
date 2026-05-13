@@ -83,13 +83,14 @@ let _indexCache: SkillIndexCache | null = null;
  *   helper 在两个 try 的 catch 分支都返 0 拼接出"0-0"的稳定 sentinel 等价)。
  */
 function safeDirJsonContentFingerprint(dir: string): string {
+  // 加入 dir 路径本身,确保不同路径即使 mtime/file-list 相同也会产生不同 fingerprint
   let dirMtimeMs: number;
   let jsonFiles: string[];
   try {
     dirMtimeMs = statSync(dir).mtimeMs;
     jsonFiles = readdirSync(dir).filter((f) => f.endsWith('.json')).sort();
   } catch {
-    return 'missing';
+    return `missing:${dir}`;
   }
   const fileParts = jsonFiles.map((f) => {
     try {
@@ -99,7 +100,7 @@ function safeDirJsonContentFingerprint(dir: string): string {
       return `${f}:?`;
     }
   });
-  return `${dirMtimeMs}|${fileParts.join(',')}`;
+  return `${dir}|${dirMtimeMs}|${fileParts.join(',')}`;
 }
 
 function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, doctorsDir: string): string {
