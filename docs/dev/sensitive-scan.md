@@ -91,6 +91,13 @@ echo "扫描完成。命中行需逐条审视:误报(变量名 / 第三方包名
   3. 已 push 到远端的话,需要 `git filter-branch` 清历史(参考 `CONTRIBUTING.md`)
 - **token / key 命中**:**立即** revoke 凭据,删除 + 重提历史,不要只删工作树
 
+## 测试 fixture 脱敏规范
+
+- 路径统一使用 `/tmp/example`、`/repo/demo`、`/workspace/example` 等中性路径,不要写入真实 `/Users/<name>/...` 或 `/home/<name>/...`
+- 用户名 / 展示名使用 `示例用户`、`example-user`、`demo-user`
+- ID / sender / token 占位使用 `example-id`、`example-sender`、`example-token`
+- trace / JSONL fixture 只保留验证行为所需字段,不要拷贝真实会话里的业务文本、个人标识、内部路径或外部服务地址
+
 ## 加新模式
 
 在 omk 维护期发现新的内部代号,追加到对应的 `PAT_*` 变量即可。

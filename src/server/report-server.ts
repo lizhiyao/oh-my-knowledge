@@ -17,6 +17,7 @@ import type { JobStore, ReportStore } from '../types/index.js';
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, findObservationInboxItem, formatObservationShow, queryObservationInbox } from '../observability/inbox.js';
 import { buildObservationInboxViewModel } from '../observability/inbox-view-model.js';
+import { deleteObservationReviewState, loadObservationReviewState, updateObservationReviewState, type ObservationReviewStateUpdate } from '../observability/review-state.js';
 import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;
@@ -240,6 +241,31 @@ function fmtDelta(d: number | null | undefined, isPercent = true): string {
 function fmtPct(v: number | null | undefined): string {
   if (v == null) return '—';
   return `${Math.round(v * 100)}%`;
+}
+
+function readJsonBody(req: IncomingMessage, maxBytes = 1024 * 1024): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        reject(new Error('request body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      try {
+        const raw = Buffer.concat(chunks).toString('utf-8').trim();
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch {
+        reject(new Error('invalid json body'));
+      }
+    });
+    req.on('error', reject);
+  });
 }
 
 function renderSkillDiffPage(diff: SkillDiffResult, lang: Lang = DEFAULT_LANG): string {
@@ -525,16 +551,21 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
       }
 
       if (path === '/observations' || path === '/observations/inbox') {
+        const skill = parsed.searchParams.get('skill') || undefined;
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderObservationInboxPage(buildObservationInboxViewModel(observationsDir), lang));
+        res.end(renderObservationInboxPage(buildObservationInboxViewModel(observationsDir, { skill }), lang));
         return;
       }
 
       if (path === '/api/observations/inbox') {
         const severity = parsed.searchParams.get('severity');
+        const skill = parsed.searchParams.get('skill');
         const limitRaw = parsed.searchParams.get('limit');
         const limit = limitRaw ? Math.max(1, Number(limitRaw) || 0) : 0;
         let items = queryObservationInbox(observationsDir);
+        if (skill) {
+          items = items.filter((item) => item.skillName === skill);
+        }
         if (severity === 'high' || severity === 'medium' || severity === 'low' || severity === 'noise') {
           items = items.filter((item) => item.severity === severity);
         }
@@ -549,6 +580,45 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         const item = id ? findObservationInboxItem(id, observationsDir) : null;
         res.writeHead(item ? 200 : 404, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(item ? { id, text: formatObservationShow(item) } : { error: 'observation not found' }));
+        return;
+      }
+
+      if (path === '/api/observations/review-state') {
+        if (req.method === 'GET') {
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify(loadObservationReviewState(observationsDir)));
+          return;
+        }
+        if (req.method === 'POST') {
+          const body = await readJsonBody(req) as Partial<ObservationReviewStateUpdate>;
+          const state = updateObservationReviewState(observationsDir, {
+            targetType: body.targetType as ObservationReviewStateUpdate['targetType'],
+            targetId: String(body.targetId ?? ''),
+            verdict: body.verdict as ObservationReviewStateUpdate['verdict'],
+            note: typeof body.note === 'string' ? body.note : undefined,
+            reason: typeof body.reason === 'string' ? body.reason : undefined,
+            metricKey: body.metricKey as ObservationReviewStateUpdate['metricKey'],
+            sourceTrace: typeof body.sourceTrace === 'string' ? body.sourceTrace : undefined,
+            sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
+            messageIndex: typeof body.messageIndex === 'number' ? body.messageIndex : undefined,
+            messageUuid: typeof body.messageUuid === 'string' ? body.messageUuid : undefined,
+            toolUseId: typeof body.toolUseId === 'string' ? body.toolUseId : undefined,
+            snippet: typeof body.snippet === 'string' ? body.snippet : undefined,
+          });
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify(state));
+          return;
+        }
+        if (req.method === 'DELETE') {
+          const targetType = parsed.searchParams.get('targetType') as ObservationReviewStateUpdate['targetType'];
+          const targetId = parsed.searchParams.get('targetId') ?? '';
+          const state = deleteObservationReviewState(observationsDir, targetType, targetId);
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify(state));
+          return;
+        }
+        res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ error: 'method not allowed' }));
         return;
       }
 

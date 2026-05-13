@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -80,6 +80,33 @@ describe('loadCcSessions', () => {
     assert.deepEqual(ids, ['sa', 'sb']);
   });
 
+  it('groups subagents JSONL under the parent session folder', () => {
+    const sessionDir = join(tmpDir, 'sessionA');
+    const subagentsDir = join(sessionDir, 'subagents');
+    mkdirSync(subagentsDir, { recursive: true });
+    writeSession(sessionDir, 'main.jsonl', [
+      userRec('u-main', '<command-name>/main-skill</command-name>', { sessionId: 'sessionA', timestamp: '2026-05-01T00:00:00.000Z' }),
+      asstRec('a-main', [{ type: 'tool_use', id: 'task1', name: 'Task', input: { prompt: 'delegate' } }], { sessionId: 'sessionA', timestamp: '2026-05-01T00:00:01.000Z' }),
+    ]);
+    writeSession(subagentsDir, 'x1.jsonl', [
+      userRec('u-x1', '<command-name>/child-skill</command-name>', { sessionId: 'child-1', timestamp: '2026-05-01T00:00:02.000Z' }),
+      asstRec('a-x1', [{ type: 'tool_use', id: 'read1', name: 'Read', input: { file_path: '/tmp/a.md' } }], { sessionId: 'child-1', timestamp: '2026-05-01T00:00:03.000Z' }),
+    ]);
+
+    const sessions = loadCcSessions(sessionDir).sort((a, b) => a.sourcePath.localeCompare(b.sourcePath));
+    assert.equal(sessions.length, 2);
+    assert.deepEqual(new Set(sessions.map((session) => session.sessionGroupId)), new Set(['sessionA']));
+    assert.deepEqual(sessions.map((session) => session.traceRole).sort(), ['main', 'subagent']);
+
+    const { segments } = ccTracesToResultEntries(sessionDir);
+    const child = segments.find((segment) => segment.skillName === 'child-skill');
+    assert.ok(child);
+    assert.equal(child.sessionId, 'sessionA');
+    assert.equal(child.traceSessionId, 'child-1');
+    assert.equal(child.traceRole, 'subagent');
+    assert.ok(child.sourceTrace?.endsWith('subagents/x1.jsonl'));
+  });
+
   it('loads agent markdown logs', () => {
     const path = join(tmpDir, 'agent.log');
     writeFileSync(path, `---
@@ -102,6 +129,270 @@ describe('loadCcSessions', () => {
     assert.equal(segs.length, 1);
     assert.equal(segs[0].skillName, 'design-coding-create-template');
     assert.equal(segs[0].attribution?.source, 'command-name');
+  });
+
+  it('loads OpenClaw JSONL and adapts toolCall/toolResult records', () => {
+    const path = join(tmpDir, 'openclaw.jsonl');
+    writeFileSync(path, jsonl([
+      { type: 'session', version: 3, id: 'oc-1', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/tmp/example/.openclaw/workspace' },
+      {
+        type: 'message',
+        id: 'u1',
+        parentId: null,
+        timestamp: '2026-05-12T00:00:01.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'Conversation info (untrusted metadata):\n```json\n{"channel":"aima","sender":"示例用户","sender_id":"example-sender"}\n```\n\n帮我写一个 PRD\n<aima-cmd name="prd-create">请生成 PRD</aima-cmd>' }],
+        },
+      },
+      {
+        type: 'message',
+        id: 'a1',
+        parentId: 'u1',
+        timestamp: '2026-05-12T00:00:02.000Z',
+        message: {
+          role: 'assistant',
+          model: 'gpt-5.5',
+          provider: 'openai-codex',
+          content: [
+            { type: 'toolCall', id: 'call-read-skill', name: 'read', arguments: { path: '/tmp/example/.openclaw/workspace/skills/prd-create/SKILL.md' } },
+          ],
+          usage: { input: 10, output: 2, cacheRead: 3, cacheWrite: 0 },
+        },
+      },
+      {
+        type: 'message',
+        id: 'tr1',
+        parentId: 'a1',
+        timestamp: '2026-05-12T00:00:03.000Z',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'call-read-skill',
+          toolName: 'read',
+          content: [{ type: 'text', text: '# PRD Creation Skill' }],
+          isError: false,
+        },
+      },
+    ]));
+
+    const sessions = loadCcSessions(path);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].sessionId, 'oc-1');
+    assert.equal(sessions[0].sourceKind, 'openclaw');
+    assert.equal(sessions[0].entrypoint, 'openclaw');
+    assert.equal(sessions[0].cwd, '/tmp/example/.openclaw/workspace');
+    assert.deepEqual(sessions[0].sourceMetadata, {
+      channel: 'aima',
+      sender: '示例用户',
+      senderId: 'example-sender',
+      provider: 'openai-codex',
+      model: 'gpt-5.5',
+      aimaCommands: ['prd-create'],
+    });
+    const segs = segmentBySkill(sessions[0]);
+    const skill = segs.find((seg) => seg.skillName === 'prd-create');
+    assert.ok(skill);
+    assert.equal(skill.sourceKind, 'openclaw');
+    assert.equal(skill.attribution?.source, 'aima-cmd');
+    assert.equal(skill.attribution?.commandName, 'prd-create');
+    assert.equal(skill.toolCalls[0].tool, 'Read');
+    assert.equal((skill.toolCalls[0].input as { file_path?: string }).file_path, '/tmp/example/.openclaw/workspace/skills/prd-create/SKILL.md');
+    assert.equal(skill.toolCalls[0].success, true);
+    assert.equal(skill.metrics.inputTokens, 10);
+    assert.equal(skill.metrics.cacheReadTokens, 3);
+  });
+
+  it('keeps OpenClaw aima-cmd labels as business actions and splits by SKILL.md reads', () => {
+    const path = join(tmpDir, 'openclaw-multi-action.jsonl');
+    writeFileSync(path, jsonl([
+      { type: 'session', version: 3, id: 'oc-actions', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/tmp/example/.openclaw/workspace' },
+      {
+        type: 'message',
+        id: 'u1',
+        parentId: null,
+        timestamp: '2026-05-12T00:00:01.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: '帮我写底仓货架需求\n<aima-cmd name="生成PRD">请根据以上需求生成 PRD 文档。</aima-cmd>\n<aima-cmd name="生成Demo">请根据以上需求生成可交互的 Demo。</aima-cmd>' }],
+        },
+      },
+      {
+        type: 'message',
+        id: 'a1',
+        parentId: 'u1',
+        timestamp: '2026-05-12T00:00:02.000Z',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'toolCall', id: 'read-prd', name: 'read', arguments: { path: '/tmp/example/.openclaw/workspace/skills/prd-create/SKILL.md' } },
+          ],
+        },
+      },
+      {
+        type: 'message',
+        id: 'tr1',
+        parentId: 'a1',
+        timestamp: '2026-05-12T00:00:03.000Z',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'read-prd',
+          toolName: 'read',
+          content: [{ type: 'text', text: '# PRD Creation Skill' }],
+          isError: false,
+        },
+      },
+      {
+        type: 'message',
+        id: 'a2',
+        parentId: 'tr1',
+        timestamp: '2026-05-12T00:00:04.000Z',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'toolCall', id: 'read-demo', name: 'read', arguments: { path: '/tmp/example/.openclaw/workspace/skills/demo-create/SKILL.md' } },
+          ],
+        },
+      },
+      {
+        type: 'message',
+        id: 'tr2',
+        parentId: 'a2',
+        timestamp: '2026-05-12T00:00:05.000Z',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'read-demo',
+          toolName: 'read',
+          content: [{ type: 'text', text: '# Demo Creation Skill' }],
+          isError: false,
+        },
+      },
+    ]));
+
+    const [session] = loadCcSessions(path);
+    assert.deepEqual(session.sourceMetadata?.aimaCommands, ['生成Demo', '生成PRD']);
+    const segs = segmentBySkill(session);
+    assert.deepEqual(segs.filter((seg) => seg.skillName !== 'general').map((seg) => seg.skillName), ['prd-create', 'demo-create']);
+    assert.equal(segs.some((seg) => seg.skillName === '生成PRD' || seg.skillName === '生成Demo'), false);
+    assert.equal(segs.find((seg) => seg.skillName === 'prd-create')?.attribution?.source, 'read-skill-md');
+    assert.equal(segs.find((seg) => seg.skillName === 'demo-create')?.attribution?.source, 'read-skill-md');
+  });
+
+  it('attributes OpenClaw cron script executions to the skill directory', () => {
+    const path = join(tmpDir, 'openclaw-cron-script.jsonl');
+    writeFileSync(path, jsonl([
+      { type: 'session', version: 3, id: 'oc-cron', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/tmp/example/.openclaw/workspace-main' },
+      {
+        type: 'message',
+        id: 'u1',
+        parentId: null,
+        timestamp: '2026-05-12T00:00:01.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: '[cron:6596 task-poller] 请执行任务拉取：bash /tmp/example/.openclaw/workspace-main/skills/task-poller/scripts/run-poller.sh /tmp/example/.openclaw/workspace-main' }],
+        },
+      },
+      {
+        type: 'message',
+        id: 'a1',
+        parentId: 'u1',
+        timestamp: '2026-05-12T00:00:02.000Z',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'toolCall', id: 'run-poller', name: 'exec', arguments: { command: 'bash /tmp/example/.openclaw/workspace-main/skills/task-poller/scripts/run-poller.sh /tmp/example/.openclaw/workspace-main', timeout: 120 } },
+          ],
+        },
+      },
+      {
+        type: 'message',
+        id: 'tr1',
+        parentId: 'a1',
+        timestamp: '2026-05-12T00:00:03.000Z',
+        message: {
+          role: 'toolResult',
+          toolCallId: 'run-poller',
+          toolName: 'exec',
+          content: [{ type: 'text', text: 'done' }],
+          isError: false,
+        },
+      },
+    ]));
+
+    const [session] = loadCcSessions(path);
+    const segs = segmentBySkill(session);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'task-poller');
+    assert.equal(segs[0].attribution?.source, 'skill-script');
+    assert.equal(segs[0].toolCalls[0].tool, 'Bash');
+    assert.equal((segs[0].toolCalls[0].input as { command?: string }).command?.includes('/skills/task-poller/scripts/run-poller.sh'), true);
+  });
+
+  it('attributes OpenClaw script paths after punctuation boundaries', () => {
+    const path = join(tmpDir, 'openclaw-script-punctuation.jsonl');
+    writeFileSync(path, jsonl([
+      { type: 'session', version: 3, id: 'oc-cron-punctuation', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/tmp/example/.openclaw/workspace-main' },
+      {
+        type: 'message',
+        id: 'u1',
+        parentId: null,
+        timestamp: '2026-05-12T00:00:01.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'cron command:cmd:/tmp/example/.openclaw/workspace-main/skills/task-poller/scripts/run-poller.sh' }],
+        },
+      },
+      {
+        type: 'message',
+        id: 'a1',
+        parentId: 'u1',
+        timestamp: '2026-05-12T00:00:02.000Z',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'toolCall', id: 'run-poller', name: 'exec', arguments: { command: '(/tmp/example/.openclaw/workspace-main/skills/task-poller/scripts/run-poller.sh)', timeout: 120 } },
+          ],
+        },
+      },
+    ]));
+
+    const [session] = loadCcSessions(path);
+    const segs = segmentBySkill(session);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'task-poller');
+    assert.equal(segs[0].attribution?.source, 'skill-script');
+
+    const wrappedPath = join(tmpDir, 'openclaw-script-wrapped.jsonl');
+    writeFileSync(wrappedPath, jsonl([
+      { type: 'session', version: 3, id: 'oc-cron-wrapped', timestamp: '2026-05-12T00:01:00.000Z', cwd: '/tmp/example/.openclaw/workspace-main' },
+      {
+        type: 'message',
+        id: 'u1',
+        parentId: null,
+        timestamp: '2026-05-12T00:01:01.000Z',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'run scheduled task' }],
+        },
+      },
+      {
+        type: 'message',
+        id: 'a1',
+        parentId: 'u1',
+        timestamp: '2026-05-12T00:01:02.000Z',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'toolCall', id: 'run-poller', name: 'exec', arguments: { command: '(/tmp/example/.openclaw/workspace-main/skills/task-poller/scripts/run-poller.sh)', timeout: 120 } },
+          ],
+        },
+      },
+    ]));
+
+    const [wrappedSession] = loadCcSessions(wrappedPath);
+    const wrappedSegs = segmentBySkill(wrappedSession);
+    assert.equal(wrappedSegs.length, 2);
+    assert.equal(wrappedSegs[1].skillName, 'task-poller');
+    assert.equal(wrappedSegs[1].attribution?.source, 'skill-script');
   });
 
   it('loads each markdown log block as its own session', () => {
@@ -177,6 +468,9 @@ describe('segmentBySkill', () => {
     assert.equal(segs.length, 2);
     assert.equal(segs[0].skillName, 'general');
     assert.equal(segs[1].skillName, 'audit');
+    assert.equal(segs[1].attribution?.source, 'command-name');
+    assert.equal(segs[1].attribution?.commandName, '/audit');
+    assert.equal(segs[1].turns.some((turn) => turn.content.includes('<command-message>')), false);
     assert.equal(segs[1].toolCalls.length, 1);
     assert.equal(segs[1].toolCalls[0].tool, 'Read');
   });
@@ -343,7 +637,7 @@ describe('segmentBySkill', () => {
     assert.equal(segs[0].skillName, 'general', '/clear 是 cc 内置命令, 不切段');
   });
 
-  it('plugin-prefixed skill name is normalized (pbakaus/impeccable:audit → audit)', () => {
+  it('plugin-prefixed skill name keeps source metadata (pbakaus/impeccable:audit → audit from plugin)', () => {
     const s = {
       sessionId: 's1',
       sourcePath: '/t',
@@ -355,9 +649,32 @@ describe('segmentBySkill', () => {
       ],
     };
     const segs = segmentBySkill(s);
-    // 归一化后两个都是 "audit", 相邻同名不切段 → 1 段
-    assert.equal(segs.length, 1);
+    // skillName 仍归一化为 audit, 但 plugin 来源不同, 需要保留成两段。
+    assert.equal(segs.length, 2);
     assert.equal(segs[0].skillName, 'audit');
+    assert.equal(segs[0].attribution?.rawSkillRef, 'pbakaus/impeccable:audit');
+    assert.equal(segs[0].attribution?.pluginName, 'pbakaus/impeccable');
+    assert.equal(segs[1].skillName, 'audit');
+    assert.equal(segs[1].attribution?.rawSkillRef, 'impeccable:audit');
+    assert.equal(segs[1].attribution?.pluginName, 'impeccable');
+  });
+
+  it('plugin slash command keeps source metadata and command name', () => {
+    const s = {
+      sessionId: 's1',
+      sourcePath: '/t',
+      records: [
+        userRec('u1', '<command-name>/code-security:secure-coding</command-name>\n<command-message>code-security:secure-coding</command-message>'),
+        asstRec('a1', [{ type: 'tool_use', id: 'tu1', name: 'Read', input: {} }]),
+      ],
+    };
+    const segs = segmentBySkill(s);
+    assert.equal(segs.length, 1);
+    assert.equal(segs[0].skillName, 'secure-coding');
+    assert.equal(segs[0].attribution?.source, 'command-name');
+    assert.equal(segs[0].attribution?.rawSkillRef, 'code-security:secure-coding');
+    assert.equal(segs[0].attribution?.pluginName, 'code-security');
+    assert.equal(segs[0].attribution?.commandName, '/code-security:secure-coding');
   });
 
   it('repeated same-skill signal does not create spurious empty segments', () => {

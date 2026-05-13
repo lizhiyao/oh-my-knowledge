@@ -21,11 +21,18 @@ export type {
 export { loadCcSessions } from './trace-source.js';
 export {
   extractAttributionSkill,
+  extractAttributionSkillRef,
   extractCommandSkill,
+  extractCommandSkillRef,
+  extractCommandEnvelopeText,
   extractMarkdownLogSkill,
+  extractSkillReadFileRef,
   extractSkillReadFile,
   extractSkillToolUse,
+  extractSkillToolUseRef,
   normalizeSkillName,
+  parseSkillRef,
+  stripCommandEnvelopeText,
 } from './trace-attribution.js';
 export type { SkillSegment } from './trace-segmenter.js';
 export { segmentBySkill, segmentsToResultEntries } from './trace-segmenter.js';

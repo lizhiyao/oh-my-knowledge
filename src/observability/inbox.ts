@@ -4,15 +4,18 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { GapSignalRef, ToolCallInfo } from '../types/index.js';
 import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
-import { ccTracesToResultEntries, type SkillSegment } from './trace-adapter.js';
+import { ccTracesToResultEntries, type CcSession, type SkillSegment } from './trace-adapter.js';
 import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
+import { durationMsBetween } from '../shared/time.js';
+import { buildObservationExperienceReport, type ObservationExperienceReport } from './experience.js';
+import type { ObservationReviewState } from './review-state.js';
 
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = join(process.cwd(), '.omk', 'observations');
 export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(homedir(), '.oh-my-knowledge', 'observations');
 export const DEFAULT_OBSERVATIONS_DIR = DEFAULT_PROJECT_OBSERVATIONS_DIR;
 
 export type ObservationSignalType = 'failed_search' | 'repeated_failure' | 'hedging' | 'explicit_marker';
-export type ObservationSourceKind = 'claude' | 'markdown_log' | 'unknown';
+export type ObservationSourceKind = 'claude' | 'openclaw' | 'markdown_log' | 'unknown';
 export type ObservationSeverityReasonCode =
   | 'knowledge_gap_suspected'
   | 'repeated_failure_suspected'
@@ -91,12 +94,32 @@ export interface ObservationInboxItem {
   representativeEvidence: ObservationEvidence[];
 }
 
+export interface ObservationSessionTimeRange {
+  sessionId: string;
+  sessionGroupId?: string;
+  sourceTrace: string;
+  sourceKind: ObservationSourceKind;
+  traceRole?: 'standalone' | 'main' | 'subagent';
+  traceLabel?: string;
+  cwd?: string;
+  startTimestamp?: string;
+  endTimestamp?: string;
+  durationMs?: number;
+}
+
 export interface ObservationInboxReport {
   kind: 'observe-inbox';
   schemaVersion: 1;
   meta: {
     tracePath: string;
     generatedAt: string;
+    sessionCount?: number;
+    sessionTimeRange?: {
+      from: string;
+      to: string;
+      durationMs?: number;
+    };
+    sessionTimeRanges?: ObservationSessionTimeRange[];
     segmentCount: number;
     itemCount: number;
     skillInvocationCounts?: Record<string, number>;
@@ -105,6 +128,7 @@ export interface ObservationInboxReport {
     skillToolCallCounts?: Record<string, Record<string, number>>;
   };
   items: ObservationInboxItem[];
+  experience?: ObservationExperienceReport;
 }
 
 export interface ObservationSkillRollup {
@@ -117,6 +141,10 @@ export interface ObservationSkillRollup {
   lowCount: number;
   noiseCount: number;
   latestSeen: string;
+}
+
+export interface BuildObservationInboxReportOptions {
+  reviewState?: ObservationReviewState;
 }
 
 function hashString(input: string): string {
@@ -138,6 +166,7 @@ export function normalizeObservationKeyInput(value: string): string {
 }
 
 export function inferObservationSourceKind(sourceTrace: string): ObservationSourceKind {
+  if (sourceTrace.includes('/openclaw') || sourceTrace.includes('/.openclaw/')) return 'openclaw';
   if (sourceTrace.endsWith('.jsonl')) return 'claude';
   if (sourceTrace.endsWith('.log')) return 'markdown_log';
   return 'unknown';
@@ -211,7 +240,10 @@ function isTransientPath(value: string): boolean {
 
 function isSkillAssetPath(value: string, skillName: string): boolean {
   if (!value || !skillName) return false;
-  return value.includes(`/.claude/skills/${skillName}/`) || value.includes(`.claude/skills/${skillName}/`);
+  return value.includes(`/.claude/skills/${skillName}/`)
+    || value.includes(`.claude/skills/${skillName}/`)
+    || value.includes(`/.openclaw/workspace/skills/${skillName}/`)
+    || value.includes(`.openclaw/workspace/skills/${skillName}/`);
 }
 
 function topicTokens(value: string): Set<string> {
@@ -281,6 +313,33 @@ function severityFor(signalType: ObservationSignalType, subtype: ObservationSign
   if (subtype === 'skill_asset_read_failed') return 'medium';
   if (subtype === 'tool_error' || subtype === 'permission_error' || subtype === 'not_found' || subtype === 'transient_file_missing' || subtype === 'permission_denied' || subtype === 'tool_limit' || subtype === 'tool_failure' || subtype === 'regex_only') return 'noise';
   return 'low';
+}
+
+function buildSessionTimeRanges(sessions: CcSession[]): ObservationSessionTimeRange[] {
+  return sessions.map((session): ObservationSessionTimeRange => ({
+    sessionId: session.sessionId,
+    sessionGroupId: session.sessionGroupId,
+    sourceTrace: session.sourcePath,
+    sourceKind: session.sourceKind ?? inferObservationSourceKind(session.sourcePath),
+    traceRole: session.traceRole,
+    traceLabel: session.traceLabel,
+    cwd: session.cwd,
+    startTimestamp: session.startTimestamp,
+    endTimestamp: session.endTimestamp,
+    durationMs: durationMsBetween(session.startTimestamp, session.endTimestamp),
+  })).sort((a, b) =>
+    (a.startTimestamp ?? '').localeCompare(b.startTimestamp ?? '')
+    || a.sourceTrace.localeCompare(b.sourceTrace)
+  );
+}
+
+function buildOverallSessionTimeRange(ranges: ObservationSessionTimeRange[]): ObservationInboxReport['meta']['sessionTimeRange'] {
+  const starts = ranges.map((range) => range.startTimestamp).filter((value): value is string => Boolean(value));
+  const ends = ranges.map((range) => range.endTimestamp).filter((value): value is string => Boolean(value));
+  if (starts.length === 0 || ends.length === 0) return { from: '', to: '' };
+  const from = starts.reduce((min, value) => value < min ? value : min, starts[0]);
+  const to = ends.reduce((max, value) => value > max ? value : max, ends[0]);
+  return { from, to, durationMs: durationMsBetween(from, to) };
 }
 
 const SEVERITY_REASON_ZH: Record<ObservationSeverityReasonCode, string> = {
@@ -399,7 +458,7 @@ function itemsFromSegment(segment: SkillSegment): ObservationInboxItem[] {
     const confidence = confidenceForSubtype(subtype, signal);
     const severity = severityFor(signalType, subtype, confidence);
     const item: ObservationInboxItem = {
-      id: hashString([segment.sessionId, segment.segmentIndex, signal.type, subtype, JSON.stringify(evidence)].join('\u0000')),
+      id: hashString([segment.sessionId, segment.sourceTrace ?? '', segment.segmentIndex, signal.type, subtype, JSON.stringify(evidence)].join('\u0000')),
       skillName: segment.skillName,
       artifactVersion: 'unknown',
       cwd: segment.cwd,
@@ -425,9 +484,11 @@ function itemsFromSegment(segment: SkillSegment): ObservationInboxItem[] {
   return items;
 }
 
-export function buildObservationInboxReport(tracePath: string): ObservationInboxReport {
+export function buildObservationInboxReport(tracePath: string, options: BuildObservationInboxReportOptions = {}): ObservationInboxReport {
   const { sessions, segments } = ccTracesToResultEntries(tracePath);
-  const sourceBySession = new Map(sessions.map((s) => [s.sessionId, s.sourcePath]));
+  const generatedAt = new Date().toISOString();
+  const sessionTimeRanges = buildSessionTimeRanges(sessions);
+  const sessionTimeRange = buildOverallSessionTimeRange(sessionTimeRanges);
   const skillInvocationCounts: Record<string, number> = {};
   const skillInvocationLastSeen: Record<string, string> = {};
   const skillToolCallCounts: Record<string, Record<string, number>> = {};
@@ -452,12 +513,12 @@ export function buildObservationInboxReport(tracePath: string): ObservationInbox
   );
   const aggregationState = createInboxAggregationState();
   for (const segment of segments) {
-    const sourceTrace = sourceBySession.get(segment.sessionId) ?? tracePath;
+    const sourceTrace = segment.sourceTrace ?? tracePath;
     const segmentItems = itemsFromSegment(segment).map((item) => {
       const withSource = {
         ...item,
         sourceTrace,
-        sourceKind: inferObservationSourceKind(sourceTrace),
+        sourceKind: segment.sourceKind ?? inferObservationSourceKind(sourceTrace),
       };
       return {
         ...withSource,
@@ -467,12 +528,16 @@ export function buildObservationInboxReport(tracePath: string): ObservationInbox
     addInboxItemsToState(aggregationState, segmentItems);
   }
   const items = finishInboxAggregation(aggregationState);
+  const experience = buildObservationExperienceReport({ sessions, segments, items, generatedAt, reviewState: options.reviewState });
   return {
     kind: 'observe-inbox',
     schemaVersion: 1,
     meta: {
       tracePath,
-      generatedAt: new Date().toISOString(),
+      generatedAt,
+      sessionCount: sessions.length,
+      sessionTimeRange,
+      sessionTimeRanges,
       segmentCount: segments.length,
       itemCount: items.length,
       skillInvocationCounts,
@@ -481,6 +546,7 @@ export function buildObservationInboxReport(tracePath: string): ObservationInbox
       skillToolCallCounts,
     },
     items,
+    experience,
   };
 }
 
@@ -587,7 +653,7 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
           return {
             ...item,
             sourceKind: sourceKind === 'openclaw'
-              ? 'markdown_log'
+              ? 'openclaw'
               : (item.sourceKind ?? inferObservationSourceKind(item.sourceTrace)),
             severityReasonCode: item.severityReasonCode ?? severityReasonCodeFor(item),
             severityReason: undefined,

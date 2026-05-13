@@ -23,6 +23,7 @@ import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { tCli } from '../cli/i18n.js';
 import { preflightDependencies } from '../eval-core/dependency-checker.js';
+import { validateSkillHardRules, validateSkillWorkflows } from '../shared/hard-rules.js';
 import type { DependencyIssue } from '../eval-core/dependency-checker.js';
 import type {
   DoctorRule,
@@ -163,9 +164,40 @@ export const skillMetadataRule: DoctorRule = {
         detail: { error: fmCheck.error },
       };
     }
+    const hardRulesCheck = validateSkillHardRules(content);
+    if (!hardRulesCheck.ok) {
+      return {
+        status: 'fail',
+        message: tCli('cli.doctor.skill_metadata.fail.hardrules_invalid', ctx.lang, { error: hardRulesCheck.errors.join('; ') }),
+        hint: tCli('cli.doctor.skill_metadata.hint.hardrules', ctx.lang),
+        detail: {
+          errors: hardRulesCheck.errors,
+          declared: hardRulesCheck.declared,
+        },
+      };
+    }
+    const workflowsCheck = validateSkillWorkflows(content);
+    if (!workflowsCheck.ok) {
+      return {
+        status: 'fail',
+        message: tCli('cli.doctor.skill_metadata.fail.workflows_invalid', ctx.lang, { error: workflowsCheck.errors.join('; ') }),
+        hint: tCli('cli.doctor.skill_metadata.hint.workflows', ctx.lang),
+        detail: {
+          errors: workflowsCheck.errors,
+          declared: workflowsCheck.declared,
+        },
+      };
+    }
     return {
       status: 'pass',
       message: tCli('cli.doctor.skill_metadata.pass', ctx.lang),
+      detail: {
+        hardRulesDeclared: hardRulesCheck.declared,
+        hardRulesCount: hardRulesCheck.rules.length,
+        workflowsDeclared: workflowsCheck.declared,
+        workflowsCount: workflowsCheck.workflows.length,
+        workflowNodeCount: workflowsCheck.workflows.reduce((sum, workflow) => sum + workflow.nodes.length, 0),
+      },
     };
   },
 };
