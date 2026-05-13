@@ -128,26 +128,21 @@ function renderCard(entry: SkillIndexEntry, insights: Insight[], langQ: string, 
     : `<span class="sl-warn-badge sl-warn-badge--ok">✓ ${lang === 'zh' ? '无待优化' : 'no todo'}</span>`;
 
   return `<a class="sl-card sl-card--${h.color}" href="${e(detailHref)}">
-    <div class="sl-card-grade">
+    <div class="sl-card-h">
       <span class="sl-card-emoji">${h.emoji}</span>
+      <span class="sl-card-name">${e(entry.skillName)}</span>
+      <span class="sl-card-time">${relTime(lastTs, lang)}</span>
+    </div>
+    <div class="sl-card-grade">
       <span class="sl-card-label">${e(h.label)}</span>
       ${h.score != null
         ? `<span class="sl-card-score">${h.score}<span class="sl-card-score-unit">/100</span></span>`
         : `<span class="sl-card-score sl-card-score--empty">—</span>`}
-    </div>
-    <div class="sl-card-body">
-      <div class="sl-card-h">
-        <span class="sl-card-name">${e(entry.skillName)}</span>
-        <span class="sl-card-time">${relTime(lastTs, lang)}</span>
-      </div>
-      <div class="sl-card-summary">${renderHealthSummary(entry, lang)}</div>
-      <div class="sl-card-metrics">${renderMetrics(entry, lang)}</div>
-    </div>
-    <div class="sl-card-cta">
       ${warnBadge}
       ${renderTrendBadge(summary, lang)}
-      <span class="sl-card-arrow">›</span>
     </div>
+    <div class="sl-card-summary">${renderHealthSummary(entry, lang)}</div>
+    <div class="sl-card-metrics">${renderMetrics(entry, lang)}</div>
   </a>`;
 }
 
@@ -221,10 +216,10 @@ const SKILL_LIST_CSS = `
 .sl-summary-pill--green { background:rgba(94,130,82,.10);color:#5e8252 }
 .sl-summary-pill--gray { background:var(--bg-soft);color:var(--text-muted) }
 
-/* 卡片列表 */
-.sl-cards { display:flex;flex-direction:column;gap:10px }
+/* 卡片列表 — 网格布局 */
+.sl-cards { display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:12px }
 
-.sl-card { display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;padding:14px 18px;background:var(--bg-surface);border-radius:8px;box-shadow:var(--shadow-sm);text-decoration:none;color:var(--text-primary);transition:transform .12s,box-shadow .12s,border-color .12s;border-left:4px solid var(--border) }
+.sl-card { display:flex;flex-direction:column;gap:10px;padding:16px 18px;background:var(--bg-surface);border-radius:10px;box-shadow:var(--shadow-sm);text-decoration:none;color:var(--text-primary);transition:transform .12s,box-shadow .12s,border-color .12s;border-left:4px solid var(--border) }
 .sl-card:hover { transform:translateY(-1px);box-shadow:var(--shadow-md);text-decoration:none }
 .sl-card:focus-visible { outline:2px solid var(--accent);outline-offset:2px }
 .sl-card--green  { border-left-color:#5e8252 }
@@ -232,8 +227,8 @@ const SKILL_LIST_CSS = `
 .sl-card--red    { border-left-color:#9c4a3f }
 .sl-card--gray   { border-left-color:var(--border) }
 
-/* 左:健康等级色卡 */
-.sl-card-grade { display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;min-width:88px;padding:8px 12px;border-radius:7px;background:var(--bg-soft) }
+/* 顶:健康等级色卡 */
+.sl-card-grade { display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:7px;background:var(--bg-soft) }
 .sl-card--green  .sl-card-grade { background:rgba(94,130,82,.08) }
 .sl-card--yellow .sl-card-grade { background:rgba(176,128,48,.08) }
 .sl-card--red    .sl-card-grade { background:rgba(156,74,63,.08) }
@@ -247,17 +242,14 @@ const SKILL_LIST_CSS = `
 .sl-card-score-unit { font-size:10px;color:var(--text-muted);font-weight:500 }
 .sl-card-score--empty { font-size:16px;color:var(--text-muted);font-weight:500 }
 
-/* 中:名字 + 摘要 + 指标 */
-.sl-card-body { display:flex;flex-direction:column;gap:5px;min-width:0 }
-.sl-card-h { display:flex;align-items:baseline;gap:10px;flex-wrap:wrap }
-.sl-card-name { font-size:16px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;max-width:100%;flex-shrink:0 }
-.sl-card-time { font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums;margin-left:auto;white-space:nowrap }
+/* 标题行 */
+.sl-card-h { display:flex;align-items:center;gap:8px }
+.sl-card-emoji { font-size:20px;line-height:1;flex-shrink:0 }
+.sl-card-name { font-size:15px;font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1 }
+.sl-card-time { font-size:11px;color:var(--text-muted);font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0 }
 .sl-card-summary { font-size:13px;color:var(--text-secondary);line-height:1.5 }
-.sl-card-metrics { display:flex;gap:14px;flex-wrap:wrap;margin-top:2px }
+.sl-card-metrics { display:flex;gap:8px;flex-wrap:wrap }
 .sl-metric { font-size:11.5px;color:var(--text-secondary);font-variant-numeric:tabular-nums;background:var(--bg-soft);padding:3px 9px;border-radius:5px;line-height:1.5 }
-
-/* 右:cta 区(待优化徽章 + 趋势 + 箭头)*/
-.sl-card-cta { display:flex;flex-direction:column;align-items:flex-end;gap:6px;min-width:130px }
 .sl-warn-badge { display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:11px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.4 }
 .sl-warn-badge--high { background:rgba(156,74,63,.14);color:#9c4a3f }
 .sl-warn-badge--med  { background:rgba(176,128,48,.14);color:#b08030 }
@@ -277,16 +269,10 @@ const SKILL_LIST_CSS = `
 .sl-legacy-hint { margin-top:24px;text-align:center;font-size:11.5px;color:var(--text-muted) }
 .sl-legacy-hint a { color:var(--accent) }
 
-/* 响应式:窄屏堆叠 */
-@media(max-width:880px){
-  .sl-card { grid-template-columns:auto 1fr;gap:12px;padding:12px 14px }
-  .sl-card-cta { grid-column:1/-1;flex-direction:row;justify-content:flex-start;align-items:center;flex-wrap:wrap;min-width:0 }
-  .sl-card-arrow { margin-left:auto }
-}
+/* 响应式 */
 @media(max-width:640px){
-  .sl-card-grade { min-width:72px;padding:6px 10px }
-  .sl-card-name { font-size:15px }
-  .sl-card-metrics { gap:8px }
+  .sl-cards { grid-template-columns:1fr }
+  .sl-card-name { font-size:14px }
   .sl-metric { font-size:11px;padding:2px 7px }
 }
 `;
@@ -306,7 +292,7 @@ export function renderSkillList(
       </div>`
     : `<div class="sl-cards">${idx.entries.map((ent) => renderCard(ent, insightsByEntry.get(ent.skillName) ?? [], langQ, lang)).join('')}</div>`;
 
-  const title = lang === 'zh' ? '🧭 Skill 健康仪表盘' : '🧭 Skill Health Dashboard';
+  const title = lang === 'zh' ? 'OMK Studio 工作台' : 'OMK Studio';
   const subtitle = lang === 'zh'
     ? '一站式查看每个 skill 的健康状况、待优化项和历史趋势'
     : 'One-stop view of every skill — health, issues, and historical trends';

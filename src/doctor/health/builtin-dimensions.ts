@@ -16,33 +16,28 @@ export const BUILTIN_HEALTH_DIMENSIONS: HealthDimensionSpec[] = [
     labelKey: 'cli.doctor.health.dim.trigger-boundary',
     severity: 'fatal',
     promptSection: `**该触发时准 + 不该触发时不误用**
-- frontmatter 的 \`description\` / \`when_to_use\` 是否与正文功能一致?
-- 关键词与相邻 skill 的区分度是否足够?(关键词 < 3 个或全是泛词 = 区分度差)
-- 是否**显式声明了不适用范围**?(eg. "本 skill 不处理 X、X 请走 Y skill"、"仅适用 dev 环境")
-- 关键词与其他系统 skill 严重重叠时,是否说明了分工?`,
+- frontmatter 的 \`description\` / \`when_to_use\` 是否与正文功能**矛盾**?
+- 关键词与相邻 skill 严重重叠且没有说明分工,可能导致**误触发**?`,
   },
   {
     id: 'doc-clarity',
     displayName: '文档清晰',
     labelKey: 'cli.doctor.health.dim.doc-clarity',
     severity: 'warn',
-    promptSection: `**写得好不好读**
-- 步骤顺序清楚、结构合理
-- 没有大段冗余(明显可压 50%+ 的章节、无价值废话)
-- 关键决策点显式标出
-- 参数说明完整`,
+    promptSection: `**文档结构是否导致 LLM 理解出错**
+- 步骤顺序是否自相矛盾或循环依赖,导致 LLM 无法确定执行顺序?
+- 关键决策分支是否缺失,导致 LLM 在该分支下无指令可循?
+注意:冗余、不够简洁、缺少参数示例等**不影响 LLM 理解**的问题不要报。`,
   },
   {
     id: 'instr-precision',
     displayName: '指令精确性',
     labelKey: 'cli.doctor.health.dim.instr-precision',
     severity: 'warn',
-    promptSection: `**给 LLM 的指令语义是否单一,多次执行不漂移**
-- 模糊量词("一些" / "必要时" / "如有需要" / "适当地")
-- 未限定主语("调用工具" 没说哪个工具)
-- 条件分支没穷举("如果 X 就 A,否则..." 缺 else)
-- 同一动作多种说法导致歧义
-- 数量/阈值没说清("查几条"、"等一会儿")`,
+    promptSection: `**指令是否会导致 LLM 多次执行产生截然不同的结果**
+- 同一文档内对同一事实给出**矛盾说法**(如 cron 表达式与时区描述不一致)
+- 关键操作的目标对象**完全没有限定**,LLM 可能操作错误对象
+注意:模糊量词、缺少 else 分支、措辞不统一等,只要 LLM 能从上下文合理推断就不要报。`,
   },
   {
     id: 'dependency',
@@ -68,9 +63,10 @@ export const BUILTIN_HEALTH_DIMENSIONS: HealthDimensionSpec[] = [
     displayName: '工具规范',
     labelKey: 'cli.doctor.health.dim.tool-conventions',
     severity: 'warn',
-    promptSection: `**调用方式标准 + 工具失败降级路径明确**
-- 工具调用方式遵循统一约定(参数命名、返回格式)
-- **工具失败 / 返回异常 / 数据为空时,skill 是否给了明确指令**(重试 / 跳过 / 中断并报告用户),而不是默认让 LLM 自由发挥`,
+    promptSection: `**工具调用是否会导致执行失败**
+- 工具名或参数格式明显写错,调用必失败?
+- 关键工具失败时没有任何降级指令,且该失败会导致整个流程卡死?
+注意:LLM 有内置的错误处理能力,只报那些 LLM 自己无法合理应对的情况。`,
   },
   {
     id: 'security',
@@ -87,10 +83,8 @@ export const BUILTIN_HEALTH_DIMENSIONS: HealthDimensionSpec[] = [
     displayName: '示例完备',
     labelKey: 'cli.doctor.health.dim.examples',
     severity: 'warn',
-    promptSection: `**用户能否照着用、能否验证**
-- 是否给了**典型调用示例**(用户输入 → 期望输出)?
-- 是否说明了**如何验证调用成功**(看哪个文件 / log / 返回字段)?
-- 关键参数是否有**示例值**,而不是只有类型说明?
-- **失败 / 异常路径**是否有示意?`,
+    promptSection: `**缺少示例是否会导致 LLM 完全无法理解如何调用**
+- skill 描述了复杂的输入格式但完全没有示例,LLM 无法构造正确的调用?
+注意:大多数 skill 即使没有示例,LLM 也能从指令描述中推断出正确用法。只有格式确实复杂且无法从描述中推断时才报。`,
   },
 ];

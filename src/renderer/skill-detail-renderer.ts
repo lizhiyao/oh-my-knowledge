@@ -12,60 +12,20 @@
  *   隐藏 modal:每条 insight 一个 + 3 个阶段全量明细各一个
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
-import type { Lang, EvaluationReport, VariantResult } from '../types/index.js';
+import type { Lang, EvaluationReport } from '../types/index.js';
 import type { SkillIndexEntry, SkillDoctorSnapshot, SkillEvalSnapshot, SkillObserveSnapshot } from '../server/skill-index.js';
-import type { Insight, InsightSeverity, InsightAudience, InsightIllustration, InsightPatch } from '../server/skill-insights.js';
-import { detectInsights, groupInsightsByAudience } from '../server/skill-insights.js';
+import type { Insight, InsightIllustration } from '../server/skill-insights.js';
 import type { DoctorRuleResult } from '../types/doctor.js';
 
 const BAND_DOT: Record<'green' | 'yellow' | 'red' | 'gray', string> = {
   green: '🟢', yellow: '🟡', red: '🔴', gray: '⚪',
 };
-const SEVERITY_ICON: Record<InsightSeverity, string> = { high: '🔴', medium: '🟡', low: '🟢' };
-const SEVERITY_LABEL_ZH: Record<InsightSeverity, string> = { high: '高', medium: '中', low: '低' };
-const SEVERITY_LABEL_EN: Record<InsightSeverity, string> = { high: 'High', medium: 'Med', low: 'Low' };
 
-// PERSPECTIVE_* / STATUS_ICON 用于"三视角"展示,modal v4 极简后从 UI 撤掉,
-// 这两个常量及 InsightPerspective 标签等到将来诊断 / 调试 UI 需要时再恢复。
+// v6 之前的 insight × audience × 三视角 抽象在 v7 详情页砍掉了,只保留 sample 维度
+// (renderEvalSection 直接读 evalReport.results,不再走 detectInsights / audience 分组)。
+// 相关常量(SEVERITY_ICON / AUDIENCE_INFO_* / PATCH_TARGET_*)等以后做诊断 / 调试 UI
+// 需要时再恢复。
 
-const AUDIENCE_INFO_ZH: Record<InsightAudience, { icon: string; title: string; subtitle: string }> = {
-  'skill-author': { icon: '📝', title: 'Skill 优化项', subtitle: '改 SKILL.md 内容' },
-  'sample-author': { icon: '🔧', title: '用例优化项', subtitle: '改 samples.json,不动 skill' },
-  'omk-maintainer': { icon: '⚙️', title: '工具反馈', subtitle: '给 omk 维护者' },
-};
-const AUDIENCE_INFO_EN: Record<InsightAudience, { icon: string; title: string; subtitle: string }> = {
-  'skill-author': { icon: '📝', title: 'Skill optimization', subtitle: 'Update SKILL.md' },
-  'sample-author': { icon: '🔧', title: 'Sample optimization', subtitle: 'Update samples.json' },
-  'omk-maintainer': { icon: '⚙️', title: 'Tool feedback', subtitle: 'For omk maintainers' },
-};
-
-const PATCH_TARGET_ZH: Record<InsightPatch['target'], string> = {
-  skill: 'SKILL.md',
-  'sample-environment': 'samples.json (environment)',
-  'sample-mocks': 'samples.json (mocks)',
-  'doctor-rule': 'omk doctor rule (omk 仓库)',
-};
-const PATCH_TARGET_EN: Record<InsightPatch['target'], string> = {
-  skill: 'SKILL.md',
-  'sample-environment': 'samples.json (environment)',
-  'sample-mocks': 'samples.json (mocks)',
-  'doctor-rule': 'omk doctor rule (omk repo)',
-};
-
-interface InsightIndex {
-  byInsightId: Map<string, number>;
-  byNumber: Map<number, Insight>;
-}
-
-function buildInsightIndex(insights: Insight[]): InsightIndex {
-  const idx: InsightIndex = { byInsightId: new Map(), byNumber: new Map() };
-  insights.forEach((ins, i) => {
-    const num = i + 1;
-    idx.byInsightId.set(ins.id, num);
-    idx.byNumber.set(num, ins);
-  });
-  return idx;
-}
 
 function relTime(ts: string | null | undefined, lang: Lang): string {
   if (!ts) return lang === 'zh' ? '未跑' : 'never';
@@ -178,134 +138,33 @@ function renderHero(entry: SkillIndexEntry, insights: Insight[], lastTs: string 
   </div>`;
 }
 
-function renderHealthSummary(entry: SkillIndexEntry, insights: Insight[], lang: Lang): string {
-  const parts: string[] = [];
-  const high = insights.filter((i) => i.severity === 'high').length;
-  const med = insights.filter((i) => i.severity === 'medium').length;
-
-  if (high === 0 && med === 0 && insights.length === 0) {
-    parts.push(lang === 'zh' ? '✅ 未检测到自动可识别的问题' : '✅ No auto-detected issues');
-  } else if (high > 0) {
-    parts.push(lang === 'zh' ? `检出 ${insights.length} 个待优化(其中 ${high} 个高优)` : `${insights.length} issues (${high} high)`);
-  } else {
-    parts.push(lang === 'zh' ? `检出 ${insights.length} 个待优化` : `${insights.length} issues`);
-  }
-
+function renderHealthSummary(entry: SkillIndexEntry, _insights: Insight[], lang: Lang): string {
+  // v7:不再依赖 insights(那是上层 detector 抽象),直接基于 entry 实际告警状态拼摘要。
+  const issues: string[] = [];
   if (entry.doctor) {
-    if (entry.doctor.failCount > 0) parts.push(lang === 'zh' ? `doctor ${entry.doctor.failCount} 项不通过` : `doctor ${entry.doctor.failCount} fail`);
-    else if (entry.doctor.warnCount > 0) parts.push(lang === 'zh' ? `doctor ${entry.doctor.warnCount} 项告警` : `doctor ${entry.doctor.warnCount} warn`);
+    if (entry.doctor.failCount > 0) issues.push(lang === 'zh' ? `doctor ${entry.doctor.failCount} 项不通过` : `doctor ${entry.doctor.failCount} fail`);
+    else if (entry.doctor.warnCount > 0) issues.push(lang === 'zh' ? `doctor ${entry.doctor.warnCount} 项告警` : `doctor ${entry.doctor.warnCount} warn`);
   }
   if (entry.eval) {
     const total = entry.eval.passCount + entry.eval.failCount;
     if (total > 0) {
       const pct = Math.round((entry.eval.passCount / total) * 100);
-      parts.push(lang === 'zh' ? `eval 通过率 ${pct}%` : `eval ${pct}% pass`);
+      if (entry.eval.failCount > 0) issues.push(lang === 'zh' ? `eval 通过率 ${pct}%(${entry.eval.failCount} 条挂)` : `eval ${pct}% pass (${entry.eval.failCount} fail)`);
     }
   }
-  if (entry.observe) {
-    parts.push(lang === 'zh' ? `observe ${BAND_DOT[entry.observe.healthBand]}` : `observe ${BAND_DOT[entry.observe.healthBand]}`);
+  if (entry.observe && entry.observe.healthBand !== 'green') {
+    issues.push(lang === 'zh' ? `observe ${BAND_DOT[entry.observe.healthBand]}` : `observe ${BAND_DOT[entry.observe.healthBand]}`);
   }
-  return parts.join('，');
+
+  if (issues.length === 0) {
+    const ran = [entry.doctor, entry.eval, entry.observe].filter(Boolean).length;
+    if (ran === 0) return lang === 'zh' ? '尚未运行任何检查' : 'No checks run yet';
+    return lang === 'zh' ? '✅ 三视角全绿,无告警' : '✅ All three views green';
+  }
+  return issues.join('，');
 }
 
 // ────────── 左栏:问题列表 ──────────
-
-function renderInsightRow(ins: Insight, num: number, lang: Lang): string {
-  const sevLabel = lang === 'zh' ? SEVERITY_LABEL_ZH[ins.severity] : SEVERITY_LABEL_EN[ins.severity];
-  return `<button type="button" class="si-row si-row--${ins.severity}" onclick="openModal('insight-${num}')">
-    <span class="si-row-num">#${num}</span>
-    <span class="si-row-sev si-row-sev--${ins.severity}">${e(sevLabel)}</span>
-    <span class="si-row-title">${e(ins.title)}</span>
-    ${ins.affectedCount > 0 ? `<span class="si-row-meta">×${ins.affectedCount}</span>` : ''}
-    <span class="si-row-arrow">›</span>
-  </button>`;
-}
-
-function renderInsightListEmpty(entry: SkillIndexEntry, lang: Lang): string {
-  const passed: string[] = [];
-  const suggestions: string[] = [];
-
-  if (entry.doctor) {
-    const total = entry.doctor.passCount + entry.doctor.warnCount + entry.doctor.failCount;
-    passed.push(lang === 'zh' ? `Doctor ${entry.doctor.passCount}/${total} 通过` : `Doctor ${entry.doctor.passCount}/${total} pass`);
-  } else {
-    suggestions.push(lang === 'zh' ? '跑 <code>omk doctor</code> 做静态体检' : 'Run <code>omk doctor</code> for static checks');
-  }
-  if (entry.eval) {
-    const total = entry.eval.passCount + entry.eval.failCount;
-    const pct = total > 0 ? Math.round((entry.eval.passCount / total) * 100) : 0;
-    const score = entry.eval.compositeScore != null ? `(${entry.eval.compositeScore.toFixed(2)}/5)` : '';
-    passed.push(lang === 'zh' ? `Eval 通过率 ${pct}% ${score}` : `Eval ${pct}% pass ${score}`);
-  } else {
-    suggestions.push(lang === 'zh' ? '跑 <code>omk eval</code> 评测 skill 表现' : 'Run <code>omk eval</code> to score the skill');
-  }
-  if (entry.observe) {
-    passed.push(lang === 'zh'
-      ? `Observe ${entry.observe.segmentCount} 段,稳定度 ${((1 - entry.observe.gapRate) * 100).toFixed(0)}%`
-      : `Observe ${entry.observe.segmentCount} segs, ${((1 - entry.observe.gapRate) * 100).toFixed(0)}% stable`);
-  } else {
-    suggestions.push(lang === 'zh' ? '跑 <code>omk observe &lt;trace-dir&gt;</code> 接生产数据' : 'Run <code>omk observe</code> on production traces');
-  }
-
-  const evalLow = entry.eval && entry.eval.totalSamples < 5;
-  if (evalLow) {
-    suggestions.push(lang === 'zh'
-      ? `当前只有 ${entry.eval!.totalSamples} 个 sample,加到 ≥ 5 提高代表性`
-      : `Only ${entry.eval!.totalSamples} samples — add more (≥ 5) for better coverage`);
-  }
-  const trendPoints = entry.doctorHistory.length + entry.evalHistory.length + entry.observeHistory.length;
-  if (trendPoints >= 3) {
-    suggestions.push(lang === 'zh' ? '看右侧趋势曲线,确认健康度在长期保持' : 'Check the trend chart on the right to confirm long-term stability');
-  }
-  // 三个 perspective 都跑过且没有其他建议时,fallback 一条引导,避免左下空白
-  if (suggestions.length === 0) {
-    suggestions.push(lang === 'zh'
-      ? '保持现状即可。建议在每次发版或调整 SKILL.md 后再跑一轮确认无回退'
-      : 'Keep going. Re-run after each release or SKILL.md change to confirm no regression');
-  }
-
-  return `<div class="si-empty">
-    <div class="si-empty-h">
-      <span class="si-empty-emoji">✨</span>
-      <span class="si-empty-title">${lang === 'zh' ? '当前没有自动检测到的待优化项' : 'No auto-detected issues right now'}</span>
-    </div>
-    ${passed.length > 0 ? `<div class="si-empty-section">
-      <div class="si-empty-section-h">${lang === 'zh' ? '已完成的检查' : 'Checks completed'}</div>
-      <ul class="si-empty-list si-empty-list--pass">
-        ${passed.map((p) => `<li><span class="si-empty-icon">✓</span><span>${p}</span></li>`).join('')}
-      </ul>
-    </div>` : ''}
-    ${suggestions.length > 0 ? `<div class="si-empty-section">
-      <div class="si-empty-section-h">${lang === 'zh' ? '还可以补充' : 'Could still do'}</div>
-      <ul class="si-empty-list si-empty-list--next">
-        ${suggestions.map((s) => `<li><span class="si-empty-icon">→</span><span>${s}</span></li>`).join('')}
-      </ul>
-    </div>` : ''}
-  </div>`;
-}
-
-function renderInsightList(insights: Insight[], idx: InsightIndex, entry: SkillIndexEntry, lang: Lang): string {
-  if (insights.length === 0) {
-    return renderInsightListEmpty(entry, lang);
-  }
-  const grouped = groupInsightsByAudience(insights);
-  const order: InsightAudience[] = ['skill-author', 'sample-author', 'omk-maintainer'];
-  const sections = order.map((aud) => {
-    const list = grouped[aud];
-    if (list.length === 0) return '';
-    const info = lang === 'zh' ? AUDIENCE_INFO_ZH[aud] : AUDIENCE_INFO_EN[aud];
-    return `<div class="si-aud">
-      <div class="si-aud-h">
-        <span class="si-aud-icon">${info.icon}</span>
-        <span class="si-aud-title">${e(info.title)}</span>
-        <span class="si-aud-count">${list.length}</span>
-        <span class="si-aud-sub">${e(info.subtitle)}</span>
-      </div>
-      <div class="si-aud-rows">${list.map((ins) => renderInsightRow(ins, idx.byInsightId.get(ins.id) ?? 0, lang)).join('')}</div>
-    </div>`;
-  }).join('');
-  return sections;
-}
 
 // ────────── 右栏:趋势大图 + 阶段卡 ──────────
 
@@ -351,9 +210,9 @@ function buildTrendData(entry: SkillIndexEntry): TrendDatum[] {
 
 function renderTrendChart(entry: SkillIndexEntry, langQ: string, lang: Lang): string {
   const data = buildTrendData(entry);
-  const labelDoctor = lang === 'zh' ? '🩺 结构规范' : '🩺 Structure';
-  const labelEval = lang === 'zh' ? '🧪 实测得分' : '🧪 Test score';
-  const labelObserve = lang === 'zh' ? '👁 线上稳定' : '👁 Live stability';
+  const labelDoctor = lang === 'zh' ? '🩺 健康度' : '🩺 Structure';
+  const labelEval = lang === 'zh' ? '🧪 评测结果' : '🧪 Test score';
+  const labelObserve = lang === 'zh' ? '👁 线上观测' : '👁 Live stability';
 
   if (data.length < 2) {
     return `<div class="si-trend-empty">${lang === 'zh' ? '📈 还没有足够的历史数据画趋势(至少 2 个时间点)' : '📈 Need at least 2 data points for trend'}</div>`;
@@ -375,615 +234,68 @@ function renderTrendChart(entry: SkillIndexEntry, langQ: string, lang: Lang): st
   const links = JSON.stringify([linksDoctor, linksEval, linksObserve]);
   return `<div class="si-trend-canvas-wrap">
     <canvas id="trend-chart" data-chart='${json.replace(/'/g, '&#39;')}' data-links='${links.replace(/'/g, '&#39;')}'></canvas>
-  </div>
-  <div class="si-trend-hint">${lang === 'zh' ? '点击实测得分 / 线上稳定的数据点跳到那期报告(结构规范无对应详情页)' : 'Click a Test score / Live stability point to open that report'}</div>`;
-}
-
-function renderStageCards(entry: SkillIndexEntry, lang: Lang): string {
-  const card = (params: {
-    icon: string; name: string; modalId: string; band: 'green' | 'yellow' | 'red' | 'gray'; statusText: string; metaText: string;
-  }): string => `<button type="button" class="si-stagecard si-stagecard--${params.band}" onclick="openModal('${params.modalId}')">
-    <span class="si-stagecard-icon">${params.icon}</span>
-    <span class="si-stagecard-body">
-      <span class="si-stagecard-name">${e(params.name)}</span>
-      <span class="si-stagecard-status">${e(params.statusText)}</span>
-    </span>
-    <span class="si-stagecard-meta">${e(params.metaText)}</span>
-    <span class="si-stagecard-arrow">›</span>
-  </button>`;
-
-  const doctorBand: 'green' | 'yellow' | 'red' | 'gray' = entry.doctor
-    ? (entry.doctor.status === 'fail' ? 'red' : entry.doctor.status === 'warn' ? 'yellow' : 'green') : 'gray';
-  const evalBand: 'green' | 'yellow' | 'red' | 'gray' = entry.eval
-    ? (entry.eval.failCount === 0 ? 'green' : entry.eval.passCount === 0 ? 'red' : 'yellow') : 'gray';
-  const observeBand: 'green' | 'yellow' | 'red' | 'gray' = entry.observe?.healthBand ?? 'gray';
-
-  const nameDoctor = lang === 'zh' ? '结构规范 (doctor)' : 'Structure (doctor)';
-  const nameEval = lang === 'zh' ? '实测得分 (eval)' : 'Test score (eval)';
-  const nameObserve = lang === 'zh' ? '线上稳定 (observe)' : 'Live stability (observe)';
-
-  return `<div class="si-stagecards">
-    ${card({
-      icon: '🩺', name: nameDoctor, modalId: 'modal-doctor', band: doctorBand,
-      statusText: entry.doctor ? `${entry.doctor.passCount}✓ ${entry.doctor.warnCount}⚠ ${entry.doctor.failCount}✗` : (lang === 'zh' ? '未运行' : 'not run'),
-      metaText: relTime(entry.doctor?.timestamp, lang),
-    })}
-    ${card({
-      icon: '🧪', name: nameEval, modalId: 'modal-eval', band: evalBand,
-      statusText: entry.eval && (entry.eval.passCount + entry.eval.failCount) > 0
-        ? `${entry.eval.totalSamples} ${lang === 'zh' ? '用例' : 'samples'} · ${Math.round((entry.eval.passCount / (entry.eval.passCount + entry.eval.failCount)) * 100)}% ${lang === 'zh' ? '通过' : 'pass'}${entry.eval.compositeScore != null ? ` · ${entry.eval.compositeScore.toFixed(2)}/5` : ''}`
-        : (lang === 'zh' ? '未运行' : 'not run'),
-      metaText: relTime(entry.eval?.timestamp, lang),
-    })}
-    ${card({
-      icon: '👁', name: nameObserve, modalId: 'modal-observe', band: observeBand,
-      statusText: entry.observe ? `${(entry.observe.gapRate * 100).toFixed(0)}% gap · ${entry.observe.segmentCount} ${lang === 'zh' ? '段' : 'segs'}` : (lang === 'zh' ? '未运行' : 'not run'),
-      metaText: relTime(entry.observe?.generatedAt, lang),
-    })}
   </div>`;
 }
 
-// ────────── Modal:单条 insight 详情 ──────────
 
-function renderIllustration(ill: InsightIllustration, lang: Lang): string {
-  const row = (label: string, val: string, mono = false): string => `<div class="si-ill-row">
-    <span class="si-ill-label">${e(label)}</span>
-    <span class="si-ill-text${mono ? ' si-ill-text--mono' : ''}">${e(val)}</span>
-  </div>`;
-  const lines: string[] = [];
-  if (ill.samplePrompt) lines.push(row(lang === 'zh' ? '用户 prompt' : 'prompt', ill.samplePrompt));
-  if (ill.llmOutput) lines.push(row(lang === 'zh' ? 'LLM 输出' : 'output', ill.llmOutput));
-  if (ill.toolCalls && ill.toolCalls.length > 0) {
-    lines.push(`<div class="si-ill-row">
-      <span class="si-ill-label">${lang === 'zh' ? '工具调用' : 'tool calls'}</span>
-      <ul class="si-ill-tools">${ill.toolCalls.map((tc) => `<li>${e(tc)}</li>`).join('')}</ul>
-    </div>`);
-  }
-  if (ill.failedAssertion) lines.push(row(lang === 'zh' ? '失败断言' : 'failed', ill.failedAssertion, true));
-  return `<div class="si-illustration">
-    <div class="si-ill-h"><code>${e(ill.sampleId)}</code></div>
-    ${lines.join('')}
-  </div>`;
-}
-
-// ── modal 结构辅助函数(v3,sample 视角)───────────────────────────────────────
-
-/** 把 patch.snippet 里的占位符(<...>、XXX.xxx)用 <mark> 包起来,顺便返回占位符数。
- *  注意:textContent 抹掉 <mark>,所以复制按钮拿到的还是原始片段(含占位符),
- *  用户复制后能看到 <章节名> 等占位符自行替换。 */
-function highlightPlaceholders(text: string): { html: string; count: number } {
-  const escaped = e(text);
-  let count = 0;
-  // 1. 角括号占位符 &lt;.....&gt;(已 HTML escape 过,这里识别 escape 后的形式)
-  let html = escaped.replace(/&lt;([^&]+?)&gt;/g, (_, inner: string) => {
-    count++;
-    return `<mark class="si-placeholder">&lt;${inner}&gt;</mark>`;
-  });
-  // 2. 大写 XXX 占位符(XXX / XXX.md / XXX.xxx 等)
-  html = html.replace(/\bXXX(\.\w+)?\b/g, (m: string) => {
-    count++;
-    return `<mark class="si-placeholder">${m}</mark>`;
-  });
-  return { html, count };
-}
+// ────────── Modal:单条 insight 详情(v6 sample 视角)──────────
 
 interface FailedSampleDetail {
   sampleId: string;
   diagnosticSummary: string;
+  /** 用户给 LLM 的 prompt(从 sampleSnapshots 取,modal 直接展示给用户看"考的啥") */
+  prompt: string;
   /** rubric / assertion 期望的具体行为(diagnostic LLM 写的一段). */
   expected: string;
   /** LLM 实际做了什么(diagnostic LLM 写的一段). */
   actual: string;
+  /** per-sample 建议(diagnostic LLM 针对这一条 sample 写的具体改法,不是 detector 通用模板) */
+  suggestionSkill: string;
+  suggestionSample: string;
   failureModes: string[];
   illustration: InsightIllustration | null;
 }
 
 /** 给一个 insight,从 stageRefs.evalSampleIds + evalReport 拿完整的失败样本详情。
  *  illustration 是 detector 挑出的(最多 2 条)代表性样本,带 prompt/output/工具调用;
- *  diagnostic.expected / actual 是诊断 LLM 写的"期望 vs 实际"对照,用户最想看的。
- *
- *  currentVariant 是顶层 entry.eval.variantName 沿调用链透下来的"当前页面对应的
- *  variant 名",用于在 multi-treatment 报告(baseline + skill-a + skill-b)下正确
- *  挑出 results[i].variants[variant] 这一档的 diagnostic 文本——否则 detector
- *  挑 stageRefs.evalSampleIds 时是按 entry.eval.variantName 走的,这里再硬找
- *  "第一个非 baseline" 就会跟 detector 错位,/skills/skill-b 的 modal 显示出
- *  skill-a 的 diagnostic（PR #95 reviewer 5/11 CR 的 P1 ship-blocker)。
- *  currentVariant 为 null 时退到 "第一个非 baseline" 的老兜底,保持单 treatment
- *  报告(只有 baseline + 一个 treatment 的常见场景)的行为跟修法前一致。
- *  作为 namespace-level export 是为了 test/renderer/insight-modal-variant-thread.test.ts
- *  能直接 import 这个函数做 variant-thread-through 的契约测,跟同模块
- *  src/server/skill-index.ts:51 的 `_resetSkillIndexCache` 的 for-test export
- *  风格一致。 */
-export function collectFailedSamplesForInsight(
-  ins: Insight,
-  evalReport: EvaluationReport | null,
-  currentVariant: string | null,
-): FailedSampleDetail[] {
-  const sampleIds = ins.stageRefs?.evalSampleIds ?? [];
-  if (sampleIds.length === 0 || !evalReport) return [];
-
-  const variant: string | undefined = currentVariant
-    ?? evalReport.meta.variants?.find((v) => v !== 'baseline');
-  if (!variant) return [];
-
-  // 把 evidence 里的 illustration 按 sampleId 索引
-  const illsBySampleId = new Map<string, InsightIllustration>();
-  for (const ev of ins.evidence) {
-    for (const ill of (ev.illustrations ?? [])) {
-      illsBySampleId.set(ill.sampleId, ill);
-    }
+ *  diagnostic.expected / actual 是诊断 LLM 写的"期望 vs 实际"对照,用户最想看的。 */
+function renderSampleBody(s: FailedSampleDetail, lang: Lang): string {
+  const block = (icon: string, label: string, text: string, cls = ''): string => {
+    if (!text || !text.trim()) return '';
+    return `<div class="si-sb-block si-sb-block--${cls}">
+      <div class="si-sb-label">${icon} ${e(label)}</div>
+      <div class="si-sb-text">${e(text)}</div>
+    </div>`;
+  };
+  // 拼 suggestion:skill / sample 两段都可能空,只显示有的。
+  // diagnostic LLM 偶尔会输出截断的垃圾(如单字"在"),用最小长度 8 字符过滤。
+  const isMeaningful = (text: string): boolean => text.trim().length >= 8;
+  const sugParts: string[] = [];
+  if (isMeaningful(s.suggestionSkill)) {
+    sugParts.push(`<div class="si-sb-sugrow"><span class="si-sb-sugtag">改 SKILL.md</span><span>${e(s.suggestionSkill)}</span></div>`);
   }
-
-  return sampleIds.map((sid) => {
-    const result = evalReport.results.find((r) => r.sample_id === sid);
-    const vr = result?.variants?.[variant];
-    return {
-      sampleId: sid,
-      diagnosticSummary: vr?.diagnostic?.summary ?? '',
-      expected: vr?.diagnostic?.expected ?? '',
-      actual: vr?.diagnostic?.actual ?? '',
-      failureModes: (vr?.diagnostic?.failureModes ?? []) as string[],
-      illustration: illsBySampleId.get(sid) ?? null,
-    };
-  });
-}
-
-const _SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low: 1 };
-
-/** 单条 sample 的 diff 对照视图(modal v5 核心):用 diagnostic.expected/actual
- *  + illustration.failedAssertion 做三段"期望 vs 实际 vs 卡在哪"对照,把原始
- *  prompt/输出/工具调用降级到二级 details(高级用户才看)。 */
-function renderSampleDiff(s: FailedSampleDetail, lang: Lang): string {
-  const hasExpected = s.expected && s.expected.trim().length > 0;
-  const hasActual = s.actual && s.actual.trim().length > 0;
-  const hasFailed = s.illustration?.failedAssertion;
-  const rawData = s.illustration && (s.illustration.samplePrompt || s.illustration.llmOutput || (s.illustration.toolCalls && s.illustration.toolCalls.length > 0));
-
-  // 如果连 expected/actual 都没有,fallback 显示原始 illustration(老路径)
-  if (!hasExpected && !hasActual && !hasFailed) {
-    return s.illustration
-      ? renderIllustration(s.illustration, lang)
-      : `<div class="si-failure-no-detail">${lang === 'zh' ? '此样本没诊断信息,看完整报告' : 'no diagnostic info'}</div>`;
+  if (isMeaningful(s.suggestionSample)) {
+    sugParts.push(`<div class="si-sb-sugrow"><span class="si-sb-sugtag">改 sample</span><span>${e(s.suggestionSample)}</span></div>`);
   }
-
-  const rows: string[] = [];
-  if (hasExpected) {
-    rows.push(`<div class="si-diff-row si-diff-row--expected">
-      <span class="si-diff-icon">🎯</span>
-      <span class="si-diff-label">${lang === 'zh' ? '期望' : 'Expected'}</span>
-      <span class="si-diff-text">${e(s.expected)}</span>
-    </div>`);
-  }
-  if (hasActual) {
-    rows.push(`<div class="si-diff-row si-diff-row--actual">
-      <span class="si-diff-icon">⚠️</span>
-      <span class="si-diff-label">${lang === 'zh' ? '实际' : 'Actual'}</span>
-      <span class="si-diff-text">${e(s.actual)}</span>
-    </div>`);
-  }
-  if (hasFailed) {
-    rows.push(`<div class="si-diff-row si-diff-row--failed">
-      <span class="si-diff-icon">💥</span>
-      <span class="si-diff-label">${lang === 'zh' ? '卡在' : 'Failed'}</span>
-      <span class="si-diff-text si-diff-text--mono">${e(s.illustration!.failedAssertion!)}</span>
-    </div>`);
-  }
-
-  const rawBlock = rawData
-    ? `<details class="si-diff-raw">
-        <summary>${lang === 'zh' ? '▸ 看原始 prompt / LLM 输出 / 工具调用' : '▸ Raw prompt / LLM output / tool calls'}</summary>
-        <div class="si-diff-raw-body">${renderIllustration(s.illustration!, lang)}</div>
-      </details>`
-    : '';
-
-  return `<div class="si-diff">
-    ${rows.join('')}
-    ${rawBlock}
-  </div>`;
-}
-
-/** 失败用例 section:sample 视角,每条 1 行(id + 一句话错因),
- *  第一条默认展开看 diff 对照;其他折叠 details */
-function renderFailedSamplesSection(
-  failedSamples: FailedSampleDetail[],
-  reportId: string | null,
-  langQ: string,
-  lang: Lang,
-): string {
-  if (failedSamples.length === 0) return '';
-  const renderRow = (s: FailedSampleDetail, expanded: boolean): string => {
-    const summary = s.diagnosticSummary
-      ? (s.diagnosticSummary.length > 100 ? s.diagnosticSummary.slice(0, 100) + '…' : s.diagnosticSummary)
-      : (lang === 'zh' ? '(无诊断摘要,看完整 trace)' : '(no diagnostic summary)');
-    const traceLink = reportId
-      ? `<a class="si-failure-trace" href="/reports/${e(reportId)}${langQ}#sample-${e(s.sampleId)}" onclick="event.stopPropagation()">${lang === 'zh' ? '完整 trace →' : 'full trace →'}</a>`
-      : '';
-    const modeTags = s.failureModes.length > 0
-      ? `<span class="si-failure-modes">${s.failureModes.map((m) => `<span class="si-failure-mode">${e(m)}</span>`).join('')}</span>`
-      : '';
-
-    const headInner = `<code class="si-failure-id">${e(s.sampleId)}</code>
-      ${modeTags}
-      <span class="si-failure-summary">${e(summary)}</span>
-      ${traceLink}`;
-
-    const body = renderSampleDiff(s, lang);
-
-    if (expanded) {
-      return `<div class="si-failure-item si-failure-item--open">
-        <div class="si-failure-head">${headInner}</div>
-        <div class="si-failure-detail">${body}</div>
+  const suggestionBlock = sugParts.length > 0
+    ? `<div class="si-sb-block si-sb-block--suggest">
+        <div class="si-sb-label">💡 ${lang === 'zh' ? '建议(针对这条样本)' : 'Suggestion (per-sample)'}</div>
+        <div class="si-sb-text">${sugParts.join('')}</div>
+      </div>`
+    : `<div class="si-sb-block si-sb-block--suggest si-sb-block--empty">
+        <div class="si-sb-label">💡 ${lang === 'zh' ? '建议(针对这条样本)' : 'Suggestion (per-sample)'}</div>
+        <div class="si-sb-text si-sb-empty">${lang === 'zh' ? '诊断 LLM 没给出针对这条样本的建议(可能输出截断或样本本身是诱错样本,无需改动)' : 'Diagnostic LLM did not return a per-sample suggestion'}</div>
       </div>`;
-    }
-    return `<details class="si-failure-item">
-      <summary class="si-failure-head">${headInner}</summary>
-      <div class="si-failure-detail">${body}</div>
-    </details>`;
-  };
-
-  return `<section class="si-failures">
-    <div class="si-failures-h">📋 ${lang === 'zh' ? `哪几条用例挂了(${failedSamples.length} 条)` : `Failed samples (${failedSamples.length})`}</div>
-    ${failedSamples.map((s, i) => renderRow(s, i === 0)).join('')}
-  </section>`;
-}
-
-/** 单条建议 + patch 直接铺。patch 里若含占位符(&lt;...&gt; / XXX.xxx)用 <mark> 高亮,
- *  按钮文案区分"复制 vs 复制模板"。isPrimary 时加"⭐ 推荐先做"标记。 */
-function renderRecommendation(rec: { action: string; priority: InsightSeverity; patch?: InsightPatch }, idx: number, lang: Lang, isPrimary = false): string {
-  const priLabel = lang === 'zh' ? SEVERITY_LABEL_ZH[rec.priority] : SEVERITY_LABEL_EN[rec.priority];
-  let patchBlock = '';
-  if (rec.patch) {
-    const targetLabel = lang === 'zh' ? PATCH_TARGET_ZH[rec.patch.target] : PATCH_TARGET_EN[rec.patch.target];
-    const snippetId = `snippet-${Math.random().toString(36).slice(2, 10)}`;
-    const { html: snippetHtml, count: phCount } = highlightPlaceholders(rec.patch.snippet);
-    const isTemplate = phCount > 0;
-    const copyLabel = isTemplate
-      ? (lang === 'zh' ? `📋 复制模板(含 ${phCount} 处待填)` : `📋 Copy template (${phCount} blanks)`)
-      : (lang === 'zh' ? '📋 复制' : '📋 Copy');
-    const templateHint = isTemplate
-      ? `<div class="si-rec-patch-hint">⚠️ ${lang === 'zh' ? `模板含 ${phCount} 处待填,粘贴前请替换 ` : `Template has ${phCount} placeholders, replace `}<mark class="si-placeholder">${lang === 'zh' ? '高亮' : 'highlighted'}</mark>${lang === 'zh' ? ' 部分' : ' parts before pasting'}</div>`
-      : '';
-    patchBlock = `<div class="si-rec-patch${isTemplate ? ' si-rec-patch--template' : ''}">
-      <div class="si-rec-patch-meta">
-        <span class="si-rec-patch-target">${e(targetLabel)}</span>
-        <span class="si-rec-patch-loc">${e(rec.patch.location)}</span>
-        <button class="si-rec-patch-copy" onclick="omkCopySnippet('${snippetId}', this)" type="button">${copyLabel}</button>
-      </div>
-      ${templateHint}
-      <pre class="si-rec-patch-snippet"><code id="${snippetId}">${snippetHtml}</code></pre>
-    </div>`;
-  }
-  return `<div class="si-rec-item${isPrimary ? ' si-rec-item--primary' : ''}">
-    <div class="si-rec-head">
-      <span class="si-rec-num">${idx + 1}</span>
-      <span class="si-rec-pri si-rec-pri--${rec.priority}">${e(priLabel)}</span>
-      ${isPrimary ? `<span class="si-rec-star" title="${lang === 'zh' ? '推荐先做' : 'do this first'}">⭐ ${lang === 'zh' ? '推荐' : 'recommended'}</span>` : ''}
-      <span class="si-rec-action">${e(rec.action)}</span>
-    </div>
-    ${patchBlock}
+  return `<div class="si-sb">
+    ${block('📝', lang === 'zh' ? '用例 prompt' : 'Prompt', s.prompt, 'prompt')}
+    ${block('🎯', lang === 'zh' ? '期望' : 'Expected', s.expected, 'expected')}
+    ${block('⚠️', lang === 'zh' ? '实际' : 'Actual', s.actual, 'actual')}
+    ${suggestionBlock}
   </div>`;
 }
 
-
-function renderInsightModal(
-  ins: Insight,
-  num: number,
-  evalReport: EvaluationReport | null,
-  reportId: string | null,
-  langQ: string,
-  lang: Lang,
-  currentVariant: string | null,
-): string {
-  const sevIcon = SEVERITY_ICON[ins.severity];
-  // currentVariant 从顶层 batch map 入口的 entry.eval?.variantName 透下来,
-  // 让 collectFailedSamplesForInsight 在 multi-treatment 报告下选当前 variant 而不是
-  // 数组里第一个非 baseline 那个(PR #95 reviewer 5/11 CR 的 P1)。
-  const failedSamples = collectFailedSamplesForInsight(ins, evalReport, currentVariant);
-  // 建议按 priority 降序,第一条标"⭐ 推荐先做"
-  const sortedRecs = [...ins.recommendations].sort(
-    (a, b) => _SEVERITY_RANK[b.priority] - _SEVERITY_RANK[a.priority],
-  );
-  return `<div id="insight-${num}" class="modal-overlay" onclick="if(event.target===this)closeModal('insight-${num}')">
-    <div class="modal-content si-modal">
-      <div class="modal-header">
-        <div class="si-modal-h">
-          <span class="si-modal-num">#${num}</span>
-          <span class="si-modal-sev">${sevIcon}</span>
-          <h3 class="si-modal-title">${e(ins.title)}</h3>
-        </div>
-        <button class="modal-close" onclick="closeModal('insight-${num}')">✕</button>
-      </div>
-      ${ins.description ? `<p class="si-modal-desc">${e(ins.description)}</p>` : ''}
-
-      ${renderFailedSamplesSection(failedSamples, reportId, langQ, lang)}
-
-      ${sortedRecs.length > 0 ? `<section class="si-recs">
-        <div class="si-recs-h">💡 ${lang === 'zh' ? '怎么改' : 'How to fix'}</div>
-        ${sortedRecs.map((r, i) => renderRecommendation(r, i, lang, i === 0)).join('')}
-      </section>` : ''}
-    </div>
-  </div>`;
-}
-
-// ────────── Modal:阶段全量明细 ──────────
-
-function renderRuleResult(r: DoctorRuleResult): string {
-  const icon = r.status === 'pass' ? '✓' : r.status === 'warn' ? '⚠' : r.status === 'fail' ? '✗' : '○';
-  const cls = r.status === 'pass' ? 'pass' : r.status === 'warn' ? 'warn' : r.status === 'fail' ? 'fail' : 'gray';
-  return `<li class="si-rule si-rule--${cls}">
-    <span class="si-rule-icon">${icon}</span>
-    <div class="si-rule-body">
-      <code class="si-rule-id">${e(r.ruleId)}</code>
-      <span class="si-rule-msg">${e(r.message)}</span>
-      ${r.hint ? `<div class="si-rule-hint">💡 ${e(r.hint)}</div>` : ''}
-    </div>
-  </li>`;
-}
-
-function renderDoctorHistorySection(snap: SkillDoctorSnapshot | null, history: SkillDoctorSnapshot[], lang: Lang): string {
-  const older = snap ? history.filter((h) => h.reportId !== snap.reportId) : history;
-  if (older.length === 0) return '';
-  return `<details class="si-history">
-    <summary>${lang === 'zh' ? `📅 历史体检 ${older.length} 期` : `📅 History (${older.length})`}</summary>
-    <ul class="si-history-list">
-      ${[...older].reverse().map((h) => {
-        const total = h.passCount + h.warnCount + h.failCount;
-        const cls = h.status === 'fail' ? 'red' : h.status === 'warn' ? 'yellow' : 'green';
-        return `<li><button type="button" class="si-history-row" onclick="openModal('modal-doctor-h-${e(h.reportId)}')">
-          <span class="si-history-date">${fmtDateShort(h.timestamp)}</span>
-          <span class="si-history-meta">${h.passCount}/${total} ✓ · ${h.warnCount} ⚠ · ${h.failCount} ✗</span>
-          <span class="si-history-status si-history-status--${cls}">${e(h.status)}</span>
-          <span class="si-history-arrow">›</span>
-        </button></li>`;
-      }).join('')}
-    </ul>
-  </details>`;
-}
-
-function renderDoctorHistoryModals(snap: SkillDoctorSnapshot | null, history: SkillDoctorSnapshot[], lang: Lang): string {
-  const older = snap ? history.filter((h) => h.reportId !== snap.reportId) : history;
-  return older.map((h) => {
-    const id = `modal-doctor-h-${h.reportId}`;
-    return `<div id="${e(id)}" class="modal-overlay" onclick="if(event.target===this)closeModal('${e(id)}')">
-      <div class="modal-content si-modal">
-        <div class="modal-header">
-          <h3 class="si-modal-title">🩺 ${lang === 'zh' ? 'Doctor 历史' : 'Doctor history'} · ${fmtDateShort(h.timestamp)}</h3>
-          <button class="modal-close" onclick="closeModal('${e(id)}')">✕</button>
-        </div>
-        <div class="si-modal-stats">${h.passCount} ✓ · ${h.warnCount} ⚠ · ${h.failCount} ✗ · ${relTime(h.timestamp, lang)}</div>
-        <ul class="si-rules">${h.results.map((r) => renderRuleResult(r)).join('')}</ul>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function renderDoctorModal(snap: SkillDoctorSnapshot | null, history: SkillDoctorSnapshot[], lang: Lang): string {
-  const body = snap ? `
-    <div class="si-modal-stats">${snap.passCount} ✓ · ${snap.warnCount} ⚠ · ${snap.failCount} ✗ · ${relTime(snap.timestamp, lang)}</div>
-    <ul class="si-rules">${snap.results.map((r) => renderRuleResult(r)).join('')}</ul>
-  ` : `<p class="si-modal-empty">${lang === 'zh' ? '运行 omk doctor 后这里会显示静态体检的所有规则结果。' : 'Run omk doctor to populate.'}</p>`;
-  return `<div id="modal-doctor" class="modal-overlay" onclick="if(event.target===this)closeModal('modal-doctor')">
-    <div class="modal-content si-modal">
-      <div class="modal-header">
-        <h3 class="si-modal-title">🩺 ${lang === 'zh' ? 'Doctor 静态体检' : 'Doctor (static check)'}</h3>
-        <button class="modal-close" onclick="closeModal('modal-doctor')">✕</button>
-      </div>
-      <p class="si-modal-purpose">${lang === 'zh' ? '在跑评测前先做基础检查:文件能不能读、元数据齐不齐、引用的依赖在不在。' : 'Pre-eval static checks: file readable, metadata complete, dependencies declared.'}</p>
-      ${body}
-      ${renderDoctorHistorySection(snap, history, lang)}
-    </div>
-  </div>`;
-}
-
-interface FailedSampleRow { sampleId: string; modes: string[]; diagSummary: string }
-
-function collectFailedSamples(report: EvaluationReport, variant: string): FailedSampleRow[] {
-  const out: FailedSampleRow[] = [];
-  for (const r of report.results) {
-    const v: VariantResult | undefined = r.variants?.[variant];
-    if (!v) continue;
-    const passed = (v.assertions?.details ?? []).every((d) => d.passed);
-    if (passed) continue;
-    const isTripwire = (v.diagnostic?.rootCause ?? []).includes('tripwire_intentional')
-      || report.sampleSnapshots?.[r.sample_id]?.tripwire === true;
-    if (isTripwire) continue;
-    out.push({
-      sampleId: r.sample_id,
-      modes: (v.diagnostic?.failureModes ?? []) as string[],
-      diagSummary: v.diagnostic?.summary?.slice(0, 200) ?? '',
-    });
-  }
-  return out;
-}
-
-interface SampleListRow {
-  sampleId: string;
-  kind: 'pass' | 'fail' | 'tripwire';
-  composite: number | null;
-  description: string;
-}
-
-function collectAllSamples(report: EvaluationReport, variant: string): SampleListRow[] {
-  const out: SampleListRow[] = [];
-  for (const r of report.results) {
-    const v: VariantResult | undefined = r.variants?.[variant];
-    if (!v) continue;
-    const passed = (v.assertions?.details ?? []).every((d) => d.passed);
-    const isTripwire = (v.diagnostic?.rootCause ?? []).includes('tripwire_intentional')
-      || report.sampleSnapshots?.[r.sample_id]?.tripwire === true;
-    const kind: SampleListRow['kind'] = isTripwire ? 'tripwire' : passed ? 'pass' : 'fail';
-    const layered = v.layeredScores ?? {};
-    const parts = [layered.factScore, layered.behaviorScore, layered.judgeScore].filter((x): x is number => x != null);
-    const composite = parts.length > 0 ? parts.reduce((s, x) => s + x, 0) / parts.length : null;
-    const promptSnippet = report.sampleSnapshots?.[r.sample_id]?.prompt?.slice(0, 70).replace(/\n+/g, ' ') ?? '';
-    out.push({ sampleId: r.sample_id, kind, composite, description: promptSnippet });
-  }
-  return out;
-}
-
-function renderSampleListSection(samples: SampleListRow[], reportId: string, langQ: string, lang: Lang): string {
-  const passCount = samples.filter((s) => s.kind === 'pass').length;
-  const failCount = samples.filter((s) => s.kind === 'fail').length;
-  const tripCount = samples.filter((s) => s.kind === 'tripwire').length;
-  const summary = lang === 'zh'
-    ? `${samples.length} 条 (${passCount} ✓ ${failCount} ✗${tripCount > 0 ? ` ${tripCount} ⚡` : ''})`
-    : `${samples.length} (${passCount} ✓ ${failCount} ✗${tripCount > 0 ? ` ${tripCount} ⚡` : ''})`;
-  const iconOf = (k: SampleListRow['kind']): string => k === 'pass' ? '✓' : k === 'tripwire' ? '⚡' : '✗';
-  return `<details class="si-history" open>
-    <summary>${lang === 'zh' ? `📝 全部用例 ${summary}` : `📝 All samples ${summary}`}</summary>
-    <ul class="si-history-list si-sample-list">
-      ${samples.map((s) => `<li><a class="si-history-row si-sample-row si-sample-row--${s.kind}" href="/reports/${e(reportId)}${langQ}#sample-${e(s.sampleId)}">
-        <span class="si-sample-icon si-sample-icon--${s.kind}">${iconOf(s.kind)}</span>
-        <code class="si-sample-id">${e(s.sampleId)}</code>
-        <span class="si-sample-score">${s.composite != null ? s.composite.toFixed(2) + '/5' : '—'}</span>
-        <span class="si-sample-desc">${e(s.description)}${s.description.length >= 70 ? '…' : ''}</span>
-        <span class="si-history-arrow">›</span>
-      </a></li>`).join('')}
-    </ul>
-  </details>`;
-}
-
-function renderEvalHistorySection(snap: SkillEvalSnapshot | null, history: SkillEvalSnapshot[], langQ: string, lang: Lang): string {
-  const older = snap ? history.filter((h) => h.reportId !== snap.reportId) : history;
-  if (older.length === 0) return '';
-  return `<details class="si-history">
-    <summary>${lang === 'zh' ? `📅 历史评测 ${older.length} 期` : `📅 History (${older.length})`}</summary>
-    <ul class="si-history-list">
-      ${[...older].reverse().map((h) => {
-        const total = h.passCount + h.failCount;
-        const pct = total > 0 ? Math.round((h.passCount / total) * 100) : 0;
-        const cls = h.failCount === 0 ? 'green' : h.passCount === 0 ? 'red' : 'yellow';
-        return `<li><a class="si-history-row" href="/reports/${e(h.reportId)}${langQ}">
-          <span class="si-history-date">${fmtDateShort(h.timestamp)}</span>
-          <span class="si-history-meta">${h.compositeScore != null ? h.compositeScore.toFixed(2) : '—'}/5 · ${pct}% ${lang === 'zh' ? '通过' : 'pass'}</span>
-          <span class="si-history-status si-history-status--${cls}">${e(h.verdictLevel)}</span>
-          <span class="si-history-arrow">›</span>
-        </a></li>`;
-      }).join('')}
-    </ul>
-  </details>`;
-}
-
-function renderEvalModal(snap: SkillEvalSnapshot | null, history: SkillEvalSnapshot[], evalReport: EvaluationReport | null, langQ: string, lang: Lang): string {
-  if (!snap) {
-    return `<div id="modal-eval" class="modal-overlay" onclick="if(event.target===this)closeModal('modal-eval')">
-      <div class="modal-content si-modal">
-        <div class="modal-header">
-          <h3 class="si-modal-title">🧪 ${lang === 'zh' ? 'Eval 评测' : 'Eval'}</h3>
-          <button class="modal-close" onclick="closeModal('modal-eval')">✕</button>
-        </div>
-        <p class="si-modal-empty">${lang === 'zh' ? '运行 omk eval 后这里会显示评分和失败用例明细。' : 'Run omk eval to populate.'}</p>
-      </div>
-    </div>`;
-  }
-  let layered: { factScore?: number; behaviorScore?: number; judgeScore?: number } | undefined;
-  let failedSamples: FailedSampleRow[] = [];
-  let allSamples: SampleListRow[] = [];
-  if (evalReport && snap.variantName) {
-    const factVals: number[] = [], behavVals: number[] = [], judgeVals: number[] = [];
-    for (const r of evalReport.results) {
-      const v = r.variants?.[snap.variantName];
-      if (!v?.layeredScores) continue;
-      if (v.layeredScores.factScore != null) factVals.push(v.layeredScores.factScore);
-      if (v.layeredScores.behaviorScore != null) behavVals.push(v.layeredScores.behaviorScore);
-      if (v.layeredScores.judgeScore != null) judgeVals.push(v.layeredScores.judgeScore);
-    }
-    const mean = (xs: number[]): number | undefined => xs.length > 0 ? xs.reduce((s, x) => s + x, 0) / xs.length : undefined;
-    layered = { factScore: mean(factVals), behaviorScore: mean(behavVals), judgeScore: mean(judgeVals) };
-    failedSamples = collectFailedSamples(evalReport, snap.variantName);
-    allSamples = collectAllSamples(evalReport, snap.variantName);
-  }
-
-  const renderLayer = (label: string, val?: number): string => {
-    if (val == null) return `<div class="si-layer"><span class="si-layer-lbl">${e(label)}</span><span class="si-layer-num">—</span></div>`;
-    const cls = val >= 4 ? 'pass' : val >= 3 ? 'warn' : 'fail';
-    const w = Math.round((val / 5) * 100);
-    return `<div class="si-layer">
-      <span class="si-layer-lbl">${e(label)}</span>
-      <div class="si-layer-bar"><div class="si-layer-fill si-layer-fill--${cls}" style="width:${w}%"></div></div>
-      <span class="si-layer-num si-layer-num--${cls}">${val.toFixed(2)}</span>
-    </div>`;
-  };
-
-  return `<div id="modal-eval" class="modal-overlay" onclick="if(event.target===this)closeModal('modal-eval')">
-    <div class="modal-content si-modal">
-      <div class="modal-header">
-        <h3 class="si-modal-title">🧪 ${lang === 'zh' ? 'Eval 评测' : 'Eval'}</h3>
-        <button class="modal-close" onclick="closeModal('modal-eval')">✕</button>
-      </div>
-      <p class="si-modal-purpose">${lang === 'zh' ? '用 LLM 实跑用例,既给 skill 整体打分(能否上线),也定位每条用例失败的原因。' : 'Run samples with LLM: score the skill, pinpoint why each failed.'}</p>
-      <div class="si-modal-stats">${snap.passCount} ✓ · ${snap.failCount} ✗${snap.tripwireCount > 0 ? ` · ${snap.tripwireCount} ${lang === 'zh' ? '诱错' : 'tripwire'}` : ''} · ${relTime(snap.timestamp, lang)}</div>
-
-      <div class="si-eval-block">
-        <div class="si-eval-h">📊 ${lang === 'zh' ? '评分视角' : 'Score view'}</div>
-        <div class="si-eval-score-row">
-          <div class="si-eval-composite">${snap.compositeScore != null ? snap.compositeScore.toFixed(2) : '—'}<span class="si-eval-composite-sub">/5</span></div>
-          ${snap.verdictHeadline ? `<p class="si-eval-headline">${e(snap.verdictHeadline)}</p>` : ''}
-        </div>
-        <div class="si-layers">
-          ${renderLayer(lang === 'zh' ? '事实层' : 'fact', layered?.factScore)}
-          ${renderLayer(lang === 'zh' ? '行为层' : 'behavior', layered?.behaviorScore)}
-          ${renderLayer(lang === 'zh' ? 'LLM 评价' : 'judge', layered?.judgeScore)}
-        </div>
-        <a class="si-eval-link" href="/reports/${e(snap.reportId)}${langQ}">${lang === 'zh' ? '完整 A/B 报告 →' : 'Full A/B report →'}</a>
-      </div>
-
-      ${failedSamples.length > 0 ? `<div class="si-eval-block">
-        <div class="si-eval-h">✅ ${lang === 'zh' ? '功能视角失败用例' : 'Failed samples'}</div>
-        <ul class="si-failed-list">
-          ${failedSamples.map((f) => `<li>
-            <code class="si-fs-id">${e(f.sampleId)}</code>
-            ${f.modes.map((m) => `<span class="si-fs-mode">${e(m)}</span>`).join('')}
-            ${f.diagSummary ? `<div class="si-fs-summary">${e(f.diagSummary)}${f.diagSummary.length >= 200 ? '…' : ''}</div>` : ''}
-          </li>`).join('')}
-        </ul>
-        <a class="si-eval-link" href="/reports/${e(snap.reportId)}${langQ}#test-view">${lang === 'zh' ? '展开单测视角 →' : 'Open functional view →'}</a>
-      </div>` : ''}
-      ${allSamples.length > 0 ? renderSampleListSection(allSamples, snap.reportId, langQ, lang) : ''}
-      ${renderEvalHistorySection(snap, history, langQ, lang)}
-    </div>
-  </div>`;
-}
-
-function renderObserveHistorySection(snap: SkillObserveSnapshot | null, history: SkillObserveSnapshot[], langQ: string, lang: Lang): string {
-  const older = snap ? history.filter((h) => h.analysisId !== snap.analysisId) : history;
-  if (older.length === 0) return '';
-  return `<details class="si-history">
-    <summary>${lang === 'zh' ? `📅 历史观测 ${older.length} 期` : `📅 History (${older.length})`}</summary>
-    <ul class="si-history-list">
-      ${[...older].reverse().map((h) => `<li><a class="si-history-row" href="/analyses/${e(h.analysisId)}${langQ}">
-        <span class="si-history-date">${fmtDateShort(h.generatedAt)}</span>
-        <span class="si-history-meta">${h.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · gap ${(h.gapRate * 100).toFixed(0)}% · fail ${(h.failureRate * 100).toFixed(1)}%</span>
-        <span class="si-history-status si-history-status--${h.healthBand}">${e(h.healthBand)}</span>
-        <span class="si-history-arrow">›</span>
-      </a></li>`).join('')}
-    </ul>
-  </details>`;
-}
-
-function renderObserveModal(snap: SkillObserveSnapshot | null, history: SkillObserveSnapshot[], langQ: string, lang: Lang): string {
-  const body = snap ? `
-    <div class="si-modal-stats">
-      ${snap.segmentCount} ${lang === 'zh' ? '段' : 'segments'} ·
-      ${lang === 'zh' ? '工具失败率' : 'tool fail'} ${(snap.failureRate * 100).toFixed(1)}% ·
-      ${lang === 'zh' ? '知识库 gap' : 'KB gap'} ${(snap.gapRate * 100).toFixed(0)}% ·
-      ${relTime(snap.generatedAt, lang)}
-    </div>
-    <a class="si-eval-link" href="/analyses/${e(snap.analysisId)}${langQ}">${lang === 'zh' ? '完整观测报告 →' : 'Full observation report →'}</a>
-  ` : `<p class="si-modal-empty">${lang === 'zh' ? '运行 omk observe &lt;trace-dir&gt; 后这里会显示生产健康度。' : 'Run omk observe <trace-dir> to populate.'}</p>`;
-  return `<div id="modal-observe" class="modal-overlay" onclick="if(event.target===this)closeModal('modal-observe')">
-    <div class="modal-content si-modal">
-      <div class="modal-header">
-        <h3 class="si-modal-title">👁 ${lang === 'zh' ? 'Observe 线上观测' : 'Observe (production)'}</h3>
-        <button class="modal-close" onclick="closeModal('modal-observe')">✕</button>
-      </div>
-      <p class="si-modal-purpose">${lang === 'zh' ? '接入真实用户的使用记录,看 skill 上线后跑得稳不稳、哪些内容真的被用到了。' : 'Real-world usage: stability + coverage in production.'}</p>
-      ${body}
-      ${renderObserveHistorySection(snap, history, langQ, lang)}
-    </div>
-  </div>`;
-}
-
+/** 失败用例 section v6:默认全折叠,每条 summary 完整展示一行;
+ *  点开看 prompt / 期望 / 实际 / per-sample 建议 */
 // ────────── CSS ──────────
 
 const SKILL_DETAIL_CSS = `
@@ -1061,10 +373,10 @@ const SKILL_DETAIL_CSS = `
 .si-right { display:flex;flex-direction:column;gap:12px }
 .si-trend { background:var(--bg-surface);border-radius:8px;padding:14px 16px;box-shadow:var(--shadow-sm) }
 .si-trend-h { display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px }
-.si-trend-empty { padding:24px;text-align:center;color:var(--text-muted);font-size:13px }
+.si-trend-empty { padding:24px;text-align:center;color:var(--text-muted);font-size:13px;display:flex;align-items:center;justify-content:center;min-height:200px }
 /* chart.js responsive 要求父容器有确定的高度,否则 canvas 会无限拉高(每次 resize 让父元素变大,触发新 resize)。
    用 position:relative + 固定 height,让 canvas 在内部以 absolute 填充。 */
-.si-trend-canvas-wrap { position:relative;width:100%;height:240px }
+.si-trend-canvas-wrap { position:relative;width:100%;height:200px }
 .si-trend-canvas-wrap > canvas { position:absolute;left:0;top:0;width:100% !important;height:100% !important }
 .si-trend-hint { font-size:10.5px;color:var(--text-muted);text-align:center;margin-top:6px;font-style:italic }
 .si-trend-fallback { position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:var(--bg-soft);border-radius:6px;padding:14px;text-align:center }
@@ -1103,24 +415,165 @@ const SKILL_DETAIL_CSS = `
 /* 失败用例 section(sample 视角主信息)*/
 .si-failures { margin:14px 0;padding:12px 14px;background:var(--bg-soft);border-radius:6px }
 .si-failures-h { font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:10px }
-.si-failure-item { background:var(--bg-surface);border-radius:5px;margin-bottom:8px;border-left:3px solid #9c4a3f }
+.si-failure-item { background:rgba(156,74,63,.04);border-radius:5px;margin-bottom:8px;border-left:3px solid #9c4a3f }
 .si-failure-item:last-child { margin-bottom:0 }
-.si-failure-head { display:grid;grid-template-columns:auto auto 1fr auto;gap:10px;align-items:center;padding:8px 12px;cursor:default;flex-wrap:wrap }
+/* 两行布局:第一行 id + tags + 右对齐 trace;第二行 summary 独占 */
+.si-failure-head { display:flex;flex-direction:column;gap:6px;padding:10px 12px;cursor:default }
 details.si-failure-item > summary.si-failure-head { cursor:pointer;list-style:none;user-select:none }
 details.si-failure-item > summary.si-failure-head::-webkit-details-marker { display:none }
-details.si-failure-item > summary.si-failure-head::before { content:'▸ ';color:var(--text-muted);font-size:11px }
-details.si-failure-item[open] > summary.si-failure-head::before { content:'▾ ' }
-.si-failure-id { font-size:11.5px;font-weight:600;color:#9c4a3f;background:var(--bg-soft);padding:1px 7px;border-radius:3px;font-family:"SF Mono",Menlo,monospace }
+.si-failure-row1 { display:flex;align-items:center;gap:8px;flex-wrap:wrap }
+.si-failure-row1::before { content:'▸ ';color:var(--text-muted);font-size:11px;margin-right:-4px }
+details.si-failure-item[open] > summary > .si-failure-row1::before { content:'▾ ' }
+.si-failure-row2 { font-size:14px;color:var(--text-secondary);line-height:1.55;padding-left:16px;white-space:pre-wrap;word-break:break-word }
+.si-failure-spacer { flex:1 }
+.si-failure-id { font-size:12.5px;font-weight:600;color:#9c4a3f;background:var(--bg-soft);padding:2px 8px;border-radius:3px;font-family:"SF Mono",Menlo,monospace }
 .si-failure-modes { display:flex;gap:4px;flex-wrap:wrap }
-.si-failure-mode { font-size:10.5px;color:#b08030;background:rgba(176,128,48,.14);padding:1px 6px;border-radius:8px;font-weight:500 }
-.si-failure-summary { font-size:12.5px;color:var(--text-secondary);line-height:1.5;min-width:0 }
-.si-failure-trace { font-size:11px;color:var(--accent);text-decoration:none;font-weight:500;white-space:nowrap }
+.si-failure-mode { font-size:12px;color:#b08030;background:rgba(176,128,48,.14);padding:2px 8px;border-radius:8px;font-weight:500;white-space:nowrap }
+.si-failure-trace { font-size:12px;color:var(--accent);text-decoration:none;font-weight:500;white-space:nowrap }
+.si-failure-trace:hover { text-decoration:underline }
+
+/* 通过 / 诱错 sample 紧凑行 */
+.si-pass-item { display:flex;gap:10px;align-items:center;padding:5px 8px;border-radius:4px;font-size:14px;line-height:1.5 }
+.si-pass-item:hover { background:var(--bg-soft) }
+.si-pass-card { background:var(--bg-surface);border-radius:5px;margin-bottom:6px;border-left:3px solid #5e8252 }
+.si-pass-card > summary { list-style:none;cursor:pointer;user-select:none }
+.si-pass-card > summary::-webkit-details-marker { display:none }
+.si-pass-head { display:flex;flex-direction:column;gap:4px;padding:8px 12px }
+.si-pass-row1 { display:flex;align-items:center;gap:8px;flex-wrap:wrap }
+.si-pass-row1::before { content:'▸ ';color:var(--text-muted);font-size:11px;margin-right:-4px }
+details.si-pass-card[open] > summary > .si-pass-row1::before { content:'▾ ' }
+.si-pass-id { font-size:12px;font-weight:600;color:#5e8252;background:var(--bg-soft);padding:2px 8px;border-radius:3px;font-family:"SF Mono",Menlo,monospace;flex-shrink:0 }
+.si-pass-score { font-size:12px;font-weight:600;color:#5e8252;background:rgba(94,130,82,.1);padding:1px 7px;border-radius:10px }
+.si-pass-prompt-preview { font-size:13px;color:var(--text-secondary);padding-left:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis }
+.si-pass-body { padding:0 12px 10px 28px;display:flex;flex-direction:column;gap:8px }
+.si-pass-section { }
+.si-pass-label { font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:4px }
+.si-pass-content { font-size:14px;color:var(--text-primary);line-height:1.6;white-space:pre-wrap;word-break:break-word;background:var(--bg-soft);padding:8px 12px;border-radius:4px }
+.si-sample-dot { font-size:10px;line-height:1;flex-shrink:0 }
+.se-scores { margin-bottom:12px;padding:12px 14px;background:var(--bg-soft);border-radius:8px }
+.se-scores-hero { display:flex;align-items:baseline;gap:8px;margin-bottom:10px }
+.se-hero-label { font-size:14px;font-weight:600;color:var(--text-primary) }
+.se-hero-val { font-size:28px;font-weight:700;color:var(--text-primary);line-height:1 }
+.se-hero-max { font-size:14px;font-weight:400;color:var(--text-muted) }
+.se-hero-link { font-size:12px;color:var(--accent);text-decoration:none;font-weight:500;margin-left:auto }
+.se-hero-link:hover { text-decoration:underline }
+.se-scores-grid { display:grid;grid-template-columns:repeat(3,1fr);gap:8px }
+@media(max-width:600px) { .se-scores-grid { grid-template-columns:repeat(2,1fr) } }
+.se-score-card { padding:8px 10px;background:var(--bg-surface);border-radius:6px }
+.se-score-label { font-size:12px;color:var(--text-muted);margin-bottom:4px }
+.se-score-bar { height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-bottom:4px }
+.se-score-fill { height:100%;border-radius:2px }
+.se-score-fill--good { background:#5e8252 }
+.se-score-fill--mid { background:#b08030 }
+.se-score-fill--low { background:#9c4a3f }
+.se-score-val { font-size:16px;font-weight:600;color:var(--text-primary) }
+.se-score-max { font-size:12px;font-weight:400;color:var(--text-muted) }
+.si-pass-preview { flex:1;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0 }
 .si-failure-trace:hover { text-decoration:underline }
 .si-failure-detail { padding:0 12px 10px;border-top:1px solid var(--border) }
 .si-failure-detail .si-illustration { border-left:none;background:transparent;padding:8px 0 0 0 }
-.si-failure-no-detail { padding:6px 0;font-size:12px;color:var(--text-muted);font-style:italic }
+.si-failure-no-detail { padding:6px 0;font-size:13px;color:var(--text-muted);font-style:italic }
 
-/* 单条 sample 的"期望 vs 实际 vs 卡在哪"diff 对照视图(modal v5 核心)*/
+/* v7:顶部全景区 — 左 3 个 donut ring + 右趋势图,两栏同高 */
+.si-overview { display:grid;grid-template-columns:3fr 2fr;gap:18px;margin:10px 0 22px;align-items:stretch }
+@media(max-width:880px){ .si-overview { grid-template-columns:1fr } }
+.si-overview-cards { background:var(--bg-surface);border-radius:10px;padding:18px 14px;box-shadow:var(--shadow-sm);display:flex;align-items:center;justify-content:space-around;gap:8px }
+.si-overview-trend { background:var(--bg-surface);border-radius:10px;padding:14px 16px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column }
+
+/* 三视角 ring + label(锚定到下面对应 section);内容自身居中,被 cards 容器垂直拉伸时上下留白对称 */
+.si-vs { flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;padding:8px 4px;text-decoration:none;color:var(--text-primary);border-radius:8px;transition:background .15s }
+.si-vs:hover { background:var(--bg-soft);text-decoration:none }
+.si-ring { display:block }
+.si-vs-h { display:flex;align-items:baseline;gap:4px;flex-wrap:wrap;justify-content:center;margin-top:4px }
+.si-vs-icon { font-size:15px;line-height:1 }
+.si-vs-label { font-size:13.5px;font-weight:600;color:var(--text-primary) }
+.si-vs-sublabel { font-size:11px;color:var(--text-muted) }
+.si-vs-stat { font-size:12.5px;color:var(--text-secondary);font-variant-numeric:tabular-nums;line-height:1.45 }
+.si-vs-spark { display:block;margin-top:2px }
+@media(max-width:560px){
+  .si-overview-cards { flex-direction:column;align-items:stretch }
+  .si-vs { flex-direction:row;justify-content:flex-start;text-align:left;gap:14px;align-items:center }
+  .si-vs-h, .si-vs-stat, .si-vs-spark { margin:0 }
+}
+
+/* 三视角 section(下方主体) */
+.si-sect { background:var(--bg-surface);border-radius:8px;padding:14px 18px;box-shadow:var(--shadow-sm);margin-bottom:14px;border-left:4px solid var(--border);scroll-margin-top:16px }
+.si-sect--green   { border-left-color:#5e8252 }
+.si-sect--yellow  { border-left-color:#b08030 }
+.si-sect--red     { border-left-color:#9c4a3f }
+.si-sect--gray    { border-left-color:var(--border) }
+.si-sect-h { display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap }
+.si-sect-title { font-size:15px;font-weight:600;color:var(--text-primary) }
+.si-sect-meta { font-size:11.5px;color:var(--text-muted);font-variant-numeric:tabular-nums }
+.si-sect-body { display:flex;flex-direction:column;gap:6px }
+.si-sect-empty { font-size:13px;color:var(--text-muted);font-style:italic;padding:8px 0 }
+.si-sect-line { font-size:14px;color:var(--text-secondary);margin-bottom:4px }
+.si-sect-allpass { font-size:14px;color:#5e8252;padding:6px 10px;background:rgba(94,130,82,.07);border-radius:4px }
+.si-sect-link { display:inline-block;margin-top:8px;font-size:12px;color:var(--accent);text-decoration:none;font-weight:500 }
+.si-sect-link:hover { text-decoration:underline }
+.si-sect-fold { margin-top:8px;border-top:1px dashed var(--border);padding-top:6px }
+.si-sect-fold > summary { cursor:pointer;font-size:11.5px;color:var(--text-muted);user-select:none;list-style:none;padding:4px 0 }
+.si-sect-fold > summary::-webkit-details-marker { display:none }
+.si-sect-fold > summary:hover { color:var(--text-secondary) }
+.si-sect-fold-body { padding-top:6px;display:flex;flex-direction:column;gap:5px }
+.si-sect-skipped { font-size:11px;color:var(--text-muted);font-style:italic;margin-top:6px }
+
+/* doctor 规则展示(用在 doctor section 和 observe section) */
+.sd-grid { display:flex;flex-direction:column;gap:4px }
+.sd-dim { border-radius:6px;border:1px solid var(--border);overflow:hidden }
+.sd-dim--err { border-color:rgba(156,74,63,.3) }
+.sd-dim--warn { border-color:rgba(176,128,48,.3) }
+.sd-dim--pass { border-color:rgba(94,130,82,.25);background:rgba(94,130,82,.04) }
+.sd-dim--skip { border-color:var(--border);opacity:.6 }
+.sd-dim > summary { list-style:none;cursor:pointer }
+.sd-dim > summary::-webkit-details-marker { display:none }
+.sd-dim-header { display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:14px }
+.sd-dim-dot { flex-shrink:0;font-size:10px;line-height:1 }
+.sd-dim-name { font-weight:600;color:var(--text-primary);flex:1;min-width:0 }
+.sd-dim-badges { display:flex;gap:6px;flex-shrink:0 }
+.sd-badge { font-size:12px;padding:1px 7px;border-radius:10px;font-weight:500 }
+.sd-badge--err { background:rgba(156,74,63,.1);color:#9c4a3f }
+.sd-badge--warn { background:rgba(176,128,48,.1);color:#b08030 }
+.sd-dim-body { padding:0 12px 10px;display:flex;flex-direction:column;gap:6px }
+.sd-item { padding:8px 10px;border-radius:4px;font-size:14px;line-height:1.6 }
+.sd-item--err { background:rgba(156,74,63,.05);border-left:2px solid #9c4a3f }
+.sd-item--warn { background:rgba(176,128,48,.05);border-left:2px solid #b08030 }
+.sd-item-desc { color:var(--text-primary);word-break:break-word }
+.sd-item-sug { margin-top:4px;font-size:13px;color:var(--text-secondary);padding:4px 8px;background:rgba(94,130,82,.05);border-radius:4px;word-break:break-word }
+.sd-warn-fold { margin-top:6px }
+.sd-warn-list { display:flex;flex-direction:column;gap:6px;margin-top:6px }
+.sd-warn-toggle { cursor:pointer;font-size:13px;color:var(--text-muted);user-select:none;list-style:none;padding:2px 0 }
+.sd-warn-toggle::-webkit-details-marker { display:none }
+.sd-warn-toggle::before { content:'▸ ';font-size:10px }
+details[open] > .sd-warn-toggle::before { content:'▾ ' }
+.sd-warn-toggle:hover { color:var(--text-secondary) }
+.sd-pass-fold { margin-top:6px }
+.sd-pass-fold > .sd-dim + .sd-dim { margin-top:4px }
+.sd-pass-toggle { cursor:pointer;font-size:13px;color:var(--text-muted);user-select:none;list-style:none;padding:6px 0 }
+.sd-pass-toggle::-webkit-details-marker { display:none }
+.sd-pass-toggle:hover { color:var(--text-secondary) }
+.si-rule-hint { margin-top:4px;font-size:12px;color:var(--text-secondary);line-height:1.55 }
+
+/* 单条 sample 展开后的 4 段(modal v6:用例 prompt / 期望 / 实际 / 建议)*/
+.si-sb { display:flex;flex-direction:column;gap:10px;padding:10px 0 }
+.si-sb-block { padding:10px 12px;border-radius:5px;background:var(--bg-soft) }
+.si-sb-block--prompt   { background:var(--bg-soft) }
+.si-sb-block--expected { background:rgba(94,130,82,.06) }
+.si-sb-block--actual   { background:rgba(176,128,48,.07) }
+.si-sb-block--suggest  { background:rgba(122,107,137,.07) }
+.si-sb-label { font-size:12px;font-weight:700;color:var(--text-secondary);letter-spacing:0.02em;margin-bottom:5px }
+.si-sb-block--expected .si-sb-label { color:#5e8252 }
+.si-sb-block--actual   .si-sb-label { color:#b08030 }
+.si-sb-block--suggest  .si-sb-label { color:#7a6b89 }
+.si-sb-text { font-size:13px;color:var(--text-primary);line-height:1.6;white-space:pre-wrap;word-break:break-word }
+.si-sb-block--prompt .si-sb-text { font-family:"SF Mono",Menlo,monospace;font-size:12.5px;max-height:200px;overflow-y:auto }
+.si-sb-sugrow { display:grid;grid-template-columns:90px 1fr;gap:8px;padding:4px 0;align-items:start }
+.si-sb-sugrow:not(:first-child) { border-top:1px dashed var(--border) }
+.si-sb-sugtag { font-size:11px;color:#7a6b89;background:var(--bg-surface);padding:2px 8px;border-radius:8px;font-weight:600;width:fit-content;height:fit-content }
+.si-sb-block--empty { opacity:.75 }
+.si-sb-empty { color:var(--text-muted);font-style:italic;font-size:12.5px }
+
+/* 单条 sample 的"期望 vs 实际 vs 卡在哪"diff 对照视图(已被 v6 sb 视图替代,保留 placeholder)*/
 .si-diff { display:flex;flex-direction:column;gap:8px;padding:10px 0 }
 .si-diff-row { display:grid;grid-template-columns:24px 50px 1fr;gap:10px;align-items:start;padding:8px 12px;border-radius:5px;line-height:1.55 }
 .si-diff-row--expected { background:rgba(94,130,82,.07);border-left:3px solid #5e8252 }
@@ -1334,27 +787,10 @@ details.si-failure-item[open] > summary.si-failure-head::before { content:'▾ '
 
 // ────────── chart.js init script ──────────
 
-// trend init script — i18n 走 document.documentElement.dataset.lang(layout.ts 落在 <html> 上,
-// langToggleScript 切换时同步),script 自己在 IIFE 顶上读一次。dataset 没设 ⇒ 走 'zh'(默认)。
-// 文案以前是写死中文,导致 ?lang=en 的英文页面 fallback 仍冒中文(PR#95 reviewer P3)。
 const TREND_INIT_SCRIPT = `
 <script src="/static/chart.js" onerror="window.__omkChartLoadError=true"></script>
 <script>
 (function(){
-  var __omkLang = document.documentElement.dataset.lang || 'zh';
-  var __omkStr = __omkLang === 'en' ? {
-    renderErr: 'Trend chart render error',
-    loadErr: 'Trend chart failed to load',
-    dataErr: 'Trend chart data malformed',
-    hint: 'Data is still available in "Latest metrics" below, or check the browser console for the underlying error.',
-    clickReport: '→ Click to open that report',
-  } : {
-    renderErr: '趋势图渲染异常',
-    loadErr: '趋势图加载失败',
-    dataErr: '趋势图数据格式异常',
-    hint: '数据仍可从下方"最新指标速览"看,或在浏览器控制台看具体错误。',
-    clickReport: '→ 点击看那期报告',
-  };
   function showFallback(canvas, msg){
     if (!canvas) return;
     var wrap = canvas.parentElement;
@@ -1363,7 +799,7 @@ const TREND_INIT_SCRIPT = `
     wrap.innerHTML = '<div class="si-trend-fallback">' +
       '<div class="si-trend-fallback-icon">📉</div>' +
       '<div class="si-trend-fallback-msg">' + msg + '</div>' +
-      '<div class="si-trend-fallback-hint">' + __omkStr.hint + '</div>' +
+      '<div class="si-trend-fallback-hint">数据仍可从下方"最新指标速览"看,或在浏览器控制台看具体错误。</div>' +
       '</div>';
   }
   // 异步兜底:Chart 内部 RAF / setTimeout 抛错会冒泡到 window.error,这里捕获后
@@ -1373,14 +809,14 @@ const TREND_INIT_SCRIPT = `
     if (!canvas) return;
     var msg = (ev && ev.message) || '';
     if (/chart/i.test(msg) || (ev.filename && /chart\\.js$/i.test(ev.filename))) {
-      showFallback(canvas, __omkStr.renderErr);
+      showFallback(canvas, '趋势图渲染异常');
     }
   });
   function init(){
     var canvas = document.getElementById('trend-chart');
     if (!canvas) return;
     if (window.__omkChartLoadError || !window.Chart) {
-      showFallback(canvas, __omkStr.loadErr);
+      showFallback(canvas, '趋势图加载失败');
       return;
     }
     var raw = canvas.getAttribute('data-chart');
@@ -1395,7 +831,7 @@ const TREND_INIT_SCRIPT = `
           return !Array.isArray(ds.data) || ds.data.length !== data.labels.length;
         });
         if (bad) {
-          showFallback(canvas, __omkStr.dataErr);
+          showFallback(canvas, '趋势图数据格式异常');
           return;
         }
       }
@@ -1413,14 +849,14 @@ const TREND_INIT_SCRIPT = `
                 var lines = hint ? [hint] : [];
                 if (links) {
                   var url = links[ctx.datasetIndex] && links[ctx.datasetIndex][ctx.dataIndex];
-                  if (url) lines.push(__omkStr.clickReport);
+                  if (url) lines.push('→ 点击看那期报告');
                 }
                 return lines;
               }
             } }
           },
           scales: {
-            y: { min: 0, max: 100, ticks: { callback: function(v){ return v + '%'; }, color: '#a8a8a8', font: { size: 10 } }, grid: { color: 'rgba(58,58,58,.06)' } },
+            y: { min: 0, max: 100, ticks: { callback: function(v){ return v === 0 || v === 100 ? v + '%' : ''; }, color: '#a8a8a8', font: { size: 10 }, stepSize: 25 }, grid: { color: 'rgba(58,58,58,.06)' } },
             x: { ticks: { color: '#a8a8a8', font: { size: 10 } }, grid: { display: false } }
           },
           elements: { point: { radius: 3, hoverRadius: 5 } },
@@ -1439,13 +875,416 @@ const TREND_INIT_SCRIPT = `
       });
     } catch(e) {
       console.warn('trend chart init failed:', e);
-      showFallback(canvas, __omkStr.renderErr);
+      showFallback(canvas, '趋势图渲染异常');
     }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
 </script>`;
+
+// ────────── v7:三视角顶层全景 + 各 section 直铺 ──────────
+
+/** 紧凑 inline sparkline(供顶部速览卡每张里用,显示该视角历史走向)。
+ *  values 是 0-100 归一化数组(空数组返回占位)。 */
+function renderInlineSpark(values: number[], color: string): string {
+  if (!values || values.length === 0) {
+    return `<svg class="si-vs-spark" width="80" height="22" viewBox="0 0 80 22" xmlns="http://www.w3.org/2000/svg"><text x="50%" y="55%" text-anchor="middle" fill="#a8a8a8" font-size="9">no data</text></svg>`;
+  }
+  const w = 80, h = 22, pad = 2;
+  const min = Math.min(...values, 0);
+  const max = Math.max(...values, 100);
+  const range = (max - min) || 1;
+  const dx = values.length > 1 ? (w - 2 * pad) / (values.length - 1) : 0;
+  const pts = values.map((v, i) => {
+    const x = pad + i * dx;
+    const y = pad + (h - 2 * pad) * (1 - (v - min) / range);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return `<svg class="si-vs-spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+/** Donut ring SVG:中央显示百分比,弧色按 band。半径 38,周长 ~239。 */
+function renderDonutRing(pct: number | null, color: string, label: string): string {
+  const r = 38, c = 2 * Math.PI * r;
+  const safePct = pct == null ? 0 : Math.max(0, Math.min(100, pct));
+  const dashOffset = c * (1 - safePct / 100);
+  const centerText = pct == null ? '—' : `${Math.round(safePct)}%`;
+  return `<svg class="si-ring" width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="${e(label)}">
+    <circle cx="50" cy="50" r="${r}" fill="none" stroke="var(--bg-soft)" stroke-width="8"/>
+    ${pct != null ? `<circle cx="50" cy="50" r="${r}" fill="none" stroke="${color}" stroke-width="8"
+      stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${dashOffset.toFixed(2)}"
+      stroke-linecap="round" transform="rotate(-90 50 50)"/>` : ''}
+    <text x="50" y="56" text-anchor="middle" font-size="19" font-weight="700" fill="${pct == null ? 'var(--text-muted)' : color}" font-family="-apple-system,BlinkMacSystemFont,sans-serif">${centerText}</text>
+  </svg>`;
+}
+
+/** 三视角顶部全景:3 个 Apple-watch 风 donut ring,每个 ring 下面带 emoji + label + 状态 + sparkline */
+function renderViewSummaryCards(entry: SkillIndexEntry, lang: Lang): string {
+  // doctor
+  const docBand: 'green' | 'yellow' | 'red' | 'gray' = entry.doctor
+    ? (entry.doctor.status === 'fail' ? 'red' : entry.doctor.status === 'warn' ? 'yellow' : 'green') : 'gray';
+  const docColor = docBand === 'green' ? '#5e8252' : docBand === 'yellow' ? '#b08030' : docBand === 'red' ? '#9c4a3f' : '#a8a8a8';
+  const docPct = entry.doctor && (entry.doctor.passCount + entry.doctor.warnCount + entry.doctor.failCount) > 0
+    ? (entry.doctor.passCount / (entry.doctor.passCount + entry.doctor.warnCount + entry.doctor.failCount)) * 100
+    : null;
+  const docPassRates = entry.doctorHistory.map((h) => {
+    const tot = h.passCount + h.warnCount + h.failCount;
+    return tot > 0 ? (h.passCount / tot) * 100 : 0;
+  });
+  const docStat = entry.doctor
+    ? `${entry.doctor.passCount}✓ ${entry.doctor.warnCount}⚠ ${entry.doctor.failCount}✗`
+    : (lang === 'zh' ? '未运行' : 'not run');
+
+  // eval
+  const evalBand: 'green' | 'yellow' | 'red' | 'gray' = entry.eval
+    ? (entry.eval.failCount === 0 ? 'green' : entry.eval.passCount === 0 ? 'red' : 'yellow') : 'gray';
+  const evalColor = evalBand === 'green' ? '#5e8252' : evalBand === 'yellow' ? '#b08030' : evalBand === 'red' ? '#9c4a3f' : '#a8a8a8';
+  const evalPct = entry.eval && entry.eval.compositeScore != null
+    ? (entry.eval.compositeScore / 5) * 100
+    : null;
+  const evalCompositeRates = entry.evalHistory.map((h) => (h.compositeScore ?? 0) / 5 * 100);
+  const evalStat = entry.eval && (entry.eval.passCount + entry.eval.failCount) > 0
+    ? `${entry.eval.totalSamples} ${lang === 'zh' ? '用例' : 'samples'} · ${Math.round((entry.eval.passCount / (entry.eval.passCount + entry.eval.failCount)) * 100)}%${entry.eval.compositeScore != null ? ` · ${entry.eval.compositeScore.toFixed(2)}/5` : ''}`
+    : (lang === 'zh' ? '未运行' : 'not run');
+
+  // observe
+  const obsBand: 'green' | 'yellow' | 'red' | 'gray' = entry.observe?.healthBand ?? 'gray';
+  const obsColor = obsBand === 'green' ? '#5e8252' : obsBand === 'yellow' ? '#b08030' : obsBand === 'red' ? '#9c4a3f' : '#a8a8a8';
+  const obsPct = entry.observe ? (1 - entry.observe.gapRate) * 100 : null;
+  const obsStabilityRates = entry.observeHistory.map((h) => (1 - h.gapRate) * 100);
+  const obsStat = entry.observe
+    ? `${entry.observe.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · ${((1 - entry.observe.gapRate) * 100).toFixed(0)}% ${lang === 'zh' ? '稳定' : 'stable'}`
+    : (lang === 'zh' ? '未运行' : 'not run');
+
+  const node = (icon: string, label: string, sublabel: string, band: string, pct: number | null, color: string, stat: string, sparkRates: number[], anchor: string): string => `<a class="si-vs si-vs--${band}" href="#${anchor}">
+    ${renderDonutRing(pct, color, `${label} ${sublabel}`)}
+    <div class="si-vs-h">
+      <span class="si-vs-icon">${icon}</span>
+      <span class="si-vs-label">${e(label)}</span>
+      <span class="si-vs-sublabel">${e(sublabel)}</span>
+    </div>
+    <div class="si-vs-stat">${e(stat)}</div>
+    ${renderInlineSpark(sparkRates, color)}
+  </a>`;
+
+  return `${node('🩺', lang === 'zh' ? '健康度' : 'Structure', '(doctor)', docBand, docPct, docColor, docStat, docPassRates, 'section-doctor')}
+    ${node('🧪', lang === 'zh' ? '评测结果' : 'Test score', '(eval)', evalBand, evalPct, evalColor, evalStat, evalCompositeRates, 'section-eval')}
+    ${node('👁', lang === 'zh' ? '线上观测' : 'Live stability', '(observe)', obsBand, obsPct, obsColor, obsStat, obsStabilityRates, 'section-observe')}`;
+}
+
+/** doctor section:展示告警 / 失败规则;通过的规则折叠到底部 */
+function renderDoctorSection(snap: SkillDoctorSnapshot | null, lang: Lang): string {
+  if (!snap) {
+    return `<section id="section-doctor" class="si-sect si-sect--gray">
+      <div class="si-sect-h">🩺 ${lang === 'zh' ? '健康度 (doctor)' : 'Structure (doctor)'}</div>
+      <div class="si-sect-empty">${lang === 'zh' ? '未运行 omk doctor' : 'doctor not run yet'}</div>
+    </section>`;
+  }
+
+  type Finding = { level: string; description?: string; suggestion?: string };
+  const getDet = (r: DoctorRuleResult) => r.detail as { displayName?: string; level?: string; findings?: Finding[] } | undefined;
+
+  const SORT_ORDER: Record<string, number> = { fail: 0, warn: 1, skipped: 2, pass: 3 };
+  const dims = snap.results
+    .filter((r) => !r.ruleId.endsWith(':_summary'))
+    .sort((a, b) => (SORT_ORDER[a.status] ?? 9) - (SORT_ORDER[b.status] ?? 9));
+
+  const STATUS_CFG: Record<string, { dot: string; label: string; cls: string }> = {
+    fail: { dot: '🔴', label: lang === 'zh' ? '不通过' : 'fail', cls: 'err' },
+    warn: { dot: '🟡', label: lang === 'zh' ? '告警' : 'warn', cls: 'warn' },
+    pass: { dot: '🟢', label: lang === 'zh' ? '通过' : 'pass', cls: 'pass' },
+    skipped: { dot: '⚪', label: lang === 'zh' ? '跳过' : 'skip', cls: 'skip' },
+  };
+
+  const renderDimRow = (r: DoctorRuleResult): string => {
+    const det = getDet(r);
+    const name = det?.displayName ?? r.ruleId;
+    const cfg = STATUS_CFG[r.status] ?? STATUS_CFG.pass;
+    const findings = det?.findings ?? [];
+    const errors = findings.filter((f) => f.level === '错误');
+    const warnings = findings.filter((f) => f.level === '警告');
+    const hasDetails = errors.length > 0 || warnings.length > 0;
+
+    const badge = (count: number, type: 'err' | 'warn'): string => {
+      if (!count) return '';
+      const label = type === 'err' ? (lang === 'zh' ? '错误' : 'err') : (lang === 'zh' ? '警告' : 'warn');
+      return `<span class="sd-badge sd-badge--${type}">${count} ${label}</span>`;
+    };
+
+    const header = `<div class="sd-dim-header">
+      <span class="sd-dim-dot">${cfg.dot}</span>
+      <span class="sd-dim-name">${e(name)}</span>
+      <span class="sd-dim-badges">${badge(errors.length, 'err')}${badge(warnings.length, 'warn')}</span>
+    </div>`;
+
+    if (!hasDetails) return `<div class="sd-dim sd-dim--${cfg.cls}">${header}</div>`;
+
+    let body = '';
+    if (errors.length > 0) {
+      body += errors.map((f) => `<div class="sd-item sd-item--err">
+        <div class="sd-item-desc">❌ ${e(f.description ?? '')}</div>
+        ${f.suggestion ? `<div class="sd-item-sug">💡 ${e(f.suggestion)}</div>` : ''}
+      </div>`).join('');
+    }
+    if (warnings.length > 0) {
+      body += `<details class="sd-warn-fold"><summary class="sd-warn-toggle">${lang === 'zh' ? `${warnings.length} 条警告` : `${warnings.length} warning(s)`}</summary>`;
+      body += `<div class="sd-warn-list">${warnings.map((f) => `<div class="sd-item sd-item--warn">
+        <div class="sd-item-desc">⚠️ ${e(f.description ?? '')}</div>
+        ${f.suggestion ? `<div class="sd-item-sug">💡 ${e(f.suggestion)}</div>` : ''}
+      </div>`).join('')}</div>`;
+      body += `</details>`;
+    }
+
+    return `<details class="sd-dim sd-dim--${cfg.cls}" ${errors.length > 0 ? 'open' : ''}>
+      <summary>${header}</summary>
+      <div class="sd-dim-body">${body}</div>
+    </details>`;
+  };
+
+  return `<section id="section-doctor" class="si-sect si-sect--${snap.status === 'fail' ? 'red' : snap.status === 'warn' ? 'yellow' : 'green'}">
+    <div class="si-sect-h">
+      <span class="si-sect-title">🩺 ${lang === 'zh' ? '健康度 (doctor)' : 'Structure (doctor)'}</span>
+      <span class="si-sect-meta">${snap.passCount}✓ ${snap.warnCount}⚠ ${snap.failCount}✗ · ${relTime(snap.timestamp, lang)}</span>
+    </div>
+    <div class="sd-grid">
+      ${dims.filter((r) => r.status === 'fail' || r.status === 'warn').map(renderDimRow).join('')}
+      ${dims.filter((r) => r.status === 'pass' || r.status === 'skipped').length > 0
+        ? `<details class="sd-pass-fold"><summary class="sd-pass-toggle">${lang === 'zh'
+            ? `▸ ${dims.filter((r) => r.status === 'pass' || r.status === 'skipped').length} 项通过`
+            : `▸ ${dims.filter((r) => r.status === 'pass' || r.status === 'skipped').length} passed`}</summary>
+          ${dims.filter((r) => r.status === 'pass' || r.status === 'skipped').map(renderDimRow).join('')}
+        </details>`
+        : ''}
+    </div>
+  </section>`;
+}
+
+/** eval section:失败 sample 列表(默认折叠,展开看 prompt/期望/实际/建议) */
+function renderEvalSection(
+  snap: SkillEvalSnapshot | null,
+  evalReport: EvaluationReport | null,
+  langQ: string,
+  lang: Lang,
+): string {
+  if (!snap) {
+    return `<section id="section-eval" class="si-sect si-sect--gray">
+      <div class="si-sect-h">🧪 ${lang === 'zh' ? '评测结果 (eval)' : 'Test score (eval)'}</div>
+      <div class="si-sect-empty">${lang === 'zh' ? '未运行 omk eval' : 'eval not run yet'}</div>
+    </section>`;
+  }
+
+  // 收集所有 sample 详情(分 failed / passed / tripwire 三类)
+  interface SampleListEntry { sampleId: string; prompt: string; promptPreview: string; score?: number | null; rubric?: string; output?: string }
+  const failedSamples: FailedSampleDetail[] = [];
+  const passedSamples: SampleListEntry[] = [];
+  const tripwireSamples: SampleListEntry[] = [];
+  if (evalReport && snap.variantName) {
+    const variant = snap.variantName;
+    for (const r of evalReport.results) {
+      const v = r.variants?.[variant];
+      if (!v) continue;
+      const sid = r.sample_id;
+      const prompt = evalReport.sampleSnapshots?.[sid]?.prompt ?? '';
+      const promptPreview = prompt.slice(0, 80).replace(/\n+/g, ' ');
+      const passed = (v.assertions?.details ?? []).every((d) => d.passed);
+      const isTripwire = (v.diagnostic?.rootCause ?? []).includes('tripwire_intentional')
+        || evalReport.sampleSnapshots?.[sid]?.tripwire === true;
+      if (isTripwire) {
+        tripwireSamples.push({ sampleId: sid, prompt, promptPreview });
+      } else if (passed) {
+        passedSamples.push({
+          sampleId: sid, prompt, promptPreview, score: v.compositeScore ?? null,
+          rubric: evalReport.sampleSnapshots?.[sid]?.rubric ?? '',
+          output: v.outputPreview ?? '',
+        });
+      } else {
+        failedSamples.push({
+          sampleId: sid,
+          diagnosticSummary: v.diagnostic?.summary ?? '',
+          prompt,
+          expected: v.diagnostic?.expected ?? '',
+          actual: v.diagnostic?.actual ?? '',
+          suggestionSkill: v.diagnostic?.suggestion?.skill ?? '',
+          suggestionSample: v.diagnostic?.suggestion?.sample ?? '',
+          failureModes: (v.diagnostic?.failureModes ?? []) as string[],
+          illustration: null,
+        });
+      }
+    }
+  }
+
+  const total = snap.passCount + snap.failCount;
+  const pct = total > 0 ? Math.round((snap.passCount / total) * 100) : 0;
+  const sectBand = snap.failCount === 0 ? 'green' : snap.passCount === 0 ? 'red' : 'yellow';
+
+  const failedBlock = failedSamples.length > 0
+    ? failedSamples.map((s) => {
+        const summary = s.diagnosticSummary || (lang === 'zh' ? '(无诊断摘要)' : '(no summary)');
+        const modes = s.failureModes.length > 0
+          ? `<span class="si-failure-modes">${s.failureModes.map((m) => `<span class="si-failure-mode">${e(m)}</span>`).join('')}</span>`
+          : '';
+        const traceLink = `<a class="si-failure-trace" href="/reports/${e(snap.reportId)}${langQ}#sample-${e(s.sampleId)}" onclick="event.stopPropagation()">${lang === 'zh' ? '完整 trace →' : 'full trace →'}</a>`;
+        return `<details class="si-failure-item">
+          <summary class="si-failure-head">
+            <div class="si-failure-row1">
+              <span class="si-sample-dot si-sample-dot--fail">🔴</span>
+              <code class="si-failure-id">${e(s.sampleId)}</code>
+              ${modes}
+              <span class="si-failure-spacer"></span>
+              ${traceLink}
+            </div>
+            <div class="si-failure-row2">${e(summary)}</div>
+          </summary>
+          <div class="si-failure-detail">${renderSampleBody(s, lang)}</div>
+        </details>`;
+      }).join('')
+    : '';
+
+  // 通过 sample: 可展开看 prompt 全文 + 得分 + trace 链接
+  const renderPassedSample = (s: SampleListEntry): string => {
+    const traceLink = `<a class="si-failure-trace" href="/reports/${e(snap.reportId)}${langQ}#sample-${e(s.sampleId)}" onclick="event.stopPropagation()">${lang === 'zh' ? '完整 trace →' : 'full trace →'}</a>`;
+    const scoreText = s.score != null ? `${s.score.toFixed(1)}/5` : '';
+    return `<details class="si-pass-card">
+      <summary class="si-pass-head">
+        <div class="si-pass-row1">
+          <span class="si-sample-dot">🟢</span>
+          <code class="si-pass-id">${e(s.sampleId)}</code>
+          ${scoreText ? `<span class="si-pass-score">${scoreText}</span>` : ''}
+          <span class="si-failure-spacer"></span>
+          ${traceLink}
+        </div>
+        <div class="si-pass-prompt-preview">${e(s.promptPreview)}${s.prompt.length > 80 ? '…' : ''}</div>
+      </summary>
+      <div class="si-pass-body">
+        <div class="si-pass-section">
+          <div class="si-pass-label">${lang === 'zh' ? '📝 用例 Prompt' : '📝 Prompt'}</div>
+          <div class="si-pass-content">${e(s.prompt)}</div>
+        </div>
+        ${s.rubric ? `<div class="si-pass-section">
+          <div class="si-pass-label">${lang === 'zh' ? '🎯 期望' : '🎯 Expected'}</div>
+          <div class="si-pass-content">${e(s.rubric)}</div>
+        </div>` : ''}
+        ${s.output ? `<div class="si-pass-section">
+          <div class="si-pass-label">${lang === 'zh' ? '✅ 实际输出' : '✅ Actual'}</div>
+          <div class="si-pass-content">${e(s.output)}</div>
+        </div>` : ''}
+      </div>
+    </details>`;
+  };
+  const passedFold = passedSamples.length > 0
+    ? `<details class="si-sect-fold">
+        <summary>${lang === 'zh' ? `▸ 已通过 ${passedSamples.length} 条用例` : `▸ ${passedSamples.length} samples passed`}</summary>
+        <div class="si-sect-fold-body">${passedSamples.map(renderPassedSample).join('')}</div>
+      </details>`
+    : '';
+  const tripwireFold = tripwireSamples.length > 0
+    ? `<details class="si-sect-fold">
+        <summary>${lang === 'zh' ? `▸ 诱错样本 ${tripwireSamples.length} 条(按设计应该失败)` : `▸ ${tripwireSamples.length} tripwire samples (designed to fail)`}</summary>
+        <div class="si-sect-fold-body">${tripwireSamples.map(renderPassedSample).join('')}</div>
+      </details>`
+    : '';
+
+  const failedHeading = failedSamples.length > 0
+    ? `<div class="si-sect-line">${lang === 'zh' ? `${failedSamples.length} 条用例失败:` : `${failedSamples.length} samples failed:`}</div>`
+    : `<div class="si-sect-allpass">✓ ${lang === 'zh' ? '所有用例通过' : 'all samples pass'}</div>`;
+
+  // 综合得分 + 六维雷达
+  const variantSummary = evalReport?.summary?.[snap.variantName];
+  const scoreCard = (label: string, value: number | null | undefined, max: number): string => {
+    if (value == null) return '';
+    const pctW = Math.round((value / max) * 100);
+    const cls = pctW >= 80 ? 'good' : pctW >= 60 ? 'mid' : 'low';
+    return `<div class="se-score-card">
+      <div class="se-score-label">${e(label)}</div>
+      <div class="se-score-bar"><div class="se-score-fill se-score-fill--${cls}" style="width:${pctW}%"></div></div>
+      <div class="se-score-val">${value.toFixed(2)}<span class="se-score-max">/${max}</span></div>
+    </div>`;
+  };
+  const scoreSummary = variantSummary ? `<div class="se-scores">
+    <div class="se-scores-hero">
+      <div class="se-hero-label">${lang === 'zh' ? '综合得分' : 'Composite'}</div>
+      <div class="se-hero-val">${(variantSummary.avgCompositeScore ?? 0).toFixed(2)}<span class="se-hero-max">/5</span></div>
+      <a class="se-hero-link" href="/reports/${e(snap.reportId)}${langQ}">${lang === 'zh' ? '查看详情 →' : 'Details →'}</a>
+    </div>
+    <div class="se-scores-grid">
+      ${scoreCard(lang === 'zh' ? '事实 / Fact' : 'Fact', variantSummary.avgFactScore, 5)}
+      ${scoreCard(lang === 'zh' ? '行为 / Behavior' : 'Behavior', variantSummary.avgAssertionScore, 5)}
+      ${scoreCard(lang === 'zh' ? 'LLM 评价 / Judge' : 'Judge', variantSummary.avgJudgeScore, 5)}
+      ${scoreCard(lang === 'zh' ? '工具成功率' : 'Tool success', variantSummary.toolSuccessRate != null ? variantSummary.toolSuccessRate * 100 : null, 100)}
+      ${scoreCard(lang === 'zh' ? 'Trace 覆盖率' : 'Trace coverage', variantSummary.traceCoverageRate != null ? variantSummary.traceCoverageRate * 100 : null, 100)}
+      ${scoreCard(lang === 'zh' ? '平均轮次' : 'Avg turns', variantSummary.avgNumTurns, 20)}
+    </div>
+  </div>` : '';
+
+  return `<section id="section-eval" class="si-sect si-sect--${sectBand}">
+    <div class="si-sect-h">
+      <span class="si-sect-title">🧪 ${lang === 'zh' ? '评测结果 (eval)' : 'Test score (eval)'}</span>
+      <span class="si-sect-meta">${snap.totalSamples} ${lang === 'zh' ? '用例' : 'samples'} · ${pct}% ${lang === 'zh' ? '通过' : 'pass'}${snap.compositeScore != null ? ` · ${snap.compositeScore.toFixed(2)}/5` : ''} · ${relTime(snap.timestamp, lang)}</span>
+    </div>
+    <div class="si-sect-body">
+      ${scoreSummary}
+      ${failedHeading}
+      ${failedBlock}
+      ${passedFold}
+      ${tripwireFold}
+      <a class="si-sect-link" href="/reports/${e(snap.reportId)}${langQ}">${lang === 'zh' ? '完整 A/B 报告 →' : 'Full A/B report →'}</a>
+    </div>
+  </section>`;
+}
+
+/** observe section:展示异常指标(gap / 工具失败率) */
+function renderObserveSection(
+  snap: SkillObserveSnapshot | null,
+  langQ: string,
+  lang: Lang,
+): string {
+  if (!snap) {
+    return `<section id="section-observe" class="si-sect si-sect--gray">
+      <div class="si-sect-h">👁 ${lang === 'zh' ? '线上观测 (observe)' : 'Live stability (observe)'}</div>
+      <div class="si-sect-empty">${lang === 'zh' ? '未跑 omk observe' : 'observe not run yet'}</div>
+    </section>`;
+  }
+  const gapPct = (snap.gapRate * 100).toFixed(0);
+  const failPct = (snap.failureRate * 100).toFixed(1);
+
+  const alerts: string[] = [];
+  if (snap.gapRate >= 0.2) {
+    alerts.push(`<div class="si-rule si-rule--warn">
+      <div class="si-rule-head">
+        <span class="si-rule-icon">⚠</span>
+        <code class="si-rule-id">${lang === 'zh' ? '知识库 gap' : 'KB gap'}</code>
+        <span class="si-rule-msg">${gapPct}% ${lang === 'zh' ? '段命中知识库 gap — LLM 找不到该读哪段' : 'segments hit knowledge gap'}</span>
+      </div>
+    </div>`);
+  }
+  if (snap.failureRate >= 0.2) {
+    alerts.push(`<div class="si-rule si-rule--warn">
+      <div class="si-rule-head">
+        <span class="si-rule-icon">⚠</span>
+        <code class="si-rule-id">${lang === 'zh' ? '工具失败率' : 'tool fail rate'}</code>
+        <span class="si-rule-msg">${failPct}% ${lang === 'zh' ? '工具调用失败 — 可能环境问题或 skill 让 LLM 走错路径' : 'tool calls failing'}</span>
+      </div>
+    </div>`);
+  }
+
+  const body = alerts.length > 0
+    ? alerts.join('')
+    : `<div class="si-sect-allpass">✓ ${lang === 'zh' ? '生产观测健康' : 'production observation healthy'}</div>`;
+
+  return `<section id="section-observe" class="si-sect si-sect--${snap.healthBand}">
+    <div class="si-sect-h">
+      <span class="si-sect-title">👁 ${lang === 'zh' ? '线上观测 (observe)' : 'Live stability (observe)'}</span>
+      <span class="si-sect-meta">${snap.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · gap ${gapPct}% · ${lang === 'zh' ? '工具失败率' : 'tool fail'} ${failPct}% · ${relTime(snap.generatedAt, lang)}</span>
+    </div>
+    <div class="si-sect-body">
+      ${body}
+      <a class="si-sect-link" href="/analyses/${e(snap.analysisId)}${langQ}">${lang === 'zh' ? '完整观测报告 →' : 'Full observation report →'}</a>
+    </div>
+  </section>`;
+}
 
 // ────────── 主入口 ──────────
 
@@ -1455,50 +1294,28 @@ export function renderSkillDetail(
   lang: Lang = DEFAULT_LANG,
 ): string {
   const langQ = lang === DEFAULT_LANG ? '' : `?lang=${lang}`;
-  const insights = detectInsights(entry, evalReport);
-  const idx = buildInsightIndex(insights);
   const reportCount = [entry.doctor, entry.eval, entry.observe].filter(Boolean).length;
   const lastTs = [entry.doctor?.timestamp, entry.eval?.timestamp, entry.observe?.generatedAt]
     .filter((s): s is string => Boolean(s)).sort().pop();
 
-  const insightReportId = entry.eval?.reportId ?? null;
-  // currentVariant 沿调用链透到 renderInsightModal → collectFailedSamplesForInsight,
-  // 让 multi-treatment 报告(baseline + skill-a + skill-b 这种)的 /skills/<name> 详情
-  // 页 modal 正确取当前 entry 对应那个 variant 的 diagnostic 文本,不再永远拿数组里
-  // 第一个非 baseline 那个(PR #95 reviewer 5/11 CR 的 P1)。entry.eval 不存在 entry
-  // 也根本不会进 insight pipeline,这里 ?? null 是 TypeScript 保守 fallback。
-  const currentVariant = entry.eval?.variantName ?? null;
-  const insightModals = insights.map((ins) => renderInsightModal(ins, idx.byInsightId.get(ins.id) ?? 0, evalReport, insightReportId, langQ, lang, currentVariant)).join('');
-
   return layout(entry.skillName, `
     <main>
       <a class="si-back" href="/${langQ}">${lang === 'zh' ? '← 返回 Skills' : '← Back to Skills'}</a>
-      ${renderHero(entry, insights, lastTs, reportCount, lang)}
+      ${renderHero(entry, [], lastTs, reportCount, lang)}
 
-      <div class="si-grid">
-        <section class="si-list" aria-label="${lang === 'zh' ? '问题列表' : 'Issues'}">
-          ${renderInsightList(insights, idx, entry, lang)}
+      <div class="si-overview">
+        <section class="si-overview-cards" aria-label="${lang === 'zh' ? '三视角速览' : 'View summary'}">
+          ${renderViewSummaryCards(entry, lang)}
         </section>
-        <section class="si-right">
-          <div class="si-trend">
-            <div class="si-trend-h">📈 ${lang === 'zh' ? '健康趋势(0-100%,越高越好)' : 'Health trend (0-100%, higher is better)'}</div>
-            ${renderTrendChart(entry, langQ, lang)}
-          </div>
-          <div class="si-stages-block">
-            <div class="si-stages-h">
-              <span class="si-stages-title">📋 ${lang === 'zh' ? '最新指标速览' : 'Latest metrics'}</span>
-              <span class="si-stages-sub">${lang === 'zh' ? '点击卡片看完整数据' : 'Click any card for full details'}</span>
-            </div>
-            ${renderStageCards(entry, lang)}
-          </div>
+        <section class="si-overview-trend">
+          <div class="si-trend-h">📈 ${lang === 'zh' ? '健康趋势(0-100%)' : 'Trend (0-100%)'}</div>
+          ${renderTrendChart(entry, langQ, lang)}
         </section>
       </div>
 
-      ${insightModals}
-      ${renderDoctorModal(entry.doctor, entry.doctorHistory, lang)}
-      ${renderDoctorHistoryModals(entry.doctor, entry.doctorHistory, lang)}
-      ${renderEvalModal(entry.eval, entry.evalHistory, evalReport, langQ, lang)}
-      ${renderObserveModal(entry.observe, entry.observeHistory, langQ, lang)}
+      ${renderDoctorSection(entry.doctor, lang)}
+      ${renderEvalSection(entry.eval, evalReport, langQ, lang)}
+      ${renderObserveSection(entry.observe, langQ, lang)}
     </main>
     <style>${SKILL_DETAIL_CSS}</style>
     ${TREND_INIT_SCRIPT}
