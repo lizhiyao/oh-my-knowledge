@@ -6,7 +6,9 @@ import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
 import { parseArgsStrictOrExit } from '../parse-strict.js';
 import { loadSamples, parseYaml, type LoadSamplesResult } from '../../inputs/load-samples.js';
-import type { Sample } from '../../types/index.js';
+import { hashSample, hashString } from '../../eval-core/evaluation-reporting.js';
+import type { CliLang } from '../i18n.js';
+import type { Report, Sample } from '../../types/index.js';
 
 interface GenerateSamplesResult {
   samples: unknown[];
@@ -35,6 +37,99 @@ function getSamplesArray(document: unknown, filePath: string): Sample[] {
 function stringifySampleDocument(filePath: string, document: unknown): string {
   if (isYamlPath(filePath)) return yaml.dump(document, { lineWidth: -1, noRefs: true });
   return JSON.stringify(document, null, 2);
+}
+
+function formatIdList(ids: string[]): string {
+  const shown = ids.slice(0, 5);
+  const suffix = ids.length > shown.length ? ` +${ids.length - shown.length}` : '';
+  return shown.join(', ') + suffix;
+}
+
+export function collectSampleDesignFailureIds(report: Pick<Report, 'results'>, treatmentName: string): Set<string> {
+  const ids = new Set<string>();
+  for (const entry of report.results) {
+    const rootCause = entry.variants[treatmentName]?.diagnostic?.rootCause ?? [];
+    if (rootCause.includes('sample_design')) ids.add(entry.sample_id);
+  }
+  return ids;
+}
+
+export function assertFixReportMatchesCurrentInputs(params: {
+  report: Pick<Report, 'meta'>;
+  treatmentName: string;
+  skillContent: string;
+  samples: Sample[];
+  sampleIds: Set<string>;
+  lang?: CliLang;
+}): void {
+  const { report, treatmentName, skillContent, samples, sampleIds } = params;
+  const lang = params.lang ?? 'zh';
+  const issues: string[] = [];
+
+  const expectedSkillHash = report.meta.artifactHashes?.[treatmentName];
+  const currentSkillHash = hashString(skillContent);
+  if (!expectedSkillHash) {
+    issues.push(lang === 'zh'
+      ? `报告缺少 ${treatmentName} 的 skill 指纹，无法确认诊断对应当前 SKILL.md。`
+      : `Report is missing the skill hash for ${treatmentName}; cannot verify it matches the current SKILL.md.`);
+  } else if (expectedSkillHash !== currentSkillHash) {
+    issues.push(lang === 'zh'
+      ? `skill 指纹不一致：报告 ${expectedSkillHash}，当前 ${currentSkillHash}。`
+      : `Skill hash mismatch: report ${expectedSkillHash}, current ${currentSkillHash}.`);
+  }
+
+  const reportSampleHashes = report.meta.sampleHashes;
+  if (!reportSampleHashes) {
+    issues.push(lang === 'zh'
+      ? '报告缺少用例指纹，无法确认 sample_design 诊断对应当前 samples。'
+      : 'Report is missing sample hashes; cannot verify sample_design diagnostics match the current samples.');
+  } else {
+    const samplesById = new Map(samples.map((sample) => [sample.sample_id, sample]));
+    const missingCurrentSamples: string[] = [];
+    const missingReportHashes: string[] = [];
+    const mismatchedSamples: string[] = [];
+    for (const sampleId of sampleIds) {
+      const currentSample = samplesById.get(sampleId);
+      if (!currentSample) {
+        missingCurrentSamples.push(sampleId);
+        continue;
+      }
+      const expectedSampleHash = reportSampleHashes[sampleId];
+      if (!expectedSampleHash) {
+        missingReportHashes.push(sampleId);
+        continue;
+      }
+      const currentSampleHash = hashSample(currentSample);
+      if (expectedSampleHash !== currentSampleHash) {
+        mismatchedSamples.push(sampleId);
+      }
+    }
+    if (missingCurrentSamples.length > 0) {
+      issues.push(lang === 'zh'
+        ? `当前 samples 缺少报告中的用例：${formatIdList(missingCurrentSamples)}。`
+        : `Current samples are missing report sample(s): ${formatIdList(missingCurrentSamples)}.`);
+    }
+    if (missingReportHashes.length > 0) {
+      issues.push(lang === 'zh'
+        ? `报告缺少这些用例的指纹：${formatIdList(missingReportHashes)}。`
+        : `Report is missing hashes for sample(s): ${formatIdList(missingReportHashes)}.`);
+    }
+    if (mismatchedSamples.length > 0) {
+      issues.push(lang === 'zh'
+        ? `用例指纹不一致：${formatIdList(mismatchedSamples)}。`
+        : `Sample hash mismatch: ${formatIdList(mismatchedSamples)}.`);
+    }
+  }
+
+  if (issues.length === 0) return;
+
+  const heading = lang === 'zh'
+    ? '报告与当前输入不一致，已停止自动修复。'
+    : 'Report does not match the current inputs; automatic fixing stopped.';
+  const hint = lang === 'zh'
+    ? '请先重新运行 omk eval，再执行 omk sample --fix。'
+    : 'Re-run omk eval first, then run omk sample --fix again.';
+  throw new Error([heading, ...issues, hint].join('\n'));
 }
 
 export function writeFixedSamplesToSources(
@@ -296,19 +391,27 @@ async function executeFix(
   const samples = loadedSamples.samples;
   const skillContent = readFileSync(resolvedSkillPath, 'utf-8');
 
-  // 5. Count sample_design failures
-  let sampleDesignCount = 0;
-  for (const entry of report.results) {
-    const variant = entry.variants?.[treatmentName] as unknown as Record<string, unknown> | undefined;
-    if (!variant) continue;
-    const diag = variant.diagnostic as Record<string, unknown> | undefined;
-    const rootCause = (diag?.rootCause as string[]) ?? [];
-    if (rootCause.includes('sample_design')) sampleDesignCount++;
-  }
+  // 5. Count sample_design failures and verify this report still matches current inputs.
+  const sampleDesignIds = collectSampleDesignFailureIds(report, treatmentName);
+  const sampleDesignCount = sampleDesignIds.size;
 
   if (sampleDesignCount === 0) {
     process.stderr.write(lang === 'zh' ? '✅ 没有 sample_design 类型的失败，无需修复\n' : '✅ No sample_design failures found, nothing to fix\n');
     return;
+  }
+
+  try {
+    assertFixReportMatchesCurrentInputs({
+      report,
+      treatmentName,
+      skillContent,
+      samples,
+      sampleIds: sampleDesignIds,
+      lang,
+    });
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    throw new CliExit(1);
   }
 
   process.stderr.write(lang === 'zh' ? `🔧 发现 ${sampleDesignCount} 条 sample_design 失败，开始修复...\n` : `🔧 Found ${sampleDesignCount} sample_design failure(s), fixing...\n`);
