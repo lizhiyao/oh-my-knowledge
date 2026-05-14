@@ -1,13 +1,73 @@
 import { CliExit } from '../cli-exit.js';
-import { resolve, join, basename, dirname } from 'node:path';
-import { existsSync } from 'node:fs';
+import { resolve, join, basename, dirname, extname } from 'node:path';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import yaml from 'js-yaml';
 import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
 import { parseArgsStrictOrExit } from '../parse-strict.js';
+import { loadSamples, parseYaml, type LoadSamplesResult } from '../../inputs/load-samples.js';
+import type { Sample } from '../../types/index.js';
 
 interface GenerateSamplesResult {
   samples: unknown[];
   costUSD: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isYamlPath(filePath: string): boolean {
+  return /\.(ya?ml)$/i.test(filePath);
+}
+
+function parseSampleDocument(filePath: string): unknown {
+  const raw = readFileSync(filePath, 'utf-8');
+  return isYamlPath(filePath) ? parseYaml(raw) : JSON.parse(raw);
+}
+
+function getSamplesArray(document: unknown, filePath: string): Sample[] {
+  if (Array.isArray(document)) return document as Sample[];
+  if (isRecord(document) && Array.isArray(document.samples)) return document.samples as Sample[];
+  throw new Error(`invalid samples file shape: ${filePath} (expected an array or an object with a 'samples' field)`);
+}
+
+function stringifySampleDocument(filePath: string, document: unknown): string {
+  if (isYamlPath(filePath)) return yaml.dump(document, { lineWidth: -1, noRefs: true });
+  return JSON.stringify(document, null, 2);
+}
+
+export function writeFixedSamplesToSources(
+  loaded: Pick<LoadSamplesResult, 'sourceFiles' | 'sampleSourceById'>,
+  samples: Sample[],
+  changedIds: Set<string>,
+): string[] {
+  if (changedIds.size === 0) return [];
+
+  const fixedById = new Map(samples.map((sample) => [sample.sample_id, sample]));
+  const idsByFile = new Map<string, Set<string>>();
+  for (const sampleId of changedIds) {
+    const filePath = loaded.sampleSourceById[sampleId];
+    if (!filePath) throw new Error(`sample ${sampleId} source file not found`);
+    const ids = idsByFile.get(filePath) ?? new Set<string>();
+    ids.add(sampleId);
+    idsByFile.set(filePath, ids);
+  }
+
+  const written: string[] = [];
+  for (const [filePath, ids] of idsByFile.entries()) {
+    const document = parseSampleDocument(filePath);
+    const fileSamples = getSamplesArray(document, filePath);
+    const nextSamples = fileSamples.map((sample) => (
+      ids.has(sample.sample_id) ? (fixedById.get(sample.sample_id) ?? sample) : sample
+    ));
+    const nextDocument = Array.isArray(document)
+      ? nextSamples
+      : { ...(document as Record<string, unknown>), samples: nextSamples };
+    writeFileSync(filePath, stringifySampleDocument(filePath, nextDocument));
+    written.push(filePath);
+  }
+  return written;
 }
 
 export async function execute(argv: string[]): Promise<void> {
@@ -176,7 +236,6 @@ async function executeFix(
   positionals: string[],
   lang: 'zh' | 'en',
 ): Promise<void> {
-  const { readFileSync, writeFileSync } = await import('node:fs');
   const { fixSamples } = await import('../../authoring/sample-fixer.js');
   const { createFileStore } = await import('../../server/report-store.js');
 
@@ -197,17 +256,20 @@ async function executeFix(
 
   const isDir = basename(resolvedSkillPath) === 'SKILL.md';
   const skillDir = isDir ? dirname(resolvedSkillPath) : dirname(resolvedSkillPath);
-  const samplesPath = isDir
-    ? join(skillDir, '.omk', 'samples.json')
+  const samplesInput = isDir
+    ? join(skillDir, '.omk')
     : resolve('eval-samples.json');
 
-  if (!existsSync(samplesPath)) {
-    console.error(lang === 'zh' ? `samples 文件不存在: ${samplesPath}，先运行 omk sample 生成` : `Samples file not found: ${samplesPath}, run omk sample first`);
+  if (!existsSync(samplesInput)) {
+    console.error(lang === 'zh' ? `samples 路径不存在: ${samplesInput}，先运行 omk sample 生成` : `Samples path not found: ${samplesInput}, run omk sample first`);
     throw new CliExit(1);
   }
 
   // 2. Determine treatment name
-  const treatmentName = (values.treatment as string) ?? basename(skillDir);
+  const defaultTreatmentName = isDir
+    ? basename(skillDir)
+    : basename(resolvedSkillPath, extname(resolvedSkillPath));
+  const treatmentName = (values.treatment as string) ?? defaultTreatmentName;
 
   // 3. Find the latest report
   process.stderr.write(lang === 'zh' ? `🔍 正在查找 ${treatmentName} 的最新评测报告...\n` : `🔍 Scanning latest report for ${treatmentName}...\n`);
@@ -222,8 +284,16 @@ async function executeFix(
   const report = reports[0];
   process.stderr.write(lang === 'zh' ? `📄 使用报告: ${report.id} (${report.meta?.timestamp ?? '?'})\n` : `📄 Using report: ${report.id} (${report.meta?.timestamp ?? '?'})\n`);
 
-  // 4. Load samples
-  const samples: Record<string, unknown>[] = JSON.parse(readFileSync(samplesPath, 'utf-8'));
+  // 4. Load samples using the same semantics as eval.
+  let loadedSamples: LoadSamplesResult;
+  try {
+    loadedSamples = loadSamples(samplesInput);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(lang === 'zh' ? `samples 加载失败: ${message}` : `Failed to load samples: ${message}`);
+    throw new CliExit(1);
+  }
+  const samples = loadedSamples.samples;
   const skillContent = readFileSync(resolvedSkillPath, 'utf-8');
 
   // 5. Count sample_design failures
@@ -252,6 +322,7 @@ async function executeFix(
       system: opts.system,
       prompt: opts.prompt,
       timeoutMs: opts.timeoutMs,
+      lean: opts.lean,
     });
     return { ok: result.ok, text: result.output ?? '', costUSD: result.costUSD };
   };
@@ -267,8 +338,10 @@ async function executeFix(
   });
 
   // 8. Write back
+  let writtenFiles: string[] = [];
   if (result.fixedCount > 0) {
-    writeFileSync(samplesPath, JSON.stringify(result.samples, null, 2));
+    const changedIds = new Set(result.fixes.filter((f) => f.changed).map((f) => f.sampleId));
+    writtenFiles = writeFixedSamplesToSources(loadedSamples, result.samples, changedIds);
   }
 
   // 9. Report
@@ -281,7 +354,12 @@ async function executeFix(
   }
 
   const cost = result.costUSD > 0 ? ` $${result.costUSD.toFixed(4)}` : '';
+  const outputTarget = writtenFiles.length === 0
+    ? samplesInput
+    : writtenFiles.length === 1
+      ? writtenFiles[0]
+      : `${writtenFiles.length} files`;
   process.stderr.write(lang === 'zh'
-    ? `\n🔧 修复完成: ${result.fixedCount}/${sampleDesignCount} 条已修复 → ${samplesPath}${cost}\n`
-    : `\n🔧 Fix complete: ${result.fixedCount}/${sampleDesignCount} fixed → ${samplesPath}${cost}\n`);
+    ? `\n🔧 修复完成: ${result.fixedCount}/${sampleDesignCount} 条已修复 → ${outputTarget}${cost}\n`
+    : `\n🔧 Fix complete: ${result.fixedCount}/${sampleDesignCount} fixed → ${outputTarget}${cost}\n`);
 }

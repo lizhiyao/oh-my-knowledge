@@ -34,6 +34,8 @@ export interface LoadSamplesResult {
    *  绝对路径列表(已按文件名排序)。computeTestSetHash 用它枚举,不再对目录 readFileSync 抛 EISDIR。
    *  单文件模式下是 [samplesPath]。 */
   sourceFiles: string[];
+  /** sample_id → source file。Authoring 命令需要把目录模式下的修复写回原文件。 */
+  sampleSourceById: Record<string, string>;
 }
 
 /**
@@ -55,7 +57,12 @@ export function loadSamples(samplesPath: string): LoadSamplesResult {
     return loadSamplesFromDir(abs);
   }
   const inner = loadSampleFile(abs);
-  return { ...inner, baseDir: dirname(abs), sourceFiles: [abs] };
+  return {
+    ...inner,
+    baseDir: dirname(abs),
+    sourceFiles: [abs],
+    sampleSourceById: Object.fromEntries(inner.samples.map((s) => [s.sample_id, abs])),
+  };
 }
 
 /** Pull `.json/.yaml/.yml` siblings out of a directory, skipping omk's own report/health
@@ -81,6 +88,7 @@ function loadSamplesFromDir(dir: string): LoadSamplesResult {
   const seenIds = new Map<string, string>();  // sample_id → first file that defined it
   let mergedRequires: DependencyRequirements | undefined;
   const sourceFiles: string[] = [];
+  const sampleSourceById: Record<string, string> = {};
 
   for (const f of files) {
     const path = join(dir, f);
@@ -95,11 +103,12 @@ function loadSamplesFromDir(dir: string): LoadSamplesResult {
         );
       }
       seenIds.set(s.sample_id, f);
+      sampleSourceById[s.sample_id] = path;
     }
     allSamples.push(...single.samples);
     mergedRequires = mergeRequires(mergedRequires, single.requires);
   }
-  return { samples: allSamples, requires: mergedRequires, baseDir: dir, sourceFiles };
+  return { samples: allSamples, requires: mergedRequires, baseDir: dir, sourceFiles, sampleSourceById };
 }
 
 /** Union of string arrays for tools/files/env/preflight; undef when both sides empty. */
@@ -127,30 +136,7 @@ function mergeRequires(
 
 interface LoadSamplesInner { samples: Sample[]; requires?: DependencyRequirements }
 
-function loadSampleFile(samplesPath: string): LoadSamplesInner {
-  const rawContent = readFileSync(samplesPath, 'utf-8');
-  const isYaml = samplesPath.endsWith('.yaml') || samplesPath.endsWith('.yml');
-  const parsed: unknown = isYaml ? parseYaml(rawContent) : JSON.parse(rawContent);
-
-  let samples: Sample[];
-  let requires: DependencyRequirements | undefined;
-
-  if (Array.isArray(parsed)) {
-    // Legacy array format
-    samples = parsed as Sample[];
-  } else if (typeof parsed === 'object' && parsed !== null && 'samples' in parsed) {
-    // Object wrapper format
-    const wrapper = parsed as { samples: Sample[]; requires?: DependencyRequirements };
-    samples = wrapper.samples;
-    requires = wrapper.requires;
-  } else {
-    throw new Error(`invalid samples file shape: ${samplesPath} (expected an array or an object with a 'samples' field)`);
-  }
-
-  if (!Array.isArray(samples) || samples.length === 0) {
-    throw new Error(`invalid samples file: ${samplesPath}`);
-  }
-
+export function validateSamples(samples: Sample[]): void {
   // sample design metadata enums (capability/difficulty/construct/provenance).
   // Pure documentation/diagnostic fields; do NOT participate in grading/judge/verdict.
   const VALID_DIFFICULTY: ReadonlySet<string> = new Set(['easy', 'medium', 'hard']);
@@ -282,6 +268,33 @@ function loadSampleFile(samplesPath: string): LoadSamplesInner {
       }
     }
   }
+}
+
+function loadSampleFile(samplesPath: string): LoadSamplesInner {
+  const rawContent = readFileSync(samplesPath, 'utf-8');
+  const isYaml = samplesPath.endsWith('.yaml') || samplesPath.endsWith('.yml');
+  const parsed: unknown = isYaml ? parseYaml(rawContent) : JSON.parse(rawContent);
+
+  let samples: Sample[];
+  let requires: DependencyRequirements | undefined;
+
+  if (Array.isArray(parsed)) {
+    // Legacy array format
+    samples = parsed as Sample[];
+  } else if (typeof parsed === 'object' && parsed !== null && 'samples' in parsed) {
+    // Object wrapper format
+    const wrapper = parsed as { samples: Sample[]; requires?: DependencyRequirements };
+    samples = wrapper.samples;
+    requires = wrapper.requires;
+  } else {
+    throw new Error(`invalid samples file shape: ${samplesPath} (expected an array or an object with a 'samples' field)`);
+  }
+
+  if (!Array.isArray(samples) || samples.length === 0) {
+    throw new Error(`invalid samples file: ${samplesPath}`);
+  }
+
+  validateSamples(samples);
 
   return { samples, requires };
 }

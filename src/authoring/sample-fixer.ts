@@ -1,8 +1,11 @@
+import { sanitizeGeneratedSamples } from './generator.js';
+import { validateSamples } from '../inputs/load-samples.js';
+import type { Sample } from '../types/index.js';
 import type { EvaluationReport } from '../types/report.js';
 
 export interface FixContext {
   sampleId: string;
-  originalSample: Record<string, unknown>;
+  originalSample: Sample;
   diagnosticSummary: string;
   expected: string;
   actual: string;
@@ -12,7 +15,7 @@ export interface FixContext {
 
 export interface FixSamplesOptions {
   skillContent: string;
-  samples: Record<string, unknown>[];
+  samples: Sample[];
   report: EvaluationReport;
   treatmentKey: string;
   executor: (opts: { model: string; system: string; prompt: string; timeoutMs: number; lean?: boolean }) => Promise<{ ok: boolean; text: string; costUSD: number }>;
@@ -20,7 +23,7 @@ export interface FixSamplesOptions {
 }
 
 export interface FixSamplesResult {
-  samples: Record<string, unknown>[];
+  samples: Sample[];
   fixedCount: number;
   costUSD: number;
   fixes: Array<{ sampleId: string; changed: boolean; error?: string }>;
@@ -37,6 +40,63 @@ const FIX_SYSTEM_PROMPT = `你是一个评测用例修复专家。根据诊断�
 6. 不要删除整条用例
 
 输出**仅包含修复后的完整 sample JSON 对象**（不是数组）。第一字符 \`{\`，最后 \`}\`，不要用 \`\`\`json\`\`\` 围栏，不要寒暄。`;
+
+const FIXABLE_FIELDS = ['mocks', 'mocksStrict', 'assertions', 'environment', 'rubric'] as const;
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function hasOwn(record: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+function mergeAndValidateFixedSample(
+  original: Sample,
+  fixed: Record<string, unknown>,
+  sampleId: string,
+  skillContent: string,
+): { sample: Sample; changed: boolean } {
+  const candidate = cloneJson(original) as Record<string, unknown>;
+  candidate.sample_id = sampleId;
+
+  for (const field of FIXABLE_FIELDS) {
+    if (hasOwn(fixed, field)) {
+      candidate[field] = fixed[field];
+    }
+  }
+
+  if (candidate.mocksStrict !== undefined && typeof candidate.mocksStrict !== 'boolean') {
+    throw new Error('mocksStrict must be boolean when present');
+  }
+
+  const normalized = cloneJson(candidate) as Sample;
+  const { stripped } = sanitizeGeneratedSamples([normalized], { skillContent });
+  if (stripped.length > 0) {
+    throw new Error(`fixed sample failed sanitizer: ${stripped.join('; ')}`);
+  }
+  validateSamples([normalized]);
+
+  const merged = cloneJson(original) as Record<string, unknown>;
+  merged.sample_id = sampleId;
+  for (const field of FIXABLE_FIELDS) {
+    const touchedByFix = hasOwn(fixed, field) || (field === 'mocksStrict' && hasOwn(fixed, 'mocks'));
+    if (!touchedByFix) continue;
+    const normalizedRecord = normalized as unknown as Record<string, unknown>;
+    if (hasOwn(normalizedRecord, field)) {
+      merged[field] = normalizedRecord[field];
+    } else {
+      delete merged[field];
+    }
+  }
+  const sample = merged as Sample;
+  validateSamples([sample]);
+
+  return {
+    sample,
+    changed: JSON.stringify(sample) !== JSON.stringify(original),
+  };
+}
 
 function buildFixPrompt(ctx: FixContext, skillContent: string): string {
   const skillPreview = skillContent.length > 8000
@@ -95,7 +155,7 @@ function parseFixedSample(text: string): Record<string, unknown> | null {
 
 export async function fixSamples(options: FixSamplesOptions): Promise<FixSamplesResult> {
   const { skillContent, samples, report, treatmentKey, executor, model = 'opus' } = options;
-  const sampleMap = new Map(samples.map((s) => [s.sample_id as string, s]));
+  const sampleMap = new Map(samples.map((s) => [s.sample_id, s]));
   let totalCost = 0;
   const fixes: FixSamplesResult['fixes'] = [];
 
@@ -138,17 +198,16 @@ export async function fixSamples(options: FixSamplesOptions): Promise<FixSamples
       const fixed = parseFixedSample(result.text);
       if (!fixed) { fixes.push({ sampleId: sid, changed: false, error: 'failed to parse LLM response as JSON' }); continue; }
 
-      // Preserve sample_id
-      fixed.sample_id = sid;
-      sampleMap.set(sid, fixed);
-      fixes.push({ sampleId: sid, changed: true });
+      const merged = mergeAndValidateFixedSample(original, fixed, sid, skillContent);
+      if (merged.changed) sampleMap.set(sid, merged.sample);
+      fixes.push({ sampleId: sid, changed: merged.changed });
     } catch (err) {
       fixes.push({ sampleId: sid, changed: false, error: String(err) });
     }
   }
 
   return {
-    samples: samples.map((s) => sampleMap.get(s.sample_id as string) ?? s),
+    samples: samples.map((s) => sampleMap.get(s.sample_id) ?? s),
     fixedCount: fixes.filter((f) => f.changed).length,
     costUSD: totalCost,
     fixes,
