@@ -16,7 +16,7 @@ export interface VariantResult {
   /** Diagnostic 自身花费(USD)。仅在 failed-assertion 触发 diagnostic 且 executor 报告了 cost 时有值。
    *  Diagnostic 一般跑在 judge executor 上(claude:haiku 标配),所以 cost-reported 语义随
    *  `judgeCostReportedByExecutor`,不再单独引一个 flag。
-   *  v0.32 新增,旧报告无此字段 — 老 costUSD 仍等于 execCostUSD + judgeCostUSD,新 costUSD
+   *  v0.30 新增,旧报告无此字段 — 老 costUSD 仍等于 execCostUSD + judgeCostUSD,新 costUSD
    *  含 diagnostic,跨版本汇总时按字段是否存在判断。 */
   diagnosticCostUSD?: number;
   /** sample 一行的真实总花费 = execCostUSD + judgeCostUSD + (diagnosticCostUSD ?? 0)。
@@ -95,7 +95,7 @@ export interface VariantSummary {
   avgTotalTokens: number;
   /** sum(ok-sample 的 costUSD)。等于 totalExecCostUSD + totalJudgeCostUSD + totalDiagnosticCostUSD。
    *  注意:仅含执行成功且未被 per-sample budget 标 overrun 的 sample,跟 meta.totalCostUSD(全量
-   *  累计,含失败 sample)语义不同 — 那是历史 ok-filter 行为,跟 v0.32 的 diagnostic 引入无关。 */
+   *  累计,含失败 sample)语义不同 — 那是历史 ok-filter 行为,跟 v0.30 的 diagnostic 引入无关。 */
   totalCostUSD: number;
   totalExecCostUSD: number;
   totalJudgeCostUSD: number;
