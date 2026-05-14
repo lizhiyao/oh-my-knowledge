@@ -169,11 +169,10 @@ function renderSummaryBar(idx: SkillIndex, allEntries: SkillIndexEntry[], insigh
 
   const greenCount = gradeCounts.good + gradeCounts.excellent;
   const healthyCount = greenCount + gradeCounts.fair;
-  const scoredCount = s.totalSkills - gradeCounts.unscored;
-  const healthRate = scoredCount > 0 ? Math.round((healthyCount / scoredCount) * 100) : 0;
+  const healthRate = s.totalSkills > 0 ? Math.round((healthyCount / s.totalSkills) * 100) : 0;
   const healthRateText = lang === 'zh'
-    ? `健康率 ${healthyCount}/${scoredCount} (${healthRate}%)`
-    : `Health ${healthyCount}/${scoredCount} (${healthRate}%)`;
+    ? `健康率 ${healthyCount}/${s.totalSkills} (${healthRate}%)`
+    : `Health ${healthyCount}/${s.totalSkills} (${healthRate}%)`;
 
   const gradeRow = `
     <button class="sl-filter-pill sl-filter-pill--all sl-filter-pill--active" data-filter="all">${lang === 'zh' ? '全部' : 'All'} ${s.totalSkills}</button>
