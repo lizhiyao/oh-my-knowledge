@@ -1,8 +1,8 @@
 import { CliExit } from '../cli-exit.js';
-import { resolve, join } from 'node:path';
+import { resolve, join, basename, dirname } from 'node:path';
 import { existsSync } from 'node:fs';
 import { tCli, langFromArgv } from '../i18n.js';
-import { COMMON_OPTIONS } from '../parse-run-config.js';
+import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
 import { parseArgsStrictOrExit } from '../parse-strict.js';
 
 interface GenerateSamplesResult {
@@ -21,9 +21,17 @@ export async function execute(argv: string[]): Promise<void> {
       model: { type: 'string', default: 'opus' },
       'skill-dir': { type: 'string', default: 'skills' },
       focus: { type: 'string' },
+      fix: { type: 'boolean', default: false },
+      'reports-dir': { type: 'string' },
+      treatment: { type: 'string' },
     },
     allowPositionals: true,
   });
+
+  if (values.fix) {
+    await executeFix(values, positionals, lang);
+    return;
+  }
 
   const { generateSamples } = await import('../../authoring/generator.js');
   const { readFileSync, writeFileSync, mkdirSync } = await import('node:fs');
@@ -161,4 +169,119 @@ export async function execute(argv: string[]): Promise<void> {
       throw new CliExit(1);
     }
   }
+}
+
+async function executeFix(
+  values: Record<string, unknown>,
+  positionals: string[],
+  lang: 'zh' | 'en',
+): Promise<void> {
+  const { readFileSync, writeFileSync } = await import('node:fs');
+  const { fixSamples } = await import('../../authoring/sample-fixer.js');
+  const { createFileStore } = await import('../../server/report-store.js');
+
+  const model = (values.model as string) ?? 'opus';
+  const reportsDir = resolve((values['reports-dir'] as string) ?? DEFAULT_REPORTS_DIR);
+
+  // 1. Determine skill path and samples path
+  const skillPath = positionals[0];
+  if (!skillPath) {
+    console.error(lang === 'zh' ? '请指定 skill 路径，如: omk sample skills/my-skill/SKILL.md --fix' : 'Specify skill path: omk sample skills/my-skill/SKILL.md --fix');
+    throw new CliExit(1);
+  }
+  const resolvedSkillPath = resolve(skillPath);
+  if (!existsSync(resolvedSkillPath)) {
+    console.error(lang === 'zh' ? `skill 文件不存在: ${resolvedSkillPath}` : `Skill file not found: ${resolvedSkillPath}`);
+    throw new CliExit(1);
+  }
+
+  const isDir = basename(resolvedSkillPath) === 'SKILL.md';
+  const skillDir = isDir ? dirname(resolvedSkillPath) : dirname(resolvedSkillPath);
+  const samplesPath = isDir
+    ? join(skillDir, '.omk', 'samples.json')
+    : resolve('eval-samples.json');
+
+  if (!existsSync(samplesPath)) {
+    console.error(lang === 'zh' ? `samples 文件不存在: ${samplesPath}，先运行 omk sample 生成` : `Samples file not found: ${samplesPath}, run omk sample first`);
+    throw new CliExit(1);
+  }
+
+  // 2. Determine treatment name
+  const treatmentName = (values.treatment as string) ?? basename(skillDir);
+
+  // 3. Find the latest report
+  process.stderr.write(lang === 'zh' ? `🔍 正在查找 ${treatmentName} 的最新评测报告...\n` : `🔍 Scanning latest report for ${treatmentName}...\n`);
+  const store = createFileStore(reportsDir);
+  const reports = await store.findByVariant(treatmentName);
+
+  if (reports.length === 0) {
+    console.error(lang === 'zh' ? `未找到 ${treatmentName} 的评测报告（报告目录: ${reportsDir}）` : `No eval report found for ${treatmentName} in ${reportsDir}`);
+    throw new CliExit(1);
+  }
+
+  const report = reports[0];
+  process.stderr.write(lang === 'zh' ? `📄 使用报告: ${report.id} (${report.meta?.timestamp ?? '?'})\n` : `📄 Using report: ${report.id} (${report.meta?.timestamp ?? '?'})\n`);
+
+  // 4. Load samples
+  const samples: Record<string, unknown>[] = JSON.parse(readFileSync(samplesPath, 'utf-8'));
+  const skillContent = readFileSync(resolvedSkillPath, 'utf-8');
+
+  // 5. Count sample_design failures
+  let sampleDesignCount = 0;
+  for (const entry of report.results) {
+    const variant = entry.variants?.[treatmentName] as unknown as Record<string, unknown> | undefined;
+    if (!variant) continue;
+    const diag = variant.diagnostic as Record<string, unknown> | undefined;
+    const rootCause = (diag?.rootCause as string[]) ?? [];
+    if (rootCause.includes('sample_design')) sampleDesignCount++;
+  }
+
+  if (sampleDesignCount === 0) {
+    process.stderr.write(lang === 'zh' ? '✅ 没有 sample_design 类型的失败，无需修复\n' : '✅ No sample_design failures found, nothing to fix\n');
+    return;
+  }
+
+  process.stderr.write(lang === 'zh' ? `🔧 发现 ${sampleDesignCount} 条 sample_design 失败，开始修复...\n` : `🔧 Found ${sampleDesignCount} sample_design failure(s), fixing...\n`);
+
+  // 6. Create executor wrapper
+  const { createExecutor } = await import('../../executors/index.js');
+  const exec = createExecutor('claude');
+  const executorFn = async (opts: { model: string; system: string; prompt: string; timeoutMs: number; lean?: boolean }) => {
+    const result = await exec({
+      model: opts.model,
+      system: opts.system,
+      prompt: opts.prompt,
+      timeoutMs: opts.timeoutMs,
+    });
+    return { ok: result.ok, text: result.output ?? '', costUSD: result.costUSD };
+  };
+
+  // 7. Run fixes
+  const result = await fixSamples({
+    skillContent,
+    samples,
+    report,
+    treatmentKey: treatmentName,
+    executor: executorFn,
+    model,
+  });
+
+  // 8. Write back
+  if (result.fixedCount > 0) {
+    writeFileSync(samplesPath, JSON.stringify(result.samples, null, 2));
+  }
+
+  // 9. Report
+  for (const f of result.fixes) {
+    if (f.changed) {
+      process.stderr.write(lang === 'zh' ? `  ✅ ${f.sampleId} 已修复\n` : `  ✅ ${f.sampleId} fixed\n`);
+    } else {
+      process.stderr.write(lang === 'zh' ? `  ⚠ ${f.sampleId} 未修改${f.error ? `: ${f.error}` : ''}\n` : `  ⚠ ${f.sampleId} unchanged${f.error ? `: ${f.error}` : ''}\n`);
+    }
+  }
+
+  const cost = result.costUSD > 0 ? ` $${result.costUSD.toFixed(4)}` : '';
+  process.stderr.write(lang === 'zh'
+    ? `\n🔧 修复完成: ${result.fixedCount}/${sampleDesignCount} 条已修复 → ${samplesPath}${cost}\n`
+    : `\n🔧 Fix complete: ${result.fixedCount}/${sampleDesignCount} fixed → ${samplesPath}${cost}\n`);
 }
