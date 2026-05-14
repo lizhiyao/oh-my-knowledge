@@ -167,7 +167,8 @@ function renderSummaryBar(idx: SkillIndex, allEntries: SkillIndexEntry[], insigh
     ? `${s.totalSkills} skill · ${lang === 'zh' ? '共' : 'across'} ${totalSamples} ${lang === 'zh' ? '用例' : 'samples'}${lastTs ? ` · ${lang === 'zh' ? '最近' : 'last'} ${relTime(lastTs, lang)}` : ''}${totalWarn > 0 ? ` · ⚠ ${totalWarn} ${lang === 'zh' ? '待优化' : 'todo'}${totalHighWarn > 0 ? `(${totalHighWarn} ${lang === 'zh' ? '高优' : 'high'})` : ''}` : ''}`
     : `${s.totalSkills} skills · ${totalSamples} samples${lastTs ? ` · last ${relTime(lastTs, lang)}` : ''}${totalWarn > 0 ? ` · ⚠ ${totalWarn} todo${totalHighWarn > 0 ? ` (${totalHighWarn} high)` : ''}` : ''}`;
 
-  const healthyCount = gradeCounts.good + gradeCounts.excellent + gradeCounts.fair;
+  const greenCount = gradeCounts.good + gradeCounts.excellent;
+  const healthyCount = greenCount + gradeCounts.fair;
   const scoredCount = s.totalSkills - gradeCounts.unscored;
   const healthRate = scoredCount > 0 ? Math.round((healthyCount / scoredCount) * 100) : 0;
   const healthRateText = lang === 'zh'
@@ -178,7 +179,7 @@ function renderSummaryBar(idx: SkillIndex, allEntries: SkillIndexEntry[], insigh
     <button class="sl-filter-pill sl-filter-pill--all sl-filter-pill--active" data-filter="all">${lang === 'zh' ? '全部' : 'All'} ${s.totalSkills}</button>
     <button class="sl-filter-pill sl-filter-pill--red" data-filter="red">🔴 ${gradeCounts.unhealthy}</button>
     <button class="sl-filter-pill sl-filter-pill--yellow" data-filter="yellow">🟡 ${gradeCounts.fair}</button>
-    <button class="sl-filter-pill sl-filter-pill--green" data-filter="green">🟢 ${healthyCount}</button>
+    <button class="sl-filter-pill sl-filter-pill--green" data-filter="green">🟢 ${greenCount}</button>
     <button class="sl-filter-pill sl-filter-pill--gray" data-filter="gray">⚪ ${gradeCounts.unscored}</button>
     <span class="sl-health-rate">${healthRateText}</span>
   `;

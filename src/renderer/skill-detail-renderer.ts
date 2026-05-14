@@ -138,8 +138,7 @@ function renderHero(entry: SkillIndexEntry, insights: Insight[], lastTs: string 
   </div>`;
 }
 
-function renderHealthSummary(entry: SkillIndexEntry, _insights: Insight[], lang: Lang): string {
-  // v7:不再依赖 insights(那是上层 detector 抽象),直接基于 entry 实际告警状态拼摘要。
+function renderHealthSummary(entry: SkillIndexEntry, insights: Insight[], lang: Lang): string {
   const issues: string[] = [];
   if (entry.doctor) {
     if (entry.doctor.failCount > 0) issues.push(lang === 'zh' ? `doctor ${entry.doctor.failCount} 项不通过` : `doctor ${entry.doctor.failCount} fail`);
@@ -155,13 +154,21 @@ function renderHealthSummary(entry: SkillIndexEntry, _insights: Insight[], lang:
   if (entry.observe && entry.observe.healthBand !== 'green') {
     issues.push(lang === 'zh' ? `observe ${BAND_DOT[entry.observe.healthBand]}` : `observe ${BAND_DOT[entry.observe.healthBand]}`);
   }
+  const high = insights.filter((i) => i.severity === 'high').length;
+  const med = insights.filter((i) => i.severity === 'medium').length;
+  if (high > 0 || med > 0) {
+    const parts: string[] = [];
+    if (high > 0) parts.push(lang === 'zh' ? `${high} 个高优` : `${high} high`);
+    if (med > 0) parts.push(lang === 'zh' ? `${med} 个中优` : `${med} medium`);
+    issues.push(lang === 'zh' ? `检出 ${insights.length} 个待优化(${parts.join('，')})` : `${insights.length} issue(s) (${parts.join(', ')})`);
+  }
 
   if (issues.length === 0) {
     const ran = [entry.doctor, entry.eval, entry.observe].filter(Boolean).length;
     if (ran === 0) return lang === 'zh' ? '尚未运行任何检查' : 'No checks run yet';
-    return lang === 'zh' ? '✅ 三视角全绿,无告警' : '✅ All three views green';
+    return lang === 'zh' ? '✅ 三视角全绿，无告警' : '✅ All three views green';
   }
-  return issues.join('，');
+  return issues.join(lang === 'zh' ? '，' : ', ');
 }
 
 // ────────── 左栏:问题列表 ──────────
