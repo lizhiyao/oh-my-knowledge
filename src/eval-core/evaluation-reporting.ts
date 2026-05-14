@@ -39,7 +39,7 @@ const PKG: { version: string } = JSON.parse(readFileSync(findPackageJson(__dirna
 
 export const DEFAULT_OUTPUT_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
 
-function hashString(str: string): string {
+export function hashString(str: string): string {
   return createHash('sha256').update(str).digest('hex').slice(0, 12);
 }
 
@@ -61,7 +61,7 @@ function canonicalStringify(value: unknown): string {
  * (the parts that determine what's being measured). Two samples with the same hash
  * across runs measure the same thing; mismatched hashes mean the sample changed.
  */
-function hashSample(sample: Sample): string {
+export function hashSample(sample: Sample): string {
   const stableForm = canonicalStringify({
     prompt: sample.prompt,
     rubric: sample.rubric ?? null,

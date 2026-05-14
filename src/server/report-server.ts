@@ -826,7 +826,8 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
           if (r && r.kind === 'evaluation') evalReport = r;
         }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderSkillDetail(entry, evalReport, lang));
+        const insights = idx.insightsBySkill.get(skillName) ?? [];
+        res.end(renderSkillDetail(entry, evalReport, lang, insights));
         return;
       }
 

@@ -68,8 +68,11 @@ function dimMessage(dim: HealthDimensionSpec, r: HealthDimensionResult, lang: 'z
 }
 
 function dimHint(r: HealthDimensionResult): string | undefined {
-  if (r.suggestions.length === 0) return undefined;
-  return r.suggestions[0];
+  // 优先从 finding-level suggestion 取（新契约），fallback 到维度级 suggestions（旧契约兼容）
+  const fromFinding = r.findings.find((f) => f.suggestion)?.suggestion;
+  if (fromFinding) return fromFinding;
+  if (r.suggestions.length > 0) return r.suggestions[0];
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

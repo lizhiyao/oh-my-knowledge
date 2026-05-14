@@ -88,25 +88,34 @@ ${sections.join('\n\n')}`;
 function renderBlock3CommonRules(): string {
   return `# 同根因合并(去重规则)
 
-多个 finding 如果**根因相同 + 修复方式相同**,必须合并成**一条** finding(可以跨维度合并)。在 \`evidence\` 字段里把所有出现位置列全(用 \` ; \` 分隔),\`description\` 里点明"在 N 处出现"。
+多个 finding 如果**根因相同 + 修复方式相同**,必须合并成**一条** finding(可以跨维度合并)。在 \`description\` 里点明"在 N 处出现",\`suggestion\` 给统一修法。
 
-合并后,该 finding 的 \`level\` 取所有出现位置中**最严重的一个**。\`suggestions\` 给统一修法。
+合并后,该 finding 的 \`level\` 取所有出现位置中**最严重的一个**。
 
-# Finding level 判定
+# Finding level 判定(严格控制数量)
 
-- \`错误\`:**必须修**。包括:
-  - 在**常见用户环境 / 默认安装方式 / 不同版本号下直接跑不通**(不只是"在文档作者机子上跑不通")
+**核心原则:LLM 理解能力很强,只报那些会导致执行失败或结果严重偏差的问题。文档写得"不够好"不是问题,"好到不会出错"就够了。**
+
+- \`错误\`:**不修就跑不通或结果严重错误**。仅限以下情况:
+  - 在常见用户环境下**直接跑不通**(路径不存在、脚本缺失、工具不可用)
   - 硬编码绝对路径含具体版本号 / 用户名 → 换环境必失败
   - 引用了不存在的脚本 / CLI / MCP 工具 / skill
-  - 不可逆操作没有人工确认
-  - 指令严重歧义会让 LLM 在多次执行中跑出截然不同结果
-- \`警告\`:**应该修**。规范不符 / 可读性明显差 / 误触发风险但不会直接挂掉
-- \`建议\`:锦上添花
+  - 不可逆操作(rm -rf / git push -f 等)没有人工确认
+  - 指令自相矛盾(同一文档内对同一事实给出冲突说法),LLM 无法判断哪个正确
+- \`警告\`:仅限**有较大概率导致 LLM 执行偏差**的问题。以下情况**不要报警告**:
+  - 文档措辞不够精炼但意思能理解
+  - 缺少示例但指令本身清晰
+  - 参数没给示例值但有类型说明
+  - 模糊量词("一些"/"适当")在上下文中意思明确
+  - 缺少显式声明但从上下文可合理推断的信息
+- \`建议\`:**不要输出建议级别的 finding**。如果问题不够格做警告,就不要报。
+
+**数量控制:每个维度最多 2 条 finding。优先报错误,其次警告。宁可漏报也不要凑数。**
 
 # 维度 level 派生规则
 
 - \`健康\`:0 个 finding
-- \`亚健康\`:有警告 / 建议但无错误
+- \`亚健康\`:有警告但无错误
 - \`不健康\`:至少 1 个错误
 - \`不适用\`:该维度对本 skill 无意义(谨慎使用,不要拿来回避检查)
 
@@ -153,13 +162,12 @@ function renderBlock4JsonSchema(skillName: string, dims: HealthDimensionSpec[]):
       "level": "健康 | 亚健康 | 不健康 | 不适用",
       "findings": [
         {
-          "level": "错误 | 警告 | 建议",
+          "level": "错误 | 警告",
           "subtype": "<仅 \`security\` 维度需填:不可逆操作 | 凭据硬编码 | 个人化耦合;其它维度留空字符串>",
-          "evidence": "<具体引用:SKILL.md L<行号> / 章节标题 / 文件名 / 功能点 X 第 Y 步>",
-          "description": "<一句话讲清问题>"
+          "description": "<一句话讲清问题>",
+          "suggestion": "<针对这条问题的具体修改建议>"
         }
-      ],
-      "suggestions": ["<可执行的改进动作>"]
+      ]
     }
   ],
   "summary": {
@@ -173,10 +181,10 @@ function renderBlock4JsonSchema(skillName: string, dims: HealthDimensionSpec[]):
 - \`checklist\` 必须**恰好包含 ${dims.length} 项**,\`dim_id\` 必须是以下之一,**每个 id 出现且仅出现一次**:
   ${dimIdList}
 - \`level\` / \`subtype\` 字段值用精确中文字符串,不允许英文或别名
-- \`evidence\` 必须有具体引用,不能笼统说"全文"
+- 每条 finding 的 \`suggestion\` 必须是针对该条问题的具体修改建议,不要笼统
 - 字符串里的 skill / 文件 / 命令名用反引号 \`xxx\` 包裹
 - **不要**冒虚假 finding,宁可少报也不要把"看起来可能有问题"硬塞进来
-- 不要输出 \`dimension_level_count\` / \`finding_count_by_level\` 字段(框架自己重算)
+- 不要输出 \`dimension_level_count\` / \`finding_count_by_level\` / \`suggestions\`(维度级别) 字段
 
 读 SKILL.md(已 inline)→ 模拟执行 → 出 JSON。`;
 }

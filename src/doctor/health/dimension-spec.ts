@@ -21,6 +21,7 @@ export interface HealthFinding {
   subtype?: string;
   evidence: string;
   description: string;
+  suggestion?: string;
 }
 
 export interface HealthDimensionResult {
