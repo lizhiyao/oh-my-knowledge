@@ -9,6 +9,8 @@ import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
 import { durationMsBetween } from '../shared/time.js';
 import { buildObservationExperienceReport, type ObservationExperienceReport } from './experience.js';
 import type { ObservationReviewState } from './review-state.js';
+import { buildObserveDiagnosticsFromReport } from '../diagnosis/observe-producer.js';
+import type { DiagnosisBundle } from '../diagnosis/types.js';
 
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = join(process.cwd(), '.omk', 'observations');
 export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(homedir(), '.oh-my-knowledge', 'observations');
@@ -129,6 +131,7 @@ export interface ObservationInboxReport {
   };
   items: ObservationInboxItem[];
   experience?: ObservationExperienceReport;
+  diagnostics?: DiagnosisBundle;
 }
 
 export interface ObservationSkillRollup {
@@ -529,7 +532,7 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
   }
   const items = finishInboxAggregation(aggregationState);
   const experience = buildObservationExperienceReport({ sessions, segments, items, generatedAt, reviewState: options.reviewState });
-  return {
+  const report: ObservationInboxReport = {
     kind: 'observe-inbox',
     schemaVersion: 1,
     meta: {
@@ -548,6 +551,8 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
     items,
     experience,
   };
+  report.diagnostics = buildObserveDiagnosticsFromReport(report);
+  return report;
 }
 
 interface InboxAggregationState {
@@ -659,6 +664,7 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
             severityReason: undefined,
           };
         });
+        report.diagnostics = report.diagnostics ?? buildObserveDiagnosticsFromReport(report);
         return report;
       } catch {
         return null;

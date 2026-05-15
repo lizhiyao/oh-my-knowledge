@@ -23,9 +23,8 @@ const BAND_DOT: Record<'green' | 'yellow' | 'red' | 'gray', string> = {
 
 // v6 之前的 insight × audience × 三视角 抽象在 v7 详情页砍掉了,只保留 sample 维度
 // (renderEvalSection 直接读 evalReport.results,不再走 detectInsights / audience 分组)。
-// 相关常量(SEVERITY_ICON / AUDIENCE_INFO_* / PATCH_TARGET_*)等以后做诊断 / 调试 UI
+// 相关常量(SEVERITY_ICON / AUDIENCE_INFO_* / PATCH_TARGET_*)等以后做调试 UI
 // 需要时再恢复。
-
 
 function relTime(ts: string | null | undefined, lang: Lang): string {
   if (!ts) return lang === 'zh' ? '未跑' : 'never';

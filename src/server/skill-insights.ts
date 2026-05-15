@@ -23,6 +23,7 @@
  */
 import type { EvaluationReport, VariantResult, ToolCallInfo } from '../types/index.js';
 import type { SkillIndexEntry, SkillDoctorSnapshot, SkillObserveSnapshot, SkillEvalSnapshot } from './skill-index.js';
+import type { Diagnosis, DiagnosisAudience, DiagnosisLifecycle, DiagnosisSeverity, DiagnosisType } from '../diagnosis/types.js';
 
 export type InsightCategory =
   | 'environment-blocked-mocks'
@@ -101,6 +102,14 @@ export interface Insight {
   recommendations: InsightRecommendation[];
   /** 关联到 timeline 哪些阶段元素 — renderer 据此在阶段卡内插入 #N 徽章。 */
   stageRefs?: InsightStageRefs;
+}
+
+export interface DetectInsightsOptions {
+  /**
+   * Diagnosis 是 observe 侧迁移后的主数据源。传入该字段时,observe 相关 insight
+   * 从 Diagnosis 投影,不再从 entry.observe 重复推断,避免维护者新增规则时双写。
+   */
+  diagnostics?: Diagnosis[];
 }
 
 // ────────── helpers ──────────
@@ -764,30 +773,114 @@ export const skillAntiPatternComposer: ComposerRule = {
 // ────────── 入口 ──────────
 
 const SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low: 1 };
+const ACTIVE_DIAGNOSIS_LIFECYCLES = new Set<DiagnosisLifecycle>(['detected', 'candidate', 'confirmed', 'stale']);
+
+function insightSeverityFromDiagnosis(severity: DiagnosisSeverity): InsightSeverity {
+  if (severity === 'high') return 'high';
+  if (severity === 'medium') return 'medium';
+  return 'low';
+}
+
+function insightAudienceFromDiagnosis(audience: DiagnosisAudience): InsightAudience {
+  if (audience === 'sample-author') return 'sample-author';
+  if (audience === 'omk-maintainer') return 'omk-maintainer';
+  return 'skill-author';
+}
+
+function insightCategoryFromDiagnosis(type: DiagnosisType, signal: string): InsightCategory {
+  if (type === 'definition_gap' || type === 'standard_candidate') return 'skill-doc-gap';
+  if (type === 'eval_failure') return 'failure-mode-skill';
+  if (type === 'sample_design_issue') return 'environment-blocked-mocks';
+  if (type === 'doctor_gap') return 'omk-doctor-blindspot';
+  if (type === 'user_feedback_pattern') return 'production-instability';
+  if (signal.includes('gap') || signal.includes('coverage')) return 'coverage-gap';
+  if (signal.includes('tool_failure') || signal.includes('tool')) return 'production-instability';
+  return 'other';
+}
+
+function patchTargetFromDiagnosis(target: NonNullable<Diagnosis['patch']>['target']): InsightPatch['target'] {
+  if (target === 'definition') return 'skill';
+  return target;
+}
+
+function projectDiagnosisToInsight(diagnosis: Diagnosis): Insight {
+  const severity = insightSeverityFromDiagnosis(diagnosis.severity);
+  const recommendations: InsightRecommendation[] = [];
+  if (diagnosis.recommendation || diagnosis.patch) {
+    recommendations.push({
+      action: diagnosis.recommendation ?? diagnosis.command ?? '查看诊断证据并修正对应定义',
+      priority: severity,
+      ...(diagnosis.patch ? {
+        patch: {
+          target: patchTargetFromDiagnosis(diagnosis.patch.target),
+          location: diagnosis.patch.location,
+          snippet: diagnosis.patch.snippet,
+        },
+      } : {}),
+    });
+  }
+  if (diagnosis.command && !recommendations.some((r) => r.action === diagnosis.command)) {
+    recommendations.push({ action: diagnosis.command, priority: severity });
+  }
+
+  return {
+    id: `diagnosis:${diagnosis.id}`,
+    category: insightCategoryFromDiagnosis(diagnosis.type, diagnosis.signal),
+    audience: insightAudienceFromDiagnosis(diagnosis.audience),
+    title: diagnosis.title,
+    description: diagnosis.summary ?? diagnosis.evidenceSummary,
+    severity,
+    affectedCount: diagnosis.occurrenceCount,
+    stageRefs: { observeRefs: [diagnosis.signal] },
+    evidence: [{
+      perspective: 'observe',
+      status: 'flagged',
+      message: diagnosis.evidenceSummary ?? diagnosis.summary ?? diagnosis.title,
+      ref: diagnosis.occurrences[0]?.sourceId ?? diagnosis.stableKey,
+    }],
+    recommendations,
+  };
+}
+
+export function projectDiagnosticsToInsights(diagnostics: Diagnosis[]): Insight[] {
+  return diagnostics
+    .filter((diagnosis) => ACTIVE_DIAGNOSIS_LIFECYCLES.has(diagnosis.lifecycle))
+    .map(projectDiagnosisToInsight)
+    .sort((a, b) => {
+      const sa = SEVERITY_RANK[a.severity];
+      const sb = SEVERITY_RANK[b.severity];
+      if (sa !== sb) return sb - sa;
+      return b.affectedCount - a.affectedCount;
+    });
+}
 
 export function detectInsights(
   entry: SkillIndexEntry,
   evalReport: EvaluationReport | null,
+  options: DetectInsightsOptions = {},
 ): Insight[] {
   // entry.eval.variantName 是当前 skill entry 对应的 treatment variant 名;
   // multi-treatment 报告里同一份 evalReport 会被 N 个 entry 共用,每个 entry 都该
   // 只看自己 variant 那部分数据,否则 /skills/<treatment-2> 会看到 treatment-1 的
   // failureModes / coverage / illustrations / verdict。
   const variantName = entry.eval?.variantName ?? null;
+  const diagnosisInsights = options.diagnostics ? projectDiagnosticsToInsights(options.diagnostics) : [];
+  const observeForLegacy = options.diagnostics ? null : entry.observe;
   const out: Insight[] = [];
   const detectors: Array<() => Insight | null> = [
     () => detectEnvironmentBlocked(evalReport, variantName),
-    () => detectSkillDocGap(entry.doctor, evalReport, entry.observe, variantName),
+    () => detectSkillDocGap(entry.doctor, evalReport, observeForLegacy, variantName),
     () => detectFailureModeSkillIssue(evalReport, variantName),
-    () => detectCoverageGap(evalReport, entry.observe, variantName),
-    () => detectProductionInstability(entry.doctor, entry.observe),
-    () => detectSkillTooLong(entry.doctor, entry.observe),
+    () => detectCoverageGap(evalReport, observeForLegacy, variantName),
+    () => detectProductionInstability(entry.doctor, observeForLegacy),
+    () => detectSkillTooLong(entry.doctor, observeForLegacy),
     () => detectOmkDoctorBlindspot(entry.doctor, evalReport, variantName),
   ];
   for (const detect of detectors) {
     const ins = detect();
     if (ins) out.push(ins);
   }
+  out.push(...diagnosisInsights);
   out.sort((a, b) => {
     const sa = SEVERITY_RANK[a.severity];
     const sb = SEVERITY_RANK[b.severity];

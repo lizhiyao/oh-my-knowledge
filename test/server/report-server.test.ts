@@ -253,6 +253,34 @@ describe('report-server', () => {
     assert.equal(data[0].severity, 'high');
   });
 
+  it('GET /api/observations/diagnostics exposes observe-backed Diagnosis data', async () => {
+    const res = await fetch(`${baseUrl}/api/observations/diagnostics`);
+    assert.equal(res.status, 200);
+    const data = JSON.parse(res.body);
+    assert.equal(data.sourceCoverage.observe, true);
+    assert.equal(data.summary.totalCount, 1);
+    assert.equal(data.bySkill.audit[0].signal, 'skill_md_not_found');
+  });
+
+  it('GET /api/skills includes diagnosis counts without changing renderer output', async () => {
+    const res = await fetch(`${baseUrl}/api/skills`);
+    assert.equal(res.status, 200);
+    const data = JSON.parse(res.body);
+    const audit = data.entries.find((entry: { skillName: string }) => entry.skillName === 'audit');
+    assert.ok(audit);
+    assert.equal(audit.diagnosisCount, 1);
+    assert.equal(data.diagnosisSummary.sourceCoverage.observe, true);
+  });
+
+  it('GET /api/skills/:name/diagnostics returns per-skill diagnostics', async () => {
+    const res = await fetch(`${baseUrl}/api/skills/audit/diagnostics`);
+    assert.equal(res.status, 200);
+    const data = JSON.parse(res.body);
+    assert.equal(data.skillName, 'audit');
+    assert.equal(data.diagnostics.length, 1);
+    assert.equal(data.diagnostics[0].signal, 'skill_md_not_found');
+  });
+
   it('GET /api/jobs supports filtering by project and tag', async () => {
     const res = await fetch(`${baseUrl}/api/jobs?project=alpha&tag=nightly`);
     assert.equal(res.status, 200);

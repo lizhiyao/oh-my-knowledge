@@ -17,6 +17,7 @@ import type { JobStore, ReportStore } from '../types/index.js';
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, findObservationInboxItem, formatObservationShow, queryObservationInbox } from '../observability/inbox.js';
 import { buildObservationInboxViewModel } from '../observability/inbox-view-model.js';
+import { activeStudioDiagnostics } from '../diagnosis/studio-projection.js';
 import { deleteObservationReviewState, loadObservationReviewState, updateObservationReviewState, type ObservationReviewStateUpdate } from '../observability/review-state.js';
 import type { AddressInfo } from 'node:net';
 
@@ -575,6 +576,24 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
+      if (path === '/api/observations/diagnostics') {
+        const runs = await reportStore.list();
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+          sourceCoverage: idx.diagnosisSummary.sourceCoverage,
+          summary: idx.diagnosisSummary,
+          bySkill: Object.fromEntries(idx.diagnosticsBySkill),
+          active: activeStudioDiagnostics({
+            schemaVersion: 1,
+            generatedAt: new Date().toISOString(),
+            sourceCoverage: idx.diagnosisSummary.sourceCoverage,
+            bySkill: Object.fromEntries(idx.diagnosticsBySkill),
+          }),
+        }));
+        return;
+      }
+
       if (path === '/api/observations/show') {
         const id = parsed.searchParams.get('id') || '';
         const item = id ? findObservationInboxItem(id, observationsDir) : null;
@@ -800,9 +819,25 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
       // list renderer 直接消费,不再每请求 N×detectInsights 重算。
       if (path === '/') {
         const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir);
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         res.end(renderSkillList(idx, lang));
+        return;
+      }
+
+      if (path === '/api/skills') {
+        const runs = await reportStore.list();
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+          entries: idx.entries.map((entry) => ({
+            ...entry,
+            insightCount: idx.insightsBySkill.get(entry.skillName)?.length ?? 0,
+            diagnosisCount: idx.diagnosticsBySkill.get(entry.skillName)?.length ?? 0,
+          })),
+          summary: idx.summary,
+          diagnosisSummary: idx.diagnosisSummary,
+        }));
         return;
       }
 
@@ -812,7 +847,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
       if (skillDetailMatch) {
         const skillName = decodeURIComponent(skillDetailMatch[1]);
         const runs = await reportStore.list();
-        const idx = buildSkillIndex(runs, analysesDir, doctorsDir);
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
         const entry = idx.entries.find((e) => e.skillName === skillName);
         if (!entry) {
           res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
@@ -831,6 +866,26 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         return;
       }
 
+      const skillDiagnosticsApiMatch = path.match(/^\/api\/skills\/(.+)\/diagnostics$/);
+      if (skillDiagnosticsApiMatch) {
+        const skillName = decodeURIComponent(skillDiagnosticsApiMatch[1]);
+        const runs = await reportStore.list();
+        const idx = buildSkillIndex(runs, analysesDir, doctorsDir, observationsDir);
+        const diagnostics = idx.diagnosticsBySkill.get(skillName);
+        if (!diagnostics) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'skill diagnostics not found' }));
+          return;
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({
+          skillName,
+          sourceCoverage: idx.diagnosisSummary.sourceCoverage,
+          diagnostics,
+        }));
+        return;
+      }
+
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Not Found');
     } catch (err: unknown) {
@@ -843,6 +898,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
     if (server) return serverUrl!;
     if (!existsSync(reportsDir)) mkdirSync(reportsDir, { recursive: true });
     if (!existsSync(analysesDir)) mkdirSync(analysesDir, { recursive: true });
+    if (!existsSync(observationsDir)) mkdirSync(observationsDir, { recursive: true });
     if (!existsSync(jobsDir)) mkdirSync(jobsDir, { recursive: true });
 
     const p = port ?? Number(process.env.OMK_REPORT_PORT || DEFAULT_PORT);

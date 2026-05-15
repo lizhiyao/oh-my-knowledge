@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { detectInsights, flattenRecommendations } from '../../src/server/skill-insights.js';
 import type { SkillIndexEntry } from '../../src/server/skill-index.js';
 import type { EvaluationReport, ResultEntry } from '../../src/types/index.js';
+import type { Diagnosis } from '../../src/diagnosis/types.js';
 
 function mkResult(sampleId: string, variant: string, opts: {
   passedAssertions?: boolean;
@@ -284,6 +285,64 @@ describe('detectInsights — production-instability', () => {
       },
     });
     const insights = detectInsights(entry, null);
+    assert.equal(insights.find((i) => i.id === 'production-instability'), undefined);
+  });
+});
+
+describe('detectInsights — Diagnosis projection', () => {
+  function mkDiagnosis(overrides: Partial<Diagnosis> = {}): Diagnosis {
+    return {
+      id: 'diag-1',
+      stableKey: 'skill:test-skill|type:runtime_issue|signal:tool_failure_seen|target:x',
+      skillName: 'test-skill',
+      type: 'runtime_issue',
+      signal: 'tool_failure_seen',
+      title: 'Tool failure seen',
+      summary: '工具失败在真实 session 中重复出现。',
+      severity: 'high',
+      audience: 'skill-author',
+      lifecycle: 'detected',
+      scope: { primary: 'skill', refs: { skillName: 'test-skill' } },
+      occurrences: [{
+        id: 'occ-1',
+        diagnosisStableKey: 'skill:test-skill|type:runtime_issue|signal:tool_failure_seen|target:x',
+        source: 'observe',
+        sourceId: 'rule_finding:test-skill:tool_failure_seen',
+        sourceKind: 'tool_failure_seen',
+        timestamp: '2026-05-09T10:00:00Z',
+        severity: 'high',
+        evidenceRefs: [],
+        producer: 'deterministic_rule',
+      }],
+      occurrenceCount: 1,
+      recommendation: '补充工具失败时的重试和失败告知流程。',
+      ...overrides,
+    };
+  }
+
+  it('传入 Diagnosis 后,observe 类 Insight 从 Diagnosis 投影', () => {
+    const entry = mkEntry({
+      observe: {
+        analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
+        healthBand: 'green', failureRate: 0, segmentCount: 10, gapRate: 0,
+      },
+    });
+    const insights = detectInsights(entry, null, { diagnostics: [mkDiagnosis()] });
+    const projected = insights.find((i) => i.id === 'diagnosis:diag-1');
+    assert.ok(projected);
+    assert.equal(projected!.category, 'production-instability');
+    assert.equal(projected!.evidence[0].perspective, 'observe');
+    assert.equal(projected!.severity, 'high');
+  });
+
+  it('传入 Diagnosis 时不再从 entry.observe 生成旧 production-instability', () => {
+    const entry = mkEntry({
+      observe: {
+        analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
+        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0,
+      },
+    });
+    const insights = detectInsights(entry, null, { diagnostics: [] });
     assert.equal(insights.find((i) => i.id === 'production-instability'), undefined);
   });
 });
