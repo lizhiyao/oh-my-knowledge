@@ -189,6 +189,9 @@ function problemPatternToDiagnosis(generatedAt: string, pattern: ExperienceProbl
     evidenceRefs: pattern.evidenceRefs ?? [],
     timestamp: pattern.lastSeen,
     payload: { ...pattern },
+    // pattern.count = 总发生次数(可能跨多 session),用作 affectedCount 更贴近用户感知的「影响范围」,
+    // 比 sessionCount 更稳(单 session 内重复 10 次也算 10 次发生)。
+    occurrenceCount: pattern.count,
   });
 }
 
@@ -255,6 +258,10 @@ function makeDiagnosis(
     recommendation?: string;
     command?: string;
     patch?: Diagnosis['patch'];
+    /** 对聚合型 source(如 problem pattern)用真实 count 覆盖默认的 1。
+     *  默认 1 是「每个 source 贡献一个 occurrence」语义。但 problemPattern 已经是
+     *  「N 个 session / M 次发生」的聚合,1 会让 Studio 排序和 affectedCount 显示失真。 */
+    occurrenceCount?: number;
   },
 ): Diagnosis {
   const stableKey = [
@@ -291,7 +298,7 @@ function makeDiagnosis(
       refs: { skillName: input.skillName },
     },
     occurrences: [occurrence],
-    occurrenceCount: 1,
+    occurrenceCount: input.occurrenceCount ?? 1,
     evidenceSummary: input.evidenceSummary,
     recommendation: input.recommendation,
     command: input.command,

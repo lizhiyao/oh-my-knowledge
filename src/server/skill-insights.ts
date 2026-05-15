@@ -871,23 +871,29 @@ export function detectInsights(
   // 只看自己 variant 那部分数据,否则 /skills/<treatment-2> 会看到 treatment-1 的
   // failureModes / coverage / illustrations / verdict。
   const variantName = entry.eval?.variantName ?? null;
-  // 只有真正拿到 observe 侧 Diagnosis（非空）时才屏蔽 legacy observe 检测路径。
-  // 空数组（调用方默认传 `diagnosisBundle.bySkill[name] ?? []`）说明该 skill 没有 Diagnosis
-  // 投影,此时仍要走 legacy detectProductionInstability / detectSkillTooLong 等以 entry.observe
-  // 为输入的 detector,否则 dual-run 期间 observe 有数据但 mapper 没产出对应 Diagnosis 的 skill
-  // 会丢失诊断。
-  const hasDiagnostics = (options.diagnostics?.length ?? 0) > 0;
-  const diagnosisInsights = hasDiagnostics ? projectDiagnosticsToInsights(options.diagnostics!) : [];
-  const observeForLegacy = hasDiagnostics ? null : entry.observe;
+  // Diagnosis 投影 → legacy detector 去重:只跳过「Diagnosis 已经覆盖了等价 category」的 detector,
+  // 而不是「该 skill 有任何 Diagnosis 就一刀切关掉所有 legacy observe-side 检测」。
+  //
+  // 当前 buildObserveDiagnosticsFromReport 只消费 inbox 的 skill-chain / runtime checks /
+  // problemPatterns / reviewerFindings,**不**消费 SkillHealthReport 的 failureRate / gapRate /
+  // coverage 等聚合指标。所以一个 skill 即便因 `hardrules_not_declared` 之类有 Diagnosis,
+  // 也仍可能完全没有 `production-instability` / `coverage-gap` 等价 Diagnosis,这种情况下
+  // legacy detectProductionInstability / detectCoverageGap 必须继续跑,否则信号会被默默丢掉。
+  const diagnosisInsights = options.diagnostics?.length
+    ? projectDiagnosticsToInsights(options.diagnostics)
+    : [];
+  const coveredCategories = new Set<InsightCategory>(diagnosisInsights.map((i) => i.category));
+  const skipIfCovered = (category: InsightCategory, run: () => Insight | null): Insight | null =>
+    coveredCategories.has(category) ? null : run();
   const out: Insight[] = [];
   const detectors: Array<() => Insight | null> = [
     () => detectEnvironmentBlocked(evalReport, variantName),
-    () => detectSkillDocGap(entry.doctor, evalReport, observeForLegacy, variantName),
+    () => skipIfCovered('skill-doc-gap', () => detectSkillDocGap(entry.doctor, evalReport, entry.observe, variantName)),
     () => detectFailureModeSkillIssue(evalReport, variantName),
-    () => detectCoverageGap(evalReport, observeForLegacy, variantName),
-    () => detectProductionInstability(entry.doctor, observeForLegacy),
-    () => detectSkillTooLong(entry.doctor, observeForLegacy),
-    () => detectOmkDoctorBlindspot(entry.doctor, evalReport, variantName),
+    () => skipIfCovered('coverage-gap', () => detectCoverageGap(evalReport, entry.observe, variantName)),
+    () => skipIfCovered('production-instability', () => detectProductionInstability(entry.doctor, entry.observe)),
+    () => skipIfCovered('skill-too-long', () => detectSkillTooLong(entry.doctor, entry.observe)),
+    () => skipIfCovered('omk-doctor-blindspot', () => detectOmkDoctorBlindspot(entry.doctor, evalReport, variantName)),
   ];
   for (const detect of detectors) {
     const ins = detect();

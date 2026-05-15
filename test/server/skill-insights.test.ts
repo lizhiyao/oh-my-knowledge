@@ -352,7 +352,9 @@ describe('detectInsights — Diagnosis projection', () => {
     );
   });
 
-  it('传入非空 Diagnosis 时屏蔽 legacy observe-side 检测,避免双写', () => {
+  it('传入同 category Diagnosis 时屏蔽对应 legacy detector,避免双写', () => {
+    // 这条 Diagnosis 投影后 category 是 production-instability(`runtime_issue` + signal `tool_failure_seen`
+    // → production-instability),所以 legacy production-instability 应该被去重。
     const entry = mkEntry({
       observe: {
         analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
@@ -363,9 +365,35 @@ describe('detectInsights — Diagnosis projection', () => {
     assert.equal(
       insights.find((i) => i.id === 'production-instability'),
       undefined,
-      'legacy production-instability 应被 Diagnosis 投影替代',
+      'legacy production-instability 应被同 category Diagnosis 投影替代',
     );
     assert.ok(insights.find((i) => i.id === 'diagnosis:diag-1'));
+  });
+
+  it('传入不同 category Diagnosis 时仍跑 legacy observe detector(关键:防止 SkillHealthReport 信号被吞)', () => {
+    // 这条 Diagnosis 投影后 category 是 skill-doc-gap,跟 production-instability 不重叠。
+    // legacy detectProductionInstability 应继续基于 observe.failureRate 0.5 触发,否则
+    // 「只跑了 observe ingest 拿到 skill_md_not_found 但 failureRate 也高」的 skill 会丢
+    // production-instability 信号(buildObserveDiagnosticsFromReport 当前不消费 SkillHealthReport)。
+    const docGapDiagnosis = mkDiagnosis({
+      id: 'diag-doc',
+      type: 'definition_gap',
+      signal: 'skill_md_not_found',
+      title: 'SKILL.md was not found',
+      stableKey: 'skill:test-skill|type:definition_gap|signal:skill_md_not_found|target:definition:skill_md',
+    });
+    const entry = mkEntry({
+      observe: {
+        analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
+        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0,
+      },
+    });
+    const insights = detectInsights(entry, null, { diagnostics: [docGapDiagnosis] });
+    assert.ok(
+      insights.find((i) => i.id === 'production-instability'),
+      'legacy production-instability 应该仍触发,因为该 Diagnosis 是 skill-doc-gap 不是 production-instability',
+    );
+    assert.ok(insights.find((i) => i.id === 'diagnosis:diag-doc'));
   });
 });
 

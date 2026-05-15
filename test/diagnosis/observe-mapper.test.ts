@@ -107,6 +107,13 @@ describe('buildObserveDiagnostics', () => {
     const confirmed = diagnoses.find((item) => item.signal === 'hard_rule_candidate');
     assert.ok(confirmed);
     assert.equal(confirmed.lifecycle, 'resolved');
+
+    // problemPattern 投影后 occurrenceCount 应该用 pattern.count(3),不是默认 1。
+    // 这是给 Studio 排序和 affectedCount 的关键:3 个 session 反复出现的 pattern 不能跟
+    // 单点 advisory 一样按 1 算。
+    const pattern = diagnoses.find((item) => item.signal === 'user_correction');
+    assert.ok(pattern);
+    assert.equal(pattern.occurrenceCount, 3, 'problem pattern occurrenceCount 应该等于 pattern.count');
   });
 
   it('builds studio projection without changing UI renderers', () => {

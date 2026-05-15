@@ -62,7 +62,19 @@ export interface HealthAssessment {
 
 export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: Lang): HealthAssessment {
   const ran = [entry.doctor, entry.eval, entry.observe].filter(Boolean).length;
+  // 三大维度都没跑过时,如果 Diagnosis 已经给出 high/medium 信号(例如只跑了 `omk observe ingest`
+  // 拿到 `skill_md_not_found`),仍然要把卡片标红/黄,而不是落到灰色「未评估」。
+  // 否则 Diagnosis 作为 Studio 数据源的价值会被 UI 口径吞掉:红色筛选筛不到,
+  // 用户看不到「这个 skill 有待优化项,但卡片仍灰」的矛盾态。
+  const highCount = insights.filter((i) => i.severity === 'high').length;
+  const medCount = insights.filter((i) => i.severity === 'medium').length;
   if (ran === 0) {
+    if (highCount > 0) {
+      return { grade: 'unhealthy', score: null, label: lang === 'zh' ? '不健康' : 'Unhealthy', emoji: '🔴', color: 'red' };
+    }
+    if (medCount > 0) {
+      return { grade: 'fair', score: null, label: lang === 'zh' ? '待改进' : 'Fair', emoji: '🟡', color: 'yellow' };
+    }
     return { grade: 'unscored', score: null, label: lang === 'zh' ? '未评估' : 'Unscored', emoji: '⚪', color: 'gray' };
   }
 
@@ -97,13 +109,10 @@ export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: 
   const hasWarn = (entry.doctor != null && entry.doctor.warnCount > 0)
     || (entry.eval != null && entry.eval.compositeScore != null && entry.eval.compositeScore < 3.5)
     || (entry.observe != null && entry.observe.healthBand === 'yellow');
-  const high = insights.filter((i) => i.severity === 'high').length;
-  const med = insights.filter((i) => i.severity === 'medium').length;
-
-  if (high > 0 || hasFail) {
+  if (highCount > 0 || hasFail) {
     return { grade: 'unhealthy', score, label: lang === 'zh' ? '不健康' : 'Unhealthy', emoji: '🔴', color: 'red' };
   }
-  if (med > 0 || hasWarn) {
+  if (medCount > 0 || hasWarn) {
     return { grade: 'fair', score, label: lang === 'zh' ? '待改进' : 'Fair', emoji: '🟡', color: 'yellow' };
   }
   if (insights.length === 0 && !hasWarn) {
