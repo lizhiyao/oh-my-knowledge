@@ -348,14 +348,20 @@ function maxSeverity(a: DiagnosisSeverity, b: DiagnosisSeverity): DiagnosisSever
   return severityRank(a) >= severityRank(b) ? a : b;
 }
 
-function maxLifecycle(a: DiagnosisLifecycle, b: DiagnosisLifecycle): DiagnosisLifecycle {
+export function maxLifecycle(a: DiagnosisLifecycle, b: DiagnosisLifecycle): DiagnosisLifecycle {
+  // mapper 内的 upsert 合并语义:同一批 build 里多个 source 产生同 stableKey 时,
+  // 终态(resolved / rejected)是作者人为确认或驳回的结果,优先级高于自动检出态。
+  // 比如 `derivedStandard.author_confirmed` 已经把 standard 标 resolved,旁路再来一个
+  // 自动 detected 信号,应保留 resolved 而不是把 confirmation 擦掉。
+  // 「resolved 后新 occurrence 进来 reopen 到 detected」属于跨时间的 lifecycle 状态机,
+  // 由上层 review-state store 决定,不在此处处理。
   const rank: Record<DiagnosisLifecycle, number> = {
-    detected: 5,
-    candidate: 4,
-    stale: 3,
+    resolved: 6,
+    rejected: 5,
+    detected: 4,
+    candidate: 3,
     confirmed: 2,
-    resolved: 1,
-    rejected: 0,
+    stale: 1,
   };
   return rank[a] >= rank[b] ? a : b;
 }

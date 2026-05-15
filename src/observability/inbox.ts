@@ -664,7 +664,11 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
             severityReason: undefined,
           };
         });
-        report.diagnostics = report.diagnostics ?? buildObserveDiagnosticsFromReport(report);
+        // 不在 load 路径重建 diagnostics:`buildObserveDiagnosticsFromReport` 默认 cwd 是
+        // `process.cwd()`,但加载历史 inbox 时 cwd 通常跟 trace 原始项目根不一致,
+        // `buildObservationSkillChains` 会读错 `skills/*/SKILL.md` 导致误报 `skill_md_not_found`。
+        // 新版 build 路径(buildObservationInboxReport)总会写入 diagnostics 字段;老 inbox JSON
+        // 没有字段时让 Studio 显示「该 trace 暂无 Diagnosis,请重新 observe 一次」,比给错数据安全。
         return report;
       } catch {
         return null;

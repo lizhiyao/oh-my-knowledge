@@ -191,6 +191,40 @@ describe('report-server', () => {
           representativeEvidence: [{ tool: 'Read', path: '/repo/large.ts' }],
         },
       ],
+      diagnostics: {
+        schemaVersion: 1,
+        generatedAt: '2026-05-07T00:00:00.000Z',
+        sourceCoverage: { observe: true, doctor: false, eval: false },
+        bySkill: {
+          audit: [
+            {
+              id: 'diag-audit-skill-md',
+              stableKey: 'skill:audit|type:definition_gap|signal:skill_md_not_found|target:definition:skill_md',
+              skillName: 'audit',
+              type: 'definition_gap',
+              signal: 'skill_md_not_found',
+              title: 'SKILL.md was not found',
+              severity: 'high',
+              audience: 'skill-author',
+              lifecycle: 'detected',
+              scope: { primary: 'definition', refs: { skillName: 'audit' } },
+              occurrences: [{
+                id: 'occ-audit-skill-md',
+                diagnosisStableKey: 'skill:audit|type:definition_gap|signal:skill_md_not_found|target:definition:skill_md',
+                source: 'observe',
+                sourceId: 'skill_chain:audit:skill_md_not_found',
+                sourceKind: 'skill_chain',
+                timestamp: '2026-05-07T00:00:00.000Z',
+                severity: 'high',
+                evidenceRefs: [],
+                producer: 'deterministic_rule',
+                payload: {},
+              }],
+              occurrenceCount: 1,
+            },
+          ],
+        },
+      },
     }, null, 2));
     server = createReportServer({ port: 0, reportsDir: TEST_DIR, observationsDir: OBSERVATIONS_DIR, jobsDir: JOBS_DIR });
     baseUrl = await server.start();

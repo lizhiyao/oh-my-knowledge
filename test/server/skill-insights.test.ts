@@ -335,7 +335,10 @@ describe('detectInsights — Diagnosis projection', () => {
     assert.equal(projected!.severity, 'high');
   });
 
-  it('传入 Diagnosis 时不再从 entry.observe 生成旧 production-instability', () => {
+  it('diagnostics 为空数组时,legacy observe-side 检测仍然触发（dual-run 兼容）', () => {
+    // observe 有 red + failureRate 0.5 但 mapper 没产出对应 Diagnosis 的场景:
+    // 该 skill 的 diagnosticsBundle.bySkill[name] 默认是 [] 不是 undefined,
+    // 这条 case 防止以前那种「[] 也判 truthy 把 legacy 全关掉」的回归。
     const entry = mkEntry({
       observe: {
         analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
@@ -343,7 +346,26 @@ describe('detectInsights — Diagnosis projection', () => {
       },
     });
     const insights = detectInsights(entry, null, { diagnostics: [] });
-    assert.equal(insights.find((i) => i.id === 'production-instability'), undefined);
+    assert.ok(
+      insights.find((i) => i.id === 'production-instability'),
+      'legacy production-instability 应在空 diagnostics 下仍然触发',
+    );
+  });
+
+  it('传入非空 Diagnosis 时屏蔽 legacy observe-side 检测,避免双写', () => {
+    const entry = mkEntry({
+      observe: {
+        analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
+        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0,
+      },
+    });
+    const insights = detectInsights(entry, null, { diagnostics: [mkDiagnosis()] });
+    assert.equal(
+      insights.find((i) => i.id === 'production-instability'),
+      undefined,
+      'legacy production-instability 应被 Diagnosis 投影替代',
+    );
+    assert.ok(insights.find((i) => i.id === 'diagnosis:diag-1'));
   });
 });
 

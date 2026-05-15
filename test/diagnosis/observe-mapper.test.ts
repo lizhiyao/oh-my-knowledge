@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { buildObserveDiagnostics } from '../../src/diagnosis/observe-mapper.js';
+import { buildObserveDiagnostics, maxLifecycle } from '../../src/diagnosis/observe-mapper.js';
 import { activeStudioDiagnostics, buildStudioDiagnosisSummary } from '../../src/diagnosis/studio-projection.js';
 
 describe('buildObserveDiagnostics', () => {
@@ -128,5 +128,26 @@ describe('buildObserveDiagnostics', () => {
     const active = activeStudioDiagnostics(bundle);
     assert.equal(active.length, 1);
     assert.equal(active[0].signal, 'skill_md_not_found');
+  });
+});
+
+describe('maxLifecycle', () => {
+  it('终态(resolved / rejected)优先于自动检出态', () => {
+    // 作者确认过的 standard(resolved)不能被新来的自动 detected 信号覆盖掉。
+    assert.equal(maxLifecycle('resolved', 'detected'), 'resolved');
+    assert.equal(maxLifecycle('detected', 'resolved'), 'resolved');
+    assert.equal(maxLifecycle('rejected', 'detected'), 'rejected');
+    assert.equal(maxLifecycle('rejected', 'candidate'), 'rejected');
+  });
+
+  it('两个终态同时存在时 resolved 胜出', () => {
+    assert.equal(maxLifecycle('resolved', 'rejected'), 'resolved');
+    assert.equal(maxLifecycle('rejected', 'resolved'), 'resolved');
+  });
+
+  it('active 态之间按主动性排序:detected > candidate > confirmed > stale', () => {
+    assert.equal(maxLifecycle('detected', 'candidate'), 'detected');
+    assert.equal(maxLifecycle('candidate', 'confirmed'), 'candidate');
+    assert.equal(maxLifecycle('confirmed', 'stale'), 'confirmed');
   });
 });

@@ -793,8 +793,15 @@ function insightCategoryFromDiagnosis(type: DiagnosisType, signal: string): Insi
   if (type === 'sample_design_issue') return 'environment-blocked-mocks';
   if (type === 'doctor_gap') return 'omk-doctor-blindspot';
   if (type === 'user_feedback_pattern') return 'production-instability';
-  if (signal.includes('gap') || signal.includes('coverage')) return 'coverage-gap';
-  if (signal.includes('tool_failure') || signal.includes('tool')) return 'production-instability';
+  // runtime_issue:运行时执行偏差,signal 子串里能拆出 coverage/gap → coverage-gap,
+  // 工具失败 → production-instability,其它兜底为 production-instability(runtime 偏差对用户来说
+  // 最终都体现为生产稳定性)。
+  if (type === 'runtime_issue') {
+    if (signal.includes('gap') || signal.includes('coverage')) return 'coverage-gap';
+    return 'production-instability';
+  }
+  // maintenance_issue:omk 维护者侧问题(judge / executor / 工具链等),归到 doctor 盲点。
+  if (type === 'maintenance_issue') return 'omk-doctor-blindspot';
   return 'other';
 }
 
@@ -864,8 +871,14 @@ export function detectInsights(
   // 只看自己 variant 那部分数据,否则 /skills/<treatment-2> 会看到 treatment-1 的
   // failureModes / coverage / illustrations / verdict。
   const variantName = entry.eval?.variantName ?? null;
-  const diagnosisInsights = options.diagnostics ? projectDiagnosticsToInsights(options.diagnostics) : [];
-  const observeForLegacy = options.diagnostics ? null : entry.observe;
+  // 只有真正拿到 observe 侧 Diagnosis（非空）时才屏蔽 legacy observe 检测路径。
+  // 空数组（调用方默认传 `diagnosisBundle.bySkill[name] ?? []`）说明该 skill 没有 Diagnosis
+  // 投影,此时仍要走 legacy detectProductionInstability / detectSkillTooLong 等以 entry.observe
+  // 为输入的 detector,否则 dual-run 期间 observe 有数据但 mapper 没产出对应 Diagnosis 的 skill
+  // 会丢失诊断。
+  const hasDiagnostics = (options.diagnostics?.length ?? 0) > 0;
+  const diagnosisInsights = hasDiagnostics ? projectDiagnosticsToInsights(options.diagnostics!) : [];
+  const observeForLegacy = hasDiagnostics ? null : entry.observe;
   const out: Insight[] = [];
   const detectors: Array<() => Insight | null> = [
     () => detectEnvironmentBlocked(evalReport, variantName),

@@ -660,7 +660,16 @@ do not
 └─ change CLI output
 ```
 
-Phase 1 guardrails:
+> **Note**: The original Phase 1 plan was to land mapping documentation alone. The actual
+> first PR (this one) instead landed Phase 1 + 2 + 3 together — mapping doc, observe
+> producer, and studio consumer in a single change — because (a) the mapping had already
+> stabilized through earlier draft iterations, and (b) splitting into three PRs would
+> double the rebase / review cost without surfacing additional schema conflicts. The
+> guardrails below remain valid for any **future** mapping-only PR (e.g., if doctor or
+> eval producers spawn a new mapping cycle); they do not describe the actual phasing of
+> the first landing.
+
+Phase 1 guardrails (apply only to a mapping-only PR):
 
 ```text
 guardrails
