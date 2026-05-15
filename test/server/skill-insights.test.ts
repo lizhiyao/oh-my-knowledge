@@ -399,7 +399,11 @@ describe('detectInsights — Diagnosis projection', () => {
           message: '前置依赖警告', durationMs: 10,
         }],
       },
-      evalSnap: { reportId: 'e1', variantName: 'test-skill', timestamp: '2026-05-09T10:00:00Z', passCount: 0, failCount: 1, compositeScore: null },
+      evalSnap: {
+        reportId: 'e1', variantName: 'test-skill', timestamp: '2026-05-09T10:00:00Z',
+        verdictLevel: 'NOISE', verdictHeadline: 'noise',
+        compositeScore: null, passCount: 0, failCount: 1, tripwireCount: 0, totalSamples: 1,
+      },
     });
     // eval 报告含 skill_doc_missing rootCause,让 detectSkillDocGap 真的有数据触发
     const report = mkEvalReport('test-skill', [
