@@ -5,11 +5,11 @@ import {
   mergeExperienceProblemPatterns,
   type ExperienceProblemPattern,
 } from './problem-patterns.js';
-import { observationMetricAnnotationVerdict, type ObservationMetricKey, type ObservationReviewState } from './review-state.js';
+import { observationMetricAnnotationVerdict, observationReviewStateKey, type ObservationMetricKey, type ObservationReviewState } from './review-state.js';
 import type { CcAssistantRecord, CcRecord, CcSession, CcUserRecord, TraceSourceMetadata } from './trace-source.js';
 import type { SkillSegment } from './trace-segmenter.js';
 import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-attribution.js';
-import { hasAssistantDeliverySignalText, hasUserHardRuleText, isScheduledTaskPromptText } from './text-signals.js';
+import { hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isScheduledTaskPromptText } from './text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 
 export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
@@ -41,6 +41,20 @@ export type ExperienceReviewBasisCode =
   | 'hedging_signal'
   | 'explicit_marker';
 export type ExperienceRuleFindingLevel = 'attention' | 'sample' | 'normal';
+export type ExperienceReviewerReportScope = 'single_skill_single_goal' | 'degraded_complex';
+export type ExperienceReviewerReportStepStatus = 'ok' | 'attention' | 'unknown';
+export type ExperienceReviewerReportFindingLevel = 'attention' | 'possible_false_positive' | 'note';
+export type ExperienceReviewerReportFindingSource = 'deterministic_rule' | 'llm_soft' | 'manual';
+export type ExperienceSessionStoryNodeKind =
+  | 'user_goal'
+  | 'skill_invocation'
+  | 'subagent_branch'
+  | 'tool_execution'
+  | 'delivery'
+  | 'user_feedback'
+  | 'goal_shift';
+export type ExperienceSessionStoryAnswerKey = 'goal_satisfaction' | 'declared_behavior_fit' | 'user_feeling';
+export type ExperienceSessionStorySkillRole = 'router' | 'executor' | 'mixed' | 'unknown';
 export type ExperienceRuleFindingCode =
   | 'high_observation_seen'
   | 'medium_observation_seen'
@@ -133,6 +147,157 @@ export interface ExperienceAssistiveInference {
   evidenceRefs: ExperienceEvidenceRef[];
 }
 
+export interface ExperienceReviewerReportStep {
+  order: number;
+  label: string;
+  status: ExperienceReviewerReportStepStatus;
+  text: string;
+  evidenceRefs: ExperienceEvidenceRef[];
+}
+
+export interface ExperienceReviewerReportFinding {
+  id: string;
+  judgmentId: string;
+  source: ExperienceReviewerReportFindingSource;
+  level: ExperienceReviewerReportFindingLevel;
+  title: string;
+  body: string;
+  ruleSource: string;
+  ruleVersion: string;
+  evidenceRefs: ExperienceEvidenceRef[];
+  reviewStateRef: {
+    targetType: 'reviewer_judgment';
+    targetId: string;
+    verdict?: string;
+    reason?: string;
+    note?: string;
+    reviewedAt?: string;
+  };
+}
+
+export interface ExperienceSessionStoryNode {
+  id: string;
+  order: number;
+  kind: ExperienceSessionStoryNodeKind;
+  label: string;
+  status: ExperienceReviewerReportStepStatus;
+  text: string;
+  evidenceRefs: ExperienceEvidenceRef[];
+}
+
+export interface ExperienceSessionStoryAnswer {
+  key: ExperienceSessionStoryAnswerKey;
+  label: string;
+  status: ExperienceReviewerReportStepStatus;
+  text: string;
+  evidenceRefs: ExperienceEvidenceRef[];
+}
+
+export interface ExperienceSessionStoryGoalSlice {
+  id: string;
+  order: number;
+  skillNames: string[];
+  startTimestamp: string;
+  endTimestamp: string;
+  reasonCode: ExperienceGoalSliceReasonCode;
+  inferredUserGoal?: string;
+  evidenceRefs: ExperienceEvidenceRef[];
+}
+
+export interface ExperienceSessionStorySubagentDispatch {
+  id: string;
+  order: number;
+  branchId: string;
+  label: string;
+  sourceTrace: string;
+  attachTo?: {
+    messageIndex?: number;
+    toolUseId?: string;
+    label?: string;
+  };
+  eventCount: number;
+  evidenceRefs: ExperienceEvidenceRef[];
+}
+
+export interface ExperienceSessionStorySkillLink {
+  id: string;
+  order: number;
+  skillName: string;
+  role: ExperienceSessionStorySkillRole;
+  invocationIds: string[];
+  goalSliceIds: string[];
+  evidenceRefs: ExperienceEvidenceRef[];
+}
+
+export interface ExperienceSessionStoryGraphNode {
+  id: string;
+  label: string;
+  kind: ExperienceSessionStoryNodeKind;
+  status: ExperienceReviewerReportStepStatus;
+  role?: ExperienceSessionStorySkillRole;
+  detailNodeId?: string;
+}
+
+export interface ExperienceSessionStoryGraphEdge {
+  fromId: string;
+  toId: string;
+  label: string;
+}
+
+export interface ExperienceSessionStory {
+  schemaVersion: 1;
+  summary: string;
+  invocationCount: number;
+  goalSliceCount: number;
+  branchCount: number;
+  progressUpdateCount: number;
+  finalDeliverySignalCount: number;
+  mainlineNodeIds: string[];
+  goalSlices: ExperienceSessionStoryGoalSlice[];
+  subagentDispatches: ExperienceSessionStorySubagentDispatch[];
+  skillLinks: ExperienceSessionStorySkillLink[];
+  graph: {
+    nodes: ExperienceSessionStoryGraphNode[];
+    edges: ExperienceSessionStoryGraphEdge[];
+  };
+  nodes: ExperienceSessionStoryNode[];
+  answers: ExperienceSessionStoryAnswer[];
+}
+
+export interface ExperienceReviewerReport {
+  schemaVersion: 1;
+  mode: 'deterministic_milestone_1' | 'deterministic_session_story';
+  generatedAt: string;
+  title: string;
+  summary: string;
+  scope: {
+    kind: ExperienceReviewerReportScope;
+    reasonCodes: string[];
+  };
+  chainSteps: ExperienceReviewerReportStep[];
+  findings: ExperienceReviewerReportFinding[];
+  oneLookMetrics: {
+    toolCallCount: number;
+    toolFailureCount: number;
+    userMessageCount: number;
+    userFollowUpCount: number;
+    assistantDeliverySignalCount: number;
+    assistantProgressUpdateCount: number;
+    finalDeliverySignalCount: number;
+    traceEventCount: number;
+    tokenUsage: {
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      cacheCreationTokens: number;
+      attribution: 'skill_segment';
+    };
+  };
+  sessionStory: ExperienceSessionStory;
+  authorSuggestions: string[];
+  traceLinks: ExperienceEvidenceRef[];
+}
+
 export interface ExperienceGoalSlice {
   id: string;
   skillName: string;
@@ -169,6 +334,7 @@ export interface ExperienceInvocation {
   id: string;
   skillName: string;
   sessionId: string;
+  sessionGroupKey: string;
   sourceTrace: string;
   sourceKind: ObservationSourceKind;
   entrypoint?: string;
@@ -243,6 +409,8 @@ export interface ExperienceSessionSummary {
   pluginNames: string[];
   rawSkillRefs: string[];
   commandNames: string[];
+  sessionStory?: ExperienceSessionStory;
+  reviewerReport?: ExperienceReviewerReport;
 }
 
 export interface ExperienceSkillSummary {
@@ -428,6 +596,7 @@ const ZERO_INDICATORS: ExperienceReviewIndicators = {
 export function buildObservationExperienceReport(input: BuildExperienceInput): ObservationExperienceReport {
   const sessionsBySourceTrace = new Map(input.sessions.map((session) => [session.sourcePath, session]));
   const sessionGroupsById = groupSessionsByLogicalId(input.sessions);
+  const sessionGroupsByKey = groupSessionsByExperienceKey(input.sessions);
   const goalSlices: ExperienceGoalSlice[] = [];
   const invocations: ExperienceInvocation[] = [];
 
@@ -435,6 +604,7 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
     if (segment.skillName === 'general') continue;
     const session = sessionsBySourceTrace.get(segment.sourceTrace ?? '') ?? sessionGroupsById.get(segment.sessionId)?.[0];
     const sourceTrace = segment.sourceTrace ?? session?.sourcePath ?? '';
+    const sessionGroupKey = session ? experienceSessionGroupKey(session) : `trace:${sourceTrace || segment.sessionId}`;
     const relatedItems = relatedObservationItems(segment, input.items);
     const bounds = session ? segmentRecordBounds(session, segment) : { start: 0, end: 0 };
     const timeline = session ? buildTimeline(session, bounds.start, bounds.end) : [];
@@ -474,6 +644,7 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
       id: invocationId,
       skillName: segment.skillName,
       sessionId: segment.sessionId,
+      sessionGroupKey,
       sourceTrace,
       sourceKind: segment.sourceKind ?? sourceKindForPath(sourceTrace),
       entrypoint: session ? session.entrypoint ?? inferEntrypointFromRecords(session) : undefined,
@@ -506,7 +677,7 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
     });
   }
 
-  const sessions = summarizeExperienceSessions(invocations, sessionGroupsById);
+  const sessions = summarizeExperienceSessions(invocations, sessionGroupsByKey, input.generatedAt, input.reviewState);
   const skills = summarizeExperienceSkills(sessions, invocations);
 
   return {
@@ -539,10 +710,32 @@ function logicalSessionId(session: CcSession): string {
   return session.sessionGroupId ?? session.sessionId;
 }
 
+function experienceSessionGroupKey(session: CcSession): string {
+  const logicalId = logicalSessionId(session);
+  if (session.traceRole && session.traceRole !== 'standalone' && session.sessionGroupPath) {
+    return `group:${session.sessionGroupPath}\u0000${logicalId}`;
+  }
+  return `trace:${session.sourcePath}`;
+}
+
 function groupSessionsByLogicalId(sessions: CcSession[]): Map<string, CcSession[]> {
   const groups = new Map<string, CcSession[]>();
   for (const session of sessions) {
     const key = logicalSessionId(session);
+    const group = groups.get(key) ?? [];
+    group.push(session);
+    groups.set(key, group);
+  }
+  for (const [key, group] of groups.entries()) {
+    groups.set(key, group.sort(compareSessionsForTimeline));
+  }
+  return groups;
+}
+
+function groupSessionsByExperienceKey(sessions: CcSession[]): Map<string, CcSession[]> {
+  const groups = new Map<string, CcSession[]>();
+  for (const session of sessions) {
+    const key = experienceSessionGroupKey(session);
     const group = groups.get(key) ?? [];
     group.push(session);
     groups.set(key, group);
@@ -641,6 +834,12 @@ function isAssistantDeliveryEvent(event: ExperienceTimelineEvent): boolean {
   if (event.kind !== 'assistant_message') return false;
   const text = event.fullText ?? event.snippet ?? '';
   return hasAssistantDeliverySignalText(text);
+}
+
+function isAssistantProgressUpdateEvent(event: ExperienceTimelineEvent): boolean {
+  if (event.kind !== 'assistant_message') return false;
+  const text = event.fullText ?? event.snippet ?? '';
+  return isAssistantProgressUpdateText(text);
 }
 
 function buildTimeline(session: CcSession, start: number, end: number): ExperienceTimelineEvent[] {
@@ -1040,10 +1239,15 @@ function metricCount(
   return ruleCount;
 }
 
-function summarizeExperienceSessions(invocations: ExperienceInvocation[], sessionGroupsById: Map<string, CcSession[]>): ExperienceSessionSummary[] {
+function summarizeExperienceSessions(
+  invocations: ExperienceInvocation[],
+  sessionGroupsByKey: Map<string, CcSession[]>,
+  generatedAt: string,
+  reviewState?: ObservationReviewState,
+): ExperienceSessionSummary[] {
   const byKey = new Map<string, ExperienceInvocation[]>();
   for (const invocation of invocations) {
-    const key = `${invocation.skillName}\u0000${invocation.sessionId}`;
+    const key = `${invocation.skillName}\u0000${invocation.sessionGroupKey}`;
     const group = byKey.get(key) ?? [];
     group.push(invocation);
     byKey.set(key, group);
@@ -1056,7 +1260,7 @@ function summarizeExperienceSessions(invocations: ExperienceInvocation[], sessio
     const reviewBasisCodes = basisCodesForIndicators(indicators);
     const reviewPriorityScore = scoreForIndicators(indicators);
     const timeline = uniqueTimelineEvents(group.flatMap((invocation) => invocation.timeline)).sort(compareTimelineEvents);
-    const sessionGroup = sessionGroupsById.get(first.sessionId) ?? [];
+    const sessionGroup = sessionGroupsByKey.get(first.sessionGroupKey) ?? [];
     const sourceSessionStartTimestamp = minString(sessionGroup.map((session) => session.startTimestamp));
     const sourceSessionEndTimestamp = maxString(sessionGroup.map((session) => session.endTimestamp));
     const timelineTree = sessionGroup.length > 0 ? buildSessionTimelineTree(first.sessionId, sessionGroup) : undefined;
@@ -1091,8 +1295,9 @@ function summarizeExperienceSessions(invocations: ExperienceInvocation[], sessio
     const ruleFindings = ruleFindingsForEvidence(indicators, timeline, observationRefs, evidenceChain);
     const assistiveInference = assistiveInferenceForEvidence(indicators, evidenceChain, ruleFindings);
     const problemPatterns = mergeExperienceProblemPatterns(group.flatMap((invocation) => invocation.problemPatterns));
-    return {
-      id: hashParts('session', first.skillName, first.sessionId),
+    const storyInvocations = invocations.filter((invocation) => invocation.sessionGroupKey === first.sessionGroupKey);
+    const baseSession: Omit<ExperienceSessionSummary, 'sessionStory' | 'reviewerReport'> = {
+      id: hashParts('session', first.skillName, first.sessionGroupKey),
       skillName: first.skillName,
       sessionId: first.sessionId,
       sourceTrace: first.sourceTrace,
@@ -1138,9 +1343,679 @@ function summarizeExperienceSessions(invocations: ExperienceInvocation[], sessio
       rawSkillRefs: unique(group.map((invocation) => invocation.attribution.rawSkillRef).filter((value): value is string => Boolean(value))).sort(),
       commandNames: unique(group.map((invocation) => invocation.attribution.commandName).filter((value): value is string => Boolean(value))).sort(),
     };
+    const sessionStory = buildSessionStory(baseSession, storyInvocations);
+    const sessionWithStory: ExperienceSessionSummary = {
+      ...baseSession,
+      sessionStory,
+    };
+    return {
+      ...sessionWithStory,
+      reviewerReport: buildReviewerReport(sessionWithStory, group, generatedAt, reviewState, storyInvocations, sessionStory),
+    };
   }).sort((a, b) => {
     if (b.reviewPriorityScore !== a.reviewPriorityScore) return b.reviewPriorityScore - a.reviewPriorityScore;
     return b.endTimestamp.localeCompare(a.endTimestamp);
+  });
+}
+
+const REVIEWER_REPORT_RULE_VERSION = 'reviewer-report.v1';
+
+function buildReviewerReport(
+  session: ExperienceSessionSummary,
+  invocations: ExperienceInvocation[],
+  generatedAt: string,
+  reviewState?: ObservationReviewState,
+  storyInvocations: ExperienceInvocation[] = invocations,
+  sessionStory: ExperienceSessionStory = buildSessionStory(session, storyInvocations),
+): ExperienceReviewerReport {
+  const indicators = session.indicators;
+  const scopeReasons = reviewerScopeReasonCodes(session);
+  const scopeKind: ExperienceReviewerReportScope = scopeReasons.length === 0 ? 'single_skill_single_goal' : 'degraded_complex';
+  const findings = reviewerFindingsForSession(session, reviewState);
+  const attentionCount = findings.filter((finding) => finding.level === 'attention').length;
+  const possibleFalsePositiveCount = findings.filter((finding) => finding.level === 'possible_false_positive').length;
+  const tokenUsage = sumTokenUsage(invocations);
+  const title = reviewerTitle(session, attentionCount, possibleFalsePositiveCount);
+  const traceLinks = uniqueEvidenceRefs([
+    ...(session.evidenceChain.firstUserMessage ? [session.evidenceChain.firstUserMessage] : []),
+    ...(session.evidenceChain.firstToolUse ? [session.evidenceChain.firstToolUse] : []),
+    ...(session.evidenceChain.firstToolFailure ? [session.evidenceChain.firstToolFailure] : []),
+    ...(session.evidenceChain.lastAssistantMessage ? [session.evidenceChain.lastAssistantMessage] : []),
+    ...findings.flatMap((finding) => finding.evidenceRefs),
+  ]).slice(0, 10);
+
+  return {
+    schemaVersion: 1,
+    mode: 'deterministic_session_story',
+    generatedAt,
+    title,
+    summary: reviewerSummary(session, scopeKind, attentionCount, possibleFalsePositiveCount),
+    scope: {
+      kind: scopeKind,
+      reasonCodes: scopeReasons,
+    },
+    chainSteps: [
+      reviewerStep(1, '用户期待', userGoalStepText(session), session.evidenceChain.firstUserMessage ? 'ok' : 'unknown', session.evidenceChain.firstUserMessage ? [session.evidenceChain.firstUserMessage] : []),
+      reviewerStep(2, '选择能力', skillSelectionStepText(session), 'ok', [session.evidenceChain.firstSkillContext, session.evidenceChain.firstToolUse].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))),
+      reviewerStep(3, '执行流程', executionStepText(session), indicators.toolFailureCount > 0 ? 'attention' : 'ok', session.evidenceChain.firstToolUse ? [session.evidenceChain.firstToolUse] : []),
+      reviewerStep(4, '实际产物', deliveryStepText(session), indicators.assistantDeliverySignalCount > 0 ? 'ok' : 'unknown', session.evidenceChain.lastAssistantMessage ? [session.evidenceChain.lastAssistantMessage] : []),
+      reviewerStep(5, '用户反馈', userFeedbackStepText(session), userFeedbackStepStatus(session), userFeedbackEvidenceRefs(session)),
+    ],
+    findings,
+      oneLookMetrics: {
+      toolCallCount: indicators.toolCallCount,
+      toolFailureCount: indicators.toolFailureCount,
+      userMessageCount: indicators.userMessageCount,
+      userFollowUpCount: indicators.userFollowUpCount,
+      assistantDeliverySignalCount: indicators.assistantDeliverySignalCount,
+      assistantProgressUpdateCount: assistantProgressUpdateEvents(session).length,
+      finalDeliverySignalCount: assistantFinalDeliveryEvents(session).length,
+      traceEventCount: session.fullSessionTimeline.length || session.timelinePreview.length,
+      tokenUsage: {
+        ...tokenUsage,
+        attribution: 'skill_segment',
+      },
+    },
+    sessionStory,
+    authorSuggestions: reviewerAuthorSuggestions(session, findings),
+    traceLinks,
+  };
+}
+
+function buildSessionStory(session: ExperienceSessionSummary, invocations: ExperienceInvocation[]): ExperienceSessionStory {
+  const nodes: ExperienceSessionStoryNode[] = [];
+  const push = (
+    kind: ExperienceSessionStoryNodeKind,
+    label: string,
+    status: ExperienceReviewerReportStepStatus,
+    text: string,
+    evidenceRefs: ExperienceEvidenceRef[] = [],
+  ): ExperienceSessionStoryNode => {
+    nodes.push({
+      id: hashParts('session-story-node', session.id, kind, String(nodes.length), text),
+      order: nodes.length + 1,
+      kind,
+      label,
+      status,
+      text,
+      evidenceRefs: uniqueEvidenceRefs(evidenceRefs).slice(0, 5),
+    });
+    return nodes[nodes.length - 1];
+  };
+
+  const goalSlices = sessionStoryGoalSlices(session, invocations);
+  const subagentDispatches = sessionStorySubagentDispatches(session);
+  const skillLinks = sessionStorySkillLinks(session, invocations);
+  const progressUpdates = assistantProgressUpdateEvents(session);
+  const finalDeliveries = assistantFinalDeliveryEvents(session);
+
+  const userGoalNode = push(
+    'user_goal',
+    '用户提出目标',
+    session.evidenceChain.firstUserMessage ? 'ok' : 'unknown',
+    goalSlices.length > 1
+      ? `识别到 ${goalSlices.length} 个目标段：${goalSlices.map((goal) => goal.inferredUserGoal ?? '未提取到明确目标').slice(0, 3).join('；')}${goalSlices.length > 3 ? '；...' : ''}`
+      : session.evidenceChain.firstUserMessage?.snippet
+        ? `用户目标：${session.evidenceChain.firstUserMessage.snippet}`
+        : '没有看到明确人工用户目标；当前只能按运行证据还原链路。',
+    session.evidenceChain.firstUserMessage ? [session.evidenceChain.firstUserMessage] : [],
+  );
+
+  const roleSummary = skillLinks.map((link) => `${link.skillName}：${skillRoleLabel(link.role)}`).join('；');
+  const invocationText = skillLinks.length > 1
+    ? `本次链路识别到 ${skillLinks.length} 个能力：${roleSummary}。`
+    : skillLinks[0]
+      ? `本次使用能力：${skillLinks[0].skillName}，角色判断：${skillRoleLabel(skillLinks[0].role)}。`
+      : `本次使用能力：${session.skillName}。`;
+  const invocationNode = push(
+    'skill_invocation',
+    '能力介入',
+    'ok',
+    invocationText,
+    uniqueEvidenceRefs([session.evidenceChain.firstSkillContext, session.evidenceChain.firstToolUse].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))),
+  );
+
+  let subagentNode: ExperienceSessionStoryNode | undefined;
+  if (subagentDispatches.length > 0) {
+    subagentNode = push(
+      'subagent_branch',
+      '分支 / 子任务',
+      'unknown',
+      `检测到 ${subagentDispatches.length} 条分支或子任务执行线；主线和分支已单独列出，仍需要结合原文确认真实委派关系。`,
+      subagentDispatches.flatMap((dispatch) => dispatch.evidenceRefs.slice(0, 1)),
+    );
+  }
+
+  const executionNode = push(
+    'tool_execution',
+    '执行过程',
+    session.indicators.toolFailureCount > 0 ? 'attention' : session.indicators.toolCallCount > 0 ? 'ok' : 'unknown',
+    session.indicators.toolCallCount > 0
+      ? `执行中看到 ${session.indicators.toolCallCount} 次工具调用${session.indicators.toolFailureCount > 0 ? `，其中失败 ${session.indicators.toolFailureCount} 次` : ''}。`
+      : '没有看到明确工具调用；只能根据消息上下文复盘。',
+    uniqueEvidenceRefs([
+      session.evidenceChain.firstToolUse,
+      session.evidenceChain.firstToolFailure,
+    ].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))),
+  );
+
+  const deliveryNode = push(
+    'delivery',
+    '交付产物',
+    finalDeliveries.length > 0 ? 'ok' : 'attention',
+    deliveryStepText(session),
+    uniqueEvidenceRefs([
+      ...finalDeliveries.slice(-2).map(evidenceRefFromTimeline),
+      ...progressUpdates.slice(-2).map(evidenceRefFromTimeline),
+      session.evidenceChain.lastAssistantMessage,
+    ].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))),
+  );
+
+  const feedbackNode = push(
+    'user_feedback',
+    '用户反馈',
+    userFeedbackStepStatus(session),
+    userFeedbackStepText(session),
+    userFeedbackEvidenceRefs(session),
+  );
+
+  if (session.indicators.userGoalShiftCount > 0) {
+    push(
+      'goal_shift',
+      '目标切换',
+      'unknown',
+      `检测到 ${session.indicators.userGoalShiftCount} 次目标切换信号；这表示后续用户目标可能已变化，不应强行归因给原能力。`,
+      userFeedbackEvidenceRefs(session),
+    );
+  }
+
+  const answers: ExperienceSessionStoryAnswer[] = [
+    sessionStoryAnswer('goal_satisfaction', '用户目标有没有被满足', goalSatisfactionStatus(session), goalSatisfactionText(session), [
+      session.evidenceChain.firstUserMessage,
+      session.evidenceChain.lastAssistantMessage,
+      ...userFeedbackEvidenceRefs(session),
+    ]),
+    sessionStoryAnswer('declared_behavior_fit', '行为是否符合能力用途', declaredBehaviorStatus(session), declaredBehaviorText(session), [
+      session.evidenceChain.firstSkillContext,
+      session.evidenceChain.firstToolUse,
+      session.evidenceChain.firstToolFailure,
+    ]),
+    sessionStoryAnswer('user_feeling', '用户是否觉得有用或绕路', userFeelingStatus(session), userFeelingText(session), userFeedbackEvidenceRefs(session)),
+  ];
+
+  const summary = answers.some((answer) => answer.status === 'attention')
+    ? '这次链路存在需要复核的语义节点，建议从红色节点和证据定位开始看。'
+    : answers.every((answer) => answer.status === 'ok')
+      ? '这次链路从目标、执行到反馈没有命中明显异常信号，可进入常规抽样。'
+      : '这次链路已按语义节点展开，但部分结论仍需要人工结合原文判断。';
+
+  return {
+    schemaVersion: 1,
+    summary,
+    invocationCount: invocations.length,
+    goalSliceCount: session.goalSliceIds.length,
+    branchCount: subagentDispatches.length,
+    progressUpdateCount: progressUpdates.length,
+    finalDeliverySignalCount: finalDeliveries.length,
+    mainlineNodeIds: [
+      userGoalNode.id,
+      invocationNode.id,
+      ...(subagentNode ? [subagentNode.id] : []),
+      executionNode.id,
+      deliveryNode.id,
+      feedbackNode.id,
+    ],
+    goalSlices,
+    subagentDispatches,
+    skillLinks,
+    graph: sessionStoryGraph(nodes, skillLinks),
+    nodes,
+    answers,
+  };
+}
+
+function assistantFinalDeliveryEvents(session: ExperienceSessionSummary): ExperienceTimelineEvent[] {
+  return (session.fullSessionTimeline.length > 0 ? session.fullSessionTimeline : session.timelinePreview)
+    .filter(isAssistantDeliveryEvent);
+}
+
+function assistantProgressUpdateEvents(session: ExperienceSessionSummary): ExperienceTimelineEvent[] {
+  return (session.fullSessionTimeline.length > 0 ? session.fullSessionTimeline : session.timelinePreview)
+    .filter(isAssistantProgressUpdateEvent);
+}
+
+function sessionStoryGoalSlices(session: ExperienceSessionSummary, invocations: ExperienceInvocation[]): ExperienceSessionStoryGoalSlice[] {
+  const byId = new Map<string, ExperienceInvocation[]>();
+  for (const invocation of invocations) {
+    const group = byId.get(invocation.goalSliceId) ?? [];
+    group.push(invocation);
+    byId.set(invocation.goalSliceId, group);
+  }
+  return Array.from(byId.entries()).map(([id, group], index) => {
+    const timeline = uniqueTimelineEvents(group.flatMap((invocation) => invocation.timeline)).sort(compareTimelineEvents);
+    const userEvents = timeline.filter((event) => event.kind === 'user_message');
+    const startTimestamp = minString(group.map((invocation) => invocation.startTimestamp)) ?? session.startTimestamp;
+    const endTimestamp = maxString(group.map((invocation) => invocation.endTimestamp)) ?? session.endTimestamp;
+    const hasGoalShift = userEvents.some((event) => hasUserGoalShiftSignal(event.snippet ?? ''));
+    const reasonCode: ExperienceGoalSliceReasonCode = hasGoalShift
+      ? 'explicit_user_goal_shift'
+      : group.length > 1 ? 'skill_segment_boundary' : 'default_session_slice';
+    return {
+      id,
+      order: index + 1,
+      skillNames: unique(group.map((invocation) => invocation.skillName)).sort(),
+      startTimestamp,
+      endTimestamp,
+      reasonCode,
+      inferredUserGoal: inferUserGoal(userEvents),
+      evidenceRefs: userEvents.slice(0, 3).map(evidenceRefFromTimeline),
+    };
+  }).sort((a, b) => a.startTimestamp.localeCompare(b.startTimestamp));
+}
+
+function sessionStorySubagentDispatches(session: ExperienceSessionSummary): ExperienceSessionStorySubagentDispatch[] {
+  const branches = session.timelineTree?.branches ?? [];
+  return branches.map((branch, index) => ({
+    id: hashParts('session-story-dispatch', session.id, branch.id),
+    order: index + 1,
+    branchId: branch.id,
+    label: branch.label,
+    sourceTrace: branch.sourceTrace,
+    attachTo: branch.attachTo ? {
+      messageIndex: branch.attachTo.messageIndex,
+      toolUseId: branch.attachTo.toolUseId,
+      label: branch.attachTo.label,
+    } : undefined,
+    eventCount: branch.events.length,
+    evidenceRefs: branch.events.slice(0, 3).map(evidenceRefFromTimeline),
+  }));
+}
+
+function sessionStorySkillLinks(session: ExperienceSessionSummary, invocations: ExperienceInvocation[]): ExperienceSessionStorySkillLink[] {
+  const bySkill = new Map<string, ExperienceInvocation[]>();
+  for (const invocation of invocations) {
+    const group = bySkill.get(invocation.skillName) ?? [];
+    group.push(invocation);
+    bySkill.set(invocation.skillName, group);
+  }
+  return Array.from(bySkill.entries()).map(([skillName, group], index) => {
+    const role = inferSkillRole(group, invocations, session);
+    return {
+      id: hashParts('session-story-skill-link', session.id, skillName),
+      order: index + 1,
+      skillName,
+      role,
+      invocationIds: group.map((invocation) => invocation.id),
+      goalSliceIds: unique(group.map((invocation) => invocation.goalSliceId)),
+      evidenceRefs: uniqueEvidenceRefs(group.flatMap((invocation) => [
+        invocation.evidenceChain.firstSkillContext,
+        invocation.evidenceChain.firstToolUse,
+        ...routingEvidenceEvents(invocation).map(evidenceRefFromTimeline),
+      ].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref)))).slice(0, 5),
+    };
+  }).sort((a, b) => a.order - b.order);
+}
+
+function inferSkillRole(group: ExperienceInvocation[], allInvocations: ExperienceInvocation[], session: ExperienceSessionSummary): ExperienceSessionStorySkillRole {
+  const hasRoutingSignal = group.some((invocation) => routingEvidenceEvents(invocation).length > 0);
+  const hasBranchDispatch = (session.timelineTree?.branches.length ?? 0) > 0 && group.some((invocation) =>
+    invocation.timeline.some((event) => event.kind === 'tool_use' && /^(Task|Agent|Skill)$/i.test(event.toolName ?? ''))
+  );
+  const hasExecutionSignal = group.some((invocation) =>
+    invocation.timeline.some((event) => event.kind === 'tool_use' && !/^(Task|Agent|Skill)$/i.test(event.toolName ?? ''))
+  );
+  if ((hasRoutingSignal || hasBranchDispatch) && allInvocations.length > group.length) return hasExecutionSignal ? 'mixed' : 'router';
+  if (hasRoutingSignal || hasBranchDispatch) return 'router';
+  if (hasExecutionSignal) return 'executor';
+  return 'unknown';
+}
+
+function routingEvidenceEvents(invocation: ExperienceInvocation): ExperienceTimelineEvent[] {
+  return invocation.timeline.filter((event) => {
+    if (event.kind !== 'assistant_message' && event.kind !== 'tool_use') return false;
+    const text = event.fullText ?? event.snippet ?? '';
+    return /子\s*Claude|subagent|子任务|分发|委派|调用.+skill|走\s*`?[\w-]+`?\s*skill|\/consult|task-runner/i.test(text);
+  }).slice(0, 3);
+}
+
+function skillRoleLabel(role: ExperienceSessionStorySkillRole): string {
+  if (role === 'router') return '路由';
+  if (role === 'executor') return '执行';
+  if (role === 'mixed') return '路由 + 执行';
+  return '未确认';
+}
+
+function sessionStoryGraph(
+  nodes: ExperienceSessionStoryNode[],
+  skillLinks: ExperienceSessionStorySkillLink[],
+): ExperienceSessionStory['graph'] {
+  const graphNodes: ExperienceSessionStoryGraphNode[] = nodes.map((node) => ({
+    id: node.id,
+    label: node.label,
+    kind: node.kind,
+    status: node.status,
+    detailNodeId: node.id,
+  }));
+  for (const link of skillLinks) {
+    graphNodes.push({
+      id: link.id,
+      label: `${link.skillName}（${skillRoleLabel(link.role)}）`,
+      kind: 'skill_invocation',
+      status: link.role === 'unknown' ? 'unknown' : 'ok',
+      role: link.role,
+    });
+  }
+  const edges: ExperienceSessionStoryGraphEdge[] = [];
+  for (let index = 1; index < nodes.length; index += 1) {
+    edges.push({ fromId: nodes[index - 1].id, toId: nodes[index].id, label: '下一步' });
+  }
+  const goalNode = nodes.find((node) => node.kind === 'user_goal');
+  const executionNode = nodes.find((node) => node.kind === 'tool_execution');
+  if (goalNode && executionNode) {
+    for (const link of skillLinks) {
+      edges.push({ fromId: goalNode.id, toId: link.id, label: '触发' });
+      edges.push({ fromId: link.id, toId: executionNode.id, label: skillRoleLabel(link.role) });
+    }
+  }
+  return { nodes: graphNodes, edges };
+}
+
+function sessionStoryAnswer(
+  key: ExperienceSessionStoryAnswerKey,
+  label: string,
+  status: ExperienceReviewerReportStepStatus,
+  text: string,
+  evidenceRefs: Array<ExperienceEvidenceRef | undefined>,
+): ExperienceSessionStoryAnswer {
+  return {
+    key,
+    label,
+    status,
+    text,
+    evidenceRefs: uniqueEvidenceRefs(evidenceRefs.filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))).slice(0, 5),
+  };
+}
+
+function goalSatisfactionStatus(session: ExperienceSessionSummary): ExperienceReviewerReportStepStatus {
+  if (session.indicators.negativeFeedbackCount > 0 || session.indicators.userCorrectionCount > 0 || session.indicators.userInterruptionCount > 0) return 'attention';
+  if (session.indicators.assistantDeliverySignalCount > 0 && session.indicators.userGoalShiftCount === 0) return 'ok';
+  return 'unknown';
+}
+
+function goalSatisfactionText(session: ExperienceSessionSummary): string {
+  if (session.indicators.negativeFeedbackCount > 0 || session.indicators.userCorrectionCount > 0) {
+    return '用户后续出现纠正或负向反馈，不能直接认为原目标已满足。';
+  }
+  if (session.indicators.userInterruptionCount > 0) return '用户中断了执行链路，需要复核是否绕路或执行过长。';
+  if (session.indicators.assistantDeliverySignalCount > 0) return '看到交付信号，且没有命中纠正/负向反馈；可暂按“可能满足”进入抽样复核。';
+  return '没有看到最后交付产物，无法判断用户目标是否满足。';
+}
+
+function declaredBehaviorStatus(session: ExperienceSessionSummary): ExperienceReviewerReportStepStatus {
+  if (session.indicators.toolFailureCount > 0) return 'attention';
+  if (session.evidenceChain.firstSkillContext || session.evidenceChain.firstToolUse) return 'ok';
+  return 'unknown';
+}
+
+function declaredBehaviorText(session: ExperienceSessionSummary): string {
+  if (session.indicators.toolFailureCount > 0) return '执行中出现工具失败，需要结合定义链路里的规则/流程检测结果复核是否偏离能力声明。';
+  if (session.evidenceChain.firstSkillContext || session.evidenceChain.firstToolUse) return '已看到能力上下文或工具执行证据；是否完全符合声明，需要结合定义链路的规则/流程检测结果看。';
+  return '没有足够能力上下文或工具证据，无法判断行为是否符合声明用途。';
+}
+
+function userFeelingStatus(session: ExperienceSessionSummary): ExperienceReviewerReportStepStatus {
+  if (session.indicators.negativeFeedbackCount > 0 || session.indicators.userCorrectionCount > 0 || session.indicators.userInterruptionCount > 0) return 'attention';
+  if (session.indicators.positiveFeedbackCount > 0) return 'ok';
+  if (session.indicators.userFollowUpCount > 0 || session.indicators.userGoalShiftCount > 0) return 'unknown';
+  return 'unknown';
+}
+
+function userFeelingText(session: ExperienceSessionSummary): string {
+  if (session.indicators.negativeFeedbackCount > 0) return '看到负向反馈，用户可能失望或认为结果不可用。';
+  if (session.indicators.userCorrectionCount > 0) return '看到用户纠正，用户可能认为理解或交付方向有偏差。';
+  if (session.indicators.userInterruptionCount > 0) return '看到人工中断，用户可能认为执行绕路或耗时过长。';
+  if (session.indicators.positiveFeedbackCount > 0) return '看到正向反馈，说明这次能力输出可能对用户有帮助。';
+  if (session.indicators.userGoalShiftCount > 0) return '看到目标切换，用户可能切走到新目标；不直接等同于能力失败。';
+  if (session.indicators.userFollowUpCount > 0) return '看到追问/补充，但没有明确正负反馈；需要结合上下文判断是否有用或绕路。';
+  return '没有看到明确正向、负向、纠正、中断或放弃信号。';
+}
+
+function reviewerScopeReasonCodes(session: ExperienceSessionSummary): string[] {
+  const reasons: string[] = [];
+  if (session.invocationIds.length !== 1) reasons.push('multiple_invocations');
+  if (session.goalSliceIds.length !== 1) reasons.push('multiple_goal_slices');
+  if ((session.timelineTree?.branches.length ?? 0) > 0) reasons.push('subagent_branches_present');
+  if (session.pluginNames.length > 1 || session.commandNames.length > 1) reasons.push('multiple_skill_entrypoints');
+  return reasons;
+}
+
+function reviewerStep(
+  order: number,
+  label: string,
+  text: string,
+  status: ExperienceReviewerReportStepStatus,
+  evidenceRefs: ExperienceEvidenceRef[] = [],
+): ExperienceReviewerReportStep {
+  return {
+    order,
+    label,
+    status,
+    text,
+    evidenceRefs: uniqueEvidenceRefs(evidenceRefs).slice(0, 4),
+  };
+}
+
+function userGoalStepText(session: ExperienceSessionSummary): string {
+  const goal = session.evidenceChain.firstUserMessage?.snippet;
+  if (!goal) return '没有看到明确人工用户目标；当前只能按运行证据做常规复盘。';
+  return `用户目标：${goal}`;
+}
+
+function skillSelectionStepText(session: ExperienceSessionSummary): string {
+  const entrypoint = session.commandNames.length > 0 ? `，入口 ${session.commandNames.join('、')}` : session.entrypoint ? `，入口 ${session.entrypoint}` : '';
+  return `本次使用的能力：${session.skillName}${entrypoint}。`;
+}
+
+function executionStepText(session: ExperienceSessionSummary): string {
+  const failures = session.indicators.toolFailureCount > 0 ? `，其中失败 ${session.indicators.toolFailureCount} 次` : '';
+  return `执行中看到 ${session.indicators.toolCallCount} 次工具调用${failures}。`;
+}
+
+function deliveryStepText(session: ExperienceSessionSummary): string {
+  if (session.indicators.assistantDeliverySignalCount > 0) {
+    return `看到 ${session.indicators.assistantDeliverySignalCount} 次可能是最后交付产物的回复；仍需下钻确认具体产物。`;
+  }
+  return '没有发现最后交付产物；当前不能把过程进展当成完成。';
+}
+
+function userFeedbackStepText(session: ExperienceSessionSummary): string {
+  const parts = [
+    session.indicators.userFollowUpCount > 0 ? `追问/补充 ${session.indicators.userFollowUpCount} 次` : '',
+    session.indicators.userCorrectionCount > 0 ? `纠正 ${session.indicators.userCorrectionCount} 次` : '',
+    session.indicators.negativeFeedbackCount > 0 ? `负向反馈 ${session.indicators.negativeFeedbackCount} 次` : '',
+    session.indicators.positiveFeedbackCount > 0 ? `正向反馈 ${session.indicators.positiveFeedbackCount} 次` : '',
+    session.indicators.userGoalShiftCount > 0 ? `目标切换 ${session.indicators.userGoalShiftCount} 次` : '',
+  ].filter(Boolean);
+  return parts.length > 0 ? `用户反馈信号：${parts.join('，')}。` : '原始记录里没有看到人工追问、纠正、负向反馈或目标切换。';
+}
+
+function userFeedbackStepStatus(session: ExperienceSessionSummary): ExperienceReviewerReportStepStatus {
+  if (session.indicators.userCorrectionCount > 0 || session.indicators.negativeFeedbackCount > 0 || session.indicators.userInterruptionCount > 0) return 'attention';
+  if (session.indicators.userFollowUpCount > 0 || session.indicators.userGoalShiftCount > 0) return 'unknown';
+  return 'ok';
+}
+
+function userFeedbackEvidenceRefs(session: ExperienceSessionSummary): ExperienceEvidenceRef[] {
+  return uniqueEvidenceRefs(session.ruleFindings
+    .filter((finding) => finding.code === 'user_correction_seen' || finding.code === 'negative_feedback_seen' || finding.code === 'positive_feedback_seen' || finding.code === 'user_goal_shift_seen' || finding.code === 'user_interruption_seen')
+    .flatMap((finding) => finding.evidenceRefs)).slice(0, 5);
+}
+
+function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): ExperienceReviewerReportFinding[] {
+  const findings: ExperienceReviewerReportFinding[] = [];
+  const push = (
+    level: ExperienceReviewerReportFindingLevel,
+    title: string,
+    body: string,
+    ruleSource: string,
+    evidenceRefs: ExperienceEvidenceRef[] = [],
+  ): void => {
+    const id = hashParts('reviewer-finding', session.id, ruleSource, title);
+    const judgmentId = hashParts('reviewer-judgment', session.id, ruleSource, title, evidenceRefs.map((ref) => ref.id).join('|'));
+    const reviewEntry = reviewState?.entries[observationReviewStateKey('reviewer_judgment', judgmentId)];
+    findings.push({
+      id,
+      judgmentId,
+      source: 'deterministic_rule',
+      level,
+      title,
+      body,
+      ruleSource,
+      ruleVersion: REVIEWER_REPORT_RULE_VERSION,
+      evidenceRefs: uniqueEvidenceRefs(evidenceRefs).slice(0, 5),
+      reviewStateRef: {
+        targetType: 'reviewer_judgment',
+        targetId: judgmentId,
+        ...(reviewEntry?.verdict ? { verdict: reviewEntry.verdict } : {}),
+        ...(reviewEntry?.reason ? { reason: reviewEntry.reason } : {}),
+        ...(reviewEntry?.note ? { note: reviewEntry.note } : {}),
+        ...(reviewEntry?.reviewedAt ? { reviewedAt: reviewEntry.reviewedAt } : {}),
+      },
+    });
+  };
+  const findingRefs = (code: ExperienceRuleFindingCode): ExperienceEvidenceRef[] =>
+    session.ruleFindings.filter((finding) => finding.code === code).flatMap((finding) => finding.evidenceRefs);
+
+  if (session.indicators.toolFailureCount > 0) {
+    push(
+      'attention',
+      `工具执行失败 × ${session.indicators.toolFailureCount}`,
+      '本次能力执行过程中出现工具失败，需要复核失败是否已恢复，以及是否需要补执行流程避免重复试错。',
+      'tool_error_recovery',
+      findingRefs('tool_failure_seen'),
+    );
+  }
+  if (session.indicators.assistantDeliverySignalCount === 0) {
+    push(
+      'attention',
+      '没有发现最后交付产物',
+      '当前窗口里没有看到最后交付产物；不能把过程进展直接当成完成。',
+      'final_delivery_absent',
+      session.evidenceChain.lastAssistantMessage ? [session.evidenceChain.lastAssistantMessage] : [],
+    );
+  }
+  if (session.indicators.userCorrectionCount > 0) {
+    push(
+      'attention',
+      `用户纠正 × ${session.indicators.userCorrectionCount}`,
+      '人工用户在能力执行链路中出现纠正信号，说明交付或理解可能与用户期待存在偏差。',
+      'user_correction',
+      findingRefs('user_correction_seen'),
+    );
+  }
+  if (session.indicators.userInterruptionCount > 0) {
+    push(
+      'attention',
+      `人工中断 × ${session.indicators.userInterruptionCount}`,
+      '用户主动中断了当前执行，需要复核是否发生绕路、误用工具或执行过长。',
+      'user_interruption',
+      findingRefs('user_interruption_seen'),
+    );
+  }
+  if (session.indicators.negativeFeedbackCount > 0) {
+    push(
+      'attention',
+      `负向反馈 × ${session.indicators.negativeFeedbackCount}`,
+      '人工用户出现明确负向表达，需要复核这次能力是否满足原始目标。',
+      'negative_feedback',
+      findingRefs('negative_feedback_seen'),
+    );
+  }
+  if (session.indicators.hardRuleTextHitCount > 0) {
+    push(
+      'note',
+      `用户硬性要求 × ${session.indicators.hardRuleTextHitCount}`,
+      '用户提出了临时硬性要求；如果同类要求反复出现，可以考虑沉淀为能力规则。',
+      'user_hard_rule',
+      findingRefs('hard_rule_seen'),
+    );
+  }
+  if (reviewerScopeReasonCodes(session).length > 0) {
+    push(
+      'note',
+      '复杂链路降级展示',
+      '本次不是严格的 1 次会话 × 1 个目标 × 1 个能力场景。当前先做通用展示，不强行拆分多能力、子任务或目标切换。',
+      'complex_scope_degraded',
+      [],
+    );
+  }
+  if (findings.length === 0) {
+    push(
+      'note',
+      '未命中优先问题信号',
+      '基于固定规则，没有看到需要优先复核的纠正、中断、负向反馈、工具失败或交付缺失信号。',
+      'no_priority_signal',
+      [],
+    );
+  }
+  return findings;
+}
+
+function reviewerTitle(session: ExperienceSessionSummary, attentionCount: number, possibleFalsePositiveCount: number): string {
+  const suffix = possibleFalsePositiveCount > 0 ? ` · ${possibleFalsePositiveCount} 项疑似误判` : '';
+  if (attentionCount > 0) return `${session.skillName} · 需要复核 · ${attentionCount} 项要看一眼${suffix}`;
+  if (session.indicators.assistantDeliverySignalCount > 0) return `${session.skillName} · 看起来已交付 · 常规抽样${suffix}`;
+  return `${session.skillName} · 常规抽样 · 未见高优先级信号${suffix}`;
+}
+
+function reviewerSummary(
+  session: ExperienceSessionSummary,
+  scopeKind: ExperienceReviewerReportScope,
+  attentionCount: number,
+  possibleFalsePositiveCount: number,
+): string {
+  const scopeText = scopeKind === 'single_skill_single_goal'
+    ? '本次属于单个能力 / 单个目标报告范围。'
+    : '本次是复杂链路，当前先做降级展示，不强行拆分语义分支。';
+  const reviewText = attentionCount > 0
+    ? `发现 ${attentionCount} 条事实层复核点。`
+    : '没有发现优先级较高的事实层复核点。';
+  const falsePositiveText = possibleFalsePositiveCount > 0 ? `另有 ${possibleFalsePositiveCount} 条疑似误判需要人工确认。` : '';
+  return [scopeText, reviewText, falsePositiveText].filter(Boolean).join(' ');
+}
+
+function reviewerAuthorSuggestions(session: ExperienceSessionSummary, findings: ExperienceReviewerReportFinding[]): string[] {
+  const suggestions: string[] = [];
+  if (findings.some((finding) => finding.ruleSource === 'final_delivery_absent')) {
+    suggestions.push('补充明确的产物交付表达或交付标记，避免过程进展被当成完成。');
+  }
+  if (findings.some((finding) => finding.ruleSource === 'tool_error_recovery')) {
+    suggestions.push('复查失败工具调用前后的执行流程，必要时把稳定路径写入能力说明文档。');
+  }
+  if (session.indicators.hardRuleTextHitCount > 0) {
+    suggestions.push('把反复出现的用户硬性要求沉淀为能力规则，并在后续观测中追踪是否减少纠偏。');
+  }
+  if (session.indicators.userCorrectionCount > 0 || session.indicators.negativeFeedbackCount > 0) {
+    suggestions.push('优先打开原始片段，确认用户纠正/负向反馈发生在交付前还是交付后。');
+  }
+  if (reviewerScopeReasonCodes(session).length > 0) {
+    suggestions.push('复杂链路暂按降级报告处理；后续再拆多能力、子任务或目标切换。');
+  }
+  if (suggestions.length === 0) suggestions.push('进入常规抽样池，保留 evidenceRef 以便人工抽查。');
+  return suggestions;
+}
+
+function sumTokenUsage(invocations: ExperienceInvocation[]): Omit<ExperienceReviewerReport['oneLookMetrics']['tokenUsage'], 'attribution'> {
+  return invocations.reduce((sum, invocation) => ({
+    inputTokens: sum.inputTokens + (invocation.metrics.inputTokens ?? 0),
+    outputTokens: sum.outputTokens + (invocation.metrics.outputTokens ?? 0),
+    cacheReadTokens: sum.cacheReadTokens + (invocation.metrics.cacheReadTokens ?? 0),
+    cacheCreationTokens: sum.cacheCreationTokens + (invocation.metrics.cacheCreationTokens ?? 0),
+  }), {
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
   });
 }
 

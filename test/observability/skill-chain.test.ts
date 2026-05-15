@@ -82,6 +82,47 @@ description: a skill without structured hardRules or workflows
     }
   });
 
+  it('detects markdown Step headings as workflow candidates for observation', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-chain-md-steps-'));
+    try {
+      const skillDir = join(dir, 'skills', 'prd-create');
+      mkdirSync(skillDir, { recursive: true });
+      writeFileSync(join(skillDir, 'SKILL.md'), `---
+name: prd-create
+description: create PRD
+---
+
+# PRD Creation Skill
+
+## 工作流程
+
+### Step 1: 读取领域知识（生成前必须完成）
+
+必须读取领域知识。
+
+### Step 2: 需求收集
+
+必须补充关键信息。
+
+### Step 3: 上传
+
+上传到系统。
+`);
+
+      const chain = buildObservationSkillChain('prd-create', dir, []);
+      assert.equal(chain.healthCheck.workflows.declared, false);
+      assert.equal(chain.healthCheck.workflows.source, 'markdown_headings');
+      assert.equal(chain.healthCheck.workflows.advisoryCode, 'workflows_not_declared');
+      assert.equal(chain.healthCheck.workflows.branchCount, 1);
+      assert.equal(chain.healthCheck.workflows.nodeCount, 3);
+      assert.deepEqual(chain.healthCheck.workflows.workflows[0].nodes.map((node) => node.id), ['step1', 'step2', 'step3']);
+      assert.equal(chain.healthCheck.workflows.workflows[0].nodes[0].action, '读取领域知识（生成前必须完成）');
+      assert.equal(chain.runtime.workflowNodes.length, 3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('omits advisoryCode when hardRules / workflows are declared', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-chain-declared-'));
     try {

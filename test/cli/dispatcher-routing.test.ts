@@ -50,6 +50,7 @@ describe('CLI dispatcher routing', () => {
       'init',
       'observe',
       'sample',
+      'skill-extract',
       'studio',
     ]);
     // 历史顶层入口都不应出现。

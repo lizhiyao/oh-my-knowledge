@@ -147,6 +147,7 @@ export type CliMessageKey =
   | 'cli.help.observe_ingest'
   | 'cli.help.observe_inbox'
   | 'cli.help.observe_show'
+  | 'cli.help.skill_extract'
   | 'cli.help.evolve'
   | 'cli.help.sample'
   | 'cli.help.studio'
@@ -554,6 +555,7 @@ oh-my-knowledge——知识载体工作台
   omk doctor [path]                   LLM 健康度审计（7 内置维度 + 可扩展）；--static-only 切离线静态模式
   omk eval [options]                  离线评测：比较版本，输出 verdict + report
   omk observe <sessions-dir>          线上观测：真实 session、gap、失败率、inbox
+  omk skill-extract <skill>           确认或否决 skill 软标准候选
   omk evolve <skill>                  多轮自动迭代改进 skill
   omk sample <skill>                  生成或补齐 eval-samples 评测用例（或 --batch 批量模式）
   omk studio                          打开本地工作台浏览报告
@@ -562,6 +564,7 @@ oh-my-knowledge——知识载体工作台
   omk doctor
   omk eval --control code-review-v1 --treatment code-review-v2
   omk observe ~/.claude/projects/<project>
+  omk skill-extract demo-create --review soft-xxx --status author_confirmed
   omk evolve skills/code-review-v2/SKILL.md
   omk studio
 
@@ -578,6 +581,7 @@ Usage:
   omk doctor [path]                   LLM health audit (7 builtin dimensions, extensible); --static-only for offline static checks
   omk eval [options]                  Offline evaluation: compare versions, emit verdict + report
   omk observe <sessions-dir>          Production observation: sessions, gaps, failure rate, inbox
+  omk skill-extract <skill>           Confirm or reject skill soft standard candidates
   omk evolve <skill>                  Auto-iterate a skill through multi-round eval loops
   omk sample <skill>                  Generate or fill eval-samples test cases (or --batch for all skills)
   omk studio                          Open the local workbench to browse reports
@@ -586,6 +590,7 @@ Main workflow:
   omk doctor
   omk eval --control code-review-v1 --treatment code-review-v2
   omk observe ~/.claude/projects/<project>
+  omk skill-extract demo-create --review soft-xxx --status author_confirmed
   omk evolve skills/code-review-v2/SKILL.md
   omk studio
 
@@ -829,6 +834,10 @@ omk observe inbox — 查看已写入的 observe inbox 问题列表
   --explore <n>                      从最近 50 条 medium/low 问题里抽样查看长尾
   --include-noise                    --explore 时显式包含 noise 桶
   --by-skill                         按 skill 输出资产看板
+  --skill-extract                    显式调用模型抽取缺失 hardRules/workflows 的软标准候选
+  --model <name>                     抽取软标准使用的模型（默认：sonnet）
+  --executor <name>                  抽取软标准使用的执行器
+  --refresh                          强制重新抽取软标准候选
   --json                             输出 JSON
 `,
     en: `
@@ -844,6 +853,10 @@ Options:
   --explore <n>                      Sample long-tail issues from the latest 50 medium/low items
   --include-noise                    Explicitly include the noise bucket with --explore
   --by-skill                         Print the skill-level asset board
+  --skill-extract                    Explicitly run model-based soft standard extraction for skills missing hardRules/workflows
+  --model <name>                     Model for soft standard extraction (default: sonnet)
+  --executor <name>                  Executor for soft standard extraction
+  --refresh                          Force soft standard extraction refresh
   --json                             Print JSON
 `,
   },
@@ -865,6 +878,32 @@ Usage:
 
 Options:
   --input-dir <path>                 Input directory (default: .omk/observations; fallback: ~/.oh-my-knowledge/observations)
+`,
+  },
+  'cli.help.skill_extract': {
+    zh: `
+omk skill-extract — 确认或否决 skill 软标准候选
+
+用法：
+  omk skill-extract <skill> --review <standard-id> [options]
+
+选项：
+  --input-dir <path>                 observe 数据目录（默认：.omk/observations；兜底到 ~/.oh-my-knowledge/observations）
+  --status <status>                  author_confirmed / rejected / pending_review（默认：author_confirmed）
+  --reason <text>                    记录确认或否决原因
+  --json                             输出 JSON
+`,
+    en: `
+omk skill-extract — confirm or reject skill soft standard candidates
+
+Usage:
+  omk skill-extract <skill> --review <standard-id> [options]
+
+Options:
+  --input-dir <path>                 Observation data directory (default: .omk/observations; fallback: ~/.oh-my-knowledge/observations)
+  --status <status>                  author_confirmed / rejected / pending_review (default: author_confirmed)
+  --reason <text>                    Record the review reason
+  --json                             Print JSON
 `,
   },
   'cli.help.evolve': {

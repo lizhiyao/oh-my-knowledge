@@ -66,12 +66,47 @@ async function executeInbox(argv: string[]): Promise<void> {
       explore: { type: 'string' },
       'include-noise': { type: 'boolean' },
       'by-skill': { type: 'boolean' },
+      'skill-extract': { type: 'boolean' },
+      refresh: { type: 'boolean' },
+      model: { type: 'string' },
+      executor: { type: 'string' },
       json: { type: 'boolean' },
     },
   });
   const values = rawValues as Record<string, string | boolean | undefined>;
   const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
   const dir = resolve((values['input-dir'] as string | undefined) || DEFAULT_OBSERVATIONS_DIR);
+  if (values['skill-extract'] === true) {
+    const { buildObservationInboxViewModel } = await import('../../observability/inbox-view-model.js');
+    const { extractSkillSoftStandards, DEFAULT_SOFT_STANDARD_MODEL } = await import('../../observability/soft-standards.js');
+    const view = buildObservationInboxViewModel(dir, { skill: values.skill ? String(values.skill) : undefined });
+    const chains = Object.values(view.skillChains).filter((chain) =>
+      chain.definition.found && (!chain.healthCheck.hardRules.declared || !chain.healthCheck.workflows.declared)
+    );
+    const records = [];
+    for (const chain of chains) {
+      records.push(await extractSkillSoftStandards({
+        observationsDir: dir,
+        skillChain: chain,
+        model: typeof values.model === 'string' ? values.model : DEFAULT_SOFT_STANDARD_MODEL,
+        executorName: typeof values.executor === 'string' ? values.executor : undefined,
+        refresh: values.refresh === true,
+      }));
+    }
+    if (values.json) {
+      console.log(JSON.stringify({ kind: 'observe-skill-soft-standards', records }, null, 2));
+      return;
+    }
+    if (records.length === 0) {
+      console.log(lang === 'zh' ? '没有需要抽取软标准的 skill' : 'No skills need soft standard extraction');
+      return;
+    }
+    console.log(lang === 'zh' ? '软标准候选已生成:' : 'soft standard candidates generated:');
+    for (const record of records) {
+      console.log(`- ${record.skillName} standards=${record.standards.length} model=${record.model} prompt=${record.promptId}/${record.promptVersion}`);
+    }
+    return;
+  }
   let items = queryObservationInbox(dir);
   if (values.skill) {
     items = items.filter((item) => item.skillName === values.skill);

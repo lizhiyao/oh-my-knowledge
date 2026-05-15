@@ -5,6 +5,7 @@ import { execute as evolve } from './evolve.js';
 import { execute as init } from './init.js';
 import { execute as observe } from './observe.js';
 import { execute as sample } from './sample.js';
+import { execute as skillExtract } from './skill-extract.js';
 import { execute as studio } from './studio.js';
 
 export interface CommandModule {
@@ -37,5 +38,6 @@ export const PRODUCT_COMMANDS: Record<string, CommandModule> = {
   },
   evolve:  { helpKey: 'cli.help.evolve', execute: evolve },
   sample:  { helpKey: 'cli.help.sample', execute: sample },
+  'skill-extract': { helpKey: 'cli.help.skill_extract', execute: skillExtract },
   studio:  { helpKey: 'cli.help.studio',  execute: studio },
 };

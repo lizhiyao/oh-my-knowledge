@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
+  extractMarkdownStepWorkflows,
   validateSkillHardRules,
   validateSkillWorkflows,
   type SkillHardRule,
@@ -48,6 +49,7 @@ export interface ObservationSkillChain {
       nodeCount: number;
       workflows: SkillWorkflow[];
       errors: string[];
+      source: 'frontmatter' | 'markdown_headings' | 'none';
       advisoryCode?: SkillChainAdvisoryCode;
     };
   };
@@ -81,9 +83,12 @@ export function buildObservationSkillChain(skillName: string, cwd = process.cwd(
   const content = readFileSync(path, 'utf-8');
   const hardRules = validateSkillHardRules(content);
   const workflows = validateSkillWorkflows(content);
-  const nodeCount = workflows.workflows.reduce((sum, workflow) => sum + workflow.nodes.length, 0);
+  const markdownWorkflows = workflows.workflows.length > 0 ? [] : extractMarkdownStepWorkflows(content);
+  const effectiveWorkflows = workflows.workflows.length > 0 ? workflows.workflows : markdownWorkflows;
+  const workflowSource = workflows.workflows.length > 0 ? 'frontmatter' : markdownWorkflows.length > 0 ? 'markdown_headings' : 'none';
+  const nodeCount = effectiveWorkflows.reduce((sum, workflow) => sum + workflow.nodes.length, 0);
   const truncated = content.length > MAX_SKILL_DEFINITION_CHARS;
-  const runtime = buildRuntimeChecks(skillName, hardRules.rules, workflows.workflows, experienceReports);
+  const runtime = buildRuntimeChecks(skillName, hardRules.rules, effectiveWorkflows, experienceReports);
   return {
     skillName,
     definition: {
@@ -105,10 +110,11 @@ export function buildObservationSkillChain(skillName: string, cwd = process.cwd(
       workflows: {
         declared: workflows.declared,
         valid: workflows.ok,
-        branchCount: workflows.workflows.length,
+        branchCount: effectiveWorkflows.length,
         nodeCount,
-        workflows: workflows.workflows,
+        workflows: effectiveWorkflows,
         errors: workflows.errors,
+        source: workflowSource,
         ...(workflows.declared ? {} : { advisoryCode: 'workflows_not_declared' as const }),
       },
     },
@@ -123,7 +129,7 @@ function emptySkillChain(skillName: string, experienceReports: ObservationExperi
     healthCheck: {
       source: 'doctor-static-rules',
       hardRules: { declared: false, valid: true, count: 0, rules: [], errors: [], advisoryCode: 'hardrules_not_declared' },
-      workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], advisoryCode: 'workflows_not_declared' },
+      workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], source: 'none', advisoryCode: 'workflows_not_declared' },
     },
     runtime: buildRuntimeChecks(skillName, [], [], experienceReports),
   };

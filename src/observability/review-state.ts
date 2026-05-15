@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export type ObservationReviewTargetType = 'experience_session' | 'inbox_item' | 'skill' | 'goal_slice_correction' | 'evidence_metric';
+export type ObservationReviewTargetType = 'experience_session' | 'inbox_item' | 'skill' | 'goal_slice_correction' | 'evidence_metric' | 'reviewer_judgment' | 'soft_standard';
 export type ObservationReviewVerdict = 'reviewed' | 'real_issue' | 'not_issue' | 'needs_more_context' | 'confirmed' | 'rejected';
 export type ObservationMetricKey =
   | 'user_correction'
@@ -188,7 +188,13 @@ function isReviewStateEntry(value: unknown): value is ObservationReviewStateEntr
 }
 
 function isReviewTargetType(value: unknown): value is ObservationReviewTargetType {
-  return value === 'experience_session' || value === 'inbox_item' || value === 'skill' || value === 'goal_slice_correction' || value === 'evidence_metric';
+  return value === 'experience_session'
+    || value === 'inbox_item'
+    || value === 'skill'
+    || value === 'goal_slice_correction'
+    || value === 'evidence_metric'
+    || value === 'reviewer_judgment'
+    || value === 'soft_standard';
 }
 
 function isReviewVerdict(value: unknown): value is ObservationReviewVerdict {
