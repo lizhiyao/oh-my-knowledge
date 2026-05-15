@@ -144,4 +144,99 @@ workflows:
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('未传 cwd 时按 inbox items[].cwd 推断每个 skill 的 cwd,跨项目场景下不误报 skill_md_not_found', () => {
+    // 模拟 `omk observe ingest /path/to/B-traces`:用户在 A 目录跑命令,trace 来自 B 项目。
+    // build 路径以前用 process.cwd() = A,A 下没有 skills/audit/SKILL.md,会产出 `skill_md_not_found`
+    // 假阳性并持久化进 inbox JSON。改成从 inbox items[].cwd 按 skill 推断后,应该用 B 目录的
+    // SKILL.md 正确解析。
+    const projectB = mkdtempSync(join(tmpdir(), 'omk-project-b-'));
+    const projectA = mkdtempSync(join(tmpdir(), 'omk-project-a-'));
+    try {
+      mkdirSync(join(projectB, 'skills', 'audit'), { recursive: true });
+      writeFileSync(join(projectB, 'skills', 'audit', 'SKILL.md'), `---
+hardRules:
+  - id: r1
+    rule: must read domain
+    expectedBehavior: use Read
+---
+
+# audit
+`);
+      const origCwd = process.cwd();
+      process.chdir(projectA);  // 模拟在 projectA 跑 ingest
+      try {
+        const report = {
+          kind: 'observe-inbox',
+          schemaVersion: 1,
+          meta: {
+            tracePath: '/tmp/trace-b',
+            generatedAt: '2026-05-15T00:00:00.000Z',
+            segmentCount: 1,
+            itemCount: 1,
+            skillInvocationCounts: { audit: 1 },
+            skillSessionCounts: { audit: 1 },
+          },
+          items: [{
+            id: 'obs-1', skillName: 'audit', artifactVersion: 'unknown',
+            cwd: projectB,  // 关键:item 记录了 trace 的原始 cwd
+            sessionId: 's1', sourceTrace: '/tmp/trace-b/s1.jsonl', sourceKind: 'claude',
+            signalType: 'failed_search', signalSubtype: 'hard_miss',
+            confidence: 0.9, attributionConfidence: 0.85, severity: 'high',
+            evidence: {}, firstSeen: '2026-05-15T00:00:00.000Z', lastSeen: '2026-05-15T00:00:00.000Z',
+            occurrences: 1, recentSessionIds: ['s1'], representativeEvidence: [],
+          }],
+        } as unknown as ObservationInboxReport;
+        const bundle = buildObserveDiagnosticsFromReport(report);
+        const signals = (bundle.bySkill.audit ?? []).map((item) => item.signal);
+        assert.equal(
+          signals.includes('skill_md_not_found'), false,
+          `不应产生 skill_md_not_found 假阳性(应该用 ${projectB} 找到 SKILL.md)`,
+        );
+      } finally {
+        process.chdir(origCwd);
+      }
+    } finally {
+      rmSync(projectB, { recursive: true, force: true });
+      rmSync(projectA, { recursive: true, force: true });
+    }
+  });
+
+  it('未传 cwd 且 inbox 同 skill 出现多个 cwd 时跳过 chain advisory,避免任意挑一个误报', () => {
+    // skill 在多个 cwd 都被调用过,无法确定权威路径。保守做法:跳过该 skill 的
+    // skill_md_not_found / hardrules_not_declared 等 chain advisory,只保留 problemPatterns 等
+    // 跟 cwd 无关的诊断。
+    const report = {
+      kind: 'observe-inbox',
+      schemaVersion: 1,
+      meta: {
+        tracePath: '/tmp/trace',
+        generatedAt: '2026-05-15T00:00:00.000Z',
+        segmentCount: 2,
+        itemCount: 2,
+        skillInvocationCounts: { audit: 2 },
+        skillSessionCounts: { audit: 2 },
+      },
+      items: [
+        { id: 'o1', skillName: 'audit', cwd: '/repo-x', sessionId: 's1', sourceTrace: '/t', sourceKind: 'claude',
+          signalType: 'failed_search', signalSubtype: 'hard_miss', confidence: 0.9,
+          attributionConfidence: 0.85, severity: 'high', evidence: {},
+          firstSeen: 't', lastSeen: 't', occurrences: 1, recentSessionIds: ['s1'], representativeEvidence: [] },
+        { id: 'o2', skillName: 'audit', cwd: '/repo-y', sessionId: 's2', sourceTrace: '/t', sourceKind: 'claude',
+          signalType: 'failed_search', signalSubtype: 'hard_miss', confidence: 0.9,
+          attributionConfidence: 0.85, severity: 'high', evidence: {},
+          firstSeen: 't', lastSeen: 't', occurrences: 1, recentSessionIds: ['s2'], representativeEvidence: [] },
+      ],
+    } as unknown as ObservationInboxReport;
+    const bundle = buildObserveDiagnosticsFromReport(report);
+    const signals = (bundle.bySkill.audit ?? []).map((item) => item.signal);
+    assert.equal(
+      signals.includes('skill_md_not_found'), false,
+      '多 cwd ambiguous 时应跳过 chain advisory',
+    );
+    assert.equal(
+      signals.includes('hardrules_not_declared'), false,
+      '多 cwd ambiguous 时也不发 hardrules_not_declared',
+    );
+  });
 });

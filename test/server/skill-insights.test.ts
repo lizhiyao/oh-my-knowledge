@@ -378,10 +378,11 @@ describe('detectInsights — Diagnosis projection', () => {
   });
 
   it('definition_gap Diagnosis 不会吞掉 legacy detectSkillDocGap 的 eval / doctor 证据', () => {
-    // legacy detectSkillDocGap 会基于 eval rootCause 跟 doctor dependency rule 出 insight。
+    // legacy detectSkillDocGap 会基于 eval rootCause + doctor dependency rule 出 insight。
     // 早先按 category 去重的实现会让 `skill_md_not_found` definition_gap Diagnosis 把整个
     // legacy detector 关掉(它们都映射到 skill-doc-gap),导致 doctor + eval 那部分证据消失。
-    // 现在 dual-run 共存。
+    // 这条 case 必须真的让 detectSkillDocGap 有触发条件(doctor warn + eval rootCause),
+    // 否则断言会误过 —— 这是上一版本测试 fixture 不充分的回归点。
     const docGapDiagnosis = mkDiagnosis({
       id: 'diag-doc',
       type: 'definition_gap',
@@ -390,17 +391,29 @@ describe('detectInsights — Diagnosis projection', () => {
       stableKey: 'skill:test-skill|type:definition_gap|signal:skill_md_not_found|target:definition:skill_md',
     });
     const entry = mkEntry({
-      observe: {
-        analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0,
+      doctor: {
+        reportId: 'd1', timestamp: '2026-05-09T10:00:00Z', status: 'warn',
+        passCount: 3, warnCount: 1, failCount: 0,
+        results: [{
+          ruleId: 'dependencies_present', severity: 'warn', labelKey: 'x', status: 'warn',
+          message: '前置依赖警告', durationMs: 10,
+        }],
       },
+      evalSnap: { reportId: 'e1', variantName: 'test-skill', timestamp: '2026-05-09T10:00:00Z', passCount: 0, failCount: 1, compositeScore: null },
     });
-    const insights = detectInsights(entry, null, { diagnostics: [docGapDiagnosis] });
+    // eval 报告含 skill_doc_missing rootCause,让 detectSkillDocGap 真的有数据触发
+    const report = mkEvalReport('test-skill', [
+      mkResult('s1', 'test-skill', { rootCause: ['skill_doc_missing'] }),
+    ]);
+    const insights = detectInsights(entry, report, { diagnostics: [docGapDiagnosis] });
     assert.ok(
-      insights.find((i) => i.id === 'production-instability'),
-      'legacy production-instability 应该仍触发(不同 category 也不去重,跟同 category dual-run 一致)',
+      insights.find((i) => i.id === 'skill-doc-gap'),
+      'legacy skill-doc-gap 应仍触发(基于 doctor warn + eval skill_doc_missing,跟 Diagnosis 共存)',
     );
-    assert.ok(insights.find((i) => i.id === 'diagnosis:diag-doc'));
+    assert.ok(
+      insights.find((i) => i.id === 'diagnosis:diag-doc'),
+      'Diagnosis 投影也应共存',
+    );
   });
 });
 

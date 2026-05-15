@@ -1,4 +1,4 @@
-import { buildObservationSkillChains, type ObservationRuntimeCheck, type ObservationSkillChain } from '../observability/skill-chain.js';
+import { buildObservationSkillChain, buildObservationSkillChains, type ObservationRuntimeCheck, type ObservationSkillChain } from '../observability/skill-chain.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand } from '../observability/skill-chain-advisories.js';
 import type { ObservationInboxReport } from '../observability/inbox.js';
 import type {
@@ -22,7 +22,7 @@ export function buildObserveDiagnosticsFromReport(
 ): DiagnosisBundle {
   const experienceReports = report.experience ? [report.experience] : [];
   const skillNames = skillNamesFromReport(report);
-  const chains = options.skillChains ?? buildObservationSkillChains(skillNames, options.cwd ?? process.cwd(), experienceReports);
+  const chains = resolveSkillChains(report, skillNames, experienceReports, options);
   return buildObserveDiagnostics({
     generatedAt: report.meta.generatedAt,
     skillChainAdvisories: Object.values(chains).flatMap(chainAdvisories),
@@ -31,6 +31,49 @@ export function buildObserveDiagnosticsFromReport(
     reviewerFindings: experienceReports.flatMap(experienceRuleFindings),
     derivedStandards: [],
   });
+}
+
+function resolveSkillChains(
+  report: ObservationInboxReport,
+  skillNames: string[],
+  experienceReports: ObservationExperienceReport[],
+  options: BuildObserveDiagnosticsFromReportOptions,
+): Record<string, ObservationSkillChain> {
+  // 调用方显式传 skillChains(测试 mock)或 cwd(已知项目根)时直接用。
+  // 否则按 skill 推断 cwd:
+  //   - 该 skill 的所有 inbox items 只出现 1 个 cwd → 用它构建 chain
+  //   - 多个 cwd 或完全没有 cwd 信息 → 跳过该 skill 的 chain 构建
+  //
+  // 跳过比 fallback 到 process.cwd() 安全:跨项目 `omk observe ingest /path/to/B-traces`
+  // 时 process.cwd() 找不到 SKILL.md 会产生 `skill_md_not_found` 假阳性,而且这条 advisory
+  // 会被 build 路径持久化进 inbox JSON,后续 Studio 读取时已无从分辨是 cwd 漂移导致的误报。
+  // 跳过的语义是「没把握判断,不发 advisory」,problemPatterns / reviewerFindings 仍正常工作。
+  if (options.skillChains) return options.skillChains;
+  if (options.cwd) return buildObservationSkillChains(skillNames, options.cwd, experienceReports);
+  const cwdBySkill = inferCwdBySkill(report);
+  const chains: Record<string, ObservationSkillChain> = {};
+  for (const skillName of skillNames) {
+    const cwd = cwdBySkill.get(skillName);
+    if (cwd) {
+      chains[skillName] = buildObservationSkillChain(skillName, cwd, experienceReports);
+    }
+  }
+  return chains;
+}
+
+/** 按 skill 从 inbox items 聚合 cwd。返回:单一 cwd 字符串 / null(多 cwd 或缺失,跳过 chain)。 */
+function inferCwdBySkill(report: ObservationInboxReport): Map<string, string | null> {
+  const cwdsBySkill = new Map<string, Set<string>>();
+  for (const item of report.items) {
+    if (!item.skillName || !item.cwd) continue;
+    if (!cwdsBySkill.has(item.skillName)) cwdsBySkill.set(item.skillName, new Set());
+    cwdsBySkill.get(item.skillName)!.add(item.cwd);
+  }
+  const out = new Map<string, string | null>();
+  for (const [skill, set] of cwdsBySkill) {
+    out.set(skill, set.size === 1 ? Array.from(set)[0] : null);
+  }
+  return out;
 }
 
 function skillNamesFromReport(report: ObservationInboxReport): string[] {
