@@ -29,16 +29,19 @@ skills/
 └── my-skill-v2.md
 ```
 
-只有当 skill 内容超长、想把示例 / 参考资料拆到独立文件时，再用目录式：
+只有当 skill 内容超长、想把示例 / 参考资料拆到独立文件时，再用目录式（每版一个目录）：
 
 ```
-skills/my-skill/
-├── SKILL.md         主体
-└── references/      长示例 / 参考资料
-    └── examples.md
+skills/
+├── my-skill-v1/
+│   └── SKILL.md
+└── my-skill-v2/
+    ├── SKILL.md
+    └── references/      长示例 / 参考资料
+        └── examples.md
 ```
 
-两种形式 omk 都能识别，混用也行。要跑 v1 vs v2 对比就放两份；只想看「有 skill vs 没 skill」的差距，放一份就够，用 baseline 对照。
+两种形式 omk 都能识别，混用也行。要跑 v1 vs v2 对比就按上面放两版；只想看「有 skill vs 没 skill」的差距，放一份就够，用 baseline 对照。
 
 ## 跑评测（3 分钟）
 
