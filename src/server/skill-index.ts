@@ -439,6 +439,24 @@ export function buildSkillIndex(
       diagnostics: diagnosisBundle.bySkill[ent.skillName] ?? [],
     }));
   }
+
+  // 跨层口径统一:三大 snapshot(doctor / eval / observe)都空但 Diagnosis / Insight 投影出
+  // high / medium 信号的 skill,把 entry.band 从 gray 升级。否则 HTML renderer(assessHealth)
+  // 会把卡片标红、API(/api/skills)却返回 band='gray' summary.gray+=1,renderNextSteps 又会
+  // 追加「完全没报告」建议 —— 用户视角看到的是「红卡 + 待优化 N + 完全没报告」矛盾态。
+  for (const ent of entries) {
+    if (ent.band !== 'gray') continue;
+    const ins = insightsBySkill.get(ent.skillName) ?? [];
+    const hasHigh = ins.some((i) => i.severity === 'high');
+    const hasMed = ins.some((i) => i.severity === 'medium');
+    if (hasHigh) ent.band = 'red';
+    else if (hasMed) ent.band = 'yellow';
+  }
+  summary.red = entries.filter((e) => e.band === 'red').length;
+  summary.yellow = entries.filter((e) => e.band === 'yellow').length;
+  summary.green = entries.filter((e) => e.band === 'green').length;
+  summary.gray = entries.filter((e) => e.band === 'gray').length;
+
   const diagnosticsBySkill = new Map<string, Diagnosis[]>(
     Object.entries(diagnosisBundle.bySkill),
   );

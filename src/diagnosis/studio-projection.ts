@@ -1,4 +1,4 @@
-import type { Diagnosis, DiagnosisBundle, DiagnosisSeverity, DiagnosisSourceCoverage } from './types.js';
+import { isActiveDiagnosisLifecycle, type Diagnosis, type DiagnosisBundle, type DiagnosisSeverity, type DiagnosisSourceCoverage } from './types.js';
 
 export interface StudioDiagnosisSummary {
   sourceCoverage: DiagnosisSourceCoverage;
@@ -81,7 +81,7 @@ export function mergeDiagnosisBundles(bundles: DiagnosisBundle[], generatedAt = 
 export function activeStudioDiagnostics(bundle?: DiagnosisBundle): Diagnosis[] {
   return Object.values(bundle?.bySkill ?? {})
     .flat()
-    .filter((diagnosis) => diagnosis.lifecycle === 'detected' || diagnosis.lifecycle === 'candidate' || diagnosis.lifecycle === 'stale')
+    .filter((diagnosis) => isActiveDiagnosisLifecycle(diagnosis.lifecycle))
     .sort((a, b) => severityRank(b.severity) - severityRank(a.severity) || a.skillName.localeCompare(b.skillName));
 }
 

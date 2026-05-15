@@ -9,6 +9,10 @@ import { createReportServer } from '../../src/server/report-server.js';
 const TEST_DIR = join(tmpdir(), `omk-test-reports-${Date.now()}`);
 const JOBS_DIR = join(tmpdir(), `omk-test-jobs-${Date.now()}`);
 const OBSERVATIONS_DIR = join(tmpdir(), `omk-test-observations-${Date.now()}`);
+// 隔离 analyses / doctors dir,避免读取 home dir 的真实 SkillHealthReport / doctor report
+// 导致 fixture skill 意外携带 observe / doctor snapshot(本地 / CI 漂移)。
+const ANALYSES_DIR = join(tmpdir(), `omk-test-analyses-${Date.now()}`);
+const DOCTORS_DIR = join(tmpdir(), `omk-test-doctors-${Date.now()}`);
 
 const SAMPLE_REPORT = {
   kind: 'evaluation',
@@ -135,6 +139,8 @@ describe('report-server', () => {
     mkdirSync(TEST_DIR, { recursive: true });
     mkdirSync(JOBS_DIR, { recursive: true });
     mkdirSync(OBSERVATIONS_DIR, { recursive: true });
+    mkdirSync(ANALYSES_DIR, { recursive: true });
+    mkdirSync(DOCTORS_DIR, { recursive: true });
     writeFileSync(join(TEST_DIR, 'test-run-001.json'), JSON.stringify(SAMPLE_REPORT, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-001.json'), JSON.stringify(SAMPLE_JOB, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-002.json'), JSON.stringify(FAILED_JOB, null, 2));
@@ -226,7 +232,7 @@ describe('report-server', () => {
         },
       },
     }, null, 2));
-    server = createReportServer({ port: 0, reportsDir: TEST_DIR, observationsDir: OBSERVATIONS_DIR, jobsDir: JOBS_DIR });
+    server = createReportServer({ port: 0, reportsDir: TEST_DIR, observationsDir: OBSERVATIONS_DIR, jobsDir: JOBS_DIR, analysesDir: ANALYSES_DIR, doctorsDir: DOCTORS_DIR });
     baseUrl = await server.start();
   });
 
@@ -235,6 +241,8 @@ describe('report-server', () => {
     rmSync(TEST_DIR, { recursive: true, force: true });
     rmSync(JOBS_DIR, { recursive: true, force: true });
     rmSync(OBSERVATIONS_DIR, { recursive: true, force: true });
+    rmSync(ANALYSES_DIR, { recursive: true, force: true });
+    rmSync(DOCTORS_DIR, { recursive: true, force: true });
   });
 
   it('GET /health returns ok', async () => {
@@ -304,6 +312,19 @@ describe('report-server', () => {
     assert.ok(audit);
     assert.equal(audit.diagnosisCount, 1);
     assert.equal(data.diagnosisSummary.sourceCoverage.observe, true);
+  });
+
+  it('Diagnosis-only skill 的 band 被升级,API summary 跟 HTML renderer 口径一致', async () => {
+    // audit skill 在 fixture 里只有 observe Diagnosis(high `skill_md_not_found`),没有
+    // doctor / eval / observe snapshot。原先 band 一律 gray,summary.gray += 1,renderer
+    // 通过 assessHealth 把卡片标红 —— 跨层矛盾。修后 entry.band 应升级为 red,summary.red
+    // 包含它,/api/skills 暴露的 band 跟 HTML 视觉一致。
+    const res = await fetch(`${baseUrl}/api/skills`);
+    const data = JSON.parse(res.body);
+    const audit = data.entries.find((entry: { skillName: string }) => entry.skillName === 'audit');
+    assert.ok(audit);
+    assert.equal(audit.band, 'red', 'Diagnosis-only skill 的 band 应升级到 red(high severity)');
+    assert.ok(data.summary.red >= 1, 'summary.red 应包含 Diagnosis-only red skill');
   });
 
   it('GET /api/skills/:name/diagnostics returns per-skill diagnostics', async () => {

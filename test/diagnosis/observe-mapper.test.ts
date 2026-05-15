@@ -201,3 +201,23 @@ describe('mergeDiagnosisBundles', () => {
     assert.equal(merged.sourceCoverage.eval, false);
   });
 });
+
+describe('activeStudioDiagnostics — lifecycle 口径', () => {
+  it('confirmed / resolved / rejected 都不算 active,跟 Insight 投影口径一致', () => {
+    // shared isActiveDiagnosisLifecycle 只放 detected / candidate / stale。
+    // 这条 case 防止两个投影口径再分叉。
+    const bundle = buildObserveDiagnostics({
+      generatedAt: 't',
+      derivedStandards: [
+        { skillName: 'a', id: 's1', kind: 'hard_rule_candidate', status: 'pending_review', title: 'pending(candidate)' },
+        { skillName: 'a', id: 's2', kind: 'hard_rule_candidate', status: 'author_confirmed', title: 'confirmed(→resolved)' },
+        { skillName: 'a', id: 's3', kind: 'hard_rule_candidate', status: 'rejected', title: 'rejected' },
+      ],
+    });
+    const active = activeStudioDiagnostics(bundle);
+    const titles = active.map((d) => d.title);
+    assert.ok(titles.includes('pending(candidate)'), 'candidate 算 active');
+    assert.equal(titles.includes('confirmed(→resolved)'), false, 'resolved 不算 active');
+    assert.equal(titles.includes('rejected'), false, 'rejected 不算 active');
+  });
+});

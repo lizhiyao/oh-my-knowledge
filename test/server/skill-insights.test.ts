@@ -419,6 +419,29 @@ describe('detectInsights — Diagnosis projection', () => {
       'Diagnosis 投影也应共存',
     );
   });
+
+  it('confirmed lifecycle 不算 active,跟 activeStudioDiagnostics 口径一致', () => {
+    // 抽 shared isActiveDiagnosisLifecycle 之后,Insight 投影和 /api/observations/diagnostics 的
+    // active 列表都按同一份 set 过滤(detected / candidate / stale)。confirmed 不算 active,
+    // 不会被投影成 Insight,避免「Insight 影响 skill 健康但 diagnostics API 不显示」的口径分叉。
+    const confirmedDiag = mkDiagnosis({
+      id: 'diag-confirmed',
+      lifecycle: 'confirmed',
+      stableKey: 'skill:test-skill|type:runtime_issue|signal:c|target:x',
+    });
+    const detectedDiag = mkDiagnosis({
+      id: 'diag-detected',
+      lifecycle: 'detected',
+      stableKey: 'skill:test-skill|type:runtime_issue|signal:d|target:y',
+    });
+    const insights = detectInsights(mkEntry(), null, { diagnostics: [confirmedDiag, detectedDiag] });
+    assert.equal(
+      insights.find((i) => i.id === 'diagnosis:diag-confirmed'),
+      undefined,
+      'confirmed 不投影成 Insight',
+    );
+    assert.ok(insights.find((i) => i.id === 'diagnosis:diag-detected'));
+  });
 });
 
 describe('detectInsights — skill-too-long', () => {

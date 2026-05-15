@@ -23,7 +23,7 @@
  */
 import type { EvaluationReport, VariantResult, ToolCallInfo } from '../types/index.js';
 import type { SkillIndexEntry, SkillDoctorSnapshot, SkillObserveSnapshot, SkillEvalSnapshot } from './skill-index.js';
-import type { Diagnosis, DiagnosisAudience, DiagnosisLifecycle, DiagnosisSeverity, DiagnosisType } from '../diagnosis/types.js';
+import { isActiveDiagnosisLifecycle, type Diagnosis, type DiagnosisAudience, type DiagnosisSeverity, type DiagnosisType } from '../diagnosis/types.js';
 
 export type InsightCategory =
   | 'environment-blocked-mocks'
@@ -773,7 +773,6 @@ export const skillAntiPatternComposer: ComposerRule = {
 // ────────── 入口 ──────────
 
 const SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low: 1 };
-const ACTIVE_DIAGNOSIS_LIFECYCLES = new Set<DiagnosisLifecycle>(['detected', 'candidate', 'confirmed', 'stale']);
 
 function insightSeverityFromDiagnosis(severity: DiagnosisSeverity): InsightSeverity {
   if (severity === 'high') return 'high';
@@ -851,7 +850,7 @@ function projectDiagnosisToInsight(diagnosis: Diagnosis): Insight {
 
 export function projectDiagnosticsToInsights(diagnostics: Diagnosis[]): Insight[] {
   return diagnostics
-    .filter((diagnosis) => ACTIVE_DIAGNOSIS_LIFECYCLES.has(diagnosis.lifecycle))
+    .filter((diagnosis) => isActiveDiagnosisLifecycle(diagnosis.lifecycle))
     .map(projectDiagnosisToInsight)
     .sort((a, b) => {
       const sa = SEVERITY_RANK[a.severity];
