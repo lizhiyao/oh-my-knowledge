@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { observationMetricAnnotationVerdict, type ObservationMetricKey, type ObservationReviewState } from './review-state.js';
-import { hasUserHardRuleText, isScheduledTaskPromptText } from './text-signals.js';
+import { hasUserHardRuleText, isUserInteractionMetricText } from './text-signals.js';
 
 export type ExperienceProblemBucket =
   | 'output_format'
@@ -99,7 +99,7 @@ export function buildExperienceProblemPatterns(input: {
   for (const event of input.timeline) {
     const text = event.snippet ?? event.fullText ?? '';
     if (event.kind === 'user_message') {
-      if (isScheduledTaskPromptText(text)) continue;
+      if (!isUserInteractionMetricText(text)) continue;
       if (metricActive(event, 'user_correction', CORRECTION_RE.test(text), input.reviewState, input.metricScopeId)) {
         drafts.push(patternDraft(input.skillName, 'user_correction', event));
       }

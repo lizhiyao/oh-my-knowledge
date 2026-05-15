@@ -5,6 +5,14 @@ const RUNTIME_PROTOCOL_PROMPT_RE =
 
 const SCHEDULED_TASK_PROMPT_RE = /^\s*\[cron:[^\]]+\]/i;
 
+const AIMA_CMD_BLOCK_RE = /<aima-cmd\b[^>]*>[\s\S]*?<\/aima-cmd>|<aima-cmd\b[^>]*\/>/gi;
+
+const SYNTHETIC_USER_MESSAGE_PREFIX_RE =
+  /^\s*【(?:用户上传产物|上传产物|附件|产物|系统补充|系统生成|回放补充|trace\s*后处理|Trace\s*后处理)[^】]*】/i;
+
+const SYNTHETIC_USER_MESSAGE_META_RE =
+  /\b(?:artifact_id|artifactId|file_id|fileId|version)\b|用户手动上传|上传了.+文件/i;
+
 const ASSISTANT_DELIVERY_SIGNAL_RE =
   /```(?:mermaid|plantuml|json|tsx?|jsx?|html|css|excalidraw|markdown)?|直接生成|已生成|生成如下|结果如下|如下|完成|已完成|这里是|给出|输出/i;
 
@@ -22,8 +30,25 @@ export function isScheduledTaskPromptText(value: string): boolean {
   return SCHEDULED_TASK_PROMPT_RE.test(value);
 }
 
+export function isWorkflowSystemUserMessageText(value: string): boolean {
+  const stripped = value.replace(AIMA_CMD_BLOCK_RE, '').trim();
+  return stripped.length === 0 && /<aima-cmd\b/i.test(value);
+}
+
+export function isSyntheticUserMessageText(value: string): boolean {
+  return isWorkflowSystemUserMessageText(value)
+    || SYNTHETIC_USER_MESSAGE_PREFIX_RE.test(value)
+    || (/^\s*【[^】]+】/.test(value) && SYNTHETIC_USER_MESSAGE_META_RE.test(value));
+}
+
+export function isUserInteractionMetricText(value: string): boolean {
+  return !isScheduledTaskPromptText(value) && !isSyntheticUserMessageText(value);
+}
+
 export function hasUserHardRuleText(value: string): boolean {
-  return HARD_RULE_TEXT_RE.test(value) && !isRuntimeProtocolPromptText(value) && !isScheduledTaskPromptText(value);
+  return HARD_RULE_TEXT_RE.test(value)
+    && !isRuntimeProtocolPromptText(value)
+    && isUserInteractionMetricText(value);
 }
 
 export function isAssistantProgressUpdateText(value: string): boolean {

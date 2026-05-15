@@ -9,7 +9,7 @@ import { observationMetricAnnotationVerdict, observationReviewStateKey, type Obs
 import type { CcAssistantRecord, CcRecord, CcSession, CcUserRecord, TraceSourceMetadata } from './trace-source.js';
 import type { SkillSegment } from './trace-segmenter.js';
 import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-attribution.js';
-import { hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isScheduledTaskPromptText } from './text-signals.js';
+import { hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isSyntheticUserMessageText, isUserInteractionMetricText } from './text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 
 export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
@@ -1077,7 +1077,7 @@ function evidenceChainForTimeline(
   observationRefs: ExperienceEvidenceRef[],
 ): ExperienceEvidenceChain {
   const events = uniqueTimelineEvents(timeline).sort(compareTimelineEvents);
-  const userEvents = events.filter((event) => event.kind === 'user_message');
+  const userEvents = events.filter((event) => event.kind === 'user_message' && !isSyntheticUserMessageText(event.snippet ?? ''));
   const runtimeEvents = events.filter((event) => event.kind === 'runtime_context');
   const skillEvents = events.filter((event) => event.kind === 'skill_context');
   const assistantEvents = events.filter((event) => event.kind === 'assistant_message');
@@ -1112,7 +1112,7 @@ function ruleFindingsForEvidence(
 ): ExperienceRuleFinding[] {
   const events = uniqueTimelineEvents(timeline);
   const userEvents = events.filter((event) => event.kind === 'user_message');
-  const metricUserEvents = userEvents.filter((event) => !isScheduledTaskPromptText(event.snippet ?? ''));
+  const metricUserEvents = userEvents.filter((event) => isUserInteractionMetricText(event.snippet ?? ''));
   const refs = (matches: ExperienceTimelineEvent[]): ExperienceEvidenceRef[] =>
     matches.slice(0, 5).map(evidenceRefFromTimeline);
   const findings: ExperienceRuleFinding[] = [];
@@ -1216,11 +1216,11 @@ function indicatorsForSegment(
   reviewState?: ObservationReviewState,
 ): ExperienceReviewIndicators {
   const userRefs = timeline.filter((event) => event.kind === 'user_message');
-  const humanUserRefs = userRefs.filter((ref) => Boolean(ref.snippet));
-  const interactionUserRefs = humanUserRefs.filter((ref) => !isScheduledTaskPromptText(ref.snippet ?? ''));
+  const humanUserRefs = userRefs.filter((ref) => Boolean(ref.snippet) && !isSyntheticUserMessageText(ref.snippet ?? ''));
+  const interactionUserRefs = humanUserRefs.filter((ref) => isUserInteractionMetricText(ref.snippet ?? ''));
   return {
     userMessageCount: humanUserRefs.length,
-    userFollowUpCount: interactionUserRefs.reduce((sum, ref, index) => sum + (metricIsActive(ref, 'user_follow_up', index > 0, reviewState, metricScopeId) ? 1 : 0), 0),
+    userFollowUpCount: interactionUserRefs.reduce((sum, ref, index) => sum + (metricIsActive(ref, 'user_follow_up', index > 0 && !hasUserGoalShiftSignal(ref.snippet ?? ''), reviewState, metricScopeId) ? 1 : 0), 0),
     userCorrectionCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_correction', findUserCorrectionMatches(ref.snippet ?? '').length, reviewState, metricScopeId), 0),
     userInterruptionCount: interactionUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'user_interruption', USER_INTERRUPTION_RE.test(ref.snippet ?? ''), reviewState, metricScopeId) ? 1 : 0), 0),
     negativeFeedbackCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'negative_feedback', findNegativeFeedbackMatches(ref.snippet ?? '').length, reviewState), 0),

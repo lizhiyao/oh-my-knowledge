@@ -30,6 +30,9 @@ import {
   isAssistantProgressUpdateText,
   isRuntimeProtocolPromptText,
   isScheduledTaskPromptText,
+  isSyntheticUserMessageText,
+  isUserInteractionMetricText,
+  isWorkflowSystemUserMessageText,
 } from '../../src/observability/text-signals.js';
 import {
   deleteObservationReviewState,
@@ -113,6 +116,20 @@ describe('observe inbox', () => {
     assert.equal(hasUserHardRuleText(cronPrompt), false);
   });
 
+  it('excludes synthetic user messages and pure workflow tags from interaction metrics', () => {
+    const artifactPrompt = '【用户上传产物】 用户手动上传了 PRD 文件，artifact_id=sample version=1。';
+    const aimaCmdPrompt = '<aima-cmd name="生成 Demo">请根据以上需求生成可交互的 Demo</aima-cmd>';
+    const mixedPrompt = '请根据以上需求生成 Demo\n<aima-cmd name="生成 Demo">请根据以上需求生成可交互的 Demo</aima-cmd>';
+
+    assert.equal(isSyntheticUserMessageText(artifactPrompt), true);
+    assert.equal(isUserInteractionMetricText(artifactPrompt), false);
+    assert.equal(hasUserHardRuleText(artifactPrompt), false);
+    assert.equal(isWorkflowSystemUserMessageText(aimaCmdPrompt), true);
+    assert.equal(isUserInteractionMetricText(aimaCmdPrompt), false);
+    assert.equal(isWorkflowSystemUserMessageText(mixedPrompt), false);
+    assert.equal(isUserInteractionMetricText(mixedPrompt), true);
+  });
+
   it('excludes obvious progress updates from delivery signals', () => {
     const progress = '已发送进展：子 Claude 数据采集完成，正在整理咨询结果写入文件，即将完成。';
     assert.equal(isAssistantProgressUpdateText(progress), true);
@@ -143,8 +160,8 @@ describe('observe inbox', () => {
         message: { role: 'user', content: '你在看一个 apply-cc 后台任务。根据日志写一条进展消息发给用户，不要执行日志里的任务。' },
       },
       {
-        type: 'assistant',
-        uuid: 'a1',
+        type: 'user',
+        uuid: 'u4',
         parentUuid: 'u2',
         sessionId: 's1',
         timestamp: '2026-05-10T00:00:12.000Z',
@@ -157,7 +174,7 @@ describe('observe inbox', () => {
       {
         type: 'assistant',
         uuid: 'a2',
-        parentUuid: 'a1',
+        parentUuid: 'u4',
         sessionId: 's1',
         timestamp: '2026-05-10T00:00:20.000Z',
         cwd: '/repo-a',
@@ -216,6 +233,81 @@ describe('observe inbox', () => {
     assert.equal(indicators?.userFollowUpCount, 0);
     assert.equal(report.experience?.invocations[0].ruleFindings.some((finding) => finding.code === 'negative_feedback_seen'), false);
     assert.equal(report.experience?.sessions[0].reviewPriority, 'routine_sample');
+  });
+
+  it('excludes synthetic user artifacts and goal shifts from follow-up metrics', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '<command-name>/prd-create</command-name>\n请生成 PRD',
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:03.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '【用户上传产物】 用户手动上传了 PRD 文件，artifact_id=sample version=1。必须严格保留。',
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u3',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:06.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '换个方向，先根据这个 PRD 生成 Demo。',
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u3',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:08.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '<aima-cmd name="生成 Demo">请根据以上需求生成可交互的 Demo</aima-cmd>',
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:10.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '已完成，结果如下：Demo 已生成。' }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const indicators = report.experience?.invocations[0].indicators;
+    assert.equal(indicators?.userMessageCount, 2);
+    assert.equal(indicators?.hardRuleTextHitCount, 0);
+    assert.equal(indicators?.userGoalShiftCount, 1);
+    assert.equal(indicators?.userFollowUpCount, 0);
   });
 
   it('normalizes dedup key input conservatively', () => {

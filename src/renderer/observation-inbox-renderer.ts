@@ -8,7 +8,7 @@ import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProbl
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
 import type { SkillDerivedStandard } from '../observability/soft-standards.js';
-import { hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE, isScheduledTaskPromptText } from '../observability/text-signals.js';
+import { hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE, isScheduledTaskPromptText, isSyntheticUserMessageText, isUserInteractionMetricText } from '../observability/text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 import type {
   ExperienceAssistiveInference,
@@ -539,11 +539,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     return ruleCount;
   };
   const displayIndicatorsForSession = (session: ExperienceSessionSummary): ExperienceReviewIndicators => {
-    const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet));
-    const interactionEvents = humanEvents.filter((event) => !isScheduledTaskPromptText(event.snippet ?? ''));
+    const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet) && !isSyntheticUserMessageText(event.snippet ?? ''));
+    const interactionEvents = humanEvents.filter((event) => isUserInteractionMetricText(event.snippet ?? ''));
     return {
       ...session.indicators,
-      userFollowUpCount: interactionEvents.reduce((sum, event, index) => sum + (displayMetricIsActive(event, 'user_follow_up', index > 0, session.id) ? 1 : 0), 0),
+      userFollowUpCount: interactionEvents.reduce((sum, event, index) => sum + (displayMetricIsActive(event, 'user_follow_up', index > 0 && !hasUserGoalShiftSignal(event.snippet ?? ''), session.id) ? 1 : 0), 0),
       userCorrectionCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_correction', findUserCorrectionMatches(event.snippet ?? '').length, session.id), 0),
       userInterruptionCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'user_interruption', displayRegexMatches(USER_INTERRUPTION_DISPLAY_RE, event.snippet ?? ''), session.id) ? 1 : 0), 0),
       negativeFeedbackCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'negative_feedback', findNegativeFeedbackMatches(event.snippet ?? '').length), 0),
@@ -555,7 +555,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     };
   };
   const sessionMetricSourceTitle = (session: ExperienceSessionSummary, metricKey: ObservationMetricKey, label: string): string => {
-    const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet));
+    const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet) && !isSyntheticUserMessageText(event.snippet ?? ''));
     const rows: string[] = [];
     let ruleCount = 0;
     let confirmed = 0;
@@ -564,11 +564,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     let interactionIndex = 0;
     humanEvents.forEach((event) => {
       const text = event.snippet ?? '';
-      if (isScheduledTaskPromptText(text)) return;
+      if (!isUserInteractionMetricText(text)) return;
       const effectiveIndex = interactionIndex;
       interactionIndex += 1;
       const rule = metricKey === 'user_follow_up'
-        ? (effectiveIndex > 0 ? 1 : 0)
+        ? (effectiveIndex > 0 && !hasUserGoalShiftSignal(text) ? 1 : 0)
         : metricKey === 'user_correction'
           ? findUserCorrectionMatches(text).length
           : metricKey === 'user_interruption'
@@ -1627,11 +1627,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         <span class="rule-anchor">${e(anchor)}</span>
       </span>`;
     }).join('')}</div>`;
-  };
-  const fallbackEvidenceChain = (session: ExperienceSessionSummary): ExperienceEvidenceChain => {
-    const events = session.timelinePreview ?? [];
-    return {
-      userMessageCount: events.filter((event) => event.kind === 'user_message').length,
+    };
+    const fallbackEvidenceChain = (session: ExperienceSessionSummary): ExperienceEvidenceChain => {
+      const events = session.timelinePreview ?? [];
+      const userEvents = events.filter((event) => event.kind === 'user_message' && !isSyntheticUserMessageText(event.snippet ?? ''));
+      return {
+      userMessageCount: userEvents.length,
       runtimeContextCount: events.filter((event) => event.kind === 'runtime_context').length,
       skillContextCount: events.filter((event) => event.kind === 'skill_context').length,
       assistantMessageCount: events.filter((event) => event.kind === 'assistant_message').length,
@@ -1799,10 +1800,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const metricText = event.snippet ?? '';
     const tags: string[] = [];
     if (event.kind === 'user_message') {
-      tags.push('user_message');
+      const syntheticUser = isSyntheticUserMessageText(metricText);
+      if (syntheticUser) tags.push('synthetic_user_message');
+      else tags.push('user_message');
       if (isScheduledTaskPromptText(metricText)) tags.push('scheduled_task');
-      if (!isScheduledTaskPromptText(metricText)) {
-        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0, metricScopeId)) tags.push('user_follow_up');
+      if (isUserInteractionMetricText(metricText)) {
+        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0 && !hasUserGoalShiftSignal(metricText), metricScopeId)) tags.push('user_follow_up');
         if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText), metricScopeId)) tags.push('user_correction');
         if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText), metricScopeId)) tags.push('user_goal_shift');
         if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText), metricScopeId)) tags.push('user_interruption');
@@ -1830,15 +1833,18 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const badges: Array<{ label: string; className: string; title: string }> = [];
     if (event.kind === 'user_message') {
       const scheduledTask = isScheduledTaskPromptText(metricText);
+      const syntheticUser = isSyntheticUserMessageText(metricText);
       badges.push({
-        label: scheduledTask ? '用户消息来源（定时任务）' : '用户消息来源',
-        className: scheduledTask ? 'metric-user-message metric-scheduled-task' : 'metric-user-message',
-        title: scheduledTask
+        label: syntheticUser ? '系统构造消息（不计用户交互）' : scheduledTask ? '用户消息来源（定时任务）' : '用户消息来源',
+        className: syntheticUser ? 'metric-skill-context' : scheduledTask ? 'metric-user-message metric-scheduled-task' : 'metric-user-message',
+        title: syntheticUser
+          ? '这是 trace 后处理或工作流系统注入的伪 user message，不计入真实用户消息、追问、纠正或硬性要求。'
+          : scheduledTask
           ? '这是 cron 定时任务注入的用户侧任务入口，保留为用户消息来源，但不参与追问、负向反馈、硬性要求等人工交互指标。'
           : '这条人工用户消息计入用户消息数；同一 skill 片段内第 2 条及之后还会计入追问/补充。',
       });
-      if (!scheduledTask) {
-        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0, metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('追问/补充来源', event, 'user_follow_up', userIndex > 0, metricScopeId), className: 'metric-followup', title: '同一 skill 复盘片段内，第 2 条及之后的人工用户消息计入追问/补充。' });
+      if (isUserInteractionMetricText(metricText)) {
+        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0 && !hasUserGoalShiftSignal(metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('追问/补充来源', event, 'user_follow_up', userIndex > 0 && !hasUserGoalShiftSignal(metricText), metricScopeId), className: 'metric-followup', title: '同一 skill 复盘片段内，第 2 条及之后的人工用户消息计入追问/补充；目标切换消息不计入追问。' });
         if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('用户纠正来源', event, 'user_correction', hasUserCorrectionSignal(metricText), metricScopeId), className: 'metric-correction', title: '命中明确纠正表达；“不对/不是/错了”要求前后有标点、空格等分隔。人工反对后不会再显示。' });
         if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('目标切换来源', event, 'user_goal_shift', hasUserGoalShiftSignal(metricText), metricScopeId), className: 'metric-goal-shift', title: '命中“换个方向/先不/不用这个/另一个问题”等表达；表示用户可能切走当前目标。' });
         if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('人工中断来源', event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText), metricScopeId), className: 'metric-interruption', title: '用户主动中断了当前执行，通常表示当前路径需要纠偏或停止。' });
@@ -1892,7 +1898,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const rules: TimelineHighlightRule[] = [];
 	    const value = event.snippet ?? '';
     if (!allowMetricTags) return e(value);
-	    if (event.kind === 'user_message' && !isScheduledTaskPromptText(value)) {
+	    if (event.kind === 'user_message' && isUserInteractionMetricText(value)) {
       if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(value), metricScopeId)) rules.push({ ranges: findUserCorrectionMatches, className: 'metric-correction', title: '用户纠正命中词' });
       if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(value), metricScopeId)) rules.push({ ranges: findUserGoalShiftMatches, className: 'metric-goal-shift', title: '目标切换命中词' });
       if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, value), metricScopeId)) rules.push({ pattern: cloneRegex(USER_INTERRUPTION_RE), className: 'metric-interruption', title: '人工中断命中词' });
@@ -1916,17 +1922,17 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       rules.push({ pattern: cloneRegex(TOOL_FAILURE_RE), className: 'metric-tool-failure', title: '工具执行失败命中词' });
     }
 	    const html = highlightText(value, rules);
-    if (event.kind === 'user_message' && !isScheduledTaskPromptText(value) && evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0, metricScopeId)) {
+    if (event.kind === 'user_message' && isUserInteractionMetricText(value) && evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0 && !hasUserGoalShiftSignal(value), metricScopeId)) {
       return `<span class="timeline-followup-source" title="整条消息计入追问/补充来源">${html}</span>`;
     }
     return html;
   };
   const evidenceMetricRuleDetected = (event: ExperienceTimelineEvent, userIndex: number, metricKey: ObservationMetricKey): boolean => {
     const text = event.snippet ?? '';
-    if (event.kind === 'user_message' && isScheduledTaskPromptText(text)) return false;
+    if (event.kind === 'user_message' && !isUserInteractionMetricText(text)) return false;
     if (metricKey === 'user_correction') return hasUserCorrectionSignal(text);
     if (metricKey === 'user_interruption') return matches(USER_INTERRUPTION_RE, text);
-    if (metricKey === 'user_follow_up') return userIndex > 0;
+    if (metricKey === 'user_follow_up') return userIndex > 0 && !hasUserGoalShiftSignal(text);
     if (metricKey === 'negative_feedback') return findNegativeFeedbackMatches(text).length > 0;
     if (metricKey === 'positive_feedback') return findPositiveFeedbackMatches(text).length > 0;
     if (metricKey === 'hard_rule') return hasUserHardRuleText(text);
@@ -2024,8 +2030,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       !options.suppressMetricTagsOutsideSkillWindow || isInsideSkillWindow(event) || isAddedToSkillWindow(event);
     let userIndex = 0;
     const decorated = events.map((event) => {
-      const scheduledTask = event.kind === 'user_message' && isScheduledTaskPromptText(event.snippet ?? '');
-      const nextUserIndex = event.kind === 'user_message' && !scheduledTask ? userIndex++ : -1;
+      const interactionUser = event.kind === 'user_message' && isUserInteractionMetricText(event.snippet ?? '');
+      const nextUserIndex = interactionUser ? userIndex++ : -1;
       return { event, userIndex: nextUserIndex };
     });
     const groups: Array<{ boundary?: ExperienceTimelineEvent; items: typeof decorated }> = [];
