@@ -27,6 +27,8 @@ omk init my-eval && cd my-eval
 omk eval --control code-review-v1 --treatment code-review-v2    # → HTML report with verdict in 5 minutes
 ```
 
+Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users).
+
 Deeper: [use inside Claude Code / Codex](#use-inside-ai-coding-agents) · [`omk eval` flags](#omk-eval) · [artifact directory layout](#artifact-directory-layout) · [`--lang` / `OMK_LANG`](#environment-variables)
 
 ## Use inside AI Coding Agents
