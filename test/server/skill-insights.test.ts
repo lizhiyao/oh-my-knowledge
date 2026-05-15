@@ -352,9 +352,14 @@ describe('detectInsights — Diagnosis projection', () => {
     );
   });
 
-  it('传入同 category Diagnosis 时屏蔽对应 legacy detector,避免双写', () => {
-    // 这条 Diagnosis 投影后 category 是 production-instability(`runtime_issue` + signal `tool_failure_seen`
-    // → production-instability),所以 legacy production-instability 应该被去重。
+  it('dual-run 期间 legacy + Diagnosis 即便概念相近也共存,不基于 category 去重', () => {
+    // 这条 Diagnosis 投影后 category 是 production-instability,看起来跟 legacy detector
+    // 同名,但二者读不同数据源 —— Diagnosis 来自 inbox 的 runtime/tool_failure_seen
+    // 单点告警,legacy 来自 SkillHealthReport 的 failureRate >= 0.4 聚合指标,不等价。
+    //
+    // dual-run 期间不能用 InsightCategory 去重,否则 `runtime_workflow_review` 这类
+    // 投影出 production-instability 的 Diagnosis 会误关掉 SkillHealthReport 高失败率信号。
+    // 等 doctor / eval producer 都迁完 Diagnosis,再单独 PR 基于 stable target 精确去重。
     const entry = mkEntry({
       observe: {
         analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
@@ -362,19 +367,21 @@ describe('detectInsights — Diagnosis projection', () => {
       },
     });
     const insights = detectInsights(entry, null, { diagnostics: [mkDiagnosis()] });
-    assert.equal(
+    assert.ok(
       insights.find((i) => i.id === 'production-instability'),
-      undefined,
-      'legacy production-instability 应被同 category Diagnosis 投影替代',
+      'legacy production-instability(SkillHealthReport 聚合)应仍触发',
     );
-    assert.ok(insights.find((i) => i.id === 'diagnosis:diag-1'));
+    assert.ok(
+      insights.find((i) => i.id === 'diagnosis:diag-1'),
+      'Diagnosis 投影(inbox 单点告警)也应共存',
+    );
   });
 
-  it('传入不同 category Diagnosis 时仍跑 legacy observe detector(关键:防止 SkillHealthReport 信号被吞)', () => {
-    // 这条 Diagnosis 投影后 category 是 skill-doc-gap,跟 production-instability 不重叠。
-    // legacy detectProductionInstability 应继续基于 observe.failureRate 0.5 触发,否则
-    // 「只跑了 observe ingest 拿到 skill_md_not_found 但 failureRate 也高」的 skill 会丢
-    // production-instability 信号(buildObserveDiagnosticsFromReport 当前不消费 SkillHealthReport)。
+  it('definition_gap Diagnosis 不会吞掉 legacy detectSkillDocGap 的 eval / doctor 证据', () => {
+    // legacy detectSkillDocGap 会基于 eval rootCause 跟 doctor dependency rule 出 insight。
+    // 早先按 category 去重的实现会让 `skill_md_not_found` definition_gap Diagnosis 把整个
+    // legacy detector 关掉(它们都映射到 skill-doc-gap),导致 doctor + eval 那部分证据消失。
+    // 现在 dual-run 共存。
     const docGapDiagnosis = mkDiagnosis({
       id: 'diag-doc',
       type: 'definition_gap',
@@ -391,7 +398,7 @@ describe('detectInsights — Diagnosis projection', () => {
     const insights = detectInsights(entry, null, { diagnostics: [docGapDiagnosis] });
     assert.ok(
       insights.find((i) => i.id === 'production-instability'),
-      'legacy production-instability 应该仍触发,因为该 Diagnosis 是 skill-doc-gap 不是 production-instability',
+      'legacy production-instability 应该仍触发(不同 category 也不去重,跟同 category dual-run 一致)',
     );
     assert.ok(insights.find((i) => i.id === 'diagnosis:diag-doc'));
   });

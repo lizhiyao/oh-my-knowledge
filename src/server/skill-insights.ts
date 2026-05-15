@@ -871,29 +871,33 @@ export function detectInsights(
   // 只看自己 variant 那部分数据,否则 /skills/<treatment-2> 会看到 treatment-1 的
   // failureModes / coverage / illustrations / verdict。
   const variantName = entry.eval?.variantName ?? null;
-  // Diagnosis 投影 → legacy detector 去重:只跳过「Diagnosis 已经覆盖了等价 category」的 detector,
-  // 而不是「该 skill 有任何 Diagnosis 就一刀切关掉所有 legacy observe-side 检测」。
+  // Dual-run 期间不做去重 — legacy detector + Diagnosis 投影都跑。原因:
   //
-  // 当前 buildObserveDiagnosticsFromReport 只消费 inbox 的 skill-chain / runtime checks /
-  // problemPatterns / reviewerFindings,**不**消费 SkillHealthReport 的 failureRate / gapRate /
-  // coverage 等聚合指标。所以一个 skill 即便因 `hardrules_not_declared` 之类有 Diagnosis,
-  // 也仍可能完全没有 `production-instability` / `coverage-gap` 等价 Diagnosis,这种情况下
-  // legacy detectProductionInstability / detectCoverageGap 必须继续跑,否则信号会被默默丢掉。
+  // 1. InsightCategory 是呈现层分类,不是数据源等价语义。`runtime_workflow_review`
+  //    Diagnosis 投影后 category 是 `production-instability`,但它跟 legacy
+  //    `detectProductionInstability` 读的 `entry.observe.failureRate >= 0.4` 不等价 —
+  //    按 category 去重会误关 SkillHealthReport 信号。`definition_gap` → `skill-doc-gap`
+  //    同理:legacy detectSkillDocGap 还会吃 doctor dependency / eval sample 失败证据,
+  //    Diagnosis 没替代这部分。
+  //
+  // 2. legacy id 是固定字符串(`production-instability` 等),Diagnosis 投影 id 是
+  //    `diagnosis:<hash>`,二者不冲突,UI 同时显示「来自 observe inbox 的具体 runtime
+  //    警告」+「来自 SkillHealthReport 的高失败率聚合」对用户也合理 —— 两条不同数据源。
+  //
+  // 等 doctor / eval producer 也迁成 Diagnosis、`DiagnosisBundle.sourceCoverage` 完整后,
+  // 单独 PR 引入基于 stable target / source 的精确去重(不再用 category 这种粗粒度)。
   const diagnosisInsights = options.diagnostics?.length
     ? projectDiagnosticsToInsights(options.diagnostics)
     : [];
-  const coveredCategories = new Set<InsightCategory>(diagnosisInsights.map((i) => i.category));
-  const skipIfCovered = (category: InsightCategory, run: () => Insight | null): Insight | null =>
-    coveredCategories.has(category) ? null : run();
   const out: Insight[] = [];
   const detectors: Array<() => Insight | null> = [
     () => detectEnvironmentBlocked(evalReport, variantName),
-    () => skipIfCovered('skill-doc-gap', () => detectSkillDocGap(entry.doctor, evalReport, entry.observe, variantName)),
+    () => detectSkillDocGap(entry.doctor, evalReport, entry.observe, variantName),
     () => detectFailureModeSkillIssue(evalReport, variantName),
-    () => skipIfCovered('coverage-gap', () => detectCoverageGap(evalReport, entry.observe, variantName)),
-    () => skipIfCovered('production-instability', () => detectProductionInstability(entry.doctor, entry.observe)),
-    () => skipIfCovered('skill-too-long', () => detectSkillTooLong(entry.doctor, entry.observe)),
-    () => skipIfCovered('omk-doctor-blindspot', () => detectOmkDoctorBlindspot(entry.doctor, evalReport, variantName)),
+    () => detectCoverageGap(evalReport, entry.observe, variantName),
+    () => detectProductionInstability(entry.doctor, entry.observe),
+    () => detectSkillTooLong(entry.doctor, entry.observe),
+    () => detectOmkDoctorBlindspot(entry.doctor, evalReport, variantName),
   ];
   for (const detect of detectors) {
     const ins = detect();
