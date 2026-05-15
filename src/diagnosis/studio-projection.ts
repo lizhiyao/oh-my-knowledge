@@ -52,7 +52,11 @@ export function mergeDiagnosisBundles(bundles: DiagnosisBundle[], generatedAt = 
         continue;
       }
       existing.occurrences.push(...diagnosis.occurrences);
-      existing.occurrenceCount = existing.occurrences.length;
+      // 累加而不是用 occurrences.length 覆盖:聚合型 Diagnosis(如 problemPattern)的
+      // occurrenceCount 是「N 次真实发生」的语义,不是「N 条 source occurrence 条数」。
+      // 用 length 会把 `3 次 + 4 次` 真实发生压成 `2`(两条 source 条目),Studio 排序和
+      // affectedCount 显示偏小。
+      existing.occurrenceCount = existing.occurrenceCount + diagnosis.occurrenceCount;
       existing.severity = severityRank(existing.severity) >= severityRank(diagnosis.severity)
         ? existing.severity
         : diagnosis.severity;

@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { buildObserveDiagnostics, maxLifecycle } from '../../src/diagnosis/observe-mapper.js';
-import { activeStudioDiagnostics, buildStudioDiagnosisSummary } from '../../src/diagnosis/studio-projection.js';
+import { activeStudioDiagnostics, buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../../src/diagnosis/studio-projection.js';
 
 describe('buildObserveDiagnostics', () => {
   it('maps observe source types into a shared diagnosis bundle', () => {
@@ -156,5 +156,48 @@ describe('maxLifecycle', () => {
     assert.equal(maxLifecycle('detected', 'candidate'), 'detected');
     assert.equal(maxLifecycle('candidate', 'confirmed'), 'candidate');
     assert.equal(maxLifecycle('confirmed', 'stale'), 'confirmed');
+  });
+});
+
+describe('mergeDiagnosisBundles', () => {
+  it('合并相同 stableKey 时累加 occurrenceCount,保留聚合型语义', () => {
+    // 两个 bundle 都含同 problemPattern(同 stableKey),分别 occurrenceCount = 3 和 4。
+    // 期望合并后 occurrenceCount = 7,不是 occurrences.length = 2。
+    const bundleA = buildObserveDiagnostics({
+      generatedAt: '2026-05-15T00:00:00.000Z',
+      problemPatterns: [{
+        skillName: 'audit',
+        bucket: 'workflow_mismatch',
+        patternKey: 'wf-key',
+        signalTypes: ['user_correction'],
+        count: 3,
+        sessionCount: 2,
+      }],
+    });
+    const bundleB = buildObserveDiagnostics({
+      generatedAt: '2026-05-15T00:01:00.000Z',
+      problemPatterns: [{
+        skillName: 'audit',
+        bucket: 'workflow_mismatch',
+        patternKey: 'wf-key',
+        signalTypes: ['user_correction'],
+        count: 4,
+        sessionCount: 3,
+      }],
+    });
+    const merged = mergeDiagnosisBundles([bundleA, bundleB]);
+    const diag = merged.bySkill.audit.find((d) => d.signal === 'user_correction');
+    assert.ok(diag);
+    assert.equal(diag.occurrenceCount, 7, '应累加 3 + 4,不是 occurrences.length=2');
+    assert.equal(diag.occurrences.length, 2, '源 occurrence 条数确实是 2');
+  });
+
+  it('sourceCoverage 用 OR 合并', () => {
+    const bundleA = buildObserveDiagnostics({ generatedAt: 't1' });
+    const bundleB = buildObserveDiagnostics({ generatedAt: 't2' });
+    const merged = mergeDiagnosisBundles([bundleA, bundleB]);
+    assert.equal(merged.sourceCoverage.observe, true);
+    assert.equal(merged.sourceCoverage.doctor, false);
+    assert.equal(merged.sourceCoverage.eval, false);
   });
 });

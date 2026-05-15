@@ -61,13 +61,30 @@ function resolveSkillChains(
   return chains;
 }
 
-/** 按 skill 从 inbox items 聚合 cwd。返回:单一 cwd 字符串 / null(多 cwd 或缺失,跳过 chain)。 */
+/** 按 skill 从 inbox items + experience 聚合 cwd。返回:单一 cwd 字符串 / null(多 cwd,跳过 chain)。
+ *
+ *  数据源优先级一致(同等聚合 set,不分先后):
+ *    - report.items[].cwd:有 observation signal 的 skill 调用
+ *    - report.experience.invocations[].cwd:所有 skill 调用(干净运行也有,items 可能为空)
+ *    - report.experience.goalSlices[].cwd:goal slice 级 cwd
+ *
+ *  「items 为空但 experience 有 cwd」是真实 build 路径的常见态(skill 跑得很干净没产生 signal,
+ *  但仍要看 SKILL.md 结构),只看 items 会漏整个 chain advisory + runtime check。 */
 function inferCwdBySkill(report: ObservationInboxReport): Map<string, string | null> {
   const cwdsBySkill = new Map<string, Set<string>>();
+  const addCwd = (skillName: string | undefined | null, cwd: string | undefined): void => {
+    if (!skillName || !cwd) return;
+    if (!cwdsBySkill.has(skillName)) cwdsBySkill.set(skillName, new Set());
+    cwdsBySkill.get(skillName)!.add(cwd);
+  };
   for (const item of report.items) {
-    if (!item.skillName || !item.cwd) continue;
-    if (!cwdsBySkill.has(item.skillName)) cwdsBySkill.set(item.skillName, new Set());
-    cwdsBySkill.get(item.skillName)!.add(item.cwd);
+    addCwd(item.skillName, item.cwd);
+  }
+  for (const invocation of report.experience?.invocations ?? []) {
+    addCwd(invocation.skillName, invocation.cwd);
+  }
+  for (const slice of report.experience?.goalSlices ?? []) {
+    addCwd(slice.skillName, slice.cwd);
   }
   const out = new Map<string, string | null>();
   for (const [skill, set] of cwdsBySkill) {
