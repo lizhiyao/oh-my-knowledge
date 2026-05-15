@@ -6,10 +6,8 @@
 
 ```bash
 npm i oh-my-knowledge -g
-omk --version
+omk --version    # 能输出版本号即装好
 ```
-
-跑 `omk --version` 看到版本号就装好了。
 
 如果你想用「自然语言让 agent 帮你跑」的方式（推荐），还需要把 omk skill 装到你的 agent 工具里。Claude Code 用户：
 
@@ -23,17 +21,24 @@ Codex 用户改 `~/.codex/agents/skills/`。装好之后，agent 收到含「omk
 
 ## 准备 skill（1 分钟）
 
-按 omk 默认布局放 skill：
+按 omk 默认布局把 skill 放到 `skills/` 目录下。**推荐用单 `.md` 文件**，最简单：
 
 ```
 skills/
-├── my-skill.md           单文件 skill
-└── my-skill-v2/
-    ├── SKILL.md          目录式 skill
-    └── references/       可选,长示例 / 参考资料
+├── my-skill-v1.md
+└── my-skill-v2.md
 ```
 
-要跑 v1 vs v2 对比，就放两份；只想看「有 skill vs 没 skill」的差距，放一份就行（baseline 对照模式）。
+只有当 skill 内容超长、想把示例 / 参考资料拆到独立文件时，再用目录式：
+
+```
+skills/my-skill/
+├── SKILL.md         主体
+└── references/      长示例 / 参考资料
+    └── examples.md
+```
+
+两种形式 omk 都能识别，混用也行。要跑 v1 vs v2 对比就放两份；只想看「有 skill vs 没 skill」的差距，放一份就够，用 baseline 对照。
 
 ## 跑评测（3 分钟）
 
