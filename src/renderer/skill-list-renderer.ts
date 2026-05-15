@@ -63,7 +63,7 @@ function summarizeCard(entry: SkillIndexEntry, insights: Insight[]): CardSummary
   return { warnCount, highWarn, trendDir, trendDelta };
 }
 
-function renderHealthSummary(entry: SkillIndexEntry, lang: Lang): string {
+function renderHealthSummary(entry: SkillIndexEntry, insights: Insight[], lang: Lang): string {
   const parts: string[] = [];
   if (entry.doctor) {
     if (entry.doctor.failCount > 0) parts.push(lang === 'zh' ? `doctor ${entry.doctor.failCount} 项不通过` : `doctor ${entry.doctor.failCount} fail`);
@@ -83,7 +83,15 @@ function renderHealthSummary(entry: SkillIndexEntry, lang: Lang): string {
       : { green: 'stable', yellow: 'flaky', red: 'unstable' };
     parts.push(lang === 'zh' ? `observe ${labels[entry.observe.healthBand]}` : `observe ${labels[entry.observe.healthBand]}`);
   }
-  if (parts.length === 0) return lang === 'zh' ? '尚未运行任何检查' : 'No checks run yet';
+  if (parts.length === 0) {
+    // Diagnosis-only skill(例如只跑了 observe ingest 拿到 skill_md_not_found):没有三大
+    // snapshot 但有待优化项。显示「检出 N 个待优化」比「尚未运行任何检查」准确,
+    // 否则会跟 warn badge 的「N 待优化」对不上、用户看到矛盾态。
+    if (insights.length > 0) {
+      return lang === 'zh' ? `检出 ${insights.length} 个待优化项` : `${insights.length} insight(s) detected`;
+    }
+    return lang === 'zh' ? '尚未运行任何检查' : 'No checks run yet';
+  }
   return parts.join(lang === 'zh' ? '，' : ', ');
 }
 
@@ -141,7 +149,7 @@ function renderCard(entry: SkillIndexEntry, insights: Insight[], langQ: string, 
       ${warnBadge}
       ${renderTrendBadge(summary, lang)}
     </div>
-    <div class="sl-card-summary">${renderHealthSummary(entry, lang)}</div>
+    <div class="sl-card-summary">${renderHealthSummary(entry, insights, lang)}</div>
     <div class="sl-card-metrics">${renderMetrics(entry, lang)}</div>
   </a>`;
 }

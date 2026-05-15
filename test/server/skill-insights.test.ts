@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { detectInsights, flattenRecommendations } from '../../src/server/skill-insights.js';
 import type { SkillIndexEntry } from '../../src/server/skill-index.js';
 import type { EvaluationReport, ResultEntry } from '../../src/types/index.js';
+import type { Diagnosis } from '../../src/diagnosis/types.js';
 
 function mkResult(sampleId: string, variant: string, opts: {
   passedAssertions?: boolean;
@@ -285,6 +286,161 @@ describe('detectInsights — production-instability', () => {
     });
     const insights = detectInsights(entry, null);
     assert.equal(insights.find((i) => i.id === 'production-instability'), undefined);
+  });
+});
+
+describe('detectInsights — Diagnosis projection', () => {
+  function mkDiagnosis(overrides: Partial<Diagnosis> = {}): Diagnosis {
+    return {
+      id: 'diag-1',
+      stableKey: 'skill:test-skill|type:runtime_issue|signal:tool_failure_seen|target:x',
+      skillName: 'test-skill',
+      type: 'runtime_issue',
+      signal: 'tool_failure_seen',
+      title: 'Tool failure seen',
+      summary: '工具失败在真实 session 中重复出现。',
+      severity: 'high',
+      audience: 'skill-author',
+      lifecycle: 'detected',
+      scope: { primary: 'skill', refs: { skillName: 'test-skill' } },
+      occurrences: [{
+        id: 'occ-1',
+        diagnosisStableKey: 'skill:test-skill|type:runtime_issue|signal:tool_failure_seen|target:x',
+        source: 'observe',
+        sourceId: 'rule_finding:test-skill:tool_failure_seen',
+        sourceKind: 'tool_failure_seen',
+        timestamp: '2026-05-09T10:00:00Z',
+        severity: 'high',
+        evidenceRefs: [],
+        producer: 'deterministic_rule',
+      }],
+      occurrenceCount: 1,
+      recommendation: '补充工具失败时的重试和失败告知流程。',
+      ...overrides,
+    };
+  }
+
+  it('传入 Diagnosis 后,observe 类 Insight 从 Diagnosis 投影', () => {
+    const entry = mkEntry({
+      observe: {
+        analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
+        healthBand: 'green', failureRate: 0, segmentCount: 10, gapRate: 0,
+      },
+    });
+    const insights = detectInsights(entry, null, { diagnostics: [mkDiagnosis()] });
+    const projected = insights.find((i) => i.id === 'diagnosis:diag-1');
+    assert.ok(projected);
+    assert.equal(projected!.category, 'production-instability');
+    assert.equal(projected!.evidence[0].perspective, 'observe');
+    assert.equal(projected!.severity, 'high');
+  });
+
+  it('diagnostics 为空数组时,legacy observe-side 检测仍然触发（dual-run 兼容）', () => {
+    // observe 有 red + failureRate 0.5 但 mapper 没产出对应 Diagnosis 的场景:
+    // 该 skill 的 diagnosticsBundle.bySkill[name] 默认是 [] 不是 undefined,
+    // 这条 case 防止以前那种「[] 也判 truthy 把 legacy 全关掉」的回归。
+    const entry = mkEntry({
+      observe: {
+        analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
+        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0,
+      },
+    });
+    const insights = detectInsights(entry, null, { diagnostics: [] });
+    assert.ok(
+      insights.find((i) => i.id === 'production-instability'),
+      'legacy production-instability 应在空 diagnostics 下仍然触发',
+    );
+  });
+
+  it('dual-run 期间 legacy + Diagnosis 即便概念相近也共存,不基于 category 去重', () => {
+    // 这条 Diagnosis 投影后 category 是 production-instability,看起来跟 legacy detector
+    // 同名,但二者读不同数据源 —— Diagnosis 来自 inbox 的 runtime/tool_failure_seen
+    // 单点告警,legacy 来自 SkillHealthReport 的 failureRate >= 0.4 聚合指标,不等价。
+    //
+    // dual-run 期间不能用 InsightCategory 去重,否则 `runtime_workflow_review` 这类
+    // 投影出 production-instability 的 Diagnosis 会误关掉 SkillHealthReport 高失败率信号。
+    // 等 doctor / eval producer 都迁完 Diagnosis,再单独 PR 基于 stable target 精确去重。
+    const entry = mkEntry({
+      observe: {
+        analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
+        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0,
+      },
+    });
+    const insights = detectInsights(entry, null, { diagnostics: [mkDiagnosis()] });
+    assert.ok(
+      insights.find((i) => i.id === 'production-instability'),
+      'legacy production-instability(SkillHealthReport 聚合)应仍触发',
+    );
+    assert.ok(
+      insights.find((i) => i.id === 'diagnosis:diag-1'),
+      'Diagnosis 投影(inbox 单点告警)也应共存',
+    );
+  });
+
+  it('definition_gap Diagnosis 不会吞掉 legacy detectSkillDocGap 的 eval / doctor 证据', () => {
+    // legacy detectSkillDocGap 会基于 eval rootCause + doctor dependency rule 出 insight。
+    // 早先按 category 去重的实现会让 `skill_md_not_found` definition_gap Diagnosis 把整个
+    // legacy detector 关掉(它们都映射到 skill-doc-gap),导致 doctor + eval 那部分证据消失。
+    // 这条 case 必须真的让 detectSkillDocGap 有触发条件(doctor warn + eval rootCause),
+    // 否则断言会误过 —— 这是上一版本测试 fixture 不充分的回归点。
+    const docGapDiagnosis = mkDiagnosis({
+      id: 'diag-doc',
+      type: 'definition_gap',
+      signal: 'skill_md_not_found',
+      title: 'SKILL.md was not found',
+      stableKey: 'skill:test-skill|type:definition_gap|signal:skill_md_not_found|target:definition:skill_md',
+    });
+    const entry = mkEntry({
+      doctor: {
+        reportId: 'd1', timestamp: '2026-05-09T10:00:00Z', status: 'warn',
+        passCount: 3, warnCount: 1, failCount: 0,
+        results: [{
+          ruleId: 'dependencies_present', severity: 'warn', labelKey: 'x', status: 'warn',
+          message: '前置依赖警告', durationMs: 10,
+        }],
+      },
+      evalSnap: {
+        reportId: 'e1', variantName: 'test-skill', timestamp: '2026-05-09T10:00:00Z',
+        verdictLevel: 'NOISE', verdictHeadline: 'noise',
+        compositeScore: null, passCount: 0, failCount: 1, tripwireCount: 0, totalSamples: 1,
+      },
+    });
+    // eval 报告含 skill_doc_missing rootCause,让 detectSkillDocGap 真的有数据触发
+    const report = mkEvalReport('test-skill', [
+      mkResult('s1', 'test-skill', { rootCause: ['skill_doc_missing'] }),
+    ]);
+    const insights = detectInsights(entry, report, { diagnostics: [docGapDiagnosis] });
+    assert.ok(
+      insights.find((i) => i.id === 'skill-doc-gap'),
+      'legacy skill-doc-gap 应仍触发(基于 doctor warn + eval skill_doc_missing,跟 Diagnosis 共存)',
+    );
+    assert.ok(
+      insights.find((i) => i.id === 'diagnosis:diag-doc'),
+      'Diagnosis 投影也应共存',
+    );
+  });
+
+  it('confirmed lifecycle 不算 active,跟 activeStudioDiagnostics 口径一致', () => {
+    // 抽 shared isActiveDiagnosisLifecycle 之后,Insight 投影和 /api/observations/diagnostics 的
+    // active 列表都按同一份 set 过滤(detected / candidate / stale)。confirmed 不算 active,
+    // 不会被投影成 Insight,避免「Insight 影响 skill 健康但 diagnostics API 不显示」的口径分叉。
+    const confirmedDiag = mkDiagnosis({
+      id: 'diag-confirmed',
+      lifecycle: 'confirmed',
+      stableKey: 'skill:test-skill|type:runtime_issue|signal:c|target:x',
+    });
+    const detectedDiag = mkDiagnosis({
+      id: 'diag-detected',
+      lifecycle: 'detected',
+      stableKey: 'skill:test-skill|type:runtime_issue|signal:d|target:y',
+    });
+    const insights = detectInsights(mkEntry(), null, { diagnostics: [confirmedDiag, detectedDiag] });
+    assert.equal(
+      insights.find((i) => i.id === 'diagnosis:diag-confirmed'),
+      undefined,
+      'confirmed 不投影成 Insight',
+    );
+    assert.ok(insights.find((i) => i.id === 'diagnosis:diag-detected'));
   });
 });
 
