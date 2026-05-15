@@ -1,13 +1,168 @@
 import { CliExit } from '../cli-exit.js';
-import { resolve, join } from 'node:path';
-import { existsSync } from 'node:fs';
+import { resolve, join, basename, dirname, extname } from 'node:path';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import yaml from 'js-yaml';
 import { tCli, langFromArgv } from '../i18n.js';
-import { COMMON_OPTIONS } from '../parse-run-config.js';
+import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
 import { parseArgsStrictOrExit } from '../parse-strict.js';
+import { loadSamples, parseYaml, type LoadSamplesResult } from '../../inputs/load-samples.js';
+import { hashSample, hashString } from '../../eval-core/evaluation-reporting.js';
+import type { CliLang } from '../i18n.js';
+import type { Report, Sample } from '../../types/index.js';
 
 interface GenerateSamplesResult {
   samples: unknown[];
   costUSD: number;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isYamlPath(filePath: string): boolean {
+  return /\.(ya?ml)$/i.test(filePath);
+}
+
+function parseSampleDocument(filePath: string): unknown {
+  const raw = readFileSync(filePath, 'utf-8');
+  return isYamlPath(filePath) ? parseYaml(raw) : JSON.parse(raw);
+}
+
+function getSamplesArray(document: unknown, filePath: string): Sample[] {
+  if (Array.isArray(document)) return document as Sample[];
+  if (isRecord(document) && Array.isArray(document.samples)) return document.samples as Sample[];
+  throw new Error(`invalid samples file shape: ${filePath} (expected an array or an object with a 'samples' field)`);
+}
+
+function stringifySampleDocument(filePath: string, document: unknown): string {
+  if (isYamlPath(filePath)) return yaml.dump(document, { lineWidth: -1, noRefs: true });
+  return JSON.stringify(document, null, 2);
+}
+
+function formatIdList(ids: string[]): string {
+  const shown = ids.slice(0, 5);
+  const suffix = ids.length > shown.length ? ` +${ids.length - shown.length}` : '';
+  return shown.join(', ') + suffix;
+}
+
+export function collectSampleDesignFailureIds(report: Pick<Report, 'results'>, treatmentName: string): Set<string> {
+  const ids = new Set<string>();
+  for (const entry of report.results) {
+    const rootCause = entry.variants[treatmentName]?.diagnostic?.rootCause ?? [];
+    if (rootCause.includes('sample_design')) ids.add(entry.sample_id);
+  }
+  return ids;
+}
+
+export function assertFixReportMatchesCurrentInputs(params: {
+  report: Pick<Report, 'meta'>;
+  treatmentName: string;
+  skillContent: string;
+  samples: Sample[];
+  sampleIds: Set<string>;
+  lang?: CliLang;
+}): void {
+  const { report, treatmentName, skillContent, samples, sampleIds } = params;
+  const lang = params.lang ?? 'zh';
+  const issues: string[] = [];
+
+  const expectedSkillHash = report.meta.artifactHashes?.[treatmentName];
+  const currentSkillHash = hashString(skillContent);
+  if (!expectedSkillHash) {
+    issues.push(lang === 'zh'
+      ? `报告缺少 ${treatmentName} 的 skill 指纹，无法确认诊断对应当前 SKILL.md。`
+      : `Report is missing the skill hash for ${treatmentName}; cannot verify it matches the current SKILL.md.`);
+  } else if (expectedSkillHash !== currentSkillHash) {
+    issues.push(lang === 'zh'
+      ? `skill 指纹不一致：报告 ${expectedSkillHash}，当前 ${currentSkillHash}。`
+      : `Skill hash mismatch: report ${expectedSkillHash}, current ${currentSkillHash}.`);
+  }
+
+  const reportSampleHashes = report.meta.sampleHashes;
+  if (!reportSampleHashes) {
+    issues.push(lang === 'zh'
+      ? '报告缺少用例指纹，无法确认 sample_design 诊断对应当前 samples。'
+      : 'Report is missing sample hashes; cannot verify sample_design diagnostics match the current samples.');
+  } else {
+    const samplesById = new Map(samples.map((sample) => [sample.sample_id, sample]));
+    const missingCurrentSamples: string[] = [];
+    const missingReportHashes: string[] = [];
+    const mismatchedSamples: string[] = [];
+    for (const sampleId of sampleIds) {
+      const currentSample = samplesById.get(sampleId);
+      if (!currentSample) {
+        missingCurrentSamples.push(sampleId);
+        continue;
+      }
+      const expectedSampleHash = reportSampleHashes[sampleId];
+      if (!expectedSampleHash) {
+        missingReportHashes.push(sampleId);
+        continue;
+      }
+      const currentSampleHash = hashSample(currentSample);
+      if (expectedSampleHash !== currentSampleHash) {
+        mismatchedSamples.push(sampleId);
+      }
+    }
+    if (missingCurrentSamples.length > 0) {
+      issues.push(lang === 'zh'
+        ? `当前 samples 缺少报告中的用例：${formatIdList(missingCurrentSamples)}。`
+        : `Current samples are missing report sample(s): ${formatIdList(missingCurrentSamples)}.`);
+    }
+    if (missingReportHashes.length > 0) {
+      issues.push(lang === 'zh'
+        ? `报告缺少这些用例的指纹：${formatIdList(missingReportHashes)}。`
+        : `Report is missing hashes for sample(s): ${formatIdList(missingReportHashes)}.`);
+    }
+    if (mismatchedSamples.length > 0) {
+      issues.push(lang === 'zh'
+        ? `用例指纹不一致：${formatIdList(mismatchedSamples)}。`
+        : `Sample hash mismatch: ${formatIdList(mismatchedSamples)}.`);
+    }
+  }
+
+  if (issues.length === 0) return;
+
+  const heading = lang === 'zh'
+    ? '报告与当前输入不一致，已停止自动修复。'
+    : 'Report does not match the current inputs; automatic fixing stopped.';
+  const hint = lang === 'zh'
+    ? '请先重新运行 omk eval，再执行 omk sample --fix。'
+    : 'Re-run omk eval first, then run omk sample --fix again.';
+  throw new Error([heading, ...issues, hint].join('\n'));
+}
+
+export function writeFixedSamplesToSources(
+  loaded: Pick<LoadSamplesResult, 'sourceFiles' | 'sampleSourceById'>,
+  samples: Sample[],
+  changedIds: Set<string>,
+): string[] {
+  if (changedIds.size === 0) return [];
+
+  const fixedById = new Map(samples.map((sample) => [sample.sample_id, sample]));
+  const idsByFile = new Map<string, Set<string>>();
+  for (const sampleId of changedIds) {
+    const filePath = loaded.sampleSourceById[sampleId];
+    if (!filePath) throw new Error(`sample ${sampleId} source file not found`);
+    const ids = idsByFile.get(filePath) ?? new Set<string>();
+    ids.add(sampleId);
+    idsByFile.set(filePath, ids);
+  }
+
+  const written: string[] = [];
+  for (const [filePath, ids] of idsByFile.entries()) {
+    const document = parseSampleDocument(filePath);
+    const fileSamples = getSamplesArray(document, filePath);
+    const nextSamples = fileSamples.map((sample) => (
+      ids.has(sample.sample_id) ? (fixedById.get(sample.sample_id) ?? sample) : sample
+    ));
+    const nextDocument = Array.isArray(document)
+      ? nextSamples
+      : { ...(document as Record<string, unknown>), samples: nextSamples };
+    writeFileSync(filePath, stringifySampleDocument(filePath, nextDocument));
+    written.push(filePath);
+  }
+  return written;
 }
 
 export async function execute(argv: string[]): Promise<void> {
@@ -21,9 +176,17 @@ export async function execute(argv: string[]): Promise<void> {
       model: { type: 'string', default: 'opus' },
       'skill-dir': { type: 'string', default: 'skills' },
       focus: { type: 'string' },
+      fix: { type: 'boolean', default: false },
+      'reports-dir': { type: 'string' },
+      treatment: { type: 'string' },
     },
     allowPositionals: true,
   });
+
+  if (values.fix) {
+    await executeFix(values, positionals, lang);
+    return;
+  }
 
   const { generateSamples } = await import('../../authoring/generator.js');
   const { readFileSync, writeFileSync, mkdirSync } = await import('node:fs');
@@ -161,4 +324,145 @@ export async function execute(argv: string[]): Promise<void> {
       throw new CliExit(1);
     }
   }
+}
+
+async function executeFix(
+  values: Record<string, unknown>,
+  positionals: string[],
+  lang: 'zh' | 'en',
+): Promise<void> {
+  const { fixSamples } = await import('../../authoring/sample-fixer.js');
+  const { createFileStore } = await import('../../server/report-store.js');
+
+  const model = (values.model as string) ?? 'opus';
+  const reportsDir = resolve((values['reports-dir'] as string) ?? DEFAULT_REPORTS_DIR);
+
+  // 1. Determine skill path and samples path
+  const skillPath = positionals[0];
+  if (!skillPath) {
+    console.error(lang === 'zh' ? '请指定 skill 路径，如: omk sample skills/my-skill/SKILL.md --fix' : 'Specify skill path: omk sample skills/my-skill/SKILL.md --fix');
+    throw new CliExit(1);
+  }
+  const resolvedSkillPath = resolve(skillPath);
+  if (!existsSync(resolvedSkillPath)) {
+    console.error(lang === 'zh' ? `skill 文件不存在: ${resolvedSkillPath}` : `Skill file not found: ${resolvedSkillPath}`);
+    throw new CliExit(1);
+  }
+
+  const isDir = basename(resolvedSkillPath) === 'SKILL.md';
+  const skillDir = isDir ? dirname(resolvedSkillPath) : dirname(resolvedSkillPath);
+  const samplesInput = isDir
+    ? join(skillDir, '.omk')
+    : resolve('eval-samples.json');
+
+  if (!existsSync(samplesInput)) {
+    console.error(lang === 'zh' ? `samples 路径不存在: ${samplesInput}，先运行 omk sample 生成` : `Samples path not found: ${samplesInput}, run omk sample first`);
+    throw new CliExit(1);
+  }
+
+  // 2. Determine treatment name
+  const defaultTreatmentName = isDir
+    ? basename(skillDir)
+    : basename(resolvedSkillPath, extname(resolvedSkillPath));
+  const treatmentName = (values.treatment as string) ?? defaultTreatmentName;
+
+  // 3. Find the latest report
+  process.stderr.write(lang === 'zh' ? `🔍 正在查找 ${treatmentName} 的最新评测报告...\n` : `🔍 Scanning latest report for ${treatmentName}...\n`);
+  const store = createFileStore(reportsDir);
+  const reports = await store.findByVariant(treatmentName);
+
+  if (reports.length === 0) {
+    console.error(lang === 'zh' ? `未找到 ${treatmentName} 的评测报告（报告目录: ${reportsDir}）` : `No eval report found for ${treatmentName} in ${reportsDir}`);
+    throw new CliExit(1);
+  }
+
+  const report = reports[0];
+  process.stderr.write(lang === 'zh' ? `📄 使用报告: ${report.id} (${report.meta?.timestamp ?? '?'})\n` : `📄 Using report: ${report.id} (${report.meta?.timestamp ?? '?'})\n`);
+
+  // 4. Load samples using the same semantics as eval.
+  let loadedSamples: LoadSamplesResult;
+  try {
+    loadedSamples = loadSamples(samplesInput);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(lang === 'zh' ? `samples 加载失败: ${message}` : `Failed to load samples: ${message}`);
+    throw new CliExit(1);
+  }
+  const samples = loadedSamples.samples;
+  const skillContent = readFileSync(resolvedSkillPath, 'utf-8');
+
+  // 5. Count sample_design failures and verify this report still matches current inputs.
+  const sampleDesignIds = collectSampleDesignFailureIds(report, treatmentName);
+  const sampleDesignCount = sampleDesignIds.size;
+
+  if (sampleDesignCount === 0) {
+    process.stderr.write(lang === 'zh' ? '✅ 没有 sample_design 类型的失败，无需修复\n' : '✅ No sample_design failures found, nothing to fix\n');
+    return;
+  }
+
+  try {
+    assertFixReportMatchesCurrentInputs({
+      report,
+      treatmentName,
+      skillContent,
+      samples,
+      sampleIds: sampleDesignIds,
+      lang,
+    });
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    throw new CliExit(1);
+  }
+
+  process.stderr.write(lang === 'zh' ? `🔧 发现 ${sampleDesignCount} 条 sample_design 失败，开始修复...\n` : `🔧 Found ${sampleDesignCount} sample_design failure(s), fixing...\n`);
+
+  // 6. Create executor wrapper
+  const { createExecutor } = await import('../../executors/index.js');
+  const exec = createExecutor('claude');
+  const executorFn = async (opts: { model: string; system: string; prompt: string; timeoutMs: number; lean?: boolean }) => {
+    const result = await exec({
+      model: opts.model,
+      system: opts.system,
+      prompt: opts.prompt,
+      timeoutMs: opts.timeoutMs,
+      lean: opts.lean,
+    });
+    return { ok: result.ok, text: result.output ?? '', costUSD: result.costUSD };
+  };
+
+  // 7. Run fixes
+  const result = await fixSamples({
+    skillContent,
+    samples,
+    report,
+    treatmentKey: treatmentName,
+    executor: executorFn,
+    model,
+  });
+
+  // 8. Write back
+  let writtenFiles: string[] = [];
+  if (result.fixedCount > 0) {
+    const changedIds = new Set(result.fixes.filter((f) => f.changed).map((f) => f.sampleId));
+    writtenFiles = writeFixedSamplesToSources(loadedSamples, result.samples, changedIds);
+  }
+
+  // 9. Report
+  for (const f of result.fixes) {
+    if (f.changed) {
+      process.stderr.write(lang === 'zh' ? `  ✅ ${f.sampleId} 已修复\n` : `  ✅ ${f.sampleId} fixed\n`);
+    } else {
+      process.stderr.write(lang === 'zh' ? `  ⚠ ${f.sampleId} 未修改${f.error ? `: ${f.error}` : ''}\n` : `  ⚠ ${f.sampleId} unchanged${f.error ? `: ${f.error}` : ''}\n`);
+    }
+  }
+
+  const cost = result.costUSD > 0 ? ` $${result.costUSD.toFixed(4)}` : '';
+  const outputTarget = writtenFiles.length === 0
+    ? samplesInput
+    : writtenFiles.length === 1
+      ? writtenFiles[0]
+      : `${writtenFiles.length} files`;
+  process.stderr.write(lang === 'zh'
+    ? `\n🔧 修复完成: ${result.fixedCount}/${sampleDesignCount} 条已修复 → ${outputTarget}${cost}\n`
+    : `\n🔧 Fix complete: ${result.fixedCount}/${sampleDesignCount} fixed → ${outputTarget}${cost}\n`);
 }

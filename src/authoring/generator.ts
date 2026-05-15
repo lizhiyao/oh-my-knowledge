@@ -299,7 +299,7 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
    "通知钉钉用什么 API")才能写出 fact 层断言,这条断言就不该存在,应该归到 rubric。**
 
    📌 **URL/路径出现在 SKILL.md 里 ≠ 知道用什么工具访问它**(高频陷阱):
-   SKILL.md 文档里出现 \`https://yuque.antfin.com/xxx/yyy\` 这种 URL,**不代表**
+   SKILL.md 文档里出现 \`https://wiki.example.com/xxx/yyy\` 这种 wiki 形态 URL,**不代表**
    该步骤就走 WebFetch。WebFetch / WebSearch 是 readonly GET 类工具,**只用于
    "读取 / 抓取 / 查询 / 搜索" 语义**。SKILL.md 描述是"留档 / 写入 / 创建 / 推送 /
    通知 / 上传"这类**写动作**,而又没明文说"用 X 工具调"时:

@@ -102,6 +102,7 @@ function asFinding(raw: unknown): HealthFinding | null {
     subtype: typeof r.subtype === 'string' ? r.subtype : '',
     evidence: typeof r.evidence === 'string' ? r.evidence : '',
     description: typeof r.description === 'string' ? r.description : '',
+    suggestion: typeof r.suggestion === 'string' ? r.suggestion : undefined,
   };
 }
 
