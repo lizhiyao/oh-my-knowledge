@@ -7,6 +7,7 @@ import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorre
 import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from '../observability/problem-patterns.js';
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
+import type { SkillDerivedStandard } from '../observability/soft-standards.js';
 import { hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE, isScheduledTaskPromptText } from '../observability/text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 import type {
@@ -14,9 +15,12 @@ import type {
   ExperienceAssistiveInferenceCautionCode,
   ExperienceAssistiveInferenceCode,
   ExperienceEvidenceChain,
+  ExperienceEvidenceRef,
+  ExperienceInvocation,
   ExperienceReviewIndicators,
   ExperienceReviewBasisCode,
   ExperienceReviewPriority,
+  ExperienceReviewerReport,
   ExperienceRuleFinding,
   ExperienceRuleFindingCode,
   ExperienceRuleFindingLevel,
@@ -36,6 +40,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     skillInvocationLastSeen,
     skillToolCallCounts,
     skillChains,
+    skillDerivedStandards,
     totalSkillInvocations,
     severitySkillCounts,
     skillCount,
@@ -94,6 +99,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     return `<div style="margin:4px 0;text-align:left"><span style="color:var(--text-muted);font-size:11px">${e(label)}</span><div style="font-family:ui-monospace,monospace;font-size:11px;word-break:break-all;text-align:left;color:var(--text-secondary)">${e(String(value))}</div></div>`;
   };
   const formatTimestamp = (value?: string): string => value ? value.slice(0, 19).replace('T', ' ') : '—';
+  const truncateText = (value: string, max = 28): string => value.length > max ? `${value.slice(0, Math.max(0, max - 1))}…` : value;
   const sessionTimeLabel = lang === 'zh' ? 'Session 时间' : 'Session time';
   const sessionTimeRangeLabel = lang === 'zh' ? 'Session 时间范围' : 'Session time range';
   const latestInvocationLabel = lang === 'zh' ? '最近调用' : 'Latest invocation';
@@ -260,7 +266,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     negativeFeedback: '统计“没用 / 垃圾 / 菜 / 做错了 / 不行 / 失败 / 看不懂 / 有问题”等负向表达。这是规则命中，不是 LLM 情绪识别。',
     positiveFeedback: '统计“很好 / good job / 做得好 / 很棒 / 优秀 / 厉害 / 很有用 / 很有价值”等正向表达，用来保留用户认可证据。',
     userGoalShift: '统计“换个方向 / 先不 / 不用这个 / 另一个问题”等目标切换表达。它表示当前目标可能中止或切走，不直接等同于 skill 做错。',
-    hardRule: '统计用户在对话里临时提出的硬性要求，例如“必须 / 不要 / 禁止 / 严格 / 一定要 / 只允许”。Skill 自身的强约束请看 Context Chain 里的 hardRules。',
+    hardRule: '统计用户在对话里临时提出的硬性要求，例如“必须 / 不要 / 禁止 / 严格 / 一定要 / 只允许”。Skill 自身的强约束请看定义链路里的规则检测结果。',
     toolCall: '统计该 skill 运行片段里的 tool_use 调用总数，包括 Bash、Read、Grep 等工具。',
     toolFailure: '统计该 skill 运行片段里失败的工具执行结果，例如 tool_result 标记 is_error=true。注意：工具执行失败不等于整个 skill 调用失败。',
     highObservation: '统计 severity=high 的过程发现，通常表示可能需要优先复盘的执行问题。',
@@ -582,7 +588,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       `${label}：最终计入 ${finalCount}`,
       `规则命中 ${ruleCount}，人工同意 ${confirmed}，人工反对 ${rejected}`,
       rows.length > 0 ? `来源：${rows.join('；')}` : '来源：无',
-      '点击按钮查看指标定义；人工反对只扣掉对应 message，不会自动扣掉其它来源。',
+      '点击按钮查看指标定义；人工反对只扣掉对应消息，不会自动扣掉其它来源。',
     ].join('\n');
   };
   const displayIndicatorsBySkill = new Map<string, ExperienceReviewIndicators>();
@@ -742,13 +748,37 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const hard = chain.healthCheck.hardRules;
     const workflows = chain.healthCheck.workflows;
     const runtime = chain.runtime.summary;
+    const record = skillDerivedStandards[skillName];
+    const detectedHardCount = (record?.standards ?? []).filter((standard) =>
+      standard.kind === 'hard_rule_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
+    ).length;
     const hardText = hard.declared
-      ? `hardRules ${hard.count}（证据符合 ${runtime.passedCount} / 需关注 ${runtime.attentionCount} / 无法自动判断 ${runtime.manualReviewCount}）${hard.valid ? '' : ' · 结构异常'}`
-      : 'hardRules：SKILL.md 未声明，建议 skill 作者补结构化 hardRules';
-    const workflowText = workflows.declared
-      ? `workflow 分支链路 ${workflows.branchCount}（节点 ${workflows.nodeCount}，非 LLM 证据检查）${workflows.valid ? '' : ' · 结构异常'}`
-      : 'workflow：SKILL.md 未声明，建议 skill 作者补结构化 workflow';
-    return `<div class="summary-detail">${e(hardText)}</div><div class="summary-detail" style="margin-top:3px">${e(workflowText)}</div>`;
+      ? `标准化规则 ${hard.count} 条`
+      : detectedHardCount > 0
+        ? `规则检测 ${detectedHardCount} 条`
+        : '标准化规则未声明';
+    const workflowText = workflows.workflows.length > 0
+      ? workflows.declared
+        ? `标准化流程 ${workflows.branchCount} 条 / 节点 ${workflows.nodeCount}`
+        : workflows.source === 'markdown_headings'
+          ? `流程检测 ${workflows.branchCount} 条 / 节点 ${workflows.nodeCount}（正文流程）`
+          : `流程检测 ${workflows.branchCount} 条 / 节点 ${workflows.nodeCount}`
+      : '标准化流程未声明';
+    const pending = (record?.standards ?? []).filter((standard) => standard.status === 'pending_review' || standard.status === 'stale');
+    const hardPending = pending.filter((standard) => standard.kind === 'hard_rule_candidate');
+    const workflowPending = pending.filter((standard) => standard.kind === 'workflow_candidate');
+    const pendingLine = pending.length > 0
+      ? `<div class="skill-chain-compact-candidates">
+          <span>待确认 ${pending.length} 条</span>
+          ${hardPending[0] ? `<span title="${e(hardPending[0].title)}">规则：${e(truncateText(hardPending[0].title, 18))}</span>` : ''}
+          ${workflowPending[0] ? `<span title="${e(workflowPending[0].title)}">流程：${e(truncateText(workflowPending[0].title, 18))}</span>` : ''}
+        </div>`
+      : '';
+    return `<div class="skill-chain-cell-summary">
+      <div>${e(hardText)} · ${e(workflowText)}</div>
+      <div>证据符合 ${runtime.passedCount} / 需关注 ${runtime.attentionCount} / 无法判断 ${runtime.manualReviewCount}</div>
+      ${pendingLine}
+    </div>`;
   };
   const collectSkillChainAdvisoryCodes = (skillName: string): SkillChainAdvisoryCode[] => {
     const chain = skillChains[skillName];
@@ -805,65 +835,288 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       const notFoundAdvisory = renderAdvisoryBlock('skill_md_not_found', skillName);
       return `<div class="context-chain-grid">
         <section class="context-chain-panel">
-          <h3>① skill 定义</h3>
+          <h3>① 原始 SKILL.md</h3>
           ${notFoundAdvisory}
         </section>
         <section class="context-chain-panel">
-          <h3>② 健康检查</h3>
-          <p class="context-muted">缺少本地 SKILL.md，inbox 跑不了静态检查。这不代表作者没声明 hardRules，只是本地看不到。</p>
+          <h3>② 规则 / 流程探测</h3>
+          <p class="context-muted">缺少本地 SKILL.md，当前无法探测规则和流程。这不代表作者没声明，只是本地看不到。</p>
         </section>
         <section class="context-chain-panel">
           <h3>③ 运行时</h3>
           <p class="context-muted">运行时证据可从 observe 时间线查看；静态定义链路在本地暂不可用。</p>
         </section>
+        <section class="context-chain-panel">
+          <h3>④ 候选确认</h3>
+          <p class="context-muted">暂无可确认候选。</p>
+        </section>
       </div>`;
     }
     const hard = chain.healthCheck.hardRules;
     const workflows = chain.healthCheck.workflows;
-    const hardRulesList = hard.rules.length > 0
-      ? `<ol>${hard.rules.map((rule) => `<li><strong>${e(rule.id)}</strong><div>${e(rule.rule)}</div><small>期望行为：${e(rule.expectedBehavior)}</small></li>`).join('')}</ol>`
-      : renderAdvisoryBlock(hard.advisoryCode, skillName);
-    const workflowList = workflows.workflows.length > 0
-      ? `<ol>${workflows.workflows.map((workflow) => `<li><strong>${e(workflow.id)}</strong>${workflow.description ? `<div>${e(workflow.description)}</div>` : ''}<small>执行节点：${workflow.nodes.length}</small><ul>${workflow.nodes.map((node) => `<li><code>${e(node.id)}</code> ${e(node.action)}</li>`).join('')}</ul></li>`).join('')}</ol>`
-      : renderAdvisoryBlock(workflows.advisoryCode, skillName);
-    const runtimeStatusLabel = (status: string): string =>
-      status === 'passed' ? '证据符合'
-        : status === 'attention' ? '需关注'
-          : '无法自动判断';
-    const runtimeCheckList = (checks: typeof chain.runtime.hardRules): string => checks.length > 0
-      ? `<ol>${checks.map((check) => `<li class="runtime-check runtime-${e(check.status)}"><strong>${e(check.id)}</strong><span class="runtime-check-status">${e(runtimeStatusLabel(check.status))}</span><div>${e(check.title)}</div><small>${e(check.reason)}</small>${check.evidenceSnippets.length > 0 ? `<ul>${check.evidenceSnippets.map((snippet) => `<li>${e(snippet)}</li>`).join('')}</ul>` : ''}</li>`).join('')}</ol>`
-      : '<p class="context-muted">暂无可检查项。</p>';
-    // 未声明时不要再展示「结构合法」——已声明且 valid 才有意义。
-    // 未声明时第三列改为「无可校验（建议补充）」让语义对得齐。
-    const healthRows: Array<[string, string, string]> = [
-      ['hardRules',
-        hard.declared ? `${hard.count} 条` : 'SKILL.md 未声明',
-        hard.declared ? (hard.valid ? '结构合法' : `结构异常：${hard.errors.join('; ')}`) : '无可校验（建议补充）'],
-      ['workflows',
-        workflows.declared ? `${workflows.branchCount} 条分支链路 / ${workflows.nodeCount} 个执行节点` : 'SKILL.md 未声明',
-        workflows.declared ? (workflows.valid ? '结构合法' : `结构异常：${workflows.errors.join('; ')}`) : '无可校验（建议补充）'],
-    ];
-    return `<div class="context-chain-grid">
-      <section class="context-chain-panel">
-        <h3>① skill 定义</h3>
-        ${chain.definition.found
-          ? `<div class="context-meta">SKILL.md：<code>${e(chain.definition.path ?? '')}</code></div>
-             <h4>hardRules</h4>${hardRulesList}
-             <h4>workflows</h4>${workflowList}
-             <h4>SKILL.md 原文</h4>
-             <pre>${e(chain.definition.content ?? '')}${chain.definition.truncated ? '\n\n... 已截断，仅展示前 12000 字符' : ''}</pre>`
-          : '<p class="context-muted">未找到 SKILL.md：当前 harness 日志里出现了这个 skill，但本机常见 skill 目录没有对应定义。这里属于“定义不可用”，不是“作者没声明规则”。</p>'}
-      </section>
-      <section class="context-chain-panel">
-        <h3>② 健康检查</h3>
-        <p class="context-muted">复用 doctor 的静态检查规则；这里只判断 SKILL.md 结构是否机器可读。运行时遵守情况看右侧“③ 运行时”。</p>
+    const record = skillDerivedStandards[skillName];
+    const softStandards = record?.standards ?? [];
+    const statusPriority: Record<SkillDerivedStandard['status'], number> = {
+      pending_review: 0,
+      author_confirmed: 1,
+      rejected: 2,
+      stale: 3,
+    };
+    const sortedSoftStandards = [...softStandards].sort((a, b) =>
+      statusPriority[a.status] - statusPriority[b.status] || a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title)
+    );
+    const kindLabel = (kind: SkillDerivedStandard['kind']): string =>
+      kind === 'workflow_candidate' ? '流程候选' : '规则候选';
+    const annotationStateClass = (status: SkillDerivedStandard['status']): string =>
+      status === 'author_confirmed' ? 'is-confirmed' : status === 'rejected' ? 'is-rejected' : '';
+    const annotationStateIcon = (status: SkillDerivedStandard['status']): string =>
+      status === 'author_confirmed' ? '✅' : status === 'rejected' ? '❌' : '';
+    const candidateSourceTexts = (standard: SkillDerivedStandard): string[] => [
+      ...standard.evidence,
+      standard.title,
+      standard.body,
+    ]
+      .map((text) => text.trim())
+      .filter((text) => text.length >= 4)
+      .sort((a, b) => b.length - a.length);
+    const findCandidateRange = (
+      content: string,
+      standard: SkillDerivedStandard,
+      usedRanges: Array<{ start: number; end: number }>,
+    ): { start: number; end: number; text: string } | undefined => {
+      for (const text of candidateSourceTexts(standard)) {
+        const start = content.indexOf(text);
+        const end = start + text.length;
+        if (start >= 0 && !usedRanges.some((range) => start < range.end && end > range.start)) {
+          return { start, end, text };
+        }
+      }
+      return undefined;
+    };
+    const renderCandidateActions = (standard: SkillDerivedStandard): string => `
+      <span class="skill-md-annotation-actions">
+        <span data-soft-standard-status="${e(standard.status)}">${e(softStandardStatusLabel(standard.status))}</span>
+        <button type="button" data-soft-standard-action="author_confirmed" onclick="setSoftStandardStatus('${e(skillName)}', '${e(standard.id)}', 'author_confirmed', this)">确认</button>
+        <button type="button" data-soft-standard-action="rejected" onclick="setSoftStandardStatus('${e(skillName)}', '${e(standard.id)}', 'rejected', this)">否决</button>
+      </span>`;
+    const renderAnnotatedSkillMd = (content: string): string => {
+      if (sortedSoftStandards.length === 0) return e(content);
+      const usedRanges: Array<{ start: number; end: number }> = [];
+      const annotations: Array<{ standard: SkillDerivedStandard; range: { start: number; end: number; text: string } }> = [];
+      for (const standard of sortedSoftStandards) {
+        const range = findCandidateRange(content, standard, usedRanges);
+        if (!range) continue;
+        usedRanges.push(range);
+        annotations.push({ standard, range });
+      }
+      annotations.sort((a, b) => a.range.start - b.range.start);
+      if (annotations.length === 0) return e(content);
+      let cursor = 0;
+      const parts: string[] = [];
+      for (const { standard, range } of annotations) {
+        parts.push(e(content.slice(cursor, range.start)));
+        parts.push(`<span class="skill-md-highlight skill-md-highlight-${standard.kind === 'workflow_candidate' ? 'workflow' : 'rule'}" data-soft-standard-id="${e(standard.id)}">${e(content.slice(range.start, range.end))}</span><span class="skill-md-annotation ${annotationStateClass(standard.status)}" data-soft-standard-id="${e(standard.id)}" data-soft-standard-skill="${e(skillName)}"><span class="skill-md-annotation-icon" data-soft-standard-icon="${e(standard.status)}">${e(annotationStateIcon(standard.status))}</span><span class="skill-md-annotation-content"><strong>${e(kindLabel(standard.kind))}：</strong>${e(standard.title)}${renderCandidateActions(standard)}</span></span>`);
+        cursor = range.end;
+      }
+      parts.push(e(content.slice(cursor)));
+      return parts.join('');
+    };
+    const unlocatedStandards = sortedSoftStandards.filter((standard) => {
+      const content = chain.definition.content ?? '';
+      return !candidateSourceTexts(standard).some((text) => content.includes(text));
+    });
+    const renderUnlocatedCandidates = (): string => unlocatedStandards.length > 0
+      ? `<details class="skill-md-unlocated">
+          <summary>未定位到原文的候选 ${unlocatedStandards.length} 条</summary>
+          <div class="soft-standard-modal-list">${unlocatedStandards.map((standard) => `<div class="soft-standard-modal-item ${annotationStateClass(standard.status)}" data-soft-standard-id="${e(standard.id)}" data-soft-standard-skill="${e(skillName)}">
+            <div class="soft-standard-modal-head">
+              <span class="skill-md-annotation-icon" data-soft-standard-icon="${e(standard.status)}">${e(annotationStateIcon(standard.status))}</span>
+              <strong>${e(kindLabel(standard.kind))}：${e(standard.title)}</strong>
+              <span data-soft-standard-status="${e(standard.status)}">${e(softStandardStatusLabel(standard.status))}</span>
+            </div>
+            <div class="soft-standard-modal-body">${e(standard.body)}</div>
+            ${standard.evidence.length > 0 ? `<div class="soft-standard-modal-evidence">依据：${standard.evidence.map((entry) => e(entry)).join('；')}</div>` : ''}
+            <div class="soft-standard-actions">
+              <button type="button" data-soft-standard-action="author_confirmed" onclick="setSoftStandardStatus('${e(skillName)}', '${e(standard.id)}', 'author_confirmed', this)">确认</button>
+              <button type="button" data-soft-standard-action="rejected" onclick="setSoftStandardStatus('${e(skillName)}', '${e(standard.id)}', 'rejected', this)">否决</button>
+            </div>
+          </div>`).join('')}</div>
+        </details>`
+      : '';
+    const missingNotices = [
+      !hard.declared ? renderAdvisoryBlock(hard.advisoryCode, skillName) : '',
+      !workflows.declared ? renderAdvisoryBlock(workflows.advisoryCode, skillName) : '',
+    ].filter(Boolean).join('');
+    const detectedHardRuleStandards = sortedSoftStandards.filter((standard) =>
+      standard.kind === 'hard_rule_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
+    );
+    const detectedWorkflowStandards = sortedSoftStandards.filter((standard) =>
+      standard.kind === 'workflow_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
+    );
+    const detectedMarker = (status: SkillDerivedStandard['status']): string =>
+      status === 'author_confirmed' ? '✅' : '待';
+    const renderStructuredHardRules = (): string => hard.rules.length > 0
+      ? `<div class="standard-checklist">${hard.rules.map((rule) => `<article class="standard-check-item">
+          <div class="standard-check-marker" aria-hidden="true">✓</div>
+          <div class="standard-check-body">
+            <div class="standard-check-title"><code>${e(rule.id)}</code><strong>${e(rule.rule)}</strong></div>
+            <div class="standard-check-expectation">期望行为：${e(rule.expectedBehavior)}</div>
+          </div>
+        </article>`).join('')}</div>`
+      : `<div class="probe-anomaly">
+          <strong>未声明标准化 hardRules</strong>
+          <span>以下内容为规则检测结果；建议优化为能力定义文件顶部声明的标准化规则。</span>
+        </div>
+        ${detectedHardRuleStandards.length > 0
+          ? `<div class="standard-checklist">${detectedHardRuleStandards.map((standard) => `<article class="standard-check-item">
+              <div class="standard-check-marker" aria-hidden="true">${e(detectedMarker(standard.status))}</div>
+              <div class="standard-check-body">
+                <div class="standard-check-title"><code>${e(standard.id)}</code><strong>${e(standard.title)}</strong></div>
+                <div class="standard-check-expectation">${e(standard.body)}</div>
+              </div>
+            </article>`).join('')}</div>`
+          : '<p class="context-muted">暂未检测到可展示的规则结果。</p>'}`;
+    const workflowStandardNotice = !workflows.declared
+      ? `<div class="probe-anomaly">
+          <strong>未声明标准化 workflows</strong>
+          <span>以下内容为流程检测结果；建议优化为能力定义文件顶部声明的标准化流程。</span>
+        </div>`
+      : '';
+    const displayStepLabel = (id: string, index: number): string => {
+      const match = id.match(/^step[\s_-]*([0-9]+)$/i);
+      if (match) return `第 ${match[1]} 步`;
+      return id ? `流程节点 ${index + 1}` : `第 ${index + 1} 步`;
+    };
+    const displayWorkflowLabel = (id: string, index: number): string =>
+      id === 'markdown_steps' ? '正文流程节点' : `流程 ${index + 1}`;
+    const displayRuntimeCheckTitle = (title: string, id: string, index: number): string => {
+      const source = title || id;
+      const parts = source.split('/').map((part) => part.trim()).filter(Boolean);
+      if (parts.length >= 2 && parts[0] === 'markdown_steps') return `正文流程节点 / ${displayStepLabel(parts[1], index)}`;
+      if (/^markdown_steps[._-]step/i.test(id)) return `正文流程节点 / ${displayStepLabel(id.replace(/^markdown_steps[._-]/i, ''), index)}`;
+      if (/^step[\s_-]*[0-9]+$/i.test(source)) return displayStepLabel(source, index);
+      return source || `检查项 ${index + 1}`;
+    };
+    const shouldShowRuntimeCheckRawId = (id: string): boolean =>
+      Boolean(id) && !/^markdown_steps[._-]step/i.test(id) && id !== 'markdown_steps';
+    const renderStructuredWorkflows = (): string => workflows.workflows.length > 0
+      ? `${workflowStandardNotice}<div class="workflow-line-list">${workflows.workflows.map((workflow, workflowIndex) => `<article class="workflow-line">
+          <div class="workflow-line-head">
+            <strong>${e(displayWorkflowLabel(workflow.id, workflowIndex))}</strong>
+            <span>${workflow.source === 'markdown_headings' ? '正文流程探测' : '标准化声明'} · ${workflow.nodes.length} 个节点</span>
+          </div>
+          ${workflow.description ? `<div class="workflow-line-desc">${e(workflow.description)}</div>` : ''}
+          <div class="workflow-node-line">${workflow.nodes.map((node, index) => `<div class="workflow-node">
+            <div class="workflow-node-index">${index + 1}</div>
+            <div class="workflow-node-card">
+              <strong>${e(displayStepLabel(node.id, index))}</strong>
+              <span>${e(node.action)}</span>
+            </div>
+          </div>`).join('')}</div>
+        </article>`).join('')}</div>`
+      : `<div class="probe-anomaly">
+          <strong>未声明标准化 workflows</strong>
+          <span>以下内容为流程检测结果；建议优化为能力定义文件顶部声明的标准化流程。</span>
+        </div>
+        ${detectedWorkflowStandards.length > 0
+          ? `<div class="standard-checklist">${detectedWorkflowStandards.map((standard) => `<article class="standard-check-item">
+              <div class="standard-check-marker" aria-hidden="true">${e(detectedMarker(standard.status))}</div>
+              <div class="standard-check-body">
+                <div class="standard-check-title"><code>${e(standard.id)}</code><strong>${e(standard.title)}</strong></div>
+                <div class="standard-check-expectation">${e(standard.body)}</div>
+              </div>
+            </article>`).join('')}</div>`
+          : '<p class="context-muted">暂未检测到可展示的流程结果。</p>'}`;
+    const renderProbeLog = (): string => {
+      const hardErrors = hard.errors.length > 0 ? hard.errors.join('；') : '无';
+      const workflowErrors = workflows.errors.length > 0 ? workflows.errors.join('；') : '无';
+      const confirmedHardRules = detectedHardRuleStandards.filter((standard) => standard.status === 'author_confirmed').length;
+      const hardDeclareText = hard.declared
+        ? `已标准化声明 ${hard.count} 条`
+        : detectedHardRuleStandards.length > 0
+          ? `未标准化声明；已有规则检测结果 ${detectedHardRuleStandards.length} 条，其中人工确认 ${confirmedHardRules} 条`
+          : '未标准化声明；暂无规则检测结果';
+      const workflowDeclareText = workflows.source === 'frontmatter'
+        ? `已标准化声明 ${workflows.branchCount} 条链路 / ${workflows.nodeCount} 个节点`
+        : workflows.source === 'markdown_headings'
+          ? `未标准化声明；已从正文流程标题探测 ${workflows.branchCount} 条链路 / ${workflows.nodeCount} 个节点`
+          : '未声明';
+      return `<details class="probe-log" ${hard.rules.length === 0 || workflows.workflows.length === 0 ? 'open' : ''}>
+        <summary>原始探测信息</summary>
         <table>
           <tbody>
-            ${healthRows.map(([name, count, status]) => `<tr><th>${e(name)}</th><td>${e(count)}</td><td>${e(status)}</td></tr>`).join('')}
+            <tr><th>探测来源</th><td>${e(chain.healthCheck.source)}</td></tr>
+            <tr><th>规则声明</th><td>${e(hardDeclareText)}</td></tr>
+            <tr><th>规则异常</th><td>${e(hardErrors)}</td></tr>
+            <tr><th>流程声明</th><td>${e(workflowDeclareText)}</td></tr>
+            <tr><th>流程异常</th><td>${e(workflowErrors)}</td></tr>
           </tbody>
         </table>
+      </details>`;
+    };
+    const renderReviewSummary = (): string => {
+      const groups: Array<[string, SkillDerivedStandard[]]> = [
+        ['待确认', sortedSoftStandards.filter((standard) => standard.status === 'pending_review')],
+        ['已确认', sortedSoftStandards.filter((standard) => standard.status === 'author_confirmed')],
+        ['已否决', sortedSoftStandards.filter((standard) => standard.status === 'rejected')],
+        ['已过期', sortedSoftStandards.filter((standard) => standard.status === 'stale')],
+      ];
+      const meta = record
+        ? `<div class="review-log-meta">
+            <div>生成模型：${e(record.model)}</div>
+            <div>生成时间：${e(record.generatedAt.slice(0, 19).replace('T', ' '))}</div>
+            <div>Prompt：${e(record.promptId)} / ${e(record.promptVersion)}</div>
+          </div>`
+        : '<p class="context-muted">还没有候选提取记录。</p>';
+      const grouped = groups.map(([label, standards]) => `<section class="review-log-group">
+        <h4>${e(label)} ${standards.length}</h4>
+        ${standards.length > 0
+          ? `<ul>${standards.map((standard) => `<li><span>${e(kindLabel(standard.kind))}</span><strong>${e(standard.title)}</strong></li>`).join('')}</ul>`
+          : '<p class="context-muted">暂无</p>'}
+      </section>`).join('');
+      return `${meta}${grouped}`;
+    };
+    const runtimeStatusIcon = (status: string): string =>
+      status === 'passed' ? '✅' : status === 'attention' ? '❌' : '⏳';
+    const runtimeStatusLabel = (status: string): string =>
+      status === 'passed' ? '有数据支撑' : status === 'attention' ? '有异常' : '待补充';
+    const runtimeStepList = (checks: typeof chain.runtime.hardRules, kind: 'workflow' | 'rule'): string => checks.length > 0
+      ? `<ol class="runtime-step-list">${checks.map((check, index) => `<li class="runtime-step runtime-${e(check.status)}">
+          <div class="runtime-step-head">
+            <span class="runtime-step-index">${kind === 'workflow' ? `第 ${index + 1} 步` : `规则 ${index + 1}`}</span>
+            <span class="runtime-step-name">${e(displayRuntimeCheckTitle(check.title, check.id, index))}</span>
+            <span class="runtime-step-state" title="${e(runtimeStatusLabel(check.status))}">${runtimeStatusIcon(check.status)}</span>
+          </div>
+          <details class="runtime-step-detail">
+            <summary>执行细节</summary>
+            <div class="runtime-step-detail-body">
+              ${shouldShowRuntimeCheckRawId(check.id) ? `<code>原始编号：${e(check.id)}</code>` : ''}
+              ${check.reason ? `<p>${e(check.reason)}</p>` : ''}
+              ${check.evidenceSnippets.length > 0 ? `<ul>${check.evidenceSnippets.map((snippet) => `<li>${e(snippet)}</li>`).join('')}</ul>` : ''}
+            </div>
+          </details>
+        </li>`).join('')}</ol>`
+      : '<p class="context-muted">暂无可检查项。</p>';
+    const contextChainNav = `<nav class="context-chain-nav" aria-label="切换查看小节"><a href="#cc-${e(skillName)}-1">① 原始能力定义</a><a href="#cc-${e(skillName)}-2">② 检测结果</a><a href="#cc-${e(skillName)}-3">③ 运行时</a><a href="#cc-${e(skillName)}-4">④ 人工复盘</a><span class="context-chain-nav-hint">可向右滚动查看</span></nav>`;
+    return `${contextChainNav}<div class="context-chain-grid">
+      <section class="context-chain-panel" id="cc-${e(skillName)}-1">
+        <h3>① 原始能力定义 / 候选标注</h3>
+        ${chain.definition.found
+          ? `<div class="context-meta">SKILL.md：<code>${e(chain.definition.path ?? '')}</code></div>
+             <pre class="skill-md-source">${renderAnnotatedSkillMd(chain.definition.content ?? '')}${chain.definition.truncated ? '\n\n... 已截断，仅展示前 12000 字符' : ''}</pre>
+             ${renderUnlocatedCandidates()}`
+          : '<p class="context-muted">未找到能力定义文件：当前日志里能识别到这个能力，但本机目录没有对应定义。属于"定义不可用"，不是"作者没声明规则"。</p>'}
       </section>
-      <section class="context-chain-panel">
+      <section class="context-chain-panel" id="cc-${e(skillName)}-2">
+        <h3>② 检测结果 / 标准化建议</h3>
+        ${missingNotices || '<p class="context-muted">已探测到标准化声明，下面先看流程执行线，再看规则清单。</p>'}
+        <h4>流程执行线</h4>
+        ${renderStructuredWorkflows()}
+        <h4>规则清单</h4>
+        ${renderStructuredHardRules()}
+        ${renderProbeLog()}
+      </section>
+      <section class="context-chain-panel" id="cc-${e(skillName)}-3">
         <h3>③ 运行时</h3>
         <p class="context-muted">${e(chain.runtime.message)}</p>
         <table>
@@ -876,10 +1129,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <tr><th>无法自动判断</th><td>${chain.runtime.summary.manualReviewCount}</td></tr>
           </tbody>
         </table>
-        <h4>hardRules 运行时证据</h4>
-        ${runtimeCheckList(chain.runtime.hardRules)}
-        <h4>workflow 节点运行时证据</h4>
-        ${runtimeCheckList(chain.runtime.workflowNodes)}
+        <h4>流程运行时证据</h4>
+        ${runtimeStepList(chain.runtime.workflowNodes, 'workflow')}
+        <h4>规则运行时证据</h4>
+        ${runtimeStepList(chain.runtime.hardRules, 'rule')}
+      </section>
+      <section class="context-chain-panel" id="cc-${e(skillName)}-4">
+        <h3>④ 人工复盘状态</h3>
+        ${renderReviewSummary()}
       </section>
     </div>`;
   };
@@ -1027,6 +1284,294 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (verdict === 'reviewed') return 'review-reviewed';
     return '';
   };
+  const softStandardStatusLabel = (status: SkillDerivedStandard['status']): string => {
+    if (status === 'author_confirmed') return '作者已确认';
+    if (status === 'rejected') return '已否决';
+    if (status === 'stale') return '已过期';
+    return '待作者确认';
+  };
+  const cleanReportCopy = (value: string): string => value
+    .replace(/本次符合里程碑 1 的单个能力 \/ 单个目标报告范围。/g, '本次属于单个能力 / 单个目标报告范围。')
+    .replace(/本次是复杂链路，里程碑 1 只做降级展示，不强行拆分语义分支。/g, '本次是复杂链路，当前先做降级展示，不强行拆分语义分支。')
+    .replace(/里程碑 1 只做通用展示/g, '当前先做通用展示')
+    .replace(/后续里程碑再拆/g, '后续再拆')
+    .replace(/基于 deterministic 规则/g, '基于固定规则');
+  const fallbackSessionStory = (report: ExperienceReviewerReport): ExperienceReviewerReport['sessionStory'] => {
+    const stepByLabel = (label: string): ExperienceReviewerReport['chainSteps'][number] | undefined =>
+      report.chainSteps.find((step) => step.label === label);
+    const deliveryStep = stepByLabel('实际产物');
+    const feedbackStep = stepByLabel('用户反馈');
+    const hasFinalDeliveryAbsent = report.findings.some((finding) => finding.ruleSource === 'final_delivery_absent');
+    const hasUserPain = report.findings.some((finding) =>
+      finding.ruleSource === 'user_correction'
+      || finding.ruleSource === 'negative_feedback'
+      || finding.ruleSource === 'user_interruption'
+    );
+    const nodes = report.chainSteps.map((step) => ({
+      id: `fallback-story-${step.order}`,
+      order: step.order,
+      kind: step.label === '用户期待'
+        ? 'user_goal' as const
+        : step.label === '选择能力'
+          ? 'skill_invocation' as const
+          : step.label === '执行流程'
+            ? 'tool_execution' as const
+            : step.label === '实际产物'
+              ? 'delivery' as const
+              : 'user_feedback' as const,
+      label: step.label,
+      status: step.status,
+      text: cleanReportCopy(step.text),
+      evidenceRefs: step.evidenceRefs,
+    }));
+    return {
+      schemaVersion: 1,
+      summary: '这是从旧版复盘报告回填的语义链路；建议重新运行 observe inbox 生成完整链路数据。',
+      invocationCount: 0,
+      goalSliceCount: 0,
+      branchCount: 0,
+      progressUpdateCount: 0,
+      finalDeliverySignalCount: deliveryStep?.status === 'ok' ? 1 : 0,
+      mainlineNodeIds: nodes.map((node) => node.id),
+      goalSlices: [],
+      subagentDispatches: [],
+      skillLinks: [],
+      graph: {
+        nodes: nodes.map((node) => ({ id: node.id, label: node.label, kind: node.kind, status: node.status, detailNodeId: node.id })),
+        edges: nodes.slice(1).map((node, index) => ({ fromId: nodes[index].id, toId: node.id, label: '下一步' })),
+      },
+      nodes,
+      answers: [
+        {
+          key: 'goal_satisfaction',
+          label: '用户目标有没有被满足',
+          status: hasUserPain || hasFinalDeliveryAbsent ? 'attention' : deliveryStep?.status ?? 'unknown',
+          text: hasFinalDeliveryAbsent ? '没有发现最后交付产物，无法判断用户目标是否满足。' : '基于旧版报告，只能按交付和用户反馈信号粗略判断。',
+          evidenceRefs: [...(deliveryStep?.evidenceRefs ?? []), ...(feedbackStep?.evidenceRefs ?? [])],
+        },
+        {
+          key: 'declared_behavior_fit',
+          label: '行为是否符合能力用途',
+          status: stepByLabel('执行流程')?.status ?? 'unknown',
+          text: '基于旧版报告，只能从执行流程和工具失败信号粗略判断；标准化规则/流程请看定义链路。',
+          evidenceRefs: stepByLabel('执行流程')?.evidenceRefs ?? [],
+        },
+        {
+          key: 'user_feeling',
+          label: '用户是否觉得有用或绕路',
+          status: hasUserPain ? 'attention' : feedbackStep?.status ?? 'unknown',
+          text: cleanReportCopy(feedbackStep?.text ?? '没有看到明确用户反馈。'),
+          evidenceRefs: feedbackStep?.evidenceRefs ?? [],
+        },
+      ],
+    };
+  };
+  const renderReviewerReport = (report?: ExperienceReviewerReport): string => {
+    if (!report) return '';
+    const findingClass = (level: ExperienceReviewerReport['findings'][number]['level']): string =>
+      level === 'attention' ? 'rule-attention' : level === 'possible_false_positive' ? 'rule-sample' : 'rule-normal';
+    const findingLabel = (level: ExperienceReviewerReport['findings'][number]['level']): string =>
+      level === 'attention' ? '要看一眼' : level === 'possible_false_positive' ? '疑似误判' : '记录项';
+    const judgmentReviewLabel = (verdict?: string): string => {
+      if (verdict === 'real_issue') return '已同意';
+      if (verdict === 'not_issue') return '已否决';
+      if (verdict === 'needs_more_context') return '已留意见';
+      if (verdict === 'reviewed') return '已看过';
+      return '未标注';
+    };
+    const stepStatus = (status: ExperienceReviewerReport['chainSteps'][number]['status']): string =>
+      status === 'ok' ? '有证据' : status === 'attention' ? '需复核' : '未确认';
+    const storyStatusLabel = (status: ExperienceReviewerReport['sessionStory']['nodes'][number]['status']): string =>
+      status === 'ok' ? '有证据' : status === 'attention' ? '需复核' : '需人工判断';
+    const storyStatusClass = (status: ExperienceReviewerReport['sessionStory']['nodes'][number]['status']): string =>
+      status === 'ok' ? 'is-ok' : status === 'attention' ? 'is-attention' : 'is-unknown';
+    const reportModeLabel = report.mode === 'deterministic_milestone_1' || report.mode === 'deterministic_session_story' ? '规则生成，无模型判断' : report.mode;
+    const reportScopeLabel = report.scope.kind === 'single_skill_single_goal' ? '单次任务 / 单个能力' : '复杂链路，降级展示';
+    const evidenceKindLabel = (kind: ExperienceEvidenceRef['kind']): string => {
+      const labels: Record<ExperienceEvidenceRef['kind'], string> = {
+        user_message: '用户消息',
+        assistant_message: '助手回复',
+        tool_use: '工具调用',
+        tool_result: '工具结果',
+        skill_context: '能力说明',
+        runtime_context: '运行注入',
+        observation: '过程发现',
+      };
+      return labels[kind] ?? kind;
+    };
+    const metrics = report.oneLookMetrics;
+    const tokenUsage = metrics.tokenUsage;
+    const traceLinks = report.traceLinks.slice(0, 8);
+    const story = report.sessionStory ?? fallbackSessionStory(report);
+    const storyEvidenceButtons = (refs: ExperienceEvidenceRef[]): string => refs.length > 0
+      ? `<div class="session-story-evidence">${refs.slice(0, 4).map((ref) => `<button type="button" class="reviewer-trace-link" data-jump-message-index="${ref.messageIndex ?? ''}" data-jump-message-uuid="${e(ref.messageUuid ?? '')}" onclick="jumpToExperienceMessage(this)" title="切换到证据片段并定位到对应消息">#${e(String(ref.messageIndex ?? '-'))} ${e(evidenceKindLabel(ref.kind))}</button>`).join('')}</div>`
+      : '';
+    const storyKindLabel = (kind: ExperienceReviewerReport['sessionStory']['nodes'][number]['kind']): string => {
+      if (kind === 'user_goal') return '目标';
+      if (kind === 'skill_invocation') return '能力';
+      if (kind === 'subagent_branch') return '分支';
+      if (kind === 'tool_execution') return '执行';
+      if (kind === 'delivery') return '交付';
+      if (kind === 'user_feedback') return '反馈';
+      if (kind === 'goal_shift') return '切换';
+      return kind;
+    };
+    const skillRoleLabel = (role?: string): string => {
+      if (role === 'router') return '路由';
+      if (role === 'executor') return '执行';
+      if (role === 'mixed') return '路由 + 执行';
+      return '未确认';
+    };
+    const storyNodeById = new Map(story.nodes.map((node) => [node.id, node]));
+    const mainlineNodes = story.mainlineNodeIds
+      .map((id) => storyNodeById.get(id))
+      .filter((node): node is NonNullable<ReturnType<typeof storyNodeById.get>> => Boolean(node));
+    const renderStoryGraph = (): string => {
+      return `<div class="session-story-graph">
+        <div class="session-story-graph-main">
+          ${mainlineNodes.map((node, index) => `<button type="button" class="session-story-graph-node ${storyStatusClass(node.status)}" onclick="document.getElementById('${e(node.id)}')?.scrollIntoView({block:'nearest'})">
+            <span>${e(storyKindLabel(node.kind))}</span>
+            <strong>${e(node.label)}</strong>
+          </button>${index < mainlineNodes.length - 1 ? '<i>→</i>' : ''}`).join('')}
+        </div>
+        ${story.skillLinks.length > 0 ? `<div class="session-story-skill-lanes">
+          ${story.skillLinks.map((link) => `<div class="session-story-skill-lane">
+            <span>${e(skillRoleLabel(link.role))}</span>
+            <strong>${e(link.skillName)}</strong>
+            <em>${link.invocationIds.length} 次调用</em>
+          </div>`).join('')}
+        </div>` : ''}
+      </div>`;
+    };
+    const renderStoryGoalSlices = (): string => story.goalSlices.length > 0
+      ? `<div class="session-story-slices">
+        ${story.goalSlices.map((goal) => `<div class="session-story-slice">
+          <strong>目标段 ${goal.order}</strong>
+          <span>${e(goal.skillNames.join('、') || '未记录能力')}</span>
+          <p>${e(goal.inferredUserGoal ?? '未提取到明确用户目标')}</p>
+          ${storyEvidenceButtons(goal.evidenceRefs)}
+        </div>`).join('')}
+      </div>`
+      : '';
+    const renderStoryDispatches = (): string => story.subagentDispatches.length > 0
+      ? `<div class="session-story-dispatches">
+        ${story.subagentDispatches.map((dispatch) => `<div class="session-story-dispatch">
+          <strong>分支 ${dispatch.order}：${e(dispatch.label)}</strong>
+          <span>${dispatch.eventCount} 条事件${dispatch.attachTo?.messageIndex !== undefined ? ` · 挂接 #${dispatch.attachTo.messageIndex}` : ''}</span>
+          ${storyEvidenceButtons(dispatch.evidenceRefs)}
+        </div>`).join('')}
+      </div>`
+      : '';
+    return `<section class="reviewer-report" style="margin:0 0 14px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);text-align:left">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px">
+        <div>
+          <h3 style="font-size:14px;margin:0 0 5px;color:var(--text-primary)">复盘报告</h3>
+          <div style="font-size:13px;font-weight:700;color:var(--text-primary)">${e(report.title)}</div>
+          <div style="margin-top:4px;color:var(--text-muted);font-size:12px;line-height:1.5">${e(cleanReportCopy(report.summary))}</div>
+        </div>
+        <div style="flex:0 0 auto;text-align:right;color:var(--text-muted);font-size:11px;line-height:1.45">
+          <div>${e(reportModeLabel)}</div>
+          <div>${e(reportScopeLabel)}</div>
+        </div>
+      </div>
+      <section class="session-story">
+        <div class="session-story-head">
+          <div>
+            <h4>语义链路</h4>
+            <p>${e(story.summary)}</p>
+          </div>
+          <div class="session-story-meta">
+            <span>调用 ${story.invocationCount}</span>
+            <span>目标段 ${story.goalSliceCount}</span>
+            <span>分支 ${story.branchCount}</span>
+            <span>过程进展 ${story.progressUpdateCount}</span>
+            <span>交付候选 ${story.finalDeliverySignalCount}</span>
+          </div>
+        </div>
+        ${renderStoryGraph()}
+        <div class="session-story-answers">
+          ${story.answers.map((answer) => `<article class="session-story-answer ${storyStatusClass(answer.status)}">
+            <div>
+              <strong>${e(answer.label)}</strong>
+              <span>${e(storyStatusLabel(answer.status))}</span>
+            </div>
+            <p>${e(answer.text)}</p>
+            ${storyEvidenceButtons(answer.evidenceRefs)}
+          </article>`).join('')}
+        </div>
+        ${renderStoryGoalSlices()}
+        ${renderStoryDispatches()}
+        <div class="session-story-line">
+          ${story.nodes.map((node) => `<article class="session-story-node ${storyStatusClass(node.status)}">
+            <div class="session-story-node-index">${node.order}</div>
+            <div class="session-story-node-body">
+              <div class="session-story-node-title">
+                <strong>${e(node.label)}</strong>
+                <span>${e(storyStatusLabel(node.status))}</span>
+              </div>
+              <p>${e(node.text)}</p>
+              ${storyEvidenceButtons(node.evidenceRefs)}
+            </div>
+          </article>`).join('')}
+        </div>
+      </section>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-bottom:10px">
+        ${report.chainSteps.map((step) => `<div style="min-width:0;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--bg-surface)">
+          <div style="display:flex;justify-content:space-between;gap:6px;margin-bottom:5px">
+            <strong style="font-size:12px;color:var(--text-primary)">${step.order}. ${e(step.label)}</strong>
+            <span style="font-size:10px;color:var(--text-muted);font-family:ui-monospace,monospace">${e(stepStatus(step.status))}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-secondary);line-height:1.45;word-break:break-word">${e(step.text)}</div>
+        </div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:10px">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:6px">事实层判断</div>
+          <div class="rule-finding-list">
+            ${report.findings.map((finding) => `<div class="rule-finding ${findingClass(finding.level)} reviewer-judgment-card" data-reviewer-judgment-id="${e(finding.judgmentId)}" style="display:block;margin:0 0 6px;padding:8px 9px;border-radius:6px">
+              <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:4px">
+                <strong>${e(finding.title)}</strong>
+                <span class="rule-level">${e(findingLabel(finding.level))}</span>
+              </div>
+              <div style="font-size:11px;color:var(--text-secondary);line-height:1.45">${e(cleanReportCopy(finding.body))}</div>
+              <div style="margin-top:5px;font-family:ui-monospace,monospace;font-size:10px;color:var(--text-muted);word-break:break-all">ruleSource: ${e(finding.ruleSource)} / ruleVersion: ${e(finding.ruleVersion)}${finding.evidenceRefs[0]?.messageIndex !== undefined ? ` / evidence #${finding.evidenceRefs[0].messageIndex}` : ''}</div>
+              <div class="reviewer-judgment-review" data-reviewer-judgment-current="${e(finding.reviewStateRef.verdict ?? '')}">
+                <span data-reviewer-judgment-label>${e(judgmentReviewLabel(finding.reviewStateRef.verdict))}</span>
+                <button type="button" data-reviewer-judgment-verdict="real_issue" onclick="setReviewerJudgmentReview('${e(finding.judgmentId)}', 'real_issue', this)">同意</button>
+                <button type="button" data-reviewer-judgment-verdict="not_issue" onclick="setReviewerJudgmentReview('${e(finding.judgmentId)}', 'not_issue', this)">否决</button>
+                <button type="button" data-reviewer-judgment-verdict="needs_more_context" onclick="openReviewerJudgmentNote('${e(finding.judgmentId)}', this)">留意见</button>
+                ${finding.reviewStateRef.reason || finding.reviewStateRef.note ? `<small>${e(finding.reviewStateRef.reason ?? finding.reviewStateRef.note ?? '')}</small>` : ''}
+              </div>
+            </div>`).join('')}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:6px">一眼数据</div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px">
+            ${[
+              ['工具调用', metrics.toolCallCount],
+              ['工具失败', metrics.toolFailureCount],
+              ['用户消息', metrics.userMessageCount],
+              ['追问/补充', metrics.userFollowUpCount],
+              ['交付信号', metrics.assistantDeliverySignalCount],
+              ['原始事件', metrics.traceEventCount],
+            ].map(([label, value]) => `<div style="padding:7px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface)"><div style="font-size:10px;color:var(--text-muted)">${e(String(label))}</div><strong style="font-size:13px;color:var(--text-primary)">${e(String(value))}</strong></div>`).join('')}
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:8px">
+            Token 使用量（按本次能力片段归因）：输入 ${tokenUsage.inputTokens} / 输出 ${tokenUsage.outputTokens} / 缓存读取 ${tokenUsage.cacheReadTokens} / 缓存写入 ${tokenUsage.cacheCreationTokens}
+          </div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:6px">证据定位</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">
+            ${traceLinks.length > 0 ? traceLinks.map((ref) => `<button type="button" class="reviewer-trace-link" data-jump-message-index="${ref.messageIndex ?? ''}" data-jump-message-uuid="${e(ref.messageUuid ?? '')}" onclick="jumpToExperienceMessage(this)" title="切换到证据片段并定位到对应消息">#${e(String(ref.messageIndex ?? '-'))} ${e(evidenceKindLabel(ref.kind))}${ref.messageUuid ? ` / ${e(ref.messageUuid)}` : ''}</button>`).join('') : '<span style="color:var(--text-muted);font-size:11px">暂无可定位证据</span>'}
+          </div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:6px">给作者下一步</div>
+          <ul style="margin:0;padding-left:18px;color:var(--text-secondary);font-size:12px;line-height:1.55">
+            ${report.authorSuggestions.map((suggestion) => `<li>${e(suggestion)}</li>`).join('')}
+          </ul>
+        </div>
+      </div>
+    </section>`;
+  };
   const renderExperienceBasis = (codes: ExperienceReviewBasisCode[]): string => {
     if (codes.length === 0) return '<span style="color:var(--text-muted)">没有触发复盘优先级规则；进入常规抽样池</span>';
     return codes.map((code) => `<span style="display:inline-block;margin:0 4px 4px 0;padding:2px 6px;border-radius:999px;background:var(--bg-muted);color:var(--text-secondary);font-size:11px">${e(basisLabel(code))}</span>`).join('');
@@ -1040,7 +1585,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       negative_feedback_seen: { label: '负向反馈', description: '人工用户消息命中明确负向表达。' },
       positive_feedback_seen: { label: '正向反馈', description: '人工用户消息命中明确认可表达，仅作为正向证据展示。' },
       user_goal_shift_seen: { label: '用户切换目标', description: '人工用户消息命中“换个方向/先不/不用这个”等目标切换表达；这通常表示目标切走，不自动归因给 skill。' },
-      hard_rule_seen: { label: '用户硬性要求', description: '人工用户消息命中“必须/不要/禁止”等临时硬性要求。Skill 自身的强约束请看 Context Chain 里的 hardRules。' },
+      hard_rule_seen: { label: '用户硬性要求', description: '人工用户消息命中“必须/不要/禁止”等临时硬性要求。Skill 自身的强约束请看定义链路里的规则检测结果。' },
       tool_failure_seen: { label: '工具执行失败', description: 'tool_result 标记失败，表示执行过程中存在工具层失败。' },
       hedging_seen: { label: '不确定表达', description: '过程发现里存在“不确定/可能/需要确认”等低置信文本信号。' },
       explicit_marker_seen: { label: '显式缺口', description: '过程发现里存在“未知/知识缺口”等显式标记。' },
@@ -1085,11 +1630,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const renderEvidenceChain = (chain: ExperienceEvidenceChain): string => {
     const item = (label: string, value: number, title: string): string =>
       `<span class="evidence-chain-item" title="${e(title)}"><span>${e(label)}</span><strong>${value}</strong></span>`;
-    const anchor = (label: string, ref?: { messageIndex?: number; timestamp?: string; snippet?: string }): string => {
+    const anchor = (label: string, ref?: ExperienceEvidenceRef): string => {
       if (!ref) return '';
       const title = [ref.timestamp, ref.snippet].filter(Boolean).join(' · ');
       const msg = ref.messageIndex !== undefined ? `#${ref.messageIndex}` : '有记录';
-      return `<span class="evidence-anchor" title="${e(title)}">${e(label)} ${e(msg)}</span>`;
+      return `<button type="button" class="evidence-anchor" data-jump-message-index="${ref.messageIndex ?? ''}" data-jump-message-uuid="${e(ref.messageUuid ?? '')}" onclick="jumpToExperienceMessage(this)" title="${e(title || '切换并定位到对应消息')}">${e(label)} ${e(msg)}</button>`;
     };
     return `<div class="evidence-chain">
       <div class="evidence-chain-row">
@@ -1483,7 +2028,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      const fullTextAttrs = fullText
 	        ? ` data-timeline-fulltext="${e(fullText)}" data-timeline-fulltext-title="${e(meta.label)} #${event.messageIndex ?? '—'}" data-timeline-has-more="${hasMoreFullText ? '1' : '0'}" tabindex="${hasMoreFullText ? '0' : '-1'}"`
 	        : '';
-	      return `<div class="timeline-row timeline-${meta.tone}" data-timeline-tags="${e(searchTags.join(' '))}" data-current-skill-window="${allowMetricTags ? '1' : '0'}">
+	      return `<div class="timeline-row timeline-${meta.tone}" data-timeline-tags="${e(searchTags.join(' '))}" data-current-skill-window="${allowMetricTags ? '1' : '0'}" data-message-index="${event.messageIndex ?? ''}" data-message-uuid="${e(event.messageUuid ?? '')}" data-source-trace="${e(event.sourceTrace)}">
         <div class="timeline-marker">
           <span class="timeline-icon">${e(meta.icon)}</span>
           <span class="timeline-index" title="messageIndex 是各自 jsonl 文件内的索引，跨链路不可直接比较">${event.traceRole === 'subagent' ? '[sub] ' : event.traceRole === 'main' ? '[main] ' : ''}#${event.messageIndex ?? '—'}</span>
@@ -1631,27 +2176,29 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </div>`;
   };
   const renderTimelinePair = (session: ExperienceSessionSummary): string => `
-    ${renderTimelineScopeNotice(session)}
-    <div class="timeline-filter-toolbar" data-timeline-filter-toolbar>
-      <label>搜索标签</label>
-      <select data-timeline-tag-filter onchange="filterTimelineByTag(this)">
-        <option value="">全部标签</option>
-        <option value="completion">疑似完成 / 产出结果</option>
-        <option value="positive_feedback">用户正向反馈</option>
-        <option value="negative_feedback">用户负向反馈</option>
-        <option value="user_correction">用户纠正</option>
-        <option value="user_follow_up">追问 / 补充</option>
-        <option value="user_interruption">人工中断</option>
-        <option value="user_goal_shift">目标切换</option>
-        <option value="hard_rule">用户硬性要求</option>
-        <option value="tool_failure">工具执行失败</option>
-        <option value="hedging">不确定表达</option>
-        <option value="explicit_marker">显式缺口</option>
-      </select>
-      <span data-timeline-filter-count>选择标签后，只显示当前回溯里的命中事件。</span>
+    <div class="experience-detail-right timeline-pair-wrap" data-timeline-pair>
+      ${renderTimelineScopeNotice(session)}
+      <div class="timeline-filter-toolbar" data-timeline-filter-toolbar>
+        <label>搜索标签</label>
+        <select data-timeline-tag-filter onchange="filterTimelineByTag(this)">
+          <option value="">全部标签</option>
+          <option value="completion">疑似完成 / 产出结果</option>
+          <option value="positive_feedback">用户正向反馈</option>
+          <option value="negative_feedback">用户负向反馈</option>
+          <option value="user_correction">用户纠正</option>
+          <option value="user_follow_up">追问 / 补充</option>
+          <option value="user_interruption">人工中断</option>
+          <option value="user_goal_shift">目标切换</option>
+          <option value="hard_rule">用户硬性要求</option>
+          <option value="tool_failure">工具执行失败</option>
+          <option value="hedging">不确定表达</option>
+          <option value="explicit_marker">显式缺口</option>
+        </select>
+        <span data-timeline-filter-count>选择标签后，只显示当前回溯里的命中事件。</span>
+      </div>
+      <div data-timeline-view="segment">${renderExperienceTimeline(session.timelinePreview, session.id, { reviewSessionId: session.id })}</div>
+      <div data-timeline-view="full-session" style="display:none">${renderSessionTimelineTree(session)}</div>
     </div>
-    <div data-timeline-view="segment">${renderExperienceTimeline(session.timelinePreview, session.id, { reviewSessionId: session.id })}</div>
-    <div data-timeline-view="full-session" style="display:none">${renderSessionTimelineTree(session)}</div>
   `;
   const renderReviewRows = (groupItems: ObservationInboxItem[], idPrefix: string): string => groupItems.map((item, index) => {
     const evidence = semanticEvidence(item);
@@ -2063,6 +2610,36 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       </div>
     `).join('')}</div>`;
   };
+  const renderReviewerOverview = (session: ExperienceSessionSummary, detailId: string): string => {
+    const report = session.reviewerReport;
+    const story = session.sessionStory ?? (report ? report.sessionStory ?? fallbackSessionStory(report) : undefined);
+    if (!story) return '<span style="color:var(--text-muted);font-size:12px">暂无复盘报告</span>';
+    const answerText = story.answers
+      .map((answer) => `${answer.label.replace('用户', '')}：${answer.status === 'ok' ? '有证据' : answer.status === 'attention' ? '需复核' : '待判断'}`)
+      .join('；');
+    const mainline = story.mainlineNodeIds
+      .map((id) => story.nodes.find((node) => node.id === id)?.label)
+      .filter(Boolean)
+      .slice(0, 5)
+      .join(' → ');
+    return `<div class="reviewer-overview-cell">
+      <div class="reviewer-overview-title">${e(story.summary)}</div>
+      <div class="reviewer-overview-findings">
+        ${mainline ? `<span title="${e(mainline)}">主线：${e(mainline)}</span>` : ''}
+        ${story.subagentDispatches.length > 0 ? `<span>关键分叉：${story.subagentDispatches.map((dispatch) => dispatch.label).slice(0, 3).map(e).join('、')}</span>` : ''}
+        ${answerText ? `<span title="${e(answerText)}">${e(answerText)}</span>` : ''}
+      </div>
+      ${report ? `<button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this, 'reviewer')">查看报告详情</button>` : ''}
+    </div>`;
+  };
+  const sanitizeReviewerReportForDisplay = (report?: ExperienceReviewerReport): ExperienceReviewerReport | undefined => {
+    if (!report) return undefined;
+    return {
+      ...report,
+      summary: cleanReportCopy(report.summary),
+      findings: report.findings.map((finding) => ({ ...finding, body: cleanReportCopy(finding.body) })),
+    };
+  };
   const experienceSkillRows = (experience?.skills ?? []).map((skill) => {
     // L1 不再展示 priority badge（与左侧"优先复盘/抽样复盘"列冗余）；priority 仍在 L2 / 详情 modal 使用。
     const chainId = `context-chain-${experienceSkillAnchor(skill.skillName)}`;
@@ -2093,11 +2670,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <td class="num" title="skill 调用段数：同一个 session 内多次触发同一个 skill，会累计为多次调用段。" style="padding:9px 10px;text-align:right;font-weight:700">${skill.invocationCount}<br><span style="color:var(--text-muted);font-size:10px;font-weight:400">调用段</span></td>
       <td class="num" title="需要优先打开看证据的 session 数" style="padding:9px 6px;text-align:right;color:var(--red);font-weight:650">${skill.reviewFirstSessionCount}</td>
       <td class="num" title="适合抽样确认的 session 数" style="padding:9px 6px;text-align:right;color:var(--yellow);font-weight:650">${skill.sampleReviewSessionCount}${sampleReviewCta ? `<br>${sampleReviewCta}` : ''}</td>
-      <td data-no-rollup-click="1" style="padding:9px 10px;text-align:center">${renderSkillChainButton(skill.skillName, chainId)}</td>
+      <td data-no-rollup-click="1" style="padding:9px 10px;text-align:left">${renderSkillChainButton(skill.skillName, chainId)}${renderSkillChainSummary(skill.skillName)}</td>
       <td class="experience-evidence-cell" data-no-rollup-click="1" style="padding:8px 10px;color:var(--text-secondary);font-size:11px;line-height:1.45">
         ${renderSkillEvidenceSummary(skill)}
       </td>
-      <td data-no-rollup-click="1" style="padding:9px 10px;color:var(--text-secondary);font-size:11px;line-height:1.45">${renderSkillChainSummary(skill.skillName)}</td>
       <td style="padding:9px 10px;color:var(--text-muted);font-size:11px;line-height:1.45">
         <div>入口：${e(entrypointText)}</div>
         <div>${e(originText)}</div>
@@ -2107,7 +2683,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <td style="padding:9px 10px;color:var(--text-muted);font-size:12px">${e(skill.lastSeen.slice(0, 19).replace('T', ' '))}</td>
     </tr>
     <tr id="${e(chainId)}" data-context-chain-template style="display:none">
-      <td colspan="9">${renderSkillChainTemplate(skill.skillName)}</td>
+      <td colspan="8">${renderSkillChainTemplate(skill.skillName)}</td>
     </tr>`;
   }).join('');
   const renderExperienceSessionRows = (sessions: ExperienceSessionSummary[], idPrefix: string): string => sessions.map((session, index) => {
@@ -2126,6 +2702,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       ? `触发判断：通过斜杠命令触发 ${commandNames.join('、')}`
       : `触发判断：${attributionSources.map(formatAttributionSource).join('、') || '未记录'}`;
     const sessionOpenClawMetadata = renderSessionOpenClawSourceMetadata(session);
+    const hasReviewerReport = Boolean(session.reviewerReport);
     return `<tr data-observe-experience-session data-experience-session-id="${e(session.id)}">
       <td style="padding:9px 10px">
         ${renderPriorityBadge(shownPriority)}
@@ -2135,6 +2712,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <td style="padding:9px 10px;font-family:ui-monospace,monospace;font-size:12px;color:var(--text-muted);word-break:break-all">${e(session.sessionId)}<br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--accent)">入口：${e(formatEntrypoint(session.entrypoint))}</span><br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--text-muted)">${e(sessionOriginText)}</span><br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--text-muted)">${e(sessionAttributionText)}</span>${sessionOpenClawMetadata ? `<br>${sessionOpenClawMetadata}` : ''}</td>
       <td style="padding:9px 10px">${renderInvocationSummary(indicators, session.invocationIds.length)}</td>
       <td style="padding:9px 10px;color:var(--text-secondary);line-height:1.45">${renderSessionGoals(session.goalSliceIds)}</td>
+      <td style="padding:9px 10px;color:var(--text-secondary);line-height:1.45">${renderReviewerOverview(session, detailId)}</td>
       <td style="padding:9px 10px">${renderRuleFindings(shownRuleFindings, true)}</td>
       <td style="padding:9px 10px;color:var(--text-secondary);font-size:12px;line-height:1.55">
         ${metric('纠正', indicators.userCorrectionCount, 'userCorrection', sessionMetricSourceTitle(session, 'user_correction', '纠正'))} ·
@@ -2150,11 +2728,19 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         <div>${e(formatTimeRange(session.sourceSessionStartTimestamp ?? session.startTimestamp, session.sourceSessionEndTimestamp ?? session.endTimestamp, session.sourceSessionDurationMs))}</div>
         <div style="margin-top:3px;color:var(--text-muted);font-size:11px">${e(invocationWindowLabel)}: ${e(formatTimeRange(session.startTimestamp, session.endTimestamp))}</div>
       </td>
-      <td class="num" style="padding:9px 10px;text-align:right"><button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this)" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer;white-space:nowrap">回溯详情</button></td>
+      <td class="num" style="padding:9px 10px;text-align:right"><button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this, 'evidence')" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer;white-space:nowrap">证据片段</button></td>
     </tr>
     <tr id="${detailId}" data-experience-detail-template style="display:none;background:var(--bg-muted)">
-      <td colspan="8" style="padding:0;border-bottom:1px solid var(--border);text-align:left">
+      <td colspan="9" style="padding:0;border-bottom:1px solid var(--border);text-align:left">
         <div class="experience-detail-shell">
+        <div class="experience-detail-tabs" role="tablist" aria-label="Session 回溯视图">
+          ${hasReviewerReport ? '<button type="button" class="experience-detail-tab-button is-active" role="tab" aria-selected="true" data-experience-detail-tab="reviewer" onclick="switchExperienceDetailTab(\'reviewer\')">复盘报告</button>' : ''}
+          <button type="button" class="experience-detail-tab-button ${hasReviewerReport ? '' : 'is-active'}" role="tab" aria-selected="${hasReviewerReport ? 'false' : 'true'}" data-experience-detail-tab="evidence" onclick="switchExperienceDetailTab('evidence')">证据片段</button>
+        </div>
+        ${hasReviewerReport ? `<section class="experience-detail-tab-panel experience-detail-report-panel is-active" role="tabpanel" data-experience-detail-panel="reviewer">
+          ${renderReviewerReport(session.reviewerReport)}
+        </section>` : ''}
+        <section class="experience-detail-tab-panel experience-detail-evidence-panel ${hasReviewerReport ? '' : 'is-active'}" role="tabpanel" data-experience-detail-panel="evidence">
         <div class="experience-detail-grid" style="display:grid;grid-template-columns:minmax(0,.6fr) minmax(0,1.4fr);gap:16px;align-items:stretch">
           <section class="experience-detail-left">
             <h3 style="font-size:13px;margin:0 0 8px;color:var(--text-primary)">证据链（C1）</h3>
@@ -2175,17 +2761,19 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               <div>关联过程发现：${session.relatedObservationIds.length}</div>
               <div style="margin-top:8px">${renderExperienceBasis(shownBasisCodes)}</div>
             </div>
-            ${renderJson({ id: session.id, sourceTrace: session.sourceTrace, sourceMetadata: session.sourceMetadata, cwd: session.cwd, sourceSessionStartTimestamp: session.sourceSessionStartTimestamp, sourceSessionEndTimestamp: session.sourceSessionEndTimestamp, sourceSessionDurationMs: session.sourceSessionDurationMs, invocationStartTimestamp: session.startTimestamp, invocationEndTimestamp: session.endTimestamp, evidenceChain, ruleFindings: shownRuleFindings, assistiveInference: shownInference, reviewState: reviewState.entries[reviewStateKey('experience_session', session.id)], indicators, relatedObservationIds: session.relatedObservationIds })}
+            ${renderJson({ id: session.id, sourceTrace: session.sourceTrace, sourceMetadata: session.sourceMetadata, cwd: session.cwd, sourceSessionStartTimestamp: session.sourceSessionStartTimestamp, sourceSessionEndTimestamp: session.sourceSessionEndTimestamp, sourceSessionDurationMs: session.sourceSessionDurationMs, invocationStartTimestamp: session.startTimestamp, invocationEndTimestamp: session.endTimestamp, sessionStory: session.sessionStory, evidenceChain, ruleFindings: shownRuleFindings, assistiveInference: shownInference, reviewerReport: sanitizeReviewerReportForDisplay(session.reviewerReport), reviewState: reviewState.entries[reviewStateKey('experience_session', session.id)], indicators, relatedObservationIds: session.relatedObservationIds })}
           </section>
           <section class="experience-detail-right">
             <h3 style="font-size:13px;margin:0 0 8px;color:var(--text-primary)">C1 上下文时间线片段</h3>
             ${renderTimelinePair(session)}
           </section>
         </div>
+        </section>
         </div>
       </td>
     </tr>`;
   }).join('');
+  void experienceSkillRows;
   const sessionSkillOrder = new Map((experience?.skills ?? []).map((skill, index) => [skill.skillName, index]));
   const experienceSessionGroups = Array.from((experience?.sessions ?? []).reduce((map, session) => {
     const group = map.get(session.skillName) ?? [];
@@ -2227,6 +2815,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">Session</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">调用摘要</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">用户目标切片</th>
+            <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">报告总览</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">C2 规则判断</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">关键指标</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">${e(sessionTimeRangeLabel)}</th>
@@ -2237,14 +2826,18 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       </div>
     </details>`;
   }).join('');
+  void experienceSessionGroupsHtml;
   const experienceIndicators = experience?.skills.reduce((acc, skill) => ({
     toolCallCount: acc.toolCallCount + skill.indicators.toolCallCount,
     toolFailureCount: acc.toolFailureCount + skill.indicators.toolFailureCount,
     userInterruptionCount: acc.userInterruptionCount + skill.indicators.userInterruptionCount,
   }), { toolCallCount: 0, toolFailureCount: 0, userInterruptionCount: 0 }) ?? { toolCallCount: 0, toolFailureCount: 0, userInterruptionCount: 0 };
   const experienceToolSuccessCount = Math.max(0, experienceIndicators.toolCallCount - experienceIndicators.toolFailureCount);
+  void experienceToolSuccessCount;
   const experienceReviewSkillCount = experience?.skills.filter((skill) => skill.reviewFirstSessionCount + skill.sampleReviewSessionCount > 0).length ?? 0;
+  void experienceReviewSkillCount;
   const experienceReviewSessionCount = experience?.sessions.filter((session) => session.reviewPriority !== 'routine_sample').length ?? 0;
+  void experienceReviewSessionCount;
   const experienceReviewFirstSessionCount = experience?.sessions.filter((session) => session.reviewPriority === 'review_first').length ?? 0;
   const experienceSampleReviewSessionCount = experience?.sessions.filter((session) => session.reviewPriority === 'sample_review').length ?? 0;
   const experienceHardRuleCount = experience?.sessions.reduce((sum, session) =>
@@ -2286,69 +2879,654 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         ${experienceInsightCta}
       </div>`
     : '';
+  void experienceTopInsightHtml;
+	  const inboxSessions = (experience?.sessions ?? []).slice();
+	  const inboxSiblingsMap = new Map<string, ExperienceSessionSummary[]>();
+	  for (const skill of inboxSessions) {
+	    const arr = inboxSiblingsMap.get(skill.sessionId) ?? [];
+	    arr.push(skill);
+	    inboxSiblingsMap.set(skill.sessionId, arr);
+	  }
+	  for (const arr of inboxSiblingsMap.values()) {
+	    arr.sort((a, b) => a.startTimestamp.localeCompare(b.startTimestamp));
+	  }
+	  type InboxSkillCard = {
+	    skillName: string;
+	    sessions: ExperienceSessionSummary[];
+	    priority: ExperienceReviewPriority;
+	    latestEnd: string;
+	  };
+	  const inboxSkillsMap = new Map<string, ExperienceSessionSummary[]>();
+	  for (const s of inboxSessions) {
+	    const arr = inboxSkillsMap.get(s.skillName) ?? [];
+	    arr.push(s);
+	    inboxSkillsMap.set(s.skillName, arr);
+	  }
+	  const inboxPriorityRank = (priority: ExperienceReviewPriority): number => priority === 'review_first' ? 0 : priority === 'sample_review' ? 1 : 2;
+	  const inboxSkillCards: InboxSkillCard[] = Array.from(inboxSkillsMap.entries()).map(([skillName, sessions]) => {
+	    sessions.sort((a, b) => b.endTimestamp.localeCompare(a.endTimestamp));
+	    const priority = sessions.find((s) => s.reviewPriority === 'review_first')
+	      ? 'review_first'
+	      : sessions.find((s) => s.reviewPriority === 'sample_review')
+	        ? 'sample_review'
+	        : 'routine_sample';
+	    const latestEnd = sessions.reduce((latest, s) => s.endTimestamp > latest ? s.endTimestamp : latest, '');
+	    return { skillName, sessions, priority, latestEnd };
+	  });
+	  inboxSkillCards.sort((a, b) => inboxPriorityRank(a.priority) - inboxPriorityRank(b.priority) || b.latestEnd.localeCompare(a.latestEnd) || a.skillName.localeCompare(b.skillName));
+	  const inboxSkillCardReviewed = (card: InboxSkillCard): boolean =>
+	    card.sessions.every((s) => Boolean(reviewState.entries[`experience_session:${s.id}`]));
+	  const inboxReviewFirstCount = inboxSkillCards.filter((c) => c.priority === 'review_first').length;
+	  const inboxSampleCount = inboxSkillCards.filter((c) => c.priority === 'sample_review').length;
+	  const inboxReviewedCount = inboxSkillCards.filter(inboxSkillCardReviewed).length;
+	  const inboxTotalCount = inboxSkillCards.length;
+	  const inboxFormatDuration = (ms?: number): string => {
+	    if (!ms || ms <= 0) return '—';
+	    const totalSec = Math.round(ms / 1000);
+	    if (totalSec < 60) return `${totalSec} 秒`;
+	    const min = Math.floor(totalSec / 60);
+	    const sec = totalSec % 60;
+	    if (min < 60) return sec > 0 ? `${min} 分 ${sec} 秒` : `${min} 分钟`;
+	    const hour = Math.floor(min / 60);
+	    return `${hour} 小时 ${min % 60} 分`;
+	  };
+	  const inboxTopSession = (card: InboxSkillCard): ExperienceSessionSummary | undefined =>
+	    card.sessions.find((s) => s.reviewPriority === 'review_first')
+	    ?? card.sessions.find((s) => s.reviewPriority === 'sample_review')
+	    ?? card.sessions[0];
+	  const inboxSkillGoalLine = (card: InboxSkillCard): string => {
+	    const storyGoal = card.sessions.flatMap((s) => s.sessionStory?.goalSlices ?? [])
+	      .find((goal) => inboxCleanSnippet(goal.inferredUserGoal));
+	    const directGoal = card.sessions.find((s) => inboxCleanSnippet(s.evidenceChain.firstUserMessage?.snippet))?.evidenceChain.firstUserMessage?.snippet;
+	    const goal = inboxExtractKeyword(storyGoal?.inferredUserGoal ?? directGoal, 48);
+	    return goal ? `用户目标：${goal}` : '用户目标：未提取';
+	  };
+	  const inboxSkillMainline = (card: InboxSkillCard): string => {
+	    const story = card.sessions.find((s) => s.sessionStory?.skillLinks?.length)?.sessionStory;
+	    const links = story?.skillLinks ?? card.sessions.map((s) => ({
+	      skillName: s.skillName,
+	      role: 'executor' as const,
+	    }));
+	    const currentLink = links.find((link) => link.skillName === card.skillName);
+	    const roleText = currentLink ? inboxSkillRoleLabel(currentLink.role) : '执行';
+	    const chain = links
+	      .slice(0, 5)
+	      .map((link) => `${link.skillName}〔${inboxSkillRoleLabel(link.role)}〕`)
+	      .join(' → ');
+	    const delivery = story?.finalDeliverySignalCount && story.finalDeliverySignalCount > 0 ? ' → 交付' : '';
+	    return chain ? `${card.skillName}〔${roleText}〕 · 主线：用户目标 → ${chain}${delivery}` : `${card.skillName}〔${roleText}〕 · 未提取到明确执行主线`;
+	  };
+	  const inboxCardStatus = (card: InboxSkillCard): string => {
+	    const answers = card.sessions.flatMap((s) => s.sessionStory?.answers ?? []);
+	    const goal = answers.find((a) => a.key === 'goal_satisfaction');
+	    if (goal?.status === 'attention') return '需复核';
+	    if (goal?.status === 'ok') return '可能满足';
+	    if (card.sessions.some((s) => (s.reviewerReport?.oneLookMetrics.finalDeliverySignalCount ?? 0) > 0)) return '有交付候选';
+	    return '未见交付';
+	  };
+	  const inboxChainDots = (card: InboxSkillCard): string => {
+	    const top = card.sessions.find((s) => (s.reviewerReport?.chainSteps?.length ?? 0) > 0) ?? card.sessions[0];
+	    const steps = top?.reviewerReport?.chainSteps ?? [];
+	    if (steps.length === 0) return '';
+	    return `<div class="inbox-card-dots" title="这条 session 的 5 步复盘状态">${steps.map((step) => {
+	      const dotClass = step.status === 'attention' ? 'is-attention' : step.status === 'unknown' ? 'is-unknown' : 'is-ok';
+	      return `<span class="inbox-card-dot ${dotClass}" title="${step.order}. ${e(step.label)} · ${step.status === 'attention' ? '需复核' : step.status === 'unknown' ? '未确认' : '有证据'}"></span>`;
+	    }).join('')}</div>`;
+	  };
+	  const inboxFindingChips = (card: InboxSkillCard): string => {
+	    const findings = card.sessions.flatMap((s) => s.reviewerReport?.findings ?? []).filter((finding) => finding.level === 'attention');
+	    const seen = new Set<string>();
+	    const top: typeof findings = [];
+	    for (const f of findings) {
+	      if (seen.has(f.title)) continue;
+	      seen.add(f.title);
+	      top.push(f);
+	      if (top.length >= 3) break;
+	    }
+	    if (top.length === 0) return '';
+	    return `<div class="inbox-card-chips">${top.map((finding) => `<span class="inbox-card-chip is-attention" title="${e(finding.body)}">${e(finding.title)}</span>`).join('')}</div>`;
+	  };
+	  const inboxReviewBadge = (card: InboxSkillCard): string => {
+	    const verdicts: string[] = [];
+	    for (const s of card.sessions) {
+	      const v = reviewState.entries[`experience_session:${s.id}`]?.verdict;
+	      if (v) verdicts.push(v);
+	    }
+	    if (verdicts.length === 0) return '';
+	    const total = card.sessions.length;
+	    if (verdicts.length < total) return `<span class="inbox-card-state is-reviewed">已标注 ${verdicts.length}/${total}</span>`;
+	    if (verdicts.every((v) => v === 'real_issue')) return `<span class="inbox-card-state is-agree">已同意</span>`;
+	    if (verdicts.every((v) => v === 'not_issue')) return `<span class="inbox-card-state is-reject">已否决</span>`;
+	    if (verdicts.every((v) => v === 'needs_more_context')) return `<span class="inbox-card-state is-note">留意见</span>`;
+	    return `<span class="inbox-card-state is-reviewed">已处理</span>`;
+	  };
+	  const inboxPriorityClass = (card: InboxSkillCard): string => {
+	    if (card.priority === 'review_first') return 'is-priority-high';
+	    if (card.priority === 'sample_review') return 'is-priority-medium';
+	    return 'is-priority-low';
+	  };
+	  const inboxEntrypointShort = (session: ExperienceSessionSummary): string => formatEntrypoint(session.entrypoint) || '未记录';
+	  const inboxFormatSessionLabel = (session: ExperienceSessionSummary): string => {
+	    const time = session.endTimestamp ? session.endTimestamp.slice(0, 16).replace('T', ' ') : '';
+	    const entrypoint = inboxEntrypointShort(session);
+	    const sessionShort = session.sessionId.length > 10 ? `${session.sessionId.slice(0, 8)}…` : session.sessionId;
+	    return [`Session ${sessionShort}`, entrypoint !== '未记录' ? entrypoint : '', time].filter(Boolean).join(' · ') || 'Session 调用记录';
+	  };
+	  const inboxCard = (card: InboxSkillCard, index: number): string => {
+	    const filters: string[] = [card.priority, 'all'];
+	    if (inboxSkillCardReviewed(card)) filters.push('reviewed');
+	    const topSession = inboxTopSession(card);
+	    const duration = inboxFormatDuration(topSession?.sourceSessionDurationMs);
+	    const entrypoint = topSession ? inboxEntrypointShort(topSession) : '未记录';
+	    const sessionCountChip = card.sessions.length > 1 ? `<span title="${card.skillName} 有 ${card.sessions.length} 次调用记录">${card.sessions.length} 次调用</span>` : '';
+	    const goalLine = inboxSkillGoalLine(card);
+	    const mainline = inboxSkillMainline(card);
+	    return `<li class="inbox-card ${inboxPriorityClass(card)} ${index === 0 ? 'is-active' : ''}" data-inbox-card="${e(card.skillName)}" data-inbox-filters="${e(filters.join(' '))}" onclick="selectInboxCard('${e(card.skillName)}', this)">
+	      <div class="inbox-card-row inbox-card-row-title">
+	        <span class="inbox-card-priority"></span>
+	        <span class="inbox-card-title" title="${e(card.skillName)}">${e(card.skillName)}</span>
+	        ${inboxReviewBadge(card)}
+	      </div>
+	      <div class="inbox-card-goal" title="${e(goalLine)}">${e(goalLine)}</div>
+	      <div class="inbox-card-story" title="${e(mainline)}">${e(mainline)}</div>
+	      ${inboxChainDots(card)}
+	      ${inboxFindingChips(card)}
+	      <div class="inbox-card-row inbox-card-meta">
+	        <span title="这条 session 的执行时长">执行 ${e(duration)}</span>
+	        <span title="入口来源">入口 ${e(entrypoint)}</span>
+	        <span title="目标满足判断">${e(inboxCardStatus(card))}</span>
+	        ${sessionCountChip}
+	      </div>
+	    </li>`;
+	  };
+	  const inboxStatusBadge = (status: 'ok' | 'attention' | 'unknown'): string => {
+	    if (status === 'attention') return '<span class="inbox-answer-status is-attention">需复核</span>';
+	    if (status === 'unknown') return '<span class="inbox-answer-status is-unknown">待判断</span>';
+	    return '<span class="inbox-answer-status is-ok">有证据</span>';
+	  };
+	  const inboxSkillRoleLabel = (role: 'router' | 'executor' | 'mixed' | 'unknown'): string => {
+	    if (role === 'router') return '路由';
+	    if (role === 'executor') return '执行';
+	    if (role === 'mixed') return '路由 + 执行';
+	    return '未确定';
+	  };
+	  const inboxFlowItem = (cardSkillName: string, skill: ExperienceSessionSummary, index: number, isCurrent: boolean): string => {
+	    const link = skill.sessionStory?.skillLinks?.find((l) => l.skillName === skill.skillName);
+	    const roleLabel = link ? inboxSkillRoleLabel(link.role) : '执行';
+	    const indicators = displayIndicatorsForSession(skill);
+	    const dur = formatTimeRange(skill.startTimestamp, skill.endTimestamp);
+	    const priorityLabel = skill.reviewPriority === 'review_first' ? '需复核' : skill.reviewPriority === 'sample_review' ? '抽样' : '常规';
+	    const priorityCls = skill.reviewPriority === 'review_first' ? 'is-priority-high' : skill.reviewPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
+	    const currentCls = isCurrent ? 'is-current' : '';
+	    const tag = isCurrent ? '<span class="inbox-flow-current-tag">当前查看</span>' : '';
+	    const sameSkill = skill.skillName === cardSkillName;
+	    const jumpAction = sameSkill
+	      ? `selectInboxSessionTab('${e(cardSkillName)}', '${e(skill.id)}')`
+	      : `selectInboxCardById('${e(skill.skillName)}', '${e(skill.id)}')`;
+	    const jumpAttrs = isCurrent ? '' : ` data-inbox-jump-card="${e(sameSkill ? skill.id : skill.skillName)}"`;
+	    return `<li class="inbox-flow-item ${priorityCls} ${currentCls}">
+	      <div class="inbox-flow-anchor"${jumpAttrs}${!isCurrent ? ` onclick="${jumpAction}"` : ''} role="button">
+	        <span class="inbox-flow-index">${index + 1}</span>
+	        <div class="inbox-flow-body">
+	          <div class="inbox-flow-title"><strong>${e(skill.skillName)}</strong><em>${e(roleLabel)}</em><span class="inbox-flow-priority">${priorityLabel}</span>${tag}</div>
+	          <div class="inbox-flow-meta">调用段 ${skill.invocationIds.length} · 工具 ${indicators.toolCallCount} · 失败 ${indicators.toolFailureCount} · ${e(dur)}</div>
+	        </div>
+	      </div>
+	    </li>`;
+	  };
+	  const inboxRenderSessionFlow = (cardSkillName: string, session: ExperienceSessionSummary, siblings: ExperienceSessionSummary[], summaryText: string): string => {
+	    const goalSlices = session.sessionStory?.goalSlices ?? [];
+	    const dispatches = session.sessionStory?.subagentDispatches ?? [];
+	    const siblingHint = siblings.length > 1 ? `<span class="inbox-section-hint">本 session 共 ${siblings.length} 个能力调用段，下面高亮当前 ${e(session.skillName)}</span>` : '<span class="inbox-section-hint">这条 session 只触发了当前能力</span>';
+	    return `<div class="inbox-flow-popover-content">
+	      <header class="inbox-flow-popover-head">
+	        <strong>Session 执行过程</strong>
+	        <span class="inbox-section-summary is-neutral">${e(summaryText)}</span>
+	        ${siblingHint}
+	      </header>
+	      <div class="inbox-flow-popover-body">
+	        <ol class="inbox-flow-list">${siblings.map((sib, index) => inboxFlowItem(cardSkillName, sib, index, sib.id === session.id)).join('')}</ol>
+	        ${goalSlices.length > 0 ? `<div class="inbox-flow-slices"><h4>用户目标段</h4>${goalSlices.map((goal) => `<div class="inbox-flow-slice"><strong>目标段 ${goal.order}</strong><span>${e(goal.skillNames.join('、') || '未记录能力')}</span><p>${e(goal.inferredUserGoal ?? '未提取到明确用户目标')}</p></div>`).join('')}</div>` : ''}
+	        ${dispatches.length > 0 ? `<div class="inbox-flow-dispatches"><h4>子任务分支</h4>${dispatches.map((d) => `<div class="inbox-flow-dispatch"><strong>分支 ${d.order}：${e(d.label)}</strong><span>${d.eventCount} 条事件${d.attachTo?.messageIndex !== undefined ? ` · 挂接 #${d.attachTo.messageIndex}` : ''}</span></div>`).join('')}</div>` : ''}
+	      </div>
+	    </div>`;
+	  };
+	  const inboxAnswerEvidenceButtons = (refs: ExperienceEvidenceRef[]): string => {
+	    if (!refs || refs.length === 0) return '';
+	    const ref = refs[0];
+	    const kindLabel = ({
+	      user_message: '用户消息',
+	      assistant_message: '助手回复',
+	      tool_use: '工具调用',
+	      tool_result: '工具结果',
+	      skill_context: '能力说明',
+	      runtime_context: '运行注入',
+	      observation: '过程发现',
+	    } as Record<string, string>)[ref.kind] ?? ref.kind;
+	    return `<div class="inbox-answer-evidence"><button type="button" class="inbox-answer-evidence-link" data-jump-message-index="${ref.messageIndex ?? ''}" data-jump-message-uuid="${e(ref.messageUuid ?? '')}" onclick="inboxJumpToEvidence(this)" title="定位到消息 #${e(String(ref.messageIndex ?? '-'))} · ${e(kindLabel)}">跳转原文</button></div>`;
+	  };
+	  const inboxPlaceholderRe = /^\s*(?:NO_REPLY(?:_NEEDED)?|END_OF_REPLY|::FORWARD-?OK::|NO_OP|NULL|UNDEFINED|\.\.\.|—|--)\s*$/i;
+	  const inboxCronPromptRe = /^\s*\[cron:[^\]]+\]\s*/i;
+	  const inboxCleanSnippet = (text?: string): string => {
+	    if (!text) return '';
+	    let cleaned = text.replace(/\s+/g, ' ').trim();
+	    cleaned = cleaned.replace(inboxCronPromptRe, '');
+	    if (inboxPlaceholderRe.test(cleaned)) return '';
+	    return cleaned;
+	  };
+	  const inboxExtractKeyword = (text?: string, max = 36): string => {
+	    const cleaned = inboxCleanSnippet(text);
+	    if (!cleaned) return '';
+	    if (cleaned.length <= max) return cleaned;
+	    return `${cleaned.slice(0, max)}…`;
+	  };
+	  const inboxExtractGoalKeywords = (text?: string): string => {
+	    const cleaned = inboxCleanSnippet(text);
+	    if (!cleaned) return '';
+	    const withoutTags = cleaned
+	      .replace(/<command-name>([^<]+)<\/command-name>/gi, ' $1 ')
+	      .replace(/<[^>]+>/g, ' ')
+	      .replace(/[“”"']/g, ' ')
+	      .replace(/\s+/g, ' ')
+	      .trim();
+	    const candidates: string[] = [];
+	    const push = (value?: string): void => {
+	      const normalized = (value ?? '').replace(/^[\s:：/]+|[\s:：/。！？,，；;]+$/g, '').trim();
+	      if (!normalized || normalized.length < 2) return;
+	      if (['这个', '这里', '内容', '当前', '现在', '一下', '能力', '文档', '代码', '需求'].includes(normalized)) return;
+	      if (!candidates.includes(normalized)) candidates.push(normalized);
+	    };
+	    const generationTarget = withoutTags.match(/(?:重新|再次|继续)?\s*(?:生成|创建|写|产出|实现|做|搭建)\s*([A-Za-z0-9_-]*demo|DEMO|Demo|[\u4e00-\u9fa5A-Za-z0-9_-]{2,18}(?:页面|报告|文档|方案|代码|原型|Demo|demo))/i);
+	    if (generationTarget) {
+	      const target = generationTarget[1].replace(/^一个|^一份|^这个/, '').trim();
+	      push(/demo/i.test(target) ? 'Demo生成' : `${target}生成`);
+	    }
+	    if (/prd|产品需求文档/i.test(withoutTags)) {
+	      push(/生成|创建|写|产出|create/i.test(withoutTags) ? 'PRD生成' : 'PRD');
+	    }
+	    const objectPatterns = [
+	      /([\u4e00-\u9fa5A-Za-z0-9_-]{2,18})的(评价|评论|复盘|报告|方案|文档|脚本)/g,
+	      /(评价|评论|复盘|review|检查|查看|修改|优化)\s*([\u4e00-\u9fa5A-Za-z0-9_-]{2,18})/gi,
+	      /(run-[A-Za-z0-9_-]+|[A-Za-z0-9_-]+\.sh|PR\s*\d+|PRD|OpenClaw|Grafana|session|skill)/gi,
+	    ];
+	    for (const pattern of objectPatterns) {
+	      let match: RegExpExecArray | null;
+	      while ((match = pattern.exec(withoutTags))) {
+	        if (match.length >= 3) {
+	          push(match[1].length <= match[2].length ? `${match[2]}${match[1]}` : `${match[1]}${match[2]}`);
+	        } else {
+	          push(match[1]);
+	        }
+	        if (candidates.length >= 2) break;
+	      }
+	      if (candidates.length >= 2) break;
+	    }
+	    if (candidates.length === 0) {
+	      if (/调用\s*skill|使用\s*skill|skill/i.test(withoutTags)) push('skill调用');
+	      else if (/review|评审|评价|复盘|检查/i.test(withoutTags)) push('review');
+	      else if (/写代码|代码|实现|修复|开发|code/i.test(withoutTags)) push('代码修改');
+	      else if (/看文档|文档|阅读|查看文档|doc/i.test(withoutTags)) push('文档查看');
+	      else if (/需求|requirement/i.test(withoutTags)) push('需求分析');
+	    }
+	    return candidates.slice(0, 2).join(' / ');
+	  };
+	  const inboxAnswerChecklist = (skill: ExperienceSessionSummary, answerKey: string): string => {
+	    const goalKeywords = inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet);
+	    const deliverySnippet = inboxExtractKeyword(skill.evidenceChain?.lastAssistantMessage?.snippet, 60);
+	    const chain = skillChains[skill.skillName];
+	    const hasGoalKeyword = goalKeywords.length > 0;
+	    const hasDelivery = skill.indicators.assistantDeliverySignalCount > 0 || Boolean(deliverySnippet);
+	    const hasSkillDescriptionHit = (skill.evidenceChain?.skillContextCount ?? 0) > 0;
+	    const workflowNodes = chain?.runtime.workflowNodes ?? [];
+	    const hasCompleteWorkflow = workflowNodes.length > 0 && workflowNodes.every((node) => node.status === 'passed');
+	    const hardRuleChecks = chain?.runtime.hardRules ?? [];
+	    const hasExecutedHardRules = hardRuleChecks.length > 0 && hardRuleChecks.every((rule) => rule.status === 'passed');
+	    const hasNegativeFeedback = skill.indicators.negativeFeedbackCount > 0 || skill.indicators.userCorrectionCount > 0;
+	    const hasFollowUp = skill.indicators.userFollowUpCount > 0;
+	    const hasSupplementContext = skill.indicators.userFollowUpCount > 0 || skill.indicators.userMessageCount > 1;
+	    const hasInterruption = skill.indicators.userInterruptionCount > 0;
+	    const checks = answerKey === 'goal_satisfaction'
+	      ? [
+	          { label: `用户目标关键字：${goalKeywords || '未提取到'}`, ok: hasGoalKeyword },
+	          { label: '有结果产物', ok: hasDelivery },
+	          { label: '用户针对结果产物反复追问', ok: hasFollowUp },
+	        ]
+	      : answerKey === 'declared_behavior_fit'
+	        ? [
+	            { label: 'skill描述命中用户提问', ok: hasSkillDescriptionHit },
+	            { label: '完整workflow执行', ok: hasCompleteWorkflow },
+	            { label: '硬性规则是否执行', ok: hasExecutedHardRules },
+	          ]
+	        : [
+	            { label: '用户有负面反馈如反驳、不满等', ok: hasNegativeFeedback },
+	            { label: '用户有追问', ok: hasFollowUp },
+	            { label: '用户有重新补充上下文/文档', ok: hasSupplementContext },
+	            { label: '用户有中断流程', ok: hasInterruption },
+	          ];
+	    return `<div class="inbox-answer-checklist">${checks.map((check) => `<span class="inbox-answer-check ${check.ok ? 'is-ok' : 'is-missing'}"><span class="inbox-answer-check-icon">${check.ok ? '✅' : '待'}</span>${e(check.label)}</span>`).join('')}</div>`;
+	  };
+	  const inboxRenderSuggestionsBlock = (skill: ExperienceSessionSummary, title: string, keywords: string[]): string => {
+	    const all = skill.reviewerReport?.authorSuggestions ?? [];
+	    if (all.length === 0) return '';
+	    const matched = keywords.length === 0
+	      ? all
+	      : all.filter((s) => keywords.some((kw) => s.includes(kw)));
+	    const list = matched.length > 0 ? matched : (keywords.length === 0 ? all : []);
+	    if (list.length === 0) return '';
+	    return `<div class="inbox-suggestion-block">
+	      <div class="inbox-suggestion-title">${e(title)}</div>
+	      <ul>${list.slice(0, 3).map((s) => `<li>${e(s)}</li>`).join('')}</ul>
+	    </div>`;
+	  };
+	  const inboxBuildSkillActionSuggestions = (skill: ExperienceSessionSummary): string[] => {
+	    const suggestions: string[] = [];
+	    const chain = skillChains[skill.skillName];
+	    const findings = skill.reviewerReport?.findings ?? [];
+	    const hasFinding = (source: string): boolean => findings.some((finding) => finding.ruleSource === source);
+	    const storyAnswers = skill.sessionStory?.answers ?? [];
+	    const goalAnswer = storyAnswers.find((answer) => answer.key === 'goal_satisfaction');
+	    if (chain && (!chain.healthCheck.hardRules.declared || !chain.healthCheck.workflows.declared)) {
+	      suggestions.push('优化这个 skill 的标准化 workflow 和 hardRule，把执行步骤、检查点、失败降级写成可观测的结构。示例：在 SKILL.md 顶部声明 workflows: [{ id: main, nodes: [{ id: collect_context, action: "读取必需上下文" }, { id: deliver, action: "输出最终产物并标记完成" }] }]，同时声明 hardRules 说明必须停下确认的条件。');
+	    }
+	    if (
+	      hasFinding('final_delivery_absent')
+	      || goalAnswer?.status === 'attention'
+	      || goalAnswer?.status === 'unknown'
+	      || (skill.reviewerReport?.oneLookMetrics.finalDeliverySignalCount ?? 0) === 0
+	    ) {
+	      suggestions.push('优化完成情况判断：明确什么算最后交付产物，过程进展不要当成交付，并保留可回溯证据。示例：能力最后一次回复需要带明确的完成标记（"已完成 / 结果如下 / 已生成"）或附上产物（代码块、文档链接）。');
+	    }
+	    if (hasFinding('user_hard_rule') || skill.indicators.hardRuleTextHitCount > 0) {
+	      suggestions.push('把用户反复提出的硬性要求沉淀到 skill 规则或流程检查点，减少依赖用户临时纠偏。示例：如果用户多次强调"不要写入隐私数据"，就在 hardRules 中加入"禁止将真实用户隐私写入测试、日志或报告"，并在 workflow 的交付前增加隐私检查节点。');
+	    }
+	    if (skill.indicators.toolFailureCount > 0 || hasFinding('tool_error_recovery')) {
+	      suggestions.push('补充工具失败后的恢复和降级路径，让失败处理也能被 workflow 覆盖。示例：读取文件失败时先说明缺失文件和影响，再尝试备用路径或让用户确认，而不是继续按默认假设生成结果。');
+	    }
+	    if (
+	      skill.indicators.userCorrectionCount > 0
+	      || skill.indicators.negativeFeedbackCount > 0
+	      || skill.indicators.userFollowUpCount > 0
+	    ) {
+	      suggestions.push('补强用户满意度判断：把追问、纠正、负向反馈作为改进输入，而不是只看是否调用完成。示例：如果交付后用户继续说"不对 / 不是这个 / 重新来"，报告里应标记为满意度待复核，并定位到对应用户原文。');
+	    }
+	    const deduped: string[] = [];
+	    for (const suggestion of suggestions) {
+	      if (!deduped.includes(suggestion)) deduped.push(suggestion);
+	    }
+	    return deduped.slice(0, 4);
+	  };
+	  const inboxRenderSkillActionSummary = (sessions: ExperienceSessionSummary[]): string => {
+	    const suggestions: string[] = [];
+	    for (const session of sessions) {
+	      for (const suggestion of inboxBuildSkillActionSuggestions(session)) {
+	        if (!suggestions.includes(suggestion)) suggestions.push(suggestion);
+	      }
+	    }
+	    if (suggestions.length === 0) return '';
+	    const renderSuggestion = (suggestion: string): string => {
+	      const [main, example] = suggestion.split('示例：');
+	      return `<li class="inbox-action-suggestion-item">
+	        <div class="inbox-action-suggestion-main">${e(main.trim())}</div>
+	        ${example ? `<div class="inbox-action-suggestion-example"><span>示例</span><p>${e(example.trim())}</p></div>` : ''}
+	      </li>`;
+	    };
+	    return `<section class="inbox-skill-summary-suggestions">
+	      <details class="inbox-suggestion-block is-action" open>
+	        <summary class="inbox-suggestion-title">给 skill 作者的优化建议</summary>
+	        <ol>${suggestions.slice(0, 5).map(renderSuggestion).join('')}</ol>
+	      </details>
+	    </section>`;
+	  };
+	  const inboxRenderSkillCompletion = (skill: ExperienceSessionSummary): string => {
+	    const report = skill.reviewerReport;
+	    const story = skill.sessionStory;
+	    const answers = story?.answers ?? [];
+	    const reviewEntry = reviewState.entries[`experience_session:${skill.id}`];
+	    const existingNote = reviewEntry?.reason ?? reviewEntry?.note ?? '';
+	    const safeId = e(skill.id);
+	    return `<article class="inbox-skill-block">
+	      <header class="inbox-skill-head">
+	        <div><h4>${e(skill.skillName)}</h4><span class="inbox-skill-subtitle">${e(report?.title ?? '常规观测')}</span></div>
+	        ${report?.summary ? `<p class="inbox-skill-summary">${e(cleanReportCopy(report.summary))}</p>` : ''}
+	      </header>
+	      ${answers.length > 0 ? `<div class="inbox-answer-grid">
+	        ${answers.map((answer) => `<article class="inbox-answer ${answer.status === 'attention' ? 'is-attention' : answer.status === 'unknown' ? 'is-unknown' : 'is-ok'}">
+	          <div class="inbox-answer-head"><strong>${e(answer.label)}</strong>${inboxStatusBadge(answer.status)}</div>
+	          ${inboxAnswerChecklist(skill, answer.key)}
+	          ${inboxAnswerEvidenceButtons(answer.evidenceRefs)}
+	        </article>`).join('')}
+	      </div>` : '<p class="inbox-skill-empty">这条能力调用暂未生成完成情况判断。</p>'}
+	      <div class="inbox-detail-actions" data-inbox-detail-actions data-inbox-session-id="${safeId}">
+	        <div class="inbox-detail-actions-row"><strong class="inbox-detail-actions-title">人工标注</strong><span class="inbox-detail-actions-meta">针对能力 ${e(skill.skillName)}</span></div>
+	        <div class="inbox-detail-actions-buttons">
+	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'real_issue' ? 'is-active' : ''}" data-inbox-verdict="real_issue" onclick="setInboxSessionReview('${safeId}', 'real_issue', this)">同意</button>
+	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'not_issue' ? 'is-active' : ''}" data-inbox-verdict="not_issue" onclick="setInboxSessionReview('${safeId}', 'not_issue', this)">否决</button>
+	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'needs_more_context' ? 'is-active' : ''}" data-inbox-verdict="needs_more_context" onclick="toggleInboxNoteEditor('${safeId}', this)">留意见</button>
+	        </div>
+	        <div class="inbox-note-editor" data-inbox-note-editor="${safeId}" style="display:${reviewEntry?.verdict === 'needs_more_context' || existingNote ? 'block' : 'none'}">
+	          <textarea class="inbox-note-textarea" data-inbox-note-input="${safeId}" placeholder="留下你的意见或补充上下文（保存后会写入 review-state）" rows="2">${e(existingNote)}</textarea>
+	          <div class="inbox-note-editor-buttons">
+	            <button type="button" class="inbox-note-save" onclick="saveInboxSessionNote('${safeId}', this)">保存意见</button>
+	            <button type="button" class="inbox-note-cancel" onclick="closeInboxNoteEditor('${safeId}')">收起</button>
+	          </div>
+	        </div>
+	      </div>
+	    </article>`;
+	  };
+	  const inboxInvocationsById = new Map<string, ExperienceInvocation>();
+	  for (const inv of experience?.invocations ?? []) inboxInvocationsById.set(inv.id, inv);
+	  const inboxGetSessionInvocations = (session: ExperienceSessionSummary): ExperienceInvocation[] =>
+	    session.invocationIds.map((id) => inboxInvocationsById.get(id)).filter((v): v is ExperienceInvocation => Boolean(v));
+	  const inboxGetSessionToolCounts = (session: ExperienceSessionSummary): Record<string, number> => {
+	    const out: Record<string, number> = {};
+	    for (const inv of inboxGetSessionInvocations(session)) {
+	      for (const [k, v] of Object.entries(inv.toolCounts ?? {})) out[k] = (out[k] ?? 0) + v;
+	    }
+	    return out;
+	  };
+	  const inboxBuildToolDetail = (session: ExperienceSessionSummary): Array<{ name: string; count: number }> => {
+	    const counts = inboxGetSessionToolCounts(session);
+	    return Object.entries(counts)
+	      .map(([name, count]) => ({ name, count }))
+	      .sort((a, b) => b.count - a.count);
+	  };
+	  const inboxBuildToolFailureDetail = (session: ExperienceSessionSummary): Array<{ name: string; count: number }> => {
+	    const invocations = inboxGetSessionInvocations(session);
+	    const failures: Record<string, number> = {};
+	    for (const inv of invocations) {
+	      for (const event of inv.timeline) {
+	        if (event.kind === 'tool_result' && event.isError && event.toolName) {
+	          failures[event.toolName] = (failures[event.toolName] ?? 0) + 1;
+	        }
+	      }
+	    }
+	    return Object.entries(failures).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+	  };
+	  const inboxMetricCardJson = (detail: Array<{ name: string; count: number }>): string =>
+	    e(JSON.stringify(detail));
+	  const inboxRenderSkillRuntime = (skill: ExperienceSessionSummary): string => {
+	    const report = skill.reviewerReport;
+	    const metrics = report?.oneLookMetrics;
+	    const templateId = `inbox-skill-chain-${experienceSkillAnchor(skill.skillName)}-${e(skill.id)}`;
+	    const evidenceJumpId = `inbox-sec-evidence-${e(skill.id)}`;
+	    const toolDetail = inboxBuildToolDetail(skill);
+	    const toolFailureDetail = inboxBuildToolFailureDetail(skill);
+	    const indicators = skill.indicators;
+	    const tokenDetail: Array<{ name: string; count: number }> = metrics?.tokenUsage ? [
+	      { name: '输入 token', count: metrics.tokenUsage.inputTokens },
+	      { name: '输出 token', count: metrics.tokenUsage.outputTokens },
+	      { name: 'cache 读取', count: metrics.tokenUsage.cacheReadTokens },
+	      { name: 'cache 写入', count: metrics.tokenUsage.cacheCreationTokens },
+	    ] : [];
+	    type MetricCard = {
+	      key: string;
+	      label: string;
+	      value: number;
+	      detail: Array<{ name: string; count: number }>;
+	      note: string;
+	      anomaly: boolean;
+	    };
+	    const cards: MetricCard[] = !metrics ? [] : [
+	      { key: 'toolCall', label: '工具调用', value: metrics.toolCallCount, detail: toolDetail, note: '本次能力调用段内触发的工具调用总数及各类工具的命中分布。', anomaly: false },
+	      { key: 'toolFailure', label: '工具失败', value: metrics.toolFailureCount, detail: toolFailureDetail, note: '工具执行返回失败的次数。命中失败可在版块 ④ 看具体上下文。', anomaly: metrics.toolFailureCount > 0 },
+	      { key: 'userMessage', label: '用户消息', value: metrics.userMessageCount, detail: [], note: '本次能力调用段内的真实人工用户消息条数（已剔除 Skill 文档注入和运行时注入）。', anomaly: false },
+	      { key: 'userFollowUp', label: '追问', value: metrics.userFollowUpCount, detail: [], note: '能力交付后继续追问、补充的次数。次数偏多可能表示交付不够完整。', anomaly: indicators.userFollowUpCount > 0 },
+	      { key: 'userCorrection', label: '纠正', value: indicators.userCorrectionCount, detail: [], note: '用户明确纠正、否决前一轮交付的次数。出现即建议进版块 ④ 看上下文。', anomaly: indicators.userCorrectionCount > 0 },
+	      { key: 'userInterruption', label: '人工中断', value: indicators.userInterruptionCount, detail: [], note: '用户在执行过程中主动中断的次数。可能意味着方向跑偏。', anomaly: indicators.userInterruptionCount > 0 },
+	      { key: 'negativeFeedback', label: '负向反馈', value: indicators.negativeFeedbackCount, detail: [], note: '用户出现明确负向情绪表达的次数。', anomaly: indicators.negativeFeedbackCount > 0 },
+	      { key: 'delivery', label: '交付候选', value: metrics.assistantDeliverySignalCount, detail: [], note: '回答中出现疑似交付信号（如代码块、"已完成"等）的次数。', anomaly: false },
+	      { key: 'progress', label: '过程进展', value: metrics.assistantProgressUpdateCount ?? 0, detail: [], note: '回答中出现"正在 / 仍在 / 进度更新"等过程进展信号的次数。这类不算最终交付。', anomaly: false },
+	      { key: 'tokenInput', label: '输入 token', value: metrics.tokenUsage?.inputTokens ?? 0, detail: tokenDetail, note: '按本次能力调用段累计的 token 用量。', anomaly: false },
+	      { key: 'tokenOutput', label: '输出 token', value: metrics.tokenUsage?.outputTokens ?? 0, detail: tokenDetail, note: '按本次能力调用段累计的 token 用量。', anomaly: false },
+	    ];
+	    const metricRow = cards.length === 0
+	      ? '<p class="inbox-skill-empty">这条能力调用没有运行指标。</p>'
+	      : `<div class="inbox-metric-grid-wrap"><div class="inbox-metric-hint">点击任意指标卡可查看分布详情，红色卡片是检测到的异常。</div><div class="inbox-metric-grid">${cards.map((card) => `<button type="button" class="inbox-metric-card ${card.anomaly ? 'is-anomaly' : ''}" title="点击查看 ${e(card.label)} 详情" data-metric-key="${e(card.key)}" data-metric-label="${e(card.label)}" data-metric-value="${card.value}" data-metric-detail="${inboxMetricCardJson(card.detail)}" data-metric-note="${e(card.note)}" data-metric-anomaly="${card.anomaly ? '1' : '0'}" data-metric-jump="${evidenceJumpId}" onclick="openInboxMetricPopover(this)"><span>${e(card.label)}</span><strong>${card.value}</strong><em class="inbox-metric-card-hint">点击看详情</em></button>`).join('')}</div></div>`;
+	    const runtimeSuggestions = inboxRenderSuggestionsBlock(skill, '执行细节下一步建议', ['工具', '规则', '流程', '失败', '硬性']);
+	    return `<article class="inbox-skill-block">
+	      <header class="inbox-skill-head"><div><h4>${e(skill.skillName)}</h4><span class="inbox-skill-subtitle">运行指标 + 规则 / 流程</span></div></header>
+	      ${metricRow}
+	      <div class="inbox-skill-chain">${renderSkillChainTemplate(skill.skillName)}</div>
+	      ${runtimeSuggestions}
+	      <input type="hidden" data-inbox-skill-chain-template-id="${e(templateId)}">
+	    </article>`;
+	  };
+	  const inboxRenderEvidence = (session: ExperienceSessionSummary, summaryText: string): string => {
+	    const indicators = displayIndicatorsForSession(session);
+	    const shownRuleFindings = displayRuleFindings(session, indicators);
+	    const shownInference = displayAssistiveInference(indicators, session.assistiveInference);
+	    const evidenceChain = session.evidenceChain ?? fallbackEvidenceChain(session);
+	    const safeId = e(session.id);
+	    const evidenceClass = indicators.toolFailureCount > 0 ? 'is-attention' : 'is-neutral';
+	    return `<section class="inbox-section is-collapsed" data-inbox-section="evidence" id="inbox-sec-evidence-${safeId}">
+	      <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
+	        <h3>③ 原文回溯</h3>
+	        <span class="inbox-section-summary ${evidenceClass}">${e(summaryText)}</span>
+	        <span class="inbox-section-hint">展开看当前能力调用段的证据链、规则命中、时间线</span>
+	        <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">展开</button>
+	      </header>
+	      <div class="inbox-section-body">
+	        <div class="inbox-evidence-grid">
+	          <section>
+	            <h4>证据链</h4>
+	            ${renderEvidenceChain(evidenceChain)}
+	            <h4>规则命中</h4>
+	            ${renderRuleFindings(shownRuleFindings)}
+	            <h4>复盘建议</h4>
+	            ${renderAssistiveInference(shownInference)}
+	          </section>
+	          <section>
+	            ${renderTimelinePair(session)}
+	          </section>
+	        </div>
+	      </div>
+	    </section>`;
+	  };
+	  const inboxRenderSessionContent = (cardSkillName: string, session: ExperienceSessionSummary, isActive: boolean): string => {
+	    const siblings = inboxSiblingsMap.get(session.sessionId) ?? [session];
+	    const indicators = displayIndicatorsForSession(session);
+	    const safeId = e(session.id);
+	    const completionAttentionCount = (session.reviewerReport?.findings ?? []).filter((f) => f.level === 'attention').length;
+	    const completionSummaryText = completionAttentionCount > 0
+	      ? `${completionAttentionCount} 项要看一眼`
+	      : '未见高优复盘点';
+	    const completionSummaryClass = completionAttentionCount > 0 ? 'is-attention' : 'is-ok';
+	    const chainForSkill = skillChains[session.skillName];
+	    const runtimeIssues: string[] = [];
+	    if (chainForSkill) {
+	      if (!chainForSkill.healthCheck.hardRules.declared) runtimeIssues.push('未标准化规则声明');
+	      if (!chainForSkill.healthCheck.workflows.declared) runtimeIssues.push('未标准化流程声明');
+	    }
+	    if (indicators.toolFailureCount > 0) runtimeIssues.push(`工具失败 ${indicators.toolFailureCount} 次`);
+	    const runtimeSummaryText = runtimeIssues.length > 0 ? runtimeIssues.join(' · ') : '运行指标无异常';
+	    const runtimeSummaryClass = runtimeIssues.length > 0 ? 'is-attention' : 'is-ok';
+	    const flowSummaryText = siblings.length > 1 ? `${siblings.length} 个能力调用段` : '单一能力调用段';
+	    const flowTemplateId = `inbox-flow-template-${safeId}`;
+	    const evidenceSummaryText = `工具 ${indicators.toolCallCount} · 失败 ${indicators.toolFailureCount} · 用户消息 ${indicators.userMessageCount}`;
+	    const navItems = [
+	      { id: `inbox-sec-completion-${safeId}`, label: '① 完成情况' },
+	      { id: `inbox-sec-runtime-${safeId}`, label: '② 执行细节' },
+	      { id: `inbox-sec-evidence-${safeId}`, label: '③ 原文回溯' },
+	    ];
+	    const navHtml = `<nav class="inbox-detail-nav" aria-label="跳到对应版块">${navItems.map((item) => `<a href="#${item.id}" data-inbox-nav onclick="scrollInboxSectionIntoView('${item.id}', event)">${item.label}</a>`).join('')}</nav>`;
+	    return `<article class="inbox-session-pane ${isActive ? 'is-active' : ''}" data-session-pane="${safeId}">
+	      <div class="inbox-session-meta">
+	        <span>Session <code>${e(session.sessionId)}</code></span>
+	        <span>执行 ${e(inboxFormatDuration(session.sourceSessionDurationMs))}</span>
+	        <span>入口 ${e(inboxEntrypointShort(session))}</span>
+	        <span>调用段 ${session.invocationIds.length}</span>
+	        <span>工具调用 ${indicators.toolCallCount}</span>
+	      </div>
+	      ${navHtml}
+	      <template id="${flowTemplateId}">${inboxRenderSessionFlow(cardSkillName, session, siblings, flowSummaryText)}</template>
+	      <section class="inbox-section" data-inbox-section="completion" id="inbox-sec-completion-${safeId}">
+	        <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
+	          <h3>① 能力完成情况</h3>
+	          <span class="inbox-section-summary ${completionSummaryClass}">${e(completionSummaryText)}</span>
+	          <span class="inbox-section-hint">${e(session.skillName)} 是否满足用户目标 / 是否符合能力定义 / 用户感受</span>
+	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">收起</button>
+	        </header>
+	        <div class="inbox-section-body">${inboxRenderSkillCompletion(session)}</div>
+	      </section>
+	      <section class="inbox-section is-collapsed" data-inbox-section="runtime" id="inbox-sec-runtime-${safeId}">
+	        <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
+	          <h3>② 能力执行细节</h3>
+	          <span class="inbox-section-summary ${runtimeSummaryClass}">${e(runtimeSummaryText)}</span>
+	          <span class="inbox-section-hint">默认折叠；展开看运行指标和能力定义链路</span>
+	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">展开</button>
+	        </header>
+	        <div class="inbox-section-body">${inboxRenderSkillRuntime(session)}</div>
+	      </section>
+	      ${inboxRenderEvidence(session, evidenceSummaryText)}
+	    </article>`;
+	  };
+	  const inboxDetail = (card: InboxSkillCard, index: number): string => {
+	    const safeSkill = e(card.skillName);
+	    const sessionTabs = card.sessions.length > 0
+	      ? `<div class="inbox-session-tabs" role="tablist" aria-label="切换 ${e(card.skillName)} 的调用记录">${card.sessions.map((s, i) => {
+	          const label = inboxFormatSessionLabel(s);
+	          const flowTemplateId = `inbox-flow-template-${e(s.id)}`;
+	          const priorityCls = s.reviewPriority === 'review_first' ? 'is-priority-high' : s.reviewPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
+	          return `<span class="inbox-session-tab-item">
+	            <button type="button" class="inbox-session-tab ${priorityCls} ${i === 0 ? 'is-active' : ''}" data-session-tab="${e(s.id)}" onclick="selectInboxSessionTab('${safeSkill}', '${e(s.id)}', this)" title="${e(s.sessionId)}">${e(label)}</button>
+	            <button type="button" class="inbox-session-flow-chip" onclick="openInboxSessionFlowPopover('${flowTemplateId}', this, event)" title="查看这条 session 的执行过程">查看过程</button>
+	          </span>`;
+	        }).join('')}</div>`
+	      : '';
+	    return `<article class="inbox-detail-pane ${index === 0 ? 'is-active' : ''}" data-inbox-detail="${safeSkill}">
+	      ${inboxRenderSkillActionSummary(card.sessions)}
+	      ${sessionTabs}
+	      <div class="inbox-session-panes">${card.sessions.map((s, i) => inboxRenderSessionContent(card.skillName, s, i === 0)).join('')}</div>
+	    </article>`;
+	  };
+	  const inboxCardListHtml = inboxSkillCards.length === 0
+	    ? `<li class="inbox-card-empty">没有可展示的观测记录。</li>`
+	    : inboxSkillCards.map((card, index) => inboxCard(card, index)).join('');
+	  const inboxDetailListHtml = inboxSkillCards.length === 0
+	    ? `<article class="inbox-detail-pane is-active inbox-detail-empty-pane">运行 omk observe ingest &lt;sessions-dir&gt; 后这里会展示完整复盘报告。</article>`
+	    : inboxSkillCards.map((card, index) => inboxDetail(card, index)).join('');
 	  const experienceSection = experience ? `
-	      <section style="margin-top:16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);overflow:hidden">
-	        <div style="padding:13px 14px;border-bottom:1px solid var(--border)">
-	          <h2 style="font-size:15px;margin:0;color:var(--text-primary)">V1 · Skill 实战复盘${activeSkill ? ` · ${e(activeSkill)}` : ''}</h2>
-          <div style="color:var(--text-muted);font-size:12px;margin-top:4px">
-            这一层只做证据展开和复盘优先级排序，不自动给 skill 打最终好坏结论。路径是：Skill 总览 → Session 复盘队列 → 目标切片/判断依据 → 时间线上下文。
-          </div>
-        </div>
-        <div style="padding:12px 14px">
-          ${experienceTopInsightHtml}
-          <div class="experience-stat-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px">
-            <div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted)" title="这里的成功/失败是工具调用结果统计，不等同于 LLM 判断 skill 最终成功或失败。">
-              <div style="color:var(--text-muted);font-size:12px">调用概览</div>
-              <div style="font-size:20px;font-weight:700;margin-top:4px">Session ${experience.meta.sessionCount} · Skill 调用 ${experience.meta.invocationCount}</div>
-              <div style="color:var(--text-muted);font-size:12px;margin-top:4px">${e(sessionTimeRangeLabel)}: ${e(reportSessionRangeLabel)}</div>
-              <div style="color:var(--text-muted);font-size:12px;margin-top:4px">工具执行成功 ${experienceToolSuccessCount} / ${pct(experienceToolSuccessCount, experienceIndicators.toolCallCount)} · 工具执行失败 ${experienceIndicators.toolFailureCount} / ${pct(experienceIndicators.toolFailureCount, experienceIndicators.toolCallCount)} · 人工中断 ${experienceIndicators.userInterruptionCount} / ${pct(experienceIndicators.userInterruptionCount, experienceIndicators.toolCallCount)}</div>
-            </div>
-            <div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted)">
-              <div style="color:var(--text-muted);font-size:12px">Skill 总数</div>
-              <div style="font-size:24px;font-weight:700;margin-top:4px">${experience.meta.skillCount}</div>
-              <div style="color:var(--text-muted);font-size:12px">当前 trace 中识别到的 skill</div>
-            </div>
-            <div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted)">
-              <div style="color:var(--text-muted);font-size:12px">建议 review</div>
-              <div style="font-size:24px;font-weight:700;color:var(--red);margin-top:4px">${experienceReviewSkillCount}</div>
-              <div style="color:var(--text-muted);font-size:12px">${experienceReviewSessionCount} 个 session · 优先 ${experienceReviewFirstSessionCount} · 抽样 ${experienceSampleReviewSessionCount}</div>
-            </div>
-          </div>
-          <h3 style="font-size:13px;margin:4px 0 8px;color:var(--text-primary)">Layer 1 · Skill 总览</h3>
-          <div class="observe-table-wrap experience-layer-scroll" style="width:100%;border:1px solid var(--border);border-radius:8px">
-            <table class="observe-fit-table experience-skill-table" style="border-collapse:collapse;width:100%;font-size:13px;table-layout:fixed">
-              <colgroup>
-                <col style="width:11%">
-                <col style="width:4%">
-                <col style="width:4%">
-                <col style="width:4%">
-                <col style="width:9%">
-                <col style="width:42%">
-                <col style="width:9%">
-                <col style="width:12%">
-                <col style="width:5%">
-              </colgroup>
-              <thead><tr>
-                <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">Skill</th>
-                <th title="skill 调用段数：同一个 session 内多次触发同一个 skill，会累计为多次调用段。" style="text-align:right;padding:9px 10px;border-bottom:1px solid var(--border)">调用段</th>
-                <th title="需要优先打开看证据的 session 数" style="text-align:right;padding:9px 6px;border-bottom:1px solid var(--border)">优先复盘</th>
-                <th title="适合抽样确认的 session 数" style="text-align:right;padding:9px 6px;border-bottom:1px solid var(--border)">抽样复盘</th>
-                <th title="点开看 skill 定义、标准规则和运行时证据三维对照；如果缺 hardRules / workflows，会直接标出来。" style="text-align:center;padding:9px 10px;border-bottom:1px solid var(--border)">定义链路</th>
-                <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">用户交互 / 执行证据</th>
-                <th title="来自 SKILL.md frontmatter 的结构化 hardRules / workflows；同时展示非 LLM 的运行时证据检查结果。" style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">标准定义</th>
-                <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">入口 / 来源 / 归因</th>
-                <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">最近使用</th>
-              </tr></thead>
-              <tbody>${experienceSkillRows}</tbody>
-            </table>
-          </div>
-          <h3 style="font-size:13px;margin:16px 0 4px;color:var(--text-primary)">Layer 2 · Session 复盘队列</h3>
-          <div style="color:var(--text-muted);font-size:12px;margin-bottom:8px">先按 skill 聚合；展开某个 skill 后，再看它在不同 session 里的目标切片、判断依据和时间线回溯。</div>
-          <div class="experience-layer-scroll experience-session-groups">
-            ${experienceSessionGroupsHtml || `<div style="padding:14px;color:var(--text-muted)">暂无 session 复盘数据。</div>`}
-          </div>
-        </div>
-      </section>
+	    <section class="inbox-shell">
+	      <header class="inbox-topbar">
+	        <div class="inbox-topbar-meta">
+	          <span>${inboxTotalCount} 条复盘</span>
+	          <span>${reportSessionCount} 个 session · ${totalSkillInvocations} 次能力调用</span>
+	          <span>最近 ingest ${e(latestSeenLabel)}</span>
+	        </div>
+	        <div class="inbox-chip-bar" role="tablist" aria-label="按状态筛选">
+	          <button type="button" class="inbox-chip is-active" data-inbox-filter="all" onclick="setInboxFilter('all', this)">全部 ${inboxTotalCount}</button>
+	          <button type="button" class="inbox-chip" data-inbox-filter="review_first" onclick="setInboxFilter('review_first', this)">需复核 ${inboxReviewFirstCount}</button>
+	          <button type="button" class="inbox-chip" data-inbox-filter="sample_review" onclick="setInboxFilter('sample_review', this)">抽样 ${inboxSampleCount}</button>
+	          <button type="button" class="inbox-chip" data-inbox-filter="reviewed" onclick="setInboxFilter('reviewed', this)">已处理 ${inboxReviewedCount}</button>
+	        </div>
+	      </header>
+	      <div class="inbox-split">
+	        <aside class="inbox-left" aria-label="观测记录列表">
+	          <ul class="inbox-card-list" data-inbox-card-list>${inboxCardListHtml}</ul>
+	        </aside>
+	        <section class="inbox-right" aria-label="观测记录详情">${inboxDetailListHtml}</section>
+	      </div>
+	    </section>
   ` : '';
 	  const empty = items.length === 0 && !experience
 	    ? `<p style="color:var(--text-muted);margin-top:24px">${activeSkill ? `当前 skill 没有可展示的调用或过程发现：${e(activeSkill)}` : (lang === 'zh' ? '暂无 inbox item。运行 omk observe ingest <sessions-dir> 生成。' : 'No inbox items. Run omk observe ingest <sessions-dir> first.')}</p>`
@@ -2380,16 +3558,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         </div>
       </section>`;
 	  return layout(pageTitle, `
-	    <main class="observe-report-root" style="max-width:1120px;margin:0 auto;padding:24px">
-	      <nav style="margin-bottom:12px"><a href="/analyses" style="color:var(--accent);text-decoration:none">${lang === 'zh' ? 'Skill 健康度日报' : 'Skill health reports'}</a></nav>
+	    <main class="observe-report-root">
+	      <nav style="margin-bottom:12px"><a href="/analyses" style="color:var(--accent);text-decoration:none">${lang === 'zh' ? '能力健康度日报' : 'Skill health reports'}</a></nav>
 	      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 0">
 	        <div>
-	          <h1 style="font-size:22px;margin:0">${activeSkill ? `Observe Inbox · ${e(activeSkill)}` : 'Observe Inbox'}</h1>
-	          ${activeSkill ? `<div style="color:var(--text-muted);font-size:12px;margin-top:4px">当前是单 skill 报告，只展示 ${e(activeSkill)} 的调用、session 复盘、过程发现和原始 JSON。</div>` : ''}
+	          <h1 style="font-size:22px;margin:0">${activeSkill ? `线上观测报告 · ${e(activeSkill)}` : '线上观测报告'}</h1>
+	          ${activeSkill ? `<div style="color:var(--text-muted);font-size:12px;margin-top:4px">当前只展示能力 ${e(activeSkill)} 的复盘记录。</div>` : ''}
 	        </div>
-	        ${activeSkill ? `<a href="/observations/inbox" style="color:var(--accent);text-decoration:none;font-size:13px">查看全量报告</a>` : ''}
+	        ${activeSkill ? `<a href="/observations/inbox" style="color:var(--accent);text-decoration:none;font-size:13px">查看全量</a>` : ''}
 	      </div>
-      <p style="color:var(--text-muted);font-size:13px">真实 session trace 中聚合出的待 review 问题。判断把握表示这条 过程发现 的规则判断有多确定；归属把握表示它归到当前 skill 名下有多确定。</p>
       <style>
         *,
         *::before,
@@ -2402,14 +3579,1003 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           max-width: 100vw !important;
           margin: 0 !important;
           padding: 0 !important;
-          overflow-x: hidden !important;
         }
         main {
-          width: min(1120px, calc(100vw - 32px)) !important;
+          width: min(1440px, calc(100vw - 24px)) !important;
           max-width: 100% !important;
           margin: 0 auto !important;
-          padding: 24px 16px !important;
-          overflow-x: hidden !important;
+          padding: 16px 12px 12px !important;
+        }
+        .inbox-shell {
+          margin-top: 12px;
+          background: transparent;
+          border: 0;
+          border-radius: 0;
+          overflow: visible;
+        }
+        .inbox-topbar {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px 14px;
+          padding: 10px 14px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          margin-bottom: 12px;
+        }
+        .inbox-topbar-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px 14px;
+          color: var(--text-muted);
+          font-size: 12px;
+          line-height: 1.5;
+        }
+        .inbox-chip-bar {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .inbox-chip {
+          padding: 4px 10px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-size: 12px;
+          border-radius: 999px;
+          cursor: pointer;
+          line-height: 1.5;
+        }
+        .inbox-chip:hover { color: var(--text-primary); border-color: var(--border-hover, var(--border)); }
+        .inbox-chip.is-active {
+          background: var(--accent);
+          color: #fff;
+          border-color: var(--accent);
+        }
+        .inbox-split {
+          display: grid;
+          grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+          gap: 12px;
+          align-items: start;
+        }
+        .inbox-left {
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          position: sticky;
+          top: 12px;
+          max-height: calc(100vh - 24px);
+          overflow: auto;
+        }
+        .inbox-card-list {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+        }
+        .inbox-card {
+          padding: 12px 14px;
+          border-bottom: 1px solid var(--border);
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          position: relative;
+        }
+        .inbox-card:hover { background: var(--bg-muted, rgba(58,58,58,.04)); }
+        .inbox-card.is-active {
+          background: var(--info-bg, rgba(90,122,147,.08));
+        }
+        .inbox-card.is-active::before {
+          content: '';
+          position: absolute;
+          left: 0; top: 0; bottom: 0;
+          width: 3px;
+          background: var(--accent);
+        }
+        .inbox-card-empty {
+          padding: 24px 16px;
+          color: var(--text-muted);
+          font-size: 12px;
+          text-align: center;
+        }
+        .inbox-card-row { display: flex; align-items: center; gap: 8px; }
+        .inbox-card-row-title { font-size: 13px; color: var(--text-primary); }
+        .inbox-card-priority {
+          width: 8px; height: 8px; border-radius: 50%;
+          flex-shrink: 0;
+          background: var(--text-faint);
+        }
+        .inbox-card.is-priority-high .inbox-card-priority { background: var(--red); }
+        .inbox-card.is-priority-medium .inbox-card-priority { background: var(--yellow); }
+        .inbox-card.is-priority-low .inbox-card-priority { background: var(--green); }
+        .inbox-card-title {
+          flex: 1;
+          font-weight: 600;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .inbox-card-goal {
+          padding-left: 16px;
+          color: var(--text-primary);
+          font-size: 12px;
+          line-height: 1.45;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .inbox-card-story {
+          padding-left: 16px;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .inbox-card-state {
+          font-size: 11px;
+          padding: 2px 6px;
+          border-radius: 999px;
+          flex-shrink: 0;
+        }
+        .inbox-card-state.is-agree { background: var(--green-bg); color: var(--green); }
+        .inbox-card-state.is-reject { background: var(--red-bg); color: var(--red); }
+        .inbox-card-state.is-note { background: var(--yellow-bg); color: var(--yellow); }
+        .inbox-card-state.is-reviewed { background: var(--info-bg); color: var(--accent); }
+        .inbox-card-dots {
+          display: flex;
+          gap: 4px;
+        }
+        .inbox-card-dot {
+          width: 10px; height: 10px;
+          border-radius: 50%;
+          background: var(--border);
+          display: inline-block;
+        }
+        .inbox-card-dot.is-ok { background: var(--green); }
+        .inbox-card-dot.is-attention { background: var(--red); }
+        .inbox-card-dot.is-unknown { background: var(--yellow); }
+        .inbox-card-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+        }
+        .inbox-card-chip {
+          font-size: 11px;
+          padding: 2px 6px;
+          border-radius: 4px;
+          background: var(--bg-soft, rgba(58,58,58,.04));
+          color: var(--text-secondary);
+          line-height: 1.4;
+        }
+        .inbox-card-chip.is-attention { background: var(--red-bg); color: var(--red); }
+        .inbox-card-meta {
+          font-size: 11px;
+          color: var(--text-muted);
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .inbox-right {
+          padding: 0;
+          background: transparent;
+          overflow: visible;
+        }
+        .inbox-detail-pane { display: none; }
+        .inbox-detail-pane.is-active { display: block; }
+        .inbox-detail-empty-pane {
+          padding: 24px;
+          color: var(--text-muted);
+          font-size: 13px;
+          text-align: center;
+        }
+        .inbox-detail-actions {
+          position: sticky;
+          top: 0;
+          z-index: 5;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 10px 12px;
+          margin-bottom: 12px;
+          box-shadow: var(--shadow-sm, 0 1px 3px rgba(58,58,58,.06));
+        }
+        .inbox-detail-actions-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 10px;
+          margin-bottom: 8px;
+        }
+        .inbox-detail-actions-title { font-size: 13px; color: var(--text-primary); }
+        .inbox-detail-actions-meta { font-size: 11px; color: var(--text-muted); }
+        .inbox-detail-actions-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+        .inbox-action-button {
+          padding: 4px 12px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-size: 12px;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .inbox-action-button:hover { color: var(--text-primary); border-color: var(--border-hover, var(--border)); }
+        .inbox-action-button.is-active[data-inbox-verdict="real_issue"] { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+        .inbox-action-button.is-active[data-inbox-verdict="not_issue"] { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+        .inbox-action-button.is-active[data-inbox-verdict="needs_more_context"] { background: var(--yellow-bg); color: var(--yellow); border-color: var(--yellow); }
+        .inbox-note-editor {
+          margin-top: 8px;
+          display: none;
+        }
+        .inbox-note-textarea {
+          width: 100%;
+          font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+          font-size: 12px;
+          padding: 8px;
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          resize: vertical;
+          box-sizing: border-box;
+        }
+        .inbox-note-editor-buttons {
+          margin-top: 6px;
+          display: flex;
+          gap: 6px;
+          justify-content: flex-end;
+        }
+        .inbox-note-save,
+        .inbox-note-cancel {
+          padding: 4px 10px;
+          font-size: 12px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .inbox-note-save { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .inbox-detail-empty {
+          color: var(--text-muted);
+          font-size: 12px;
+          padding: 12px;
+        }
+        .timeline-row.is-flash,
+        [data-message-uuid].is-flash {
+          animation: inboxEvidenceFlash 1.6s ease-out;
+        }
+        @keyframes inboxEvidenceFlash {
+          0% { background: var(--yellow-bg); }
+          70% { background: var(--yellow-bg); }
+          100% { background: transparent; }
+        }
+        .context-chain-nav {
+          position: sticky;
+          top: 0;
+          z-index: 3;
+          display: flex;
+          gap: 6px;
+          padding: 8px 10px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          margin-bottom: 8px;
+          font-size: 12px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        .context-chain-nav a {
+          padding: 4px 10px;
+          color: var(--text-secondary);
+          text-decoration: none;
+          border-radius: 999px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          flex-shrink: 0;
+        }
+        .context-chain-nav a:hover { color: var(--accent); border-color: var(--accent); }
+        .context-chain-nav-hint {
+          margin-left: auto;
+          color: var(--text-muted);
+          font-size: 11px;
+        }
+        .runtime-step-list {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .runtime-step {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .runtime-step.runtime-passed { border-left: 3px solid var(--green); }
+        .runtime-step.runtime-attention { border-left: 3px solid var(--red); }
+        .runtime-step.runtime-manual_review { border-left: 3px solid var(--yellow); }
+        .runtime-step-head {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 10px;
+          font-size: 12px;
+        }
+        .runtime-step-index {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 38px;
+          height: 20px;
+          padding: 0 6px;
+          background: var(--bg-muted, rgba(58,58,58,.04));
+          color: var(--text-secondary);
+          font-size: 11px;
+          border-radius: 4px;
+          flex-shrink: 0;
+        }
+        .runtime-step-name { flex: 1; color: var(--text-primary); min-width: 0; }
+        .runtime-step-state { font-size: 14px; flex-shrink: 0; }
+        .runtime-step-detail { border-top: 1px solid var(--border); padding: 0 10px 8px; }
+        .runtime-step-detail > summary {
+          padding: 6px 0;
+          cursor: pointer;
+          font-size: 11px;
+          color: var(--text-muted);
+          list-style: revert;
+        }
+        .runtime-step-detail > summary:hover { color: var(--text-primary); }
+        .runtime-step-detail-body { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+        .runtime-step-detail-body code { font-size: 11px; padding: 1px 4px; background: var(--bg-muted, rgba(58,58,58,.04)); border-radius: 3px; }
+        .runtime-step-detail-body p { margin: 4px 0 0; }
+        .runtime-step-detail-body ul { margin: 4px 0 0; padding-left: 18px; }
+        .inbox-detail-header {
+          padding: 12px 14px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-surface);
+          margin-bottom: 12px;
+        }
+        .inbox-detail-header-title { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
+        .inbox-detail-header-title strong { font-size: 13px; color: var(--text-primary); }
+        .inbox-detail-header-title span { font-size: 12px; color: var(--text-secondary); }
+        .inbox-detail-header-meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted); }
+        .inbox-section {
+          margin-bottom: 14px;
+          padding: 12px 14px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-surface);
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
+          box-sizing: border-box;
+          width: 100%;
+          scroll-margin-top: 96px;
+        }
+        .inbox-detail-main { width: 100%; box-sizing: border-box; }
+        .inbox-detail-pane.is-active { display: block; }
+        .inbox-detail-pane { display: none; box-sizing: border-box; }
+        .inbox-session-tabs {
+          display: flex;
+          gap: 6px;
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          overflow-y: hidden;
+          white-space: nowrap;
+          -webkit-overflow-scrolling: touch;
+          margin-bottom: 12px;
+          padding: 8px 10px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+        }
+        .inbox-session-tab-item {
+          flex: 0 0 auto;
+          display: inline-flex;
+          align-items: stretch;
+          max-width: 360px;
+        }
+        .inbox-session-tab {
+          flex: 1 1 auto;
+          min-width: 0;
+          padding: 4px 9px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-size: 11px;
+          border-radius: 999px;
+          cursor: pointer;
+          line-height: 1.5;
+          font-family: ui-monospace, monospace;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .inbox-session-flow-chip {
+          flex: 0 0 auto;
+          margin-left: -1px;
+          padding: 4px 7px;
+          border: 1px solid var(--border);
+          background: var(--info-bg, rgba(90,122,147,.08));
+          color: var(--accent);
+          font-size: 11px;
+          border-radius: 0 999px 999px 0;
+          cursor: pointer;
+          line-height: 1.5;
+        }
+        .inbox-session-tab-item .inbox-session-tab {
+          border-radius: 999px 0 0 999px;
+        }
+        .inbox-session-flow-chip:hover {
+          border-color: var(--accent);
+          background: rgba(90,122,147,.14);
+        }
+        .inbox-session-tab:hover { color: var(--text-primary); border-color: var(--border-hover, var(--border)); }
+        .inbox-session-tab.is-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .inbox-session-tab.is-priority-high:not(.is-active) { border-left: 3px solid var(--red); }
+        .inbox-session-tab.is-priority-medium:not(.is-active) { border-left: 3px solid var(--yellow); }
+        .inbox-session-tab.is-priority-low:not(.is-active) { border-left: 3px solid var(--green); }
+        .inbox-session-panes { width: 100%; }
+        .inbox-session-pane { display: none; width: 100%; box-sizing: border-box; }
+        .inbox-session-pane.is-active { display: block; }
+        .inbox-session-pane:not(.is-active) .inbox-detail-nav { display: none; }
+        .inbox-session-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px 14px;
+          padding: 8px 12px;
+          background: var(--bg-soft, rgba(58,58,58,.03));
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          margin-bottom: 12px;
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        .inbox-session-meta code { font-size: 11px; padding: 1px 5px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 4px; }
+        .inbox-section-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+        .inbox-section-head-clickable { cursor: pointer; user-select: none; margin: -4px -6px 8px; padding: 4px 6px; border-radius: 6px; }
+        .inbox-section-head-clickable:hover { background: var(--bg-soft, rgba(58,58,58,.04)); }
+        .inbox-section.is-collapsed .inbox-section-head-clickable { margin-bottom: 0; }
+        .inbox-section-head h3 { font-size: 13px; margin: 0; color: var(--text-primary); flex-shrink: 0; }
+        .inbox-section-summary {
+          font-size: 11px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          flex-shrink: 0;
+        }
+        .inbox-section-summary.is-attention { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+        .inbox-section-summary.is-ok { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+        .inbox-section-summary.is-neutral { background: var(--info-bg, rgba(90,122,147,.08)); border-color: var(--accent); color: var(--accent); }
+        .inbox-section-hint { font-size: 11px; color: var(--text-muted); flex: 1 1 auto; min-width: 0; }
+        .inbox-section-toggle {
+          margin-left: auto;
+          font-size: 11px;
+          padding: 2px 8px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          border-radius: 4px;
+          cursor: pointer;
+          flex-shrink: 0;
+        }
+        .inbox-section-toggle:hover { color: var(--text-primary); }
+        .inbox-section-body { /* no internal scroll; let the page handle it */ }
+        .inbox-section.is-collapsed .inbox-section-body { display: none; }
+        .inbox-section.is-collapsed { padding-bottom: 8px; }
+        .inbox-detail-body-grid { display: block; position: relative; }
+        .inbox-detail-main { min-width: 0; }
+        .inbox-detail-nav {
+          position: fixed;
+          top: 120px;
+          right: 16px;
+          width: 132px;
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+          padding: 0;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          box-shadow: none;
+          font-size: 12px;
+          z-index: 80;
+        }
+        .inbox-detail-pane:not(.is-active) .inbox-detail-nav { display: none; }
+        .inbox-detail-nav a {
+          padding: 6px 10px;
+          color: var(--text-primary);
+          text-decoration: none;
+          border-radius: 6px;
+          background: rgba(255, 255, 255, 0.92);
+          border: 1px solid var(--border);
+          box-shadow: var(--shadow-sm, 0 1px 3px rgba(58,58,58,.08));
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          line-height: 1.4;
+          font-weight: 500;
+        }
+        .inbox-detail-nav a:hover {
+          background: var(--info-bg, rgba(90,122,147,.12));
+          color: var(--accent);
+          border-color: var(--accent);
+        }
+        .inbox-detail-nav a.is-active {
+          background: var(--accent);
+          color: #fff;
+          border-color: var(--accent);
+          font-weight: 600;
+        }
+        @media (max-width: 1080px) {
+          .inbox-detail-nav { display: none !important; }
+        }
+        .inbox-flow-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+        .inbox-flow-item {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          position: relative;
+        }
+        .inbox-flow-item.is-priority-high { border-left: 3px solid var(--red); }
+        .inbox-flow-item.is-priority-medium { border-left: 3px solid var(--yellow); }
+        .inbox-flow-item.is-priority-low { border-left: 3px solid var(--green); }
+        .inbox-flow-anchor {
+          display: flex;
+          gap: 10px;
+          align-items: center;
+          padding: 8px 10px;
+          text-decoration: none;
+          color: var(--text-primary);
+        }
+        .inbox-flow-anchor:hover { background: var(--bg-muted, rgba(58,58,58,.04)); }
+        .inbox-flow-index {
+          width: 22px; height: 22px;
+          border-radius: 50%;
+          background: var(--accent);
+          color: #fff;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          font-weight: 600;
+          flex-shrink: 0;
+        }
+        .inbox-flow-body { flex: 1; min-width: 0; }
+        .inbox-flow-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .inbox-flow-title strong { font-size: 13px; }
+        .inbox-flow-title em { font-style: normal; font-size: 11px; padding: 1px 6px; background: var(--info-bg); color: var(--accent); border-radius: 999px; }
+        .inbox-flow-priority { font-size: 11px; color: var(--text-muted); }
+        .inbox-flow-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+        .inbox-flow-slices,
+        .inbox-flow-dispatches { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+        .inbox-flow-slices h4,
+        .inbox-flow-dispatches h4 { font-size: 12px; margin: 0 0 6px; color: var(--text-secondary); }
+        .inbox-flow-slice,
+        .inbox-flow-dispatch {
+          padding: 6px 8px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-soft, rgba(58,58,58,.03));
+          margin-bottom: 6px;
+          font-size: 12px;
+        }
+        .inbox-flow-slice strong,
+        .inbox-flow-dispatch strong { font-size: 12px; color: var(--text-primary); display: block; }
+        .inbox-flow-slice span,
+        .inbox-flow-dispatch span { font-size: 11px; color: var(--text-muted); }
+        .inbox-flow-slice p { margin: 4px 0 0; color: var(--text-secondary); line-height: 1.5; font-size: 12px; }
+        .inbox-skill-block {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-soft, rgba(58,58,58,.02));
+          padding: 10px 12px;
+          margin-bottom: 10px;
+          scroll-margin-top: 12px;
+        }
+        .inbox-skill-block:last-child { margin-bottom: 0; }
+        .inbox-skill-head { display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+        .inbox-skill-head h4 { font-size: 13px; margin: 0; color: var(--text-primary); }
+        .inbox-skill-subtitle { font-size: 12px; color: var(--text-secondary); }
+        .inbox-skill-summary { margin: 4px 0 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+        .inbox-skill-empty { color: var(--text-muted); font-size: 12px; margin: 4px 0; }
+        .inbox-answer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+        .inbox-answer {
+          padding: 8px 10px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .inbox-answer.is-attention { border-color: var(--red); }
+        .inbox-answer.is-unknown { border-color: var(--yellow); }
+        .inbox-answer.is-ok { border-color: var(--green); }
+        .inbox-answer-head { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+        .inbox-answer-head strong { font-size: 12px; color: var(--text-primary); }
+        .inbox-answer p { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+        .inbox-answer-checklist {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+          margin-top: 6px;
+        }
+        .inbox-answer-check {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          max-width: 100%;
+          padding: 3px 7px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--bg-soft, rgba(58,58,58,.03));
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .inbox-answer-check.is-ok {
+          border-color: var(--green);
+          background: var(--green-bg);
+          color: var(--text-primary);
+        }
+        .inbox-answer-check.is-missing {
+          color: var(--text-muted);
+          background: var(--bg-surface);
+        }
+        .inbox-answer-check-icon {
+          flex: 0 0 auto;
+          font-size: 10px;
+          color: var(--text-muted);
+        }
+        .inbox-answer-meta {
+          margin-top: 8px;
+          padding: 7px 9px;
+          border: 1px dashed var(--border);
+          border-radius: 6px;
+          background: var(--bg-soft, rgba(58,58,58,.03));
+          font-size: 11px;
+        }
+        .inbox-answer-meta-row { display: flex; gap: 6px; margin-bottom: 4px; line-height: 1.5; }
+        .inbox-answer-meta-row:last-child { margin-bottom: 0; }
+        .inbox-answer-meta-row span { color: var(--text-muted); flex-shrink: 0; }
+        .inbox-answer-meta-row strong { color: var(--text-primary); font-weight: 600; word-break: break-all; }
+        .inbox-answer-meta-row em { color: var(--text-muted); font-style: normal; }
+        .inbox-answer-jump {
+          margin-top: 6px;
+        }
+        .inbox-answer-jump button {
+          font-size: 11px;
+          padding: 3px 8px;
+          border: 1px solid var(--accent);
+          background: var(--bg-surface);
+          color: var(--accent);
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .inbox-answer-jump button:hover { background: var(--info-bg); }
+        .inbox-answer-evidence {
+          margin-top: 8px;
+        }
+        .inbox-answer-evidence-link {
+          font-size: 11px;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: var(--accent);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+          cursor: pointer;
+        }
+        .inbox-answer-evidence-link:hover { color: var(--text-primary); }
+        .inbox-answer-status { font-size: 11px; padding: 1px 6px; border-radius: 999px; flex-shrink: 0; }
+        .inbox-answer-status.is-attention { background: var(--red-bg); color: var(--red); }
+        .inbox-answer-status.is-unknown { background: var(--yellow-bg); color: var(--yellow); }
+        .inbox-answer-status.is-ok { background: var(--green-bg); color: var(--green); }
+        .inbox-skill-findings { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
+        .inbox-skill-findings h5 { font-size: 12px; margin: 0 0 6px; color: var(--text-secondary); }
+        .inbox-suggestion-block {
+          margin-top: 10px;
+          padding: 10px 12px;
+          border-radius: 6px;
+          background: var(--green-bg);
+          border-left: 3px solid var(--green);
+          font-size: 12px;
+          color: var(--text-secondary);
+          line-height: 1.55;
+        }
+        details.inbox-suggestion-block > summary {
+          cursor: pointer;
+          list-style: none;
+        }
+        details.inbox-suggestion-block > summary::-webkit-details-marker { display: none; }
+        details.inbox-suggestion-block > summary::before {
+          content: '▾';
+          display: inline-block;
+          margin-right: 6px;
+          color: var(--green);
+          font-size: 11px;
+        }
+        details.inbox-suggestion-block:not([open]) > summary::before { content: '▸'; }
+        .inbox-skill-summary-suggestions {
+          margin: 0 0 12px;
+        }
+        .inbox-skill-summary-suggestions .inbox-suggestion-block {
+          margin-top: 0;
+        }
+        .inbox-suggestion-title {
+          font-size: 12px;
+          color: var(--green);
+          font-weight: 600;
+          margin-bottom: 5px;
+        }
+        .inbox-suggestion-block ul,
+        .inbox-suggestion-block ol {
+          margin: 0;
+          padding-left: 18px;
+        }
+        .inbox-suggestion-block li { margin-bottom: 3px; }
+        .inbox-suggestion-block li:last-child { margin-bottom: 0; }
+        .inbox-action-suggestion-item {
+          margin-bottom: 8px;
+        }
+        .inbox-action-suggestion-main {
+          color: var(--text-primary);
+          font-weight: 600;
+          line-height: 1.5;
+        }
+        .inbox-action-suggestion-example {
+          margin-top: 5px;
+          padding: 7px 9px;
+          border: 1px solid rgba(90, 122, 147, .22);
+          border-radius: 6px;
+          background: rgba(90, 122, 147, .07);
+          color: var(--text-secondary);
+          display: flex;
+          align-items: baseline;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .inbox-action-suggestion-example span {
+          display: inline-flex;
+          flex: 0 0 auto;
+          padding: 1px 6px;
+          border-radius: 999px;
+          background: rgba(90, 122, 147, .14);
+          color: var(--accent);
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .inbox-action-suggestion-example p {
+          flex: 1 1 360px;
+          margin: 0;
+          line-height: 1.55;
+        }
+        .inbox-flow-popover {
+          position: fixed;
+          z-index: 240;
+          width: min(560px, calc(100vw - 32px));
+          max-height: min(620px, calc(100vh - 48px));
+          overflow: auto;
+          padding: 12px;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: var(--bg-surface);
+          box-shadow: var(--shadow-md, 0 8px 24px rgba(58,58,58,.16));
+        }
+        .inbox-flow-popover-close {
+          position: sticky;
+          top: 0;
+          float: right;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          padding: 3px 8px;
+          cursor: pointer;
+          font-size: 12px;
+        }
+        .inbox-flow-popover-head {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 10px;
+          padding-right: 48px;
+        }
+        .inbox-flow-popover-head strong {
+          color: var(--text-primary);
+          font-size: 13px;
+        }
+        .inbox-flow-popover-body {
+          display: grid;
+          gap: 10px;
+        }
+        .inbox-finding {
+          padding: 8px 10px;
+          border-radius: 6px;
+          margin-bottom: 6px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+        }
+        .inbox-finding.is-attention { background: var(--red-bg); border-color: var(--red); border-left: 4px solid var(--red); }
+        .inbox-finding.is-sample { background: var(--yellow-bg); border-color: var(--yellow); border-left: 4px solid var(--yellow); }
+        .inbox-finding.is-normal { border-left: 4px solid var(--text-faint); }
+        .inbox-finding.is-clickable { cursor: pointer; transition: transform .12s; }
+        .inbox-finding.is-clickable:hover { transform: translateX(2px); }
+        .inbox-finding-head { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; margin-bottom: 4px; flex-wrap: wrap; }
+        .inbox-finding-head strong { font-size: 12px; color: var(--text-primary); }
+        .inbox-finding-head-right { display: flex; gap: 6px; align-items: baseline; }
+        .inbox-finding-rule { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-secondary); }
+        .inbox-finding-level { font-size: 11px; color: var(--text-muted); }
+        .inbox-finding-action { font-size: 11px; color: var(--accent); }
+        .inbox-finding p { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+        .inbox-metric-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+          gap: 6px;
+          margin-bottom: 10px;
+        }
+        .inbox-metric-card {
+          padding: 7px 9px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          text-align: left;
+          cursor: pointer;
+          font-family: inherit;
+          color: inherit;
+          transition: background-color .12s, border-color .12s;
+        }
+        .inbox-metric-card:hover { background: var(--info-bg, rgba(90,122,147,.06)); border-color: var(--accent); }
+        .inbox-metric-card:hover .inbox-metric-card-hint { color: var(--accent); }
+        .inbox-metric-card.is-anomaly { border-left: 3px solid var(--red); }
+        .inbox-metric-card.is-anomaly strong { color: var(--red); }
+        .inbox-metric-card > span { display: block; font-size: 11px; color: var(--text-muted); }
+        .inbox-metric-card > strong { font-size: 14px; color: var(--text-primary); display: block; margin-top: 1px; }
+        .inbox-metric-card-hint {
+          display: block;
+          margin-top: 4px;
+          font-size: 10px;
+          font-style: normal;
+          color: var(--text-faint);
+          letter-spacing: 0.04em;
+        }
+        .inbox-metric-grid-wrap { margin-bottom: 10px; }
+        .inbox-metric-hint {
+          font-size: 11px;
+          color: var(--text-muted);
+          margin-bottom: 6px;
+          padding: 4px 8px;
+          border-left: 2px solid var(--accent);
+          background: var(--info-bg, rgba(90,122,147,.06));
+          border-radius: 0 4px 4px 0;
+        }
+        #inbox-metric-popover {
+          position: fixed;
+          top: 50%;
+          right: 40px;
+          transform: translateY(-50%);
+          width: 360px;
+          max-height: 480px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          box-shadow: var(--shadow-md, 0 2px 12px rgba(58,58,58,.12));
+          z-index: 200;
+          padding: 0;
+          overflow: hidden;
+          display: none;
+          flex-direction: column;
+        }
+        #inbox-metric-popover.is-open { display: flex; }
+        .inbox-metric-popover-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 10px 14px;
+          border-bottom: 1px solid var(--border);
+          background: var(--bg-muted, var(--bg-surface));
+        }
+        .inbox-metric-popover-head strong { font-size: 14px; color: var(--text-primary); }
+        .inbox-metric-popover-close {
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          padding: 3px 10px;
+          border-radius: 4px;
+          font-size: 12px;
+          cursor: pointer;
+        }
+        .inbox-metric-popover-body {
+          padding: 12px 14px;
+          overflow-y: auto;
+          flex: 1;
+          font-size: 12px;
+          color: var(--text-secondary);
+          line-height: 1.55;
+        }
+        .inbox-metric-popover-value {
+          font-size: 22px;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin-bottom: 6px;
+        }
+        .inbox-metric-popover-value.is-anomaly { color: var(--red); }
+        .inbox-metric-popover-note { margin: 0 0 10px; }
+        .inbox-metric-popover-list {
+          list-style: none;
+          padding: 0;
+          margin: 0 0 10px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          overflow: hidden;
+        }
+        .inbox-metric-popover-list li {
+          display: flex;
+          justify-content: space-between;
+          padding: 6px 10px;
+          border-bottom: 1px solid var(--border);
+          font-size: 12px;
+        }
+        .inbox-metric-popover-list li:last-child { border-bottom: 0; }
+        .inbox-metric-popover-list li span { font-family: ui-monospace, monospace; color: var(--text-primary); }
+        .inbox-metric-popover-jump {
+          width: 100%;
+          padding: 7px 10px;
+          background: var(--red-bg);
+          color: var(--red);
+          border: 1px solid var(--red);
+          border-radius: 6px;
+          font-size: 12px;
+          cursor: pointer;
+        }
+        @media (max-width: 720px) {
+          #inbox-metric-popover {
+            top: auto;
+            right: 12px;
+            left: 12px;
+            bottom: 12px;
+            width: auto;
+            transform: none;
+          }
+        }
+        .inbox-skill-chain { margin-top: 8px; }
+        .inbox-evidence-block {
+          margin-top: 12px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-surface);
+        }
+        .inbox-evidence-block > summary {
+          padding: 8px 12px;
+          cursor: pointer;
+          font-size: 13px;
+          color: var(--text-primary);
+          font-weight: 600;
+          list-style: revert;
+        }
+        .inbox-evidence-block[open] > summary { border-bottom: 1px solid var(--border); }
+        .inbox-evidence-grid {
+          display: grid;
+          grid-template-columns: minmax(0, .55fr) minmax(0, 1.45fr);
+          gap: 12px;
+          padding: 12px;
+        }
+        .inbox-evidence-grid h4 {
+          font-size: 12px;
+          margin: 6px 0 6px;
+          color: var(--text-primary);
+        }
+        .inbox-evidence-grid h4:first-child { margin-top: 0; }
+        @media (max-width: 960px) {
+          .inbox-split { grid-template-columns: 1fr; }
+          .inbox-left { border-right: 0; border-bottom: 1px solid var(--border); max-height: 50vh; }
+          .inbox-right { max-height: none; }
+          .inbox-evidence-grid { grid-template-columns: 1fr; }
         }
         body > * {
           max-width: 100vw !important;
@@ -2520,7 +4686,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           table-layout: fixed;
         }
         .review-bucket-table { min-width: 980px !important; }
-        .experience-skill-table { min-width: 1540px !important; }
+        .experience-skill-table { min-width: 1760px !important; }
         .experience-session-table { min-width: 1680px !important; }
         .skill-health-table { min-width: 1360px !important; }
         .action-table { min-width: 820px !important; }
@@ -2535,11 +4701,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .experience-skill-table col:nth-child(2) { width: 4% !important; }
         .experience-skill-table col:nth-child(3) { width: 4% !important; }
         .experience-skill-table col:nth-child(4) { width: 4% !important; }
-        .experience-skill-table col:nth-child(5) { width: 9% !important; }
-        .experience-skill-table col:nth-child(6) { width: 42% !important; }
-        .experience-skill-table col:nth-child(7) { width: 9% !important; }
-        .experience-skill-table col:nth-child(8) { width: 12% !important; }
-        .experience-skill-table col:nth-child(9) { width: 5% !important; }
+        .experience-skill-table col:nth-child(5) { width: 25% !important; }
+        .experience-skill-table col:nth-child(6) { width: 34% !important; }
+        .experience-skill-table col:nth-child(7) { width: 13% !important; }
+        .experience-skill-table col:nth-child(8) { width: 5% !important; }
         .experience-session-table col:nth-child(1) { width: 12% !important; }
         .experience-session-table col:nth-child(2) { width: 12% !important; }
         .experience-session-table col:nth-child(3) { width: 10% !important; }
@@ -2707,11 +4872,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           flex: 1 1 auto;
           min-height: 0;
           overflow: hidden;
-          padding: 14px;
+          padding: 0;
         }
         #experience-detail-modal .experience-detail-shell {
           height: 100%;
           max-height: 100%;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
           overflow: hidden;
         }
         .context-chain-button {
@@ -2787,17 +4955,17 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           height: 100%;
           min-height: 0;
           display: grid;
-          grid-template-columns: minmax(0,1.1fr) minmax(0,.8fr) minmax(0,.7fr);
+          grid-template-columns: minmax(280px,1.1fr) minmax(260px,.95fr) minmax(240px,.85fr) minmax(260px,.95fr);
           gap: 12px;
-          overflow: hidden;
+          overflow: auto;
         }
         .context-chain-panel {
           min-width: 0;
           min-height: 0;
           overflow: auto;
-	          border: 1px solid var(--border);
-	          border-radius: 9px;
-	          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 9px;
+          background: var(--bg-surface);
           padding: 12px;
           color: var(--text-secondary);
         }
@@ -2818,13 +4986,321 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           overflow: auto;
           white-space: pre-wrap;
           word-break: break-word;
-	          border: 1px solid var(--border);
-	          border-radius: 7px;
-	          background: var(--bg-muted);
-	          color: var(--text-primary);
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg-muted);
+          color: var(--text-primary);
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
           font-size: 11px;
           line-height: 1.55;
+        }
+        .skill-md-source {
+          position: relative;
+        }
+        .skill-md-highlight {
+          border-radius: 3px;
+          padding: 0 2px;
+          box-decoration-break: clone;
+          -webkit-box-decoration-break: clone;
+          text-decoration: underline;
+          text-decoration-thickness: 2px;
+          text-underline-offset: 3px;
+        }
+        .skill-md-highlight-rule {
+          background: rgba(245, 158, 11, .16);
+          text-decoration-color: rgba(217, 119, 6, .75);
+        }
+        .skill-md-highlight-workflow {
+          background: rgba(14, 165, 233, .14);
+          text-decoration-color: rgba(2, 132, 199, .75);
+        }
+        .skill-md-annotation {
+          display: grid;
+          grid-template-columns: 22px minmax(0,1fr);
+          gap: 7px;
+          align-items: start;
+          margin: 4px 0 7px;
+          padding: 6px 8px;
+          border: 1px solid rgba(148,163,184,.45);
+          border-left: 3px solid var(--accent);
+          border-radius: 7px;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-family: system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;
+          font-size: 11px;
+          line-height: 1.45;
+          white-space: normal;
+        }
+        .skill-md-annotation.is-confirmed {
+          border-color: rgba(34, 197, 94, .45);
+          border-left-color: var(--green);
+          background: rgba(34, 197, 94, .08);
+        }
+        .skill-md-annotation.is-rejected {
+          opacity: .62;
+          border-color: rgba(239, 68, 68, .35);
+          border-left-color: var(--red);
+          background: rgba(239, 68, 68, .06);
+        }
+        .soft-standard-modal-item.is-confirmed {
+          border-color: rgba(34, 197, 94, .45);
+          border-left: 3px solid var(--green);
+          background: rgba(34, 197, 94, .08);
+        }
+        .soft-standard-modal-item.is-rejected {
+          opacity: .62;
+          border-color: rgba(239, 68, 68, .35);
+          border-left: 3px solid var(--red);
+          background: rgba(239, 68, 68, .06);
+        }
+        .skill-md-annotation-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          min-height: 20px;
+          font-size: 16px;
+          line-height: 1;
+        }
+        .skill-md-annotation-content {
+          min-width: 0;
+          display: block;
+        }
+        .skill-md-annotation-actions {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 5px;
+          margin-top: 5px;
+        }
+        .skill-md-annotation-actions span {
+          color: var(--text-muted);
+          font-size: 10px;
+        }
+        .skill-md-annotation-actions button,
+        .soft-standard-actions button {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg);
+          color: var(--text-secondary);
+          padding: 3px 7px;
+          font-size: 11px;
+          cursor: pointer;
+        }
+        .skill-md-annotation-actions button:hover,
+        .soft-standard-actions button:hover {
+          border-color: var(--accent);
+          color: var(--text-primary);
+        }
+        .skill-md-unlocated {
+          margin-top: 8px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg-muted);
+          padding: 8px 10px;
+        }
+        .skill-md-unlocated summary {
+          cursor: pointer;
+          color: var(--text-secondary);
+          font-size: 12px;
+          font-weight: 650;
+        }
+        .standard-checklist,
+        .workflow-line-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .standard-check-item {
+          display: grid;
+          grid-template-columns: 24px minmax(0,1fr);
+          gap: 8px;
+          padding: 9px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-muted);
+        }
+        .standard-check-marker {
+          width: 20px;
+          height: 20px;
+          border-radius: 6px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(34, 197, 94, .12);
+          color: var(--green);
+          font-size: 12px;
+          font-weight: 800;
+        }
+        .standard-check-body {
+          min-width: 0;
+        }
+        .standard-check-title {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .standard-check-title strong {
+          color: var(--text-primary);
+          font-size: 12px;
+          line-height: 1.4;
+        }
+        .standard-check-expectation {
+          margin-top: 5px;
+          color: var(--text-muted);
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .workflow-line {
+          padding: 9px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-muted);
+        }
+        .workflow-line-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+        .workflow-line-head strong {
+          color: var(--text-primary);
+          font-size: 12px;
+        }
+        .workflow-line-head span,
+        .workflow-line-desc {
+          color: var(--text-muted);
+          font-size: 11px;
+        }
+        .workflow-line-desc {
+          margin-top: 4px;
+          line-height: 1.45;
+        }
+        .workflow-node-line {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+          margin-top: 8px;
+          padding-left: 12px;
+        }
+        .workflow-node-line::before {
+          content: "";
+          position: absolute;
+          left: 21px;
+          top: 12px;
+          bottom: 12px;
+          width: 1px;
+          background: var(--border);
+        }
+        .workflow-node {
+          position: relative;
+          display: grid;
+          grid-template-columns: 22px minmax(0,1fr);
+          gap: 8px;
+          align-items: start;
+        }
+        .workflow-node-index {
+          z-index: 1;
+          width: 20px;
+          height: 20px;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--accent);
+          color: white;
+          font-size: 10px;
+          font-weight: 800;
+        }
+        .workflow-node-card {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          padding: 6px 7px;
+          border: 1px solid rgba(148,163,184,.35);
+          border-radius: 7px;
+          background: var(--bg-surface);
+        }
+        .workflow-node-card strong {
+          color: var(--text-primary);
+          font-size: 12px;
+          line-height: 1.35;
+        }
+        .workflow-node-card span {
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .probe-anomaly {
+          padding: 9px 10px;
+          border: 1px solid rgba(202, 138, 4, .35);
+          border-radius: 8px;
+          background: rgba(202, 138, 4, .08);
+        }
+        .probe-anomaly strong,
+        .probe-anomaly span {
+          display: block;
+        }
+        .probe-anomaly strong {
+          color: #a16207;
+          font-size: 12px;
+        }
+        .probe-anomaly span {
+          margin-top: 4px;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .probe-log {
+          margin-top: 12px;
+          border-top: 1px solid var(--border);
+          padding-top: 9px;
+        }
+        .probe-log summary {
+          cursor: pointer;
+          color: var(--text-primary);
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .review-log-meta {
+          display: grid;
+          gap: 5px;
+          padding: 8px 9px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-muted);
+          color: var(--text-muted);
+          font-size: 11px;
+          line-height: 1.4;
+        }
+        .review-log-group {
+          margin-top: 10px;
+        }
+        .review-log-group h4 {
+          margin-bottom: 5px;
+        }
+        .review-log-group ul {
+          margin-left: 0;
+          list-style: none;
+        }
+        .review-log-group li {
+          padding: 6px 7px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg-muted);
+        }
+        .review-log-group li span {
+          display: block;
+          color: var(--text-muted);
+          font-size: 10px;
+          margin-bottom: 2px;
+        }
+        .review-log-group li strong {
+          display: block;
+          color: var(--text-primary);
+          font-size: 11px;
+          line-height: 1.4;
         }
         .context-chain-panel ol,
         .context-chain-panel ul {
@@ -3109,11 +5585,512 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           min-width: 0;
         }
         .experience-detail-shell {
-          height: 75vh;
-          max-height: 75vh;
+          height: 100%;
+          max-height: 100%;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
           overflow: hidden;
         }
+        .experience-detail-tabs {
+          display: flex;
+          gap: 8px;
+          flex: 0 0 auto;
+          overflow-x: auto;
+          padding: 10px 14px 0;
+          background: var(--bg-surface);
+        }
+        .experience-detail-tab-button {
+          flex: 0 0 auto;
+          border: 1px solid var(--border);
+          border-radius: 8px 8px 0 0;
+          background: var(--bg);
+          color: var(--text-secondary);
+          padding: 7px 12px;
+          font-size: 12px;
+          font-weight: 650;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .experience-detail-tab-button.is-active {
+          border-color: rgba(37,99,235,.36);
+          border-bottom-color: var(--bg-surface);
+          background: var(--bg-surface);
+          color: var(--accent);
+        }
+        .experience-detail-tab-panel {
+          display: none;
+          flex: 1 1 auto;
+          min-height: 0;
+          overflow: auto;
+          padding: 14px;
+          border-top: 1px solid var(--border);
+        }
+        .experience-detail-tab-panel.is-active {
+          display: block;
+        }
+        .experience-detail-evidence-panel.is-active {
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .session-story {
+          margin: 0 0 12px;
+          padding: 10px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-surface);
+        }
+        .session-story-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: flex-start;
+          margin-bottom: 10px;
+        }
+        .session-story-head h4 {
+          margin: 0 0 4px;
+          color: var(--text-primary);
+          font-size: 13px;
+        }
+        .session-story-head p,
+        .session-story-answer p,
+        .session-story-node-body p {
+          margin: 0;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .session-story-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          justify-content: flex-end;
+        }
+        .session-story-meta span {
+          padding: 2px 6px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          color: var(--text-muted);
+          font-size: 10px;
+          white-space: nowrap;
+        }
+        .session-story-answers {
+          display: grid;
+          grid-template-columns: repeat(3,minmax(0,1fr));
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+        .session-story-graph {
+          margin: 0 0 12px;
+          padding: 8px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg);
+        }
+        .session-story-graph-main {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          align-items: center;
+        }
+        .session-story-graph-main i {
+          color: var(--text-muted);
+          font-style: normal;
+          font-size: 13px;
+        }
+        .session-story-graph-node {
+          display: inline-grid;
+          gap: 2px;
+          min-width: 82px;
+          max-width: 150px;
+          padding: 6px 8px;
+          border: 1px solid var(--border);
+          border-top: 3px solid var(--text-muted);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          cursor: pointer;
+          text-align: left;
+        }
+        .session-story-graph-node.is-ok {
+          border-top-color: var(--green);
+        }
+        .session-story-graph-node.is-attention {
+          border-top-color: var(--red);
+        }
+        .session-story-graph-node.is-unknown {
+          border-top-color: var(--yellow);
+        }
+        .session-story-graph-node span {
+          color: var(--text-muted);
+          font-size: 10px;
+        }
+        .session-story-graph-node strong {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 12px;
+        }
+        .session-story-skill-lanes,
+        .session-story-slices,
+        .session-story-dispatches {
+          display: grid;
+          grid-template-columns: repeat(auto-fit,minmax(160px,1fr));
+          gap: 6px;
+          margin: 8px 0 0;
+        }
+        .session-story-skill-lane,
+        .session-story-slice,
+        .session-story-dispatch {
+          min-width: 0;
+          padding: 7px 8px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg);
+        }
+        .session-story-skill-lane span,
+        .session-story-slice span,
+        .session-story-dispatch span {
+          display: inline-block;
+          color: var(--text-muted);
+          font-size: 10px;
+          margin-right: 5px;
+        }
+        .session-story-skill-lane strong,
+        .session-story-slice strong,
+        .session-story-dispatch strong {
+          color: var(--text-primary);
+          font-size: 12px;
+        }
+        .session-story-skill-lane em,
+        .session-story-graph-edges em {
+          color: var(--text-muted);
+          font-style: normal;
+          font-size: 10px;
+        }
+        .session-story-slice p {
+          margin: 5px 0 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: var(--text-secondary);
+          font-size: 11px;
+        }
+        .session-story-graph-edges {
+          margin-top: 8px;
+          color: var(--text-secondary);
+          font-size: 11px;
+        }
+        .session-story-graph-edges summary {
+          cursor: pointer;
+          color: var(--text-muted);
+        }
+        .session-story-answer,
+        .session-story-node {
+          border: 1px solid var(--border);
+          border-left: 3px solid var(--text-muted);
+          border-radius: 7px;
+          background: var(--bg);
+        }
+        .session-story-answer {
+          padding: 8px;
+        }
+        .session-story-answer.is-ok,
+        .session-story-node.is-ok {
+          border-left-color: var(--green);
+        }
+        .session-story-answer.is-attention,
+        .session-story-node.is-attention {
+          border-left-color: var(--red);
+          background: rgba(156,74,63,.06);
+        }
+        .session-story-answer.is-unknown,
+        .session-story-node.is-unknown {
+          border-left-color: var(--yellow);
+        }
+        .session-story-answer > div,
+        .session-story-node-title {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          margin-bottom: 4px;
+        }
+        .session-story-answer strong,
+        .session-story-node-title strong {
+          color: var(--text-primary);
+          font-size: 12px;
+          line-height: 1.35;
+        }
+        .session-story-answer span,
+        .session-story-node-title span {
+          flex: 0 0 auto;
+          color: var(--text-muted);
+          font-size: 10px;
+          font-family: ui-monospace, monospace;
+        }
+        .session-story-line {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding-left: 12px;
+        }
+        .session-story-line::before {
+          content: "";
+          position: absolute;
+          left: 22px;
+          top: 12px;
+          bottom: 12px;
+          width: 1px;
+          background: var(--border);
+        }
+        .session-story-node {
+          position: relative;
+          display: grid;
+          grid-template-columns: 22px minmax(0,1fr);
+          gap: 8px;
+          padding: 8px;
+        }
+        .session-story-node-index {
+          z-index: 1;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+          border-radius: 999px;
+          background: var(--accent);
+          color: #fff;
+          font-size: 10px;
+          font-weight: 800;
+        }
+        .session-story-evidence {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          margin-top: 6px;
+        }
+        @media(max-width:900px) {
+          .session-story-answers {
+            grid-template-columns: 1fr;
+          }
+          .session-story-head {
+            flex-direction: column;
+          }
+          .session-story-meta {
+            justify-content: flex-start;
+          }
+        }
+        .reviewer-trace-link {
+          display: inline-block;
+          max-width: 100%;
+          padding: 3px 6px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--bg-surface);
+          color: var(--text-muted);
+          font-family: ui-monospace, monospace;
+          font-size: 10px;
+          line-height: 1.35;
+          word-break: break-all;
+          cursor: pointer;
+        }
+        .reviewer-trace-link:hover {
+          border-color: rgba(37,99,235,.35);
+          color: var(--accent);
+        }
+        .reviewer-judgment-review {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 5px;
+          margin-top: 7px;
+          padding-top: 7px;
+          border-top: 1px solid rgba(148,163,184,.20);
+          color: var(--text-muted);
+          font-size: 11px;
+        }
+        .reviewer-judgment-review > span {
+          font-weight: 700;
+          color: var(--text-secondary);
+        }
+        .reviewer-judgment-review button {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          padding: 3px 7px;
+          font-size: 11px;
+          cursor: pointer;
+        }
+        .reviewer-judgment-review button.is-active {
+          border-color: rgba(37,99,235,.36);
+          background: var(--accent);
+          color: #fff;
+        }
+        .reviewer-judgment-review small {
+          flex-basis: 100%;
+          color: var(--text-muted);
+          line-height: 1.4;
+        }
+        .soft-standard-status {
+          flex: 0 0 auto;
+          padding: 2px 6px;
+          border-radius: 999px;
+          background: var(--bg-muted);
+          color: var(--text-secondary);
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .soft-standard-status[data-soft-standard-status="author_confirmed"] {
+          background: rgba(16,185,129,.14);
+          color: var(--green);
+        }
+        .soft-standard-status[data-soft-standard-status="rejected"] {
+          background: rgba(239,68,68,.12);
+          color: var(--red);
+        }
+        .soft-standard-status[data-soft-standard-status="stale"] {
+          background: rgba(245,158,11,.16);
+          color: var(--yellow);
+        }
+        .soft-standard-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 8px;
+        }
+        .soft-standard-actions button {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg);
+          color: var(--text-secondary);
+          padding: 4px 8px;
+          font-size: 11px;
+          cursor: pointer;
+        }
+        .soft-standard-actions button:hover {
+          border-color: rgba(37,99,235,.35);
+          color: var(--accent);
+        }
+        .skill-chain-cell-summary {
+          margin-top: 7px;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+          text-align: left;
+        }
+        .skill-chain-compact-candidates {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          margin-top: 5px;
+        }
+        .skill-chain-compact-candidates span {
+          max-width: 100%;
+          padding: 2px 6px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--bg-muted);
+          color: var(--text-muted);
+          font-size: 10px;
+          line-height: 1.3;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .standard-active-list {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin-top: 7px;
+        }
+        .standard-active-list span,
+        .soft-standard-pending-title {
+          color: var(--text-primary);
+          font-size: 11px;
+          font-weight: 700;
+          line-height: 1.35;
+        }
+        .soft-standard-pending-list {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px solid rgba(148,163,184,.20);
+        }
+        .soft-standard-pending-item {
+          padding: 6px 7px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .soft-standard-pending-item strong {
+          display: block;
+          color: var(--text-primary);
+          font-size: 11px;
+          line-height: 1.35;
+        }
+        .soft-standard-pending-item span {
+          display: block;
+          margin-top: 2px;
+          color: var(--text-muted);
+          font-size: 10px;
+          line-height: 1.35;
+        }
+        .soft-standard-pending-item .soft-standard-actions {
+          margin-top: 6px;
+        }
+        .soft-standard-pending-item .soft-standard-actions button {
+          padding: 3px 7px;
+        }
+        .soft-standard-modal-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin: 0 0 12px;
+          padding-left: 18px;
+        }
+        .soft-standard-modal-item {
+          padding: 8px 9px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg-surface);
+        }
+        .soft-standard-modal-head {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .soft-standard-modal-head strong {
+          flex: 1 1 auto;
+          min-width: 0;
+          color: var(--text-primary);
+          font-size: 12px;
+          line-height: 1.35;
+        }
+        .soft-standard-modal-head span {
+          flex: 0 0 auto;
+          color: var(--text-muted);
+          font-size: 11px;
+        }
+        .soft-standard-modal-body,
+        .soft-standard-modal-evidence {
+          margin-top: 5px;
+          color: var(--text-secondary);
+          font-size: 12px;
+          line-height: 1.45;
+        }
+        .soft-standard-modal-evidence {
+          color: var(--text-muted);
+          font-size: 11px;
+        }
         .experience-detail-grid {
+          flex: 1 1 auto;
+          min-height: 0;
           height: 100%;
           max-height: 100%;
           overflow: hidden;
@@ -3925,6 +6902,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           background: var(--bg-muted);
           color: var(--text-secondary);
           border-radius: 6px;
+          font-family: inherit;
+          cursor: pointer;
+        }
+        .evidence-anchor:hover {
+          border-color: rgba(37,99,235,.35);
+          color: var(--accent);
         }
         .rule-finding-list {
           display: flex;
@@ -4099,6 +7082,46 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           font-size: 11px;
         }
         .goal-item div { font-size: 12px; line-height: 1.45; word-break: break-word; }
+        .reviewer-overview-cell {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          min-width: 180px;
+          max-width: 280px;
+        }
+        .reviewer-overview-title {
+          color: var(--text-primary);
+          font-size: 12px;
+          font-weight: 700;
+          line-height: 1.35;
+        }
+        .reviewer-overview-findings {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.35;
+        }
+        .reviewer-overview-findings span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .reviewer-overview-cell button {
+          align-self: flex-start;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg);
+          color: var(--text-secondary);
+          padding: 4px 8px;
+          font-size: 11px;
+          cursor: pointer;
+        }
+        .reviewer-overview-cell button:hover {
+          border-color: rgba(37,99,235,.35);
+          color: var(--accent);
+        }
         #metric-guide-toolbar {
           position: fixed !important;
           right: 18px;
@@ -4300,6 +7323,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <div id="signal-global-tooltip" role="tooltip"></div>
       <div id="timeline-fulltext-tooltip" role="dialog" aria-modal="true" aria-hidden="true" aria-label="时间线消息详情"></div>
       <div id="experience-detail-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Session 回溯详情"></div>
+      <aside id="inbox-metric-popover" role="dialog" aria-modal="false" aria-hidden="true" aria-label="指标详情"></aside>
       <div id="metric-guide-toolbar" aria-label="指标说明工具栏">
         <button type="button" title="指标说明" aria-label="指标说明" onclick="window.toggleMetricGuide && window.toggleMetricGuide()">?</button>
       </div>
@@ -4483,6 +7507,308 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       </div>
       <script>
         var observeSeverityFilter = 'all';
+        var inboxCurrentFilter = 'all';
+        function selectInboxCard(id, el) {
+          if (window.closeInboxSessionFlowPopover) window.closeInboxSessionFlowPopover();
+          var cards = document.querySelectorAll('[data-inbox-card]');
+          for (var i = 0; i < cards.length; i++) cards[i].classList.remove('is-active');
+          if (el) el.classList.add('is-active');
+          var panes = document.querySelectorAll('[data-inbox-detail]');
+          for (var j = 0; j < panes.length; j++) {
+            var pane = panes[j];
+            if (pane.getAttribute('data-inbox-detail') === id) pane.classList.add('is-active');
+            else pane.classList.remove('is-active');
+          }
+          var right = document.querySelector('.inbox-right');
+          if (right) right.scrollTop = 0;
+        }
+        function selectInboxCardById(id, sessionId) {
+          var card = document.querySelector('[data-inbox-card="' + id + '"]');
+          if (card) {
+            selectInboxCard(id, card);
+            if (sessionId) selectInboxSessionTab(id, sessionId);
+            if (card.scrollIntoView) card.scrollIntoView({ block: 'nearest' });
+          }
+        }
+        window.selectInboxCardById = selectInboxCardById;
+        function closeInboxSessionFlowPopover() {
+          var old = document.querySelector('.inbox-flow-popover');
+          if (old) old.remove();
+        }
+        function openInboxSessionFlowPopover(templateId, btn, event) {
+          if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          closeInboxSessionFlowPopover();
+          var template = document.getElementById(templateId);
+          if (!template) return;
+          var popover = document.createElement('div');
+          popover.className = 'inbox-flow-popover';
+          popover.setAttribute('role', 'dialog');
+          popover.innerHTML = '<button type="button" class="inbox-flow-popover-close" onclick="closeInboxSessionFlowPopover()">关闭</button>' + template.innerHTML;
+          document.body.appendChild(popover);
+          var rect = btn && btn.getBoundingClientRect ? btn.getBoundingClientRect() : { left: 16, bottom: 48, right: 16 };
+          var width = Math.min(560, window.innerWidth - 32);
+          var left = Math.min(Math.max(16, rect.right - width), window.innerWidth - width - 16);
+          var top = Math.min(rect.bottom + 8, window.innerHeight - Math.min(popover.offsetHeight || 620, 620) - 16);
+          popover.style.left = left + 'px';
+          popover.style.top = Math.max(16, top) + 'px';
+        }
+        window.closeInboxSessionFlowPopover = closeInboxSessionFlowPopover;
+        window.openInboxSessionFlowPopover = openInboxSessionFlowPopover;
+        function toggleInboxSection(btn) {
+          var sec = btn.closest('.inbox-section');
+          if (!sec) return;
+          var collapsed = sec.classList.toggle('is-collapsed');
+          var label = sec.querySelector('.inbox-section-toggle');
+          if (label) label.textContent = collapsed ? '展开' : '收起';
+        }
+        function toggleInboxSectionHead(head) {
+          var sec = head && head.closest ? head.closest('.inbox-section') : null;
+          if (!sec) return;
+          var collapsed = sec.classList.toggle('is-collapsed');
+          var label = sec.querySelector('.inbox-section-toggle');
+          if (label) label.textContent = collapsed ? '展开' : '收起';
+        }
+        function findInboxSectionById(id) {
+          var activePane = document.querySelector('.inbox-detail-pane.is-active .inbox-session-pane.is-active');
+          if (activePane) {
+            var nodes = activePane.querySelectorAll('[id]');
+            for (var i = 0; i < nodes.length; i++) {
+              if (nodes[i].getAttribute('id') === id) return nodes[i];
+            }
+          }
+          return document.getElementById(id);
+        }
+        function scrollInboxSectionIntoView(id, event) {
+          if (event) event.preventDefault();
+          var sec = findInboxSectionById(id);
+          if (!sec) return;
+          if (sec.tagName === 'DETAILS' && !sec.open) sec.open = true;
+          if (sec.classList.contains('is-collapsed')) {
+            sec.classList.remove('is-collapsed');
+            var toggle = sec.querySelector('.inbox-section-toggle');
+            if (toggle) toggle.textContent = '收起';
+          }
+          var right = sec.closest ? sec.closest('.inbox-right') : document.querySelector('.inbox-right');
+          var canScrollRight = right && right.scrollHeight > right.clientHeight + 8 && window.getComputedStyle(right).overflowY !== 'visible';
+          if (canScrollRight) {
+            var rect = sec.getBoundingClientRect();
+            var rightRect = right.getBoundingClientRect();
+            right.scrollTop += rect.top - rightRect.top - 8;
+          } else {
+            var top = sec.getBoundingClientRect().top + (window.pageYOffset || document.documentElement.scrollTop || 0) - 88;
+            window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+          }
+          var activeDetail = sec.closest ? sec.closest('.inbox-detail-pane') : null;
+          var navs = activeDetail ? activeDetail.querySelectorAll('[data-inbox-nav]') : document.querySelectorAll('[data-inbox-nav]');
+          for (var i = 0; i < navs.length; i++) {
+            var match = navs[i].getAttribute('href') === '#' + id;
+            if (match) navs[i].classList.add('is-active');
+            else navs[i].classList.remove('is-active');
+          }
+        }
+        function inboxJumpToEvidence(btn) {
+          var pane = btn && btn.closest ? btn.closest('.inbox-detail-pane') : null;
+          if (!pane) return;
+          var sessionPane = btn.closest ? btn.closest('[data-session-pane]') : null;
+          var sid = sessionPane ? sessionPane.getAttribute('data-session-pane') : pane.getAttribute('data-inbox-detail');
+          if (sid) scrollInboxSectionIntoView('inbox-sec-evidence-' + sid);
+          var messageUuid = btn.getAttribute('data-jump-message-uuid') || '';
+          var messageIndex = btn.getAttribute('data-jump-message-index') || '';
+          if (!messageUuid && !messageIndex) return;
+          window.setTimeout(function () {
+            var rows = pane.querySelectorAll('[data-message-uuid]');
+            for (var i = 0; i < rows.length; i++) {
+              var row = rows[i];
+              if (messageUuid && row.getAttribute('data-message-uuid') === messageUuid) {
+                row.scrollIntoView({ block: 'center' });
+                row.classList.add('is-flash');
+                window.setTimeout(function () { row.classList.remove('is-flash'); }, 1600);
+                return;
+              }
+              if (!messageUuid && messageIndex && row.getAttribute('data-message-index') === messageIndex) {
+                row.scrollIntoView({ block: 'center' });
+                row.classList.add('is-flash');
+                window.setTimeout(function () { row.classList.remove('is-flash'); }, 1600);
+                return;
+              }
+            }
+          }, 240);
+        }
+        window.toggleInboxSection = toggleInboxSection;
+        window.toggleInboxSectionHead = toggleInboxSectionHead;
+        window.scrollInboxSectionIntoView = scrollInboxSectionIntoView;
+        window.inboxJumpToEvidence = inboxJumpToEvidence;
+        function selectInboxSessionTab(skillName, sessionId, btn) {
+          if (window.closeInboxSessionFlowPopover) window.closeInboxSessionFlowPopover();
+          var pane = document.querySelector('[data-inbox-detail="' + skillName + '"]');
+          if (!pane) return;
+          var tabs = pane.querySelectorAll('[data-session-tab]');
+          for (var i = 0; i < tabs.length; i++) {
+            if (tabs[i].getAttribute('data-session-tab') === sessionId) tabs[i].classList.add('is-active');
+            else tabs[i].classList.remove('is-active');
+          }
+          var panes = pane.querySelectorAll('[data-session-pane]');
+          for (var j = 0; j < panes.length; j++) {
+            if (panes[j].getAttribute('data-session-pane') === sessionId) panes[j].classList.add('is-active');
+            else panes[j].classList.remove('is-active');
+          }
+        }
+        window.selectInboxSessionTab = selectInboxSessionTab;
+        function openInboxMetricPopover(card) {
+          var popover = document.getElementById('inbox-metric-popover');
+          if (!popover) return;
+          var label = card.getAttribute('data-metric-label') || '';
+          var value = card.getAttribute('data-metric-value') || '0';
+          var note = card.getAttribute('data-metric-note') || '';
+          var anomaly = card.getAttribute('data-metric-anomaly') === '1';
+          var jumpId = card.getAttribute('data-metric-jump') || '';
+          var detail = [];
+          try { detail = JSON.parse(card.getAttribute('data-metric-detail') || '[]'); } catch (err) { detail = []; }
+          var html = '<header class="inbox-metric-popover-head"><strong></strong><button type="button" class="inbox-metric-popover-close" aria-label="关闭">关闭</button></header>';
+          html += '<div class="inbox-metric-popover-body">';
+          html += '<div class="inbox-metric-popover-value' + (anomaly ? ' is-anomaly' : '') + '"></div>';
+          html += '<p class="inbox-metric-popover-note"></p>';
+          if (detail && detail.length > 0) {
+            html += '<ul class="inbox-metric-popover-list"></ul>';
+          }
+          if (anomaly && jumpId) {
+            html += '<button type="button" class="inbox-metric-popover-jump" data-jump-target="' + jumpId + '">跳转原文回溯</button>';
+          }
+          html += '</div>';
+          popover.innerHTML = html;
+          popover.querySelector('.inbox-metric-popover-head strong').textContent = label;
+          popover.querySelector('.inbox-metric-popover-value').textContent = value;
+          popover.querySelector('.inbox-metric-popover-note').textContent = note;
+          var list = popover.querySelector('.inbox-metric-popover-list');
+          if (list && detail.length > 0) {
+            for (var i = 0; i < detail.length; i++) {
+              var li = document.createElement('li');
+              var n = document.createElement('span');
+              n.textContent = detail[i].name;
+              var c = document.createElement('span');
+              c.textContent = detail[i].count;
+              li.appendChild(n);
+              li.appendChild(c);
+              list.appendChild(li);
+            }
+          }
+          popover.classList.add('is-open');
+          popover.setAttribute('aria-hidden', 'false');
+          var closeBtn = popover.querySelector('.inbox-metric-popover-close');
+          if (closeBtn) closeBtn.addEventListener('click', closeInboxMetricPopover);
+          var jumpBtn = popover.querySelector('.inbox-metric-popover-jump');
+          if (jumpBtn) jumpBtn.addEventListener('click', function () {
+            var id = jumpBtn.getAttribute('data-jump-target');
+            if (id) scrollInboxSectionIntoView(id);
+            closeInboxMetricPopover();
+          });
+        }
+        function closeInboxMetricPopover() {
+          var popover = document.getElementById('inbox-metric-popover');
+          if (!popover) return;
+          popover.classList.remove('is-open');
+          popover.setAttribute('aria-hidden', 'true');
+          popover.innerHTML = '';
+        }
+        document.addEventListener('click', function (event) {
+          var target = event.target;
+          if (target && target.closest && (target.closest('.inbox-metric-card') || target.closest('#inbox-metric-popover'))) return;
+          var popover = document.getElementById('inbox-metric-popover');
+          if (popover && popover.classList.contains('is-open')) closeInboxMetricPopover();
+        });
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape') closeInboxMetricPopover();
+        });
+        window.openInboxMetricPopover = openInboxMetricPopover;
+        window.closeInboxMetricPopover = closeInboxMetricPopover;
+        function setInboxFilter(filter, btn) {
+          inboxCurrentFilter = filter;
+          var chips = document.querySelectorAll('[data-inbox-filter]');
+          for (var i = 0; i < chips.length; i++) {
+            var active = chips[i].getAttribute('data-inbox-filter') === filter;
+            if (active) chips[i].classList.add('is-active');
+            else chips[i].classList.remove('is-active');
+          }
+          var cards = document.querySelectorAll('[data-inbox-card]');
+          var firstVisible = null;
+          for (var k = 0; k < cards.length; k++) {
+            var card = cards[k];
+            var filters = (card.getAttribute('data-inbox-filters') || '').split(/\\s+/);
+            var visible = filters.indexOf(filter) >= 0;
+            card.style.display = visible ? '' : 'none';
+            if (visible && !firstVisible) firstVisible = card;
+          }
+          if (firstVisible) selectInboxCard(firstVisible.getAttribute('data-inbox-card'), firstVisible);
+        }
+        async function setInboxSessionReview(sessionId, verdict, btn) {
+          var actionBlock = document.querySelector('[data-inbox-detail-actions][data-inbox-session-id="' + sessionId + '"]');
+          var note = '';
+          if (verdict === 'needs_more_context') {
+            var input = document.querySelector('[data-inbox-note-input="' + sessionId + '"]');
+            note = input ? input.value : '';
+          }
+          try {
+            var payload = { targetType: 'experience_session', targetId: sessionId, verdict: verdict };
+            if (note) payload.reason = note;
+            var resp = await fetch('/api/observations/review-state', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            if (!resp.ok) throw new Error('failed');
+            if (actionBlock) {
+              var buttons = actionBlock.querySelectorAll('.inbox-action-button');
+              for (var i = 0; i < buttons.length; i++) {
+                if (buttons[i].getAttribute('data-inbox-verdict') === verdict) buttons[i].classList.add('is-active');
+                else buttons[i].classList.remove('is-active');
+              }
+            }
+            var currentPane = actionBlock && actionBlock.closest ? actionBlock.closest('[data-inbox-detail]') : null;
+            var cardId = currentPane ? currentPane.getAttribute('data-inbox-detail') : sessionId;
+            var card = document.querySelector('[data-inbox-card="' + cardId + '"]');
+            if (card) {
+              var filters = (card.getAttribute('data-inbox-filters') || '').split(/\\s+/);
+              if (filters.indexOf('reviewed') < 0) filters.push('reviewed');
+              card.setAttribute('data-inbox-filters', filters.join(' '));
+              var existing = card.querySelector('.inbox-card-state');
+              if (existing) existing.remove();
+              var labels = { real_issue: { label: '已同意', cls: 'is-agree' }, not_issue: { label: '已否决', cls: 'is-reject' }, needs_more_context: { label: '留意见', cls: 'is-note' } };
+              var meta = labels[verdict];
+              if (meta) {
+                var span = document.createElement('span');
+                span.className = 'inbox-card-state ' + meta.cls;
+                span.textContent = meta.label;
+                var titleRow = card.querySelector('.inbox-card-row-title');
+                if (titleRow) titleRow.appendChild(span);
+              }
+            }
+          } catch (err) {
+            if (window.console) console.error('inbox review failed', err);
+          }
+        }
+        function toggleInboxNoteEditor(sessionId, btn) {
+          var editor = document.querySelector('[data-inbox-note-editor="' + sessionId + '"]');
+          if (!editor) return;
+          editor.style.display = 'block';
+          var input = editor.querySelector('textarea');
+          if (input) input.focus();
+        }
+        function closeInboxNoteEditor(sessionId) {
+          var editor = document.querySelector('[data-inbox-note-editor="' + sessionId + '"]');
+          if (editor) editor.style.display = 'none';
+        }
+        function saveInboxSessionNote(sessionId, btn) {
+          setInboxSessionReview(sessionId, 'needs_more_context', btn);
+        }
+        window.selectInboxCard = selectInboxCard;
+        window.setInboxFilter = setInboxFilter;
+        window.setInboxSessionReview = setInboxSessionReview;
+        window.toggleInboxNoteEditor = toggleInboxNoteEditor;
+        window.closeInboxNoteEditor = closeInboxNoteEditor;
+        window.saveInboxSessionNote = saveInboxSessionNote;
         function showObservationTab(name) {
           var review = document.getElementById('observe-tab-review');
           var raw = document.getElementById('observe-tab-raw');
@@ -4510,7 +7836,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           modal.setAttribute('aria-hidden', 'true');
           modal.innerHTML = '';
         }
-        function openExperienceDetailModal(id, btn) {
+        function openExperienceDetailModal(id, btn, initialTab) {
           var row = document.getElementById(id);
           var modal = document.getElementById('experience-detail-modal');
           if (!row || !modal) return;
@@ -4532,6 +7858,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           modal.setAttribute('aria-hidden', 'false');
           if (close && close.focus) close.focus();
           window.requestAnimationFrame(function () {
+            if (initialTab) switchExperienceDetailTab(initialTab);
             var tabs = modal.querySelectorAll('[data-timeline-tabs]');
             for (var i = 0; i < tabs.length; i++) {
               var base = tabs[i].getAttribute('data-timeline-tabs');
@@ -4561,6 +7888,26 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           modal.classList.add('is-open');
           modal.setAttribute('aria-hidden', 'false');
           if (close && close.focus) close.focus();
+        }
+        function switchExperienceDetailTab(name) {
+          var modal = document.getElementById('experience-detail-modal');
+          if (!modal) return;
+          var buttons = modal.querySelectorAll('[data-experience-detail-tab]');
+          var panels = modal.querySelectorAll('[data-experience-detail-panel]');
+          if (!buttons.length || !panels.length) return;
+          for (var i = 0; i < buttons.length; i++) {
+            var activeButton = buttons[i].getAttribute('data-experience-detail-tab') === name;
+            buttons[i].classList.toggle('is-active', activeButton);
+            buttons[i].setAttribute('aria-selected', activeButton ? 'true' : 'false');
+          }
+          for (var j = 0; j < panels.length; j++) {
+            panels[j].classList.toggle('is-active', panels[j].getAttribute('data-experience-detail-panel') === name);
+          }
+          if (name === 'evidence') {
+            window.requestAnimationFrame(function () {
+              if (window.refreshTimelineFullTextState) window.refreshTimelineFullTextState();
+            });
+          }
         }
         function switchTimelineGoalTab(tabBaseId, index) {
           var selector = '[data-timeline-tabs="' + tabBaseId.replace(/"/g, '\\"') + '"]';
@@ -4624,6 +7971,62 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           var text = root.querySelector('[data-timeline-filter-count]');
           if (text) text.textContent = value ? ('命中 ' + count + ' 条；只统计当前 skill 相关标签。') : '选择标签后，只显示当前回溯里的命中事件。';
         }
+        function findExperienceTimelineRow(root, messageIndex, messageUuid) {
+          if (!root) return null;
+          var rows = root.querySelectorAll('.timeline-row');
+          if (messageUuid) {
+            for (var i = 0; i < rows.length; i++) {
+              if (rows[i].getAttribute('data-message-uuid') === messageUuid) return rows[i];
+            }
+          }
+          if (messageIndex !== '') {
+            for (var j = 0; j < rows.length; j++) {
+              if (rows[j].getAttribute('data-message-index') === String(messageIndex)) return rows[j];
+            }
+          }
+          return null;
+        }
+        function focusExperienceTimelineRow(row) {
+          if (!row) return;
+          var fullView = row.closest ? row.closest('[data-timeline-view="full-session"]') : null;
+          if (fullView && fullView.style.display === 'none') {
+            var right = fullView.closest ? fullView.closest('.experience-detail-right') : null;
+            var toggle = right ? right.querySelector('[data-full-session-toggle]') : null;
+            if (toggle) toggleFullSessionTimeline(toggle);
+          }
+          var panel = row.closest ? row.closest('.timeline-tab-panel') : null;
+          if (panel && !panel.classList.contains('is-active')) {
+            var tabsRoot = panel.closest('[data-timeline-tabs]');
+            var base = tabsRoot ? tabsRoot.getAttribute('data-timeline-tabs') : '';
+            var panelId = panel.getAttribute('data-timeline-panel') || '';
+            if (base && panelId.indexOf(base + '-') === 0) {
+              var index = Number(panelId.slice(base.length + 1));
+              if (!Number.isNaN(index)) switchTimelineGoalTab(base, index);
+            }
+          }
+          window.requestAnimationFrame(function () {
+            row.classList.add('is-cta-focus');
+            if (row.scrollIntoView) row.scrollIntoView({ block: 'center', inline: 'nearest' });
+            var scrollPanel = row.closest ? (row.closest('.timeline-tab-panel') || row.closest('.session-timeline-tree') || row.closest('.experience-detail-tab-panel')) : null;
+            if (scrollPanel && typeof row.offsetTop === 'number') {
+              scrollPanel.scrollTop = Math.max(0, row.offsetTop - 80);
+            }
+            window.setTimeout(function () { row.classList.remove('is-cta-focus'); }, 1800);
+          });
+        }
+        function jumpToExperienceMessage(btn) {
+          var modal = document.getElementById('experience-detail-modal');
+          if (!modal || !btn) return;
+          switchExperienceDetailTab('evidence');
+          window.requestAnimationFrame(function () {
+            var evidencePanel = modal.querySelector('[data-experience-detail-panel="evidence"]') || modal;
+            var messageIndex = btn.getAttribute('data-jump-message-index') || '';
+            var messageUuid = btn.getAttribute('data-jump-message-uuid') || '';
+            var segmentView = evidencePanel.querySelector('[data-timeline-view="segment"]');
+            var row = findExperienceTimelineRow(segmentView, messageIndex, messageUuid) || findExperienceTimelineRow(evidencePanel, messageIndex, messageUuid);
+            focusExperienceTimelineRow(row);
+          });
+        }
         function openExperienceSessionById(sessionId, tag) {
           if (!sessionId) return;
           var rows = document.querySelectorAll('[data-observe-experience-session]');
@@ -4644,25 +8047,29 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           window.setTimeout(function () {
             var modal = document.getElementById('experience-detail-modal');
             if (!modal || !modal.classList.contains('is-open')) return;
-            var select = modal.querySelector('[data-timeline-tag-filter]');
+            if (tag) switchExperienceDetailTab('evidence');
+            var evidencePanel = modal.querySelector('[data-experience-detail-panel="evidence"]') || modal;
+            var select = evidencePanel.querySelector('[data-timeline-tag-filter]');
             if (select && tag) {
               select.value = tag;
               filterTimelineByTag(select);
             }
-            var target = tag ? modal.querySelector('.timeline-row.is-filter-match') : modal.querySelector('.timeline-row');
+            var target = tag ? evidencePanel.querySelector('.timeline-row.is-filter-match') : evidencePanel.querySelector('.timeline-row');
             if (!target) return;
-            target.classList.add('is-cta-focus');
-            var panel = target.closest('.timeline-tab-panel') || target.closest('.experience-detail-right');
-            if (panel) panel.scrollTop = Math.max(0, target.offsetTop - 80);
-            window.setTimeout(function () { target.classList.remove('is-cta-focus'); }, 1800);
+            focusExperienceTimelineRow(target);
           }, 160);
         }
         window.openExperienceDetailModal = openExperienceDetailModal;
         window.openContextChainModal = openContextChainModal;
         window.closeExperienceDetailModal = closeExperienceDetailModal;
+        window.switchExperienceDetailTab = switchExperienceDetailTab;
+        window.setReviewerJudgmentReview = setReviewerJudgmentReview;
+        window.openReviewerJudgmentNote = openReviewerJudgmentNote;
+        window.setSoftStandardStatus = setSoftStandardStatus;
         window.switchTimelineGoalTab = switchTimelineGoalTab;
         window.toggleFullSessionTimeline = toggleFullSessionTimeline;
         window.filterTimelineByTag = filterTimelineByTag;
+        window.jumpToExperienceMessage = jumpToExperienceMessage;
         window.openExperienceSessionById = openExperienceSessionById;
         (function setupExperienceDetailModal() {
           var modal = document.getElementById('experience-detail-modal');
@@ -4801,6 +8208,114 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                 var buttonVerdict = buttons[j].getAttribute('data-review-verdict');
                 var active = buttonVerdict === nextVerdict;
                 buttons[j].className = 'review-state-button' + (active ? ' is-active ' + reviewVerdictClass(buttonVerdict) : '');
+              }
+            }
+          } catch (err) {
+            alert(String(err && err.message ? err.message : err));
+          } finally {
+            if (btn) btn.disabled = false;
+          }
+        }
+        function reviewerJudgmentLabel(verdict) {
+          if (verdict === 'real_issue') return '已同意';
+          if (verdict === 'not_issue') return '已否决';
+          if (verdict === 'needs_more_context') return '已留意见';
+          if (verdict === 'reviewed') return '已看过';
+          return '未标注';
+        }
+        function updateReviewerJudgmentUi(targetId, verdict, reason) {
+          var cards = document.querySelectorAll('[data-reviewer-judgment-id="' + targetId.replace(/"/g, '\\"') + '"]');
+          for (var i = 0; i < cards.length; i++) {
+            var review = cards[i].querySelector('[data-reviewer-judgment-current]');
+            if (!review) continue;
+            review.setAttribute('data-reviewer-judgment-current', verdict || '');
+            var label = review.querySelector('[data-reviewer-judgment-label]');
+            if (label) label.textContent = reviewerJudgmentLabel(verdict);
+            var buttons = review.querySelectorAll('[data-reviewer-judgment-verdict]');
+            for (var j = 0; j < buttons.length; j++) {
+              var buttonVerdict = buttons[j].getAttribute('data-reviewer-judgment-verdict');
+              buttons[j].classList.toggle('is-active', Boolean(verdict && buttonVerdict === verdict));
+            }
+            var note = review.querySelector('small');
+            if (reason) {
+              if (!note) {
+                note = document.createElement('small');
+                review.appendChild(note);
+              }
+              note.textContent = reason;
+            } else if (note) {
+              note.remove();
+            }
+          }
+        }
+        async function setReviewerJudgmentReview(targetId, verdict, btn, reason) {
+          if (btn) btn.disabled = true;
+          var review = btn && btn.closest ? btn.closest('[data-reviewer-judgment-current]') : null;
+          var current = review ? review.getAttribute('data-reviewer-judgment-current') || '' : '';
+          var shouldDelete = current === verdict && !reason;
+          try {
+            var res = shouldDelete
+              ? await fetch('/api/observations/review-state?targetType=reviewer_judgment&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' })
+              : await fetch('/api/observations/review-state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  targetType: 'reviewer_judgment',
+                  targetId: targetId,
+                  verdict: verdict,
+                  reason: reason || undefined
+                })
+              });
+            if (!res.ok) throw new Error('判断标注写入失败: ' + res.status);
+            await res.json();
+            updateReviewerJudgmentUi(targetId, shouldDelete ? '' : verdict, shouldDelete ? '' : reason);
+          } catch (err) {
+            alert(String(err && err.message ? err.message : err));
+          } finally {
+            if (btn) btn.disabled = false;
+          }
+        }
+        function openReviewerJudgmentNote(targetId, btn) {
+          var previous = btn && btn.closest ? btn.closest('[data-reviewer-judgment-current]') : null;
+          var oldNote = previous && previous.querySelector('small') ? previous.querySelector('small').textContent || '' : '';
+          var reason = window.prompt('给这条判断留意见（可为空）', oldNote);
+          if (reason === null) return;
+          setReviewerJudgmentReview(targetId, 'needs_more_context', btn, reason);
+        }
+        function softStandardStatusLabel(status) {
+          if (status === 'author_confirmed') return '作者已确认';
+          if (status === 'rejected') return '已否决';
+          if (status === 'stale') return '已过期';
+          return '待作者确认';
+        }
+        function softStandardStatusIcon(status) {
+          if (status === 'author_confirmed') return '✅';
+          if (status === 'rejected') return '❌';
+          return '';
+        }
+        async function setSoftStandardStatus(skillName, standardId, status, btn) {
+          if (btn) btn.disabled = true;
+          try {
+            var res = await fetch('/api/observations/soft-standards/review', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ skillName: skillName, standardId: standardId, status: status })
+            });
+            if (!res.ok) throw new Error('软标准状态写入失败: ' + res.status);
+            await res.json();
+            var cards = document.querySelectorAll('[data-soft-standard-id="' + standardId.replace(/"/g, '\\"') + '"][data-soft-standard-skill="' + skillName.replace(/"/g, '\\"') + '"]');
+            for (var i = 0; i < cards.length; i++) {
+              var label = cards[i].querySelector('[data-soft-standard-status]');
+              if (label) {
+                label.setAttribute('data-soft-standard-status', status);
+                label.textContent = softStandardStatusLabel(status);
+              }
+              cards[i].classList.toggle('is-confirmed', status === 'author_confirmed');
+              cards[i].classList.toggle('is-rejected', status === 'rejected');
+              var icon = cards[i].querySelector('[data-soft-standard-icon]');
+              if (icon) {
+                icon.setAttribute('data-soft-standard-icon', status);
+                icon.textContent = softStandardStatusIcon(status);
               }
             }
           } catch (err) {
