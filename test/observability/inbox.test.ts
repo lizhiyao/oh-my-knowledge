@@ -35,6 +35,7 @@ import {
   deleteObservationReviewState,
   loadObservationReviewState,
   observationMetricAnnotationTargetId,
+  observationMetricScopeFor,
   observationReviewStateKey,
   updateObservationReviewState,
 } from '../../src/observability/review-state.js';
@@ -1450,17 +1451,21 @@ describe('observe inbox', () => {
     assert.match(rendered, /data-message-uuid="u3"/);
     assert.match(rendered, /function jumpToExperienceMessage/);
 
+    const metricScopeId = experience.sessions[0]?.id;
+    assert.ok(metricScopeId);
     const correctionTargetId = observationMetricAnnotationTargetId({
       sourceTrace: file,
       sessionId: 's1',
       messageIndex: 5,
       messageUuid: 'u3',
+      metricScopeId,
     }, 'user_correction');
     const goalShiftTargetId = observationMetricAnnotationTargetId({
       sourceTrace: file,
       sessionId: 's1',
       messageIndex: 5,
       messageUuid: 'u3',
+      metricScopeId,
     }, 'user_goal_shift');
     const annotatedReport = buildObservationInboxReport(file, {
       reviewState: {
@@ -1473,6 +1478,7 @@ describe('observe inbox', () => {
             targetId: correctionTargetId,
             verdict: 'rejected',
             metricKey: 'user_correction',
+            metricScopeId,
             reviewedAt: '2026-05-01T00:00:00.000Z',
           },
           [observationReviewStateKey('evidence_metric', goalShiftTargetId)]: {
@@ -1480,6 +1486,7 @@ describe('observe inbox', () => {
             targetId: goalShiftTargetId,
             verdict: 'confirmed',
             metricKey: 'user_goal_shift',
+            metricScopeId,
             reviewedAt: '2026-05-01T00:00:00.000Z',
           },
         },
@@ -1737,14 +1744,35 @@ describe('observe inbox', () => {
       targetId: metricTargetId,
       verdict: 'confirmed',
       metricKey: 'user_correction',
+      metricScopeId: 'skill-session-1',
       reason: '用户明确否定上一轮结果',
     }, '2026-05-01T00:01:30.000Z');
     const metricKey = observationReviewStateKey('evidence_metric', metricTargetId);
     assert.equal(metric.entries[metricKey].metricKey, 'user_correction');
+    assert.equal(metric.entries[metricKey].metricScope, 'skill_segment');
+    assert.equal(metric.entries[metricKey].metricScopeId, 'skill-session-1');
     assert.equal(metric.entries[metricKey].reason, '用户明确否定上一轮结果');
 
     const afterDelete = deleteObservationReviewState(dir, 'goal_slice_correction', 'session-1:42', '2026-05-01T00:02:00.000Z');
     assert.equal(afterDelete.entries[correctionKey], undefined);
+  });
+
+  it('scopes relative metric annotations by skill segment while keeping message metrics shared', () => {
+    const ref = {
+      sourceTrace: '/tmp/session.jsonl',
+      sessionId: 's1',
+      messageIndex: 3,
+      messageUuid: 'u3',
+    };
+    const correctionA = observationMetricAnnotationTargetId({ ...ref, metricScopeId: 'skill-a' }, 'user_follow_up');
+    const correctionB = observationMetricAnnotationTargetId({ ...ref, metricScopeId: 'skill-b' }, 'user_follow_up');
+    const positiveA = observationMetricAnnotationTargetId({ ...ref, metricScopeId: 'skill-a' }, 'positive_feedback');
+    const positiveB = observationMetricAnnotationTargetId({ ...ref, metricScopeId: 'skill-b' }, 'positive_feedback');
+
+    assert.equal(observationMetricScopeFor('user_follow_up'), 'skill_segment');
+    assert.equal(observationMetricScopeFor('positive_feedback'), 'message');
+    assert.notEqual(correctionA, correctionB);
+    assert.equal(positiveA, positiveB);
   });
 
   it('persists reviewer judgment and soft standard review state', () => {

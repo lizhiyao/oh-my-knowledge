@@ -2,7 +2,19 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export type ObservationReviewTargetType = 'experience_session' | 'inbox_item' | 'skill' | 'goal_slice_correction' | 'evidence_metric' | 'reviewer_judgment' | 'soft_standard';
+export type ObservationReviewTargetType =
+  | 'experience_session'
+  | 'inbox_item'
+  | 'skill'
+  | 'goal_slice_correction'
+  | 'evidence_metric'
+  | 'reviewer_judgment'
+  | 'soft_standard'
+  | 'goal_keyword_correction'
+  | 'result_artifact_correction'
+  | 'skill_relevance_correction'
+  | 'workflow_completion_correction'
+  | 'hardrule_execution_correction';
 export type ObservationReviewVerdict = 'reviewed' | 'real_issue' | 'not_issue' | 'needs_more_context' | 'confirmed' | 'rejected';
 export type ObservationMetricKey =
   | 'user_correction'
@@ -11,7 +23,12 @@ export type ObservationMetricKey =
   | 'negative_feedback'
   | 'positive_feedback'
   | 'hard_rule'
-  | 'user_goal_shift';
+  | 'user_goal_shift'
+  | 'result_artifact'
+  | 'progress_update'
+  | 'self_correction'
+  | 'repeated_execution';
+export type ObservationMetricScope = 'message' | 'skill_segment';
 
 export interface ObservationReviewStateEntry {
   targetType: ObservationReviewTargetType;
@@ -21,6 +38,8 @@ export interface ObservationReviewStateEntry {
   note?: string;
   reason?: string;
   metricKey?: ObservationMetricKey;
+  metricScope?: ObservationMetricScope;
+  metricScopeId?: string;
   sourceTrace?: string;
   sessionId?: string;
   messageIndex?: number;
@@ -43,6 +62,8 @@ export interface ObservationReviewStateUpdate {
   note?: string;
   reason?: string;
   metricKey?: ObservationMetricKey;
+  metricScope?: ObservationMetricScope;
+  metricScopeId?: string;
   sourceTrace?: string;
   sessionId?: string;
   messageIndex?: number;
@@ -55,6 +76,16 @@ export function observationReviewStateKey(targetType: ObservationReviewTargetTyp
   return `${targetType}:${targetId}`;
 }
 
+export function observationMetricScopeFor(metricKey: ObservationMetricKey): ObservationMetricScope {
+  return metricKey === 'user_correction'
+    || metricKey === 'user_interruption'
+    || metricKey === 'user_follow_up'
+    || metricKey === 'hard_rule'
+    || metricKey === 'user_goal_shift'
+    ? 'skill_segment'
+    : 'message';
+}
+
 export function observationMetricAnnotationTargetId(
   ref: {
     id?: string;
@@ -63,12 +94,15 @@ export function observationMetricAnnotationTargetId(
     messageIndex?: number;
     messageUuid?: string;
     toolUseId?: string;
+    metricScopeId?: string;
   },
   metricKey: ObservationMetricKey,
 ): string {
   const hasStableTraceRef = Boolean(ref.sourceTrace || ref.sessionId || ref.messageIndex !== undefined || ref.messageUuid || ref.toolUseId);
+  const scope = observationMetricScopeFor(metricKey);
   const stable = [
     metricKey,
+    ...(scope === 'skill_segment' ? [scope, ref.metricScopeId ?? ''] : []),
     ref.sourceTrace ?? '',
     ref.sessionId ?? '',
     ref.messageIndex === undefined ? '' : String(ref.messageIndex),
@@ -140,6 +174,8 @@ export function updateObservationReviewState(
     ...(update.note ? { note: update.note.slice(0, 500) } : {}),
     ...(update.reason ? { reason: update.reason.slice(0, 500) } : {}),
     ...(update.metricKey ? { metricKey: update.metricKey } : {}),
+    ...(update.metricKey ? { metricScope: update.metricScope ?? observationMetricScopeFor(update.metricKey) } : {}),
+    ...(update.metricScopeId ? { metricScopeId: update.metricScopeId.slice(0, 200) } : {}),
     ...(update.sourceTrace ? { sourceTrace: update.sourceTrace } : {}),
     ...(update.sessionId ? { sessionId: update.sessionId } : {}),
     ...(update.messageIndex !== undefined ? { messageIndex: update.messageIndex } : {}),
@@ -175,6 +211,7 @@ function assertReviewStateUpdate(value: ObservationReviewStateUpdate): void {
   if (typeof value.targetId !== 'string' || value.targetId.trim() === '') throw new Error('invalid review targetId');
   if (!isReviewVerdict(value.verdict)) throw new Error('invalid review verdict');
   if (value.targetType === 'evidence_metric' && !isObservationMetricKey(value.metricKey)) throw new Error('invalid metricKey');
+  if (value.metricScope !== undefined && !isObservationMetricScope(value.metricScope)) throw new Error('invalid metricScope');
   if ((value.verdict === 'confirmed' || value.verdict === 'rejected') && value.targetType !== 'evidence_metric') throw new Error('metric verdict requires evidence_metric targetType');
 }
 
@@ -194,11 +231,20 @@ function isReviewTargetType(value: unknown): value is ObservationReviewTargetTyp
     || value === 'goal_slice_correction'
     || value === 'evidence_metric'
     || value === 'reviewer_judgment'
-    || value === 'soft_standard';
+    || value === 'soft_standard'
+    || value === 'goal_keyword_correction'
+    || value === 'result_artifact_correction'
+    || value === 'skill_relevance_correction'
+    || value === 'workflow_completion_correction'
+    || value === 'hardrule_execution_correction';
 }
 
 function isReviewVerdict(value: unknown): value is ObservationReviewVerdict {
   return value === 'reviewed' || value === 'real_issue' || value === 'not_issue' || value === 'needs_more_context' || value === 'confirmed' || value === 'rejected';
+}
+
+function isObservationMetricScope(value: unknown): value is ObservationMetricScope {
+  return value === 'message' || value === 'skill_segment';
 }
 
 function isObservationMetricKey(value: unknown): value is ObservationMetricKey {
@@ -208,5 +254,9 @@ function isObservationMetricKey(value: unknown): value is ObservationMetricKey {
     || value === 'negative_feedback'
     || value === 'positive_feedback'
     || value === 'hard_rule'
-    || value === 'user_goal_shift';
+    || value === 'user_goal_shift'
+    || value === 'result_artifact'
+    || value === 'progress_update'
+    || value === 'self_correction'
+    || value === 'repeated_execution';
 }

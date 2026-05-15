@@ -235,7 +235,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   };
   const confidenceHeaderHelp = '判断把握：OMK 对“这条 过程发现 是否需要处理/是否高风险/需关注”的规则判断有多确定。归属把握：OMK 把这条 过程发现 归到当前 skill 名下有多确定，例如明确调用 skill 通常更高。';
   type IndicatorHelpKey =
-    | 'userCorrection' | 'userInterruption' | 'userFollowUp' | 'negativeFeedback' | 'positiveFeedback' | 'userGoalShift' | 'hardRule'
+    | 'userCorrection' | 'userInterruption' | 'userFollowUp' | 'negativeFeedback' | 'positiveFeedback' | 'userGoalShift' | 'hardRule' | 'selfCorrection' | 'repeatedExecution'
     | 'toolCall' | 'toolFailure' | 'highObservation' | 'mediumObservation' | 'hedging' | 'explicitMarker'
     | 'bash' | 'read' | 'grep' | 'bashProbe' | 'notFound' | 'toolLimit';
   const indicatorLabels: Record<IndicatorHelpKey, string> = {
@@ -246,6 +246,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     positiveFeedback: '正向反馈',
     userGoalShift: '用户切换目标',
     hardRule: '用户硬性要求',
+    selfCorrection: '自我纠正',
+    repeatedExecution: '重复执行',
     toolCall: '工具调用',
     toolFailure: '工具执行失败',
     highObservation: '高优先级过程发现',
@@ -267,6 +269,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     positiveFeedback: '统计“很好 / good job / 做得好 / 很棒 / 优秀 / 厉害 / 很有用 / 很有价值”等正向表达，用来保留用户认可证据。',
     userGoalShift: '统计“换个方向 / 先不 / 不用这个 / 另一个问题”等目标切换表达。它表示当前目标可能中止或切走，不直接等同于 skill 做错。',
     hardRule: '统计用户在对话里临时提出的硬性要求，例如“必须 / 不要 / 禁止 / 严格 / 一定要 / 只允许”。Skill 自身的强约束请看定义链路里的规则检测结果。',
+    selfCorrection: '统计 agent 在没有用户介入的情况下，发现自己的执行路径、结果或工具策略有问题并主动修正。少量说明有恢复能力，高频说明流程不稳。',
+    repeatedExecution: '统计同类步骤、工具或流程被重复执行的信号。高频出现通常对应绕路、工具策略不清晰或 workflow 缺少明确顺序。',
     toolCall: '统计该 skill 运行片段里的 tool_use 调用总数，包括 Bash、Read、Grep 等工具。',
     toolFailure: '统计该 skill 运行片段里失败的工具执行结果，例如 tool_result 标记 is_error=true。注意：工具执行失败不等于整个 skill 调用失败。',
     highObservation: '统计 severity=high 的过程发现，通常表示可能需要优先复盘的执行问题。',
@@ -503,6 +507,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     userGoalShiftCount: 0,
     hardRuleTextHitCount: 0,
     assistantDeliverySignalCount: 0,
+    selfCorrectionCount: 0,
+    repeatedExecutionCount: 0,
     toolCallCount: 0,
     toolFailureCount: 0,
     highObservationCount: 0,
@@ -515,19 +521,19 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     pattern.lastIndex = 0;
     return pattern.test(value);
   };
-  const displayMetricVerdict = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey): 'confirmed' | 'rejected' | '' => {
-    const targetId = observationMetricAnnotationTargetId(event, metricKey);
+  const displayMetricVerdict = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): 'confirmed' | 'rejected' | '' => {
+    const targetId = observationMetricAnnotationTargetId({ ...event, metricScopeId }, metricKey);
     const entry = reviewState.entries[`evidence_metric:${targetId}`];
     return entry?.verdict === 'confirmed' || entry?.verdict === 'rejected' ? entry.verdict : '';
   };
-  const displayMetricIsActive = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean): boolean => {
-    const verdict = displayMetricVerdict(event, metricKey);
+  const displayMetricIsActive = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean, metricScopeId?: string): boolean => {
+    const verdict = displayMetricVerdict(event, metricKey, metricScopeId);
     if (verdict === 'confirmed') return true;
     if (verdict === 'rejected') return false;
     return ruleDetected;
   };
-  const displayMetricCount = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleCount: number): number => {
-    const verdict = displayMetricVerdict(event, metricKey);
+  const displayMetricCount = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleCount: number, metricScopeId?: string): number => {
+    const verdict = displayMetricVerdict(event, metricKey, metricScopeId);
     if (verdict === 'confirmed') return Math.max(1, ruleCount);
     if (verdict === 'rejected') return 0;
     return ruleCount;
@@ -537,13 +543,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const interactionEvents = humanEvents.filter((event) => !isScheduledTaskPromptText(event.snippet ?? ''));
     return {
       ...session.indicators,
-      userFollowUpCount: interactionEvents.reduce((sum, event, index) => sum + (displayMetricIsActive(event, 'user_follow_up', index > 0) ? 1 : 0), 0),
-      userCorrectionCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_correction', findUserCorrectionMatches(event.snippet ?? '').length), 0),
-      userInterruptionCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'user_interruption', displayRegexMatches(USER_INTERRUPTION_DISPLAY_RE, event.snippet ?? '')) ? 1 : 0), 0),
+      userFollowUpCount: interactionEvents.reduce((sum, event, index) => sum + (displayMetricIsActive(event, 'user_follow_up', index > 0, session.id) ? 1 : 0), 0),
+      userCorrectionCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_correction', findUserCorrectionMatches(event.snippet ?? '').length, session.id), 0),
+      userInterruptionCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'user_interruption', displayRegexMatches(USER_INTERRUPTION_DISPLAY_RE, event.snippet ?? ''), session.id) ? 1 : 0), 0),
       negativeFeedbackCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'negative_feedback', findNegativeFeedbackMatches(event.snippet ?? '').length), 0),
       positiveFeedbackCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'positive_feedback', findPositiveFeedbackMatches(event.snippet ?? '').length), 0),
-      userGoalShiftCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_goal_shift', findUserGoalShiftMatches(event.snippet ?? '').length), 0),
-      hardRuleTextHitCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? '')) ? 1 : 0), 0),
+      userGoalShiftCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_goal_shift', findUserGoalShiftMatches(event.snippet ?? '').length, session.id), 0),
+      hardRuleTextHitCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? ''), session.id) ? 1 : 0), 0),
+      selfCorrectionCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'self_correction', hasSelfCorrectionSignal(event)) ? 1 : 0), 0),
+      repeatedExecutionCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event)) ? 1 : 0), 0),
     };
   };
   const sessionMetricSourceTitle = (session: ExperienceSessionSummary, metricKey: ObservationMetricKey, label: string): string => {
@@ -574,8 +582,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                   : metricKey === 'user_goal_shift'
                     ? findUserGoalShiftMatches(text).length
                     : 0;
-      const verdict = displayMetricVerdict(event, metricKey);
-      const finalValue = displayMetricCount(event, metricKey, rule);
+      const verdict = displayMetricVerdict(event, metricKey, session.id);
+      const finalValue = displayMetricCount(event, metricKey, rule, session.id);
       ruleCount += rule;
       if (verdict === 'confirmed') confirmed += 1;
       if (verdict === 'rejected') rejected += 1;
@@ -605,6 +613,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       userGoalShiftCount: current.userGoalShiftCount + next.userGoalShiftCount,
       hardRuleTextHitCount: current.hardRuleTextHitCount + next.hardRuleTextHitCount,
       assistantDeliverySignalCount: current.assistantDeliverySignalCount + (next.assistantDeliverySignalCount ?? 0),
+      selfCorrectionCount: current.selfCorrectionCount + (next.selfCorrectionCount ?? 0),
+      repeatedExecutionCount: current.repeatedExecutionCount + (next.repeatedExecutionCount ?? 0),
       toolCallCount: current.toolCallCount + next.toolCallCount,
       toolFailureCount: current.toolFailureCount + next.toolFailureCount,
       highObservationCount: current.highObservationCount + next.highObservationCount,
@@ -729,11 +739,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       renderDecisionMetricIfPositive('高优先级', indicators.highObservationCount, 'priority'),
       renderDecisionMetricIfPositive('抽样过程发现', indicators.mediumObservationCount, 'sample'),
       renderDecisionMetricIfPositive('用户硬性要求', indicators.hardRuleTextHitCount, 'sample'),
+      renderDecisionMetricIfPositive('自我纠正', indicators.selfCorrectionCount ?? 0, 'sample'),
+      renderDecisionMetricIfPositive('重复执行', indicators.repeatedExecutionCount ?? 0, 'sample'),
       renderDecisionMetricIfPositive('不确定表达', indicators.hedgingCount, 'sample'),
       renderDecisionMetricIfPositive('显式缺口', indicators.explicitMarkerCount, 'sample'),
     ].filter(Boolean).join('');
     return `<div class="skill-evidence-summary">
-      <div class="summary-row"><span class="summary-title">【skill 运行】</span>${renderMetric('调用段', skill.invocationCount, '次')}<span class="summary-muted">分布 ${skill.sessionCount} 个 session</span>${renderMetric('工具调用', total, '次')}${renderMetricShare('成功', success, total)}${renderDecisionMetricShare('失败', failed, total, 'sample')}${renderDecisionMetricShare('人工中断', interrupted, total, 'priority')}${renderSoftMetric('疑似完成', indicators.assistantDeliverySignalCount ?? 0, '助手回复里出现代码块、直接生成、结果如下、完成等交付信号。表示当前目标可能完成，不直接等同于整个 skill 生命周期结束。')}</div>
+      <div class="summary-row"><span class="summary-title">【skill 运行】</span>${renderMetric('调用段', skill.invocationCount, '次')}<span class="summary-muted">分布 ${skill.sessionCount} 个 session</span>${renderMetric('工具调用', total, '次')}${renderMetricShare('成功', success, total)}${renderDecisionMetricShare('失败', failed, total, 'sample')}${renderDecisionMetricShare('人工中断', interrupted, total, 'priority')}${renderDecisionMetricIfPositive('自我纠正', indicators.selfCorrectionCount ?? 0, 'sample')}${renderDecisionMetricIfPositive('重复执行', indicators.repeatedExecutionCount ?? 0, 'sample')}${renderSoftMetric('疑似完成', indicators.assistantDeliverySignalCount ?? 0, '助手回复里出现代码块、直接生成、结果如下、完成等交付信号。表示当前目标可能完成，不直接等同于整个 skill 生命周期结束。')}</div>
       <div class="summary-row"><span class="summary-title">【用户交互】</span>${renderDecisionMetric('用户纠正', indicators.userCorrectionCount, 'priority')}${renderDecisionMetric('人工中断', indicators.userInterruptionCount, 'priority')}${renderMetric('追问', indicators.userFollowUpCount)}${renderDecisionMetric('负向反馈', indicators.negativeFeedbackCount ?? 0, 'priority')}${renderMetric('正向反馈', indicators.positiveFeedbackCount ?? 0)}${renderMetric('目标切换', indicators.userGoalShiftCount ?? 0)}</div>
       <div class="summary-row"><span class="summary-title">【工具调用】</span>${renderMetric('总计', total, '次')}<span class="summary-detail">(${renderRankedCounts(displayToolCounts, total)})</span>${renderDecisionMetricShare('工具执行失败', failed, total, 'sample')}</div>
       <div class="summary-row"><span class="summary-title">【过程发现】</span>${processMetrics || '<span class="summary-muted">未发现需要展示的过程信号</span>'}</div>
@@ -1554,6 +1566,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               ['用户消息', metrics.userMessageCount],
               ['追问/补充', metrics.userFollowUpCount],
               ['交付信号', metrics.assistantDeliverySignalCount],
+              ['自我纠正', metrics.selfCorrectionCount ?? 0],
+              ['重复执行', metrics.repeatedExecutionCount ?? 0],
               ['原始事件', metrics.traceEventCount],
             ].map(([label, value]) => `<div style="padding:7px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface)"><div style="font-size:10px;color:var(--text-muted)">${e(String(label))}</div><strong style="font-size:13px;color:var(--text-primary)">${e(String(value))}</strong></div>`).join('')}
           </div>
@@ -1691,8 +1705,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     positive_feedback: '正向',
     hard_rule: '用户硬性要求',
     user_goal_shift: '目标切换',
+    result_artifact: '产出结果',
+    progress_update: '过程进展',
+    self_correction: '自我纠正',
+    repeated_execution: '重复执行',
   };
-  const evidenceMetricKeys = Object.keys(evidenceMetricLabels) as ObservationMetricKey[];
   const cloneRegex = (pattern: RegExp): RegExp => new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
   const matches = (pattern: RegExp, value: string): boolean => {
     pattern.lastIndex = 0;
@@ -1748,20 +1765,35 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const text = event.fullText ?? event.snippet ?? '';
 	    return hasAssistantDeliverySignalText(text);
 	  };
-	  const evidenceMetricVerdictFor = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey): 'confirmed' | 'rejected' | '' => {
-	    const targetId = observationMetricAnnotationTargetId(event, metricKey);
+	  const isAssistantProgressUpdateSignal = (event: ExperienceTimelineEvent): boolean => {
+	    if (event.kind !== 'assistant_message') return false;
+	    const text = event.fullText ?? event.snippet ?? '';
+	    return /正在|继续|稍等|马上|即将|处理中|整理中|进展|progress|working|in progress/i.test(text);
+	  };
+	  function hasSelfCorrectionSignal(event: ExperienceTimelineEvent): boolean {
+	    if (event.kind !== 'assistant_message') return false;
+	    const text = event.fullText ?? event.snippet ?? '';
+	    return /刚才.*(?:不对|错了|有误)|发现.*(?:不对|错了|问题|遗漏)|重新(?:检查|分析|执行|生成|整理)|改用|换成|修正|我再(?:检查|重新|看)|recheck|retry|mistake|wrong/i.test(text);
+	  }
+	  function hasRepeatedExecutionSignal(event: ExperienceTimelineEvent): boolean {
+	    if (event.kind === 'user_message') return false;
+	    const text = `${event.label ?? ''} ${event.toolName ?? ''} ${event.fullText ?? event.snippet ?? ''}`;
+	    return /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|retry|rerun/i.test(text);
+	  }
+	  const evidenceMetricVerdictFor = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): 'confirmed' | 'rejected' | '' => {
+	    const targetId = observationMetricAnnotationTargetId({ ...event, metricScopeId }, metricKey);
 	    const entry = reviewState.entries[reviewStateKey('evidence_metric', targetId)];
 	    return entry?.verdict === 'confirmed' || entry?.verdict === 'rejected' ? entry.verdict : '';
 	  };
-	  const evidenceMetricIsActive = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean): boolean => {
-	    const verdict = evidenceMetricVerdictFor(event, metricKey);
+	  const evidenceMetricIsActive = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean, metricScopeId?: string): boolean => {
+	    const verdict = evidenceMetricVerdictFor(event, metricKey, metricScopeId);
 	    if (verdict === 'confirmed') return true;
 	    if (verdict === 'rejected') return false;
 	    return ruleDetected;
 	  };
-	  const evidenceMetricBadgeLabel = (base: string, event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean): string =>
-	    evidenceMetricVerdictFor(event, metricKey) === 'confirmed' && !ruleDetected ? `人工确认：${base}` : base;
-  const timelineSearchTags = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags: boolean): string[] => {
+	  const evidenceMetricBadgeLabel = (base: string, event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean, metricScopeId?: string): string =>
+	    evidenceMetricVerdictFor(event, metricKey, metricScopeId) === 'confirmed' && !ruleDetected ? `人工确认：${base}` : base;
+  const timelineSearchTags = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags: boolean, metricScopeId?: string): string[] => {
     if (!allowMetricTags) return [];
     const text = event.fullText ?? event.snippet ?? '';
     const metricText = event.snippet ?? '';
@@ -1770,25 +1802,28 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       tags.push('user_message');
       if (isScheduledTaskPromptText(metricText)) tags.push('scheduled_task');
       if (!isScheduledTaskPromptText(metricText)) {
-        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) tags.push('user_follow_up');
-        if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText))) tags.push('user_correction');
-        if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText))) tags.push('user_goal_shift');
-        if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText))) tags.push('user_interruption');
+        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0, metricScopeId)) tags.push('user_follow_up');
+        if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText), metricScopeId)) tags.push('user_correction');
+        if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText), metricScopeId)) tags.push('user_goal_shift');
+        if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText), metricScopeId)) tags.push('user_interruption');
         if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0)) tags.push('negative_feedback');
         if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) tags.push('positive_feedback');
-        if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText))) tags.push('hard_rule');
+        if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText), metricScopeId)) tags.push('hard_rule');
       }
     }
     if (event.kind === 'assistant_message') {
       if (isAssistantDeliverySignal(event)) tags.push('completion');
+      if (evidenceMetricIsActive(event, 'self_correction', hasSelfCorrectionSignal(event))) tags.push('self_correction');
+      if (evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) tags.push('repeated_execution');
       if (matches(HEDGING_RE, text)) tags.push('hedging');
       if (matches(EXPLICIT_MARKER_RE, text)) tags.push('explicit_marker');
     }
+    if (event.kind !== 'user_message' && event.kind !== 'assistant_message' && evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) tags.push('repeated_execution');
     if (event.kind === 'tool_result' && event.isError) tags.push('tool_failure');
     if (event.kind === 'observation') tags.push('observation');
     return Array.from(new Set(tags));
   };
-	  const timelineMetricBadges = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags = true): string[] => {
+	  const timelineMetricBadges = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags = true, metricScopeId?: string): string[] => {
     if (!allowMetricTags) return [];
 	    const text = event.fullText ?? event.snippet ?? '';
 	    const metricText = event.snippet ?? '';
@@ -1803,21 +1838,24 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           : '这条人工用户消息计入用户消息数；同一 skill 片段内第 2 条及之后还会计入追问/补充。',
       });
       if (!scheduledTask) {
-        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) badges.push({ label: evidenceMetricBadgeLabel('追问/补充来源', event, 'user_follow_up', userIndex > 0), className: 'metric-followup', title: '同一 skill 复盘片段内，第 2 条及之后的人工用户消息计入追问/补充。' });
-        if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText))) badges.push({ label: evidenceMetricBadgeLabel('用户纠正来源', event, 'user_correction', hasUserCorrectionSignal(metricText)), className: 'metric-correction', title: '命中明确纠正表达；“不对/不是/错了”要求前后有标点、空格等分隔。人工反对后不会再显示。' });
-        if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText))) badges.push({ label: evidenceMetricBadgeLabel('目标切换来源', event, 'user_goal_shift', hasUserGoalShiftSignal(metricText)), className: 'metric-goal-shift', title: '命中“换个方向/先不/不用这个/另一个问题”等表达；表示用户可能切走当前目标。' });
-        if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText))) badges.push({ label: evidenceMetricBadgeLabel('人工中断来源', event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText)), className: 'metric-interruption', title: '用户主动中断了当前执行，通常表示当前路径需要纠偏或停止。' });
+        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0, metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('追问/补充来源', event, 'user_follow_up', userIndex > 0, metricScopeId), className: 'metric-followup', title: '同一 skill 复盘片段内，第 2 条及之后的人工用户消息计入追问/补充。' });
+        if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('用户纠正来源', event, 'user_correction', hasUserCorrectionSignal(metricText), metricScopeId), className: 'metric-correction', title: '命中明确纠正表达；“不对/不是/错了”要求前后有标点、空格等分隔。人工反对后不会再显示。' });
+        if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('目标切换来源', event, 'user_goal_shift', hasUserGoalShiftSignal(metricText), metricScopeId), className: 'metric-goal-shift', title: '命中“换个方向/先不/不用这个/另一个问题”等表达；表示用户可能切走当前目标。' });
+        if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('人工中断来源', event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText), metricScopeId), className: 'metric-interruption', title: '用户主动中断了当前执行，通常表示当前路径需要纠偏或停止。' });
         if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0)) badges.push({ label: evidenceMetricBadgeLabel('负向反馈来源', event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0), className: 'metric-negative', title: '命中“没用/垃圾/菜/做错了/不行/看不懂”等负向表达。' });
         if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) badges.push({ label: evidenceMetricBadgeLabel('正向反馈来源', event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0), className: 'metric-positive', title: '命中“很好/good job/做得好/很棒/优秀/很有用”等正向表达。' });
-        if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText))) badges.push({ label: evidenceMetricBadgeLabel('用户硬性要求来源', event, 'hard_rule', hasUserHardRuleText(metricText)), className: 'metric-hard-rule', title: '命中“必须/不要/禁止/严格”等用户临时硬性要求。' });
+        if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('用户硬性要求来源', event, 'hard_rule', hasUserHardRuleText(metricText), metricScopeId), className: 'metric-hard-rule', title: '命中“必须/不要/禁止/严格”等用户临时硬性要求。' });
       }
     }
 	    if (event.kind === 'assistant_message') {
 	      if (isAssistantDeliverySignal(event)) badges.push({ label: '产出结果/疑似完成', className: 'metric-completion', title: '助手回复里出现代码块、直接生成、结果如下、完成等交付信号。它表示当前目标可能完成，不等于整个 skill 生命周期结束。' });
+	      if (evidenceMetricIsActive(event, 'self_correction', hasSelfCorrectionSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('自我纠正', event, 'self_correction', hasSelfCorrectionSignal(event)), className: 'metric-correction', title: 'agent 在没有用户介入的情况下发现问题并主动修正执行策略。少量说明有恢复能力，高频说明流程不稳。' });
+	      if (evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('重复执行', event, 'repeated_execution', hasRepeatedExecutionSignal(event)), className: 'metric-repeated-execution', title: '同类步骤、工具或流程被重复执行。高频出现时通常对应绕路或 workflow 不清晰。' });
 	      if (matches(HEDGING_RE, text)) badges.push({ label: '不确定表达来源', className: 'metric-hedging', title: '命中“可能/不确定/需要确认”等表达。' });
 	      if (matches(EXPLICIT_MARKER_RE, text)) badges.push({ label: '显式缺口来源', className: 'metric-explicit', title: '命中“【推断】/【未知】/知识缺口”等标记。' });
     }
     if (event.kind === 'tool_use') {
+      if (evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('重复执行', event, 'repeated_execution', hasRepeatedExecutionSignal(event)), className: 'metric-repeated-execution', title: '同类工具或流程被重复调用。高频出现时通常对应绕路或 workflow 不清晰。' });
       badges.push({
         label: '工具调用',
         className: 'metric-tool-use',
@@ -1827,6 +1865,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       });
     }
 	    if (event.kind === 'tool_result') {
+	      if (evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('重复执行', event, 'repeated_execution', hasRepeatedExecutionSignal(event)), className: 'metric-repeated-execution', title: '同类工具结果或失败恢复路径被重复出现。高频出现时通常对应绕路或 workflow 不清晰。' });
 	      if (event.isError) {
 	        badges.push({ label: '工具执行失败', className: 'metric-tool-failure', title: 'tool_result 标记 is_error=true，表示这次工具执行失败。' });
 	      } else if (isSkillLaunchResult(event)) {
@@ -1849,38 +1888,42 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     }
     return badges.map((badge) => `<span class="timeline-badge ${badge.className}" title="${e(badge.title)}">${e(badge.label)}</span>`);
   };
-	  const highlightTimelineSnippet = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags = true): string => {
+	  const highlightTimelineSnippet = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags = true, metricScopeId?: string): string => {
 	    const rules: TimelineHighlightRule[] = [];
 	    const value = event.snippet ?? '';
     if (!allowMetricTags) return e(value);
 	    if (event.kind === 'user_message' && !isScheduledTaskPromptText(value)) {
-      if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(value))) rules.push({ ranges: findUserCorrectionMatches, className: 'metric-correction', title: '用户纠正命中词' });
-      if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(value))) rules.push({ ranges: findUserGoalShiftMatches, className: 'metric-goal-shift', title: '目标切换命中词' });
-      if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, value))) rules.push({ pattern: cloneRegex(USER_INTERRUPTION_RE), className: 'metric-interruption', title: '人工中断命中词' });
+      if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(value), metricScopeId)) rules.push({ ranges: findUserCorrectionMatches, className: 'metric-correction', title: '用户纠正命中词' });
+      if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(value), metricScopeId)) rules.push({ ranges: findUserGoalShiftMatches, className: 'metric-goal-shift', title: '目标切换命中词' });
+      if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, value), metricScopeId)) rules.push({ pattern: cloneRegex(USER_INTERRUPTION_RE), className: 'metric-interruption', title: '人工中断命中词' });
       if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(value).length > 0)) rules.push({ ranges: findNegativeFeedbackMatches, className: 'metric-negative', title: '负向反馈命中词' });
       if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(value).length > 0)) rules.push({ ranges: findPositiveFeedbackMatches, className: 'metric-positive', title: '正向反馈命中词' });
-      if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(value))) rules.push({ pattern: cloneRegex(HARD_RULE_RE), className: 'metric-hard-rule', title: '用户硬性要求命中词' });
+      if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(value), metricScopeId)) rules.push({ pattern: cloneRegex(HARD_RULE_RE), className: 'metric-hard-rule', title: '用户硬性要求命中词' });
     }
 	    if (event.kind === 'assistant_message') {
 	      rules.push(
 	        { pattern: /```(?:mermaid|plantuml|json|tsx?|jsx?|html|css|excalidraw|markdown)?|直接生成|已生成|生成如下|结果如下|完成|已完成/g, className: 'metric-completion', title: '当前目标产出结果/疑似完成命中词' },
+	        { pattern: /刚才.*(?:不对|错了|有误)|发现.*(?:不对|错了|问题|遗漏)|重新(?:检查|分析|执行|生成|整理)|改用|换成|修正|我再(?:检查|重新|看)|recheck|retry|mistake|wrong/gi, className: 'metric-correction', title: '自我纠正命中词' },
+	        { pattern: /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|retry|rerun/gi, className: 'metric-repeated-execution', title: '重复执行命中词' },
 	        { pattern: cloneRegex(HEDGING_RE), className: 'metric-hedging', title: '不确定表达命中词' },
 	        { pattern: cloneRegex(EXPLICIT_MARKER_RE), className: 'metric-explicit', title: '显式缺口命中词' },
 	      );
 	    }
+    if (event.kind !== 'user_message' && event.kind !== 'assistant_message' && evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) {
+      rules.push({ pattern: /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|retry|rerun/gi, className: 'metric-repeated-execution', title: '重复执行命中词' });
+    }
     if (event.kind === 'tool_result' && event.isError) {
       rules.push({ pattern: cloneRegex(TOOL_FAILURE_RE), className: 'metric-tool-failure', title: '工具执行失败命中词' });
     }
 	    const html = highlightText(value, rules);
-    if (event.kind === 'user_message' && !isScheduledTaskPromptText(value) && evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) {
+    if (event.kind === 'user_message' && !isScheduledTaskPromptText(value) && evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0, metricScopeId)) {
       return `<span class="timeline-followup-source" title="整条消息计入追问/补充来源">${html}</span>`;
     }
     return html;
   };
   const evidenceMetricRuleDetected = (event: ExperienceTimelineEvent, userIndex: number, metricKey: ObservationMetricKey): boolean => {
-    if (event.kind !== 'user_message') return false;
     const text = event.snippet ?? '';
-    if (isScheduledTaskPromptText(text)) return false;
+    if (event.kind === 'user_message' && isScheduledTaskPromptText(text)) return false;
     if (metricKey === 'user_correction') return hasUserCorrectionSignal(text);
     if (metricKey === 'user_interruption') return matches(USER_INTERRUPTION_RE, text);
     if (metricKey === 'user_follow_up') return userIndex > 0;
@@ -1888,52 +1931,72 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (metricKey === 'positive_feedback') return findPositiveFeedbackMatches(text).length > 0;
     if (metricKey === 'hard_rule') return hasUserHardRuleText(text);
     if (metricKey === 'user_goal_shift') return hasUserGoalShiftSignal(text);
+    if (metricKey === 'result_artifact') return isAssistantDeliverySignal(event);
+    if (metricKey === 'progress_update') return isAssistantProgressUpdateSignal(event);
+    if (metricKey === 'self_correction') return hasSelfCorrectionSignal(event);
+    if (metricKey === 'repeated_execution') return hasRepeatedExecutionSignal(event);
     return false;
   };
-  const metricAnnotationTarget = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey): string =>
-    observationMetricAnnotationTargetId(event, metricKey);
-	  const metricAnnotationVerdict = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey): 'confirmed' | 'rejected' | '' => {
-	    const targetId = metricAnnotationTarget(event, metricKey);
+  const metricAnnotationTarget = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): string =>
+    observationMetricAnnotationTargetId({ ...event, metricScopeId }, metricKey);
+	  const metricAnnotationVerdict = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): 'confirmed' | 'rejected' | '' => {
+	    const targetId = metricAnnotationTarget(event, metricKey, metricScopeId);
 	    const entry = reviewState.entries[reviewStateKey('evidence_metric', targetId)];
 	    return entry?.verdict === 'confirmed' || entry?.verdict === 'rejected' ? entry.verdict : '';
 	  };
-	  const metricAnnotationReason = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey): string => {
-	    const targetId = metricAnnotationTarget(event, metricKey);
+	  const metricAnnotationReason = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): string => {
+	    const targetId = metricAnnotationTarget(event, metricKey, metricScopeId);
 	    const entry = reviewState.entries[reviewStateKey('evidence_metric', targetId)];
 	    return typeof entry?.reason === 'string' ? entry.reason : '';
 	  };
-  const renderMetricCalibration = (event: ExperienceTimelineEvent, userIndex: number): string => {
-	    if (event.kind !== 'user_message') return '';
-	    const buttons = evidenceMetricKeys.map((metricKey) => {
-	      const targetId = metricAnnotationTarget(event, metricKey);
-	      const verdict = metricAnnotationVerdict(event, metricKey);
-	      const reason = metricAnnotationReason(event, metricKey);
+  const timelineManualMetricKeys = (): ObservationMetricKey[] => [
+    'user_correction',
+    'user_interruption',
+    'user_follow_up',
+    'negative_feedback',
+    'positive_feedback',
+    'hard_rule',
+    'user_goal_shift',
+    'result_artifact',
+    'progress_update',
+    'self_correction',
+    'repeated_execution',
+  ];
+  const renderTimelineManualMarkButton = (sessionId: string, event: ExperienceTimelineEvent, userIndex: number): string => {
+	    const metrics = timelineManualMetricKeys().map((metricKey) => {
+	      const targetId = metricAnnotationTarget(event, metricKey, sessionId);
+	      const verdict = metricAnnotationVerdict(event, metricKey, sessionId);
+	      const reason = metricAnnotationReason(event, metricKey, sessionId);
 	      const ruleDetected = evidenceMetricRuleDetected(event, userIndex, metricKey);
 	      const label = evidenceMetricLabels[metricKey];
-	      const stateLabel = verdict === 'confirmed' ? '人工同意' : verdict === 'rejected' ? '人工反对' : ruleDetected ? '规则命中' : '未命中';
-	      const className = verdict === 'confirmed' ? 'is-confirmed' : verdict === 'rejected' ? 'is-rejected' : ruleDetected ? 'is-rule-hit' : '';
-	      const title = `${stateLabel}：${label}。点击后在弹层里选择同意/反对，并可填写原因；下一次生成报告会优先使用人工标注。`;
-	      return `<button type="button"
-	        class="metric-calibration-button ${className}"
-	        data-evidence-metric-target="${e(targetId)}"
-	        data-metric-key="${e(metricKey)}"
-	        data-metric-label="${e(label)}"
-	        data-metric-annotation="${e(verdict)}"
-	        data-metric-reason="${e(reason)}"
-	        data-rule-detected="${ruleDetected ? '1' : '0'}"
-	        data-source-trace="${e(event.sourceTrace)}"
-	        data-session-id="${e(event.sessionId)}"
-        data-message-index="${event.messageIndex ?? ''}"
-        data-message-uuid="${e(event.messageUuid ?? '')}"
-        data-tool-use-id="${e(event.toolUseId ?? '')}"
-        data-snippet="${e((event.snippet ?? '').slice(0, 240))}"
-	        onclick="openEvidenceMetricAnnotation('${e(targetId)}', '${e(metricKey)}', this)"
-	        title="${e(title)}">${e(stateLabel)} · ${e(label)}</button>`;
-	    }).join('');
-    return `<div class="metric-calibration-row">
-      <span class="metric-calibration-title">人工校准</span>
-      <div class="metric-calibration-actions">${buttons}</div>
-    </div>`;
+	      return { targetId, metricKey, metricScopeId: sessionId, verdict, reason, ruleDetected, label };
+	    });
+    const goalTargetId = `${sessionId}:${event.messageIndex ?? event.id}`;
+    const goalAction = goalSliceCorrectionAction(sessionId, event);
+    const activeCount = metrics.filter((m) => m.verdict === 'confirmed' || m.verdict === 'rejected').length + (goalAction ? 1 : 0);
+    const source = {
+      sourceTrace: event.sourceTrace,
+      sessionId: event.sessionId,
+      messageIndex: event.messageIndex,
+      messageUuid: event.messageUuid,
+      toolUseId: event.toolUseId,
+      snippet: (event.snippet ?? '').slice(0, 240),
+    };
+    return `<button type="button"
+      class="timeline-manual-mark-button ${activeCount > 0 ? 'is-marked' : ''}"
+      data-manual-mark-session-id="${e(sessionId)}"
+      data-manual-mark-goal-target="${e(goalTargetId)}"
+      data-manual-mark-goal-action="${e(goalAction)}"
+      data-manual-mark-metrics="${e(JSON.stringify(metrics))}"
+      data-manual-mark-source="${e(JSON.stringify(source))}"
+      data-source-trace="${e(event.sourceTrace)}"
+      data-session-id="${e(event.sessionId)}"
+      data-message-index="${event.messageIndex ?? ''}"
+      data-message-uuid="${e(event.messageUuid ?? '')}"
+      data-tool-use-id="${e(event.toolUseId ?? '')}"
+      data-snippet="${e((event.snippet ?? '').slice(0, 240))}"
+      onclick="openTimelineManualMark(this)"
+      title="人工标记这条消息">人工标记${activeCount > 0 ? `(${activeCount})` : ''}</button>`;
   };
   const goalSliceCorrectionAction = (sessionId: string, event: ExperienceTimelineEvent): 'split_goal_slice' | 'add_to_current_skill_window' | '' => {
     const targetId = `${sessionId}:${event.messageIndex ?? event.id}`;
@@ -1942,31 +2005,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (note.includes('add_to_current_skill_window')) return 'add_to_current_skill_window';
     if (reviewState.entries[key]) return 'split_goal_slice';
     return '';
-  };
-  const renderGoalSliceCorrectionButton = (sessionId: string, event: ExperienceTimelineEvent): string => {
-    const targetId = `${sessionId}:${event.messageIndex ?? event.id}`;
-    const key = reviewStateKey('goal_slice_correction', targetId);
-    const action = goalSliceCorrectionAction(sessionId, event);
-    const label = action === 'split_goal_slice'
-      ? '已标记：拆分'
-      : action === 'add_to_current_skill_window'
-        ? '已标记：加入窗口'
-        : '人工标记';
-    const help = '点击后可选择：拆分目标切片、取消打标、添加至当前 skill 窗口。写入 review-state.json 后，需要重新执行脚本让报告重算生效。';
-    return `<button type="button"
-      class="goal-slice-correction-button ${action ? 'is-marked' : ''}"
-      data-goal-slice-correction-key="${e(key)}"
-      data-goal-slice-correction-action="${e(action)}"
-      data-goal-slice-correction-target="${e(targetId)}"
-      data-source-trace="${e(event.sourceTrace)}"
-      data-session-id="${e(event.sessionId)}"
-      data-message-index="${event.messageIndex ?? ''}"
-      data-message-uuid="${e(event.messageUuid ?? '')}"
-      data-tool-use-id="${e(event.toolUseId ?? '')}"
-      data-snippet="${e((event.snippet ?? '').slice(0, 240))}"
-      onclick="openGoalSliceCorrectionPopover('${e(targetId)}', this)"
-      title="${e(help)}"
-      aria-label="${e(help)}">${e(label)}</button>`;
   };
 	  const renderExperienceTimeline = (events: ExperienceTimelineEvent[], sessionId: string, options: TimelineRenderOptions = {}): string => {
     if (events.length === 0) return '<div style="color:var(--text-muted);font-size:12px">没有可展示的时间线片段。</div>';
@@ -2018,10 +2056,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       return [previous, ...items];
     };
 	    const renderRow = ({ event, userIndex: currentUserIndex }: typeof decorated[number]): string => {
-	      const meta = timelineEventMeta(event);
+      const meta = timelineEventMeta(event);
       const allowMetricTags = allowMetricTagsFor(event);
-      const searchTags = timelineSearchTags(event, currentUserIndex, allowMetricTags);
-	      const badges = timelineMetricBadges(event, currentUserIndex, allowMetricTags).join('');
+      const searchTags = timelineSearchTags(event, currentUserIndex, allowMetricTags, reviewSessionId);
+	      const badges = timelineMetricBadges(event, currentUserIndex, allowMetricTags, reviewSessionId).join('');
 	      const visibleText = event.snippet ?? '';
 	      const fullText = event.fullText ?? visibleText;
 	      const hasMoreFullText = Boolean(fullText && fullText.trim() !== visibleText.trim());
@@ -2040,10 +2078,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               <div class="timeline-subtitle">${event.traceLabel ? `链路：${e(event.traceLabel)} · ` : ''}${e(event.label || event.role || event.kind)}${event.toolUseId ? ` · ${e(event.toolUseId)}` : ''}${event.timestamp ? ` · ${e(event.timestamp.slice(0, 19).replace('T', ' '))}` : ''}</div>
             </div>
             <div class="timeline-badges">${badges}</div>
-            ${renderGoalSliceCorrectionButton(sessionId, event)}
+            ${renderTimelineManualMarkButton(reviewSessionId, event, currentUserIndex)}
           </header>
-	          <pre class="timeline-snippet ${event.isError ? 'is-tool-error' : ''}"${fullTextAttrs}>${highlightTimelineSnippet(event, currentUserIndex, allowMetricTags)}</pre>
-          ${allowMetricTags ? renderMetricCalibration(event, currentUserIndex) : ''}
+	          <pre class="timeline-snippet ${event.isError ? 'is-tool-error' : ''}"${fullTextAttrs}>${highlightTimelineSnippet(event, currentUserIndex, allowMetricTags, reviewSessionId)}</pre>
         </article>
       </div>`;
     };
@@ -2190,6 +2227,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           <option value="user_interruption">人工中断</option>
           <option value="user_goal_shift">目标切换</option>
           <option value="hard_rule">用户硬性要求</option>
+          <option value="self_correction">自我纠正</option>
+          <option value="repeated_execution">重复执行</option>
           <option value="tool_failure">工具执行失败</option>
           <option value="hedging">不确定表达</option>
           <option value="explicit_marker">显式缺口</option>
@@ -2721,6 +2760,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         ${metric('负向反馈', indicators.negativeFeedbackCount ?? 0, 'negativeFeedback', sessionMetricSourceTitle(session, 'negative_feedback', '负向反馈'))} ·
         ${metric('正向反馈', indicators.positiveFeedbackCount ?? 0, 'positiveFeedback', sessionMetricSourceTitle(session, 'positive_feedback', '正向反馈'))} ·
         ${metric('目标切换', indicators.userGoalShiftCount ?? 0, 'userGoalShift', sessionMetricSourceTitle(session, 'user_goal_shift', '目标切换'))}<br>
+        ${metric('自我纠正', indicators.selfCorrectionCount ?? 0, 'selfCorrection')} ·
+        ${metric('重复执行', indicators.repeatedExecutionCount ?? 0, 'repeatedExecution')} ·
         ${metric('工具执行失败', indicators.toolFailureCount, 'toolFailure')} ·
         ${metric('高优先级过程发现', indicators.highObservationCount, 'highObservation')}
       </td>
@@ -3170,6 +3211,95 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    }
 	    return candidates.slice(0, 2).join(' / ');
 	  };
+	  type ManualCorrectionTarget =
+	    | 'goal_keyword_correction'
+	    | 'result_artifact_correction'
+	    | 'skill_relevance_correction'
+	    | 'workflow_completion_correction'
+	    | 'hardrule_execution_correction';
+	  type ManualCorrectionOption = { value: string; label: string };
+	  const manualCorrectionLabel = (raw?: string): string => {
+	    if (!raw) return '';
+	    try {
+	      const parsed = JSON.parse(raw) as { label?: unknown; value?: unknown };
+	      if (typeof parsed.label === 'string' && parsed.label.trim()) return parsed.label;
+	      if (typeof parsed.value === 'string' && parsed.value.trim()) return parsed.value;
+	    } catch {
+	      return raw;
+	    }
+	    return raw;
+	  };
+	  const manualCorrectionEntry = (targetType: ManualCorrectionTarget, targetId: string) =>
+	    reviewState.entries[reviewStateKey(targetType, targetId)];
+	  const renderManualCorrectionButton = (
+	    targetType: ManualCorrectionTarget,
+	    targetId: string,
+	    label: string,
+	    options: ManualCorrectionOption[],
+	    kind: 'choice' | 'text' = 'choice',
+	  ): string => {
+	    const entry = manualCorrectionEntry(targetType, targetId);
+	    const current = manualCorrectionLabel(entry?.note);
+	    const optionsJson = e(JSON.stringify(options));
+	    return `<button type="button"
+	      class="manual-correction-button ${current ? 'is-marked' : ''}"
+	      data-manual-correction-key="${e(reviewStateKey(targetType, targetId))}"
+	      data-manual-correction-target-type="${e(targetType)}"
+	      data-manual-correction-target-id="${e(targetId)}"
+	      data-manual-correction-kind="${e(kind)}"
+	      data-manual-correction-label="${e(label)}"
+	      data-manual-correction-current="${e(current)}"
+	      data-manual-correction-options="${optionsJson}"
+	      onclick="openManualCorrection(this)"
+	      title="人工纠正会写入 review-state.json，不修改原始 trace">${e(label)}${current ? `：${e(current)}` : ''}</button>`;
+	  };
+	  const inboxManualCorrectionControls = (skill: ExperienceSessionSummary, answerKey: string): string => {
+	    const baseId = skill.id;
+	    const deliveryOptions = [
+	      { value: 'final_delivery', label: '最后交付产物' },
+	      { value: 'artifact_delivery', label: '有结果产物' },
+	      { value: 'progress_update', label: '只是过程进展' },
+	      { value: 'not_delivery', label: '没有交付产物' },
+	      { value: 'unknown', label: '无法判断' },
+	    ];
+	    const relevanceOptions = [
+	      { value: 'relevant', label: '相关' },
+	      { value: 'partial', label: '部分相关' },
+	      { value: 'not_relevant', label: '不相关' },
+	      { value: 'unknown', label: '无法判断' },
+	    ];
+	    const workflowOptions = [
+	      { value: 'complete', label: '完整执行' },
+	      { value: 'partial', label: '部分执行' },
+	      { value: 'not_executed', label: '未执行' },
+	      { value: 'wrong_order', label: '顺序错误' },
+	      { value: 'unknown', label: '无法判断' },
+	    ];
+	    const hardruleOptions = [
+	      { value: 'executed', label: '已执行' },
+	      { value: 'not_executed', label: '未执行' },
+	      { value: 'insufficient', label: '执行不充分' },
+	      { value: 'not_applicable', label: '规则不适用' },
+	      { value: 'unknown', label: '无法判断' },
+	    ];
+	    const buttons = answerKey === 'goal_satisfaction'
+	      ? [
+	          renderManualCorrectionButton('goal_keyword_correction', `${baseId}:goal_keyword`, '改目标关键词', [], 'text'),
+	          renderManualCorrectionButton('result_artifact_correction', `${baseId}:result_artifact`, '标注结果产物', deliveryOptions),
+	        ]
+	      : answerKey === 'declared_behavior_fit'
+	        ? [
+	            renderManualCorrectionButton('skill_relevance_correction', `${baseId}:skill_relevance:${skill.skillName}`, 'skill 是否相关', relevanceOptions),
+	            renderManualCorrectionButton('workflow_completion_correction', `${baseId}:workflow_completion:${skill.skillName}`, 'workflow 完整性', workflowOptions),
+	            renderManualCorrectionButton('hardrule_execution_correction', `${baseId}:hardrule_execution:${skill.skillName}`, 'hardRule 执行', hardruleOptions),
+	          ]
+	        : [];
+	    if (buttons.length === 0) return '';
+	    return `<div class="manual-correction-panel">
+	      <span class="manual-correction-title">人工纠正</span>
+	      <div class="manual-correction-actions">${buttons.join('')}</div>
+	    </div>`;
+	  };
 	  const inboxAnswerChecklist = (skill: ExperienceSessionSummary, answerKey: string): string => {
 	    const goalKeywords = inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet);
 	    const deliverySnippet = inboxExtractKeyword(skill.evidenceChain?.lastAssistantMessage?.snippet, 60);
@@ -3203,7 +3333,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	            { label: '用户有重新补充上下文/文档', ok: hasSupplementContext },
 	            { label: '用户有中断流程', ok: hasInterruption },
 	          ];
-	    return `<div class="inbox-answer-checklist">${checks.map((check) => `<span class="inbox-answer-check ${check.ok ? 'is-ok' : 'is-missing'}"><span class="inbox-answer-check-icon">${check.ok ? '✅' : '待'}</span>${e(check.label)}</span>`).join('')}</div>`;
+	    return `<div class="inbox-answer-checklist">${checks.map((check) => `<span class="inbox-answer-check ${check.ok ? 'is-ok' : 'is-missing'}"><span class="inbox-answer-check-icon">${check.ok ? '✅' : '待'}</span>${e(check.label)}</span>`).join('')}</div>${inboxManualCorrectionControls(skill, answerKey)}`;
 	  };
 	  const inboxRenderSuggestionsBlock = (skill: ExperienceSessionSummary, title: string, keywords: string[]): string => {
 	    const all = skill.reviewerReport?.authorSuggestions ?? [];
@@ -3352,6 +3482,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const toolDetail = inboxBuildToolDetail(skill);
 	    const toolFailureDetail = inboxBuildToolFailureDetail(skill);
 	    const indicators = skill.indicators;
+	    const runtimeModel = [
+	      skill.sourceMetadata?.provider,
+	      skill.sourceMetadata?.model,
+	      skill.sourceMetadata?.modelApi,
+	    ].filter(Boolean).join(' / ') || '未记录模型';
 	    const tokenDetail: Array<{ name: string; count: number }> = metrics?.tokenUsage ? [
 	      { name: '输入 token', count: metrics.tokenUsage.inputTokens },
 	      { name: '输出 token', count: metrics.tokenUsage.outputTokens },
@@ -3376,6 +3511,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      { key: 'negativeFeedback', label: '负向反馈', value: indicators.negativeFeedbackCount, detail: [], note: '用户出现明确负向情绪表达的次数。', anomaly: indicators.negativeFeedbackCount > 0 },
 	      { key: 'delivery', label: '交付候选', value: metrics.assistantDeliverySignalCount, detail: [], note: '回答中出现疑似交付信号（如代码块、"已完成"等）的次数。', anomaly: false },
 	      { key: 'progress', label: '过程进展', value: metrics.assistantProgressUpdateCount ?? 0, detail: [], note: '回答中出现"正在 / 仍在 / 进度更新"等过程进展信号的次数。这类不算最终交付。', anomaly: false },
+	      { key: 'selfCorrection', label: '自我纠正', value: metrics.selfCorrectionCount ?? indicators.selfCorrectionCount ?? 0, detail: [], note: 'agent 在没有用户介入的情况下发现问题并主动修正执行策略。少量说明有恢复能力，高频说明流程不稳。', anomaly: (metrics.selfCorrectionCount ?? indicators.selfCorrectionCount ?? 0) > 0 },
+	      { key: 'repeatedExecution', label: '重复执行', value: metrics.repeatedExecutionCount ?? indicators.repeatedExecutionCount ?? 0, detail: [], note: '同类步骤、工具或流程被重复执行。高频出现时通常对应绕路或 workflow 不清晰。', anomaly: (metrics.repeatedExecutionCount ?? indicators.repeatedExecutionCount ?? 0) > 0 },
 	      { key: 'tokenInput', label: '输入 token', value: metrics.tokenUsage?.inputTokens ?? 0, detail: tokenDetail, note: '按本次能力调用段累计的 token 用量。', anomaly: false },
 	      { key: 'tokenOutput', label: '输出 token', value: metrics.tokenUsage?.outputTokens ?? 0, detail: tokenDetail, note: '按本次能力调用段累计的 token 用量。', anomaly: false },
 	    ];
@@ -3384,7 +3521,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      : `<div class="inbox-metric-grid-wrap"><div class="inbox-metric-hint">点击任意指标卡可查看分布详情，红色卡片是检测到的异常。</div><div class="inbox-metric-grid">${cards.map((card) => `<button type="button" class="inbox-metric-card ${card.anomaly ? 'is-anomaly' : ''}" title="点击查看 ${e(card.label)} 详情" data-metric-key="${e(card.key)}" data-metric-label="${e(card.label)}" data-metric-value="${card.value}" data-metric-detail="${inboxMetricCardJson(card.detail)}" data-metric-note="${e(card.note)}" data-metric-anomaly="${card.anomaly ? '1' : '0'}" data-metric-jump="${evidenceJumpId}" onclick="openInboxMetricPopover(this)"><span>${e(card.label)}</span><strong>${card.value}</strong><em class="inbox-metric-card-hint">点击看详情</em></button>`).join('')}</div></div>`;
 	    const runtimeSuggestions = inboxRenderSuggestionsBlock(skill, '执行细节下一步建议', ['工具', '规则', '流程', '失败', '硬性']);
 	    return `<article class="inbox-skill-block">
-	      <header class="inbox-skill-head"><div><h4>${e(skill.skillName)}</h4><span class="inbox-skill-subtitle">运行指标 + 规则 / 流程</span></div></header>
+	      <header class="inbox-skill-head"><div><h4>${e(skill.skillName)}</h4><span class="inbox-skill-subtitle">运行指标 + 规则 / 流程 · 模型：${e(runtimeModel)}</span></div></header>
 	      ${metricRow}
 	      <div class="inbox-skill-chain">${renderSkillChainTemplate(skill.skillName)}</div>
 	      ${runtimeSuggestions}
@@ -4230,6 +4367,88 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           flex: 0 0 auto;
           font-size: 10px;
           color: var(--text-muted);
+        }
+        .manual-correction-panel {
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px dashed var(--border);
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .manual-correction-title {
+          font-size: 11px;
+          color: var(--text-muted);
+          font-weight: 650;
+        }
+        .manual-correction-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+        }
+        .manual-correction-button {
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          border-radius: 999px;
+          padding: 3px 8px;
+          font-size: 11px;
+          line-height: 1.45;
+          cursor: pointer;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .manual-correction-button:hover {
+          color: var(--text-primary);
+          border-color: var(--accent);
+        }
+        .manual-correction-button.is-marked {
+          background: var(--info-bg);
+          color: var(--accent);
+          border-color: var(--accent);
+          font-weight: 650;
+        }
+        .manual-correction-popover {
+          position: fixed;
+          z-index: 10000;
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          border: 1px solid var(--border);
+          box-shadow: var(--shadow-lg);
+          border-radius: 8px;
+          padding: 10px;
+          width: min(320px, calc(100vw - 24px));
+        }
+        .manual-correction-popover-title {
+          font-size: 12px;
+          font-weight: 700;
+          margin-bottom: 4px;
+        }
+        .manual-correction-popover-hint {
+          font-size: 11px;
+          color: var(--text-muted);
+          line-height: 1.45;
+          margin-bottom: 8px;
+        }
+        .manual-correction-popover-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .manual-correction-popover-actions button {
+          border: 1px solid var(--border);
+          background: var(--bg);
+          color: var(--text-secondary);
+          border-radius: 6px;
+          padding: 5px 8px;
+          font-size: 12px;
+          cursor: pointer;
+        }
+        .manual-correction-popover-actions button:hover {
+          color: var(--text-primary);
+          border-color: var(--accent);
         }
         .inbox-answer-meta {
           margin-top: 8px;
@@ -6425,6 +6644,29 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           color: #fff;
           box-shadow: 0 2px 8px rgba(22,163,74,.18);
         }
+        .timeline-manual-mark-button {
+          flex: 0 0 auto;
+          border: 1px solid rgba(37,99,235,.26);
+          background: rgba(37,99,235,.08);
+          color: var(--accent);
+          border-radius: 6px;
+          padding: 3px 6px;
+          font-size: 10px;
+          line-height: 1.25;
+          font-weight: 800;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .timeline-manual-mark-button:hover,
+        .timeline-manual-mark-button.is-editing {
+          border-color: rgba(37,99,235,.55);
+          background: rgba(37,99,235,.14);
+        }
+        .timeline-manual-mark-button.is-marked {
+          border-color: rgba(22,163,74,.38);
+          background: rgba(22,163,74,.11);
+          color: var(--green);
+        }
         .goal-slice-popover {
           position: fixed;
           z-index: 2147483600;
@@ -6470,6 +6712,74 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           border-color: rgba(37,99,235,.35);
           color: var(--accent);
           background: rgba(37,99,235,.08);
+        }
+        .timeline-manual-popover {
+          position: fixed;
+          z-index: 2147483600;
+          width: min(380px, calc(100vw - 32px));
+          max-height: calc(100vh - 24px);
+          max-height: calc(100dvh - 24px);
+          border: 1px solid rgba(37,99,235,.26);
+          border-radius: 9px;
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          box-shadow: 0 18px 48px rgba(15,23,42,.22);
+          padding: 10px;
+          opacity: 1;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          display: flex;
+          flex-direction: column;
+        }
+        .timeline-manual-actions {
+          display: flex;
+          flex-direction: column;
+          flex: 1 1 auto;
+          gap: 7px;
+          min-height: 0;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          padding-right: 2px;
+        }
+        .timeline-manual-actions > button,
+        .timeline-manual-metric-row button {
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--bg);
+          color: var(--text-secondary);
+          padding: 4px 8px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .timeline-manual-actions > button:hover,
+        .timeline-manual-metric-row button:hover {
+          border-color: rgba(37,99,235,.35);
+          color: var(--accent);
+          background: rgba(37,99,235,.08);
+        }
+        .timeline-manual-metric-row button.is-active {
+          border-color: rgba(22,163,74,.36);
+          color: var(--green);
+          background: rgba(22,163,74,.10);
+        }
+        .timeline-manual-metric-row {
+          display: grid;
+          grid-template-columns: minmax(120px, 1fr) auto auto auto;
+          align-items: center;
+          gap: 6px;
+          border-top: 1px solid var(--border);
+          padding-top: 7px;
+        }
+        .timeline-manual-metric-row span {
+          min-width: 0;
+          color: var(--text-secondary);
+          font-size: 11px;
+          font-weight: 700;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .timeline-snippet {
           position: relative;
@@ -7276,6 +7586,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        .metric-positive { background: rgba(22,163,74,.12); color: var(--green); border-color: rgba(22,163,74,.25); }
 	        .metric-completion { background: rgba(22,163,74,.10); color: var(--green); border-color: rgba(22,163,74,.22); }
         .metric-hard-rule { background: rgba(126,34,206,.12); color: #7e22ce; border-color: rgba(126,34,206,.25); }
+        .metric-repeated-execution { background: rgba(245,158,11,.13); color: #b45309; border-color: rgba(245,158,11,.28); }
         .metric-hedging { background: rgba(14,165,233,.12); color: #0284c7; border-color: rgba(14,165,233,.25); }
         .metric-explicit { background: rgba(220,38,38,.12); color: var(--red); border-color: rgba(220,38,38,.25); }
         .metric-tool-use { background: rgba(202,138,4,.10); color: var(--yellow); border-color: rgba(202,138,4,.25); }
@@ -7298,6 +7609,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .timeline-badge.metric-positive,
         .timeline-badge.metric-completion,
         .timeline-badge.metric-hard-rule,
+        .timeline-badge.metric-repeated-execution,
         .timeline-badge.metric-hedging,
         .timeline-badge.metric-explicit,
         .timeline-badge.metric-tool-use,
@@ -8278,9 +8590,53 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         function openReviewerJudgmentNote(targetId, btn) {
           var previous = btn && btn.closest ? btn.closest('[data-reviewer-judgment-current]') : null;
           var oldNote = previous && previous.querySelector('small') ? previous.querySelector('small').textContent || '' : '';
-          var reason = window.prompt('给这条判断留意见（可为空）', oldNote);
-          if (reason === null) return;
-          setReviewerJudgmentReview(targetId, 'needs_more_context', btn, reason);
+          closeManualCorrectionPopovers();
+          if (btn) btn.classList.add('is-editing');
+          var popover = document.createElement('div');
+          popover.className = 'manual-correction-popover';
+          var title = document.createElement('div');
+          title.className = 'manual-correction-popover-title';
+          title.textContent = '补充判断意见';
+          var hint = document.createElement('div');
+          hint.className = 'manual-correction-popover-hint';
+          hint.textContent = '意见会写入 review-state.json，不修改原始 trace。';
+          var input = document.createElement('textarea');
+          input.className = 'metric-reason-input';
+          input.value = oldNote;
+          input.placeholder = '写下需要补充的判断依据';
+          var footer = document.createElement('div');
+          footer.className = 'manual-correction-popover-actions';
+          var save = document.createElement('button');
+          save.type = 'button';
+          save.textContent = '保存';
+          var cancel = document.createElement('button');
+          cancel.type = 'button';
+          cancel.textContent = '取消';
+          footer.appendChild(save);
+          footer.appendChild(cancel);
+          popover.appendChild(title);
+          popover.appendChild(hint);
+          popover.appendChild(input);
+          popover.appendChild(footer);
+          positionManualCorrectionPopover(popover, btn);
+          input.focus();
+          input.select();
+          var close = function () {
+            popover.remove();
+            if (btn) btn.classList.remove('is-editing');
+          };
+          save.addEventListener('click', function () {
+            setReviewerJudgmentReview(targetId, 'needs_more_context', btn, input.value.trim());
+            close();
+          });
+          cancel.addEventListener('click', close);
+          setTimeout(function () {
+            document.addEventListener('click', function closeOnOutsideClick(event) {
+              if (popover.contains(event.target) || (btn && btn.contains(event.target))) return;
+              close();
+              document.removeEventListener('click', closeOnOutsideClick);
+            });
+          }, 0);
         }
         function softStandardStatusLabel(status) {
           if (status === 'author_confirmed') return '作者已确认';
@@ -8324,6 +8680,157 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             if (btn) btn.disabled = false;
           }
         }
+        function closeManualCorrectionPopovers() {
+          var popovers = document.querySelectorAll('.manual-correction-popover');
+          for (var i = 0; i < popovers.length; i++) popovers[i].remove();
+          var buttons = document.querySelectorAll('.manual-correction-button.is-editing');
+          for (var j = 0; j < buttons.length; j++) buttons[j].classList.remove('is-editing');
+        }
+        function manualCorrectionNote(value, label) {
+          return JSON.stringify({ value: value, label: label });
+        }
+        function updateManualCorrectionButtons(targetType, targetId, label) {
+          var key = targetType + ':' + targetId;
+          var buttons = document.querySelectorAll('[data-manual-correction-key="' + key.replace(/"/g, '\\"') + '"]');
+          for (var i = 0; i < buttons.length; i++) {
+            var baseLabel = buttons[i].getAttribute('data-manual-correction-label') || '人工纠正';
+            buttons[i].setAttribute('data-manual-correction-current', label || '');
+            buttons[i].classList.toggle('is-marked', Boolean(label));
+            buttons[i].textContent = label ? baseLabel + '：' + label : baseLabel;
+          }
+        }
+        async function submitManualCorrection(targetType, targetId, value, label, btn) {
+          if (btn) btn.disabled = true;
+          try {
+            var res = value === ''
+              ? await fetch('/api/observations/review-state?targetType=' + encodeURIComponent(targetType) + '&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' })
+              : await fetch('/api/observations/review-state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  targetType: targetType,
+                  targetId: targetId,
+                  verdict: 'reviewed',
+                  note: manualCorrectionNote(value, label)
+                })
+              });
+            if (!res.ok) throw new Error('人工纠正写入失败: ' + res.status);
+            await res.json();
+            updateManualCorrectionButtons(targetType, targetId, value === '' ? '' : label);
+            closeManualCorrectionPopovers();
+          } catch (err) {
+            alert(String(err && err.message ? err.message : err));
+          } finally {
+            if (btn) btn.disabled = false;
+          }
+        }
+        function positionManualCorrectionPopover(popover, btn) {
+          var rect = btn.getBoundingClientRect();
+          var width = Math.min(320, Math.max(220, window.innerWidth - 24));
+          popover.style.width = width + 'px';
+          document.body.appendChild(popover);
+          var left = Math.min(window.innerWidth - width - 12, Math.max(12, rect.right - width));
+          var top = rect.bottom + 8;
+          var popRect = popover.getBoundingClientRect();
+          if (top + popRect.height > window.innerHeight - 12) {
+            top = Math.max(12, rect.top - popRect.height - 8);
+          }
+          popover.style.left = left + 'px';
+          popover.style.top = top + 'px';
+        }
+        function openManualCorrection(btn) {
+          closeManualCorrectionPopovers();
+          if (!btn) return;
+          var targetType = btn.getAttribute('data-manual-correction-target-type') || '';
+          var targetId = btn.getAttribute('data-manual-correction-target-id') || '';
+          var label = btn.getAttribute('data-manual-correction-label') || '人工纠正';
+          var kind = btn.getAttribute('data-manual-correction-kind') || 'choice';
+          if (kind === 'text') {
+            var current = btn.getAttribute('data-manual-correction-current') || '';
+            btn.classList.add('is-editing');
+            var textPopover = document.createElement('div');
+            textPopover.className = 'manual-correction-popover';
+            var textTitle = document.createElement('div');
+            textTitle.className = 'manual-correction-popover-title';
+            textTitle.textContent = label;
+            var textHint = document.createElement('div');
+            textHint.className = 'manual-correction-popover-hint';
+            textHint.textContent = '填写人工纠正后的内容。结果写入 review-state.json，不修改原始 trace。';
+            var input = document.createElement('textarea');
+            input.className = 'metric-reason-input';
+            input.value = current;
+            input.placeholder = '例如：生成 Demo / PRD 评审 / 修复脚本';
+            var footer = document.createElement('div');
+            footer.className = 'manual-correction-popover-actions';
+            var save = document.createElement('button');
+            save.type = 'button';
+            save.textContent = '保存';
+            var clearText = document.createElement('button');
+            clearText.type = 'button';
+            clearText.textContent = '清除标注';
+            var cancelText = document.createElement('button');
+            cancelText.type = 'button';
+            cancelText.textContent = '取消';
+            footer.appendChild(save);
+            footer.appendChild(clearText);
+            footer.appendChild(cancelText);
+            textPopover.appendChild(textTitle);
+            textPopover.appendChild(textHint);
+            textPopover.appendChild(input);
+            textPopover.appendChild(footer);
+            positionManualCorrectionPopover(textPopover, btn);
+            input.focus();
+            save.addEventListener('click', function () {
+              var trimmed = input.value.trim();
+              submitManualCorrection(targetType, targetId, trimmed, trimmed, btn);
+            });
+            clearText.addEventListener('click', function () { submitManualCorrection(targetType, targetId, '', '', btn); });
+            cancelText.addEventListener('click', closeManualCorrectionPopovers);
+            return;
+          }
+          btn.classList.add('is-editing');
+          var options = [];
+          try { options = JSON.parse(btn.getAttribute('data-manual-correction-options') || '[]'); } catch { options = []; }
+          var popover = document.createElement('div');
+          popover.className = 'manual-correction-popover';
+          var title = document.createElement('div');
+          title.className = 'manual-correction-popover-title';
+          title.textContent = label;
+          var hint = document.createElement('div');
+          hint.className = 'manual-correction-popover-hint';
+          hint.textContent = '选择人工判断。结果写入 review-state.json，不修改原始 trace。';
+          var actions = document.createElement('div');
+          actions.className = 'manual-correction-popover-actions';
+          for (var i = 0; i < options.length; i++) {
+            (function (option) {
+              var choice = document.createElement('button');
+              choice.type = 'button';
+              choice.textContent = option.label || option.value;
+              choice.addEventListener('click', function () {
+                submitManualCorrection(targetType, targetId, option.value || '', option.label || option.value || '', btn);
+              });
+              actions.appendChild(choice);
+            })(options[i]);
+          }
+          var clear = document.createElement('button');
+          clear.type = 'button';
+          clear.textContent = '清除标注';
+          clear.addEventListener('click', function () { submitManualCorrection(targetType, targetId, '', '', btn); });
+          actions.appendChild(clear);
+          popover.appendChild(title);
+          popover.appendChild(hint);
+          popover.appendChild(actions);
+          positionManualCorrectionPopover(popover, btn);
+          setTimeout(function () {
+            document.addEventListener('click', function closeOnOutsideClick(event) {
+              if (popover.contains(event.target) || btn.contains(event.target)) return;
+              closeManualCorrectionPopovers();
+              document.removeEventListener('click', closeOnOutsideClick);
+            });
+          }, 0);
+        }
+        window.openManualCorrection = openManualCorrection;
+        window.closeManualCorrectionPopovers = closeManualCorrectionPopovers;
         function closeGoalSliceCorrectionPopovers() {
           var popovers = document.querySelectorAll('.goal-slice-popover');
           for (var i = 0; i < popovers.length; i++) popovers[i].remove();
@@ -8342,6 +8849,17 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             buttons[i].textContent = label;
             buttons[i].setAttribute('data-goal-slice-correction-action', action || '');
             buttons[i].classList.toggle('is-marked', Boolean(action));
+          }
+          var manualButtons = document.querySelectorAll('[data-manual-mark-goal-target="' + targetId.replace(/"/g, '\\"') + '"]');
+          for (var j = 0; j < manualButtons.length; j++) {
+            manualButtons[j].setAttribute('data-manual-mark-goal-action', action || '');
+            var metrics = [];
+            try { metrics = JSON.parse(manualButtons[j].getAttribute('data-manual-mark-metrics') || '[]'); } catch { metrics = []; }
+            var activeCount = (action ? 1 : 0) + metrics.filter(function (item) {
+              return item.verdict === 'confirmed' || item.verdict === 'rejected';
+            }).length;
+            manualButtons[j].classList.toggle('is-marked', activeCount > 0);
+            manualButtons[j].textContent = '人工标记' + (activeCount > 0 ? '(' + activeCount + ')' : '');
           }
         }
         async function submitGoalSliceCorrection(targetId, action, btn) {
@@ -8372,7 +8890,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             await res.json();
             updateGoalSliceCorrectionButtons(targetId, action);
             closeGoalSliceCorrectionPopovers();
-            alert('已写入 review-state.json。需要重新执行脚本，新的目标切片和 skill 窗口才会在报告里重算生效。');
           } catch (err) {
             alert(String(err && err.message ? err.message : err));
           } finally {
@@ -8381,14 +8898,24 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         function positionGoalSlicePopover(popover, btn) {
           var rect = btn.getBoundingClientRect();
-          var width = Math.min(320, Math.max(220, window.innerWidth - 32));
+          var isTimelineManual = popover.classList && popover.classList.contains('timeline-manual-popover');
+          var preferredWidth = isTimelineManual ? 380 : 320;
+          var width = Math.min(preferredWidth, Math.max(220, window.innerWidth - 32));
           popover.style.width = width + 'px';
           var left = Math.min(window.innerWidth - width - 12, Math.max(12, rect.right - width));
           var top = rect.bottom + 8;
           document.body.appendChild(popover);
+          if (isTimelineManual) {
+            popover.style.maxHeight = Math.max(180, window.innerHeight - 24) + 'px';
+            popover.style.overflowY = 'auto';
+          }
           var popRect = popover.getBoundingClientRect();
           if (top + popRect.height > window.innerHeight - 12) {
             top = Math.max(12, rect.top - popRect.height - 8);
+          }
+          if (isTimelineManual && top + popRect.height > window.innerHeight - 12) {
+            top = 12;
+            popover.style.maxHeight = Math.max(180, window.innerHeight - 24) + 'px';
           }
           popover.style.left = left + 'px';
           popover.style.top = top + 'px';
@@ -8439,6 +8966,139 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         window.closeGoalSliceCorrectionPopovers = closeGoalSliceCorrectionPopovers;
         window.openGoalSliceCorrectionPopover = openGoalSliceCorrectionPopover;
+        function closeTimelineManualMarkPopovers() {
+          var popovers = document.querySelectorAll('.timeline-manual-popover');
+          for (var i = 0; i < popovers.length; i++) popovers[i].remove();
+          var buttons = document.querySelectorAll('.timeline-manual-mark-button.is-editing');
+          for (var j = 0; j < buttons.length; j++) buttons[j].classList.remove('is-editing');
+        }
+        function metricStateLabel(verdict, ruleDetected) {
+          if (verdict === 'confirmed') return '人工同意';
+          if (verdict === 'rejected') return '人工反对';
+          return ruleDetected ? '规则命中' : '未命中';
+        }
+        function updateTimelineManualMarkButton(btn, metric, next) {
+          var metrics = [];
+          try { metrics = JSON.parse(btn.getAttribute('data-manual-mark-metrics') || '[]'); } catch { metrics = []; }
+          for (var i = 0; i < metrics.length; i++) {
+            if (metrics[i].targetId === metric.targetId) {
+              metrics[i].verdict = next;
+              break;
+            }
+          }
+          btn.setAttribute('data-manual-mark-metrics', JSON.stringify(metrics));
+          var goalAction = btn.getAttribute('data-manual-mark-goal-action') || '';
+          var activeCount = (goalAction ? 1 : 0) + metrics.filter(function (item) {
+            return item.verdict === 'confirmed' || item.verdict === 'rejected';
+          }).length;
+          btn.classList.toggle('is-marked', activeCount > 0);
+          btn.textContent = '人工标记' + (activeCount > 0 ? '(' + activeCount + ')' : '');
+        }
+        async function submitTimelineMetricAnnotation(metric, next, btn) {
+          var source = {};
+          try { source = JSON.parse(btn.getAttribute('data-manual-mark-source') || '{}'); } catch { source = {}; }
+          var res = next === ''
+            ? await fetch('/api/observations/review-state?targetType=evidence_metric&targetId=' + encodeURIComponent(metric.targetId), { method: 'DELETE' })
+            : await fetch('/api/observations/review-state', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                targetType: 'evidence_metric',
+                targetId: metric.targetId,
+                verdict: next,
+                metricKey: metric.metricKey,
+                metricScopeId: metric.metricScopeId || undefined,
+                sourceTrace: source.sourceTrace || undefined,
+                sessionId: source.sessionId || undefined,
+                messageIndex: source.messageIndex === undefined ? undefined : Number(source.messageIndex),
+                messageUuid: source.messageUuid || undefined,
+                toolUseId: source.toolUseId || undefined,
+                snippet: source.snippet || undefined
+              })
+            });
+          if (!res.ok) throw new Error('人工标记写入失败: ' + res.status);
+          await res.json();
+          metric.verdict = next;
+          updateTimelineManualMarkButton(btn, metric, next);
+        }
+        function addTimelineMetricButton(actions, metric, value, text, btn, labelEl) {
+          var button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = text;
+          button.className = value && metric.verdict === value ? 'is-active' : '';
+          button.addEventListener('click', function () {
+            submitTimelineMetricAnnotation(metric, value, btn).then(function () {
+              var rowButtons = actions.querySelectorAll('button');
+              for (var i = 0; i < rowButtons.length; i++) rowButtons[i].classList.remove('is-active');
+              if (value) button.classList.add('is-active');
+              if (labelEl) labelEl.textContent = metricStateLabel(value, metric.ruleDetected) + ' · ' + metric.label;
+            }).catch(function (err) {
+              alert(String(err && err.message ? err.message : err));
+            });
+          });
+          actions.appendChild(button);
+        }
+        function openTimelineManualMark(btn) {
+          closeTimelineManualMarkPopovers();
+          closeGoalSliceCorrectionPopovers();
+          if (!btn) return;
+          btn.classList.add('is-editing');
+          var metrics = [];
+          try { metrics = JSON.parse(btn.getAttribute('data-manual-mark-metrics') || '[]'); } catch { metrics = []; }
+          var goalTargetId = btn.getAttribute('data-manual-mark-goal-target') || '';
+          var goalAction = btn.getAttribute('data-manual-mark-goal-action') || '';
+          var popover = document.createElement('div');
+          popover.className = 'timeline-manual-popover';
+          var title = document.createElement('div');
+          title.className = 'goal-slice-popover-title';
+          title.textContent = '人工标记这条消息';
+          var hint = document.createElement('div');
+          hint.className = 'goal-slice-popover-hint';
+          hint.textContent = '这里可以修正消息标签，也可以把这条消息标成目标切片点或加入当前 skill 窗口。消息标签包括纠正、中断、追问、正负反馈、硬性要求、目标切换、产出结果、过程进展、自我纠正和重复执行。';
+          var actions = document.createElement('div');
+          actions.className = 'timeline-manual-actions';
+          var goalSplit = document.createElement('button');
+          goalSplit.type = 'button';
+          goalSplit.textContent = goalAction === 'split_goal_slice' ? '已标：拆分目标' : '拆分目标切片';
+          goalSplit.addEventListener('click', function () { submitGoalSliceCorrection(goalTargetId, 'split_goal_slice', btn); });
+          var goalAdd = document.createElement('button');
+          goalAdd.type = 'button';
+          goalAdd.textContent = goalAction === 'add_to_current_skill_window' ? '已标：加入窗口' : '加入当前 skill 窗口';
+          goalAdd.addEventListener('click', function () { submitGoalSliceCorrection(goalTargetId, 'add_to_current_skill_window', btn); });
+          var goalClear = document.createElement('button');
+          goalClear.type = 'button';
+          goalClear.textContent = '清除切片/窗口';
+          goalClear.addEventListener('click', function () { submitGoalSliceCorrection(goalTargetId, '', btn); });
+          actions.appendChild(goalSplit);
+          actions.appendChild(goalAdd);
+          actions.appendChild(goalClear);
+          for (var i = 0; i < metrics.length; i++) {
+            (function (metric) {
+              var group = document.createElement('div');
+              group.className = 'timeline-manual-metric-row';
+              var label = document.createElement('span');
+              label.textContent = metricStateLabel(metric.verdict, metric.ruleDetected) + ' · ' + metric.label;
+              group.appendChild(label);
+              addTimelineMetricButton(group, metric, 'confirmed', '同意', btn, label);
+              addTimelineMetricButton(group, metric, 'rejected', '反对', btn, label);
+              addTimelineMetricButton(group, metric, '', '清除', btn, label);
+              actions.appendChild(group);
+            })(metrics[i]);
+          }
+          popover.appendChild(title);
+          popover.appendChild(hint);
+          popover.appendChild(actions);
+          positionGoalSlicePopover(popover, btn);
+          setTimeout(function () {
+            document.addEventListener('click', function closeOnOutsideClick(event) {
+              if (popover.contains(event.target) || btn.contains(event.target)) return;
+              closeTimelineManualMarkPopovers();
+              document.removeEventListener('click', closeOnOutsideClick);
+            });
+          }, 0);
+        }
+        window.openTimelineManualMark = openTimelineManualMark;
+        window.closeTimelineManualMarkPopovers = closeTimelineManualMarkPopovers;
 	        function evidenceMetricText(label, annotation, ruleDetected) {
 	          if (annotation === 'confirmed') return '人工同意 · ' + label;
 	          if (annotation === 'rejected') return '人工反对 · ' + label;
@@ -8494,7 +9154,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	            buttons[i].textContent = evidenceMetricText(label, next, ruleDetected);
 	            buttons[i].className = evidenceMetricClass(next, ruleDetected);
 	          }
-	          window.setTimeout(function () { window.location.reload(); }, 150);
 	        }
 	        function openMetricReasonPopover(targetId, metricKey, btn) {
 	          closeMetricReasonPopover();

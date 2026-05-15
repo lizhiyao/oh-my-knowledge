@@ -92,6 +92,7 @@ export function buildExperienceProblemPatterns(input: {
   skillName: string;
   sessionId: string;
   timeline: ProblemTimelineEvent[];
+  metricScopeId?: string;
   reviewState?: ObservationReviewState;
 }): ExperienceProblemPattern[] {
   const drafts: PatternDraft[] = [];
@@ -99,19 +100,19 @@ export function buildExperienceProblemPatterns(input: {
     const text = event.snippet ?? event.fullText ?? '';
     if (event.kind === 'user_message') {
       if (isScheduledTaskPromptText(text)) continue;
-      if (metricActive(event, 'user_correction', CORRECTION_RE.test(text), input.reviewState)) {
+      if (metricActive(event, 'user_correction', CORRECTION_RE.test(text), input.reviewState, input.metricScopeId)) {
         drafts.push(patternDraft(input.skillName, 'user_correction', event));
       }
       if (metricActive(event, 'negative_feedback', NEGATIVE_RE.test(text), input.reviewState)) {
         drafts.push(patternDraft(input.skillName, 'negative_feedback', event));
       }
-      if (metricActive(event, 'user_interruption', INTERRUPTION_RE.test(text), input.reviewState)) {
+      if (metricActive(event, 'user_interruption', INTERRUPTION_RE.test(text), input.reviewState, input.metricScopeId)) {
         drafts.push(patternDraft(input.skillName, 'user_interruption', event));
       }
-      if (metricActive(event, 'hard_rule', hasUserHardRuleText(text), input.reviewState)) {
+      if (metricActive(event, 'hard_rule', hasUserHardRuleText(text), input.reviewState, input.metricScopeId)) {
         drafts.push(patternDraft(input.skillName, 'hard_rule', event));
       }
-      if (metricActive(event, 'user_goal_shift', GOAL_SHIFT_RE.test(text), input.reviewState)) {
+      if (metricActive(event, 'user_goal_shift', GOAL_SHIFT_RE.test(text), input.reviewState, input.metricScopeId)) {
         drafts.push(patternDraft(input.skillName, 'user_goal_shift', event));
       }
     } else if (event.kind === 'tool_result' && event.isError === true) {
@@ -223,8 +224,9 @@ function metricActive(
   metricKey: ObservationMetricKey,
   ruleDetected: boolean,
   reviewState?: ObservationReviewState,
+  metricScopeId?: string,
 ): boolean {
-  const verdict = observationMetricAnnotationVerdict(reviewState, event, metricKey);
+  const verdict = observationMetricAnnotationVerdict(reviewState, { ...event, metricScopeId }, metricKey);
   if (verdict === 'confirmed') return true;
   if (verdict === 'rejected') return false;
   return ruleDetected;

@@ -599,6 +599,8 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
             note: typeof body.note === 'string' ? body.note : undefined,
             reason: typeof body.reason === 'string' ? body.reason : undefined,
             metricKey: body.metricKey as ObservationReviewStateUpdate['metricKey'],
+            metricScope: body.metricScope as ObservationReviewStateUpdate['metricScope'],
+            metricScopeId: typeof body.metricScopeId === 'string' ? body.metricScopeId : undefined,
             sourceTrace: typeof body.sourceTrace === 'string' ? body.sourceTrace : undefined,
             sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
             messageIndex: typeof body.messageIndex === 'number' ? body.messageIndex : undefined,

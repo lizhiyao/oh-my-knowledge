@@ -283,6 +283,8 @@ export interface ExperienceReviewerReport {
     userFollowUpCount: number;
     assistantDeliverySignalCount: number;
     assistantProgressUpdateCount: number;
+    selfCorrectionCount: number;
+    repeatedExecutionCount: number;
     finalDeliverySignalCount: number;
     traceEventCount: number;
     tokenUsage: {
@@ -322,6 +324,8 @@ export interface ExperienceReviewIndicators {
   userGoalShiftCount: number;
   hardRuleTextHitCount: number;
   assistantDeliverySignalCount: number;
+  selfCorrectionCount: number;
+  repeatedExecutionCount: number;
   toolCallCount: number;
   toolFailureCount: number;
   highObservationCount: number;
@@ -585,6 +589,8 @@ const ZERO_INDICATORS: ExperienceReviewIndicators = {
   userGoalShiftCount: 0,
   hardRuleTextHitCount: 0,
   assistantDeliverySignalCount: 0,
+  selfCorrectionCount: 0,
+  repeatedExecutionCount: 0,
   toolCallCount: 0,
   toolFailureCount: 0,
   highObservationCount: 0,
@@ -608,16 +614,18 @@ export function buildObservationExperienceReport(input: BuildExperienceInput): O
     const relatedItems = relatedObservationItems(segment, input.items);
     const bounds = session ? segmentRecordBounds(session, segment) : { start: 0, end: 0 };
     const timeline = session ? buildTimeline(session, bounds.start, bounds.end) : [];
+    const metricScopeId = hashParts('session', segment.skillName, sessionGroupKey);
     const userRefs = timeline.filter((event) => event.kind === 'user_message');
-    const indicators = indicatorsForSegment(segment, relatedItems, timeline, input.reviewState);
+    const indicators = indicatorsForSegment(segment, relatedItems, timeline, metricScopeId, input.reviewState);
     const observationRefs = relatedItems.map(observationEvidenceRef);
     const evidenceChain = evidenceChainForTimeline(timeline, observationRefs);
-    const ruleFindings = ruleFindingsForEvidence(indicators, timeline, observationRefs, evidenceChain, input.reviewState);
+    const ruleFindings = ruleFindingsForEvidence(indicators, timeline, observationRefs, evidenceChain, metricScopeId, input.reviewState);
     const assistiveInference = assistiveInferenceForEvidence(indicators, evidenceChain, ruleFindings);
     const problemPatterns = buildExperienceProblemPatterns({
       skillName: segment.skillName,
       sessionId: segment.sessionId,
       timeline,
+      metricScopeId,
       reviewState: input.reviewState,
     });
     const hasGoalShift = userRefs.some((ref) => hasUserGoalShiftSignal(ref.snippet ?? ''));
@@ -840,6 +848,18 @@ function isAssistantProgressUpdateEvent(event: ExperienceTimelineEvent): boolean
   if (event.kind !== 'assistant_message') return false;
   const text = event.fullText ?? event.snippet ?? '';
   return isAssistantProgressUpdateText(text);
+}
+
+function hasSelfCorrectionSignal(event: ExperienceTimelineEvent): boolean {
+  if (event.kind !== 'assistant_message') return false;
+  const text = event.fullText ?? event.snippet ?? '';
+  return /刚才.*(?:不对|错了|有误)|发现.*(?:不对|错了|问题|遗漏)|重新(?:检查|分析|执行|生成|整理)|改用|换成|修正|我再(?:检查|重新|看)|recheck|retry|mistake|wrong/i.test(text);
+}
+
+function hasRepeatedExecutionSignal(event: ExperienceTimelineEvent): boolean {
+  if (event.kind === 'user_message') return false;
+  const text = `${event.label ?? ''} ${event.toolName ?? ''} ${event.fullText ?? event.snippet ?? ''}`;
+  return /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|retry|rerun/i.test(text);
 }
 
 function buildTimeline(session: CcSession, start: number, end: number): ExperienceTimelineEvent[] {
@@ -1087,6 +1107,7 @@ function ruleFindingsForEvidence(
   timeline: ExperienceTimelineEvent[],
   observationRefs: ExperienceEvidenceRef[],
   evidenceChain: ExperienceEvidenceChain,
+  metricScopeId: string,
   reviewState?: ObservationReviewState,
 ): ExperienceRuleFinding[] {
   const events = uniqueTimelineEvents(timeline);
@@ -1106,16 +1127,16 @@ function ruleFindingsForEvidence(
   };
 
   push('high_observation_seen', 'attention', indicators.highObservationCount, observationRefs);
-  push('user_correction_seen', 'attention', indicators.userCorrectionCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'user_correction', hasUserCorrectionSignal(event.snippet ?? ''), reviewState))));
-  push('user_interruption_seen', 'attention', indicators.userInterruptionCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'user_interruption', USER_INTERRUPTION_RE.test(event.snippet ?? ''), reviewState))));
+  push('user_correction_seen', 'attention', indicators.userCorrectionCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'user_correction', hasUserCorrectionSignal(event.snippet ?? ''), reviewState, metricScopeId))));
+  push('user_interruption_seen', 'attention', indicators.userInterruptionCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'user_interruption', USER_INTERRUPTION_RE.test(event.snippet ?? ''), reviewState, metricScopeId))));
   push('negative_feedback_seen', 'attention', indicators.negativeFeedbackCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'negative_feedback', hasNegativeFeedbackSignal(event.snippet ?? ''), reviewState))));
   push('tool_failure_seen', 'sample', indicators.toolFailureCount, refs(events.filter((event) => event.kind === 'tool_result' && event.isError === true)));
   push('medium_observation_seen', 'sample', indicators.mediumObservationCount, observationRefs);
   push('hedging_seen', 'sample', indicators.hedgingCount, observationRefs);
   push('explicit_marker_seen', 'sample', indicators.explicitMarkerCount, observationRefs);
-  push('hard_rule_seen', 'sample', indicators.hardRuleTextHitCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? ''), reviewState))));
+  push('hard_rule_seen', 'sample', indicators.hardRuleTextHitCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? ''), reviewState, metricScopeId))));
   push('positive_feedback_seen', 'normal', indicators.positiveFeedbackCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'positive_feedback', hasPositiveFeedbackSignal(event.snippet ?? ''), reviewState))));
-  push('user_goal_shift_seen', 'normal', indicators.userGoalShiftCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(event.snippet ?? ''), reviewState))));
+  push('user_goal_shift_seen', 'normal', indicators.userGoalShiftCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(event.snippet ?? ''), reviewState, metricScopeId))));
   push('runtime_context_excluded', 'normal', evidenceChain.runtimeContextCount, evidenceChain.firstRuntimeContext ? [evidenceChain.firstRuntimeContext] : []);
   push('skill_context_excluded', 'normal', evidenceChain.skillContextCount, evidenceChain.firstSkillContext ? [evidenceChain.firstSkillContext] : []);
 
@@ -1191,6 +1212,7 @@ function indicatorsForSegment(
   segment: SkillSegment,
   relatedItems: ObservationInboxItem[],
   timeline: ExperienceTimelineEvent[],
+  metricScopeId: string,
   reviewState?: ObservationReviewState,
 ): ExperienceReviewIndicators {
   const userRefs = timeline.filter((event) => event.kind === 'user_message');
@@ -1198,14 +1220,16 @@ function indicatorsForSegment(
   const interactionUserRefs = humanUserRefs.filter((ref) => !isScheduledTaskPromptText(ref.snippet ?? ''));
   return {
     userMessageCount: humanUserRefs.length,
-    userFollowUpCount: interactionUserRefs.reduce((sum, ref, index) => sum + (metricIsActive(ref, 'user_follow_up', index > 0, reviewState) ? 1 : 0), 0),
-    userCorrectionCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_correction', findUserCorrectionMatches(ref.snippet ?? '').length, reviewState), 0),
-    userInterruptionCount: interactionUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'user_interruption', USER_INTERRUPTION_RE.test(ref.snippet ?? ''), reviewState) ? 1 : 0), 0),
+    userFollowUpCount: interactionUserRefs.reduce((sum, ref, index) => sum + (metricIsActive(ref, 'user_follow_up', index > 0, reviewState, metricScopeId) ? 1 : 0), 0),
+    userCorrectionCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_correction', findUserCorrectionMatches(ref.snippet ?? '').length, reviewState, metricScopeId), 0),
+    userInterruptionCount: interactionUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'user_interruption', USER_INTERRUPTION_RE.test(ref.snippet ?? ''), reviewState, metricScopeId) ? 1 : 0), 0),
     negativeFeedbackCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'negative_feedback', findNegativeFeedbackMatches(ref.snippet ?? '').length, reviewState), 0),
     positiveFeedbackCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'positive_feedback', findPositiveFeedbackMatches(ref.snippet ?? '').length, reviewState), 0),
-    userGoalShiftCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_goal_shift', findUserGoalShiftMatches(ref.snippet ?? '').length, reviewState), 0),
-    hardRuleTextHitCount: interactionUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'hard_rule', hasUserHardRuleText(ref.snippet ?? ''), reviewState) ? 1 : 0), 0),
+    userGoalShiftCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_goal_shift', findUserGoalShiftMatches(ref.snippet ?? '').length, reviewState, metricScopeId), 0),
+    hardRuleTextHitCount: interactionUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'hard_rule', hasUserHardRuleText(ref.snippet ?? ''), reviewState, metricScopeId) ? 1 : 0), 0),
     assistantDeliverySignalCount: timeline.filter(isAssistantDeliveryEvent).length,
+    selfCorrectionCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'self_correction', hasSelfCorrectionSignal(ref), reviewState) ? 1 : 0), 0),
+    repeatedExecutionCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'repeated_execution', hasRepeatedExecutionSignal(ref), reviewState) ? 1 : 0), 0),
     toolCallCount: segment.metrics.numToolCalls,
     toolFailureCount: segment.metrics.numToolFailures,
     highObservationCount: relatedItems.filter((item) => item.severity === 'high').length,
@@ -1220,8 +1244,9 @@ function metricIsActive(
   metricKey: ObservationMetricKey,
   ruleDetected: boolean,
   reviewState?: ObservationReviewState,
+  metricScopeId?: string,
 ): boolean {
-  const verdict = observationMetricAnnotationVerdict(reviewState, ref, metricKey);
+  const verdict = observationMetricAnnotationVerdict(reviewState, { ...ref, metricScopeId }, metricKey);
   if (verdict === 'confirmed') return true;
   if (verdict === 'rejected') return false;
   return ruleDetected;
@@ -1232,8 +1257,9 @@ function metricCount(
   metricKey: ObservationMetricKey,
   ruleCount: number,
   reviewState?: ObservationReviewState,
+  metricScopeId?: string,
 ): number {
-  const verdict = observationMetricAnnotationVerdict(reviewState, ref, metricKey);
+  const verdict = observationMetricAnnotationVerdict(reviewState, { ...ref, metricScopeId }, metricKey);
   if (verdict === 'confirmed') return Math.max(1, ruleCount);
   if (verdict === 'rejected') return 0;
   return ruleCount;
@@ -1292,12 +1318,13 @@ function summarizeExperienceSessions(
       : fullSessionTimeline.filter((event) => typeof event.messageIndex === 'number' && event.messageIndex > previewEndRecordIndex).length;
     const observationRefs = uniqueEvidenceRefs(group.flatMap((invocation) => invocation.evidenceRefs.filter((ref) => ref.kind === 'observation')));
     const evidenceChain = evidenceChainForTimeline(timeline, observationRefs);
-    const ruleFindings = ruleFindingsForEvidence(indicators, timeline, observationRefs, evidenceChain);
+    const metricScopeId = hashParts('session', first.skillName, first.sessionGroupKey);
+    const ruleFindings = ruleFindingsForEvidence(indicators, timeline, observationRefs, evidenceChain, metricScopeId);
     const assistiveInference = assistiveInferenceForEvidence(indicators, evidenceChain, ruleFindings);
     const problemPatterns = mergeExperienceProblemPatterns(group.flatMap((invocation) => invocation.problemPatterns));
     const storyInvocations = invocations.filter((invocation) => invocation.sessionGroupKey === first.sessionGroupKey);
     const baseSession: Omit<ExperienceSessionSummary, 'sessionStory' | 'reviewerReport'> = {
-      id: hashParts('session', first.skillName, first.sessionGroupKey),
+      id: metricScopeId,
       skillName: first.skillName,
       sessionId: first.sessionId,
       sourceTrace: first.sourceTrace,
@@ -1409,6 +1436,8 @@ function buildReviewerReport(
       userFollowUpCount: indicators.userFollowUpCount,
       assistantDeliverySignalCount: indicators.assistantDeliverySignalCount,
       assistantProgressUpdateCount: assistantProgressUpdateEvents(session).length,
+      selfCorrectionCount: indicators.selfCorrectionCount,
+      repeatedExecutionCount: indicators.repeatedExecutionCount,
       finalDeliverySignalCount: assistantFinalDeliveryEvents(session).length,
       traceEventCount: session.fullSessionTimeline.length || session.timelinePreview.length,
       tokenUsage: {
@@ -2183,6 +2212,8 @@ function sumIndicators(values: ExperienceReviewIndicators[]): ExperienceReviewIn
     userGoalShiftCount: acc.userGoalShiftCount + (value.userGoalShiftCount ?? 0),
     hardRuleTextHitCount: acc.hardRuleTextHitCount + value.hardRuleTextHitCount,
     assistantDeliverySignalCount: acc.assistantDeliverySignalCount + (value.assistantDeliverySignalCount ?? 0),
+    selfCorrectionCount: acc.selfCorrectionCount + (value.selfCorrectionCount ?? 0),
+    repeatedExecutionCount: acc.repeatedExecutionCount + (value.repeatedExecutionCount ?? 0),
     toolCallCount: acc.toolCallCount + value.toolCallCount,
     toolFailureCount: acc.toolFailureCount + value.toolFailureCount,
     highObservationCount: acc.highObservationCount + value.highObservationCount,
