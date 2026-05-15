@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -38,6 +38,14 @@ import {
   observationReviewStateKey,
   updateObservationReviewState,
 } from '../../src/observability/review-state.js';
+import {
+  extractSkillSoftStandards,
+  loadSkillDerivedStandards,
+  resolveSkillStandards,
+  updateSkillDerivedStandardStatus,
+} from '../../src/observability/soft-standards.js';
+import type { ObservationSkillChain } from '../../src/observability/skill-chain.js';
+import { renderObservationInboxPage } from '../../src/renderer/observation-inbox-renderer.js';
 
 function baseItem(partial: Partial<ObservationInboxItem>): ObservationInboxItem {
   return {
@@ -592,6 +600,84 @@ describe('observe inbox', () => {
     assert.equal(report.experience?.skills[0].sourceMetadataCounts.channels.aima, 1);
     assert.equal(report.experience?.skills[0].sourceMetadataCounts.aimaCommands['生成PRD'], 1);
     assert.equal(report.experience?.goalSlices[0].inferredUserGoal, '帮我写一个 PRD <aima-cmd name="生成PRD">请生成 PRD</aima-cmd>');
+  });
+
+  it('keeps same skill split by concrete standalone trace sessions', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const makeRecords = (suffix: string, minute: string): object[] => [
+      {
+        type: 'user',
+        uuid: `u-${suffix}`,
+        parentUuid: null,
+        sessionId: 'reused-session-id',
+        timestamp: `2026-05-01T00:${minute}:00.000Z`,
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例字段' },
+      },
+      {
+        type: 'assistant',
+        uuid: `a-${suffix}`,
+        parentUuid: `u-${suffix}`,
+        sessionId: 'reused-session-id',
+        timestamp: `2026-05-01T00:${minute}:01.000Z`,
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: `t-${suffix}`, name: 'Grep', input: { pattern: 'example_field', path: '/repo-a' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: `r-${suffix}`,
+        parentUuid: `a-${suffix}`,
+        sessionId: 'reused-session-id',
+        timestamp: `2026-05-01T00:${minute}:02.000Z`,
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: `t-${suffix}`, content: 'No matches found', is_error: false }],
+        },
+      },
+    ];
+    writeFileSync(join(dir, 'first.jsonl'), makeRecords('first', '00').map((r) => JSON.stringify(r)).join('\n'));
+    writeFileSync(join(dir, 'second.jsonl'), makeRecords('second', '10').map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(dir);
+    const experience = report.experience;
+    assert.ok(experience);
+    assert.equal(experience.sessions.filter((session) => session.skillName === 'audit').length, 2);
+    assert.equal(experience.skills.find((skill) => skill.skillName === 'audit')?.sessionCount, 2);
+    assert.equal(report.meta.skillSessionCounts?.audit, 2);
+
+    const rendered = renderObservationInboxPage({
+      allItems: report.items,
+      items: report.items,
+      reports: [report],
+      experienceReports: [experience],
+      skillInvocationCounts: report.meta.skillInvocationCounts ?? {},
+      skillSessionCounts: report.meta.skillSessionCounts ?? {},
+      skillInvocationLastSeen: report.meta.skillInvocationLastSeen ?? {},
+      skillToolCallCounts: report.meta.skillToolCallCounts ?? {},
+      skillChains: {},
+      skillDerivedStandards: {},
+      skillResolvedStandards: {},
+      totalSkillInvocations: experience.invocations.length,
+      severitySkillCounts: { high: 0, medium: 0, low: 1, noise: 0 },
+      skillCount: 1,
+      reportCount: 1,
+      latestSeenLabel: '2026-05-01 00:10:02',
+      reviewState: {
+        kind: 'observe-review-state',
+        schemaVersion: 1,
+        updatedAt: '2026-05-01T00:00:00.000Z',
+        entries: {},
+      },
+    });
+    assert.equal((rendered.match(/data-inbox-card="audit"/g) ?? []).length, 1);
+    assert.equal((rendered.match(/data-session-tab="/g) ?? []).length, 2);
+    assert.match(rendered, /2 次调用/);
   });
 
   it('keeps repeated_failure stronger than a single hard_miss', () => {
@@ -1286,6 +1372,83 @@ describe('observe inbox', () => {
     assert.ok(experience.sessions[0].problemPatterns.some((pattern) => pattern.bucket === 'rule_violation'));
     assert.ok(experience.skills[0].problemPatterns.some((pattern) => pattern.bucket === 'workflow_mismatch'));
     assert.equal('verdict' in experience.sessions[0], false);
+    assert.equal(experience.sessions[0].sessionStory?.schemaVersion, 1);
+    assert.ok(experience.sessions[0].sessionStory?.mainlineNodeIds.length);
+    const reviewerReport = experience.sessions[0].reviewerReport;
+    assert.ok(reviewerReport);
+    assert.equal(reviewerReport.mode, 'deterministic_session_story');
+    assert.equal(reviewerReport.scope.kind, 'single_skill_single_goal');
+    assert.equal(reviewerReport.chainSteps.length, 5);
+    assert.equal(reviewerReport.sessionStory.schemaVersion, 1);
+    assert.equal(reviewerReport.sessionStory.answers.length, 3);
+    assert.equal(reviewerReport.sessionStory.goalSlices.length, 1);
+    assert.equal(reviewerReport.sessionStory.skillLinks.length, 1);
+    assert.equal(reviewerReport.sessionStory.skillLinks[0].role, 'executor');
+    assert.ok(reviewerReport.sessionStory.mainlineNodeIds.length >= 5);
+    assert.ok(reviewerReport.sessionStory.graph.nodes.length >= reviewerReport.sessionStory.nodes.length);
+    assert.ok(reviewerReport.sessionStory.graph.edges.length > 0);
+    assert.equal(reviewerReport.sessionStory.progressUpdateCount, 0);
+    assert.equal(reviewerReport.sessionStory.finalDeliverySignalCount, 0);
+    assert.ok(reviewerReport.sessionStory.nodes.some((node) => node.kind === 'user_goal'));
+    assert.ok(reviewerReport.sessionStory.nodes.some((node) => node.kind === 'delivery'));
+    assert.ok(reviewerReport.sessionStory.answers.some((answer) => answer.key === 'goal_satisfaction' && answer.status === 'attention'));
+    assert.ok(reviewerReport.findings.some((finding) => finding.ruleSource === 'user_correction'));
+    assert.ok(reviewerReport.findings.some((finding) => finding.ruleSource === 'user_interruption'));
+    assert.ok(reviewerReport.findings.some((finding) => finding.ruleSource === 'final_delivery_absent'));
+    assert.ok(reviewerReport.findings.some((finding) => finding.title === '没有发现最后交付产物'));
+    assert.ok(reviewerReport.findings.every((finding) => finding.source === 'deterministic_rule'));
+    assert.equal(reviewerReport.oneLookMetrics.tokenUsage.attribution, 'skill_segment');
+    assert.equal(reviewerReport.oneLookMetrics.tokenUsage.inputTokens, 0);
+    assert.equal(reviewerReport.oneLookMetrics.assistantProgressUpdateCount, 0);
+    assert.equal(reviewerReport.oneLookMetrics.finalDeliverySignalCount, 0);
+    assert.ok(reviewerReport.traceLinks.some((ref) => ref.messageUuid === 'u3'));
+    assert.ok(reviewerReport.authorSuggestions.length > 0);
+    assert.equal('llmAnnotation' in reviewerReport, false);
+    const rendered = renderObservationInboxPage({
+      allItems: report.items,
+      items: report.items,
+      reports: [report],
+      experienceReports: [experience],
+      skillInvocationCounts: report.meta.skillInvocationCounts ?? {},
+      skillSessionCounts: report.meta.skillSessionCounts ?? {},
+      skillInvocationLastSeen: report.meta.skillInvocationLastSeen ?? {},
+      skillToolCallCounts: report.meta.skillToolCallCounts ?? {},
+      skillChains: {},
+      skillDerivedStandards: {},
+      skillResolvedStandards: {},
+      totalSkillInvocations: 1,
+      severitySkillCounts: { high: 1, medium: 0, low: 0, noise: 0 },
+      skillCount: 1,
+      reportCount: 1,
+      latestSeenLabel: '2026-05-01 00:00:04',
+      reviewState: {
+        kind: 'observe-review-state',
+        schemaVersion: 1,
+        updatedAt: '2026-05-01T00:00:00.000Z',
+        entries: {},
+      },
+    });
+    assert.match(rendered, /线上观测报告/);
+    assert.match(rendered, /class="inbox-shell"/);
+    assert.match(rendered, /data-inbox-card="/);
+    assert.match(rendered, /data-inbox-detail="/);
+    assert.match(rendered, /data-inbox-filter="all"/);
+    assert.match(rendered, /data-inbox-filter="review_first"/);
+    assert.match(rendered, /data-inbox-verdict="real_issue"/);
+    assert.match(rendered, /function selectInboxCard/);
+    assert.match(rendered, /function setInboxFilter/);
+    assert.match(rendered, /Session 执行过程/);
+    assert.match(rendered, /① 能力完成情况/);
+    assert.match(rendered, /② 能力执行细节/);
+    assert.match(rendered, /③ 原文回溯/);
+    assert.match(rendered, /给 skill 作者的优化建议/);
+    assert.match(rendered, /用户目标关键字：/);
+    assert.match(rendered, /跳转原文/);
+    assert.doesNotMatch(rendered, /跳转用户原文/);
+    assert.doesNotMatch(rendered, /触发依据/);
+    assert.doesNotMatch(rendered, /原文回溯建议/);
+    assert.match(rendered, /data-message-uuid="u3"/);
+    assert.match(rendered, /function jumpToExperienceMessage/);
 
     const correctionTargetId = observationMetricAnnotationTargetId({
       sourceTrace: file,
@@ -1430,6 +1593,116 @@ describe('observe inbox', () => {
     assert.equal(timeline.some((event) => event.messageIndex === 7 && event.kind === 'tool_use' && event.toolName === 'Skill'), false);
   });
 
+  it('builds session story for router skill plus subagent executor', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-story-'));
+    const sessionDir = join(dir, 'sessionA');
+    const subagentsDir = join(sessionDir, 'subagents');
+    mkdirSync(subagentsDir, { recursive: true });
+    const mainFile = join(sessionDir, 'main.jsonl');
+    const childFile = join(subagentsDir, 'child.jsonl');
+    const mainRecords = [
+      {
+        type: 'user',
+        uuid: 'u-main-1',
+        parentUuid: null,
+        sessionId: 'sessionA',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 帮我咨询 PRD 方案。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-main-1',
+        parentUuid: 'u-main-1',
+        sessionId: 'sessionA',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '根据 TOOLS.md 规则，功能咨询类需求走 `aiprd-task-runner` skill 的 `/consult` 流程。' }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-main-2',
+        parentUuid: 'a-main-1',
+        sessionId: 'sessionA',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'task1', name: 'Task', input: { prompt: '启动子 Claude 到 AIPRDWorkSpace 执行 /consult' } }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-main-3',
+        parentUuid: 'a-main-2',
+        sessionId: 'sessionA',
+        timestamp: '2026-05-11T02:00:03.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '已发送进展：子 Claude 数据采集完成，正在整理咨询结果写入文件，即将完成。' }],
+        },
+      },
+    ];
+    const childRecords = [
+      {
+        type: 'user',
+        uuid: 'u-child-1',
+        parentUuid: null,
+        sessionId: 'child-1',
+        timestamp: '2026-05-11T02:00:04.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/aiprd-task-runner</command-name> /consult PRD 方案' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-child-1',
+        parentUuid: 'u-child-1',
+        sessionId: 'child-1',
+        timestamp: '2026-05-11T02:00:05.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'read1', name: 'Read', input: { file_path: '/repo-a/prd.md' } }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-child-2',
+        parentUuid: 'a-child-1',
+        sessionId: 'child-1',
+        timestamp: '2026-05-11T02:00:06.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '最终报告如下：PRD 方案建议分为目标、范围、验收标准三部分。' }],
+        },
+      },
+    ];
+    writeFileSync(mainFile, mainRecords.map((r) => JSON.stringify(r)).join('\n'));
+    writeFileSync(childFile, childRecords.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(sessionDir);
+    const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
+    assert.ok(applySession);
+    const story = applySession.sessionStory;
+    assert.ok(story);
+    assert.equal(story.branchCount, 1);
+    assert.equal(story.subagentDispatches.length, 1);
+    assert.equal(story.progressUpdateCount, 1);
+    assert.equal(story.finalDeliverySignalCount, 1);
+    assert.ok(story.nodes.some((node) => node.kind === 'subagent_branch'));
+    assert.deepEqual(story.skillLinks.map((link) => [link.skillName, link.role]).sort(), [
+      ['aiprd-task-runner', 'executor'],
+      ['apply-cc', 'router'],
+    ]);
+    assert.ok(story.graph.edges.some((edge) => edge.label === '路由'));
+    assert.equal(applySession.reviewerReport?.sessionStory.schemaVersion, story.schemaVersion);
+  });
+
   it('persists local reviewer state for D1 workflow', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-review-state-'));
     const state = updateObservationReviewState(dir, {
@@ -1472,5 +1745,132 @@ describe('observe inbox', () => {
 
     const afterDelete = deleteObservationReviewState(dir, 'goal_slice_correction', 'session-1:42', '2026-05-01T00:02:00.000Z');
     assert.equal(afterDelete.entries[correctionKey], undefined);
+  });
+
+  it('persists reviewer judgment and soft standard review state', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-review-state-'));
+    const judgment = updateObservationReviewState(dir, {
+      targetType: 'reviewer_judgment',
+      targetId: 'judgment-1',
+      verdict: 'real_issue',
+      reason: 'evidence is enough',
+    }, '2026-05-01T00:00:00.000Z');
+    const judgmentKey = observationReviewStateKey('reviewer_judgment', 'judgment-1');
+    assert.equal(judgment.entries[judgmentKey].verdict, 'real_issue');
+    assert.equal(judgment.entries[judgmentKey].reason, 'evidence is enough');
+
+    const softStandard = updateObservationReviewState(dir, {
+      targetType: 'soft_standard',
+      targetId: 'sample-skill:soft-1',
+      verdict: 'not_issue',
+      reason: 'not part of this skill',
+    }, '2026-05-01T00:01:00.000Z');
+    const softKey = observationReviewStateKey('soft_standard', 'sample-skill:soft-1');
+    assert.equal(softStandard.entries[softKey].targetType, 'soft_standard');
+    assert.equal(softStandard.entries[softKey].verdict, 'not_issue');
+  });
+
+  it('extracts and reviews soft standard candidates with explicit model execution', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-soft-standards-'));
+    const chain: ObservationSkillChain = {
+      skillName: 'sample-review-skill',
+      definition: {
+        found: true,
+        path: '/tmp/sample-skill/SKILL.md',
+        content: [
+          '# sample-review-skill',
+          '',
+          'Use this skill to review generated technical plans.',
+          'Always cite the source section that supports a finding.',
+        ].join('\n'),
+      },
+      healthCheck: {
+        source: 'doctor-static-rules',
+        hardRules: { declared: false, valid: true, count: 0, rules: [], errors: [] },
+        workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], source: 'none' },
+      },
+      runtime: {
+        supported: true,
+        mode: 'deterministic-no-llm',
+        message: 'runtime summary only',
+        summary: {
+          invocationCount: 2,
+          toolCallCount: 3,
+          toolFailureCount: 0,
+          passedCount: 0,
+          attentionCount: 0,
+          manualReviewCount: 0,
+        },
+        hardRules: [],
+        workflowNodes: [],
+      },
+    };
+
+    const record = await extractSkillSoftStandards({
+      observationsDir: dir,
+      skillChain: chain,
+      model: 'sonnet',
+      executorName: 'test-executor',
+      now: '2026-05-01T00:00:00.000Z',
+      executor: async (input) => {
+        assert.equal(input.model, 'sonnet');
+        assert.match(input.system ?? '', /promptId: soft-standard-extract/);
+        return {
+          ok: true,
+          output: JSON.stringify({
+            standards: [{
+              kind: 'hard_rule_candidate',
+              title: 'Cite source section',
+              body: 'Reviewer should verify each finding points to a source section.',
+              confidence: 'medium',
+              evidence: ['Always cite the source section'],
+            }, {
+              kind: 'workflow_candidate',
+              title: 'Review generated plan',
+              body: 'Reviewer should check that the plan review follows the declared review intent.',
+              confidence: 'low',
+              evidence: ['review generated technical plans'],
+            }],
+          }),
+          durationMs: 1,
+          durationApiMs: 1,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          costUSD: 0,
+          stopReason: 'stop',
+          numTurns: 1,
+        };
+      },
+    });
+
+    assert.equal(record.model, 'sonnet');
+    assert.equal(record.promptId, 'soft-standard-extract');
+    assert.equal(record.promptVersion, '2026-05-14.v1');
+    assert.equal(record.standards.length, 2);
+    assert.equal(record.standards[0].status, 'pending_review');
+    assert.equal(record.standards[0].source, 'llm_soft_standard');
+
+    const loaded = loadSkillDerivedStandards(dir);
+    assert.equal(loaded['sample-review-skill'].standards[0].status, 'pending_review');
+
+    const updated = updateSkillDerivedStandardStatus(
+      dir,
+      'sample-review-skill',
+      record.standards[0].id,
+      'author_confirmed',
+      '2026-05-01T00:01:00.000Z',
+    );
+    assert.equal(updated.standards[0].status, 'author_confirmed');
+
+    const resolved = resolveSkillStandards('sample-review-skill', {
+      observationsDir: dir,
+      skillChain: chain,
+      derivedStandards: loadSkillDerivedStandards(dir),
+    });
+    assert.equal(resolved.active.length, 1);
+    assert.equal(resolved.active[0].source, 'confirmed_soft');
+    assert.equal(resolved.candidates.some((item) => item.status === 'pending_review'), true);
   });
 });

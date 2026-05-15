@@ -25,8 +25,8 @@ export interface SkillChainAdvisory {
 const ADVISORIES: Record<SkillChainAdvisoryCode, SkillChainAdvisory> = {
   hardrules_not_declared: {
     code: 'hardrules_not_declared',
-    shortLabel: '未声明 hardRules',
-    message: '未声明结构化 hardRules，运行时规则审计无法进行。建议在 SKILL.md frontmatter 补充。',
+    shortLabel: '未标准化 hardRules',
+    message: '未在 SKILL.md frontmatter 标准化声明 hardRules。以下内容为检测结果；建议沉淀为标准化 hardRules。',
     exampleYaml: [
       '---',
       'name: your-skill',
@@ -43,8 +43,8 @@ const ADVISORIES: Record<SkillChainAdvisoryCode, SkillChainAdvisory> = {
   },
   workflows_not_declared: {
     code: 'workflows_not_declared',
-    shortLabel: '未声明 workflows',
-    message: '未声明 workflows，无法对照标准执行链路。建议在 SKILL.md frontmatter 补充。',
+    shortLabel: '未标准化 workflows',
+    message: '未在 SKILL.md frontmatter 标准化声明 workflows。以下内容为检测结果；建议沉淀为标准化 workflows。',
     exampleYaml: [
       '---',
       'name: your-skill',

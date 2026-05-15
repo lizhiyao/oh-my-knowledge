@@ -484,6 +484,11 @@ function itemsFromSegment(segment: SkillSegment): ObservationInboxItem[] {
   return items;
 }
 
+function skillSessionCountKey(segment: SkillSegment): string {
+  if (segment.traceRole && segment.traceRole !== 'standalone') return segment.sessionId;
+  return segment.sourceTrace ? `${segment.sessionId}\u0000${segment.sourceTrace}` : segment.sessionId;
+}
+
 export function buildObservationInboxReport(tracePath: string, options: BuildObservationInboxReportOptions = {}): ObservationInboxReport {
   const { sessions, segments } = ccTracesToResultEntries(tracePath);
   const generatedAt = new Date().toISOString();
@@ -505,7 +510,7 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
     }
     skillToolCallCounts[segment.skillName] = toolCounts;
     const set = sessionsBySkill.get(segment.skillName) ?? new Set<string>();
-    set.add(segment.sessionId);
+    set.add(skillSessionCountKey(segment));
     sessionsBySkill.set(segment.skillName, set);
   }
   const skillSessionCounts = Object.fromEntries(

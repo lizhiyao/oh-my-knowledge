@@ -7,6 +7,12 @@ import {
 import type { ObservationExperienceReport } from './experience.js';
 import { loadObservationReviewState, type ObservationReviewState } from './review-state.js';
 import { buildObservationSkillChains, type ObservationSkillChain } from './skill-chain.js';
+import {
+  loadSkillDerivedStandards,
+  resolveSkillStandards,
+  type ResolvedSkillStandards,
+  type SkillDerivedStandards,
+} from './soft-standards.js';
 import { durationMsBetween } from '../shared/time.js';
 
 export interface ObservationInboxViewModel {
@@ -20,6 +26,8 @@ export interface ObservationInboxViewModel {
   skillInvocationLastSeen: Record<string, string>;
   skillToolCallCounts: Record<string, Record<string, number>>;
   skillChains: Record<string, ObservationSkillChain>;
+  skillDerivedStandards: Record<string, SkillDerivedStandards>;
+  skillResolvedStandards: Record<string, ResolvedSkillStandards>;
   totalSkillInvocations: number;
   severitySkillCounts: Record<ObservationInboxItem['severity'], number>;
   skillCount: number;
@@ -82,6 +90,12 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
     ...experienceReports.flatMap((report) => report.skills.map((skill) => skill.skillName)),
   ]));
   const skillChains = buildObservationSkillChains(skillNames, process.cwd(), experienceReports);
+  const skillDerivedStandards = loadSkillDerivedStandards(observationsDir);
+  const skillResolvedStandards = Object.fromEntries(skillNames.map((skillName) => [skillName, resolveSkillStandards(skillName, {
+    observationsDir,
+    skillChain: skillChains[skillName],
+    derivedStandards: skillDerivedStandards,
+  })]));
   const latestSeen = allItems.reduce((latest, item) => item.lastSeen > latest ? item.lastSeen : latest, '');
   const reportCount = reports.length;
   const latestSeenLabel = latestSeen ? latestSeen.slice(0, 19).replace('T', ' ') : '—';
@@ -98,6 +112,8 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
     skillInvocationLastSeen,
     skillToolCallCounts,
     skillChains,
+    skillDerivedStandards,
+    skillResolvedStandards,
     totalSkillInvocations,
     severitySkillCounts,
     skillCount,
