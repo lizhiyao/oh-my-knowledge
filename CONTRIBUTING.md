@@ -133,6 +133,22 @@ docs(readme): 补充评测用例说明
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
 - CI runs the same commands on Node 22 and Node 24 for `main` pushes and PRs targeting `main` — all must pass before merge
 
+## CLI 新旧 dispatcher 并存(PR #109 路线)
+
+omk 正在从手写 dispatcher 渐进迁移到 oclif 框架(issue #109)。期间两条路径共存:
+
+- 默认走 **legacy dispatcher**(`src/cli/index.ts` → `src/cli/commands/*.ts`),行为不变
+- `OMK_CLI_NEXT=1` 切到 **oclif dispatcher**(`src/cli/oclif/`),目前只迁了 `doctor` / `sample` 两个命令,其它命令在该模式下会报「command not found」exit 1
+
+dogfood 期间欢迎本地跑 `OMK_CLI_NEXT=1` 反馈差异:
+
+```bash
+OMK_CLI_NEXT=1 omk doctor --help     # 走 oclif,看双语 help / flag 描述
+OMK_CLI_NEXT=1 omk sample --batch    # 走 oclif → 透传到生产 execute()
+```
+
+两条路径在 doctor / sample 的所有 happy path / error path / exit code / 输出文本应该 byte-perfect 一致(测试见 `test/cli/oclif-*.test.ts`)。漂移就是 bug,提 issue 标 `cli-migration`。
+
 ## Style
 
 - TypeScript strict; `yarn lint` must be clean
