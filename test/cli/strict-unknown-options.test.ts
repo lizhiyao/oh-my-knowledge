@@ -33,7 +33,7 @@ describe('strict unknown option rejection', () => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
         assert.ok(
-          e.stderr.includes('Unknown option') && e.stderr.includes('--skip-preflight'),
+          e.stderr.includes('Nonexistent flag') && e.stderr.includes('--skip-preflight'),
           `stderr should name unknown option: ${e.stderr.slice(0, 300)}`,
         );
         return true;
@@ -48,7 +48,7 @@ describe('strict unknown option rejection', () => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
         assert.ok(
-          e.stderr.includes('Unknown option') && e.stderr.includes('--bogus'),
+          e.stderr.includes('Nonexistent flag') && e.stderr.includes('--bogus'),
           `stderr should name unknown option: ${e.stderr.slice(0, 300)}`,
         );
         return true;
@@ -63,7 +63,7 @@ describe('strict unknown option rejection', () => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
         assert.ok(
-          e.stderr.includes('Unknown option') && e.stderr.includes('--skip-smoke'),
+          e.stderr.includes('Nonexistent flag') && e.stderr.includes('--skip-smoke'),
           `stderr should name unknown option: ${e.stderr.slice(0, 300)}`,
         );
         return true;
@@ -77,7 +77,7 @@ describe('strict unknown option rejection', () => {
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
-        assert.ok(e.stderr.includes('Unknown option'), `stderr: ${e.stderr.slice(0, 300)}`);
+        assert.ok(e.stderr.includes('Nonexistent flag'), `stderr: ${e.stderr.slice(0, 300)}`);
         return true;
       },
     );
@@ -89,7 +89,7 @@ describe('strict unknown option rejection', () => {
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
-        assert.ok(e.stderr.includes('Unknown option') && e.stderr.includes('--bogus-flag'));
+        assert.ok(e.stderr.includes('Nonexistent flag') && e.stderr.includes('--bogus-flag'));
         return true;
       },
     );
@@ -101,7 +101,7 @@ describe('strict unknown option rejection', () => {
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
-        assert.ok(e.stderr.includes('Unknown option'));
+        assert.ok(e.stderr.includes('Nonexistent flag'));
         return true;
       },
     );
@@ -114,7 +114,7 @@ describe('strict unknown option rejection', () => {
       (err: unknown) => {
         const e = err as ExecError;
         assert.equal(e.code, 2);
-        assert.ok(e.stderr.includes('Unknown option') && e.stderr.includes('--bogus'));
+        assert.ok(e.stderr.includes('Nonexistent flag') && e.stderr.includes('--bogus'));
         return true;
       },
     );

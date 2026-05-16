@@ -133,21 +133,24 @@ docs(readme): 补充评测用例说明
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
 - CI runs the same commands on Node 22 and Node 24 for `main` pushes and PRs targeting `main` — all must pass before merge
 
-## CLI 新旧 dispatcher 并存(PR #109 路线)
+## CLI 走 oclif 框架(issue #109)
 
-omk 正在从手写 dispatcher 渐进迁移到 oclif 框架(issue #109)。期间两条路径共存:
+omk CLI 已迁到 [@oclif/core](https://oclif.io/docs/) 框架(PR-A spike #113 / PR-B doctor+sample #114 / PR-C 剩余 5 命令)。所有命令都在 `src/cli/oclif/commands/` 下声明为 oclif Command 类,业务 `execute()` 函数仍住在 `src/cli/commands/*.ts`(oclif Command 是薄壳,解析 flag 给 oclif --help 用,然后透传 argv 调对应 legacy execute)。
 
-- 默认走 **legacy dispatcher**(`src/cli/index.ts` → `src/cli/commands/*.ts`),行为不变
-- `OMK_CLI_NEXT=1` 切到 **oclif dispatcher**(`src/cli/oclif/`),目前只迁了 `doctor` / `sample` 两个命令,其它命令在该模式下会报「command not found」exit 1
+文件目录约定:
 
-dogfood 期间欢迎本地跑 `OMK_CLI_NEXT=1` 反馈差异:
+- `src/cli/oclif/commands/doctor.ts` → `omk doctor`
+- `src/cli/oclif/commands/eval.ts` + `eval/gold/{init,validate,compare}.ts` → `omk eval` / `omk eval gold *`
+- `src/cli/oclif/commands/observe.ts` + `observe/{ingest,inbox,show}.ts` → `omk observe` / `omk observe *`
 
-```bash
-OMK_CLI_NEXT=1 omk doctor --help     # 走 oclif,看双语 help / flag 描述
-OMK_CLI_NEXT=1 omk sample --batch    # 走 oclif → 透传到生产 execute()
-```
+双语 help 走 `src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` + `src/cli/oclif/help.ts` 的 `LangAwareHelp` 子类,按 `--lang` / `OMK_LANG` 在渲染时切语言。每个 flag 的双语 description inline 写,不进 `i18n-dict.ts`(那份只给 runtime `cli.error.*` / `cli.gen.*` 等业务消息用)。
 
-两条路径在 doctor / sample 的所有 happy path / error path / exit code / 输出文本应该 byte-perfect 一致(测试见 `test/cli/oclif-*.test.ts`)。漂移就是 bug,提 issue 标 `cli-migration`。
+加新命令的步骤:
+
+1. 在 `src/cli/oclif/commands/<name>.ts` 写 `export default class extends Command`
+2. flag 用 `bilingual({zh, en})` 包装,跟生产 `execute()` 的 `parseArgsStrictOrExit` 配置对齐
+3. `run()` 透传 `await execute(process.argv.slice(3))` 给生产业务函数
+4. 在 `test/cli/oclif-<name>.test.ts` 加 --help 双语 + unknown flag exit 2 + 关键 happy/error case
 
 ## Style
 

@@ -1,9 +1,8 @@
 /**
- * oclif dispatcher 分流验收。
- * 验证 OMK_CLI_NEXT 这个 env switch 行为正确:
- * - 未设/为空 → 走 legacy dispatcher,行为跟现状一致
- * - =1 + 已迁命令(doctor / sample)→ 走 oclif
- * - =1 + 未迁命令 → 报「command not found」exit 1,跟 legacy unknown_domain 对得齐
+ * oclif dispatcher 验收(PR-C 后 oclif 已成默认入口,无 OMK_CLI_NEXT 开关)。
+ * 验证所有命令默认都走 oclif:
+ * - 未知命令 → exit 1(oclif.exitCodes.default = 1,对齐 legacy unknown_domain 语义)
+ * - 已知命令 --help 有 oclif 风格的 USAGE block
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
@@ -23,35 +22,21 @@ interface ExecError extends Error {
   stderr: string;
 }
 
-// 不在 OCLIF_ENV 里 set OMK_CLI_NEXT,vs OMK_CLI_NEXT=1 set,vs OMK_CLI_NEXT=''(空)
-const LEGACY_ENV = { ...process.env };
-delete LEGACY_ENV.OMK_CLI_NEXT;
-const OCLIF_ENV = { ...process.env, OMK_CLI_NEXT: '1' };
-const EMPTY_ENV = { ...process.env, OMK_CLI_NEXT: '' };
-
-describe('OMK_CLI_NEXT dispatcher 分流', () => {
-  it('未设 env 走 legacy(doctor --help 含 cli.help.doctor_usage 的 prose)', async () => {
-    // legacy doctor --help 走 i18n-dict.cli.help.doctor_usage,一段手写完整 prose
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env: LEGACY_ENV });
-    // legacy prose 是手写完整段(多行,含 omk doctor 这种用法举例 + flag 说明)
-    // oclif --help 输出风格是 USAGE / FLAGS / DESCRIPTION 这种结构化 block
-    // 通过判断有没有 oclif 的 USAGE 关键字区分(legacy 没有 USAGE 顶头大写)
-    assert.ok(!stdout.includes('\nUSAGE\n'), 'legacy --help should not have oclif USAGE block');
+describe('oclif dispatcher (PR-C 后默认 oclif)', () => {
+  it('doctor --help 走 oclif(有 USAGE block)', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help']);
+    assert.ok(stdout.includes('\nUSAGE\n'), `expected oclif USAGE block, got:\n${stdout.slice(0, 200)}`);
   });
 
-  it('env=\'\'(空)也走 legacy(只有 ===\'1\' 才切 oclif)', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env: EMPTY_ENV });
-    assert.ok(!stdout.includes('\nUSAGE\n'), 'empty env should fall through to legacy');
+  it('eval --help 走 oclif', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'eval', '--help']);
+    assert.ok(stdout.includes('\nUSAGE\n'), 'expected oclif USAGE block');
+    assert.ok(stdout.includes('--control'), 'should list --control flag');
   });
 
-  it('env=1 doctor --help 走 oclif(有 USAGE block)', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env: OCLIF_ENV });
-    assert.ok(stdout.includes('\nUSAGE\n'), `oclif --help should have USAGE block:\n${stdout.slice(0, 200)}`);
-  });
-
-  it('env=1 + 未迁命令 → exit 1(跟 legacy unknown_domain 对得齐)', async () => {
+  it('未知命令 → exit 1(对齐 legacy unknown_domain 语义)', async () => {
     try {
-      await execFileAsync('node', [CLI, 'nope-command'], { env: OCLIF_ENV });
+      await execFileAsync('node', [CLI, 'nope-command']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -59,15 +44,9 @@ describe('OMK_CLI_NEXT dispatcher 分流', () => {
     }
   });
 
-  it('env=1 + eval (legacy 才支持,oclif 路径未迁) → command not found exit 1', async () => {
-    // PR-B 只迁 doctor + sample,eval 还在 legacy 里。
-    // OMK_CLI_NEXT=1 + eval → oclif 找不到 eval command,exit 1。
-    try {
-      await execFileAsync('node', [CLI, 'eval'], { env: OCLIF_ENV });
-      assert.fail('expected non-zero exit');
-    } catch (err) {
-      const e = err as ExecError;
-      assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
-    }
+  it('OMK_CLI_NEXT=1 仍 work(向后兼容,曾经的 dogfood env 现已 noop)', async () => {
+    const env = { ...process.env, OMK_CLI_NEXT: '1' };
+    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env });
+    assert.ok(stdout.includes('\nUSAGE\n'), 'oclif USAGE block expected');
   });
 });
