@@ -73,10 +73,10 @@ omk eval [flags]
 - `--config` `option`:eval.yaml 路径
 - `--control` `option`:control variant 表达式
 - `--dry-run` `boolean`:只 plan 不实跑
-- `--effort` `option`:被测 LLM reasoning effort: low/medium/high/xhigh/max
-- `--executor` `option`:执行器名,默认 claude
+- `--effort` `option`:被测 LLM 扩展思考预算 low/medium/high/xhigh/max(默认 low;跨 effort 报告不严格可比)。
+- `--executor` `option`:执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令(默认 claude)。
 - `--gold-dir` `option`:gold dataset 目录
-- `--judge-models` `option`:评委,格式 executor:model[,...],默认 <executor>:haiku
+- `--judge-models` `option`:评委配置,格式 executor:model[,...],例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble)。默认 <executor>:haiku。
 - `--judge-repeat` `option`:每个 dim 评 N 次
 - `--lang` `zh|en` (默认 `zh`) (env `OMK_LANG`):输出语言 zh|en
 - `--layered-stats` `boolean`:输出分层统计
@@ -84,20 +84,20 @@ omk eval [flags]
 - `--model` `option`:被测模型
 - `--no-cache` `boolean`:跳过 executor cache
 - `--no-debias-length` `boolean`:关 length-debias(默认开)
-- `--no-diagnostic` `boolean`:关 diagnostic LLM 调用
+- `--no-diagnostic` `boolean`:关闭 diagnostic 诊断 LLM 调用(默认开,给 failed sample 出「哪错了 + 怎么改」建议)。
 - `--no-gate` `boolean`:关 verdict gate
 - `--no-judge` `boolean`:跳过 LLM judge
 - `--no-serve` `boolean`:不启 report server
 - `--no-strict-baseline` `boolean`:关闭 baseline 隔离
 - `--output-dir` `option`:报告输出目录
 - `--repeat` `option`:每个 sample 重复跑 N 次
-- `--report-only` `boolean`:只出报告不算 verdict
+- `--report-only` `boolean`:生成报告并打印 verdict,但始终 exit 0(不参与 CI gate)。
 - `--resume` `option`:从某次失败 run 续跑
 - `--retry` `option`:失败 sample 重试次数
-- `--samples` `option`:样本文件路径
+- `--samples` `option`:样本文件路径。默认 eval-samples.json,也接受 .yaml/.yml;自动发现 --skill-dir 下的 <skill>/.omk/samples.json。
 - `--skill-dir` `option`:skill 目录,默认 skills
 - `--skip-connectivity` `boolean`:跳 LLM 连通性预检
-- `--skip-doctor` `boolean`:跳 doctor 门禁
+- `--skip-doctor` `boolean`:escape hatch:跳 doctor 健康检查门禁(默认强制启用)。沙箱 mock 提供依赖时绕开 doctor 物理路径误报;garbage-in 风险自负。
 - `--strict-baseline` `boolean`:强制 baseline 隔离(default true)
 - `--threshold` `option`:verdict 阈值,默认 3.5
 - `--timeout` `option`:单样本超时秒,默认 120

@@ -52,7 +52,10 @@ export default class Eval extends Command {
       description: bilingual({ zh: 'eval.yaml 路径', en: 'eval.yaml path' }),
     }),
     samples: Flags.string({
-      description: bilingual({ zh: '样本文件路径', en: 'Samples file path' }),
+      description: bilingual({
+        zh: '样本文件路径。默认 eval-samples.json,也接受 .yaml/.yml;自动发现 --skill-dir 下的 <skill>/.omk/samples.json。',
+        en: 'Samples file path. Defaults to eval-samples.json (also .yaml/.yml); auto-discovers <skill>/.omk/samples.json under --skill-dir.',
+      }),
     }),
     'skill-dir': Flags.string({
       description: bilingual({ zh: 'skill 目录,默认 skills', en: 'Skill dir, default skills' }),
@@ -62,12 +65,15 @@ export default class Eval extends Command {
       description: bilingual({ zh: '被测模型', en: 'Evaluated model' }),
     }),
     executor: Flags.string({
-      description: bilingual({ zh: '执行器名,默认 claude', en: 'Executor, default claude' }),
+      description: bilingual({
+        zh: '执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令(默认 claude)。',
+        en: 'Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom (default claude).',
+      }),
     }),
     'judge-models': Flags.string({
       description: bilingual({
-        zh: '评委,格式 executor:model[,...],默认 <executor>:haiku',
-        en: 'Judge model(s), executor:model[,...] format',
+        zh: '评委配置,格式 executor:model[,...],例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble)。默认 <executor>:haiku。',
+        en: 'Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.',
       }),
     }),
     'output-dir': Flags.string({
@@ -99,7 +105,10 @@ export default class Eval extends Command {
       description: bilingual({ zh: '跳 LLM 连通性预检', en: 'Skip LLM connectivity preflight' }),
     }),
     'skip-doctor': Flags.boolean({
-      description: bilingual({ zh: '跳 doctor 门禁', en: 'Skip doctor gate' }),
+      description: bilingual({
+        zh: 'escape hatch:跳 doctor 健康检查门禁(默认强制启用)。沙箱 mock 提供依赖时绕开 doctor 物理路径误报;garbage-in 风险自负。',
+        en: 'Escape hatch: skip the doctor health-check gate (on by default). Use when sandbox mocks supply deps; caller owns garbage-in risk.',
+      }),
     }),
     'mcp-config': Flags.string({
       description: bilingual({ zh: 'MCP 配置文件路径', en: 'MCP config path' }),
@@ -127,12 +136,15 @@ export default class Eval extends Command {
     }),
     effort: Flags.string({
       description: bilingual({
-        zh: '被测 LLM reasoning effort: low/medium/high/xhigh/max',
-        en: 'Reasoning effort: low/medium/high/xhigh/max',
+        zh: '被测 LLM 扩展思考预算 low/medium/high/xhigh/max(默认 low;跨 effort 报告不严格可比)。',
+        en: 'Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).',
       }),
     }),
     'no-diagnostic': Flags.boolean({
-      description: bilingual({ zh: '关 diagnostic LLM 调用', en: 'Disable diagnostic LLM call' }),
+      description: bilingual({
+        zh: '关闭 diagnostic 诊断 LLM 调用(默认开,给 failed sample 出「哪错了 + 怎么改」建议)。',
+        en: 'Disable diagnostic LLM call (on by default; emits "what went wrong + how to fix" advice for failed samples).',
+      }),
     }),
     // ── eval-runner extra ──
     blind: Flags.boolean({
@@ -172,7 +184,10 @@ export default class Eval extends Command {
       description: bilingual({ zh: '可忽略 diff 容差', en: 'Trivial diff tolerance' }),
     }),
     'report-only': Flags.boolean({
-      description: bilingual({ zh: '只出报告不算 verdict', en: 'Report only, no verdict' }),
+      description: bilingual({
+        zh: '生成报告并打印 verdict,但始终 exit 0(不参与 CI gate)。',
+        en: 'Produce the report and print verdict, but always exit 0 (no CI gate).',
+      }),
     }),
     'no-gate': Flags.boolean({
       description: bilingual({ zh: '关 verdict gate', en: 'Disable verdict gate' }),
