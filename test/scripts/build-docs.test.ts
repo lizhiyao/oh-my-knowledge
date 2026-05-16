@@ -23,6 +23,7 @@ const PROJECT_ROOT = join(__dirname, '..', '..');
 const COMMANDS_MD = join(PROJECT_ROOT, '.claude/skills/omk/references/commands.md');
 const README_EN = join(PROJECT_ROOT, 'README.md');
 const README_ZH = join(PROJECT_ROOT, 'README.zh.md');
+const SKILL_MD = join(PROJECT_ROOT, 'SKILL.md');
 const BUILD_DOCS = join(PROJECT_ROOT, 'dist/scripts/build-docs.js');
 
 const MARKER_START = '<!-- omk:cli:start -->';
@@ -229,5 +230,28 @@ describe('scripts/build-docs codegen', () => {
     assert.ok(idxBatch !== -1 && idxConcurrency !== -1 && idxThreshold !== -1);
     assert.ok(idxBatch < idxConcurrency, '--batch should precede --concurrency');
     assert.ok(idxConcurrency < idxThreshold, '--concurrency should precede --threshold');
+  });
+
+  it('SKILL.md argument-hint frontmatter matches oclif top-level command set', () => {
+    // SKILL.md frontmatter L7 形如:
+    //   argument-hint: "<init|doctor|eval|observe|evolve|sample|studio> [options]"
+    // 历史上 omk 顶层命令树重构过两次(bench run → eval、improve → evolve、
+    // export → sample),每次都靠人工同步这一行。本测试把它锁住:argument-hint
+    // 列出的 7 个 id 必须跟 TOP_LEVEL_IDS 严格一致(set 比较,顺序无关)。
+    // 未来重命名 / 增删顶层命令时,reviewer 改 oclif Command 文件 → 改
+    // TOP_LEVEL_IDS → 本测试逼着同步 SKILL.md。
+    const content = readFileSync(SKILL_MD, 'utf8');
+    const match = content.match(/^argument-hint:\s*"<([^>]+)>/m);
+    assert.ok(match, 'SKILL.md frontmatter must contain argument-hint: "<...>" pattern');
+    const listed = match[1]!.split('|').map((s) => s.trim()).filter(Boolean);
+    const expected = [...TOP_LEVEL_IDS].sort();
+    const actual = [...listed].sort();
+    assert.deepEqual(
+      actual,
+      expected,
+      `SKILL.md argument-hint command list drifted from oclif top-level set.\n` +
+      `  expected: ${expected.join('|')}\n` +
+      `  actual:   ${actual.join('|')}`,
+    );
   });
 });
