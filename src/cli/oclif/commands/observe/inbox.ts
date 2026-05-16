@@ -16,7 +16,7 @@ export default class ObserveInbox extends Command {
     }),
     'input-dir': Flags.string({
       description: bilingual({
-        zh: 'inbox 数据目录,默认 ~/.oh-my-knowledge/observations',
+        zh: 'inbox 数据目录，默认 ~/.oh-my-knowledge/observations',
         en: 'Inbox data dir, default ~/.oh-my-knowledge/observations',
       }),
     }),
@@ -24,7 +24,7 @@ export default class ObserveInbox extends Command {
       description: bilingual({ zh: '只看指定 skill', en: 'Filter to specific skill' }),
     }),
     limit: Flags.string({
-      description: bilingual({ zh: '限制条数,默认 20', en: 'Result limit, default 20' }),
+      description: bilingual({ zh: '限制条数，默认 20', en: 'Result limit, default 20' }),
     }),
     explore: Flags.string({
       description: bilingual({

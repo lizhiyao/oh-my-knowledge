@@ -3,14 +3,14 @@ import { bilingual, resolveLang } from '../../../i18n.js';
 
 export default class EvalGoldCompare extends Command {
   static description = bilingual({
-    zh: '把一份 evaluation report 跟 gold dataset 对比,计算 bootstrap CI 后的 agreement。',
+    zh: '把一份 evaluation report 跟 gold dataset 对比，计算 bootstrap CI 后的 agreement。',
     en: 'Compare an evaluation report against gold dataset, output bootstrap-CI agreement.',
   });
 
   static args = {
     reportId: Args.string({
-      description: bilingual({ zh: 'report ID,必填', en: 'Report ID (required)' }),
-      required: false,
+      description: bilingual({ zh: 'report ID。', en: 'Report ID.' }),
+      required: true,
     }),
   };
 
@@ -22,28 +22,28 @@ export default class EvalGoldCompare extends Command {
       env: 'OMK_LANG',
     }),
     'gold-dir': Flags.string({
-      description: bilingual({ zh: 'gold dataset 目录,必填', en: 'Gold dataset dir (required)' }),
+      description: bilingual({ zh: 'gold dataset 目录，必填', en: 'Gold dataset dir (required)' }),
     }),
     variant: Flags.string({
       description: bilingual({
-        zh: '只比对指定 variant,默认全比',
+        zh: '只比对指定 variant，默认全比',
         en: 'Compare only specified variant',
       }),
     }),
     'reports-dir': Flags.string({
       description: bilingual({
-        zh: '报告目录,默认 ~/.oh-my-knowledge/reports',
+        zh: '报告目录，默认 ~/.oh-my-knowledge/reports',
         en: 'Reports dir, default ~/.oh-my-knowledge/reports',
       }),
     }),
     'bootstrap-samples': Flags.string({
       description: bilingual({
-        zh: 'bootstrap 重采样次数,默认 1000',
+        zh: 'bootstrap 重采样次数，默认 1000',
         en: 'Bootstrap resamples, default 1000',
       }),
     }),
     seed: Flags.string({
-      description: bilingual({ zh: 'bootstrap seed,可复现', en: 'Bootstrap seed for reproducibility' }),
+      description: bilingual({ zh: 'bootstrap seed，可复现', en: 'Bootstrap seed for reproducibility' }),
     }),
   };
 

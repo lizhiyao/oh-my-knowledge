@@ -235,13 +235,30 @@ interface PerCmdFlagsTarget {
   mode: 'per-cmd-flags';
   file: string;
   lang: Lang;
-  // 哪些 oclif top-level id 在 README 里出现(7 个顶层命令)。
-  // 注:eval 是 top-level,eval gold * 是 sub-sub,不在 README 展开。
-  // observe 是 top-level,observe inbox/ingest/show 是 sub,也不在 README 展开。
+  // 哪些 oclif top-level id 在 README 里出现。注:eval 是 top-level,eval gold *
+  // 是 sub-sub,不在 README 展开;observe 是 top-level,observe inbox/ingest/show
+  // 是 sub,也不在 README 展开。集合定义在 TOP_LEVEL_IDS,test/scripts/
+  // build-docs.test.ts 用 Config.load 动态校验该集合等于 oclif 实际顶层命令集,
+  // 防止漏更新。
   topLevelIds: readonly string[];
 }
 
 type Target = FullbodyTarget | PerCmdFlagsTarget;
+
+/**
+ * omk 顶层命令 id 列表(README per-cmd-flags + SKILL.md argument-hint 共用)。
+ * 此常量是单一来源,oclif 顶层命令集真值在 src/cli/oclif/commands/ 文件目录,
+ * test 跑 Config.load 动态校验两者一致。
+ */
+export const TOP_LEVEL_IDS = [
+  'init',
+  'doctor',
+  'eval',
+  'observe',
+  'evolve',
+  'sample',
+  'studio',
+] as const;
 
 const TARGETS: Target[] = [
   {
@@ -254,13 +271,13 @@ const TARGETS: Target[] = [
     mode: 'per-cmd-flags',
     file: 'README.md',
     lang: 'en',
-    topLevelIds: ['init', 'doctor', 'eval', 'observe', 'evolve', 'sample', 'studio'],
+    topLevelIds: TOP_LEVEL_IDS,
   },
   {
     mode: 'per-cmd-flags',
     file: 'README.zh.md',
     lang: 'zh',
-    topLevelIds: ['init', 'doctor', 'eval', 'observe', 'evolve', 'sample', 'studio'],
+    topLevelIds: TOP_LEVEL_IDS,
   },
 ];
 
@@ -428,7 +445,12 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  process.stderr.write(`${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
-  process.exit(1);
-});
+// 只在直接 `node dist/scripts/build-docs.js ...` 跑时进 main();被 test 当 module
+// import 时不跑(test 只要 TOP_LEVEL_IDS 常量)。
+const isMain = process.argv[1] && /build-docs\.js$/.test(process.argv[1]);
+if (isMain) {
+  main().catch((err: unknown) => {
+    process.stderr.write(`${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+    process.exit(1);
+  });
+}

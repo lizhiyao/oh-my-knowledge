@@ -38,20 +38,20 @@ export default class Observe extends Command {
       env: 'OMK_LANG',
     }),
     kb: Flags.string({
-      description: bilingual({ zh: '知识库 root,启用 KB-aware 分析', en: 'KB root, enables KB-aware analysis' }),
+      description: bilingual({ zh: '知识库 root，启用 KB-aware 分析', en: 'KB root, enables KB-aware analysis' }),
     }),
     last: Flags.string({
       description: bilingual({ zh: '时间窗(7d / 24h / 30m)', en: 'Time window (7d / 24h / 30m)' }),
     }),
     from: Flags.string({
-      description: bilingual({ zh: '起始时间 ISO,优先级高于 --last', en: 'Start time ISO, overrides --last' }),
+      description: bilingual({ zh: '起始时间 ISO，优先级高于 --last', en: 'Start time ISO, overrides --last' }),
     }),
     to: Flags.string({
       description: bilingual({ zh: '结束时间 ISO', en: 'End time ISO' }),
     }),
     skills: Flags.string({
       description: bilingual({
-        zh: '只看指定 skill,逗号分隔',
+        zh: '只看指定 skill，逗号分隔',
         en: 'Filter to specific skills, comma-separated',
       }),
     }),

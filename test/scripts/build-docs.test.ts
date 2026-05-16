@@ -16,6 +16,10 @@ import { promisify } from 'node:util';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Config } from '@oclif/core';
+// 从 build-docs.ts 直接 import 单一来源(避免在 test 里硬编码),让 README codegen
+// 跟 SKILL.md frontmatter gate 共用同一份 TOP_LEVEL_IDS。
+import { TOP_LEVEL_IDS } from '../../scripts/build-docs.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -28,8 +32,6 @@ const BUILD_DOCS = join(PROJECT_ROOT, 'dist/scripts/build-docs.js');
 
 const MARKER_START = '<!-- omk:cli:start -->';
 const MARKER_END = '<!-- omk:cli:end -->';
-
-const TOP_LEVEL_IDS = ['init', 'doctor', 'eval', 'observe', 'evolve', 'sample', 'studio'] as const;
 
 function readFlagsBlock(content: string, id: string): string {
   const start = `<!-- omk:cli:${id}:flags:start -->`;
@@ -231,6 +233,26 @@ describe('scripts/build-docs codegen', () => {
     assert.ok(idxBatch < idxConcurrency, '--batch should precede --concurrency');
     assert.ok(idxConcurrency < idxThreshold, '--concurrency should precede --threshold');
   });
+
+  it('TOP_LEVEL_IDS constant matches actual oclif top-level command set (Config.load)', async () => {
+    // 动态绑定:Config.load 读 dist/src/cli/oclif/commands/ 真实命令文件,过滤
+    // 出顶层命令(id 不含 ':'),跟 scripts/build-docs.ts 导出的 TOP_LEVEL_IDS
+    // 严格 set 相等。未来新增 / 删 / 重命名顶层命令时,只改 oclif Command 源忘
+    // 改 TOP_LEVEL_IDS 就会被本测试 fail 拦住。
+    const config = await Config.load({ root: PROJECT_ROOT });
+    const actual = config.commands
+      .map((c) => c.id)
+      .filter((id) => !id.includes(':'))
+      .sort();
+    const expected = [...TOP_LEVEL_IDS].sort();
+    assert.deepEqual(
+      actual,
+      expected,
+      `TOP_LEVEL_IDS drifted from oclif Config.commands top-level set.\n` +
+      `  expected: ${expected.join(', ')}\n` +
+      `  actual:   ${actual.join(', ')}`,
+    );
+  }, 30000);
 
   it('SKILL.md argument-hint frontmatter matches oclif top-level command set', () => {
     // SKILL.md frontmatter L7 形如:

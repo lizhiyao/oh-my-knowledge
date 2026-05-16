@@ -16,14 +16,14 @@ export default class EvalGoldInit extends Command {
     }),
     out: Flags.string({
       description: bilingual({
-        zh: '输出目录,默认 ./gold-dataset',
+        zh: '输出目录，默认 ./gold-dataset',
         en: 'Output dir, default ./gold-dataset',
       }),
       default: './gold-dataset',
     }),
     annotator: Flags.string({
       description: bilingual({
-        zh: '标注者名,写入 metadata.yaml',
+        zh: '标注者名，写入 metadata.yaml',
         en: 'Annotator name, written to metadata.yaml',
       }),
     }),

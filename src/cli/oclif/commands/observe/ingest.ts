@@ -10,10 +10,10 @@ export default class ObserveIngest extends Command {
   static args = {
     traceDir: Args.string({
       description: bilingual({
-        zh: 'trace 目录路径,必填',
-        en: 'Trace dir path (required)',
+        zh: 'trace 目录路径。',
+        en: 'Trace dir path.',
       }),
-      required: false,
+      required: true,
     }),
   };
 
@@ -26,7 +26,7 @@ export default class ObserveIngest extends Command {
     }),
     'output-dir': Flags.string({
       description: bilingual({
-        zh: '输出目录,默认 ~/.oh-my-knowledge/observations',
+        zh: '输出目录，默认 ~/.oh-my-knowledge/observations',
         en: 'Output dir, default ~/.oh-my-knowledge/observations',
       }),
     }),

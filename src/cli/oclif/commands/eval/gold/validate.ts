@@ -10,10 +10,10 @@ export default class EvalGoldValidate extends Command {
   static args = {
     dir: Args.string({
       description: bilingual({
-        zh: 'gold dataset 目录,必填',
-        en: 'Gold dataset dir (required)',
+        zh: 'gold dataset 目录。',
+        en: 'Gold dataset dir.',
       }),
-      required: false,
+      required: true,
     }),
   };
 

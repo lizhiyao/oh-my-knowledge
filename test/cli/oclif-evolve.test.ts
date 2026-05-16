@@ -45,13 +45,13 @@ describe('oclif evolve (OMK_CLI_NEXT=1)', () => {
     }
   });
 
-  it('缺 skillPath positional → exit 1', async () => {
+  it('缺 skillPath positional → exit 2(oclif required-args)', async () => {
     try {
       await execFileAsync('node', [CLI, 'evolve'], { env: OCLIF_ENV });
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
-      assert.equal(e.code, 1, `expected exit 1, got ${e.code}:\n${e.stderr}`);
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
     }
   });
 });

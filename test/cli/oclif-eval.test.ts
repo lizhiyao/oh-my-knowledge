@@ -74,13 +74,16 @@ describe('oclif eval (OMK_CLI_NEXT=1)', () => {
     }
   });
 
-  it('eval gold validate 缺 positional → exit 1', async () => {
+  it('eval gold validate 缺 positional → exit 2(oclif required-args)', async () => {
+    // required: true 之后 oclif 自己出 Missing 1 required arg + exit 2(对齐
+    // package.json oclif.exitCodes.requiredArgs)。原来 exit 1 是 legacy
+    // execute() throw CliExit(1) 的行为,迁 oclif 后由 oclif 接管。
     try {
       await execFileAsync('node', [CLI, 'eval', 'gold', 'validate'], { env: OCLIF_ENV });
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
-      assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}`);
     }
   });
 

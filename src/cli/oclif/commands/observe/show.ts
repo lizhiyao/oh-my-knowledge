@@ -10,10 +10,10 @@ export default class ObserveShow extends Command {
   static args = {
     inboxId: Args.string({
       description: bilingual({
-        zh: 'inbox item ID,必填',
-        en: 'Inbox item ID (required)',
+        zh: 'inbox item ID。',
+        en: 'Inbox item ID.',
       }),
-      required: false,
+      required: true,
     }),
   };
 

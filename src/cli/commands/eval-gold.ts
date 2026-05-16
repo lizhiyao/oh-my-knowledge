@@ -61,13 +61,13 @@ export async function executeValidate(rest: string[], lang: CliLang): Promise<vo
 }
 
 export async function executeCompare(rest: string[], lang: CliLang): Promise<void> {
-  const reportId = rest[0];
-  if (!reportId) {
-    console.error('Usage: omk eval gold compare <reportId> --gold-dir <dir>');
-    throw new CliExit(1);
-  }
-  const { values } = parseArgsStrictOrExit({
-    args: rest.slice(1),
+  // allowPositionals: true 让 reportId 可以出现在 flag 前或后(omk eval gold compare
+  // --lang en fake-report --gold-dir ... 跟 omk eval gold compare fake-report
+  // --lang en --gold-dir ... 都 work)。原写法 rest[0] 取首位会把第一个 token 当
+  // reportId,跟 flag-first 的 oclif 风格冲突。
+  const { values, positionals } = parseArgsStrictOrExit({
+    args: rest,
+    allowPositionals: true,
     options: {
       ...COMMON_OPTIONS,
       'gold-dir': { type: 'string' },
@@ -77,6 +77,11 @@ export async function executeCompare(rest: string[], lang: CliLang): Promise<voi
       seed: { type: 'string' },
     },
   });
+  const reportId = positionals[0];
+  if (!reportId) {
+    console.error('Usage: omk eval gold compare <reportId> --gold-dir <dir>');
+    throw new CliExit(1);
+  }
   const goldDir = values['gold-dir'] as string | undefined;
   if (!goldDir) {
     console.error('--gold-dir is required');

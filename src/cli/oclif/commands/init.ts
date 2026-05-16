@@ -30,7 +30,7 @@ export default class Init extends Command {
   static args = {
     targetDir: Args.string({
       description: bilingual({
-        zh: '初始化目标目录,默认当前目录(.)',
+        zh: '初始化目标目录，默认当前目录(.)',
         en: 'Target directory, defaults to current directory (.)',
       }),
       required: false,
@@ -40,7 +40,7 @@ export default class Init extends Command {
   static flags = {
     lang: Flags.string({
       description: bilingual({
-        zh: '输出语言 zh|en,优先级 CLI > OMK_LANG env > zh。',
+        zh: '输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。',
         en: 'Output language zh|en. Priority: CLI > OMK_LANG env > zh.',
       }),
       options: ['zh', 'en'],

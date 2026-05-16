@@ -57,13 +57,13 @@ describe('oclif observe (OMK_CLI_NEXT=1)', () => {
     assert.ok(Array.isArray(parsed.items), 'items should be array');
   });
 
-  it('observe show 缺 inbox id → exit 1', async () => {
+  it('observe show 缺 inbox id → exit 2(oclif required-args)', async () => {
     try {
       await execFileAsync('node', [CLI, 'observe', 'show'], { env: OCLIF_ENV });
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
-      assert.equal(e.code, 1, `expected exit 1, got ${e.code}:\n${e.stderr}`);
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
     }
   });
 

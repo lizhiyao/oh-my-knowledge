@@ -19,7 +19,7 @@ export default class Studio extends Command {
     },
     {
       description: bilingual({
-        zh: '指定端口,不打开浏览器',
+        zh: '指定端口，不打开浏览器',
         en: 'Custom port, no browser',
       }),
       command: '<%= config.bin %> studio --port 8080 --no-open',
@@ -35,20 +35,20 @@ export default class Studio extends Command {
     }),
     port: Flags.string({
       description: bilingual({
-        zh: '监听端口,默认 7799。传 0 让 OS 分配',
+        zh: '监听端口，默认 7799。传 0 让 OS 分配',
         en: 'Listen port, default 7799. Pass 0 for OS-assigned',
       }),
       default: '7799',
     }),
     host: Flags.string({
       description: bilingual({
-        zh: '监听 host,默认 localhost。改为 0.0.0.0 暴露给局域网',
+        zh: '监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网',
         en: 'Listen host, default localhost. Use 0.0.0.0 to expose to LAN',
       }),
     }),
     'reports-dir': Flags.string({
       description: bilingual({
-        zh: '报告目录,默认 ~/.oh-my-knowledge/reports',
+        zh: '报告目录，默认 ~/.oh-my-knowledge/reports',
         en: 'Reports dir, default ~/.oh-my-knowledge/reports',
       }),
     }),
@@ -73,7 +73,7 @@ export default class Studio extends Command {
     }),
     dev: Flags.boolean({
       description: bilingual({
-        zh: 'dev 模式:子进程启动 + 热更新',
+        zh: 'dev 模式：子进程启动 + 热更新',
         en: 'Dev mode: child process with hot reload',
       }),
       default: false,

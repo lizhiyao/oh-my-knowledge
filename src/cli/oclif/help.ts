@@ -2,11 +2,14 @@ import { Command, Help } from '@oclif/core';
 import { pickLang, resolveLang, type Lang } from './i18n.js';
 
 // LangAwareHelp:oclif Help 子类,按 --lang / OMK_LANG 把 description / flags
-// 里的双语 sentinel 串切成单语再交给 super 渲染。覆盖三个钩子:
+// 里的双语 sentinel 串切成单语再交给 super 渲染。覆盖四个钩子:
 // - showCommandHelp:打 top 行用 command.description.split('\\n')[0],不
 //   filter 命令就漏切;在这里把 command 整体过滤一遍。
 // - formatCommand:body 区(USAGE / FLAGS / EXAMPLES / DESCRIPTION),正常 filter。
 // - formatCommands:topic 列表(`omk studio --help` 这种),同 filter。
+// - formatTopics:TOPICS 区(`omk --help` 顶层 + `omk eval --help` 子级),
+//   oclif 直接 description.split('\\n')[0] 取首行,对 bilingual sentinel 永远
+//   选 zh;这里 filter 后再传给 super。
 
 function filterCommand(cmd: Command.Loadable, lang: Lang): Command.Loadable {
   const clone: Command.Loadable = { ...cmd };
@@ -68,10 +71,17 @@ export default class LangAwareHelp extends Help {
   }
 
   async showTopicHelp(topic: { name: string; description?: string }): Promise<void> {
-    const filtered = {
-      ...topic,
-      description: pickLang(topic.description, this.lang) ?? topic.description,
-    };
-    return super.showTopicHelp(filtered);
+    return super.showTopicHelp(filterTopic(topic, this.lang));
   }
+
+  formatTopics(topics: Array<{ name: string; description?: string }>): string {
+    return super.formatTopics(topics.map((t) => filterTopic(t, this.lang)));
+  }
+}
+
+function filterTopic<T extends { description?: string }>(topic: T, lang: Lang): T {
+  return {
+    ...topic,
+    description: pickLang(topic.description, lang) ?? topic.description,
+  };
 }
