@@ -1,11 +1,17 @@
-// scripts/build-docs.ts — 从 oclif Config 渲染 commands.md 的 marker 区段。
+// scripts/build-docs.ts — 从 oclif Config 渲染若干 markdown 文件的 marker 区段。
 //
 // 来源:src/cli/oclif/commands/*.ts(双语 description / examples / flags / args)。
-// 目标:.claude/skills/omk/references/commands.md 的 <!-- omk:cli:start --> ... <!-- omk:cli:end --> 之间。
+//
+// 目标(每条一个 Target):
+// - commands.md(.claude/skills/omk/references/commands.md):整段 marker 包裹,
+//   全命令 fullbody(13 个 oclif command 全输出)。
+// - README.md / README.zh.md:per-command flags 模式,每个 H3 顶层命令独立 marker
+//   对,内容只输出 flag list(README 已经手写 bash 示例和 prose,不重复)。
 //
 // 模式:
-// - `yarn build:docs`(--write)→ 直接覆盖 marker 区段
-// - `yarn build:docs:check`(--check)→ 比对磁盘内容,不一致 exit 1 + print diff(CI 用)
+// - `yarn build:docs`(--write)→ 覆盖所有 target 的 marker 区段
+// - `yarn build:docs:check`(--check)→ 比对磁盘内容,任一 target 不一致就 exit 1
+//   + print diff(CI 用)
 //
 // 依赖 dist/ 存在(oclif config.commands 指向 ./dist/src/cli/oclif/commands),
 // 跑之前必须先 `yarn build`。
@@ -15,17 +21,17 @@ import { resolve } from 'node:path';
 import { Config, type Command } from '@oclif/core';
 
 const REPO_ROOT = resolve(process.cwd());
-const COMMANDS_MD = resolve(REPO_ROOT, '.claude/skills/omk/references/commands.md');
-const MARKER_START = '<!-- omk:cli:start -->';
-const MARKER_END = '<!-- omk:cli:end -->';
 
-// inline pickLang — 跟 src/cli/oclif/i18n.ts:36 行为一致,zh = `${zh}\n${en}` 首行。
-// 本 script 是 build-time 工具,不进 npm 包;inline 避免引入 dist/ 路径 import 依赖。
-function pickZh(text: string | undefined): string {
+type Lang = 'zh' | 'en';
+
+// inline pickLang — 跟 src/cli/oclif/i18n.ts:36 行为一致。description 是
+// `${zh}\n${en}` 形式;zh = 第一行,en = 后续行 join。
+function pickLang(text: string | undefined, lang: Lang): string {
   if (!text) return '';
   const parts = text.split(/\r?\n/);
   if (parts.length < 2) return text;
-  return parts[0] ?? '';
+  if (lang === 'zh') return parts[0] ?? '';
+  return parts.slice(1).join('\n');
 }
 
 interface FlagShape {
@@ -47,6 +53,8 @@ interface ExampleObj {
   command: string;
 }
 
+// ── commands.md(fullbody)渲染 ────────────────────────────────────────────────
+
 function renderUsageLine(cmd: Command.Loadable, bin: string, idDisplay: string): string {
   const pieces = [bin, idDisplay];
   const args = cmd.args ? Object.entries(cmd.args) : [];
@@ -59,46 +67,46 @@ function renderUsageLine(cmd: Command.Loadable, bin: string, idDisplay: string):
   return pieces.join(' ');
 }
 
-function renderArgs(cmd: Command.Loadable): string[] {
+function renderArgsZh(cmd: Command.Loadable): string[] {
   const args = cmd.args ? Object.entries(cmd.args) : [];
   if (args.length === 0) return [];
   const out: string[] = ['**参数:**', ''];
   for (const [name, raw] of args) {
     const a = raw as ArgShape;
     const required = a.required ? '必填' : '可选';
-    const desc = pickZh(a.description);
+    const desc = pickLang(a.description, 'zh');
     out.push(`- \`${name}\`(${required})${desc ? `:${desc}` : ''}`);
   }
   out.push('');
   return out;
 }
 
-function renderFlagType(f: FlagShape): string {
+function renderFlagTypeBracket(f: FlagShape): string {
   if (f.type === 'boolean') return '`boolean`';
   if (f.options && f.options.length > 0) return `\`${f.options.join('|')}\``;
   return '`option`';
 }
 
-function renderFlags(cmd: Command.Loadable): string[] {
+function renderFlagsZhBullets(cmd: Command.Loadable): string[] {
   const flags = cmd.flags ? Object.entries(cmd.flags) : [];
   if (flags.length === 0) return [];
   const out: string[] = ['**Flags:**', ''];
   const sorted = [...flags].sort(([a], [b]) => a.localeCompare(b));
   for (const [name, raw] of sorted) {
     const f = raw as FlagShape;
-    const parts: string[] = [`\`--${name}\``, renderFlagType(f)];
+    const parts: string[] = [`\`--${name}\``, renderFlagTypeBracket(f)];
     if (f.default !== undefined && f.default !== null && f.default !== false) {
       parts.push(`(默认 \`${String(f.default)}\`)`);
     }
     if (f.env) parts.push(`(env \`${f.env}\`)`);
-    const desc = pickZh(f.description);
+    const desc = pickLang(f.description, 'zh');
     out.push(`- ${parts.join(' ')}${desc ? `:${desc}` : ''}`);
   }
   out.push('');
   return out;
 }
 
-function renderExamples(cmd: Command.Loadable, bin: string): string[] {
+function renderExamplesZh(cmd: Command.Loadable, bin: string): string[] {
   const examples = cmd.examples;
   if (!Array.isArray(examples) || examples.length === 0) return [];
   const out: string[] = ['**示例:**', ''];
@@ -111,7 +119,7 @@ function renderExamples(cmd: Command.Loadable, bin: string): string[] {
       out.push('');
     } else {
       const exo = ex as ExampleObj;
-      const desc = pickZh(exo.description);
+      const desc = pickLang(exo.description, 'zh');
       const text = exo.command.replace(/<%= config\.bin %>/g, bin);
       if (desc) {
         out.push(`> ${desc}`);
@@ -126,12 +134,12 @@ function renderExamples(cmd: Command.Loadable, bin: string): string[] {
   return out;
 }
 
-function renderCommand(cmd: Command.Loadable, bin: string): string[] {
+function renderCommandFullbody(cmd: Command.Loadable, bin: string): string[] {
   const idDisplay = cmd.id.split(':').join(' ');
   const lines: string[] = [];
   lines.push(`## ${bin} ${idDisplay}`);
   lines.push('');
-  const desc = pickZh(cmd.description);
+  const desc = pickLang(cmd.description, 'zh');
   if (desc) {
     lines.push(desc);
     lines.push('');
@@ -142,44 +150,179 @@ function renderCommand(cmd: Command.Loadable, bin: string): string[] {
   lines.push(renderUsageLine(cmd, bin, idDisplay));
   lines.push('```');
   lines.push('');
-  lines.push(...renderArgs(cmd));
-  lines.push(...renderFlags(cmd));
-  lines.push(...renderExamples(cmd, bin));
+  lines.push(...renderArgsZh(cmd));
+  lines.push(...renderFlagsZhBullets(cmd));
+  lines.push(...renderExamplesZh(cmd, bin));
   return lines;
 }
 
-async function generate(): Promise<string> {
-  const config = await Config.load({ root: REPO_ROOT });
+function generateFullbody(config: Config): string {
   const cmds = [...config.commands].sort((a, b) => a.id.localeCompare(b.id));
   const lines: string[] = [];
   lines.push('<!-- 此段由 scripts/build-docs.ts 从 src/cli/oclif/commands/ 自动生成。');
   lines.push('     改 CLI 后跑 `yarn build:docs` 同步,CI `yarn build:docs:check` 会拦截 drift。-->');
   lines.push('');
   for (const cmd of cmds) {
-    lines.push(...renderCommand(cmd, config.bin));
+    lines.push(...renderCommandFullbody(cmd, config.bin));
   }
-  // 去掉尾部多余空行,后面 compose 会自己加换行。
   while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
   return lines.join('\n');
 }
+
+// ── README.md / README.zh.md(per-cmd-flags)渲染 ─────────────────────────────
+
+function renderFlagTypeAngle(f: FlagShape): string {
+  if (f.type === 'boolean') return '';
+  if (f.options && f.options.length > 0) return `<${f.options.join('|')}>`;
+  return '<value>';
+}
+
+// README ```text``` 风格:每行一个 flag,padding 对齐,描述用 pickLang 切 lang。
+// 输出格式:
+//   --flag-name <type>     description
+function renderFlagsBlock(cmd: Command.Loadable, bin: string, lang: Lang): string {
+  const flags = cmd.flags ? Object.entries(cmd.flags) : [];
+  if (flags.length === 0) {
+    const noFlagLine = lang === 'zh'
+      ? `(\`${bin} ${cmd.id.split(':').join(' ')}\` 无 flag)`
+      : `(\`${bin} ${cmd.id.split(':').join(' ')}\` has no flags)`;
+    const helpHint = lang === 'zh'
+      ? `完整描述见 \`${bin} ${cmd.id.split(':').join(' ')} --help\`。`
+      : `For full descriptions: \`${bin} ${cmd.id.split(':').join(' ')} --help\`.`;
+    return [noFlagLine, '', helpHint].join('\n');
+  }
+  const sorted = [...flags].sort(([a], [b]) => a.localeCompare(b));
+  const labels = sorted.map(([name, raw]) => {
+    const f = raw as FlagShape;
+    const typePart = renderFlagTypeAngle(f);
+    return typePart ? `--${name} ${typePart}` : `--${name}`;
+  });
+  const labelWidth = Math.max(...labels.map((l) => l.length));
+  const padTo = Math.min(labelWidth, 30) + 2;
+  const flagsLabel = lang === 'zh' ? '**Flags:**' : '**Flags:**';
+  const helpHint = lang === 'zh'
+    ? `完整描述见 \`${bin} ${cmd.id.split(':').join(' ')} --help\`。`
+    : `For full descriptions: \`${bin} ${cmd.id.split(':').join(' ')} --help\`.`;
+
+  const lines: string[] = [];
+  lines.push(flagsLabel);
+  lines.push('');
+  lines.push('```text');
+  for (let i = 0; i < sorted.length; i++) {
+    const [, raw] = sorted[i]!;
+    const f = raw as FlagShape;
+    const label = labels[i]!;
+    const desc = pickLang(f.description, lang);
+    const padded = label.padEnd(padTo, ' ');
+    lines.push(`  ${padded}${desc}`);
+  }
+  lines.push('```');
+  lines.push('');
+  lines.push(helpHint);
+  return lines.join('\n');
+}
+
+// ── 目标 / marker 定义 ─────────────────────────────────────────────────────────
+
+interface FullbodyTarget {
+  mode: 'fullbody';
+  file: string;
+  markerStart: string;
+  markerEnd: string;
+}
+
+interface PerCmdFlagsTarget {
+  mode: 'per-cmd-flags';
+  file: string;
+  lang: Lang;
+  // 哪些 oclif top-level id 在 README 里出现(7 个顶层命令)。
+  // 注:eval 是 top-level,eval gold * 是 sub-sub,不在 README 展开。
+  // observe 是 top-level,observe inbox/ingest/show 是 sub,也不在 README 展开。
+  topLevelIds: readonly string[];
+}
+
+type Target = FullbodyTarget | PerCmdFlagsTarget;
+
+const TARGETS: Target[] = [
+  {
+    mode: 'fullbody',
+    file: '.claude/skills/omk/references/commands.md',
+    markerStart: '<!-- omk:cli:start -->',
+    markerEnd: '<!-- omk:cli:end -->',
+  },
+  {
+    mode: 'per-cmd-flags',
+    file: 'README.md',
+    lang: 'en',
+    topLevelIds: ['init', 'doctor', 'eval', 'observe', 'evolve', 'sample', 'studio'],
+  },
+  {
+    mode: 'per-cmd-flags',
+    file: 'README.zh.md',
+    lang: 'zh',
+    topLevelIds: ['init', 'doctor', 'eval', 'observe', 'evolve', 'sample', 'studio'],
+  },
+];
+
+// ── marker 区段定位 + 替换 ─────────────────────────────────────────────────────
 
 interface Split {
   pre: string;
   post: string;
 }
 
-function splitFile(content: string): Split | null {
-  const startIdx = content.indexOf(MARKER_START);
-  const endIdx = content.indexOf(MARKER_END);
+function splitOnMarker(content: string, markerStart: string, markerEnd: string): Split | null {
+  const startIdx = content.indexOf(markerStart);
+  const endIdx = content.indexOf(markerEnd);
   if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return null;
-  const pre = content.slice(0, startIdx + MARKER_START.length);
+  const pre = content.slice(0, startIdx + markerStart.length);
   const post = content.slice(endIdx);
   return { pre, post };
 }
 
-function compose(pre: string, body: string, post: string): string {
-  return `${pre}\n${body}\n${post}`;
+function composeFullbody(content: string, body: string, target: FullbodyTarget): { next: string; error?: string } {
+  const split = splitOnMarker(content, target.markerStart, target.markerEnd);
+  if (!split) {
+    return { next: content, error: `missing markers ${target.markerStart} / ${target.markerEnd}` };
+  }
+  const next = `${split.pre}\n${body}\n${split.post}`;
+  return { next };
 }
+
+function flagsMarkerStart(id: string): string {
+  return `<!-- omk:cli:${id}:flags:start -->`;
+}
+function flagsMarkerEnd(id: string): string {
+  return `<!-- omk:cli:${id}:flags:end -->`;
+}
+
+function composePerCmdFlags(
+  content: string,
+  config: Config,
+  target: PerCmdFlagsTarget,
+): { next: string; missing: string[] } {
+  let next = content;
+  const missing: string[] = [];
+  for (const id of target.topLevelIds) {
+    const cmd = config.commands.find((c) => c.id === id);
+    if (!cmd) {
+      missing.push(`oclif command not found: ${id}`);
+      continue;
+    }
+    const start = flagsMarkerStart(id);
+    const end = flagsMarkerEnd(id);
+    const split = splitOnMarker(next, start, end);
+    if (!split) {
+      missing.push(`missing marker pair for ${id} (${start} / ${end})`);
+      continue;
+    }
+    const body = renderFlagsBlock(cmd, config.bin, target.lang);
+    next = `${split.pre}\n\n${body}\n\n${split.post}`;
+  }
+  return { next, missing };
+}
+
+// ── diff print ────────────────────────────────────────────────────────────────
 
 function diffPreview(expected: string, actual: string): string {
   const eLines = expected.split('\n');
@@ -202,40 +345,87 @@ function diffPreview(expected: string, actual: string): string {
   return out.join('\n');
 }
 
+// ── 主循环 ────────────────────────────────────────────────────────────────────
+
+interface TargetResult {
+  file: string;
+  current: string;
+  next: string;
+  missingMarkers: string[];
+}
+
+async function generateAll(): Promise<TargetResult[]> {
+  const config = await Config.load({ root: REPO_ROOT });
+  const results: TargetResult[] = [];
+  for (const target of TARGETS) {
+    const absPath = resolve(REPO_ROOT, target.file);
+    const current = readFileSync(absPath, 'utf8');
+    if (target.mode === 'fullbody') {
+      const body = generateFullbody(config);
+      const { next, error } = composeFullbody(current, body, target);
+      results.push({
+        file: target.file,
+        current,
+        next,
+        missingMarkers: error ? [error] : [],
+      });
+    } else {
+      const { next, missing } = composePerCmdFlags(current, config, target);
+      results.push({
+        file: target.file,
+        current,
+        next,
+        missingMarkers: missing,
+      });
+    }
+  }
+  return results;
+}
+
 async function main(): Promise<void> {
   const mode = process.argv.includes('--check') ? 'check' : 'write';
-  const current = readFileSync(COMMANDS_MD, 'utf8');
-  const split = splitFile(current);
-  if (!split) {
-    process.stderr.write(
-      `[build-docs] commands.md missing markers (${MARKER_START} / ${MARKER_END}).\n`,
-    );
-    process.stderr.write(`Add markers to ${COMMANDS_MD} before running.\n`);
+  const results = await generateAll();
+
+  // 任一 target 缺 marker 就 hard exit 2,提示用户手补
+  const missingByFile = results.filter((r) => r.missingMarkers.length > 0);
+  if (missingByFile.length > 0) {
+    process.stderr.write('[build-docs] missing markers:\n');
+    for (const r of missingByFile) {
+      for (const m of r.missingMarkers) {
+        process.stderr.write(`  ${r.file}: ${m}\n`);
+      }
+    }
+    process.stderr.write('Add the marker pair(s) and re-run.\n');
     process.exit(2);
   }
-  const body = await generate();
-  const next = compose(split.pre, body, split.post);
 
   if (mode === 'check') {
-    if (next === current) {
-      process.stdout.write('[build-docs] commands.md is in sync with oclif source.\n');
+    const drifted = results.filter((r) => r.next !== r.current);
+    if (drifted.length === 0) {
+      process.stdout.write('[build-docs] all targets in sync with oclif source.\n');
       return;
     }
     process.stderr.write(
-      '[build-docs] commands.md drifted from oclif source. Run `yarn build:docs` to regenerate.\n',
+      '[build-docs] drifted from oclif source. Run `yarn build:docs` to regenerate.\n',
     );
-    process.stderr.write('---\n');
-    process.stderr.write(diffPreview(next, current));
-    process.stderr.write('\n');
+    for (const r of drifted) {
+      process.stderr.write(`\n--- ${r.file} ---\n`);
+      process.stderr.write(diffPreview(r.next, r.current));
+      process.stderr.write('\n');
+    }
     process.exit(1);
   }
 
-  if (next === current) {
-    process.stdout.write('[build-docs] commands.md already up to date.\n');
-    return;
+  let wrote = 0;
+  for (const r of results) {
+    if (r.next === r.current) continue;
+    writeFileSync(resolve(REPO_ROOT, r.file), r.next, 'utf8');
+    process.stdout.write(`[build-docs] wrote ${r.file}\n`);
+    wrote++;
   }
-  writeFileSync(COMMANDS_MD, next, 'utf8');
-  process.stdout.write(`[build-docs] wrote ${COMMANDS_MD}\n`);
+  if (wrote === 0) {
+    process.stdout.write('[build-docs] all targets already up to date.\n');
+  }
 }
 
 main().catch((err: unknown) => {

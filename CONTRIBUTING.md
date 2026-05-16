@@ -153,15 +153,23 @@ omk CLI 已迁到 [@oclif/core](https://oclif.io/docs/) 框架(PR-A spike #113 /
 4. 在 `test/cli/oclif-<name>.test.ts` 加 --help 双语 + unknown flag exit 2 + 关键 happy/error case
 5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.claude/skills/omk/references/commands.md`(见下一节)
 
-### CLI 文档 codegen(PR-D #109)
+### CLI 文档 codegen(#109)
 
-oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是 CLI 文档的**单一来源**。`scripts/build-docs.ts` 把它生成到 `.claude/skills/omk/references/commands.md` 的 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` marker 之间。
+oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是 CLI 文档的**单一来源**。`scripts/build-docs.ts` 把它渲染到三个目标文件的 marker 区段:
+
+| 目标 | marker | 输出 | 语言 |
+|---|---|---|---|
+| `.claude/skills/omk/references/commands.md` | 整段 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` | 13 个 oclif command(含 sub-sub)完整渲染 | zh |
+| `README.md` | 每个顶层命令独立 `<!-- omk:cli:<id>:flags:start -->` ... `<!-- omk:cli:<id>:flags:end -->`,7 对 | flag list(```text``` 对齐风格)+ 指向 `--help` 的脚注 | en |
+| `README.zh.md` | 同上 | 同上 | zh |
 
 工作流:
 
-- 改完 oclif Command,跑 `yarn build && yarn build:docs` 同步 commands.md
-- 不跑就会被 CI `yarn build:docs:check` 拦截(exit 1 + 打 diff)
-- README / SKILL.md 仍 hand-maintained,后续 PR 视需要扩 codegen 覆盖
+- 改完 oclif Command 的 description / flag,跑 `yarn build && yarn build:docs` 同步全部 3 个目标
+- 不跑就会被 CI `yarn build:docs:check` 拦截(exit 1 + 对每个 drift 的文件打 diff)
+- README 的 prose 段(static-only 解释 / HTML report tab / Studio IA / executor 表格等)在 marker 外,hand-maintained 保留
+- 新增顶层命令时:在 README.md / README.zh.md 各加一对 `<!-- omk:cli:<new-id>:flags:start -->` / `:end -->`,并把 id 加进 `scripts/build-docs.ts` 的 `TARGETS[*].topLevelIds`
+- SKILL.md 暂不覆盖,留 PR-D3 评估
 
 ## Style
 

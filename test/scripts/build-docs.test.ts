@@ -21,10 +21,23 @@ const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const COMMANDS_MD = join(PROJECT_ROOT, '.claude/skills/omk/references/commands.md');
+const README_EN = join(PROJECT_ROOT, 'README.md');
+const README_ZH = join(PROJECT_ROOT, 'README.zh.md');
 const BUILD_DOCS = join(PROJECT_ROOT, 'dist/scripts/build-docs.js');
 
 const MARKER_START = '<!-- omk:cli:start -->';
 const MARKER_END = '<!-- omk:cli:end -->';
+
+const TOP_LEVEL_IDS = ['init', 'doctor', 'eval', 'observe', 'evolve', 'sample', 'studio'] as const;
+
+function readFlagsBlock(content: string, id: string): string {
+  const start = `<!-- omk:cli:${id}:flags:start -->`;
+  const end = `<!-- omk:cli:${id}:flags:end -->`;
+  const s = content.indexOf(start);
+  const e = content.indexOf(end);
+  assert.ok(s !== -1 && e !== -1 && e > s, `marker pair for ${id} not found`);
+  return content.slice(s + start.length, e);
+}
 
 interface ExecError extends Error {
   code?: number;
@@ -138,4 +151,83 @@ describe('scripts/build-docs codegen', () => {
       writeFileSync(COMMANDS_MD, original, 'utf8');
     }
   }, 30000);
+
+  it('README.md has 7 marker pairs for top-level oclif commands', () => {
+    const content = readFileSync(README_EN, 'utf8');
+    for (const id of TOP_LEVEL_IDS) {
+      assert.ok(
+        content.includes(`<!-- omk:cli:${id}:flags:start -->`),
+        `README.md missing marker start for ${id}`,
+      );
+      assert.ok(
+        content.includes(`<!-- omk:cli:${id}:flags:end -->`),
+        `README.md missing marker end for ${id}`,
+      );
+    }
+  });
+
+  it('README.zh.md has 7 marker pairs for top-level oclif commands', () => {
+    const content = readFileSync(README_ZH, 'utf8');
+    for (const id of TOP_LEVEL_IDS) {
+      assert.ok(
+        content.includes(`<!-- omk:cli:${id}:flags:start -->`),
+        `README.zh.md missing marker start for ${id}`,
+      );
+      assert.ok(
+        content.includes(`<!-- omk:cli:${id}:flags:end -->`),
+        `README.zh.md missing marker end for ${id}`,
+      );
+    }
+  });
+
+  it('README.md eval flags block contains English descriptions (en pickLang)', () => {
+    const content = readFileSync(README_EN, 'utf8');
+    const block = readFlagsBlock(content, 'eval');
+    assert.ok(block.includes('--bootstrap-samples'), 'must list --bootstrap-samples');
+    assert.ok(block.includes('--judge-models'), 'must list --judge-models');
+    // 英文 keyword 出现 → pickLang('en') 工作正确
+    assert.ok(/Bootstrap resamples|Judge model/i.test(block), `expected EN descriptions: ${block.slice(0, 400)}`);
+    // 中文 description 头部不应出现 — 防止 pickLang 选错语言
+    assert.ok(!/被测模型|样本文件路径/.test(block), `zh description leaked into README.md: ${block.slice(0, 400)}`);
+    assert.ok(block.includes('For full descriptions:'), 'must include EN help hint footer');
+  });
+
+  it('README.zh.md eval flags block contains Chinese descriptions (zh pickLang)', () => {
+    const content = readFileSync(README_ZH, 'utf8');
+    const block = readFlagsBlock(content, 'eval');
+    assert.ok(block.includes('--bootstrap-samples'), 'must list --bootstrap-samples');
+    // 中文 keyword 出现
+    assert.ok(/被测模型|样本文件路径|评委/.test(block), `expected zh descriptions: ${block.slice(0, 400)}`);
+    // 英文 description 不应出现
+    assert.ok(!/Bootstrap resamples/.test(block), `en description leaked into README.zh.md: ${block.slice(0, 400)}`);
+    assert.ok(block.includes('完整描述见'), 'must include zh help hint footer');
+  });
+
+  it('README.md hand-curated prose around eval flags is preserved', () => {
+    const content = readFileSync(README_EN, 'utf8');
+    // 这些 prose 在 marker 之外,本 codegen 不应触碰
+    assert.ok(content.includes('Runs the offline evaluation, applies the verdict gate'), 'eval intro prose missing');
+    assert.ok(content.includes('The HTML report has two tabs'), 'HTML report two-tabs prose missing');
+    assert.ok(content.includes('Static-only mode'), 'doctor static-only prose missing');
+    assert.ok(content.includes('Studio is skill-centric'), 'Studio IA prose missing');
+  });
+
+  it('README.zh.md hand-curated prose preserved', () => {
+    const content = readFileSync(README_ZH, 'utf8');
+    assert.ok(content.includes('运行离线评测'), 'eval intro zh prose missing');
+    assert.ok(content.includes('HTML 报告有两个 tab'), 'HTML 报告 tabs zh prose missing');
+    assert.ok(content.includes('离线静态模式'), 'doctor static-only zh prose missing');
+  });
+
+  it('README.md eval block has flags in alphabetic order', () => {
+    const content = readFileSync(README_EN, 'utf8');
+    const block = readFlagsBlock(content, 'eval');
+    // 抽两个稳定的 flag 名,看出现顺序符合 alphabetic
+    const idxBatch = block.indexOf('--batch');
+    const idxConcurrency = block.indexOf('--concurrency');
+    const idxThreshold = block.indexOf('--threshold');
+    assert.ok(idxBatch !== -1 && idxConcurrency !== -1 && idxThreshold !== -1);
+    assert.ok(idxBatch < idxConcurrency, '--batch should precede --concurrency');
+    assert.ok(idxConcurrency < idxThreshold, '--concurrency should precede --threshold');
+  });
 });
