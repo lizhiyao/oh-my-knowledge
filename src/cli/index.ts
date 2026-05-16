@@ -38,6 +38,16 @@ function dispatchOrPrintHelp(cmd: CommandModule, argv: string[], lang: CliLang):
 async function main(): Promise<void> {
   const lang = getCliLang(parseLangFromArgv(process.argv));
   checkUpdate(lang);
+
+  // OMK_CLI_NEXT=1 切到 oclif dispatcher(PR-B dogfood 模式)。
+  // legacy 路径完全不动,默认行为零变化。oclif 路径只迁了 doctor / sample 两个命令,
+  // 其它命令在该模式下会报「command not found」exit 1(跟 legacy unknown_domain 行为对得齐)。
+  if (process.env.OMK_CLI_NEXT === '1') {
+    const { runOclifPath } = await import('./oclif/run.js');
+    await runOclifPath();
+    return;
+  }
+
   const [command, ...rest]: string[] = process.argv.slice(2);
 
   if (!command || command === '--help' || command === '-h') {

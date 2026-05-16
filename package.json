@@ -26,6 +26,22 @@
       "eslint --max-warnings 0"
     ]
   },
+  "oclif": {
+    "bin": "omk",
+    "commands": "./dist/src/cli/oclif/commands",
+    "dirname": "omk",
+    "helpClass": "./dist/src/cli/oclif/help.js",
+    "topicSeparator": " ",
+    "exitCodes": {
+      "default": 1,
+      "failedFlagParsing": 2,
+      "failedFlagValidation": 2,
+      "invalidArgsSpec": 2,
+      "nonExistentFlag": 2,
+      "requiredArgs": 2,
+      "unexpectedArgs": 2
+    }
+  },
   "keywords": [
     "llm-evaluation",
     "evaluation-framework",
@@ -61,6 +77,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.89",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@oclif/core": "^4",
     "@openai/codex-sdk": "0.130.0",
     "ajv": "^8.18.0",
     "chart.js": "^4.5.1",
