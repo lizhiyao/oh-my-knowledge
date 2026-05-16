@@ -8,6 +8,11 @@ package-lock.json
 .claude/settings.local.json
 .claude/outputs/
 .omk/
+# Codex / 其它 agent CLI 的本地 hook / config 是个人偏好,不进仓库
+# —— 项目共享的 agent 入场清单走 AGENTS.md,skill 单一来源放 .claude/skills/,
+#    其它 agent 用户按 AGENTS.md「omk 自带 skill 安装」段引导自取
+.codex/
+.agents/
 
 # 凭据 / 私钥 / 证书文件兜底,跟 docs/dev/sensitive-scan.md 列的 "token / key" 一档对齐 ——
 # 给本地 .env、PEM / SSH 私钥、云厂商 service-account JSON、.netrc 这几类加一道 git-level 防误提网,
