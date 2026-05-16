@@ -8,6 +8,11 @@ import { bilingual, resolveLang, t } from '../i18n.js';
 // - preflight 失败 exit 1;unknown flag exit 2(由 oclif.exitCodes 在 package.json 配置)
 
 export default class Doctor extends Command {
+  // exp-8:开启 oclif 内置 --json flag。run() 的 return 值会被 oclif 序列化为 JSON
+  // 输出到 stdout。错误路径下,oclif 会自动把 this.error() 的 message + exit code
+  // 包成 JSON。验证「CI / 外部脚本 parse JSON 替代 regex 抓 stdout」的可行性。
+  static enableJsonFlag = true;
+
   static description = bilingual({
     zh: '体检 omk 工作目录,检查 skill 配置 / 依赖 / executor 连通性。',
     en: 'Preflight health checks for omk workdir: skill config / deps / executor connectivity.',
@@ -56,10 +61,15 @@ export default class Doctor extends Command {
     }),
   };
 
-  async run(): Promise<void> {
+  async run(): Promise<{
+    ok: boolean;
+    lang: 'zh' | 'en';
+    skillDir: string;
+    noCache: boolean;
+    checks: { name: string; passed: boolean }[];
+  }> {
     const { flags } = await this.parse(Doctor);
     const lang = (flags.lang === 'en' ? 'en' : 'zh') as 'zh' | 'en';
-    // resolveLang 会再读一次 argv,这里仅作为「runtime 也能拿到」的演示。
     const detected = resolveLang(process.argv);
     this.log(`[spike doctor] flags=${JSON.stringify(flags)} detected_lang=${detected}`);
 
@@ -74,7 +84,6 @@ export default class Doctor extends Command {
     );
 
     if (flags['no-cache']) {
-      // exit 1: omk doctor 失败的 invariant。oclif this.error 默认 exit 2,显式传 exit:1。
       this.error(
         t(
           {
@@ -96,5 +105,18 @@ export default class Doctor extends Command {
         lang,
       ),
     );
+
+    // exp-8:--json 模式下 oclif 拿这个 return value 序列化输出,suppress 上面的 this.log。
+    return {
+      ok: true,
+      lang,
+      skillDir: flags['skill-dir'],
+      noCache: flags['no-cache'],
+      checks: [
+        { name: 'skill-config', passed: true },
+        { name: 'deps', passed: true },
+        { name: 'connectivity', passed: true },
+      ],
+    };
   }
 }

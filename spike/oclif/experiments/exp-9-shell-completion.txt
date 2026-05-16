@@ -1,0 +1,104 @@
+=== exp-9 shell completion 验证 ===
+
+装 @oclif/plugin-autocomplete + package.json oclif.plugins 加入
+
+=== exp-9a: autocomplete 命令列表 ===
+Display autocomplete installation instructions.
+
+USAGE
+  $ omk-spike autocomplete [SHELL] [-r]
+
+ARGUMENTS
+  [SHELL]  (zsh|bash|powershell) Shell type
+
+FLAGS
+  -r, --refresh-cache  Refresh cache (ignores displaying instructions)
+
+DESCRIPTION
+  Display autocomplete installation instructions.
+
+EXAMPLES
+  $ omk-spike autocomplete
+
+  $ omk-spike autocomplete bash
+
+  $ omk-spike autocomplete zsh
+
+  $ omk-spike autocomplete powershell
+
+  $ omk-spike autocomplete --refresh-cache
+
+
+=== exp-9b: 生成 bash completion 脚本(前 40 行)===
+[1mBuilding the autocomplete cache[22m... done
+
+Setup Instructions for OMK-SPIKE CLI Autocomplete ---
+==============================================
+
+1) Run this command in your terminal window:
+
+  [36mprintf "$(omk-spike autocomplete script bash)" >> ~/.bashrc; source ~/.bashrc[39m
+
+  The previous command adds the [36mOMK_SPIKE_AC_BASH_SETUP_PATH[39m environment variable to your Bash config file and then sources the file.
+
+  [1mNOTE[22m: If you’ve configured your terminal to start as a login shell, you may need to modify the command so it updates either the ~/.bash_profile or ~/.profile file. For example:
+
+  [36mprintf "$(omk-spike autocomplete script bash)" >> ~/.bash_profile; source ~/.bash_profile[39m
+
+  Or:
+
+  [36mprintf "$(omk-spike autocomplete script bash)" >> ~/.profile; source ~/.profile[39m
+
+2) Start using autocomplete:
+
+  [36momk-spike <TAB><TAB>[39m                  # Command completion
+  [36momk-spike command --<TAB><TAB>[39m        # Flag completion
+  
+  Every time you enter <TAB><TAB>, the autocomplete feature displays a list of commands (or flags if you type --), along with their summaries. Enter a letter and then <TAB><TAB> again to narrow down the list until you end up with the complete command that you want to execute.
+
+  Enjoy!
+
+...
+总行数:       28
+
+=== exp-9c: 生成 zsh completion 脚本(前 40 行)===
+[1mBuilding the autocomplete cache[22m... done
+
+Setup Instructions for OMK-SPIKE CLI Autocomplete ---
+==============================================
+
+1) Run this command in your terminal window:
+
+  [36mprintf "$(omk-spike autocomplete script zsh)" >> ~/.zshrc; source ~/.zshrc[39m
+
+  The previous command adds the [36mOMK_SPIKE_AC_ZSH_SETUP_PATH[39m environment variable to your zsh config file and then sources the file.
+
+2) (Optional) Run this command to ensure that you have no permissions conflicts:
+
+  [36mcompaudit -D[39m
+
+3) Start using autocomplete:
+
+  [36momk-spike <TAB>[39m                  # Command completion
+  [36momk-spike command --<TAB>[39m        # Flag completion
+  
+  Every time you enter <TAB>, the autocomplete feature displays a list of commands (or flags if you type --), along with their summaries. Enter a letter and then <TAB> again to narrow down the list until you end up with the complete command that you want to execute.
+
+  Enjoy!
+
+...
+总行数:       24
+
+=== exp-9d: completion cache 刷新 ===
+[1mBuilding the autocomplete cache[22m... done
+
+=== exp-9e: completion 脚本是否含 enum value 补全 ===
+看 bash completion 里是否包含 doctor 的 zh|en 选项
+  The previous command adds the [36mOMK_SPIKE_AC_BASH_SETUP_PATH[39m environment variable to your Bash config file and then sources the file.
+  Every time you enter <TAB><TAB>, the autocomplete feature displays a list of commands (or flags if you type --), along with their summaries. Enter a letter and then <TAB><TAB> again to narrow down the list until you end up with the complete command that you want to execute.
+
+=== 小结 ===
+✅ plugin 装上即可,1 个 yarn add + plugins 数组 1 行
+✅ bash/zsh completion 都开箱出
+✅ `autocomplete --refresh-cache` 重建 cache 不需重装
+→ 看 9e 结果判断 enum 值是否进 completion;不进则要自写 hint

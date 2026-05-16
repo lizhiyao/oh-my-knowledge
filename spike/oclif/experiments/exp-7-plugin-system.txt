@@ -1,0 +1,46 @@
+=== exp-7 oclif plugin 系统验证 ===
+
+--- 装的两个 plugin ---
+    "plugins": [
+      "@oclif/plugin-not-found",
+
+=== exp-7a: 未知命令 → plugin-not-found 是否给 "did you mean" 提示 ===
+(原来默认行为: exit 1 + 简单 "command not found")
+ ›   Warning: [33mdoctorr[39m is not a omk-spike command.
+ ›   Error: Run [36m[1momk-spike help[22m[39m for a list of available commands.
+exit=127
+
+ ›   Warning: [33mstudi[39m is not a omk-spike command.
+ ›   Error: Run [36m[1momk-spike help[22m[39m for a list of available commands.
+exit=127
+
+ ›   Warning: [33mnope-totally[39m is not a omk-spike command.
+ ›   Error: Run [36m[1momk-spike help[22m[39m for a list of available commands.
+exit=127
+
+=== exp-7b: 已知命令仍正常执行 ===
+[spike doctor] flags={"lang":"en","skill-dir":"skills","no-cache":false} detected_lang=en
+→ Inspecting skill dir: skills
+✔ Preflight passed (spike stub — no real checks performed)
+exit=0
+
+=== exp-7c: warn-if-update-available 行为 ===
+(本地 spike package version 0.0.0,npm 上没这个包,plugin 应该 silent fail 不阻塞)
+[spike doctor] flags={"lang":"zh","skill-dir":"skills","no-cache":false} detected_lang=zh
+→ 体检目录:skills
+✔ 体检通过(spike 占位实现,未实际跑任何检查)
+exit=0
+
+=== exp-7d: 自定义 plugin 脚手架的复杂度 ===
+脚手架命令: npx oclif generate plugin /tmp/spike-plugin-test
+(non-interactive 暂跳过 — oclif generate 默认走 inquirer 提问,需 --no-prompt 或手填)
+
+改看 oclif plugin generate 官方文档对接入流程的描述:
+  generate command  Add a command to an existing CLI or plugin.
+  generate hook     Add a hook to an existing CLI or plugin.
+
+
+=== 小结 ===
+- plugin-not-found 装上后 unknown command 行为:见 7a 输出
+- plugin 接入只需 yarn add + package.json oclif.plugins 数组 1 行
+- 自定义 plugin 脚手架是 oclif CLI 提供的命令,non-interactive 需另查

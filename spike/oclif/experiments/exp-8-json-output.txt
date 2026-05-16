@@ -1,0 +1,150 @@
+=== exp-8 --json 输出验证 ===
+
+doctor 加 `static enableJsonFlag = true` + run() 返回结构化对象。
+
+=== exp-8a: doctor 成功路径 --json 输出 ===
+{
+  "ok": true,
+  "lang": "zh",
+  "skillDir": "skills",
+  "noCache": false,
+  "checks": [
+    {
+      "name": "skill-config",
+      "passed": true
+    },
+    {
+      "name": "deps",
+      "passed": true
+    },
+    {
+      "name": "connectivity",
+      "passed": true
+    }
+  ]
+}
+exit=0
+
+=== exp-8b: doctor --no-cache 失败路径 --json ===
+{
+  "error": {
+    "oclif": {
+      "exit": 1
+    }
+  }
+}
+exit=1
+
+⚠️ 注意:失败路径 --json 只输出 {"error":{"oclif":{"exit":1}}} —— 错误消息丢失,
+agent 调用方拿不到 reason,得回去 parse stderr。这是 oclif --json 的现状缺口。
+
+=== exp-8c: 校验错误(enum 失败)+ --json ===
+(sample 命令也开 enableJsonFlag 才生效,现在没开)
+ ›   Error: Expected --strategy=bogus to be one of: workflow, contrastive, 
+ ›   hybrid
+ ›   See more help with --help
+exit=
+
+=== exp-8d: 未知 flag + --json(校验错误)===
+(完整输出含 oclif Config dump,出于审计性截到前 60 行)
+{
+  "error": {
+    "oclif": {
+      "exit": 2
+    },
+    "parse": {
+      "input": {
+        "args": {},
+        "argv": [
+          "--no-such-flag",
+          "--json"
+        ],
+        "context": {
+          "argv": [
+            "--no-such-flag",
+            "--json"
+          ],
+          "config": {
+            "options": {
+              "root": "/Users/lizhiyao/Documents/oh-my-knowledge/spike/oclif/bin/run.js",
+              "plugins": {}
+            },
+            "arch": "arm64",
+            "bin": "omk-spike",
+            "cacheDir": "/Users/lizhiyao/Library/Caches/omk-spike",
+            "channel": "stable",
+            "configDir": "/Users/lizhiyao/.config/omk-spike",
+            "dataDir": "/Users/lizhiyao/.local/share/omk-spike",
+            "dirname": "omk-spike",
+            "flexibleTaxonomy": false,
+            "home": "/Users/lizhiyao",
+            "isSingleCommandCLI": false,
+            "name": "omk-oclif-spike",
+            "pjson": {
+              "name": "omk-oclif-spike",
+              "version": "0.0.0",
+              "private": true,
+              "type": "module",
+              "description": "oclif spike for omk CLI framework evaluation (issue #109) — not published, not part of main yarn workspace",
+              "bin": {
+                "omk-spike": "./bin/run.js"
+              },
+              "files": [
+                "bin",
+                "dist",
+                "oclif.manifest.json"
+              ],
+              "engines": {
+                "node": ">=22"
+              },
+              "scripts": {
+                "build": "tsc",
+                "start": "node bin/run.js",
+                "dev": "node --import tsx bin/dev.js",
+                "manifest": "oclif manifest",
+                "readme": "oclif readme",
+                "clean": "rm -rf dist oclif.manifest.json"
+              },
+              "dependencies": {
+                "@oclif/core": "^4",
+exit=
+
+⚠️ 注意:--json 模式下 oclif 把整个 Config 对象塞进 error context,包含
+cacheDir / configDir / dataDir / home / pjson 全文。这是 verbose + 信息泄漏面,
+生产化时要 patch error formatter 只 emit { code, message } 双字段。
+
+=== exp-8e: --json 是否压制 this.log ===
+stdout(应只有 JSON):
+{
+  "ok": true,
+  "lang": "en",
+  "skillDir": "skills",
+  "noCache": false,
+  "checks": [
+    {
+      "name": "skill-config",
+      "passed": true
+    },
+    {
+      "name": "deps",
+      "passed": true
+    },
+    {
+      "name": "connectivity",
+      "passed": true
+    }
+  ]
+}
+
+stderr:
+
+=== 小结 ===
+✅ 成功路径:run() return value 自动序列化,structured,exit=0
+✅ this.log 在 --json 模式被 oclif 静默压制,stdout 只有 JSON,stderr 空
+⚠️  失败路径(this.error 走 oclif):exit code 在,但 message 丢失,
+   agent 调用方拿不到 reason 得 parse stderr
+❌ 校验错误(parse fail):--json 触发整个 oclif Config dump,verbose + 信息泄漏面
+   (cacheDir / configDir / home / pjson 全文)
+→ 生产化需要 ~30-50 LOC 自写 jsonResponse() helper:
+  - this.error 替换成 throw { code, message } 让 oclif --json 包成 clean error
+  - parse error 在 catch 里 sanitize,只 emit { code: 'BAD_FLAG', message: '...' }

@@ -24,7 +24,10 @@
     "clean": "rm -rf dist oclif.manifest.json"
   },
   "dependencies": {
-    "@oclif/core": "^4"
+    "@oclif/core": "^4",
+    "@oclif/plugin-autocomplete": "^3.2.49",
+    "@oclif/plugin-not-found": "^3.2.85",
+    "@oclif/plugin-warn-if-update-available": "^3.1.64"
   },
   "devDependencies": {
     "@types/node": "^22",
@@ -38,7 +41,15 @@
     "dirname": "omk-spike",
     "helpClass": "./dist/help.js",
     "topicSeparator": " ",
-    "plugins": [],
+    "plugins": [
+      "@oclif/plugin-autocomplete",
+      "@oclif/plugin-not-found",
+      "@oclif/plugin-warn-if-update-available"
+    ],
+    "warn-if-update-available": {
+      "timeoutInDays": 7,
+      "message": "<%= config.name %> 有新版本可用,跑 <%= chalk.cyan('yarn upgrade ' + config.name) %>"
+    },
     "exitCodes": {
       "default": 1,
       "failedFlagParsing": 2,

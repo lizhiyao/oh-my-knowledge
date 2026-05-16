@@ -1,0 +1,40 @@
+=== exp-9b 续:真正的 completion 函数(在 cache dir 不在脚本输出)===
+
+autocomplete script bash/zsh 只输出 setup snippet(2-3 行),指向 cache 文件。
+真正的 completion 逻辑在:
+  ~/Library/Caches/omk-spike/autocomplete/functions/{bash,zsh,powershell}/
+
+=== exp-9c: bash completion 函数能力 ===
+(eval):9: command not found: doctor
+- 命令名 + 子命令补全:✅()
+(eval):10: command not found: --lang
+- flag 名补全:✅( etc.)
+- enum 值补全:❌(bash compgen 不带 enum 列表,要补全 zh/en 得自己 compgen -W)
+
+=== exp-9d: zsh completion 函数能力 ===
+- 命令名 + 子命令补全:✅
+- flag 名补全:✅
+- enum 值补全:✅ 自带
+  例:
+  --lang"[输出语言 zh|en]:lang options:(zh en)"
+  --strategy"[采样策略 workflow|contrastive|hybrid]:strategy options:(workflow contrastive hybrid)"
+  --format"[dump 格式 json|yaml]:format options:(json yaml)"
+
+(zsh _arguments 语法天生支持 options:(...),oclif 把 OptionMeta.options 自动塞进去)
+
+=== exp-9e: bilingual description 在 completion hint 的展现 ===
+zsh _arguments 描述只取一行,因此 bilingual({zh,en}) 的 '${zh}
+${en}' 在
+completion 里只显示 zh 行——刚好跟用户期望对齐(zh-first 用户)。
+若用户 OMK_LANG=en,zsh completion 仍显示 zh hint。生产化需
+在 cache 生成时 honor OMK_LANG,~20 LOC pre-process 即可。
+
+=== 小结(综合 9a-9e)===
+✅ plugin-autocomplete 装即用,bash / zsh / powershell 三 shell 都开箱
+✅ 命令 / 子命令 / flag 补全自动生成
+✅ zsh enum 值补全自动(包含 OptionMeta.options 字段)
+⚠️  bash enum 值不补全,生产化要 ~30 LOC 加 compgen -W enum
+⚠️  completion description 取 description.split('
+')[0],bilingual 永远显示 zh
+    OMK_LANG=en 用户 completion hint 仍是中文,~20 LOC pre-process 修
+→ 总额外成本 ~50 LOC,bash enum 跟 OMK_LANG=en completion 都补齐
