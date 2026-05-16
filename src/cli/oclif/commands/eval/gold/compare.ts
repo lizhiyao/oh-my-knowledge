@@ -21,7 +21,6 @@ export default class EvalGoldCompare extends Command {
       description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
       options: ['zh', 'en'],
       default: 'zh',
-      env: 'OMK_LANG',
     }),
     'gold-dir': Flags.string({
       description: bilingual({ zh: 'gold dataset 目录，必填', en: 'Gold dataset dir (required)' }),

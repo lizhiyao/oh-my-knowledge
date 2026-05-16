@@ -36,7 +36,6 @@ export default class Eval extends Command {
       description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
       options: ['zh', 'en'],
       default: 'zh',
-      env: 'OMK_LANG',
     }),
     // ── 实验角色 ──
     control: Flags.string({

@@ -45,7 +45,6 @@ export default class Init extends Command {
       }),
       options: ['zh', 'en'],
       default: 'zh',
-      env: 'OMK_LANG',
     }),
   };
 

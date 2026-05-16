@@ -15,6 +15,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const CLI = join(PROJECT_ROOT, 'dist', 'src', 'cli', 'index.js');
 
+interface ExecError extends Error {
+  code?: number;
+  stdout: string;
+  stderr: string;
+}
+
 /**
  * 用一个保证不可达的 registry 让 fetch 走满 timeout。如果短路径生效,
  * --help 会在网络 I/O 之前 resolve;反之会被拖到 ~3s timeout。
@@ -71,5 +77,26 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     const { stdout } = await execFileAsync('node', [CLI, 'eval', '-h']);
     assert.ok(stdout.includes('\nUSAGE\n'), 'eval -h should print oclif USAGE');
     assert.ok(stdout.includes('--control'), 'eval -h should list --control flag');
+  });
+
+  it(`OMK_LANG=en_US ambient 不让 oclif parse exit 2(走 legacy fallback)`, async () => {
+    // legacy getCliLang 对不支持的 OMK_LANG 值 fallback to zh,oclif lang flag
+    // 不应该把 env 当 enum 校验。回归 PR #120 引入的 env: 'OMK_LANG' 写法。
+    const env = { ...process.env, OMK_LANG: 'en_US' };
+    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env });
+    assert.ok(stdout.includes('\nUSAGE\n'), 'doctor --help should succeed under OMK_LANG=en_US, got: ' + stdout.slice(0, 200));
+  });
+
+  it(`omk eval gold --lang en 打英文 usage(显式 lang flag 生效)`, async () => {
+    try {
+      await execFileAsync('node', [CLI, 'eval', 'gold', '--lang', 'en']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 1, `expected exit 1, got ${e.code}`);
+      const out = e.stdout + e.stderr;
+      assert.ok(/manage human-gold/i.test(out), `expected en usage, got:\n${out.slice(0, 200)}`);
+      assert.ok(!out.includes('管理 human-gold'), 'en mode should not leak zh usage');
+    }
   });
 });

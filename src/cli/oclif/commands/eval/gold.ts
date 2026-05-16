@@ -1,5 +1,5 @@
 import { Command, Flags } from '@oclif/core';
-import { bilingual } from '../../i18n.js';
+import { bilingual, resolveLang } from '../../i18n.js';
 
 // `omk eval gold`(无 sub-sub)入口 — 打用法 + exit 1。
 //
@@ -24,25 +24,16 @@ export default class EvalGold extends Command {
       }),
       options: ['zh', 'en'],
       default: 'zh',
-      env: 'OMK_LANG',
     }),
   };
 
   async run(): Promise<void> {
     await this.parse(EvalGold);
-    // 委托 legacy execute(argv=[])打 usage + 抛 CliExit(1)。lang 由 legacy
-    // 自己从 process.argv 解析,这里不重复抽。
-    const { execute } = await import('../../../commands/eval-gold.js');
-    const { CliExit } = await import('../../../cli-exit.js');
-    try {
-      await execute([]);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        this.exit(err.code);
-      }
-      throw err;
-    }
-    // 防御性 — execute([]) 永远 throw,但 TS 不知道
+    // 直接打 legacy usage(--lang 决定语言)+ exit 1。不委托 execute(argv) 因为
+    // legacy [sub, ...rest] = argv 会把 --lang 当 sub,这条 path 没业务,只打 usage。
+    const lang = resolveLang(process.argv);
+    const { usage } = await import('../../../commands/eval-gold.js');
+    console.log(usage(lang));
     this.exit(1);
   }
 }

@@ -35,7 +35,6 @@ export default class Observe extends Command {
       description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
       options: ['zh', 'en'],
       default: 'zh',
-      env: 'OMK_LANG',
     }),
     kb: Flags.string({
       description: bilingual({ zh: '知识库 root，启用 KB-aware 分析', en: 'KB root, enables KB-aware analysis' }),

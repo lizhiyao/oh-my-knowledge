@@ -42,7 +42,6 @@ export default class Evolve extends Command {
       description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
       options: ['zh', 'en'],
       default: 'zh',
-      env: 'OMK_LANG',
     }),
     rounds: Flags.string({
       description: bilingual({ zh: '最大迭代轮数，默认 5', en: 'Max iteration rounds, default 5' }),

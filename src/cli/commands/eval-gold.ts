@@ -138,7 +138,7 @@ export async function execute(argv: string[]): Promise<void> {
   throw new CliExit(1);
 }
 
-function usage(lang: 'zh' | 'en'): string {
+export function usage(lang: 'zh' | 'en'): string {
   return lang === 'zh'
     ? [
         'omk eval gold — 管理 human-gold 标注集',

@@ -59,7 +59,6 @@ export default class Sample extends Command {
       }),
       options: ['zh', 'en'],
       default: 'zh',
-      env: 'OMK_LANG',
     }),
     batch: Flags.boolean({
       description: bilingual({

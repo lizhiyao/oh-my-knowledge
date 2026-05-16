@@ -107,7 +107,6 @@ export default class Doctor extends Command {
       }),
       options: ['zh', 'en'],
       default: 'zh',
-      env: 'OMK_LANG',
     }),
     json: Flags.boolean({
       description: bilingual({
