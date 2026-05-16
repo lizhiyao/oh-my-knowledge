@@ -14,6 +14,14 @@ package-lock.json
 .codex/
 .agents/
 
+# CLI 框架 spike(issue #109):oclif / commander prototype 子项目,自带 package.json + lockfile,
+# 不入主项目 yarn workspace,node_modules / dist / oclif manifest 都不入库。spike/ 整体跟生产
+# src/ 物理隔离,不影响 npm publish。
+spike/*/node_modules/
+spike/*/dist/
+spike/*/oclif.manifest.json
+spike/*/*.tgz
+
 # 凭据 / 私钥 / 证书文件兜底,跟 docs/dev/sensitive-scan.md 列的 "token / key" 一档对齐 ——
 # 给本地 .env、PEM / SSH 私钥、云厂商 service-account JSON、.netrc 这几类加一道 git-level 防误提网,
 # 跟 runbook (扫描已 staged 内容) 形成"未 stage 拦截 + 已 stage 扫描"两层防御。

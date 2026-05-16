@@ -1,0 +1,52 @@
+{
+  "name": "omk-oclif-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "oclif spike for omk CLI framework evaluation (issue #109) — not published, not part of main yarn workspace",
+  "bin": {
+    "omk-spike": "./bin/run.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "oclif.manifest.json"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node bin/run.js",
+    "dev": "node --import tsx bin/dev.js",
+    "manifest": "oclif manifest",
+    "readme": "oclif readme",
+    "clean": "rm -rf dist oclif.manifest.json"
+  },
+  "dependencies": {
+    "@oclif/core": "^4"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "oclif": "^4",
+    "tsx": "^4",
+    "typescript": "^5"
+  },
+  "oclif": {
+    "bin": "omk-spike",
+    "commands": "./dist/commands",
+    "dirname": "omk-spike",
+    "helpClass": "./dist/help.js",
+    "topicSeparator": " ",
+    "plugins": [],
+    "exitCodes": {
+      "default": 1,
+      "failedFlagParsing": 2,
+      "failedFlagValidation": 2,
+      "invalidArgsSpec": 2,
+      "nonExistentFlag": 2,
+      "requiredArgs": 2,
+      "unexpectedArgs": 2
+    }
+  }
+}

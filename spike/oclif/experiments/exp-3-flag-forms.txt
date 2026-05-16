@@ -1,0 +1,44 @@
+=== exp-3 required positional missing ===
+ ›   Error: Missing 1 required arg:
+ ›   skillPath  skill 文件或目录的路径,必填
+ ›              Path to skill .md or skill dir (required)
+ ›   See more help with --help
+
+USAGE
+  $ omk-spike sample SKILLPATH [--lang zh|en] [--count <value>]
+    [--output <value>] [--strategy workflow|contrastive|hybrid]
+exit=0
+
+=== exp-3 positional given,defaults applied ===
+[spike sample] skillPath=skills/foo count=5 strategy=workflow output=(default)
+✔ 已为 skills/foo 生成 5 条 workflow 样本(spike 占位)
+exit=0
+
+=== exp-3 all explicit ===
+[spike sample] skillPath=skills/foo count=20 strategy=contrastive output=out.json
+✔ 已为 skills/foo 生成 20 条 contrastive 样本(spike 占位)
+exit=0
+
+=== exp-3 boolean --no-cache(true 时触发模拟 fail 路径)===
+[spike doctor] flags={"lang":"zh","skill-dir":"skills","no-cache":true} detected_lang=zh
+→ 体检目录:skills
+ ›   Error: 体检失败:--no-cache 触发模拟 fail 路径(spike 验收 exit code)
+exit=1
+
+=== exp-3 boolean 不带值,默认 false ===
+[spike doctor] flags={"lang":"zh","skill-dir":"skills","no-cache":false} detected_lang=zh
+→ 体检目录:skills
+✔ 体检通过(spike 占位实现,未实际跑任何检查)
+exit=0
+
+=== exp-3 integer 类型校验,非数字应报错 ===
+ ›   Error: Parsing --count 
+ ›   	Expected an integer but received: abc
+ ›   See more help with --help
+exit=2
+
+=== exp-3 enum 校验 ===
+ ›   Error: Expected --strategy=nope to be one of: workflow, contrastive, 
+ ›   hybrid
+ ›   See more help with --help
+exit=1

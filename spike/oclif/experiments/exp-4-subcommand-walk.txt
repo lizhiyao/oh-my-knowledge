@@ -1,0 +1,92 @@
+=== exp-4 studio root (列出 subcommand) ===
+把当前 studio 数据 dump 成 JSON/YAML(给 CI / 外部脚本消费)。
+
+USAGE
+  $ omk-spike studio COMMAND
+
+COMMANDS
+  studio dump   把当前 studio 数据 dump 成 JSON/YAML(给 CI / 外部脚本消费)。
+  studio start  启动 omk studio 报告服务,看 skill 健康/评测/观测三大维度。
+
+
+=== exp-4 studio start --help ===
+启动 omk studio 报告服务,看 skill 健康/评测/观测三大维度。
+
+USAGE
+  $ omk-spike studio start [--lang zh|en] [--port <value>] [--no-serve]
+
+FLAGS
+  --lang=<option>  [default: zh, env: OMK_LANG] 输出语言 zh|en
+                   <options: zh|en>
+  --no-serve       只生成报告,不启动 HTTP 服务
+  --port=<value>   监听端口,0 表示系统分配
+
+DESCRIPTION
+  启动 omk studio 报告服务,看 skill 健康/评测/观测三大维度。
+
+EXAMPLES
+  默认端口 0(系统分配可用端口),浏览器自动打开
+
+    $ omk-spike studio start
+
+  指定端口 + 不打开浏览器
+
+    $ omk-spike studio start --port 7799 --no-serve
+
+
+=== exp-4 studio dump --help ===
+把当前 studio 数据 dump 成 JSON/YAML(给 CI / 外部脚本消费)。
+
+USAGE
+  $ omk-spike studio dump [--lang zh|en] [--format json|yaml] [--output
+    <value>]
+
+FLAGS
+  --format=<option>  [default: json] dump 格式 json|yaml
+                     <options: json|yaml>
+  --lang=<option>    [default: zh, env: OMK_LANG] 输出语言 zh|en
+                     <options: zh|en>
+  --output=<value>   输出文件路径,默认 stdout
+
+DESCRIPTION
+  把当前 studio 数据 dump 成 JSON/YAML(给 CI / 外部脚本消费)。
+
+EXAMPLES
+  JSON 模式 dump 到 stdout
+
+    $ omk-spike studio dump --format json
+
+
+=== exp-4 invoke subcommand ===
+[spike studio start] port=7799 no-serve=false
+✔ studio 已启动 port=7799(spike 占位,未实际开 server)
+exit=0
+[spike studio dump] format=yaml output=(stdout)
+✔ studio dump 完成,格式 yaml(spike 占位)
+exit=0
+
+=== exp-4 oclif manifest 外部 walk(脱离 runtime,纯 metadata) ===
+wrote manifest to /Users/lizhiyao/Documents/oh-my-knowledge/spike/oclif/oclif.manifest.json
+
+--- 4 个命令 (含 2 subcommand) 都在 manifest 里 ---
+version: 0.0.0
+commands: [ 'doctor', 'sample', 'studio:dump', 'studio:start' ]
+--- doctor
+  description (first 60): 体检 omk 工作目录,检查 skill 配置 / 依赖 / executor 连通性。 / Preflight health checks for omk workdir: sk
+  flags: [ 'lang', 'skill-dir', 'no-cache' ]
+  args: []
+--- sample
+  description (first 60): 为指定 skill 生成评测用例(eval-samples)。 / Generate eval samples for the given skill.
+  flags: [ 'lang', 'count', 'output', 'strategy' ]
+  args: [ 'skillPath' ]
+--- studio:dump
+  description (first 60): 把当前 studio 数据 dump 成 JSON/YAML(给 CI / 外部脚本消费)。 / Dump studio data as JSON/YAML (for CI / e
+  flags: [ 'lang', 'format', 'output' ]
+  args: []
+--- studio:start
+  description (first 60): 启动 omk studio 报告服务,看 skill 健康/评测/观测三大维度。 / Start the omk studio report server (skill healt
+  flags: [ 'lang', 'port', 'no-serve' ]
+  args: []
+
+--- manifest 体积 ---
+-rw-r--r--@ 1 lizhiyao  staff  8361 May 16 12:35 oclif.manifest.json

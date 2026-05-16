@@ -1,0 +1,50 @@
+=== exp-2 happy path → exit 0 ===
+[spike doctor] flags={"lang":"zh","skill-dir":"skills","no-cache":false} detected_lang=zh
+→ 体检目录:skills
+✔ 体检通过(spike 占位实现,未实际跑任何检查)
+exit=0
+
+=== exp-2 simulated preflight fail → exit 1 ===
+[spike doctor] flags={"lang":"zh","skill-dir":"skills","no-cache":true} detected_lang=zh
+→ 体检目录:skills
+ ›   Error: 体检失败:--no-cache 触发模拟 fail 路径(spike 验收 exit code)
+exit=1
+
+=== exp-2 unknown flag → expect exit 2 ===
+exit=2
+ ›   Error: Nonexistent flag: --no-such-flag
+ ›   See more help with --help
+
+
+=== exp-2 unknown command → expect exit 2 ===
+exit=1
+ ›   Error: command nope not found
+
+=== exp-2 missing required positional → expect exit 2 ===
+exit=2
+ ›   Error: Missing 1 required arg:
+ ›   skillPath  skill 文件或目录的路径,必填
+ ›              Path to skill .md or skill dir (required)
+ ›   See more help with --help
+
+
+=== exp-2 enum validation fail → 实测 exit ? ===
+exit=1
+ ›   Error: Expected --strategy=bogus to be one of: workflow, contrastive, 
+ ›   hybrid
+ ›   See more help with --help
+
+=== exp-2 integer 类型校验 → 实测 exit ? ===
+exit=2
+ ›   Error: Parsing --count 
+ ›   	Expected an integer but received: abc
+ ›   See more help with --help
+
+=== 小结表 ===
+happy path:    exit 0 (✅ 期望 0)
+preflight fail: exit 1 (✅ omk doctor invariant)
+unknown flag:  exit 2 (✅ omk parse-strict invariant)
+unknown cmd:   exit 1 (❌ 期望 2)
+miss arg:      exit 2 (✅)
+enum fail:     exit 1 (❌ 期望 2)
+type fail:     见上

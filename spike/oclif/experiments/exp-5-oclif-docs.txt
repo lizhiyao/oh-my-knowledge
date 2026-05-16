@@ -1,0 +1,104 @@
+=== exp-5 oclif manifest 默认产物 ===
+wrote manifest to /Users/lizhiyao/Documents/oh-my-knowledge/spike/oclif/oclif.manifest.json
+
+--- oclif.manifest.json 关键字段 ---
+top-level keys: [ 'commands', 'version' ]
+doctor 命令对象顶层字段: [
+  'aliases',        'args',
+  'description',    'examples',
+  'flags',          'hasDynamicHelp',
+  'hiddenAliases',  'id',
+  'pluginAlias',    'pluginName',
+  'pluginType',     'strict',
+  'enableJsonFlag', 'isESM',
+  'relativePath'
+]
+doctor.flags.lang 字段: {
+  "description": "输出语言 zh|en,优先级 CLI > OMK_LANG env > zh\nOutput language zh|en. Priority: CLI > OMK_LANG env > zh",
+  "env": "OMK_LANG",
+  "name": "lang",
+  "default": "zh",
+  "hasDynamicHelp": false,
+  "multiple": false,
+  "options": [
+    "zh",
+    "en"
+  ],
+  "type": "option"
+}
+
+--- manifest 体积 ---
+-rw-r--r--@ 1 lizhiyao  staff  8361 May 16 12:36 oclif.manifest.json
+
+=== exp-5 oclif readme 自动重写 README ===
+replacing <!-- usage --> in /Users/lizhiyao/Documents/oh-my-knowledge/spike/oclif/README.md
+replacing <!-- commands --> in /Users/lizhiyao/Documents/oh-my-knowledge/spike/oclif/README.md
+
+--- README 重写后的 commands 段 ---
+<!-- commands -->
+* [`omk-spike doctor`](#omk-spike-doctor)
+* [`omk-spike sample SKILLPATH`](#omk-spike-sample-skillpath)
+* [`omk-spike studio dump`](#omk-spike-studio-dump)
+* [`omk-spike studio start`](#omk-spike-studio-start)
+
+## `omk-spike doctor`
+
+体检 omk 工作目录,检查 skill 配置 / 依赖 / executor 连通性。
+
+```
+USAGE
+  $ omk-spike doctor [--lang zh|en] [--skill-dir <value>] [--no-cache]
+
+FLAGS
+  --lang=<option>      [default: zh, env: OMK_LANG] 输出语言 zh|en,优先级 CLI > OMK_LANG env > zh
+                       <options: zh|en>
+  --no-cache           跳过连通性缓存,所有探测都重跑(spike 用作 preflight 失败模拟开关)
+  --skill-dir=<value>  [default: skills] 要体检的 skill 目录,默认 ./skills
+
+DESCRIPTION
+  体检 omk 工作目录,检查 skill 配置 / 依赖 / executor 连通性。
+
+EXAMPLES
+  默认在中文模式下扫描当前目录的 skills/
+
+    $ omk-spike doctor
+
+  指定英文 + 跳过连通性缓存(任何缓存命中的网络检测都重跑)
+
+    $ omk-spike doctor --lang en --no-cache
+```
+
+## `omk-spike sample SKILLPATH`
+
+为指定 skill 生成评测用例(eval-samples)。
+
+```
+USAGE
+  $ omk-spike sample SKILLPATH [--lang zh|en] [--count <value>] [--output <value>] [--strategy
+
+=== 双语 readme:OMK_LANG 决定 oclif readme 抓哪一种 ===
+OMK_LANG=en 跑 oclif readme,看 description 是否切到 en
+replacing <!-- usage --> in /Users/lizhiyao/Documents/oh-my-knowledge/spike/oclif/README.md
+replacing <!-- commands --> in /Users/lizhiyao/Documents/oh-my-knowledge/spike/oclif/README.md
+<!-- commands -->
+* [`omk-spike doctor`](#omk-spike-doctor)
+* [`omk-spike sample SKILLPATH`](#omk-spike-sample-skillpath)
+* [`omk-spike studio dump`](#omk-spike-studio-dump)
+* [`omk-spike studio start`](#omk-spike-studio-start)
+
+## `omk-spike doctor`
+
+体检 omk 工作目录,检查 skill 配置 / 依赖 / executor 连通性。
+
+```
+USAGE
+  $ omk-spike doctor [--lang zh|en] [--skill-dir <value>] [--no-cache]
+
+FLAGS
+  --lang=<option>      [default: zh, env: OMK_LANG] Output language zh|en. Priority: CLI > OMK_LANG env > zh
+                       <options: zh|en>
+  --no-cache           Bypass connectivity cache, re-probe everything (spike: also forces preflight-fail path)
+  --skill-dir=<value>  [default: skills] Skill directory to inspect (default ./skills)
+
+
+(还原 README)

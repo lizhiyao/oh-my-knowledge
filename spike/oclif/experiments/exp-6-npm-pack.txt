@@ -1,0 +1,60 @@
+=== exp-6 npm pack 文件清单 + 体积(添加 files 白名单后)===
+npm notice 3.6kB dist/commands/doctor.js
+npm notice 2.1kB dist/commands/doctor.js.map
+npm notice 3.4kB dist/commands/sample.js
+npm notice 2.3kB dist/commands/sample.js.map
+npm notice 1.9kB dist/commands/studio/dump.js
+npm notice 1.5kB dist/commands/studio/dump.js.map
+npm notice 2.4kB dist/commands/studio/start.js
+npm notice 1.7kB dist/commands/studio/start.js.map
+npm notice 4.4kB dist/help.js
+npm notice 3.4kB dist/help.js.map
+npm notice 1.2kB dist/i18n.js
+npm notice 1.0kB dist/i18n.js.map
+npm notice 8.4kB oclif.manifest.json
+npm notice 1.2kB package.json
+npm notice Tarball Details
+npm notice name: omk-oclif-spike
+npm notice version: 0.0.0
+npm notice filename: omk-oclif-spike-0.0.0.tgz
+npm notice package size: 11.5 kB
+npm notice unpacked size: 44.6 kB
+npm notice shasum: f93c2adf8e2fda3a12a0e5d5bb7a99528b877ba3
+npm notice integrity: sha512-BarKVYEzlOJM8[...]mHu69Up+1zO/w==
+npm notice total files: 17
+npm notice
+omk-oclif-spike-0.0.0.tgz
+
+=== 实际 npm pack 产物体积 ===
+(eval):6: no matches found: ./omk-oclif-spike-*.tgz
+npm notice total files: 17
+npm notice
+omk-oclif-spike-0.0.0.tgz
+-rw-r--r--@ 1 lizhiyao  staff    11K May 16 12:36 ./omk-oclif-spike-0.0.0.tgz
+
+=== node_modules 体积 (生产部署体积参考) ===
+ 86M	node_modules
+1.0M	node_modules/@oclif
+@oclif 各包:
+940K	node_modules/@oclif/core/
+ 32K	node_modules/@oclif/plugin-help/
+ 32K	node_modules/@oclif/plugin-not-found/
+ 48K	node_modules/@oclif/plugin-warn-if-update-available/
+
+=== omk 主项目 package.json 当前 bin/files (对照) ===
+  "bin": {
+    "omk": "dist/src/cli/index.js"
+  },
+  "engines": {
+  "files": [
+    "dist/src/"
+  ],
+  "scripts": {
+
+=== 假设迁 oclif 后 omk 主 package.json 变化估算 ===
+1. 加 "@oclif/core": "^4" 进 dependencies (+1 dep)
+2. 加 "oclif": "^4" 进 devDependencies (+1 dep,只 manifest/readme 用)
+3. bin/run.js + bin/dev.js 替代 src/cli/index.ts(净 ~30 → ~10 LOC)
+4. package.json 多 "oclif" 字段(commands path / topicSeparator / helpClass)
+5. files 白名单仍 ["dist/src/"](dist 目录结构不变)
+6. node_modules 增量 ~150-300KB (@oclif/core + 几个传递 dep)

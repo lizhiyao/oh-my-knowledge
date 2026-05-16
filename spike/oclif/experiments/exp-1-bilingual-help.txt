@@ -1,0 +1,71 @@
+=== exp-1 bilingual help (OMK_LANG=zh) ===
+体检 omk 工作目录,检查 skill 配置 / 依赖 / executor 连通性。
+
+USAGE
+  $ omk-spike doctor [--lang zh|en] [--skill-dir <value>]
+    [--no-cache]
+
+FLAGS
+  --lang=<option>      [default: zh, env: OMK_LANG] 输出语言 zh|en,优先级 CLI >
+                       OMK_LANG env > zh
+                       <options: zh|en>
+  --no-cache           跳过连通性缓存,所有探测都重跑(spike 用作 preflight
+                       失败模拟开关)
+  --skill-dir=<value>  [default: skills] 要体检的 skill 目录,默认 ./skills
+
+DESCRIPTION
+  体检 omk 工作目录,检查 skill 配置 / 依赖 / executor 连通性。
+
+EXAMPLES
+  默认在中文模式下扫描当前目录的 skills/
+
+    $ omk-spike doctor
+
+  指定英文 + 跳过连通性缓存(任何缓存命中的网络检测都重跑)
+
+    $ omk-spike doctor --lang en --no-cache
+
+
+=== exp-1 bilingual help (OMK_LANG=en) ===
+Preflight health checks for omk workdir: skill config / deps / executor connectivity.
+
+USAGE
+  $ omk-spike doctor [--lang zh|en] [--skill-dir <value>]
+    [--no-cache]
+
+FLAGS
+  --lang=<option>      [default: zh, env: OMK_LANG] Output language zh|en.
+                       Priority: CLI > OMK_LANG env > zh
+                       <options: zh|en>
+  --no-cache           Bypass connectivity cache, re-probe everything (spike:
+                       also forces preflight-fail path)
+  --skill-dir=<value>  [default: skills] Skill directory to inspect (default
+                       ./skills)
+
+DESCRIPTION
+  Preflight health checks for omk workdir: skill config / deps / executor
+  connectivity.
+
+EXAMPLES
+  Default zh mode, scans ./skills/
+
+    $ omk-spike doctor
+
+  English output, bypass connectivity cache (re-run all cached network probes)
+
+    $ omk-spike doctor --lang en --no-cache
+
+
+=== exp-1 bilingual help (--lang flag overrides env) ===
+Preflight health checks for omk workdir: skill config / deps / executor connectivity.
+
+USAGE
+  $ omk-spike doctor [--lang zh|en] [--skill-dir <value>]
+    [--no-cache]
+
+=== exp-1 bilingual help (default,no flag,no env) ===
+体检 omk 工作目录,检查 skill 配置 / 依赖 / executor 连通性。
+
+USAGE
+  $ omk-spike doctor [--lang zh|en] [--skill-dir <value>]
+    [--no-cache]
