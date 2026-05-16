@@ -3,6 +3,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { extractMarkdownLogSkill } from './trace-attribution.js';
+import { isToolResultFailureText } from './text-signals.js';
 
 // ---------- cc session JSONL raw schema (v0.18 subset) ----------
 
@@ -275,7 +276,11 @@ function parseOpenClawSessionFile(filePath: string, rawRecords: CcRecord[]): CcS
 
   for (const raw of rawRecords) {
     const converted = convertOpenClawRecord(raw, sessionId, cwd);
-    if (converted) records.push(converted);
+    if (converted) {
+      records.push(converted);
+    } else if (isSessionBoundaryRawRecord(raw)) {
+      records.push({ ...raw, sessionId } as CcRecord);
+    }
   }
 
   const first = records.find((record) => typeof (record as { timestamp?: unknown }).timestamp === 'string') as
@@ -420,6 +425,7 @@ function convertOpenClawRecord(raw: CcRecord, sessionId: string, cwd?: string): 
   if (message.role === 'toolResult') {
     const toolUseId = typeof message.toolCallId === 'string' ? message.toolCallId : undefined;
     if (!toolUseId) return null;
+    const content = openClawToolResultText(message.content);
     return {
       type: 'user',
       uuid,
@@ -432,14 +438,19 @@ function convertOpenClawRecord(raw: CcRecord, sessionId: string, cwd?: string): 
         content: [{
           type: 'tool_result',
           tool_use_id: toolUseId,
-          content: openClawToolResultText(message.content),
-          is_error: message.isError === true,
+          content,
+          is_error: message.isError === true || isToolResultFailureText(content),
         }],
       },
     } as CcUserRecord;
   }
 
   return null;
+}
+
+function isSessionBoundaryRawRecord(raw: CcRecord): boolean {
+  const type = typeof raw.type === 'string' ? raw.type : '';
+  return /^session[._-](?:started|ended)$/i.test(type);
 }
 
 function recordsafeTimestamp(value: unknown): string {

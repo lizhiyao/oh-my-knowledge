@@ -2,6 +2,7 @@
 
 import type { ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../types/index.js';
 import type { CcAssistantRecord, CcSession, CcUserRecord } from './trace-source.js';
+import { isToolResultFailureText } from './text-signals.js';
 import {
   extractAimaCmdSkillRef,
   extractAttributionSkillRef,
@@ -140,9 +141,10 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
           if (part.type === 'tool_result') {
             const pending = pendingToolUses.get(part.tool_use_id);
             if (pending) {
+              const failed = part.is_error === true || isToolResultFailureText(part.content);
               pending.toolCall.output = part.content;
-              pending.toolCall.success = part.is_error !== true;
-              if (part.is_error === true) {
+              pending.toolCall.success = !failed;
+              if (failed) {
                 pending.segmentRef.metrics.numToolFailures += 1;
               }
               pendingToolUses.delete(part.tool_use_id);

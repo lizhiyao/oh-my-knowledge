@@ -1,4 +1,7 @@
 import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { ObservationInboxItem, ObservationSourceKind } from './inbox.js';
 import {
   buildExperienceProblemPatterns,
@@ -9,12 +12,13 @@ import { observationMetricAnnotationVerdict, observationReviewStateKey, type Obs
 import type { CcAssistantRecord, CcRecord, CcSession, CcUserRecord, TraceSourceMetadata } from './trace-source.js';
 import type { SkillSegment } from './trace-segmenter.js';
 import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-attribution.js';
-import { hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isSyntheticUserMessageText, isUserInteractionMetricText } from './text-signals.js';
+import { hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isAssistantProtocolReplyText, isRuntimeProtocolPromptText, isSyntheticUserMessageText, isToolResultFailureText, isUserInteractionMetricText } from './text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
+import { parseSkillFrontmatter, validateSkillHardRules, validateSkillWorkflows } from '../shared/hard-rules.js';
 
 export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
 export type ExperienceGoalSliceReasonCode = 'skill_segment_boundary' | 'explicit_user_goal_shift' | 'default_session_slice';
-export type ExperienceEvidenceKind = 'user_message' | 'assistant_message' | 'tool_use' | 'tool_result' | 'skill_context' | 'runtime_context' | 'observation';
+export type ExperienceEvidenceKind = 'user_message' | 'synthetic_user_event' | 'assistant_message' | 'tool_use' | 'tool_result' | 'skill_context' | 'runtime_context' | 'observation';
 export type ExperienceAssistiveInferenceCode =
   | 'review_recommended'
   | 'sample_recommended'
@@ -35,6 +39,7 @@ export type ExperienceReviewBasisCode =
   | 'has_medium_observation'
   | 'user_correction'
   | 'user_interruption'
+  | 'session_interrupted'
   | 'negative_feedback'
   | 'hard_rule_text_hit'
   | 'tool_failure'
@@ -42,9 +47,18 @@ export type ExperienceReviewBasisCode =
   | 'explicit_marker';
 export type ExperienceRuleFindingLevel = 'attention' | 'sample' | 'normal';
 export type ExperienceReviewerReportScope = 'single_skill_single_goal' | 'degraded_complex';
-export type ExperienceReviewerReportStepStatus = 'ok' | 'attention' | 'unknown';
+export type ExperienceReviewerReportStepStatus = 'ok' | 'attention' | 'unknown' | 'degraded' | 'not_applicable';
 export type ExperienceReviewerReportFindingLevel = 'attention' | 'possible_false_positive' | 'note';
 export type ExperienceReviewerReportFindingSource = 'deterministic_rule' | 'llm_soft' | 'manual';
+export type ExperienceChecklistItemStatus = 'passed' | 'failed' | 'unknown' | 'not_declared' | 'not_applicable' | 'degraded';
+export type ExperienceChecklistContribution = 'blocking' | 'attention' | 'informational' | 'positive' | 'neutral';
+export type ExperienceParentReason =
+  | 'data_degraded'
+  | 'blocking_failed'
+  | 'attention_accumulated'
+  | 'unknown_dominant'
+  | 'all_passed'
+  | 'not_applicable';
 export type ExperienceSessionStoryNodeKind =
   | 'user_goal'
   | 'skill_invocation'
@@ -60,6 +74,7 @@ export type ExperienceRuleFindingCode =
   | 'medium_observation_seen'
   | 'user_correction_seen'
   | 'user_interruption_seen'
+  | 'session_interrupted_seen'
   | 'negative_feedback_seen'
   | 'positive_feedback_seen'
   | 'user_goal_shift_seen'
@@ -189,8 +204,31 @@ export interface ExperienceSessionStoryAnswer {
   key: ExperienceSessionStoryAnswerKey;
   label: string;
   status: ExperienceReviewerReportStepStatus;
+  reason: ExperienceParentReason;
+  sourceItemKeys: string[];
   text: string;
   evidenceRefs: ExperienceEvidenceRef[];
+  checklistItems: ExperienceChecklistItem[];
+}
+
+export interface ExperienceChecklistItem {
+  key: string;
+  label: string;
+  status: ExperienceChecklistItemStatus;
+  contribution: ExperienceChecklistContribution;
+  reason: string;
+  evidenceRefs: ExperienceEvidenceRef[];
+  source: ExperienceReviewerReportFindingSource;
+  suggestionKey?: string;
+}
+
+export function aggregateExperienceChecklistItemStatus(statuses: ExperienceChecklistItemStatus[]): ExperienceChecklistItemStatus {
+  if (statuses.includes('degraded')) return 'degraded';
+  if (statuses.includes('failed')) return 'failed';
+  if (statuses.includes('unknown')) return 'unknown';
+  if (statuses.includes('not_declared')) return 'not_declared';
+  if (statuses.includes('passed')) return 'passed';
+  return 'not_applicable';
 }
 
 export interface ExperienceSessionStoryGoalSlice {
@@ -282,6 +320,7 @@ export interface ExperienceReviewerReport {
     userMessageCount: number;
     userFollowUpCount: number;
     assistantDeliverySignalCount: number;
+    deliverableArtifactSignalCount: number;
     assistantProgressUpdateCount: number;
     selfCorrectionCount: number;
     repeatedExecutionCount: number;
@@ -319,11 +358,13 @@ export interface ExperienceReviewIndicators {
   userFollowUpCount: number;
   userCorrectionCount: number;
   userInterruptionCount: number;
+  sessionInterruptedCount: number;
   negativeFeedbackCount: number;
   positiveFeedbackCount: number;
   userGoalShiftCount: number;
   hardRuleTextHitCount: number;
   assistantDeliverySignalCount: number;
+  deliverableArtifactSignalCount: number;
   selfCorrectionCount: number;
   repeatedExecutionCount: number;
   toolCallCount: number;
@@ -542,6 +583,22 @@ const NEGATIVE_FEEDBACK_TERMS = [
   '菜啊',
 ];
 const BOUNDED_NEGATIVE_FEEDBACK_TERMS = ['失败', '垃圾', '菜'];
+const ADDITIONAL_NEGATIVE_FEEDBACK_TERMS = [
+  '不对',
+  '错了',
+  '有误',
+  '不可以',
+  '不是这个',
+  '不是我要的',
+  '跑偏',
+  '绕路',
+  '你没懂',
+  '没懂',
+  '重做',
+  '重新做',
+  '重来',
+  '不符合预期',
+];
 const POSITIVE_FEEDBACK_TERMS = [
   '非常好',
   '很好',
@@ -568,7 +625,7 @@ const POSITIVE_FEEDBACK_TERMS = [
   'excellent',
   'awesome',
 ];
-const USER_INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断/i;
+const USER_INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断|停止任务|停一下|先别|别动|等一下|等下|等等|取消(?:任务|执行)?|先暂停|暂停一下/i;
 const TIMELINE_PREVIEW_EVENT_LIMIT = 240;
 
 interface BuildExperienceInput {
@@ -584,11 +641,13 @@ const ZERO_INDICATORS: ExperienceReviewIndicators = {
   userFollowUpCount: 0,
   userCorrectionCount: 0,
   userInterruptionCount: 0,
+  sessionInterruptedCount: 0,
   negativeFeedbackCount: 0,
   positiveFeedbackCount: 0,
   userGoalShiftCount: 0,
   hardRuleTextHitCount: 0,
   assistantDeliverySignalCount: 0,
+  deliverableArtifactSignalCount: 0,
   selfCorrectionCount: 0,
   repeatedExecutionCount: 0,
   toolCallCount: 0,
@@ -844,6 +903,12 @@ function isAssistantDeliveryEvent(event: ExperienceTimelineEvent): boolean {
   return hasAssistantDeliverySignalText(text);
 }
 
+function isAssistantDeliverableArtifactEvent(event: ExperienceTimelineEvent): boolean {
+  if (event.kind !== 'assistant_message') return false;
+  const text = event.fullText ?? event.snippet ?? '';
+  return hasAssistantDeliverableArtifactText(text);
+}
+
 function isAssistantProgressUpdateEvent(event: ExperienceTimelineEvent): boolean {
   if (event.kind !== 'assistant_message') return false;
   const text = event.fullText ?? event.snippet ?? '';
@@ -853,13 +918,13 @@ function isAssistantProgressUpdateEvent(event: ExperienceTimelineEvent): boolean
 function hasSelfCorrectionSignal(event: ExperienceTimelineEvent): boolean {
   if (event.kind !== 'assistant_message') return false;
   const text = event.fullText ?? event.snippet ?? '';
-  return /刚才.*(?:不对|错了|有误)|发现.*(?:不对|错了|问题|遗漏)|重新(?:检查|分析|执行|生成|整理)|改用|换成|修正|我再(?:检查|重新|看)|recheck|retry|mistake|wrong/i.test(text);
+  return /刚才.*(?:不对|错了|有误)|发现.*(?:不对|错了|问题|遗漏)|重新(?:检查|分析|执行|生成|整理)|改用|换成|修正|我再(?:检查|重新|看)|\b(?:recheck|retry|rerun|mistake|wrong)\b/i.test(text);
 }
 
 function hasRepeatedExecutionSignal(event: ExperienceTimelineEvent): boolean {
-  if (event.kind === 'user_message') return false;
+  if (event.kind !== 'assistant_message' && event.kind !== 'tool_use') return false;
   const text = `${event.label ?? ''} ${event.toolName ?? ''} ${event.fullText ?? event.snippet ?? ''}`;
-  return /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|retry|rerun/i.test(text);
+  return /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|\b(?:retry|rerun)\b/i.test(text);
 }
 
 function buildTimeline(session: CcSession, start: number, end: number): ExperienceTimelineEvent[] {
@@ -898,7 +963,42 @@ function timelineEventsFromRecord(session: CcSession, record: unknown, messageIn
     const assistant = rec as CcAssistantRecord;
     return assistantEvents(assistant, base, messageIndex);
   }
-  return [];
+  return sessionEventFromRecord(rec, base, messageIndex);
+}
+
+function sessionEventFromRecord(
+  record: CcRecord,
+  base: Omit<ExperienceTimelineEvent, 'id' | 'kind' | 'order'>,
+  messageIndex: number,
+): ExperienceTimelineEvent[] {
+  const type = typeof record.type === 'string' ? record.type : '';
+  const rawText = safeRecordText(record);
+  if (!isSessionBoundaryType(type) && !hasAssistantTurnFailedText(rawText)) return [];
+  return [timelineEvent({
+    ...base,
+    kind: 'runtime_context',
+    role: 'other',
+    order: messageIndex * 10,
+    snippet: snippet(rawText || type, 700),
+    fullText: fullText(rawText || type),
+    label: type || 'session event',
+  })];
+}
+
+function isSessionBoundaryType(type: string): boolean {
+  return /^session[._-](?:started|ended)$/i.test(type);
+}
+
+function safeRecordText(record: unknown): string {
+  try {
+    return JSON.stringify(record);
+  } catch {
+    return String(record ?? '');
+  }
+}
+
+function hasAssistantTurnFailedText(value: string): boolean {
+  return /\[assistant turn failed\]|assistant turn failed|assistant_turn_failed|turn failed/i.test(value);
 }
 
 function userEvents(
@@ -922,16 +1022,17 @@ function userEvents(
     } else if (part.type === 'tool_result') {
       const full = fullText(part.content);
       const text = snippet(part.content, 900);
+      const failed = part.is_error === true || isToolResultFailureText(part.content);
       events.push(timelineEvent({
         ...base,
         kind: 'tool_result',
         role: 'tool',
         order: messageIndex * 10 + 5 + resultIndex,
         toolUseId: part.tool_use_id,
-        isError: part.is_error === true,
+        isError: failed,
         snippet: text,
         fullText: full,
-        label: part.is_error === true ? 'tool result error' : 'tool result',
+        label: failed ? 'tool result error' : 'tool result',
       }));
       resultIndex += 1;
     }
@@ -967,7 +1068,7 @@ function userTextEventsFromText(
     events.push(timelineEvent({
       ...base,
       kind,
-      role: kind === 'user_message' ? 'user' : 'tool',
+      role: kind === 'user_message' ? 'user' : kind === 'synthetic_user_event' ? 'other' : 'tool',
       order: messageIndex * 10 + offset + (commandEnvelope ? 1 : 0),
       snippet: text,
       fullText: full,
@@ -1006,14 +1107,15 @@ function assistantEvents(
   const rawText = textParts.join('\n');
   const text = snippet(rawText, 700);
   if (text) {
+    const protocolReply = isAssistantProtocolReplyText(rawText);
     events.unshift(timelineEvent({
       ...base,
-      kind: 'assistant_message',
+      kind: protocolReply ? 'runtime_context' : 'assistant_message',
       role: 'assistant',
       order: messageIndex * 10,
       snippet: text,
       fullText: fullText(rawText),
-      label: 'assistant message',
+      label: protocolReply ? 'assistant protocol reply' : 'assistant message',
     }));
   }
   return events;
@@ -1026,15 +1128,17 @@ function timelineEvent(input: Omit<ExperienceTimelineEvent, 'id'>): ExperienceTi
   };
 }
 
-function userTextEventKind(record: CcUserRecord, text: string): 'user_message' | 'skill_context' | 'runtime_context' {
+function userTextEventKind(record: CcUserRecord, text: string): 'user_message' | 'synthetic_user_event' | 'skill_context' | 'runtime_context' {
   if (isSkillContextRecord(record, text)) return 'skill_context';
   if (isRuntimeContextRecord(record, text)) return 'runtime_context';
+  if (isSyntheticUserMessageText(text)) return 'synthetic_user_event';
   return 'user_message';
 }
 
-function userTextEventLabel(kind: 'user_message' | 'skill_context' | 'runtime_context'): string {
+function userTextEventLabel(kind: 'user_message' | 'synthetic_user_event' | 'skill_context' | 'runtime_context'): string {
   if (kind === 'skill_context') return 'skill context';
   if (kind === 'runtime_context') return 'runtime context';
+  if (kind === 'synthetic_user_event') return 'synthetic user event';
   return 'user message';
 }
 
@@ -1083,7 +1187,7 @@ function evidenceChainForTimeline(
   const assistantEvents = events.filter((event) => event.kind === 'assistant_message');
   const toolUseEvents = events.filter((event) => event.kind === 'tool_use');
   const toolResultEvents = events.filter((event) => event.kind === 'tool_result');
-  const toolFailureEvents = toolResultEvents.filter((event) => event.isError === true);
+  const toolFailureEvents = toolResultEvents.filter(isToolFailureEvent);
   return {
     userMessageCount: userEvents.length,
     runtimeContextCount: runtimeEvents.length,
@@ -1129,8 +1233,9 @@ function ruleFindingsForEvidence(
   push('high_observation_seen', 'attention', indicators.highObservationCount, observationRefs);
   push('user_correction_seen', 'attention', indicators.userCorrectionCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'user_correction', hasUserCorrectionSignal(event.snippet ?? ''), reviewState, metricScopeId))));
   push('user_interruption_seen', 'attention', indicators.userInterruptionCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'user_interruption', USER_INTERRUPTION_RE.test(event.snippet ?? ''), reviewState, metricScopeId))));
+  push('session_interrupted_seen', 'attention', indicators.sessionInterruptedCount, refs(sessionInterruptedEvents(events)));
   push('negative_feedback_seen', 'attention', indicators.negativeFeedbackCount, refs(metricUserEvents.filter((event) => metricIsActive(event, 'negative_feedback', hasNegativeFeedbackSignal(event.snippet ?? ''), reviewState))));
-  push('tool_failure_seen', 'sample', indicators.toolFailureCount, refs(events.filter((event) => event.kind === 'tool_result' && event.isError === true)));
+  push('tool_failure_seen', 'sample', indicators.toolFailureCount, refs(events.filter(isToolFailureEvent)));
   push('medium_observation_seen', 'sample', indicators.mediumObservationCount, observationRefs);
   push('hedging_seen', 'sample', indicators.hedgingCount, observationRefs);
   push('explicit_marker_seen', 'sample', indicators.explicitMarkerCount, observationRefs);
@@ -1223,20 +1328,44 @@ function indicatorsForSegment(
     userFollowUpCount: interactionUserRefs.reduce((sum, ref, index) => sum + (metricIsActive(ref, 'user_follow_up', index > 0 && !hasUserGoalShiftSignal(ref.snippet ?? ''), reviewState, metricScopeId) ? 1 : 0), 0),
     userCorrectionCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_correction', findUserCorrectionMatches(ref.snippet ?? '').length, reviewState, metricScopeId), 0),
     userInterruptionCount: interactionUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'user_interruption', USER_INTERRUPTION_RE.test(ref.snippet ?? ''), reviewState, metricScopeId) ? 1 : 0), 0),
+    sessionInterruptedCount: sessionInterruptedEvents(timeline).length,
     negativeFeedbackCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'negative_feedback', findNegativeFeedbackMatches(ref.snippet ?? '').length, reviewState), 0),
     positiveFeedbackCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'positive_feedback', findPositiveFeedbackMatches(ref.snippet ?? '').length, reviewState), 0),
     userGoalShiftCount: interactionUserRefs.reduce((sum, ref) => sum + metricCount(ref, 'user_goal_shift', findUserGoalShiftMatches(ref.snippet ?? '').length, reviewState, metricScopeId), 0),
     hardRuleTextHitCount: interactionUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'hard_rule', hasUserHardRuleText(ref.snippet ?? ''), reviewState, metricScopeId) ? 1 : 0), 0),
     assistantDeliverySignalCount: timeline.filter(isAssistantDeliveryEvent).length,
+    deliverableArtifactSignalCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'deliverable_artifact', isAssistantDeliverableArtifactEvent(ref), reviewState) ? 1 : 0), 0),
     selfCorrectionCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'self_correction', hasSelfCorrectionSignal(ref), reviewState) ? 1 : 0), 0),
     repeatedExecutionCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'repeated_execution', hasRepeatedExecutionSignal(ref), reviewState) ? 1 : 0), 0),
     toolCallCount: segment.metrics.numToolCalls,
-    toolFailureCount: segment.metrics.numToolFailures,
+    toolFailureCount: Math.max(segment.metrics.numToolFailures, timeline.filter(isToolFailureEvent).length),
     highObservationCount: relatedItems.filter((item) => item.severity === 'high').length,
     mediumObservationCount: relatedItems.filter((item) => item.severity === 'medium').length,
     hedgingCount: relatedItems.filter((item) => item.signalType === 'hedging').reduce((sum, item) => sum + item.occurrences, 0),
     explicitMarkerCount: relatedItems.filter((item) => item.signalType === 'explicit_marker').reduce((sum, item) => sum + item.occurrences, 0),
   };
+}
+
+function isToolFailureEvent(event: ExperienceTimelineEvent): boolean {
+  return event.kind === 'tool_result' && (event.isError === true || isToolResultFailureText(event.fullText ?? event.snippet ?? ''));
+}
+
+function sessionInterruptedEvents(timeline: ExperienceTimelineEvent[]): ExperienceTimelineEvent[] {
+  const events = uniqueTimelineEvents(timeline).sort(compareTimelineEvents);
+  const interrupted: ExperienceTimelineEvent[] = [];
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    const text = `${event.label ?? ''}\n${event.snippet ?? ''}\n${event.fullText ?? ''}`;
+    if (hasAssistantTurnFailedText(text)) {
+      interrupted.push(event);
+      continue;
+    }
+    if (/^session[._-]ended$/i.test(event.label ?? '')) {
+      const next = events.slice(index + 1).find((candidate) => /^session[._-]started$/i.test(candidate.label ?? ''));
+      if (next) interrupted.push(event);
+    }
+  }
+  return uniqueTimelineEvents(interrupted);
 }
 
 function metricIsActive(
@@ -1375,14 +1504,24 @@ function summarizeExperienceSessions(
       ...baseSession,
       sessionStory,
     };
+    const reviewerReport = buildReviewerReport(sessionWithStory, group, generatedAt, reviewState, storyInvocations, sessionStory);
     return {
       ...sessionWithStory,
-      reviewerReport: buildReviewerReport(sessionWithStory, group, generatedAt, reviewState, storyInvocations, sessionStory),
+      reviewPriority: priorityForReviewerFindings(sessionWithStory, reviewerReport.findings),
+      reviewerReport,
     };
   }).sort((a, b) => {
+    const priorityDiff = experiencePriorityRank(b.reviewPriority) - experiencePriorityRank(a.reviewPriority);
+    if (priorityDiff !== 0) return priorityDiff;
     if (b.reviewPriorityScore !== a.reviewPriorityScore) return b.reviewPriorityScore - a.reviewPriorityScore;
     return b.endTimestamp.localeCompare(a.endTimestamp);
   });
+}
+
+function experiencePriorityRank(priority: ExperienceReviewPriority): number {
+  if (priority === 'review_first') return 2;
+  if (priority === 'sample_review') return 1;
+  return 0;
 }
 
 const REVIEWER_REPORT_RULE_VERSION = 'reviewer-report.v1';
@@ -1403,6 +1542,7 @@ function buildReviewerReport(
   const possibleFalsePositiveCount = findings.filter((finding) => finding.level === 'possible_false_positive').length;
   const tokenUsage = sumTokenUsage(invocations);
   const title = reviewerTitle(session, attentionCount, possibleFalsePositiveCount);
+  const expectedToolCheck = expectedToolCheckForSession(session);
   const traceLinks = uniqueEvidenceRefs([
     ...(session.evidenceChain.firstUserMessage ? [session.evidenceChain.firstUserMessage] : []),
     ...(session.evidenceChain.firstToolUse ? [session.evidenceChain.firstToolUse] : []),
@@ -1424,8 +1564,8 @@ function buildReviewerReport(
     chainSteps: [
       reviewerStep(1, '用户期待', userGoalStepText(session), session.evidenceChain.firstUserMessage ? 'ok' : 'unknown', session.evidenceChain.firstUserMessage ? [session.evidenceChain.firstUserMessage] : []),
       reviewerStep(2, '选择能力', skillSelectionStepText(session), 'ok', [session.evidenceChain.firstSkillContext, session.evidenceChain.firstToolUse].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))),
-      reviewerStep(3, '执行流程', executionStepText(session), indicators.toolFailureCount > 0 ? 'attention' : 'ok', session.evidenceChain.firstToolUse ? [session.evidenceChain.firstToolUse] : []),
-      reviewerStep(4, '实际产物', deliveryStepText(session), indicators.assistantDeliverySignalCount > 0 ? 'ok' : 'unknown', session.evidenceChain.lastAssistantMessage ? [session.evidenceChain.lastAssistantMessage] : []),
+      reviewerStep(3, '执行流程', executionStepText(session, expectedToolCheck), executionStepStatus(session, expectedToolCheck), session.evidenceChain.firstToolUse ? [session.evidenceChain.firstToolUse] : []),
+      reviewerStep(4, '结果 / 产物', deliveryStepText(session), indicators.assistantDeliverySignalCount > 0 ? 'ok' : 'unknown', session.evidenceChain.lastAssistantMessage ? [session.evidenceChain.lastAssistantMessage] : []),
       reviewerStep(5, '用户反馈', userFeedbackStepText(session), userFeedbackStepStatus(session), userFeedbackEvidenceRefs(session)),
     ],
     findings,
@@ -1435,6 +1575,7 @@ function buildReviewerReport(
       userMessageCount: indicators.userMessageCount,
       userFollowUpCount: indicators.userFollowUpCount,
       assistantDeliverySignalCount: indicators.assistantDeliverySignalCount,
+      deliverableArtifactSignalCount: indicators.deliverableArtifactSignalCount,
       assistantProgressUpdateCount: assistantProgressUpdateEvents(session).length,
       selfCorrectionCount: indicators.selfCorrectionCount,
       repeatedExecutionCount: indicators.repeatedExecutionCount,
@@ -1558,21 +1699,26 @@ function buildSessionStory(session: ExperienceSessionSummary, invocations: Exper
     );
   }
 
+  const goalChecklistItems = checklistItemsForAnswer(session, 'goal_satisfaction');
+  const declaredBehaviorChecklistItems = checklistItemsForAnswer(session, 'declared_behavior_fit');
+  const userFeelingChecklistItems = checklistItemsForAnswer(session, 'user_feeling');
   const answers: ExperienceSessionStoryAnswer[] = [
-    sessionStoryAnswer('goal_satisfaction', '用户目标有没有被满足', goalSatisfactionStatus(session), goalSatisfactionText(session), [
+    sessionStoryAnswer('goal_satisfaction', '用户目标有没有被满足', goalChecklistItems, [
       session.evidenceChain.firstUserMessage,
       session.evidenceChain.lastAssistantMessage,
       ...userFeedbackEvidenceRefs(session),
     ]),
-    sessionStoryAnswer('declared_behavior_fit', '行为是否符合能力用途', declaredBehaviorStatus(session), declaredBehaviorText(session), [
+    sessionStoryAnswer('declared_behavior_fit', '行为是否符合能力用途', declaredBehaviorChecklistItems, [
       session.evidenceChain.firstSkillContext,
       session.evidenceChain.firstToolUse,
       session.evidenceChain.firstToolFailure,
     ]),
-    sessionStoryAnswer('user_feeling', '用户是否觉得有用或绕路', userFeelingStatus(session), userFeelingText(session), userFeedbackEvidenceRefs(session)),
+    sessionStoryAnswer('user_feeling', '用户是否觉得有用或绕路', userFeelingChecklistItems, userFeedbackEvidenceRefs(session)),
   ];
 
-  const summary = answers.some((answer) => answer.status === 'attention')
+  const summary = answers.some((answer) => answer.status === 'degraded')
+    ? '这次链路的数据归因存在不可判信号，需要先看数据质量和分段边界。'
+    : answers.some((answer) => answer.status === 'attention')
     ? '这次链路存在需要复核的语义节点，建议从红色节点和证据定位开始看。'
     : answers.every((answer) => answer.status === 'ok')
       ? '这次链路从目标、执行到反馈没有命中明显异常信号，可进入常规抽样。'
@@ -1752,61 +1898,328 @@ function sessionStoryGraph(
 function sessionStoryAnswer(
   key: ExperienceSessionStoryAnswerKey,
   label: string,
-  status: ExperienceReviewerReportStepStatus,
-  text: string,
+  checklistItems: ExperienceChecklistItem[],
   evidenceRefs: Array<ExperienceEvidenceRef | undefined>,
 ): ExperienceSessionStoryAnswer {
+  const folded = foldExperienceChecklistItems(checklistItems);
   return {
     key,
     label,
-    status,
-    text,
+    status: folded.status,
+    reason: folded.reason,
+    sourceItemKeys: folded.sourceItemKeys,
+    text: sessionStoryAnswerText(key, folded.reason),
     evidenceRefs: uniqueEvidenceRefs(evidenceRefs.filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))).slice(0, 5),
+    checklistItems,
   };
 }
 
-function goalSatisfactionStatus(session: ExperienceSessionSummary): ExperienceReviewerReportStepStatus {
-  if (session.indicators.negativeFeedbackCount > 0 || session.indicators.userCorrectionCount > 0 || session.indicators.userInterruptionCount > 0) return 'attention';
-  if (session.indicators.assistantDeliverySignalCount > 0 && session.indicators.userGoalShiftCount === 0) return 'ok';
-  return 'unknown';
+function sessionStoryAnswerText(key: ExperienceSessionStoryAnswerKey, reason: ExperienceParentReason): string {
+  const texts: Record<ExperienceSessionStoryAnswerKey, Record<ExperienceParentReason, string>> = {
+    goal_satisfaction: {
+      data_degraded: '数据归因质量不足，不能强判用户目标是否满足。',
+      blocking_failed: '关键事实项未通过，不能认为用户目标已经满足。',
+      attention_accumulated: '存在需要复核的事实项，需要结合原文确认目标是否满足。',
+      unknown_dominant: '未知事实较多，暂时无法判断用户目标是否满足。',
+      all_passed: '关键事实项通过，可按“可能满足用户目标”进入常规抽样。',
+      not_applicable: '当前场景不适合回答用户目标是否满足。',
+    },
+    declared_behavior_fit: {
+      data_degraded: '数据归因质量不足，不能强判能力行为是否符合声明用途。',
+      blocking_failed: '关键执行项未通过，能力行为需要优先复核。',
+      attention_accumulated: '存在规则、流程或核心工具相关复核项，需要结合定义链路确认。',
+      unknown_dominant: '规则、流程或执行证据不足，暂时无法判断是否符合能力用途。',
+      all_passed: '关键执行事实项通过，可按“行为基本符合能力用途”进入常规抽样。',
+      not_applicable: '当前场景不适合回答能力行为是否符合用途。',
+    },
+    user_feeling: {
+      data_degraded: '数据归因质量不足，不能强判用户感受。',
+      blocking_failed: '看到关键负向或中断信号，用户可能觉得无用、绕路或失望。',
+      attention_accumulated: '存在用户纠正、追问或其他复核信号，需要结合原文判断用户感受。',
+      unknown_dominant: '没有足够明确的用户反馈，暂时无法判断用户是否觉得有用。',
+      all_passed: '关键反馈事实项通过，可按“未见明显负向感受”进入常规抽样。',
+      not_applicable: '当前场景不适合回答用户感受。',
+    },
+  };
+  return texts[key][reason];
 }
 
-function goalSatisfactionText(session: ExperienceSessionSummary): string {
-  if (session.indicators.negativeFeedbackCount > 0 || session.indicators.userCorrectionCount > 0) {
-    return '用户后续出现纠正或负向反馈，不能直接认为原目标已满足。';
+function checklistItemsForAnswer(session: ExperienceSessionSummary, key: ExperienceSessionStoryAnswerKey): ExperienceChecklistItem[] {
+  if (key === 'goal_satisfaction') return goalSatisfactionChecklistItems(session);
+  if (key === 'declared_behavior_fit') return declaredBehaviorChecklistItems(session);
+  return userFeelingChecklistItems(session);
+}
+
+function checklistItem(input: Omit<ExperienceChecklistItem, 'source' | 'evidenceRefs'> & {
+  evidenceRefs?: Array<ExperienceEvidenceRef | undefined>;
+  source?: ExperienceReviewerReportFindingSource;
+  statusCandidates?: ExperienceChecklistItemStatus[];
+}): ExperienceChecklistItem {
+  const { statusCandidates, ...item } = input;
+  return {
+    ...item,
+    status: aggregateExperienceChecklistItemStatus([input.status, ...(statusCandidates ?? [])]),
+    source: input.source ?? 'deterministic_rule',
+    evidenceRefs: uniqueEvidenceRefs((input.evidenceRefs ?? []).filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))).slice(0, 5),
+  };
+}
+
+export function hasRecognizableUserGoalText(value: string | undefined): boolean {
+  const text = value?.trim() ?? '';
+  if (!text) return false;
+  if (/^(嗯+|啊+|好的|好|继续|可以|收到|ok|OK|yes|no|不用|不需要)[。.!！?？\s]*$/.test(text)) return false;
+  if (/(帮我|请|需要|想要|我要|给我|看下|看一下|基于|根据|重新|继续|先|把|将)/.test(text)
+    && /(生成|创建|写|实现|修复|优化|调整|修改|新增|删除|分析|review|评价|检查|看|拉取|执行|运行|验证|整理|总结|回复|评论|设计|拆分|合并|标注|定位|排查|上传|导出|发布|查询|对齐|沉淀|补充|改|做)/i.test(text)) {
+    return true;
   }
-  if (session.indicators.userInterruptionCount > 0) return '用户中断了执行链路，需要复核是否绕路或执行过长。';
-  if (session.indicators.assistantDeliverySignalCount > 0) return '看到交付信号，且没有命中纠正/负向反馈；可暂按“可能满足”进入抽样复核。';
-  return '没有看到最后交付产物，无法判断用户目标是否满足。';
+  if (/(生成|创建|写一个|实现|修复|优化|调整|修改|新增|分析|review|检查|排查|验证|总结|设计|标注|定位|查询|对齐|补充|改一下|做一个)/i.test(text)) return true;
+  return text.length >= 12 && /[？?]/.test(text) && !/^(为什么|怎么|哪里)[？?]?$/.test(text);
 }
 
-function declaredBehaviorStatus(session: ExperienceSessionSummary): ExperienceReviewerReportStepStatus {
-  if (session.indicators.toolFailureCount > 0) return 'attention';
-  if (session.evidenceChain.firstSkillContext || session.evidenceChain.firstToolUse) return 'ok';
-  return 'unknown';
+function hasRecognizableUserGoal(ref?: ExperienceEvidenceRef): boolean {
+  return hasRecognizableUserGoalText(ref?.snippet);
 }
 
-function declaredBehaviorText(session: ExperienceSessionSummary): string {
-  if (session.indicators.toolFailureCount > 0) return '执行中出现工具失败，需要结合定义链路里的规则/流程检测结果复核是否偏离能力声明。';
-  if (session.evidenceChain.firstSkillContext || session.evidenceChain.firstToolUse) return '已看到能力上下文或工具执行证据；是否完全符合声明，需要结合定义链路的规则/流程检测结果看。';
-  return '没有足够能力上下文或工具证据，无法判断行为是否符合声明用途。';
+function goalSatisfactionChecklistItems(session: ExperienceSessionSummary): ExperienceChecklistItem[] {
+  const feedbackRefs = userFeedbackEvidenceRefs(session);
+  const goalIdentified = hasRecognizableUserGoal(session.evidenceChain.firstUserMessage);
+  return [
+    checklistItem({
+      key: 'goal_identified',
+      label: '用户目标可识别',
+      status: goalIdentified ? 'passed' : 'unknown',
+      contribution: 'informational',
+      reason: goalIdentified
+        ? '真实用户原文里能识别出目标动作或明确请求。'
+        : session.evidenceChain.firstUserMessage ? '看到真实用户原文，但目标动作不够明确。' : '没有看到真实用户目标原文。',
+      evidenceRefs: [session.evidenceChain.firstUserMessage],
+    }),
+    checklistItem({
+      key: 'completion_result_present',
+      label: '有完成结果',
+      status: session.indicators.assistantDeliverySignalCount > 0 ? 'passed' : 'failed',
+      contribution: 'attention',
+      reason: session.indicators.assistantDeliverySignalCount > 0 ? '看到明确完成态或结果反馈。' : '没有看到明确完成态或结果反馈。',
+      evidenceRefs: [session.evidenceChain.lastAssistantMessage],
+      suggestionKey: session.indicators.assistantDeliverySignalCount > 0 ? undefined : 'final_delivery_absent',
+    }),
+    checklistItem({
+      key: 'deliverable_artifact_present',
+      label: '有产物：链接、路径、代码块或文件',
+      status: session.indicators.deliverableArtifactSignalCount > 0 ? 'passed' : 'unknown',
+      contribution: 'informational',
+      reason: session.indicators.deliverableArtifactSignalCount > 0 ? '看到链接、路径、代码块或文件等产物线索。' : '没有看到明确产物线索；不一定失败，但需要按 skill 目标判断。',
+      evidenceRefs: [session.evidenceChain.lastAssistantMessage],
+      suggestionKey: session.indicators.deliverableArtifactSignalCount > 0 ? undefined : 'artifact_absent',
+    }),
+    checklistItem({
+      key: 'negative_feedback_seen',
+      label: '用户负向反馈',
+      status: session.indicators.negativeFeedbackCount > 0 ? 'failed' : 'passed',
+      contribution: 'blocking',
+      reason: session.indicators.negativeFeedbackCount > 0 ? '看到用户负向表达，不能直接认为目标已满足。' : '没有看到用户负向表达。',
+      evidenceRefs: feedbackRefs,
+      suggestionKey: session.indicators.negativeFeedbackCount > 0 ? 'negative_feedback_review' : undefined,
+    }),
+    checklistItem({
+      key: 'user_correction_seen',
+      label: '用户纠正',
+      status: session.indicators.userCorrectionCount > 0 ? 'failed' : 'passed',
+      contribution: 'attention',
+      reason: session.indicators.userCorrectionCount > 0 ? '看到用户纠正或要求修正，说明目标满足度需要复核。' : '没有看到用户纠正信号。',
+      evidenceRefs: feedbackRefs,
+      suggestionKey: session.indicators.userCorrectionCount > 0 ? 'user_correction_review' : undefined,
+    }),
+    checklistItem({
+      key: 'user_interruption_seen',
+      label: '用户中断 / 放弃',
+      status: session.indicators.userInterruptionCount > 0 ? 'failed' : 'passed',
+      contribution: 'blocking',
+      reason: session.indicators.userInterruptionCount > 0 ? '看到用户中断或停止任务信号，不能认为执行链路自然完成。' : '没有看到用户中断信号。',
+      evidenceRefs: feedbackRefs,
+      suggestionKey: session.indicators.userInterruptionCount > 0 ? 'user_interruption_review' : undefined,
+    }),
+    checklistItem({
+      key: 'goal_shift_seen',
+      label: '用户目标切换',
+      status: session.indicators.userGoalShiftCount > 0 ? 'failed' : 'passed',
+      contribution: 'attention',
+      reason: session.indicators.userGoalShiftCount > 0 ? '看到用户切换目标，后续消息不应继续强归因给当前 skill。' : '没有看到目标切换信号。',
+      evidenceRefs: feedbackRefs,
+      suggestionKey: session.indicators.userGoalShiftCount > 0 ? 'goal_shift_review' : undefined,
+    }),
+  ];
 }
 
-function userFeelingStatus(session: ExperienceSessionSummary): ExperienceReviewerReportStepStatus {
-  if (session.indicators.negativeFeedbackCount > 0 || session.indicators.userCorrectionCount > 0 || session.indicators.userInterruptionCount > 0) return 'attention';
-  if (session.indicators.positiveFeedbackCount > 0) return 'ok';
-  if (session.indicators.userFollowUpCount > 0 || session.indicators.userGoalShiftCount > 0) return 'unknown';
-  return 'unknown';
+function declaredBehaviorChecklistItems(session: ExperienceSessionSummary): ExperienceChecklistItem[] {
+  const expectedToolCheck = expectedToolCheckForSession(session);
+  const declarations = skillDeclarationCheckForSession(session);
+  const attributionDegraded = session.evidenceChain.skillContextCount === 0;
+  return [
+    checklistItem({
+      key: 'attribution_quality',
+      label: '归因质量可信',
+      status: attributionDegraded ? 'degraded' : 'passed',
+      contribution: 'blocking',
+      reason: attributionDegraded ? '没有看到 skill context，当前 skill 归因不可强判。' : '看到 skill context，可作为能力归因证据。',
+      evidenceRefs: [session.evidenceChain.firstSkillContext, session.evidenceChain.firstToolUse],
+      suggestionKey: attributionDegraded ? 'attribution_degraded' : undefined,
+    }),
+    checklistItem({
+      key: 'skill_description_hit',
+      label: 'skill 描述命中用户目标',
+      status: session.evidenceChain.firstSkillContext ? 'passed' : 'unknown',
+      contribution: 'informational',
+      reason: session.evidenceChain.firstSkillContext ? '看到能力上下文或 skill 描述加载证据。' : '没有看到能力上下文，无法判断是否合理调用。',
+      evidenceRefs: [session.evidenceChain.firstSkillContext],
+    }),
+    checklistItem({
+      key: 'workflow_declared',
+      label: 'workflow 已声明',
+      status: declarations.workflows.declared ? 'passed' : 'not_declared',
+      contribution: declarations.workflows.declared ? 'informational' : 'attention',
+      reason: declarations.workflows.declared ? `SKILL.md 声明了 ${declarations.workflows.count} 个 workflow 节点。` : 'SKILL.md 未声明标准化 workflow。',
+      suggestionKey: declarations.workflows.declared ? undefined : 'workflow_not_declared',
+    }),
+    checklistItem({
+      key: 'workflow_executed',
+      label: 'workflow 按声明执行',
+      status: declarations.workflows.declared
+        ? session.indicators.toolCallCount > 0 ? 'unknown' : 'failed'
+        : 'not_applicable',
+      contribution: declarations.workflows.declared ? 'attention' : 'neutral',
+      reason: declarations.workflows.declared
+        ? session.indicators.toolCallCount > 0 ? '当前只看到工具执行，是否完整覆盖 workflow 仍需 runtime check。' : '声明了 workflow，但没有看到工具执行证据。'
+        : '未声明 workflow，暂不判断执行完整性。',
+      evidenceRefs: [session.evidenceChain.firstToolUse],
+      suggestionKey: declarations.workflows.declared ? 'workflow_execution_review' : undefined,
+    }),
+    checklistItem({
+      key: 'hardrule_declared',
+      label: 'hardRule 已声明',
+      status: declarations.hardRules.declared ? 'passed' : 'not_declared',
+      contribution: declarations.hardRules.declared ? 'informational' : 'attention',
+      reason: declarations.hardRules.declared ? `SKILL.md 声明了 ${declarations.hardRules.count} 条 hardRule。` : 'SKILL.md 未声明标准化 hardRule。',
+      suggestionKey: declarations.hardRules.declared ? undefined : 'hardrule_not_declared',
+    }),
+    checklistItem({
+      key: 'hardrule_executed',
+      label: 'hardRule 执行',
+      status: declarations.hardRules.declared ? 'unknown' : 'not_applicable',
+      contribution: declarations.hardRules.declared ? 'attention' : 'neutral',
+      reason: declarations.hardRules.declared ? '已声明 hardRule，但当前固定规则无法完整证明每条都已执行。' : '未声明 hardRule，暂不判断执行情况。',
+      suggestionKey: declarations.hardRules.declared ? 'hardrule_execution_review' : undefined,
+    }),
+    checklistItem({
+      key: 'core_tools_declared',
+      label: '核心工具已声明',
+      status: expectedToolCheck.declared ? 'passed' : 'not_declared',
+      contribution: expectedToolCheck.declared ? 'informational' : 'attention',
+      reason: expectedToolCheck.declared ? `声明的核心工具：${expectedToolCheck.expectedTools.join('、')}。` : '未声明 expected_tools，无法区分核心工具和普通工具。',
+      suggestionKey: expectedToolCheck.declared ? undefined : 'expected_tools_not_declared',
+    }),
+    checklistItem({
+      key: 'core_tools_hit',
+      label: '核心工具命中',
+      status: expectedToolCheck.declared
+        ? expectedToolCheck.matchedTools.length > 0 ? 'passed' : 'failed'
+        : 'not_applicable',
+      contribution: expectedToolCheck.declared ? 'blocking' : 'neutral',
+      reason: expectedToolCheck.declared
+        ? expectedToolCheck.matchedTools.length > 0 ? `命中核心工具：${expectedToolCheck.matchedTools.join('、')}。` : '没有命中能力声明的核心工具。'
+        : '未声明 expected_tools，暂不判断核心工具命中。',
+      evidenceRefs: [session.evidenceChain.firstToolUse],
+      suggestionKey: expectedToolCheck.declared && expectedToolCheck.matchedTools.length === 0 ? 'expected_tools_missed' : undefined,
+    }),
+  ];
 }
 
-function userFeelingText(session: ExperienceSessionSummary): string {
-  if (session.indicators.negativeFeedbackCount > 0) return '看到负向反馈，用户可能失望或认为结果不可用。';
-  if (session.indicators.userCorrectionCount > 0) return '看到用户纠正，用户可能认为理解或交付方向有偏差。';
-  if (session.indicators.userInterruptionCount > 0) return '看到人工中断，用户可能认为执行绕路或耗时过长。';
-  if (session.indicators.positiveFeedbackCount > 0) return '看到正向反馈，说明这次能力输出可能对用户有帮助。';
-  if (session.indicators.userGoalShiftCount > 0) return '看到目标切换，用户可能切走到新目标；不直接等同于能力失败。';
-  if (session.indicators.userFollowUpCount > 0) return '看到追问/补充，但没有明确正负反馈；需要结合上下文判断是否有用或绕路。';
-  return '没有看到明确正向、负向、纠正、中断或放弃信号。';
+function userFeelingChecklistItems(session: ExperienceSessionSummary): ExperienceChecklistItem[] {
+  const feedbackRefs = userFeedbackEvidenceRefs(session);
+  const hasAnyFeedback = session.indicators.positiveFeedbackCount > 0
+    || session.indicators.negativeFeedbackCount > 0
+    || session.indicators.userCorrectionCount > 0
+    || session.indicators.userInterruptionCount > 0
+    || session.indicators.userFollowUpCount > 0
+    || session.indicators.userGoalShiftCount > 0;
+  return [
+    checklistItem({
+      key: 'user_feedback_signal_present',
+      label: '用户反馈信号',
+      status: hasAnyFeedback ? 'passed' : 'unknown',
+      contribution: 'informational',
+      reason: hasAnyFeedback ? '看到至少一种用户反馈或后续行为信号。' : '没有看到明确用户反馈信号。',
+      evidenceRefs: feedbackRefs,
+    }),
+    checklistItem({
+      key: 'positive_feedback_seen',
+      label: '用户正向反馈',
+      status: session.indicators.positiveFeedbackCount > 0 ? 'passed' : 'unknown',
+      contribution: session.indicators.positiveFeedbackCount > 0 ? 'positive' : 'neutral',
+      reason: session.indicators.positiveFeedbackCount > 0 ? '看到用户认可或正向反馈。' : '没有看到明确正向反馈。',
+      evidenceRefs: feedbackRefs,
+    }),
+    checklistItem({
+      key: 'negative_feedback_seen',
+      label: '用户负向反馈',
+      status: session.indicators.negativeFeedbackCount > 0 ? 'failed' : 'passed',
+      contribution: session.indicators.negativeFeedbackCount > 0 ? 'blocking' : 'neutral',
+      reason: session.indicators.negativeFeedbackCount > 0 ? '看到用户负向表达。' : '没有看到用户负向表达。',
+      evidenceRefs: feedbackRefs,
+      suggestionKey: session.indicators.negativeFeedbackCount > 0 ? 'negative_feedback_review' : undefined,
+    }),
+    checklistItem({
+      key: 'user_correction_seen',
+      label: '用户纠正',
+      status: session.indicators.userCorrectionCount > 0 ? 'failed' : 'passed',
+      contribution: session.indicators.userCorrectionCount > 0 ? 'attention' : 'neutral',
+      reason: session.indicators.userCorrectionCount > 0 ? '看到用户重新解释或要求修正。' : '没有看到用户纠正信号。',
+      evidenceRefs: feedbackRefs,
+      suggestionKey: session.indicators.userCorrectionCount > 0 ? 'user_correction_review' : undefined,
+    }),
+    checklistItem({
+      key: 'user_follow_up_seen',
+      label: '用户追问',
+      status: session.indicators.userFollowUpCount > 0 ? 'unknown' : 'passed',
+      contribution: session.indicators.userFollowUpCount > 0 ? 'informational' : 'neutral',
+      reason: session.indicators.userFollowUpCount > 0 ? '看到用户追问；需要结合上下文区分推进使用还是不满意。' : '没有看到用户追问。',
+      evidenceRefs: feedbackRefs,
+      suggestionKey: session.indicators.userFollowUpCount > 0 ? 'follow_up_review' : undefined,
+    }),
+    checklistItem({
+      key: 'user_interruption_seen',
+      label: '用户中断 / 放弃',
+      status: session.indicators.userInterruptionCount > 0 ? 'failed' : 'passed',
+      contribution: session.indicators.userInterruptionCount > 0 ? 'blocking' : 'neutral',
+      reason: session.indicators.userInterruptionCount > 0 ? '看到用户中断或停止任务信号。' : '没有看到用户中断信号。',
+      evidenceRefs: feedbackRefs,
+      suggestionKey: session.indicators.userInterruptionCount > 0 ? 'user_interruption_review' : undefined,
+    }),
+  ];
+}
+
+export function foldExperienceChecklistItems(items: ExperienceChecklistItem[]): { status: ExperienceReviewerReportStepStatus; reason: ExperienceParentReason; sourceItemKeys: string[] } {
+  const relevant = items.filter((item) => item.contribution !== 'neutral');
+  const active = relevant.length > 0 ? relevant : items;
+  const degraded = active.filter((item) => item.status === 'degraded');
+  if (degraded.length > 0) return { status: 'degraded', reason: 'data_degraded', sourceItemKeys: degraded.map((item) => item.key) };
+
+  const blockingFailed = active.filter((item) => item.contribution === 'blocking' && item.status === 'failed');
+  if (blockingFailed.length > 0) return { status: 'attention', reason: 'blocking_failed', sourceItemKeys: blockingFailed.map((item) => item.key) };
+
+  const attentionFailed = active.filter((item) => item.contribution === 'attention' && item.status === 'failed');
+  if (attentionFailed.length > 0) return { status: 'attention', reason: 'attention_accumulated', sourceItemKeys: attentionFailed.map((item) => item.key) };
+
+  const unknown = active.filter((item) => item.status === 'unknown' || item.status === 'not_declared');
+  const positivePassed = active.filter((item) => item.status === 'passed' && item.contribution === 'positive');
+  const decisivePassed = active.filter((item) => item.status === 'passed' && (item.contribution === 'blocking' || item.contribution === 'attention' || item.contribution === 'positive'));
+  const informationalPassed = active.filter((item) => item.status === 'passed' && item.contribution === 'informational');
+  const passed = [...positivePassed, ...decisivePassed.filter((item) => item.contribution !== 'positive'), ...informationalPassed];
+  if (unknown.length > 0 && (decisivePassed.length === 0 || unknown.length >= passed.length)) {
+    return { status: 'unknown', reason: 'unknown_dominant', sourceItemKeys: unknown.map((item) => item.key) };
+  }
+  if (passed.length > 0) return { status: 'ok', reason: 'all_passed', sourceItemKeys: passed.map((item) => item.key) };
+  return { status: 'not_applicable', reason: 'not_applicable', sourceItemKeys: active.map((item) => item.key) };
 }
 
 function reviewerScopeReasonCodes(session: ExperienceSessionSummary): string[] {
@@ -1845,16 +2258,47 @@ function skillSelectionStepText(session: ExperienceSessionSummary): string {
   return `本次使用的能力：${session.skillName}${entrypoint}。`;
 }
 
-function executionStepText(session: ExperienceSessionSummary): string {
+interface ExpectedToolCheck {
+  expectedTools: string[];
+  matchedTools: string[];
+  declared: boolean;
+}
+
+interface SkillDeclarationCheck {
+  hardRules: {
+    declared: boolean;
+    count: number;
+  };
+  workflows: {
+    declared: boolean;
+    count: number;
+  };
+}
+
+function executionStepStatus(session: ExperienceSessionSummary, expectedToolCheck: ExpectedToolCheck): ExperienceReviewerReportStepStatus {
+  if (session.indicators.toolFailureCount > 0 || expectedToolCheck.declared && expectedToolCheck.matchedTools.length === 0) return 'attention';
+  if (session.indicators.toolCallCount > 0) return 'ok';
+  return 'unknown';
+}
+
+function executionStepText(session: ExperienceSessionSummary, expectedToolCheck: ExpectedToolCheck = expectedToolCheckForSession(session)): string {
   const failures = session.indicators.toolFailureCount > 0 ? `，其中失败 ${session.indicators.toolFailureCount} 次` : '';
-  return `执行中看到 ${session.indicators.toolCallCount} 次工具调用${failures}。`;
+  const expected = expectedToolCheck.declared
+    ? expectedToolCheck.matchedTools.length > 0
+      ? `命中声明的核心工具：${expectedToolCheck.matchedTools.join('、')}。`
+      : `但没有命中能力声明的核心工具：${expectedToolCheck.expectedTools.join('、')}。`
+    : '';
+  return `执行中看到 ${session.indicators.toolCallCount} 次工具调用${failures}。${expected}`;
 }
 
 function deliveryStepText(session: ExperienceSessionSummary): string {
   if (session.indicators.assistantDeliverySignalCount > 0) {
-    return `看到 ${session.indicators.assistantDeliverySignalCount} 次可能是最后交付产物的回复；仍需下钻确认具体产物。`;
+    const artifact = session.indicators.deliverableArtifactSignalCount > 0
+      ? `，其中 ${session.indicators.deliverableArtifactSignalCount} 次包含具体产物线索`
+      : '，但未看到明确产物线索';
+    return `看到 ${session.indicators.assistantDeliverySignalCount} 次完成态或结果反馈${artifact}。`;
   }
-  return '没有发现最后交付产物；当前不能把过程进展当成完成。';
+  return '没有发现最后结果反馈；当前不能把过程进展当成完成。';
 }
 
 function userFeedbackStepText(session: ExperienceSessionSummary): string {
@@ -1870,14 +2314,95 @@ function userFeedbackStepText(session: ExperienceSessionSummary): string {
 
 function userFeedbackStepStatus(session: ExperienceSessionSummary): ExperienceReviewerReportStepStatus {
   if (session.indicators.userCorrectionCount > 0 || session.indicators.negativeFeedbackCount > 0 || session.indicators.userInterruptionCount > 0) return 'attention';
-  if (session.indicators.userFollowUpCount > 0 || session.indicators.userGoalShiftCount > 0) return 'unknown';
-  return 'ok';
+  if (session.indicators.positiveFeedbackCount > 0) return 'ok';
+  return 'unknown';
 }
 
 function userFeedbackEvidenceRefs(session: ExperienceSessionSummary): ExperienceEvidenceRef[] {
   return uniqueEvidenceRefs(session.ruleFindings
     .filter((finding) => finding.code === 'user_correction_seen' || finding.code === 'negative_feedback_seen' || finding.code === 'positive_feedback_seen' || finding.code === 'user_goal_shift_seen' || finding.code === 'user_interruption_seen')
     .flatMap((finding) => finding.evidenceRefs)).slice(0, 5);
+}
+
+function expectedToolCheckForSession(session: ExperienceSessionSummary): ExpectedToolCheck {
+  const expectedTools = loadExpectedToolsForSkill(session.skillName, session.cwd);
+  if (expectedTools.length === 0) return { expectedTools: [], matchedTools: [], declared: false };
+  const events = session.fullSessionTimeline.length > 0 ? session.fullSessionTimeline : session.timelinePreview;
+  const matchedTools = expectedTools.filter((tool) => events.some((event) => eventMatchesExpectedTool(event, tool)));
+  return {
+    expectedTools,
+    matchedTools,
+    declared: true,
+  };
+}
+
+function skillDeclarationCheckForSession(session: ExperienceSessionSummary): SkillDeclarationCheck {
+  const path = findSkillMdPathForExperience(session.skillName, session.cwd ?? process.cwd());
+  if (!path) {
+    return {
+      hardRules: { declared: false, count: 0 },
+      workflows: { declared: false, count: 0 },
+    };
+  }
+  try {
+    const content = readFileSync(path, 'utf-8');
+    const hardRules = validateSkillHardRules(content);
+    const workflows = validateSkillWorkflows(content);
+    return {
+      hardRules: { declared: hardRules.declared, count: hardRules.rules.length },
+      workflows: { declared: workflows.declared, count: workflows.workflows.reduce((sum, workflow) => sum + workflow.nodes.length, 0) },
+    };
+  } catch {
+    return {
+      hardRules: { declared: false, count: 0 },
+      workflows: { declared: false, count: 0 },
+    };
+  }
+}
+
+function loadExpectedToolsForSkill(skillName: string, cwd?: string): string[] {
+  const path = findSkillMdPathForExperience(skillName, cwd ?? process.cwd());
+  if (!path) return [];
+  try {
+    const parsed = parseSkillFrontmatter(readFileSync(path, 'utf-8'));
+    const data = parsed.ok ? parsed.data : undefined;
+    const value = data?.expected_tools ?? data?.expectedTools;
+    return Array.isArray(value)
+      ? unique(value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map((item) => item.trim()))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function eventMatchesExpectedTool(event: ExperienceTimelineEvent, expectedTool: string): boolean {
+  if (event.kind !== 'tool_use') return false;
+  const text = `${event.toolName ?? ''}\n${event.label ?? ''}\n${event.snippet ?? ''}\n${event.fullText ?? ''}`.toLowerCase();
+  const normalized = expectedTool.toLowerCase().trim();
+  const aliases = unique([
+    normalized,
+    normalized.replace(/[-_]?cli$/, ''),
+  ].filter(Boolean));
+  return aliases.some((alias) => new RegExp(`(^|[^a-z0-9_-])${escapeRegExp(alias)}([^a-z0-9_-]|$)`, 'i').test(text));
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function findSkillMdPathForExperience(skillName: string, cwd: string): string | undefined {
+  if (!/^[A-Za-z0-9_.-]+$/.test(skillName)) return undefined;
+  const candidates = [
+    join(cwd, '.claude', 'skills', skillName, 'SKILL.md'),
+    join(cwd, '.openclaw', 'workspace', 'skills', skillName, 'SKILL.md'),
+    join(cwd, 'workspace', 'skills', skillName, 'SKILL.md'),
+    join(cwd, 'skills', skillName, 'SKILL.md'),
+    join(homedir(), '.openclaw', 'workspace', 'skills', skillName, 'SKILL.md'),
+    join(homedir(), '.claude', 'skills', skillName, 'SKILL.md'),
+    join(homedir(), '.codex', 'skills', skillName, 'SKILL.md'),
+    join(homedir(), '.agents', 'skills', skillName, 'SKILL.md'),
+  ];
+  return candidates.find((candidate) => existsSync(candidate));
 }
 
 function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): ExperienceReviewerReportFinding[] {
@@ -1914,7 +2439,17 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
   };
   const findingRefs = (code: ExperienceRuleFindingCode): ExperienceEvidenceRef[] =>
     session.ruleFindings.filter((finding) => finding.code === code).flatMap((finding) => finding.evidenceRefs);
+  const expectedToolCheck = expectedToolCheckForSession(session);
 
+  if (session.evidenceChain.skillContextCount === 0) {
+    push(
+      'attention',
+      '能力归因缺少上下文证据',
+      '当前 skill 窗口没有看到 skill context，不能强判这次行为完全属于该能力；需要先复核 session 切分和归因边界。',
+      'attribution_degraded',
+      [session.evidenceChain.firstUserMessage, session.evidenceChain.firstToolUse].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref)),
+    );
+  }
   if (session.indicators.toolFailureCount > 0) {
     push(
       'attention',
@@ -1927,10 +2462,28 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
   if (session.indicators.assistantDeliverySignalCount === 0) {
     push(
       'attention',
-      '没有发现最后交付产物',
-      '当前窗口里没有看到最后交付产物；不能把过程进展直接当成完成。',
+      '没有发现最后结果反馈',
+      '当前窗口里没有看到明确完成态或结果反馈；不能把过程进展直接当成完成。',
       'final_delivery_absent',
       session.evidenceChain.lastAssistantMessage ? [session.evidenceChain.lastAssistantMessage] : [],
+    );
+  }
+  if (session.indicators.sessionInterruptedCount > 0) {
+    push(
+      'attention',
+      `会话异常中断 × ${session.indicators.sessionInterruptedCount}`,
+      'trace 中出现会话异常切换或 assistant turn failed 标记，需要复核这次能力是否被中断、重启或丢失上下文。',
+      'session_interrupted',
+      findingRefs('session_interrupted_seen'),
+    );
+  }
+  if (expectedToolCheck.declared && expectedToolCheck.matchedTools.length === 0) {
+    push(
+      'attention',
+      '未命中能力声明的核心工具',
+      `能力声明的核心工具是 ${expectedToolCheck.expectedTools.join('、')}，但这次执行没有看到这些工具或命令证据；不能仅凭其它工具调用认为执行流程符合能力用途。`,
+      'expected_tools_missed',
+      session.evidenceChain.firstToolUse ? [session.evidenceChain.firstToolUse] : [],
     );
   }
   if (session.indicators.userCorrectionCount > 0) {
@@ -1993,7 +2546,7 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
 function reviewerTitle(session: ExperienceSessionSummary, attentionCount: number, possibleFalsePositiveCount: number): string {
   const suffix = possibleFalsePositiveCount > 0 ? ` · ${possibleFalsePositiveCount} 项疑似误判` : '';
   if (attentionCount > 0) return `${session.skillName} · 需要复核 · ${attentionCount} 项要看一眼${suffix}`;
-  if (session.indicators.assistantDeliverySignalCount > 0) return `${session.skillName} · 看起来已交付 · 常规抽样${suffix}`;
+  if (session.indicators.assistantDeliverySignalCount > 0) return `${session.skillName} · 看起来有结果 · 常规抽样${suffix}`;
   return `${session.skillName} · 常规抽样 · 未见高优先级信号${suffix}`;
 }
 
@@ -2014,24 +2567,74 @@ function reviewerSummary(
 }
 
 function reviewerAuthorSuggestions(session: ExperienceSessionSummary, findings: ExperienceReviewerReportFinding[]): string[] {
-  const suggestions: string[] = [];
+  const suggestions = new Map<string, { text: string; severity: number }>();
+  const pushSuggestion = (key: string, text: string, severity: number): void => {
+    const existing = suggestions.get(key);
+    if (!existing || severity > existing.severity) suggestions.set(key, { text, severity });
+  };
+  for (const answer of session.sessionStory?.answers ?? []) {
+    for (const item of answer.checklistItems ?? []) {
+      if (!item.suggestionKey) continue;
+      const text = suggestionTextForChecklistItem(item.suggestionKey);
+      if (!text) continue;
+      pushSuggestion(item.suggestionKey, text, severityForChecklistStatus(item.status));
+    }
+  }
   if (findings.some((finding) => finding.ruleSource === 'final_delivery_absent')) {
-    suggestions.push('补充明确的产物交付表达或交付标记，避免过程进展被当成完成。');
+    pushSuggestion('final_delivery_absent', '补充明确的产物交付表达或交付标记，避免过程进展被当成完成。', 4);
   }
   if (findings.some((finding) => finding.ruleSource === 'tool_error_recovery')) {
-    suggestions.push('复查失败工具调用前后的执行流程，必要时把稳定路径写入能力说明文档。');
+    pushSuggestion('tool_error_recovery', '复查失败工具调用前后的执行流程，必要时把稳定路径写入能力说明文档。', 4);
+  }
+  if (findings.some((finding) => finding.ruleSource === 'session_interrupted')) {
+    pushSuggestion('session_interrupted', '复查会话异常中断前后的上下文，确认是否需要补充中断恢复或重跑策略。', 4);
+  }
+  if (findings.some((finding) => finding.ruleSource === 'expected_tools_missed')) {
+    pushSuggestion('expected_tools_missed', '如果能力依赖核心工具，请在能力定义里维护 expected_tools，并确认运行链路实际命中这些工具。', 4);
   }
   if (session.indicators.hardRuleTextHitCount > 0) {
-    suggestions.push('把反复出现的用户硬性要求沉淀为能力规则，并在后续观测中追踪是否减少纠偏。');
+    pushSuggestion('user_hard_rule', '把反复出现的用户硬性要求沉淀为能力规则，并在后续观测中追踪是否减少纠偏。', 2);
   }
   if (session.indicators.userCorrectionCount > 0 || session.indicators.negativeFeedbackCount > 0) {
-    suggestions.push('优先打开原始片段，确认用户纠正/负向反馈发生在交付前还是交付后。');
+    pushSuggestion('user_negative_review', '优先打开原始片段，确认用户纠正/负向反馈发生在交付前还是交付后。', 4);
   }
   if (reviewerScopeReasonCodes(session).length > 0) {
-    suggestions.push('复杂链路暂按降级报告处理；后续再拆多能力、子任务或目标切换。');
+    pushSuggestion('complex_scope_review', '复杂链路暂按降级报告处理；后续再拆多能力、子任务或目标切换。', 1);
   }
-  if (suggestions.length === 0) suggestions.push('进入常规抽样池，保留 evidenceRef 以便人工抽查。');
-  return suggestions;
+  if (suggestions.size === 0) pushSuggestion('routine_sample', '进入常规抽样池，保留 evidenceRef 以便人工抽查。', 0);
+  return Array.from(suggestions.values())
+    .sort((a, b) => b.severity - a.severity || a.text.localeCompare(b.text))
+    .map((entry) => entry.text);
+}
+
+function severityForChecklistStatus(status: ExperienceChecklistItemStatus): number {
+  if (status === 'degraded') return 5;
+  if (status === 'failed') return 4;
+  if (status === 'unknown') return 3;
+  if (status === 'not_declared') return 2;
+  if (status === 'passed') return 1;
+  return 0;
+}
+
+function suggestionTextForChecklistItem(key: string): string | undefined {
+  const suggestions: Record<string, string> = {
+    attribution_degraded: '先复核 session 切分和 skill 归因边界；如果 skill context 缺失，不要把当前报告当成强判断。',
+    final_delivery_absent: '补充明确的完成表达，例如“已完成，结果如下”，避免过程进展被误认为最终交付。',
+    artifact_absent: '如果 skill 目标应该产出文档、demo、代码或报告，需要在最终回复中附上可回溯产物。',
+    goal_shift_review: '目标切换后要重新切分 skill 窗口，避免把新目标的追问算到旧能力上。',
+    user_negative_or_interrupted: '补强用户满意度判断，把否定、纠正、中断作为优先复核信号，而不是只看是否完成。',
+    workflow_not_declared: '在 SKILL.md 中补充标准 workflow 声明，避免运行时只能猜测流程是否完整。',
+    workflow_execution_review: '为 workflow 节点补充可观测证据模板，区分“已执行、未执行、无法识别”。',
+    hardrule_not_declared: '在 SKILL.md 中补充标准 hardRule 声明，把反复出现的用户硬性要求沉淀为能力规则。',
+    hardrule_execution_review: '为 hardRule 补充运行时检查证据，避免只声明规则但无法确认是否执行。',
+    expected_tools_not_declared: '在 SKILL.md frontmatter 中声明 expected_tools，让报告能区分“核心工具命中”和“只是调用了任意工具”。',
+    expected_tools_missed: '复核 expected_tools 声明和真实运行链路，确保能力执行命中声明的核心工具。',
+    negative_feedback_review: '优先打开负向反馈原文，确认问题发生在理解目标、执行过程还是最终交付。',
+    user_correction_review: '把用户纠正内容沉淀为 workflow 检查点或 hardRule，减少同类返工。',
+    follow_up_review: '区分用户追问是围绕产物继续推进，还是因为没有满足目标而反复补充。',
+    user_interruption_review: '复核用户中断前后的执行链路，补充中断恢复或提前确认策略。',
+  };
+  return suggestions[key];
 }
 
 function sumTokenUsage(invocations: ExperienceInvocation[]): Omit<ExperienceReviewerReport['oneLookMetrics']['tokenUsage'], 'attribution'> {
@@ -2148,6 +2751,7 @@ function scoreForIndicators(indicators: ExperienceReviewIndicators): number {
     + indicators.mediumObservationCount
     + indicators.userCorrectionCount * 2
     + indicators.userInterruptionCount * 2
+    + indicators.sessionInterruptedCount * 2
     + indicators.negativeFeedbackCount * 2
     + indicators.hardRuleTextHitCount
     + indicators.toolFailureCount
@@ -2161,12 +2765,30 @@ function priorityForScore(score: number): ExperienceReviewPriority {
   return 'routine_sample';
 }
 
+function priorityForReviewerFindings(
+  session: ExperienceSessionSummary,
+  findings: ExperienceReviewerReportFinding[],
+): ExperienceReviewPriority {
+  const fallback = priorityForScore(session.reviewPriorityScore);
+  const attentionFindings = findings.filter((finding) => finding.level === 'attention');
+  if (attentionFindings.length === 0) return fallback;
+  const criticalMissing = attentionFindings.some((finding) =>
+    finding.ruleSource === 'final_delivery_absent'
+    || finding.ruleSource === 'session_interrupted'
+    || finding.ruleSource === 'expected_tools_missed')
+    || session.indicators.userMessageCount === 0
+    || session.indicators.toolCallCount === 0;
+  if (criticalMissing) return 'review_first';
+  return fallback === 'routine_sample' ? 'sample_review' : fallback;
+}
+
 function basisCodesForIndicators(indicators: ExperienceReviewIndicators): ExperienceReviewBasisCode[] {
   const codes: ExperienceReviewBasisCode[] = [];
   if (indicators.highObservationCount > 0) codes.push('has_high_observation');
   if (indicators.mediumObservationCount > 0) codes.push('has_medium_observation');
   if (indicators.userCorrectionCount > 0) codes.push('user_correction');
   if (indicators.userInterruptionCount > 0) codes.push('user_interruption');
+  if (indicators.sessionInterruptedCount > 0) codes.push('session_interrupted');
   if (indicators.negativeFeedbackCount > 0) codes.push('negative_feedback');
   if (indicators.hardRuleTextHitCount > 0) codes.push('hard_rule_text_hit');
   if (indicators.toolFailureCount > 0) codes.push('tool_failure');
@@ -2207,11 +2829,13 @@ function sumIndicators(values: ExperienceReviewIndicators[]): ExperienceReviewIn
     userFollowUpCount: acc.userFollowUpCount + value.userFollowUpCount,
     userCorrectionCount: acc.userCorrectionCount + value.userCorrectionCount,
     userInterruptionCount: acc.userInterruptionCount + value.userInterruptionCount,
+    sessionInterruptedCount: acc.sessionInterruptedCount + (value.sessionInterruptedCount ?? 0),
     negativeFeedbackCount: acc.negativeFeedbackCount + (value.negativeFeedbackCount ?? 0),
     positiveFeedbackCount: acc.positiveFeedbackCount + (value.positiveFeedbackCount ?? 0),
     userGoalShiftCount: acc.userGoalShiftCount + (value.userGoalShiftCount ?? 0),
     hardRuleTextHitCount: acc.hardRuleTextHitCount + value.hardRuleTextHitCount,
     assistantDeliverySignalCount: acc.assistantDeliverySignalCount + (value.assistantDeliverySignalCount ?? 0),
+    deliverableArtifactSignalCount: acc.deliverableArtifactSignalCount + (value.deliverableArtifactSignalCount ?? 0),
     selfCorrectionCount: acc.selfCorrectionCount + (value.selfCorrectionCount ?? 0),
     repeatedExecutionCount: acc.repeatedExecutionCount + (value.repeatedExecutionCount ?? 0),
     toolCallCount: acc.toolCallCount + value.toolCallCount,
@@ -2403,7 +3027,7 @@ export function hasUserGoalShiftSignal(value: string): boolean {
 
 export function findNegativeFeedbackMatches(value: string): TextMatchRange[] {
   const ranges: TextMatchRange[] = [];
-  for (const term of [...NEGATIVE_FEEDBACK_TERMS].sort((a, b) => b.length - a.length)) {
+  for (const term of [...NEGATIVE_FEEDBACK_TERMS, ...ADDITIONAL_NEGATIVE_FEEDBACK_TERMS].sort((a, b) => b.length - a.length)) {
     pushTermMatches(value, term, ranges, false);
   }
   for (const term of [...BOUNDED_NEGATIVE_FEEDBACK_TERMS].sort((a, b) => b.length - a.length)) {
@@ -2455,6 +3079,7 @@ function isSkillContextRecord(record: CcUserRecord, text: string): boolean {
 
 function isRuntimeContextRecord(record: CcUserRecord, text: string): boolean {
   const meta = record as CcUserRecord & { entrypoint?: unknown; promptId?: unknown; parentUuid?: unknown };
+  if (isRuntimeProtocolPromptText(text)) return true;
   if (/^Conversation info \(untrusted metadata\):\s*```json/i.test(text)) return true;
   if (meta.entrypoint !== 'sdk-ts' || typeof meta.promptId !== 'string') return false;
   return /^进入.+流程。当前页面已经完成本地工作区恢复/.test(text)

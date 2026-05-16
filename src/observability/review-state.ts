@@ -12,9 +12,12 @@ export type ObservationReviewTargetType =
   | 'soft_standard'
   | 'goal_keyword_correction'
   | 'result_artifact_correction'
+  | 'completion_result_correction'
+  | 'deliverable_artifact_correction'
   | 'skill_relevance_correction'
   | 'workflow_completion_correction'
-  | 'hardrule_execution_correction';
+  | 'hardrule_execution_correction'
+  | 'main_tool_execution_correction';
 export type ObservationReviewVerdict = 'reviewed' | 'real_issue' | 'not_issue' | 'needs_more_context' | 'confirmed' | 'rejected';
 export type ObservationMetricKey =
   | 'user_correction'
@@ -25,6 +28,8 @@ export type ObservationMetricKey =
   | 'hard_rule'
   | 'user_goal_shift'
   | 'result_artifact'
+  | 'completion_result'
+  | 'deliverable_artifact'
   | 'progress_update'
   | 'self_correction'
   | 'repeated_execution';
@@ -234,9 +239,12 @@ function isReviewTargetType(value: unknown): value is ObservationReviewTargetTyp
     || value === 'soft_standard'
     || value === 'goal_keyword_correction'
     || value === 'result_artifact_correction'
+    || value === 'completion_result_correction'
+    || value === 'deliverable_artifact_correction'
     || value === 'skill_relevance_correction'
     || value === 'workflow_completion_correction'
-    || value === 'hardrule_execution_correction';
+    || value === 'hardrule_execution_correction'
+    || value === 'main_tool_execution_correction';
 }
 
 function isReviewVerdict(value: unknown): value is ObservationReviewVerdict {
@@ -256,6 +264,8 @@ function isObservationMetricKey(value: unknown): value is ObservationMetricKey {
     || value === 'hard_rule'
     || value === 'user_goal_shift'
     || value === 'result_artifact'
+    || value === 'completion_result'
+    || value === 'deliverable_artifact'
     || value === 'progress_update'
     || value === 'self_correction'
     || value === 'repeated_execution';

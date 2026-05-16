@@ -8,12 +8,13 @@ import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProbl
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
 import type { SkillDerivedStandard } from '../observability/soft-standards.js';
-import { hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE, isScheduledTaskPromptText, isSyntheticUserMessageText, isUserInteractionMetricText } from '../observability/text-signals.js';
+import { ASSISTANT_DELIVERABLE_ARTIFACT_RE, hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE, isAssistantProgressUpdateText, isScheduledTaskPromptText, isSyntheticUserMessageText, isUserInteractionMetricText } from '../observability/text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 import type {
   ExperienceAssistiveInference,
   ExperienceAssistiveInferenceCautionCode,
   ExperienceAssistiveInferenceCode,
+  ExperienceChecklistItem,
   ExperienceEvidenceChain,
   ExperienceEvidenceRef,
   ExperienceInvocation,
@@ -24,6 +25,7 @@ import type {
   ExperienceRuleFinding,
   ExperienceRuleFindingCode,
   ExperienceRuleFindingLevel,
+  ExperienceSessionStoryAnswer,
   ExperienceSessionSummary,
   ExperienceTimelineEvent,
 } from '../observability/experience.js';
@@ -355,7 +357,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const active = count > 0;
     return `<span class="summary-metric${active ? ` summary-impact summary-impact-${level}` : ' summary-metric-empty'}"${active ? ` title="${e(reviewImpactTitle(level))}"` : ''}><span class="summary-name">${e(label)}</span>${renderShare(count, total)}</span>`;
   };
-  // 「疑似完成」等观察性指标：>0 时显示轻微 tag（complete chip 视觉），
+  // 结果类观察指标：>0 时显示轻微 tag（complete chip 视觉），
   // =0 时与其他指标一样走 summary-metric-empty。不接入复盘评分。
   const renderSoftMetric = (label: string, count: number, title?: string): string => {
     const active = count > 0;
@@ -502,11 +504,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     userFollowUpCount: 0,
     userCorrectionCount: 0,
     userInterruptionCount: 0,
+    sessionInterruptedCount: 0,
     negativeFeedbackCount: 0,
     positiveFeedbackCount: 0,
     userGoalShiftCount: 0,
     hardRuleTextHitCount: 0,
     assistantDeliverySignalCount: 0,
+    deliverableArtifactSignalCount: 0,
     selfCorrectionCount: 0,
     repeatedExecutionCount: 0,
     toolCallCount: 0,
@@ -550,6 +554,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       positiveFeedbackCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'positive_feedback', findPositiveFeedbackMatches(event.snippet ?? '').length), 0),
       userGoalShiftCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_goal_shift', findUserGoalShiftMatches(event.snippet ?? '').length, session.id), 0),
       hardRuleTextHitCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? ''), session.id) ? 1 : 0), 0),
+      assistantDeliverySignalCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'completion_result', event.kind === 'assistant_message' && hasAssistantDeliverySignalText(event.fullText ?? event.snippet ?? '')) ? 1 : 0), 0),
+      deliverableArtifactSignalCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'deliverable_artifact', event.kind === 'assistant_message' && hasAssistantDeliverableArtifactText(event.fullText ?? event.snippet ?? '')) ? 1 : 0), 0),
       selfCorrectionCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'self_correction', hasSelfCorrectionSignal(event)) ? 1 : 0), 0),
       repeatedExecutionCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event)) ? 1 : 0), 0),
     };
@@ -608,11 +614,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       userFollowUpCount: current.userFollowUpCount + next.userFollowUpCount,
       userCorrectionCount: current.userCorrectionCount + next.userCorrectionCount,
       userInterruptionCount: current.userInterruptionCount + next.userInterruptionCount,
+      sessionInterruptedCount: current.sessionInterruptedCount + (next.sessionInterruptedCount ?? 0),
       negativeFeedbackCount: current.negativeFeedbackCount + next.negativeFeedbackCount,
       positiveFeedbackCount: current.positiveFeedbackCount + next.positiveFeedbackCount,
       userGoalShiftCount: current.userGoalShiftCount + next.userGoalShiftCount,
       hardRuleTextHitCount: current.hardRuleTextHitCount + next.hardRuleTextHitCount,
       assistantDeliverySignalCount: current.assistantDeliverySignalCount + (next.assistantDeliverySignalCount ?? 0),
+      deliverableArtifactSignalCount: current.deliverableArtifactSignalCount + (next.deliverableArtifactSignalCount ?? 0),
       selfCorrectionCount: current.selfCorrectionCount + (next.selfCorrectionCount ?? 0),
       repeatedExecutionCount: current.repeatedExecutionCount + (next.repeatedExecutionCount ?? 0),
       toolCallCount: current.toolCallCount + next.toolCallCount,
@@ -629,6 +637,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (indicators.mediumObservationCount > 0) codes.push('has_medium_observation');
     if (indicators.userCorrectionCount > 0) codes.push('user_correction');
     if (indicators.userInterruptionCount > 0) codes.push('user_interruption');
+    if (indicators.sessionInterruptedCount > 0) codes.push('session_interrupted');
     if (indicators.negativeFeedbackCount > 0) codes.push('negative_feedback');
     if (indicators.hardRuleTextHitCount > 0) codes.push('hard_rule_text_hit');
     if (indicators.toolFailureCount > 0) codes.push('tool_failure');
@@ -637,7 +646,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     return codes;
   };
   const displayPriority = (indicators: ExperienceReviewIndicators): ExperienceReviewPriority => {
-    if (indicators.highObservationCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0 || indicators.negativeFeedbackCount > 0) return 'review_first';
+    if (indicators.highObservationCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0 || indicators.sessionInterruptedCount > 0 || indicators.negativeFeedbackCount > 0) return 'review_first';
     if (indicators.mediumObservationCount > 0 || indicators.toolFailureCount > 0 || indicators.hedgingCount > 0 || indicators.explicitMarkerCount > 0 || indicators.hardRuleTextHitCount > 0) return 'sample_review';
     return 'routine_sample';
   };
@@ -646,6 +655,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (indicators.highObservationCount > 0) codes.push('high_observation_seen');
     if (indicators.userCorrectionCount > 0) codes.push('user_correction_seen');
     if (indicators.userInterruptionCount > 0) codes.push('user_interruption_seen');
+    if (indicators.sessionInterruptedCount > 0) codes.push('session_interrupted_seen');
     if (indicators.negativeFeedbackCount > 0) codes.push('negative_feedback_seen');
     if (indicators.toolFailureCount > 0) codes.push('tool_failure_seen');
     if (indicators.mediumObservationCount > 0) codes.push('medium_observation_seen');
@@ -662,7 +672,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   ): ExperienceAssistiveInference => {
     const basisRuleCodes = displayInferenceBasisCodes(indicators);
     const code: ExperienceAssistiveInferenceCode =
-      indicators.highObservationCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0 || indicators.negativeFeedbackCount > 0
+      indicators.highObservationCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0 || indicators.sessionInterruptedCount > 0 || indicators.negativeFeedbackCount > 0
         ? 'review_recommended'
         : indicators.mediumObservationCount > 0 || indicators.toolFailureCount > 0 || indicators.hedgingCount > 0 || indicators.explicitMarkerCount > 0 || indicators.hardRuleTextHitCount > 0
           ? 'sample_recommended'
@@ -695,6 +705,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     push('high_observation_seen', 'attention', indicators.highObservationCount);
     push('user_correction_seen', 'attention', indicators.userCorrectionCount);
     push('user_interruption_seen', 'attention', indicators.userInterruptionCount);
+    push('session_interrupted_seen', 'attention', indicators.sessionInterruptedCount);
     push('negative_feedback_seen', 'attention', indicators.negativeFeedbackCount);
     push('tool_failure_seen', 'sample', indicators.toolFailureCount);
     push('medium_observation_seen', 'sample', indicators.mediumObservationCount);
@@ -708,6 +719,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         'high_observation_seen',
         'user_correction_seen',
         'user_interruption_seen',
+        'session_interrupted_seen',
         'negative_feedback_seen',
         'tool_failure_seen',
         'medium_observation_seen',
@@ -745,7 +757,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       renderDecisionMetricIfPositive('显式缺口', indicators.explicitMarkerCount, 'sample'),
     ].filter(Boolean).join('');
     return `<div class="skill-evidence-summary">
-      <div class="summary-row"><span class="summary-title">【skill 运行】</span>${renderMetric('调用段', skill.invocationCount, '次')}<span class="summary-muted">分布 ${skill.sessionCount} 个 session</span>${renderMetric('工具调用', total, '次')}${renderMetricShare('成功', success, total)}${renderDecisionMetricShare('失败', failed, total, 'sample')}${renderDecisionMetricShare('人工中断', interrupted, total, 'priority')}${renderDecisionMetricIfPositive('自我纠正', indicators.selfCorrectionCount ?? 0, 'sample')}${renderDecisionMetricIfPositive('重复执行', indicators.repeatedExecutionCount ?? 0, 'sample')}${renderSoftMetric('疑似完成', indicators.assistantDeliverySignalCount ?? 0, '助手回复里出现代码块、直接生成、结果如下、完成等交付信号。表示当前目标可能完成，不直接等同于整个 skill 生命周期结束。')}</div>
+      <div class="summary-row"><span class="summary-title">【skill 运行】</span>${renderMetric('调用段', skill.invocationCount, '次')}<span class="summary-muted">分布 ${skill.sessionCount} 个 session</span>${renderMetric('工具调用', total, '次')}${renderMetricShare('成功', success, total)}${renderDecisionMetricShare('失败', failed, total, 'sample')}${renderDecisionMetricShare('人工中断', interrupted, total, 'priority')}${renderDecisionMetricIfPositive('自我纠正', indicators.selfCorrectionCount ?? 0, 'sample')}${renderDecisionMetricIfPositive('重复执行', indicators.repeatedExecutionCount ?? 0, 'sample')}${renderSoftMetric('有结果', indicators.assistantDeliverySignalCount ?? 0, '助手回复里出现明确完成态或结果反馈。')}${renderSoftMetric('有产物', indicators.deliverableArtifactSignalCount ?? 0, '助手回复里出现文档链接、Demo 地址、文件路径、代码块或上传产物。')}</div>
       <div class="summary-row"><span class="summary-title">【用户交互】</span>${renderDecisionMetric('用户纠正', indicators.userCorrectionCount, 'priority')}${renderDecisionMetric('人工中断', indicators.userInterruptionCount, 'priority')}${renderMetric('追问', indicators.userFollowUpCount)}${renderDecisionMetric('负向反馈', indicators.negativeFeedbackCount ?? 0, 'priority')}${renderMetric('正向反馈', indicators.positiveFeedbackCount ?? 0)}${renderMetric('目标切换', indicators.userGoalShiftCount ?? 0)}</div>
       <div class="summary-row"><span class="summary-title">【工具调用】</span>${renderMetric('总计', total, '次')}<span class="summary-detail">(${renderRankedCounts(displayToolCounts, total)})</span>${renderDecisionMetricShare('工具执行失败', failed, total, 'sample')}</div>
       <div class="summary-row"><span class="summary-title">【过程发现】</span>${processMetrics || '<span class="summary-muted">未发现需要展示的过程信号</span>'}</div>
@@ -1168,6 +1180,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       has_medium_observation: '有需要抽样确认的过程发现',
       user_correction: '用户纠正过方向或结果',
       user_interruption: '用户人工中断过当前执行',
+      session_interrupted: '会话出现异常中断信号',
       negative_feedback: '用户出现负向反馈',
       hard_rule_text_hit: '用户提出了必须/不要/禁止等硬性要求',
       tool_failure: '运行中出现工具执行失败',
@@ -1311,7 +1324,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const fallbackSessionStory = (report: ExperienceReviewerReport): ExperienceReviewerReport['sessionStory'] => {
     const stepByLabel = (label: string): ExperienceReviewerReport['chainSteps'][number] | undefined =>
       report.chainSteps.find((step) => step.label === label);
-    const deliveryStep = stepByLabel('实际产物');
+    const deliveryStep = stepByLabel('结果 / 产物') ?? stepByLabel('实际产物');
     const feedbackStep = stepByLabel('用户反馈');
     const hasFinalDeliveryAbsent = report.findings.some((finding) => finding.ruleSource === 'final_delivery_absent');
     const hasUserPain = report.findings.some((finding) =>
@@ -1328,7 +1341,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           ? 'skill_invocation' as const
           : step.label === '执行流程'
             ? 'tool_execution' as const
-            : step.label === '实际产物'
+            : step.label === '结果 / 产物' || step.label === '实际产物'
               ? 'delivery' as const
               : 'user_feedback' as const,
       label: step.label,
@@ -1358,22 +1371,31 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           key: 'goal_satisfaction',
           label: '用户目标有没有被满足',
           status: hasUserPain || hasFinalDeliveryAbsent ? 'attention' : deliveryStep?.status ?? 'unknown',
-          text: hasFinalDeliveryAbsent ? '没有发现最后交付产物，无法判断用户目标是否满足。' : '基于旧版报告，只能按交付和用户反馈信号粗略判断。',
+          reason: hasUserPain || hasFinalDeliveryAbsent ? 'attention_accumulated' : 'unknown_dominant',
+          sourceItemKeys: [],
+          text: hasFinalDeliveryAbsent ? '没有发现最后结果反馈，无法判断用户目标是否满足。' : '基于旧版报告，只能按结果反馈和用户反馈信号粗略判断。',
           evidenceRefs: [...(deliveryStep?.evidenceRefs ?? []), ...(feedbackStep?.evidenceRefs ?? [])],
+          checklistItems: [],
         },
         {
           key: 'declared_behavior_fit',
           label: '行为是否符合能力用途',
           status: stepByLabel('执行流程')?.status ?? 'unknown',
+          reason: 'unknown_dominant',
+          sourceItemKeys: [],
           text: '基于旧版报告，只能从执行流程和工具失败信号粗略判断；标准化规则/流程请看定义链路。',
           evidenceRefs: stepByLabel('执行流程')?.evidenceRefs ?? [],
+          checklistItems: [],
         },
         {
           key: 'user_feeling',
           label: '用户是否觉得有用或绕路',
           status: hasUserPain ? 'attention' : feedbackStep?.status ?? 'unknown',
+          reason: hasUserPain ? 'attention_accumulated' : 'unknown_dominant',
+          sourceItemKeys: [],
           text: cleanReportCopy(feedbackStep?.text ?? '没有看到明确用户反馈。'),
           evidenceRefs: feedbackStep?.evidenceRefs ?? [],
+          checklistItems: [],
         },
       ],
     };
@@ -1392,16 +1414,17 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       return '未标注';
     };
     const stepStatus = (status: ExperienceReviewerReport['chainSteps'][number]['status']): string =>
-      status === 'ok' ? '有证据' : status === 'attention' ? '需复核' : '未确认';
+      status === 'ok' ? '有证据' : status === 'attention' ? '需复核' : status === 'degraded' ? '数据不可判' : status === 'not_applicable' ? '不适用' : '未确认';
     const storyStatusLabel = (status: ExperienceReviewerReport['sessionStory']['nodes'][number]['status']): string =>
-      status === 'ok' ? '有证据' : status === 'attention' ? '需复核' : '需人工判断';
+      status === 'ok' ? '有证据' : status === 'attention' ? '需复核' : status === 'degraded' ? '数据不可判' : status === 'not_applicable' ? '不适用' : '需人工判断';
     const storyStatusClass = (status: ExperienceReviewerReport['sessionStory']['nodes'][number]['status']): string =>
-      status === 'ok' ? 'is-ok' : status === 'attention' ? 'is-attention' : 'is-unknown';
+      status === 'ok' ? 'is-ok' : status === 'attention' ? 'is-attention' : status === 'degraded' ? 'is-attention' : 'is-unknown';
     const reportModeLabel = report.mode === 'deterministic_milestone_1' || report.mode === 'deterministic_session_story' ? '规则生成，无模型判断' : report.mode;
     const reportScopeLabel = report.scope.kind === 'single_skill_single_goal' ? '单次任务 / 单个能力' : '复杂链路，降级展示';
     const evidenceKindLabel = (kind: ExperienceEvidenceRef['kind']): string => {
       const labels: Record<ExperienceEvidenceRef['kind'], string> = {
         user_message: '用户消息',
+        synthetic_user_event: '构造事件',
         assistant_message: '助手回复',
         tool_use: '工具调用',
         tool_result: '工具结果',
@@ -1497,7 +1520,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <span>目标段 ${story.goalSliceCount}</span>
             <span>分支 ${story.branchCount}</span>
             <span>过程进展 ${story.progressUpdateCount}</span>
-            <span>交付候选 ${story.finalDeliverySignalCount}</span>
+            <span>有结果 ${story.finalDeliverySignalCount}</span>
           </div>
         </div>
         ${renderStoryGraph()}
@@ -1565,7 +1588,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               ['工具失败', metrics.toolFailureCount],
               ['用户消息', metrics.userMessageCount],
               ['追问/补充', metrics.userFollowUpCount],
-              ['交付信号', metrics.assistantDeliverySignalCount],
+              ['有结果', metrics.assistantDeliverySignalCount],
+              ['有产物', metrics.deliverableArtifactSignalCount ?? 0],
               ['自我纠正', metrics.selfCorrectionCount ?? 0],
               ['重复执行', metrics.repeatedExecutionCount ?? 0],
               ['原始事件', metrics.traceEventCount],
@@ -1596,6 +1620,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       medium_observation_seen: { label: '抽样过程发现', description: '存在 medium/low 过程发现，适合进入抽样复盘。' },
       user_correction_seen: { label: '用户纠正', description: '人工用户消息命中明确纠偏表达。' },
       user_interruption_seen: { label: '人工中断', description: 'trace 中出现用户主动中断事件。' },
+      session_interrupted_seen: { label: '会话异常中断', description: 'trace 中出现会话异常切换或 assistant turn failed 标记。' },
       negative_feedback_seen: { label: '负向反馈', description: '人工用户消息命中明确负向表达。' },
       positive_feedback_seen: { label: '正向反馈', description: '人工用户消息命中明确认可表达，仅作为正向证据展示。' },
       user_goal_shift_seen: { label: '用户切换目标', description: '人工用户消息命中“换个方向/先不/不用这个”等目标切换表达；这通常表示目标切走，不自动归因给 skill。' },
@@ -1661,7 +1686,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <div class="evidence-chain-row">
         ${item('工具调用', chain.toolUseCount, 'tool_use 事件数')}
         ${item('工具执行结果', chain.toolResultCount, 'tool_result 事件数')}
-        ${item('失败结果', chain.toolFailureResultCount, 'is_error=true 的 tool_result 事件数')}
+        ${item('失败结果', chain.toolFailureResultCount, 'tool_result 明确失败，或返回内容里带 status=error / error 字段')}
         ${item('过程发现', chain.observationCount, '关联 observation item 数')}
       </div>
       <div class="evidence-anchor-row">
@@ -1681,6 +1706,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   }
   interface TimelineRenderOptions {
     reviewSessionId?: string;
+    activeEventIds?: Set<string>;
     activeSourceTrace?: string;
     activeStartRecordIndex?: number;
     activeEndRecordIndex?: number;
@@ -1698,6 +1724,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const HEDGING_RE = /可能|不确定|需要确认|大概|也许|presumably|maybe|unclear|not sure/i;
   const EXPLICIT_MARKER_RE = /【推断】|【知识缺口】|【未知】|\[inferred\]|\[unknown\]|\[knowledge\s*gap\]/i;
   const TOOL_FAILURE_RE = /Error|error|failed|失败|Exception|ENOENT|EACCES|permission denied|No such file|exceeds maximum allowed tokens|timed out|timeout/i;
+  const DELIVERABLE_ARTIFACT_RE = ASSISTANT_DELIVERABLE_ARTIFACT_RE;
   const evidenceMetricLabels: Record<ObservationMetricKey, string> = {
     user_correction: '纠正',
     user_interruption: '中断',
@@ -1706,7 +1733,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     positive_feedback: '正向',
     hard_rule: '用户硬性要求',
     user_goal_shift: '目标切换',
-    result_artifact: '产出结果',
+    result_artifact: '产出结果（旧）',
+    completion_result: '有结果',
+    deliverable_artifact: '有产物',
     progress_update: '过程进展',
     self_correction: '自我纠正',
     repeated_execution: '重复执行',
@@ -1749,6 +1778,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   };
 	  const timelineEventMeta = (event: ExperienceTimelineEvent): TimelineEventMeta => {
 	    if (event.kind === 'user_message') return { icon: 'U', label: '用户消息', tone: 'user' };
+	    if (event.kind === 'synthetic_user_event') return { icon: 'S', label: '构造事件', tone: 'runtime' };
 	    if (event.kind === 'assistant_message') return { icon: 'A', label: '助手回复', tone: 'assistant' };
 	    if (event.kind === 'tool_use') return { icon: 'TU', label: '工具调用', tone: 'tool-use' };
 	    if (event.kind === 'tool_result') {
@@ -1766,20 +1796,26 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const text = event.fullText ?? event.snippet ?? '';
 	    return hasAssistantDeliverySignalText(text);
 	  };
+	  const isAssistantCompletionResultSignal = (event: ExperienceTimelineEvent): boolean => isAssistantDeliverySignal(event);
+	  const isAssistantDeliverableArtifactSignal = (event: ExperienceTimelineEvent): boolean => {
+	    if (event.kind !== 'assistant_message') return false;
+	    const text = event.fullText ?? event.snippet ?? '';
+	    return hasAssistantDeliverableArtifactText(text);
+	  };
 	  const isAssistantProgressUpdateSignal = (event: ExperienceTimelineEvent): boolean => {
 	    if (event.kind !== 'assistant_message') return false;
 	    const text = event.fullText ?? event.snippet ?? '';
-	    return /正在|继续|稍等|马上|即将|处理中|整理中|进展|progress|working|in progress/i.test(text);
+	    return isAssistantProgressUpdateText(text);
 	  };
 	  function hasSelfCorrectionSignal(event: ExperienceTimelineEvent): boolean {
 	    if (event.kind !== 'assistant_message') return false;
 	    const text = event.fullText ?? event.snippet ?? '';
-	    return /刚才.*(?:不对|错了|有误)|发现.*(?:不对|错了|问题|遗漏)|重新(?:检查|分析|执行|生成|整理)|改用|换成|修正|我再(?:检查|重新|看)|recheck|retry|mistake|wrong/i.test(text);
+	    return /刚才.*(?:不对|错了|有误)|发现.*(?:不对|错了|问题|遗漏)|重新(?:检查|分析|执行|生成|整理)|改用|换成|修正|我再(?:检查|重新|看)|\b(?:recheck|retry|rerun|mistake|wrong)\b/i.test(text);
 	  }
 	  function hasRepeatedExecutionSignal(event: ExperienceTimelineEvent): boolean {
-	    if (event.kind === 'user_message') return false;
+	    if (event.kind !== 'assistant_message' && event.kind !== 'tool_use') return false;
 	    const text = `${event.label ?? ''} ${event.toolName ?? ''} ${event.fullText ?? event.snippet ?? ''}`;
-	    return /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|retry|rerun/i.test(text);
+	    return /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|\b(?:retry|rerun)\b/i.test(text);
 	  }
 	  const evidenceMetricVerdictFor = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): 'confirmed' | 'rejected' | '' => {
 	    const targetId = observationMetricAnnotationTargetId({ ...event, metricScopeId }, metricKey);
@@ -1815,7 +1851,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       }
     }
     if (event.kind === 'assistant_message') {
-      if (isAssistantDeliverySignal(event)) tags.push('completion');
+      if (evidenceMetricIsActive(event, 'completion_result', isAssistantCompletionResultSignal(event))) tags.push('completion_result');
+      if (evidenceMetricIsActive(event, 'deliverable_artifact', isAssistantDeliverableArtifactSignal(event))) tags.push('deliverable_artifact');
       if (evidenceMetricIsActive(event, 'self_correction', hasSelfCorrectionSignal(event))) tags.push('self_correction');
       if (evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) tags.push('repeated_execution');
       if (matches(HEDGING_RE, text)) tags.push('hedging');
@@ -1854,7 +1891,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       }
     }
 	    if (event.kind === 'assistant_message') {
-	      if (isAssistantDeliverySignal(event)) badges.push({ label: '产出结果/疑似完成', className: 'metric-completion', title: '助手回复里出现代码块、直接生成、结果如下、完成等交付信号。它表示当前目标可能完成，不等于整个 skill 生命周期结束。' });
+	      if (evidenceMetricIsActive(event, 'completion_result', isAssistantCompletionResultSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('有结果', event, 'completion_result', isAssistantCompletionResultSignal(event)), className: 'metric-completion', title: '助手回复里出现明确完成态或结果反馈，表示任务可能已有执行结果。它不等于一定交付了可打开的文档、链接或文件。' });
+	      if (evidenceMetricIsActive(event, 'deliverable_artifact', isAssistantDeliverableArtifactSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('有产物', event, 'deliverable_artifact', isAssistantDeliverableArtifactSignal(event)), className: 'metric-completion', title: '助手回复里出现可交付对象，例如文档链接、Demo 地址、文件路径、代码块或上传产物。' });
 	      if (evidenceMetricIsActive(event, 'self_correction', hasSelfCorrectionSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('自我纠正', event, 'self_correction', hasSelfCorrectionSignal(event)), className: 'metric-correction', title: 'agent 在没有用户介入的情况下发现问题并主动修正执行策略。少量说明有恢复能力，高频说明流程不稳。' });
 	      if (evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('重复执行', event, 'repeated_execution', hasRepeatedExecutionSignal(event)), className: 'metric-repeated-execution', title: '同类步骤、工具或流程被重复执行。高频出现时通常对应绕路或 workflow 不清晰。' });
 	      if (matches(HEDGING_RE, text)) badges.push({ label: '不确定表达来源', className: 'metric-hedging', title: '命中“可能/不确定/需要确认”等表达。' });
@@ -1908,7 +1946,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     }
 	    if (event.kind === 'assistant_message') {
 	      rules.push(
-	        { pattern: /```(?:mermaid|plantuml|json|tsx?|jsx?|html|css|excalidraw|markdown)?|直接生成|已生成|生成如下|结果如下|完成|已完成/g, className: 'metric-completion', title: '当前目标产出结果/疑似完成命中词' },
+	        { pattern: /直接生成|已生成|生成如下|结果如下|完成|已完成/g, className: 'metric-completion', title: '有结果命中词' },
+	        { pattern: cloneRegex(DELIVERABLE_ARTIFACT_RE), className: 'metric-completion', title: '有产物命中词' },
 	        { pattern: /刚才.*(?:不对|错了|有误)|发现.*(?:不对|错了|问题|遗漏)|重新(?:检查|分析|执行|生成|整理)|改用|换成|修正|我再(?:检查|重新|看)|recheck|retry|mistake|wrong/gi, className: 'metric-correction', title: '自我纠正命中词' },
 	        { pattern: /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|retry|rerun/gi, className: 'metric-repeated-execution', title: '重复执行命中词' },
 	        { pattern: cloneRegex(HEDGING_RE), className: 'metric-hedging', title: '不确定表达命中词' },
@@ -1937,7 +1976,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (metricKey === 'positive_feedback') return findPositiveFeedbackMatches(text).length > 0;
     if (metricKey === 'hard_rule') return hasUserHardRuleText(text);
     if (metricKey === 'user_goal_shift') return hasUserGoalShiftSignal(text);
-    if (metricKey === 'result_artifact') return isAssistantDeliverySignal(event);
+    if (metricKey === 'result_artifact') return isAssistantCompletionResultSignal(event) || isAssistantDeliverableArtifactSignal(event);
+    if (metricKey === 'completion_result') return isAssistantCompletionResultSignal(event);
+    if (metricKey === 'deliverable_artifact') return isAssistantDeliverableArtifactSignal(event);
     if (metricKey === 'progress_update') return isAssistantProgressUpdateSignal(event);
     if (metricKey === 'self_correction') return hasSelfCorrectionSignal(event);
     if (metricKey === 'repeated_execution') return hasRepeatedExecutionSignal(event);
@@ -1963,23 +2004,30 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     'positive_feedback',
     'hard_rule',
     'user_goal_shift',
-    'result_artifact',
+    'completion_result',
+    'deliverable_artifact',
     'progress_update',
     'self_correction',
     'repeated_execution',
   ];
-  const renderTimelineManualMarkButton = (sessionId: string, event: ExperienceTimelineEvent, userIndex: number): string => {
-	    const metrics = timelineManualMetricKeys().map((metricKey) => {
+  const renderTimelineManualMarkButton = (sessionId: string, event: ExperienceTimelineEvent, userIndex: number, allowMetrics: boolean): string => {
+	    const metrics = allowMetrics ? timelineManualMetricKeys().map((metricKey) => {
 	      const targetId = metricAnnotationTarget(event, metricKey, sessionId);
 	      const verdict = metricAnnotationVerdict(event, metricKey, sessionId);
 	      const reason = metricAnnotationReason(event, metricKey, sessionId);
 	      const ruleDetected = evidenceMetricRuleDetected(event, userIndex, metricKey);
 	      const label = evidenceMetricLabels[metricKey];
 	      return { targetId, metricKey, metricScopeId: sessionId, verdict, reason, ruleDetected, label };
-	    });
+	    }) : [];
     const goalTargetId = `${sessionId}:${event.messageIndex ?? event.id}`;
     const goalAction = goalSliceCorrectionAction(sessionId, event);
     const activeCount = metrics.filter((m) => m.verdict === 'confirmed' || m.verdict === 'rejected').length + (goalAction ? 1 : 0);
+    const mode = allowMetrics ? 'metrics' : 'window_only';
+    const buttonLabel = allowMetrics
+      ? `人工标记${activeCount > 0 ? `(${activeCount})` : ''}`
+      : goalAction === 'add_to_current_skill_window'
+        ? '已加入窗口'
+        : '加入窗口';
     const source = {
       sourceTrace: event.sourceTrace,
       sessionId: event.sessionId,
@@ -1989,7 +2037,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       snippet: (event.snippet ?? '').slice(0, 240),
     };
     return `<button type="button"
-      class="timeline-manual-mark-button ${activeCount > 0 ? 'is-marked' : ''}"
+      class="timeline-manual-mark-button ${activeCount > 0 ? 'is-marked' : ''} ${allowMetrics ? '' : 'is-window-only'}"
+      data-manual-mark-mode="${mode}"
       data-manual-mark-session-id="${e(sessionId)}"
       data-manual-mark-goal-target="${e(goalTargetId)}"
       data-manual-mark-goal-action="${e(goalAction)}"
@@ -2002,7 +2051,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       data-tool-use-id="${e(event.toolUseId ?? '')}"
       data-snippet="${e((event.snippet ?? '').slice(0, 240))}"
       onclick="openTimelineManualMark(this)"
-      title="人工标记这条消息">人工标记${activeCount > 0 ? `(${activeCount})` : ''}</button>`;
+      title="${allowMetrics ? '人工标记这条消息' : '这条消息不在当前 skill 窗口内，先加入窗口后才能标注指标'}">${buttonLabel}</button>`;
   };
   const goalSliceCorrectionAction = (sessionId: string, event: ExperienceTimelineEvent): 'split_goal_slice' | 'add_to_current_skill_window' | '' => {
     const targetId = `${sessionId}:${event.messageIndex ?? event.id}`;
@@ -2016,6 +2065,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (events.length === 0) return '<div style="color:var(--text-muted);font-size:12px">没有可展示的时间线片段。</div>';
     const reviewSessionId = options.reviewSessionId ?? sessionId;
     const isInsideSkillWindow = (event: ExperienceTimelineEvent): boolean => {
+      if (options.activeEventIds) return options.activeEventIds.has(event.id);
       if (options.activeSourceTrace && event.sourceTrace !== options.activeSourceTrace) return false;
       if (typeof event.messageIndex !== 'number') return true;
       const start = options.activeStartRecordIndex;
@@ -2084,7 +2134,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               <div class="timeline-subtitle">${event.traceLabel ? `链路：${e(event.traceLabel)} · ` : ''}${e(event.label || event.role || event.kind)}${event.toolUseId ? ` · ${e(event.toolUseId)}` : ''}${event.timestamp ? ` · ${e(event.timestamp.slice(0, 19).replace('T', ' '))}` : ''}</div>
             </div>
             <div class="timeline-badges">${badges}</div>
-            ${renderTimelineManualMarkButton(reviewSessionId, event, currentUserIndex)}
+            ${renderTimelineManualMarkButton(reviewSessionId, event, currentUserIndex, allowMetricTags)}
           </header>
 	          <pre class="timeline-snippet ${event.isError ? 'is-tool-error' : ''}"${fullTextAttrs}>${highlightTimelineSnippet(event, currentUserIndex, allowMetricTags, reviewSessionId)}</pre>
         </article>
@@ -2097,21 +2147,23 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       </div>`;
     };
     const renderRowsWithWindowMarkers = (items: typeof decorated): string => {
-      let startRendered = false;
+      if (!options.showSkillWindowMarkers) {
+        return items.map(renderRow).join('');
+      }
+      let firstInsideIdx = -1;
+      let lastInsideIdx = -1;
+      for (let i = 0; i < items.length; i += 1) {
+        const inside = isInsideSkillWindow(items[i].event) || isAddedToSkillWindow(items[i].event);
+        if (inside) {
+          if (firstInsideIdx === -1) firstInsideIdx = i;
+          lastInsideIdx = i;
+        }
+      }
       let output = '';
       for (let index = 0; index < items.length; index += 1) {
-        const item = items[index];
-        const inside = isInsideSkillWindow(item.event) || isAddedToSkillWindow(item.event);
-        if (options.showSkillWindowMarkers && inside && !startRendered) {
-          output += renderWindowMarker('start');
-          startRendered = true;
-        }
-        output += renderRow(item);
-        const next = items[index + 1];
-        const nextInside = next ? (isInsideSkillWindow(next.event) || isAddedToSkillWindow(next.event)) : false;
-        if (options.showSkillWindowMarkers && inside && !nextInside) {
-          output += renderWindowMarker('end');
-        }
+        if (index === firstInsideIdx) output += renderWindowMarker('start');
+        output += renderRow(items[index]);
+        if (index === lastInsideIdx) output += renderWindowMarker('end');
       }
       return output;
     };
@@ -2147,8 +2199,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </div>`;
   };
   const renderSessionTimelineTree = (session: ExperienceSessionSummary): string => {
+    const activeEventIds = new Set(session.timelinePreview.map((event) => event.id));
     const fullTimelineOptions: TimelineRenderOptions = {
       reviewSessionId: session.id,
+      activeEventIds,
       activeSourceTrace: session.sourceTrace,
       activeStartRecordIndex: session.timelineScope?.segmentStartRecordIndex,
       activeEndRecordIndex: session.timelineScope?.segmentEndRecordIndex,
@@ -2202,7 +2256,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         <button type="button" disabled title="当前 report JSON 没有 fullSessionTimeline 字段，无法在前端还原完整 session。">需要重新生成报告</button>
       </div>`;
     }
-    const truncatedText = scope.truncated ? '当前展示不是完整链路' : '当前展示覆盖本次 skill 窗口';
+    const truncatedText = scope.truncated ? '当前 skill 窗口不是完整 session 链路' : '当前展示覆盖本次 skill 窗口';
     const omittedText = `前面省略 ${scope.omittedBeforeCount} 个事件，后面省略 ${scope.omittedAfterCount} 个事件`;
     const branchCount = session.timelineTree?.branches.length ?? 0;
     const chainText = branchCount > 0
@@ -2211,8 +2265,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     return `<div class="timeline-scope-notice" data-timeline-scope-notice>
       <div>
         <strong>${e(truncatedText)}</strong>
-        <span>展示范围：${e(rangeText(scope.previewStartRecordIndex, scope.previewEndRecordIndex))} · 当前 ${scope.previewEventCount} 条事件 / 完整 session ${scope.fullSessionEventCount} 条事件</span>
-        <span>skill 窗口：${e(rangeText(scope.segmentStartRecordIndex, scope.segmentEndRecordIndex))} · 完整 session：${e(rangeText(scope.sessionStartRecordIndex, scope.sessionEndRecordIndex))} · ${e(omittedText)}</span>
+        <span>当前 skill 窗口事件：${scope.previewEventCount} 条 / 完整 session ${scope.fullSessionEventCount} 条事件</span>
+        <span>record 粗范围：${e(rangeText(scope.previewStartRecordIndex, scope.previewEndRecordIndex))} · skill 窗口：${e(rangeText(scope.segmentStartRecordIndex, scope.segmentEndRecordIndex))} · 完整 session：${e(rangeText(scope.sessionStartRecordIndex, scope.sessionEndRecordIndex))} · ${e(omittedText)}</span>
         <span>${e(chainText)}</span>
       </div>
       <button type="button" data-full-session-toggle onclick="toggleFullSessionTimeline(this)">查看完整 session 时间线</button>
@@ -2225,7 +2279,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         <label>搜索标签</label>
         <select data-timeline-tag-filter onchange="filterTimelineByTag(this)">
           <option value="">全部标签</option>
-          <option value="completion">疑似完成 / 产出结果</option>
+          <option value="completion">有结果 / 完成态</option>
           <option value="positive_feedback">用户正向反馈</option>
           <option value="negative_feedback">用户负向反馈</option>
           <option value="user_correction">用户纠正</option>
@@ -2660,7 +2714,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const story = session.sessionStory ?? (report ? report.sessionStory ?? fallbackSessionStory(report) : undefined);
     if (!story) return '<span style="color:var(--text-muted);font-size:12px">暂无复盘报告</span>';
     const answerText = story.answers
-      .map((answer) => `${answer.label.replace('用户', '')}：${answer.status === 'ok' ? '有证据' : answer.status === 'attention' ? '需复核' : '待判断'}`)
+      .map((answer) => `${answer.label.replace('用户', '')}：${answer.status === 'ok' ? '有证据' : answer.status === 'attention' ? '需复核' : answer.status === 'degraded' ? '数据不可判' : answer.status === 'not_applicable' ? '不适用' : '待判断'}`)
       .join('；');
     const mainline = story.mainlineNodeIds
       .map((id) => story.nodes.find((node) => node.id === id)?.label)
@@ -3000,24 +3054,26 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      .slice(0, 5)
 	      .map((link) => `${link.skillName}〔${inboxSkillRoleLabel(link.role)}〕`)
 	      .join(' → ');
-	    const delivery = story?.finalDeliverySignalCount && story.finalDeliverySignalCount > 0 ? ' → 交付' : '';
+	    const delivery = story?.finalDeliverySignalCount && story.finalDeliverySignalCount > 0 ? ' → 有结果' : '';
 	    return chain ? `${card.skillName}〔${roleText}〕 · 主线：用户目标 → ${chain}${delivery}` : `${card.skillName}〔${roleText}〕 · 未提取到明确执行主线`;
 	  };
 	  const inboxCardStatus = (card: InboxSkillCard): string => {
 	    const answers = card.sessions.flatMap((s) => s.sessionStory?.answers ?? []);
 	    const goal = answers.find((a) => a.key === 'goal_satisfaction');
+	    if (goal?.status === 'degraded') return '数据不可判';
 	    if (goal?.status === 'attention') return '需复核';
 	    if (goal?.status === 'ok') return '可能满足';
-	    if (card.sessions.some((s) => (s.reviewerReport?.oneLookMetrics.finalDeliverySignalCount ?? 0) > 0)) return '有交付候选';
-	    return '未见交付';
+	    if (card.sessions.some((s) => (s.reviewerReport?.oneLookMetrics.finalDeliverySignalCount ?? 0) > 0)) return '有结果';
+	    return '未见结果';
 	  };
 	  const inboxChainDots = (card: InboxSkillCard): string => {
 	    const top = card.sessions.find((s) => (s.reviewerReport?.chainSteps?.length ?? 0) > 0) ?? card.sessions[0];
 	    const steps = top?.reviewerReport?.chainSteps ?? [];
 	    if (steps.length === 0) return '';
 	    return `<div class="inbox-card-dots" title="这条 session 的 5 步复盘状态">${steps.map((step) => {
-	      const dotClass = step.status === 'attention' ? 'is-attention' : step.status === 'unknown' ? 'is-unknown' : 'is-ok';
-	      return `<span class="inbox-card-dot ${dotClass}" title="${step.order}. ${e(step.label)} · ${step.status === 'attention' ? '需复核' : step.status === 'unknown' ? '未确认' : '有证据'}"></span>`;
+	      const dotClass = step.status === 'attention' || step.status === 'degraded' ? 'is-attention' : step.status === 'unknown' || step.status === 'not_applicable' ? 'is-unknown' : 'is-ok';
+	      const dotTitle = step.status === 'attention' ? '需复核' : step.status === 'degraded' ? '数据不可判' : step.status === 'unknown' ? '未确认' : step.status === 'not_applicable' ? '不适用' : '有证据';
+	      return `<span class="inbox-card-dot ${dotClass}" title="${step.order}. ${e(step.label)} · ${dotTitle}"></span>`;
 	    }).join('')}</div>`;
 	  };
 	  const inboxFindingChips = (card: InboxSkillCard): string => {
@@ -3059,6 +3115,23 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const sessionShort = session.sessionId.length > 10 ? `${session.sessionId.slice(0, 8)}…` : session.sessionId;
 	    return [`Session ${sessionShort}`, entrypoint !== '未记录' ? entrypoint : '', time].filter(Boolean).join(' · ') || 'Session 调用记录';
 	  };
+	  const inboxSessionSearchText = (session: ExperienceSessionSummary): string => [
+	    session.id,
+	    session.sessionId,
+	    session.skillName,
+	    session.sourceTrace,
+	    session.sourceKind,
+	    session.entrypoint,
+	    session.cwd,
+	    session.startTimestamp,
+	    session.endTimestamp,
+	    session.sourceSessionStartTimestamp,
+	    session.sourceSessionEndTimestamp,
+	    session.evidenceChain.firstUserMessage?.snippet,
+	    session.reviewerReport?.title,
+	    session.sessionStory?.summary,
+	    ...(session.sessionStory?.goalSlices ?? []).map((goal) => goal.inferredUserGoal ?? ''),
+	  ].filter(Boolean).join(' ');
 	  const inboxCard = (card: InboxSkillCard, index: number): string => {
 	    const filters: string[] = [card.priority, 'all'];
 	    if (inboxSkillCardReviewed(card)) filters.push('reviewed');
@@ -3068,7 +3141,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const sessionCountChip = card.sessions.length > 1 ? `<span title="${card.skillName} 有 ${card.sessions.length} 次调用记录">${card.sessions.length} 次调用</span>` : '';
 	    const goalLine = inboxSkillGoalLine(card);
 	    const mainline = inboxSkillMainline(card);
-	    return `<li class="inbox-card ${inboxPriorityClass(card)} ${index === 0 ? 'is-active' : ''}" data-inbox-card="${e(card.skillName)}" data-inbox-filters="${e(filters.join(' '))}" onclick="selectInboxCard('${e(card.skillName)}', this)">
+	    const skillSearchText = [card.skillName, goalLine, mainline, inboxCardStatus(card)].join(' ');
+	    const sessionSearchText = card.sessions.map(inboxSessionSearchText).join(' ');
+	    return `<li class="inbox-card ${inboxPriorityClass(card)} ${index === 0 ? 'is-active' : ''}" data-inbox-card="${e(card.skillName)}" data-inbox-filters="${e(filters.join(' '))}" data-inbox-skill-search="${e(skillSearchText)}" data-inbox-session-search="${e(sessionSearchText)}" onclick="selectInboxCard('${e(card.skillName)}', this)">
 	      <div class="inbox-card-row inbox-card-row-title">
 	        <span class="inbox-card-priority"></span>
 	        <span class="inbox-card-title" title="${e(card.skillName)}">${e(card.skillName)}</span>
@@ -3086,9 +3161,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      </div>
 	    </li>`;
 	  };
-	  const inboxStatusBadge = (status: 'ok' | 'attention' | 'unknown'): string => {
+	  const inboxStatusBadge = (status: ExperienceSessionStoryAnswer['status']): string => {
+	    if (status === 'degraded') return '<span class="inbox-answer-status is-degraded">数据不可判</span>';
 	    if (status === 'attention') return '<span class="inbox-answer-status is-attention">需复核</span>';
 	    if (status === 'unknown') return '<span class="inbox-answer-status is-unknown">待判断</span>';
+	    if (status === 'not_applicable') return '<span class="inbox-answer-status is-not-applicable">不适用</span>';
 	    return '<span class="inbox-answer-status is-ok">有证据</span>';
 	  };
 	  const inboxSkillRoleLabel = (role: 'router' | 'executor' | 'mixed' | 'unknown'): string => {
@@ -3102,6 +3179,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const roleLabel = link ? inboxSkillRoleLabel(link.role) : '执行';
 	    const indicators = displayIndicatorsForSession(skill);
 	    const dur = formatTimeRange(skill.startTimestamp, skill.endTimestamp);
+	    const startTime = skill.startTimestamp ? skill.startTimestamp.slice(5, 16).replace('T', ' ') : '未记录';
 	    const priorityLabel = skill.reviewPriority === 'review_first' ? '需复核' : skill.reviewPriority === 'sample_review' ? '抽样' : '常规';
 	    const priorityCls = skill.reviewPriority === 'review_first' ? 'is-priority-high' : skill.reviewPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
 	    const currentCls = isCurrent ? 'is-current' : '';
@@ -3112,11 +3190,17 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      : `selectInboxCardById('${e(skill.skillName)}', '${e(skill.id)}')`;
 	    const jumpAttrs = isCurrent ? '' : ` data-inbox-jump-card="${e(sameSkill ? skill.id : skill.skillName)}"`;
 	    return `<li class="inbox-flow-item ${priorityCls} ${currentCls}">
-	      <div class="inbox-flow-anchor"${jumpAttrs}${!isCurrent ? ` onclick="${jumpAction}"` : ''} role="button">
-	        <span class="inbox-flow-index">${index + 1}</span>
+	      <div class="inbox-flow-time">${e(startTime)}</div>
+	      <div class="inbox-flow-rail"><span class="inbox-flow-index">${index + 1}</span></div>
+	      <div class="inbox-flow-anchor"${jumpAttrs}${!isCurrent ? ` onclick="${jumpAction}"` : ''} role="button" title="${isCurrent ? '当前查看的调用段' : '点击切换到这个调用段'}">
 	        <div class="inbox-flow-body">
 	          <div class="inbox-flow-title"><strong>${e(skill.skillName)}</strong><em>${e(roleLabel)}</em><span class="inbox-flow-priority">${priorityLabel}</span>${tag}</div>
-	          <div class="inbox-flow-meta">调用段 ${skill.invocationIds.length} · 工具 ${indicators.toolCallCount} · 失败 ${indicators.toolFailureCount} · ${e(dur)}</div>
+	          <div class="inbox-flow-meta">
+	            <span>调用段 ${skill.invocationIds.length}</span>
+	            <span>工具 ${indicators.toolCallCount}</span>
+	            <span>失败 ${indicators.toolFailureCount}</span>
+	          </div>
+	          <div class="inbox-flow-range">${e(dur)}</div>
 	        </div>
 	      </div>
 	    </li>`;
@@ -3132,7 +3216,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        ${siblingHint}
 	      </header>
 	      <div class="inbox-flow-popover-body">
-	        <ol class="inbox-flow-list">${siblings.map((sib, index) => inboxFlowItem(cardSkillName, sib, index, sib.id === session.id)).join('')}</ol>
+	        <ol class="inbox-flow-list inbox-flow-timeline">${siblings.map((sib, index) => inboxFlowItem(cardSkillName, sib, index, sib.id === session.id)).join('')}</ol>
 	        ${goalSlices.length > 0 ? `<div class="inbox-flow-slices"><h4>用户目标段</h4>${goalSlices.map((goal) => `<div class="inbox-flow-slice"><strong>目标段 ${goal.order}</strong><span>${e(goal.skillNames.join('、') || '未记录能力')}</span><p>${e(goal.inferredUserGoal ?? '未提取到明确用户目标')}</p></div>`).join('')}</div>` : ''}
 	        ${dispatches.length > 0 ? `<div class="inbox-flow-dispatches"><h4>子任务分支</h4>${dispatches.map((d) => `<div class="inbox-flow-dispatch"><strong>分支 ${d.order}：${e(d.label)}</strong><span>${d.eventCount} 条事件${d.attachTo?.messageIndex !== undefined ? ` · 挂接 #${d.attachTo.messageIndex}` : ''}</span></div>`).join('')}</div>` : ''}
 	      </div>
@@ -3220,9 +3304,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  type ManualCorrectionTarget =
 	    | 'goal_keyword_correction'
 	    | 'result_artifact_correction'
+	    | 'completion_result_correction'
+	    | 'deliverable_artifact_correction'
 	    | 'skill_relevance_correction'
 	    | 'workflow_completion_correction'
-	    | 'hardrule_execution_correction';
+	    | 'hardrule_execution_correction'
+	    | 'main_tool_execution_correction';
 	  type ManualCorrectionOption = { value: string; label: string };
 	  const manualCorrectionLabel = (raw?: string): string => {
 	    if (!raw) return '';
@@ -3261,11 +3348,20 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  };
 	  const inboxManualCorrectionControls = (skill: ExperienceSessionSummary, answerKey: string): string => {
 	    const baseId = skill.id;
-	    const deliveryOptions = [
-	      { value: 'final_delivery', label: '最后交付产物' },
-	      { value: 'artifact_delivery', label: '有结果产物' },
-	      { value: 'progress_update', label: '只是过程进展' },
-	      { value: 'not_delivery', label: '没有交付产物' },
+	    const completionResultOptions = [
+	      { value: 'completed', label: '有完成反馈' },
+	      { value: 'result_feedback', label: '有结果反馈' },
+	      { value: 'progress_only', label: '只是过程进展' },
+	      { value: 'not_completed', label: '没有完成反馈' },
+	      { value: 'unknown', label: '无法判断' },
+	    ];
+	    const deliverableArtifactOptions = [
+	      { value: 'doc_link', label: '文档链接' },
+	      { value: 'demo_url', label: 'Demo 地址' },
+	      { value: 'code_block', label: '代码块' },
+	      { value: 'file_path', label: '文件路径' },
+	      { value: 'uploaded_artifact', label: '上传产物' },
+	      { value: 'no_artifact', label: '没有具体产物' },
 	      { value: 'unknown', label: '无法判断' },
 	    ];
 	    const relevanceOptions = [
@@ -3288,16 +3384,25 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      { value: 'not_applicable', label: '规则不适用' },
 	      { value: 'unknown', label: '无法判断' },
 	    ];
+	    const mainToolOptions = [
+	      { value: 'hit', label: '核心工具命中' },
+	      { value: 'missed', label: '核心工具未命中' },
+	      { value: 'not_declared', label: '未声明核心工具' },
+	      { value: 'not_applicable', label: '不适用' },
+	      { value: 'unknown', label: '无法判断' },
+	    ];
 	    const buttons = answerKey === 'goal_satisfaction'
 	      ? [
 	          renderManualCorrectionButton('goal_keyword_correction', `${baseId}:goal_keyword`, '改目标关键词', [], 'text'),
-	          renderManualCorrectionButton('result_artifact_correction', `${baseId}:result_artifact`, '标注结果产物', deliveryOptions),
+	          renderManualCorrectionButton('completion_result_correction', `${baseId}:completion_result`, '标注有结果', completionResultOptions),
+	          renderManualCorrectionButton('deliverable_artifact_correction', `${baseId}:deliverable_artifact`, '标注有产物', deliverableArtifactOptions),
 	        ]
 	      : answerKey === 'declared_behavior_fit'
 	        ? [
-	            renderManualCorrectionButton('skill_relevance_correction', `${baseId}:skill_relevance:${skill.skillName}`, 'skill 是否相关', relevanceOptions),
-	            renderManualCorrectionButton('workflow_completion_correction', `${baseId}:workflow_completion:${skill.skillName}`, 'workflow 完整性', workflowOptions),
-	            renderManualCorrectionButton('hardrule_execution_correction', `${baseId}:hardrule_execution:${skill.skillName}`, 'hardRule 执行', hardruleOptions),
+	            renderManualCorrectionButton('skill_relevance_correction', `${baseId}:skill_relevance:${skill.skillName}`, '能力是否相关', relevanceOptions),
+	            renderManualCorrectionButton('workflow_completion_correction', `${baseId}:workflow_completion:${skill.skillName}`, '标准流程完整性', workflowOptions),
+	            renderManualCorrectionButton('hardrule_execution_correction', `${baseId}:hardrule_execution:${skill.skillName}`, '硬性规则执行', hardruleOptions),
+	            renderManualCorrectionButton('main_tool_execution_correction', `${baseId}:main_tool_execution:${skill.skillName}`, '核心工具状态', mainToolOptions),
 	          ]
 	        : [];
 	    if (buttons.length === 0) return '';
@@ -3306,17 +3411,52 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      <div class="manual-correction-actions">${buttons.join('')}</div>
 	    </div>`;
 	  };
-	  const inboxAnswerChecklist = (skill: ExperienceSessionSummary, answerKey: string): string => {
+	  const inboxChecklistStatusClass = (item: ExperienceChecklistItem): string => {
+	    if (item.status === 'passed') return 'is-ok';
+	    if (item.status === 'degraded') return 'is-degraded';
+	    if (item.status === 'failed') return item.contribution === 'blocking' ? 'is-blocking' : 'is-missing';
+	    if (item.status === 'not_declared') return 'is-not-declared';
+	    if (item.status === 'not_applicable') return 'is-not-applicable';
+	    return 'is-unknown';
+	  };
+	  const inboxChecklistStatusIcon = (item: ExperienceChecklistItem): string => {
+	    if (item.status === 'passed') return '✅';
+	    if (item.status === 'degraded') return '!';
+	    if (item.status === 'failed') return item.contribution === 'blocking' ? '×' : '待';
+	    if (item.status === 'not_declared') return '未';
+	    if (item.status === 'not_applicable') return '-';
+	    return '?';
+	  };
+	  const inboxAnswerChecklistFromItems = (items: ExperienceChecklistItem[]): string => {
+	    return `<div class="inbox-answer-checklist">${items.map((item) => `<span class="inbox-answer-check ${inboxChecklistStatusClass(item)}" title="${e(item.reason)}">
+	      <span class="inbox-answer-check-icon">${e(inboxChecklistStatusIcon(item))}</span>${e(item.label)}
+	    </span>`).join('')}</div>`;
+	  };
+	  const inboxAnswerChecklist = (skill: ExperienceSessionSummary, answer: ExperienceSessionStoryAnswer): string => {
+	    const answerKey = answer.key;
+	    if ((answer.checklistItems ?? []).length > 0) {
+	      return `${inboxAnswerChecklistFromItems(answer.checklistItems)}${inboxManualCorrectionControls(skill, answerKey)}`;
+	    }
 	    const goalKeywords = inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet);
-	    const deliverySnippet = inboxExtractKeyword(skill.evidenceChain?.lastAssistantMessage?.snippet, 60);
 	    const chain = skillChains[skill.skillName];
+	    const displayIndicators = displayIndicatorsForSession(skill);
 	    const hasGoalKeyword = goalKeywords.length > 0;
-	    const hasDelivery = skill.indicators.assistantDeliverySignalCount > 0 || Boolean(deliverySnippet);
+	    const hasCompletionResult = displayIndicators.assistantDeliverySignalCount > 0;
+	    const hasDeliverableArtifact = displayIndicators.deliverableArtifactSignalCount > 0;
 	    const hasSkillDescriptionHit = (skill.evidenceChain?.skillContextCount ?? 0) > 0;
 	    const workflowNodes = chain?.runtime.workflowNodes ?? [];
 	    const hasCompleteWorkflow = workflowNodes.length > 0 && workflowNodes.every((node) => node.status === 'passed');
 	    const hardRuleChecks = chain?.runtime.hardRules ?? [];
 	    const hasExecutedHardRules = hardRuleChecks.length > 0 && hardRuleChecks.every((rule) => rule.status === 'passed');
+	    const hasExpectedToolMissed = (skill.reviewerReport?.findings ?? []).some((finding) => finding.ruleSource === 'expected_tools_missed');
+	    const executionText = skill.reviewerReport?.chainSteps.find((step) => step.label === '执行流程')?.text ?? '';
+	    const expectedToolDeclared = hasExpectedToolMissed || /声明的(?:主业|核心)工具/.test(executionText);
+	    const hasMainToolHit = expectedToolDeclared && /命中声明的(?:主业|核心)工具/.test(executionText) && !hasExpectedToolMissed;
+	    const mainToolLabel = expectedToolDeclared
+	      ? hasMainToolHit
+	        ? '核心工具命中'
+	        : '核心工具未命中'
+	      : '未声明核心工具';
 	    const hasNegativeFeedback = skill.indicators.negativeFeedbackCount > 0 || skill.indicators.userCorrectionCount > 0;
 	    const hasFollowUp = skill.indicators.userFollowUpCount > 0;
 	    const hasSupplementContext = skill.indicators.userFollowUpCount > 0 || skill.indicators.userMessageCount > 1;
@@ -3324,14 +3464,16 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const checks = answerKey === 'goal_satisfaction'
 	      ? [
 	          { label: `用户目标关键字：${goalKeywords || '未提取到'}`, ok: hasGoalKeyword },
-	          { label: '有结果产物', ok: hasDelivery },
-	          { label: '用户针对结果产物反复追问', ok: hasFollowUp },
+	          { label: '有结果：看到完成态或结果反馈', ok: hasCompletionResult },
+	          { label: '有产物：看到链接、路径、代码块或文件', ok: hasDeliverableArtifact },
+	          { label: '用户针对结果或产物反复追问', ok: hasFollowUp },
 	        ]
 	      : answerKey === 'declared_behavior_fit'
 	        ? [
-	            { label: 'skill描述命中用户提问', ok: hasSkillDescriptionHit },
-	            { label: '完整workflow执行', ok: hasCompleteWorkflow },
-	            { label: '硬性规则是否执行', ok: hasExecutedHardRules },
+	            { label: '能力描述命中用户提问', ok: hasSkillDescriptionHit },
+	            { label: '标准流程完整执行', ok: hasCompleteWorkflow },
+	            { label: '硬性规则执行', ok: hasExecutedHardRules },
+	            { label: mainToolLabel, ok: hasMainToolHit },
 	          ]
 	        : [
 	            { label: '用户有负面反馈如反驳、不满等', ok: hasNegativeFeedback },
@@ -3355,6 +3497,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    </div>`;
 	  };
 	  const inboxBuildSkillActionSuggestions = (skill: ExperienceSessionSummary): string[] => {
+	    const reportSuggestions = skill.reviewerReport?.authorSuggestions ?? [];
+	    if (reportSuggestions.length > 0) {
+	      return reportSuggestions.filter((suggestion, index, arr) => arr.indexOf(suggestion) === index).slice(0, 4);
+	    }
 	    const suggestions: string[] = [];
 	    const chain = skillChains[skill.skillName];
 	    const findings = skill.reviewerReport?.findings ?? [];
@@ -3366,11 +3512,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    }
 	    if (
 	      hasFinding('final_delivery_absent')
+	      || goalAnswer?.status === 'degraded'
 	      || goalAnswer?.status === 'attention'
 	      || goalAnswer?.status === 'unknown'
 	      || (skill.reviewerReport?.oneLookMetrics.finalDeliverySignalCount ?? 0) === 0
 	    ) {
-	      suggestions.push('优化完成情况判断：明确什么算最后交付产物，过程进展不要当成交付，并保留可回溯证据。示例：能力最后一次回复需要带明确的完成标记（"已完成 / 结果如下 / 已生成"）或附上产物（代码块、文档链接）。');
+	      suggestions.push('优化完成情况判断：明确什么算有结果、什么算有产物，过程进展不要当成完成，并保留可回溯证据。示例：能力最后一次回复需要带明确的完成标记（"已完成 / 结果如下 / 已生成"），如有产物则附上代码块、文档链接或文件路径。');
 	    }
 	    if (hasFinding('user_hard_rule') || skill.indicators.hardRuleTextHitCount > 0) {
 	      suggestions.push('把用户反复提出的硬性要求沉淀到 skill 规则或流程检查点，减少依赖用户临时纠偏。示例：如果用户多次强调"不要写入隐私数据"，就在 hardRules 中加入"禁止将真实用户隐私写入测试、日志或报告"，并在 workflow 的交付前增加隐私检查节点。');
@@ -3413,6 +3560,63 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      </details>
 	    </section>`;
 	  };
+	  const inboxAnswerReasonLabel = (reason: ExperienceSessionStoryAnswer['reason']): string => {
+	    if (reason === 'data_degraded') return '数据质量不足';
+	    if (reason === 'blocking_failed') return '关键项未通过';
+	    if (reason === 'attention_accumulated') return '存在复核项';
+	    if (reason === 'unknown_dominant') return '未知项较多';
+	    if (reason === 'all_passed') return '关键项通过';
+	    return '当前不适用';
+	  };
+	  const inboxDataHealth = (skill: ExperienceSessionSummary, answers: ExperienceSessionStoryAnswer[]): { label: string; className: string; facts: string[] } => {
+	    const hasDataDegraded = answers.some((answer) => answer.status === 'degraded' || answer.reason === 'data_degraded');
+	    const hasAttention = answers.some((answer) => answer.status === 'attention' || answer.reason === 'blocking_failed' || answer.reason === 'attention_accumulated');
+	    const hasUnknown = answers.length === 0 || answers.some((answer) => answer.status === 'unknown' || answer.reason === 'unknown_dominant' || answer.reason === 'not_applicable');
+	    const label = hasDataDegraded
+	      ? '数据健康度：不可强判'
+	      : hasAttention
+	        ? '数据健康度：需复核'
+	        : hasUnknown
+	          ? '数据健康度：信息不足'
+	          : '数据健康度：可用于复盘';
+	    const className = hasDataDegraded
+	      ? 'is-degraded'
+	      : hasAttention
+	        ? 'is-attention'
+	        : hasUnknown
+	          ? 'is-unknown'
+	          : 'is-ok';
+	    const facts = [
+	      `真实用户消息 ${skill.evidenceChain.userMessageCount}`,
+	      `skill 上下文 ${skill.evidenceChain.skillContextCount}`,
+	      `助手回复 ${skill.evidenceChain.assistantMessageCount}`,
+	      `工具调用 ${skill.evidenceChain.toolUseCount}`,
+	    ];
+	    return { label, className, facts };
+	  };
+	  const inboxRenderDataHealth = (skill: ExperienceSessionSummary, answers: ExperienceSessionStoryAnswer[]): string => {
+	    const health = inboxDataHealth(skill, answers);
+	    return `<div class="inbox-trust-layer">
+	      <span class="inbox-data-health ${health.className}">${e(health.label)}</span>
+	      ${health.facts.map((fact) => `<span class="inbox-trust-fact">${e(fact)}</span>`).join('')}
+	    </div>`;
+	  };
+	  const inboxRenderParentStatuses = (answers: ExperienceSessionStoryAnswer[]): string => {
+	    if (answers.length === 0) return '';
+	    return `<div class="inbox-parent-status-row">${answers.map((answer) => `<div class="inbox-parent-status ${answer.status === 'degraded' ? 'is-degraded' : answer.status === 'attention' ? 'is-attention' : answer.status === 'unknown' ? 'is-unknown' : answer.status === 'not_applicable' ? 'is-not-applicable' : 'is-ok'}">
+	      <span>${e(answer.label)}</span>
+	      ${inboxStatusBadge(answer.status)}
+	      <em>${e(inboxAnswerReasonLabel(answer.reason))}</em>
+	    </div>`).join('')}</div>`;
+	  };
+	  const inboxRenderSessionSuggestions = (skill: ExperienceSessionSummary): string => {
+	    const suggestions = inboxBuildSkillActionSuggestions(skill);
+	    if (suggestions.length === 0) return '';
+	    return `<div class="inbox-review-suggestions">
+	      <div class="inbox-review-layer-title">建议</div>
+	      <ul>${suggestions.slice(0, 4).map((suggestion) => `<li>${e(suggestion)}</li>`).join('')}</ul>
+	    </div>`;
+	  };
 	  const inboxRenderSkillCompletion = (skill: ExperienceSessionSummary): string => {
 	    const report = skill.reviewerReport;
 	    const story = skill.sessionStory;
@@ -3425,13 +3629,22 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        <div><h4>${e(skill.skillName)}</h4><span class="inbox-skill-subtitle">${e(report?.title ?? '常规观测')}</span></div>
 	        ${report?.summary ? `<p class="inbox-skill-summary">${e(cleanReportCopy(report.summary))}</p>` : ''}
 	      </header>
-	      ${answers.length > 0 ? `<div class="inbox-answer-grid">
-	        ${answers.map((answer) => `<article class="inbox-answer ${answer.status === 'attention' ? 'is-attention' : answer.status === 'unknown' ? 'is-unknown' : 'is-ok'}">
-	          <div class="inbox-answer-head"><strong>${e(answer.label)}</strong>${inboxStatusBadge(answer.status)}</div>
-	          ${inboxAnswerChecklist(skill, answer.key)}
-	          ${inboxAnswerEvidenceButtons(answer.evidenceRefs)}
-	        </article>`).join('')}
-	      </div>` : '<p class="inbox-skill-empty">这条能力调用暂未生成完成情况判断。</p>'}
+	      ${inboxRenderDataHealth(skill, answers)}
+	      ${answers.length > 0 ? `<div class="inbox-review-layer">
+	        <div class="inbox-review-layer-title">判定</div>
+	        ${inboxRenderParentStatuses(answers)}
+	      </div>
+	      <div class="inbox-review-layer">
+	        <div class="inbox-review-layer-title">可信事实 checklist</div>
+	        <div class="inbox-answer-grid">
+	          ${answers.map((answer) => `<article class="inbox-answer ${answer.status === 'degraded' ? 'is-degraded' : answer.status === 'attention' ? 'is-attention' : answer.status === 'unknown' ? 'is-unknown' : answer.status === 'not_applicable' ? 'is-not-applicable' : 'is-ok'}">
+	            <div class="inbox-answer-head"><strong>${e(answer.label)}</strong>${inboxStatusBadge(answer.status)}</div>
+	            ${inboxAnswerChecklist(skill, answer)}
+	            ${inboxAnswerEvidenceButtons(answer.evidenceRefs)}
+	          </article>`).join('')}
+	        </div>
+	      </div>
+	      ${inboxRenderSessionSuggestions(skill)}` : '<p class="inbox-skill-empty">这条能力调用暂未生成完成情况判断。</p>'}
 	      <div class="inbox-detail-actions" data-inbox-detail-actions data-inbox-session-id="${safeId}">
 	        <div class="inbox-detail-actions-row"><strong class="inbox-detail-actions-title">人工标注</strong><span class="inbox-detail-actions-meta">针对能力 ${e(skill.skillName)}</span></div>
 	        <div class="inbox-detail-actions-buttons">
@@ -3515,7 +3728,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      { key: 'userCorrection', label: '纠正', value: indicators.userCorrectionCount, detail: [], note: '用户明确纠正、否决前一轮交付的次数。出现即建议进版块 ④ 看上下文。', anomaly: indicators.userCorrectionCount > 0 },
 	      { key: 'userInterruption', label: '人工中断', value: indicators.userInterruptionCount, detail: [], note: '用户在执行过程中主动中断的次数。可能意味着方向跑偏。', anomaly: indicators.userInterruptionCount > 0 },
 	      { key: 'negativeFeedback', label: '负向反馈', value: indicators.negativeFeedbackCount, detail: [], note: '用户出现明确负向情绪表达的次数。', anomaly: indicators.negativeFeedbackCount > 0 },
-	      { key: 'delivery', label: '交付候选', value: metrics.assistantDeliverySignalCount, detail: [], note: '回答中出现疑似交付信号（如代码块、"已完成"等）的次数。', anomaly: false },
+	      { key: 'completionResult', label: '有结果', value: metrics.assistantDeliverySignalCount, detail: [], note: '回答中出现完成态或结果反馈的次数。它表示任务可能执行完成，不等于一定有可打开产物。', anomaly: false },
+	      { key: 'deliverableArtifact', label: '有产物', value: metrics.deliverableArtifactSignalCount ?? indicators.deliverableArtifactSignalCount ?? 0, detail: [], note: '回答中出现文档链接、Demo 地址、文件路径、代码块或上传产物的次数。', anomaly: false },
 	      { key: 'progress', label: '过程进展', value: metrics.assistantProgressUpdateCount ?? 0, detail: [], note: '回答中出现"正在 / 仍在 / 进度更新"等过程进展信号的次数。这类不算最终交付。', anomaly: false },
 	      { key: 'selfCorrection', label: '自我纠正', value: metrics.selfCorrectionCount ?? indicators.selfCorrectionCount ?? 0, detail: [], note: 'agent 在没有用户介入的情况下发现问题并主动修正执行策略。少量说明有恢复能力，高频说明流程不稳。', anomaly: (metrics.selfCorrectionCount ?? indicators.selfCorrectionCount ?? 0) > 0 },
 	      { key: 'repeatedExecution', label: '重复执行', value: metrics.repeatedExecutionCount ?? indicators.repeatedExecutionCount ?? 0, detail: [], note: '同类步骤、工具或流程被重复执行。高频出现时通常对应绕路或 workflow 不清晰。', anomaly: (metrics.repeatedExecutionCount ?? indicators.repeatedExecutionCount ?? 0) > 0 },
@@ -3525,7 +3739,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const metricRow = cards.length === 0
 	      ? '<p class="inbox-skill-empty">这条能力调用没有运行指标。</p>'
 	      : `<div class="inbox-metric-grid-wrap"><div class="inbox-metric-hint">点击任意指标卡可查看分布详情，红色卡片是检测到的异常。</div><div class="inbox-metric-grid">${cards.map((card) => `<button type="button" class="inbox-metric-card ${card.anomaly ? 'is-anomaly' : ''}" title="点击查看 ${e(card.label)} 详情" data-metric-key="${e(card.key)}" data-metric-label="${e(card.label)}" data-metric-value="${card.value}" data-metric-detail="${inboxMetricCardJson(card.detail)}" data-metric-note="${e(card.note)}" data-metric-anomaly="${card.anomaly ? '1' : '0'}" data-metric-jump="${evidenceJumpId}" onclick="openInboxMetricPopover(this)"><span>${e(card.label)}</span><strong>${card.value}</strong><em class="inbox-metric-card-hint">点击看详情</em></button>`).join('')}</div></div>`;
-	    const runtimeSuggestions = inboxRenderSuggestionsBlock(skill, '执行细节下一步建议', ['工具', '规则', '流程', '失败', '硬性']);
+	    const runtimeSuggestions = inboxRenderSuggestionsBlock(skill, '流程规则执行细节下一步建议', ['工具', '规则', '流程', '失败', '硬性']);
 	    return `<article class="inbox-skill-block">
 	      <header class="inbox-skill-head"><div><h4>${e(skill.skillName)}</h4><span class="inbox-skill-subtitle">运行指标 + 规则 / 流程 · 模型：${e(runtimeModel)}</span></div></header>
 	      ${metricRow}
@@ -3587,12 +3801,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const flowTemplateId = `inbox-flow-template-${safeId}`;
 	    const evidenceSummaryText = `工具 ${indicators.toolCallCount} · 失败 ${indicators.toolFailureCount} · 用户消息 ${indicators.userMessageCount}`;
 	    const navItems = [
-	      { id: `inbox-sec-completion-${safeId}`, label: '① 完成情况' },
-	      { id: `inbox-sec-runtime-${safeId}`, label: '② 执行细节' },
+	      { id: `inbox-sec-completion-${safeId}`, label: '① 可信事实与判定' },
+	      { id: `inbox-sec-runtime-${safeId}`, label: '② 流程规则执行细节' },
 	      { id: `inbox-sec-evidence-${safeId}`, label: '③ 原文回溯' },
 	    ];
 	    const navHtml = `<nav class="inbox-detail-nav" aria-label="跳到对应版块">${navItems.map((item) => `<a href="#${item.id}" data-inbox-nav onclick="scrollInboxSectionIntoView('${item.id}', event)">${item.label}</a>`).join('')}</nav>`;
-	    return `<article class="inbox-session-pane ${isActive ? 'is-active' : ''}" data-session-pane="${safeId}">
+	    return `<article class="inbox-session-pane ${isActive ? 'is-active' : ''}" data-session-pane="${safeId}" data-session-search="${e(inboxSessionSearchText(session))}">
 	      <div class="inbox-session-meta">
 	        <span>Session <code>${e(session.sessionId)}</code></span>
 	        <span>执行 ${e(inboxFormatDuration(session.sourceSessionDurationMs))}</span>
@@ -3604,7 +3818,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      <template id="${flowTemplateId}">${inboxRenderSessionFlow(cardSkillName, session, siblings, flowSummaryText)}</template>
 	      <section class="inbox-section" data-inbox-section="completion" id="inbox-sec-completion-${safeId}">
 	        <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
-	          <h3>① 能力完成情况</h3>
+	          <h3>① 可信事实与判定</h3>
 	          <span class="inbox-section-summary ${completionSummaryClass}">${e(completionSummaryText)}</span>
 	          <span class="inbox-section-hint">${e(session.skillName)} 是否满足用户目标 / 是否符合能力定义 / 用户感受</span>
 	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">收起</button>
@@ -3613,7 +3827,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      </section>
 	      <section class="inbox-section is-collapsed" data-inbox-section="runtime" id="inbox-sec-runtime-${safeId}">
 	        <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
-	          <h3>② 能力执行细节</h3>
+	          <h3>② 流程规则执行细节</h3>
 	          <span class="inbox-section-summary ${runtimeSummaryClass}">${e(runtimeSummaryText)}</span>
 	          <span class="inbox-section-hint">默认折叠；展开看运行指标和能力定义链路</span>
 	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">展开</button>
@@ -3630,7 +3844,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	          const label = inboxFormatSessionLabel(s);
 	          const flowTemplateId = `inbox-flow-template-${e(s.id)}`;
 	          const priorityCls = s.reviewPriority === 'review_first' ? 'is-priority-high' : s.reviewPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
-	          return `<span class="inbox-session-tab-item">
+	          return `<span class="inbox-session-tab-item" data-session-tab-item="${e(s.id)}" data-session-search="${e(inboxSessionSearchText(s))}">
 	            <button type="button" class="inbox-session-tab ${priorityCls} ${i === 0 ? 'is-active' : ''}" data-session-tab="${e(s.id)}" onclick="selectInboxSessionTab('${safeSkill}', '${e(s.id)}', this)" title="${e(s.sessionId)}">${e(label)}</button>
 	            <button type="button" class="inbox-session-flow-chip" onclick="openInboxSessionFlowPopover('${flowTemplateId}', this, event)" title="查看这条 session 的执行过程">查看过程</button>
 	          </span>`;
@@ -3662,12 +3876,22 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	          <button type="button" class="inbox-chip" data-inbox-filter="sample_review" onclick="setInboxFilter('sample_review', this)">抽样 ${inboxSampleCount}</button>
 	          <button type="button" class="inbox-chip" data-inbox-filter="reviewed" onclick="setInboxFilter('reviewed', this)">已处理 ${inboxReviewedCount}</button>
 	        </div>
+	        <div class="inbox-search-bar" role="search" aria-label="搜索复盘报告">
+	          <label class="inbox-search-field">Skill 搜索
+	            <input type="search" data-inbox-skill-search-input placeholder="输入 skill 名 / 目标 / 结论" oninput="applyInboxFilters()">
+	          </label>
+	          <label class="inbox-search-field">Session 搜索
+	            <input type="search" data-inbox-session-search-input placeholder="输入 session id / 入口 / 时间 / 用户目标" oninput="applyInboxFilters()">
+	          </label>
+	          <button type="button" class="inbox-search-clear" onclick="clearInboxSearch()">清空</button>
+	          <span class="inbox-search-count" data-inbox-search-count>${inboxTotalCount} 条复盘</span>
+	        </div>
 	      </header>
 	      <div class="inbox-split">
 	        <aside class="inbox-left" aria-label="观测记录列表">
 	          <ul class="inbox-card-list" data-inbox-card-list>${inboxCardListHtml}</ul>
 	        </aside>
-	        <section class="inbox-right" aria-label="观测记录详情">${inboxDetailListHtml}</section>
+	        <section class="inbox-right" aria-label="观测记录详情"><div class="inbox-no-results" data-inbox-no-results style="display:none">没有匹配的复盘记录。</div>${inboxDetailListHtml}</section>
 	      </div>
 	    </section>
   ` : '';
@@ -3777,6 +4001,53 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           color: #fff;
           border-color: var(--accent);
         }
+        .inbox-search-bar {
+          display: grid;
+          grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.2fr) auto auto;
+          align-items: end;
+          gap: 8px;
+          width: 100%;
+        }
+        .inbox-search-field {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          min-width: 0;
+          color: var(--text-muted);
+          font-size: 11px;
+          line-height: 1.3;
+        }
+        .inbox-search-field input {
+          width: 100%;
+          min-width: 0;
+          padding: 7px 9px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg);
+          color: var(--text-primary);
+          font-size: 12px;
+          outline: none;
+        }
+        .inbox-search-field input:focus {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 2px rgba(37,99,235,.12);
+        }
+        .inbox-search-clear {
+          padding: 7px 10px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-size: 12px;
+          cursor: pointer;
+        }
+        .inbox-search-clear:hover { color: var(--text-primary); border-color: var(--border-hover, var(--border)); }
+        .inbox-search-count {
+          color: var(--text-muted);
+          font-size: 12px;
+          white-space: nowrap;
+          padding-bottom: 8px;
+        }
         .inbox-split {
           display: grid;
           grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
@@ -3822,6 +4093,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           color: var(--text-muted);
           font-size: 12px;
           text-align: center;
+        }
+        .inbox-no-results {
+          padding: 24px 16px;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: var(--bg-surface);
+          color: var(--text-muted);
+          text-align: center;
+          font-size: 13px;
         }
         .inbox-card-row { display: flex; align-items: center; gap: 8px; }
         .inbox-card-row-title { font-size: 13px; color: var(--text-primary); }
@@ -3905,6 +4185,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           padding: 0;
           background: transparent;
           overflow: visible;
+        }
+        @media (max-width: 820px) {
+          .inbox-search-bar {
+            grid-template-columns: 1fr;
+            align-items: stretch;
+          }
+          .inbox-search-count {
+            padding-bottom: 0;
+          }
         }
         .inbox-detail-pane { display: none; }
         .inbox-detail-pane.is-active { display: block; }
@@ -4259,25 +4548,71 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         @media (max-width: 1080px) {
           .inbox-detail-nav { display: none !important; }
         }
-        .inbox-flow-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
-        .inbox-flow-item {
-          border: 1px solid var(--border);
-          border-radius: 6px;
-          background: var(--bg-surface);
+        .inbox-flow-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0; }
+        .inbox-flow-timeline {
           position: relative;
         }
-        .inbox-flow-item.is-priority-high { border-left: 3px solid var(--red); }
-        .inbox-flow-item.is-priority-medium { border-left: 3px solid var(--yellow); }
-        .inbox-flow-item.is-priority-low { border-left: 3px solid var(--green); }
+        .inbox-flow-item {
+          display: grid;
+          grid-template-columns: 58px 28px minmax(0, 1fr);
+          gap: 8px;
+          align-items: stretch;
+          position: relative;
+          min-width: 0;
+        }
+        .inbox-flow-item::before {
+          content: '';
+          position: absolute;
+          left: 71px;
+          top: 0;
+          bottom: 0;
+          width: 2px;
+          background: var(--border);
+        }
+        .inbox-flow-item:first-child::before { top: 14px; }
+        .inbox-flow-item:last-child::before { bottom: calc(100% - 14px); }
+        .inbox-flow-time {
+          padding-top: 6px;
+          color: var(--text-muted);
+          font-size: 11px;
+          line-height: 1.3;
+          text-align: right;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          white-space: nowrap;
+        }
+        .inbox-flow-rail {
+          position: relative;
+          display: flex;
+          justify-content: center;
+          padding-top: 2px;
+          z-index: 1;
+        }
         .inbox-flow-anchor {
           display: flex;
-          gap: 10px;
-          align-items: center;
-          padding: 8px 10px;
+          align-items: stretch;
+          padding: 0 0 10px;
           text-decoration: none;
           color: var(--text-primary);
+          min-width: 0;
         }
-        .inbox-flow-anchor:hover { background: var(--bg-muted, rgba(58,58,58,.04)); }
+        .inbox-flow-anchor .inbox-flow-body {
+          width: 100%;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg-surface);
+          padding: 8px 10px;
+          box-sizing: border-box;
+          min-width: 0;
+        }
+        .inbox-flow-item.is-priority-high .inbox-flow-body { border-left: 3px solid var(--red); }
+        .inbox-flow-item.is-priority-medium .inbox-flow-body { border-left: 3px solid var(--yellow); }
+        .inbox-flow-item.is-priority-low .inbox-flow-body { border-left: 3px solid var(--green); }
+        .inbox-flow-item.is-current .inbox-flow-body {
+          background: var(--info-bg, rgba(37,99,235,.08));
+          border-color: rgba(37,99,235,.28);
+        }
+        .inbox-flow-anchor:hover .inbox-flow-body { background: var(--bg-muted, rgba(58,58,58,.04)); }
+        .inbox-flow-item.is-current .inbox-flow-anchor:hover .inbox-flow-body { background: var(--info-bg, rgba(37,99,235,.08)); }
         .inbox-flow-index {
           width: 22px; height: 22px;
           border-radius: 50%;
@@ -4289,13 +4624,27 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           font-size: 12px;
           font-weight: 600;
           flex-shrink: 0;
+          box-shadow: 0 0 0 3px var(--bg-surface);
         }
-        .inbox-flow-body { flex: 1; min-width: 0; }
         .inbox-flow-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .inbox-flow-title strong { font-size: 13px; }
         .inbox-flow-title em { font-style: normal; font-size: 11px; padding: 1px 6px; background: var(--info-bg); color: var(--accent); border-radius: 999px; }
         .inbox-flow-priority { font-size: 11px; color: var(--text-muted); }
-        .inbox-flow-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+        .inbox-flow-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px 10px;
+          font-size: 11px;
+          color: var(--text-muted);
+          margin-top: 4px;
+        }
+        .inbox-flow-range {
+          margin-top: 3px;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.4;
+          word-break: break-word;
+        }
         .inbox-flow-slices,
         .inbox-flow-dispatches { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
         .inbox-flow-slices h4,
@@ -4328,6 +4677,75 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-skill-subtitle { font-size: 12px; color: var(--text-secondary); }
         .inbox-skill-summary { margin: 4px 0 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
         .inbox-skill-empty { color: var(--text-muted); font-size: 12px; margin: 4px 0; }
+        .inbox-trust-layer {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+          margin: 8px 0;
+          padding: 8px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .inbox-data-health,
+        .inbox-trust-fact {
+          display: inline-flex;
+          align-items: center;
+          min-height: 22px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          font-size: 11px;
+          line-height: 1.4;
+          border: 1px solid var(--border);
+          background: var(--bg-soft, rgba(58,58,58,.03));
+          color: var(--text-secondary);
+        }
+        .inbox-data-health { font-weight: 700; }
+        .inbox-data-health.is-ok { border-color: var(--green); background: var(--green-bg); color: var(--green); }
+        .inbox-data-health.is-attention { border-color: var(--red); background: var(--red-bg); color: var(--red); }
+        .inbox-data-health.is-unknown { border-color: var(--yellow); background: var(--yellow-bg); color: var(--yellow); }
+        .inbox-data-health.is-degraded { border-color: var(--red); background: var(--red-bg); color: var(--red); }
+        .inbox-review-layer { margin-top: 10px; }
+        .inbox-review-layer-title {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text-muted);
+          margin-bottom: 6px;
+        }
+        .inbox-parent-status-row {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 8px;
+        }
+        .inbox-parent-status {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          padding: 7px 8px;
+          display: grid;
+          gap: 4px;
+          min-width: 0;
+        }
+        .inbox-parent-status.is-ok { border-color: var(--green); }
+        .inbox-parent-status.is-attention,
+        .inbox-parent-status.is-degraded { border-color: var(--red); }
+        .inbox-parent-status.is-unknown { border-color: var(--yellow); }
+        .inbox-parent-status.is-not-applicable { opacity: .78; }
+        .inbox-parent-status span { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+        .inbox-parent-status em { font-style: normal; font-size: 11px; color: var(--text-muted); }
+        .inbox-review-suggestions {
+          margin-top: 10px;
+          border-top: 1px dashed var(--border);
+          padding-top: 8px;
+        }
+        .inbox-review-suggestions ul { margin: 0; padding-left: 18px; }
+        .inbox-review-suggestions li {
+          margin: 3px 0;
+          font-size: 12px;
+          color: var(--text-secondary);
+          line-height: 1.5;
+        }
         .inbox-answer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
         .inbox-answer {
           padding: 8px 10px;
@@ -4338,6 +4756,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-answer.is-attention { border-color: var(--red); }
         .inbox-answer.is-unknown { border-color: var(--yellow); }
         .inbox-answer.is-ok { border-color: var(--green); }
+        .inbox-answer.is-degraded { border-color: var(--red); background: var(--red-bg); }
+        .inbox-answer.is-not-applicable { border-color: var(--border); opacity: .82; }
         .inbox-answer-head { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
         .inbox-answer-head strong { font-size: 12px; color: var(--text-primary); }
         .inbox-answer p { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
@@ -4368,6 +4788,26 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-answer-check.is-missing {
           color: var(--text-muted);
           background: var(--bg-surface);
+        }
+        .inbox-answer-check.is-blocking {
+          border-color: var(--red);
+          background: var(--red-bg);
+          color: var(--text-primary);
+        }
+        .inbox-answer-check.is-degraded {
+          border-color: var(--red);
+          background: var(--red-bg);
+          color: var(--red);
+          font-weight: 650;
+        }
+        .inbox-answer-check.is-unknown,
+        .inbox-answer-check.is-not-declared {
+          border-color: var(--yellow);
+          background: var(--yellow-bg);
+          color: var(--text-primary);
+        }
+        .inbox-answer-check.is-not-applicable {
+          opacity: .75;
         }
         .inbox-answer-check-icon {
           flex: 0 0 auto;
@@ -4500,6 +4940,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-answer-status.is-attention { background: var(--red-bg); color: var(--red); }
         .inbox-answer-status.is-unknown { background: var(--yellow-bg); color: var(--yellow); }
         .inbox-answer-status.is-ok { background: var(--green-bg); color: var(--green); }
+        .inbox-answer-status.is-degraded { background: var(--red-bg); color: var(--red); }
+        .inbox-answer-status.is-not-applicable { background: var(--bg-soft); color: var(--text-muted); }
         .inbox-skill-findings { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
         .inbox-skill-findings h5 { font-size: 12px; margin: 0 0 6px; color: var(--text-secondary); }
         .inbox-suggestion-block {
@@ -6512,6 +6954,19 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           border-color: rgba(37,99,235,.55);
           box-shadow: 0 0 0 1px rgba(37,99,235,.18);
         }
+        .timeline-row[data-current-skill-window="0"] {
+          opacity: .55;
+        }
+        .timeline-row[data-current-skill-window="0"] .timeline-card {
+          background: rgba(148,163,184,.04);
+          border-color: rgba(148,163,184,.18);
+        }
+        .timeline-row[data-current-skill-window="0"] .timeline-snippet {
+          color: var(--text-muted);
+        }
+        .timeline-row[data-current-skill-window="0"]::before {
+          background: rgba(148,163,184,.25);
+        }
         .timeline-window-marker {
           display: flex;
           align-items: center;
@@ -6667,6 +7122,16 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .timeline-manual-mark-button.is-editing {
           border-color: rgba(37,99,235,.55);
           background: rgba(37,99,235,.14);
+        }
+        .timeline-manual-mark-button.is-window-only {
+          border-color: rgba(107,114,128,.28);
+          background: var(--bg-muted);
+          color: var(--text-secondary);
+        }
+        .timeline-manual-mark-button.is-window-only:hover,
+        .timeline-manual-mark-button.is-window-only.is-editing {
+          border-color: rgba(37,99,235,.38);
+          color: var(--accent);
         }
         .timeline-manual-mark-button.is-marked {
           border-color: rgba(22,163,74,.38);
@@ -7832,11 +8297,17 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           for (var i = 0; i < cards.length; i++) cards[i].classList.remove('is-active');
           if (el) el.classList.add('is-active');
           var panes = document.querySelectorAll('[data-inbox-detail]');
+          var activePane = null;
           for (var j = 0; j < panes.length; j++) {
             var pane = panes[j];
-            if (pane.getAttribute('data-inbox-detail') === id) pane.classList.add('is-active');
-            else pane.classList.remove('is-active');
+            if (pane.getAttribute('data-inbox-detail') === id) {
+              pane.classList.add('is-active');
+              activePane = pane;
+            } else {
+              pane.classList.remove('is-active');
+            }
           }
+          if (activePane) applyInboxSessionSearchForPane(activePane);
           var right = document.querySelector('.inbox-right');
           if (right) right.scrollTop = 0;
         }
@@ -8042,6 +8513,106 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         });
         window.openInboxMetricPopover = openInboxMetricPopover;
         window.closeInboxMetricPopover = closeInboxMetricPopover;
+        function inboxNormalizeSearch(value) {
+          return String(value || '').trim().toLowerCase();
+        }
+        function inboxSearchInput(selector) {
+          var input = document.querySelector(selector);
+          return input ? inboxNormalizeSearch(input.value) : '';
+        }
+        function inboxTextMatches(text, query) {
+          if (!query) return true;
+          return inboxNormalizeSearch(text).indexOf(query) >= 0;
+        }
+        function activeInboxSearch() {
+          return {
+            skill: inboxSearchInput('[data-inbox-skill-search-input]'),
+            session: inboxSearchInput('[data-inbox-session-search-input]')
+          };
+        }
+        function inboxCardMatchesCurrentSearch(card, search) {
+          var filters = (card.getAttribute('data-inbox-filters') || '').split(/\\s+/);
+          var filterMatch = filters.indexOf(inboxCurrentFilter) >= 0;
+          var skillMatch = inboxTextMatches(card.getAttribute('data-inbox-skill-search') || card.getAttribute('data-inbox-card') || '', search.skill);
+          var sessionMatch = inboxTextMatches(card.getAttribute('data-inbox-session-search') || '', search.session);
+          return filterMatch && skillMatch && sessionMatch;
+        }
+        function setInboxNoResultVisible(visible) {
+          var empty = document.querySelector('[data-inbox-no-results]');
+          if (empty) empty.style.display = visible ? '' : 'none';
+        }
+        function updateInboxSearchCount(visibleCount, totalCount) {
+          var el = document.querySelector('[data-inbox-search-count]');
+          if (!el) return;
+          var search = activeInboxSearch();
+          var searching = Boolean(search.skill || search.session || inboxCurrentFilter !== 'all');
+          el.textContent = searching ? visibleCount + ' / ' + totalCount + ' 条复盘' : totalCount + ' 条复盘';
+        }
+        function clearInboxActiveSelection() {
+          var cards = document.querySelectorAll('[data-inbox-card]');
+          for (var i = 0; i < cards.length; i++) cards[i].classList.remove('is-active');
+          var panes = document.querySelectorAll('[data-inbox-detail]');
+          for (var j = 0; j < panes.length; j++) panes[j].classList.remove('is-active');
+        }
+        function applyInboxSessionSearchForPane(pane) {
+          if (!pane) return;
+          var query = inboxSearchInput('[data-inbox-session-search-input]');
+          var tabItems = pane.querySelectorAll('[data-session-tab-item]');
+          var sessionPanes = pane.querySelectorAll('[data-session-pane]');
+          var firstVisibleTab = null;
+          var activeVisible = null;
+          for (var i = 0; i < tabItems.length; i++) {
+            var item = tabItems[i];
+            var text = item.getAttribute('data-session-search') || '';
+            var visible = inboxTextMatches(text, query);
+            item.style.display = visible ? '' : 'none';
+            var tab = item.querySelector('[data-session-tab]');
+            if (visible && !firstVisibleTab) firstVisibleTab = tab;
+            if (visible && tab && tab.classList.contains('is-active')) activeVisible = tab;
+          }
+          for (var j = 0; j < sessionPanes.length; j++) {
+            var sessionPane = sessionPanes[j];
+            var paneText = sessionPane.getAttribute('data-session-search') || '';
+            var paneVisible = inboxTextMatches(paneText, query);
+            sessionPane.style.display = paneVisible ? '' : 'none';
+            if (!paneVisible) sessionPane.classList.remove('is-active');
+          }
+          var nextTab = activeVisible || firstVisibleTab;
+          if (nextTab) {
+            selectInboxSessionTab(pane.getAttribute('data-inbox-detail') || '', nextTab.getAttribute('data-session-tab'), nextTab);
+          }
+        }
+        function applyInboxFilters() {
+          var cards = document.querySelectorAll('[data-inbox-card]');
+          var search = activeInboxSearch();
+          var firstVisible = null;
+          var activeVisible = null;
+          var visibleCount = 0;
+          for (var i = 0; i < cards.length; i++) {
+            var card = cards[i];
+            var visible = inboxCardMatchesCurrentSearch(card, search);
+            card.style.display = visible ? '' : 'none';
+            if (visible) {
+              visibleCount += 1;
+              if (!firstVisible) firstVisible = card;
+              if (card.classList.contains('is-active')) activeVisible = card;
+            }
+          }
+          updateInboxSearchCount(visibleCount, cards.length);
+          setInboxNoResultVisible(visibleCount === 0);
+          if (visibleCount === 0) {
+            clearInboxActiveSelection();
+            return;
+          }
+          selectInboxCard((activeVisible || firstVisible).getAttribute('data-inbox-card'), activeVisible || firstVisible);
+        }
+        function clearInboxSearch() {
+          var skill = document.querySelector('[data-inbox-skill-search-input]');
+          var session = document.querySelector('[data-inbox-session-search-input]');
+          if (skill) skill.value = '';
+          if (session) session.value = '';
+          applyInboxFilters();
+        }
         function setInboxFilter(filter, btn) {
           inboxCurrentFilter = filter;
           var chips = document.querySelectorAll('[data-inbox-filter]');
@@ -8050,17 +8621,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             if (active) chips[i].classList.add('is-active');
             else chips[i].classList.remove('is-active');
           }
-          var cards = document.querySelectorAll('[data-inbox-card]');
-          var firstVisible = null;
-          for (var k = 0; k < cards.length; k++) {
-            var card = cards[k];
-            var filters = (card.getAttribute('data-inbox-filters') || '').split(/\\s+/);
-            var visible = filters.indexOf(filter) >= 0;
-            card.style.display = visible ? '' : 'none';
-            if (visible && !firstVisible) firstVisible = card;
-          }
-          if (firstVisible) selectInboxCard(firstVisible.getAttribute('data-inbox-card'), firstVisible);
+          applyInboxFilters();
         }
+        window.applyInboxFilters = applyInboxFilters;
+        window.clearInboxSearch = clearInboxSearch;
         async function setInboxSessionReview(sessionId, verdict, btn) {
           var actionBlock = document.querySelector('[data-inbox-detail-actions][data-inbox-session-id="' + sessionId + '"]');
           var note = '';
@@ -8865,7 +9429,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               return item.verdict === 'confirmed' || item.verdict === 'rejected';
             }).length;
             manualButtons[j].classList.toggle('is-marked', activeCount > 0);
-            manualButtons[j].textContent = '人工标记' + (activeCount > 0 ? '(' + activeCount + ')' : '');
+            var mode = manualButtons[j].getAttribute('data-manual-mark-mode') || 'metrics';
+            if (mode === 'window_only') {
+              manualButtons[j].textContent = action === 'add_to_current_skill_window' ? '已加入窗口' : '加入窗口';
+            } else {
+              manualButtons[j].textContent = '人工标记' + (activeCount > 0 ? '(' + activeCount + ')' : '');
+            }
           }
         }
         async function submitGoalSliceCorrection(targetId, action, btn) {
@@ -8998,7 +9567,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             return item.verdict === 'confirmed' || item.verdict === 'rejected';
           }).length;
           btn.classList.toggle('is-marked', activeCount > 0);
-          btn.textContent = '人工标记' + (activeCount > 0 ? '(' + activeCount + ')' : '');
+          var mode = btn.getAttribute('data-manual-mark-mode') || 'metrics';
+          if (mode === 'window_only') {
+            btn.textContent = goalAction === 'add_to_current_skill_window' ? '已加入窗口' : '加入窗口';
+          } else {
+            btn.textContent = '人工标记' + (activeCount > 0 ? '(' + activeCount + ')' : '');
+          }
         }
         async function submitTimelineMetricAnnotation(metric, next, btn) {
           var source = {};
@@ -9051,16 +9625,20 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           btn.classList.add('is-editing');
           var metrics = [];
           try { metrics = JSON.parse(btn.getAttribute('data-manual-mark-metrics') || '[]'); } catch { metrics = []; }
+          var mode = btn.getAttribute('data-manual-mark-mode') || 'metrics';
+          var isWindowOnly = mode === 'window_only';
           var goalTargetId = btn.getAttribute('data-manual-mark-goal-target') || '';
           var goalAction = btn.getAttribute('data-manual-mark-goal-action') || '';
           var popover = document.createElement('div');
           popover.className = 'timeline-manual-popover';
           var title = document.createElement('div');
           title.className = 'goal-slice-popover-title';
-          title.textContent = '人工标记这条消息';
+          title.textContent = isWindowOnly ? '加入当前 skill 窗口' : '人工标记这条消息';
           var hint = document.createElement('div');
           hint.className = 'goal-slice-popover-hint';
-          hint.textContent = '这里可以修正消息标签，也可以把这条消息标成目标切片点或加入当前 skill 窗口。消息标签包括纠正、中断、追问、正负反馈、硬性要求、目标切换、产出结果、过程进展、自我纠正和重复执行。';
+          hint.textContent = isWindowOnly
+            ? '这条消息不在当前 skill 窗口内，不能直接打指标标签。需要先加入当前 skill 窗口，重新执行脚本后再标注。'
+            : '这里可以修正消息标签，也可以把这条消息标成目标切片点或加入当前 skill 窗口。消息标签包括纠正、中断、追问、正负反馈、硬性要求、目标切换、有结果、有产物、过程进展、自我纠正和重复执行。';
           var actions = document.createElement('div');
           actions.className = 'timeline-manual-actions';
           var goalSplit = document.createElement('button');
@@ -9075,9 +9653,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           goalClear.type = 'button';
           goalClear.textContent = '清除切片/窗口';
           goalClear.addEventListener('click', function () { submitGoalSliceCorrection(goalTargetId, '', btn); });
-          actions.appendChild(goalSplit);
+          if (!isWindowOnly) actions.appendChild(goalSplit);
           actions.appendChild(goalAdd);
-          actions.appendChild(goalClear);
+          if (!isWindowOnly || goalAction) actions.appendChild(goalClear);
           for (var i = 0; i < metrics.length; i++) {
             (function (metric) {
               var group = document.createElement('div');
