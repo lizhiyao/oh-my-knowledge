@@ -372,7 +372,7 @@ omk init [目录]
 **Flags:**
 
 ```text
-  --lang <zh|en>  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --lang <value>  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 ```
 
 完整描述见 `omk init --help`。
@@ -401,7 +401,7 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
   --gate              静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
   --html <value>      HTML 报告输出路径。可跟 --json / --gate 共存。
   --json              JSON 输出到 stdout，适合 CI / 外部脚本消费。
-  --lang <zh|en>      输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --lang <value>      输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>     LLM model 名，默认 sonnet。
   --samples <value>   样本文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
   --static-only       离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。
@@ -451,7 +451,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --gold-dir <value>              gold dataset 目录
   --judge-models <value>          评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。
   --judge-repeat <value>          每个 dim 评 N 次
-  --lang <zh|en>                  输出语言 zh|en
+  --lang <value>                  输出语言 zh|en
   --layered-stats                 输出分层统计
   --mcp-config <value>            MCP 配置文件路径
   --model <value>                 被测模型
@@ -508,7 +508,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 ```text
   --from <value>        起始时间 ISO，优先级高于 --last
   --kb <value>          知识库 root，启用 KB-aware 分析
-  --lang <zh|en>        输出语言 zh|en
+  --lang <value>        输出语言 zh|en
   --last <value>        时间窗(7d / 24h / 30m）
   --output-dir <value>  分析结果输出目录
   --skills <value>      只看指定 skill，逗号分隔
@@ -569,7 +569,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --executor <value>       执行器名，默认 claude
   --improve-model <value>  负责重写 skill 的 LLM，默认 sonnet
   --judge-models <value>   评委 model（单评委约束），格式 executor:model。默认 claude:haiku
-  --lang <zh|en>           输出语言 zh|en
+  --lang <value>           输出语言 zh|en
   --model <value>          被评测的 LLM，默认 sonnet
   --no-diagnostic          关 LLM diagnostic 调用
   --rounds <value>         最大迭代轮数，默认 5
@@ -602,7 +602,7 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
   --count <value>        生成样本条数。不传由 LLM 按 skill 类型自动决定。
   --fix                  fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
   --focus <value>        生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
-  --lang <zh|en>         输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --lang <value>         输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>        生成 LLM model 名，默认 opus。
   --reports-dir <value>  报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
   --skill-dir <value>    skill 根目录，默认 skills。batch 模式扫此目录。
@@ -634,7 +634,7 @@ omk studio --no-open
   --analyses-dir <value>      分析数据目录（可选）
   --dev                       dev 模式：子进程启动 + 热更新
   --host <value>              监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
-  --lang <zh|en>              输出语言 zh|en
+  --lang <value>              输出语言 zh|en
   --no-open                   不自动打开浏览器
   --observations-dir <value>  观测数据目录（可选）
   --port <value>              监听端口，默认 7799。传 0 让 OS 分配

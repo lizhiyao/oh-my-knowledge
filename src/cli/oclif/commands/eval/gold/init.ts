@@ -12,7 +12,6 @@ export default class EvalGoldInit extends Command {
   static flags = {
     lang: Flags.string({
       description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
-      options: ['zh', 'en'],
       default: 'zh',
     }),
     out: Flags.string({

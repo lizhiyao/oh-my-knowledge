@@ -24,7 +24,7 @@ omk doctor [target] [flags]
 - `--gate` `boolean`:静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
 - `--html` `option`:HTML 报告输出路径。可跟 --json / --gate 共存。
 - `--json` `boolean`:JSON 输出到 stdout，适合 CI / 外部脚本消费。
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option`:LLM model 名，默认 sonnet。
 - `--samples` `option`:样本文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
 - `--static-only` `boolean`:离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。
@@ -78,7 +78,7 @@ omk eval [flags]
 - `--gold-dir` `option`:gold dataset 目录
 - `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。
 - `--judge-repeat` `option`:每个 dim 评 N 次
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en
+- `--lang` `option` (默认 `zh`):输出语言 zh|en
 - `--layered-stats` `boolean`:输出分层统计
 - `--mcp-config` `option`:MCP 配置文件路径
 - `--model` `option`:被测模型
@@ -131,7 +131,7 @@ omk eval gold [flags]
 
 **Flags:**
 
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 
 ## omk eval gold compare
 
@@ -151,7 +151,7 @@ omk eval gold compare <reportId> [flags]
 
 - `--bootstrap-samples` `option`:bootstrap 重采样次数，默认 1000
 - `--gold-dir` `option`:gold dataset 目录，必填
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en
+- `--lang` `option` (默认 `zh`):输出语言 zh|en
 - `--reports-dir` `option`:报告目录，默认 ~/.oh-my-knowledge/reports
 - `--seed` `option`:bootstrap seed，可复现
 - `--variant` `option`:只比对指定 variant，默认全比
@@ -169,7 +169,7 @@ omk eval gold init [flags]
 **Flags:**
 
 - `--annotator` `option`:标注者名，写入 metadata.yaml
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en
+- `--lang` `option` (默认 `zh`):输出语言 zh|en
 - `--out` `option` (默认 `./gold-dataset`):输出目录，默认 ./gold-dataset
 
 ## omk eval gold validate
@@ -188,7 +188,7 @@ omk eval gold validate <dir> [flags]
 
 **Flags:**
 
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en
+- `--lang` `option` (默认 `zh`):输出语言 zh|en
 
 ## omk evolve
 
@@ -211,7 +211,7 @@ omk evolve <skillPath> [flags]
 - `--executor` `option` (默认 `claude`):执行器名，默认 claude
 - `--improve-model` `option` (默认 `sonnet`):负责重写 skill 的 LLM，默认 sonnet
 - `--judge-models` `option` (默认 `claude:haiku`):评委 model（单评委约束），格式 executor:model。默认 claude:haiku
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en
+- `--lang` `option` (默认 `zh`):输出语言 zh|en
 - `--model` `option` (默认 `sonnet`):被评测的 LLM，默认 sonnet
 - `--no-diagnostic` `boolean`:关 LLM diagnostic 调用
 - `--rounds` `option` (默认 `5`):最大迭代轮数，默认 5
@@ -251,7 +251,7 @@ omk init [targetDir] [flags]
 
 **Flags:**
 
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 
 **示例:**
 
@@ -285,7 +285,7 @@ omk observe [sessionsDir] [flags]
 
 - `--from` `option`:起始时间 ISO，优先级高于 --last
 - `--kb` `option`:知识库 root，启用 KB-aware 分析
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en
+- `--lang` `option` (默认 `zh`):输出语言 zh|en
 - `--last` `option`:时间窗(7d / 24h / 30m）
 - `--output-dir` `option`:分析结果输出目录
 - `--skills` `option`:只看指定 skill，逗号分隔
@@ -316,7 +316,7 @@ omk observe inbox [flags]
 - `--include-noise` `boolean`:explore 时也包含 noise 桶
 - `--input-dir` `option`:inbox 数据目录，默认 ~/.oh-my-knowledge/observations
 - `--json` `boolean`:JSON 格式输出
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en
+- `--lang` `option` (默认 `zh`):输出语言 zh|en
 - `--limit` `option`:限制条数，默认 20
 - `--skill` `option`:只看指定 skill
 
@@ -336,7 +336,7 @@ omk observe ingest <traceDir> [flags]
 
 **Flags:**
 
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en
+- `--lang` `option` (默认 `zh`):输出语言 zh|en
 - `--output-dir` `option`:输出目录，默认 ~/.oh-my-knowledge/observations
 
 ## omk observe show
@@ -356,7 +356,7 @@ omk observe show <inboxId> [flags]
 **Flags:**
 
 - `--input-dir` `option`:inbox 数据目录
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en
+- `--lang` `option` (默认 `zh`):输出语言 zh|en
 
 ## omk sample
 
@@ -378,7 +378,7 @@ omk sample [skillPath] [flags]
 - `--count` `option`:生成样本条数。不传由 LLM 按 skill 类型自动决定。
 - `--fix` `boolean`:fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
 - `--focus` `option`:生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option` (默认 `opus`):生成 LLM model 名，默认 opus。
 - `--reports-dir` `option`:报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
 - `--skill-dir` `option` (默认 `skills`):skill 根目录，默认 skills。batch 模式扫此目录。
@@ -419,7 +419,7 @@ omk studio [flags]
 - `--analyses-dir` `option`:分析数据目录（可选）
 - `--dev` `boolean`:dev 模式：子进程启动 + 热更新
 - `--host` `option`:监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
-- `--lang` `zh|en` (默认 `zh`):输出语言 zh|en
+- `--lang` `option` (默认 `zh`):输出语言 zh|en
 - `--no-open` `boolean`:不自动打开浏览器
 - `--observations-dir` `option`:观测数据目录（可选）
 - `--port` `option` (默认 `7799`):监听端口，默认 7799。传 0 让 OS 分配

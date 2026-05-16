@@ -372,7 +372,7 @@ omk init [dir]
 **Flags:**
 
 ```text
-  --lang <zh|en>  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
 ```
 
 For full descriptions: `omk init --help`.
@@ -401,7 +401,7 @@ omk doctor --static-only                # offline mode: static checks only, no L
   --gate              Silent mode: only emit stderr summary on fail. Exit code carries the signal.
   --html <value>      HTML report output path. Coexists with --json / --gate.
   --json              JSON output to stdout, for CI / external script consumption.
-  --lang <zh|en>      Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --lang <value>      Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>     LLM model name, default sonnet.
   --samples <value>   Samples file path (.json/.yaml). Auto-discovered from target / cwd if omitted.
   --static-only       Offline static mode: only 4 static rules, no LLM call.
@@ -451,7 +451,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --gold-dir <value>              Gold dataset dir
   --judge-models <value>          Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.
   --judge-repeat <value>          Judge each dim N times
-  --lang <zh|en>                  Output language zh|en
+  --lang <value>                  Output language zh|en
   --layered-stats                 Emit layered stats
   --mcp-config <value>            MCP config path
   --model <value>                 Evaluated model
@@ -508,7 +508,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 ```text
   --from <value>        Start time ISO, overrides --last
   --kb <value>          KB root, enables KB-aware analysis
-  --lang <zh|en>        Output language zh|en
+  --lang <value>        Output language zh|en
   --last <value>        Time window (7d / 24h / 30m)
   --output-dir <value>  Analysis output directory
   --skills <value>      Filter to specific skills, comma-separated
@@ -569,7 +569,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --executor <value>       Executor name, default claude
   --improve-model <value>  LLM that rewrites the skill, default sonnet
   --judge-models <value>   Judge model (single judge required), executor:model format. Default claude:haiku
-  --lang <zh|en>           Output language zh|en
+  --lang <value>           Output language zh|en
   --model <value>          Evaluated LLM, default sonnet
   --no-diagnostic          Disable diagnostic LLM call
   --rounds <value>         Max iteration rounds, default 5
@@ -602,7 +602,7 @@ omk sample --batch                  # generate for skills missing eval-samples
   --count <value>        Number of samples to generate. Defaults to LLM auto-selection by skill type.
   --fix                  Fix mode: auto-fix sample_design failures using the latest eval report.
   --focus <value>        Generation focus (NL hint). Steers LLM toward certain sample types.
-  --lang <zh|en>         Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --lang <value>         Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>        Generation LLM model name, default opus.
   --reports-dir <value>  Reports dir (fix mode), default ~/.oh-my-knowledge/reports.
   --skill-dir <value>    Skill root dir, default skills. Used by batch mode.
@@ -634,7 +634,7 @@ omk studio --no-open
   --analyses-dir <value>      Analyses dir (optional)
   --dev                       Dev mode: child process with hot reload
   --host <value>              Listen host, default localhost. Use 0.0.0.0 to expose to LAN
-  --lang <zh|en>              Output language zh|en
+  --lang <value>              Output language zh|en
   --no-open                   Do not auto-open browser
   --observations-dir <value>  Observations dir (optional)
   --port <value>              Listen port, default 7799. Pass 0 for OS-assigned

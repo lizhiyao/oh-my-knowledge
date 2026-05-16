@@ -81,10 +81,24 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
 
   it(`OMK_LANG=en_US ambient 不让 oclif parse exit 2(走 legacy fallback)`, async () => {
     // legacy getCliLang 对不支持的 OMK_LANG 值 fallback to zh,oclif lang flag
-    // 不应该把 env 当 enum 校验。回归 PR #120 引入的 env: 'OMK_LANG' 写法。
+    // 不应该把 env / 显式 flag 当 enum 校验。回归 PR #120 引入的 env+options 写法。
     const env = { ...process.env, OMK_LANG: 'en_US' };
     const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env });
     assert.ok(stdout.includes('\nUSAGE\n'), 'doctor --help should succeed under OMK_LANG=en_US, got: ' + stdout.slice(0, 200));
+  });
+
+  it(`显式 --lang fr 不被 oclif enum 拦(legacy fallback to zh)`, async () => {
+    // legacy getCliLang 的契约:unsupported lang fallback to zh,不是 exit。
+    // oclif lang flag 不应当 enum 校验。
+    const { existsSync, rmSync } = await import('node:fs');
+    const dir = '/tmp/omk-startup-lang-fr-test';
+    rmSync(dir, { recursive: true, force: true });
+    try {
+      await execFileAsync('node', [CLI, 'init', dir, '--lang', 'fr']);
+      assert.ok(existsSync(dir), `init --lang fr should fallback to zh and succeed, dir ${dir} should exist`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it(`omk eval gold --lang en 打英文 usage(显式 lang flag 生效)`, async () => {

@@ -105,7 +105,6 @@ export default class Doctor extends Command {
         zh: '输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。',
         en: 'Output language zh|en. Priority: CLI > OMK_LANG env > zh.',
       }),
-      options: ['zh', 'en'],
       default: 'zh',
     }),
     json: Flags.boolean({
