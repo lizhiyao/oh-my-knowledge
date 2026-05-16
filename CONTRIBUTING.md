@@ -151,6 +151,17 @@ omk CLI 已迁到 [@oclif/core](https://oclif.io/docs/) 框架(PR-A spike #113 /
 2. flag 用 `bilingual({zh, en})` 包装,跟生产 `execute()` 的 `parseArgsStrictOrExit` 配置对齐
 3. `run()` 透传 `await execute(process.argv.slice(3))` 给生产业务函数
 4. 在 `test/cli/oclif-<name>.test.ts` 加 --help 双语 + unknown flag exit 2 + 关键 happy/error case
+5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.claude/skills/omk/references/commands.md`(见下一节)
+
+### CLI 文档 codegen(PR-D #109)
+
+oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是 CLI 文档的**单一来源**。`scripts/build-docs.ts` 把它生成到 `.claude/skills/omk/references/commands.md` 的 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` marker 之间。
+
+工作流:
+
+- 改完 oclif Command,跑 `yarn build && yarn build:docs` 同步 commands.md
+- 不跑就会被 CI `yarn build:docs:check` 拦截(exit 1 + 打 diff)
+- README / SKILL.md 仍 hand-maintained,后续 PR 视需要扩 codegen 覆盖
 
 ## Style
 

@@ -14,6 +14,8 @@
   ],
   "scripts": {
     "build": "tsc && node -e \"const fs=require('node:fs'),p=require('node:path');const d='dist/src/eval-core/mock-hook.cjs';fs.mkdirSync(p.dirname(d),{recursive:true});fs.copyFileSync('src/eval-core/mock-hook.cjs',d)\"",
+    "build:docs": "node --import tsx scripts/build-docs.ts --write",
+    "build:docs:check": "node --import tsx scripts/build-docs.ts --check",
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0",
     "test": "vitest run",
@@ -94,6 +96,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^17.0.4",
     "npm-run-all2": "^8.0.4",
+    "tsx": "^4.22.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.58.0",
     "vitest": "^4.1.3"
