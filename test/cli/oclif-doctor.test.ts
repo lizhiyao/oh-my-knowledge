@@ -1,5 +1,5 @@
 /**
- * oclif 路径 doctor 命令验收(OMK_CLI_NEXT=1)。
+ * oclif 路径 doctor 命令验收。
  * 跟 test/cli.test.ts L341-357 的 legacy doctor 测试对照,验证迁移后行为对得齐:
  * - --help 双语切换
  * - unknown flag → exit 2
@@ -26,30 +26,29 @@ interface ExecError extends Error {
   stderr: string;
 }
 
-const OCLIF_ENV = { ...process.env, OMK_CLI_NEXT: '1' };
 
-describe('oclif doctor (OMK_CLI_NEXT=1)', () => {
+describe('oclif doctor', () => {
   it('--help 默认 zh 含中文 description', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env: OCLIF_ENV });
+    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help']);
     assert.ok(stdout.includes('体检 omk 工作目录'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('USAGE'), 'stdout missing USAGE block');
     assert.ok(stdout.includes('--static-only'), 'stdout missing --static-only flag');
   });
 
   it('--help --lang en 切到英文 description', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help', '--lang', 'en'], { env: OCLIF_ENV });
+    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help', '--lang', 'en']);
     assert.ok(stdout.includes('Preflight health checks'), `stdout missing en description:\n${stdout}`);
     assert.ok(!stdout.includes('体检 omk 工作目录'), 'stdout should not contain zh in --lang en mode');
   });
 
   it('OMK_LANG=en env 同效切到英文', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env: { ...OCLIF_ENV, OMK_LANG: 'en' } });
+    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env: { ...process.env, OMK_LANG: 'en' } });
     assert.ok(stdout.includes('Preflight health checks'), 'OMK_LANG=en should switch help to en');
   });
 
   it('unknown flag → exit code 2 (omk parse-strict invariant)', async () => {
     try {
-      await execFileAsync('node', [CLI, 'doctor', '--no-such-flag'], { env: OCLIF_ENV });
+      await execFileAsync('node', [CLI, 'doctor', '--no-such-flag']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -70,7 +69,6 @@ describe('oclif doctor (OMK_CLI_NEXT=1)', () => {
 
       const { stderr } = await execFileAsync('node', [CLI, 'doctor', '--executor', DOCTOR_FIXTURE], {
         cwd: dir,
-        env: OCLIF_ENV,
       });
       assert.ok(stderr.includes('使用评测用例文件'), `stderr missing samples_detected:\n${stderr}`);
       assert.ok(!stderr.includes('未提供 samples'), `stderr should not warn missing samples:\n${stderr}`);

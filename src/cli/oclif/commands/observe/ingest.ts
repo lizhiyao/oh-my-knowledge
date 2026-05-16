@@ -1,3 +1,5 @@
+// oclif 版 observe ingest — 透传 argv 给生产 executeIngest()。
+
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../../i18n.js';
 
@@ -34,8 +36,7 @@ export default class ObserveIngest extends Command {
 
   async run(): Promise<void> {
     await this.parse(ObserveIngest);
-    // process.argv = [node, script, 'observe', 'ingest', ...args] → slice(4) = ...args
-    const argv = process.argv.slice(4);
+    const argv = this.argv;
     const { executeIngest } = await import('../../../commands/observe.js');
     const { CliExit } = await import('../../../cli-exit.js');
     try {

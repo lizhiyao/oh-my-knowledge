@@ -2,19 +2,18 @@ import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../i18n.js';
 
 // oclif 版 sample — 跟 src/cli/commands/sample.ts 行为对得齐。
-// 实现策略:flag schema 在这里声明一份(给 oclif --help / strict 校验用),
-// run() 实际把 argv 透传给生产 execute(),不重写 batch / fix / single 三路
-// 业务分支(避免 470 行重写,降低 PR-B 风险)。
+// 实现策略:flag schema 在这里声明一份（给 oclif --help / strict 校验用），
+// run() 实际把 argv 透传给生产 execute(),不重写 batch / fix / single 三路业务分支。
 //
 // 行为对照表:
-// - 缺 positional + 非 batch / fix → exit 1 (生产逻辑)
-// - 未知 flag → exit 2 (oclif strict 默认)
-// - 已存在 samples / skill 路径不存在 → exit 1 (生产逻辑)
+// - 缺 positional + 非 batch / fix → exit 1（生产逻辑）
+// - 未知 flag → exit 2（oclif strict 默认）
+// - 已存在 samples / skill 路径不存在 → exit 1（生产逻辑）
 // - batch / fix 路径 → 生产 execute() 全权处理
 
 export default class Sample extends Command {
   static description = bilingual({
-    zh: '为指定 skill 生成评测用例(eval-samples)，支持 batch / single / fix 三种模式。',
+    zh: '为指定 skill 生成评测用例（eval-samples），支持 batch / single / fix 三种模式。',
     en: 'Generate eval samples for the given skill. Supports batch / single / fix modes.',
   });
 
@@ -91,7 +90,7 @@ export default class Sample extends Command {
     }),
     focus: Flags.string({
       description: bilingual({
-        zh: '生成焦点(自然语言提示)。控制 LLM 偏向哪类用例。',
+        zh: '生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。',
         en: 'Generation focus (NL hint). Steers LLM toward certain sample types.',
       }),
     }),
@@ -104,13 +103,13 @@ export default class Sample extends Command {
     }),
     'reports-dir': Flags.string({
       description: bilingual({
-        zh: '报告目录(fix 模式用)，默认 ~/.oh-my-knowledge/reports。',
+        zh: '报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。',
         en: 'Reports dir (fix mode), default ~/.oh-my-knowledge/reports.',
       }),
     }),
     treatment: Flags.string({
       description: bilingual({
-        zh: '指定 treatment 名(fix 模式用)，默认推断自 skill 路径。',
+        zh: '指定 treatment 名（fix 模式用），默认推断自 skill 路径。',
         en: 'Treatment name (fix mode), defaults to skill-path inference.',
       }),
     }),
@@ -120,9 +119,8 @@ export default class Sample extends Command {
     // 解析触发 oclif 的 --help / strict 校验。flag 值不直接用,交给生产 execute() 重新 parse argv。
     await this.parse(Sample);
 
-    // 把 argv 透传给生产 execute()。process.argv = [node, script, 'sample', ...args]
-    // 生产 execute(argv) 期望 args(切掉前 3 项)。
-    const argv = process.argv.slice(3);
+    // this.argv = oclif 已经把命令路径切掉的余下 argv,space-syntax 跟 colon-syntax 一致。
+    const argv = this.argv;
 
     const { execute } = await import('../../commands/sample.js');
     const { CliExit } = await import('../../cli-exit.js');

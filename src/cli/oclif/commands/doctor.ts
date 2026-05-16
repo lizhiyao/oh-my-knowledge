@@ -12,8 +12,8 @@ import type { Sample } from '../../../types/index.js';
 // - 业务逻辑直接调 runDoctor() / renderDoctorReport*,不重写
 // - 退出码:report.outcome === 'failed' → exit 1,unknown flag → exit 2(oclif 默认),其它 → 0
 //
-// 双语 description / examples 走 bilingual({zh, en}) → [[ZH]]..[[EN]].. sentinel,
-// LangAwareHelp(./help.ts)按 --lang / OMK_LANG 切。每个 flag 描述粒度太碎,
+// 双语 description / examples 走 bilingual({zh, en}) → `${zh}\n${en}` 串,
+// LangAwareHelp(./help.ts)按 --lang / OMK_LANG 切 zh / en。每个 flag 描述粒度太碎,
 // 不进 i18n-dict.ts,inline 写双语;命令级一句话描述也 inline。
 
 const DEFAULT_SAMPLE_FILENAMES = ['eval-samples.json', 'eval-samples.yaml', 'eval-samples.yml'] as const;
@@ -68,7 +68,7 @@ export default class Doctor extends Command {
   static examples = [
     {
       description: bilingual({
-        zh: '默认模式跑 LLM 健康度审计(7 内置维度)。',
+        zh: '默认模式跑 LLM 健康度审计(7 内置维度）。',
         en: 'Default mode runs LLM-driven health audit (7 built-in dimensions).',
       }),
       command: '<%= config.bin %> doctor',
@@ -125,7 +125,7 @@ export default class Doctor extends Command {
     }),
     executor: Flags.string({
       description: bilingual({
-        zh: '执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑(同 omk doctor)。',
+        zh: '执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。',
         en: 'Executor name, default claude. Pass a test fixture path to use in tests.',
       }),
     }),
@@ -137,13 +137,13 @@ export default class Doctor extends Command {
     }),
     samples: Flags.string({
       description: bilingual({
-        zh: '样本文件路径(.json/.yaml)。不传则按 target / cwd 顺序自动发现。',
+        zh: '样本文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。',
         en: 'Samples file path (.json/.yaml). Auto-discovered from target / cwd if omitted.',
       }),
     }),
     timeout: Flags.string({
       description: bilingual({
-        zh: '单次 LLM 会话超时秒数，默认 600(10 分钟)。',
+        zh: '单次 LLM 会话超时秒数，默认 600(10 分钟）。',
         en: 'LLM session timeout in seconds, default 600 (10 min).',
       }),
     }),
@@ -155,7 +155,7 @@ export default class Doctor extends Command {
     }),
     'static-only': Flags.boolean({
       description: bilingual({
-        zh: '离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned)，不调 LLM。',
+        zh: '离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。',
         en: 'Offline static mode: only 4 static rules, no LLM call.',
       }),
       default: false,

@@ -149,27 +149,41 @@ omk CLI 已迁到 [@oclif/core](https://oclif.io/docs/) 框架(PR-A spike #113 /
 
 1. 在 `src/cli/oclif/commands/<name>.ts` 写 `export default class extends Command`
 2. flag 用 `bilingual({zh, en})` 包装,跟生产 `execute()` 的 `parseArgsStrictOrExit` 配置对齐
-3. `run()` 透传 `await execute(process.argv.slice(3))` 给生产业务函数
+3. `run()` 透传 `await execute(this.argv)` 给生产业务函数（`this.argv` 是 oclif 切到子命令后的余下 argv,space-syntax 跟 colon-syntax 一致)
 4. 在 `test/cli/oclif-<name>.test.ts` 加 --help 双语 + unknown flag exit 2 + 关键 happy/error case
-5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.claude/skills/omk/references/commands.md`(见下一节)
+5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.claude/skills/omk/references/commands.md`（见下一节）
 
-### CLI 文档 codegen(#109)
+### CLI 文档 codegen（#109）
 
 oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是 CLI 文档的**单一来源**。`scripts/build-docs.ts` 把它渲染到三个目标文件的 marker 区段:
 
 | 目标 | marker | 输出 | 语言 |
 |---|---|---|---|
-| `.claude/skills/omk/references/commands.md` | 整段 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` | 13 个 oclif command(含 sub-sub)完整渲染 | zh |
-| `README.md` | 每个顶层命令独立 `<!-- omk:cli:<id>:flags:start -->` ... `<!-- omk:cli:<id>:flags:end -->`,7 对 | flag list(```text``` 对齐风格)+ 指向 `--help` 的脚注 | en |
+| `.claude/skills/omk/references/commands.md` | 整段 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` | 13 个 oclif command（含 sub-sub）完整渲染 | zh |
+| `README.md` | 每个顶层命令独立 `<!-- omk:cli:<id>:flags:start -->` ... `<!-- omk:cli:<id>:flags:end -->`,7 对 | flag list（```text``` 对齐风格）+ 指向 `--help` 的脚注 | en |
 | `README.zh.md` | 同上 | 同上 | zh |
+
+`SKILL.md` 不走 codegen（agent prompt 指令塞结构化命令清单跟 commands.md 重复,还撑大 agent context）。改用 `test/scripts/build-docs.test.ts` 的 vitest case 锁 frontmatter `argument-hint` 跟 oclif 顶层命令 id set（`TOP_LEVEL_IDS`）严格一致——历史上漂过 2 次（`bench run` → `eval`、`improve` → `evolve`),这条 test 把同类 drift 拦在 CI。
 
 工作流:
 
 - 改完 oclif Command 的 description / flag,跑 `yarn build && yarn build:docs` 同步全部 3 个目标
-- 不跑就会被 CI `yarn build:docs:check` 拦截(exit 1 + 对每个 drift 的文件打 diff)
-- README 的 prose 段(static-only 解释 / HTML report tab / Studio IA / executor 表格等)在 marker 外,hand-maintained 保留
-- 新增顶层命令时:在 README.md / README.zh.md 各加一对 `<!-- omk:cli:<new-id>:flags:start -->` / `:end -->`,并把 id 加进 `scripts/build-docs.ts` 的 `TARGETS[*].topLevelIds`
-- SKILL.md 暂不覆盖,留 PR-D3 评估
+- 不跑就会被 vitest 内嵌 `--check` 拦截（exit 1 + 对每个 drift 的文件打 diff）
+- README 的 prose 段（static-only 解释 / HTML report tab / Studio IA / executor 表格等）在 marker 外,hand-maintained 保留
+- 新增顶层命令时:加 `src/cli/oclif/commands/<id>.ts`、改 `scripts/build-docs.ts` 的 `TOP_LEVEL_IDS`、在 README.md / README.zh.md 各加一对 `<!-- omk:cli:<id>:flags:start -->` / `:end -->`、SKILL.md frontmatter `argument-hint` 加 `<id>`,跑一遍 `yarn build && yarn build:docs && yarn test`
+- 新增子命令（如 `omk foo bar`）时:只加 `src/cli/oclif/commands/foo/bar.ts`,oclif 文件目录自动路由,fullbody 模式自动包含,不需要改 `TOP_LEVEL_IDS`
+
+### CLI exit code 约定
+
+oclif 迁移后 omk 的 exit code 契约（CI / 脚本若有 `[ $? -eq N ]` 分支按此判断）:
+
+| code | 触发场景 |
+|---|---|
+| `0` | 正常完成 |
+| `1` | 业务失败（doctor 门禁拒绝、verdict REGRESSION、未知命令、缺 required positional —— 走生产逻辑或 oclif `default` exit code）|
+| `2` | flag / arg 校验失败（未知 flag、missing required arg、type mismatch —— 由 oclif `failedFlagParsing` / `requiredArgs` / `nonExistentFlag` 等捕获,见 `package.json:oclif.exitCodes`）|
+
+迁 oclif 前 `omk evolve`（missing skillPath）跟 `omk observe ingest`（missing traceDir）走生产 `throw new CliExit(1)`,迁后 oclif `Args.required: true` 走 `requiredArgs: 2`。脚本如果靠 `1` 区分 user error vs parse error,要按上表更新。
 
 ## Style
 

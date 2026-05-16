@@ -207,7 +207,7 @@ describe('omk doctor CLI', () => {
   });
 
   it('product dispatch lists doctor as a top-level command', async () => {
-    // PR-C 后 omk --help 走 oclif 的 COMMANDS 列表,doctor 出现在其中。
+    // omk --help 走 oclif 的 COMMANDS 列表,doctor 出现在其中。
     const { stdout } = await execFileAsync('node', [CLI, '--help']);
     assert.ok(stdout.includes('doctor'), `--help missing 'doctor' command listing:\n${stdout}`);
     assert.ok(/COMMANDS|TOPICS/i.test(stdout), `--help should have oclif COMMANDS / TOPICS block:\n${stdout}`);

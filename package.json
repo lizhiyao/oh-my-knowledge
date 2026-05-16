@@ -34,6 +34,8 @@
     "dirname": "omk",
     "helpClass": "./dist/src/cli/oclif/help.js",
     "topicSeparator": " ",
+    "additionalHelpFlags": ["-h"],
+    "additionalVersionFlags": ["-v"],
     "exitCodes": {
       "default": 1,
       "failedFlagParsing": 2,

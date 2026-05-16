@@ -1,7 +1,7 @@
 # CLI 框架 spike：oclif 调研结论
 
-> **PR-A**（issue [#109](https://github.com/lizhiyao/oh-my-knowledge/issues/109)）。
-> 本文是 spike 的唯一产出。原型代码在 [`spike/oclif/`](../spike/oclif)，6 项实验快照在 [`spike/oclif/experiments/`](../spike/oclif/experiments)。
+> **Status**：决策已落实,本文为 spike 历史快照。当前实现见 `src/cli/oclif/`,docs codegen 见 `scripts/build-docs.ts`。spike 原型目录(`spike/oclif/`)已合并到 main 后清掉,不再单独留存。
+> 关联 issue [#109](https://github.com/lizhiyao/oh-my-knowledge/issues/109)。
 
 ## 结论先行
 

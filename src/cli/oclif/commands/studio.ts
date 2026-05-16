@@ -8,7 +8,7 @@ import { bilingual } from '../i18n.js';
 
 export default class Studio extends Command {
   static description = bilingual({
-    zh: '启动 omk Studio 报告服务(skill-centric 仪表盘 + 浏览器自动打开)。',
+    zh: '启动 omk Studio 报告服务（skill-centric 仪表盘 + 浏览器自动打开）。',
     en: 'Start omk Studio report server (skill-centric dashboard + browser auto-open).',
   });
 
@@ -54,13 +54,13 @@ export default class Studio extends Command {
     }),
     'analyses-dir': Flags.string({
       description: bilingual({
-        zh: '分析数据目录(可选)',
+        zh: '分析数据目录（可选）',
         en: 'Analyses dir (optional)',
       }),
     }),
     'observations-dir': Flags.string({
       description: bilingual({
-        zh: '观测数据目录(可选)',
+        zh: '观测数据目录（可选）',
         en: 'Observations dir (optional)',
       }),
     }),
@@ -82,7 +82,7 @@ export default class Studio extends Command {
 
   async run(): Promise<void> {
     await this.parse(Studio);
-    const argv = process.argv.slice(3);
+    const argv = this.argv;
     const { execute } = await import('../../commands/studio.js');
     const { CliExit } = await import('../../cli-exit.js');
     try {

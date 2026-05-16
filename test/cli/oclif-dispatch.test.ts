@@ -1,12 +1,15 @@
 /**
- * oclif dispatcher 验收(PR-C 后 oclif 已成默认入口,无 OMK_CLI_NEXT 开关)。
- * 验证所有命令默认都走 oclif:
- * - 未知命令 → exit 1(oclif.exitCodes.default = 1,对齐 legacy unknown_domain 语义)
+ * oclif dispatcher 验收。验证所有命令都走 oclif:
+ * - 未知命令 → exit 1(oclif.exitCodes.default = 1)
  * - 已知命令 --help 有 oclif 风格的 USAGE block
+ * - colon-syntax(omk eval:gold:init)跟 space-syntax 一致,flag 不丢
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +25,7 @@ interface ExecError extends Error {
   stderr: string;
 }
 
-describe('oclif dispatcher (PR-C 后默认 oclif)', () => {
+describe('oclif dispatcher', () => {
   it('doctor --help 走 oclif(有 USAGE block)', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help']);
     assert.ok(stdout.includes('\nUSAGE\n'), `expected oclif USAGE block, got:\n${stdout.slice(0, 200)}`);
@@ -34,7 +37,7 @@ describe('oclif dispatcher (PR-C 后默认 oclif)', () => {
     assert.ok(stdout.includes('--control'), 'should list --control flag');
   });
 
-  it('未知命令 → exit 1(对齐 legacy unknown_domain 语义)', async () => {
+  it('未知命令 → exit 1', async () => {
     try {
       await execFileAsync('node', [CLI, 'nope-command']);
       assert.fail('expected non-zero exit');
@@ -44,9 +47,20 @@ describe('oclif dispatcher (PR-C 后默认 oclif)', () => {
     }
   });
 
-  it('OMK_CLI_NEXT=1 仍 work(向后兼容,曾经的 dogfood env 现已 noop)', async () => {
-    const env = { ...process.env, OMK_CLI_NEXT: '1' };
-    const { stdout } = await execFileAsync('node', [CLI, 'doctor', '--help'], { env });
-    assert.ok(stdout.includes('\nUSAGE\n'), 'oclif USAGE block expected');
+  it('colon-syntax(omk eval:gold:init)跟 space-syntax 等价,flag 不丢', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-colon-syntax-'));
+    try {
+      const out = join(dir, 'gold-colon');
+      // colon-syntax:argv = [..., 'eval:gold:init', '--out', out]
+      // 关键回归点:this.argv 应当切到子命令后,等价于 ['--out', out]。
+      // process.argv.slice(5) 会切错把 '--out' 切掉。
+      await execFileAsync('node', [CLI, 'eval:gold:init', '--out', out]);
+      assert.ok(
+        existsSync(join(out, 'metadata.yaml')),
+        `--out should land at ${out}/metadata.yaml; if missing, flag was silently dropped`,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

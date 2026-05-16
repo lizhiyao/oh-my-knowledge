@@ -397,15 +397,15 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
 **Flags:**
 
 ```text
-  --executor <value>  执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑(同 omk doctor)。
+  --executor <value>  执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
   --gate              静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
   --html <value>      HTML 报告输出路径。可跟 --json / --gate 共存。
   --json              JSON 输出到 stdout，适合 CI / 外部脚本消费。
   --lang <zh|en>      输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>     LLM model 名，默认 sonnet。
-  --samples <value>   样本文件路径(.json/.yaml)。不传则按 target / cwd 顺序自动发现。
-  --static-only       离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned)，不调 LLM。
-  --timeout <value>   单次 LLM 会话超时秒数，默认 600(10 分钟)。
+  --samples <value>   样本文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
+  --static-only       离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。
+  --timeout <value>   单次 LLM 会话超时秒数，默认 600(10 分钟）。
 ```
 
 完整描述见 `omk doctor --help`。
@@ -446,32 +446,32 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --config <value>                eval.yaml 路径
   --control <value>               control variant 表达式
   --dry-run                       只 plan 不实跑
-  --effort <value>                被测 LLM 扩展思考预算 low/medium/high/xhigh/max(默认 low；跨 effort 报告不严格可比)。
-  --executor <value>              执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令(默认 claude)。
+  --effort <value>                被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
+  --executor <value>              执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令（默认 claude）。
   --gold-dir <value>              gold dataset 目录
-  --judge-models <value>          评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble)。默认 <executor>:haiku。
+  --judge-models <value>          评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。
   --judge-repeat <value>          每个 dim 评 N 次
   --lang <zh|en>                  输出语言 zh|en
   --layered-stats                 输出分层统计
   --mcp-config <value>            MCP 配置文件路径
   --model <value>                 被测模型
   --no-cache                      跳过 executor cache
-  --no-debias-length              关 length-debias(默认开)
-  --no-diagnostic                 关闭 diagnostic 诊断 LLM 调用(默认开，给 failed sample 出「哪错了 + 怎么改」建议)。
+  --no-debias-length              关 length-debias（默认开）
+  --no-diagnostic                 关闭 diagnostic 诊断 LLM 调用（默认开，给 failed sample 出「哪错了 + 怎么改」建议）。
   --no-gate                       关 verdict gate
   --no-judge                      跳过 LLM judge
   --no-serve                      不启 report server
   --no-strict-baseline            关闭 baseline 隔离
   --output-dir <value>            报告输出目录
   --repeat <value>                每个 sample 重复跑 N 次
-  --report-only                   生成报告并打印 verdict，但始终 exit 0(不参与 CI gate)。
+  --report-only                   生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
   --resume <value>                从某次失败 run 续跑
   --retry <value>                 失败 sample 重试次数
   --samples <value>               样本文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。
   --skill-dir <value>             skill 目录，默认 skills
   --skip-connectivity             跳 LLM 连通性预检
-  --skip-doctor                   escape hatch:跳 doctor 健康检查门禁(默认强制启用)。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。
-  --strict-baseline               强制 baseline 隔离(default true)
+  --skip-doctor                   escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。
+  --strict-baseline               强制 baseline 隔离（default true）
   --threshold <value>             verdict 阈值，默认 3.5
   --timeout <value>               单样本超时秒，默认 120
   --treatment <value>             treatment variant 列表，逗号分隔
@@ -509,7 +509,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
   --from <value>        起始时间 ISO，优先级高于 --last
   --kb <value>          知识库 root，启用 KB-aware 分析
   --lang <zh|en>        输出语言 zh|en
-  --last <value>        时间窗(7d / 24h / 30m)
+  --last <value>        时间窗(7d / 24h / 30m）
   --output-dir <value>  分析结果输出目录
   --skills <value>      只看指定 skill，逗号分隔
   --to <value>          结束时间 ISO
@@ -568,14 +568,14 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --effort <value>         reasoning effort: low/medium/high/xhigh/max
   --executor <value>       执行器名，默认 claude
   --improve-model <value>  负责重写 skill 的 LLM，默认 sonnet
-  --judge-models <value>   评委 model(单评委约束)，格式 executor:model。默认 claude:haiku
+  --judge-models <value>   评委 model（单评委约束），格式 executor:model。默认 claude:haiku
   --lang <zh|en>           输出语言 zh|en
   --model <value>          被评测的 LLM，默认 sonnet
   --no-diagnostic          关 LLM diagnostic 调用
   --rounds <value>         最大迭代轮数，默认 5
   --samples <value>        样本文件路径，默认 eval-samples.json
   --skip-connectivity      跳过 LLM 连通性预检
-  --skip-doctor            跳过 doctor 门禁(escape hatch，自负 garbage-in 风险)
+  --skip-doctor            跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
   --target <value>         目标 composite 分数，达到即停。不传则跑满 rounds
   --timeout <value>        单样本超时秒，默认 120
 ```
@@ -601,12 +601,12 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
   --batch                批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
   --count <value>        生成样本条数。不传由 LLM 按 skill 类型自动决定。
   --fix                  fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
-  --focus <value>        生成焦点(自然语言提示)。控制 LLM 偏向哪类用例。
+  --focus <value>        生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
   --lang <zh|en>         输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>        生成 LLM model 名，默认 opus。
-  --reports-dir <value>  报告目录(fix 模式用)，默认 ~/.oh-my-knowledge/reports。
+  --reports-dir <value>  报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
   --skill-dir <value>    skill 根目录，默认 skills。batch 模式扫此目录。
-  --treatment <value>    指定 treatment 名(fix 模式用)，默认推断自 skill 路径。
+  --treatment <value>    指定 treatment 名（fix 模式用），默认推断自 skill 路径。
 ```
 
 完整描述见 `omk sample --help`。
@@ -631,12 +631,12 @@ omk studio --no-open
 **Flags:**
 
 ```text
-  --analyses-dir <value>      分析数据目录(可选)
+  --analyses-dir <value>      分析数据目录（可选）
   --dev                       dev 模式：子进程启动 + 热更新
   --host <value>              监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
   --lang <zh|en>              输出语言 zh|en
   --no-open                   不自动打开浏览器
-  --observations-dir <value>  观测数据目录(可选)
+  --observations-dir <value>  观测数据目录（可选）
   --port <value>              监听端口，默认 7799。传 0 让 OS 分配
   --reports-dir <value>       报告目录，默认 ~/.oh-my-knowledge/reports
 ```

@@ -1,5 +1,5 @@
 /**
- * oclif 路径 evolve 命令验收(OMK_CLI_NEXT=1)。
+ * oclif 路径 evolve 命令验收。
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
@@ -19,11 +19,10 @@ interface ExecError extends Error {
   stderr: string;
 }
 
-const OCLIF_ENV = { ...process.env, OMK_CLI_NEXT: '1' };
 
-describe('oclif evolve (OMK_CLI_NEXT=1)', () => {
+describe('oclif evolve', () => {
   it('--help 默认 zh', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'evolve', '--help'], { env: OCLIF_ENV });
+    const { stdout } = await execFileAsync('node', [CLI, 'evolve', '--help']);
     assert.ok(stdout.includes('自动迭代改进 skill'), `stdout missing zh:\n${stdout}`);
     assert.ok(stdout.includes('--rounds'), 'stdout missing --rounds flag');
     assert.ok(stdout.includes('--target'), 'stdout missing --target flag');
@@ -31,13 +30,13 @@ describe('oclif evolve (OMK_CLI_NEXT=1)', () => {
   });
 
   it('--help --lang en', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'evolve', '--help', '--lang', 'en'], { env: OCLIF_ENV });
+    const { stdout } = await execFileAsync('node', [CLI, 'evolve', '--help', '--lang', 'en']);
     assert.ok(stdout.includes('Auto-iterate skill improvement'), 'stdout should contain en description');
   });
 
   it('unknown flag → exit 2', async () => {
     try {
-      await execFileAsync('node', [CLI, 'evolve', '--bogus'], { env: OCLIF_ENV });
+      await execFileAsync('node', [CLI, 'evolve', '--bogus']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -47,7 +46,7 @@ describe('oclif evolve (OMK_CLI_NEXT=1)', () => {
 
   it('缺 skillPath positional → exit 2(oclif required-args)', async () => {
     try {
-      await execFileAsync('node', [CLI, 'evolve'], { env: OCLIF_ENV });
+      await execFileAsync('node', [CLI, 'evolve']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;

@@ -138,8 +138,7 @@ async function writeProductTreeReport(reportsDir: string): Promise<string> {
 
 describe('CLI', () => {
   it('--help shows usage', async () => {
-    // PR-C 后 omk --help 走 oclif,COMMANDS / TOPICS 列出 7 个产品命令,不含
-    // legacy 已废的 export / improve / bench 入口。
+    // omk --help 走 oclif,COMMANDS / TOPICS 列出 7 个产品命令。
     const { stdout } = await execFileAsync('node', [CLI, '--help']);
     assert.ok(stdout.includes('oh-my-knowledge'));
     assert.ok(/COMMANDS|TOPICS/i.test(stdout), 'should have oclif COMMANDS / TOPICS block');
@@ -238,8 +237,8 @@ describe('CLI', () => {
   });
 
   it('unknown command exits 1 with command-not-found message', async () => {
-    // PR-C 后走 oclif。oclif 的 unknown command 信号是 stderr 含 "not found"。
-    // exit 1(对齐 legacy unknown_domain 语义,通过 package.json oclif.exitCodes.default=1)。
+    // oclif 的 unknown command 信号是 stderr 含 "not found"。
+    // exit 1（package.json oclif.exitCodes.default=1）。
     await assert.rejects(
       () => execFileAsync('node', [CLI, 'unknown-domain-xyz']),
       (err: unknown) => {

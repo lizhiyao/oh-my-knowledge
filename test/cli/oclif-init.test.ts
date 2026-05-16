@@ -1,5 +1,5 @@
 /**
- * oclif 路径 init 命令验收(OMK_CLI_NEXT=1)。
+ * oclif 路径 init 命令验收。
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
@@ -22,23 +22,22 @@ interface ExecError extends Error {
   stderr: string;
 }
 
-const OCLIF_ENV = { ...process.env, OMK_CLI_NEXT: '1' };
 
-describe('oclif init (OMK_CLI_NEXT=1)', () => {
+describe('oclif init', () => {
   it('--help 默认 zh', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'init', '--help'], { env: OCLIF_ENV });
+    const { stdout } = await execFileAsync('node', [CLI, 'init', '--help']);
     assert.ok(stdout.includes('初始化 omk 项目脚手架'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('TARGETDIR'), 'stdout missing positional');
   });
 
   it('--help --lang en', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'init', '--help', '--lang', 'en'], { env: OCLIF_ENV });
+    const { stdout } = await execFileAsync('node', [CLI, 'init', '--help', '--lang', 'en']);
     assert.ok(stdout.includes('Scaffold an omk project'), 'stdout should contain en description');
   });
 
   it('unknown flag → exit 2', async () => {
     try {
-      await execFileAsync('node', [CLI, 'init', '--bogus'], { env: OCLIF_ENV });
+      await execFileAsync('node', [CLI, 'init', '--bogus']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -50,7 +49,7 @@ describe('oclif init (OMK_CLI_NEXT=1)', () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-oclif-init-'));
     try {
       const target = join(dir, 'project');
-      const { stdout } = await execFileAsync('node', [CLI, 'init', target], { env: OCLIF_ENV });
+      const { stdout } = await execFileAsync('node', [CLI, 'init', target]);
       assert.ok(stdout.includes('已初始化测评项目'), `stdout missing scaffolded msg:\n${stdout}`);
       assert.ok(existsSync(join(target, 'skills', 'code-review-v1', 'SKILL.md')), 'skills/code-review-v1/SKILL.md not created');
       assert.ok(existsSync(join(target, 'eval-samples.json')), 'eval-samples.json not created');

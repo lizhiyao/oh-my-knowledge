@@ -1,9 +1,11 @@
+// oclif 版 observe inbox — 透传 argv 给生产 executeInbox()。
+
 import { Command, Flags } from '@oclif/core';
 import { bilingual } from '../../i18n.js';
 
 export default class ObserveInbox extends Command {
   static description = bilingual({
-    zh: '查询 observation inbox(skill 调用洞察)。',
+    zh: '查询 observation inbox(skill 调用洞察）。',
     en: 'Query observation inbox (skill invocation insights).',
   });
 
@@ -28,7 +30,7 @@ export default class ObserveInbox extends Command {
     }),
     explore: Flags.string({
       description: bilingual({
-        zh: '抽样 N 条 medium/low 长尾(replaces limit)',
+        zh: '抽样 N 条 medium/low 长尾（replaces limit）',
         en: 'Sample N medium/low long-tail items (replaces limit)',
       }),
     }),
@@ -54,7 +56,7 @@ export default class ObserveInbox extends Command {
 
   async run(): Promise<void> {
     await this.parse(ObserveInbox);
-    const argv = process.argv.slice(4);
+    const argv = this.argv;
     const { executeInbox } = await import('../../../commands/observe.js');
     const { CliExit } = await import('../../../cli-exit.js');
     try {

@@ -1,5 +1,5 @@
 /**
- * oclif 路径 sample 命令验收(OMK_CLI_NEXT=1)。
+ * oclif 路径 sample 命令验收。
  * 验证 sample 三模式入口都能正确分流到生产 execute():
  * - 缺 positional + 非 batch / fix → exit 1 + 中文 hint
  * - unknown flag → exit 2
@@ -23,24 +23,23 @@ interface ExecError extends Error {
   stderr: string;
 }
 
-const OCLIF_ENV = { ...process.env, OMK_CLI_NEXT: '1' };
 
-describe('oclif sample (OMK_CLI_NEXT=1)', () => {
+describe('oclif sample', () => {
   it('--help 默认 zh', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'sample', '--help'], { env: OCLIF_ENV });
+    const { stdout } = await execFileAsync('node', [CLI, 'sample', '--help']);
     assert.ok(stdout.includes('为指定 skill 生成评测用例'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('--batch'), 'stdout missing --batch flag');
     assert.ok(stdout.includes('--fix'), 'stdout missing --fix flag');
   });
 
   it('--help --lang en 切英文', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'sample', '--help', '--lang', 'en'], { env: OCLIF_ENV });
+    const { stdout } = await execFileAsync('node', [CLI, 'sample', '--help', '--lang', 'en']);
     assert.ok(stdout.includes('Generate eval samples'), 'stdout should contain en description');
   });
 
   it('缺 positional + 非 batch + 非 fix → exit 1 (生产 execute 透传)', async () => {
     try {
-      await execFileAsync('node', [CLI, 'sample'], { env: OCLIF_ENV });
+      await execFileAsync('node', [CLI, 'sample']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -54,7 +53,7 @@ describe('oclif sample (OMK_CLI_NEXT=1)', () => {
 
   it('unknown flag → exit 2', async () => {
     try {
-      await execFileAsync('node', [CLI, 'sample', '--bogus'], { env: OCLIF_ENV });
+      await execFileAsync('node', [CLI, 'sample', '--bogus']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
@@ -65,7 +64,7 @@ describe('oclif sample (OMK_CLI_NEXT=1)', () => {
 
   it('--batch + 不存在的 skill-dir → exit 1', async () => {
     try {
-      await execFileAsync('node', [CLI, 'sample', '--batch', '--skill-dir', '/tmp/omk-nonexistent-skill-dir-xyz'], { env: OCLIF_ENV });
+      await execFileAsync('node', [CLI, 'sample', '--batch', '--skill-dir', '/tmp/omk-nonexistent-skill-dir-xyz']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;

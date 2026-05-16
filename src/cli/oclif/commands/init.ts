@@ -6,7 +6,7 @@ import { bilingual } from '../i18n.js';
 
 export default class Init extends Command {
   static description = bilingual({
-    zh: '初始化 omk 项目脚手架(skills/ + eval-samples.json 模板)。',
+    zh: '初始化 omk 项目脚手架（skills/ + eval-samples.json 模板）。',
     en: 'Scaffold an omk project (skills/ + eval-samples.json templates).',
   });
 
@@ -30,7 +30,7 @@ export default class Init extends Command {
   static args = {
     targetDir: Args.string({
       description: bilingual({
-        zh: '初始化目标目录，默认当前目录(.)',
+        zh: '初始化目标目录，默认当前目录（.）',
         en: 'Target directory, defaults to current directory (.)',
       }),
       required: false,
@@ -51,7 +51,7 @@ export default class Init extends Command {
 
   async run(): Promise<void> {
     await this.parse(Init);
-    const argv = process.argv.slice(3);
+    const argv = this.argv;
     const { execute } = await import('../../commands/init.js');
     const { CliExit } = await import('../../cli-exit.js');
     try {

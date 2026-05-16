@@ -1,9 +1,11 @@
+// oclif 版 eval gold init — 透传 argv 给生产 executeInit()。
+
 import { Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../../../i18n.js';
 
 export default class EvalGoldInit extends Command {
   static description = bilingual({
-    zh: '初始化 gold dataset 目录(human-gold 标注集脚手架)。',
+    zh: '初始化 gold dataset 目录（human-gold 标注集脚手架）。',
     en: 'Init gold dataset dir (scaffold for human-gold annotations).',
   });
 
@@ -31,8 +33,7 @@ export default class EvalGoldInit extends Command {
 
   async run(): Promise<void> {
     await this.parse(EvalGoldInit);
-    // process.argv = [node, script, 'eval', 'gold', 'init', ...args] → slice(5)
-    const rest = process.argv.slice(5);
+    const rest = this.argv;
     const lang = resolveLang(process.argv);
     const { executeInit } = await import('../../../../commands/eval-gold.js');
     const { CliExit } = await import('../../../../cli-exit.js');

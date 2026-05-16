@@ -2,7 +2,7 @@ import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../i18n.js';
 
 // oclif 版 evolve — 透传 argv 给生产 execute()。
-// flag schema 镜像 src/cli/commands/evolve.ts L58-77 共 13 个。
+// flag schema 镜像 src/cli/commands/evolve.ts 的 RUN_OPTIONS 共 13 个。
 
 export default class Evolve extends Command {
   static description = bilingual({
@@ -70,7 +70,7 @@ export default class Evolve extends Command {
     }),
     'judge-models': Flags.string({
       description: bilingual({
-        zh: '评委 model(单评委约束)，格式 executor:model。默认 claude:haiku',
+        zh: '评委 model（单评委约束），格式 executor:model。默认 claude:haiku',
         en: 'Judge model (single judge required), executor:model format. Default claude:haiku',
       }),
       default: 'claude:haiku',
@@ -116,7 +116,7 @@ export default class Evolve extends Command {
     }),
     'skip-doctor': Flags.boolean({
       description: bilingual({
-        zh: '跳过 doctor 门禁(escape hatch，自负 garbage-in 风险)',
+        zh: '跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）',
         en: 'Skip doctor gate (escape hatch; user takes garbage-in risk)',
       }),
       default: false,
@@ -125,7 +125,7 @@ export default class Evolve extends Command {
 
   async run(): Promise<void> {
     await this.parse(Evolve);
-    const argv = process.argv.slice(3);
+    const argv = this.argv;
     const { execute } = await import('../../commands/evolve.js');
     const { CliExit } = await import('../../cli-exit.js');
     try {

@@ -66,13 +66,13 @@ export default class Eval extends Command {
     }),
     executor: Flags.string({
       description: bilingual({
-        zh: '执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令(默认 claude)。',
+        zh: '执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令（默认 claude）。',
         en: 'Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom (default claude).',
       }),
     }),
     'judge-models': Flags.string({
       description: bilingual({
-        zh: '评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble)。默认 <executor>:haiku。',
+        zh: '评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。',
         en: 'Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.',
       }),
     }),
@@ -106,7 +106,7 @@ export default class Eval extends Command {
     }),
     'skip-doctor': Flags.boolean({
       description: bilingual({
-        zh: 'escape hatch:跳 doctor 健康检查门禁(默认强制启用)。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。',
+        zh: 'escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。',
         en: 'Escape hatch: skip the doctor health-check gate (on by default). Use when sandbox mocks supply deps; caller owns garbage-in risk.',
       }),
     }),
@@ -129,20 +129,20 @@ export default class Eval extends Command {
       description: bilingual({ zh: '输出分层统计', en: 'Emit layered stats' }),
     }),
     'strict-baseline': Flags.boolean({
-      description: bilingual({ zh: '强制 baseline 隔离(default true)', en: 'Force baseline isolation (default true)' }),
+      description: bilingual({ zh: '强制 baseline 隔离（default true）', en: 'Force baseline isolation (default true)' }),
     }),
     'no-strict-baseline': Flags.boolean({
       description: bilingual({ zh: '关闭 baseline 隔离', en: 'Disable baseline isolation' }),
     }),
     effort: Flags.string({
       description: bilingual({
-        zh: '被测 LLM 扩展思考预算 low/medium/high/xhigh/max(默认 low；跨 effort 报告不严格可比)。',
+        zh: '被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。',
         en: 'Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).',
       }),
     }),
     'no-diagnostic': Flags.boolean({
       description: bilingual({
-        zh: '关闭 diagnostic 诊断 LLM 调用(默认开，给 failed sample 出「哪错了 + 怎么改」建议)。',
+        zh: '关闭 diagnostic 诊断 LLM 调用（默认开，给 failed sample 出「哪错了 + 怎么改」建议）。',
         en: 'Disable diagnostic LLM call (on by default; emits "what went wrong + how to fix" advice for failed samples).',
       }),
     }),
@@ -166,7 +166,7 @@ export default class Eval extends Command {
       description: bilingual({ zh: 'gold dataset 目录', en: 'Gold dataset dir' }),
     }),
     'no-debias-length': Flags.boolean({
-      description: bilingual({ zh: '关 length-debias(默认开)', en: 'Disable length-debias (default on)' }),
+      description: bilingual({ zh: '关 length-debias（默认开）', en: 'Disable length-debias (default on)' }),
     }),
     'budget-usd': Flags.string({
       description: bilingual({ zh: '总预算上限 USD', en: 'Total budget cap USD' }),
@@ -185,7 +185,7 @@ export default class Eval extends Command {
     }),
     'report-only': Flags.boolean({
       description: bilingual({
-        zh: '生成报告并打印 verdict，但始终 exit 0(不参与 CI gate)。',
+        zh: '生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。',
         en: 'Produce the report and print verdict, but always exit 0 (no CI gate).',
       }),
     }),
@@ -196,8 +196,11 @@ export default class Eval extends Command {
 
   async run(): Promise<void> {
     await this.parse(Eval);
-    // 透传 argv 给生产 eval-runner.execute()(直接进 run 模式,不经 eval.ts 的 sub 路由)
-    const argv = process.argv.slice(3);
+    // 透传给生产 eval-runner.execute()(直接进 run 模式,不经 eval.ts 的 sub 路由)。
+    // 用 this.argv 而不是 process.argv.slice(N):oclif 已经把命令路径切掉,space-syntax
+    // (omk eval ...)跟 colon-syntax(omk eval:...)输出一致,避免 N 写死导致 colon 路径
+    // 静默丢 flag。
+    const argv = this.argv;
     const { execute } = await import('../../commands/eval-runner.js');
     const { CliExit } = await import('../../cli-exit.js');
     try {

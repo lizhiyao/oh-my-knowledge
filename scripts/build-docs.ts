@@ -290,8 +290,13 @@ interface Split {
 
 function splitOnMarker(content: string, markerStart: string, markerEnd: string): Split | null {
   const startIdx = content.indexOf(markerStart);
-  const endIdx = content.indexOf(markerEnd);
-  if (startIdx === -1 || endIdx === -1 || endIdx <= startIdx) return null;
+  if (startIdx === -1) return null;
+  // 找 startIdx 之后的最近 markerEnd,避免文档别处出现 markerEnd 字面量时静默错位。
+  const endIdx = content.indexOf(markerEnd, startIdx + markerStart.length);
+  if (endIdx === -1) return null;
+  // 防御 marker 重复:出现 ≥ 2 个 start 表示文档结构有问题,直接拒绝(优于乱配对)。
+  const dupStart = content.indexOf(markerStart, startIdx + markerStart.length);
+  if (dupStart !== -1 && dupStart < endIdx) return null;
   const pre = content.slice(0, startIdx + markerStart.length);
   const post = content.slice(endIdx);
   return { pre, post };

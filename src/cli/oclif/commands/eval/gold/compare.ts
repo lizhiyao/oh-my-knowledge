@@ -1,3 +1,5 @@
+// oclif 版 eval gold compare — 透传 argv 给生产 executeCompare()。
+
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../../../i18n.js';
 
@@ -49,7 +51,7 @@ export default class EvalGoldCompare extends Command {
 
   async run(): Promise<void> {
     await this.parse(EvalGoldCompare);
-    const rest = process.argv.slice(5);
+    const rest = this.argv;
     const lang = resolveLang(process.argv);
     const { executeCompare } = await import('../../../../commands/eval-gold.js');
     const { CliExit } = await import('../../../../cli-exit.js');

@@ -1,9 +1,11 @@
+// oclif 版 eval gold validate — 透传 argv 给生产 executeValidate()。
+
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../../../i18n.js';
 
 export default class EvalGoldValidate extends Command {
   static description = bilingual({
-    zh: '校验 gold dataset 目录格式(annotations.yaml schema)。',
+    zh: '校验 gold dataset 目录格式（annotations.yaml schema）。',
     en: 'Validate gold dataset dir (annotations.yaml schema).',
   });
 
@@ -28,7 +30,7 @@ export default class EvalGoldValidate extends Command {
 
   async run(): Promise<void> {
     await this.parse(EvalGoldValidate);
-    const rest = process.argv.slice(5);
+    const rest = this.argv;
     const lang = resolveLang(process.argv);
     const { executeValidate } = await import('../../../../commands/eval-gold.js');
     const { CliExit } = await import('../../../../cli-exit.js');

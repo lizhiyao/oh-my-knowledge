@@ -6,7 +6,7 @@ import { bilingual } from '../i18n.js';
 
 export default class Observe extends Command {
   static description = bilingual({
-    zh: '分析 sessions 目录的 skill 调用健康度(默认行为)。子命令:ingest / inbox / show。',
+    zh: '分析 sessions 目录的 skill 调用健康度（默认行为）。子命令:ingest / inbox / show。',
     en: 'Analyze skill invocation health from sessions dir (default). Subcommands: ingest / inbox / show.',
   });
 
@@ -23,7 +23,7 @@ export default class Observe extends Command {
   static args = {
     sessionsDir: Args.string({
       description: bilingual({
-        zh: 'sessions 目录路径(如 ~/.claude/sessions)',
+        zh: 'sessions 目录路径（如 ~/.claude/sessions）',
         en: 'Sessions dir path (e.g. ~/.claude/sessions)',
       }),
       required: false,
@@ -41,7 +41,7 @@ export default class Observe extends Command {
       description: bilingual({ zh: '知识库 root，启用 KB-aware 分析', en: 'KB root, enables KB-aware analysis' }),
     }),
     last: Flags.string({
-      description: bilingual({ zh: '时间窗(7d / 24h / 30m)', en: 'Time window (7d / 24h / 30m)' }),
+      description: bilingual({ zh: '时间窗(7d / 24h / 30m）', en: 'Time window (7d / 24h / 30m)' }),
     }),
     from: Flags.string({
       description: bilingual({ zh: '起始时间 ISO，优先级高于 --last', en: 'Start time ISO, overrides --last' }),
@@ -65,8 +65,8 @@ export default class Observe extends Command {
 
   async run(): Promise<void> {
     await this.parse(Observe);
-    // 直接调 executeHealth(named export),透传 process.argv.slice(3) 给它(skips node + script + 'observe')
-    const argv = process.argv.slice(3);
+    // 透传给生产 executeHealth(named export)。this.argv = oclif 切掉命令路径后的余下 argv。
+    const argv = this.argv;
     const { executeHealth } = await import('../../commands/observe.js');
     const { CliExit } = await import('../../cli-exit.js');
     try {

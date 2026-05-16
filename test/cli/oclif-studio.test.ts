@@ -1,5 +1,5 @@
 /**
- * oclif 路径 studio 命令验收(OMK_CLI_NEXT=1)。
+ * oclif 路径 studio 命令验收。
  * studio 是 server 长跑,不实际启 server,只测 --help 双语 + flag 校验。
  */
 import { describe, it } from 'vitest';
@@ -20,11 +20,10 @@ interface ExecError extends Error {
   stderr: string;
 }
 
-const OCLIF_ENV = { ...process.env, OMK_CLI_NEXT: '1' };
 
-describe('oclif studio (OMK_CLI_NEXT=1)', () => {
+describe('oclif studio', () => {
   it('--help 默认 zh', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'studio', '--help'], { env: OCLIF_ENV });
+    const { stdout } = await execFileAsync('node', [CLI, 'studio', '--help']);
     assert.ok(stdout.includes('启动 omk Studio'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('--port'), 'stdout missing --port flag');
     assert.ok(stdout.includes('--no-open'), 'stdout missing --no-open flag');
@@ -32,13 +31,13 @@ describe('oclif studio (OMK_CLI_NEXT=1)', () => {
   });
 
   it('--help --lang en', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, 'studio', '--help', '--lang', 'en'], { env: OCLIF_ENV });
+    const { stdout } = await execFileAsync('node', [CLI, 'studio', '--help', '--lang', 'en']);
     assert.ok(stdout.includes('Start omk Studio'), 'stdout should contain en description');
   });
 
   it('unknown flag → exit 2', async () => {
     try {
-      await execFileAsync('node', [CLI, 'studio', '--bogus'], { env: OCLIF_ENV });
+      await execFileAsync('node', [CLI, 'studio', '--bogus']);
       assert.fail('expected non-zero exit');
     } catch (err) {
       const e = err as ExecError;
