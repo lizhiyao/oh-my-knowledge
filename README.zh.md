@@ -446,10 +446,10 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --config <value>                eval.yaml 路径
   --control <value>               control variant 表达式
   --dry-run                       只 plan 不实跑
-  --effort <value>                被测 LLM reasoning effort: low/medium/high/xhigh/max
-  --executor <value>              执行器名,默认 claude
+  --effort <value>                被测 LLM 扩展思考预算 low/medium/high/xhigh/max(默认 low;跨 effort 报告不严格可比)。
+  --executor <value>              执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令(默认 claude)。
   --gold-dir <value>              gold dataset 目录
-  --judge-models <value>          评委,格式 executor:model[,...],默认 <executor>:haiku
+  --judge-models <value>          评委配置,格式 executor:model[,...],例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble)。默认 <executor>:haiku。
   --judge-repeat <value>          每个 dim 评 N 次
   --lang <zh|en>                  输出语言 zh|en
   --layered-stats                 输出分层统计
@@ -457,20 +457,20 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --model <value>                 被测模型
   --no-cache                      跳过 executor cache
   --no-debias-length              关 length-debias(默认开)
-  --no-diagnostic                 关 diagnostic LLM 调用
+  --no-diagnostic                 关闭 diagnostic 诊断 LLM 调用(默认开,给 failed sample 出「哪错了 + 怎么改」建议)。
   --no-gate                       关 verdict gate
   --no-judge                      跳过 LLM judge
   --no-serve                      不启 report server
   --no-strict-baseline            关闭 baseline 隔离
   --output-dir <value>            报告输出目录
   --repeat <value>                每个 sample 重复跑 N 次
-  --report-only                   只出报告不算 verdict
+  --report-only                   生成报告并打印 verdict,但始终 exit 0(不参与 CI gate)。
   --resume <value>                从某次失败 run 续跑
   --retry <value>                 失败 sample 重试次数
-  --samples <value>               样本文件路径
+  --samples <value>               样本文件路径。默认 eval-samples.json,也接受 .yaml/.yml;自动发现 --skill-dir 下的 <skill>/.omk/samples.json。
   --skill-dir <value>             skill 目录,默认 skills
   --skip-connectivity             跳 LLM 连通性预检
-  --skip-doctor                   跳 doctor 门禁
+  --skip-doctor                   escape hatch:跳 doctor 健康检查门禁(默认强制启用)。沙箱 mock 提供依赖时绕开 doctor 物理路径误报;garbage-in 风险自负。
   --strict-baseline               强制 baseline 隔离(default true)
   --threshold <value>             verdict 阈值,默认 3.5
   --timeout <value>               单样本超时秒,默认 120

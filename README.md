@@ -446,10 +446,10 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --config <value>                eval.yaml path
   --control <value>               Control variant expr
   --dry-run                       Plan only, no real exec
-  --effort <value>                Reasoning effort: low/medium/high/xhigh/max
-  --executor <value>              Executor, default claude
+  --effort <value>                Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).
+  --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom (default claude).
   --gold-dir <value>              Gold dataset dir
-  --judge-models <value>          Judge model(s), executor:model[,...] format
+  --judge-models <value>          Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.
   --judge-repeat <value>          Judge each dim N times
   --lang <zh|en>                  Output language zh|en
   --layered-stats                 Emit layered stats
@@ -457,20 +457,20 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --model <value>                 Evaluated model
   --no-cache                      Skip executor cache
   --no-debias-length              Disable length-debias (default on)
-  --no-diagnostic                 Disable diagnostic LLM call
+  --no-diagnostic                 Disable diagnostic LLM call (on by default; emits "what went wrong + how to fix" advice for failed samples).
   --no-gate                       Disable verdict gate
   --no-judge                      Skip LLM judge
   --no-serve                      Do not start report server
   --no-strict-baseline            Disable baseline isolation
   --output-dir <value>            Report output dir
   --repeat <value>                Repeat each sample N times
-  --report-only                   Report only, no verdict
+  --report-only                   Produce the report and print verdict, but always exit 0 (no CI gate).
   --resume <value>                Resume a previous failed run
   --retry <value>                 Per-sample retry count
-  --samples <value>               Samples file path
+  --samples <value>               Samples file path. Defaults to eval-samples.json (also .yaml/.yml); auto-discovers <skill>/.omk/samples.json under --skill-dir.
   --skill-dir <value>             Skill dir, default skills
   --skip-connectivity             Skip LLM connectivity preflight
-  --skip-doctor                   Skip doctor gate
+  --skip-doctor                   Escape hatch: skip the doctor health-check gate (on by default). Use when sandbox mocks supply deps; caller owns garbage-in risk.
   --strict-baseline               Force baseline isolation (default true)
   --threshold <value>             Verdict threshold, default 3.5
   --timeout <value>               Per-sample timeout sec, default 120
