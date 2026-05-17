@@ -136,6 +136,53 @@ export interface SampleFlags {
   treatment?: string;
 }
 
+// ── observe ───────────────────────────────────────────────────────────────────
+
+// observe(default,健康度审计)
+export interface ObserveArgs {
+  sessionsDir?: string;
+}
+export interface ObserveFlags {
+  lang: Lang;
+  kb?: string;
+  last?: string;
+  from?: string;
+  to?: string;
+  skills?: string;
+  'output-dir'?: string;
+}
+
+// observe ingest
+export interface ObserveIngestArgs {
+  traceDir: string;
+}
+export interface ObserveIngestFlags {
+  lang: Lang;
+  'output-dir'?: string;
+}
+
+// observe inbox(无 positional)
+export type ObserveInboxArgs = Record<string, never>;
+export interface ObserveInboxFlags {
+  lang: Lang;
+  'input-dir'?: string;
+  skill?: string;
+  limit?: string;
+  explore?: string;
+  'include-noise': boolean;
+  'by-skill': boolean;
+  json: boolean;
+}
+
+// observe show
+export interface ObserveShowArgs {
+  inboxId: string;
+}
+export interface ObserveShowFlags {
+  lang: Lang;
+  'input-dir'?: string;
+}
+
 // ── studio ────────────────────────────────────────────────────────────────────
 
 // 无 positional。用 Record<string, never> 而不是 `interface StudioArgs {}` 是因为

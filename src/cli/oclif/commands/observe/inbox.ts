@@ -54,10 +54,11 @@ export default class ObserveInbox extends Command {
   };
 
   async run(): Promise<void> {
-    await this.parse(ObserveInbox);
+    const { args, flags } = await this.parse(ObserveInbox);
+    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { executeInbox } = await import('../../../commands/observe.js');
-      await executeInbox(this.argv);
+      const { runObserveInbox } = await import('../../../commands/observe.js');
+      await runObserveInbox(args as Record<string, never>, { ...flags, lang }, lang);
     });
   }
 }

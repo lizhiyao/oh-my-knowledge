@@ -34,10 +34,11 @@ export default class ObserveIngest extends Command {
   };
 
   async run(): Promise<void> {
-    await this.parse(ObserveIngest);
+    const { args, flags } = await this.parse(ObserveIngest);
+    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { executeIngest } = await import('../../../commands/observe.js');
-      await executeIngest(this.argv);
+      const { runObserveIngest } = await import('../../../commands/observe.js');
+      await runObserveIngest(args, { ...flags, lang }, lang);
     });
   }
 }

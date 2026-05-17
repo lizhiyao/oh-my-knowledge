@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { execute } from '../../src/cli/commands/observe.js';
+import { runObserveInbox } from '../../src/cli/commands/observe.js';
 
 describe('observe CLI', () => {
   it('filters by skill before rendering the by-skill rollup', async () => {
@@ -47,7 +47,18 @@ describe('observe CLI', () => {
     const originalLog = console.log;
     console.log = (value?: unknown) => { logs.push(String(value)); };
     try {
-      await execute(['inbox', '--input-dir', dir, '--skill', 'audit', '--by-skill', '--json']);
+      await runObserveInbox(
+        {},
+        {
+          lang: 'zh',
+          'input-dir': dir,
+          skill: 'audit',
+          'include-noise': false,
+          'by-skill': true,
+          json: true,
+        },
+        'zh',
+      );
     } finally {
       console.log = originalLog;
     }

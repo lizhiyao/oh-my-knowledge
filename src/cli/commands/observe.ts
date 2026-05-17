@@ -1,40 +1,24 @@
 import { CliExit } from '../cli-exit.js';
 import { resolve, join } from 'node:path';
-import { tCli, langFromArgv } from '../i18n.js';
-import { COMMON_OPTIONS } from '../parse-run-config.js';
-import { parseArgsStrictOrExit } from '../parse-strict.js';
+import { tCli, type CliLang } from '../i18n.js';
 import { parseLastWindow } from './_shared.js';
+import type {
+  ObserveArgs,
+  ObserveFlags,
+  ObserveIngestArgs,
+  ObserveIngestFlags,
+  ObserveInboxArgs,
+  ObserveInboxFlags,
+  ObserveShowArgs,
+  ObserveShowFlags,
+} from '../types/cmd-flags.js';
 
-export async function execute(argv: string[]): Promise<void> {
-  const [sub, ...rest] = argv;
-  if (sub === 'ingest') {
-    await executeIngest(rest);
-    return;
-  }
-  if (sub === 'inbox') {
-    await executeInbox(rest);
-    return;
-  }
-  if (sub === 'show') {
-    await executeShow(rest);
-    return;
-  }
-
-  await executeHealth(argv);
-}
-
-export async function executeIngest(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  const { values: rawValues, positionals } = parseArgsStrictOrExit({
-    args: argv,
-    allowPositionals: true,
-    options: {
-      ...COMMON_OPTIONS,
-      'output-dir': { type: 'string' },
-    },
-  });
-  const values = rawValues as Record<string, string | undefined>;
-  const dir = positionals[0];
+export async function runObserveIngest(
+  args: ObserveIngestArgs,
+  flags: ObserveIngestFlags,
+  lang: CliLang,
+): Promise<void> {
+  const dir = args.traceDir;
   if (!dir) {
     console.error(tCli('cli.help.observe', lang).trim());
     throw new CliExit(1);
@@ -46,7 +30,7 @@ export async function executeIngest(argv: string[]): Promise<void> {
     throw new CliExit(1);
   }
   const { buildObservationInboxReport, saveObservationInboxReport, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
-  const outDir = resolve(values['output-dir'] || DEFAULT_OBSERVATIONS_DIR);
+  const outDir = resolve(flags['output-dir'] || DEFAULT_OBSERVATIONS_DIR);
   const { loadObservationReviewState } = await import('../../observability/review-state.js');
   const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
   const path = saveObservationInboxReport(report, outDir);
@@ -54,43 +38,32 @@ export async function executeIngest(argv: string[]): Promise<void> {
   process.stderr.write(`observe inbox written to: ${path}\n`);
 }
 
-export async function executeInbox(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  const { values: rawValues } = parseArgsStrictOrExit({
-    args: argv,
-    options: {
-      ...COMMON_OPTIONS,
-      'input-dir': { type: 'string' },
-      skill: { type: 'string' },
-      limit: { type: 'string' },
-      explore: { type: 'string' },
-      'include-noise': { type: 'boolean' },
-      'by-skill': { type: 'boolean' },
-      json: { type: 'boolean' },
-    },
-  });
-  const values = rawValues as Record<string, string | boolean | undefined>;
+export async function runObserveInbox(
+  _args: ObserveInboxArgs,
+  flags: ObserveInboxFlags,
+  lang: CliLang,
+): Promise<void> {
   const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
-  const dir = resolve((values['input-dir'] as string | undefined) || DEFAULT_OBSERVATIONS_DIR);
+  const dir = resolve(flags['input-dir'] || DEFAULT_OBSERVATIONS_DIR);
   let items = queryObservationInbox(dir);
-  if (values.skill) {
-    items = items.filter((item) => item.skillName === values.skill);
+  if (flags.skill) {
+    items = items.filter((item) => item.skillName === flags.skill);
   }
-  if (values['by-skill'] === true) {
-    const reports = values.skill
+  if (flags['by-skill']) {
+    const reports = flags.skill
       ? loadLatestObservationInboxReports(dir).map((report) => ({
         ...report,
         meta: {
           ...report.meta,
-          skillInvocationCounts: pickSkillCount(report.meta.skillInvocationCounts, String(values.skill)),
-          skillSessionCounts: pickSkillCount(report.meta.skillSessionCounts, String(values.skill)),
-          skillInvocationLastSeen: pickSkillString(report.meta.skillInvocationLastSeen, String(values.skill)),
-          skillToolCallCounts: pickSkillToolCounts(report.meta.skillToolCallCounts, String(values.skill)),
+          skillInvocationCounts: pickSkillCount(report.meta.skillInvocationCounts, String(flags.skill)),
+          skillSessionCounts: pickSkillCount(report.meta.skillSessionCounts, String(flags.skill)),
+          skillInvocationLastSeen: pickSkillString(report.meta.skillInvocationLastSeen, String(flags.skill)),
+          skillToolCallCounts: pickSkillToolCounts(report.meta.skillToolCallCounts, String(flags.skill)),
         },
       }))
       : loadLatestObservationInboxReports(dir);
     const rows = summarizeObservationInboxBySkill(items, reports);
-    if (values.json) {
+    if (flags.json) {
       console.log(JSON.stringify({ kind: 'observe-inbox-by-skill', rows }, null, 2));
       return;
     }
@@ -104,14 +77,14 @@ export async function executeInbox(argv: string[]): Promise<void> {
     }
     return;
   }
-  if (values.explore) {
-    const n = Math.max(1, Number(values.explore) || 10);
-    items = selectExploreInboxItems(items, n, values['include-noise'] === true);
+  if (flags.explore) {
+    const n = Math.max(1, Number(flags.explore) || 10);
+    items = selectExploreInboxItems(items, n, flags['include-noise']);
   } else {
-    const limit = Math.max(1, Number(values.limit ?? 20) || 20);
+    const limit = Math.max(1, Number(flags.limit ?? 20) || 20);
     items = items.slice(0, limit);
   }
-  if (values.json) {
+  if (flags.json) {
     console.log(JSON.stringify({ kind: 'observe-inbox-query', items }, null, 2));
     return;
   }
@@ -152,24 +125,18 @@ function pickSkillToolCounts(value: Record<string, Record<string, number>> | und
   return { [skillName]: value[skillName] };
 }
 
-export async function executeShow(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  const { values: rawValues, positionals } = parseArgsStrictOrExit({
-    args: argv,
-    allowPositionals: true,
-    options: {
-      ...COMMON_OPTIONS,
-      'input-dir': { type: 'string' },
-    },
-  });
-  const id = positionals[0];
+export async function runObserveShow(
+  args: ObserveShowArgs,
+  flags: ObserveShowFlags,
+  lang: CliLang,
+): Promise<void> {
+  const id = args.inboxId;
   if (!id) {
     console.error(lang === 'zh' ? '用法：omk observe show <inbox_id> [--input-dir <path>]' : 'Usage: omk observe show <inbox_id> [--input-dir <path>]');
     throw new CliExit(1);
   }
-  const values = rawValues as Record<string, string | undefined>;
   const { findObservationInboxItem, formatObservationShow, DEFAULT_OBSERVATIONS_DIR } = await import('../../observability/inbox.js');
-  const dir = resolve(values['input-dir'] || DEFAULT_OBSERVATIONS_DIR);
+  const dir = resolve(flags['input-dir'] || DEFAULT_OBSERVATIONS_DIR);
   const item = findObservationInboxItem(id, dir);
   if (!item) {
     console.error(lang === 'zh' ? `未找到 observation：${id}` : `Observation not found: ${id}`);
@@ -178,24 +145,12 @@ export async function executeShow(argv: string[]): Promise<void> {
   console.log(formatObservationShow(item));
 }
 
-export async function executeHealth(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  const { values: rawValues, positionals } = parseArgsStrictOrExit({
-    args: argv,
-    allowPositionals: true,
-    options: {
-      ...COMMON_OPTIONS,
-      kb: { type: 'string' },
-      last: { type: 'string' },
-      from: { type: 'string' },
-      to: { type: 'string' },
-      skills: { type: 'string' },
-      'output-dir': { type: 'string' },
-    },
-  });
-  // 该 handler options 全是 string-typed (无 boolean), 收紧 cast 让 caller 直接 use values.xxx 当 string 用。
-  const values = rawValues as Record<string, string | undefined>;
-  const dir = positionals[0];
+export async function runObserveHealth(
+  args: ObserveArgs,
+  flags: ObserveFlags,
+  lang: CliLang,
+): Promise<void> {
+  const dir = args.sessionsDir;
   if (!dir) {
     console.error(tCli('cli.help.observe', lang).trim());
     throw new CliExit(1);
@@ -209,29 +164,29 @@ export async function executeHealth(argv: string[]): Promise<void> {
   }
 
   // 时间窗: --from/--to 优先, --last fallback
-  let from: string | undefined = values.from;
-  if (!from && values.last) {
-    const inferred = parseLastWindow(values.last);
+  let from: string | undefined = flags.from;
+  if (!from && flags.last) {
+    const inferred = parseLastWindow(flags.last);
     if (!inferred) {
-      console.error(`Invalid --last format: "${values.last}". Expected e.g. "7d" / "24h" / "30m".`);
+      console.error(`Invalid --last format: "${flags.last}". Expected e.g. "7d" / "24h" / "30m".`);
       throw new CliExit(1);
     }
     from = inferred;
   }
-  const to: string | undefined = values.to;
-  const skills = values.skills ? values.skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
+  const to: string | undefined = flags.to;
+  const skills = flags.skills ? flags.skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
   console.log(`[omk] analyzing ${tracePath}...`);
   const { computeSkillHealthReport } = await import('../../observability/skill-health-analyzer.js');
   const report = computeSkillHealthReport(tracePath, {
-    kbRoot: values.kb ? resolve(values.kb) : undefined,
+    kbRoot: flags.kb ? resolve(flags.kb) : undefined,
     from,
     to,
     skills,
   });
 
   // JSON 是主产物；HTML 由 report server 的 /analyses/:id 按需渲染。
-  const outDir = resolve(values['output-dir'] || join(process.env.HOME || '.', '.oh-my-knowledge', 'analyses'));
+  const outDir = resolve(flags['output-dir'] || join(process.env.HOME || '.', '.oh-my-knowledge', 'analyses'));
   mkdirSync(outDir, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const jsonPath = join(outDir, `${timestamp}-skill-health.json`);
