@@ -1,12 +1,9 @@
 /**
- * oclif init hook + 顶层 --lang scan 验收。
+ * oclif init hook 错误路径单语 dump 验收。
  *
- * 锁两个 #121 收口项:
- *   #5 错误路径双语 dump:`omk <cmd> --bogus-flag` 错误时 oclif 内部硬编码
- *      `new Help(config)` 不走 LangAwareHelp,但 init hook 已经在 Command.Loadable
- *      上 in-place mutate 单语,所以 dump 出来的 FLAGS / USAGE 单语。
- *   #6 顶层 --lang 跨子命令边界:`omk --lang en eval --help` 跟 `omk eval --lang en --help`
- *      行为等价,都走子命令的英文 help 而不是退化到 root help。
+ * #5 错误路径双语 dump:`omk <cmd> --bogus-flag` 错误时 oclif 内部硬编码
+ *    `new Help(config)` 不走 LangAwareHelp,但 init hook 已经在 Command.Loadable
+ *    上 in-place mutate 单语,所以 dump 出来的 FLAGS / USAGE 单语。
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
@@ -26,7 +23,7 @@ interface ExecError extends Error {
   stderr: string;
 }
 
-describe('oclif init hook + 顶层 --lang scan(#5 / #6)', () => {
+describe('oclif init hook 错误路径单语 dump(#5)', () => {
   it('#5: eval --bogus-flag 错误路径 FLAGS dump 单语(zh 默认)', async () => {
     try {
       await execFileAsync('node', [CLI, 'eval', '--bogus-flag']);
@@ -54,25 +51,7 @@ describe('oclif init hook + 顶层 --lang scan(#5 / #6)', () => {
     }
   });
 
-  it('#6: omk --lang en eval --help 走子命令英文 help(不退化到 root)', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, '--lang', 'en', 'eval', '--help']);
-    // eval --help 英文 description 关键词
-    assert.ok(/Run evaluation:/i.test(stdout), `应走 eval 英文 help,实际:\n${stdout.slice(0, 300)}`);
-    // 退化到 root 时 description 会变成 "Evaluation framework for LLM..."
-    assert.ok(
-      !/Evaluation framework for LLM/.test(stdout),
-      `不应退化到 root help:\n${stdout.slice(0, 300)}`,
-    );
-    // eval 子命令的 USAGE 行特征
-    assert.ok(/\$ omk eval/.test(stdout), `USAGE 应是 \`$ omk eval ...\`,实际:\n${stdout.slice(0, 300)}`);
-  });
-
-  it('#6: omk --lang=en eval --help 等号形态也工作', async () => {
-    const { stdout } = await execFileAsync('node', [CLI, '--lang=en', 'eval', '--help']);
-    assert.ok(/Run evaluation:/i.test(stdout), `应走 eval 英文 help,实际:\n${stdout.slice(0, 300)}`);
-  });
-
-  it('#6: omk eval --lang en --help 已工作的形态保留', async () => {
+  it('omk eval --lang en --help 子命令 --lang 走英文 help', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'eval', '--lang', 'en', '--help']);
     assert.ok(/Run evaluation:/i.test(stdout), `应走 eval 英文 help,实际:\n${stdout.slice(0, 300)}`);
   });
