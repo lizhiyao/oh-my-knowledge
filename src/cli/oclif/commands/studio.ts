@@ -80,10 +80,11 @@ export default class Studio extends Command {
   };
 
   async run(): Promise<void> {
-    await this.parse(Studio);
+    const { flags } = await this.parse(Studio);
+    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { execute } = await import('../../commands/studio.js');
-      await execute(this.argv);
+      const { runStudio } = await import('../../commands/studio.js');
+      await runStudio({}, { ...flags, lang }, lang);
     });
   }
 }

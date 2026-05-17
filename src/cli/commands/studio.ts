@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
-import { langFromArgv, tCli, type CliLang } from '../i18n.js';
-import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
-import { parseArgsStrictOrExit } from '../parse-strict.js';
+import { tCli, type CliLang } from '../i18n.js';
+import { DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
+import type { StudioArgs, StudioFlags } from '../types/cmd-flags.js';
 import type { ReportServer } from './_shared.js';
 
 async function openWorkbench(url: string, lang: CliLang): Promise<void> {
@@ -24,45 +24,36 @@ async function openWorkbench(url: string, lang: CliLang): Promise<void> {
   });
 }
 
-export async function execute(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  const { values } = parseArgsStrictOrExit({
-    args: argv,
-    options: {
-      ...COMMON_OPTIONS,
-      port: { type: 'string', default: '7799' },
-      host: { type: 'string' },
-      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
-      'analyses-dir': { type: 'string' },
-      'observations-dir': { type: 'string' },
-      'no-open': { type: 'boolean', default: false },
-      dev: { type: 'boolean', default: false },
-    },
-  });
+export async function runStudio(
+  _args: StudioArgs,
+  flags: StudioFlags,
+  lang: CliLang,
+): Promise<void> {
+  const reportsDir = flags['reports-dir'] ?? DEFAULT_REPORTS_DIR;
 
-  if (values.dev && !process.env.__OMK_DEV_CHILD) {
+  if (flags.dev && !process.env.__OMK_DEV_CHILD) {
     const { spawn } = await import('node:child_process');
     const { fileURLToPath } = await import('node:url');
     const cliPath = resolve(fileURLToPath(import.meta.url), '..', '..', 'index.js');
     const watchRoot = resolve(cliPath, '..', '..');
-    const args = [
+    const childArgs = [
       '--watch-path', watchRoot,
       cliPath,
       'studio',
-      '--port', values.port as string,
-      ...(values.host ? ['--host', values.host as string] : []),
-      '--reports-dir', values['reports-dir'] as string,
+      '--port', flags.port,
+      ...(flags.host ? ['--host', flags.host] : []),
+      '--reports-dir', reportsDir,
     ];
-    if (values['analyses-dir']) {
-      args.push('--analyses-dir', values['analyses-dir'] as string);
+    if (flags['analyses-dir']) {
+      childArgs.push('--analyses-dir', flags['analyses-dir']);
     }
-    if (values['observations-dir']) {
-      args.push('--observations-dir', values['observations-dir'] as string);
+    if (flags['observations-dir']) {
+      childArgs.push('--observations-dir', flags['observations-dir']);
     }
-    if (values['no-open']) {
-      args.push('--no-open');
+    if (flags['no-open']) {
+      childArgs.push('--no-open');
     }
-    const child = spawn(process.execPath, args, {
+    const child = spawn(process.execPath, childArgs, {
       stdio: 'inherit',
       env: { ...process.env, __OMK_DEV_CHILD: '1' },
     });
@@ -72,17 +63,17 @@ export async function execute(argv: string[]): Promise<void> {
 
   const { createReportServer } = await import('../../server/report-server.js');
   const server: ReportServer = createReportServer({
-    port: Number(values.port),
-    ...(values.host ? { host: values.host as string } : {}),
-    reportsDir: resolve(values['reports-dir'] as string),
-    ...(values['analyses-dir'] ? { analysesDir: resolve(values['analyses-dir'] as string) } : {}),
-    ...(values['observations-dir'] ? { observationsDir: resolve(values['observations-dir'] as string) } : {}),
+    port: Number(flags.port),
+    ...(flags.host ? { host: flags.host } : {}),
+    reportsDir: resolve(reportsDir),
+    ...(flags['analyses-dir'] ? { analysesDir: resolve(flags['analyses-dir']) } : {}),
+    ...(flags['observations-dir'] ? { observationsDir: resolve(flags['observations-dir']) } : {}),
   });
 
   const url = await server.start();
   console.log(tCli('cli.studio.started', lang, { url }));
   console.log(tCli('cli.studio.stop_hint', lang));
-  if (!values['no-open'] && process.stdout.isTTY) {
+  if (!flags['no-open'] && process.stdout.isTTY) {
     await openWorkbench(url, lang);
   }
 }

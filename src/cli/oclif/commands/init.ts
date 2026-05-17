@@ -61,10 +61,11 @@ export default class Init extends Command {
   };
 
   async run(): Promise<void> {
-    await this.parse(Init);
+    const { args, flags } = await this.parse(Init);
+    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { execute } = await import('../../commands/init.js');
-      await execute(this.argv);
+      const { runInit } = await import('../../commands/init.js');
+      await runInit(args, { lang }, lang);
     });
   }
 }

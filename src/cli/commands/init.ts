@@ -1,7 +1,6 @@
 import { resolve, join } from 'node:path';
-import { tCli, langFromArgv } from '../i18n.js';
-import { COMMON_OPTIONS } from '../parse-run-config.js';
-import { parseArgsStrictOrExit } from '../parse-strict.js';
+import { tCli, type CliLang } from '../i18n.js';
+import type { InitArgs, InitFlags } from '../types/cmd-flags.js';
 
 const INIT_SAMPLES = `[
   {
@@ -84,16 +83,14 @@ description: 多维度代码审查,覆盖安全 / 健壮 / 可维护 / 性能,�
 对每个维度给出具体的改进建议，并标注严重程度（高/中/低）。
 `;
 
-export async function execute(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  // 走 helper 让未知 option fail-fast（e.g. `omk init --bogus`），
-  // 否则 argv[0] 直接当目录名, --bogus / --lang 都会被当成 dir 写文件。
-  const { positionals } = parseArgsStrictOrExit({
-    args: argv,
-    allowPositionals: true,
-    options: { ...COMMON_OPTIONS },
-  });
-  const targetDir: string = resolve(positionals[0] || '.');
+export async function runInit(
+  args: InitArgs,
+  _flags: InitFlags,
+  lang: CliLang,
+): Promise<void> {
+  // unknown flag 由 oclif Command strict parse 拦截(exit 2),业务侧不再 parseArgs。
+  // targetDir 在 oclif Args parse 阶段已经做 `--` 前缀 validate(防 `omk init -- --weird`)。
+  const targetDir: string = resolve(args.targetDir || '.');
   const { writeFileSync, mkdirSync } = await import('node:fs');
 
   // omk skill loader 把 `skills/<name>/SKILL.md` 子目录识别为 directory-skill,
