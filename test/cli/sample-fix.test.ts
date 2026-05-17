@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { loadSamples } from '../../src/inputs/load-samples.js';
 import { hashSample, hashString } from '../../src/eval-core/evaluation-reporting.js';
-import { assertFixReportMatchesCurrentInputs, collectSampleDesignFailureIds, writeFixedSamplesToSources } from '../../src/cli/commands/sample.js';
+import { assertFixReportMatchesCurrentInputs, collectSampleDesignFailureIds, writeFixedSamplesToSources } from '../../src/cli/oclif/commands/sample.js';
 import type { Report, Sample, VariantResult } from '../../src/types/index.js';
 
 function makeVariantResult(rootCause: Array<'sample_design' | 'llm_misread'>): VariantResult {
