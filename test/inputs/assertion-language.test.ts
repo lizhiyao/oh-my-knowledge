@@ -1,12 +1,15 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
 import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runInit } from '../../src/cli/commands/init.js';
+import { promisify } from 'node:util';
 import { loadSamples } from '../../src/inputs/load-samples.js';
 import type { Assertion, Sample } from '../../src/types/index.js';
+
+const execFileAsync = promisify(execFile);
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const HAN_RE = /\p{Script=Han}/u;
@@ -76,7 +79,8 @@ describe('eval sample assertion language', () => {
   it('keeps init scaffold assertion payloads English-only', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-init-assertions-'));
     try {
-      await runInit({ targetDir: dir }, { lang: 'zh' }, 'zh');
+      const cli = join(PROJECT_ROOT, 'dist', 'src', 'cli', 'index.js');
+      await execFileAsync('node', [cli, 'init', dir, '--lang', 'zh']);
       const { samples } = loadSamples(join(dir, 'eval-samples.json'));
       assert.deepEqual(collectAssertionViolations('omk init', samples), []);
     } finally {

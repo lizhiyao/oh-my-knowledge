@@ -72,7 +72,7 @@ describe('studio --dev child spawn argv', () => {
   });
 
   it('uses cli/index.js as child entrypoint and re-enters studio', async () => {
-    const { runStudio } = await import('../../src/cli/commands/studio.js');
+    const { runStudio } = await import('../../src/cli/oclif/commands/studio.js');
     await runStudio({}, {
       lang: 'zh',
       port: '8080',
@@ -92,7 +92,7 @@ describe('studio --dev child spawn argv', () => {
   });
 
   it('treats BROWSER=none as no browser open', async () => {
-    const { runStudio } = await import('../../src/cli/commands/studio.js');
+    const { runStudio } = await import('../../src/cli/oclif/commands/studio.js');
     setStdoutIsTTY(true);
     process.env.BROWSER = 'none';
 
@@ -102,7 +102,7 @@ describe('studio --dev child spawn argv', () => {
   });
 
   it('uses cmd start for the default Windows browser opener', async () => {
-    const { runStudio } = await import('../../src/cli/commands/studio.js');
+    const { runStudio } = await import('../../src/cli/oclif/commands/studio.js');
     setStdoutIsTTY(true);
     platformName = 'win32';
 
@@ -114,7 +114,7 @@ describe('studio --dev child spawn argv', () => {
   });
 
   it('warns when browser auto-open fails', async () => {
-    const { runStudio } = await import('../../src/cli/commands/studio.js');
+    const { runStudio } = await import('../../src/cli/oclif/commands/studio.js');
     setStdoutIsTTY(true);
     platformName = 'linux';
     execFileError = new Error('xdg-open missing');

@@ -1,7 +1,7 @@
 import { CliExit } from '../cli-exit.js';
 import { resolve, join } from 'node:path';
 import { tCli, type CliLang } from '../i18n.js';
-import { parseLastWindow } from './_shared.js';
+import { parseLastWindow } from '../_shared.js';
 import type {
   ObserveArgs,
   ObserveFlags,

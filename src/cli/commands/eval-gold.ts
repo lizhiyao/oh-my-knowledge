@@ -11,7 +11,7 @@ import type {
   GoldCompareFlags,
 } from '../types/cmd-flags.js';
 import type { ReportStore } from '../../types/index.js';
-import { requireEvaluationReport } from './_shared.js';
+import { requireEvaluationReport } from '../_shared.js';
 
 // 三个 sub-sub handler:oclif Command(src/cli/oclif/commands/eval/gold/*)的 run() 直接调用。
 // `eval gold` topic 本身由 src/cli/oclif/commands/eval/gold.ts 处理(打 help + exit 1)。

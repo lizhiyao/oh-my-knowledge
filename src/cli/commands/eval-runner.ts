@@ -6,7 +6,7 @@ import { computeRunTally } from '../run-tally.js';
 import type { EvalArgs, EvalFlags } from '../types/cmd-flags.js';
 import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback } from '../../types/index.js';
 import type { DryRunBatchReport, DryRunReport } from '../../eval-workflows/run-evaluation.js';
-import type { EvalResult, ReportServer } from './_shared.js';
+import type { EvalResult, ReportServer } from '../_shared.js';
 
 interface SkillProgressInfo {
   phase: string;
