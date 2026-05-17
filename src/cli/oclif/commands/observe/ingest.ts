@@ -1,8 +1,8 @@
-// oclif 版 observe ingest — 透传 argv 给生产 executeIngest()。
-
+import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../../i18n.js';
 import { runLegacyCommand } from '../../run-legacy.js';
+import { CliExit } from '../../../cli-exit.js';
 
 export default class ObserveIngest extends Command {
   static description = bilingual({
@@ -35,10 +35,25 @@ export default class ObserveIngest extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveIngest);
-    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { runObserveIngest } = await import('../../../commands/observe.js');
-      await runObserveIngest(args, { ...flags, lang }, lang);
+      const dir = args.traceDir;
+      if (!dir) {
+        // oclif Args.required:true 已经保证非空,这里仍兜底防御。
+        throw new CliExit(1);
+      }
+      const tracePath = resolve(dir);
+      const { existsSync } = await import('node:fs');
+      if (!existsSync(tracePath)) {
+        console.error(`Trace path does not exist: ${tracePath}`);
+        throw new CliExit(1);
+      }
+      const { buildObservationInboxReport, saveObservationInboxReport, DEFAULT_OBSERVATIONS_DIR } = await import('../../../../observability/inbox.js');
+      const outDir = resolve(flags['output-dir'] || DEFAULT_OBSERVATIONS_DIR);
+      const { loadObservationReviewState } = await import('../../../../observability/review-state.js');
+      const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
+      const path = saveObservationInboxReport(report, outDir);
+      console.log(JSON.stringify(report, null, 2));
+      process.stderr.write(`observe inbox written to: ${path}\n`);
     });
   }
 }

@@ -1,8 +1,8 @@
-// oclif 版 observe show — 透传 argv 给生产 executeShow()。
-
+import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../../i18n.js';
 import { runLegacyCommand } from '../../run-legacy.js';
+import { CliExit } from '../../../cli-exit.js';
 
 export default class ObserveShow extends Command {
   static description = bilingual({
@@ -37,8 +37,19 @@ export default class ObserveShow extends Command {
     const { args, flags } = await this.parse(ObserveShow);
     const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { runObserveShow } = await import('../../../commands/observe.js');
-      await runObserveShow(args, { ...flags, lang }, lang);
+      const id = args.inboxId;
+      if (!id) {
+        console.error(lang === 'zh' ? '用法：omk observe show <inbox_id> [--input-dir <path>]' : 'Usage: omk observe show <inbox_id> [--input-dir <path>]');
+        throw new CliExit(1);
+      }
+      const { findObservationInboxItem, formatObservationShow, DEFAULT_OBSERVATIONS_DIR } = await import('../../../../observability/inbox.js');
+      const dir = resolve(flags['input-dir'] || DEFAULT_OBSERVATIONS_DIR);
+      const item = findObservationInboxItem(id, dir);
+      if (!item) {
+        console.error(lang === 'zh' ? `未找到 observation：${id}` : `Observation not found: ${id}`);
+        throw new CliExit(1);
+      }
+      console.log(formatObservationShow(item));
     });
   }
 }

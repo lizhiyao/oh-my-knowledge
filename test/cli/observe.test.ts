@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { runObserveInbox } from '../../src/cli/commands/observe.js';
+import { runObserveInbox } from '../../src/cli/oclif/commands/observe/inbox.js';
 
 describe('observe CLI', () => {
   it('filters by skill before rendering the by-skill rollup', async () => {
