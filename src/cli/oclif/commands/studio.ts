@@ -1,6 +1,5 @@
 import { Command, Flags } from '@oclif/core';
 import { bilingual } from '../i18n.js';
-import { runLegacyCommand } from '../run-legacy.js';
 
 // oclif 版 studio — 透传 argv 给生产 execute()。
 // server 是长跑命令:生产 execute() 调 server.start() 后 await 返回 URL 然后 console.log
@@ -81,9 +80,17 @@ export default class Studio extends Command {
 
   async run(): Promise<void> {
     await this.parse(Studio);
-    await runLegacyCommand(this, async () => {
-      const { execute } = await import('../../commands/studio.js');
-      await execute(this.argv);
-    });
+    const argv = this.argv;
+    const { execute } = await import('../../commands/studio.js');
+    const { CliExit } = await import('../../cli-exit.js');
+    try {
+      await execute(argv);
+    } catch (err) {
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+      }
+      throw err;
+    }
   }
 }

@@ -145,7 +145,7 @@ distribution 成功标准：
 
 优先事项：
 
-- 增加 red-team 入口（命名待定，候选形如 `redteam --profile knowledge-artifact` 顶层子命令）。
+- 增加 red-team 入口（命名待定，候选：`omk redteam --profile knowledge-artifact`）。
 - 覆盖 prompt injection、skill leakage、RAG poisoning、tool misuse、baseline contamination。
 - 输出独立安全维度 verdict，不混入综合质量分。
 - 支持导入 promptfoo / Inspect 结果，整合到 OMK 报告。
@@ -157,7 +157,7 @@ distribution 成功标准：
 
 优先事项：
 
-- 报告 emission 能力（github-summary / junit / sarif / markdown）：原 export 子命令已下线，需要重新设计入口（候选：`eval --emit <fmt>` 跑时直接吐 / studio 加下载入口 / `report` 顶层重启）。
+- 报告 emission 能力（github-summary / junit / sarif / markdown）：`omk export` 已下线，需要重新设计入口（候选：`eval --emit <fmt>` 跑时直接吐 / studio 加下载入口 / `report` 顶层重启）。
 - 报告增加“审计摘要”：样本数、CI、judge hash、human alpha、dataset version、artifact hash、已知 caveat。
 - Release notes 自动提示 `BREAKING-COMPARABILITY` 和测量不变量变化。
 - 生成可直接贴到 PR 的中文摘要。

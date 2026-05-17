@@ -38,17 +38,6 @@ export function bilingual(text: BiText): string {
       `Use single-line description; place long prose in legacy cli.help.* dict.`,
     );
   }
-  // ejs 模板标记 `<% %>` 不允许出现在 description / flag.description / arg.description 里。
-  // oclif Help 用 ejs.render(body, context) 渲染所有 section,如果未来 description 被
-  // 拼了用户输入(skill 名、文件路径、env 值),`<%...%>` 会被执行成任意代码。
-  // by-design 的模板只在 example.command 字段(如 `<%= config.bin %>`),那个字段不走 bilingual()。
-  if (text.zh.includes('<%') || text.zh.includes('%>') || text.en.includes('<%') || text.en.includes('%>')) {
-    throw new Error(
-      `bilingual() text must not contain ejs template markers (<% or %>). ` +
-      `oclif Help renders description through ejs; templates only belong in example.command. ` +
-      `Got zh=${JSON.stringify(text.zh)}, en=${JSON.stringify(text.en)}.`,
-    );
-  }
   return `${text.zh}\n${text.en}`;
 }
 

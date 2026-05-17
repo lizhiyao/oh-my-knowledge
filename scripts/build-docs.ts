@@ -19,18 +19,19 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Config, type Command } from '@oclif/core';
-import { pickLang as pickLangCore } from '../src/cli/oclif/i18n.js';
 
 const REPO_ROOT = resolve(process.cwd());
 
 type Lang = 'zh' | 'en';
 
-// build-docs 在生成 markdown 时需要把 `${zh}\n${en}` 切回单语,跟 src/cli/oclif/i18n.ts
-// 的 pickLang 共用底层逻辑(单一来源)。i18n.ts 的 pickLang 返回 string | undefined
-// (caller 决定 nullish 处理),build-docs 拼字符串不能容忍 undefined,这里用
-// `?? ''` 把 undefined 兜成 '',行为跟原 inline 版本等价。
+// inline pickLang — 跟 src/cli/oclif/i18n.ts:36 行为一致。description 是
+// `${zh}\n${en}` 形式;zh = 第一行,en = 后续行 join。
 function pickLang(text: string | undefined, lang: Lang): string {
-  return pickLangCore(text, lang) ?? '';
+  if (!text) return '';
+  const parts = text.split(/\r?\n/);
+  if (parts.length < 2) return text;
+  if (lang === 'zh') return parts[0] ?? '';
+  return parts.slice(1).join('\n');
 }
 
 interface FlagShape {
@@ -245,39 +246,40 @@ interface PerCmdFlagsTarget {
 type Target = FullbodyTarget | PerCmdFlagsTarget;
 
 /**
- * omk 顶层命令 id 列表 — 从 oclif Config 真值动态推导(README per-cmd-flags
- * + SKILL.md argument-hint 共用)。oclif Command 文件目录是单一来源,这里只是
- * 派生层,加 / 删 / rename 顶层命令时不需要再来这里改 hardcoded 数组。
+ * omk 顶层命令 id 列表(README per-cmd-flags + SKILL.md argument-hint 共用)。
+ * 此常量是单一来源,oclif 顶层命令集真值在 src/cli/oclif/commands/ 文件目录,
+ * test 跑 Config.load 动态校验两者一致。
  */
-export function getTopLevelIds(config: Config): readonly string[] {
-  return config.commands
-    .map((c) => c.id)
-    .filter((id) => !id.includes(':'))
-    .sort();
-}
+export const TOP_LEVEL_IDS = [
+  'init',
+  'doctor',
+  'eval',
+  'observe',
+  'evolve',
+  'sample',
+  'studio',
+] as const;
 
-export function buildTargets(topLevelIds: readonly string[]): Target[] {
-  return [
-    {
-      mode: 'fullbody',
-      file: '.claude/skills/omk/references/commands.md',
-      markerStart: '<!-- omk:cli:start -->',
-      markerEnd: '<!-- omk:cli:end -->',
-    },
-    {
-      mode: 'per-cmd-flags',
-      file: 'README.md',
-      lang: 'en',
-      topLevelIds,
-    },
-    {
-      mode: 'per-cmd-flags',
-      file: 'README.zh.md',
-      lang: 'zh',
-      topLevelIds,
-    },
-  ];
-}
+const TARGETS: Target[] = [
+  {
+    mode: 'fullbody',
+    file: '.claude/skills/omk/references/commands.md',
+    markerStart: '<!-- omk:cli:start -->',
+    markerEnd: '<!-- omk:cli:end -->',
+  },
+  {
+    mode: 'per-cmd-flags',
+    file: 'README.md',
+    lang: 'en',
+    topLevelIds: TOP_LEVEL_IDS,
+  },
+  {
+    mode: 'per-cmd-flags',
+    file: 'README.zh.md',
+    lang: 'zh',
+    topLevelIds: TOP_LEVEL_IDS,
+  },
+];
 
 // ── marker 区段定位 + 替换 ─────────────────────────────────────────────────────
 
@@ -376,10 +378,8 @@ interface TargetResult {
 
 async function generateAll(): Promise<TargetResult[]> {
   const config = await Config.load({ root: REPO_ROOT });
-  const topLevelIds = getTopLevelIds(config);
-  const targets = buildTargets(topLevelIds);
   const results: TargetResult[] = [];
-  for (const target of targets) {
+  for (const target of TARGETS) {
     const absPath = resolve(REPO_ROOT, target.file);
     const current = readFileSync(absPath, 'utf8');
     if (target.mode === 'fullbody') {
@@ -451,7 +451,7 @@ async function main(): Promise<void> {
 }
 
 // 只在直接 `node dist/scripts/build-docs.js ...` 跑时进 main();被 test 当 module
-// import 时不跑(test import getTopLevelIds / buildTargets 用)。
+// import 时不跑(test 只要 TOP_LEVEL_IDS 常量)。
 const isMain = process.argv[1] && /build-docs\.js$/.test(process.argv[1]);
 if (isMain) {
   main().catch((err: unknown) => {

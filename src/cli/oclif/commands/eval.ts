@@ -1,6 +1,5 @@
 import { Command, Flags } from '@oclif/core';
 import { bilingual } from '../i18n.js';
-import { runLegacyCommand } from '../run-legacy.js';
 
 // oclif 版 eval(默认 = run 模式) — 透传 argv 给生产 eval-runner execute()。
 // flag schema 镜像 RUN_OPTIONS(27) + eval-runner extraOptions(14) = 41 flag。
@@ -195,9 +194,21 @@ export default class Eval extends Command {
 
   async run(): Promise<void> {
     await this.parse(Eval);
-    await runLegacyCommand(this, async () => {
-      const { execute } = await import('../../commands/eval-runner.js');
-      await execute(this.argv);
-    });
+    // 透传给生产 eval-runner.execute()(直接进 run 模式,不经 eval.ts 的 sub 路由)。
+    // 用 this.argv 而不是 process.argv.slice(N):oclif 已经把命令路径切掉,space-syntax
+    // (omk eval ...)跟 colon-syntax(omk eval:...)输出一致,避免 N 写死导致 colon 路径
+    // 静默丢 flag。
+    const argv = this.argv;
+    const { execute } = await import('../../commands/eval-runner.js');
+    const { CliExit } = await import('../../cli-exit.js');
+    try {
+      await execute(argv);
+    } catch (err) {
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+      }
+      throw err;
+    }
   }
 }

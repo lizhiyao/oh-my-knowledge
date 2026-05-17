@@ -1,6 +1,5 @@
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../i18n.js';
-import { runLegacyCommand } from '../run-legacy.js';
 
 // oclif 版 sample — 跟 src/cli/commands/sample.ts 行为对得齐。
 // 实现策略:flag schema 在这里声明一份（给 oclif --help / strict 校验用），
@@ -117,10 +116,22 @@ export default class Sample extends Command {
   async run(): Promise<void> {
     // 解析触发 oclif 的 --help / strict 校验。flag 值不直接用,交给生产 execute() 重新 parse argv。
     await this.parse(Sample);
+
     // this.argv = oclif 已经把命令路径切掉的余下 argv,space-syntax 跟 colon-syntax 一致。
-    await runLegacyCommand(this, async () => {
-      const { execute } = await import('../../commands/sample.js');
-      await execute(this.argv);
-    });
+    const argv = this.argv;
+
+    const { execute } = await import('../../commands/sample.js');
+    const { CliExit } = await import('../../cli-exit.js');
+
+    try {
+      await execute(argv);
+    } catch (err) {
+      // 生产 execute 走 throw CliExit(code) 表示 exit。oclif 路径下转成 this.exit。
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+      }
+      throw err;
+    }
   }
 }
