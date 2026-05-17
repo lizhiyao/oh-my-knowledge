@@ -2,6 +2,7 @@
 
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../../i18n.js';
+import { runLegacyCommand } from '../../run-legacy.js';
 
 export default class ObserveIngest extends Command {
   static description = bilingual({
@@ -34,17 +35,9 @@ export default class ObserveIngest extends Command {
 
   async run(): Promise<void> {
     await this.parse(ObserveIngest);
-    const argv = this.argv;
-    const { executeIngest } = await import('../../../commands/observe.js');
-    const { CliExit } = await import('../../../cli-exit.js');
-    try {
-      await executeIngest(argv);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-      }
-      throw err;
-    }
+    await runLegacyCommand(this, async () => {
+      const { executeIngest } = await import('../../../commands/observe.js');
+      await executeIngest(this.argv);
+    });
   }
 }

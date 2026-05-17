@@ -1,5 +1,6 @@
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../i18n.js';
+import { runLegacyCommand } from '../run-legacy.js';
 
 // oclif 版 evolve — 透传 argv 给生产 execute()。
 // flag schema 镜像 src/cli/commands/evolve.ts 的 RUN_OPTIONS 共 13 个。
@@ -123,17 +124,9 @@ export default class Evolve extends Command {
 
   async run(): Promise<void> {
     await this.parse(Evolve);
-    const argv = this.argv;
-    const { execute } = await import('../../commands/evolve.js');
-    const { CliExit } = await import('../../cli-exit.js');
-    try {
-      await execute(argv);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-      }
-      throw err;
-    }
+    await runLegacyCommand(this, async () => {
+      const { execute } = await import('../../commands/evolve.js');
+      await execute(this.argv);
+    });
   }
 }

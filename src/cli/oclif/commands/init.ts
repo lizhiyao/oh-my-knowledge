@@ -1,5 +1,6 @@
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../i18n.js';
+import { runLegacyCommand } from '../run-legacy.js';
 
 // oclif 版 init — 透传 argv 给生产 src/cli/commands/init.ts execute()。
 // 仅 lang flag + 可选 positional targetDir(默认 '.')。
@@ -61,17 +62,9 @@ export default class Init extends Command {
 
   async run(): Promise<void> {
     await this.parse(Init);
-    const argv = this.argv;
-    const { execute } = await import('../../commands/init.js');
-    const { CliExit } = await import('../../cli-exit.js');
-    try {
-      await execute(argv);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-      }
-      throw err;
-    }
+    await runLegacyCommand(this, async () => {
+      const { execute } = await import('../../commands/init.js');
+      await execute(this.argv);
+    });
   }
 }
