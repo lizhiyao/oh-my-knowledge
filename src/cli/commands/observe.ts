@@ -23,7 +23,7 @@ export async function execute(argv: string[]): Promise<void> {
   await executeHealth(argv);
 }
 
-async function executeIngest(argv: string[]): Promise<void> {
+export async function executeIngest(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const { values: rawValues, positionals } = parseArgsStrictOrExit({
     args: argv,
@@ -54,7 +54,7 @@ async function executeIngest(argv: string[]): Promise<void> {
   process.stderr.write(`observe inbox written to: ${path}\n`);
 }
 
-async function executeInbox(argv: string[]): Promise<void> {
+export async function executeInbox(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const { values: rawValues } = parseArgsStrictOrExit({
     args: argv,
@@ -152,7 +152,7 @@ function pickSkillToolCounts(value: Record<string, Record<string, number>> | und
   return { [skillName]: value[skillName] };
 }
 
-async function executeShow(argv: string[]): Promise<void> {
+export async function executeShow(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const { values: rawValues, positionals } = parseArgsStrictOrExit({
     args: argv,
@@ -178,7 +178,7 @@ async function executeShow(argv: string[]): Promise<void> {
   console.log(formatObservationShow(item));
 }
 
-async function executeHealth(argv: string[]): Promise<void> {
+export async function executeHealth(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const { values: rawValues, positionals } = parseArgsStrictOrExit({
     args: argv,

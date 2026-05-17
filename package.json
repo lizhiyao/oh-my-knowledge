@@ -14,6 +14,8 @@
   ],
   "scripts": {
     "build": "tsc && node -e \"const fs=require('node:fs'),p=require('node:path');const d='dist/src/eval-core/mock-hook.cjs';fs.mkdirSync(p.dirname(d),{recursive:true});fs.copyFileSync('src/eval-core/mock-hook.cjs',d)\"",
+    "build:docs": "node dist/scripts/build-docs.js --write",
+    "build:docs:check": "node dist/scripts/build-docs.js --check",
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0",
     "test": "vitest run",
@@ -25,6 +27,24 @@
     "{src,test}/**/*.ts": [
       "eslint --max-warnings 0"
     ]
+  },
+  "oclif": {
+    "bin": "omk",
+    "commands": "./dist/src/cli/oclif/commands",
+    "dirname": "omk",
+    "helpClass": "./dist/src/cli/oclif/help.js",
+    "topicSeparator": " ",
+    "additionalHelpFlags": ["-h"],
+    "additionalVersionFlags": ["-v"],
+    "exitCodes": {
+      "default": 1,
+      "failedFlagParsing": 2,
+      "failedFlagValidation": 2,
+      "invalidArgsSpec": 2,
+      "nonExistentFlag": 2,
+      "requiredArgs": 2,
+      "unexpectedArgs": 2
+    }
   },
   "keywords": [
     "llm-evaluation",
@@ -61,6 +81,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.89",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@oclif/core": "^4",
     "@openai/codex-sdk": "0.130.0",
     "ajv": "^8.18.0",
     "chart.js": "^4.5.1",
