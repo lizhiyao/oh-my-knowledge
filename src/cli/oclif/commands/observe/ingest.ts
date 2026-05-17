@@ -1,7 +1,6 @@
 import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../../i18n.js';
-import { runLegacyCommand } from '../../run-legacy.js';
 import { CliExit } from '../../../cli-exit.js';
 
 export default class ObserveIngest extends Command {
@@ -35,7 +34,7 @@ export default class ObserveIngest extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveIngest);
-    await runLegacyCommand(this, async () => {
+    try {
       const dir = args.traceDir;
       if (!dir) {
         // oclif Args.required:true 已经保证非空,这里仍兜底防御。
@@ -54,6 +53,13 @@ export default class ObserveIngest extends Command {
       const path = saveObservationInboxReport(report, outDir);
       console.log(JSON.stringify(report, null, 2));
       process.stderr.write(`observe inbox written to: ${path}\n`);
-    });
+    } catch (err) {
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+        return;
+      }
+      throw err;
+    }
   }
 }

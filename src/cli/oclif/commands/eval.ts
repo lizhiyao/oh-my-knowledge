@@ -1,6 +1,5 @@
 import { Command, Flags } from '@oclif/core';
 import { bilingual } from '../i18n.js';
-import { runLegacyCommand } from '../run-legacy.js';
 import { CliExit } from '../../cli-exit.js';
 import { tCli, type CliLang } from '../../i18n.js';
 import { parseRunConfig } from '../../parse-run-config.js';
@@ -523,8 +522,15 @@ export default class Eval extends Command {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Eval);
     const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
-    await runLegacyCommand(this, async () => {
+    try {
       await runEval(args as Record<string, never>, { ...flags, lang }, lang);
-    });
+    } catch (err) {
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+        return;
+      }
+      throw err;
+    }
   }
 }

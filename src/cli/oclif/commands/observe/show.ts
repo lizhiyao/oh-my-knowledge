@@ -1,7 +1,6 @@
 import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../../i18n.js';
-import { runLegacyCommand } from '../../run-legacy.js';
 import { CliExit } from '../../../cli-exit.js';
 
 export default class ObserveShow extends Command {
@@ -36,7 +35,7 @@ export default class ObserveShow extends Command {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveShow);
     const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
-    await runLegacyCommand(this, async () => {
+    try {
       const id = args.inboxId;
       if (!id) {
         console.error(lang === 'zh' ? '用法：omk observe show <inbox_id> [--input-dir <path>]' : 'Usage: omk observe show <inbox_id> [--input-dir <path>]');
@@ -50,6 +49,13 @@ export default class ObserveShow extends Command {
         throw new CliExit(1);
       }
       console.log(formatObservationShow(item));
-    });
+    } catch (err) {
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+        return;
+      }
+      throw err;
+    }
   }
 }

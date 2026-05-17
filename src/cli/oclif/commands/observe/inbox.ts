@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { Command, Flags } from '@oclif/core';
 import { bilingual } from '../../i18n.js';
-import { runLegacyCommand } from '../../run-legacy.js';
+import { CliExit } from '../../../cli-exit.js';
 import { type CliLang } from '../../../i18n.js';
 import type { ObserveInboxArgs, ObserveInboxFlags } from '../../../types/cmd-flags.js';
 
@@ -145,8 +145,15 @@ export default class ObserveInbox extends Command {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveInbox);
     const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
-    await runLegacyCommand(this, async () => {
+    try {
       await runObserveInbox(args as Record<string, never>, { ...flags, lang }, lang);
-    });
+    } catch (err) {
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+        return;
+      }
+      throw err;
+    }
   }
 }

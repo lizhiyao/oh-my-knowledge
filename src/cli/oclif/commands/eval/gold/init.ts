@@ -1,6 +1,5 @@
 import { Command, Flags } from '@oclif/core';
 import { bilingual } from '../../../i18n.js';
-import { runLegacyCommand } from '../../../run-legacy.js';
 import { CliExit } from '../../../../cli-exit.js';
 
 export default class EvalGoldInit extends Command {
@@ -32,7 +31,7 @@ export default class EvalGoldInit extends Command {
   async run(): Promise<void> {
     const { flags } = await this.parse(EvalGoldInit);
     const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
-    await runLegacyCommand(this, async () => {
+    try {
       const { initGoldDataset } = await import('../../../../../grading/gold-cli.js');
       try {
         const written = initGoldDataset(flags.out, {
@@ -49,6 +48,13 @@ export default class EvalGoldInit extends Command {
         console.error((err as Error).message);
         throw new CliExit(1);
       }
-    });
+    } catch (err) {
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+        return;
+      }
+      throw err;
+    }
   }
 }

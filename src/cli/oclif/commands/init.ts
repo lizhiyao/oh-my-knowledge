@@ -1,7 +1,7 @@
 import { resolve, join } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../i18n.js';
-import { runLegacyCommand } from '../run-legacy.js';
+import { CliExit } from '../../cli-exit.js';
 import { tCli } from '../../i18n.js';
 
 const INIT_SAMPLES = `[
@@ -143,7 +143,7 @@ export default class Init extends Command {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Init);
     const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
-    await runLegacyCommand(this, async () => {
+    try {
       const targetDir: string = resolve(args.targetDir || '.');
       const { writeFileSync, mkdirSync } = await import('node:fs');
 
@@ -162,6 +162,13 @@ export default class Init extends Command {
       console.log(tCli('cli.init.next_step_edit_skills', lang));
       console.log(tCli('cli.init.next_step_run', lang));
       console.log(tCli('cli.init.note_codex_executor', lang));
-    });
+    } catch (err) {
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+        return;
+      }
+      throw err;
+    }
   }
 }

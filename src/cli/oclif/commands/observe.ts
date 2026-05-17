@@ -1,7 +1,6 @@
 import { resolve, join } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../i18n.js';
-import { runLegacyCommand } from '../run-legacy.js';
 import { CliExit } from '../../cli-exit.js';
 import { tCli } from '../../i18n.js';
 import { parseLastWindow } from '../../_shared.js';
@@ -69,7 +68,7 @@ export default class Observe extends Command {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Observe);
     const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
-    await runLegacyCommand(this, async () => {
+    try {
       const dir = args.sessionsDir;
       if (!dir) {
         console.error(tCli('cli.help.observe', lang).trim());
@@ -126,6 +125,13 @@ export default class Observe extends Command {
       console.log('');
       console.log(`report written to: ${jsonPath}`);
       console.log(tCli('cli.observe.view_hint', lang));
-    });
+    } catch (err) {
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+        return;
+      }
+      throw err;
+    }
   }
 }

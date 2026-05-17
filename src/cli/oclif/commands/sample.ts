@@ -3,7 +3,6 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../i18n.js';
-import { runLegacyCommand } from '../run-legacy.js';
 import { CliExit } from '../../cli-exit.js';
 import { tCli, type CliLang } from '../../i18n.js';
 import { DEFAULT_REPORTS_DIR } from '../../parse-run-config.js';
@@ -544,8 +543,15 @@ export default class Sample extends Command {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Sample);
     const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
-    await runLegacyCommand(this, async () => {
+    try {
       await runSample(args, { ...flags, lang }, lang);
-    });
+    } catch (err) {
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+        return;
+      }
+      throw err;
+    }
   }
 }

@@ -1,7 +1,6 @@
 import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../../../i18n.js';
-import { runLegacyCommand } from '../../../run-legacy.js';
 import { CliExit } from '../../../../cli-exit.js';
 import { DEFAULT_REPORTS_DIR } from '../../../../parse-run-config.js';
 import { requireEvaluationReport } from '../../../../_shared.js';
@@ -54,7 +53,7 @@ export default class EvalGoldCompare extends Command {
   async run(): Promise<void> {
     const { args, flags } = await this.parse(EvalGoldCompare);
     const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
-    await runLegacyCommand(this, async () => {
+    try {
       const reportId = args.reportId;
       if (!reportId) {
         console.error('Usage: omk eval gold compare <reportId> --gold-dir <dir>');
@@ -90,6 +89,13 @@ export default class EvalGoldCompare extends Command {
         seed: Number.isFinite(seedVal) ? seedVal : undefined,
       });
       console.log(formatGoldCompare(result, dataset));
-    });
+    } catch (err) {
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+        return;
+      }
+      throw err;
+    }
   }
 }
