@@ -1,4 +1,3 @@
-import { type ParseArgsConfig } from 'node:util';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
@@ -129,56 +128,6 @@ export function parseJudgeModelsArgOrExit(raw: string): JudgeConfig[] {
     throw new CliExit(2);
   }
 }
-
-/**
- * 所有子命令都接受的通用 flag。
- */
-export const COMMON_OPTIONS: ParseArgsConfig['options'] = {
-  lang: { type: 'string' },
-};
-
-// Shared CLI options for run/ci commands.
-// Defaults are applied inside parseRunConfig (after config-file merge) so that
-// CLI `undefined` can be reliably distinguished from "user passed the default value".
-// Priority order resolved in parseRunConfig: CLI arg > --config file > hard-coded default.
-export const RUN_OPTIONS: ParseArgsConfig['options'] = {
-  ...COMMON_OPTIONS,
-  samples: { type: 'string' },
-  'skill-dir': { type: 'string' },
-  control: { type: 'string' },
-  treatment: { type: 'string' },
-  config: { type: 'string' },
-  model: { type: 'string' },
-  'judge-models': { type: 'string' },
-  'output-dir': { type: 'string' },
-  'no-judge': { type: 'boolean' },
-  'no-cache': { type: 'boolean' },
-  'dry-run': { type: 'boolean' },
-  concurrency: { type: 'string' },
-  timeout: { type: 'string' },
-  executor: { type: 'string' },
-  batch: { type: 'boolean' },
-  'skip-connectivity': { type: 'boolean' },
-  'skip-doctor': { type: 'boolean' },
-  'mcp-config': { type: 'string' },
-  'no-serve': { type: 'boolean' },
-  verbose: { type: 'boolean' },
-  retry: { type: 'string' },
-  resume: { type: 'string' },
-  'layered-stats': { type: 'boolean' },
-  // strict-baseline default true. Declare both forms; reconcile in
-  // parseRunConfig (后者赢)。strict-baseline 没传 + no-strict-baseline 没传 = default true。
-  'strict-baseline': { type: 'boolean' },
-  'no-strict-baseline': { type: 'boolean' },
-  // effort:被评测 LLM 的扩展思考预算(low/medium/high/xhigh/max)。
-  // 默认 low — 关 thinking 大幅省时间/成本。改 high 时同 prompt 同 model 输出会变,
-  // 跨 effort 报告不可严格比较(renderer 在 meta-tag 显示并打提示)。
-  effort: { type: 'string' },
-  // 诊断:对 failed sample 跑一次 LLM,产出"哪错了 + skill 怎么改"的针对性建议。
-  // 跟 --no-judge 完全独立 — 想要纯功能性视角(assertion + diagnostic 但无评分)
-  // 用 `--no-judge`;想要不跑诊断只跑评测 + judge 用 `--no-diagnostic`。
-  'no-diagnostic': { type: 'boolean' },
-};
 
 /**
  * When --samples isn't given, try to discover from `<skillDir>/<treatment>/.omk/`.
