@@ -1,8 +1,7 @@
-// oclif 版 eval gold init — typed parse → runGoldInit。
-
 import { Command, Flags } from '@oclif/core';
 import { bilingual } from '../../../i18n.js';
 import { runLegacyCommand } from '../../../run-legacy.js';
+import { CliExit } from '../../../../cli-exit.js';
 
 export default class EvalGoldInit extends Command {
   static description = bilingual({
@@ -31,11 +30,25 @@ export default class EvalGoldInit extends Command {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(EvalGoldInit);
+    const { flags } = await this.parse(EvalGoldInit);
     const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { runGoldInit } = await import('../../../../commands/eval-gold.js');
-      await runGoldInit(args as Record<string, never>, { ...flags, lang }, lang);
+      const { initGoldDataset } = await import('../../../../../grading/gold-cli.js');
+      try {
+        const written = initGoldDataset(flags.out, {
+          annotator: flags.annotator,
+        });
+        console.log(lang === 'zh'
+          ? `已在 ${flags.out} 创建 ${written.length} 个文件：`
+          : `Created ${written.length} files in ${flags.out}:`);
+        for (const p of written) console.log(`  ${p}`);
+        console.log(lang === 'zh'
+          ? '\n下一步：编辑 annotations.yaml 加入真实标注，然后运行 omk eval gold validate'
+          : '\nNext step: edit annotations.yaml with real annotations, then run omk eval gold validate');
+      } catch (err) {
+        console.error((err as Error).message);
+        throw new CliExit(1);
+      }
     });
   }
 }

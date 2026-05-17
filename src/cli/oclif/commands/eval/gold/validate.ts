@@ -1,8 +1,7 @@
-// oclif 版 eval gold validate — typed parse → runGoldValidate。
-
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../../../i18n.js';
 import { runLegacyCommand } from '../../../run-legacy.js';
+import { CliExit } from '../../../../cli-exit.js';
 
 export default class EvalGoldValidate extends Command {
   static description = bilingual({
@@ -31,8 +30,22 @@ export default class EvalGoldValidate extends Command {
     const { args, flags } = await this.parse(EvalGoldValidate);
     const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { runGoldValidate } = await import('../../../../commands/eval-gold.js');
-      await runGoldValidate(args, { ...flags, lang }, lang);
+      const dir = args.dir;
+      if (!dir) {
+        console.error('Usage: omk eval gold validate <dir>');
+        throw new CliExit(1);
+      }
+      const { validateGoldDataset } = await import('../../../../../grading/gold-cli.js');
+      const result = validateGoldDataset(dir);
+      if (result.ok) {
+        console.log(lang === 'zh'
+          ? `✓ gold dataset OK，共 ${result.sampleCount} 条标注`
+          : `✓ gold dataset OK — ${result.sampleCount} annotations`);
+        return;
+      }
+      console.error(`✗ gold dataset has ${result.issues.length} issue(s):`);
+      for (const msg of result.issues) console.error(`  - ${msg}`);
+      throw new CliExit(1);
     });
   }
 }

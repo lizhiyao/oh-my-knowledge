@@ -1,8 +1,11 @@
-// oclif 版 eval gold compare — typed parse → runGoldCompare。
-
+import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../../../i18n.js';
 import { runLegacyCommand } from '../../../run-legacy.js';
+import { CliExit } from '../../../../cli-exit.js';
+import { DEFAULT_REPORTS_DIR } from '../../../../parse-run-config.js';
+import { requireEvaluationReport } from '../../../../_shared.js';
+import type { ReportStore } from '../../../../../types/index.js';
 
 export default class EvalGoldCompare extends Command {
   static description = bilingual({
@@ -52,8 +55,41 @@ export default class EvalGoldCompare extends Command {
     const { args, flags } = await this.parse(EvalGoldCompare);
     const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { runGoldCompare } = await import('../../../../commands/eval-gold.js');
-      await runGoldCompare(args, { ...flags, lang }, lang);
+      const reportId = args.reportId;
+      if (!reportId) {
+        console.error('Usage: omk eval gold compare <reportId> --gold-dir <dir>');
+        throw new CliExit(1);
+      }
+      const goldDir = flags['gold-dir'];
+      if (!goldDir) {
+        console.error('--gold-dir is required');
+        throw new CliExit(1);
+      }
+      const { loadGoldDataset } = await import('../../../../../grading/gold-dataset.js');
+      const { compareGoldToReport, formatGoldCompare } = await import('../../../../../grading/gold-cli.js');
+      const { createFileStore } = await import('../../../../../server/report-store.js');
+
+      const { dataset, issues } = loadGoldDataset(goldDir);
+      if (!dataset) {
+        console.error('Cannot load gold dataset:');
+        for (const i of issues) console.error(`  - ${i.message}`);
+        throw new CliExit(1);
+      }
+      for (const i of issues) console.error(`warn: ${i.message}`);
+
+      const reportsDir = flags['reports-dir'] ?? DEFAULT_REPORTS_DIR;
+      const store: ReportStore = createFileStore(resolve(reportsDir));
+      const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
+      const samples = Math.max(100, Number(flags['bootstrap-samples'] ?? 1000) || 1000);
+      const seedVal = flags.seed != null ? Number(flags.seed) : undefined;
+      const result = compareGoldToReport({
+        report,
+        gold: dataset,
+        variant: flags.variant,
+        samples,
+        seed: Number.isFinite(seedVal) ? seedVal : undefined,
+      });
+      console.log(formatGoldCompare(result, dataset));
     });
   }
 }
