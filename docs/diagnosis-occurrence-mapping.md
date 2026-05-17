@@ -887,7 +887,7 @@ doctor / eval
 ├─ doctor rule failures produce DiagnosisOccurrences
 ├─ eval failure clusters produce Diagnosis
 ├─ mock/sample issues keep audience=sample-author
-└─ omk blindspots keep audience=omk-maintainer
+└─ omk-blindspots(internal) keep audience=omk-maintainer
 ```
 
 ## Open Questions

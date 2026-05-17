@@ -1,5 +1,5 @@
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual } from '../i18n.js';
+import { bilingual, resolveLang } from '../i18n.js';
 
 // oclif 版 init — 透传 argv 给生产 src/cli/commands/init.ts execute()。
 // 仅 lang flag + 可选 positional targetDir(默认 '.')。
@@ -34,6 +34,18 @@ export default class Init extends Command {
         en: 'Target directory, defaults to current directory (.)',
       }),
       required: false,
+      parse: async (input: string): Promise<string> => {
+        // 拒绝 `omk init -- --weird` 这种把 flag 当 positional 的写法 — legacy 会
+        // 创建名为 `--weird` 的目录,新人一头雾水。在 oclif Args 这层拦住更友好。
+        if (input.startsWith('--')) {
+          const lang = resolveLang();
+          const msg = lang === 'zh'
+            ? `初始化目录不能以 -- 开头：${input}（看起来是误写的 flag）`
+            : `init target dir cannot start with --: ${input} (looks like a malformed flag)`;
+          throw new Error(msg);
+        }
+        return input;
+      },
     }),
   };
 

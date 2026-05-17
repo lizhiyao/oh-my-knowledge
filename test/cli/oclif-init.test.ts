@@ -57,4 +57,29 @@ describe('oclif init', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it('init -- --weird 拒绝以 -- 开头的 positional(防 legacy 创建名为 --weird 的目录)', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'init', '--', '--weird']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.notEqual(e.code, 0, `expected non-zero exit, got ${e.code}`);
+      const out = e.stdout + e.stderr;
+      assert.ok(/不能以 -- 开头/.test(out), `expected zh footgun msg, got:\n${out.slice(0, 200)}`);
+      assert.ok(!existsSync('--weird'), '--weird directory must not be created');
+    }
+  });
+
+  it('init -- --weird --lang en 拒绝且报英文', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'init', '--', '--weird', '--lang', 'en']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.notEqual(e.code, 0);
+      const out = e.stdout + e.stderr;
+      assert.ok(/cannot start with --/.test(out), `expected en footgun msg, got:\n${out.slice(0, 200)}`);
+    }
+  });
 });

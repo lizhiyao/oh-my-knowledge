@@ -246,40 +246,39 @@ interface PerCmdFlagsTarget {
 type Target = FullbodyTarget | PerCmdFlagsTarget;
 
 /**
- * omk 顶层命令 id 列表(README per-cmd-flags + SKILL.md argument-hint 共用)。
- * 此常量是单一来源,oclif 顶层命令集真值在 src/cli/oclif/commands/ 文件目录,
- * test 跑 Config.load 动态校验两者一致。
+ * omk 顶层命令 id 列表 — 从 oclif Config 真值动态推导(README per-cmd-flags
+ * + SKILL.md argument-hint 共用)。oclif Command 文件目录是单一来源,这里只是
+ * 派生层,加 / 删 / rename 顶层命令时不需要再来这里改 hardcoded 数组。
  */
-export const TOP_LEVEL_IDS = [
-  'init',
-  'doctor',
-  'eval',
-  'observe',
-  'evolve',
-  'sample',
-  'studio',
-] as const;
+export function getTopLevelIds(config: Config): readonly string[] {
+  return config.commands
+    .map((c) => c.id)
+    .filter((id) => !id.includes(':'))
+    .sort();
+}
 
-const TARGETS: Target[] = [
-  {
-    mode: 'fullbody',
-    file: '.claude/skills/omk/references/commands.md',
-    markerStart: '<!-- omk:cli:start -->',
-    markerEnd: '<!-- omk:cli:end -->',
-  },
-  {
-    mode: 'per-cmd-flags',
-    file: 'README.md',
-    lang: 'en',
-    topLevelIds: TOP_LEVEL_IDS,
-  },
-  {
-    mode: 'per-cmd-flags',
-    file: 'README.zh.md',
-    lang: 'zh',
-    topLevelIds: TOP_LEVEL_IDS,
-  },
-];
+export function buildTargets(topLevelIds: readonly string[]): Target[] {
+  return [
+    {
+      mode: 'fullbody',
+      file: '.claude/skills/omk/references/commands.md',
+      markerStart: '<!-- omk:cli:start -->',
+      markerEnd: '<!-- omk:cli:end -->',
+    },
+    {
+      mode: 'per-cmd-flags',
+      file: 'README.md',
+      lang: 'en',
+      topLevelIds,
+    },
+    {
+      mode: 'per-cmd-flags',
+      file: 'README.zh.md',
+      lang: 'zh',
+      topLevelIds,
+    },
+  ];
+}
 
 // ── marker 区段定位 + 替换 ─────────────────────────────────────────────────────
 
@@ -378,8 +377,10 @@ interface TargetResult {
 
 async function generateAll(): Promise<TargetResult[]> {
   const config = await Config.load({ root: REPO_ROOT });
+  const topLevelIds = getTopLevelIds(config);
+  const targets = buildTargets(topLevelIds);
   const results: TargetResult[] = [];
-  for (const target of TARGETS) {
+  for (const target of targets) {
     const absPath = resolve(REPO_ROOT, target.file);
     const current = readFileSync(absPath, 'utf8');
     if (target.mode === 'fullbody') {
@@ -451,7 +452,7 @@ async function main(): Promise<void> {
 }
 
 // 只在直接 `node dist/scripts/build-docs.js ...` 跑时进 main();被 test 当 module
-// import 时不跑(test 只要 TOP_LEVEL_IDS 常量)。
+// import 时不跑(test import getTopLevelIds / buildTargets 用)。
 const isMain = process.argv[1] && /build-docs\.js$/.test(process.argv[1]);
 if (isMain) {
   main().catch((err: unknown) => {
