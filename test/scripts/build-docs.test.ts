@@ -9,7 +9,7 @@
  *   按 JS 解析,破坏 production 行为。
  * - eval-samples 字段参考段不在 marker 内,codegen 后必须原样保留
  */
-import { describe, it } from 'vitest';
+import { beforeAll, describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -18,9 +18,9 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Config } from '@oclif/core';
 import yaml from 'js-yaml';
-// 从 build-docs.ts 直接 import 单一来源(避免在 test 里硬编码),让 README codegen
-// 跟 SKILL.md frontmatter gate 共用同一份 TOP_LEVEL_IDS。
-import { TOP_LEVEL_IDS } from '../../scripts/build-docs.js';
+// 从 build-docs.ts 复用 getTopLevelIds 派生函数(单一来源是 oclif Command 文件目录,
+// 不再 hardcode 常量),让 README codegen 跟 SKILL.md frontmatter gate 共用同一份真值。
+import { getTopLevelIds } from '../../scripts/build-docs.js';
 
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -57,6 +57,14 @@ function readMarkerBody(content: string): string {
 }
 
 describe('scripts/build-docs codegen', () => {
+  // oclif 顶层命令真值集 — 跨 case 共享,从 Config.load 派生(单一来源是
+  // src/cli/oclif/commands/ 文件目录)。
+  let oclifTopLevelIds: readonly string[];
+  beforeAll(async () => {
+    const config = await Config.load({ root: PROJECT_ROOT });
+    oclifTopLevelIds = getTopLevelIds(config);
+  });
+
   it('commands.md marker body covers all 13 oclif commands', () => {
     const content = readFileSync(COMMANDS_MD, 'utf8');
     const body = readMarkerBody(content);
@@ -163,9 +171,9 @@ describe('scripts/build-docs codegen', () => {
     }
   }, 30000);
 
-  it('README.md has 7 marker pairs for top-level oclif commands', () => {
+  it('README.md has marker pairs for every top-level oclif command', () => {
     const content = readFileSync(README_EN, 'utf8');
-    for (const id of TOP_LEVEL_IDS) {
+    for (const id of oclifTopLevelIds) {
       assert.ok(
         content.includes(`<!-- omk:cli:${id}:flags:start -->`),
         `README.md missing marker start for ${id}`,
@@ -177,9 +185,9 @@ describe('scripts/build-docs codegen', () => {
     }
   });
 
-  it('README.zh.md has 7 marker pairs for top-level oclif commands', () => {
+  it('README.zh.md has marker pairs for every top-level oclif command', () => {
     const content = readFileSync(README_ZH, 'utf8');
-    for (const id of TOP_LEVEL_IDS) {
+    for (const id of oclifTopLevelIds) {
       assert.ok(
         content.includes(`<!-- omk:cli:${id}:flags:start -->`),
         `README.zh.md missing marker start for ${id}`,
@@ -242,32 +250,16 @@ describe('scripts/build-docs codegen', () => {
     assert.ok(idxConcurrency < idxThreshold, '--concurrency should precede --threshold');
   });
 
-  it('TOP_LEVEL_IDS constant matches actual oclif top-level command set (Config.load)', async () => {
-    // 动态绑定:Config.load 读 dist/src/cli/oclif/commands/ 真实命令文件,过滤
-    // 出顶层命令(id 不含 ':'),跟 scripts/build-docs.ts 导出的 TOP_LEVEL_IDS
-    // 严格 set 相等。未来新增 / 删 / 重命名顶层命令时,只改 oclif Command 源忘
-    // 改 TOP_LEVEL_IDS 就会被本测试 fail 拦住。
-    const config = await Config.load({ root: PROJECT_ROOT });
-    const actual = config.commands
-      .map((c) => c.id)
-      .filter((id) => !id.includes(':'))
-      .sort();
-    const expected = [...TOP_LEVEL_IDS].sort();
-    assert.deepEqual(
-      actual,
-      expected,
-      `TOP_LEVEL_IDS drifted from oclif Config.commands top-level set.\n` +
-      `  expected: ${expected.join(', ')}\n` +
-      `  actual:   ${actual.join(', ')}`,
-    );
-  }, 30000);
-
-  it('SKILL.md argument-hint frontmatter matches oclif top-level command set', () => {
+  it('SKILL.md argument-hint frontmatter matches oclif top-level command set (Config.load)', async () => {
     // SKILL.md frontmatter `argument-hint` 形如:
     //   argument-hint: "<init|doctor|eval|observe|evolve|sample|studio> [options]"
     // 历史上 omk 顶层命令树重构过两次(bench run → eval、improve → evolve、
     // export → sample),每次都靠人工同步这一行。本测试把它锁住:argument-hint
-    // 列出的 7 个 id 必须跟 TOP_LEVEL_IDS 严格一致(set 比较,顺序无关)。
+    // 列出的 id 必须跟 oclif Config.commands 的顶层集严格一致(set 比较,顺序无关)。
+    // 真值通过 getTopLevelIds(Config.load) 派生,oclif Command 文件目录是单一来源。
+    const config = await Config.load({ root: PROJECT_ROOT });
+    const expected = [...getTopLevelIds(config)].sort();
+
     const content = readFileSync(SKILL_MD, 'utf8');
     const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
     assert.ok(fmMatch, 'SKILL.md must have YAML frontmatter');
@@ -277,7 +269,6 @@ describe('scripts/build-docs codegen', () => {
     const innerMatch = hint.match(/^<([^>]+)>/);
     assert.ok(innerMatch, `argument-hint must start with <cmd|cmd|...>, got: ${hint}`);
     const listed = innerMatch[1]!.split('|').map((s) => s.trim()).filter(Boolean);
-    const expected = [...TOP_LEVEL_IDS].sort();
     const actual = [...listed].sort();
     assert.deepEqual(
       actual,
@@ -286,5 +277,5 @@ describe('scripts/build-docs codegen', () => {
       `  expected: ${expected.join('|')}\n` +
       `  actual:   ${actual.join('|')}`,
     );
-  });
+  }, 30000);
 });

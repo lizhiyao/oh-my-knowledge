@@ -18,7 +18,37 @@ function isShortPath(argv: readonly string[]): boolean {
   return argv.some((a) => SHORT_PATH_FLAGS.includes(a));
 }
 
+/**
+ * legacy CLI 支持 `omk --lang en eval --help` 这种把 lang 放在子命令前的写法
+ * (parseLangFromArgv 跨整 argv scan)。oclif 默认 parser 把第一个非 flag 当
+ * 命令 id,顶层位置的 --lang 跟它的 value 会让 oclif 找错 command。这里跨整
+ * argv 抽 --lang / --lang=VAL 到末尾,跟 legacy 行为对齐(再由子命令 parse 用)。
+ */
+function normalizeArgv(argv: readonly string[]): string[] {
+  if (argv.length < 3) return [...argv];
+  const userArgs = argv.slice(2);
+  const langTokens: string[] = [];
+  const rest: string[] = [];
+  for (let i = 0; i < userArgs.length; i++) {
+    const tok = userArgs[i]!;
+    if (tok === '--lang') {
+      langTokens.push(tok);
+      if (i + 1 < userArgs.length) {
+        langTokens.push(userArgs[i + 1]!);
+        i++;
+      }
+    } else if (tok.startsWith('--lang=')) {
+      langTokens.push(tok);
+    } else {
+      rest.push(tok);
+    }
+  }
+  if (langTokens.length === 0) return [...argv];
+  return [argv[0]!, argv[1]!, ...rest, ...langTokens];
+}
+
 async function main(): Promise<void> {
+  process.argv = normalizeArgv(process.argv);
   const lang = getCliLang(parseLangFromArgv(process.argv));
   if (!isShortPath(process.argv)) {
     checkUpdate(lang);

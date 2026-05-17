@@ -170,8 +170,22 @@ oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是
 - 改完 oclif Command 的 description / flag,跑 `yarn build && yarn build:docs` 同步全部 3 个目标
 - 不跑就会被 vitest 内嵌 `--check` 拦截（exit 1 + 对每个 drift 的文件打 diff）
 - README 的 prose 段（static-only 解释 / HTML report tab / Studio IA / executor 表格等）在 marker 外,hand-maintained 保留
-- 新增顶层命令时:加 `src/cli/oclif/commands/<id>.ts`、改 `scripts/build-docs.ts` 的 `TOP_LEVEL_IDS`、在 README.md / README.zh.md 各加一对 `<!-- omk:cli:<id>:flags:start -->` / `:end -->`、SKILL.md frontmatter `argument-hint` 加 `<id>`,跑一遍 `yarn build && yarn build:docs && yarn test`
-- 新增子命令（如 `omk foo bar`）时:只加 `src/cli/oclif/commands/foo/bar.ts`,oclif 文件目录自动路由,fullbody 模式自动包含,不需要改 `TOP_LEVEL_IDS`
+- 新增顶层命令时:加 `src/cli/oclif/commands/<id>.ts`、在 README.md / README.zh.md 各加一对 `<!-- omk:cli:<id>:flags:start -->` / `:end -->`、SKILL.md frontmatter `argument-hint` 加 `<id>`,跑一遍 `yarn build && yarn build:docs && yarn test`(顶层命令集真值由 `scripts/build-docs.ts` 的 `getTopLevelIds(Config.load)` 从 oclif Command 文件目录派生,不需要再单独维护硬编码数组)
+- 新增子命令（如 `omk eval gold init` 这种 sub-sub）时:加 `src/cli/oclif/commands/eval/gold/init.ts`,oclif 文件目录自动路由,fullbody 模式自动包含
+
+### 加新 sub-sub topic 命令
+
+目录下有 sub-sub 但目录本身没 default Command 时(如 `eval/gold/` 下有 `init` / `validate` / `compare`,目录本身 `eval gold` 不直接执行),**必须** 加 `<dir>.ts` 表达 topic semantics:
+
+- 当前实例:`src/cli/oclif/commands/eval/gold.ts` — 裸 `omk eval gold` 打 usage + `this.exit(1)`,跟 legacy 行为(missing sub-sub → CliExit(1))一致
+- 不加的代价:oclif 默认把 `eval gold` 当 topic-only,裸调用落到 default topic help(exit 0),CI 脚本如果靠 exit 1 区分「用户漏写 sub-sub」会失效
+- 当前 omk 只有 eval gold 一处需要,加新 sub-sub 目录时遵循
+
+### oclif description ejs footgun
+
+oclif Help 用 `ejs.render(body, context)` 渲染所有 section,模板标记 `<%...%>` 会被执行成代码。**flag / arg / description 字段不要拼用户输入(skill 名、文件路径、env 值)**;模板只在 `examples[].command` 字段使用(by-design,如 `'<%= config.bin %>' init`)。
+
+`src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` 已经在入口加 assertion 拦 `<%` / `%>`,description 里写模板会在 runtime 启动时抛错。
 
 ### CLI exit code 约定
 

@@ -1,5 +1,6 @@
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../i18n.js';
+import { runLegacyCommand } from '../run-legacy.js';
 
 // oclif 版 observe 默认命令 — `omk observe <sessions-dir>` 走 executeHealth。
 // 三个子命令(ingest / inbox / show)由 src/cli/oclif/commands/observe/ 文件目录托管。
@@ -63,18 +64,9 @@ export default class Observe extends Command {
 
   async run(): Promise<void> {
     await this.parse(Observe);
-    // 透传给生产 executeHealth(named export)。this.argv = oclif 切掉命令路径后的余下 argv。
-    const argv = this.argv;
-    const { executeHealth } = await import('../../commands/observe.js');
-    const { CliExit } = await import('../../cli-exit.js');
-    try {
-      await executeHealth(argv);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-      }
-      throw err;
-    }
+    await runLegacyCommand(this, async () => {
+      const { executeHealth } = await import('../../commands/observe.js');
+      await executeHealth(this.argv);
+    });
   }
 }

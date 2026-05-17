@@ -33,6 +33,9 @@
     "commands": "./dist/src/cli/oclif/commands",
     "dirname": "omk",
     "helpClass": "./dist/src/cli/oclif/help.js",
+    "hooks": {
+      "init": "./dist/src/cli/oclif/hooks/init.js"
+    },
     "topicSeparator": " ",
     "additionalHelpFlags": ["-h"],
     "additionalVersionFlags": ["-v"],

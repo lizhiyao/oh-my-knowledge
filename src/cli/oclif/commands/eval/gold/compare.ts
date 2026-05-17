@@ -2,6 +2,7 @@
 
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../../../i18n.js';
+import { runLegacyCommand } from '../../../run-legacy.js';
 
 export default class EvalGoldCompare extends Command {
   static description = bilingual({
@@ -49,18 +50,10 @@ export default class EvalGoldCompare extends Command {
 
   async run(): Promise<void> {
     await this.parse(EvalGoldCompare);
-    const rest = this.argv;
     const lang = resolveLang(process.argv);
-    const { executeCompare } = await import('../../../../commands/eval-gold.js');
-    const { CliExit } = await import('../../../../cli-exit.js');
-    try {
-      await executeCompare(rest, lang);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-      }
-      throw err;
-    }
+    await runLegacyCommand(this, async () => {
+      const { executeCompare } = await import('../../../../commands/eval-gold.js');
+      await executeCompare(this.argv, lang);
+    });
   }
 }
