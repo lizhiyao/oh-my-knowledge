@@ -1,14 +1,11 @@
-import { Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../i18n.js';
+// oclif 版 eval gold topic shim — 裸 `omk eval gold` 走 oclif Help class 打 help,
+// 然后 exit 1(跟 legacy CliExit(1) 行为对齐:CI 脚本靠 exit code 区分「漏写 sub-sub」)。
+//
+// 不再依赖 legacy hand-written usage() 字符串(已删),走 oclif-native `runCommand('help', ...)`,
+// description / TOPICS 跟其它 topic 命令一致,LangAwareHelp 自动按 --lang 切。
 
-// `omk eval gold`(无 sub-sub)入口 — 打用法 + exit 1。
-//
-// 没这个 Command 的话 oclif 会把 eval gold 当 topic-only,bare `omk eval gold`
-// 走默认 topic help 后 exit 0,跟 legacy execute() 的 CliExit(1) 行为有回归。
-// 加这层薄壳让 missing sub-sub 仍然 exit 1,CI / 脚本能识别错用。
-//
-// `omk eval gold --help` 仍走 oclif Help class,LangAwareHelp 列出 init /
-// validate / compare 三个 sub-sub。
+import { Command, Flags } from '@oclif/core';
+import { bilingual } from '../../i18n.js';
 
 export default class EvalGold extends Command {
   static description = bilingual({
@@ -28,11 +25,12 @@ export default class EvalGold extends Command {
 
   async run(): Promise<void> {
     await this.parse(EvalGold);
-    // 直接打 legacy usage(--lang 决定语言)+ exit 1。不委托 execute(argv) 因为
-    // legacy [sub, ...rest] = argv 会把 --lang 当 sub,这条 path 没业务,只打 usage。
-    const lang = resolveLang(process.argv);
-    const { usage } = await import('../../../commands/eval-gold.js');
-    console.log(usage(lang));
+    // oclif 默认没内建 help command,helpClass 是 instantiable Help 子类。直接
+    // new + showCommandHelp(EvalGold) 让 LangAwareHelp 按 --lang 渲染当前 topic
+    // 的 description + sub-sub 列表(init / validate / compare)。
+    const HelpClass = (await import('../../help.js')).default;
+    const help = new HelpClass(this.config);
+    await help.showCommandHelp(this.ctor as unknown as Parameters<typeof help.showCommandHelp>[0]);
     this.exit(1);
   }
 }

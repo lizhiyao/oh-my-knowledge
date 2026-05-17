@@ -136,6 +136,34 @@ export interface SampleFlags {
   treatment?: string;
 }
 
+// ── eval gold(3 sub-sub) ─────────────────────────────────────────────────────
+
+export type GoldInitArgs = Record<string, never>;
+export interface GoldInitFlags {
+  lang: Lang;
+  out: string;
+  annotator?: string;
+}
+
+export interface GoldValidateArgs {
+  dir: string;
+}
+export interface GoldValidateFlags {
+  lang: Lang;
+}
+
+export interface GoldCompareArgs {
+  reportId: string;
+}
+export interface GoldCompareFlags {
+  lang: Lang;
+  'gold-dir'?: string;
+  variant?: string;
+  'reports-dir'?: string;
+  'bootstrap-samples'?: string;
+  seed?: string;
+}
+
 // ── observe ───────────────────────────────────────────────────────────────────
 
 // observe(default,健康度审计)

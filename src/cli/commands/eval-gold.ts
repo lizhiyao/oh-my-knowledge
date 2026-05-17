@@ -1,31 +1,34 @@
 import { resolve } from 'node:path';
 import { CliExit } from '../cli-exit.js';
-import { langFromArgv, type CliLang } from '../i18n.js';
-import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
-import { parseArgsStrictOrExit } from '../parse-strict.js';
+import { type CliLang } from '../i18n.js';
+import { DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
+import type {
+  GoldInitArgs,
+  GoldInitFlags,
+  GoldValidateArgs,
+  GoldValidateFlags,
+  GoldCompareArgs,
+  GoldCompareFlags,
+} from '../types/cmd-flags.js';
 import type { ReportStore } from '../../types/index.js';
 import { requireEvaluationReport } from './_shared.js';
 
-// 三个 sub-sub handler 抽出为 named export,给 oclif Command(src/cli/oclif/commands/eval/gold/*)
-// 直接 import 调用。execute() 是 legacy dispatcher 入口,仍保留(legacy --help / unknown sub 处理用)。
+// 三个 sub-sub handler:oclif Command(src/cli/oclif/commands/eval/gold/*)的 run() 直接调用。
+// `eval gold` topic 本身由 src/cli/oclif/commands/eval/gold.ts 处理(打 help + exit 1)。
 
-export async function executeInit(rest: string[], lang: CliLang): Promise<void> {
-  const { values } = parseArgsStrictOrExit({
-    args: rest,
-    options: {
-      ...COMMON_OPTIONS,
-      out: { type: 'string', default: './gold-dataset' },
-      annotator: { type: 'string' },
-    },
-  });
+export async function runGoldInit(
+  _args: GoldInitArgs,
+  flags: GoldInitFlags,
+  lang: CliLang,
+): Promise<void> {
   const { initGoldDataset } = await import('../../grading/gold-cli.js');
   try {
-    const written = initGoldDataset(values.out as string, {
-      annotator: values.annotator as string | undefined,
+    const written = initGoldDataset(flags.out, {
+      annotator: flags.annotator,
     });
     console.log(lang === 'zh'
-      ? `已在 ${values.out as string} 创建 ${written.length} 个文件：`
-      : `Created ${written.length} files in ${values.out as string}:`);
+      ? `已在 ${flags.out} 创建 ${written.length} 个文件：`
+      : `Created ${written.length} files in ${flags.out}:`);
     for (const p of written) console.log(`  ${p}`);
     console.log(lang === 'zh'
       ? '\n下一步：编辑 annotations.yaml 加入真实标注，然后运行 omk eval gold validate'
@@ -36,13 +39,12 @@ export async function executeInit(rest: string[], lang: CliLang): Promise<void> 
   }
 }
 
-export async function executeValidate(rest: string[], lang: CliLang): Promise<void> {
-  const { positionals } = parseArgsStrictOrExit({
-    args: rest,
-    allowPositionals: true,
-    options: { ...COMMON_OPTIONS },
-  });
-  const dir = positionals[0];
+export async function runGoldValidate(
+  args: GoldValidateArgs,
+  _flags: GoldValidateFlags,
+  lang: CliLang,
+): Promise<void> {
+  const dir = args.dir;
   if (!dir) {
     console.error('Usage: omk eval gold validate <dir>');
     throw new CliExit(1);
@@ -60,29 +62,17 @@ export async function executeValidate(rest: string[], lang: CliLang): Promise<vo
   throw new CliExit(1);
 }
 
-export async function executeCompare(rest: string[], lang: CliLang): Promise<void> {
-  // allowPositionals: true 让 reportId 可以出现在 flag 前或后(omk eval gold compare
-  // --lang en fake-report --gold-dir ... 跟 omk eval gold compare fake-report
-  // --lang en --gold-dir ... 都 work)。原写法 rest[0] 取首位会把第一个 token 当
-  // reportId,跟 flag-first 的 oclif 风格冲突。
-  const { values, positionals } = parseArgsStrictOrExit({
-    args: rest,
-    allowPositionals: true,
-    options: {
-      ...COMMON_OPTIONS,
-      'gold-dir': { type: 'string' },
-      variant: { type: 'string' },
-      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
-      'bootstrap-samples': { type: 'string', default: '1000' },
-      seed: { type: 'string' },
-    },
-  });
-  const reportId = positionals[0];
+export async function runGoldCompare(
+  args: GoldCompareArgs,
+  flags: GoldCompareFlags,
+  lang: CliLang,
+): Promise<void> {
+  const reportId = args.reportId;
   if (!reportId) {
     console.error('Usage: omk eval gold compare <reportId> --gold-dir <dir>');
     throw new CliExit(1);
   }
-  const goldDir = values['gold-dir'] as string | undefined;
+  const goldDir = flags['gold-dir'];
   if (!goldDir) {
     console.error('--gold-dir is required');
     throw new CliExit(1);
@@ -99,61 +89,17 @@ export async function executeCompare(rest: string[], lang: CliLang): Promise<voi
   }
   for (const i of issues) console.error(`warn: ${i.message}`);
 
-  const store: ReportStore = createFileStore(resolve(values['reports-dir'] as string));
+  const reportsDir = flags['reports-dir'] ?? DEFAULT_REPORTS_DIR;
+  const store: ReportStore = createFileStore(resolve(reportsDir));
   const report = requireEvaluationReport(await store.get(reportId), reportId, lang);
-  const samples = Math.max(100, Number(values['bootstrap-samples']) || 1000);
-  const seedVal = values.seed != null ? Number(values.seed) : undefined;
+  const samples = Math.max(100, Number(flags['bootstrap-samples'] ?? 1000) || 1000);
+  const seedVal = flags.seed != null ? Number(flags.seed) : undefined;
   const result = compareGoldToReport({
     report,
     gold: dataset,
-    variant: values.variant as string | undefined,
+    variant: flags.variant,
     samples,
     seed: Number.isFinite(seedVal) ? seedVal : undefined,
   });
   console.log(formatGoldCompare(result, dataset));
-}
-
-export async function execute(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  const [sub, ...rest] = argv;
-  if (!sub) {
-    console.log(usage(lang));
-    throw new CliExit(1);
-  }
-
-  if (sub === 'init') {
-    await executeInit(rest, lang);
-    return;
-  }
-  if (sub === 'validate') {
-    await executeValidate(rest, lang);
-    return;
-  }
-  if (sub === 'compare') {
-    await executeCompare(rest, lang);
-    return;
-  }
-
-  console.error(`Unknown subcommand: eval gold ${sub}. Use init / validate / compare.`);
-  throw new CliExit(1);
-}
-
-export function usage(lang: 'zh' | 'en'): string {
-  return lang === 'zh'
-    ? [
-        'omk eval gold — 管理 human-gold 标注集',
-        '',
-        '用法：',
-        '  omk eval gold init [--out <dir>] [--annotator <name>]',
-        '  omk eval gold validate <dir>',
-        '  omk eval gold compare <reportId> --gold-dir <dir>',
-      ].join('\n')
-    : [
-        'omk eval gold — manage human-gold annotation datasets',
-        '',
-        'Usage:',
-        '  omk eval gold init [--out <dir>] [--annotator <name>]',
-        '  omk eval gold validate <dir>',
-        '  omk eval gold compare <reportId> --gold-dir <dir>',
-      ].join('\n');
 }

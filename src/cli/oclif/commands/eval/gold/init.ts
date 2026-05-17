@@ -1,7 +1,7 @@
-// oclif 版 eval gold init — 透传 argv 给生产 executeInit()。
+// oclif 版 eval gold init — typed parse → runGoldInit。
 
 import { Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../../i18n.js';
+import { bilingual } from '../../../i18n.js';
 import { runLegacyCommand } from '../../../run-legacy.js';
 
 export default class EvalGoldInit extends Command {
@@ -31,11 +31,11 @@ export default class EvalGoldInit extends Command {
   };
 
   async run(): Promise<void> {
-    await this.parse(EvalGoldInit);
-    const lang = resolveLang(process.argv);
+    const { args, flags } = await this.parse(EvalGoldInit);
+    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { executeInit } = await import('../../../../commands/eval-gold.js');
-      await executeInit(this.argv, lang);
+      const { runGoldInit } = await import('../../../../commands/eval-gold.js');
+      await runGoldInit(args as Record<string, never>, { ...flags, lang }, lang);
     });
   }
 }

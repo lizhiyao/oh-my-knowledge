@@ -1,7 +1,7 @@
-// oclif 版 eval gold validate — 透传 argv 给生产 executeValidate()。
+// oclif 版 eval gold validate — typed parse → runGoldValidate。
 
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../../i18n.js';
+import { bilingual } from '../../../i18n.js';
 import { runLegacyCommand } from '../../../run-legacy.js';
 
 export default class EvalGoldValidate extends Command {
@@ -28,11 +28,11 @@ export default class EvalGoldValidate extends Command {
   };
 
   async run(): Promise<void> {
-    await this.parse(EvalGoldValidate);
-    const lang = resolveLang(process.argv);
+    const { args, flags } = await this.parse(EvalGoldValidate);
+    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { executeValidate } = await import('../../../../commands/eval-gold.js');
-      await executeValidate(this.argv, lang);
+      const { runGoldValidate } = await import('../../../../commands/eval-gold.js');
+      await runGoldValidate(args, { ...flags, lang }, lang);
     });
   }
 }
