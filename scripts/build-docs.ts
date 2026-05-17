@@ -19,19 +19,18 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Config, type Command } from '@oclif/core';
+import { pickLang as pickLangCore } from '../src/cli/oclif/i18n.js';
 
 const REPO_ROOT = resolve(process.cwd());
 
 type Lang = 'zh' | 'en';
 
-// inline pickLang — 跟 src/cli/oclif/i18n.ts:36 行为一致。description 是
-// `${zh}\n${en}` 形式;zh = 第一行,en = 后续行 join。
+// build-docs 在生成 markdown 时需要把 `${zh}\n${en}` 切回单语,跟 src/cli/oclif/i18n.ts
+// 的 pickLang 共用底层逻辑(单一来源)。i18n.ts 的 pickLang 返回 string | undefined
+// (caller 决定 nullish 处理),build-docs 拼字符串不能容忍 undefined,这里用
+// `?? ''` 把 undefined 兜成 '',行为跟原 inline 版本等价。
 function pickLang(text: string | undefined, lang: Lang): string {
-  if (!text) return '';
-  const parts = text.split(/\r?\n/);
-  if (parts.length < 2) return text;
-  if (lang === 'zh') return parts[0] ?? '';
-  return parts.slice(1).join('\n');
+  return pickLangCore(text, lang) ?? '';
 }
 
 interface FlagShape {
