@@ -101,6 +101,16 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     }
   });
 
+  it(`eval --bogus-flag 错误路径 exit 2(parse fail 回归)`, async () => {
+    try {
+      await execFileAsync('node', [CLI, 'eval', '--bogus-flag']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2 on unknown flag, got ${e.code}`);
+    }
+  });
+
   it(`omk eval gold --lang en 打英文 usage(显式 lang flag 生效)`, async () => {
     try {
       await execFileAsync('node', [CLI, 'eval', 'gold', '--lang', 'en']);
