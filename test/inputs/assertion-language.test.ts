@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -77,9 +77,14 @@ describe('eval sample assertion language', () => {
   });
 
   it('keeps init scaffold assertion payloads English-only', async () => {
+    // spawn dist binary 验证 `omk init` 生成的 samples — vitest 不会自动 yarn build,
+    // dist 缺失时给清晰 hint,避免新人首次跑测撞模糊 ENOENT。
+    const cli = join(PROJECT_ROOT, 'dist', 'src', 'cli', 'index.js');
+    if (!existsSync(cli)) {
+      throw new Error(`dist CLI not found at ${cli} — run \`yarn build\` first.`);
+    }
     const dir = mkdtempSync(join(tmpdir(), 'omk-init-assertions-'));
     try {
-      const cli = join(PROJECT_ROOT, 'dist', 'src', 'cli', 'index.js');
       await execFileAsync('node', [cli, 'init', dir, '--lang', 'zh']);
       const { samples } = loadSamples(join(dir, 'eval-samples.json'));
       assert.deepEqual(collectAssertionViolations('omk init', samples), []);

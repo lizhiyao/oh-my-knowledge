@@ -1,5 +1,5 @@
 import { resolve, join, basename, dirname, extname } from 'node:path';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../i18n.js';
@@ -312,8 +312,6 @@ async function runSample(
   }
 
   const { generateSamples } = await import('../../../authoring/generator.js');
-  const { readFileSync, writeFileSync, mkdirSync } = await import('node:fs');
-  const path = await import('node:path');
   const count: number | undefined = flags.count !== undefined
     ? Math.max(1, Number(flags.count) || 5)
     : undefined;
@@ -331,7 +329,6 @@ async function runSample(
       throw new CliExit(1);
     }
 
-    const { readdirSync, statSync } = await import('node:fs');
     const entries: string[] = readdirSync(skillDir);
     let generated: number = 0;
 
@@ -369,7 +366,7 @@ async function runSample(
         const skillContent: string = readFileSync(skillPath, 'utf-8');
         const { samples, costUSD }: GenerateSamplesResult =
           await generateSamples({ skillContent, count, model, focus });
-        mkdirSync(path.dirname(samplesPath), { recursive: true });
+        mkdirSync(dirname(samplesPath), { recursive: true });
         writeFileSync(samplesPath, JSON.stringify(samples, null, 2));
         const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
         process.stderr.write(tCli('cli.gen.skill_done', lang, {
@@ -403,11 +400,11 @@ async function runSample(
 
     const skillContent: string = readFileSync(resolvedPath, 'utf-8');
 
-    const skillBasename = path.basename(resolvedPath);
-    const skillParentDir = path.dirname(resolvedPath);
+    const skillBasename = basename(resolvedPath);
+    const skillParentDir = dirname(resolvedPath);
     const isStandardSkillLayout = skillBasename === 'SKILL.md';
     const outputPath: string = isStandardSkillLayout
-      ? path.join(skillParentDir, '.omk', 'samples.json')
+      ? join(skillParentDir, '.omk', 'samples.json')
       : resolve('eval-samples.json');
 
     if (existsSync(outputPath)) {
@@ -423,7 +420,7 @@ async function runSample(
     try {
       const { samples, costUSD }: GenerateSamplesResult =
         await generateSamples({ skillContent, count, model, focus });
-      mkdirSync(path.dirname(outputPath), { recursive: true });
+      mkdirSync(dirname(outputPath), { recursive: true });
       writeFileSync(outputPath, JSON.stringify(samples, null, 2));
       const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
       process.stderr.write(tCli('cli.gen.single_done', lang, {

@@ -40,6 +40,9 @@ export async function runStudio(
   if (flags.dev && !process.env.__OMK_DEV_CHILD) {
     const { spawn } = await import('node:child_process');
     const { fileURLToPath } = await import('node:url');
+    // 路径绑定:`oclif/commands/studio.{ts,js}` → 三层 `..` 回 `cli/`,再 `index.js`。
+    // 移动本文件到不同嵌套(例如 `oclif/commands/group/studio.ts`)需同步改 `..` 数量。
+    // cli/index.{ts,js} 在源跟 dist 中位置一致(src/cli/index.ts → dist/src/cli/index.js)。
     const cliPath = resolve(fileURLToPath(import.meta.url), '..', '..', '..', 'index.js');
     const watchRoot = resolve(cliPath, '..', '..');
     const childArgs = [
@@ -63,7 +66,10 @@ export async function runStudio(
       stdio: 'inherit',
       env: { ...process.env, __OMK_DEV_CHILD: '1' },
     });
-    child.on('exit', (code: number | null) => process.exit(code || 0));
+    // child 被 signal kill 时 code=null,用 ?? 退 1 让父进程感知异常退出,
+    // 不要 `code || 0` 把 null 当 0 假装成功(把 signal kill / unknown exit 也
+    // 当成功上报会让 omk studio --dev 的 crash 静默)。
+    child.on('exit', (code: number | null) => process.exit(code ?? 1));
     return;
   }
 
