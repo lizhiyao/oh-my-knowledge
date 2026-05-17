@@ -1,10 +1,9 @@
 import { CliExit } from '../cli-exit.js';
 import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { tCli, langFromArgv } from '../i18n.js';
-import { COMMON_OPTIONS } from '../parse-run-config.js';
-import { parseArgsStrictOrExit } from '../parse-strict.js';
+import { tCli, type CliLang } from '../i18n.js';
 import { makeOnProgress } from '../progress.js';
+import type { EvolveArgs, EvolveFlags } from '../types/cmd-flags.js';
 import type { ProgressCallback } from '../../types/index.js';
 
 interface RoundProgressInfo {
@@ -53,38 +52,19 @@ interface EvolveResult {
   reportId?: string;
 }
 
-export async function execute(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  const { values, positionals } = parseArgsStrictOrExit({
-    args: argv,
-    options: {
-      ...COMMON_OPTIONS,
-      rounds: { type: 'string', default: '5' },
-      target: { type: 'string' },
-      samples: { type: 'string', default: 'eval-samples.json' },
-      model: { type: 'string', default: 'sonnet' },
-      'judge-models': { type: 'string', default: 'claude:haiku' },
-      'improve-model': { type: 'string', default: 'sonnet' },
-      concurrency: { type: 'string', default: '1' },
-      timeout: { type: 'string', default: '120' },
-      executor: { type: 'string', default: 'claude' },
-      'skip-connectivity': { type: 'boolean', default: false },
-      effort: { type: 'string' },
-      'no-diagnostic': { type: 'boolean', default: false },
-      'skip-doctor': { type: 'boolean', default: false },
-    },
-    allowPositionals: true,
-  });
-
-  // skill path 走 parseArgs 的 positionals，避免 raw argv.find 把 flag value
-  // 当成 path 误识别，例如 `omk evolve --judge-models openai-api:gpt-4o foo.md`。
-  const skillPath: string | undefined = positionals[0];
+export async function runEvolve(
+  args: EvolveArgs,
+  flags: EvolveFlags,
+  lang: CliLang,
+): Promise<void> {
+  // skillPath 由 oclif Args.required:true 保证非空,这里仍兜底防御。
+  const skillPath: string = args.skillPath;
   if (!skillPath) {
     console.error(tCli('cli.evolve.specify_skill_path', lang));
     throw new CliExit(1);
   }
 
-  let samplesFile: string = (values.samples as string) ?? 'eval-samples.json';
+  let samplesFile: string = flags.samples ?? 'eval-samples.json';
   if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
     if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
     else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
@@ -93,7 +73,7 @@ export async function execute(argv: string[]): Promise<void> {
   const { evolveSkill } = await import('../../authoring/evolver.js');
   const { parseJudgeModelsArgOrExit } = await import('../parse-run-config.js');
 
-  const evolveJudges = parseJudgeModelsArgOrExit(values['judge-models'] as string);
+  const evolveJudges = parseJudgeModelsArgOrExit(flags['judge-models']);
   if (evolveJudges.length > 1) {
     console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'omk evolve' }));
     throw new CliExit(2);
@@ -105,18 +85,18 @@ export async function execute(argv: string[]): Promise<void> {
     const result: EvolveResult = await evolveSkill({
       skillPath: resolve(skillPath),
       samplesPath: resolve(samplesFile),
-      rounds: Math.max(1, Number(values.rounds) || 5),
-      target: values.target ? Number(values.target) : null,
-      model: values.model as string,
+      rounds: Math.max(1, Number(flags.rounds) || 5),
+      target: flags.target ? Number(flags.target) : null,
+      model: flags.model,
       judgeModels: evolveJudges,
-      improveModel: values['improve-model'] as string,
-      executorName: values.executor as string,
-      concurrency: Math.max(1, Number(values.concurrency) || 1),
-      timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
-      skipConnectivity: values['skip-connectivity'] as boolean,
-      effort: values.effort ? validateEvolveEffort(values.effort as string, lang) : undefined,
-      noDiagnostic: values['no-diagnostic'] as boolean,
-      skipDoctor: values['skip-doctor'] as boolean,
+      improveModel: flags['improve-model'],
+      executorName: flags.executor,
+      concurrency: Math.max(1, Number(flags.concurrency) || 1),
+      timeoutMs: Math.max(1, Number(flags.timeout) || 120) * 1000,
+      skipConnectivity: flags['skip-connectivity'],
+      effort: flags.effort ? validateEvolveEffort(flags.effort, lang) : undefined,
+      noDiagnostic: flags['no-diagnostic'],
+      skipDoctor: flags['skip-doctor'],
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error }: RoundProgressInfo): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。

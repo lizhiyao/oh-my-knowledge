@@ -2,12 +2,11 @@ import { CliExit } from '../cli-exit.js';
 import { resolve, join, basename, dirname, extname } from 'node:path';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import yaml from 'js-yaml';
-import { tCli, langFromArgv } from '../i18n.js';
-import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
-import { parseArgsStrictOrExit } from '../parse-strict.js';
+import { tCli, type CliLang } from '../i18n.js';
+import { DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
 import { loadSamples, parseYaml, type LoadSamplesResult } from '../../inputs/load-samples.js';
 import { hashSample, hashString } from '../../eval-core/evaluation-reporting.js';
-import type { CliLang } from '../i18n.js';
+import type { SampleArgs, SampleFlags } from '../types/cmd-flags.js';
 import type { Report, Sample } from '../../types/index.js';
 
 interface GenerateSamplesResult {
@@ -165,26 +164,13 @@ export function writeFixedSamplesToSources(
   return written;
 }
 
-export async function execute(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  const { values, positionals } = parseArgsStrictOrExit({
-    args: argv,
-    options: {
-      ...COMMON_OPTIONS,
-      batch: { type: 'boolean', default: false },
-      count: { type: 'string' },
-      model: { type: 'string', default: 'opus' },
-      'skill-dir': { type: 'string', default: 'skills' },
-      focus: { type: 'string' },
-      fix: { type: 'boolean', default: false },
-      'reports-dir': { type: 'string' },
-      treatment: { type: 'string' },
-    },
-    allowPositionals: true,
-  });
-
-  if (values.fix) {
-    await executeFix(values, positionals, lang);
+export async function runSample(
+  args: SampleArgs,
+  flags: SampleFlags,
+  lang: CliLang,
+): Promise<void> {
+  if (flags.fix) {
+    await runSampleFix(args, flags, lang);
     return;
   }
 
@@ -192,19 +178,19 @@ export async function execute(argv: string[]): Promise<void> {
   const { readFileSync, writeFileSync, mkdirSync } = await import('node:fs');
   const path = await import('node:path');
   // count 语义:用户显式给值 → 强制 N 条;不给 → undefined,LLM 按 skill 类型自定数量。
-  const count: number | undefined = values.count !== undefined
-    ? Math.max(1, Number(values.count) || 5)
+  const count: number | undefined = flags.count !== undefined
+    ? Math.max(1, Number(flags.count) || 5)
     : undefined;
-  const model: string = values.model as string;
-  const focus: string | undefined = (values.focus as string | undefined) || undefined;
+  const model: string = flags.model;
+  const focus: string | undefined = flags.focus || undefined;
 
   if (focus) {
     process.stderr.write(tCli('cli.gen.focus_applied', lang, { focus }));
   }
 
-  if (values.batch) {
+  if (flags.batch) {
     // Batch mode: generate for all skills missing eval-samples
-    const skillDir: string = resolve(values['skill-dir'] as string);
+    const skillDir: string = resolve(flags['skill-dir']);
     if (!existsSync(skillDir)) {
       console.error(tCli('cli.common.skill_dir_not_found', lang, { path: skillDir }));
       throw new CliExit(1);
@@ -271,9 +257,8 @@ export async function execute(argv: string[]): Promise<void> {
       console.log(tCli('cli.gen.batch_summary', lang, { n: generated }));
     }
   } else {
-    // Single skill mode — 必须显式传 <skill-path>;flag value (如 --count 3 里的 3)
-    // 不会被当成 positional,因为我们用的是 parser 返回的 positionals。
-    const skillPath: string | undefined = positionals[0];
+    // Single skill mode — 必须显式传 <skill-path>;oclif Args 把它放在 args.skillPath。
+    const skillPath: string | undefined = args.skillPath;
     if (!skillPath) {
       console.error(tCli('cli.gen.specify_skill_path', lang));
       throw new CliExit(1);
@@ -326,19 +311,19 @@ export async function execute(argv: string[]): Promise<void> {
   }
 }
 
-async function executeFix(
-  values: Record<string, unknown>,
-  positionals: string[],
-  lang: 'zh' | 'en',
+export async function runSampleFix(
+  args: SampleArgs,
+  flags: SampleFlags,
+  lang: CliLang,
 ): Promise<void> {
   const { fixSamples } = await import('../../authoring/sample-fixer.js');
   const { createFileStore } = await import('../../server/report-store.js');
 
-  const model = (values.model as string) ?? 'opus';
-  const reportsDir = resolve((values['reports-dir'] as string) ?? DEFAULT_REPORTS_DIR);
+  const model = flags.model ?? 'opus';
+  const reportsDir = resolve(flags['reports-dir'] ?? DEFAULT_REPORTS_DIR);
 
   // 1. Determine skill path and samples path
-  const skillPath = positionals[0];
+  const skillPath = args.skillPath;
   if (!skillPath) {
     console.error(lang === 'zh' ? '请指定 skill 路径，如: omk sample skills/my-skill/SKILL.md --fix' : 'Specify skill path: omk sample skills/my-skill/SKILL.md --fix');
     throw new CliExit(1);
@@ -364,7 +349,7 @@ async function executeFix(
   const defaultTreatmentName = isDir
     ? basename(skillDir)
     : basename(resolvedSkillPath, extname(resolvedSkillPath));
-  const treatmentName = (values.treatment as string) ?? defaultTreatmentName;
+  const treatmentName = flags.treatment ?? defaultTreatmentName;
 
   // 3. Find the latest report
   process.stderr.write(lang === 'zh' ? `🔍 正在查找 ${treatmentName} 的最新评测报告...\n` : `🔍 Scanning latest report for ${treatmentName}...\n`);

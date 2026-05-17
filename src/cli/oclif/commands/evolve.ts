@@ -123,10 +123,11 @@ export default class Evolve extends Command {
   };
 
   async run(): Promise<void> {
-    await this.parse(Evolve);
+    const { args, flags } = await this.parse(Evolve);
+    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { execute } = await import('../../commands/evolve.js');
-      await execute(this.argv);
+      const { runEvolve } = await import('../../commands/evolve.js');
+      await runEvolve(args, { ...flags, lang }, lang);
     });
   }
 }

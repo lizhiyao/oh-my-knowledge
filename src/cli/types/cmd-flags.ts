@@ -49,6 +49,45 @@ export interface DoctorFlags {
   'static-only': boolean;
 }
 
+// ── evolve ────────────────────────────────────────────────────────────────────
+
+export interface EvolveArgs {
+  skillPath: string;
+}
+export interface EvolveFlags {
+  lang: Lang;
+  rounds: string;
+  target?: string;
+  samples: string;
+  model: string;
+  'judge-models': string;
+  'improve-model': string;
+  concurrency: string;
+  timeout: string;
+  executor: string;
+  'skip-connectivity': boolean;
+  effort?: string;
+  'no-diagnostic': boolean;
+  'skip-doctor': boolean;
+}
+
+// ── sample ────────────────────────────────────────────────────────────────────
+
+export interface SampleArgs {
+  skillPath?: string;
+}
+export interface SampleFlags {
+  lang: Lang;
+  batch: boolean;
+  count?: string;
+  model: string;
+  'skill-dir': string;
+  focus?: string;
+  fix: boolean;
+  'reports-dir'?: string;
+  treatment?: string;
+}
+
 // ── studio ────────────────────────────────────────────────────────────────────
 
 // 无 positional。用 Record<string, never> 而不是 `interface StudioArgs {}` 是因为

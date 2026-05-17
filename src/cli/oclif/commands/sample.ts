@@ -115,12 +115,11 @@ export default class Sample extends Command {
   };
 
   async run(): Promise<void> {
-    // 解析触发 oclif 的 --help / strict 校验。flag 值不直接用,交给生产 execute() 重新 parse argv。
-    await this.parse(Sample);
-    // this.argv = oclif 已经把命令路径切掉的余下 argv,space-syntax 跟 colon-syntax 一致。
+    const { args, flags } = await this.parse(Sample);
+    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { execute } = await import('../../commands/sample.js');
-      await execute(this.argv);
+      const { runSample } = await import('../../commands/sample.js');
+      await runSample(args, { ...flags, lang }, lang);
     });
   }
 }
