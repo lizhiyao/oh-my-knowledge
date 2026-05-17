@@ -1,8 +1,9 @@
 import { CliExit } from '../cli-exit.js';
-import { tCli, langFromArgv } from '../i18n.js';
+import { tCli, type CliLang } from '../i18n.js';
 import { parseRunConfig } from '../parse-run-config.js';
 import { makeOnProgress } from '../progress.js';
 import { computeRunTally } from '../run-tally.js';
+import type { EvalArgs, EvalFlags } from '../types/cmd-flags.js';
 import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback } from '../../types/index.js';
 import type { DryRunBatchReport, DryRunReport } from '../../eval-workflows/run-evaluation.js';
 import type { EvalResult, ReportServer } from './_shared.js';
@@ -20,7 +21,6 @@ interface RepeatProgressInfo {
 }
 
 type ParsedValues = Record<string, string | boolean | undefined>;
-type CliLang = 'zh' | 'en';
 
 function isDryRunReport(report: unknown): report is DryRunReport {
   return Boolean(report && typeof report === 'object' && (report as { dryRun?: unknown }).dryRun === true);
@@ -170,27 +170,15 @@ async function announceSavedReport({
   }
 }
 
-export async function execute(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  // 注: 这里**不**给 parseArgs default 值, 否则 values.xxx 永远不为 undefined,
-  // CLI > eval.yaml > hardcoded-default 三级 fallback 区分不开 ("用户没传" vs "用户传了等于 default 值")。
-  // hardcoded default 在下面处理 undefined 时显式给。
-  const { values, config, evalConfig } = parseRunConfig(argv, {
-    blind: { type: 'boolean' },
-    repeat: { type: 'string' },
-    'judge-repeat': { type: 'string' },
-    bootstrap: { type: 'boolean' },
-    'bootstrap-samples': { type: 'string' },
-    'gold-dir': { type: 'string' },
-    'no-debias-length': { type: 'boolean' },
-    'budget-usd': { type: 'string' },
-    'budget-per-sample-usd': { type: 'string' },
-    'budget-per-sample-ms': { type: 'string' },
-    threshold: { type: 'string', default: '3.5' },
-    'trivial-diff': { type: 'string' },
-    'report-only': { type: 'boolean' },
-    'no-gate': { type: 'boolean' },
-  });
+export async function runEval(
+  _args: EvalArgs,
+  flags: EvalFlags,
+  lang: CliLang,
+): Promise<void> {
+  // oclif Command 单次 typed parse 已完成 strict 校验,这里直接喂 parseRunConfig。
+  // CLI > eval.yaml > hardcoded-default 三级 fallback 仍依赖区分「用户没传(undefined)」
+  // vs「用户传了等于 default 值」,所以传进来的 values 字段保持 undefined 不能填默认。
+  const { values, config, evalConfig } = parseRunConfig({ ...flags } as Record<string, unknown>);
 
   const { runEvaluation, runMultiple, runBatchEvaluation } = await import('../../eval-workflows/run-evaluation.js');
 

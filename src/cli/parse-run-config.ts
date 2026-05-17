@@ -4,7 +4,6 @@ import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
 import { discoverVariants, parseVariantCwd } from '../inputs/skill-loader.js';
 import { CliExit } from './cli-exit.js';
-import { parseArgsStrictOrExit } from './parse-strict.js';
 import { loadEvalConfig, configVariantsToSpecs } from '../inputs/eval-config.js';
 import { DEFAULT_MODEL } from '../executors/shared.js';
 import type {
@@ -210,17 +209,14 @@ function discoverSamplesPath(values: Record<string, unknown>, skillDir: string):
   return cwdFile;
 }
 
+/**
+ * 接 typed flags(来自 oclif Command.parse() 输出)。oclif strict 模式已经在
+ * 上游对未知 flag 拦截 exit 2,这里不再 parseArgs。eval-runner 等业务 caller
+ * 把 oclif flags 当 values 喂进来。
+ */
 export function parseRunConfig(
-  argv: string[],
-  extraOptions: ParseArgsConfig['options'] = {},
+  values: Record<string, unknown>,
 ): ParseRunConfigResult {
-  // strict 模式: 未知 option 报错 + exit 2(已删 / 改名 flag 自然 fail,
-  // 不维护 deprecation list)。详见 src/cli/parse-strict.ts。
-  const { values } = parseArgsStrictOrExit({
-    args: argv,
-    options: { ...RUN_OPTIONS, ...extraOptions },
-  });
-
   if (values.variants !== undefined) {
     throw new Error(
       `--variants 已在 v0.16 废除，请改用 --control <expr> 与 --treatment <v1,v2,...>\n`
@@ -363,7 +359,7 @@ export function parseRunConfig(
   const noDiagnostic = (values['no-diagnostic'] as boolean | undefined) ?? evalConfig?.noDiagnostic ?? false;
 
   return {
-    values,
+    values: values as Record<string, string | boolean | undefined>,
     config: {
       samplesPath: resolve(samplesFile),
       skillDir,

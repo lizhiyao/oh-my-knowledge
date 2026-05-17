@@ -49,6 +49,54 @@ export interface DoctorFlags {
   'static-only': boolean;
 }
 
+// ── eval ──────────────────────────────────────────────────────────────────────
+
+export type EvalArgs = Record<string, never>;
+export interface EvalFlags {
+  lang: Lang;
+  control?: string;
+  treatment?: string;
+  config?: string;
+  samples?: string;
+  'skill-dir'?: string;
+  model?: string;
+  executor?: string;
+  'judge-models'?: string;
+  'output-dir'?: string;
+  'no-judge': boolean;
+  'no-cache': boolean;
+  'dry-run': boolean;
+  concurrency?: string;
+  timeout?: string;
+  batch: boolean;
+  'skip-connectivity': boolean;
+  'skip-doctor': boolean;
+  'mcp-config'?: string;
+  'no-serve': boolean;
+  verbose: boolean;
+  retry?: string;
+  resume?: string;
+  'layered-stats': boolean;
+  'strict-baseline': boolean;
+  'no-strict-baseline': boolean;
+  effort?: string;
+  'no-diagnostic': boolean;
+  blind: boolean;
+  repeat?: string;
+  'judge-repeat'?: string;
+  bootstrap: boolean;
+  'bootstrap-samples'?: string;
+  'gold-dir'?: string;
+  'no-debias-length': boolean;
+  'budget-usd'?: string;
+  'budget-per-sample-usd'?: string;
+  'budget-per-sample-ms'?: string;
+  threshold?: string;
+  'trivial-diff'?: string;
+  'report-only': boolean;
+  'no-gate': boolean;
+}
+
 // ── evolve ────────────────────────────────────────────────────────────────────
 
 export interface EvolveArgs {

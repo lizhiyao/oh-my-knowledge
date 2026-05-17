@@ -194,10 +194,11 @@ export default class Eval extends Command {
   };
 
   async run(): Promise<void> {
-    await this.parse(Eval);
+    const { args, flags } = await this.parse(Eval);
+    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
     await runLegacyCommand(this, async () => {
-      const { execute } = await import('../../commands/eval-runner.js');
-      await execute(this.argv);
+      const { runEval } = await import('../../commands/eval-runner.js');
+      await runEval(args as Record<string, never>, { ...flags, lang }, lang);
     });
   }
 }
