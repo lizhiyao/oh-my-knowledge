@@ -32,6 +32,23 @@ export interface InitFlags {
   lang: Lang;
 }
 
+// ── doctor ────────────────────────────────────────────────────────────────────
+
+export interface DoctorArgs {
+  target?: string;
+}
+export interface DoctorFlags {
+  lang: Lang;
+  json: boolean;
+  gate: boolean;
+  executor?: string;
+  model?: string;
+  samples?: string;
+  timeout?: string;
+  html?: string;
+  'static-only': boolean;
+}
+
 // ── studio ────────────────────────────────────────────────────────────────────
 
 // 无 positional。用 Record<string, never> 而不是 `interface StudioArgs {}` 是因为

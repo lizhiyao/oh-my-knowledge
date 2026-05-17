@@ -1,63 +1,9 @@
 import { Args, Command, Flags } from '@oclif/core';
-import { existsSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { tCli } from '../../i18n.js';
-import { bilingual, resolveLang } from '../i18n.js';
-import type { DependencyRequirements } from '../../../eval-core/dependency-checker.js';
-import type { Sample } from '../../../types/index.js';
+import { bilingual } from '../i18n.js';
+import { runLegacyCommand } from '../run-legacy.js';
 
-// oclif 版 doctor — 跟 src/cli/commands/doctor.ts 行为对得齐:
-// - flag 集合一致(lang/json/gate/executor/model/samples/timeout/html/static-only)
-// - positional target 可选
-// - 业务逻辑直接调 runDoctor() / renderDoctorReport*,不重写
-// - 退出码:report.outcome === 'failed' → exit 1,unknown flag → exit 2(oclif 默认),其它 → 0
-//
-// 双语 description / examples 走 bilingual({zh, en}) → `${zh}\n${en}` 串,
-// LangAwareHelp(./help.ts)按 --lang / OMK_LANG 切 zh / en。每个 flag 描述粒度太碎,
-// 不进 i18n-dict.ts,inline 写双语;命令级一句话描述也 inline。
-
-const DEFAULT_SAMPLE_FILENAMES = ['eval-samples.json', 'eval-samples.yaml', 'eval-samples.yml'] as const;
-
-function findSamplesInDir(dir: string): string | null {
-  for (const name of DEFAULT_SAMPLE_FILENAMES) {
-    const candidate = join(dir, name);
-    if (existsSync(candidate)) return candidate;
-  }
-  return null;
-}
-
-function sampleSearchDirs(target: string | null, cwd: string): string[] {
-  const dirs: string[] = [];
-  const add = (dir: string): void => {
-    const abs = resolve(dir);
-    if (!dirs.includes(abs)) dirs.push(abs);
-  };
-  if (target) {
-    const absTarget = resolve(target);
-    if (existsSync(absTarget)) {
-      const stat = statSync(absTarget);
-      if (stat.isDirectory()) {
-        add(absTarget);
-        add(dirname(absTarget));
-        add(dirname(dirname(absTarget)));
-      } else {
-        const parent = dirname(absTarget);
-        add(parent);
-        add(dirname(parent));
-      }
-    }
-  }
-  add(cwd);
-  return dirs;
-}
-
-function findDefaultSamplesPath(target: string | null, cwd: string): string | null {
-  for (const dir of sampleSearchDirs(target, cwd)) {
-    const samplesPath = findSamplesInDir(dir);
-    if (samplesPath) return samplesPath;
-  }
-  return null;
-}
+// oclif 版 doctor — 一次 typed parse 拿 {args, flags},直接喂业务 runDoctorCommand,
+// 业务逻辑住在 src/cli/commands/doctor.ts(单一来源),oclif 这层是 thin shell。
 
 export default class Doctor extends Command {
   static description = bilingual({
@@ -136,13 +82,13 @@ export default class Doctor extends Command {
     samples: Flags.string({
       description: bilingual({
         zh: '样本文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。',
-        en: 'Samples file path (.json/.yaml). Auto-discovered from target / cwd if omitted.',
+        en: 'Samples file path (.json/.yaml). Auto-detects from target / cwd if omitted.',
       }),
     }),
     timeout: Flags.string({
       description: bilingual({
         zh: '单次 LLM 会话超时秒数，默认 600(10 分钟）。',
-        en: 'LLM session timeout in seconds, default 600 (10 min).',
+        en: 'Single-session LLM timeout sec, default 600 (10 min).',
       }),
     }),
     html: Flags.string({
@@ -162,111 +108,10 @@ export default class Doctor extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Doctor);
-    const lang = resolveLang(process.argv);
-
-    const target: string | null = args.target ?? null;
-    const executorName = flags.executor ?? 'claude';
-    const model = flags.model ?? 'sonnet';
-    const staticOnly = flags['static-only'];
-    const runHealthCheck = !staticOnly;
-
-    const defaultTimeoutSec = 600;
-    const timeoutSec = flags.timeout != null ? Number(flags.timeout) : defaultTimeoutSec;
-    const timeoutMs = Math.max(
-      1000,
-      Math.floor((Number.isFinite(timeoutSec) ? timeoutSec : defaultTimeoutSec) * 1000),
-    );
-
-    const cwd = process.cwd();
-    const samplesPath = flags.samples ? resolve(flags.samples) : findDefaultSamplesPath(target, cwd);
-    let samples: Sample[] | undefined;
-    let requires: DependencyRequirements | undefined;
-    if (samplesPath) {
-      try {
-        const { loadSamples } = await import('../../../inputs/load-samples.js');
-        const loaded = loadSamples(samplesPath);
-        samples = loaded.samples;
-        requires = loaded.requires;
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        process.stderr.write(
-          tCli('cli.common.warn_load_samples_failed', lang, { path: samplesPath, message: msg }),
-        );
-      }
-    }
-
-    // 副作用 import: 注册 7 内置维度 spec + skill_health composer rule。
-    await import('../../../doctor/health/register.js');
-
-    const { runDoctor } = await import('../../../doctor/index.js');
-    const { renderDoctorReportText, renderDoctorReportJson } = await import(
-      '../../../doctor/renderer.js'
-    );
-    const { getRegisteredRules } = await import('../../../doctor/rules.js');
-    const { isComposerRule } = await import('../../../types/doctor.js');
-    const rulesOverride = staticOnly
-      ? getRegisteredRules().filter((r) => !isComposerRule(r))
-      : getRegisteredRules().filter(isComposerRule);
-
-    let report;
-    try {
-      report = await runDoctor({
-        target,
-        cwd,
-        executorName,
-        model,
-        timeoutMs,
-        lang,
-        runHealthCheck,
-        rules: rulesOverride,
-        samples,
-        requires,
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.error(`${tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd })}\n(${msg})`, {
-        exit: 1,
-      });
-    }
-
-    if (report.skills.length === 0) {
-      this.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }), { exit: 1 });
-    }
-
-    const htmlPath = flags.html;
-    if (htmlPath) {
-      const { renderDoctorReportHtml } = await import('../../../doctor/html-renderer.js');
-      const { writeFileSync, mkdirSync } = await import('node:fs');
-      const { dirname: dn, resolve: rv } = await import('node:path');
-      const abs = rv(htmlPath);
-      mkdirSync(dn(abs), { recursive: true });
-      writeFileSync(abs, renderDoctorReportHtml(report, lang), 'utf8');
-      process.stderr.write(
-        (lang === 'zh' ? `HTML 报告已写入: ${abs}` : `HTML report written to: ${abs}`) + '\n',
-      );
-    }
-
-    if (flags.json) {
-      this.log(renderDoctorReportJson(report));
-    } else if (flags.gate) {
-      if (report.outcome === 'failed') {
-        const summary =
-          lang === 'zh'
-            ? `doctor failed: ${report.totals.fail} 个 skill 未通过 (${report.totals.warn} warn / ${report.totals.pass} pass)`
-            : `doctor failed: ${report.totals.fail} skills did not pass (${report.totals.warn} warn / ${report.totals.pass} pass)`;
-        process.stderr.write(summary + '\n');
-      }
-    } else {
-      if (samplesPath && samples) {
-        process.stderr.write(
-          tCli('cli.doctor.samples_detected', lang, { path: samplesPath }) + '\n',
-        );
-      }
-      renderDoctorReportText(report, lang);
-    }
-
-    if (report.outcome === 'failed') {
-      this.exit(1);
-    }
+    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
+    await runLegacyCommand(this, async () => {
+      const { runDoctorCommand } = await import('../../commands/doctor.js');
+      await runDoctorCommand(args, { ...flags, lang }, lang);
+    });
   }
 }

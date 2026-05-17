@@ -1,9 +1,8 @@
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { CliExit } from '../cli-exit.js';
-import { tCli, langFromArgv } from '../i18n.js';
-import { COMMON_OPTIONS } from '../parse-run-config.js';
-import { parseArgsStrictOrExit } from '../parse-strict.js';
+import { tCli, type CliLang } from '../i18n.js';
+import type { DoctorArgs, DoctorFlags } from '../types/cmd-flags.js';
 import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
 import type { Sample } from '../../types/index.js';
 
@@ -50,40 +49,29 @@ function findDefaultSamplesPath(target: string | null, cwd: string): string | nu
   return null;
 }
 
-export async function execute(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  const { values, positionals } = parseArgsStrictOrExit({
-    args: argv,
-    allowPositionals: true,
-    options: {
-      ...COMMON_OPTIONS,
-      json: { type: 'boolean', default: false },
-      gate: { type: 'boolean', default: false },
-      executor: { type: 'string' },
-      model: { type: 'string' },
-      samples: { type: 'string' },
-      timeout: { type: 'string' },
-      html: { type: 'string' },
-      'static-only': { type: 'boolean', default: false },
-    },
-  });
-
-  const target: string | null = positionals[0] ?? null;
-  const executorName = (values.executor as string | undefined) ?? 'claude';
-  const model = (values.model as string | undefined) ?? 'sonnet';
-  const timeoutRaw = values.timeout as string | undefined;
+export async function runDoctorCommand(
+  args: DoctorArgs,
+  flags: DoctorFlags,
+  lang: CliLang,
+): Promise<void> {
+  const target: string | null = args.target ?? null;
+  const executorName = flags.executor ?? 'claude';
+  const model = flags.model ?? 'sonnet';
   // 默认 LLM 健康度审计(7 内置维度 + 用户注册的自定义维度);--static-only 切到
-  // 离线静态模式:只跑 4 条静态 rule(skill_readable / skill_metadata /
-  // dependencies_present / samples_contract_aligned),不调 LLM。后者用于
-  // CI 节点没装 claude/codex、本地断网调试等场景。
-  const staticOnly = values['static-only'] as boolean;
+  // 离线静态模式:只跑 4 条静态 rule,不调 LLM。CI 节点没装 claude/codex、本地断网
+  // 调试等场景。
+  const staticOnly = flags['static-only'];
   const runHealthCheck = !staticOnly;
   // 单次 LLM 会话(7+N 维度,内部多 turn)默认 timeout 600s(10 min)。
   const defaultTimeoutSec = 600;
-  const timeoutSec = timeoutRaw != null ? Number(timeoutRaw) : defaultTimeoutSec;
-  const timeoutMs = Math.max(1000, Math.floor((Number.isFinite(timeoutSec) ? timeoutSec : defaultTimeoutSec) * 1000));
+  const timeoutSec = flags.timeout != null ? Number(flags.timeout) : defaultTimeoutSec;
+  const timeoutMs = Math.max(
+    1000,
+    Math.floor((Number.isFinite(timeoutSec) ? timeoutSec : defaultTimeoutSec) * 1000),
+  );
+
   const cwd = process.cwd();
-  const samplesPath = values.samples ? resolve(values.samples as string) : findDefaultSamplesPath(target, cwd);
+  const samplesPath = flags.samples ? resolve(flags.samples) : findDefaultSamplesPath(target, cwd);
   let samples: Sample[] | undefined;
   let requires: DependencyRequirements | undefined;
   if (samplesPath) {
@@ -99,16 +87,10 @@ export async function execute(argv: string[]): Promise<void> {
   }
 
   // 副作用 import: 注册 7 内置维度 spec + skill_health composer rule。
-  // 用户在自己代码 / plugin 里 import dimension-registry 注册自定义维度,
-  // 同样会被 composer 拼到 prompt(顺序 = 注册顺序)。
   await import('../../doctor/health/register.js');
 
   const { runDoctor } = await import('../../doctor/index.js');
   const { renderDoctorReportText, renderDoctorReportJson } = await import('../../doctor/renderer.js');
-
-  // 默认模式过滤掉静态 rule 只留 composer;--static-only 反过来:只留静态 rule
-  // 跳过 composer。静态 rule 在 omk eval 里继续当强制 gate,doctor 这条线只
-  // 选择性暴露给用户。
   const { getRegisteredRules } = await import('../../doctor/rules.js');
   const { isComposerRule } = await import('../../types/doctor.js');
   const rulesOverride = staticOnly
@@ -130,7 +112,6 @@ export async function execute(argv: string[]): Promise<void> {
       requires,
     });
   } catch (err) {
-    // CliExit 透传(防御性,目前 runDoctor 不抛 CliExit,但保持四个 catch 一致)。
     if (err instanceof CliExit) throw err;
     const msg = err instanceof Error ? err.message : String(err);
     console.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }));
@@ -143,27 +124,18 @@ export async function execute(argv: string[]): Promise<void> {
     throw new CliExit(1);
   }
 
-  const isJson = values.json as boolean;
-  const isGate = values.gate as boolean;
-  const htmlPath = values.html as string | undefined;
-
-  // --html 与 --json/--gate 可以共存:--html 写文件;同时 stdout/stderr 仍按
-  // 主输出格式跑(--json → JSON 到 stdout / --gate → 静默 / 默认 → text 到 stderr)。
-  if (htmlPath) {
+  if (flags.html) {
     const { renderDoctorReportHtml } = await import('../../doctor/html-renderer.js');
     const { writeFileSync, mkdirSync } = await import('node:fs');
-    const { dirname, resolve } = await import('node:path');
-    const abs = resolve(htmlPath);
+    const abs = resolve(flags.html);
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, renderDoctorReportHtml(report, lang), 'utf8');
-    // 通知用户(stderr,不污染 --json 的 stdout)
     console.error(lang === 'zh' ? `HTML 报告已写入: ${abs}` : `HTML report written to: ${abs}`);
   }
 
-  if (isJson) {
+  if (flags.json) {
     console.log(renderDoctorReportJson(report));
-  } else if (isGate) {
-    // gate 模式: 静默 stdout, fail 时简短 stderr 摘要(供 CI 抓 exit code)
+  } else if (flags.gate) {
     if (report.outcome === 'failed') {
       const summary = lang === 'zh'
         ? `doctor failed: ${report.totals.fail} 个 skill 未通过 (${report.totals.warn} warn / ${report.totals.pass} pass)`
