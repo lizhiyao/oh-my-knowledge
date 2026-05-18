@@ -66,6 +66,7 @@ function buildFixPrompt(ctx: FixContext, skillContent: string): string {
     ? ctx.toolCalls.map((tc, i) => `[${i}] ${tc.tool} success=${tc.success} input=${JSON.stringify(tc.input).slice(0, 200)}`).join('\n')
     : '(无工具调用)';
 
+
   return `## 原始 Sample
 
 ${JSON.stringify(ctx.originalSample, null, 2)}
@@ -85,6 +86,7 @@ ${failedList || '(无)'}
 ## LLM 实际的工具调用
 
 ${toolCallsSummary}
+
 
 ## Skill 原文（参考）
 
@@ -147,6 +149,7 @@ export async function fixSamples(options: FixSamplesOptions): Promise<FixSamples
   // Collect all fixable samples into one batch
   const fixContexts: FixContext[] = [];
   const skippedByAttempts: string[] = [];
+
   for (const entry of report.results) {
     const variant = entry.variants?.[treatmentKey];
     if (!variant) continue;

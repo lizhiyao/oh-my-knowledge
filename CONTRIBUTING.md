@@ -133,6 +133,72 @@ docs(readme): 补充评测用例说明
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
 - CI runs the same commands on Node 22 and Node 24 for `main` pushes and PRs targeting `main` — all must pass before merge
 
+## CLI 走 oclif 框架(issue #109)
+
+omk CLI 已迁到 [@oclif/core](https://oclif.io/docs/) 框架(PR-A spike #113 / PR-B doctor+sample #114 / PR-C 剩余 5 命令)。所有命令都在 `src/cli/oclif/commands/` 下声明为 oclif Command 类,业务 `execute()` 函数仍住在 `src/cli/commands/*.ts`(oclif Command 是薄壳,解析 flag 给 oclif --help 用,然后透传 argv 调对应 legacy execute)。
+
+文件目录约定:
+
+- `src/cli/oclif/commands/doctor.ts` → `omk doctor`
+- `src/cli/oclif/commands/eval.ts` + `eval/gold/{init,validate,compare}.ts` → `omk eval` / `omk eval gold *`
+- `src/cli/oclif/commands/observe.ts` + `observe/{ingest,inbox,show}.ts` → `omk observe` / `omk observe *`
+
+双语 help 走 `src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` + `src/cli/oclif/help.ts` 的 `LangAwareHelp` 子类,按 `--lang` / `OMK_LANG` 在渲染时切语言。每个 flag 的双语 description inline 写,不进 `i18n-dict.ts`(那份只给 runtime `cli.error.*` / `cli.gen.*` 等业务消息用)。
+
+加新命令的步骤:
+
+1. 在 `src/cli/oclif/commands/<name>.ts` 写 `export default class extends Command`
+2. flag 用 `bilingual({zh, en})` 包装,跟生产 `execute()` 的 `parseArgsStrictOrExit` 配置对齐
+3. `run()` 透传 `await execute(this.argv)` 给生产业务函数（`this.argv` 是 oclif 切到子命令后的余下 argv,space-syntax 跟 colon-syntax 一致)
+4. 在 `test/cli/oclif-<name>.test.ts` 加 --help 双语 + unknown flag exit 2 + 关键 happy/error case
+5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.claude/skills/omk/references/commands.md`（见下一节）
+
+### CLI 文档 codegen（#109）
+
+oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是 CLI 文档的**单一来源**。`scripts/build-docs.ts` 把它渲染到三个目标文件的 marker 区段:
+
+| 目标 | marker | 输出 | 语言 |
+|---|---|---|---|
+| `.claude/skills/omk/references/commands.md` | 整段 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` | 13 个 oclif command（含 sub-sub）完整渲染 | zh |
+| `README.md` | 每个顶层命令独立 `<!-- omk:cli:<id>:flags:start -->` ... `<!-- omk:cli:<id>:flags:end -->`,7 对 | flag list（```text``` 对齐风格）+ 指向 `--help` 的脚注 | en |
+| `README.zh.md` | 同上 | 同上 | zh |
+
+`SKILL.md` 不走 codegen（agent prompt 指令塞结构化命令清单跟 commands.md 重复,还撑大 agent context）。改用 `test/scripts/build-docs.test.ts` 的 vitest case 锁 frontmatter `argument-hint` 跟 oclif 顶层命令 id set（`TOP_LEVEL_IDS`）严格一致——历史上漂过 2 次（`bench run` → `eval`、`improve` → `evolve`),这条 test 把同类 drift 拦在 CI。
+
+工作流:
+
+- 改完 oclif Command 的 description / flag,跑 `yarn build && yarn build:docs` 同步全部 3 个目标
+- 不跑就会被 vitest 内嵌 `--check` 拦截（exit 1 + 对每个 drift 的文件打 diff）
+- README 的 prose 段（static-only 解释 / HTML report tab / Studio IA / executor 表格等）在 marker 外,hand-maintained 保留
+- 新增顶层命令时:加 `src/cli/oclif/commands/<id>.ts`、在 README.md / README.zh.md 各加一对 `<!-- omk:cli:<id>:flags:start -->` / `:end -->`、SKILL.md frontmatter `argument-hint` 加 `<id>`,跑一遍 `yarn build && yarn build:docs && yarn test`(顶层命令集真值由 `scripts/build-docs.ts` 的 `getTopLevelIds(Config.load)` 从 oclif Command 文件目录派生,不需要再单独维护硬编码数组)
+- 新增子命令（如 `omk eval gold init` 这种 sub-sub）时:加 `src/cli/oclif/commands/eval/gold/init.ts`,oclif 文件目录自动路由,fullbody 模式自动包含
+
+### 加新 sub-sub topic 命令
+
+目录下有 sub-sub 但目录本身没 default Command 时(如 `eval/gold/` 下有 `init` / `validate` / `compare`,目录本身 `eval gold` 不直接执行),**必须** 加 `<dir>.ts` 表达 topic semantics:
+
+- 当前实例:`src/cli/oclif/commands/eval/gold.ts` — 裸 `omk eval gold` 打 usage + `this.exit(1)`,跟 legacy 行为(missing sub-sub → CliExit(1))一致
+- 不加的代价:oclif 默认把 `eval gold` 当 topic-only,裸调用落到 default topic help(exit 0),CI 脚本如果靠 exit 1 区分「用户漏写 sub-sub」会失效
+- 当前 omk 只有 eval gold 一处需要,加新 sub-sub 目录时遵循
+
+### oclif description ejs footgun
+
+oclif Help 用 `ejs.render(body, context)` 渲染所有 section,模板标记 `<%...%>` 会被执行成代码。**flag / arg / description 字段不要拼用户输入(skill 名、文件路径、env 值)**;模板只在 `examples[].command` 字段使用(by-design,如 `'<%= config.bin %>' init`)。
+
+`src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` 已经在入口加 assertion 拦 `<%` / `%>`,description 里写模板会在 runtime 启动时抛错。
+
+### CLI exit code 约定
+
+oclif 迁移后 omk 的 exit code 契约（CI / 脚本若有 `[ $? -eq N ]` 分支按此判断）:
+
+| code | 触发场景 |
+|---|---|
+| `0` | 正常完成 |
+| `1` | 业务失败（doctor 门禁拒绝、verdict REGRESSION、未知命令、缺 required positional —— 走生产逻辑或 oclif `default` exit code）|
+| `2` | flag / arg 校验失败（未知 flag、missing required arg、type mismatch —— 由 oclif `failedFlagParsing` / `requiredArgs` / `nonExistentFlag` 等捕获,见 `package.json:oclif.exitCodes`）|
+
+迁 oclif 前 `omk evolve`（missing skillPath）跟 `omk observe ingest`（missing traceDir）走生产 `throw new CliExit(1)`,迁后 oclif `Args.required: true` 走 `requiredArgs: 2`。脚本如果靠 `1` 区分 user error vs parse error,要按上表更新。
+
 ## Style
 
 - TypeScript strict; `yarn lint` must be clean
