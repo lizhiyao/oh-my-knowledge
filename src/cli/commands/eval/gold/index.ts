@@ -5,7 +5,7 @@
 // description / TOPICS 跟其它 topic 命令一致,LangAwareHelp 自动按 --lang 切。
 
 import { Command, Flags } from '@oclif/core';
-import { bilingual } from '../../oclif/i18n.js';
+import { bilingual } from '../../../oclif/i18n.js';
 
 export default class EvalGold extends Command {
   static description = bilingual({
@@ -28,7 +28,7 @@ export default class EvalGold extends Command {
     // oclif 默认没内建 help command,helpClass 是 instantiable Help 子类。直接
     // new + showCommandHelp(EvalGold) 让 LangAwareHelp 按 --lang 渲染当前 topic
     // 的 description + sub-sub 列表(init / validate / compare)。
-    const HelpClass = (await import('../../oclif/help.js')).default;
+    const HelpClass = (await import('../../../oclif/help.js')).default;
     const help = new HelpClass(this.config);
     await help.showCommandHelp(this.ctor as unknown as Parameters<typeof help.showCommandHelp>[0]);
     this.exit(1);

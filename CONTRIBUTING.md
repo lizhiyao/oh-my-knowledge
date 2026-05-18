@@ -193,7 +193,7 @@ oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是
 
 目录下有 sub-sub 但目录本身没 default Command 时(如 `eval/gold/` 下有 `init` / `validate` / `compare`,目录本身 `eval gold` 不直接执行),**必须** 加 `<dir>.ts` 表达 topic semantics:
 
-- 当前实例:`src/cli/commands/eval/gold.ts` — 裸 `omk eval gold` 打 usage + `this.exit(1)`,跟 legacy 行为(missing sub-sub → CliExit(1))一致
+- 当前实例:`src/cli/commands/eval/gold/index.ts` — 裸 `omk eval gold` 打 usage + `this.exit(1)`,跟 legacy 行为(missing sub-sub → CliExit(1))一致
 - 不加的代价:oclif 默认把 `eval gold` 当 topic-only,裸调用落到 default topic help(exit 0),CI 脚本如果靠 exit 1 区分「用户漏写 sub-sub」会失效
 - 当前 omk 只有 eval gold 一处需要,加新 sub-sub 目录时遵循
 
