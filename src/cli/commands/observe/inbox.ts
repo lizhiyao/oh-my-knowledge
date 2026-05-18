@@ -1,7 +1,8 @@
 import { resolve } from 'node:path';
-import { Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../oclif/i18n.js';
-import { CliExit } from '../../lib/cli-exit.js';
+import { Flags } from '@oclif/core';
+import { BaseCommand } from '../../oclif/base-command.js';
+import { bilingual } from '../../oclif/i18n.js';
+import { integerStringParser } from '../../oclif/parsers.js';
 import { type CliLang } from '../../lib/i18n.js';
 import type { ObserveInboxArgs, ObserveInboxFlags } from '../../lib/cmd-flags.js';
 
@@ -124,7 +125,7 @@ export async function runObserveInbox(
     : 'Tip: omk observe inbox --explore 10 --include-noise  # explicitly include the noise bucket');
 }
 
-export default class ObserveInbox extends Command {
+export default class ObserveInbox extends BaseCommand {
   static description = bilingual({
     zh: '查询 observation inbox(skill 调用洞察）。',
     en: 'Query observation inbox (skill invocation insights).',
@@ -146,12 +147,14 @@ export default class ObserveInbox extends Command {
     }),
     limit: Flags.string({
       description: bilingual({ zh: '限制条数，默认 20', en: 'Result limit, default 20' }),
+      parse: integerStringParser('--limit', { min: 1 }),
     }),
     explore: Flags.string({
       description: bilingual({
         zh: '抽样 N 条 medium/low 长尾（replaces limit）',
         en: 'Sample N medium/low long-tail items (replaces limit)',
       }),
+      parse: integerStringParser('--explore', { min: 1 }),
     }),
     'include-noise': Flags.boolean({
       description: bilingual({
@@ -201,16 +204,9 @@ export default class ObserveInbox extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveInbox);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       await runObserveInbox(args as Record<string, never>, { ...flags, lang }, lang);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }

@@ -1,12 +1,14 @@
 import { resolve } from 'node:path';
-import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../../oclif/i18n.js';
+import { Args, Flags } from '@oclif/core';
+import { BaseCommand } from '../../../oclif/base-command.js';
+import { bilingual } from '../../../oclif/i18n.js';
+import { integerStringParser } from '../../../oclif/parsers.js';
 import { CliExit } from '../../../lib/cli-exit.js';
 import { DEFAULT_REPORTS_DIR } from '../../../lib/parse-run-config.js';
 import { requireEvaluationReport } from '../../../lib/shared.js';
 import type { ReportStore } from '../../../../types/index.js';
 
-export default class EvalGoldCompare extends Command {
+export default class EvalGoldCompare extends BaseCommand {
   static description = bilingual({
     zh: '把一份 evaluation report 跟 gold dataset 对比，计算 bootstrap CI 后的 agreement。',
     en: 'Compare an evaluation report against gold dataset, output bootstrap-CI agreement.',
@@ -44,16 +46,18 @@ export default class EvalGoldCompare extends Command {
         zh: 'bootstrap 重采样次数，默认 1000',
         en: 'Bootstrap resamples, default 1000',
       }),
+      parse: integerStringParser('--bootstrap-samples', { min: 100 }),
     }),
     seed: Flags.string({
       description: bilingual({ zh: 'bootstrap seed，可复现', en: 'Bootstrap seed for reproducibility' }),
+      parse: integerStringParser('--seed', { min: 0 }),
     }),
   };
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(EvalGoldCompare);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       const reportId = args.reportId;
       if (!reportId) {
         console.error('Usage: omk eval gold compare <reportId> --gold-dir <dir>');
@@ -89,13 +93,6 @@ export default class EvalGoldCompare extends Command {
         seed: Number.isFinite(seedVal) ? seedVal : undefined,
       });
       console.log(formatGoldCompare(result, dataset));
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }

@@ -1,9 +1,10 @@
 import { resolve } from 'node:path';
-import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../oclif/i18n.js';
+import { Args, Flags } from '@oclif/core';
+import { BaseCommand } from '../../oclif/base-command.js';
+import { bilingual } from '../../oclif/i18n.js';
 import { CliExit } from '../../lib/cli-exit.js';
 
-export default class ObserveShow extends Command {
+export default class ObserveShow extends BaseCommand {
   static description = bilingual({
     zh: '展开 observation inbox 中某条 item 的详情。',
     en: 'Show details of a specific observation inbox item.',
@@ -34,8 +35,8 @@ export default class ObserveShow extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveShow);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       const id = args.inboxId;
       if (!id) {
         console.error(lang === 'zh' ? '用法：omk observe show <inbox_id> [--input-dir <path>]' : 'Usage: omk observe show <inbox_id> [--input-dir <path>]');
@@ -49,13 +50,6 @@ export default class ObserveShow extends Command {
         throw new CliExit(1);
       }
       console.log(formatObservationShow(item));
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }

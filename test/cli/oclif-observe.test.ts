@@ -80,6 +80,17 @@ describe('oclif observe', () => {
     }
   });
 
+  it('observe inbox 非法 --limit → exit 2 + 中文 parser 错误', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'observe', 'inbox', '--limit', '0']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
+      assert.match(e.stderr, /--limit(?=[\s\S]*整数)(?=[\s\S]*1)/, `stderr missing zh parser error:\n${e.stderr}`);
+    }
+  });
+
   it('observe ingest --output-dir "" → exit 2(空串不被 silent fallback 到 cwd)', async () => {
     // resolve('') === process.cwd();没拦住空串就会让 shell 里 `--output-dir "$DIR"`
     // 而 $DIR 未设的情况把 observation 报告写到任意 cwd。锁住业务侧 trim() 判 +

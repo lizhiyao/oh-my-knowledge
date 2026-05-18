@@ -1,8 +1,10 @@
 import { resolve, join, basename, dirname, extname } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import yaml from 'js-yaml';
-import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../oclif/i18n.js';
+import { Args, Flags } from '@oclif/core';
+import { bilingual } from '../oclif/i18n.js';
+import { BaseCommand } from '../oclif/base-command.js';
+import { integerStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { DEFAULT_REPORTS_DIR } from '../lib/parse-run-config.js';
@@ -434,7 +436,7 @@ async function runSample(
   }
 }
 
-export default class Sample extends Command {
+export default class Sample extends BaseCommand {
   static description = bilingual({
     zh: '为指定 skill 生成评测用例（eval-samples），支持 batch / single / fix 三种模式。',
     en: 'Generate eval samples for the given skill. Supports batch / single / fix modes.',
@@ -494,6 +496,7 @@ export default class Sample extends Command {
         zh: '生成样本条数。不传由 LLM 按 skill 类型自动决定。',
         en: 'Number of samples to generate. Defaults to LLM auto-selection by skill type.',
       }),
+      parse: integerStringParser('--count', { min: 1 }),
     }),
     model: Flags.string({
       description: bilingual({
@@ -538,16 +541,9 @@ export default class Sample extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Sample);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       await runSample(args, { ...flags, lang }, lang);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }

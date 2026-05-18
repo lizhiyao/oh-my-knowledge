@@ -1,5 +1,7 @@
-import { Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../oclif/i18n.js';
+import { Flags } from '@oclif/core';
+import { bilingual } from '../../oclif/i18n.js';
+import { BaseCommand } from '../../oclif/base-command.js';
+import { enumStringParser, integerStringParser, numberStringParser } from '../../oclif/parsers.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { tCli, type CliLang } from '../../lib/i18n.js';
 import { parseRunConfig } from '../../lib/parse-run-config.js';
@@ -13,7 +15,7 @@ import type { EvalResult, ReportServer } from '../../lib/shared.js';
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
 // 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
 //
-// `omk eval gold ...` 由 src/cli/oclif/commands/eval/gold/{init,validate,compare}.ts
+// `omk eval gold ...` 由 src/cli/commands/eval/gold/{init,validate,compare}.ts
 // 处理,oclif 文件目录路由自动接管,不进 eval.ts。
 
 interface SkillProgressInfo {
@@ -335,7 +337,7 @@ async function runEval(
   }
 }
 
-export default class Eval extends Command {
+export default class Eval extends BaseCommand {
   static description = bilingual({
     zh: '跑评测：对一个 control vs 多个 treatment skill 做对照试验，产 verdict 报告。',
     en: 'Run evaluation: control vs treatment(s) comparison, produce verdict report.',
@@ -416,9 +418,11 @@ export default class Eval extends Command {
     }),
     concurrency: Flags.string({
       description: bilingual({ zh: '并发数，默认 1', en: 'Concurrency, default 1' }),
+      parse: integerStringParser('--concurrency', { min: 1 }),
     }),
     timeout: Flags.string({
       description: bilingual({ zh: '单样本超时秒，默认 120', en: 'Per-sample timeout sec, default 120' }),
+      parse: numberStringParser('--timeout', { min: 1 }),
     }),
     batch: Flags.boolean({
       description: bilingual({
@@ -446,6 +450,7 @@ export default class Eval extends Command {
     }),
     retry: Flags.string({
       description: bilingual({ zh: '失败 sample 重试次数', en: 'Per-sample retry count' }),
+      parse: integerStringParser('--retry', { min: 0 }),
     }),
     resume: Flags.string({
       description: bilingual({ zh: '从某次失败 run 续跑', en: 'Resume a previous failed run' }),
@@ -464,6 +469,7 @@ export default class Eval extends Command {
         zh: '被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。',
         en: 'Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).',
       }),
+      parse: enumStringParser('--effort', ['low', 'medium', 'high', 'xhigh', 'max']),
     }),
     'no-diagnostic': Flags.boolean({
       description: bilingual({
@@ -477,15 +483,18 @@ export default class Eval extends Command {
     }),
     repeat: Flags.string({
       description: bilingual({ zh: '每个 sample 重复跑 N 次', en: 'Repeat each sample N times' }),
+      parse: integerStringParser('--repeat', { min: 1 }),
     }),
     'judge-repeat': Flags.string({
       description: bilingual({ zh: '每个 dim 评 N 次', en: 'Judge each dim N times' }),
+      parse: integerStringParser('--judge-repeat', { min: 1 }),
     }),
     bootstrap: Flags.boolean({
       description: bilingual({ zh: '加 bootstrap CI', en: 'Add bootstrap CI' }),
     }),
     'bootstrap-samples': Flags.string({
       description: bilingual({ zh: 'bootstrap 重采样次数，默认 1000', en: 'Bootstrap resamples, default 1000' }),
+      parse: integerStringParser('--bootstrap-samples', { min: 100 }),
     }),
     'gold-dir': Flags.string({
       description: bilingual({ zh: 'gold dataset 目录', en: 'Gold dataset dir' }),
@@ -494,19 +503,24 @@ export default class Eval extends Command {
       description: bilingual({ zh: '关 length-debias（默认开）', en: 'Disable length-debias (default on)' }),
     }),
     'budget-usd': Flags.string({
-      description: bilingual({ zh: '总预算上限 USD', en: 'Total budget cap USD' }),
+      description: bilingual({ zh: '总预算上限 USD（必须 > 0，不传则无上限）', en: 'Total budget cap USD (must be > 0; omit for no cap)' }),
+      parse: numberStringParser('--budget-usd', { minExclusive: 0 }),
     }),
     'budget-per-sample-usd': Flags.string({
-      description: bilingual({ zh: '单 sample 预算上限 USD', en: 'Per-sample budget cap USD' }),
+      description: bilingual({ zh: '单 sample 预算上限 USD（必须 > 0，不传则无上限）', en: 'Per-sample budget cap USD (must be > 0; omit for no cap)' }),
+      parse: numberStringParser('--budget-per-sample-usd', { minExclusive: 0 }),
     }),
     'budget-per-sample-ms': Flags.string({
-      description: bilingual({ zh: '单 sample 时长上限 ms', en: 'Per-sample time cap ms' }),
+      description: bilingual({ zh: '单 sample 时长上限 ms（必须 > 0，不传则无上限）', en: 'Per-sample time cap ms (must be > 0; omit for no cap)' }),
+      parse: numberStringParser('--budget-per-sample-ms', { minExclusive: 0 }),
     }),
     threshold: Flags.string({
       description: bilingual({ zh: 'verdict 阈值，默认 3.5', en: 'Verdict threshold, default 3.5' }),
+      parse: numberStringParser('--threshold'),
     }),
     'trivial-diff': Flags.string({
-      description: bilingual({ zh: '可忽略 diff 容差', en: 'Trivial diff tolerance' }),
+      description: bilingual({ zh: '可忽略 diff 容差，0 表示不启用容差', en: 'Trivial diff tolerance; 0 disables tolerance' }),
+      parse: numberStringParser('--trivial-diff', { min: 0 }),
     }),
     'report-only': Flags.boolean({
       description: bilingual({
@@ -521,16 +535,9 @@ export default class Eval extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Eval);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       await runEval(args as Record<string, never>, { ...flags, lang }, lang);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }
