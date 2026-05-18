@@ -1414,9 +1414,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       return '未标注';
     };
     const stepStatus = (status: ExperienceReviewerReport['chainSteps'][number]['status']): string =>
-      status === 'ok' ? '有证据' : status === 'attention' ? '需复核' : status === 'degraded' ? '数据不可判' : status === 'not_applicable' ? '不适用' : '未确认';
+      status === 'ok' ? '看起来正常' : status === 'attention' ? '要看一眼' : status === 'degraded' ? '数据有问题' : status === 'not_applicable' ? '不适用' : '信息不够';
     const storyStatusLabel = (status: ExperienceReviewerReport['sessionStory']['nodes'][number]['status']): string =>
-      status === 'ok' ? '有证据' : status === 'attention' ? '需复核' : status === 'degraded' ? '数据不可判' : status === 'not_applicable' ? '不适用' : '需人工判断';
+      status === 'ok' ? '看起来正常' : status === 'attention' ? '要看一眼' : status === 'degraded' ? '数据有问题' : status === 'not_applicable' ? '不适用' : '要看一眼';
     const storyStatusClass = (status: ExperienceReviewerReport['sessionStory']['nodes'][number]['status']): string =>
       status === 'ok' ? 'is-ok' : status === 'attention' ? 'is-attention' : status === 'degraded' ? 'is-attention' : 'is-unknown';
     const reportModeLabel = report.mode === 'deterministic_milestone_1' || report.mode === 'deterministic_session_story' ? '规则生成，无模型判断' : report.mode;
@@ -1455,7 +1455,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       if (role === 'router') return '路由';
       if (role === 'executor') return '执行';
       if (role === 'mixed') return '路由 + 执行';
-      return '未确认';
+      return '信息不够';
     };
     const storyNodeById = new Map(story.nodes.map((node) => [node.id, node]));
     const mainlineNodes = story.mainlineNodeIds
@@ -2714,7 +2714,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const story = session.sessionStory ?? (report ? report.sessionStory ?? fallbackSessionStory(report) : undefined);
     if (!story) return '<span style="color:var(--text-muted);font-size:12px">暂无复盘报告</span>';
     const answerText = story.answers
-      .map((answer) => `${answer.label.replace('用户', '')}：${answer.status === 'ok' ? '有证据' : answer.status === 'attention' ? '需复核' : answer.status === 'degraded' ? '数据不可判' : answer.status === 'not_applicable' ? '不适用' : '待判断'}`)
+      .map((answer) => `${answer.label.replace('用户', '')}：${answer.status === 'ok' ? '看起来正常' : answer.status === 'attention' ? '要看一眼' : answer.status === 'degraded' ? '数据有问题' : answer.status === 'not_applicable' ? '不适用' : '信息不够'}`)
       .join('；');
     const mainline = story.mainlineNodeIds
       .map((id) => story.nodes.find((node) => node.id === id)?.label)
@@ -3058,36 +3058,47 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    return chain ? `${card.skillName}〔${roleText}〕 · 主线：用户目标 → ${chain}${delivery}` : `${card.skillName}〔${roleText}〕 · 未提取到明确执行主线`;
 	  };
 	  const inboxCardStatus = (card: InboxSkillCard): string => {
-	    const answers = card.sessions.flatMap((s) => s.sessionStory?.answers ?? []);
-	    const goal = answers.find((a) => a.key === 'goal_satisfaction');
-	    if (goal?.status === 'degraded') return '数据不可判';
-	    if (goal?.status === 'attention') return '需复核';
-	    if (goal?.status === 'ok') return '可能满足';
-	    if (card.sessions.some((s) => (s.reviewerReport?.oneLookMetrics.finalDeliverySignalCount ?? 0) > 0)) return '有结果';
-	    return '未见结果';
-	  };
-	  const inboxChainDots = (card: InboxSkillCard): string => {
-	    const top = card.sessions.find((s) => (s.reviewerReport?.chainSteps?.length ?? 0) > 0) ?? card.sessions[0];
-	    const steps = top?.reviewerReport?.chainSteps ?? [];
-	    if (steps.length === 0) return '';
-	    return `<div class="inbox-card-dots" title="这条 session 的 5 步复盘状态">${steps.map((step) => {
-	      const dotClass = step.status === 'attention' || step.status === 'degraded' ? 'is-attention' : step.status === 'unknown' || step.status === 'not_applicable' ? 'is-unknown' : 'is-ok';
-	      const dotTitle = step.status === 'attention' ? '需复核' : step.status === 'degraded' ? '数据不可判' : step.status === 'unknown' ? '未确认' : step.status === 'not_applicable' ? '不适用' : '有证据';
-	      return `<span class="inbox-card-dot ${dotClass}" title="${step.order}. ${e(step.label)} · ${dotTitle}"></span>`;
-	    }).join('')}</div>`;
+	    // 多 session 聚合: 取 goal_satisfaction 中最严重的 status
+	    // 优先级: degraded > attention > unknown > ok / not_applicable
+	    const goalStatuses = card.sessions
+	      .map((s) => s.sessionStory?.answers?.find((a) => a.key === 'goal_satisfaction')?.status)
+	      .filter((status): status is ExperienceSessionStoryAnswer['status'] => Boolean(status));
+	    if (goalStatuses.includes('degraded')) return '数据有问题';
+	    if (goalStatuses.includes('attention')) return '要看一眼';
+	    if (goalStatuses.includes('unknown')) return '信息不够';
+	    // 全 ok 或 not_applicable: 不输出文案
+	    return '';
 	  };
 	  const inboxFindingChips = (card: InboxSkillCard): string => {
-	    const findings = card.sessions.flatMap((s) => s.reviewerReport?.findings ?? []).filter((finding) => finding.level === 'attention');
-	    const seen = new Set<string>();
-	    const top: typeof findings = [];
-	    for (const f of findings) {
-	      if (seen.has(f.title)) continue;
-	      seen.add(f.title);
-	      top.push(f);
-	      if (top.length >= 3) break;
+	    const totalSessions = card.sessions.length;
+	    // 多 session 聚合: 按 ruleSource 统计「N/M session 命中」, chip 文案用中性短标签
+	    const chipLabelByRuleSource: Record<string, string> = {
+	      final_delivery_absent: '没给最终答复',
+	      tool_error_recovery: '工具调用失败',
+	      session_interrupted: '会话异常断开',
+	      expected_tools_missed: '没用上核心工具',
+	      user_correction: '用户纠正',
+	      user_interruption: '用户手动叫停',
+	      negative_feedback: '用户不满',
+	    };
+	    const byRule = new Map<string, { hit: number; body: string }>();
+	    for (const session of card.sessions) {
+	      const seenInSession = new Set<string>();
+	      for (const finding of session.reviewerReport?.findings ?? []) {
+	        if (finding.level !== 'attention') continue;
+	        if (seenInSession.has(finding.ruleSource)) continue;
+	        seenInSession.add(finding.ruleSource);
+	        const entry = byRule.get(finding.ruleSource);
+	        if (entry) entry.hit += 1;
+	        else byRule.set(finding.ruleSource, { hit: 1, body: finding.body });
+	      }
 	    }
-	    if (top.length === 0) return '';
-	    return `<div class="inbox-card-chips">${top.map((finding) => `<span class="inbox-card-chip is-attention" title="${e(finding.body)}">${e(finding.title)}</span>`).join('')}</div>`;
+	    if (byRule.size === 0) return '';
+	    const sorted = [...byRule.entries()].sort((a, b) => b[1].hit - a[1].hit).slice(0, 3);
+	    return `<div class="inbox-card-chips">${sorted.map(([ruleSource, { hit, body }]) => {
+	      const label = chipLabelByRuleSource[ruleSource] ?? ruleSource;
+	      return `<span class="inbox-card-chip is-attention" title="${e(body)}">${hit}/${totalSessions} · ${e(label)}</span>`;
+	    }).join('')}</div>`;
 	  };
 	  const inboxReviewBadge = (card: InboxSkillCard): string => {
 	    const verdicts: string[] = [];
@@ -3151,22 +3162,20 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      </div>
 	      <div class="inbox-card-goal" title="${e(goalLine)}">${e(goalLine)}</div>
 	      <div class="inbox-card-story" title="${e(mainline)}">${e(mainline)}</div>
-	      ${inboxChainDots(card)}
 	      ${inboxFindingChips(card)}
 	      <div class="inbox-card-row inbox-card-meta">
 	        <span title="这条 session 的执行时长">执行 ${e(duration)}</span>
 	        <span title="入口来源">入口 ${e(entrypoint)}</span>
-	        <span title="目标满足判断">${e(inboxCardStatus(card))}</span>
 	        ${sessionCountChip}
 	      </div>
 	    </li>`;
 	  };
 	  const inboxStatusBadge = (status: ExperienceSessionStoryAnswer['status']): string => {
-	    if (status === 'degraded') return '<span class="inbox-answer-status is-degraded">数据不可判</span>';
-	    if (status === 'attention') return '<span class="inbox-answer-status is-attention">需复核</span>';
-	    if (status === 'unknown') return '<span class="inbox-answer-status is-unknown">待判断</span>';
+	    if (status === 'degraded') return '<span class="inbox-answer-status is-degraded">数据有问题</span>';
+	    if (status === 'attention') return '<span class="inbox-answer-status is-attention">要看一眼</span>';
+	    if (status === 'unknown') return '<span class="inbox-answer-status is-unknown">信息不够</span>';
 	    if (status === 'not_applicable') return '<span class="inbox-answer-status is-not-applicable">不适用</span>';
-	    return '<span class="inbox-answer-status is-ok">有证据</span>';
+	    return '<span class="inbox-answer-status is-ok">看起来正常</span>';
 	  };
 	  const inboxSkillRoleLabel = (role: 'router' | 'executor' | 'mixed' | 'unknown'): string => {
 	    if (role === 'router') return '路由';
@@ -3180,7 +3189,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const indicators = displayIndicatorsForSession(skill);
 	    const dur = formatTimeRange(skill.startTimestamp, skill.endTimestamp);
 	    const startTime = skill.startTimestamp ? skill.startTimestamp.slice(5, 16).replace('T', ' ') : '未记录';
-	    const priorityLabel = skill.reviewPriority === 'review_first' ? '需复核' : skill.reviewPriority === 'sample_review' ? '抽样' : '常规';
+	    const priorityLabel = skill.reviewPriority === 'review_first' ? '要看一眼' : skill.reviewPriority === 'sample_review' ? '抽样' : '常规';
 	    const priorityCls = skill.reviewPriority === 'review_first' ? 'is-priority-high' : skill.reviewPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
 	    const currentCls = isCurrent ? 'is-current' : '';
 	    const tag = isCurrent ? '<span class="inbox-flow-current-tag">当前查看</span>' : '';
@@ -3301,6 +3310,39 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    }
 	    return candidates.slice(0, 2).join(' / ');
 	  };
+	  const inboxExtractCompletionKeywords = (text?: string): string => {
+	    const cleaned = inboxCleanSnippet(text);
+	    if (!cleaned) return '';
+	    const candidates: string[] = [];
+	    const push = (value: string): void => {
+	      if (!candidates.includes(value)) candidates.push(value);
+	    };
+	    if (/已完成|完成|最终结果|完整结果|结果如下|报告如下/i.test(cleaned)) push('任务完成');
+	    if (/已生成|生成如下|直接生成/i.test(cleaned)) push('已生成');
+	    if (/已保存|已写入|已创建/i.test(cleaned)) push('已保存');
+	    if (/方案路径|产物路径|文档路径|结果文件|输出路径/i.test(cleaned)) push('结果路径');
+	    if (/代码|```|tsx?|jsx?|html|css/i.test(cleaned)) push('代码结果');
+	    if (/报告|文档|方案/i.test(cleaned)) push('文档结果');
+	    return candidates.slice(0, 3).join(' / ') || '未识别到明确完成结果';
+	  };
+	  const inboxExtractArtifactKeywords = (text?: string): string => {
+	    const cleaned = inboxCleanSnippet(text);
+	    if (!cleaned) return '';
+	    const candidates: string[] = [];
+	    const push = (value: string): void => {
+	      if (!candidates.includes(value)) candidates.push(value);
+	    };
+	    const pathMatches = cleaned.match(/(?:\/[\w.-]+){2,}\.(?:md|html|tsx?|jsx?|json|png|jpe?g|pdf|docx?|pptx?|xlsx?|csv)\b|[\w.-]+\.(?:md|html|tsx?|jsx?|json|png|jpe?g|pdf|docx?|pptx?|xlsx?|csv)\b/gi) ?? [];
+	    for (const path of pathMatches.slice(0, 2)) push(path);
+	    if (/https?:\/\/\S+/i.test(cleaned)) push('链接');
+	    if (/```(?:tsx?|jsx?|html|css|json|markdown)?/i.test(cleaned)) push('代码块');
+	    if (/\.(?:png|jpe?g)\b|图片|截图/i.test(cleaned)) push('图片');
+	    if (/\.(?:md|pdf|docx?)\b|文档|报告|方案/i.test(cleaned)) push('文档');
+	    if (/\.(?:html|tsx?|jsx?)\b|demo|Demo|预览|页面/i.test(cleaned)) push('页面/Demo');
+	    if (/\.(?:xlsx?|csv)\b|表格/i.test(cleaned)) push('表格');
+	    if (/dashboard|Grafana|看板/i.test(cleaned)) push('看板');
+	    return candidates.slice(0, 3).join(' / ') || '未识别到明确产物';
+	  };
 	  type ManualCorrectionTarget =
 	    | 'goal_keyword_correction'
 	    | 'result_artifact_correction'
@@ -3411,21 +3453,25 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      <div class="manual-correction-actions">${buttons.join('')}</div>
 	    </div>`;
 	  };
+	  const inboxChecklistDetected = (item: ExperienceChecklistItem): boolean => {
+	    // 检测到「需要关注或值得展示的事实」: 失败 / 数据问题 / 正向 passed / 主动声明类 passed
+	    if (item.status === 'failed' || item.status === 'degraded') return true;
+	    if (item.status === 'passed') {
+	      // passed 时, 看 contribution 区分「主动发现的事实」vs「未发现负向信号」
+	      // - blocking / attention contribution + passed = 「负向 item 未命中」, 视为「未发现」
+	      // - positive / informational + passed = 「正向 item 命中 / 中性事实成立」, 视为「发现」
+	      return item.contribution === 'positive' || item.contribution === 'informational';
+	    }
+	    return false;
+	  };
 	  const inboxChecklistStatusClass = (item: ExperienceChecklistItem): string => {
-	    if (item.status === 'passed') return 'is-ok';
 	    if (item.status === 'degraded') return 'is-degraded';
 	    if (item.status === 'failed') return item.contribution === 'blocking' ? 'is-blocking' : 'is-missing';
-	    if (item.status === 'not_declared') return 'is-not-declared';
-	    if (item.status === 'not_applicable') return 'is-not-applicable';
-	    return 'is-unknown';
+	    if (inboxChecklistDetected(item)) return 'is-detected';
+	    return 'is-absent';
 	  };
 	  const inboxChecklistStatusIcon = (item: ExperienceChecklistItem): string => {
-	    if (item.status === 'passed') return '✅';
-	    if (item.status === 'degraded') return '!';
-	    if (item.status === 'failed') return item.contribution === 'blocking' ? '×' : '待';
-	    if (item.status === 'not_declared') return '未';
-	    if (item.status === 'not_applicable') return '-';
-	    return '?';
+	    return inboxChecklistDetected(item) ? '●' : '○';
 	  };
 	  const inboxAnswerChecklistFromItems = (items: ExperienceChecklistItem[]): string => {
 	    return `<div class="inbox-answer-checklist">${items.map((item) => `<span class="inbox-answer-check ${inboxChecklistStatusClass(item)}" title="${e(item.reason)}">
@@ -3481,7 +3527,48 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	            { label: '用户有重新补充上下文/文档', ok: hasSupplementContext },
 	            { label: '用户有中断流程', ok: hasInterruption },
 	          ];
-	    return `<div class="inbox-answer-checklist">${checks.map((check) => `<span class="inbox-answer-check ${check.ok ? 'is-ok' : 'is-missing'}"><span class="inbox-answer-check-icon">${check.ok ? '✅' : '待'}</span>${e(check.label)}</span>`).join('')}</div>${inboxManualCorrectionControls(skill, answerKey)}`;
+	    return `<div class="inbox-answer-checklist">${checks.map((check) => `<span class="inbox-answer-check ${check.ok ? 'is-detected' : 'is-absent'}"><span class="inbox-answer-check-icon">${check.ok ? '●' : '○'}</span>${e(check.label)}</span>`).join('')}</div>${inboxManualCorrectionControls(skill, answerKey)}`;
+	  };
+	  const inboxRecognizedGoalText = (skill: ExperienceSessionSummary): string => {
+	    const goals = (skill.sessionStory?.goalSlices ?? [])
+	      .map((goal) => inboxExtractGoalKeywords(goal.inferredUserGoal))
+	      .filter((goal): goal is string => Boolean(goal));
+	    if (goals.length > 0) return goals.slice(0, 3).join('；');
+	    return inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet) || '未提取到明确用户目标';
+	  };
+	  const inboxSignalSnippet = (
+	    skill: ExperienceSessionSummary,
+	    predicate: (event: ExperienceTimelineEvent) => boolean,
+	    fallback: string,
+	  ): string => {
+	    const events = (skill.timelinePreview ?? []).filter(predicate);
+	    const text = inboxCleanSnippet(events.at(-1)?.snippet ?? events.at(-1)?.fullText);
+	    if (text) return text;
+	    return inboxCleanSnippet(skill.evidenceChain?.lastAssistantMessage?.snippet) ?? fallback;
+	  };
+	  const inboxRecognizedCompletionText = (skill: ExperienceSessionSummary): string => {
+	    const text = inboxSignalSnippet(
+	      skill,
+	      (event) => event.kind === 'assistant_message' && isAssistantCompletionResultSignal(event),
+	      '未识别到明确完成结果',
+	    );
+	    return inboxExtractCompletionKeywords(text);
+	  };
+	  const inboxRecognizedArtifactText = (skill: ExperienceSessionSummary): string => {
+	    const text = inboxSignalSnippet(
+	      skill,
+	      (event) => event.kind === 'assistant_message' && isAssistantDeliverableArtifactSignal(event),
+	      '未识别到明确产物',
+	    );
+	    return inboxExtractArtifactKeywords(text);
+	  };
+	  const inboxAnswerContext = (skill: ExperienceSessionSummary, answer: ExperienceSessionStoryAnswer): string => {
+	    if (answer.key !== 'goal_satisfaction') return '';
+	    return `<div class="inbox-answer-context">
+	      <div><span>目标关键词</span><strong>${e(inboxRecognizedGoalText(skill))}</strong></div>
+	      <div><span>结果关键词</span><strong>${e(inboxRecognizedCompletionText(skill))}</strong></div>
+	      <div><span>产物关键词</span><strong>${e(inboxRecognizedArtifactText(skill))}</strong></div>
+	    </div>`;
 	  };
 	  const inboxRenderSuggestionsBlock = (skill: ExperienceSessionSummary, title: string, keywords: string[]): string => {
 	    const all = skill.reviewerReport?.authorSuggestions ?? [];
@@ -3573,12 +3660,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const hasAttention = answers.some((answer) => answer.status === 'attention' || answer.reason === 'blocking_failed' || answer.reason === 'attention_accumulated');
 	    const hasUnknown = answers.length === 0 || answers.some((answer) => answer.status === 'unknown' || answer.reason === 'unknown_dominant' || answer.reason === 'not_applicable');
 	    const label = hasDataDegraded
-	      ? '数据健康度：不可强判'
+	      ? '数据健康度：数据有问题'
 	      : hasAttention
-	        ? '数据健康度：需复核'
+	        ? '数据健康度：要看一眼'
 	        : hasUnknown
-	          ? '数据健康度：信息不足'
-	          : '数据健康度：可用于复盘';
+	          ? '数据健康度：信息不够'
+	          : '数据健康度：看起来正常';
 	    const className = hasDataDegraded
 	      ? 'is-degraded'
 	      : hasAttention
@@ -3635,10 +3722,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        ${inboxRenderParentStatuses(answers)}
 	      </div>
 	      <div class="inbox-review-layer">
-	        <div class="inbox-review-layer-title">可信事实 checklist</div>
+	        <div class="inbox-review-layer-title">这次跑得怎么样</div>
 	        <div class="inbox-answer-grid">
 	          ${answers.map((answer) => `<article class="inbox-answer ${answer.status === 'degraded' ? 'is-degraded' : answer.status === 'attention' ? 'is-attention' : answer.status === 'unknown' ? 'is-unknown' : answer.status === 'not_applicable' ? 'is-not-applicable' : 'is-ok'}">
 	            <div class="inbox-answer-head"><strong>${e(answer.label)}</strong>${inboxStatusBadge(answer.status)}</div>
+	            ${inboxAnswerContext(skill, answer)}
 	            ${inboxAnswerChecklist(skill, answer)}
 	            ${inboxAnswerEvidenceButtons(answer.evidenceRefs)}
 	          </article>`).join('')}
@@ -3801,7 +3889,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const flowTemplateId = `inbox-flow-template-${safeId}`;
 	    const evidenceSummaryText = `工具 ${indicators.toolCallCount} · 失败 ${indicators.toolFailureCount} · 用户消息 ${indicators.userMessageCount}`;
 	    const navItems = [
-	      { id: `inbox-sec-completion-${safeId}`, label: '① 可信事实与判定' },
+	      { id: `inbox-sec-completion-${safeId}`, label: '① 这次跑得怎么样' },
 	      { id: `inbox-sec-runtime-${safeId}`, label: '② 流程规则执行细节' },
 	      { id: `inbox-sec-evidence-${safeId}`, label: '③ 原文回溯' },
 	    ];
@@ -3818,9 +3906,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      <template id="${flowTemplateId}">${inboxRenderSessionFlow(cardSkillName, session, siblings, flowSummaryText)}</template>
 	      <section class="inbox-section" data-inbox-section="completion" id="inbox-sec-completion-${safeId}">
 	        <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
-	          <h3>① 可信事实与判定</h3>
+	          <h3>① 这次跑得怎么样</h3>
 	          <span class="inbox-section-summary ${completionSummaryClass}">${e(completionSummaryText)}</span>
-	          <span class="inbox-section-hint">${e(session.skillName)} 是否满足用户目标 / 是否符合能力定义 / 用户感受</span>
+	          <span class="inbox-section-hint">${e(session.skillName)} 是否满足用户目标 / 是否符合 skill 用途 / 用户感受</span>
 	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">收起</button>
 	        </header>
 	        <div class="inbox-section-body">${inboxRenderSkillCompletion(session)}</div>
@@ -3872,7 +3960,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        </div>
 	        <div class="inbox-chip-bar" role="tablist" aria-label="按状态筛选">
 	          <button type="button" class="inbox-chip is-active" data-inbox-filter="all" onclick="setInboxFilter('all', this)">全部 ${inboxTotalCount}</button>
-	          <button type="button" class="inbox-chip" data-inbox-filter="review_first" onclick="setInboxFilter('review_first', this)">需复核 ${inboxReviewFirstCount}</button>
+	          <button type="button" class="inbox-chip" data-inbox-filter="review_first" onclick="setInboxFilter('review_first', this)">要看一眼 ${inboxReviewFirstCount}</button>
 	          <button type="button" class="inbox-chip" data-inbox-filter="sample_review" onclick="setInboxFilter('sample_review', this)">抽样 ${inboxSampleCount}</button>
 	          <button type="button" class="inbox-chip" data-inbox-filter="reviewed" onclick="setInboxFilter('reviewed', this)">已处理 ${inboxReviewedCount}</button>
 	        </div>
@@ -4761,6 +4849,34 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-answer-head { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
         .inbox-answer-head strong { font-size: 12px; color: var(--text-primary); }
         .inbox-answer p { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+        .inbox-answer-context {
+          margin-top: 6px;
+          padding: 6px 8px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-soft, rgba(58,58,58,.03));
+          display: grid;
+          gap: 6px;
+        }
+        .inbox-answer-context div {
+          display: grid;
+          grid-template-columns: 68px minmax(0,1fr);
+          gap: 8px;
+          align-items: start;
+        }
+        .inbox-answer-context span {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text-muted);
+          line-height: 1.45;
+        }
+        .inbox-answer-context strong {
+          font-size: 12px;
+          line-height: 1.45;
+          color: var(--text-primary);
+          font-weight: 600;
+          word-break: break-word;
+        }
         .inbox-answer-checklist {
           display: flex;
           flex-wrap: wrap;
@@ -4780,19 +4896,38 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           font-size: 11px;
           line-height: 1.45;
         }
-        .inbox-answer-check.is-ok {
-          border-color: var(--green);
-          background: var(--green-bg);
+        .inbox-answer-check.is-detected {
+          border-color: var(--accent);
+          background: var(--bg-surface);
           color: var(--text-primary);
         }
-        .inbox-answer-check.is-missing {
+        .inbox-answer-check.is-detected .inbox-answer-check-icon {
+          color: var(--accent);
+        }
+        .inbox-answer-check.is-absent {
           color: var(--text-muted);
-          background: var(--bg-surface);
+          background: transparent;
+          border-color: var(--border);
+        }
+        .inbox-answer-check.is-absent .inbox-answer-check-icon {
+          color: var(--text-muted);
+        }
+        .inbox-answer-check.is-missing {
+          border-color: var(--yellow);
+          background: var(--yellow-bg);
+          color: var(--text-primary);
+        }
+        .inbox-answer-check.is-missing .inbox-answer-check-icon {
+          color: var(--yellow);
         }
         .inbox-answer-check.is-blocking {
           border-color: var(--red);
           background: var(--red-bg);
           color: var(--text-primary);
+          font-weight: 600;
+        }
+        .inbox-answer-check.is-blocking .inbox-answer-check-icon {
+          color: var(--red);
         }
         .inbox-answer-check.is-degraded {
           border-color: var(--red);
@@ -4800,19 +4935,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           color: var(--red);
           font-weight: 650;
         }
-        .inbox-answer-check.is-unknown,
-        .inbox-answer-check.is-not-declared {
-          border-color: var(--yellow);
-          background: var(--yellow-bg);
-          color: var(--text-primary);
-        }
-        .inbox-answer-check.is-not-applicable {
-          opacity: .75;
+        .inbox-answer-check.is-degraded .inbox-answer-check-icon {
+          color: var(--red);
         }
         .inbox-answer-check-icon {
           flex: 0 0 auto;
-          font-size: 10px;
-          color: var(--text-muted);
+          font-size: 9px;
+          line-height: 1;
         }
         .manual-correction-panel {
           margin-top: 8px;

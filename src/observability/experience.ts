@@ -1694,7 +1694,7 @@ function buildSessionStory(session: ExperienceSessionSummary, invocations: Exper
       'goal_shift',
       '目标切换',
       'unknown',
-      `检测到 ${session.indicators.userGoalShiftCount} 次目标切换信号；这表示后续用户目标可能已变化，不应强行归因给原能力。`,
+      `用户中途切换了 ${session.indicators.userGoalShiftCount} 次目标，后续诉求可能不属于当前 skill。`,
       userFeedbackEvidenceRefs(session),
     );
   }
@@ -1717,11 +1717,11 @@ function buildSessionStory(session: ExperienceSessionSummary, invocations: Exper
   ];
 
   const summary = answers.some((answer) => answer.status === 'degraded')
-    ? '这次链路的数据归因存在不可判信号，需要先看数据质量和分段边界。'
+    ? '这次数据本身有可信度问题（比如 skill 没真的被加载），先确认数据再下判断。'
     : answers.some((answer) => answer.status === 'attention')
-    ? '这次链路存在需要复核的语义节点，建议从红色节点和证据定位开始看。'
+    ? '这次有几条需要看一眼的事项，从红色标记的事实和原文开始看。'
     : answers.every((answer) => answer.status === 'ok')
-      ? '这次链路从目标、执行到反馈没有命中明显异常信号，可进入常规抽样。'
+      ? '这次从目标、执行到反馈都没有明显异常，进入常规抽样。'
       : '这次链路已按语义节点展开，但部分结论仍需要人工结合原文判断。';
 
   return {
@@ -1917,28 +1917,28 @@ function sessionStoryAnswer(
 function sessionStoryAnswerText(key: ExperienceSessionStoryAnswerKey, reason: ExperienceParentReason): string {
   const texts: Record<ExperienceSessionStoryAnswerKey, Record<ExperienceParentReason, string>> = {
     goal_satisfaction: {
-      data_degraded: '数据归因质量不足，不能强判用户目标是否满足。',
-      blocking_failed: '关键事实项未通过，不能认为用户目标已经满足。',
-      attention_accumulated: '存在需要复核的事实项，需要结合原文确认目标是否满足。',
-      unknown_dominant: '未知事实较多，暂时无法判断用户目标是否满足。',
-      all_passed: '关键事实项通过，可按“可能满足用户目标”进入常规抽样。',
-      not_applicable: '当前场景不适合回答用户目标是否满足。',
+      data_degraded: '这次没看到 skill 真的被加载，先确认数据，再判断目标是否满足。',
+      blocking_failed: '用户出现了不满或叫停，目标没真的满足。',
+      attention_accumulated: '有几条要看一眼，打开原文确认目标是否真的达成。',
+      unknown_dominant: '现有证据不够，判断不了目标是否满足。',
+      all_passed: '关键信号都没问题，看起来目标已满足。',
+      not_applicable: '当前场景不适合回答这个问题。',
     },
     declared_behavior_fit: {
-      data_degraded: '数据归因质量不足，不能强判能力行为是否符合声明用途。',
-      blocking_failed: '关键执行项未通过，能力行为需要优先复核。',
-      attention_accumulated: '存在规则、流程或核心工具相关复核项，需要结合定义链路确认。',
-      unknown_dominant: '规则、流程或执行证据不足，暂时无法判断是否符合能力用途。',
-      all_passed: '关键执行事实项通过，可按“行为基本符合能力用途”进入常规抽样。',
-      not_applicable: '当前场景不适合回答能力行为是否符合用途。',
+      data_degraded: '没看到 skill 真的被加载，先确认这次任务是不是真的命中了你的 skill。',
+      blocking_failed: '关键执行项没过，skill 行为需要优先看一眼。',
+      attention_accumulated: 'SKILL.md 声明的标准流程、硬性规则或核心工具有几条要看一眼。',
+      unknown_dominant: 'SKILL.md 声明不全或执行证据不够，判不出行为是否符合用途。',
+      all_passed: '执行情况看起来符合 skill 声明的用途。',
+      not_applicable: '当前场景不适合回答这个问题。',
     },
     user_feeling: {
-      data_degraded: '数据归因质量不足，不能强判用户感受。',
-      blocking_failed: '看到关键负向或中断信号，用户可能觉得无用、绕路或失望。',
-      attention_accumulated: '存在用户纠正、追问或其他复核信号，需要结合原文判断用户感受。',
-      unknown_dominant: '没有足够明确的用户反馈，暂时无法判断用户是否觉得有用。',
-      all_passed: '关键反馈事实项通过，可按“未见明显负向感受”进入常规抽样。',
-      not_applicable: '当前场景不适合回答用户感受。',
+      data_degraded: '这次数据本身有问题，用户感受判断先放一放。',
+      blocking_failed: '看到用户不满或主动叫停，可能觉得没用或绕路了。',
+      attention_accumulated: '看到用户纠正或追问，结合原文判断用户感受。',
+      unknown_dominant: '用户没给明确反馈，判断不了是否觉得有用。',
+      all_passed: '没看到明显不满，用户体感看起来正常。',
+      not_applicable: '当前场景不适合回答这个问题。',
     },
   };
   return texts[key][reason];
@@ -2004,7 +2004,7 @@ function goalSatisfactionChecklistItems(session: ExperienceSessionSummary): Expe
   return [
     checklistItem({
       key: 'goal_identified',
-      label: '用户目标可识别',
+      label: goalIdentified ? '目标已识别' : '目标不明确',
       status: goalIdentified ? 'passed' : 'unknown',
       contribution: 'informational',
       reason: goalIdentified
@@ -2014,33 +2014,34 @@ function goalSatisfactionChecklistItems(session: ExperienceSessionSummary): Expe
     }),
     checklistItem({
       key: 'completion_result_present',
-      label: '有完成结果',
+      label: hasDelivery ? '给了用户最终答复' : inProgress ? '会话进行中' : '没给用户最终答复',
       status: hasDelivery ? 'passed' : inProgress ? 'not_applicable' : 'failed',
       contribution: hasDelivery ? 'attention' : inProgress ? 'neutral' : 'attention',
       reason: hasDelivery
-        ? '看到明确完成态或结果反馈。'
+        ? '看到 assistant 给出了明确的完成话术或结果反馈。'
         : inProgress
-          ? '会话仍在进行中（最后助手回复是过程态，没有完成态或产物），暂不判断完成结果。'
-          : '没有看到明确完成态或结果反馈。',
+          ? '最后一句还是过程态（「先看看」「让我」），任务还没收尾，先不判定。'
+          : '没看到 assistant 给用户明确的完成话术或结果反馈。'
+,
       evidenceRefs: [session.evidenceChain.lastAssistantMessage],
       suggestionKey: hasDelivery || inProgress ? undefined : 'final_delivery_absent',
     }),
     checklistItem({
       key: 'deliverable_artifact_present',
-      label: '有产物：链接、路径、代码块或文件',
+      label: hasArtifact ? '给了可点开的产物' : inProgress ? '会话进行中' : '没给可点开的产物',
       status: hasArtifact ? 'passed' : inProgress ? 'not_applicable' : 'unknown',
       contribution: hasArtifact ? 'informational' : inProgress ? 'neutral' : 'informational',
       reason: hasArtifact
-        ? '看到链接、路径、代码块或文件等产物线索。'
+        ? '看到 assistant 回复里附了链接、路径、代码块或文件。'
         : inProgress
-          ? '会话仍在进行中，暂不判断产物。'
-          : '没有看到明确产物线索；不一定失败，但需要按 skill 目标判断。',
+          ? '任务还没收尾，先不判定产物。'
+          : '没看到明确的链接、路径、代码块或文件；不一定失败，得按 skill 目标判断。',
       evidenceRefs: [session.evidenceChain.lastAssistantMessage],
       suggestionKey: hasArtifact || inProgress ? undefined : 'artifact_absent',
     }),
     checklistItem({
       key: 'negative_feedback_seen',
-      label: '用户负向反馈',
+      label: session.indicators.negativeFeedbackCount > 0 ? '看到用户负向反馈' : '未见用户负向反馈',
       status: session.indicators.negativeFeedbackCount > 0 ? 'failed' : 'passed',
       contribution: 'blocking',
       reason: session.indicators.negativeFeedbackCount > 0 ? '看到用户负向表达，不能直接认为目标已满足。' : '没有看到用户负向表达。',
@@ -2049,16 +2050,16 @@ function goalSatisfactionChecklistItems(session: ExperienceSessionSummary): Expe
     }),
     checklistItem({
       key: 'user_correction_seen',
-      label: '用户纠正',
+      label: session.indicators.userCorrectionCount > 0 ? '看到用户纠正' : '未见用户纠正',
       status: session.indicators.userCorrectionCount > 0 ? 'failed' : 'passed',
       contribution: 'attention',
-      reason: session.indicators.userCorrectionCount > 0 ? '看到用户纠正或要求修正，说明目标满足度需要复核。' : '没有看到用户纠正信号。',
+      reason: session.indicators.userCorrectionCount > 0 ? '用户中途纠正了方向，目标是否满足要打开原文看。' : '没有看到用户纠正。',
       evidenceRefs: feedbackRefs,
       suggestionKey: session.indicators.userCorrectionCount > 0 ? 'user_correction_review' : undefined,
     }),
     checklistItem({
       key: 'user_interruption_seen',
-      label: '用户中断 / 放弃',
+      label: session.indicators.userInterruptionCount > 0 ? '看到用户中断' : '未见用户中断',
       status: session.indicators.userInterruptionCount > 0 ? 'failed' : 'passed',
       contribution: 'blocking',
       reason: session.indicators.userInterruptionCount > 0 ? '看到用户中断或停止任务信号，不能认为执行链路自然完成。' : '没有看到用户中断信号。',
@@ -2067,10 +2068,10 @@ function goalSatisfactionChecklistItems(session: ExperienceSessionSummary): Expe
     }),
     checklistItem({
       key: 'goal_shift_seen',
-      label: '用户目标切换',
+      label: session.indicators.userGoalShiftCount > 0 ? '看到目标切换' : '未见目标切换',
       status: session.indicators.userGoalShiftCount > 0 ? 'failed' : 'passed',
       contribution: 'attention',
-      reason: session.indicators.userGoalShiftCount > 0 ? '看到用户切换目标，后续消息不应继续强归因给当前 skill。' : '没有看到目标切换信号。',
+      reason: session.indicators.userGoalShiftCount > 0 ? '用户中途切换了目标，后续诉求可能不属于这个 skill。' : '没有看到目标切换。',
       evidenceRefs: feedbackRefs,
       suggestionKey: session.indicators.userGoalShiftCount > 0 ? 'goal_shift_review' : undefined,
     }),
@@ -2080,84 +2081,75 @@ function goalSatisfactionChecklistItems(session: ExperienceSessionSummary): Expe
 function declaredBehaviorChecklistItems(session: ExperienceSessionSummary): ExperienceChecklistItem[] {
   const expectedToolCheck = expectedToolCheckForSession(session);
   const declarations = skillDeclarationCheckForSession(session);
-  const attributionDegraded = session.evidenceChain.skillContextCount === 0;
-  return [
-    checklistItem({
-      key: 'attribution_quality',
-      label: '归因质量可信',
-      status: attributionDegraded ? 'degraded' : 'passed',
-      contribution: 'blocking',
-      reason: attributionDegraded ? '没有看到 skill context，当前 skill 归因不可强判。' : '看到 skill context，可作为能力归因证据。',
-      evidenceRefs: [session.evidenceChain.firstSkillContext, session.evidenceChain.firstToolUse],
-      suggestionKey: attributionDegraded ? 'attribution_degraded' : undefined,
-    }),
+  const items: ExperienceChecklistItem[] = [
     checklistItem({
       key: 'skill_description_hit',
-      label: 'skill 描述命中用户目标',
+      label: session.evidenceChain.firstSkillContext ? 'skill 描述匹配用户诉求' : 'skill 描述可能没匹配用户诉求',
       status: session.evidenceChain.firstSkillContext ? 'passed' : 'unknown',
       contribution: 'informational',
-      reason: session.evidenceChain.firstSkillContext ? '看到能力上下文或 skill 描述加载证据。' : '没有看到能力上下文，无法判断是否合理调用。',
+      reason: session.evidenceChain.firstSkillContext ? '看到 SKILL.md 描述被加载，说明用户诉求匹配了 skill 描述。' : '没看到 SKILL.md 描述被加载，判断不了是否匹配用户诉求。',
       evidenceRefs: [session.evidenceChain.firstSkillContext],
     }),
     checklistItem({
       key: 'workflow_declared',
-      label: 'workflow 已声明',
+      label: declarations.workflows.declared ? '标准流程已声明' : '标准流程未声明',
       status: declarations.workflows.declared ? 'passed' : 'not_declared',
       contribution: declarations.workflows.declared ? 'informational' : 'attention',
-      reason: declarations.workflows.declared ? `SKILL.md 声明了 ${declarations.workflows.count} 个 workflow 节点。` : 'SKILL.md 未声明标准化 workflow。',
+      reason: declarations.workflows.declared ? `SKILL.md 里声明了 ${declarations.workflows.count} 个标准流程节点。` : 'SKILL.md 没声明标准流程，运行时只能猜流程是否完整。',
       suggestionKey: declarations.workflows.declared ? undefined : 'workflow_not_declared',
     }),
-    checklistItem({
-      key: 'workflow_executed',
-      label: 'workflow 按声明执行',
-      status: declarations.workflows.declared
-        ? session.indicators.toolCallCount > 0 ? 'unknown' : 'failed'
-        : 'not_applicable',
-      contribution: declarations.workflows.declared ? 'attention' : 'neutral',
-      reason: declarations.workflows.declared
-        ? session.indicators.toolCallCount > 0 ? '当前只看到工具执行，是否完整覆盖 workflow 仍需 runtime check。' : '声明了 workflow，但没有看到工具执行证据。'
-        : '未声明 workflow，暂不判断执行完整性。',
-      evidenceRefs: [session.evidenceChain.firstToolUse],
-      suggestionKey: declarations.workflows.declared ? 'workflow_execution_review' : undefined,
-    }),
-    checklistItem({
-      key: 'hardrule_declared',
-      label: 'hardRule 已声明',
-      status: declarations.hardRules.declared ? 'passed' : 'not_declared',
-      contribution: declarations.hardRules.declared ? 'informational' : 'attention',
-      reason: declarations.hardRules.declared ? `SKILL.md 声明了 ${declarations.hardRules.count} 条 hardRule。` : 'SKILL.md 未声明标准化 hardRule。',
-      suggestionKey: declarations.hardRules.declared ? undefined : 'hardrule_not_declared',
-    }),
-    checklistItem({
-      key: 'hardrule_executed',
-      label: 'hardRule 执行',
-      status: declarations.hardRules.declared ? 'unknown' : 'not_applicable',
-      contribution: declarations.hardRules.declared ? 'attention' : 'neutral',
-      reason: declarations.hardRules.declared ? '已声明 hardRule，但当前固定规则无法完整证明每条都已执行。' : '未声明 hardRule，暂不判断执行情况。',
-      suggestionKey: declarations.hardRules.declared ? 'hardrule_execution_review' : undefined,
-    }),
-    checklistItem({
-      key: 'core_tools_declared',
-      label: '核心工具已声明',
-      status: expectedToolCheck.declared ? 'passed' : 'not_declared',
-      contribution: expectedToolCheck.declared ? 'informational' : 'attention',
-      reason: expectedToolCheck.declared ? `声明的核心工具：${expectedToolCheck.expectedTools.join('、')}。` : '未声明 expected_tools，无法区分核心工具和普通工具。',
-      suggestionKey: expectedToolCheck.declared ? undefined : 'expected_tools_not_declared',
-    }),
-    checklistItem({
-      key: 'core_tools_hit',
-      label: '核心工具命中',
-      status: expectedToolCheck.declared
-        ? expectedToolCheck.matchedTools.length > 0 ? 'passed' : 'failed'
-        : 'not_applicable',
-      contribution: expectedToolCheck.declared ? 'blocking' : 'neutral',
-      reason: expectedToolCheck.declared
-        ? expectedToolCheck.matchedTools.length > 0 ? `命中核心工具：${expectedToolCheck.matchedTools.join('、')}。` : '没有命中能力声明的核心工具。'
-        : '未声明 expected_tools，暂不判断核心工具命中。',
-      evidenceRefs: [session.evidenceChain.firstToolUse],
-      suggestionKey: expectedToolCheck.declared && expectedToolCheck.matchedTools.length === 0 ? 'expected_tools_missed' : undefined,
-    }),
   ];
+  if (declarations.workflows.declared) {
+    const executed = session.indicators.toolCallCount > 0;
+    items.push(checklistItem({
+      key: 'workflow_executed',
+      label: executed ? '标准流程已执行' : '标准流程未执行',
+      status: executed ? 'unknown' : 'failed',
+      contribution: 'attention',
+      reason: executed ? '看到了工具调用，但是不是真的覆盖了完整流程，还要打开原文确认。' : '声明了标准流程，但没看到工具执行的证据。',
+      evidenceRefs: [session.evidenceChain.firstToolUse],
+      suggestionKey: 'workflow_execution_review',
+    }));
+  }
+  items.push(checklistItem({
+    key: 'hardrule_declared',
+    label: declarations.hardRules.declared ? '硬性规则已声明' : '硬性规则未声明',
+    status: declarations.hardRules.declared ? 'passed' : 'not_declared',
+    contribution: declarations.hardRules.declared ? 'informational' : 'attention',
+    reason: declarations.hardRules.declared ? `SKILL.md 里声明了 ${declarations.hardRules.count} 条硬性规则。` : 'SKILL.md 没声明硬性规则。',
+    suggestionKey: declarations.hardRules.declared ? undefined : 'hardrule_not_declared',
+  }));
+  if (declarations.hardRules.declared) {
+    items.push(checklistItem({
+      key: 'hardrule_executed',
+      label: '硬性规则执行情况需打开原文看',
+      status: 'unknown',
+      contribution: 'attention',
+      reason: '声明了硬性规则，但当前规则没法完整证明每条都执行了，要打开原文看。',
+      suggestionKey: 'hardrule_execution_review',
+    }));
+  }
+  items.push(checklistItem({
+    key: 'core_tools_declared',
+    label: expectedToolCheck.declared ? '核心工具已声明' : '核心工具未声明',
+    status: expectedToolCheck.declared ? 'passed' : 'not_declared',
+    contribution: expectedToolCheck.declared ? 'informational' : 'attention',
+    reason: expectedToolCheck.declared ? `SKILL.md 声明的核心工具：${expectedToolCheck.expectedTools.join('、')}。` : 'SKILL.md 没声明核心工具，分不出「真用上了 skill 工具」还是「只是随便调了个工具」。',
+    suggestionKey: expectedToolCheck.declared ? undefined : 'expected_tools_not_declared',
+  }));
+  if (expectedToolCheck.declared) {
+    const hit = expectedToolCheck.matchedTools.length > 0;
+    items.push(checklistItem({
+      key: 'core_tools_hit',
+      label: hit ? '核心工具用上了' : '核心工具没用上',
+      status: hit ? 'passed' : 'failed',
+      contribution: 'blocking',
+      reason: hit ? `用上了核心工具：${expectedToolCheck.matchedTools.join('、')}。` : '没用上 SKILL.md 声明的核心工具。',
+      evidenceRefs: [session.evidenceChain.firstToolUse],
+      suggestionKey: hit ? undefined : 'expected_tools_missed',
+    }));
+  }
+  return items;
 }
 
 function userFeelingChecklistItems(session: ExperienceSessionSummary): ExperienceChecklistItem[] {
@@ -2171,7 +2163,7 @@ function userFeelingChecklistItems(session: ExperienceSessionSummary): Experienc
   return [
     checklistItem({
       key: 'user_feedback_signal_present',
-      label: '用户反馈信号',
+      label: hasAnyFeedback ? '看到用户反馈信号' : '未见用户反馈信号',
       status: hasAnyFeedback ? 'passed' : 'unknown',
       contribution: 'informational',
       reason: hasAnyFeedback ? '看到至少一种用户反馈或后续行为信号。' : '没有看到明确用户反馈信号。',
@@ -2179,7 +2171,7 @@ function userFeelingChecklistItems(session: ExperienceSessionSummary): Experienc
     }),
     checklistItem({
       key: 'positive_feedback_seen',
-      label: '用户正向反馈',
+      label: session.indicators.positiveFeedbackCount > 0 ? '看到用户正向反馈' : '未见用户正向反馈',
       status: session.indicators.positiveFeedbackCount > 0 ? 'passed' : 'unknown',
       contribution: session.indicators.positiveFeedbackCount > 0 ? 'positive' : 'neutral',
       reason: session.indicators.positiveFeedbackCount > 0 ? '看到用户认可或正向反馈。' : '没有看到明确正向反馈。',
@@ -2187,7 +2179,7 @@ function userFeelingChecklistItems(session: ExperienceSessionSummary): Experienc
     }),
     checklistItem({
       key: 'negative_feedback_seen',
-      label: '用户负向反馈',
+      label: session.indicators.negativeFeedbackCount > 0 ? '看到用户负向反馈' : '未见用户负向反馈',
       status: session.indicators.negativeFeedbackCount > 0 ? 'failed' : 'passed',
       contribution: session.indicators.negativeFeedbackCount > 0 ? 'blocking' : 'neutral',
       reason: session.indicators.negativeFeedbackCount > 0 ? '看到用户负向表达。' : '没有看到用户负向表达。',
@@ -2196,7 +2188,7 @@ function userFeelingChecklistItems(session: ExperienceSessionSummary): Experienc
     }),
     checklistItem({
       key: 'user_correction_seen',
-      label: '用户纠正',
+      label: session.indicators.userCorrectionCount > 0 ? '看到用户纠正' : '未见用户纠正',
       status: session.indicators.userCorrectionCount > 0 ? 'failed' : 'passed',
       contribution: session.indicators.userCorrectionCount > 0 ? 'attention' : 'neutral',
       reason: session.indicators.userCorrectionCount > 0 ? '看到用户重新解释或要求修正。' : '没有看到用户纠正信号。',
@@ -2205,7 +2197,7 @@ function userFeelingChecklistItems(session: ExperienceSessionSummary): Experienc
     }),
     checklistItem({
       key: 'user_follow_up_seen',
-      label: '用户追问',
+      label: session.indicators.userFollowUpCount > 0 ? '看到用户追问' : '未见用户追问',
       status: session.indicators.userFollowUpCount > 0 ? 'unknown' : 'passed',
       contribution: session.indicators.userFollowUpCount > 0 ? 'informational' : 'neutral',
       reason: session.indicators.userFollowUpCount > 0 ? '看到用户追问；需要结合上下文区分推进使用还是不满意。' : '没有看到用户追问。',
@@ -2214,7 +2206,7 @@ function userFeelingChecklistItems(session: ExperienceSessionSummary): Experienc
     }),
     checklistItem({
       key: 'user_interruption_seen',
-      label: '用户中断 / 放弃',
+      label: session.indicators.userInterruptionCount > 0 ? '看到用户中断' : '未见用户中断',
       status: session.indicators.userInterruptionCount > 0 ? 'failed' : 'passed',
       contribution: session.indicators.userInterruptionCount > 0 ? 'blocking' : 'neutral',
       reason: session.indicators.userInterruptionCount > 0 ? '看到用户中断或停止任务信号。' : '没有看到用户中断信号。',
@@ -2467,20 +2459,11 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
     session.ruleFindings.filter((finding) => finding.code === code).flatMap((finding) => finding.evidenceRefs);
   const expectedToolCheck = expectedToolCheckForSession(session);
 
-  if (session.evidenceChain.skillContextCount === 0) {
-    push(
-      'attention',
-      '能力归因缺少上下文证据',
-      '当前 skill 窗口没有看到 skill context，不能强判这次行为完全属于该能力；需要先复核 session 切分和归因边界。',
-      'attribution_degraded',
-      [session.evidenceChain.firstUserMessage, session.evidenceChain.firstToolUse].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref)),
-    );
-  }
   if (session.indicators.toolFailureCount > 0) {
     push(
       'attention',
-      `工具执行失败 × ${session.indicators.toolFailureCount}`,
-      '本次能力执行过程中出现工具失败，需要复核失败是否已恢复，以及是否需要补执行流程避免重复试错。',
+      `工具调用失败 ${session.indicators.toolFailureCount} 次`,
+      '执行中遇到工具报错。看下失败的步骤是否在 SKILL.md 里写明了重试或回退方式。',
       'tool_error_recovery',
       findingRefs('tool_failure_seen'),
     );
@@ -2488,8 +2471,8 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
   if (session.indicators.assistantDeliverySignalCount === 0) {
     push(
       'attention',
-      '没有发现最后结果反馈',
-      '当前窗口里没有看到明确完成态或结果反馈；不能把过程进展直接当成完成。',
+      '没看到给用户的最终答复',
+      'assistant 没说「完成 / 结果如下」这种收尾，可能任务还没跑完，或收尾文案不够清楚让用户知道事情结束了。',
       'final_delivery_absent',
       session.evidenceChain.lastAssistantMessage ? [session.evidenceChain.lastAssistantMessage] : [],
     );
@@ -2497,8 +2480,8 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
   if (session.indicators.sessionInterruptedCount > 0) {
     push(
       'attention',
-      `会话异常中断 × ${session.indicators.sessionInterruptedCount}`,
-      'trace 中出现会话异常切换或 assistant turn failed 标记，需要复核这次能力是否被中断、重启或丢失上下文。',
+      `会话异常断开 ${session.indicators.sessionInterruptedCount} 次`,
+      '任务中途被异常中断或重启。如果是网络/超时，看是否要在 skill 里加重试；如果是程序原因，跟开发反馈。',
       'session_interrupted',
       findingRefs('session_interrupted_seen'),
     );
@@ -2506,8 +2489,8 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
   if (expectedToolCheck.declared && expectedToolCheck.matchedTools.length === 0) {
     push(
       'attention',
-      '未命中能力声明的核心工具',
-      `能力声明的核心工具是 ${expectedToolCheck.expectedTools.join('、')}，但这次执行没有看到这些工具或命令证据；不能仅凭其它工具调用认为执行流程符合能力用途。`,
+      '没用上 SKILL.md 声明的核心工具',
+      `SKILL.md 里声明 ${expectedToolCheck.expectedTools.join('、')} 是核心工具，但这次没看到调用。要么 description 指引不够清楚，要么用户的诉求不属于这个 skill 的场景。`,
       'expected_tools_missed',
       session.evidenceChain.firstToolUse ? [session.evidenceChain.firstToolUse] : [],
     );
@@ -2515,8 +2498,8 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
   if (session.indicators.userCorrectionCount > 0) {
     push(
       'attention',
-      `用户纠正 × ${session.indicators.userCorrectionCount}`,
-      '人工用户在能力执行链路中出现纠正信号，说明交付或理解可能与用户期待存在偏差。',
+      `用户纠正 ${session.indicators.userCorrectionCount} 次`,
+      '用户在过程中纠正了方向。看原文确认是 skill 理解偏差，还是 skill 不该处理这种诉求。',
       'user_correction',
       findingRefs('user_correction_seen'),
     );
@@ -2524,8 +2507,8 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
   if (session.indicators.userInterruptionCount > 0) {
     push(
       'attention',
-      `人工中断 × ${session.indicators.userInterruptionCount}`,
-      '用户主动中断了当前执行，需要复核是否发生绕路、误用工具或执行过长。',
+      `用户手动叫停 ${session.indicators.userInterruptionCount} 次`,
+      '用户主动喊停了执行。常见原因：跑偏 / 太慢 / 用错工具。看原文定位是哪一步触发的。',
       'user_interruption',
       findingRefs('user_interruption_seen'),
     );
@@ -2533,8 +2516,8 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
   if (session.indicators.negativeFeedbackCount > 0) {
     push(
       'attention',
-      `负向反馈 × ${session.indicators.negativeFeedbackCount}`,
-      '人工用户出现明确负向表达，需要复核这次能力是否满足原始目标。',
+      `用户说了 ${session.indicators.negativeFeedbackCount} 次不满意`,
+      '用户出现了「不对 / 错了 / 不行」等负向表达。先看是 skill 给的结果不达预期，还是用户对方向本身有疑问。',
       'negative_feedback',
       findingRefs('negative_feedback_seen'),
     );
@@ -2542,8 +2525,8 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
   if (session.indicators.hardRuleTextHitCount > 0) {
     push(
       'note',
-      `用户硬性要求 × ${session.indicators.hardRuleTextHitCount}`,
-      '用户提出了临时硬性要求；如果同类要求反复出现，可以考虑沉淀为能力规则。',
+      `用户提了 ${session.indicators.hardRuleTextHitCount} 次硬性要求`,
+      '用户在对话里强调了某些必须做/不能做的规则。如果同类要求反复出现，可以沉淀到 SKILL.md 的 hardRules。',
       'user_hard_rule',
       findingRefs('hard_rule_seen'),
     );
@@ -2561,7 +2544,7 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
     push(
       'note',
       '未命中优先问题信号',
-      '基于固定规则，没有看到需要优先复核的纠正、中断、负向反馈、工具失败或交付缺失信号。',
+      '没有看到需要优先关注的纠正、中断、负向反馈、工具失败或没收尾的信号。',
       'no_priority_signal',
       [],
     );
@@ -2571,7 +2554,7 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
 
 function reviewerTitle(session: ExperienceSessionSummary, attentionCount: number, possibleFalsePositiveCount: number): string {
   const suffix = possibleFalsePositiveCount > 0 ? ` · ${possibleFalsePositiveCount} 项疑似误判` : '';
-  if (attentionCount > 0) return `${session.skillName} · 需要复核 · ${attentionCount} 项要看一眼${suffix}`;
+  if (attentionCount > 0) return `${session.skillName} · ${attentionCount} 项要看一眼${suffix}`;
   if (session.indicators.assistantDeliverySignalCount > 0) return `${session.skillName} · 看起来有结果 · 常规抽样${suffix}`;
   return `${session.skillName} · 常规抽样 · 未见高优先级信号${suffix}`;
 }
@@ -2644,21 +2627,20 @@ function severityForChecklistStatus(status: ExperienceChecklistItemStatus): numb
 
 function suggestionTextForChecklistItem(key: string): string | undefined {
   const suggestions: Record<string, string> = {
-    attribution_degraded: '先复核 session 切分和 skill 归因边界；如果 skill context 缺失，不要把当前报告当成强判断。',
-    final_delivery_absent: '补充明确的完成表达，例如“已完成，结果如下”，避免过程进展被误认为最终交付。',
-    artifact_absent: '如果 skill 目标应该产出文档、demo、代码或报告，需要在最终回复中附上可回溯产物。',
-    goal_shift_review: '目标切换后要重新切分 skill 窗口，避免把新目标的追问算到旧能力上。',
-    user_negative_or_interrupted: '补强用户满意度判断，把否定、纠正、中断作为优先复核信号，而不是只看是否完成。',
-    workflow_not_declared: '在 SKILL.md 中补充标准 workflow 声明，避免运行时只能猜测流程是否完整。',
-    workflow_execution_review: '为 workflow 节点补充可观测证据模板，区分“已执行、未执行、无法识别”。',
-    hardrule_not_declared: '在 SKILL.md 中补充标准 hardRule 声明，把反复出现的用户硬性要求沉淀为能力规则。',
-    hardrule_execution_review: '为 hardRule 补充运行时检查证据，避免只声明规则但无法确认是否执行。',
-    expected_tools_not_declared: '在 SKILL.md frontmatter 中声明 expected_tools，让报告能区分“核心工具命中”和“只是调用了任意工具”。',
-    expected_tools_missed: '复核 expected_tools 声明和真实运行链路，确保能力执行命中声明的核心工具。',
-    negative_feedback_review: '优先打开负向反馈原文，确认问题发生在理解目标、执行过程还是最终交付。',
-    user_correction_review: '把用户纠正内容沉淀为 workflow 检查点或 hardRule，减少同类返工。',
-    follow_up_review: '区分用户追问是围绕产物继续推进，还是因为没有满足目标而反复补充。',
-    user_interruption_review: '复核用户中断前后的执行链路，补充中断恢复或提前确认策略。',
+    final_delivery_absent: '在最后回复里加上「已完成 / 结果如下」之类的明确收尾，让用户知道任务跑完了。',
+    artifact_absent: '如果 skill 应该产出文档、demo、代码或报告，最终回复里要附上文件路径、链接或代码块。',
+    goal_shift_review: '用户中途切了目标，后续追问不属于这个 skill。看下是否要在 description 里说清楚 skill 的边界。',
+    user_negative_or_interrupted: '用户出现了不满 / 纠正 / 叫停。先看原文是哪一步触发的，再决定改 description、补标准流程还是补硬性规则。',
+    workflow_not_declared: '在 SKILL.md 里补一个标准流程声明，把这个 skill 的执行步骤写清楚。否则报告只能猜流程是否完整。',
+    workflow_execution_review: '声明了标准流程但执行证据不够。补一下每个步骤的输出形态，让运行时能验证是否真的跑过。',
+    hardrule_not_declared: '在 SKILL.md 里补硬性规则声明，把那些「必须做 / 不能做」的约束写明。',
+    hardrule_execution_review: '声明了硬性规则但执行证据不够。补一下每条规则的触发场景，让运行时能验证。',
+    expected_tools_not_declared: '在 SKILL.md frontmatter 里声明 expected_tools。否则报告分不出「真用上了 skill 工具」还是「只是随便调了个工具」。',
+    expected_tools_missed: '声明了核心工具但没用上。先确认 description 是否清楚指引到这些工具，或者用户的诉求不属于这个 skill。',
+    negative_feedback_review: '打开用户负向反馈的原文，看问题出在理解目标、执行过程还是最后没收尾。',
+    user_correction_review: '用户纠正了多次。把纠正内容沉淀到 SKILL.md 的标准流程或硬性规则，避免下次同类返工。',
+    follow_up_review: '用户追问比较多。看是围绕产物继续推进（好事），还是因为没拿到结果而反复问（要改）。',
+    user_interruption_review: '用户叫停了执行。看下断的那一步是不是 skill 没声明标准流程导致跑偏。',
   };
   return suggestions[key];
 }
