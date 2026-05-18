@@ -918,7 +918,7 @@ function isAssistantProgressUpdateEvent(event: ExperienceTimelineEvent): boolean
 function hasSelfCorrectionSignal(event: ExperienceTimelineEvent): boolean {
   if (event.kind !== 'assistant_message') return false;
   const text = event.fullText ?? event.snippet ?? '';
-  return /刚才.*(?:不对|错了|有误)|发现.*(?:不对|错了|问题|遗漏)|重新(?:检查|分析|执行|生成|整理)|改用|换成|修正|我再(?:检查|重新|看)|\b(?:recheck|retry|rerun|mistake|wrong)\b/i.test(text);
+  return /刚才.*(?:不对|错了|有误)|发现.*(?:不对|错了|问题|遗漏)|重新(?:检查|分析|执行|生成|整理|补(?:充)?(?:结论|答案|回答))|改用|换成|修正|我再(?:检查|重新|看)|跑偏|偏(?:题|了|向)|没(?:有)?(?:完整|完全)?(?:回答|覆盖)|漏(?:了|掉)|不完整|我刚追问了一版|按原问题(?:重新)?(?:补|回|答)|\b(?:recheck|retry|rerun|mistake|wrong)\b/i.test(text);
 }
 
 function hasRepeatedExecutionSignal(event: ExperienceTimelineEvent): boolean {
