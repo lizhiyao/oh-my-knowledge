@@ -7,9 +7,8 @@
 // config.findCommand('eval:gold')) 让 LangAwareHelp 按 --lang 渲染当前 topic 的
 // description + sub-sub 列表(init / validate / compare)。
 
-import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../../oclif/base-command.js';
-import { bilingual } from '../../../oclif/i18n.js';
+import { LANG_FLAG, bilingual } from '../../../oclif/i18n.js';
 
 export default class EvalGold extends BaseCommand {
   static description = bilingual({
@@ -18,13 +17,7 @@ export default class EvalGold extends BaseCommand {
   });
 
   static flags = {
-    lang: Flags.string({
-      description: bilingual({
-        zh: '输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。',
-        en: 'Output language zh|en. Priority: CLI > OMK_LANG env > zh.',
-      }),
-      default: 'zh',
-    }),
+    lang: LANG_FLAG,
   };
 
   async run(): Promise<void> {

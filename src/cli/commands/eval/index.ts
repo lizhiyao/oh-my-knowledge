@@ -1,5 +1,5 @@
 import { Flags } from '@oclif/core';
-import { bilingual } from '../../oclif/i18n.js';
+import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { enumStringParser, integerStringParser, numberStringParser } from '../../oclif/parsers.js';
 import { CliExit } from '../../lib/cli-exit.js';
@@ -361,10 +361,7 @@ export default class Eval extends BaseCommand {
   ];
 
   static flags = {
-    lang: Flags.string({
-      description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
-      default: 'zh',
-    }),
+    lang: LANG_FLAG,
     // ── 实验角色 ──
     control: Flags.string({
       description: bilingual({ zh: 'control variant 表达式', en: 'Control variant expr' }),

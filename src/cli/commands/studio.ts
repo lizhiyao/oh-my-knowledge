@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { Flags } from '@oclif/core';
-import { bilingual } from '../oclif/i18n.js';
+import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { integerStringParser } from '../oclif/parsers.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
@@ -112,10 +112,7 @@ export default class Studio extends BaseCommand {
   ];
 
   static flags = {
-    lang: Flags.string({
-      description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
-      default: 'zh',
-    }),
+    lang: LANG_FLAG,
     port: Flags.string({
       description: bilingual({
         zh: '监听端口，默认 7799。传 0 让 OS 分配',

@@ -451,7 +451,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --gold-dir <value>              gold dataset 目录
   --judge-models <value>          评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。
   --judge-repeat <value>          每个 dim 评 N 次
-  --lang <value>                  输出语言 zh|en
+  --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --layered-stats                 输出分层统计
   --mcp-config <value>            MCP 配置文件路径
   --model <value>                 被测模型
@@ -508,7 +508,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 ```text
   --from <value>        起始时间 ISO，优先级高于 --last
   --kb <value>          知识库 root，启用 KB-aware 分析
-  --lang <value>        输出语言 zh|en
+  --lang <value>        输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --last <value>        时间窗(7d / 24h / 30m）
   --output-dir <value>  分析结果输出目录
   --skills <value>      只看指定 skill，逗号分隔
@@ -594,7 +594,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --executor <value>       执行器名，默认 claude
   --improve-model <value>  负责重写 skill 的 LLM，默认 sonnet
   --judge-models <value>   评委 model（单评委约束），格式 executor:model。默认 claude:haiku
-  --lang <value>           输出语言 zh|en
+  --lang <value>           输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>          被评测的 LLM，默认 sonnet
   --no-diagnostic          关 LLM diagnostic 调用
   --rounds <value>         最大迭代轮数，默认 5
@@ -659,7 +659,7 @@ omk studio --no-open
   --analyses-dir <value>      分析数据目录（可选）
   --dev                       dev 模式：子进程启动 + 热更新
   --host <value>              监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网
-  --lang <value>              输出语言 zh|en
+  --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --no-open                   不自动打开浏览器
   --observations-dir <value>  观测数据目录（可选）
   --port <value>              监听端口，默认 7799。传 0 让 OS 分配
