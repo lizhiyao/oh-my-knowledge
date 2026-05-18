@@ -8,14 +8,22 @@
  * 用途:
  * - oclif Command 静态 `flags = { ... }` 通过 `Flags.xxx()` 声明,但 `this.parse(X)`
  *   返回的 flags 是 oclif 推导出的 ad-hoc 类型。业务函数 `run<Cmd>(args, flags, lang)`
- *   接的是这里定义的稳定 interface,oclif Command 在 run() 里把 oclif parse 结果 cast
- *   到对应 interface(TypeScript 编译期校验 shape 一致)。
- *
- * - oclif Command 静态 flags 跟这里的 interface **shape 必须一致**(命名 / 类型)。
- *   不一致就编译挂(parse 结果不能 narrow 到 interface),靠 tsc 做 drift gate。
+ *   接的是这里定义的**稳定 business-facing interface**(给跨命令业务模块跟单测复用),
+ *   oclif Command 在 run() 里走 `{ ...flags, lang }` spread 把 oclif parse 结果传过去。
  *
  * - args 也走同样的 typed interface,oclif `static args = { ... }` 的 key 跟
- *   interface field 命名严格对齐。
+ *   interface field 命名靠 review + 跑通的测试 case 保持对齐。
+ *
+ * 这里**不是**完整的 drift gate:
+ * - TS 结构类型 + `{ ...flags, lang }` spread + 多数 EvalFlags 字段可选,导致
+ *   ① oclif static 加新 flag 但忘记补 interface,不报错(spread 多余字段不报);
+ *   ② interface 漏 optional 字段,也不报错。
+ * - 真值是各 Command file 的 `static flags = { ... }`,runtime 跟 codegen 都读它。
+ * - 如果未来需要硬 drift gate,可在每个 Command run() body 加
+ *   `flags satisfies <XxxFlags>`(单向:catch interface required 字段缺失)
+ *   + paired type-level 等价检查(双向:catch 多 / 少 字段)。当前没加是因为
+ *   `{ ...flags, lang }` 的 spread 模式让 satisfies 错位率高,加之 oclif parse 错配
+ *   测试运行时就挂,human review 加测试已经能抓住绝大多数 drift。
  *
  * Flag 类型映射约定:
  * - `Flags.boolean({ default: false })` → `boolean`

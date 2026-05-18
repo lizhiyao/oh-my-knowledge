@@ -337,7 +337,7 @@ omk observe ingest <traceDir> [flags]
 **Flags:**
 
 - `--lang` `option` (默认 `zh`):输出语言 zh|en
-- `--output-dir` `option`:输出目录，默认 ~/.oh-my-knowledge/observations
+- `--output-dir` `option`:输出目录，默认 .omk/observations（项目级，相对于 cwd）。
 
 ## omk observe show
 

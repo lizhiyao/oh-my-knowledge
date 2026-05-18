@@ -26,8 +26,8 @@ export default class ObserveIngest extends Command {
     }),
     'output-dir': Flags.string({
       description: bilingual({
-        zh: '输出目录，默认 ~/.oh-my-knowledge/observations',
-        en: 'Output dir, default ~/.oh-my-knowledge/observations',
+        zh: '输出目录，默认 .omk/observations（项目级，相对于 cwd）。',
+        en: 'Output dir, default .omk/observations (project-local, relative to cwd).',
       }),
     }),
   };
@@ -49,10 +49,19 @@ export default class ObserveIngest extends Command {
           : `Trace path does not exist: ${tracePath}`);
         throw new CliExit(1);
       }
+      // `--output-dir ''` 显式空串拒绝:`resolve('')` 在 Node 里等价于 `process.cwd()`,
+      // 没拦住就会让 shell 里没展开的变量(`--output-dir "$DIR"` 而 `$DIR` 未设)把
+      // observation 报告写到任意 cwd。oclif `Flags.string({})` 没拦空串,这里业务侧
+      // 显式判 + exit 2(POSIX usage error 约定),跟其它 parse error 行为一致。
+      const outDirRaw = flags['output-dir'];
+      if (outDirRaw !== undefined && outDirRaw.trim() === '') {
+        console.error(lang === 'zh'
+          ? '错误：--output-dir 不能为空字符串。'
+          : 'Error: --output-dir must not be an empty string.');
+        throw new CliExit(2);
+      }
       const { buildObservationInboxReport, saveObservationInboxReport, DEFAULT_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
-      // `??` 而非 `||`:`--output-dir ''` 显式空串应当报错或走 oclif 校验,
-      // 不该悄悄 fallback 到 default(`||` 把空串当 falsy 触发 fallback,掩盖 typo)。
-      const outDir = resolve(flags['output-dir'] ?? DEFAULT_OBSERVATIONS_DIR);
+      const outDir = resolve(outDirRaw ?? DEFAULT_OBSERVATIONS_DIR);
       const { loadObservationReviewState } = await import('../../../observability/review-state.js');
       const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
       const path = saveObservationInboxReport(report, outDir);
