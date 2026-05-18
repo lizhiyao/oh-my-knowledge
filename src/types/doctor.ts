@@ -85,6 +85,7 @@ export interface DoctorContext {
   dependencyCwd?: string;
   lang: 'zh' | 'en';
   timeoutMs: number;
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** 深度健康检查(LLM-judge,多维度)开关。CLI doctor 默认 true,`--static-only`
    *  会过滤 composer rule;programmatic API 默认 false,只跑静态 rule。true 时
    *  skill_health composer 才真正调 LLM。composer 不在 BUILTIN_RULES,必须先
@@ -157,4 +158,5 @@ export interface DoctorRunOptions {
    *  CLI doctor 默认开启;`--static-only` 通过过滤 composer rule 切到离线静态模式。
    *  programmatic API 默认 false。 */
   runHealthCheck?: boolean;
+  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 }

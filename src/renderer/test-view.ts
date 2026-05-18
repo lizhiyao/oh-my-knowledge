@@ -588,7 +588,7 @@ function renderSubSections(d: SampleCardData, lang: Lang): string {
 }
 
 function buildCardData(sample_id: string, snapshot: SampleSnapshot | undefined, variant: VariantResult): SampleCardData {
-  const rawVerdict = sampleVerdict(variant.assertions?.details);
+  const rawVerdict = variant.ok === false ? 'fail' : sampleVerdict(variant.assertions?.details);
   const isTripwire = rawVerdict === 'fail' && isTripwireSample(snapshot, variant);
   return { sample_id, snapshot, variant, cardKind: isTripwire ? 'tripwire' : rawVerdict };
 }
@@ -728,7 +728,7 @@ function computeVariantStats(report: EvaluationReport, variant: string): { passe
   for (const r of report.results) {
     const v = r.variants[variant];
     if (!v) continue;
-    const verdict = sampleVerdict(v.assertions?.details);
+    const verdict = v.ok === false ? 'fail' : sampleVerdict(v.assertions?.details);
     if (verdict === 'pass') {
       passed += 1;
     } else if (isTripwireSample(snapshots[r.sample_id], v)) {

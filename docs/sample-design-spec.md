@@ -106,12 +106,14 @@ samples:
   - `env_required: string[]` — 假定已 export 的环境变量
   - `notes: string` — 自由文本兜底,描述凭证状态等
 - **mocks**(object[],可选):工具调用拦截列表。运行时按数组顺序匹配第一条命中的 mock,返回 `return` / `return_file` / `return_seq[hitCount]` 之一作为 tool_result。
+  - **`tool` 字段**:工具名(如 `"Bash"` / `"Read"` / `"Grep"`)。特殊值 `"*"`:通配任何工具名,配合 `input_contains` 做 intent-level mock。
   - **`match` 字段所有项 AND**:
     - `file_path: string` — 严格相等(展开 `~`)。**仅在能预测完整路径时用**(如 `~/.config/x.json`)。
     - `file_path_endswith: string` — 后缀匹配:actual === suffix 或在路径分隔符(`/` 或 `\`)后以 suffix 结尾。**默认推荐**(claude-cli 内部把相对路径 normalize 成 cwd 绝对路径,严格相等永远 miss)。
     - `url: string` / `url_glob: string` — WebFetch / WebSearch 用,二选一。
     - `command_glob: string` — Bash 用,`*` 通配跨换行(LLM 多行命令也命中)。
-    - `input: object` — 通用 deep-equal 子集匹配(优先级最高,可写任意 tool_input 字段)。
+    - `input: object` — 通用 deep-equal 子集匹配(可写任意 tool_input 字段)。
+    - `input_contains: string` — 递归扫描 tool_input 所有 string 值,任一含该子串即命中(大小写不敏感)。**配合 `tool: "*"` 做 intent-level mock**:LLM 搜代码时可能用 Bash grep / Grep 工具 / Glob / Read / Agent 等任意工具,用 `input_contains` 按关键词匹配意图,不用逐个枚举工具。示例:`{tool: "*", match: {input_contains: "FinTradeBuySpi"}, return: "<sofa:service .../>"}` — 任何工具只要输入提到 FinTradeBuySpi 就命中。
   - **`return` 三种形式**:string / `{stdout, stderr, exit}`(模拟 Bash) / `return_file` 外置文件 / `return_seq[]` 状态机(同 mock 第 N 次命中按序返回,超出回退 `return`)。
 - **断言侧的 mock_hit / tool_input_contains**:配合 mocks 使用。`mock_hit: "Bash:2"` 表示"第 2 条 Bash mock 必须被命中至少一次",证明 LLM 走到了那一步。`tool_input_contains: "Bash:logstore_query"` 验证 Bash 命令字符串里包含 `logstore_query`。
 

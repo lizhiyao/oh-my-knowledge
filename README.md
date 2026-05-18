@@ -397,7 +397,9 @@ omk doctor --static-only                # offline mode: static checks only, no L
 **Flags:**
 
 ```text
+  --effort <value>    LLM reasoning effort: low / medium / high / xhigh / max.
   --executor <value>  Executor name, default claude. Pass a test fixture path to use in tests.
+  --fix               Interactive fix: use LLM agent to fix skill issues reported by doctor.
   --gate              Silent mode: only emit stderr summary on fail. Exit code carries the signal.
   --html <value>      HTML report output path. Coexists with --json / --gate.
   --json              JSON output to stdout, for CI / external script consumption.
@@ -589,20 +591,25 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 **Flags:**
 
 ```text
-  --concurrency <value>    Eval concurrency, default 1
-  --effort <value>         Reasoning effort: low/medium/high/xhigh/max
-  --executor <value>       Executor name, default claude
-  --improve-model <value>  LLM that rewrites the skill, default sonnet
-  --judge-models <value>   Judge model (single judge required), executor:model format. Default claude:haiku
-  --lang <value>           Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --model <value>          Evaluated LLM, default sonnet
-  --no-diagnostic          Disable diagnostic LLM call
-  --rounds <value>         Max iteration rounds, default 5
-  --samples <value>        Samples file, default eval-samples.json
-  --skip-connectivity      Skip LLM connectivity preflight
-  --skip-doctor            Skip doctor gate (escape hatch; user takes garbage-in risk)
-  --target <value>         Target composite score; stop when reached. If omitted, runs all rounds.
-  --timeout <value>        Per-sample timeout sec, default 120
+  --auto-fix-samples              Fix the skill, then fix samples, then evaluate the combined candidate
+  --concurrency <value>           Eval concurrency, default 1
+  --effort <value>                Reasoning effort: low/medium/high/xhigh/max
+  --executor <value>              Executor name, default claude
+  --improve-mode <agent|rewrite>  Improvement strategy (default: agent)
+  --improve-model <value>         LLM that rewrites the skill, default sonnet
+  --judge-models <value>          Judge model (single judge required), executor:model format. Default claude:haiku
+  --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --model <value>                 Evaluated LLM, default sonnet
+  --no-diagnostic                 Disable diagnostic LLM call
+  --reuse-latest-eval             Reuse the latest comparable eval report as round-0
+  --rounds <value>                Max iteration rounds, default 5
+  --sample-fix-max-attempts <value>Max auto-fix attempts per sample (default: 2)
+  --samples <value>               Samples file, default eval-samples.json
+  --skip-connectivity             Skip LLM connectivity preflight
+  --skip-doctor                   Skip doctor gate (escape hatch; user takes garbage-in risk)
+  --stop-on-assertions-pass       Stop early when normal samples pass assertions
+  --target <value>                Target composite score; stop when reached. If omitted, runs all rounds.
+  --timeout <value>               Per-sample timeout sec, default 120
 ```
 
 For full descriptions: `omk evolve --help`.
@@ -629,6 +636,7 @@ omk sample --batch                  # generate for skills missing eval-samples
   --focus <value>        Generation focus (NL hint). Steers LLM toward certain sample types.
   --lang <value>         Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>        Generation LLM model name, default opus.
+  --no-mock              Skip mock generation; all tool calls execute for real during eval.
   --reports-dir <value>  Reports dir (fix mode), default ~/.oh-my-knowledge/reports.
   --skill-dir <value>    Skill root dir, default skills. Used by batch mode.
   --treatment <value>    Treatment name (fix mode), defaults to skill-path inference.

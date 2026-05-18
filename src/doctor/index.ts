@@ -222,6 +222,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
     dependencyCwd,
     lang: opts.lang,
     timeoutMs: opts.timeoutMs,
+    effort: opts.effort,
     runHealthCheck: opts.runHealthCheck ?? false,
   };
 

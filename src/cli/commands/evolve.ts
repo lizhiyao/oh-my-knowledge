@@ -102,6 +102,11 @@ export async function runEvolve(
       effort: flags.effort ? validateEvolveEffort(flags.effort, lang) : undefined,
       noDiagnostic: flags['no-diagnostic'],
       skipDoctor: flags['skip-doctor'],
+      stopOnAssertionsPass: flags['stop-on-assertions-pass'],
+      autoFixSamples: flags['auto-fix-samples'],
+      sampleFixMaxAttempts: Math.max(1, Number(flags['sample-fix-max-attempts']) || 2),
+      reuseLatestEval: flags['reuse-latest-eval'],
+      improveMode: flags['improve-mode'] === 'rewrite' ? 'rewrite' : 'agent',
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error }: RoundProgressInfo): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。
@@ -268,6 +273,43 @@ export default class Evolve extends BaseCommand {
         en: 'Skip doctor gate (escape hatch; user takes garbage-in risk)',
       }),
       default: false,
+    }),
+    'stop-on-assertions-pass': Flags.boolean({
+      description: bilingual({
+        zh: '普通样本断言全过时提前停止',
+        en: 'Stop early when normal samples pass assertions',
+      }),
+      default: false,
+    }),
+    'auto-fix-samples': Flags.boolean({
+      description: bilingual({
+        zh: '每轮先修 skill，再修 sample，随后一起评估候选结果',
+        en: 'Fix the skill, then fix samples, then evaluate the combined candidate',
+      }),
+      default: false,
+    }),
+    'sample-fix-max-attempts': Flags.string({
+      description: bilingual({
+        zh: '每条 sample 自动修复最多尝试次数（默认：2）',
+        en: 'Max auto-fix attempts per sample (default: 2)',
+      }),
+      default: '2',
+      parse: integerStringParser('--sample-fix-max-attempts', { min: 1 }),
+    }),
+    'reuse-latest-eval': Flags.boolean({
+      description: bilingual({
+        zh: '复用可比的最新 eval 报告作为 round-0',
+        en: 'Reuse the latest comparable eval report as round-0',
+      }),
+      default: false,
+    }),
+    'improve-mode': Flags.string({
+      description: bilingual({
+        zh: '改写策略（默认：agent）',
+        en: 'Improvement strategy (default: agent)',
+      }),
+      default: 'agent',
+      options: ['agent', 'rewrite'],
     }),
   };
 

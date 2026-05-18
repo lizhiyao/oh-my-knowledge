@@ -27,8 +27,33 @@ interface ExtractedCandidate {
 }
 
 /** 深度跟踪 brace,在 LLM 文本里找出顶层 JSON。多个候选时优先选含 ≥2 required key 的。 */
+function repairUnescapedQuotes(json: string): string {
+  let result = '';
+  let inString = false;
+  let escape = false;
+  for (let i = 0; i < json.length; i++) {
+    const c = json[i];
+    if (escape) { escape = false; result += c; continue; }
+    if (c === '\\') { escape = true; result += c; continue; }
+    if (c === '"') {
+      if (!inString) { inString = true; result += c; continue; }
+      const after = json.slice(i + 1).trimStart();
+      if (!after.length || after[0] === ',' || after[0] === '}' || after[0] === ']' || after[0] === ':') {
+        inString = false;
+        result += c;
+      } else {
+        result += '\\"';
+      }
+      continue;
+    }
+    result += c;
+  }
+  return result;
+}
+
 export function extractJson(text: string): string | null {
   if (!text) return null;
+  text = repairUnescapedQuotes(text);
   const candidates: ExtractedCandidate[] = [];
   let pos = 0;
   while (true) {
