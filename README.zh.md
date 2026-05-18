@@ -569,10 +569,10 @@ omk skill-extract demo-create --review soft-xxx --status rejected --reason "不�
 ```text
   --input-dir <value>  observation 数据目录
   --json               JSON 格式输出
-  --lang <value>       输出语言 zh|en
+  --lang <value>       输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --reason <value>     人工判断原因
   --review <value>     要确认或否决的软标准 ID
-  --status <value>     确认状态：author_confirmed / rejected / pending_review
+  --status <value>     确认状态：author_confirmed / rejected / pending_review（也接受 confirm / confirmed / reject / pending 别名）
 ```
 
 完整描述见 `omk skill-extract --help`。

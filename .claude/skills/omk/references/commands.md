@@ -423,21 +423,21 @@ omk sample skills/my-skill/SKILL.md --fix
 **用法:**
 
 ```bash
-omk skill-extract [skillName] [flags]
+omk skill-extract <skillName> [flags]
 ```
 
 **参数:**
 
-- `skillName`(可选):skill 名称
+- `skillName`(必填):skill 名称
 
 **Flags:**
 
 - `--input-dir` `option`:observation 数据目录
 - `--json` `boolean`:JSON 格式输出
-- `--lang` `option` (默认 `zh`):输出语言 zh|en
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--reason` `option`:人工判断原因
 - `--review` `option`:要确认或否决的软标准 ID
-- `--status` `option`:确认状态：author_confirmed / rejected / pending_review
+- `--status` `option`:确认状态：author_confirmed / rejected / pending_review（也接受 confirm / confirmed / reject / pending 别名）
 
 ## omk studio
 

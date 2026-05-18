@@ -249,12 +249,12 @@ export interface ObserveShowFlags {
 
 // skill-extract(standalone review command)
 export interface SkillExtractArgs {
-  skillName?: string;
+  skillName: string;
 }
 export interface SkillExtractFlags {
   lang: Lang;
   'input-dir'?: string;
-  review?: string;
+  review: string;
   status?: string;
   reason?: string;
   json: boolean;

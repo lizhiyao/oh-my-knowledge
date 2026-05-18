@@ -569,10 +569,10 @@ omk skill-extract demo-create --review soft-xxx --status rejected --reason "not 
 ```text
   --input-dir <value>  Observation data directory
   --json               JSON output
-  --lang <value>       Output language zh|en
+  --lang <value>       Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --reason <value>     Manual review reason
   --review <value>     Soft standard id to review
-  --status <value>     Review status: author_confirmed / rejected / pending_review
+  --status <value>     Review status: author_confirmed / rejected / pending_review (also accepts aliases: confirm / confirmed / reject / pending)
 ```
 
 For full descriptions: `omk skill-extract --help`.
