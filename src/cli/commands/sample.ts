@@ -3,12 +3,12 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import yaml from 'js-yaml';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../oclif/i18n.js';
-import { CliExit } from '../cli-exit.js';
-import { tCli, type CliLang } from '../i18n.js';
-import { DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
+import { CliExit } from '../lib/cli-exit.js';
+import { tCli, type CliLang } from '../lib/i18n.js';
+import { DEFAULT_REPORTS_DIR } from '../lib/parse-run-config.js';
 import { loadSamples, parseYaml, type LoadSamplesResult } from '../../inputs/load-samples.js';
 import { hashSample, hashString } from '../../eval-core/evaluation-reporting.js';
-import type { SampleArgs, SampleFlags } from '../types/cmd-flags.js';
+import type { SampleArgs, SampleFlags } from '../lib/cmd-flags.js';
 import type { Report, Sample as SampleType } from '../../types/index.js';
 
 interface GenerateSamplesResult {
@@ -47,7 +47,6 @@ function formatIdList(ids: string[]): string {
 }
 
 // 下面 3 个 helper 在 sample-fix.test.ts 单测内 in-process import 验证 fix 逻辑。
-// 业务住 oclif Command file 内,不再有独立 src/cli/commands/。
 
 export function collectSampleDesignFailureIds(report: Pick<Report, 'results'>, treatmentName: string): Set<string> {
   const ids = new Set<string>();

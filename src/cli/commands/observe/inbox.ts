@@ -1,9 +1,9 @@
 import { resolve } from 'node:path';
 import { Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../../oclif/i18n.js';
-import { CliExit } from '../../cli-exit.js';
-import { type CliLang } from '../../i18n.js';
-import type { ObserveInboxArgs, ObserveInboxFlags } from '../../types/cmd-flags.js';
+import { CliExit } from '../../lib/cli-exit.js';
+import { type CliLang } from '../../lib/i18n.js';
+import type { ObserveInboxArgs, ObserveInboxFlags } from '../../lib/cmd-flags.js';
 
 function pickSkillCount(value: Record<string, number> | undefined, skillName: string): Record<string, number> | undefined {
   if (!value || value[skillName] == null) return undefined;

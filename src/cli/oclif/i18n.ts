@@ -15,8 +15,8 @@
 // 跟进(Phase B):改 oclif 上游让 errors/handle.js 尊重 helpClass / 接受双语 dump
 // 不再 fix(早期 init hook description mutate 方案 PR #124 已删,接受 BREAKING-CLI)。
 
-import { getCliLang, parseLangFromArgv } from '../i18n.js';
-import type { CliLang } from '../i18n.js';
+import { getCliLang, parseLangFromArgv } from '../lib/i18n.js';
+import type { CliLang } from '../lib/i18n.js';
 
 export type Lang = CliLang;
 

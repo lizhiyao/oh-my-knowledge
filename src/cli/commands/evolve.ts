@@ -2,10 +2,10 @@ import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../oclif/i18n.js';
-import { CliExit } from '../cli-exit.js';
-import { tCli, type CliLang } from '../i18n.js';
-import { makeOnProgress } from '../progress.js';
-import type { EvolveArgs, EvolveFlags } from '../types/cmd-flags.js';
+import { CliExit } from '../lib/cli-exit.js';
+import { tCli, type CliLang } from '../lib/i18n.js';
+import { makeOnProgress } from '../lib/progress.js';
+import type { EvolveArgs, EvolveFlags } from '../lib/cmd-flags.js';
 import type { ProgressCallback } from '../../types/index.js';
 
 interface RoundProgressInfo {
@@ -55,8 +55,7 @@ interface EvolveResult {
 }
 
 // runEvolve module-level helper:cli-exit.test 测「skillPath 空 throw CliExit(1)」走
-// in-process import 验证业务,Command.run() body 直接调它。业务住 oclif Command file 内,
-// 不再有独立 src/cli/commands/。
+// in-process import 验证业务,Command.run() body 直接调它。
 export async function runEvolve(
   args: EvolveArgs,
   flags: EvolveFlags,
@@ -75,7 +74,7 @@ export async function runEvolve(
   }
 
   const { evolveSkill } = await import('../../authoring/evolver.js');
-  const { parseJudgeModelsArgOrExit } = await import('../parse-run-config.js');
+  const { parseJudgeModelsArgOrExit } = await import('../lib/parse-run-config.js');
 
   const evolveJudges = parseJudgeModelsArgOrExit(flags['judge-models']);
   if (evolveJudges.length > 1) {

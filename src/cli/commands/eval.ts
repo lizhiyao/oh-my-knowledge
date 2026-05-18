@@ -1,14 +1,14 @@
 import { Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../oclif/i18n.js';
-import { CliExit } from '../cli-exit.js';
-import { tCli, type CliLang } from '../i18n.js';
-import { parseRunConfig } from '../parse-run-config.js';
-import { makeOnProgress } from '../progress.js';
-import { computeRunTally } from '../run-tally.js';
-import type { EvalArgs, EvalFlags } from '../types/cmd-flags.js';
+import { CliExit } from '../lib/cli-exit.js';
+import { tCli, type CliLang } from '../lib/i18n.js';
+import { parseRunConfig } from '../lib/parse-run-config.js';
+import { makeOnProgress } from '../lib/progress.js';
+import { computeRunTally } from '../lib/run-tally.js';
+import type { EvalArgs, EvalFlags } from '../lib/cmd-flags.js';
 import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback } from '../../types/index.js';
 import type { DryRunBatchReport, DryRunReport } from '../../eval-workflows/run-evaluation.js';
-import type { EvalResult, ReportServer } from '../_shared.js';
+import type { EvalResult, ReportServer } from '../lib/shared.js';
 
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
 // 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。

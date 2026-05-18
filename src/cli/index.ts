@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-import { getCliLang, parseLangFromArgv } from './i18n.js';
-import { checkUpdate } from './update-check.js';
-import { CliExit } from './cli-exit.js';
+import { getCliLang, parseLangFromArgv } from './lib/i18n.js';
+import { checkUpdate } from './lib/update-check.js';
+import { CliExit } from './lib/cli-exit.js';
 
 // CLI 入口:lang / 版本提醒等共享前置逻辑跑完,把控制权交给 oclif dispatcher。
 // 所有命令统一走 src/cli/commands/* 下的 oclif Command。

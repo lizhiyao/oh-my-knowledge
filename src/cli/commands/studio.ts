@@ -1,11 +1,11 @@
 import { resolve } from 'node:path';
 import { Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../oclif/i18n.js';
-import { CliExit } from '../cli-exit.js';
-import { tCli, type CliLang } from '../i18n.js';
-import { DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
-import type { ReportServer } from '../_shared.js';
-import type { StudioArgs, StudioFlags } from '../types/cmd-flags.js';
+import { CliExit } from '../lib/cli-exit.js';
+import { tCli, type CliLang } from '../lib/i18n.js';
+import { DEFAULT_REPORTS_DIR } from '../lib/parse-run-config.js';
+import type { ReportServer } from '../lib/shared.js';
+import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
 
 async function openWorkbench(url: string, lang: CliLang): Promise<void> {
   const { execFile } = await import('node:child_process');
@@ -28,8 +28,8 @@ async function openWorkbench(url: string, lang: CliLang): Promise<void> {
 }
 
 // dev / browser-open 测试需要 mock `node:child_process` + `node:os`,通过 in-process
-// import 直接调用。把业务作为 module-level helper export(住在 oclif Command file 内,
-// 不再有独立 src/cli/commands/ directory),既保留 test 兼容又满足 100% oclif-native。
+// import 直接调用。把业务作为 module-level helper export 从 Command file 暴露,
+// 既保留 test 兼容又让产品命令树语义干净(无 legacy commands directory)。
 export async function runStudio(
   _args: StudioArgs,
   flags: StudioFlags,

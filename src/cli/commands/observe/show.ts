@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../../oclif/i18n.js';
-import { CliExit } from '../../cli-exit.js';
+import { CliExit } from '../../lib/cli-exit.js';
 
 export default class ObserveShow extends Command {
   static description = bilingual({

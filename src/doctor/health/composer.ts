@@ -14,7 +14,7 @@
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { tCli } from '../../cli/i18n.js';
+import { tCli } from '../../cli/lib/i18n.js';
 import { createExecutor } from '../../executors/index.js';
 import type { ExecutorFn } from '../../types/executor.js';
 import type {

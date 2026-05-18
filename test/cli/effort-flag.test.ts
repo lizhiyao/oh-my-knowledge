@@ -8,7 +8,7 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { parseRunConfig } from '../../src/cli/parse-run-config.js';
+import { parseRunConfig } from '../../src/cli/lib/parse-run-config.js';
 
 const BASE_FLAGS = {
   'skill-dir': 'examples/code-review/skills',

@@ -1,9 +1,9 @@
 import { resolve, join } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../oclif/i18n.js';
-import { CliExit } from '../cli-exit.js';
-import { tCli } from '../i18n.js';
-import { parseLastWindow } from '../_shared.js';
+import { CliExit } from '../lib/cli-exit.js';
+import { tCli } from '../lib/i18n.js';
+import { parseLastWindow } from '../lib/shared.js';
 
 // oclif 版 observe 默认命令 — `omk observe <sessions-dir>` 走 health 分析。
 // 三个子命令(ingest / inbox / show)由 src/cli/oclif/commands/observe/ 文件目录托管。

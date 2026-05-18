@@ -1,17 +1,17 @@
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
-import { discoverVariants, parseVariantCwd } from '../inputs/skill-loader.js';
+import { discoverVariants, parseVariantCwd } from '../../inputs/skill-loader.js';
 import { CliExit } from './cli-exit.js';
-import { loadEvalConfig, configVariantsToSpecs } from '../inputs/eval-config.js';
-import { DEFAULT_MODEL } from '../executors/shared.js';
+import { loadEvalConfig, configVariantsToSpecs } from '../../inputs/eval-config.js';
+import { DEFAULT_MODEL } from '../../executors/shared.js';
 import type {
   EvalConfig,
   VariantSpec,
   JudgeConfig,
   EvalBudget,
   ProgressCallback,
-} from '../types/index.js';
+} from '../../types/index.js';
 
 export interface RunConfig {
   samplesPath: string;

@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual } from '../../oclif/i18n.js';
-import { CliExit } from '../../cli-exit.js';
+import { CliExit } from '../../lib/cli-exit.js';
 
 export default class ObserveIngest extends Command {
   static description = bilingual({

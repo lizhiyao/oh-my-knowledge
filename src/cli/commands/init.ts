@@ -1,8 +1,8 @@
 import { resolve, join } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../oclif/i18n.js';
-import { CliExit } from '../cli-exit.js';
-import { tCli } from '../i18n.js';
+import { CliExit } from '../lib/cli-exit.js';
+import { tCli } from '../lib/i18n.js';
 
 const INIT_SAMPLES = `[
   {

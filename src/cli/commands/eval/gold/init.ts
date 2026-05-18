@@ -1,6 +1,6 @@
 import { Command, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../../../oclif/i18n.js';
-import { CliExit } from '../../../cli-exit.js';
+import { CliExit } from '../../../lib/cli-exit.js';
 
 export default class EvalGoldInit extends Command {
   static description = bilingual({

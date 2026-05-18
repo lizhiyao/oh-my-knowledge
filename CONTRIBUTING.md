@@ -135,7 +135,15 @@ docs(readme): 补充评测用例说明
 
 ## CLI 走 oclif 框架(issue #109 / #121)
 
-omk CLI 走 [@oclif/core](https://oclif.io/docs/) 框架，**single parse path**:oclif Command 一次 typed parse(`await this.parse(X)`)拿 `{args, flags}` 直接喂业务。`src/cli/commands/` 是产品 CLI 命令树的单一目录(每个 file = 一个 oclif Command 类 + 业务 inline);`src/cli/oclif/` 只保留框架特有的 plumbing(`help.ts` / `projection.ts` / `i18n.ts` / `run.ts`)。无 legacy 二次解析、无 `execute(this.argv)` 透传。
+omk CLI 走 [@oclif/core](https://oclif.io/docs/) 框架，**single parse path**:oclif Command 一次 typed parse(`await this.parse(X)`)拿 `{args, flags}` 直接喂业务。无 legacy 二次解析、无 `execute(this.argv)` 透传。
+
+`src/cli/` 三段式布局:
+
+| 目录 | 职责 | 内容 |
+|---|---|---|
+| `commands/` | 产品 CLI 命令树 | 每个 file = 一个 oclif Command 类 + 业务 inline (top-level + observe / eval/gold sub) |
+| `lib/` | 跨命令共享 utility | `cli-exit.ts` / `cmd-flags.ts`(typed args/flags interface) / `i18n.ts` + `i18n-dict.ts`(tCli + 业务消息字典) / `parse-run-config.ts` / `progress.ts` / `run-tally.ts` / `shared.ts`(report helpers) / `update-check.ts` |
+| `oclif/` | 框架 plumbing | `help.ts`(LangAwareHelp) / `projection.ts` / `i18n.ts`(bilingual / pickLang / resolveLang) / `run.ts`(dispatcher entry) |
 
 文件目录约定:
 
@@ -147,9 +155,11 @@ omk CLI 走 [@oclif/core](https://oclif.io/docs/) 框架，**single parse path**
 
 - 简单业务 inline 到 `Command.run()` body
 - 测试需要 in-process import 验证的业务,作为 module-level helper(如 `runStudio` / `runEvolve` / `runObserveInbox` / 3 个 sample-fix helper)export from 同一个 Command file
-- 跨 Command 共享的 utility 仍在 `src/cli/`(如 `_shared.ts` / `parse-run-config.ts` / `i18n.ts`),跟 CLI entry 解耦的 deep functions 在自己的领域目录(如 `src/doctor/index.ts:runDoctor`)
+- 跨命令共享的 utility 进 `src/cli/lib/`;跟 CLI entry 解耦的 deep functions 在自己的领域目录(如 `src/doctor/index.ts:runDoctor`)
 
-双语 help 走 `src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` + `src/cli/oclif/help.ts` 的 `LangAwareHelp` 子类,按 `--lang` / `OMK_LANG` 在渲染时切语言。每个 flag 的双语 description inline 写,不进 `i18n-dict.ts`(那份只给 runtime `cli.error.*` / `cli.gen.*` 等业务消息用)。lang 解析 source-of-truth 是 `resolveLang(process.argv)`(scan raw argv + env fallback);**不要**读 `flags.lang`(oclif `default: 'zh'` 会盖掉 `OMK_LANG=en`)。
+双语 help 走 `src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` + `src/cli/oclif/help.ts` 的 `LangAwareHelp` 子类,按 `--lang` / `OMK_LANG` 在渲染时切语言。每个 flag 的双语 description inline 写,不进 `lib/i18n-dict.ts`(那份只给 runtime `cli.error.*` / `cli.gen.*` 等业务消息用)。lang 解析 source-of-truth 是 `resolveLang(process.argv)`(scan raw argv + env fallback);**不要**读 `flags.lang`(oclif `default: 'zh'` 会盖掉 `OMK_LANG=en`)。
+
+注意:`oclif/i18n.ts` 跟 `lib/i18n.ts` 职责不同 — 前者是 oclif Command static 字段需要的双语 sentinel + LangAwareHelp 渲染入口,后者是 runtime tCli / tBoth / getCliLang / parseLangFromArgv 基础设施。两者不要合并(reviewer 已确认强行扁平反而混)。
 
 加新命令的步骤:
 
