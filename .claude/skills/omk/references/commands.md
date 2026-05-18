@@ -66,9 +66,9 @@ omk eval [flags]
 - `--blind` `boolean`:judge blind 模式
 - `--bootstrap` `boolean`:加 bootstrap CI
 - `--bootstrap-samples` `option`:bootstrap 重采样次数，默认 1000
-- `--budget-per-sample-ms` `option`:单 sample 时长上限 ms
-- `--budget-per-sample-usd` `option`:单 sample 预算上限 USD
-- `--budget-usd` `option`:总预算上限 USD
+- `--budget-per-sample-ms` `option`:单 sample 时长上限 ms（必须 > 0，不传则无上限）
+- `--budget-per-sample-usd` `option`:单 sample 预算上限 USD（必须 > 0，不传则无上限）
+- `--budget-usd` `option`:总预算上限 USD（必须 > 0，不传则无上限）
 - `--concurrency` `option`:并发数，默认 1
 - `--config` `option`:eval.yaml 路径
 - `--control` `option`:control variant 表达式
@@ -102,7 +102,7 @@ omk eval [flags]
 - `--threshold` `option`:verdict 阈值，默认 3.5
 - `--timeout` `option`:单样本超时秒，默认 120
 - `--treatment` `option`:treatment variant 列表，逗号分隔
-- `--trivial-diff` `option`:可忽略 diff 容差
+- `--trivial-diff` `option`:可忽略 diff 容差，0 表示不启用容差
 - `--verbose` `boolean`:详细日志
 
 **示例:**

@@ -44,4 +44,15 @@ describe('oclif studio', () => {
       assert.equal(e.code, 2);
     }
   });
+
+  it('非法 --port → exit 2 + 中文 parser 错误', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'studio', '--port', '70000']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
+      assert.match(e.stderr, /--port(?=[\s\S]*整数)(?=[\s\S]*0)(?=[\s\S]*65535)/, `stderr missing zh parser error:\n${e.stderr}`);
+    }
+  });
 });

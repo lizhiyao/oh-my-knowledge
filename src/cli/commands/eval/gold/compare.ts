@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../../oclif/base-command.js';
 import { bilingual } from '../../../oclif/i18n.js';
+import { integerStringParser } from '../../../oclif/parsers.js';
 import { CliExit } from '../../../lib/cli-exit.js';
 import { DEFAULT_REPORTS_DIR } from '../../../lib/parse-run-config.js';
 import { requireEvaluationReport } from '../../../lib/shared.js';
@@ -45,9 +46,11 @@ export default class EvalGoldCompare extends BaseCommand {
         zh: 'bootstrap 重采样次数，默认 1000',
         en: 'Bootstrap resamples, default 1000',
       }),
+      parse: integerStringParser('--bootstrap-samples', { min: 100 }),
     }),
     seed: Flags.string({
       description: bilingual({ zh: 'bootstrap seed，可复现', en: 'Bootstrap seed for reproducibility' }),
+      parse: integerStringParser('--seed', { min: 0 }),
     }),
   };
 

@@ -44,6 +44,28 @@ describe('oclif evolve', () => {
     }
   });
 
+  it('非法 --rounds → exit 2 + 中文 parser 错误', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'evolve', 'skills/demo/SKILL.md', '--rounds', 'nope']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
+      assert.match(e.stderr, /--rounds(?=[\s\S]*整数)(?=[\s\S]*1)/, `stderr missing zh parser error:\n${e.stderr}`);
+    }
+  });
+
+  it('非法 --effort --lang en → exit 2 + English parser error', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'evolve', 'skills/demo/SKILL.md', '--effort', 'turbo', '--lang', 'en']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
+      assert.match(e.stderr, /--effort[\s\S]*low[\s\S]*medium[\s\S]*high[\s\S]*xhigh[\s\S]*max/, `stderr missing en parser error:\n${e.stderr}`);
+    }
+  });
+
   it('缺 skillPath positional → exit 2(oclif required-args)', async () => {
     try {
       await execFileAsync('node', [CLI, 'evolve']);

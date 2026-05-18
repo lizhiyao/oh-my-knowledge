@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { Flags } from '@oclif/core';
 import { bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
+import { integerStringParser } from '../oclif/parsers.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { DEFAULT_REPORTS_DIR } from '../lib/parse-run-config.js';
 import type { ReportServer } from '../lib/shared.js';
@@ -121,6 +122,7 @@ export default class Studio extends BaseCommand {
         en: 'Listen port, default 7799. Pass 0 for OS-assigned',
       }),
       default: '7799',
+      parse: integerStringParser('--port', { min: 0, max: 65_535 }),
     }),
     host: Flags.string({
       description: bilingual({

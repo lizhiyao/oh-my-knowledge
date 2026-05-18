@@ -4,6 +4,7 @@ import yaml from 'js-yaml';
 import { Args, Flags } from '@oclif/core';
 import { bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
+import { integerStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { DEFAULT_REPORTS_DIR } from '../lib/parse-run-config.js';
@@ -495,6 +496,7 @@ export default class Sample extends BaseCommand {
         zh: '生成样本条数。不传由 LLM 按 skill 类型自动决定。',
         en: 'Number of samples to generate. Defaults to LLM auto-selection by skill type.',
       }),
+      parse: integerStringParser('--count', { min: 1 }),
     }),
     model: Flags.string({
       description: bilingual({
