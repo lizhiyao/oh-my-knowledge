@@ -52,6 +52,75 @@ omk doctor --static-only
 omk doctor --json --html doctor.html
 ```
 
+## omk eval
+
+跑评测：对一个 control vs 多个 treatment skill 做对照试验，产 verdict 报告。
+
+**用法:**
+
+```bash
+omk eval [flags]
+```
+
+**Flags:**
+
+- `--batch` `boolean`:batch 模式:baseline vs 每个 skill
+- `--blind` `boolean`:judge blind 模式
+- `--bootstrap` `boolean`:加 bootstrap CI
+- `--bootstrap-samples` `option`:bootstrap 重采样次数，默认 1000
+- `--budget-per-sample-ms` `option`:单 sample 时长上限 ms（必须 > 0，不传则无上限）
+- `--budget-per-sample-usd` `option`:单 sample 预算上限 USD（必须 > 0，不传则无上限）
+- `--budget-usd` `option`:总预算上限 USD（必须 > 0，不传则无上限）
+- `--concurrency` `option`:并发数，默认 1
+- `--config` `option`:eval.yaml 路径
+- `--control` `option`:control variant 表达式
+- `--dry-run` `boolean`:只 plan 不实跑
+- `--effort` `option`:被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
+- `--executor` `option`:执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令（默认 claude）。
+- `--gold-dir` `option`:gold dataset 目录
+- `--judge-models` `option`:评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。
+- `--judge-repeat` `option`:每个 dim 评 N 次
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--layered-stats` `boolean`:输出分层统计
+- `--mcp-config` `option`:MCP 配置文件路径
+- `--model` `option`:被测模型
+- `--no-cache` `boolean`:跳过 executor cache
+- `--no-debias-length` `boolean`:关 length-debias（默认开）
+- `--no-diagnostic` `boolean`:关闭 diagnostic 诊断 LLM 调用（默认开，给 failed sample 出「哪错了 + 怎么改」建议）。
+- `--no-gate` `boolean`:关 verdict gate
+- `--no-judge` `boolean`:跳过 LLM judge
+- `--no-serve` `boolean`:不启 report server
+- `--no-strict-baseline` `boolean`:关闭 baseline 隔离
+- `--output-dir` `option`:报告输出目录
+- `--repeat` `option`:每个 sample 重复跑 N 次
+- `--report-only` `boolean`:生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
+- `--resume` `option`:从某次失败 run 续跑
+- `--retry` `option`:失败 sample 重试次数
+- `--samples` `option`:样本文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。
+- `--skill-dir` `option`:skill 目录，默认 skills
+- `--skip-connectivity` `boolean`:跳 LLM 连通性预检
+- `--skip-doctor` `boolean`:escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。
+- `--strict-baseline` `boolean`:强制 baseline 隔离（default true）
+- `--threshold` `option`:verdict 阈值，默认 3.5
+- `--timeout` `option`:单样本超时秒，默认 120
+- `--treatment` `option`:treatment variant 列表，逗号分隔
+- `--trivial-diff` `option`:可忽略 diff 容差，0 表示不启用容差
+- `--verbose` `boolean`:详细日志
+
+**示例:**
+
+> 最简对照:baseline vs my-skill
+
+```bash
+omk eval --control baseline --treatment my-skill
+```
+
+> eval.yaml 驱动 + bootstrap CI
+
+```bash
+omk eval --config eval.yaml --bootstrap
+```
+
 ## omk eval gold
 
 管理 human-gold 标注集（init / validate / compare 三个子命令）。
@@ -203,6 +272,38 @@ omk init
 
 ```bash
 omk init my-project
+```
+
+## omk observe
+
+分析 sessions 目录的 skill 调用健康度（默认行为）。子命令:ingest / inbox / show。
+
+**用法:**
+
+```bash
+omk observe [sessionsDir] [flags]
+```
+
+**参数:**
+
+- `sessionsDir`(可选):sessions 目录路径（如 ~/.claude/sessions）
+
+**Flags:**
+
+- `--from` `option`:起始时间 ISO，优先级高于 --last
+- `--kb` `option`:知识库 root，启用 KB-aware 分析
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--last` `option`:时间窗(7d / 24h / 30m）
+- `--output-dir` `option`:分析结果输出目录
+- `--skills` `option`:只看指定 skill，逗号分隔
+- `--to` `option`:结束时间 ISO
+
+**示例:**
+
+> 分析最近 7 天
+
+```bash
+omk observe ~/.claude/sessions --last 7d
 ```
 
 ## omk observe inbox
