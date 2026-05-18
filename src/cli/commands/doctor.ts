@@ -1,7 +1,8 @@
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../oclif/i18n.js';
+import { Args, Flags } from '@oclif/core';
+import { bilingual } from '../oclif/i18n.js';
+import { BaseCommand } from '../oclif/base-command.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
 import type { Sample } from '../../types/index.js';
@@ -50,7 +51,7 @@ function findDefaultSamplesPath(target: string | null, cwd: string): string | nu
   return null;
 }
 
-export default class Doctor extends Command {
+export default class Doctor extends BaseCommand {
   static description = bilingual({
     zh: '体检 omk 工作目录，检查 skill 配置 / 依赖 / executor 连通性。',
     en: 'Preflight health checks for omk workdir: skill config / deps / executor connectivity.',
@@ -153,8 +154,8 @@ export default class Doctor extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Doctor);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       const target: string | null = args.target ?? null;
       const executorName = flags.executor ?? 'claude';
       const model = flags.model ?? 'sonnet';
@@ -250,13 +251,6 @@ export default class Doctor extends Command {
       }
 
       throw new CliExit(report.outcome === 'failed' ? 1 : 0);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }

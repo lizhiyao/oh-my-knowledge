@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
-import { Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../oclif/i18n.js';
-import { CliExit } from '../lib/cli-exit.js';
+import { Flags } from '@oclif/core';
+import { bilingual } from '../oclif/i18n.js';
+import { BaseCommand } from '../oclif/base-command.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { DEFAULT_REPORTS_DIR } from '../lib/parse-run-config.js';
 import type { ReportServer } from '../lib/shared.js';
@@ -90,7 +90,7 @@ export async function runStudio(
   }
 }
 
-export default class Studio extends Command {
+export default class Studio extends BaseCommand {
   static description = bilingual({
     zh: '启动 omk Studio 报告服务（skill-centric 仪表盘 + 浏览器自动打开）。',
     en: 'Start omk Studio report server (skill-centric dashboard + browser auto-open).',
@@ -164,16 +164,9 @@ export default class Studio extends Command {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Studio);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       await runStudio({}, { ...flags, lang }, lang);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }

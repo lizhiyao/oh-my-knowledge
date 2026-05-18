@@ -1,7 +1,8 @@
 import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../oclif/i18n.js';
+import { Args, Flags } from '@oclif/core';
+import { bilingual } from '../oclif/i18n.js';
+import { BaseCommand } from '../oclif/base-command.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { makeOnProgress } from '../lib/progress.js';
@@ -150,7 +151,7 @@ export async function runEvolve(
   }
 }
 
-export default class Evolve extends Command {
+export default class Evolve extends BaseCommand {
   static description = bilingual({
     zh: '自动迭代改进 skill:多轮 eval + skill 重写，直到达到 --target 或耗尽 --rounds。',
     en: 'Auto-iterate skill improvement: multi-round eval + rewrite until --target or --rounds exhausted.',
@@ -269,16 +270,9 @@ export default class Evolve extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Evolve);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       await runEvolve(args, { ...flags, lang }, lang);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }

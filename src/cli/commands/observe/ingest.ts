@@ -1,9 +1,10 @@
 import { resolve } from 'node:path';
-import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../oclif/i18n.js';
+import { Args, Flags } from '@oclif/core';
+import { BaseCommand } from '../../oclif/base-command.js';
+import { bilingual } from '../../oclif/i18n.js';
 import { CliExit } from '../../lib/cli-exit.js';
 
-export default class ObserveIngest extends Command {
+export default class ObserveIngest extends BaseCommand {
   static description = bilingual({
     zh: '把 trace 目录 ingest 成 observation inbox 报告。',
     en: 'Ingest trace dir into observation inbox report.',
@@ -34,8 +35,8 @@ export default class ObserveIngest extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveIngest);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       const dir = args.traceDir;
       if (!dir) {
         // oclif Args.required:true 已经保证非空,这里仍兜底防御。
@@ -69,13 +70,6 @@ export default class ObserveIngest extends Command {
       process.stderr.write(lang === 'zh'
         ? `observe inbox 已写入: ${path}\n`
         : `observe inbox written to: ${path}\n`);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }

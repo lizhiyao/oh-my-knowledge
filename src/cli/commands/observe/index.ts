@@ -1,14 +1,15 @@
 import { resolve, join } from 'node:path';
-import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../oclif/i18n.js';
+import { Args, Flags } from '@oclif/core';
+import { bilingual } from '../../oclif/i18n.js';
+import { BaseCommand } from '../../oclif/base-command.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { tCli } from '../../lib/i18n.js';
 import { parseLastWindow } from '../../lib/shared.js';
 
 // oclif 版 observe 默认命令 — `omk observe <sessions-dir>` 走 health 分析。
-// 三个子命令(ingest / inbox / show)由 src/cli/oclif/commands/observe/ 文件目录托管。
+// 三个子命令(ingest / inbox / show)由 src/cli/commands/observe/ 文件目录托管。
 
-export default class Observe extends Command {
+export default class Observe extends BaseCommand {
   static description = bilingual({
     zh: '分析 sessions 目录的 skill 调用健康度（默认行为）。子命令:ingest / inbox / show。',
     en: 'Analyze skill invocation health from sessions dir (default). Subcommands: ingest / inbox / show.',
@@ -67,8 +68,8 @@ export default class Observe extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Observe);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       const dir = args.sessionsDir;
       if (!dir) {
         console.error(tCli('cli.help.observe', lang).trim());
@@ -125,13 +126,6 @@ export default class Observe extends Command {
       console.log('');
       console.log(`report written to: ${jsonPath}`);
       console.log(tCli('cli.observe.view_hint', lang));
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }
