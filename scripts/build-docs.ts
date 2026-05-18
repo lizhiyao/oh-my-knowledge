@@ -4,7 +4,7 @@
 //
 // 目标(每条一个 Target):
 // - commands.md(.claude/skills/omk/references/commands.md):整段 marker 包裹,
-//   全命令 fullbody(13 个 oclif command 全输出)。
+//   全命令 fullbody(把 oclif Config.commands 全部输出,含 topic / sub / sub-sub)。
 // - README.md / README.zh.md:per-command flags 模式,每个 H3 顶层命令独立 marker
 //   对,内容只输出 flag list(README 已经手写 bash 示例和 prose,不重复)。
 //

@@ -65,24 +65,16 @@ describe('scripts/build-docs codegen', () => {
     oclifTopLevelIds = getTopLevelIds(config);
   });
 
-  it('commands.md marker body covers all 13 oclif commands', () => {
+  it('commands.md marker body covers every oclif command (derived from Config.load)', async () => {
+    // expectedHeaders 从 Config.load 派生(单一来源是 src/cli/commands/ 文件目录),
+    // 防止漏覆盖新 sub / topic command — 比如 eval gold 从 eval/gold.ts 改成
+    // eval/gold/index.ts 后多出来的 topic command `eval:gold`,旧 hardcode list 静默漏。
+    const config = await Config.load({ root: PROJECT_ROOT });
+    const expectedHeaders = config.commands
+      .map((c) => `## omk ${c.id.split(':').join(' ')}`)
+      .sort();
     const content = readFileSync(COMMANDS_MD, 'utf8');
     const body = readMarkerBody(content);
-    const expectedHeaders = [
-      '## omk doctor',
-      '## omk eval',
-      '## omk eval gold compare',
-      '## omk eval gold init',
-      '## omk eval gold validate',
-      '## omk evolve',
-      '## omk init',
-      '## omk observe',
-      '## omk observe inbox',
-      '## omk observe ingest',
-      '## omk observe show',
-      '## omk sample',
-      '## omk studio',
-    ];
     for (const h of expectedHeaders) {
       assert.ok(body.includes(`\n${h}\n`), `marker body missing H2 header "${h}"`);
     }

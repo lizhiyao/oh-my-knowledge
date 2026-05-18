@@ -1,5 +1,9 @@
 /**
- * omk CLI 14 个 oclif Command 的 typed args / flags interface 集中模块。
+ * omk CLI 各个 oclif Command 的 typed args / flags interface 集中模块。
+ *
+ * 当前覆盖 13 个真正吃 typed parse 的命令 — `eval gold` topic 是只打 help 的 shim,
+ * 不进入业务,所以这里没给它定义专门的 interface;加新 Command 时跟着 oclif 文件
+ * 一起补对应 interface。
  *
  * 用途:
  * - oclif Command 静态 `flags = { ... }` 通过 `Flags.xxx()` 声明,但 `this.parse(X)`
@@ -15,12 +19,20 @@
  *
  * Flag 类型映射约定:
  * - `Flags.boolean({ default: false })` → `boolean`
+ * - `Flags.boolean({})`(无 default)→ `boolean | undefined`(保留三态)
  * - `Flags.string({})` → `string | undefined`
  * - `Flags.string({ default: 'x' })` → `string`(因 default 让它非 undefined)
  * - `Flags.string({ required: true })` → `string`
  * - lang 字段统一 `Lang`(`'zh' | 'en'`),业务侧不读 oclif `flags.lang`(它会被
  *   `default: 'zh'` 盖掉 `OMK_LANG=en` 环境变量),而走 `resolveLang(process.argv)`,
  *   优先级 `--lang CLI flag > OMK_LANG env > zh`。
+ *
+ * 三态 boolean 注意:oclif 对 `Flags.boolean({})`(没 `default`)运行时不会塞 `false`,
+ * 而是字段缺失,字段读出来是 `undefined`。这点对 `eval` 跟 `parseRunConfig()` fallback
+ * 关键 — `undefined`(CLI 没传)走 `eval.yaml` config / 内置 default;`false`(显式
+ * `--no-xxx`)真的关。如果在 interface 里把它标成 `boolean`,后续维护者按类型读
+ * `flags.bootstrap` 会静默把「没传」当成「关」,绕开 config fallback。所以未设
+ * `default: false` 的 boolean 必须在 interface 里标成可选(`field?: boolean`)。
  */
 
 export type Lang = 'zh' | 'en';
@@ -65,38 +77,42 @@ export interface EvalFlags {
   executor?: string;
   'judge-models'?: string;
   'output-dir'?: string;
-  'no-judge': boolean;
-  'no-cache': boolean;
-  'dry-run': boolean;
+  // 下面 17 个 boolean 都没在 Eval Command 上设 `default: false`,oclif 运行时
+  // absent → undefined,业务在 parseRunConfig() / runEval() 里靠 undefined vs
+  // boolean 的三态区分 CLI 没传 vs 显式开关 vs 走 eval.yaml fallback;不能简化
+  // 成 `boolean`,会让维护者直接读 flags.X 时悄悄覆盖 config fallback。
+  'no-judge'?: boolean;
+  'no-cache'?: boolean;
+  'dry-run'?: boolean;
   concurrency?: string;
   timeout?: string;
-  batch: boolean;
-  'skip-connectivity': boolean;
-  'skip-doctor': boolean;
+  batch?: boolean;
+  'skip-connectivity'?: boolean;
+  'skip-doctor'?: boolean;
   'mcp-config'?: string;
-  'no-serve': boolean;
-  verbose: boolean;
+  'no-serve'?: boolean;
+  verbose?: boolean;
   retry?: string;
   resume?: string;
-  'layered-stats': boolean;
-  'strict-baseline': boolean;
-  'no-strict-baseline': boolean;
+  'layered-stats'?: boolean;
+  'strict-baseline'?: boolean;
+  'no-strict-baseline'?: boolean;
   effort?: string;
-  'no-diagnostic': boolean;
-  blind: boolean;
+  'no-diagnostic'?: boolean;
+  blind?: boolean;
   repeat?: string;
   'judge-repeat'?: string;
-  bootstrap: boolean;
+  bootstrap?: boolean;
   'bootstrap-samples'?: string;
   'gold-dir'?: string;
-  'no-debias-length': boolean;
+  'no-debias-length'?: boolean;
   'budget-usd'?: string;
   'budget-per-sample-usd'?: string;
   'budget-per-sample-ms'?: string;
   threshold?: string;
   'trivial-diff'?: string;
-  'report-only': boolean;
-  'no-gate': boolean;
+  'report-only'?: boolean;
+  'no-gate'?: boolean;
 }
 
 // ── evolve ────────────────────────────────────────────────────────────────────
