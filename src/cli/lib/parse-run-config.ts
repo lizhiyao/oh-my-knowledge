@@ -1,19 +1,17 @@
-import { type ParseArgsConfig } from 'node:util';
 import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync } from 'node:fs';
-import { discoverVariants, parseVariantCwd } from '../inputs/skill-loader.js';
+import { discoverVariants, parseVariantCwd } from '../../inputs/skill-loader.js';
 import { CliExit } from './cli-exit.js';
-import { parseArgsStrictOrExit } from './parse-strict.js';
-import { loadEvalConfig, configVariantsToSpecs } from '../inputs/eval-config.js';
-import { DEFAULT_MODEL } from '../executors/shared.js';
+import { loadEvalConfig, configVariantsToSpecs } from '../../inputs/eval-config.js';
+import { DEFAULT_MODEL } from '../../executors/shared.js';
 import type {
   EvalConfig,
   VariantSpec,
   JudgeConfig,
   EvalBudget,
   ProgressCallback,
-} from '../types/index.js';
+} from '../../types/index.js';
 
 export interface RunConfig {
   samplesPath: string;
@@ -132,56 +130,6 @@ export function parseJudgeModelsArgOrExit(raw: string): JudgeConfig[] {
 }
 
 /**
- * 所有子命令都接受的通用 flag。
- */
-export const COMMON_OPTIONS: ParseArgsConfig['options'] = {
-  lang: { type: 'string' },
-};
-
-// Shared CLI options for run/ci commands.
-// Defaults are applied inside parseRunConfig (after config-file merge) so that
-// CLI `undefined` can be reliably distinguished from "user passed the default value".
-// Priority order resolved in parseRunConfig: CLI arg > --config file > hard-coded default.
-export const RUN_OPTIONS: ParseArgsConfig['options'] = {
-  ...COMMON_OPTIONS,
-  samples: { type: 'string' },
-  'skill-dir': { type: 'string' },
-  control: { type: 'string' },
-  treatment: { type: 'string' },
-  config: { type: 'string' },
-  model: { type: 'string' },
-  'judge-models': { type: 'string' },
-  'output-dir': { type: 'string' },
-  'no-judge': { type: 'boolean' },
-  'no-cache': { type: 'boolean' },
-  'dry-run': { type: 'boolean' },
-  concurrency: { type: 'string' },
-  timeout: { type: 'string' },
-  executor: { type: 'string' },
-  batch: { type: 'boolean' },
-  'skip-connectivity': { type: 'boolean' },
-  'skip-doctor': { type: 'boolean' },
-  'mcp-config': { type: 'string' },
-  'no-serve': { type: 'boolean' },
-  verbose: { type: 'boolean' },
-  retry: { type: 'string' },
-  resume: { type: 'string' },
-  'layered-stats': { type: 'boolean' },
-  // strict-baseline default true. Declare both forms; reconcile in
-  // parseRunConfig (后者赢)。strict-baseline 没传 + no-strict-baseline 没传 = default true。
-  'strict-baseline': { type: 'boolean' },
-  'no-strict-baseline': { type: 'boolean' },
-  // effort:被评测 LLM 的扩展思考预算(low/medium/high/xhigh/max)。
-  // 默认 low — 关 thinking 大幅省时间/成本。改 high 时同 prompt 同 model 输出会变,
-  // 跨 effort 报告不可严格比较(renderer 在 meta-tag 显示并打提示)。
-  effort: { type: 'string' },
-  // 诊断:对 failed sample 跑一次 LLM,产出"哪错了 + skill 怎么改"的针对性建议。
-  // 跟 --no-judge 完全独立 — 想要纯功能性视角(assertion + diagnostic 但无评分)
-  // 用 `--no-judge`;想要不跑诊断只跑评测 + judge 用 `--no-diagnostic`。
-  'no-diagnostic': { type: 'boolean' },
-};
-
-/**
  * When --samples isn't given, try to discover from `<skillDir>/<treatment>/.omk/`.
  * `loadSamples` handles dir mode internally — globs `*.{json,yaml,yml}` and merges,
  * skipping reserved prefixes (report-, health-, underscore-). No filename is special:
@@ -210,17 +158,14 @@ function discoverSamplesPath(values: Record<string, unknown>, skillDir: string):
   return cwdFile;
 }
 
+/**
+ * 接 typed flags(来自 oclif Command.parse() 输出)。oclif strict 模式已经在
+ * 上游对未知 flag 拦截 exit 2,这里不再 parseArgs。eval-runner 等业务 caller
+ * 把 oclif flags 当 values 喂进来。
+ */
 export function parseRunConfig(
-  argv: string[],
-  extraOptions: ParseArgsConfig['options'] = {},
+  values: Record<string, unknown>,
 ): ParseRunConfigResult {
-  // strict 模式: 未知 option 报错 + exit 2(已删 / 改名 flag 自然 fail,
-  // 不维护 deprecation list)。详见 src/cli/parse-strict.ts。
-  const { values } = parseArgsStrictOrExit({
-    args: argv,
-    options: { ...RUN_OPTIONS, ...extraOptions },
-  });
-
   if (values.variants !== undefined) {
     throw new Error(
       `--variants 已在 v0.16 废除，请改用 --control <expr> 与 --treatment <v1,v2,...>\n`
@@ -295,7 +240,7 @@ export function parseRunConfig(
   // 4) Apply CLI > config > hard-coded default for all other fields.
   const executorName = (values.executor as string | undefined) ?? evalConfig?.executor ?? 'claude';
   // model fallback 链:CLI > eval.yaml > DEFAULT_MODEL(opus 4.7)。
-  // 改 default 时同步更新 cli.help.eval 文案("默认：claude-opus-4-7")。
+  // 改 default 时同步 src/cli/commands/eval.ts 里 --model flag description 的默认值文案。
   const model = (values.model as string | undefined) ?? evalConfig?.model ?? DEFAULT_MODEL;
 
   // judgeModels: unified judge config. Parse --judge-models (CLI) or evalConfig.judgeModels (yaml).
@@ -363,7 +308,7 @@ export function parseRunConfig(
   const noDiagnostic = (values['no-diagnostic'] as boolean | undefined) ?? evalConfig?.noDiagnostic ?? false;
 
   return {
-    values,
+    values: values as Record<string, string | boolean | undefined>,
     config: {
       samplesPath: resolve(samplesFile),
       skillDir,

@@ -27,6 +27,8 @@ omk init my-eval && cd my-eval
 omk eval --control code-review-v1 --treatment code-review-v2    # → HTML report with verdict in 5 minutes
 ```
 
+Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users).
+
 Deeper: [use inside Claude Code / Codex](#use-inside-ai-coding-agents) · [`omk eval` flags](#omk-eval) · [artifact directory layout](#artifact-directory-layout) · [`--lang` / `OMK_LANG`](#environment-variables)
 
 ## Use inside AI Coding Agents
@@ -365,6 +367,18 @@ omk exposes a workflow CLI for knowledge artifacts. Seven top-level commands cov
 omk init [dir]
 ```
 
+<!-- omk:cli:init:flags:start -->
+
+**Flags:**
+
+```text
+  --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+```
+
+For full descriptions: `omk init --help`.
+
+<!-- omk:cli:init:flags:end -->
+
 Scaffolds an evaluation project with two starter skill variants and an `eval-samples.json` file.
 
 ### `omk doctor`
@@ -377,6 +391,26 @@ omk doctor skills/ --json > r.json      # JSON for CI / external tools
 omk doctor --gate; echo $?              # silent gate; exit 1 on fatal failures, warnings do not block
 omk doctor --static-only                # offline mode: static checks only, no LLM call
 ```
+
+<!-- omk:cli:doctor:flags:start -->
+
+**Flags:**
+
+```text
+  --executor <value>  Executor name, default claude. Pass a test fixture path to use in tests.
+  --gate              Silent mode: only emit stderr summary on fail. Exit code carries the signal.
+  --html <value>      HTML report output path. Coexists with --json / --gate.
+  --json              JSON output to stdout, for CI / external script consumption.
+  --lang <value>      Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --model <value>     LLM model name, default sonnet.
+  --samples <value>   Samples file path (.json/.yaml). Auto-detects from target / cwd if omitted.
+  --static-only       Offline static mode: only 4 static rules, no LLM call.
+  --timeout <value>   Single-session LLM timeout sec, default 600 (10 min).
+```
+
+For full descriptions: `omk doctor --help`.
+
+<!-- omk:cli:doctor:flags:end -->
 
 LLM health audit: a single LLM session emits per-dimension grades, findings, and suggestions for the 7 builtin dimensions; the HTML report sorts dimensions fail→warn→pass→skipped with errors first within each dim. Dimensions are extensible — call `registerHealthDimension` in your own code and the new section is folded into the same LLM call's prompt and report (order = registration order).
 
@@ -396,35 +430,58 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
 
 Runs the offline evaluation, applies the verdict gate, persists the report, and returns a ship/no-ship exit code. Bootstrap CI is enabled by default on this workflow.
 
-Common options:
+<!-- omk:cli:eval:flags:start -->
+
+**Flags:**
 
 ```text
-  --samples <path>       sample file (default: eval-samples.json, also detects .yaml/.yml; auto-discovers <skill>/.omk/samples.json under --skill-dir)
-  --skill-dir <path>     artifact dir (default: skills)
-  --control <expr>       control variant expression
-  --treatment <v1,v2>    treatment variants, comma-separated
-  --config <path>        YAML/JSON evaluation config
-  --model <name>         task execution model (default: opus alias)
-  --effort <level>       reasoning effort for executor LLM: low/medium/high/xhigh/max (default: low; reports across efforts not strictly comparable)
-  --judge-models <list>  judge config, e.g. claude:haiku or claude:opus,openai:gpt-4o
-  --executor <name>      claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom
-  --no-judge             skip LLM judge subjective scoring
-  --no-diagnostic        skip the diagnostic LLM call (default: on; emits "what went wrong + how to fix" advice for failed samples)
-  --skip-doctor          escape hatch: bypass the doctor health-check gate (default: on). Use when sandbox mocks supply deps and doctor's path/env checks misfire; caller owns garbage-in risk
-  --dry-run              preview only
-  --blind                blind A/B mode
-  --concurrency <n>      parallel tasks
-  --timeout <sec>        per-task timeout
-  --repeat <n>           repeat N times for variance analysis
-  --batch                evaluate each artifact independently vs baseline
-  --bootstrap-samples N  bootstrap resample count (default 1000)
-  --threshold <number>   verdict layer-gate threshold (default 3.5)
-  --trivial-diff <num>   practically tiny diff cutoff (default 0.1)
-  --report-only          produce the report and print verdict, but always exit 0
-  --no-gate              alias for --report-only
-  --skip-connectivity    skip model connectivity check (internal static gates still run)
-  --no-serve             do not auto-start the report server after evaluation
+  --batch                         Batch mode: baseline vs each skill
+  --blind                         Blind judge mode
+  --bootstrap                     Add bootstrap CI
+  --bootstrap-samples <value>     Bootstrap resamples, default 1000
+  --budget-per-sample-ms <value>  Per-sample time cap ms
+  --budget-per-sample-usd <value> Per-sample budget cap USD
+  --budget-usd <value>            Total budget cap USD
+  --concurrency <value>           Concurrency, default 1
+  --config <value>                eval.yaml path
+  --control <value>               Control variant expr
+  --dry-run                       Plan only, no real exec
+  --effort <value>                Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).
+  --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom (default claude).
+  --gold-dir <value>              Gold dataset dir
+  --judge-models <value>          Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.
+  --judge-repeat <value>          Judge each dim N times
+  --lang <value>                  Output language zh|en
+  --layered-stats                 Emit layered stats
+  --mcp-config <value>            MCP config path
+  --model <value>                 Evaluated model
+  --no-cache                      Skip executor cache
+  --no-debias-length              Disable length-debias (default on)
+  --no-diagnostic                 Disable diagnostic LLM call (on by default; emits "what went wrong + how to fix" advice for failed samples).
+  --no-gate                       Disable verdict gate
+  --no-judge                      Skip LLM judge
+  --no-serve                      Do not start report server
+  --no-strict-baseline            Disable baseline isolation
+  --output-dir <value>            Report output dir
+  --repeat <value>                Repeat each sample N times
+  --report-only                   Produce the report and print verdict, but always exit 0 (no CI gate).
+  --resume <value>                Resume a previous failed run
+  --retry <value>                 Per-sample retry count
+  --samples <value>               Samples file path. Defaults to eval-samples.json (also .yaml/.yml); auto-discovers <skill>/.omk/samples.json under --skill-dir.
+  --skill-dir <value>             Skill dir, default skills
+  --skip-connectivity             Skip LLM connectivity preflight
+  --skip-doctor                   Escape hatch: skip the doctor health-check gate (on by default). Use when sandbox mocks supply deps; caller owns garbage-in risk.
+  --strict-baseline               Force baseline isolation (default true)
+  --threshold <value>             Verdict threshold, default 3.5
+  --timeout <value>               Per-sample timeout sec, default 120
+  --treatment <value>             Treatment variants, comma-separated
+  --trivial-diff <value>          Trivial diff tolerance
+  --verbose                       Verbose logging
 ```
+
+For full descriptions: `omk eval --help`.
+
+<!-- omk:cli:eval:flags:end -->
 
 The HTML report has two tabs:
 - **📊 Score view** — the verdict-driven A/B comparison (fact / behavior / judge layers, bootstrap CI, length-debias).
@@ -444,6 +501,24 @@ omk observe ~/.claude/projects/my-project --skills audit,polish
 omk observe ~/.claude/projects/my-project --kb /path/to/project
 ```
 
+<!-- omk:cli:observe:flags:start -->
+
+**Flags:**
+
+```text
+  --from <value>        Start time ISO, overrides --last
+  --kb <value>          KB root, enables KB-aware analysis
+  --lang <value>        Output language zh|en
+  --last <value>        Time window (7d / 24h / 30m)
+  --output-dir <value>  Analysis output directory
+  --skills <value>      Filter to specific skills, comma-separated
+  --to <value>          End time ISO
+```
+
+For full descriptions: `omk observe --help`.
+
+<!-- omk:cli:observe:flags:end -->
+
 Turns real Claude Code session traces into skill-health reports: knowledge usage, gap signals, execution stability, tokens, and latency. This is production observation, not production scoring.
 
 #### B. observe inbox: reviewer loop
@@ -462,6 +537,7 @@ omk observe inbox --skill audit                    # filter by skill
 omk observe inbox --by-skill                       # rollup view (one row per skill)
 omk observe inbox --explore 10                     # sample 10 long-tail items from medium/low
 omk observe inbox --explore 10 --include-noise     # explicitly include the noise bucket
+omk observe inbox --skill-extract                  # run LLM soft-standard extraction explicitly
 omk observe inbox --json                           # JSON output for automation
 
 # 3. Inspect a single observation with its event triplet (surrounding messages)
@@ -477,12 +553,61 @@ Every observation carries:
 
 Supported trace formats: Claude Code session JSONL (`.jsonl`), OpenClaw session JSONL (`.jsonl`), and markdown conversation logs (`.log`).
 
+### `omk skill-extract`
+
+```bash
+omk skill-extract demo-create --review soft-xxx --status author_confirmed
+omk skill-extract demo-create --review soft-xxx --status rejected --reason "not a real standard"
+```
+
+<!-- omk:cli:skill-extract:flags:start -->
+
+**Flags:**
+
+```text
+  --input-dir <value>  Observation data directory
+  --json               JSON output
+  --lang <value>       Output language zh|en
+  --reason <value>     Manual review reason
+  --review <value>     Soft standard id to review
+  --status <value>     Review status: author_confirmed / rejected / pending_review
+```
+
+For full descriptions: `omk skill-extract --help`.
+
+<!-- omk:cli:skill-extract:flags:end -->
+
 ### `omk evolve`
 
 ```bash
 omk evolve <skill>                  # multi-round auto-iteration on a skill
 omk evolve skills/foo.md --rounds 10 --target 4.5
 ```
+
+<!-- omk:cli:evolve:flags:start -->
+
+**Flags:**
+
+```text
+  --concurrency <value>    Eval concurrency, default 1
+  --effort <value>         Reasoning effort: low/medium/high/xhigh/max
+  --executor <value>       Executor name, default claude
+  --improve-model <value>  LLM that rewrites the skill, default sonnet
+  --judge-models <value>   Judge model (single judge required), executor:model format. Default claude:haiku
+  --lang <value>           Output language zh|en
+  --model <value>          Evaluated LLM, default sonnet
+  --no-diagnostic          Disable diagnostic LLM call
+  --rounds <value>         Max iteration rounds, default 5
+  --samples <value>        Samples file, default eval-samples.json
+  --skip-connectivity      Skip LLM connectivity preflight
+  --skip-doctor            Skip doctor gate (escape hatch; user takes garbage-in risk)
+  --target <value>         Target composite score; stop when reached. If omitted, runs all rounds.
+  --timeout <value>        Per-sample timeout sec, default 120
+```
+
+For full descriptions: `omk evolve --help`.
+
+<!-- omk:cli:evolve:flags:end -->
 
 Auto-iterates a skill through repeated eval → judge → rewrite loops until it hits `--target` or exhausts `--rounds`. Cost scales with `rounds × samples × variants`; a typical run takes minutes to tens of minutes. Original skill files are versioned under `skills/evolve/*.r0.md`.
 
@@ -492,6 +617,26 @@ Auto-iterates a skill through repeated eval → judge → rewrite loops until it
 omk sample <skill>                  # generate or fill eval-samples test cases for one skill
 omk sample --batch                  # generate for skills missing eval-samples
 ```
+
+<!-- omk:cli:sample:flags:start -->
+
+**Flags:**
+
+```text
+  --batch                Batch mode: scan --skill-dir, generate samples for any skill missing them.
+  --count <value>        Number of samples to generate. Defaults to LLM auto-selection by skill type.
+  --fix                  Fix mode: auto-fix sample_design failures using the latest eval report.
+  --focus <value>        Generation focus (NL hint). Steers LLM toward certain sample types.
+  --lang <value>         Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --model <value>        Generation LLM model name, default opus.
+  --reports-dir <value>  Reports dir (fix mode), default ~/.oh-my-knowledge/reports.
+  --skill-dir <value>    Skill root dir, default skills. Used by batch mode.
+  --treatment <value>    Treatment name (fix mode), defaults to skill-path inference.
+```
+
+For full descriptions: `omk sample --help`.
+
+<!-- omk:cli:sample:flags:end -->
 
 One-shot generation. Auto-stamps `provenance` on generated cases. Generated assertions use English, numbers, or code tokens so they compare cleanly across bilingual outputs.
 
@@ -505,6 +650,25 @@ omk studio --reports-dir ~/.oh-my-knowledge/reports
 omk studio --observations-dir .omk/observations    # observe inbox data directory
 omk studio --no-open
 ```
+
+<!-- omk:cli:studio:flags:start -->
+
+**Flags:**
+
+```text
+  --analyses-dir <value>      Analyses dir (optional)
+  --dev                       Dev mode: child process with hot reload
+  --host <value>              Listen host, default localhost. Use 0.0.0.0 to expose to LAN
+  --lang <value>              Output language zh|en
+  --no-open                   Do not auto-open browser
+  --observations-dir <value>  Observations dir (optional)
+  --port <value>              Listen port, default 7799. Pass 0 for OS-assigned
+  --reports-dir <value>       Reports dir, default ~/.oh-my-knowledge/reports
+```
+
+For full descriptions: `omk studio --help`.
+
+<!-- omk:cli:studio:flags:end -->
 
 Starts the local knowledge workbench for browsing reports and observation analyses. Verdict, sample diffs, regressions, saturation curves, and per-sample drill-downs all live in the studio UI — there is no CLI export / analysis subcommand. For CI gates, use `omk eval`'s exit code (0 on `PROGRESS`, non-zero otherwise) or `jq` over the report JSON.
 

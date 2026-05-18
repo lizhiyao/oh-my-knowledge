@@ -138,36 +138,34 @@ async function writeProductTreeReport(reportsDir: string): Promise<string> {
 
 describe('CLI', () => {
   it('--help shows usage', async () => {
+    // omk --help 走 oclif,COMMANDS / TOPICS 列出 7 个产品命令。
     const { stdout } = await execFileAsync('node', [CLI, '--help']);
     assert.ok(stdout.includes('oh-my-knowledge'));
-    assert.ok(stdout.includes('omk doctor'));
-    assert.ok(stdout.includes('omk eval'));
-    assert.ok(stdout.includes('omk observe'));
-    assert.ok(stdout.includes('omk evolve'));
-    assert.ok(stdout.includes('omk sample'));
-    assert.ok(stdout.includes('omk studio'));
-    assert.ok(!stdout.includes('omk export'));
-    assert.ok(!stdout.includes('omk improve'));
-    assert.ok(!stdout.includes(['omk', 'bench', 'run'].join(' ')));
+    assert.ok(/COMMANDS|TOPICS/i.test(stdout), 'should have oclif COMMANDS / TOPICS block');
+    assert.ok(stdout.includes('doctor'));
+    assert.ok(stdout.includes('eval'));
+    assert.ok(stdout.includes('observe'));
+    assert.ok(stdout.includes('evolve'));
+    assert.ok(stdout.includes('sample'));
+    assert.ok(stdout.includes('studio'));
+    assert.ok(!stdout.includes('export '));
+    assert.ok(!stdout.includes('improve '));
+    assert.ok(!stdout.includes('bench '));
   });
 
-  it('eval --help shows workflow usage without parsing run config', async () => {
+  it('eval --help shows workflow usage', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'eval', '--help']);
-    assert.ok(stdout.includes('omk eval'));
+    assert.ok(stdout.includes('\nUSAGE\n'), 'should have oclif USAGE block');
     assert.ok(stdout.includes('--batch'));
     assert.ok(stdout.includes('--report-only'));
     assert.ok(stdout.includes('--no-gate'));
-    assert.ok(stdout.includes('omk eval gold'));
-    assert.ok(!stdout.includes('omk eval debias'));
-    assert.ok(!stdout.includes(['--', 'each'].join('')));
   });
 
   it('init --help shows scaffold-specific usage', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'init', '--help']);
-    assert.ok(stdout.includes('omk init'));
-    assert.ok(stdout.includes('eval-samples.json'));
-    assert.ok(stdout.includes('skills/code-review-v1/SKILL.md'));
-    assert.ok(!stdout.includes('omk doctor'));
+    assert.ok(stdout.includes('\nUSAGE\n'), 'should have oclif USAGE block');
+    assert.ok(stdout.includes('init'));
+    assert.ok(/TARGETDIR/i.test(stdout), 'should show TARGETDIR positional');
   });
 
   it('second-level --help routes to subcommand usage', async () => {
@@ -238,21 +236,15 @@ describe('CLI', () => {
     assert.ok(stdout.includes('omk eval'));
   });
 
-  it('unknown domain exits with error (--lang en)', async () => {
+  it('unknown command exits 1 with command-not-found message', async () => {
+    // oclif 的 unknown command 信号是 stderr 含 "not found"。
+    // exit 1（package.json oclif.exitCodes.default=1）。
     await assert.rejects(
-      () => execFileAsync('node', [CLI, 'unknown', '--lang', 'en']),
+      () => execFileAsync('node', [CLI, 'unknown-domain-xyz']),
       (err: unknown) => {
-        assert.ok((err as { stderr: string }).stderr.includes('Unknown command'));
-        return true;
-      },
-    );
-  });
-
-  it('unknown domain in zh (default) prints 中文', async () => {
-    await assert.rejects(
-      () => execFileAsync('node', [CLI, 'unknown']),
-      (err: unknown) => {
-        assert.ok((err as { stderr: string }).stderr.includes('未知命令'));
+        const e = err as ExecError;
+        assert.equal(e.code, 1);
+        assert.ok(/not found|未知命令/i.test(e.stderr), `stderr should signal command not found: ${e.stderr}`);
         return true;
       },
     );
@@ -262,7 +254,9 @@ describe('CLI', () => {
     await assert.rejects(
       () => execFileAsync('node', [CLI, 'bench', '--help']),
       (err: unknown) => {
-        assert.ok((err as { stderr: string }).stderr.includes('未知命令'));
+        const e = err as ExecError;
+        assert.equal(e.code, 1);
+        assert.ok(/not found|未知命令/i.test(e.stderr));
         return true;
       },
     );
@@ -272,7 +266,9 @@ describe('CLI', () => {
     await assert.rejects(
       () => execFileAsync('node', [CLI, 'analyze', '--help']),
       (err: unknown) => {
-        assert.ok((err as { stderr: string }).stderr.includes('未知命令'));
+        const e = err as ExecError;
+        assert.equal(e.code, 1);
+        assert.ok(/not found|未知命令/i.test(e.stderr));
         return true;
       },
     );

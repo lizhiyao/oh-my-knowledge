@@ -1,5 +1,5 @@
-import { CliExit } from '../cli-exit.js';
-import { tCli, type CliLang } from '../i18n.js';
+import { CliExit } from './cli-exit.js';
+import { tCli, type CliLang } from './i18n.js';
 import type { EvaluationReport, ReportDocument } from '../../types/index.js';
 
 export interface EvalResult {

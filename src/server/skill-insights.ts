@@ -23,6 +23,7 @@
  */
 import type { EvaluationReport, VariantResult, ToolCallInfo } from '../types/index.js';
 import type { SkillIndexEntry, SkillDoctorSnapshot, SkillObserveSnapshot, SkillEvalSnapshot } from './skill-index.js';
+import { isActiveDiagnosisLifecycle, type Diagnosis, type DiagnosisAudience, type DiagnosisSeverity, type DiagnosisType } from '../diagnosis/types.js';
 
 export type InsightCategory =
   | 'environment-blocked-mocks'
@@ -101,6 +102,14 @@ export interface Insight {
   recommendations: InsightRecommendation[];
   /** 关联到 timeline 哪些阶段元素 — renderer 据此在阶段卡内插入 #N 徽章。 */
   stageRefs?: InsightStageRefs;
+}
+
+export interface DetectInsightsOptions {
+  /**
+   * Diagnosis 是 observe 侧迁移后的主数据源。传入该字段时,observe 相关 insight
+   * 从 Diagnosis 投影,不再从 entry.observe 重复推断,避免维护者新增规则时双写。
+   */
+  diagnostics?: Diagnosis[];
 }
 
 // ────────── helpers ──────────
@@ -765,15 +774,120 @@ export const skillAntiPatternComposer: ComposerRule = {
 
 const SEVERITY_RANK: Record<InsightSeverity, number> = { high: 3, medium: 2, low: 1 };
 
+function insightSeverityFromDiagnosis(severity: DiagnosisSeverity): InsightSeverity {
+  if (severity === 'high') return 'high';
+  if (severity === 'medium') return 'medium';
+  return 'low';
+}
+
+function insightAudienceFromDiagnosis(audience: DiagnosisAudience): InsightAudience {
+  if (audience === 'sample-author') return 'sample-author';
+  if (audience === 'omk-maintainer') return 'omk-maintainer';
+  return 'skill-author';
+}
+
+function insightCategoryFromDiagnosis(type: DiagnosisType, signal: string): InsightCategory {
+  if (type === 'definition_gap' || type === 'standard_candidate') return 'skill-doc-gap';
+  if (type === 'eval_failure') return 'failure-mode-skill';
+  if (type === 'sample_design_issue') return 'environment-blocked-mocks';
+  if (type === 'doctor_gap') return 'omk-doctor-blindspot';
+  if (type === 'user_feedback_pattern') return 'production-instability';
+  // runtime_issue:运行时执行偏差,signal 子串里能拆出 coverage/gap → coverage-gap,
+  // 工具失败 → production-instability,其它兜底为 production-instability(runtime 偏差对用户来说
+  // 最终都体现为生产稳定性)。
+  if (type === 'runtime_issue') {
+    if (signal.includes('gap') || signal.includes('coverage')) return 'coverage-gap';
+    return 'production-instability';
+  }
+  // maintenance_issue:omk 维护者侧问题(judge / executor / 工具链等),归到 doctor 盲点。
+  if (type === 'maintenance_issue') return 'omk-doctor-blindspot';
+  return 'other';
+}
+
+function patchTargetFromDiagnosis(target: NonNullable<Diagnosis['patch']>['target']): InsightPatch['target'] {
+  if (target === 'definition') return 'skill';
+  return target;
+}
+
+function projectDiagnosisToInsight(diagnosis: Diagnosis): Insight {
+  const severity = insightSeverityFromDiagnosis(diagnosis.severity);
+  const recommendations: InsightRecommendation[] = [];
+  if (diagnosis.recommendation || diagnosis.patch) {
+    recommendations.push({
+      action: diagnosis.recommendation ?? diagnosis.command ?? '查看诊断证据并修正对应定义',
+      priority: severity,
+      ...(diagnosis.patch ? {
+        patch: {
+          target: patchTargetFromDiagnosis(diagnosis.patch.target),
+          location: diagnosis.patch.location,
+          snippet: diagnosis.patch.snippet,
+        },
+      } : {}),
+    });
+  }
+  if (diagnosis.command && !recommendations.some((r) => r.action === diagnosis.command)) {
+    recommendations.push({ action: diagnosis.command, priority: severity });
+  }
+
+  return {
+    id: `diagnosis:${diagnosis.id}`,
+    category: insightCategoryFromDiagnosis(diagnosis.type, diagnosis.signal),
+    audience: insightAudienceFromDiagnosis(diagnosis.audience),
+    title: diagnosis.title,
+    description: diagnosis.summary ?? diagnosis.evidenceSummary,
+    severity,
+    affectedCount: diagnosis.occurrenceCount,
+    stageRefs: { observeRefs: [diagnosis.signal] },
+    evidence: [{
+      perspective: 'observe',
+      status: 'flagged',
+      message: diagnosis.evidenceSummary ?? diagnosis.summary ?? diagnosis.title,
+      ref: diagnosis.occurrences[0]?.sourceId ?? diagnosis.stableKey,
+    }],
+    recommendations,
+  };
+}
+
+export function projectDiagnosticsToInsights(diagnostics: Diagnosis[]): Insight[] {
+  return diagnostics
+    .filter((diagnosis) => isActiveDiagnosisLifecycle(diagnosis.lifecycle))
+    .map(projectDiagnosisToInsight)
+    .sort((a, b) => {
+      const sa = SEVERITY_RANK[a.severity];
+      const sb = SEVERITY_RANK[b.severity];
+      if (sa !== sb) return sb - sa;
+      return b.affectedCount - a.affectedCount;
+    });
+}
+
 export function detectInsights(
   entry: SkillIndexEntry,
   evalReport: EvaluationReport | null,
+  options: DetectInsightsOptions = {},
 ): Insight[] {
   // entry.eval.variantName 是当前 skill entry 对应的 treatment variant 名;
   // multi-treatment 报告里同一份 evalReport 会被 N 个 entry 共用,每个 entry 都该
   // 只看自己 variant 那部分数据,否则 /skills/<treatment-2> 会看到 treatment-1 的
   // failureModes / coverage / illustrations / verdict。
   const variantName = entry.eval?.variantName ?? null;
+  // Dual-run 期间不做去重 — legacy detector + Diagnosis 投影都跑。原因:
+  //
+  // 1. InsightCategory 是呈现层分类,不是数据源等价语义。`runtime_workflow_review`
+  //    Diagnosis 投影后 category 是 `production-instability`,但它跟 legacy
+  //    `detectProductionInstability` 读的 `entry.observe.failureRate >= 0.4` 不等价 —
+  //    按 category 去重会误关 SkillHealthReport 信号。`definition_gap` → `skill-doc-gap`
+  //    同理:legacy detectSkillDocGap 还会吃 doctor dependency / eval sample 失败证据,
+  //    Diagnosis 没替代这部分。
+  //
+  // 2. legacy id 是固定字符串(`production-instability` 等),Diagnosis 投影 id 是
+  //    `diagnosis:<hash>`,二者不冲突,UI 同时显示「来自 observe inbox 的具体 runtime
+  //    警告」+「来自 SkillHealthReport 的高失败率聚合」对用户也合理 —— 两条不同数据源。
+  //
+  // 等 doctor / eval producer 也迁成 Diagnosis、`DiagnosisBundle.sourceCoverage` 完整后,
+  // 单独 PR 引入基于 stable target / source 的精确去重(不再用 category 这种粗粒度)。
+  const diagnosisInsights = options.diagnostics?.length
+    ? projectDiagnosticsToInsights(options.diagnostics)
+    : [];
   const out: Insight[] = [];
   const detectors: Array<() => Insight | null> = [
     () => detectEnvironmentBlocked(evalReport, variantName),
@@ -788,6 +902,7 @@ export function detectInsights(
     const ins = detect();
     if (ins) out.push(ins);
   }
+  out.push(...diagnosisInsights);
   out.sort((a, b) => {
     const sa = SEVERITY_RANK[a.severity];
     const sb = SEVERITY_RANK[b.severity];

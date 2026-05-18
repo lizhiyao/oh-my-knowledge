@@ -1,0 +1,74 @@
+/**
+ * assessHealth — Diagnosis-only skill 的健康等级判定。
+ *
+ * 重点覆盖:三大维度(doctor / eval / observe)都没跑过时,如果 insights 含
+ * high/medium 信号(来自 Diagnosis 投影),卡片不应该落到灰色「未评估」,
+ * 否则只跑了 observe ingest 拿到 `skill_md_not_found` 的 skill 会被红色筛选
+ * 漏掉。
+ */
+import { describe, it } from 'vitest';
+import assert from 'node:assert/strict';
+import { assessHealth } from '../../src/renderer/skill-detail-renderer.js';
+import type { SkillIndexEntry } from '../../src/server/skill-index.js';
+import type { Insight } from '../../src/server/skill-insights.js';
+
+function mkEntry(overrides: Partial<SkillIndexEntry> = {}): SkillIndexEntry {
+  return {
+    skillName: 'test-skill',
+    doctor: null,
+    eval: null,
+    observe: null,
+    doctorHistory: [],
+    evalHistory: [],
+    observeHistory: [],
+    band: 'gray',
+    ...overrides,
+  };
+}
+
+function mkInsight(severity: Insight['severity'], id = 'i1'): Insight {
+  return {
+    id,
+    category: 'skill-doc-gap',
+    audience: 'skill-author',
+    title: 't',
+    severity,
+    affectedCount: 1,
+    evidence: [],
+    recommendations: [],
+  };
+}
+
+describe('assessHealth — Diagnosis-only skill', () => {
+  it('三大维度都没跑 + 有 high insight → red,不再落灰色', () => {
+    const h = assessHealth(mkEntry(), [mkInsight('high')], 'zh');
+    assert.equal(h.grade, 'unhealthy');
+    assert.equal(h.color, 'red');
+    assert.equal(h.score, null);
+  });
+
+  it('三大维度都没跑 + 只有 medium insight → yellow', () => {
+    const h = assessHealth(mkEntry(), [mkInsight('medium')], 'zh');
+    assert.equal(h.grade, 'fair');
+    assert.equal(h.color, 'yellow');
+    assert.equal(h.score, null);
+  });
+
+  it('三大维度都没跑 + 只有 low insight → 仍然 unscored', () => {
+    const h = assessHealth(mkEntry(), [mkInsight('low')], 'zh');
+    assert.equal(h.grade, 'unscored');
+    assert.equal(h.color, 'gray');
+  });
+
+  it('三大维度都没跑 + insights 完全为空 → unscored', () => {
+    const h = assessHealth(mkEntry(), [], 'zh');
+    assert.equal(h.grade, 'unscored');
+    assert.equal(h.color, 'gray');
+  });
+
+  it('EN 文案也走对应分支', () => {
+    const h = assessHealth(mkEntry(), [mkInsight('high')], 'en');
+    assert.equal(h.grade, 'unhealthy');
+    assert.equal(h.label, 'Unhealthy');
+  });
+});

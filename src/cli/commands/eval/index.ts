@@ -1,11 +1,20 @@
-import { CliExit } from '../cli-exit.js';
-import { tCli, langFromArgv } from '../i18n.js';
-import { parseRunConfig } from '../parse-run-config.js';
-import { makeOnProgress } from '../progress.js';
-import { computeRunTally } from '../run-tally.js';
-import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback } from '../../types/index.js';
-import type { DryRunBatchReport, DryRunReport } from '../../eval-workflows/run-evaluation.js';
-import type { EvalResult, ReportServer } from './_shared.js';
+import { Command, Flags } from '@oclif/core';
+import { bilingual, resolveLang } from '../../oclif/i18n.js';
+import { CliExit } from '../../lib/cli-exit.js';
+import { tCli, type CliLang } from '../../lib/i18n.js';
+import { parseRunConfig } from '../../lib/parse-run-config.js';
+import { makeOnProgress } from '../../lib/progress.js';
+import { computeRunTally } from '../../lib/run-tally.js';
+import type { EvalArgs, EvalFlags } from '../../lib/cmd-flags.js';
+import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback } from '../../../types/index.js';
+import type { DryRunBatchReport, DryRunReport } from '../../../eval-workflows/run-evaluation.js';
+import type { EvalResult, ReportServer } from '../../lib/shared.js';
+
+// oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
+// 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
+//
+// `omk eval gold ...` 由 src/cli/oclif/commands/eval/gold/{init,validate,compare}.ts
+// 处理,oclif 文件目录路由自动接管,不进 eval.ts。
 
 interface SkillProgressInfo {
   phase: string;
@@ -20,7 +29,6 @@ interface RepeatProgressInfo {
 }
 
 type ParsedValues = Record<string, string | boolean | undefined>;
-type CliLang = 'zh' | 'en';
 
 function isDryRunReport(report: unknown): report is DryRunReport {
   return Boolean(report && typeof report === 'object' && (report as { dryRun?: unknown }).dryRun === true);
@@ -57,7 +65,7 @@ function applyGateExitCode(code: number, values: ParsedValues, lang: CliLang): n
 }
 
 async function emitEvaluationVerdict(report: EvaluationReport, values: ParsedValues): Promise<number> {
-  const { computeVerdict, formatVerdictText } = await import('../../eval-core/verdict.js');
+  const { computeVerdict, formatVerdictText } = await import('../../../eval-core/verdict.js');
   const result = computeVerdict(report, verdictOptions(values));
   console.log(formatVerdictText(result, { verbose: true }));
   return verdictPasses(result.level, result.headline) ? 0 : 1;
@@ -88,7 +96,7 @@ async function loadBatchChildReports(
   reportsDir: string,
   lang: CliLang,
 ): Promise<EvaluationReport[]> {
-  const { createFileStore } = await import('../../server/report-store.js');
+  const { createFileStore } = await import('../../../server/report-store.js');
   const store = createFileStore(reportsDir);
   const reports: EvaluationReport[] = [];
   for (const item of batch.items) {
@@ -109,7 +117,7 @@ async function emitBatchVerdict(
   values: ParsedValues,
   lang: CliLang,
 ): Promise<number> {
-  const { computeVerdict } = await import('../../eval-core/verdict.js');
+  const { computeVerdict } = await import('../../../eval-core/verdict.js');
   const childReports = await loadBatchChildReports(report, reportsDir, lang);
   const results = childReports.map((child) => ({
     id: child.id,
@@ -152,7 +160,7 @@ async function announceSavedReport({
   process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
 
   if (!values['no-serve'] && process.stdout.isTTY) {
-    const { createReportServer } = await import('../../server/report-server.js');
+    const { createReportServer } = await import('../../../server/report-server.js');
     const server: ReportServer = createReportServer({ reportsDir });
     const serverUrl: string = await server.start();
     const reportUrl: string = `${serverUrl}/reports/${report.id}`;
@@ -170,36 +178,20 @@ async function announceSavedReport({
   }
 }
 
-export async function execute(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  // 注: 这里**不**给 parseArgs default 值, 否则 values.xxx 永远不为 undefined,
-  // CLI > eval.yaml > hardcoded-default 三级 fallback 区分不开 ("用户没传" vs "用户传了等于 default 值")。
-  // hardcoded default 在下面处理 undefined 时显式给。
-  const { values, config, evalConfig } = parseRunConfig(argv, {
-    blind: { type: 'boolean' },
-    repeat: { type: 'string' },
-    'judge-repeat': { type: 'string' },
-    bootstrap: { type: 'boolean' },
-    'bootstrap-samples': { type: 'string' },
-    'gold-dir': { type: 'string' },
-    'no-debias-length': { type: 'boolean' },
-    'budget-usd': { type: 'string' },
-    'budget-per-sample-usd': { type: 'string' },
-    'budget-per-sample-ms': { type: 'string' },
-    threshold: { type: 'string', default: '3.5' },
-    'trivial-diff': { type: 'string' },
-    'report-only': { type: 'boolean' },
-    'no-gate': { type: 'boolean' },
-  });
+async function runEval(
+  _args: EvalArgs,
+  flags: EvalFlags,
+  lang: CliLang,
+): Promise<void> {
+  const { values, config, evalConfig } = parseRunConfig({ ...flags } as Record<string, unknown>);
 
-  const { runEvaluation, runMultiple, runBatchEvaluation } = await import('../../eval-workflows/run-evaluation.js');
+  const { runEvaluation, runMultiple, runBatchEvaluation } = await import('../../../eval-workflows/run-evaluation.js');
 
   if (values.blind !== undefined) {
     config.blind = values.blind as boolean | undefined;
   }
   config.onProgress = makeOnProgress(lang) as unknown as ProgressCallback;
 
-  // --repeat: CLI > eval.yaml > 1. 非 ≥1 整数时提示并钳到 1。
   const repeatRaw = values.repeat as string | undefined;
   const parsedRepeat = repeatRaw !== undefined ? Number(repeatRaw) : (evalConfig?.repeat ?? 1);
   if (repeatRaw !== undefined && (!Number.isFinite(parsedRepeat) || parsedRepeat < 1)) {
@@ -207,7 +199,6 @@ export async function execute(argv: string[]): Promise<void> {
   }
   const repeatCount: number = Math.max(1, Math.floor(parsedRepeat) || 1);
 
-  // --judge-repeat: CLI > eval.yaml > 1.
   const judgeRepeatRaw = values['judge-repeat'] as string | undefined;
   const parsedJudgeRepeat = judgeRepeatRaw !== undefined ? Number(judgeRepeatRaw) : (evalConfig?.judgeRepeat ?? 1);
   if (judgeRepeatRaw !== undefined && (!Number.isFinite(parsedJudgeRepeat) || parsedJudgeRepeat < 1)) {
@@ -216,10 +207,6 @@ export async function execute(argv: string[]): Promise<void> {
   const judgeRepeatCount: number = Math.max(1, Math.floor(parsedJudgeRepeat) || 1);
   if (judgeRepeatCount > 1) config.judgeRepeat = judgeRepeatCount;
 
-  // --budget-usd / --budget-per-sample-usd / --budget-per-sample-ms:
-  //  hard budget caps. CLI flags override config-file values. When the
-  // total-USD cap is exceeded mid-run, remaining tasks are skipped and a
-  // partial report is persisted with meta.budgetExhausted=true.
   const budgetUSD = values['budget-usd'] != null ? Number(values['budget-usd']) : undefined;
   const budgetPerSampleUSD = values['budget-per-sample-usd'] != null ? Number(values['budget-per-sample-usd']) : undefined;
   const budgetPerSampleMs = values['budget-per-sample-ms'] != null ? Number(values['budget-per-sample-ms']) : undefined;
@@ -231,9 +218,6 @@ export async function execute(argv: string[]): Promise<void> {
     };
   }
 
-  // --no-debias-length / eval.yaml `lengthDebias: false`: opt out of length-controlled prompt。
-  // Default debias-on (judge prompt v3-cot-length); flip off only to reproduce historical reports。
-  // CLI 显式 --no-debias-length > eval.yaml lengthDebias > 默认 true。
   const lengthDebiasOff = (values['no-debias-length'] as boolean | undefined) === true
     || (values['no-debias-length'] === undefined && evalConfig?.lengthDebias === false);
   if (lengthDebiasOff) {
@@ -241,9 +225,6 @@ export async function execute(argv: string[]): Promise<void> {
     process.stderr.write(tCli('cli.run.no_debias_length_active', lang));
   }
 
-  // --bootstrap / --bootstrap-samples: CLI > eval.yaml > default(on / 1000)。
-  // `omk eval` owns the product default here instead of wrapper-injecting argv
-  // in commands/eval.ts, so config-file opt-out stays possible.
   const bootstrapEnabled = (values.bootstrap as boolean | undefined) === true
     || (values.bootstrap === undefined && evalConfig?.bootstrap !== false);
   if (bootstrapEnabled) {
@@ -260,14 +241,12 @@ export async function execute(argv: string[]): Promise<void> {
     config.bootstrapSamples = bsCount;
   }
 
-  // 注入 lang 让 evaluation pipeline 能渲染 doctor 报告(失败时)。
   config.lang = lang;
   if (values['skip-connectivity'] as boolean) {
     process.stderr.write(tCli('cli.run.skip_connectivity_warning', lang) + '\n');
   }
 
   try {
-    // --batch mode: evaluate each skill independently
     if (values.batch) {
       const { report, filePath } = await runBatchEvaluation({
         ...config,
@@ -319,10 +298,9 @@ export async function execute(argv: string[]): Promise<void> {
       filePath = result.filePath;
     }
 
-    // --gold-dir / eval.yaml goldDir: compute α/κ/Pearson against gold annotations and re-persist.
     const goldDir = (values['gold-dir'] as string | undefined) ?? evalConfig?.goldDir;
     if (goldDir && filePath) {
-      const { attachGoldAgreementToReport, formatGoldCompare } = await import('../../grading/gold-cli.js');
+      const { attachGoldAgreementToReport, formatGoldCompare } = await import('../../../grading/gold-cli.js');
       const out = attachGoldAgreementToReport({
         report,
         goldDir,
@@ -351,10 +329,208 @@ export async function execute(argv: string[]): Promise<void> {
     const exitCode = await emitEvaluationVerdict(report, values);
     throw new CliExit(applyGateExitCode(exitCode, values, lang));
   } catch (err: unknown) {
-    // CliExit 是显式 exit 信号(从 requireEvaluationReport 等子调用冒上来),
-    // 保持原 code 透传;只有真正运行时错误才包装成 CliExit(1)。
     if (err instanceof CliExit) throw err;
     console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
     throw new CliExit(1);
+  }
+}
+
+export default class Eval extends Command {
+  static description = bilingual({
+    zh: '跑评测：对一个 control vs 多个 treatment skill 做对照试验，产 verdict 报告。',
+    en: 'Run evaluation: control vs treatment(s) comparison, produce verdict report.',
+  });
+
+  static examples = [
+    {
+      description: bilingual({
+        zh: '最简对照:baseline vs my-skill',
+        en: 'Minimal A/B: baseline vs my-skill',
+      }),
+      command: '<%= config.bin %> eval --control baseline --treatment my-skill',
+    },
+    {
+      description: bilingual({
+        zh: 'eval.yaml 驱动 + bootstrap CI',
+        en: 'eval.yaml driven + bootstrap CI',
+      }),
+      command: '<%= config.bin %> eval --config eval.yaml --bootstrap',
+    },
+  ];
+
+  static flags = {
+    lang: Flags.string({
+      description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
+      default: 'zh',
+    }),
+    // ── 实验角色 ──
+    control: Flags.string({
+      description: bilingual({ zh: 'control variant 表达式', en: 'Control variant expr' }),
+    }),
+    treatment: Flags.string({
+      description: bilingual({
+        zh: 'treatment variant 列表，逗号分隔',
+        en: 'Treatment variants, comma-separated',
+      }),
+    }),
+    config: Flags.string({
+      description: bilingual({ zh: 'eval.yaml 路径', en: 'eval.yaml path' }),
+    }),
+    samples: Flags.string({
+      description: bilingual({
+        zh: '样本文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。',
+        en: 'Samples file path. Defaults to eval-samples.json (also .yaml/.yml); auto-discovers <skill>/.omk/samples.json under --skill-dir.',
+      }),
+    }),
+    'skill-dir': Flags.string({
+      description: bilingual({ zh: 'skill 目录，默认 skills', en: 'Skill dir, default skills' }),
+    }),
+    // ── 模型 / 执行器 ──
+    model: Flags.string({
+      description: bilingual({ zh: '被测模型', en: 'Evaluated model' }),
+    }),
+    executor: Flags.string({
+      description: bilingual({
+        zh: '执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令（默认 claude）。',
+        en: 'Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom (default claude).',
+      }),
+    }),
+    'judge-models': Flags.string({
+      description: bilingual({
+        zh: '评委配置，格式 executor:model[,...]，例 claude:haiku 或 claude:opus,openai:gpt-4o(≥ 2 个 = ensemble）。默认 <executor>:haiku。',
+        en: 'Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.',
+      }),
+    }),
+    'output-dir': Flags.string({
+      description: bilingual({ zh: '报告输出目录', en: 'Report output dir' }),
+    }),
+    // ── 评测 toggle ──
+    'no-judge': Flags.boolean({
+      description: bilingual({ zh: '跳过 LLM judge', en: 'Skip LLM judge' }),
+    }),
+    'no-cache': Flags.boolean({
+      description: bilingual({ zh: '跳过 executor cache', en: 'Skip executor cache' }),
+    }),
+    'dry-run': Flags.boolean({
+      description: bilingual({ zh: '只 plan 不实跑', en: 'Plan only, no real exec' }),
+    }),
+    concurrency: Flags.string({
+      description: bilingual({ zh: '并发数，默认 1', en: 'Concurrency, default 1' }),
+    }),
+    timeout: Flags.string({
+      description: bilingual({ zh: '单样本超时秒，默认 120', en: 'Per-sample timeout sec, default 120' }),
+    }),
+    batch: Flags.boolean({
+      description: bilingual({
+        zh: 'batch 模式:baseline vs 每个 skill',
+        en: 'Batch mode: baseline vs each skill',
+      }),
+    }),
+    'skip-connectivity': Flags.boolean({
+      description: bilingual({ zh: '跳 LLM 连通性预检', en: 'Skip LLM connectivity preflight' }),
+    }),
+    'skip-doctor': Flags.boolean({
+      description: bilingual({
+        zh: 'escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。',
+        en: 'Escape hatch: skip the doctor health-check gate (on by default). Use when sandbox mocks supply deps; caller owns garbage-in risk.',
+      }),
+    }),
+    'mcp-config': Flags.string({
+      description: bilingual({ zh: 'MCP 配置文件路径', en: 'MCP config path' }),
+    }),
+    'no-serve': Flags.boolean({
+      description: bilingual({ zh: '不启 report server', en: 'Do not start report server' }),
+    }),
+    verbose: Flags.boolean({
+      description: bilingual({ zh: '详细日志', en: 'Verbose logging' }),
+    }),
+    retry: Flags.string({
+      description: bilingual({ zh: '失败 sample 重试次数', en: 'Per-sample retry count' }),
+    }),
+    resume: Flags.string({
+      description: bilingual({ zh: '从某次失败 run 续跑', en: 'Resume a previous failed run' }),
+    }),
+    'layered-stats': Flags.boolean({
+      description: bilingual({ zh: '输出分层统计', en: 'Emit layered stats' }),
+    }),
+    'strict-baseline': Flags.boolean({
+      description: bilingual({ zh: '强制 baseline 隔离（default true）', en: 'Force baseline isolation (default true)' }),
+    }),
+    'no-strict-baseline': Flags.boolean({
+      description: bilingual({ zh: '关闭 baseline 隔离', en: 'Disable baseline isolation' }),
+    }),
+    effort: Flags.string({
+      description: bilingual({
+        zh: '被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。',
+        en: 'Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).',
+      }),
+    }),
+    'no-diagnostic': Flags.boolean({
+      description: bilingual({
+        zh: '关闭 diagnostic 诊断 LLM 调用（默认开，给 failed sample 出「哪错了 + 怎么改」建议）。',
+        en: 'Disable diagnostic LLM call (on by default; emits "what went wrong + how to fix" advice for failed samples).',
+      }),
+    }),
+    // ── eval-runner extra ──
+    blind: Flags.boolean({
+      description: bilingual({ zh: 'judge blind 模式', en: 'Blind judge mode' }),
+    }),
+    repeat: Flags.string({
+      description: bilingual({ zh: '每个 sample 重复跑 N 次', en: 'Repeat each sample N times' }),
+    }),
+    'judge-repeat': Flags.string({
+      description: bilingual({ zh: '每个 dim 评 N 次', en: 'Judge each dim N times' }),
+    }),
+    bootstrap: Flags.boolean({
+      description: bilingual({ zh: '加 bootstrap CI', en: 'Add bootstrap CI' }),
+    }),
+    'bootstrap-samples': Flags.string({
+      description: bilingual({ zh: 'bootstrap 重采样次数，默认 1000', en: 'Bootstrap resamples, default 1000' }),
+    }),
+    'gold-dir': Flags.string({
+      description: bilingual({ zh: 'gold dataset 目录', en: 'Gold dataset dir' }),
+    }),
+    'no-debias-length': Flags.boolean({
+      description: bilingual({ zh: '关 length-debias（默认开）', en: 'Disable length-debias (default on)' }),
+    }),
+    'budget-usd': Flags.string({
+      description: bilingual({ zh: '总预算上限 USD', en: 'Total budget cap USD' }),
+    }),
+    'budget-per-sample-usd': Flags.string({
+      description: bilingual({ zh: '单 sample 预算上限 USD', en: 'Per-sample budget cap USD' }),
+    }),
+    'budget-per-sample-ms': Flags.string({
+      description: bilingual({ zh: '单 sample 时长上限 ms', en: 'Per-sample time cap ms' }),
+    }),
+    threshold: Flags.string({
+      description: bilingual({ zh: 'verdict 阈值，默认 3.5', en: 'Verdict threshold, default 3.5' }),
+    }),
+    'trivial-diff': Flags.string({
+      description: bilingual({ zh: '可忽略 diff 容差', en: 'Trivial diff tolerance' }),
+    }),
+    'report-only': Flags.boolean({
+      description: bilingual({
+        zh: '生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。',
+        en: 'Produce the report and print verdict, but always exit 0 (no CI gate).',
+      }),
+    }),
+    'no-gate': Flags.boolean({
+      description: bilingual({ zh: '关 verdict gate', en: 'Disable verdict gate' }),
+    }),
+  };
+
+  async run(): Promise<void> {
+    const { args, flags } = await this.parse(Eval);
+    const lang = resolveLang(process.argv);
+    try {
+      await runEval(args as Record<string, never>, { ...flags, lang }, lang);
+    } catch (err) {
+      if (err instanceof CliExit) {
+        if (err.code === 0) return;
+        this.exit(err.code);
+        return;
+      }
+      throw err;
+    }
   }
 }

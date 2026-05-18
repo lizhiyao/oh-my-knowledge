@@ -206,9 +206,10 @@ describe('omk doctor CLI', () => {
       `expected no skill_health composer results in static-only mode, got: ${staticRuleIds.join(',')}`);
   });
 
-  it('product dispatch lists omk doctor as a top-level command', async () => {
-    // Verify --help mentions doctor as a product command.
+  it('product dispatch lists doctor as a top-level command', async () => {
+    // omk --help 走 oclif 的 COMMANDS 列表,doctor 出现在其中。
     const { stdout } = await execFileAsync('node', [CLI, '--help']);
-    assert.ok(stdout.includes('omk doctor'));
+    assert.ok(stdout.includes('doctor'), `--help missing 'doctor' command listing:\n${stdout}`);
+    assert.ok(/COMMANDS|TOPICS/i.test(stdout), `--help should have oclif COMMANDS / TOPICS block:\n${stdout}`);
   });
 });

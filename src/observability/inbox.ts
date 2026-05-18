@@ -9,6 +9,8 @@ import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
 import { durationMsBetween } from '../shared/time.js';
 import { buildObservationExperienceReport, type ObservationExperienceReport } from './experience.js';
 import type { ObservationReviewState } from './review-state.js';
+import { buildObserveDiagnosticsFromReport } from '../diagnosis/observe-producer.js';
+import type { DiagnosisBundle } from '../diagnosis/types.js';
 
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = join(process.cwd(), '.omk', 'observations');
 export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(homedir(), '.oh-my-knowledge', 'observations');
@@ -129,6 +131,7 @@ export interface ObservationInboxReport {
   };
   items: ObservationInboxItem[];
   experience?: ObservationExperienceReport;
+  diagnostics?: DiagnosisBundle;
 }
 
 export interface ObservationSkillRollup {
@@ -534,7 +537,7 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
   }
   const items = finishInboxAggregation(aggregationState);
   const experience = buildObservationExperienceReport({ sessions, segments, items, generatedAt, reviewState: options.reviewState });
-  return {
+  const report: ObservationInboxReport = {
     kind: 'observe-inbox',
     schemaVersion: 1,
     meta: {
@@ -553,6 +556,8 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
     items,
     experience,
   };
+  report.diagnostics = buildObserveDiagnosticsFromReport(report);
+  return report;
 }
 
 interface InboxAggregationState {
@@ -664,6 +669,12 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
             severityReason: undefined,
           };
         });
+        // 不在 load 路径重建 diagnostics:`buildObserveDiagnosticsFromReport` 现在虽然会从
+        // report.items[].cwd / experience 推断每个 skill 的 cwd(没把握就跳过该 skill 的
+        // chain advisory,不再 fallback process.cwd()),但 load 时全跳过的话整个 trace
+        // 都没有 Diagnosis。新版 build 路径(buildObservationInboxReport)总会写入
+        // diagnostics 字段;老 inbox JSON 缺字段时让 Studio 显示「该 trace 暂无 Diagnosis,
+        // 请重新 observe 一次」,比惰性重建安全。
         return report;
       } catch {
         return null;

@@ -1,61 +1,31 @@
 #!/usr/bin/env node
 
-import { tCli, getCliLang, parseLangFromArgv, type CliLang } from './i18n.js';
-import type { CliMessageKey } from './i18n-dict.js';
-import { checkUpdate } from './update-check.js';
-import { CliExit } from './cli-exit.js';
-import { PRODUCT_COMMANDS, type CommandModule } from './commands/registry.js';
+import { getCliLang, parseLangFromArgv } from './lib/i18n.js';
+import { checkUpdate } from './lib/update-check.js';
+import { CliExit } from './lib/cli-exit.js';
 
-/**
- * --help / -h 在 argv 任意位置都打印对应 helpKey 内容并 exit 0。
- * 集中在 dispatcher 处理,因为下游 execute 走 parseArgsStrictOrExit,
- * 那一层 strict:true 不识别 --help 会当 unknown option 报错。
- */
-function helpKeyFor(cmd: CommandModule, argv: string[]): CliMessageKey {
-  if (!cmd.subHelp) return cmd.helpKey;
-  for (let i = 0; i < argv.length; i++) {
-    const token = argv[i];
-    if (!token || token === '--help' || token === '-h') continue;
-    if (token === '--lang') {
-      i++;
-      continue;
-    }
-    if (token.startsWith('--lang=')) continue;
-    if (token.startsWith('-')) continue;
-    return cmd.subHelp[token] ?? cmd.helpKey;
-  }
-  return cmd.helpKey;
-}
+// CLI 入口:lang / 版本提醒等共享前置逻辑跑完,把控制权交给 oclif dispatcher。
+// 所有命令统一走 src/cli/commands/* 下的 oclif Command。
 
-function dispatchOrPrintHelp(cmd: CommandModule, argv: string[], lang: CliLang): Promise<void> {
-  if (argv.includes('--help') || argv.includes('-h')) {
-    console.log(tCli(helpKeyFor(cmd, argv), lang).trim());
-    throw new CliExit(0);
-  }
-  return cmd.execute(argv);
+// --help / --version / -h / -v 走短路径,不应当被网络 I/O 拖慢。oclif 走完
+// --help 路径自然 resolve 不调 process.exit,unawaited fetch 会把 event
+// loop 拖住 ~1s(worst case AbortSignal.timeout 3s)。短路径整体 skip checkUpdate。
+const SHORT_PATH_FLAGS = ['--help', '-h', '--version', '-v'];
+function isShortPath(argv: readonly string[]): boolean {
+  return argv.some((a) => SHORT_PATH_FLAGS.includes(a));
 }
 
 async function main(): Promise<void> {
   const lang = getCliLang(parseLangFromArgv(process.argv));
-  checkUpdate(lang);
-  const [command, ...rest]: string[] = process.argv.slice(2);
-
-  if (!command || command === '--help' || command === '-h') {
-    console.log(tCli('cli.help.product_main', lang).trim());
-    throw new CliExit(0);
+  if (!isShortPath(process.argv)) {
+    checkUpdate(lang);
   }
 
-  const cmd = PRODUCT_COMMANDS[command];
-  if (!cmd) {
-    console.error(tCli('cli.common.unknown_domain', lang, { domain: command }));
-    throw new CliExit(1);
-  }
-  await dispatchOrPrintHelp(cmd, rest, lang);
+  const { runOclifPath } = await import('./oclif/run.js');
+  await runOclifPath();
 }
 
 main().catch((err: unknown) => {
-  // CliExit = 命令显式终止(--help / 业务失败 / parse 错误等),透传 exit code。
-  // 其他 throw 是未处理的运行时错误,打印 stack 后 exit 1。
   if (err instanceof CliExit) {
     process.exit(err.code);
   }

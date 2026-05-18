@@ -22,6 +22,9 @@ import type { SkillHealthReport } from '../observability/skill-health-analyzer.j
 import type { DoctorReport, DoctorRuleResult, DoctorSkillStatus } from '../types/doctor.js';
 import { computeVerdict } from '../eval-core/verdict.js';
 import { detectInsights, type Insight } from './skill-insights.js';
+import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../observability/inbox.js';
+import { buildStudioDiagnosisSummary, mergeDiagnosisBundles, type StudioDiagnosisSummary } from '../diagnosis/studio-projection.js';
+import type { Diagnosis } from '../diagnosis/types.js';
 
 // ── 模块级缓存:Studio 每次请求都跑 buildSkillIndex,扫盘成本随 skill 数线性,
 // 数据量大后列表 / 详情页响应变慢(PR #95 review P2-4 — cache 引入本身那一条)。
@@ -103,7 +106,7 @@ function safeDirJsonContentFingerprint(dir: string): string {
   return `${dir}|${dirMtimeMs}|${fileParts.join(',')}`;
 }
 
-function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, doctorsDir: string): string {
+function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, doctorsDir: string, observationsDir: string): string {
   // `d:` 跟 `o:` 前缀("d for doctors / o for observability analyses")沿用 pre-fix
   // 字面格式,避免外部 logging / debug 时 grep fingerprint 字符串的格式漂移。
   // 每一段的 right-hand-side 从旧的 "{dir-mtime}-{file-count}" 双标量升级成
@@ -112,7 +115,8 @@ function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, d
   const reportIds = reports.map((r) => `${r.id}:${r.meta?.timestamp ?? ''}`).join(',');
   const doctorsFp = safeDirJsonContentFingerprint(doctorsDir);
   const analysesFp = safeDirJsonContentFingerprint(analysesDir);
-  return `${reportIds}|d:${doctorsFp}|o:${analysesFp}`;
+  const observationsFp = safeDirJsonContentFingerprint(observationsDir);
+  return `${reportIds}|d:${doctorsFp}|o:${analysesFp}|obs:${observationsFp}`;
 }
 
 /** 测试 / 调试用:强制清掉 in-process skill-index 缓存。 */
@@ -186,6 +190,8 @@ export interface SkillIndex {
    *  本身共享同一 fingerprint 缓存(reports 数组 + dir mtime 任一变就 invalidate)。
    *  list 页 N×detectInsights 重算的 CPU 开销由此消除。 */
   insightsBySkill: Map<string, Insight[]>;
+  diagnosticsBySkill: Map<string, Diagnosis[]>;
+  diagnosisSummary: StudioDiagnosisSummary;
 }
 
 function sampleAllPassed(details: AssertionDetail[] | undefined): boolean {
@@ -335,9 +341,10 @@ export function buildSkillIndex(
   reports: ReportDocument[],
   analysesDir: string,
   doctorsDir: string,
+  observationsDir: string = DEFAULT_OBSERVATIONS_DIR,
 ): SkillIndex {
   // 命中缓存就直接返回(fingerprint 覆盖 reports + 两个 dir 的变化信号)
-  const fp = buildIndexFingerprint(reports, analysesDir, doctorsDir);
+  const fp = buildIndexFingerprint(reports, analysesDir, doctorsDir, observationsDir);
   if (_indexCache && _indexCache.fingerprint === fp) {
     return _indexCache.result;
   }
@@ -385,10 +392,14 @@ export function buildSkillIndex(
 
   // ── doctor 聚合(历史 list)──────────────────────────────
   const doctorBy = scanDoctorReports(doctorsDir);
+  const diagnosisBundle = mergeDiagnosisBundles(
+    loadLatestObservationInboxReports(observationsDir).flatMap((report) => report.diagnostics ? [report.diagnostics] : []),
+    new Date().toISOString(),
+  );
 
   // ── 合并 ──────────────────────────────────────────────────
   const allSkills = new Set<string>([
-    ...Object.keys(evalBy), ...Object.keys(observeBy), ...Object.keys(doctorBy),
+    ...Object.keys(evalBy), ...Object.keys(observeBy), ...Object.keys(doctorBy), ...Object.keys(diagnosisBundle.bySkill),
   ]);
   const entries: SkillIndexEntry[] = [];
   for (const name of allSkills) {
@@ -424,10 +435,34 @@ export function buildSkillIndex(
   const insightsBySkill = new Map<string, Insight[]>();
   for (const ent of entries) {
     const evalReport = ent.eval ? reports.find((r) => r.id === ent.eval!.reportId && r.kind === 'evaluation') as EvaluationReport | undefined : undefined;
-    insightsBySkill.set(ent.skillName, detectInsights(ent, evalReport ?? null));
+    insightsBySkill.set(ent.skillName, detectInsights(ent, evalReport ?? null, {
+      diagnostics: diagnosisBundle.bySkill[ent.skillName] ?? [],
+    }));
   }
 
-  const result: SkillIndex = { entries, summary, insightsBySkill };
+  // 跨层口径统一:三大 snapshot(doctor / eval / observe)都空但 Diagnosis / Insight 投影出
+  // high / medium 信号的 skill,把 entry.band 从 gray 升级。否则 HTML renderer(assessHealth)
+  // 会把卡片标红、API(/api/skills)却返回 band='gray' summary.gray+=1,renderNextSteps 又会
+  // 追加「完全没报告」建议 —— 用户视角看到的是「红卡 + 待优化 N + 完全没报告」矛盾态。
+  for (const ent of entries) {
+    if (ent.band !== 'gray') continue;
+    const ins = insightsBySkill.get(ent.skillName) ?? [];
+    const hasHigh = ins.some((i) => i.severity === 'high');
+    const hasMed = ins.some((i) => i.severity === 'medium');
+    if (hasHigh) ent.band = 'red';
+    else if (hasMed) ent.band = 'yellow';
+  }
+  summary.red = entries.filter((e) => e.band === 'red').length;
+  summary.yellow = entries.filter((e) => e.band === 'yellow').length;
+  summary.green = entries.filter((e) => e.band === 'green').length;
+  summary.gray = entries.filter((e) => e.band === 'gray').length;
+
+  const diagnosticsBySkill = new Map<string, Diagnosis[]>(
+    Object.entries(diagnosisBundle.bySkill),
+  );
+  const diagnosisSummary = buildStudioDiagnosisSummary(diagnosisBundle);
+
+  const result: SkillIndex = { entries, summary, insightsBySkill, diagnosticsBySkill, diagnosisSummary };
   _indexCache = { fingerprint: fp, result };
   return result;
 }

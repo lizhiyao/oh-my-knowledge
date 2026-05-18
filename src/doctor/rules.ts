@@ -21,7 +21,7 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
-import { tCli } from '../cli/i18n.js';
+import { tCli } from '../cli/lib/i18n.js';
 import { preflightDependencies } from '../eval-core/dependency-checker.js';
 import { validateSkillHardRules, validateSkillWorkflows } from '../shared/hard-rules.js';
 import type { DependencyIssue } from '../eval-core/dependency-checker.js';

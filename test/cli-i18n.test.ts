@@ -1,7 +1,7 @@
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { CLI_DICT } from '../src/cli/i18n-dict.js';
-import { tCli, getCliLang } from '../src/cli/i18n.js';
+import { CLI_DICT } from '../src/cli/lib/i18n-dict.js';
+import { tCli, getCliLang } from '../src/cli/lib/i18n.js';
 
 describe('CLI i18n dictionary parity (zh ↔ en)', () => {
   it('every key has both zh and en, neither empty', () => {

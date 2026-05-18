@@ -1,4 +1,4 @@
-import type { Lang } from '../types/shared.js';
+import type { Lang } from '../../types/shared.js';
 import { CLI_DICT, type CliMessageKey } from './i18n-dict.js';
 
 export type CliLang = Lang;
@@ -17,14 +17,6 @@ export function parseLangFromArgv(argv: readonly string[]): string | undefined {
     if (a && a.startsWith('--lang=')) return a.slice('--lang='.length);
   }
   return undefined;
-}
-
-/**
- * handler 内一行拿到 lang。handler 收到的 argv 已被 main 切掉前 N 项,
- * 但 --lang 选项位置无关, scan 即可。
- */
-export function langFromArgv(argv: readonly string[]): CliLang {
-  return getCliLang(parseLangFromArgv(argv));
 }
 
 /**
@@ -57,4 +49,20 @@ export function tCli(
     }
   }
   return text;
+}
+
+/**
+ * 一次拿到 i18n key 的 zh / en 两个串。oclif Command 的 static
+ * description / examples 是模块加载期 evaluate 的字面量,跑不到 tCli 的 runtime
+ * lang dispatch。tBoth 返回 {zh, en} 结构,配合 oclif/i18n.ts 的 bilingual()
+ * 拼成带 sentinel 的串,LangAwareHelp 渲染时按 lang 切。
+ */
+export function tBoth(
+  key: CliMessageKey,
+  params?: Record<string, string | number>,
+): { zh: string; en: string } {
+  return {
+    zh: tCli(key, 'zh', params),
+    en: tCli(key, 'en', params),
+  };
 }
