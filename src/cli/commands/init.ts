@@ -1,6 +1,6 @@
 import { resolve, join } from 'node:path';
-import { Args, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../oclif/i18n.js';
+import { Args } from '@oclif/core';
+import { LANG_FLAG, bilingual, resolveLang } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 
@@ -131,13 +131,7 @@ export default class Init extends BaseCommand {
   };
 
   static flags = {
-    lang: Flags.string({
-      description: bilingual({
-        zh: '输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。',
-        en: 'Output language zh|en. Priority: CLI > OMK_LANG env > zh.',
-      }),
-      default: 'zh',
-    }),
+    lang: LANG_FLAG,
   };
 
   async run(): Promise<void> {

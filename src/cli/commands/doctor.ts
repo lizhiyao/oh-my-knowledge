@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
-import { bilingual } from '../oclif/i18n.js';
+import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { numberStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
@@ -93,13 +93,7 @@ export default class Doctor extends BaseCommand {
   };
 
   static flags = {
-    lang: Flags.string({
-      description: bilingual({
-        zh: '输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。',
-        en: 'Output language zh|en. Priority: CLI > OMK_LANG env > zh.',
-      }),
-      default: 'zh',
-    }),
+    lang: LANG_FLAG,
     json: Flags.boolean({
       description: bilingual({
         zh: 'JSON 输出到 stdout，适合 CI / 外部脚本消费。',

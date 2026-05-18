@@ -2,7 +2,7 @@ import { resolve, join, basename, dirname, extname } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 import { Args, Flags } from '@oclif/core';
-import { bilingual } from '../oclif/i18n.js';
+import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { integerStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
@@ -178,7 +178,7 @@ async function runSampleFix(
   const { fixSamples } = await import('../../authoring/sample-fixer.js');
   const { createFileStore } = await import('../../server/report-store.js');
 
-  const model = flags.model ?? 'opus';
+  const model = flags.model;
   const reportsDir = resolve(flags['reports-dir'] ?? DEFAULT_REPORTS_DIR);
 
   const skillPath = args.skillPath;
@@ -477,13 +477,7 @@ export default class Sample extends BaseCommand {
   };
 
   static flags = {
-    lang: Flags.string({
-      description: bilingual({
-        zh: '输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。',
-        en: 'Output language zh|en. Priority: CLI > OMK_LANG env > zh.',
-      }),
-      default: 'zh',
-    }),
+    lang: LANG_FLAG,
     batch: Flags.boolean({
       description: bilingual({
         zh: '批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。',

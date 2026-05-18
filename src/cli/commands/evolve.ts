@@ -1,7 +1,7 @@
 import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
-import { bilingual } from '../oclif/i18n.js';
+import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { enumStringParser, integerStringParser, numberStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
@@ -69,7 +69,7 @@ export async function runEvolve(
     throw new CliExit(1);
   }
 
-  let samplesFile: string = flags.samples ?? 'eval-samples.json';
+  let samplesFile: string = flags.samples;
   if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
     if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
     else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
@@ -186,10 +186,7 @@ export default class Evolve extends BaseCommand {
   };
 
   static flags = {
-    lang: Flags.string({
-      description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
-      default: 'zh',
-    }),
+    lang: LANG_FLAG,
     rounds: Flags.string({
       description: bilingual({ zh: '最大迭代轮数，默认 5', en: 'Max iteration rounds, default 5' }),
       default: '5',

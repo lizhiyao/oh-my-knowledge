@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
-import { bilingual } from '../../oclif/i18n.js';
+import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { integerStringParser } from '../../oclif/parsers.js';
 import { type CliLang } from '../../lib/i18n.js';
 import type { ObserveInboxArgs, ObserveInboxFlags } from '../../lib/cmd-flags.js';
@@ -101,10 +101,7 @@ export default class ObserveInbox extends BaseCommand {
   });
 
   static flags = {
-    lang: Flags.string({
-      description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
-      default: 'zh',
-    }),
+    lang: LANG_FLAG,
     'input-dir': Flags.string({
       description: bilingual({
         zh: 'inbox 数据目录，默认 .omk/observations（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observations。',
