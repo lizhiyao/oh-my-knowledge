@@ -388,6 +388,8 @@ interface GenerateSamplesOptions {
    * 优先于"自由发挥"的多样性。空串 / undefined 表示不施加额外约束。
    */
   focus?: string;
+  /** 不生成 mocks/mocksStrict，eval 时真实执行所有工具调用。 */
+  noMock?: boolean;
 }
 
 /**
@@ -397,9 +399,12 @@ interface GenerateSamplesOptions {
  *   - number: 强制生成 N 条
  *   - undefined: 让 LLM 按系统提示里"样本结构决策"的类型对应范围自行判断数量
  */
-export function buildSamplesPrompt({ skillContent, count, focus }: { skillContent: string; count?: number; focus?: string }): string {
+export function buildSamplesPrompt({ skillContent, count, focus, noMock }: { skillContent: string; count?: number; focus?: string; noMock?: boolean }): string {
   const focusBlock = focus && focus.trim()
     ? `\n\n额外要求（用户指定的场景重点）：\n${focus.trim()}\n生成的用例必须优先覆盖以上场景，再在剩余配额内补充其它能力维度。`
+    : '';
+  const noMockBlock = noMock
+    ? '\n\n⚠️ 不要生成 mocks 和 mocksStrict 字段。评测时所有工具调用将真实执行，不做拦截。'
     : '';
   const countLine = typeof count === 'number'
     ? `请根据这个 skill 生成 ${count} 个评测用例。`
@@ -408,13 +413,13 @@ export function buildSamplesPrompt({ skillContent, count, focus }: { skillConten
 
 ${skillContent}
 
-${countLine}直接输出 JSON 数组。${focusBlock}`;
+${countLine}直接输出 JSON 数组。${focusBlock}${noMockBlock}`;
 }
 
-export async function generateSamples({ skillContent, count, model = GENERATOR_DEFAULT_MODEL, executorName = 'claude', focus }: GenerateSamplesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
+export async function generateSamples({ skillContent, count, model = GENERATOR_DEFAULT_MODEL, executorName = 'claude', focus, noMock }: GenerateSamplesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
   const executor = createExecutor(executorName);
 
-  const prompt = buildSamplesPrompt({ skillContent, count, focus });
+  const prompt = buildSamplesPrompt({ skillContent, count, focus, noMock });
 
   // 生成场景比单次 eval 调用更重(LLM 要思考结构 + 输出大段 JSON),
   // 默认 120s 对长 skill + count >= 8 经常不够,这里用 5 分钟兜底。

@@ -162,6 +162,7 @@ export interface SampleFlags {
   model: string;
   'skill-dir': string;
   focus?: string;
+  'no-mock': boolean;
   fix: boolean;
   'reports-dir'?: string;
   treatment?: string;

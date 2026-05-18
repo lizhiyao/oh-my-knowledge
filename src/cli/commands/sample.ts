@@ -366,7 +366,7 @@ async function runSample(
       try {
         const skillContent: string = readFileSync(skillPath, 'utf-8');
         const { samples, costUSD }: GenerateSamplesResult =
-          await generateSamples({ skillContent, count, model, focus });
+          await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'] });
         mkdirSync(dirname(samplesPath), { recursive: true });
         writeFileSync(samplesPath, JSON.stringify(samples, null, 2));
         const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
@@ -420,7 +420,7 @@ async function runSample(
     }
     try {
       const { samples, costUSD }: GenerateSamplesResult =
-        await generateSamples({ skillContent, count, model, focus });
+        await generateSamples({ skillContent, count, model, focus, noMock: flags['no-mock'] });
       mkdirSync(dirname(outputPath), { recursive: true });
       writeFileSync(outputPath, JSON.stringify(samples, null, 2));
       const cost: string = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
@@ -511,6 +511,13 @@ export default class Sample extends BaseCommand {
         zh: '生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。',
         en: 'Generation focus (NL hint). Steers LLM toward certain sample types.',
       }),
+    }),
+    'no-mock': Flags.boolean({
+      description: bilingual({
+        zh: '不生成 mocks，eval 时所有工具调用真实执行。',
+        en: 'Skip mock generation; all tool calls execute for real during eval.',
+      }),
+      default: false,
     }),
     fix: Flags.boolean({
       description: bilingual({
