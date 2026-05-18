@@ -1,8 +1,9 @@
-import { Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../../oclif/i18n.js';
+import { Flags } from '@oclif/core';
+import { BaseCommand } from '../../../oclif/base-command.js';
+import { bilingual } from '../../../oclif/i18n.js';
 import { CliExit } from '../../../lib/cli-exit.js';
 
-export default class EvalGoldInit extends Command {
+export default class EvalGoldInit extends BaseCommand {
   static description = bilingual({
     zh: '初始化 gold dataset 目录（human-gold 标注集脚手架）。',
     en: 'Init gold dataset dir (scaffold for human-gold annotations).',
@@ -30,8 +31,8 @@ export default class EvalGoldInit extends Command {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(EvalGoldInit);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       const { initGoldDataset } = await import('../../../../grading/gold-cli.js');
       try {
         const written = initGoldDataset(flags.out, {
@@ -48,13 +49,6 @@ export default class EvalGoldInit extends Command {
         console.error((err as Error).message);
         throw new CliExit(1);
       }
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }

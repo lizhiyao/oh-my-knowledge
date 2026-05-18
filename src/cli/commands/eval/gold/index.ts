@@ -7,10 +7,11 @@
 // config.findCommand('eval:gold')) 让 LangAwareHelp 按 --lang 渲染当前 topic 的
 // description + sub-sub 列表(init / validate / compare)。
 
-import { Command, Flags } from '@oclif/core';
+import { Flags } from '@oclif/core';
+import { BaseCommand } from '../../../oclif/base-command.js';
 import { bilingual } from '../../../oclif/i18n.js';
 
-export default class EvalGold extends Command {
+export default class EvalGold extends BaseCommand {
   static description = bilingual({
     zh: '管理 human-gold 标注集（init / validate / compare 三个子命令）。',
     en: 'Manage human-gold annotation datasets (sub-commands: init / validate / compare).',

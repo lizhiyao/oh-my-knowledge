@@ -1,7 +1,7 @@
 import { resolve, join } from 'node:path';
-import { Args, Command, Flags } from '@oclif/core';
+import { Args, Flags } from '@oclif/core';
 import { bilingual, resolveLang } from '../oclif/i18n.js';
-import { CliExit } from '../lib/cli-exit.js';
+import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 
 const INIT_SAMPLES = `[
@@ -85,7 +85,7 @@ description: 多维度代码审查,覆盖安全 / 健壮 / 可维护 / 性能,�
 对每个维度给出具体的改进建议，并标注严重程度（高/中/低）。
 `;
 
-export default class Init extends Command {
+export default class Init extends BaseCommand {
   static description = bilingual({
     zh: '初始化 omk 项目脚手架（skills/ + eval-samples.json 模板）。',
     en: 'Scaffold an omk project (skills/ + eval-samples.json templates).',
@@ -142,8 +142,8 @@ export default class Init extends Command {
 
   async run(): Promise<void> {
     const { args } = await this.parse(Init);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       const targetDir: string = resolve(args.targetDir || '.');
       const { writeFileSync, mkdirSync } = await import('node:fs');
 
@@ -162,13 +162,6 @@ export default class Init extends Command {
       console.log(tCli('cli.init.next_step_edit_skills', lang));
       console.log(tCli('cli.init.next_step_run', lang));
       console.log(tCli('cli.init.note_codex_executor', lang));
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }

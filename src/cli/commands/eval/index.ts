@@ -1,5 +1,6 @@
-import { Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../oclif/i18n.js';
+import { Flags } from '@oclif/core';
+import { bilingual } from '../../oclif/i18n.js';
+import { BaseCommand } from '../../oclif/base-command.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { tCli, type CliLang } from '../../lib/i18n.js';
 import { parseRunConfig } from '../../lib/parse-run-config.js';
@@ -13,7 +14,7 @@ import type { EvalResult, ReportServer } from '../../lib/shared.js';
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
 // 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
 //
-// `omk eval gold ...` 由 src/cli/oclif/commands/eval/gold/{init,validate,compare}.ts
+// `omk eval gold ...` 由 src/cli/commands/eval/gold/{init,validate,compare}.ts
 // 处理,oclif 文件目录路由自动接管,不进 eval.ts。
 
 interface SkillProgressInfo {
@@ -335,7 +336,7 @@ async function runEval(
   }
 }
 
-export default class Eval extends Command {
+export default class Eval extends BaseCommand {
   static description = bilingual({
     zh: '跑评测：对一个 control vs 多个 treatment skill 做对照试验，产 verdict 报告。',
     en: 'Run evaluation: control vs treatment(s) comparison, produce verdict report.',
@@ -521,16 +522,9 @@ export default class Eval extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Eval);
-    const lang = resolveLang(process.argv);
-    try {
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
       await runEval(args as Record<string, never>, { ...flags, lang }, lang);
-    } catch (err) {
-      if (err instanceof CliExit) {
-        if (err.code === 0) return;
-        this.exit(err.code);
-        return;
-      }
-      throw err;
-    }
+    });
   }
 }
