@@ -5,8 +5,12 @@ const RUNTIME_PROTOCOL_PROMPT_RE =
 
 const SCHEDULED_TASK_PROMPT_RE = /^\s*\[cron:[^\]]+\]/i;
 
+// 要求整条消息就是协议词(允许少量空白/尾标点),不要只匹前缀。
+// 旧形态 `(?:\s|\n|$)` 让 "OK 我来帮你查一下" / "ACK 已收到任务" 这类
+// 中文对话开头被错分类为协议消息,把真实的 assistantDeliverySignal 屏蔽掉,
+// 系统性低估 final_delivery_absent 等测量信号。
 const ASSISTANT_PROTOCOL_REPLY_RE =
-  /^\s*(?:HEARTBEAT_OK|HEARTBEAT|PING_OK|PONG|ACK|OK|::FORWARD-OK::)(?:\s|\n|$)/i;
+  /^\s*(?:HEARTBEAT_OK|HEARTBEAT|PING_OK|PONG|ACK|OK|::FORWARD-OK::)\s*[.!]?\s*$/i;
 
 const AIMA_CMD_BLOCK_RE = /<aima-cmd\b[^>]*>[\s\S]*?<\/aima-cmd>|<aima-cmd\b[^>]*\/>/gi;
 
