@@ -403,9 +403,9 @@ omk doctor --static-only                # offline mode: static checks only, no L
   --json              JSON output to stdout, for CI / external script consumption.
   --lang <value>      Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>     LLM model name, default sonnet.
-  --samples <value>   Samples file path (.json/.yaml). Auto-discovered from target / cwd if omitted.
+  --samples <value>   Samples file path (.json/.yaml). Auto-detects from target / cwd if omitted.
   --static-only       Offline static mode: only 4 static rules, no LLM call.
-  --timeout <value>   LLM session timeout in seconds, default 600 (10 min).
+  --timeout <value>   Single-session LLM timeout sec, default 600 (10 min).
 ```
 
 For full descriptions: `omk doctor --help`.
@@ -439,9 +439,9 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --blind                         Blind judge mode
   --bootstrap                     Add bootstrap CI
   --bootstrap-samples <value>     Bootstrap resamples, default 1000
-  --budget-per-sample-ms <value>  Per-sample time cap ms
-  --budget-per-sample-usd <value> Per-sample budget cap USD
-  --budget-usd <value>            Total budget cap USD
+  --budget-per-sample-ms <value>  Per-sample time cap ms (must be > 0; omit for no cap)
+  --budget-per-sample-usd <value> Per-sample budget cap USD (must be > 0; omit for no cap)
+  --budget-usd <value>            Total budget cap USD (must be > 0; omit for no cap)
   --concurrency <value>           Concurrency, default 1
   --config <value>                eval.yaml path
   --control <value>               Control variant expr
@@ -451,7 +451,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --gold-dir <value>              Gold dataset dir
   --judge-models <value>          Judge config: executor:model[,...]. e.g. claude:haiku or claude:opus,openai:gpt-4o (≥ 2 = ensemble). Default <executor>:haiku.
   --judge-repeat <value>          Judge each dim N times
-  --lang <value>                  Output language zh|en
+  --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --layered-stats                 Emit layered stats
   --mcp-config <value>            MCP config path
   --model <value>                 Evaluated model
@@ -475,7 +475,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --threshold <value>             Verdict threshold, default 3.5
   --timeout <value>               Per-sample timeout sec, default 120
   --treatment <value>             Treatment variants, comma-separated
-  --trivial-diff <value>          Trivial diff tolerance
+  --trivial-diff <value>          Trivial diff tolerance; 0 disables tolerance
   --verbose                       Verbose logging
 ```
 
@@ -508,7 +508,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 ```text
   --from <value>        Start time ISO, overrides --last
   --kb <value>          KB root, enables KB-aware analysis
-  --lang <value>        Output language zh|en
+  --lang <value>        Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --last <value>        Time window (7d / 24h / 30m)
   --output-dir <value>  Analysis output directory
   --skills <value>      Filter to specific skills, comma-separated
@@ -569,7 +569,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --executor <value>       Executor name, default claude
   --improve-model <value>  LLM that rewrites the skill, default sonnet
   --judge-models <value>   Judge model (single judge required), executor:model format. Default claude:haiku
-  --lang <value>           Output language zh|en
+  --lang <value>           Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>          Evaluated LLM, default sonnet
   --no-diagnostic          Disable diagnostic LLM call
   --rounds <value>         Max iteration rounds, default 5
@@ -634,7 +634,7 @@ omk studio --no-open
   --analyses-dir <value>      Analyses dir (optional)
   --dev                       Dev mode: child process with hot reload
   --host <value>              Listen host, default localhost. Use 0.0.0.0 to expose to LAN
-  --lang <value>              Output language zh|en
+  --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --no-open                   Do not auto-open browser
   --observations-dir <value>  Observations dir (optional)
   --port <value>              Listen port, default 7799. Pass 0 for OS-assigned

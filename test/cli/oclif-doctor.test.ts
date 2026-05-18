@@ -46,7 +46,7 @@ describe('oclif doctor', () => {
     assert.ok(stdout.includes('Preflight health checks'), 'OMK_LANG=en should switch help to en');
   });
 
-  it('unknown flag → exit code 2 (omk parse-strict invariant)', async () => {
+  it('unknown flag → exit code 2 (oclif failedFlagParsing invariant)', async () => {
     try {
       await execFileAsync('node', [CLI, 'doctor', '--no-such-flag']);
       assert.fail('expected non-zero exit');

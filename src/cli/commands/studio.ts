@@ -1,8 +1,12 @@
 import { resolve } from 'node:path';
-import { langFromArgv, tCli, type CliLang } from '../i18n.js';
-import { COMMON_OPTIONS, DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
-import { parseArgsStrictOrExit } from '../parse-strict.js';
-import type { ReportServer } from './_shared.js';
+import { Flags } from '@oclif/core';
+import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
+import { BaseCommand } from '../oclif/base-command.js';
+import { integerStringParser } from '../oclif/parsers.js';
+import { tCli, type CliLang } from '../lib/i18n.js';
+import { DEFAULT_REPORTS_DIR } from '../lib/parse-run-config.js';
+import type { ReportServer } from '../lib/shared.js';
+import type { StudioArgs, StudioFlags } from '../lib/cmd-flags.js';
 
 async function openWorkbench(url: string, lang: CliLang): Promise<void> {
   const { execFile } = await import('node:child_process');
@@ -24,65 +28,144 @@ async function openWorkbench(url: string, lang: CliLang): Promise<void> {
   });
 }
 
-export async function execute(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  const { values } = parseArgsStrictOrExit({
-    args: argv,
-    options: {
-      ...COMMON_OPTIONS,
-      port: { type: 'string', default: '7799' },
-      host: { type: 'string' },
-      'reports-dir': { type: 'string', default: DEFAULT_REPORTS_DIR },
-      'analyses-dir': { type: 'string' },
-      'observations-dir': { type: 'string' },
-      'no-open': { type: 'boolean', default: false },
-      dev: { type: 'boolean', default: false },
-    },
-  });
+// dev / browser-open 测试需要 mock `node:child_process` + `node:os`,通过 in-process
+// import 直接调用。把业务作为 module-level helper export 从 Command file 暴露,
+// 既保留 test 兼容又让产品命令树语义干净(无 legacy commands directory)。
+export async function runStudio(
+  _args: StudioArgs,
+  flags: StudioFlags,
+  lang: CliLang,
+): Promise<void> {
+  const reportsDir = flags['reports-dir'] ?? DEFAULT_REPORTS_DIR;
 
-  if (values.dev && !process.env.__OMK_DEV_CHILD) {
+  if (flags.dev && !process.env.__OMK_DEV_CHILD) {
     const { spawn } = await import('node:child_process');
     const { fileURLToPath } = await import('node:url');
+    // 路径绑定:`commands/studio.{ts,js}` → 两层 `..` 回 `cli/`,再 `index.js`。
+    // 移动本文件到不同嵌套(例如 `commands/group/studio.ts`)需同步改 `..` 数量。
+    // cli/index.{ts,js} 在源跟 dist 中位置一致(src/cli/index.ts → dist/src/cli/index.js)。
     const cliPath = resolve(fileURLToPath(import.meta.url), '..', '..', 'index.js');
     const watchRoot = resolve(cliPath, '..', '..');
-    const args = [
+    const childArgs = [
       '--watch-path', watchRoot,
       cliPath,
       'studio',
-      '--port', values.port as string,
-      ...(values.host ? ['--host', values.host as string] : []),
-      '--reports-dir', values['reports-dir'] as string,
+      '--port', flags.port,
+      ...(flags.host ? ['--host', flags.host] : []),
+      '--reports-dir', reportsDir,
     ];
-    if (values['analyses-dir']) {
-      args.push('--analyses-dir', values['analyses-dir'] as string);
+    if (flags['analyses-dir']) {
+      childArgs.push('--analyses-dir', flags['analyses-dir']);
     }
-    if (values['observations-dir']) {
-      args.push('--observations-dir', values['observations-dir'] as string);
+    if (flags['observations-dir']) {
+      childArgs.push('--observations-dir', flags['observations-dir']);
     }
-    if (values['no-open']) {
-      args.push('--no-open');
+    if (flags['no-open']) {
+      childArgs.push('--no-open');
     }
-    const child = spawn(process.execPath, args, {
+    const child = spawn(process.execPath, childArgs, {
       stdio: 'inherit',
       env: { ...process.env, __OMK_DEV_CHILD: '1' },
     });
-    child.on('exit', (code: number | null) => process.exit(code || 0));
+    // child 被 signal kill 时 code=null,用 ?? 退 1 让父进程感知异常退出,
+    // 不要 `code || 0` 把 null 当 0 假装成功(把 signal kill / unknown exit 也
+    // 当成功上报会让 omk studio --dev 的 crash 静默)。
+    child.on('exit', (code: number | null) => process.exit(code ?? 1));
     return;
   }
 
   const { createReportServer } = await import('../../server/report-server.js');
   const server: ReportServer = createReportServer({
-    port: Number(values.port),
-    ...(values.host ? { host: values.host as string } : {}),
-    reportsDir: resolve(values['reports-dir'] as string),
-    ...(values['analyses-dir'] ? { analysesDir: resolve(values['analyses-dir'] as string) } : {}),
-    ...(values['observations-dir'] ? { observationsDir: resolve(values['observations-dir'] as string) } : {}),
+    port: Number(flags.port),
+    ...(flags.host ? { host: flags.host } : {}),
+    reportsDir: resolve(reportsDir),
+    ...(flags['analyses-dir'] ? { analysesDir: resolve(flags['analyses-dir']) } : {}),
+    ...(flags['observations-dir'] ? { observationsDir: resolve(flags['observations-dir']) } : {}),
   });
 
   const url = await server.start();
   console.log(tCli('cli.studio.started', lang, { url }));
   console.log(tCli('cli.studio.stop_hint', lang));
-  if (!values['no-open'] && process.stdout.isTTY) {
+  if (!flags['no-open'] && process.stdout.isTTY) {
     await openWorkbench(url, lang);
+  }
+}
+
+export default class Studio extends BaseCommand {
+  static description = bilingual({
+    zh: '启动 omk Studio 报告服务（skill-centric 仪表盘 + 浏览器自动打开）。',
+    en: 'Start omk Studio report server (skill-centric dashboard + browser auto-open).',
+  });
+
+  static examples = [
+    {
+      description: bilingual({ zh: '默认端口 7799', en: 'Default port 7799' }),
+      command: '<%= config.bin %> studio',
+    },
+    {
+      description: bilingual({
+        zh: '指定端口，不打开浏览器',
+        en: 'Custom port, no browser',
+      }),
+      command: '<%= config.bin %> studio --port 8080 --no-open',
+    },
+  ];
+
+  static flags = {
+    lang: LANG_FLAG,
+    port: Flags.string({
+      description: bilingual({
+        zh: '监听端口，默认 7799。传 0 让 OS 分配',
+        en: 'Listen port, default 7799. Pass 0 for OS-assigned',
+      }),
+      default: '7799',
+      parse: integerStringParser('--port', { min: 0, max: 65_535 }),
+    }),
+    host: Flags.string({
+      description: bilingual({
+        zh: '监听 host，默认 localhost。改为 0.0.0.0 暴露给局域网',
+        en: 'Listen host, default localhost. Use 0.0.0.0 to expose to LAN',
+      }),
+    }),
+    'reports-dir': Flags.string({
+      description: bilingual({
+        zh: '报告目录，默认 ~/.oh-my-knowledge/reports',
+        en: 'Reports dir, default ~/.oh-my-knowledge/reports',
+      }),
+    }),
+    'analyses-dir': Flags.string({
+      description: bilingual({
+        zh: '分析数据目录（可选）',
+        en: 'Analyses dir (optional)',
+      }),
+    }),
+    'observations-dir': Flags.string({
+      description: bilingual({
+        zh: '观测数据目录（可选）',
+        en: 'Observations dir (optional)',
+      }),
+    }),
+    'no-open': Flags.boolean({
+      description: bilingual({
+        zh: '不自动打开浏览器',
+        en: 'Do not auto-open browser',
+      }),
+      default: false,
+    }),
+    dev: Flags.boolean({
+      description: bilingual({
+        zh: 'dev 模式：子进程启动 + 热更新',
+        en: 'Dev mode: child process with hot reload',
+      }),
+      default: false,
+    }),
+  };
+
+  async run(): Promise<void> {
+    const { flags } = await this.parse(Studio);
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
+      await runStudio({}, { ...flags, lang }, lang);
+    });
   }
 }

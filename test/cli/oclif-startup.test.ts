@@ -1,6 +1,6 @@
 /**
  * --help / --version 短路径不被 checkUpdate fetch 拖慢的回归测试。
- * 用 OMK_DISABLE_UPDATE_CHECK / 离线 NPM_CONFIG_REGISTRY 模拟最坏情况,
+ * 用一个保证不可达的 `npm_config_registry`(127.0.0.1:1)模拟最坏情况,
  * 确认 short-circuit 把 update fetch 跳掉,event loop 不被 unawaited fetch 拖住。
  */
 import { describe, it } from 'vitest';
@@ -98,6 +98,85 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
       assert.ok(existsSync(dir), `init --lang fr should fallback to zh and succeed, dir ${dir} should exist`);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it(`OMK_LANG=en 业务路径走英文(documented --lang flag > OMK_LANG > zh 优先级)`, async () => {
+    // 回归 PR #124 typed input 后的 bug:oclif lang flag 设了 default 'zh',
+    // 业务层 `flags.lang ?? 'zh'` 永远拿到 'zh',OMK_LANG=en 被绕过。修复:业务
+    // 层走 resolveLang(process.argv) 跟 LangAwareHelp 一致,优先级 CLI > env > zh。
+    const env = { ...process.env, OMK_LANG: 'en' };
+    try {
+      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test', '--static-only'], { env });
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      const out = e.stdout + e.stderr;
+      assert.ok(/No skills found/.test(out), `OMK_LANG=en should yield English error, got:\n${out.slice(0, 300)}`);
+      assert.ok(!/未在.*下发现 skill 文件/.test(out), `OMK_LANG=en should not leak zh error:\n${out.slice(0, 300)}`);
+    }
+  });
+
+  it(`显式 --lang zh 覆盖 OMK_LANG=en(CLI flag 优先级最高)`, async () => {
+    const env = { ...process.env, OMK_LANG: 'en' };
+    try {
+      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test', '--static-only', '--lang', 'zh'], { env });
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      const out = e.stdout + e.stderr;
+      assert.ok(/未在.*下发现 skill 文件/.test(out), `--lang zh should override OMK_LANG=en, got:\n${out.slice(0, 300)}`);
+    }
+  });
+
+  it(`eval --bogus-flag 错误路径 exit 2(parse fail 回归)`, async () => {
+    try {
+      await execFileAsync('node', [CLI, 'eval', '--bogus-flag']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2 on unknown flag, got ${e.code}`);
+    }
+  });
+
+  it(`[BREAKING-CLI] 顶层 --lang 不再 dispatch 到 subcommand(normalizeArgv 已删)`, async () => {
+    // PR #124 删 normalizeArgv 后,oclif 看 argv[0]=--lang 作 unknown command。
+    // legacy `omk --lang en doctor /tmp/x` 形态需改 `omk doctor --lang en /tmp/x`。
+    try {
+      await execFileAsync('node', [CLI, '--lang', 'en', 'doctor', '/tmp/no-such-skill', '--static-only']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      const out = e.stdout + e.stderr;
+      assert.ok(/command --lang not found/.test(out), `expected oclif unknown command on top-level --lang, got:\n${out.slice(0, 300)}`);
+    }
+  });
+
+  it(`[BREAKING-CLI] 顶层 --lang en <cmd> --help 退化到 root help`, async () => {
+    // 等价 case:`omk --lang en doctor --help` 之前(normalizeArgv 存在时)走
+    // doctor 英文 help;PR #124 删后 oclif 拿 --lang 作 unknown command,
+    // 走 root help fallback(oclif 默认行为)。锁住这条 BREAKING,防新人以为是 bug。
+    const { stdout } = await execFileAsync('node', [CLI, '--lang', 'en', 'doctor', '--help']);
+    assert.ok(/Evaluation framework for LLM/.test(stdout), `expected root help fallback, got:\n${stdout.slice(0, 300)}`);
+    // root help USAGE 是 `$ omk [COMMAND]`,doctor --help 的 USAGE 是 `$ omk doctor [TARGET]`;
+    // root help 还有 COMMANDS section 列所有 cmd,doctor --help 没有。用 USAGE 特征区分。
+    assert.ok(/\$ omk \[COMMAND\]/.test(stdout), `expected root USAGE \`$ omk [COMMAND]\`, got:\n${stdout.slice(0, 300)}`);
+    assert.ok(!/\$ omk doctor/.test(stdout), `should NOT dispatch to doctor USAGE, got:\n${stdout.slice(0, 300)}`);
+  });
+
+  it(`[BREAKING-CLI] eval --bogus-flag 错误路径 FLAGS dump 双语并列(init hook 已删)`, async () => {
+    // PR #124 删 oclif init hook description mutate 后,oclif core 的
+    // `errors/handle.js:L44` 硬编码 `new Help(config)` 不走 LangAwareHelp,
+    // dump 出来的是原 `${zh}\n${en}` 双语 sentinel。--lang en / OMK_LANG=en 都不能避开。
+    // 锁住已知限制,防新人以为是 i18n 漏切语言。
+    try {
+      await execFileAsync('node', [CLI, 'eval', '--bogus-flag', '--lang', 'en']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      const out = e.stdout + e.stderr;
+      assert.ok(/batch 模式/.test(out) && /Batch mode/.test(out),
+        `expected bilingual flag dump (zh + en), got:\n${out.slice(0, 600)}`);
     }
   });
 

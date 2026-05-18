@@ -1,7 +1,8 @@
 import { resolve, join } from 'node:path';
-import { tCli, langFromArgv } from '../i18n.js';
-import { COMMON_OPTIONS } from '../parse-run-config.js';
-import { parseArgsStrictOrExit } from '../parse-strict.js';
+import { Args } from '@oclif/core';
+import { LANG_FLAG, bilingual, resolveLang } from '../oclif/i18n.js';
+import { BaseCommand } from '../oclif/base-command.js';
+import { tCli } from '../lib/i18n.js';
 
 const INIT_SAMPLES = `[
   {
@@ -84,32 +85,77 @@ description: 多维度代码审查,覆盖安全 / 健壮 / 可维护 / 性能,�
 对每个维度给出具体的改进建议，并标注严重程度（高/中/低）。
 `;
 
-export async function execute(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  // 走 helper 让未知 option fail-fast（e.g. `omk init --bogus`），
-  // 否则 argv[0] 直接当目录名, --bogus / --lang 都会被当成 dir 写文件。
-  const { positionals } = parseArgsStrictOrExit({
-    args: argv,
-    allowPositionals: true,
-    options: { ...COMMON_OPTIONS },
+export default class Init extends BaseCommand {
+  static description = bilingual({
+    zh: '初始化 omk 项目脚手架（skills/ + eval-samples.json 模板）。',
+    en: 'Scaffold an omk project (skills/ + eval-samples.json templates).',
   });
-  const targetDir: string = resolve(positionals[0] || '.');
-  const { writeFileSync, mkdirSync } = await import('node:fs');
 
-  // omk skill loader 把 `skills/<name>/SKILL.md` 子目录识别为 directory-skill,
-  // cwd 默认锚到 skill 根目录,后续可在同目录下放 assets / 子文档。
-  // 子目录主题化命名(code-review-v1 / code-review-v2)比泛 v1.md / v2.md 心智模型更清晰。
-  mkdirSync(join(targetDir, 'skills', 'code-review-v1'), { recursive: true });
-  mkdirSync(join(targetDir, 'skills', 'code-review-v2'), { recursive: true });
-  writeFileSync(join(targetDir, 'eval-samples.json'), INIT_SAMPLES);
-  writeFileSync(join(targetDir, 'skills', 'code-review-v1', 'SKILL.md'), INIT_SKILL_V1);
-  writeFileSync(join(targetDir, 'skills', 'code-review-v2', 'SKILL.md'), INIT_SKILL_V2);
+  static examples = [
+    {
+      description: bilingual({
+        zh: '在当前目录初始化',
+        en: 'Init in current directory',
+      }),
+      command: '<%= config.bin %> init',
+    },
+    {
+      description: bilingual({
+        zh: '在指定目录初始化',
+        en: 'Init in specified directory',
+      }),
+      command: '<%= config.bin %> init my-project',
+    },
+  ];
 
-  console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));
-  console.log('');
-  console.log(tCli('cli.init.next_steps_title', lang));
-  console.log(tCli('cli.init.next_step_edit_samples', lang));
-  console.log(tCli('cli.init.next_step_edit_skills', lang));
-  console.log(tCli('cli.init.next_step_run', lang));
-  console.log(tCli('cli.init.note_codex_executor', lang));
+  static args = {
+    targetDir: Args.string({
+      description: bilingual({
+        zh: '初始化目标目录，默认当前目录（.）',
+        en: 'Target directory, defaults to current directory (.)',
+      }),
+      required: false,
+      parse: async (input: string): Promise<string> => {
+        // 拒绝 `omk init -- --weird` 这种把 flag 当 positional 的写法 — legacy 会
+        // 创建名为 `--weird` 的目录,新人一头雾水。在 oclif Args 这层拦住更友好。
+        if (input.startsWith('--')) {
+          const lang = resolveLang();
+          const msg = lang === 'zh'
+            ? `初始化目录不能以 -- 开头：${input}（看起来是误写的 flag）`
+            : `init target dir cannot start with --: ${input} (looks like a malformed flag)`;
+          throw new Error(msg);
+        }
+        return input;
+      },
+    }),
+  };
+
+  static flags = {
+    lang: LANG_FLAG,
+  };
+
+  async run(): Promise<void> {
+    const { args } = await this.parse(Init);
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
+      const targetDir: string = resolve(args.targetDir || '.');
+      const { writeFileSync, mkdirSync } = await import('node:fs');
+
+      // omk skill loader 把 `skills/<name>/SKILL.md` 子目录识别为 directory-skill,
+      // cwd 默认锚到 skill 根目录,后续可在同目录下放 assets / 子文档。
+      mkdirSync(join(targetDir, 'skills', 'code-review-v1'), { recursive: true });
+      mkdirSync(join(targetDir, 'skills', 'code-review-v2'), { recursive: true });
+      writeFileSync(join(targetDir, 'eval-samples.json'), INIT_SAMPLES);
+      writeFileSync(join(targetDir, 'skills', 'code-review-v1', 'SKILL.md'), INIT_SKILL_V1);
+      writeFileSync(join(targetDir, 'skills', 'code-review-v2', 'SKILL.md'), INIT_SKILL_V2);
+
+      console.log(tCli('cli.init.scaffolded', lang, { dir: targetDir }));
+      console.log('');
+      console.log(tCli('cli.init.next_steps_title', lang));
+      console.log(tCli('cli.init.next_step_edit_samples', lang));
+      console.log(tCli('cli.init.next_step_edit_skills', lang));
+      console.log(tCli('cli.init.next_step_run', lang));
+      console.log(tCli('cli.init.note_codex_executor', lang));
+    });
+  }
 }

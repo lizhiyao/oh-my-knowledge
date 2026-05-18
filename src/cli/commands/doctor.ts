@@ -1,13 +1,14 @@
 import { homedir } from 'node:os';
-import { existsSync, statSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, statSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { CliExit } from '../cli-exit.js';
-import { tCli, langFromArgv } from '../i18n.js';
-import { COMMON_OPTIONS } from '../parse-run-config.js';
-import { parseArgsStrictOrExit } from '../parse-strict.js';
-import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
-import type { DoctorReport } from '../../types/doctor.js';
+import { Args, Flags } from '@oclif/core';
+import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
+import { BaseCommand } from '../oclif/base-command.js';
+import { numberStringParser } from '../oclif/parsers.js';
+import { CliExit } from '../lib/cli-exit.js';
+import { tCli } from '../lib/i18n.js';
 import type { Sample } from '../../types/index.js';
+import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
 
 const DEFAULT_SAMPLE_FILENAMES = ['eval-samples.json', 'eval-samples.yaml', 'eval-samples.yml'] as const;
 
@@ -52,33 +53,236 @@ function findDefaultSamplesPath(target: string | null, cwd: string): string | nu
   return null;
 }
 
-function tryLoadExistingDoctorReport(target: string | null, _cwd: string): DoctorReport | null {
-  const dir = join(homedir(), '.oh-my-knowledge', 'doctors');
-  if (!existsSync(dir)) return null;
-  const skillName = target
-    ? target.replace(/\/$/, '').split('/').pop()?.replace(/\.md$/, '') ?? null
-    : null;
-  if (!skillName) return null;
-  const p = join(dir, `${skillName}.json`);
-  if (!existsSync(p)) return null;
-  try {
-    const r = JSON.parse(readFileSync(p, 'utf8')) as DoctorReport;
-    if (!r || !r.timestamp || !r.skills || r.skills.length === 0) return null;
-    const reportTime = new Date(r.timestamp).getTime();
-    const skillPath = r.skills[0].skillPath;
-    if (skillPath && existsSync(skillPath)) {
-      const skillMtime = statSync(skillPath).mtimeMs;
-      if (skillMtime > reportTime) return null;
-    }
-    return r;
-  } catch { return null; }
+export default class Doctor extends BaseCommand {
+  static description = bilingual({
+    zh: '体检 omk 工作目录，检查 skill 配置 / 依赖 / executor 连通性。',
+    en: 'Preflight health checks for omk workdir: skill config / deps / executor connectivity.',
+  });
+
+  static examples = [
+    {
+      description: bilingual({
+        zh: '默认模式跑 LLM 健康度审计(7 内置维度）。',
+        en: 'Default mode runs LLM-driven health audit (7 built-in dimensions).',
+      }),
+      command: '<%= config.bin %> doctor',
+    },
+    {
+      description: bilingual({
+        zh: '离线静态模式，只跑 4 条静态 rule，不调 LLM,CI 无 LLM 凭证时用。',
+        en: 'Offline static mode, only 4 static rules, no LLM call. Use when CI lacks LLM credentials.',
+      }),
+      command: '<%= config.bin %> doctor --static-only',
+    },
+    {
+      description: bilingual({
+        zh: 'JSON 输出 + 写 HTML 报告，给 CI 抓 exit code 同时人看。',
+        en: 'JSON output + HTML report, for CI exit code + human review.',
+      }),
+      command: '<%= config.bin %> doctor --json --html doctor.html',
+    },
+  ];
+
+  static args = {
+    target: Args.string({
+      description: bilingual({
+        zh: '要体检的 skill 路径或目录。可选，默认扫当前 cwd 下的 skills/。',
+        en: 'Skill path or directory to inspect. Optional, defaults to scanning ./skills/.',
+      }),
+      required: false,
+    }),
+  };
+
+  static flags = {
+    lang: LANG_FLAG,
+    json: Flags.boolean({
+      description: bilingual({
+        zh: 'JSON 输出到 stdout，适合 CI / 外部脚本消费。',
+        en: 'JSON output to stdout, for CI / external script consumption.',
+      }),
+      default: false,
+    }),
+    gate: Flags.boolean({
+      description: bilingual({
+        zh: '静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。',
+        en: 'Silent mode: only emit stderr summary on fail. Exit code carries the signal.',
+      }),
+      default: false,
+    }),
+    executor: Flags.string({
+      description: bilingual({
+        zh: '执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。',
+        en: 'Executor name, default claude. Pass a test fixture path to use in tests.',
+      }),
+    }),
+    model: Flags.string({
+      description: bilingual({
+        zh: 'LLM model 名，默认 sonnet。',
+        en: 'LLM model name, default sonnet.',
+      }),
+    }),
+    samples: Flags.string({
+      description: bilingual({
+        zh: '样本文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。',
+        en: 'Samples file path (.json/.yaml). Auto-detects from target / cwd if omitted.',
+      }),
+    }),
+    timeout: Flags.string({
+      description: bilingual({
+        zh: '单次 LLM 会话超时秒数，默认 600(10 分钟）。',
+        en: 'Single-session LLM timeout sec, default 600 (10 min).',
+      }),
+      parse: numberStringParser('--timeout', { min: 1 }),
+    }),
+    html: Flags.string({
+      description: bilingual({
+        zh: 'HTML 报告输出路径。可跟 --json / --gate 共存。',
+        en: 'HTML report output path. Coexists with --json / --gate.',
+      }),
+    }),
+    'static-only': Flags.boolean({
+      description: bilingual({
+        zh: '离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。',
+        en: 'Offline static mode: only 4 static rules, no LLM call.',
+      }),
+      default: false,
+    }),
+    fix: Flags.boolean({
+      description: bilingual({
+        zh: '交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。',
+        en: 'Interactive fix: use LLM agent to fix skill issues reported by doctor.',
+      }),
+      default: false,
+    }),
+    effort: Flags.string({
+      description: bilingual({
+        zh: 'LLM 推理 effort：low / medium / high / xhigh / max。',
+        en: 'LLM reasoning effort: low / medium / high / xhigh / max.',
+      }),
+    }),
+  };
+
+  async run(): Promise<void> {
+    const { args, flags } = await this.parse(Doctor);
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
+      const target: string | null = args.target ?? null;
+      const executorName = flags.executor ?? 'claude';
+      const model = flags.model ?? 'sonnet';
+      // 默认 LLM 健康度审计(7 内置维度 + 用户注册的自定义维度);--static-only 切到
+      // 离线静态模式:只跑 4 条静态 rule,不调 LLM。CI 节点没装 claude/codex、本地断网
+      // 调试等场景。
+      const staticOnly = flags['static-only'];
+      const runHealthCheck = !staticOnly;
+      const defaultTimeoutSec = 600;
+      const timeoutSec = flags.timeout != null ? Number(flags.timeout) : defaultTimeoutSec;
+      const timeoutMs = Math.max(
+        1000,
+        Math.floor((Number.isFinite(timeoutSec) ? timeoutSec : defaultTimeoutSec) * 1000),
+      );
+
+      const cwd = process.cwd();
+      const samplesPath = flags.samples ? resolve(flags.samples) : findDefaultSamplesPath(target, cwd);
+      let samples: Sample[] | undefined;
+      let requires: DependencyRequirements | undefined;
+      if (samplesPath) {
+        try {
+          const { loadSamples } = await import('../../inputs/load-samples.js');
+          const loaded = loadSamples(samplesPath);
+          samples = loaded.samples;
+          requires = loaded.requires;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          process.stderr.write(tCli('cli.common.warn_load_samples_failed', lang, { path: samplesPath, message: msg }));
+        }
+      }
+
+      // 副作用 import: 注册 7 内置维度 spec + skill_health composer rule。
+      await import('../../doctor/health/register.js');
+
+      const { runDoctor } = await import('../../doctor/index.js');
+      const { renderDoctorReportText, renderDoctorReportJson } = await import('../../doctor/renderer.js');
+      const { getRegisteredRules } = await import('../../doctor/rules.js');
+      const { isComposerRule } = await import('../../types/doctor.js');
+      const rulesOverride = staticOnly
+        ? getRegisteredRules().filter((r) => !isComposerRule(r))
+        : getRegisteredRules().filter(isComposerRule);
+
+      let report;
+      try {
+        report = await runDoctor({
+          target,
+          cwd,
+          executorName,
+          model,
+          timeoutMs,
+          lang,
+          runHealthCheck,
+          rules: rulesOverride,
+          samples,
+          requires,
+        });
+      } catch (err) {
+        if (err instanceof CliExit) throw err;
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }));
+        console.error(`(${msg})`);
+        throw new CliExit(1);
+      }
+
+      if (report.skills.length === 0) {
+        console.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }));
+        throw new CliExit(1);
+      }
+
+      if (flags.html) {
+        const { renderDoctorReportHtml } = await import('../../doctor/html-renderer.js');
+        const { writeFileSync, mkdirSync } = await import('node:fs');
+        const abs = resolve(flags.html);
+        mkdirSync(dirname(abs), { recursive: true });
+        writeFileSync(abs, renderDoctorReportHtml(report, lang), 'utf8');
+        console.error(lang === 'zh' ? `HTML 报告已写入: ${abs}` : `HTML report written to: ${abs}`);
+      }
+
+      if (flags.json) {
+        console.log(renderDoctorReportJson(report));
+      } else if (flags.gate) {
+        if (report.outcome === 'failed') {
+          const summary = lang === 'zh'
+            ? `doctor failed: ${report.totals.fail} 个 skill 未通过 (${report.totals.warn} warn / ${report.totals.pass} pass)`
+            : `doctor failed: ${report.totals.fail} skills did not pass (${report.totals.warn} warn / ${report.totals.pass} pass)`;
+          console.error(summary);
+        }
+      } else {
+        if (samplesPath && samples) {
+          process.stderr.write(tCli('cli.doctor.samples_detected', lang, { path: samplesPath }) + '\n');
+        }
+        renderDoctorReportText(report, lang);
+      }
+
+      persistDoctorReport(report);
+
+      if (flags.fix) {
+        const existing = report;
+        if (existing.outcome !== 'failed') {
+          process.stderr.write(lang === 'zh' ? '✅ 没有需要修复的问题\n' : '✅ Nothing to fix\n');
+          throw new CliExit(0);
+        }
+        const { runDoctorFix } = await import('../../doctor/fixer.js');
+        const changed = await runDoctorFix({ report: existing, executorName, model, timeoutMs });
+        throw new CliExit(changed ? 0 : (existing.outcome === 'failed' ? 1 : 0));
+      }
+
+      throw new CliExit(report.outcome === 'failed' ? 1 : 0);
+    });
+  }
 }
 
-function persistDoctorReport(report: DoctorReport): void {
+function persistDoctorReport(report: import('../../types/doctor.js').DoctorReport): void {
   const dir = join(homedir(), '.oh-my-knowledge', 'doctors');
   mkdirSync(dir, { recursive: true });
   for (const skill of report.skills) {
-    const perSkill: DoctorReport = {
+    const perSkill = {
       ...report,
       skills: [skill],
       totals: {
@@ -87,198 +291,8 @@ function persistDoctorReport(report: DoctorReport): void {
         fail: skill.status === 'fail' ? 1 : 0,
       },
       outcome: skill.status === 'fail' ? 'failed' : skill.status === 'warn' ? 'warnings_only' : 'passed',
-      ruleStats: skill.results.reduce((acc, r) => {
-        acc[r.status] += 1;
-        acc.total += 1;
-        return acc;
-      }, { pass: 0, warn: 0, fail: 0, skipped: 0, total: 0 }),
     };
     const safeName = skill.skillName.replace(/[/\\:*?"<>|]/g, '_');
     writeFileSync(join(dir, `${safeName}.json`), JSON.stringify(perSkill, null, 2), 'utf8');
   }
-}
-
-export async function execute(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  const { values, positionals } = parseArgsStrictOrExit({
-    args: argv,
-    allowPositionals: true,
-    options: {
-      ...COMMON_OPTIONS,
-      json: { type: 'boolean', default: false },
-      gate: { type: 'boolean', default: false },
-      executor: { type: 'string' },
-      model: { type: 'string' },
-      samples: { type: 'string' },
-      timeout: { type: 'string' },
-      html: { type: 'string' },
-      fix: { type: 'boolean', default: false },
-      effort: { type: 'string' },
-      'static-only': { type: 'boolean', default: false },
-    },
-  });
-
-  const target: string | null = positionals[0] ?? null;
-  const executorName = (values.executor as string | undefined) ?? 'claude';
-  const model = (values.model as string | undefined) ?? 'sonnet';
-  const timeoutRaw = values.timeout as string | undefined;
-  // 默认 LLM 健康度审计(7 内置维度 + 用户注册的自定义维度);--static-only 切到
-  // 离线静态模式:只跑 4 条静态 rule(skill_readable / skill_metadata /
-  // dependencies_present / samples_contract_aligned),不调 LLM。后者用于
-  // CI 节点没装 claude/codex、本地断网调试等场景。
-  const staticOnly = values['static-only'] as boolean;
-  const runHealthCheck = !staticOnly;
-  // 单次 LLM 会话(7+N 维度,内部多 turn)默认 timeout 600s(10 min)。
-  const defaultTimeoutSec = 600;
-  const timeoutSec = timeoutRaw != null ? Number(timeoutRaw) : defaultTimeoutSec;
-  const timeoutMs = Math.max(1000, Math.floor((Number.isFinite(timeoutSec) ? timeoutSec : defaultTimeoutSec) * 1000));
-  const cwd = process.cwd();
-  const samplesPath = values.samples ? resolve(values.samples as string) : findDefaultSamplesPath(target, cwd);
-  let samples: Sample[] | undefined;
-  let requires: DependencyRequirements | undefined;
-  if (samplesPath) {
-    try {
-      const { loadSamples } = await import('../../inputs/load-samples.js');
-      const loaded = loadSamples(samplesPath);
-      samples = loaded.samples;
-      requires = loaded.requires;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(tCli('cli.common.warn_load_samples_failed', lang, { path: samplesPath, message: msg }));
-    }
-  }
-
-  // 副作用 import: 注册 7 内置维度 spec + skill_health composer rule。
-  // 用户在自己代码 / plugin 里 import dimension-registry 注册自定义维度,
-  // 同样会被 composer 拼到 prompt(顺序 = 注册顺序)。
-  await import('../../doctor/health/register.js');
-
-  const { runDoctor } = await import('../../doctor/index.js');
-  const { renderDoctorReportText, renderDoctorReportJson } = await import('../../doctor/renderer.js');
-
-  // 默认模式过滤掉静态 rule 只留 composer;--static-only 反过来:只留静态 rule
-  // 跳过 composer。静态 rule 在 omk eval 里继续当强制 gate,doctor 这条线只
-  // 选择性暴露给用户。
-  const { getRegisteredRules } = await import('../../doctor/rules.js');
-  const { isComposerRule } = await import('../../types/doctor.js');
-  const rulesOverride = staticOnly
-    ? getRegisteredRules().filter((r) => !isComposerRule(r))
-    : getRegisteredRules().filter(isComposerRule);
-
-  const isFix = values.fix as boolean;
-  const effort = values.effort as string | undefined;
-  const validEfforts = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
-  const effortValue = effort && validEfforts.has(effort) ? effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max' : undefined;
-
-  const runCurrentDoctor = (): Promise<Awaited<ReturnType<typeof runDoctor>>> => runDoctor({
-    target,
-    cwd,
-    executorName,
-    model,
-    timeoutMs,
-    lang,
-    runHealthCheck,
-    rules: rulesOverride,
-    samples,
-    requires,
-    effort: effortValue,
-  });
-
-  let report;
-  try {
-    if (isFix) {
-      const existingReport = tryLoadExistingDoctorReport(target, cwd);
-      if (existingReport) {
-        const { confirm } = await import('@inquirer/prompts');
-        const age = Math.round((Date.now() - new Date(existingReport.timestamp).getTime()) / 60000);
-        const useExisting = process.stdin.isTTY
-          ? await confirm({ message: `发现 ${age} 分钟前的 doctor 报告，直接使用？（否则重新运行）`, default: true })
-          : true;
-        if (useExisting) {
-          report = existingReport;
-        }
-      }
-    }
-    if (!report) {
-      process.stderr.write('⏳ 正在运行 doctor 健康检查...\n');
-      report = await runCurrentDoctor();
-      persistDoctorReport(report);
-    }
-  } catch (err) {
-    // CliExit 透传(防御性,目前 runDoctor 不抛 CliExit,但保持四个 catch 一致)。
-    if (err instanceof CliExit) throw err;
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }));
-    console.error(`(${msg})`);
-    throw new CliExit(1);
-  }
-
-  if (report.skills.length === 0) {
-    console.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }));
-    throw new CliExit(1);
-  }
-
-  const isJson = values.json as boolean;
-  const isGate = values.gate as boolean;
-  const htmlPath = values.html as string | undefined;
-
-  // --html 与 --json/--gate 可以共存:--html 写文件;同时 stdout/stderr 仍按
-  // 主输出格式跑(--json → JSON 到 stdout / --gate → 静默 / 默认 → text 到 stderr)。
-  if (htmlPath) {
-    const { renderDoctorReportHtml } = await import('../../doctor/html-renderer.js');
-    const { writeFileSync, mkdirSync } = await import('node:fs');
-    const { dirname, resolve } = await import('node:path');
-    const abs = resolve(htmlPath);
-    mkdirSync(dirname(abs), { recursive: true });
-    writeFileSync(abs, renderDoctorReportHtml(report, lang), 'utf8');
-    // 通知用户(stderr,不污染 --json 的 stdout)
-    console.error(lang === 'zh' ? `HTML 报告已写入: ${abs}` : `HTML report written to: ${abs}`);
-  }
-
-  if (isJson) {
-    console.log(renderDoctorReportJson(report));
-  } else if (isGate) {
-    // gate 模式: 静默 stdout, fail 时简短 stderr 摘要(供 CI 抓 exit code)
-    if (report.outcome === 'failed') {
-      const summary = lang === 'zh'
-        ? `doctor failed: ${report.totals.fail} 个 skill 未通过 (${report.totals.warn} warn / ${report.totals.pass} pass)`
-        : `doctor failed: ${report.totals.fail} skills did not pass (${report.totals.warn} warn / ${report.totals.pass} pass)`;
-      console.error(summary);
-    }
-  } else {
-    if (samplesPath && samples) {
-      process.stderr.write(tCli('cli.doctor.samples_detected', lang, { path: samplesPath }) + '\n');
-    }
-    renderDoctorReportText(report, lang);
-  }
-
-  if (isFix) {
-    const { runDoctorFix } = await import('../../doctor/fixer.js');
-    const absTarget = target ? resolve(target) : cwd;
-    const changed = await runDoctorFix({
-      report,
-      executorName,
-      model,
-      timeoutMs,
-      effort: effortValue,
-      resolveSkillPath: (reportPath) => {
-        if (existsSync(reportPath)) return reportPath;
-        const filename = reportPath.split('/').pop() || '';
-        const candidate = join(absTarget, filename);
-        if (existsSync(candidate)) return candidate;
-        if (absTarget.endsWith('.md') && existsSync(absTarget)) return absTarget;
-        const skillMd = join(absTarget, 'SKILL.md');
-        if (existsSync(skillMd)) return skillMd;
-        return reportPath;
-      },
-      verify: async () => {
-        const next = await runCurrentDoctor();
-        persistDoctorReport(next);
-        return next;
-      },
-    });
-    throw new CliExit(changed ? 0 : report.outcome === 'failed' ? 1 : 0);
-  }
-
-  throw new CliExit(report.outcome === 'failed' ? 1 : 0);
 }

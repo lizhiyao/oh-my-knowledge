@@ -12,11 +12,12 @@
 // 代价:flag description 里不能用真换行 — 单行写到底,需要多段时换 prose
 // 文档（legacy 路径的 cli.help.observe 等仍然承担长 prose 角色)。
 //
-// 跟进:改 oclif 上游让 errors/handle.js 尊重 helpClass,或者自写 init hook
-// 把 description 在 parse 前 in-place mutate(收口错误路径的双语 dump)。
+// 跟进(Phase B):改 oclif 上游让 errors/handle.js 尊重 helpClass / 接受双语 dump
+// 不再 fix(早期 init hook description mutate 方案 PR #124 已删,接受 BREAKING-CLI)。
 
-import { getCliLang, parseLangFromArgv } from '../i18n.js';
-import type { CliLang } from '../i18n.js';
+import { Flags } from '@oclif/core';
+import { getCliLang, parseLangFromArgv } from '../lib/i18n.js';
+import type { CliLang } from '../lib/i18n.js';
 
 export type Lang = CliLang;
 
@@ -51,6 +52,14 @@ export function bilingual(text: BiText): string {
   }
   return `${text.zh}\n${text.en}`;
 }
+
+export const LANG_FLAG = Flags.string({
+  description: bilingual({
+    zh: '输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。',
+    en: 'Output language zh|en. Priority: CLI > OMK_LANG env > zh.',
+  }),
+  default: 'zh',
+});
 
 /** 按 lang 把双语串切回单语;只有 1 行的串原样返回。 */
 export function pickLang(text: string | undefined, lang: Lang): string | undefined {

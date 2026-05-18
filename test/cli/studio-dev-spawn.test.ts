@@ -72,8 +72,14 @@ describe('studio --dev child spawn argv', () => {
   });
 
   it('uses cli/index.js as child entrypoint and re-enters studio', async () => {
-    const { execute } = await import('../../src/cli/commands/studio.js');
-    await execute(['--dev', '--port', '8080', '--reports-dir', 'tmp-reports', '--no-open']);
+    const { runStudio } = await import('../../src/cli/commands/studio.js');
+    await runStudio({}, {
+      lang: 'zh',
+      port: '8080',
+      'reports-dir': 'tmp-reports',
+      'no-open': true,
+      dev: true,
+    }, 'zh');
 
     expect(spawnCalls).toHaveLength(1);
     const [, watchRoot, cliPath, command, ...rest] = spawnCalls[0].args;
@@ -86,21 +92,21 @@ describe('studio --dev child spawn argv', () => {
   });
 
   it('treats BROWSER=none as no browser open', async () => {
-    const { execute } = await import('../../src/cli/commands/studio.js');
+    const { runStudio } = await import('../../src/cli/commands/studio.js');
     setStdoutIsTTY(true);
     process.env.BROWSER = 'none';
 
-    await execute([]);
+    await runStudio({}, { lang: 'zh', port: '7799', 'no-open': false, dev: false }, 'zh');
 
     expect(execFileCalls).toHaveLength(0);
   });
 
   it('uses cmd start for the default Windows browser opener', async () => {
-    const { execute } = await import('../../src/cli/commands/studio.js');
+    const { runStudio } = await import('../../src/cli/commands/studio.js');
     setStdoutIsTTY(true);
     platformName = 'win32';
 
-    await execute([]);
+    await runStudio({}, { lang: 'zh', port: '7799', 'no-open': false, dev: false }, 'zh');
 
     expect(execFileCalls).toEqual([
       { command: 'cmd', args: ['/c', 'start', '', 'http://127.0.0.1:7799'] },
@@ -108,14 +114,14 @@ describe('studio --dev child spawn argv', () => {
   });
 
   it('warns when browser auto-open fails', async () => {
-    const { execute } = await import('../../src/cli/commands/studio.js');
+    const { runStudio } = await import('../../src/cli/commands/studio.js');
     setStdoutIsTTY(true);
     platformName = 'linux';
     execFileError = new Error('xdg-open missing');
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
 
     try {
-      await execute([]);
+      await runStudio({}, { lang: 'zh', port: '7799', 'no-open': false, dev: false }, 'zh');
 
       expect(execFileCalls).toEqual([
         { command: 'xdg-open', args: ['http://127.0.0.1:7799'] },

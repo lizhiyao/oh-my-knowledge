@@ -20,8 +20,8 @@ import type {
   DoctorRuleResult,
   DoctorRuleStatus,
 } from '../types/index.js';
-import { CLI_DICT, type CliMessageKey } from '../cli/i18n-dict.js';
-import { tCli, type CliLang } from '../cli/i18n.js';
+import { CLI_DICT, type CliMessageKey } from '../cli/lib/i18n-dict.js';
+import { tCli, type CliLang } from '../cli/lib/i18n.js';
 
 const STATUS_RANK: Record<DoctorRuleStatus, number> = {
   fail: 0, warn: 1, pass: 2, skipped: 3,

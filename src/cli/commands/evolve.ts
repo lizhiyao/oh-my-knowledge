@@ -1,10 +1,13 @@
-import { CliExit } from '../cli-exit.js';
 import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { tCli, langFromArgv } from '../i18n.js';
-import { COMMON_OPTIONS } from '../parse-run-config.js';
-import { parseArgsStrictOrExit } from '../parse-strict.js';
-import { makeOnProgress } from '../progress.js';
+import { Args, Flags } from '@oclif/core';
+import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
+import { BaseCommand } from '../oclif/base-command.js';
+import { enumStringParser, integerStringParser, numberStringParser } from '../oclif/parsers.js';
+import { CliExit } from '../lib/cli-exit.js';
+import { tCli, type CliLang } from '../lib/i18n.js';
+import { makeOnProgress } from '../lib/progress.js';
+import type { EvolveArgs, EvolveFlags } from '../lib/cmd-flags.js';
 import type { ProgressCallback } from '../../types/index.js';
 
 interface RoundProgressInfo {
@@ -17,7 +20,6 @@ interface RoundProgressInfo {
   costUSD?: number;
   costReported?: boolean;
   error?: string;
-  reused?: boolean;
 }
 
 interface TrajectoryEntry {
@@ -47,9 +49,6 @@ interface EvolveResult {
   bestRound: number;
   totalRounds: number;
   totalCostUSD: number;
-  stopReason?: string;
-  sampleFixes?: Array<{ round: number; fixedCount: number; costUSD: number }>;
-  reusedBaselineReportId?: string;
   costReported?: boolean;
   trajectory: TrajectoryEntry[];
   bestSkillPath: string;
@@ -57,52 +56,29 @@ interface EvolveResult {
   reportId?: string;
 }
 
-export async function execute(argv: string[]): Promise<void> {
-  const lang = langFromArgv(argv);
-  const { values, positionals } = parseArgsStrictOrExit({
-    args: argv,
-    options: {
-      ...COMMON_OPTIONS,
-      rounds: { type: 'string', default: '5' },
-      target: { type: 'string' },
-      samples: { type: 'string', default: 'eval-samples.json' },
-      model: { type: 'string', default: 'sonnet' },
-      'judge-models': { type: 'string', default: 'claude:haiku' },
-      'improve-model': { type: 'string', default: 'sonnet' },
-      concurrency: { type: 'string', default: '1' },
-      timeout: { type: 'string', default: '120' },
-      executor: { type: 'string', default: 'claude' },
-      'skip-connectivity': { type: 'boolean', default: false },
-      effort: { type: 'string' },
-      'no-diagnostic': { type: 'boolean', default: false },
-      'skip-doctor': { type: 'boolean', default: false },
-      'stop-on-assertions-pass': { type: 'boolean', default: false },
-      'auto-fix-samples': { type: 'boolean', default: false },
-      'sample-fix-max-attempts': { type: 'string', default: '2' },
-      'reuse-latest-eval': { type: 'boolean', default: false },
-      'improve-mode': { type: 'string', default: 'agent' },
-    },
-    allowPositionals: true,
-  });
-
-  // skill path 走 parseArgs 的 positionals，避免 raw argv.find 把 flag value
-  // 当成 path 误识别，例如 `omk evolve --judge-models openai-api:gpt-4o foo.md`。
-  const skillPath: string | undefined = positionals[0];
+// runEvolve module-level helper:cli-exit.test 测「skillPath 空 throw CliExit(1)」走
+// in-process import 验证业务,Command.run() body 直接调它。
+export async function runEvolve(
+  args: EvolveArgs,
+  flags: EvolveFlags,
+  lang: CliLang,
+): Promise<void> {
+  const skillPath: string = args.skillPath;
   if (!skillPath) {
     console.error(tCli('cli.evolve.specify_skill_path', lang));
     throw new CliExit(1);
   }
 
-  let samplesFile: string = (values.samples as string) ?? 'eval-samples.json';
+  let samplesFile: string = flags.samples;
   if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
     if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
     else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
   }
 
   const { evolveSkill } = await import('../../authoring/evolver.js');
-  const { parseJudgeModelsArgOrExit } = await import('../parse-run-config.js');
+  const { parseJudgeModelsArgOrExit } = await import('../lib/parse-run-config.js');
 
-  const evolveJudges = parseJudgeModelsArgOrExit(values['judge-models'] as string);
+  const evolveJudges = parseJudgeModelsArgOrExit(flags['judge-models']);
   if (evolveJudges.length > 1) {
     console.error(tCli('cli.common.judge_models_single_only', lang, { cmd: 'omk evolve' }));
     throw new CliExit(2);
@@ -114,30 +90,29 @@ export async function execute(argv: string[]): Promise<void> {
     const result: EvolveResult = await evolveSkill({
       skillPath: resolve(skillPath),
       samplesPath: resolve(samplesFile),
-      rounds: Math.max(1, Number(values.rounds) || 5),
-      target: values.target ? Number(values.target) : null,
-      stopOnAssertionsPass: values['stop-on-assertions-pass'] as boolean,
-      autoFixSamples: values['auto-fix-samples'] as boolean,
-      sampleFixMaxAttempts: Math.max(1, Number(values['sample-fix-max-attempts']) || 2),
-      reuseLatestEval: values['reuse-latest-eval'] as boolean,
-      model: values.model as string,
+      rounds: Math.max(1, Number(flags.rounds) || 5),
+      target: flags.target ? Number(flags.target) : null,
+      model: flags.model,
       judgeModels: evolveJudges,
-      improveModel: values['improve-model'] as string,
-      improveMode: (values['improve-mode'] as string) === 'rewrite' ? 'rewrite' : 'agent',
-      executorName: values.executor as string,
-      concurrency: Math.max(1, Number(values.concurrency) || 1),
-      timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
-      skipConnectivity: values['skip-connectivity'] as boolean,
-      effort: values.effort ? validateEvolveEffort(values.effort as string, lang) : undefined,
-      noDiagnostic: values['no-diagnostic'] as boolean,
-      skipDoctor: values['skip-doctor'] as boolean,
+      improveModel: flags['improve-model'],
+      executorName: flags.executor,
+      concurrency: Math.max(1, Number(flags.concurrency) || 1),
+      timeoutMs: Math.max(1, Number(flags.timeout) || 120) * 1000,
+      skipConnectivity: flags['skip-connectivity'],
+      effort: flags.effort ? validateEvolveEffort(flags.effort, lang) : undefined,
+      noDiagnostic: flags['no-diagnostic'],
+      skipDoctor: flags['skip-doctor'],
+      stopOnAssertionsPass: flags['stop-on-assertions-pass'],
+      autoFixSamples: flags['auto-fix-samples'],
+      sampleFixMaxAttempts: Math.max(1, Number(flags['sample-fix-max-attempts']) || 2),
+      reuseLatestEval: flags['reuse-latest-eval'],
+      improveMode: flags['improve-mode'] === 'rewrite' ? 'rewrite' : 'agent',
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
-      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, reused }: RoundProgressInfo): void {
+      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error }: RoundProgressInfo): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。
-        // 缺位 / true 当 reported 走旧格式。
         const fmtRoundCost = (c: number, r: boolean): string => r ? `$${c.toFixed(4)}` : '—';
         if (phase === 'baseline') {
-          process.stderr.write(tCli(reused ? 'cli.evolve.round_baseline_reused' : 'cli.evolve.round_baseline', lang, {
+          process.stderr.write(tCli('cli.evolve.round_baseline', lang, {
             score: score!.toFixed(2), cost: fmtRoundCost(costUSD!, costReported !== false),
           }));
         } else if (phase === 'error') {
@@ -158,7 +133,7 @@ export async function execute(argv: string[]): Promise<void> {
       ? ((result.finalScore - result.startScore) / result.startScore * 100).toFixed(1)
       : '0';
     const totalCostStr = result.costReported === false
-      ? '—'  // 任一轮的 executor 不报 cost → totalCostUSD 是 lower-bound
+      ? '—'
       : `$${result.totalCostUSD.toFixed(4)}`;
     process.stderr.write(tCli('cli.evolve.summary', lang, {
       start: result.startScore.toFixed(2), final: result.finalScore.toFixed(2),
@@ -176,9 +151,173 @@ export async function execute(argv: string[]): Promise<void> {
 
     console.log(JSON.stringify(result, null, 2));
   } catch (err: unknown) {
-    // CliExit 是显式 exit 信号,保持原 code 透传(同 gate / run)。
     if (err instanceof CliExit) throw err;
     console.error(tCli('cli.common.error_prefix', lang, { message: (err as Error).message }));
     throw new CliExit(1);
+  }
+}
+
+export default class Evolve extends BaseCommand {
+  static description = bilingual({
+    zh: '自动迭代改进 skill:多轮 eval + skill 重写，直到达到 --target 或耗尽 --rounds。',
+    en: 'Auto-iterate skill improvement: multi-round eval + rewrite until --target or --rounds exhausted.',
+  });
+
+  static examples = [
+    {
+      description: bilingual({
+        zh: '默认 5 轮迭代',
+        en: 'Default 5 rounds',
+      }),
+      command: '<%= config.bin %> evolve skills/my-skill/SKILL.md',
+    },
+    {
+      description: bilingual({
+        zh: '指定目标分 + 自定义模型',
+        en: 'Target score + custom model',
+      }),
+      command: '<%= config.bin %> evolve skills/my-skill/SKILL.md --target 4.5 --model opus --improve-model opus',
+    },
+  ];
+
+  static args = {
+    skillPath: Args.string({
+      description: bilingual({
+        zh: 'skill 文件或 SKILL.md 路径。',
+        en: 'Skill file or SKILL.md path.',
+      }),
+      required: true,
+    }),
+  };
+
+  static flags = {
+    lang: LANG_FLAG,
+    rounds: Flags.string({
+      description: bilingual({ zh: '最大迭代轮数，默认 5', en: 'Max iteration rounds, default 5' }),
+      default: '5',
+      parse: integerStringParser('--rounds', { min: 1 }),
+    }),
+    target: Flags.string({
+      description: bilingual({
+        zh: '目标 composite 分数，达到即停。不传则跑满 rounds',
+        en: 'Target composite score; stop when reached. If omitted, runs all rounds.',
+      }),
+      parse: numberStringParser('--target', { min: 0, max: 5 }),
+    }),
+    samples: Flags.string({
+      description: bilingual({
+        zh: '样本文件路径，默认 eval-samples.json',
+        en: 'Samples file, default eval-samples.json',
+      }),
+      default: 'eval-samples.json',
+    }),
+    model: Flags.string({
+      description: bilingual({
+        zh: '被评测的 LLM，默认 sonnet',
+        en: 'Evaluated LLM, default sonnet',
+      }),
+      default: 'sonnet',
+    }),
+    'judge-models': Flags.string({
+      description: bilingual({
+        zh: '评委 model（单评委约束），格式 executor:model。默认 claude:haiku',
+        en: 'Judge model (single judge required), executor:model format. Default claude:haiku',
+      }),
+      default: 'claude:haiku',
+    }),
+    'improve-model': Flags.string({
+      description: bilingual({
+        zh: '负责重写 skill 的 LLM，默认 sonnet',
+        en: 'LLM that rewrites the skill, default sonnet',
+      }),
+      default: 'sonnet',
+    }),
+    concurrency: Flags.string({
+      description: bilingual({ zh: '评测并发数，默认 1', en: 'Eval concurrency, default 1' }),
+      default: '1',
+      parse: integerStringParser('--concurrency', { min: 1 }),
+    }),
+    timeout: Flags.string({
+      description: bilingual({ zh: '单样本超时秒，默认 120', en: 'Per-sample timeout sec, default 120' }),
+      default: '120',
+      parse: numberStringParser('--timeout', { min: 1 }),
+    }),
+    executor: Flags.string({
+      description: bilingual({ zh: '执行器名，默认 claude', en: 'Executor name, default claude' }),
+      default: 'claude',
+    }),
+    'skip-connectivity': Flags.boolean({
+      description: bilingual({
+        zh: '跳过 LLM 连通性预检',
+        en: 'Skip LLM connectivity preflight',
+      }),
+      default: false,
+    }),
+    effort: Flags.string({
+      description: bilingual({
+        zh: 'reasoning effort: low/medium/high/xhigh/max',
+        en: 'Reasoning effort: low/medium/high/xhigh/max',
+      }),
+      parse: enumStringParser('--effort', ['low', 'medium', 'high', 'xhigh', 'max']),
+    }),
+    'no-diagnostic': Flags.boolean({
+      description: bilingual({
+        zh: '关 LLM diagnostic 调用',
+        en: 'Disable diagnostic LLM call',
+      }),
+      default: false,
+    }),
+    'skip-doctor': Flags.boolean({
+      description: bilingual({
+        zh: '跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）',
+        en: 'Skip doctor gate (escape hatch; user takes garbage-in risk)',
+      }),
+      default: false,
+    }),
+    'stop-on-assertions-pass': Flags.boolean({
+      description: bilingual({
+        zh: '普通样本断言全过时提前停止',
+        en: 'Stop early when normal samples pass assertions',
+      }),
+      default: false,
+    }),
+    'auto-fix-samples': Flags.boolean({
+      description: bilingual({
+        zh: '每轮先修 skill，再修 sample，随后一起评估候选结果',
+        en: 'Fix the skill, then fix samples, then evaluate the combined candidate',
+      }),
+      default: false,
+    }),
+    'sample-fix-max-attempts': Flags.string({
+      description: bilingual({
+        zh: '每条 sample 自动修复最多尝试次数（默认：2）',
+        en: 'Max auto-fix attempts per sample (default: 2)',
+      }),
+      default: '2',
+      parse: integerStringParser('--sample-fix-max-attempts', { min: 1 }),
+    }),
+    'reuse-latest-eval': Flags.boolean({
+      description: bilingual({
+        zh: '复用可比的最新 eval 报告作为 round-0',
+        en: 'Reuse the latest comparable eval report as round-0',
+      }),
+      default: false,
+    }),
+    'improve-mode': Flags.string({
+      description: bilingual({
+        zh: '改写策略（默认：agent）',
+        en: 'Improvement strategy (default: agent)',
+      }),
+      default: 'agent',
+      options: ['agent', 'rewrite'],
+    }),
+  };
+
+  async run(): Promise<void> {
+    const { args, flags } = await this.parse(Evolve);
+    const lang = this.lang;
+    await this.runWithCliExit(async () => {
+      await runEvolve(args, { ...flags, lang }, lang);
+    });
   }
 }

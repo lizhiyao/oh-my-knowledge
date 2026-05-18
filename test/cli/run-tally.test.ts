@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { computeRunTally } from '../../src/cli/run-tally.js';
-import { tCli } from '../../src/cli/i18n.js';
+import { computeRunTally } from '../../src/cli/lib/run-tally.js';
+import { tCli } from '../../src/cli/lib/i18n.js';
 import type {
   BatchEvaluationReport,
   EvaluationReport,

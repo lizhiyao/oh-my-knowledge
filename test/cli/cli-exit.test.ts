@@ -1,27 +1,39 @@
 import { describe, it, expect } from 'vitest';
-import { CliExit } from '../../src/cli/cli-exit.js';
-import { execute as evolve } from '../../src/cli/commands/evolve.js';
-import { parseArgsStrictOrExit } from '../../src/cli/parse-strict.js';
-import { parseJudgeModelsArgOrExit } from '../../src/cli/parse-run-config.js';
+import { CliExit } from '../../src/cli/lib/cli-exit.js';
+import { runEvolve } from '../../src/cli/commands/evolve.js';
+import { parseJudgeModelsArgOrExit } from '../../src/cli/lib/parse-run-config.js';
 
 /**
- * CliExit 收口让 execute() 在单测里可以被 try/catch 捕获,不再 kill 整个
+ * CliExit 收口让业务 runX() 在单测里可以被 try/catch 捕获,不再 kill 整个
  * 测试进程。这层验证「不该跑业务逻辑直接退出」的几条核心 path。
  */
 describe('CliExit dispatch', () => {
   it('evolve 命令缺 skill 路径时 throw CliExit(1)', async () => {
-    const err = await evolve([]).then(() => null, (e: unknown) => e);
+    const err = await runEvolve(
+      { skillPath: '' },
+      {
+        lang: 'zh',
+        rounds: '5',
+        samples: 'eval-samples.json',
+        model: 'sonnet',
+        'judge-models': 'claude:haiku',
+        'improve-model': 'sonnet',
+        concurrency: '1',
+        timeout: '120',
+        executor: 'claude',
+        'skip-connectivity': false,
+        'no-diagnostic': false,
+        'skip-doctor': false,
+        'stop-on-assertions-pass': false,
+        'auto-fix-samples': false,
+        'sample-fix-max-attempts': '2',
+        'reuse-latest-eval': false,
+        'improve-mode': 'agent',
+      },
+      'zh',
+    ).then(() => null, (e: unknown) => e);
     expect(err).toBeInstanceOf(CliExit);
     expect((err as CliExit).code).toBe(1);
-  });
-
-  it('parseArgsStrictOrExit 收到未知 option 时 throw CliExit(2)', () => {
-    expect(() =>
-      parseArgsStrictOrExit({
-        args: ['--bogus-flag'],
-        options: { known: { type: 'string' } },
-      }),
-    ).toThrowError(CliExit);
   });
 
   // parseJudgeModelsArgOrExit 也要走 CliExit，否则 eval / evolve 子命令单测里
