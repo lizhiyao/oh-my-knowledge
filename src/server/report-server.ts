@@ -19,6 +19,7 @@ import { DEFAULT_OBSERVATIONS_DIR, findObservationInboxItem, formatObservationSh
 import { buildObservationInboxViewModel } from '../observability/inbox-view-model.js';
 import { activeStudioDiagnostics } from '../diagnosis/studio-projection.js';
 import { deleteObservationReviewState, loadObservationReviewState, updateObservationReviewState, type ObservationReviewStateUpdate } from '../observability/review-state.js';
+import { updateSkillDerivedStandardStatus, type SkillDerivedStandardStatus } from '../observability/soft-standards.js';
 import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;
@@ -617,6 +618,8 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
             note: typeof body.note === 'string' ? body.note : undefined,
             reason: typeof body.reason === 'string' ? body.reason : undefined,
             metricKey: body.metricKey as ObservationReviewStateUpdate['metricKey'],
+            metricScope: body.metricScope as ObservationReviewStateUpdate['metricScope'],
+            metricScopeId: typeof body.metricScopeId === 'string' ? body.metricScopeId : undefined,
             sourceTrace: typeof body.sourceTrace === 'string' ? body.sourceTrace : undefined,
             sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
             messageIndex: typeof body.messageIndex === 'number' ? body.messageIndex : undefined,
@@ -638,6 +641,42 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         }
         res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: 'method not allowed' }));
+        return;
+      }
+
+      if (path === '/api/observations/soft-standards/review') {
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'method not allowed' }));
+          return;
+        }
+        try {
+          const body = await readJsonBody(req) as { skillName?: unknown; standardId?: unknown; status?: unknown; reason?: unknown };
+          const skillName = typeof body.skillName === 'string' ? body.skillName : '';
+          const standardId = typeof body.standardId === 'string' ? body.standardId : '';
+          const status = body.status === 'author_confirmed' || body.status === 'rejected' || body.status === 'pending_review'
+            ? body.status as SkillDerivedStandardStatus
+            : undefined;
+          if (!skillName || !standardId || !status) {
+            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+            res.end(JSON.stringify({ error: 'invalid soft standard review payload' }));
+            return;
+          }
+          const now = new Date().toISOString();
+          const record = updateSkillDerivedStandardStatus(observationsDir, skillName, standardId, status, now);
+          const verdict = status === 'author_confirmed' ? 'real_issue' : status === 'rejected' ? 'not_issue' : 'needs_more_context';
+          const state = updateObservationReviewState(observationsDir, {
+            targetType: 'soft_standard',
+            targetId: `${skillName}:${standardId}`,
+            verdict,
+            reason: typeof body.reason === 'string' ? body.reason : undefined,
+          }, now);
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ record, reviewState: state }));
+        } catch (error) {
+          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+        }
         return;
       }
 

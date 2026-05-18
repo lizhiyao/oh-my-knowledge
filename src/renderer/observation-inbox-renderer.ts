@@ -6,20 +6,27 @@ import type { ObservationInboxViewModel } from '../observability/inbox-view-mode
 import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorrectionMatches, findUserGoalShiftMatches, hasUserCorrectionSignal, hasUserGoalShiftSignal } from '../observability/experience.js';
 import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from '../observability/problem-patterns.js';
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
+import { resolveObservationReviewSession, type ResolvedObservationReviewSession } from '../observability/resolved-review.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
-import { hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE, isScheduledTaskPromptText } from '../observability/text-signals.js';
+import type { SkillDerivedStandard, SkillLlmEnhancedReviewSections } from '../observability/soft-standards.js';
+import { ASSISTANT_DELIVERABLE_ARTIFACT_RE, hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE, isAssistantProgressUpdateText, isScheduledTaskPromptText, isSyntheticUserMessageText, isUserInteractionMetricText } from '../observability/text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 import type {
   ExperienceAssistiveInference,
   ExperienceAssistiveInferenceCautionCode,
   ExperienceAssistiveInferenceCode,
+  ExperienceChecklistItem,
   ExperienceEvidenceChain,
+  ExperienceEvidenceRef,
+  ExperienceInvocation,
   ExperienceReviewIndicators,
   ExperienceReviewBasisCode,
   ExperienceReviewPriority,
+  ExperienceReviewerReport,
   ExperienceRuleFinding,
   ExperienceRuleFindingCode,
   ExperienceRuleFindingLevel,
+  ExperienceSessionStoryAnswer,
   ExperienceSessionSummary,
   ExperienceTimelineEvent,
 } from '../observability/experience.js';
@@ -36,6 +43,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     skillInvocationLastSeen,
     skillToolCallCounts,
     skillChains,
+    skillDerivedStandards,
     totalSkillInvocations,
     severitySkillCounts,
     skillCount,
@@ -94,6 +102,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     return `<div style="margin:4px 0;text-align:left"><span style="color:var(--text-muted);font-size:11px">${e(label)}</span><div style="font-family:ui-monospace,monospace;font-size:11px;word-break:break-all;text-align:left;color:var(--text-secondary)">${e(String(value))}</div></div>`;
   };
   const formatTimestamp = (value?: string): string => value ? value.slice(0, 19).replace('T', ' ') : '—';
+  const truncateText = (value: string, max = 28): string => value.length > max ? `${value.slice(0, Math.max(0, max - 1))}…` : value;
   const sessionTimeLabel = lang === 'zh' ? 'Session 时间' : 'Session time';
   const sessionTimeRangeLabel = lang === 'zh' ? 'Session 时间范围' : 'Session time range';
   const latestInvocationLabel = lang === 'zh' ? '最近调用' : 'Latest invocation';
@@ -229,7 +238,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   };
   const confidenceHeaderHelp = '判断把握：OMK 对“这条 过程发现 是否需要处理/是否高风险/需关注”的规则判断有多确定。归属把握：OMK 把这条 过程发现 归到当前 skill 名下有多确定，例如明确调用 skill 通常更高。';
   type IndicatorHelpKey =
-    | 'userCorrection' | 'userInterruption' | 'userFollowUp' | 'negativeFeedback' | 'positiveFeedback' | 'userGoalShift' | 'hardRule'
+    | 'userCorrection' | 'userInterruption' | 'userFollowUp' | 'negativeFeedback' | 'positiveFeedback' | 'userGoalShift' | 'hardRule' | 'selfCorrection' | 'repeatedExecution'
     | 'toolCall' | 'toolFailure' | 'highObservation' | 'mediumObservation' | 'hedging' | 'explicitMarker'
     | 'bash' | 'read' | 'grep' | 'bashProbe' | 'notFound' | 'toolLimit';
   const indicatorLabels: Record<IndicatorHelpKey, string> = {
@@ -240,6 +249,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     positiveFeedback: '正向反馈',
     userGoalShift: '用户切换目标',
     hardRule: '用户硬性要求',
+    selfCorrection: '自我纠正',
+    repeatedExecution: '重复执行',
     toolCall: '工具调用',
     toolFailure: '工具执行失败',
     highObservation: '高优先级过程发现',
@@ -260,7 +271,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     negativeFeedback: '统计“没用 / 垃圾 / 菜 / 做错了 / 不行 / 失败 / 看不懂 / 有问题”等负向表达。这是规则命中，不是 LLM 情绪识别。',
     positiveFeedback: '统计“很好 / good job / 做得好 / 很棒 / 优秀 / 厉害 / 很有用 / 很有价值”等正向表达，用来保留用户认可证据。',
     userGoalShift: '统计“换个方向 / 先不 / 不用这个 / 另一个问题”等目标切换表达。它表示当前目标可能中止或切走，不直接等同于 skill 做错。',
-    hardRule: '统计用户在对话里临时提出的硬性要求，例如“必须 / 不要 / 禁止 / 严格 / 一定要 / 只允许”。Skill 自身的强约束请看 Context Chain 里的 hardRules。',
+    hardRule: '统计用户在对话里临时提出的硬性要求，例如“必须 / 不要 / 禁止 / 严格 / 一定要 / 只允许”。Skill 自身的强约束请看定义链路里的规则检测结果。',
+    selfCorrection: '统计 agent 在没有用户介入的情况下，发现自己的执行路径、结果或工具策略有问题并主动修正。少量说明有恢复能力，高频说明流程不稳。',
+    repeatedExecution: '统计同类步骤、工具或流程被重复执行的信号。高频出现通常对应绕路、工具策略不清晰或 workflow 缺少明确顺序。',
     toolCall: '统计该 skill 运行片段里的 tool_use 调用总数，包括 Bash、Read、Grep 等工具。',
     toolFailure: '统计该 skill 运行片段里失败的工具执行结果，例如 tool_result 标记 is_error=true。注意：工具执行失败不等于整个 skill 调用失败。',
     highObservation: '统计 severity=high 的过程发现，通常表示可能需要优先复盘的执行问题。',
@@ -345,7 +358,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const active = count > 0;
     return `<span class="summary-metric${active ? ` summary-impact summary-impact-${level}` : ' summary-metric-empty'}"${active ? ` title="${e(reviewImpactTitle(level))}"` : ''}><span class="summary-name">${e(label)}</span>${renderShare(count, total)}</span>`;
   };
-  // 「疑似完成」等观察性指标：>0 时显示轻微 tag（complete chip 视觉），
+  // 结果类观察指标：>0 时显示轻微 tag（complete chip 视觉），
   // =0 时与其他指标一样走 summary-metric-empty。不接入复盘评分。
   const renderSoftMetric = (label: string, count: number, title?: string): string => {
     const active = count > 0;
@@ -492,11 +505,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     userFollowUpCount: 0,
     userCorrectionCount: 0,
     userInterruptionCount: 0,
+    sessionInterruptedCount: 0,
     negativeFeedbackCount: 0,
     positiveFeedbackCount: 0,
     userGoalShiftCount: 0,
     hardRuleTextHitCount: 0,
     assistantDeliverySignalCount: 0,
+    deliverableArtifactSignalCount: 0,
+    selfCorrectionCount: 0,
+    repeatedExecutionCount: 0,
     toolCallCount: 0,
     toolFailureCount: 0,
     highObservationCount: 0,
@@ -509,39 +526,43 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     pattern.lastIndex = 0;
     return pattern.test(value);
   };
-  const displayMetricVerdict = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey): 'confirmed' | 'rejected' | '' => {
-    const targetId = observationMetricAnnotationTargetId(event, metricKey);
+  const displayMetricVerdict = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): 'confirmed' | 'rejected' | '' => {
+    const targetId = observationMetricAnnotationTargetId({ ...event, metricScopeId }, metricKey);
     const entry = reviewState.entries[`evidence_metric:${targetId}`];
     return entry?.verdict === 'confirmed' || entry?.verdict === 'rejected' ? entry.verdict : '';
   };
-  const displayMetricIsActive = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean): boolean => {
-    const verdict = displayMetricVerdict(event, metricKey);
+  const displayMetricIsActive = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean, metricScopeId?: string): boolean => {
+    const verdict = displayMetricVerdict(event, metricKey, metricScopeId);
     if (verdict === 'confirmed') return true;
     if (verdict === 'rejected') return false;
     return ruleDetected;
   };
-  const displayMetricCount = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleCount: number): number => {
-    const verdict = displayMetricVerdict(event, metricKey);
+  const displayMetricCount = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleCount: number, metricScopeId?: string): number => {
+    const verdict = displayMetricVerdict(event, metricKey, metricScopeId);
     if (verdict === 'confirmed') return Math.max(1, ruleCount);
     if (verdict === 'rejected') return 0;
     return ruleCount;
   };
   const displayIndicatorsForSession = (session: ExperienceSessionSummary): ExperienceReviewIndicators => {
-    const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet));
-    const interactionEvents = humanEvents.filter((event) => !isScheduledTaskPromptText(event.snippet ?? ''));
+    const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet) && !isSyntheticUserMessageText(event.snippet ?? ''));
+    const interactionEvents = humanEvents.filter((event) => isUserInteractionMetricText(event.snippet ?? ''));
     return {
       ...session.indicators,
-      userFollowUpCount: interactionEvents.reduce((sum, event, index) => sum + (displayMetricIsActive(event, 'user_follow_up', index > 0) ? 1 : 0), 0),
-      userCorrectionCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_correction', findUserCorrectionMatches(event.snippet ?? '').length), 0),
-      userInterruptionCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'user_interruption', displayRegexMatches(USER_INTERRUPTION_DISPLAY_RE, event.snippet ?? '')) ? 1 : 0), 0),
+      userFollowUpCount: interactionEvents.reduce((sum, event, index) => sum + (displayMetricIsActive(event, 'user_follow_up', index > 0 && !hasUserGoalShiftSignal(event.snippet ?? ''), session.id) ? 1 : 0), 0),
+      userCorrectionCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_correction', findUserCorrectionMatches(event.snippet ?? '').length, session.id), 0),
+      userInterruptionCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'user_interruption', displayRegexMatches(USER_INTERRUPTION_DISPLAY_RE, event.snippet ?? ''), session.id) ? 1 : 0), 0),
       negativeFeedbackCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'negative_feedback', findNegativeFeedbackMatches(event.snippet ?? '').length), 0),
       positiveFeedbackCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'positive_feedback', findPositiveFeedbackMatches(event.snippet ?? '').length), 0),
-      userGoalShiftCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_goal_shift', findUserGoalShiftMatches(event.snippet ?? '').length), 0),
-      hardRuleTextHitCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? '')) ? 1 : 0), 0),
+      userGoalShiftCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_goal_shift', findUserGoalShiftMatches(event.snippet ?? '').length, session.id), 0),
+      hardRuleTextHitCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? ''), session.id) ? 1 : 0), 0),
+      assistantDeliverySignalCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'completion_result', event.kind === 'assistant_message' && hasAssistantDeliverySignalText(event.fullText ?? event.snippet ?? '')) ? 1 : 0), 0),
+      deliverableArtifactSignalCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'deliverable_artifact', event.kind === 'assistant_message' && hasAssistantDeliverableArtifactText(event.fullText ?? event.snippet ?? '')) ? 1 : 0), 0),
+      selfCorrectionCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'self_correction', hasSelfCorrectionSignal(event)) ? 1 : 0), 0),
+      repeatedExecutionCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event)) ? 1 : 0), 0),
     };
   };
   const sessionMetricSourceTitle = (session: ExperienceSessionSummary, metricKey: ObservationMetricKey, label: string): string => {
-    const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet));
+    const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet) && !isSyntheticUserMessageText(event.snippet ?? ''));
     const rows: string[] = [];
     let ruleCount = 0;
     let confirmed = 0;
@@ -550,11 +571,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     let interactionIndex = 0;
     humanEvents.forEach((event) => {
       const text = event.snippet ?? '';
-      if (isScheduledTaskPromptText(text)) return;
+      if (!isUserInteractionMetricText(text)) return;
       const effectiveIndex = interactionIndex;
       interactionIndex += 1;
       const rule = metricKey === 'user_follow_up'
-        ? (effectiveIndex > 0 ? 1 : 0)
+        ? (effectiveIndex > 0 && !hasUserGoalShiftSignal(text) ? 1 : 0)
         : metricKey === 'user_correction'
           ? findUserCorrectionMatches(text).length
           : metricKey === 'user_interruption'
@@ -568,8 +589,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                   : metricKey === 'user_goal_shift'
                     ? findUserGoalShiftMatches(text).length
                     : 0;
-      const verdict = displayMetricVerdict(event, metricKey);
-      const finalValue = displayMetricCount(event, metricKey, rule);
+      const verdict = displayMetricVerdict(event, metricKey, session.id);
+      const finalValue = displayMetricCount(event, metricKey, rule, session.id);
       ruleCount += rule;
       if (verdict === 'confirmed') confirmed += 1;
       if (verdict === 'rejected') rejected += 1;
@@ -582,7 +603,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       `${label}：最终计入 ${finalCount}`,
       `规则命中 ${ruleCount}，人工同意 ${confirmed}，人工反对 ${rejected}`,
       rows.length > 0 ? `来源：${rows.join('；')}` : '来源：无',
-      '点击按钮查看指标定义；人工反对只扣掉对应 message，不会自动扣掉其它来源。',
+      '点击按钮查看指标定义；人工反对只扣掉对应消息，不会自动扣掉其它来源。',
     ].join('\n');
   };
   const displayIndicatorsBySkill = new Map<string, ExperienceReviewIndicators>();
@@ -594,11 +615,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       userFollowUpCount: current.userFollowUpCount + next.userFollowUpCount,
       userCorrectionCount: current.userCorrectionCount + next.userCorrectionCount,
       userInterruptionCount: current.userInterruptionCount + next.userInterruptionCount,
+      sessionInterruptedCount: current.sessionInterruptedCount + (next.sessionInterruptedCount ?? 0),
       negativeFeedbackCount: current.negativeFeedbackCount + next.negativeFeedbackCount,
       positiveFeedbackCount: current.positiveFeedbackCount + next.positiveFeedbackCount,
       userGoalShiftCount: current.userGoalShiftCount + next.userGoalShiftCount,
       hardRuleTextHitCount: current.hardRuleTextHitCount + next.hardRuleTextHitCount,
       assistantDeliverySignalCount: current.assistantDeliverySignalCount + (next.assistantDeliverySignalCount ?? 0),
+      deliverableArtifactSignalCount: current.deliverableArtifactSignalCount + (next.deliverableArtifactSignalCount ?? 0),
+      selfCorrectionCount: current.selfCorrectionCount + (next.selfCorrectionCount ?? 0),
+      repeatedExecutionCount: current.repeatedExecutionCount + (next.repeatedExecutionCount ?? 0),
       toolCallCount: current.toolCallCount + next.toolCallCount,
       toolFailureCount: current.toolFailureCount + next.toolFailureCount,
       highObservationCount: current.highObservationCount + next.highObservationCount,
@@ -613,6 +638,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (indicators.mediumObservationCount > 0) codes.push('has_medium_observation');
     if (indicators.userCorrectionCount > 0) codes.push('user_correction');
     if (indicators.userInterruptionCount > 0) codes.push('user_interruption');
+    if (indicators.sessionInterruptedCount > 0) codes.push('session_interrupted');
     if (indicators.negativeFeedbackCount > 0) codes.push('negative_feedback');
     if (indicators.hardRuleTextHitCount > 0) codes.push('hard_rule_text_hit');
     if (indicators.toolFailureCount > 0) codes.push('tool_failure');
@@ -621,7 +647,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     return codes;
   };
   const displayPriority = (indicators: ExperienceReviewIndicators): ExperienceReviewPriority => {
-    if (indicators.highObservationCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0 || indicators.negativeFeedbackCount > 0) return 'review_first';
+    if (indicators.highObservationCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0 || indicators.sessionInterruptedCount > 0 || indicators.negativeFeedbackCount > 0) return 'review_first';
     if (indicators.mediumObservationCount > 0 || indicators.toolFailureCount > 0 || indicators.hedgingCount > 0 || indicators.explicitMarkerCount > 0 || indicators.hardRuleTextHitCount > 0) return 'sample_review';
     return 'routine_sample';
   };
@@ -630,6 +656,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (indicators.highObservationCount > 0) codes.push('high_observation_seen');
     if (indicators.userCorrectionCount > 0) codes.push('user_correction_seen');
     if (indicators.userInterruptionCount > 0) codes.push('user_interruption_seen');
+    if (indicators.sessionInterruptedCount > 0) codes.push('session_interrupted_seen');
     if (indicators.negativeFeedbackCount > 0) codes.push('negative_feedback_seen');
     if (indicators.toolFailureCount > 0) codes.push('tool_failure_seen');
     if (indicators.mediumObservationCount > 0) codes.push('medium_observation_seen');
@@ -646,7 +673,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   ): ExperienceAssistiveInference => {
     const basisRuleCodes = displayInferenceBasisCodes(indicators);
     const code: ExperienceAssistiveInferenceCode =
-      indicators.highObservationCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0 || indicators.negativeFeedbackCount > 0
+      indicators.highObservationCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0 || indicators.sessionInterruptedCount > 0 || indicators.negativeFeedbackCount > 0
         ? 'review_recommended'
         : indicators.mediumObservationCount > 0 || indicators.toolFailureCount > 0 || indicators.hedgingCount > 0 || indicators.explicitMarkerCount > 0 || indicators.hardRuleTextHitCount > 0
           ? 'sample_recommended'
@@ -679,6 +706,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     push('high_observation_seen', 'attention', indicators.highObservationCount);
     push('user_correction_seen', 'attention', indicators.userCorrectionCount);
     push('user_interruption_seen', 'attention', indicators.userInterruptionCount);
+    push('session_interrupted_seen', 'attention', indicators.sessionInterruptedCount);
     push('negative_feedback_seen', 'attention', indicators.negativeFeedbackCount);
     push('tool_failure_seen', 'sample', indicators.toolFailureCount);
     push('medium_observation_seen', 'sample', indicators.mediumObservationCount);
@@ -692,6 +720,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         'high_observation_seen',
         'user_correction_seen',
         'user_interruption_seen',
+        'session_interrupted_seen',
         'negative_feedback_seen',
         'tool_failure_seen',
         'medium_observation_seen',
@@ -723,11 +752,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       renderDecisionMetricIfPositive('高优先级', indicators.highObservationCount, 'priority'),
       renderDecisionMetricIfPositive('抽样过程发现', indicators.mediumObservationCount, 'sample'),
       renderDecisionMetricIfPositive('用户硬性要求', indicators.hardRuleTextHitCount, 'sample'),
+      renderDecisionMetricIfPositive('自我纠正', indicators.selfCorrectionCount ?? 0, 'sample'),
+      renderDecisionMetricIfPositive('重复执行', indicators.repeatedExecutionCount ?? 0, 'sample'),
       renderDecisionMetricIfPositive('不确定表达', indicators.hedgingCount, 'sample'),
       renderDecisionMetricIfPositive('显式缺口', indicators.explicitMarkerCount, 'sample'),
     ].filter(Boolean).join('');
     return `<div class="skill-evidence-summary">
-      <div class="summary-row"><span class="summary-title">【skill 运行】</span>${renderMetric('调用段', skill.invocationCount, '次')}<span class="summary-muted">分布 ${skill.sessionCount} 个 session</span>${renderMetric('工具调用', total, '次')}${renderMetricShare('成功', success, total)}${renderDecisionMetricShare('失败', failed, total, 'sample')}${renderDecisionMetricShare('人工中断', interrupted, total, 'priority')}${renderSoftMetric('疑似完成', indicators.assistantDeliverySignalCount ?? 0, '助手回复里出现代码块、直接生成、结果如下、完成等交付信号。表示当前目标可能完成，不直接等同于整个 skill 生命周期结束。')}</div>
+      <div class="summary-row"><span class="summary-title">【skill 运行】</span>${renderMetric('调用段', skill.invocationCount, '次')}<span class="summary-muted">分布 ${skill.sessionCount} 个 session</span>${renderMetric('工具调用', total, '次')}${renderMetricShare('成功', success, total)}${renderDecisionMetricShare('失败', failed, total, 'sample')}${renderDecisionMetricShare('人工中断', interrupted, total, 'priority')}${renderDecisionMetricIfPositive('自我纠正', indicators.selfCorrectionCount ?? 0, 'sample')}${renderDecisionMetricIfPositive('重复执行', indicators.repeatedExecutionCount ?? 0, 'sample')}${renderSoftMetric('有结果', indicators.assistantDeliverySignalCount ?? 0, '助手回复里出现明确完成态或结果反馈。')}${renderSoftMetric('有产物', indicators.deliverableArtifactSignalCount ?? 0, '助手回复里出现文档链接、Demo 地址、文件路径、代码块或上传产物。')}</div>
       <div class="summary-row"><span class="summary-title">【用户交互】</span>${renderDecisionMetric('用户纠正', indicators.userCorrectionCount, 'priority')}${renderDecisionMetric('人工中断', indicators.userInterruptionCount, 'priority')}${renderMetric('追问', indicators.userFollowUpCount)}${renderDecisionMetric('负向反馈', indicators.negativeFeedbackCount ?? 0, 'priority')}${renderMetric('正向反馈', indicators.positiveFeedbackCount ?? 0)}${renderMetric('目标切换', indicators.userGoalShiftCount ?? 0)}</div>
       <div class="summary-row"><span class="summary-title">【工具调用】</span>${renderMetric('总计', total, '次')}<span class="summary-detail">(${renderRankedCounts(displayToolCounts, total)})</span>${renderDecisionMetricShare('工具执行失败', failed, total, 'sample')}</div>
       <div class="summary-row"><span class="summary-title">【过程发现】</span>${processMetrics || '<span class="summary-muted">未发现需要展示的过程信号</span>'}</div>
@@ -742,13 +773,37 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const hard = chain.healthCheck.hardRules;
     const workflows = chain.healthCheck.workflows;
     const runtime = chain.runtime.summary;
+    const record = skillDerivedStandards[skillName];
+    const detectedHardCount = (record?.standards ?? []).filter((standard) =>
+      standard.kind === 'hard_rule_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
+    ).length;
     const hardText = hard.declared
-      ? `hardRules ${hard.count}（证据符合 ${runtime.passedCount} / 需关注 ${runtime.attentionCount} / 无法自动判断 ${runtime.manualReviewCount}）${hard.valid ? '' : ' · 结构异常'}`
-      : 'hardRules：SKILL.md 未声明，建议 skill 作者补结构化 hardRules';
-    const workflowText = workflows.declared
-      ? `workflow 分支链路 ${workflows.branchCount}（节点 ${workflows.nodeCount}，非 LLM 证据检查）${workflows.valid ? '' : ' · 结构异常'}`
-      : 'workflow：SKILL.md 未声明，建议 skill 作者补结构化 workflow';
-    return `<div class="summary-detail">${e(hardText)}</div><div class="summary-detail" style="margin-top:3px">${e(workflowText)}</div>`;
+      ? `标准化规则 ${hard.count} 条`
+      : detectedHardCount > 0
+        ? `规则检测 ${detectedHardCount} 条`
+        : '标准化规则未声明';
+    const workflowText = workflows.workflows.length > 0
+      ? workflows.declared
+        ? `标准化流程 ${workflows.branchCount} 条 / 节点 ${workflows.nodeCount}`
+        : workflows.source === 'markdown_headings'
+          ? `流程检测 ${workflows.branchCount} 条 / 节点 ${workflows.nodeCount}（正文流程）`
+          : `流程检测 ${workflows.branchCount} 条 / 节点 ${workflows.nodeCount}`
+      : '标准化流程未声明';
+    const pending = (record?.standards ?? []).filter((standard) => standard.status === 'pending_review' || standard.status === 'stale');
+    const hardPending = pending.filter((standard) => standard.kind === 'hard_rule_candidate');
+    const workflowPending = pending.filter((standard) => standard.kind === 'workflow_candidate');
+    const pendingLine = pending.length > 0
+      ? `<div class="skill-chain-compact-candidates">
+          <span>待确认 ${pending.length} 条</span>
+          ${hardPending[0] ? `<span title="${e(hardPending[0].title)}">规则：${e(truncateText(hardPending[0].title, 18))}</span>` : ''}
+          ${workflowPending[0] ? `<span title="${e(workflowPending[0].title)}">流程：${e(truncateText(workflowPending[0].title, 18))}</span>` : ''}
+        </div>`
+      : '';
+    return `<div class="skill-chain-cell-summary">
+      <div>${e(hardText)} · ${e(workflowText)}</div>
+      <div>证据符合 ${runtime.passedCount} / 需关注 ${runtime.attentionCount} / 无法判断 ${runtime.manualReviewCount}</div>
+      ${pendingLine}
+    </div>`;
   };
   const collectSkillChainAdvisoryCodes = (skillName: string): SkillChainAdvisoryCode[] => {
     const chain = skillChains[skillName];
@@ -805,65 +860,288 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       const notFoundAdvisory = renderAdvisoryBlock('skill_md_not_found', skillName);
       return `<div class="context-chain-grid">
         <section class="context-chain-panel">
-          <h3>① skill 定义</h3>
+          <h3>① 原始 SKILL.md</h3>
           ${notFoundAdvisory}
         </section>
         <section class="context-chain-panel">
-          <h3>② 健康检查</h3>
-          <p class="context-muted">缺少本地 SKILL.md，inbox 跑不了静态检查。这不代表作者没声明 hardRules，只是本地看不到。</p>
+          <h3>② 规则 / 流程探测</h3>
+          <p class="context-muted">缺少本地 SKILL.md，当前无法探测规则和流程。这不代表作者没声明，只是本地看不到。</p>
         </section>
         <section class="context-chain-panel">
           <h3>③ 运行时</h3>
           <p class="context-muted">运行时证据可从 observe 时间线查看；静态定义链路在本地暂不可用。</p>
         </section>
+        <section class="context-chain-panel">
+          <h3>④ 候选确认</h3>
+          <p class="context-muted">暂无可确认候选。</p>
+        </section>
       </div>`;
     }
     const hard = chain.healthCheck.hardRules;
     const workflows = chain.healthCheck.workflows;
-    const hardRulesList = hard.rules.length > 0
-      ? `<ol>${hard.rules.map((rule) => `<li><strong>${e(rule.id)}</strong><div>${e(rule.rule)}</div><small>期望行为：${e(rule.expectedBehavior)}</small></li>`).join('')}</ol>`
-      : renderAdvisoryBlock(hard.advisoryCode, skillName);
-    const workflowList = workflows.workflows.length > 0
-      ? `<ol>${workflows.workflows.map((workflow) => `<li><strong>${e(workflow.id)}</strong>${workflow.description ? `<div>${e(workflow.description)}</div>` : ''}<small>执行节点：${workflow.nodes.length}</small><ul>${workflow.nodes.map((node) => `<li><code>${e(node.id)}</code> ${e(node.action)}</li>`).join('')}</ul></li>`).join('')}</ol>`
-      : renderAdvisoryBlock(workflows.advisoryCode, skillName);
-    const runtimeStatusLabel = (status: string): string =>
-      status === 'passed' ? '证据符合'
-        : status === 'attention' ? '需关注'
-          : '无法自动判断';
-    const runtimeCheckList = (checks: typeof chain.runtime.hardRules): string => checks.length > 0
-      ? `<ol>${checks.map((check) => `<li class="runtime-check runtime-${e(check.status)}"><strong>${e(check.id)}</strong><span class="runtime-check-status">${e(runtimeStatusLabel(check.status))}</span><div>${e(check.title)}</div><small>${e(check.reason)}</small>${check.evidenceSnippets.length > 0 ? `<ul>${check.evidenceSnippets.map((snippet) => `<li>${e(snippet)}</li>`).join('')}</ul>` : ''}</li>`).join('')}</ol>`
-      : '<p class="context-muted">暂无可检查项。</p>';
-    // 未声明时不要再展示「结构合法」——已声明且 valid 才有意义。
-    // 未声明时第三列改为「无可校验（建议补充）」让语义对得齐。
-    const healthRows: Array<[string, string, string]> = [
-      ['hardRules',
-        hard.declared ? `${hard.count} 条` : 'SKILL.md 未声明',
-        hard.declared ? (hard.valid ? '结构合法' : `结构异常：${hard.errors.join('; ')}`) : '无可校验（建议补充）'],
-      ['workflows',
-        workflows.declared ? `${workflows.branchCount} 条分支链路 / ${workflows.nodeCount} 个执行节点` : 'SKILL.md 未声明',
-        workflows.declared ? (workflows.valid ? '结构合法' : `结构异常：${workflows.errors.join('; ')}`) : '无可校验（建议补充）'],
-    ];
-    return `<div class="context-chain-grid">
-      <section class="context-chain-panel">
-        <h3>① skill 定义</h3>
-        ${chain.definition.found
-          ? `<div class="context-meta">SKILL.md：<code>${e(chain.definition.path ?? '')}</code></div>
-             <h4>hardRules</h4>${hardRulesList}
-             <h4>workflows</h4>${workflowList}
-             <h4>SKILL.md 原文</h4>
-             <pre>${e(chain.definition.content ?? '')}${chain.definition.truncated ? '\n\n... 已截断，仅展示前 12000 字符' : ''}</pre>`
-          : '<p class="context-muted">未找到 SKILL.md：当前 harness 日志里出现了这个 skill，但本机常见 skill 目录没有对应定义。这里属于“定义不可用”，不是“作者没声明规则”。</p>'}
-      </section>
-      <section class="context-chain-panel">
-        <h3>② 健康检查</h3>
-        <p class="context-muted">复用 doctor 的静态检查规则；这里只判断 SKILL.md 结构是否机器可读。运行时遵守情况看右侧“③ 运行时”。</p>
+    const record = skillDerivedStandards[skillName];
+    const softStandards = record?.standards ?? [];
+    const statusPriority: Record<SkillDerivedStandard['status'], number> = {
+      pending_review: 0,
+      author_confirmed: 1,
+      rejected: 2,
+      stale: 3,
+    };
+    const sortedSoftStandards = [...softStandards].sort((a, b) =>
+      statusPriority[a.status] - statusPriority[b.status] || a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title)
+    );
+    const kindLabel = (kind: SkillDerivedStandard['kind']): string =>
+      kind === 'workflow_candidate' ? '流程候选' : '规则候选';
+    const annotationStateClass = (status: SkillDerivedStandard['status']): string =>
+      status === 'author_confirmed' ? 'is-confirmed' : status === 'rejected' ? 'is-rejected' : '';
+    const annotationStateIcon = (status: SkillDerivedStandard['status']): string =>
+      status === 'author_confirmed' ? '✅' : status === 'rejected' ? '❌' : '';
+    const candidateSourceTexts = (standard: SkillDerivedStandard): string[] => [
+      ...standard.evidence,
+      standard.title,
+      standard.body,
+    ]
+      .map((text) => text.trim())
+      .filter((text) => text.length >= 4)
+      .sort((a, b) => b.length - a.length);
+    const findCandidateRange = (
+      content: string,
+      standard: SkillDerivedStandard,
+      usedRanges: Array<{ start: number; end: number }>,
+    ): { start: number; end: number; text: string } | undefined => {
+      for (const text of candidateSourceTexts(standard)) {
+        const start = content.indexOf(text);
+        const end = start + text.length;
+        if (start >= 0 && !usedRanges.some((range) => start < range.end && end > range.start)) {
+          return { start, end, text };
+        }
+      }
+      return undefined;
+    };
+    const renderCandidateActions = (standard: SkillDerivedStandard): string => `
+      <span class="skill-md-annotation-actions">
+        <span data-soft-standard-status="${e(standard.status)}">${e(softStandardStatusLabel(standard.status))}</span>
+        <button type="button" data-soft-standard-action="author_confirmed" onclick="setSoftStandardStatus('${e(skillName)}', '${e(standard.id)}', 'author_confirmed', this)">确认</button>
+        <button type="button" data-soft-standard-action="rejected" onclick="setSoftStandardStatus('${e(skillName)}', '${e(standard.id)}', 'rejected', this)">否决</button>
+      </span>`;
+    const renderAnnotatedSkillMd = (content: string): string => {
+      if (sortedSoftStandards.length === 0) return e(content);
+      const usedRanges: Array<{ start: number; end: number }> = [];
+      const annotations: Array<{ standard: SkillDerivedStandard; range: { start: number; end: number; text: string } }> = [];
+      for (const standard of sortedSoftStandards) {
+        const range = findCandidateRange(content, standard, usedRanges);
+        if (!range) continue;
+        usedRanges.push(range);
+        annotations.push({ standard, range });
+      }
+      annotations.sort((a, b) => a.range.start - b.range.start);
+      if (annotations.length === 0) return e(content);
+      let cursor = 0;
+      const parts: string[] = [];
+      for (const { standard, range } of annotations) {
+        parts.push(e(content.slice(cursor, range.start)));
+        parts.push(`<span class="skill-md-highlight skill-md-highlight-${standard.kind === 'workflow_candidate' ? 'workflow' : 'rule'}" data-soft-standard-id="${e(standard.id)}">${e(content.slice(range.start, range.end))}</span><span class="skill-md-annotation ${annotationStateClass(standard.status)}" data-soft-standard-id="${e(standard.id)}" data-soft-standard-skill="${e(skillName)}"><span class="skill-md-annotation-icon" data-soft-standard-icon="${e(standard.status)}">${e(annotationStateIcon(standard.status))}</span><span class="skill-md-annotation-content"><strong>${e(kindLabel(standard.kind))}：</strong>${e(standard.title)}${renderCandidateActions(standard)}</span></span>`);
+        cursor = range.end;
+      }
+      parts.push(e(content.slice(cursor)));
+      return parts.join('');
+    };
+    const unlocatedStandards = sortedSoftStandards.filter((standard) => {
+      const content = chain.definition.content ?? '';
+      return !candidateSourceTexts(standard).some((text) => content.includes(text));
+    });
+    const renderUnlocatedCandidates = (): string => unlocatedStandards.length > 0
+      ? `<details class="skill-md-unlocated">
+          <summary>未定位到原文的候选 ${unlocatedStandards.length} 条</summary>
+          <div class="soft-standard-modal-list">${unlocatedStandards.map((standard) => `<div class="soft-standard-modal-item ${annotationStateClass(standard.status)}" data-soft-standard-id="${e(standard.id)}" data-soft-standard-skill="${e(skillName)}">
+            <div class="soft-standard-modal-head">
+              <span class="skill-md-annotation-icon" data-soft-standard-icon="${e(standard.status)}">${e(annotationStateIcon(standard.status))}</span>
+              <strong>${e(kindLabel(standard.kind))}：${e(standard.title)}</strong>
+              <span data-soft-standard-status="${e(standard.status)}">${e(softStandardStatusLabel(standard.status))}</span>
+            </div>
+            <div class="soft-standard-modal-body">${e(standard.body)}</div>
+            ${standard.evidence.length > 0 ? `<div class="soft-standard-modal-evidence">依据：${standard.evidence.map((entry) => e(entry)).join('；')}</div>` : ''}
+            <div class="soft-standard-actions">
+              <button type="button" data-soft-standard-action="author_confirmed" onclick="setSoftStandardStatus('${e(skillName)}', '${e(standard.id)}', 'author_confirmed', this)">确认</button>
+              <button type="button" data-soft-standard-action="rejected" onclick="setSoftStandardStatus('${e(skillName)}', '${e(standard.id)}', 'rejected', this)">否决</button>
+            </div>
+          </div>`).join('')}</div>
+        </details>`
+      : '';
+    const missingNotices = [
+      !hard.declared ? renderAdvisoryBlock(hard.advisoryCode, skillName) : '',
+      !workflows.declared ? renderAdvisoryBlock(workflows.advisoryCode, skillName) : '',
+    ].filter(Boolean).join('');
+    const detectedHardRuleStandards = sortedSoftStandards.filter((standard) =>
+      standard.kind === 'hard_rule_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
+    );
+    const detectedWorkflowStandards = sortedSoftStandards.filter((standard) =>
+      standard.kind === 'workflow_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
+    );
+    const detectedMarker = (status: SkillDerivedStandard['status']): string =>
+      status === 'author_confirmed' ? '✅' : '待';
+    const renderStructuredHardRules = (): string => hard.rules.length > 0
+      ? `<div class="standard-checklist">${hard.rules.map((rule) => `<article class="standard-check-item">
+          <div class="standard-check-marker" aria-hidden="true">✓</div>
+          <div class="standard-check-body">
+            <div class="standard-check-title"><code>${e(rule.id)}</code><strong>${e(rule.rule)}</strong></div>
+            <div class="standard-check-expectation">期望行为：${e(rule.expectedBehavior)}</div>
+          </div>
+        </article>`).join('')}</div>`
+      : `<div class="probe-anomaly">
+          <strong>未声明标准化 hardRules</strong>
+          <span>以下内容为规则检测结果；建议优化为能力定义文件顶部声明的标准化规则。</span>
+        </div>
+        ${detectedHardRuleStandards.length > 0
+          ? `<div class="standard-checklist">${detectedHardRuleStandards.map((standard) => `<article class="standard-check-item">
+              <div class="standard-check-marker" aria-hidden="true">${e(detectedMarker(standard.status))}</div>
+              <div class="standard-check-body">
+                <div class="standard-check-title"><code>${e(standard.id)}</code><strong>${e(standard.title)}</strong></div>
+                <div class="standard-check-expectation">${e(standard.body)}</div>
+              </div>
+            </article>`).join('')}</div>`
+          : '<p class="context-muted">暂未检测到可展示的规则结果。</p>'}`;
+    const workflowStandardNotice = !workflows.declared
+      ? `<div class="probe-anomaly">
+          <strong>未声明标准化 workflows</strong>
+          <span>以下内容为流程检测结果；建议优化为能力定义文件顶部声明的标准化流程。</span>
+        </div>`
+      : '';
+    const displayStepLabel = (id: string, index: number): string => {
+      const match = id.match(/^step[\s_-]*([0-9]+)$/i);
+      if (match) return `第 ${match[1]} 步`;
+      return id ? `流程节点 ${index + 1}` : `第 ${index + 1} 步`;
+    };
+    const displayWorkflowLabel = (id: string, index: number): string =>
+      id === 'markdown_steps' ? '正文流程节点' : `流程 ${index + 1}`;
+    const displayRuntimeCheckTitle = (title: string, id: string, index: number): string => {
+      const source = title || id;
+      const parts = source.split('/').map((part) => part.trim()).filter(Boolean);
+      if (parts.length >= 2 && parts[0] === 'markdown_steps') return `正文流程节点 / ${displayStepLabel(parts[1], index)}`;
+      if (/^markdown_steps[._-]step/i.test(id)) return `正文流程节点 / ${displayStepLabel(id.replace(/^markdown_steps[._-]/i, ''), index)}`;
+      if (/^step[\s_-]*[0-9]+$/i.test(source)) return displayStepLabel(source, index);
+      return source || `检查项 ${index + 1}`;
+    };
+    const shouldShowRuntimeCheckRawId = (id: string): boolean =>
+      Boolean(id) && !/^markdown_steps[._-]step/i.test(id) && id !== 'markdown_steps';
+    const renderStructuredWorkflows = (): string => workflows.workflows.length > 0
+      ? `${workflowStandardNotice}<div class="workflow-line-list">${workflows.workflows.map((workflow, workflowIndex) => `<article class="workflow-line">
+          <div class="workflow-line-head">
+            <strong>${e(displayWorkflowLabel(workflow.id, workflowIndex))}</strong>
+            <span>${workflow.source === 'markdown_headings' ? '正文流程探测' : '标准化声明'} · ${workflow.nodes.length} 个节点</span>
+          </div>
+          ${workflow.description ? `<div class="workflow-line-desc">${e(workflow.description)}</div>` : ''}
+          <div class="workflow-node-line">${workflow.nodes.map((node, index) => `<div class="workflow-node">
+            <div class="workflow-node-index">${index + 1}</div>
+            <div class="workflow-node-card">
+              <strong>${e(displayStepLabel(node.id, index))}</strong>
+              <span>${e(node.action)}</span>
+            </div>
+          </div>`).join('')}</div>
+        </article>`).join('')}</div>`
+      : `<div class="probe-anomaly">
+          <strong>未声明标准化 workflows</strong>
+          <span>以下内容为流程检测结果；建议优化为能力定义文件顶部声明的标准化流程。</span>
+        </div>
+        ${detectedWorkflowStandards.length > 0
+          ? `<div class="standard-checklist">${detectedWorkflowStandards.map((standard) => `<article class="standard-check-item">
+              <div class="standard-check-marker" aria-hidden="true">${e(detectedMarker(standard.status))}</div>
+              <div class="standard-check-body">
+                <div class="standard-check-title"><code>${e(standard.id)}</code><strong>${e(standard.title)}</strong></div>
+                <div class="standard-check-expectation">${e(standard.body)}</div>
+              </div>
+            </article>`).join('')}</div>`
+          : '<p class="context-muted">暂未检测到可展示的流程结果。</p>'}`;
+    const renderProbeLog = (): string => {
+      const hardErrors = hard.errors.length > 0 ? hard.errors.join('；') : '无';
+      const workflowErrors = workflows.errors.length > 0 ? workflows.errors.join('；') : '无';
+      const confirmedHardRules = detectedHardRuleStandards.filter((standard) => standard.status === 'author_confirmed').length;
+      const hardDeclareText = hard.declared
+        ? `已标准化声明 ${hard.count} 条`
+        : detectedHardRuleStandards.length > 0
+          ? `未标准化声明；已有规则检测结果 ${detectedHardRuleStandards.length} 条，其中人工确认 ${confirmedHardRules} 条`
+          : '未标准化声明；暂无规则检测结果';
+      const workflowDeclareText = workflows.source === 'frontmatter'
+        ? `已标准化声明 ${workflows.branchCount} 条链路 / ${workflows.nodeCount} 个节点`
+        : workflows.source === 'markdown_headings'
+          ? `未标准化声明；已从正文流程标题探测 ${workflows.branchCount} 条链路 / ${workflows.nodeCount} 个节点`
+          : '未声明';
+      return `<details class="probe-log" ${hard.rules.length === 0 || workflows.workflows.length === 0 ? 'open' : ''}>
+        <summary>原始探测信息</summary>
         <table>
           <tbody>
-            ${healthRows.map(([name, count, status]) => `<tr><th>${e(name)}</th><td>${e(count)}</td><td>${e(status)}</td></tr>`).join('')}
+            <tr><th>探测来源</th><td>${e(chain.healthCheck.source)}</td></tr>
+            <tr><th>规则声明</th><td>${e(hardDeclareText)}</td></tr>
+            <tr><th>规则异常</th><td>${e(hardErrors)}</td></tr>
+            <tr><th>流程声明</th><td>${e(workflowDeclareText)}</td></tr>
+            <tr><th>流程异常</th><td>${e(workflowErrors)}</td></tr>
           </tbody>
         </table>
+      </details>`;
+    };
+    const renderReviewSummary = (): string => {
+      const groups: Array<[string, SkillDerivedStandard[]]> = [
+        ['待确认', sortedSoftStandards.filter((standard) => standard.status === 'pending_review')],
+        ['已确认', sortedSoftStandards.filter((standard) => standard.status === 'author_confirmed')],
+        ['已否决', sortedSoftStandards.filter((standard) => standard.status === 'rejected')],
+        ['已过期', sortedSoftStandards.filter((standard) => standard.status === 'stale')],
+      ];
+      const meta = record
+        ? `<div class="review-log-meta">
+            <div>生成模型：${e(record.model)}</div>
+            <div>生成时间：${e(record.generatedAt.slice(0, 19).replace('T', ' '))}</div>
+            <div>Prompt：${e(record.promptId)} / ${e(record.promptVersion)}</div>
+          </div>`
+        : '<p class="context-muted">还没有候选提取记录。</p>';
+      const grouped = groups.map(([label, standards]) => `<section class="review-log-group">
+        <h4>${e(label)} ${standards.length}</h4>
+        ${standards.length > 0
+          ? `<ul>${standards.map((standard) => `<li><span>${e(kindLabel(standard.kind))}</span><strong>${e(standard.title)}</strong></li>`).join('')}</ul>`
+          : '<p class="context-muted">暂无</p>'}
+      </section>`).join('');
+      return `${meta}${grouped}`;
+    };
+    const runtimeStatusIcon = (status: string): string =>
+      status === 'passed' ? '✅' : status === 'attention' ? '❌' : '⏳';
+    const runtimeStatusLabel = (status: string): string =>
+      status === 'passed' ? '有数据支撑' : status === 'attention' ? '有异常' : '待补充';
+    const runtimeStepList = (checks: typeof chain.runtime.hardRules, kind: 'workflow' | 'rule'): string => checks.length > 0
+      ? `<ol class="runtime-step-list">${checks.map((check, index) => `<li class="runtime-step runtime-${e(check.status)}">
+          <div class="runtime-step-head">
+            <span class="runtime-step-index">${kind === 'workflow' ? `第 ${index + 1} 步` : `规则 ${index + 1}`}</span>
+            <span class="runtime-step-name">${e(displayRuntimeCheckTitle(check.title, check.id, index))}</span>
+            <span class="runtime-step-state" title="${e(runtimeStatusLabel(check.status))}">${runtimeStatusIcon(check.status)}</span>
+          </div>
+          <details class="runtime-step-detail">
+            <summary>执行细节</summary>
+            <div class="runtime-step-detail-body">
+              ${shouldShowRuntimeCheckRawId(check.id) ? `<code>原始编号：${e(check.id)}</code>` : ''}
+              ${check.reason ? `<p>${e(check.reason)}</p>` : ''}
+              ${check.evidenceSnippets.length > 0 ? `<ul>${check.evidenceSnippets.map((snippet) => `<li>${e(snippet)}</li>`).join('')}</ul>` : ''}
+            </div>
+          </details>
+        </li>`).join('')}</ol>`
+      : '<p class="context-muted">暂无可检查项。</p>';
+    const contextChainNav = `<nav class="context-chain-nav" aria-label="切换查看小节"><a href="#cc-${e(skillName)}-1">① 原始能力定义</a><a href="#cc-${e(skillName)}-2">② 检测结果</a><a href="#cc-${e(skillName)}-3">③ 运行时</a><a href="#cc-${e(skillName)}-4">④ 人工复盘</a><span class="context-chain-nav-hint">可向右滚动查看</span></nav>`;
+    return `${contextChainNav}<div class="context-chain-grid">
+      <section class="context-chain-panel" id="cc-${e(skillName)}-1">
+        <h3>① 原始能力定义 / 候选标注</h3>
+        ${chain.definition.found
+          ? `<div class="context-meta">SKILL.md：<code>${e(chain.definition.path ?? '')}</code></div>
+             <pre class="skill-md-source">${renderAnnotatedSkillMd(chain.definition.content ?? '')}${chain.definition.truncated ? '\n\n... 已截断，仅展示前 12000 字符' : ''}</pre>
+             ${renderUnlocatedCandidates()}`
+          : '<p class="context-muted">未找到能力定义文件：当前日志里能识别到这个能力，但本机目录没有对应定义。属于"定义不可用"，不是"作者没声明规则"。</p>'}
       </section>
-      <section class="context-chain-panel">
+      <section class="context-chain-panel" id="cc-${e(skillName)}-2">
+        <h3>② 检测结果 / 标准化建议</h3>
+        ${missingNotices || '<p class="context-muted">已探测到标准化声明，下面先看流程执行线，再看规则清单。</p>'}
+        <h4>流程执行线</h4>
+        ${renderStructuredWorkflows()}
+        <h4>规则清单</h4>
+        ${renderStructuredHardRules()}
+        ${renderProbeLog()}
+      </section>
+      <section class="context-chain-panel" id="cc-${e(skillName)}-3">
         <h3>③ 运行时</h3>
         <p class="context-muted">${e(chain.runtime.message)}</p>
         <table>
@@ -876,10 +1154,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <tr><th>无法自动判断</th><td>${chain.runtime.summary.manualReviewCount}</td></tr>
           </tbody>
         </table>
-        <h4>hardRules 运行时证据</h4>
-        ${runtimeCheckList(chain.runtime.hardRules)}
-        <h4>workflow 节点运行时证据</h4>
-        ${runtimeCheckList(chain.runtime.workflowNodes)}
+        <h4>流程运行时证据</h4>
+        ${runtimeStepList(chain.runtime.workflowNodes, 'workflow')}
+        <h4>规则运行时证据</h4>
+        ${runtimeStepList(chain.runtime.hardRules, 'rule')}
+      </section>
+      <section class="context-chain-panel" id="cc-${e(skillName)}-4">
+        <h3>④ 人工复盘状态</h3>
+        ${renderReviewSummary()}
       </section>
     </div>`;
   };
@@ -899,6 +1181,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       has_medium_observation: '有需要抽样确认的过程发现',
       user_correction: '用户纠正过方向或结果',
       user_interruption: '用户人工中断过当前执行',
+      session_interrupted: '会话出现异常中断信号',
       negative_feedback: '用户出现负向反馈',
       hard_rule_text_hit: '用户提出了必须/不要/禁止等硬性要求',
       tool_failure: '运行中出现工具执行失败',
@@ -1027,6 +1310,313 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (verdict === 'reviewed') return 'review-reviewed';
     return '';
   };
+  const softStandardStatusLabel = (status: SkillDerivedStandard['status']): string => {
+    if (status === 'author_confirmed') return '作者已确认';
+    if (status === 'rejected') return '已否决';
+    if (status === 'stale') return '已过期';
+    return '待作者确认';
+  };
+  const cleanReportCopy = (value: string): string => value
+    .replace(/本次符合里程碑 1 的单个能力 \/ 单个目标报告范围。/g, '本次属于单个能力 / 单个目标报告范围。')
+    .replace(/本次是复杂链路，里程碑 1 只做降级展示，不强行拆分语义分支。/g, '本次是复杂链路，当前先做降级展示，不强行拆分语义分支。')
+    .replace(/里程碑 1 只做通用展示/g, '当前先做通用展示')
+    .replace(/后续里程碑再拆/g, '后续再拆')
+    .replace(/基于 deterministic 规则/g, '基于固定规则');
+  const fallbackSessionStory = (report: ExperienceReviewerReport): ExperienceReviewerReport['sessionStory'] => {
+    const stepByLabel = (label: string): ExperienceReviewerReport['chainSteps'][number] | undefined =>
+      report.chainSteps.find((step) => step.label === label);
+    const deliveryStep = stepByLabel('结果 / 产物') ?? stepByLabel('实际产物');
+    const feedbackStep = stepByLabel('用户反馈');
+    const hasFinalDeliveryAbsent = report.findings.some((finding) => finding.ruleSource === 'final_delivery_absent');
+    const hasUserPain = report.findings.some((finding) =>
+      finding.ruleSource === 'user_correction'
+      || finding.ruleSource === 'negative_feedback'
+      || finding.ruleSource === 'user_interruption'
+    );
+    const nodes = report.chainSteps.map((step) => ({
+      id: `fallback-story-${step.order}`,
+      order: step.order,
+      kind: step.label === '用户期待'
+        ? 'user_goal' as const
+        : step.label === '选择能力'
+          ? 'skill_invocation' as const
+          : step.label === '执行流程'
+            ? 'tool_execution' as const
+            : step.label === '结果 / 产物' || step.label === '实际产物'
+              ? 'delivery' as const
+              : 'user_feedback' as const,
+      label: step.label,
+      status: step.status,
+      text: cleanReportCopy(step.text),
+      evidenceRefs: step.evidenceRefs,
+    }));
+    return {
+      schemaVersion: 1,
+      summary: '这是从旧版复盘报告回填的语义链路；建议重新运行 observe inbox 生成完整链路数据。',
+      invocationCount: 0,
+      goalSliceCount: 0,
+      branchCount: 0,
+      progressUpdateCount: 0,
+      finalDeliverySignalCount: deliveryStep?.status === 'ok' ? 1 : 0,
+      mainlineNodeIds: nodes.map((node) => node.id),
+      goalSlices: [],
+      subagentDispatches: [],
+      skillLinks: [],
+      graph: {
+        nodes: nodes.map((node) => ({ id: node.id, label: node.label, kind: node.kind, status: node.status, detailNodeId: node.id })),
+        edges: nodes.slice(1).map((node, index) => ({ fromId: nodes[index].id, toId: node.id, label: '下一步' })),
+      },
+      nodes,
+      answers: [
+        {
+          key: 'goal_satisfaction',
+          label: '用户目标有没有被满足',
+          status: hasUserPain || hasFinalDeliveryAbsent ? 'attention' : deliveryStep?.status ?? 'unknown',
+          reason: hasUserPain || hasFinalDeliveryAbsent ? 'attention_accumulated' : 'unknown_dominant',
+          sourceItemKeys: [],
+          text: hasFinalDeliveryAbsent ? '没有发现最后结果反馈，无法判断用户目标是否满足。' : '基于旧版报告，只能按结果反馈和用户反馈信号粗略判断。',
+          evidenceRefs: [...(deliveryStep?.evidenceRefs ?? []), ...(feedbackStep?.evidenceRefs ?? [])],
+          checklistItems: [],
+        },
+        {
+          key: 'declared_behavior_fit',
+          label: '行为是否符合能力用途',
+          status: stepByLabel('执行流程')?.status ?? 'unknown',
+          reason: 'unknown_dominant',
+          sourceItemKeys: [],
+          text: '基于旧版报告，只能从执行流程和工具失败信号粗略判断；标准化规则/流程请看定义链路。',
+          evidenceRefs: stepByLabel('执行流程')?.evidenceRefs ?? [],
+          checklistItems: [],
+        },
+        {
+          key: 'user_feeling',
+          label: '用户是否觉得有用或绕路',
+          status: hasUserPain ? 'attention' : feedbackStep?.status ?? 'unknown',
+          reason: hasUserPain ? 'attention_accumulated' : 'unknown_dominant',
+          sourceItemKeys: [],
+          text: cleanReportCopy(feedbackStep?.text ?? '没有看到明确用户反馈。'),
+          evidenceRefs: feedbackStep?.evidenceRefs ?? [],
+          checklistItems: [],
+        },
+      ],
+    };
+  };
+  const renderReviewerReport = (report?: ExperienceReviewerReport): string => {
+    if (!report) return '';
+    const findingClass = (level: ExperienceReviewerReport['findings'][number]['level']): string =>
+      level === 'attention' ? 'rule-attention' : level === 'possible_false_positive' ? 'rule-sample' : 'rule-normal';
+    const findingLabel = (level: ExperienceReviewerReport['findings'][number]['level']): string =>
+      level === 'attention' ? '要看一眼' : level === 'possible_false_positive' ? '疑似误判' : '记录项';
+    const judgmentReviewLabel = (verdict?: string): string => {
+      if (verdict === 'real_issue') return '已同意';
+      if (verdict === 'not_issue') return '已否决';
+      if (verdict === 'needs_more_context') return '已留意见';
+      if (verdict === 'reviewed') return '已看过';
+      return '未标注';
+    };
+    const stepStatus = (status: ExperienceReviewerReport['chainSteps'][number]['status']): string =>
+      status === 'ok' ? '看起来正常' : status === 'attention' ? '要看一眼' : status === 'degraded' ? '数据有问题' : status === 'not_applicable' ? '不适用' : '信息不够';
+    const storyStatusLabel = (status: ExperienceReviewerReport['sessionStory']['nodes'][number]['status']): string =>
+      status === 'ok' ? '看起来正常' : status === 'attention' ? '要看一眼' : status === 'degraded' ? '数据有问题' : status === 'not_applicable' ? '不适用' : '要看一眼';
+    const storyStatusClass = (status: ExperienceReviewerReport['sessionStory']['nodes'][number]['status']): string =>
+      status === 'ok' ? 'is-ok' : status === 'attention' ? 'is-attention' : status === 'degraded' ? 'is-attention' : 'is-unknown';
+    const reportModeLabel = report.mode === 'deterministic_milestone_1' || report.mode === 'deterministic_session_story' ? '规则生成，无模型判断' : report.mode;
+    const reportScopeLabel = report.scope.kind === 'single_skill_single_goal' ? '单次任务 / 单个能力' : '复杂链路，降级展示';
+    const evidenceKindLabel = (kind: ExperienceEvidenceRef['kind']): string => {
+      const labels: Record<ExperienceEvidenceRef['kind'], string> = {
+        user_message: '用户消息',
+        synthetic_user_event: '构造事件',
+        assistant_message: '助手回复',
+        tool_use: '工具调用',
+        tool_result: '工具结果',
+        skill_context: '能力说明',
+        runtime_context: '运行注入',
+        observation: '过程发现',
+      };
+      return labels[kind] ?? kind;
+    };
+    const metrics = report.oneLookMetrics;
+    const tokenUsage = metrics.tokenUsage;
+    const traceLinks = report.traceLinks.slice(0, 8);
+    const story = report.sessionStory ?? fallbackSessionStory(report);
+    const storyEvidenceButtons = (refs: ExperienceEvidenceRef[]): string => refs.length > 0
+      ? `<div class="session-story-evidence">${refs.slice(0, 4).map((ref) => `<button type="button" class="reviewer-trace-link" data-jump-message-index="${ref.messageIndex ?? ''}" data-jump-message-uuid="${e(ref.messageUuid ?? '')}" onclick="jumpToExperienceMessage(this)" title="切换到证据片段并定位到对应消息">#${e(String(ref.messageIndex ?? '-'))} ${e(evidenceKindLabel(ref.kind))}</button>`).join('')}</div>`
+      : '';
+    const storyKindLabel = (kind: ExperienceReviewerReport['sessionStory']['nodes'][number]['kind']): string => {
+      if (kind === 'user_goal') return '目标';
+      if (kind === 'skill_invocation') return '能力';
+      if (kind === 'subagent_branch') return '分支';
+      if (kind === 'tool_execution') return '执行';
+      if (kind === 'delivery') return '交付';
+      if (kind === 'user_feedback') return '反馈';
+      if (kind === 'goal_shift') return '切换';
+      return kind;
+    };
+    const skillRoleLabel = (role?: string): string => {
+      if (role === 'router') return '路由';
+      if (role === 'executor') return '执行';
+      if (role === 'mixed') return '路由 + 执行';
+      return '信息不够';
+    };
+    const storyNodeById = new Map(story.nodes.map((node) => [node.id, node]));
+    const mainlineNodes = story.mainlineNodeIds
+      .map((id) => storyNodeById.get(id))
+      .filter((node): node is NonNullable<ReturnType<typeof storyNodeById.get>> => Boolean(node));
+    const storyGoalText = (goal: ExperienceReviewerReport['sessionStory']['goalSlices'][number]): string => {
+      const fallbackSkill = goal.skillNames[0] ?? story.skillLinks[0]?.skillName;
+      return goal.inferredUserGoal
+        ?? (fallbackSkill ? inboxLlmEnhancedGoalKeywords(fallbackSkill) : '')
+        ?? '未提取到明确用户目标';
+    };
+    const renderStoryGraph = (): string => {
+      return `<div class="session-story-graph">
+        <div class="session-story-graph-main">
+          ${mainlineNodes.map((node, index) => `<button type="button" class="session-story-graph-node ${storyStatusClass(node.status)}" onclick="document.getElementById('${e(node.id)}')?.scrollIntoView({block:'nearest'})">
+            <span>${e(storyKindLabel(node.kind))}</span>
+            <strong>${e(node.label)}</strong>
+          </button>${index < mainlineNodes.length - 1 ? '<i>→</i>' : ''}`).join('')}
+        </div>
+        ${story.skillLinks.length > 0 ? `<div class="session-story-skill-lanes">
+          ${story.skillLinks.map((link) => `<div class="session-story-skill-lane">
+            <span>${e(skillRoleLabel(link.role))}</span>
+            <strong>${e(link.skillName)}</strong>
+            <em>${link.invocationIds.length} 次调用</em>
+          </div>`).join('')}
+        </div>` : ''}
+      </div>`;
+    };
+    const renderStoryGoalSlices = (): string => story.goalSlices.length > 0
+      ? `<div class="session-story-slices">
+        ${story.goalSlices.map((goal) => `<div class="session-story-slice">
+          <strong>目标段 ${goal.order}</strong>
+          <span>${e(goal.skillNames.join('、') || '未记录能力')}</span>
+          <p>${e(storyGoalText(goal))}</p>
+          ${storyEvidenceButtons(goal.evidenceRefs)}
+        </div>`).join('')}
+      </div>`
+      : '';
+    const renderStoryDispatches = (): string => story.subagentDispatches.length > 0
+      ? `<div class="session-story-dispatches">
+        ${story.subagentDispatches.map((dispatch) => `<div class="session-story-dispatch">
+          <strong>分支 ${dispatch.order}：${e(dispatch.label)}</strong>
+          <span>${dispatch.eventCount} 条事件${dispatch.attachTo?.messageIndex !== undefined ? ` · 挂接 #${dispatch.attachTo.messageIndex}` : ''}</span>
+          ${storyEvidenceButtons(dispatch.evidenceRefs)}
+        </div>`).join('')}
+      </div>`
+      : '';
+    return `<section class="reviewer-report" style="margin:0 0 14px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);text-align:left">
+      <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px">
+        <div>
+          <h3 style="font-size:14px;margin:0 0 5px;color:var(--text-primary)">复盘报告</h3>
+          <div style="font-size:13px;font-weight:700;color:var(--text-primary)">${e(report.title)}</div>
+          <div style="margin-top:4px;color:var(--text-muted);font-size:12px;line-height:1.5">${e(cleanReportCopy(report.summary))}</div>
+        </div>
+        <div style="flex:0 0 auto;text-align:right;color:var(--text-muted);font-size:11px;line-height:1.45">
+          <div>${e(reportModeLabel)}</div>
+          <div>${e(reportScopeLabel)}</div>
+        </div>
+      </div>
+      <section class="session-story">
+        <div class="session-story-head">
+          <div>
+            <h4>语义链路</h4>
+            <p>${e(story.summary)}</p>
+          </div>
+          <div class="session-story-meta">
+            <span>调用 ${story.invocationCount}</span>
+            <span>目标段 ${story.goalSliceCount}</span>
+            <span>分支 ${story.branchCount}</span>
+            <span>过程进展 ${story.progressUpdateCount}</span>
+            <span>有结果 ${story.finalDeliverySignalCount}</span>
+          </div>
+        </div>
+        ${renderStoryGraph()}
+        <div class="session-story-answers">
+          ${story.answers.map((answer) => `<article class="session-story-answer ${storyStatusClass(answer.status)}">
+            <div>
+              <strong>${e(answer.label)}</strong>
+              <span>${e(storyStatusLabel(answer.status))}</span>
+            </div>
+            <p>${e(answer.text)}</p>
+            ${storyEvidenceButtons(answer.evidenceRefs)}
+          </article>`).join('')}
+        </div>
+        ${renderStoryGoalSlices()}
+        ${renderStoryDispatches()}
+        <div class="session-story-line">
+          ${story.nodes.map((node) => `<article class="session-story-node ${storyStatusClass(node.status)}">
+            <div class="session-story-node-index">${node.order}</div>
+            <div class="session-story-node-body">
+              <div class="session-story-node-title">
+                <strong>${e(node.label)}</strong>
+                <span>${e(storyStatusLabel(node.status))}</span>
+              </div>
+              <p>${e(node.text)}</p>
+              ${storyEvidenceButtons(node.evidenceRefs)}
+            </div>
+          </article>`).join('')}
+        </div>
+      </section>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-bottom:10px">
+        ${report.chainSteps.map((step) => `<div style="min-width:0;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--bg-surface)">
+          <div style="display:flex;justify-content:space-between;gap:6px;margin-bottom:5px">
+            <strong style="font-size:12px;color:var(--text-primary)">${step.order}. ${e(step.label)}</strong>
+            <span style="font-size:10px;color:var(--text-muted);font-family:ui-monospace,monospace">${e(stepStatus(step.status))}</span>
+          </div>
+          <div style="font-size:11px;color:var(--text-secondary);line-height:1.45;word-break:break-word">${e(step.text)}</div>
+        </div>`).join('')}
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:10px">
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:6px">事实层判断</div>
+          <div class="rule-finding-list">
+            ${report.findings.map((finding) => `<div class="rule-finding ${findingClass(finding.level)} reviewer-judgment-card" data-reviewer-judgment-id="${e(finding.judgmentId)}" style="display:block;margin:0 0 6px;padding:8px 9px;border-radius:6px">
+              <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:4px">
+                <strong>${e(finding.title)}</strong>
+                <span class="rule-level">${e(findingLabel(finding.level))}</span>
+              </div>
+              <div style="font-size:11px;color:var(--text-secondary);line-height:1.45">${e(cleanReportCopy(finding.body))}</div>
+              <div style="margin-top:5px;font-family:ui-monospace,monospace;font-size:10px;color:var(--text-muted);word-break:break-all">ruleSource: ${e(finding.ruleSource)} / ruleVersion: ${e(finding.ruleVersion)}${finding.evidenceRefs[0]?.messageIndex !== undefined ? ` / evidence #${finding.evidenceRefs[0].messageIndex}` : ''}</div>
+              <div class="reviewer-judgment-review" data-reviewer-judgment-current="${e(finding.reviewStateRef.verdict ?? '')}">
+                <span data-reviewer-judgment-label>${e(judgmentReviewLabel(finding.reviewStateRef.verdict))}</span>
+                <button type="button" data-reviewer-judgment-verdict="real_issue" onclick="setReviewerJudgmentReview('${e(finding.judgmentId)}', 'real_issue', this)">同意</button>
+                <button type="button" data-reviewer-judgment-verdict="not_issue" onclick="setReviewerJudgmentReview('${e(finding.judgmentId)}', 'not_issue', this)">否决</button>
+                <button type="button" data-reviewer-judgment-verdict="needs_more_context" onclick="openReviewerJudgmentNote('${e(finding.judgmentId)}', this)">留意见</button>
+                ${finding.reviewStateRef.reason || finding.reviewStateRef.note ? `<small>${e(finding.reviewStateRef.reason ?? finding.reviewStateRef.note ?? '')}</small>` : ''}
+              </div>
+            </div>`).join('')}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:6px">一眼数据</div>
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-bottom:10px">
+            ${[
+              ['工具调用', metrics.toolCallCount],
+              ['工具失败', metrics.toolFailureCount],
+              ['用户消息', metrics.userMessageCount],
+              ['追问/补充', metrics.userFollowUpCount],
+              ['有结果', metrics.assistantDeliverySignalCount],
+              ['有产物', metrics.deliverableArtifactSignalCount ?? 0],
+              ['自我纠正', metrics.selfCorrectionCount ?? 0],
+              ['重复执行', metrics.repeatedExecutionCount ?? 0],
+              ['原始事件', metrics.traceEventCount],
+            ].map(([label, value]) => `<div style="padding:7px;border:1px solid var(--border);border-radius:6px;background:var(--bg-surface)"><div style="font-size:10px;color:var(--text-muted)">${e(String(label))}</div><strong style="font-size:13px;color:var(--text-primary)">${e(String(value))}</strong></div>`).join('')}
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);line-height:1.5;margin-bottom:8px">
+            Token 使用量（按本次能力片段归因）：输入 ${tokenUsage.inputTokens} / 输出 ${tokenUsage.outputTokens} / 缓存读取 ${tokenUsage.cacheReadTokens} / 缓存写入 ${tokenUsage.cacheCreationTokens}
+          </div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:6px">证据定位</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px">
+            ${traceLinks.length > 0 ? traceLinks.map((ref) => `<button type="button" class="reviewer-trace-link" data-jump-message-index="${ref.messageIndex ?? ''}" data-jump-message-uuid="${e(ref.messageUuid ?? '')}" onclick="jumpToExperienceMessage(this)" title="切换到证据片段并定位到对应消息">#${e(String(ref.messageIndex ?? '-'))} ${e(evidenceKindLabel(ref.kind))}${ref.messageUuid ? ` / ${e(ref.messageUuid)}` : ''}</button>`).join('') : '<span style="color:var(--text-muted);font-size:11px">暂无可定位证据</span>'}
+          </div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-primary);margin-bottom:6px">给作者下一步</div>
+          <ul style="margin:0;padding-left:18px;color:var(--text-secondary);font-size:12px;line-height:1.55">
+            ${report.authorSuggestions.map((suggestion) => `<li>${e(suggestion)}</li>`).join('')}
+          </ul>
+        </div>
+      </div>
+    </section>`;
+  };
   const renderExperienceBasis = (codes: ExperienceReviewBasisCode[]): string => {
     if (codes.length === 0) return '<span style="color:var(--text-muted)">没有触发复盘优先级规则；进入常规抽样池</span>';
     return codes.map((code) => `<span style="display:inline-block;margin:0 4px 4px 0;padding:2px 6px;border-radius:999px;background:var(--bg-muted);color:var(--text-secondary);font-size:11px">${e(basisLabel(code))}</span>`).join('');
@@ -1037,10 +1627,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       medium_observation_seen: { label: '抽样过程发现', description: '存在 medium/low 过程发现，适合进入抽样复盘。' },
       user_correction_seen: { label: '用户纠正', description: '人工用户消息命中明确纠偏表达。' },
       user_interruption_seen: { label: '人工中断', description: 'trace 中出现用户主动中断事件。' },
+      session_interrupted_seen: { label: '会话异常中断', description: 'trace 中出现会话异常切换或 assistant turn failed 标记。' },
       negative_feedback_seen: { label: '负向反馈', description: '人工用户消息命中明确负向表达。' },
       positive_feedback_seen: { label: '正向反馈', description: '人工用户消息命中明确认可表达，仅作为正向证据展示。' },
       user_goal_shift_seen: { label: '用户切换目标', description: '人工用户消息命中“换个方向/先不/不用这个”等目标切换表达；这通常表示目标切走，不自动归因给 skill。' },
-      hard_rule_seen: { label: '用户硬性要求', description: '人工用户消息命中“必须/不要/禁止”等临时硬性要求。Skill 自身的强约束请看 Context Chain 里的 hardRules。' },
+      hard_rule_seen: { label: '用户硬性要求', description: '人工用户消息命中“必须/不要/禁止”等临时硬性要求。Skill 自身的强约束请看定义链路里的规则检测结果。' },
       tool_failure_seen: { label: '工具执行失败', description: 'tool_result 标记失败，表示执行过程中存在工具层失败。' },
       hedging_seen: { label: '不确定表达', description: '过程发现里存在“不确定/可能/需要确认”等低置信文本信号。' },
       explicit_marker_seen: { label: '显式缺口', description: '过程发现里存在“未知/知识缺口”等显式标记。' },
@@ -1068,11 +1659,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         <span class="rule-anchor">${e(anchor)}</span>
       </span>`;
     }).join('')}</div>`;
-  };
-  const fallbackEvidenceChain = (session: ExperienceSessionSummary): ExperienceEvidenceChain => {
-    const events = session.timelinePreview ?? [];
-    return {
-      userMessageCount: events.filter((event) => event.kind === 'user_message').length,
+    };
+    const fallbackEvidenceChain = (session: ExperienceSessionSummary): ExperienceEvidenceChain => {
+      const events = session.timelinePreview ?? [];
+      const userEvents = events.filter((event) => event.kind === 'user_message' && !isSyntheticUserMessageText(event.snippet ?? ''));
+      return {
+      userMessageCount: userEvents.length,
       runtimeContextCount: events.filter((event) => event.kind === 'runtime_context').length,
       skillContextCount: events.filter((event) => event.kind === 'skill_context').length,
       assistantMessageCount: events.filter((event) => event.kind === 'assistant_message').length,
@@ -1085,11 +1677,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const renderEvidenceChain = (chain: ExperienceEvidenceChain): string => {
     const item = (label: string, value: number, title: string): string =>
       `<span class="evidence-chain-item" title="${e(title)}"><span>${e(label)}</span><strong>${value}</strong></span>`;
-    const anchor = (label: string, ref?: { messageIndex?: number; timestamp?: string; snippet?: string }): string => {
+    const anchor = (label: string, ref?: ExperienceEvidenceRef): string => {
       if (!ref) return '';
       const title = [ref.timestamp, ref.snippet].filter(Boolean).join(' · ');
       const msg = ref.messageIndex !== undefined ? `#${ref.messageIndex}` : '有记录';
-      return `<span class="evidence-anchor" title="${e(title)}">${e(label)} ${e(msg)}</span>`;
+      return `<button type="button" class="evidence-anchor" data-jump-message-index="${ref.messageIndex ?? ''}" data-jump-message-uuid="${e(ref.messageUuid ?? '')}" onclick="jumpToExperienceMessage(this)" title="${e(title || '切换并定位到对应消息')}">${e(label)} ${e(msg)}</button>`;
     };
     return `<div class="evidence-chain">
       <div class="evidence-chain-row">
@@ -1101,7 +1693,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <div class="evidence-chain-row">
         ${item('工具调用', chain.toolUseCount, 'tool_use 事件数')}
         ${item('工具执行结果', chain.toolResultCount, 'tool_result 事件数')}
-        ${item('失败结果', chain.toolFailureResultCount, 'is_error=true 的 tool_result 事件数')}
+        ${item('失败结果', chain.toolFailureResultCount, 'tool_result 明确失败，或返回内容里带 status=error / error 字段')}
         ${item('过程发现', chain.observationCount, '关联 observation item 数')}
       </div>
       <div class="evidence-anchor-row">
@@ -1121,6 +1713,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   }
   interface TimelineRenderOptions {
     reviewSessionId?: string;
+    activeEventIds?: Set<string>;
     activeSourceTrace?: string;
     activeStartRecordIndex?: number;
     activeEndRecordIndex?: number;
@@ -1138,6 +1731,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const HEDGING_RE = /可能|不确定|需要确认|大概|也许|presumably|maybe|unclear|not sure/i;
   const EXPLICIT_MARKER_RE = /【推断】|【知识缺口】|【未知】|\[inferred\]|\[unknown\]|\[knowledge\s*gap\]/i;
   const TOOL_FAILURE_RE = /Error|error|failed|失败|Exception|ENOENT|EACCES|permission denied|No such file|exceeds maximum allowed tokens|timed out|timeout/i;
+  const DELIVERABLE_ARTIFACT_RE = ASSISTANT_DELIVERABLE_ARTIFACT_RE;
   const evidenceMetricLabels: Record<ObservationMetricKey, string> = {
     user_correction: '纠正',
     user_interruption: '中断',
@@ -1146,8 +1740,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     positive_feedback: '正向',
     hard_rule: '用户硬性要求',
     user_goal_shift: '目标切换',
+    result_artifact: '产出结果（旧）',
+    completion_result: '有结果',
+    deliverable_artifact: '有产物',
+    progress_update: '过程进展',
+    self_correction: '自我纠正',
+    repeated_execution: '重复执行',
   };
-  const evidenceMetricKeys = Object.keys(evidenceMetricLabels) as ObservationMetricKey[];
   const cloneRegex = (pattern: RegExp): RegExp => new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`);
   const matches = (pattern: RegExp, value: string): boolean => {
     pattern.lastIndex = 0;
@@ -1186,6 +1785,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   };
 	  const timelineEventMeta = (event: ExperienceTimelineEvent): TimelineEventMeta => {
 	    if (event.kind === 'user_message') return { icon: 'U', label: '用户消息', tone: 'user' };
+	    if (event.kind === 'synthetic_user_event') return { icon: 'S', label: '构造事件', tone: 'runtime' };
 	    if (event.kind === 'assistant_message') return { icon: 'A', label: '助手回复', tone: 'assistant' };
 	    if (event.kind === 'tool_use') return { icon: 'TU', label: '工具调用', tone: 'tool-use' };
 	    if (event.kind === 'tool_result') {
@@ -1203,76 +1803,110 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const text = event.fullText ?? event.snippet ?? '';
 	    return hasAssistantDeliverySignalText(text);
 	  };
-	  const evidenceMetricVerdictFor = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey): 'confirmed' | 'rejected' | '' => {
-	    const targetId = observationMetricAnnotationTargetId(event, metricKey);
+	  const isAssistantCompletionResultSignal = (event: ExperienceTimelineEvent): boolean => isAssistantDeliverySignal(event);
+	  const isAssistantDeliverableArtifactSignal = (event: ExperienceTimelineEvent): boolean => {
+	    if (event.kind !== 'assistant_message') return false;
+	    const text = event.fullText ?? event.snippet ?? '';
+	    return hasAssistantDeliverableArtifactText(text);
+	  };
+	  const isAssistantProgressUpdateSignal = (event: ExperienceTimelineEvent): boolean => {
+	    if (event.kind !== 'assistant_message') return false;
+	    const text = event.fullText ?? event.snippet ?? '';
+	    return isAssistantProgressUpdateText(text);
+	  };
+	  function hasSelfCorrectionSignal(event: ExperienceTimelineEvent): boolean {
+	    if (event.kind !== 'assistant_message') return false;
+	    const text = event.fullText ?? event.snippet ?? '';
+	    return /刚才.*(?:不对|错了|有误)|发现.*(?:不对|错了|问题|遗漏)|重新(?:检查|分析|执行|生成|整理)|改用|换成|修正|我再(?:检查|重新|看)|\b(?:recheck|retry|rerun|mistake|wrong)\b/i.test(text);
+	  }
+	  function hasRepeatedExecutionSignal(event: ExperienceTimelineEvent): boolean {
+	    if (event.kind !== 'assistant_message' && event.kind !== 'tool_use') return false;
+	    const text = `${event.label ?? ''} ${event.toolName ?? ''} ${event.fullText ?? event.snippet ?? ''}`;
+	    return /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|\b(?:retry|rerun)\b/i.test(text);
+	  }
+	  const evidenceMetricVerdictFor = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): 'confirmed' | 'rejected' | '' => {
+	    const targetId = observationMetricAnnotationTargetId({ ...event, metricScopeId }, metricKey);
 	    const entry = reviewState.entries[reviewStateKey('evidence_metric', targetId)];
 	    return entry?.verdict === 'confirmed' || entry?.verdict === 'rejected' ? entry.verdict : '';
 	  };
-	  const evidenceMetricIsActive = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean): boolean => {
-	    const verdict = evidenceMetricVerdictFor(event, metricKey);
+	  const evidenceMetricIsActive = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean, metricScopeId?: string): boolean => {
+	    const verdict = evidenceMetricVerdictFor(event, metricKey, metricScopeId);
 	    if (verdict === 'confirmed') return true;
 	    if (verdict === 'rejected') return false;
 	    return ruleDetected;
 	  };
-	  const evidenceMetricBadgeLabel = (base: string, event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean): string =>
-	    evidenceMetricVerdictFor(event, metricKey) === 'confirmed' && !ruleDetected ? `人工确认：${base}` : base;
-  const timelineSearchTags = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags: boolean): string[] => {
+	  const evidenceMetricBadgeLabel = (base: string, event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean, metricScopeId?: string): string =>
+	    evidenceMetricVerdictFor(event, metricKey, metricScopeId) === 'confirmed' && !ruleDetected ? `人工确认：${base}` : base;
+  const timelineSearchTags = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags: boolean, metricScopeId?: string): string[] => {
     if (!allowMetricTags) return [];
     const text = event.fullText ?? event.snippet ?? '';
     const metricText = event.snippet ?? '';
     const tags: string[] = [];
     if (event.kind === 'user_message') {
-      tags.push('user_message');
+      const syntheticUser = isSyntheticUserMessageText(metricText);
+      if (syntheticUser) tags.push('synthetic_user_message');
+      else tags.push('user_message');
       if (isScheduledTaskPromptText(metricText)) tags.push('scheduled_task');
-      if (!isScheduledTaskPromptText(metricText)) {
-        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) tags.push('user_follow_up');
-        if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText))) tags.push('user_correction');
-        if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText))) tags.push('user_goal_shift');
-        if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText))) tags.push('user_interruption');
+      if (isUserInteractionMetricText(metricText)) {
+        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0 && !hasUserGoalShiftSignal(metricText), metricScopeId)) tags.push('user_follow_up');
+        if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText), metricScopeId)) tags.push('user_correction');
+        if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText), metricScopeId)) tags.push('user_goal_shift');
+        if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText), metricScopeId)) tags.push('user_interruption');
         if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0)) tags.push('negative_feedback');
         if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) tags.push('positive_feedback');
-        if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText))) tags.push('hard_rule');
+        if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText), metricScopeId)) tags.push('hard_rule');
       }
     }
     if (event.kind === 'assistant_message') {
-      if (isAssistantDeliverySignal(event)) tags.push('completion');
+      if (evidenceMetricIsActive(event, 'completion_result', isAssistantCompletionResultSignal(event))) tags.push('completion_result');
+      if (evidenceMetricIsActive(event, 'deliverable_artifact', isAssistantDeliverableArtifactSignal(event))) tags.push('deliverable_artifact');
+      if (evidenceMetricIsActive(event, 'self_correction', hasSelfCorrectionSignal(event))) tags.push('self_correction');
+      if (evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) tags.push('repeated_execution');
       if (matches(HEDGING_RE, text)) tags.push('hedging');
       if (matches(EXPLICIT_MARKER_RE, text)) tags.push('explicit_marker');
     }
+    if (event.kind !== 'user_message' && event.kind !== 'assistant_message' && evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) tags.push('repeated_execution');
     if (event.kind === 'tool_result' && event.isError) tags.push('tool_failure');
     if (event.kind === 'observation') tags.push('observation');
     return Array.from(new Set(tags));
   };
-	  const timelineMetricBadges = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags = true): string[] => {
+	  const timelineMetricBadges = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags = true, metricScopeId?: string): string[] => {
     if (!allowMetricTags) return [];
 	    const text = event.fullText ?? event.snippet ?? '';
 	    const metricText = event.snippet ?? '';
     const badges: Array<{ label: string; className: string; title: string }> = [];
     if (event.kind === 'user_message') {
       const scheduledTask = isScheduledTaskPromptText(metricText);
+      const syntheticUser = isSyntheticUserMessageText(metricText);
       badges.push({
-        label: scheduledTask ? '用户消息来源（定时任务）' : '用户消息来源',
-        className: scheduledTask ? 'metric-user-message metric-scheduled-task' : 'metric-user-message',
-        title: scheduledTask
+        label: syntheticUser ? '系统构造消息（不计用户交互）' : scheduledTask ? '用户消息来源（定时任务）' : '用户消息来源',
+        className: syntheticUser ? 'metric-skill-context' : scheduledTask ? 'metric-user-message metric-scheduled-task' : 'metric-user-message',
+        title: syntheticUser
+          ? '这是 trace 后处理或工作流系统注入的伪 user message，不计入真实用户消息、追问、纠正或硬性要求。'
+          : scheduledTask
           ? '这是 cron 定时任务注入的用户侧任务入口，保留为用户消息来源，但不参与追问、负向反馈、硬性要求等人工交互指标。'
           : '这条人工用户消息计入用户消息数；同一 skill 片段内第 2 条及之后还会计入追问/补充。',
       });
-      if (!scheduledTask) {
-        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) badges.push({ label: evidenceMetricBadgeLabel('追问/补充来源', event, 'user_follow_up', userIndex > 0), className: 'metric-followup', title: '同一 skill 复盘片段内，第 2 条及之后的人工用户消息计入追问/补充。' });
-        if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText))) badges.push({ label: evidenceMetricBadgeLabel('用户纠正来源', event, 'user_correction', hasUserCorrectionSignal(metricText)), className: 'metric-correction', title: '命中明确纠正表达；“不对/不是/错了”要求前后有标点、空格等分隔。人工反对后不会再显示。' });
-        if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText))) badges.push({ label: evidenceMetricBadgeLabel('目标切换来源', event, 'user_goal_shift', hasUserGoalShiftSignal(metricText)), className: 'metric-goal-shift', title: '命中“换个方向/先不/不用这个/另一个问题”等表达；表示用户可能切走当前目标。' });
-        if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText))) badges.push({ label: evidenceMetricBadgeLabel('人工中断来源', event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText)), className: 'metric-interruption', title: '用户主动中断了当前执行，通常表示当前路径需要纠偏或停止。' });
+      if (isUserInteractionMetricText(metricText)) {
+        if (evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0 && !hasUserGoalShiftSignal(metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('追问/补充来源', event, 'user_follow_up', userIndex > 0 && !hasUserGoalShiftSignal(metricText), metricScopeId), className: 'metric-followup', title: '同一 skill 复盘片段内，第 2 条及之后的人工用户消息计入追问/补充；目标切换消息不计入追问。' });
+        if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('用户纠正来源', event, 'user_correction', hasUserCorrectionSignal(metricText), metricScopeId), className: 'metric-correction', title: '命中明确纠正表达；“不对/不是/错了”要求前后有标点、空格等分隔。人工反对后不会再显示。' });
+        if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('目标切换来源', event, 'user_goal_shift', hasUserGoalShiftSignal(metricText), metricScopeId), className: 'metric-goal-shift', title: '命中“换个方向/先不/不用这个/另一个问题”等表达；表示用户可能切走当前目标。' });
+        if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('人工中断来源', event, 'user_interruption', matches(USER_INTERRUPTION_RE, metricText), metricScopeId), className: 'metric-interruption', title: '用户主动中断了当前执行，通常表示当前路径需要纠偏或停止。' });
         if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0)) badges.push({ label: evidenceMetricBadgeLabel('负向反馈来源', event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0), className: 'metric-negative', title: '命中“没用/垃圾/菜/做错了/不行/看不懂”等负向表达。' });
         if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) badges.push({ label: evidenceMetricBadgeLabel('正向反馈来源', event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0), className: 'metric-positive', title: '命中“很好/good job/做得好/很棒/优秀/很有用”等正向表达。' });
-        if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText))) badges.push({ label: evidenceMetricBadgeLabel('用户硬性要求来源', event, 'hard_rule', hasUserHardRuleText(metricText)), className: 'metric-hard-rule', title: '命中“必须/不要/禁止/严格”等用户临时硬性要求。' });
+        if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('用户硬性要求来源', event, 'hard_rule', hasUserHardRuleText(metricText), metricScopeId), className: 'metric-hard-rule', title: '命中“必须/不要/禁止/严格”等用户临时硬性要求。' });
       }
     }
 	    if (event.kind === 'assistant_message') {
-	      if (isAssistantDeliverySignal(event)) badges.push({ label: '产出结果/疑似完成', className: 'metric-completion', title: '助手回复里出现代码块、直接生成、结果如下、完成等交付信号。它表示当前目标可能完成，不等于整个 skill 生命周期结束。' });
+	      if (evidenceMetricIsActive(event, 'completion_result', isAssistantCompletionResultSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('有结果', event, 'completion_result', isAssistantCompletionResultSignal(event)), className: 'metric-completion', title: '助手回复里出现明确完成态或结果反馈，表示任务可能已有执行结果。它不等于一定交付了可打开的文档、链接或文件。' });
+	      if (evidenceMetricIsActive(event, 'deliverable_artifact', isAssistantDeliverableArtifactSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('有产物', event, 'deliverable_artifact', isAssistantDeliverableArtifactSignal(event)), className: 'metric-completion', title: '助手回复里出现可交付对象，例如文档链接、Demo 地址、文件路径、代码块或上传产物。' });
+	      if (evidenceMetricIsActive(event, 'self_correction', hasSelfCorrectionSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('自我纠正', event, 'self_correction', hasSelfCorrectionSignal(event)), className: 'metric-correction', title: 'agent 在没有用户介入的情况下发现问题并主动修正执行策略。少量说明有恢复能力，高频说明流程不稳。' });
+	      if (evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('重复执行', event, 'repeated_execution', hasRepeatedExecutionSignal(event)), className: 'metric-repeated-execution', title: '同类步骤、工具或流程被重复执行。高频出现时通常对应绕路或 workflow 不清晰。' });
 	      if (matches(HEDGING_RE, text)) badges.push({ label: '不确定表达来源', className: 'metric-hedging', title: '命中“可能/不确定/需要确认”等表达。' });
 	      if (matches(EXPLICIT_MARKER_RE, text)) badges.push({ label: '显式缺口来源', className: 'metric-explicit', title: '命中“【推断】/【未知】/知识缺口”等标记。' });
     }
     if (event.kind === 'tool_use') {
+      if (evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('重复执行', event, 'repeated_execution', hasRepeatedExecutionSignal(event)), className: 'metric-repeated-execution', title: '同类工具或流程被重复调用。高频出现时通常对应绕路或 workflow 不清晰。' });
       badges.push({
         label: '工具调用',
         className: 'metric-tool-use',
@@ -1282,6 +1916,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       });
     }
 	    if (event.kind === 'tool_result') {
+	      if (evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) badges.push({ label: evidenceMetricBadgeLabel('重复执行', event, 'repeated_execution', hasRepeatedExecutionSignal(event)), className: 'metric-repeated-execution', title: '同类工具结果或失败恢复路径被重复出现。高频出现时通常对应绕路或 workflow 不清晰。' });
 	      if (event.isError) {
 	        badges.push({ label: '工具执行失败', className: 'metric-tool-failure', title: 'tool_result 标记 is_error=true，表示这次工具执行失败。' });
 	      } else if (isSkillLaunchResult(event)) {
@@ -1304,91 +1939,126 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     }
     return badges.map((badge) => `<span class="timeline-badge ${badge.className}" title="${e(badge.title)}">${e(badge.label)}</span>`);
   };
-	  const highlightTimelineSnippet = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags = true): string => {
+	  const highlightTimelineSnippet = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags = true, metricScopeId?: string): string => {
 	    const rules: TimelineHighlightRule[] = [];
 	    const value = event.snippet ?? '';
     if (!allowMetricTags) return e(value);
-	    if (event.kind === 'user_message' && !isScheduledTaskPromptText(value)) {
-      if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(value))) rules.push({ ranges: findUserCorrectionMatches, className: 'metric-correction', title: '用户纠正命中词' });
-      if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(value))) rules.push({ ranges: findUserGoalShiftMatches, className: 'metric-goal-shift', title: '目标切换命中词' });
-      if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, value))) rules.push({ pattern: cloneRegex(USER_INTERRUPTION_RE), className: 'metric-interruption', title: '人工中断命中词' });
+	    if (event.kind === 'user_message' && isUserInteractionMetricText(value)) {
+      if (evidenceMetricIsActive(event, 'user_correction', hasUserCorrectionSignal(value), metricScopeId)) rules.push({ ranges: findUserCorrectionMatches, className: 'metric-correction', title: '用户纠正命中词' });
+      if (evidenceMetricIsActive(event, 'user_goal_shift', hasUserGoalShiftSignal(value), metricScopeId)) rules.push({ ranges: findUserGoalShiftMatches, className: 'metric-goal-shift', title: '目标切换命中词' });
+      if (evidenceMetricIsActive(event, 'user_interruption', matches(USER_INTERRUPTION_RE, value), metricScopeId)) rules.push({ pattern: cloneRegex(USER_INTERRUPTION_RE), className: 'metric-interruption', title: '人工中断命中词' });
       if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(value).length > 0)) rules.push({ ranges: findNegativeFeedbackMatches, className: 'metric-negative', title: '负向反馈命中词' });
       if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(value).length > 0)) rules.push({ ranges: findPositiveFeedbackMatches, className: 'metric-positive', title: '正向反馈命中词' });
-      if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(value))) rules.push({ pattern: cloneRegex(HARD_RULE_RE), className: 'metric-hard-rule', title: '用户硬性要求命中词' });
+      if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(value), metricScopeId)) rules.push({ pattern: cloneRegex(HARD_RULE_RE), className: 'metric-hard-rule', title: '用户硬性要求命中词' });
     }
 	    if (event.kind === 'assistant_message') {
 	      rules.push(
-	        { pattern: /```(?:mermaid|plantuml|json|tsx?|jsx?|html|css|excalidraw|markdown)?|直接生成|已生成|生成如下|结果如下|完成|已完成/g, className: 'metric-completion', title: '当前目标产出结果/疑似完成命中词' },
+	        { pattern: /直接生成|已生成|生成如下|结果如下|完成|已完成/g, className: 'metric-completion', title: '有结果命中词' },
+	        { pattern: cloneRegex(DELIVERABLE_ARTIFACT_RE), className: 'metric-completion', title: '有产物命中词' },
+	        { pattern: /刚才.*(?:不对|错了|有误)|发现.*(?:不对|错了|问题|遗漏)|重新(?:检查|分析|执行|生成|整理)|改用|换成|修正|我再(?:检查|重新|看)|recheck|retry|mistake|wrong/gi, className: 'metric-correction', title: '自我纠正命中词' },
+	        { pattern: /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|retry|rerun/gi, className: 'metric-repeated-execution', title: '重复执行命中词' },
 	        { pattern: cloneRegex(HEDGING_RE), className: 'metric-hedging', title: '不确定表达命中词' },
 	        { pattern: cloneRegex(EXPLICIT_MARKER_RE), className: 'metric-explicit', title: '显式缺口命中词' },
 	      );
 	    }
+    if (event.kind !== 'user_message' && event.kind !== 'assistant_message' && evidenceMetricIsActive(event, 'repeated_execution', hasRepeatedExecutionSignal(event))) {
+      rules.push({ pattern: /重复(?:执行|尝试|读取|搜索|调用)|再次(?:执行|读取|搜索|调用)|重新(?:执行|读取|搜索|调用|跑|运行)|再(?:执行|读取|搜索|调用|跑)一遍|重试|retry|rerun/gi, className: 'metric-repeated-execution', title: '重复执行命中词' });
+    }
     if (event.kind === 'tool_result' && event.isError) {
       rules.push({ pattern: cloneRegex(TOOL_FAILURE_RE), className: 'metric-tool-failure', title: '工具执行失败命中词' });
     }
 	    const html = highlightText(value, rules);
-    if (event.kind === 'user_message' && !isScheduledTaskPromptText(value) && evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0)) {
+    if (event.kind === 'user_message' && isUserInteractionMetricText(value) && evidenceMetricIsActive(event, 'user_follow_up', userIndex > 0 && !hasUserGoalShiftSignal(value), metricScopeId)) {
       return `<span class="timeline-followup-source" title="整条消息计入追问/补充来源">${html}</span>`;
     }
     return html;
   };
   const evidenceMetricRuleDetected = (event: ExperienceTimelineEvent, userIndex: number, metricKey: ObservationMetricKey): boolean => {
-    if (event.kind !== 'user_message') return false;
     const text = event.snippet ?? '';
-    if (isScheduledTaskPromptText(text)) return false;
+    if (event.kind === 'user_message' && !isUserInteractionMetricText(text)) return false;
     if (metricKey === 'user_correction') return hasUserCorrectionSignal(text);
     if (metricKey === 'user_interruption') return matches(USER_INTERRUPTION_RE, text);
-    if (metricKey === 'user_follow_up') return userIndex > 0;
+    if (metricKey === 'user_follow_up') return userIndex > 0 && !hasUserGoalShiftSignal(text);
     if (metricKey === 'negative_feedback') return findNegativeFeedbackMatches(text).length > 0;
     if (metricKey === 'positive_feedback') return findPositiveFeedbackMatches(text).length > 0;
     if (metricKey === 'hard_rule') return hasUserHardRuleText(text);
     if (metricKey === 'user_goal_shift') return hasUserGoalShiftSignal(text);
+    if (metricKey === 'result_artifact') return isAssistantCompletionResultSignal(event) || isAssistantDeliverableArtifactSignal(event);
+    if (metricKey === 'completion_result') return isAssistantCompletionResultSignal(event);
+    if (metricKey === 'deliverable_artifact') return isAssistantDeliverableArtifactSignal(event);
+    if (metricKey === 'progress_update') return isAssistantProgressUpdateSignal(event);
+    if (metricKey === 'self_correction') return hasSelfCorrectionSignal(event);
+    if (metricKey === 'repeated_execution') return hasRepeatedExecutionSignal(event);
     return false;
   };
-  const metricAnnotationTarget = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey): string =>
-    observationMetricAnnotationTargetId(event, metricKey);
-	  const metricAnnotationVerdict = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey): 'confirmed' | 'rejected' | '' => {
-	    const targetId = metricAnnotationTarget(event, metricKey);
+  const metricAnnotationTarget = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): string =>
+    observationMetricAnnotationTargetId({ ...event, metricScopeId }, metricKey);
+	  const metricAnnotationVerdict = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): 'confirmed' | 'rejected' | '' => {
+	    const targetId = metricAnnotationTarget(event, metricKey, metricScopeId);
 	    const entry = reviewState.entries[reviewStateKey('evidence_metric', targetId)];
 	    return entry?.verdict === 'confirmed' || entry?.verdict === 'rejected' ? entry.verdict : '';
 	  };
-	  const metricAnnotationReason = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey): string => {
-	    const targetId = metricAnnotationTarget(event, metricKey);
+	  const metricAnnotationReason = (event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, metricScopeId?: string): string => {
+	    const targetId = metricAnnotationTarget(event, metricKey, metricScopeId);
 	    const entry = reviewState.entries[reviewStateKey('evidence_metric', targetId)];
 	    return typeof entry?.reason === 'string' ? entry.reason : '';
 	  };
-  const renderMetricCalibration = (event: ExperienceTimelineEvent, userIndex: number): string => {
-	    if (event.kind !== 'user_message') return '';
-	    const buttons = evidenceMetricKeys.map((metricKey) => {
-	      const targetId = metricAnnotationTarget(event, metricKey);
-	      const verdict = metricAnnotationVerdict(event, metricKey);
-	      const reason = metricAnnotationReason(event, metricKey);
+  const timelineManualMetricKeys = (): ObservationMetricKey[] => [
+    'user_correction',
+    'user_interruption',
+    'user_follow_up',
+    'negative_feedback',
+    'positive_feedback',
+    'hard_rule',
+    'user_goal_shift',
+    'completion_result',
+    'deliverable_artifact',
+    'progress_update',
+    'self_correction',
+    'repeated_execution',
+  ];
+  const renderTimelineManualMarkButton = (sessionId: string, event: ExperienceTimelineEvent, userIndex: number, allowMetrics: boolean): string => {
+	    const metrics = allowMetrics ? timelineManualMetricKeys().map((metricKey) => {
+	      const targetId = metricAnnotationTarget(event, metricKey, sessionId);
+	      const verdict = metricAnnotationVerdict(event, metricKey, sessionId);
+	      const reason = metricAnnotationReason(event, metricKey, sessionId);
 	      const ruleDetected = evidenceMetricRuleDetected(event, userIndex, metricKey);
 	      const label = evidenceMetricLabels[metricKey];
-	      const stateLabel = verdict === 'confirmed' ? '人工同意' : verdict === 'rejected' ? '人工反对' : ruleDetected ? '规则命中' : '未命中';
-	      const className = verdict === 'confirmed' ? 'is-confirmed' : verdict === 'rejected' ? 'is-rejected' : ruleDetected ? 'is-rule-hit' : '';
-	      const title = `${stateLabel}：${label}。点击后在弹层里选择同意/反对，并可填写原因；下一次生成报告会优先使用人工标注。`;
-	      return `<button type="button"
-	        class="metric-calibration-button ${className}"
-	        data-evidence-metric-target="${e(targetId)}"
-	        data-metric-key="${e(metricKey)}"
-	        data-metric-label="${e(label)}"
-	        data-metric-annotation="${e(verdict)}"
-	        data-metric-reason="${e(reason)}"
-	        data-rule-detected="${ruleDetected ? '1' : '0'}"
-	        data-source-trace="${e(event.sourceTrace)}"
-	        data-session-id="${e(event.sessionId)}"
-        data-message-index="${event.messageIndex ?? ''}"
-        data-message-uuid="${e(event.messageUuid ?? '')}"
-        data-tool-use-id="${e(event.toolUseId ?? '')}"
-        data-snippet="${e((event.snippet ?? '').slice(0, 240))}"
-	        onclick="openEvidenceMetricAnnotation('${e(targetId)}', '${e(metricKey)}', this)"
-	        title="${e(title)}">${e(stateLabel)} · ${e(label)}</button>`;
-	    }).join('');
-    return `<div class="metric-calibration-row">
-      <span class="metric-calibration-title">人工校准</span>
-      <div class="metric-calibration-actions">${buttons}</div>
-    </div>`;
+	      return { targetId, metricKey, metricScopeId: sessionId, verdict, reason, ruleDetected, label };
+	    }) : [];
+    const goalTargetId = `${sessionId}:${event.messageIndex ?? event.id}`;
+    const goalAction = goalSliceCorrectionAction(sessionId, event);
+    const activeCount = metrics.filter((m) => m.verdict === 'confirmed' || m.verdict === 'rejected').length + (goalAction ? 1 : 0);
+    const mode = allowMetrics ? 'metrics' : 'window_only';
+    const buttonLabel = allowMetrics
+      ? `人工标记${activeCount > 0 ? `(${activeCount})` : ''}`
+      : goalAction === 'add_to_current_skill_window'
+        ? '已加入窗口'
+        : '加入窗口';
+    const source = {
+      sourceTrace: event.sourceTrace,
+      sessionId: event.sessionId,
+      messageIndex: event.messageIndex,
+      messageUuid: event.messageUuid,
+      toolUseId: event.toolUseId,
+      snippet: (event.snippet ?? '').slice(0, 240),
+    };
+    return `<button type="button"
+      class="timeline-manual-mark-button ${activeCount > 0 ? 'is-marked' : ''} ${allowMetrics ? '' : 'is-window-only'}"
+      data-manual-mark-mode="${mode}"
+      data-manual-mark-session-id="${e(sessionId)}"
+      data-manual-mark-goal-target="${e(goalTargetId)}"
+      data-manual-mark-goal-action="${e(goalAction)}"
+      data-manual-mark-metrics="${e(JSON.stringify(metrics))}"
+      data-manual-mark-source="${e(JSON.stringify(source))}"
+      data-source-trace="${e(event.sourceTrace)}"
+      data-session-id="${e(event.sessionId)}"
+      data-message-index="${event.messageIndex ?? ''}"
+      data-message-uuid="${e(event.messageUuid ?? '')}"
+      data-tool-use-id="${e(event.toolUseId ?? '')}"
+      data-snippet="${e((event.snippet ?? '').slice(0, 240))}"
+      onclick="openTimelineManualMark(this)"
+      title="${allowMetrics ? '人工标记这条消息' : '这条消息不在当前 skill 窗口内，先加入窗口后才能标注指标'}">${buttonLabel}</button>`;
   };
   const goalSliceCorrectionAction = (sessionId: string, event: ExperienceTimelineEvent): 'split_goal_slice' | 'add_to_current_skill_window' | '' => {
     const targetId = `${sessionId}:${event.messageIndex ?? event.id}`;
@@ -1398,35 +2068,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (reviewState.entries[key]) return 'split_goal_slice';
     return '';
   };
-  const renderGoalSliceCorrectionButton = (sessionId: string, event: ExperienceTimelineEvent): string => {
-    const targetId = `${sessionId}:${event.messageIndex ?? event.id}`;
-    const key = reviewStateKey('goal_slice_correction', targetId);
-    const action = goalSliceCorrectionAction(sessionId, event);
-    const label = action === 'split_goal_slice'
-      ? '已标记：拆分'
-      : action === 'add_to_current_skill_window'
-        ? '已标记：加入窗口'
-        : '人工标记';
-    const help = '点击后可选择：拆分目标切片、取消打标、添加至当前 skill 窗口。写入 review-state.json 后，需要重新执行脚本让报告重算生效。';
-    return `<button type="button"
-      class="goal-slice-correction-button ${action ? 'is-marked' : ''}"
-      data-goal-slice-correction-key="${e(key)}"
-      data-goal-slice-correction-action="${e(action)}"
-      data-goal-slice-correction-target="${e(targetId)}"
-      data-source-trace="${e(event.sourceTrace)}"
-      data-session-id="${e(event.sessionId)}"
-      data-message-index="${event.messageIndex ?? ''}"
-      data-message-uuid="${e(event.messageUuid ?? '')}"
-      data-tool-use-id="${e(event.toolUseId ?? '')}"
-      data-snippet="${e((event.snippet ?? '').slice(0, 240))}"
-      onclick="openGoalSliceCorrectionPopover('${e(targetId)}', this)"
-      title="${e(help)}"
-      aria-label="${e(help)}">${e(label)}</button>`;
-  };
 	  const renderExperienceTimeline = (events: ExperienceTimelineEvent[], sessionId: string, options: TimelineRenderOptions = {}): string => {
     if (events.length === 0) return '<div style="color:var(--text-muted);font-size:12px">没有可展示的时间线片段。</div>';
     const reviewSessionId = options.reviewSessionId ?? sessionId;
     const isInsideSkillWindow = (event: ExperienceTimelineEvent): boolean => {
+      if (options.activeEventIds) return options.activeEventIds.has(event.id);
       if (options.activeSourceTrace && event.sourceTrace !== options.activeSourceTrace) return false;
       if (typeof event.messageIndex !== 'number') return true;
       const start = options.activeStartRecordIndex;
@@ -1441,8 +2087,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       !options.suppressMetricTagsOutsideSkillWindow || isInsideSkillWindow(event) || isAddedToSkillWindow(event);
     let userIndex = 0;
     const decorated = events.map((event) => {
-      const scheduledTask = event.kind === 'user_message' && isScheduledTaskPromptText(event.snippet ?? '');
-      const nextUserIndex = event.kind === 'user_message' && !scheduledTask ? userIndex++ : -1;
+      const interactionUser = event.kind === 'user_message' && isUserInteractionMetricText(event.snippet ?? '');
+      const nextUserIndex = interactionUser ? userIndex++ : -1;
       return { event, userIndex: nextUserIndex };
     });
     const groups: Array<{ boundary?: ExperienceTimelineEvent; items: typeof decorated }> = [];
@@ -1473,17 +2119,17 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       return [previous, ...items];
     };
 	    const renderRow = ({ event, userIndex: currentUserIndex }: typeof decorated[number]): string => {
-	      const meta = timelineEventMeta(event);
+      const meta = timelineEventMeta(event);
       const allowMetricTags = allowMetricTagsFor(event);
-      const searchTags = timelineSearchTags(event, currentUserIndex, allowMetricTags);
-	      const badges = timelineMetricBadges(event, currentUserIndex, allowMetricTags).join('');
+      const searchTags = timelineSearchTags(event, currentUserIndex, allowMetricTags, reviewSessionId);
+	      const badges = timelineMetricBadges(event, currentUserIndex, allowMetricTags, reviewSessionId).join('');
 	      const visibleText = event.snippet ?? '';
 	      const fullText = event.fullText ?? visibleText;
 	      const hasMoreFullText = Boolean(fullText && fullText.trim() !== visibleText.trim());
 	      const fullTextAttrs = fullText
 	        ? ` data-timeline-fulltext="${e(fullText)}" data-timeline-fulltext-title="${e(meta.label)} #${event.messageIndex ?? '—'}" data-timeline-has-more="${hasMoreFullText ? '1' : '0'}" tabindex="${hasMoreFullText ? '0' : '-1'}"`
 	        : '';
-	      return `<div class="timeline-row timeline-${meta.tone}" data-timeline-tags="${e(searchTags.join(' '))}" data-current-skill-window="${allowMetricTags ? '1' : '0'}">
+	      return `<div class="timeline-row timeline-${meta.tone}" data-timeline-tags="${e(searchTags.join(' '))}" data-current-skill-window="${allowMetricTags ? '1' : '0'}" data-message-index="${event.messageIndex ?? ''}" data-message-uuid="${e(event.messageUuid ?? '')}" data-source-trace="${e(event.sourceTrace)}">
         <div class="timeline-marker">
           <span class="timeline-icon">${e(meta.icon)}</span>
           <span class="timeline-index" title="messageIndex 是各自 jsonl 文件内的索引，跨链路不可直接比较">${event.traceRole === 'subagent' ? '[sub] ' : event.traceRole === 'main' ? '[main] ' : ''}#${event.messageIndex ?? '—'}</span>
@@ -1495,10 +2141,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               <div class="timeline-subtitle">${event.traceLabel ? `链路：${e(event.traceLabel)} · ` : ''}${e(event.label || event.role || event.kind)}${event.toolUseId ? ` · ${e(event.toolUseId)}` : ''}${event.timestamp ? ` · ${e(event.timestamp.slice(0, 19).replace('T', ' '))}` : ''}</div>
             </div>
             <div class="timeline-badges">${badges}</div>
-            ${renderGoalSliceCorrectionButton(sessionId, event)}
+            ${renderTimelineManualMarkButton(reviewSessionId, event, currentUserIndex, allowMetricTags)}
           </header>
-	          <pre class="timeline-snippet ${event.isError ? 'is-tool-error' : ''}"${fullTextAttrs}>${highlightTimelineSnippet(event, currentUserIndex, allowMetricTags)}</pre>
-          ${allowMetricTags ? renderMetricCalibration(event, currentUserIndex) : ''}
+	          <pre class="timeline-snippet ${event.isError ? 'is-tool-error' : ''}"${fullTextAttrs}>${highlightTimelineSnippet(event, currentUserIndex, allowMetricTags, reviewSessionId)}</pre>
         </article>
       </div>`;
     };
@@ -1509,21 +2154,23 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       </div>`;
     };
     const renderRowsWithWindowMarkers = (items: typeof decorated): string => {
-      let startRendered = false;
+      if (!options.showSkillWindowMarkers) {
+        return items.map(renderRow).join('');
+      }
+      let firstInsideIdx = -1;
+      let lastInsideIdx = -1;
+      for (let i = 0; i < items.length; i += 1) {
+        const inside = isInsideSkillWindow(items[i].event) || isAddedToSkillWindow(items[i].event);
+        if (inside) {
+          if (firstInsideIdx === -1) firstInsideIdx = i;
+          lastInsideIdx = i;
+        }
+      }
       let output = '';
       for (let index = 0; index < items.length; index += 1) {
-        const item = items[index];
-        const inside = isInsideSkillWindow(item.event) || isAddedToSkillWindow(item.event);
-        if (options.showSkillWindowMarkers && inside && !startRendered) {
-          output += renderWindowMarker('start');
-          startRendered = true;
-        }
-        output += renderRow(item);
-        const next = items[index + 1];
-        const nextInside = next ? (isInsideSkillWindow(next.event) || isAddedToSkillWindow(next.event)) : false;
-        if (options.showSkillWindowMarkers && inside && !nextInside) {
-          output += renderWindowMarker('end');
-        }
+        if (index === firstInsideIdx) output += renderWindowMarker('start');
+        output += renderRow(items[index]);
+        if (index === lastInsideIdx) output += renderWindowMarker('end');
       }
       return output;
     };
@@ -1559,8 +2206,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </div>`;
   };
   const renderSessionTimelineTree = (session: ExperienceSessionSummary): string => {
+    const activeEventIds = new Set(session.timelinePreview.map((event) => event.id));
     const fullTimelineOptions: TimelineRenderOptions = {
       reviewSessionId: session.id,
+      activeEventIds,
       activeSourceTrace: session.sourceTrace,
       activeStartRecordIndex: session.timelineScope?.segmentStartRecordIndex,
       activeEndRecordIndex: session.timelineScope?.segmentEndRecordIndex,
@@ -1614,7 +2263,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         <button type="button" disabled title="当前 report JSON 没有 fullSessionTimeline 字段，无法在前端还原完整 session。">需要重新生成报告</button>
       </div>`;
     }
-    const truncatedText = scope.truncated ? '当前展示不是完整链路' : '当前展示覆盖本次 skill 窗口';
+    const truncatedText = scope.truncated ? '当前 skill 窗口不是完整 session 链路' : '当前展示覆盖本次 skill 窗口';
     const omittedText = `前面省略 ${scope.omittedBeforeCount} 个事件，后面省略 ${scope.omittedAfterCount} 个事件`;
     const branchCount = session.timelineTree?.branches.length ?? 0;
     const chainText = branchCount > 0
@@ -1623,35 +2272,39 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     return `<div class="timeline-scope-notice" data-timeline-scope-notice>
       <div>
         <strong>${e(truncatedText)}</strong>
-        <span>展示范围：${e(rangeText(scope.previewStartRecordIndex, scope.previewEndRecordIndex))} · 当前 ${scope.previewEventCount} 条事件 / 完整 session ${scope.fullSessionEventCount} 条事件</span>
-        <span>skill 窗口：${e(rangeText(scope.segmentStartRecordIndex, scope.segmentEndRecordIndex))} · 完整 session：${e(rangeText(scope.sessionStartRecordIndex, scope.sessionEndRecordIndex))} · ${e(omittedText)}</span>
+        <span>当前 skill 窗口事件：${scope.previewEventCount} 条 / 完整 session ${scope.fullSessionEventCount} 条事件</span>
+        <span>record 粗范围：${e(rangeText(scope.previewStartRecordIndex, scope.previewEndRecordIndex))} · skill 窗口：${e(rangeText(scope.segmentStartRecordIndex, scope.segmentEndRecordIndex))} · 完整 session：${e(rangeText(scope.sessionStartRecordIndex, scope.sessionEndRecordIndex))} · ${e(omittedText)}</span>
         <span>${e(chainText)}</span>
       </div>
       <button type="button" data-full-session-toggle onclick="toggleFullSessionTimeline(this)">查看完整 session 时间线</button>
     </div>`;
   };
   const renderTimelinePair = (session: ExperienceSessionSummary): string => `
-    ${renderTimelineScopeNotice(session)}
-    <div class="timeline-filter-toolbar" data-timeline-filter-toolbar>
-      <label>搜索标签</label>
-      <select data-timeline-tag-filter onchange="filterTimelineByTag(this)">
-        <option value="">全部标签</option>
-        <option value="completion">疑似完成 / 产出结果</option>
-        <option value="positive_feedback">用户正向反馈</option>
-        <option value="negative_feedback">用户负向反馈</option>
-        <option value="user_correction">用户纠正</option>
-        <option value="user_follow_up">追问 / 补充</option>
-        <option value="user_interruption">人工中断</option>
-        <option value="user_goal_shift">目标切换</option>
-        <option value="hard_rule">用户硬性要求</option>
-        <option value="tool_failure">工具执行失败</option>
-        <option value="hedging">不确定表达</option>
-        <option value="explicit_marker">显式缺口</option>
-      </select>
-      <span data-timeline-filter-count>选择标签后，只显示当前回溯里的命中事件。</span>
+    <div class="experience-detail-right timeline-pair-wrap" data-timeline-pair>
+      ${renderTimelineScopeNotice(session)}
+      <div class="timeline-filter-toolbar" data-timeline-filter-toolbar>
+        <label>搜索标签</label>
+        <select data-timeline-tag-filter onchange="filterTimelineByTag(this)">
+          <option value="">全部标签</option>
+          <option value="completion">有结果 / 完成态</option>
+          <option value="positive_feedback">用户正向反馈</option>
+          <option value="negative_feedback">用户负向反馈</option>
+          <option value="user_correction">用户纠正</option>
+          <option value="user_follow_up">追问 / 补充</option>
+          <option value="user_interruption">人工中断</option>
+          <option value="user_goal_shift">目标切换</option>
+          <option value="hard_rule">用户硬性要求</option>
+          <option value="self_correction">自我纠正</option>
+          <option value="repeated_execution">重复执行</option>
+          <option value="tool_failure">工具执行失败</option>
+          <option value="hedging">不确定表达</option>
+          <option value="explicit_marker">显式缺口</option>
+        </select>
+        <span data-timeline-filter-count>选择标签后，只显示当前回溯里的命中事件。</span>
+      </div>
+      <div data-timeline-view="segment">${renderExperienceTimeline(session.timelinePreview, session.id, { reviewSessionId: session.id })}</div>
+      <div data-timeline-view="full-session" style="display:none">${renderSessionTimelineTree(session)}</div>
     </div>
-    <div data-timeline-view="segment">${renderExperienceTimeline(session.timelinePreview, session.id, { reviewSessionId: session.id })}</div>
-    <div data-timeline-view="full-session" style="display:none">${renderSessionTimelineTree(session)}</div>
   `;
   const renderReviewRows = (groupItems: ObservationInboxItem[], idPrefix: string): string => groupItems.map((item, index) => {
     const evidence = semanticEvidence(item);
@@ -2063,6 +2716,36 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       </div>
     `).join('')}</div>`;
   };
+  const renderReviewerOverview = (session: ExperienceSessionSummary, detailId: string): string => {
+    const report = session.reviewerReport;
+    const story = session.sessionStory ?? (report ? report.sessionStory ?? fallbackSessionStory(report) : undefined);
+    if (!story) return '<span style="color:var(--text-muted);font-size:12px">暂无复盘报告</span>';
+    const answerText = story.answers
+      .map((answer) => `${answer.label.replace('用户', '')}：${answer.status === 'ok' ? '看起来正常' : answer.status === 'attention' ? '要看一眼' : answer.status === 'degraded' ? '数据有问题' : answer.status === 'not_applicable' ? '不适用' : '信息不够'}`)
+      .join('；');
+    const mainline = story.mainlineNodeIds
+      .map((id) => story.nodes.find((node) => node.id === id)?.label)
+      .filter(Boolean)
+      .slice(0, 5)
+      .join(' → ');
+    return `<div class="reviewer-overview-cell">
+      <div class="reviewer-overview-title">${e(story.summary)}</div>
+      <div class="reviewer-overview-findings">
+        ${mainline ? `<span title="${e(mainline)}">主线：${e(mainline)}</span>` : ''}
+        ${story.subagentDispatches.length > 0 ? `<span>关键分叉：${story.subagentDispatches.map((dispatch) => dispatch.label).slice(0, 3).map(e).join('、')}</span>` : ''}
+        ${answerText ? `<span title="${e(answerText)}">${e(answerText)}</span>` : ''}
+      </div>
+      ${report ? `<button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this, 'reviewer')">查看报告详情</button>` : ''}
+    </div>`;
+  };
+  const sanitizeReviewerReportForDisplay = (report?: ExperienceReviewerReport): ExperienceReviewerReport | undefined => {
+    if (!report) return undefined;
+    return {
+      ...report,
+      summary: cleanReportCopy(report.summary),
+      findings: report.findings.map((finding) => ({ ...finding, body: cleanReportCopy(finding.body) })),
+    };
+  };
   const experienceSkillRows = (experience?.skills ?? []).map((skill) => {
     // L1 不再展示 priority badge（与左侧"优先复盘/抽样复盘"列冗余）；priority 仍在 L2 / 详情 modal 使用。
     const chainId = `context-chain-${experienceSkillAnchor(skill.skillName)}`;
@@ -2093,11 +2776,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <td class="num" title="skill 调用段数：同一个 session 内多次触发同一个 skill，会累计为多次调用段。" style="padding:9px 10px;text-align:right;font-weight:700">${skill.invocationCount}<br><span style="color:var(--text-muted);font-size:10px;font-weight:400">调用段</span></td>
       <td class="num" title="需要优先打开看证据的 session 数" style="padding:9px 6px;text-align:right;color:var(--red);font-weight:650">${skill.reviewFirstSessionCount}</td>
       <td class="num" title="适合抽样确认的 session 数" style="padding:9px 6px;text-align:right;color:var(--yellow);font-weight:650">${skill.sampleReviewSessionCount}${sampleReviewCta ? `<br>${sampleReviewCta}` : ''}</td>
-      <td data-no-rollup-click="1" style="padding:9px 10px;text-align:center">${renderSkillChainButton(skill.skillName, chainId)}</td>
+      <td data-no-rollup-click="1" style="padding:9px 10px;text-align:left">${renderSkillChainButton(skill.skillName, chainId)}${renderSkillChainSummary(skill.skillName)}</td>
       <td class="experience-evidence-cell" data-no-rollup-click="1" style="padding:8px 10px;color:var(--text-secondary);font-size:11px;line-height:1.45">
         ${renderSkillEvidenceSummary(skill)}
       </td>
-      <td data-no-rollup-click="1" style="padding:9px 10px;color:var(--text-secondary);font-size:11px;line-height:1.45">${renderSkillChainSummary(skill.skillName)}</td>
       <td style="padding:9px 10px;color:var(--text-muted);font-size:11px;line-height:1.45">
         <div>入口：${e(entrypointText)}</div>
         <div>${e(originText)}</div>
@@ -2107,7 +2789,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <td style="padding:9px 10px;color:var(--text-muted);font-size:12px">${e(skill.lastSeen.slice(0, 19).replace('T', ' '))}</td>
     </tr>
     <tr id="${e(chainId)}" data-context-chain-template style="display:none">
-      <td colspan="9">${renderSkillChainTemplate(skill.skillName)}</td>
+      <td colspan="8">${renderSkillChainTemplate(skill.skillName)}</td>
     </tr>`;
   }).join('');
   const renderExperienceSessionRows = (sessions: ExperienceSessionSummary[], idPrefix: string): string => sessions.map((session, index) => {
@@ -2126,6 +2808,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       ? `触发判断：通过斜杠命令触发 ${commandNames.join('、')}`
       : `触发判断：${attributionSources.map(formatAttributionSource).join('、') || '未记录'}`;
     const sessionOpenClawMetadata = renderSessionOpenClawSourceMetadata(session);
+    const hasReviewerReport = Boolean(session.reviewerReport);
     return `<tr data-observe-experience-session data-experience-session-id="${e(session.id)}">
       <td style="padding:9px 10px">
         ${renderPriorityBadge(shownPriority)}
@@ -2135,6 +2818,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <td style="padding:9px 10px;font-family:ui-monospace,monospace;font-size:12px;color:var(--text-muted);word-break:break-all">${e(session.sessionId)}<br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--accent)">入口：${e(formatEntrypoint(session.entrypoint))}</span><br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--text-muted)">${e(sessionOriginText)}</span><br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--text-muted)">${e(sessionAttributionText)}</span>${sessionOpenClawMetadata ? `<br>${sessionOpenClawMetadata}` : ''}</td>
       <td style="padding:9px 10px">${renderInvocationSummary(indicators, session.invocationIds.length)}</td>
       <td style="padding:9px 10px;color:var(--text-secondary);line-height:1.45">${renderSessionGoals(session.goalSliceIds)}</td>
+      <td style="padding:9px 10px;color:var(--text-secondary);line-height:1.45">${renderReviewerOverview(session, detailId)}</td>
       <td style="padding:9px 10px">${renderRuleFindings(shownRuleFindings, true)}</td>
       <td style="padding:9px 10px;color:var(--text-secondary);font-size:12px;line-height:1.55">
         ${metric('纠正', indicators.userCorrectionCount, 'userCorrection', sessionMetricSourceTitle(session, 'user_correction', '纠正'))} ·
@@ -2143,6 +2827,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         ${metric('负向反馈', indicators.negativeFeedbackCount ?? 0, 'negativeFeedback', sessionMetricSourceTitle(session, 'negative_feedback', '负向反馈'))} ·
         ${metric('正向反馈', indicators.positiveFeedbackCount ?? 0, 'positiveFeedback', sessionMetricSourceTitle(session, 'positive_feedback', '正向反馈'))} ·
         ${metric('目标切换', indicators.userGoalShiftCount ?? 0, 'userGoalShift', sessionMetricSourceTitle(session, 'user_goal_shift', '目标切换'))}<br>
+        ${metric('自我纠正', indicators.selfCorrectionCount ?? 0, 'selfCorrection')} ·
+        ${metric('重复执行', indicators.repeatedExecutionCount ?? 0, 'repeatedExecution')} ·
         ${metric('工具执行失败', indicators.toolFailureCount, 'toolFailure')} ·
         ${metric('高优先级过程发现', indicators.highObservationCount, 'highObservation')}
       </td>
@@ -2150,11 +2836,19 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         <div>${e(formatTimeRange(session.sourceSessionStartTimestamp ?? session.startTimestamp, session.sourceSessionEndTimestamp ?? session.endTimestamp, session.sourceSessionDurationMs))}</div>
         <div style="margin-top:3px;color:var(--text-muted);font-size:11px">${e(invocationWindowLabel)}: ${e(formatTimeRange(session.startTimestamp, session.endTimestamp))}</div>
       </td>
-      <td class="num" style="padding:9px 10px;text-align:right"><button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this)" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer;white-space:nowrap">回溯详情</button></td>
+      <td class="num" style="padding:9px 10px;text-align:right"><button type="button" data-open-experience-detail onclick="event.stopPropagation(); openExperienceDetailModal('${detailId}', this, 'evidence')" style="font-size:12px;padding:5px 10px;border:1px solid var(--border);background:var(--bg);border-radius:4px;cursor:pointer;white-space:nowrap">证据片段</button></td>
     </tr>
     <tr id="${detailId}" data-experience-detail-template style="display:none;background:var(--bg-muted)">
-      <td colspan="8" style="padding:0;border-bottom:1px solid var(--border);text-align:left">
+      <td colspan="9" style="padding:0;border-bottom:1px solid var(--border);text-align:left">
         <div class="experience-detail-shell">
+        <div class="experience-detail-tabs" role="tablist" aria-label="Session 回溯视图">
+          ${hasReviewerReport ? '<button type="button" class="experience-detail-tab-button is-active" role="tab" aria-selected="true" data-experience-detail-tab="reviewer" onclick="switchExperienceDetailTab(\'reviewer\')">复盘报告</button>' : ''}
+          <button type="button" class="experience-detail-tab-button ${hasReviewerReport ? '' : 'is-active'}" role="tab" aria-selected="${hasReviewerReport ? 'false' : 'true'}" data-experience-detail-tab="evidence" onclick="switchExperienceDetailTab('evidence')">证据片段</button>
+        </div>
+        ${hasReviewerReport ? `<section class="experience-detail-tab-panel experience-detail-report-panel is-active" role="tabpanel" data-experience-detail-panel="reviewer">
+          ${renderReviewerReport(session.reviewerReport)}
+        </section>` : ''}
+        <section class="experience-detail-tab-panel experience-detail-evidence-panel ${hasReviewerReport ? '' : 'is-active'}" role="tabpanel" data-experience-detail-panel="evidence">
         <div class="experience-detail-grid" style="display:grid;grid-template-columns:minmax(0,.6fr) minmax(0,1.4fr);gap:16px;align-items:stretch">
           <section class="experience-detail-left">
             <h3 style="font-size:13px;margin:0 0 8px;color:var(--text-primary)">证据链（C1）</h3>
@@ -2175,17 +2869,30 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
               <div>关联过程发现：${session.relatedObservationIds.length}</div>
               <div style="margin-top:8px">${renderExperienceBasis(shownBasisCodes)}</div>
             </div>
-            ${renderJson({ id: session.id, sourceTrace: session.sourceTrace, sourceMetadata: session.sourceMetadata, cwd: session.cwd, sourceSessionStartTimestamp: session.sourceSessionStartTimestamp, sourceSessionEndTimestamp: session.sourceSessionEndTimestamp, sourceSessionDurationMs: session.sourceSessionDurationMs, invocationStartTimestamp: session.startTimestamp, invocationEndTimestamp: session.endTimestamp, evidenceChain, ruleFindings: shownRuleFindings, assistiveInference: shownInference, reviewState: reviewState.entries[reviewStateKey('experience_session', session.id)], indicators, relatedObservationIds: session.relatedObservationIds })}
+            ${renderJson({ id: session.id, sourceTrace: session.sourceTrace, sourceMetadata: session.sourceMetadata, cwd: session.cwd, sourceSessionStartTimestamp: session.sourceSessionStartTimestamp, sourceSessionEndTimestamp: session.sourceSessionEndTimestamp, sourceSessionDurationMs: session.sourceSessionDurationMs, invocationStartTimestamp: session.startTimestamp, invocationEndTimestamp: session.endTimestamp, sessionStory: session.sessionStory, evidenceChain, ruleFindings: shownRuleFindings, assistiveInference: shownInference, reviewerReport: sanitizeReviewerReportForDisplay(session.reviewerReport), reviewState: reviewState.entries[reviewStateKey('experience_session', session.id)], indicators, relatedObservationIds: session.relatedObservationIds })}
           </section>
           <section class="experience-detail-right">
             <h3 style="font-size:13px;margin:0 0 8px;color:var(--text-primary)">C1 上下文时间线片段</h3>
             ${renderTimelinePair(session)}
           </section>
         </div>
+        </section>
         </div>
       </td>
     </tr>`;
   }).join('');
+  void experienceSkillRows;
+  const inboxLlmReviewForPriority = (skillName: string): SkillLlmEnhancedReviewSections | undefined =>
+    skillDerivedStandards[skillName]?.enhancedReview;
+  const inboxResolvedSession = (skill: ExperienceSessionSummary): ResolvedObservationReviewSession =>
+    resolveObservationReviewSession({
+      session: skill,
+      enhancedReview: inboxLlmReviewForPriority(skill.skillName),
+      reviewState,
+    });
+  const inboxResolvedPriority = (skill: ExperienceSessionSummary): ExperienceReviewPriority => {
+    return inboxResolvedSession(skill).priority;
+  };
   const sessionSkillOrder = new Map((experience?.skills ?? []).map((skill, index) => [skill.skillName, index]));
   const experienceSessionGroups = Array.from((experience?.sessions ?? []).reduce((map, session) => {
     const group = map.get(session.skillName) ?? [];
@@ -2204,8 +2911,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       const value = session.sourceSessionEndTimestamp ?? session.endTimestamp;
       return value && value > max ? value : max;
     }, sessions[0]?.sourceSessionEndTimestamp ?? sessions[0]?.endTimestamp ?? '');
-    const reviewFirst = sessions.filter((session) => session.reviewPriority === 'review_first').length;
-    const sampleReview = sessions.filter((session) => session.reviewPriority === 'sample_review').length;
+    const reviewFirst = sessions.filter((session) => inboxResolvedPriority(session) === 'review_first').length;
+    const sampleReview = sessions.filter((session) => inboxResolvedPriority(session) === 'sample_review').length;
     return `<details id="${e(experienceSkillAnchor(skillName))}" class="experience-session-group" open style="scroll-margin-top:16px">
       <summary>
         <div>
@@ -2227,6 +2934,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">Session</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">调用摘要</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">用户目标切片</th>
+            <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">报告总览</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">C2 规则判断</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">关键指标</th>
             <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">${e(sessionTimeRangeLabel)}</th>
@@ -2237,16 +2945,20 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       </div>
     </details>`;
   }).join('');
+  void experienceSessionGroupsHtml;
   const experienceIndicators = experience?.skills.reduce((acc, skill) => ({
     toolCallCount: acc.toolCallCount + skill.indicators.toolCallCount,
     toolFailureCount: acc.toolFailureCount + skill.indicators.toolFailureCount,
     userInterruptionCount: acc.userInterruptionCount + skill.indicators.userInterruptionCount,
   }), { toolCallCount: 0, toolFailureCount: 0, userInterruptionCount: 0 }) ?? { toolCallCount: 0, toolFailureCount: 0, userInterruptionCount: 0 };
   const experienceToolSuccessCount = Math.max(0, experienceIndicators.toolCallCount - experienceIndicators.toolFailureCount);
+  void experienceToolSuccessCount;
   const experienceReviewSkillCount = experience?.skills.filter((skill) => skill.reviewFirstSessionCount + skill.sampleReviewSessionCount > 0).length ?? 0;
-  const experienceReviewSessionCount = experience?.sessions.filter((session) => session.reviewPriority !== 'routine_sample').length ?? 0;
-  const experienceReviewFirstSessionCount = experience?.sessions.filter((session) => session.reviewPriority === 'review_first').length ?? 0;
-  const experienceSampleReviewSessionCount = experience?.sessions.filter((session) => session.reviewPriority === 'sample_review').length ?? 0;
+  void experienceReviewSkillCount;
+  const experienceReviewSessionCount = experience?.sessions.filter((session) => inboxResolvedPriority(session) !== 'routine_sample').length ?? 0;
+  void experienceReviewSessionCount;
+  const experienceReviewFirstSessionCount = experience?.sessions.filter((session) => inboxResolvedPriority(session) === 'review_first').length ?? 0;
+  const experienceSampleReviewSessionCount = experience?.sessions.filter((session) => inboxResolvedPriority(session) === 'sample_review').length ?? 0;
   const experienceHardRuleCount = experience?.sessions.reduce((sum, session) =>
     sum + (displayIndicatorsForSession(session).hardRuleTextHitCount ?? 0), 0
   ) ?? 0;
@@ -2286,69 +2998,1038 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         ${experienceInsightCta}
       </div>`
     : '';
+  void experienceTopInsightHtml;
+	  const inboxSessions = (experience?.sessions ?? []).slice();
+	  const inboxSiblingsMap = new Map<string, ExperienceSessionSummary[]>();
+	  for (const skill of inboxSessions) {
+	    const arr = inboxSiblingsMap.get(skill.sessionId) ?? [];
+	    arr.push(skill);
+	    inboxSiblingsMap.set(skill.sessionId, arr);
+	  }
+	  for (const arr of inboxSiblingsMap.values()) {
+	    arr.sort((a, b) => a.startTimestamp.localeCompare(b.startTimestamp));
+	  }
+	  type InboxSkillCard = {
+	    skillName: string;
+	    sessions: ExperienceSessionSummary[];
+	    priority: ExperienceReviewPriority;
+	    latestEnd: string;
+	  };
+	  const inboxSkillsMap = new Map<string, ExperienceSessionSummary[]>();
+	  for (const s of inboxSessions) {
+	    const arr = inboxSkillsMap.get(s.skillName) ?? [];
+	    arr.push(s);
+	    inboxSkillsMap.set(s.skillName, arr);
+	  }
+	  const inboxPriorityRank = (priority: ExperienceReviewPriority): number => priority === 'review_first' ? 0 : priority === 'sample_review' ? 1 : 2;
+	  const inboxSkillCards: InboxSkillCard[] = Array.from(inboxSkillsMap.entries()).map(([skillName, sessions]) => {
+	    sessions.sort((a, b) => b.endTimestamp.localeCompare(a.endTimestamp));
+	    const priority = sessions.find((s) => inboxResolvedPriority(s) === 'review_first')
+	      ? 'review_first'
+	      : sessions.find((s) => inboxResolvedPriority(s) === 'sample_review')
+	        ? 'sample_review'
+	        : 'routine_sample';
+	    const latestEnd = sessions.reduce((latest, s) => s.endTimestamp > latest ? s.endTimestamp : latest, '');
+	    return { skillName, sessions, priority, latestEnd };
+	  });
+	  inboxSkillCards.sort((a, b) => inboxPriorityRank(a.priority) - inboxPriorityRank(b.priority) || b.latestEnd.localeCompare(a.latestEnd) || a.skillName.localeCompare(b.skillName));
+	  const inboxSkillCardReviewed = (card: InboxSkillCard): boolean =>
+	    card.sessions.every((s) => Boolean(reviewState.entries[`experience_session:${s.id}`]));
+	  const inboxReviewFirstCount = inboxSkillCards.filter((c) => c.priority === 'review_first').length;
+	  const inboxSampleCount = inboxSkillCards.filter((c) => c.priority === 'sample_review').length;
+	  const inboxReviewedCount = inboxSkillCards.filter(inboxSkillCardReviewed).length;
+	  const inboxTotalCount = inboxSkillCards.length;
+	  const inboxFormatDuration = (ms?: number): string => {
+	    if (!ms || ms <= 0) return '—';
+	    const totalSec = Math.round(ms / 1000);
+	    if (totalSec < 60) return `${totalSec} 秒`;
+	    const min = Math.floor(totalSec / 60);
+	    const sec = totalSec % 60;
+	    if (min < 60) return sec > 0 ? `${min} 分 ${sec} 秒` : `${min} 分钟`;
+	    const hour = Math.floor(min / 60);
+	    return `${hour} 小时 ${min % 60} 分`;
+	  };
+	  const inboxTopSession = (card: InboxSkillCard): ExperienceSessionSummary | undefined =>
+	    card.sessions.find((s) => inboxResolvedPriority(s) === 'review_first')
+	    ?? card.sessions.find((s) => inboxResolvedPriority(s) === 'sample_review')
+	    ?? card.sessions[0];
+	  const inboxSkillGoalLine = (card: InboxSkillCard): string => {
+	    const storyGoal = card.sessions.flatMap((s) => s.sessionStory?.goalSlices ?? [])
+	      .find((goal) => inboxCleanSnippet(goal.inferredUserGoal));
+	    const directGoal = card.sessions.find((s) => inboxCleanSnippet(s.evidenceChain.firstUserMessage?.snippet))?.evidenceChain.firstUserMessage?.snippet;
+	    const llmGoal = inboxLlmEnhancedGoalKeywords(card.skillName);
+	    const goal = inboxExtractKeyword(storyGoal?.inferredUserGoal ?? directGoal ?? llmGoal, 48);
+	    return goal ? `用户目标：${goal}` : '用户目标：未提取';
+	  };
+	  const inboxSkillMainline = (card: InboxSkillCard): string => {
+	    const story = card.sessions.find((s) => s.sessionStory?.skillLinks?.length)?.sessionStory;
+	    const links = story?.skillLinks ?? card.sessions.map((s) => ({
+	      skillName: s.skillName,
+	      role: 'executor' as const,
+	    }));
+	    const currentLink = links.find((link) => link.skillName === card.skillName);
+	    const roleText = currentLink ? inboxSkillRoleLabel(currentLink.role) : '执行';
+	    const chain = links
+	      .slice(0, 5)
+	      .map((link) => `${link.skillName}〔${inboxSkillRoleLabel(link.role)}〕`)
+	      .join(' → ');
+	    const delivery = story?.finalDeliverySignalCount && story.finalDeliverySignalCount > 0 ? ' → 有结果' : '';
+	    return chain ? `${card.skillName}〔${roleText}〕 · 主线：用户目标 → ${chain}${delivery}` : `${card.skillName}〔${roleText}〕 · 未提取到明确执行主线`;
+	  };
+	  const inboxCardStatus = (card: InboxSkillCard): string => {
+	    // 多 session 聚合: 取 goal_satisfaction 中最严重的 status
+	    // 优先级: degraded > attention > unknown > ok / not_applicable
+	    const goalStatuses = card.sessions
+	      .map((s) => s.sessionStory?.answers?.find((a) => a.key === 'goal_satisfaction')?.status)
+	      .filter((status): status is ExperienceSessionStoryAnswer['status'] => Boolean(status));
+	    if (goalStatuses.includes('degraded')) return '数据有问题';
+	    if (goalStatuses.includes('attention')) return '要看一眼';
+	    if (goalStatuses.includes('unknown')) return '信息不够';
+	    // 全 ok 或 not_applicable: 不输出文案
+	    return '';
+	  };
+	  const inboxFindingChips = (card: InboxSkillCard): string => {
+	    const totalSessions = card.sessions.length;
+	    // 多 session 聚合: 按 ruleSource 统计「N/M session 命中」, chip 文案用中性短标签
+	    const chipLabelByRuleSource: Record<string, string> = {
+	      final_delivery_absent: '没给最终答复',
+	      tool_error_recovery: '工具调用失败',
+	      session_interrupted: '会话异常断开',
+	      expected_tools_missed: '没用上核心工具',
+	      user_correction: '用户纠正',
+	      user_interruption: '用户手动叫停',
+	      negative_feedback: '用户不满',
+	    };
+	    const byRule = new Map<string, { hit: number; body: string }>();
+	    for (const session of card.sessions) {
+	      const seenInSession = new Set<string>();
+	      for (const finding of session.reviewerReport?.findings ?? []) {
+	        if (finding.level !== 'attention') continue;
+	        if (seenInSession.has(finding.ruleSource)) continue;
+	        seenInSession.add(finding.ruleSource);
+	        const entry = byRule.get(finding.ruleSource);
+	        if (entry) entry.hit += 1;
+	        else byRule.set(finding.ruleSource, { hit: 1, body: finding.body });
+	      }
+	    }
+	    if (byRule.size === 0) return '';
+	    const sorted = [...byRule.entries()].sort((a, b) => b[1].hit - a[1].hit).slice(0, 3);
+	    return `<div class="inbox-card-chips">${sorted.map(([ruleSource, { hit, body }]) => {
+	      const label = chipLabelByRuleSource[ruleSource] ?? ruleSource;
+	      return `<span class="inbox-card-chip is-attention" title="${e(body)}">${hit}/${totalSessions} · ${e(label)}</span>`;
+	    }).join('')}</div>`;
+	  };
+	  const inboxReviewBadge = (card: InboxSkillCard): string => {
+	    const verdicts: string[] = [];
+	    for (const s of card.sessions) {
+	      const v = reviewState.entries[`experience_session:${s.id}`]?.verdict;
+	      if (v) verdicts.push(v);
+	    }
+	    if (verdicts.length === 0) return '';
+	    const total = card.sessions.length;
+	    if (verdicts.length < total) return `<span class="inbox-card-state is-reviewed">已标注 ${verdicts.length}/${total}</span>`;
+	    if (verdicts.every((v) => v === 'real_issue')) return `<span class="inbox-card-state is-agree">已同意</span>`;
+	    if (verdicts.every((v) => v === 'not_issue')) return `<span class="inbox-card-state is-reject">已否决</span>`;
+	    if (verdicts.every((v) => v === 'needs_more_context')) return `<span class="inbox-card-state is-note">留意见</span>`;
+	    return `<span class="inbox-card-state is-reviewed">已处理</span>`;
+	  };
+	  const inboxPriorityClass = (card: InboxSkillCard): string => {
+	    if (card.priority === 'review_first') return 'is-priority-high';
+	    if (card.priority === 'sample_review') return 'is-priority-medium';
+	    return 'is-priority-low';
+	  };
+	  const inboxEntrypointShort = (session: ExperienceSessionSummary): string => formatEntrypoint(session.entrypoint) || '未记录';
+	  const inboxFormatSessionLabel = (session: ExperienceSessionSummary): string => {
+	    const time = session.endTimestamp ? session.endTimestamp.slice(0, 16).replace('T', ' ') : '';
+	    const entrypoint = inboxEntrypointShort(session);
+	    const sessionShort = session.sessionId.length > 10 ? `${session.sessionId.slice(0, 8)}…` : session.sessionId;
+	    return [`Session ${sessionShort}`, entrypoint !== '未记录' ? entrypoint : '', time].filter(Boolean).join(' · ') || 'Session 调用记录';
+	  };
+	  const inboxSessionSearchText = (session: ExperienceSessionSummary): string => [
+	    session.id,
+	    session.sessionId,
+	    session.skillName,
+	    session.sourceTrace,
+	    session.sourceKind,
+	    session.entrypoint,
+	    session.cwd,
+	    session.startTimestamp,
+	    session.endTimestamp,
+	    session.sourceSessionStartTimestamp,
+	    session.sourceSessionEndTimestamp,
+	    session.evidenceChain.firstUserMessage?.snippet,
+	    session.reviewerReport?.title,
+	    session.sessionStory?.summary,
+	    ...(session.sessionStory?.goalSlices ?? []).map((goal) => goal.inferredUserGoal ?? ''),
+	  ].filter(Boolean).join(' ');
+	  const inboxCard = (card: InboxSkillCard, index: number): string => {
+	    const filters: string[] = [card.priority, 'all'];
+	    if (inboxSkillCardReviewed(card)) filters.push('reviewed');
+	    const topSession = inboxTopSession(card);
+	    const duration = inboxFormatDuration(topSession?.sourceSessionDurationMs);
+	    const entrypoint = topSession ? inboxEntrypointShort(topSession) : '未记录';
+	    const sessionCountChip = card.sessions.length > 1 ? `<span title="${card.skillName} 有 ${card.sessions.length} 次调用记录">${card.sessions.length} 次调用</span>` : '';
+	    const goalLine = inboxSkillGoalLine(card);
+	    const mainline = inboxSkillMainline(card);
+	    const skillSearchText = [card.skillName, goalLine, mainline, inboxCardStatus(card)].join(' ');
+	    const sessionSearchText = card.sessions.map(inboxSessionSearchText).join(' ');
+	    return `<li class="inbox-card ${inboxPriorityClass(card)} ${index === 0 ? 'is-active' : ''}" data-inbox-card="${e(card.skillName)}" data-inbox-filters="${e(filters.join(' '))}" data-inbox-skill-search="${e(skillSearchText)}" data-inbox-session-search="${e(sessionSearchText)}" onclick="selectInboxCard('${e(card.skillName)}', this)">
+	      <div class="inbox-card-row inbox-card-row-title">
+	        <span class="inbox-card-priority"></span>
+	        <span class="inbox-card-title" title="${e(card.skillName)}">${e(card.skillName)}</span>
+	        ${inboxReviewBadge(card)}
+	      </div>
+	      <div class="inbox-card-goal" title="${e(goalLine)}">${e(goalLine)}</div>
+	      <div class="inbox-card-story" title="${e(mainline)}">${e(mainline)}</div>
+	      ${inboxFindingChips(card)}
+	      <div class="inbox-card-row inbox-card-meta">
+	        <span title="这条 session 的执行时长">执行 ${e(duration)}</span>
+	        <span title="入口来源">入口 ${e(entrypoint)}</span>
+	        ${sessionCountChip}
+	      </div>
+	    </li>`;
+	  };
+	  const inboxStatusBadge = (status: ExperienceSessionStoryAnswer['status']): string => {
+	    if (status === 'degraded') return '<span class="inbox-answer-status is-degraded">数据有问题</span>';
+	    if (status === 'attention') return '<span class="inbox-answer-status is-attention">要看一眼</span>';
+	    if (status === 'unknown') return '<span class="inbox-answer-status is-unknown">信息不够</span>';
+	    if (status === 'not_applicable') return '<span class="inbox-answer-status is-not-applicable">不适用</span>';
+	    return '<span class="inbox-answer-status is-ok">看起来正常</span>';
+	  };
+	  const inboxSkillRoleLabel = (role: 'router' | 'executor' | 'mixed' | 'unknown'): string => {
+	    if (role === 'router') return '路由';
+	    if (role === 'executor') return '执行';
+	    if (role === 'mixed') return '路由 + 执行';
+	    return '未确定';
+	  };
+	  const inboxFlowItem = (cardSkillName: string, skill: ExperienceSessionSummary, index: number, isCurrent: boolean): string => {
+	    const link = skill.sessionStory?.skillLinks?.find((l) => l.skillName === skill.skillName);
+	    const roleLabel = link ? inboxSkillRoleLabel(link.role) : '执行';
+	    const indicators = displayIndicatorsForSession(skill);
+	    const dur = formatTimeRange(skill.startTimestamp, skill.endTimestamp);
+	    const startTime = skill.startTimestamp ? skill.startTimestamp.slice(5, 16).replace('T', ' ') : '未记录';
+	    const resolvedPriority = inboxResolvedPriority(skill);
+	    const priorityLabel = resolvedPriority === 'review_first' ? '要看一眼' : resolvedPriority === 'sample_review' ? '抽样' : '常规';
+	    const priorityCls = resolvedPriority === 'review_first' ? 'is-priority-high' : resolvedPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
+	    const currentCls = isCurrent ? 'is-current' : '';
+	    const tag = isCurrent ? '<span class="inbox-flow-current-tag">当前查看</span>' : '';
+	    const sameSkill = skill.skillName === cardSkillName;
+	    const jumpAction = sameSkill
+	      ? `selectInboxSessionTab('${e(cardSkillName)}', '${e(skill.id)}')`
+	      : `selectInboxCardById('${e(skill.skillName)}', '${e(skill.id)}')`;
+	    const jumpAttrs = isCurrent ? '' : ` data-inbox-jump-card="${e(sameSkill ? skill.id : skill.skillName)}"`;
+	    return `<li class="inbox-flow-item ${priorityCls} ${currentCls}">
+	      <div class="inbox-flow-time">${e(startTime)}</div>
+	      <div class="inbox-flow-rail"><span class="inbox-flow-index">${index + 1}</span></div>
+	      <div class="inbox-flow-anchor"${jumpAttrs}${!isCurrent ? ` onclick="${jumpAction}"` : ''} role="button" title="${isCurrent ? '当前查看的调用段' : '点击切换到这个调用段'}">
+	        <div class="inbox-flow-body">
+	          <div class="inbox-flow-title"><strong>${e(skill.skillName)}</strong><em>${e(roleLabel)}</em><span class="inbox-flow-priority">${priorityLabel}</span>${tag}</div>
+	          <div class="inbox-flow-meta">
+	            <span>调用段 ${skill.invocationIds.length}</span>
+	            <span>工具 ${indicators.toolCallCount}</span>
+	            <span>失败 ${indicators.toolFailureCount}</span>
+	          </div>
+	          <div class="inbox-flow-range">${e(dur)}</div>
+	        </div>
+	      </div>
+	    </li>`;
+	  };
+	  const inboxRenderSessionFlow = (cardSkillName: string, session: ExperienceSessionSummary, siblings: ExperienceSessionSummary[], summaryText: string): string => {
+	    const goalSlices = session.sessionStory?.goalSlices ?? [];
+	    const dispatches = session.sessionStory?.subagentDispatches ?? [];
+	    const siblingHint = siblings.length > 1 ? `<span class="inbox-section-hint">本 session 共 ${siblings.length} 个能力调用段，下面高亮当前 ${e(session.skillName)}</span>` : '<span class="inbox-section-hint">这条 session 只触发了当前能力</span>';
+	    return `<div class="inbox-flow-popover-content">
+	      <header class="inbox-flow-popover-head">
+	        <strong>Session 执行过程</strong>
+	        <span class="inbox-section-summary is-neutral">${e(summaryText)}</span>
+	        ${siblingHint}
+	      </header>
+	      <div class="inbox-flow-popover-body">
+	        <ol class="inbox-flow-list inbox-flow-timeline">${siblings.map((sib, index) => inboxFlowItem(cardSkillName, sib, index, sib.id === session.id)).join('')}</ol>
+	        ${goalSlices.length > 0 ? `<div class="inbox-flow-slices"><h4>用户目标段</h4>${goalSlices.map((goal) => `<div class="inbox-flow-slice"><strong>目标段 ${goal.order}</strong><span>${e(goal.skillNames.join('、') || '未记录能力')}</span><p>${e(goal.inferredUserGoal ?? (inboxLlmEnhancedGoalKeywords(goal.skillNames[0] ?? session.skillName) || '未提取到明确用户目标'))}</p></div>`).join('')}</div>` : ''}
+	        ${dispatches.length > 0 ? `<div class="inbox-flow-dispatches"><h4>子任务分支</h4>${dispatches.map((d) => `<div class="inbox-flow-dispatch"><strong>分支 ${d.order}：${e(d.label)}</strong><span>${d.eventCount} 条事件${d.attachTo?.messageIndex !== undefined ? ` · 挂接 #${d.attachTo.messageIndex}` : ''}</span></div>`).join('')}</div>` : ''}
+	      </div>
+	    </div>`;
+	  };
+	  const inboxAnswerEvidenceButtons = (refs: ExperienceEvidenceRef[]): string => {
+	    if (!refs || refs.length === 0) return '';
+	    const ref = refs[0];
+	    const kindLabel = ({
+	      user_message: '用户消息',
+	      assistant_message: '助手回复',
+	      tool_use: '工具调用',
+	      tool_result: '工具结果',
+	      skill_context: '能力说明',
+	      runtime_context: '运行注入',
+	      observation: '过程发现',
+	    } as Record<string, string>)[ref.kind] ?? ref.kind;
+	    return `<div class="inbox-answer-evidence"><button type="button" class="inbox-answer-evidence-link" data-jump-message-index="${ref.messageIndex ?? ''}" data-jump-message-uuid="${e(ref.messageUuid ?? '')}" onclick="inboxJumpToEvidence(this)" title="定位到消息 #${e(String(ref.messageIndex ?? '-'))} · ${e(kindLabel)}">跳转原文</button></div>`;
+	  };
+	  const inboxPlaceholderRe = /^\s*(?:NO_REPLY(?:_NEEDED)?|END_OF_REPLY|::FORWARD-?OK::|NO_OP|NULL|UNDEFINED|\.\.\.|—|--)\s*$/i;
+	  const inboxCronPromptRe = /^\s*\[cron:[^\]]+\]\s*/i;
+	  const inboxCleanSnippet = (text?: string): string => {
+	    if (!text) return '';
+	    let cleaned = text.replace(/\s+/g, ' ').trim();
+	    cleaned = cleaned.replace(inboxCronPromptRe, '');
+	    if (inboxPlaceholderRe.test(cleaned)) return '';
+	    return cleaned;
+	  };
+	  const inboxExtractKeyword = (text?: string, max = 36): string => {
+	    const cleaned = inboxCleanSnippet(text);
+	    if (!cleaned) return '';
+	    if (cleaned.length <= max) return cleaned;
+	    return `${cleaned.slice(0, max)}…`;
+	  };
+	  const inboxExtractGoalKeywords = (text?: string): string => {
+	    const cleaned = inboxCleanSnippet(text);
+	    if (!cleaned) return '';
+	    const withoutTags = cleaned
+	      .replace(/<command-name>([^<]+)<\/command-name>/gi, ' $1 ')
+	      .replace(/<[^>]+>/g, ' ')
+	      .replace(/[“”"']/g, ' ')
+	      .replace(/\s+/g, ' ')
+	      .trim();
+	    const candidates: string[] = [];
+	    const push = (value?: string): void => {
+	      const normalized = (value ?? '').replace(/^[\s:：/]+|[\s:：/。！？,，；;]+$/g, '').trim();
+	      if (!normalized || normalized.length < 2) return;
+	      if (['这个', '这里', '内容', '当前', '现在', '一下', '能力', '文档', '代码', '需求'].includes(normalized)) return;
+	      if (!candidates.includes(normalized)) candidates.push(normalized);
+	    };
+	    const generationTarget = withoutTags.match(/(?:重新|再次|继续)?\s*(?:生成|创建|写|产出|实现|做|搭建)\s*([A-Za-z0-9_-]*demo|DEMO|Demo|[\u4e00-\u9fa5A-Za-z0-9_-]{2,18}(?:页面|报告|文档|方案|代码|原型|Demo|demo))/i);
+	    if (generationTarget) {
+	      const target = generationTarget[1].replace(/^一个|^一份|^这个/, '').trim();
+	      push(/demo/i.test(target) ? 'Demo生成' : `${target}生成`);
+	    }
+	    if (/prd|产品需求文档/i.test(withoutTags)) {
+	      push(/生成|创建|写|产出|create/i.test(withoutTags) ? 'PRD生成' : 'PRD');
+	    }
+	    const objectPatterns = [
+	      /([\u4e00-\u9fa5A-Za-z0-9_-]{2,18})的(评价|评论|复盘|报告|方案|文档|脚本)/g,
+	      /(评价|评论|复盘|review|检查|查看|修改|优化)\s*([\u4e00-\u9fa5A-Za-z0-9_-]{2,18})/gi,
+	      /(run-[A-Za-z0-9_-]+|[A-Za-z0-9_-]+\.sh|PR\s*\d+|PRD|OpenClaw|Grafana|session|skill)/gi,
+	    ];
+	    for (const pattern of objectPatterns) {
+	      let match: RegExpExecArray | null;
+	      while ((match = pattern.exec(withoutTags))) {
+	        if (match.length >= 3) {
+	          push(match[1].length <= match[2].length ? `${match[2]}${match[1]}` : `${match[1]}${match[2]}`);
+	        } else {
+	          push(match[1]);
+	        }
+	        if (candidates.length >= 2) break;
+	      }
+	      if (candidates.length >= 2) break;
+	    }
+	    if (candidates.length === 0) {
+	      if (/调用\s*skill|使用\s*skill|skill/i.test(withoutTags)) push('skill调用');
+	      else if (/review|评审|评价|复盘|检查/i.test(withoutTags)) push('review');
+	      else if (/写代码|代码|实现|修复|开发|code/i.test(withoutTags)) push('代码修改');
+	      else if (/看文档|文档|阅读|查看文档|doc/i.test(withoutTags)) push('文档查看');
+	      else if (/需求|requirement/i.test(withoutTags)) push('需求分析');
+	    }
+	    return candidates.slice(0, 2).join(' / ');
+	  };
+	  const inboxLlmEnhancedGoalKeywords = (skillName: string): string => {
+	    const goal = skillDerivedStandards[skillName]?.enhancedReview?.userGoal;
+	    const slots = (goal?.slots ?? [])
+	      .map((slot) => inboxExtractKeyword(slot, 18))
+	      .filter((slot): slot is string => Boolean(slot));
+	    if (slots.length > 0) return slots.slice(0, 3).join(' / ');
+	    return inboxExtractGoalKeywords(goal?.summary) || inboxExtractKeyword(goal?.expectedOutcome, 36);
+	  };
+	  const inboxLlmEnhancedDeclaredGoalKeywords = (skillName: string): string => {
+	    const goal = skillDerivedStandards[skillName]?.enhancedReview?.skillDeclaredGoal;
+	    const keywords = [
+	      ...(goal?.keywords ?? []),
+	      ...(goal?.expectedOutcomes ?? []),
+	    ]
+	      .map((keyword) => inboxExtractKeyword(keyword, 18))
+	      .filter((keyword): keyword is string => Boolean(keyword));
+	    if (keywords.length > 0) return Array.from(new Set(keywords)).slice(0, 4).join(' / ');
+	    return inboxExtractGoalKeywords(goal?.summary);
+	  };
+	  const inboxExtractCompletionKeywords = (text?: string): string => {
+	    const cleaned = inboxCleanSnippet(text);
+	    if (!cleaned) return '';
+	    const candidates: string[] = [];
+	    const push = (value: string): void => {
+	      if (!candidates.includes(value)) candidates.push(value);
+	    };
+	    if (/已完成|完成|最终结果|完整结果|结果如下|报告如下/i.test(cleaned)) push('任务完成');
+	    if (/已生成|生成如下|直接生成/i.test(cleaned)) push('已生成');
+	    if (/已保存|已写入|已创建/i.test(cleaned)) push('已保存');
+	    if (/方案路径|产物路径|文档路径|结果文件|输出路径/i.test(cleaned)) push('结果路径');
+	    if (/代码|```|tsx?|jsx?|html|css/i.test(cleaned)) push('代码结果');
+	    if (/报告|文档|方案/i.test(cleaned)) push('文档结果');
+	    return candidates.slice(0, 3).join(' / ') || '未识别到明确完成结果';
+	  };
+	  const inboxExtractArtifactKeywords = (text?: string): string => {
+	    const cleaned = inboxCleanSnippet(text);
+	    if (!cleaned) return '';
+	    const candidates: string[] = [];
+	    const push = (value: string): void => {
+	      if (!candidates.includes(value)) candidates.push(value);
+	    };
+	    const pathMatches = cleaned.match(/(?:\/[\w.-]+){2,}\.(?:md|html|tsx?|jsx?|json|png|jpe?g|pdf|docx?|pptx?|xlsx?|csv)\b|[\w.-]+\.(?:md|html|tsx?|jsx?|json|png|jpe?g|pdf|docx?|pptx?|xlsx?|csv)\b/gi) ?? [];
+	    for (const path of pathMatches.slice(0, 2)) push(path);
+	    if (/https?:\/\/\S+/i.test(cleaned)) push('链接');
+	    if (/```(?:tsx?|jsx?|html|css|json|markdown)?/i.test(cleaned)) push('代码块');
+	    if (/\.(?:png|jpe?g)\b|图片|截图/i.test(cleaned)) push('图片');
+	    if (/\.(?:md|pdf|docx?)\b|文档|报告|方案/i.test(cleaned)) push('文档');
+	    if (/\.(?:html|tsx?|jsx?)\b|demo|Demo|预览|页面/i.test(cleaned)) push('页面/Demo');
+	    if (/\.(?:xlsx?|csv)\b|表格/i.test(cleaned)) push('表格');
+	    if (/dashboard|Grafana|看板/i.test(cleaned)) push('看板');
+	    return candidates.slice(0, 3).join(' / ') || '未识别到明确产物';
+	  };
+	  type ManualCorrectionTarget =
+	    | 'goal_keyword_correction'
+	    | 'result_artifact_correction'
+	    | 'completion_result_correction'
+	    | 'deliverable_artifact_correction'
+	    | 'skill_relevance_correction'
+	    | 'workflow_completion_correction'
+	    | 'hardrule_execution_correction'
+	    | 'main_tool_execution_correction';
+	  type ManualCorrectionOption = { value: string; label: string };
+	  const manualCorrectionLabel = (raw?: string): string => {
+	    if (!raw) return '';
+	    try {
+	      const parsed = JSON.parse(raw) as { label?: unknown; value?: unknown };
+	      if (typeof parsed.label === 'string' && parsed.label.trim()) return parsed.label;
+	      if (typeof parsed.value === 'string' && parsed.value.trim()) return parsed.value;
+	    } catch {
+	      return raw;
+	    }
+	    return raw;
+	  };
+	  const manualCorrectionEntry = (targetType: ManualCorrectionTarget, targetId: string) =>
+	    reviewState.entries[reviewStateKey(targetType, targetId)];
+	  const renderManualCorrectionButton = (
+	    targetType: ManualCorrectionTarget,
+	    targetId: string,
+	    label: string,
+	    options: ManualCorrectionOption[],
+	    kind: 'choice' | 'text' = 'choice',
+	  ): string => {
+	    const entry = manualCorrectionEntry(targetType, targetId);
+	    const current = manualCorrectionLabel(entry?.note);
+	    const optionsJson = e(JSON.stringify(options));
+	    return `<button type="button"
+	      class="manual-correction-button ${current ? 'is-marked' : ''}"
+	      data-manual-correction-key="${e(reviewStateKey(targetType, targetId))}"
+	      data-manual-correction-target-type="${e(targetType)}"
+	      data-manual-correction-target-id="${e(targetId)}"
+	      data-manual-correction-kind="${e(kind)}"
+	      data-manual-correction-label="${e(label)}"
+	      data-manual-correction-current="${e(current)}"
+	      data-manual-correction-options="${optionsJson}"
+	      onclick="openManualCorrection(this)"
+	      title="人工纠正会写入 review-state.json，不修改原始 trace">${e(label)}${current ? `：${e(current)}` : ''}</button>`;
+	  };
+	  const inboxManualCorrectionControls = (skill: ExperienceSessionSummary, answerKey: string): string => {
+	    const baseId = skill.id;
+	    const completionResultOptions = [
+	      { value: 'completed', label: '有完成反馈' },
+	      { value: 'result_feedback', label: '有结果反馈' },
+	      { value: 'progress_only', label: '只是过程进展' },
+	      { value: 'not_completed', label: '没有完成反馈' },
+	      { value: 'unknown', label: '无法判断' },
+	    ];
+	    const deliverableArtifactOptions = [
+	      { value: 'doc_link', label: '文档链接' },
+	      { value: 'demo_url', label: 'Demo 地址' },
+	      { value: 'code_block', label: '代码块' },
+	      { value: 'file_path', label: '文件路径' },
+	      { value: 'uploaded_artifact', label: '上传产物' },
+	      { value: 'no_artifact', label: '没有具体产物' },
+	      { value: 'unknown', label: '无法判断' },
+	    ];
+	    const relevanceOptions = [
+	      { value: 'relevant', label: '相关' },
+	      { value: 'partial', label: '部分相关' },
+	      { value: 'not_relevant', label: '不相关' },
+	      { value: 'unknown', label: '无法判断' },
+	    ];
+	    const workflowOptions = [
+	      { value: 'complete', label: '完整执行' },
+	      { value: 'partial', label: '部分执行' },
+	      { value: 'not_executed', label: '未执行' },
+	      { value: 'wrong_order', label: '顺序错误' },
+	      { value: 'unknown', label: '无法判断' },
+	    ];
+	    const hardruleOptions = [
+	      { value: 'executed', label: '已执行' },
+	      { value: 'not_executed', label: '未执行' },
+	      { value: 'insufficient', label: '执行不充分' },
+	      { value: 'not_applicable', label: '规则不适用' },
+	      { value: 'unknown', label: '无法判断' },
+	    ];
+	    const mainToolOptions = [
+	      { value: 'hit', label: '核心工具命中' },
+	      { value: 'missed', label: '核心工具未命中' },
+	      { value: 'not_declared', label: '未声明核心工具' },
+	      { value: 'not_applicable', label: '不适用' },
+	      { value: 'unknown', label: '无法判断' },
+	    ];
+	    const buttons = answerKey === 'goal_satisfaction'
+	      ? [
+	          renderManualCorrectionButton('goal_keyword_correction', `${baseId}:goal_keyword`, '改目标关键词', [], 'text'),
+	          renderManualCorrectionButton('completion_result_correction', `${baseId}:completion_result`, '标注有结果', completionResultOptions),
+	          renderManualCorrectionButton('deliverable_artifact_correction', `${baseId}:deliverable_artifact`, '标注有产物', deliverableArtifactOptions),
+	        ]
+	      : answerKey === 'declared_behavior_fit'
+	        ? [
+	            renderManualCorrectionButton('skill_relevance_correction', `${baseId}:skill_relevance:${skill.skillName}`, '能力是否相关', relevanceOptions),
+	            renderManualCorrectionButton('workflow_completion_correction', `${baseId}:workflow_completion:${skill.skillName}`, '标准流程完整性', workflowOptions),
+	            renderManualCorrectionButton('hardrule_execution_correction', `${baseId}:hardrule_execution:${skill.skillName}`, '硬性规则执行', hardruleOptions),
+	            renderManualCorrectionButton('main_tool_execution_correction', `${baseId}:main_tool_execution:${skill.skillName}`, '核心工具状态', mainToolOptions),
+	          ]
+	        : [];
+	    if (buttons.length === 0) return '';
+	    return `<div class="manual-correction-panel">
+	      <span class="manual-correction-title">人工纠正</span>
+	      <div class="manual-correction-actions">${buttons.join('')}</div>
+	    </div>`;
+	  };
+	  const inboxChecklistDetected = (item: ExperienceChecklistItem): boolean => {
+	    // 检测到「需要关注或值得展示的事实」: 失败 / 数据问题 / 正向 passed / 主动声明类 passed
+	    if (item.status === 'failed' || item.status === 'degraded') return true;
+	    if (item.status === 'passed') {
+	      // passed 时, 看 contribution 区分「主动发现的事实」vs「未发现负向信号」
+	      // - blocking / attention contribution + passed = 「负向 item 未命中」, 视为「未发现」
+	      // - positive / informational + passed = 「正向 item 命中 / 中性事实成立」, 视为「发现」
+	      return item.contribution === 'positive' || item.contribution === 'informational';
+	    }
+	    return false;
+	  };
+	  const inboxChecklistStatusClass = (item: ExperienceChecklistItem): string => {
+	    if (item.status === 'degraded') return 'is-degraded';
+	    if (item.status === 'failed') return item.contribution === 'blocking' ? 'is-blocking' : 'is-missing';
+	    if (inboxChecklistDetected(item)) return 'is-detected';
+	    return 'is-absent';
+	  };
+	  const inboxChecklistStatusIcon = (item: ExperienceChecklistItem): string => {
+	    return inboxChecklistDetected(item) ? '●' : '○';
+	  };
+	  const inboxAnswerChecklistFromItems = (items: ExperienceChecklistItem[]): string => {
+	    return `<div class="inbox-answer-checklist">${items.map((item) => `<span class="inbox-answer-check ${inboxChecklistStatusClass(item)}" title="${e(item.reason)}">
+	      <span class="inbox-answer-check-icon">${e(inboxChecklistStatusIcon(item))}</span>${e(item.label)}
+	    </span>`).join('')}</div>`;
+	  };
+	  const inboxAnswerChecklist = (skill: ExperienceSessionSummary, answer: ExperienceSessionStoryAnswer): string => {
+	    const answerKey = answer.key;
+	    if ((answer.checklistItems ?? []).length > 0) {
+	      return `${inboxAnswerChecklistFromItems(answer.checklistItems)}${inboxManualCorrectionControls(skill, answerKey)}`;
+	    }
+	    const goalKeywords = inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet) || inboxLlmEnhancedGoalKeywords(skill.skillName);
+	    const chain = skillChains[skill.skillName];
+	    const displayIndicators = displayIndicatorsForSession(skill);
+	    const hasGoalKeyword = goalKeywords.length > 0;
+	    const hasCompletionResult = displayIndicators.assistantDeliverySignalCount > 0;
+	    const hasDeliverableArtifact = displayIndicators.deliverableArtifactSignalCount > 0;
+	    const hasSkillDescriptionHit = (skill.evidenceChain?.skillContextCount ?? 0) > 0;
+	    const workflowNodes = chain?.runtime.workflowNodes ?? [];
+	    const hasCompleteWorkflow = workflowNodes.length > 0 && workflowNodes.every((node) => node.status === 'passed');
+	    const hardRuleChecks = chain?.runtime.hardRules ?? [];
+	    const hasExecutedHardRules = hardRuleChecks.length > 0 && hardRuleChecks.every((rule) => rule.status === 'passed');
+	    const hasExpectedToolMissed = (skill.reviewerReport?.findings ?? []).some((finding) => finding.ruleSource === 'expected_tools_missed');
+	    const executionText = skill.reviewerReport?.chainSteps.find((step) => step.label === '执行流程')?.text ?? '';
+	    const expectedToolDeclared = hasExpectedToolMissed || /声明的(?:主业|核心)工具/.test(executionText);
+	    const hasMainToolHit = expectedToolDeclared && /命中声明的(?:主业|核心)工具/.test(executionText) && !hasExpectedToolMissed;
+	    const mainToolLabel = expectedToolDeclared
+	      ? hasMainToolHit
+	        ? '核心工具命中'
+	        : '核心工具未命中'
+	      : '未声明核心工具';
+	    const hasNegativeFeedback = skill.indicators.negativeFeedbackCount > 0 || skill.indicators.userCorrectionCount > 0;
+	    const hasFollowUp = skill.indicators.userFollowUpCount > 0;
+	    const hasSupplementContext = skill.indicators.userFollowUpCount > 0 || skill.indicators.userMessageCount > 1;
+	    const hasInterruption = skill.indicators.userInterruptionCount > 0;
+	    const checks = answerKey === 'goal_satisfaction'
+	      ? [
+	          { label: `用户目标关键字：${goalKeywords || '未提取到'}`, ok: hasGoalKeyword },
+	          { label: '有结果：看到完成态或结果反馈', ok: hasCompletionResult },
+	          { label: '有产物：看到链接、路径、代码块或文件', ok: hasDeliverableArtifact },
+	          { label: '用户针对结果或产物反复追问', ok: hasFollowUp },
+	        ]
+	      : answerKey === 'declared_behavior_fit'
+	        ? [
+	            { label: '能力描述命中用户提问', ok: hasSkillDescriptionHit },
+	            { label: '标准流程完整执行', ok: hasCompleteWorkflow },
+	            { label: '硬性规则执行', ok: hasExecutedHardRules },
+	            { label: mainToolLabel, ok: hasMainToolHit },
+	          ]
+	        : [
+	            { label: '用户有负面反馈如反驳、不满等', ok: hasNegativeFeedback },
+	            { label: '用户有追问', ok: hasFollowUp },
+	            { label: '用户有重新补充上下文/文档', ok: hasSupplementContext },
+	            { label: '用户有中断流程', ok: hasInterruption },
+	          ];
+	    return `<div class="inbox-answer-checklist">${checks.map((check) => `<span class="inbox-answer-check ${check.ok ? 'is-detected' : 'is-absent'}"><span class="inbox-answer-check-icon">${check.ok ? '●' : '○'}</span>${e(check.label)}</span>`).join('')}</div>${inboxManualCorrectionControls(skill, answerKey)}`;
+	  };
+	  const inboxRecognizedGoalText = (skill: ExperienceSessionSummary): string => {
+	    const goals = (skill.sessionStory?.goalSlices ?? [])
+	      .map((goal) => inboxExtractGoalKeywords(goal.inferredUserGoal))
+	      .filter((goal): goal is string => Boolean(goal));
+	    if (goals.length > 0) return goals.slice(0, 3).join('；');
+	    return inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet)
+	      || inboxLlmEnhancedGoalKeywords(skill.skillName)
+	      || '未提取到明确用户目标';
+	  };
+	  const inboxSignalSnippet = (
+	    skill: ExperienceSessionSummary,
+	    predicate: (event: ExperienceTimelineEvent) => boolean,
+	    fallback: string,
+	  ): string => {
+	    const events = (skill.timelinePreview ?? []).filter(predicate);
+	    const text = inboxCleanSnippet(events.at(-1)?.snippet ?? events.at(-1)?.fullText);
+	    if (text) return text;
+	    return inboxCleanSnippet(skill.evidenceChain?.lastAssistantMessage?.snippet) ?? fallback;
+	  };
+	  const inboxRecognizedCompletionText = (skill: ExperienceSessionSummary): string => {
+	    const text = inboxSignalSnippet(
+	      skill,
+	      (event) => event.kind === 'assistant_message' && isAssistantCompletionResultSignal(event),
+	      '未识别到明确完成结果',
+	    );
+	    return inboxExtractCompletionKeywords(text);
+	  };
+	  const inboxRecognizedArtifactText = (skill: ExperienceSessionSummary): string => {
+	    const text = inboxSignalSnippet(
+	      skill,
+	      (event) => event.kind === 'assistant_message' && isAssistantDeliverableArtifactSignal(event),
+	      '未识别到明确产物',
+	    );
+	    return inboxExtractArtifactKeywords(text);
+	  };
+	  const inboxAnswerContext = (skill: ExperienceSessionSummary, answer: ExperienceSessionStoryAnswer): string => {
+	    if (answer.key !== 'goal_satisfaction') return '';
+	    return `<div class="inbox-answer-context">
+	      <div><span>目标关键词</span><strong>${e(inboxRecognizedGoalText(skill))}</strong></div>
+	      <div><span>skill 声明目标</span><strong>${e(inboxLlmEnhancedDeclaredGoalKeywords(skill.skillName) || '未提取到')}</strong></div>
+	      <div><span>结果关键词</span><strong>${e(inboxRecognizedCompletionText(skill))}</strong></div>
+	      <div><span>产物关键词</span><strong>${e(inboxRecognizedArtifactText(skill))}</strong></div>
+	    </div>`;
+	  };
+	  const inboxRenderSuggestionsBlock = (skill: ExperienceSessionSummary, title: string, keywords: string[]): string => {
+	    const all = skill.reviewerReport?.authorSuggestions ?? [];
+	    if (all.length === 0) return '';
+	    const matched = keywords.length === 0
+	      ? all
+	      : all.filter((s) => keywords.some((kw) => s.includes(kw)));
+	    const list = matched.length > 0 ? matched : (keywords.length === 0 ? all : []);
+	    if (list.length === 0) return '';
+	    return `<div class="inbox-suggestion-block">
+	      <div class="inbox-suggestion-title">${e(title)}</div>
+	      <ul>${list.slice(0, 3).map((s) => `<li>${e(s)}</li>`).join('')}</ul>
+	    </div>`;
+	  };
+	  const inboxBuildSkillActionSuggestions = (skill: ExperienceSessionSummary): string[] => {
+	    const llmSuggestions = inboxResolvedSession(skill).ownerSuggestions;
+	    if (llmSuggestions.length > 0) {
+	      return llmSuggestions.filter((suggestion, index, arr) => arr.indexOf(suggestion) === index).slice(0, 4);
+	    }
+	    const reportSuggestions = skill.reviewerReport?.authorSuggestions ?? [];
+	    if (reportSuggestions.length > 0) {
+	      return reportSuggestions.filter((suggestion, index, arr) => arr.indexOf(suggestion) === index).slice(0, 4);
+	    }
+	    const suggestions: string[] = [];
+	    const chain = skillChains[skill.skillName];
+	    const findings = skill.reviewerReport?.findings ?? [];
+	    const hasFinding = (source: string): boolean => findings.some((finding) => finding.ruleSource === source);
+	    const storyAnswers = skill.sessionStory?.answers ?? [];
+	    const goalAnswer = storyAnswers.find((answer) => answer.key === 'goal_satisfaction');
+	    if (chain && (!chain.healthCheck.hardRules.declared || !chain.healthCheck.workflows.declared)) {
+	      suggestions.push('优化这个 skill 的标准化 workflow 和 hardRule，把执行步骤、检查点、失败降级写成可观测的结构。示例：在 SKILL.md 顶部声明 workflows: [{ id: main, nodes: [{ id: collect_context, action: "读取必需上下文" }, { id: deliver, action: "输出最终产物并标记完成" }] }]，同时声明 hardRules 说明必须停下确认的条件。');
+	    }
+	    if (
+	      hasFinding('final_delivery_absent')
+	      || goalAnswer?.status === 'degraded'
+	      || goalAnswer?.status === 'attention'
+	      || goalAnswer?.status === 'unknown'
+	      || (skill.reviewerReport?.oneLookMetrics.finalDeliverySignalCount ?? 0) === 0
+	    ) {
+	      suggestions.push('优化完成情况判断：明确什么算有结果、什么算有产物，过程进展不要当成完成，并保留可回溯证据。示例：能力最后一次回复需要带明确的完成标记（"已完成 / 结果如下 / 已生成"），如有产物则附上代码块、文档链接或文件路径。');
+	    }
+	    if (hasFinding('user_hard_rule') || skill.indicators.hardRuleTextHitCount > 0) {
+	      suggestions.push('把用户反复提出的硬性要求沉淀到 skill 规则或流程检查点，减少依赖用户临时纠偏。示例：如果用户多次强调"不要写入隐私数据"，就在 hardRules 中加入"禁止将真实用户隐私写入测试、日志或报告"，并在 workflow 的交付前增加隐私检查节点。');
+	    }
+	    if (skill.indicators.toolFailureCount > 0 || hasFinding('tool_error_recovery')) {
+	      suggestions.push('补充工具失败后的恢复和降级路径，让失败处理也能被 workflow 覆盖。示例：读取文件失败时先说明缺失文件和影响，再尝试备用路径或让用户确认，而不是继续按默认假设生成结果。');
+	    }
+	    if (
+	      skill.indicators.userCorrectionCount > 0
+	      || skill.indicators.negativeFeedbackCount > 0
+	      || skill.indicators.userFollowUpCount > 0
+	    ) {
+	      suggestions.push('补强用户满意度判断：把追问、纠正、负向反馈作为改进输入，而不是只看是否调用完成。示例：如果交付后用户继续说"不对 / 不是这个 / 重新来"，报告里应标记为满意度待复核，并定位到对应用户原文。');
+	    }
+	    const deduped: string[] = [];
+	    for (const suggestion of suggestions) {
+	      if (!deduped.includes(suggestion)) deduped.push(suggestion);
+	    }
+	    return deduped.slice(0, 4);
+	  };
+	  const inboxRenderSkillActionSummary = (sessions: ExperienceSessionSummary[]): string => {
+	    const suggestions: string[] = [];
+	    for (const session of sessions) {
+	      for (const suggestion of inboxBuildSkillActionSuggestions(session)) {
+	        if (!suggestions.includes(suggestion)) suggestions.push(suggestion);
+	      }
+	    }
+	    if (suggestions.length === 0) return '';
+	    const renderSuggestion = (suggestion: string): string => {
+	      const [main, example] = suggestion.split('示例：');
+	      return `<li class="inbox-action-suggestion-item">
+	        <div class="inbox-action-suggestion-main">${e(main.trim())}</div>
+	        ${example ? `<div class="inbox-action-suggestion-example"><span>示例</span><p>${e(example.trim())}</p></div>` : ''}
+	      </li>`;
+	    };
+	    return `<section class="inbox-skill-summary-suggestions">
+	      <details class="inbox-suggestion-block is-action" open>
+	        <summary class="inbox-suggestion-title">给 skill 作者的优化建议</summary>
+	        <ol>${suggestions.slice(0, 5).map(renderSuggestion).join('')}</ol>
+	      </details>
+	    </section>`;
+	  };
+	  const inboxAnswerReasonLabel = (reason: ExperienceSessionStoryAnswer['reason']): string => {
+	    if (reason === 'data_degraded') return '数据质量不足';
+	    if (reason === 'blocking_failed') return '关键项未通过';
+	    if (reason === 'attention_accumulated') return '存在复核项';
+	    if (reason === 'unknown_dominant') return '未知项较多';
+	    if (reason === 'all_passed') return '关键项通过';
+	    return '当前不适用';
+	  };
+	  const inboxDataHealth = (skill: ExperienceSessionSummary, answers: ExperienceSessionStoryAnswer[]): { label: string; className: string; facts: string[] } => {
+	    const hasDataDegraded = answers.some((answer) => answer.status === 'degraded' || answer.reason === 'data_degraded');
+	    const hasAttention = answers.some((answer) => answer.status === 'attention' || answer.reason === 'blocking_failed' || answer.reason === 'attention_accumulated');
+	    const hasUnknown = answers.length === 0 || answers.some((answer) => answer.status === 'unknown' || answer.reason === 'unknown_dominant' || answer.reason === 'not_applicable');
+	    const label = hasDataDegraded
+	      ? '数据健康度：数据有问题'
+	      : hasAttention
+	        ? '数据健康度：要看一眼'
+	        : hasUnknown
+	          ? '数据健康度：信息不够'
+	          : '数据健康度：看起来正常';
+	    const className = hasDataDegraded
+	      ? 'is-degraded'
+	      : hasAttention
+	        ? 'is-attention'
+	        : hasUnknown
+	          ? 'is-unknown'
+	          : 'is-ok';
+	    const facts = [
+	      `真实用户消息 ${skill.evidenceChain.userMessageCount}`,
+	      `skill 上下文 ${skill.evidenceChain.skillContextCount}`,
+	      `助手回复 ${skill.evidenceChain.assistantMessageCount}`,
+	      `工具调用 ${skill.evidenceChain.toolUseCount}`,
+	    ];
+	    return { label, className, facts };
+	  };
+	  const inboxRenderDataHealth = (skill: ExperienceSessionSummary, answers: ExperienceSessionStoryAnswer[]): string => {
+	    const health = inboxDataHealth(skill, answers);
+	    return `<div class="inbox-trust-layer">
+	      <span class="inbox-data-health ${health.className}">${e(health.label)}</span>
+	      ${health.facts.map((fact) => `<span class="inbox-trust-fact">${e(fact)}</span>`).join('')}
+	    </div>`;
+	  };
+	  const inboxRenderParentStatuses = (answers: ExperienceSessionStoryAnswer[]): string => {
+	    if (answers.length === 0) return '';
+	    return `<div class="inbox-parent-status-row">${answers.map((answer) => `<div class="inbox-parent-status ${answer.status === 'degraded' ? 'is-degraded' : answer.status === 'attention' ? 'is-attention' : answer.status === 'unknown' ? 'is-unknown' : answer.status === 'not_applicable' ? 'is-not-applicable' : 'is-ok'}">
+	      <span>${e(answer.label)}</span>
+	      ${inboxStatusBadge(answer.status)}
+	      <em>${e(inboxAnswerReasonLabel(answer.reason))}</em>
+	    </div>`).join('')}</div>`;
+	  };
+	  const inboxRenderSessionSuggestions = (skill: ExperienceSessionSummary): string => {
+	    const suggestions = inboxBuildSkillActionSuggestions(skill);
+	    if (suggestions.length === 0) return '';
+	    return `<div class="inbox-review-suggestions">
+	      <div class="inbox-review-layer-title">建议</div>
+	      <ul>${suggestions.slice(0, 4).map((suggestion) => `<li>${e(suggestion)}</li>`).join('')}</ul>
+	    </div>`;
+	  };
+	  const inboxRenderSkillCompletion = (skill: ExperienceSessionSummary): string => {
+	    const report = skill.reviewerReport;
+	    const resolved = inboxResolvedSession(skill);
+	    const answers = resolved.answers;
+	    const llmSummary = resolved.reviewerSummary;
+	    const reviewEntry = reviewState.entries[`experience_session:${skill.id}`];
+	    const existingNote = reviewEntry?.reason ?? reviewEntry?.note ?? '';
+	    const safeId = e(skill.id);
+	    return `<article class="inbox-skill-block">
+	      <header class="inbox-skill-head">
+	        <div><h4>${e(skill.skillName)}</h4><span class="inbox-skill-subtitle">${e(report?.title ?? '常规观测')}</span></div>
+	        ${llmSummary || report?.summary ? `<p class="inbox-skill-summary">${e(cleanReportCopy(llmSummary ?? report?.summary ?? ''))}</p>` : ''}
+	      </header>
+	      ${inboxRenderDataHealth(skill, answers)}
+	      ${answers.length > 0 ? `<div class="inbox-review-layer">
+	        <div class="inbox-review-layer-title">判定</div>
+	        ${inboxRenderParentStatuses(answers)}
+	      </div>
+	      <div class="inbox-review-layer">
+	        <div class="inbox-review-layer-title">这次跑得怎么样</div>
+	        <div class="inbox-answer-grid">
+	          ${answers.map((answer) => `<article class="inbox-answer ${answer.status === 'degraded' ? 'is-degraded' : answer.status === 'attention' ? 'is-attention' : answer.status === 'unknown' ? 'is-unknown' : answer.status === 'not_applicable' ? 'is-not-applicable' : 'is-ok'}">
+	            <div class="inbox-answer-head"><strong>${e(answer.label)}</strong>${inboxStatusBadge(answer.status)}</div>
+	            ${inboxAnswerContext(skill, answer)}
+	            ${inboxAnswerChecklist(skill, answer)}
+	            ${inboxAnswerEvidenceButtons(answer.evidenceRefs)}
+	          </article>`).join('')}
+	        </div>
+	      </div>
+	      ${inboxRenderSessionSuggestions(skill)}` : '<p class="inbox-skill-empty">这条能力调用暂未生成完成情况判断。</p>'}
+	      <div class="inbox-detail-actions" data-inbox-detail-actions data-inbox-session-id="${safeId}">
+	        <div class="inbox-detail-actions-row"><strong class="inbox-detail-actions-title">人工标注</strong><span class="inbox-detail-actions-meta">针对能力 ${e(skill.skillName)}</span></div>
+	        <div class="inbox-detail-actions-buttons">
+	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'real_issue' ? 'is-active' : ''}" data-inbox-verdict="real_issue" onclick="setInboxSessionReview('${safeId}', 'real_issue', this)">同意</button>
+	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'not_issue' ? 'is-active' : ''}" data-inbox-verdict="not_issue" onclick="setInboxSessionReview('${safeId}', 'not_issue', this)">否决</button>
+	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'needs_more_context' ? 'is-active' : ''}" data-inbox-verdict="needs_more_context" onclick="toggleInboxNoteEditor('${safeId}', this)">留意见</button>
+	        </div>
+	        <div class="inbox-note-editor" data-inbox-note-editor="${safeId}" style="display:${reviewEntry?.verdict === 'needs_more_context' || existingNote ? 'block' : 'none'}">
+	          <textarea class="inbox-note-textarea" data-inbox-note-input="${safeId}" placeholder="留下你的意见或补充上下文（保存后会写入 review-state）" rows="2">${e(existingNote)}</textarea>
+	          <div class="inbox-note-editor-buttons">
+	            <button type="button" class="inbox-note-save" onclick="saveInboxSessionNote('${safeId}', this)">保存意见</button>
+	            <button type="button" class="inbox-note-cancel" onclick="closeInboxNoteEditor('${safeId}')">收起</button>
+	          </div>
+	        </div>
+	      </div>
+	    </article>`;
+	  };
+	  const inboxInvocationsById = new Map<string, ExperienceInvocation>();
+	  for (const inv of experience?.invocations ?? []) inboxInvocationsById.set(inv.id, inv);
+	  const inboxGetSessionInvocations = (session: ExperienceSessionSummary): ExperienceInvocation[] =>
+	    session.invocationIds.map((id) => inboxInvocationsById.get(id)).filter((v): v is ExperienceInvocation => Boolean(v));
+	  const inboxGetSessionToolCounts = (session: ExperienceSessionSummary): Record<string, number> => {
+	    const out: Record<string, number> = {};
+	    for (const inv of inboxGetSessionInvocations(session)) {
+	      for (const [k, v] of Object.entries(inv.toolCounts ?? {})) out[k] = (out[k] ?? 0) + v;
+	    }
+	    return out;
+	  };
+	  const inboxBuildToolDetail = (session: ExperienceSessionSummary): Array<{ name: string; count: number }> => {
+	    const counts = inboxGetSessionToolCounts(session);
+	    return Object.entries(counts)
+	      .map(([name, count]) => ({ name, count }))
+	      .sort((a, b) => b.count - a.count);
+	  };
+	  const inboxBuildToolFailureDetail = (session: ExperienceSessionSummary): Array<{ name: string; count: number }> => {
+	    const invocations = inboxGetSessionInvocations(session);
+	    const failures: Record<string, number> = {};
+	    for (const inv of invocations) {
+	      for (const event of inv.timeline) {
+	        if (event.kind === 'tool_result' && event.isError && event.toolName) {
+	          failures[event.toolName] = (failures[event.toolName] ?? 0) + 1;
+	        }
+	      }
+	    }
+	    return Object.entries(failures).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+	  };
+	  const inboxMetricCardJson = (detail: Array<{ name: string; count: number }>): string =>
+	    e(JSON.stringify(detail));
+	  const inboxRenderSkillRuntime = (skill: ExperienceSessionSummary): string => {
+	    const report = skill.reviewerReport;
+	    const metrics = report?.oneLookMetrics;
+	    const templateId = `inbox-skill-chain-${experienceSkillAnchor(skill.skillName)}-${e(skill.id)}`;
+	    const evidenceJumpId = `inbox-sec-evidence-${e(skill.id)}`;
+	    const toolDetail = inboxBuildToolDetail(skill);
+	    const toolFailureDetail = inboxBuildToolFailureDetail(skill);
+	    const indicators = skill.indicators;
+	    const runtimeModel = [
+	      skill.sourceMetadata?.provider,
+	      skill.sourceMetadata?.model,
+	      skill.sourceMetadata?.modelApi,
+	    ].filter(Boolean).join(' / ') || '未记录模型';
+	    const tokenDetail: Array<{ name: string; count: number }> = metrics?.tokenUsage ? [
+	      { name: '输入 token', count: metrics.tokenUsage.inputTokens },
+	      { name: '输出 token', count: metrics.tokenUsage.outputTokens },
+	      { name: 'cache 读取', count: metrics.tokenUsage.cacheReadTokens },
+	      { name: 'cache 写入', count: metrics.tokenUsage.cacheCreationTokens },
+	    ] : [];
+	    type MetricCard = {
+	      key: string;
+	      label: string;
+	      value: number;
+	      detail: Array<{ name: string; count: number }>;
+	      note: string;
+	      anomaly: boolean;
+	    };
+	    const cards: MetricCard[] = !metrics ? [] : [
+	      { key: 'toolCall', label: '工具调用', value: metrics.toolCallCount, detail: toolDetail, note: '本次能力调用段内触发的工具调用总数及各类工具的命中分布。', anomaly: false },
+	      { key: 'toolFailure', label: '工具失败', value: metrics.toolFailureCount, detail: toolFailureDetail, note: '工具执行返回失败的次数。命中失败可在版块 ④ 看具体上下文。', anomaly: metrics.toolFailureCount > 0 },
+	      { key: 'userMessage', label: '用户消息', value: metrics.userMessageCount, detail: [], note: '本次能力调用段内的真实人工用户消息条数（已剔除 Skill 文档注入和运行时注入）。', anomaly: false },
+	      { key: 'userFollowUp', label: '追问', value: metrics.userFollowUpCount, detail: [], note: '能力交付后继续追问、补充的次数。次数偏多可能表示交付不够完整。', anomaly: indicators.userFollowUpCount > 0 },
+	      { key: 'userCorrection', label: '纠正', value: indicators.userCorrectionCount, detail: [], note: '用户明确纠正、否决前一轮交付的次数。出现即建议进版块 ④ 看上下文。', anomaly: indicators.userCorrectionCount > 0 },
+	      { key: 'userInterruption', label: '人工中断', value: indicators.userInterruptionCount, detail: [], note: '用户在执行过程中主动中断的次数。可能意味着方向跑偏。', anomaly: indicators.userInterruptionCount > 0 },
+	      { key: 'negativeFeedback', label: '负向反馈', value: indicators.negativeFeedbackCount, detail: [], note: '用户出现明确负向情绪表达的次数。', anomaly: indicators.negativeFeedbackCount > 0 },
+	      { key: 'completionResult', label: '有结果', value: metrics.assistantDeliverySignalCount, detail: [], note: '回答中出现完成态或结果反馈的次数。它表示任务可能执行完成，不等于一定有可打开产物。', anomaly: false },
+	      { key: 'deliverableArtifact', label: '有产物', value: metrics.deliverableArtifactSignalCount ?? indicators.deliverableArtifactSignalCount ?? 0, detail: [], note: '回答中出现文档链接、Demo 地址、文件路径、代码块或上传产物的次数。', anomaly: false },
+	      { key: 'progress', label: '过程进展', value: metrics.assistantProgressUpdateCount ?? 0, detail: [], note: '回答中出现"正在 / 仍在 / 进度更新"等过程进展信号的次数。这类不算最终交付。', anomaly: false },
+	      { key: 'selfCorrection', label: '自我纠正', value: metrics.selfCorrectionCount ?? indicators.selfCorrectionCount ?? 0, detail: [], note: 'agent 在没有用户介入的情况下发现问题并主动修正执行策略。少量说明有恢复能力，高频说明流程不稳。', anomaly: (metrics.selfCorrectionCount ?? indicators.selfCorrectionCount ?? 0) > 0 },
+	      { key: 'repeatedExecution', label: '重复执行', value: metrics.repeatedExecutionCount ?? indicators.repeatedExecutionCount ?? 0, detail: [], note: '同类步骤、工具或流程被重复执行。高频出现时通常对应绕路或 workflow 不清晰。', anomaly: (metrics.repeatedExecutionCount ?? indicators.repeatedExecutionCount ?? 0) > 0 },
+	      { key: 'tokenInput', label: '输入 token', value: metrics.tokenUsage?.inputTokens ?? 0, detail: tokenDetail, note: '按本次能力调用段累计的 token 用量。', anomaly: false },
+	      { key: 'tokenOutput', label: '输出 token', value: metrics.tokenUsage?.outputTokens ?? 0, detail: tokenDetail, note: '按本次能力调用段累计的 token 用量。', anomaly: false },
+	    ];
+	    const metricRow = cards.length === 0
+	      ? '<p class="inbox-skill-empty">这条能力调用没有运行指标。</p>'
+	      : `<div class="inbox-metric-grid-wrap"><div class="inbox-metric-hint">点击任意指标卡可查看分布详情，红色卡片是检测到的异常。</div><div class="inbox-metric-grid">${cards.map((card) => `<button type="button" class="inbox-metric-card ${card.anomaly ? 'is-anomaly' : ''}" title="点击查看 ${e(card.label)} 详情" data-metric-key="${e(card.key)}" data-metric-label="${e(card.label)}" data-metric-value="${card.value}" data-metric-detail="${inboxMetricCardJson(card.detail)}" data-metric-note="${e(card.note)}" data-metric-anomaly="${card.anomaly ? '1' : '0'}" data-metric-jump="${evidenceJumpId}" onclick="openInboxMetricPopover(this)"><span>${e(card.label)}</span><strong>${card.value}</strong><em class="inbox-metric-card-hint">点击看详情</em></button>`).join('')}</div></div>`;
+	    const runtimeSuggestions = inboxRenderSuggestionsBlock(skill, '流程规则执行细节下一步建议', ['工具', '规则', '流程', '失败', '硬性']);
+	    return `<article class="inbox-skill-block">
+	      <header class="inbox-skill-head"><div><h4>${e(skill.skillName)}</h4><span class="inbox-skill-subtitle">运行指标 + 规则 / 流程 · 模型：${e(runtimeModel)}</span></div></header>
+	      ${metricRow}
+	      <div class="inbox-skill-chain">${renderSkillChainTemplate(skill.skillName)}</div>
+	      ${runtimeSuggestions}
+	      <input type="hidden" data-inbox-skill-chain-template-id="${e(templateId)}">
+	    </article>`;
+	  };
+	  const inboxRenderEvidence = (session: ExperienceSessionSummary, summaryText: string): string => {
+	    const indicators = displayIndicatorsForSession(session);
+	    const shownRuleFindings = displayRuleFindings(session, indicators);
+	    const shownInference = displayAssistiveInference(indicators, session.assistiveInference);
+	    const evidenceChain = session.evidenceChain ?? fallbackEvidenceChain(session);
+	    const safeId = e(session.id);
+	    const evidenceClass = indicators.toolFailureCount > 0 ? 'is-attention' : 'is-neutral';
+	    return `<section class="inbox-section is-collapsed" data-inbox-section="evidence" id="inbox-sec-evidence-${safeId}">
+	      <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
+	        <h3>③ 原文回溯</h3>
+	        <span class="inbox-section-summary ${evidenceClass}">${e(summaryText)}</span>
+	        <span class="inbox-section-hint">展开看当前能力调用段的证据链、规则命中、时间线</span>
+	        <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">展开</button>
+	      </header>
+	      <div class="inbox-section-body">
+	        <div class="inbox-evidence-grid">
+	          <section>
+	            <h4>证据链</h4>
+	            ${renderEvidenceChain(evidenceChain)}
+	            <h4>规则命中</h4>
+	            ${renderRuleFindings(shownRuleFindings)}
+	            <h4>复盘建议</h4>
+	            ${renderAssistiveInference(shownInference)}
+	          </section>
+	          <section>
+	            ${renderTimelinePair(session)}
+	          </section>
+	        </div>
+	      </div>
+	    </section>`;
+	  };
+	  const inboxRenderSessionContent = (cardSkillName: string, session: ExperienceSessionSummary, isActive: boolean): string => {
+	    const siblings = inboxSiblingsMap.get(session.sessionId) ?? [session];
+	    const indicators = displayIndicatorsForSession(session);
+	    const safeId = e(session.id);
+	    const completionAttentionCount = (session.reviewerReport?.findings ?? []).filter((f) => f.level === 'attention').length;
+	    const completionSummaryText = completionAttentionCount > 0
+	      ? `${completionAttentionCount} 项要看一眼`
+	      : '未见高优复盘点';
+	    const completionSummaryClass = completionAttentionCount > 0 ? 'is-attention' : 'is-ok';
+	    const chainForSkill = skillChains[session.skillName];
+	    const runtimeIssues: string[] = [];
+	    if (chainForSkill) {
+	      if (!chainForSkill.healthCheck.hardRules.declared) runtimeIssues.push('未标准化规则声明');
+	      if (!chainForSkill.healthCheck.workflows.declared) runtimeIssues.push('未标准化流程声明');
+	    }
+	    if (indicators.toolFailureCount > 0) runtimeIssues.push(`工具失败 ${indicators.toolFailureCount} 次`);
+	    const runtimeSummaryText = runtimeIssues.length > 0 ? runtimeIssues.join(' · ') : '运行指标无异常';
+	    const runtimeSummaryClass = runtimeIssues.length > 0 ? 'is-attention' : 'is-ok';
+	    const flowSummaryText = siblings.length > 1 ? `${siblings.length} 个能力调用段` : '单一能力调用段';
+	    const flowTemplateId = `inbox-flow-template-${safeId}`;
+	    const evidenceSummaryText = `工具 ${indicators.toolCallCount} · 失败 ${indicators.toolFailureCount} · 用户消息 ${indicators.userMessageCount}`;
+	    const navItems = [
+	      { id: `inbox-sec-completion-${safeId}`, label: '① 这次跑得怎么样' },
+	      { id: `inbox-sec-runtime-${safeId}`, label: '② 流程规则执行细节' },
+	      { id: `inbox-sec-evidence-${safeId}`, label: '③ 原文回溯' },
+	    ];
+	    const navHtml = `<nav class="inbox-detail-nav" aria-label="跳到对应版块">${navItems.map((item) => `<a href="#${item.id}" data-inbox-nav onclick="scrollInboxSectionIntoView('${item.id}', event)">${item.label}</a>`).join('')}</nav>`;
+	    return `<article class="inbox-session-pane ${isActive ? 'is-active' : ''}" data-session-pane="${safeId}" data-session-search="${e(inboxSessionSearchText(session))}">
+	      <div class="inbox-session-meta">
+	        <span>Session <code>${e(session.sessionId)}</code></span>
+	        <span>执行 ${e(inboxFormatDuration(session.sourceSessionDurationMs))}</span>
+	        <span>入口 ${e(inboxEntrypointShort(session))}</span>
+	        <span>调用段 ${session.invocationIds.length}</span>
+	        <span>工具调用 ${indicators.toolCallCount}</span>
+	      </div>
+	      ${navHtml}
+	      <template id="${flowTemplateId}">${inboxRenderSessionFlow(cardSkillName, session, siblings, flowSummaryText)}</template>
+	      <section class="inbox-section" data-inbox-section="completion" id="inbox-sec-completion-${safeId}">
+	        <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
+	          <h3>① 这次跑得怎么样</h3>
+	          <span class="inbox-section-summary ${completionSummaryClass}">${e(completionSummaryText)}</span>
+	          <span class="inbox-section-hint">${e(session.skillName)} 是否满足用户目标 / 是否符合 skill 用途 / 用户感受</span>
+	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">收起</button>
+	        </header>
+	        <div class="inbox-section-body">${inboxRenderSkillCompletion(session)}</div>
+	      </section>
+	      <section class="inbox-section is-collapsed" data-inbox-section="runtime" id="inbox-sec-runtime-${safeId}">
+	        <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
+	          <h3>② 流程规则执行细节</h3>
+	          <span class="inbox-section-summary ${runtimeSummaryClass}">${e(runtimeSummaryText)}</span>
+	          <span class="inbox-section-hint">默认折叠；展开看运行指标和能力定义链路</span>
+	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">展开</button>
+	        </header>
+	        <div class="inbox-section-body">${inboxRenderSkillRuntime(session)}</div>
+	      </section>
+	      ${inboxRenderEvidence(session, evidenceSummaryText)}
+	    </article>`;
+	  };
+	  const inboxDetail = (card: InboxSkillCard, index: number): string => {
+	    const safeSkill = e(card.skillName);
+	    const sessionTabs = card.sessions.length > 0
+	      ? `<div class="inbox-session-tabs" role="tablist" aria-label="切换 ${e(card.skillName)} 的调用记录">${card.sessions.map((s, i) => {
+	          const label = inboxFormatSessionLabel(s);
+	          const flowTemplateId = `inbox-flow-template-${e(s.id)}`;
+	          const resolvedPriority = inboxResolvedPriority(s);
+	          const priorityCls = resolvedPriority === 'review_first' ? 'is-priority-high' : resolvedPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
+	          return `<span class="inbox-session-tab-item" data-session-tab-item="${e(s.id)}" data-session-search="${e(inboxSessionSearchText(s))}">
+	            <button type="button" class="inbox-session-tab ${priorityCls} ${i === 0 ? 'is-active' : ''}" data-session-tab="${e(s.id)}" onclick="selectInboxSessionTab('${safeSkill}', '${e(s.id)}', this)" title="${e(s.sessionId)}">${e(label)}</button>
+	            <button type="button" class="inbox-session-flow-chip" onclick="openInboxSessionFlowPopover('${flowTemplateId}', this, event)" title="查看这条 session 的执行过程">查看过程</button>
+	          </span>`;
+	        }).join('')}</div>`
+	      : '';
+	    return `<article class="inbox-detail-pane ${index === 0 ? 'is-active' : ''}" data-inbox-detail="${safeSkill}">
+	      ${inboxRenderSkillActionSummary(card.sessions)}
+	      ${sessionTabs}
+	      <div class="inbox-session-panes">${card.sessions.map((s, i) => inboxRenderSessionContent(card.skillName, s, i === 0)).join('')}</div>
+	    </article>`;
+	  };
+	  const inboxCardListHtml = inboxSkillCards.length === 0
+	    ? `<li class="inbox-card-empty">没有可展示的观测记录。</li>`
+	    : inboxSkillCards.map((card, index) => inboxCard(card, index)).join('');
+	  const inboxDetailListHtml = inboxSkillCards.length === 0
+	    ? `<article class="inbox-detail-pane is-active inbox-detail-empty-pane">运行 omk observe ingest &lt;sessions-dir&gt; 后这里会展示完整复盘报告。</article>`
+	    : inboxSkillCards.map((card, index) => inboxDetail(card, index)).join('');
 	  const experienceSection = experience ? `
-	      <section style="margin-top:16px;border:1px solid var(--border);border-radius:8px;background:var(--bg-surface);overflow:hidden">
-	        <div style="padding:13px 14px;border-bottom:1px solid var(--border)">
-	          <h2 style="font-size:15px;margin:0;color:var(--text-primary)">V1 · Skill 实战复盘${activeSkill ? ` · ${e(activeSkill)}` : ''}</h2>
-          <div style="color:var(--text-muted);font-size:12px;margin-top:4px">
-            这一层只做证据展开和复盘优先级排序，不自动给 skill 打最终好坏结论。路径是：Skill 总览 → Session 复盘队列 → 目标切片/判断依据 → 时间线上下文。
-          </div>
-        </div>
-        <div style="padding:12px 14px">
-          ${experienceTopInsightHtml}
-          <div class="experience-stat-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:12px">
-            <div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted)" title="这里的成功/失败是工具调用结果统计，不等同于 LLM 判断 skill 最终成功或失败。">
-              <div style="color:var(--text-muted);font-size:12px">调用概览</div>
-              <div style="font-size:20px;font-weight:700;margin-top:4px">Session ${experience.meta.sessionCount} · Skill 调用 ${experience.meta.invocationCount}</div>
-              <div style="color:var(--text-muted);font-size:12px;margin-top:4px">${e(sessionTimeRangeLabel)}: ${e(reportSessionRangeLabel)}</div>
-              <div style="color:var(--text-muted);font-size:12px;margin-top:4px">工具执行成功 ${experienceToolSuccessCount} / ${pct(experienceToolSuccessCount, experienceIndicators.toolCallCount)} · 工具执行失败 ${experienceIndicators.toolFailureCount} / ${pct(experienceIndicators.toolFailureCount, experienceIndicators.toolCallCount)} · 人工中断 ${experienceIndicators.userInterruptionCount} / ${pct(experienceIndicators.userInterruptionCount, experienceIndicators.toolCallCount)}</div>
-            </div>
-            <div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted)">
-              <div style="color:var(--text-muted);font-size:12px">Skill 总数</div>
-              <div style="font-size:24px;font-weight:700;margin-top:4px">${experience.meta.skillCount}</div>
-              <div style="color:var(--text-muted);font-size:12px">当前 trace 中识别到的 skill</div>
-            </div>
-            <div style="padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg-muted)">
-              <div style="color:var(--text-muted);font-size:12px">建议 review</div>
-              <div style="font-size:24px;font-weight:700;color:var(--red);margin-top:4px">${experienceReviewSkillCount}</div>
-              <div style="color:var(--text-muted);font-size:12px">${experienceReviewSessionCount} 个 session · 优先 ${experienceReviewFirstSessionCount} · 抽样 ${experienceSampleReviewSessionCount}</div>
-            </div>
-          </div>
-          <h3 style="font-size:13px;margin:4px 0 8px;color:var(--text-primary)">Layer 1 · Skill 总览</h3>
-          <div class="observe-table-wrap experience-layer-scroll" style="width:100%;border:1px solid var(--border);border-radius:8px">
-            <table class="observe-fit-table experience-skill-table" style="border-collapse:collapse;width:100%;font-size:13px;table-layout:fixed">
-              <colgroup>
-                <col style="width:11%">
-                <col style="width:4%">
-                <col style="width:4%">
-                <col style="width:4%">
-                <col style="width:9%">
-                <col style="width:42%">
-                <col style="width:9%">
-                <col style="width:12%">
-                <col style="width:5%">
-              </colgroup>
-              <thead><tr>
-                <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">Skill</th>
-                <th title="skill 调用段数：同一个 session 内多次触发同一个 skill，会累计为多次调用段。" style="text-align:right;padding:9px 10px;border-bottom:1px solid var(--border)">调用段</th>
-                <th title="需要优先打开看证据的 session 数" style="text-align:right;padding:9px 6px;border-bottom:1px solid var(--border)">优先复盘</th>
-                <th title="适合抽样确认的 session 数" style="text-align:right;padding:9px 6px;border-bottom:1px solid var(--border)">抽样复盘</th>
-                <th title="点开看 skill 定义、标准规则和运行时证据三维对照；如果缺 hardRules / workflows，会直接标出来。" style="text-align:center;padding:9px 10px;border-bottom:1px solid var(--border)">定义链路</th>
-                <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">用户交互 / 执行证据</th>
-                <th title="来自 SKILL.md frontmatter 的结构化 hardRules / workflows；同时展示非 LLM 的运行时证据检查结果。" style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">标准定义</th>
-                <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">入口 / 来源 / 归因</th>
-                <th style="text-align:left;padding:9px 10px;border-bottom:1px solid var(--border)">最近使用</th>
-              </tr></thead>
-              <tbody>${experienceSkillRows}</tbody>
-            </table>
-          </div>
-          <h3 style="font-size:13px;margin:16px 0 4px;color:var(--text-primary)">Layer 2 · Session 复盘队列</h3>
-          <div style="color:var(--text-muted);font-size:12px;margin-bottom:8px">先按 skill 聚合；展开某个 skill 后，再看它在不同 session 里的目标切片、判断依据和时间线回溯。</div>
-          <div class="experience-layer-scroll experience-session-groups">
-            ${experienceSessionGroupsHtml || `<div style="padding:14px;color:var(--text-muted)">暂无 session 复盘数据。</div>`}
-          </div>
-        </div>
-      </section>
+	    <section class="inbox-shell">
+	      <header class="inbox-topbar">
+	        <div class="inbox-topbar-meta">
+	          <span>${inboxTotalCount} 条复盘</span>
+	          <span>${reportSessionCount} 个 session · ${totalSkillInvocations} 次能力调用</span>
+	          <span>最近 ingest ${e(latestSeenLabel)}</span>
+	        </div>
+	        <div class="inbox-chip-bar" role="tablist" aria-label="按状态筛选">
+	          <button type="button" class="inbox-chip is-active" data-inbox-filter="all" onclick="setInboxFilter('all', this)">全部 ${inboxTotalCount}</button>
+	          <button type="button" class="inbox-chip" data-inbox-filter="review_first" onclick="setInboxFilter('review_first', this)">要看一眼 ${inboxReviewFirstCount}</button>
+	          <button type="button" class="inbox-chip" data-inbox-filter="sample_review" onclick="setInboxFilter('sample_review', this)">抽样 ${inboxSampleCount}</button>
+	          <button type="button" class="inbox-chip" data-inbox-filter="reviewed" onclick="setInboxFilter('reviewed', this)">已处理 ${inboxReviewedCount}</button>
+	        </div>
+	        <div class="inbox-search-bar" role="search" aria-label="搜索复盘报告">
+	          <label class="inbox-search-field">Skill 搜索
+	            <input type="search" data-inbox-skill-search-input placeholder="输入 skill 名 / 目标 / 结论" oninput="applyInboxFilters()">
+	          </label>
+	          <label class="inbox-search-field">Session 搜索
+	            <input type="search" data-inbox-session-search-input placeholder="输入 session id / 入口 / 时间 / 用户目标" oninput="applyInboxFilters()">
+	          </label>
+	          <button type="button" class="inbox-search-clear" onclick="clearInboxSearch()">清空</button>
+	          <span class="inbox-search-count" data-inbox-search-count>${inboxTotalCount} 条复盘</span>
+	        </div>
+	      </header>
+	      <div class="inbox-split">
+	        <aside class="inbox-left" aria-label="观测记录列表">
+	          <ul class="inbox-card-list" data-inbox-card-list>${inboxCardListHtml}</ul>
+	        </aside>
+	        <section class="inbox-right" aria-label="观测记录详情"><div class="inbox-no-results" data-inbox-no-results style="display:none">没有匹配的复盘记录。</div>${inboxDetailListHtml}</section>
+	      </div>
+	    </section>
   ` : '';
 	  const empty = items.length === 0 && !experience
 	    ? `<p style="color:var(--text-muted);margin-top:24px">${activeSkill ? `当前 skill 没有可展示的调用或过程发现：${e(activeSkill)}` : (lang === 'zh' ? '暂无 inbox item。运行 omk observe ingest <sessions-dir> 生成。' : 'No inbox items. Run omk observe ingest <sessions-dir> first.')}</p>`
@@ -2380,16 +4061,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         </div>
       </section>`;
 	  return layout(pageTitle, `
-	    <main class="observe-report-root" style="max-width:1120px;margin:0 auto;padding:24px">
-	      <nav style="margin-bottom:12px"><a href="/analyses" style="color:var(--accent);text-decoration:none">${lang === 'zh' ? 'Skill 健康度日报' : 'Skill health reports'}</a></nav>
+	    <main class="observe-report-root">
+	      <nav style="margin-bottom:12px"><a href="/analyses" style="color:var(--accent);text-decoration:none">${lang === 'zh' ? '能力健康度日报' : 'Skill health reports'}</a></nav>
 	      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:8px 0">
 	        <div>
-	          <h1 style="font-size:22px;margin:0">${activeSkill ? `Observe Inbox · ${e(activeSkill)}` : 'Observe Inbox'}</h1>
-	          ${activeSkill ? `<div style="color:var(--text-muted);font-size:12px;margin-top:4px">当前是单 skill 报告，只展示 ${e(activeSkill)} 的调用、session 复盘、过程发现和原始 JSON。</div>` : ''}
+	          <h1 style="font-size:22px;margin:0">${activeSkill ? `线上观测报告 · ${e(activeSkill)}` : '线上观测报告'}</h1>
+	          ${activeSkill ? `<div style="color:var(--text-muted);font-size:12px;margin-top:4px">当前只展示能力 ${e(activeSkill)} 的复盘记录。</div>` : ''}
 	        </div>
-	        ${activeSkill ? `<a href="/observations/inbox" style="color:var(--accent);text-decoration:none;font-size:13px">查看全量报告</a>` : ''}
+	        ${activeSkill ? `<a href="/observations/inbox" style="color:var(--accent);text-decoration:none;font-size:13px">查看全量</a>` : ''}
 	      </div>
-      <p style="color:var(--text-muted);font-size:13px">真实 session trace 中聚合出的待 review 问题。判断把握表示这条 过程发现 的规则判断有多确定；归属把握表示它归到当前 skill 名下有多确定。</p>
       <style>
         *,
         *::before,
@@ -2402,14 +4082,1344 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           max-width: 100vw !important;
           margin: 0 !important;
           padding: 0 !important;
-          overflow-x: hidden !important;
         }
         main {
-          width: min(1120px, calc(100vw - 32px)) !important;
+          width: min(1440px, calc(100vw - 24px)) !important;
           max-width: 100% !important;
           margin: 0 auto !important;
-          padding: 24px 16px !important;
-          overflow-x: hidden !important;
+          padding: 16px 12px 12px !important;
+        }
+        .inbox-shell {
+          margin-top: 12px;
+          background: transparent;
+          border: 0;
+          border-radius: 0;
+          overflow: visible;
+        }
+        .inbox-topbar {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: space-between;
+          gap: 10px 14px;
+          padding: 10px 14px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          margin-bottom: 12px;
+        }
+        .inbox-topbar-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px 14px;
+          color: var(--text-muted);
+          font-size: 12px;
+          line-height: 1.5;
+        }
+        .inbox-chip-bar {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .inbox-chip {
+          padding: 4px 10px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-size: 12px;
+          border-radius: 999px;
+          cursor: pointer;
+          line-height: 1.5;
+        }
+        .inbox-chip:hover { color: var(--text-primary); border-color: var(--border-hover, var(--border)); }
+        .inbox-chip.is-active {
+          background: var(--accent);
+          color: #fff;
+          border-color: var(--accent);
+        }
+        .inbox-search-bar {
+          display: grid;
+          grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.2fr) auto auto;
+          align-items: end;
+          gap: 8px;
+          width: 100%;
+        }
+        .inbox-search-field {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          min-width: 0;
+          color: var(--text-muted);
+          font-size: 11px;
+          line-height: 1.3;
+        }
+        .inbox-search-field input {
+          width: 100%;
+          min-width: 0;
+          padding: 7px 9px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg);
+          color: var(--text-primary);
+          font-size: 12px;
+          outline: none;
+        }
+        .inbox-search-field input:focus {
+          border-color: var(--accent);
+          box-shadow: 0 0 0 2px rgba(37,99,235,.12);
+        }
+        .inbox-search-clear {
+          padding: 7px 10px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-size: 12px;
+          cursor: pointer;
+        }
+        .inbox-search-clear:hover { color: var(--text-primary); border-color: var(--border-hover, var(--border)); }
+        .inbox-search-count {
+          color: var(--text-muted);
+          font-size: 12px;
+          white-space: nowrap;
+          padding-bottom: 8px;
+        }
+        .inbox-split {
+          display: grid;
+          grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+          gap: 12px;
+          align-items: start;
+        }
+        .inbox-left {
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          position: sticky;
+          top: 12px;
+          max-height: calc(100vh - 24px);
+          overflow: auto;
+        }
+        .inbox-card-list {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+        }
+        .inbox-card {
+          padding: 12px 14px;
+          border-bottom: 1px solid var(--border);
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          position: relative;
+        }
+        .inbox-card:hover { background: var(--bg-muted, rgba(58,58,58,.04)); }
+        .inbox-card.is-active {
+          background: var(--info-bg, rgba(90,122,147,.08));
+        }
+        .inbox-card.is-active::before {
+          content: '';
+          position: absolute;
+          left: 0; top: 0; bottom: 0;
+          width: 3px;
+          background: var(--accent);
+        }
+        .inbox-card-empty {
+          padding: 24px 16px;
+          color: var(--text-muted);
+          font-size: 12px;
+          text-align: center;
+        }
+        .inbox-no-results {
+          padding: 24px 16px;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: var(--bg-surface);
+          color: var(--text-muted);
+          text-align: center;
+          font-size: 13px;
+        }
+        .inbox-card-row { display: flex; align-items: center; gap: 8px; }
+        .inbox-card-row-title { font-size: 13px; color: var(--text-primary); }
+        .inbox-card-priority {
+          width: 8px; height: 8px; border-radius: 50%;
+          flex-shrink: 0;
+          background: var(--text-faint);
+        }
+        .inbox-card.is-priority-high .inbox-card-priority { background: var(--red); }
+        .inbox-card.is-priority-medium .inbox-card-priority { background: var(--yellow); }
+        .inbox-card.is-priority-low .inbox-card-priority { background: var(--green); }
+        .inbox-card-title {
+          flex: 1;
+          font-weight: 600;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .inbox-card-goal {
+          padding-left: 16px;
+          color: var(--text-primary);
+          font-size: 12px;
+          line-height: 1.45;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .inbox-card-story {
+          padding-left: 16px;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .inbox-card-state {
+          font-size: 11px;
+          padding: 2px 6px;
+          border-radius: 999px;
+          flex-shrink: 0;
+        }
+        .inbox-card-state.is-agree { background: var(--green-bg); color: var(--green); }
+        .inbox-card-state.is-reject { background: var(--red-bg); color: var(--red); }
+        .inbox-card-state.is-note { background: var(--yellow-bg); color: var(--yellow); }
+        .inbox-card-state.is-reviewed { background: var(--info-bg); color: var(--accent); }
+        .inbox-card-dots {
+          display: flex;
+          gap: 4px;
+        }
+        .inbox-card-dot {
+          width: 10px; height: 10px;
+          border-radius: 50%;
+          background: var(--border);
+          display: inline-block;
+        }
+        .inbox-card-dot.is-ok { background: var(--green); }
+        .inbox-card-dot.is-attention { background: var(--red); }
+        .inbox-card-dot.is-unknown { background: var(--yellow); }
+        .inbox-card-chips {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+        }
+        .inbox-card-chip {
+          font-size: 11px;
+          padding: 2px 6px;
+          border-radius: 4px;
+          background: var(--bg-soft, rgba(58,58,58,.04));
+          color: var(--text-secondary);
+          line-height: 1.4;
+        }
+        .inbox-card-chip.is-attention { background: var(--red-bg); color: var(--red); }
+        .inbox-card-meta {
+          font-size: 11px;
+          color: var(--text-muted);
+          gap: 12px;
+          flex-wrap: wrap;
+        }
+        .inbox-right {
+          padding: 0;
+          background: transparent;
+          overflow: visible;
+        }
+        @media (max-width: 820px) {
+          .inbox-search-bar {
+            grid-template-columns: 1fr;
+            align-items: stretch;
+          }
+          .inbox-search-count {
+            padding-bottom: 0;
+          }
+        }
+        .inbox-detail-pane { display: none; }
+        .inbox-detail-pane.is-active { display: block; }
+        .inbox-detail-empty-pane {
+          padding: 24px;
+          color: var(--text-muted);
+          font-size: 13px;
+          text-align: center;
+        }
+        .inbox-detail-actions {
+          position: sticky;
+          top: 0;
+          z-index: 5;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          padding: 10px 12px;
+          margin-bottom: 12px;
+          box-shadow: var(--shadow-sm, 0 1px 3px rgba(58,58,58,.06));
+        }
+        .inbox-detail-actions-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 10px;
+          margin-bottom: 8px;
+        }
+        .inbox-detail-actions-title { font-size: 13px; color: var(--text-primary); }
+        .inbox-detail-actions-meta { font-size: 11px; color: var(--text-muted); }
+        .inbox-detail-actions-buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+        .inbox-action-button {
+          padding: 4px 12px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-size: 12px;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .inbox-action-button:hover { color: var(--text-primary); border-color: var(--border-hover, var(--border)); }
+        .inbox-action-button.is-active[data-inbox-verdict="real_issue"] { background: var(--green-bg); color: var(--green); border-color: var(--green); }
+        .inbox-action-button.is-active[data-inbox-verdict="not_issue"] { background: var(--red-bg); color: var(--red); border-color: var(--red); }
+        .inbox-action-button.is-active[data-inbox-verdict="needs_more_context"] { background: var(--yellow-bg); color: var(--yellow); border-color: var(--yellow); }
+        .inbox-note-editor {
+          margin-top: 8px;
+          display: none;
+        }
+        .inbox-note-textarea {
+          width: 100%;
+          font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+          font-size: 12px;
+          padding: 8px;
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          resize: vertical;
+          box-sizing: border-box;
+        }
+        .inbox-note-editor-buttons {
+          margin-top: 6px;
+          display: flex;
+          gap: 6px;
+          justify-content: flex-end;
+        }
+        .inbox-note-save,
+        .inbox-note-cancel {
+          padding: 4px 10px;
+          font-size: 12px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .inbox-note-save { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .inbox-detail-empty {
+          color: var(--text-muted);
+          font-size: 12px;
+          padding: 12px;
+        }
+        .timeline-row.is-flash,
+        [data-message-uuid].is-flash {
+          animation: inboxEvidenceFlash 1.6s ease-out;
+        }
+        @keyframes inboxEvidenceFlash {
+          0% { background: var(--yellow-bg); }
+          70% { background: var(--yellow-bg); }
+          100% { background: transparent; }
+        }
+        .context-chain-nav {
+          position: sticky;
+          top: 0;
+          z-index: 3;
+          display: flex;
+          gap: 6px;
+          padding: 8px 10px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          margin-bottom: 8px;
+          font-size: 12px;
+          align-items: center;
+          flex-wrap: wrap;
+        }
+        .context-chain-nav a {
+          padding: 4px 10px;
+          color: var(--text-secondary);
+          text-decoration: none;
+          border-radius: 999px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          flex-shrink: 0;
+        }
+        .context-chain-nav a:hover { color: var(--accent); border-color: var(--accent); }
+        .context-chain-nav-hint {
+          margin-left: auto;
+          color: var(--text-muted);
+          font-size: 11px;
+        }
+        .runtime-step-list {
+          list-style: none;
+          padding: 0;
+          margin: 0;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .runtime-step {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .runtime-step.runtime-passed { border-left: 3px solid var(--green); }
+        .runtime-step.runtime-attention { border-left: 3px solid var(--red); }
+        .runtime-step.runtime-manual_review { border-left: 3px solid var(--yellow); }
+        .runtime-step-head {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 10px;
+          font-size: 12px;
+        }
+        .runtime-step-index {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 38px;
+          height: 20px;
+          padding: 0 6px;
+          background: var(--bg-muted, rgba(58,58,58,.04));
+          color: var(--text-secondary);
+          font-size: 11px;
+          border-radius: 4px;
+          flex-shrink: 0;
+        }
+        .runtime-step-name { flex: 1; color: var(--text-primary); min-width: 0; }
+        .runtime-step-state { font-size: 14px; flex-shrink: 0; }
+        .runtime-step-detail { border-top: 1px solid var(--border); padding: 0 10px 8px; }
+        .runtime-step-detail > summary {
+          padding: 6px 0;
+          cursor: pointer;
+          font-size: 11px;
+          color: var(--text-muted);
+          list-style: revert;
+        }
+        .runtime-step-detail > summary:hover { color: var(--text-primary); }
+        .runtime-step-detail-body { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+        .runtime-step-detail-body code { font-size: 11px; padding: 1px 4px; background: var(--bg-muted, rgba(58,58,58,.04)); border-radius: 3px; }
+        .runtime-step-detail-body p { margin: 4px 0 0; }
+        .runtime-step-detail-body ul { margin: 4px 0 0; padding-left: 18px; }
+        .inbox-detail-header {
+          padding: 12px 14px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-surface);
+          margin-bottom: 12px;
+        }
+        .inbox-detail-header-title { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
+        .inbox-detail-header-title strong { font-size: 13px; color: var(--text-primary); }
+        .inbox-detail-header-title span { font-size: 12px; color: var(--text-secondary); }
+        .inbox-detail-header-meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--text-muted); }
+        .inbox-section {
+          margin-bottom: 14px;
+          padding: 12px 14px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-surface);
+          display: flex;
+          flex-direction: column;
+          min-height: 0;
+          box-sizing: border-box;
+          width: 100%;
+          scroll-margin-top: 96px;
+        }
+        .inbox-detail-main { width: 100%; box-sizing: border-box; }
+        .inbox-detail-pane.is-active { display: block; }
+        .inbox-detail-pane { display: none; box-sizing: border-box; }
+        .inbox-session-tabs {
+          display: flex;
+          gap: 6px;
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          overflow-y: hidden;
+          white-space: nowrap;
+          -webkit-overflow-scrolling: touch;
+          margin-bottom: 12px;
+          padding: 8px 10px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+        }
+        .inbox-session-tab-item {
+          flex: 0 0 auto;
+          display: inline-flex;
+          align-items: stretch;
+          max-width: 360px;
+        }
+        .inbox-session-tab {
+          flex: 1 1 auto;
+          min-width: 0;
+          padding: 4px 9px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-size: 11px;
+          border-radius: 999px;
+          cursor: pointer;
+          line-height: 1.5;
+          font-family: ui-monospace, monospace;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .inbox-session-flow-chip {
+          flex: 0 0 auto;
+          margin-left: -1px;
+          padding: 4px 7px;
+          border: 1px solid var(--border);
+          background: var(--info-bg, rgba(90,122,147,.08));
+          color: var(--accent);
+          font-size: 11px;
+          border-radius: 0 999px 999px 0;
+          cursor: pointer;
+          line-height: 1.5;
+        }
+        .inbox-session-tab-item .inbox-session-tab {
+          border-radius: 999px 0 0 999px;
+        }
+        .inbox-session-flow-chip:hover {
+          border-color: var(--accent);
+          background: rgba(90,122,147,.14);
+        }
+        .inbox-session-tab:hover { color: var(--text-primary); border-color: var(--border-hover, var(--border)); }
+        .inbox-session-tab.is-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+        .inbox-session-tab.is-priority-high:not(.is-active) { border-left: 3px solid var(--red); }
+        .inbox-session-tab.is-priority-medium:not(.is-active) { border-left: 3px solid var(--yellow); }
+        .inbox-session-tab.is-priority-low:not(.is-active) { border-left: 3px solid var(--green); }
+        .inbox-session-panes { width: 100%; }
+        .inbox-session-pane { display: none; width: 100%; box-sizing: border-box; }
+        .inbox-session-pane.is-active { display: block; }
+        .inbox-session-pane:not(.is-active) .inbox-detail-nav { display: none; }
+        .inbox-session-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 10px 14px;
+          padding: 8px 12px;
+          background: var(--bg-soft, rgba(58,58,58,.03));
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          margin-bottom: 12px;
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        .inbox-session-meta code { font-size: 11px; padding: 1px 5px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 4px; }
+        .inbox-section-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+        .inbox-section-head-clickable { cursor: pointer; user-select: none; margin: -4px -6px 8px; padding: 4px 6px; border-radius: 6px; }
+        .inbox-section-head-clickable:hover { background: var(--bg-soft, rgba(58,58,58,.04)); }
+        .inbox-section.is-collapsed .inbox-section-head-clickable { margin-bottom: 0; }
+        .inbox-section-head h3 { font-size: 13px; margin: 0; color: var(--text-primary); flex-shrink: 0; }
+        .inbox-section-summary {
+          font-size: 11px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          flex-shrink: 0;
+        }
+        .inbox-section-summary.is-attention { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+        .inbox-section-summary.is-ok { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+        .inbox-section-summary.is-neutral { background: var(--info-bg, rgba(90,122,147,.08)); border-color: var(--accent); color: var(--accent); }
+        .inbox-section-hint { font-size: 11px; color: var(--text-muted); flex: 1 1 auto; min-width: 0; }
+        .inbox-section-toggle {
+          margin-left: auto;
+          font-size: 11px;
+          padding: 2px 8px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          border-radius: 4px;
+          cursor: pointer;
+          flex-shrink: 0;
+        }
+        .inbox-section-toggle:hover { color: var(--text-primary); }
+        .inbox-section-body { /* no internal scroll; let the page handle it */ }
+        .inbox-section.is-collapsed .inbox-section-body { display: none; }
+        .inbox-section.is-collapsed { padding-bottom: 8px; }
+        .inbox-detail-body-grid { display: block; position: relative; }
+        .inbox-detail-main { min-width: 0; }
+        .inbox-detail-nav {
+          position: fixed;
+          top: 120px;
+          right: 16px;
+          width: 132px;
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+          padding: 0;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
+          box-shadow: none;
+          font-size: 12px;
+          z-index: 80;
+        }
+        .inbox-detail-pane:not(.is-active) .inbox-detail-nav { display: none; }
+        .inbox-detail-nav a {
+          padding: 6px 10px;
+          color: var(--text-primary);
+          text-decoration: none;
+          border-radius: 6px;
+          background: rgba(255, 255, 255, 0.92);
+          border: 1px solid var(--border);
+          box-shadow: var(--shadow-sm, 0 1px 3px rgba(58,58,58,.08));
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+          line-height: 1.4;
+          font-weight: 500;
+        }
+        .inbox-detail-nav a:hover {
+          background: var(--info-bg, rgba(90,122,147,.12));
+          color: var(--accent);
+          border-color: var(--accent);
+        }
+        .inbox-detail-nav a.is-active {
+          background: var(--accent);
+          color: #fff;
+          border-color: var(--accent);
+          font-weight: 600;
+        }
+        @media (max-width: 1080px) {
+          .inbox-detail-nav { display: none !important; }
+        }
+        .inbox-flow-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0; }
+        .inbox-flow-timeline {
+          position: relative;
+        }
+        .inbox-flow-item {
+          display: grid;
+          grid-template-columns: 58px 28px minmax(0, 1fr);
+          gap: 8px;
+          align-items: stretch;
+          position: relative;
+          min-width: 0;
+        }
+        .inbox-flow-item::before {
+          content: '';
+          position: absolute;
+          left: 71px;
+          top: 0;
+          bottom: 0;
+          width: 2px;
+          background: var(--border);
+        }
+        .inbox-flow-item:first-child::before { top: 14px; }
+        .inbox-flow-item:last-child::before { bottom: calc(100% - 14px); }
+        .inbox-flow-time {
+          padding-top: 6px;
+          color: var(--text-muted);
+          font-size: 11px;
+          line-height: 1.3;
+          text-align: right;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+          white-space: nowrap;
+        }
+        .inbox-flow-rail {
+          position: relative;
+          display: flex;
+          justify-content: center;
+          padding-top: 2px;
+          z-index: 1;
+        }
+        .inbox-flow-anchor {
+          display: flex;
+          align-items: stretch;
+          padding: 0 0 10px;
+          text-decoration: none;
+          color: var(--text-primary);
+          min-width: 0;
+        }
+        .inbox-flow-anchor .inbox-flow-body {
+          width: 100%;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg-surface);
+          padding: 8px 10px;
+          box-sizing: border-box;
+          min-width: 0;
+        }
+        .inbox-flow-item.is-priority-high .inbox-flow-body { border-left: 3px solid var(--red); }
+        .inbox-flow-item.is-priority-medium .inbox-flow-body { border-left: 3px solid var(--yellow); }
+        .inbox-flow-item.is-priority-low .inbox-flow-body { border-left: 3px solid var(--green); }
+        .inbox-flow-item.is-current .inbox-flow-body {
+          background: var(--info-bg, rgba(37,99,235,.08));
+          border-color: rgba(37,99,235,.28);
+        }
+        .inbox-flow-anchor:hover .inbox-flow-body { background: var(--bg-muted, rgba(58,58,58,.04)); }
+        .inbox-flow-item.is-current .inbox-flow-anchor:hover .inbox-flow-body { background: var(--info-bg, rgba(37,99,235,.08)); }
+        .inbox-flow-index {
+          width: 22px; height: 22px;
+          border-radius: 50%;
+          background: var(--accent);
+          color: #fff;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 12px;
+          font-weight: 600;
+          flex-shrink: 0;
+          box-shadow: 0 0 0 3px var(--bg-surface);
+        }
+        .inbox-flow-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .inbox-flow-title strong { font-size: 13px; }
+        .inbox-flow-title em { font-style: normal; font-size: 11px; padding: 1px 6px; background: var(--info-bg); color: var(--accent); border-radius: 999px; }
+        .inbox-flow-priority { font-size: 11px; color: var(--text-muted); }
+        .inbox-flow-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px 10px;
+          font-size: 11px;
+          color: var(--text-muted);
+          margin-top: 4px;
+        }
+        .inbox-flow-range {
+          margin-top: 3px;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.4;
+          word-break: break-word;
+        }
+        .inbox-flow-slices,
+        .inbox-flow-dispatches { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+        .inbox-flow-slices h4,
+        .inbox-flow-dispatches h4 { font-size: 12px; margin: 0 0 6px; color: var(--text-secondary); }
+        .inbox-flow-slice,
+        .inbox-flow-dispatch {
+          padding: 6px 8px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-soft, rgba(58,58,58,.03));
+          margin-bottom: 6px;
+          font-size: 12px;
+        }
+        .inbox-flow-slice strong,
+        .inbox-flow-dispatch strong { font-size: 12px; color: var(--text-primary); display: block; }
+        .inbox-flow-slice span,
+        .inbox-flow-dispatch span { font-size: 11px; color: var(--text-muted); }
+        .inbox-flow-slice p { margin: 4px 0 0; color: var(--text-secondary); line-height: 1.5; font-size: 12px; }
+        .inbox-skill-block {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-soft, rgba(58,58,58,.02));
+          padding: 10px 12px;
+          margin-bottom: 10px;
+          scroll-margin-top: 12px;
+        }
+        .inbox-skill-block:last-child { margin-bottom: 0; }
+        .inbox-skill-head { display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+        .inbox-skill-head h4 { font-size: 13px; margin: 0; color: var(--text-primary); }
+        .inbox-skill-subtitle { font-size: 12px; color: var(--text-secondary); }
+        .inbox-skill-summary { margin: 4px 0 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+        .inbox-skill-empty { color: var(--text-muted); font-size: 12px; margin: 4px 0; }
+        .inbox-trust-layer {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 6px;
+          margin: 8px 0;
+          padding: 8px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .inbox-data-health,
+        .inbox-trust-fact {
+          display: inline-flex;
+          align-items: center;
+          min-height: 22px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          font-size: 11px;
+          line-height: 1.4;
+          border: 1px solid var(--border);
+          background: var(--bg-soft, rgba(58,58,58,.03));
+          color: var(--text-secondary);
+        }
+        .inbox-data-health { font-weight: 700; }
+        .inbox-data-health.is-ok { border-color: var(--green); background: var(--green-bg); color: var(--green); }
+        .inbox-data-health.is-attention { border-color: var(--red); background: var(--red-bg); color: var(--red); }
+        .inbox-data-health.is-unknown { border-color: var(--yellow); background: var(--yellow-bg); color: var(--yellow); }
+        .inbox-data-health.is-degraded { border-color: var(--red); background: var(--red-bg); color: var(--red); }
+        .inbox-review-layer { margin-top: 10px; }
+        .inbox-review-layer-title {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text-muted);
+          margin-bottom: 6px;
+        }
+        .inbox-parent-status-row {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+          gap: 8px;
+        }
+        .inbox-parent-status {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          padding: 7px 8px;
+          display: grid;
+          gap: 4px;
+          min-width: 0;
+        }
+        .inbox-parent-status.is-ok { border-color: var(--green); }
+        .inbox-parent-status.is-attention,
+        .inbox-parent-status.is-degraded { border-color: var(--red); }
+        .inbox-parent-status.is-unknown { border-color: var(--yellow); }
+        .inbox-parent-status.is-not-applicable { opacity: .78; }
+        .inbox-parent-status span { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+        .inbox-parent-status em { font-style: normal; font-size: 11px; color: var(--text-muted); }
+        .inbox-review-suggestions {
+          margin-top: 10px;
+          border-top: 1px dashed var(--border);
+          padding-top: 8px;
+        }
+        .inbox-review-suggestions ul { margin: 0; padding-left: 18px; }
+        .inbox-review-suggestions li {
+          margin: 3px 0;
+          font-size: 12px;
+          color: var(--text-secondary);
+          line-height: 1.5;
+        }
+        .inbox-answer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+        .inbox-answer {
+          padding: 8px 10px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .inbox-answer.is-attention { border-color: var(--red); }
+        .inbox-answer.is-unknown { border-color: var(--yellow); }
+        .inbox-answer.is-ok { border-color: var(--green); }
+        .inbox-answer.is-degraded { border-color: var(--red); background: var(--red-bg); }
+        .inbox-answer.is-not-applicable { border-color: var(--border); opacity: .82; }
+        .inbox-answer-head { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+        .inbox-answer-head strong { font-size: 12px; color: var(--text-primary); }
+        .inbox-answer p { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+        .inbox-answer-context {
+          margin-top: 6px;
+          padding: 6px 8px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-soft, rgba(58,58,58,.03));
+          display: grid;
+          gap: 6px;
+        }
+        .inbox-answer-context div {
+          display: grid;
+          grid-template-columns: 68px minmax(0,1fr);
+          gap: 8px;
+          align-items: start;
+        }
+        .inbox-answer-context span {
+          font-size: 11px;
+          font-weight: 700;
+          color: var(--text-muted);
+          line-height: 1.45;
+        }
+        .inbox-answer-context strong {
+          font-size: 12px;
+          line-height: 1.45;
+          color: var(--text-primary);
+          font-weight: 600;
+          word-break: break-word;
+        }
+        .inbox-answer-checklist {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+          margin-top: 6px;
+        }
+        .inbox-answer-check {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          max-width: 100%;
+          padding: 3px 7px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--bg-soft, rgba(58,58,58,.03));
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .inbox-answer-check.is-detected {
+          border-color: var(--accent);
+          background: var(--bg-surface);
+          color: var(--text-primary);
+        }
+        .inbox-answer-check.is-detected .inbox-answer-check-icon {
+          color: var(--accent);
+        }
+        .inbox-answer-check.is-absent {
+          color: var(--text-muted);
+          background: transparent;
+          border-color: var(--border);
+        }
+        .inbox-answer-check.is-absent .inbox-answer-check-icon {
+          color: var(--text-muted);
+        }
+        .inbox-answer-check.is-missing {
+          border-color: var(--yellow);
+          background: var(--yellow-bg);
+          color: var(--text-primary);
+        }
+        .inbox-answer-check.is-missing .inbox-answer-check-icon {
+          color: var(--yellow);
+        }
+        .inbox-answer-check.is-blocking {
+          border-color: var(--red);
+          background: var(--red-bg);
+          color: var(--text-primary);
+          font-weight: 600;
+        }
+        .inbox-answer-check.is-blocking .inbox-answer-check-icon {
+          color: var(--red);
+        }
+        .inbox-answer-check.is-degraded {
+          border-color: var(--red);
+          background: var(--red-bg);
+          color: var(--red);
+          font-weight: 650;
+        }
+        .inbox-answer-check.is-degraded .inbox-answer-check-icon {
+          color: var(--red);
+        }
+        .inbox-answer-check-icon {
+          flex: 0 0 auto;
+          font-size: 9px;
+          line-height: 1;
+        }
+        .manual-correction-panel {
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px dashed var(--border);
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .manual-correction-title {
+          font-size: 11px;
+          color: var(--text-muted);
+          font-weight: 650;
+        }
+        .manual-correction-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+        }
+        .manual-correction-button {
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          border-radius: 999px;
+          padding: 3px 8px;
+          font-size: 11px;
+          line-height: 1.45;
+          cursor: pointer;
+          max-width: 100%;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .manual-correction-button:hover {
+          color: var(--text-primary);
+          border-color: var(--accent);
+        }
+        .manual-correction-button.is-marked {
+          background: var(--info-bg);
+          color: var(--accent);
+          border-color: var(--accent);
+          font-weight: 650;
+        }
+        .manual-correction-popover {
+          position: fixed;
+          z-index: 10000;
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          border: 1px solid var(--border);
+          box-shadow: var(--shadow-lg);
+          border-radius: 8px;
+          padding: 10px;
+          width: min(320px, calc(100vw - 24px));
+        }
+        .manual-correction-popover-title {
+          font-size: 12px;
+          font-weight: 700;
+          margin-bottom: 4px;
+        }
+        .manual-correction-popover-hint {
+          font-size: 11px;
+          color: var(--text-muted);
+          line-height: 1.45;
+          margin-bottom: 8px;
+        }
+        .manual-correction-popover-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .manual-correction-popover-actions button {
+          border: 1px solid var(--border);
+          background: var(--bg);
+          color: var(--text-secondary);
+          border-radius: 6px;
+          padding: 5px 8px;
+          font-size: 12px;
+          cursor: pointer;
+        }
+        .manual-correction-popover-actions button:hover {
+          color: var(--text-primary);
+          border-color: var(--accent);
+        }
+        .inbox-answer-meta {
+          margin-top: 8px;
+          padding: 7px 9px;
+          border: 1px dashed var(--border);
+          border-radius: 6px;
+          background: var(--bg-soft, rgba(58,58,58,.03));
+          font-size: 11px;
+        }
+        .inbox-answer-meta-row { display: flex; gap: 6px; margin-bottom: 4px; line-height: 1.5; }
+        .inbox-answer-meta-row:last-child { margin-bottom: 0; }
+        .inbox-answer-meta-row span { color: var(--text-muted); flex-shrink: 0; }
+        .inbox-answer-meta-row strong { color: var(--text-primary); font-weight: 600; word-break: break-all; }
+        .inbox-answer-meta-row em { color: var(--text-muted); font-style: normal; }
+        .inbox-answer-jump {
+          margin-top: 6px;
+        }
+        .inbox-answer-jump button {
+          font-size: 11px;
+          padding: 3px 8px;
+          border: 1px solid var(--accent);
+          background: var(--bg-surface);
+          color: var(--accent);
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        .inbox-answer-jump button:hover { background: var(--info-bg); }
+        .inbox-answer-evidence {
+          margin-top: 8px;
+        }
+        .inbox-answer-evidence-link {
+          font-size: 11px;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: var(--accent);
+          text-decoration: underline;
+          text-underline-offset: 2px;
+          cursor: pointer;
+        }
+        .inbox-answer-evidence-link:hover { color: var(--text-primary); }
+        .inbox-answer-status { font-size: 11px; padding: 1px 6px; border-radius: 999px; flex-shrink: 0; }
+        .inbox-answer-status.is-attention { background: var(--red-bg); color: var(--red); }
+        .inbox-answer-status.is-unknown { background: var(--yellow-bg); color: var(--yellow); }
+        .inbox-answer-status.is-ok { background: var(--green-bg); color: var(--green); }
+        .inbox-answer-status.is-degraded { background: var(--red-bg); color: var(--red); }
+        .inbox-answer-status.is-not-applicable { background: var(--bg-soft); color: var(--text-muted); }
+        .inbox-skill-findings { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
+        .inbox-skill-findings h5 { font-size: 12px; margin: 0 0 6px; color: var(--text-secondary); }
+        .inbox-suggestion-block {
+          margin-top: 10px;
+          padding: 10px 12px;
+          border-radius: 6px;
+          background: var(--green-bg);
+          border-left: 3px solid var(--green);
+          font-size: 12px;
+          color: var(--text-secondary);
+          line-height: 1.55;
+        }
+        details.inbox-suggestion-block > summary {
+          cursor: pointer;
+          list-style: none;
+        }
+        details.inbox-suggestion-block > summary::-webkit-details-marker { display: none; }
+        details.inbox-suggestion-block > summary::before {
+          content: '▾';
+          display: inline-block;
+          margin-right: 6px;
+          color: var(--green);
+          font-size: 11px;
+        }
+        details.inbox-suggestion-block:not([open]) > summary::before { content: '▸'; }
+        .inbox-skill-summary-suggestions {
+          margin: 0 0 12px;
+        }
+        .inbox-skill-summary-suggestions .inbox-suggestion-block {
+          margin-top: 0;
+        }
+        .inbox-suggestion-title {
+          font-size: 12px;
+          color: var(--green);
+          font-weight: 600;
+          margin-bottom: 5px;
+        }
+        .inbox-suggestion-block ul,
+        .inbox-suggestion-block ol {
+          margin: 0;
+          padding-left: 18px;
+        }
+        .inbox-suggestion-block li { margin-bottom: 3px; }
+        .inbox-suggestion-block li:last-child { margin-bottom: 0; }
+        .inbox-action-suggestion-item {
+          margin-bottom: 8px;
+        }
+        .inbox-action-suggestion-main {
+          color: var(--text-primary);
+          font-weight: 600;
+          line-height: 1.5;
+        }
+        .inbox-action-suggestion-example {
+          margin-top: 5px;
+          padding: 7px 9px;
+          border: 1px solid rgba(90, 122, 147, .22);
+          border-radius: 6px;
+          background: rgba(90, 122, 147, .07);
+          color: var(--text-secondary);
+          display: flex;
+          align-items: baseline;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        .inbox-action-suggestion-example span {
+          display: inline-flex;
+          flex: 0 0 auto;
+          padding: 1px 6px;
+          border-radius: 999px;
+          background: rgba(90, 122, 147, .14);
+          color: var(--accent);
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .inbox-action-suggestion-example p {
+          flex: 1 1 360px;
+          margin: 0;
+          line-height: 1.55;
+        }
+        .inbox-flow-popover {
+          position: fixed;
+          z-index: 240;
+          width: min(560px, calc(100vw - 32px));
+          max-height: min(620px, calc(100vh - 48px));
+          overflow: auto;
+          padding: 12px;
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          background: var(--bg-surface);
+          box-shadow: var(--shadow-md, 0 8px 24px rgba(58,58,58,.16));
+        }
+        .inbox-flow-popover-close {
+          position: sticky;
+          top: 0;
+          float: right;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          padding: 3px 8px;
+          cursor: pointer;
+          font-size: 12px;
+        }
+        .inbox-flow-popover-head {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 10px;
+          padding-right: 48px;
+        }
+        .inbox-flow-popover-head strong {
+          color: var(--text-primary);
+          font-size: 13px;
+        }
+        .inbox-flow-popover-body {
+          display: grid;
+          gap: 10px;
+        }
+        .inbox-finding {
+          padding: 8px 10px;
+          border-radius: 6px;
+          margin-bottom: 6px;
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+        }
+        .inbox-finding.is-attention { background: var(--red-bg); border-color: var(--red); border-left: 4px solid var(--red); }
+        .inbox-finding.is-sample { background: var(--yellow-bg); border-color: var(--yellow); border-left: 4px solid var(--yellow); }
+        .inbox-finding.is-normal { border-left: 4px solid var(--text-faint); }
+        .inbox-finding.is-clickable { cursor: pointer; transition: transform .12s; }
+        .inbox-finding.is-clickable:hover { transform: translateX(2px); }
+        .inbox-finding-head { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; margin-bottom: 4px; flex-wrap: wrap; }
+        .inbox-finding-head strong { font-size: 12px; color: var(--text-primary); }
+        .inbox-finding-head-right { display: flex; gap: 6px; align-items: baseline; }
+        .inbox-finding-rule { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-secondary); }
+        .inbox-finding-level { font-size: 11px; color: var(--text-muted); }
+        .inbox-finding-action { font-size: 11px; color: var(--accent); }
+        .inbox-finding p { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+        .inbox-metric-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+          gap: 6px;
+          margin-bottom: 10px;
+        }
+        .inbox-metric-card {
+          padding: 7px 9px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          text-align: left;
+          cursor: pointer;
+          font-family: inherit;
+          color: inherit;
+          transition: background-color .12s, border-color .12s;
+        }
+        .inbox-metric-card:hover { background: var(--info-bg, rgba(90,122,147,.06)); border-color: var(--accent); }
+        .inbox-metric-card:hover .inbox-metric-card-hint { color: var(--accent); }
+        .inbox-metric-card.is-anomaly { border-left: 3px solid var(--red); }
+        .inbox-metric-card.is-anomaly strong { color: var(--red); }
+        .inbox-metric-card > span { display: block; font-size: 11px; color: var(--text-muted); }
+        .inbox-metric-card > strong { font-size: 14px; color: var(--text-primary); display: block; margin-top: 1px; }
+        .inbox-metric-card-hint {
+          display: block;
+          margin-top: 4px;
+          font-size: 10px;
+          font-style: normal;
+          color: var(--text-faint);
+          letter-spacing: 0.04em;
+        }
+        .inbox-metric-grid-wrap { margin-bottom: 10px; }
+        .inbox-metric-hint {
+          font-size: 11px;
+          color: var(--text-muted);
+          margin-bottom: 6px;
+          padding: 4px 8px;
+          border-left: 2px solid var(--accent);
+          background: var(--info-bg, rgba(90,122,147,.06));
+          border-radius: 0 4px 4px 0;
+        }
+        #inbox-metric-popover {
+          position: fixed;
+          top: 50%;
+          right: 40px;
+          transform: translateY(-50%);
+          width: 360px;
+          max-height: 480px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          box-shadow: var(--shadow-md, 0 2px 12px rgba(58,58,58,.12));
+          z-index: 200;
+          padding: 0;
+          overflow: hidden;
+          display: none;
+          flex-direction: column;
+        }
+        #inbox-metric-popover.is-open { display: flex; }
+        .inbox-metric-popover-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 10px 14px;
+          border-bottom: 1px solid var(--border);
+          background: var(--bg-muted, var(--bg-surface));
+        }
+        .inbox-metric-popover-head strong { font-size: 14px; color: var(--text-primary); }
+        .inbox-metric-popover-close {
+          border: 1px solid var(--border);
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          padding: 3px 10px;
+          border-radius: 4px;
+          font-size: 12px;
+          cursor: pointer;
+        }
+        .inbox-metric-popover-body {
+          padding: 12px 14px;
+          overflow-y: auto;
+          flex: 1;
+          font-size: 12px;
+          color: var(--text-secondary);
+          line-height: 1.55;
+        }
+        .inbox-metric-popover-value {
+          font-size: 22px;
+          font-weight: 700;
+          color: var(--text-primary);
+          margin-bottom: 6px;
+        }
+        .inbox-metric-popover-value.is-anomaly { color: var(--red); }
+        .inbox-metric-popover-note { margin: 0 0 10px; }
+        .inbox-metric-popover-list {
+          list-style: none;
+          padding: 0;
+          margin: 0 0 10px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          overflow: hidden;
+        }
+        .inbox-metric-popover-list li {
+          display: flex;
+          justify-content: space-between;
+          padding: 6px 10px;
+          border-bottom: 1px solid var(--border);
+          font-size: 12px;
+        }
+        .inbox-metric-popover-list li:last-child { border-bottom: 0; }
+        .inbox-metric-popover-list li span { font-family: ui-monospace, monospace; color: var(--text-primary); }
+        .inbox-metric-popover-jump {
+          width: 100%;
+          padding: 7px 10px;
+          background: var(--red-bg);
+          color: var(--red);
+          border: 1px solid var(--red);
+          border-radius: 6px;
+          font-size: 12px;
+          cursor: pointer;
+        }
+        @media (max-width: 720px) {
+          #inbox-metric-popover {
+            top: auto;
+            right: 12px;
+            left: 12px;
+            bottom: 12px;
+            width: auto;
+            transform: none;
+          }
+        }
+        .inbox-skill-chain { margin-top: 8px; }
+        .inbox-evidence-block {
+          margin-top: 12px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-surface);
+        }
+        .inbox-evidence-block > summary {
+          padding: 8px 12px;
+          cursor: pointer;
+          font-size: 13px;
+          color: var(--text-primary);
+          font-weight: 600;
+          list-style: revert;
+        }
+        .inbox-evidence-block[open] > summary { border-bottom: 1px solid var(--border); }
+        .inbox-evidence-grid {
+          display: grid;
+          grid-template-columns: minmax(0, .55fr) minmax(0, 1.45fr);
+          gap: 12px;
+          padding: 12px;
+        }
+        .inbox-evidence-grid h4 {
+          font-size: 12px;
+          margin: 6px 0 6px;
+          color: var(--text-primary);
+        }
+        .inbox-evidence-grid h4:first-child { margin-top: 0; }
+        @media (max-width: 960px) {
+          .inbox-split { grid-template-columns: 1fr; }
+          .inbox-left { border-right: 0; border-bottom: 1px solid var(--border); max-height: 50vh; }
+          .inbox-right { max-height: none; }
+          .inbox-evidence-grid { grid-template-columns: 1fr; }
         }
         body > * {
           max-width: 100vw !important;
@@ -2520,7 +5530,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           table-layout: fixed;
         }
         .review-bucket-table { min-width: 980px !important; }
-        .experience-skill-table { min-width: 1540px !important; }
+        .experience-skill-table { min-width: 1760px !important; }
         .experience-session-table { min-width: 1680px !important; }
         .skill-health-table { min-width: 1360px !important; }
         .action-table { min-width: 820px !important; }
@@ -2535,11 +5545,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .experience-skill-table col:nth-child(2) { width: 4% !important; }
         .experience-skill-table col:nth-child(3) { width: 4% !important; }
         .experience-skill-table col:nth-child(4) { width: 4% !important; }
-        .experience-skill-table col:nth-child(5) { width: 9% !important; }
-        .experience-skill-table col:nth-child(6) { width: 42% !important; }
-        .experience-skill-table col:nth-child(7) { width: 9% !important; }
-        .experience-skill-table col:nth-child(8) { width: 12% !important; }
-        .experience-skill-table col:nth-child(9) { width: 5% !important; }
+        .experience-skill-table col:nth-child(5) { width: 25% !important; }
+        .experience-skill-table col:nth-child(6) { width: 34% !important; }
+        .experience-skill-table col:nth-child(7) { width: 13% !important; }
+        .experience-skill-table col:nth-child(8) { width: 5% !important; }
         .experience-session-table col:nth-child(1) { width: 12% !important; }
         .experience-session-table col:nth-child(2) { width: 12% !important; }
         .experience-session-table col:nth-child(3) { width: 10% !important; }
@@ -2707,11 +5716,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           flex: 1 1 auto;
           min-height: 0;
           overflow: hidden;
-          padding: 14px;
+          padding: 0;
         }
         #experience-detail-modal .experience-detail-shell {
           height: 100%;
           max-height: 100%;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
           overflow: hidden;
         }
         .context-chain-button {
@@ -2787,17 +5799,17 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           height: 100%;
           min-height: 0;
           display: grid;
-          grid-template-columns: minmax(0,1.1fr) minmax(0,.8fr) minmax(0,.7fr);
+          grid-template-columns: minmax(280px,1.1fr) minmax(260px,.95fr) minmax(240px,.85fr) minmax(260px,.95fr);
           gap: 12px;
-          overflow: hidden;
+          overflow: auto;
         }
         .context-chain-panel {
           min-width: 0;
           min-height: 0;
           overflow: auto;
-	          border: 1px solid var(--border);
-	          border-radius: 9px;
-	          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 9px;
+          background: var(--bg-surface);
           padding: 12px;
           color: var(--text-secondary);
         }
@@ -2818,13 +5830,321 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           overflow: auto;
           white-space: pre-wrap;
           word-break: break-word;
-	          border: 1px solid var(--border);
-	          border-radius: 7px;
-	          background: var(--bg-muted);
-	          color: var(--text-primary);
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg-muted);
+          color: var(--text-primary);
           font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
           font-size: 11px;
           line-height: 1.55;
+        }
+        .skill-md-source {
+          position: relative;
+        }
+        .skill-md-highlight {
+          border-radius: 3px;
+          padding: 0 2px;
+          box-decoration-break: clone;
+          -webkit-box-decoration-break: clone;
+          text-decoration: underline;
+          text-decoration-thickness: 2px;
+          text-underline-offset: 3px;
+        }
+        .skill-md-highlight-rule {
+          background: rgba(245, 158, 11, .16);
+          text-decoration-color: rgba(217, 119, 6, .75);
+        }
+        .skill-md-highlight-workflow {
+          background: rgba(14, 165, 233, .14);
+          text-decoration-color: rgba(2, 132, 199, .75);
+        }
+        .skill-md-annotation {
+          display: grid;
+          grid-template-columns: 22px minmax(0,1fr);
+          gap: 7px;
+          align-items: start;
+          margin: 4px 0 7px;
+          padding: 6px 8px;
+          border: 1px solid rgba(148,163,184,.45);
+          border-left: 3px solid var(--accent);
+          border-radius: 7px;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-family: system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;
+          font-size: 11px;
+          line-height: 1.45;
+          white-space: normal;
+        }
+        .skill-md-annotation.is-confirmed {
+          border-color: rgba(34, 197, 94, .45);
+          border-left-color: var(--green);
+          background: rgba(34, 197, 94, .08);
+        }
+        .skill-md-annotation.is-rejected {
+          opacity: .62;
+          border-color: rgba(239, 68, 68, .35);
+          border-left-color: var(--red);
+          background: rgba(239, 68, 68, .06);
+        }
+        .soft-standard-modal-item.is-confirmed {
+          border-color: rgba(34, 197, 94, .45);
+          border-left: 3px solid var(--green);
+          background: rgba(34, 197, 94, .08);
+        }
+        .soft-standard-modal-item.is-rejected {
+          opacity: .62;
+          border-color: rgba(239, 68, 68, .35);
+          border-left: 3px solid var(--red);
+          background: rgba(239, 68, 68, .06);
+        }
+        .skill-md-annotation-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          min-height: 20px;
+          font-size: 16px;
+          line-height: 1;
+        }
+        .skill-md-annotation-content {
+          min-width: 0;
+          display: block;
+        }
+        .skill-md-annotation-actions {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 5px;
+          margin-top: 5px;
+        }
+        .skill-md-annotation-actions span {
+          color: var(--text-muted);
+          font-size: 10px;
+        }
+        .skill-md-annotation-actions button,
+        .soft-standard-actions button {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg);
+          color: var(--text-secondary);
+          padding: 3px 7px;
+          font-size: 11px;
+          cursor: pointer;
+        }
+        .skill-md-annotation-actions button:hover,
+        .soft-standard-actions button:hover {
+          border-color: var(--accent);
+          color: var(--text-primary);
+        }
+        .skill-md-unlocated {
+          margin-top: 8px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg-muted);
+          padding: 8px 10px;
+        }
+        .skill-md-unlocated summary {
+          cursor: pointer;
+          color: var(--text-secondary);
+          font-size: 12px;
+          font-weight: 650;
+        }
+        .standard-checklist,
+        .workflow-line-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+        .standard-check-item {
+          display: grid;
+          grid-template-columns: 24px minmax(0,1fr);
+          gap: 8px;
+          padding: 9px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-muted);
+        }
+        .standard-check-marker {
+          width: 20px;
+          height: 20px;
+          border-radius: 6px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(34, 197, 94, .12);
+          color: var(--green);
+          font-size: 12px;
+          font-weight: 800;
+        }
+        .standard-check-body {
+          min-width: 0;
+        }
+        .standard-check-title {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .standard-check-title strong {
+          color: var(--text-primary);
+          font-size: 12px;
+          line-height: 1.4;
+        }
+        .standard-check-expectation {
+          margin-top: 5px;
+          color: var(--text-muted);
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .workflow-line {
+          padding: 9px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-muted);
+        }
+        .workflow-line-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+        .workflow-line-head strong {
+          color: var(--text-primary);
+          font-size: 12px;
+        }
+        .workflow-line-head span,
+        .workflow-line-desc {
+          color: var(--text-muted);
+          font-size: 11px;
+        }
+        .workflow-line-desc {
+          margin-top: 4px;
+          line-height: 1.45;
+        }
+        .workflow-node-line {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          gap: 7px;
+          margin-top: 8px;
+          padding-left: 12px;
+        }
+        .workflow-node-line::before {
+          content: "";
+          position: absolute;
+          left: 21px;
+          top: 12px;
+          bottom: 12px;
+          width: 1px;
+          background: var(--border);
+        }
+        .workflow-node {
+          position: relative;
+          display: grid;
+          grid-template-columns: 22px minmax(0,1fr);
+          gap: 8px;
+          align-items: start;
+        }
+        .workflow-node-index {
+          z-index: 1;
+          width: 20px;
+          height: 20px;
+          border-radius: 999px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--accent);
+          color: white;
+          font-size: 10px;
+          font-weight: 800;
+        }
+        .workflow-node-card {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          padding: 6px 7px;
+          border: 1px solid rgba(148,163,184,.35);
+          border-radius: 7px;
+          background: var(--bg-surface);
+        }
+        .workflow-node-card strong {
+          color: var(--text-primary);
+          font-size: 12px;
+          line-height: 1.35;
+        }
+        .workflow-node-card span {
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .probe-anomaly {
+          padding: 9px 10px;
+          border: 1px solid rgba(202, 138, 4, .35);
+          border-radius: 8px;
+          background: rgba(202, 138, 4, .08);
+        }
+        .probe-anomaly strong,
+        .probe-anomaly span {
+          display: block;
+        }
+        .probe-anomaly strong {
+          color: #a16207;
+          font-size: 12px;
+        }
+        .probe-anomaly span {
+          margin-top: 4px;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .probe-log {
+          margin-top: 12px;
+          border-top: 1px solid var(--border);
+          padding-top: 9px;
+        }
+        .probe-log summary {
+          cursor: pointer;
+          color: var(--text-primary);
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .review-log-meta {
+          display: grid;
+          gap: 5px;
+          padding: 8px 9px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-muted);
+          color: var(--text-muted);
+          font-size: 11px;
+          line-height: 1.4;
+        }
+        .review-log-group {
+          margin-top: 10px;
+        }
+        .review-log-group h4 {
+          margin-bottom: 5px;
+        }
+        .review-log-group ul {
+          margin-left: 0;
+          list-style: none;
+        }
+        .review-log-group li {
+          padding: 6px 7px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg-muted);
+        }
+        .review-log-group li span {
+          display: block;
+          color: var(--text-muted);
+          font-size: 10px;
+          margin-bottom: 2px;
+        }
+        .review-log-group li strong {
+          display: block;
+          color: var(--text-primary);
+          font-size: 11px;
+          line-height: 1.4;
         }
         .context-chain-panel ol,
         .context-chain-panel ul {
@@ -3109,11 +6429,512 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           min-width: 0;
         }
         .experience-detail-shell {
-          height: 75vh;
-          max-height: 75vh;
+          height: 100%;
+          max-height: 100%;
+          min-height: 0;
+          display: flex;
+          flex-direction: column;
           overflow: hidden;
         }
+        .experience-detail-tabs {
+          display: flex;
+          gap: 8px;
+          flex: 0 0 auto;
+          overflow-x: auto;
+          padding: 10px 14px 0;
+          background: var(--bg-surface);
+        }
+        .experience-detail-tab-button {
+          flex: 0 0 auto;
+          border: 1px solid var(--border);
+          border-radius: 8px 8px 0 0;
+          background: var(--bg);
+          color: var(--text-secondary);
+          padding: 7px 12px;
+          font-size: 12px;
+          font-weight: 650;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .experience-detail-tab-button.is-active {
+          border-color: rgba(37,99,235,.36);
+          border-bottom-color: var(--bg-surface);
+          background: var(--bg-surface);
+          color: var(--accent);
+        }
+        .experience-detail-tab-panel {
+          display: none;
+          flex: 1 1 auto;
+          min-height: 0;
+          overflow: auto;
+          padding: 14px;
+          border-top: 1px solid var(--border);
+        }
+        .experience-detail-tab-panel.is-active {
+          display: block;
+        }
+        .experience-detail-evidence-panel.is-active {
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        }
+        .session-story {
+          margin: 0 0 12px;
+          padding: 10px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-surface);
+        }
+        .session-story-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          align-items: flex-start;
+          margin-bottom: 10px;
+        }
+        .session-story-head h4 {
+          margin: 0 0 4px;
+          color: var(--text-primary);
+          font-size: 13px;
+        }
+        .session-story-head p,
+        .session-story-answer p,
+        .session-story-node-body p {
+          margin: 0;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .session-story-meta {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          justify-content: flex-end;
+        }
+        .session-story-meta span {
+          padding: 2px 6px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          color: var(--text-muted);
+          font-size: 10px;
+          white-space: nowrap;
+        }
+        .session-story-answers {
+          display: grid;
+          grid-template-columns: repeat(3,minmax(0,1fr));
+          gap: 8px;
+          margin-bottom: 12px;
+        }
+        .session-story-graph {
+          margin: 0 0 12px;
+          padding: 8px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg);
+        }
+        .session-story-graph-main {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          align-items: center;
+        }
+        .session-story-graph-main i {
+          color: var(--text-muted);
+          font-style: normal;
+          font-size: 13px;
+        }
+        .session-story-graph-node {
+          display: inline-grid;
+          gap: 2px;
+          min-width: 82px;
+          max-width: 150px;
+          padding: 6px 8px;
+          border: 1px solid var(--border);
+          border-top: 3px solid var(--text-muted);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          cursor: pointer;
+          text-align: left;
+        }
+        .session-story-graph-node.is-ok {
+          border-top-color: var(--green);
+        }
+        .session-story-graph-node.is-attention {
+          border-top-color: var(--red);
+        }
+        .session-story-graph-node.is-unknown {
+          border-top-color: var(--yellow);
+        }
+        .session-story-graph-node span {
+          color: var(--text-muted);
+          font-size: 10px;
+        }
+        .session-story-graph-node strong {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 12px;
+        }
+        .session-story-skill-lanes,
+        .session-story-slices,
+        .session-story-dispatches {
+          display: grid;
+          grid-template-columns: repeat(auto-fit,minmax(160px,1fr));
+          gap: 6px;
+          margin: 8px 0 0;
+        }
+        .session-story-skill-lane,
+        .session-story-slice,
+        .session-story-dispatch {
+          min-width: 0;
+          padding: 7px 8px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg);
+        }
+        .session-story-skill-lane span,
+        .session-story-slice span,
+        .session-story-dispatch span {
+          display: inline-block;
+          color: var(--text-muted);
+          font-size: 10px;
+          margin-right: 5px;
+        }
+        .session-story-skill-lane strong,
+        .session-story-slice strong,
+        .session-story-dispatch strong {
+          color: var(--text-primary);
+          font-size: 12px;
+        }
+        .session-story-skill-lane em,
+        .session-story-graph-edges em {
+          color: var(--text-muted);
+          font-style: normal;
+          font-size: 10px;
+        }
+        .session-story-slice p {
+          margin: 5px 0 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: var(--text-secondary);
+          font-size: 11px;
+        }
+        .session-story-graph-edges {
+          margin-top: 8px;
+          color: var(--text-secondary);
+          font-size: 11px;
+        }
+        .session-story-graph-edges summary {
+          cursor: pointer;
+          color: var(--text-muted);
+        }
+        .session-story-answer,
+        .session-story-node {
+          border: 1px solid var(--border);
+          border-left: 3px solid var(--text-muted);
+          border-radius: 7px;
+          background: var(--bg);
+        }
+        .session-story-answer {
+          padding: 8px;
+        }
+        .session-story-answer.is-ok,
+        .session-story-node.is-ok {
+          border-left-color: var(--green);
+        }
+        .session-story-answer.is-attention,
+        .session-story-node.is-attention {
+          border-left-color: var(--red);
+          background: rgba(156,74,63,.06);
+        }
+        .session-story-answer.is-unknown,
+        .session-story-node.is-unknown {
+          border-left-color: var(--yellow);
+        }
+        .session-story-answer > div,
+        .session-story-node-title {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          margin-bottom: 4px;
+        }
+        .session-story-answer strong,
+        .session-story-node-title strong {
+          color: var(--text-primary);
+          font-size: 12px;
+          line-height: 1.35;
+        }
+        .session-story-answer span,
+        .session-story-node-title span {
+          flex: 0 0 auto;
+          color: var(--text-muted);
+          font-size: 10px;
+          font-family: ui-monospace, monospace;
+        }
+        .session-story-line {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          padding-left: 12px;
+        }
+        .session-story-line::before {
+          content: "";
+          position: absolute;
+          left: 22px;
+          top: 12px;
+          bottom: 12px;
+          width: 1px;
+          background: var(--border);
+        }
+        .session-story-node {
+          position: relative;
+          display: grid;
+          grid-template-columns: 22px minmax(0,1fr);
+          gap: 8px;
+          padding: 8px;
+        }
+        .session-story-node-index {
+          z-index: 1;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+          border-radius: 999px;
+          background: var(--accent);
+          color: #fff;
+          font-size: 10px;
+          font-weight: 800;
+        }
+        .session-story-evidence {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          margin-top: 6px;
+        }
+        @media(max-width:900px) {
+          .session-story-answers {
+            grid-template-columns: 1fr;
+          }
+          .session-story-head {
+            flex-direction: column;
+          }
+          .session-story-meta {
+            justify-content: flex-start;
+          }
+        }
+        .reviewer-trace-link {
+          display: inline-block;
+          max-width: 100%;
+          padding: 3px 6px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--bg-surface);
+          color: var(--text-muted);
+          font-family: ui-monospace, monospace;
+          font-size: 10px;
+          line-height: 1.35;
+          word-break: break-all;
+          cursor: pointer;
+        }
+        .reviewer-trace-link:hover {
+          border-color: rgba(37,99,235,.35);
+          color: var(--accent);
+        }
+        .reviewer-judgment-review {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 5px;
+          margin-top: 7px;
+          padding-top: 7px;
+          border-top: 1px solid rgba(148,163,184,.20);
+          color: var(--text-muted);
+          font-size: 11px;
+        }
+        .reviewer-judgment-review > span {
+          font-weight: 700;
+          color: var(--text-secondary);
+        }
+        .reviewer-judgment-review button {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          padding: 3px 7px;
+          font-size: 11px;
+          cursor: pointer;
+        }
+        .reviewer-judgment-review button.is-active {
+          border-color: rgba(37,99,235,.36);
+          background: var(--accent);
+          color: #fff;
+        }
+        .reviewer-judgment-review small {
+          flex-basis: 100%;
+          color: var(--text-muted);
+          line-height: 1.4;
+        }
+        .soft-standard-status {
+          flex: 0 0 auto;
+          padding: 2px 6px;
+          border-radius: 999px;
+          background: var(--bg-muted);
+          color: var(--text-secondary);
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .soft-standard-status[data-soft-standard-status="author_confirmed"] {
+          background: rgba(16,185,129,.14);
+          color: var(--green);
+        }
+        .soft-standard-status[data-soft-standard-status="rejected"] {
+          background: rgba(239,68,68,.12);
+          color: var(--red);
+        }
+        .soft-standard-status[data-soft-standard-status="stale"] {
+          background: rgba(245,158,11,.16);
+          color: var(--yellow);
+        }
+        .soft-standard-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-top: 8px;
+        }
+        .soft-standard-actions button {
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg);
+          color: var(--text-secondary);
+          padding: 4px 8px;
+          font-size: 11px;
+          cursor: pointer;
+        }
+        .soft-standard-actions button:hover {
+          border-color: rgba(37,99,235,.35);
+          color: var(--accent);
+        }
+        .skill-chain-cell-summary {
+          margin-top: 7px;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+          text-align: left;
+        }
+        .skill-chain-compact-candidates {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          margin-top: 5px;
+        }
+        .skill-chain-compact-candidates span {
+          max-width: 100%;
+          padding: 2px 6px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--bg-muted);
+          color: var(--text-muted);
+          font-size: 10px;
+          line-height: 1.3;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .standard-active-list {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          margin-top: 7px;
+        }
+        .standard-active-list span,
+        .soft-standard-pending-title {
+          color: var(--text-primary);
+          font-size: 11px;
+          font-weight: 700;
+          line-height: 1.35;
+        }
+        .soft-standard-pending-list {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px solid rgba(148,163,184,.20);
+        }
+        .soft-standard-pending-item {
+          padding: 6px 7px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .soft-standard-pending-item strong {
+          display: block;
+          color: var(--text-primary);
+          font-size: 11px;
+          line-height: 1.35;
+        }
+        .soft-standard-pending-item span {
+          display: block;
+          margin-top: 2px;
+          color: var(--text-muted);
+          font-size: 10px;
+          line-height: 1.35;
+        }
+        .soft-standard-pending-item .soft-standard-actions {
+          margin-top: 6px;
+        }
+        .soft-standard-pending-item .soft-standard-actions button {
+          padding: 3px 7px;
+        }
+        .soft-standard-modal-list {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+          margin: 0 0 12px;
+          padding-left: 18px;
+        }
+        .soft-standard-modal-item {
+          padding: 8px 9px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg-surface);
+        }
+        .soft-standard-modal-head {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+        .soft-standard-modal-head strong {
+          flex: 1 1 auto;
+          min-width: 0;
+          color: var(--text-primary);
+          font-size: 12px;
+          line-height: 1.35;
+        }
+        .soft-standard-modal-head span {
+          flex: 0 0 auto;
+          color: var(--text-muted);
+          font-size: 11px;
+        }
+        .soft-standard-modal-body,
+        .soft-standard-modal-evidence {
+          margin-top: 5px;
+          color: var(--text-secondary);
+          font-size: 12px;
+          line-height: 1.45;
+        }
+        .soft-standard-modal-evidence {
+          color: var(--text-muted);
+          font-size: 11px;
+        }
         .experience-detail-grid {
+          flex: 1 1 auto;
+          min-height: 0;
           height: 100%;
           max-height: 100%;
           overflow: hidden;
@@ -3310,6 +7131,19 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           border-color: rgba(37,99,235,.55);
           box-shadow: 0 0 0 1px rgba(37,99,235,.18);
         }
+        .timeline-row[data-current-skill-window="0"] {
+          opacity: .55;
+        }
+        .timeline-row[data-current-skill-window="0"] .timeline-card {
+          background: rgba(148,163,184,.04);
+          border-color: rgba(148,163,184,.18);
+        }
+        .timeline-row[data-current-skill-window="0"] .timeline-snippet {
+          color: var(--text-muted);
+        }
+        .timeline-row[data-current-skill-window="0"]::before {
+          background: rgba(148,163,184,.25);
+        }
         .timeline-window-marker {
           display: flex;
           align-items: center;
@@ -3448,6 +7282,39 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           color: #fff;
           box-shadow: 0 2px 8px rgba(22,163,74,.18);
         }
+        .timeline-manual-mark-button {
+          flex: 0 0 auto;
+          border: 1px solid rgba(37,99,235,.26);
+          background: rgba(37,99,235,.08);
+          color: var(--accent);
+          border-radius: 6px;
+          padding: 3px 6px;
+          font-size: 10px;
+          line-height: 1.25;
+          font-weight: 800;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .timeline-manual-mark-button:hover,
+        .timeline-manual-mark-button.is-editing {
+          border-color: rgba(37,99,235,.55);
+          background: rgba(37,99,235,.14);
+        }
+        .timeline-manual-mark-button.is-window-only {
+          border-color: rgba(107,114,128,.28);
+          background: var(--bg-muted);
+          color: var(--text-secondary);
+        }
+        .timeline-manual-mark-button.is-window-only:hover,
+        .timeline-manual-mark-button.is-window-only.is-editing {
+          border-color: rgba(37,99,235,.38);
+          color: var(--accent);
+        }
+        .timeline-manual-mark-button.is-marked {
+          border-color: rgba(22,163,74,.38);
+          background: rgba(22,163,74,.11);
+          color: var(--green);
+        }
         .goal-slice-popover {
           position: fixed;
           z-index: 2147483600;
@@ -3493,6 +7360,74 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           border-color: rgba(37,99,235,.35);
           color: var(--accent);
           background: rgba(37,99,235,.08);
+        }
+        .timeline-manual-popover {
+          position: fixed;
+          z-index: 2147483600;
+          width: min(380px, calc(100vw - 32px));
+          max-height: calc(100vh - 24px);
+          max-height: calc(100dvh - 24px);
+          border: 1px solid rgba(37,99,235,.26);
+          border-radius: 9px;
+          background: var(--bg-surface);
+          color: var(--text-primary);
+          box-shadow: 0 18px 48px rgba(15,23,42,.22);
+          padding: 10px;
+          opacity: 1;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          display: flex;
+          flex-direction: column;
+        }
+        .timeline-manual-actions {
+          display: flex;
+          flex-direction: column;
+          flex: 1 1 auto;
+          gap: 7px;
+          min-height: 0;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          padding-right: 2px;
+        }
+        .timeline-manual-actions > button,
+        .timeline-manual-metric-row button {
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--bg);
+          color: var(--text-secondary);
+          padding: 4px 8px;
+          font-size: 11px;
+          font-weight: 700;
+          cursor: pointer;
+          white-space: nowrap;
+        }
+        .timeline-manual-actions > button:hover,
+        .timeline-manual-metric-row button:hover {
+          border-color: rgba(37,99,235,.35);
+          color: var(--accent);
+          background: rgba(37,99,235,.08);
+        }
+        .timeline-manual-metric-row button.is-active {
+          border-color: rgba(22,163,74,.36);
+          color: var(--green);
+          background: rgba(22,163,74,.10);
+        }
+        .timeline-manual-metric-row {
+          display: grid;
+          grid-template-columns: minmax(120px, 1fr) auto auto auto;
+          align-items: center;
+          gap: 6px;
+          border-top: 1px solid var(--border);
+          padding-top: 7px;
+        }
+        .timeline-manual-metric-row span {
+          min-width: 0;
+          color: var(--text-secondary);
+          font-size: 11px;
+          font-weight: 700;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .timeline-snippet {
           position: relative;
@@ -3925,6 +7860,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           background: var(--bg-muted);
           color: var(--text-secondary);
           border-radius: 6px;
+          font-family: inherit;
+          cursor: pointer;
+        }
+        .evidence-anchor:hover {
+          border-color: rgba(37,99,235,.35);
+          color: var(--accent);
         }
         .rule-finding-list {
           display: flex;
@@ -4099,6 +8040,46 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           font-size: 11px;
         }
         .goal-item div { font-size: 12px; line-height: 1.45; word-break: break-word; }
+        .reviewer-overview-cell {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          min-width: 180px;
+          max-width: 280px;
+        }
+        .reviewer-overview-title {
+          color: var(--text-primary);
+          font-size: 12px;
+          font-weight: 700;
+          line-height: 1.35;
+        }
+        .reviewer-overview-findings {
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.35;
+        }
+        .reviewer-overview-findings span {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .reviewer-overview-cell button {
+          align-self: flex-start;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg);
+          color: var(--text-secondary);
+          padding: 4px 8px;
+          font-size: 11px;
+          cursor: pointer;
+        }
+        .reviewer-overview-cell button:hover {
+          border-color: rgba(37,99,235,.35);
+          color: var(--accent);
+        }
         #metric-guide-toolbar {
           position: fixed !important;
           right: 18px;
@@ -4253,6 +8234,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        .metric-positive { background: rgba(22,163,74,.12); color: var(--green); border-color: rgba(22,163,74,.25); }
 	        .metric-completion { background: rgba(22,163,74,.10); color: var(--green); border-color: rgba(22,163,74,.22); }
         .metric-hard-rule { background: rgba(126,34,206,.12); color: #7e22ce; border-color: rgba(126,34,206,.25); }
+        .metric-repeated-execution { background: rgba(245,158,11,.13); color: #b45309; border-color: rgba(245,158,11,.28); }
         .metric-hedging { background: rgba(14,165,233,.12); color: #0284c7; border-color: rgba(14,165,233,.25); }
         .metric-explicit { background: rgba(220,38,38,.12); color: var(--red); border-color: rgba(220,38,38,.25); }
         .metric-tool-use { background: rgba(202,138,4,.10); color: var(--yellow); border-color: rgba(202,138,4,.25); }
@@ -4275,6 +8257,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .timeline-badge.metric-positive,
         .timeline-badge.metric-completion,
         .timeline-badge.metric-hard-rule,
+        .timeline-badge.metric-repeated-execution,
         .timeline-badge.metric-hedging,
         .timeline-badge.metric-explicit,
         .timeline-badge.metric-tool-use,
@@ -4300,6 +8283,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <div id="signal-global-tooltip" role="tooltip"></div>
       <div id="timeline-fulltext-tooltip" role="dialog" aria-modal="true" aria-hidden="true" aria-label="时间线消息详情"></div>
       <div id="experience-detail-modal" role="dialog" aria-modal="true" aria-hidden="true" aria-label="Session 回溯详情"></div>
+      <aside id="inbox-metric-popover" role="dialog" aria-modal="false" aria-hidden="true" aria-label="指标详情"></aside>
       <div id="metric-guide-toolbar" aria-label="指标说明工具栏">
         <button type="button" title="指标说明" aria-label="指标说明" onclick="window.toggleMetricGuide && window.toggleMetricGuide()">?</button>
       </div>
@@ -4483,6 +8467,407 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       </div>
       <script>
         var observeSeverityFilter = 'all';
+        var inboxCurrentFilter = 'all';
+        function selectInboxCard(id, el) {
+          if (window.closeInboxSessionFlowPopover) window.closeInboxSessionFlowPopover();
+          var cards = document.querySelectorAll('[data-inbox-card]');
+          for (var i = 0; i < cards.length; i++) cards[i].classList.remove('is-active');
+          if (el) el.classList.add('is-active');
+          var panes = document.querySelectorAll('[data-inbox-detail]');
+          var activePane = null;
+          for (var j = 0; j < panes.length; j++) {
+            var pane = panes[j];
+            if (pane.getAttribute('data-inbox-detail') === id) {
+              pane.classList.add('is-active');
+              activePane = pane;
+            } else {
+              pane.classList.remove('is-active');
+            }
+          }
+          if (activePane) applyInboxSessionSearchForPane(activePane);
+          var right = document.querySelector('.inbox-right');
+          if (right) right.scrollTop = 0;
+        }
+        function selectInboxCardById(id, sessionId) {
+          var card = document.querySelector('[data-inbox-card="' + id + '"]');
+          if (card) {
+            selectInboxCard(id, card);
+            if (sessionId) selectInboxSessionTab(id, sessionId);
+            if (card.scrollIntoView) card.scrollIntoView({ block: 'nearest' });
+          }
+        }
+        window.selectInboxCardById = selectInboxCardById;
+        function closeInboxSessionFlowPopover() {
+          var old = document.querySelector('.inbox-flow-popover');
+          if (old) old.remove();
+        }
+        function openInboxSessionFlowPopover(templateId, btn, event) {
+          if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+          }
+          closeInboxSessionFlowPopover();
+          var template = document.getElementById(templateId);
+          if (!template) return;
+          var popover = document.createElement('div');
+          popover.className = 'inbox-flow-popover';
+          popover.setAttribute('role', 'dialog');
+          popover.innerHTML = '<button type="button" class="inbox-flow-popover-close" onclick="closeInboxSessionFlowPopover()">关闭</button>' + template.innerHTML;
+          document.body.appendChild(popover);
+          var rect = btn && btn.getBoundingClientRect ? btn.getBoundingClientRect() : { left: 16, bottom: 48, right: 16 };
+          var width = Math.min(560, window.innerWidth - 32);
+          var left = Math.min(Math.max(16, rect.right - width), window.innerWidth - width - 16);
+          var top = Math.min(rect.bottom + 8, window.innerHeight - Math.min(popover.offsetHeight || 620, 620) - 16);
+          popover.style.left = left + 'px';
+          popover.style.top = Math.max(16, top) + 'px';
+        }
+        window.closeInboxSessionFlowPopover = closeInboxSessionFlowPopover;
+        window.openInboxSessionFlowPopover = openInboxSessionFlowPopover;
+        function toggleInboxSection(btn) {
+          var sec = btn.closest('.inbox-section');
+          if (!sec) return;
+          var collapsed = sec.classList.toggle('is-collapsed');
+          var label = sec.querySelector('.inbox-section-toggle');
+          if (label) label.textContent = collapsed ? '展开' : '收起';
+        }
+        function toggleInboxSectionHead(head) {
+          var sec = head && head.closest ? head.closest('.inbox-section') : null;
+          if (!sec) return;
+          var collapsed = sec.classList.toggle('is-collapsed');
+          var label = sec.querySelector('.inbox-section-toggle');
+          if (label) label.textContent = collapsed ? '展开' : '收起';
+        }
+        function findInboxSectionById(id) {
+          var activePane = document.querySelector('.inbox-detail-pane.is-active .inbox-session-pane.is-active');
+          if (activePane) {
+            var nodes = activePane.querySelectorAll('[id]');
+            for (var i = 0; i < nodes.length; i++) {
+              if (nodes[i].getAttribute('id') === id) return nodes[i];
+            }
+          }
+          return document.getElementById(id);
+        }
+        function scrollInboxSectionIntoView(id, event) {
+          if (event) event.preventDefault();
+          var sec = findInboxSectionById(id);
+          if (!sec) return;
+          if (sec.tagName === 'DETAILS' && !sec.open) sec.open = true;
+          if (sec.classList.contains('is-collapsed')) {
+            sec.classList.remove('is-collapsed');
+            var toggle = sec.querySelector('.inbox-section-toggle');
+            if (toggle) toggle.textContent = '收起';
+          }
+          var right = sec.closest ? sec.closest('.inbox-right') : document.querySelector('.inbox-right');
+          var canScrollRight = right && right.scrollHeight > right.clientHeight + 8 && window.getComputedStyle(right).overflowY !== 'visible';
+          if (canScrollRight) {
+            var rect = sec.getBoundingClientRect();
+            var rightRect = right.getBoundingClientRect();
+            right.scrollTop += rect.top - rightRect.top - 8;
+          } else {
+            var top = sec.getBoundingClientRect().top + (window.pageYOffset || document.documentElement.scrollTop || 0) - 88;
+            window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+          }
+          var activeDetail = sec.closest ? sec.closest('.inbox-detail-pane') : null;
+          var navs = activeDetail ? activeDetail.querySelectorAll('[data-inbox-nav]') : document.querySelectorAll('[data-inbox-nav]');
+          for (var i = 0; i < navs.length; i++) {
+            var match = navs[i].getAttribute('href') === '#' + id;
+            if (match) navs[i].classList.add('is-active');
+            else navs[i].classList.remove('is-active');
+          }
+        }
+        function inboxJumpToEvidence(btn) {
+          var pane = btn && btn.closest ? btn.closest('.inbox-detail-pane') : null;
+          if (!pane) return;
+          var sessionPane = btn.closest ? btn.closest('[data-session-pane]') : null;
+          var sid = sessionPane ? sessionPane.getAttribute('data-session-pane') : pane.getAttribute('data-inbox-detail');
+          if (sid) scrollInboxSectionIntoView('inbox-sec-evidence-' + sid);
+          var messageUuid = btn.getAttribute('data-jump-message-uuid') || '';
+          var messageIndex = btn.getAttribute('data-jump-message-index') || '';
+          if (!messageUuid && !messageIndex) return;
+          window.setTimeout(function () {
+            var rows = pane.querySelectorAll('[data-message-uuid]');
+            for (var i = 0; i < rows.length; i++) {
+              var row = rows[i];
+              if (messageUuid && row.getAttribute('data-message-uuid') === messageUuid) {
+                row.scrollIntoView({ block: 'center' });
+                row.classList.add('is-flash');
+                window.setTimeout(function () { row.classList.remove('is-flash'); }, 1600);
+                return;
+              }
+              if (!messageUuid && messageIndex && row.getAttribute('data-message-index') === messageIndex) {
+                row.scrollIntoView({ block: 'center' });
+                row.classList.add('is-flash');
+                window.setTimeout(function () { row.classList.remove('is-flash'); }, 1600);
+                return;
+              }
+            }
+          }, 240);
+        }
+        window.toggleInboxSection = toggleInboxSection;
+        window.toggleInboxSectionHead = toggleInboxSectionHead;
+        window.scrollInboxSectionIntoView = scrollInboxSectionIntoView;
+        window.inboxJumpToEvidence = inboxJumpToEvidence;
+        function selectInboxSessionTab(skillName, sessionId, btn) {
+          if (window.closeInboxSessionFlowPopover) window.closeInboxSessionFlowPopover();
+          var pane = document.querySelector('[data-inbox-detail="' + skillName + '"]');
+          if (!pane) return;
+          var tabs = pane.querySelectorAll('[data-session-tab]');
+          for (var i = 0; i < tabs.length; i++) {
+            if (tabs[i].getAttribute('data-session-tab') === sessionId) tabs[i].classList.add('is-active');
+            else tabs[i].classList.remove('is-active');
+          }
+          var panes = pane.querySelectorAll('[data-session-pane]');
+          for (var j = 0; j < panes.length; j++) {
+            if (panes[j].getAttribute('data-session-pane') === sessionId) panes[j].classList.add('is-active');
+            else panes[j].classList.remove('is-active');
+          }
+        }
+        window.selectInboxSessionTab = selectInboxSessionTab;
+        function openInboxMetricPopover(card) {
+          var popover = document.getElementById('inbox-metric-popover');
+          if (!popover) return;
+          var label = card.getAttribute('data-metric-label') || '';
+          var value = card.getAttribute('data-metric-value') || '0';
+          var note = card.getAttribute('data-metric-note') || '';
+          var anomaly = card.getAttribute('data-metric-anomaly') === '1';
+          var jumpId = card.getAttribute('data-metric-jump') || '';
+          var detail = [];
+          try { detail = JSON.parse(card.getAttribute('data-metric-detail') || '[]'); } catch (err) { detail = []; }
+          var html = '<header class="inbox-metric-popover-head"><strong></strong><button type="button" class="inbox-metric-popover-close" aria-label="关闭">关闭</button></header>';
+          html += '<div class="inbox-metric-popover-body">';
+          html += '<div class="inbox-metric-popover-value' + (anomaly ? ' is-anomaly' : '') + '"></div>';
+          html += '<p class="inbox-metric-popover-note"></p>';
+          if (detail && detail.length > 0) {
+            html += '<ul class="inbox-metric-popover-list"></ul>';
+          }
+          if (anomaly && jumpId) {
+            html += '<button type="button" class="inbox-metric-popover-jump" data-jump-target="' + jumpId + '">跳转原文回溯</button>';
+          }
+          html += '</div>';
+          popover.innerHTML = html;
+          popover.querySelector('.inbox-metric-popover-head strong').textContent = label;
+          popover.querySelector('.inbox-metric-popover-value').textContent = value;
+          popover.querySelector('.inbox-metric-popover-note').textContent = note;
+          var list = popover.querySelector('.inbox-metric-popover-list');
+          if (list && detail.length > 0) {
+            for (var i = 0; i < detail.length; i++) {
+              var li = document.createElement('li');
+              var n = document.createElement('span');
+              n.textContent = detail[i].name;
+              var c = document.createElement('span');
+              c.textContent = detail[i].count;
+              li.appendChild(n);
+              li.appendChild(c);
+              list.appendChild(li);
+            }
+          }
+          popover.classList.add('is-open');
+          popover.setAttribute('aria-hidden', 'false');
+          var closeBtn = popover.querySelector('.inbox-metric-popover-close');
+          if (closeBtn) closeBtn.addEventListener('click', closeInboxMetricPopover);
+          var jumpBtn = popover.querySelector('.inbox-metric-popover-jump');
+          if (jumpBtn) jumpBtn.addEventListener('click', function () {
+            var id = jumpBtn.getAttribute('data-jump-target');
+            if (id) scrollInboxSectionIntoView(id);
+            closeInboxMetricPopover();
+          });
+        }
+        function closeInboxMetricPopover() {
+          var popover = document.getElementById('inbox-metric-popover');
+          if (!popover) return;
+          popover.classList.remove('is-open');
+          popover.setAttribute('aria-hidden', 'true');
+          popover.innerHTML = '';
+        }
+        document.addEventListener('click', function (event) {
+          var target = event.target;
+          if (target && target.closest && (target.closest('.inbox-metric-card') || target.closest('#inbox-metric-popover'))) return;
+          var popover = document.getElementById('inbox-metric-popover');
+          if (popover && popover.classList.contains('is-open')) closeInboxMetricPopover();
+        });
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape') closeInboxMetricPopover();
+        });
+        window.openInboxMetricPopover = openInboxMetricPopover;
+        window.closeInboxMetricPopover = closeInboxMetricPopover;
+        function inboxNormalizeSearch(value) {
+          return String(value || '').trim().toLowerCase();
+        }
+        function inboxSearchInput(selector) {
+          var input = document.querySelector(selector);
+          return input ? inboxNormalizeSearch(input.value) : '';
+        }
+        function inboxTextMatches(text, query) {
+          if (!query) return true;
+          return inboxNormalizeSearch(text).indexOf(query) >= 0;
+        }
+        function activeInboxSearch() {
+          return {
+            skill: inboxSearchInput('[data-inbox-skill-search-input]'),
+            session: inboxSearchInput('[data-inbox-session-search-input]')
+          };
+        }
+        function inboxCardMatchesCurrentSearch(card, search) {
+          var filters = (card.getAttribute('data-inbox-filters') || '').split(/\\s+/);
+          var filterMatch = filters.indexOf(inboxCurrentFilter) >= 0;
+          var skillMatch = inboxTextMatches(card.getAttribute('data-inbox-skill-search') || card.getAttribute('data-inbox-card') || '', search.skill);
+          var sessionMatch = inboxTextMatches(card.getAttribute('data-inbox-session-search') || '', search.session);
+          return filterMatch && skillMatch && sessionMatch;
+        }
+        function setInboxNoResultVisible(visible) {
+          var empty = document.querySelector('[data-inbox-no-results]');
+          if (empty) empty.style.display = visible ? '' : 'none';
+        }
+        function updateInboxSearchCount(visibleCount, totalCount) {
+          var el = document.querySelector('[data-inbox-search-count]');
+          if (!el) return;
+          var search = activeInboxSearch();
+          var searching = Boolean(search.skill || search.session || inboxCurrentFilter !== 'all');
+          el.textContent = searching ? visibleCount + ' / ' + totalCount + ' 条复盘' : totalCount + ' 条复盘';
+        }
+        function clearInboxActiveSelection() {
+          var cards = document.querySelectorAll('[data-inbox-card]');
+          for (var i = 0; i < cards.length; i++) cards[i].classList.remove('is-active');
+          var panes = document.querySelectorAll('[data-inbox-detail]');
+          for (var j = 0; j < panes.length; j++) panes[j].classList.remove('is-active');
+        }
+        function applyInboxSessionSearchForPane(pane) {
+          if (!pane) return;
+          var query = inboxSearchInput('[data-inbox-session-search-input]');
+          var tabItems = pane.querySelectorAll('[data-session-tab-item]');
+          var sessionPanes = pane.querySelectorAll('[data-session-pane]');
+          var firstVisibleTab = null;
+          var activeVisible = null;
+          for (var i = 0; i < tabItems.length; i++) {
+            var item = tabItems[i];
+            var text = item.getAttribute('data-session-search') || '';
+            var visible = inboxTextMatches(text, query);
+            item.style.display = visible ? '' : 'none';
+            var tab = item.querySelector('[data-session-tab]');
+            if (visible && !firstVisibleTab) firstVisibleTab = tab;
+            if (visible && tab && tab.classList.contains('is-active')) activeVisible = tab;
+          }
+          for (var j = 0; j < sessionPanes.length; j++) {
+            var sessionPane = sessionPanes[j];
+            var paneText = sessionPane.getAttribute('data-session-search') || '';
+            var paneVisible = inboxTextMatches(paneText, query);
+            sessionPane.style.display = paneVisible ? '' : 'none';
+            if (!paneVisible) sessionPane.classList.remove('is-active');
+          }
+          var nextTab = activeVisible || firstVisibleTab;
+          if (nextTab) {
+            selectInboxSessionTab(pane.getAttribute('data-inbox-detail') || '', nextTab.getAttribute('data-session-tab'), nextTab);
+          }
+        }
+        function applyInboxFilters() {
+          var cards = document.querySelectorAll('[data-inbox-card]');
+          var search = activeInboxSearch();
+          var firstVisible = null;
+          var activeVisible = null;
+          var visibleCount = 0;
+          for (var i = 0; i < cards.length; i++) {
+            var card = cards[i];
+            var visible = inboxCardMatchesCurrentSearch(card, search);
+            card.style.display = visible ? '' : 'none';
+            if (visible) {
+              visibleCount += 1;
+              if (!firstVisible) firstVisible = card;
+              if (card.classList.contains('is-active')) activeVisible = card;
+            }
+          }
+          updateInboxSearchCount(visibleCount, cards.length);
+          setInboxNoResultVisible(visibleCount === 0);
+          if (visibleCount === 0) {
+            clearInboxActiveSelection();
+            return;
+          }
+          selectInboxCard((activeVisible || firstVisible).getAttribute('data-inbox-card'), activeVisible || firstVisible);
+        }
+        function clearInboxSearch() {
+          var skill = document.querySelector('[data-inbox-skill-search-input]');
+          var session = document.querySelector('[data-inbox-session-search-input]');
+          if (skill) skill.value = '';
+          if (session) session.value = '';
+          applyInboxFilters();
+        }
+        function setInboxFilter(filter, btn) {
+          inboxCurrentFilter = filter;
+          var chips = document.querySelectorAll('[data-inbox-filter]');
+          for (var i = 0; i < chips.length; i++) {
+            var active = chips[i].getAttribute('data-inbox-filter') === filter;
+            if (active) chips[i].classList.add('is-active');
+            else chips[i].classList.remove('is-active');
+          }
+          applyInboxFilters();
+        }
+        window.applyInboxFilters = applyInboxFilters;
+        window.clearInboxSearch = clearInboxSearch;
+        async function setInboxSessionReview(sessionId, verdict, btn) {
+          var actionBlock = document.querySelector('[data-inbox-detail-actions][data-inbox-session-id="' + sessionId + '"]');
+          var note = '';
+          if (verdict === 'needs_more_context') {
+            var input = document.querySelector('[data-inbox-note-input="' + sessionId + '"]');
+            note = input ? input.value : '';
+          }
+          try {
+            var payload = { targetType: 'experience_session', targetId: sessionId, verdict: verdict };
+            if (note) payload.reason = note;
+            var resp = await fetch('/api/observations/review-state', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            if (!resp.ok) throw new Error('failed');
+            if (actionBlock) {
+              var buttons = actionBlock.querySelectorAll('.inbox-action-button');
+              for (var i = 0; i < buttons.length; i++) {
+                if (buttons[i].getAttribute('data-inbox-verdict') === verdict) buttons[i].classList.add('is-active');
+                else buttons[i].classList.remove('is-active');
+              }
+            }
+            var currentPane = actionBlock && actionBlock.closest ? actionBlock.closest('[data-inbox-detail]') : null;
+            var cardId = currentPane ? currentPane.getAttribute('data-inbox-detail') : sessionId;
+            var card = document.querySelector('[data-inbox-card="' + cardId + '"]');
+            if (card) {
+              var filters = (card.getAttribute('data-inbox-filters') || '').split(/\\s+/);
+              if (filters.indexOf('reviewed') < 0) filters.push('reviewed');
+              card.setAttribute('data-inbox-filters', filters.join(' '));
+              var existing = card.querySelector('.inbox-card-state');
+              if (existing) existing.remove();
+              var labels = { real_issue: { label: '已同意', cls: 'is-agree' }, not_issue: { label: '已否决', cls: 'is-reject' }, needs_more_context: { label: '留意见', cls: 'is-note' } };
+              var meta = labels[verdict];
+              if (meta) {
+                var span = document.createElement('span');
+                span.className = 'inbox-card-state ' + meta.cls;
+                span.textContent = meta.label;
+                var titleRow = card.querySelector('.inbox-card-row-title');
+                if (titleRow) titleRow.appendChild(span);
+              }
+            }
+          } catch (err) {
+            if (window.console) console.error('inbox review failed', err);
+          }
+        }
+        function toggleInboxNoteEditor(sessionId, btn) {
+          var editor = document.querySelector('[data-inbox-note-editor="' + sessionId + '"]');
+          if (!editor) return;
+          editor.style.display = 'block';
+          var input = editor.querySelector('textarea');
+          if (input) input.focus();
+        }
+        function closeInboxNoteEditor(sessionId) {
+          var editor = document.querySelector('[data-inbox-note-editor="' + sessionId + '"]');
+          if (editor) editor.style.display = 'none';
+        }
+        function saveInboxSessionNote(sessionId, btn) {
+          setInboxSessionReview(sessionId, 'needs_more_context', btn);
+        }
+        window.selectInboxCard = selectInboxCard;
+        window.setInboxFilter = setInboxFilter;
+        window.setInboxSessionReview = setInboxSessionReview;
+        window.toggleInboxNoteEditor = toggleInboxNoteEditor;
+        window.closeInboxNoteEditor = closeInboxNoteEditor;
+        window.saveInboxSessionNote = saveInboxSessionNote;
         function showObservationTab(name) {
           var review = document.getElementById('observe-tab-review');
           var raw = document.getElementById('observe-tab-raw');
@@ -4510,7 +8895,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           modal.setAttribute('aria-hidden', 'true');
           modal.innerHTML = '';
         }
-        function openExperienceDetailModal(id, btn) {
+        function openExperienceDetailModal(id, btn, initialTab) {
           var row = document.getElementById(id);
           var modal = document.getElementById('experience-detail-modal');
           if (!row || !modal) return;
@@ -4532,6 +8917,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           modal.setAttribute('aria-hidden', 'false');
           if (close && close.focus) close.focus();
           window.requestAnimationFrame(function () {
+            if (initialTab) switchExperienceDetailTab(initialTab);
             var tabs = modal.querySelectorAll('[data-timeline-tabs]');
             for (var i = 0; i < tabs.length; i++) {
               var base = tabs[i].getAttribute('data-timeline-tabs');
@@ -4561,6 +8947,26 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           modal.classList.add('is-open');
           modal.setAttribute('aria-hidden', 'false');
           if (close && close.focus) close.focus();
+        }
+        function switchExperienceDetailTab(name) {
+          var modal = document.getElementById('experience-detail-modal');
+          if (!modal) return;
+          var buttons = modal.querySelectorAll('[data-experience-detail-tab]');
+          var panels = modal.querySelectorAll('[data-experience-detail-panel]');
+          if (!buttons.length || !panels.length) return;
+          for (var i = 0; i < buttons.length; i++) {
+            var activeButton = buttons[i].getAttribute('data-experience-detail-tab') === name;
+            buttons[i].classList.toggle('is-active', activeButton);
+            buttons[i].setAttribute('aria-selected', activeButton ? 'true' : 'false');
+          }
+          for (var j = 0; j < panels.length; j++) {
+            panels[j].classList.toggle('is-active', panels[j].getAttribute('data-experience-detail-panel') === name);
+          }
+          if (name === 'evidence') {
+            window.requestAnimationFrame(function () {
+              if (window.refreshTimelineFullTextState) window.refreshTimelineFullTextState();
+            });
+          }
         }
         function switchTimelineGoalTab(tabBaseId, index) {
           var selector = '[data-timeline-tabs="' + tabBaseId.replace(/"/g, '\\"') + '"]';
@@ -4624,6 +9030,62 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           var text = root.querySelector('[data-timeline-filter-count]');
           if (text) text.textContent = value ? ('命中 ' + count + ' 条；只统计当前 skill 相关标签。') : '选择标签后，只显示当前回溯里的命中事件。';
         }
+        function findExperienceTimelineRow(root, messageIndex, messageUuid) {
+          if (!root) return null;
+          var rows = root.querySelectorAll('.timeline-row');
+          if (messageUuid) {
+            for (var i = 0; i < rows.length; i++) {
+              if (rows[i].getAttribute('data-message-uuid') === messageUuid) return rows[i];
+            }
+          }
+          if (messageIndex !== '') {
+            for (var j = 0; j < rows.length; j++) {
+              if (rows[j].getAttribute('data-message-index') === String(messageIndex)) return rows[j];
+            }
+          }
+          return null;
+        }
+        function focusExperienceTimelineRow(row) {
+          if (!row) return;
+          var fullView = row.closest ? row.closest('[data-timeline-view="full-session"]') : null;
+          if (fullView && fullView.style.display === 'none') {
+            var right = fullView.closest ? fullView.closest('.experience-detail-right') : null;
+            var toggle = right ? right.querySelector('[data-full-session-toggle]') : null;
+            if (toggle) toggleFullSessionTimeline(toggle);
+          }
+          var panel = row.closest ? row.closest('.timeline-tab-panel') : null;
+          if (panel && !panel.classList.contains('is-active')) {
+            var tabsRoot = panel.closest('[data-timeline-tabs]');
+            var base = tabsRoot ? tabsRoot.getAttribute('data-timeline-tabs') : '';
+            var panelId = panel.getAttribute('data-timeline-panel') || '';
+            if (base && panelId.indexOf(base + '-') === 0) {
+              var index = Number(panelId.slice(base.length + 1));
+              if (!Number.isNaN(index)) switchTimelineGoalTab(base, index);
+            }
+          }
+          window.requestAnimationFrame(function () {
+            row.classList.add('is-cta-focus');
+            if (row.scrollIntoView) row.scrollIntoView({ block: 'center', inline: 'nearest' });
+            var scrollPanel = row.closest ? (row.closest('.timeline-tab-panel') || row.closest('.session-timeline-tree') || row.closest('.experience-detail-tab-panel')) : null;
+            if (scrollPanel && typeof row.offsetTop === 'number') {
+              scrollPanel.scrollTop = Math.max(0, row.offsetTop - 80);
+            }
+            window.setTimeout(function () { row.classList.remove('is-cta-focus'); }, 1800);
+          });
+        }
+        function jumpToExperienceMessage(btn) {
+          var modal = document.getElementById('experience-detail-modal');
+          if (!modal || !btn) return;
+          switchExperienceDetailTab('evidence');
+          window.requestAnimationFrame(function () {
+            var evidencePanel = modal.querySelector('[data-experience-detail-panel="evidence"]') || modal;
+            var messageIndex = btn.getAttribute('data-jump-message-index') || '';
+            var messageUuid = btn.getAttribute('data-jump-message-uuid') || '';
+            var segmentView = evidencePanel.querySelector('[data-timeline-view="segment"]');
+            var row = findExperienceTimelineRow(segmentView, messageIndex, messageUuid) || findExperienceTimelineRow(evidencePanel, messageIndex, messageUuid);
+            focusExperienceTimelineRow(row);
+          });
+        }
         function openExperienceSessionById(sessionId, tag) {
           if (!sessionId) return;
           var rows = document.querySelectorAll('[data-observe-experience-session]');
@@ -4644,25 +9106,29 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           window.setTimeout(function () {
             var modal = document.getElementById('experience-detail-modal');
             if (!modal || !modal.classList.contains('is-open')) return;
-            var select = modal.querySelector('[data-timeline-tag-filter]');
+            if (tag) switchExperienceDetailTab('evidence');
+            var evidencePanel = modal.querySelector('[data-experience-detail-panel="evidence"]') || modal;
+            var select = evidencePanel.querySelector('[data-timeline-tag-filter]');
             if (select && tag) {
               select.value = tag;
               filterTimelineByTag(select);
             }
-            var target = tag ? modal.querySelector('.timeline-row.is-filter-match') : modal.querySelector('.timeline-row');
+            var target = tag ? evidencePanel.querySelector('.timeline-row.is-filter-match') : evidencePanel.querySelector('.timeline-row');
             if (!target) return;
-            target.classList.add('is-cta-focus');
-            var panel = target.closest('.timeline-tab-panel') || target.closest('.experience-detail-right');
-            if (panel) panel.scrollTop = Math.max(0, target.offsetTop - 80);
-            window.setTimeout(function () { target.classList.remove('is-cta-focus'); }, 1800);
+            focusExperienceTimelineRow(target);
           }, 160);
         }
         window.openExperienceDetailModal = openExperienceDetailModal;
         window.openContextChainModal = openContextChainModal;
         window.closeExperienceDetailModal = closeExperienceDetailModal;
+        window.switchExperienceDetailTab = switchExperienceDetailTab;
+        window.setReviewerJudgmentReview = setReviewerJudgmentReview;
+        window.openReviewerJudgmentNote = openReviewerJudgmentNote;
+        window.setSoftStandardStatus = setSoftStandardStatus;
         window.switchTimelineGoalTab = switchTimelineGoalTab;
         window.toggleFullSessionTimeline = toggleFullSessionTimeline;
         window.filterTimelineByTag = filterTimelineByTag;
+        window.jumpToExperienceMessage = jumpToExperienceMessage;
         window.openExperienceSessionById = openExperienceSessionById;
         (function setupExperienceDetailModal() {
           var modal = document.getElementById('experience-detail-modal');
@@ -4809,6 +9275,309 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             if (btn) btn.disabled = false;
           }
         }
+        function reviewerJudgmentLabel(verdict) {
+          if (verdict === 'real_issue') return '已同意';
+          if (verdict === 'not_issue') return '已否决';
+          if (verdict === 'needs_more_context') return '已留意见';
+          if (verdict === 'reviewed') return '已看过';
+          return '未标注';
+        }
+        function updateReviewerJudgmentUi(targetId, verdict, reason) {
+          var cards = document.querySelectorAll('[data-reviewer-judgment-id="' + targetId.replace(/"/g, '\\"') + '"]');
+          for (var i = 0; i < cards.length; i++) {
+            var review = cards[i].querySelector('[data-reviewer-judgment-current]');
+            if (!review) continue;
+            review.setAttribute('data-reviewer-judgment-current', verdict || '');
+            var label = review.querySelector('[data-reviewer-judgment-label]');
+            if (label) label.textContent = reviewerJudgmentLabel(verdict);
+            var buttons = review.querySelectorAll('[data-reviewer-judgment-verdict]');
+            for (var j = 0; j < buttons.length; j++) {
+              var buttonVerdict = buttons[j].getAttribute('data-reviewer-judgment-verdict');
+              buttons[j].classList.toggle('is-active', Boolean(verdict && buttonVerdict === verdict));
+            }
+            var note = review.querySelector('small');
+            if (reason) {
+              if (!note) {
+                note = document.createElement('small');
+                review.appendChild(note);
+              }
+              note.textContent = reason;
+            } else if (note) {
+              note.remove();
+            }
+          }
+        }
+        async function setReviewerJudgmentReview(targetId, verdict, btn, reason) {
+          if (btn) btn.disabled = true;
+          var review = btn && btn.closest ? btn.closest('[data-reviewer-judgment-current]') : null;
+          var current = review ? review.getAttribute('data-reviewer-judgment-current') || '' : '';
+          var shouldDelete = current === verdict && !reason;
+          try {
+            var res = shouldDelete
+              ? await fetch('/api/observations/review-state?targetType=reviewer_judgment&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' })
+              : await fetch('/api/observations/review-state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  targetType: 'reviewer_judgment',
+                  targetId: targetId,
+                  verdict: verdict,
+                  reason: reason || undefined
+                })
+              });
+            if (!res.ok) throw new Error('判断标注写入失败: ' + res.status);
+            await res.json();
+            updateReviewerJudgmentUi(targetId, shouldDelete ? '' : verdict, shouldDelete ? '' : reason);
+          } catch (err) {
+            alert(String(err && err.message ? err.message : err));
+          } finally {
+            if (btn) btn.disabled = false;
+          }
+        }
+        function openReviewerJudgmentNote(targetId, btn) {
+          var previous = btn && btn.closest ? btn.closest('[data-reviewer-judgment-current]') : null;
+          var oldNote = previous && previous.querySelector('small') ? previous.querySelector('small').textContent || '' : '';
+          closeManualCorrectionPopovers();
+          if (btn) btn.classList.add('is-editing');
+          var popover = document.createElement('div');
+          popover.className = 'manual-correction-popover';
+          var title = document.createElement('div');
+          title.className = 'manual-correction-popover-title';
+          title.textContent = '补充判断意见';
+          var hint = document.createElement('div');
+          hint.className = 'manual-correction-popover-hint';
+          hint.textContent = '意见会写入 review-state.json，不修改原始 trace。';
+          var input = document.createElement('textarea');
+          input.className = 'metric-reason-input';
+          input.value = oldNote;
+          input.placeholder = '写下需要补充的判断依据';
+          var footer = document.createElement('div');
+          footer.className = 'manual-correction-popover-actions';
+          var save = document.createElement('button');
+          save.type = 'button';
+          save.textContent = '保存';
+          var cancel = document.createElement('button');
+          cancel.type = 'button';
+          cancel.textContent = '取消';
+          footer.appendChild(save);
+          footer.appendChild(cancel);
+          popover.appendChild(title);
+          popover.appendChild(hint);
+          popover.appendChild(input);
+          popover.appendChild(footer);
+          positionManualCorrectionPopover(popover, btn);
+          input.focus();
+          input.select();
+          var close = function () {
+            popover.remove();
+            if (btn) btn.classList.remove('is-editing');
+          };
+          save.addEventListener('click', function () {
+            setReviewerJudgmentReview(targetId, 'needs_more_context', btn, input.value.trim());
+            close();
+          });
+          cancel.addEventListener('click', close);
+          setTimeout(function () {
+            document.addEventListener('click', function closeOnOutsideClick(event) {
+              if (popover.contains(event.target) || (btn && btn.contains(event.target))) return;
+              close();
+              document.removeEventListener('click', closeOnOutsideClick);
+            });
+          }, 0);
+        }
+        function softStandardStatusLabel(status) {
+          if (status === 'author_confirmed') return '作者已确认';
+          if (status === 'rejected') return '已否决';
+          if (status === 'stale') return '已过期';
+          return '待作者确认';
+        }
+        function softStandardStatusIcon(status) {
+          if (status === 'author_confirmed') return '✅';
+          if (status === 'rejected') return '❌';
+          return '';
+        }
+        async function setSoftStandardStatus(skillName, standardId, status, btn) {
+          if (btn) btn.disabled = true;
+          try {
+            var res = await fetch('/api/observations/soft-standards/review', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ skillName: skillName, standardId: standardId, status: status })
+            });
+            if (!res.ok) throw new Error('软标准状态写入失败: ' + res.status);
+            await res.json();
+            var cards = document.querySelectorAll('[data-soft-standard-id="' + standardId.replace(/"/g, '\\"') + '"][data-soft-standard-skill="' + skillName.replace(/"/g, '\\"') + '"]');
+            for (var i = 0; i < cards.length; i++) {
+              var label = cards[i].querySelector('[data-soft-standard-status]');
+              if (label) {
+                label.setAttribute('data-soft-standard-status', status);
+                label.textContent = softStandardStatusLabel(status);
+              }
+              cards[i].classList.toggle('is-confirmed', status === 'author_confirmed');
+              cards[i].classList.toggle('is-rejected', status === 'rejected');
+              var icon = cards[i].querySelector('[data-soft-standard-icon]');
+              if (icon) {
+                icon.setAttribute('data-soft-standard-icon', status);
+                icon.textContent = softStandardStatusIcon(status);
+              }
+            }
+          } catch (err) {
+            alert(String(err && err.message ? err.message : err));
+          } finally {
+            if (btn) btn.disabled = false;
+          }
+        }
+        function closeManualCorrectionPopovers() {
+          var popovers = document.querySelectorAll('.manual-correction-popover');
+          for (var i = 0; i < popovers.length; i++) popovers[i].remove();
+          var buttons = document.querySelectorAll('.manual-correction-button.is-editing');
+          for (var j = 0; j < buttons.length; j++) buttons[j].classList.remove('is-editing');
+        }
+        function manualCorrectionNote(value, label) {
+          return JSON.stringify({ value: value, label: label });
+        }
+        function updateManualCorrectionButtons(targetType, targetId, label) {
+          var key = targetType + ':' + targetId;
+          var buttons = document.querySelectorAll('[data-manual-correction-key="' + key.replace(/"/g, '\\"') + '"]');
+          for (var i = 0; i < buttons.length; i++) {
+            var baseLabel = buttons[i].getAttribute('data-manual-correction-label') || '人工纠正';
+            buttons[i].setAttribute('data-manual-correction-current', label || '');
+            buttons[i].classList.toggle('is-marked', Boolean(label));
+            buttons[i].textContent = label ? baseLabel + '：' + label : baseLabel;
+          }
+        }
+        async function submitManualCorrection(targetType, targetId, value, label, btn) {
+          if (btn) btn.disabled = true;
+          try {
+            var res = value === ''
+              ? await fetch('/api/observations/review-state?targetType=' + encodeURIComponent(targetType) + '&targetId=' + encodeURIComponent(targetId), { method: 'DELETE' })
+              : await fetch('/api/observations/review-state', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  targetType: targetType,
+                  targetId: targetId,
+                  verdict: 'reviewed',
+                  note: manualCorrectionNote(value, label)
+                })
+              });
+            if (!res.ok) throw new Error('人工纠正写入失败: ' + res.status);
+            await res.json();
+            updateManualCorrectionButtons(targetType, targetId, value === '' ? '' : label);
+            closeManualCorrectionPopovers();
+          } catch (err) {
+            alert(String(err && err.message ? err.message : err));
+          } finally {
+            if (btn) btn.disabled = false;
+          }
+        }
+        function positionManualCorrectionPopover(popover, btn) {
+          var rect = btn.getBoundingClientRect();
+          var width = Math.min(320, Math.max(220, window.innerWidth - 24));
+          popover.style.width = width + 'px';
+          document.body.appendChild(popover);
+          var left = Math.min(window.innerWidth - width - 12, Math.max(12, rect.right - width));
+          var top = rect.bottom + 8;
+          var popRect = popover.getBoundingClientRect();
+          if (top + popRect.height > window.innerHeight - 12) {
+            top = Math.max(12, rect.top - popRect.height - 8);
+          }
+          popover.style.left = left + 'px';
+          popover.style.top = top + 'px';
+        }
+        function openManualCorrection(btn) {
+          closeManualCorrectionPopovers();
+          if (!btn) return;
+          var targetType = btn.getAttribute('data-manual-correction-target-type') || '';
+          var targetId = btn.getAttribute('data-manual-correction-target-id') || '';
+          var label = btn.getAttribute('data-manual-correction-label') || '人工纠正';
+          var kind = btn.getAttribute('data-manual-correction-kind') || 'choice';
+          if (kind === 'text') {
+            var current = btn.getAttribute('data-manual-correction-current') || '';
+            btn.classList.add('is-editing');
+            var textPopover = document.createElement('div');
+            textPopover.className = 'manual-correction-popover';
+            var textTitle = document.createElement('div');
+            textTitle.className = 'manual-correction-popover-title';
+            textTitle.textContent = label;
+            var textHint = document.createElement('div');
+            textHint.className = 'manual-correction-popover-hint';
+            textHint.textContent = '填写人工纠正后的内容。结果写入 review-state.json，不修改原始 trace。';
+            var input = document.createElement('textarea');
+            input.className = 'metric-reason-input';
+            input.value = current;
+            input.placeholder = '例如：生成 Demo / PRD 评审 / 修复脚本';
+            var footer = document.createElement('div');
+            footer.className = 'manual-correction-popover-actions';
+            var save = document.createElement('button');
+            save.type = 'button';
+            save.textContent = '保存';
+            var clearText = document.createElement('button');
+            clearText.type = 'button';
+            clearText.textContent = '清除标注';
+            var cancelText = document.createElement('button');
+            cancelText.type = 'button';
+            cancelText.textContent = '取消';
+            footer.appendChild(save);
+            footer.appendChild(clearText);
+            footer.appendChild(cancelText);
+            textPopover.appendChild(textTitle);
+            textPopover.appendChild(textHint);
+            textPopover.appendChild(input);
+            textPopover.appendChild(footer);
+            positionManualCorrectionPopover(textPopover, btn);
+            input.focus();
+            save.addEventListener('click', function () {
+              var trimmed = input.value.trim();
+              submitManualCorrection(targetType, targetId, trimmed, trimmed, btn);
+            });
+            clearText.addEventListener('click', function () { submitManualCorrection(targetType, targetId, '', '', btn); });
+            cancelText.addEventListener('click', closeManualCorrectionPopovers);
+            return;
+          }
+          btn.classList.add('is-editing');
+          var options = [];
+          try { options = JSON.parse(btn.getAttribute('data-manual-correction-options') || '[]'); } catch { options = []; }
+          var popover = document.createElement('div');
+          popover.className = 'manual-correction-popover';
+          var title = document.createElement('div');
+          title.className = 'manual-correction-popover-title';
+          title.textContent = label;
+          var hint = document.createElement('div');
+          hint.className = 'manual-correction-popover-hint';
+          hint.textContent = '选择人工判断。结果写入 review-state.json，不修改原始 trace。';
+          var actions = document.createElement('div');
+          actions.className = 'manual-correction-popover-actions';
+          for (var i = 0; i < options.length; i++) {
+            (function (option) {
+              var choice = document.createElement('button');
+              choice.type = 'button';
+              choice.textContent = option.label || option.value;
+              choice.addEventListener('click', function () {
+                submitManualCorrection(targetType, targetId, option.value || '', option.label || option.value || '', btn);
+              });
+              actions.appendChild(choice);
+            })(options[i]);
+          }
+          var clear = document.createElement('button');
+          clear.type = 'button';
+          clear.textContent = '清除标注';
+          clear.addEventListener('click', function () { submitManualCorrection(targetType, targetId, '', '', btn); });
+          actions.appendChild(clear);
+          popover.appendChild(title);
+          popover.appendChild(hint);
+          popover.appendChild(actions);
+          positionManualCorrectionPopover(popover, btn);
+          setTimeout(function () {
+            document.addEventListener('click', function closeOnOutsideClick(event) {
+              if (popover.contains(event.target) || btn.contains(event.target)) return;
+              closeManualCorrectionPopovers();
+              document.removeEventListener('click', closeOnOutsideClick);
+            });
+          }, 0);
+        }
+        window.openManualCorrection = openManualCorrection;
+        window.closeManualCorrectionPopovers = closeManualCorrectionPopovers;
         function closeGoalSliceCorrectionPopovers() {
           var popovers = document.querySelectorAll('.goal-slice-popover');
           for (var i = 0; i < popovers.length; i++) popovers[i].remove();
@@ -4827,6 +9596,22 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             buttons[i].textContent = label;
             buttons[i].setAttribute('data-goal-slice-correction-action', action || '');
             buttons[i].classList.toggle('is-marked', Boolean(action));
+          }
+          var manualButtons = document.querySelectorAll('[data-manual-mark-goal-target="' + targetId.replace(/"/g, '\\"') + '"]');
+          for (var j = 0; j < manualButtons.length; j++) {
+            manualButtons[j].setAttribute('data-manual-mark-goal-action', action || '');
+            var metrics = [];
+            try { metrics = JSON.parse(manualButtons[j].getAttribute('data-manual-mark-metrics') || '[]'); } catch { metrics = []; }
+            var activeCount = (action ? 1 : 0) + metrics.filter(function (item) {
+              return item.verdict === 'confirmed' || item.verdict === 'rejected';
+            }).length;
+            manualButtons[j].classList.toggle('is-marked', activeCount > 0);
+            var mode = manualButtons[j].getAttribute('data-manual-mark-mode') || 'metrics';
+            if (mode === 'window_only') {
+              manualButtons[j].textContent = action === 'add_to_current_skill_window' ? '已加入窗口' : '加入窗口';
+            } else {
+              manualButtons[j].textContent = '人工标记' + (activeCount > 0 ? '(' + activeCount + ')' : '');
+            }
           }
         }
         async function submitGoalSliceCorrection(targetId, action, btn) {
@@ -4857,7 +9642,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             await res.json();
             updateGoalSliceCorrectionButtons(targetId, action);
             closeGoalSliceCorrectionPopovers();
-            alert('已写入 review-state.json。需要重新执行脚本，新的目标切片和 skill 窗口才会在报告里重算生效。');
           } catch (err) {
             alert(String(err && err.message ? err.message : err));
           } finally {
@@ -4866,14 +9650,24 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         function positionGoalSlicePopover(popover, btn) {
           var rect = btn.getBoundingClientRect();
-          var width = Math.min(320, Math.max(220, window.innerWidth - 32));
+          var isTimelineManual = popover.classList && popover.classList.contains('timeline-manual-popover');
+          var preferredWidth = isTimelineManual ? 380 : 320;
+          var width = Math.min(preferredWidth, Math.max(220, window.innerWidth - 32));
           popover.style.width = width + 'px';
           var left = Math.min(window.innerWidth - width - 12, Math.max(12, rect.right - width));
           var top = rect.bottom + 8;
           document.body.appendChild(popover);
+          if (isTimelineManual) {
+            popover.style.maxHeight = Math.max(180, window.innerHeight - 24) + 'px';
+            popover.style.overflowY = 'auto';
+          }
           var popRect = popover.getBoundingClientRect();
           if (top + popRect.height > window.innerHeight - 12) {
             top = Math.max(12, rect.top - popRect.height - 8);
+          }
+          if (isTimelineManual && top + popRect.height > window.innerHeight - 12) {
+            top = 12;
+            popover.style.maxHeight = Math.max(180, window.innerHeight - 24) + 'px';
           }
           popover.style.left = left + 'px';
           popover.style.top = top + 'px';
@@ -4924,6 +9718,148 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         window.closeGoalSliceCorrectionPopovers = closeGoalSliceCorrectionPopovers;
         window.openGoalSliceCorrectionPopover = openGoalSliceCorrectionPopover;
+        function closeTimelineManualMarkPopovers() {
+          var popovers = document.querySelectorAll('.timeline-manual-popover');
+          for (var i = 0; i < popovers.length; i++) popovers[i].remove();
+          var buttons = document.querySelectorAll('.timeline-manual-mark-button.is-editing');
+          for (var j = 0; j < buttons.length; j++) buttons[j].classList.remove('is-editing');
+        }
+        function metricStateLabel(verdict, ruleDetected) {
+          if (verdict === 'confirmed') return '人工同意';
+          if (verdict === 'rejected') return '人工反对';
+          return ruleDetected ? '规则命中' : '未命中';
+        }
+        function updateTimelineManualMarkButton(btn, metric, next) {
+          var metrics = [];
+          try { metrics = JSON.parse(btn.getAttribute('data-manual-mark-metrics') || '[]'); } catch { metrics = []; }
+          for (var i = 0; i < metrics.length; i++) {
+            if (metrics[i].targetId === metric.targetId) {
+              metrics[i].verdict = next;
+              break;
+            }
+          }
+          btn.setAttribute('data-manual-mark-metrics', JSON.stringify(metrics));
+          var goalAction = btn.getAttribute('data-manual-mark-goal-action') || '';
+          var activeCount = (goalAction ? 1 : 0) + metrics.filter(function (item) {
+            return item.verdict === 'confirmed' || item.verdict === 'rejected';
+          }).length;
+          btn.classList.toggle('is-marked', activeCount > 0);
+          var mode = btn.getAttribute('data-manual-mark-mode') || 'metrics';
+          if (mode === 'window_only') {
+            btn.textContent = goalAction === 'add_to_current_skill_window' ? '已加入窗口' : '加入窗口';
+          } else {
+            btn.textContent = '人工标记' + (activeCount > 0 ? '(' + activeCount + ')' : '');
+          }
+        }
+        async function submitTimelineMetricAnnotation(metric, next, btn) {
+          var source = {};
+          try { source = JSON.parse(btn.getAttribute('data-manual-mark-source') || '{}'); } catch { source = {}; }
+          var res = next === ''
+            ? await fetch('/api/observations/review-state?targetType=evidence_metric&targetId=' + encodeURIComponent(metric.targetId), { method: 'DELETE' })
+            : await fetch('/api/observations/review-state', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                targetType: 'evidence_metric',
+                targetId: metric.targetId,
+                verdict: next,
+                metricKey: metric.metricKey,
+                metricScopeId: metric.metricScopeId || undefined,
+                sourceTrace: source.sourceTrace || undefined,
+                sessionId: source.sessionId || undefined,
+                messageIndex: source.messageIndex === undefined ? undefined : Number(source.messageIndex),
+                messageUuid: source.messageUuid || undefined,
+                toolUseId: source.toolUseId || undefined,
+                snippet: source.snippet || undefined
+              })
+            });
+          if (!res.ok) throw new Error('人工标记写入失败: ' + res.status);
+          await res.json();
+          metric.verdict = next;
+          updateTimelineManualMarkButton(btn, metric, next);
+        }
+        function addTimelineMetricButton(actions, metric, value, text, btn, labelEl) {
+          var button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = text;
+          button.className = value && metric.verdict === value ? 'is-active' : '';
+          button.addEventListener('click', function () {
+            submitTimelineMetricAnnotation(metric, value, btn).then(function () {
+              var rowButtons = actions.querySelectorAll('button');
+              for (var i = 0; i < rowButtons.length; i++) rowButtons[i].classList.remove('is-active');
+              if (value) button.classList.add('is-active');
+              if (labelEl) labelEl.textContent = metricStateLabel(value, metric.ruleDetected) + ' · ' + metric.label;
+            }).catch(function (err) {
+              alert(String(err && err.message ? err.message : err));
+            });
+          });
+          actions.appendChild(button);
+        }
+        function openTimelineManualMark(btn) {
+          closeTimelineManualMarkPopovers();
+          closeGoalSliceCorrectionPopovers();
+          if (!btn) return;
+          btn.classList.add('is-editing');
+          var metrics = [];
+          try { metrics = JSON.parse(btn.getAttribute('data-manual-mark-metrics') || '[]'); } catch { metrics = []; }
+          var mode = btn.getAttribute('data-manual-mark-mode') || 'metrics';
+          var isWindowOnly = mode === 'window_only';
+          var goalTargetId = btn.getAttribute('data-manual-mark-goal-target') || '';
+          var goalAction = btn.getAttribute('data-manual-mark-goal-action') || '';
+          var popover = document.createElement('div');
+          popover.className = 'timeline-manual-popover';
+          var title = document.createElement('div');
+          title.className = 'goal-slice-popover-title';
+          title.textContent = isWindowOnly ? '加入当前 skill 窗口' : '人工标记这条消息';
+          var hint = document.createElement('div');
+          hint.className = 'goal-slice-popover-hint';
+          hint.textContent = isWindowOnly
+            ? '这条消息不在当前 skill 窗口内，不能直接打指标标签。需要先加入当前 skill 窗口，重新执行脚本后再标注。'
+            : '这里可以修正消息标签，也可以把这条消息标成目标切片点或加入当前 skill 窗口。消息标签包括纠正、中断、追问、正负反馈、硬性要求、目标切换、有结果、有产物、过程进展、自我纠正和重复执行。';
+          var actions = document.createElement('div');
+          actions.className = 'timeline-manual-actions';
+          var goalSplit = document.createElement('button');
+          goalSplit.type = 'button';
+          goalSplit.textContent = goalAction === 'split_goal_slice' ? '已标：拆分目标' : '拆分目标切片';
+          goalSplit.addEventListener('click', function () { submitGoalSliceCorrection(goalTargetId, 'split_goal_slice', btn); });
+          var goalAdd = document.createElement('button');
+          goalAdd.type = 'button';
+          goalAdd.textContent = goalAction === 'add_to_current_skill_window' ? '已标：加入窗口' : '加入当前 skill 窗口';
+          goalAdd.addEventListener('click', function () { submitGoalSliceCorrection(goalTargetId, 'add_to_current_skill_window', btn); });
+          var goalClear = document.createElement('button');
+          goalClear.type = 'button';
+          goalClear.textContent = '清除切片/窗口';
+          goalClear.addEventListener('click', function () { submitGoalSliceCorrection(goalTargetId, '', btn); });
+          if (!isWindowOnly) actions.appendChild(goalSplit);
+          actions.appendChild(goalAdd);
+          if (!isWindowOnly || goalAction) actions.appendChild(goalClear);
+          for (var i = 0; i < metrics.length; i++) {
+            (function (metric) {
+              var group = document.createElement('div');
+              group.className = 'timeline-manual-metric-row';
+              var label = document.createElement('span');
+              label.textContent = metricStateLabel(metric.verdict, metric.ruleDetected) + ' · ' + metric.label;
+              group.appendChild(label);
+              addTimelineMetricButton(group, metric, 'confirmed', '同意', btn, label);
+              addTimelineMetricButton(group, metric, 'rejected', '反对', btn, label);
+              addTimelineMetricButton(group, metric, '', '清除', btn, label);
+              actions.appendChild(group);
+            })(metrics[i]);
+          }
+          popover.appendChild(title);
+          popover.appendChild(hint);
+          popover.appendChild(actions);
+          positionGoalSlicePopover(popover, btn);
+          setTimeout(function () {
+            document.addEventListener('click', function closeOnOutsideClick(event) {
+              if (popover.contains(event.target) || btn.contains(event.target)) return;
+              closeTimelineManualMarkPopovers();
+              document.removeEventListener('click', closeOnOutsideClick);
+            });
+          }, 0);
+        }
+        window.openTimelineManualMark = openTimelineManualMark;
+        window.closeTimelineManualMarkPopovers = closeTimelineManualMarkPopovers;
 	        function evidenceMetricText(label, annotation, ruleDetected) {
 	          if (annotation === 'confirmed') return '人工同意 · ' + label;
 	          if (annotation === 'rejected') return '人工反对 · ' + label;
@@ -4979,7 +9915,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	            buttons[i].textContent = evidenceMetricText(label, next, ruleDetected);
 	            buttons[i].className = evidenceMetricClass(next, ruleDetected);
 	          }
-	          window.setTimeout(function () { window.location.reload(); }, 150);
 	        }
 	        function openMetricReasonPopover(targetId, metricKey, btn) {
 	          closeMetricReasonPopover();

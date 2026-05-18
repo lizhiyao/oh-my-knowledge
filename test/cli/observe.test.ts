@@ -55,6 +55,8 @@ describe('observe CLI', () => {
           skill: 'audit',
           'include-noise': false,
           'by-skill': true,
+          'llm-enhanced-review': false,
+          refresh: false,
           json: true,
         },
         'zh',

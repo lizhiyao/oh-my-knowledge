@@ -5,6 +5,9 @@ import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { integerStringParser } from '../../oclif/parsers.js';
 import { type CliLang } from '../../lib/i18n.js';
 import type { ObserveInboxArgs, ObserveInboxFlags } from '../../lib/cmd-flags.js';
+import type { ObservationInboxViewModel } from '../../../observability/inbox-view-model.js';
+import type { ExperienceTimelineEvent } from '../../../observability/experience.js';
+import type { SkillLlmEnhancedRuntimeEvidence } from '../../../observability/soft-standards.js';
 
 function pickSkillCount(value: Record<string, number> | undefined, skillName: string): Record<string, number> | undefined {
   if (!value || value[skillName] == null) return undefined;
@@ -29,6 +32,38 @@ export async function runObserveInbox(
 ): Promise<void> {
   const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
   const dir = resolve(flags['input-dir'] || DEFAULT_OBSERVATIONS_DIR);
+  if (flags['llm-enhanced-review']) {
+    const { buildObservationInboxViewModel } = await import('../../../observability/inbox-view-model.js');
+    const { extractSkillSoftStandards, DEFAULT_SOFT_STANDARD_MODEL } = await import('../../../observability/soft-standards.js');
+    const view = buildObservationInboxViewModel(dir, { skill: flags.skill });
+    const candidates = Object.values(view.skillChains)
+      .map((chain) => ({ chain, runtimeEvidence: buildLlmEnhancedRuntimeEvidence(view, chain.skillName) }))
+      .filter(({ runtimeEvidence }) => hasLlmEnhancedRuntimeEvidence(runtimeEvidence));
+    const records = [];
+    for (const { chain, runtimeEvidence } of candidates) {
+      records.push(await extractSkillSoftStandards({
+        observationsDir: dir,
+        skillChain: chain,
+        runtimeEvidence,
+        model: flags.model || DEFAULT_SOFT_STANDARD_MODEL,
+        executorName: flags.executor,
+        refresh: flags.refresh,
+      }));
+    }
+    if (flags.json) {
+      console.log(JSON.stringify({ kind: 'observe-llm-enhanced-review', records }, null, 2));
+      return;
+    }
+    if (records.length === 0) {
+      console.log(lang === 'zh' ? '没有可用于 LLM 增强复盘的运行证据' : 'No runtime evidence is available for LLM enhanced review');
+      return;
+    }
+    console.log(lang === 'zh' ? 'LLM 增强复盘已生成:' : 'LLM enhanced review generated:');
+    for (const record of records) {
+      console.log(`- ${record.skillName} standards=${record.standards.length} model=${record.model} prompt=${record.promptId}/${record.promptVersion}`);
+    }
+    return;
+  }
   let items = queryObservationInbox(dir);
   if (flags.skill) {
     items = items.filter((item) => item.skillName === flags.skill);
@@ -94,6 +129,68 @@ export async function runObserveInbox(
     : 'Tip: omk observe inbox --explore 10 --include-noise  # explicitly include the noise bucket');
 }
 
+function hasLlmEnhancedRuntimeEvidence(evidence: SkillLlmEnhancedRuntimeEvidence): boolean {
+  return evidence.userMessages.length > 0
+    || evidence.goalSlices.some((goal) => Boolean(goal.inferredUserGoal || goal.userMessages?.length))
+    || evidence.assistantMessages.length > 0
+    || evidence.artifactCandidates.length > 0
+    || evidence.toolCalls.length > 0
+    || evidence.findings.length > 0;
+}
+
+function cleanEvidenceText(value?: string): string {
+  return (value ?? '').replace(/\s+/g, ' ').trim().slice(0, 800);
+}
+
+function eventText(event?: ExperienceTimelineEvent): string {
+  return cleanEvidenceText(event?.snippet ?? event?.fullText);
+}
+
+function buildLlmEnhancedRuntimeEvidence(
+  view: ObservationInboxViewModel,
+  skillName: string,
+): SkillLlmEnhancedRuntimeEvidence {
+  const reports = view.experienceReports;
+  const sessions = reports.flatMap((report) => report.sessions.filter((session) => session.skillName === skillName));
+  const invocations = reports.flatMap((report) => report.invocations.filter((invocation) => invocation.skillName === skillName));
+  const goalSlices = reports.flatMap((report) => report.goalSlices.filter((goal) => goal.skillName === skillName));
+  const timeline = invocations.flatMap((invocation) => invocation.timeline ?? []);
+  const userMessages = Array.from(new Set([
+    ...goalSlices.flatMap((goal) => goal.userMessageRefs.map((ref) => cleanEvidenceText(ref.snippet))),
+    ...sessions.map((session) => cleanEvidenceText(session.evidenceChain.firstUserMessage?.snippet)),
+    ...timeline.filter((event) => event.kind === 'user_message').map(eventText),
+  ].filter(Boolean))).slice(0, 12);
+  const assistantMessages = Array.from(new Set([
+    ...sessions.map((session) => cleanEvidenceText(session.evidenceChain.lastAssistantMessage?.snippet)),
+    ...timeline.filter((event) => event.kind === 'assistant_message').map(eventText),
+  ].filter(Boolean))).slice(0, 12);
+  const artifactCandidates = Array.from(new Set(timeline
+    .filter((event) => event.kind === 'assistant_message' && /(?:outputs\/runs|\.md\b|\.html\b|https?:\/\/|产物|文档|报告|方案路径|结果文件)/i.test(eventText(event)))
+    .map(eventText)
+    .filter(Boolean))).slice(0, 8);
+  const toolCalls = Array.from(new Set(timeline
+    .filter((event) => event.kind === 'tool_use')
+    .map((event) => cleanEvidenceText(`${event.toolName ?? 'tool'} ${event.snippet ?? event.fullText ?? ''}`))
+    .filter(Boolean))).slice(0, 12);
+  const findings = Array.from(new Set(sessions.flatMap((session) => [
+    ...(session.reviewerReport?.findings ?? []).map((finding) => cleanEvidenceText(`${finding.title}: ${finding.body}`)),
+    ...(session.ruleFindings ?? []).map((finding) => finding.code),
+  ]).filter(Boolean))).slice(0, 12);
+  return {
+    goalSlices: goalSlices.slice(0, 8).map((goal) => ({
+      id: goal.id,
+      sessionId: goal.sessionId,
+      inferredUserGoal: cleanEvidenceText(goal.inferredUserGoal),
+      userMessages: goal.userMessageRefs.map((ref) => cleanEvidenceText(ref.snippet)).filter(Boolean).slice(0, 5),
+    })),
+    userMessages,
+    assistantMessages,
+    artifactCandidates,
+    toolCalls,
+    findings,
+  };
+}
+
 export default class ObserveInbox extends BaseCommand {
   static description = bilingual({
     zh: '查询 observation inbox(skill 调用洞察）。',
@@ -135,6 +232,32 @@ export default class ObserveInbox extends BaseCommand {
         en: 'Aggregate output by skill',
       }),
       default: false,
+    }),
+    'llm-enhanced-review': Flags.boolean({
+      description: bilingual({
+        zh: '显式调用模型进行链路增强复盘，包含标准抽取、目标判断、类型判断、产物匹配和 owner 建议',
+        en: 'Explicitly run model-based enhanced chain review including standards, goals, skill type, artifact fit, and owner suggestions',
+      }),
+      default: false,
+    }),
+    refresh: Flags.boolean({
+      description: bilingual({
+        zh: '重新生成 LLM 增强复盘，不复用已有结果',
+        en: 'Refresh LLM enhanced review instead of reusing existing records',
+      }),
+      default: false,
+    }),
+    model: Flags.string({
+      description: bilingual({
+        zh: 'LLM 增强复盘使用的模型，默认 sonnet',
+        en: 'Model for LLM enhanced review, default sonnet',
+      }),
+    }),
+    executor: Flags.string({
+      description: bilingual({
+        zh: 'LLM 增强复盘使用的执行器',
+        en: 'Executor for LLM enhanced review',
+      }),
     }),
     json: Flags.boolean({
       description: bilingual({ zh: 'JSON 格式输出', en: 'JSON output' }),

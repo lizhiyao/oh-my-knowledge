@@ -537,6 +537,7 @@ omk observe inbox --skill audit                    # filter by skill
 omk observe inbox --by-skill                       # rollup view (one row per skill)
 omk observe inbox --explore 10                     # sample 10 long-tail items from medium/low
 omk observe inbox --explore 10 --include-noise     # explicitly include the noise bucket
+omk observe inbox --llm-enhanced-review          # run LLM enhanced chain review explicitly
 omk observe inbox --json                           # JSON output for automation
 
 # 3. Inspect a single observation with its event triplet (surrounding messages)
@@ -551,6 +552,30 @@ Every observation carries:
 - `evidence.{messageIndex,messageUuid,toolUseId}` — anchors for round-tripping back to the original jsonl
 
 Supported trace formats: Claude Code session JSONL (`.jsonl`), OpenClaw session JSONL (`.jsonl`), and markdown conversation logs (`.log`).
+
+### `omk skill-extract`
+
+```bash
+omk skill-extract demo-create --review soft-xxx --status author_confirmed
+omk skill-extract demo-create --review soft-xxx --status rejected --reason "not a real standard"
+```
+
+<!-- omk:cli:skill-extract:flags:start -->
+
+**Flags:**
+
+```text
+  --input-dir <value>  Observation data directory
+  --json               JSON output
+  --lang <value>       Output language zh|en
+  --reason <value>     Manual review reason
+  --review <value>     Soft standard id to review
+  --status <value>     Review status: author_confirmed / rejected / pending_review
+```
+
+For full descriptions: `omk skill-extract --help`.
+
+<!-- omk:cli:skill-extract:flags:end -->
 
 ### `omk evolve`
 

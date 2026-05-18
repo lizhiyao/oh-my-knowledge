@@ -14,6 +14,7 @@ export interface SkillWorkflowNode {
 export interface SkillWorkflow {
   id: string;
   description?: string;
+  source?: 'frontmatter' | 'markdown_headings';
   nodes: SkillWorkflowNode[];
 }
 
@@ -247,10 +248,54 @@ export function extractSkillWorkflows(content: string): SkillWorkflow[] {
   return result.ok ? result.workflows : [];
 }
 
+export function extractMarkdownStepWorkflows(content: string): SkillWorkflow[] {
+  const body = stripFrontmatter(content);
+  const lines = body.split(/\r?\n/);
+  const headingStack: Array<{ level: number; title: string }> = [];
+  const nodes: SkillWorkflowNode[] = [];
+  let workflowTitle = '';
+
+  for (const line of lines) {
+    const heading = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    if (!heading) continue;
+
+    const level = heading[1].length;
+    const title = heading[2].trim();
+    const step = parseStepHeading(title);
+    const parent = [...headingStack].reverse().find((item) => item.level < level);
+    if (step) {
+      if (!workflowTitle && parent && /工作流程|流程|workflow/i.test(parent.title)) workflowTitle = parent.title;
+      const id = `step${nodes.length + 1}`;
+      nodes.push({ id, action: step.title || title });
+    }
+
+    while (headingStack.length > 0 && headingStack[headingStack.length - 1].level >= level) headingStack.pop();
+    headingStack.push({ level, title });
+  }
+
+  if (nodes.length === 0) return [];
+  return [{
+    id: 'markdown_steps',
+    description: workflowTitle ? `${workflowTitle}（正文 Step 标题探测）` : '正文 Step 标题探测',
+    source: 'markdown_headings',
+    nodes,
+  }];
+}
+
 function stringField(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function stripFrontmatter(content: string): string {
+  return content.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '');
+}
+
+function parseStepHeading(title: string): { title: string } | undefined {
+  const match = title.match(/^(?:Step\s*([0-9]+|[A-Za-z]+)|步骤\s*([0-9一二三四五六七八九十]+)|第\s*([0-9一二三四五六七八九十]+)\s*步)\s*(?:[:：.\-、]\s*)?(.*)$/i);
+  if (!match) return undefined;
+  return { title: (match[4] || title).trim() };
 }
