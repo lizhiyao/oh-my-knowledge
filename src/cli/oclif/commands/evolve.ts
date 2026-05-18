@@ -1,7 +1,7 @@
 import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual } from '../i18n.js';
+import { bilingual, resolveLang } from '../i18n.js';
 import { CliExit } from '../../cli-exit.js';
 import { tCli, type CliLang } from '../../i18n.js';
 import { makeOnProgress } from '../../progress.js';
@@ -270,7 +270,7 @@ export default class Evolve extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Evolve);
-    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
+    const lang = resolveLang(process.argv);
     try {
       await runEvolve(args, { ...flags, lang }, lang);
     } catch (err) {

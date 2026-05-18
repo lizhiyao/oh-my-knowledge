@@ -1,6 +1,6 @@
 import { resolve, join } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual } from '../i18n.js';
+import { bilingual, resolveLang } from '../i18n.js';
 import { CliExit } from '../../cli-exit.js';
 import { tCli } from '../../i18n.js';
 import { parseLastWindow } from '../../_shared.js';
@@ -67,7 +67,7 @@ export default class Observe extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Observe);
-    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
+    const lang = resolveLang(process.argv);
     try {
       const dir = args.sessionsDir;
       if (!dir) {

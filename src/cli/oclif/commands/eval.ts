@@ -1,5 +1,5 @@
 import { Command, Flags } from '@oclif/core';
-import { bilingual } from '../i18n.js';
+import { bilingual, resolveLang } from '../i18n.js';
 import { CliExit } from '../../cli-exit.js';
 import { tCli, type CliLang } from '../../i18n.js';
 import { parseRunConfig } from '../../parse-run-config.js';
@@ -521,7 +521,7 @@ export default class Eval extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Eval);
-    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
+    const lang = resolveLang(process.argv);
     try {
       await runEval(args as Record<string, never>, { ...flags, lang }, lang);
     } catch (err) {

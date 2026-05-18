@@ -101,6 +101,34 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     }
   });
 
+  it(`OMK_LANG=en 业务路径走英文(documented --lang flag > OMK_LANG > zh 优先级)`, async () => {
+    // 回归 PR #124 typed input 后的 bug:oclif lang flag 设了 default 'zh',
+    // 业务层 `flags.lang ?? 'zh'` 永远拿到 'zh',OMK_LANG=en 被绕过。修复:业务
+    // 层走 resolveLang(process.argv) 跟 LangAwareHelp 一致,优先级 CLI > env > zh。
+    const env = { ...process.env, OMK_LANG: 'en' };
+    try {
+      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test', '--static-only'], { env });
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      const out = e.stdout + e.stderr;
+      assert.ok(/No skills found/.test(out), `OMK_LANG=en should yield English error, got:\n${out.slice(0, 300)}`);
+      assert.ok(!/未在.*下发现 skill 文件/.test(out), `OMK_LANG=en should not leak zh error:\n${out.slice(0, 300)}`);
+    }
+  });
+
+  it(`显式 --lang zh 覆盖 OMK_LANG=en(CLI flag 优先级最高)`, async () => {
+    const env = { ...process.env, OMK_LANG: 'en' };
+    try {
+      await execFileAsync('node', [CLI, 'doctor', '/tmp/no-such-skill-omk-env-test', '--static-only', '--lang', 'zh'], { env });
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      const out = e.stdout + e.stderr;
+      assert.ok(/未在.*下发现 skill 文件/.test(out), `--lang zh should override OMK_LANG=en, got:\n${out.slice(0, 300)}`);
+    }
+  });
+
   it(`eval --bogus-flag 错误路径 exit 2(parse fail 回归)`, async () => {
     try {
       await execFileAsync('node', [CLI, 'eval', '--bogus-flag']);

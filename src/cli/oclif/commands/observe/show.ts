@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual } from '../../i18n.js';
+import { bilingual, resolveLang } from '../../i18n.js';
 import { CliExit } from '../../../cli-exit.js';
 
 export default class ObserveShow extends Command {
@@ -34,7 +34,7 @@ export default class ObserveShow extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveShow);
-    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
+    const lang = resolveLang(process.argv);
     try {
       const id = args.inboxId;
       if (!id) {

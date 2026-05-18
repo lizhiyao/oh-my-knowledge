@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { Command, Flags } from '@oclif/core';
-import { bilingual } from '../i18n.js';
+import { bilingual, resolveLang } from '../i18n.js';
 import { CliExit } from '../../cli-exit.js';
 import { tCli, type CliLang } from '../../i18n.js';
 import { DEFAULT_REPORTS_DIR } from '../../parse-run-config.js';
@@ -164,7 +164,7 @@ export default class Studio extends Command {
 
   async run(): Promise<void> {
     const { flags } = await this.parse(Studio);
-    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
+    const lang = resolveLang(process.argv);
     try {
       await runStudio({}, { ...flags, lang }, lang);
     } catch (err) {

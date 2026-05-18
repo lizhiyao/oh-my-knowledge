@@ -1,7 +1,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual } from '../i18n.js';
+import { bilingual, resolveLang } from '../i18n.js';
 import { CliExit } from '../../cli-exit.js';
 import { tCli } from '../../i18n.js';
 import type { Sample } from '../../../types/index.js';
@@ -153,7 +153,7 @@ export default class Doctor extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(Doctor);
-    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
+    const lang = resolveLang(process.argv);
     try {
       const target: string | null = args.target ?? null;
       const executorName = flags.executor ?? 'claude';

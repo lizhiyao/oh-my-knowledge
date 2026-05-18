@@ -141,8 +141,8 @@ export default class Init extends Command {
   };
 
   async run(): Promise<void> {
-    const { args, flags } = await this.parse(Init);
-    const lang = (flags.lang ?? 'zh') as 'zh' | 'en';
+    const { args } = await this.parse(Init);
+    const lang = resolveLang(process.argv);
     try {
       const targetDir: string = resolve(args.targetDir || '.');
       const { writeFileSync, mkdirSync } = await import('node:fs');
