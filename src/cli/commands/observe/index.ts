@@ -1,6 +1,6 @@
 import { resolve, join } from 'node:path';
 import { Args, Flags } from '@oclif/core';
-import { bilingual } from '../../oclif/i18n.js';
+import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { CliExit } from '../../lib/cli-exit.js';
 import { tCli } from '../../lib/i18n.js';
@@ -36,10 +36,7 @@ export default class Observe extends BaseCommand {
   };
 
   static flags = {
-    lang: Flags.string({
-      description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
-      default: 'zh',
-    }),
+    lang: LANG_FLAG,
     kb: Flags.string({
       description: bilingual({ zh: '知识库 root，启用 KB-aware 分析', en: 'KB root, enables KB-aware analysis' }),
     }),

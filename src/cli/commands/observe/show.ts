@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
-import { bilingual } from '../../oclif/i18n.js';
+import { LANG_FLAG, bilingual } from '../../oclif/i18n.js';
 import { CliExit } from '../../lib/cli-exit.js';
 
 export default class ObserveShow extends BaseCommand {
@@ -21,10 +21,7 @@ export default class ObserveShow extends BaseCommand {
   };
 
   static flags = {
-    lang: Flags.string({
-      description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
-      default: 'zh',
-    }),
+    lang: LANG_FLAG,
     'input-dir': Flags.string({
       description: bilingual({
         zh: 'inbox 数据目录',

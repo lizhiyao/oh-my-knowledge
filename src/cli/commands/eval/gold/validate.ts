@@ -1,6 +1,6 @@
-import { Args, Flags } from '@oclif/core';
+import { Args } from '@oclif/core';
 import { BaseCommand } from '../../../oclif/base-command.js';
-import { bilingual } from '../../../oclif/i18n.js';
+import { LANG_FLAG, bilingual } from '../../../oclif/i18n.js';
 import { CliExit } from '../../../lib/cli-exit.js';
 
 export default class EvalGoldValidate extends BaseCommand {
@@ -20,10 +20,7 @@ export default class EvalGoldValidate extends BaseCommand {
   };
 
   static flags = {
-    lang: Flags.string({
-      description: bilingual({ zh: '输出语言 zh|en', en: 'Output language zh|en' }),
-      default: 'zh',
-    }),
+    lang: LANG_FLAG,
   };
 
   async run(): Promise<void> {
