@@ -1,9 +1,9 @@
 import { resolve, join } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../oclif/i18n.js';
-import { CliExit } from '../lib/cli-exit.js';
-import { tCli } from '../lib/i18n.js';
-import { parseLastWindow } from '../lib/shared.js';
+import { bilingual, resolveLang } from '../../oclif/i18n.js';
+import { CliExit } from '../../lib/cli-exit.js';
+import { tCli } from '../../lib/i18n.js';
+import { parseLastWindow } from '../../lib/shared.js';
 
 // oclif 版 observe 默认命令 — `omk observe <sessions-dir>` 走 health 分析。
 // 三个子命令(ingest / inbox / show)由 src/cli/oclif/commands/observe/ 文件目录托管。
@@ -96,7 +96,7 @@ export default class Observe extends Command {
       const skills = flags.skills ? flags.skills.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 
       console.log(`[omk] analyzing ${tracePath}...`);
-      const { computeSkillHealthReport } = await import('../../observability/skill-health-analyzer.js');
+      const { computeSkillHealthReport } = await import('../../../observability/skill-health-analyzer.js');
       const report = computeSkillHealthReport(tracePath, {
         kbRoot: flags.kb ? resolve(flags.kb) : undefined,
         from,

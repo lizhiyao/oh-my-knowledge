@@ -147,9 +147,9 @@ omk CLI 走 [@oclif/core](https://oclif.io/docs/) 框架，**single parse path**
 
 文件目录约定:
 
-- `src/cli/commands/doctor.ts` → `omk doctor`
-- `src/cli/commands/eval.ts` + `eval/gold/{init,validate,compare}.ts` → `omk eval` / `omk eval gold *`
-- `src/cli/commands/observe.ts` + `observe/{ingest,inbox,show}.ts` → `omk observe` / `omk observe *`
+- `src/cli/commands/doctor.ts` → `omk doctor`(扁平命令直接放 file)
+- `src/cli/commands/eval/index.ts` + `eval/gold/{init,validate,compare}.ts` → `omk eval` / `omk eval gold *`(有 sub 的进同名 directory,`index.ts` 是 default command,oclif file routing 约定)
+- `src/cli/commands/observe/index.ts` + `observe/{ingest,inbox,show}.ts` → `omk observe` / `omk observe *`
 
 业务住哪儿:
 
