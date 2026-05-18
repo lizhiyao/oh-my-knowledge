@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual } from '../../oclif/i18n.js';
+import { bilingual, resolveLang } from '../../oclif/i18n.js';
 import { CliExit } from '../../lib/cli-exit.js';
 
 export default class ObserveIngest extends Command {
@@ -34,6 +34,7 @@ export default class ObserveIngest extends Command {
 
   async run(): Promise<void> {
     const { args, flags } = await this.parse(ObserveIngest);
+    const lang = resolveLang(process.argv);
     try {
       const dir = args.traceDir;
       if (!dir) {
@@ -43,16 +44,22 @@ export default class ObserveIngest extends Command {
       const tracePath = resolve(dir);
       const { existsSync } = await import('node:fs');
       if (!existsSync(tracePath)) {
-        console.error(`Trace path does not exist: ${tracePath}`);
+        console.error(lang === 'zh'
+          ? `trace 路径不存在: ${tracePath}`
+          : `Trace path does not exist: ${tracePath}`);
         throw new CliExit(1);
       }
       const { buildObservationInboxReport, saveObservationInboxReport, DEFAULT_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
-      const outDir = resolve(flags['output-dir'] || DEFAULT_OBSERVATIONS_DIR);
+      // `??` 而非 `||`:`--output-dir ''` 显式空串应当报错或走 oclif 校验,
+      // 不该悄悄 fallback 到 default(`||` 把空串当 falsy 触发 fallback,掩盖 typo)。
+      const outDir = resolve(flags['output-dir'] ?? DEFAULT_OBSERVATIONS_DIR);
       const { loadObservationReviewState } = await import('../../../observability/review-state.js');
       const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
       const path = saveObservationInboxReport(report, outDir);
       console.log(JSON.stringify(report, null, 2));
-      process.stderr.write(`observe inbox written to: ${path}\n`);
+      process.stderr.write(lang === 'zh'
+        ? `observe inbox 已写入: ${path}\n`
+        : `observe inbox written to: ${path}\n`);
     } catch (err) {
       if (err instanceof CliExit) {
         if (err.code === 0) return;

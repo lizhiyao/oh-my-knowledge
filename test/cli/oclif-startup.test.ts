@@ -1,6 +1,6 @@
 /**
  * --help / --version 短路径不被 checkUpdate fetch 拖慢的回归测试。
- * 用 OMK_DISABLE_UPDATE_CHECK / 离线 NPM_CONFIG_REGISTRY 模拟最坏情况,
+ * 用一个保证不可达的 `npm_config_registry`(127.0.0.1:1)模拟最坏情况,
  * 确认 short-circuit 把 update fetch 跳掉,event loop 不被 unawaited fetch 拖住。
  */
 import { describe, it } from 'vitest';
