@@ -1950,6 +1950,19 @@ function checklistItemsForAnswer(session: ExperienceSessionSummary, key: Experie
   return userFeelingChecklistItems(session);
 }
 
+function attributionSourcesToLabel(sources: string[]): string {
+  if (sources.length === 0) return '未识别（旧数据可能没记录来源）';
+  const map: Record<string, string> = {
+    'skill-tool': 'assistant 调用 Skill 工具',
+    'command-name': '用户用 slash command',
+    'aima-cmd': '用户用 aima-cmd 块',
+    'skill-script': '跑了 skills/<name>/scripts 脚本',
+    'read-skill-md': 'LLM 主动 Read SKILL.md',
+    unknown: '未知',
+  };
+  return sources.map((s) => map[s] ?? s).join(' + ');
+}
+
 export function isExperienceTraceInProgress(session: ExperienceSessionSummary): boolean {
   if (session.indicators.assistantDeliverySignalCount > 0) return false;
   if (session.indicators.deliverableArtifactSignalCount > 0) return false;
@@ -2081,14 +2094,20 @@ function goalSatisfactionChecklistItems(session: ExperienceSessionSummary): Expe
 function declaredBehaviorChecklistItems(session: ExperienceSessionSummary): ExperienceChecklistItem[] {
   const expectedToolCheck = expectedToolCheckForSession(session);
   const declarations = skillDeclarationCheckForSession(session);
+  const hasSkillRead = session.evidenceChain.skillContextCount > 0;
+  const attributionLabel = attributionSourcesToLabel(session.attributionSources ?? []);
   const items: ExperienceChecklistItem[] = [
     checklistItem({
-      key: 'skill_description_hit',
-      label: session.evidenceChain.firstSkillContext ? 'skill 描述匹配用户诉求' : 'skill 描述可能没匹配用户诉求',
-      status: session.evidenceChain.firstSkillContext ? 'passed' : 'unknown',
+      key: 'attribution_source',
+      label: hasSkillRead
+        ? 'LLM 读了 SKILL.md'
+        : `skill 判定来源：${attributionLabel}`,
+      status: 'passed',
       contribution: 'informational',
-      reason: session.evidenceChain.firstSkillContext ? '看到 SKILL.md 描述被加载，说明用户诉求匹配了 skill 描述。' : '没看到 SKILL.md 描述被加载，判断不了是否匹配用户诉求。',
-      evidenceRefs: [session.evidenceChain.firstSkillContext],
+      reason: hasSkillRead
+        ? `看到 ${session.evidenceChain.skillContextCount} 次 SKILL.md 加载事件，可作为能力归因证据。`
+        : `日志里没看到 LLM 主动 Read SKILL.md。这次 skill 归因来自：${attributionLabel}。OpenClaw 脚本 / Skill 工具 / slash command 触发时这是常态，不代表 skill 没用上。`,
+      evidenceRefs: [session.evidenceChain.firstSkillContext, session.evidenceChain.firstToolUse],
     }),
     checklistItem({
       key: 'workflow_declared',
