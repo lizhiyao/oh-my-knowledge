@@ -36,7 +36,7 @@ import type {
   Task,
   VariantResult,
 } from '../types/index.js';
-import { tCli, type CliLang } from '../cli/i18n.js';
+import { tCli, type CliLang } from '../cli/lib/i18n.js';
 
 type EvaluationResults = Record<string, Record<string, VariantResult>>;
 

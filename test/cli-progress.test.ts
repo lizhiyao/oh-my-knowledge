@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { makeOnProgress } from '../src/cli/progress.js';
+import { makeOnProgress } from '../src/cli/lib/progress.js';
 
 function captureStderr(fn: () => void): string {
   const original = process.stderr.write;

@@ -1,4 +1,4 @@
-import type { Lang } from '../types/shared.js';
+import type { Lang } from '../../types/shared.js';
 import { CLI_DICT, type CliMessageKey } from './i18n-dict.js';
 
 export type CliLang = Lang;
@@ -17,14 +17,6 @@ export function parseLangFromArgv(argv: readonly string[]): string | undefined {
     if (a && a.startsWith('--lang=')) return a.slice('--lang='.length);
   }
   return undefined;
-}
-
-/**
- * handler 内一行拿到 lang。handler 收到的 argv 已被 main 切掉前 N 项,
- * 但 --lang 选项位置无关, scan 即可。
- */
-export function langFromArgv(argv: readonly string[]): CliLang {
-  return getCliLang(parseLangFromArgv(argv));
 }
 
 /**

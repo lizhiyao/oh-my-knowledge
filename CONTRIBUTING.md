@@ -133,23 +133,39 @@ docs(readme): 补充评测用例说明
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
 - CI runs the same commands on Node 22 and Node 24 for `main` pushes and PRs targeting `main` — all must pass before merge
 
-## CLI 走 oclif 框架(issue #109)
+## CLI 走 oclif 框架(issue #109 / #121)
 
-omk CLI 已迁到 [@oclif/core](https://oclif.io/docs/) 框架(PR-A spike #113 / PR-B doctor+sample #114 / PR-C 剩余 5 命令)。所有命令都在 `src/cli/oclif/commands/` 下声明为 oclif Command 类,业务 `execute()` 函数仍住在 `src/cli/commands/*.ts`(oclif Command 是薄壳,解析 flag 给 oclif --help 用,然后透传 argv 调对应 legacy execute)。
+omk CLI 走 [@oclif/core](https://oclif.io/docs/) 框架，**single parse path**:oclif Command 一次 typed parse(`await this.parse(X)`)拿 `{args, flags}` 直接喂业务。无 legacy 二次解析、无 `execute(this.argv)` 透传。
+
+`src/cli/` 三段式布局:
+
+| 目录 | 职责 | 内容 |
+|---|---|---|
+| `commands/` | 产品 CLI 命令树 | 每个 file = 一个 oclif Command 类 + 业务 inline (top-level + observe / eval/gold sub) |
+| `lib/` | 跨命令共享 utility | `cli-exit.ts` / `cmd-flags.ts`(typed args/flags interface) / `i18n.ts` + `i18n-dict.ts`(tCli + 业务消息字典) / `parse-run-config.ts` / `progress.ts` / `run-tally.ts` / `shared.ts`(report helpers) / `update-check.ts` |
+| `oclif/` | 框架 plumbing | `help.ts`(LangAwareHelp) / `projection.ts` / `i18n.ts`(bilingual / pickLang / resolveLang) / `run.ts`(dispatcher entry) |
 
 文件目录约定:
 
-- `src/cli/oclif/commands/doctor.ts` → `omk doctor`
-- `src/cli/oclif/commands/eval.ts` + `eval/gold/{init,validate,compare}.ts` → `omk eval` / `omk eval gold *`
-- `src/cli/oclif/commands/observe.ts` + `observe/{ingest,inbox,show}.ts` → `omk observe` / `omk observe *`
+- `src/cli/commands/doctor.ts` → `omk doctor`(扁平命令直接放 file)
+- `src/cli/commands/eval/index.ts` + `eval/gold/{init,validate,compare}.ts` → `omk eval` / `omk eval gold *`(有 sub 的进同名 directory,`index.ts` 是 default command,oclif file routing 约定)
+- `src/cli/commands/observe/index.ts` + `observe/{ingest,inbox,show}.ts` → `omk observe` / `omk observe *`
 
-双语 help 走 `src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` + `src/cli/oclif/help.ts` 的 `LangAwareHelp` 子类,按 `--lang` / `OMK_LANG` 在渲染时切语言。每个 flag 的双语 description inline 写,不进 `i18n-dict.ts`(那份只给 runtime `cli.error.*` / `cli.gen.*` 等业务消息用)。
+业务住哪儿:
+
+- 简单业务 inline 到 `Command.run()` body
+- 测试需要 in-process import 验证的业务,作为 module-level helper(如 `runStudio` / `runEvolve` / `runObserveInbox` / 3 个 sample-fix helper)export from 同一个 Command file
+- 跨命令共享的 utility 进 `src/cli/lib/`;跟 CLI entry 解耦的 deep functions 在自己的领域目录(如 `src/doctor/index.ts:runDoctor`)
+
+双语 help 走 `src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` + `src/cli/oclif/help.ts` 的 `LangAwareHelp` 子类,按 `--lang` / `OMK_LANG` 在渲染时切语言。每个 flag 的双语 description inline 写,不进 `lib/i18n-dict.ts`(那份只给 runtime `cli.error.*` / `cli.gen.*` 等业务消息用)。lang 解析 source-of-truth 是 `resolveLang(process.argv)`(scan raw argv + env fallback);**不要**读 `flags.lang`(oclif `default: 'zh'` 会盖掉 `OMK_LANG=en`)。
+
+注意:`oclif/i18n.ts` 跟 `lib/i18n.ts` 职责不同 — 前者是 oclif Command static 字段需要的双语 sentinel + LangAwareHelp 渲染入口,后者是 runtime tCli / tBoth / getCliLang / parseLangFromArgv 基础设施。两者不要合并(reviewer 已确认强行扁平反而混)。
 
 加新命令的步骤:
 
-1. 在 `src/cli/oclif/commands/<name>.ts` 写 `export default class extends Command`
-2. flag 用 `bilingual({zh, en})` 包装,跟生产 `execute()` 的 `parseArgsStrictOrExit` 配置对齐
-3. `run()` 透传 `await execute(this.argv)` 给生产业务函数（`this.argv` 是 oclif 切到子命令后的余下 argv,space-syntax 跟 colon-syntax 一致)
+1. 在 `src/cli/commands/<name>.ts` 写 `export default class extends Command`,声明 `static args / flags / examples / description`(flag description 用 `bilingual({zh, en})` 包装)
+2. `run()` 体里:`const { args, flags } = await this.parse(<Class>); const lang = resolveLang(process.argv);`,然后业务 inline 或调 module-level helper
+3. CliExit 边界:业务 `throw new CliExit(code)` 通过每个 Command 共用模板捕获 → `this.exit(code)`(模板见现有 commands 任一 `run()` 末尾的 try/catch)
 4. 在 `test/cli/oclif-<name>.test.ts` 加 --help 双语 + unknown flag exit 2 + 关键 happy/error case
 5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.claude/skills/omk/references/commands.md`（见下一节）
 
@@ -159,7 +175,7 @@ oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是
 
 | 目标 | marker | 输出 | 语言 |
 |---|---|---|---|
-| `.claude/skills/omk/references/commands.md` | 整段 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` | 13 个 oclif command（含 sub-sub）完整渲染 | zh |
+| `.claude/skills/omk/references/commands.md` | 整段 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` | oclif `Config.commands` 全集完整渲染（含 topic / sub / sub-sub） | zh |
 | `README.md` | 每个顶层命令独立 `<!-- omk:cli:<id>:flags:start -->` ... `<!-- omk:cli:<id>:flags:end -->`,7 对 | flag list（```text``` 对齐风格）+ 指向 `--help` 的脚注 | en |
 | `README.zh.md` | 同上 | 同上 | zh |
 
@@ -170,14 +186,14 @@ oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是
 - 改完 oclif Command 的 description / flag,跑 `yarn build && yarn build:docs` 同步全部 3 个目标
 - 不跑就会被 vitest 内嵌 `--check` 拦截（exit 1 + 对每个 drift 的文件打 diff）
 - README 的 prose 段（static-only 解释 / HTML report tab / Studio IA / executor 表格等）在 marker 外,hand-maintained 保留
-- 新增顶层命令时:加 `src/cli/oclif/commands/<id>.ts`、在 README.md / README.zh.md 各加一对 `<!-- omk:cli:<id>:flags:start -->` / `:end -->`、SKILL.md frontmatter `argument-hint` 加 `<id>`,跑一遍 `yarn build && yarn build:docs && yarn test`(顶层命令集真值由 `scripts/build-docs.ts` 的 `getTopLevelIds(Config.load)` 从 oclif Command 文件目录派生,不需要再单独维护硬编码数组)
-- 新增子命令（如 `omk eval gold init` 这种 sub-sub）时:加 `src/cli/oclif/commands/eval/gold/init.ts`,oclif 文件目录自动路由,fullbody 模式自动包含
+- 新增顶层命令时:加 `src/cli/commands/<id>.ts`、在 README.md / README.zh.md 各加一对 `<!-- omk:cli:<id>:flags:start -->` / `:end -->`、SKILL.md frontmatter `argument-hint` 加 `<id>`,跑一遍 `yarn build && yarn build:docs && yarn test`(顶层命令集真值由 `scripts/build-docs.ts` 的 `getTopLevelIds(Config.load)` 从 oclif Command 文件目录派生,不需要再单独维护硬编码数组)
+- 新增子命令（如 `omk eval gold init` 这种 sub-sub）时:加 `src/cli/commands/eval/gold/init.ts`,oclif 文件目录自动路由,fullbody 模式自动包含
 
 ### 加新 sub-sub topic 命令
 
 目录下有 sub-sub 但目录本身没 default Command 时(如 `eval/gold/` 下有 `init` / `validate` / `compare`,目录本身 `eval gold` 不直接执行),**必须** 加 `<dir>.ts` 表达 topic semantics:
 
-- 当前实例:`src/cli/oclif/commands/eval/gold.ts` — 裸 `omk eval gold` 打 usage + `this.exit(1)`,跟 legacy 行为(missing sub-sub → CliExit(1))一致
+- 当前实例:`src/cli/commands/eval/gold/index.ts` — 裸 `omk eval gold` 打 usage + `this.exit(1)`,跟 legacy 行为(missing sub-sub → CliExit(1))一致
 - 不加的代价:oclif 默认把 `eval gold` 当 topic-only,裸调用落到 default topic help(exit 0),CI 脚本如果靠 exit 1 区分「用户漏写 sub-sub」会失效
 - 当前 omk 只有 eval gold 一处需要,加新 sub-sub 目录时遵循
 

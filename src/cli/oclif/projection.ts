@@ -1,13 +1,17 @@
 /**
  * Command.Loadable → 单语视图 projection。
  *
- * 单一来源「oclif Command.Loadable 暴露给 help / docs / 错误路径的单语形态」。
- * help.ts 的 filterCommand、init hook 的 mutate、未来 docs 自动生成 / 错误
- * dump 等场景都从这里派生,避免每个消费者各做一遍 reflection 跟 sentinel
- * split,oclif 升级新字段(aliases / hidden / deprecationOptions)时只改一处。
+ * 单一来源「oclif Command.Loadable 暴露给 help / docs 的单语形态」。
+ * help.ts 的 LangAwareHelp / docs 自动生成 等场景都从这里派生,避免每个
+ * 消费者各做一遍 reflection 跟 sentinel split,oclif 升级新字段(aliases /
+ * hidden / deprecationOptions)时只改一处。
  *
- * projectCommand 返回 clone(不 mutate 入参)。init hook 需要 in-place mutate
- * 时,先 projectCommand 再 Object.assign 回去。
+ * projectCommand 返回 clone,不 mutate 入参(LangAwareHelp 渲染前先 clone)。
+ *
+ * 已知盲区:oclif `errors/handle.js:L44` 硬编码 `new Help(config)` 不走 helpClass,
+ * parse error 时 dump 出来的 FLAGS / USAGE 拿到的是原 `${zh}\n${en}` 双语 sentinel,
+ * 不经 projectCommand 切单语 — 错误路径双语并列是已知 UX 限制(Phase B 评估能否
+ * fork @oclif/core 修)。
  */
 import type { Command } from '@oclif/core';
 import { pickLang, type Lang } from './i18n.js';

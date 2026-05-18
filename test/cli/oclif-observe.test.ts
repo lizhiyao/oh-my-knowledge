@@ -6,6 +6,8 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { mkdtempSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -73,6 +75,33 @@ describe('oclif observe', () => {
     } catch (err) {
       const e = err as ExecError;
       assert.equal(e.code, 2);
+    }
+  });
+
+  it('observe ingest --output-dir "" → exit 2(空串不被 silent fallback 到 cwd)', async () => {
+    // resolve('') === process.cwd();没拦住空串就会让 shell 里 `--output-dir "$DIR"`
+    // 而 $DIR 未设的情况把 observation 报告写到任意 cwd。锁住业务侧 trim() 判 +
+    // exit 2(POSIX usage error)的行为。
+    const tmpBase = mkdtempSync(join(tmpdir(), 'omk-ingest-empty-'));
+    const traceDir = join(tmpBase, 'trace');
+    const cwdDir = join(tmpBase, 'cwd');
+    mkdirSync(traceDir);
+    mkdirSync(cwdDir);
+    try {
+      try {
+        await execFileAsync('node', [CLI, 'observe', 'ingest', traceDir, '--output-dir', ''], { cwd: cwdDir });
+        assert.fail('expected non-zero exit');
+      } catch (err) {
+        const e = err as ExecError;
+        assert.equal(e.code, 2, `expected exit 2 on empty --output-dir, got ${e.code}:\n${e.stderr}`);
+        assert.ok(/--output-dir/.test(e.stderr), `stderr should mention --output-dir: ${e.stderr}`);
+        assert.ok(/不能为空|must not be/.test(e.stderr), `stderr should explain empty restriction: ${e.stderr}`);
+      }
+      // cwd 不能被写 observation JSON(空串 silent fallback 的核心 hazard)。
+      const cwdEntries = readdirSync(cwdDir);
+      assert.deepEqual(cwdEntries, [], `cwd should remain clean, got: ${cwdEntries.join(', ')}`);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
     }
   });
 });

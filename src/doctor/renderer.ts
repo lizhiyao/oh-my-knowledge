@@ -11,8 +11,8 @@
  * 普通 rule 不带 groupId,逐行渲染。
  */
 
-import { tCli, type CliLang } from '../cli/i18n.js';
-import { CLI_DICT, type CliMessageKey } from './../cli/i18n-dict.js';
+import { tCli, type CliLang } from '../cli/lib/i18n.js';
+import { CLI_DICT, type CliMessageKey } from './../cli/lib/i18n-dict.js';
 import type {
   DoctorReport,
   DoctorRuleResult,

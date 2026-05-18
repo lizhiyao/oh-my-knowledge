@@ -403,9 +403,9 @@ omk doctor --static-only                # offline mode: static checks only, no L
   --json              JSON output to stdout, for CI / external script consumption.
   --lang <value>      Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>     LLM model name, default sonnet.
-  --samples <value>   Samples file path (.json/.yaml). Auto-discovered from target / cwd if omitted.
+  --samples <value>   Samples file path (.json/.yaml). Auto-detects from target / cwd if omitted.
   --static-only       Offline static mode: only 4 static rules, no LLM call.
-  --timeout <value>   LLM session timeout in seconds, default 600 (10 min).
+  --timeout <value>   Single-session LLM timeout sec, default 600 (10 min).
 ```
 
 For full descriptions: `omk doctor --help`.

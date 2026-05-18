@@ -1,12 +1,15 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execute as initProject } from '../../src/cli/commands/init.js';
+import { promisify } from 'node:util';
 import { loadSamples } from '../../src/inputs/load-samples.js';
 import type { Assertion, Sample } from '../../src/types/index.js';
+
+const execFileAsync = promisify(execFile);
 
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const HAN_RE = /\p{Script=Han}/u;
@@ -74,9 +77,15 @@ describe('eval sample assertion language', () => {
   });
 
   it('keeps init scaffold assertion payloads English-only', async () => {
+    // spawn dist binary 验证 `omk init` 生成的 samples — vitest 不会自动 yarn build,
+    // dist 缺失时给清晰 hint,避免新人首次跑测撞模糊 ENOENT。
+    const cli = join(PROJECT_ROOT, 'dist', 'src', 'cli', 'index.js');
+    if (!existsSync(cli)) {
+      throw new Error(`dist CLI not found at ${cli} — run \`yarn build\` first.`);
+    }
     const dir = mkdtempSync(join(tmpdir(), 'omk-init-assertions-'));
     try {
-      await initProject([dir]);
+      await execFileAsync('node', [cli, 'init', dir, '--lang', 'zh']);
       const { samples } = loadSamples(join(dir, 'eval-samples.json'));
       assert.deepEqual(collectAssertionViolations('omk init', samples), []);
     } finally {

@@ -1,4 +1,4 @@
-import type { ReportDocument, VariantSummary } from '../types/report.js';
+import type { ReportDocument, VariantSummary } from '../../types/report.js';
 
 /**
  * Sum (sample × variant) trial outcomes across an evaluation report. Each

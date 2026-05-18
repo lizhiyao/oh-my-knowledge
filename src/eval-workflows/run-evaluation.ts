@@ -247,7 +247,7 @@ export async function runEvaluation({
     if (doctorCtx) {
       const { runDoctor } = await import('../doctor/index.js');
       const { renderDoctorReportText } = await import('../doctor/renderer.js');
-      const { tCli } = await import('../cli/i18n.js');
+      const { tCli } = await import('../cli/lib/i18n.js');
       const doctorReport = await runDoctor({
         artifacts: doctorCtx.doctorArtifacts,
         cwd: doctorCtx.dependencyCwd,
