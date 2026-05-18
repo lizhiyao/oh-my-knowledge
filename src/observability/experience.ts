@@ -1950,6 +1950,21 @@ function checklistItemsForAnswer(session: ExperienceSessionSummary, key: Experie
   return userFeelingChecklistItems(session);
 }
 
+export function isExperienceTraceInProgress(session: ExperienceSessionSummary): boolean {
+  if (session.indicators.assistantDeliverySignalCount > 0) return false;
+  if (session.indicators.deliverableArtifactSignalCount > 0) return false;
+  // 用户已经主动表达不满（纠正 / 负向 / 中断）属于「被打断」, 不是「在途中」, 仍需触发 final_delivery_absent。
+  if (session.indicators.userCorrectionCount > 0) return false;
+  if (session.indicators.negativeFeedbackCount > 0) return false;
+  if (session.indicators.userInterruptionCount > 0) return false;
+  const last = session.evidenceChain.lastAssistantMessage?.snippet ?? '';
+  // 完全没有最后助手回复时不强判 in-progress, 走原 failed / unknown 路径。
+  if (!last.trim()) return false;
+  if (isAssistantProgressUpdateText(last)) return true;
+  // 预备语（让我看 / 先看看 / 先读 / 接下来）也算 in-progress, 仍未给出最终回复。
+  return /让我(?:先|来|看|读|检查|分析|确认|拉|获取|继续)|先(?:看(?:看|一?下)|读(?:取|一下)?|确认|检查|分析|拉取|获取)|接下来/i.test(last);
+}
+
 function checklistItem(input: Omit<ExperienceChecklistItem, 'source' | 'evidenceRefs'> & {
   evidenceRefs?: Array<ExperienceEvidenceRef | undefined>;
   source?: ExperienceReviewerReportFindingSource;
@@ -1983,6 +1998,9 @@ function hasRecognizableUserGoal(ref?: ExperienceEvidenceRef): boolean {
 function goalSatisfactionChecklistItems(session: ExperienceSessionSummary): ExperienceChecklistItem[] {
   const feedbackRefs = userFeedbackEvidenceRefs(session);
   const goalIdentified = hasRecognizableUserGoal(session.evidenceChain.firstUserMessage);
+  const inProgress = isExperienceTraceInProgress(session);
+  const hasDelivery = session.indicators.assistantDeliverySignalCount > 0;
+  const hasArtifact = session.indicators.deliverableArtifactSignalCount > 0;
   return [
     checklistItem({
       key: 'goal_identified',
@@ -1997,20 +2015,28 @@ function goalSatisfactionChecklistItems(session: ExperienceSessionSummary): Expe
     checklistItem({
       key: 'completion_result_present',
       label: '有完成结果',
-      status: session.indicators.assistantDeliverySignalCount > 0 ? 'passed' : 'failed',
-      contribution: 'attention',
-      reason: session.indicators.assistantDeliverySignalCount > 0 ? '看到明确完成态或结果反馈。' : '没有看到明确完成态或结果反馈。',
+      status: hasDelivery ? 'passed' : inProgress ? 'not_applicable' : 'failed',
+      contribution: hasDelivery ? 'attention' : inProgress ? 'neutral' : 'attention',
+      reason: hasDelivery
+        ? '看到明确完成态或结果反馈。'
+        : inProgress
+          ? '会话仍在进行中（最后助手回复是过程态，没有完成态或产物），暂不判断完成结果。'
+          : '没有看到明确完成态或结果反馈。',
       evidenceRefs: [session.evidenceChain.lastAssistantMessage],
-      suggestionKey: session.indicators.assistantDeliverySignalCount > 0 ? undefined : 'final_delivery_absent',
+      suggestionKey: hasDelivery || inProgress ? undefined : 'final_delivery_absent',
     }),
     checklistItem({
       key: 'deliverable_artifact_present',
       label: '有产物：链接、路径、代码块或文件',
-      status: session.indicators.deliverableArtifactSignalCount > 0 ? 'passed' : 'unknown',
-      contribution: 'informational',
-      reason: session.indicators.deliverableArtifactSignalCount > 0 ? '看到链接、路径、代码块或文件等产物线索。' : '没有看到明确产物线索；不一定失败，但需要按 skill 目标判断。',
+      status: hasArtifact ? 'passed' : inProgress ? 'not_applicable' : 'unknown',
+      contribution: hasArtifact ? 'informational' : inProgress ? 'neutral' : 'informational',
+      reason: hasArtifact
+        ? '看到链接、路径、代码块或文件等产物线索。'
+        : inProgress
+          ? '会话仍在进行中，暂不判断产物。'
+          : '没有看到明确产物线索；不一定失败，但需要按 skill 目标判断。',
       evidenceRefs: [session.evidenceChain.lastAssistantMessage],
-      suggestionKey: session.indicators.deliverableArtifactSignalCount > 0 ? undefined : 'artifact_absent',
+      suggestionKey: hasArtifact || inProgress ? undefined : 'artifact_absent',
     }),
     checklistItem({
       key: 'negative_feedback_seen',

@@ -26,7 +26,9 @@ import {
   hasNegativeFeedbackSignal,
   hasPositiveFeedbackSignal,
   hasUserCorrectionSignal,
+  isExperienceTraceInProgress,
   type ExperienceChecklistItem,
+  type ExperienceSessionSummary,
 } from '../../src/observability/experience.js';
 import {
   hasAssistantDeliverySignalText,
@@ -134,6 +136,40 @@ describe('observe inbox', () => {
     assert.equal(positiveFold.reason, 'all_passed');
     assert.deepEqual(positiveFold.sourceItemKeys[0], 'p');
     assert.equal(foldExperienceChecklistItems([checklistItem('x', 'not_applicable', 'neutral')]).reason, 'not_applicable');
+  });
+
+  it('detects trace still in progress when last assistant message is a progress update', () => {
+    type SessionOverrides = {
+      delivery?: number;
+      artifact?: number;
+      correction?: number;
+      negative?: number;
+      interruption?: number;
+    };
+    const makeSession = (lastSnippet: string, overrides: SessionOverrides = {}): ExperienceSessionSummary => ({
+      indicators: {
+        assistantDeliverySignalCount: overrides.delivery ?? 0,
+        deliverableArtifactSignalCount: overrides.artifact ?? 0,
+        userCorrectionCount: overrides.correction ?? 0,
+        negativeFeedbackCount: overrides.negative ?? 0,
+        userInterruptionCount: overrides.interruption ?? 0,
+      } as ExperienceSessionSummary['indicators'],
+      evidenceChain: {
+        lastAssistantMessage: lastSnippet ? { snippet: lastSnippet } : undefined,
+      } as ExperienceSessionSummary['evidenceChain'],
+    } as ExperienceSessionSummary);
+
+    assert.equal(isExperienceTraceInProgress(makeSession('好的，先看看这个系分文档内容。')), true);
+    assert.equal(isExperienceTraceInProgress(makeSession('让我接下来读取语雀文档。')), true);
+    assert.equal(isExperienceTraceInProgress(makeSession('正在分析中，稍后给出结果。')), true);
+    assert.equal(isExperienceTraceInProgress(makeSession('')), false);
+    assert.equal(isExperienceTraceInProgress(makeSession('已完成，结果如下：xxx', { delivery: 1 })), false);
+    assert.equal(isExperienceTraceInProgress(makeSession('过程态文本', { artifact: 1 })), false);
+    assert.equal(isExperienceTraceInProgress(makeSession('感谢使用。')), false);
+    // 用户已经主动纠正 / 中断 / 负向反馈, 这是「被打断」, 不归 in-progress
+    assert.equal(isExperienceTraceInProgress(makeSession('让我先看一下', { correction: 1 })), false);
+    assert.equal(isExperienceTraceInProgress(makeSession('让我先看一下', { interruption: 1 })), false);
+    assert.equal(isExperienceTraceInProgress(makeSession('让我先看一下', { negative: 1 })), false);
   });
 
   it('recognizes user goals by semantic request instead of message existence', () => {
@@ -1955,6 +1991,10 @@ describe('observe inbox', () => {
     assert.match(rendered, /② 流程规则执行细节/);
     assert.match(rendered, /③ 原文回溯/);
     assert.match(rendered, /给 skill 作者的优化建议/);
+    assert.match(rendered, /目标关键词/);
+    assert.match(rendered, /结果关键词/);
+    assert.match(rendered, /产物关键词/);
+    assert.match(rendered, /schema|audit/);
     assert.match(rendered, /用户目标可识别/);
     assert.match(rendered, /有完成结果/);
     assert.match(rendered, /有产物：链接、路径、代码块或文件/);
