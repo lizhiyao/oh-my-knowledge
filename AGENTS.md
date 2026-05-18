@@ -22,6 +22,7 @@ omk 是面向 LLM 知识输入（prompt / RAG / skill / agent）的评测与迭�
 
 - `src/types/report.ts` 里的 Report JSON schema 字段语义。
 - `test/grading/judge-hash-frozen.test.ts` 冻结的 judge prompt hash。
+- `test/observability/llm-enhanced-review-prompt.test.ts` 冻结的 observe LLM 增强复盘 prompt hash。
 - 五层评分管道语义：assertion / llm / judge / dimension / composite。
 - Bootstrap CI 和 Krippendorff alpha 公式。
 - Length-debias toggle 语义：`--no-debias-length` 与 prompt v2/v3 的对应关系。
@@ -38,6 +39,7 @@ omk 是面向 LLM 知识输入（prompt / RAG / skill / agent）的评测与迭�
 ## UI / Judge 改动
 
 - 改 judge prompt 文本前，先确认 `test/grading/judge-hash-frozen.test.ts` 的影响，不要随手更新 hash。
+- 改 observe LLM 增强复盘 prompt 文本前，先确认 `test/observability/llm-enhanced-review-prompt.test.ts` 的影响；如果 runtimeAssessment 可比性会变化，PR 标题 / description 必须标 `BREAKING-COMPARABILITY`。
 - 改报告 UI 后，先 review `test/__snapshots__/html-renderer.test.ts.snap` diff，再决定是否更新 snapshot。
 
 ## omk 自带 skill 安装（跨 agent）

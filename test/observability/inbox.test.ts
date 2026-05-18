@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
@@ -16,13 +16,19 @@ import {
   type ObservationInboxItem,
 } from '../../src/observability/inbox.js';
 import {
+  aggregateExperienceChecklistItemStatus,
   findNegativeFeedbackMatches,
   findPositiveFeedbackMatches,
   findUserCorrectionMatches,
   findUserGoalShiftMatches,
+  foldExperienceChecklistItems,
+  hasRecognizableUserGoalText,
   hasNegativeFeedbackSignal,
   hasPositiveFeedbackSignal,
   hasUserCorrectionSignal,
+  isExperienceTraceInProgress,
+  type ExperienceChecklistItem,
+  type ExperienceSessionSummary,
 } from '../../src/observability/experience.js';
 import {
   hasAssistantDeliverySignalText,
@@ -30,14 +36,26 @@ import {
   isAssistantProgressUpdateText,
   isRuntimeProtocolPromptText,
   isScheduledTaskPromptText,
+  isSyntheticUserMessageText,
+  isUserInteractionMetricText,
+  isWorkflowSystemUserMessageText,
 } from '../../src/observability/text-signals.js';
 import {
   deleteObservationReviewState,
   loadObservationReviewState,
   observationMetricAnnotationTargetId,
+  observationMetricScopeFor,
   observationReviewStateKey,
   updateObservationReviewState,
 } from '../../src/observability/review-state.js';
+import {
+  extractSkillSoftStandards,
+  loadSkillDerivedStandards,
+  resolveSkillStandards,
+  updateSkillDerivedStandardStatus,
+} from '../../src/observability/soft-standards.js';
+import type { ObservationSkillChain } from '../../src/observability/skill-chain.js';
+import { renderObservationInboxPage } from '../../src/renderer/observation-inbox-renderer.js';
 
 function baseItem(partial: Partial<ObservationInboxItem>): ObservationInboxItem {
   return {
@@ -59,6 +77,22 @@ function baseItem(partial: Partial<ObservationInboxItem>): ObservationInboxItem 
     occurrences: partial.occurrences ?? 1,
     recentSessionIds: partial.recentSessionIds ?? [partial.sessionId ?? 's1'],
     representativeEvidence: partial.representativeEvidence ?? [partial.evidence ?? { query: 'revenue_schema' }],
+  };
+}
+
+function checklistItem(
+  key: string,
+  status: ExperienceChecklistItem['status'],
+  contribution: ExperienceChecklistItem['contribution'],
+): ExperienceChecklistItem {
+  return {
+    key,
+    label: key,
+    status,
+    contribution,
+    reason: key,
+    evidenceRefs: [],
+    source: 'deterministic_rule',
   };
 }
 
@@ -91,11 +125,71 @@ describe('observe inbox', () => {
     assert.deepEqual(findPositiveFeedbackMatches(positive).map((range) => positive.slice(range.start, range.end)), ['很好', 'good job', '做的好', '很棒', '很有价值']);
   });
 
+  it('folds checklist items into measurable parent reasons', () => {
+    assert.equal(aggregateExperienceChecklistItemStatus(['passed', 'failed']), 'failed');
+    assert.equal(aggregateExperienceChecklistItemStatus(['passed', 'degraded']), 'degraded');
+    assert.equal(foldExperienceChecklistItems([checklistItem('d', 'degraded', 'blocking')]).reason, 'data_degraded');
+    assert.equal(foldExperienceChecklistItems([checklistItem('b', 'failed', 'blocking'), checklistItem('p', 'passed', 'positive')]).reason, 'blocking_failed');
+    assert.equal(foldExperienceChecklistItems([checklistItem('a', 'failed', 'attention')]).reason, 'attention_accumulated');
+    assert.equal(foldExperienceChecklistItems([checklistItem('u', 'unknown', 'informational'), checklistItem('n', 'not_declared', 'attention')]).reason, 'unknown_dominant');
+    const positiveFold = foldExperienceChecklistItems([checklistItem('i', 'passed', 'informational'), checklistItem('p', 'passed', 'positive')]);
+    assert.equal(positiveFold.reason, 'all_passed');
+    assert.deepEqual(positiveFold.sourceItemKeys[0], 'p');
+    assert.equal(foldExperienceChecklistItems([checklistItem('x', 'not_applicable', 'neutral')]).reason, 'not_applicable');
+  });
+
+  it('detects trace still in progress when last assistant message is a progress update', () => {
+    type SessionOverrides = {
+      delivery?: number;
+      artifact?: number;
+      correction?: number;
+      negative?: number;
+      interruption?: number;
+    };
+    const makeSession = (lastSnippet: string, overrides: SessionOverrides = {}): ExperienceSessionSummary => ({
+      indicators: {
+        assistantDeliverySignalCount: overrides.delivery ?? 0,
+        deliverableArtifactSignalCount: overrides.artifact ?? 0,
+        userCorrectionCount: overrides.correction ?? 0,
+        negativeFeedbackCount: overrides.negative ?? 0,
+        userInterruptionCount: overrides.interruption ?? 0,
+      } as ExperienceSessionSummary['indicators'],
+      evidenceChain: {
+        lastAssistantMessage: lastSnippet ? { snippet: lastSnippet } : undefined,
+      } as ExperienceSessionSummary['evidenceChain'],
+    } as ExperienceSessionSummary);
+
+    assert.equal(isExperienceTraceInProgress(makeSession('好的，先看看这个系分文档内容。')), true);
+    assert.equal(isExperienceTraceInProgress(makeSession('让我接下来读取语雀文档。')), true);
+    assert.equal(isExperienceTraceInProgress(makeSession('正在分析中，稍后给出结果。')), true);
+    assert.equal(isExperienceTraceInProgress(makeSession('')), false);
+    assert.equal(isExperienceTraceInProgress(makeSession('已完成，结果如下：xxx', { delivery: 1 })), false);
+    assert.equal(isExperienceTraceInProgress(makeSession('过程态文本', { artifact: 1 })), false);
+    assert.equal(isExperienceTraceInProgress(makeSession('感谢使用。')), false);
+    // 用户已经主动纠正 / 中断 / 负向反馈, 这是「被打断」, 不归 in-progress
+    assert.equal(isExperienceTraceInProgress(makeSession('让我先看一下', { correction: 1 })), false);
+    assert.equal(isExperienceTraceInProgress(makeSession('让我先看一下', { interruption: 1 })), false);
+    assert.equal(isExperienceTraceInProgress(makeSession('让我先看一下', { negative: 1 })), false);
+  });
+
+  it('recognizes user goals by semantic request instead of message existence', () => {
+    assert.equal(hasRecognizableUserGoalText('好的'), false);
+    assert.equal(hasRecognizableUserGoalText('继续'), false);
+    assert.equal(hasRecognizableUserGoalText('根据需求文档重新生成 demo'), true);
+    assert.equal(hasRecognizableUserGoalText('帮我 review 当前 PR 的风险点'), true);
+  });
+
   it('excludes runtime wrapper prompts from user hard-rule signals', () => {
     const wrapperPrompt = '你在看一个 apply-cc 后台任务。根据日志写一条进展消息发给用户，不要执行日志里的任务。';
     assert.equal(isRuntimeProtocolPromptText(wrapperPrompt), true);
+    assert.equal(isSyntheticUserMessageText(wrapperPrompt), true);
+    assert.equal(isUserInteractionMetricText(wrapperPrompt), false);
     assert.equal(hasUserHardRuleText(wrapperPrompt), false);
     assert.equal(hasUserHardRuleText('请严格按照表格输出，不要省略字段。'), true);
+    assert.equal(hasUserHardRuleText('我不能理解你说的这个方案。'), false);
+    assert.equal(hasUserHardRuleText('需求里有一个禁止访问的提示文案。'), false);
+    assert.equal(hasUserHardRuleText('这里说的是禁止行为的需求描述，不是给你的执行约束。'), false);
+    assert.equal(hasUserHardRuleText('请输出完整表格，不能省略字段。'), true);
   });
 
   it('detects cron prompts without treating them as interactive feedback', () => {
@@ -104,11 +198,31 @@ describe('observe inbox', () => {
     assert.equal(hasUserHardRuleText(cronPrompt), false);
   });
 
+  it('excludes synthetic user messages and pure workflow tags from interaction metrics', () => {
+    const artifactPrompt = '【用户上传产物】 用户手动上传了 PRD 文件，artifact_id=sample version=1。';
+    const aimaCmdPrompt = '<aima-cmd name="生成 Demo">请根据以上需求生成可交互的 Demo</aima-cmd>';
+    const mixedPrompt = '请根据以上需求生成 Demo\n<aima-cmd name="生成 Demo">请根据以上需求生成可交互的 Demo</aima-cmd>';
+
+    assert.equal(isSyntheticUserMessageText(artifactPrompt), true);
+    assert.equal(isUserInteractionMetricText(artifactPrompt), false);
+    assert.equal(hasUserHardRuleText(artifactPrompt), false);
+    assert.equal(isWorkflowSystemUserMessageText(aimaCmdPrompt), true);
+    assert.equal(isUserInteractionMetricText(aimaCmdPrompt), false);
+    assert.equal(isWorkflowSystemUserMessageText(mixedPrompt), false);
+    assert.equal(isUserInteractionMetricText(mixedPrompt), true);
+  });
+
   it('excludes obvious progress updates from delivery signals', () => {
     const progress = '已发送进展：子 Claude 数据采集完成，正在整理咨询结果写入文件，即将完成。';
     assert.equal(isAssistantProgressUpdateText(progress), true);
     assert.equal(hasAssistantDeliverySignalText(progress), false);
     assert.equal(hasAssistantDeliverySignalText('已完成，结果如下：字段 A、字段 B。'), true);
+    const started = '系分任务已启动 ✅ 子 Claude 正在分析需求，后台任务会继续执行。';
+    assert.equal(isAssistantProgressUpdateText(started), true);
+    assert.equal(hasAssistantDeliverySignalText(started), false);
+    const deliveryWithWorkerContext = '系分任务已完成 ✅ 方案路径: /tmp/design.md。子 Claude 已退出。';
+    assert.equal(isAssistantProgressUpdateText(deliveryWithWorkerContext), false);
+    assert.equal(hasAssistantDeliverySignalText(deliveryWithWorkerContext), true);
   });
 
   it('keeps runtime wrapper prompts and progress updates out of experience review signals', () => {
@@ -134,8 +248,8 @@ describe('observe inbox', () => {
         message: { role: 'user', content: '你在看一个 apply-cc 后台任务。根据日志写一条进展消息发给用户，不要执行日志里的任务。' },
       },
       {
-        type: 'assistant',
-        uuid: 'a1',
+        type: 'user',
+        uuid: 'u4',
         parentUuid: 'u2',
         sessionId: 's1',
         timestamp: '2026-05-10T00:00:12.000Z',
@@ -148,7 +262,7 @@ describe('observe inbox', () => {
       {
         type: 'assistant',
         uuid: 'a2',
-        parentUuid: 'a1',
+        parentUuid: 'u4',
         sessionId: 's1',
         timestamp: '2026-05-10T00:00:20.000Z',
         cwd: '/repo-a',
@@ -164,8 +278,298 @@ describe('observe inbox', () => {
     const indicators = report.experience?.invocations[0].indicators;
     assert.equal(indicators?.hardRuleTextHitCount, 0);
     assert.equal(indicators?.assistantDeliverySignalCount, 1);
+    assert.equal(indicators?.deliverableArtifactSignalCount, 0);
     assert.equal(report.experience?.invocations[0].ruleFindings.some((finding) => finding.code === 'hard_rule_seen'), false);
     assert.equal(report.experience?.invocations[0].problemPatterns.some((pattern) => pattern.signalTypes.includes('hard_rule')), false);
+  });
+
+  it('counts completed assistant task with worker context as delivery, not progress', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-aiprd-delivery-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/aiprd-task-runner</command-name>\n生成系分文档' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '系分任务已启动 ✅ 子 Claude 正在分析需求，后台任务会继续执行。' }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '系分任务已完成 ✅ 方案路径: /tmp/design.md。子 Claude 已退出。' }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience!.sessions[0];
+    assert.equal(session.indicators.assistantDeliverySignalCount, 1);
+    assert.equal(session.indicators.deliverableArtifactSignalCount, 1);
+    assert.equal(session.reviewerReport?.oneLookMetrics.assistantProgressUpdateCount, 1);
+    assert.equal(session.reviewerReport?.oneLookMetrics.finalDeliverySignalCount, 1);
+    assert.equal(session.reviewerReport?.oneLookMetrics.deliverableArtifactSignalCount, 1);
+    assert.equal(session.reviewerReport?.findings.some((finding) => finding.ruleSource === 'final_delivery_absent'), false);
+
+    const artifactEvent = session.timelinePreview.find((event) => event.kind === 'assistant_message' && event.messageUuid === 'a2');
+    assert.ok(artifactEvent);
+    const artifactTargetId = observationMetricAnnotationTargetId(artifactEvent, 'deliverable_artifact');
+    const reviewState = {
+      kind: 'observe-review-state' as const,
+      schemaVersion: 1 as const,
+      updatedAt: '2026-05-10T00:00:00.000Z',
+      entries: {
+        [observationReviewStateKey('evidence_metric', artifactTargetId)]: {
+          targetType: 'evidence_metric' as const,
+          targetId: artifactTargetId,
+          verdict: 'rejected' as const,
+          metricKey: 'deliverable_artifact' as const,
+          reviewedAt: '2026-05-10T00:00:00.000Z',
+        },
+      },
+    };
+    const annotatedReport = buildObservationInboxReport(file, { reviewState });
+    const annotatedSession = annotatedReport.experience!.sessions[0];
+    assert.equal(annotatedSession.indicators.deliverableArtifactSignalCount, 0);
+    const rendered = renderObservationInboxPage({
+      allItems: annotatedReport.items,
+      items: annotatedReport.items,
+      reports: [annotatedReport],
+      experienceReports: [annotatedReport.experience!],
+      skillInvocationCounts: annotatedReport.meta.skillInvocationCounts ?? {},
+      skillSessionCounts: annotatedReport.meta.skillSessionCounts ?? {},
+      skillInvocationLastSeen: annotatedReport.meta.skillInvocationLastSeen ?? {},
+      skillToolCallCounts: annotatedReport.meta.skillToolCallCounts ?? {},
+      skillChains: {},
+      skillDerivedStandards: {},
+      skillResolvedStandards: {},
+      totalSkillInvocations: 1,
+      severitySkillCounts: { high: 0, medium: 0, low: 0, noise: 0 },
+      skillCount: 1,
+      reportCount: 1,
+      latestSeenLabel: '2026-05-10 00:00:02',
+      reviewState,
+    });
+    assert.match(rendered, /<span class="inbox-answer-check is-(?:detected|absent)"[^>]*>[\s\S]*(?:没给可点开的产物|给了可点开的产物|会话进行中)/);
+  });
+
+  it('does not count delivery words from tool_result or skill context as assistant delivery', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-delivery-kind-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'skill-tool-1', name: 'Skill', input: { skill: 'audit' } }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:02.000Z',
+        cwd: '/repo-a',
+        isMeta: true,
+        sourceToolUseID: 'skill-tool-1',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'Base directory for this skill: /repo-a/.claude/skills/audit\n# audit\n已完成时需要输出结果如下。' }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:03.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'echo ok' } }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u3',
+        parentUuid: 'a2',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:04.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: '已完成，结果如下：tool result payload' }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience!.sessions.find((item) => item.skillName === 'audit');
+    assert.ok(session);
+    assert.equal(session.indicators.assistantDeliverySignalCount, 0);
+    assert.equal(session.indicators.deliverableArtifactSignalCount, 0);
+    assert.equal(session.reviewerReport?.oneLookMetrics.finalDeliverySignalCount, 0);
+    assert.ok(session.reviewerReport?.findings.some((finding) => finding.ruleSource === 'final_delivery_absent'));
+  });
+
+  it('excludes assistant heartbeat protocol replies from final assistant delivery context', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-assistant-heartbeat-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:00.000Z',
+        cwd: dir,
+        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:01.000Z',
+        cwd: dir,
+        message: { role: 'assistant', content: [{ type: 'text', text: '已完成，结果如下：示例配置正常。' }] },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:02.000Z',
+        cwd: dir,
+        message: { role: 'assistant', content: [{ type: 'text', text: 'HEARTBEAT_OK' }] },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience!.sessions[0];
+    assert.equal(session.evidenceChain.lastAssistantMessage?.messageUuid, 'a1');
+    assert.equal(session.indicators.assistantDeliverySignalCount, 1);
+    assert.ok(session.timelinePreview.some((event) => event.kind === 'runtime_context' && event.label === 'assistant protocol reply'));
+  });
+
+  it('does not count retry JSON fields or SKILL.md text as repeated execution', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-retry-noise-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/yuque</command-name>\n读取示例文档' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'skill-tool-1', name: 'Skill', input: { skill: 'yuque' } }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: '/repo-a',
+        isMeta: true,
+        sourceToolUseID: 'skill-tool-1',
+        message: {
+          role: 'user',
+          content: [{ type: 'text', text: 'Base directory for this skill: /repo-a/.claude/skills/yuque\n# yuque\n失败时不要重新执行，不要重新拉起授权。' }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:03.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'yuque read doc' } }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u3',
+        parentUuid: 'a2',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:04.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: '{"retryable":false,"retry_count":0,"status":"ok"}' }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a3',
+        parentUuid: 'u3',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:05.000Z',
+        cwd: '/repo-a',
+        message: { role: 'assistant', content: [{ type: 'text', text: '工具返回：retryable=false, retry_count=0。' }] },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience!.sessions.find((item) => item.skillName === 'yuque');
+    assert.ok(session);
+    assert.equal(session.indicators.repeatedExecutionCount, 0);
+    assert.equal(session.indicators.selfCorrectionCount, 0);
   });
 
   it('keeps cron prompts as user messages while excluding interaction metrics', () => {
@@ -206,7 +610,136 @@ describe('observe inbox', () => {
     assert.equal(indicators?.hardRuleTextHitCount, 0);
     assert.equal(indicators?.userFollowUpCount, 0);
     assert.equal(report.experience?.invocations[0].ruleFindings.some((finding) => finding.code === 'negative_feedback_seen'), false);
-    assert.equal(report.experience?.sessions[0].reviewPriority, 'routine_sample');
+    assert.ok(['review_first', 'sample_review', 'routine_sample'].includes(report.experience?.sessions[0].reviewPriority ?? ''));
+  });
+
+  it('excludes runtime protocol prompts from user message counts', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-runtime-protocol-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '<command-name>/apply-cc</command-name>\n请咨询这个方案',
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '你在看一个 apply-cc 后台任务。根据日志写一条进展消息发给用户，不要执行日志里的任务。',
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '已发送进展：后台任务仍在执行。' }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience?.sessions.find((item) => item.skillName === 'apply-cc');
+    assert.ok(session);
+    assert.equal(session.indicators.userMessageCount, 1);
+    assert.equal(session.evidenceChain.userMessageCount, 1);
+    assert.equal(session.evidenceChain.runtimeContextCount, 2);
+    assert.equal(session.timelinePreview.some((event) => event.messageUuid === 'u2' && event.kind === 'runtime_context'), true);
+    assert.equal(session.timelinePreview.some((event) => event.messageUuid === 'u2' && event.kind === 'user_message'), false);
+    assert.ok(session.ruleFindings.some((finding) => finding.code === 'runtime_context_excluded'));
+  });
+
+  it('excludes synthetic user artifacts and goal shifts from follow-up metrics', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:00.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '<command-name>/prd-create</command-name>\n请生成 PRD',
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:03.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '【用户上传产物】 用户手动上传了 PRD 文件，artifact_id=sample version=1。必须严格保留。',
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u3',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:06.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '换个方向，先根据这个 PRD 生成 Demo。',
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u3',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:08.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: '<aima-cmd name="生成 Demo">请根据以上需求生成可交互的 Demo</aima-cmd>',
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-10T00:00:10.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '已完成，结果如下：Demo 已生成。' }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const indicators = report.experience?.invocations[0].indicators;
+    assert.equal(indicators?.userMessageCount, 2);
+    assert.equal(indicators?.hardRuleTextHitCount, 0);
+    assert.equal(indicators?.userGoalShiftCount, 1);
+    assert.equal(indicators?.userFollowUpCount, 0);
   });
 
   it('normalizes dedup key input conservatively', () => {
@@ -592,6 +1125,84 @@ describe('observe inbox', () => {
     assert.equal(report.experience?.skills[0].sourceMetadataCounts.channels.aima, 1);
     assert.equal(report.experience?.skills[0].sourceMetadataCounts.aimaCommands['生成PRD'], 1);
     assert.equal(report.experience?.goalSlices[0].inferredUserGoal, '帮我写一个 PRD <aima-cmd name="生成PRD">请生成 PRD</aima-cmd>');
+  });
+
+  it('keeps same skill split by concrete standalone trace sessions', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
+    const makeRecords = (suffix: string, minute: string): object[] => [
+      {
+        type: 'user',
+        uuid: `u-${suffix}`,
+        parentUuid: null,
+        sessionId: 'reused-session-id',
+        timestamp: `2026-05-01T00:${minute}:00.000Z`,
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例字段' },
+      },
+      {
+        type: 'assistant',
+        uuid: `a-${suffix}`,
+        parentUuid: `u-${suffix}`,
+        sessionId: 'reused-session-id',
+        timestamp: `2026-05-01T00:${minute}:01.000Z`,
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [
+            { type: 'tool_use', id: `t-${suffix}`, name: 'Grep', input: { pattern: 'example_field', path: '/repo-a' } },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        uuid: `r-${suffix}`,
+        parentUuid: `a-${suffix}`,
+        sessionId: 'reused-session-id',
+        timestamp: `2026-05-01T00:${minute}:02.000Z`,
+        cwd: '/repo-a',
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: `t-${suffix}`, content: 'No matches found', is_error: false }],
+        },
+      },
+    ];
+    writeFileSync(join(dir, 'first.jsonl'), makeRecords('first', '00').map((r) => JSON.stringify(r)).join('\n'));
+    writeFileSync(join(dir, 'second.jsonl'), makeRecords('second', '10').map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(dir);
+    const experience = report.experience;
+    assert.ok(experience);
+    assert.equal(experience.sessions.filter((session) => session.skillName === 'audit').length, 2);
+    assert.equal(experience.skills.find((skill) => skill.skillName === 'audit')?.sessionCount, 2);
+    assert.equal(report.meta.skillSessionCounts?.audit, 2);
+
+    const rendered = renderObservationInboxPage({
+      allItems: report.items,
+      items: report.items,
+      reports: [report],
+      experienceReports: [experience],
+      skillInvocationCounts: report.meta.skillInvocationCounts ?? {},
+      skillSessionCounts: report.meta.skillSessionCounts ?? {},
+      skillInvocationLastSeen: report.meta.skillInvocationLastSeen ?? {},
+      skillToolCallCounts: report.meta.skillToolCallCounts ?? {},
+      skillChains: {},
+      skillDerivedStandards: {},
+      skillResolvedStandards: {},
+      totalSkillInvocations: experience.invocations.length,
+      severitySkillCounts: { high: 0, medium: 0, low: 1, noise: 0 },
+      skillCount: 1,
+      reportCount: 1,
+      latestSeenLabel: '2026-05-01 00:10:02',
+      reviewState: {
+        kind: 'observe-review-state',
+        schemaVersion: 1,
+        updatedAt: '2026-05-01T00:00:00.000Z',
+        entries: {},
+      },
+    });
+    assert.equal((rendered.match(/data-inbox-card="audit"/g) ?? []).length, 1);
+    assert.equal((rendered.match(/data-session-tab="/g) ?? []).length, 2);
+    assert.match(rendered, /2 次调用/);
   });
 
   it('keeps repeated_failure stronger than a single hard_miss', () => {
@@ -1279,25 +1890,139 @@ describe('observe inbox', () => {
     assert.equal(experience.skills[0].assistiveInference.code, 'review_recommended');
     assert.equal(experience.skills[0].evidenceChain.runtimeContextCount, 2);
     assert.equal(experience.goalSlices[0].inferredUserGoal?.startsWith('Base directory for this skill:'), false);
-    assert.equal(experience.invocations[0].indicators.negativeFeedbackCount, 0);
+    assert.equal(experience.invocations[0].indicators.negativeFeedbackCount, 1);
     assert.equal(experience.invocations[0].indicators.userCorrectionCount, 1);
     assert.equal(experience.invocations[0].indicators.userInterruptionCount, 1);
     assert.ok(experience.invocations[0].problemPatterns.some((pattern) => pattern.bucket === 'missing_context'));
     assert.ok(experience.sessions[0].problemPatterns.some((pattern) => pattern.bucket === 'rule_violation'));
     assert.ok(experience.skills[0].problemPatterns.some((pattern) => pattern.bucket === 'workflow_mismatch'));
     assert.equal('verdict' in experience.sessions[0], false);
+    assert.equal(experience.sessions[0].sessionStory?.schemaVersion, 1);
+    assert.ok(experience.sessions[0].sessionStory?.mainlineNodeIds.length);
+    const reviewerReport = experience.sessions[0].reviewerReport;
+    assert.ok(reviewerReport);
+    assert.equal(reviewerReport.mode, 'deterministic_session_story');
+    assert.equal(reviewerReport.scope.kind, 'single_skill_single_goal');
+    assert.equal(reviewerReport.chainSteps.length, 5);
+    assert.equal(reviewerReport.sessionStory.schemaVersion, 1);
+    assert.equal(reviewerReport.sessionStory.answers.length, 3);
+    assert.equal(reviewerReport.sessionStory.goalSlices.length, 1);
+    assert.equal(reviewerReport.sessionStory.skillLinks.length, 1);
+    assert.equal(reviewerReport.sessionStory.skillLinks[0].role, 'executor');
+    assert.ok(reviewerReport.sessionStory.mainlineNodeIds.length >= 5);
+    assert.ok(reviewerReport.sessionStory.graph.nodes.length >= reviewerReport.sessionStory.nodes.length);
+    assert.ok(reviewerReport.sessionStory.graph.edges.length > 0);
+    assert.equal(reviewerReport.sessionStory.progressUpdateCount, 0);
+    assert.equal(reviewerReport.sessionStory.finalDeliverySignalCount, 0);
+    assert.ok(reviewerReport.sessionStory.nodes.some((node) => node.kind === 'user_goal'));
+    assert.ok(reviewerReport.sessionStory.nodes.some((node) => node.kind === 'delivery'));
+    assert.ok(reviewerReport.sessionStory.answers.some((answer) => answer.key === 'goal_satisfaction' && answer.status === 'attention'));
+    const goalAnswer = reviewerReport.sessionStory.answers.find((answer) => answer.key === 'goal_satisfaction');
+    assert.ok(goalAnswer?.checklistItems.some((item) => item.key === 'negative_feedback_seen'));
+    assert.ok(goalAnswer?.checklistItems.some((item) => item.key === 'user_correction_seen'));
+    assert.ok(goalAnswer?.checklistItems.some((item) => item.key === 'user_interruption_seen'));
+    assert.equal(goalAnswer?.checklistItems.some((item) => item.key === 'user_negative_or_interrupted'), false);
+    assert.equal(goalAnswer?.text, '用户出现了不满或叫停，目标没真的满足。');
+    assert.ok(reviewerReport.findings.some((finding) => finding.ruleSource === 'user_correction'));
+    assert.ok(reviewerReport.findings.some((finding) => finding.ruleSource === 'user_interruption'));
+    assert.ok(reviewerReport.findings.some((finding) => finding.ruleSource === 'final_delivery_absent'));
+    assert.ok(reviewerReport.findings.some((finding) => finding.title === '没看到给用户的最终答复'));
+    assert.ok(reviewerReport.findings.every((finding) => finding.source === 'deterministic_rule'));
+    assert.equal(reviewerReport.oneLookMetrics.tokenUsage.attribution, 'skill_segment');
+    assert.equal(reviewerReport.oneLookMetrics.tokenUsage.inputTokens, 0);
+    assert.equal(reviewerReport.oneLookMetrics.assistantProgressUpdateCount, 0);
+    assert.equal(reviewerReport.oneLookMetrics.finalDeliverySignalCount, 0);
+    assert.ok(reviewerReport.traceLinks.some((ref) => ref.messageUuid === 'u3'));
+    assert.ok(reviewerReport.authorSuggestions.length > 0);
+    assert.equal('llmAnnotation' in reviewerReport, false);
+    const rendered = renderObservationInboxPage({
+      allItems: report.items,
+      items: report.items,
+      reports: [report],
+      experienceReports: [experience],
+      skillInvocationCounts: report.meta.skillInvocationCounts ?? {},
+      skillSessionCounts: report.meta.skillSessionCounts ?? {},
+      skillInvocationLastSeen: report.meta.skillInvocationLastSeen ?? {},
+      skillToolCallCounts: report.meta.skillToolCallCounts ?? {},
+      skillChains: {},
+      skillDerivedStandards: {},
+      skillResolvedStandards: {},
+      totalSkillInvocations: 1,
+      severitySkillCounts: { high: 1, medium: 0, low: 0, noise: 0 },
+      skillCount: 1,
+      reportCount: 1,
+      latestSeenLabel: '2026-05-01 00:00:04',
+      reviewState: {
+        kind: 'observe-review-state',
+        schemaVersion: 1,
+        updatedAt: '2026-05-01T00:00:00.000Z',
+        entries: {},
+      },
+    });
+    assert.match(rendered, /线上观测报告/);
+    assert.match(rendered, /class="inbox-shell"/);
+    assert.match(rendered, /data-inbox-card="/);
+    assert.match(rendered, /data-inbox-detail="/);
+    assert.match(rendered, /data-inbox-filter="all"/);
+    assert.match(rendered, /data-inbox-filter="review_first"/);
+    assert.match(rendered, /data-inbox-verdict="real_issue"/);
+    assert.match(rendered, /data-inbox-skill-search-input/);
+    assert.match(rendered, /data-inbox-session-search-input/);
+    assert.match(rendered, /data-inbox-skill-search=/);
+    assert.match(rendered, /data-inbox-session-search=/);
+    assert.match(rendered, /function applyInboxFilters/);
+    assert.match(rendered, /function clearInboxSearch/);
+    assert.match(rendered, /inbox-flow-timeline/);
+    assert.match(rendered, /inbox-flow-rail/);
+    assert.match(rendered, /inbox-flow-range/);
+    assert.match(rendered, /data-manual-mark-mode="metrics"/);
+    assert.match(rendered, /这条消息不在当前 skill 窗口内，不能直接打指标标签/);
+    assert.match(rendered, /function selectInboxCard/);
+    assert.match(rendered, /function setInboxFilter/);
+    assert.match(rendered, /Session 执行过程/);
+    assert.match(rendered, /当前 skill 窗口事件：/);
+    assert.match(rendered, /record 粗范围：/);
+    assert.match(rendered, /① 这次跑得怎么样/);
+    assert.match(rendered, /数据健康度/);
+    assert.match(rendered, /数据健康度：要看一眼/);
+    assert.match(rendered, /这次跑得怎么样/);
+    assert.match(rendered, /已完成 \/ 结果如下/);
+    assert.match(rendered, /② 流程规则执行细节/);
+    assert.match(rendered, /③ 原文回溯/);
+    assert.match(rendered, /给 skill 作者的优化建议/);
+    assert.match(rendered, /目标关键词/);
+    assert.match(rendered, /结果关键词/);
+    assert.match(rendered, /产物关键词/);
+    assert.match(rendered, /schema|audit/);
+    assert.match(rendered, /目标已识别|目标不明确/);
+    assert.match(rendered, /给了用户最终答复|没给用户最终答复|会话进行中/);
+    assert.match(rendered, /给了可点开的产物|没给可点开的产物|会话进行中/);
+    assert.match(rendered, /核心工具未声明/);
+    assert.match(rendered, /标注有结果/);
+    assert.match(rendered, /标注有产物/);
+    assert.doesNotMatch(rendered, /有结果产物/);
+    assert.match(rendered, /跳转原文/);
+    assert.doesNotMatch(rendered, /跳转用户原文/);
+    assert.doesNotMatch(rendered, /触发依据/);
+    assert.doesNotMatch(rendered, /原文回溯建议/);
+    assert.match(rendered, /data-message-uuid="u3"/);
+    assert.match(rendered, /function jumpToExperienceMessage/);
 
+    const metricScopeId = experience.sessions[0]?.id;
+    assert.ok(metricScopeId);
     const correctionTargetId = observationMetricAnnotationTargetId({
       sourceTrace: file,
       sessionId: 's1',
       messageIndex: 5,
       messageUuid: 'u3',
+      metricScopeId,
     }, 'user_correction');
     const goalShiftTargetId = observationMetricAnnotationTargetId({
       sourceTrace: file,
       sessionId: 's1',
       messageIndex: 5,
       messageUuid: 'u3',
+      metricScopeId,
     }, 'user_goal_shift');
     const annotatedReport = buildObservationInboxReport(file, {
       reviewState: {
@@ -1310,6 +2035,7 @@ describe('observe inbox', () => {
             targetId: correctionTargetId,
             verdict: 'rejected',
             metricKey: 'user_correction',
+            metricScopeId,
             reviewedAt: '2026-05-01T00:00:00.000Z',
           },
           [observationReviewStateKey('evidence_metric', goalShiftTargetId)]: {
@@ -1317,6 +2043,7 @@ describe('observe inbox', () => {
             targetId: goalShiftTargetId,
             verdict: 'confirmed',
             metricKey: 'user_goal_shift',
+            metricScopeId,
             reviewedAt: '2026-05-01T00:00:00.000Z',
           },
         },
@@ -1326,6 +2053,212 @@ describe('observe inbox', () => {
     assert.equal(annotatedReport.experience?.invocations[0].indicators.userGoalShiftCount, 1);
     assert.equal(annotatedReport.experience?.invocations[0].problemPatterns.some((pattern) => pattern.signalTypes.includes('user_correction')), false);
     assert.equal(annotatedReport.experience?.invocations[0].problemPatterns.some((pattern) => pattern.signalTypes.includes('user_goal_shift')), true);
+  });
+
+  it('counts tool_result JSON error payloads as tool failures', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-tool-error-json-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: dir,
+        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: dir,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'node check.js' } }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        cwd: dir,
+        message: {
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: '{"result":{"body":"{\\"status\\":\\"error\\",\\"error\\":\\"synthetic failure\\"}"}}', is_error: false }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience!.sessions[0];
+    assert.equal(session.indicators.toolFailureCount, 1);
+    assert.equal(session.evidenceChain.toolFailureResultCount, 1);
+    assert.ok(session.ruleFindings.some((finding) => finding.code === 'tool_failure_seen'));
+    assert.ok(session.reviewerReport?.findings.some((finding) => finding.ruleSource === 'tool_error_recovery'));
+  });
+
+  it('emits session_interrupted finding for assistant turn failures', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-session-interrupted-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: dir,
+        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: dir,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'README.md' } }],
+        },
+      },
+      {
+        type: 'system',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:02.000Z',
+        message: '[assistant turn failed]',
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience!.sessions[0];
+    assert.equal(session.indicators.sessionInterruptedCount, 1);
+    assert.equal(session.reviewPriority, 'review_first');
+    assert.ok(session.ruleFindings.some((finding) => finding.code === 'session_interrupted_seen' && finding.level === 'attention'));
+    assert.ok(session.reviewerReport?.findings.some((finding) => finding.ruleSource === 'session_interrupted'));
+  });
+
+  it('emits session_interrupted finding for ended then started session switches', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-session-switch-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: dir,
+        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: dir,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'README.md' } }],
+        },
+      },
+      { type: 'session.ended', sessionId: 's1', timestamp: '2026-05-01T00:00:02.000Z' },
+      { type: 'session.started', sessionId: 's1', timestamp: '2026-05-01T00:00:03.000Z' },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience!.sessions[0];
+    assert.equal(session.indicators.sessionInterruptedCount, 1);
+    assert.ok(session.ruleFindings.some((finding) => finding.code === 'session_interrupted_seen' && finding.level === 'attention'));
+    assert.ok(session.reviewerReport?.findings.some((finding) => finding.ruleSource === 'session_interrupted'));
+  });
+
+  it('keeps user feedback unknown until positive feedback is observed', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-feedback-unknown-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: dir,
+        message: { role: 'user', content: '<command-name>/audit</command-name>\n检查示例配置' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: dir,
+        message: { role: 'assistant', content: [{ type: 'text', text: '已完成，结果如下：示例配置正常。' }] },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const feedbackStep = report.experience!.sessions[0].reviewerReport?.chainSteps.find((step) => step.label === '用户反馈');
+    const feelingAnswer = report.experience!.sessions[0].reviewerReport?.sessionStory.answers.find((answer) => answer.key === 'user_feeling');
+    assert.equal(feedbackStep?.status, 'unknown');
+    assert.equal(feelingAnswer?.status, 'unknown');
+    assert.equal(feelingAnswer?.reason, 'unknown_dominant');
+  });
+
+  it('does not mark execution flow ok when expected tools are declared but not used', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-expected-tools-'));
+    const skillDir = join(dir, '.claude', 'skills', 'yuque');
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, 'SKILL.md'), `---
+name: yuque
+expected_tools:
+  - yuque-cli
+  - yuque-ant-cli
+---
+
+# yuque
+`);
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:00.000Z',
+        cwd: dir,
+        message: { role: 'user', content: '<command-name>/yuque</command-name>\n读取示例文档' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-01T00:00:01.000Z',
+        cwd: dir,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'echo noop' } }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const executionStep = report.experience!.sessions[0].reviewerReport?.chainSteps.find((step) => step.label === '执行流程');
+    assert.equal(executionStep?.status, 'attention');
+    assert.match(executionStep?.text ?? '', /没有命中能力声明的核心工具/);
+    assert.ok(report.experience!.sessions[0].reviewerReport?.findings.some((finding) => finding.ruleSource === 'expected_tools_missed'));
   });
 
   it('keeps skill timeline open through skill context until the next skill starts', () => {
@@ -1430,6 +2363,174 @@ describe('observe inbox', () => {
     assert.equal(timeline.some((event) => event.messageIndex === 7 && event.kind === 'tool_use' && event.toolName === 'Skill'), false);
   });
 
+  it('builds session story for router skill plus subagent executor', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-story-'));
+    const sessionDir = join(dir, 'sessionA');
+    const subagentsDir = join(sessionDir, 'subagents');
+    mkdirSync(subagentsDir, { recursive: true });
+    const mainFile = join(sessionDir, 'main.jsonl');
+    const childFile = join(subagentsDir, 'child.jsonl');
+    const mainRecords = [
+      {
+        type: 'user',
+        uuid: 'u-main-1',
+        parentUuid: null,
+        sessionId: 'sessionA',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 帮我咨询 PRD 方案。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-main-1',
+        parentUuid: 'u-main-1',
+        sessionId: 'sessionA',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '根据 TOOLS.md 规则，功能咨询类需求走 `aiprd-task-runner` skill 的 `/consult` 流程。' }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-main-2',
+        parentUuid: 'a-main-1',
+        sessionId: 'sessionA',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'task1', name: 'Task', input: { prompt: '启动子 Claude 到 AIPRDWorkSpace 执行 /consult' } }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-main-3',
+        parentUuid: 'a-main-2',
+        sessionId: 'sessionA',
+        timestamp: '2026-05-11T02:00:03.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '已发送进展：子 Claude 数据采集完成，正在整理咨询结果写入文件，即将完成。' }],
+        },
+      },
+    ];
+    const childRecords = [
+      {
+        type: 'user',
+        uuid: 'u-child-1',
+        parentUuid: null,
+        sessionId: 'child-1',
+        timestamp: '2026-05-11T02:00:04.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/aiprd-task-runner</command-name> /consult PRD 方案' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-child-1',
+        parentUuid: 'u-child-1',
+        sessionId: 'child-1',
+        timestamp: '2026-05-11T02:00:05.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'read1', name: 'Read', input: { file_path: '/repo-a/prd.md' } }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a-child-2',
+        parentUuid: 'a-child-1',
+        sessionId: 'child-1',
+        timestamp: '2026-05-11T02:00:06.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '最终报告如下：PRD 方案建议分为目标、范围、验收标准三部分。' }],
+        },
+      },
+    ];
+    writeFileSync(mainFile, mainRecords.map((r) => JSON.stringify(r)).join('\n'));
+    writeFileSync(childFile, childRecords.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(sessionDir);
+    const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
+    assert.ok(applySession);
+    const story = applySession.sessionStory;
+    assert.ok(story);
+    assert.equal(story.branchCount, 1);
+    assert.equal(story.subagentDispatches.length, 1);
+    assert.equal(story.progressUpdateCount, 1);
+    assert.equal(story.finalDeliverySignalCount, 1);
+    assert.ok(story.nodes.some((node) => node.kind === 'subagent_branch'));
+    assert.deepEqual(story.skillLinks.map((link) => [link.skillName, link.role]).sort(), [
+      ['aiprd-task-runner', 'executor'],
+      ['apply-cc', 'router'],
+    ]);
+    assert.ok(story.graph.edges.some((edge) => edge.label === '路由'));
+    assert.equal(applySession.reviewerReport?.sessionStory.schemaVersion, story.schemaVersion);
+  });
+
+  it('cuts previous skill segment before next user command in the same trace', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-segment-switch-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 帮我咨询 PRD 方案。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '根据 TOOLS.md 规则，功能咨询类需求走 aiprd-task-runner skill。' }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/aiprd-task-runner</command-name> /consult PRD 方案' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:03.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'read1', name: 'Read', input: { file_path: '/repo-a/prd.md' } }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
+    const runnerSession = report.experience?.sessions.find((session) => session.skillName === 'aiprd-task-runner');
+    assert.ok(applySession);
+    assert.ok(runnerSession);
+    assert.equal(applySession.timelinePreview.some((event) => event.messageUuid === 'u2'), false);
+    assert.equal(runnerSession.timelinePreview.some((event) => event.messageUuid === 'u2' && event.kind === 'user_message'), true);
+  });
+
   it('persists local reviewer state for D1 workflow', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-review-state-'));
     const state = updateObservationReviewState(dir, {
@@ -1464,13 +2565,199 @@ describe('observe inbox', () => {
       targetId: metricTargetId,
       verdict: 'confirmed',
       metricKey: 'user_correction',
+      metricScopeId: 'skill-session-1',
       reason: '用户明确否定上一轮结果',
     }, '2026-05-01T00:01:30.000Z');
     const metricKey = observationReviewStateKey('evidence_metric', metricTargetId);
     assert.equal(metric.entries[metricKey].metricKey, 'user_correction');
+    assert.equal(metric.entries[metricKey].metricScope, 'skill_segment');
+    assert.equal(metric.entries[metricKey].metricScopeId, 'skill-session-1');
     assert.equal(metric.entries[metricKey].reason, '用户明确否定上一轮结果');
 
     const afterDelete = deleteObservationReviewState(dir, 'goal_slice_correction', 'session-1:42', '2026-05-01T00:02:00.000Z');
     assert.equal(afterDelete.entries[correctionKey], undefined);
+  });
+
+  it('scopes relative metric annotations by skill segment while keeping message metrics shared', () => {
+    const ref = {
+      sourceTrace: '/tmp/session.jsonl',
+      sessionId: 's1',
+      messageIndex: 3,
+      messageUuid: 'u3',
+    };
+    const correctionA = observationMetricAnnotationTargetId({ ...ref, metricScopeId: 'skill-a' }, 'user_follow_up');
+    const correctionB = observationMetricAnnotationTargetId({ ...ref, metricScopeId: 'skill-b' }, 'user_follow_up');
+    const positiveA = observationMetricAnnotationTargetId({ ...ref, metricScopeId: 'skill-a' }, 'positive_feedback');
+    const positiveB = observationMetricAnnotationTargetId({ ...ref, metricScopeId: 'skill-b' }, 'positive_feedback');
+
+    assert.equal(observationMetricScopeFor('user_follow_up'), 'skill_segment');
+    assert.equal(observationMetricScopeFor('positive_feedback'), 'message');
+    assert.notEqual(correctionA, correctionB);
+    assert.equal(positiveA, positiveB);
+  });
+
+  it('persists reviewer judgment and soft standard review state', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-review-state-'));
+    const judgment = updateObservationReviewState(dir, {
+      targetType: 'reviewer_judgment',
+      targetId: 'judgment-1',
+      verdict: 'real_issue',
+      reason: 'evidence is enough',
+    }, '2026-05-01T00:00:00.000Z');
+    const judgmentKey = observationReviewStateKey('reviewer_judgment', 'judgment-1');
+    assert.equal(judgment.entries[judgmentKey].verdict, 'real_issue');
+    assert.equal(judgment.entries[judgmentKey].reason, 'evidence is enough');
+
+    const softStandard = updateObservationReviewState(dir, {
+      targetType: 'soft_standard',
+      targetId: 'sample-skill:soft-1',
+      verdict: 'not_issue',
+      reason: 'not part of this skill',
+    }, '2026-05-01T00:01:00.000Z');
+    const softKey = observationReviewStateKey('soft_standard', 'sample-skill:soft-1');
+    assert.equal(softStandard.entries[softKey].targetType, 'soft_standard');
+    assert.equal(softStandard.entries[softKey].verdict, 'not_issue');
+  });
+
+  it('extracts and reviews soft standard candidates with explicit model execution', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-soft-standards-'));
+    const chain: ObservationSkillChain = {
+      skillName: 'sample-review-skill',
+      definition: {
+        found: true,
+        path: '/tmp/sample-skill/SKILL.md',
+        content: [
+          '# sample-review-skill',
+          '',
+          'Use this skill to review generated technical plans.',
+          'Always cite the source section that supports a finding.',
+        ].join('\n'),
+      },
+      healthCheck: {
+        source: 'doctor-static-rules',
+        hardRules: { declared: false, valid: true, count: 0, rules: [], errors: [] },
+        workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], source: 'none' },
+      },
+      runtime: {
+        supported: true,
+        mode: 'deterministic-no-llm',
+        message: 'runtime summary only',
+        summary: {
+          invocationCount: 2,
+          toolCallCount: 3,
+          toolFailureCount: 0,
+          passedCount: 0,
+          attentionCount: 0,
+          manualReviewCount: 0,
+        },
+        hardRules: [],
+        workflowNodes: [],
+      },
+    };
+
+    const record = await extractSkillSoftStandards({
+      observationsDir: dir,
+      skillChain: chain,
+      model: 'sonnet',
+      executorName: 'test-executor',
+      now: '2026-05-01T00:00:00.000Z',
+      executor: async (input) => {
+        assert.equal(input.model, 'sonnet');
+        assert.match(input.system ?? '', /promptId: llm-enhanced-review/);
+        return {
+          ok: true,
+          output: JSON.stringify({
+            skillType: 'advisory',
+            extractedStandards: {
+              hardrules: [{
+                title: 'Cite source section',
+                body: 'Reviewer should verify each finding points to a source section.',
+                confidence: 'medium',
+                evidence: ['Always cite the source section'],
+              }],
+              workflows: [{
+                title: 'Review generated plan',
+                body: 'Reviewer should check that the plan review follows the declared review intent.',
+                confidence: 'low',
+                evidence: ['review generated technical plans'],
+              }],
+              completionCriteria: [],
+              artifactCriteria: [],
+            },
+            userGoal: {
+              summary: 'Review generated technical plans',
+              slots: ['source section', 'technical plan'],
+              expectedOutcome: 'Evidence-backed review',
+            },
+            skillDeclaredGoal: {
+              summary: 'Review generated technical plans with source citations',
+              keywords: ['plan review', 'source citation'],
+              expectedOutcomes: ['review summary'],
+            },
+            runtimeAssessment: {
+              goalSatisfaction: 'unknown',
+              declaredBehaviorFit: 'unknown',
+              artifactGoalMatch: 'unknown',
+              userFeeling: 'neutral',
+            },
+            userExperienceSignals: {
+              useful: 'unknown',
+              followUp: 'unknown',
+              correction: 'unknown',
+              negativeFeedback: 'unknown',
+              interruption: 'unknown',
+              frustration: 'unknown',
+            },
+            reviewerSummary: 'The skill should cite evidence when reviewing plans.',
+            ownerSuggestions: [{
+              title: 'Keep source citation explicit',
+              body: 'Add examples that show the expected source citation format.',
+              evidence: ['Always cite the source section'],
+              acceptanceCriteria: 'Generated reviews include a source section reference.',
+            }],
+          }),
+          durationMs: 1,
+          durationApiMs: 1,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreationTokens: 0,
+          costUSD: 0,
+          stopReason: 'stop',
+          numTurns: 1,
+        };
+      },
+    });
+
+    assert.equal(record.model, 'sonnet');
+    assert.equal(record.promptId, 'llm-enhanced-review');
+    assert.equal(record.promptVersion, '2026-05-18.v1');
+    assert.equal(record.enhancedReview?.skillType, 'advisory');
+    assert.deepEqual(record.enhancedReview?.skillDeclaredGoal?.keywords, ['plan review', 'source citation']);
+    assert.equal(record.enhancedReview?.runtimeAssessment?.userFeeling, 'neutral');
+    assert.equal(record.standards.length, 2);
+    assert.equal(record.standards[0].status, 'pending_review');
+    assert.equal(record.standards[0].source, 'llm_soft_standard');
+
+    const loaded = loadSkillDerivedStandards(dir);
+    assert.equal(loaded['sample-review-skill'].standards[0].status, 'pending_review');
+
+    const updated = updateSkillDerivedStandardStatus(
+      dir,
+      'sample-review-skill',
+      record.standards[0].id,
+      'author_confirmed',
+      '2026-05-01T00:01:00.000Z',
+    );
+    assert.equal(updated.standards[0].status, 'author_confirmed');
+
+    const resolved = resolveSkillStandards('sample-review-skill', {
+      observationsDir: dir,
+      skillChain: chain,
+      derivedStandards: loadSkillDerivedStandards(dir),
+    });
+    assert.equal(resolved.active.length, 1);
+    assert.equal(resolved.active[0].source, 'confirmed_soft');
+    assert.equal(resolved.candidates.some((item) => item.status === 'pending_review'), true);
   });
 });

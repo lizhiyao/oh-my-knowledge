@@ -319,12 +319,16 @@ omk observe inbox [flags]
 **Flags:**
 
 - `--by-skill` `boolean`:按 skill 聚合输出
+- `--executor` `option`:LLM 增强复盘使用的执行器
 - `--explore` `option`:抽样 N 条 medium/low 长尾（replaces limit）
 - `--include-noise` `boolean`:explore 时也包含 noise 桶
 - `--input-dir` `option`:inbox 数据目录，默认 .omk/observations（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observations。
 - `--json` `boolean`:JSON 格式输出
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--limit` `option`:限制条数，默认 20
+- `--llm-enhanced-review` `boolean`:显式调用模型进行链路增强复盘，包含标准抽取、目标判断、类型判断、产物匹配和 owner 建议
+- `--model` `option`:LLM 增强复盘使用的模型，默认 sonnet
+- `--refresh` `boolean`:重新生成 LLM 增强复盘，不复用已有结果
 - `--skill` `option`:只看指定 skill
 
 ## omk observe ingest
@@ -411,6 +415,29 @@ omk sample --batch --skill-dir skills
 ```bash
 omk sample skills/my-skill/SKILL.md --fix
 ```
+
+## omk skill-extract
+
+确认或否决 skill 软标准候选。
+
+**用法:**
+
+```bash
+omk skill-extract [skillName] [flags]
+```
+
+**参数:**
+
+- `skillName`(可选):skill 名称
+
+**Flags:**
+
+- `--input-dir` `option`:observation 数据目录
+- `--json` `boolean`:JSON 格式输出
+- `--lang` `option` (默认 `zh`):输出语言 zh|en
+- `--reason` `option`:人工判断原因
+- `--review` `option`:要确认或否决的软标准 ID
+- `--status` `option`:确认状态：author_confirmed / rejected / pending_review
 
 ## omk studio
 

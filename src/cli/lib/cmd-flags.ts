@@ -231,6 +231,10 @@ export interface ObserveInboxFlags {
   explore?: string;
   'include-noise': boolean;
   'by-skill': boolean;
+  'llm-enhanced-review': boolean;
+  refresh: boolean;
+  model?: string;
+  executor?: string;
   json: boolean;
 }
 
@@ -241,6 +245,19 @@ export interface ObserveShowArgs {
 export interface ObserveShowFlags {
   lang: Lang;
   'input-dir'?: string;
+}
+
+// skill-extract(standalone review command)
+export interface SkillExtractArgs {
+  skillName?: string;
+}
+export interface SkillExtractFlags {
+  lang: Lang;
+  'input-dir'?: string;
+  review?: string;
+  status?: string;
+  reason?: string;
+  json: boolean;
 }
 
 // ── studio ────────────────────────────────────────────────────────────────────

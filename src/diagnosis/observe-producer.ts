@@ -203,6 +203,7 @@ function titleForRuleFinding(code: ExperienceRuleFinding['code']): string {
     medium_observation_seen: 'Medium-priority observation seen',
     user_correction_seen: 'User correction seen',
     user_interruption_seen: 'User interruption seen',
+    session_interrupted_seen: 'Session interruption seen',
     negative_feedback_seen: 'Negative feedback seen',
     positive_feedback_seen: 'Positive feedback seen',
     user_goal_shift_seen: 'User goal shift seen',

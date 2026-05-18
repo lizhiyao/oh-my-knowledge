@@ -539,6 +539,7 @@ omk observe inbox --skill audit                    # 只看某个 skill
 omk observe inbox --by-skill                       # 按 skill 资产视图
 omk observe inbox --explore 10                     # 从 medium / low 桶抽 10 条长尾
 omk observe inbox --explore 10 --include-noise     # 显式包含 noise 桶
+omk observe inbox --llm-enhanced-review          # 显式调用模型进行链路增强复盘
 omk observe inbox --json                           # JSON 输出，便于自动化消费
 
 # 3. 反向查单条 observation 的事件三元组（前后 message 上下文）
@@ -553,6 +554,30 @@ omk observe show <inbox_id>
 + `evidence.{messageIndex,messageUuid,toolUseId}`：可反向回到原始 jsonl 的锚点
 
 支持 trace 格式：Claude Code session JSONL（`.jsonl`）、OpenClaw session JSONL（`.jsonl`）、markdown 对话日志（`.log`）。
+
+### `omk skill-extract`
+
+```bash
+omk skill-extract demo-create --review soft-xxx --status author_confirmed
+omk skill-extract demo-create --review soft-xxx --status rejected --reason "不是有效标准"
+```
+
+<!-- omk:cli:skill-extract:flags:start -->
+
+**Flags:**
+
+```text
+  --input-dir <value>  observation 数据目录
+  --json               JSON 格式输出
+  --lang <value>       输出语言 zh|en
+  --reason <value>     人工判断原因
+  --review <value>     要确认或否决的软标准 ID
+  --status <value>     确认状态：author_confirmed / rejected / pending_review
+```
+
+完整描述见 `omk skill-extract --help`。
+
+<!-- omk:cli:skill-extract:flags:end -->
 
 ### `omk evolve`
 

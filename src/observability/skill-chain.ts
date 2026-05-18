@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
+  extractMarkdownStepWorkflows,
   validateSkillHardRules,
   validateSkillWorkflows,
   type SkillHardRule,
@@ -48,6 +49,7 @@ export interface ObservationSkillChain {
       nodeCount: number;
       workflows: SkillWorkflow[];
       errors: string[];
+      source: 'frontmatter' | 'markdown_headings' | 'none';
       advisoryCode?: SkillChainAdvisoryCode;
     };
   };
@@ -81,9 +83,12 @@ export function buildObservationSkillChain(skillName: string, cwd = process.cwd(
   const content = readFileSync(path, 'utf-8');
   const hardRules = validateSkillHardRules(content);
   const workflows = validateSkillWorkflows(content);
-  const nodeCount = workflows.workflows.reduce((sum, workflow) => sum + workflow.nodes.length, 0);
+  const markdownWorkflows = workflows.workflows.length > 0 ? [] : extractMarkdownStepWorkflows(content);
+  const effectiveWorkflows = workflows.workflows.length > 0 ? workflows.workflows : markdownWorkflows;
+  const workflowSource = workflows.workflows.length > 0 ? 'frontmatter' : markdownWorkflows.length > 0 ? 'markdown_headings' : 'none';
+  const nodeCount = effectiveWorkflows.reduce((sum, workflow) => sum + workflow.nodes.length, 0);
   const truncated = content.length > MAX_SKILL_DEFINITION_CHARS;
-  const runtime = buildRuntimeChecks(skillName, hardRules.rules, workflows.workflows, experienceReports);
+  const runtime = buildRuntimeChecks(skillName, hardRules.rules, effectiveWorkflows, experienceReports);
   return {
     skillName,
     definition: {
@@ -105,10 +110,11 @@ export function buildObservationSkillChain(skillName: string, cwd = process.cwd(
       workflows: {
         declared: workflows.declared,
         valid: workflows.ok,
-        branchCount: workflows.workflows.length,
+        branchCount: effectiveWorkflows.length,
         nodeCount,
-        workflows: workflows.workflows,
+        workflows: effectiveWorkflows,
         errors: workflows.errors,
+        source: workflowSource,
         ...(workflows.declared ? {} : { advisoryCode: 'workflows_not_declared' as const }),
       },
     },
@@ -123,7 +129,7 @@ function emptySkillChain(skillName: string, experienceReports: ObservationExperi
     healthCheck: {
       source: 'doctor-static-rules',
       hardRules: { declared: false, valid: true, count: 0, rules: [], errors: [], advisoryCode: 'hardrules_not_declared' },
-      workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], advisoryCode: 'workflows_not_declared' },
+      workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], source: 'none', advisoryCode: 'workflows_not_declared' },
     },
     runtime: buildRuntimeChecks(skillName, [], [], experienceReports),
   };
@@ -147,7 +153,7 @@ function buildRuntimeChecks(
     workflow.nodes.map((node) => evaluateRuntimeText({
       kind: 'workflowNode',
       id: `${workflow.id}.${node.id}`,
-      title: `${workflow.id} / ${node.id}`,
+      title: node.action || `${workflow.id} / ${node.id}`,
       expectation: node.action,
     }, evidence)),
   );
@@ -174,7 +180,7 @@ interface RuntimeEvidence {
   toolCallCount: number;
   toolFailureCount: number;
   events: ExperienceTimelineEvent[];
-  allTextLower: string;
+  assistantToolUseIds: Set<string>;
 }
 
 function runtimeEvidence(invocations: ExperienceInvocation[]): RuntimeEvidence {
@@ -185,16 +191,14 @@ function runtimeEvidence(invocations: ExperienceInvocation[]): RuntimeEvidence {
       toolCounts[tool] = (toolCounts[tool] ?? 0) + count;
     }
   }
-  const allTextLower = events
-    .map((event) => `${event.toolName ?? ''}\n${event.label ?? ''}\n${event.snippet ?? ''}\n${event.fullText ?? ''}`)
-    .join('\n')
-    .toLowerCase();
   return {
     toolCounts,
     toolCallCount: invocations.reduce((sum, invocation) => sum + invocation.indicators.toolCallCount, 0),
     toolFailureCount: invocations.reduce((sum, invocation) => sum + invocation.indicators.toolFailureCount, 0),
     events,
-    allTextLower,
+    assistantToolUseIds: new Set(events
+      .filter((event) => event.kind === 'tool_use' && event.role === 'assistant' && event.toolUseId)
+      .map((event) => event.toolUseId as string)),
   };
 }
 
@@ -239,28 +243,26 @@ function evaluateRuntimeText(
   };
 }
 
-type ObservableSignal = 'Read' | 'Grep' | 'Bash' | 'Edit' | 'Write' | 'TodoWrite' | 'upload' | 'git_pull' | 'ask_user';
+type ObservableSignal = 'Read' | 'Grep' | 'Bash' | 'Edit' | 'Write' | 'TodoWrite' | 'upload' | 'git_pull' | 'ask_user' | 'playwright';
 
 function observableSignals(lower: string): ObservableSignal[] {
   const signals = new Set<ObservableSignal>();
-  if (/\bread\b|读取|必读|文件|知识库/.test(lower)) signals.add('Read');
+  if (/\bread\b|读取|必读|查阅|阅读|参考|领域知识|知识库/.test(lower)) signals.add('Read');
   if (/\bgrep\b|\brg\b|搜索|查找|检索/.test(lower)) signals.add('Grep');
   if (/\bbash\b|\bshell\b|命令|执行脚本/.test(lower)) signals.add('Bash');
   if (/\bedit\b|修改|编辑/.test(lower)) signals.add('Edit');
-  if (/\bwrite\b|写入|生成文件|保存文件/.test(lower)) signals.add('Write');
+  if (/\bwrite\b|写入|生成文件|保存文件/.test(lower) || isGenerationWorkflowText(lower)) signals.add('Write');
   if (/\btodo\b|待办|计划/.test(lower)) signals.add('TodoWrite');
   if (/上传|upload|artifacts\/upload|preview_url/.test(lower)) signals.add('upload');
   if (/git pull|同步知识库|更新知识库/.test(lower)) signals.add('git_pull');
   if (/askuserquestion|向用户提问|反问用户|用户确认|确认用户|ask user/.test(lower)) signals.add('ask_user');
+  if (/截图|截屏|验证|预览|浏览器|页面检查|playwright|screenshot/.test(lower)) signals.add('playwright');
   return Array.from(signals);
 }
 
 function signalSeen(signal: ObservableSignal, evidence: RuntimeEvidence): boolean {
-  if (signal in evidence.toolCounts && (evidence.toolCounts[signal] ?? 0) > 0) return true;
-  const text = evidence.allTextLower;
-  if (signal === 'upload') return /artifacts\/upload|preview_url|上传成功|\bupload\b/.test(text);
-  if (signal === 'git_pull') return /git pull|同步知识库/.test(text);
-  if (signal === 'ask_user') return /askuserquestion|ask user|是否需要|请确认|确认一下/.test(text);
+  if (evidence.events.some((event) => eventMatchesSignal(event, signal, evidence))) return true;
+  if (evidence.events.length === 0 && isDirectToolSignal(signal) && (evidence.toolCounts[signal] ?? 0) > 0) return true;
   return false;
 }
 
@@ -275,23 +277,57 @@ function signalLabel(signal: ObservableSignal): string {
     upload: '上传产物',
     git_pull: '同步知识库',
     ask_user: '向用户确认',
+    playwright: '页面验证/截图',
   };
   return labels[signal];
 }
 
 function evidenceSnippetsForSignal(signal: ObservableSignal, evidence: RuntimeEvidence): string[] {
-  const needle = signal.toLowerCase();
   return evidence.events
-    .filter((event) => {
-      const text = `${event.toolName ?? ''}\n${event.label ?? ''}\n${event.snippet ?? ''}\n${event.fullText ?? ''}`.toLowerCase();
-      if (event.toolName === signal) return true;
-      if (signal === 'upload') return /artifacts\/upload|preview_url|上传成功|\bupload\b/.test(text);
-      if (signal === 'git_pull') return /git pull|同步知识库/.test(text);
-      if (signal === 'ask_user') return /askuserquestion|ask user|是否需要|请确认|确认一下/.test(text);
-      return text.includes(needle);
-    })
+    .filter((event) => eventMatchesSignal(event, signal, evidence))
     .map((event) => `${event.label ?? event.kind}: ${event.snippet ?? event.fullText ?? ''}`.trim())
     .filter(Boolean);
+}
+
+function isGenerationWorkflowText(lower: string): boolean {
+  if (/生成前|创建前/.test(lower)) return false;
+  return /(?:生成|创建|产出|输出|写出|保存).*(?:文件|页面|demo|prd|文档|代码|产物|结果)|(?:文件|页面|demo|prd|文档|代码|产物|结果).*(?:生成|创建|输出|保存)|\b(?:generate|create|write)\b/.test(lower);
+}
+
+function isDirectToolSignal(signal: ObservableSignal): signal is Extract<ObservableSignal, 'Read' | 'Grep' | 'Bash' | 'Edit' | 'Write' | 'TodoWrite'> {
+  return signal === 'Read' || signal === 'Grep' || signal === 'Bash' || signal === 'Edit' || signal === 'Write' || signal === 'TodoWrite';
+}
+
+function eventMatchesSignal(event: ExperienceTimelineEvent, signal: ObservableSignal, evidence: RuntimeEvidence): boolean {
+  const toolName = (event.toolName ?? '').toLowerCase();
+  const text = eventRuntimeText(event);
+  if (signal === 'Read') return toolName === 'read' && !isSkillMdSelfRead(text);
+  if (signal === 'Grep') return toolName === 'grep' || toolName === 'glob' || /\brg\b|\bgrep\b|搜索|查找|检索/.test(text);
+  if (signal === 'Bash') return toolName === 'bash';
+  if (signal === 'Edit') return toolName === 'edit' || toolName === 'multiedit';
+  if (signal === 'Write') return toolName === 'write';
+  if (signal === 'TodoWrite') return toolName === 'todowrite';
+  if (signal === 'upload') return isAssistantAuthoredUploadEvent(event, evidence, text);
+  if (signal === 'git_pull') return /git pull|同步知识库/.test(text);
+  if (signal === 'ask_user') return /askuserquestion|ask user|是否需要|请确认|确认一下/.test(text);
+  if (signal === 'playwright') return toolName === 'bash' && /playwright|screenshot|截图|截屏|chromium|浏览器|页面验证/.test(text);
+  return false;
+}
+
+function eventRuntimeText(event: ExperienceTimelineEvent): string {
+  return `${event.toolName ?? ''}\n${event.label ?? ''}\n${event.snippet ?? ''}\n${event.fullText ?? ''}`.toLowerCase();
+}
+
+function isAssistantAuthoredUploadEvent(event: ExperienceTimelineEvent, evidence: RuntimeEvidence, text: string): boolean {
+  if (!/artifacts\/upload|preview_url|上传成功|\bupload\b/.test(text)) return false;
+  if (event.kind === 'tool_use' && event.role === 'assistant') return true;
+  if (event.kind === 'tool_result' && event.role === 'tool' && event.toolUseId && evidence.assistantToolUseIds.has(event.toolUseId)) return true;
+  return false;
+}
+
+function isSkillMdSelfRead(text: string): boolean {
+  return /(?:^|[/"'\\])(?:\.claude|\.codex|\.agents|\.openclaw|workspace)?[/"'\\]*(?:workspace[/"'\\])?skills[/"'\\][^/"'\\]+[/"'\\]skill\.md\b/.test(text)
+    || /(?:^|[/"'\\])skills[/"'\\][^/"'\\]+[/"'\\]skill\.md\b/.test(text);
 }
 
 function findSkillMdPath(skillName: string, cwd: string): string | undefined {
