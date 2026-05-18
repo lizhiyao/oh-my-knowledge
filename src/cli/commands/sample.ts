@@ -444,7 +444,7 @@ async function executeFix(
   let writtenFiles: string[] = [];
   if (result.fixedCount > 0) {
     const changedIds = new Set(result.fixes.filter((f) => f.changed).map((f) => f.sampleId));
-    writtenFiles = writeFixedSamplesToSources(loadedSamples, result.samples, changedIds);
+    writtenFiles = writeFixedSamplesToSources(loadedSamples, result.samples as Sample[], changedIds);
   }
 
   // 9. Report
