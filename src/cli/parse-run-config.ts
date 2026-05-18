@@ -240,7 +240,7 @@ export function parseRunConfig(
   // 4) Apply CLI > config > hard-coded default for all other fields.
   const executorName = (values.executor as string | undefined) ?? evalConfig?.executor ?? 'claude';
   // model fallback 链:CLI > eval.yaml > DEFAULT_MODEL(opus 4.7)。
-  // 改 default 时同步 src/cli/oclif/commands/eval.ts 里 --model flag description 的默认值文案。
+  // 改 default 时同步 src/cli/commands/eval.ts 里 --model flag description 的默认值文案。
   const model = (values.model as string | undefined) ?? evalConfig?.model ?? DEFAULT_MODEL;
 
   // judgeModels: unified judge config. Parse --judge-models (CLI) or evalConfig.judgeModels (yaml).

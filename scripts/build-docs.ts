@@ -1,6 +1,6 @@
 // scripts/build-docs.ts — 从 oclif Config 渲染若干 markdown 文件的 marker 区段。
 //
-// 来源:src/cli/oclif/commands/*.ts(双语 description / examples / flags / args)。
+// 来源:src/cli/commands/*.ts(双语 description / examples / flags / args)。
 //
 // 目标(每条一个 Target):
 // - commands.md(.claude/skills/omk/references/commands.md):整段 marker 包裹,
@@ -13,7 +13,7 @@
 // - `yarn build:docs:check`(--check)→ 比对磁盘内容,任一 target 不一致就 exit 1
 //   + print diff(CI 用)
 //
-// 依赖 dist/ 存在(oclif config.commands 指向 ./dist/src/cli/oclif/commands),
+// 依赖 dist/ 存在(oclif config.commands 指向 ./dist/src/cli/commands),
 // 跑之前必须先 `yarn build`。
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -158,7 +158,7 @@ function renderCommandFullbody(cmd: Command.Loadable, bin: string): string[] {
 function generateFullbody(config: Config): string {
   const cmds = [...config.commands].sort((a, b) => a.id.localeCompare(b.id));
   const lines: string[] = [];
-  lines.push('<!-- 此段由 scripts/build-docs.ts 从 src/cli/oclif/commands/ 自动生成。');
+  lines.push('<!-- 此段由 scripts/build-docs.ts 从 src/cli/commands/ 自动生成。');
   lines.push('     改 CLI 后跑 `yarn build:docs` 同步,CI `yarn build:docs:check` 会拦截 drift。-->');
   lines.push('');
   for (const cmd of cmds) {

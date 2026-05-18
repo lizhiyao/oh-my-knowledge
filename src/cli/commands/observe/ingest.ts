@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual } from '../../i18n.js';
-import { CliExit } from '../../../cli-exit.js';
+import { bilingual } from '../../oclif/i18n.js';
+import { CliExit } from '../../cli-exit.js';
 
 export default class ObserveIngest extends Command {
   static description = bilingual({
@@ -46,9 +46,9 @@ export default class ObserveIngest extends Command {
         console.error(`Trace path does not exist: ${tracePath}`);
         throw new CliExit(1);
       }
-      const { buildObservationInboxReport, saveObservationInboxReport, DEFAULT_OBSERVATIONS_DIR } = await import('../../../../observability/inbox.js');
+      const { buildObservationInboxReport, saveObservationInboxReport, DEFAULT_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
       const outDir = resolve(flags['output-dir'] || DEFAULT_OBSERVATIONS_DIR);
-      const { loadObservationReviewState } = await import('../../../../observability/review-state.js');
+      const { loadObservationReviewState } = await import('../../../observability/review-state.js');
       const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
       const path = saveObservationInboxReport(report, outDir);
       console.log(JSON.stringify(report, null, 2));

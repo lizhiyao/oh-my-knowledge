@@ -1,11 +1,11 @@
 import { resolve } from 'node:path';
 import { Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../i18n.js';
-import { CliExit } from '../../cli-exit.js';
-import { tCli, type CliLang } from '../../i18n.js';
-import { DEFAULT_REPORTS_DIR } from '../../parse-run-config.js';
-import type { ReportServer } from '../../_shared.js';
-import type { StudioArgs, StudioFlags } from '../../types/cmd-flags.js';
+import { bilingual, resolveLang } from '../oclif/i18n.js';
+import { CliExit } from '../cli-exit.js';
+import { tCli, type CliLang } from '../i18n.js';
+import { DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
+import type { ReportServer } from '../_shared.js';
+import type { StudioArgs, StudioFlags } from '../types/cmd-flags.js';
 
 async function openWorkbench(url: string, lang: CliLang): Promise<void> {
   const { execFile } = await import('node:child_process');
@@ -40,10 +40,10 @@ export async function runStudio(
   if (flags.dev && !process.env.__OMK_DEV_CHILD) {
     const { spawn } = await import('node:child_process');
     const { fileURLToPath } = await import('node:url');
-    // 路径绑定:`oclif/commands/studio.{ts,js}` → 三层 `..` 回 `cli/`,再 `index.js`。
-    // 移动本文件到不同嵌套(例如 `oclif/commands/group/studio.ts`)需同步改 `..` 数量。
+    // 路径绑定:`commands/studio.{ts,js}` → 两层 `..` 回 `cli/`,再 `index.js`。
+    // 移动本文件到不同嵌套(例如 `commands/group/studio.ts`)需同步改 `..` 数量。
     // cli/index.{ts,js} 在源跟 dist 中位置一致(src/cli/index.ts → dist/src/cli/index.js)。
-    const cliPath = resolve(fileURLToPath(import.meta.url), '..', '..', '..', 'index.js');
+    const cliPath = resolve(fileURLToPath(import.meta.url), '..', '..', 'index.js');
     const watchRoot = resolve(cliPath, '..', '..');
     const childArgs = [
       '--watch-path', watchRoot,
@@ -73,7 +73,7 @@ export async function runStudio(
     return;
   }
 
-  const { createReportServer } = await import('../../../server/report-server.js');
+  const { createReportServer } = await import('../../server/report-server.js');
   const server: ReportServer = createReportServer({
     port: Number(flags.port),
     ...(flags.host ? { host: flags.host } : {}),

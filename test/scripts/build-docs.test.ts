@@ -58,7 +58,7 @@ function readMarkerBody(content: string): string {
 
 describe('scripts/build-docs codegen', () => {
   // oclif 顶层命令真值集 — 跨 case 共享,从 Config.load 派生(单一来源是
-  // src/cli/oclif/commands/ 文件目录)。
+  // src/cli/commands/ 文件目录)。
   let oclifTopLevelIds: readonly string[];
   beforeAll(async () => {
     const config = await Config.load({ root: PROJECT_ROOT });

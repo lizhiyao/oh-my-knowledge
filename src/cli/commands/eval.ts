@@ -1,14 +1,14 @@
 import { Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../i18n.js';
-import { CliExit } from '../../cli-exit.js';
-import { tCli, type CliLang } from '../../i18n.js';
-import { parseRunConfig } from '../../parse-run-config.js';
-import { makeOnProgress } from '../../progress.js';
-import { computeRunTally } from '../../run-tally.js';
-import type { EvalArgs, EvalFlags } from '../../types/cmd-flags.js';
-import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback } from '../../../types/index.js';
-import type { DryRunBatchReport, DryRunReport } from '../../../eval-workflows/run-evaluation.js';
-import type { EvalResult, ReportServer } from '../../_shared.js';
+import { bilingual, resolveLang } from '../oclif/i18n.js';
+import { CliExit } from '../cli-exit.js';
+import { tCli, type CliLang } from '../i18n.js';
+import { parseRunConfig } from '../parse-run-config.js';
+import { makeOnProgress } from '../progress.js';
+import { computeRunTally } from '../run-tally.js';
+import type { EvalArgs, EvalFlags } from '../types/cmd-flags.js';
+import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback } from '../../types/index.js';
+import type { DryRunBatchReport, DryRunReport } from '../../eval-workflows/run-evaluation.js';
+import type { EvalResult, ReportServer } from '../_shared.js';
 
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
 // 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
@@ -65,7 +65,7 @@ function applyGateExitCode(code: number, values: ParsedValues, lang: CliLang): n
 }
 
 async function emitEvaluationVerdict(report: EvaluationReport, values: ParsedValues): Promise<number> {
-  const { computeVerdict, formatVerdictText } = await import('../../../eval-core/verdict.js');
+  const { computeVerdict, formatVerdictText } = await import('../../eval-core/verdict.js');
   const result = computeVerdict(report, verdictOptions(values));
   console.log(formatVerdictText(result, { verbose: true }));
   return verdictPasses(result.level, result.headline) ? 0 : 1;
@@ -96,7 +96,7 @@ async function loadBatchChildReports(
   reportsDir: string,
   lang: CliLang,
 ): Promise<EvaluationReport[]> {
-  const { createFileStore } = await import('../../../server/report-store.js');
+  const { createFileStore } = await import('../../server/report-store.js');
   const store = createFileStore(reportsDir);
   const reports: EvaluationReport[] = [];
   for (const item of batch.items) {
@@ -117,7 +117,7 @@ async function emitBatchVerdict(
   values: ParsedValues,
   lang: CliLang,
 ): Promise<number> {
-  const { computeVerdict } = await import('../../../eval-core/verdict.js');
+  const { computeVerdict } = await import('../../eval-core/verdict.js');
   const childReports = await loadBatchChildReports(report, reportsDir, lang);
   const results = childReports.map((child) => ({
     id: child.id,
@@ -160,7 +160,7 @@ async function announceSavedReport({
   process.stderr.write(tCli('cli.run.report_saved', lang, { path: filePath }));
 
   if (!values['no-serve'] && process.stdout.isTTY) {
-    const { createReportServer } = await import('../../../server/report-server.js');
+    const { createReportServer } = await import('../../server/report-server.js');
     const server: ReportServer = createReportServer({ reportsDir });
     const serverUrl: string = await server.start();
     const reportUrl: string = `${serverUrl}/reports/${report.id}`;
@@ -185,7 +185,7 @@ async function runEval(
 ): Promise<void> {
   const { values, config, evalConfig } = parseRunConfig({ ...flags } as Record<string, unknown>);
 
-  const { runEvaluation, runMultiple, runBatchEvaluation } = await import('../../../eval-workflows/run-evaluation.js');
+  const { runEvaluation, runMultiple, runBatchEvaluation } = await import('../../eval-workflows/run-evaluation.js');
 
   if (values.blind !== undefined) {
     config.blind = values.blind as boolean | undefined;
@@ -300,7 +300,7 @@ async function runEval(
 
     const goldDir = (values['gold-dir'] as string | undefined) ?? evalConfig?.goldDir;
     if (goldDir && filePath) {
-      const { attachGoldAgreementToReport, formatGoldCompare } = await import('../../../grading/gold-cli.js');
+      const { attachGoldAgreementToReport, formatGoldCompare } = await import('../../grading/gold-cli.js');
       const out = attachGoldAgreementToReport({
         report,
         goldDir,

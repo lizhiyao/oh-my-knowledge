@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CliExit } from '../../src/cli/cli-exit.js';
-import { runEvolve } from '../../src/cli/oclif/commands/evolve.js';
+import { runEvolve } from '../../src/cli/commands/evolve.js';
 import { parseArgsStrictOrExit } from '../../src/cli/parse-strict.js';
 import { parseJudgeModelsArgOrExit } from '../../src/cli/parse-run-config.js';
 

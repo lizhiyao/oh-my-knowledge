@@ -1,6 +1,6 @@
 import { Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../../i18n.js';
-import { CliExit } from '../../../../cli-exit.js';
+import { bilingual, resolveLang } from '../../../oclif/i18n.js';
+import { CliExit } from '../../../cli-exit.js';
 
 export default class EvalGoldInit extends Command {
   static description = bilingual({
@@ -32,7 +32,7 @@ export default class EvalGoldInit extends Command {
     const { flags } = await this.parse(EvalGoldInit);
     const lang = resolveLang(process.argv);
     try {
-      const { initGoldDataset } = await import('../../../../../grading/gold-cli.js');
+      const { initGoldDataset } = await import('../../../../grading/gold-cli.js');
       try {
         const written = initGoldDataset(flags.out, {
           annotator: flags.annotator,

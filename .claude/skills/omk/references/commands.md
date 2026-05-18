@@ -1,7 +1,7 @@
 # omk 命令参考
 
 <!-- omk:cli:start -->
-<!-- 此段由 scripts/build-docs.ts 从 src/cli/oclif/commands/ 自动生成。
+<!-- 此段由 scripts/build-docs.ts 从 src/cli/commands/ 自动生成。
      改 CLI 后跑 `yarn build:docs` 同步,CI `yarn build:docs:check` 会拦截 drift。-->
 
 ## omk doctor

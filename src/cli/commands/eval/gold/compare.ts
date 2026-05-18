@@ -1,10 +1,10 @@
 import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../../i18n.js';
-import { CliExit } from '../../../../cli-exit.js';
-import { DEFAULT_REPORTS_DIR } from '../../../../parse-run-config.js';
-import { requireEvaluationReport } from '../../../../_shared.js';
-import type { ReportStore } from '../../../../../types/index.js';
+import { bilingual, resolveLang } from '../../../oclif/i18n.js';
+import { CliExit } from '../../../cli-exit.js';
+import { DEFAULT_REPORTS_DIR } from '../../../parse-run-config.js';
+import { requireEvaluationReport } from '../../../_shared.js';
+import type { ReportStore } from '../../../../types/index.js';
 
 export default class EvalGoldCompare extends Command {
   static description = bilingual({
@@ -64,9 +64,9 @@ export default class EvalGoldCompare extends Command {
         console.error('--gold-dir is required');
         throw new CliExit(1);
       }
-      const { loadGoldDataset } = await import('../../../../../grading/gold-dataset.js');
-      const { compareGoldToReport, formatGoldCompare } = await import('../../../../../grading/gold-cli.js');
-      const { createFileStore } = await import('../../../../../server/report-store.js');
+      const { loadGoldDataset } = await import('../../../../grading/gold-dataset.js');
+      const { compareGoldToReport, formatGoldCompare } = await import('../../../../grading/gold-cli.js');
+      const { createFileStore } = await import('../../../../server/report-store.js');
 
       const { dataset, issues } = loadGoldDataset(goldDir);
       if (!dataset) {

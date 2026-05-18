@@ -1,9 +1,9 @@
 import { resolve } from 'node:path';
 import { Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../i18n.js';
-import { CliExit } from '../../../cli-exit.js';
-import { type CliLang } from '../../../i18n.js';
-import type { ObserveInboxArgs, ObserveInboxFlags } from '../../../types/cmd-flags.js';
+import { bilingual, resolveLang } from '../../oclif/i18n.js';
+import { CliExit } from '../../cli-exit.js';
+import { type CliLang } from '../../i18n.js';
+import type { ObserveInboxArgs, ObserveInboxFlags } from '../../types/cmd-flags.js';
 
 function pickSkillCount(value: Record<string, number> | undefined, skillName: string): Record<string, number> | undefined {
   if (!value || value[skillName] == null) return undefined;
@@ -26,7 +26,7 @@ export async function runObserveInbox(
   flags: ObserveInboxFlags,
   lang: CliLang,
 ): Promise<void> {
-  const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR } = await import('../../../../observability/inbox.js');
+  const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
   const dir = resolve(flags['input-dir'] || DEFAULT_OBSERVATIONS_DIR);
   let items = queryObservationInbox(dir);
   if (flags.skill) {

@@ -1,6 +1,6 @@
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../../i18n.js';
-import { CliExit } from '../../../../cli-exit.js';
+import { bilingual, resolveLang } from '../../../oclif/i18n.js';
+import { CliExit } from '../../../cli-exit.js';
 
 export default class EvalGoldValidate extends Command {
   static description = bilingual({
@@ -34,7 +34,7 @@ export default class EvalGoldValidate extends Command {
         console.error('Usage: omk eval gold validate <dir>');
         throw new CliExit(1);
       }
-      const { validateGoldDataset } = await import('../../../../../grading/gold-cli.js');
+      const { validateGoldDataset } = await import('../../../../grading/gold-cli.js');
       const result = validateGoldDataset(dir);
       if (result.ok) {
         console.log(lang === 'zh'

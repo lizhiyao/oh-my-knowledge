@@ -1,7 +1,7 @@
 import { resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../../i18n.js';
-import { CliExit } from '../../../cli-exit.js';
+import { bilingual, resolveLang } from '../../oclif/i18n.js';
+import { CliExit } from '../../cli-exit.js';
 
 export default class ObserveShow extends Command {
   static description = bilingual({
@@ -41,7 +41,7 @@ export default class ObserveShow extends Command {
         console.error(lang === 'zh' ? '用法：omk observe show <inbox_id> [--input-dir <path>]' : 'Usage: omk observe show <inbox_id> [--input-dir <path>]');
         throw new CliExit(1);
       }
-      const { findObservationInboxItem, formatObservationShow, DEFAULT_OBSERVATIONS_DIR } = await import('../../../../observability/inbox.js');
+      const { findObservationInboxItem, formatObservationShow, DEFAULT_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
       const dir = resolve(flags['input-dir'] || DEFAULT_OBSERVATIONS_DIR);
       const item = findObservationInboxItem(id, dir);
       if (!item) {

@@ -135,7 +135,7 @@ describe('markdown `omk <cmd>` 引用 grep gate', () => {
         `发现 ${violations.length} 处未知 / stale omk 命令引用\n` +
         `(allowlist: ${[...truth].sort().join(', ')}):\n${dump}\n\n` +
         `修法:改 markdown 里的命令引用,或者(如果该命令确实应该存在)加 ` +
-        `src/cli/oclif/commands/<cmd>.ts 后重新 yarn build。`,
+        `src/cli/commands/<cmd>.ts 后重新 yarn build。`,
       );
     }
   }, 30000);

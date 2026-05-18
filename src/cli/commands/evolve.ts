@@ -1,12 +1,12 @@
 import { resolve, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../i18n.js';
-import { CliExit } from '../../cli-exit.js';
-import { tCli, type CliLang } from '../../i18n.js';
-import { makeOnProgress } from '../../progress.js';
-import type { EvolveArgs, EvolveFlags } from '../../types/cmd-flags.js';
-import type { ProgressCallback } from '../../../types/index.js';
+import { bilingual, resolveLang } from '../oclif/i18n.js';
+import { CliExit } from '../cli-exit.js';
+import { tCli, type CliLang } from '../i18n.js';
+import { makeOnProgress } from '../progress.js';
+import type { EvolveArgs, EvolveFlags } from '../types/cmd-flags.js';
+import type { ProgressCallback } from '../../types/index.js';
 
 interface RoundProgressInfo {
   round: number;
@@ -74,8 +74,8 @@ export async function runEvolve(
     else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
   }
 
-  const { evolveSkill } = await import('../../../authoring/evolver.js');
-  const { parseJudgeModelsArgOrExit } = await import('../../parse-run-config.js');
+  const { evolveSkill } = await import('../../authoring/evolver.js');
+  const { parseJudgeModelsArgOrExit } = await import('../parse-run-config.js');
 
   const evolveJudges = parseJudgeModelsArgOrExit(flags['judge-models']);
   if (evolveJudges.length > 1) {

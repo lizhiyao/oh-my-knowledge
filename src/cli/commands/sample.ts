@@ -2,14 +2,14 @@ import { resolve, join, basename, dirname, extname } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import yaml from 'js-yaml';
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../i18n.js';
-import { CliExit } from '../../cli-exit.js';
-import { tCli, type CliLang } from '../../i18n.js';
-import { DEFAULT_REPORTS_DIR } from '../../parse-run-config.js';
-import { loadSamples, parseYaml, type LoadSamplesResult } from '../../../inputs/load-samples.js';
-import { hashSample, hashString } from '../../../eval-core/evaluation-reporting.js';
-import type { SampleArgs, SampleFlags } from '../../types/cmd-flags.js';
-import type { Report, Sample as SampleType } from '../../../types/index.js';
+import { bilingual, resolveLang } from '../oclif/i18n.js';
+import { CliExit } from '../cli-exit.js';
+import { tCli, type CliLang } from '../i18n.js';
+import { DEFAULT_REPORTS_DIR } from '../parse-run-config.js';
+import { loadSamples, parseYaml, type LoadSamplesResult } from '../../inputs/load-samples.js';
+import { hashSample, hashString } from '../../eval-core/evaluation-reporting.js';
+import type { SampleArgs, SampleFlags } from '../types/cmd-flags.js';
+import type { Report, Sample as SampleType } from '../../types/index.js';
 
 interface GenerateSamplesResult {
   samples: unknown[];
@@ -174,8 +174,8 @@ async function runSampleFix(
   flags: SampleFlags,
   lang: CliLang,
 ): Promise<void> {
-  const { fixSamples } = await import('../../../authoring/sample-fixer.js');
-  const { createFileStore } = await import('../../../server/report-store.js');
+  const { fixSamples } = await import('../../authoring/sample-fixer.js');
+  const { createFileStore } = await import('../../server/report-store.js');
 
   const model = flags.model ?? 'opus';
   const reportsDir = resolve(flags['reports-dir'] ?? DEFAULT_REPORTS_DIR);
@@ -254,7 +254,7 @@ async function runSampleFix(
 
   process.stderr.write(lang === 'zh' ? `🔧 发现 ${sampleDesignCount} 条 sample_design 失败，开始修复...\n` : `🔧 Found ${sampleDesignCount} sample_design failure(s), fixing...\n`);
 
-  const { createExecutor } = await import('../../../executors/index.js');
+  const { createExecutor } = await import('../../executors/index.js');
   const exec = createExecutor('claude');
   const executorFn = async (opts: { model: string; system: string; prompt: string; timeoutMs: number; lean?: boolean }) => {
     const result = await exec({
@@ -311,7 +311,7 @@ async function runSample(
     return;
   }
 
-  const { generateSamples } = await import('../../../authoring/generator.js');
+  const { generateSamples } = await import('../../authoring/generator.js');
   const count: number | undefined = flags.count !== undefined
     ? Math.max(1, Number(flags.count) || 5)
     : undefined;

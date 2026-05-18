@@ -1,11 +1,11 @@
 import { existsSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Args, Command, Flags } from '@oclif/core';
-import { bilingual, resolveLang } from '../i18n.js';
-import { CliExit } from '../../cli-exit.js';
-import { tCli } from '../../i18n.js';
-import type { Sample } from '../../../types/index.js';
-import type { DependencyRequirements } from '../../../eval-core/dependency-checker.js';
+import { bilingual, resolveLang } from '../oclif/i18n.js';
+import { CliExit } from '../cli-exit.js';
+import { tCli } from '../i18n.js';
+import type { Sample } from '../../types/index.js';
+import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
 
 const DEFAULT_SAMPLE_FILENAMES = ['eval-samples.json', 'eval-samples.yaml', 'eval-samples.yml'] as const;
 
@@ -176,7 +176,7 @@ export default class Doctor extends Command {
       let requires: DependencyRequirements | undefined;
       if (samplesPath) {
         try {
-          const { loadSamples } = await import('../../../inputs/load-samples.js');
+          const { loadSamples } = await import('../../inputs/load-samples.js');
           const loaded = loadSamples(samplesPath);
           samples = loaded.samples;
           requires = loaded.requires;
@@ -187,12 +187,12 @@ export default class Doctor extends Command {
       }
 
       // 副作用 import: 注册 7 内置维度 spec + skill_health composer rule。
-      await import('../../../doctor/health/register.js');
+      await import('../../doctor/health/register.js');
 
-      const { runDoctor } = await import('../../../doctor/index.js');
-      const { renderDoctorReportText, renderDoctorReportJson } = await import('../../../doctor/renderer.js');
-      const { getRegisteredRules } = await import('../../../doctor/rules.js');
-      const { isComposerRule } = await import('../../../types/doctor.js');
+      const { runDoctor } = await import('../../doctor/index.js');
+      const { renderDoctorReportText, renderDoctorReportJson } = await import('../../doctor/renderer.js');
+      const { getRegisteredRules } = await import('../../doctor/rules.js');
+      const { isComposerRule } = await import('../../types/doctor.js');
       const rulesOverride = staticOnly
         ? getRegisteredRules().filter((r) => !isComposerRule(r))
         : getRegisteredRules().filter(isComposerRule);
@@ -225,7 +225,7 @@ export default class Doctor extends Command {
       }
 
       if (flags.html) {
-        const { renderDoctorReportHtml } = await import('../../../doctor/html-renderer.js');
+        const { renderDoctorReportHtml } = await import('../../doctor/html-renderer.js');
         const { writeFileSync, mkdirSync } = await import('node:fs');
         const abs = resolve(flags.html);
         mkdirSync(dirname(abs), { recursive: true });
