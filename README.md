@@ -439,9 +439,9 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --blind                         Blind judge mode
   --bootstrap                     Add bootstrap CI
   --bootstrap-samples <value>     Bootstrap resamples, default 1000
-  --budget-per-sample-ms <value>  Per-sample time cap ms
-  --budget-per-sample-usd <value> Per-sample budget cap USD
-  --budget-usd <value>            Total budget cap USD
+  --budget-per-sample-ms <value>  Per-sample time cap ms (must be > 0; omit for no cap)
+  --budget-per-sample-usd <value> Per-sample budget cap USD (must be > 0; omit for no cap)
+  --budget-usd <value>            Total budget cap USD (must be > 0; omit for no cap)
   --concurrency <value>           Concurrency, default 1
   --config <value>                eval.yaml path
   --control <value>               Control variant expr
@@ -475,7 +475,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --threshold <value>             Verdict threshold, default 3.5
   --timeout <value>               Per-sample timeout sec, default 120
   --treatment <value>             Treatment variants, comma-separated
-  --trivial-diff <value>          Trivial diff tolerance
+  --trivial-diff <value>          Trivial diff tolerance; 0 disables tolerance
   --verbose                       Verbose logging
 ```
 

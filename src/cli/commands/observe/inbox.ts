@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { Flags } from '@oclif/core';
 import { BaseCommand } from '../../oclif/base-command.js';
 import { bilingual } from '../../oclif/i18n.js';
+import { integerStringParser } from '../../oclif/parsers.js';
 import { type CliLang } from '../../lib/i18n.js';
 import type { ObserveInboxArgs, ObserveInboxFlags } from '../../lib/cmd-flags.js';
 
@@ -115,12 +116,14 @@ export default class ObserveInbox extends BaseCommand {
     }),
     limit: Flags.string({
       description: bilingual({ zh: '限制条数，默认 20', en: 'Result limit, default 20' }),
+      parse: integerStringParser('--limit', { min: 1 }),
     }),
     explore: Flags.string({
       description: bilingual({
         zh: '抽样 N 条 medium/low 长尾（replaces limit）',
         en: 'Sample N medium/low long-tail items (replaces limit)',
       }),
+      parse: integerStringParser('--explore', { min: 1 }),
     }),
     'include-noise': Flags.boolean({
       description: bilingual({

@@ -62,6 +62,17 @@ describe('oclif sample', () => {
     }
   });
 
+  it('非法 --count --lang en → exit 2 + English parser error', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'sample', 'skills/demo/SKILL.md', '--count', 'abc', '--lang', 'en']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
+      assert.match(e.stderr, /--count[\s\S]*integer[\s\S]*1/, `stderr missing en parser error:\n${e.stderr}`);
+    }
+  });
+
   it('--batch + 不存在的 skill-dir → exit 1', async () => {
     try {
       await execFileAsync('node', [CLI, 'sample', '--batch', '--skill-dir', '/tmp/omk-nonexistent-skill-dir-xyz']);

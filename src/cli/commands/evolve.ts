@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { Args, Flags } from '@oclif/core';
 import { bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
+import { enumStringParser, integerStringParser, numberStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli, type CliLang } from '../lib/i18n.js';
 import { makeOnProgress } from '../lib/progress.js';
@@ -192,12 +193,14 @@ export default class Evolve extends BaseCommand {
     rounds: Flags.string({
       description: bilingual({ zh: '最大迭代轮数，默认 5', en: 'Max iteration rounds, default 5' }),
       default: '5',
+      parse: integerStringParser('--rounds', { min: 1 }),
     }),
     target: Flags.string({
       description: bilingual({
         zh: '目标 composite 分数，达到即停。不传则跑满 rounds',
         en: 'Target composite score; stop when reached. If omitted, runs all rounds.',
       }),
+      parse: numberStringParser('--target', { min: 0, max: 5 }),
     }),
     samples: Flags.string({
       description: bilingual({
@@ -230,10 +233,12 @@ export default class Evolve extends BaseCommand {
     concurrency: Flags.string({
       description: bilingual({ zh: '评测并发数，默认 1', en: 'Eval concurrency, default 1' }),
       default: '1',
+      parse: integerStringParser('--concurrency', { min: 1 }),
     }),
     timeout: Flags.string({
       description: bilingual({ zh: '单样本超时秒，默认 120', en: 'Per-sample timeout sec, default 120' }),
       default: '120',
+      parse: numberStringParser('--timeout', { min: 1 }),
     }),
     executor: Flags.string({
       description: bilingual({ zh: '执行器名，默认 claude', en: 'Executor name, default claude' }),
@@ -251,6 +256,7 @@ export default class Evolve extends BaseCommand {
         zh: 'reasoning effort: low/medium/high/xhigh/max',
         en: 'Reasoning effort: low/medium/high/xhigh/max',
       }),
+      parse: enumStringParser('--effort', ['low', 'medium', 'high', 'xhigh', 'max']),
     }),
     'no-diagnostic': Flags.boolean({
       description: bilingual({

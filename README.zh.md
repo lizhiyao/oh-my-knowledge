@@ -439,9 +439,9 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --blind                         judge blind 模式
   --bootstrap                     加 bootstrap CI
   --bootstrap-samples <value>     bootstrap 重采样次数，默认 1000
-  --budget-per-sample-ms <value>  单 sample 时长上限 ms
-  --budget-per-sample-usd <value> 单 sample 预算上限 USD
-  --budget-usd <value>            总预算上限 USD
+  --budget-per-sample-ms <value>  单 sample 时长上限 ms（必须 > 0，不传则无上限）
+  --budget-per-sample-usd <value> 单 sample 预算上限 USD（必须 > 0，不传则无上限）
+  --budget-usd <value>            总预算上限 USD（必须 > 0，不传则无上限）
   --concurrency <value>           并发数，默认 1
   --config <value>                eval.yaml 路径
   --control <value>               control variant 表达式
@@ -475,7 +475,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --threshold <value>             verdict 阈值，默认 3.5
   --timeout <value>               单样本超时秒，默认 120
   --treatment <value>             treatment variant 列表，逗号分隔
-  --trivial-diff <value>          可忽略 diff 容差
+  --trivial-diff <value>          可忽略 diff 容差，0 表示不启用容差
   --verbose                       详细日志
 ```
 

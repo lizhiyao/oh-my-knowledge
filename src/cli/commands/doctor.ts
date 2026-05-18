@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
+import { numberStringParser } from '../oclif/parsers.js';
 import { CliExit } from '../lib/cli-exit.js';
 import { tCli } from '../lib/i18n.js';
 import type { Sample } from '../../types/index.js';
@@ -136,6 +137,7 @@ export default class Doctor extends BaseCommand {
         zh: '单次 LLM 会话超时秒数，默认 600(10 分钟）。',
         en: 'Single-session LLM timeout sec, default 600 (10 min).',
       }),
+      parse: numberStringParser('--timeout', { min: 1 }),
     }),
     html: Flags.string({
       description: bilingual({

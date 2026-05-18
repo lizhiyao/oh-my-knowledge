@@ -96,6 +96,28 @@ describe('oclif eval', () => {
     }
   });
 
+  it('eval 非法 --repeat --lang en → exit 2 + English parser error', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'eval', '--repeat', 'abc', '--lang', 'en']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
+      assert.match(e.stderr, /--repeat[\s\S]*integer[\s\S]*1/, `stderr missing en parser error:\n${e.stderr}`);
+    }
+  });
+
+  it('eval gold compare 非法 --bootstrap-samples → exit 2 + 中文 parser 错误', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'eval', 'gold', 'compare', 'report-1', '--bootstrap-samples', '10']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2, `expected exit 2, got ${e.code}:\n${e.stderr}`);
+      assert.match(e.stderr, /--bootstrap-samples(?=[\s\S]*整数)(?=[\s\S]*100)/, `stderr missing zh parser error:\n${e.stderr}`);
+    }
+  });
+
   it('bare `eval gold`(无 sub-sub)→ exit 1 + 打 usage', async () => {
     // EvalGold 薄壳保证 oclif 不把 eval gold 当 topic-only(默认 exit 0),
     // 跟 legacy execute([]) 的 CliExit(1) 行为对齐。
