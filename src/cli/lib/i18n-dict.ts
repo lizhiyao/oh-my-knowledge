@@ -641,10 +641,10 @@ omk observe inbox — 查看已写入的 observe inbox 问题列表
   --explore <n>                      从最近 50 条 medium/low 问题里抽样查看长尾
   --include-noise                    --explore 时显式包含 noise 桶
   --by-skill                         按 skill 输出资产看板
-  --soft-standard-extract                    显式调用模型抽取缺失 hardRules/workflows 的软标准候选
-  --model <name>                     抽取软标准使用的模型（默认：sonnet）
-  --executor <name>                  抽取软标准使用的执行器
-  --refresh                          强制重新抽取软标准候选
+  --llm-enhanced-review              显式调用模型进行链路增强复盘
+  --model <name>                     LLM 增强复盘使用的模型（默认：sonnet）
+  --executor <name>                  LLM 增强复盘使用的执行器
+  --refresh                          强制重新生成 LLM 增强复盘
   --json                             输出 JSON
 `,
     en: `
@@ -660,10 +660,10 @@ Options:
   --explore <n>                      Sample long-tail issues from the latest 50 medium/low items
   --include-noise                    Explicitly include the noise bucket with --explore
   --by-skill                         Print the skill-level asset board
-  --soft-standard-extract                    Explicitly run model-based soft standard extraction for skills missing hardRules/workflows
-  --model <name>                     Model for soft standard extraction (default: sonnet)
-  --executor <name>                  Executor for soft standard extraction
-  --refresh                          Force soft standard extraction refresh
+  --llm-enhanced-review              Explicitly run model-based enhanced chain review
+  --model <name>                     Model for LLM enhanced review (default: sonnet)
+  --executor <name>                  Executor for LLM enhanced review
+  --refresh                          Force LLM enhanced review refresh
   --json                             Print JSON
 `,
   },

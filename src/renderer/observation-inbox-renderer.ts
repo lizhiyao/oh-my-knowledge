@@ -6,8 +6,9 @@ import type { ObservationInboxViewModel } from '../observability/inbox-view-mode
 import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorrectionMatches, findUserGoalShiftMatches, hasUserCorrectionSignal, hasUserGoalShiftSignal } from '../observability/experience.js';
 import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from '../observability/problem-patterns.js';
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
+import { resolveObservationReviewSession, type ResolvedObservationReviewSession } from '../observability/resolved-review.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
-import type { SkillDerivedStandard } from '../observability/soft-standards.js';
+import type { SkillDerivedStandard, SkillLlmEnhancedReviewSections } from '../observability/soft-standards.js';
 import { ASSISTANT_DELIVERABLE_ARTIFACT_RE, hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE, isAssistantProgressUpdateText, isScheduledTaskPromptText, isSyntheticUserMessageText, isUserInteractionMetricText } from '../observability/text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 import type {
@@ -1461,6 +1462,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const mainlineNodes = story.mainlineNodeIds
       .map((id) => storyNodeById.get(id))
       .filter((node): node is NonNullable<ReturnType<typeof storyNodeById.get>> => Boolean(node));
+    const storyGoalText = (goal: ExperienceReviewerReport['sessionStory']['goalSlices'][number]): string => {
+      const fallbackSkill = goal.skillNames[0] ?? story.skillLinks[0]?.skillName;
+      return goal.inferredUserGoal
+        ?? (fallbackSkill ? inboxLlmEnhancedGoalKeywords(fallbackSkill) : '')
+        ?? '未提取到明确用户目标';
+    };
     const renderStoryGraph = (): string => {
       return `<div class="session-story-graph">
         <div class="session-story-graph-main">
@@ -1483,7 +1490,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         ${story.goalSlices.map((goal) => `<div class="session-story-slice">
           <strong>目标段 ${goal.order}</strong>
           <span>${e(goal.skillNames.join('、') || '未记录能力')}</span>
-          <p>${e(goal.inferredUserGoal ?? '未提取到明确用户目标')}</p>
+          <p>${e(storyGoalText(goal))}</p>
           ${storyEvidenceButtons(goal.evidenceRefs)}
         </div>`).join('')}
       </div>`
@@ -2875,6 +2882,17 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </tr>`;
   }).join('');
   void experienceSkillRows;
+  const inboxLlmReviewForPriority = (skillName: string): SkillLlmEnhancedReviewSections | undefined =>
+    skillDerivedStandards[skillName]?.enhancedReview;
+  const inboxResolvedSession = (skill: ExperienceSessionSummary): ResolvedObservationReviewSession =>
+    resolveObservationReviewSession({
+      session: skill,
+      enhancedReview: inboxLlmReviewForPriority(skill.skillName),
+      reviewState,
+    });
+  const inboxResolvedPriority = (skill: ExperienceSessionSummary): ExperienceReviewPriority => {
+    return inboxResolvedSession(skill).priority;
+  };
   const sessionSkillOrder = new Map((experience?.skills ?? []).map((skill, index) => [skill.skillName, index]));
   const experienceSessionGroups = Array.from((experience?.sessions ?? []).reduce((map, session) => {
     const group = map.get(session.skillName) ?? [];
@@ -2893,8 +2911,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       const value = session.sourceSessionEndTimestamp ?? session.endTimestamp;
       return value && value > max ? value : max;
     }, sessions[0]?.sourceSessionEndTimestamp ?? sessions[0]?.endTimestamp ?? '');
-    const reviewFirst = sessions.filter((session) => session.reviewPriority === 'review_first').length;
-    const sampleReview = sessions.filter((session) => session.reviewPriority === 'sample_review').length;
+    const reviewFirst = sessions.filter((session) => inboxResolvedPriority(session) === 'review_first').length;
+    const sampleReview = sessions.filter((session) => inboxResolvedPriority(session) === 'sample_review').length;
     return `<details id="${e(experienceSkillAnchor(skillName))}" class="experience-session-group" open style="scroll-margin-top:16px">
       <summary>
         <div>
@@ -2937,10 +2955,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   void experienceToolSuccessCount;
   const experienceReviewSkillCount = experience?.skills.filter((skill) => skill.reviewFirstSessionCount + skill.sampleReviewSessionCount > 0).length ?? 0;
   void experienceReviewSkillCount;
-  const experienceReviewSessionCount = experience?.sessions.filter((session) => session.reviewPriority !== 'routine_sample').length ?? 0;
+  const experienceReviewSessionCount = experience?.sessions.filter((session) => inboxResolvedPriority(session) !== 'routine_sample').length ?? 0;
   void experienceReviewSessionCount;
-  const experienceReviewFirstSessionCount = experience?.sessions.filter((session) => session.reviewPriority === 'review_first').length ?? 0;
-  const experienceSampleReviewSessionCount = experience?.sessions.filter((session) => session.reviewPriority === 'sample_review').length ?? 0;
+  const experienceReviewFirstSessionCount = experience?.sessions.filter((session) => inboxResolvedPriority(session) === 'review_first').length ?? 0;
+  const experienceSampleReviewSessionCount = experience?.sessions.filter((session) => inboxResolvedPriority(session) === 'sample_review').length ?? 0;
   const experienceHardRuleCount = experience?.sessions.reduce((sum, session) =>
     sum + (displayIndicatorsForSession(session).hardRuleTextHitCount ?? 0), 0
   ) ?? 0;
@@ -3006,9 +3024,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  const inboxPriorityRank = (priority: ExperienceReviewPriority): number => priority === 'review_first' ? 0 : priority === 'sample_review' ? 1 : 2;
 	  const inboxSkillCards: InboxSkillCard[] = Array.from(inboxSkillsMap.entries()).map(([skillName, sessions]) => {
 	    sessions.sort((a, b) => b.endTimestamp.localeCompare(a.endTimestamp));
-	    const priority = sessions.find((s) => s.reviewPriority === 'review_first')
+	    const priority = sessions.find((s) => inboxResolvedPriority(s) === 'review_first')
 	      ? 'review_first'
-	      : sessions.find((s) => s.reviewPriority === 'sample_review')
+	      : sessions.find((s) => inboxResolvedPriority(s) === 'sample_review')
 	        ? 'sample_review'
 	        : 'routine_sample';
 	    const latestEnd = sessions.reduce((latest, s) => s.endTimestamp > latest ? s.endTimestamp : latest, '');
@@ -3032,14 +3050,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    return `${hour} 小时 ${min % 60} 分`;
 	  };
 	  const inboxTopSession = (card: InboxSkillCard): ExperienceSessionSummary | undefined =>
-	    card.sessions.find((s) => s.reviewPriority === 'review_first')
-	    ?? card.sessions.find((s) => s.reviewPriority === 'sample_review')
+	    card.sessions.find((s) => inboxResolvedPriority(s) === 'review_first')
+	    ?? card.sessions.find((s) => inboxResolvedPriority(s) === 'sample_review')
 	    ?? card.sessions[0];
 	  const inboxSkillGoalLine = (card: InboxSkillCard): string => {
 	    const storyGoal = card.sessions.flatMap((s) => s.sessionStory?.goalSlices ?? [])
 	      .find((goal) => inboxCleanSnippet(goal.inferredUserGoal));
 	    const directGoal = card.sessions.find((s) => inboxCleanSnippet(s.evidenceChain.firstUserMessage?.snippet))?.evidenceChain.firstUserMessage?.snippet;
-	    const goal = inboxExtractKeyword(storyGoal?.inferredUserGoal ?? directGoal, 48);
+	    const llmGoal = inboxLlmEnhancedGoalKeywords(card.skillName);
+	    const goal = inboxExtractKeyword(storyGoal?.inferredUserGoal ?? directGoal ?? llmGoal, 48);
 	    return goal ? `用户目标：${goal}` : '用户目标：未提取';
 	  };
 	  const inboxSkillMainline = (card: InboxSkillCard): string => {
@@ -3189,8 +3208,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const indicators = displayIndicatorsForSession(skill);
 	    const dur = formatTimeRange(skill.startTimestamp, skill.endTimestamp);
 	    const startTime = skill.startTimestamp ? skill.startTimestamp.slice(5, 16).replace('T', ' ') : '未记录';
-	    const priorityLabel = skill.reviewPriority === 'review_first' ? '要看一眼' : skill.reviewPriority === 'sample_review' ? '抽样' : '常规';
-	    const priorityCls = skill.reviewPriority === 'review_first' ? 'is-priority-high' : skill.reviewPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
+	    const resolvedPriority = inboxResolvedPriority(skill);
+	    const priorityLabel = resolvedPriority === 'review_first' ? '要看一眼' : resolvedPriority === 'sample_review' ? '抽样' : '常规';
+	    const priorityCls = resolvedPriority === 'review_first' ? 'is-priority-high' : resolvedPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
 	    const currentCls = isCurrent ? 'is-current' : '';
 	    const tag = isCurrent ? '<span class="inbox-flow-current-tag">当前查看</span>' : '';
 	    const sameSkill = skill.skillName === cardSkillName;
@@ -3226,7 +3246,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      </header>
 	      <div class="inbox-flow-popover-body">
 	        <ol class="inbox-flow-list inbox-flow-timeline">${siblings.map((sib, index) => inboxFlowItem(cardSkillName, sib, index, sib.id === session.id)).join('')}</ol>
-	        ${goalSlices.length > 0 ? `<div class="inbox-flow-slices"><h4>用户目标段</h4>${goalSlices.map((goal) => `<div class="inbox-flow-slice"><strong>目标段 ${goal.order}</strong><span>${e(goal.skillNames.join('、') || '未记录能力')}</span><p>${e(goal.inferredUserGoal ?? '未提取到明确用户目标')}</p></div>`).join('')}</div>` : ''}
+	        ${goalSlices.length > 0 ? `<div class="inbox-flow-slices"><h4>用户目标段</h4>${goalSlices.map((goal) => `<div class="inbox-flow-slice"><strong>目标段 ${goal.order}</strong><span>${e(goal.skillNames.join('、') || '未记录能力')}</span><p>${e(goal.inferredUserGoal ?? (inboxLlmEnhancedGoalKeywords(goal.skillNames[0] ?? session.skillName) || '未提取到明确用户目标'))}</p></div>`).join('')}</div>` : ''}
 	        ${dispatches.length > 0 ? `<div class="inbox-flow-dispatches"><h4>子任务分支</h4>${dispatches.map((d) => `<div class="inbox-flow-dispatch"><strong>分支 ${d.order}：${e(d.label)}</strong><span>${d.eventCount} 条事件${d.attachTo?.messageIndex !== undefined ? ` · 挂接 #${d.attachTo.messageIndex}` : ''}</span></div>`).join('')}</div>` : ''}
 	      </div>
 	    </div>`;
@@ -3309,6 +3329,25 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      else if (/需求|requirement/i.test(withoutTags)) push('需求分析');
 	    }
 	    return candidates.slice(0, 2).join(' / ');
+	  };
+	  const inboxLlmEnhancedGoalKeywords = (skillName: string): string => {
+	    const goal = skillDerivedStandards[skillName]?.enhancedReview?.userGoal;
+	    const slots = (goal?.slots ?? [])
+	      .map((slot) => inboxExtractKeyword(slot, 18))
+	      .filter((slot): slot is string => Boolean(slot));
+	    if (slots.length > 0) return slots.slice(0, 3).join(' / ');
+	    return inboxExtractGoalKeywords(goal?.summary) || inboxExtractKeyword(goal?.expectedOutcome, 36);
+	  };
+	  const inboxLlmEnhancedDeclaredGoalKeywords = (skillName: string): string => {
+	    const goal = skillDerivedStandards[skillName]?.enhancedReview?.skillDeclaredGoal;
+	    const keywords = [
+	      ...(goal?.keywords ?? []),
+	      ...(goal?.expectedOutcomes ?? []),
+	    ]
+	      .map((keyword) => inboxExtractKeyword(keyword, 18))
+	      .filter((keyword): keyword is string => Boolean(keyword));
+	    if (keywords.length > 0) return Array.from(new Set(keywords)).slice(0, 4).join(' / ');
+	    return inboxExtractGoalKeywords(goal?.summary);
 	  };
 	  const inboxExtractCompletionKeywords = (text?: string): string => {
 	    const cleaned = inboxCleanSnippet(text);
@@ -3483,7 +3522,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    if ((answer.checklistItems ?? []).length > 0) {
 	      return `${inboxAnswerChecklistFromItems(answer.checklistItems)}${inboxManualCorrectionControls(skill, answerKey)}`;
 	    }
-	    const goalKeywords = inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet);
+	    const goalKeywords = inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet) || inboxLlmEnhancedGoalKeywords(skill.skillName);
 	    const chain = skillChains[skill.skillName];
 	    const displayIndicators = displayIndicatorsForSession(skill);
 	    const hasGoalKeyword = goalKeywords.length > 0;
@@ -3534,7 +3573,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      .map((goal) => inboxExtractGoalKeywords(goal.inferredUserGoal))
 	      .filter((goal): goal is string => Boolean(goal));
 	    if (goals.length > 0) return goals.slice(0, 3).join('；');
-	    return inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet) || '未提取到明确用户目标';
+	    return inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet)
+	      || inboxLlmEnhancedGoalKeywords(skill.skillName)
+	      || '未提取到明确用户目标';
 	  };
 	  const inboxSignalSnippet = (
 	    skill: ExperienceSessionSummary,
@@ -3566,6 +3607,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    if (answer.key !== 'goal_satisfaction') return '';
 	    return `<div class="inbox-answer-context">
 	      <div><span>目标关键词</span><strong>${e(inboxRecognizedGoalText(skill))}</strong></div>
+	      <div><span>skill 声明目标</span><strong>${e(inboxLlmEnhancedDeclaredGoalKeywords(skill.skillName) || '未提取到')}</strong></div>
 	      <div><span>结果关键词</span><strong>${e(inboxRecognizedCompletionText(skill))}</strong></div>
 	      <div><span>产物关键词</span><strong>${e(inboxRecognizedArtifactText(skill))}</strong></div>
 	    </div>`;
@@ -3584,6 +3626,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    </div>`;
 	  };
 	  const inboxBuildSkillActionSuggestions = (skill: ExperienceSessionSummary): string[] => {
+	    const llmSuggestions = inboxResolvedSession(skill).ownerSuggestions;
+	    if (llmSuggestions.length > 0) {
+	      return llmSuggestions.filter((suggestion, index, arr) => arr.indexOf(suggestion) === index).slice(0, 4);
+	    }
 	    const reportSuggestions = skill.reviewerReport?.authorSuggestions ?? [];
 	    if (reportSuggestions.length > 0) {
 	      return reportSuggestions.filter((suggestion, index, arr) => arr.indexOf(suggestion) === index).slice(0, 4);
@@ -3706,15 +3752,16 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  };
 	  const inboxRenderSkillCompletion = (skill: ExperienceSessionSummary): string => {
 	    const report = skill.reviewerReport;
-	    const story = skill.sessionStory;
-	    const answers = story?.answers ?? [];
+	    const resolved = inboxResolvedSession(skill);
+	    const answers = resolved.answers;
+	    const llmSummary = resolved.reviewerSummary;
 	    const reviewEntry = reviewState.entries[`experience_session:${skill.id}`];
 	    const existingNote = reviewEntry?.reason ?? reviewEntry?.note ?? '';
 	    const safeId = e(skill.id);
 	    return `<article class="inbox-skill-block">
 	      <header class="inbox-skill-head">
 	        <div><h4>${e(skill.skillName)}</h4><span class="inbox-skill-subtitle">${e(report?.title ?? '常规观测')}</span></div>
-	        ${report?.summary ? `<p class="inbox-skill-summary">${e(cleanReportCopy(report.summary))}</p>` : ''}
+	        ${llmSummary || report?.summary ? `<p class="inbox-skill-summary">${e(cleanReportCopy(llmSummary ?? report?.summary ?? ''))}</p>` : ''}
 	      </header>
 	      ${inboxRenderDataHealth(skill, answers)}
 	      ${answers.length > 0 ? `<div class="inbox-review-layer">
@@ -3931,7 +3978,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      ? `<div class="inbox-session-tabs" role="tablist" aria-label="切换 ${e(card.skillName)} 的调用记录">${card.sessions.map((s, i) => {
 	          const label = inboxFormatSessionLabel(s);
 	          const flowTemplateId = `inbox-flow-template-${e(s.id)}`;
-	          const priorityCls = s.reviewPriority === 'review_first' ? 'is-priority-high' : s.reviewPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
+	          const resolvedPriority = inboxResolvedPriority(s);
+	          const priorityCls = resolvedPriority === 'review_first' ? 'is-priority-high' : resolvedPriority === 'sample_review' ? 'is-priority-medium' : 'is-priority-low';
 	          return `<span class="inbox-session-tab-item" data-session-tab-item="${e(s.id)}" data-session-search="${e(inboxSessionSearchText(s))}">
 	            <button type="button" class="inbox-session-tab ${priorityCls} ${i === 0 ? 'is-active' : ''}" data-session-tab="${e(s.id)}" onclick="selectInboxSessionTab('${safeSkill}', '${e(s.id)}', this)" title="${e(s.sessionId)}">${e(label)}</button>
 	            <button type="button" class="inbox-session-flow-chip" onclick="openInboxSessionFlowPopover('${flowTemplateId}', this, event)" title="查看这条 session 的执行过程">查看过程</button>

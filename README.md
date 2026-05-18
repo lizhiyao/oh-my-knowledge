@@ -537,7 +537,7 @@ omk observe inbox --skill audit                    # filter by skill
 omk observe inbox --by-skill                       # rollup view (one row per skill)
 omk observe inbox --explore 10                     # sample 10 long-tail items from medium/low
 omk observe inbox --explore 10 --include-noise     # explicitly include the noise bucket
-omk observe inbox --soft-standard-extract        # run LLM soft-standard extraction explicitly
+omk observe inbox --llm-enhanced-review          # run LLM enhanced chain review explicitly
 omk observe inbox --json                           # JSON output for automation
 
 # 3. Inspect a single observation with its event triplet (surrounding messages)

@@ -41,7 +41,7 @@ describe('oclif observe', () => {
     const { stdout } = await execFileAsync('node', [CLI, 'observe', 'inbox', '--help']);
     assert.ok(stdout.includes('查询 observation inbox'), `inbox --help missing zh:\n${stdout}`);
     assert.ok(stdout.includes('--by-skill'), 'should list --by-skill');
-    assert.ok(stdout.includes('--soft-standard-extract'), 'should list --soft-standard-extract');
+    assert.ok(stdout.includes('--llm-enhanced-review'), 'should list --llm-enhanced-review');
     assert.ok(stdout.includes('--model'), 'should list --model');
     assert.ok(stdout.includes('--json'), 'should list --json');
   });

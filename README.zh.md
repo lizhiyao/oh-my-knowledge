@@ -537,7 +537,7 @@ omk observe inbox --skill audit                    # 只看某个 skill
 omk observe inbox --by-skill                       # 按 skill 资产视图
 omk observe inbox --explore 10                     # 从 medium / low 桶抽 10 条长尾
 omk observe inbox --explore 10 --include-noise     # 显式包含 noise 桶
-omk observe inbox --soft-standard-extract        # 显式调用模型抽取软标准候选
+omk observe inbox --llm-enhanced-review          # 显式调用模型进行链路增强复盘
 omk observe inbox --json                           # JSON 输出，便于自动化消费
 
 # 3. 反向查单条 observation 的事件三元组（前后 message 上下文）

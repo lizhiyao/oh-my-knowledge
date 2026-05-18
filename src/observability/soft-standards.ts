@@ -3,10 +3,11 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from 'node:path';
 import type { ExecutorFn } from '../types/index.js';
 import { createExecutor } from '../executors/index.js';
+import { readPromptDocument } from '../shared/llm-prompts/index.js';
 import { buildObservationSkillChain, type ObservationSkillChain } from './skill-chain.js';
 
-export const SOFT_STANDARD_PROMPT_ID = 'soft-standard-extract';
-export const SOFT_STANDARD_PROMPT_VERSION = '2026-05-14.v1';
+export const SOFT_STANDARD_PROMPT_ID = 'llm-enhanced-review';
+export const SOFT_STANDARD_PROMPT_VERSION = '2026-05-18.v1';
 export const DEFAULT_SOFT_STANDARD_MODEL = 'sonnet';
 
 export type SkillDerivedStandardStatus = 'pending_review' | 'author_confirmed' | 'rejected' | 'stale';
@@ -34,7 +35,69 @@ export interface SkillDerivedStandards {
   executor: string;
   promptId: typeof SOFT_STANDARD_PROMPT_ID;
   promptVersion: typeof SOFT_STANDARD_PROMPT_VERSION;
+  promptHash?: string;
+  runtimeEvidenceHash?: string;
+  enhancedReview?: SkillLlmEnhancedReviewSections;
   standards: SkillDerivedStandard[];
+}
+
+export interface SkillLlmEnhancedRuntimeEvidence {
+  goalSlices: Array<{
+    id?: string;
+    sessionId?: string;
+    inferredUserGoal?: string;
+    userMessages?: string[];
+  }>;
+  userMessages: string[];
+  assistantMessages: string[];
+  artifactCandidates: string[];
+  toolCalls: string[];
+  findings: string[];
+}
+
+export type LlmEnhancedSkillType = 'router' | 'delegation' | 'executor' | 'advisory' | 'unknown';
+export type LlmEnhancedVerdict = 'passed' | 'failed' | 'unknown';
+export type LlmEnhancedUserFeeling = 'positive' | 'neutral' | 'negative' | 'frustrated';
+
+export interface SkillLlmEnhancedReviewSections {
+  skillType?: LlmEnhancedSkillType;
+  extractedStandards?: {
+    hardrules: Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>>;
+    workflows: Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>>;
+    completionCriteria: Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>>;
+    artifactCriteria: Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>>;
+  };
+  userGoal?: {
+    summary?: string;
+    slots: string[];
+    expectedOutcome?: string;
+  };
+  skillDeclaredGoal?: {
+    summary?: string;
+    keywords: string[];
+    expectedOutcomes: string[];
+  };
+  runtimeAssessment?: {
+    goalSatisfaction?: LlmEnhancedVerdict;
+    declaredBehaviorFit?: LlmEnhancedVerdict;
+    artifactGoalMatch?: LlmEnhancedVerdict;
+    userFeeling?: LlmEnhancedUserFeeling;
+  };
+  userExperienceSignals?: {
+    useful?: LlmEnhancedVerdict;
+    followUp?: LlmEnhancedVerdict;
+    correction?: LlmEnhancedVerdict;
+    negativeFeedback?: LlmEnhancedVerdict;
+    interruption?: LlmEnhancedVerdict;
+    frustration?: LlmEnhancedVerdict;
+  };
+  reviewerSummary?: string;
+  ownerSuggestions?: Array<{
+    title?: string;
+    body?: string;
+    evidence?: string[];
+    acceptanceCriteria?: string;
+  }>;
 }
 
 export type ResolvedSkillStandardSource = 'frontmatter' | 'confirmed_soft' | 'pending_soft';
@@ -61,6 +124,7 @@ export interface ResolvedSkillStandards {
 export interface ExtractSkillSoftStandardsOptions {
   observationsDir: string;
   skillChain: ObservationSkillChain;
+  runtimeEvidence?: SkillLlmEnhancedRuntimeEvidence;
   model?: string;
   executorName?: string;
   refresh?: boolean;
@@ -194,9 +258,15 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
   const generatedAt = options.now || new Date().toISOString();
   const path = skillDerivedStandardsPath(observationsDir, skillChain.skillName);
   const sourceHash = skillChain.definition.content ? hashText(skillChain.definition.content) : undefined;
+  const runtimeEvidenceHash = options.runtimeEvidence ? hashText(JSON.stringify(options.runtimeEvidence)) : undefined;
   const existing = loadExisting(path);
-  if (existing && !options.refresh && existing.sourceHash === sourceHash) return existing;
-  if (existing && !options.refresh && existing.standards.some((item) => item.status === 'author_confirmed')) {
+  const promptDocument = readPromptTemplate();
+  const compatibleCache = existing
+    && existing.promptId === SOFT_STANDARD_PROMPT_ID
+    && existing.promptVersion === SOFT_STANDARD_PROMPT_VERSION
+    && existing.promptHash === promptDocument.hash;
+  if (compatibleCache && !options.refresh && existing.sourceHash === sourceHash && existing.runtimeEvidenceHash === runtimeEvidenceHash) return existing;
+  if (compatibleCache && !options.refresh && existing.standards.some((item) => item.status === 'author_confirmed')) {
     const stale = markStale(existing, generatedAt);
     mkdirSync(skillDerivedStandardsDir(observationsDir), { recursive: true });
     writeFileSync(path, JSON.stringify(stale, null, 2));
@@ -205,16 +275,17 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
 
   const needsHardRules = !skillChain.healthCheck.hardRules.declared;
   const needsWorkflows = !skillChain.healthCheck.workflows.declared;
-  const prompt = buildSoftStandardPrompt(skillChain, { needsHardRules, needsWorkflows });
+  const prompt = buildSoftStandardPrompt(skillChain, { needsHardRules, needsWorkflows }, options.runtimeEvidence);
   const executor = options.executor ?? createExecutor(executorName);
   const result = await executor({
     model,
-    system: readPromptTemplate(),
+    system: promptDocument.body,
     prompt,
     timeoutMs: 300_000,
     lean: true,
   });
-  const standards = parseSoftStandardOutput(result.output || '').map((item) => ({
+  const enhancedReview = parseLlmEnhancedReviewOutput(result.output || '');
+  const standards = standardsFromEnhancedReview(enhancedReview).map((item) => ({
     ...item,
     status: 'pending_review' as const,
     source: 'llm_soft_standard' as const,
@@ -230,6 +301,9 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
     executor: executorName,
     promptId: SOFT_STANDARD_PROMPT_ID,
     promptVersion: SOFT_STANDARD_PROMPT_VERSION,
+    promptHash: promptDocument.hash,
+    runtimeEvidenceHash,
+    enhancedReview,
     standards,
   };
   mkdirSync(skillDerivedStandardsDir(observationsDir), { recursive: true });
@@ -237,9 +311,13 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
   return record;
 }
 
-function buildSoftStandardPrompt(skillChain: ObservationSkillChain, flags: { needsHardRules: boolean; needsWorkflows: boolean }): string {
+function buildSoftStandardPrompt(
+  skillChain: ObservationSkillChain,
+  flags: { needsHardRules: boolean; needsWorkflows: boolean },
+  runtimeEvidence?: SkillLlmEnhancedRuntimeEvidence,
+): string {
   return JSON.stringify({
-    task: 'extract_soft_standards',
+    task: 'llm_enhanced_review',
     promptId: SOFT_STANDARD_PROMPT_ID,
     promptVersion: SOFT_STANDARD_PROMPT_VERSION,
     skillName: skillChain.skillName,
@@ -247,33 +325,185 @@ function buildSoftStandardPrompt(skillChain: ObservationSkillChain, flags: { nee
     needsWorkflows: flags.needsWorkflows,
     skillContent: skillChain.definition.content ?? '',
     runtimeSummary: skillChain.runtime.summary,
+    runtimeEvidence: runtimeEvidence ?? {
+      goalSlices: [],
+      userMessages: [],
+      assistantMessages: [],
+      artifactCandidates: [],
+      toolCalls: [],
+      findings: [],
+    },
   }, null, 2);
 }
 
-function readPromptTemplate(): string {
-  const path = join(process.cwd(), 'docs', 'prompts', 'soft-standard-extract.prompt.md');
-  if (!existsSync(path)) throw new Error(`missing prompt document: ${path}`);
-  return readFileSync(path, 'utf-8');
+function readPromptTemplate() {
+  return readPromptDocument({
+    fileName: 'llm-enhanced-review.prompt.md',
+    id: SOFT_STANDARD_PROMPT_ID,
+    version: SOFT_STANDARD_PROMPT_VERSION,
+  });
 }
 
-function parseSoftStandardOutput(output: string): Array<Omit<SkillDerivedStandard, 'status' | 'source'>> {
+function parseLlmEnhancedReviewOutput(output: string): SkillLlmEnhancedReviewSections {
   const parsed = parseJsonObject(output);
-  const raw = Array.isArray(parsed?.standards) ? parsed.standards : [];
+  return {
+    skillType: normalizeSkillType(parsed?.skillType),
+    extractedStandards: normalizeExtractedStandards(parsed?.extractedStandards, parsed?.standards),
+    userGoal: normalizeUserGoal(parsed?.userGoal),
+    skillDeclaredGoal: normalizeSkillDeclaredGoal(parsed?.skillDeclaredGoal),
+    runtimeAssessment: normalizeRuntimeAssessment(parsed?.runtimeAssessment),
+    userExperienceSignals: normalizeUserExperienceSignals(parsed?.userExperienceSignals),
+    reviewerSummary: typeof parsed?.reviewerSummary === 'string' ? parsed.reviewerSummary.slice(0, 1200) : undefined,
+    ownerSuggestions: normalizeOwnerSuggestions(parsed?.ownerSuggestions),
+  };
+}
+
+function standardsFromEnhancedReview(review: SkillLlmEnhancedReviewSections): Array<Omit<SkillDerivedStandard, 'status' | 'source'>> {
+  const standards = review.extractedStandards;
+  if (!standards) return [];
+  const raw = [
+    ...standards.hardrules.map((item) => ({ ...item, kind: 'hard_rule_candidate' as const })),
+    ...standards.workflows.map((item) => ({ ...item, kind: 'workflow_candidate' as const })),
+    ...standards.completionCriteria.map((item) => ({ ...item, kind: 'workflow_candidate' as const })),
+    ...standards.artifactCriteria.map((item) => ({ ...item, kind: 'workflow_candidate' as const })),
+  ];
   return raw.map((item, index) => normalizeStandard(item, index)).filter((item): item is Omit<SkillDerivedStandard, 'status' | 'source'> => Boolean(item));
 }
 
-function parseJsonObject(output: string): { standards?: unknown[] } | null {
+function parseJsonObject(output: string): { [key: string]: unknown; standards?: unknown[] } | null {
   try {
-    return JSON.parse(output) as { standards?: unknown[] };
+    return JSON.parse(output) as { [key: string]: unknown; standards?: unknown[] };
   } catch {
     const match = output.match(/\{[\s\S]*\}/);
     if (!match) return null;
     try {
-      return JSON.parse(match[0]) as { standards?: unknown[] };
+      return JSON.parse(match[0]) as { [key: string]: unknown; standards?: unknown[] };
     } catch {
       return null;
     }
   }
+}
+
+function normalizeSkillType(value: unknown): LlmEnhancedSkillType | undefined {
+  return value === 'router' || value === 'delegation' || value === 'executor' || value === 'advisory' || value === 'unknown'
+    ? value
+    : undefined;
+}
+
+function normalizeExtractedStandards(
+  value: unknown,
+  legacyStandards: unknown,
+): SkillLlmEnhancedReviewSections['extractedStandards'] | undefined {
+  if (!value || typeof value !== 'object') {
+    if (!Array.isArray(legacyStandards)) return undefined;
+    return {
+      hardrules: legacyStandards.map((item, index) => normalizeStandardSectionItem(item, index)).filter((item): item is Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'> => Boolean(item)),
+      workflows: [],
+      completionCriteria: [],
+      artifactCriteria: [],
+    };
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    hardrules: normalizeStandardSection(record.hardrules),
+    workflows: normalizeStandardSection(record.workflows),
+    completionCriteria: normalizeStandardSection(record.completionCriteria),
+    artifactCriteria: normalizeStandardSection(record.artifactCriteria),
+  };
+}
+
+function normalizeStandardSection(value: unknown): Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>> {
+  if (!Array.isArray(value)) return [];
+  return value.map((item, index) => normalizeStandardSectionItem(item, index)).filter((item): item is Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'> => Boolean(item));
+}
+
+function normalizeStandardSectionItem(value: unknown, index: number): Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'> | null {
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return null;
+    return { title: text.slice(0, 160), body: text.slice(0, 600), confidence: 'low', evidence: [] };
+  }
+  if (!value || typeof value !== 'object') return null;
+  const item = value as Partial<SkillDerivedStandard>;
+  const title = typeof item.title === 'string' && item.title.trim()
+    ? item.title.trim()
+    : typeof item.body === 'string' && item.body.trim()
+      ? item.body.trim().slice(0, 80)
+      : `候选标准 ${index + 1}`;
+  const body = typeof item.body === 'string' && item.body.trim() ? item.body.trim() : title;
+  return {
+    title: title.slice(0, 160),
+    body: body.slice(0, 600),
+    confidence: item.confidence === 'high' || item.confidence === 'medium' || item.confidence === 'low' ? item.confidence : 'low',
+    evidence: Array.isArray(item.evidence) ? item.evidence.filter((entry): entry is string => typeof entry === 'string').slice(0, 5) : [],
+  };
+}
+
+function normalizeUserGoal(value: unknown): SkillLlmEnhancedReviewSections['userGoal'] | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const item = value as Record<string, unknown>;
+  return {
+    summary: typeof item.summary === 'string' ? item.summary.slice(0, 500) : undefined,
+    slots: Array.isArray(item.slots) ? item.slots.filter((entry): entry is string => typeof entry === 'string').slice(0, 12) : [],
+    expectedOutcome: typeof item.expectedOutcome === 'string' ? item.expectedOutcome.slice(0, 500) : undefined,
+  };
+}
+
+function normalizeSkillDeclaredGoal(value: unknown): SkillLlmEnhancedReviewSections['skillDeclaredGoal'] | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const item = value as Record<string, unknown>;
+  return {
+    summary: typeof item.summary === 'string' ? item.summary.slice(0, 300) : undefined,
+    keywords: Array.isArray(item.keywords) ? item.keywords.filter((entry): entry is string => typeof entry === 'string').slice(0, 10) : [],
+    expectedOutcomes: Array.isArray(item.expectedOutcomes) ? item.expectedOutcomes.filter((entry): entry is string => typeof entry === 'string').slice(0, 10) : [],
+  };
+}
+
+function normalizeRuntimeAssessment(value: unknown): SkillLlmEnhancedReviewSections['runtimeAssessment'] | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const item = value as Record<string, unknown>;
+  return {
+    goalSatisfaction: normalizeVerdict(item.goalSatisfaction),
+    declaredBehaviorFit: normalizeVerdict(item.declaredBehaviorFit),
+    artifactGoalMatch: normalizeVerdict(item.artifactGoalMatch),
+    userFeeling: normalizeUserFeeling(item.userFeeling),
+  };
+}
+
+function normalizeUserExperienceSignals(value: unknown): SkillLlmEnhancedReviewSections['userExperienceSignals'] | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const item = value as Record<string, unknown>;
+  return {
+    useful: normalizeVerdict(item.useful),
+    followUp: normalizeVerdict(item.followUp),
+    correction: normalizeVerdict(item.correction),
+    negativeFeedback: normalizeVerdict(item.negativeFeedback),
+    interruption: normalizeVerdict(item.interruption),
+    frustration: normalizeVerdict(item.frustration),
+  };
+}
+
+function normalizeVerdict(value: unknown): LlmEnhancedVerdict | undefined {
+  return value === 'passed' || value === 'failed' || value === 'unknown' ? value : undefined;
+}
+
+function normalizeUserFeeling(value: unknown): LlmEnhancedUserFeeling | undefined {
+  return value === 'positive' || value === 'neutral' || value === 'negative' || value === 'frustrated' ? value : undefined;
+}
+
+function normalizeOwnerSuggestions(value: unknown): SkillLlmEnhancedReviewSections['ownerSuggestions'] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.slice(0, 10).map((entry) => {
+    if (typeof entry === 'string') return { title: entry.slice(0, 160), body: entry.slice(0, 800) };
+    if (!entry || typeof entry !== 'object') return {};
+    const item = entry as Record<string, unknown>;
+    return {
+      title: typeof item.title === 'string' ? item.title.slice(0, 160) : undefined,
+      body: typeof item.body === 'string' ? item.body.slice(0, 1000) : undefined,
+      evidence: Array.isArray(item.evidence) ? item.evidence.filter((it): it is string => typeof it === 'string').slice(0, 5) : undefined,
+      acceptanceCriteria: typeof item.acceptanceCriteria === 'string' ? item.acceptanceCriteria.slice(0, 600) : undefined,
+    };
+  });
 }
 
 function normalizeStandard(value: unknown, index: number): Omit<SkillDerivedStandard, 'status' | 'source'> | null {

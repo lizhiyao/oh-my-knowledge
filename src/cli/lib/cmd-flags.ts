@@ -225,7 +225,7 @@ export interface ObserveInboxFlags {
   explore?: string;
   'include-noise': boolean;
   'by-skill': boolean;
-  'soft-standard-extract': boolean;
+  'llm-enhanced-review': boolean;
   refresh: boolean;
   model?: string;
   executor?: string;

@@ -2663,22 +2663,57 @@ expected_tools:
       now: '2026-05-01T00:00:00.000Z',
       executor: async (input) => {
         assert.equal(input.model, 'sonnet');
-        assert.match(input.system ?? '', /promptId: soft-standard-extract/);
+        assert.match(input.system ?? '', /promptId: llm-enhanced-review/);
         return {
           ok: true,
           output: JSON.stringify({
-            standards: [{
-              kind: 'hard_rule_candidate',
-              title: 'Cite source section',
-              body: 'Reviewer should verify each finding points to a source section.',
-              confidence: 'medium',
+            skillType: 'advisory',
+            extractedStandards: {
+              hardrules: [{
+                title: 'Cite source section',
+                body: 'Reviewer should verify each finding points to a source section.',
+                confidence: 'medium',
+                evidence: ['Always cite the source section'],
+              }],
+              workflows: [{
+                title: 'Review generated plan',
+                body: 'Reviewer should check that the plan review follows the declared review intent.',
+                confidence: 'low',
+                evidence: ['review generated technical plans'],
+              }],
+              completionCriteria: [],
+              artifactCriteria: [],
+            },
+            userGoal: {
+              summary: 'Review generated technical plans',
+              slots: ['source section', 'technical plan'],
+              expectedOutcome: 'Evidence-backed review',
+            },
+            skillDeclaredGoal: {
+              summary: 'Review generated technical plans with source citations',
+              keywords: ['plan review', 'source citation'],
+              expectedOutcomes: ['review summary'],
+            },
+            runtimeAssessment: {
+              goalSatisfaction: 'unknown',
+              declaredBehaviorFit: 'unknown',
+              artifactGoalMatch: 'unknown',
+              userFeeling: 'neutral',
+            },
+            userExperienceSignals: {
+              useful: 'unknown',
+              followUp: 'unknown',
+              correction: 'unknown',
+              negativeFeedback: 'unknown',
+              interruption: 'unknown',
+              frustration: 'unknown',
+            },
+            reviewerSummary: 'The skill should cite evidence when reviewing plans.',
+            ownerSuggestions: [{
+              title: 'Keep source citation explicit',
+              body: 'Add examples that show the expected source citation format.',
               evidence: ['Always cite the source section'],
-            }, {
-              kind: 'workflow_candidate',
-              title: 'Review generated plan',
-              body: 'Reviewer should check that the plan review follows the declared review intent.',
-              confidence: 'low',
-              evidence: ['review generated technical plans'],
+              acceptanceCriteria: 'Generated reviews include a source section reference.',
             }],
           }),
           durationMs: 1,
@@ -2695,8 +2730,11 @@ expected_tools:
     });
 
     assert.equal(record.model, 'sonnet');
-    assert.equal(record.promptId, 'soft-standard-extract');
-    assert.equal(record.promptVersion, '2026-05-14.v1');
+    assert.equal(record.promptId, 'llm-enhanced-review');
+    assert.equal(record.promptVersion, '2026-05-18.v1');
+    assert.equal(record.enhancedReview?.skillType, 'advisory');
+    assert.deepEqual(record.enhancedReview?.skillDeclaredGoal?.keywords, ['plan review', 'source citation']);
+    assert.equal(record.enhancedReview?.runtimeAssessment?.userFeeling, 'neutral');
     assert.equal(record.standards.length, 2);
     assert.equal(record.standards[0].status, 'pending_review');
     assert.equal(record.standards[0].source, 'llm_soft_standard');
