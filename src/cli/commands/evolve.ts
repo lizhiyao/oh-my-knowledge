@@ -17,6 +17,7 @@ interface RoundProgressInfo {
   costUSD?: number;
   costReported?: boolean;
   error?: string;
+  reused?: boolean;
 }
 
 interface TrajectoryEntry {
@@ -46,6 +47,9 @@ interface EvolveResult {
   bestRound: number;
   totalRounds: number;
   totalCostUSD: number;
+  stopReason?: string;
+  sampleFixes?: Array<{ round: number; fixedCount: number; costUSD: number }>;
+  reusedBaselineReportId?: string;
   costReported?: boolean;
   trajectory: TrajectoryEntry[];
   bestSkillPath: string;
@@ -72,6 +76,11 @@ export async function execute(argv: string[]): Promise<void> {
       effort: { type: 'string' },
       'no-diagnostic': { type: 'boolean', default: false },
       'skip-doctor': { type: 'boolean', default: false },
+      'stop-on-assertions-pass': { type: 'boolean', default: false },
+      'auto-fix-samples': { type: 'boolean', default: false },
+      'sample-fix-max-attempts': { type: 'string', default: '2' },
+      'reuse-latest-eval': { type: 'boolean', default: false },
+      'improve-mode': { type: 'string', default: 'agent' },
     },
     allowPositionals: true,
   });
@@ -107,9 +116,14 @@ export async function execute(argv: string[]): Promise<void> {
       samplesPath: resolve(samplesFile),
       rounds: Math.max(1, Number(values.rounds) || 5),
       target: values.target ? Number(values.target) : null,
+      stopOnAssertionsPass: values['stop-on-assertions-pass'] as boolean,
+      autoFixSamples: values['auto-fix-samples'] as boolean,
+      sampleFixMaxAttempts: Math.max(1, Number(values['sample-fix-max-attempts']) || 2),
+      reuseLatestEval: values['reuse-latest-eval'] as boolean,
       model: values.model as string,
       judgeModels: evolveJudges,
       improveModel: values['improve-model'] as string,
+      improveMode: (values['improve-mode'] as string) === 'rewrite' ? 'rewrite' : 'agent',
       executorName: values.executor as string,
       concurrency: Math.max(1, Number(values.concurrency) || 1),
       timeoutMs: Math.max(1, Number(values.timeout) || 120) * 1000,
@@ -118,12 +132,12 @@ export async function execute(argv: string[]): Promise<void> {
       noDiagnostic: values['no-diagnostic'] as boolean,
       skipDoctor: values['skip-doctor'] as boolean,
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
-      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error }: RoundProgressInfo): void {
+      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, reused }: RoundProgressInfo): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。
         // 缺位 / true 当 reported 走旧格式。
         const fmtRoundCost = (c: number, r: boolean): string => r ? `$${c.toFixed(4)}` : '—';
         if (phase === 'baseline') {
-          process.stderr.write(tCli('cli.evolve.round_baseline', lang, {
+          process.stderr.write(tCli(reused ? 'cli.evolve.round_baseline_reused' : 'cli.evolve.round_baseline', lang, {
             score: score!.toFixed(2), cost: fmtRoundCost(costUSD!, costReported !== false),
           }));
         } else if (phase === 'error') {

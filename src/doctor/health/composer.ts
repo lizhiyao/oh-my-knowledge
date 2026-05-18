@@ -193,6 +193,8 @@ async function composerCheckAll(
       cwd: skillRoot ?? ctx.cwd,
       skillDir: skillRoot ?? null,
       timeoutMs: ctx.timeoutMs,
+      effort: ctx.effort ?? 'medium',
+      lean: true,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -213,9 +215,11 @@ async function composerCheckAll(
   const parseResult = parseHealthOutput(cleaned, dims);
   const overall = parseResult.overall ?? deriveOverallHealth(parseResult.byDimId);
   // 诊断:如果所有维度都被标 _missing,说明 LLM 输出 JSON 里 dim_id 字段缺失或写错。
-  // 把 cleaned JSON 的前 3KB 塞进 summary 的 detail.rawSample,方便用户排查。
+  // 此时应报 fail(解析失败),不能当作"全部通过"。
   const allMissing = [...parseResult.byDimId.values()].every((r) => r._missing);
-  const rawSample = allMissing ? cleaned.slice(0, 3000) : undefined;
+  if (allMissing) {
+    return [errorSummaryOutcome(ctx, 'extract', 'LLM output missing all dimension IDs', { rawSample: cleaned.slice(0, 3000) })];
+  }
 
   // 汇总 finding 计数(框架算,不信 LLM 算术)
   const finding = { '错误': 0, '警告': 0, '建议': 0 };
@@ -277,7 +281,6 @@ async function composerCheckAll(
       },
       costUSD: res.costUSD,
       executor: { name: ctx.executorName, model: ctx.model },
-      ...(rawSample !== undefined ? { rawSample, _diagnostic: 'all dims missing — likely dim_id field absent in LLM output' } : {}),
     },
   };
 

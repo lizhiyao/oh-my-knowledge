@@ -109,7 +109,7 @@ function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, d
   // 每一段的 right-hand-side 从旧的 "{dir-mtime}-{file-count}" 双标量升级成
   // safeDirJsonContentFingerprint 返回的 "{dir-mtime}|{file1}:{m}:{s},..."
   // content-aware 字符串。
-  const reportIds = reports.map((r) => `${r.id}:${r.meta?.timestamp ?? ''}`).join(',');
+  const reportIds = reports.map((r) => `${r.id}:${r.meta?.timestamp ?? ''}:${r.kind === 'evaluation' ? r.meta.evolve?.skillName ?? '' : ''}`).join(',');
   const doctorsFp = safeDirJsonContentFingerprint(doctorsDir);
   const analysesFp = safeDirJsonContentFingerprint(analysesDir);
   return `${reportIds}|d:${doctorsFp}|o:${analysesFp}`;
@@ -186,6 +186,16 @@ export interface SkillIndex {
    *  本身共享同一 fingerprint 缓存(reports 数组 + dir mtime 任一变就 invalidate)。
    *  list 页 N×detectInsights 重算的 CPU 开销由此消除。 */
   insightsBySkill: Map<string, Insight[]>;
+}
+
+function isEvolveRoundVariant(report: EvaluationReport, variant: string): boolean {
+  return report.id.startsWith('evolve-') && /^round-\d+$/.test(variant);
+}
+
+function skillNameForEvalVariant(report: EvaluationReport, variant: string): string | null {
+  if (isEvolveRoundVariant(report, variant)) return report.meta.evolve?.skillName ?? null;
+  if (variant === 'baseline') return null;
+  return variant;
 }
 
 function sampleAllPassed(details: AssertionDetail[] | undefined): boolean {
@@ -267,27 +277,25 @@ function bandFromObserveHealth(h: { gap?: { weightedGapRate?: number }; toolFail
 function combineBand(
   doctor: SkillDoctorSnapshot | null,
   evalSnap: SkillEvalSnapshot | null,
-  observe: SkillObserveSnapshot | null,
+  _observe: SkillObserveSnapshot | null,
 ): 'green' | 'yellow' | 'red' | 'gray' {
-  if (!doctor && !evalSnap && !observe) return 'gray';
+  if (!doctor && !evalSnap) return 'gray';
   // doctor band: status fail → red, warn → yellow, pass → green
   const doctorBand: 'green' | 'yellow' | 'red' | 'gray' = !doctor
     ? 'gray'
     : doctor.status === 'fail' ? 'red'
     : doctor.status === 'warn' ? 'yellow'
     : 'green';
-  // eval band:按真实 fail 占比(诱错不算,total 不含)估色。
-  const evalDenom = evalSnap ? evalSnap.passCount + evalSnap.failCount : 0;
-  const failRatio = evalDenom > 0 ? (evalSnap!.failCount / evalDenom) : 0;
-  const evalBand: 'green' | 'yellow' | 'red' | 'gray' = !evalSnap
+  // eval band:按综合分估色,跟列表/详情页显示的 4.x/5 分数口径一致。
+  const evalScore = evalSnap?.compositeScore ?? null;
+  const evalBand: 'green' | 'yellow' | 'red' | 'gray' = !evalSnap || evalScore == null
     ? 'gray'
-    : failRatio >= 0.5 ? 'red'
-    : failRatio >= 0.2 ? 'yellow'
+    : evalScore < 2.5 ? 'red'
+    : evalScore < 3.5 ? 'yellow'
     : 'green';
-  const obsBand: 'green' | 'yellow' | 'red' | 'gray' = observe?.healthBand ?? 'gray';
-  if (doctorBand === 'red' || evalBand === 'red' || obsBand === 'red') return 'red';
-  if (doctorBand === 'yellow' || evalBand === 'yellow' || obsBand === 'yellow') return 'yellow';
-  if (doctorBand === 'green' || evalBand === 'green' || obsBand === 'green') return 'green';
+  if (doctorBand === 'red' || evalBand === 'red') return 'red';
+  if (doctorBand === 'yellow' || evalBand === 'yellow') return 'yellow';
+  if (doctorBand === 'green' || evalBand === 'green') return 'green';
   return 'gray';
 }
 
@@ -295,6 +303,17 @@ function latestActivityTs(e: SkillIndexEntry): string {
   const candidates = [e.doctor?.timestamp, e.eval?.timestamp, e.observe?.generatedAt]
     .filter((s): s is string => Boolean(s));
   return candidates.sort().pop() || '';
+}
+
+function evalSnapshotSortKey(s: SkillEvalSnapshot): string {
+  const m = /^round-(\d+)$/.exec(s.variantName);
+  const round = m ? Number(m[1]) : -1;
+  return `${s.timestamp}#${String(round).padStart(8, '0')}`;
+}
+
+function latestEvalSnapshot(list: SkillEvalSnapshot[]): SkillEvalSnapshot | null {
+  if (list.length === 0) return null;
+  return list[list.length - 1];
 }
 
 /** 扫 doctorsDir/*.json,按 skill 名分桶,**返回该 skill 的所有历史 snapshot**(asc 时序)。
@@ -348,14 +367,15 @@ export function buildSkillIndex(
     if (r.kind !== 'evaluation') continue;
     const variants = r.meta.variants || [];
     for (const v of variants) {
-      if (v === 'baseline') continue;
+      const skillName = skillNameForEvalVariant(r, v);
+      if (!skillName) continue;
       const snap = buildEvalSnapshot(r, v);
       if (!snap) continue;
-      if (!evalBy[v]) evalBy[v] = [];
-      evalBy[v].push(snap);
+      if (!evalBy[skillName]) evalBy[skillName] = [];
+      evalBy[skillName].push(snap);
     }
   }
-  for (const list of Object.values(evalBy)) list.sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  for (const list of Object.values(evalBy)) list.sort((a, b) => evalSnapshotSortKey(a).localeCompare(evalSnapshotSortKey(b)));
 
   // ── observe 聚合(历史 list)──────────────────────────────
   const observeBy: Record<string, SkillObserveSnapshot[]> = {};
@@ -396,7 +416,7 @@ export function buildSkillIndex(
     const evalHistory = evalBy[name] ?? [];
     const observeHistory = observeBy[name] ?? [];
     const doctor = doctorHistory.length > 0 ? doctorHistory[doctorHistory.length - 1] : null;
-    const evalSnap = evalHistory.length > 0 ? evalHistory[evalHistory.length - 1] : null;
+    const evalSnap = latestEvalSnapshot(evalHistory);
     const observe = observeHistory.length > 0 ? observeHistory[observeHistory.length - 1] : null;
     entries.push({
       skillName: name,

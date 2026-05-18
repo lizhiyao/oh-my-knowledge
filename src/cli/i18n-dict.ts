@@ -132,6 +132,7 @@ export type CliMessageKey =
   | 'cli.evolve.specify_skill_path'
   | 'cli.evolve.section_header'
   | 'cli.evolve.round_baseline'
+  | 'cli.evolve.round_baseline_reused'
   | 'cli.evolve.round_error'
   | 'cli.evolve.round_done'
   | 'cli.evolve.summary'
@@ -518,8 +519,12 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '\n=== Improve skill: {path} ===\n',
   },
   'cli.evolve.round_baseline': {
-    zh: '第 0 轮 (基线): score={score} ({cost})\n',
+    zh: '第 0 轮（基线）：score={score}（{cost}）\n',
     en: 'Round 0 (baseline): score={score} ({cost})\n',
+  },
+  'cli.evolve.round_baseline_reused': {
+    zh: '第 0 轮（基线）：score={score}（复用最新 eval 报告）\n',
+    en: 'Round 0 (baseline): score={score} (reused latest eval report)\n',
   },
   'cli.evolve.round_error': {
     zh: '第 {round} 轮: ✗ 改进生成失败: {error}\n',
@@ -880,6 +885,11 @@ omk evolve——多轮自动迭代改进 skill
   --model <name>                      任务执行模型，每轮跑 eval samples 的被测模型（默认：sonnet）
   --improve-model <name>              skill 改写模型，每轮根据反馈改写 skill 的模型（默认：sonnet）
   --judge-models <executor:model>     单评委配置（默认：claude:haiku）
+  --stop-on-assertions-pass           普通样本断言全过时提前停止；诱错样本单独统计，不阻塞停止
+  --improve-mode <agent|rewrite>       改写策略（默认：agent，用 Edit 工具增量修改；rewrite 输出全文替换）
+  --auto-fix-samples                  每轮先修 skill，再修 sample，随后一起评估候选结果
+  --sample-fix-max-attempts <n>       每条 sample 自动修复最多尝试次数（默认：2）
+  --reuse-latest-eval                 复用可比的最新 eval 报告作为 round-0，找不到则重新评测
 
 示例：
   omk evolve skills/code-review/SKILL.md
@@ -898,6 +908,11 @@ Options:
   --model <name>                      Task executor model — runs eval samples each round (default: sonnet)
   --improve-model <name>              Skill rewriter model — rewrites the skill each round (default: sonnet)
   --judge-models <executor:model>     Single judge config (default: claude:haiku)
+  --stop-on-assertions-pass           Stop early when normal samples pass assertions; tripwire samples are counted separately
+  --improve-mode <agent|rewrite>       Improvement strategy (default: agent — incremental Edit; rewrite — full-text replacement)
+  --auto-fix-samples                  Fix the skill, then fix samples, then evaluate the combined candidate
+  --sample-fix-max-attempts <n>       Max auto-fix attempts per sample (default: 2)
+  --reuse-latest-eval                 Reuse the latest comparable eval report as round-0; re-evaluate if none matches
 
 Examples:
   omk evolve skills/code-review/SKILL.md

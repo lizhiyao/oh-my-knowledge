@@ -279,6 +279,12 @@ export interface ReportMeta {
   // by default (CLI `--layered-stats`). When false / absent, the breakdown is collapsed
   // and readers click the <details> summary to expand.
   layeredStats?: boolean;
+  /** Evolve 合并报告的原始 skill 归属。variants 会被 relabel 为 round-0/round-1,
+   *  Studio skill 索引用该字段把报告归回 skill 卡片。 */
+  evolve?: {
+    skillName: string;
+    skillPath?: string;
+  };
 }
 
 export interface ResultEntry {

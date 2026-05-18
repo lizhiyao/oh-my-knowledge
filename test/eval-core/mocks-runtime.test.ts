@@ -110,6 +110,66 @@ describe('isMockHit', () => {
     assert.equal(isMockHit(m, 'X', { items: [{ name: 'a' }, { name: 'b' }] }), true);
     assert.equal(isMockHit(m, 'X', { items: [{ name: 'a' }, { name: 'c' }] }), false);
   });
+
+  it('tool: "*" matches any tool name', () => {
+    const m: Mock = { tool: '*', match: { command_glob: '*grep*' }, return: 'found' };
+    assert.equal(isMockHit(m, 'Bash', { command: 'grep -r foo .' }), true);
+    assert.equal(isMockHit(m, 'Grep', { command: 'grep -r foo .' }), true);
+    assert.equal(isMockHit(m, 'Read', { command: 'grep -r foo .' }), true);
+  });
+
+  it('tool: "*" without match clause matches everything', () => {
+    const m: Mock = { tool: '*', return: 'catch-all' };
+    assert.equal(isMockHit(m, 'Read', { file_path: '/a' }), true);
+    assert.equal(isMockHit(m, 'Bash', { command: 'ls' }), true);
+    assert.equal(isMockHit(m, 'WebFetch', { url: 'https://x.com' }), true);
+  });
+
+  it('input_contains matches substring in simple string field', () => {
+    const m: Mock = { tool: 'Bash', match: { input_contains: 'FinTradeBuySpi' }, return: 'ok' };
+    assert.equal(isMockHit(m, 'Bash', { command: 'grep -r FinTradeBuySpi src/' }), true);
+    assert.equal(isMockHit(m, 'Bash', { command: 'echo hello' }), false);
+  });
+
+  it('input_contains is case-insensitive', () => {
+    const m: Mock = { tool: 'Bash', match: { input_contains: 'fintradebuyspi' }, return: 'ok' };
+    assert.equal(isMockHit(m, 'Bash', { command: 'grep -r FinTradeBuySpi src/' }), true);
+    assert.equal(isMockHit(m, 'Bash', { command: 'FINTRADEBUYSPI' }), true);
+  });
+
+  it('input_contains scans nested object values recursively', () => {
+    const m: Mock = { tool: 'Read', match: { input_contains: 'target' }, return: 'ok' };
+    assert.equal(isMockHit(m, 'Read', { file_path: '/path/target.ts', options: { encoding: 'utf8' } }), true);
+    assert.equal(isMockHit(m, 'Read', { nested: { deep: { value: 'has target here' } } }), true);
+    assert.equal(isMockHit(m, 'Read', { file_path: '/other.ts' }), false);
+  });
+
+  it('input_contains scans array values', () => {
+    const m: Mock = { tool: 'X', match: { input_contains: 'needle' }, return: 'ok' };
+    assert.equal(isMockHit(m, 'X', { args: ['a', 'needle-in-haystack', 'c'] }), true);
+    assert.equal(isMockHit(m, 'X', { args: ['a', 'b', 'c'] }), false);
+  });
+
+  it('input_contains does not match non-string values', () => {
+    const m: Mock = { tool: 'X', match: { input_contains: '42' }, return: 'ok' };
+    assert.equal(isMockHit(m, 'X', { count: 42 }), false);
+    assert.equal(isMockHit(m, 'X', { count: '42' }), true);
+  });
+
+  it('tool: "*" + input_contains: intent-level mock matches any tool with keyword', () => {
+    const m: Mock = { tool: '*', match: { input_contains: 'FinTradeBuySpi' }, return: 'found it' };
+    assert.equal(isMockHit(m, 'Bash', { command: 'grep -r FinTradeBuySpi src/' }), true);
+    assert.equal(isMockHit(m, 'Grep', { pattern: 'FinTradeBuySpi', path: 'src/' }), true);
+    assert.equal(isMockHit(m, 'Read', { file_path: '/src/FinTradeBuySpi.java' }), true);
+    assert.equal(isMockHit(m, 'Bash', { command: 'echo hello' }), false);
+  });
+
+  it('input_contains ANDs with other match fields', () => {
+    const m: Mock = { tool: 'Bash', match: { input_contains: 'deploy', command_glob: 'kubectl *' }, return: 'ok' };
+    assert.equal(isMockHit(m, 'Bash', { command: 'kubectl apply -f deploy.yaml' }), true);
+    assert.equal(isMockHit(m, 'Bash', { command: 'kubectl get pods' }), false);
+    assert.equal(isMockHit(m, 'Bash', { command: 'helm deploy release' }), false);
+  });
 });
 
 describe('resolveMockReturn', () => {
@@ -265,6 +325,20 @@ describe('materializeForCliConfigDir', () => {
     assert.deepEqual(stats, { hits: 3, misses: 1, perMock: { 'Read:1': 3 } });
   });
 
+  it('writes one-shot MCP config for mcp tool mocks', () => {
+    const handle = materializeForCliConfigDir([
+      { tool: 'mcp__clawdbot-dingtalk__message', return: '{"ok":true}' },
+    ])!;
+    const dir = dirname(handle.settingsFile);
+    createdDirs.push(dir);
+
+    assert.equal(handle.mcpConfigFile, join(dir, 'mcp.json'));
+    assert.ok(existsSync(join(dir, 'fake-mcp-server.cjs')));
+    const cfg = JSON.parse(readFileSync(handle.mcpConfigFile!, 'utf8'));
+    assert.equal(cfg.mcpServers['clawdbot-dingtalk'].command, 'node');
+    assert.deepEqual(cfg.mcpServers['clawdbot-dingtalk'].env, { OMK_MOCKS_FILE: join(dir, 'mocks.json') });
+  });
+
   it('strict flag persists into mocks.json', () => {
     const handle = materializeForCliConfigDir([{ tool: 'Read', return: 'x' }], undefined, true)!;
     const dir = dirname(handle.settingsFile);
@@ -359,6 +433,19 @@ describe('SDK hook stats — perMock key format', () => {
     await h.callback({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: '/x' } });
     // 1st Bash→Bash:1, 2nd Bash→Bash:2, 3rd Bash→Bash:3, 1st Read→Read:1
     assert.deepEqual(h.stats.perMock, { 'Bash:1': 1, 'Bash:2': 1, 'Bash:3': 1, 'Read:1': 1 });
+  });
+
+  it('perMock key uses *:N for wildcard mocks', async () => {
+    const mocks: Mock[] = [
+      { tool: '*', match: { input_contains: 'foo' }, return: 'A' },
+      { tool: 'Read', match: { file_path: '/x' }, return: 'B' },
+      { tool: '*', match: { input_contains: 'bar' }, return: 'C' },
+    ];
+    const h = buildSdkHookCallback(mocks);
+    await h.callback({ hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'echo foo' } });
+    await h.callback({ hook_event_name: 'PreToolUse', tool_name: 'Read', tool_input: { file_path: '/x' } });
+    await h.callback({ hook_event_name: 'PreToolUse', tool_name: 'Grep', tool_input: { pattern: 'bar' } });
+    assert.deepEqual(h.stats.perMock, { '*:1': 1, 'Read:1': 1, '*:2': 1 });
   });
 
   it('miss increments stats.misses', async () => {

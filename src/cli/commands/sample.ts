@@ -22,6 +22,7 @@ export async function execute(argv: string[]): Promise<void> {
       'skill-dir': { type: 'string', default: 'skills' },
       focus: { type: 'string' },
       fix: { type: 'boolean', default: false },
+      'max-attempts': { type: 'string', default: '2' },
       'reports-dir': { type: 'string' },
       treatment: { type: 'string' },
     },
@@ -181,6 +182,7 @@ async function executeFix(
   const { createFileStore } = await import('../../server/report-store.js');
 
   const model = (values.model as string) ?? 'opus';
+  const maxAttemptsPerSample = Math.max(1, Number(values['max-attempts']) || 2);
   const reportsDir = resolve((values['reports-dir'] as string) ?? DEFAULT_REPORTS_DIR);
 
   // 1. Determine skill path and samples path
@@ -226,22 +228,21 @@ async function executeFix(
   const samples: Record<string, unknown>[] = JSON.parse(readFileSync(samplesPath, 'utf-8'));
   const skillContent = readFileSync(resolvedSkillPath, 'utf-8');
 
-  // 5. Count sample_design failures
-  let sampleDesignCount = 0;
+  // 5. Count fixable failures (any sample with failed assertions, excluding execution errors)
+  let fixableCount = 0;
   for (const entry of report.results) {
     const variant = entry.variants?.[treatmentName] as unknown as Record<string, unknown> | undefined;
-    if (!variant) continue;
-    const diag = variant.diagnostic as Record<string, unknown> | undefined;
-    const rootCause = (diag?.rootCause as string[]) ?? [];
-    if (rootCause.includes('sample_design')) sampleDesignCount++;
+    if (!variant || variant.ok === false) continue;
+    const details = ((variant.assertions as Record<string, unknown>)?.details ?? []) as Array<{ passed: boolean }>;
+    if (details.length > 0 && !details.every((d) => d.passed)) fixableCount++;
   }
 
-  if (sampleDesignCount === 0) {
-    process.stderr.write(lang === 'zh' ? '✅ 没有 sample_design 类型的失败，无需修复\n' : '✅ No sample_design failures found, nothing to fix\n');
+  if (fixableCount === 0) {
+    process.stderr.write(lang === 'zh' ? '✅ 没有可修复的问题\n' : '✅ Nothing to fix\n');
     return;
   }
 
-  process.stderr.write(lang === 'zh' ? `🔧 发现 ${sampleDesignCount} 条 sample_design 失败，开始修复...\n` : `🔧 Found ${sampleDesignCount} sample_design failure(s), fixing...\n`);
+  process.stderr.write(lang === 'zh' ? `🔧 发现 ${fixableCount} 条失败用例，分析修复中...\n` : `🔧 Found ${fixableCount} failed sample(s), analyzing...\n`);
 
   // 6. Create executor wrapper
   const { createExecutor } = await import('../../executors/index.js');
@@ -256,7 +257,7 @@ async function executeFix(
     return { ok: result.ok, text: result.output ?? '', costUSD: result.costUSD };
   };
 
-  // 7. Run fixes
+  // 7. Run LLM-based fixes
   const result = await fixSamples({
     skillContent,
     samples,
@@ -264,6 +265,7 @@ async function executeFix(
     treatmentKey: treatmentName,
     executor: executorFn,
     model,
+    maxAttemptsPerSample,
   });
 
   // 8. Write back
@@ -282,6 +284,6 @@ async function executeFix(
 
   const cost = result.costUSD > 0 ? ` $${result.costUSD.toFixed(4)}` : '';
   process.stderr.write(lang === 'zh'
-    ? `\n🔧 修复完成: ${result.fixedCount}/${sampleDesignCount} 条已修复 → ${samplesPath}${cost}\n`
-    : `\n🔧 Fix complete: ${result.fixedCount}/${sampleDesignCount} fixed → ${samplesPath}${cost}\n`);
+    ? `\n🔧 修复完成: ${result.fixedCount}/${fixableCount} 条已修复 → ${samplesPath}${cost}\n`
+    : `\n🔧 Fix complete: ${result.fixedCount}/${fixableCount} fixed → ${samplesPath}${cost}\n`);
 }

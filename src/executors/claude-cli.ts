@@ -54,12 +54,11 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
     '--permission-mode', 'bypassPermissions'];
   if (system) args.push('--system-prompt', system);
   // effort 决策:
-  //   - lean=true(纯文本生成):强制 'low' — 生成结构化 JSON 不需要思考,默认 high 浪费 13K tokens / 单次。
+  //   - lean=true(纯文本生成):默认 'low',但允许调用方显式覆盖(如 doctor 对大 skill 需要 'medium')。
   //   - 否则用调用方传入的 effort,或 sonnet 默认(不传 flag = claude CLI 自己定)。
-  // 实测 sonnet count=3 data-warehouse: 默认 effort 240s/$0.28; --effort low 31s/$0.07。
-  const effectiveEffort = lean ? 'low' : effort;
+  const effectiveEffort = lean ? (effort ?? 'low') : effort;
   if (lean) {
-    args.push('--tools', '', '--disable-slash-commands');
+    args.push('--allowedTools', '', '--disable-slash-commands');
   }
   if (effectiveEffort) {
     args.push('--effort', effectiveEffort);
@@ -76,6 +75,9 @@ export async function claudeCliExecutor({ model, system, prompt, cwd, skillDir, 
     : null;
   if (mockHandle) {
     args.push('--settings', mockHandle.settingsFile);
+    if (mockHandle.mcpConfigFile) {
+      args.push('--mcp-config', mockHandle.mcpConfigFile, '--strict-mcp-config');
+    }
     Object.assign(env, mockHandle.env);
   }
   const captureMockStats = (): ExecResult['mockStats'] | undefined => {

@@ -235,6 +235,14 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
              ls 参数变体(\`ls\` / \`ls -la\` / \`ls -d\` / \`ls /xx\` 全命中)
        (c) 单纯"已就绪"声明(凭证文件 / 业务 CLI 是否安装)还是走 \`environment\` 字段,
            不需要 LLM 真调命令检查 — environment 字段就是告诉 LLM "这些不用检查"。
+       (d) **intent-level mock(文件搜索/读取类操作)** — LLM 搜代码时会自由选择 Bash grep、
+           Grep 工具、Glob+Read 组合、甚至 Agent 子代理,逐个枚举工具写 mock 不可持续。
+           正确做法:用 \`tool: "*"\` + \`input_contains: "关键词"\` 按意图匹配:
+           - 对(✅):\`{tool:"*", match:{input_contains:"FinTradeBuySpi"}, return:"<sofa:service unique-id=\\"finfundtrade-buy-spi\\">..."}\`
+             — 不管 LLM 用什么工具搜,只要输入提到 FinTradeBuySpi 就命中
+           - 错(❌):\`{tool:"Bash", match:{command_glob:"*grep*FinTradeBuySpi*"}, ...}\`
+             — LLM 用 Grep 工具或 Read 就 miss,strict 模式下直接挂
+           HTTP/curl 类调用模式可预测(必须用 Bash 跑 curl),继续用 \`tool:"Bash"\` + \`command_glob\`。
     2. **mock 数据要"驱动流程"而非"提前给答案"** — 这是关键:
        - 如果 skill 描述的工作流是多步的(A→B→C),mock 数据要**让最终答案只在最后一步出现**,
          前面的 mock 只能给出"推进到下一步必需的中间产物",不能直接揭示完整答案。
@@ -250,13 +258,18 @@ const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据
     5. 不要 mock LLM 内部 think/text 行为,只 mock 外部副作用工具
   mock 项 schema:
     {
-      "tool": "Bash" | "Read" | "Edit" | "Write" | "WebFetch" | "Grep" | "Glob",
+      "tool": "Bash" | "Read" | "Edit" | "Write" | "WebFetch" | "Grep" | "Glob" | "*",
+      // "*" 通配任何工具名(intent-level mock):LLM 可能用 Bash grep、Grep 工具、
+      // Glob+Read 组合、甚至 Agent 子代理做同一件事。用 "*" 配合 input_contains
+      // 按意图匹配,不用逐个枚举工具。
       "match": {
         "file_path_endswith": "<相对路径后缀,如 tasks/foo/state.json>",  // 推荐用这条 (Read/Edit/Write)
         "file_path": "<完整路径,~ 或绝对>",            // 仅当能预测完整 path 时用,否则首选 _endswith
         "url": "<exact url>" or "url_glob": "<glob>",  // WebFetch
         "command_glob": "<glob>",                       // Bash 拦 mcporter / cli
-        "input": { "<key>": "<value>" }                // generic deep-equal subset
+        "input": { "<key>": "<value>" },               // generic deep-equal subset
+        "input_contains": "<子串>"                       // 递归扫描 tool_input 所有 string 值,大小写不敏感;
+                                                         // 配合 tool:"*" 做 intent-level mock
       },
       "return": "<string>" or { "stdout": "...", "exit": 0 },
       "return_seq": [<r1>, <r2>]   // optional 状态机:同 mock 多次命中按序返回

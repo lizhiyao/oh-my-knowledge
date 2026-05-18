@@ -92,19 +92,17 @@ export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: 
   const dims = [doctorPct, evalPct, observePct].filter((x): x is number => x != null);
   const score = dims.length > 0 ? Math.round(dims.reduce((s, x) => s + x, 0) / dims.length) : null;
 
+  const evalScore = entry.eval?.compositeScore ?? null;
   const hasFail = (entry.doctor != null && entry.doctor.failCount > 0)
     || (entry.eval != null && entry.eval.failCount > 0)
-    || (entry.observe != null && entry.observe.healthBand === 'red');
+    || (evalScore != null && evalScore < 2.5);
   const hasWarn = (entry.doctor != null && entry.doctor.warnCount > 0)
-    || (entry.eval != null && entry.eval.compositeScore != null && entry.eval.compositeScore < 3.5)
-    || (entry.observe != null && entry.observe.healthBand === 'yellow');
-  const high = insights.filter((i) => i.severity === 'high').length;
-  const med = insights.filter((i) => i.severity === 'medium').length;
+    || (evalScore != null && evalScore >= 2.5 && evalScore < 3.5);
 
-  if (high > 0 || hasFail) {
+  if (hasFail) {
     return { grade: 'unhealthy', score, label: lang === 'zh' ? '不健康' : 'Unhealthy', emoji: '🔴', color: 'red' };
   }
-  if (med > 0 || hasWarn) {
+  if (hasWarn) {
     return { grade: 'fair', score, label: lang === 'zh' ? '待改进' : 'Fair', emoji: '🟡', color: 'yellow' };
   }
   if (insights.length === 0 && !hasWarn) {
@@ -1097,7 +1095,7 @@ function renderEvalSection(
       const sid = r.sample_id;
       const prompt = evalReport.sampleSnapshots?.[sid]?.prompt ?? '';
       const promptPreview = prompt.slice(0, 80).replace(/\n+/g, ' ');
-      const passed = (v.assertions?.details ?? []).every((d) => d.passed);
+      const passed = v.ok !== false && (v.assertions?.details ?? []).every((d) => d.passed);
       const isTripwire = (v.diagnostic?.rootCause ?? []).includes('tripwire_intentional')
         || evalReport.sampleSnapshots?.[sid]?.tripwire === true;
       if (isTripwire) {

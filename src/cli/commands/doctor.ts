@@ -1,10 +1,12 @@
-import { existsSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { existsSync, statSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { CliExit } from '../cli-exit.js';
 import { tCli, langFromArgv } from '../i18n.js';
 import { COMMON_OPTIONS } from '../parse-run-config.js';
 import { parseArgsStrictOrExit } from '../parse-strict.js';
 import type { DependencyRequirements } from '../../eval-core/dependency-checker.js';
+import type { DoctorReport } from '../../types/doctor.js';
 import type { Sample } from '../../types/index.js';
 
 const DEFAULT_SAMPLE_FILENAMES = ['eval-samples.json', 'eval-samples.yaml', 'eval-samples.yml'] as const;
@@ -50,6 +52,51 @@ function findDefaultSamplesPath(target: string | null, cwd: string): string | nu
   return null;
 }
 
+function tryLoadExistingDoctorReport(target: string | null, _cwd: string): DoctorReport | null {
+  const dir = join(homedir(), '.oh-my-knowledge', 'doctors');
+  if (!existsSync(dir)) return null;
+  const skillName = target
+    ? target.replace(/\/$/, '').split('/').pop()?.replace(/\.md$/, '') ?? null
+    : null;
+  if (!skillName) return null;
+  const p = join(dir, `${skillName}.json`);
+  if (!existsSync(p)) return null;
+  try {
+    const r = JSON.parse(readFileSync(p, 'utf8')) as DoctorReport;
+    if (!r || !r.timestamp || !r.skills || r.skills.length === 0) return null;
+    const reportTime = new Date(r.timestamp).getTime();
+    const skillPath = r.skills[0].skillPath;
+    if (skillPath && existsSync(skillPath)) {
+      const skillMtime = statSync(skillPath).mtimeMs;
+      if (skillMtime > reportTime) return null;
+    }
+    return r;
+  } catch { return null; }
+}
+
+function persistDoctorReport(report: DoctorReport): void {
+  const dir = join(homedir(), '.oh-my-knowledge', 'doctors');
+  mkdirSync(dir, { recursive: true });
+  for (const skill of report.skills) {
+    const perSkill: DoctorReport = {
+      ...report,
+      skills: [skill],
+      totals: {
+        pass: skill.status === 'pass' ? 1 : 0,
+        warn: skill.status === 'warn' ? 1 : 0,
+        fail: skill.status === 'fail' ? 1 : 0,
+      },
+      outcome: skill.status === 'fail' ? 'failed' : skill.status === 'warn' ? 'warnings_only' : 'passed',
+      ruleStats: skill.results.reduce((acc, r) => {
+        acc[r.status] += 1;
+        acc.total += 1;
+        return acc;
+      }, { pass: 0, warn: 0, fail: 0, skipped: 0, total: 0 }),
+    };
+    writeFileSync(join(dir, `${skill.skillName}.json`), JSON.stringify(perSkill, null, 2), 'utf8');
+  }
+}
+
 export async function execute(argv: string[]): Promise<void> {
   const lang = langFromArgv(argv);
   const { values, positionals } = parseArgsStrictOrExit({
@@ -64,6 +111,8 @@ export async function execute(argv: string[]): Promise<void> {
       samples: { type: 'string' },
       timeout: { type: 'string' },
       html: { type: 'string' },
+      fix: { type: 'boolean', default: false },
+      effort: { type: 'string' },
       'static-only': { type: 'boolean', default: false },
     },
   });
@@ -115,20 +164,45 @@ export async function execute(argv: string[]): Promise<void> {
     ? getRegisteredRules().filter((r) => !isComposerRule(r))
     : getRegisteredRules().filter(isComposerRule);
 
+  const isFix = values.fix as boolean;
+  const effort = values.effort as string | undefined;
+  const validEfforts = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+  const effortValue = effort && validEfforts.has(effort) ? effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max' : undefined;
+
+  const runCurrentDoctor = (): Promise<Awaited<ReturnType<typeof runDoctor>>> => runDoctor({
+    target,
+    cwd,
+    executorName,
+    model,
+    timeoutMs,
+    lang,
+    runHealthCheck,
+    rules: rulesOverride,
+    samples,
+    requires,
+    effort: effortValue,
+  });
+
   let report;
   try {
-    report = await runDoctor({
-      target,
-      cwd,
-      executorName,
-      model,
-      timeoutMs,
-      lang,
-      runHealthCheck,
-      rules: rulesOverride,
-      samples,
-      requires,
-    });
+    if (isFix) {
+      const existingReport = tryLoadExistingDoctorReport(target, cwd);
+      if (existingReport) {
+        const { confirm } = await import('@inquirer/prompts');
+        const age = Math.round((Date.now() - new Date(existingReport.timestamp).getTime()) / 60000);
+        const useExisting = process.stdin.isTTY
+          ? await confirm({ message: `发现 ${age} 分钟前的 doctor 报告，直接使用？（否则重新运行）`, default: true })
+          : true;
+        if (useExisting) {
+          report = existingReport;
+        }
+      }
+    }
+    if (!report) {
+      process.stderr.write('⏳ 正在运行 doctor 健康检查...\n');
+      report = await runCurrentDoctor();
+      persistDoctorReport(report);
+    }
   } catch (err) {
     // CliExit 透传(防御性,目前 runDoctor 不抛 CliExit,但保持四个 catch 一致)。
     if (err instanceof CliExit) throw err;
@@ -175,6 +249,34 @@ export async function execute(argv: string[]): Promise<void> {
       process.stderr.write(tCli('cli.doctor.samples_detected', lang, { path: samplesPath }) + '\n');
     }
     renderDoctorReportText(report, lang);
+  }
+
+  if (isFix) {
+    const { runDoctorFix } = await import('../../doctor/fixer.js');
+    const absTarget = target ? resolve(target) : cwd;
+    const changed = await runDoctorFix({
+      report,
+      executorName,
+      model,
+      timeoutMs,
+      effort: effortValue,
+      resolveSkillPath: (reportPath) => {
+        if (existsSync(reportPath)) return reportPath;
+        const filename = reportPath.split('/').pop() || '';
+        const candidate = join(absTarget, filename);
+        if (existsSync(candidate)) return candidate;
+        if (absTarget.endsWith('.md') && existsSync(absTarget)) return absTarget;
+        const skillMd = join(absTarget, 'SKILL.md');
+        if (existsSync(skillMd)) return skillMd;
+        return reportPath;
+      },
+      verify: async () => {
+        const next = await runCurrentDoctor();
+        persistDoctorReport(next);
+        return next;
+      },
+    });
+    throw new CliExit(changed ? 0 : report.outcome === 'failed' ? 1 : 0);
   }
 
   throw new CliExit(report.outcome === 'failed' ? 1 : 0);

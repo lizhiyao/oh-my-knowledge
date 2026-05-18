@@ -95,9 +95,17 @@ function matchesInputSubset(expected: Record<string, unknown>, actual: unknown):
   return true;
 }
 
+function anyStringContains(obj: unknown, needle: string): boolean {
+  if (typeof obj === 'string') return obj.toLowerCase().includes(needle);
+  if (Array.isArray(obj)) return obj.some((item) => anyStringContains(item, needle));
+  if (typeof obj === 'object' && obj !== null)
+    return Object.values(obj as Record<string, unknown>).some((v) => anyStringContains(v, needle));
+  return false;
+}
+
 /** 单条 mock 是否命中给定 tool 调用。 */
 export function isMockHit(mock: Mock, toolName: string, toolInput: unknown): boolean {
-  if (mock.tool !== toolName) return false;
+  if (mock.tool !== '*' && mock.tool !== toolName) return false;
   const m = mock.match;
   if (!m) return true;
   const ti = (toolInput || {}) as Record<string, unknown>;
@@ -121,6 +129,9 @@ export function isMockHit(mock: Mock, toolName: string, toolInput: unknown): boo
   }
   if (m.input !== undefined) {
     if (!matchesInputSubset(m.input, toolInput)) return false;
+  }
+  if (m.input_contains !== undefined) {
+    if (!anyStringContains(toolInput, m.input_contains.toLowerCase())) return false;
   }
   return true;
 }
@@ -263,6 +274,8 @@ export interface CliMockHandle {
    *  Claude Code 会**追加**这个 settings 到 ~/.claude/settings.json,**不替换** —
    *  这样 OAuth 登录态 / 用户主配置都不动。 */
   settingsFile: string;
+  /** 临时 MCP 配置文件路径,作为 `claude --mcp-config <path> --strict-mcp-config` 参数传入。 */
+  mcpConfigFile?: string;
   /** 子进程要看到的额外 env(目前只 OMK_MOCKS_FILE)。 */
   env: Record<string, string>;
   /** 读 hook 在临时目录写的命中统计(给 ExecResult.mockStats 用)。
@@ -281,9 +294,11 @@ export interface CliMockHandle {
  *
  * 临时目录结构:
  *   $tmpdir/omk-mocks-XXXXXX/
- *     ├── settings.json     (PreToolUse hook 注册,作为 --settings 参数)
- *     ├── mock-hook.cjs     (hook 实现:读 OMK_MOCKS_FILE → 匹配 → 输出 JSON 决策)
- *     └── mocks.json        (mocks 序列化 + baseDir + strict)
+ *     ├── settings.json       (PreToolUse hook 注册,作为 --settings 参数)
+ *     ├── mock-hook.cjs       (hook 实现:读 OMK_MOCKS_FILE → 匹配 → 输出 JSON 决策)
+ *     ├── fake-mcp-server.cjs (可选:给 mcp__server__tool mock 注册一次性 fake MCP)
+ *     ├── mcp.json            (可选:作为 --mcp-config 参数)
+ *     └── mocks.json          (mocks 序列化 + baseDir + strict)
  *
  * cleanup 必删整个目录。executor 用 try / finally 保证执行。
  */
@@ -298,6 +313,8 @@ export function materializeForCliConfigDir(
   const mocksFile = join(configDir, 'mocks.json');
   const settingsFile = join(configDir, 'settings.json');
   const hookScript = join(configDir, 'mock-hook.cjs');
+  const mcpServerScript = join(configDir, 'fake-mcp-server.cjs');
+  const mcpConfigFile = join(configDir, 'mcp.json');
 
   const hookSource = readMockHookTemplate();
   writeFileSync(hookScript, hookSource, 'utf8');
@@ -317,6 +334,21 @@ export function materializeForCliConfigDir(
     },
   };
   writeFileSync(settingsFile, JSON.stringify(settings, null, 2));
+
+  const fakeMcpServers = collectFakeMcpServers(mocks);
+  const hasFakeMcp = fakeMcpServers.size > 0;
+  if (hasFakeMcp) {
+    writeFileSync(mcpServerScript, fakeMcpServerSource(), 'utf8');
+    const mcpServers: Record<string, { command: string; args: string[]; env: Record<string, string> }> = {};
+    for (const serverName of fakeMcpServers.keys()) {
+      mcpServers[serverName] = {
+        command: 'node',
+        args: [mcpServerScript, serverName],
+        env: { OMK_MOCKS_FILE: mocksFile },
+      };
+    }
+    writeFileSync(mcpConfigFile, JSON.stringify({ mcpServers }, null, 2));
+  }
 
   const statsFile = join(configDir, 'hits.json');
   const readStats = (): { hits: number; misses: number; perMock: Record<string, number> } => {
@@ -343,10 +375,210 @@ export function materializeForCliConfigDir(
 
   return {
     settingsFile,
+    ...(hasFakeMcp && { mcpConfigFile }),
     env: { OMK_MOCKS_FILE: mocksFile },
     readStats,
     cleanup,
   };
+}
+
+function parseMcpToolName(toolName: string): { serverName: string; toolName: string } | null {
+  if (!toolName.startsWith('mcp__')) return null;
+  const rest = toolName.slice('mcp__'.length);
+  const sep = rest.lastIndexOf('__');
+  if (sep <= 0 || sep === rest.length - 2) return null;
+  return { serverName: rest.slice(0, sep), toolName: rest.slice(sep + 2) };
+}
+
+function collectFakeMcpServers(mocks: Mock[]): Map<string, Set<string>> {
+  const servers = new Map<string, Set<string>>();
+  for (const mock of mocks) {
+    const parsed = parseMcpToolName(mock.tool);
+    if (!parsed) continue;
+    const tools = servers.get(parsed.serverName) ?? new Set<string>();
+    tools.add(parsed.toolName);
+    servers.set(parsed.serverName, tools);
+  }
+  return servers;
+}
+
+function fakeMcpServerSource(): string {
+  return `#!/usr/bin/env node
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
+const serverName = process.argv[2];
+const mocksFile = process.env.OMK_MOCKS_FILE;
+const rl = readline.createInterface({ input: process.stdin });
+
+function send(obj) { process.stdout.write(JSON.stringify(obj) + '\\n'); }
+function globMatch(pattern, value) {
+  const escaped = pattern.replace(/[.+?^\${}()|[\\]\\\\]/g, '\\\\$&');
+  return new RegExp('^' + escaped.replace(/\\*/g, '.*') + '$', 's').test(value);
+}
+function arraysDeepEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (!deepEqual(a[i], b[i])) return false;
+  return true;
+}
+function deepEqual(a, b) {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) return arraysDeepEqual(a, b);
+  if (typeof a === 'object' && a !== null && typeof b === 'object' && b !== null && !Array.isArray(a) && !Array.isArray(b)) {
+    const ak = Object.keys(a), bk = Object.keys(b);
+    if (ak.length !== bk.length) return false;
+    for (const k of ak) if (!deepEqual(a[k], b[k])) return false;
+    return true;
+  }
+  return false;
+}
+function matchesInputSubset(expected, actual) {
+  if (typeof actual !== 'object' || actual === null) return false;
+  for (const k of Object.keys(expected)) {
+    const v = expected[k];
+    if (Array.isArray(v)) {
+      if (!Array.isArray(actual[k]) || !arraysDeepEqual(v, actual[k])) return false;
+    } else if (typeof v === 'object' && v !== null) {
+      if (!matchesInputSubset(v, actual[k])) return false;
+    } else if (actual[k] !== v) {
+      return false;
+    }
+  }
+  return true;
+}
+function anyStringContains(obj, needle) {
+  if (typeof obj === 'string') return obj.toLowerCase().includes(needle);
+  if (Array.isArray(obj)) return obj.some((item) => anyStringContains(item, needle));
+  if (typeof obj === 'object' && obj !== null) return Object.values(obj).some((v) => anyStringContains(v, needle));
+  return false;
+}
+function isMockHit(mock, toolName, toolInput) {
+  if (mock.tool !== '*' && mock.tool !== toolName) return false;
+  const m = mock.match;
+  if (!m) return true;
+  const ti = toolInput || {};
+  if (m.input !== undefined && !matchesInputSubset(m.input, toolInput)) return false;
+  if (m.input_contains !== undefined && !anyStringContains(toolInput, String(m.input_contains).toLowerCase())) return false;
+  if (m.command_glob !== undefined && (typeof ti.command !== 'string' || !globMatch(m.command_glob, ti.command))) return false;
+  if (m.url !== undefined && ti.url !== m.url) return false;
+  if (m.url_glob !== undefined && (typeof ti.url !== 'string' || !globMatch(m.url_glob, ti.url))) return false;
+  return true;
+}
+function stringifyReturn(r) { return typeof r === 'string' ? r : JSON.stringify(r); }
+function resolveMockReturn(mock, hitCount, baseDir) {
+  if (mock.return_seq && hitCount < mock.return_seq.length) return stringifyReturn(mock.return_seq[hitCount]);
+  if (mock.return !== undefined) return stringifyReturn(mock.return);
+  if (mock.return_file) {
+    const fpath = path.isAbsolute(mock.return_file) ? mock.return_file : path.resolve(baseDir || process.cwd(), mock.return_file);
+    if (!fs.existsSync(fpath)) return '[omk-mock-error] return_file not found: ' + fpath;
+    return fs.readFileSync(fpath, 'utf8');
+  }
+  return '';
+}
+function loadConfig() {
+  if (!mocksFile || !fs.existsSync(mocksFile)) return { mocks: [], strict: false };
+  return JSON.parse(fs.readFileSync(mocksFile, 'utf8'));
+}
+function toolNameFromFullName(fullName) {
+  const prefix = 'mcp__' + serverName + '__';
+  return fullName.startsWith(prefix) ? fullName.slice(prefix.length) : null;
+}
+function inferJsonSchema(value) {
+  if (typeof value === 'boolean') return { type: 'boolean' };
+  if (typeof value === 'number') return { type: 'number' };
+  if (Array.isArray(value)) return { type: 'array' };
+  if (typeof value === 'object' && value !== null) return { type: 'object', additionalProperties: true };
+  return { type: 'string' };
+}
+function schemaForTool(name, mocks) {
+  const properties = {};
+  const required = [];
+  for (const m of mocks) {
+    if (toolNameFromFullName(m.tool) !== name) continue;
+    const input = m.match && m.match.input;
+    if (typeof input !== 'object' || input === null || Array.isArray(input)) continue;
+    for (const k of Object.keys(input)) {
+      properties[k] = inferJsonSchema(input[k]);
+      if (!required.includes(k)) required.push(k);
+    }
+  }
+  if (name === 'message') {
+    for (const k of ['action', 'channel', 'target', 'message']) {
+      if (!properties[k]) properties[k] = { type: 'string' };
+      if (!required.includes(k)) required.push(k);
+    }
+  }
+  return { type: 'object', properties, required, additionalProperties: true };
+}
+function listTools() {
+  const cfg = loadConfig();
+  const names = new Set();
+  const mocks = cfg.mocks || [];
+  for (const m of mocks) {
+    const n = toolNameFromFullName(m.tool);
+    if (n) names.add(n);
+  }
+  return Array.from(names).map((name) => ({
+    name,
+    description: 'omk fake MCP tool for ' + serverName + '/' + name,
+    inputSchema: schemaForTool(name, mocks),
+  }));
+}
+function recordHit(mockKey) {
+  if (!mocksFile) return;
+  const statsFile = path.join(path.dirname(mocksFile), 'hits.json');
+  let stats = { perMock: {}, hits_total: 0, misses_total: 0 };
+  try { if (fs.existsSync(statsFile)) stats = JSON.parse(fs.readFileSync(statsFile, 'utf8')); } catch {}
+  if (!stats.perMock) stats.perMock = {};
+  stats.perMock[mockKey] = (stats.perMock[mockKey] || 0) + 1;
+  stats.hits_total = (stats.hits_total || 0) + 1;
+  fs.writeFileSync(statsFile, JSON.stringify(stats));
+}
+function recordMiss() {
+  if (!mocksFile) return;
+  const statsFile = path.join(path.dirname(mocksFile), 'hits.json');
+  let stats = { perMock: {}, hits_total: 0, misses_total: 0 };
+  try { if (fs.existsSync(statsFile)) stats = JSON.parse(fs.readFileSync(statsFile, 'utf8')); } catch {}
+  stats.misses_total = (stats.misses_total || 0) + 1;
+  fs.writeFileSync(statsFile, JSON.stringify(stats));
+}
+function callTool(name, args) {
+  const cfg = loadConfig();
+  const fullName = 'mcp__' + serverName + '__' + name;
+  const mocks = cfg.mocks || [];
+  const baseDir = cfg.baseDir;
+  const ord = new Map();
+  for (const m of mocks) ord.set(m.tool, 0);
+  for (const m of mocks) {
+    ord.set(m.tool, (ord.get(m.tool) || 0) + 1);
+    if (isMockHit(m, fullName, args || {})) {
+      const key = fullName + ':' + ord.get(m.tool);
+      recordHit(key);
+      return resolveMockReturn(m, 0, baseDir);
+    }
+  }
+  recordMiss();
+  if (cfg.strict) return '[omk-mock-strict] unmocked ' + fullName + ' call blocked';
+  return '';
+}
+
+rl.on('line', (line) => {
+  let msg;
+  try { msg = JSON.parse(line); } catch { return; }
+  const id = msg.id;
+  if (msg.method === 'initialize') {
+    send({ jsonrpc: '2.0', id, result: { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'omk-fake-' + serverName, version: '0.0.1' } } });
+  } else if (msg.method === 'notifications/initialized') {
+  } else if (msg.method === 'tools/list') {
+    send({ jsonrpc: '2.0', id, result: { tools: listTools() } });
+  } else if (msg.method === 'tools/call') {
+    const result = callTool(msg.params && msg.params.name, msg.params && msg.params.arguments);
+    send({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: result }] } });
+  } else if (id !== undefined) {
+    send({ jsonrpc: '2.0', id, result: {} });
+  }
+});
+`;
 }
 
 let _hookTemplate: string | null = null;

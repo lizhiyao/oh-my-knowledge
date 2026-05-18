@@ -63,6 +63,10 @@ export interface MockMatch {
   command_glob?: string;
   /** 通用匹配:对 tool_input 任意字段做 deep equal,优先级高于上面的 sugar 字段。 */
   input?: Record<string, unknown>;
+  /** 递归扫描 tool_input 所有 string 值,任意一个含该子串即命中(大小写不敏感)。
+   *  适合 intent-level mock:配合 `tool: "*"` 拦截"任何工具,只要输入提到关键词"。
+   *  例: `input_contains: "FinTradeBuySpi"` 命中 Bash grep / Grep / Read 等任何包含该关键词的调用。 */
+  input_contains?: string;
 }
 
 /** Mock 返回值(三选一)。 */
@@ -72,7 +76,8 @@ export type MockReturn =
 
 /** 单条 Mock 规则。runtime 拦到匹配的 tool 调用即返回 mocked 结果,不放出去。 */
 export interface Mock {
-  /** 拦截的工具名,如 "Read" / "Bash" / "WebFetch" / "Edit" / "Write" / "Grep" / "Glob"。 */
+  /** 拦截的工具名,如 "Read" / "Bash" / "WebFetch" / "Edit" / "Write" / "Grep" / "Glob"。
+   *  特殊值 `"*"`:通配,匹配任何工具名(配合 match.input_contains 做 intent-level mock)。 */
   tool: string;
   /** 命中规则。所有字段 AND,字段未填即不限制。 */
   match?: MockMatch;

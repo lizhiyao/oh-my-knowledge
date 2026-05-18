@@ -60,6 +60,7 @@
   "license": "MIT",
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.89",
+    "@inquirer/prompts": "^8.4.3",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@openai/codex-sdk": "0.130.0",
     "ajv": "^8.18.0",
