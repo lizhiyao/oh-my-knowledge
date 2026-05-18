@@ -106,8 +106,8 @@ export default class ObserveInbox extends Command {
     }),
     'input-dir': Flags.string({
       description: bilingual({
-        zh: 'inbox 数据目录，默认 ~/.oh-my-knowledge/observations',
-        en: 'Inbox data dir, default ~/.oh-my-knowledge/observations',
+        zh: 'inbox 数据目录，默认 .omk/observations（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observations。',
+        en: 'Inbox data dir, default .omk/observations (project-local); falls back to ~/.oh-my-knowledge/observations when missing.',
       }),
     }),
     skill: Flags.string({

@@ -314,7 +314,7 @@ omk observe inbox [flags]
 - `--by-skill` `boolean`:按 skill 聚合输出
 - `--explore` `option`:抽样 N 条 medium/low 长尾（replaces limit）
 - `--include-noise` `boolean`:explore 时也包含 noise 桶
-- `--input-dir` `option`:inbox 数据目录，默认 ~/.oh-my-knowledge/observations
+- `--input-dir` `option`:inbox 数据目录，默认 .omk/observations（项目级，相对于 cwd）；目录不存在时兜底读 ~/.oh-my-knowledge/observations。
 - `--json` `boolean`:JSON 格式输出
 - `--lang` `option` (默认 `zh`):输出语言 zh|en
 - `--limit` `option`:限制条数，默认 20
