@@ -142,7 +142,7 @@ async function applyFixWithAgent(issues: FixIssue[], choices: Record<string, str
     const option = planIssue?.options.find((o) => o.id === choice);
     const direction = option ? option.description : choice;
     if (choice === '__custom__') {
-      return `## ${issue.id}: ${issue.message}\n用户指定的修复方向（必须严格遵守，忽略其他建议）: ${direction}`;
+      return `## ${issue.id}: ${issue.message}\n用户指定的修复方向: ${direction}`;
     }
     return `## ${issue.id}: ${issue.message}\n修复方向: ${direction}\nDoctor 建议: ${issue.hint}`;
   }).join('\n\n');

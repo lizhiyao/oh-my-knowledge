@@ -542,6 +542,7 @@ function recordMiss() {
   stats.misses_total = (stats.misses_total || 0) + 1;
   fs.writeFileSync(statsFile, JSON.stringify(stats));
 }
+const hitCounters = new Map();
 function callTool(name, args) {
   const cfg = loadConfig();
   const fullName = 'mcp__' + serverName + '__' + name;
@@ -549,12 +550,16 @@ function callTool(name, args) {
   const baseDir = cfg.baseDir;
   const ord = new Map();
   for (const m of mocks) ord.set(m.tool, 0);
-  for (const m of mocks) {
+  for (let i = 0; i < mocks.length; i++) {
+    const m = mocks[i];
     ord.set(m.tool, (ord.get(m.tool) || 0) + 1);
     if (isMockHit(m, fullName, args || {})) {
       const key = fullName + ':' + ord.get(m.tool);
       recordHit(key);
-      return resolveMockReturn(m, 0, baseDir);
+      const c = hitCounters.get(i) || 0;
+      const result = resolveMockReturn(m, c, baseDir);
+      hitCounters.set(i, c + 1);
+      return result;
     }
   }
   recordMiss();

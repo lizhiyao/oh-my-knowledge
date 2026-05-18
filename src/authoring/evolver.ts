@@ -776,8 +776,9 @@ export async function evolveSkill({
     }
 
     if (accepted) roundReports.push({ round, accepted, report: finalRoundReport });
-    trajectory.push({ round, score: finalRoundScore, delta: finalRoundScore - trajectory[trajectory.length - 1].score, accepted, costUSD: finalRoundCost });
-    if (onRoundProgress) onRoundProgress({ round, totalRounds: rounds, phase: 'done', score: finalRoundScore, delta: finalRoundScore - trajectory[trajectory.length - 1].score, accepted, costUSD: finalRoundCost, costReported: finalRoundCostReported });
+    const roundDelta = finalRoundScore - trajectory[trajectory.length - 1].score;
+    trajectory.push({ round, score: finalRoundScore, delta: roundDelta, accepted, costUSD: finalRoundCost });
+    if (onRoundProgress) onRoundProgress({ round, totalRounds: rounds, phase: 'done', score: finalRoundScore, delta: roundDelta, accepted, costUSD: finalRoundCost, costReported: finalRoundCostReported });
 
     // Early stop
     if (stopOnAssertionsPass && accepted && allNonTripwireAssertionsPass(finalRoundReport, finalRoundVariantKey)) {
