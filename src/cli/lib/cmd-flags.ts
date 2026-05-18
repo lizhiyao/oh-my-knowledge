@@ -225,7 +225,7 @@ export interface ObserveInboxFlags {
   explore?: string;
   'include-noise': boolean;
   'by-skill': boolean;
-  'skill-extract': boolean;
+  'soft-standard-extract': boolean;
   refresh: boolean;
   model?: string;
   executor?: string;

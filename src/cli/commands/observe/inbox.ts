@@ -28,7 +28,7 @@ export async function runObserveInbox(
 ): Promise<void> {
   const { queryObservationInbox, selectExploreInboxItems, loadLatestObservationInboxReports, summarizeObservationInboxBySkill, DEFAULT_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
   const dir = resolve(flags['input-dir'] || DEFAULT_OBSERVATIONS_DIR);
-  if (flags['skill-extract']) {
+  if (flags['soft-standard-extract']) {
     const { buildObservationInboxViewModel } = await import('../../../observability/inbox-view-model.js');
     const { extractSkillSoftStandards, DEFAULT_SOFT_STANDARD_MODEL } = await import('../../../observability/soft-standards.js');
     const view = buildObservationInboxViewModel(dir, { skill: flags.skill });
@@ -167,7 +167,7 @@ export default class ObserveInbox extends Command {
       }),
       default: false,
     }),
-    'skill-extract': Flags.boolean({
+    'soft-standard-extract': Flags.boolean({
       description: bilingual({
         zh: '显式调用模型抽取缺失 hardRules/workflows 的软标准候选',
         en: 'Explicitly run model-based soft standard extraction for skills missing hardRules/workflows',

@@ -322,7 +322,7 @@ omk observe inbox [flags]
 - `--model` `option`:抽取软标准使用的模型，默认 sonnet
 - `--refresh` `boolean`:重新抽取软标准候选，不复用已有抽取结果
 - `--skill` `option`:只看指定 skill
-- `--skill-extract` `boolean`:显式调用模型抽取缺失 hardRules/workflows 的软标准候选
+- `--soft-standard-extract` `boolean`:显式调用模型抽取缺失 hardRules/workflows 的软标准候选
 
 ## omk observe ingest
 
