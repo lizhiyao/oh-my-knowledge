@@ -1,9 +1,8 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { resolve, join, dirname, basename } from 'node:path';
 import { runEvaluation } from '../eval-workflows/run-evaluation.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
-import { persistReport, DEFAULT_OUTPUT_DIR, generateRunId } from '../eval-core/evaluation-reporting.js';
+import { persistReport, DEFAULT_OUTPUT_DIR, generateRunId, hashString } from '../eval-core/evaluation-reporting.js';
 import { createFileStore } from '../server/report-store.js';
 import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { loadSamples } from '../inputs/load-samples.js';
@@ -56,10 +55,6 @@ interface WeakSample {
  * Returns null if the file has no frontmatter or no name field.
  * Used to give evolve reports semantic filenames instead of "evolve-SKILL-xxx".
  */
-function hashString(str: string): string {
-  return createHash('sha256').update(str).digest('hex').slice(0, 12);
-}
-
 function canonicalStringify(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   if (Array.isArray(value)) return '[' + value.map(canonicalStringify).join(',') + ']';
@@ -760,12 +755,6 @@ export async function evolveSkill({
 
     const accepted = candidateScore > bestScore;
 
-    const finalRoundReport = candidateReport;
-    const finalRoundVariantKey = candidateVariantKey;
-    const finalRoundScore = candidateScore;
-    const finalRoundCost = roundCost;
-    const finalRoundCostReported = roundCostReported;
-
     if (accepted) {
       currentBest = candidateContent;
       bestScore = candidateScore;
@@ -775,13 +764,13 @@ export async function evolveSkill({
       consecutiveRejects++;
     }
 
-    if (accepted) roundReports.push({ round, accepted, report: finalRoundReport });
-    const roundDelta = finalRoundScore - trajectory[trajectory.length - 1].score;
-    trajectory.push({ round, score: finalRoundScore, delta: roundDelta, accepted, costUSD: finalRoundCost });
-    if (onRoundProgress) onRoundProgress({ round, totalRounds: rounds, phase: 'done', score: finalRoundScore, delta: roundDelta, accepted, costUSD: finalRoundCost, costReported: finalRoundCostReported });
+    if (accepted) roundReports.push({ round, accepted, report: candidateReport });
+    const roundDelta = candidateScore - trajectory[trajectory.length - 1].score;
+    trajectory.push({ round, score: candidateScore, delta: roundDelta, accepted, costUSD: roundCost });
+    if (onRoundProgress) onRoundProgress({ round, totalRounds: rounds, phase: 'done', score: candidateScore, delta: roundDelta, accepted, costUSD: roundCost, costReported: roundCostReported });
 
     // Early stop
-    if (stopOnAssertionsPass && accepted && allNonTripwireAssertionsPass(finalRoundReport, finalRoundVariantKey)) {
+    if (stopOnAssertionsPass && accepted && allNonTripwireAssertionsPass(candidateReport, candidateVariantKey)) {
       stopReason = 'assertions-pass';
       break;
     }

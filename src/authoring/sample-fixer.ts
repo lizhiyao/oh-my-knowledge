@@ -52,48 +52,6 @@ const FIX_SYSTEM_PROMPT = `你是一个评测用例修复专家。根据诊断�
 第一字符 \`[\`，最后 \`]\`，不要用 \`\`\`json\`\`\` 围栏，不要寒暄。
 如果判断某条是 LLM 行为问题不需要改,也原样放进数组。`;
 
-function buildFixPrompt(ctx: FixContext, skillContent: string): string {
-  const skillPreview = skillContent.length > 8000
-    ? skillContent.slice(0, 8000) + '\n\n... (truncated)'
-    : skillContent;
-
-  const failedList = ctx.failedAssertions
-    .filter((a) => !a.passed)
-    .map((a) => `- ${a.type}: ${a.value}`)
-    .join('\n');
-
-  const toolCallsSummary = ctx.toolCalls.length > 0
-    ? ctx.toolCalls.map((tc, i) => `[${i}] ${tc.tool} success=${tc.success} input=${JSON.stringify(tc.input).slice(0, 200)}`).join('\n')
-    : '(无工具调用)';
-
-
-  return `## 原始 Sample
-
-${JSON.stringify(ctx.originalSample, null, 2)}
-
-## 诊断信息
-
-- 归因：${ctx.rootCause.join(', ') || '(无)'}
-- 诊断摘要：${ctx.diagnosticSummary}
-- 期望行为：${ctx.expected}
-- 实际行为：${ctx.actual}
-- Sample 修改建议：${ctx.suggestionSample || '(无)'}
-
-## 失败的断言
-
-${failedList || '(无)'}
-
-## LLM 实际的工具调用
-
-${toolCallsSummary}
-
-
-## Skill 原文（参考）
-
-${skillPreview}
-
-分析失败原因：是 sample 设计问题还是 LLM 行为问题？如果是 sample 问题就修复,如果是 LLM 问题就原样返回。直接输出完整 sample JSON 对象。`;
-}
 
 function sanitizeFixedSamples(samples: Record<string, unknown>[], skillContent: string): Record<string, unknown>[] {
   sanitizeGeneratedSamples(samples as Sample[], { skillContent });
@@ -123,7 +81,7 @@ function parseFixedSamples(text: string): Record<string, unknown>[] | null {
   }
   try {
     const arr = JSON.parse(cleaned);
-    if (Array.isArray(arr) && arr.every((x) => x && typeof x === 'object')) return arr;
+    if (Array.isArray(arr) && arr.every((x) => x && typeof x === 'object' && !Array.isArray(x))) return arr;
   } catch { /* fall through */ }
 
   // Try to extract first JSON array

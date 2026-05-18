@@ -79,9 +79,16 @@ function extractJsonObject(text: string): unknown {
   const start = trimmed.indexOf('{');
   if (start < 0) throw new Error('LLM response did not contain JSON');
   let depth = 0;
+  let inString = false;
+  let escape = false;
   for (let i = start; i < trimmed.length; i++) {
-    if (trimmed[i] === '{') depth++;
-    if (trimmed[i] === '}') {
+    const ch = trimmed[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
       depth--;
       if (depth === 0) return JSON.parse(trimmed.slice(start, i + 1));
     }
@@ -185,23 +192,25 @@ ${instructions}`;
   return true;
 }
 
-let stdinLines: string[] | null = null;
-
-function readLineFromStdin(): Promise<string> {
-  if (!process.stdin.isTTY) {
-    if (stdinLines === null) {
-      const raw = readFileSync(0, 'utf8');
-      stdinLines = raw.split(/\r?\n/);
+function createStdinReader(): () => Promise<string> {
+  let lines: string[] | null = null;
+  return () => {
+    if (!process.stdin.isTTY) {
+      if (lines === null) {
+        const raw = readFileSync(0, 'utf8');
+        lines = raw.split(/\r?\n/);
+      }
+      return Promise.resolve((lines.shift() ?? '').trim());
     }
-    return Promise.resolve((stdinLines.shift() ?? '').trim());
-  }
-  return new Promise((resolveAnswer) => {
-    process.stderr.write('');
-    process.stdin.resume();
-    process.stdin.setEncoding('utf8');
-    process.stdin.once('data', (data) => resolveAnswer(String(data).trim()));
-  });
+    return new Promise((resolveAnswer) => {
+      process.stdin.resume();
+      process.stdin.setEncoding('utf8');
+      process.stdin.once('data', (data) => resolveAnswer(String(data).trim()));
+    });
+  };
 }
+
+const readLineFromStdin = createStdinReader();
 
 async function ask(question: string): Promise<string> {
   process.stderr.write(question);

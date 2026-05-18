@@ -93,7 +93,8 @@ function persistDoctorReport(report: DoctorReport): void {
         return acc;
       }, { pass: 0, warn: 0, fail: 0, skipped: 0, total: 0 }),
     };
-    writeFileSync(join(dir, `${skill.skillName}.json`), JSON.stringify(perSkill, null, 2), 'utf8');
+    const safeName = skill.skillName.replace(/[/\\:*?"<>|]/g, '_');
+    writeFileSync(join(dir, `${safeName}.json`), JSON.stringify(perSkill, null, 2), 'utf8');
   }
 }
 
