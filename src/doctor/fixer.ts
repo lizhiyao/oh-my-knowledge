@@ -123,7 +123,7 @@ async function callJsonLLM(opts: {
   return extractJsonObject(raw);
 }
 
-async function buildFixPlan(issues: FixIssue[], executorName: string, model: string, timeoutMs: number, effort?: string): Promise<FixPlan> {
+async function buildFixPlan(issues: FixIssue[], executorName: string, model: string, timeoutMs: number, _effort?: string): Promise<FixPlan> {
   const system = '你是 omk doctor 修复向导。根据 doctor 结果生成用户可选择的修复方案。只输出合法 JSON，不要 markdown，不要注释，不要尾逗号。';
   const prompt = `根据以下 doctor 问题与建议，生成交互式修复选项。要求：\n- 每个 issue 生成 2-3 个 option。\n- 标出 recommended。\n- risk 只能是 low/medium/high。\n- 不要生成具体补丁，只生成方案选项。\n- 输出必须是合法 JSON，第一个字符是 {，最后一个字符是 }。\n\n输出 JSON schema：\n{"issues":[{"issueId":"i1","title":"...","summary":"...","options":[{"id":"a","label":"...","description":"...","recommended":true,"risk":"medium"}]}]}\n\nDoctor issues:\n${JSON.stringify(issues, null, 2)}`;
   for (let attempt = 0; attempt < 3; attempt++) {
