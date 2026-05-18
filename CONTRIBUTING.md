@@ -133,9 +133,9 @@ docs(readme): 补充评测用例说明
 - Add tests for behaviour you change; a regression test for bug fixes is strongly preferred
 - CI runs the same commands on Node 22 and Node 24 for `main` pushes and PRs targeting `main` — all must pass before merge
 
-## CLI 走 oclif 框架(issue #109)
+## CLI 走 oclif 框架(issue #109 / #121)
 
-omk CLI 已迁到 [@oclif/core](https://oclif.io/docs/) 框架(PR-A spike #113 / PR-B doctor+sample #114 / PR-C 剩余 5 命令)。所有命令都在 `src/cli/oclif/commands/` 下声明为 oclif Command 类,业务 `execute()` 函数仍住在 `src/cli/commands/*.ts`(oclif Command 是薄壳,解析 flag 给 oclif --help 用,然后透传 argv 调对应 legacy execute)。
+omk CLI 走 [@oclif/core](https://oclif.io/docs/) 框架，**single parse path**:oclif Command 一次 typed parse(`await this.parse(X)`)拿 `{args, flags}` 直接喂业务,不再有独立 `src/cli/commands/` legacy 目录,也不再 `execute(this.argv)` 透传 argv 走二次解析。
 
 文件目录约定:
 
@@ -143,13 +143,19 @@ omk CLI 已迁到 [@oclif/core](https://oclif.io/docs/) 框架(PR-A spike #113 /
 - `src/cli/oclif/commands/eval.ts` + `eval/gold/{init,validate,compare}.ts` → `omk eval` / `omk eval gold *`
 - `src/cli/oclif/commands/observe.ts` + `observe/{ingest,inbox,show}.ts` → `omk observe` / `omk observe *`
 
-双语 help 走 `src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` + `src/cli/oclif/help.ts` 的 `LangAwareHelp` 子类,按 `--lang` / `OMK_LANG` 在渲染时切语言。每个 flag 的双语 description inline 写,不进 `i18n-dict.ts`(那份只给 runtime `cli.error.*` / `cli.gen.*` 等业务消息用)。
+业务住哪儿:
+
+- 简单业务 inline 到 `Command.run()` body
+- 测试需要 in-process import 验证的业务,作为 module-level helper(如 `runStudio` / `runEvolve` / `runObserveInbox` / 3 个 sample-fix helper)export from 同一个 oclif Command file
+- 跨 Command 共享的 utility 仍在 `src/cli/`(如 `_shared.ts` / `parse-run-config.ts` / `i18n.ts`),跟 CLI entry 解耦的 deep functions 在自己的领域目录(如 `src/doctor/index.ts:runDoctor`)
+
+双语 help 走 `src/cli/oclif/i18n.ts` 的 `bilingual({zh, en})` + `src/cli/oclif/help.ts` 的 `LangAwareHelp` 子类,按 `--lang` / `OMK_LANG` 在渲染时切语言。每个 flag 的双语 description inline 写,不进 `i18n-dict.ts`(那份只给 runtime `cli.error.*` / `cli.gen.*` 等业务消息用)。lang 解析 source-of-truth 是 `resolveLang(process.argv)`(scan raw argv + env fallback);**不要**读 `flags.lang`(oclif `default: 'zh'` 会盖掉 `OMK_LANG=en`)。
 
 加新命令的步骤:
 
-1. 在 `src/cli/oclif/commands/<name>.ts` 写 `export default class extends Command`
-2. flag 用 `bilingual({zh, en})` 包装,跟生产 `execute()` 的 `parseArgsStrictOrExit` 配置对齐
-3. `run()` 透传 `await execute(this.argv)` 给生产业务函数（`this.argv` 是 oclif 切到子命令后的余下 argv,space-syntax 跟 colon-syntax 一致)
+1. 在 `src/cli/oclif/commands/<name>.ts` 写 `export default class extends Command`,声明 `static args / flags / examples / description`(flag description 用 `bilingual({zh, en})` 包装)
+2. `run()` 体里:`const { args, flags } = await this.parse(<Class>); const lang = resolveLang(process.argv);`,然后业务 inline 或调 module-level helper
+3. CliExit 边界:业务 `throw new CliExit(code)` 通过 13 个 Command 共用模板捕获 → `this.exit(code)`(模板见现有 commands 任一 `run()` 末尾的 try/catch)
 4. 在 `test/cli/oclif-<name>.test.ts` 加 --help 双语 + unknown flag exit 2 + 关键 happy/error case
 5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.claude/skills/omk/references/commands.md`（见下一节）
 

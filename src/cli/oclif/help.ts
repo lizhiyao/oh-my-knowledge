@@ -3,10 +3,14 @@ import { resolveLang, type Lang } from './i18n.js';
 import { projectCommand, projectTopic } from './projection.js';
 
 // LangAwareHelp:oclif Help 子类,按 --lang / OMK_LANG 切 description / flags
-// 的双语 sentinel 到单语再交给 super 渲染。F2 加了 init hook 后,Command.Loadable
-// 已经在 Command.run() 前 in-place mutate 到单语,但 LangAwareHelp 保留作 safety
-// net(projectCommand 在已经单语的 string 上 idempotent — pickLang 看 parts.length
-// < 2 就原样返回),覆盖 oclif 上游可能加新 Help 渲染入口的场景。
+// 的双语 sentinel 到单语再交给 super 渲染。`--help` 路径(formatCommand /
+// showCommandHelp / formatTopics)都走 projectCommand 投影成单语。
+//
+// 已知盲区:oclif `errors/handle.js:L44` 硬编码 `new Help(config)` 不走 helpClass,
+// parse error 时 dump 出来的 FLAGS / USAGE 拿到的是原 `${zh}\n${en}` 双语 sentinel,
+// LangAwareHelp 没机会拦,用户会看到双语并列。这是已知 UX 限制(Phase B 评估能否
+// fork @oclif/core 修)。lang 解析跟业务侧 `resolveLang(process.argv)` 一致,
+// 优先级 `--lang CLI flag > OMK_LANG env > zh`。
 
 export default class LangAwareHelp extends Help {
   private get lang(): Lang {

@@ -139,6 +139,47 @@ describe('oclif startup short-circuit (skip checkUpdate on --help/--version)', (
     }
   });
 
+  it(`[BREAKING-CLI] 顶层 --lang 不再 dispatch 到 subcommand(normalizeArgv 已删)`, async () => {
+    // PR #124 删 normalizeArgv 后,oclif 看 argv[0]=--lang 作 unknown command。
+    // legacy `omk --lang en doctor /tmp/x` 形态需改 `omk doctor --lang en /tmp/x`。
+    try {
+      await execFileAsync('node', [CLI, '--lang', 'en', 'doctor', '/tmp/no-such-skill', '--static-only']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      const out = e.stdout + e.stderr;
+      assert.ok(/command --lang not found/.test(out), `expected oclif unknown command on top-level --lang, got:\n${out.slice(0, 300)}`);
+    }
+  });
+
+  it(`[BREAKING-CLI] 顶层 --lang en <cmd> --help 退化到 root help`, async () => {
+    // 等价 case:`omk --lang en doctor --help` 之前(normalizeArgv 存在时)走
+    // doctor 英文 help;PR #124 删后 oclif 拿 --lang 作 unknown command,
+    // 走 root help fallback(oclif 默认行为)。锁住这条 BREAKING,防新人以为是 bug。
+    const { stdout } = await execFileAsync('node', [CLI, '--lang', 'en', 'doctor', '--help']);
+    assert.ok(/Evaluation framework for LLM/.test(stdout), `expected root help fallback, got:\n${stdout.slice(0, 300)}`);
+    // root help USAGE 是 `$ omk [COMMAND]`,doctor --help 的 USAGE 是 `$ omk doctor [TARGET]`;
+    // root help 还有 COMMANDS section 列所有 cmd,doctor --help 没有。用 USAGE 特征区分。
+    assert.ok(/\$ omk \[COMMAND\]/.test(stdout), `expected root USAGE \`$ omk [COMMAND]\`, got:\n${stdout.slice(0, 300)}`);
+    assert.ok(!/\$ omk doctor/.test(stdout), `should NOT dispatch to doctor USAGE, got:\n${stdout.slice(0, 300)}`);
+  });
+
+  it(`[BREAKING-CLI] eval --bogus-flag 错误路径 FLAGS dump 双语并列(init hook 已删)`, async () => {
+    // PR #124 删 oclif init hook description mutate 后,oclif core 的
+    // `errors/handle.js:L44` 硬编码 `new Help(config)` 不走 LangAwareHelp,
+    // dump 出来的是原 `${zh}\n${en}` 双语 sentinel。--lang en / OMK_LANG=en 都不能避开。
+    // 锁住已知限制,防新人以为是 i18n 漏切语言。
+    try {
+      await execFileAsync('node', [CLI, 'eval', '--bogus-flag', '--lang', 'en']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      const out = e.stdout + e.stderr;
+      assert.ok(/batch 模式/.test(out) && /Batch mode/.test(out),
+        `expected bilingual flag dump (zh + en), got:\n${out.slice(0, 600)}`);
+    }
+  });
+
   it(`omk eval gold --lang en 打英文 usage(显式 lang flag 生效)`, async () => {
     try {
       await execFileAsync('node', [CLI, 'eval', 'gold', '--lang', 'en']);

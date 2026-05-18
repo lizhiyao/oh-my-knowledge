@@ -18,7 +18,9 @@
  * - `Flags.string({})` → `string | undefined`
  * - `Flags.string({ default: 'x' })` → `string`(因 default 让它非 undefined)
  * - `Flags.string({ required: true })` → `string`
- * - lang 字段统一 `Lang`(`'zh' | 'en'`),init hook 已在 Command.run() 前 inject。
+ * - lang 字段统一 `Lang`(`'zh' | 'en'`),业务侧不读 oclif `flags.lang`(它会被
+ *   `default: 'zh'` 盖掉 `OMK_LANG=en` 环境变量),而走 `resolveLang(process.argv)`,
+ *   优先级 `--lang CLI flag > OMK_LANG env > zh`。
  */
 
 export type Lang = 'zh' | 'en';
