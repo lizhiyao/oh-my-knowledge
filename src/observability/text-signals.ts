@@ -8,7 +8,8 @@ const SCHEDULED_TASK_PROMPT_RE = /^\s*\[cron:[^\]]+\]/i;
 const ASSISTANT_PROTOCOL_REPLY_RE =
   /^\s*(?:HEARTBEAT_OK|HEARTBEAT|PING_OK|PONG|ACK|OK|::FORWARD-OK::)(?:\s|\n|$)/i;
 
-const AIMA_CMD_BLOCK_RE = /<aima-cmd\b[^>]*>[\s\S]*?<\/aima-cmd>|<aima-cmd\b[^>]*\/>/gi;
+const BUSINESS_ACTION_TAG_NAME_RE = /[a-z][\w.-]*-cmd/i;
+const BUSINESS_ACTION_BLOCK_RE = /<([a-z][\w.-]*-cmd)\b[^>]*>[\s\S]*?<\/\1>|<[a-z][\w.-]*-cmd\b[^>]*\/>/gi;
 
 const SYNTHETIC_USER_MESSAGE_PREFIX_RE =
   /^\s*【(?:用户上传产物|上传产物|附件|产物|系统补充|系统生成|回放补充|trace\s*后处理|Trace\s*后处理)[^】]*】/i;
@@ -43,8 +44,8 @@ export function isAssistantProtocolReplyText(value: string): boolean {
 }
 
 export function isWorkflowSystemUserMessageText(value: string): boolean {
-  const stripped = value.replace(AIMA_CMD_BLOCK_RE, '').trim();
-  return stripped.length === 0 && /<aima-cmd\b/i.test(value);
+  const stripped = value.replace(BUSINESS_ACTION_BLOCK_RE, '').trim();
+  return stripped.length === 0 && new RegExp(`<${BUSINESS_ACTION_TAG_NAME_RE.source}\\b`, 'i').test(value);
 }
 
 export function isSyntheticUserMessageText(value: string): boolean {

@@ -74,7 +74,7 @@ export interface TraceSourceMetadata {
   provider?: string;
   model?: string;
   modelApi?: string;
-  aimaCommands?: string[];
+  businessActions?: string[];
 }
 
 // ---------- Session-level structure ----------
@@ -329,13 +329,13 @@ function extractOpenClawSourceMetadata(rawRecords: CcRecord[]): TraceSourceMetad
     if (typeof message.model === 'string') meta.model = message.model;
     if (typeof message.api === 'string') meta.modelApi = message.api;
     const text = openClawContentText(message.content);
-    for (const name of extractAimaCommandNames(text)) commands.add(name);
+    for (const name of extractBusinessActionNames(text)) commands.add(name);
     const conversationInfo = extractOpenClawConversationInfo(text);
     if (conversationInfo.channel) meta.channel = conversationInfo.channel;
     if (conversationInfo.sender) meta.sender = conversationInfo.sender;
     if (conversationInfo.senderId) meta.senderId = conversationInfo.senderId;
   }
-  if (commands.size > 0) meta.aimaCommands = Array.from(commands).sort();
+  if (commands.size > 0) meta.businessActions = Array.from(commands).sort();
   return meta;
 }
 
@@ -354,9 +354,9 @@ function extractOpenClawConversationInfo(text: string): Pick<TraceSourceMetadata
   }
 }
 
-function extractAimaCommandNames(text: string): string[] {
+function extractBusinessActionNames(text: string): string[] {
   const names: string[] = [];
-  const re = /<aima-cmd\b[^>]*\bname=["']([^"']+)["'][^>]*>/g;
+  const re = /<[a-z][\w.-]*-cmd\b[^>]*\bname=["']([^"']+)["'][^>]*>/g;
   for (const match of text.matchAll(re)) {
     if (match[1]?.trim()) names.push(match[1].trim());
   }

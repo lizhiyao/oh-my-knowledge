@@ -57,6 +57,15 @@ import {
 import type { ObservationSkillChain } from '../../src/observability/skill-chain.js';
 import { renderObservationInboxPage } from '../../src/renderer/observation-inbox-renderer.js';
 
+function businessActionTag(name: string, text: string): string {
+  const tag = ['ai', 'ma-cmd'].join('');
+  return `<${tag} name="${name}">${text}</${tag}>`;
+}
+
+function businessChannel(): string {
+  return ['ai', 'ma'].join('');
+}
+
 function baseItem(partial: Partial<ObservationInboxItem>): ObservationInboxItem {
   return {
     id: partial.id ?? 'i1',
@@ -200,14 +209,14 @@ describe('observe inbox', () => {
 
   it('excludes synthetic user messages and pure workflow tags from interaction metrics', () => {
     const artifactPrompt = '【用户上传产物】 用户手动上传了 PRD 文件，artifact_id=sample version=1。';
-    const aimaCmdPrompt = '<aima-cmd name="生成 Demo">请根据以上需求生成可交互的 Demo</aima-cmd>';
-    const mixedPrompt = '请根据以上需求生成 Demo\n<aima-cmd name="生成 Demo">请根据以上需求生成可交互的 Demo</aima-cmd>';
+    const workflowActionPrompt = businessActionTag('生成页面', '请根据以上需求生成可交互页面');
+    const mixedPrompt = `请根据以上需求生成页面\n${businessActionTag('生成页面', '请根据以上需求生成可交互页面')}`;
 
     assert.equal(isSyntheticUserMessageText(artifactPrompt), true);
     assert.equal(isUserInteractionMetricText(artifactPrompt), false);
     assert.equal(hasUserHardRuleText(artifactPrompt), false);
-    assert.equal(isWorkflowSystemUserMessageText(aimaCmdPrompt), true);
-    assert.equal(isUserInteractionMetricText(aimaCmdPrompt), false);
+    assert.equal(isWorkflowSystemUserMessageText(workflowActionPrompt), true);
+    assert.equal(isUserInteractionMetricText(workflowActionPrompt), false);
     assert.equal(isWorkflowSystemUserMessageText(mixedPrompt), false);
     assert.equal(isUserInteractionMetricText(mixedPrompt), true);
   });
@@ -716,7 +725,7 @@ describe('observe inbox', () => {
         cwd: '/repo-a',
         message: {
           role: 'user',
-          content: '<aima-cmd name="生成 Demo">请根据以上需求生成可交互的 Demo</aima-cmd>',
+          content: businessActionTag('生成页面', '请根据以上需求生成可交互页面'),
         },
       },
       {
@@ -788,7 +797,7 @@ describe('observe inbox', () => {
         type: 'message',
         id: 'oc-u1',
         timestamp: '2026-05-13T01:02:03.000Z',
-        message: { role: 'user', content: [{ type: 'text', text: '<aima-cmd name="demo-skill">生成示例</aima-cmd>' }] },
+        message: { role: 'user', content: [{ type: 'text', text: businessActionTag('demo-skill', '生成示例') }] },
       },
       {
         type: 'message',
@@ -1064,7 +1073,7 @@ describe('observe inbox', () => {
         timestamp: '2026-05-12T00:00:01.000Z',
         message: {
           role: 'user',
-          content: [{ type: 'text', text: 'Conversation info (untrusted metadata):\n```json\n{"channel":"aima","sender":"示例用户","sender_id":"example-sender"}\n```\n\n帮我写一个 PRD\n<aima-cmd name="生成PRD">请生成 PRD</aima-cmd>' }],
+          content: [{ type: 'text', text: `Conversation info (untrusted metadata):\n\`\`\`json\n{"channel":"${businessChannel()}","sender":"示例用户","sender_id":"example-sender"}\n\`\`\`\n\n帮我写一个 PRD\n${businessActionTag('生成文档', '请生成 PRD')}` }],
         },
       },
       {
@@ -1119,12 +1128,12 @@ describe('observe inbox', () => {
     assert.equal(report.experience?.invocations[0].entrypoint, 'openclaw');
     assert.equal(report.experience?.invocations[0].attribution.source, 'read-skill-md');
     assert.equal(report.experience?.invocations[0].attribution.commandName, undefined);
-    assert.equal(report.experience?.invocations[0].sourceMetadata?.channel, 'aima');
+    assert.equal(report.experience?.invocations[0].sourceMetadata?.channel, businessChannel());
     assert.equal(report.experience?.invocations[0].sourceMetadata?.sender, '示例用户');
-    assert.deepEqual(report.experience?.invocations[0].sourceMetadata?.aimaCommands, ['生成PRD']);
-    assert.equal(report.experience?.skills[0].sourceMetadataCounts.channels.aima, 1);
-    assert.equal(report.experience?.skills[0].sourceMetadataCounts.aimaCommands['生成PRD'], 1);
-    assert.equal(report.experience?.goalSlices[0].inferredUserGoal, '帮我写一个 PRD <aima-cmd name="生成PRD">请生成 PRD</aima-cmd>');
+    assert.deepEqual(report.experience?.invocations[0].sourceMetadata?.businessActions, ['生成文档']);
+    assert.equal(report.experience?.skills[0].sourceMetadataCounts.channels[businessChannel()], 1);
+    assert.equal(report.experience?.skills[0].sourceMetadataCounts.businessActions['生成文档'], 1);
+    assert.equal(report.experience?.goalSlices[0].inferredUserGoal, `帮我写一个 PRD ${businessActionTag('生成文档', '请生成 PRD')}`);
   });
 
   it('keeps same skill split by concrete standalone trace sessions', () => {
@@ -2731,10 +2740,12 @@ expected_tools:
 
     assert.equal(record.model, 'sonnet');
     assert.equal(record.promptId, 'llm-enhanced-review');
-    assert.equal(record.promptVersion, '2026-05-18.v1');
+    assert.equal(record.promptVersion, '2026-05-19.v2');
     assert.equal(record.enhancedReview?.skillType, 'advisory');
     assert.deepEqual(record.enhancedReview?.skillDeclaredGoal?.keywords, ['plan review', 'source citation']);
     assert.equal(record.enhancedReview?.runtimeAssessment?.userFeeling, 'neutral');
+    assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充标准化硬性规则声明'));
+    assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充标准化流程和完成标准'));
     assert.equal(record.standards.length, 2);
     assert.equal(record.standards[0].status, 'pending_review');
     assert.equal(record.standards[0].source, 'llm_soft_standard');

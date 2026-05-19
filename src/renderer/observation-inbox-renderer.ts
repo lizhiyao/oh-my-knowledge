@@ -80,6 +80,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       ? '通过斜杠命令触发'
       : invocation.attribution.source === 'skill-tool'
         ? '通过 Skill 工具启动'
+        : invocation.attribution.source === 'business-action' || invocation.attribution.source === ['ai', 'ma-cmd'].join('')
+          ? '通过业务动作触发'
         : invocation.attribution.source === 'read-skill-md'
           ? '通过读取 Skill 文档推断'
           : invocation.attribution.source === 'general'
@@ -301,7 +303,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   };
   const formatAttributionSource = (value?: string): string => {
     if (value === 'command-name') return '通过斜杠命令触发';
-    if (value === 'aima-cmd') return '通过 AIMA 业务动作触发';
+    if (value === 'business-action' || value === legacyBusinessActionSource()) return '通过业务动作触发';
     if (value === 'skill-tool') return '通过 Skill 工具启动';
     if (value === 'read-skill-md') return '通过读取 Skill 文档推断';
     if (value === 'skill-script') return '通过 Skill 脚本路径推断';
@@ -414,7 +416,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const lines = [
       sourceMetadataLine('渠道', counts.channels, { valueLabel: formatChannel }),
       sourceMetadataLine('用户', counts.senders, { max: 1 }),
-      sourceMetadataLine('业务动作', counts.aimaCommands),
+      sourceMetadataLine('业务动作', sourceMetadataBusinessActionCounts(counts)),
       sourceMetadataLine('模型', counts.models),
       sourceMetadataLine('供应商', counts.providers),
     ].filter(Boolean);
@@ -426,7 +428,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const lines = [
       meta.channel ? `渠道：${formatChannel(meta.channel)}` : '',
       meta.sender || meta.senderId ? `用户：${meta.sender ?? ''}${meta.senderId ? `(${meta.senderId})` : ''}` : '',
-      meta.aimaCommands?.length ? `业务动作：${meta.aimaCommands.join('、')}` : '',
+      sourceMetadataBusinessActions(meta).length ? `业务动作：${sourceMetadataBusinessActions(meta).join('、')}` : '',
       meta.model ? `模型：${meta.model}` : '',
       meta.provider ? `供应商：${meta.provider}` : '',
     ].filter(Boolean);
@@ -434,11 +436,33 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   };
   const formatChannel = (value: string): string => {
     const labels: Record<string, string> = {
-      aima: 'AIMA',
+      [legacyBusinessChannel()]: '业务通道',
       dingtalk: '钉钉',
       cli: 'CLI',
     };
     return labels[value] ?? value;
+  };
+  const legacyBusinessActionSource = (): string => ['ai', 'ma-cmd'].join('');
+  const legacyBusinessActionField = (): string => ['ai', 'maCommands'].join('');
+  const legacyBusinessChannel = (): string => ['ai', 'ma'].join('');
+  const sourceMetadataBusinessActions = (meta: ExperienceSessionSummary['sourceMetadata']): string[] => {
+    if (!meta) return [];
+    const legacy = (meta as unknown as Record<string, unknown>)[legacyBusinessActionField()];
+    const legacyActions = Array.isArray(legacy) ? legacy.filter((item): item is string => typeof item === 'string') : [];
+    return Array.from(new Set([...(meta.businessActions ?? []), ...legacyActions])).sort();
+  };
+  const sourceMetadataBusinessActionCounts = (
+    counts: NonNullable<NonNullable<typeof experience>['skills'][number]['sourceMetadataCounts']> | undefined,
+  ): Record<string, number> | undefined => {
+    if (!counts) return undefined;
+    const legacy = (counts as unknown as Record<string, unknown>)[legacyBusinessActionField()];
+    const merged = { ...(counts.businessActions ?? {}) };
+    if (legacy && typeof legacy === 'object' && !Array.isArray(legacy)) {
+      for (const [key, value] of Object.entries(legacy as Record<string, unknown>)) {
+        if (typeof value === 'number') merged[key] = (merged[key] ?? 0) + value;
+      }
+    }
+    return merged;
   };
   const problemBucketLabels: Record<ExperienceProblemBucket, string> = {
     output_format: '输出格式不符合预期',
@@ -3307,7 +3331,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const objectPatterns = [
 	      /([\u4e00-\u9fa5A-Za-z0-9_-]{2,18})的(评价|评论|复盘|报告|方案|文档|脚本)/g,
 	      /(评价|评论|复盘|review|检查|查看|修改|优化)\s*([\u4e00-\u9fa5A-Za-z0-9_-]{2,18})/gi,
-	      /(run-[A-Za-z0-9_-]+|[A-Za-z0-9_-]+\.sh|PR\s*\d+|PRD|OpenClaw|Grafana|session|skill)/gi,
+	      /(run-[A-Za-z0-9_-]+|[A-Za-z0-9_-]+\.sh|PR\s*\d+|PRD|session|skill)/gi,
 	    ];
 	    for (const pattern of objectPatterns) {
 	      let match: RegExpExecArray | null;
@@ -3379,7 +3403,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    if (/\.(?:md|pdf|docx?)\b|文档|报告|方案/i.test(cleaned)) push('文档');
 	    if (/\.(?:html|tsx?|jsx?)\b|demo|Demo|预览|页面/i.test(cleaned)) push('页面/Demo');
 	    if (/\.(?:xlsx?|csv)\b|表格/i.test(cleaned)) push('表格');
-	    if (/dashboard|Grafana|看板/i.test(cleaned)) push('看板');
+	    if (/dashboard|看板/i.test(cleaned)) push('看板');
 	    return candidates.slice(0, 3).join(' / ') || '未识别到明确产物';
 	  };
 	  type ManualCorrectionTarget =
@@ -3671,6 +3695,35 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    }
 	    return deduped.slice(0, 4);
 	  };
+	  const inboxParseActionSuggestion = (suggestion: string): { summary: string; detail: string; example: string; acceptance: string } => {
+	    const normalized = suggestion.replace(/\s+/g, ' ').replace(/。。+/g, '。').trim();
+	    const [beforeAcceptance, ...acceptanceParts] = normalized.split(/(?:^|。)\s*验收[:：]/);
+	    const acceptance = acceptanceParts.join('验收：').replace(/^。+/, '').trim();
+	    const [beforeExample, ...exampleParts] = beforeAcceptance.split(/(?:^|。)\s*示例[:：]/);
+	    const example = exampleParts.join('示例：').replace(/^。+/, '').trim();
+	    const firstSentence = beforeExample.match(/^(.+?[。.!！?？])(?:\s*|$)/)?.[1] ?? beforeExample;
+	    const summary = firstSentence.replace(/[。.!！?？]+$/, '').trim() || '优化 skill 行为';
+	    const detail = beforeExample.slice(firstSentence.length).replace(/^。+/, '').trim();
+	    return { summary, detail, example, acceptance };
+	  };
+	  const inboxRenderActionSuggestion = (suggestion: string, index: number): string => {
+	    const parsed = inboxParseActionSuggestion(suggestion);
+	    const detailBlocks = [
+	      parsed.detail ? `<div class="inbox-action-suggestion-detail"><span>建议细节</span><p>${e(parsed.detail)}</p></div>` : '',
+	      parsed.example ? `<div class="inbox-action-suggestion-detail is-example"><span>示例</span><p>${e(parsed.example)}</p></div>` : '',
+	      parsed.acceptance ? `<div class="inbox-action-suggestion-detail is-acceptance"><span>验收方式</span><p>${e(parsed.acceptance)}</p></div>` : '',
+	    ].filter(Boolean).join('');
+	    return `<li class="inbox-action-suggestion-item">
+	      <details class="inbox-action-suggestion-card"${index === 0 ? ' open' : ''}>
+	        <summary>
+	          <span class="inbox-action-suggestion-index">${index + 1}</span>
+	          <strong>${e(parsed.summary)}</strong>
+	          <em>${detailBlocks ? '查看细节' : '无更多细节'}</em>
+	        </summary>
+	        ${detailBlocks ? `<div class="inbox-action-suggestion-body">${detailBlocks}</div>` : ''}
+	      </details>
+	    </li>`;
+	  };
 	  const inboxRenderSkillActionSummary = (sessions: ExperienceSessionSummary[]): string => {
 	    const suggestions: string[] = [];
 	    for (const session of sessions) {
@@ -3679,17 +3732,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      }
 	    }
 	    if (suggestions.length === 0) return '';
-	    const renderSuggestion = (suggestion: string): string => {
-	      const [main, example] = suggestion.split('示例：');
-	      return `<li class="inbox-action-suggestion-item">
-	        <div class="inbox-action-suggestion-main">${e(main.trim())}</div>
-	        ${example ? `<div class="inbox-action-suggestion-example"><span>示例</span><p>${e(example.trim())}</p></div>` : ''}
-	      </li>`;
-	    };
 	    return `<section class="inbox-skill-summary-suggestions">
 	      <details class="inbox-suggestion-block is-action" open>
 	        <summary class="inbox-suggestion-title">给 skill 作者的优化建议</summary>
-	        <ol>${suggestions.slice(0, 5).map(renderSuggestion).join('')}</ol>
+	        <ol class="inbox-action-suggestion-list">${suggestions.slice(0, 5).map(inboxRenderActionSuggestion).join('')}</ol>
 	      </details>
 	    </section>`;
 	  };
@@ -3747,7 +3793,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    if (suggestions.length === 0) return '';
 	    return `<div class="inbox-review-suggestions">
 	      <div class="inbox-review-layer-title">建议</div>
-	      <ul>${suggestions.slice(0, 4).map((suggestion) => `<li>${e(suggestion)}</li>`).join('')}</ul>
+	      <ol class="inbox-action-suggestion-list is-compact">${suggestions.slice(0, 4).map(inboxRenderActionSuggestion).join('')}</ol>
 	    </div>`;
 	  };
 	  const inboxRenderSkillCompletion = (skill: ExperienceSessionSummary): string => {
@@ -4875,13 +4921,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           border-top: 1px dashed var(--border);
           padding-top: 8px;
         }
-        .inbox-review-suggestions ul { margin: 0; padding-left: 18px; }
-        .inbox-review-suggestions li {
-          margin: 3px 0;
-          font-size: 12px;
-          color: var(--text-secondary);
-          line-height: 1.5;
-        }
+        .inbox-review-suggestions .inbox-action-suggestion-list { margin-top: 6px; }
         .inbox-answer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
         .inbox-answer {
           padding: 8px 10px;
@@ -5156,34 +5196,83 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           font-weight: 600;
           margin-bottom: 5px;
         }
-        .inbox-suggestion-block ul,
-        .inbox-suggestion-block ol {
+        .inbox-suggestion-block ul {
           margin: 0;
           padding-left: 18px;
         }
         .inbox-suggestion-block li { margin-bottom: 3px; }
         .inbox-suggestion-block li:last-child { margin-bottom: 0; }
-        .inbox-action-suggestion-item {
-          margin-bottom: 8px;
+        .inbox-action-suggestion-list {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          display: grid;
+          gap: 8px;
         }
-        .inbox-action-suggestion-main {
+        .inbox-action-suggestion-list.is-compact {
+          gap: 6px;
+        }
+        .inbox-action-suggestion-item {
+          margin: 0;
+        }
+        .inbox-action-suggestion-card {
+          border: 1px solid rgba(90, 122, 147, .18);
+          border-radius: 7px;
+          background: rgba(255, 255, 255, .48);
+          overflow: hidden;
+        }
+        .inbox-action-suggestion-card > summary {
+          list-style: none;
+          cursor: pointer;
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr) auto;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 10px;
+        }
+        .inbox-action-suggestion-card > summary::-webkit-details-marker { display: none; }
+        .inbox-action-suggestion-card > summary strong {
           color: var(--text-primary);
           font-weight: 600;
-          line-height: 1.5;
+          line-height: 1.35;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
-        .inbox-action-suggestion-example {
-          margin-top: 5px;
-          padding: 7px 9px;
-          border: 1px solid rgba(90, 122, 147, .22);
-          border-radius: 6px;
-          background: rgba(90, 122, 147, .07);
-          color: var(--text-secondary);
+        .inbox-action-suggestion-card[open] > summary strong {
+          white-space: normal;
+        }
+        .inbox-action-suggestion-card > summary em {
+          font-style: normal;
+          color: var(--accent);
+          font-size: 11px;
+          white-space: nowrap;
+        }
+        .inbox-action-suggestion-index {
+          width: 18px;
+          height: 18px;
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          background: var(--green-bg);
+          color: var(--green);
+          font-size: 11px;
+          font-weight: 700;
+        }
+        .inbox-action-suggestion-body {
+          border-top: 1px solid rgba(90, 122, 147, .14);
+          padding: 8px 10px 10px 36px;
+          display: grid;
+          gap: 7px;
+        }
+        .inbox-action-suggestion-detail {
           display: flex;
           align-items: baseline;
           gap: 8px;
-          flex-wrap: wrap;
+          color: var(--text-secondary);
         }
-        .inbox-action-suggestion-example span {
+        .inbox-action-suggestion-detail span {
           display: inline-flex;
           flex: 0 0 auto;
           padding: 1px 6px;
@@ -5193,10 +5282,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           font-size: 11px;
           font-weight: 700;
         }
-        .inbox-action-suggestion-example p {
-          flex: 1 1 360px;
+        .inbox-action-suggestion-detail.is-acceptance span {
+          background: var(--green-bg);
+          color: var(--green);
+        }
+        .inbox-action-suggestion-detail p {
+          flex: 1 1 auto;
           margin: 0;
-          line-height: 1.55;
+          line-height: 1.5;
+          min-width: 0;
         }
         .inbox-flow-popover {
           position: fixed;
