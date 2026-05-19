@@ -4,8 +4,8 @@ import type { ResultEntry, ToolCallInfo, TurnInfo, VariantResult } from '../type
 import type { CcAssistantRecord, CcSession, CcUserRecord } from './trace-source.js';
 import { isToolResultFailureText } from './text-signals.js';
 import {
-  extractAimaCmdSkillRef,
   extractAttributionSkillRef,
+  extractBusinessActionSkillRef,
   extractCommandSkillRef,
   extractSkillReadFileRef,
   extractSkillScriptCommandRef,
@@ -17,7 +17,7 @@ import {
 export interface SkillSegment {
   skillName: string;
   attribution?: {
-    source: 'skill-tool' | 'command-name' | 'aima-cmd' | 'read-skill-md' | 'skill-script' | 'general';
+    source: 'skill-tool' | 'command-name' | 'business-action' | 'read-skill-md' | 'skill-script' | 'general';
     confidence: number;
     rawSkillRef?: string;
     pluginName?: string;
@@ -113,14 +113,14 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
           commandName: `/${cmdSkill.rawSkillRef}`,
         });
       } else if (!cmdSkill) {
-        const aimaCmdSkill = extractAimaCmdSkillRef(u);
-        if (aimaCmdSkill && !isCurrentSkillRef(aimaCmdSkill)) {
-          startNewSegment(aimaCmdSkill, recordIndex, u.timestamp, {
-            source: 'aima-cmd',
+        const businessActionSkill = extractBusinessActionSkillRef(u);
+        if (businessActionSkill && !isCurrentSkillRef(businessActionSkill)) {
+          startNewSegment(businessActionSkill, recordIndex, u.timestamp, {
+            source: 'business-action',
             confidence: 0.85,
-            rawSkillRef: aimaCmdSkill.rawSkillRef,
-            pluginName: aimaCmdSkill.pluginName,
-            commandName: aimaCmdSkill.rawSkillRef,
+            rawSkillRef: businessActionSkill.rawSkillRef,
+            pluginName: businessActionSkill.pluginName,
+            commandName: businessActionSkill.rawSkillRef,
           });
         } else {
           const scriptSkill = extractSkillScriptCommandRef(u);
@@ -165,7 +165,7 @@ export function segmentBySkill(session: CcSession): SkillSegment[] {
     if (rec.type === 'assistant') {
       const a = rec as CcAssistantRecord;
       // 检测 skill 信号 1 (Skill tool_use); 信号 3 (Read SKILL.md) 作 fallback。
-      // OpenClaw/AIMA 场景里一条用户消息可能包含多个业务动作(如 生成PRD + 生成Demo),
+      // OpenClaw 场景里一条用户消息可能包含多个业务动作,
       // 后续读取不同 SKILL.md 才是实际运行到哪个 skill 的稳定边界。
       const skillTool = extractSkillToolUseRef(a);
       if (skillTool && !isCurrentSkillRef(skillTool)) {

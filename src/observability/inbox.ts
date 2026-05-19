@@ -154,8 +154,15 @@ function hashString(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 16);
 }
 
-export function normalizeObservationKeyInput(value: string): string {
-  const trimmed = value.trim();
+export function normalizeObservationKeyInput(value: unknown): string {
+  const raw = typeof value === 'string'
+    ? value
+    : value === null || value === undefined
+      ? ''
+      : typeof value === 'object'
+        ? JSON.stringify(value)
+        : String(value);
+  const trimmed = raw.trim();
   const protocolMatch = trimmed.match(/^([a-z][a-z0-9+.-]*:\/\/)(.*)$/i);
   const prefix = protocolMatch?.[1] ?? '';
   const body = protocolMatch?.[2] ?? trimmed;

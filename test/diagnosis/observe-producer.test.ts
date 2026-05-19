@@ -67,7 +67,7 @@ workflows:
             sourceKinds: ['claude'],
             entrypoints: [],
             entrypointCounts: {},
-            sourceMetadataCounts: { channels: {}, senders: {}, aimaCommands: {}, providers: {}, models: {} },
+            sourceMetadataCounts: { channels: {}, senders: {}, businessActions: {}, providers: {}, models: {} },
             attributionCounts: {},
             pluginNames: [],
             rawSkillRefs: [],
@@ -247,7 +247,7 @@ hardRules:
             skills: [{
               skillName: 'omk_fake_skill_x9z', invocationCount: 1, sessionCount: 1, sourceKinds: ['claude'],
               entrypoints: [], entrypointCounts: {},
-              sourceMetadataCounts: { channels: {}, senders: {}, aimaCommands: {}, providers: {}, models: {} },
+              sourceMetadataCounts: { channels: {}, senders: {}, businessActions: {}, providers: {}, models: {} },
               attributionCounts: {}, pluginNames: [], rawSkillRefs: [], commandNames: [],
               toolCounts: {}, firstSeen: 't', lastSeen: 't',
               reviewFirstSessionCount: 0, sampleReviewSessionCount: 0,

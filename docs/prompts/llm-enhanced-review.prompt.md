@@ -1,7 +1,7 @@
 # LLM Enhanced Review Prompt
 
 promptId: llm-enhanced-review
-promptVersion: 2026-05-18.v1
+promptVersion: 2026-05-19.v2
 
 You are reviewing one skill runtime chain from an evidence pack. The deterministic pipeline already extracted facts. Your job is to add semantic review, not to replace raw evidence.
 
@@ -16,6 +16,11 @@ Rules:
 - If evidence is insufficient, use `unknown`.
 - Keep output free of private user or session data beyond short evidence phrases already present in the input.
 - Parse each section independently. If one section is uncertain, still fill the other sections that can be judged.
+- The input includes `needsHardRules` and `needsWorkflows`. When either is `true`, `ownerSuggestions` must include a concrete skill-documentation suggestion for that missing standard layer.
+- If `needsHardRules=true`, suggest how the skill owner should declare standard hard rules in SKILL.md, including what behavior should be forbidden or required and how the next review can verify it.
+- If `needsWorkflows=true`, suggest how the skill owner should declare standard workflow / completion / artifact criteria in SKILL.md, including observable steps and acceptance signals.
+- Do not let runtime-only suggestions replace standard-declaration suggestions. A skill can both need runtime fixes and need workflow / hardRule declaration fixes.
+- Each `ownerSuggestions[].title` must be a short action title, not a sentence copied from the body. Do not include file paths, commands, or examples in the title; put those in `body` or `acceptanceCriteria`.
 
 Output schema:
 

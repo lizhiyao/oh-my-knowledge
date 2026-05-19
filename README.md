@@ -555,30 +555,6 @@ Every observation carries:
 
 Supported trace formats: Claude Code session JSONL (`.jsonl`), OpenClaw session JSONL (`.jsonl`), and markdown conversation logs (`.log`).
 
-### `omk skill-extract`
-
-```bash
-omk skill-extract demo-create --review soft-xxx --status author_confirmed
-omk skill-extract demo-create --review soft-xxx --status rejected --reason "not a real standard"
-```
-
-<!-- omk:cli:skill-extract:flags:start -->
-
-**Flags:**
-
-```text
-  --input-dir <value>  Observation data directory
-  --json               JSON output
-  --lang <value>       Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --reason <value>     Manual review reason
-  --review <value>     Soft standard id to review
-  --status <value>     Review status: author_confirmed / rejected / pending_review (also accepts aliases: confirm / confirmed / reject / pending)
-```
-
-For full descriptions: `omk skill-extract --help`.
-
-<!-- omk:cli:skill-extract:flags:end -->
-
 ### `omk evolve`
 
 ```bash

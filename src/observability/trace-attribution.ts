@@ -28,7 +28,7 @@ export function extractMarkdownLogSkill(text: string): string | null {
 }
 
 const COMMAND_NAME_RE = /<command-name>\/([^<]+)<\/command-name>/;
-const AIMA_CMD_RE = /<aima-cmd\b[^>]*\bname=["']([^"']+)["'][^>]*>/;
+const BUSINESS_ACTION_CMD_RE = /<[a-z][\w.-]*-cmd\b[^>]*\bname=["']([^"']+)["'][^>]*>/;
 const COMMAND_ENVELOPE_RE = /<command-(?:name|message)>[\s\S]*?<\/command-(?:name|message)>/g;
 
 // cc 内置 CLI 命令(不是 skill)。dogfood 数据中这些词频繁以 <command-name> 出现,
@@ -99,22 +99,22 @@ export function extractCommandSkillRef(record: CcUserRecord): SkillRef | null {
 }
 
 /**
- * 从 OpenClaw / AIMA user message 里提取 aima-cmd skill 名字(信号 4)。
+ * 从 OpenClaw user message 的业务动作标签里提取 skill 名字(信号 4)。
  *
- * 注意: 真实 OpenClaw 数据里 name 可能是业务动作展示名, 例如 "生成PRD" / "生成Demo",
- * 这不是稳定 skill id。只有 name 本身像 "prd-create" 这种 slug 时才用于 skill 归因;
- * 中文动作名继续保留在 sourceMetadata.aimaCommands 里, 不切 skill。
+ * 注意: 真实 OpenClaw 数据里 name 可能是业务动作展示名, 不是稳定 skill id。
+ * 只有 name 本身像 "prd-create" 这种 slug 时才用于 skill 归因;
+ * 展示名继续保留在 sourceMetadata.businessActions 里, 不切 skill。
  */
-export function extractAimaCmdSkillRef(record: CcUserRecord): SkillRef | null {
+export function extractBusinessActionSkillRef(record: CcUserRecord): SkillRef | null {
   const content = record.message.content;
   let raw: string | null = null;
   if (typeof content === 'string') {
-    const m = AIMA_CMD_RE.exec(content);
+    const m = BUSINESS_ACTION_CMD_RE.exec(content);
     raw = m ? m[1] : null;
   } else {
     for (const part of content) {
       if (part.type === 'text') {
-        const m = AIMA_CMD_RE.exec(part.text);
+        const m = BUSINESS_ACTION_CMD_RE.exec(part.text);
         if (m) { raw = m[1]; break; }
       }
     }
@@ -185,7 +185,7 @@ export function extractSkillReadFileRef(record: CcAssistantRecord): SkillRef | n
 /**
  * 从 OpenClaw cron/user 文本或 Bash/exec tool command 里提取 skill 脚本路径。
  *
- * cron 型 OpenClaw session 通常没有 <aima-cmd> 或 Skill tool_use,
+ * cron 型 OpenClaw session 通常没有业务动作标签或 Skill tool_use,
  * 只会直接执行 ~/.openclaw/workspace-main/skills/<skill>/scripts/*.sh。
  */
 export function extractSkillScriptCommandRef(record: CcUserRecord | CcAssistantRecord): SkillRef | null {

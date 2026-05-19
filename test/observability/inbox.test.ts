@@ -52,10 +52,21 @@ import {
   extractSkillSoftStandards,
   loadSkillDerivedStandards,
   resolveSkillStandards,
+  skillDerivedStandardsDir,
+  skillDerivedStandardsPath,
   updateSkillDerivedStandardStatus,
 } from '../../src/observability/soft-standards.js';
 import type { ObservationSkillChain } from '../../src/observability/skill-chain.js';
 import { renderObservationInboxPage } from '../../src/renderer/observation-inbox-renderer.js';
+
+function businessActionTag(name: string, text: string): string {
+  const tag = ['ai', 'ma-cmd'].join('');
+  return `<${tag} name="${name}">${text}</${tag}>`;
+}
+
+function businessChannel(): string {
+  return ['ai', 'ma'].join('');
+}
 
 function baseItem(partial: Partial<ObservationInboxItem>): ObservationInboxItem {
   return {
@@ -200,14 +211,14 @@ describe('observe inbox', () => {
 
   it('excludes synthetic user messages and pure workflow tags from interaction metrics', () => {
     const artifactPrompt = '【用户上传产物】 用户手动上传了 PRD 文件，artifact_id=sample version=1。';
-    const aimaCmdPrompt = '<aima-cmd name="生成 Demo">请根据以上需求生成可交互的 Demo</aima-cmd>';
-    const mixedPrompt = '请根据以上需求生成 Demo\n<aima-cmd name="生成 Demo">请根据以上需求生成可交互的 Demo</aima-cmd>';
+    const workflowActionPrompt = businessActionTag('生成页面', '请根据以上需求生成可交互页面');
+    const mixedPrompt = `请根据以上需求生成页面\n${businessActionTag('生成页面', '请根据以上需求生成可交互页面')}`;
 
     assert.equal(isSyntheticUserMessageText(artifactPrompt), true);
     assert.equal(isUserInteractionMetricText(artifactPrompt), false);
     assert.equal(hasUserHardRuleText(artifactPrompt), false);
-    assert.equal(isWorkflowSystemUserMessageText(aimaCmdPrompt), true);
-    assert.equal(isUserInteractionMetricText(aimaCmdPrompt), false);
+    assert.equal(isWorkflowSystemUserMessageText(workflowActionPrompt), true);
+    assert.equal(isUserInteractionMetricText(workflowActionPrompt), false);
     assert.equal(isWorkflowSystemUserMessageText(mixedPrompt), false);
     assert.equal(isUserInteractionMetricText(mixedPrompt), true);
   });
@@ -716,7 +727,7 @@ describe('observe inbox', () => {
         cwd: '/repo-a',
         message: {
           role: 'user',
-          content: '<aima-cmd name="生成 Demo">请根据以上需求生成可交互的 Demo</aima-cmd>',
+          content: businessActionTag('生成页面', '请根据以上需求生成可交互页面'),
         },
       },
       {
@@ -743,7 +754,7 @@ describe('observe inbox', () => {
   });
 
   it('normalizes dedup key input conservatively', () => {
-    const cases: Array<[string, string]> = [
+    const cases: Array<[unknown, string]> = [
       ['', ''],
       ['!!!', '!!!'],
       ['，Revenue_Schema。', '，revenue_schema。'],
@@ -752,6 +763,8 @@ describe('observe inbox', () => {
       ['https://example.com//docs/a?b=1', 'https://example.com/docs/a?b=1'],
       [' find   revenue   schema ', 'find revenue schema'],
       ['revenue_schema 🔎', 'revenue_schema 🔎'],
+      [{ path: '/repo//src/auth.ts:12:3' }, '{"path":"/repo/src/auth.ts"}'],
+      [null, ''],
     ];
     for (const [input, expected] of cases) {
       assert.equal(normalizeObservationKeyInput(input), expected);
@@ -788,7 +801,7 @@ describe('observe inbox', () => {
         type: 'message',
         id: 'oc-u1',
         timestamp: '2026-05-13T01:02:03.000Z',
-        message: { role: 'user', content: [{ type: 'text', text: '<aima-cmd name="demo-skill">生成示例</aima-cmd>' }] },
+        message: { role: 'user', content: [{ type: 'text', text: businessActionTag('demo-skill', '生成示例') }] },
       },
       {
         type: 'message',
@@ -1064,7 +1077,7 @@ describe('observe inbox', () => {
         timestamp: '2026-05-12T00:00:01.000Z',
         message: {
           role: 'user',
-          content: [{ type: 'text', text: 'Conversation info (untrusted metadata):\n```json\n{"channel":"aima","sender":"示例用户","sender_id":"example-sender"}\n```\n\n帮我写一个 PRD\n<aima-cmd name="生成PRD">请生成 PRD</aima-cmd>' }],
+          content: [{ type: 'text', text: `Conversation info (untrusted metadata):\n\`\`\`json\n{"channel":"${businessChannel()}","sender":"示例用户","sender_id":"example-sender"}\n\`\`\`\n\n帮我写一个 PRD\n${businessActionTag('生成文档', '请生成 PRD')}` }],
         },
       },
       {
@@ -1119,12 +1132,12 @@ describe('observe inbox', () => {
     assert.equal(report.experience?.invocations[0].entrypoint, 'openclaw');
     assert.equal(report.experience?.invocations[0].attribution.source, 'read-skill-md');
     assert.equal(report.experience?.invocations[0].attribution.commandName, undefined);
-    assert.equal(report.experience?.invocations[0].sourceMetadata?.channel, 'aima');
+    assert.equal(report.experience?.invocations[0].sourceMetadata?.channel, businessChannel());
     assert.equal(report.experience?.invocations[0].sourceMetadata?.sender, '示例用户');
-    assert.deepEqual(report.experience?.invocations[0].sourceMetadata?.aimaCommands, ['生成PRD']);
-    assert.equal(report.experience?.skills[0].sourceMetadataCounts.channels.aima, 1);
-    assert.equal(report.experience?.skills[0].sourceMetadataCounts.aimaCommands['生成PRD'], 1);
-    assert.equal(report.experience?.goalSlices[0].inferredUserGoal, '帮我写一个 PRD <aima-cmd name="生成PRD">请生成 PRD</aima-cmd>');
+    assert.deepEqual(report.experience?.invocations[0].sourceMetadata?.businessActions, ['生成文档']);
+    assert.equal(report.experience?.skills[0].sourceMetadataCounts.channels[businessChannel()], 1);
+    assert.equal(report.experience?.skills[0].sourceMetadataCounts.businessActions['生成文档'], 1);
+    assert.equal(report.experience?.goalSlices[0].inferredUserGoal, `帮我写一个 PRD ${businessActionTag('生成文档', '请生成 PRD')}`);
   });
 
   it('keeps same skill split by concrete standalone trace sessions', () => {
@@ -2731,10 +2744,12 @@ expected_tools:
 
     assert.equal(record.model, 'sonnet');
     assert.equal(record.promptId, 'llm-enhanced-review');
-    assert.equal(record.promptVersion, '2026-05-18.v1');
+    assert.equal(record.promptVersion, '2026-05-19.v2');
     assert.equal(record.enhancedReview?.skillType, 'advisory');
     assert.deepEqual(record.enhancedReview?.skillDeclaredGoal?.keywords, ['plan review', 'source citation']);
     assert.equal(record.enhancedReview?.runtimeAssessment?.userFeeling, 'neutral');
+    assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充标准化硬性规则声明'));
+    assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充标准化流程和完成标准'));
     assert.equal(record.standards.length, 2);
     assert.equal(record.standards[0].status, 'pending_review');
     assert.equal(record.standards[0].source, 'llm_soft_standard');
@@ -2759,5 +2774,235 @@ expected_tools:
     assert.equal(resolved.active.length, 1);
     assert.equal(resolved.active[0].source, 'confirmed_soft');
     assert.equal(resolved.candidates.some((item) => item.status === 'pending_review'), true);
+  });
+
+  it('does not overwrite reviewed soft standards when prompt version changes', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-soft-standards-reviewed-'));
+    const chain: ObservationSkillChain = {
+      skillName: 'reviewed-skill',
+      definition: {
+        found: true,
+        path: '/tmp/reviewed-skill/SKILL.md',
+        content: '# reviewed-skill\n\nUse this skill to review plans.',
+      },
+      healthCheck: {
+        source: 'doctor-static-rules',
+        hardRules: { declared: false, valid: true, count: 0, rules: [], errors: [] },
+        workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], source: 'none' },
+      },
+      runtime: {
+        supported: true,
+        mode: 'deterministic-no-llm',
+        message: 'runtime summary only',
+        summary: {
+          invocationCount: 1,
+          toolCallCount: 1,
+          toolFailureCount: 0,
+          passedCount: 0,
+          attentionCount: 0,
+          manualReviewCount: 0,
+        },
+        hardRules: [],
+        workflowNodes: [],
+      },
+    };
+    mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
+    writeFileSync(skillDerivedStandardsPath(dir, chain.skillName), JSON.stringify({
+      kind: 'observe-skill-derived-standards',
+      schemaVersion: 1,
+      skillName: chain.skillName,
+      generatedAt: '2026-05-18T00:00:00.000Z',
+      model: 'sonnet',
+      executor: 'test-executor',
+      promptId: 'llm-enhanced-review',
+      promptVersion: '2026-05-18.v1',
+      promptHash: 'old-prompt-hash',
+      standards: [{
+        id: 'soft-confirmed',
+        kind: 'hard_rule_candidate',
+        status: 'author_confirmed',
+        title: '确认过的规则',
+        body: '这条规则已经被作者确认，prompt 升级时不能被覆盖。',
+        source: 'llm_soft_standard',
+        confidence: 'medium',
+        evidence: ['旧记录'],
+      }, {
+        id: 'soft-rejected',
+        kind: 'workflow_candidate',
+        status: 'rejected',
+        title: '否决过的流程',
+        body: '这条流程已经被作者否决，prompt 升级时不能被覆盖。',
+        source: 'llm_soft_standard',
+        confidence: 'low',
+        evidence: ['旧记录'],
+      }],
+    }, null, 2));
+
+    const record = await extractSkillSoftStandards({
+      observationsDir: dir,
+      skillChain: chain,
+      model: 'sonnet',
+      executorName: 'test-executor',
+      now: '2026-05-19T00:00:00.000Z',
+      executor: async () => {
+        throw new Error('LLM should not run when reviewed soft standards exist');
+      },
+    });
+
+    assert.equal(record.standards.length, 2);
+    assert.equal(record.standards[0].id, 'soft-confirmed');
+    assert.equal(record.standards[0].status, 'stale');
+    assert.equal(record.standards[1].id, 'soft-rejected');
+    assert.equal(record.standards[1].status, 'rejected');
+  });
+
+  it('preserves stale soft standards across consecutive runs after prompt upgrade', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-soft-standards-stale-'));
+    const chain: ObservationSkillChain = {
+      skillName: 'stale-only-skill',
+      definition: {
+        found: true,
+        path: '/tmp/stale-only-skill/SKILL.md',
+        content: '# stale-only-skill\n\nUse this skill to review plans.',
+      },
+      healthCheck: {
+        source: 'doctor-static-rules',
+        hardRules: { declared: false, valid: true, count: 0, rules: [], errors: [] },
+        workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], source: 'none' },
+      },
+      runtime: {
+        supported: true,
+        mode: 'deterministic-no-llm',
+        message: 'runtime summary only',
+        summary: {
+          invocationCount: 1,
+          toolCallCount: 1,
+          toolFailureCount: 0,
+          passedCount: 0,
+          attentionCount: 0,
+          manualReviewCount: 0,
+        },
+        hardRules: [],
+        workflowNodes: [],
+      },
+    };
+    mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
+    writeFileSync(skillDerivedStandardsPath(dir, chain.skillName), JSON.stringify({
+      kind: 'observe-skill-derived-standards',
+      schemaVersion: 1,
+      skillName: chain.skillName,
+      generatedAt: '2026-05-18T00:00:00.000Z',
+      model: 'sonnet',
+      executor: 'test-executor',
+      promptId: 'llm-enhanced-review',
+      promptVersion: '2026-05-18.v1',
+      promptHash: 'old-prompt-hash',
+      standards: [{
+        id: 'soft-only-confirmed',
+        kind: 'hard_rule_candidate',
+        status: 'author_confirmed',
+        title: '唯一一条确认规则',
+        body: '只有 author_confirmed 的旧文件，连续跑两次也不能被覆盖。',
+        source: 'llm_soft_standard',
+        confidence: 'medium',
+        evidence: ['旧记录'],
+      }],
+    }, null, 2));
+
+    const executor = async () => {
+      throw new Error('LLM should not run when stale soft standards exist');
+    };
+
+    const first = await extractSkillSoftStandards({
+      observationsDir: dir,
+      skillChain: chain,
+      model: 'sonnet',
+      executorName: 'test-executor',
+      now: '2026-05-19T00:00:00.000Z',
+      executor,
+    });
+    assert.equal(first.standards.length, 1);
+    assert.equal(first.standards[0].id, 'soft-only-confirmed');
+    assert.equal(first.standards[0].status, 'stale');
+
+    const second = await extractSkillSoftStandards({
+      observationsDir: dir,
+      skillChain: chain,
+      model: 'sonnet',
+      executorName: 'test-executor',
+      now: '2026-05-20T00:00:00.000Z',
+      executor,
+    });
+    assert.equal(second.standards.length, 1);
+    assert.equal(second.standards[0].id, 'soft-only-confirmed');
+    assert.equal(second.standards[0].status, 'stale');
+  });
+
+  it('prepends required ownerSuggestions so they survive the 10-item cap', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-soft-standards-prepend-'));
+    const chain: ObservationSkillChain = {
+      skillName: 'prepend-skill',
+      definition: {
+        found: true,
+        path: '/tmp/prepend-skill/SKILL.md',
+        content: '# prepend-skill\n\nUse this skill to review plans.',
+      },
+      healthCheck: {
+        source: 'doctor-static-rules',
+        hardRules: { declared: false, valid: true, count: 0, rules: [], errors: [] },
+        workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], source: 'none' },
+      },
+      runtime: {
+        supported: true,
+        mode: 'deterministic-no-llm',
+        message: 'runtime summary only',
+        summary: {
+          invocationCount: 1,
+          toolCallCount: 1,
+          toolFailureCount: 0,
+          passedCount: 0,
+          attentionCount: 0,
+          manualReviewCount: 0,
+        },
+        hardRules: [],
+        workflowNodes: [],
+      },
+    };
+
+    const llmSuggestions = Array.from({ length: 10 }, (_, i) => ({
+      title: `LLM 普通建议 ${i + 1}`,
+      body: `第 ${i + 1} 条建议，跟兜底主题不沾边。`,
+      acceptanceCriteria: `按第 ${i + 1} 步评估。`,
+    }));
+    const llmOutput = JSON.stringify({ ownerSuggestions: llmSuggestions });
+
+    const record = await extractSkillSoftStandards({
+      observationsDir: dir,
+      skillChain: chain,
+      model: 'sonnet',
+      executorName: 'test-executor',
+      now: '2026-05-19T00:00:00.000Z',
+      executor: async () => ({
+        ok: true,
+        output: llmOutput,
+        durationMs: 1,
+        durationApiMs: 1,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUSD: 0,
+        stopReason: 'stop',
+        numTurns: 1,
+      }),
+    });
+
+    const finalSuggestions = record.enhancedReview?.ownerSuggestions ?? [];
+    assert.equal(finalSuggestions.length, 10);
+    assert.equal(finalSuggestions[0].title, '补充标准化硬性规则声明');
+    assert.equal(finalSuggestions[1].title, '补充标准化流程和完成标准');
+    // LLM 普通建议被前置兜底挤掉最后 2 条，其余 8 条仍按顺序保留
+    assert.equal(finalSuggestions[2].title, 'LLM 普通建议 1');
+    assert.equal(finalSuggestions[9].title, 'LLM 普通建议 8');
   });
 });

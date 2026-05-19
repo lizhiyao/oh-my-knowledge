@@ -144,7 +144,6 @@ export type CliMessageKey =
   | 'cli.help.observe_ingest'
   | 'cli.help.observe_inbox'
   | 'cli.help.observe_show'
-  | 'cli.help.skill_extract'
   | 'cli.help.evolve'
   | 'cli.help.sample'
   | 'cli.help.studio'
@@ -690,32 +689,6 @@ Usage:
 
 Options:
   --input-dir <path>                 Input directory (default: .omk/observations; fallback: ~/.oh-my-knowledge/observations)
-`,
-  },
-  'cli.help.skill_extract': {
-    zh: `
-omk skill-extract — 确认或否决 skill 软标准候选
-
-用法：
-  omk skill-extract <skill> --review <standard-id> [options]
-
-选项：
-  --input-dir <path>                 observe 数据目录（默认：.omk/observations；兜底到 ~/.oh-my-knowledge/observations）
-  --status <status>                  author_confirmed / rejected / pending_review（默认：author_confirmed）
-  --reason <text>                    记录确认或否决原因
-  --json                             输出 JSON
-`,
-    en: `
-omk skill-extract — confirm or reject skill soft standard candidates
-
-Usage:
-  omk skill-extract <skill> --review <standard-id> [options]
-
-Options:
-  --input-dir <path>                 Observation data directory (default: .omk/observations; fallback: ~/.oh-my-knowledge/observations)
-  --status <status>                  author_confirmed / rejected / pending_review (default: author_confirmed)
-  --reason <text>                    Record the review reason
-  --json                             Print JSON
 `,
   },
   'cli.help.evolve': {

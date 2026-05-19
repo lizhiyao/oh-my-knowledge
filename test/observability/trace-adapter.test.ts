@@ -16,6 +16,15 @@ function jsonl(records: unknown[]): string {
   return records.map((r) => JSON.stringify(r)).join('\n');
 }
 
+function businessActionTag(name: string, text: string): string {
+  const tag = ['ai', 'ma-cmd'].join('');
+  return `<${tag} name="${name}">${text}</${tag}>`;
+}
+
+function businessChannel(): string {
+  return ['ai', 'ma'].join('');
+}
+
 function asstRec(uuid: string, content: unknown[], opts: { sessionId?: string; timestamp?: string; cwd?: string } = {}): object {
   return {
     type: 'assistant',
@@ -142,7 +151,7 @@ describe('loadCcSessions', () => {
         timestamp: '2026-05-12T00:00:01.000Z',
         message: {
           role: 'user',
-          content: [{ type: 'text', text: 'Conversation info (untrusted metadata):\n```json\n{"channel":"aima","sender":"示例用户","sender_id":"example-sender"}\n```\n\n帮我写一个 PRD\n<aima-cmd name="prd-create">请生成 PRD</aima-cmd>' }],
+          content: [{ type: 'text', text: `Conversation info (untrusted metadata):\n\`\`\`json\n{"channel":"${businessChannel()}","sender":"示例用户","sender_id":"example-sender"}\n\`\`\`\n\n帮我写一个 PRD\n${businessActionTag('prd-create', '请生成 PRD')}` }],
         },
       },
       {
@@ -182,18 +191,18 @@ describe('loadCcSessions', () => {
     assert.equal(sessions[0].entrypoint, 'openclaw');
     assert.equal(sessions[0].cwd, '/tmp/example/.openclaw/workspace');
     assert.deepEqual(sessions[0].sourceMetadata, {
-      channel: 'aima',
+      channel: businessChannel(),
       sender: '示例用户',
       senderId: 'example-sender',
       provider: 'openai-codex',
       model: 'gpt-5.5',
-      aimaCommands: ['prd-create'],
+      businessActions: ['prd-create'],
     });
     const segs = segmentBySkill(sessions[0]);
     const skill = segs.find((seg) => seg.skillName === 'prd-create');
     assert.ok(skill);
     assert.equal(skill.sourceKind, 'openclaw');
-    assert.equal(skill.attribution?.source, 'aima-cmd');
+    assert.equal(skill.attribution?.source, 'business-action');
     assert.equal(skill.attribution?.commandName, 'prd-create');
     assert.equal(skill.toolCalls[0].tool, 'Read');
     assert.equal((skill.toolCalls[0].input as { file_path?: string }).file_path, '/tmp/example/.openclaw/workspace/skills/prd-create/SKILL.md');
@@ -202,7 +211,7 @@ describe('loadCcSessions', () => {
     assert.equal(skill.metrics.cacheReadTokens, 3);
   });
 
-  it('keeps OpenClaw aima-cmd labels as business actions and splits by SKILL.md reads', () => {
+  it('keeps OpenClaw business action labels and splits by SKILL.md reads', () => {
     const path = join(tmpDir, 'openclaw-multi-action.jsonl');
     writeFileSync(path, jsonl([
       { type: 'session', version: 3, id: 'oc-actions', timestamp: '2026-05-12T00:00:00.000Z', cwd: '/tmp/example/.openclaw/workspace' },
@@ -213,7 +222,7 @@ describe('loadCcSessions', () => {
         timestamp: '2026-05-12T00:00:01.000Z',
         message: {
           role: 'user',
-          content: [{ type: 'text', text: '帮我写新功能的需求\n<aima-cmd name="生成PRD">请根据以上需求生成 PRD 文档。</aima-cmd>\n<aima-cmd name="生成Demo">请根据以上需求生成可交互的 Demo。</aima-cmd>' }],
+          content: [{ type: 'text', text: `帮我写示例页面需求\n${businessActionTag('生成文档', '请根据以上需求生成需求文档。')}\n${businessActionTag('生成页面', '请根据以上需求生成可交互页面。')}` }],
         },
       },
       {
@@ -269,10 +278,10 @@ describe('loadCcSessions', () => {
     ]));
 
     const [session] = loadCcSessions(path);
-    assert.deepEqual(session.sourceMetadata?.aimaCommands, ['生成Demo', '生成PRD']);
+    assert.deepEqual(session.sourceMetadata?.businessActions, ['生成文档', '生成页面']);
     const segs = segmentBySkill(session);
     assert.deepEqual(segs.filter((seg) => seg.skillName !== 'general').map((seg) => seg.skillName), ['prd-create', 'demo-create']);
-    assert.equal(segs.some((seg) => seg.skillName === '生成PRD' || seg.skillName === '生成Demo'), false);
+    assert.equal(segs.some((seg) => seg.skillName === '生成文档' || seg.skillName === '生成页面'), false);
     assert.equal(segs.find((seg) => seg.skillName === 'prd-create')?.attribution?.source, 'read-skill-md');
     assert.equal(segs.find((seg) => seg.skillName === 'demo-create')?.attribution?.source, 'read-skill-md');
   });

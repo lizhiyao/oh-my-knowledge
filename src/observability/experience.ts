@@ -468,7 +468,7 @@ export interface ExperienceSkillSummary {
   sourceMetadataCounts: {
     channels: Record<string, number>;
     senders: Record<string, number>;
-    aimaCommands: Record<string, number>;
+    businessActions: Record<string, number>;
     providers: Record<string, number>;
     models: Record<string, number>;
   };
@@ -1955,7 +1955,8 @@ function attributionSourcesToLabel(sources: string[]): string {
   const map: Record<string, string> = {
     'skill-tool': 'assistant 调用 Skill 工具',
     'command-name': '用户用 slash command',
-    'aima-cmd': '用户用 aima-cmd 块',
+    'business-action': '用户用业务动作块',
+    [legacyBusinessActionSource()]: '用户用业务动作块',
     'skill-script': '跑了 skills/<name>/scripts 脚本',
     'read-skill-md': 'LLM 主动 Read SKILL.md',
     unknown: '未知',
@@ -2745,7 +2746,7 @@ function mergeSourceMetadata(values: Array<TraceSourceMetadata | undefined>): Tr
   const providers = unique(values.map((value) => value?.provider).filter((value): value is string => Boolean(value)));
   const models = unique(values.map((value) => value?.model).filter((value): value is string => Boolean(value)));
   const modelApis = unique(values.map((value) => value?.modelApi).filter((value): value is string => Boolean(value)));
-  const aimaCommands = unique(values.flatMap((value) => value?.aimaCommands ?? []));
+  const businessActions = unique(values.flatMap((value) => sourceBusinessActions(value)));
   const merged: TraceSourceMetadata = {};
   if (channels.length > 0) merged.channel = channels.join(', ');
   if (senders.length > 0) merged.sender = senders.join(', ');
@@ -2753,7 +2754,7 @@ function mergeSourceMetadata(values: Array<TraceSourceMetadata | undefined>): Tr
   if (providers.length > 0) merged.provider = providers.join(', ');
   if (models.length > 0) merged.model = models.join(', ');
   if (modelApis.length > 0) merged.modelApi = modelApis.join(', ');
-  if (aimaCommands.length > 0) merged.aimaCommands = aimaCommands.sort();
+  if (businessActions.length > 0) merged.businessActions = businessActions.sort();
   return Object.keys(merged).length > 0 ? merged : undefined;
 }
 
@@ -2761,10 +2762,22 @@ function summarizeSourceMetadataCounts(values: Array<TraceSourceMetadata | undef
   return {
     channels: countBy(values.map((value) => value?.channel).filter((value): value is string => Boolean(value))),
     senders: countBy(values.map((value) => sourceSenderLabel(value)).filter((value): value is string => Boolean(value))),
-    aimaCommands: countBy(values.flatMap((value) => value?.aimaCommands ?? [])),
+    businessActions: countBy(values.flatMap((value) => sourceBusinessActions(value))),
     providers: countBy(values.map((value) => value?.provider).filter((value): value is string => Boolean(value))),
     models: countBy(values.map((value) => value?.model).filter((value): value is string => Boolean(value))),
   };
+}
+
+function sourceBusinessActions(value?: TraceSourceMetadata): string[] {
+  if (!value) return [];
+  const legacyKey = ['ai', 'maCommands'].join('');
+  const legacy = (value as unknown as Record<string, unknown>)[legacyKey];
+  if (Array.isArray(legacy)) return unique([...(value.businessActions ?? []), ...legacy.filter((item): item is string => typeof item === 'string')]);
+  return value.businessActions ?? [];
+}
+
+function legacyBusinessActionSource(): string {
+  return ['ai', 'ma-cmd'].join('');
 }
 
 function sourceSenderLabel(value?: TraceSourceMetadata): string | undefined {

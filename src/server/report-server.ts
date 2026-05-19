@@ -611,10 +611,21 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         }
         if (req.method === 'POST') {
           const body = await readJsonBody(req) as Partial<ObservationReviewStateUpdate>;
+          const targetType = body.targetType as ObservationReviewStateUpdate['targetType'];
+          const targetId = String(body.targetId ?? '');
+          const verdict = body.verdict as ObservationReviewStateUpdate['verdict'];
+          const now = new Date().toISOString();
+          if (targetType === 'soft_standard') {
+            const parsedTarget = parseSoftStandardReviewTarget(targetId);
+            const status = skillDerivedStandardStatusFromVerdict(verdict);
+            if (parsedTarget && status) {
+              updateSkillDerivedStandardStatus(observationsDir, parsedTarget.skillName, parsedTarget.standardId, status, now);
+            }
+          }
           const state = updateObservationReviewState(observationsDir, {
-            targetType: body.targetType as ObservationReviewStateUpdate['targetType'],
-            targetId: String(body.targetId ?? ''),
-            verdict: body.verdict as ObservationReviewStateUpdate['verdict'],
+            targetType,
+            targetId,
+            verdict,
             note: typeof body.note === 'string' ? body.note : undefined,
             reason: typeof body.reason === 'string' ? body.reason : undefined,
             metricKey: body.metricKey as ObservationReviewStateUpdate['metricKey'],
@@ -626,7 +637,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
             messageUuid: typeof body.messageUuid === 'string' ? body.messageUuid : undefined,
             toolUseId: typeof body.toolUseId === 'string' ? body.toolUseId : undefined,
             snippet: typeof body.snippet === 'string' ? body.snippet : undefined,
-          });
+          }, now);
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify(state));
           return;
@@ -641,42 +652,6 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         }
         res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ error: 'method not allowed' }));
-        return;
-      }
-
-      if (path === '/api/observations/soft-standards/review') {
-        if (req.method !== 'POST') {
-          res.writeHead(405, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: 'method not allowed' }));
-          return;
-        }
-        try {
-          const body = await readJsonBody(req) as { skillName?: unknown; standardId?: unknown; status?: unknown; reason?: unknown };
-          const skillName = typeof body.skillName === 'string' ? body.skillName : '';
-          const standardId = typeof body.standardId === 'string' ? body.standardId : '';
-          const status = body.status === 'author_confirmed' || body.status === 'rejected' || body.status === 'pending_review'
-            ? body.status as SkillDerivedStandardStatus
-            : undefined;
-          if (!skillName || !standardId || !status) {
-            res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-            res.end(JSON.stringify({ error: 'invalid soft standard review payload' }));
-            return;
-          }
-          const now = new Date().toISOString();
-          const record = updateSkillDerivedStandardStatus(observationsDir, skillName, standardId, status, now);
-          const verdict = status === 'author_confirmed' ? 'real_issue' : status === 'rejected' ? 'not_issue' : 'needs_more_context';
-          const state = updateObservationReviewState(observationsDir, {
-            targetType: 'soft_standard',
-            targetId: `${skillName}:${standardId}`,
-            verdict,
-            reason: typeof body.reason === 'string' ? body.reason : undefined,
-          }, now);
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ record, reviewState: state }));
-        } catch (error) {
-          res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
-          res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
-        }
         return;
       }
 
@@ -1006,4 +981,20 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
   }
 
   return { start, stop, getUrl };
+}
+
+function parseSoftStandardReviewTarget(targetId: string): { skillName: string; standardId: string } | null {
+  const separator = targetId.indexOf(':');
+  if (separator <= 0 || separator === targetId.length - 1) return null;
+  return {
+    skillName: targetId.slice(0, separator),
+    standardId: targetId.slice(separator + 1),
+  };
+}
+
+function skillDerivedStandardStatusFromVerdict(verdict: ObservationReviewStateUpdate['verdict']): SkillDerivedStandardStatus | null {
+  if (verdict === 'real_issue') return 'author_confirmed';
+  if (verdict === 'not_issue') return 'rejected';
+  if (verdict === 'needs_more_context' || verdict === 'reviewed') return 'pending_review';
+  return null;
 }
