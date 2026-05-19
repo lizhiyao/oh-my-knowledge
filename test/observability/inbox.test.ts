@@ -2223,7 +2223,7 @@ describe('observe inbox', () => {
 name: yuque
 expected_tools:
   - yuque-cli
-  - yuque-ant-cli
+  - yuque-dl
 ---
 
 # yuque
