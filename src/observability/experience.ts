@@ -548,15 +548,10 @@ const USER_GOAL_SHIFT_TERMS = [
 const NEGATIVE_FEEDBACK_TERMS = [
   '没有用',
   '没用',
-  '不行',
   '太慢',
-  '看不懂',
-  '不需要',
   '别再',
   '怎么又',
   '赶紧',
-  '有问题',
-  '不符合',
   '做错了',
   '做错',
   '完全错',
@@ -582,6 +577,18 @@ const NEGATIVE_FEEDBACK_TERMS = [
   '菜啊',
 ];
 const BOUNDED_NEGATIVE_FEEDBACK_TERMS = ['失败', '垃圾', '菜'];
+// 高歧义负向词:前面紧跟描述对象的名词(代码 / 这段 / 这里 等)时是在描述对象有问题, 不算用户对 skill 的负向反馈。
+// 命中后用 BENIGN_NEGATIVE_FEEDBACK_PREFIXES 做"先做不算"的紧邻前缀过滤, 命中即跳过。
+// 详见 memory: feedback_keyword_context_rule.md。
+const AMBIGUOUS_NEGATIVE_FEEDBACK_TERMS = ['有问题', '不需要', '看不懂', '不符合', '不行'];
+// 紧邻命中即"在描述对象有问题, 不算用户对 skill 的负向反馈":
+// 1. 前缀: <object> + 高歧义词        (代码有问题 / 逻辑不符合)
+// 2. 前缀: <object>(里|中|上) + 高歧义词 (代码里不需要)
+// 3. 后缀: 高歧义词 + 的<object>      (有问题的代码)
+// 不放"方案/方法/做法/思路/样式/规范/标准"等评价类词, 这些前接"不行/不符合"通常是负向反馈。
+const BENIGN_NEGATIVE_OBJECT_RE = /(?:代码|这段|这部分|这里|那里|文件|字段|逻辑|函数|接口|参数|配置|路径|目录|架构|写法|算法|文档|输出|结果|结构|文本|展示|渲染|输入|响应|脚本|代码块|代码段|代码片段|网络|信号|环境|机器|电脑)$/;
+const BENIGN_NEGATIVE_OBJECT_LOC_RE = /(?:代码|文件|脚本|目录|文档|项目|仓库)(?:里|中|上)$/;
+const BENIGN_NEGATIVE_OBJECT_SUFFIX_RE = /^的(?:代码|这段|这部分|逻辑|函数|接口|文件|字段|写法|算法|文档|脚本|实现|方法|方案|内容|结构|部分|地方|步骤|代码块|代码段|代码片段)/;
 const ADDITIONAL_NEGATIVE_FEEDBACK_TERMS = [
   '不对',
   '错了',
@@ -3061,7 +3068,19 @@ export function findNegativeFeedbackMatches(value: string): TextMatchRange[] {
   for (const term of [...BOUNDED_NEGATIVE_FEEDBACK_TERMS].sort((a, b) => b.length - a.length)) {
     pushTermMatches(value, term, ranges, true);
   }
+  for (const term of [...AMBIGUOUS_NEGATIVE_FEEDBACK_TERMS].sort((a, b) => b.length - a.length)) {
+    pushTermMatches(value, term, ranges, false, false, (haystack, index) => !isBenignNegativeFeedbackContext(haystack, index, term));
+  }
   return ranges.sort((a, b) => a.start - b.start);
+}
+
+function isBenignNegativeFeedbackContext(value: string, hitIndex: number, term: string): boolean {
+  const before = value.slice(Math.max(0, hitIndex - 6), hitIndex);
+  if (BENIGN_NEGATIVE_OBJECT_RE.test(before)) return true;
+  if (BENIGN_NEGATIVE_OBJECT_LOC_RE.test(before)) return true;
+  const after = value.slice(hitIndex + term.length, hitIndex + term.length + 10);
+  if (BENIGN_NEGATIVE_OBJECT_SUFFIX_RE.test(after)) return true;
+  return false;
 }
 
 export function hasNegativeFeedbackSignal(value: string): boolean {
@@ -3080,14 +3099,22 @@ export function hasPositiveFeedbackSignal(value: string): boolean {
   return findPositiveFeedbackMatches(value).length > 0;
 }
 
-function pushTermMatches(value: string, term: string, ranges: TextMatchRange[], requireBoundary: boolean, caseInsensitive = false): void {
+function pushTermMatches(
+  value: string,
+  term: string,
+  ranges: TextMatchRange[],
+  requireBoundary: boolean,
+  caseInsensitive = false,
+  contextAllow?: (value: string, index: number) => boolean,
+): void {
   const haystack = caseInsensitive ? value.toLowerCase() : value;
   const needle = caseInsensitive ? term.toLowerCase() : term;
   let index = haystack.indexOf(needle);
   while (index >= 0) {
     const end = index + needle.length;
     if ((!requireBoundary || (isTextBoundary(value[index - 1]) && isTextBoundary(value[end])))
-      && !ranges.some((range) => index < range.end && end > range.start)) {
+      && !ranges.some((range) => index < range.end && end > range.start)
+      && (!contextAllow || contextAllow(value, index))) {
       ranges.push({ start: index, end });
     }
     index = haystack.indexOf(needle, index + needle.length);

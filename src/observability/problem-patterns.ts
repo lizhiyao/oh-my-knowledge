@@ -71,7 +71,12 @@ interface PatternDraft {
 }
 
 const CORRECTION_RE = /不是这个|不要这样|理解错|看错|你应该|应该是|直接用|直接按|改成|重来|不对|不是|错了/i;
-const NEGATIVE_RE = /没有用|没用|不行|太慢|看不懂|不需要|别再|怎么又|有问题|不符合|做错|完全错|垃圾|乱来|瞎搞|白干|浪费时间|没价值|没有价值|没意义|不好用|用不了|没帮助|没有帮助|菜/i;
+// 负向反馈基础词:不依赖前后语境的明确负向表达。
+const NEGATIVE_BASE_RE = /没有用|没用|太慢|别再|怎么又|做错|完全错|垃圾|乱来|瞎搞|白干|浪费时间|没价值|没有价值|没意义|不好用|用不了|没帮助|没有帮助|菜/i;
+// 高歧义负向词:前面紧跟描述对象的名词(代码 / 这段 / 这里 等)时, 是在描述对象有问题, 不算用户对 skill 的负向反馈。
+// 用 negative lookbehind 先排除"不算"的前缀, 命中即跳过, 一次性 regex。
+// 详见 memory: feedback_keyword_context_rule.md。
+const NEGATIVE_AMBIGUOUS_RE = /(?<!代码|这段|这部分|这里|那里|方案|方法|地方|文件|内容|写法|设计|字段|逻辑|函数|流程|接口|参数|配置|路径|目录|架构|实现|步骤|做法|思路|样式|布局|算法|文档|输出|结果|结构|文本|展示|渲染|输入|响应|脚本|代码块|代码段|代码片段|规范|标准|约定|风格|网络|信号|环境|机器|电脑)(?:有问题|不需要|看不懂|不符合|不行)/i;
 const INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断/i;
 const GOAL_SHIFT_RE = /换个方向|重新来|重来|先不|不用这个|先不用|暂时不用|不看这个|换一个|换下一个|另一个问题|另外一个问题|先看别的|先处理别的/i;
 
@@ -103,7 +108,7 @@ export function buildExperienceProblemPatterns(input: {
       if (metricActive(event, 'user_correction', CORRECTION_RE.test(text), input.reviewState, input.metricScopeId)) {
         drafts.push(patternDraft(input.skillName, 'user_correction', event));
       }
-      if (metricActive(event, 'negative_feedback', NEGATIVE_RE.test(text), input.reviewState)) {
+      if (metricActive(event, 'negative_feedback', NEGATIVE_BASE_RE.test(text) || NEGATIVE_AMBIGUOUS_RE.test(text), input.reviewState)) {
         drafts.push(patternDraft(input.skillName, 'negative_feedback', event));
       }
       if (metricActive(event, 'user_interruption', INTERRUPTION_RE.test(text), input.reviewState, input.metricScopeId)) {

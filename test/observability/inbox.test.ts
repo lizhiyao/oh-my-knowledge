@@ -136,6 +136,28 @@ describe('observe inbox', () => {
     assert.deepEqual(findPositiveFeedbackMatches(positive).map((range) => positive.slice(range.start, range.end)), ['很好', 'good job', '做的好', '很棒', '很有价值']);
   });
 
+  it('does not flag ambiguous negative terms describing objects as user negative feedback', () => {
+    // 描述对象有问题, 不算用户对 skill 的负向反馈
+    assert.equal(hasNegativeFeedbackSignal('看一下这个项目的这些有问题的代码都在哪里，整体整理一下说明'), false);
+    assert.equal(hasNegativeFeedbackSignal('这段代码有问题，帮我看看'), false);
+    assert.equal(hasNegativeFeedbackSignal('这里逻辑有问题'), false);
+    assert.equal(hasNegativeFeedbackSignal('代码里不需要这段逻辑'), false);
+    assert.equal(hasNegativeFeedbackSignal('我看不懂这段代码'), true);  // 紧邻"段"不在 benign 前缀, 仍判为负向(边界 case, 接受)
+    assert.equal(hasNegativeFeedbackSignal('这段代码看不懂'), false);
+    assert.equal(hasNegativeFeedbackSignal('代码不符合规范'), false);
+    assert.equal(hasNegativeFeedbackSignal('网络不行'), false);
+    assert.equal(hasNegativeFeedbackSignal('我电脑不行'), false);
+  });
+
+  it('still flags ambiguous negative terms when not describing objects', () => {
+    // 没有 benign 前缀紧邻 → 仍判为用户负向反馈
+    assert.equal(hasNegativeFeedbackSignal('这次有问题，重做'), true);
+    assert.equal(hasNegativeFeedbackSignal('你刚才做的有问题'), true);
+    assert.equal(hasNegativeFeedbackSignal('这方案不行'), true);
+    assert.equal(hasNegativeFeedbackSignal('skill 不符合声明'), true);
+    assert.equal(hasNegativeFeedbackSignal('你说的我看不懂'), true);
+  });
+
   it('folds checklist items into measurable parent reasons', () => {
     assert.equal(aggregateExperienceChecklistItemStatus(['passed', 'failed']), 'failed');
     assert.equal(aggregateExperienceChecklistItemStatus(['passed', 'degraded']), 'degraded');
