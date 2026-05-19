@@ -213,7 +213,7 @@ describe('loadCcSessions', () => {
         timestamp: '2026-05-12T00:00:01.000Z',
         message: {
           role: 'user',
-          content: [{ type: 'text', text: '帮我写底仓货架需求\n<aima-cmd name="生成PRD">请根据以上需求生成 PRD 文档。</aima-cmd>\n<aima-cmd name="生成Demo">请根据以上需求生成可交互的 Demo。</aima-cmd>' }],
+          content: [{ type: 'text', text: '帮我写新功能的需求\n<aima-cmd name="生成PRD">请根据以上需求生成 PRD 文档。</aima-cmd>\n<aima-cmd name="生成Demo">请根据以上需求生成可交互的 Demo。</aima-cmd>' }],
         },
       },
       {

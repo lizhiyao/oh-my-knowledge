@@ -9,8 +9,8 @@
  *   `\uDCxx`,严格 JSON parser(jq / serde / Java Jackson 等)解析会报
  *   "Invalid surrogate pair"。Python json / V8 JSON.parse 宽松接受。
  *
- *   这是 omk 报告 JSON 写盘后被 jq 解析失败的真因(2026-05 dima-workitem-tracker
- *   报告 line 807 col 313 即此)。
+ *   这是 omk 报告 JSON 写盘后被 jq 解析失败的真因(线上某下游 jq 消费者
+ *   实际撞过这条:报告 line 807 col 313 即此)。
  *
  * 修法:
  *   切完之后检查最后一个 code unit。如果是高位 surrogate,回退一位。这样最多损失
