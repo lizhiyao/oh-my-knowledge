@@ -2735,6 +2735,17 @@ expected_tools:
               artifactGoalMatch: 'unknown',
               userFeeling: 'neutral',
             },
+            typeSpecificAssessment: {
+              summary: '咨询型能力需要补强证据引用。',
+              checklist: [{
+                key: 'evidence_provided',
+                label: '证据是否可回溯',
+                status: 'failed',
+                reason: '复盘计划缺少明确来源段落。',
+                evidence: ['Always cite the source section'],
+                suggestionKey: 'advisory_evidence',
+              }],
+            },
             userExperienceSignals: {
               useful: 'unknown',
               followUp: 'unknown',
@@ -2749,6 +2760,7 @@ expected_tools:
               body: 'Add examples that show the expected source citation format.',
               evidence: ['Always cite the source section'],
               acceptanceCriteria: 'Generated reviews include a source section reference.',
+              checklistItemKey: 'evidence_provided',
             }],
           }),
           durationMs: 1,
@@ -2766,12 +2778,14 @@ expected_tools:
 
     assert.equal(record.model, 'sonnet');
     assert.equal(record.promptId, 'llm-enhanced-review');
-    assert.equal(record.promptVersion, '2026-05-19.v2');
+    assert.equal(record.promptVersion, '2026-05-19.v3');
     assert.equal(record.enhancedReview?.skillType, 'advisory');
+    assert.equal(record.enhancedReview?.typeSpecificAssessment?.checklist[0]?.key, 'evidence_provided');
     assert.deepEqual(record.enhancedReview?.skillDeclaredGoal?.keywords, ['plan review', 'source citation']);
     assert.equal(record.enhancedReview?.runtimeAssessment?.userFeeling, 'neutral');
     assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充标准化硬性规则声明'));
     assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充标准化流程和完成标准'));
+    assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充用户反馈采集点'));
     assert.equal(record.standards.length, 2);
     assert.equal(record.standards[0].status, 'pending_review');
     assert.equal(record.standards[0].source, 'llm_soft_standard');
@@ -3023,8 +3037,9 @@ expected_tools:
     assert.equal(finalSuggestions.length, 10);
     assert.equal(finalSuggestions[0].title, '补充标准化硬性规则声明');
     assert.equal(finalSuggestions[1].title, '补充标准化流程和完成标准');
-    // LLM 普通建议被前置兜底挤掉最后 2 条，其余 8 条仍按顺序保留
-    assert.equal(finalSuggestions[2].title, 'LLM 普通建议 1');
-    assert.equal(finalSuggestions[9].title, 'LLM 普通建议 8');
+    assert.equal(finalSuggestions[2].title, '补充用户反馈采集点');
+    // LLM 普通建议被前置兜底挤掉最后 3 条，其余 7 条仍按顺序保留
+    assert.equal(finalSuggestions[3].title, 'LLM 普通建议 1');
+    assert.equal(finalSuggestions[9].title, 'LLM 普通建议 7');
   });
 });

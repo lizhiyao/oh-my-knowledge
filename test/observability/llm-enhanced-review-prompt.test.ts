@@ -7,14 +7,14 @@ import { readPromptDocument } from '../../src/shared/llm-prompts/index.js';
 // 对 goal satisfaction / behavior fit / artifact match / user feeling 的最终判定。
 // 任何 prompt 字节级变化(含空白、schema、version 文本)都会让跨版本运行复盘不可比。
 // 若确实要改,PR 标题 / description 必须明确标 BREAKING-COMPARABILITY。
-const FROZEN_LLM_ENHANCED_REVIEW_PROMPT_HASH = '2bdd7506a6730a84c32631afdf264405e745e77dd8558d56d6becde1b1dd3003';
+const FROZEN_LLM_ENHANCED_REVIEW_PROMPT_HASH = '79183ee7be732f613ece8d86b206e4c402e7a10b56782101e7d659c835d3deb3';
 
 describe('LLM enhanced review prompt hash byte-level freeze', () => {
-  it('v2026-05-19.v2 hash matches the frozen value', () => {
+  it('v2026-05-19.v3 hash matches the frozen value', () => {
     const prompt = readPromptDocument({
       fileName: 'llm-enhanced-review.prompt.md',
       id: 'llm-enhanced-review',
-      version: '2026-05-19.v2',
+      version: '2026-05-19.v3',
     });
 
     assert.equal(
@@ -36,7 +36,7 @@ describe('LLM enhanced review prompt hash byte-level freeze', () => {
       const prompt = readPromptDocument({
         fileName: 'llm-enhanced-review.prompt.md',
         id: 'llm-enhanced-review',
-        version: '2026-05-19.v2',
+        version: '2026-05-19.v3',
       });
       assert.equal(
         prompt.hash,

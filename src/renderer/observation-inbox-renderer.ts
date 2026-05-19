@@ -3226,6 +3226,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    if (role === 'mixed') return '路由 + 执行';
 	    return '未确定';
 	  };
+	  const inboxLlmSkillTypeLabel = (type?: ResolvedObservationReviewSession['skillType']): string => {
+	    if (type === 'router') return '路由型';
+	    if (type === 'delegation') return '委派型';
+	    if (type === 'executor') return '执行型';
+	    if (type === 'advisory') return '咨询型';
+	    return '类型待确认';
+	  };
 	  const inboxFlowItem = (cardSkillName: string, skill: ExperienceSessionSummary, index: number, isCurrent: boolean): string => {
 	    const link = skill.sessionStory?.skillLinks?.find((l) => l.skillName === skill.skillName);
 	    const roleLabel = link ? inboxSkillRoleLabel(link.role) : '执行';
@@ -3650,12 +3657,21 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    </div>`;
 	  };
 	  const inboxSuggestionKey = (suggestion: ResolvedOwnerSuggestion): string =>
-	    [suggestion.title, suggestion.body, suggestion.acceptanceCriteria].filter(Boolean).join('\u0000');
+	    [suggestion.checklistItemKey, suggestion.title, suggestion.body, suggestion.acceptanceCriteria].filter(Boolean).join('\u0000');
 	  const inboxTextSuggestion = (title: string, body?: string, acceptanceCriteria?: string): ResolvedOwnerSuggestion => ({
 	    title,
 	    body,
 	    acceptanceCriteria,
 	  });
+	  const inboxSuggestionHasFeedbackContract = (suggestions: ResolvedOwnerSuggestion[]): boolean =>
+	    suggestions.some((suggestion) => /feedback|adopt|reject|useful|thumbs?|反馈|采用|弃用|点赞|点踩|简评|评价/i.test(
+	      [suggestion.title, suggestion.body, suggestion.acceptanceCriteria].filter(Boolean).join('\n'),
+	    ));
+	  const inboxFeedbackContractSuggestion = (): ResolvedOwnerSuggestion => inboxTextSuggestion(
+	    '补充用户反馈采集点',
+	    '在产物交付或人工复盘入口中补充轻量反馈，例如采用 / 弃用、有用 / 无用、点赞 / 点踩或一句话简评。这样线上观测可以把用户反馈关联到具体 session、skill 调用、产物和规则证据。',
+	    '下次观测中，反馈记录能回溯到对应 session、artifact 和 skill invocation。',
+	  );
 	  const inboxBuildSkillActionSuggestions = (skill: ExperienceSessionSummary): ResolvedOwnerSuggestion[] => {
 	    const llmSuggestions = inboxResolvedSession(skill).ownerSuggestions;
 	    const suggestions: ResolvedOwnerSuggestion[] = [...llmSuggestions];
@@ -3711,6 +3727,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        '交付后用户继续纠正或追问时，报告定位到对应用户原文并标记为待复核。',
 	      ));
 	    }
+	    if (!inboxSuggestionHasFeedbackContract(suggestions)) {
+	      suggestions.push(inboxFeedbackContractSuggestion());
+	    }
 	    const deduped: ResolvedOwnerSuggestion[] = [];
 	    for (const suggestion of suggestions) {
 	      const key = inboxSuggestionKey(suggestion);
@@ -3720,6 +3739,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  };
 	  const inboxRenderActionSuggestion = (suggestion: ResolvedOwnerSuggestion, index: number): string => {
 	    const detailBlocks = [
+	      suggestion.checklistItemKey ? `<div class="inbox-action-suggestion-detail"><span>关联检查项</span><p>${e(suggestion.checklistItemLabel ?? suggestion.checklistItemKey)}</p></div>` : '',
 	      suggestion.body ? `<div class="inbox-action-suggestion-detail"><span>建议细节</span><p>${e(suggestion.body)}</p></div>` : '',
 	      suggestion.acceptanceCriteria ? `<div class="inbox-action-suggestion-detail is-acceptance"><span>验收方式</span><p>${e(suggestion.acceptanceCriteria)}</p></div>` : '',
 	    ].filter(Boolean).join('');
@@ -3799,6 +3819,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      <em>${e(inboxAnswerReasonLabel(answer.reason))}</em>
 	    </div>`).join('')}</div>`;
 	  };
+	  const inboxRenderTypeSpecificChecklist = (resolved: ResolvedObservationReviewSession): string => {
+	    if (resolved.typeSpecificChecklist.length === 0) return '';
+	    return `<div class="inbox-review-layer">
+	      <div class="inbox-review-layer-title">${e(inboxLlmSkillTypeLabel(resolved.skillType))}检查项</div>
+	      ${resolved.typeSpecificSummary ? `<p class="inbox-type-summary">${e(resolved.typeSpecificSummary)}</p>` : ''}
+	      ${inboxAnswerChecklistFromItems(resolved.typeSpecificChecklist)}
+	    </div>`;
+	  };
 	  const inboxRenderSessionSuggestions = (skill: ExperienceSessionSummary): string => {
 	    const suggestions = inboxBuildSkillActionSuggestions(skill);
 	    if (suggestions.length === 0) return '';
@@ -3817,10 +3845,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const safeId = e(skill.id);
 	    return `<article class="inbox-skill-block">
 	      <header class="inbox-skill-head">
-	        <div><h4>${e(skill.skillName)}</h4><span class="inbox-skill-subtitle">${e(report?.title ?? '常规观测')}</span></div>
+	        <div>
+	          <div class="inbox-skill-title-row"><h4>${e(skill.skillName)}</h4><span class="inbox-skill-type">${e(inboxLlmSkillTypeLabel(resolved.skillType))}</span></div>
+	          <span class="inbox-skill-subtitle">${e(report?.title ?? '常规观测')}</span>
+	        </div>
 	        ${llmSummary || report?.summary ? `<p class="inbox-skill-summary">${e(cleanReportCopy(llmSummary ?? report?.summary ?? ''))}</p>` : ''}
 	      </header>
 	      ${inboxRenderDataHealth(skill, answers)}
+	      ${inboxRenderTypeSpecificChecklist(resolved)}
 	      ${answers.length > 0 ? `<div class="inbox-review-layer">
 	        <div class="inbox-review-layer-title">判定</div>
 	        ${inboxRenderParentStatuses(answers)}
@@ -4867,6 +4899,20 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-skill-block:last-child { margin-bottom: 0; }
         .inbox-skill-head { display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
         .inbox-skill-head h4 { font-size: 13px; margin: 0; color: var(--text-primary); }
+        .inbox-skill-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+        .inbox-skill-type {
+          display: inline-flex;
+          align-items: center;
+          min-height: 20px;
+          padding: 1px 7px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.4;
+          font-weight: 650;
+        }
         .inbox-skill-subtitle { font-size: 12px; color: var(--text-secondary); }
         .inbox-skill-summary { margin: 4px 0 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
         .inbox-skill-empty { color: var(--text-muted); font-size: 12px; margin: 4px 0; }
@@ -4900,6 +4946,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-data-health.is-unknown { border-color: var(--yellow); background: var(--yellow-bg); color: var(--yellow); }
         .inbox-data-health.is-degraded { border-color: var(--red); background: var(--red-bg); color: var(--red); }
         .inbox-review-layer { margin-top: 10px; }
+        .inbox-type-summary { margin: 0 0 6px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
         .inbox-review-layer-title {
           font-size: 11px;
           font-weight: 700;

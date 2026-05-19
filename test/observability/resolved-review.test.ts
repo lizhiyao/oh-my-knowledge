@@ -101,4 +101,54 @@ describe('resolveObservationReviewSession', () => {
     assert.equal(resolved.priority, 'routine_sample');
     assert.equal(resolved.source, 'manual');
   });
+
+  it('uses type-specific checklist to promote priority and bind owner suggestions', () => {
+    const resolved = resolveObservationReviewSession({
+      session: {
+        id: 'session-c',
+        skillName: 'apply-cc',
+        reviewPriority: 'routine_sample',
+        sessionStory: {
+          answers: [
+            answer('goal_satisfaction', '用户目标有没有被满足'),
+            answer('declared_behavior_fit', '行为是否符合能力用途'),
+          ],
+        },
+      },
+      enhancedReview: {
+        skillType: 'delegation',
+        runtimeAssessment: {
+          goalSatisfaction: 'passed',
+          declaredBehaviorFit: 'passed',
+          artifactGoalMatch: 'unknown',
+          userFeeling: 'neutral',
+        },
+        typeSpecificAssessment: {
+          summary: '父会话越界接手。',
+          checklist: [{
+            key: 'parent_boundary_kept',
+            label: '父会话没有接手原任务',
+            status: 'failed',
+            reason: '父会话直接读取目标项目源码。',
+            evidence: ['grep project source'],
+            suggestionKey: 'delegation_parent_boundary',
+          }],
+        },
+        ownerSuggestions: [{
+          title: '补强父会话边界',
+          body: 'child 跑偏后只能纠偏或重跑。',
+          acceptanceCriteria: '下次复盘不再出现 parent takeover。',
+          checklistItemKey: 'parent_boundary_kept',
+        }],
+      },
+      reviewState: emptyReviewState,
+    });
+
+    assert.equal(resolved.priority, 'review_first');
+    assert.equal(resolved.skillType, 'delegation');
+    assert.equal(resolved.typeSpecificChecklist[0]?.suggestionKey, 'delegation_parent_boundary');
+    assert.equal(resolved.answers.find((item) => item.key === 'declared_behavior_fit')?.status, 'attention');
+    assert.equal(resolved.ownerSuggestions[0]?.checklistItemKey, 'parent_boundary_kept');
+    assert.equal(resolved.ownerSuggestions[0]?.checklistItemLabel, '委派型：父会话没有接手原任务');
+  });
 });

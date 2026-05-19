@@ -7,7 +7,7 @@ import { readPromptDocument } from '../shared/llm-prompts/index.js';
 import { buildObservationSkillChain, type ObservationSkillChain } from './skill-chain.js';
 
 export const SOFT_STANDARD_PROMPT_ID = 'llm-enhanced-review';
-export const SOFT_STANDARD_PROMPT_VERSION = '2026-05-19.v2';
+export const SOFT_STANDARD_PROMPT_VERSION = '2026-05-19.v3';
 export const DEFAULT_LLM_ENHANCED_REVIEW_MODEL = 'sonnet';
 
 export type SkillDerivedStandardStatus = 'pending_review' | 'author_confirmed' | 'rejected' | 'stale';
@@ -58,6 +58,16 @@ export interface SkillLlmEnhancedRuntimeEvidence {
 export type LlmEnhancedSkillType = 'router' | 'delegation' | 'executor' | 'advisory' | 'unknown';
 export type LlmEnhancedVerdict = 'passed' | 'failed' | 'unknown';
 export type LlmEnhancedUserFeeling = 'positive' | 'neutral' | 'negative' | 'frustrated';
+export type LlmEnhancedChecklistStatus = 'passed' | 'failed' | 'unknown' | 'degraded' | 'not_applicable';
+
+export interface SkillLlmTypeSpecificChecklistItem {
+  key: string;
+  label: string;
+  status: LlmEnhancedChecklistStatus;
+  reason?: string;
+  evidence?: string[];
+  suggestionKey?: string;
+}
 
 export interface SkillLlmEnhancedReviewSections {
   skillType?: LlmEnhancedSkillType;
@@ -83,6 +93,10 @@ export interface SkillLlmEnhancedReviewSections {
     artifactGoalMatch?: LlmEnhancedVerdict;
     userFeeling?: LlmEnhancedUserFeeling;
   };
+  typeSpecificAssessment?: {
+    checklist: SkillLlmTypeSpecificChecklistItem[];
+    summary?: string;
+  };
   userExperienceSignals?: {
     useful?: LlmEnhancedVerdict;
     followUp?: LlmEnhancedVerdict;
@@ -97,6 +111,7 @@ export interface SkillLlmEnhancedReviewSections {
     body?: string;
     evidence?: string[];
     acceptanceCriteria?: string;
+    checklistItemKey?: string;
   }>;
 }
 
@@ -355,6 +370,7 @@ function parseLlmEnhancedReviewOutput(output: string): SkillLlmEnhancedReviewSec
     userGoal: normalizeUserGoal(parsed?.userGoal),
     skillDeclaredGoal: normalizeSkillDeclaredGoal(parsed?.skillDeclaredGoal),
     runtimeAssessment: normalizeRuntimeAssessment(parsed?.runtimeAssessment),
+    typeSpecificAssessment: normalizeTypeSpecificAssessment(parsed?.typeSpecificAssessment),
     userExperienceSignals: normalizeUserExperienceSignals(parsed?.userExperienceSignals),
     reviewerSummary: typeof parsed?.reviewerSummary === 'string' ? parsed.reviewerSummary.slice(0, 1200) : undefined,
     ownerSuggestions: normalizeOwnerSuggestions(parsed?.ownerSuggestions),
@@ -383,6 +399,14 @@ function withRequiredStandardOwnerSuggestions(
       body: '在 SKILL.md 中声明标准 workflow、完成标准和产物标准，把前置检查、核心执行、失败阻断、最终交付写成可观测步骤。这样 LLM 增强复盘能按声明流程判断是否跑完整。',
       evidence: ['needsWorkflows=true'],
       acceptanceCriteria: '下次评测中，定义链路能识别到 workflow / completionCriteria / artifactCriteria，运行报告能按步骤展示执行情况。',
+    });
+  }
+  if (!hasSuggestion(/feedback|adopt|reject|useful|thumbs?|反馈|采用|弃用|点赞|点踩|简评|评价/i)) {
+    required.push({
+      title: '补充用户反馈采集点',
+      body: '在产物交付或人工复盘入口中补充轻量反馈契约，例如采用 / 弃用、有用 / 无用、点赞 / 点踩或一句话简评。这样线上观测可以把用户反馈关联到具体 session、skill 调用、产物、workflow 和规则证据，而不是让报告自行猜业务结果好坏。',
+      evidence: ['feedbackContract=missing_or_unspecified'],
+      acceptanceCriteria: '下次线上观测中，产物或复盘记录能看到采用 / 弃用或简评等反馈字段，并可回溯到对应 session、artifact 和 skill invocation。',
     });
   }
   return {
@@ -509,6 +533,46 @@ function normalizeRuntimeAssessment(value: unknown): SkillLlmEnhancedReviewSecti
   };
 }
 
+function normalizeTypeSpecificAssessment(value: unknown): SkillLlmEnhancedReviewSections['typeSpecificAssessment'] | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const item = value as Record<string, unknown>;
+  const rawChecklist = Array.isArray(item.checklist) ? item.checklist : [];
+  const checklist = rawChecklist
+    .map(normalizeTypeSpecificChecklistItem)
+    .filter((entry): entry is SkillLlmTypeSpecificChecklistItem => Boolean(entry))
+    .slice(0, 12);
+  if (checklist.length === 0 && typeof item.summary !== 'string') return undefined;
+  return {
+    checklist,
+    summary: typeof item.summary === 'string' ? item.summary.slice(0, 800) : undefined,
+  };
+}
+
+function normalizeTypeSpecificChecklistItem(value: unknown): SkillLlmTypeSpecificChecklistItem | null {
+  if (!value || typeof value !== 'object') return null;
+  const item = value as Record<string, unknown>;
+  const key = typeof item.key === 'string' && item.key.trim()
+    ? item.key.trim().replace(/[^a-zA-Z0-9_.:-]+/g, '_').slice(0, 80)
+    : '';
+  const label = typeof item.label === 'string' && item.label.trim() ? item.label.trim().slice(0, 120) : '';
+  const status = normalizeChecklistStatus(item.status);
+  if (!key || !label || !status) return null;
+  return {
+    key,
+    label,
+    status,
+    reason: typeof item.reason === 'string' ? item.reason.slice(0, 500) : undefined,
+    evidence: Array.isArray(item.evidence) ? item.evidence.filter((it): it is string => typeof it === 'string').slice(0, 5) : undefined,
+    suggestionKey: typeof item.suggestionKey === 'string' ? item.suggestionKey.slice(0, 120) : undefined,
+  };
+}
+
+function normalizeChecklistStatus(value: unknown): LlmEnhancedChecklistStatus | undefined {
+  return value === 'passed' || value === 'failed' || value === 'unknown' || value === 'degraded' || value === 'not_applicable'
+    ? value
+    : undefined;
+}
+
 function normalizeUserExperienceSignals(value: unknown): SkillLlmEnhancedReviewSections['userExperienceSignals'] | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const item = value as Record<string, unknown>;
@@ -541,6 +605,7 @@ function normalizeOwnerSuggestions(value: unknown): SkillLlmEnhancedReviewSectio
       body: typeof item.body === 'string' ? item.body.slice(0, 1000) : undefined,
       evidence: Array.isArray(item.evidence) ? item.evidence.filter((it): it is string => typeof it === 'string').slice(0, 5) : undefined,
       acceptanceCriteria: typeof item.acceptanceCriteria === 'string' ? item.acceptanceCriteria.slice(0, 600) : undefined,
+      checklistItemKey: typeof item.checklistItemKey === 'string' ? item.checklistItemKey.slice(0, 120) : undefined,
     };
   });
 }
