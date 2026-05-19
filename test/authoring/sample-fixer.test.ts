@@ -2,102 +2,111 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { fixSamples } from '../../src/authoring/sample-fixer.js';
 import type { EvaluationReport } from '../../src/types/report.js';
-import type { Sample } from '../../src/types/index.js';
 
-function reportWithSampleDesignFailure(): EvaluationReport {
+function reportWithFailedAssertion(): EvaluationReport {
   return {
     kind: 'evaluation',
     id: 'r1',
-    meta: { variants: ['skill'] },
+    meta: {
+      variants: ['skill'],
+      model: 'sonnet',
+      executor: 'claude',
+      sampleCount: 1,
+      taskCount: 1,
+      totalCostUSD: 0,
+      timestamp: '2026-05-16T00:00:00.000Z',
+      cliVersion: '0.0.0-test',
+      nodeVersion: process.version,
+      artifactHashes: {},
+      judgeModels: [],
+    },
     summary: {},
-    results: [{
-      sample_id: 's1',
-      variants: {
-        skill: {
-          diagnostic: {
-            rootCause: ['sample_design'],
-            summary: 'mock 缺失',
-            expected: '应命中 Bash mock',
-            actual: '被 mocksStrict 拦截',
-            suggestion: { sample: '补一条 Bash mock' },
-          },
-          assertions: {
-            details: [{ type: 'tool_input_contains', value: 'Bash:echo', passed: false }],
+    results: [
+      {
+        sample_id: 's001',
+        variants: {
+          skill: {
+            ok: true,
+            durationMs: 1,
+            durationApiMs: 1,
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            cacheReadTokens: 0,
+            cacheCreationTokens: 0,
+            execCostUSD: 0,
+            judgeCostUSD: 0,
+            costUSD: 0,
+            numTurns: 0,
+            outputPreview: '',
+            assertions: {
+              passed: 0,
+              total: 1,
+              score: 1,
+              details: [
+                { type: 'contains', value: 'ok', passed: false, weight: 1 },
+              ],
+            },
           },
         },
       },
-    }],
-  } as unknown as EvaluationReport;
+    ],
+  };
 }
 
 describe('fixSamples', () => {
-  it('merges only fixable fields, validates output, and keeps lean mode', async () => {
-    const original: Sample = {
-      sample_id: 's1',
-      prompt: 'keep prompt',
-      rubric: 'old rubric',
-      capability: ['原能力'],
-      provenance: 'human',
-      mocks: [{ tool: 'Bash', match: { command_glob: 'pwd' }, return: { stdout: '/tmp', exit: 0 } }],
-    };
-    let seenLean: boolean | undefined;
-
+  it('skips samples that reached max attempts', async () => {
+    let called = false;
     const result = await fixSamples({
-      skillContent: 'Use Bash to run echo.',
-      samples: [original],
-      report: reportWithSampleDesignFailure(),
+      skillContent: 'Use Bash when needed.',
+      samples: [{ sample_id: 's001', prompt: 'p', omkFix: { attempts: 2 } }],
+      report: reportWithFailedAssertion(),
       treatmentKey: 'skill',
-      executor: async (opts) => {
-        seenLean = opts.lean;
-        return {
-          ok: true,
-          costUSD: 0.01,
-          text: JSON.stringify({
-            sample_id: 'changed-by-llm',
-            prompt: 'LLM tried to change prompt',
-            capability: 'bad metadata',
-            rubric: 'new rubric',
-            assertions: [{ type: 'tool_input_contains', value: 'Bash:echo', weight: 1 }],
-            mocks: [{ tool: 'Bash', match: { command_glob: 'echo *' }, return: { stdout: 'ok', exit: 0 } }],
-          }),
-        };
+      maxAttemptsPerSample: 2,
+      executor: async () => {
+        called = true;
+        return { ok: true, costUSD: 0, text: '[]' };
       },
     });
 
-    assert.equal(seenLean, true);
-    assert.equal(result.fixedCount, 1);
-    assert.equal(result.samples[0].sample_id, 's1');
-    assert.equal(result.samples[0].prompt, 'keep prompt');
-    assert.deepEqual(result.samples[0].capability, ['原能力']);
-    assert.equal(result.samples[0].provenance, 'human');
-    assert.equal(result.samples[0].rubric, 'new rubric');
-    assert.equal(result.samples[0].mocksStrict, true);
-    assert.deepEqual(result.samples[0].assertions, [{ type: 'tool_input_contains', value: 'Bash:echo', weight: 1 }]);
+    assert.equal(called, false);
+    assert.equal(result.fixedCount, 0);
+    assert.equal(result.fixes[0].error, 'max attempts reached (2)');
   });
 
-  it('does not write a fixed sample that fails sanitizer validation', async () => {
-    const original: Sample = {
-      sample_id: 's1',
-      prompt: 'keep prompt',
-      assertions: [{ type: 'contains', value: 'TOKEN', weight: 1 }],
-    };
-
+  it('stamps fix attempt metadata when a sample changes', async () => {
     const result = await fixSamples({
-      skillContent: 'Use Bash.',
-      samples: [original],
-      report: reportWithSampleDesignFailure(),
+      skillContent: 'Use Bash when needed.',
+      samples: [{ sample_id: 's001', prompt: 'p', provenance: 'llm-generated' }],
+      report: reportWithFailedAssertion(),
       treatmentKey: 'skill',
       executor: async () => ({
         ok: true,
         costUSD: 0,
-        text: JSON.stringify({
-          assertions: [{ type: 'tools_called', values: [], weight: 1 }],
-        }),
+        text: JSON.stringify([{ sample_id: 's001', prompt: 'p2', provenance: 'llm-generated' }]),
       }),
     });
 
-    assert.equal(result.fixedCount, 0);
-    assert.match(result.fixes[0].error ?? '', /sanitizer|tools_called/);
-    assert.deepEqual(result.samples, [original]);
+    assert.equal(result.fixedCount, 1);
+    assert.equal((result.samples[0].omkFix as { attempts: number }).attempts, 1);
+  });
+
+  it('normalizes invalid provenance emitted by the fixer LLM', async () => {
+    const result = await fixSamples({
+      skillContent: 'Use Bash when needed.',
+      samples: [{ sample_id: 's001', prompt: 'p', provenance: 'llm-generated' }],
+      report: reportWithFailedAssertion(),
+      treatmentKey: 'skill',
+      executor: async () => ({
+        ok: true,
+        costUSD: 0,
+        text: JSON.stringify([
+          { sample_id: 's001', prompt: 'p2', provenance: 'llm-generated-fixed' },
+        ]),
+      }),
+    });
+
+    assert.equal(result.fixedCount, 1);
+    assert.equal(result.samples[0].provenance, 'llm-generated');
   });
 });

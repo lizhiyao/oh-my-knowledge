@@ -143,6 +143,11 @@ export interface EvolveFlags {
   effort?: string;
   'no-diagnostic': boolean;
   'skip-doctor': boolean;
+  'stop-on-assertions-pass': boolean;
+  'auto-fix-samples': boolean;
+  'sample-fix-max-attempts': string;
+  'reuse-latest-eval': boolean;
+  'improve-mode': string;
 }
 
 // ── sample ────────────────────────────────────────────────────────────────────
@@ -157,6 +162,7 @@ export interface SampleFlags {
   model: string;
   'skill-dir': string;
   focus?: string;
+  'no-mock': boolean;
   fix: boolean;
   'reports-dir'?: string;
   treatment?: string;

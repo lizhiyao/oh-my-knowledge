@@ -1,4 +1,5 @@
-import { existsSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { existsSync, statSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
@@ -146,6 +147,19 @@ export default class Doctor extends BaseCommand {
       }),
       default: false,
     }),
+    fix: Flags.boolean({
+      description: bilingual({
+        zh: '交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。',
+        en: 'Interactive fix: use LLM agent to fix skill issues reported by doctor.',
+      }),
+      default: false,
+    }),
+    effort: Flags.string({
+      description: bilingual({
+        zh: 'LLM 推理 effort：low / medium / high / xhigh / max。',
+        en: 'LLM reasoning effort: low / medium / high / xhigh / max.',
+      }),
+    }),
   };
 
   async run(): Promise<void> {
@@ -246,7 +260,39 @@ export default class Doctor extends BaseCommand {
         renderDoctorReportText(report, lang);
       }
 
+      persistDoctorReport(report);
+
+      if (flags.fix) {
+        const existing = report;
+        if (existing.outcome !== 'failed') {
+          process.stderr.write(lang === 'zh' ? '✅ 没有需要修复的问题\n' : '✅ Nothing to fix\n');
+          throw new CliExit(0);
+        }
+        const { runDoctorFix } = await import('../../doctor/fixer.js');
+        const changed = await runDoctorFix({ report: existing, executorName, model, timeoutMs });
+        throw new CliExit(changed ? 0 : (existing.outcome === 'failed' ? 1 : 0));
+      }
+
       throw new CliExit(report.outcome === 'failed' ? 1 : 0);
     });
+  }
+}
+
+function persistDoctorReport(report: import('../../types/doctor.js').DoctorReport): void {
+  const dir = join(homedir(), '.oh-my-knowledge', 'doctors');
+  mkdirSync(dir, { recursive: true });
+  for (const skill of report.skills) {
+    const perSkill = {
+      ...report,
+      skills: [skill],
+      totals: {
+        pass: skill.status === 'pass' ? 1 : 0,
+        warn: skill.status === 'warn' ? 1 : 0,
+        fail: skill.status === 'fail' ? 1 : 0,
+      },
+      outcome: skill.status === 'fail' ? 'failed' : skill.status === 'warn' ? 'warnings_only' : 'passed',
+    };
+    const safeName = skill.skillName.replace(/[/\\:*?"<>|]/g, '_');
+    writeFileSync(join(dir, `${safeName}.json`), JSON.stringify(perSkill, null, 2), 'utf8');
   }
 }

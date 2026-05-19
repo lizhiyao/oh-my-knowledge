@@ -24,6 +24,11 @@ describe('CliExit dispatch', () => {
         'skip-connectivity': false,
         'no-diagnostic': false,
         'skip-doctor': false,
+        'stop-on-assertions-pass': false,
+        'auto-fix-samples': false,
+        'sample-fix-max-attempts': '2',
+        'reuse-latest-eval': false,
+        'improve-mode': 'agent',
       },
       'zh',
     ).then(() => null, (e: unknown) => e);

@@ -397,7 +397,9 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
 **Flags:**
 
 ```text
+  --effort <value>    LLM 推理 effort：low / medium / high / xhigh / max。
   --executor <value>  执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
+  --fix               交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
   --gate              静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
   --html <value>      HTML 报告输出路径。可跟 --json / --gate 共存。
   --json              JSON 输出到 stdout，适合 CI / 外部脚本消费。
@@ -565,20 +567,25 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 **Flags:**
 
 ```text
-  --concurrency <value>    评测并发数，默认 1
-  --effort <value>         reasoning effort: low/medium/high/xhigh/max
-  --executor <value>       执行器名，默认 claude
-  --improve-model <value>  负责重写 skill 的 LLM，默认 sonnet
-  --judge-models <value>   评委 model（单评委约束），格式 executor:model。默认 claude:haiku
-  --lang <value>           输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --model <value>          被评测的 LLM，默认 sonnet
-  --no-diagnostic          关 LLM diagnostic 调用
-  --rounds <value>         最大迭代轮数，默认 5
-  --samples <value>        样本文件路径，默认 eval-samples.json
-  --skip-connectivity      跳过 LLM 连通性预检
-  --skip-doctor            跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
-  --target <value>         目标 composite 分数，达到即停。不传则跑满 rounds
-  --timeout <value>        单样本超时秒，默认 120
+  --auto-fix-samples              每轮先修 skill，再修 sample，随后一起评估候选结果
+  --concurrency <value>           评测并发数，默认 1
+  --effort <value>                reasoning effort: low/medium/high/xhigh/max
+  --executor <value>              执行器名，默认 claude
+  --improve-mode <agent|rewrite>  改写策略（默认：agent）
+  --improve-model <value>         负责重写 skill 的 LLM，默认 sonnet
+  --judge-models <value>          评委 model（单评委约束），格式 executor:model。默认 claude:haiku
+  --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --model <value>                 被评测的 LLM，默认 sonnet
+  --no-diagnostic                 关 LLM diagnostic 调用
+  --reuse-latest-eval             复用可比的最新 eval 报告作为 round-0
+  --rounds <value>                最大迭代轮数，默认 5
+  --sample-fix-max-attempts <value>每条 sample 自动修复最多尝试次数（默认：2）
+  --samples <value>               样本文件路径，默认 eval-samples.json
+  --skip-connectivity             跳过 LLM 连通性预检
+  --skip-doctor                   跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
+  --stop-on-assertions-pass       普通样本断言全过时提前停止
+  --target <value>                目标 composite 分数，达到即停。不传则跑满 rounds
+  --timeout <value>               单样本超时秒，默认 120
 ```
 
 完整描述见 `omk evolve --help`。
@@ -605,6 +612,7 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
   --focus <value>        生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
   --lang <value>         输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>        生成 LLM model 名，默认 opus。
+  --no-mock              不生成 mocks，eval 时所有工具调用真实执行。
   --reports-dir <value>  报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
   --skill-dir <value>    skill 根目录，默认 skills。batch 模式扫此目录。
   --treatment <value>    指定 treatment 名（fix 模式用），默认推断自 skill 路径。

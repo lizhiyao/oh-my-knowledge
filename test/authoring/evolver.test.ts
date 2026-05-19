@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { extractWeakSamples, buildImprovementPrompt, evolveSkill } from '../../src/authoring/evolver.js';
+import { extractWeakSamples, buildImprovementPrompt, evolveSkill, allNonTripwireAssertionsPass } from '../../src/authoring/evolver.js';
 import type { Report } from '../../src/types/index.js';
 
 function toReport(value: unknown): Report {
@@ -58,6 +58,47 @@ describe('buildImprovementPrompt', () => {
     assert.ok(prompt.includes('2/5.0'));
     assert.ok(prompt.includes('Missing analysis'));
     assert.ok(prompt.includes('contains: SQL'));
+  });
+});
+
+describe('allNonTripwireAssertionsPass', () => {
+  it('returns true when all normal samples pass assertions', () => {
+    const report = toReport({
+      sampleSnapshots: { s2: { tripwire: true } },
+      results: [
+        { sample_id: 's1', variants: { skill: { ok: true, assertions: { details: [{ passed: true }] } } } },
+        { sample_id: 's2', variants: { skill: { ok: true, assertions: { details: [{ passed: false }] } } } },
+      ],
+    });
+    assert.equal(allNonTripwireAssertionsPass(report, 'skill'), true);
+  });
+
+  it('returns false when a normal sample fails an assertion', () => {
+    const report = toReport({
+      results: [
+        { sample_id: 's1', variants: { skill: { ok: true, assertions: { details: [{ passed: false }] } } } },
+      ],
+    });
+    assert.equal(allNonTripwireAssertionsPass(report, 'skill'), false);
+  });
+
+  it('returns false when any sample has an execution error', () => {
+    const report = toReport({
+      sampleSnapshots: { s1: { tripwire: true } },
+      results: [
+        { sample_id: 's1', variants: { skill: { ok: false, assertions: { details: [{ passed: false }] } } } },
+      ],
+    });
+    assert.equal(allNonTripwireAssertionsPass(report, 'skill'), false);
+  });
+
+  it('treats diagnostic tripwire_intentional as a tripwire sample', () => {
+    const report = toReport({
+      results: [
+        { sample_id: 's1', variants: { skill: { ok: true, diagnostic: { rootCause: ['tripwire_intentional'] }, assertions: { details: [{ passed: false }] } } } },
+      ],
+    });
+    assert.equal(allNonTripwireAssertionsPass(report, 'skill'), true);
   });
 });
 

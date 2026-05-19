@@ -67,8 +67,17 @@ function matchesInputSubset(expected, actual) {
   return true;
 }
 
+function anyStringContains(obj, needle) {
+  if (typeof obj === 'string') return obj.toLowerCase().includes(needle);
+  if (Array.isArray(obj)) return obj.some(function(item) { return anyStringContains(item, needle); });
+  if (typeof obj === 'object' && obj !== null) {
+    return Object.values(obj).some(function(v) { return anyStringContains(v, needle); });
+  }
+  return false;
+}
+
 function isMockHit(mock, toolName, toolInput) {
-  if (mock.tool !== toolName) return false;
+  if (mock.tool !== '*' && mock.tool !== toolName) return false;
   const m = mock.match;
   if (!m) return true;
   const ti = toolInput || {};
@@ -88,6 +97,9 @@ function isMockHit(mock, toolName, toolInput) {
     if (typeof ti.command !== 'string' || !globMatch(m.command_glob, ti.command)) return false;
   }
   if (m.input !== undefined && !matchesInputSubset(m.input, toolInput)) return false;
+  if (m.input_contains !== undefined) {
+    if (!anyStringContains(toolInput, m.input_contains.toLowerCase())) return false;
+  }
   return true;
 }
 

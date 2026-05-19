@@ -132,6 +132,7 @@ export type CliMessageKey =
   | 'cli.evolve.specify_skill_path'
   | 'cli.evolve.section_header'
   | 'cli.evolve.round_baseline'
+  | 'cli.evolve.round_baseline_reused'
   | 'cli.evolve.round_error'
   | 'cli.evolve.round_done'
   | 'cli.evolve.summary'
@@ -513,8 +514,12 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
     en: '\n=== Improve skill: {path} ===\n',
   },
   'cli.evolve.round_baseline': {
-    zh: '第 0 轮 (基线): score={score} ({cost})\n',
+    zh: '第 0 轮（基线）：score={score}（{cost}）\n',
     en: 'Round 0 (baseline): score={score} ({cost})\n',
+  },
+  'cli.evolve.round_baseline_reused': {
+    zh: '第 0 轮（基线）：score={score}（复用最新 eval 报告）\n',
+    en: 'Round 0 (baseline): score={score} (reused latest eval report)\n',
   },
   'cli.evolve.round_error': {
     zh: '第 {round} 轮: ✗ 改进生成失败: {error}\n',
