@@ -8,7 +8,7 @@ import { buildObservationSkillChain, type ObservationSkillChain } from './skill-
 
 export const SOFT_STANDARD_PROMPT_ID = 'llm-enhanced-review';
 export const SOFT_STANDARD_PROMPT_VERSION = '2026-05-19.v2';
-export const DEFAULT_SOFT_STANDARD_MODEL = 'sonnet';
+export const DEFAULT_LLM_ENHANCED_REVIEW_MODEL = 'sonnet';
 
 export type SkillDerivedStandardStatus = 'pending_review' | 'author_confirmed' | 'rejected' | 'stale';
 export type SkillDerivedStandardKind = 'hard_rule_candidate' | 'workflow_candidate';
@@ -253,7 +253,7 @@ export function resolveSkillStandards(skillName: string, options: ResolveSkillSt
 
 export async function extractSkillSoftStandards(options: ExtractSkillSoftStandardsOptions): Promise<SkillDerivedStandards> {
   const { observationsDir, skillChain } = options;
-  const model = options.model || DEFAULT_SOFT_STANDARD_MODEL;
+  const model = options.model || DEFAULT_LLM_ENHANCED_REVIEW_MODEL;
   const executorName = options.executorName || 'claude';
   const generatedAt = options.now || new Date().toISOString();
   const path = skillDerivedStandardsPath(observationsDir, skillChain.skillName);

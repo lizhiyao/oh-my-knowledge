@@ -34,7 +34,7 @@ export async function runObserveInbox(
   const dir = resolve(flags['input-dir'] || DEFAULT_OBSERVATIONS_DIR);
   if (flags['llm-enhanced-review']) {
     const { buildObservationInboxViewModel } = await import('../../../observability/inbox-view-model.js');
-    const { extractSkillSoftStandards, DEFAULT_SOFT_STANDARD_MODEL } = await import('../../../observability/soft-standards.js');
+    const { extractSkillSoftStandards, DEFAULT_LLM_ENHANCED_REVIEW_MODEL } = await import('../../../observability/soft-standards.js');
     const view = buildObservationInboxViewModel(dir, { skill: flags.skill });
     const candidates = Object.values(view.skillChains)
       .map((chain) => ({ chain, runtimeEvidence: buildLlmEnhancedRuntimeEvidence(view, chain.skillName) }))
@@ -45,7 +45,7 @@ export async function runObserveInbox(
         observationsDir: dir,
         skillChain: chain,
         runtimeEvidence,
-        model: flags.model || DEFAULT_SOFT_STANDARD_MODEL,
+        model: flags.model || DEFAULT_LLM_ENHANCED_REVIEW_MODEL,
         executorName: flags.executor,
         refresh: flags.refresh,
       }));

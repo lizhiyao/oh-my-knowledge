@@ -9501,15 +9501,24 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           if (status === 'rejected') return '❌';
           return '';
         }
+        function softStandardReviewVerdict(status) {
+          if (status === 'author_confirmed') return 'real_issue';
+          if (status === 'rejected') return 'not_issue';
+          return 'needs_more_context';
+        }
         async function setSoftStandardStatus(skillName, standardId, status, btn) {
           if (btn) btn.disabled = true;
           try {
-            var res = await fetch('/api/observations/soft-standards/review', {
+            var res = await fetch('/api/observations/review-state', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ skillName: skillName, standardId: standardId, status: status })
+              body: JSON.stringify({
+                targetType: 'soft_standard',
+                targetId: skillName + ':' + standardId,
+                verdict: softStandardReviewVerdict(status)
+              })
             });
-            if (!res.ok) throw new Error('软标准状态写入失败: ' + res.status);
+            if (!res.ok) throw new Error('标准候选人工判断写入失败: ' + res.status);
             await res.json();
             var cards = document.querySelectorAll('[data-soft-standard-id="' + standardId.replace(/"/g, '\\"') + '"][data-soft-standard-skill="' + skillName.replace(/"/g, '\\"') + '"]');
             for (var i = 0; i < cards.length; i++) {

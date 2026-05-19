@@ -408,29 +408,6 @@ omk sample --batch --skill-dir skills
 omk sample skills/my-skill/SKILL.md --fix
 ```
 
-## omk skill-extract
-
-确认或否决 skill 软标准候选。
-
-**用法:**
-
-```bash
-omk skill-extract [skillName] [flags]
-```
-
-**参数:**
-
-- `skillName`(可选):skill 名称
-
-**Flags:**
-
-- `--input-dir` `option`:observation 数据目录
-- `--json` `boolean`:JSON 格式输出
-- `--lang` `option` (默认 `zh`):输出语言 zh|en
-- `--reason` `option`:人工判断原因
-- `--review` `option`:要确认或否决的软标准 ID
-- `--status` `option`:确认状态：author_confirmed / rejected / pending_review
-
 ## omk studio
 
 启动 omk Studio 报告服务（skill-centric 仪表盘 + 浏览器自动打开）。

@@ -241,19 +241,6 @@ export interface ObserveShowFlags {
   'input-dir'?: string;
 }
 
-// skill-extract(standalone review command)
-export interface SkillExtractArgs {
-  skillName?: string;
-}
-export interface SkillExtractFlags {
-  lang: Lang;
-  'input-dir'?: string;
-  review?: string;
-  status?: string;
-  reason?: string;
-  json: boolean;
-}
-
 // ── studio ────────────────────────────────────────────────────────────────────
 
 // 无 positional。用 Record<string, never> 而不是 `interface StudioArgs {}` 是因为

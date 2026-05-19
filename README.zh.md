@@ -553,30 +553,6 @@ omk observe show <inbox_id>
 
 支持 trace 格式：Claude Code session JSONL（`.jsonl`）、OpenClaw session JSONL（`.jsonl`）、markdown 对话日志（`.log`）。
 
-### `omk skill-extract`
-
-```bash
-omk skill-extract demo-create --review soft-xxx --status author_confirmed
-omk skill-extract demo-create --review soft-xxx --status rejected --reason "不是有效标准"
-```
-
-<!-- omk:cli:skill-extract:flags:start -->
-
-**Flags:**
-
-```text
-  --input-dir <value>  observation 数据目录
-  --json               JSON 格式输出
-  --lang <value>       输出语言 zh|en
-  --reason <value>     人工判断原因
-  --review <value>     要确认或否决的软标准 ID
-  --status <value>     确认状态：author_confirmed / rejected / pending_review
-```
-
-完整描述见 `omk skill-extract --help`。
-
-<!-- omk:cli:skill-extract:flags:end -->
-
 ### `omk evolve`
 
 ```bash
