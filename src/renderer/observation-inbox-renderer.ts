@@ -6,7 +6,7 @@ import type { ObservationInboxViewModel } from '../observability/inbox-view-mode
 import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorrectionMatches, findUserGoalShiftMatches, hasUserCorrectionSignal, hasUserGoalShiftSignal } from '../observability/experience.js';
 import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from '../observability/problem-patterns.js';
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
-import { resolveObservationReviewSession, type ResolvedObservationReviewSession } from '../observability/resolved-review.js';
+import { resolveObservationReviewSession, type ResolvedObservationReviewSession, type ResolvedOwnerSuggestion } from '../observability/resolved-review.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
 import type { SkillDerivedStandard, SkillLlmEnhancedReviewSections } from '../observability/soft-standards.js';
 import { ASSISTANT_DELIVERABLE_ARTIFACT_RE, hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE, isAssistantProgressUpdateText, isScheduledTaskPromptText, isSyntheticUserMessageText, isUserInteractionMetricText } from '../observability/text-signals.js';
@@ -3649,75 +3649,85 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      <ul>${list.slice(0, 3).map((s) => `<li>${e(s)}</li>`).join('')}</ul>
 	    </div>`;
 	  };
-	  const inboxBuildSkillActionSuggestions = (skill: ExperienceSessionSummary): string[] => {
+	  const inboxSuggestionKey = (suggestion: ResolvedOwnerSuggestion): string =>
+	    [suggestion.title, suggestion.body, suggestion.acceptanceCriteria].filter(Boolean).join('\u0000');
+	  const inboxTextSuggestion = (title: string, body?: string, acceptanceCriteria?: string): ResolvedOwnerSuggestion => ({
+	    title,
+	    body,
+	    acceptanceCriteria,
+	  });
+	  const inboxBuildSkillActionSuggestions = (skill: ExperienceSessionSummary): ResolvedOwnerSuggestion[] => {
 	    const llmSuggestions = inboxResolvedSession(skill).ownerSuggestions;
-	    if (llmSuggestions.length > 0) {
-	      return llmSuggestions.filter((suggestion, index, arr) => arr.indexOf(suggestion) === index).slice(0, 4);
-	    }
+	    const suggestions: ResolvedOwnerSuggestion[] = [...llmSuggestions];
 	    const reportSuggestions = skill.reviewerReport?.authorSuggestions ?? [];
-	    if (reportSuggestions.length > 0) {
-	      return reportSuggestions.filter((suggestion, index, arr) => arr.indexOf(suggestion) === index).slice(0, 4);
+	    if (suggestions.length === 0 && reportSuggestions.length > 0) {
+	      suggestions.push(...reportSuggestions.map((suggestion) => inboxTextSuggestion(suggestion)));
 	    }
-	    const suggestions: string[] = [];
 	    const chain = skillChains[skill.skillName];
 	    const findings = skill.reviewerReport?.findings ?? [];
 	    const hasFinding = (source: string): boolean => findings.some((finding) => finding.ruleSource === source);
 	    const storyAnswers = skill.sessionStory?.answers ?? [];
 	    const goalAnswer = storyAnswers.find((answer) => answer.key === 'goal_satisfaction');
-	    if (chain && (!chain.healthCheck.hardRules.declared || !chain.healthCheck.workflows.declared)) {
-	      suggestions.push('优化这个 skill 的标准化 workflow 和 hardRule，把执行步骤、检查点、失败降级写成可观测的结构。示例：在 SKILL.md 顶部声明 workflows: [{ id: main, nodes: [{ id: collect_context, action: "读取必需上下文" }, { id: deliver, action: "输出最终产物并标记完成" }] }]，同时声明 hardRules 说明必须停下确认的条件。');
+	    if (suggestions.length === 0 && chain && (!chain.healthCheck.hardRules.declared || !chain.healthCheck.workflows.declared)) {
+	      suggestions.push(inboxTextSuggestion(
+	        '优化标准流程和硬性规则声明',
+	        '把执行步骤、检查点、失败降级写成可观测的结构。',
+	        'SKILL.md 中能识别到标准 workflow 和 hardRules，报告可按声明流程复盘。',
+	      ));
 	    }
-	    if (
+	    if (suggestions.length === 0 && (
 	      hasFinding('final_delivery_absent')
 	      || goalAnswer?.status === 'degraded'
 	      || goalAnswer?.status === 'attention'
 	      || goalAnswer?.status === 'unknown'
 	      || (skill.reviewerReport?.oneLookMetrics.finalDeliverySignalCount ?? 0) === 0
-	    ) {
-	      suggestions.push('优化完成情况判断：明确什么算有结果、什么算有产物，过程进展不要当成完成，并保留可回溯证据。示例：能力最后一次回复需要带明确的完成标记（"已完成 / 结果如下 / 已生成"），如有产物则附上代码块、文档链接或文件路径。');
+	    )) {
+	      suggestions.push(inboxTextSuggestion(
+	        '优化完成情况判断',
+	        '明确什么算有结果、什么算有产物，过程进展不要当成完成，并保留可回溯证据。',
+	        '能力最后一次回复包含明确完成标记；如有产物，附上代码块、文档链接或文件路径。',
+	      ));
 	    }
-	    if (hasFinding('user_hard_rule') || skill.indicators.hardRuleTextHitCount > 0) {
-	      suggestions.push('把用户反复提出的硬性要求沉淀到 skill 规则或流程检查点，减少依赖用户临时纠偏。示例：如果用户多次强调"不要写入隐私数据"，就在 hardRules 中加入"禁止将真实用户隐私写入测试、日志或报告"，并在 workflow 的交付前增加隐私检查节点。');
+	    if (suggestions.length === 0 && (hasFinding('user_hard_rule') || skill.indicators.hardRuleTextHitCount > 0)) {
+	      suggestions.push(inboxTextSuggestion(
+	        '沉淀用户硬性要求',
+	        '把用户反复提出的硬性要求沉淀到 skill 规则或流程检查点，减少依赖用户临时纠偏。',
+	      ));
 	    }
-	    if (skill.indicators.toolFailureCount > 0 || hasFinding('tool_error_recovery')) {
-	      suggestions.push('补充工具失败后的恢复和降级路径，让失败处理也能被 workflow 覆盖。示例：读取文件失败时先说明缺失文件和影响，再尝试备用路径或让用户确认，而不是继续按默认假设生成结果。');
+	    if (suggestions.length === 0 && (skill.indicators.toolFailureCount > 0 || hasFinding('tool_error_recovery'))) {
+	      suggestions.push(inboxTextSuggestion(
+	        '补充工具失败恢复路径',
+	        '让失败处理也能被 workflow 覆盖；读取失败时先说明缺失文件和影响，再尝试备用路径或让用户确认。',
+	      ));
 	    }
-	    if (
+	    if (suggestions.length === 0 && (
 	      skill.indicators.userCorrectionCount > 0
 	      || skill.indicators.negativeFeedbackCount > 0
 	      || skill.indicators.userFollowUpCount > 0
-	    ) {
-	      suggestions.push('补强用户满意度判断：把追问、纠正、负向反馈作为改进输入，而不是只看是否调用完成。示例：如果交付后用户继续说"不对 / 不是这个 / 重新来"，报告里应标记为满意度待复核，并定位到对应用户原文。');
+	    )) {
+	      suggestions.push(inboxTextSuggestion(
+	        '补强用户满意度判断',
+	        '把追问、纠正、负向反馈作为改进输入，而不是只看是否调用完成。',
+	        '交付后用户继续纠正或追问时，报告定位到对应用户原文并标记为待复核。',
+	      ));
 	    }
-	    const deduped: string[] = [];
+	    const deduped: ResolvedOwnerSuggestion[] = [];
 	    for (const suggestion of suggestions) {
-	      if (!deduped.includes(suggestion)) deduped.push(suggestion);
+	      const key = inboxSuggestionKey(suggestion);
+	      if (!deduped.some((item) => inboxSuggestionKey(item) === key)) deduped.push(suggestion);
 	    }
 	    return deduped.slice(0, 4);
 	  };
-	  const inboxParseActionSuggestion = (suggestion: string): { summary: string; detail: string; example: string; acceptance: string } => {
-	    const normalized = suggestion.replace(/\s+/g, ' ').replace(/。。+/g, '。').trim();
-	    const [beforeAcceptance, ...acceptanceParts] = normalized.split(/(?:^|。)\s*验收[:：]/);
-	    const acceptance = acceptanceParts.join('验收：').replace(/^。+/, '').trim();
-	    const [beforeExample, ...exampleParts] = beforeAcceptance.split(/(?:^|。)\s*示例[:：]/);
-	    const example = exampleParts.join('示例：').replace(/^。+/, '').trim();
-	    const firstSentence = beforeExample.match(/^(.+?[。.!！?？])(?:\s*|$)/)?.[1] ?? beforeExample;
-	    const summary = firstSentence.replace(/[。.!！?？]+$/, '').trim() || '优化 skill 行为';
-	    const detail = beforeExample.slice(firstSentence.length).replace(/^。+/, '').trim();
-	    return { summary, detail, example, acceptance };
-	  };
-	  const inboxRenderActionSuggestion = (suggestion: string, index: number): string => {
-	    const parsed = inboxParseActionSuggestion(suggestion);
+	  const inboxRenderActionSuggestion = (suggestion: ResolvedOwnerSuggestion, index: number): string => {
 	    const detailBlocks = [
-	      parsed.detail ? `<div class="inbox-action-suggestion-detail"><span>建议细节</span><p>${e(parsed.detail)}</p></div>` : '',
-	      parsed.example ? `<div class="inbox-action-suggestion-detail is-example"><span>示例</span><p>${e(parsed.example)}</p></div>` : '',
-	      parsed.acceptance ? `<div class="inbox-action-suggestion-detail is-acceptance"><span>验收方式</span><p>${e(parsed.acceptance)}</p></div>` : '',
+	      suggestion.body ? `<div class="inbox-action-suggestion-detail"><span>建议细节</span><p>${e(suggestion.body)}</p></div>` : '',
+	      suggestion.acceptanceCriteria ? `<div class="inbox-action-suggestion-detail is-acceptance"><span>验收方式</span><p>${e(suggestion.acceptanceCriteria)}</p></div>` : '',
 	    ].filter(Boolean).join('');
 	    return `<li class="inbox-action-suggestion-item">
 	      <details class="inbox-action-suggestion-card"${index === 0 ? ' open' : ''}>
 	        <summary>
 	          <span class="inbox-action-suggestion-index">${index + 1}</span>
-	          <strong>${e(parsed.summary)}</strong>
+	          <strong>${e(suggestion.title)}</strong>
 	          <em>${detailBlocks ? '查看细节' : '无更多细节'}</em>
 	        </summary>
 	        ${detailBlocks ? `<div class="inbox-action-suggestion-body">${detailBlocks}</div>` : ''}
@@ -3725,10 +3735,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    </li>`;
 	  };
 	  const inboxRenderSkillActionSummary = (sessions: ExperienceSessionSummary[]): string => {
-	    const suggestions: string[] = [];
+	    const suggestions: ResolvedOwnerSuggestion[] = [];
 	    for (const session of sessions) {
 	      for (const suggestion of inboxBuildSkillActionSuggestions(session)) {
-	        if (!suggestions.includes(suggestion)) suggestions.push(suggestion);
+	        const key = inboxSuggestionKey(suggestion);
+	        if (!suggestions.some((item) => inboxSuggestionKey(item) === key)) suggestions.push(suggestion);
 	      }
 	    }
 	    if (suggestions.length === 0) return '';

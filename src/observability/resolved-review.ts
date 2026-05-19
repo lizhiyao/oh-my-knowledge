@@ -27,8 +27,14 @@ export interface ResolvedObservationReviewSession {
   priority: ExperienceReviewPriority;
   answers: ExperienceSessionStoryAnswer[];
   reviewerSummary?: string;
-  ownerSuggestions: string[];
+  ownerSuggestions: ResolvedOwnerSuggestion[];
   source: 'manual' | 'llm' | 'deterministic';
+}
+
+export interface ResolvedOwnerSuggestion {
+  title: string;
+  body?: string;
+  acceptanceCriteria?: string;
 }
 
 export function resolveObservationReviewSession(options: ResolveObservationReviewSessionOptions): ResolvedObservationReviewSession {
@@ -266,16 +272,23 @@ function hasManualValue(reviewState: ObservationReviewState, targetType: Observa
   return Boolean(entry.note?.trim() || entry.reason?.trim() || entry.verdict);
 }
 
-function ownerSuggestionTexts(enhancedReview?: SkillLlmEnhancedReviewSections): string[] {
+function ownerSuggestionTexts(enhancedReview?: SkillLlmEnhancedReviewSections): ResolvedOwnerSuggestion[] {
   return (enhancedReview?.ownerSuggestions ?? [])
-    .map((suggestion) => {
+    .flatMap((suggestion): ResolvedOwnerSuggestion[] => {
       const title = suggestion.title?.trim();
       const body = suggestion.body?.trim();
       const acceptance = suggestion.acceptanceCriteria?.trim();
-      return [title, body, acceptance ? `验收：${acceptance}` : ''].filter(Boolean).join('。');
+      if (!title && !body && !acceptance) return [];
+      return [{
+        title: title || body || '优化 skill 行为',
+        body: body && body !== title ? body : undefined,
+        acceptanceCriteria: acceptance,
+      }];
     })
-    .filter((suggestion) => suggestion.length > 0)
-    .filter((suggestion, index, arr) => arr.indexOf(suggestion) === index)
+    .filter((suggestion, index, arr) => {
+      const key = [suggestion.title, suggestion.body, suggestion.acceptanceCriteria].filter(Boolean).join('\u0000');
+      return arr.findIndex((candidate) => [candidate.title, candidate.body, candidate.acceptanceCriteria].filter(Boolean).join('\u0000') === key) === index;
+    })
     .slice(0, 4);
 }
 

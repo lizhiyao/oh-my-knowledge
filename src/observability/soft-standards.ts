@@ -7,7 +7,7 @@ import { readPromptDocument } from '../shared/llm-prompts/index.js';
 import { buildObservationSkillChain, type ObservationSkillChain } from './skill-chain.js';
 
 export const SOFT_STANDARD_PROMPT_ID = 'llm-enhanced-review';
-export const SOFT_STANDARD_PROMPT_VERSION = '2026-05-18.v1';
+export const SOFT_STANDARD_PROMPT_VERSION = '2026-05-19.v2';
 export const DEFAULT_SOFT_STANDARD_MODEL = 'sonnet';
 
 export type SkillDerivedStandardStatus = 'pending_review' | 'author_confirmed' | 'rejected' | 'stale';
@@ -284,7 +284,7 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
     timeoutMs: 300_000,
     lean: true,
   });
-  const enhancedReview = parseLlmEnhancedReviewOutput(result.output || '');
+  const enhancedReview = withRequiredStandardOwnerSuggestions(parseLlmEnhancedReviewOutput(result.output || ''), { needsHardRules, needsWorkflows });
   const standards = standardsFromEnhancedReview(enhancedReview).map((item) => ({
     ...item,
     status: 'pending_review' as const,
@@ -355,6 +355,41 @@ function parseLlmEnhancedReviewOutput(output: string): SkillLlmEnhancedReviewSec
     userExperienceSignals: normalizeUserExperienceSignals(parsed?.userExperienceSignals),
     reviewerSummary: typeof parsed?.reviewerSummary === 'string' ? parsed.reviewerSummary.slice(0, 1200) : undefined,
     ownerSuggestions: normalizeOwnerSuggestions(parsed?.ownerSuggestions),
+  };
+}
+
+function withRequiredStandardOwnerSuggestions(
+  review: SkillLlmEnhancedReviewSections,
+  flags: { needsHardRules: boolean; needsWorkflows: boolean },
+): SkillLlmEnhancedReviewSections {
+  const ownerSuggestions = [...(review.ownerSuggestions ?? [])];
+  const hasSuggestion = (pattern: RegExp): boolean =>
+    ownerSuggestions.some((item) => pattern.test([item.title, item.body, item.acceptanceCriteria].filter(Boolean).join('\n')));
+  if (flags.needsHardRules && !hasSuggestion(/hard\s*rules?|hardRule|硬性规则|硬规则|规则声明/i)) {
+    ownerSuggestions.push({
+      title: '补充标准化硬性规则声明',
+      body: '在 SKILL.md 中把必须执行、禁止执行、失败时必须停止或回退的约束写成可复盘的 hardRules。这样报告能区分“能力没有规则”与“规则已声明但运行未遵守”。',
+      evidence: ['needsHardRules=true'],
+      acceptanceCriteria: '下次评测中，定义链路能识别到 hardRules，报告不再提示缺少标准化硬性规则声明。',
+    });
+  }
+  if (flags.needsWorkflows && !hasSuggestion(/workflow|工作流|流程|完成标准|产物标准|completion|artifact/i)) {
+    ownerSuggestions.push({
+      title: '补充标准化流程和完成标准',
+      body: '在 SKILL.md 中声明标准 workflow、完成标准和产物标准，把前置检查、核心执行、失败阻断、最终交付写成可观测步骤。这样 LLM 增强复盘能按声明流程判断是否跑完整。',
+      evidence: ['needsWorkflows=true'],
+      acceptanceCriteria: '下次评测中，定义链路能识别到 workflow / completionCriteria / artifactCriteria，运行报告能按步骤展示执行情况。',
+    });
+  }
+  return {
+    ...review,
+    ownerSuggestions: ownerSuggestions
+      .filter((item) => item.title || item.body || item.acceptanceCriteria)
+      .filter((item, index, arr) => {
+        const key = [item.title, item.body, item.acceptanceCriteria].filter(Boolean).join('\u0000');
+        return arr.findIndex((candidate) => [candidate.title, candidate.body, candidate.acceptanceCriteria].filter(Boolean).join('\u0000') === key) === index;
+      })
+      .slice(0, 10),
   };
 }
 
