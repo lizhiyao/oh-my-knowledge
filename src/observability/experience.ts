@@ -1,7 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import type { ObservationInboxItem, ObservationSourceKind } from './inbox.js';
 import {
   buildExperienceProblemPatterns,
@@ -15,6 +13,7 @@ import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-at
 import { hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isAssistantProtocolReplyText, isRuntimeProtocolPromptText, isSyntheticUserMessageText, isToolResultFailureText, isUserInteractionMetricText } from './text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 import { parseSkillFrontmatter, validateSkillHardRules, validateSkillWorkflows } from '../shared/hard-rules.js';
+import { findSkillMdPath } from './skill-chain.js';
 
 export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
 export type ExperienceGoalSliceReasonCode = 'skill_segment_boundary' | 'explicit_user_goal_shift' | 'default_session_slice';
@@ -2429,18 +2428,7 @@ function escapeRegExp(value: string): string {
 }
 
 function findSkillMdPathForExperience(skillName: string, cwd: string): string | undefined {
-  if (!/^[A-Za-z0-9_.-]+$/.test(skillName)) return undefined;
-  const candidates = [
-    join(cwd, '.claude', 'skills', skillName, 'SKILL.md'),
-    join(cwd, '.openclaw', 'workspace', 'skills', skillName, 'SKILL.md'),
-    join(cwd, 'workspace', 'skills', skillName, 'SKILL.md'),
-    join(cwd, 'skills', skillName, 'SKILL.md'),
-    join(homedir(), '.openclaw', 'workspace', 'skills', skillName, 'SKILL.md'),
-    join(homedir(), '.claude', 'skills', skillName, 'SKILL.md'),
-    join(homedir(), '.codex', 'skills', skillName, 'SKILL.md'),
-    join(homedir(), '.agents', 'skills', skillName, 'SKILL.md'),
-  ];
-  return candidates.find((candidate) => existsSync(candidate));
+  return findSkillMdPath(skillName, cwd);
 }
 
 function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): ExperienceReviewerReportFinding[] {

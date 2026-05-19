@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, type Dirent } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -330,17 +330,68 @@ function isSkillMdSelfRead(text: string): boolean {
     || /(?:^|[/"'\\])skills[/"'\\][^/"'\\]+[/"'\\]skill\.md\b/.test(text);
 }
 
-function findSkillMdPath(skillName: string, cwd: string): string | undefined {
-  if (!/^[A-Za-z0-9_.-]+$/.test(skillName)) return undefined;
-  const candidates = [
-    join(cwd, '.claude', 'skills', skillName, 'SKILL.md'),
-    join(cwd, '.openclaw', 'workspace', 'skills', skillName, 'SKILL.md'),
-    join(cwd, 'workspace', 'skills', skillName, 'SKILL.md'),
-    join(cwd, 'skills', skillName, 'SKILL.md'),
-    join(homedir(), '.openclaw', 'workspace', 'skills', skillName, 'SKILL.md'),
-    join(homedir(), '.claude', 'skills', skillName, 'SKILL.md'),
-    join(homedir(), '.codex', 'skills', skillName, 'SKILL.md'),
-    join(homedir(), '.agents', 'skills', skillName, 'SKILL.md'),
+const SKILL_SEARCH_MAX_DEPTH = 6;
+const SKILL_SEARCH_SKIP_NAMES = new Set([
+  'node_modules', '.git', 'dist', 'build', '.next', '.cache', '.turbo', '.yarn',
+]);
+const SKILL_SEARCH_HIDDEN_ALLOWED = new Set([
+  '.openclaw', '.claude', '.codex', '.agents',
+]);
+const skillIndexCache = new Map<string, Map<string, string>>();
+
+function skillSearchHomedirRoots(): string[] {
+  return [
+    join(homedir(), '.openclaw'),
+    join(homedir(), '.claude'),
+    join(homedir(), '.codex'),
+    join(homedir(), '.agents'),
   ];
-  return candidates.find((candidate) => existsSync(candidate));
+}
+
+function walkForSkillsIndex(dir: string, index: Map<string, string>, depthLeft: number): void {
+  if (depthLeft <= 0) return;
+  let entries: Dirent[];
+  try { entries = readdirSync(dir, { withFileTypes: true }); }
+  catch { return; }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name !== 'skills') continue;
+    const skillsDir = join(dir, entry.name);
+    let skillEntries: Dirent[];
+    try { skillEntries = readdirSync(skillsDir, { withFileTypes: true }); }
+    catch { continue; }
+    for (const skill of skillEntries) {
+      if (!skill.isDirectory()) continue;
+      if (!/^[A-Za-z0-9_.-]+$/.test(skill.name)) continue;
+      if (index.has(skill.name)) continue;
+      const candidate = join(skillsDir, skill.name, 'SKILL.md');
+      if (existsSync(candidate)) index.set(skill.name, candidate);
+    }
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name === 'skills') continue;
+    if (SKILL_SEARCH_SKIP_NAMES.has(entry.name)) continue;
+    if (entry.name.startsWith('.') && !SKILL_SEARCH_HIDDEN_ALLOWED.has(entry.name)) continue;
+    walkForSkillsIndex(join(dir, entry.name), index, depthLeft - 1);
+  }
+}
+
+function buildSkillIndex(cwd: string): Map<string, string> {
+  const cacheKey = cwd;
+  const cached = skillIndexCache.get(cacheKey);
+  if (cached) return cached;
+  const index = new Map<string, string>();
+  for (const root of [cwd, ...skillSearchHomedirRoots()]) {
+    walkForSkillsIndex(root, index, SKILL_SEARCH_MAX_DEPTH);
+  }
+  skillIndexCache.set(cacheKey, index);
+  return index;
+}
+
+export function findSkillMdPath(skillName: string, cwd: string): string | undefined {
+  if (!/^[A-Za-z0-9_.-]+$/.test(skillName)) return undefined;
+  return buildSkillIndex(cwd).get(skillName);
+}
+
+export function __resetSkillIndexCacheForTests(): void {
+  skillIndexCache.clear();
 }
