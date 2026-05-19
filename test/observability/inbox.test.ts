@@ -754,7 +754,7 @@ describe('observe inbox', () => {
   });
 
   it('normalizes dedup key input conservatively', () => {
-    const cases: Array<[string, string]> = [
+    const cases: Array<[unknown, string]> = [
       ['', ''],
       ['!!!', '!!!'],
       ['，Revenue_Schema。', '，revenue_schema。'],
@@ -763,6 +763,8 @@ describe('observe inbox', () => {
       ['https://example.com//docs/a?b=1', 'https://example.com/docs/a?b=1'],
       [' find   revenue   schema ', 'find revenue schema'],
       ['revenue_schema 🔎', 'revenue_schema 🔎'],
+      [{ path: '/repo//src/auth.ts:12:3' }, '{"path":"/repo/src/auth.ts"}'],
+      [null, ''],
     ];
     for (const [input, expected] of cases) {
       assert.equal(normalizeObservationKeyInput(input), expected);

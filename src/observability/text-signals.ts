@@ -85,14 +85,22 @@ export function hasAssistantDeliverableArtifactText(value: string): boolean {
   return ASSISTANT_DELIVERABLE_ARTIFACT_RE.test(value);
 }
 
-export function isToolResultFailureText(value: string): boolean {
+export function isToolResultFailureText(value: unknown): boolean {
   if (toolResultFailureJson(value)) return true;
-  return /(?:^|\b)(?:status|state)\s*[:=]\s*["']?(?:error|failed|failure)["']?/i.test(value)
-    || /\berror\s*[:=]\s*(?!false|null|0\b).+/i.test(value);
+  const text = typeof value === 'string'
+    ? value
+    : value === null || value === undefined
+      ? ''
+      : typeof value === 'object'
+        ? JSON.stringify(value)
+        : String(value);
+  return /(?:^|\b)(?:status|state)\s*[:=]\s*["']?(?:error|failed|failure)["']?/i.test(text)
+    || /\berror\s*[:=]\s*(?!false|null|0\b).+/i.test(text);
 }
 
-function toolResultFailureJson(value: string): boolean {
-  const trimmed = value.trim();
+function toolResultFailureJson(value: unknown): boolean {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  if (value && typeof value === 'object') return containsToolFailureSignal(value, 0);
   if (!trimmed || (!trimmed.startsWith('{') && !trimmed.startsWith('['))) return false;
   try {
     return containsToolFailureSignal(JSON.parse(trimmed), 0);
