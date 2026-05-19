@@ -36,7 +36,7 @@ describe('LLM enhanced review prompt hash byte-level freeze', () => {
       const prompt = readPromptDocument({
         fileName: 'llm-enhanced-review.prompt.md',
         id: 'llm-enhanced-review',
-        version: '2026-05-18.v1',
+        version: '2026-05-19.v2',
       });
       assert.equal(
         prompt.hash,

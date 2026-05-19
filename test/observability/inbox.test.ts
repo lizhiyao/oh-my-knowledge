@@ -52,6 +52,8 @@ import {
   extractSkillSoftStandards,
   loadSkillDerivedStandards,
   resolveSkillStandards,
+  skillDerivedStandardsDir,
+  skillDerivedStandardsPath,
   updateSkillDerivedStandardStatus,
 } from '../../src/observability/soft-standards.js';
 import type { ObservationSkillChain } from '../../src/observability/skill-chain.js';
@@ -2770,5 +2772,85 @@ expected_tools:
     assert.equal(resolved.active.length, 1);
     assert.equal(resolved.active[0].source, 'confirmed_soft');
     assert.equal(resolved.candidates.some((item) => item.status === 'pending_review'), true);
+  });
+
+  it('does not overwrite reviewed soft standards when prompt version changes', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-soft-standards-reviewed-'));
+    const chain: ObservationSkillChain = {
+      skillName: 'reviewed-skill',
+      definition: {
+        found: true,
+        path: '/tmp/reviewed-skill/SKILL.md',
+        content: '# reviewed-skill\n\nUse this skill to review plans.',
+      },
+      healthCheck: {
+        source: 'doctor-static-rules',
+        hardRules: { declared: false, valid: true, count: 0, rules: [], errors: [] },
+        workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], source: 'none' },
+      },
+      runtime: {
+        supported: true,
+        mode: 'deterministic-no-llm',
+        message: 'runtime summary only',
+        summary: {
+          invocationCount: 1,
+          toolCallCount: 1,
+          toolFailureCount: 0,
+          passedCount: 0,
+          attentionCount: 0,
+          manualReviewCount: 0,
+        },
+        hardRules: [],
+        workflowNodes: [],
+      },
+    };
+    mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
+    writeFileSync(skillDerivedStandardsPath(dir, chain.skillName), JSON.stringify({
+      kind: 'observe-skill-derived-standards',
+      schemaVersion: 1,
+      skillName: chain.skillName,
+      generatedAt: '2026-05-18T00:00:00.000Z',
+      model: 'sonnet',
+      executor: 'test-executor',
+      promptId: 'llm-enhanced-review',
+      promptVersion: '2026-05-18.v1',
+      promptHash: 'old-prompt-hash',
+      standards: [{
+        id: 'soft-confirmed',
+        kind: 'hard_rule_candidate',
+        status: 'author_confirmed',
+        title: '确认过的规则',
+        body: '这条规则已经被作者确认，prompt 升级时不能被覆盖。',
+        source: 'llm_soft_standard',
+        confidence: 'medium',
+        evidence: ['旧记录'],
+      }, {
+        id: 'soft-rejected',
+        kind: 'workflow_candidate',
+        status: 'rejected',
+        title: '否决过的流程',
+        body: '这条流程已经被作者否决，prompt 升级时不能被覆盖。',
+        source: 'llm_soft_standard',
+        confidence: 'low',
+        evidence: ['旧记录'],
+      }],
+    }, null, 2));
+
+    const record = await extractSkillSoftStandards({
+      observationsDir: dir,
+      skillChain: chain,
+      model: 'sonnet',
+      executorName: 'test-executor',
+      now: '2026-05-19T00:00:00.000Z',
+      executor: async () => {
+        throw new Error('LLM should not run when reviewed soft standards exist');
+      },
+    });
+
+    assert.equal(record.standards.length, 2);
+    assert.equal(record.standards[0].id, 'soft-confirmed');
+    assert.equal(record.standards[0].status, 'stale');
+    assert.equal(record.standards[1].id, 'soft-rejected');
+    assert.equal(record.standards[1].status, 'rejected');
   });
 });

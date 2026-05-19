@@ -614,6 +614,14 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
           const targetType = body.targetType as ObservationReviewStateUpdate['targetType'];
           const targetId = String(body.targetId ?? '');
           const verdict = body.verdict as ObservationReviewStateUpdate['verdict'];
+          const now = new Date().toISOString();
+          if (targetType === 'soft_standard') {
+            const parsedTarget = parseSoftStandardReviewTarget(targetId);
+            const status = skillDerivedStandardStatusFromVerdict(verdict);
+            if (parsedTarget && status) {
+              updateSkillDerivedStandardStatus(observationsDir, parsedTarget.skillName, parsedTarget.standardId, status, now);
+            }
+          }
           const state = updateObservationReviewState(observationsDir, {
             targetType,
             targetId,
@@ -629,14 +637,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
             messageUuid: typeof body.messageUuid === 'string' ? body.messageUuid : undefined,
             toolUseId: typeof body.toolUseId === 'string' ? body.toolUseId : undefined,
             snippet: typeof body.snippet === 'string' ? body.snippet : undefined,
-          });
-          if (targetType === 'soft_standard') {
-            const parsedTarget = parseSoftStandardReviewTarget(targetId);
-            const status = skillDerivedStandardStatusFromVerdict(verdict);
-            if (parsedTarget && status) {
-              updateSkillDerivedStandardStatus(observationsDir, parsedTarget.skillName, parsedTarget.standardId, status, state.updatedAt);
-            }
-          }
+          }, now);
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify(state));
           return;

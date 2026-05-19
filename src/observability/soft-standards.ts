@@ -261,17 +261,20 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
   const runtimeEvidenceHash = options.runtimeEvidence ? hashText(JSON.stringify(options.runtimeEvidence)) : undefined;
   const existing = loadExisting(path);
   const promptDocument = readPromptTemplate();
+  const hasReviewedStandards = existing?.standards.some((item) =>
+    item.status === 'author_confirmed' || item.status === 'rejected'
+  ) ?? false;
   const compatibleCache = existing
     && existing.promptId === SOFT_STANDARD_PROMPT_ID
     && existing.promptVersion === SOFT_STANDARD_PROMPT_VERSION
     && existing.promptHash === promptDocument.hash;
-  if (compatibleCache && !options.refresh && existing.sourceHash === sourceHash && existing.runtimeEvidenceHash === runtimeEvidenceHash) return existing;
-  if (compatibleCache && !options.refresh && existing.standards.some((item) => item.status === 'author_confirmed')) {
+  if (existing && hasReviewedStandards && !options.refresh) {
     const stale = markStale(existing, generatedAt);
     mkdirSync(skillDerivedStandardsDir(observationsDir), { recursive: true });
     writeFileSync(path, JSON.stringify(stale, null, 2));
     return stale;
   }
+  if (compatibleCache && !options.refresh && existing.sourceHash === sourceHash && existing.runtimeEvidenceHash === runtimeEvidenceHash) return existing;
 
   const needsHardRules = !skillChain.healthCheck.hardRules.declared;
   const needsWorkflows = !skillChain.healthCheck.workflows.declared;
