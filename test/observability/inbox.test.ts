@@ -2855,4 +2855,154 @@ expected_tools:
     assert.equal(record.standards[1].id, 'soft-rejected');
     assert.equal(record.standards[1].status, 'rejected');
   });
+
+  it('preserves stale soft standards across consecutive runs after prompt upgrade', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-soft-standards-stale-'));
+    const chain: ObservationSkillChain = {
+      skillName: 'stale-only-skill',
+      definition: {
+        found: true,
+        path: '/tmp/stale-only-skill/SKILL.md',
+        content: '# stale-only-skill\n\nUse this skill to review plans.',
+      },
+      healthCheck: {
+        source: 'doctor-static-rules',
+        hardRules: { declared: false, valid: true, count: 0, rules: [], errors: [] },
+        workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], source: 'none' },
+      },
+      runtime: {
+        supported: true,
+        mode: 'deterministic-no-llm',
+        message: 'runtime summary only',
+        summary: {
+          invocationCount: 1,
+          toolCallCount: 1,
+          toolFailureCount: 0,
+          passedCount: 0,
+          attentionCount: 0,
+          manualReviewCount: 0,
+        },
+        hardRules: [],
+        workflowNodes: [],
+      },
+    };
+    mkdirSync(skillDerivedStandardsDir(dir), { recursive: true });
+    writeFileSync(skillDerivedStandardsPath(dir, chain.skillName), JSON.stringify({
+      kind: 'observe-skill-derived-standards',
+      schemaVersion: 1,
+      skillName: chain.skillName,
+      generatedAt: '2026-05-18T00:00:00.000Z',
+      model: 'sonnet',
+      executor: 'test-executor',
+      promptId: 'llm-enhanced-review',
+      promptVersion: '2026-05-18.v1',
+      promptHash: 'old-prompt-hash',
+      standards: [{
+        id: 'soft-only-confirmed',
+        kind: 'hard_rule_candidate',
+        status: 'author_confirmed',
+        title: '唯一一条确认规则',
+        body: '只有 author_confirmed 的旧文件，连续跑两次也不能被覆盖。',
+        source: 'llm_soft_standard',
+        confidence: 'medium',
+        evidence: ['旧记录'],
+      }],
+    }, null, 2));
+
+    const executor = async () => {
+      throw new Error('LLM should not run when stale soft standards exist');
+    };
+
+    const first = await extractSkillSoftStandards({
+      observationsDir: dir,
+      skillChain: chain,
+      model: 'sonnet',
+      executorName: 'test-executor',
+      now: '2026-05-19T00:00:00.000Z',
+      executor,
+    });
+    assert.equal(first.standards.length, 1);
+    assert.equal(first.standards[0].id, 'soft-only-confirmed');
+    assert.equal(first.standards[0].status, 'stale');
+
+    const second = await extractSkillSoftStandards({
+      observationsDir: dir,
+      skillChain: chain,
+      model: 'sonnet',
+      executorName: 'test-executor',
+      now: '2026-05-20T00:00:00.000Z',
+      executor,
+    });
+    assert.equal(second.standards.length, 1);
+    assert.equal(second.standards[0].id, 'soft-only-confirmed');
+    assert.equal(second.standards[0].status, 'stale');
+  });
+
+  it('prepends required ownerSuggestions so they survive the 10-item cap', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-soft-standards-prepend-'));
+    const chain: ObservationSkillChain = {
+      skillName: 'prepend-skill',
+      definition: {
+        found: true,
+        path: '/tmp/prepend-skill/SKILL.md',
+        content: '# prepend-skill\n\nUse this skill to review plans.',
+      },
+      healthCheck: {
+        source: 'doctor-static-rules',
+        hardRules: { declared: false, valid: true, count: 0, rules: [], errors: [] },
+        workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], source: 'none' },
+      },
+      runtime: {
+        supported: true,
+        mode: 'deterministic-no-llm',
+        message: 'runtime summary only',
+        summary: {
+          invocationCount: 1,
+          toolCallCount: 1,
+          toolFailureCount: 0,
+          passedCount: 0,
+          attentionCount: 0,
+          manualReviewCount: 0,
+        },
+        hardRules: [],
+        workflowNodes: [],
+      },
+    };
+
+    const llmSuggestions = Array.from({ length: 10 }, (_, i) => ({
+      title: `LLM 普通建议 ${i + 1}`,
+      body: `第 ${i + 1} 条建议，跟兜底主题不沾边。`,
+      acceptanceCriteria: `按第 ${i + 1} 步评估。`,
+    }));
+    const llmOutput = JSON.stringify({ ownerSuggestions: llmSuggestions });
+
+    const record = await extractSkillSoftStandards({
+      observationsDir: dir,
+      skillChain: chain,
+      model: 'sonnet',
+      executorName: 'test-executor',
+      now: '2026-05-19T00:00:00.000Z',
+      executor: async () => ({
+        ok: true,
+        output: llmOutput,
+        durationMs: 1,
+        durationApiMs: 1,
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        costUSD: 0,
+        stopReason: 'stop',
+        numTurns: 1,
+      }),
+    });
+
+    const finalSuggestions = record.enhancedReview?.ownerSuggestions ?? [];
+    assert.equal(finalSuggestions.length, 10);
+    assert.equal(finalSuggestions[0].title, '补充标准化硬性规则声明');
+    assert.equal(finalSuggestions[1].title, '补充标准化流程和完成标准');
+    // LLM 普通建议被前置兜底挤掉最后 2 条，其余 8 条仍按顺序保留
+    assert.equal(finalSuggestions[2].title, 'LLM 普通建议 1');
+    assert.equal(finalSuggestions[9].title, 'LLM 普通建议 8');
+  });
 });

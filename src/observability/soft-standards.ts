@@ -262,7 +262,7 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
   const existing = loadExisting(path);
   const promptDocument = readPromptTemplate();
   const hasReviewedStandards = existing?.standards.some((item) =>
-    item.status === 'author_confirmed' || item.status === 'rejected'
+    item.status === 'author_confirmed' || item.status === 'rejected' || item.status === 'stale'
   ) ?? false;
   const compatibleCache = existing
     && existing.promptId === SOFT_STANDARD_PROMPT_ID
@@ -365,11 +365,12 @@ function withRequiredStandardOwnerSuggestions(
   review: SkillLlmEnhancedReviewSections,
   flags: { needsHardRules: boolean; needsWorkflows: boolean },
 ): SkillLlmEnhancedReviewSections {
-  const ownerSuggestions = [...(review.ownerSuggestions ?? [])];
+  const existing = review.ownerSuggestions ?? [];
   const hasSuggestion = (pattern: RegExp): boolean =>
-    ownerSuggestions.some((item) => pattern.test([item.title, item.body, item.acceptanceCriteria].filter(Boolean).join('\n')));
+    existing.some((item) => pattern.test([item.title, item.body, item.acceptanceCriteria].filter(Boolean).join('\n')));
+  const required: typeof existing = [];
   if (flags.needsHardRules && !hasSuggestion(/hard\s*rules?|hardRule|硬性规则|硬规则|规则声明/i)) {
-    ownerSuggestions.push({
+    required.push({
       title: '补充标准化硬性规则声明',
       body: '在 SKILL.md 中把必须执行、禁止执行、失败时必须停止或回退的约束写成可复盘的 hardRules。这样报告能区分“能力没有规则”与“规则已声明但运行未遵守”。',
       evidence: ['needsHardRules=true'],
@@ -377,7 +378,7 @@ function withRequiredStandardOwnerSuggestions(
     });
   }
   if (flags.needsWorkflows && !hasSuggestion(/workflow|工作流|流程|完成标准|产物标准|completion|artifact/i)) {
-    ownerSuggestions.push({
+    required.push({
       title: '补充标准化流程和完成标准',
       body: '在 SKILL.md 中声明标准 workflow、完成标准和产物标准，把前置检查、核心执行、失败阻断、最终交付写成可观测步骤。这样 LLM 增强复盘能按声明流程判断是否跑完整。',
       evidence: ['needsWorkflows=true'],
@@ -386,7 +387,7 @@ function withRequiredStandardOwnerSuggestions(
   }
   return {
     ...review,
-    ownerSuggestions: ownerSuggestions
+    ownerSuggestions: [...required, ...existing]
       .filter((item) => item.title || item.body || item.acceptanceCriteria)
       .filter((item, index, arr) => {
         const key = [item.title, item.body, item.acceptanceCriteria].filter(Boolean).join('\u0000');
