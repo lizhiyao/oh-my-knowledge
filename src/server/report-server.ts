@@ -554,8 +554,9 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
 
       if (path === '/observations' || path === '/observations/inbox') {
         const skill = parsed.searchParams.get('skill') || undefined;
+        const html = renderObservationInboxPage(buildObservationInboxViewModel(observationsDir, { skill }), lang);
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(renderObservationInboxPage(buildObservationInboxViewModel(observationsDir, { skill }), lang));
+        res.end(html);
         return;
       }
 
@@ -903,6 +904,10 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       res.end('Not Found');
     } catch (err: unknown) {
+      if (res.headersSent) {
+        res.destroy(err instanceof Error ? err : new Error(getErrorMessage(err)));
+        return;
+      }
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: getErrorMessage(err) }));
     }

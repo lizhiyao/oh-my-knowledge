@@ -225,6 +225,8 @@ function evidenceRef(ref: ExperienceEvidenceRef | ExperienceProblemPattern['evid
     sourceTrace: ref.sourceTrace,
     sessionId: ref.sessionId,
     messageIndex: ref.messageIndex,
+    logicalMessageIndex: 'logicalMessageIndex' in ref ? ref.logicalMessageIndex : undefined,
+    sourceLineIndex: 'sourceLineIndex' in ref ? ref.sourceLineIndex : undefined,
     messageUuid: ref.messageUuid,
     toolUseId: ref.toolUseId,
     timestamp: ref.timestamp,

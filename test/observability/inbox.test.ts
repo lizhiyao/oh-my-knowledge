@@ -2018,12 +2018,11 @@ describe('observe inbox', () => {
     assert.match(rendered, /当前 skill 窗口事件：/);
     assert.match(rendered, /record 粗范围：/);
     assert.match(rendered, /① 这次跑得怎么样/);
-    assert.match(rendered, /数据健康度/);
-    assert.match(rendered, /数据健康度：要看一眼/);
     assert.match(rendered, /这次跑得怎么样/);
     assert.match(rendered, /已完成 \/ 结果如下/);
-    assert.match(rendered, /② 流程规则执行细节/);
-    assert.match(rendered, /③ 原文回溯/);
+    assert.match(rendered, /② 日志上下游链路/);
+    assert.match(rendered, /③ 流程规则执行细节/);
+    assert.match(rendered, /④ 原文回溯/);
     assert.match(rendered, /给 skill 作者的优化建议/);
     assert.match(rendered, /目标关键词/);
     assert.match(rendered, /结果关键词/);
@@ -2506,6 +2505,292 @@ expected_tools:
     ]);
     assert.ok(story.graph.edges.some((edge) => edge.label === '路由'));
     assert.equal(applySession.reviewerReport?.sessionStory.schemaVersion, story.schemaVersion);
+  });
+
+  it('attributes feedback by target object instead of the current skill window', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-object-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/damai-daily</command-name> 生成日报。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'tool1', name: 'Bash', input: { command: 'node run-damai.js' } }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '[文件: omk-reviewer.zip]' },
+      },
+      {
+        type: 'user',
+        uuid: 'u3',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:03.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/omk-reviewer</command-name> 看下这个 skill 的执行流程。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'u3',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:04.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'tool2', name: 'Read', input: { file_path: '/repo-a/omk-reviewer/SKILL.md' } }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const damaiSession = report.experience?.sessions.find((session) => session.skillName === 'damai-daily');
+    assert.ok(damaiSession);
+    const fileSignal = damaiSession.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals)
+      .find((signal) => signal.text.includes('omk-reviewer.zip'));
+    assert.ok(fileSignal);
+    assert.equal(fileSignal.targetObject, 'omk-reviewer');
+    assert.ok((fileSignal.canonicalAttributions ?? fileSignal.attributions).some((attribution) =>
+      attribution.skillName === 'omk-reviewer'
+      && attribution.attributionRole === 'primary_fault'
+      && attribution.reasonCode === 'object_match'
+    ));
+    assert.equal((fileSignal.canonicalAttributions ?? fileSignal.attributions).some((attribution) =>
+      attribution.skillName === 'damai-daily' && attribution.attributionRole === 'primary_fault'
+    ), false);
+  });
+
+  it('keeps apply-cc promise follow-up separate from unrelated preview feedback', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-promise-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 让子 Claude 分析项目。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '已启动子 Claude，完成后我会同步结果。session: claude-test123' }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '怎么样了' },
+      },
+      {
+        type: 'user',
+        uuid: 'u3',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:03.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/ai-worker-webtools</command-name> 用可预览的链接发给我' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'u3',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:04.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'tool1', name: 'Bash', input: { command: 'python3 -m http.server 8899' } }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
+    assert.ok(applySession);
+    const signals = applySession.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals) ?? [];
+    const progressSignal = signals.find((signal) => signal.text === '怎么样了');
+    const previewSignal = signals.find((signal) => signal.text.includes('可预览'));
+    assert.ok(progressSignal);
+    assert.ok(previewSignal);
+    assert.equal(progressSignal.evidenceRef.logicalMessageIndex, progressSignal.evidenceRef.messageIndex);
+    assert.equal(progressSignal.evidenceRef.sourceLineIndex, progressSignal.evidenceRef.messageIndex);
+    assert.ok((progressSignal.canonicalAttributions ?? progressSignal.attributions).some((attribution) =>
+      attribution.skillName === 'apply-cc' && attribution.attributionRole === 'primary_fault' && attribution.reasonCode === 'promise_match'
+    ));
+    assert.ok((previewSignal.canonicalAttributions ?? previewSignal.attributions).some((attribution) =>
+      attribution.skillName === 'ai-worker-webtools' && attribution.attributionRole === 'primary_fault' && attribution.reasonCode === 'object_match'
+    ));
+    assert.equal((previewSignal.canonicalAttributions ?? previewSignal.attributions).some((attribution) =>
+      attribution.skillName === 'apply-cc' && attribution.attributionRole === 'primary_fault'
+    ), false);
+  });
+
+  it('does not classify neutral how-to questions with should as user correction', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-howto-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 帮我看一下服务器上的文件。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '可以，我先确认文件位置。' }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '我现在能够ssh到你的服务器，我应该怎么把这个文件发送到我本地' },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
+    assert.ok(applySession);
+    const signal = applySession.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals)
+      .find((item) => item.text.includes('我现在能够ssh'));
+    assert.ok(signal);
+    assert.equal(signal.type, 'follow_up');
+    assert.equal(applySession.indicators.userCorrectionCount, 0);
+  });
+
+  it('backs downstream feedback up to router skills without hiding executor ownership', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-router-downstream-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/aiprd-task-runner</command-name> 功能咨询：新版确认页是什么逻辑，有开关控制吗' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{
+            type: 'tool_use',
+            id: 'runner1',
+            name: 'Bash',
+            input: {
+              command: 'node ~/.openclaw/workspace-main/skills/apply-cc/scripts/runner.js ~/code/project "功能咨询" "/consult 功能咨询：新版确认页是什么逻辑，有开关控制吗"',
+            },
+          }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '已启动功能咨询，session: claude-router-test，有结果我会直接同步给你。' }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a2',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:30:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '进度' },
+      },
+      {
+        type: 'user',
+        uuid: 'u3',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:40:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '为什么信息没返回' },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const routerSession = report.experience?.sessions.find((session) => session.skillName === 'aiprd-task-runner');
+    const executorSession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
+    assert.ok(routerSession);
+    assert.ok(executorSession);
+    assert.equal(routerSession.reviewerReport?.oneLookMetrics.userFollowUpCount, 1);
+    const feedbackSignal = routerSession.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals)
+      .find((signal) => signal.text === '为什么信息没返回');
+    assert.ok(feedbackSignal);
+    const attributions = feedbackSignal.canonicalAttributions ?? feedbackSignal.attributions;
+    assert.ok(attributions.some((attribution) =>
+      attribution.skillName === 'aiprd-task-runner'
+      && attribution.attributionRole === 'primary_fault'
+    ));
+    assert.ok(attributions.some((attribution) =>
+      attribution.skillName === 'apply-cc'
+      && attribution.attributionRole === 'context_only'
+    ));
   });
 
   it('cuts previous skill segment before next user command in the same trace', () => {

@@ -3,6 +3,8 @@ import type {
   ExperienceChecklistItem,
   ExperienceChecklistItemStatus,
   ExperienceReviewPriority,
+  ExperienceRuntimeSkillType,
+  ExperienceSessionStory,
   ExperienceSessionStoryAnswer,
   ExperienceSessionStoryAnswerKey,
 } from './experience.js';
@@ -17,6 +19,7 @@ export interface ResolveObservationReviewSessionOptions {
     reviewPriority: ExperienceReviewPriority;
     sessionStory?: {
       answers?: ExperienceSessionStoryAnswer[];
+      episodes?: ExperienceSessionStory['episodes'];
     };
   };
   enhancedReview?: SkillLlmEnhancedReviewSections;
@@ -29,6 +32,11 @@ export interface ResolvedObservationReviewSession {
   reviewerSummary?: string;
   ownerSuggestions: ResolvedOwnerSuggestion[];
   skillType?: LlmEnhancedSkillType;
+  skillTypeSource?: 'frontmatter' | 'llm' | 'trace' | 'unknown' | 'conflict';
+  skillTypeConflict?: {
+    llmSkillType?: LlmEnhancedSkillType;
+    traceInferredSkillType?: LlmEnhancedSkillType;
+  };
   typeSpecificChecklist: ExperienceChecklistItem[];
   typeSpecificSummary?: string;
   source: 'manual' | 'llm' | 'deterministic';
@@ -48,27 +56,84 @@ export function resolveObservationReviewSession(options: ResolveObservationRevie
   const deterministicAnswers = session.sessionStory?.answers ?? [];
   const llmAssessment = enhancedReview?.runtimeAssessment;
   const hasLlmEnhancedReview = Boolean(llmAssessment || enhancedReview?.typeSpecificAssessment?.checklist?.length);
+  const skillTypeResolution = resolveSkillType(session, enhancedReview);
   const source: ResolvedObservationReviewSession['source'] = hasSessionManualReview
     ? 'manual'
     : hasLlmEnhancedReview
       ? 'llm'
       : 'deterministic';
+  const suppressTypeSpecific = skillTypeResolution.source === 'conflict';
   return {
-    priority: resolvePriority(session.reviewPriority, enhancedReview, hasSessionManualReview),
+    priority: resolvePriority(session.reviewPriority, enhancedReview, hasSessionManualReview, session, suppressTypeSpecific),
     answers: resolveAnswers({
       sessionId: session.id,
       skillName: session.skillName,
       deterministicAnswers,
       enhancedReview,
+      resolvedSkillType: suppressTypeSpecific ? undefined : skillTypeResolution.skillType,
+      suppressTypeSpecific,
       reviewState,
     }),
     reviewerSummary: enhancedReview?.reviewerSummary,
-    ownerSuggestions: ownerSuggestionTexts(enhancedReview),
-    skillType: enhancedReview?.skillType,
-    typeSpecificChecklist: typeSpecificChecklistItems(enhancedReview),
-    typeSpecificSummary: enhancedReview?.typeSpecificAssessment?.summary,
+    ownerSuggestions: ownerSuggestionTexts(enhancedReview, skillTypeResolution.skillType),
+    skillType: skillTypeResolution.skillType,
+    skillTypeSource: skillTypeResolution.source,
+    skillTypeConflict: skillTypeResolution.conflict,
+    typeSpecificChecklist: suppressTypeSpecific ? [] : typeSpecificChecklistItems(enhancedReview, skillTypeResolution.skillType),
+    typeSpecificSummary: suppressTypeSpecific ? undefined : enhancedReview?.typeSpecificAssessment?.summary,
     source,
   };
+}
+
+interface ResolvedSkillTypeResult {
+  skillType?: LlmEnhancedSkillType;
+  source: 'frontmatter' | 'llm' | 'trace' | 'unknown' | 'conflict';
+  conflict?: {
+    llmSkillType?: LlmEnhancedSkillType;
+    traceInferredSkillType?: LlmEnhancedSkillType;
+  };
+}
+
+function resolveSkillType(
+  session: ResolveObservationReviewSessionOptions['session'],
+  enhancedReview?: SkillLlmEnhancedReviewSections,
+): ResolvedSkillTypeResult {
+  const segmentTypes = skillSegmentTypes(session);
+  if (segmentTypes.declared) return { skillType: segmentTypes.declared, source: 'frontmatter' };
+  const llm = normalizeResolvedSkillType(enhancedReview?.skillType);
+  const trace = segmentTypes.trace;
+  if (llm && trace && llm !== trace) {
+    return {
+      skillType: 'unknown',
+      source: 'conflict',
+      conflict: {
+        llmSkillType: llm,
+        traceInferredSkillType: trace,
+      },
+    };
+  }
+  if (trace) return { skillType: trace, source: 'trace' };
+  if (llm) return { skillType: llm, source: 'llm' };
+  return { skillType: 'unknown', source: 'unknown' };
+}
+
+function skillSegmentTypes(session: ResolveObservationReviewSessionOptions['session']): {
+  declared?: LlmEnhancedSkillType;
+  trace?: LlmEnhancedSkillType;
+} {
+  const segments = (session.sessionStory?.episodes ?? [])
+    .flatMap((episode) => episode.skillSegments ?? [])
+    .filter((segment) => segment.skillName === session.skillName);
+  const declared = segments.map((segment) => normalizeResolvedSkillType(segment.declaredSkillType)).find(Boolean);
+  const trace = segments
+    .map((segment) => normalizeResolvedSkillType(segment.traceInferredSkillType ?? (segment.skillTypeSource === 'trace' ? segment.skillType : undefined)))
+    .find(Boolean);
+  return { declared, trace };
+}
+
+function normalizeResolvedSkillType(value?: ExperienceRuntimeSkillType | LlmEnhancedSkillType): LlmEnhancedSkillType | undefined {
+  if (value === 'router' || value === 'delegation' || value === 'executor' || value === 'advisory') return value;
+  return undefined;
 }
 
 export function resolveObservationReviewPriority(
@@ -83,25 +148,65 @@ function resolvePriority(
   priority: ExperienceReviewPriority,
   enhancedReview: SkillLlmEnhancedReviewSections | undefined,
   hasManualReview: boolean,
+  session?: ResolveObservationReviewSessionOptions['session'],
+  suppressTypeSpecific = false,
 ): ExperienceReviewPriority {
   if (hasManualReview) return priority;
+  const attributionPriority = priorityFromEpisodeAttribution(session);
+  if (attributionPriority === 'review_first') return 'review_first';
   const assessment = enhancedReview?.runtimeAssessment;
-  const typeChecklist = enhancedReview?.typeSpecificAssessment?.checklist ?? [];
-  if (!assessment && typeChecklist.length === 0) return priority;
-  if (typeChecklist.some((item) => item.status === 'failed' || item.status === 'degraded')) return 'review_first';
+  const typeChecklist = suppressTypeSpecific ? [] : enhancedReview?.typeSpecificAssessment?.checklist ?? [];
+  if (!assessment && typeChecklist.length === 0) return attributionPriority ?? priority;
+  const attributionMode = episodeAttributionMode(session);
+  if (typeChecklist.some((item) => item.status === 'failed' || item.status === 'degraded')) {
+    if (attributionMode === 'downstream_only') return maxPriority(priority, 'sample_review');
+    return 'review_first';
+  }
   const hasFailed = assessment && (assessment.goalSatisfaction === 'failed'
     || assessment.declaredBehaviorFit === 'failed'
     || assessment.artifactGoalMatch === 'failed'
     || assessment.userFeeling === 'negative'
     || assessment.userFeeling === 'frustrated');
-  if (hasFailed) return 'review_first';
+  if (hasFailed) {
+    if (attributionMode === 'downstream_only') return maxPriority(priority, 'sample_review');
+    return 'review_first';
+  }
   const hasUnknown = (assessment && (assessment.goalSatisfaction === 'unknown'
     || assessment.declaredBehaviorFit === 'unknown'
     || assessment.artifactGoalMatch === 'unknown'
     || assessment.userFeeling === 'neutral'))
     || typeChecklist.some((item) => item.status === 'unknown');
-  if (hasUnknown && priority === 'routine_sample') return 'sample_review';
-  return priority;
+  if (hasUnknown && priority === 'routine_sample') return maxPriority(attributionPriority ?? priority, 'sample_review');
+  return attributionPriority ? maxPriority(priority, attributionPriority) : priority;
+}
+
+function episodeAttributionMode(session?: ResolveObservationReviewSessionOptions['session']): 'primary' | 'downstream_only' | 'context_or_none' {
+  const signals = session?.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [];
+  const currentSkillAttributions = signals.flatMap((signal) =>
+    (signal.canonicalAttributions ?? signal.attributions ?? []).filter((attribution) => attribution.skillName === session?.skillName)
+  );
+  if (currentSkillAttributions.some((attribution) => attribution.attributionRole === 'primary_fault')) return 'primary';
+  if (currentSkillAttributions.some((attribution) => attribution.attributionRole === 'downstream_related')) return 'downstream_only';
+  return 'context_or_none';
+}
+
+function priorityFromEpisodeAttribution(session?: ResolveObservationReviewSessionOptions['session']): ExperienceReviewPriority | undefined {
+  const signals = session?.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [];
+  const currentSkillSignals = signals.filter((signal) =>
+    (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) => attribution.skillName === session?.skillName && attribution.attributionRole === 'primary_fault')
+  );
+  if (currentSkillSignals.some((signal) => signal.type === 'correction' || signal.type === 'frustration' || signal.type === 'interruption')) return 'review_first';
+  if (currentSkillSignals.length > 0) return 'sample_review';
+  return undefined;
+}
+
+function maxPriority(a: ExperienceReviewPriority, b: ExperienceReviewPriority): ExperienceReviewPriority {
+  const rank: Record<ExperienceReviewPriority, number> = {
+    routine_sample: 0,
+    sample_review: 1,
+    review_first: 2,
+  };
+  return rank[a] >= rank[b] ? a : b;
 }
 
 function resolveAnswers(options: {
@@ -109,6 +214,8 @@ function resolveAnswers(options: {
   skillName: string;
   deterministicAnswers: ExperienceSessionStoryAnswer[];
   enhancedReview?: SkillLlmEnhancedReviewSections;
+  resolvedSkillType?: LlmEnhancedSkillType;
+  suppressTypeSpecific?: boolean;
   reviewState: ObservationReviewState;
 }): ExperienceSessionStoryAnswer[] {
   const { deterministicAnswers, enhancedReview } = options;
@@ -117,7 +224,7 @@ function resolveAnswers(options: {
   return baseAnswers.map((answer) =>
     manualAnswerTouched(options.reviewState, options.sessionId, options.skillName, answer.key)
       ? answer
-      : resolveAnswerFromLlm(answer, enhancedReview)
+      : resolveAnswerFromLlm(answer, enhancedReview, options.resolvedSkillType, Boolean(options.suppressTypeSpecific))
   );
 }
 
@@ -145,21 +252,21 @@ function defaultAnswer(key: ExperienceSessionStoryAnswerKey, label: string): Exp
 function resolveAnswerFromLlm(
   answer: ExperienceSessionStoryAnswer,
   enhancedReview: SkillLlmEnhancedReviewSections,
+  resolvedSkillType?: LlmEnhancedSkillType,
+  suppressTypeSpecific = false,
 ): ExperienceSessionStoryAnswer {
   const assessment = enhancedReview.runtimeAssessment;
   if (!assessment) return answer;
   if (answer.key === 'goal_satisfaction') {
     const status = verdictStatus(assessment.goalSatisfaction);
     const artifactStatus = verdictStatus(assessment.artifactGoalMatch);
-    const goalText = shortList(enhancedReview.userGoal?.slots) || enhancedReview.userGoal?.summary || '未提取到';
-    const typeItems = typeSpecificChecklistForAnswer(enhancedReview, 'goal_satisfaction');
+    const typeItems = suppressTypeSpecific ? [] : typeSpecificChecklistForAnswer(enhancedReview, 'goal_satisfaction', resolvedSkillType);
     return {
       ...answer,
       status: worstAnswerStatus(status, typeItems),
       reason: reasonForStatus(worstAnswerStatus(status, typeItems)),
       text: enhancedReview.reviewerSummary ?? answer.text,
       checklistItems: [
-        checklistItem('llm_user_goal_slots', `用户目标关键词：${goalText}`, goalText !== '未提取到' ? 'passed' : 'unknown', 'LLM 基于运行时用户消息抽取目标关键词。'),
         checklistItem('llm_goal_satisfaction', `用户目标满足：${verdictLabel(assessment.goalSatisfaction)}`, status === 'ok' ? 'passed' : status === 'attention' ? 'failed' : 'unknown', 'LLM 基于运行证据判断目标是否满足。', 'blocking'),
         checklistItem('llm_artifact_goal_match', `产物对题：${verdictLabel(assessment.artifactGoalMatch)}`, artifactStatus === 'ok' ? 'passed' : artifactStatus === 'attention' ? 'failed' : 'unknown', 'LLM 判断产物是否匹配用户目标。', 'attention'),
         ...typeItems,
@@ -168,18 +275,13 @@ function resolveAnswerFromLlm(
   }
   if (answer.key === 'declared_behavior_fit') {
     const status = verdictStatus(assessment.declaredBehaviorFit);
-    const declaredGoal = shortList([
-      ...(enhancedReview.skillDeclaredGoal?.keywords ?? []),
-      ...(enhancedReview.skillDeclaredGoal?.expectedOutcomes ?? []),
-    ]) || enhancedReview.skillDeclaredGoal?.summary || '未提取到';
-    const typeItems = typeSpecificChecklistForAnswer(enhancedReview, 'declared_behavior_fit');
+    const typeItems = suppressTypeSpecific ? [] : typeSpecificChecklistForAnswer(enhancedReview, 'declared_behavior_fit', resolvedSkillType);
     return {
       ...answer,
       status: worstAnswerStatus(status, typeItems),
       reason: reasonForStatus(worstAnswerStatus(status, typeItems)),
       text: enhancedReview.reviewerSummary ?? answer.text,
       checklistItems: [
-        checklistItem('llm_skill_declared_goal', `skill 声明目标：${declaredGoal}`, declaredGoal !== '未提取到' ? 'passed' : 'unknown', 'LLM 基于 SKILL.md 抽取能力声明目标。'),
         checklistItem('llm_declared_behavior_fit', `行为符合声明：${verdictLabel(assessment.declaredBehaviorFit)}`, status === 'ok' ? 'passed' : status === 'attention' ? 'failed' : 'unknown', 'LLM 判断运行行为是否符合 skill 声明。', 'blocking'),
         ...typeItems,
       ],
@@ -188,7 +290,7 @@ function resolveAnswerFromLlm(
   if (answer.key === 'user_feeling') {
     const status = feelingStatus(assessment.userFeeling);
     const signals = enhancedReview.userExperienceSignals;
-    const typeItems = typeSpecificChecklistForAnswer(enhancedReview, 'user_feeling');
+    const typeItems = suppressTypeSpecific ? [] : typeSpecificChecklistForAnswer(enhancedReview, 'user_feeling', resolvedSkillType);
     return {
       ...answer,
       status: worstAnswerStatus(status, typeItems),
@@ -196,11 +298,11 @@ function resolveAnswerFromLlm(
       text: enhancedReview.reviewerSummary ?? answer.text,
       checklistItems: [
         checklistItem('llm_user_useful', `用户觉得有用：${verdictLabel(signals?.useful)}`, verdictItemStatus(signals?.useful), 'LLM 判断用户是否表现出有用或采纳信号。', 'positive'),
-        checklistItem('llm_user_follow_up', `用户追问：${verdictLabel(signals?.followUp)}`, verdictItemStatus(signals?.followUp), 'LLM 判断用户是否继续追问结果、进度或补充上下文。', 'attention'),
-        checklistItem('llm_user_correction', `用户纠正：${verdictLabel(signals?.correction)}`, verdictItemStatus(signals?.correction), 'LLM 判断用户是否明确纠正方向或结果。', 'attention'),
-        checklistItem('llm_user_negative_feedback', `负向反馈：${verdictLabel(signals?.negativeFeedback)}`, verdictItemStatus(signals?.negativeFeedback), 'LLM 判断用户是否表达不满、否定或失望。', 'attention'),
-        checklistItem('llm_user_interruption', `中断流程：${verdictLabel(signals?.interruption)}`, verdictItemStatus(signals?.interruption), 'LLM 判断用户是否中断、停止或放弃当前流程。', 'blocking'),
-        checklistItem('llm_user_frustration', `烦躁/失望：${signals?.frustration ? verdictLabel(signals.frustration) : feelingLabel(assessment.userFeeling)}`, signals?.frustration ? verdictItemStatus(signals.frustration) : status === 'attention' ? 'failed' : status === 'ok' ? 'passed' : 'unknown', 'LLM 基于用户反馈、追问和语气判断用户是否烦躁或失望。', 'attention'),
+        negativeSignalChecklistItem('llm_user_follow_up', '用户追问', signals?.followUp, 'LLM 判断用户是否继续追问结果、进度或补充上下文。', 'attention'),
+        negativeSignalChecklistItem('llm_user_correction', '用户纠正', signals?.correction, 'LLM 判断用户是否明确纠正方向或结果。', 'attention'),
+        negativeSignalChecklistItem('llm_user_negative_feedback', '负向反馈', signals?.negativeFeedback, 'LLM 判断用户是否表达不满、否定或失望。', 'attention'),
+        negativeSignalChecklistItem('llm_user_interruption', '中断流程', signals?.interruption, 'LLM 判断用户是否中断、停止或放弃当前流程。', 'blocking'),
+        negativeSignalChecklistItem('llm_user_frustration', '烦躁/失望', signals?.frustration ?? feelingSignalVerdict(assessment.userFeeling), 'LLM 基于用户反馈、追问和语气判断用户是否烦躁或失望。', 'attention'),
         ...typeItems,
       ],
     };
@@ -211,26 +313,91 @@ function resolveAnswerFromLlm(
 function typeSpecificChecklistForAnswer(
   enhancedReview: SkillLlmEnhancedReviewSections,
   answerKey: ExperienceSessionStoryAnswerKey,
+  skillType?: LlmEnhancedSkillType,
 ): ExperienceChecklistItem[] {
   return (enhancedReview.typeSpecificAssessment?.checklist ?? [])
     .filter((item) => typeSpecificAnswerKey(item.key) === answerKey)
-    .map((item) => typeSpecificChecklistItem(item, enhancedReview.skillType));
+    .map((item) => typeSpecificChecklistItem(item, skillType ?? enhancedReview.skillType));
 }
 
-function typeSpecificChecklistItems(enhancedReview?: SkillLlmEnhancedReviewSections): ExperienceChecklistItem[] {
+function typeSpecificChecklistItems(enhancedReview?: SkillLlmEnhancedReviewSections, skillType?: LlmEnhancedSkillType): ExperienceChecklistItem[] {
   const items = enhancedReview?.typeSpecificAssessment?.checklist ?? [];
-  return items.map((item) => typeSpecificChecklistItem(item, enhancedReview?.skillType));
+  return items.map((item) => typeSpecificChecklistItem(item, skillType ?? enhancedReview?.skillType));
 }
 
 function typeSpecificChecklistItem(item: SkillLlmTypeSpecificChecklistItem, skillType?: LlmEnhancedSkillType): ExperienceChecklistItem {
   return checklistItem(
     `llm_type_${item.key}`,
-    `${skillTypeLabel(skillType)}：${item.label}`,
+    `${skillTypeLabel(skillType)}：${readableTypeSpecificLabel(item, skillType)}`,
     checklistStatus(item.status),
     item.reason || 'LLM 按 skill 类型判断该项运行表现。',
     typeSpecificContribution(item.key, item.status),
     item.suggestionKey,
   );
+}
+
+function readableTypeSpecificLabel(item: SkillLlmTypeSpecificChecklistItem, skillType?: LlmEnhancedSkillType): string {
+  const normalized = normalizeChecklistLabel(item.label || item.key);
+  const keyLabel = typeSpecificKeyLabel(item.key, skillType);
+  const label = keyLabel || normalized || item.key;
+  if (item.status === 'passed') return `已确认：${label}`;
+  if (item.status === 'failed') return failedTypeSpecificLabel(item.key, label);
+  if (item.status === 'degraded') return `证据不足：${label}`;
+  if (item.status === 'not_applicable') return `不适用：${label}`;
+  return `无法判断：${label}`;
+}
+
+function normalizeChecklistLabel(value: string): string {
+  return value
+    .replace(/是否已经/g, '')
+    .replace(/是否/g, '')
+    .replace(/有没有/g, '')
+    .replace(/\?|\？/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function typeSpecificKeyLabel(key: string, skillType?: LlmEnhancedSkillType): string | undefined {
+  const labels: Record<string, string> = {
+    route_selected_correctly: '路由选择正确',
+    user_goal_preserved: '传给下游的用户目标完整',
+    downstream_linked: '下游执行链路已关联',
+    downstream_completed: '下游执行已闭环',
+    user_facing_closed: '已向用户回传结果',
+    asyncPromiseClosed: '异步承诺已关闭',
+    delegation_contract_followed: '遵守委派契约',
+    child_lifecycle_tracked: '完整追踪 child session',
+    parent_boundary_kept: '父会话没有越界接手',
+    child_output_goal_match: 'child 产物匹配原目标',
+    artifact_produced: '产物已生成',
+    final_delivery_clear: '最终回复清楚',
+    question_answered: '问题已回答',
+    conclusion_actionable: '结论可直接使用',
+    workflow_executed: '流程已执行',
+    core_tools_used: '核心工具已使用',
+    evidence_provided: '证据可回溯',
+    uncertainty_stated: '不确定性已说明',
+  };
+  const label = labels[key];
+  if (!label) return undefined;
+  if (skillType === 'delegation' && key === 'delegation_contract_followed') return '编排者没有接手执行';
+  return label;
+}
+
+function failedTypeSpecificLabel(key: string, label: string): string {
+  const failedLabels: Record<string, string> = {
+    delegation_contract_followed: '未遵守委派契约：编排者接手了执行',
+    child_lifecycle_tracked: '未完整追踪 child session',
+    parent_boundary_kept: '父会话疑似越界接手',
+    downstream_linked: '没有关联到下游执行链路',
+    downstream_completed: '下游执行没有闭环',
+    user_facing_closed: '没有向用户回传结果',
+    asyncPromiseClosed: '异步承诺没有关闭',
+    route_selected_correctly: '路由选择不正确',
+    user_goal_preserved: '传给下游的用户目标不完整',
+    child_output_goal_match: 'child 产物没有对齐原目标',
+  };
+  return failedLabels[key] ?? `未通过：${label}`;
 }
 
 function typeSpecificAnswerKey(key: string): ExperienceSessionStoryAnswerKey {
@@ -239,6 +406,8 @@ function typeSpecificAnswerKey(key: string): ExperienceSessionStoryAnswerKey {
     'user_goal_preserved',
     'downstream_completed',
     'user_facing_closed',
+    'asyncPromiseClosed',
+    'async_promise_closed',
     'child_output_goal_match',
     'artifact_produced',
     'final_delivery_clear',
@@ -318,12 +487,41 @@ function verdictItemStatus(value?: string): ExperienceChecklistItemStatus {
   return 'unknown';
 }
 
+function negativeSignalChecklistItem(
+  key: string,
+  label: string,
+  value: string | undefined,
+  reason: string,
+  contribution: ExperienceChecklistContribution,
+): ExperienceChecklistItem {
+  return checklistItem(
+    key,
+    `${label}：${verdictLabel(value)}`,
+    negativeSignalStatus(value),
+    reason,
+    contribution,
+  );
+}
+
+function negativeSignalStatus(value?: string): ExperienceChecklistItemStatus {
+  if (value === 'passed') return 'failed';
+  if (value === 'failed') return 'passed';
+  return 'unknown';
+}
+
+function feelingSignalVerdict(value?: string): 'passed' | 'failed' | 'unknown' {
+  if (value === 'negative' || value === 'frustrated') return 'passed';
+  if (value === 'positive' || value === 'neutral') return 'failed';
+  return 'unknown';
+}
+
 function verdictLabel(value?: string): string {
   if (value === 'passed') return '是';
   if (value === 'failed') return '否';
   return '无法判断';
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function feelingLabel(value?: string): string {
   if (value === 'positive') return '正向';
   if (value === 'neutral') return '中性';
@@ -384,9 +582,9 @@ function hasManualValue(reviewState: ObservationReviewState, targetType: Observa
   return Boolean(entry.note?.trim() || entry.reason?.trim() || entry.verdict);
 }
 
-function ownerSuggestionTexts(enhancedReview?: SkillLlmEnhancedReviewSections): ResolvedOwnerSuggestion[] {
+function ownerSuggestionTexts(enhancedReview?: SkillLlmEnhancedReviewSections, skillType?: LlmEnhancedSkillType): ResolvedOwnerSuggestion[] {
   const checklistLabelByKey = new Map((enhancedReview?.typeSpecificAssessment?.checklist ?? [])
-    .map((item) => [item.key, `${skillTypeLabel(enhancedReview?.skillType)}：${item.label}`] as const));
+    .map((item) => [item.key, `${skillTypeLabel(skillType ?? enhancedReview?.skillType)}：${readableTypeSpecificLabel(item, skillType ?? enhancedReview?.skillType)}`] as const));
   return (enhancedReview?.ownerSuggestions ?? [])
     .flatMap((suggestion): ResolvedOwnerSuggestion[] => {
       const title = suggestion.title?.trim();
@@ -408,6 +606,7 @@ function ownerSuggestionTexts(enhancedReview?: SkillLlmEnhancedReviewSections): 
     .slice(0, 4);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function shortList(values?: string[]): string {
   return Array.from(new Set((values ?? [])
     .map((value) => value.replace(/\s+/g, ' ').trim())
