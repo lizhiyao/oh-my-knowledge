@@ -208,23 +208,22 @@ describe('resolveObservationReviewSession', () => {
 
     assert.equal(resolved.skillType, 'executor');
     assert.equal(resolved.skillTypeSource, 'frontmatter');
-    assert.equal(resolved.skillTypeConflict, undefined);
   });
 
-  it('resolves conflicting LLM and trace skill types to unknown and ignores type-specific verdicts', () => {
+  it('uses LLM skill type before trace inference when frontmatter is missing', () => {
     const resolved = resolveObservationReviewSession({
       session: {
-        id: 'session-conflict-type',
+        id: 'session-llm-type',
         skillName: 'apply-cc',
         reviewPriority: 'routine_sample',
         sessionStory: {
           answers: [
-            answer('declared_behavior_fit', '行为是否符合能力用途'),
+            answer('goal_satisfaction', '用户目标有没有被满足'),
           ],
           episodes: [{
             id: 'episode-1',
             order: 1,
-            sessionId: 'session-conflict-type',
+            sessionId: 'session-llm-type',
             primaryGoal: '执行任务',
             goalEvidenceRefs: [],
             startTimestamp: '2026-05-18T00:00:00.000Z',
@@ -277,16 +276,12 @@ describe('resolveObservationReviewSession', () => {
       reviewState: emptyReviewState,
     });
 
-    assert.equal(resolved.skillType, 'unknown');
-    assert.equal(resolved.skillTypeSource, 'conflict');
-    assert.deepEqual(resolved.skillTypeConflict, {
-      llmSkillType: 'router',
-      traceInferredSkillType: 'executor',
-    });
-    assert.equal(resolved.typeSpecificChecklist.length, 0);
-    assert.equal(resolved.priority, 'sample_review');
-    assert.equal(resolved.answers[0]?.status, 'ok');
-    assert.equal(resolved.answers[0]?.checklistItems.some((item) => item.key === 'llm_type_downstream_completed'), false);
+    assert.equal(resolved.skillType, 'router');
+    assert.equal(resolved.skillTypeSource, 'llm');
+    assert.equal(resolved.typeSpecificChecklist[0]?.key, 'llm_type_downstream_completed');
+    assert.equal(resolved.priority, 'review_first');
+    assert.equal(resolved.answers[0]?.status, 'attention');
+    assert.equal(resolved.answers[0]?.checklistItems.some((item) => item.key === 'llm_type_downstream_completed'), true);
   });
 
   it('treats detected negative user feeling signals as attention items', () => {

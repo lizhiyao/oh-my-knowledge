@@ -284,7 +284,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const indicatorHelps: Record<IndicatorHelpKey, string> = {
     userCorrection: '只统计人工用户消息里的明确纠偏表达。短词“不对 / 不是 / 错了”必须前后有空格、逗号、句号、问号等分隔；“不对称”“是不是”不会算纠正。',
     userInterruption: '统计 Claude trace 里的 “[Request interrupted by user]” 等用户主动中断事件，表示当前执行被人工叫停。',
-    userFollowUp: '按当前报告的归因结果统计追问或补充。router / delegation 类型会把下游闭环相关追问回挂；与当前 skill 无关的同窗口用户消息不计入。',
+    userFollowUp: '按当前报告的归因结果统计追问或补充。router / delegation 类型会把下游调用链路中的用户追问计入体验复盘；与当前 skill 无关的同窗口用户消息不计入。',
     negativeFeedback: '统计“没用 / 垃圾 / 菜 / 做错了 / 不行 / 失败 / 看不懂 / 有问题”等负向表达。这是规则命中，不是 LLM 情绪识别。',
     positiveFeedback: '统计“很好 / good job / 做得好 / 很棒 / 优秀 / 厉害 / 很有用 / 很有价值”等正向表达，用来保留用户认可证据。',
     userGoalShift: '统计“换个方向 / 先不 / 不用这个 / 另一个问题”等目标切换表达。它表示当前目标可能中止或切走，不直接等同于 skill 做错。',
@@ -687,7 +687,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         const rows = signals.slice(0, 8).map((signal) => {
           const role = (signal.canonicalAttributions ?? signal.attributions ?? [])
             .filter((attribution) => feedbackAttributionBelongsToDisplaySession(attribution, session))
-            .map((attribution) => attribution.attributionRole === 'downstream_related' ? '下游回挂' : '直接归因')
+            .map((attribution) => attribution.attributionRole === 'downstream_related' ? '下游调用链路' : '直接归因')
             .find(Boolean) ?? '归因命中';
           return `#${signal.evidenceRef.messageIndex ?? '—'} ${role}：${signal.text.slice(0, 80).replace(/\s+/g, ' ')}`;
         });
@@ -3745,11 +3745,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  };
     const inboxSkillTypeSourceText = (resolved: ResolvedObservationReviewSession): string => {
       if (resolved.skillTypeSource === 'frontmatter') return '作者声明';
-      if (resolved.skillTypeSource === 'trace') return '规则推断';
       if (resolved.skillTypeSource === 'llm') return '模型识别';
-      if (resolved.skillTypeSource === 'conflict') {
-        return `类型冲突：模型 ${inboxLlmSkillTypeLabel(resolved.skillTypeConflict?.llmSkillType)} / 规则 ${inboxLlmSkillTypeLabel(resolved.skillTypeConflict?.traceInferredSkillType)}`;
-      }
+      if (resolved.skillTypeSource === 'trace') return '规则推断';
       return '建议声明';
     };
 	  const inboxSkillRoleHelpKey = (role: 'router' | 'executor' | 'mixed' | 'unknown'): IndicatorHelpKey => {
@@ -4234,30 +4231,73 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  );
     const inboxTypeDeclarationSuggestion = (resolved: ResolvedObservationReviewSession): ResolvedOwnerSuggestion | undefined => {
       if (resolved.skillTypeSource === 'frontmatter') return undefined;
-      if (resolved.skillTypeSource === 'conflict') {
-        return inboxTextSuggestion(
-          '在 SKILL.md frontmatter 明确 skill 类型',
-          `当前类型判断不一致：${inboxSkillTypeSourceText(resolved)}。为避免报告按错误类型给建议，请在 SKILL.md frontmatter 中声明 skillType。`,
-          'SKILL.md frontmatter 中出现 skillType: router / delegation / executor / advisory 之一，后续报告以作者声明为准。',
-        );
-      }
+      const frontmatterExample = '示例：在 SKILL.md 顶部 frontmatter 增加 skillType: router / delegation / executor / advisory 之一。';
       return inboxTextSuggestion(
         '在 SKILL.md frontmatter 声明 skill 类型',
-        '当前类型来自规则推断或模型识别，不如作者声明稳定。建议在 SKILL.md frontmatter 中声明 skillType，让观测报告按正确类型生成流程判断和 owner 建议。',
-        'SKILL.md frontmatter 中出现 skillType: router / delegation / executor / advisory 之一。',
+        `当前类型来自规则推断或模型识别，不如作者声明稳定。建议在 SKILL.md frontmatter 中声明 skillType，让观测报告按正确类型生成流程判断和 owner 建议。${frontmatterExample}`,
+        'SKILL.md frontmatter 中出现明确 skillType。',
       );
+    };
+    const inboxTypeFallbackSuggestion = (resolved: ResolvedObservationReviewSession): ResolvedOwnerSuggestion | undefined => {
+      if (resolved.skillType === 'router') {
+        return inboxTextSuggestion(
+          '完善路由型 skill 的下游闭环标准',
+          '路由型 skill 需要声明：如何选择下游能力、如何保留用户目标、如何关联下游 session / 产物、用户追问时如何返回状态。',
+          '下次观测中能看到路由选择、下游链路关联、下游完成态、用户侧闭环四类证据。',
+        );
+      }
+      if (resolved.skillType === 'delegation') {
+        return inboxTextSuggestion(
+          '完善委派型 skill 的 child 生命周期标准',
+          '委派型 skill 需要声明：child 如何启动、如何追踪 session / ttyd / tmux、父会话不能接手哪些原始任务、异步完成或失败如何通知用户。',
+          '下次观测中能看到 child lifecycle、parent boundary、async notification 三类证据。',
+        );
+      }
+      if (resolved.skillType === 'executor') {
+        return inboxTextSuggestion(
+          '完善执行型 skill 的完成态和产物标准',
+          '执行型 skill 需要声明：核心工具或动作是什么、什么算执行完成、标准产物是什么、最后如何明确交付给用户。',
+          '下次观测中能看到核心工具命中、最终回复、标准产物路径或链接。',
+        );
+      }
+      if (resolved.skillType === 'advisory') {
+        return inboxTextSuggestion(
+          '完善咨询型 skill 的结论和证据标准',
+          '咨询型 skill 需要声明：结论如何组织、证据如何引用、未知项如何说明、下一步建议如何表达。',
+          '下次观测中能看到明确结论、证据来源、未确认项和可执行下一步。',
+        );
+      }
+      return undefined;
     };
     const inboxRuleTypeSuggestions = (skill: ExperienceSessionSummary, resolved: ResolvedObservationReviewSession): ResolvedOwnerSuggestion[] => {
       const out: ResolvedOwnerSuggestion[] = [];
       const typeSuggestion = inboxTypeDeclarationSuggestion(resolved);
       if (typeSuggestion) out.push(typeSuggestion);
+      const typeFallbackSuggestion = inboxTypeFallbackSuggestion(resolved);
+      if (typeFallbackSuggestion) out.push(typeFallbackSuggestion);
       const indicators = displayIndicatorsForSession(skill);
+      const downstreamSignals = canonicalFeedbackSignalsForDisplay(skill).filter((signal) =>
+        (signal.type === 'follow_up' || signal.type === 'interruption')
+        && (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
+          attribution.skillName === skill.skillName && attribution.attributionRole === 'downstream_related'
+        )
+      );
+      if (downstreamSignals.length > 0 && resolved.skillType !== 'router' && resolved.skillType !== 'delegation') {
+        const hasInterruption = downstreamSignals.some((signal) => signal.type === 'interruption');
+        out.push(inboxTextSuggestion(
+          hasInterruption ? '补充下游调用链路的中断处理' : '补充下游调用链路的追问处理',
+          hasInterruption
+            ? '这次运行出现下游调用链路，且用户在下游链路中手动中断。即使当前 skill 类型未判为路由或委派，也需要声明下游状态回收、停止处理和用户通知规范。'
+            : '这次运行出现下游调用链路，且用户对下游进度或结果有追问。即使当前 skill 类型未判为路由或委派，也需要声明下游状态回收和用户追问处理规范。',
+          '下次观测中，下游运行中 / 完成 / 失败 / 中断都有明确状态，并能关联到当前 skill 的用户侧闭环。',
+        ));
+      }
       if (resolved.skillType === 'router') {
         if (indicators.userFollowUpCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0) {
           out.push(inboxTextSuggestion(
-            '补充下游结果回挂和完成态回收',
-            '这个路由型 skill 的用户反馈来自下游链路。建议把下游 session、产物、完成态、失败原因回挂到 router，让用户追问时能看到明确状态。',
-            '下次观测中，下游完成/失败/跑偏都能回溯到 router，并有明确 user-facing close。',
+            '补充下游调用链路的追问处理',
+            '这个路由型 skill 的下游调用链路出现用户追问。建议把下游 session、产物、完成态、失败原因和用户可见状态写清楚。',
+            '下次观测中，下游完成 / 失败 / 跑偏能关联到路由能力，并且用户追问时能看到明确状态。',
           ));
         }
       } else if (resolved.skillType === 'delegation') {
@@ -4284,12 +4324,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             '下次同类咨询中，用户无需追问即可看到结论和证据来源。',
           ));
         }
-      } else if (!typeSuggestion) {
-        out.push(inboxTextSuggestion(
-          '补充 skill 类型和职责边界',
-          '当前报告无法稳定判断这个 skill 是路由、委派、执行还是咨询型。建议先声明类型，再补 workflow、hardRules 和完成态。',
-          'SKILL.md 中能读到 skillType、标准流程、硬性规则和完成态说明。',
-        ));
       }
       return out;
     };
@@ -4303,7 +4337,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const reportSuggestions = skill.reviewerReport?.authorSuggestions ?? [];
 	    for (const suggestion of reportSuggestions) {
 	      if (/下游|回挂|追问|纠正|中断|异步闭环|结果回传/.test(suggestion)) {
-	        suggestions.push(inboxTextSuggestion('补强下游闭环和反馈回挂', suggestion));
+	        suggestions.push(inboxTextSuggestion('补强下游闭环和反馈关联', suggestion));
 	      }
 	    }
 	    if (suggestions.length === 0 && reportSuggestions.length > 0) {
@@ -4588,7 +4622,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  };
 	  const inboxEpisodeAttributionLabel = (role?: string): string => {
 	    if (role === 'primary_fault') return '直接归因';
-	    if (role === 'downstream_related') return '上游回挂';
+	    if (role === 'downstream_related') return '下游链路';
 	    if (role === 'context_only') return '背景相关';
 	    return '关联';
 	  };
@@ -4599,7 +4633,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  ): string => {
 	    const signalLabel = inboxEpisodeFeedbackLabel(signal.type);
 	    if (attribution?.attributionRole === 'downstream_related') {
-	      return `上游回挂：${segment.skillName} 派发的下游链路出现${signalLabel}`;
+	      return `下游调用链路用户有${signalLabel}`;
 	    }
 	    if (attribution?.attributionRole === 'primary_fault') {
 	      if (attribution.reasonCode === 'promise_match') return `直接归因：用户在追问此前承诺的结果`;

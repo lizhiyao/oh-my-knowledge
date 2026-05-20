@@ -3402,7 +3402,7 @@ function routerClosureChecklistItems(
         reason: hasClosure
           ? '看到当前链路里有最终答复或产物线索。'
           : hasDownstreamRisk
-            ? '下游链路出现用户追问 / 纠正 / 中断，但当前 router 视角没看到清晰闭环。'
+            ? '下游调用链路出现用户追问 / 纠正 / 中断，但当前路由能力视角没看到清晰闭环。'
             : '已看到派发，但还不能确认下游是否完成并回传。',
         evidenceRefs: [
           session.evidenceChain.lastAssistantMessage,
@@ -3413,7 +3413,7 @@ function routerClosureChecklistItems(
     ];
   }
   if (answerKey === 'user_feeling') {
-    return downstreamFeedbackRiskChecklistItems(runtime, 'router_downstream_feedback_seen', '下游反馈已回挂 router');
+    return downstreamFeedbackRiskChecklistItems(runtime, 'router_downstream_feedback_seen', '下游调用链路用户有追问');
   }
   return [];
 }
@@ -3454,7 +3454,7 @@ function delegationClosureChecklistItems(
     ];
   }
   if (answerKey === 'user_feeling') {
-    return downstreamFeedbackRiskChecklistItems(runtime, 'delegation_downstream_feedback_seen', 'child 反馈已回挂调度链路');
+    return downstreamFeedbackRiskChecklistItems(runtime, 'delegation_downstream_feedback_seen', 'child 调用链路用户有反馈');
   }
   return [];
 }
@@ -3974,7 +3974,7 @@ function reviewerAuthorSuggestions(session: ExperienceSessionSummary, findings: 
     }
   }
   if (findings.some((finding) => finding.ruleSource === 'router_user_facing_closure_absent')) {
-    pushSuggestion('router_user_facing_closure_absent', '补充下游结果回传和异步闭环规范，避免 router 只负责启动、不负责结果回收。', 4);
+    pushSuggestion('router_user_facing_closure_absent', '补充下游结果回传和异步闭环规范，避免路由能力只负责启动、不负责结果回收。', 4);
   } else if (findings.some((finding) => finding.ruleSource === 'final_delivery_absent')) {
     pushSuggestion('final_delivery_absent', '补充明确的产物交付表达或交付标记，避免过程进展被当成完成。', 4);
   }
@@ -4014,7 +4014,7 @@ function severityForChecklistStatus(status: ExperienceChecklistItemStatus): numb
 function suggestionTextForChecklistItem(key: string): string | undefined {
   const suggestions: Record<string, string> = {
     final_delivery_absent: '在最后回复里加上「已完成 / 结果如下」之类的明确收尾，让用户知道任务跑完了。',
-    router_user_facing_closure_absent: '在 router / 调度能力里写清楚：下游完成后必须回收结果并同步给用户；如果未完成，要说明当前状态和下一步。',
+    router_user_facing_closure_absent: '在路由 / 调度能力里写清楚：下游完成后必须回收结果并同步给用户；如果未完成，要说明当前状态和下一步。',
     artifact_absent: '如果 skill 应该产出文档、demo、代码或报告，最终回复里要附上文件路径、链接或代码块。',
     goal_shift_review: '用户中途切了目标，后续追问不属于这个 skill。看下是否要在 description 里说清楚 skill 的边界。',
     user_negative_or_interrupted: '用户出现了不满 / 纠正 / 叫停。先看原文是哪一步触发的，再决定改 description、补标准流程还是补硬性规则。',
@@ -4028,7 +4028,7 @@ function suggestionTextForChecklistItem(key: string): string | undefined {
     user_correction_review: '用户纠正了多次。把纠正内容沉淀到 SKILL.md 的标准流程或硬性规则，避免下次同类返工。',
     follow_up_review: '用户追问比较多。看是围绕产物继续推进（好事），还是因为没拿到结果而反复问（要改）。',
     user_interruption_review: '用户叫停了执行。看下断的那一步是不是 skill 没声明标准流程导致跑偏。',
-    downstream_feedback_review: '这次任务的下游执行链路被用户追问、纠正或中断。router / 调度类 skill 需要把下游状态、结果回收和异常通知写清楚，避免只负责启动、不负责闭环。',
+    downstream_feedback_review: '这次任务的下游执行链路被用户追问、纠正或中断。路由 / 调度类 skill 需要把下游状态、结果回收和异常通知写清楚，避免只负责启动、不负责闭环。',
   };
   return suggestions[key];
 }

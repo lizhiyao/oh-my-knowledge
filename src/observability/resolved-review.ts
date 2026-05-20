@@ -32,11 +32,7 @@ export interface ResolvedObservationReviewSession {
   reviewerSummary?: string;
   ownerSuggestions: ResolvedOwnerSuggestion[];
   skillType?: LlmEnhancedSkillType;
-  skillTypeSource?: 'frontmatter' | 'llm' | 'trace' | 'unknown' | 'conflict';
-  skillTypeConflict?: {
-    llmSkillType?: LlmEnhancedSkillType;
-    traceInferredSkillType?: LlmEnhancedSkillType;
-  };
+  skillTypeSource?: 'frontmatter' | 'llm' | 'trace' | 'unknown';
   typeSpecificChecklist: ExperienceChecklistItem[];
   typeSpecificSummary?: string;
   source: 'manual' | 'llm' | 'deterministic';
@@ -62,36 +58,29 @@ export function resolveObservationReviewSession(options: ResolveObservationRevie
     : hasLlmEnhancedReview
       ? 'llm'
       : 'deterministic';
-  const suppressTypeSpecific = skillTypeResolution.source === 'conflict';
   return {
-    priority: resolvePriority(session.reviewPriority, enhancedReview, hasSessionManualReview, session, suppressTypeSpecific),
+    priority: resolvePriority(session.reviewPriority, enhancedReview, hasSessionManualReview, session),
     answers: resolveAnswers({
       sessionId: session.id,
       skillName: session.skillName,
       deterministicAnswers,
       enhancedReview,
-      resolvedSkillType: suppressTypeSpecific ? undefined : skillTypeResolution.skillType,
-      suppressTypeSpecific,
+      resolvedSkillType: skillTypeResolution.skillType,
       reviewState,
     }),
     reviewerSummary: enhancedReview?.reviewerSummary,
     ownerSuggestions: ownerSuggestionTexts(enhancedReview, skillTypeResolution.skillType),
     skillType: skillTypeResolution.skillType,
     skillTypeSource: skillTypeResolution.source,
-    skillTypeConflict: skillTypeResolution.conflict,
-    typeSpecificChecklist: suppressTypeSpecific ? [] : typeSpecificChecklistItems(enhancedReview, skillTypeResolution.skillType),
-    typeSpecificSummary: suppressTypeSpecific ? undefined : enhancedReview?.typeSpecificAssessment?.summary,
+    typeSpecificChecklist: typeSpecificChecklistItems(enhancedReview, skillTypeResolution.skillType),
+    typeSpecificSummary: enhancedReview?.typeSpecificAssessment?.summary,
     source,
   };
 }
 
 interface ResolvedSkillTypeResult {
   skillType?: LlmEnhancedSkillType;
-  source: 'frontmatter' | 'llm' | 'trace' | 'unknown' | 'conflict';
-  conflict?: {
-    llmSkillType?: LlmEnhancedSkillType;
-    traceInferredSkillType?: LlmEnhancedSkillType;
-  };
+  source: 'frontmatter' | 'llm' | 'trace' | 'unknown';
 }
 
 function resolveSkillType(
@@ -101,19 +90,9 @@ function resolveSkillType(
   const segmentTypes = skillSegmentTypes(session);
   if (segmentTypes.declared) return { skillType: segmentTypes.declared, source: 'frontmatter' };
   const llm = normalizeResolvedSkillType(enhancedReview?.skillType);
-  const trace = segmentTypes.trace;
-  if (llm && trace && llm !== trace) {
-    return {
-      skillType: 'unknown',
-      source: 'conflict',
-      conflict: {
-        llmSkillType: llm,
-        traceInferredSkillType: trace,
-      },
-    };
-  }
-  if (trace) return { skillType: trace, source: 'trace' };
   if (llm) return { skillType: llm, source: 'llm' };
+  const trace = segmentTypes.trace;
+  if (trace) return { skillType: trace, source: 'trace' };
   return { skillType: 'unknown', source: 'unknown' };
 }
 
