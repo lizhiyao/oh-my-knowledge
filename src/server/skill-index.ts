@@ -201,6 +201,12 @@ function isEvolveRoundVariant(report: EvaluationReport, variant: string): boolea
 function skillNameForEvalVariant(report: EvaluationReport, variant: string): string | null {
   if (isEvolveRoundVariant(report, variant)) return report.meta.evolve?.skillName ?? null;
   if (variant === 'baseline') return null;
+  // If variant is an absolute path (e.g. /Users/.../skills/foo/SKILL.md), extract the skill name
+  // from the parent directory name (standard omk convention: skill name = directory containing SKILL.md).
+  if (variant.startsWith('/') || variant.startsWith('~')) {
+    const parts = variant.replace(/\/SKILL\.md$/i, '').split('/');
+    return parts[parts.length - 1] || variant;
+  }
   return variant;
 }
 
