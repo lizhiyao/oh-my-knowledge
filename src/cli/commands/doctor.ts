@@ -281,6 +281,7 @@ export default class Doctor extends BaseCommand {
 function persistDoctorReport(report: import('../../types/doctor.js').DoctorReport): void {
   const dir = join(homedir(), '.oh-my-knowledge', 'doctors');
   mkdirSync(dir, { recursive: true });
+  const ts = report.timestamp.replace(/[:.]/g, '').slice(0, 15);
   for (const skill of report.skills) {
     const perSkill = {
       ...report,
@@ -293,6 +294,6 @@ function persistDoctorReport(report: import('../../types/doctor.js').DoctorRepor
       outcome: skill.status === 'fail' ? 'failed' : skill.status === 'warn' ? 'warnings_only' : 'passed',
     };
     const safeName = skill.skillName.replace(/[/\\:*?"<>|]/g, '_');
-    writeFileSync(join(dir, `${safeName}.json`), JSON.stringify(perSkill, null, 2), 'utf8');
+    writeFileSync(join(dir, `${safeName}-${ts}.json`), JSON.stringify(perSkill, null, 2), 'utf8');
   }
 }
