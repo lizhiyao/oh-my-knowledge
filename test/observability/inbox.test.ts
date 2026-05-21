@@ -3129,7 +3129,7 @@ expected_tools:
     assert.equal(record.enhancedReview?.runtimeAssessment?.userFeeling, 'neutral');
     assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充标准化硬性规则声明'));
     assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充标准化流程和完成标准'));
-    assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充用户反馈采集点'));
+    assert.equal(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充用户反馈采集点'), false);
     assert.equal(record.standards.length, 2);
     assert.equal(record.standards[0].status, 'pending_review');
     assert.equal(record.standards[0].source, 'llm_soft_standard');
@@ -3381,9 +3381,8 @@ expected_tools:
     assert.equal(finalSuggestions.length, 10);
     assert.equal(finalSuggestions[0].title, '补充标准化硬性规则声明');
     assert.equal(finalSuggestions[1].title, '补充标准化流程和完成标准');
-    assert.equal(finalSuggestions[2].title, '补充用户反馈采集点');
-    // LLM 普通建议被前置兜底挤掉最后 3 条，其余 7 条仍按顺序保留
-    assert.equal(finalSuggestions[3].title, 'LLM 普通建议 1');
-    assert.equal(finalSuggestions[9].title, 'LLM 普通建议 7');
+    // LLM 普通建议被前置兜底挤掉最后 2 条，其余 8 条仍按顺序保留；反馈建议没有事实门禁时不再强制注入。
+    assert.equal(finalSuggestions[2].title, 'LLM 普通建议 1');
+    assert.equal(finalSuggestions[9].title, 'LLM 普通建议 8');
   });
 });

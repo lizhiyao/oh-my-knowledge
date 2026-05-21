@@ -7,7 +7,7 @@ import { readPromptDocument } from '../../src/shared/llm-prompts/index.js';
 // 对 goal satisfaction / behavior fit / artifact match / user feeling 的最终判定。
 // 任何 prompt 字节级变化(含空白、schema、version 文本)都会让跨版本运行复盘不可比。
 // 若确实要改,PR 标题 / description 必须明确标 BREAKING-COMPARABILITY。
-const FROZEN_LLM_ENHANCED_REVIEW_PROMPT_HASH = '9b68089276af671c0e8ea9dff55c465b7a899b915c72109e8be8b37851edfc3a';
+const FROZEN_LLM_ENHANCED_REVIEW_PROMPT_HASH = '2dd9a2af01fc22b1fad21939ff1ccc794b08f9455aba6ba67809bd062e188d40';
 
 describe('LLM enhanced review prompt hash byte-level freeze', () => {
   it('v2026-05-21.v6 hash matches the frozen value', () => {

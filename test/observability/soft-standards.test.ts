@@ -17,12 +17,13 @@ function ref(input: {
   kind?: string;
   toolName?: string;
   messageIndex?: number;
+  sessionId?: string;
 }): SkillRuntimeEvidencePackRef {
   return {
     id: input.id,
     kind: (input.kind ?? 'assistant_message') as SkillRuntimeEvidencePackRef['kind'],
     sourceTrace: 'trace.jsonl',
-    sessionId: 's1',
+    sessionId: input.sessionId ?? 's1',
     snippet: input.snippet,
     label: input.snippet,
     sourceType: input.sourceType,
@@ -32,7 +33,7 @@ function ref(input: {
   };
 }
 
-function pack(refs: SkillRuntimeEvidencePackRef[]): SkillRuntimeEvidencePack {
+function pack(refs: SkillRuntimeEvidencePackRef[], nodeEvidence: SkillRuntimeEvidencePack['nodeEvidence'] = []): SkillRuntimeEvidencePack {
   return {
     schemaVersion: 1,
     skillName: 'test-skill',
@@ -45,7 +46,7 @@ function pack(refs: SkillRuntimeEvidencePackRef[]): SkillRuntimeEvidencePack {
       userFeedback: refs.filter((item) => item.sourceType === 'user_feedback'),
       artifacts: refs.filter((item) => item.sourceType === 'artifact'),
     },
-    nodeEvidence: [],
+    nodeEvidence,
     evidenceQuality: {
       pollutedSourceCount: 0,
       windowTooNarrow: false,
@@ -122,9 +123,9 @@ describe('runtime standard signal matcher', () => {
     },
     {
       type: 'artifact_path',
-      signalValue: '.md',
-      signalOp: 'suffix',
-      matchingRef: ref({ id: 'artifact-path-ok', sourceType: 'artifact', snippet: 'outputs/result.md' }),
+      signalValue: '*.md',
+      signalOp: 'glob',
+      matchingRef: ref({ id: 'artifact-path-ok', sourceType: 'artifact', snippet: 'artifact\noutputs/result.md' }),
       nonMatchingRef: ref({ id: 'artifact-path-no', sourceType: 'artifact', snippet: 'outputs/result.html' }),
     },
     {
@@ -224,16 +225,34 @@ describe('runtime standard trigger evaluator', () => {
     assert.equal(results[1].status, 'violated');
   });
 
-  it('supports same_episode_after and same_node scopes', () => {
-    const episodeAfter = node({
-      nodeId: 'episode-after',
+  it('keeps same_skill_segment anchored to the same session when an anchor exists', () => {
+    const standard = node({
+      conditionSignals: [signal('assistant_text', '读取失败')],
+      forbiddenSignals: [signal('tool_name', 'Bash', 'equals')],
+      triggers: [{
+        when: { signalGroup: 'conditionSignals', signalId: 'assistant_text_signal' },
+        forbidden: { signalGroup: 'forbiddenSignals', signalId: 'tool_name_signal' },
+        verdict: 'violated',
+        windowScope: 'same_skill_segment',
+      }],
+    });
+    const result = evaluateRuntimeStandardNodes([standard], pack([
+      ref({ id: 'fail', sourceType: 'assistant_message', snippet: '读取失败', sessionId: 's1' }),
+      ref({ id: 'bash-other-session', sourceType: 'tool_call', toolName: 'Bash', snippet: 'run', sessionId: 's2' }),
+    ]))[0];
+    assert.equal(result.status, 'unknown');
+  });
+
+  it('supports same_session_after and same_node scopes', () => {
+    const sessionAfter = node({
+      nodeId: 'session-after',
       conditionSignals: [signal('assistant_text', '授权失败')],
       forbiddenSignals: [signal('tool_name', 'Bash', 'equals')],
       triggers: [{
         when: { signalGroup: 'conditionSignals', signalId: 'assistant_text_signal' },
         forbidden: { signalGroup: 'forbiddenSignals', signalId: 'tool_name_signal' },
         verdict: 'violated',
-        windowScope: 'same_episode_after',
+        windowScope: 'same_session_after',
       }],
     });
     const sameNode = node({
@@ -245,16 +264,51 @@ describe('runtime standard trigger evaluator', () => {
         windowScope: 'same_node',
       }],
     });
-    const results = evaluateRuntimeStandardNodes([episodeAfter, sameNode], pack([
+    const sameNodeRef = ref({ id: 'result', sourceType: 'assistant_message', snippet: '结论如下', messageIndex: 12 });
+    const results = evaluateRuntimeStandardNodes([sessionAfter, sameNode], pack([
       ref({ id: 'auth-fail', sourceType: 'assistant_message', snippet: '授权失败', messageIndex: 10 }),
       ref({ id: 'bash-after', sourceType: 'tool_call', toolName: 'Bash', snippet: 'run workflow', messageIndex: 11 }),
-      ref({ id: 'result', sourceType: 'assistant_message', snippet: '结论如下', messageIndex: 12 }),
-    ]));
+      sameNodeRef,
+    ], [{
+      nodeId: 'same-node',
+      kind: 'workflowNode',
+      title: 'same-node',
+      expectation: '结论',
+      deterministicStatus: 'passed',
+      deterministicReason: 'matched',
+      candidateEvidenceRefs: [sameNodeRef],
+      candidateEvidenceSnippets: ['结论如下'],
+    }]));
     assert.equal(results[0].status, 'violated');
     assert.equal(results[1].status, 'passed');
   });
 
-  it('keeps same_episode_after from firing before its anchor', () => {
+  it('keeps same_node from matching refs outside the node evidence set', () => {
+    const standard = node({
+      nodeId: 'same-node',
+      expectedSignals: [signal('assistant_text', '结论')],
+      triggers: [{
+        required: { signalGroup: 'expectedSignals', signalId: 'assistant_text_signal' },
+        verdict: 'passed',
+        windowScope: 'same_node',
+      }],
+    });
+    const result = evaluateRuntimeStandardNodes([standard], pack([
+      ref({ id: 'global-result', sourceType: 'assistant_message', snippet: '结论如下', messageIndex: 12 }),
+    ], [{
+      nodeId: 'same-node',
+      kind: 'workflowNode',
+      title: 'same-node',
+      expectation: '结论',
+      deterministicStatus: 'manual_review',
+      deterministicReason: 'no candidate',
+      candidateEvidenceRefs: [],
+      candidateEvidenceSnippets: [],
+    }]))[0];
+    assert.equal(result.status, 'missed');
+  });
+
+  it('keeps same_session_after from firing before its anchor', () => {
     const standard = node({
       conditionSignals: [signal('assistant_text', '授权失败')],
       forbiddenSignals: [signal('tool_name', 'Bash', 'equals')],
@@ -262,12 +316,30 @@ describe('runtime standard trigger evaluator', () => {
         when: { signalGroup: 'conditionSignals', signalId: 'assistant_text_signal' },
         forbidden: { signalGroup: 'forbiddenSignals', signalId: 'tool_name_signal' },
         verdict: 'violated',
-        windowScope: 'same_episode_after',
+        windowScope: 'same_session_after',
       }],
     });
     const result = evaluateRuntimeStandardNodes([standard], pack([
       ref({ id: 'bash-before', sourceType: 'tool_call', toolName: 'Bash', snippet: 'run workflow', messageIndex: 9 }),
       ref({ id: 'auth-fail', sourceType: 'assistant_message', snippet: '授权失败', messageIndex: 10 }),
+    ]))[0];
+    assert.equal(result.status, 'unknown');
+  });
+
+  it('does not treat unindexed refs as after the anchor', () => {
+    const standard = node({
+      conditionSignals: [signal('assistant_text', '授权失败')],
+      forbiddenSignals: [signal('tool_name', 'Bash', 'equals')],
+      triggers: [{
+        when: { signalGroup: 'conditionSignals', signalId: 'assistant_text_signal' },
+        forbidden: { signalGroup: 'forbiddenSignals', signalId: 'tool_name_signal' },
+        verdict: 'violated',
+        windowScope: 'same_session_after',
+      }],
+    });
+    const result = evaluateRuntimeStandardNodes([standard], pack([
+      ref({ id: 'auth-fail', sourceType: 'assistant_message', snippet: '授权失败' }),
+      ref({ id: 'bash-no-index', sourceType: 'tool_call', toolName: 'Bash', snippet: 'run workflow' }),
     ]))[0];
     assert.equal(result.status, 'unknown');
   });
@@ -323,6 +395,16 @@ describe('runtime standard trigger evaluator', () => {
 describe('runtime standard normalizers', () => {
   it('rejects unsupported op/type combinations and malformed triggers', () => {
     assert.equal(normalizeRuntimeSignals([{ id: 'bad', type: 'artifact_kind', value: 'document', op: 'glob' }]).length, 0);
+    assert.equal(normalizeRuntimeSignals([
+      { id: 'same id', type: 'tool_name', value: 'Read' },
+      { id: 'same#id', type: 'tool_name', value: 'Bash' },
+    ]).length, 1);
     assert.equal(normalizeRuntimeTriggers([{ verdict: 'passed', windowScope: 'same_session_after' }]).length, 0);
+    assert.equal(normalizeRuntimeTriggers([{
+      required: { signalGroup: 'expectedSignals', signalId: 'tool' },
+      forbidden: { signalGroup: 'forbiddenSignals', signalId: 'tool' },
+      verdict: 'passed',
+      windowScope: 'same_skill_segment',
+    }]).length, 0);
   });
 });

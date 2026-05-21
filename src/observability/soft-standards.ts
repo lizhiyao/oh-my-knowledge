@@ -75,7 +75,6 @@ export type RuntimeNodeVerdict = 'passed' | 'missed' | 'violated' | 'unknown' | 
 export type RuntimeTriggerWindowScope =
   | 'same_node'
   | 'same_skill_segment'
-  | 'same_episode_after'
   | 'same_session_after'
   | 'anywhere_in_session';
 
@@ -184,7 +183,7 @@ export interface SkillLlmEnhancedReviewSections {
     checklist: SkillLlmTypeSpecificChecklistItem[];
     summary?: string;
   };
-  /** Legacy v5 compatibility only. Prompt v6 no longer asks LLM to output node verdicts. */
+  /** Kept only so older persisted reports with LLM node verdicts can still be read. */
   runtimeNodeAssessment?: {
     summary?: string;
     nodes: SkillLlmRuntimeNodeAssessment[];
@@ -399,9 +398,11 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
     lean: true,
   });
   const parsedReview = parseLlmEnhancedReviewOutput(result.output || '');
+  const runtimeEvidencePack = options.runtimeEvidence?.skillRuntimeEvidencePack ?? skillChain.runtime.evidencePack;
   const enhancedReview = withRequiredStandardOwnerSuggestions(
-    attachRuntimeNodeResults(parsedReview, options.runtimeEvidence?.skillRuntimeEvidencePack ?? skillChain.runtime.evidencePack),
+    attachRuntimeNodeResults(parsedReview, runtimeEvidencePack),
     { needsHardRules, needsWorkflows },
+    runtimeEvidencePack,
   );
   const standards = standardsFromEnhancedReview(enhancedReview).map((item) => ({
     ...item,
@@ -481,6 +482,7 @@ function parseLlmEnhancedReviewOutput(output: string): SkillLlmEnhancedReviewSec
 function withRequiredStandardOwnerSuggestions(
   review: SkillLlmEnhancedReviewSections,
   flags: { needsHardRules: boolean; needsWorkflows: boolean },
+  evidencePack?: SkillRuntimeEvidencePack,
 ): SkillLlmEnhancedReviewSections {
   const existing = review.ownerSuggestions ?? [];
   const hasSuggestion = (pattern: RegExp): boolean =>
@@ -502,7 +504,7 @@ function withRequiredStandardOwnerSuggestions(
       acceptanceCriteria: '下次评测中，定义链路能识别到 workflow / completionCriteria / artifactCriteria，运行报告能按步骤展示执行情况。',
     });
   }
-  if (!hasSuggestion(/feedback|adopt|reject|useful|thumbs?|反馈|采用|弃用|点赞|点踩|简评|评价/i)) {
+  if (shouldSuggestFeedbackContract(review, evidencePack) && !hasSuggestion(/feedback|adopt|reject|useful|thumbs?|反馈|采用|弃用|点赞|点踩|简评|评价/i)) {
     required.push({
       title: '补充用户反馈采集点',
       body: '在产物交付或人工复盘入口中补充轻量反馈契约，例如采用 / 弃用、有用 / 无用、点赞 / 点踩或一句话简评。这样线上观测可以把用户反馈关联到具体 session、skill 调用、产物、workflow 和规则证据，而不是让报告自行猜业务结果好坏。',
@@ -520,6 +522,18 @@ function withRequiredStandardOwnerSuggestions(
       })
       .slice(0, 10),
   };
+}
+
+function shouldSuggestFeedbackContract(review: SkillLlmEnhancedReviewSections, evidencePack?: SkillRuntimeEvidencePack): boolean {
+  const feedbackCount = evidencePack?.runtimeEvidence.userFeedback.length ?? 0;
+  if (feedbackCount > 0) return false;
+  const hasUserFacingOutput = review.runtimeAssessment?.goalSatisfaction === 'passed'
+    || review.runtimeAssessment?.artifactGoalMatch === 'passed'
+    || (evidencePack?.runtimeEvidence.artifacts.length ?? 0) > 0;
+  const typeNeedsClosure = review.skillType === 'router'
+    || review.skillType === 'delegation'
+    || review.skillType === 'workflow_owner';
+  return hasUserFacingOutput || typeNeedsClosure;
 }
 
 function standardsFromEnhancedReview(review: SkillLlmEnhancedReviewSections): Array<Omit<SkillDerivedStandard, 'status' | 'source'>> {
@@ -585,10 +599,25 @@ function normalizeIdentifier(value: unknown, maxLength: number): string {
 
 function normalizeStandardNodes(value: unknown): RuntimeStandardNode[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const nodes = value
+  const rawNodes = value
     .map(normalizeStandardNode)
     .filter((node): node is RuntimeStandardNode => Boolean(node))
     .slice(0, 80);
+  const nodeIds = new Set<string>();
+  const nodes: RuntimeStandardNode[] = [];
+  for (const node of rawNodes) {
+    if (nodeIds.has(node.nodeId)) continue;
+    nodeIds.add(node.nodeId);
+    nodes.push(node);
+  }
+  const validNodeIds = new Set(nodes.map((node) => node.nodeId));
+  for (const node of nodes) {
+    if (node.childNodeIds) {
+      node.childNodeIds = node.childNodeIds.filter((id, index, arr) =>
+        validNodeIds.has(id) && arr.indexOf(id) === index && id !== node.nodeId
+      );
+    }
+  }
   return nodes.length > 0 ? nodes : undefined;
 }
 
@@ -624,10 +653,18 @@ function normalizeStandardNodeKind(value: unknown): RuntimeStandardNodeKind | un
 
 function normalizeRuntimeSignals(value: unknown): RuntimeSignal[] {
   if (!Array.isArray(value)) return [];
-  return value
+  const seen = new Set<string>();
+  const signals: RuntimeSignal[] = [];
+  for (const signal of value
     .map(normalizeRuntimeSignal)
     .filter((signal): signal is RuntimeSignal => Boolean(signal))
-    .slice(0, 40);
+  ) {
+    if (seen.has(signal.id)) continue;
+    seen.add(signal.id);
+    signals.push(signal);
+    if (signals.length >= 40) break;
+  }
+  return signals;
 }
 
 function normalizeRuntimeSignal(value: unknown): RuntimeSignal | null {
@@ -714,10 +751,12 @@ function normalizeRuntimeTrigger(value: unknown): RuntimeTrigger | null {
   const forbidden = normalizeSignalRef(item.forbidden);
   const required = normalizeSignalRef(item.required);
   if (!when && !absence && !forbidden && !required) return null;
+  const actionCount = [absence, forbidden, required].filter(Boolean).length;
+  if (actionCount > 1) return null;
   const verdict = normalizeRuntimeNodeVerdict(item.verdict);
   const windowScope = normalizeWindowScope(item.windowScope);
   if (!verdict || !windowScope) return null;
-  if ((windowScope === 'same_episode_after' || windowScope === 'same_session_after') && !when) return null;
+  if (windowScope === 'same_session_after' && !when) return null;
   if (!when && forbidden && !(windowScope === 'anywhere_in_session' || windowScope === 'same_skill_segment')) return null;
   if (!when && absence && !(windowScope === 'anywhere_in_session' || windowScope === 'same_skill_segment')) return null;
   return { ...(when ? { when } : {}), ...(absence ? { absence } : {}), ...(forbidden ? { forbidden } : {}), ...(required ? { required } : {}), verdict, windowScope };
@@ -744,7 +783,6 @@ function normalizeRuntimeNodeVerdict(value: unknown): RuntimeNodeVerdict | undef
 function normalizeWindowScope(value: unknown): RuntimeTriggerWindowScope | undefined {
   return value === 'same_node'
     || value === 'same_skill_segment'
-    || value === 'same_episode_after'
     || value === 'same_session_after'
     || value === 'anywhere_in_session'
     ? value
@@ -878,7 +916,7 @@ function attachRuntimeNodeResults(
     },
     runtimeNodeResults: {
       summary: nodeResults.length > 0
-        ? `规则层已复核 ${nodeResults.length} 个流程/规则节点。`
+        ? `规则层已复核 ${nodeResults.filter((node) => node.kind !== 'stage').length} 个流程/规则节点。`
         : '没有可复核的流程/规则节点。',
       nodes: nodeResults,
     },
@@ -966,8 +1004,15 @@ interface RuntimeSignalMatch {
   refs: SkillRuntimeEvidencePackRef[];
 }
 
+interface RuntimeEvaluationContext {
+  nodeScopedRefs: SkillRuntimeEvidencePackRef[];
+}
+
 function evaluateRuntimeStandardNodes(nodes: RuntimeStandardNode[], evidencePack: SkillRuntimeEvidencePack): RuntimeNodeResult[] {
-  const rawResults = nodes.map((node) => evaluateRuntimeStandardNode(node, evidencePack));
+  const nodeScopedRefsById = new Map(evidencePack.nodeEvidence.map((node) => [node.nodeId, node.candidateEvidenceRefs]));
+  const rawResults = nodes.map((node) => evaluateRuntimeStandardNode(node, evidencePack, {
+    nodeScopedRefs: nodeScopedRefsById.get(node.nodeId) ?? [],
+  }));
   const resultByNodeId = new Map(rawResults.map((result) => [result.nodeId, result]));
   return rawResults.map((result) => {
     const node = nodes.find((item) => item.nodeId === result.nodeId);
@@ -989,10 +1034,10 @@ function evaluateRuntimeStandardNodes(nodes: RuntimeStandardNode[], evidencePack
   });
 }
 
-function evaluateRuntimeStandardNode(node: RuntimeStandardNode, evidencePack: SkillRuntimeEvidencePack): RuntimeNodeResult {
+function evaluateRuntimeStandardNode(node: RuntimeStandardNode, evidencePack: SkillRuntimeEvidencePack, context: RuntimeEvaluationContext): RuntimeNodeResult {
   const matches = buildSignalMatches(node, evidencePack);
   const matchedSignals = Array.from(matches.values()).filter((match) => match.refs.length > 0);
-  const triggerStatuses = evaluateRuntimeTriggers(node, matches);
+  const triggerStatuses = evaluateRuntimeTriggers(node, matches, context);
   const status = node.triggers.length > 0
     ? triggerStatuses.length > 0 ? aggregateRuntimeNodeStatuses(triggerStatuses) : 'unknown'
     : inferRuntimeNodeStatusWithoutTriggers(node, matches);
@@ -1074,7 +1119,7 @@ function runtimeSignalValueMatches(text: string, value: string | string[], op: R
     if (op === 'equals') return left.trim() === right.trim();
     if (op === 'contains' || op === 'fuzzy_contains') return left.includes(right);
     if (op === 'suffix') return left.trim().endsWith(right.trim());
-    if (op === 'glob') return globToRegExp(right).test(text);
+    if (op === 'glob') return globMatchesSignalText(text, right);
     return false;
   });
 }
@@ -1111,7 +1156,16 @@ function normalizeFuzzyText(value: string): string {
 
 function globToRegExp(pattern: string): RegExp {
   const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
-  return new RegExp(`^${escaped}$`, 'i');
+  return new RegExp(`^${escaped}$`, 'is');
+}
+
+function globMatchesSignalText(text: string, pattern: string): boolean {
+  const matcher = globToRegExp(pattern);
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .some((line) => matcher.test(line) || matcher.test(line.split(/[\\/]/).pop() ?? line));
 }
 
 function inferArtifactKind(ref: SkillRuntimeEvidencePackRef): string {
@@ -1124,24 +1178,26 @@ function inferArtifactKind(ref: SkillRuntimeEvidencePackRef): string {
   return 'file';
 }
 
-function evaluateRuntimeTriggers(node: RuntimeStandardNode, matches: Map<string, RuntimeSignalMatch>): RuntimeNodeVerdict[] {
+function evaluateRuntimeTriggers(node: RuntimeStandardNode, matches: Map<string, RuntimeSignalMatch>, context: RuntimeEvaluationContext): RuntimeNodeVerdict[] {
   const statuses: RuntimeNodeVerdict[] = [];
   for (const trigger of node.triggers) {
-    const whenRefs = trigger.when ? refsForSignalRef(matches, trigger.when) : [];
+    const whenRefs = trigger.when
+      ? refsInScope(refsForSignalRef(matches, trigger.when), [], trigger.windowScope === 'same_node' ? 'same_node' : 'anywhere_in_session', context)
+      : [];
     if (trigger.when && whenRefs.length === 0) continue;
     if (trigger.forbidden) {
-      const forbiddenRefs = refsInScope(refsForSignalRef(matches, trigger.forbidden), whenRefs, trigger.windowScope);
+      const forbiddenRefs = refsInScope(refsForSignalRef(matches, trigger.forbidden), whenRefs, trigger.windowScope, context);
       if (forbiddenRefs.length > 0) statuses.push(trigger.verdict);
       continue;
     }
     if (trigger.required) {
-      const requiredRefs = refsInScope(refsForSignalRef(matches, trigger.required), whenRefs, trigger.windowScope);
+      const requiredRefs = refsInScope(refsForSignalRef(matches, trigger.required), whenRefs, trigger.windowScope, context);
       if (requiredRefs.length > 0) statuses.push(trigger.verdict);
       else statuses.push('missed');
       continue;
     }
     if (trigger.absence) {
-      const absentRefs = refsInScope(refsForSignalRef(matches, trigger.absence), whenRefs, trigger.windowScope);
+      const absentRefs = refsInScope(refsForSignalRef(matches, trigger.absence), whenRefs, trigger.windowScope, context);
       statuses.push(absentRefs.length === 0 ? trigger.verdict : 'violated');
       continue;
     }
@@ -1154,15 +1210,36 @@ function refsForSignalRef(matches: Map<string, RuntimeSignalMatch>, ref: Runtime
   return matches.get(signalKey(ref.signalGroup, ref.signalId))?.refs ?? [];
 }
 
-function refsInScope(refs: SkillRuntimeEvidencePackRef[], anchorRefs: SkillRuntimeEvidencePackRef[], scope: RuntimeTriggerWindowScope): SkillRuntimeEvidencePackRef[] {
-  if (scope === 'anywhere_in_session' || scope === 'same_skill_segment' || scope === 'same_node') return refs;
+function refsInScope(
+  refs: SkillRuntimeEvidencePackRef[],
+  anchorRefs: SkillRuntimeEvidencePackRef[],
+  scope: RuntimeTriggerWindowScope,
+  context: RuntimeEvaluationContext = { nodeScopedRefs: [] },
+): SkillRuntimeEvidencePackRef[] {
+  if (scope === 'same_node') {
+    if (context.nodeScopedRefs.length === 0) return [];
+    const scopedIds = new Set(context.nodeScopedRefs.map((ref) => ref.id));
+    return refs.filter((ref) => scopedIds.has(ref.id));
+  }
+  if (scope === 'anywhere_in_session') return refs;
+  if (scope === 'same_skill_segment') {
+    const sessionIds = new Set(anchorRefs.map((ref) => ref.sessionId).filter(Boolean));
+    return sessionIds.size > 0 ? refs.filter((ref) => sessionIds.has(ref.sessionId)) : refs;
+  }
   if (anchorRefs.length === 0) return [];
-  const anchorOrder = Math.min(...anchorRefs.map(evidenceRefOrder));
-  return refs.filter((ref) => evidenceRefOrder(ref) >= anchorOrder);
+  const anchorOrders = anchorRefs.map(evidenceRefOrder).filter((order): order is number => order !== undefined);
+  if (anchorOrders.length === 0) return [];
+  const anchorOrder = Math.min(...anchorOrders);
+  const anchorSessionIds = new Set(anchorRefs.map((ref) => ref.sessionId).filter(Boolean));
+  return refs.filter((ref) => {
+    if (anchorSessionIds.size > 0 && !anchorSessionIds.has(ref.sessionId)) return false;
+    const order = evidenceRefOrder(ref);
+    return order !== undefined && order >= anchorOrder;
+  });
 }
 
-function evidenceRefOrder(ref: SkillRuntimeEvidencePackRef): number {
-  return ref.logicalMessageIndex ?? ref.messageIndex ?? ref.sourceLineIndex ?? Number.MAX_SAFE_INTEGER;
+function evidenceRefOrder(ref: SkillRuntimeEvidencePackRef): number | undefined {
+  return ref.logicalMessageIndex ?? ref.messageIndex ?? ref.sourceLineIndex;
 }
 
 function inferRuntimeNodeStatusWithoutTriggers(node: RuntimeStandardNode, matches: Map<string, RuntimeSignalMatch>): RuntimeNodeVerdict {

@@ -90,7 +90,7 @@ Output schema:
             "when": { "signalGroup": "failureSignals", "signalId": "source_doc_read_failed" },
             "forbidden": { "signalGroup": "forbiddenSignals", "signalId": "workflow_started_after_failure" },
             "verdict": "passed|missed|violated|unknown|degraded",
-            "windowScope": "same_node|same_skill_segment|same_episode_after|same_session_after|anywhere_in_session"
+            "windowScope": "same_node|same_skill_segment|same_session_after|anywhere_in_session"
           }
         ],
         "sourceHints": [
@@ -217,6 +217,6 @@ RuntimeSignal constraints:
 
 RuntimeTrigger constraints:
 - At least one of `when`, `absence`, `forbidden`, or `required` must be present.
-- `same_episode_after` and `same_session_after` require `when` as the time anchor.
+- `same_session_after` requires `when` as the time anchor.
 - A trigger with only `forbidden` means absolute forbidden within `anywhere_in_session` or `same_skill_segment`.
 - When multiple triggers match, the rule layer uses the most conservative verdict: `violated > degraded > unknown > passed > missed`.
