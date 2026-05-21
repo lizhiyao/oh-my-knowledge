@@ -16,7 +16,7 @@
  * 综合 band:eval / observe 任一红 → 红,任一黄 → 黄,全绿 → 绿,皆未跑 → gray。
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, isAbsolute, basename, dirname } from 'node:path';
 import type { ReportDocument, EvaluationReport, AssertionDetail } from '../types/index.js';
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import type { DoctorReport, DoctorRuleResult, DoctorSkillStatus } from '../types/doctor.js';
@@ -201,11 +201,9 @@ function isEvolveRoundVariant(report: EvaluationReport, variant: string): boolea
 function skillNameForEvalVariant(report: EvaluationReport, variant: string): string | null {
   if (isEvolveRoundVariant(report, variant)) return report.meta.evolve?.skillName ?? null;
   if (variant === 'baseline') return null;
-  // If variant is an absolute path (e.g. /Users/.../skills/foo/SKILL.md), extract the skill name
-  // from the parent directory name (standard omk convention: skill name = directory containing SKILL.md).
-  if (variant.startsWith('/') || variant.startsWith('~')) {
-    const parts = variant.replace(/\/SKILL\.md$/i, '').split('/');
-    return parts[parts.length - 1] || variant;
+  if (isAbsolute(variant) || variant.startsWith('~')) {
+    const base = basename(variant);
+    return /^SKILL\.md$/i.test(base) ? basename(dirname(variant)) : base.replace(/\.md$/i, '');
   }
   return variant;
 }

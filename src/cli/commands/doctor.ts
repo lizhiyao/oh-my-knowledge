@@ -281,7 +281,7 @@ export default class Doctor extends BaseCommand {
 function persistDoctorReport(report: import('../../types/doctor.js').DoctorReport): void {
   const dir = join(homedir(), '.oh-my-knowledge', 'doctors');
   mkdirSync(dir, { recursive: true });
-  const ts = report.timestamp.replace(/[:.]/g, '').slice(0, 15);
+  const ts = report.timestamp.replace(/[:.]/g, '').slice(0, 17);
   for (const skill of report.skills) {
     const perSkill = {
       ...report,
