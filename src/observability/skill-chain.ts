@@ -9,7 +9,7 @@ import {
   type SkillWorkflow,
 } from '../shared/hard-rules.js';
 import type { SkillChainAdvisoryCode } from './skill-chain-advisories.js';
-import type { ObservationExperienceReport, ExperienceInvocation, ExperienceTimelineEvent } from './experience.js';
+import type { ObservationExperienceReport, ExperienceEvidenceRef, ExperienceInvocation, ExperienceTimelineEvent } from './experience.js';
 
 export type ObservationRuntimeCheckStatus = 'passed' | 'attention' | 'manual_review';
 
@@ -22,6 +22,63 @@ export interface ObservationRuntimeCheck {
   reason: string;
   evidenceCount: number;
   evidenceSnippets: string[];
+}
+
+export type SkillRuntimeEvidencePackSourceType =
+  | 'tool_call'
+  | 'tool_result'
+  | 'assistant_message'
+  | 'user_feedback'
+  | 'artifact'
+  | 'runtime_context'
+  | 'skill_context'
+  | 'unknown';
+
+export interface SkillRuntimeEvidencePackRef extends Pick<ExperienceEvidenceRef,
+  'id' | 'kind' | 'sourceTrace' | 'sessionId' | 'messageUuid' | 'messageIndex' | 'logicalMessageIndex' | 'sourceLineIndex' | 'toolUseId' | 'timestamp' | 'role' | 'label' | 'snippet'
+> {
+  sourceType: SkillRuntimeEvidencePackSourceType;
+  toolName?: string;
+  isError?: boolean;
+}
+
+export interface SkillRuntimeEvidencePackNode {
+  nodeId: string;
+  kind: 'workflowNode' | 'hardRule';
+  title: string;
+  expectation: string;
+  deterministicStatus: ObservationRuntimeCheckStatus;
+  deterministicReason: string;
+  candidateEvidenceRefs: SkillRuntimeEvidencePackRef[];
+  candidateEvidenceSnippets: string[];
+}
+
+export interface SkillRuntimeEvidencePack {
+  schemaVersion: 1;
+  skillName: string;
+  generatedBy: 'deterministic_rule_pack';
+  definition: {
+    found: boolean;
+    path?: string;
+    truncated?: boolean;
+  };
+  declaredStandards: {
+    hardRules: Array<{ id: string; title: string; expectation: string; source: 'frontmatter' }>;
+    workflowNodes: Array<{ id: string; title: string; expectation: string; workflowId: string; source: 'frontmatter' | 'markdown_headings' }>;
+  };
+  runtimeEvidence: {
+    toolCalls: SkillRuntimeEvidencePackRef[];
+    assistantMessages: SkillRuntimeEvidencePackRef[];
+    userFeedback: SkillRuntimeEvidencePackRef[];
+    artifacts: SkillRuntimeEvidencePackRef[];
+  };
+  nodeEvidence: SkillRuntimeEvidencePackNode[];
+  evidenceQuality: {
+    pollutedSourceCount: number;
+    windowTooNarrow: boolean;
+    missingRuntimeEvidence: boolean;
+    notes: string[];
+  };
 }
 
 export interface ObservationSkillChain {
@@ -67,6 +124,7 @@ export interface ObservationSkillChain {
     };
     hardRules: ObservationRuntimeCheck[];
     workflowNodes: ObservationRuntimeCheck[];
+    evidencePack?: SkillRuntimeEvidencePack;
   };
 }
 
@@ -88,7 +146,7 @@ export function buildObservationSkillChain(skillName: string, cwd = process.cwd(
   const workflowSource = workflows.workflows.length > 0 ? 'frontmatter' : markdownWorkflows.length > 0 ? 'markdown_headings' : 'none';
   const nodeCount = effectiveWorkflows.reduce((sum, workflow) => sum + workflow.nodes.length, 0);
   const truncated = content.length > MAX_SKILL_DEFINITION_CHARS;
-  const runtime = buildRuntimeChecks(skillName, hardRules.rules, effectiveWorkflows, experienceReports);
+  const runtime = buildRuntimeChecks(skillName, { found: true, path, truncated }, hardRules.rules, effectiveWorkflows, workflowSource, experienceReports);
   return {
     skillName,
     definition: {
@@ -131,14 +189,16 @@ function emptySkillChain(skillName: string, experienceReports: ObservationExperi
       hardRules: { declared: false, valid: true, count: 0, rules: [], errors: [], advisoryCode: 'hardrules_not_declared' },
       workflows: { declared: false, valid: true, branchCount: 0, nodeCount: 0, workflows: [], errors: [], source: 'none', advisoryCode: 'workflows_not_declared' },
     },
-    runtime: buildRuntimeChecks(skillName, [], [], experienceReports),
+    runtime: buildRuntimeChecks(skillName, { found: false }, [], [], 'none', experienceReports),
   };
 }
 
 function buildRuntimeChecks(
   skillName: string,
+  definition: SkillRuntimeEvidencePack['definition'],
   hardRules: SkillHardRule[],
   workflows: SkillWorkflow[],
+  workflowSource: SkillRuntimeEvidencePack['declaredStandards']['workflowNodes'][number]['source'] | 'none',
   experienceReports: ObservationExperienceReport[],
 ): ObservationSkillChain['runtime'] {
   const invocations = experienceReports.flatMap((report) => report.invocations.filter((invocation) => invocation.skillName === skillName));
@@ -158,6 +218,15 @@ function buildRuntimeChecks(
     }, evidence)),
   );
   const all = [...hardRuleChecks, ...workflowChecks];
+  const evidencePack = buildSkillRuntimeEvidencePack({
+    skillName,
+    definition,
+    hardRules,
+    workflows,
+    workflowSource,
+    runtimeEvidence: evidence,
+    checks: all,
+  });
   return {
     supported: true,
     mode: 'deterministic-no-llm',
@@ -172,6 +241,110 @@ function buildRuntimeChecks(
     },
     hardRules: hardRuleChecks,
     workflowNodes: workflowChecks,
+    evidencePack,
+  };
+}
+
+function buildSkillRuntimeEvidencePack(input: {
+  skillName: string;
+  definition: SkillRuntimeEvidencePack['definition'];
+  hardRules: SkillHardRule[];
+  workflows: SkillWorkflow[];
+  workflowSource: SkillRuntimeEvidencePack['declaredStandards']['workflowNodes'][number]['source'] | 'none';
+  runtimeEvidence: RuntimeEvidence;
+  checks: ObservationRuntimeCheck[];
+}): SkillRuntimeEvidencePack {
+  const standardById = new Map(input.checks.map((check) => [check.id, check]));
+  const allRuntimeRefs = input.runtimeEvidence.events
+    .map(eventToEvidencePackRef)
+    .filter((ref): ref is SkillRuntimeEvidencePackRef => Boolean(ref));
+  const toolCalls = allRuntimeRefs.filter((ref) => ref.sourceType === 'tool_call' || ref.sourceType === 'tool_result').slice(0, 40);
+  const assistantMessages = allRuntimeRefs.filter((ref) => ref.sourceType === 'assistant_message').slice(0, 24);
+  const userFeedback = allRuntimeRefs.filter((ref) => ref.sourceType === 'user_feedback').slice(0, 24);
+  const artifacts = allRuntimeRefs.filter((ref) => ref.sourceType === 'artifact').slice(0, 20);
+  const pollutedSourceCount = allRuntimeRefs.filter((ref) => ref.sourceType === 'runtime_context' || ref.sourceType === 'skill_context').length;
+  const workflowNodes = input.workflows.flatMap((workflow) => workflow.nodes.map((node) => {
+    const id = `${workflow.id}.${node.id}`;
+    return {
+      id,
+      title: node.action || `${workflow.id} / ${node.id}`,
+      expectation: node.action,
+      workflowId: workflow.id,
+      source: input.workflowSource === 'none' ? 'frontmatter' as const : input.workflowSource,
+    };
+  }));
+  const nodeEvidence = [
+    ...input.hardRules.map((rule) => nodeEvidenceForCheck({
+      check: standardById.get(rule.id),
+      nodeId: rule.id,
+      kind: 'hardRule' as const,
+      title: rule.rule,
+      expectation: rule.expectedBehavior,
+      refs: allRuntimeRefs,
+    })),
+    ...workflowNodes.map((node) => nodeEvidenceForCheck({
+      check: standardById.get(node.id),
+      nodeId: node.id,
+      kind: 'workflowNode' as const,
+      title: node.title,
+      expectation: node.expectation,
+      refs: allRuntimeRefs,
+    })),
+  ];
+  const notes: string[] = [];
+  if (pollutedSourceCount > 0) notes.push('已识别 runtime context / skill context 污染源，节点复核时不应把这些当业务证据。');
+  if (allRuntimeRefs.length === 0) notes.push('没有可用于节点复核的运行证据。');
+  return {
+    schemaVersion: 1,
+    skillName: input.skillName,
+    generatedBy: 'deterministic_rule_pack',
+    definition: input.definition,
+    declaredStandards: {
+      hardRules: input.hardRules.map((rule) => ({
+        id: rule.id,
+        title: rule.rule,
+        expectation: rule.expectedBehavior,
+        source: 'frontmatter' as const,
+      })),
+      workflowNodes,
+    },
+    runtimeEvidence: {
+      toolCalls,
+      assistantMessages,
+      userFeedback,
+      artifacts,
+    },
+    nodeEvidence,
+    evidenceQuality: {
+      pollutedSourceCount,
+      windowTooNarrow: input.runtimeEvidence.events.length > 0 && input.runtimeEvidence.events.length < 3,
+      missingRuntimeEvidence: input.runtimeEvidence.events.length === 0,
+      notes,
+    },
+  };
+}
+
+function nodeEvidenceForCheck(input: {
+  check?: ObservationRuntimeCheck;
+  nodeId: string;
+  kind: 'workflowNode' | 'hardRule';
+  title: string;
+  expectation: string;
+  refs: SkillRuntimeEvidencePackRef[];
+}): SkillRuntimeEvidencePackNode {
+  const snippets = input.check?.evidenceSnippets ?? [];
+  const matchedRefs = snippets.length > 0
+    ? input.refs.filter((ref) => snippets.some((snippet) => snippet.includes(ref.snippet ?? '') || (ref.snippet ?? '').includes(snippet.slice(0, 120)))).slice(0, 5)
+    : [];
+  return {
+    nodeId: input.nodeId,
+    kind: input.kind,
+    title: input.title,
+    expectation: input.expectation,
+    deterministicStatus: input.check?.status ?? 'manual_review',
+    deterministicReason: input.check?.reason ?? '没有规则层运行检查结果。',
+    candidateEvidenceRefs: matchedRefs,
+    candidateEvidenceSnippets: snippets.slice(0, 5),
   };
 }
 
@@ -316,6 +489,42 @@ function eventMatchesSignal(event: ExperienceTimelineEvent, signal: ObservableSi
 
 function eventRuntimeText(event: ExperienceTimelineEvent): string {
   return `${event.toolName ?? ''}\n${event.label ?? ''}\n${event.snippet ?? ''}\n${event.fullText ?? ''}`.toLowerCase();
+}
+
+function eventToEvidencePackRef(event: ExperienceTimelineEvent): SkillRuntimeEvidencePackRef | null {
+  const snippet = (event.snippet ?? event.fullText ?? '').replace(/\s+/g, ' ').trim();
+  if (!snippet) return null;
+  const sourceType = evidencePackSourceType(event, snippet);
+  return {
+    id: event.id,
+    kind: event.kind,
+    sourceTrace: event.sourceTrace,
+    sessionId: event.sessionId,
+    messageUuid: event.messageUuid,
+    messageIndex: event.messageIndex,
+    logicalMessageIndex: event.logicalMessageIndex,
+    sourceLineIndex: event.sourceLineIndex,
+    toolUseId: event.toolUseId,
+    timestamp: event.timestamp,
+    role: event.role,
+    label: event.label,
+    snippet: snippet.slice(0, 800),
+    sourceType,
+    toolName: event.toolName,
+    isError: event.isError,
+  };
+}
+
+function evidencePackSourceType(event: ExperienceTimelineEvent, snippet: string): SkillRuntimeEvidencePackSourceType {
+  const text = `${event.label ?? ''}\n${snippet}`.toLowerCase();
+  if (/heartbeat|runtime protocol|当前你在|你在看一个|openclaw heartbeat|current time:/.test(text)) return 'runtime_context';
+  if (event.kind === 'skill_context' || isSkillMdSelfRead(text)) return 'skill_context';
+  if (event.kind === 'tool_use') return 'tool_call';
+  if (event.kind === 'tool_result') return 'tool_result';
+  if (event.kind === 'user_message') return 'user_feedback';
+  if (/(?:outputs\/runs|\.md\b|\.html\b|https?:\/\/|preview_url|artifact|产物|文档|报告|方案路径|结果文件)/i.test(snippet)) return 'artifact';
+  if (event.kind === 'assistant_message') return 'assistant_message';
+  return 'unknown';
 }
 
 function isAssistantAuthoredUploadEvent(event: ExperienceTimelineEvent, evidence: RuntimeEvidence, text: string): boolean {

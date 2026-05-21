@@ -248,7 +248,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     | 'toolCall' | 'toolFailure' | 'highObservation' | 'mediumObservation' | 'hedging' | 'explicitMarker'
     | 'bash' | 'read' | 'grep' | 'bashProbe' | 'notFound' | 'toolLimit'
     | 'skillRoleRouter' | 'skillRoleExecutor' | 'skillRoleMixed' | 'skillRoleUnknown'
-    | 'llmSkillTypeRouter' | 'llmSkillTypeDelegation' | 'llmSkillTypeExecutor' | 'llmSkillTypeAdvisory' | 'llmSkillTypeUnknown';
+    | 'llmSkillTypeRouter' | 'llmSkillTypeDelegation' | 'llmSkillTypeExecutor' | 'llmSkillTypeAdvisory' | 'llmSkillTypeWorkflowOwner' | 'llmSkillTypeUnknown';
   const indicatorLabels: Record<IndicatorHelpKey, string> = {
     userCorrection: '用户纠正',
     userInterruption: '人工中断',
@@ -279,6 +279,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     llmSkillTypeDelegation: '委派型（能力定位）',
     llmSkillTypeExecutor: '执行型（能力定位）',
     llmSkillTypeAdvisory: '咨询型（能力定位）',
+    llmSkillTypeWorkflowOwner: '流程负责型（能力定位）',
     llmSkillTypeUnknown: '类型待确认（能力定位）',
   };
   const indicatorHelps: Record<IndicatorHelpKey, string> = {
@@ -311,6 +312,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     llmSkillTypeDelegation: 'LLM 判定为委派型：把任务交给 child session / 子 agent 执行，自己只负责拆任务、监督生命周期和回收结果。区别于路由型在于：路由型主要做转发，委派型还要管 child 跑偏 / 启动 / 终止全生命周期。',
     llmSkillTypeExecutor: 'LLM 判定为执行型：定位是自己直接干活产出 artifact。和"执行（本 session 角色）"区别：这个是 skill 本质定位，不只是单次 session 表现。',
     llmSkillTypeAdvisory: 'LLM 判定为咨询型：定位是回答问题 + 给证据，不一定产出 artifact。常见于审计 / 分析 / 解释类 skill。本 session 角色一般会显示"未确定"，因为 advisory 没有明显工具使用特征。',
+    llmSkillTypeWorkflowOwner: 'LLM 判定为流程负责型：定位是管理一条多阶段 workflow 的闭环状态。它可以委派其他 skill 执行阶段动作，但要负责阶段矩阵、产物、异常和用户反馈闭环。',
     llmSkillTypeUnknown: 'LLM 没能从 SKILL.md 和 trace 中得到足够证据判定 skill 类型。可能是 SKILL.md 描述不清，或 trace 样本不足。建议 skill owner 补充 SKILL.md 顶部声明，或多观察几个 session。',
   };
   const metric = (label: string, value: number, helpKey: IndicatorHelpKey, title?: string): string =>
@@ -562,9 +564,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     positiveFeedbackCount: 0,
     userGoalShiftCount: 0,
     hardRuleTextHitCount: 0,
-    assistantDeliverySignalCount: 0,
-    deliverableArtifactSignalCount: 0,
-    selfCorrectionCount: 0,
+	    assistantDeliverySignalCount: 0,
+	    deliverableArtifactSignalCount: 0,
+	    routerDownstreamCompleted: 0,
+	    routerDownstreamFailed: 0,
+	    selfCorrectionCount: 0,
     repeatedExecutionCount: 0,
     toolCallCount: 0,
     toolFailureCount: 0,
@@ -757,9 +761,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       positiveFeedbackCount: current.positiveFeedbackCount + next.positiveFeedbackCount,
       userGoalShiftCount: current.userGoalShiftCount + next.userGoalShiftCount,
       hardRuleTextHitCount: current.hardRuleTextHitCount + next.hardRuleTextHitCount,
-      assistantDeliverySignalCount: current.assistantDeliverySignalCount + (next.assistantDeliverySignalCount ?? 0),
-      deliverableArtifactSignalCount: current.deliverableArtifactSignalCount + (next.deliverableArtifactSignalCount ?? 0),
-      selfCorrectionCount: current.selfCorrectionCount + (next.selfCorrectionCount ?? 0),
+	      assistantDeliverySignalCount: current.assistantDeliverySignalCount + (next.assistantDeliverySignalCount ?? 0),
+	      deliverableArtifactSignalCount: current.deliverableArtifactSignalCount + (next.deliverableArtifactSignalCount ?? 0),
+	      routerDownstreamCompleted: current.routerDownstreamCompleted + (next.routerDownstreamCompleted ?? 0),
+	      routerDownstreamFailed: current.routerDownstreamFailed + (next.routerDownstreamFailed ?? 0),
+	      selfCorrectionCount: current.selfCorrectionCount + (next.selfCorrectionCount ?? 0),
       repeatedExecutionCount: current.repeatedExecutionCount + (next.repeatedExecutionCount ?? 0),
       toolCallCount: current.toolCallCount + next.toolCallCount,
       toolFailureCount: current.toolFailureCount + next.toolFailureCount,
@@ -976,7 +982,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     return `<button type="button" class="context-chain-button${hasAdvisory ? ' has-advisory' : ''}" onclick="event.stopPropagation(); openContextChainModal('${e(templateId)}', this)" title="${e(title)}"><span class="context-chain-button-icon" aria-hidden="true">🔗</span><span class="context-chain-button-main">定义链路</span>${hasAdvisory ? `<span class="context-chain-button-advisory-list">${advisoryLabels.map((label) => `<span class="context-chain-button-advisory">${e(label)}</span>`).join('')}</span>` : '<span class="context-chain-button-ok">标准已声明</span>'}</button>`;
   };
   const runtimeLiteStatusIcon = (status: string): string =>
-    status === 'passed' ? '✓' : status === 'attention' ? '!' : '?';
+    status === 'passed' ? '✅' : status === 'attention' ? '❌' : '?';
   const runtimeLiteStatusLabel = (status: string): string =>
     status === 'passed' ? '有证据' : status === 'attention' ? '需复核' : '待判断';
   const displayRuntimeLiteTitle = (title: string, id: string, index: number): string => {
@@ -993,11 +999,18 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   };
   const shouldShowRuntimeLiteRawId = (id: string): boolean =>
     Boolean(id) && !/^markdown_steps[._-]step/i.test(id) && id !== 'markdown_steps';
+  const runtimeStepDepth = (title: string, id: string): number => {
+    const source = `${id} ${title}`.toLowerCase();
+    if (/\bstep[\s_-]*\d+[a-z]\b/.test(source)) return 1;
+    if (/\bstep[\s_-]*\d+[._-][a-z0-9]+\b/.test(source)) return 1;
+    return 0;
+  };
   const renderRuntimeLiteList = (
     checks: Array<{ id: string; title: string; status: string; reason?: string; evidenceSnippets: string[] }>,
     kind: 'workflow' | 'rule',
+    emptyText = '暂无可检查项。',
   ): string => checks.length > 0
-    ? `<ol class="runtime-step-list">${checks.map((check, index) => `<li class="runtime-step runtime-${e(check.status)}">
+    ? `<ol class="runtime-step-list">${checks.map((check, index) => `<li class="runtime-step runtime-${e(check.status)} is-depth-${runtimeStepDepth(check.title, check.id)}">
         <div class="runtime-step-head">
           <span class="runtime-step-index">${kind === 'workflow' ? `第 ${index + 1} 步` : `规则 ${index + 1}`}</span>
           <span class="runtime-step-name">${e(displayRuntimeLiteTitle(check.title, check.id, index))}</span>
@@ -1012,7 +1025,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           </div>
         </details>
       </li>`).join('')}</ol>`
-    : '<p class="context-muted">暂无可检查项。</p>';
+    : emptyText ? `<p class="context-muted">${e(emptyText)}</p>` : '';
   const renderRuntimeRuleFlow = (skillName: string): string => {
     const chain = skillChains[skillName];
     const enhancedReview = skillDerivedStandards[skillName]?.enhancedReview;
@@ -1026,22 +1039,112 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       ...(extractedStandards?.artifactCriteria ?? []),
     ];
     const llmHardRuleStandards = extractedStandards?.hardrules ?? [];
+    const llmStandardNodes = extractedStandards?.standardNodes ?? [];
+    const llmWorkflowNodes = llmStandardNodes.filter((node) => node.kind !== 'hardRule');
+    const llmHardRuleNodes = llmStandardNodes.filter((node) => node.kind === 'hardRule');
+    const standardNodeById = new Map(llmStandardNodes.map((node) => [node.nodeId, node] as const));
+    const standardNodeParentById = new Map<string, string>();
+    for (const node of llmStandardNodes) {
+      for (const childId of node.childNodeIds ?? []) {
+        if (standardNodeById.has(childId) && !standardNodeParentById.has(childId)) {
+          standardNodeParentById.set(childId, node.nodeId);
+        }
+      }
+    }
+    const standardNodeDepth = (node: typeof llmStandardNodes[number]): number => {
+      let depth = 0;
+      let current = standardNodeParentById.get(node.nodeId);
+      const visited = new Set<string>([node.nodeId]);
+      while (current && !visited.has(current) && depth < 3) {
+        depth += 1;
+        visited.add(current);
+        current = standardNodeParentById.get(current);
+      }
+      if (depth > 0) return depth;
+      return runtimeStepDepth(node.title, node.nodeId);
+    };
     const sourceContent = chain?.definition.content ?? '';
     const sourcePreview = sourceContent.length > 12000 ? `${sourceContent.slice(0, 12000)}\n\n... 已截断，仅展示前 12000 字符` : sourceContent;
-    const statusText = (status?: string): string => {
-      if (status === 'passed') return '已命中';
-      if (status === 'attention') return '需复核';
-      return '无法判断';
+    const runtimeNodeResultById = new Map((enhancedReview?.runtimeNodeResults?.nodes ?? [])
+      .map((node) => [node.nodeId, node] as const));
+    const modelNodeStatusText = (status?: string): string => {
+      if (status === 'passed') return '日志命中';
+      if (status === 'failed' || status === 'missed') return '未发现调用';
+      if (status === 'violated') return '命中异常';
+      if (status === 'degraded') return '证据不可信';
+      if (status === 'not_applicable') return '不适用';
+      if (status === 'unknown') return '未发现调用';
+      return '未发现调用';
     };
-    const workflowCheckById = new Map((chain?.runtime.workflowNodes ?? []).map((check) => [check.id, check]));
-    const hardRuleCheckById = new Map((chain?.runtime.hardRules ?? []).map((check) => [check.id, check]));
-    const renderNodeEvidence = (check?: { reason?: string; evidenceSnippets: string[] }): string => {
-      if (!check) return '<p class="runtime-rule-node-evidence">没有运行证据；这里只说明 SKILL.md 声明了这个节点。</p>';
-      return `<details class="runtime-rule-node-evidence">
-        <summary>查看运行证据</summary>
-        ${check.reason ? `<p>${e(check.reason)}</p>` : ''}
-        ${check.evidenceSnippets.length > 0 ? `<ul>${check.evidenceSnippets.slice(0, 3).map((snippet) => `<li>${e(snippet)}</li>`).join('')}</ul>` : '<p>没有可展示的证据片段。</p>'}
-      </details>`;
+    const modelNodeStatusClass = (status?: string): string => {
+      if (status === 'passed') return 'is-hit';
+      if (status === 'failed' || status === 'missed' || status === 'violated' || status === 'degraded') return 'is-attention';
+      return '';
+    };
+    const modelNodeStatusIcon = (status?: string): string => {
+      if (status === 'passed') return '✅';
+      if (status === 'failed' || status === 'violated' || status === 'degraded') return '❌';
+      return '?';
+    };
+    type RuntimeNodeReview = NonNullable<SkillLlmEnhancedReviewSections['runtimeNodeResults']>['nodes'][number]
+      | NonNullable<SkillLlmEnhancedReviewSections['runtimeNodeAssessment']>['nodes'][number];
+    const reviewEvidenceSnippets = (review: RuntimeNodeReview): string[] => {
+      if ('evidenceRefs' in review) return (review.evidenceRefs ?? []).map((ref) => ref.snippet).filter((snippet): snippet is string => Boolean(snippet)).slice(0, 3);
+      return (review.evidence ?? []).slice(0, 3);
+    };
+    const compactRuntimeEvidence = (body: string, summary = '展开关键证据'): string => `<details class="runtime-rule-node-model-detail">
+      <summary>${e(summary)}</summary>
+      <div>${body}</div>
+    </details>`;
+    const renderRuntimeNodeReview = (review?: RuntimeNodeReview, fallback?: { reason?: string; evidenceSnippets: string[] }): string => {
+      if (!review && !fallback) return `<div class="runtime-rule-node-model is-muted">
+        <strong>未发现调用</strong>
+        ${compactRuntimeEvidence('<p>运行日志中没有命中这个节点要求的调用信号。</p>', '展开说明')}
+      </div>`;
+      if (!review) return `<div class="runtime-rule-node-model">
+        <strong>规则命中</strong>
+        ${compactRuntimeEvidence(`${fallback?.reason ? `<p>${e(fallback.reason)}</p>` : ''}${(fallback?.evidenceSnippets ?? []).length > 0 ? `<ul>${(fallback?.evidenceSnippets ?? []).slice(0, 3).map((snippet) => `<li>${e(snippet)}</li>`).join('')}</ul>` : '<p>没有可展示的证据片段。</p>'}`)}
+      </div>`;
+      const snippets = reviewEvidenceSnippets(review);
+      return `<div class="runtime-rule-node-model runtime-node-model-${e(review.status)}">
+        <strong>${e(modelNodeStatusText(review.status))}</strong>
+        ${compactRuntimeEvidence(`${review.reason ? `<p>${e(review.reason)}</p>` : ''}${snippets.length > 0 ? `<ul>${snippets.map((snippet) => `<li>${e(snippet)}</li>`).join('')}</ul>` : '<p>没有可展示的证据片段。</p>'}`)}
+      </div>`;
+    };
+    const renderSourceHints = (node: typeof llmStandardNodes[number]): string => {
+      const hints = (node.sourceHints ?? []).slice(0, 3);
+      if (hints.length === 0) return '<p>来源原文：模型抽取节点，未返回可定位原文。</p>';
+      return `<div class="runtime-rule-source-hints">
+        <span>来源原文</span>
+        <ul>${hints.map((hint) => `<li>${hint.line ? `<em>第 ${e(String(hint.line))} 行</em>` : ''}${e(hint.snippet)}</li>`).join('')}</ul>
+      </div>`;
+    };
+    const signalLabel = (signal: typeof llmStandardNodes[number]['expectedSignals'][number]): string => {
+      const typeLabel: Record<string, string> = {
+        tool_name: '工具',
+        tool_input: '工具输入',
+        tool_output: '工具输出',
+        assistant_text: '助手文本',
+        user_text: '用户文本',
+        artifact_kind: '产物类型',
+        artifact_path: '产物路径',
+        event_kind: '事件',
+        file_path: '文件路径',
+      };
+      return `${typeLabel[signal.type] ?? signal.type}:${Array.isArray(signal.value) ? signal.value.join('/') : signal.value}`;
+    };
+    const renderSignalSummary = (node: typeof llmStandardNodes[number]): string => {
+      const expected = node.expectedSignals.slice(0, 3).map(signalLabel);
+      const forbidden = node.forbiddenSignals.slice(0, 2).map(signalLabel);
+      const failure = node.failureSignals.slice(0, 2).map(signalLabel);
+      const parts = [
+        expected.length > 0 ? `期望 ${expected.join('、')}` : '',
+        forbidden.length > 0 ? `禁止 ${forbidden.join('、')}` : '',
+        failure.length > 0 ? `失败信号 ${failure.join('、')}` : '',
+      ].filter(Boolean);
+      return parts.length > 0
+        ? `<p class="runtime-rule-match-spec">日志匹配口径：${e(parts.join('；'))}</p>`
+        : '<p class="runtime-rule-match-spec">日志匹配口径：未抽取到结构化信号。</p>';
     };
     const renderModelStandards = (items: Array<{ title: string; body: string; evidence?: string[] }>): string =>
       items.length > 0
@@ -1054,37 +1157,78 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           </article>`).join('')}
         </div>`
         : '';
+    const renderStandardNodeList = (nodes: typeof llmStandardNodes): string =>
+      nodes.length > 0
+        ? `<ol class="runtime-rule-node-list">${nodes.map((node, index) => {
+          const depth = standardNodeDepth(node);
+          return `<li class="runtime-rule-node is-depth-${depth}">
+            <div class="runtime-rule-node-head">
+              <span>${node.kind === 'stage' ? `阶段 ${index + 1}` : `节点 ${index + 1}`}</span>
+              <strong>${e(node.title)}</strong>
+              <em>标准拆解</em>
+            </div>
+            ${node.description ? `<p>${e(node.description)}</p>` : ''}
+            ${renderSourceHints(node)}
+            ${renderSignalSummary(node)}
+          </li>`;
+        }).join('')}</ol>`
+        : '';
+    const renderRuntimeNodeResultList = (nodes: typeof llmStandardNodes): string =>
+      nodes.length > 0
+        ? `<ol class="runtime-step-list runtime-rule-execution-list">${nodes.map((node, index) => {
+          const review = runtimeNodeResultById.get(node.nodeId);
+          const depth = standardNodeDepth(node);
+          return `<li class="runtime-step runtime-rule-execution-item ${modelNodeStatusClass(review?.status)} is-depth-${depth}">
+            <div class="runtime-step-head">
+              <span class="runtime-step-index">${node.kind === 'stage' ? `阶段 ${index + 1}` : `节点 ${index + 1}`}</span>
+              <span class="runtime-step-name">${e(node.title)}</span>
+              <span class="runtime-step-state" title="${e(modelNodeStatusText(review?.status))}">${modelNodeStatusIcon(review?.status)}</span>
+            </div>
+            ${renderRuntimeNodeReview(review)}
+          </li>`;
+        }).join('')}</ol>`
+        : '';
     const workflowBreakdown = workflows.length > 0
       ? workflows.map((workflow, workflowIndex) => `<div class="runtime-rule-flow-block">
           <div class="runtime-rule-flow-title">${e(workflow.id === 'markdown_steps' ? '正文流程' : `流程 ${workflowIndex + 1}`)}${workflow.description ? `<span>${e(workflow.description)}</span>` : ''}</div>
           <ol class="runtime-rule-node-list">${workflow.nodes.map((node, nodeIndex) => {
-            const check = workflowCheckById.get(`${workflow.id}.${node.id}`);
-            return `<li class="runtime-rule-node ${check?.status === 'passed' ? 'is-hit' : ''}">
+            return `<li class="runtime-rule-node">
               <div class="runtime-rule-node-head">
                 <span>第 ${nodeIndex + 1} 步</span>
                 <strong>${e(node.action || `流程节点 ${nodeIndex + 1}`)}</strong>
-                <em>${e(statusText(check?.status))}</em>
+                <em>原文映射</em>
               </div>
-              <p>来源：SKILL.md ${workflow.id === 'markdown_steps' ? '正文步骤' : `workflow ${workflow.id}`}。这是声明节点，运行是否命中看右侧状态和证据。</p>
-              ${renderNodeEvidence(check)}
+              <p>来源原文：SKILL.md ${workflow.id === 'markdown_steps' ? '正文步骤' : `workflow ${workflow.id}`}。</p>
+              <p class="runtime-rule-match-spec">日志匹配口径：根据这一步的动作关键词和工具调用证据进行匹配。</p>
             </li>`;
           }).join('')}</ol>
         </div>`).join('')
       : `<p class="context-muted">${chain?.healthCheck.workflows.declared ? '未解析到流程节点。' : '未标准化声明流程，当前只能依赖正文探测或运行时推断。'}</p>`;
     const hardRuleBreakdown = hardRules.length > 0
       ? `<ol class="runtime-rule-node-list">${hardRules.map((rule, ruleIndex) => {
-        const check = hardRuleCheckById.get(rule.id);
-        return `<li class="runtime-rule-node ${check?.status === 'passed' ? 'is-hit' : ''}">
+        return `<li class="runtime-rule-node">
           <div class="runtime-rule-node-head">
             <span>规则 ${ruleIndex + 1}</span>
             <strong>${e(rule.rule)}</strong>
-            <em>${e(statusText(check?.status))}</em>
+            <em>原文映射</em>
           </div>
-          ${rule.expectedBehavior ? `<p>期望行为：${e(rule.expectedBehavior)}</p>` : '<p>来源：SKILL.md hardRules 声明。</p>'}
-          ${renderNodeEvidence(check)}
+          ${rule.expectedBehavior ? `<p>来源原文：${e(rule.expectedBehavior)}</p>` : '<p>来源原文：SKILL.md hardRules 声明。</p>'}
+          <p class="runtime-rule-match-spec">日志匹配口径：根据规则约束和异常/禁止信号进行匹配。</p>
         </li>`;
       }).join('')}</ol>`
       : `<p class="context-muted">${chain?.healthCheck.hardRules.declared ? '未解析到硬性规则。' : '未标准化声明硬性规则，当前只能展示已探测到的规则证据。'}</p>`;
+    const renderWorkflowRuntimeList = (): string => {
+      const deterministic = chain ? renderRuntimeLiteList(chain.runtime.workflowNodes, 'workflow', '') : '';
+      const model = renderRuntimeNodeResultList(llmWorkflowNodes);
+      const content = `${deterministic}${model}`;
+      return content || '<p class="context-muted">没有规则层流程命中数据。</p>';
+    };
+    const renderHardRuleRuntimeList = (): string => {
+      const deterministic = chain ? renderRuntimeLiteList(chain.runtime.hardRules, 'rule', '') : '';
+      const model = renderRuntimeNodeResultList(llmHardRuleNodes);
+      const content = `${deterministic}${model}`;
+      return content || '<p class="context-muted">没有规则层规则命中数据。</p>';
+    };
     return `<div class="runtime-rule-three-col">
       <section class="runtime-rule-column">
         <h5>Skill 原文</h5>
@@ -1093,27 +1237,31 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           : '<p class="context-muted">未找到本地 SKILL.md，只能展示运行时证据。</p>'}
       </section>
       <section class="runtime-rule-column">
-        <h5>规则 / 流程拆解</h5>
+        <h5>标准拆解 / 原文映射</h5>
+        <p class="runtime-rule-column-hint">这一列只说明抽象节点来自哪段 SKILL.md，以及后续用什么口径去匹配日志。</p>
         <div class="runtime-rule-column-group">
           <h6>流程</h6>
           ${workflowBreakdown}
+          ${renderStandardNodeList(llmWorkflowNodes)}
           ${renderModelStandards(llmWorkflowStandards)}
         </div>
         <div class="runtime-rule-column-group">
           <h6>硬性规则</h6>
           ${hardRuleBreakdown}
+          ${renderStandardNodeList(llmHardRuleNodes)}
           ${renderModelStandards(llmHardRuleStandards)}
         </div>
       </section>
       <section class="runtime-rule-column">
-        <h5>规则 / 流程命中</h5>
+        <h5>日志命中 / 执行判断</h5>
+        <p class="runtime-rule-column-hint">这一列只看真实运行日志：节点有没有命中、是否异常，以及对应证据。</p>
         <div class="runtime-rule-column-group">
           <h6>流程命中</h6>
-          ${chain ? renderRuntimeLiteList(chain.runtime.workflowNodes, 'workflow') : '<p class="context-muted">没有运行命中数据。</p>'}
+          ${renderWorkflowRuntimeList()}
         </div>
         <div class="runtime-rule-column-group">
           <h6>规则命中</h6>
-          ${chain ? renderRuntimeLiteList(chain.runtime.hardRules, 'rule') : '<p class="context-muted">没有运行命中数据。</p>'}
+          ${renderHardRuleRuntimeList()}
         </div>
       </section>
     </div>`;
@@ -3197,7 +3345,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const metricGuideSections: Array<{ title: string; keys: IndicatorHelpKey[] }> = [
     { title: '用户交互', keys: ['userCorrection', 'userInterruption', 'userFollowUp', 'negativeFeedback', 'positiveFeedback', 'userGoalShift', 'hardRule'] },
     { title: 'Skill 执行', keys: ['toolCall', 'toolFailure', 'bash', 'read', 'grep'] },
-    { title: 'Skill 类型', keys: ['skillRoleRouter', 'skillRoleExecutor', 'skillRoleMixed', 'skillRoleUnknown', 'llmSkillTypeRouter', 'llmSkillTypeDelegation', 'llmSkillTypeExecutor', 'llmSkillTypeAdvisory', 'llmSkillTypeUnknown'] },
+    { title: 'Skill 类型', keys: ['skillRoleRouter', 'skillRoleExecutor', 'skillRoleMixed', 'skillRoleUnknown', 'llmSkillTypeRouter', 'llmSkillTypeDelegation', 'llmSkillTypeExecutor', 'llmSkillTypeAdvisory', 'llmSkillTypeWorkflowOwner', 'llmSkillTypeUnknown'] },
     { title: '过程发现', keys: ['highObservation', 'mediumObservation', 'hedging', 'explicitMarker', 'bashProbe', 'notFound', 'toolLimit'] },
   ];
   const metricGuideHtml = metricGuideSections.map((section) => `
@@ -3741,6 +3889,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    if (type === 'delegation') return '委派型';
 	    if (type === 'executor') return '执行型';
 	    if (type === 'advisory') return '咨询型';
+	    if (type === 'workflow_owner') return '流程负责型';
 	    return '类型待确认';
 	  };
     const inboxSkillTypeSourceText = (resolved: ResolvedObservationReviewSession): string => {
@@ -3760,6 +3909,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    if (type === 'delegation') return 'llmSkillTypeDelegation';
 	    if (type === 'executor') return 'llmSkillTypeExecutor';
 	    if (type === 'advisory') return 'llmSkillTypeAdvisory';
+	    if (type === 'workflow_owner') return 'llmSkillTypeWorkflowOwner';
 	    return 'llmSkillTypeUnknown';
 	  };
 	  const inboxSkillTypeBadge = (label: string, helpKey: IndicatorHelpKey, sourceText?: string): string =>
@@ -4231,7 +4381,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  );
     const inboxTypeDeclarationSuggestion = (resolved: ResolvedObservationReviewSession): ResolvedOwnerSuggestion | undefined => {
       if (resolved.skillTypeSource === 'frontmatter') return undefined;
-      const frontmatterExample = '示例：在 SKILL.md 顶部 frontmatter 增加 skillType: router / delegation / executor / advisory 之一。';
+      const frontmatterExample = '示例：在 SKILL.md 顶部 frontmatter 增加 skillType: router / delegation / executor / advisory / workflow_owner 之一。';
       return inboxTextSuggestion(
         '在 SKILL.md frontmatter 声明 skill 类型',
         `当前类型来自规则推断或模型识别，不如作者声明稳定。建议在 SKILL.md frontmatter 中声明 skillType，让观测报告按正确类型生成流程判断和 owner 建议。${frontmatterExample}`,
@@ -4265,6 +4415,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           '完善咨询型 skill 的结论和证据标准',
           '咨询型 skill 需要声明：结论如何组织、证据如何引用、未知项如何说明、下一步建议如何表达。',
           '下次观测中能看到明确结论、证据来源、未确认项和可执行下一步。',
+        );
+      }
+      if (resolved.skillType === 'workflow_owner') {
+        return inboxTextSuggestion(
+          '完善流程负责型 skill 的阶段矩阵',
+          '流程负责型 skill 需要声明标准阶段、每个阶段的 owner / executor、期望证据、阶段产物、失败信号和用户反馈处理方式。',
+          '下次观测中能看到阶段矩阵、阶段责任、阶段产物、阶段反馈和最终流程闭环。',
         );
       }
       return undefined;
@@ -4322,6 +4479,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             '补充咨询型 skill 的结论和证据结构',
             '咨询型 skill 被追问时，通常说明结论边界或证据引用不够清楚。建议固定输出结论、证据、未知项和下一步。',
             '下次同类咨询中，用户无需追问即可看到结论和证据来源。',
+          ));
+        }
+      } else if (resolved.skillType === 'workflow_owner') {
+        if (indicators.userFollowUpCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0) {
+          out.push(inboxTextSuggestion(
+            '补充流程阶段的反馈闭环',
+            '流程负责型 skill 出现用户追问、纠正或中断时，需要把反馈归到具体阶段，并说明该阶段是已完成、需补救、被跳过还是失败。',
+            '下次观测中，用户反馈能定位到具体 workflow 阶段，并生成对应阶段的修复建议。',
           ));
         }
       }
@@ -4866,21 +5031,21 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        </header>
 	        <div class="inbox-section-body">${inboxRenderSkillCompletion(session)}</div>
 	      </section>
-	      <section class="inbox-section is-collapsed" data-inbox-section="log-chain" id="inbox-sec-log-chain-${safeId}">
+	      <section class="inbox-section" data-inbox-section="log-chain" id="inbox-sec-log-chain-${safeId}">
 	        <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
 	          <h3>② 日志上下游链路</h3>
 	          <span class="inbox-section-summary is-neutral">${e((session.sessionStory?.episodes?.length ?? 0) > 0 ? `${session.sessionStory?.episodes?.length ?? 0} 个用户目标切片` : '暂无链路')}</span>
 	          <span class="inbox-section-hint">按日志还原用户目标切片、skill 片段和反馈归因</span>
-	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">展开</button>
+	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">收起</button>
 	        </header>
 	        <div class="inbox-section-body">${inboxRenderEpisodeOverview(session)}</div>
 	      </section>
-	      <section class="inbox-section is-collapsed" data-inbox-section="runtime" id="inbox-sec-runtime-${safeId}">
+	      <section class="inbox-section" data-inbox-section="runtime" id="inbox-sec-runtime-${safeId}">
 	        <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
 	          <h3>③ 流程规则执行细节</h3>
 	          <span class="inbox-section-summary ${runtimeSummaryClass}">${e(runtimeSummaryText)}</span>
-	          <span class="inbox-section-hint">默认折叠；展开看运行指标和能力定义链路</span>
-	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">展开</button>
+	          <span class="inbox-section-hint">查看运行指标和能力定义链路</span>
+	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">收起</button>
 	        </header>
 	        <div class="inbox-section-body">${inboxRenderSkillRuntime(session)}</div>
 	      </section>
@@ -5387,6 +5552,22 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .runtime-step.runtime-passed { border-left: 3px solid var(--green); }
         .runtime-step.runtime-attention { border-left: 3px solid var(--red); }
         .runtime-step.runtime-manual_review { border-left: 3px solid var(--yellow); }
+        .runtime-step.is-depth-1,
+        .runtime-rule-node.is-depth-1 {
+          margin-left: 18px;
+        }
+        .runtime-step.is-depth-2,
+        .runtime-rule-node.is-depth-2 {
+          margin-left: 34px;
+        }
+        .runtime-step.is-depth-3,
+        .runtime-rule-node.is-depth-3 {
+          margin-left: 50px;
+        }
+        .runtime-step.is-depth-1 .runtime-step-index,
+        .runtime-rule-node.is-depth-1 .runtime-rule-node-head span {
+          opacity: .78;
+        }
         .runtime-step-head {
           display: flex;
           align-items: center;
@@ -5451,6 +5632,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           margin: 0 0 6px;
           font-size: 11px;
           color: var(--text-secondary);
+        }
+        .runtime-rule-column-hint {
+          margin: -2px 0 8px;
+          color: var(--text-muted);
+          font-size: 10px;
+          line-height: 1.4;
         }
         .runtime-rule-column-group + .runtime-rule-column-group {
           margin-top: 12px;
@@ -5518,6 +5705,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .runtime-rule-node.is-hit::after {
           background: var(--accent);
         }
+        .runtime-rule-node.is-attention {
+          border-color: rgba(185, 28, 28, .35);
+          background: rgba(185, 28, 28, .04);
+        }
+        .runtime-rule-node.is-attention::after {
+          background: #b91c1c;
+        }
         .runtime-rule-node-head {
           display: grid;
           grid-template-columns: auto minmax(0, 1fr) auto;
@@ -5555,6 +5749,85 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .runtime-rule-node-evidence ul {
           margin: 4px 0 0;
           padding-left: 16px;
+        }
+        .runtime-rule-source-hints {
+          display: grid;
+          gap: 3px;
+          color: var(--text-muted);
+          font-size: 10px;
+        }
+        .runtime-rule-source-hints span {
+          color: var(--text-secondary);
+          font-weight: 650;
+        }
+        .runtime-rule-source-hints ul,
+        .runtime-rule-node-model ul {
+          margin: 0;
+          padding-left: 15px;
+        }
+        .runtime-rule-match-spec {
+          color: var(--text-secondary) !important;
+        }
+        .runtime-rule-execution-list {
+          margin-top: 6px;
+        }
+        .runtime-rule-execution-item.is-hit {
+          border-left: 3px solid var(--green);
+        }
+        .runtime-rule-execution-item.is-attention {
+          border-left: 3px solid var(--red);
+        }
+        .runtime-rule-node-model {
+          margin-top: 6px;
+          padding: 6px 7px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .runtime-rule-node-model strong {
+          display: block;
+          color: var(--text-primary);
+          font-size: 10px;
+          margin-bottom: 3px;
+        }
+        .runtime-rule-node-model.is-muted {
+          color: var(--text-muted);
+        }
+        .runtime-rule-node-model-detail {
+          margin-top: 3px;
+          color: var(--text-muted);
+          font-size: 10px;
+        }
+        .runtime-rule-node-model-detail summary {
+          cursor: pointer;
+          color: var(--text-secondary);
+          list-style: none;
+        }
+        .runtime-rule-node-model-detail summary::-webkit-details-marker {
+          display: none;
+        }
+        .runtime-rule-node-model-detail div {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          margin-top: 3px;
+        }
+        .runtime-rule-node-model-detail[open] div {
+          display: block;
+          overflow: visible;
+        }
+        .runtime-rule-node-model-detail p {
+          margin: 0 0 3px;
+        }
+        .runtime-node-model-failed,
+        .runtime-node-model-degraded {
+          border-color: rgba(185, 28, 28, .25);
+          background: rgba(185, 28, 28, .04);
+        }
+        .runtime-node-model-passed {
+          border-color: rgba(37, 99, 235, .25);
+          background: rgba(37, 99, 235, .04);
         }
         .runtime-rule-source-path {
           font-size: 11px;

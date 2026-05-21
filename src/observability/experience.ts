@@ -74,7 +74,7 @@ export type ExperienceFeedbackSignalType = 'correction' | 'follow_up' | 'frustra
 export type ExperienceFeedbackAttributionRole = 'primary_fault' | 'downstream_related' | 'context_only';
 export type ExperienceFeedbackAttributionReason = 'object_match' | 'promise_match' | 'action_match' | 'orchestration_edge' | 'episode_context';
 export type ExperienceOutcomeClosure = 'closed' | 'unresolved' | 'abandoned' | 'unknown';
-export type ExperienceRuntimeSkillType = 'router' | 'delegation' | 'executor' | 'advisory' | 'unknown';
+export type ExperienceRuntimeSkillType = 'router' | 'delegation' | 'executor' | 'advisory' | 'workflow_owner' | 'unknown';
 export type ExperienceRuntimeSkillTypeSource = 'frontmatter' | 'trace' | 'unknown';
 export type ExperienceEpisodeArtifactKind = 'path' | 'url' | 'document' | 'code' | 'execution_window' | 'unknown';
 export type ExperienceOrchestrationEdgeStatus = 'started' | 'completed' | 'failed' | 'unknown';
@@ -432,6 +432,8 @@ export interface ExperienceReviewerReport {
     userFollowUpCount: number;
     assistantDeliverySignalCount: number;
     deliverableArtifactSignalCount: number;
+    routerDownstreamCompleted: number;
+    routerDownstreamFailed: number;
     assistantProgressUpdateCount: number;
     selfCorrectionCount: number;
     repeatedExecutionCount: number;
@@ -476,6 +478,8 @@ export interface ExperienceReviewIndicators {
   hardRuleTextHitCount: number;
   assistantDeliverySignalCount: number;
   deliverableArtifactSignalCount: number;
+  routerDownstreamCompleted: number;
+  routerDownstreamFailed: number;
   selfCorrectionCount: number;
   repeatedExecutionCount: number;
   toolCallCount: number;
@@ -774,6 +778,8 @@ const ZERO_INDICATORS: ExperienceReviewIndicators = {
   hardRuleTextHitCount: 0,
   assistantDeliverySignalCount: 0,
   deliverableArtifactSignalCount: 0,
+  routerDownstreamCompleted: 0,
+  routerDownstreamFailed: 0,
   selfCorrectionCount: 0,
   repeatedExecutionCount: 0,
   toolCallCount: 0,
@@ -1467,6 +1473,8 @@ function indicatorsForSegment(
     hardRuleTextHitCount: interactionUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'hard_rule', hasUserHardRuleText(ref.snippet ?? ''), reviewState, metricScopeId) ? 1 : 0), 0),
     assistantDeliverySignalCount: timeline.filter(isAssistantDeliveryEvent).length,
     deliverableArtifactSignalCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'deliverable_artifact', isAssistantDeliverableArtifactEvent(ref), reviewState) ? 1 : 0), 0),
+    routerDownstreamCompleted: 0,
+    routerDownstreamFailed: 0,
     selfCorrectionCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'self_correction', hasSelfCorrectionSignal(ref), reviewState) ? 1 : 0), 0),
     repeatedExecutionCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'repeated_execution', hasRepeatedExecutionSignal(ref), reviewState) ? 1 : 0), 0),
     toolCallCount: segment.metrics.numToolCalls,
@@ -1636,9 +1644,13 @@ function summarizeExperienceSessions(
     if (!canonicalEpisodesBySessionGroup.has(first.sessionGroupKey)) {
       canonicalEpisodesBySessionGroup.set(first.sessionGroupKey, sessionStory.episodes ?? []);
     }
-    const sessionWithStory: ExperienceSessionSummary = {
+    const sessionWithStoryBase: ExperienceSessionSummary = {
       ...baseSession,
       sessionStory,
+    };
+    const sessionWithStory: ExperienceSessionSummary = {
+      ...sessionWithStoryBase,
+      indicators: enrichRouterDownstreamIndicators(sessionWithStoryBase),
     };
     const reviewerReport = buildReviewerReport(sessionWithStory, group, generatedAt, reviewState, storyInvocations, sessionStory);
     return {
@@ -1713,6 +1725,8 @@ function buildReviewerReport(
       userFollowUpCount: feedbackCounts.userFollowUpCount,
       assistantDeliverySignalCount: indicators.assistantDeliverySignalCount,
       deliverableArtifactSignalCount: indicators.deliverableArtifactSignalCount,
+      routerDownstreamCompleted: indicators.routerDownstreamCompleted,
+      routerDownstreamFailed: indicators.routerDownstreamFailed,
       assistantProgressUpdateCount: assistantProgressUpdateEvents(session).length,
       selfCorrectionCount: indicators.selfCorrectionCount,
       repeatedExecutionCount: indicators.repeatedExecutionCount,
@@ -2129,6 +2143,7 @@ function episodeRoleForLink(
   if (skillType === 'delegation') return 'delegator';
   if (skillType === 'executor') return 'main_executor';
   if (skillType === 'advisory') return 'observer';
+  if (skillType === 'workflow_owner') return 'router';
   if (link.role === 'router') return 'router';
   if (link.role === 'executor' || link.role === 'mixed') return 'main_executor';
   return 'supporting';
@@ -2154,6 +2169,7 @@ function normalizeRuntimeSkillType(value: unknown): ExperienceRuntimeSkillType |
   if (normalized === 'delegation' || normalized === 'delegate' || normalized === 'delegator') return 'delegation';
   if (normalized === 'executor' || normalized === 'execute') return 'executor';
   if (normalized === 'advisory' || normalized === 'advisor' || normalized === 'consulting') return 'advisory';
+  if (normalized === 'workflow_owner' || normalized === 'workflowowner' || normalized === 'workflow') return 'workflow_owner';
   return undefined;
 }
 
@@ -3305,6 +3321,7 @@ function skillTypeClosureChecklistItems(
 ): ExperienceChecklistItem[] {
   const runtime = currentSkillRuntimeModel(session, episodes);
   if (!runtime) return [];
+  if (runtime.skillType === 'workflow_owner') return workflowOwnerClosureChecklistItems(session, runtime, answerKey, episodes);
   if (runtime.skillType === 'router' || runtime.hasDownstreamEdges) return routerClosureChecklistItems(session, runtime, answerKey, episodes);
   if (runtime.skillType === 'delegation' || runtime.isDelegator) return delegationClosureChecklistItems(session, runtime, answerKey, episodes);
   if (runtime.skillType === 'executor') return executorClosureChecklistItems(session, runtime, answerKey);
@@ -3357,6 +3374,53 @@ function currentSkillRuntimeModel(session: ExperienceSessionSummary, episodesOve
     primarySignals: signalsForRole('primary_fault'),
     contextSignals: signalsForRole('context_only'),
   };
+}
+
+function workflowOwnerClosureChecklistItems(
+  session: ExperienceSessionSummary,
+  runtime: CurrentSkillRuntimeModel,
+  answerKey: ExperienceSessionStoryAnswerKey,
+  episodes?: ExperienceEpisode[],
+): ExperienceChecklistItem[] {
+  if (answerKey === 'declared_behavior_fit') {
+    const hasStages = runtime.segments.some((segment) =>
+      (segment.typeSpecificChecklist ?? []).some((item) => /stage|阶段|workflow/i.test(`${item.key} ${item.label}`))
+    );
+    return [
+      checklistItem({
+        key: 'workflow_owner_stage_matrix_declared',
+        label: hasStages ? '看到阶段矩阵线索' : '未看到阶段矩阵声明',
+        status: hasStages ? 'passed' : 'unknown',
+        contribution: 'attention',
+        reason: hasStages
+          ? '当前 workflow_owner skill 有阶段化检查线索。'
+          : 'workflow_owner 需要声明标准阶段矩阵，才能复盘每个阶段是否闭环。',
+        evidenceRefs: runtime.segments.flatMap((segment) => segment.evidenceRefs),
+        suggestionKey: hasStages ? undefined : 'workflow_owner_stage_matrix_absent',
+      }),
+    ];
+  }
+  if (answerKey === 'goal_satisfaction') {
+    const closure = userFacingClosureForSession(session, episodes);
+    const hasClosure = closure.deliveryCount > 0 || closure.artifactCount > 0;
+    return [
+      checklistItem({
+        key: 'workflow_owner_stage_closure',
+        label: hasClosure ? '看到流程闭环线索' : '未看到流程闭环线索',
+        status: hasClosure ? 'passed' : runtime.primarySignals.length > 0 || runtime.downstreamSignals.length > 0 ? 'failed' : 'unknown',
+        contribution: 'attention',
+        reason: hasClosure
+          ? '看到最终答复或产物线索。'
+          : 'workflow_owner 需要回收各阶段状态，说明哪些阶段完成、失败或跳过。',
+        evidenceRefs: [session.evidenceChain.lastAssistantMessage, ...runtime.primarySignals.map((signal) => signal.evidenceRef), ...runtime.downstreamSignals.map((signal) => signal.evidenceRef)],
+        suggestionKey: hasClosure ? undefined : 'workflow_owner_stage_closure_absent',
+      }),
+    ];
+  }
+  if (answerKey === 'user_feeling') {
+    return downstreamFeedbackRiskChecklistItems(runtime, 'workflow_owner_stage_feedback_seen', '流程阶段里出现用户追问或纠正');
+  }
+  return [];
 }
 
 function routerClosureChecklistItems(
@@ -3658,6 +3722,21 @@ function userFacingClosureForSession(
     deliveryCount: Math.max(session.indicators.assistantDeliverySignalCount, finalDeliveryEvents.length),
     artifactCount: Math.max(session.indicators.deliverableArtifactSignalCount, artifacts.length),
     evidenceRefs: uniqueEvidenceRefs([...deliveryRefs, ...artifactRefs, session.evidenceChain.lastAssistantMessage].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))).slice(0, 5),
+  };
+}
+
+function enrichRouterDownstreamIndicators(session: ExperienceSessionSummary): ExperienceReviewIndicators {
+  const runtime = currentSkillRuntimeModel(session);
+  if (!runtime || !(runtime.skillType === 'router' || runtime.hasDownstreamEdges)) return session.indicators;
+  const closure = userFacingClosureForSession(session);
+  const completedByEdge = runtime.downstreamEdges.some((edge) => edge.status === 'completed' || edge.runnerCompletedRef);
+  const failedByEdge = runtime.downstreamEdges.some((edge) => edge.status === 'failed');
+  const completed = closure.deliveryCount > 0 || closure.artifactCount > 0 || completedByEdge;
+  const failed = failedByEdge || (!completed && runtime.downstreamSignals.length > 0);
+  return {
+    ...session.indicators,
+    routerDownstreamCompleted: completed ? 1 : 0,
+    routerDownstreamFailed: failed ? 1 : 0,
   };
 }
 
@@ -4163,6 +4242,7 @@ function scoreForIndicators(indicators: ExperienceReviewIndicators): number {
     + indicators.negativeFeedbackCount * 2
     + indicators.hardRuleTextHitCount
     + indicators.toolFailureCount
+    + indicators.routerDownstreamFailed * 2
     + indicators.hedgingCount
     + indicators.explicitMarkerCount * 2;
 }
@@ -4245,6 +4325,8 @@ function sumIndicators(values: ExperienceReviewIndicators[]): ExperienceReviewIn
     hardRuleTextHitCount: acc.hardRuleTextHitCount + value.hardRuleTextHitCount,
     assistantDeliverySignalCount: acc.assistantDeliverySignalCount + (value.assistantDeliverySignalCount ?? 0),
     deliverableArtifactSignalCount: acc.deliverableArtifactSignalCount + (value.deliverableArtifactSignalCount ?? 0),
+    routerDownstreamCompleted: acc.routerDownstreamCompleted + (value.routerDownstreamCompleted ?? 0),
+    routerDownstreamFailed: acc.routerDownstreamFailed + (value.routerDownstreamFailed ?? 0),
     selfCorrectionCount: acc.selfCorrectionCount + (value.selfCorrectionCount ?? 0),
     repeatedExecutionCount: acc.repeatedExecutionCount + (value.repeatedExecutionCount ?? 0),
     toolCallCount: acc.toolCallCount + value.toolCallCount,

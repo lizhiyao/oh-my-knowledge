@@ -1,7 +1,7 @@
 # LLM Enhanced Review Prompt
 
 promptId: llm-enhanced-review
-promptVersion: 2026-05-19.v3
+promptVersion: 2026-05-21.v6
 
 You are reviewing one skill runtime chain from an evidence pack. The deterministic pipeline already extracted facts. Your job is to add semantic review, not to replace raw evidence.
 
@@ -22,6 +22,9 @@ Rules:
 - If `needsWorkflows=true`, suggest how the skill owner should declare standard workflow / completion / artifact criteria in SKILL.md, including observable steps and acceptance signals.
 - `ownerSuggestions` should also consider whether the skill needs a lightweight feedback contract after delivery, such as adopted/rejected, useful/not useful, thumbs up/down, or one short reviewer comment. This is for online observation linkage: OMK should connect user feedback to the exact session, invocation, artifact, workflow, and rule evidence instead of pretending to judge business quality by itself.
 - Do not let runtime-only suggestions replace standard-declaration suggestions. A skill can both need runtime fixes and need workflow / hardRule declaration fixes.
+- For workflow / hardRule / completion / artifact / stage execution details, do not directly judge every runtime node as passed or failed. Instead, extract standards as `standardNodes[]` with typed `RuntimeSignal` and `RuntimeTrigger`; the deterministic rule layer will match those nodes against trace evidence.
+- Do not output `runtimeNodeAssessment` or `runtimeNodeResults`. `runtimeNodeAssessment` is a legacy read-only field, and `runtimeNodeResults` is produced only by the deterministic rule layer.
+- Do not output router closure counters. `routerDownstreamCompleted` and `routerDownstreamFailed` are deterministic indicators derived from downstream edges, completion evidence, and user feedback attribution.
 - Each `ownerSuggestions[].title` must be a short action title, not a sentence copied from the body. Do not include file paths, commands, or examples in the title; put those in `body` or `acceptanceCriteria`.
 - Each type-specific checklist item should use one of the canonical keys below for the chosen `skillType`.
 - When a checklist item is `failed`, `degraded`, or important `unknown`, bind at least one `ownerSuggestions[]` entry with `checklistItemKey` equal to that checklist item's `key`.
@@ -30,7 +33,7 @@ Output schema:
 
 ```json
 {
-  "skillType": "router|delegation|executor|advisory|unknown",
+  "skillType": "router|delegation|executor|advisory|workflow_owner|unknown",
   "extractedStandards": {
     "hardrules": [
       {
@@ -62,6 +65,41 @@ Output schema:
         "body": "What output artifact should exist and match.",
         "confidence": "low|medium|high",
         "evidence": ["Short evidence phrase"]
+      }
+    ],
+    "standardNodes": [
+      {
+        "nodeId": "stable_node_id",
+        "kind": "workflow|hardRule|completion|artifact|stage",
+        "title": "Node title",
+        "description": "Concrete standard node description.",
+        "childNodeIds": ["child_node_id_for_stage_only"],
+        "expectedSignals": [
+          {
+            "id": "stable_signal_id",
+            "type": "tool_name|tool_input|tool_output|assistant_text|user_text|artifact_kind|artifact_path|event_kind",
+            "value": "string or string array",
+            "op": "equals|contains|any_of|fuzzy_contains|suffix|glob"
+          }
+        ],
+        "failureSignals": [],
+        "forbiddenSignals": [],
+        "conditionSignals": [],
+        "triggers": [
+          {
+            "when": { "signalGroup": "failureSignals", "signalId": "source_doc_read_failed" },
+            "forbidden": { "signalGroup": "forbiddenSignals", "signalId": "workflow_started_after_failure" },
+            "verdict": "passed|missed|violated|unknown|degraded",
+            "windowScope": "same_node|same_skill_segment|same_episode_after|same_session_after|anywhere_in_session"
+          }
+        ],
+        "sourceHints": [
+          {
+            "source": "skill_md|frontmatter|llm_inferred|template",
+            "line": 1,
+            "snippet": "Short phrase from the skill definition"
+          }
+        ]
       }
     ]
   },
@@ -120,6 +158,7 @@ Allowed `skillType` values:
 - `delegation`
 - `executor`
 - `advisory`
+- `workflow_owner`
 - `unknown`
 
 Allowed `confidence` values:
@@ -132,6 +171,7 @@ Judgment guidance:
 - Delegation skills are judged by parent/child contract, child lifecycle, parent boundary, output quality, and user notification.
 - Executor skills are judged by declared workflow execution, core tool fit, artifact creation, final delivery, and user feedback.
 - Advisory skills are judged by evidence quality, source traceability, conclusion coverage, and user feedback.
+- Workflow-owner skills are judged by declared stage matrix, stage owner/executor mapping, stage artifacts, stage feedback handling, and whole-workflow closure. They may delegate execution to other skills, but still own the workflow state.
 
 Canonical type-specific checklist keys:
 - Router:
@@ -158,3 +198,25 @@ Canonical type-specific checklist keys:
   - `uncertainty_stated`: 不确定性 / 权限限制 / 信息不足是否说清。
   - `conclusion_actionable`: 结论是否能指导用户下一步行动。
   - `user_followup_resolved`: 用户追问是否被解决。
+- Workflow-owner:
+  - `workflow_stage_matrix_declared`: 是否声明并执行标准阶段矩阵。
+  - `stage_owner_mapped`: 每个阶段是否能映射 owner / executor / delegated skill。
+  - `stage_artifacts_tracked`: 每个阶段的关键产物是否被记录并可回溯。
+  - `stage_feedback_handled`: 用户追问 / 纠正 / 中断是否能归到具体阶段并处理。
+  - `workflow_closure_reported`: 是否汇总整条 workflow 的完成 / 失败 / 跳过状态。
+
+RuntimeSignal constraints:
+- `tool_name`: `equals`, `contains`, `any_of`
+- `tool_input`: `contains`, `fuzzy_contains`, `any_of`
+- `tool_output`: `contains`, `fuzzy_contains`, `any_of`
+- `assistant_text`: `contains`, `fuzzy_contains`, `any_of`
+- `user_text`: `contains`, `fuzzy_contains`, `any_of`
+- `artifact_kind`: `equals`, `any_of`
+- `artifact_path`: `contains`, `suffix`, `glob`, `any_of`
+- `event_kind`: `equals`, `any_of`
+
+RuntimeTrigger constraints:
+- At least one of `when`, `absence`, `forbidden`, or `required` must be present.
+- `same_episode_after` and `same_session_after` require `when` as the time anchor.
+- A trigger with only `forbidden` means absolute forbidden within `anywhere_in_session` or `same_skill_segment`.
+- When multiple triggers match, the rule layer uses the most conservative verdict: `violated > degraded > unknown > passed > missed`.

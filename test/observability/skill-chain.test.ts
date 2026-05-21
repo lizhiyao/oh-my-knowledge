@@ -53,6 +53,9 @@ workflows:
       assert.equal(chain.runtime.hardRules.find((rule) => rule.id === 'no-ask-tool')?.status, 'passed');
       assert.equal(chain.runtime.workflowNodes.find((node) => node.id === 'main.sync')?.status, 'passed');
       assert.equal(chain.runtime.workflowNodes.find((node) => node.id === 'main.upload')?.status, 'attention');
+      assert.equal(chain.runtime.evidencePack?.schemaVersion, 1);
+      assert.equal(chain.runtime.evidencePack?.nodeEvidence.find((node) => node.nodeId === 'main.sync')?.deterministicStatus, 'passed');
+      assert.ok((chain.runtime.evidencePack?.runtimeEvidence.toolCalls.length ?? 0) > 0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

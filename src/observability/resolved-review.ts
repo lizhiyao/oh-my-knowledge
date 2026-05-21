@@ -10,7 +10,7 @@ import type {
 } from './experience.js';
 import type { ObservationReviewState, ObservationReviewTargetType } from './review-state.js';
 import { observationReviewStateKey } from './review-state.js';
-import type { LlmEnhancedChecklistStatus, LlmEnhancedSkillType, SkillLlmEnhancedReviewSections, SkillLlmTypeSpecificChecklistItem } from './soft-standards.js';
+import type { LlmEnhancedChecklistStatus, LlmEnhancedSkillType, RuntimeNodeVerdict, RuntimeStandardNodeKind, SkillLlmEnhancedReviewSections, SkillLlmTypeSpecificChecklistItem } from './soft-standards.js';
 
 export interface ResolveObservationReviewSessionOptions {
   session: {
@@ -111,7 +111,7 @@ function skillSegmentTypes(session: ResolveObservationReviewSessionOptions['sess
 }
 
 function normalizeResolvedSkillType(value?: ExperienceRuntimeSkillType | LlmEnhancedSkillType): LlmEnhancedSkillType | undefined {
-  if (value === 'router' || value === 'delegation' || value === 'executor' || value === 'advisory') return value;
+  if (value === 'router' || value === 'delegation' || value === 'executor' || value === 'advisory' || value === 'workflow_owner') return value;
   return undefined;
 }
 
@@ -135,9 +135,11 @@ function resolvePriority(
   if (attributionPriority === 'review_first') return 'review_first';
   const assessment = enhancedReview?.runtimeAssessment;
   const typeChecklist = suppressTypeSpecific ? [] : enhancedReview?.typeSpecificAssessment?.checklist ?? [];
-  if (!assessment && typeChecklist.length === 0) return attributionPriority ?? priority;
+  const nodeAssessments = enhancedReview ? runtimeNodeChecklistItems(enhancedReview) : [];
+  if (!assessment && typeChecklist.length === 0 && nodeAssessments.length === 0) return attributionPriority ?? priority;
   const attributionMode = episodeAttributionMode(session);
-  if (typeChecklist.some((item) => item.status === 'failed' || item.status === 'degraded')) {
+  if (typeChecklist.some((item) => item.status === 'failed' || item.status === 'degraded')
+    || nodeAssessments.some((item) => item.status === 'failed' || item.status === 'degraded')) {
     if (attributionMode === 'downstream_only') return maxPriority(priority, 'sample_review');
     return 'review_first';
   }
@@ -154,7 +156,8 @@ function resolvePriority(
     || assessment.declaredBehaviorFit === 'unknown'
     || assessment.artifactGoalMatch === 'unknown'
     || assessment.userFeeling === 'neutral'))
-    || typeChecklist.some((item) => item.status === 'unknown');
+    || typeChecklist.some((item) => item.status === 'unknown')
+    || nodeAssessments.some((item) => item.status === 'unknown');
   if (hasUnknown && priority === 'routine_sample') return maxPriority(attributionPriority ?? priority, 'sample_review');
   return attributionPriority ? maxPriority(priority, attributionPriority) : priority;
 }
@@ -255,14 +258,16 @@ function resolveAnswerFromLlm(
   if (answer.key === 'declared_behavior_fit') {
     const status = verdictStatus(assessment.declaredBehaviorFit);
     const typeItems = suppressTypeSpecific ? [] : typeSpecificChecklistForAnswer(enhancedReview, 'declared_behavior_fit', resolvedSkillType);
+    const nodeItems = runtimeNodeChecklistItems(enhancedReview);
+    const allItems = [...typeItems, ...nodeItems];
     return {
       ...answer,
-      status: worstAnswerStatus(status, typeItems),
-      reason: reasonForStatus(worstAnswerStatus(status, typeItems)),
+      status: worstAnswerStatus(status, allItems),
+      reason: reasonForStatus(worstAnswerStatus(status, allItems)),
       text: enhancedReview.reviewerSummary ?? answer.text,
       checklistItems: [
         checklistItem('llm_declared_behavior_fit', `行为符合声明：${verdictLabel(assessment.declaredBehaviorFit)}`, status === 'ok' ? 'passed' : status === 'attention' ? 'failed' : 'unknown', 'LLM 判断运行行为是否符合 skill 声明。', 'blocking'),
-        ...typeItems,
+        ...allItems,
       ],
     };
   }
@@ -302,6 +307,41 @@ function typeSpecificChecklistForAnswer(
 function typeSpecificChecklistItems(enhancedReview?: SkillLlmEnhancedReviewSections, skillType?: LlmEnhancedSkillType): ExperienceChecklistItem[] {
   const items = enhancedReview?.typeSpecificAssessment?.checklist ?? [];
   return items.map((item) => typeSpecificChecklistItem(item, skillType ?? enhancedReview?.skillType));
+}
+
+function runtimeNodeChecklistItems(enhancedReview: SkillLlmEnhancedReviewSections): ExperienceChecklistItem[] {
+  const runtimeResults = enhancedReview.runtimeNodeResults?.nodes ?? [];
+  if (runtimeResults.length > 0) {
+    return runtimeResults.slice(0, 12).map((node) => checklistItem(
+      `runtime_node_${node.kind}_${node.nodeId}`,
+      `${runtimeNodeKindLabel(node.kind)}：${node.title || node.nodeId}`,
+      runtimeNodeChecklistStatus(node.status),
+      node.reason || '规则层基于 LLM 拆解的 typed signal 匹配运行证据。',
+      node.status === 'violated' || node.status === 'degraded' ? 'attention' : 'informational',
+    ));
+  }
+  return (enhancedReview.runtimeNodeAssessment?.nodes ?? []).slice(0, 12).map((node) => checklistItem(
+    `legacy_llm_node_${node.kind}_${node.nodeId}`,
+    `${node.kind === 'workflowNode' ? '流程节点' : '硬性规则'}：${node.nodeId}`,
+    checklistStatus(node.status),
+    node.reason ?? '旧版模型节点复核结果。',
+    node.status === 'failed' || node.status === 'degraded' ? 'attention' : 'informational',
+  ));
+}
+
+function runtimeNodeKindLabel(kind: RuntimeStandardNodeKind): string {
+  if (kind === 'hardRule') return '硬性规则';
+  if (kind === 'workflow') return '流程节点';
+  if (kind === 'completion') return '完成标准';
+  if (kind === 'artifact') return '产物标准';
+  return '阶段';
+}
+
+function runtimeNodeChecklistStatus(status: RuntimeNodeVerdict): ExperienceChecklistItemStatus {
+  if (status === 'passed') return 'passed';
+  if (status === 'missed' || status === 'violated') return 'failed';
+  if (status === 'degraded') return 'degraded';
+  return 'unknown';
 }
 
 function typeSpecificChecklistItem(item: SkillLlmTypeSpecificChecklistItem, skillType?: LlmEnhancedSkillType): ExperienceChecklistItem {
@@ -356,10 +396,16 @@ function typeSpecificKeyLabel(key: string, skillType?: LlmEnhancedSkillType): st
     core_tools_used: '核心工具已使用',
     evidence_provided: '证据可回溯',
     uncertainty_stated: '不确定性已说明',
+    workflow_stage_matrix_declared: '阶段矩阵已声明',
+    stage_owner_mapped: '阶段责任已映射',
+    stage_artifacts_tracked: '阶段产物已跟踪',
+    stage_feedback_handled: '阶段反馈已处理',
+    workflow_closure_reported: '流程闭环已汇总',
   };
   const label = labels[key];
   if (!label) return undefined;
   if (skillType === 'delegation' && key === 'delegation_contract_followed') return '编排者没有接手执行';
+  if (skillType === 'workflow_owner' && key === 'workflow_stage_matrix_declared') return '标准阶段矩阵已声明';
   return label;
 }
 
@@ -375,6 +421,11 @@ function failedTypeSpecificLabel(key: string, label: string): string {
     route_selected_correctly: '路由选择不正确',
     user_goal_preserved: '传给下游的用户目标不完整',
     child_output_goal_match: 'child 产物没有对齐原目标',
+    workflow_stage_matrix_declared: '未声明标准阶段矩阵',
+    stage_owner_mapped: '阶段责任没有映射到 owner / executor',
+    stage_artifacts_tracked: '阶段产物没有被跟踪',
+    stage_feedback_handled: '阶段反馈没有闭环处理',
+    workflow_closure_reported: '没有汇总流程闭环状态',
   };
   return failedLabels[key] ?? `未通过：${label}`;
 }
@@ -392,6 +443,9 @@ function typeSpecificAnswerKey(key: string): ExperienceSessionStoryAnswerKey {
     'final_delivery_clear',
     'question_answered',
     'conclusion_actionable',
+    'stage_artifacts_tracked',
+    'stage_feedback_handled',
+    'workflow_closure_reported',
   ].includes(key)) return 'goal_satisfaction';
   if ([
     'downstream_linked',
@@ -402,6 +456,8 @@ function typeSpecificAnswerKey(key: string): ExperienceSessionStoryAnswerKey {
     'core_tools_used',
     'evidence_provided',
     'uncertainty_stated',
+    'workflow_stage_matrix_declared',
+    'stage_owner_mapped',
   ].includes(key)) return 'declared_behavior_fit';
   return 'user_feeling';
 }
@@ -414,6 +470,9 @@ function typeSpecificContribution(key: string, status: LlmEnhancedChecklistStatu
     'delegation_contract_followed',
     'parent_boundary_kept',
     'workflow_executed',
+    'workflow_stage_matrix_declared',
+    'stage_owner_mapped',
+    'workflow_closure_reported',
     'artifact_produced',
     'question_answered',
   ].includes(key)) return 'blocking';
@@ -445,6 +504,7 @@ function skillTypeLabel(value?: LlmEnhancedSkillType): string {
   if (value === 'delegation') return '委派型';
   if (value === 'executor') return '执行型';
   if (value === 'advisory') return '咨询型';
+  if (value === 'workflow_owner') return '流程负责型';
   return '类型待确认';
 }
 
@@ -564,6 +624,12 @@ function hasManualValue(reviewState: ObservationReviewState, targetType: Observa
 function ownerSuggestionTexts(enhancedReview?: SkillLlmEnhancedReviewSections, skillType?: LlmEnhancedSkillType): ResolvedOwnerSuggestion[] {
   const checklistLabelByKey = new Map((enhancedReview?.typeSpecificAssessment?.checklist ?? [])
     .map((item) => [item.key, `${skillTypeLabel(skillType ?? enhancedReview?.skillType)}：${readableTypeSpecificLabel(item, skillType ?? enhancedReview?.skillType)}`] as const));
+  for (const node of enhancedReview?.runtimeNodeResults?.nodes ?? []) {
+    checklistLabelByKey.set(node.nodeId, `${runtimeNodeKindLabel(node.kind)}：${node.title || node.nodeId}`);
+  }
+  for (const node of enhancedReview?.runtimeNodeAssessment?.nodes ?? []) {
+    checklistLabelByKey.set(node.suggestionKey ?? node.nodeId, `${node.kind === 'workflowNode' ? '流程节点' : '硬性规则'}：${node.nodeId}`);
+  }
   return (enhancedReview?.ownerSuggestions ?? [])
     .flatMap((suggestion): ResolvedOwnerSuggestion[] => {
       const title = suggestion.title?.trim();

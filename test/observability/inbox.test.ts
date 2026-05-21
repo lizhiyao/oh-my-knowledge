@@ -2778,7 +2778,11 @@ expected_tools:
     const executorSession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
     assert.ok(routerSession);
     assert.ok(executorSession);
+    assert.equal(routerSession.indicators.routerDownstreamCompleted, 0);
+    assert.equal(routerSession.indicators.routerDownstreamFailed, 1);
     assert.equal(routerSession.reviewerReport?.oneLookMetrics.userFollowUpCount, 1);
+    assert.equal(routerSession.reviewerReport?.oneLookMetrics.routerDownstreamCompleted, 0);
+    assert.equal(routerSession.reviewerReport?.oneLookMetrics.routerDownstreamFailed, 1);
     const feedbackSignal = routerSession.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals)
       .find((signal) => signal.text === '为什么信息没返回');
     assert.ok(feedbackSignal);
@@ -2972,6 +2976,34 @@ expected_tools:
         },
         hardRules: [],
         workflowNodes: [],
+        evidencePack: {
+          schemaVersion: 1,
+          skillName: 'sample-review-skill',
+          generatedBy: 'deterministic_rule_pack',
+          definition: { found: true },
+          declaredStandards: { hardRules: [], workflowNodes: [] },
+          runtimeEvidence: {
+            toolCalls: [{
+              id: 'tool-1',
+              kind: 'tool_use',
+              sourceTrace: 'sample.jsonl',
+              sessionId: 'session-1',
+              snippet: 'Read source section before review',
+              sourceType: 'tool_call',
+              toolName: 'Read',
+            }],
+            assistantMessages: [],
+            userFeedback: [],
+            artifacts: [],
+          },
+          nodeEvidence: [],
+          evidenceQuality: {
+            pollutedSourceCount: 0,
+            windowTooNarrow: false,
+            missingRuntimeEvidence: false,
+            notes: [],
+          },
+        },
       },
     };
 
@@ -3003,6 +3035,30 @@ expected_tools:
               }],
               completionCriteria: [],
               artifactCriteria: [],
+              standardNodes: [{
+                nodeId: 'main.review',
+                kind: 'workflow',
+                title: 'Review generated plan',
+                description: 'Reviewer reads source material before producing plan review.',
+                expectedSignals: [{
+                  id: 'read_source',
+                  type: 'tool_name',
+                  value: 'Read',
+                  op: 'equals',
+                }],
+                failureSignals: [],
+                forbiddenSignals: [],
+                conditionSignals: [],
+                triggers: [{
+                  required: { signalGroup: 'expectedSignals', signalId: 'read_source' },
+                  verdict: 'passed',
+                  windowScope: 'same_skill_segment',
+                }],
+                sourceHints: [{
+                  source: 'skill_md',
+                  snippet: 'Always cite the source section',
+                }],
+              }],
             },
             userGoal: {
               summary: 'Review generated technical plans',
@@ -3063,9 +3119,12 @@ expected_tools:
 
     assert.equal(record.model, 'sonnet');
     assert.equal(record.promptId, 'llm-enhanced-review');
-    assert.equal(record.promptVersion, '2026-05-19.v3');
+    assert.equal(record.promptVersion, '2026-05-21.v6');
     assert.equal(record.enhancedReview?.skillType, 'advisory');
     assert.equal(record.enhancedReview?.typeSpecificAssessment?.checklist[0]?.key, 'evidence_provided');
+    assert.equal(record.enhancedReview?.extractedStandards?.standardNodes?.[0]?.nodeId, 'main.review');
+    assert.equal(record.enhancedReview?.runtimeNodeResults?.nodes[0]?.nodeId, 'main.review');
+    assert.equal(record.enhancedReview?.runtimeNodeResults?.nodes[0]?.status, 'passed');
     assert.deepEqual(record.enhancedReview?.skillDeclaredGoal?.keywords, ['plan review', 'source citation']);
     assert.equal(record.enhancedReview?.runtimeAssessment?.userFeeling, 'neutral');
     assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充标准化硬性规则声明'));
