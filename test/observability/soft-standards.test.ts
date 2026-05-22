@@ -63,6 +63,7 @@ function signal(type: RuntimeSignalType, value: string | string[], op: RuntimeSi
 function node(input: Partial<RuntimeStandardNode> & { expectedSignals?: RuntimeSignal[] }): RuntimeStandardNode {
   return {
     nodeId: input.nodeId ?? 'node',
+    nodeEvidenceRef: input.nodeEvidenceRef,
     kind: input.kind ?? 'workflow',
     title: input.title ?? 'node',
     expectedSignals: input.expectedSignals ?? [],
@@ -306,6 +307,104 @@ describe('runtime standard trigger evaluator', () => {
       candidateEvidenceSnippets: [],
     }]))[0];
     assert.equal(result.status, 'missed');
+  });
+
+  it('uses explicit nodeEvidenceRef to resolve same_node evidence when node ids differ', () => {
+    const standard = node({
+      nodeId: 'llm-read-doc',
+      nodeEvidenceRef: 'workflow.read_source',
+      expectedSignals: [signal('tool_name', 'Read', 'equals')],
+      triggers: [{
+        required: { signalGroup: 'expectedSignals', signalId: 'tool_name_signal' },
+        verdict: 'passed',
+        windowScope: 'same_node',
+      }],
+    });
+    const readRef = ref({ id: 'read-ref', sourceType: 'tool_call', toolName: 'Read', snippet: 'Read source.md', messageIndex: 3 });
+    const result = evaluateRuntimeStandardNodes([standard], pack([readRef], [{
+      nodeId: 'workflow.read_source',
+      kind: 'workflowNode',
+      title: '读取源文档',
+      expectation: '读取用户提供的文档',
+      deterministicStatus: 'passed',
+      deterministicReason: 'matched',
+      candidateEvidenceRefs: [readRef],
+      candidateEvidenceSnippets: ['Read source.md'],
+    }]))[0];
+    assert.equal(result.status, 'passed');
+  });
+
+  it('falls back to signal overlap for same_node evidence when ids differ', () => {
+    const standard = node({
+      nodeId: 'llm-runner-launch',
+      title: '后台启动 runner',
+      expectedSignals: [signal('tool_name', 'Bash', 'equals')],
+      triggers: [{
+        required: { signalGroup: 'expectedSignals', signalId: 'tool_name_signal' },
+        verdict: 'passed',
+        windowScope: 'same_node',
+      }],
+    });
+    const bashRef = ref({ id: 'bash-ref', sourceType: 'tool_call', toolName: 'Bash', snippet: 'node runner.js', messageIndex: 4 });
+    const result = evaluateRuntimeStandardNodes([standard], pack([bashRef], [{
+      nodeId: 'workflow.launch_child',
+      kind: 'workflowNode',
+      title: '启动子任务',
+      expectation: '使用 runner.js 后台启动 child',
+      deterministicStatus: 'passed',
+      deterministicReason: 'matched',
+      candidateEvidenceRefs: [bashRef],
+      candidateEvidenceSnippets: ['node runner.js'],
+    }]))[0];
+    assert.equal(result.status, 'passed');
+  });
+
+  it('falls back to title similarity for same_node evidence but avoids ambiguous ties', () => {
+    const standard = node({
+      nodeId: 'llm-result-report',
+      title: '回传结果',
+      expectedSignals: [signal('assistant_text', '结果如下')],
+      triggers: [{
+        required: { signalGroup: 'expectedSignals', signalId: 'assistant_text_signal' },
+        verdict: 'passed',
+        windowScope: 'same_node',
+      }],
+    });
+    const resultRef = ref({ id: 'result-ref', sourceType: 'assistant_message', snippet: '结果如下', messageIndex: 5 });
+    const positive = evaluateRuntimeStandardNodes([standard], pack([resultRef], [{
+      nodeId: 'workflow.report_result',
+      kind: 'workflowNode',
+      title: '回传结果',
+      expectation: '向用户回传结果',
+      deterministicStatus: 'passed',
+      deterministicReason: 'matched',
+      candidateEvidenceRefs: [resultRef],
+      candidateEvidenceSnippets: ['结果如下'],
+    }]))[0];
+    const tied = evaluateRuntimeStandardNodes([standard], pack([resultRef], [
+      {
+        nodeId: 'workflow.report_result_a',
+        kind: 'workflowNode',
+        title: '回传结果',
+        expectation: '向用户回传结果',
+        deterministicStatus: 'passed',
+        deterministicReason: 'matched',
+        candidateEvidenceRefs: [resultRef],
+        candidateEvidenceSnippets: ['结果如下'],
+      },
+      {
+        nodeId: 'workflow.report_result_b',
+        kind: 'workflowNode',
+        title: '回传结果',
+        expectation: '向用户回传结果',
+        deterministicStatus: 'passed',
+        deterministicReason: 'matched',
+        candidateEvidenceRefs: [resultRef],
+        candidateEvidenceSnippets: ['结果如下'],
+      },
+    ]))[0];
+    assert.equal(positive.status, 'passed');
+    assert.equal(tied.status, 'missed');
   });
 
   it('keeps same_session_after from firing before its anchor', () => {

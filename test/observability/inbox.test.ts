@@ -3119,7 +3119,7 @@ expected_tools:
 
     assert.equal(record.model, 'sonnet');
     assert.equal(record.promptId, 'llm-enhanced-review');
-    assert.equal(record.promptVersion, '2026-05-21.v6');
+    assert.equal(record.promptVersion, '2026-05-22.v7');
     assert.equal(record.enhancedReview?.skillType, 'advisory');
     assert.equal(record.enhancedReview?.typeSpecificAssessment?.checklist[0]?.key, 'evidence_provided');
     assert.equal(record.enhancedReview?.extractedStandards?.standardNodes?.[0]?.nodeId, 'main.review');

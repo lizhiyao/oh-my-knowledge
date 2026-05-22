@@ -4,10 +4,10 @@ import { join } from 'node:path';
 import type { ExecutorFn } from '../types/index.js';
 import { createExecutor } from '../executors/index.js';
 import { readPromptDocument } from '../shared/llm-prompts/index.js';
-import { buildObservationSkillChain, type ObservationSkillChain, type SkillRuntimeEvidencePack, type SkillRuntimeEvidencePackRef } from './skill-chain.js';
+import { buildObservationSkillChain, type ObservationSkillChain, type SkillRuntimeEvidencePack, type SkillRuntimeEvidencePackNode, type SkillRuntimeEvidencePackRef } from './skill-chain.js';
 
 export const SOFT_STANDARD_PROMPT_ID = 'llm-enhanced-review';
-export const SOFT_STANDARD_PROMPT_VERSION = '2026-05-21.v6';
+export const SOFT_STANDARD_PROMPT_VERSION = '2026-05-22.v7';
 export const DEFAULT_LLM_ENHANCED_REVIEW_MODEL = 'sonnet';
 
 export type SkillDerivedStandardStatus = 'pending_review' | 'author_confirmed' | 'rejected' | 'stale';
@@ -107,6 +107,7 @@ export interface RuntimeStandardNodeSourceHint {
 
 export interface RuntimeStandardNode {
   nodeId: string;
+  nodeEvidenceRef?: string;
   kind: RuntimeStandardNodeKind;
   title: string;
   description?: string;
@@ -435,6 +436,16 @@ function buildSoftStandardPrompt(
   flags: { needsHardRules: boolean; needsWorkflows: boolean },
   runtimeEvidence?: SkillLlmEnhancedRuntimeEvidence,
 ): string {
+  const evidencePack = runtimeEvidence?.skillRuntimeEvidencePack ?? skillChain.runtime.evidencePack;
+  const resolvedRuntimeEvidence = runtimeEvidence ?? {
+    goalSlices: [],
+    userMessages: [],
+    assistantMessages: [],
+    artifactCandidates: [],
+    toolCalls: [],
+    findings: [],
+    skillRuntimeEvidencePack: evidencePack,
+  };
   return JSON.stringify({
     task: 'llm_enhanced_review',
     promptId: SOFT_STANDARD_PROMPT_ID,
@@ -444,16 +455,25 @@ function buildSoftStandardPrompt(
     needsWorkflows: flags.needsWorkflows,
     skillContent: skillChain.definition.content ?? '',
     runtimeSummary: skillChain.runtime.summary,
-    runtimeEvidence: runtimeEvidence ?? {
-      goalSlices: [],
-      userMessages: [],
-      assistantMessages: [],
-      artifactCandidates: [],
-      toolCalls: [],
-      findings: [],
-      skillRuntimeEvidencePack: skillChain.runtime.evidencePack,
-    },
+    availableNodeEvidenceIds: availableNodeEvidenceSummaries(evidencePack),
+    runtimeEvidence: resolvedRuntimeEvidence,
   }, null, 2);
+}
+
+function availableNodeEvidenceSummaries(evidencePack?: SkillRuntimeEvidencePack): Array<{
+  nodeId: string;
+  kind: SkillRuntimeEvidencePackNode['kind'];
+  title: string;
+  expectation: string;
+  candidateEvidenceSnippets: string[];
+}> {
+  return (evidencePack?.nodeEvidence ?? []).slice(0, 40).map((node) => ({
+    nodeId: node.nodeId,
+    kind: node.kind,
+    title: node.title.slice(0, 120),
+    expectation: node.expectation.slice(0, 240),
+    candidateEvidenceSnippets: node.candidateEvidenceSnippets.slice(0, 3).map((snippet) => snippet.slice(0, 180)),
+  }));
 }
 
 function readPromptTemplate() {
@@ -630,6 +650,7 @@ function normalizeStandardNode(value: unknown): RuntimeStandardNode | null {
   if (!nodeId || !kind || !title) return null;
   return {
     nodeId,
+    nodeEvidenceRef: typeof item.nodeEvidenceRef === 'string' ? normalizeIdentifier(item.nodeEvidenceRef, 120) || undefined : undefined,
     kind,
     title,
     description: typeof item.description === 'string' ? item.description.slice(0, 600) : undefined,
@@ -1008,10 +1029,72 @@ interface RuntimeEvaluationContext {
   nodeScopedRefs: SkillRuntimeEvidencePackRef[];
 }
 
+function resolveNodeScopedRefs(node: RuntimeStandardNode, evidencePack: SkillRuntimeEvidencePack): SkillRuntimeEvidencePackRef[] {
+  const byId = new Map(evidencePack.nodeEvidence.map((entry) => [entry.nodeId, entry]));
+  const explicit = node.nodeEvidenceRef ? byId.get(node.nodeEvidenceRef) : undefined;
+  if (explicit) return explicit.candidateEvidenceRefs;
+  const exact = byId.get(node.nodeId);
+  if (exact) return exact.candidateEvidenceRefs;
+
+  const scored = evidencePack.nodeEvidence
+    .map((entry) => ({ entry, score: scoreNodeEvidenceCandidate(node, entry) }))
+    .filter((item) => item.score >= 4)
+    .sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  const second = scored[1];
+  if (!best) return [];
+  if (second && best.score === second.score) return [];
+  return best.entry.candidateEvidenceRefs;
+}
+
+function scoreNodeEvidenceCandidate(node: RuntimeStandardNode, candidate: SkillRuntimeEvidencePackNode): number {
+  let score = 0;
+  const candidateText = normalizeFuzzyText(`${candidate.title}\n${candidate.expectation}`);
+  const nodeText = normalizeFuzzyText([
+    node.title,
+    node.description,
+    ...node.sourceHints.map((hint) => hint.snippet),
+  ].filter(Boolean).join('\n'));
+  if (nodeText && candidateText) {
+    if (candidateText.includes(nodeText) || nodeText.includes(candidateText)) score += 3;
+    else if (nodeText.length >= 10 && candidateText.length >= 10 && hasMeaningfulTokenOverlap(nodeText, candidateText)) score += 2;
+  }
+
+  const signals = [
+    ...node.expectedSignals,
+    ...node.failureSignals,
+    ...node.forbiddenSignals,
+    ...node.conditionSignals,
+  ];
+  const matchedSignalIds = new Set<string>();
+  for (const signal of signals) {
+    if (candidate.candidateEvidenceRefs.some((ref) => refMatchesRuntimeSignal(ref, signal))) {
+      matchedSignalIds.add(signal.id);
+      score += signalMatchWeight(signal.type);
+    }
+  }
+  if (matchedSignalIds.size >= 2) score += 2;
+  return score;
+}
+
+function hasMeaningfulTokenOverlap(left: string, right: string): boolean {
+  const tokens = new Set(left.split(/[^a-z0-9\u4e00-\u9fff]+/i).filter((token) => token.length >= 2));
+  let overlap = 0;
+  for (const token of right.split(/[^a-z0-9\u4e00-\u9fff]+/i)) {
+    if (token.length >= 2 && tokens.has(token)) overlap += 1;
+    if (overlap >= 2) return true;
+  }
+  return false;
+}
+
+function signalMatchWeight(type: RuntimeSignalType): number {
+  if (type === 'tool_name' || type === 'event_kind' || type === 'artifact_kind' || type === 'artifact_path') return 4;
+  return 2;
+}
+
 function evaluateRuntimeStandardNodes(nodes: RuntimeStandardNode[], evidencePack: SkillRuntimeEvidencePack): RuntimeNodeResult[] {
-  const nodeScopedRefsById = new Map(evidencePack.nodeEvidence.map((node) => [node.nodeId, node.candidateEvidenceRefs]));
   const rawResults = nodes.map((node) => evaluateRuntimeStandardNode(node, evidencePack, {
-    nodeScopedRefs: nodeScopedRefsById.get(node.nodeId) ?? [],
+    nodeScopedRefs: resolveNodeScopedRefs(node, evidencePack),
   }));
   const resultByNodeId = new Map(rawResults.map((result) => [result.nodeId, result]));
   return rawResults.map((result) => {
@@ -1223,6 +1306,7 @@ function refsInScope(
   }
   if (scope === 'anywhere_in_session') return refs;
   if (scope === 'same_skill_segment') {
+    // Evidence packs do not yet carry a stable segment id, so this is an intentional session-level approximation.
     const sessionIds = new Set(anchorRefs.map((ref) => ref.sessionId).filter(Boolean));
     return sessionIds.size > 0 ? refs.filter((ref) => sessionIds.has(ref.sessionId)) : refs;
   }

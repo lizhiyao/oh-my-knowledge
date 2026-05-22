@@ -1,7 +1,7 @@
 # LLM Enhanced Review Prompt
 
 promptId: llm-enhanced-review
-promptVersion: 2026-05-21.v6
+promptVersion: 2026-05-22.v7
 
 You are reviewing one skill runtime chain from an evidence pack. The deterministic pipeline already extracted facts. Your job is to add semantic review, not to replace raw evidence.
 
@@ -23,6 +23,7 @@ Rules:
 - `ownerSuggestions` should also consider whether the skill needs a lightweight feedback contract after delivery, such as adopted/rejected, useful/not useful, thumbs up/down, or one short reviewer comment. This is for online observation linkage: OMK should connect user feedback to the exact session, invocation, artifact, workflow, and rule evidence instead of pretending to judge business quality by itself.
 - Do not let runtime-only suggestions replace standard-declaration suggestions. A skill can both need runtime fixes and need workflow / hardRule declaration fixes.
 - For workflow / hardRule / completion / artifact / stage execution details, do not directly judge every runtime node as passed or failed. Instead, extract standards as `standardNodes[]` with typed `RuntimeSignal` and `RuntimeTrigger`; the deterministic rule layer will match those nodes against trace evidence.
+- The input may include `availableNodeEvidenceIds`, derived from deterministic rule-pack nodes. If a `standardNodes[]` item corresponds to one of those deterministic nodes, set `nodeEvidenceRef` to that exact `nodeId`. If no clear node matches, omit `nodeEvidenceRef`; do not invent ids.
 - Do not output `runtimeNodeAssessment` or `runtimeNodeResults`. `runtimeNodeAssessment` is a legacy read-only field, and `runtimeNodeResults` is produced only by the deterministic rule layer.
 - Do not output router closure counters. `routerDownstreamCompleted` and `routerDownstreamFailed` are deterministic indicators derived from downstream edges, completion evidence, and user feedback attribution.
 - Each `ownerSuggestions[].title` must be a short action title, not a sentence copied from the body. Do not include file paths, commands, or examples in the title; put those in `body` or `acceptanceCriteria`.
@@ -70,6 +71,7 @@ Output schema:
     "standardNodes": [
       {
         "nodeId": "stable_node_id",
+        "nodeEvidenceRef": "optional_existing_availableNodeEvidenceIds_nodeId",
         "kind": "workflow|hardRule|completion|artifact|stage",
         "title": "Node title",
         "description": "Concrete standard node description.",
