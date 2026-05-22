@@ -8,7 +8,7 @@ import type { Sample } from '../types/index.js';
  * 成本约 sonnet 的 5x,但 opus 在结构化指令遵循 / 长 prompt 一致性上更稳。
  * 用户想要省钱时显式 `--model sonnet` 即可。
  */
-const GENERATOR_DEFAULT_MODEL = 'opus';
+const GENERATOR_DEFAULT_MODEL = 'sonnet';
 
 const SYSTEM_PROMPT = `你是一个评测用例生成器。你的任务是根据用户提供的 skill（系统提示词）内容，生成高质量的评测用例。
 

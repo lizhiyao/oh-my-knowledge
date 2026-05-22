@@ -387,26 +387,22 @@ async function runSample(
       console.log(tCli('cli.gen.batch_summary', lang, { n: generated }));
     }
   } else {
-    const skillPath: string | undefined = args.skillPath;
-    if (!skillPath) {
+    const skillPathArg: string | undefined = args.skillPath;
+    if (!skillPathArg) {
       console.error(tCli('cli.gen.specify_skill_path', lang));
       throw new CliExit(1);
     }
 
-    const resolvedPath: string = resolve(skillPath);
-    if (!existsSync(resolvedPath)) {
-      console.error(tCli('cli.common.skill_file_not_found', lang, { path: resolvedPath }));
+    const { resolveSkillInput } = await import('../lib/resolve-skill-input.js');
+    let resolved;
+    try { resolved = resolveSkillInput(skillPathArg); } catch (err) {
+      console.error(tCli('cli.common.skill_file_not_found', lang, { path: resolve(skillPathArg) }));
       throw new CliExit(1);
     }
 
-    const skillContent: string = readFileSync(resolvedPath, 'utf-8');
+    const skillContent: string = readFileSync(resolved.skillPath, 'utf-8');
 
-    const skillBasename = basename(resolvedPath);
-    const skillParentDir = dirname(resolvedPath);
-    const isStandardSkillLayout = skillBasename === 'SKILL.md';
-    const outputPath: string = isStandardSkillLayout
-      ? join(skillParentDir, '.omk', 'samples.json')
-      : resolve('eval-samples.json');
+    const outputPath: string = resolved.samplesPath;
 
     if (existsSync(outputPath)) {
       console.error(tCli('cli.gen.samples_already_exists', lang));
@@ -494,10 +490,10 @@ export default class Sample extends BaseCommand {
     }),
     model: Flags.string({
       description: bilingual({
-        zh: '生成 LLM model 名，默认 opus。',
-        en: 'Generation LLM model name, default opus.',
+        zh: '生成 LLM model 名，默认 sonnet。',
+        en: 'Generation LLM model name, default sonnet.',
       }),
-      default: 'opus',
+      default: 'sonnet',
     }),
     'skill-dir': Flags.string({
       description: bilingual({

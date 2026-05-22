@@ -1,6 +1,6 @@
-import { resolve, join } from 'node:path';
+import { resolve, join, dirname } from 'node:path';
 import { homedir } from 'node:os';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { discoverVariants, parseVariantCwd } from '../../inputs/skill-loader.js';
 import { CliExit } from './cli-exit.js';
 import { loadEvalConfig, configVariantsToSpecs } from '../../inputs/eval-config.js';
@@ -145,7 +145,20 @@ function discoverSamplesPath(values: Record<string, unknown>, skillDir: string):
     ? treatmentRaw.split(',').map((v) => v.trim()).filter(Boolean)
     : [];
   if (treatments.length === 1) {
-    const tname = parseVariantCwd(treatments[0]).name;
+    const expr = treatments[0];
+    const resolved = resolve(expr);
+    // If treatment is an absolute/relative path (file or dir), look for .omk/ in its directory
+    if (existsSync(resolved)) {
+      const treatmentDir = statSync(resolved).isDirectory() ? resolved : dirname(resolved);
+      const omkDir = join(treatmentDir, '.omk');
+      if (existsSync(omkDir)) return omkDir;
+      // Also check for eval-samples files in the treatment directory
+      for (const name of ['eval-samples.json', 'eval-samples.yaml', 'eval-samples.yml']) {
+        if (existsSync(join(treatmentDir, name))) return join(treatmentDir, name);
+      }
+    }
+    // Fallback: try skill-dir relative lookup
+    const tname = parseVariantCwd(expr).name;
     const omkDir = join(skillDir, tname, '.omk');
     if (existsSync(omkDir)) return omkDir;
   }

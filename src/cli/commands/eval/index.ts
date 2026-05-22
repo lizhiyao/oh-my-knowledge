@@ -418,7 +418,7 @@ export default class Eval extends BaseCommand {
       parse: integerStringParser('--concurrency', { min: 1 }),
     }),
     timeout: Flags.string({
-      description: bilingual({ zh: '单样本超时秒，默认 120', en: 'Per-sample timeout sec, default 120' }),
+      description: bilingual({ zh: '单样本超时秒，默认 600', en: 'Per-sample timeout sec, default 600' }),
       parse: numberStringParser('--timeout', { min: 1 }),
     }),
     batch: Flags.boolean({

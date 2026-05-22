@@ -6,14 +6,11 @@ import type { ExecResult } from '../types/index.js';
 
 export const execFileAsync = promisify(execFile);
 
-// 系统默认任务执行模型。用 alias 'opus' 而非 pinned 'claude-opus-4-7',
-// 让 Anthropic 推新一代 opus 时(opus 5 等)自动跟进,无需改代码。
-// 副作用:跨 opus 代际的历史报告分数不可严格直接比 — 但 report.meta.executorRuntime
-// 会记录每次跑实际解析到的模型 ID(如 'claude-opus-4-7'),renderer / verdict 据此识别版本切换。
-// 子场景可显式覆盖:generator 走 'sonnet'(lean 路径不需要 opus 质量,且 sonnet 便宜 5x)。
-export const DEFAULT_MODEL = 'opus';
+// 系统默认任务执行模型。用 alias 'sonnet' — 性价比最优,eval/sample/evolve 统一默认。
+// 需要更高质量时显式传 --model opus。report.meta.executorRuntime 记录实际模型 ID。
+export const DEFAULT_MODEL = 'sonnet';
 export const JUDGE_MODEL = 'haiku';
-export const DEFAULT_TIMEOUT_MS = 120_000;
+export const DEFAULT_TIMEOUT_MS = 600_000;
 export const MAX_BUFFER = 10 * 1024 * 1024;
 
 export interface TokenUsage {
