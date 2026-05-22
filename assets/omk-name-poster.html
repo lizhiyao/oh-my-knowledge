@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>为什么这把尺子叫 omk？</title>
+<style>
+  :root {
+    --brand: #1268ff;
+    --ink: #171717;
+    --ink-rgb: 23, 23, 23;
+    --paper: #f2f0ea;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    width: 1080px;
+    height: 1120px;
+    overflow: hidden;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: geometricPrecision;
+  }
+
+  .poster {
+    position: relative;
+    width: 1080px;
+    height: 1120px;
+    padding: 72px 78px 64px;
+    background:
+      linear-gradient(90deg, rgba(var(--ink-rgb), 0.04) 1px, transparent 1px) 0 0 / 36px 36px,
+      linear-gradient(180deg, rgba(var(--ink-rgb), 0.035) 1px, transparent 1px) 0 0 / 36px 36px,
+      linear-gradient(132deg, #fbfaf6 0%, #f4f2eb 55%, #e9f1f5 100%);
+  }
+
+  .poster::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, var(--brand) 0 18px, transparent 18px);
+  }
+
+  .poster::after {
+    content: "";
+    position: absolute;
+    right: -190px;
+    bottom: -150px;
+    width: 520px;
+    height: 520px;
+    border: 1px solid color-mix(in srgb, var(--brand) 22%, transparent);
+    border-radius: 50%;
+  }
+
+  .content {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(var(--ink-rgb), 0.16);
+    padding-bottom: 22px;
+    font-size: 21px;
+    line-height: 1;
+    color: rgba(var(--ink-rgb), 0.64);
+  }
+
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+  }
+
+  .brand strong {
+    font: 800 34px/1 ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--brand);
+  }
+
+  .smallcaps {
+    font: 600 18px/1 ui-monospace, "SF Mono", Menlo, monospace;
+    text-transform: uppercase;
+  }
+
+  .hero {
+    display: grid;
+    grid-template-columns: 1fr 230px;
+    gap: 54px;
+    margin-top: 78px;
+  }
+
+  h1 {
+    margin: 0;
+    max-width: 720px;
+    font-size: 86px;
+    line-height: 1.06;
+    font-weight: 800;
+  }
+
+  .title-mark {
+    display: inline-block;
+    color: var(--brand);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-weight: 800;
+  }
+
+  .ruler {
+    align-self: stretch;
+    display: grid;
+    grid-template-rows: repeat(7, 1fr);
+    border-left: 2px solid var(--ink);
+    margin-top: 6px;
+    min-height: 350px;
+  }
+
+  .tick {
+    position: relative;
+    border-top: 1px solid rgba(var(--ink-rgb), 0.72);
+  }
+
+  .tick::after {
+    content: attr(data-n);
+    position: absolute;
+    top: -13px;
+    left: 24px;
+    font: 600 18px/1 ui-monospace, "SF Mono", Menlo, monospace;
+    color: rgba(var(--ink-rgb), 0.62);
+  }
+
+  .dek {
+    margin: 36px 0 0;
+    max-width: 750px;
+    font-size: 34px;
+    line-height: 1.45;
+    font-weight: 500;
+    color: rgba(var(--ink-rgb), 0.72);
+  }
+
+  .nobr {
+    white-space: nowrap;
+  }
+
+  .quote {
+    margin-top: 100px;
+    border-top: 1px solid rgba(var(--ink-rgb), 0.18);
+    padding-top: 42px;
+    display: grid;
+    grid-template-columns: 94px 1fr;
+    gap: 32px;
+    align-items: start;
+  }
+
+  .quote-sign {
+    color: var(--brand);
+    font: 800 90px/0.78 Georgia, "Times New Roman", serif;
+  }
+
+  .quote-text {
+    margin: 0;
+    font-size: 52px;
+    line-height: 1.2;
+    font-weight: 800;
+  }
+
+  .quote-note {
+    margin: 18px 0 0;
+    font-size: 24px;
+    line-height: 1.45;
+    color: rgba(var(--ink-rgb), 0.62);
+  }
+
+  .footer {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font: 600 18px/1 ui-monospace, "SF Mono", Menlo, monospace;
+    color: rgba(var(--ink-rgb), 0.62);
+  }
+</style>
+</head>
+<body>
+  <main class="poster">
+    <section class="content">
+      <div class="topbar">
+        <div class="brand"><strong>omk</strong><span>oh-my-knowledge</span></div>
+        <div class="smallcaps">knowledge → skill</div>
+      </div>
+
+      <div class="hero">
+        <div>
+          <h1>为什么这把尺子叫 <span class="title-mark">omk</span>？</h1>
+          <p class="dek">希望每个人都能遇见自己知识的 aha 时刻 —— 那一声「oh」，正是<span class="nobr">「oh-my-knowledge」</span>的开始。</p>
+        </div>
+
+        <div class="ruler" aria-hidden="true">
+          <div class="tick" data-n="00"></div>
+          <div class="tick" data-n="10"></div>
+          <div class="tick" data-n="20"></div>
+          <div class="tick" data-n="30"></div>
+          <div class="tick" data-n="40"></div>
+          <div class="tick" data-n="50"></div>
+          <div class="tick" data-n="60"></div>
+        </div>
+      </div>
+
+      <aside class="quote">
+        <div class="quote-sign" aria-hidden="true">“</div>
+        <div>
+          <blockquote class="quote-text"><span class="nobr">精通的目的在于应用，</span><span class="nobr">应用的关键在于技能。</span></blockquote>
+          <p class="quote-note">omk 先量技能，因为技能离应用最近。</p>
+        </div>
+      </aside>
+
+      <div class="footer">
+        <span>prompt / RAG / skill / agent</span>
+        <span>measure what knowledge can do</span>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
