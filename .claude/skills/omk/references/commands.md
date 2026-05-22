@@ -102,7 +102,7 @@ omk eval [flags]
 - `--skip-doctor` `boolean`:escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。
 - `--strict-baseline` `boolean`:强制 baseline 隔离（default true）
 - `--threshold` `option`:verdict 阈值，默认 3.5
-- `--timeout` `option`:单样本超时秒，默认 120
+- `--timeout` `option`:单样本超时秒，默认 600
 - `--treatment` `option`:treatment variant 列表，逗号分隔
 - `--trivial-diff` `option`:可忽略 diff 容差，0 表示不启用容差
 - `--verbose` `boolean`:详细日志
@@ -226,7 +226,7 @@ omk evolve <skillPath> [flags]
 - `--skip-doctor` `boolean`:跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
 - `--stop-on-assertions-pass` `boolean`:普通样本断言全过时提前停止
 - `--target` `option`:目标 composite 分数，达到即停。不传则跑满 rounds
-- `--timeout` `option` (默认 `120`):单样本超时秒，默认 120
+- `--timeout` `option` (默认 `120`):单样本超时秒，默认 600
 
 **示例:**
 
@@ -390,7 +390,7 @@ omk sample [skillPath] [flags]
 - `--fix` `boolean`:fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
 - `--focus` `option`:生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-- `--model` `option` (默认 `opus`):生成 LLM model 名，默认 opus。
+- `--model` `option` (默认 `sonnet`):生成 LLM model 名，默认 sonnet。
 - `--no-mock` `boolean`:不生成 mocks，eval 时所有工具调用真实执行。
 - `--reports-dir` `option`:报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
 - `--skill-dir` `option` (默认 `skills`):skill 根目录，默认 skills。batch 模式扫此目录。
