@@ -201,7 +201,7 @@ function isEvolveRoundVariant(report: EvaluationReport, variant: string): boolea
 function skillNameForEvalVariant(report: EvaluationReport, variant: string): string | null {
   if (isEvolveRoundVariant(report, variant)) return report.meta.evolve?.skillName ?? null;
   if (variant === 'baseline') return null;
-  if (isAbsolute(variant) || variant.startsWith('~')) {
+  if (isAbsolute(variant) || variant.startsWith('~') || variant.includes('/')) {
     const base = basename(variant);
     return /^SKILL\.md$/i.test(base) ? basename(dirname(variant)) : base.replace(/\.md$/i, '');
   }
