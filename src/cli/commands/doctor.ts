@@ -79,7 +79,7 @@ export default class Doctor extends BaseCommand {
         zh: 'JSON 输出 + 写 HTML 报告，给 CI 抓 exit code 同时人看。',
         en: 'JSON output + HTML report, for CI exit code + human review.',
       }),
-      command: '<%= config.bin %> doctor --json --html doctor.html',
+      command: '<%= config.bin %> doctor --json --gate',
     },
   ];
 
@@ -133,12 +133,6 @@ export default class Doctor extends BaseCommand {
         en: 'Single-session LLM timeout sec, default 600 (10 min).',
       }),
       parse: numberStringParser('--timeout', { min: 1 }),
-    }),
-    html: Flags.string({
-      description: bilingual({
-        zh: 'HTML 报告输出路径。可跟 --json / --gate 共存。',
-        en: 'HTML report output path. Coexists with --json / --gate.',
-      }),
     }),
     'static-only': Flags.boolean({
       description: bilingual({
@@ -233,15 +227,6 @@ export default class Doctor extends BaseCommand {
       if (report.skills.length === 0) {
         console.error(tCli('cli.doctor.no_skill_found', lang, { path: target ?? cwd }));
         throw new CliExit(1);
-      }
-
-      if (flags.html) {
-        const { renderDoctorReportHtml } = await import('../../doctor/html-renderer.js');
-        const { writeFileSync, mkdirSync } = await import('node:fs');
-        const abs = resolve(flags.html);
-        mkdirSync(dirname(abs), { recursive: true });
-        writeFileSync(abs, renderDoctorReportHtml(report, lang), 'utf8');
-        console.error(lang === 'zh' ? `HTML 报告已写入: ${abs}` : `HTML report written to: ${abs}`);
       }
 
       if (flags.json) {

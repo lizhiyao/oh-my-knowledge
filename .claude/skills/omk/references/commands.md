@@ -24,7 +24,6 @@ omk doctor [target] [flags]
 - `--executor` `option`:执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
 - `--fix` `boolean`:交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
 - `--gate` `boolean`:静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
-- `--html` `option`:HTML 报告输出路径。可跟 --json / --gate 共存。
 - `--json` `boolean`:JSON 输出到 stdout，适合 CI / 外部脚本消费。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option`:LLM model 名，默认 sonnet。
@@ -49,7 +48,7 @@ omk doctor --static-only
 > JSON 输出 + 写 HTML 报告，给 CI 抓 exit code 同时人看。
 
 ```bash
-omk doctor --json --html doctor.html
+omk doctor --json --gate
 ```
 
 ## omk eval

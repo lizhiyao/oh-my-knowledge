@@ -67,7 +67,6 @@ export interface DoctorFlags {
   model?: string;
   samples?: string;
   timeout?: string;
-  html?: string;
   'static-only': boolean;
 }
 
