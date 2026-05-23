@@ -170,7 +170,7 @@ export function parseRunConfig(
     throw new Error(
       `--variants 已在 v0.16 废除，请改用 --control <expr> 与 --treatment <v1,v2,...>\n`
       + `  迁移示例：--variants baseline,my-skill  →  --control baseline --treatment my-skill\n`
-      + `  复杂场景可用 --config eval.yaml（参见 docs/terminology-spec.md）`,
+      + `  复杂场景可用 --config eval.yaml（参见 docs/specs/terminology-spec.md）`,
     );
   }
   // 1) Load --config (if provided). All subsequent fields fall back to it when CLI is silent.
@@ -223,7 +223,7 @@ export function parseRunConfig(
       `请通过 --control / --treatment 或 --config eval.yaml 声明 variant 角色。\n`
       + `  示例：omk eval --control baseline --treatment my-skill${hint}\n`
       + `  --batch 模式下自动用 baseline vs 每个 skill,无需显式声明\n`
-      + `  术语见 docs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
+      + `  术语见 docs/specs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
     );
   }
 

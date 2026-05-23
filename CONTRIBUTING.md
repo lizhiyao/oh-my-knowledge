@@ -221,6 +221,17 @@ oclif 迁移后 omk 的 exit code 契约（CI / 脚本若有 `[ $? -eq N ]` 分�
 - No unnecessary abstractions; no code for hypothetical future needs
 - Keep comments minimal — explain the *why*, not the *what*
 
+## Docs layout
+
+`docs/` is organized by audience — pick the right bucket before creating a new file:
+
+- `docs/reference/` — flag tables, sample format, executor matrix, comparison ↔ what users look up
+- `docs/explanation/` — architecture, statistical rigor ↔ how / why omk works
+- `docs/specs/` — design specs read by contributors (sample design, gap signal, RAG metrics, terminology, ...)
+- `docs/{quickstart,README}.md` stay at the top level; `docs/zh/` mirrors the same structure
+- `docs/README.md` + `docs/zh/README.md` are the audience-grouped indexes — add new files to the matching section
+- EN/ZH symmetry is **not** mandatory. Some specs are EN-only; `docs/zh/roadmap.md` is intentionally ZH-only (internal planning). Indexes annotate cross-language links with `(中文版) / (英文版)` instead of TODO promises
+
 ## Scope
 
 `oh-my-knowledge` focuses on **offline knowledge-artifact evaluation** and **skill-level production observability**. It deliberately does **not** cover:

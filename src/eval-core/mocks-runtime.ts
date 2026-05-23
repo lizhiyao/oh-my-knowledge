@@ -589,7 +589,7 @@ rl.on('line', (line) => {
 let _hookTemplate: string | null = null;
 function readMockHookTemplate(): string {
   if (_hookTemplate) return _hookTemplate;
-  // hook 跟本文件共置在 src/eval-core/(开发模式)或 dist/src/eval-core/(npm 安装模式),
+  // hook 跟本文件共置在 src/eval-core/(开发模式)或 dist/eval-core/(npm 安装模式),
   // build script 把 mock-hook.cjs 复制到 dist/。读 sibling 路径就行,不再依赖外层 assets/。
   const here = dirname(fileURLToPath(import.meta.url));
   const hookPath = resolve(here, 'mock-hook.cjs');

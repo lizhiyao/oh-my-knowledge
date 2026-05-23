@@ -1,0 +1,19 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "scripts",
+    "outDir": "dist-scripts",
+    "tsBuildInfoFile": "node_modules/.cache/omk/scripts.tsbuildinfo",
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": [
+    "scripts/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist-scripts",
+    "test"
+  ]
+}

@@ -4,24 +4,27 @@
   "description": "Evaluation framework for LLM knowledge inputs — prompts, RAG corpora, skills, agent workflows. Fix the model, vary the artifact. Built-in statistical rigor: bootstrap CI, Krippendorff α, length-debias, saturation curves.",
   "type": "module",
   "bin": {
-    "omk": "dist/src/cli/index.js"
+    "omk": "dist/cli/index.js"
   },
   "engines": {
     "node": ">=22"
   },
   "files": [
-    "dist/src/",
-    "docs/prompts/"
+    "dist/"
   ],
   "scripts": {
-    "build": "tsc && node -e \"const fs=require('node:fs'),p=require('node:path');const d='dist/src/eval-core/mock-hook.cjs';fs.mkdirSync(p.dirname(d),{recursive:true});fs.copyFileSync('src/eval-core/mock-hook.cjs',d)\"",
-    "build:docs": "node dist/scripts/build-docs.js --write",
-    "build:docs:check": "node dist/scripts/build-docs.js --check",
+    "clean": "rm -rf dist dist-scripts node_modules/.cache/omk",
+    "build": "run-s build:src build:scripts build:assets",
+    "build:src": "tsc -p tsconfig.build.json",
+    "build:scripts": "tsc -p tsconfig.scripts.json",
+    "build:assets": "node scripts/copy-assets.cjs",
+    "build:docs": "node dist-scripts/build-docs.js --write",
+    "build:docs:check": "node dist-scripts/build-docs.js --check",
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0",
     "test": "vitest run",
-    "ci": "run-p lint typecheck test",
-    "prepublishOnly": "yarn build",
+    "ci": "run-s lint typecheck build build:docs:check test",
+    "prepublishOnly": "run-s clean build",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -31,12 +34,16 @@
   },
   "oclif": {
     "bin": "omk",
-    "commands": "./dist/src/cli/commands",
+    "commands": "./dist/cli/commands",
     "dirname": "omk",
-    "helpClass": "./dist/src/cli/oclif/help.js",
+    "helpClass": "./dist/cli/oclif/help.js",
     "topicSeparator": " ",
-    "additionalHelpFlags": ["-h"],
-    "additionalVersionFlags": ["-v"],
+    "additionalHelpFlags": [
+      "-h"
+    ],
+    "additionalVersionFlags": [
+      "-v"
+    ],
     "exitCodes": {
       "default": 1,
       "failedFlagParsing": 2,

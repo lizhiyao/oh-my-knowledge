@@ -418,11 +418,11 @@ export interface AnalysisResult {
   /** @deprecated Legacy display text. Renderers generate localized suggestions from structured insights. */
   suggestions?: string[];
   coverage?: Record<string, KnowledgeCoverage>;
-  /** Per-variant knowledge gap reports. See docs/knowledge-gap-signal-spec.md */
+  /** Per-variant knowledge gap reports. See docs/specs/knowledge-gap-signal-spec.md */
   gapReports?: Record<string, GapReport>;
   /** Sample design science aggregate. Built from sample metadata
    *  (capability / difficulty / construct / provenance); persisted on report
-   *  for studio to surface coverage gaps. See docs/sample-design-spec.md. */
+   *  for studio to surface coverage gaps. See docs/specs/sample-design-spec.md. */
   sampleQuality?: SampleQualityAggregate;
 }
 

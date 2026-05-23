@@ -103,7 +103,7 @@ export interface Sample {
   allowedTools?: string[];
   expectedTools?: string[];
   /** 该 sample 测试的能力维度,可多维。free-form string,suggested
-   *  values 见 docs/sample-design-spec.md。aggregate 时大小写不敏感。
+   *  values 见 docs/specs/sample-design-spec.md。aggregate 时大小写不敏感。
    *  纯文档 / 诊断用,不参与 grading / judge / verdict。 */
   capability?: string[];
   /** 难度分层,enum 防错。纯文档 / 诊断用。 */

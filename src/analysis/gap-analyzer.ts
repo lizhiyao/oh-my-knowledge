@@ -2,7 +2,7 @@
  * Knowledge gap signal analyzer.
  *
  * Implements the v0.1 detection pipeline defined in
- * docs/knowledge-gap-signal-spec.md:
+ * docs/specs/knowledge-gap-signal-spec.md:
  *
  *   gap_rate = (samples with ≥1 gap signal) / (successfully-executed samples)
  *

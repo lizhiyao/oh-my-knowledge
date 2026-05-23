@@ -517,7 +517,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
         <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">Recommended usage</td></tr>
         <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✓ Use for</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">A/B comparison on same eval-samples — read "diff + bootstrap CI + per-layer gate" jointly</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✗ Don&#39;t use as</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">Absolute psychometric measure (claiming "this skill is 4.28/5")</td></tr>
       </tbody></table>
-      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a></p>
+      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/specs/scoring.md" target="_blank" rel="noopener">docs/zh/specs/scoring.md</a></p>
     </div>
   </div>
     <div class="sm-hero-list">
@@ -1580,7 +1580,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
         <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">推荐用法</td></tr>
         <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✓ 适用</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">同一份 eval-samples 上 A/B 比较，看「分差 + bootstrap CI + 三层独立 gate」联合判断</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✗ 不适用</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">当作 absolute psychometric measure（说「这 skill 4.28/5 分」）</td></tr>
       </tbody></table>
-      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a></p>
+      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/specs/scoring.md" target="_blank" rel="noopener">docs/zh/specs/scoring.md</a></p>
     </div>
   </div>
     <div class="sm-hero-list">
@@ -2591,7 +2591,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
         <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">Recommended usage</td></tr>
         <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✓ Use for</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">A/B comparison on same eval-samples — read "diff + bootstrap CI + per-layer gate" jointly</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✗ Don&#39;t use as</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">Absolute psychometric measure (claiming "this skill is 4.28/5")</td></tr>
       </tbody></table>
-      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a></p>
+      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/specs/scoring.md" target="_blank" rel="noopener">docs/zh/specs/scoring.md</a></p>
     </div>
   </div>
     <div id="run-list" class="run-list"><a class="run-card verdict-CAUTIOUS" href="/reports/test-run-20260325-1000?lang=en">
@@ -3177,7 +3177,7 @@ a:focus-visible,.badge:focus-visible{outline:2px solid var(--accent);outline-off
         <tr><td colspan="2" style="padding:14px 0 6px;color:var(--text-primary);font-weight:600;font-size:13px;border-top:1px solid var(--border)">推荐用法</td></tr>
         <tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✓ 适用</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">同一份 eval-samples 上 A/B 比较，看「分差 + bootstrap CI + 三层独立 gate」联合判断</td></tr><tr><td style="padding:6px 12px 6px 0;color:var(--text-secondary);font-size:12px;font-weight:500;white-space:nowrap;vertical-align:top;width:120px">✗ 不适用</td><td style="padding:6px 0;color:var(--text-secondary);font-size:12px;line-height:1.6">当作 absolute psychometric measure（说「这 skill 4.28/5 分」）</td></tr>
       </tbody></table>
-      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a></p>
+      <p style="font-size:11px;color:var(--text-muted);margin:14px 0 0;line-height:1.6">完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/specs/scoring.md" target="_blank" rel="noopener">docs/zh/specs/scoring.md</a></p>
     </div>
   </div>
     <div id="run-list" class="run-list"><a class="run-card verdict-CAUTIOUS" href="/reports/test-run-20260325-1000">

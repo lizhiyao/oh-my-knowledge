@@ -9,7 +9,7 @@ import { resolveArtifacts } from '../../src/inputs/skill-loader.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const CLI = join(__dirname, '..', '..', 'dist', 'src', 'cli', 'index.js');
+const CLI = join(__dirname, '..', '..', 'dist', 'cli', 'index.js');
 
 describe('omk init produces directory-skill SKILL.md layout', () => {
   let tmpDir: string;

@@ -115,7 +115,7 @@
 
 #### 6.1 Sample 元数据字段
 
-Sample schema 含 4 个可选元数据字段,纯文档 / 诊断用,**不参与 grading / judge / verdict**。详见 [docs/sample-design-spec.md](sample-design-spec.md)。
+Sample schema 含 4 个可选元数据字段,纯文档 / 诊断用,**不参与 grading / judge / verdict**。详见 [docs/specs/sample-design-spec.md](sample-design-spec.md)。
 
 - **`capability?: string[]`** — 该 sample 测试的能力维度(可多个)。归一时大小写 / 短横线 / 驼峰 / 下划线不敏感。
 - **`difficulty?: 'easy' | 'medium' | 'hard'`** — 难度分层(强枚举)。

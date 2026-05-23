@@ -63,7 +63,7 @@ export function buildVariantConfig(artifact: Artifact): VariantConfig {
   if (!artifact.experimentRole) {
     throw new Error(
       `artifact "${artifact.name}" 缺少 experimentRole:应该由 CLI --control/--treatment、`
-      + `--config eval.yaml 或 batch workflow 显式注入。参见 docs/terminology-spec.md 三-4。`,
+      + `--config eval.yaml 或 batch workflow 显式注入。参见 docs/specs/terminology-spec.md 三-4。`,
     );
   }
   return {

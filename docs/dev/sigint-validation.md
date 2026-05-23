@@ -32,7 +32,7 @@ EOF
 
 ```bash
 cd /path/to/oh-my-knowledge
-node dist/src/cli/index.js omk eval \
+node dist/cli/index.js eval \
   --samples /tmp/sigint-long.json \
   --control baseline \
   --executor codex --model gpt-5.5 \

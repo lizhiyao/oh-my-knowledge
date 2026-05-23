@@ -26,4 +26,4 @@ omk 当前实现是**单 LLM 调用直接输出 1-5 分**,不是 RAGAS 的多步
 
 三个 metric 的 judge prompt **自动包含与主 judge 同款的"长度不是质量信号"段落**(v3-cot-length),不会因输出更长就给更高分。
 
-完整 prompt 形态见 `docs/rag-metrics-spec.md`。
+完整 prompt 形态见 `docs/specs/rag-metrics-spec.md`。

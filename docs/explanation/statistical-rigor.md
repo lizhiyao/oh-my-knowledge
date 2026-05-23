@@ -83,7 +83,7 @@ baseline gets the prompt **without** the skill being tested. omk cuts three cont
 
 `eval.yaml` `allowedSkills` allows per-variant whitelists for advanced cases. Without isolation, any "v2 is better than baseline" claim is suspect because baseline may have been reading v2's own SKILL.md through one of the three channels.
 
-See: [docs/sample-design-spec.md](sample-design-spec.md) for related sample-design considerations.
+See: [docs/specs/sample-design-spec.md](../specs/sample-design-spec.md) for related sample-design considerations.
 
 ---
 

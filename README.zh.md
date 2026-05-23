@@ -25,7 +25,7 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 手把手教程：[5 分钟快速上手](docs/zh/quickstart-skill-eval.md)（推荐第一次跑评测的用户）。
 
-深入：[CLI 参考](docs/zh/cli.md) · [工作原理](docs/zh/architecture.md) · [评测样本格式](docs/zh/eval-sample-format.md) · [执行器与 artifact 布局](docs/zh/executors.md)
+深入：[CLI 参考](docs/zh/reference/cli.md) · [工作原理](docs/zh/explanation/architecture.md) · [评测样本格式](docs/zh/reference/eval-sample-format.md) · [执行器与 artifact 布局](docs/zh/reference/executors.md)
 
 ## 在 AI Coding Agent 中使用
 
@@ -72,7 +72,7 @@ omk sample skills/my-skill.md
 
 omk 的护城河是 **default-on 安全网** —— Bootstrap CI / 评委 ↔ 人工 α / 长度去偏不是 advanced flag，是默认行为。其他工具让你**手动**接置信区间；omk 让你**默认无法忽略**它。需要 SaaS 看板？选 LangSmith。要快速 prompt 迭代不要统计层？选 promptfoo。**要发到生产且会被问「为什么应该相信这个数字」？选 omk。**
 
-RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比（7 个工具 × 25+ 维度）： [docs/zh/comparison.md](docs/zh/comparison.md)
+RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比（7 个工具 × 25+ 维度）： [docs/zh/reference/comparison.md](docs/zh/reference/comparison.md)
 
 ## 特性
 
@@ -82,13 +82,13 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 | **六维评估** | 事实 / 行为 / LLM 评价 / 成本 / 效率 / 稳定性独立展示 |
 | **多执行器** | 支持 Claude CLI / Claude SDK / Codex CLI / Codex SDK / OpenAI / Gemini 及自定义命令 |
 | **21+ 种断言** | 包含子串、正则、JSON Schema、ROUGE/BLEU/Levenshtein 相似度、Agent 工具调用、语义相似度、自定义函数等 |
-| **统计严谨性** | Bootstrap CI / Krippendorff α / 长度去偏 / 饱和曲线 —— 全部默认开。[详情 →](docs/zh/statistical-rigor.md) |
+| **统计严谨性** | Bootstrap CI / Krippendorff α / 长度去偏 / 饱和曲线 —— 全部默认开。[详情 →](docs/zh/explanation/statistical-rigor.md) |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` 三 metric — 反幻觉 + 切题度 + context 覆盖 |
 | **LLM 健康度审计** | `omk doctor` 给 7 个内置维度独立打分；`--static-only` 可离线无 LLM 调用 |
 | **线上 session 观测** | 解析 Claude Code session JSONL，测量各 skill 的失败率、耗时、token 成本、知识缺口信号 |
 | **知识缺口识别** | 严重度加权的信号量化风险敞口，不宣称完备性 |
 | **用例隔离 (construct validity)** | `--strict-baseline`（默认开）三堵 baseline 拿到被测 skill 的污染路径 |
-| **用例设计科学性** | Sample schema 加 `capability` / `difficulty` / `construct` / `provenance` 元数据字段（HF Dataset Cards 风），studio 输出 coverage 分桶 + `rubric_clarity_low` / `capability_thin` issue。[docs/sample-design-spec.md](docs/sample-design-spec.md) |
+| **用例设计科学性** | Sample schema 加 `capability` / `difficulty` / `construct` / `provenance` 元数据字段（HF Dataset Cards 风），studio 输出 coverage 分桶 + `rubric_clarity_low` / `capability_thin` issue。[docs/specs/sample-design-spec.md](docs/specs/sample-design-spec.md) |
 | **多评委 ensemble** | `--judge-models claude:opus,openai:gpt-4o` 跨厂商评分 + agreement 度量 |
 | **盲测 A/B** | `--blind` 隐藏变体名称，HTML 报告有揭晓按钮 |
 | **多轮方差分析** | `--repeat N` 重复 N 次，计算均值/标准差/置信区间/t 检验 |
@@ -99,14 +99,14 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 
 ## 文档
 
-- **[工作原理](docs/zh/architecture.md)** —— 交错调度、variant 解析、双通道评分、六维报告
-- **[评测样本格式](docs/zh/eval-sample-format.md)** —— sample schema、评分公式、21+ 断言类型、自定义 JS 断言
-- **[CLI 参考](docs/zh/cli.md)** —— 7 个命令的 bash 示例和 flag 表
-- **[执行器与 artifact 布局](docs/zh/executors.md)** —— 内置 / 自定义执行器、Agent 评测、常见模型配置（Claude / OpenAI / GLM / 通义 / DeepSeek / Moonshot / Ollama）
+- **[工作原理](docs/zh/explanation/architecture.md)** —— 交错调度、variant 解析、双通道评分、六维报告
+- **[评测样本格式](docs/zh/reference/eval-sample-format.md)** —— sample schema、评分公式、21+ 断言类型、自定义 JS 断言
+- **[CLI 参考](docs/zh/reference/cli.md)** —— 7 个命令的 bash 示例和 flag 表
+- **[执行器与 artifact 布局](docs/zh/reference/executors.md)** —— 内置 / 自定义执行器、Agent 评测、常见模型配置（Claude / OpenAI / GLM / 通义 / DeepSeek / Moonshot / Ollama）
 - **[快速上手](docs/zh/quickstart-skill-eval.md)** —— 第一次跑评测的 5 分钟教程
-- **[用例设计规范](docs/sample-design-spec.md)** —— capability / construct / provenance 元数据；行业 gap 映射
-- **[统计严谨性](docs/zh/statistical-rigor.md)** —— 为什么 Bootstrap CI / α / 长度去偏 / 饱和曲线重要
-- **[7 工具对比](docs/zh/comparison.md)** —— promptfoo / DeepEval / LangSmith / Langfuse / Braintrust 等 25+ 维度横评
+- **[用例设计规范](docs/specs/sample-design-spec.md)** —— capability / construct / provenance 元数据；行业 gap 映射
+- **[统计严谨性](docs/zh/explanation/statistical-rigor.md)** —— 为什么 Bootstrap CI / α / 长度去偏 / 饱和曲线重要
+- **[7 工具对比](docs/zh/reference/comparison.md)** —— promptfoo / DeepEval / LangSmith / Langfuse / Braintrust 等 25+ 维度横评
 
 ## 环境变量
 
