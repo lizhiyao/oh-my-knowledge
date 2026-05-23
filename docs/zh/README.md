@@ -19,12 +19,12 @@
 
 ## 我想贡献 / 看设计 spec
 
-- [Sample design spec](../specs/sample-design-spec.md)（英文版）
-- [Knowledge gap signal spec](../specs/knowledge-gap-signal-spec.md)（英文版）
-- [RAG metrics spec](../specs/rag-metrics-spec.md)（英文版）
-- [Terminology spec](../specs/terminology-spec.md)（英文版）
-- [Diagnosis-occurrence mapping](../specs/diagnosis-occurrence-mapping.md)（英文版）
-- [CLI framework spike](../specs/cli-framework-spike.md)（英文版）
+- [用例设计科学性指南](../specs/sample-design-spec.md)
+- [知识缺口信号规范](../specs/knowledge-gap-signal-spec.md)
+- [RAG metrics 规范](../specs/rag-metrics-spec.md)
+- [术语规范](../specs/terminology-spec.md)
+- [Diagnosis-occurrence mapping](../specs/diagnosis-occurrence-mapping.md)（English）
+- [CLI 框架 spike](../specs/cli-framework-spike.md)
 - [Roadmap](./roadmap.md) —— 内部 planning，ZH-only by design
-- [Sensitive scan](../dev/sensitive-scan.md)（英文版，dev 工具）
-- [SIGINT validation](../dev/sigint-validation.md)（英文版，dev 工具）
+- [敏感信息扫描](../dev/sensitive-scan.md)（dev 工具）
+- [SIGINT propagation 手动验证](../dev/sigint-validation.md)（dev 工具）
