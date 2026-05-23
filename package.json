@@ -13,13 +13,13 @@
     "dist/src/"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node -e \"const fs=require('node:fs'),p=require('node:path');const cp=(s,d)=>{fs.mkdirSync(p.dirname(d),{recursive:true});fs.copyFileSync(s,d)};cp('src/eval-core/mock-hook.cjs','dist/src/eval-core/mock-hook.cjs');cp('src/observability/prompts/llm-enhanced-review.prompt.md','dist/src/observability/prompts/llm-enhanced-review.prompt.md')\"",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-assets.cjs",
     "build:docs": "node dist/scripts/build-docs.js --write",
     "build:docs:check": "node dist/scripts/build-docs.js --check",
     "typecheck": "tsc --noEmit",
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0",
     "test": "vitest run",
-    "ci": "run-p lint typecheck test",
+    "ci": "run-s lint typecheck build build:docs:check test",
     "prepublishOnly": "yarn build",
     "prepare": "husky"
   },
@@ -34,8 +34,12 @@
     "dirname": "omk",
     "helpClass": "./dist/src/cli/oclif/help.js",
     "topicSeparator": " ",
-    "additionalHelpFlags": ["-h"],
-    "additionalVersionFlags": ["-v"],
+    "additionalHelpFlags": [
+      "-h"
+    ],
+    "additionalVersionFlags": [
+      "-v"
+    ],
     "exitCodes": {
       "default": 1,
       "failedFlagParsing": 2,
