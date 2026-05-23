@@ -13,7 +13,7 @@
     "dist/src/"
   ],
   "scripts": {
-    "build": "tsc && node -e \"const fs=require('node:fs'),p=require('node:path');const cp=(s,d)=>{fs.mkdirSync(p.dirname(d),{recursive:true});fs.copyFileSync(s,d)};cp('src/eval-core/mock-hook.cjs','dist/src/eval-core/mock-hook.cjs');cp('src/observability/prompts/llm-enhanced-review.prompt.md','dist/src/observability/prompts/llm-enhanced-review.prompt.md')\"",
+    "build": "tsc -p tsconfig.build.json && node -e \"const fs=require('node:fs'),p=require('node:path');const cp=(s,d)=>{fs.mkdirSync(p.dirname(d),{recursive:true});fs.copyFileSync(s,d)};cp('src/eval-core/mock-hook.cjs','dist/src/eval-core/mock-hook.cjs');cp('src/observability/prompts/llm-enhanced-review.prompt.md','dist/src/observability/prompts/llm-enhanced-review.prompt.md')\"",
     "build:docs": "node dist/scripts/build-docs.js --write",
     "build:docs:check": "node dist/scripts/build-docs.js --check",
     "typecheck": "tsc --noEmit",
