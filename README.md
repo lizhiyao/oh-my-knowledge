@@ -25,7 +25,7 @@ That's it — no editing required. `omk init` scaffolds two skill variants and t
 
 Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users).
 
-Deeper: [CLI reference](docs/cli.md) · [how it works](docs/architecture.md) · [eval sample format](docs/eval-sample-format.md) · [executors & artifact layout](docs/executors.md)
+Deeper: [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors & artifact layout](docs/reference/executors.md)
 
 ## Use inside AI Coding Agents
 
@@ -72,7 +72,7 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 
 omk's moat is **default-on safety net** — Bootstrap CI, judge ↔ human α, and length-debias aren't advanced flags; they're the default. Other tools let you opt into confidence intervals; omk makes them unavoidable. Need a hosted SaaS dashboard? Choose LangSmith. Want quick local prompt iteration without statistics? Choose promptfoo. **Shipping to production and someone will ask "why should I trust this number?" Choose omk.**
 
-RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full comparison with 7 tools across 25+ dimensions: [docs/comparison.md](docs/comparison.md).
+RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full comparison with 7 tools across 25+ dimensions: [docs/reference/comparison.md](docs/reference/comparison.md).
 
 ## Features
 
@@ -82,13 +82,13 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 | **Six-dim evaluation** | Fact / Behavior / LLM-judge / Cost / Efficiency / Stability shown independently |
 | **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / Codex SDK / OpenAI / Gemini / any custom command |
 | **21+ assertion types** | substring, regex, JSON Schema, ROUGE/BLEU/Levenshtein similarity, agent tool-call assertions, semantic similarity, custom JS |
-| **Statistical rigor** | Bootstrap CI / Krippendorff α / length-debias / saturation curve — all on by default. [Details →](docs/statistical-rigor.md) |
+| **Statistical rigor** | Bootstrap CI / Krippendorff α / length-debias / saturation curve — all on by default. [Details →](docs/explanation/statistical-rigor.md) |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage |
 | **LLM health audit** | `omk doctor` grades 7 builtin dimensions; `--static-only` runs offline without an LLM |
 | **Production observability** | parse Claude Code session JSONL traces; measure per-skill failure rate / latency / cost / knowledge-gap signals |
 | **Knowledge-gap detection** | severity-weighted signals quantify risk exposure instead of claiming completeness |
 | **Construct-validity isolation** | `--strict-baseline` (default ON) cuts three contamination channels so baseline doesn't silently see the skill it's being compared against |
-| **Sample design science** | sample schema with `capability` / `difficulty` / `construct` / `provenance` metadata (HF Dataset Cards style); studio surfaces coverage breakdown plus `rubric_clarity_low` / `capability_thin` flags. [docs/sample-design-spec.md](docs/sample-design-spec.md) |
+| **Sample design science** | sample schema with `capability` / `difficulty` / `construct` / `provenance` metadata (HF Dataset Cards style); studio surfaces coverage breakdown plus `rubric_clarity_low` / `capability_thin` flags. [docs/specs/sample-design-spec.md](docs/specs/sample-design-spec.md) |
 | **Multi-judge ensemble** | `--judge-models claude:opus,openai:gpt-4o` cross-vendor scoring + agreement metrics |
 | **Blind A/B** | `--blind` hides variant names; HTML report has a reveal button |
 | **Multi-run variance** | `--repeat N` repeats the eval and computes mean / SD / CI / t-test |
@@ -99,14 +99,14 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 
 ## Documentation
 
-- **[How it works](docs/architecture.md)** — interleaved scheduling, variant resolution, dual-channel scoring, six-dim report
-- **[Eval sample format](docs/eval-sample-format.md)** — sample schema, scoring formulas, 21+ assertion types, custom JS assertions
-- **[CLI reference](docs/cli.md)** — all seven commands with bash examples and flag tables
-- **[Executors & artifact layout](docs/executors.md)** — built-in / custom executors, agent evaluation, common model configs (Claude / OpenAI / GLM / Qwen / DeepSeek / Moonshot / Ollama)
+- **[How it works](docs/explanation/architecture.md)** — interleaved scheduling, variant resolution, dual-channel scoring, six-dim report
+- **[Eval sample format](docs/reference/eval-sample-format.md)** — sample schema, scoring formulas, 21+ assertion types, custom JS assertions
+- **[CLI reference](docs/reference/cli.md)** — all seven commands with bash examples and flag tables
+- **[Executors & artifact layout](docs/reference/executors.md)** — built-in / custom executors, agent evaluation, common model configs (Claude / OpenAI / GLM / Qwen / DeepSeek / Moonshot / Ollama)
 - **[Quickstart](docs/quickstart-skill-eval.md)** — first-time five-minute walkthrough
-- **[Sample design spec](docs/sample-design-spec.md)** — capability / construct / provenance metadata; industry-gap mapping
-- **[Statistical rigor](docs/statistical-rigor.md)** — why bootstrap CI / α / length-debias / saturation matter
-- **[Comparison with 7 tools](docs/comparison.md)** — 25+ dimensions across promptfoo / DeepEval / LangSmith / Langfuse / Braintrust etc.
+- **[Sample design spec](docs/specs/sample-design-spec.md)** — capability / construct / provenance metadata; industry-gap mapping
+- **[Statistical rigor](docs/explanation/statistical-rigor.md)** — why bootstrap CI / α / length-debias / saturation matter
+- **[Comparison with 7 tools](docs/reference/comparison.md)** — 25+ dimensions across promptfoo / DeepEval / LangSmith / Langfuse / Braintrust etc.
 
 ## Environment variables
 

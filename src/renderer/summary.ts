@@ -666,7 +666,7 @@ export function renderSummaryCards(variants: string[], summary: Record<string, V
  *
  * 测量学诚实性 ≠ 藏起来怕用户误用,而是展示 + 说清楚边界。这个 modal 是简版 (~10 行),
  * 完整推导 (五层评分管道架构 / ratioToScore 公式 / 多层 gate 与 composite 关系)
- * 在 docs/zh/scoring.md。
+ * 在 docs/zh/specs/scoring.md。
  */
 export function renderScoringModal(id: string, lang: Lang): string {
   const title = lang === 'zh' ? '综合分怎么算的？' : 'How is composite computed?';
@@ -709,8 +709,8 @@ export function renderScoringModal(id: string, lang: Lang): string {
   const limitSection = lang === 'zh' ? '局限（直白说）' : 'Limitations (frankly)';
   const usageSection = lang === 'zh' ? '推荐用法' : 'Recommended usage';
   const docsLink = lang === 'zh'
-    ? '完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a>'
-    : 'Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/scoring.md" target="_blank" rel="noopener">docs/zh/scoring.md</a>';
+    ? '完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/specs/scoring.md" target="_blank" rel="noopener">docs/zh/specs/scoring.md</a>'
+    : 'Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/specs/scoring.md" target="_blank" rel="noopener">docs/zh/specs/scoring.md</a>';
 
   return `<div id="${id}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${id}-title" onclick="if(event.target===this)closeModal('${id}')">
     <div class="modal-content">
@@ -1783,7 +1783,7 @@ export function renderCoverageSection(coverage: Record<string, KnowledgeCoverage
 /**
  * Render the knowledge gap section: per-variant gap rate + mandatory test set
  * watermark + signal classification + inventory of individual signals.
- * See docs/knowledge-gap-signal-spec.md for the semantics.
+ * See docs/specs/knowledge-gap-signal-spec.md for the semantics.
  */
 /**
  * Combined knowledge-interaction section: coverage + gap side-by-side per variant.

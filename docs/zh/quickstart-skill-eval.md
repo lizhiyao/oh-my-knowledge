@@ -109,6 +109,6 @@ omk studio                                          # 启动报告浏览器
 ## 更深的玩法
 
 - 详细 CLI / executor / judge / observe 参考：[README.zh.md](../../README.zh.md)
-- 评分管道（assertion / llm / judge / dimension / composite 五层）：[scoring.md](./scoring.md)
-- 测量学严谨性（Bootstrap CI / Krippendorff α / length-debias 等）：[statistical-rigor.md](./statistical-rigor.md)
-- 用例设计规范（mocks / environment / tripwire / mocksStrict）：[sample-design-spec.md](../sample-design-spec.md)
+- 评分管道（assertion / llm / judge / dimension / composite 五层）：[scoring.md](./specs/scoring.md)
+- 测量学严谨性（Bootstrap CI / Krippendorff α / length-debias 等）：[statistical-rigor.md](./explanation/statistical-rigor.md)
+- 用例设计规范（mocks / environment / tripwire / mocksStrict）：[sample-design-spec.md](../specs/sample-design-spec.md)（英文版）

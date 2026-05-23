@@ -5,8 +5,9 @@
 // 目标(每条一个 Target):
 // - commands.md(.claude/skills/omk/references/commands.md):整段 marker 包裹,
 //   全命令 fullbody(把 oclif Config.commands 全部输出,含 topic / sub / sub-sub)。
-// - docs/cli.md / docs/zh/cli.md:per-command flags 模式,每个 H3 顶层命令独立 marker
-//   对,内容只输出 flag list(cli.md 已经手写 bash 示例和 prose,不重复)。
+// - docs/reference/cli.md / docs/zh/reference/cli.md:per-command flags 模式,
+//   每个 H3 顶层命令独立 marker 对,内容只输出 flag list
+//   (cli.md 已经手写 bash 示例和 prose,不重复)。
 //
 // 模式:
 // - `yarn build:docs`(--write)→ 覆盖所有 target 的 marker 区段
@@ -168,7 +169,7 @@ function generateFullbody(config: Config): string {
   return lines.join('\n');
 }
 
-// ── docs/cli.md / docs/zh/cli.md(per-cmd-flags)渲染 ─────────────────────────────
+// ── docs/reference/cli.md / docs/zh/reference/cli.md(per-cmd-flags)渲染 ─────────
 
 function renderFlagTypeAngle(f: FlagShape): string {
   if (f.type === 'boolean') return '';
@@ -266,13 +267,13 @@ export function buildTargets(topLevelIds: readonly string[]): Target[] {
     },
     {
       mode: 'per-cmd-flags',
-      file: 'docs/cli.md',
+      file: 'docs/reference/cli.md',
       lang: 'en',
       topLevelIds,
     },
     {
       mode: 'per-cmd-flags',
-      file: 'docs/zh/cli.md',
+      file: 'docs/zh/reference/cli.md',
       lang: 'zh',
       topLevelIds,
     },

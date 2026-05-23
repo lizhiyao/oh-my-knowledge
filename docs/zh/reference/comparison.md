@@ -2,7 +2,7 @@
 
 与 7 个 LLM 评测工具的事实性对比，数据截至 2026-04。欢迎 PR 修正——如果竞品新增了我们标 `✗` 的能力，请提 PR，我们会及时更新。
 
-[English](../comparison.md)
+[English](../../reference/comparison.md)
 
 ## 一句话总结
 

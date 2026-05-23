@@ -26,8 +26,8 @@ const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const COMMANDS_MD = join(PROJECT_ROOT, '.claude/skills/omk/references/commands.md');
-const CLI_EN = join(PROJECT_ROOT, 'docs/cli.md');
-const CLI_ZH = join(PROJECT_ROOT, 'docs/zh/cli.md');
+const CLI_EN = join(PROJECT_ROOT, 'docs/reference/cli.md');
+const CLI_ZH = join(PROJECT_ROOT, 'docs/zh/reference/cli.md');
 const SKILL_MD = join(PROJECT_ROOT, 'SKILL.md');
 const BUILD_DOCS = join(PROJECT_ROOT, 'dist/scripts/build-docs.js');
 
@@ -121,7 +121,7 @@ describe('scripts/build-docs codegen', () => {
     const tail = content.slice(endIdx + MARKER_END.length);
     assert.ok(tail.includes('## eval-samples 字段参考'), 'appendix must survive codegen');
     assert.ok(tail.includes('`sample_id`'), 'appendix table must survive');
-    assert.ok(tail.includes('docs/sample-design-spec.md'), 'appendix link must survive');
+    assert.ok(tail.includes('docs/specs/sample-design-spec.md'), 'appendix link must survive');
   });
 
   it('--check mode passes on current committed state', async () => {
@@ -163,35 +163,35 @@ describe('scripts/build-docs codegen', () => {
     }
   }, 30000);
 
-  it('docs/cli.md has marker pairs for every top-level oclif command', () => {
+  it('docs/reference/cli.md has marker pairs for every top-level oclif command', () => {
     const content = readFileSync(CLI_EN, 'utf8');
     for (const id of oclifTopLevelIds) {
       assert.ok(
         content.includes(`<!-- omk:cli:${id}:flags:start -->`),
-        `docs/cli.md missing marker start for ${id}`,
+        `docs/reference/cli.md missing marker start for ${id}`,
       );
       assert.ok(
         content.includes(`<!-- omk:cli:${id}:flags:end -->`),
-        `docs/cli.md missing marker end for ${id}`,
+        `docs/reference/cli.md missing marker end for ${id}`,
       );
     }
   });
 
-  it('docs/zh/cli.md has marker pairs for every top-level oclif command', () => {
+  it('docs/zh/reference/cli.md has marker pairs for every top-level oclif command', () => {
     const content = readFileSync(CLI_ZH, 'utf8');
     for (const id of oclifTopLevelIds) {
       assert.ok(
         content.includes(`<!-- omk:cli:${id}:flags:start -->`),
-        `docs/zh/cli.md missing marker start for ${id}`,
+        `docs/zh/reference/cli.md missing marker start for ${id}`,
       );
       assert.ok(
         content.includes(`<!-- omk:cli:${id}:flags:end -->`),
-        `docs/zh/cli.md missing marker end for ${id}`,
+        `docs/zh/reference/cli.md missing marker end for ${id}`,
       );
     }
   });
 
-  it('docs/cli.md eval flags block contains English descriptions (en pickLang)', () => {
+  it('docs/reference/cli.md eval flags block contains English descriptions (en pickLang)', () => {
     const content = readFileSync(CLI_EN, 'utf8');
     const block = readFlagsBlock(content, 'eval');
     assert.ok(block.includes('--bootstrap-samples'), 'must list --bootstrap-samples');
@@ -199,22 +199,22 @@ describe('scripts/build-docs codegen', () => {
     // 英文 keyword 出现 → pickLang('en') 工作正确
     assert.ok(/Bootstrap resamples|Judge model/i.test(block), `expected EN descriptions: ${block.slice(0, 400)}`);
     // 中文 description 头部不应出现 — 防止 pickLang 选错语言
-    assert.ok(!/被测模型|样本文件路径/.test(block), `zh description leaked into docs/cli.md: ${block.slice(0, 400)}`);
+    assert.ok(!/被测模型|样本文件路径/.test(block), `zh description leaked into docs/reference/cli.md: ${block.slice(0, 400)}`);
     assert.ok(block.includes('For full descriptions:'), 'must include EN help hint footer');
   });
 
-  it('docs/zh/cli.md eval flags block contains Chinese descriptions (zh pickLang)', () => {
+  it('docs/zh/reference/cli.md eval flags block contains Chinese descriptions (zh pickLang)', () => {
     const content = readFileSync(CLI_ZH, 'utf8');
     const block = readFlagsBlock(content, 'eval');
     assert.ok(block.includes('--bootstrap-samples'), 'must list --bootstrap-samples');
     // 中文 keyword 出现
     assert.ok(/被测模型|样本文件路径|评委/.test(block), `expected zh descriptions: ${block.slice(0, 400)}`);
     // 英文 description 不应出现
-    assert.ok(!/Bootstrap resamples/.test(block), `en description leaked into docs/zh/cli.md: ${block.slice(0, 400)}`);
+    assert.ok(!/Bootstrap resamples/.test(block), `en description leaked into docs/zh/reference/cli.md: ${block.slice(0, 400)}`);
     assert.ok(block.includes('完整描述见'), 'must include zh help hint footer');
   });
 
-  it('docs/cli.md hand-curated prose around eval flags is preserved', () => {
+  it('docs/reference/cli.md hand-curated prose around eval flags is preserved', () => {
     const content = readFileSync(CLI_EN, 'utf8');
     // 这些 prose 在 marker 之外,本 codegen 不应触碰
     assert.ok(content.includes('Runs the offline evaluation, applies the verdict gate'), 'eval intro prose missing');
@@ -223,14 +223,14 @@ describe('scripts/build-docs codegen', () => {
     assert.ok(content.includes('Studio is skill-centric'), 'Studio IA prose missing');
   });
 
-  it('docs/zh/cli.md hand-curated prose preserved', () => {
+  it('docs/zh/reference/cli.md hand-curated prose preserved', () => {
     const content = readFileSync(CLI_ZH, 'utf8');
     assert.ok(content.includes('运行离线评测'), 'eval intro zh prose missing');
     assert.ok(content.includes('HTML 报告有两个 tab'), 'HTML 报告 tabs zh prose missing');
     assert.ok(content.includes('离线静态模式'), 'doctor static-only zh prose missing');
   });
 
-  it('docs/cli.md eval block has flags in alphabetic order', () => {
+  it('docs/reference/cli.md eval block has flags in alphabetic order', () => {
     const content = readFileSync(CLI_EN, 'utf8');
     const block = readFlagsBlock(content, 'eval');
     // 抽两个稳定的 flag 名,看出现顺序符合 alphabetic
