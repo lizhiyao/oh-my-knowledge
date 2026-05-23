@@ -3,7 +3,7 @@
  * 测试策略:
  * - 直接断言已提交的 .claude/skills/omk/references/commands.md(代表 codegen 结果)
  *   的 schema 性质:13 命令 H2 / 关键 flag 存在 / 子命令空格分隔 / `<%= config.bin %>` 已替换
- * - spawn `node dist/scripts/build-docs.js --check` 验证 --check 模式在不漂移时
+ * - spawn `node dist-scripts/build-docs.js --check` 验证 --check 模式在不漂移时
  *   exit 0,在漂移时 exit 1。走 dist 而非 tsx,因为 tsx 装在 node_modules 时
  *   oclif Config.load 会自动 register tsx loader,把 ajv 等库的 .json 文件
  *   按 JS 解析,破坏 production 行为。
@@ -29,7 +29,7 @@ const COMMANDS_MD = join(PROJECT_ROOT, '.claude/skills/omk/references/commands.m
 const CLI_EN = join(PROJECT_ROOT, 'docs/reference/cli.md');
 const CLI_ZH = join(PROJECT_ROOT, 'docs/zh/reference/cli.md');
 const SKILL_MD = join(PROJECT_ROOT, 'SKILL.md');
-const BUILD_DOCS = join(PROJECT_ROOT, 'dist/scripts/build-docs.js');
+const BUILD_DOCS = join(PROJECT_ROOT, 'dist-scripts/build-docs.js');
 
 const MARKER_START = '<!-- omk:cli:start -->';
 const MARKER_END = '<!-- omk:cli:end -->';

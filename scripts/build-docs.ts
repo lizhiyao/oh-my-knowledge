@@ -14,24 +14,26 @@
 // - `yarn build:docs:check`(--check)→ 比对磁盘内容,任一 target 不一致就 exit 1
 //   + print diff(CI 用)
 //
-// 依赖 dist/ 存在(oclif config.commands 指向 ./dist/src/cli/commands),
+// 依赖 dist/ 存在(oclif config.commands 指向 ./dist/cli/commands),
 // 跑之前必须先 `yarn build`。
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Config, type Command } from '@oclif/core';
-import { pickLang as pickLangCore } from '../src/cli/oclif/i18n.js';
 
 const REPO_ROOT = resolve(process.cwd());
 
 type Lang = 'zh' | 'en';
 
-// build-docs 在生成 markdown 时需要把 `${zh}\n${en}` 切回单语,跟 src/cli/oclif/i18n.ts
-// 的 pickLang 共用底层逻辑(单一来源)。i18n.ts 的 pickLang 返回 string | undefined
-// (caller 决定 nullish 处理),build-docs 拼字符串不能容忍 undefined,这里用
-// `?? ''` 把 undefined 兜成 '',行为跟原 inline 版本等价。
+// 跟 src/cli/oclif/i18n.ts 的 pickLang 同语义:把 `${zh}\n${en}` 切回单语。
+// 这边 inline 一份是为了让 scripts/ 跟 src/ 走两个互不依赖的 tsconfig(rootDir
+// 各自独立),保持 build 链路简单。改契约时两边一起改。
 function pickLang(text: string | undefined, lang: Lang): string {
-  return pickLangCore(text, lang) ?? '';
+  if (text === undefined) return '';
+  const parts = text.split(/\r?\n/);
+  if (parts.length < 2) return text;
+  if (lang === 'zh') return parts[0] ?? '';
+  return parts.slice(1).join('\n');
 }
 
 interface FlagShape {

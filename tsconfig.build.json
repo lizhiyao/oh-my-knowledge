@@ -1,15 +1,16 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "tsBuildInfoFile": "node_modules/.cache/tsconfig.build.tsbuildinfo"
+    "rootDir": "src",
+    "tsBuildInfoFile": "node_modules/.cache/omk/src.tsbuildinfo"
   },
   "include": [
-    "src/**/*.ts",
-    "scripts/**/*.ts"
+    "src/**/*.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
+    "dist-scripts",
     "test"
   ]
 }

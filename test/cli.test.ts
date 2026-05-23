@@ -11,7 +11,7 @@ import type { Report, VariantResult, VariantSummary } from '../src/types/index.j
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'src', 'cli', 'index.js');
+const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
 const CUSTOM_EXECUTOR = join(PROJECT_ROOT, 'examples', 'custom-executor', 'echo-executor.sh');
 const DOCTOR_FIXTURE = `node ${join(PROJECT_ROOT, 'test', 'fixtures', 'doctor-fixture-executor.mjs')}`;
 

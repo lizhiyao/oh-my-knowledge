@@ -43,7 +43,7 @@ export async function runStudio(
     const { fileURLToPath } = await import('node:url');
     // 路径绑定:`commands/studio.{ts,js}` → 两层 `..` 回 `cli/`,再 `index.js`。
     // 移动本文件到不同嵌套(例如 `commands/group/studio.ts`)需同步改 `..` 数量。
-    // cli/index.{ts,js} 在源跟 dist 中位置一致(src/cli/index.ts → dist/src/cli/index.js)。
+    // cli/index.{ts,js} 在源跟 dist 中位置一致(src/cli/index.ts → dist/cli/index.js)。
     const cliPath = resolve(fileURLToPath(import.meta.url), '..', '..', 'index.js');
     const watchRoot = resolve(cliPath, '..', '..');
     const childArgs = [

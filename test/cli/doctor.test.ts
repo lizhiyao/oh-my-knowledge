@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'src', 'cli', 'index.js');
+const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
 const EXAMPLE_SKILL = join(PROJECT_ROOT, 'examples', 'code-review', 'skills', 'v1.md');
 const EXAMPLE_SKILLS_DIR = join(PROJECT_ROOT, 'examples', 'code-review', 'skills');
 // Fixture executor bypasses real LLM calls; outcome is steered via

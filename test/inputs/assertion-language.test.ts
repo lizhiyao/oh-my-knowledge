@@ -79,7 +79,7 @@ describe('eval sample assertion language', () => {
   it('keeps init scaffold assertion payloads English-only', async () => {
     // spawn dist binary 验证 `omk init` 生成的 samples — vitest 不会自动 yarn build,
     // dist 缺失时给清晰 hint,避免新人首次跑测撞模糊 ENOENT。
-    const cli = join(PROJECT_ROOT, 'dist', 'src', 'cli', 'index.js');
+    const cli = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
     if (!existsSync(cli)) {
       throw new Error(`dist CLI not found at ${cli} — run \`yarn build\` first.`);
     }

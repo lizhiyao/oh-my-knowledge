@@ -3,14 +3,14 @@
 // build-time asset copy: src/ 下的非 .ts 资产(mock-hook.cjs / runtime prompt md)
 // tsc 不会自动复制非 .ts 文件。把每个 asset 复制到 dist/ 下对应路径,
 // 让运行时 sibling-relative 解析(dirname(import.meta.url) + sibling 文件)
-// 在 dev(src/)和 npm 安装(dist/src/)两种位置都能拿到 asset。
+// 在 dev(src/)和 npm 安装(dist/)两种位置都能拿到 asset。
 
 const fs = require('node:fs');
 const path = require('node:path');
 
 const ASSETS = [
-  ['src/eval-core/mock-hook.cjs', 'dist/src/eval-core/mock-hook.cjs'],
-  ['src/observability/prompts/llm-enhanced-review.prompt.md', 'dist/src/observability/prompts/llm-enhanced-review.prompt.md'],
+  ['src/eval-core/mock-hook.cjs', 'dist/eval-core/mock-hook.cjs'],
+  ['src/observability/prompts/llm-enhanced-review.prompt.md', 'dist/observability/prompts/llm-enhanced-review.prompt.md'],
 ];
 
 for (const [src, dst] of ASSETS) {

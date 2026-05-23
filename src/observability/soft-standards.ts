@@ -7,7 +7,7 @@ import { createExecutor } from '../executors/index.js';
 import { readPromptDocument } from '../shared/llm-prompts/index.js';
 
 // sibling 模式:dev 下 import.meta.url 指 src/observability/soft-standards.ts,
-// npm 安装下指 dist/src/observability/soft-standards.js,
+// npm 安装下指 dist/observability/soft-standards.js,
 // 两边的 ./prompts/ 子目录都对得上(build script 把 prompt md 同步复制到 dist)。
 export const PROMPTS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'prompts');
 import { buildObservationSkillChain, type ObservationSkillChain } from './skill-chain.js';

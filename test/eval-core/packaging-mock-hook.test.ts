@@ -1,13 +1,13 @@
 /**
  * Packaging smoke test — sandbox mock 主能力依赖 src/eval-core/mock-hook.cjs
  * 这份 hook 是 runtime executable,tsc 不处理 .cjs 文件,build script 必须把它复制到
- * dist/src/eval-core/。本测试保证:
+ * dist/eval-core/。本测试保证:
  *   1) 源码位置:src/eval-core/mock-hook.cjs 存在(否则 build 也会挂)
- *   2) build 产物:dist/src/eval-core/mock-hook.cjs 存在(否则运行时 readMockHookTemplate 挂)
+ *   2) build 产物:dist/eval-core/mock-hook.cjs 存在(否则运行时 readMockHookTemplate 挂)
  *   3) npm tarball:发布的 package 含这个文件(否则 npm 安装版 sandbox mock 主能力丢)
  *
- * 历史背景:assets/ 旧位置 + package.json.files 只声明 dist/src/,发出去的 tarball 漏 hook,
- * 本测试是这个 issue 的回归门(参考 PR #95 review P1-1)。
+ * 历史背景:assets/ 旧位置 + package.json.files 漏 dist 子目录,发出去的 tarball 漏 hook,
+ * 本测试是这个 issue 的回归门。
  */
 import { describe, it, expect } from 'vitest';
 import { existsSync } from 'node:fs';
@@ -19,21 +19,21 @@ describe('packaging — mock-hook ships with omk package', () => {
   });
 
   it('build 后 dist 里有 mock-hook.cjs(否则运行时挂)', () => {
-    if (!existsSync('dist/src/eval-core/mocks-runtime.js')) {
+    if (!existsSync('dist/eval-core/mocks-runtime.js')) {
       console.warn('[skip] dist/ 缺失,先 `yarn build` 再跑');
       return;
     }
-    expect(existsSync('dist/src/eval-core/mock-hook.cjs')).toBe(true);
+    expect(existsSync('dist/eval-core/mock-hook.cjs')).toBe(true);
   });
 
   it('npm pack 清单含 mock-hook.cjs(否则发出去的包漏 hook)', () => {
-    if (!existsSync('dist/src/eval-core/mocks-runtime.js')) {
+    if (!existsSync('dist/eval-core/mocks-runtime.js')) {
       console.warn('[skip] dist/ 缺失,先 `yarn build` 再跑');
       return;
     }
     const out = execSync('npm pack --dry-run --json', { encoding: 'utf-8' });
     const meta = JSON.parse(out)[0];
     const paths: string[] = (meta.files || []).map((f: { path: string }) => f.path);
-    expect(paths).toContain('dist/src/eval-core/mock-hook.cjs');
+    expect(paths).toContain('dist/eval-core/mock-hook.cjs');
   });
 });

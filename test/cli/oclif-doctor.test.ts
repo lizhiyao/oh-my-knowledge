@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'src', 'cli', 'index.js');
+const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
 const DOCTOR_FIXTURE = `node ${join(PROJECT_ROOT, 'test', 'fixtures', 'doctor-fixture-executor.mjs')}`;
 
 interface ExecError extends Error {

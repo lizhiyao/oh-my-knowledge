@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI = join(PROJECT_ROOT, 'dist', 'src', 'cli', 'index.js');
+const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
 
 interface ExecError extends Error {
   code?: number;
