@@ -1,0 +1,168 @@
+# Eval sample format
+
+Supports JSON and YAML (`eval-samples.json`, `eval-samples.yaml`, `eval-samples.yml`).
+
+```json
+[
+  {
+    "sample_id": "s001",
+    "prompt": "Review this code for security issues",
+    "context": "function auth(u, p) { db.query('SELECT * FROM users WHERE name=' + u); }",
+    "rubric": "Should identify SQL injection risk and recommend parameterized queries",
+    "assertions": [
+      { "type": "contains", "value": "SQL injection", "weight": 1 },
+      { "type": "contains", "value": "parameterized", "weight": 1 },
+      { "type": "not_contains", "value": "looks fine", "weight": 0.5 }
+    ],
+    "dimensions": {
+      "security": "did it identify the injection vulnerability?",
+      "actionability": "did it give directly usable fix code?"
+    }
+  }
+]
+```
+
+## Fields
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `sample_id` | `string` | **yes** | Unique sample ID |
+| `prompt` | `string` | **yes** | User prompt sent to the model |
+| `context` | `string` | no | Extra context (e.g. code). Wrapped in a code block and appended to the prompt. URLs are auto-fetched at runtime. |
+| `rubric` | `string` | no | Scoring guideline for the LLM judge (1-5 scale) |
+| `assertions` | `array` | no | Assertion checks; see [assertion types](#assertion-types) |
+| `assertions[].type` | `string` | **yes** | Assertion type |
+| `assertions[].value` | `string\|number` | depends | Check value (required for `contains`, `min_length`, `cost_max`, etc.) |
+| `assertions[].values` | `array` | depends | String array (required for `contains_all`, `contains_any`) |
+| `assertions[].pattern` | `string` | depends | Regex pattern (required for `regex`) |
+| `assertions[].flags` | `string` | no | Regex flags (default `"i"`) |
+| `assertions[].schema` | `object` | depends | JSON Schema object (required for `json_schema`, via [ajv](https://ajv.js.org/)) |
+| `assertions[].reference` | `string` | depends | Reference text (required for `semantic_similarity`) |
+| `assertions[].threshold` | `number` | no | Pass threshold for semantic similarity (default 3) |
+| `assertions[].fn` | `string` | depends | Path to a custom assertion JS file (required for `custom`) |
+| `assertions[].weight` | `number` | no | Weight (default 1) |
+| `dimensions` | `object` | no | Multi-dimension scoring; key = dimension name, value = scoring guideline |
+
+## URL auto-fetching
+
+URLs in `prompt` and `context` are auto-fetched before evaluation and inlined into the text. Useful when referencing online docs, API references, etc.:
+
+```json
+{
+  "sample_id": "s001",
+  "prompt": "Generate test cases from this PRD: https://wiki.example.com/prd/feature-x"
+}
+```
+
+At runtime, URLs are replaced with the actual content. Fetch order: MCP Server first for matching URLs (e.g. SSO-protected private docs), then plain HTTP for the rest. URLs already resolved by MCP are not re-fetched via HTTP.
+
+**Private-doc URLs**: drop a `.mcp.json` config file into the project dir, or pass `--mcp-config <path>`:
+
+```json
+{
+  "mcpServers": {
+    "docs": {
+      "command": "npx",
+      "args": ["@example/docs-mcp-server"],
+      "env": { "DOCS_API_TOKEN": "xxx" },
+      "urlPatterns": ["docs.example.com"],
+      "fetchTool": {
+        "name": "fetch_doc",
+        "urlTransform": {
+          "regex": "docs\\.example\\.com/([^/]+/[^/]+)/([^/?#]+)",
+          "params": { "namespace": "$1", "slug": "$2" }
+        },
+        "contentExtract": "data.body"
+      }
+    }
+  }
+}
+```
+
+**Public URLs**: fetched via plain HTTP. If they require auth, make sure the shell already has network access configured (VPN, proxy, etc.).
+
+## Scoring strategy
+
+### 1. Assertion score
+
+Rule-based local checks; each assertion yields pass/fail.
+
+**Formula:**
+
+- Pass rate = sum of passed assertion weights / total weight (0–1)
+- Score = 1 + pass_rate × 4 (mapped to 1–5)
+- Example: 3 assertions (weight 1 each), 2 pass → pass rate 2/3 → score = 1 + 0.67 × 4 = **3.67**
+
+### 2. Rubric / Dimensions score
+
+The judge model (default `haiku`) scores 1–5 against the rubric. In `dimensions` mode, each dimension is scored independently and then averaged.
+
+### 3. Composite score
+
+| Condition | Formula |
+|---|---|
+| Only assertions | `assertionScore` |
+| Only LLM judge | `llmScore` |
+| Both present | `(assertionScore + llmScore) / 2` |
+| Neither | `0` |
+
+## Assertion types
+
+**Deterministic assertions (21+ total):**
+
+| Type | Description |
+|---|---|
+| `contains` / `not_contains` | substring must / must-not appear |
+| `regex` | regex match |
+| `min_length` / `max_length` | length bounds |
+| `json_valid` / `json_schema` | JSON validation |
+| `starts_with` / `ends_with` | prefix / suffix |
+| `equals` / `not_equals` | exact match |
+| `word_count_min` / `word_count_max` | word-count bounds |
+| `contains_all` / `contains_any` | multi-value match |
+| `cost_max` / `latency_max` | cost / latency caps |
+| `tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` | agent tool-call assertions |
+| `tool_output_contains` / `tool_input_contains` | match content of a tool's input or output |
+| `turns_min` / `turns_max` | conversation-turn bounds |
+| `rouge_n_min` | ROUGE-N recall ≥ threshold (`reference` field holds the gold text; `n` defaults to 1; `threshold` defaults to 0.5) |
+| `levenshtein_max` | edit distance ≤ value (for "output should be near-identical to reference") |
+| `bleu_min` | BLEU-4 ≥ threshold (unsmoothed; degenerates to 0 on short text) |
+| `faithfulness` | output stays grounded in `sample.context` (anti-hallucination); LLM judge 1-5; threshold defaults to 3 |
+| `answer_relevancy` | output directly answers `sample.prompt`; catches dodging, topic drift, verbosity; threshold defaults to 3 |
+| `context_recall` | gold facts in `sample.context` are actually used in the output; `reference` may explicitly enumerate gold facts; threshold defaults to 3 |
+| `semantic_similarity` | LLM-based holistic semantic similarity (complementary to the three RAG metrics above) |
+| `custom` | custom JS function (30 s timeout) |
+
+**Universal modifier:**
+
+Any assertion takes `not: true` to invert (replaces paired `not_contains` / `not_equals` etc; legacy types remain as aliases):
+
+```yaml
+- type: regex
+  pattern: "TODO|FIXME"
+  not: true              # output must NOT contain TODO/FIXME
+```
+
+**Composition (assert-set):**
+
+`assert-set` combines child assertions with `any` (OR) or `all` (AND) and supports nesting:
+
+```yaml
+- type: assert-set
+  mode: any              # at least one child must pass (mode: 'all' = all must pass)
+  children:
+    - { type: contains, value: "parameterized" }
+    - { type: contains, value: "prepared statement" }
+    - { type: regex, pattern: "bind\\(.*\\?" }
+```
+
+Children can independently use `not: true`; nested `assert-set`s can express any boolean shape.
+
+## Custom assertion
+
+```js
+// my-assertion.mjs
+export default function(output, { sample, assertion }) {
+  return { pass: output.includes('SQL'), message: 'checked for SQL keyword' };
+}
+```
