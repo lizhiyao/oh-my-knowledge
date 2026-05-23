@@ -286,6 +286,13 @@ export interface ExperienceGoalEvidenceRef {
   label?: string;
 }
 
+type ExperienceMessageRange = {
+  startMessageIndex: number;
+  endMessageIndex: number;
+  sourceTrace?: string;
+  sessionId?: string;
+};
+
 export interface ExperienceSkillSegment {
   id: string;
   order: number;
@@ -298,7 +305,7 @@ export interface ExperienceSkillSegment {
   skillInvocationIds: string[];
   startMessageIndex?: number;
   endMessageIndex?: number;
-  messageRanges?: Array<{ startMessageIndex: number; endMessageIndex: number; sourceTrace?: string; sessionId?: string }>;
+  messageRanges?: ExperienceMessageRange[];
   startTimestamp: string;
   endTimestamp: string;
   typeSpecificChecklist: ExperienceChecklistItem[];
@@ -2101,10 +2108,7 @@ function episodeRangeContainsRef(
   return ref.messageIndex >= range.startMessageIndex && ref.messageIndex <= range.endMessageIndex;
 }
 
-function messageRangeOverlapsEpisodeRange(
-  messageRange: { startMessageIndex: number; endMessageIndex: number; sourceTrace?: string; sessionId?: string },
-  range: ExperienceEpisodeRange,
-): boolean {
+function messageRangeOverlapsEpisodeRange(messageRange: ExperienceMessageRange, range: ExperienceEpisodeRange): boolean {
   if (range.sourceTrace && messageRange.sourceTrace && range.sourceTrace !== messageRange.sourceTrace) return false;
   if (range.sessionId && messageRange.sessionId && range.sessionId !== messageRange.sessionId) return false;
   return messageRange.endMessageIndex >= range.startMessageIndex
@@ -2138,8 +2142,8 @@ function sessionStorySkillSegments(
       ...link.evidenceRefs,
       ...group.flatMap((invocation) => invocation.evidenceRefs.slice(0, 2)),
     ]).slice(0, 6);
-    const messageRanges: Array<{ startMessageIndex: number; endMessageIndex: number; sourceTrace?: string; sessionId?: string }> = group
-      .map((invocation): { startMessageIndex: number; endMessageIndex: number; sourceTrace?: string; sessionId?: string } | undefined => {
+    const messageRanges: ExperienceMessageRange[] = group
+      .map((invocation): ExperienceMessageRange | undefined => {
         const timelineWithIndex = invocation.timeline.filter((event) => typeof event.messageIndex === 'number');
         const indexes = timelineWithIndex
           .map((event) => event.messageIndex)
@@ -2152,7 +2156,7 @@ function sessionStorySkillSegments(
           ? { startMessageIndex, endMessageIndex, sourceTrace, sessionId }
           : undefined;
       })
-      .filter((value): value is { startMessageIndex: number; endMessageIndex: number; sourceTrace?: string; sessionId?: string } => Boolean(value));
+      .filter((value): value is ExperienceMessageRange => Boolean(value));
     const messageIndexes = messageRanges.flatMap((range) => [range.startMessageIndex, range.endMessageIndex]);
     return {
       id: hashParts('session-story-skill-segment', session.id, link.skillName, String(index)),
@@ -2266,10 +2270,13 @@ function sessionStoryOrchestrationEdges(
     && segment.episodeRole === 'main_executor'
   ) : undefined);
   if (parentSegment && (executor || runnerEvent) && parentSegment.id !== executor?.id) {
+    const edgeKind = executor && skillSegmentsShareSourceTrace(parentSegment, executor)
+      ? 'internal_skill'
+      : 'external_child_session';
     edges.push({
       id: hashParts('session-story-edge', episodeId, parentSegment.id, executor?.id ?? 'downstream', '0'),
       episodeId,
-      edgeKind: executor ? 'internal_skill' : 'external_child_session',
+      edgeKind,
       parentSkillSegmentId: parentSegment.id,
       executorSkillSegmentId: executor?.id,
       childSessionId: sessionStoryChildSessionId(runnerEvent),
@@ -2313,6 +2320,7 @@ function bestPriorUpstreamSkillSegmentForRuntime(
   const runnerMessageIndex = runnerEvent?.messageIndex;
   const contextText = timeline
     .filter((event) => {
+      if (!timelineEventSharesTraceScope(event, runnerEvent)) return false;
       if (typeof runnerMessageIndex !== 'number' || typeof event.messageIndex !== 'number') return true;
       return event.messageIndex <= runnerMessageIndex && event.messageIndex >= Math.max(0, runnerMessageIndex - 20);
     })
@@ -2336,6 +2344,7 @@ function mentionedUpstreamSkillSegmentForRuntime(
   const runnerMessageIndex = runnerEvent.messageIndex;
   const nearbyText = timeline
     .filter((event) => {
+      if (!timelineEventSharesTraceScope(event, runnerEvent)) return false;
       if (typeof runnerMessageIndex !== 'number' || typeof event.messageIndex !== 'number') return true;
       return event.messageIndex <= runnerMessageIndex && event.messageIndex >= Math.max(0, runnerMessageIndex - 8);
     })
@@ -2343,6 +2352,7 @@ function mentionedUpstreamSkillSegmentForRuntime(
     .join('\n');
   return skillSegments
     .filter((segment) => segment.id !== runnerOwner.id)
+    .filter((segment) => segment.order < runnerOwner.order)
     .filter((segment) => {
       const name = segment.skillName.toLowerCase();
       const lowerText = nearbyText.toLowerCase();
@@ -2400,10 +2410,11 @@ function fallbackOrchestrationEdgeFromRuntime(
     .filter((segment) => segment.id !== executor.id && segment.order < executor.order)
     .sort((a, b) => b.order - a.order)[0];
   if (!parent) return undefined;
+  const edgeKind = skillSegmentsShareSourceTrace(parent, executor) ? 'internal_skill' : 'external_child_session';
   return {
     id: hashParts('session-story-edge', episodeId, parent.id, executor.id, 'fallback'),
     episodeId,
-    edgeKind: 'internal_skill',
+    edgeKind,
     parentSkillSegmentId: parent.id,
     executorSkillSegmentId: executor.id,
     childSessionId: sessionStoryChildSessionId(runtimeEvent),
@@ -2667,6 +2678,7 @@ function promiseOwnerForFeedback(
   const feedbackMessageIndex = evidenceRef.messageIndex;
   if (!/有结论|进度|怎么样了|跑完|完成了吗|没返回|为什么.*(?:没|不).*?(?:通知|返回|同步)|通知|返回|同步/i.test(text)) return undefined;
   return promises
+    .filter((promise) => evidenceRefsShareTraceScope(promise.evidenceRef, evidenceRef))
     .filter((promise) => promise.messageIndex <= feedbackMessageIndex)
     .sort((a, b) => b.messageIndex - a.messageIndex)[0]?.segment;
 }
@@ -2731,6 +2743,7 @@ function actionOwnerForFeedback(
   const feedbackMessageIndex = evidenceRef.messageIndex;
   const nextRuntimeEvent = timeline.find((event) => {
     if (typeof event.messageIndex !== 'number') return false;
+    if (!evidenceRefsShareTraceScope(event, evidenceRef)) return false;
     if (event.messageIndex <= feedbackMessageIndex || event.messageIndex > feedbackMessageIndex + 16) return false;
     if (event.kind !== 'tool_use' && event.kind !== 'assistant_message') return false;
     const eventText = `${event.toolName ?? ''} ${event.snippet ?? ''} ${event.fullText ?? ''}`;
@@ -2804,24 +2817,67 @@ function skillSegmentForEvidenceRef(
           ? [{ startMessageIndex: segment.startMessageIndex, endMessageIndex: segment.endMessageIndex }]
           : [];
       const matchedRange = ranges.find((range) =>
-        messageIndex >= range.startMessageIndex
-        && messageIndex <= range.endMessageIndex
+        messageRangeContainsEvidenceRef(range, evidenceRef)
       );
       return matchedRange ? {
         segment,
         rangeSize: matchedRange.endMessageIndex - matchedRange.startMessageIndex,
+        traceSpecificity: messageRangeTraceSpecificity(matchedRange, evidenceRef),
         preferred: preferredSkillName ? segment.skillName === preferredSkillName : false,
         startsHere: messageIndex === matchedRange.startMessageIndex,
       } : undefined;
     })
-    .filter((value): value is { segment: ExperienceSkillSegment; rangeSize: number; preferred: boolean; startsHere: boolean } => Boolean(value))
+    .filter((value): value is { segment: ExperienceSkillSegment; rangeSize: number; traceSpecificity: number; preferred: boolean; startsHere: boolean } => Boolean(value))
     .sort((a, b) =>
       Number(b.preferred) - Number(a.preferred)
+      || b.traceSpecificity - a.traceSpecificity
       || Number(b.startsHere) - Number(a.startsHere)
       || a.rangeSize - b.rangeSize
       || a.segment.order - b.segment.order
     );
   return candidates[0]?.segment;
+}
+
+function messageRangeContainsEvidenceRef(
+  range: ExperienceMessageRange,
+  ref: Pick<ExperienceEvidenceRef, 'messageIndex' | 'sourceTrace' | 'sessionId'>,
+): boolean {
+  if (typeof ref.messageIndex !== 'number') return false;
+  if (range.sourceTrace && ref.sourceTrace && range.sourceTrace !== ref.sourceTrace) return false;
+  if (range.sessionId && ref.sessionId && range.sessionId !== ref.sessionId) return false;
+  return ref.messageIndex >= range.startMessageIndex && ref.messageIndex <= range.endMessageIndex;
+}
+
+function messageRangeTraceSpecificity(
+  range: ExperienceMessageRange,
+  ref: Pick<ExperienceEvidenceRef, 'sourceTrace' | 'sessionId'>,
+): number {
+  return (range.sourceTrace && ref.sourceTrace && range.sourceTrace === ref.sourceTrace ? 2 : 0)
+    + (range.sessionId && ref.sessionId && range.sessionId === ref.sessionId ? 1 : 0);
+}
+
+function evidenceRefsShareTraceScope(
+  a?: Pick<ExperienceEvidenceRef, 'sourceTrace' | 'sessionId'>,
+  b?: Pick<ExperienceEvidenceRef, 'sourceTrace' | 'sessionId'>,
+): boolean {
+  if (!a || !b) return true;
+  if (a.sourceTrace && b.sourceTrace && a.sourceTrace !== b.sourceTrace) return false;
+  if (a.sessionId && b.sessionId && a.sessionId !== b.sessionId) return false;
+  return true;
+}
+
+function timelineEventSharesTraceScope(
+  event: Pick<ExperienceTimelineEvent, 'sourceTrace' | 'sessionId'>,
+  anchor?: Pick<ExperienceTimelineEvent, 'sourceTrace' | 'sessionId'>,
+): boolean {
+  return evidenceRefsShareTraceScope(event, anchor);
+}
+
+function skillSegmentsShareSourceTrace(a: ExperienceSkillSegment, b: ExperienceSkillSegment): boolean {
+  const aTraces = new Set((a.messageRanges ?? []).map((range) => range.sourceTrace).filter((value): value is string => Boolean(value)));
+  const bTraces = new Set((b.messageRanges ?? []).map((range) => range.sourceTrace).filter((value): value is string => Boolean(value)));
+  if (aTraces.size === 0 || bTraces.size === 0) return true;
+  return Array.from(aTraces).some((trace) => bTraces.has(trace));
 }
 
 function sessionStoryArtifacts(invocations: ExperienceInvocation[]): ExperienceEpisodeArtifact[] {
