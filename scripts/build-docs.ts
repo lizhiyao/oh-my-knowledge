@@ -5,8 +5,8 @@
 // 目标(每条一个 Target):
 // - commands.md(.claude/skills/omk/references/commands.md):整段 marker 包裹,
 //   全命令 fullbody(把 oclif Config.commands 全部输出,含 topic / sub / sub-sub)。
-// - README.md / README.zh.md:per-command flags 模式,每个 H3 顶层命令独立 marker
-//   对,内容只输出 flag list(README 已经手写 bash 示例和 prose,不重复)。
+// - docs/cli.md / docs/zh/cli.md:per-command flags 模式,每个 H3 顶层命令独立 marker
+//   对,内容只输出 flag list(cli.md 已经手写 bash 示例和 prose,不重复)。
 //
 // 模式:
 // - `yarn build:docs`(--write)→ 覆盖所有 target 的 marker 区段
@@ -168,7 +168,7 @@ function generateFullbody(config: Config): string {
   return lines.join('\n');
 }
 
-// ── README.md / README.zh.md(per-cmd-flags)渲染 ─────────────────────────────
+// ── docs/cli.md / docs/zh/cli.md(per-cmd-flags)渲染 ─────────────────────────────
 
 function renderFlagTypeAngle(f: FlagShape): string {
   if (f.type === 'boolean') return '';
@@ -176,7 +176,7 @@ function renderFlagTypeAngle(f: FlagShape): string {
   return '<value>';
 }
 
-// README ```text``` 风格:每行一个 flag,padding 对齐,描述用 pickLang 切 lang。
+// ```text``` 风格:每行一个 flag,padding 对齐,描述用 pickLang 切 lang。
 // 输出格式:
 //   --flag-name <type>     description
 function renderFlagsBlock(cmd: Command.Loadable, bin: string, lang: Lang): string {
@@ -234,9 +234,9 @@ interface PerCmdFlagsTarget {
   mode: 'per-cmd-flags';
   file: string;
   lang: Lang;
-  // 哪些 oclif top-level id 在 README 里出现。注:eval 是 top-level,eval gold *
-  // 是 sub-sub,不在 README 展开;observe 是 top-level,observe inbox/ingest/show
-  // 是 sub,也不在 README 展开。集合定义在 TOP_LEVEL_IDS,test/scripts/
+  // 哪些 oclif top-level id 在 cli.md 里出现。注:eval 是 top-level,eval gold *
+  // 是 sub-sub,不在 cli.md 展开;observe 是 top-level,observe inbox/ingest/show
+  // 是 sub,也不在 cli.md 展开。集合定义在 TOP_LEVEL_IDS,test/scripts/
   // build-docs.test.ts 用 Config.load 动态校验该集合等于 oclif 实际顶层命令集,
   // 防止漏更新。
   topLevelIds: readonly string[];
@@ -245,7 +245,7 @@ interface PerCmdFlagsTarget {
 type Target = FullbodyTarget | PerCmdFlagsTarget;
 
 /**
- * omk 顶层命令 id 列表 — 从 oclif Config 真值动态推导(README per-cmd-flags
+ * omk 顶层命令 id 列表 — 从 oclif Config 真值动态推导(cli.md per-cmd-flags
  * + SKILL.md argument-hint 共用)。oclif Command 文件目录是单一来源,这里只是
  * 派生层,加 / 删 / rename 顶层命令时不需要再来这里改 hardcoded 数组。
  */
@@ -266,13 +266,13 @@ export function buildTargets(topLevelIds: readonly string[]): Target[] {
     },
     {
       mode: 'per-cmd-flags',
-      file: 'README.md',
+      file: 'docs/cli.md',
       lang: 'en',
       topLevelIds,
     },
     {
       mode: 'per-cmd-flags',
-      file: 'README.zh.md',
+      file: 'docs/zh/cli.md',
       lang: 'zh',
       topLevelIds,
     },
