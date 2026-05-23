@@ -228,9 +228,9 @@ oclif 迁移后 omk 的 exit code 契约（CI / 脚本若有 `[ $? -eq N ]` 分�
 - `docs/reference/` — flag tables, sample format, executor matrix, comparison ↔ what users look up
 - `docs/explanation/` — architecture, statistical rigor ↔ how / why omk works
 - `docs/specs/` — design specs read by contributors (sample design, gap signal, RAG metrics, terminology, ...)
-- `docs/{quickstart,README}.md` stay at the top level; `docs/zh/` mirrors the same structure
+- `docs/quickstart-skill-eval.md` + `docs/README.md` stay at the top level; `docs/zh/` mirrors the same structure
 - `docs/README.md` + `docs/zh/README.md` are the audience-grouped indexes — add new files to the matching section
-- EN/ZH symmetry is **not** mandatory. Some specs are EN-only; `docs/zh/roadmap.md` is intentionally ZH-only (internal planning). Indexes annotate cross-language links with `(中文版) / (英文版)` instead of TODO promises
+- EN/ZH symmetry is **not** mandatory. Several docs are currently ZH-only (e.g. `docs/specs/*`, `docs/dev/*`, `docs/zh/reference/glossary.md`, `docs/zh/specs/scoring.md`, `docs/zh/roadmap.md` — the last is intentionally ZH-only internal planning). Indexes annotate cross-language links with `(中文版) / (英文版)` instead of TODO promises
 
 ## Scope
 
