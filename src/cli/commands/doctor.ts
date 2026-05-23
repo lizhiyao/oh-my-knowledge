@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { existsSync, statSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, statSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
@@ -263,6 +263,10 @@ export default class Doctor extends BaseCommand {
   }
 }
 
+// 每个 skill 最多保留多少份历史 doctor 报告(避免无界增长拖慢 studio 启动 +
+// scanDoctorReports 扫盘成本)。50 = ~每天 1 跑撑 1.5 个月 sparkline,够用。
+const DOCTOR_HISTORY_MAX_PER_SKILL = 50;
+
 function persistDoctorReport(report: import('../../types/doctor.js').DoctorReport): void {
   const dir = join(homedir(), '.oh-my-knowledge', 'doctors');
   mkdirSync(dir, { recursive: true });
@@ -280,5 +284,27 @@ function persistDoctorReport(report: import('../../types/doctor.js').DoctorRepor
     };
     const safeName = skill.skillName.replace(/[/\\:*?"<>|]/g, '_');
     writeFileSync(join(dir, `${safeName}-${safeId}.json`), JSON.stringify(perSkill, null, 2), 'utf8');
+    pruneDoctorHistory(dir, skill.skillName, DOCTOR_HISTORY_MAX_PER_SKILL);
+  }
+}
+
+// 写入新报告后调用:扫 dir 里属于该 skill 的所有 single-skill doctor JSON,
+// 按 timestamp 倒排,保留 maxKeep 份最近的,其余删。按 content 匹配 skillName 不
+// 看文件名,所以同时清理新 `{name}-{id}.json` 与遗留 `{name}.json` 两种命名。
+export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: number): void {
+  const candidates: { file: string; timestamp: string }[] = [];
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.json')) continue;
+    try {
+      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as import('../../types/doctor.js').DoctorReport;
+      if (data?.kind !== 'doctor' || !Array.isArray(data.skills) || data.skills.length !== 1) continue;
+      if (data.skills[0].skillName !== skillName) continue;
+      candidates.push({ file, timestamp: data.timestamp });
+    } catch { /* skip corrupt / unrelated json */ }
+  }
+  if (candidates.length <= maxKeep) return;
+  candidates.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  for (const { file } of candidates.slice(maxKeep)) {
+    try { unlinkSync(join(dir, file)); } catch { /* ignore */ }
   }
 }
