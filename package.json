@@ -13,6 +13,7 @@
     "dist/"
   ],
   "scripts": {
+    "clean": "rm -rf dist dist-scripts node_modules/.cache/omk",
     "build": "run-s build:src build:scripts build:assets",
     "build:src": "tsc -p tsconfig.build.json",
     "build:scripts": "tsc -p tsconfig.scripts.json",
@@ -23,7 +24,7 @@
     "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --cache --cache-location node_modules/.cache/eslint/ --max-warnings 0",
     "test": "vitest run",
     "ci": "run-s lint typecheck build build:docs:check test",
-    "prepublishOnly": "yarn build",
+    "prepublishOnly": "run-s clean build",
     "prepare": "husky"
   },
   "lint-staged": {
