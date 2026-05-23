@@ -28,7 +28,7 @@ describe('LLM enhanced review prompt hash byte-level freeze', () => {
 
   it('loads prompt regardless of process.cwd() (npm-installed portability)', () => {
     // npm install -g omk 后,用户 cwd 是自己项目目录,不是 omk 包目录。
-    // readPromptDocument 必须从 import.meta.url 锁定的包安装位置解析 docs/prompts/,
+    // readPromptDocument 必须从 import.meta.url 锁定的包安装位置解析 prompt 文件,
     // 不能 fallback 到 process.cwd()。这条测试模拟用户场景,锁住 portability。
     const original = process.cwd();
     try {

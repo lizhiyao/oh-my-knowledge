@@ -36,7 +36,7 @@ export function readPromptDocument(options: {
   id: string;
   version: string;
 }): LlmPromptDocument {
-  const path = join(options.rootDir ?? PACKAGE_ROOT, 'docs', 'prompts', options.fileName);
+  const path = join(options.rootDir ?? PACKAGE_ROOT, 'src', 'observability', 'prompts', options.fileName);
   if (!existsSync(path)) throw new Error(`missing prompt document: ${path}`);
   const body = readFileSync(path, 'utf-8');
   return {

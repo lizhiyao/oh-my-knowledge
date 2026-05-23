@@ -23,8 +23,6 @@
 - [知识缺口信号规范](../specs/knowledge-gap-signal-spec.md)
 - [RAG metrics 规范](../specs/rag-metrics-spec.md)
 - [术语规范](../specs/terminology-spec.md)
-- [Diagnosis-occurrence mapping](../specs/diagnosis-occurrence-mapping.md)（English）
-- [CLI 框架 spike](../specs/cli-framework-spike.md)
 - [Roadmap](./roadmap.md) —— 内部 planning，ZH-only by design
 - [敏感信息扫描](../dev/sensitive-scan.md)（dev 工具）
 - [SIGINT propagation 手动验证](../dev/sigint-validation.md)（dev 工具）

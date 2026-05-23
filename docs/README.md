@@ -23,7 +23,5 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 - [Knowledge gap signal spec](./specs/knowledge-gap-signal-spec.md) (中文)
 - [RAG metrics spec](./specs/rag-metrics-spec.md) (中文)
 - [Terminology spec](./specs/terminology-spec.md) (中文)
-- [Diagnosis-occurrence mapping](./specs/diagnosis-occurrence-mapping.md)
-- [CLI framework spike](./specs/cli-framework-spike.md) (中文)
 - [Sensitive scan](./dev/sensitive-scan.md) (中文)
 - [SIGINT validation](./dev/sigint-validation.md) (中文)

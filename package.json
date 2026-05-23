@@ -11,7 +11,7 @@
   },
   "files": [
     "dist/src/",
-    "docs/prompts/"
+    "src/observability/prompts/"
   ],
   "scripts": {
     "build": "tsc && node -e \"const fs=require('node:fs'),p=require('node:path');const d='dist/src/eval-core/mock-hook.cjs';fs.mkdirSync(p.dirname(d),{recursive:true});fs.copyFileSync('src/eval-core/mock-hook.cjs',d)\"",
