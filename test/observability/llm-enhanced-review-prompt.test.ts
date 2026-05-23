@@ -2,6 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { readPromptDocument } from '../../src/shared/llm-prompts/index.js';
+import { PROMPTS_DIR } from '../../src/observability/soft-standards.js';
 
 // 历史 hash 锚点。llm-enhanced-review 的 runtimeAssessment 会影响 observe
 // 对 goal satisfaction / behavior fit / artifact match / user feeling 的最终判定。
@@ -12,6 +13,7 @@ const FROZEN_LLM_ENHANCED_REVIEW_PROMPT_HASH = '2bdd7506a6730a84c32631afdf264405
 describe('LLM enhanced review prompt hash byte-level freeze', () => {
   it('v2026-05-19.v2 hash matches the frozen value', () => {
     const prompt = readPromptDocument({
+      dir: PROMPTS_DIR,
       fileName: 'llm-enhanced-review.prompt.md',
       id: 'llm-enhanced-review',
       version: '2026-05-19.v2',
@@ -28,12 +30,13 @@ describe('LLM enhanced review prompt hash byte-level freeze', () => {
 
   it('loads prompt regardless of process.cwd() (npm-installed portability)', () => {
     // npm install -g omk 后,用户 cwd 是自己项目目录,不是 omk 包目录。
-    // readPromptDocument 必须从 import.meta.url 锁定的包安装位置解析 prompt 文件,
+    // PROMPTS_DIR 用 import.meta.url 锁定 src/observability/prompts/ sibling 路径,
     // 不能 fallback 到 process.cwd()。这条测试模拟用户场景,锁住 portability。
     const original = process.cwd();
     try {
       process.chdir(tmpdir());
       const prompt = readPromptDocument({
+        dir: PROMPTS_DIR,
         fileName: 'llm-enhanced-review.prompt.md',
         id: 'llm-enhanced-review',
         version: '2026-05-19.v2',

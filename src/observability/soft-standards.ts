@@ -1,9 +1,15 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { ExecutorFn } from '../types/index.js';
 import { createExecutor } from '../executors/index.js';
 import { readPromptDocument } from '../shared/llm-prompts/index.js';
+
+// sibling 模式:dev 下 import.meta.url 指 src/observability/soft-standards.ts,
+// npm 安装下指 dist/src/observability/soft-standards.js,
+// 两边的 ./prompts/ 子目录都对得上(build script 把 prompt md 同步复制到 dist)。
+export const PROMPTS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'prompts');
 import { buildObservationSkillChain, type ObservationSkillChain } from './skill-chain.js';
 
 export const SOFT_STANDARD_PROMPT_ID = 'llm-enhanced-review';
@@ -341,6 +347,7 @@ function buildSoftStandardPrompt(
 
 function readPromptTemplate() {
   return readPromptDocument({
+    dir: PROMPTS_DIR,
     fileName: 'llm-enhanced-review.prompt.md',
     id: SOFT_STANDARD_PROMPT_ID,
     version: SOFT_STANDARD_PROMPT_VERSION,
