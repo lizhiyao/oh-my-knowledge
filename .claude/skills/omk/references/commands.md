@@ -471,4 +471,4 @@ omk studio --port 8080 --no-open
 | `environment` | 否 | 评测环境前置「已就绪」声明 |
 | `tripwire` | 否 | 标记为「故意诱错」样本，failed 时 diagnostic 不建议改 skill |
 
-完整 schema 见 [docs/specs/sample-design-spec.md](../../../docs/specs/sample-design-spec.md)。
+完整 schema 见 [docs/specs/sample-design-spec.md](https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/specs/sample-design-spec.md)。
