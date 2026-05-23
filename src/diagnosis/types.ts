@@ -95,7 +95,7 @@ export interface DiagnosisBundle {
 
 /** Diagnosis 是否「active problem」的唯一权威定义。
  *
- *  跟 docs/diagnosis-occurrence-mapping.md 的 studio projection rule 对齐:
+ *  Studio projection rule:
  *    active = detected / candidate / stale
  *    inactive = resolved / rejected(默认从 active 列表隐藏)
  *    confirmed:目前 mapper 不产出,如果将来 producer / review-state 写出,会被一并算 inactive

@@ -1025,8 +1025,8 @@ Examples:
     en: '{count} samples missing prompt field',
   },
   'cli.doctor.samples_contract.hint': {
-    zh: '用例必须至少包含 prompt 字段。详见 docs/sample-design-spec.md',
-    en: 'samples must contain at least a prompt field. See docs/sample-design-spec.md',
+    zh: '用例必须至少包含 prompt 字段。详见 docs/specs/sample-design-spec.md',
+    en: 'samples must contain at least a prompt field. See docs/specs/sample-design-spec.md',
   },
   // ============ omk doctor CLI level ============
   'cli.doctor.no_skill_found': {

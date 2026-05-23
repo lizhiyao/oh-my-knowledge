@@ -82,7 +82,7 @@ export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {})
  * distribution map, so users see "I have N samples without difficulty declared".
  *
  * Persisted on the report so studio can surface coverage gaps. Does NOT
- * participate in grading / judge / verdict. See docs/sample-design-spec.md.
+ * participate in grading / judge / verdict. See docs/specs/sample-design-spec.md.
  */
 export function buildSampleQualityAggregate(samples: Sample[]): SampleQualityAggregate {
   const capabilityCoverage: Record<string, number> = {};
@@ -163,7 +163,7 @@ export function generateAnalysisSummary(report: Report, lang: Lang = 'zh'): stri
   const stats = report.summary || {};
 
   // Find control group. experimentRole 是 v0.16 起用户显式声明的 control/treatment
-  // 角色(见 docs/terminology-spec.md 三-4),是判定对照组的唯一来源。
+  // 角色(见 docs/specs/terminology-spec.md 三-4),是判定对照组的唯一来源。
   // 老 report(v0.15 及更早)variantConfig 里可能缺 experimentRole 字段,
   // 退化到从 artifactKind === 'baseline' / experimentType 反推——标注为 legacy 路径。
   const configs = report.meta?.variantConfigs || [];

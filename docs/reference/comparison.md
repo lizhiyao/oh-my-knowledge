@@ -2,7 +2,7 @@
 
 A factual comparison with seven other LLM evaluation tools, as of 2026-04. Corrections welcome via PR — if a competitor adds a feature we mark `✗`, we'll happily update.
 
-[简体中文](./zh/comparison.md)
+[简体中文](../zh/reference/comparison.md)
 
 ## TL;DR
 

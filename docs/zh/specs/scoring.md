@@ -161,6 +161,6 @@ verdict 算法（精简版）：
 
 姊妹文档：
 
-- [统计严谨性](./statistical-rigor.md) —— Bootstrap CI / Krippendorff α / 长度去偏 / 饱和曲线
-- [omk vs 同类工具](./comparison.md)
-- [Roadmap](./roadmap.md)
+- [统计严谨性](../explanation/statistical-rigor.md) —— Bootstrap CI / Krippendorff α / 长度去偏 / 饱和曲线
+- [omk vs 同类工具](../reference/comparison.md)
+- [Roadmap](../roadmap.md)

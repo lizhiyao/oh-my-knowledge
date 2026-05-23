@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-scripts/
 .DS_Store
 .mcp.json
 package-lock.json

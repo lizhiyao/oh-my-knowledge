@@ -6,8 +6,8 @@ export async function checkUpdate(lang: CliLang): Promise<void> {
     const { fileURLToPath } = await import('node:url');
     const { dirname, join } = await import('node:path');
     const __dirname: string = dirname(fileURLToPath(import.meta.url));
-    // 从当前文件位置向上找 package.json:dev 跑 src/cli/ 时 3 层到根,
-    // 装到 npm 跑 dist/src/cli/ 时 4 层到 oh-my-knowledge/。5 次给点 buffer。
+    // 从当前文件位置向上找 package.json:dev 跑 src/cli/lib/ 时 3 层到根,
+    // 装到 npm 跑 dist/cli/lib/ 时 3 层到 oh-my-knowledge/。5 次给点 buffer。
     const findPackageJson = (startDir: string): string | null => {
       let dir = startDir;
       for (let i = 0; i < 5; i++) {
