@@ -18,6 +18,7 @@ import type {
   ExperienceChecklistItem,
   ExperienceEvidenceChain,
   ExperienceEvidenceRef,
+  ExperienceFeedbackAttribution,
   ExperienceInvocation,
   ExperienceReviewIndicators,
   ExperienceReviewBasisCode,
@@ -26,10 +27,28 @@ import type {
   ExperienceRuleFinding,
   ExperienceRuleFindingCode,
   ExperienceRuleFindingLevel,
+  ExperienceEpisode,
+  ExperienceFeedbackSignal,
+  ExperienceSkillSegment,
   ExperienceSessionStoryAnswer,
   ExperienceSessionSummary,
   ExperienceTimelineEvent,
 } from '../observability/experience.js';
+
+function feedbackAttributionRoleLabel(role?: string): string {
+  if (role === 'primary_fault') return '主要归因';
+  if (role === 'downstream_related') return '下游关联';
+  if (role === 'context_only') return '上下文相关';
+  return '关联';
+}
+
+export function renderFeedbackAttributionLabel(attribution: Pick<ExperienceFeedbackAttribution, 'skillName' | 'attributionRole' | 'reasonCode'>): string {
+  return [
+    attribution.skillName ?? '未知',
+    feedbackAttributionRoleLabel(attribution.attributionRole),
+    attribution.reasonCode,
+  ].map((part) => e(part)).join(' · ');
+}
 
 export function renderObservationInboxPage(model: ObservationInboxViewModel, lang: Lang = DEFAULT_LANG): string {
 	  const {
@@ -242,7 +261,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   type IndicatorHelpKey =
     | 'userCorrection' | 'userInterruption' | 'userFollowUp' | 'negativeFeedback' | 'positiveFeedback' | 'userGoalShift' | 'hardRule' | 'selfCorrection' | 'repeatedExecution'
     | 'toolCall' | 'toolFailure' | 'highObservation' | 'mediumObservation' | 'hedging' | 'explicitMarker'
-    | 'bash' | 'read' | 'grep' | 'bashProbe' | 'notFound' | 'toolLimit';
+    | 'bash' | 'read' | 'grep' | 'bashProbe' | 'notFound' | 'toolLimit'
+    | 'skillRoleRouter' | 'skillRoleExecutor' | 'skillRoleMixed' | 'skillRoleUnknown'
+    | 'llmSkillTypeRouter' | 'llmSkillTypeDelegation' | 'llmSkillTypeExecutor' | 'llmSkillTypeAdvisory' | 'llmSkillTypeWorkflowOwner' | 'llmSkillTypeUnknown';
   const indicatorLabels: Record<IndicatorHelpKey, string> = {
     userCorrection: '用户纠正',
     userInterruption: '人工中断',
@@ -265,11 +286,21 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     bashProbe: 'Bash 试探',
     notFound: '路径不存在',
     toolLimit: '工具限制',
+    skillRoleRouter: '路由（本 session 角色）',
+    skillRoleExecutor: '执行（本 session 角色）',
+    skillRoleMixed: '路由+执行（本 session 角色）',
+    skillRoleUnknown: '未确定（本 session 角色）',
+    llmSkillTypeRouter: '路由型（能力定位）',
+    llmSkillTypeDelegation: '委派型（能力定位）',
+    llmSkillTypeExecutor: '执行型（能力定位）',
+    llmSkillTypeAdvisory: '咨询型（能力定位）',
+    llmSkillTypeWorkflowOwner: '流程负责型（能力定位）',
+    llmSkillTypeUnknown: '类型待确认（能力定位）',
   };
   const indicatorHelps: Record<IndicatorHelpKey, string> = {
     userCorrection: '只统计人工用户消息里的明确纠偏表达。短词“不对 / 不是 / 错了”必须前后有空格、逗号、句号、问号等分隔；“不对称”“是不是”不会算纠正。',
     userInterruption: '统计 Claude trace 里的 “[Request interrupted by user]” 等用户主动中断事件，表示当前执行被人工叫停。',
-    userFollowUp: '同一个 skill 复盘片段内，第 2 条及之后的人工用户消息计入追问或补充。Skill 注入上下文不计入。',
+    userFollowUp: '按当前报告的归因结果统计追问或补充。router / delegation 类型会把下游调用链路中的用户追问计入体验复盘；与当前 skill 无关的同窗口用户消息不计入。',
     negativeFeedback: '统计“没用 / 垃圾 / 菜 / 做错了 / 不行 / 失败 / 看不懂 / 有问题”等负向表达。这是规则命中，不是 LLM 情绪识别。',
     positiveFeedback: '统计“很好 / good job / 做得好 / 很棒 / 优秀 / 厉害 / 很有用 / 很有价值”等正向表达，用来保留用户认可证据。',
     userGoalShift: '统计“换个方向 / 先不 / 不用这个 / 另一个问题”等目标切换表达。它表示当前目标可能中止或切走，不直接等同于 skill 做错。',
@@ -288,6 +319,16 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     bashProbe: '统计过程发现中被判断为 Bash 试探的次数，例如命令看起来是在试目录、试路径或探测环境。',
     notFound: '统计过程发现中路径或文件不存在的次数。',
     toolLimit: '统计文件太长、token 上限、超时等工具限制导致的问题。',
+    skillRoleRouter: '本 session 内 skill 主要在调用 Skill 工具触发下游能力，自己不直接产出。判定来自 trace 行为，看到 Skill tool_use 调用占主导。常见于调度型 skill。',
+    skillRoleExecutor: '本 session 内 skill 主要在调用具体工具（Bash / Read / Write / Edit）直接产出 artifact。判定来自 trace 行为。常见于编码 / 文档生成 / 数据处理类 skill。',
+    skillRoleMixed: '本 session 内 skill 既调用 Skill 工具触发下游，又自己调用执行工具直接产出。trace 行为同时看到两种特征。常见于负责调度但保留兜底执行的 skill。',
+    skillRoleUnknown: '本 session 内 trace 行为没显示明显的路由或执行特征。可能是 advisory / 对话型 skill，或样本太少没足够证据。',
+    llmSkillTypeRouter: 'LLM 综合 SKILL.md 描述和 trace 行为判定为路由型：定位是把请求分发到下游，自身不直接产出。和"路由（本 session 角色）"区别：这个是 skill 本质定位，不只是单次 session 表现。',
+    llmSkillTypeDelegation: 'LLM 判定为委派型：把任务交给 child session / 子 agent 执行，自己只负责拆任务、监督生命周期和回收结果。区别于路由型在于：路由型主要做转发，委派型还要管 child 跑偏 / 启动 / 终止全生命周期。',
+    llmSkillTypeExecutor: 'LLM 判定为执行型：定位是自己直接干活产出 artifact。和"执行（本 session 角色）"区别：这个是 skill 本质定位，不只是单次 session 表现。',
+    llmSkillTypeAdvisory: 'LLM 判定为咨询型：定位是回答问题 + 给证据，不一定产出 artifact。常见于审计 / 分析 / 解释类 skill。本 session 角色一般会显示"未确定"，因为 advisory 没有明显工具使用特征。',
+    llmSkillTypeWorkflowOwner: 'LLM 判定为流程负责型：定位是管理一条多阶段 workflow 的闭环状态。它可以委派其他 skill 执行阶段动作，但要负责阶段矩阵、产物、异常和用户反馈闭环。',
+    llmSkillTypeUnknown: 'LLM 没能从 SKILL.md 和 trace 中得到足够证据判定 skill 类型。可能是 SKILL.md 描述不清，或 trace 样本不足。建议 skill owner 补充 SKILL.md 顶部声明，或多观察几个 session。',
   };
   const metric = (label: string, value: number, helpKey: IndicatorHelpKey, title?: string): string =>
     `<button type="button" class="metric-item" data-metric-key="${helpKey}" onclick="openMetricGuide('${helpKey}')" title="${e(title ?? `点击查看“${label}”指标说明`)}"><span>${e(label)}</span> <strong>${value}</strong></button>`;
@@ -481,6 +522,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     hard_rule: '用户硬性要求',
     user_goal_shift: '目标变化',
     tool_failure: '工具失败',
+    workflow_mismatch: '流程不匹配',
+    artifact_missing: '产物缺失',
+    observer_lifecycle_failed: '观察器异常',
+    orchestration_boundary_violation: '调度边界异常',
   };
   const timelineTagForProblemPattern = (pattern: ExperienceProblemPattern): string => {
     if (pattern.signalTypes.includes('user_correction')) return 'user_correction';
@@ -534,9 +579,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     positiveFeedbackCount: 0,
     userGoalShiftCount: 0,
     hardRuleTextHitCount: 0,
-    assistantDeliverySignalCount: 0,
-    deliverableArtifactSignalCount: 0,
-    selfCorrectionCount: 0,
+	    assistantDeliverySignalCount: 0,
+	    deliverableArtifactSignalCount: 0,
+	    routerDownstreamCompleted: 0,
+	    routerDownstreamFailed: 0,
+	    selfCorrectionCount: 0,
     repeatedExecutionCount: 0,
     toolCallCount: 0,
     toolFailureCount: 0,
@@ -567,16 +614,99 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (verdict === 'rejected') return 0;
     return ruleCount;
   };
+  const shouldIncludeDownstreamFeedbackForDisplay = (session: ExperienceSessionSummary): boolean => {
+    const episodes = session.sessionStory?.episodes ?? [];
+    const segmentIds = new Set(episodes.flatMap((episode) =>
+      (episode.skillSegments ?? [])
+        .filter((segment) => segment.skillName === session.skillName)
+        .map((segment) => segment.id)
+    ));
+    if (segmentIds.size === 0) return false;
+    const ownSegments = episodes.flatMap((episode) => episode.skillSegments ?? [])
+      .filter((segment) => segment.skillName === session.skillName);
+    if (ownSegments.some((segment) =>
+      segment.skillType === 'router'
+      || segment.skillType === 'delegation'
+      || segment.episodeRole === 'router'
+      || segment.episodeRole === 'delegator'
+    )) return true;
+    return episodes.some((episode) =>
+      (episode.orchestrationEdges ?? []).some((edge) =>
+        Boolean(edge.parentSkillSegmentId && segmentIds.has(edge.parentSkillSegmentId))
+      )
+    );
+  };
+  const feedbackAttributionBelongsToDisplaySession = (
+    attribution: ExperienceFeedbackAttribution,
+    session: ExperienceSessionSummary,
+    includeDownstream = shouldIncludeDownstreamFeedbackForDisplay(session),
+  ): boolean =>
+    attribution.skillName === session.skillName
+    && (
+      attribution.attributionRole === 'primary_fault'
+      || includeDownstream && attribution.attributionRole === 'downstream_related'
+    );
+  const canonicalFeedbackSignalsForDisplay = (
+    session: ExperienceSessionSummary,
+    signalType?: ExperienceFeedbackSignal['type'],
+  ): ExperienceFeedbackSignal[] => {
+    const includeDownstream = shouldIncludeDownstreamFeedbackForDisplay(session);
+    return (session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [])
+      .filter((signal) =>
+        (!signalType || signal.type === signalType)
+        && displayFeedbackSignalIsActive(signal, session)
+        && (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
+          feedbackAttributionBelongsToDisplaySession(attribution, session, includeDownstream)
+        )
+      );
+  };
+  const metricKeyForFeedbackSignal = (signal: ExperienceFeedbackSignal): ObservationMetricKey | undefined => {
+    if (signal.type === 'follow_up') return 'user_follow_up';
+    if (signal.type === 'correction') return 'user_correction';
+    if (signal.type === 'interruption') return 'user_interruption';
+    if (signal.type === 'frustration') return 'negative_feedback';
+    if (signal.type === 'positive') return 'positive_feedback';
+    return undefined;
+  };
+  const displayFeedbackSignalIsActive = (signal: ExperienceFeedbackSignal, session: ExperienceSessionSummary): boolean => {
+    const metricKey = metricKeyForFeedbackSignal(signal);
+    if (!metricKey) return true;
+    const verdict = displayMetricVerdict(signal.evidenceRef as ExperienceTimelineEvent, metricKey, session.id);
+    if (verdict === 'confirmed') return true;
+    if (verdict === 'rejected') return false;
+    return true;
+  };
+  const feedbackSignalTypeForMetric = (metricKey: ObservationMetricKey): ExperienceFeedbackSignal['type'] | undefined => {
+    if (metricKey === 'user_follow_up') return 'follow_up';
+    if (metricKey === 'user_correction') return 'correction';
+    if (metricKey === 'user_interruption') return 'interruption';
+    if (metricKey === 'negative_feedback') return 'frustration';
+    if (metricKey === 'positive_feedback') return 'positive';
+    return undefined;
+  };
+  const canonicalFeedbackCountsForDisplay = (session: ExperienceSessionSummary): Pick<ExperienceReviewIndicators, 'userFollowUpCount' | 'userCorrectionCount' | 'userInterruptionCount' | 'negativeFeedbackCount' | 'positiveFeedbackCount'> | undefined => {
+    const signals = session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [];
+    if (signals.length === 0) return undefined;
+    const owned = canonicalFeedbackSignalsForDisplay(session);
+    return {
+      userFollowUpCount: owned.filter((signal) => signal.type === 'follow_up').length,
+      userCorrectionCount: owned.filter((signal) => signal.type === 'correction').length,
+      userInterruptionCount: owned.filter((signal) => signal.type === 'interruption').length,
+      negativeFeedbackCount: owned.filter((signal) => signal.type === 'frustration').length,
+      positiveFeedbackCount: owned.filter((signal) => signal.type === 'positive').length,
+    };
+  };
   const displayIndicatorsForSession = (session: ExperienceSessionSummary): ExperienceReviewIndicators => {
     const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet) && !isSyntheticUserMessageText(event.snippet ?? ''));
     const interactionEvents = humanEvents.filter((event) => isUserInteractionMetricText(event.snippet ?? ''));
+    const canonicalFeedback = canonicalFeedbackCountsForDisplay(session);
     return {
       ...session.indicators,
-      userFollowUpCount: interactionEvents.reduce((sum, event, index) => sum + (displayMetricIsActive(event, 'user_follow_up', index > 0 && !hasUserGoalShiftSignal(event.snippet ?? ''), session.id) ? 1 : 0), 0),
-      userCorrectionCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_correction', findUserCorrectionMatches(event.snippet ?? '').length, session.id), 0),
-      userInterruptionCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'user_interruption', displayRegexMatches(USER_INTERRUPTION_DISPLAY_RE, event.snippet ?? ''), session.id) ? 1 : 0), 0),
-      negativeFeedbackCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'negative_feedback', findNegativeFeedbackMatches(event.snippet ?? '').length), 0),
-      positiveFeedbackCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'positive_feedback', findPositiveFeedbackMatches(event.snippet ?? '').length), 0),
+      userFollowUpCount: canonicalFeedback?.userFollowUpCount ?? interactionEvents.reduce((sum, event, index) => sum + (displayMetricIsActive(event, 'user_follow_up', index > 0 && !hasUserGoalShiftSignal(event.snippet ?? ''), session.id) ? 1 : 0), 0),
+      userCorrectionCount: canonicalFeedback?.userCorrectionCount ?? interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_correction', findUserCorrectionMatches(event.snippet ?? '').length, session.id), 0),
+      userInterruptionCount: canonicalFeedback?.userInterruptionCount ?? interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'user_interruption', displayRegexMatches(USER_INTERRUPTION_DISPLAY_RE, event.snippet ?? ''), session.id) ? 1 : 0), 0),
+      negativeFeedbackCount: canonicalFeedback?.negativeFeedbackCount ?? interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'negative_feedback', findNegativeFeedbackMatches(event.snippet ?? '').length), 0),
+      positiveFeedbackCount: canonicalFeedback?.positiveFeedbackCount ?? interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'positive_feedback', findPositiveFeedbackMatches(event.snippet ?? '').length), 0),
       userGoalShiftCount: interactionEvents.reduce((sum, event) => sum + displayMetricCount(event, 'user_goal_shift', findUserGoalShiftMatches(event.snippet ?? '').length, session.id), 0),
       hardRuleTextHitCount: interactionEvents.reduce((sum, event) => sum + (displayMetricIsActive(event, 'hard_rule', hasUserHardRuleText(event.snippet ?? ''), session.id) ? 1 : 0), 0),
       assistantDeliverySignalCount: (session.timelinePreview ?? []).reduce((sum, event) => sum + (displayMetricIsActive(event, 'completion_result', event.kind === 'assistant_message' && hasAssistantDeliverySignalText(event.fullText ?? event.snippet ?? '')) ? 1 : 0), 0),
@@ -586,6 +716,25 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     };
   };
   const sessionMetricSourceTitle = (session: ExperienceSessionSummary, metricKey: ObservationMetricKey, label: string): string => {
+    const canonicalType = feedbackSignalTypeForMetric(metricKey);
+    if (canonicalType) {
+      const signals = canonicalFeedbackSignalsForDisplay(session, canonicalType);
+      if (signals.length > 0) {
+        const rows = signals.slice(0, 8).map((signal) => {
+          const role = (signal.canonicalAttributions ?? signal.attributions ?? [])
+            .filter((attribution) => feedbackAttributionBelongsToDisplaySession(attribution, session))
+            .map((attribution) => attribution.attributionRole === 'downstream_related' ? '下游调用链路' : '直接归因')
+            .find(Boolean) ?? '归因命中';
+          return `#${signal.evidenceRef.messageIndex ?? '—'} ${role}：${signal.text.slice(0, 80).replace(/\s+/g, ' ')}`;
+        });
+        return [
+          `${label}：最终计入 ${signals.length}`,
+          '来源：任务执行归因模型',
+          `证据：${rows.join('；')}`,
+          '点击原文回溯中的同名标签，可以定位到这些 evidenceRef。',
+        ].join('\n');
+      }
+    }
     const humanEvents = (session.timelinePreview ?? []).filter((event) => event.kind === 'user_message' && Boolean(event.snippet) && !isSyntheticUserMessageText(event.snippet ?? ''));
     const rows: string[] = [];
     let ruleCount = 0;
@@ -644,9 +793,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       positiveFeedbackCount: current.positiveFeedbackCount + next.positiveFeedbackCount,
       userGoalShiftCount: current.userGoalShiftCount + next.userGoalShiftCount,
       hardRuleTextHitCount: current.hardRuleTextHitCount + next.hardRuleTextHitCount,
-      assistantDeliverySignalCount: current.assistantDeliverySignalCount + (next.assistantDeliverySignalCount ?? 0),
-      deliverableArtifactSignalCount: current.deliverableArtifactSignalCount + (next.deliverableArtifactSignalCount ?? 0),
-      selfCorrectionCount: current.selfCorrectionCount + (next.selfCorrectionCount ?? 0),
+	      assistantDeliverySignalCount: current.assistantDeliverySignalCount + (next.assistantDeliverySignalCount ?? 0),
+	      deliverableArtifactSignalCount: current.deliverableArtifactSignalCount + (next.deliverableArtifactSignalCount ?? 0),
+	      routerDownstreamCompleted: current.routerDownstreamCompleted + (next.routerDownstreamCompleted ?? 0),
+	      routerDownstreamFailed: current.routerDownstreamFailed + (next.routerDownstreamFailed ?? 0),
+	      selfCorrectionCount: current.selfCorrectionCount + (next.selfCorrectionCount ?? 0),
       repeatedExecutionCount: current.repeatedExecutionCount + (next.repeatedExecutionCount ?? 0),
       toolCallCount: current.toolCallCount + next.toolCallCount,
       toolFailureCount: current.toolFailureCount + next.toolFailureCount,
@@ -722,10 +873,21 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const old = session.ruleFindings ?? [];
     const oldByCode = new Map(old.map((finding) => [finding.code, finding]));
     const next: ExperienceRuleFinding[] = [];
+    const refsForCode = (code: ExperienceRuleFindingCode): ExperienceEvidenceRef[] | undefined => {
+      const signalType =
+        code === 'user_correction_seen' ? 'correction'
+        : code === 'user_interruption_seen' ? 'interruption'
+        : code === 'negative_feedback_seen' ? 'frustration'
+        : code === 'positive_feedback_seen' ? 'positive'
+        : undefined;
+      if (!signalType) return undefined;
+      const refs = canonicalFeedbackSignalsForDisplay(session, signalType).map((signal) => signal.evidenceRef);
+      return refs.length > 0 ? refs : undefined;
+    };
     const push = (code: ExperienceRuleFindingCode, level: ExperienceRuleFindingLevel, count: number): void => {
       if (count <= 0) return;
       const previous = oldByCode.get(code);
-      next.push({ code, level, count, evidenceRefs: previous?.evidenceRefs ?? [] });
+      next.push({ code, level, count, evidenceRefs: refsForCode(code) ?? previous?.evidenceRefs ?? [] });
     };
     push('high_observation_seen', 'attention', indicators.highObservationCount);
     push('user_correction_seen', 'attention', indicators.userCorrectionCount);
@@ -850,6 +1012,291 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         : '点开查看 skill 定义、标准规则和运行时证据。')
       : '本机目录里没有这个 skill 的 SKILL.md。点开看建议怎么补，或试试 omk doctor。';
     return `<button type="button" class="context-chain-button${hasAdvisory ? ' has-advisory' : ''}" onclick="event.stopPropagation(); openContextChainModal('${e(templateId)}', this)" title="${e(title)}"><span class="context-chain-button-icon" aria-hidden="true">🔗</span><span class="context-chain-button-main">定义链路</span>${hasAdvisory ? `<span class="context-chain-button-advisory-list">${advisoryLabels.map((label) => `<span class="context-chain-button-advisory">${e(label)}</span>`).join('')}</span>` : '<span class="context-chain-button-ok">标准已声明</span>'}</button>`;
+  };
+  const runtimeLiteStatusIcon = (status: string): string =>
+    status === 'passed' ? '✅' : status === 'attention' ? '❌' : '?';
+  const runtimeLiteStatusLabel = (status: string): string =>
+    status === 'passed' ? '有证据' : status === 'attention' ? '需复核' : '待判断';
+  const displayRuntimeLiteTitle = (title: string, id: string, index: number): string => {
+    const source = title || id;
+    const parts = source.split('/').map((part) => part.trim()).filter(Boolean);
+    const stepLabel = (value: string): string => {
+      const match = value.match(/step[\s_-]*([0-9]+)/i);
+      return match ? `第 ${match[1]} 步` : `第 ${index + 1} 步`;
+    };
+    if (parts.length >= 2 && parts[0] === 'markdown_steps') return `正文流程节点 / ${stepLabel(parts[1])}`;
+    if (/^markdown_steps[._-]step/i.test(id)) return `正文流程节点 / ${stepLabel(id.replace(/^markdown_steps[._-]/i, ''))}`;
+    if (/^step[\s_-]*[0-9]+$/i.test(source)) return stepLabel(source);
+    return source || `检查项 ${index + 1}`;
+  };
+  const shouldShowRuntimeLiteRawId = (id: string): boolean =>
+    Boolean(id) && !/^markdown_steps[._-]step/i.test(id) && id !== 'markdown_steps';
+  const runtimeStepDepth = (title: string, id: string): number => {
+    const source = `${id} ${title}`.toLowerCase();
+    if (/\bstep[\s_-]*\d+[a-z]\b/.test(source)) return 1;
+    if (/\bstep[\s_-]*\d+[._-][a-z0-9]+\b/.test(source)) return 1;
+    return 0;
+  };
+  const renderRuntimeLiteList = (
+    checks: Array<{ id: string; title: string; status: string; reason?: string; evidenceSnippets: string[] }>,
+    kind: 'workflow' | 'rule',
+    emptyText = '暂无可检查项。',
+  ): string => checks.length > 0
+    ? `<ol class="runtime-step-list">${checks.map((check, index) => `<li class="runtime-step runtime-${e(check.status)} is-depth-${runtimeStepDepth(check.title, check.id)}">
+        <div class="runtime-step-head">
+          <span class="runtime-step-index">${kind === 'workflow' ? `第 ${index + 1} 步` : `规则 ${index + 1}`}</span>
+          <span class="runtime-step-name">${e(displayRuntimeLiteTitle(check.title, check.id, index))}</span>
+          <span class="runtime-step-state" title="${e(runtimeLiteStatusLabel(check.status))}">${runtimeLiteStatusIcon(check.status)}</span>
+        </div>
+        <details class="runtime-step-detail">
+          <summary>查看证据</summary>
+          <div class="runtime-step-detail-body">
+            ${shouldShowRuntimeLiteRawId(check.id) ? `<code>原始编号：${e(check.id)}</code>` : ''}
+            ${check.reason ? `<p>${e(check.reason)}</p>` : ''}
+            ${check.evidenceSnippets.length > 0 ? `<ul>${check.evidenceSnippets.map((snippet) => `<li>${e(snippet)}</li>`).join('')}</ul>` : '<p>没有可展示的证据片段。</p>'}
+          </div>
+        </details>
+      </li>`).join('')}</ol>`
+    : emptyText ? `<p class="context-muted">${e(emptyText)}</p>` : '';
+  const renderRuntimeRuleFlow = (skillName: string): string => {
+    const chain = skillChains[skillName];
+    const enhancedReview = skillDerivedStandards[skillName]?.enhancedReview;
+    const extractedStandards = enhancedReview?.extractedStandards;
+    if (!chain && !extractedStandards) return '<p class="context-muted">没有找到这个 skill 的流程规则检测结果。</p>';
+    const workflows = chain?.healthCheck.workflows.workflows ?? [];
+    const hardRules = chain?.healthCheck.hardRules.rules ?? [];
+    const llmWorkflowStandards = [
+      ...(extractedStandards?.workflows ?? []),
+      ...(extractedStandards?.completionCriteria ?? []),
+      ...(extractedStandards?.artifactCriteria ?? []),
+    ];
+    const llmHardRuleStandards = extractedStandards?.hardrules ?? [];
+    const llmStandardNodes = extractedStandards?.standardNodes ?? [];
+    const llmWorkflowNodes = llmStandardNodes.filter((node) => node.kind !== 'hardRule');
+    const llmHardRuleNodes = llmStandardNodes.filter((node) => node.kind === 'hardRule');
+    const standardNodeById = new Map(llmStandardNodes.map((node) => [node.nodeId, node] as const));
+    const standardNodeParentById = new Map<string, string>();
+    for (const node of llmStandardNodes) {
+      for (const childId of node.childNodeIds ?? []) {
+        if (standardNodeById.has(childId) && !standardNodeParentById.has(childId)) {
+          standardNodeParentById.set(childId, node.nodeId);
+        }
+      }
+    }
+    const standardNodeDepth = (node: typeof llmStandardNodes[number]): number => {
+      let depth = 0;
+      let current = standardNodeParentById.get(node.nodeId);
+      const visited = new Set<string>([node.nodeId]);
+      while (current && !visited.has(current) && depth < 3) {
+        depth += 1;
+        visited.add(current);
+        current = standardNodeParentById.get(current);
+      }
+      if (depth > 0) return depth;
+      return runtimeStepDepth(node.title, node.nodeId);
+    };
+    const sourceContent = chain?.definition.content ?? '';
+    const sourcePreview = sourceContent.length > 12000 ? `${sourceContent.slice(0, 12000)}\n\n... 已截断，仅展示前 12000 字符` : sourceContent;
+    const runtimeNodeResultById = new Map((enhancedReview?.runtimeNodeResults?.nodes ?? [])
+      .map((node) => [node.nodeId, node] as const));
+    const modelNodeStatusText = (status?: string): string => {
+      if (status === 'passed') return '日志命中';
+      if (status === 'failed' || status === 'missed') return '未发现调用';
+      if (status === 'violated') return '命中异常';
+      if (status === 'degraded') return '证据不可信';
+      if (status === 'not_applicable') return '不适用';
+      if (status === 'unknown') return '未发现调用';
+      return '未发现调用';
+    };
+    const modelNodeStatusClass = (status?: string): string => {
+      if (status === 'passed') return 'is-hit';
+      if (status === 'failed' || status === 'missed' || status === 'violated' || status === 'degraded') return 'is-attention';
+      return '';
+    };
+    const modelNodeStatusIcon = (status?: string): string => {
+      if (status === 'passed') return '✅';
+      if (status === 'failed' || status === 'violated' || status === 'degraded') return '❌';
+      return '?';
+    };
+    type RuntimeNodeReview = NonNullable<SkillLlmEnhancedReviewSections['runtimeNodeResults']>['nodes'][number]
+      | NonNullable<SkillLlmEnhancedReviewSections['runtimeNodeAssessment']>['nodes'][number];
+    const reviewEvidenceSnippets = (review: RuntimeNodeReview): string[] => {
+      if ('evidenceRefs' in review) return (review.evidenceRefs ?? []).map((ref) => ref.snippet).filter((snippet): snippet is string => Boolean(snippet)).slice(0, 3);
+      return (review.evidence ?? []).slice(0, 3);
+    };
+    const compactRuntimeEvidence = (body: string, summary = '展开关键证据'): string => `<details class="runtime-rule-node-model-detail">
+      <summary>${e(summary)}</summary>
+      <div>${body}</div>
+    </details>`;
+    const renderRuntimeNodeReview = (review?: RuntimeNodeReview, fallback?: { reason?: string; evidenceSnippets: string[] }): string => {
+      if (!review && !fallback) return `<div class="runtime-rule-node-model is-muted">
+        <strong>未发现调用</strong>
+        ${compactRuntimeEvidence('<p>运行日志中没有命中这个节点要求的调用信号。</p>', '展开说明')}
+      </div>`;
+      if (!review) return `<div class="runtime-rule-node-model">
+        <strong>规则命中</strong>
+        ${compactRuntimeEvidence(`${fallback?.reason ? `<p>${e(fallback.reason)}</p>` : ''}${(fallback?.evidenceSnippets ?? []).length > 0 ? `<ul>${(fallback?.evidenceSnippets ?? []).slice(0, 3).map((snippet) => `<li>${e(snippet)}</li>`).join('')}</ul>` : '<p>没有可展示的证据片段。</p>'}`)}
+      </div>`;
+      const snippets = reviewEvidenceSnippets(review);
+      return `<div class="runtime-rule-node-model runtime-node-model-${e(review.status)}">
+        <strong>${e(modelNodeStatusText(review.status))}</strong>
+        ${compactRuntimeEvidence(`${review.reason ? `<p>${e(review.reason)}</p>` : ''}${snippets.length > 0 ? `<ul>${snippets.map((snippet) => `<li>${e(snippet)}</li>`).join('')}</ul>` : '<p>没有可展示的证据片段。</p>'}`)}
+      </div>`;
+    };
+    const renderSourceHints = (node: typeof llmStandardNodes[number]): string => {
+      const hints = (node.sourceHints ?? []).slice(0, 3);
+      if (hints.length === 0) return '<p>来源原文：模型抽取节点，未返回可定位原文。</p>';
+      return `<div class="runtime-rule-source-hints">
+        <span>来源原文</span>
+        <ul>${hints.map((hint) => `<li>${hint.line ? `<em>第 ${e(String(hint.line))} 行</em>` : ''}${e(hint.snippet)}</li>`).join('')}</ul>
+      </div>`;
+    };
+    const signalLabel = (signal: typeof llmStandardNodes[number]['expectedSignals'][number]): string => {
+      const typeLabel: Record<string, string> = {
+        tool_name: '工具',
+        tool_input: '工具输入',
+        tool_output: '工具输出',
+        assistant_text: '助手文本',
+        user_text: '用户文本',
+        artifact_kind: '产物类型',
+        artifact_path: '产物路径',
+        event_kind: '事件',
+        file_path: '文件路径',
+      };
+      return `${typeLabel[signal.type] ?? signal.type}:${Array.isArray(signal.value) ? signal.value.join('/') : signal.value}`;
+    };
+    const renderSignalSummary = (node: typeof llmStandardNodes[number]): string => {
+      const expected = node.expectedSignals.slice(0, 3).map(signalLabel);
+      const forbidden = node.forbiddenSignals.slice(0, 2).map(signalLabel);
+      const failure = node.failureSignals.slice(0, 2).map(signalLabel);
+      const parts = [
+        expected.length > 0 ? `期望 ${expected.join('、')}` : '',
+        forbidden.length > 0 ? `禁止 ${forbidden.join('、')}` : '',
+        failure.length > 0 ? `失败信号 ${failure.join('、')}` : '',
+      ].filter(Boolean);
+      return parts.length > 0
+        ? `<p class="runtime-rule-match-spec">日志匹配口径：${e(parts.join('；'))}</p>`
+        : '<p class="runtime-rule-match-spec">日志匹配口径：未抽取到结构化信号。</p>';
+    };
+    const renderModelStandards = (items: Array<{ title: string; body: string; evidence?: string[] }>): string =>
+      items.length > 0
+        ? `<div class="runtime-rule-model-list">
+          <em>模型识别的候选标准，尚未等同于运行命中</em>
+          ${items.map((item) => `<article class="runtime-rule-breakdown-item is-model">
+            <strong>${e(item.title)}</strong>
+            ${item.body ? `<p>${e(item.body)}</p>` : ''}
+            ${(item.evidence ?? []).length > 0 ? `<ul>${(item.evidence ?? []).slice(0, 3).map((snippet) => `<li>${e(snippet)}</li>`).join('')}</ul>` : ''}
+          </article>`).join('')}
+        </div>`
+        : '';
+    const renderStandardNodeList = (nodes: typeof llmStandardNodes): string =>
+      nodes.length > 0
+        ? `<ol class="runtime-rule-node-list">${nodes.map((node, index) => {
+          const depth = standardNodeDepth(node);
+          return `<li class="runtime-rule-node is-depth-${depth}">
+            <div class="runtime-rule-node-head">
+              <span>${node.kind === 'stage' ? `阶段 ${index + 1}` : `节点 ${index + 1}`}</span>
+              <strong>${e(node.title)}</strong>
+              <em>标准拆解</em>
+            </div>
+            ${node.description ? `<p>${e(node.description)}</p>` : ''}
+            ${renderSourceHints(node)}
+            ${renderSignalSummary(node)}
+          </li>`;
+        }).join('')}</ol>`
+        : '';
+    const renderRuntimeNodeResultList = (nodes: typeof llmStandardNodes): string =>
+      nodes.length > 0
+        ? `<ol class="runtime-step-list runtime-rule-execution-list">${nodes.map((node, index) => {
+          const review = runtimeNodeResultById.get(node.nodeId);
+          const depth = standardNodeDepth(node);
+          return `<li class="runtime-step runtime-rule-execution-item ${modelNodeStatusClass(review?.status)} is-depth-${depth}">
+            <div class="runtime-step-head">
+              <span class="runtime-step-index">${node.kind === 'stage' ? `阶段 ${index + 1}` : `节点 ${index + 1}`}</span>
+              <span class="runtime-step-name">${e(node.title)}</span>
+              <span class="runtime-step-state" title="${e(modelNodeStatusText(review?.status))}">${modelNodeStatusIcon(review?.status)}</span>
+            </div>
+            ${renderRuntimeNodeReview(review)}
+          </li>`;
+        }).join('')}</ol>`
+        : '';
+    const workflowBreakdown = workflows.length > 0
+      ? workflows.map((workflow, workflowIndex) => `<div class="runtime-rule-flow-block">
+          <div class="runtime-rule-flow-title">${e(workflow.id === 'markdown_steps' ? '正文流程' : `流程 ${workflowIndex + 1}`)}${workflow.description ? `<span>${e(workflow.description)}</span>` : ''}</div>
+          <ol class="runtime-rule-node-list">${workflow.nodes.map((node, nodeIndex) => {
+            return `<li class="runtime-rule-node">
+              <div class="runtime-rule-node-head">
+                <span>第 ${nodeIndex + 1} 步</span>
+                <strong>${e(node.action || `流程节点 ${nodeIndex + 1}`)}</strong>
+                <em>原文映射</em>
+              </div>
+              <p>来源原文：SKILL.md ${workflow.id === 'markdown_steps' ? '正文步骤' : `workflow ${workflow.id}`}。</p>
+              <p class="runtime-rule-match-spec">日志匹配口径：根据这一步的动作关键词和工具调用证据进行匹配。</p>
+            </li>`;
+          }).join('')}</ol>
+        </div>`).join('')
+      : `<p class="context-muted">${chain?.healthCheck.workflows.declared ? '未解析到流程节点。' : '未标准化声明流程，当前只能依赖正文探测或运行时推断。'}</p>`;
+    const hardRuleBreakdown = hardRules.length > 0
+      ? `<ol class="runtime-rule-node-list">${hardRules.map((rule, ruleIndex) => {
+        return `<li class="runtime-rule-node">
+          <div class="runtime-rule-node-head">
+            <span>规则 ${ruleIndex + 1}</span>
+            <strong>${e(rule.rule)}</strong>
+            <em>原文映射</em>
+          </div>
+          ${rule.expectedBehavior ? `<p>来源原文：${e(rule.expectedBehavior)}</p>` : '<p>来源原文：SKILL.md hardRules 声明。</p>'}
+          <p class="runtime-rule-match-spec">日志匹配口径：根据规则约束和异常/禁止信号进行匹配。</p>
+        </li>`;
+      }).join('')}</ol>`
+      : `<p class="context-muted">${chain?.healthCheck.hardRules.declared ? '未解析到硬性规则。' : '未标准化声明硬性规则，当前只能展示已探测到的规则证据。'}</p>`;
+    const renderWorkflowRuntimeList = (): string => {
+      const deterministic = chain ? renderRuntimeLiteList(chain.runtime.workflowNodes, 'workflow', '') : '';
+      const model = renderRuntimeNodeResultList(llmWorkflowNodes);
+      const content = `${deterministic}${model}`;
+      return content || '<p class="context-muted">没有规则层流程命中数据。</p>';
+    };
+    const renderHardRuleRuntimeList = (): string => {
+      const deterministic = chain ? renderRuntimeLiteList(chain.runtime.hardRules, 'rule', '') : '';
+      const model = renderRuntimeNodeResultList(llmHardRuleNodes);
+      const content = `${deterministic}${model}`;
+      return content || '<p class="context-muted">没有规则层规则命中数据。</p>';
+    };
+    return `<div class="runtime-rule-three-col">
+      <section class="runtime-rule-column">
+        <h5>Skill 原文</h5>
+        ${chain?.definition.found
+          ? `<div class="runtime-rule-source-path"><code>${e(chain.definition.path ?? '')}</code></div><pre class="runtime-rule-source">${e(sourcePreview)}</pre>`
+          : '<p class="context-muted">未找到本地 SKILL.md，只能展示运行时证据。</p>'}
+      </section>
+      <section class="runtime-rule-column">
+        <h5>标准拆解 / 原文映射</h5>
+        <p class="runtime-rule-column-hint">这一列只说明抽象节点来自哪段 SKILL.md，以及后续用什么口径去匹配日志。</p>
+        <div class="runtime-rule-column-group">
+          <h6>流程</h6>
+          ${workflowBreakdown}
+          ${renderStandardNodeList(llmWorkflowNodes)}
+          ${renderModelStandards(llmWorkflowStandards)}
+        </div>
+        <div class="runtime-rule-column-group">
+          <h6>硬性规则</h6>
+          ${hardRuleBreakdown}
+          ${renderStandardNodeList(llmHardRuleNodes)}
+          ${renderModelStandards(llmHardRuleStandards)}
+        </div>
+      </section>
+      <section class="runtime-rule-column">
+        <h5>日志命中 / 执行判断</h5>
+        <p class="runtime-rule-column-hint">这一列只看真实运行日志：节点有没有命中、是否异常，以及对应证据。</p>
+        <div class="runtime-rule-column-group">
+          <h6>流程命中</h6>
+          ${renderWorkflowRuntimeList()}
+        </div>
+        <div class="runtime-rule-column-group">
+          <h6>规则命中</h6>
+          ${renderHardRuleRuntimeList()}
+        </div>
+      </section>
+    </div>`;
   };
   const renderSkillChainTemplate = (skillName: string): string => {
     const chain = skillChains[skillName];
@@ -1307,6 +1754,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </div>`;
   };
   const reviewStateKey = (targetType: string, targetId: string): string => `${targetType}:${targetId}`;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const renderReviewStateControls = (targetType: 'experience_session' | 'inbox_item' | 'skill' | 'goal_slice_correction', targetId: string): string => {
     const key = reviewStateKey(targetType, targetId);
     const entry = reviewState.entries[key];
@@ -1479,17 +1927,70 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const skillRoleLabel = (role?: string): string => {
       if (role === 'router') return '路由';
       if (role === 'executor') return '执行';
-      if (role === 'mixed') return '路由 + 执行';
+      if (role === 'mixed') return '路由+执行';
       return '信息不够';
+    };
+    const runtimeSkillTypeLabel = (type?: string): string => {
+      if (type === 'router') return '路由';
+      if (type === 'delegation') return '委派';
+      if (type === 'executor') return '执行';
+      if (type === 'advisory') return '咨询';
+      return '未确认';
+    };
+    const episodeRoleLabel = (role?: string): string => {
+      if (role === 'main_executor') return '主执行';
+      if (role === 'router') return '路由';
+      if (role === 'delegator') return '调度';
+      if (role === 'supporting') return '辅助';
+      if (role === 'observer') return '观察';
+      return '未确认';
+    };
+    const feedbackSignalTypeLabel = (type?: string): string => {
+      if (type === 'correction') return '用户纠正';
+      if (type === 'follow_up') return '用户追问';
+      if (type === 'frustration') return '不满/焦虑';
+      if (type === 'interruption') return '用户中断';
+      if (type === 'positive') return '正向反馈';
+      return '反馈';
+    };
+    const outcomeClosureLabel = (closure?: string): string => {
+      if (closure === 'closed') return '已闭环';
+      if (closure === 'unresolved') return '未闭环';
+      if (closure === 'abandoned') return '用户中断';
+      return '未知';
+    };
+    const storyPriorityLabel = (priority?: string): string => {
+      if (priority === 'review_first') return '要看一眼';
+      if (priority === 'sample_review') return '抽样复核';
+      return '常规复盘';
+    };
+    const orchestrationStatusLabel = (status?: string): string => {
+      if (status === 'started') return '已启动';
+      if (status === 'completed') return '已完成';
+      if (status === 'failed') return '失败';
+      return '未知';
     };
     const storyNodeById = new Map(story.nodes.map((node) => [node.id, node]));
     const mainlineNodes = story.mainlineNodeIds
       .map((id) => storyNodeById.get(id))
       .filter((node): node is NonNullable<ReturnType<typeof storyNodeById.get>> => Boolean(node));
+    const storyLlmGoalText = (skillName?: string): string => {
+      if (!skillName) return '';
+      const goal = skillDerivedStandards[skillName]?.enhancedReview?.userGoal;
+      const parts = [
+        ...(goal?.slots ?? []),
+        goal?.summary,
+        goal?.expectedOutcome,
+      ]
+        .map((value) => (value ?? '').replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+      const first = parts[0] ?? '';
+      return first.length > 48 ? `${first.slice(0, 48)}…` : first;
+    };
     const storyGoalText = (goal: ExperienceReviewerReport['sessionStory']['goalSlices'][number]): string => {
       const fallbackSkill = goal.skillNames[0] ?? story.skillLinks[0]?.skillName;
       return goal.inferredUserGoal
-        ?? (fallbackSkill ? inboxLlmEnhancedGoalKeywords(fallbackSkill) : '')
+        ?? storyLlmGoalText(fallbackSkill)
         ?? '未提取到明确用户目标';
     };
     const renderStoryGraph = (): string => {
@@ -1528,6 +2029,55 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         </div>`).join('')}
       </div>`
       : '';
+    const renderStoryEpisodes = (): string => {
+      const episodes = story.episodes ?? [];
+      if (episodes.length === 0) return '';
+      return `<div class="session-story-episodes">
+        ${episodes.map((episode) => `<article class="session-story-episode">
+          <div class="session-story-episode-head">
+            <div>
+              <strong>连续任务 ${episode.order}</strong>
+              <p>${e(episode.primaryGoal ?? '未提取到明确用户目标')}</p>
+            </div>
+            <div class="session-story-episode-badges">
+              <span>${e(outcomeClosureLabel(episode.outcome?.closure))}</span>
+              <span>${e(storyPriorityLabel(episode.outcome?.verdict))}</span>
+            </div>
+          </div>
+          ${episode.skillSegments.length > 0 ? `<div class="session-story-episode-skills">
+            ${episode.skillSegments.map((segment) => `<div class="session-story-episode-skill">
+              <span>${e(runtimeSkillTypeLabel(segment.skillType))}</span>
+              <strong>${e(segment.skillName)}</strong>
+              <em>${e(episodeRoleLabel(segment.episodeRole))}</em>
+            </div>`).join('')}
+          </div>` : ''}
+          ${episode.orchestrationEdges.length > 0 ? `<div class="session-story-episode-edges">
+            ${episode.orchestrationEdges.map((edge) => `<div>
+              <span>链路</span>
+              <strong>${e(edge.childSessionId ?? '下游执行')}</strong>
+              <em>${e(orchestrationStatusLabel(edge.status))}</em>
+              ${storyEvidenceButtons(edge.evidenceRefs)}
+            </div>`).join('')}
+          </div>` : ''}
+          ${episode.feedbackSignals.length > 0 ? `<div class="session-story-episode-feedback">
+            ${episode.feedbackSignals.map((signal) => `<div>
+              <span>${e(feedbackSignalTypeLabel(signal.type))}</span>
+              <strong>${e(signal.targetObject ? `${signal.targetObject}：${signal.text}` : signal.text)}</strong>
+              <em>${(signal.canonicalAttributions ?? signal.attributions).map(renderFeedbackAttributionLabel).join('；')}</em>
+              ${storyEvidenceButtons([signal.evidenceRef])}
+            </div>`).join('')}
+          </div>` : ''}
+          ${episode.outcome?.artifacts?.length ? `<div class="session-story-episode-artifacts">
+            ${episode.outcome.artifacts.map((artifact) => `<div>
+              <span>产物</span>
+              <strong>${e(artifact.label)}</strong>
+              ${storyEvidenceButtons([artifact.evidenceRef])}
+            </div>`).join('')}
+          </div>` : ''}
+          ${episode.outcome?.acceptanceCriteria ? `<p class="session-story-episode-acceptance">${e(episode.outcome.acceptanceCriteria)}</p>` : ''}
+        </article>`).join('')}
+      </div>`;
+    };
     return `<section class="reviewer-report" style="margin:0 0 14px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);text-align:left">
       <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px">
         <div>
@@ -1555,6 +2105,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           </div>
         </div>
         ${renderStoryGraph()}
+        ${renderStoryEpisodes()}
         <div class="session-story-answers">
           ${story.answers.map((answer) => `<article class="session-story-answer ${storyStatusClass(answer.status)}">
             <div>
@@ -1737,6 +2288,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   }
   interface TimelineRenderOptions {
     reviewSessionId?: string;
+    currentSkillName?: string;
+    includeDownstreamFeedback?: boolean;
+    feedbackSignals?: ExperienceFeedbackSignal[];
     activeEventIds?: Set<string>;
     activeSourceTrace?: string;
     activeStartRecordIndex?: number;
@@ -1859,9 +2413,51 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    if (verdict === 'rejected') return false;
 	    return ruleDetected;
 	  };
-	  const evidenceMetricBadgeLabel = (base: string, event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean, metricScopeId?: string): string =>
+  const evidenceMetricBadgeLabel = (base: string, event: ExperienceTimelineEvent, metricKey: ObservationMetricKey, ruleDetected: boolean, metricScopeId?: string): string =>
 	    evidenceMetricVerdictFor(event, metricKey, metricScopeId) === 'confirmed' && !ruleDetected ? `人工确认：${base}` : base;
-  const timelineSearchTags = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags: boolean, metricScopeId?: string): string[] => {
+  const feedbackSignalMatchesEvent = (signal: ExperienceFeedbackSignal, event: ExperienceTimelineEvent): boolean => {
+    const ref = signal.evidenceRef;
+    if (ref.messageUuid && event.messageUuid && ref.messageUuid === event.messageUuid) return true;
+    return ref.sourceTrace === event.sourceTrace
+      && typeof ref.messageIndex === 'number'
+      && typeof event.messageIndex === 'number'
+      && ref.messageIndex === event.messageIndex;
+  };
+  const feedbackSignalTag = (type?: string): string | undefined => {
+    if (type === 'correction') return 'user_correction';
+    if (type === 'follow_up') return 'user_follow_up';
+    if (type === 'frustration') return 'negative_feedback';
+    if (type === 'interruption') return 'user_interruption';
+    if (type === 'positive') return 'positive_feedback';
+    return undefined;
+  };
+  const canonicalFeedbackSignalsForEvent = (
+    event: ExperienceTimelineEvent,
+    skillName?: string,
+    feedbackSignals: ExperienceFeedbackSignal[] = [],
+    includeDownstreamFeedback = false,
+  ): ExperienceFeedbackSignal[] => {
+    if (!skillName || feedbackSignals.length === 0) return [];
+    return feedbackSignals.filter((signal) =>
+      feedbackSignalMatchesEvent(signal, event)
+      && (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
+        attribution.skillName === skillName
+        && (
+          attribution.attributionRole === 'primary_fault'
+          || includeDownstreamFeedback && attribution.attributionRole === 'downstream_related'
+        )
+      )
+    );
+  };
+  const timelineSearchTags = (
+    event: ExperienceTimelineEvent,
+    userIndex: number,
+    allowMetricTags: boolean,
+    metricScopeId?: string,
+    currentSkillName?: string,
+    feedbackSignals: ExperienceFeedbackSignal[] = [],
+    includeDownstreamFeedback = false,
+  ): string[] => {
     if (!allowMetricTags) return [];
     const text = event.fullText ?? event.snippet ?? '';
     const metricText = event.snippet ?? '';
@@ -1880,6 +2476,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) tags.push('positive_feedback');
         if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText), metricScopeId)) tags.push('hard_rule');
       }
+      for (const signal of canonicalFeedbackSignalsForEvent(event, currentSkillName, feedbackSignals, includeDownstreamFeedback)) {
+        const tag = feedbackSignalTag(signal.type);
+        if (tag) tags.push(tag);
+      }
     }
     if (event.kind === 'assistant_message') {
       if (evidenceMetricIsActive(event, 'completion_result', isAssistantCompletionResultSignal(event))) tags.push('completion_result');
@@ -1894,7 +2494,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     if (event.kind === 'observation') tags.push('observation');
     return Array.from(new Set(tags));
   };
-	  const timelineMetricBadges = (event: ExperienceTimelineEvent, userIndex: number, allowMetricTags = true, metricScopeId?: string): string[] => {
+	  const timelineMetricBadges = (
+    event: ExperienceTimelineEvent,
+    userIndex: number,
+    allowMetricTags = true,
+    metricScopeId?: string,
+    currentSkillName?: string,
+    feedbackSignals: ExperienceFeedbackSignal[] = [],
+    includeDownstreamFeedback = false,
+  ): string[] => {
     if (!allowMetricTags) return [];
 	    const text = event.fullText ?? event.snippet ?? '';
 	    const metricText = event.snippet ?? '';
@@ -1919,6 +2527,22 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         if (evidenceMetricIsActive(event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0)) badges.push({ label: evidenceMetricBadgeLabel('负向反馈来源', event, 'negative_feedback', findNegativeFeedbackMatches(metricText).length > 0), className: 'metric-negative', title: '命中“没用/垃圾/菜/做错了/不行/看不懂”等负向表达。' });
         if (evidenceMetricIsActive(event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0)) badges.push({ label: evidenceMetricBadgeLabel('正向反馈来源', event, 'positive_feedback', findPositiveFeedbackMatches(metricText).length > 0), className: 'metric-positive', title: '命中“很好/good job/做得好/很棒/优秀/很有用”等正向表达。' });
         if (evidenceMetricIsActive(event, 'hard_rule', hasUserHardRuleText(metricText), metricScopeId)) badges.push({ label: evidenceMetricBadgeLabel('用户硬性要求来源', event, 'hard_rule', hasUserHardRuleText(metricText), metricScopeId), className: 'metric-hard-rule', title: '命中“必须/不要/禁止/严格”等用户临时硬性要求。' });
+      }
+      const canonicalTypes = new Set(canonicalFeedbackSignalsForEvent(event, currentSkillName, feedbackSignals, includeDownstreamFeedback).map((signal) => signal.type));
+      if (canonicalTypes.has('correction') && !badges.some((badge) => badge.className === 'metric-correction')) {
+        badges.push({ label: '用户纠正来源（归因）', className: 'metric-correction', title: '这条消息被任务执行归因模型判定为当前 skill 的用户纠正来源。' });
+      }
+      if (canonicalTypes.has('follow_up') && !badges.some((badge) => badge.className === 'metric-followup')) {
+        badges.push({ label: '追问/补充来源（归因）', className: 'metric-followup', title: '这条消息被任务执行归因模型判定为当前 skill 的追问/补充来源。' });
+      }
+      if (canonicalTypes.has('frustration') && !badges.some((badge) => badge.className === 'metric-negative')) {
+        badges.push({ label: '负向反馈来源（归因）', className: 'metric-negative', title: '这条消息被任务执行归因模型判定为当前 skill 的负向反馈来源。' });
+      }
+      if (canonicalTypes.has('interruption') && !badges.some((badge) => badge.className === 'metric-interruption')) {
+        badges.push({ label: '人工中断来源（归因）', className: 'metric-interruption', title: '这条消息被任务执行归因模型判定为当前 skill 的人工中断来源。' });
+      }
+      if (canonicalTypes.has('positive') && !badges.some((badge) => badge.className === 'metric-positive')) {
+        badges.push({ label: '正向反馈来源（归因）', className: 'metric-positive', title: '这条消息被任务执行归因模型判定为当前 skill 的正向反馈来源。' });
       }
     }
 	    if (event.kind === 'assistant_message') {
@@ -2115,6 +2739,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       const nextUserIndex = interactionUser ? userIndex++ : -1;
       return { event, userIndex: nextUserIndex };
     });
+    const feedbackSignals = options.feedbackSignals ?? [];
     const groups: Array<{ boundary?: ExperienceTimelineEvent; items: typeof decorated }> = [];
     let current: typeof decorated = [];
     let currentBoundary: ExperienceTimelineEvent | undefined;
@@ -2145,15 +2770,19 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const renderRow = ({ event, userIndex: currentUserIndex }: typeof decorated[number]): string => {
       const meta = timelineEventMeta(event);
       const allowMetricTags = allowMetricTagsFor(event);
-      const searchTags = timelineSearchTags(event, currentUserIndex, allowMetricTags, reviewSessionId);
-	      const badges = timelineMetricBadges(event, currentUserIndex, allowMetricTags, reviewSessionId).join('');
+      const searchTags = timelineSearchTags(event, currentUserIndex, allowMetricTags, reviewSessionId, options.currentSkillName, feedbackSignals, Boolean(options.includeDownstreamFeedback));
+	      const badges = timelineMetricBadges(event, currentUserIndex, allowMetricTags, reviewSessionId, options.currentSkillName, feedbackSignals, Boolean(options.includeDownstreamFeedback)).join('');
 	      const visibleText = event.snippet ?? '';
 	      const fullText = event.fullText ?? visibleText;
+      const isRealUserReply = event.kind === 'user_message'
+        && isUserInteractionMetricText(visibleText)
+        && !isSyntheticUserMessageText(visibleText)
+        && !isScheduledTaskPromptText(visibleText);
 	      const hasMoreFullText = Boolean(fullText && fullText.trim() !== visibleText.trim());
 	      const fullTextAttrs = fullText
 	        ? ` data-timeline-fulltext="${e(fullText)}" data-timeline-fulltext-title="${e(meta.label)} #${event.messageIndex ?? '—'}" data-timeline-has-more="${hasMoreFullText ? '1' : '0'}" tabindex="${hasMoreFullText ? '0' : '-1'}"`
 	        : '';
-	      return `<div class="timeline-row timeline-${meta.tone}" data-timeline-tags="${e(searchTags.join(' '))}" data-current-skill-window="${allowMetricTags ? '1' : '0'}" data-message-index="${event.messageIndex ?? ''}" data-message-uuid="${e(event.messageUuid ?? '')}" data-source-trace="${e(event.sourceTrace)}">
+	      return `<div class="timeline-row timeline-${meta.tone} ${isRealUserReply ? 'is-real-user-reply' : 'is-runtime-event'}" data-timeline-tags="${e(searchTags.join(' '))}" data-current-skill-window="${allowMetricTags ? '1' : '0'}" data-message-index="${event.messageIndex ?? ''}" data-message-uuid="${e(event.messageUuid ?? '')}" data-source-trace="${e(event.sourceTrace)}">
         <div class="timeline-marker">
           <span class="timeline-icon">${e(meta.icon)}</span>
           <span class="timeline-index" title="messageIndex 是各自 jsonl 文件内的索引，跨链路不可直接比较">${event.traceRole === 'subagent' ? '[sub] ' : event.traceRole === 'main' ? '[main] ' : ''}#${event.messageIndex ?? '—'}</span>
@@ -2233,6 +2862,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const activeEventIds = new Set(session.timelinePreview.map((event) => event.id));
     const fullTimelineOptions: TimelineRenderOptions = {
       reviewSessionId: session.id,
+      currentSkillName: session.skillName,
+      includeDownstreamFeedback: shouldIncludeDownstreamFeedbackForDisplay(session),
+      feedbackSignals: session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [],
       activeEventIds,
       activeSourceTrace: session.sourceTrace,
       activeStartRecordIndex: session.timelineScope?.segmentStartRecordIndex,
@@ -2303,6 +2935,26 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <button type="button" data-full-session-toggle onclick="toggleFullSessionTimeline(this)">查看完整 session 时间线</button>
     </div>`;
   };
+  const timelinePreviewWithDisplayFeedback = (session: ExperienceSessionSummary): ExperienceTimelineEvent[] => {
+    const preview = session.timelinePreview ?? [];
+    const full = session.fullSessionTimeline ?? [];
+    if (full.length === 0) return preview;
+    const feedbackSignals = canonicalFeedbackSignalsForDisplay(session);
+    if (feedbackSignals.length === 0) return preview;
+    const alreadyShown = new Set(preview.map((event) => event.id));
+    const events = [...preview];
+    for (const signal of feedbackSignals) {
+      const event = full.find((candidate) => feedbackSignalMatchesEvent(signal, candidate));
+      if (!event || alreadyShown.has(event.id)) continue;
+      alreadyShown.add(event.id);
+      events.push(event);
+    }
+    return events.sort((a, b) => {
+      const time = String(a.timestamp ?? '').localeCompare(String(b.timestamp ?? ''));
+      if (time !== 0) return time;
+      return a.order - b.order;
+    });
+  };
   const renderTimelinePair = (session: ExperienceSessionSummary): string => `
     <div class="experience-detail-right timeline-pair-wrap" data-timeline-pair>
       ${renderTimelineScopeNotice(session)}
@@ -2326,7 +2978,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         </select>
         <span data-timeline-filter-count>选择标签后，只显示当前回溯里的命中事件。</span>
       </div>
-      <div data-timeline-view="segment">${renderExperienceTimeline(session.timelinePreview, session.id, { reviewSessionId: session.id })}</div>
+      <div data-timeline-view="segment">${renderExperienceTimeline(timelinePreviewWithDisplayFeedback(session), session.id, {
+        reviewSessionId: session.id,
+        currentSkillName: session.skillName,
+        includeDownstreamFeedback: shouldIncludeDownstreamFeedbackForDisplay(session),
+        feedbackSignals: session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [],
+      })}</div>
       <div data-timeline-view="full-session" style="display:none">${renderSessionTimelineTree(session)}</div>
     </div>
   `;
@@ -2714,6 +3371,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   const metricGuideSections: Array<{ title: string; keys: IndicatorHelpKey[] }> = [
     { title: '用户交互', keys: ['userCorrection', 'userInterruption', 'userFollowUp', 'negativeFeedback', 'positiveFeedback', 'userGoalShift', 'hardRule'] },
     { title: 'Skill 执行', keys: ['toolCall', 'toolFailure', 'bash', 'read', 'grep'] },
+    { title: 'Skill 类型', keys: ['skillRoleRouter', 'skillRoleExecutor', 'skillRoleMixed', 'skillRoleUnknown', 'llmSkillTypeRouter', 'llmSkillTypeDelegation', 'llmSkillTypeExecutor', 'llmSkillTypeAdvisory', 'llmSkillTypeWorkflowOwner', 'llmSkillTypeUnknown'] },
     { title: '过程发现', keys: ['highObservation', 'mediumObservation', 'hedging', 'explicitMarker', 'bashProbe', 'notFound', 'toolLimit'] },
   ];
   const metricGuideHtml = metricGuideSections.map((section) => `
@@ -2837,7 +3495,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       <td style="padding:9px 10px">
         ${renderPriorityBadge(shownPriority)}
         <div style="margin-top:6px">${renderAssistiveInference(shownInference, true)}</div>
-        <div style="margin-top:7px">${renderReviewStateControls('experience_session', session.id)}</div>
       </td>
       <td style="padding:9px 10px;font-family:ui-monospace,monospace;font-size:12px;color:var(--text-muted);word-break:break-all">${e(session.sessionId)}<br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--accent)">入口：${e(formatEntrypoint(session.entrypoint))}</span><br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--text-muted)">${e(sessionOriginText)}</span><br><span style="font-family:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;color:var(--text-muted)">${e(sessionAttributionText)}</span>${sessionOpenClawMetadata ? `<br>${sessionOpenClawMetadata}` : ''}</td>
       <td style="padding:9px 10px">${renderInvocationSummary(indicators, session.invocationIds.length)}</td>
@@ -2884,8 +3541,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             <h3 style="font-size:13px;margin:14px 0 8px;color:var(--text-primary)">复盘建议（C3，无 LLM）</h3>
             <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin-bottom:8px">这块只根据固定规则给“是否值得先看”的建议，例如优先复盘、抽样确认、上下文不足。它不是“符合预期/不符合预期”的最终结论。</div>
             ${renderAssistiveInference(shownInference)}
-            <h3 style="font-size:13px;margin:14px 0 8px;color:var(--text-primary)">人工复盘标记（D1 前置）</h3>
-            ${renderReviewStateControls('experience_session', session.id)}
             <div style="font-size:12px;color:var(--text-secondary);line-height:1.55">
               <div>调用摘要：调用段 ${session.invocationIds.length} · 工具调用 ${indicators.toolCallCount} · 工具执行失败 ${indicators.toolFailureCount} · 人工中断 ${indicators.userInterruptionCount}</div>
               <div>复盘分数：${session.reviewPriorityScore}</div>
@@ -2970,11 +3625,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </details>`;
   }).join('');
   void experienceSessionGroupsHtml;
-  const experienceIndicators = experience?.skills.reduce((acc, skill) => ({
-    toolCallCount: acc.toolCallCount + skill.indicators.toolCallCount,
-    toolFailureCount: acc.toolFailureCount + skill.indicators.toolFailureCount,
-    userInterruptionCount: acc.userInterruptionCount + skill.indicators.userInterruptionCount,
-  }), { toolCallCount: 0, toolFailureCount: 0, userInterruptionCount: 0 }) ?? { toolCallCount: 0, toolFailureCount: 0, userInterruptionCount: 0 };
+  const experienceIndicators = experience?.sessions.reduce((acc, session) => {
+    const indicators = displayIndicatorsForSession(session);
+    return {
+      toolCallCount: acc.toolCallCount + indicators.toolCallCount,
+      toolFailureCount: acc.toolFailureCount + indicators.toolFailureCount,
+      userInterruptionCount: acc.userInterruptionCount + indicators.userInterruptionCount,
+    };
+  }, { toolCallCount: 0, toolFailureCount: 0, userInterruptionCount: 0 }) ?? { toolCallCount: 0, toolFailureCount: 0, userInterruptionCount: 0 };
   const experienceToolSuccessCount = Math.max(0, experienceIndicators.toolCallCount - experienceIndicators.toolFailureCount);
   void experienceToolSuccessCount;
   const experienceReviewSkillCount = experience?.skills.filter((skill) => skill.reviewFirstSessionCount + skill.sampleReviewSessionCount > 0).length ?? 0;
@@ -3112,18 +3770,44 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    // 全 ok 或 not_applicable: 不输出文案
 	    return '';
 	  };
+	  const inboxAttentionFindingLabelByRuleSource: Record<string, string> = {
+	    final_delivery_absent: '没给最终答复',
+	    router_user_facing_closure_absent: '下游结果未回传',
+	    tool_error_recovery: '工具调用失败',
+	    tool_failure_seen: '工具调用失败',
+	    session_interrupted: '会话异常断开',
+	    session_interrupted_seen: '会话异常断开',
+	    expected_tools_missed: '没用上核心工具',
+	    user_correction: '用户纠正',
+	    user_correction_seen: '用户纠正',
+	    user_interruption: '用户手动叫停',
+	    user_interruption_seen: '用户手动叫停',
+	    negative_feedback: '用户不满',
+	    negative_feedback_seen: '用户不满',
+	    complex_scope_degraded: '复杂链路',
+	  };
+	  const inboxAttentionFindingLabel = (ruleSource: string): string =>
+	    inboxAttentionFindingLabelByRuleSource[ruleSource] ?? ruleSource;
+	  const inboxSessionAttentionFindingLabels = (session: ExperienceSessionSummary): string[] => {
+	    const labels: string[] = [];
+	    const push = (label: string): void => {
+	      if (label && !labels.includes(label)) labels.push(label);
+	    };
+	    for (const finding of session.reviewerReport?.findings ?? []) {
+	      if (finding.level !== 'attention') continue;
+	      push(inboxAttentionFindingLabel(finding.ruleSource));
+	    }
+	    const indicators = displayIndicatorsForSession(session);
+	    if (indicators.toolFailureCount > 0) push(inboxAttentionFindingLabel('tool_error_recovery'));
+	    if (indicators.userCorrectionCount > 0) push(inboxAttentionFindingLabel('user_correction'));
+	    if (indicators.userInterruptionCount > 0) push(inboxAttentionFindingLabel('user_interruption'));
+	    if (indicators.sessionInterruptedCount > 0) push(inboxAttentionFindingLabel('session_interrupted'));
+	    if (indicators.negativeFeedbackCount > 0) push(inboxAttentionFindingLabel('negative_feedback'));
+	    return labels;
+	  };
 	  const inboxFindingChips = (card: InboxSkillCard): string => {
 	    const totalSessions = card.sessions.length;
 	    // 多 session 聚合: 按 ruleSource 统计「N/M session 命中」, chip 文案用中性短标签
-	    const chipLabelByRuleSource: Record<string, string> = {
-	      final_delivery_absent: '没给最终答复',
-	      tool_error_recovery: '工具调用失败',
-	      session_interrupted: '会话异常断开',
-	      expected_tools_missed: '没用上核心工具',
-	      user_correction: '用户纠正',
-	      user_interruption: '用户手动叫停',
-	      negative_feedback: '用户不满',
-	    };
 	    const byRule = new Map<string, { hit: number; body: string }>();
 	    for (const session of card.sessions) {
 	      const seenInSession = new Set<string>();
@@ -3139,7 +3823,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    if (byRule.size === 0) return '';
 	    const sorted = [...byRule.entries()].sort((a, b) => b[1].hit - a[1].hit).slice(0, 3);
 	    return `<div class="inbox-card-chips">${sorted.map(([ruleSource, { hit, body }]) => {
-	      const label = chipLabelByRuleSource[ruleSource] ?? ruleSource;
+	      const label = inboxAttentionFindingLabel(ruleSource);
 	      return `<span class="inbox-card-chip is-attention" title="${e(body)}">${hit}/${totalSessions} · ${e(label)}</span>`;
 	    }).join('')}</div>`;
 	  };
@@ -3223,12 +3907,43 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  const inboxSkillRoleLabel = (role: 'router' | 'executor' | 'mixed' | 'unknown'): string => {
 	    if (role === 'router') return '路由';
 	    if (role === 'executor') return '执行';
-	    if (role === 'mixed') return '路由 + 执行';
+	    if (role === 'mixed') return '路由+执行';
 	    return '未确定';
 	  };
+	  const inboxLlmSkillTypeLabel = (type?: ResolvedObservationReviewSession['skillType']): string => {
+	    if (type === 'router') return '路由型';
+	    if (type === 'delegation') return '委派型';
+	    if (type === 'executor') return '执行型';
+	    if (type === 'advisory') return '咨询型';
+	    if (type === 'workflow_owner') return '流程负责型';
+	    return '类型待确认';
+	  };
+    const inboxSkillTypeSourceText = (resolved: ResolvedObservationReviewSession): string => {
+      if (resolved.skillTypeSource === 'frontmatter') return '作者声明';
+      if (resolved.skillTypeSource === 'llm') return '模型识别';
+      if (resolved.skillTypeSource === 'trace') return '规则推断';
+      return '建议声明';
+    };
+	  const inboxSkillRoleHelpKey = (role: 'router' | 'executor' | 'mixed' | 'unknown'): IndicatorHelpKey => {
+	    if (role === 'router') return 'skillRoleRouter';
+	    if (role === 'executor') return 'skillRoleExecutor';
+	    if (role === 'mixed') return 'skillRoleMixed';
+	    return 'skillRoleUnknown';
+	  };
+	  const inboxLlmSkillTypeHelpKey = (type?: ResolvedObservationReviewSession['skillType']): IndicatorHelpKey => {
+	    if (type === 'router') return 'llmSkillTypeRouter';
+	    if (type === 'delegation') return 'llmSkillTypeDelegation';
+	    if (type === 'executor') return 'llmSkillTypeExecutor';
+	    if (type === 'advisory') return 'llmSkillTypeAdvisory';
+	    if (type === 'workflow_owner') return 'llmSkillTypeWorkflowOwner';
+	    return 'llmSkillTypeUnknown';
+	  };
+	  const inboxSkillTypeBadge = (label: string, helpKey: IndicatorHelpKey, sourceText?: string): string =>
+	    `<button type="button" class="inbox-skill-type-badge" data-metric-key="${helpKey}" onclick="event.stopPropagation();openMetricGuide('${helpKey}')" title="点击查看 skill 类型说明">skill 类型：${e(label)}${sourceText ? ` · ${e(sourceText)}` : ''}</button>`;
 	  const inboxFlowItem = (cardSkillName: string, skill: ExperienceSessionSummary, index: number, isCurrent: boolean): string => {
 	    const link = skill.sessionStory?.skillLinks?.find((l) => l.skillName === skill.skillName);
 	    const roleLabel = link ? inboxSkillRoleLabel(link.role) : '执行';
+	    const roleHelpKey = inboxSkillRoleHelpKey(link?.role ?? 'executor');
 	    const indicators = displayIndicatorsForSession(skill);
 	    const dur = formatTimeRange(skill.startTimestamp, skill.endTimestamp);
 	    const startTime = skill.startTimestamp ? skill.startTimestamp.slice(5, 16).replace('T', ' ') : '未记录';
@@ -3247,7 +3962,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      <div class="inbox-flow-rail"><span class="inbox-flow-index">${index + 1}</span></div>
 	      <div class="inbox-flow-anchor"${jumpAttrs}${!isCurrent ? ` onclick="${jumpAction}"` : ''} role="button" title="${isCurrent ? '当前查看的调用段' : '点击切换到这个调用段'}">
 	        <div class="inbox-flow-body">
-	          <div class="inbox-flow-title"><strong>${e(skill.skillName)}</strong><em>${e(roleLabel)}</em><span class="inbox-flow-priority">${priorityLabel}</span>${tag}</div>
+	          <div class="inbox-flow-title"><strong>${e(skill.skillName)}</strong>${inboxSkillTypeBadge(roleLabel, roleHelpKey)}<span class="inbox-flow-priority">${priorityLabel}</span>${tag}</div>
 	          <div class="inbox-flow-meta">
 	            <span>调用段 ${skill.invocationIds.length}</span>
 	            <span>工具 ${indicators.toolCallCount}</span>
@@ -3362,6 +4077,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    if (slots.length > 0) return slots.slice(0, 3).join(' / ');
 	    return inboxExtractGoalKeywords(goal?.summary) || inboxExtractKeyword(goal?.expectedOutcome, 36);
 	  };
+	  // eslint-disable-next-line @typescript-eslint/no-unused-vars
 	  const inboxLlmEnhancedDeclaredGoalKeywords = (skillName: string): string => {
 	    const goal = skillDerivedStandards[skillName]?.enhancedReview?.skillDeclaredGoal;
 	    const keywords = [
@@ -3516,9 +4232,28 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      <div class="manual-correction-actions">${buttons.join('')}</div>
 	    </div>`;
 	  };
+	  const inboxManualCorrectionButtonGroup = (skill: ExperienceSessionSummary, answerKey: string): string => {
+	    const panel = inboxManualCorrectionControls(skill, answerKey);
+	    return panel.replace('class="manual-correction-panel"', 'class="manual-correction-panel is-in-review-popover"');
+	  };
+	  const inboxManualCorrectionActiveCount = (skill: ExperienceSessionSummary): number => {
+	    const targetIds = [
+	      ['goal_keyword_correction', `${skill.id}:goal_keyword`],
+	      ['completion_result_correction', `${skill.id}:completion_result`],
+	      ['deliverable_artifact_correction', `${skill.id}:deliverable_artifact`],
+	      ['skill_relevance_correction', `${skill.id}:skill_relevance:${skill.skillName}`],
+	      ['workflow_completion_correction', `${skill.id}:workflow_completion:${skill.skillName}`],
+	      ['hardrule_execution_correction', `${skill.id}:hardrule_execution:${skill.skillName}`],
+	      ['main_tool_execution_correction', `${skill.id}:main_tool_execution:${skill.skillName}`],
+	    ] as const;
+	    return targetIds.filter(([targetType, targetId]) =>
+	      manualCorrectionLabel(manualCorrectionEntry(targetType, targetId)?.note)
+	    ).length;
+	  };
 	  const inboxChecklistDetected = (item: ExperienceChecklistItem): boolean => {
 	    // 检测到「需要关注或值得展示的事实」: 失败 / 数据问题 / 正向 passed / 主动声明类 passed
 	    if (item.status === 'failed' || item.status === 'degraded') return true;
+	    if (item.status === 'unknown' && item.contribution === 'informational' && /^看到/.test(item.label)) return true;
 	    if (item.status === 'passed') {
 	      // passed 时, 看 contribution 区分「主动发现的事实」vs「未发现负向信号」
 	      // - blocking / attention contribution + passed = 「负向 item 未命中」, 视为「未发现」
@@ -3528,23 +4263,41 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    return false;
 	  };
 	  const inboxChecklistStatusClass = (item: ExperienceChecklistItem): string => {
-	    if (item.status === 'degraded') return 'is-degraded';
-	    if (item.status === 'failed') return item.contribution === 'blocking' ? 'is-blocking' : 'is-missing';
 	    if (inboxChecklistDetected(item)) return 'is-detected';
 	    return 'is-absent';
 	  };
 	  const inboxChecklistStatusIcon = (item: ExperienceChecklistItem): string => {
 	    return inboxChecklistDetected(item) ? '●' : '○';
 	  };
+	  const inboxChecklistSourceLabel = (source?: ExperienceChecklistItem['source']): string => {
+	    if (source === 'llm_soft') return '模型识别';
+	    if (source === 'manual') return '人工';
+	    return '规则判定';
+	  };
+	  const inboxChecklistSourceBadge = (item: ExperienceChecklistItem): string => {
+	    if (item.status === 'unknown' || item.status === 'degraded' || item.status === 'not_applicable') return '';
+	    return `<em>${e(inboxChecklistSourceLabel(item.source))}</em>`;
+	  };
 	  const inboxAnswerChecklistFromItems = (items: ExperienceChecklistItem[]): string => {
-	    return `<div class="inbox-answer-checklist">${items.map((item) => `<span class="inbox-answer-check ${inboxChecklistStatusClass(item)}" title="${e(item.reason)}">
-	      <span class="inbox-answer-check-icon">${e(inboxChecklistStatusIcon(item))}</span>${e(item.label)}
-	    </span>`).join('')}</div>`;
+	    const isCore = (item: ExperienceChecklistItem): boolean =>
+	      item.status === 'failed'
+	      || item.status === 'degraded'
+	      || item.contribution === 'blocking'
+	      || (item.contribution === 'attention' && inboxChecklistDetected(item));
+	    const renderItems = (groupItems: ExperienceChecklistItem[]): string => groupItems.map((item) => `<span class="inbox-answer-check ${inboxChecklistStatusClass(item)}" title="${e(item.reason)}">
+	      <span class="inbox-answer-check-icon">${e(inboxChecklistStatusIcon(item))}</span><span>${e(item.label)}</span>${inboxChecklistSourceBadge(item)}
+	    </span>`).join('');
+	    const coreItems = items.filter(isCore);
+	    const otherItems = items.filter((item) => !coreItems.includes(item));
+	    return `<div class="inbox-answer-checklist is-grouped">
+	      ${coreItems.length > 0 ? `<div class="inbox-answer-check-group"><strong>核心关注</strong><div>${renderItems(coreItems)}</div></div>` : ''}
+	      ${otherItems.length > 0 ? `<div class="inbox-answer-check-group"><strong>其他发现</strong><div>${renderItems(otherItems)}</div></div>` : ''}
+	    </div>`;
 	  };
 	  const inboxAnswerChecklist = (skill: ExperienceSessionSummary, answer: ExperienceSessionStoryAnswer): string => {
 	    const answerKey = answer.key;
 	    if ((answer.checklistItems ?? []).length > 0) {
-	      return `${inboxAnswerChecklistFromItems(answer.checklistItems)}${inboxManualCorrectionControls(skill, answerKey)}`;
+	      return inboxAnswerChecklistFromItems(answer.checklistItems);
 	    }
 	    const goalKeywords = inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet) || inboxLlmEnhancedGoalKeywords(skill.skillName);
 	    const chain = skillChains[skill.skillName];
@@ -3566,10 +4319,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        ? '核心工具命中'
 	        : '核心工具未命中'
 	      : '未声明核心工具';
-	    const hasNegativeFeedback = skill.indicators.negativeFeedbackCount > 0 || skill.indicators.userCorrectionCount > 0;
-	    const hasFollowUp = skill.indicators.userFollowUpCount > 0;
-	    const hasSupplementContext = skill.indicators.userFollowUpCount > 0 || skill.indicators.userMessageCount > 1;
-	    const hasInterruption = skill.indicators.userInterruptionCount > 0;
+	    const hasNegativeFeedback = displayIndicators.negativeFeedbackCount > 0 || displayIndicators.userCorrectionCount > 0;
+	    const hasFollowUp = displayIndicators.userFollowUpCount > 0;
+	    const hasSupplementContext = displayIndicators.userFollowUpCount > 0 || displayIndicators.userMessageCount > 1;
+	    const hasInterruption = displayIndicators.userInterruptionCount > 0;
 	    const checks = answerKey === 'goal_satisfaction'
 	      ? [
 	          { label: `用户目标关键字：${goalKeywords || '未提取到'}`, ok: hasGoalKeyword },
@@ -3590,15 +4343,16 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	            { label: '用户有重新补充上下文/文档', ok: hasSupplementContext },
 	            { label: '用户有中断流程', ok: hasInterruption },
 	          ];
-	    return `<div class="inbox-answer-checklist">${checks.map((check) => `<span class="inbox-answer-check ${check.ok ? 'is-detected' : 'is-absent'}"><span class="inbox-answer-check-icon">${check.ok ? '●' : '○'}</span>${e(check.label)}</span>`).join('')}</div>${inboxManualCorrectionControls(skill, answerKey)}`;
+	    return `<div class="inbox-answer-checklist">${checks.map((check) => `<span class="inbox-answer-check ${check.ok ? 'is-detected' : 'is-absent'}"><span class="inbox-answer-check-icon">${check.ok ? '●' : '○'}</span>${e(check.label)}</span>`).join('')}</div>`;
 	  };
 	  const inboxRecognizedGoalText = (skill: ExperienceSessionSummary): string => {
+	    const llmGoal = inboxLlmEnhancedGoalKeywords(skill.skillName);
+	    if (llmGoal) return llmGoal;
 	    const goals = (skill.sessionStory?.goalSlices ?? [])
 	      .map((goal) => inboxExtractGoalKeywords(goal.inferredUserGoal))
 	      .filter((goal): goal is string => Boolean(goal));
 	    if (goals.length > 0) return goals.slice(0, 3).join('；');
 	    return inboxExtractGoalKeywords(skill.evidenceChain?.firstUserMessage?.snippet)
-	      || inboxLlmEnhancedGoalKeywords(skill.skillName)
 	      || '未提取到明确用户目标';
 	  };
 	  const inboxSignalSnippet = (
@@ -3631,40 +4385,158 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    if (answer.key !== 'goal_satisfaction') return '';
 	    return `<div class="inbox-answer-context">
 	      <div><span>目标关键词</span><strong>${e(inboxRecognizedGoalText(skill))}</strong></div>
-	      <div><span>skill 声明目标</span><strong>${e(inboxLlmEnhancedDeclaredGoalKeywords(skill.skillName) || '未提取到')}</strong></div>
 	      <div><span>结果关键词</span><strong>${e(inboxRecognizedCompletionText(skill))}</strong></div>
 	      <div><span>产物关键词</span><strong>${e(inboxRecognizedArtifactText(skill))}</strong></div>
 	    </div>`;
 	  };
-	  const inboxRenderSuggestionsBlock = (skill: ExperienceSessionSummary, title: string, keywords: string[]): string => {
-	    const all = skill.reviewerReport?.authorSuggestions ?? [];
-	    if (all.length === 0) return '';
-	    const matched = keywords.length === 0
-	      ? all
-	      : all.filter((s) => keywords.some((kw) => s.includes(kw)));
-	    const list = matched.length > 0 ? matched : (keywords.length === 0 ? all : []);
-	    if (list.length === 0) return '';
-	    return `<div class="inbox-suggestion-block">
-	      <div class="inbox-suggestion-title">${e(title)}</div>
-	      <ul>${list.slice(0, 3).map((s) => `<li>${e(s)}</li>`).join('')}</ul>
-	    </div>`;
-	  };
 	  const inboxSuggestionKey = (suggestion: ResolvedOwnerSuggestion): string =>
-	    [suggestion.title, suggestion.body, suggestion.acceptanceCriteria].filter(Boolean).join('\u0000');
+	    [suggestion.checklistItemKey, suggestion.title, suggestion.body, suggestion.acceptanceCriteria].filter(Boolean).join('\u0000');
 	  const inboxTextSuggestion = (title: string, body?: string, acceptanceCriteria?: string): ResolvedOwnerSuggestion => ({
 	    title,
 	    body,
 	    acceptanceCriteria,
 	  });
+	  const inboxSuggestionHasFeedbackContract = (suggestions: ResolvedOwnerSuggestion[]): boolean =>
+	    suggestions.some((suggestion) => /feedback|adopt|reject|useful|thumbs?|反馈|采用|弃用|点赞|点踩|简评|评价/i.test(
+	      [suggestion.title, suggestion.body, suggestion.acceptanceCriteria].filter(Boolean).join('\n'),
+	    ));
+	  const inboxFeedbackContractSuggestion = (): ResolvedOwnerSuggestion => inboxTextSuggestion(
+	    '补充用户反馈采集点',
+	    '在产物交付或人工复盘入口中补充轻量反馈，例如采用 / 弃用、有用 / 无用、点赞 / 点踩或一句话简评。这样线上观测可以把用户反馈关联到具体 session、skill 调用、产物和规则证据。',
+	    '下次观测中，反馈记录能回溯到对应 session、artifact 和 skill invocation。',
+	  );
+    const inboxTypeDeclarationSuggestion = (resolved: ResolvedObservationReviewSession): ResolvedOwnerSuggestion | undefined => {
+      if (resolved.skillTypeSource === 'frontmatter') return undefined;
+      const frontmatterExample = '示例：在 SKILL.md 顶部 frontmatter 增加 skillType: router / delegation / executor / advisory / workflow_owner 之一。';
+      return inboxTextSuggestion(
+        '在 SKILL.md frontmatter 声明 skill 类型',
+        `当前类型来自规则推断或模型识别，不如作者声明稳定。建议在 SKILL.md frontmatter 中声明 skillType，让观测报告按正确类型生成流程判断和 owner 建议。${frontmatterExample}`,
+        'SKILL.md frontmatter 中出现明确 skillType。',
+      );
+    };
+    const inboxTypeFallbackSuggestion = (resolved: ResolvedObservationReviewSession): ResolvedOwnerSuggestion | undefined => {
+      if (resolved.skillType === 'router') {
+        return inboxTextSuggestion(
+          '完善路由型 skill 的下游闭环标准',
+          '路由型 skill 需要声明：如何选择下游能力、如何保留用户目标、如何关联下游 session / 产物、用户追问时如何返回状态。',
+          '下次观测中能看到路由选择、下游链路关联、下游完成态、用户侧闭环四类证据。',
+        );
+      }
+      if (resolved.skillType === 'delegation') {
+        return inboxTextSuggestion(
+          '完善委派型 skill 的 child 生命周期标准',
+          '委派型 skill 需要声明：child 如何启动、如何追踪 session / ttyd / tmux、父会话不能接手哪些原始任务、异步完成或失败如何通知用户。',
+          '下次观测中能看到 child lifecycle、parent boundary、async notification 三类证据。',
+        );
+      }
+      if (resolved.skillType === 'executor') {
+        return inboxTextSuggestion(
+          '完善执行型 skill 的完成态和产物标准',
+          '执行型 skill 需要声明：核心工具或动作是什么、什么算执行完成、标准产物是什么、最后如何明确交付给用户。',
+          '下次观测中能看到核心工具命中、最终回复、标准产物路径或链接。',
+        );
+      }
+      if (resolved.skillType === 'advisory') {
+        return inboxTextSuggestion(
+          '完善咨询型 skill 的结论和证据标准',
+          '咨询型 skill 需要声明：结论如何组织、证据如何引用、未知项如何说明、下一步建议如何表达。',
+          '下次观测中能看到明确结论、证据来源、未确认项和可执行下一步。',
+        );
+      }
+      if (resolved.skillType === 'workflow_owner') {
+        return inboxTextSuggestion(
+          '完善流程负责型 skill 的阶段矩阵',
+          '流程负责型 skill 需要声明标准阶段、每个阶段的 owner / executor、期望证据、阶段产物、失败信号和用户反馈处理方式。',
+          '下次观测中能看到阶段矩阵、阶段责任、阶段产物、阶段反馈和最终流程闭环。',
+        );
+      }
+      return undefined;
+    };
+    const inboxRuleTypeSuggestions = (skill: ExperienceSessionSummary, resolved: ResolvedObservationReviewSession): ResolvedOwnerSuggestion[] => {
+      const out: ResolvedOwnerSuggestion[] = [];
+      const typeSuggestion = inboxTypeDeclarationSuggestion(resolved);
+      if (typeSuggestion) out.push(typeSuggestion);
+      const typeFallbackSuggestion = inboxTypeFallbackSuggestion(resolved);
+      if (typeFallbackSuggestion) out.push(typeFallbackSuggestion);
+      const indicators = displayIndicatorsForSession(skill);
+      const downstreamSignals = canonicalFeedbackSignalsForDisplay(skill).filter((signal) =>
+        (signal.type === 'follow_up' || signal.type === 'interruption')
+        && (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
+          attribution.skillName === skill.skillName && attribution.attributionRole === 'downstream_related'
+        )
+      );
+      if (downstreamSignals.length > 0 && resolved.skillType !== 'router' && resolved.skillType !== 'delegation') {
+        const hasInterruption = downstreamSignals.some((signal) => signal.type === 'interruption');
+        out.push(inboxTextSuggestion(
+          hasInterruption ? '补充下游调用链路的中断处理' : '补充下游调用链路的追问处理',
+          hasInterruption
+            ? '这次运行出现下游调用链路，且用户在下游链路中手动中断。即使当前 skill 类型未判为路由或委派，也需要声明下游状态回收、停止处理和用户通知规范。'
+            : '这次运行出现下游调用链路，且用户对下游进度或结果有追问。即使当前 skill 类型未判为路由或委派，也需要声明下游状态回收和用户追问处理规范。',
+          '下次观测中，下游运行中 / 完成 / 失败 / 中断都有明确状态，并能关联到当前 skill 的用户侧闭环。',
+        ));
+      }
+      if (resolved.skillType === 'router') {
+        if (indicators.userFollowUpCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0) {
+          out.push(inboxTextSuggestion(
+            '补充下游调用链路的追问处理',
+            '这个路由型 skill 的下游调用链路出现用户追问。建议把下游 session、产物、完成态、失败原因和用户可见状态写清楚。',
+            '下次观测中，下游完成 / 失败 / 跑偏能关联到路由能力，并且用户追问时能看到明确状态。',
+          ));
+        }
+      } else if (resolved.skillType === 'delegation') {
+        if (indicators.userFollowUpCount > 0 || indicators.userInterruptionCount > 0) {
+          out.push(inboxTextSuggestion(
+            '补充 child 生命周期和异步通知状态',
+            '委派型 skill 需要稳定表达 child 是否已启动、运行中、完成、失败或被停止，避免用户只能通过追问确认进度。',
+            'runner / child session / ttyd / cleanup / observer 状态能在报告中形成完整链路。',
+          ));
+        }
+      } else if (resolved.skillType === 'executor') {
+        if (indicators.assistantDeliverySignalCount === 0 || indicators.deliverableArtifactSignalCount === 0) {
+          out.push(inboxTextSuggestion(
+            '补充执行型 skill 的完成态和标准产物',
+            '执行型 skill 应明确什么算完成，以及最终产物应该是文件、链接、代码块还是文档路径，避免过程消息被当成结果。',
+            '最后回复包含明确完成标记和可回溯产物证据。',
+          ));
+        }
+      } else if (resolved.skillType === 'advisory') {
+        if (indicators.userFollowUpCount > 0) {
+          out.push(inboxTextSuggestion(
+            '补充咨询型 skill 的结论和证据结构',
+            '咨询型 skill 被追问时，通常说明结论边界或证据引用不够清楚。建议固定输出结论、证据、未知项和下一步。',
+            '下次同类咨询中，用户无需追问即可看到结论和证据来源。',
+          ));
+        }
+      } else if (resolved.skillType === 'workflow_owner') {
+        if (indicators.userFollowUpCount > 0 || indicators.userCorrectionCount > 0 || indicators.userInterruptionCount > 0) {
+          out.push(inboxTextSuggestion(
+            '补充流程阶段的反馈闭环',
+            '流程负责型 skill 出现用户追问、纠正或中断时，需要把反馈归到具体阶段，并说明该阶段是已完成、需补救、被跳过还是失败。',
+            '下次观测中，用户反馈能定位到具体 workflow 阶段，并生成对应阶段的修复建议。',
+          ));
+        }
+      }
+      return out;
+    };
 	  const inboxBuildSkillActionSuggestions = (skill: ExperienceSessionSummary): ResolvedOwnerSuggestion[] => {
-	    const llmSuggestions = inboxResolvedSession(skill).ownerSuggestions;
-	    const suggestions: ResolvedOwnerSuggestion[] = [...llmSuggestions];
+      const resolved = inboxResolvedSession(skill);
+	    const llmSuggestions = resolved.ownerSuggestions;
+	    const suggestions: ResolvedOwnerSuggestion[] = [
+        ...inboxRuleTypeSuggestions(skill, resolved),
+        ...llmSuggestions,
+      ];
 	    const reportSuggestions = skill.reviewerReport?.authorSuggestions ?? [];
+	    for (const suggestion of reportSuggestions) {
+	      if (/下游|回挂|追问|纠正|中断|异步闭环|结果回传/.test(suggestion)) {
+	        suggestions.push(inboxTextSuggestion('补强下游闭环和反馈关联', suggestion));
+	      }
+	    }
 	    if (suggestions.length === 0 && reportSuggestions.length > 0) {
 	      suggestions.push(...reportSuggestions.map((suggestion) => inboxTextSuggestion(suggestion)));
 	    }
 	    const chain = skillChains[skill.skillName];
 	    const findings = skill.reviewerReport?.findings ?? [];
+      const displayIndicators = displayIndicatorsForSession(skill);
 	    const hasFinding = (source: string): boolean => findings.some((finding) => finding.ruleSource === source);
 	    const storyAnswers = skill.sessionStory?.answers ?? [];
 	    const goalAnswer = storyAnswers.find((answer) => answer.key === 'goal_satisfaction');
@@ -3680,7 +4552,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      || goalAnswer?.status === 'degraded'
 	      || goalAnswer?.status === 'attention'
 	      || goalAnswer?.status === 'unknown'
-	      || (skill.reviewerReport?.oneLookMetrics.finalDeliverySignalCount ?? 0) === 0
+	      || displayIndicators.assistantDeliverySignalCount === 0
 	    )) {
 	      suggestions.push(inboxTextSuggestion(
 	        '优化完成情况判断',
@@ -3688,28 +4560,31 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	        '能力最后一次回复包含明确完成标记；如有产物，附上代码块、文档链接或文件路径。',
 	      ));
 	    }
-	    if (suggestions.length === 0 && (hasFinding('user_hard_rule') || skill.indicators.hardRuleTextHitCount > 0)) {
+	    if (suggestions.length === 0 && (hasFinding('user_hard_rule') || displayIndicators.hardRuleTextHitCount > 0)) {
 	      suggestions.push(inboxTextSuggestion(
 	        '沉淀用户硬性要求',
 	        '把用户反复提出的硬性要求沉淀到 skill 规则或流程检查点，减少依赖用户临时纠偏。',
 	      ));
 	    }
-	    if (suggestions.length === 0 && (skill.indicators.toolFailureCount > 0 || hasFinding('tool_error_recovery'))) {
+	    if (suggestions.length === 0 && (displayIndicators.toolFailureCount > 0 || hasFinding('tool_error_recovery'))) {
 	      suggestions.push(inboxTextSuggestion(
 	        '补充工具失败恢复路径',
 	        '让失败处理也能被 workflow 覆盖；读取失败时先说明缺失文件和影响，再尝试备用路径或让用户确认。',
 	      ));
 	    }
 	    if (suggestions.length === 0 && (
-	      skill.indicators.userCorrectionCount > 0
-	      || skill.indicators.negativeFeedbackCount > 0
-	      || skill.indicators.userFollowUpCount > 0
+	      displayIndicators.userCorrectionCount > 0
+	      || displayIndicators.negativeFeedbackCount > 0
+	      || displayIndicators.userFollowUpCount > 0
 	    )) {
 	      suggestions.push(inboxTextSuggestion(
 	        '补强用户满意度判断',
 	        '把追问、纠正、负向反馈作为改进输入，而不是只看是否调用完成。',
 	        '交付后用户继续纠正或追问时，报告定位到对应用户原文并标记为待复核。',
 	      ));
+	    }
+	    if (!inboxSuggestionHasFeedbackContract(suggestions)) {
+	      suggestions.push(inboxFeedbackContractSuggestion());
 	    }
 	    const deduped: ResolvedOwnerSuggestion[] = [];
 	    for (const suggestion of suggestions) {
@@ -3720,6 +4595,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  };
 	  const inboxRenderActionSuggestion = (suggestion: ResolvedOwnerSuggestion, index: number): string => {
 	    const detailBlocks = [
+	      suggestion.checklistItemKey ? `<div class="inbox-action-suggestion-detail"><span>关联检查项</span><p>${e(suggestion.checklistItemLabel ?? suggestion.checklistItemKey)}</p></div>` : '',
 	      suggestion.body ? `<div class="inbox-action-suggestion-detail"><span>建议细节</span><p>${e(suggestion.body)}</p></div>` : '',
 	      suggestion.acceptanceCriteria ? `<div class="inbox-action-suggestion-detail is-acceptance"><span>验收方式</span><p>${e(suggestion.acceptanceCriteria)}</p></div>` : '',
 	    ].filter(Boolean).join('');
@@ -3784,6 +4660,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    ];
 	    return { label, className, facts };
 	  };
+	  // eslint-disable-next-line @typescript-eslint/no-unused-vars
 	  const inboxRenderDataHealth = (skill: ExperienceSessionSummary, answers: ExperienceSessionStoryAnswer[]): string => {
 	    const health = inboxDataHealth(skill, answers);
 	    return `<div class="inbox-trust-layer">
@@ -3791,6 +4668,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      ${health.facts.map((fact) => `<span class="inbox-trust-fact">${e(fact)}</span>`).join('')}
 	    </div>`;
 	  };
+	  // eslint-disable-next-line @typescript-eslint/no-unused-vars
 	  const inboxRenderParentStatuses = (answers: ExperienceSessionStoryAnswer[]): string => {
 	    if (answers.length === 0) return '';
 	    return `<div class="inbox-parent-status-row">${answers.map((answer) => `<div class="inbox-parent-status ${answer.status === 'degraded' ? 'is-degraded' : answer.status === 'attention' ? 'is-attention' : answer.status === 'unknown' ? 'is-unknown' : answer.status === 'not_applicable' ? 'is-not-applicable' : 'is-ok'}">
@@ -3799,6 +4677,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      <em>${e(inboxAnswerReasonLabel(answer.reason))}</em>
 	    </div>`).join('')}</div>`;
 	  };
+	  const inboxRenderTypeSpecificChecklist = (resolved: ResolvedObservationReviewSession): string => {
+	    if (resolved.typeSpecificChecklist.length === 0) return '';
+	    return `<div class="inbox-review-layer">
+	      <div class="inbox-review-layer-title">${e(inboxLlmSkillTypeLabel(resolved.skillType))}检查项</div>
+	      ${resolved.typeSpecificSummary ? `<p class="inbox-type-summary">${e(resolved.typeSpecificSummary)}</p>` : ''}
+	      ${inboxAnswerChecklistFromItems(resolved.typeSpecificChecklist)}
+	    </div>`;
+	  };
+	  // eslint-disable-next-line @typescript-eslint/no-unused-vars
 	  const inboxRenderSessionSuggestions = (skill: ExperienceSessionSummary): string => {
 	    const suggestions = inboxBuildSkillActionSuggestions(skill);
 	    if (suggestions.length === 0) return '';
@@ -3807,25 +4694,55 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      <ol class="inbox-action-suggestion-list is-compact">${suggestions.slice(0, 4).map(inboxRenderActionSuggestion).join('')}</ol>
 	    </div>`;
 	  };
+	  const inboxRenderSessionReviewControl = (session: ExperienceSessionSummary): string => {
+	    const reviewEntry = reviewState.entries[`experience_session:${session.id}`];
+	    const existingNote = reviewEntry?.reason ?? reviewEntry?.note ?? '';
+	    const safeId = e(session.id);
+	    const activeCount = (reviewEntry?.verdict ? 1 : 0) + inboxManualCorrectionActiveCount(session);
+	    return `<details class="inbox-section-review" data-inbox-detail-actions data-inbox-session-id="${safeId}" onclick="event.stopPropagation()">
+	      <summary class="inbox-section-review-button">人工标注${activeCount > 0 ? `(${activeCount})` : ''}</summary>
+	      <div class="inbox-section-review-panel">
+	        <div class="inbox-detail-actions-row"><strong class="inbox-detail-actions-title">这次跑得怎么样</strong><span class="inbox-detail-actions-meta">针对 ${e(session.skillName)}</span></div>
+	        <div class="inbox-detail-actions-buttons">
+	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'real_issue' ? 'is-active' : ''}" data-inbox-verdict="real_issue" onclick="setInboxSessionReview('${safeId}', 'real_issue', this)">同意</button>
+	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'not_issue' ? 'is-active' : ''}" data-inbox-verdict="not_issue" onclick="setInboxSessionReview('${safeId}', 'not_issue', this)">否决</button>
+	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'needs_more_context' ? 'is-active' : ''}" data-inbox-verdict="needs_more_context" onclick="toggleInboxNoteEditor('${safeId}', this)">留意见</button>
+	        </div>
+	        <div class="inbox-note-editor" data-inbox-note-editor="${safeId}" style="display:${reviewEntry?.verdict === 'needs_more_context' || existingNote ? 'block' : 'none'}">
+	          <textarea class="inbox-note-textarea" data-inbox-note-input="${safeId}" placeholder="留下你的意见或补充上下文（保存后会写入 review-state）" rows="3">${e(existingNote)}</textarea>
+	          <div class="inbox-note-editor-buttons">
+	            <button type="button" class="inbox-note-save" onclick="saveInboxSessionNote('${safeId}', this)">保存意见</button>
+	            <button type="button" class="inbox-note-cancel" onclick="closeInboxNoteEditor('${safeId}')">收起</button>
+	          </div>
+	        </div>
+	        <div class="inbox-manual-review-groups">
+	          <div class="inbox-manual-review-group">
+	            <strong>目标 / 结果 / 产物</strong>
+	            ${inboxManualCorrectionButtonGroup(session, 'goal_satisfaction')}
+	          </div>
+	          <div class="inbox-manual-review-group">
+	            <strong>能力 / 流程 / 规则</strong>
+	            ${inboxManualCorrectionButtonGroup(session, 'declared_behavior_fit')}
+	          </div>
+	        </div>
+	      </div>
+	    </details>`;
+	  };
 	  const inboxRenderSkillCompletion = (skill: ExperienceSessionSummary): string => {
 	    const report = skill.reviewerReport;
 	    const resolved = inboxResolvedSession(skill);
 	    const answers = resolved.answers;
 	    const llmSummary = resolved.reviewerSummary;
-	    const reviewEntry = reviewState.entries[`experience_session:${skill.id}`];
-	    const existingNote = reviewEntry?.reason ?? reviewEntry?.note ?? '';
-	    const safeId = e(skill.id);
 	    return `<article class="inbox-skill-block">
 	      <header class="inbox-skill-head">
-	        <div><h4>${e(skill.skillName)}</h4><span class="inbox-skill-subtitle">${e(report?.title ?? '常规观测')}</span></div>
+	        <div>
+	          <div class="inbox-skill-title-row"><h4>${e(skill.skillName)}</h4>${inboxSkillTypeBadge(inboxLlmSkillTypeLabel(resolved.skillType), inboxLlmSkillTypeHelpKey(resolved.skillType), inboxSkillTypeSourceText(resolved))}</div>
+	          <span class="inbox-skill-subtitle">${e(report?.title ?? '常规观测')}</span>
+	        </div>
 	        ${llmSummary || report?.summary ? `<p class="inbox-skill-summary">${e(cleanReportCopy(llmSummary ?? report?.summary ?? ''))}</p>` : ''}
 	      </header>
-	      ${inboxRenderDataHealth(skill, answers)}
+	      ${inboxRenderTypeSpecificChecklist(resolved)}
 	      ${answers.length > 0 ? `<div class="inbox-review-layer">
-	        <div class="inbox-review-layer-title">判定</div>
-	        ${inboxRenderParentStatuses(answers)}
-	      </div>
-	      <div class="inbox-review-layer">
 	        <div class="inbox-review-layer-title">这次跑得怎么样</div>
 	        <div class="inbox-answer-grid">
 	          ${answers.map((answer) => `<article class="inbox-answer ${answer.status === 'degraded' ? 'is-degraded' : answer.status === 'attention' ? 'is-attention' : answer.status === 'unknown' ? 'is-unknown' : answer.status === 'not_applicable' ? 'is-not-applicable' : 'is-ok'}">
@@ -3835,23 +4752,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	            ${inboxAnswerEvidenceButtons(answer.evidenceRefs)}
 	          </article>`).join('')}
 	        </div>
-	      </div>
-	      ${inboxRenderSessionSuggestions(skill)}` : '<p class="inbox-skill-empty">这条能力调用暂未生成完成情况判断。</p>'}
-	      <div class="inbox-detail-actions" data-inbox-detail-actions data-inbox-session-id="${safeId}">
-	        <div class="inbox-detail-actions-row"><strong class="inbox-detail-actions-title">人工标注</strong><span class="inbox-detail-actions-meta">针对能力 ${e(skill.skillName)}</span></div>
-	        <div class="inbox-detail-actions-buttons">
-	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'real_issue' ? 'is-active' : ''}" data-inbox-verdict="real_issue" onclick="setInboxSessionReview('${safeId}', 'real_issue', this)">同意</button>
-	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'not_issue' ? 'is-active' : ''}" data-inbox-verdict="not_issue" onclick="setInboxSessionReview('${safeId}', 'not_issue', this)">否决</button>
-	          <button type="button" class="inbox-action-button ${reviewEntry?.verdict === 'needs_more_context' ? 'is-active' : ''}" data-inbox-verdict="needs_more_context" onclick="toggleInboxNoteEditor('${safeId}', this)">留意见</button>
-	        </div>
-	        <div class="inbox-note-editor" data-inbox-note-editor="${safeId}" style="display:${reviewEntry?.verdict === 'needs_more_context' || existingNote ? 'block' : 'none'}">
-	          <textarea class="inbox-note-textarea" data-inbox-note-input="${safeId}" placeholder="留下你的意见或补充上下文（保存后会写入 review-state）" rows="2">${e(existingNote)}</textarea>
-	          <div class="inbox-note-editor-buttons">
-	            <button type="button" class="inbox-note-save" onclick="saveInboxSessionNote('${safeId}', this)">保存意见</button>
-	            <button type="button" class="inbox-note-cancel" onclick="closeInboxNoteEditor('${safeId}')">收起</button>
-	          </div>
-	        </div>
-	      </div>
+	      </div>` : '<p class="inbox-skill-empty">这条能力调用暂未生成完成情况判断。</p>'}
 	    </article>`;
 	  };
 	  const inboxInvocationsById = new Map<string, ExperienceInvocation>();
@@ -3885,6 +4786,140 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  };
 	  const inboxMetricCardJson = (detail: Array<{ name: string; count: number }>): string =>
 	    e(JSON.stringify(detail));
+	  const inboxEpisodeSkillTypeLabel = (type?: string): string => {
+	    if (type === 'router') return '路由';
+	    if (type === 'delegation') return '委派';
+	    if (type === 'executor') return '执行';
+	    if (type === 'advisory') return '咨询';
+	    return '未确认';
+	  };
+	  const inboxEpisodeSkillTypeForSegment = (segment: ExperienceSkillSegment): string =>
+	    segment.skillType;
+	  const inboxEpisodeRoleLabel = (role?: string): string => {
+	    if (role === 'main_executor') return '主执行';
+	    if (role === 'router') return '路由';
+	    if (role === 'delegator') return '调度';
+	    if (role === 'supporting') return '辅助';
+	    if (role === 'observer') return '观察';
+	    return '未确认';
+	  };
+	  const inboxEpisodeFeedbackLabel = (type?: string): string => {
+	    if (type === 'correction') return '纠正';
+	    if (type === 'follow_up') return '追问';
+	    if (type === 'frustration') return '不满/焦虑';
+	    if (type === 'interruption') return '中断';
+	    if (type === 'positive') return '正向';
+	    return '反馈';
+	  };
+	  const inboxEpisodeAttributionLabel = (role?: string): string => {
+	    if (role === 'primary_fault') return '直接归因';
+	    if (role === 'downstream_related') return '下游链路';
+	    if (role === 'context_only') return '背景相关';
+	    return '关联';
+	  };
+	  const inboxEpisodeAttributionText = (
+	    signal: ExperienceFeedbackSignal,
+	    segment: ExperienceSkillSegment,
+	    attribution?: ExperienceFeedbackAttribution,
+	  ): string => {
+	    const signalLabel = inboxEpisodeFeedbackLabel(signal.type);
+	    if (attribution?.attributionRole === 'downstream_related') {
+	      return `下游调用链路用户有${signalLabel}`;
+	    }
+	    if (attribution?.attributionRole === 'primary_fault') {
+	      if (attribution.reasonCode === 'promise_match') return `直接归因：用户在追问此前承诺的结果`;
+	      if (attribution.reasonCode === 'action_match') return `直接归因：用户反馈命中了当前执行动作`;
+	      if (attribution.reasonCode === 'object_match') return `直接归因：用户点名了当前能力或产物`;
+	      return `直接归因：反馈发生在当前执行窗口`;
+	    }
+	    if (attribution?.attributionRole === 'context_only') return `背景相关：同一任务上下文里的${signalLabel}`;
+	    return `${inboxEpisodeAttributionLabel(attribution?.attributionRole)}：${signalLabel}`;
+	  };
+	  const inboxEpisodeFeedbackForSegment = (
+	    episode: ExperienceEpisode,
+	    segmentId: string,
+	  ): ExperienceFeedbackSignal[] => episode.feedbackSignals.filter((signal: ExperienceFeedbackSignal) =>
+	    (signal.canonicalAttributions ?? signal.attributions).some((attribution) => attribution.skillSegmentId === segmentId)
+	  );
+	  const inboxRenderEpisodeSegmentTree = (
+	    episode: ExperienceEpisode,
+	    session: ExperienceSessionSummary,
+	  ): string => {
+	    const segmentById = new Map(episode.skillSegments.map((segment) => [segment.id, segment]));
+	    const childIdsByParentId = new Map<string, string[]>();
+	    const parentIdByChildId = new Map<string, string>();
+	    for (const edge of episode.orchestrationEdges) {
+	      const parentId = edge.parentSkillSegmentId;
+	      const childId = edge.executorSkillSegmentId;
+	      const edgeKind = edge.edgeKind ?? (childId ? 'internal_skill' : 'external_child_session');
+	      if (edgeKind !== 'internal_skill') continue;
+	      if (!parentId || !childId || parentId === childId || !segmentById.has(parentId) || !segmentById.has(childId)) continue;
+	      const childIds = childIdsByParentId.get(parentId) ?? [];
+	      if (!childIds.includes(childId)) childIds.push(childId);
+	      childIdsByParentId.set(parentId, childIds);
+	      parentIdByChildId.set(childId, parentId);
+	    }
+	    const orderedChildren = (parentId: string): ExperienceSkillSegment[] => (childIdsByParentId.get(parentId) ?? [])
+	      .map((id) => segmentById.get(id))
+	      .filter((segment): segment is ExperienceSkillSegment => Boolean(segment))
+	      .sort((a, b) => a.order - b.order);
+	    const roots = episode.skillSegments
+	      .filter((segment) => !parentIdByChildId.has(segment.id))
+	      .sort((a, b) => a.order - b.order);
+	    const renderSegment = (segment: ExperienceSkillSegment, path: string, depth: number): string => {
+	      const segmentSignals = inboxEpisodeFeedbackForSegment(episode, segment.id);
+	      const parent = parentIdByChildId.get(segment.id);
+	      const parentSegment = parent ? segmentById.get(parent) : undefined;
+	      const children = orderedChildren(segment.id);
+	      return `<li class="inbox-execution-node ${segment.skillName === session.skillName ? 'is-current' : ''} ${depth > 0 ? 'is-child' : ''}">
+	        <div class="inbox-execution-node-main">
+	          <span class="inbox-execution-node-index">${e(path)}</span>
+	          <div>
+	            <strong>${e(segment.skillName)}</strong>
+	            <em>${e(inboxEpisodeSkillTypeLabel(inboxEpisodeSkillTypeForSegment(segment)))} · ${e(inboxEpisodeRoleLabel(segment.episodeRole))}${parentSegment ? ` · 由 ${e(parentSegment.skillName)} 调起` : ''}</em>
+	          </div>
+	        </div>
+	        ${segmentSignals.length > 0 ? `<div class="inbox-execution-node-children">
+	          ${segmentSignals.map((signal) => {
+	            const attribution = (signal.canonicalAttributions ?? signal.attributions).find((item) => item.skillSegmentId === segment.id);
+	            return `<div class="inbox-execution-feedback-item">
+	              <span>${e(inboxEpisodeFeedbackLabel(signal.type))}</span>
+	              <p>${e(signal.text)}</p>
+	              <em>${e(inboxEpisodeAttributionText(signal, segment, attribution))}</em>
+	            </div>`;
+	          }).join('')}
+	        </div>` : ''}
+	        ${children.length > 0 ? `<ol class="inbox-execution-skill-children">
+	          ${children.map((child, childIndex) => renderSegment(child, `${path}.${childIndex + 1}`, depth + 1)).join('')}
+	        </ol>` : ''}
+	      </li>`;
+	    };
+	    const rootSegments = roots.length > 0 ? roots : episode.skillSegments;
+	    return `<ol class="inbox-execution-timeline">
+	      ${rootSegments.map((segment, index) => renderSegment(segment, String(index + 1), 0)).join('')}
+	    </ol>`;
+	  };
+	  const inboxRenderEpisodeOverview = (session: ExperienceSessionSummary): string => {
+	    const episodes = session.sessionStory?.episodes ?? [];
+	    if (episodes.length === 0) return '<p class="inbox-skill-empty">没有可展示的上下游链路。</p>';
+	    return `<div class="inbox-execution-overview-body">
+	        <p class="inbox-execution-overview-note">用于看当前 session 里各 skill 片段的关系和用户反馈归因；指标卡仍只统计当前 skill 调用窗口。</p>
+	        ${episodes.map((episode, index) => `<details class="inbox-execution-episode"${index === 0 ? ' open' : ''}>
+	          <summary class="inbox-execution-episode-head">
+	            <strong>用户目标切片 ${episode.order}</strong>
+	            <span>${e(episode.primaryGoal ?? '未提取到明确用户目标')}</span>
+	          </summary>
+	          <div class="inbox-execution-episode-body">
+	            ${inboxRenderEpisodeSegmentTree(episode, session)}
+	            ${episode.orchestrationEdges.length > 0 ? `<div class="inbox-execution-links">${episode.orchestrationEdges.map((edge) => {
+	              const edgeKind = edge.edgeKind ?? (edge.executorSkillSegmentId ? 'internal_skill' : 'external_child_session');
+	              const edgeLabel = edgeKind === 'internal_skill' ? '技能链路' : '外部子会话';
+	              return `<span>${e(edgeLabel)}：${e(edge.childSessionId ?? '下游执行')} · ${e(edge.status === 'started' ? '已启动' : edge.status === 'completed' ? '已完成' : edge.status === 'failed' ? '失败' : '未知')}</span>`;
+	            }).join('')}</div>` : ''}
+	          </div>
+	        </details>`).join('')}
+	      </div>`;
+	  };
 	  const inboxRenderSkillRuntime = (skill: ExperienceSessionSummary): string => {
 	    const report = skill.reviewerReport;
 	    const metrics = report?.oneLookMetrics;
@@ -3892,7 +4927,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const evidenceJumpId = `inbox-sec-evidence-${e(skill.id)}`;
 	    const toolDetail = inboxBuildToolDetail(skill);
 	    const toolFailureDetail = inboxBuildToolFailureDetail(skill);
-	    const indicators = skill.indicators;
+	    const indicators = displayIndicatorsForSession(skill);
 	    const runtimeModel = [
 	      skill.sourceMetadata?.provider,
 	      skill.sourceMetadata?.model,
@@ -3913,15 +4948,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      anomaly: boolean;
 	    };
 	    const cards: MetricCard[] = !metrics ? [] : [
-	      { key: 'toolCall', label: '工具调用', value: metrics.toolCallCount, detail: toolDetail, note: '本次能力调用段内触发的工具调用总数及各类工具的命中分布。', anomaly: false },
-	      { key: 'toolFailure', label: '工具失败', value: metrics.toolFailureCount, detail: toolFailureDetail, note: '工具执行返回失败的次数。命中失败可在版块 ④ 看具体上下文。', anomaly: metrics.toolFailureCount > 0 },
-	      { key: 'userMessage', label: '用户消息', value: metrics.userMessageCount, detail: [], note: '本次能力调用段内的真实人工用户消息条数（已剔除 Skill 文档注入和运行时注入）。', anomaly: false },
-	      { key: 'userFollowUp', label: '追问', value: metrics.userFollowUpCount, detail: [], note: '能力交付后继续追问、补充的次数。次数偏多可能表示交付不够完整。', anomaly: indicators.userFollowUpCount > 0 },
+	      { key: 'toolCall', label: '工具调用', value: indicators.toolCallCount, detail: toolDetail, note: '本次能力调用段内触发的工具调用总数及各类工具的命中分布。', anomaly: false },
+	      { key: 'toolFailure', label: '工具失败', value: indicators.toolFailureCount, detail: toolFailureDetail, note: '工具执行返回失败的次数。命中失败可在版块 ④ 看具体上下文。', anomaly: indicators.toolFailureCount > 0 },
+	      { key: 'userMessage', label: '用户消息', value: indicators.userMessageCount, detail: [], note: '本次能力调用段内的真实人工用户消息条数（已剔除 Skill 文档注入和运行时注入）。', anomaly: false },
+	      { key: 'userFollowUp', label: '追问', value: indicators.userFollowUpCount, detail: [], note: '按当前 skill 的归因结果统计用户追问 / 补充；点击版块 ④ 可用同名标签定位原文。', anomaly: indicators.userFollowUpCount > 0 },
 	      { key: 'userCorrection', label: '纠正', value: indicators.userCorrectionCount, detail: [], note: '用户明确纠正、否决前一轮交付的次数。出现即建议进版块 ④ 看上下文。', anomaly: indicators.userCorrectionCount > 0 },
 	      { key: 'userInterruption', label: '人工中断', value: indicators.userInterruptionCount, detail: [], note: '用户在执行过程中主动中断的次数。可能意味着方向跑偏。', anomaly: indicators.userInterruptionCount > 0 },
 	      { key: 'negativeFeedback', label: '负向反馈', value: indicators.negativeFeedbackCount, detail: [], note: '用户出现明确负向情绪表达的次数。', anomaly: indicators.negativeFeedbackCount > 0 },
-	      { key: 'completionResult', label: '有结果', value: metrics.assistantDeliverySignalCount, detail: [], note: '回答中出现完成态或结果反馈的次数。它表示任务可能执行完成，不等于一定有可打开产物。', anomaly: false },
-	      { key: 'deliverableArtifact', label: '有产物', value: metrics.deliverableArtifactSignalCount ?? indicators.deliverableArtifactSignalCount ?? 0, detail: [], note: '回答中出现文档链接、Demo 地址、文件路径、代码块或上传产物的次数。', anomaly: false },
+	      { key: 'completionResult', label: '有结果', value: indicators.assistantDeliverySignalCount, detail: [], note: '回答中出现完成态或结果反馈的次数。它表示任务可能执行完成，不等于一定有可打开产物。', anomaly: false },
+	      { key: 'deliverableArtifact', label: '有产物', value: indicators.deliverableArtifactSignalCount ?? 0, detail: [], note: '回答中出现文档链接、Demo 地址、文件路径、代码块或上传产物的次数。', anomaly: false },
 	      { key: 'progress', label: '过程进展', value: metrics.assistantProgressUpdateCount ?? 0, detail: [], note: '回答中出现"正在 / 仍在 / 进度更新"等过程进展信号的次数。这类不算最终交付。', anomaly: false },
 	      { key: 'selfCorrection', label: '自我纠正', value: metrics.selfCorrectionCount ?? indicators.selfCorrectionCount ?? 0, detail: [], note: 'agent 在没有用户介入的情况下发现问题并主动修正执行策略。少量说明有恢复能力，高频说明流程不稳。', anomaly: (metrics.selfCorrectionCount ?? indicators.selfCorrectionCount ?? 0) > 0 },
 	      { key: 'repeatedExecution', label: '重复执行', value: metrics.repeatedExecutionCount ?? indicators.repeatedExecutionCount ?? 0, detail: [], note: '同类步骤、工具或流程被重复执行。高频出现时通常对应绕路或 workflow 不清晰。', anomaly: (metrics.repeatedExecutionCount ?? indicators.repeatedExecutionCount ?? 0) > 0 },
@@ -3929,14 +4964,15 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	      { key: 'tokenOutput', label: '输出 token', value: metrics.tokenUsage?.outputTokens ?? 0, detail: tokenDetail, note: '按本次能力调用段累计的 token 用量。', anomaly: false },
 	    ];
 	    const metricRow = cards.length === 0
-	      ? '<p class="inbox-skill-empty">这条能力调用没有运行指标。</p>'
-	      : `<div class="inbox-metric-grid-wrap"><div class="inbox-metric-hint">点击任意指标卡可查看分布详情，红色卡片是检测到的异常。</div><div class="inbox-metric-grid">${cards.map((card) => `<button type="button" class="inbox-metric-card ${card.anomaly ? 'is-anomaly' : ''}" title="点击查看 ${e(card.label)} 详情" data-metric-key="${e(card.key)}" data-metric-label="${e(card.label)}" data-metric-value="${card.value}" data-metric-detail="${inboxMetricCardJson(card.detail)}" data-metric-note="${e(card.note)}" data-metric-anomaly="${card.anomaly ? '1' : '0'}" data-metric-jump="${evidenceJumpId}" onclick="openInboxMetricPopover(this)"><span>${e(card.label)}</span><strong>${card.value}</strong><em class="inbox-metric-card-hint">点击看详情</em></button>`).join('')}</div></div>`;
-	    const runtimeSuggestions = inboxRenderSuggestionsBlock(skill, '流程规则执行细节下一步建议', ['工具', '规则', '流程', '失败', '硬性']);
+	      ? `<div id="inbox-sec-runtime-metrics-${e(skill.id)}"><p class="inbox-skill-empty">这条能力调用没有运行指标。</p></div>`
+	      : `<div id="inbox-sec-runtime-metrics-${e(skill.id)}" class="inbox-metric-grid-wrap"><div class="inbox-metric-hint">点击任意指标卡可查看分布详情，红色卡片是检测到的异常。</div><div class="inbox-metric-grid">${cards.map((card) => `<button type="button" class="inbox-metric-card ${card.anomaly ? 'is-anomaly' : ''}" title="点击查看 ${e(card.label)} 详情" data-metric-key="${e(card.key)}" data-metric-label="${e(card.label)}" data-metric-value="${card.value}" data-metric-detail="${inboxMetricCardJson(card.detail)}" data-metric-note="${e(card.note)}" data-metric-anomaly="${card.anomaly ? '1' : '0'}" data-metric-jump="${evidenceJumpId}" onclick="openInboxMetricPopover(this)"><span>${e(card.label)}</span><strong>${card.value}</strong><em class="inbox-metric-card-hint">点击看详情</em></button>`).join('')}</div></div>`;
 	    return `<article class="inbox-skill-block">
 	      <header class="inbox-skill-head"><div><h4>${e(skill.skillName)}</h4><span class="inbox-skill-subtitle">运行指标 + 规则 / 流程 · 模型：${e(runtimeModel)}</span></div></header>
 	      ${metricRow}
-	      <div class="inbox-skill-chain">${renderSkillChainTemplate(skill.skillName)}</div>
-	      ${runtimeSuggestions}
+	      <details class="inbox-execution-overview inbox-rule-flow-overview" id="inbox-sec-runtime-rules-${e(skill.id)}" open>
+	        <summary>流程规则命中</summary>
+	        ${renderRuntimeRuleFlow(skill.skillName)}
+	      </details>
 	      <input type="hidden" data-inbox-skill-chain-template-id="${e(templateId)}">
 	    </article>`;
 	  };
@@ -3949,7 +4985,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const evidenceClass = indicators.toolFailureCount > 0 ? 'is-attention' : 'is-neutral';
 	    return `<section class="inbox-section is-collapsed" data-inbox-section="evidence" id="inbox-sec-evidence-${safeId}">
 	      <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
-	        <h3>③ 原文回溯</h3>
+	        <h3>④ 原文回溯</h3>
 	        <span class="inbox-section-summary ${evidenceClass}">${e(summaryText)}</span>
 	        <span class="inbox-section-hint">展开看当前能力调用段的证据链、规则命中、时间线</span>
 	        <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">展开</button>
@@ -3994,10 +5030,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	    const evidenceSummaryText = `工具 ${indicators.toolCallCount} · 失败 ${indicators.toolFailureCount} · 用户消息 ${indicators.userMessageCount}`;
 	    const navItems = [
 	      { id: `inbox-sec-completion-${safeId}`, label: '① 这次跑得怎么样' },
-	      { id: `inbox-sec-runtime-${safeId}`, label: '② 流程规则执行细节' },
-	      { id: `inbox-sec-evidence-${safeId}`, label: '③ 原文回溯' },
+	      { id: `inbox-sec-log-chain-${safeId}`, label: '② 日志上下游链路' },
+	      { id: `inbox-sec-runtime-${safeId}`, label: '③ 流程规则执行细节' },
+	      { id: `inbox-sec-runtime-metrics-${safeId}`, label: '3.1 指标汇总', sub: true },
+	      { id: `inbox-sec-runtime-rules-${safeId}`, label: '3.2 流程规则命中', sub: true },
+	      { id: `inbox-sec-evidence-${safeId}`, label: '④ 原文回溯' },
 	    ];
-	    const navHtml = `<nav class="inbox-detail-nav" aria-label="跳到对应版块">${navItems.map((item) => `<a href="#${item.id}" data-inbox-nav onclick="scrollInboxSectionIntoView('${item.id}', event)">${item.label}</a>`).join('')}</nav>`;
+	    const navHtml = `<nav class="inbox-detail-nav" aria-label="跳到对应版块">${navItems.map((item) => `<a href="#${item.id}" class="${item.sub ? 'is-sub' : ''}" data-inbox-nav onclick="scrollInboxSectionIntoView('${item.id}', event)">${item.label}</a>`).join('')}</nav>`;
 	    return `<article class="inbox-session-pane ${isActive ? 'is-active' : ''}" data-session-pane="${safeId}" data-session-search="${e(inboxSessionSearchText(session))}">
 	      <div class="inbox-session-meta">
 	        <span>Session <code>${e(session.sessionId)}</code></span>
@@ -4013,16 +5052,26 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	          <h3>① 这次跑得怎么样</h3>
 	          <span class="inbox-section-summary ${completionSummaryClass}">${e(completionSummaryText)}</span>
 	          <span class="inbox-section-hint">${e(session.skillName)} 是否满足用户目标 / 是否符合 skill 用途 / 用户感受</span>
+	          ${inboxRenderSessionReviewControl(session)}
 	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">收起</button>
 	        </header>
 	        <div class="inbox-section-body">${inboxRenderSkillCompletion(session)}</div>
 	      </section>
-	      <section class="inbox-section is-collapsed" data-inbox-section="runtime" id="inbox-sec-runtime-${safeId}">
+	      <section class="inbox-section" data-inbox-section="log-chain" id="inbox-sec-log-chain-${safeId}">
 	        <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
-	          <h3>② 流程规则执行细节</h3>
+	          <h3>② 日志上下游链路</h3>
+	          <span class="inbox-section-summary is-neutral">${e((session.sessionStory?.episodes?.length ?? 0) > 0 ? `${session.sessionStory?.episodes?.length ?? 0} 个用户目标切片` : '暂无链路')}</span>
+	          <span class="inbox-section-hint">按日志还原用户目标切片、skill 片段和反馈归因</span>
+	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">收起</button>
+	        </header>
+	        <div class="inbox-section-body">${inboxRenderEpisodeOverview(session)}</div>
+	      </section>
+	      <section class="inbox-section" data-inbox-section="runtime" id="inbox-sec-runtime-${safeId}">
+	        <header class="inbox-section-head inbox-section-head-clickable" onclick="toggleInboxSectionHead(this)">
+	          <h3>③ 流程规则执行细节</h3>
 	          <span class="inbox-section-summary ${runtimeSummaryClass}">${e(runtimeSummaryText)}</span>
-	          <span class="inbox-section-hint">默认折叠；展开看运行指标和能力定义链路</span>
-	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">展开</button>
+	          <span class="inbox-section-hint">查看运行指标和能力定义链路</span>
+	          <button type="button" class="inbox-section-toggle" onclick="event.stopPropagation(); toggleInboxSection(this)" aria-label="收起或展开本版块">收起</button>
 	        </header>
 	        <div class="inbox-section-body">${inboxRenderSkillRuntime(session)}</div>
 	      </section>
@@ -4031,6 +5080,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	  };
 	  const inboxDetail = (card: InboxSkillCard, index: number): string => {
 	    const safeSkill = e(card.skillName);
+	    const inboxSessionTabBadges = (session: ExperienceSessionSummary): string => {
+	      const labels = inboxSessionAttentionFindingLabels(session);
+	      if (labels.length === 0) return '';
+	      return `<span class="inbox-session-tab-alerts" title="${e(labels.join(' / '))}">${labels.map((label) => `<span>${e(label)}</span>`).join('')}</span>`;
+	    };
 	    const sessionTabs = card.sessions.length > 0
 	      ? `<div class="inbox-session-tabs" role="tablist" aria-label="切换 ${e(card.skillName)} 的调用记录">${card.sessions.map((s, i) => {
 	          const label = inboxFormatSessionLabel(s);
@@ -4040,6 +5094,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
 	          return `<span class="inbox-session-tab-item" data-session-tab-item="${e(s.id)}" data-session-search="${e(inboxSessionSearchText(s))}">
 	            <button type="button" class="inbox-session-tab ${priorityCls} ${i === 0 ? 'is-active' : ''}" data-session-tab="${e(s.id)}" onclick="selectInboxSessionTab('${safeSkill}', '${e(s.id)}', this)" title="${e(s.sessionId)}">${e(label)}</button>
 	            <button type="button" class="inbox-session-flow-chip" onclick="openInboxSessionFlowPopover('${flowTemplateId}', this, event)" title="查看这条 session 的执行过程">查看过程</button>
+	            ${inboxSessionTabBadges(s)}
 	          </span>`;
 	        }).join('')}</div>`
 	      : '';
@@ -4523,6 +5578,22 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .runtime-step.runtime-passed { border-left: 3px solid var(--green); }
         .runtime-step.runtime-attention { border-left: 3px solid var(--red); }
         .runtime-step.runtime-manual_review { border-left: 3px solid var(--yellow); }
+        .runtime-step.is-depth-1,
+        .runtime-rule-node.is-depth-1 {
+          margin-left: 18px;
+        }
+        .runtime-step.is-depth-2,
+        .runtime-rule-node.is-depth-2 {
+          margin-left: 34px;
+        }
+        .runtime-step.is-depth-3,
+        .runtime-rule-node.is-depth-3 {
+          margin-left: 50px;
+        }
+        .runtime-step.is-depth-1 .runtime-step-index,
+        .runtime-rule-node.is-depth-1 .runtime-rule-node-head span {
+          opacity: .78;
+        }
         .runtime-step-head {
           display: flex;
           align-items: center;
@@ -4558,6 +5629,402 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .runtime-step-detail-body code { font-size: 11px; padding: 1px 4px; background: var(--bg-muted, rgba(58,58,58,.04)); border-radius: 3px; }
         .runtime-step-detail-body p { margin: 4px 0 0; }
         .runtime-step-detail-body ul { margin: 4px 0 0; padding-left: 18px; }
+        .runtime-rule-lite {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .runtime-rule-three-col {
+          display: grid;
+          grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) minmax(220px, 1fr);
+          gap: 10px;
+          align-items: stretch;
+        }
+        .runtime-rule-column {
+          min-width: 0;
+          height: 420px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          padding: 9px;
+          overflow: auto;
+        }
+        .runtime-rule-column h5 {
+          margin: 0 0 8px;
+          font-size: 12px;
+          color: var(--text-primary);
+        }
+        .runtime-rule-column h6 {
+          margin: 0 0 6px;
+          font-size: 11px;
+          color: var(--text-secondary);
+        }
+        .runtime-rule-column-hint {
+          margin: -2px 0 8px;
+          color: var(--text-muted);
+          font-size: 10px;
+          line-height: 1.4;
+        }
+        .runtime-rule-column-group + .runtime-rule-column-group {
+          margin-top: 12px;
+          padding-top: 10px;
+          border-top: 1px solid var(--border);
+        }
+        .runtime-rule-flow-block {
+          display: grid;
+          gap: 7px;
+        }
+        .runtime-rule-flow-block + .runtime-rule-flow-block {
+          margin-top: 10px;
+        }
+        .runtime-rule-flow-title {
+          display: grid;
+          gap: 2px;
+          color: var(--text-primary);
+          font-size: 11px;
+          font-weight: 650;
+        }
+        .runtime-rule-flow-title span {
+          color: var(--text-muted);
+          font-size: 10px;
+          font-weight: 500;
+        }
+        .runtime-rule-node-list {
+          list-style: none;
+          margin: 0;
+          padding: 0;
+          display: grid;
+          gap: 7px;
+        }
+        .runtime-rule-node {
+          position: relative;
+          display: grid;
+          gap: 4px;
+          padding: 7px 8px 7px 20px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-muted, rgba(58,58,58,.03));
+        }
+        .runtime-rule-node::before {
+          content: '';
+          position: absolute;
+          left: 8px;
+          top: 12px;
+          bottom: -9px;
+          width: 1px;
+          background: var(--border);
+        }
+        .runtime-rule-node::after {
+          content: '';
+          position: absolute;
+          left: 5px;
+          top: 12px;
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: var(--text-muted);
+        }
+        .runtime-rule-node.is-hit {
+          border-color: var(--accent);
+          background: var(--bg-surface);
+        }
+        .runtime-rule-node.is-hit::after {
+          background: var(--accent);
+        }
+        .runtime-rule-node.is-attention {
+          border-color: rgba(185, 28, 28, .35);
+          background: rgba(185, 28, 28, .04);
+        }
+        .runtime-rule-node.is-attention::after {
+          background: #b91c1c;
+        }
+        .runtime-rule-node-head {
+          display: grid;
+          grid-template-columns: auto minmax(0, 1fr) auto;
+          gap: 6px;
+          align-items: start;
+        }
+        .runtime-rule-node-head span,
+        .runtime-rule-node-head em {
+          color: var(--text-muted);
+          font-size: 10px;
+          font-style: normal;
+          white-space: nowrap;
+        }
+        .runtime-rule-node-head strong {
+          color: var(--text-primary);
+          font-size: 11px;
+          line-height: 1.35;
+          font-weight: 650;
+        }
+        .runtime-rule-node p {
+          margin: 0;
+          color: var(--text-muted);
+          font-size: 10px;
+          line-height: 1.4;
+        }
+        .runtime-rule-node-evidence {
+          color: var(--text-muted);
+          font-size: 10px;
+        }
+        .runtime-rule-node-evidence summary {
+          cursor: pointer;
+          color: var(--text-secondary);
+          font-size: 10px;
+        }
+        .runtime-rule-node-evidence ul {
+          margin: 4px 0 0;
+          padding-left: 16px;
+        }
+        .runtime-rule-source-hints {
+          display: grid;
+          gap: 3px;
+          color: var(--text-muted);
+          font-size: 10px;
+        }
+        .runtime-rule-source-hints span {
+          color: var(--text-secondary);
+          font-weight: 650;
+        }
+        .runtime-rule-source-hints ul,
+        .runtime-rule-node-model ul {
+          margin: 0;
+          padding-left: 15px;
+        }
+        .runtime-rule-match-spec {
+          color: var(--text-secondary) !important;
+        }
+        .runtime-rule-execution-list {
+          margin-top: 6px;
+        }
+        .runtime-rule-execution-item.is-hit {
+          border-left: 3px solid var(--green);
+        }
+        .runtime-rule-execution-item.is-attention {
+          border-left: 3px solid var(--red);
+        }
+        .runtime-rule-node-model {
+          margin-top: 6px;
+          padding: 6px 7px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .runtime-rule-node-model strong {
+          display: block;
+          color: var(--text-primary);
+          font-size: 10px;
+          margin-bottom: 3px;
+        }
+        .runtime-rule-node-model.is-muted {
+          color: var(--text-muted);
+        }
+        .runtime-rule-node-model-detail {
+          margin-top: 3px;
+          color: var(--text-muted);
+          font-size: 10px;
+        }
+        .runtime-rule-node-model-detail summary {
+          cursor: pointer;
+          color: var(--text-secondary);
+          list-style: none;
+        }
+        .runtime-rule-node-model-detail summary::-webkit-details-marker {
+          display: none;
+        }
+        .runtime-rule-node-model-detail div {
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+          margin-top: 3px;
+        }
+        .runtime-rule-node-model-detail[open] div {
+          display: block;
+          overflow: visible;
+        }
+        .runtime-rule-node-model-detail p {
+          margin: 0 0 3px;
+        }
+        .runtime-node-model-failed,
+        .runtime-node-model-degraded {
+          border-color: rgba(185, 28, 28, .25);
+          background: rgba(185, 28, 28, .04);
+        }
+        .runtime-node-model-passed {
+          border-color: rgba(37, 99, 235, .25);
+          background: rgba(37, 99, 235, .04);
+        }
+        .runtime-rule-source-path {
+          font-size: 11px;
+          color: var(--text-muted);
+          margin-bottom: 6px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .runtime-rule-source {
+          max-height: 360px;
+          overflow: auto;
+          margin: 0;
+          padding: 8px;
+          border: 1px solid var(--border);
+          border-radius: 5px;
+          background: var(--bg-muted, rgba(58,58,58,.04));
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+          white-space: pre-wrap;
+        }
+        .runtime-rule-breakdown-item {
+          position: relative;
+          border: 1px solid var(--border);
+          border-radius: 5px;
+          padding: 6px 7px 6px 20px;
+          background: var(--bg-muted, rgba(58,58,58,.03));
+        }
+        .runtime-rule-breakdown-item::before {
+          content: '';
+          position: absolute;
+          left: 8px;
+          top: 10px;
+          bottom: -8px;
+          width: 1px;
+          background: var(--border);
+        }
+        .runtime-rule-breakdown-item::after {
+          content: '';
+          position: absolute;
+          left: 5px;
+          top: 11px;
+          width: 7px;
+          height: 7px;
+          border-radius: 50%;
+          background: var(--text-muted);
+        }
+        .runtime-rule-breakdown-item.is-model::after {
+          background: var(--accent);
+        }
+        .runtime-rule-breakdown-item + .runtime-rule-breakdown-item {
+          margin-top: 6px;
+        }
+        .runtime-rule-breakdown-item strong {
+          display: block;
+          font-size: 11px;
+          margin-bottom: 3px;
+        }
+        .runtime-rule-breakdown-item p {
+          margin: 0 0 4px;
+          font-size: 10px;
+          color: var(--text-muted);
+        }
+        .runtime-rule-breakdown-item ol {
+          margin: 0;
+          padding: 0;
+          list-style: none;
+          display: flex;
+          flex-direction: column;
+          gap: 3px;
+        }
+        .runtime-rule-breakdown-item li {
+          display: flex;
+          gap: 5px;
+          font-size: 10px;
+          color: var(--text-secondary);
+          line-height: 1.35;
+        }
+        .runtime-rule-breakdown-item li span {
+          flex-shrink: 0;
+          width: 16px;
+          height: 16px;
+          border: 1px solid var(--border);
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 9px;
+          color: var(--text-muted);
+          background: var(--bg-surface);
+        }
+        .runtime-rule-breakdown-list {
+          margin: 0;
+          padding: 0;
+          list-style: none;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .runtime-rule-breakdown-list li {
+          border: 1px solid var(--border);
+          border-radius: 5px;
+          padding: 7px;
+          background: var(--bg-muted, rgba(58,58,58,.03));
+        }
+        .runtime-rule-breakdown-list strong,
+        .runtime-rule-breakdown-list span {
+          display: block;
+          font-size: 10px;
+          line-height: 1.35;
+        }
+        .runtime-rule-model-list {
+          display: grid;
+          gap: 6px;
+          margin-top: 6px;
+        }
+        .runtime-rule-model-list > em {
+          color: var(--text-muted);
+          font-style: normal;
+          font-size: 10px;
+        }
+        .runtime-rule-breakdown-list span {
+          margin-top: 3px;
+          color: var(--text-muted);
+        }
+        @media (max-width: 1100px) {
+          .runtime-rule-three-col {
+            grid-template-columns: 1fr;
+          }
+        }
+        .runtime-rule-lite-notice {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          font-size: 12px;
+          color: var(--text-secondary);
+        }
+        .runtime-rule-lite-notice span {
+          border: 1px solid var(--border);
+          border-radius: 5px;
+          background: var(--bg-muted, rgba(58,58,58,.04));
+          padding: 4px 7px;
+        }
+        .runtime-rule-lite-section h5 {
+          margin: 0 0 6px;
+          font-size: 12px;
+          font-weight: 650;
+          color: var(--text-primary);
+        }
+        .inbox-rule-flow-overview .runtime-step {
+          border-left: 1px solid var(--border);
+          box-shadow: none;
+        }
+        .inbox-rule-flow-overview .runtime-step.runtime-passed,
+        .inbox-rule-flow-overview .runtime-step.runtime-attention,
+        .inbox-rule-flow-overview .runtime-step.runtime-manual_review {
+          border-left-color: var(--border);
+        }
+        .inbox-rule-flow-overview .runtime-step-state {
+          width: 18px;
+          height: 18px;
+          border: 1px solid var(--border);
+          border-radius: 50%;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 11px;
+          color: var(--text-secondary);
+          background: var(--bg-surface);
+        }
         .inbox-detail-header {
           padding: 12px 14px;
           border: 1px solid var(--border);
@@ -4604,6 +6071,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           display: inline-flex;
           align-items: stretch;
           max-width: 360px;
+          position: relative;
+          padding-top: 8px;
         }
         .inbox-session-tab {
           flex: 1 1 auto;
@@ -4645,6 +6114,32 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-session-tab.is-priority-high:not(.is-active) { border-left: 3px solid var(--red); }
         .inbox-session-tab.is-priority-medium:not(.is-active) { border-left: 3px solid var(--yellow); }
         .inbox-session-tab.is-priority-low:not(.is-active) { border-left: 3px solid var(--green); }
+        .inbox-session-tab-alerts {
+          position: absolute;
+          top: 0;
+          right: 4px;
+          display: inline-flex;
+          gap: 4px;
+          max-width: calc(100% - 12px);
+          pointer-events: none;
+          z-index: 2;
+        }
+        .inbox-session-tab-alerts span {
+          display: inline-block;
+          max-width: 92px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          padding: 1px 5px;
+          border: 1px solid var(--red);
+          border-radius: 999px;
+          background: var(--red-bg);
+          color: var(--red);
+          font-size: 9px;
+          line-height: 1.25;
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          box-shadow: var(--shadow-sm, 0 1px 3px rgba(58,58,58,.08));
+        }
         .inbox-session-panes { width: 100%; }
         .inbox-session-pane { display: none; width: 100%; box-sizing: border-box; }
         .inbox-session-pane.is-active { display: block; }
@@ -4680,6 +6175,61 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-section-summary.is-ok { background: var(--green-bg); border-color: var(--green); color: var(--green); }
         .inbox-section-summary.is-neutral { background: var(--info-bg, rgba(90,122,147,.08)); border-color: var(--accent); color: var(--accent); }
         .inbox-section-hint { font-size: 11px; color: var(--text-muted); flex: 1 1 auto; min-width: 0; }
+        .inbox-section-review {
+          position: relative;
+          margin-left: auto;
+          flex: 0 0 auto;
+        }
+        .inbox-section-review + .inbox-section-toggle { margin-left: 0; }
+        .inbox-section-review-button {
+          list-style: none;
+          cursor: pointer;
+          padding: 4px 10px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-size: 12px;
+          line-height: 1.2;
+        }
+        .inbox-section-review-button::-webkit-details-marker { display: none; }
+        .inbox-section-review[open] .inbox-section-review-button,
+        .inbox-section-review-button:hover {
+          border-color: var(--accent);
+          color: var(--accent);
+          background: var(--info-bg, rgba(90,122,147,.08));
+        }
+        .inbox-section-review-panel {
+          position: absolute;
+          top: calc(100% + 6px);
+          right: 0;
+          z-index: 35;
+          width: min(420px, calc(100vw - 32px));
+          max-height: min(70vh, 620px);
+          overflow-y: auto;
+          padding: 10px 12px;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-surface);
+          box-shadow: var(--shadow-lg, 0 12px 30px rgba(0,0,0,.16));
+        }
+        .inbox-manual-review-groups {
+          margin-top: 10px;
+          padding-top: 10px;
+          border-top: 1px solid var(--border);
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .inbox-manual-review-group {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .inbox-manual-review-group > strong {
+          font-size: 12px;
+          color: var(--text-primary);
+        }
         .inbox-section-toggle {
           margin-left: auto;
           font-size: 11px;
@@ -4726,6 +6276,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           -webkit-backdrop-filter: blur(6px);
           line-height: 1.4;
           font-weight: 500;
+        }
+        .inbox-detail-nav a.is-sub {
+          margin-left: 10px;
+          padding-top: 4px;
+          padding-bottom: 4px;
+          color: var(--text-muted);
+          font-size: 10px;
         }
         .inbox-detail-nav a:hover {
           background: var(--info-bg, rgba(90,122,147,.12));
@@ -4839,9 +6396,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           word-break: break-word;
         }
         .inbox-flow-slices,
-        .inbox-flow-dispatches { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+        .inbox-flow-dispatches,
+        .inbox-flow-episodes { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
         .inbox-flow-slices h4,
-        .inbox-flow-dispatches h4 { font-size: 12px; margin: 0 0 6px; color: var(--text-secondary); }
+        .inbox-flow-dispatches h4,
+        .inbox-flow-episodes h4 { font-size: 12px; margin: 0 0 6px; color: var(--text-secondary); }
         .inbox-flow-slice,
         .inbox-flow-dispatch {
           padding: 6px 8px;
@@ -4856,6 +6415,294 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-flow-slice span,
         .inbox-flow-dispatch span { font-size: 11px; color: var(--text-muted); }
         .inbox-flow-slice p { margin: 4px 0 0; color: var(--text-secondary); line-height: 1.5; font-size: 12px; }
+        .inbox-flow-episode {
+          display: grid;
+          gap: 8px;
+          margin-bottom: 8px;
+          padding: 8px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg);
+        }
+        .inbox-flow-episode-head {
+          display: grid;
+          grid-template-columns: 64px minmax(0,1fr);
+          gap: 8px;
+          align-items: baseline;
+        }
+        .inbox-flow-episode-head strong { font-size: 12px; color: var(--text-primary); }
+        .inbox-flow-episode-head span {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: var(--text-secondary);
+          font-size: 12px;
+        }
+        .inbox-flow-episode-track {
+          display: flex;
+          gap: 6px;
+          overflow-x: auto;
+          padding-bottom: 2px;
+        }
+        .inbox-flow-episode-segment {
+          flex: 0 0 145px;
+          display: grid;
+          gap: 2px;
+          padding: 7px 8px;
+          border: 1px solid var(--border);
+          border-top: 3px solid var(--text-muted);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .inbox-flow-episode-segment.is-current {
+          border-top-color: var(--accent);
+          background: var(--info-bg);
+        }
+        .inbox-flow-episode-segment em {
+          font-style: normal;
+          color: var(--text-muted);
+          font-size: 10px;
+        }
+        .inbox-flow-episode-segment strong {
+          color: var(--text-primary);
+          font-size: 12px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+        .inbox-flow-episode-segment span,
+        .inbox-flow-episode-feedback span,
+        .inbox-flow-episode-feedback em {
+          color: var(--text-muted);
+          font-size: 11px;
+          font-style: normal;
+        }
+        .inbox-flow-episode-feedback {
+          display: grid;
+          gap: 5px;
+        }
+        .inbox-flow-episode-feedback div {
+          display: grid;
+          grid-template-columns: 54px minmax(0,1fr);
+          gap: 6px;
+          align-items: start;
+          padding: 5px 6px;
+          border: 1px dashed var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .inbox-flow-episode-feedback strong {
+          color: var(--text-secondary);
+          font-size: 12px;
+          line-height: 1.45;
+        }
+        .inbox-flow-episode-feedback em {
+          grid-column: 2;
+        }
+        .inbox-execution-overview {
+          margin: 10px 0;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: var(--bg-surface);
+        }
+        .inbox-execution-overview > summary {
+          cursor: pointer;
+          padding: 8px 10px;
+          color: var(--text-primary);
+          font-size: 12px;
+          font-weight: 700;
+        }
+        .inbox-execution-overview[open] > summary { border-bottom: 1px solid var(--border); }
+        .inbox-execution-overview-body {
+          display: grid;
+          gap: 8px;
+          padding: 8px;
+        }
+        .inbox-execution-overview-note {
+          margin: 0;
+          color: var(--text-muted);
+          font-size: 10px;
+          line-height: 1.45;
+        }
+        .inbox-execution-episode {
+          display: grid;
+          gap: 8px;
+          min-width: 0;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg);
+          padding: 0;
+        }
+        .inbox-execution-episode-head {
+          display: grid;
+          grid-template-columns: 104px minmax(0,1fr) auto;
+          gap: 8px;
+          align-items: baseline;
+          padding: 7px 8px;
+          cursor: pointer;
+          list-style: none;
+        }
+        .inbox-execution-episode-head::-webkit-details-marker { display: none; }
+        .inbox-execution-episode-head::after {
+          content: "展开";
+          justify-self: end;
+          color: var(--text-muted);
+          font-size: 10px;
+        }
+        .inbox-execution-episode[open] > .inbox-execution-episode-head {
+          border-bottom: 1px solid var(--border);
+        }
+        .inbox-execution-episode[open] > .inbox-execution-episode-head::after { content: "收起"; }
+        .inbox-execution-episode-head strong {
+          color: var(--text-primary);
+          font-size: 11px;
+        }
+        .inbox-execution-episode-head span {
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: var(--text-secondary);
+          font-size: 11px;
+        }
+        .inbox-execution-episode-body {
+          display: grid;
+          gap: 8px;
+          padding: 8px;
+        }
+        .inbox-execution-timeline {
+          position: relative;
+          display: grid;
+          gap: 8px;
+          margin: 0;
+          padding: 0 0 0 16px;
+          list-style: none;
+        }
+        .inbox-execution-skill-children {
+          position: relative;
+          display: grid;
+          gap: 6px;
+          margin: 6px 0 0 24px;
+          padding: 0 0 0 16px;
+          list-style: none;
+        }
+        .inbox-execution-timeline::before,
+        .inbox-execution-skill-children::before {
+          content: "";
+          position: absolute;
+          left: 6px;
+          top: 9px;
+          bottom: 9px;
+          width: 1px;
+          background: var(--border);
+        }
+        .inbox-execution-node {
+          position: relative;
+          display: grid;
+          gap: 5px;
+          min-width: 0;
+        }
+        .inbox-execution-node::before {
+          content: "";
+          position: absolute;
+          left: -13px;
+          top: 8px;
+          width: 7px;
+          height: 7px;
+          border-radius: 999px;
+          background: var(--text-muted);
+          box-shadow: 0 0 0 3px var(--bg-surface);
+        }
+        .inbox-execution-node.is-current::before { background: var(--accent); }
+        .inbox-execution-node.is-child::before {
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+        }
+        .inbox-execution-node-main {
+          display: grid;
+          grid-template-columns: 28px minmax(0,1fr);
+          gap: 6px;
+          align-items: start;
+          padding: 5px 7px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg);
+        }
+        .inbox-execution-node.is-current .inbox-execution-node-main {
+          border-color: var(--accent);
+          background: var(--info-bg, rgba(90,122,147,.08));
+        }
+        .inbox-execution-node-index {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 16px;
+          width: auto;
+          height: 16px;
+          padding: 0 4px;
+          border-radius: 999px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          color: var(--text-muted);
+          font-size: 10px;
+        }
+        .inbox-execution-node-main em,
+        .inbox-execution-links span,
+        .inbox-execution-feedback-item span,
+        .inbox-execution-feedback-item em {
+          color: var(--text-muted);
+          font-size: 10px;
+          font-style: normal;
+        }
+        .inbox-execution-node-main strong {
+          display: block;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: var(--text-primary);
+          font-size: 11px;
+        }
+        .inbox-execution-node-main em {
+          display: block;
+          margin-top: 1px;
+        }
+        .inbox-execution-links {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .inbox-execution-links span {
+          padding: 2px 6px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--bg);
+        }
+        .inbox-execution-node-children {
+          display: grid;
+          gap: 4px;
+          margin-left: 24px;
+        }
+        .inbox-execution-feedback-item {
+          display: grid;
+          grid-template-columns: 54px minmax(0,1fr);
+          gap: 6px;
+          padding: 4px 6px;
+          border: 1px dashed var(--border);
+          border-radius: 6px;
+          background: var(--bg);
+        }
+        .inbox-execution-feedback-item p {
+          margin: 0;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .inbox-execution-feedback-item em { grid-column: 2; }
+        .inbox-rule-flow-overview .inbox-skill-chain {
+          margin: 0;
+          padding: 10px;
+        }
         .inbox-skill-block {
           border: 1px solid var(--border);
           border-radius: 6px;
@@ -4867,6 +6714,20 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-skill-block:last-child { margin-bottom: 0; }
         .inbox-skill-head { display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
         .inbox-skill-head h4 { font-size: 13px; margin: 0; color: var(--text-primary); }
+        .inbox-skill-title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+        .inbox-skill-type {
+          display: inline-flex;
+          align-items: center;
+          min-height: 20px;
+          padding: 1px 7px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          background: var(--bg-surface);
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.4;
+          font-weight: 650;
+        }
         .inbox-skill-subtitle { font-size: 12px; color: var(--text-secondary); }
         .inbox-skill-summary { margin: 4px 0 0; font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
         .inbox-skill-empty { color: var(--text-muted); font-size: 12px; margin: 4px 0; }
@@ -4900,6 +6761,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-data-health.is-unknown { border-color: var(--yellow); background: var(--yellow-bg); color: var(--yellow); }
         .inbox-data-health.is-degraded { border-color: var(--red); background: var(--red-bg); color: var(--red); }
         .inbox-review-layer { margin-top: 10px; }
+        .inbox-type-summary { margin: 0 0 6px; color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
         .inbox-review-layer-title {
           font-size: 11px;
           font-weight: 700;
@@ -4982,6 +6844,24 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           gap: 5px;
           margin-top: 6px;
         }
+        .inbox-answer-checklist.is-grouped {
+          display: grid;
+          gap: 7px;
+        }
+        .inbox-answer-check-group {
+          display: grid;
+          gap: 4px;
+        }
+        .inbox-answer-check-group > strong {
+          color: var(--text-muted);
+          font-size: 11px;
+          font-weight: 650;
+        }
+        .inbox-answer-check-group > div {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 5px;
+        }
         .inbox-answer-check {
           display: inline-flex;
           align-items: center;
@@ -4994,6 +6874,13 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           color: var(--text-secondary);
           font-size: 11px;
           line-height: 1.45;
+        }
+        .inbox-answer-check em {
+          color: var(--text-muted);
+          font-style: normal;
+          font-size: 10px;
+          border-left: 1px solid var(--border);
+          padding-left: 5px;
         }
         .inbox-answer-check.is-detected {
           border-color: var(--accent);
@@ -5011,32 +6898,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .inbox-answer-check.is-absent .inbox-answer-check-icon {
           color: var(--text-muted);
         }
-        .inbox-answer-check.is-missing {
-          border-color: var(--yellow);
-          background: var(--yellow-bg);
-          color: var(--text-primary);
-        }
-        .inbox-answer-check.is-missing .inbox-answer-check-icon {
-          color: var(--yellow);
-        }
-        .inbox-answer-check.is-blocking {
-          border-color: var(--red);
-          background: var(--red-bg);
-          color: var(--text-primary);
-          font-weight: 600;
-        }
-        .inbox-answer-check.is-blocking .inbox-answer-check-icon {
-          color: var(--red);
-        }
-        .inbox-answer-check.is-degraded {
-          border-color: var(--red);
-          background: var(--red-bg);
-          color: var(--red);
-          font-weight: 650;
-        }
-        .inbox-answer-check.is-degraded .inbox-answer-check-icon {
-          color: var(--red);
-        }
         .inbox-answer-check-icon {
           flex: 0 0 auto;
           font-size: 9px;
@@ -5049,6 +6910,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           display: flex;
           flex-direction: column;
           gap: 6px;
+        }
+        .manual-correction-panel.is-in-review-popover {
+          margin-top: 0;
+          padding-top: 0;
+          border-top: 0;
         }
         .manual-correction-title {
           font-size: 11px;
@@ -6683,7 +8549,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         }
         .session-story-skill-lanes,
         .session-story-slices,
-        .session-story-dispatches {
+        .session-story-dispatches,
+        .session-story-episodes {
           display: grid;
           grid-template-columns: repeat(auto-fit,minmax(160px,1fr));
           gap: 6px;
@@ -6725,6 +8592,96 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           white-space: nowrap;
           color: var(--text-secondary);
           font-size: 11px;
+        }
+        .session-story-episodes {
+          grid-template-columns: 1fr;
+          margin-bottom: 12px;
+        }
+        .session-story-episode {
+          display: grid;
+          gap: 8px;
+          padding: 9px;
+          border: 1px solid var(--border);
+          border-radius: 7px;
+          background: var(--bg);
+        }
+        .session-story-episode-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          align-items: flex-start;
+        }
+        .session-story-episode-head strong {
+          color: var(--text-primary);
+          font-size: 12px;
+        }
+        .session-story-episode-head p,
+        .session-story-episode-acceptance {
+          margin: 3px 0 0;
+          color: var(--text-secondary);
+          font-size: 11px;
+          line-height: 1.45;
+        }
+        .session-story-episode-badges {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 4px;
+          justify-content: flex-end;
+        }
+        .session-story-episode-badges span {
+          padding: 2px 6px;
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          color: var(--text-muted);
+          font-size: 10px;
+          white-space: nowrap;
+        }
+        .session-story-episode-skills,
+        .session-story-episode-edges,
+        .session-story-episode-feedback,
+        .session-story-episode-artifacts {
+          display: grid;
+          grid-template-columns: repeat(auto-fit,minmax(180px,1fr));
+          gap: 6px;
+        }
+        .session-story-episode-skill,
+        .session-story-episode-edges div,
+        .session-story-episode-feedback div,
+        .session-story-episode-artifacts div {
+          min-width: 0;
+          padding: 7px 8px;
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          background: var(--bg-surface);
+        }
+        .session-story-episode-skill span,
+        .session-story-episode-edges span,
+        .session-story-episode-feedback span,
+        .session-story-episode-artifacts span {
+          display: inline-block;
+          color: var(--text-muted);
+          font-size: 10px;
+          margin-right: 5px;
+        }
+        .session-story-episode-skill strong,
+        .session-story-episode-edges strong,
+        .session-story-episode-feedback strong,
+        .session-story-episode-artifacts strong {
+          display: block;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: var(--text-primary);
+          font-size: 12px;
+        }
+        .session-story-episode-skill em,
+        .session-story-episode-edges em,
+        .session-story-episode-feedback em {
+          display: block;
+          margin-top: 3px;
+          color: var(--text-muted);
+          font-style: normal;
+          font-size: 10px;
         }
         .session-story-graph-edges {
           margin-top: 8px;
@@ -7235,6 +9192,29 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
         .timeline-row.is-filter-match .timeline-card {
           border-color: rgba(37,99,235,.55);
           box-shadow: 0 0 0 1px rgba(37,99,235,.18);
+        }
+        .timeline-row.is-real-user-reply .timeline-card {
+          width: min(680px, 78%);
+          border-color: rgba(37,99,235,.30);
+          background: rgba(37,99,235,.045);
+          box-shadow: 0 1px 0 rgba(37,99,235,.06);
+        }
+        .timeline-row.is-real-user-reply .timeline-card-header {
+          padding: 7px 9px;
+          background: rgba(37,99,235,.08);
+          border-bottom-color: rgba(37,99,235,.16);
+        }
+        .timeline-row.is-real-user-reply .timeline-title {
+          color: var(--accent);
+        }
+        .timeline-row.is-real-user-reply .timeline-snippet {
+          background: rgba(255,255,255,.58);
+          font-family: var(--font-sans, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+          font-size: 12px;
+          line-height: 1.55;
+        }
+        .timeline-row.is-runtime-event .timeline-card {
+          width: 100%;
         }
         .timeline-row[data-current-skill-window="0"] {
           opacity: .55;
@@ -8657,11 +10637,14 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           var sec = findInboxSectionById(id);
           if (!sec) return;
           if (sec.tagName === 'DETAILS' && !sec.open) sec.open = true;
-          if (sec.classList.contains('is-collapsed')) {
-            sec.classList.remove('is-collapsed');
-            var toggle = sec.querySelector('.inbox-section-toggle');
+          var parentSection = sec.classList && sec.classList.contains('inbox-section') ? sec : (sec.closest ? sec.closest('.inbox-section') : null);
+          if (parentSection && parentSection.classList.contains('is-collapsed')) {
+            parentSection.classList.remove('is-collapsed');
+            var toggle = parentSection.querySelector('.inbox-section-toggle');
             if (toggle) toggle.textContent = '收起';
           }
+          var parentDetails = sec.closest ? sec.closest('details') : null;
+          if (parentDetails && !parentDetails.open) parentDetails.open = true;
           var right = sec.closest ? sec.closest('.inbox-right') : document.querySelector('.inbox-right');
           var canScrollRight = right && right.scrollHeight > right.clientHeight + 8 && window.getComputedStyle(right).overflowY !== 'visible';
           if (canScrollRight) {
@@ -8929,6 +10912,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
                 if (buttons[i].getAttribute('data-inbox-verdict') === verdict) buttons[i].classList.add('is-active');
                 else buttons[i].classList.remove('is-active');
               }
+              var summary = actionBlock.querySelector('.inbox-section-review-button');
+              if (summary) summary.textContent = '人工标注(1)';
             }
             var currentPane = actionBlock && actionBlock.closest ? actionBlock.closest('[data-inbox-detail]') : null;
             var cardId = currentPane ? currentPane.getAttribute('data-inbox-detail') : sessionId;

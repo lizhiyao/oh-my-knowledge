@@ -135,7 +135,8 @@ function hasLlmEnhancedRuntimeEvidence(evidence: SkillLlmEnhancedRuntimeEvidence
     || evidence.assistantMessages.length > 0
     || evidence.artifactCandidates.length > 0
     || evidence.toolCalls.length > 0
-    || evidence.findings.length > 0;
+    || evidence.findings.length > 0
+    || Boolean(evidence.skillRuntimeEvidencePack?.nodeEvidence.length);
 }
 
 function cleanEvidenceText(value?: string): string {
@@ -188,6 +189,7 @@ function buildLlmEnhancedRuntimeEvidence(
     artifactCandidates,
     toolCalls,
     findings,
+    skillRuntimeEvidencePack: view.skillChains[skillName]?.runtime.evidencePack,
   };
 }
 

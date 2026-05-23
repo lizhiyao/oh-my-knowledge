@@ -1,7 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import type { ObservationInboxItem, ObservationSourceKind } from './inbox.js';
 import {
   buildExperienceProblemPatterns,
@@ -15,6 +13,7 @@ import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-at
 import { hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isAssistantProtocolReplyText, isRuntimeProtocolPromptText, isSyntheticUserMessageText, isToolResultFailureText, isUserInteractionMetricText } from './text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 import { parseSkillFrontmatter, validateSkillHardRules, validateSkillWorkflows } from '../shared/hard-rules.js';
+import { findSkillMdPath } from './skill-chain.js';
 
 export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
 export type ExperienceGoalSliceReasonCode = 'skill_segment_boundary' | 'explicit_user_goal_shift' | 'default_session_slice';
@@ -69,6 +68,17 @@ export type ExperienceSessionStoryNodeKind =
   | 'goal_shift';
 export type ExperienceSessionStoryAnswerKey = 'goal_satisfaction' | 'declared_behavior_fit' | 'user_feeling';
 export type ExperienceSessionStorySkillRole = 'router' | 'executor' | 'mixed' | 'unknown';
+export type ExperienceEpisodeBoundaryReason = 'goal_shift' | 'checkpoint_or_subagent' | 'downstream_closed' | 'session_end';
+export type ExperienceEpisodeRole = 'main_executor' | 'router' | 'delegator' | 'supporting' | 'observer';
+export type ExperienceFeedbackSignalType = 'correction' | 'follow_up' | 'frustration' | 'interruption' | 'positive' | 'unknown';
+export type ExperienceFeedbackAttributionRole = 'primary_fault' | 'downstream_related' | 'context_only';
+export type ExperienceFeedbackAttributionReason = 'object_match' | 'promise_match' | 'action_match' | 'orchestration_edge' | 'episode_context';
+export type ExperienceOutcomeClosure = 'closed' | 'unresolved' | 'abandoned' | 'unknown';
+export type ExperienceRuntimeSkillType = 'router' | 'delegation' | 'executor' | 'advisory' | 'workflow_owner' | 'unknown';
+export type ExperienceRuntimeSkillTypeSource = 'frontmatter' | 'trace' | 'unknown';
+export type ExperienceEpisodeArtifactKind = 'path' | 'url' | 'document' | 'code' | 'execution_window' | 'unknown';
+export type ExperienceOrchestrationEdgeStatus = 'started' | 'completed' | 'failed' | 'unknown';
+export type ExperienceOrchestrationEdgeKind = 'internal_skill' | 'external_child_session';
 export type ExperienceRuleFindingCode =
   | 'high_observation_seen'
   | 'medium_observation_seen'
@@ -94,6 +104,8 @@ export interface ExperienceEvidenceRef {
   traceRole?: 'standalone' | 'main' | 'subagent';
   traceLabel?: string;
   messageIndex?: number;
+  logicalMessageIndex?: number;
+  sourceLineIndex?: number;
   messageUuid?: string;
   toolUseId?: string;
   timestamp?: string;
@@ -267,6 +279,119 @@ export interface ExperienceSessionStorySkillLink {
   evidenceRefs: ExperienceEvidenceRef[];
 }
 
+export interface ExperienceGoalEvidenceRef {
+  kind: 'user_message' | 'goal_slice' | 'llm_goal';
+  goalSliceId?: string;
+  evidenceRef?: ExperienceEvidenceRef;
+  label?: string;
+}
+
+type ExperienceMessageRange = {
+  startMessageIndex: number;
+  endMessageIndex: number;
+  sourceTrace?: string;
+  sessionId?: string;
+};
+
+export interface ExperienceSkillSegment {
+  id: string;
+  order: number;
+  skillName: string;
+  skillType: ExperienceRuntimeSkillType;
+  skillTypeSource?: ExperienceRuntimeSkillTypeSource;
+  declaredSkillType?: ExperienceRuntimeSkillType;
+  traceInferredSkillType?: ExperienceRuntimeSkillType;
+  episodeRole: ExperienceEpisodeRole;
+  skillInvocationIds: string[];
+  startMessageIndex?: number;
+  endMessageIndex?: number;
+  messageRanges?: ExperienceMessageRange[];
+  startTimestamp: string;
+  endTimestamp: string;
+  typeSpecificChecklist: ExperienceChecklistItem[];
+  runtimeAssessment?: {
+    goalSatisfaction?: string;
+    declaredBehaviorFit?: string;
+    artifactGoalMatch?: string;
+    userFeeling?: string;
+  };
+  evidenceRefs: ExperienceEvidenceRef[];
+}
+
+interface ExperienceEpisodeRange {
+  startMessageIndex: number;
+  endMessageIndex: number;
+  sourceTrace?: string;
+  sessionId?: string;
+  boundaryReason?: ExperienceEpisodeBoundaryReason;
+}
+
+export interface ExperienceOrchestrationEdge {
+  id: string;
+  episodeId: string;
+  edgeKind: ExperienceOrchestrationEdgeKind;
+  parentSkillSegmentId?: string;
+  executorSkillSegmentId?: string;
+  childSessionId?: string;
+  runnerStartedRef?: ExperienceEvidenceRef;
+  runnerCompletedRef?: ExperienceEvidenceRef;
+  notificationRef?: ExperienceEvidenceRef;
+  status: ExperienceOrchestrationEdgeStatus;
+  evidenceRefs: ExperienceEvidenceRef[];
+}
+
+export interface ExperienceFeedbackAttribution {
+  skillName?: string;
+  skillSegmentId?: string;
+  attributionRole: ExperienceFeedbackAttributionRole;
+  reasonCode: ExperienceFeedbackAttributionReason;
+  evidenceRefs: ExperienceEvidenceRef[];
+}
+
+export interface ExperienceFeedbackSignal {
+  id: string;
+  order: number;
+  type: ExperienceFeedbackSignalType;
+  text: string;
+  targetObject?: string;
+  sourceWindow: 'session' | 'episode' | 'skill_invocation' | 'downstream_child';
+  evidenceRef: ExperienceEvidenceRef;
+  canonicalAttributions?: ExperienceFeedbackAttribution[];
+  attributions: ExperienceFeedbackAttribution[];
+}
+
+export interface ExperienceEpisodeArtifact {
+  kind: ExperienceEpisodeArtifactKind;
+  label: string;
+  pathOrUrl?: string;
+  artifactGoalMatch: 'passed' | 'failed' | 'unknown';
+  evidenceRef: ExperienceEvidenceRef;
+}
+
+export interface ExperienceEpisodeOutcome {
+  closure: ExperienceOutcomeClosure;
+  artifacts: ExperienceEpisodeArtifact[];
+  verdict: ExperienceReviewPriority;
+  acceptanceCriteria?: string;
+}
+
+export interface ExperienceEpisode {
+  id: string;
+  order: number;
+  sessionId: string;
+  primaryGoal?: string;
+  goalEvidenceRefs: ExperienceGoalEvidenceRef[];
+  startTimestamp: string;
+  endTimestamp: string;
+  startRef?: ExperienceEvidenceRef;
+  endRef?: ExperienceEvidenceRef;
+  boundaryReason: ExperienceEpisodeBoundaryReason;
+  skillSegments: ExperienceSkillSegment[];
+  orchestrationEdges: ExperienceOrchestrationEdge[];
+  feedbackSignals: ExperienceFeedbackSignal[];
+  outcome: ExperienceEpisodeOutcome;
+}
+
 export interface ExperienceSessionStoryGraphNode {
   id: string;
   label: string;
@@ -294,6 +419,7 @@ export interface ExperienceSessionStory {
   goalSlices: ExperienceSessionStoryGoalSlice[];
   subagentDispatches: ExperienceSessionStorySubagentDispatch[];
   skillLinks: ExperienceSessionStorySkillLink[];
+  episodes?: ExperienceEpisode[];
   graph: {
     nodes: ExperienceSessionStoryGraphNode[];
     edges: ExperienceSessionStoryGraphEdge[];
@@ -321,6 +447,8 @@ export interface ExperienceReviewerReport {
     userFollowUpCount: number;
     assistantDeliverySignalCount: number;
     deliverableArtifactSignalCount: number;
+    routerDownstreamCompleted: number;
+    routerDownstreamFailed: number;
     assistantProgressUpdateCount: number;
     selfCorrectionCount: number;
     repeatedExecutionCount: number;
@@ -365,6 +493,8 @@ export interface ExperienceReviewIndicators {
   hardRuleTextHitCount: number;
   assistantDeliverySignalCount: number;
   deliverableArtifactSignalCount: number;
+  routerDownstreamCompleted: number;
+  routerDownstreamFailed: number;
   selfCorrectionCount: number;
   repeatedExecutionCount: number;
   toolCallCount: number;
@@ -545,19 +675,22 @@ const USER_GOAL_SHIFT_TERMS = [
   '另外一个问题',
   '先看别的',
   '先处理别的',
+  '新开一个',
+  '新启动一个',
+  '另开一个',
+  '再开一个',
+  '参考apply-cc的能力新开',
+  '拉下最新',
+  '拉取最新',
+  '切到最新',
 ];
 const NEGATIVE_FEEDBACK_TERMS = [
   '没有用',
   '没用',
-  '不行',
   '太慢',
-  '看不懂',
-  '不需要',
   '别再',
   '怎么又',
   '赶紧',
-  '有问题',
-  '不符合',
   '做错了',
   '做错',
   '完全错',
@@ -583,6 +716,18 @@ const NEGATIVE_FEEDBACK_TERMS = [
   '菜啊',
 ];
 const BOUNDED_NEGATIVE_FEEDBACK_TERMS = ['失败', '垃圾', '菜'];
+// 高歧义负向词:前面紧跟描述对象的名词(代码 / 这段 / 这里 等)时是在描述对象有问题, 不算用户对 skill 的负向反馈。
+// 命中后用 BENIGN_NEGATIVE_FEEDBACK_PREFIXES 做"先做不算"的紧邻前缀过滤, 命中即跳过。
+// 详见 memory: feedback_keyword_context_rule.md。
+const AMBIGUOUS_NEGATIVE_FEEDBACK_TERMS = ['有问题', '不需要', '看不懂', '不符合', '不行'];
+// 紧邻命中即"在描述对象有问题, 不算用户对 skill 的负向反馈":
+// 1. 前缀: <object> + 高歧义词        (代码有问题 / 逻辑不符合)
+// 2. 前缀: <object>(里|中|上) + 高歧义词 (代码里不需要)
+// 3. 后缀: 高歧义词 + 的<object>      (有问题的代码)
+// 不放"方案/方法/做法/思路/样式/规范/标准"等评价类词, 这些前接"不行/不符合"通常是负向反馈。
+const BENIGN_NEGATIVE_OBJECT_RE = /(?:代码|这段|这部分|这里|那里|文件|字段|逻辑|函数|接口|参数|配置|路径|目录|架构|写法|算法|文档|输出|结果|结构|文本|展示|渲染|输入|响应|脚本|代码块|代码段|代码片段|网络|信号|环境|机器|电脑)$/;
+const BENIGN_NEGATIVE_OBJECT_LOC_RE = /(?:代码|文件|脚本|目录|文档|项目|仓库)(?:里|中|上)$/;
+const BENIGN_NEGATIVE_OBJECT_SUFFIX_RE = /^的(?:代码|这段|这部分|逻辑|函数|接口|文件|字段|写法|算法|文档|脚本|实现|方法|方案|内容|结构|部分|地方|步骤|代码块|代码段|代码片段)/;
 const ADDITIONAL_NEGATIVE_FEEDBACK_TERMS = [
   '不对',
   '错了',
@@ -648,6 +793,8 @@ const ZERO_INDICATORS: ExperienceReviewIndicators = {
   hardRuleTextHitCount: 0,
   assistantDeliverySignalCount: 0,
   deliverableArtifactSignalCount: 0,
+  routerDownstreamCompleted: 0,
+  routerDownstreamFailed: 0,
   selfCorrectionCount: 0,
   repeatedExecutionCount: 0,
   toolCallCount: 0,
@@ -952,6 +1099,8 @@ function timelineEventsFromRecord(session: CcSession, record: unknown, messageIn
     traceRole: session.traceRole,
     traceLabel: session.traceLabel,
     messageIndex,
+    logicalMessageIndex: messageIndex,
+    sourceLineIndex: messageIndex,
     messageUuid: uuid,
     timestamp,
   };
@@ -1149,6 +1298,8 @@ function observationEvidenceRef(item: ObservationInboxItem): ExperienceEvidenceR
     sourceTrace: item.sourceTrace,
     sessionId: item.sessionId,
     messageIndex: item.evidence.messageIndex,
+    logicalMessageIndex: item.evidence.messageIndex,
+    sourceLineIndex: item.evidence.messageIndex,
     messageUuid: item.evidence.messageUuid,
     toolUseId: item.evidence.toolUseId,
     timestamp: item.evidence.segmentTimestamp,
@@ -1167,6 +1318,8 @@ function evidenceRefFromTimeline(event: ExperienceTimelineEvent): ExperienceEvid
     traceRole: event.traceRole,
     traceLabel: event.traceLabel,
     messageIndex: event.messageIndex,
+    logicalMessageIndex: event.logicalMessageIndex ?? event.messageIndex,
+    sourceLineIndex: event.sourceLineIndex ?? event.messageIndex,
     messageUuid: event.messageUuid,
     toolUseId: event.toolUseId,
     timestamp: event.timestamp,
@@ -1335,6 +1488,8 @@ function indicatorsForSegment(
     hardRuleTextHitCount: interactionUserRefs.reduce((sum, ref) => sum + (metricIsActive(ref, 'hard_rule', hasUserHardRuleText(ref.snippet ?? ''), reviewState, metricScopeId) ? 1 : 0), 0),
     assistantDeliverySignalCount: timeline.filter(isAssistantDeliveryEvent).length,
     deliverableArtifactSignalCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'deliverable_artifact', isAssistantDeliverableArtifactEvent(ref), reviewState) ? 1 : 0), 0),
+    routerDownstreamCompleted: 0,
+    routerDownstreamFailed: 0,
     selfCorrectionCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'self_correction', hasSelfCorrectionSignal(ref), reviewState) ? 1 : 0), 0),
     repeatedExecutionCount: timeline.reduce((sum, ref) => sum + (metricIsActive(ref, 'repeated_execution', hasRepeatedExecutionSignal(ref), reviewState) ? 1 : 0), 0),
     toolCallCount: segment.metrics.numToolCalls,
@@ -1401,6 +1556,7 @@ function summarizeExperienceSessions(
   reviewState?: ObservationReviewState,
 ): ExperienceSessionSummary[] {
   const byKey = new Map<string, ExperienceInvocation[]>();
+  const canonicalEpisodesBySessionGroup = new Map<string, ExperienceEpisode[]>();
   for (const invocation of invocations) {
     const key = `${invocation.skillName}\u0000${invocation.sessionGroupKey}`;
     const group = byKey.get(key) ?? [];
@@ -1499,10 +1655,17 @@ function summarizeExperienceSessions(
       rawSkillRefs: unique(group.map((invocation) => invocation.attribution.rawSkillRef).filter((value): value is string => Boolean(value))).sort(),
       commandNames: unique(group.map((invocation) => invocation.attribution.commandName).filter((value): value is string => Boolean(value))).sort(),
     };
-    const sessionStory = buildSessionStory(baseSession, storyInvocations);
-    const sessionWithStory: ExperienceSessionSummary = {
+    const sessionStory = buildSessionStory(baseSession, storyInvocations, canonicalEpisodesBySessionGroup.get(first.sessionGroupKey), reviewState);
+    if (!canonicalEpisodesBySessionGroup.has(first.sessionGroupKey)) {
+      canonicalEpisodesBySessionGroup.set(first.sessionGroupKey, sessionStory.episodes ?? []);
+    }
+    const sessionWithStoryBase: ExperienceSessionSummary = {
       ...baseSession,
       sessionStory,
+    };
+    const sessionWithStory: ExperienceSessionSummary = {
+      ...sessionWithStoryBase,
+      indicators: enrichRouterDownstreamIndicators(sessionWithStoryBase),
     };
     const reviewerReport = buildReviewerReport(sessionWithStory, group, generatedAt, reviewState, storyInvocations, sessionStory);
     return {
@@ -1543,6 +1706,7 @@ function buildReviewerReport(
   const tokenUsage = sumTokenUsage(invocations);
   const title = reviewerTitle(session, attentionCount, possibleFalsePositiveCount);
   const expectedToolCheck = expectedToolCheckForSession(session);
+  const feedbackCounts = canonicalFeedbackCountsForSession(session, reviewState);
   const traceLinks = uniqueEvidenceRefs([
     ...(session.evidenceChain.firstUserMessage ? [session.evidenceChain.firstUserMessage] : []),
     ...(session.evidenceChain.firstToolUse ? [session.evidenceChain.firstToolUse] : []),
@@ -1565,17 +1729,19 @@ function buildReviewerReport(
       reviewerStep(1, '用户期待', userGoalStepText(session), session.evidenceChain.firstUserMessage ? 'ok' : 'unknown', session.evidenceChain.firstUserMessage ? [session.evidenceChain.firstUserMessage] : []),
       reviewerStep(2, '选择能力', skillSelectionStepText(session), 'ok', [session.evidenceChain.firstSkillContext, session.evidenceChain.firstToolUse].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))),
       reviewerStep(3, '执行流程', executionStepText(session, expectedToolCheck), executionStepStatus(session, expectedToolCheck), session.evidenceChain.firstToolUse ? [session.evidenceChain.firstToolUse] : []),
-      reviewerStep(4, '结果 / 产物', deliveryStepText(session), indicators.assistantDeliverySignalCount > 0 ? 'ok' : 'unknown', session.evidenceChain.lastAssistantMessage ? [session.evidenceChain.lastAssistantMessage] : []),
-      reviewerStep(5, '用户反馈', userFeedbackStepText(session), userFeedbackStepStatus(session), userFeedbackEvidenceRefs(session)),
+      reviewerStep(4, '结果 / 产物', deliveryStepText(session), userFacingClosureForSession(session).deliveryCount > 0 ? 'ok' : 'unknown', userFacingClosureForSession(session).evidenceRefs),
+      reviewerStep(5, '用户反馈', userFeedbackStepText(session, reviewState), userFeedbackStepStatus(session, reviewState), userFeedbackEvidenceRefs(session)),
     ],
     findings,
       oneLookMetrics: {
       toolCallCount: indicators.toolCallCount,
       toolFailureCount: indicators.toolFailureCount,
       userMessageCount: indicators.userMessageCount,
-      userFollowUpCount: indicators.userFollowUpCount,
+      userFollowUpCount: feedbackCounts.userFollowUpCount,
       assistantDeliverySignalCount: indicators.assistantDeliverySignalCount,
       deliverableArtifactSignalCount: indicators.deliverableArtifactSignalCount,
+      routerDownstreamCompleted: indicators.routerDownstreamCompleted,
+      routerDownstreamFailed: indicators.routerDownstreamFailed,
       assistantProgressUpdateCount: assistantProgressUpdateEvents(session).length,
       selfCorrectionCount: indicators.selfCorrectionCount,
       repeatedExecutionCount: indicators.repeatedExecutionCount,
@@ -1592,7 +1758,12 @@ function buildReviewerReport(
   };
 }
 
-function buildSessionStory(session: ExperienceSessionSummary, invocations: ExperienceInvocation[]): ExperienceSessionStory {
+function buildSessionStory(
+  session: ExperienceSessionSummary,
+  invocations: ExperienceInvocation[],
+  canonicalEpisodes?: ExperienceEpisode[],
+  reviewState?: ObservationReviewState,
+): ExperienceSessionStory {
   const nodes: ExperienceSessionStoryNode[] = [];
   const push = (
     kind: ExperienceSessionStoryNodeKind,
@@ -1684,8 +1855,8 @@ function buildSessionStory(session: ExperienceSessionSummary, invocations: Exper
   const feedbackNode = push(
     'user_feedback',
     '用户反馈',
-    userFeedbackStepStatus(session),
-    userFeedbackStepText(session),
+    userFeedbackStepStatus(session, reviewState),
+    userFeedbackStepText(session, reviewState),
     userFeedbackEvidenceRefs(session),
   );
 
@@ -1699,9 +1870,10 @@ function buildSessionStory(session: ExperienceSessionSummary, invocations: Exper
     );
   }
 
-  const goalChecklistItems = checklistItemsForAnswer(session, 'goal_satisfaction');
-  const declaredBehaviorChecklistItems = checklistItemsForAnswer(session, 'declared_behavior_fit');
-  const userFeelingChecklistItems = checklistItemsForAnswer(session, 'user_feeling');
+  const episodes = canonicalEpisodes ?? sessionStoryEpisodes(session, invocations, goalSlices, subagentDispatches, skillLinks);
+  const goalChecklistItems = checklistItemsForAnswer(session, 'goal_satisfaction', episodes, reviewState);
+  const declaredBehaviorChecklistItems = checklistItemsForAnswer(session, 'declared_behavior_fit', episodes);
+  const userFeelingChecklistItems = checklistItemsForAnswer(session, 'user_feeling', episodes, reviewState);
   const answers: ExperienceSessionStoryAnswer[] = [
     sessionStoryAnswer('goal_satisfaction', '用户目标有没有被满足', goalChecklistItems, [
       session.evidenceChain.firstUserMessage,
@@ -1722,7 +1894,7 @@ function buildSessionStory(session: ExperienceSessionSummary, invocations: Exper
     ? '这次有几条需要看一眼的事项，从红色标记的事实和原文开始看。'
     : answers.every((answer) => answer.status === 'ok')
       ? '这次从目标、执行到反馈都没有明显异常，进入常规抽样。'
-      : '这次链路已按语义节点展开，但部分结论仍需要人工结合原文判断。';
+    : '这次链路已按语义节点展开，但部分结论仍需要人工结合原文判断。';
 
   return {
     schemaVersion: 1,
@@ -1743,10 +1915,1010 @@ function buildSessionStory(session: ExperienceSessionSummary, invocations: Exper
     goalSlices,
     subagentDispatches,
     skillLinks,
+    episodes,
     graph: sessionStoryGraph(nodes, skillLinks),
     nodes,
     answers,
   };
+}
+
+function sessionStoryEpisodes(
+  session: ExperienceSessionSummary,
+  invocations: ExperienceInvocation[],
+  goalSlices: ExperienceSessionStoryGoalSlice[],
+  subagentDispatches: ExperienceSessionStorySubagentDispatch[],
+  skillLinks: ExperienceSessionStorySkillLink[],
+): ExperienceEpisode[] {
+  const baseSkillSegments = sessionStorySkillSegments(session, invocations, skillLinks);
+  const baseEpisodeId = hashParts('session-story-episode', session.id, '0');
+  const orchestrationEdges = sessionStoryOrchestrationEdges(baseEpisodeId, baseSkillSegments, subagentDispatches, session, invocations);
+  const skillSegments = skillSegmentsWithOrchestrationRoles(baseSkillSegments, orchestrationEdges);
+  const feedbackSignals = sessionStoryFeedbackSignals(session, invocations, skillSegments, orchestrationEdges);
+  const artifacts = sessionStoryArtifacts(invocations);
+  const closure = sessionStoryOutcomeClosure(session, artifacts);
+  const timeline = session.fullSessionTimeline.length > 0 ? session.fullSessionTimeline : session.timelinePreview;
+  const ranges = sessionStoryEpisodeRanges(session, timeline);
+  return ranges.map((range, index) => {
+    const episodeId = hashParts('session-story-episode', session.id, String(index));
+    const episodeSkillSegments = skillSegments.filter((segment) =>
+      (segment.messageRanges ?? []).some((messageRange) =>
+        messageRangeOverlapsEpisodeRange(messageRange, range)
+      )
+    );
+    const segmentIds = new Set(episodeSkillSegments.map((segment) => segment.id));
+    const episodeEdges = orchestrationEdges
+      .filter((edge) => {
+        if (edge.edgeKind === 'internal_skill' && edge.parentSkillSegmentId && edge.executorSkillSegmentId) {
+          return segmentIds.has(edge.parentSkillSegmentId) && segmentIds.has(edge.executorSkillSegmentId);
+        }
+        return (edge.parentSkillSegmentId && segmentIds.has(edge.parentSkillSegmentId))
+          || edge.evidenceRefs.some((ref) => episodeRangeContainsRef(range, ref));
+      })
+      .map((edge) => ({ ...edge, episodeId }));
+    const episodeFeedbackSignals = feedbackSignals
+      .filter((signal) => episodeRangeContainsRef(range, signal.evidenceRef))
+      .map((signal) => {
+        const attributions = (signal.canonicalAttributions ?? signal.attributions).filter((attribution) =>
+          episodeFeedbackAttributionBelongsToEpisode(attribution, segmentIds, episodeEdges)
+        );
+        return {
+          ...signal,
+          canonicalAttributions: attributions,
+          attributions,
+        };
+      })
+      .filter((signal) => signal.attributions.length > 0);
+    const episodeArtifacts = artifacts.filter((artifact) => episodeRangeContainsRef(range, artifact.evidenceRef));
+    const episodeGoalSlices = goalSlices.filter((goal) => goal.evidenceRefs.some((ref) => episodeRangeContainsRef(range, ref)));
+    const episodeTimeline = timeline.filter((event) => episodeRangeContainsRef(range, event));
+    const startRef = episodeTimeline[0] ? evidenceRefFromTimeline(episodeTimeline[0]) : session.evidenceChain.firstUserMessage;
+    const endRef = episodeTimeline.at(-1) ? evidenceRefFromTimeline(episodeTimeline.at(-1) as ExperienceTimelineEvent) : session.evidenceChain.lastAssistantMessage;
+    const primaryGoal = episodeGoalSlices[0]?.inferredUserGoal
+      ?? episodeTimeline.find((event) => event.kind === 'user_message')?.snippet
+      ?? goalSlices[0]?.inferredUserGoal
+      ?? session.evidenceChain.firstUserMessage?.snippet;
+    const episodeClosure = index === ranges.length - 1 ? closure : 'unknown';
+    return {
+      id: episodeId,
+      order: index + 1,
+      sessionId: session.sessionId,
+      primaryGoal,
+      goalEvidenceRefs: [
+        ...episodeGoalSlices.map((goal) => ({
+          kind: 'goal_slice' as const,
+          goalSliceId: goal.id,
+          evidenceRef: goal.evidenceRefs[0],
+          label: goal.inferredUserGoal ?? `目标段 ${goal.order}`,
+        })),
+        ...(episodeTimeline.find((event) => event.kind === 'user_message') ? [{
+          kind: 'user_message' as const,
+          evidenceRef: evidenceRefFromTimeline(episodeTimeline.find((event) => event.kind === 'user_message') as ExperienceTimelineEvent),
+          label: episodeTimeline.find((event) => event.kind === 'user_message')?.snippet,
+        }] : []),
+      ],
+      startTimestamp: minString([startRef?.timestamp, ...episodeSkillSegments.map((segment) => segment.startTimestamp)]) ?? session.startTimestamp,
+      endTimestamp: maxString([endRef?.timestamp, ...episodeSkillSegments.map((segment) => segment.endTimestamp)]) ?? session.endTimestamp,
+      startRef,
+      endRef,
+      boundaryReason: range.boundaryReason ?? sessionStoryEpisodeBoundaryReason(session, subagentDispatches, episodeEdges, episodeClosure),
+      skillSegments: episodeSkillSegments,
+      orchestrationEdges: episodeEdges,
+      feedbackSignals: episodeFeedbackSignals,
+      outcome: {
+        closure: episodeClosure,
+        artifacts: episodeArtifacts,
+        verdict: session.reviewPriority,
+        acceptanceCriteria: sessionStoryAcceptanceCriteria(session, episodeFeedbackSignals, episodeArtifacts),
+      },
+    };
+  });
+}
+
+function episodeFeedbackAttributionBelongsToEpisode(
+  attribution: ExperienceFeedbackAttribution,
+  segmentIds: Set<string>,
+  episodeEdges: ExperienceOrchestrationEdge[],
+): boolean {
+  if (!attribution.skillSegmentId || !segmentIds.has(attribution.skillSegmentId)) return false;
+  if (attribution.reasonCode !== 'orchestration_edge') return true;
+  return episodeEdges.some((edge) =>
+    edge.parentSkillSegmentId === attribution.skillSegmentId
+    || edge.executorSkillSegmentId === attribution.skillSegmentId
+  );
+}
+
+function skillSegmentsWithOrchestrationRoles(
+  skillSegments: ExperienceSkillSegment[],
+  orchestrationEdges: ExperienceOrchestrationEdge[],
+): ExperienceSkillSegment[] {
+  if (orchestrationEdges.length === 0) return skillSegments;
+  const parentIds = new Set(orchestrationEdges.map((edge) => edge.parentSkillSegmentId).filter((value): value is string => Boolean(value)));
+  const executorIds = new Set(orchestrationEdges.map((edge) => edge.executorSkillSegmentId).filter((value): value is string => Boolean(value)));
+  return skillSegments.map((segment) => {
+    if (parentIds.has(segment.id) && segment.skillType === 'unknown') {
+      return {
+        ...segment,
+        skillType: 'router',
+        skillTypeSource: 'trace',
+        traceInferredSkillType: 'router',
+        episodeRole: 'router',
+      };
+    }
+    if (executorIds.has(segment.id) && segment.episodeRole === 'supporting') {
+      return {
+        ...segment,
+        skillType: segment.skillType === 'unknown' ? 'executor' : segment.skillType,
+        skillTypeSource: segment.skillType === 'unknown' ? 'trace' : segment.skillTypeSource,
+        traceInferredSkillType: segment.traceInferredSkillType ?? 'executor',
+        episodeRole: 'main_executor',
+      };
+    }
+    return segment;
+  });
+}
+
+function sessionStoryEpisodeRanges(
+  session: ExperienceSessionSummary,
+  timeline: ExperienceTimelineEvent[],
+): ExperienceEpisodeRange[] {
+  const primarySourceTrace = primarySourceTraceForSession(session);
+  const rangeTimeline = timeline.filter((event) => !primarySourceTrace || !event.sourceTrace || event.sourceTrace === primarySourceTrace);
+  const indexes = rangeTimeline
+    .map((event) => event.messageIndex)
+    .filter((value): value is number => typeof value === 'number');
+  const sessionStart = minDefined(indexes) ?? session.timelineScope.sessionStartRecordIndex ?? 0;
+  const sessionEnd = maxDefined(indexes) ?? session.timelineScope.sessionEndRecordIndex ?? sessionStart;
+  const goalShiftStarts = unique(timeline
+    .filter((event) =>
+      event.kind === 'user_message'
+      && typeof event.messageIndex === 'number'
+      && event.messageIndex > sessionStart
+      && (!primarySourceTrace || !event.sourceTrace || event.sourceTrace === primarySourceTrace)
+    )
+    .filter((event) => hasUserGoalShiftSignal(event.snippet ?? event.fullText ?? ''))
+    .map((event) => event.messageIndex as number))
+    .sort((a, b) => a - b);
+  const starts = [sessionStart, ...goalShiftStarts];
+  return starts.map((start, index) => ({
+    startMessageIndex: start,
+    endMessageIndex: (starts[index + 1] ?? (sessionEnd + 1)) - 1,
+    sourceTrace: primarySourceTrace,
+    sessionId: session.sessionId,
+    boundaryReason: index < starts.length - 1 ? 'goal_shift' : undefined,
+  }));
+}
+
+function primarySourceTraceForSession(session: ExperienceSessionSummary): string | undefined {
+  return session.sourceTrace
+    ?? session.evidenceChain.firstUserMessage?.sourceTrace
+    ?? session.fullSessionTimeline.find((event) => event.traceRole === 'main')?.sourceTrace
+    ?? session.fullSessionTimeline[0]?.sourceTrace
+    ?? session.timelinePreview[0]?.sourceTrace;
+}
+
+function episodeRangeContainsRef(
+  range: ExperienceEpisodeRange,
+  ref?: Pick<ExperienceEvidenceRef, 'messageIndex' | 'sourceTrace' | 'sessionId'>,
+): boolean {
+  if (!ref || typeof ref.messageIndex !== 'number') return false;
+  // New observations carry sourceTrace and are compared strictly. Older persisted
+  // observations may not, so they keep the historical messageIndex-only fallback.
+  if (range.sourceTrace && ref.sourceTrace && range.sourceTrace !== ref.sourceTrace) return false;
+  if (range.sessionId && ref.sessionId && range.sessionId !== ref.sessionId) return false;
+  return ref.messageIndex >= range.startMessageIndex && ref.messageIndex <= range.endMessageIndex;
+}
+
+function messageRangeOverlapsEpisodeRange(messageRange: ExperienceMessageRange, range: ExperienceEpisodeRange): boolean {
+  if (range.sourceTrace && messageRange.sourceTrace && range.sourceTrace !== messageRange.sourceTrace) return false;
+  if (range.sessionId && messageRange.sessionId && range.sessionId !== messageRange.sessionId) return false;
+  return messageRange.endMessageIndex >= range.startMessageIndex
+    && messageRange.startMessageIndex <= range.endMessageIndex;
+}
+
+function sessionStoryEpisodeBoundaryReason(
+  session: ExperienceSessionSummary,
+  subagentDispatches: ExperienceSessionStorySubagentDispatch[],
+  orchestrationEdges: ExperienceOrchestrationEdge[],
+  closure: ExperienceOutcomeClosure,
+): ExperienceEpisodeBoundaryReason {
+  if (session.indicators.userGoalShiftCount > 0) return 'goal_shift';
+  if (subagentDispatches.length > 0) return 'checkpoint_or_subagent';
+  if (orchestrationEdges.length > 0 && closure === 'closed') return 'downstream_closed';
+  return 'session_end';
+}
+
+function sessionStorySkillSegments(
+  session: ExperienceSessionSummary,
+  invocations: ExperienceInvocation[],
+  skillLinks: ExperienceSessionStorySkillLink[],
+): ExperienceSkillSegment[] {
+  const invocationById = new Map(invocations.map((invocation) => [invocation.id, invocation]));
+  return skillLinks.map((link, index) => {
+    const group = link.invocationIds.map((id) => invocationById.get(id)).filter((value): value is ExperienceInvocation => Boolean(value));
+    const declaredSkillType = frontmatterSkillType(link.skillName, session.cwd);
+    const traceInferredSkillType = traceInferredSkillTypeForLink(link);
+    const skillType = declaredSkillType ?? traceInferredSkillType ?? 'unknown';
+    const evidenceRefs = uniqueEvidenceRefs([
+      ...link.evidenceRefs,
+      ...group.flatMap((invocation) => invocation.evidenceRefs.slice(0, 2)),
+    ]).slice(0, 6);
+    const messageRanges: ExperienceMessageRange[] = group
+      .map((invocation): ExperienceMessageRange | undefined => {
+        const timelineWithIndex = invocation.timeline.filter((event) => typeof event.messageIndex === 'number');
+        const indexes = timelineWithIndex
+          .map((event) => event.messageIndex)
+          .filter((value): value is number => typeof value === 'number');
+        const startMessageIndex = minDefined(indexes);
+        const endMessageIndex = maxDefined(indexes);
+        const sourceTrace = invocation.sourceTrace ?? timelineWithIndex[0]?.sourceTrace;
+        const sessionId = invocation.sessionId ?? timelineWithIndex[0]?.sessionId;
+        return typeof startMessageIndex === 'number' && typeof endMessageIndex === 'number'
+          ? { startMessageIndex, endMessageIndex, sourceTrace, sessionId }
+          : undefined;
+      })
+      .filter((value): value is ExperienceMessageRange => Boolean(value));
+    const messageIndexes = messageRanges.flatMap((range) => [range.startMessageIndex, range.endMessageIndex]);
+    return {
+      id: hashParts('session-story-skill-segment', session.id, link.skillName, String(index)),
+      order: index + 1,
+      skillName: link.skillName,
+      skillType,
+      skillTypeSource: declaredSkillType ? 'frontmatter' : traceInferredSkillType ? 'trace' : 'unknown',
+      declaredSkillType,
+      traceInferredSkillType,
+      episodeRole: episodeRoleForLink(link, session, skillType),
+      skillInvocationIds: link.invocationIds,
+      startMessageIndex: minDefined(messageIndexes),
+      endMessageIndex: maxDefined(messageIndexes),
+      messageRanges,
+      startTimestamp: minString(group.map((invocation) => invocation.startTimestamp)) ?? session.startTimestamp,
+      endTimestamp: maxString(group.map((invocation) => invocation.endTimestamp)) ?? session.endTimestamp,
+      typeSpecificChecklist: [],
+      evidenceRefs,
+    };
+  });
+}
+
+function traceInferredSkillTypeForLink(link: ExperienceSessionStorySkillLink): ExperienceRuntimeSkillType | undefined {
+  if (link.role === 'router') return 'router';
+  if (link.role === 'executor' || link.role === 'mixed') return 'executor';
+  return undefined;
+}
+
+function episodeRoleForLink(
+  link: ExperienceSessionStorySkillLink,
+  session: ExperienceSessionSummary,
+  resolvedSkillType?: ExperienceRuntimeSkillType,
+): ExperienceEpisodeRole {
+  const skillType = resolvedSkillType ?? frontmatterSkillType(link.skillName, session.cwd) ?? traceInferredSkillTypeForLink(link) ?? 'unknown';
+  if (skillType === 'router') return 'router';
+  if (skillType === 'delegation') return 'delegator';
+  if (skillType === 'executor') return 'main_executor';
+  if (skillType === 'advisory') return 'observer';
+  if (skillType === 'workflow_owner') return 'router';
+  if (link.role === 'router') return 'router';
+  if (link.role === 'executor' || link.role === 'mixed') return 'main_executor';
+  return 'supporting';
+}
+
+function frontmatterSkillType(skillName: string, cwd?: string): ExperienceRuntimeSkillType | undefined {
+  const path = findSkillMdPath(skillName, cwd ?? '');
+  if (!path) return undefined;
+  try {
+    const parsed = parseSkillFrontmatter(readFileSync(path, 'utf8'));
+    if (!parsed.ok) return undefined;
+    const raw = parsed.data?.skillType ?? parsed.data?.type ?? parsed.data?.category;
+    return normalizeRuntimeSkillType(raw);
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeRuntimeSkillType(value: unknown): ExperienceRuntimeSkillType | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase().replace(/[_\s-]+/g, '_');
+  if (normalized === 'router' || normalized === 'route') return 'router';
+  if (normalized === 'delegation' || normalized === 'delegate' || normalized === 'delegator') return 'delegation';
+  if (normalized === 'executor' || normalized === 'execute') return 'executor';
+  if (normalized === 'advisory' || normalized === 'advisor' || normalized === 'consulting') return 'advisory';
+  if (normalized === 'workflow_owner' || normalized === 'workflowowner' || normalized === 'workflow') return 'workflow_owner';
+  return undefined;
+}
+
+function sessionStoryOrchestrationEdges(
+  episodeId: string,
+  skillSegments: ExperienceSkillSegment[],
+  subagentDispatches: ExperienceSessionStorySubagentDispatch[],
+  session: ExperienceSessionSummary,
+  invocations: ExperienceInvocation[],
+): ExperienceOrchestrationEdge[] {
+  const edges: ExperienceOrchestrationEdge[] = [];
+  const router = skillSegments.find((segment) => segment.episodeRole === 'router');
+  const delegator = skillSegments.find((segment) => segment.episodeRole === 'delegator' || segment.skillType === 'delegation');
+  const timeline = uniqueTimelineEvents(invocations.flatMap((invocation) => invocation.timeline))
+    .sort(compareTimelineEvents);
+  const runnerEvent = timeline
+    .find(isOrchestrationRuntimeEvent);
+  const runnerRef = runnerEvent ? evidenceRefFromTimeline(runnerEvent) : undefined;
+  const runnerOwner = runnerRef ? skillSegmentForEvidenceRef(runnerRef, skillSegments) : undefined;
+  const mentionedUpstream = runnerOwner
+    ? mentionedUpstreamSkillSegmentForRuntime(runnerOwner, runnerEvent, timeline, skillSegments)
+    : undefined;
+  const runnerText = `${runnerEvent?.toolName ?? ''} ${runnerEvent?.snippet ?? ''} ${runnerEvent?.fullText ?? ''}`;
+  const runnerExecutor = runnerText
+    ? (mentionedUpstream && runnerOwner && runnerOwner.id !== mentionedUpstream.id
+      ? runnerOwner
+      : skillSegments.find((segment) => {
+      if (segment.id === runnerOwner?.id || segment.id === mentionedUpstream?.id) return false;
+      const name = segment.skillName.toLowerCase();
+      return name.includes('apply-cc') && /apply-cc|runner\.js|send-input\.js/i.test(runnerText);
+    }))
+    : undefined;
+  const priorUpstreamCandidate = runnerOwner
+    ? bestPriorUpstreamSkillSegmentForRuntime(runnerOwner, runnerEvent, timeline, skillSegments)
+    : undefined;
+  const parentSegment = priorUpstreamCandidate
+    ?? mentionedUpstream
+    ?? router
+    ?? (runnerOwner && (runnerOwner.skillType === 'router' || runnerOwner.skillType === 'delegation' || runnerOwner.episodeRole === 'delegator') ? runnerOwner : undefined)
+    ?? delegator;
+  const executor = runnerExecutor
+    ?? (runnerOwner && parentSegment?.id !== runnerOwner.id ? runnerOwner : undefined)
+    ?? (parentSegment?.id === router?.id ? skillSegments.find((segment) =>
+    segment.id !== parentSegment?.id
+    && segment.id !== router?.id
+    && segment.episodeRole === 'main_executor'
+  ) : undefined);
+  if (parentSegment && (executor || runnerEvent) && parentSegment.id !== executor?.id) {
+    const edgeKind = executor && skillSegmentsShareSourceTrace(parentSegment, executor)
+      ? 'internal_skill'
+      : 'external_child_session';
+    edges.push({
+      id: hashParts('session-story-edge', episodeId, parentSegment.id, executor?.id ?? 'downstream', '0'),
+      episodeId,
+      edgeKind,
+      parentSkillSegmentId: parentSegment.id,
+      executorSkillSegmentId: executor?.id,
+      childSessionId: sessionStoryChildSessionId(runnerEvent),
+      runnerStartedRef: runnerRef,
+      status: runnerEvent || subagentDispatches.length > 0 ? 'started' : 'unknown',
+      evidenceRefs: uniqueEvidenceRefs([
+        ...parentSegment.evidenceRefs.slice(0, 2),
+        ...(executor?.evidenceRefs.slice(0, 2) ?? []),
+        ...(runnerRef ? [runnerRef] : []),
+        ...subagentDispatches.flatMap((dispatch) => dispatch.evidenceRefs.slice(0, 1)),
+      ]).slice(0, 6),
+    });
+  }
+  if (edges.length === 0) {
+    const fallbackEdge = fallbackOrchestrationEdgeFromRuntime(episodeId, skillSegments, invocations);
+    if (fallbackEdge) edges.push(fallbackEdge);
+  }
+  for (const dispatch of subagentDispatches) {
+    const parentSegment = delegator ?? router;
+    const executor = skillSegments.find((segment) => segment.id !== parentSegment?.id && segment.episodeRole === 'main_executor');
+    edges.push({
+      id: hashParts('session-story-edge', episodeId, dispatch.id),
+      episodeId,
+      edgeKind: executor ? 'internal_skill' : 'external_child_session',
+      parentSkillSegmentId: parentSegment?.id,
+      executorSkillSegmentId: executor?.id,
+      childSessionId: dispatch.branchId,
+      status: 'started',
+      evidenceRefs: dispatch.evidenceRefs,
+    });
+  }
+  return edges;
+}
+
+function bestPriorUpstreamSkillSegmentForRuntime(
+  runnerOwner: ExperienceSkillSegment,
+  runnerEvent: ExperienceTimelineEvent | undefined,
+  timeline: ExperienceTimelineEvent[],
+  skillSegments: ExperienceSkillSegment[],
+): ExperienceSkillSegment | undefined {
+  const runnerMessageIndex = runnerEvent?.messageIndex;
+  const contextText = timeline
+    .filter((event) => {
+      if (!timelineEventSharesTraceScope(event, runnerEvent)) return false;
+      if (typeof runnerMessageIndex !== 'number' || typeof event.messageIndex !== 'number') return true;
+      return event.messageIndex <= runnerMessageIndex && event.messageIndex >= Math.max(0, runnerMessageIndex - 20);
+    })
+    .map((event) => `${event.toolName ?? ''} ${event.snippet ?? ''} ${event.fullText ?? ''}`)
+    .join('\n');
+  return skillSegments
+    .filter((segment) => segment.id !== runnerOwner.id && segment.order < runnerOwner.order)
+    .sort((a, b) =>
+      upstreamParentScore(b, runnerOwner, contextText) - upstreamParentScore(a, runnerOwner, contextText)
+      || b.order - a.order
+    )[0];
+}
+
+function mentionedUpstreamSkillSegmentForRuntime(
+  runnerOwner: ExperienceSkillSegment,
+  runnerEvent: ExperienceTimelineEvent | undefined,
+  timeline: ExperienceTimelineEvent[],
+  skillSegments: ExperienceSkillSegment[],
+): ExperienceSkillSegment | undefined {
+  if (!runnerEvent) return undefined;
+  const runnerMessageIndex = runnerEvent.messageIndex;
+  const nearbyText = timeline
+    .filter((event) => {
+      if (!timelineEventSharesTraceScope(event, runnerEvent)) return false;
+      if (typeof runnerMessageIndex !== 'number' || typeof event.messageIndex !== 'number') return true;
+      return event.messageIndex <= runnerMessageIndex && event.messageIndex >= Math.max(0, runnerMessageIndex - 8);
+    })
+    .map((event) => `${event.toolName ?? ''} ${event.snippet ?? ''} ${event.fullText ?? ''}`)
+    .join('\n');
+  return skillSegments
+    .filter((segment) => segment.id !== runnerOwner.id)
+    .filter((segment) => segment.order < runnerOwner.order)
+    .filter((segment) => {
+      const name = segment.skillName.toLowerCase();
+      const lowerText = nearbyText.toLowerCase();
+      const compactName = compactObjectText(name);
+      const compactText = compactObjectText(lowerText);
+      const mentionIndex = name.length >= 4 ? lowerText.indexOf(name) : -1;
+      const localContext = mentionIndex >= 0
+        ? lowerText.slice(Math.max(0, mentionIndex - 40), mentionIndex + name.length + 100)
+        : lowerText;
+      const explicitlyMentioned = mentionIndex >= 0;
+      const compactMentioned = compactName.length >= 6 && compactText.includes(compactName);
+      if (!explicitlyMentioned && !compactMentioned) return false;
+      return /skill|技能|流程|工作流|按|根据|启动|触发|\/consult|\/tech-solution|\/prd_start|runner\.js/i.test(localContext);
+    })
+    .sort((a, b) =>
+      upstreamParentScore(b, runnerOwner, nearbyText) - upstreamParentScore(a, runnerOwner, nearbyText)
+      || Math.abs(a.order - runnerOwner.order) - Math.abs(b.order - runnerOwner.order)
+    )[0];
+}
+
+function upstreamParentScore(segment: ExperienceSkillSegment, runnerOwner: ExperienceSkillSegment, contextText: string): number {
+  const lowerName = segment.skillName.toLowerCase();
+  const lowerText = contextText.toLowerCase();
+  let score = 0;
+  if (segment.episodeRole === 'router' || segment.skillType === 'router') score += 80;
+  if (segment.episodeRole === 'delegator' || segment.skillType === 'delegation') score += 70;
+  if (segment.episodeRole === 'observer' || segment.skillType === 'advisory') score += 45;
+  if (/dev[-_\s]*lifecycle|aiprd[-_\s]*task[-_\s]*runner|omk[-_\s]*reviewer/i.test(lowerName)) score += 35;
+  if (/yuque|web[-_\s]*fetch|fetch|search/i.test(lowerName)) score -= 35;
+  const nameIndex = lowerText.indexOf(lowerName);
+  if (nameIndex >= 0) {
+    const localContext = lowerText.slice(Math.max(0, nameIndex - 50), nameIndex + lowerName.length + 120);
+    if (/按|根据|流程|工作流|skill|技能|启动|触发/.test(localContext)) score += 30;
+    if (/读取|搜索|文档|链接|知识库/.test(localContext)) score -= 10;
+  }
+  if (segment.order < runnerOwner.order) score += Math.max(0, 20 - (runnerOwner.order - segment.order) * 3);
+  return score;
+}
+
+function fallbackOrchestrationEdgeFromRuntime(
+  episodeId: string,
+  skillSegments: ExperienceSkillSegment[],
+  invocations: ExperienceInvocation[],
+): ExperienceOrchestrationEdge | undefined {
+  const timeline = uniqueTimelineEvents(invocations.flatMap((invocation) => invocation.timeline)).sort(compareTimelineEvents);
+  const runtimeEvent = timeline.find((event) => {
+    const text = `${event.toolName ?? ''} ${event.snippet ?? ''} ${event.fullText ?? ''}`;
+    return /skills\/[\w.-]+\/scripts\/|runner\.js|send-input\.js|check-session\.js|session:\s*claude-|ttydUrl/i.test(text);
+  });
+  if (!runtimeEvent) return undefined;
+  const runtimeRef = evidenceRefFromTimeline(runtimeEvent);
+  const executor = skillSegmentForEvidenceRef(runtimeRef, skillSegments);
+  if (!executor) return undefined;
+  const parent = skillSegments
+    .filter((segment) => segment.id !== executor.id && segment.order < executor.order)
+    .sort((a, b) => b.order - a.order)[0];
+  if (!parent) return undefined;
+  const edgeKind = skillSegmentsShareSourceTrace(parent, executor) ? 'internal_skill' : 'external_child_session';
+  return {
+    id: hashParts('session-story-edge', episodeId, parent.id, executor.id, 'fallback'),
+    episodeId,
+    edgeKind,
+    parentSkillSegmentId: parent.id,
+    executorSkillSegmentId: executor.id,
+    childSessionId: sessionStoryChildSessionId(runtimeEvent),
+    runnerStartedRef: runtimeRef,
+    status: 'started',
+    evidenceRefs: uniqueEvidenceRefs([
+      ...parent.evidenceRefs.slice(0, 2),
+      ...executor.evidenceRefs.slice(0, 2),
+      runtimeRef,
+    ]).slice(0, 6),
+  };
+}
+
+function isOrchestrationRuntimeEvent(event: ExperienceTimelineEvent): boolean {
+  const text = `${event.toolName ?? ''} ${event.snippet ?? ''} ${event.fullText ?? ''}`;
+  if (event.kind === 'tool_use') {
+    return /runner\.js|send-input\.js|check-session\.js/i.test(text);
+  }
+  if (event.kind === 'tool_result') {
+    const trimmed = text.trim();
+    if (/^---\s*\n?\s*name:/i.test(trimmed) || /^---\s+name:/i.test(trimmed)) return false;
+    return /"event"\s*:\s*"started"|Command still running \(session|Process exited with code|Process exited with signal|session:\s*claude-|\bclaude-[a-z0-9_-]+\b/i.test(text);
+  }
+  if (event.kind === 'assistant_message') {
+    return /子\s*Claude|ttyd|session:\s*claude-|已启动.*Claude|Claude\s*执行窗口/i.test(text);
+  }
+  return false;
+}
+
+function sessionStoryChildSessionId(event?: ExperienceTimelineEvent): string | undefined {
+  const text = `${event?.snippet ?? ''} ${event?.fullText ?? ''}`;
+  return text.match(/\bclaude-[a-z0-9_-]+\b/i)?.[0];
+}
+
+function sessionStoryFeedbackSignals(
+  session: ExperienceSessionSummary,
+  invocations: ExperienceInvocation[],
+  skillSegments: ExperienceSkillSegment[],
+  orchestrationEdges: ExperienceOrchestrationEdge[],
+): ExperienceFeedbackSignal[] {
+  const timeline = uniqueTimelineEvents(invocations.flatMap((invocation) => invocation.timeline))
+    .sort(compareTimelineEvents);
+  const promises = sessionStoryPromiseOwners(timeline, skillSegments);
+  const userEvents = timeline.filter((event) =>
+    event.kind === 'user_message'
+    && isUserInteractionMetricText(event.snippet ?? event.fullText ?? '')
+  );
+  return userEvents
+    .map((event, index): ExperienceFeedbackSignal | undefined => {
+      const text = event.snippet ?? event.fullText ?? '';
+      const type = feedbackSignalType(text, index);
+      if (type === 'unknown' && index === 0) return undefined;
+      const evidenceRef = evidenceRefFromTimeline(event);
+      const canonicalAttributions = feedbackAttributionsForText(text, evidenceRef, skillSegments, orchestrationEdges, timeline, promises);
+      return {
+        id: hashParts('session-story-feedback', session.id, event.id, String(index)),
+        order: index + 1,
+        type,
+        text,
+        targetObject: feedbackTargetObject(text, skillSegments),
+        sourceWindow: orchestrationEdges.length > 0 && /有结论|进度|没返回|为什么|停止|中断|跑偏|不对|组件.*pr|master/i.test(text)
+          ? 'episode'
+          : 'skill_invocation',
+        evidenceRef,
+        canonicalAttributions,
+        attributions: canonicalAttributions,
+      };
+    })
+    .filter((value): value is ExperienceFeedbackSignal => Boolean(value));
+}
+
+function feedbackSignalType(text: string, index: number): ExperienceFeedbackSignalType {
+  if (USER_INTERRUPTION_RE.test(text)) return 'interruption';
+  if (hasUserCorrectionSignal(text) || /不是|不对|错了|跑偏|漏了|组件.*pr|master/i.test(text)) return 'correction';
+  if (hasNegativeFeedbackSignal(text) || /烦|失望|怎么.*还|为什么.*没|没返回|有结论吗/i.test(text)) return 'frustration';
+  if (hasPositiveFeedbackSignal(text)) return 'positive';
+  if (index > 0) return 'follow_up';
+  return 'unknown';
+}
+
+function feedbackTargetObject(text: string, skillSegments: ExperienceSkillSegment[]): string | undefined {
+  const skillOwner = targetObjectSkillOwner(text, skillSegments);
+  if (skillOwner) return skillOwner.skillName;
+  if (/pr|pull request/i.test(text)) return 'PR';
+  if (/有结论|进度|没返回|通知|返回/i.test(text)) return '异步结果';
+  if (/停止|暂停|中断|别动/i.test(text)) return '执行流程';
+  if (/产物|文档|报告|demo/i.test(text)) return '产物';
+  return undefined;
+}
+
+function feedbackAttributionsForText(
+  text: string,
+  evidenceRef: ExperienceEvidenceRef,
+  skillSegments: ExperienceSkillSegment[],
+  orchestrationEdges: ExperienceOrchestrationEdge[],
+  timeline: ExperienceTimelineEvent[],
+  promises: ExperiencePromiseOwner[],
+): ExperienceFeedbackAttribution[] {
+  const lower = text.toLowerCase();
+  const targetOwner = targetObjectSkillOwner(text, skillSegments);
+  const promiseOwner = promiseOwnerForFeedback(evidenceRef, text, promises);
+  const promisePrimaryOwner = promiseOwner && shouldPromiseOwnerReceivePrimaryFeedback(text)
+    ? upstreamPromiseOwnerForFeedback(promiseOwner, orchestrationEdges, skillSegments) ?? promiseOwner
+    : promiseOwner;
+  const actionOwner = actionOwnerForFeedback(evidenceRef, text, timeline, skillSegments);
+  const windowMatched = skillSegmentForEvidenceRef(evidenceRef, skillSegments);
+  const windowOwner = windowMatched && shouldUseWindowFeedbackOwner(windowMatched, text) ? windowMatched : undefined;
+  const promiseLike = isAsyncPromiseFeedbackText(text);
+  const explicitTargetOwner = targetOwner && isExplicitSkillTargetText(text, targetOwner);
+  const ownerDecision = explicitTargetOwner
+    ? { segment: targetOwner, reason: 'object_match' as const }
+    : promisePrimaryOwner && promiseLike
+      ? { segment: promisePrimaryOwner, reason: 'promise_match' as const }
+      : targetOwner
+        ? { segment: targetOwner, reason: 'object_match' as const }
+      : actionOwner
+        ? { segment: actionOwner, reason: 'action_match' as const }
+        : windowOwner
+          ? { segment: windowOwner, reason: feedbackAttributionReasonForText(lower) }
+          : undefined;
+  const primary = ownerDecision?.segment;
+  const attributions: ExperienceFeedbackAttribution[] = [];
+  if (ownerDecision) {
+    attributions.push({
+      skillName: ownerDecision.segment.skillName,
+      skillSegmentId: ownerDecision.segment.id,
+      attributionRole: 'primary_fault',
+      reasonCode: ownerDecision.reason,
+      evidenceRefs: [evidenceRef],
+    });
+  }
+  if (promiseOwner && promiseOwner.id !== primary?.id && shouldPromiseOwnerReceivePrimaryFeedback(text)) {
+    attributions.push({
+      skillName: promiseOwner.skillName,
+      skillSegmentId: promiseOwner.id,
+      attributionRole: promisePrimaryOwner?.id !== promiseOwner.id ? 'context_only' : 'primary_fault',
+      reasonCode: 'promise_match',
+      evidenceRefs: [evidenceRef],
+    });
+  }
+  const downstreamParents = primary
+    ? downstreamRelatedParentsForPrimary(primary, skillSegments, orchestrationEdges)
+    : promiseOwner
+      ? downstreamRelatedParentsForPrimary(promiseOwner, skillSegments, orchestrationEdges)
+      : [];
+  for (const { segment, edge } of downstreamParents) {
+    attributions.push({
+      skillName: segment.skillName,
+      skillSegmentId: segment.id,
+      attributionRole: 'downstream_related',
+      reasonCode: 'orchestration_edge',
+      evidenceRefs: [evidenceRef, ...edge.evidenceRefs.slice(0, 2)].slice(0, 3),
+    });
+  }
+  if (attributions.length === 0 && windowMatched) {
+    attributions.push({
+      skillName: windowMatched.skillName,
+      skillSegmentId: windowMatched.id,
+      attributionRole: 'context_only',
+      reasonCode: 'episode_context',
+      evidenceRefs: [evidenceRef],
+    });
+  } else if (attributions.length === 0 && skillSegments[0]) {
+    attributions.push({
+      skillName: skillSegments[0].skillName,
+      skillSegmentId: skillSegments[0].id,
+      attributionRole: 'context_only',
+      reasonCode: 'episode_context',
+      evidenceRefs: [evidenceRef],
+    });
+  }
+  return dedupeFeedbackAttributions(attributions);
+}
+
+function upstreamPromiseOwnerForFeedback(
+  promiseOwner: ExperienceSkillSegment,
+  orchestrationEdges: ExperienceOrchestrationEdge[],
+  skillSegments: ExperienceSkillSegment[],
+): ExperienceSkillSegment | undefined {
+  const segmentById = new Map(skillSegments.map((segment) => [segment.id, segment]));
+  const parents = orchestrationEdges
+    .filter((edge) => edge.executorSkillSegmentId === promiseOwner.id && edge.parentSkillSegmentId && edge.parentSkillSegmentId !== promiseOwner.id)
+    .map((edge) => segmentById.get(edge.parentSkillSegmentId as string))
+    .filter((segment): segment is ExperienceSkillSegment => Boolean(segment));
+  return parents
+    .sort((a, b) => upstreamPromiseOwnerScore(b) - upstreamPromiseOwnerScore(a))[0];
+}
+
+function upstreamPromiseOwnerScore(segment: ExperienceSkillSegment): number {
+  let score = 0;
+  if (segment.episodeRole === 'router' || segment.skillType === 'router') score += 80;
+  if (segment.episodeRole === 'delegator' || segment.skillType === 'delegation') score += 70;
+  if (/aiprd[-_\s]*task[-_\s]*runner|dev[-_\s]*lifecycle|omk[-_\s]*reviewer/i.test(segment.skillName)) score += 30;
+  return score;
+}
+
+function downstreamRelatedParentsForPrimary(
+  primary: ExperienceSkillSegment,
+  skillSegments: ExperienceSkillSegment[],
+  orchestrationEdges: ExperienceOrchestrationEdge[],
+): Array<{ segment: ExperienceSkillSegment; edge: ExperienceOrchestrationEdge }> {
+  const segmentById = new Map(skillSegments.map((segment) => [segment.id, segment]));
+  return orchestrationEdges
+    .filter((edge) =>
+      edge.parentSkillSegmentId
+      && edge.executorSkillSegmentId === primary.id
+      && edge.parentSkillSegmentId !== primary.id
+    )
+    .map((edge) => {
+      const segment = segmentById.get(edge.parentSkillSegmentId as string);
+      return segment ? { segment, edge } : undefined;
+    })
+    .filter((value): value is { segment: ExperienceSkillSegment; edge: ExperienceOrchestrationEdge } => Boolean(value));
+}
+
+function isAsyncPromiseFeedbackText(text: string): boolean {
+  return /有结论|进度|怎么样了|跑完|完成了吗|没返回|为什么.*(?:没|不).*?(?:通知|返回|同步)|通知|返回|同步|查看地址/i.test(text);
+}
+
+function shouldPromiseOwnerReceivePrimaryFeedback(text: string): boolean {
+  return /为什么.*(?:没|不).*?(?:通知|返回|同步)|没返回|没有.*(?:通知|返回|同步)|有结论吗|怎么.*还没/i.test(text);
+}
+
+function isExplicitSkillTargetText(text: string, owner: ExperienceSkillSegment): boolean {
+  const lower = text.toLowerCase();
+  const name = owner.skillName.toLowerCase();
+  const compact = compactObjectText(lower);
+  const compactName = compactObjectText(name);
+  return lower.includes(name) || (compactName.length >= 4 && compact.includes(compactName));
+}
+
+interface ExperiencePromiseOwner {
+  messageIndex: number;
+  segment: ExperienceSkillSegment;
+  evidenceRef: ExperienceEvidenceRef;
+}
+
+function sessionStoryPromiseOwners(
+  timeline: ExperienceTimelineEvent[],
+  skillSegments: ExperienceSkillSegment[],
+): ExperiencePromiseOwner[] {
+  return timeline
+    .filter((event) => event.kind === 'assistant_message')
+    .map((event): ExperiencePromiseOwner | undefined => {
+      const text = `${event.snippet ?? ''} ${event.fullText ?? ''}`;
+      if (!/有结果.*同步|完成.*(?:通知|同步|回复|转回)|跑完.*(?:告诉|通知|同步)|我会等.*(?:分析完|完成)|我会.*(?:转回|同步|回复)|有结论.*(?:同步|回复)/i.test(text)) return undefined;
+      const evidenceRef = evidenceRefFromTimeline(event);
+      const segment = skillSegmentForEvidenceRef(evidenceRef, skillSegments);
+      if (!segment || typeof evidenceRef.messageIndex !== 'number') return undefined;
+      return { messageIndex: evidenceRef.messageIndex, segment, evidenceRef };
+    })
+    .filter((value): value is ExperiencePromiseOwner => Boolean(value));
+}
+
+function promiseOwnerForFeedback(
+  evidenceRef: ExperienceEvidenceRef,
+  text: string,
+  promises: ExperiencePromiseOwner[],
+): ExperienceSkillSegment | undefined {
+  if (typeof evidenceRef.messageIndex !== 'number') return undefined;
+  const feedbackMessageIndex = evidenceRef.messageIndex;
+  if (!/有结论|进度|怎么样了|跑完|完成了吗|没返回|为什么.*(?:没|不).*?(?:通知|返回|同步)|通知|返回|同步/i.test(text)) return undefined;
+  return promises
+    .filter((promise) => evidenceRefsShareTraceScope(promise.evidenceRef, evidenceRef))
+    .filter((promise) => promise.messageIndex <= feedbackMessageIndex)
+    .sort((a, b) => b.messageIndex - a.messageIndex)[0]?.segment;
+}
+
+function targetObjectSkillOwner(text: string, skillSegments: ExperienceSkillSegment[]): ExperienceSkillSegment | undefined {
+  const lower = text.toLowerCase();
+  const compact = compactObjectText(lower);
+  const explicitSkill = skillSegments.find((segment) => {
+    const name = segment.skillName.toLowerCase();
+    const compactName = compactObjectText(name);
+    return lower.includes(name)
+      || (compactName.length >= 4 && compact.includes(compactName));
+  });
+  if (explicitSkill) return explicitSkill;
+
+  const byName = (patterns: RegExp[]) => skillSegments.find((segment) =>
+    patterns.some((pattern) => pattern.test(segment.skillName.toLowerCase()))
+  );
+
+  if (/skill\s*extract|soft[-_\s]*standard|llm[-_\s]*enhanced|omk[-_\s]*reviewer|skill\.md|这个skill|执行流程|依赖.*脚本|删除.*脚本|review/.test(lower)) {
+    return byName([/omk[-_\s]*reviewer/, /reviewer/]);
+  }
+  if (/preview|预览|可预览|端口|localhost|127\.0\.0\.1|链接发给我|url/.test(lower)) {
+    return byName([/ai[-_\s]*worker[-_\s]*webtools/, /webtools/, /preview/]);
+  }
+  if (/runner|child|子\s*claude|claude\s*session|ttyd|执行窗口/.test(lower)) {
+    return byName([/apply[-_\s]*cc/]);
+  }
+  if (/\bpr\b|pull request|merge|分支|拉下|拉取|代码|项目分枝|项目分支|master/.test(lower)) {
+    return byName([/dev[-_\s]*lifecycle/, /antcode/, /git/]);
+  }
+  if (/日报|每天早上|每天晚上|复盘报告/.test(lower)) {
+    return byName([/damai[-_\s]*daily/, /daily/]);
+  }
+  return undefined;
+}
+
+function compactObjectText(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '');
+}
+
+function uniqueBy<T>(values: T[], keyOf: (value: T) => string): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const value of values) {
+    const key = keyOf(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+function actionOwnerForFeedback(
+  evidenceRef: ExperienceEvidenceRef,
+  text: string,
+  timeline: ExperienceTimelineEvent[],
+  skillSegments: ExperienceSkillSegment[],
+): ExperienceSkillSegment | undefined {
+  const category = feedbackActionCategory(text);
+  if (!category || typeof evidenceRef.messageIndex !== 'number') return undefined;
+  const feedbackMessageIndex = evidenceRef.messageIndex;
+  const nextRuntimeEvent = timeline.find((event) => {
+    if (typeof event.messageIndex !== 'number') return false;
+    if (!evidenceRefsShareTraceScope(event, evidenceRef)) return false;
+    if (event.messageIndex <= feedbackMessageIndex || event.messageIndex > feedbackMessageIndex + 16) return false;
+    if (event.kind !== 'tool_use' && event.kind !== 'assistant_message') return false;
+    const eventText = `${event.toolName ?? ''} ${event.snippet ?? ''} ${event.fullText ?? ''}`;
+    return actionCategoryMatchesRuntimeEvent(category, eventText);
+  });
+  return nextRuntimeEvent ? skillSegmentForEvidenceRef(evidenceRefFromTimeline(nextRuntimeEvent), skillSegments) : undefined;
+}
+
+function feedbackActionCategory(text: string): 'delete' | 'pull' | 'preview' | 'review' | 'stop' | undefined {
+  if (/删除|删掉|remove|delete|rm\s/.test(text)) return 'delete';
+  if (/拉下|拉取|pull|fetch|checkout|分支/.test(text)) return 'pull';
+  if (/预览|链接|端口|打开|url/.test(text)) return 'preview';
+  if (/看下|review|检查|确认|否决|补充|更新|执行流程|skill/.test(text)) return 'review';
+  if (/停止|暂停|中断|stop|cancel/.test(text)) return 'stop';
+  return undefined;
+}
+
+function actionCategoryMatchesRuntimeEvent(category: ReturnType<typeof feedbackActionCategory>, eventText: string): boolean {
+  if (!category) return false;
+  const lower = eventText.toLowerCase();
+  if (category === 'delete') return /\brm\b|delete|remove|unlink|删除/.test(lower);
+  if (category === 'pull') return /git\s+(?:pull|fetch|checkout|switch)|拉取|拉下|分支/.test(lower);
+  if (category === 'preview') return /preview|localhost|127\.0\.0\.1|端口|server|vite|python3.*server|npm.*dev/.test(lower);
+  if (category === 'review') return /skill|review|grep|rg|read|sed|cat|检查|确认|否决|补充|更新/.test(lower);
+  if (category === 'stop') return /kill|stop|cancel|interrupt|停止|中断/.test(lower);
+  return false;
+}
+
+function shouldUseWindowFeedbackOwner(segment: ExperienceSkillSegment, text: string): boolean {
+  if (segment.skillType !== 'delegation' && segment.episodeRole !== 'delegator') return true;
+  return /子\s*claude|child|runner|ttyd|session|claude|有结论|进度|怎么样了|没返回|通知|同步|跑完|完成了吗/i.test(text);
+}
+
+function dedupeFeedbackAttributions(attributions: ExperienceFeedbackAttribution[]): ExperienceFeedbackAttribution[] {
+  const seen = new Set<string>();
+  const out: ExperienceFeedbackAttribution[] = [];
+  for (const attribution of attributions) {
+    const key = `${attribution.skillSegmentId ?? attribution.skillName ?? ''}:${attribution.attributionRole}:${attribution.reasonCode}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(attribution);
+  }
+  return out;
+}
+
+function feedbackAttributionReasonForText(lowerText: string): ExperienceFeedbackAttributionReason {
+  if (/pr|pull request|master|分支|组件|产物|文档|报告|demo|链接|地址|文件|项目|skill|agent|claude/.test(lowerText)) {
+    return 'object_match';
+  }
+  if (/有结论|进度|没返回|通知|返回|同步|发给|给我|怎么样了|还在线|完成了吗|跑完/.test(lowerText)) {
+    return 'promise_match';
+  }
+  if (/停止|暂停|中断|别动|删除|补充|追加|继续|重跑|重新|修正|更新|拉下|看下|执行|检查|确认|否决|采用|弃用/.test(lowerText)) {
+    return 'action_match';
+  }
+  return 'episode_context';
+}
+
+function skillSegmentForEvidenceRef(
+  evidenceRef: ExperienceEvidenceRef,
+  skillSegments: ExperienceSkillSegment[],
+  preferredSkillName?: string,
+): ExperienceSkillSegment | undefined {
+  const messageIndex = evidenceRef.messageIndex;
+  if (typeof messageIndex !== 'number') return undefined;
+  const candidates = skillSegments
+    .map((segment) => {
+      const ranges = segment.messageRanges?.length
+        ? segment.messageRanges
+        : typeof segment.startMessageIndex === 'number' && typeof segment.endMessageIndex === 'number'
+          ? [{ startMessageIndex: segment.startMessageIndex, endMessageIndex: segment.endMessageIndex }]
+          : [];
+      const matchedRange = ranges.find((range) =>
+        messageRangeContainsEvidenceRef(range, evidenceRef)
+      );
+      return matchedRange ? {
+        segment,
+        rangeSize: matchedRange.endMessageIndex - matchedRange.startMessageIndex,
+        traceSpecificity: messageRangeTraceSpecificity(matchedRange, evidenceRef),
+        preferred: preferredSkillName ? segment.skillName === preferredSkillName : false,
+        startsHere: messageIndex === matchedRange.startMessageIndex,
+      } : undefined;
+    })
+    .filter((value): value is { segment: ExperienceSkillSegment; rangeSize: number; traceSpecificity: number; preferred: boolean; startsHere: boolean } => Boolean(value))
+    .sort((a, b) =>
+      Number(b.preferred) - Number(a.preferred)
+      || b.traceSpecificity - a.traceSpecificity
+      || Number(b.startsHere) - Number(a.startsHere)
+      || a.rangeSize - b.rangeSize
+      || a.segment.order - b.segment.order
+    );
+  return candidates[0]?.segment;
+}
+
+function messageRangeContainsEvidenceRef(
+  range: ExperienceMessageRange,
+  ref: Pick<ExperienceEvidenceRef, 'messageIndex' | 'sourceTrace' | 'sessionId'>,
+): boolean {
+  if (typeof ref.messageIndex !== 'number') return false;
+  if (range.sourceTrace && ref.sourceTrace && range.sourceTrace !== ref.sourceTrace) return false;
+  if (range.sessionId && ref.sessionId && range.sessionId !== ref.sessionId) return false;
+  return ref.messageIndex >= range.startMessageIndex && ref.messageIndex <= range.endMessageIndex;
+}
+
+function messageRangeTraceSpecificity(
+  range: ExperienceMessageRange,
+  ref: Pick<ExperienceEvidenceRef, 'sourceTrace' | 'sessionId'>,
+): number {
+  return (range.sourceTrace && ref.sourceTrace && range.sourceTrace === ref.sourceTrace ? 2 : 0)
+    + (range.sessionId && ref.sessionId && range.sessionId === ref.sessionId ? 1 : 0);
+}
+
+function evidenceRefsShareTraceScope(
+  a?: Pick<ExperienceEvidenceRef, 'sourceTrace' | 'sessionId'>,
+  b?: Pick<ExperienceEvidenceRef, 'sourceTrace' | 'sessionId'>,
+): boolean {
+  if (!a || !b) return true;
+  if (a.sourceTrace && b.sourceTrace && a.sourceTrace !== b.sourceTrace) return false;
+  if (a.sessionId && b.sessionId && a.sessionId !== b.sessionId) return false;
+  return true;
+}
+
+function timelineEventSharesTraceScope(
+  event: Pick<ExperienceTimelineEvent, 'sourceTrace' | 'sessionId'>,
+  anchor?: Pick<ExperienceTimelineEvent, 'sourceTrace' | 'sessionId'>,
+): boolean {
+  return evidenceRefsShareTraceScope(event, anchor);
+}
+
+function skillSegmentsShareSourceTrace(a: ExperienceSkillSegment, b: ExperienceSkillSegment): boolean {
+  const aTraces = new Set((a.messageRanges ?? []).map((range) => range.sourceTrace).filter((value): value is string => Boolean(value)));
+  const bTraces = new Set((b.messageRanges ?? []).map((range) => range.sourceTrace).filter((value): value is string => Boolean(value)));
+  if (aTraces.size === 0 || bTraces.size === 0) return true;
+  return Array.from(aTraces).some((trace) => bTraces.has(trace));
+}
+
+function sessionStoryArtifacts(invocations: ExperienceInvocation[]): ExperienceEpisodeArtifact[] {
+  const timeline = uniqueTimelineEvents(invocations.flatMap((invocation) => invocation.timeline))
+    .sort(compareTimelineEvents);
+  return timeline
+    .filter((event) => event.kind === 'assistant_message' && hasAssistantDeliverableArtifactText(event.fullText ?? event.snippet ?? ''))
+    .slice(-5)
+    .map((event) => {
+      const text = event.snippet ?? event.fullText ?? '';
+      const pathOrUrl = text.match(/https?:\/\/\S+/)?.[0]
+        ?? text.match(/(?:outputs|reports|dist|docs|artifacts|\/tmp|\/Users)\/[^\s`，。)）]+/i)?.[0];
+      return {
+        kind: pathOrUrl?.startsWith('http') ? 'url' as const : pathOrUrl ? 'path' as const : 'unknown' as const,
+        label: pathOrUrl ?? text.slice(0, 80),
+        pathOrUrl,
+        artifactGoalMatch: 'unknown' as const,
+        evidenceRef: evidenceRefFromTimeline(event),
+      };
+    });
+}
+
+function sessionStoryOutcomeClosure(session: ExperienceSessionSummary, artifacts: ExperienceEpisodeArtifact[]): ExperienceOutcomeClosure {
+  if (session.indicators.userInterruptionCount > 0) return 'abandoned';
+  if (session.indicators.assistantDeliverySignalCount > 0 || artifacts.length > 0) return 'closed';
+  if (session.indicators.userFollowUpCount > 0 || session.indicators.negativeFeedbackCount > 0 || session.indicators.userCorrectionCount > 0) return 'unresolved';
+  return 'unknown';
+}
+
+function sessionStoryAcceptanceCriteria(
+  session: ExperienceSessionSummary,
+  feedbackSignals: ExperienceFeedbackSignal[],
+  artifacts: ExperienceEpisodeArtifact[],
+): string | undefined {
+  if (feedbackSignals.some((signal) => signal.attributions.some((attribution) => attribution.attributionRole === 'primary_fault'))) {
+    return '下次同类任务中，主要归因的用户反馈应消失，且对应 skill 段能看到明确闭环或阻塞原因。';
+  }
+  if (artifacts.length === 0 && session.indicators.assistantDeliverySignalCount === 0) {
+    return '下次同类任务中，应看到明确最终答复、产物路径，或清晰的阻塞说明。';
+  }
+  return undefined;
 }
 
 function assistantFinalDeliveryEvents(session: ExperienceSessionSummary): ExperienceTimelineEvent[] {
@@ -1944,10 +3116,15 @@ function sessionStoryAnswerText(key: ExperienceSessionStoryAnswerKey, reason: Ex
   return texts[key][reason];
 }
 
-function checklistItemsForAnswer(session: ExperienceSessionSummary, key: ExperienceSessionStoryAnswerKey): ExperienceChecklistItem[] {
-  if (key === 'goal_satisfaction') return goalSatisfactionChecklistItems(session);
-  if (key === 'declared_behavior_fit') return declaredBehaviorChecklistItems(session);
-  return userFeelingChecklistItems(session);
+function checklistItemsForAnswer(
+  session: ExperienceSessionSummary,
+  key: ExperienceSessionStoryAnswerKey,
+  episodes?: ExperienceEpisode[],
+  reviewState?: ObservationReviewState,
+): ExperienceChecklistItem[] {
+  if (key === 'goal_satisfaction') return goalSatisfactionChecklistItems(session, episodes, reviewState);
+  if (key === 'declared_behavior_fit') return declaredBehaviorChecklistItems(session, episodes);
+  return userFeelingChecklistItems(session, episodes, reviewState);
 }
 
 function attributionSourcesToLabel(sources: string[]): string {
@@ -2009,12 +3186,14 @@ function hasRecognizableUserGoal(ref?: ExperienceEvidenceRef): boolean {
   return hasRecognizableUserGoalText(ref?.snippet);
 }
 
-function goalSatisfactionChecklistItems(session: ExperienceSessionSummary): ExperienceChecklistItem[] {
+function goalSatisfactionChecklistItems(session: ExperienceSessionSummary, episodes?: ExperienceEpisode[], reviewState?: ObservationReviewState): ExperienceChecklistItem[] {
   const feedbackRefs = userFeedbackEvidenceRefs(session);
+  const feedbackCounts = canonicalFeedbackCountsForSession(session, reviewState);
   const goalIdentified = hasRecognizableUserGoal(session.evidenceChain.firstUserMessage);
   const inProgress = isExperienceTraceInProgress(session);
-  const hasDelivery = session.indicators.assistantDeliverySignalCount > 0;
-  const hasArtifact = session.indicators.deliverableArtifactSignalCount > 0;
+  const closure = userFacingClosureForSession(session, episodes);
+  const hasDelivery = closure.deliveryCount > 0;
+  const hasArtifact = closure.artifactCount > 0;
   return [
     checklistItem({
       key: 'goal_identified',
@@ -2055,30 +3234,30 @@ function goalSatisfactionChecklistItems(session: ExperienceSessionSummary): Expe
     }),
     checklistItem({
       key: 'negative_feedback_seen',
-      label: session.indicators.negativeFeedbackCount > 0 ? '看到用户负向反馈' : '未见用户负向反馈',
-      status: session.indicators.negativeFeedbackCount > 0 ? 'failed' : 'passed',
+      label: feedbackCounts.negativeFeedbackCount > 0 ? '看到用户负向反馈' : '未见用户负向反馈',
+      status: feedbackCounts.negativeFeedbackCount > 0 ? 'failed' : 'passed',
       contribution: 'blocking',
-      reason: session.indicators.negativeFeedbackCount > 0 ? '看到用户负向表达，不能直接认为目标已满足。' : '没有看到用户负向表达。',
+      reason: feedbackCounts.negativeFeedbackCount > 0 ? '看到用户负向表达，不能直接认为目标已满足。' : '没有看到用户负向表达。',
       evidenceRefs: feedbackRefs,
-      suggestionKey: session.indicators.negativeFeedbackCount > 0 ? 'negative_feedback_review' : undefined,
+      suggestionKey: feedbackCounts.negativeFeedbackCount > 0 ? 'negative_feedback_review' : undefined,
     }),
     checklistItem({
       key: 'user_correction_seen',
-      label: session.indicators.userCorrectionCount > 0 ? '看到用户纠正' : '未见用户纠正',
-      status: session.indicators.userCorrectionCount > 0 ? 'failed' : 'passed',
+      label: feedbackCounts.userCorrectionCount > 0 ? '看到用户纠正' : '未见用户纠正',
+      status: feedbackCounts.userCorrectionCount > 0 ? 'failed' : 'passed',
       contribution: 'attention',
-      reason: session.indicators.userCorrectionCount > 0 ? '用户中途纠正了方向，目标是否满足要打开原文看。' : '没有看到用户纠正。',
+      reason: feedbackCounts.userCorrectionCount > 0 ? '用户中途纠正了方向，目标是否满足要打开原文看。' : '没有看到用户纠正。',
       evidenceRefs: feedbackRefs,
-      suggestionKey: session.indicators.userCorrectionCount > 0 ? 'user_correction_review' : undefined,
+      suggestionKey: feedbackCounts.userCorrectionCount > 0 ? 'user_correction_review' : undefined,
     }),
     checklistItem({
       key: 'user_interruption_seen',
-      label: session.indicators.userInterruptionCount > 0 ? '看到用户中断' : '未见用户中断',
-      status: session.indicators.userInterruptionCount > 0 ? 'failed' : 'passed',
+      label: feedbackCounts.userInterruptionCount > 0 ? '看到用户中断' : '未见用户中断',
+      status: feedbackCounts.userInterruptionCount > 0 ? 'failed' : 'passed',
       contribution: 'blocking',
-      reason: session.indicators.userInterruptionCount > 0 ? '看到用户中断或停止任务信号，不能认为执行链路自然完成。' : '没有看到用户中断信号。',
+      reason: feedbackCounts.userInterruptionCount > 0 ? '看到用户中断或停止任务信号，不能认为执行链路自然完成。' : '没有看到用户中断信号。',
       evidenceRefs: feedbackRefs,
-      suggestionKey: session.indicators.userInterruptionCount > 0 ? 'user_interruption_review' : undefined,
+      suggestionKey: feedbackCounts.userInterruptionCount > 0 ? 'user_interruption_review' : undefined,
     }),
     checklistItem({
       key: 'goal_shift_seen',
@@ -2089,10 +3268,11 @@ function goalSatisfactionChecklistItems(session: ExperienceSessionSummary): Expe
       evidenceRefs: feedbackRefs,
       suggestionKey: session.indicators.userGoalShiftCount > 0 ? 'goal_shift_review' : undefined,
     }),
+    ...skillTypeClosureChecklistItems(session, 'goal_satisfaction', episodes),
   ];
 }
 
-function declaredBehaviorChecklistItems(session: ExperienceSessionSummary): ExperienceChecklistItem[] {
+function declaredBehaviorChecklistItems(session: ExperienceSessionSummary, episodes?: ExperienceEpisode[]): ExperienceChecklistItem[] {
   const expectedToolCheck = expectedToolCheckForSession(session);
   const declarations = skillDeclarationCheckForSession(session);
   const hasSkillRead = session.evidenceChain.skillContextCount > 0;
@@ -2169,16 +3349,18 @@ function declaredBehaviorChecklistItems(session: ExperienceSessionSummary): Expe
       suggestionKey: hit ? undefined : 'expected_tools_missed',
     }));
   }
+  items.push(...skillTypeClosureChecklistItems(session, 'declared_behavior_fit', episodes));
   return items;
 }
 
-function userFeelingChecklistItems(session: ExperienceSessionSummary): ExperienceChecklistItem[] {
+function userFeelingChecklistItems(session: ExperienceSessionSummary, episodes?: ExperienceEpisode[], reviewState?: ObservationReviewState): ExperienceChecklistItem[] {
   const feedbackRefs = userFeedbackEvidenceRefs(session);
-  const hasAnyFeedback = session.indicators.positiveFeedbackCount > 0
-    || session.indicators.negativeFeedbackCount > 0
-    || session.indicators.userCorrectionCount > 0
-    || session.indicators.userInterruptionCount > 0
-    || session.indicators.userFollowUpCount > 0
+  const feedbackCounts = canonicalFeedbackCountsForSession(session, reviewState);
+  const hasAnyFeedback = feedbackCounts.positiveFeedbackCount > 0
+    || feedbackCounts.negativeFeedbackCount > 0
+    || feedbackCounts.userCorrectionCount > 0
+    || feedbackCounts.userInterruptionCount > 0
+    || feedbackCounts.userFollowUpCount > 0
     || session.indicators.userGoalShiftCount > 0;
   return [
     checklistItem({
@@ -2191,47 +3373,328 @@ function userFeelingChecklistItems(session: ExperienceSessionSummary): Experienc
     }),
     checklistItem({
       key: 'positive_feedback_seen',
-      label: session.indicators.positiveFeedbackCount > 0 ? '看到用户正向反馈' : '未见用户正向反馈',
-      status: session.indicators.positiveFeedbackCount > 0 ? 'passed' : 'unknown',
-      contribution: session.indicators.positiveFeedbackCount > 0 ? 'positive' : 'neutral',
-      reason: session.indicators.positiveFeedbackCount > 0 ? '看到用户认可或正向反馈。' : '没有看到明确正向反馈。',
+      label: feedbackCounts.positiveFeedbackCount > 0 ? '看到用户正向反馈' : '未见用户正向反馈',
+      status: feedbackCounts.positiveFeedbackCount > 0 ? 'passed' : 'unknown',
+      contribution: feedbackCounts.positiveFeedbackCount > 0 ? 'positive' : 'neutral',
+      reason: feedbackCounts.positiveFeedbackCount > 0 ? '看到用户认可或正向反馈。' : '没有看到明确正向反馈。',
       evidenceRefs: feedbackRefs,
     }),
     checklistItem({
       key: 'negative_feedback_seen',
-      label: session.indicators.negativeFeedbackCount > 0 ? '看到用户负向反馈' : '未见用户负向反馈',
-      status: session.indicators.negativeFeedbackCount > 0 ? 'failed' : 'passed',
-      contribution: session.indicators.negativeFeedbackCount > 0 ? 'blocking' : 'neutral',
-      reason: session.indicators.negativeFeedbackCount > 0 ? '看到用户负向表达。' : '没有看到用户负向表达。',
+      label: feedbackCounts.negativeFeedbackCount > 0 ? '看到用户负向反馈' : '未见用户负向反馈',
+      status: feedbackCounts.negativeFeedbackCount > 0 ? 'failed' : 'passed',
+      contribution: feedbackCounts.negativeFeedbackCount > 0 ? 'blocking' : 'neutral',
+      reason: feedbackCounts.negativeFeedbackCount > 0 ? '看到用户负向表达。' : '没有看到用户负向表达。',
       evidenceRefs: feedbackRefs,
-      suggestionKey: session.indicators.negativeFeedbackCount > 0 ? 'negative_feedback_review' : undefined,
+      suggestionKey: feedbackCounts.negativeFeedbackCount > 0 ? 'negative_feedback_review' : undefined,
     }),
     checklistItem({
       key: 'user_correction_seen',
-      label: session.indicators.userCorrectionCount > 0 ? '看到用户纠正' : '未见用户纠正',
-      status: session.indicators.userCorrectionCount > 0 ? 'failed' : 'passed',
-      contribution: session.indicators.userCorrectionCount > 0 ? 'attention' : 'neutral',
-      reason: session.indicators.userCorrectionCount > 0 ? '看到用户重新解释或要求修正。' : '没有看到用户纠正信号。',
+      label: feedbackCounts.userCorrectionCount > 0 ? '看到用户纠正' : '未见用户纠正',
+      status: feedbackCounts.userCorrectionCount > 0 ? 'failed' : 'passed',
+      contribution: feedbackCounts.userCorrectionCount > 0 ? 'attention' : 'neutral',
+      reason: feedbackCounts.userCorrectionCount > 0 ? '看到用户重新解释或要求修正。' : '没有看到用户纠正信号。',
       evidenceRefs: feedbackRefs,
-      suggestionKey: session.indicators.userCorrectionCount > 0 ? 'user_correction_review' : undefined,
+      suggestionKey: feedbackCounts.userCorrectionCount > 0 ? 'user_correction_review' : undefined,
     }),
     checklistItem({
       key: 'user_follow_up_seen',
-      label: session.indicators.userFollowUpCount > 0 ? '看到用户追问' : '未见用户追问',
-      status: session.indicators.userFollowUpCount > 0 ? 'unknown' : 'passed',
-      contribution: session.indicators.userFollowUpCount > 0 ? 'informational' : 'neutral',
-      reason: session.indicators.userFollowUpCount > 0 ? '看到用户追问；需要结合上下文区分推进使用还是不满意。' : '没有看到用户追问。',
+      label: feedbackCounts.userFollowUpCount > 0 ? '看到用户追问' : '未见用户追问',
+      status: feedbackCounts.userFollowUpCount > 0 ? 'unknown' : 'passed',
+      contribution: feedbackCounts.userFollowUpCount > 0 ? 'informational' : 'neutral',
+      reason: feedbackCounts.userFollowUpCount > 0 ? '看到用户追问；需要结合上下文区分推进使用还是不满意。' : '没有看到用户追问。',
       evidenceRefs: feedbackRefs,
-      suggestionKey: session.indicators.userFollowUpCount > 0 ? 'follow_up_review' : undefined,
+      suggestionKey: feedbackCounts.userFollowUpCount > 0 ? 'follow_up_review' : undefined,
     }),
     checklistItem({
       key: 'user_interruption_seen',
-      label: session.indicators.userInterruptionCount > 0 ? '看到用户中断' : '未见用户中断',
-      status: session.indicators.userInterruptionCount > 0 ? 'failed' : 'passed',
-      contribution: session.indicators.userInterruptionCount > 0 ? 'blocking' : 'neutral',
-      reason: session.indicators.userInterruptionCount > 0 ? '看到用户中断或停止任务信号。' : '没有看到用户中断信号。',
+      label: feedbackCounts.userInterruptionCount > 0 ? '看到用户中断' : '未见用户中断',
+      status: feedbackCounts.userInterruptionCount > 0 ? 'failed' : 'passed',
+      contribution: feedbackCounts.userInterruptionCount > 0 ? 'blocking' : 'neutral',
+      reason: feedbackCounts.userInterruptionCount > 0 ? '看到用户中断或停止任务信号。' : '没有看到用户中断信号。',
       evidenceRefs: feedbackRefs,
-      suggestionKey: session.indicators.userInterruptionCount > 0 ? 'user_interruption_review' : undefined,
+      suggestionKey: feedbackCounts.userInterruptionCount > 0 ? 'user_interruption_review' : undefined,
+    }),
+    ...skillTypeClosureChecklistItems(session, 'user_feeling', episodes),
+  ];
+}
+
+function skillTypeClosureChecklistItems(
+  session: ExperienceSessionSummary,
+  answerKey: ExperienceSessionStoryAnswerKey,
+  episodes?: ExperienceEpisode[],
+): ExperienceChecklistItem[] {
+  const runtime = currentSkillRuntimeModel(session, episodes);
+  if (!runtime) return [];
+  if (runtime.skillType === 'workflow_owner') return workflowOwnerClosureChecklistItems(session, runtime, answerKey, episodes);
+  if (runtime.skillType === 'router' || runtime.hasDownstreamEdges) return routerClosureChecklistItems(session, runtime, answerKey, episodes);
+  if (runtime.skillType === 'delegation' || runtime.isDelegator) return delegationClosureChecklistItems(session, runtime, answerKey, episodes);
+  if (runtime.skillType === 'executor') return executorClosureChecklistItems(session, runtime, answerKey);
+  if (runtime.skillType === 'advisory') return advisoryClosureChecklistItems(session, runtime, answerKey);
+  return [];
+}
+
+interface CurrentSkillRuntimeModel {
+  skillType: ExperienceRuntimeSkillType;
+  isDelegator: boolean;
+  hasDownstreamEdges: boolean;
+  segments: ExperienceSkillSegment[];
+  downstreamEdges: ExperienceOrchestrationEdge[];
+  downstreamSignals: ExperienceFeedbackSignal[];
+  primarySignals: ExperienceFeedbackSignal[];
+  contextSignals: ExperienceFeedbackSignal[];
+}
+
+function currentSkillRuntimeModel(session: ExperienceSessionSummary, episodesOverride?: ExperienceEpisode[]): CurrentSkillRuntimeModel | undefined {
+  const episodes = episodesOverride ?? session.sessionStory?.episodes ?? [];
+  const segments = uniqueBy(
+    episodes.flatMap((episode) => episode.skillSegments).filter((segment) => segment.skillName === session.skillName),
+    (segment) => segment.id,
+  );
+  if (segments.length === 0) return undefined;
+  const segmentIds = new Set(segments.map((segment) => segment.id));
+  const downstreamEdges = episodes.flatMap((episode) => episode.orchestrationEdges)
+    .filter((edge) => edge.parentSkillSegmentId && segmentIds.has(edge.parentSkillSegmentId));
+  const signals = episodes.flatMap((episode) => episode.feedbackSignals ?? []);
+  const signalsForRole = (role: ExperienceFeedbackAttributionRole) => signals.filter((signal) =>
+    (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
+      attribution.skillName === session.skillName && attribution.attributionRole === role
+    )
+  );
+  const declaredType = segments.map((segment) => segment.skillType).find((type) => type !== 'unknown') ?? 'unknown';
+  const inferredType: ExperienceRuntimeSkillType = declaredType !== 'unknown'
+    ? declaredType
+    : downstreamEdges.length > 0
+      ? 'router'
+      : segments.some((segment) => segment.episodeRole === 'delegator')
+        ? 'delegation'
+        : 'unknown';
+  return {
+    skillType: inferredType,
+    isDelegator: segments.some((segment) => segment.episodeRole === 'delegator'),
+    hasDownstreamEdges: downstreamEdges.length > 0,
+    segments,
+    downstreamEdges,
+    downstreamSignals: signalsForRole('downstream_related'),
+    primarySignals: signalsForRole('primary_fault'),
+    contextSignals: signalsForRole('context_only'),
+  };
+}
+
+function workflowOwnerClosureChecklistItems(
+  session: ExperienceSessionSummary,
+  runtime: CurrentSkillRuntimeModel,
+  answerKey: ExperienceSessionStoryAnswerKey,
+  episodes?: ExperienceEpisode[],
+): ExperienceChecklistItem[] {
+  if (answerKey === 'declared_behavior_fit') {
+    const hasStages = runtime.segments.some((segment) =>
+      (segment.typeSpecificChecklist ?? []).some((item) => /stage|阶段|workflow/i.test(`${item.key} ${item.label}`))
+    );
+    return [
+      checklistItem({
+        key: 'workflow_owner_stage_matrix_declared',
+        label: hasStages ? '看到阶段矩阵线索' : '未看到阶段矩阵声明',
+        status: hasStages ? 'passed' : 'unknown',
+        contribution: 'attention',
+        reason: hasStages
+          ? '当前 workflow_owner skill 有阶段化检查线索。'
+          : 'workflow_owner 需要声明标准阶段矩阵，才能复盘每个阶段是否闭环。',
+        evidenceRefs: runtime.segments.flatMap((segment) => segment.evidenceRefs),
+        suggestionKey: hasStages ? undefined : 'workflow_owner_stage_matrix_absent',
+      }),
+    ];
+  }
+  if (answerKey === 'goal_satisfaction') {
+    const closure = userFacingClosureForSession(session, episodes);
+    const hasClosure = closure.deliveryCount > 0 || closure.artifactCount > 0;
+    return [
+      checklistItem({
+        key: 'workflow_owner_stage_closure',
+        label: hasClosure ? '看到流程闭环线索' : '未看到流程闭环线索',
+        status: hasClosure ? 'passed' : runtime.primarySignals.length > 0 || runtime.downstreamSignals.length > 0 ? 'failed' : 'unknown',
+        contribution: 'attention',
+        reason: hasClosure
+          ? '看到最终答复或产物线索。'
+          : 'workflow_owner 需要回收各阶段状态，说明哪些阶段完成、失败或跳过。',
+        evidenceRefs: [session.evidenceChain.lastAssistantMessage, ...runtime.primarySignals.map((signal) => signal.evidenceRef), ...runtime.downstreamSignals.map((signal) => signal.evidenceRef)],
+        suggestionKey: hasClosure ? undefined : 'workflow_owner_stage_closure_absent',
+      }),
+    ];
+  }
+  if (answerKey === 'user_feeling') {
+    return downstreamFeedbackRiskChecklistItems(runtime, 'workflow_owner_stage_feedback_seen', '流程阶段里出现用户追问或纠正');
+  }
+  return [];
+}
+
+function routerClosureChecklistItems(
+  session: ExperienceSessionSummary,
+  runtime: CurrentSkillRuntimeModel,
+  answerKey: ExperienceSessionStoryAnswerKey,
+  episodes?: ExperienceEpisode[],
+): ExperienceChecklistItem[] {
+  if (answerKey === 'declared_behavior_fit') {
+    return [
+      checklistItem({
+        key: 'router_route_selected',
+        label: runtime.hasDownstreamEdges ? '路由已派发下游' : '未看到下游派发',
+        status: runtime.hasDownstreamEdges ? 'passed' : 'unknown',
+        contribution: 'attention',
+        reason: runtime.hasDownstreamEdges
+          ? '看到当前 skill 和下游执行 skill / child session 的链路。'
+          : '没有看到当前 router skill 把任务派发到下游执行链路。',
+        evidenceRefs: runtime.downstreamEdges.flatMap((edge) => edge.evidenceRefs),
+        suggestionKey: runtime.hasDownstreamEdges ? undefined : 'router_downstream_link_absent',
+      }),
+      checklistItem({
+        key: 'router_goal_preserved',
+        label: '用户目标保真需复核',
+        status: 'unknown',
+        contribution: 'informational',
+        reason: '规则层只能确认发生了派发，child prompt 是否完整保留用户目标需要结合原文或模型识别。',
+        evidenceRefs: [session.evidenceChain.firstUserMessage, ...runtime.downstreamEdges.flatMap((edge) => edge.evidenceRefs)],
+        suggestionKey: 'router_goal_preservation_review',
+      }),
+    ];
+  }
+  if (answerKey === 'goal_satisfaction') {
+    const hasDownstreamRisk = runtime.downstreamSignals.length > 0;
+    const closure = userFacingClosureForSession(session, episodes);
+    const hasClosure = closure.deliveryCount > 0 || closure.artifactCount > 0;
+    return [
+      checklistItem({
+        key: 'router_downstream_completed',
+        label: hasClosure ? '看到用户侧闭环线索' : '未看到用户侧闭环线索',
+        status: hasClosure ? 'passed' : hasDownstreamRisk ? 'failed' : 'unknown',
+        contribution: 'attention',
+        reason: hasClosure
+          ? '看到当前链路里有最终答复或产物线索。'
+          : hasDownstreamRisk
+            ? '下游调用链路出现用户追问 / 纠正 / 中断，但当前路由能力视角没看到清晰闭环。'
+            : '已看到派发，但还不能确认下游是否完成并回传。',
+        evidenceRefs: [
+          session.evidenceChain.lastAssistantMessage,
+          ...runtime.downstreamSignals.map((signal) => signal.evidenceRef),
+        ],
+        suggestionKey: hasClosure ? undefined : 'router_user_facing_closure_absent',
+      }),
+    ];
+  }
+  if (answerKey === 'user_feeling') {
+    return downstreamFeedbackRiskChecklistItems(runtime, 'router_downstream_feedback_seen', '下游调用链路用户有追问');
+  }
+  return [];
+}
+
+function delegationClosureChecklistItems(
+  session: ExperienceSessionSummary,
+  runtime: CurrentSkillRuntimeModel,
+  answerKey: ExperienceSessionStoryAnswerKey,
+  episodes?: ExperienceEpisode[],
+): ExperienceChecklistItem[] {
+  if (answerKey === 'declared_behavior_fit') {
+    const hasChild = runtime.hasDownstreamEdges || session.timelineTree?.branches.length;
+    return [
+      checklistItem({
+        key: 'delegation_child_lifecycle_tracked',
+        label: hasChild ? '看到 child / 下游生命周期' : '未看到 child 生命周期',
+        status: hasChild ? 'passed' : 'unknown',
+        contribution: 'attention',
+        reason: hasChild ? '看到 child session、下游 skill 或分支执行线索。' : '没有看到明确 child session 或下游执行线索。',
+        evidenceRefs: runtime.downstreamEdges.flatMap((edge) => edge.evidenceRefs),
+        suggestionKey: hasChild ? undefined : 'delegation_child_lifecycle_absent',
+      }),
+    ];
+  }
+  if (answerKey === 'goal_satisfaction') {
+    const closure = userFacingClosureForSession(session, episodes);
+    const hasResult = closure.deliveryCount > 0 || closure.artifactCount > 0;
+    return [
+      checklistItem({
+        key: 'delegation_result_recovered',
+        label: hasResult ? '已回收结果给用户' : '未看到结果回收',
+        status: hasResult ? 'passed' : runtime.primarySignals.length > 0 ? 'failed' : 'unknown',
+        contribution: 'attention',
+        reason: hasResult ? '看到最终答复或产物线索。' : 'delegation skill 需要把 child 结果回收并告知用户。',
+        evidenceRefs: [session.evidenceChain.lastAssistantMessage, ...runtime.primarySignals.map((signal) => signal.evidenceRef)],
+        suggestionKey: hasResult ? undefined : 'delegation_result_recovery_absent',
+      }),
+    ];
+  }
+  if (answerKey === 'user_feeling') {
+    return downstreamFeedbackRiskChecklistItems(runtime, 'delegation_downstream_feedback_seen', 'child 调用链路用户有反馈');
+  }
+  return [];
+}
+
+function executorClosureChecklistItems(
+  session: ExperienceSessionSummary,
+  _runtime: CurrentSkillRuntimeModel,
+  answerKey: ExperienceSessionStoryAnswerKey,
+): ExperienceChecklistItem[] {
+  if (answerKey !== 'goal_satisfaction') return [];
+  const hasExecution = session.indicators.toolCallCount > 0;
+  const hasResult = session.indicators.assistantDeliverySignalCount > 0 || session.indicators.deliverableArtifactSignalCount > 0;
+  return [
+    checklistItem({
+      key: 'executor_execution_to_result',
+      label: hasExecution && hasResult ? '执行后有结果' : hasExecution ? '执行后结果不明确' : '未看到执行证据',
+      status: hasExecution && hasResult ? 'passed' : hasExecution ? 'unknown' : 'failed',
+      contribution: 'attention',
+      reason: hasExecution && hasResult
+        ? '看到工具执行和最终答复 / 产物线索。'
+        : hasExecution
+          ? '看到工具执行，但结果或产物闭环不清晰。'
+          : 'executor 类型 skill 应能看到执行证据。',
+      evidenceRefs: [session.evidenceChain.firstToolUse, session.evidenceChain.lastAssistantMessage],
+      suggestionKey: hasExecution && hasResult ? undefined : 'executor_result_closure_review',
+    }),
+  ];
+}
+
+function advisoryClosureChecklistItems(
+  session: ExperienceSessionSummary,
+  _runtime: CurrentSkillRuntimeModel,
+  answerKey: ExperienceSessionStoryAnswerKey,
+): ExperienceChecklistItem[] {
+  if (answerKey !== 'goal_satisfaction') return [];
+  const hasAnswer = session.indicators.assistantDeliverySignalCount > 0;
+  return [
+    checklistItem({
+      key: 'advisory_answer_present',
+      label: hasAnswer ? '已给分析结论' : '未看到分析结论',
+      status: hasAnswer ? 'passed' : 'failed',
+      contribution: 'attention',
+      reason: hasAnswer ? '看到面向用户的分析结论或收尾回复。' : 'advisory 类型 skill 应给出清晰分析结论或阻塞说明。',
+      evidenceRefs: [session.evidenceChain.lastAssistantMessage],
+      suggestionKey: hasAnswer ? undefined : 'advisory_answer_absent',
+    }),
+  ];
+}
+
+function downstreamFeedbackRiskChecklistItems(
+  runtime: CurrentSkillRuntimeModel,
+  key: string,
+  presentLabel: string,
+): ExperienceChecklistItem[] {
+  const riskSignals = runtime.downstreamSignals.filter((signal) =>
+    signal.type === 'follow_up'
+    || signal.type === 'correction'
+    || signal.type === 'frustration'
+    || signal.type === 'interruption'
+  );
+  return [
+    checklistItem({
+      key,
+      label: riskSignals.length > 0 ? presentLabel : '未见下游反馈风险',
+      status: riskSignals.length > 0 ? 'failed' : 'passed',
+      contribution: riskSignals.length > 0 ? 'attention' : 'neutral',
+      reason: riskSignals.length > 0
+        ? `看到 ${riskSignals.length} 条下游相关的用户追问、纠正或中断；这不是当前 skill 的硬失败，但需要 owner 看下闭环。`
+        : '没有看到下游相关的用户反馈风险。',
+      evidenceRefs: riskSignals.map((signal) => signal.evidenceRef),
+      suggestionKey: riskSignals.length > 0 ? 'downstream_feedback_review' : undefined,
     }),
   ];
 }
@@ -2330,33 +3793,156 @@ function executionStepText(session: ExperienceSessionSummary, expectedToolCheck:
 }
 
 function deliveryStepText(session: ExperienceSessionSummary): string {
-  if (session.indicators.assistantDeliverySignalCount > 0) {
-    const artifact = session.indicators.deliverableArtifactSignalCount > 0
-      ? `，其中 ${session.indicators.deliverableArtifactSignalCount} 次包含具体产物线索`
+  const closure = userFacingClosureForSession(session);
+  if (closure.deliveryCount > 0) {
+    const artifact = closure.artifactCount > 0
+      ? `，其中 ${closure.artifactCount} 次包含具体产物线索`
       : '，但未看到明确产物线索';
-    return `看到 ${session.indicators.assistantDeliverySignalCount} 次完成态或结果反馈${artifact}。`;
+    return `看到 ${closure.deliveryCount} 次完成态或结果反馈${artifact}。`;
   }
   return '没有发现最后结果反馈；当前不能把过程进展当成完成。';
 }
 
-function userFeedbackStepText(session: ExperienceSessionSummary): string {
+function userFacingClosureForSession(
+  session: ExperienceSessionSummary,
+  episodesOverride?: ExperienceEpisode[],
+): { deliveryCount: number; artifactCount: number; evidenceRefs: ExperienceEvidenceRef[] } {
+  const runtime = currentSkillRuntimeModel(session, episodesOverride);
+  const canUseDownstream = Boolean(runtime && (runtime.skillType === 'router' || runtime.skillType === 'delegation' || runtime.hasDownstreamEdges || runtime.isDelegator));
+  if (!canUseDownstream) {
+    return {
+      deliveryCount: session.indicators.assistantDeliverySignalCount,
+      artifactCount: session.indicators.deliverableArtifactSignalCount,
+      evidenceRefs: uniqueEvidenceRefs([
+        session.evidenceChain.lastAssistantMessage,
+      ].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))),
+    };
+  }
+  const primarySourceTrace = primarySourceTraceForSession(session);
+  const finalDeliveryEvents = assistantFinalDeliveryEvents(session)
+    .filter((event) => isMainlineEvidenceRef(event, primarySourceTrace));
+  const episodes = episodesOverride ?? session.sessionStory?.episodes ?? [];
+  const artifacts = episodes
+    .flatMap((episode) => episode.outcome.artifacts ?? [])
+    .filter((artifact) => isMainlineEvidenceRef(artifact.evidenceRef, primarySourceTrace));
+  const deliveryRefs = finalDeliveryEvents.map(evidenceRefFromTimeline);
+  const artifactRefs = artifacts.map((artifact) => artifact.evidenceRef);
+  return {
+    deliveryCount: finalDeliveryEvents.length,
+    artifactCount: artifacts.length,
+    evidenceRefs: uniqueEvidenceRefs([...deliveryRefs, ...artifactRefs, session.evidenceChain.lastAssistantMessage].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))).slice(0, 5),
+  };
+}
+
+function isMainlineEvidenceRef(ref: Pick<ExperienceEvidenceRef, 'sourceTrace'> | undefined, primarySourceTrace?: string): boolean {
+  if (!ref || !primarySourceTrace || !ref.sourceTrace) return true;
+  return ref.sourceTrace === primarySourceTrace;
+}
+
+function enrichRouterDownstreamIndicators(session: ExperienceSessionSummary): ExperienceReviewIndicators {
+  const runtime = currentSkillRuntimeModel(session);
+  if (!runtime || !(runtime.skillType === 'router' || runtime.hasDownstreamEdges)) return session.indicators;
+  const closure = userFacingClosureForSession(session);
+  const completedByEdge = runtime.downstreamEdges.some((edge) => edge.status === 'completed' || edge.runnerCompletedRef);
+  const failedByEdge = runtime.downstreamEdges.some((edge) => edge.status === 'failed');
+  const completed = closure.deliveryCount > 0 || closure.artifactCount > 0 || completedByEdge;
+  const failed = failedByEdge || (!completed && runtime.downstreamSignals.length > 0);
+  return {
+    ...session.indicators,
+    routerDownstreamCompleted: completed ? 1 : 0,
+    routerDownstreamFailed: failed ? 1 : 0,
+  };
+}
+
+function canonicalFeedbackCountsForSession(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): Pick<ExperienceReviewIndicators,
+  'userFollowUpCount' | 'userCorrectionCount' | 'userInterruptionCount' | 'negativeFeedbackCount' | 'positiveFeedbackCount'
+> {
+  const signals = session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [];
+  if (signals.length === 0) {
+    return {
+      userFollowUpCount: session.indicators.userFollowUpCount,
+      userCorrectionCount: session.indicators.userCorrectionCount,
+      userInterruptionCount: session.indicators.userInterruptionCount,
+      negativeFeedbackCount: session.indicators.negativeFeedbackCount,
+      positiveFeedbackCount: session.indicators.positiveFeedbackCount,
+    };
+  }
+  const includeDownstream = shouldIncludeDownstreamFeedbackForSession(session);
+  const owned = signals.filter((signal) =>
+    (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
+      attribution.skillName === session.skillName
+      && (attribution.attributionRole === 'primary_fault'
+        || includeDownstream && attribution.attributionRole === 'downstream_related')
+    )
+    && feedbackSignalIsActiveForSession(signal, session, reviewState)
+  );
+  return {
+    userFollowUpCount: owned.filter((signal) => signal.type === 'follow_up').length,
+    userCorrectionCount: owned.filter((signal) => signal.type === 'correction').length,
+    userInterruptionCount: owned.filter((signal) => signal.type === 'interruption').length,
+    negativeFeedbackCount: owned.filter((signal) => signal.type === 'frustration').length,
+    positiveFeedbackCount: owned.filter((signal) => signal.type === 'positive').length,
+  };
+}
+
+function feedbackSignalIsActiveForSession(
+  signal: ExperienceFeedbackSignal,
+  session: ExperienceSessionSummary,
+  reviewState?: ObservationReviewState,
+): boolean {
+  const metricKey = metricKeyForFeedbackSignal(signal);
+  if (!metricKey) return true;
+  const verdict = observationMetricAnnotationVerdict(reviewState, { ...signal.evidenceRef, metricScopeId: session.id }, metricKey);
+  if (verdict === 'confirmed') return true;
+  if (verdict === 'rejected') return false;
+  return true;
+}
+
+function metricKeyForFeedbackSignal(signal: ExperienceFeedbackSignal): ObservationMetricKey | undefined {
+  if (signal.type === 'follow_up') return 'user_follow_up';
+  if (signal.type === 'correction') return 'user_correction';
+  if (signal.type === 'interruption') return 'user_interruption';
+  if (signal.type === 'frustration') return 'negative_feedback';
+  if (signal.type === 'positive') return 'positive_feedback';
+  return undefined;
+}
+
+function shouldIncludeDownstreamFeedbackForSession(session: ExperienceSessionSummary): boolean {
+  const runtime = currentSkillRuntimeModel(session);
+  return Boolean(runtime && (runtime.skillType === 'router' || runtime.skillType === 'delegation' || runtime.hasDownstreamEdges || runtime.isDelegator));
+}
+
+function userFeedbackStepText(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): string {
+  const feedbackCounts = canonicalFeedbackCountsForSession(session, reviewState);
   const parts = [
-    session.indicators.userFollowUpCount > 0 ? `追问/补充 ${session.indicators.userFollowUpCount} 次` : '',
-    session.indicators.userCorrectionCount > 0 ? `纠正 ${session.indicators.userCorrectionCount} 次` : '',
-    session.indicators.negativeFeedbackCount > 0 ? `负向反馈 ${session.indicators.negativeFeedbackCount} 次` : '',
-    session.indicators.positiveFeedbackCount > 0 ? `正向反馈 ${session.indicators.positiveFeedbackCount} 次` : '',
+    feedbackCounts.userFollowUpCount > 0 ? `追问/补充 ${feedbackCounts.userFollowUpCount} 次` : '',
+    feedbackCounts.userCorrectionCount > 0 ? `纠正 ${feedbackCounts.userCorrectionCount} 次` : '',
+    feedbackCounts.negativeFeedbackCount > 0 ? `负向反馈 ${feedbackCounts.negativeFeedbackCount} 次` : '',
+    feedbackCounts.positiveFeedbackCount > 0 ? `正向反馈 ${feedbackCounts.positiveFeedbackCount} 次` : '',
     session.indicators.userGoalShiftCount > 0 ? `目标切换 ${session.indicators.userGoalShiftCount} 次` : '',
   ].filter(Boolean);
   return parts.length > 0 ? `用户反馈信号：${parts.join('，')}。` : '原始记录里没有看到人工追问、纠正、负向反馈或目标切换。';
 }
 
-function userFeedbackStepStatus(session: ExperienceSessionSummary): ExperienceReviewerReportStepStatus {
-  if (session.indicators.userCorrectionCount > 0 || session.indicators.negativeFeedbackCount > 0 || session.indicators.userInterruptionCount > 0) return 'attention';
-  if (session.indicators.positiveFeedbackCount > 0) return 'ok';
+function userFeedbackStepStatus(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): ExperienceReviewerReportStepStatus {
+  const feedbackCounts = canonicalFeedbackCountsForSession(session, reviewState);
+  if (feedbackCounts.userCorrectionCount > 0 || feedbackCounts.negativeFeedbackCount > 0 || feedbackCounts.userInterruptionCount > 0) return 'attention';
+  if (feedbackCounts.positiveFeedbackCount > 0) return 'ok';
   return 'unknown';
 }
 
 function userFeedbackEvidenceRefs(session: ExperienceSessionSummary): ExperienceEvidenceRef[] {
+  const includeDownstream = shouldIncludeDownstreamFeedbackForSession(session);
+  const refs = uniqueEvidenceRefs((session.sessionStory?.episodes ?? []).flatMap((episode) =>
+    (episode.feedbackSignals ?? []).filter((signal) =>
+      (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
+        attribution.skillName === session.skillName
+        && (attribution.attributionRole === 'primary_fault'
+          || includeDownstream && attribution.attributionRole === 'downstream_related')
+      )
+    ).map((signal) => signal.evidenceRef)
+  ));
+  if (refs.length > 0) return refs.slice(0, 5);
   return uniqueEvidenceRefs(session.ruleFindings
     .filter((finding) => finding.code === 'user_correction_seen' || finding.code === 'negative_feedback_seen' || finding.code === 'positive_feedback_seen' || finding.code === 'user_goal_shift_seen' || finding.code === 'user_interruption_seen')
     .flatMap((finding) => finding.evidenceRefs)).slice(0, 5);
@@ -2429,18 +4015,7 @@ function escapeRegExp(value: string): string {
 }
 
 function findSkillMdPathForExperience(skillName: string, cwd: string): string | undefined {
-  if (!/^[A-Za-z0-9_.-]+$/.test(skillName)) return undefined;
-  const candidates = [
-    join(cwd, '.claude', 'skills', skillName, 'SKILL.md'),
-    join(cwd, '.openclaw', 'workspace', 'skills', skillName, 'SKILL.md'),
-    join(cwd, 'workspace', 'skills', skillName, 'SKILL.md'),
-    join(cwd, 'skills', skillName, 'SKILL.md'),
-    join(homedir(), '.openclaw', 'workspace', 'skills', skillName, 'SKILL.md'),
-    join(homedir(), '.claude', 'skills', skillName, 'SKILL.md'),
-    join(homedir(), '.codex', 'skills', skillName, 'SKILL.md'),
-    join(homedir(), '.agents', 'skills', skillName, 'SKILL.md'),
-  ];
-  return candidates.find((candidate) => existsSync(candidate));
+  return findSkillMdPath(skillName, cwd);
 }
 
 function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): ExperienceReviewerReportFinding[] {
@@ -2488,13 +4063,18 @@ function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewSta
       findingRefs('tool_failure_seen'),
     );
   }
-  if (session.indicators.assistantDeliverySignalCount === 0) {
+  const closure = userFacingClosureForSession(session);
+  const runtime = currentSkillRuntimeModel(session);
+  if (closure.deliveryCount === 0) {
+    const isUpstreamOrchestration = Boolean(runtime && (runtime.skillType === 'router' || runtime.skillType === 'delegation' || runtime.hasDownstreamEdges || runtime.isDelegator));
     push(
       'attention',
-      '没看到给用户的最终答复',
-      'assistant 没说「完成 / 结果如下」这种收尾，可能任务还没跑完，或收尾文案不够清楚让用户知道事情结束了。',
-      'final_delivery_absent',
-      session.evidenceChain.lastAssistantMessage ? [session.evidenceChain.lastAssistantMessage] : [],
+      isUpstreamOrchestration ? '下游结果没有回传给用户' : '没看到给用户的最终答复',
+      isUpstreamOrchestration
+        ? '这个 skill 已经把任务派发到下游，但没有看到下游结果被清楚回传给用户。需要确认 child 是否完成、结果是否匹配原目标、是否主动通知用户。'
+        : 'assistant 没说「完成 / 结果如下」这种收尾，可能任务还没跑完，或收尾文案不够清楚让用户知道事情结束了。',
+      isUpstreamOrchestration ? 'router_user_facing_closure_absent' : 'final_delivery_absent',
+      closure.evidenceRefs.length > 0 ? closure.evidenceRefs : session.evidenceChain.lastAssistantMessage ? [session.evidenceChain.lastAssistantMessage] : [],
     );
   }
   if (session.indicators.sessionInterruptedCount > 0) {
@@ -2609,7 +4189,9 @@ function reviewerAuthorSuggestions(session: ExperienceSessionSummary, findings: 
       pushSuggestion(item.suggestionKey, text, severityForChecklistStatus(item.status));
     }
   }
-  if (findings.some((finding) => finding.ruleSource === 'final_delivery_absent')) {
+  if (findings.some((finding) => finding.ruleSource === 'router_user_facing_closure_absent')) {
+    pushSuggestion('router_user_facing_closure_absent', '补充下游结果回传和异步闭环规范，避免路由能力只负责启动、不负责结果回收。', 4);
+  } else if (findings.some((finding) => finding.ruleSource === 'final_delivery_absent')) {
     pushSuggestion('final_delivery_absent', '补充明确的产物交付表达或交付标记，避免过程进展被当成完成。', 4);
   }
   if (findings.some((finding) => finding.ruleSource === 'tool_error_recovery')) {
@@ -2648,6 +4230,7 @@ function severityForChecklistStatus(status: ExperienceChecklistItemStatus): numb
 function suggestionTextForChecklistItem(key: string): string | undefined {
   const suggestions: Record<string, string> = {
     final_delivery_absent: '在最后回复里加上「已完成 / 结果如下」之类的明确收尾，让用户知道任务跑完了。',
+    router_user_facing_closure_absent: '在路由 / 调度能力里写清楚：下游完成后必须回收结果并同步给用户；如果未完成，要说明当前状态和下一步。',
     artifact_absent: '如果 skill 应该产出文档、demo、代码或报告，最终回复里要附上文件路径、链接或代码块。',
     goal_shift_review: '用户中途切了目标，后续追问不属于这个 skill。看下是否要在 description 里说清楚 skill 的边界。',
     user_negative_or_interrupted: '用户出现了不满 / 纠正 / 叫停。先看原文是哪一步触发的，再决定改 description、补标准流程还是补硬性规则。',
@@ -2661,6 +4244,7 @@ function suggestionTextForChecklistItem(key: string): string | undefined {
     user_correction_review: '用户纠正了多次。把纠正内容沉淀到 SKILL.md 的标准流程或硬性规则，避免下次同类返工。',
     follow_up_review: '用户追问比较多。看是围绕产物继续推进（好事），还是因为没拿到结果而反复问（要改）。',
     user_interruption_review: '用户叫停了执行。看下断的那一步是不是 skill 没声明标准流程导致跑偏。',
+    downstream_feedback_review: '这次任务的下游执行链路被用户追问、纠正或中断。路由 / 调度类 skill 需要把下游状态、结果回收和异常通知写清楚，避免只负责启动、不负责闭环。',
   };
   return suggestions[key];
 }
@@ -2795,6 +4379,7 @@ function scoreForIndicators(indicators: ExperienceReviewIndicators): number {
     + indicators.negativeFeedbackCount * 2
     + indicators.hardRuleTextHitCount
     + indicators.toolFailureCount
+    + indicators.routerDownstreamFailed * 2
     + indicators.hedgingCount
     + indicators.explicitMarkerCount * 2;
 }
@@ -2814,6 +4399,7 @@ function priorityForReviewerFindings(
   if (attentionFindings.length === 0) return fallback;
   const criticalMissing = attentionFindings.some((finding) =>
     finding.ruleSource === 'final_delivery_absent'
+    || finding.ruleSource === 'router_user_facing_closure_absent'
     || finding.ruleSource === 'session_interrupted'
     || finding.ruleSource === 'expected_tools_missed')
     || session.indicators.userMessageCount === 0
@@ -2876,6 +4462,8 @@ function sumIndicators(values: ExperienceReviewIndicators[]): ExperienceReviewIn
     hardRuleTextHitCount: acc.hardRuleTextHitCount + value.hardRuleTextHitCount,
     assistantDeliverySignalCount: acc.assistantDeliverySignalCount + (value.assistantDeliverySignalCount ?? 0),
     deliverableArtifactSignalCount: acc.deliverableArtifactSignalCount + (value.deliverableArtifactSignalCount ?? 0),
+    routerDownstreamCompleted: acc.routerDownstreamCompleted + (value.routerDownstreamCompleted ?? 0),
+    routerDownstreamFailed: acc.routerDownstreamFailed + (value.routerDownstreamFailed ?? 0),
     selfCorrectionCount: acc.selfCorrectionCount + (value.selfCorrectionCount ?? 0),
     repeatedExecutionCount: acc.repeatedExecutionCount + (value.repeatedExecutionCount ?? 0),
     toolCallCount: acc.toolCallCount + value.toolCallCount,
@@ -3073,7 +4661,19 @@ export function findNegativeFeedbackMatches(value: string): TextMatchRange[] {
   for (const term of [...BOUNDED_NEGATIVE_FEEDBACK_TERMS].sort((a, b) => b.length - a.length)) {
     pushTermMatches(value, term, ranges, true);
   }
+  for (const term of [...AMBIGUOUS_NEGATIVE_FEEDBACK_TERMS].sort((a, b) => b.length - a.length)) {
+    pushTermMatches(value, term, ranges, false, false, (haystack, index) => !isBenignNegativeFeedbackContext(haystack, index, term));
+  }
   return ranges.sort((a, b) => a.start - b.start);
+}
+
+function isBenignNegativeFeedbackContext(value: string, hitIndex: number, term: string): boolean {
+  const before = value.slice(Math.max(0, hitIndex - 6), hitIndex);
+  if (BENIGN_NEGATIVE_OBJECT_RE.test(before)) return true;
+  if (BENIGN_NEGATIVE_OBJECT_LOC_RE.test(before)) return true;
+  const after = value.slice(hitIndex + term.length, hitIndex + term.length + 10);
+  if (BENIGN_NEGATIVE_OBJECT_SUFFIX_RE.test(after)) return true;
+  return false;
 }
 
 export function hasNegativeFeedbackSignal(value: string): boolean {
@@ -3092,14 +4692,22 @@ export function hasPositiveFeedbackSignal(value: string): boolean {
   return findPositiveFeedbackMatches(value).length > 0;
 }
 
-function pushTermMatches(value: string, term: string, ranges: TextMatchRange[], requireBoundary: boolean, caseInsensitive = false): void {
+function pushTermMatches(
+  value: string,
+  term: string,
+  ranges: TextMatchRange[],
+  requireBoundary: boolean,
+  caseInsensitive = false,
+  contextAllow?: (value: string, index: number) => boolean,
+): void {
   const haystack = caseInsensitive ? value.toLowerCase() : value;
   const needle = caseInsensitive ? term.toLowerCase() : term;
   let index = haystack.indexOf(needle);
   while (index >= 0) {
     const end = index + needle.length;
     if ((!requireBoundary || (isTextBoundary(value[index - 1]) && isTextBoundary(value[end])))
-      && !ranges.some((range) => index < range.end && end > range.start)) {
+      && !ranges.some((range) => index < range.end && end > range.start)
+      && (!contextAllow || contextAllow(value, index))) {
       ranges.push({ start: index, end });
     }
     index = haystack.indexOf(needle, index + needle.length);

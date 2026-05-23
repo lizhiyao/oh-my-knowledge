@@ -57,7 +57,7 @@ import {
   updateSkillDerivedStandardStatus,
 } from '../../src/observability/soft-standards.js';
 import type { ObservationSkillChain } from '../../src/observability/skill-chain.js';
-import { renderObservationInboxPage } from '../../src/renderer/observation-inbox-renderer.js';
+import { renderFeedbackAttributionLabel, renderObservationInboxPage } from '../../src/renderer/observation-inbox-renderer.js';
 
 function businessActionTag(name: string, text: string): string {
   const tag = ['ai', 'ma-cmd'].join('');
@@ -134,6 +134,28 @@ describe('observe inbox', () => {
     const positive = '很好，good job，做的好，很棒，很有价值。';
     assert.equal(hasPositiveFeedbackSignal(positive), true);
     assert.deepEqual(findPositiveFeedbackMatches(positive).map((range) => positive.slice(range.start, range.end)), ['很好', 'good job', '做的好', '很棒', '很有价值']);
+  });
+
+  it('does not flag ambiguous negative terms describing objects as user negative feedback', () => {
+    // 描述对象有问题, 不算用户对 skill 的负向反馈
+    assert.equal(hasNegativeFeedbackSignal('看一下这个项目的这些有问题的代码都在哪里，整体整理一下说明'), false);
+    assert.equal(hasNegativeFeedbackSignal('这段代码有问题，帮我看看'), false);
+    assert.equal(hasNegativeFeedbackSignal('这里逻辑有问题'), false);
+    assert.equal(hasNegativeFeedbackSignal('代码里不需要这段逻辑'), false);
+    assert.equal(hasNegativeFeedbackSignal('我看不懂这段代码'), true);  // 紧邻"段"不在 benign 前缀, 仍判为负向(边界 case, 接受)
+    assert.equal(hasNegativeFeedbackSignal('这段代码看不懂'), false);
+    assert.equal(hasNegativeFeedbackSignal('代码不符合规范'), false);
+    assert.equal(hasNegativeFeedbackSignal('网络不行'), false);
+    assert.equal(hasNegativeFeedbackSignal('我电脑不行'), false);
+  });
+
+  it('still flags ambiguous negative terms when not describing objects', () => {
+    // 没有 benign 前缀紧邻 → 仍判为用户负向反馈
+    assert.equal(hasNegativeFeedbackSignal('这次有问题，重做'), true);
+    assert.equal(hasNegativeFeedbackSignal('你刚才做的有问题'), true);
+    assert.equal(hasNegativeFeedbackSignal('这方案不行'), true);
+    assert.equal(hasNegativeFeedbackSignal('skill 不符合声明'), true);
+    assert.equal(hasNegativeFeedbackSignal('你说的我看不懂'), true);
   });
 
   it('folds checklist items into measurable parent reasons', () => {
@@ -1996,12 +2018,11 @@ describe('observe inbox', () => {
     assert.match(rendered, /当前 skill 窗口事件：/);
     assert.match(rendered, /record 粗范围：/);
     assert.match(rendered, /① 这次跑得怎么样/);
-    assert.match(rendered, /数据健康度/);
-    assert.match(rendered, /数据健康度：要看一眼/);
     assert.match(rendered, /这次跑得怎么样/);
     assert.match(rendered, /已完成 \/ 结果如下/);
-    assert.match(rendered, /② 流程规则执行细节/);
-    assert.match(rendered, /③ 原文回溯/);
+    assert.match(rendered, /② 日志上下游链路/);
+    assert.match(rendered, /③ 流程规则执行细节/);
+    assert.match(rendered, /④ 原文回溯/);
     assert.match(rendered, /给 skill 作者的优化建议/);
     assert.match(rendered, /目标关键词/);
     assert.match(rendered, /结果关键词/);
@@ -2477,6 +2498,17 @@ expected_tools:
     assert.equal(story.subagentDispatches.length, 1);
     assert.equal(story.progressUpdateCount, 1);
     assert.equal(story.finalDeliverySignalCount, 1);
+    assert.equal(story.episodes?.flatMap((episode) => episode.feedbackSignals ?? [])
+      .some((signal) => signal.evidenceRef.sourceTrace === childFile), false);
+    const firstEpisode = story.episodes?.[0];
+    assert.ok(firstEpisode);
+    const applySegment = firstEpisode.skillSegments.find((segment) => segment.skillName === 'apply-cc');
+    assert.ok(applySegment);
+    assert.ok(firstEpisode.orchestrationEdges.some((edge) =>
+      edge.parentSkillSegmentId === applySegment.id
+      && edge.edgeKind === 'external_child_session'
+      && edge.evidenceRefs.some((ref) => ref.sourceTrace === mainFile && ref.toolUseId === 'task1')
+    ));
     assert.ok(story.nodes.some((node) => node.kind === 'subagent_branch'));
     assert.deepEqual(story.skillLinks.map((link) => [link.skillName, link.role]).sort(), [
       ['aiprd-task-runner', 'executor'],
@@ -2484,6 +2516,307 @@ expected_tools:
     ]);
     assert.ok(story.graph.edges.some((edge) => edge.label === '路由'));
     assert.equal(applySession.reviewerReport?.sessionStory.schemaVersion, story.schemaVersion);
+    assert.equal(applySession.reviewerReport?.chainSteps.find((step) => step.label === '结果 / 产物')?.status, 'unknown');
+  });
+
+  it('attributes feedback by target object instead of the current skill window', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-object-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/damai-daily</command-name> 生成日报。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'tool1', name: 'Bash', input: { command: 'node run-damai.js' } }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '[文件: omk-reviewer.zip]' },
+      },
+      {
+        type: 'user',
+        uuid: 'u3',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:03.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/omk-reviewer</command-name> 看下这个 skill 的执行流程。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'u3',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:04.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'tool2', name: 'Read', input: { file_path: '/repo-a/omk-reviewer/SKILL.md' } }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const damaiSession = report.experience?.sessions.find((session) => session.skillName === 'damai-daily');
+    assert.ok(damaiSession);
+    const fileSignal = damaiSession.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals)
+      .find((signal) => signal.text.includes('omk-reviewer.zip'));
+    assert.ok(fileSignal);
+    assert.equal(fileSignal.targetObject, 'omk-reviewer');
+    assert.ok((fileSignal.canonicalAttributions ?? fileSignal.attributions).some((attribution) =>
+      attribution.skillName === 'omk-reviewer'
+      && attribution.attributionRole === 'primary_fault'
+      && attribution.reasonCode === 'object_match'
+    ));
+    assert.equal((fileSignal.canonicalAttributions ?? fileSignal.attributions).some((attribution) =>
+      attribution.skillName === 'damai-daily' && attribution.attributionRole === 'primary_fault'
+    ), false);
+  });
+
+  it('escapes feedback attribution labels in the session story renderer', () => {
+    const rendered = renderFeedbackAttributionLabel({
+      skillName: '<img onerror="x">',
+      attributionRole: 'primary_fault',
+      reasonCode: 'object_match',
+    });
+    assert.match(rendered, /&lt;img onerror=&quot;x&quot;&gt;/);
+    assert.doesNotMatch(rendered, /<img onerror="x">/);
+  });
+
+  it('keeps apply-cc promise follow-up separate from unrelated preview feedback', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-promise-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 让子 Claude 分析项目。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '已启动子 Claude，完成后我会同步结果。session: claude-test123' }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '怎么样了' },
+      },
+      {
+        type: 'user',
+        uuid: 'u3',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:03.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/ai-worker-webtools</command-name> 用可预览的链接发给我' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'u3',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:04.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'tool_use', id: 'tool1', name: 'Bash', input: { command: 'python3 -m http.server 8899' } }],
+        },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
+    assert.ok(applySession);
+    const signals = applySession.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals) ?? [];
+    const progressSignal = signals.find((signal) => signal.text === '怎么样了');
+    const previewSignal = signals.find((signal) => signal.text.includes('可预览'));
+    assert.ok(progressSignal);
+    assert.ok(previewSignal);
+    assert.equal(progressSignal.evidenceRef.logicalMessageIndex, progressSignal.evidenceRef.messageIndex);
+    assert.equal(progressSignal.evidenceRef.sourceLineIndex, progressSignal.evidenceRef.messageIndex);
+    assert.ok((progressSignal.canonicalAttributions ?? progressSignal.attributions).some((attribution) =>
+      attribution.skillName === 'apply-cc' && attribution.attributionRole === 'primary_fault' && attribution.reasonCode === 'promise_match'
+    ));
+    assert.ok((previewSignal.canonicalAttributions ?? previewSignal.attributions).some((attribution) =>
+      attribution.skillName === 'ai-worker-webtools' && attribution.attributionRole === 'primary_fault' && attribution.reasonCode === 'object_match'
+    ));
+    assert.equal((previewSignal.canonicalAttributions ?? previewSignal.attributions).some((attribution) =>
+      attribution.skillName === 'apply-cc' && attribution.attributionRole === 'primary_fault'
+    ), false);
+  });
+
+  it('does not classify neutral how-to questions with should as user correction', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-howto-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 帮我看一下服务器上的文件。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '可以，我先确认文件位置。' }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '我现在能够ssh到你的服务器，我应该怎么把这个文件发送到我本地' },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const applySession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
+    assert.ok(applySession);
+    const signal = applySession.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals)
+      .find((item) => item.text.includes('我现在能够ssh'));
+    assert.ok(signal);
+    assert.equal(signal.type, 'follow_up');
+    assert.equal(applySession.indicators.userCorrectionCount, 0);
+  });
+
+  it('backs downstream feedback up to router skills without hiding executor ownership', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-router-downstream-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/aiprd-task-runner</command-name> 功能咨询：新版确认页是什么逻辑，有开关控制吗' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{
+            type: 'tool_use',
+            id: 'runner1',
+            name: 'Bash',
+            input: {
+              command: 'node ~/.openclaw/workspace-main/skills/apply-cc/scripts/runner.js ~/code/project "功能咨询" "/consult 功能咨询：新版确认页是什么逻辑，有开关控制吗"',
+            },
+          }],
+        },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: '已启动功能咨询，session: claude-router-test，有结果我会直接同步给你。' }],
+        },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a2',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:30:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '进度' },
+      },
+      {
+        type: 'user',
+        uuid: 'u3',
+        parentUuid: 'u2',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:40:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '为什么信息没返回' },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const routerSession = report.experience?.sessions.find((session) => session.skillName === 'aiprd-task-runner');
+    const executorSession = report.experience?.sessions.find((session) => session.skillName === 'apply-cc');
+    assert.ok(routerSession);
+    assert.ok(executorSession);
+    assert.equal(routerSession.indicators.routerDownstreamCompleted, 0);
+    assert.equal(routerSession.indicators.routerDownstreamFailed, 1);
+    assert.equal(routerSession.reviewerReport?.oneLookMetrics.userFollowUpCount, 1);
+    assert.equal(routerSession.reviewerReport?.oneLookMetrics.routerDownstreamCompleted, 0);
+    assert.equal(routerSession.reviewerReport?.oneLookMetrics.routerDownstreamFailed, 1);
+    const feedbackSignal = routerSession.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals)
+      .find((signal) => signal.text === '为什么信息没返回');
+    assert.ok(feedbackSignal);
+    const attributions = feedbackSignal.canonicalAttributions ?? feedbackSignal.attributions;
+    assert.ok(attributions.some((attribution) =>
+      attribution.skillName === 'aiprd-task-runner'
+      && attribution.attributionRole === 'primary_fault'
+    ));
+    assert.ok(attributions.some((attribution) =>
+      attribution.skillName === 'apply-cc'
+      && attribution.attributionRole === 'context_only'
+    ));
   });
 
   it('cuts previous skill segment before next user command in the same trace', () => {
@@ -2609,6 +2942,70 @@ expected_tools:
     assert.equal(positiveA, positiveB);
   });
 
+  it('excludes rejected feedback signals from canonical reviewer metrics', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-review-state-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 帮我分析项目。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: { role: 'assistant', content: [{ type: 'text', text: '我会继续处理。' }] },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '不对，重来。' },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience?.sessions.find((item) => item.skillName === 'apply-cc');
+    assert.ok(session);
+    const correction = session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? [])
+      .find((signal) => signal.type === 'correction');
+    assert.ok(correction);
+    const targetId = observationMetricAnnotationTargetId({ ...correction.evidenceRef, metricScopeId: session.id }, 'user_correction');
+    const reviewState = {
+      kind: 'observe-review-state' as const,
+      schemaVersion: 1 as const,
+      updatedAt: '2026-05-11T02:00:03.000Z',
+      entries: {
+        [observationReviewStateKey('evidence_metric', targetId)]: {
+          targetType: 'evidence_metric' as const,
+          targetId,
+          verdict: 'rejected' as const,
+          metricKey: 'user_correction' as const,
+          metricScopeId: session.id,
+          reviewedAt: '2026-05-11T02:00:03.000Z',
+        },
+      },
+    };
+    const annotated = buildObservationInboxReport(file, { reviewState });
+    const feedbackStep = annotated.experience?.sessions.find((item) => item.skillName === 'apply-cc')
+      ?.reviewerReport?.chainSteps.find((step) => step.label === '用户反馈');
+    assert.ok(feedbackStep);
+    assert.equal(feedbackStep.status, 'unknown');
+    assert.doesNotMatch(feedbackStep.text, /纠正 1 次/);
+  });
+
   it('persists reviewer judgment and soft standard review state', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-review-state-'));
     const judgment = updateObservationReviewState(dir, {
@@ -2665,6 +3062,34 @@ expected_tools:
         },
         hardRules: [],
         workflowNodes: [],
+        evidencePack: {
+          schemaVersion: 1,
+          skillName: 'sample-review-skill',
+          generatedBy: 'deterministic_rule_pack',
+          definition: { found: true },
+          declaredStandards: { hardRules: [], workflowNodes: [] },
+          runtimeEvidence: {
+            toolCalls: [{
+              id: 'tool-1',
+              kind: 'tool_use',
+              sourceTrace: 'sample.jsonl',
+              sessionId: 'session-1',
+              snippet: 'Read source section before review',
+              sourceType: 'tool_call',
+              toolName: 'Read',
+            }],
+            assistantMessages: [],
+            userFeedback: [],
+            artifacts: [],
+          },
+          nodeEvidence: [],
+          evidenceQuality: {
+            pollutedSourceCount: 0,
+            windowTooNarrow: false,
+            missingRuntimeEvidence: false,
+            notes: [],
+          },
+        },
       },
     };
 
@@ -2696,6 +3121,30 @@ expected_tools:
               }],
               completionCriteria: [],
               artifactCriteria: [],
+              standardNodes: [{
+                nodeId: 'main.review',
+                kind: 'workflow',
+                title: 'Review generated plan',
+                description: 'Reviewer reads source material before producing plan review.',
+                expectedSignals: [{
+                  id: 'read_source',
+                  type: 'tool_name',
+                  value: 'Read',
+                  op: 'equals',
+                }],
+                failureSignals: [],
+                forbiddenSignals: [],
+                conditionSignals: [],
+                triggers: [{
+                  required: { signalGroup: 'expectedSignals', signalId: 'read_source' },
+                  verdict: 'passed',
+                  windowScope: 'same_skill_segment',
+                }],
+                sourceHints: [{
+                  source: 'skill_md',
+                  snippet: 'Always cite the source section',
+                }],
+              }],
             },
             userGoal: {
               summary: 'Review generated technical plans',
@@ -2713,6 +3162,17 @@ expected_tools:
               artifactGoalMatch: 'unknown',
               userFeeling: 'neutral',
             },
+            typeSpecificAssessment: {
+              summary: '咨询型能力需要补强证据引用。',
+              checklist: [{
+                key: 'evidence_provided',
+                label: '证据是否可回溯',
+                status: 'failed',
+                reason: '复盘计划缺少明确来源段落。',
+                evidence: ['Always cite the source section'],
+                suggestionKey: 'advisory_evidence',
+              }],
+            },
             userExperienceSignals: {
               useful: 'unknown',
               followUp: 'unknown',
@@ -2727,6 +3187,7 @@ expected_tools:
               body: 'Add examples that show the expected source citation format.',
               evidence: ['Always cite the source section'],
               acceptanceCriteria: 'Generated reviews include a source section reference.',
+              checklistItemKey: 'evidence_provided',
             }],
           }),
           durationMs: 1,
@@ -2744,12 +3205,17 @@ expected_tools:
 
     assert.equal(record.model, 'sonnet');
     assert.equal(record.promptId, 'llm-enhanced-review');
-    assert.equal(record.promptVersion, '2026-05-19.v2');
+    assert.equal(record.promptVersion, '2026-05-22.v7');
     assert.equal(record.enhancedReview?.skillType, 'advisory');
+    assert.equal(record.enhancedReview?.typeSpecificAssessment?.checklist[0]?.key, 'evidence_provided');
+    assert.equal(record.enhancedReview?.extractedStandards?.standardNodes?.[0]?.nodeId, 'main.review');
+    assert.equal(record.enhancedReview?.runtimeNodeResults?.nodes[0]?.nodeId, 'main.review');
+    assert.equal(record.enhancedReview?.runtimeNodeResults?.nodes[0]?.status, 'passed');
     assert.deepEqual(record.enhancedReview?.skillDeclaredGoal?.keywords, ['plan review', 'source citation']);
     assert.equal(record.enhancedReview?.runtimeAssessment?.userFeeling, 'neutral');
     assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充标准化硬性规则声明'));
     assert.ok(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充标准化流程和完成标准'));
+    assert.equal(record.enhancedReview?.ownerSuggestions?.some((item) => item.title === '补充用户反馈采集点'), false);
     assert.equal(record.standards.length, 2);
     assert.equal(record.standards[0].status, 'pending_review');
     assert.equal(record.standards[0].source, 'llm_soft_standard');
@@ -3001,7 +3467,7 @@ expected_tools:
     assert.equal(finalSuggestions.length, 10);
     assert.equal(finalSuggestions[0].title, '补充标准化硬性规则声明');
     assert.equal(finalSuggestions[1].title, '补充标准化流程和完成标准');
-    // LLM 普通建议被前置兜底挤掉最后 2 条，其余 8 条仍按顺序保留
+    // LLM 普通建议被前置兜底挤掉最后 2 条，其余 8 条仍按顺序保留；反馈建议没有事实门禁时不再强制注入。
     assert.equal(finalSuggestions[2].title, 'LLM 普通建议 1');
     assert.equal(finalSuggestions[9].title, 'LLM 普通建议 8');
   });

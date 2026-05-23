@@ -18,7 +18,11 @@ export type ExperienceProblemSignal =
   | 'user_interruption'
   | 'hard_rule'
   | 'user_goal_shift'
-  | 'tool_failure';
+  | 'tool_failure'
+  | 'workflow_mismatch'
+  | 'artifact_missing'
+  | 'observer_lifecycle_failed'
+  | 'orchestration_boundary_violation';
 
 export interface ExperienceProblemEvidenceRef {
   id: string;
@@ -26,6 +30,8 @@ export interface ExperienceProblemEvidenceRef {
   sourceTrace: string;
   sessionId: string;
   messageIndex?: number;
+  logicalMessageIndex?: number;
+  sourceLineIndex?: number;
   messageUuid?: string;
   toolUseId?: string;
   timestamp?: string;
@@ -52,6 +58,8 @@ export interface ProblemTimelineEvent {
   sourceTrace: string;
   sessionId: string;
   messageIndex?: number;
+  logicalMessageIndex?: number;
+  sourceLineIndex?: number;
   messageUuid?: string;
   toolUseId?: string;
   timestamp?: string;
@@ -71,9 +79,18 @@ interface PatternDraft {
 }
 
 const CORRECTION_RE = /不是这个|不要这样|理解错|看错|你应该|应该是|直接用|直接按|改成|重来|不对|不是|错了/i;
-const NEGATIVE_RE = /没有用|没用|不行|太慢|看不懂|不需要|别再|怎么又|有问题|不符合|做错|完全错|垃圾|乱来|瞎搞|白干|浪费时间|没价值|没有价值|没意义|不好用|用不了|没帮助|没有帮助|菜/i;
+// 负向反馈基础词:不依赖前后语境的明确负向表达。
+const NEGATIVE_BASE_RE = /没有用|没用|太慢|别再|怎么又|做错|完全错|垃圾|乱来|瞎搞|白干|浪费时间|没价值|没有价值|没意义|不好用|用不了|没帮助|没有帮助|菜/i;
+// 高歧义负向词:前面紧跟描述对象的名词(代码 / 这段 / 这里 等)时, 是在描述对象有问题, 不算用户对 skill 的负向反馈。
+// 用 negative lookbehind 先排除"不算"的前缀, 命中即跳过, 一次性 regex。
+// 详见 memory: feedback_keyword_context_rule.md。
+const NEGATIVE_AMBIGUOUS_RE = /(?<!代码|这段|这部分|这里|那里|方案|方法|地方|文件|内容|写法|设计|字段|逻辑|函数|流程|接口|参数|配置|路径|目录|架构|实现|步骤|做法|思路|样式|布局|算法|文档|输出|结果|结构|文本|展示|渲染|输入|响应|脚本|代码块|代码段|代码片段|规范|标准|约定|风格|网络|信号|环境|机器|电脑)(?:有问题|不需要|看不懂|不符合|不行)/i;
 const INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断/i;
-const GOAL_SHIFT_RE = /换个方向|重新来|重来|先不|不用这个|先不用|暂时不用|不看这个|换一个|换下一个|另一个问题|另外一个问题|先看别的|先处理别的/i;
+const GOAL_SHIFT_RE = /换个方向|重新来|重来|先不|不用这个|先不用|暂时不用|不看这个|换一个|换下一个|另一个问题|另外一个问题|先看别的|先处理别的|新开一个|新启动一个|另开一个|再开一个|参考.+能力新开|拉下最新|拉取最新|切到最新/i;
+const ARTIFACT_MISSING_RE = /没有(?:看到|发现|提供|生成).{0,12}(?:产物|文件|文档|报告|链接|地址|demo)|未(?:生成|提供).{0,12}(?:产物|文件|文档|报告|链接|地址|demo)|产物.*(?:缺失|不存在|打不开|不对题)/i;
+const OBSERVER_LIFECYCLE_FAILED_RE = /observer.*(?:lost|failed|killed|stopped)|观察器.*(?:断开|丢失|失败|被.*kill)|runner.*(?:SIGKILL|signal)|后台.*(?:没返回|没通知|断开)/i;
+const ORCHESTRATION_BOUNDARY_RE = /父会话.*(?:接手|越界)|调度者.*(?:执行|接手)|parent.*takeover|delegation.*boundary|子任务.*跑偏|child.*goal.*drift/i;
+const WORKFLOW_MISMATCH_RE = /流程.*(?:不完整|没跑完|漏了|顺序错误|跑偏)|workflow.*(?:mismatch|incomplete|wrong order)|没有.*(?:执行|完成).*流程/i;
 
 const KEYWORD_GROUPS: Array<{ token: string; re: RegExp }> = [
   { token: 'prd', re: /PRD|prd|需求文档|产品文档/i },
@@ -103,7 +120,7 @@ export function buildExperienceProblemPatterns(input: {
       if (metricActive(event, 'user_correction', CORRECTION_RE.test(text), input.reviewState, input.metricScopeId)) {
         drafts.push(patternDraft(input.skillName, 'user_correction', event));
       }
-      if (metricActive(event, 'negative_feedback', NEGATIVE_RE.test(text), input.reviewState)) {
+      if (metricActive(event, 'negative_feedback', NEGATIVE_BASE_RE.test(text) || NEGATIVE_AMBIGUOUS_RE.test(text), input.reviewState)) {
         drafts.push(patternDraft(input.skillName, 'negative_feedback', event));
       }
       if (metricActive(event, 'user_interruption', INTERRUPTION_RE.test(text), input.reviewState, input.metricScopeId)) {
@@ -115,8 +132,27 @@ export function buildExperienceProblemPatterns(input: {
       if (metricActive(event, 'user_goal_shift', GOAL_SHIFT_RE.test(text), input.reviewState, input.metricScopeId)) {
         drafts.push(patternDraft(input.skillName, 'user_goal_shift', event));
       }
+      if (ARTIFACT_MISSING_RE.test(text)) {
+        drafts.push(patternDraft(input.skillName, 'artifact_missing', event));
+      }
+      if (WORKFLOW_MISMATCH_RE.test(text)) {
+        drafts.push(patternDraft(input.skillName, 'workflow_mismatch', event));
+      }
+      if (ORCHESTRATION_BOUNDARY_RE.test(text)) {
+        drafts.push(patternDraft(input.skillName, 'orchestration_boundary_violation', event));
+      }
     } else if (event.kind === 'tool_result' && event.isError === true) {
-      drafts.push(patternDraft(input.skillName, 'tool_failure', event));
+      drafts.push(patternDraft(input.skillName, OBSERVER_LIFECYCLE_FAILED_RE.test(text) ? 'observer_lifecycle_failed' : 'tool_failure', event));
+    } else if (event.kind === 'assistant_message' || event.kind === 'runtime_context') {
+      if (OBSERVER_LIFECYCLE_FAILED_RE.test(text)) {
+        drafts.push(patternDraft(input.skillName, 'observer_lifecycle_failed', event));
+      }
+      if (ORCHESTRATION_BOUNDARY_RE.test(text)) {
+        drafts.push(patternDraft(input.skillName, 'orchestration_boundary_violation', event));
+      }
+      if (ARTIFACT_MISSING_RE.test(text)) {
+        drafts.push(patternDraft(input.skillName, 'artifact_missing', event));
+      }
     }
   }
   return mergeExperienceProblemPatterns(drafts.map((draft) => patternFromDraft(input.skillName, input.sessionId, draft)));
@@ -181,6 +217,10 @@ function patternFromDraft(skillName: string, sessionId: string, draft: PatternDr
 }
 
 function bucketFor(signalType: ExperienceProblemSignal, text: string): ExperienceProblemBucket {
+  if (signalType === 'artifact_missing') return 'missing_context';
+  if (signalType === 'observer_lifecycle_failed') return 'tool_runtime';
+  if (signalType === 'orchestration_boundary_violation') return 'rule_violation';
+  if (signalType === 'workflow_mismatch') return 'workflow_mismatch';
   if (signalType === 'tool_failure') return 'tool_runtime';
   if (signalType === 'user_goal_shift') return 'goal_shift';
   if (signalType === 'user_interruption') return 'workflow_mismatch';
@@ -239,6 +279,8 @@ function evidenceRefFromEvent(event: ProblemTimelineEvent): ExperienceProblemEvi
     sourceTrace: event.sourceTrace,
     sessionId: event.sessionId,
     messageIndex: event.messageIndex,
+    logicalMessageIndex: event.logicalMessageIndex ?? event.messageIndex,
+    sourceLineIndex: event.sourceLineIndex ?? event.messageIndex,
     messageUuid: event.messageUuid,
     toolUseId: event.toolUseId,
     timestamp: event.timestamp,

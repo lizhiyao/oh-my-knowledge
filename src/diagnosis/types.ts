@@ -37,6 +37,8 @@ export interface DiagnosisEvidenceRef {
   sourceTrace?: string;
   sessionId?: string;
   messageIndex?: number;
+  logicalMessageIndex?: number;
+  sourceLineIndex?: number;
   messageUuid?: string;
   toolUseId?: string;
   timestamp?: string;

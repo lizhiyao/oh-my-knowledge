@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildObservationSkillChain } from '../../src/observability/skill-chain.js';
+import { __resetSkillIndexCacheForTests, buildObservationSkillChain, findSkillMdPath } from '../../src/observability/skill-chain.js';
 import type { ObservationExperienceReport } from '../../src/observability/experience.js';
 
 describe('observation skill chain runtime checks', () => {
@@ -53,6 +53,9 @@ workflows:
       assert.equal(chain.runtime.hardRules.find((rule) => rule.id === 'no-ask-tool')?.status, 'passed');
       assert.equal(chain.runtime.workflowNodes.find((node) => node.id === 'main.sync')?.status, 'passed');
       assert.equal(chain.runtime.workflowNodes.find((node) => node.id === 'main.upload')?.status, 'attention');
+      assert.equal(chain.runtime.evidencePack?.schemaVersion, 1);
+      assert.equal(chain.runtime.evidencePack?.nodeEvidence.find((node) => node.nodeId === 'main.sync')?.deterministicStatus, 'passed');
+      assert.ok((chain.runtime.evidencePack?.runtimeEvidence.toolCalls.length ?? 0) > 0);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -296,5 +299,56 @@ workflows:
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('findSkillMdPath reverse walk', () => {
+  it('matches SKILL.md under any workspace-* sibling (1 level intermediate)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-skill-walk-workspace-main-'));
+    try {
+      mkdirSync(join(dir, '.openclaw', 'workspace-main', 'skills', 'foo'), { recursive: true });
+      writeFileSync(join(dir, '.openclaw', 'workspace-main', 'skills', 'foo', 'SKILL.md'), '# foo');
+      __resetSkillIndexCacheForTests();
+      const found = findSkillMdPath('foo', dir);
+      assert.equal(found, join(dir, '.openclaw', 'workspace-main', 'skills', 'foo', 'SKILL.md'));
+    } finally {
+      __resetSkillIndexCacheForTests();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('matches SKILL.md directly under tool root (0 level intermediate)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-skill-walk-claude-'));
+    try {
+      mkdirSync(join(dir, '.claude', 'skills', 'bar'), { recursive: true });
+      writeFileSync(join(dir, '.claude', 'skills', 'bar', 'SKILL.md'), '# bar');
+      __resetSkillIndexCacheForTests();
+      const found = findSkillMdPath('bar', dir);
+      assert.equal(found, join(dir, '.claude', 'skills', 'bar', 'SKILL.md'));
+    } finally {
+      __resetSkillIndexCacheForTests();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('matches SKILL.md nested 3 levels deep under tool root (subagent style)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-skill-walk-deep-'));
+    try {
+      const deepPath = join(dir, '.openclaw', 'projects', 'team', 'subagent', 'skills', 'baz');
+      mkdirSync(deepPath, { recursive: true });
+      writeFileSync(join(deepPath, 'SKILL.md'), '# baz');
+      __resetSkillIndexCacheForTests();
+      const found = findSkillMdPath('baz', dir);
+      assert.equal(found, join(deepPath, 'SKILL.md'));
+    } finally {
+      __resetSkillIndexCacheForTests();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects skill names with unsafe characters', () => {
+    __resetSkillIndexCacheForTests();
+    assert.equal(findSkillMdPath('../etc/passwd', process.cwd()), undefined);
+    assert.equal(findSkillMdPath('a/b', process.cwd()), undefined);
   });
 });
