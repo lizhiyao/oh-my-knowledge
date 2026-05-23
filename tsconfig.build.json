@@ -2,6 +2,10 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
     "tsBuildInfoFile": "node_modules/.cache/omk/src.tsbuildinfo"
   },
   "include": [
