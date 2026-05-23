@@ -211,6 +211,7 @@ export function resolveArtifacts(
         filePath = skillMd;
       }
       const content = readFileSync(filePath, 'utf-8').trim();
+      // 用户直接指 SKILL.md 等同 directory-skill 约定:cwd 默认锚到该目录
       const isSkillMd = basename(filePath) === 'SKILL.md';
       artifacts.push({
         name: variantName,

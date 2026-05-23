@@ -29,7 +29,6 @@ Scaffolds an evaluation project with two starter skill variants and an `eval-sam
 ```bash
 omk doctor                              # audit current dir / ./skills
 omk doctor skills/v1.md                 # audit one skill file
-omk doctor skills/ --html report.html   # produce a visual HTML report
 omk doctor skills/ --json > r.json      # JSON for CI / external tools
 omk doctor --gate; echo $?              # silent gate; exit 1 on fatal failures, warnings do not block
 omk doctor --static-only                # offline mode: static checks only, no LLM call
@@ -44,7 +43,6 @@ omk doctor --static-only                # offline mode: static checks only, no L
   --executor <value>  Executor name, default claude. Pass a test fixture path to use in tests.
   --fix               Interactive fix: use LLM agent to fix skill issues reported by doctor.
   --gate              Silent mode: only emit stderr summary on fail. Exit code carries the signal.
-  --html <value>      HTML report output path. Coexists with --json / --gate.
   --json              JSON output to stdout, for CI / external script consumption.
   --lang <value>      Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>     LLM model name, default sonnet.
@@ -57,9 +55,9 @@ For full descriptions: `omk doctor --help`.
 
 <!-- omk:cli:doctor:flags:end -->
 
-LLM health audit: a single LLM session emits per-dimension grades, findings, and suggestions for the 7 builtin dimensions; the HTML report sorts dimensions fail→warn→pass→skipped with errors first within each dim. Dimensions are extensible — call `registerHealthDimension` in your own code and the new section is folded into the same LLM call's prompt and report (order = registration order).
+LLM health audit: a single LLM session emits per-dimension grades, findings, and suggestions for the 7 builtin dimensions; results are sorted fail→warn→pass→skipped with errors first within each dim. Dimensions are extensible — call `registerHealthDimension` in your own code and the new section is folded into the same LLM call's prompt and report (order = registration order). To browse a visual report, run `omk studio` and pick the latest run.
 
-Static-only mode (`--static-only`): for CI nodes without claude / codex installed, or local debugging without network — runs the four static rules (readability / metadata / dependencies / samples contract) with zero LLM calls and zero cost. Output goes through the same `DoctorReport` shape and combines with `--json` / `--gate` / `--html`.
+Static-only mode (`--static-only`): for CI nodes without claude / codex installed, or local debugging without network — runs the four static rules (readability / metadata / dependencies / samples contract) with zero LLM calls and zero cost. Output goes through the same `DoctorReport` shape and combines with `--json` / `--gate`.
 
 `omk eval` still runs its own static readability / metadata / dependency / samples-contract gates internally to protect eval quality; that path is separate from this user-facing `omk doctor` command and the two roles do not overlap.
 
@@ -118,7 +116,7 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --skip-doctor                   Escape hatch: skip the doctor health-check gate (on by default). Use when sandbox mocks supply deps; caller owns garbage-in risk.
   --strict-baseline               Force baseline isolation (default true)
   --threshold <value>             Verdict threshold, default 3.5
-  --timeout <value>               Per-sample timeout sec, default 120
+  --timeout <value>               Per-sample timeout sec, default 600
   --treatment <value>             Treatment variants, comma-separated
   --trivial-diff <value>          Trivial diff tolerance; 0 disables tolerance
   --verbose                       Verbose logging
@@ -228,7 +226,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --skip-doctor                   Skip doctor gate (escape hatch; user takes garbage-in risk)
   --stop-on-assertions-pass       Stop early when normal samples pass assertions
   --target <value>                Target composite score; stop when reached. If omitted, runs all rounds.
-  --timeout <value>               Per-sample timeout sec, default 120
+  --timeout <value>               Per-sample timeout sec, default 600
 ```
 
 For full descriptions: `omk evolve --help`.
@@ -254,7 +252,7 @@ omk sample --batch                  # generate for skills missing eval-samples
   --fix                  Fix mode: auto-fix sample_design failures using the latest eval report.
   --focus <value>        Generation focus (NL hint). Steers LLM toward certain sample types.
   --lang <value>         Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --model <value>        Generation LLM model name, default opus.
+  --model <value>        Generation LLM model name, default sonnet.
   --no-mock              Skip mock generation; all tool calls execute for real during eval.
   --reports-dir <value>  Reports dir (fix mode), default ~/.oh-my-knowledge/reports.
   --skill-dir <value>    Skill root dir, default skills. Used by batch mode.

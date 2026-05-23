@@ -104,6 +104,7 @@ export type CliMessageKey =
   // 通用 not-found 错误
   | 'cli.common.skill_dir_not_found'
   | 'cli.common.skill_file_not_found'
+  | 'cli.common.skill_dir_no_skill_md'
   | 'cli.common.report_not_found'
   | 'cli.common.no_judge_model'
   | 'cli.common.judge_models_single_only'
@@ -416,6 +417,10 @@ export const CLI_DICT: Record<CliMessageKey, CliMessage> = {
   'cli.common.skill_file_not_found': {
     zh: '未找到 skill 文件: {path}',
     en: 'Skill file not found: {path}',
+  },
+  'cli.common.skill_dir_no_skill_md': {
+    zh: '目录下未找到 SKILL.md: {path}',
+    en: 'SKILL.md not found in directory: {path}',
   },
   'cli.common.report_not_found': {
     zh: '未找到 report: {id}',

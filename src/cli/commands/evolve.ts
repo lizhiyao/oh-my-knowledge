@@ -71,7 +71,7 @@ export async function runEvolve(
 
   const { resolveSkillInput } = await import('../lib/resolve-skill-input.js');
   let resolvedInput;
-  try { resolvedInput = resolveSkillInput(skillPathArg); } catch (err) {
+  try { resolvedInput = resolveSkillInput(skillPathArg, lang); } catch (err) {
     console.error((err as Error).message);
     throw new CliExit(1);
   }
@@ -246,7 +246,7 @@ export default class Evolve extends BaseCommand {
     }),
     timeout: Flags.string({
       description: bilingual({ zh: '单样本超时秒，默认 600', en: 'Per-sample timeout sec, default 600' }),
-      default: '120',
+      default: '600',
       parse: numberStringParser('--timeout', { min: 1 }),
     }),
     executor: Flags.string({

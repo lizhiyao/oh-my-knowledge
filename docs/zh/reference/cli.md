@@ -29,7 +29,6 @@ omk init [目录]
 ```bash
 omk doctor                              # 体检当前目录或 ./skills
 omk doctor skills/v1.md                 # 体检单个 skill
-omk doctor skills/ --html report.html   # 产 HTML 可视化报告
 omk doctor skills/ --json > r.json      # JSON 给 CI / 外部工具消费
 omk doctor --gate; echo $?              # 静默门禁，fatal 问题 exit 1，警告不阻断
 omk doctor --static-only                # 离线模式：只跑静态检查，不调 LLM
@@ -44,7 +43,6 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
   --executor <value>  执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
   --fix               交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
   --gate              静默模式，只在 fail 时输出 stderr 摘要，exit code 标识结果。
-  --html <value>      HTML 报告输出路径。可跟 --json / --gate 共存。
   --json              JSON 输出到 stdout，适合 CI / 外部脚本消费。
   --lang <value>      输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --model <value>     LLM model 名，默认 sonnet。
@@ -57,9 +55,9 @@ omk doctor --static-only                # 离线模式：只跑静态检查，�
 
 <!-- omk:cli:doctor:flags:end -->
 
-LLM 健康度审计：单次 LLM 会话产出 7 个内置维度的健康度评分 + findings + 改进建议；HTML 报告按 fail→warn→pass→skipped 排序，错误 finding 优先。维度可扩展（在自己代码里调 `registerHealthDimension`，自动并入同一次 LLM 调用的 prompt 与报告，顺序 = 注册顺序）。
+LLM 健康度审计：单次 LLM 会话产出 7 个内置维度的健康度评分 + findings + 改进建议；结果按 fail→warn→pass→skipped 排序，错误 finding 优先。维度可扩展（在自己代码里调 `registerHealthDimension`，自动并入同一次 LLM 调用的 prompt 与报告，顺序 = 注册顺序）。可视化报告请通过 `omk studio` 启动后选择最近一次运行查看。
 
-离线静态模式（`--static-only`）：CI 节点没装 claude / codex、本地断网调试等场景下跑 4 条静态 rule（可读性 / 元数据 / 依赖 / samples 契约），零 LLM 调用、零成本。结果同样进 `DoctorReport`，可与 `--json` / `--gate` / `--html` 组合。
+离线静态模式（`--static-only`）：CI 节点没装 claude / codex、本地断网调试等场景下跑 4 条静态 rule（可读性 / 元数据 / 依赖 / samples 契约），零 LLM 调用、零成本。结果同样进 `DoctorReport`，可与 `--json` / `--gate` 组合。
 
 `omk eval` 内部继续跑静态 readability / metadata / dependency / samples 契约 gate 保护评测质量，这条路径与用户入口的 `omk doctor` 角色分离，互不干扰。
 
@@ -118,7 +116,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --skip-doctor                   escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。
   --strict-baseline               强制 baseline 隔离（default true）
   --threshold <value>             verdict 阈值，默认 3.5
-  --timeout <value>               单样本超时秒，默认 120
+  --timeout <value>               单样本超时秒，默认 600
   --treatment <value>             treatment variant 列表，逗号分隔
   --trivial-diff <value>          可忽略 diff 容差，0 表示不启用容差
   --verbose                       详细日志
@@ -228,7 +226,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --skip-doctor                   跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
   --stop-on-assertions-pass       普通样本断言全过时提前停止
   --target <value>                目标 composite 分数，达到即停。不传则跑满 rounds
-  --timeout <value>               单样本超时秒，默认 120
+  --timeout <value>               单样本超时秒，默认 600
 ```
 
 完整描述见 `omk evolve --help`。
@@ -254,7 +252,7 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
   --fix                  fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
   --focus <value>        生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
   --lang <value>         输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --model <value>        生成 LLM model 名，默认 opus。
+  --model <value>        生成 LLM model 名，默认 sonnet。
   --no-mock              不生成 mocks，eval 时所有工具调用真实执行。
   --reports-dir <value>  报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
   --skill-dir <value>    skill 根目录，默认 skills。batch 模式扫此目录。

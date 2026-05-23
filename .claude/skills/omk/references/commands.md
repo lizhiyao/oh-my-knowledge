@@ -225,7 +225,7 @@ omk evolve <skillPath> [flags]
 - `--skip-doctor` `boolean`:跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
 - `--stop-on-assertions-pass` `boolean`:普通样本断言全过时提前停止
 - `--target` `option`:目标 composite 分数，达到即停。不传则跑满 rounds
-- `--timeout` `option` (默认 `120`):单样本超时秒，默认 600
+- `--timeout` `option` (默认 `600`):单样本超时秒，默认 600
 
 **示例:**
 

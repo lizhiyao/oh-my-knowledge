@@ -395,8 +395,8 @@ async function runSample(
 
     const { resolveSkillInput } = await import('../lib/resolve-skill-input.js');
     let resolved;
-    try { resolved = resolveSkillInput(skillPathArg); } catch {
-      console.error(tCli('cli.common.skill_file_not_found', lang, { path: resolve(skillPathArg) }));
+    try { resolved = resolveSkillInput(skillPathArg, lang); } catch (err) {
+      console.error((err as Error).message);
       throw new CliExit(1);
     }
 
