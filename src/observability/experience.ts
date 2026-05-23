@@ -298,7 +298,7 @@ export interface ExperienceSkillSegment {
   skillInvocationIds: string[];
   startMessageIndex?: number;
   endMessageIndex?: number;
-  messageRanges?: Array<{ startMessageIndex: number; endMessageIndex: number }>;
+  messageRanges?: Array<{ startMessageIndex: number; endMessageIndex: number; sourceTrace?: string; sessionId?: string }>;
   startTimestamp: string;
   endTimestamp: string;
   typeSpecificChecklist: ExperienceChecklistItem[];
@@ -309,6 +309,14 @@ export interface ExperienceSkillSegment {
     userFeeling?: string;
   };
   evidenceRefs: ExperienceEvidenceRef[];
+}
+
+interface ExperienceEpisodeRange {
+  startMessageIndex: number;
+  endMessageIndex: number;
+  sourceTrace?: string;
+  sessionId?: string;
+  boundaryReason?: ExperienceEpisodeBoundaryReason;
 }
 
 export interface ExperienceOrchestrationEdge {
@@ -1640,7 +1648,7 @@ function summarizeExperienceSessions(
       rawSkillRefs: unique(group.map((invocation) => invocation.attribution.rawSkillRef).filter((value): value is string => Boolean(value))).sort(),
       commandNames: unique(group.map((invocation) => invocation.attribution.commandName).filter((value): value is string => Boolean(value))).sort(),
     };
-    const sessionStory = buildSessionStory(baseSession, storyInvocations, canonicalEpisodesBySessionGroup.get(first.sessionGroupKey));
+    const sessionStory = buildSessionStory(baseSession, storyInvocations, canonicalEpisodesBySessionGroup.get(first.sessionGroupKey), reviewState);
     if (!canonicalEpisodesBySessionGroup.has(first.sessionGroupKey)) {
       canonicalEpisodesBySessionGroup.set(first.sessionGroupKey, sessionStory.episodes ?? []);
     }
@@ -1691,7 +1699,7 @@ function buildReviewerReport(
   const tokenUsage = sumTokenUsage(invocations);
   const title = reviewerTitle(session, attentionCount, possibleFalsePositiveCount);
   const expectedToolCheck = expectedToolCheckForSession(session);
-  const feedbackCounts = canonicalFeedbackCountsForSession(session);
+  const feedbackCounts = canonicalFeedbackCountsForSession(session, reviewState);
   const traceLinks = uniqueEvidenceRefs([
     ...(session.evidenceChain.firstUserMessage ? [session.evidenceChain.firstUserMessage] : []),
     ...(session.evidenceChain.firstToolUse ? [session.evidenceChain.firstToolUse] : []),
@@ -1715,7 +1723,7 @@ function buildReviewerReport(
       reviewerStep(2, '选择能力', skillSelectionStepText(session), 'ok', [session.evidenceChain.firstSkillContext, session.evidenceChain.firstToolUse].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))),
       reviewerStep(3, '执行流程', executionStepText(session, expectedToolCheck), executionStepStatus(session, expectedToolCheck), session.evidenceChain.firstToolUse ? [session.evidenceChain.firstToolUse] : []),
       reviewerStep(4, '结果 / 产物', deliveryStepText(session), userFacingClosureForSession(session).deliveryCount > 0 ? 'ok' : 'unknown', userFacingClosureForSession(session).evidenceRefs),
-      reviewerStep(5, '用户反馈', userFeedbackStepText(session), userFeedbackStepStatus(session), userFeedbackEvidenceRefs(session)),
+      reviewerStep(5, '用户反馈', userFeedbackStepText(session, reviewState), userFeedbackStepStatus(session, reviewState), userFeedbackEvidenceRefs(session)),
     ],
     findings,
       oneLookMetrics: {
@@ -1747,6 +1755,7 @@ function buildSessionStory(
   session: ExperienceSessionSummary,
   invocations: ExperienceInvocation[],
   canonicalEpisodes?: ExperienceEpisode[],
+  reviewState?: ObservationReviewState,
 ): ExperienceSessionStory {
   const nodes: ExperienceSessionStoryNode[] = [];
   const push = (
@@ -1839,8 +1848,8 @@ function buildSessionStory(
   const feedbackNode = push(
     'user_feedback',
     '用户反馈',
-    userFeedbackStepStatus(session),
-    userFeedbackStepText(session),
+    userFeedbackStepStatus(session, reviewState),
+    userFeedbackStepText(session, reviewState),
     userFeedbackEvidenceRefs(session),
   );
 
@@ -1855,9 +1864,9 @@ function buildSessionStory(
   }
 
   const episodes = canonicalEpisodes ?? sessionStoryEpisodes(session, invocations, goalSlices, subagentDispatches, skillLinks);
-  const goalChecklistItems = checklistItemsForAnswer(session, 'goal_satisfaction', episodes);
+  const goalChecklistItems = checklistItemsForAnswer(session, 'goal_satisfaction', episodes, reviewState);
   const declaredBehaviorChecklistItems = checklistItemsForAnswer(session, 'declared_behavior_fit', episodes);
-  const userFeelingChecklistItems = checklistItemsForAnswer(session, 'user_feeling', episodes);
+  const userFeelingChecklistItems = checklistItemsForAnswer(session, 'user_feeling', episodes, reviewState);
   const answers: ExperienceSessionStoryAnswer[] = [
     sessionStoryAnswer('goal_satisfaction', '用户目标有没有被满足', goalChecklistItems, [
       session.evidenceChain.firstUserMessage,
@@ -1924,12 +1933,9 @@ function sessionStoryEpisodes(
   const ranges = sessionStoryEpisodeRanges(session, timeline);
   return ranges.map((range, index) => {
     const episodeId = hashParts('session-story-episode', session.id, String(index));
-    const rangeContains = (messageIndex?: number): boolean =>
-      typeof messageIndex === 'number' && messageIndex >= range.startMessageIndex && messageIndex <= range.endMessageIndex;
     const episodeSkillSegments = skillSegments.filter((segment) =>
       (segment.messageRanges ?? []).some((messageRange) =>
-        messageRange.endMessageIndex >= range.startMessageIndex
-        && messageRange.startMessageIndex <= range.endMessageIndex
+        messageRangeOverlapsEpisodeRange(messageRange, range)
       )
     );
     const segmentIds = new Set(episodeSkillSegments.map((segment) => segment.id));
@@ -1939,11 +1945,11 @@ function sessionStoryEpisodes(
           return segmentIds.has(edge.parentSkillSegmentId) && segmentIds.has(edge.executorSkillSegmentId);
         }
         return (edge.parentSkillSegmentId && segmentIds.has(edge.parentSkillSegmentId))
-          || edge.evidenceRefs.some((ref) => rangeContains(ref.messageIndex));
+          || edge.evidenceRefs.some((ref) => episodeRangeContainsRef(range, ref));
       })
       .map((edge) => ({ ...edge, episodeId }));
     const episodeFeedbackSignals = feedbackSignals
-      .filter((signal) => rangeContains(signal.evidenceRef.messageIndex))
+      .filter((signal) => episodeRangeContainsRef(range, signal.evidenceRef))
       .map((signal) => {
         const attributions = (signal.canonicalAttributions ?? signal.attributions).filter((attribution) =>
           episodeFeedbackAttributionBelongsToEpisode(attribution, segmentIds, episodeEdges)
@@ -1955,9 +1961,9 @@ function sessionStoryEpisodes(
         };
       })
       .filter((signal) => signal.attributions.length > 0);
-    const episodeArtifacts = artifacts.filter((artifact) => rangeContains(artifact.evidenceRef.messageIndex));
-    const episodeGoalSlices = goalSlices.filter((goal) => goal.evidenceRefs.some((ref) => rangeContains(ref.messageIndex)));
-    const episodeTimeline = timeline.filter((event) => rangeContains(event.messageIndex));
+    const episodeArtifacts = artifacts.filter((artifact) => episodeRangeContainsRef(range, artifact.evidenceRef));
+    const episodeGoalSlices = goalSlices.filter((goal) => goal.evidenceRefs.some((ref) => episodeRangeContainsRef(range, ref)));
+    const episodeTimeline = timeline.filter((event) => episodeRangeContainsRef(range, event));
     const startRef = episodeTimeline[0] ? evidenceRefFromTimeline(episodeTimeline[0]) : session.evidenceChain.firstUserMessage;
     const endRef = episodeTimeline.at(-1) ? evidenceRefFromTimeline(episodeTimeline.at(-1) as ExperienceTimelineEvent) : session.evidenceChain.lastAssistantMessage;
     const primaryGoal = episodeGoalSlices[0]?.inferredUserGoal
@@ -2047,14 +2053,21 @@ function skillSegmentsWithOrchestrationRoles(
 function sessionStoryEpisodeRanges(
   session: ExperienceSessionSummary,
   timeline: ExperienceTimelineEvent[],
-): Array<{ startMessageIndex: number; endMessageIndex: number; boundaryReason?: ExperienceEpisodeBoundaryReason }> {
-  const indexes = timeline
+): ExperienceEpisodeRange[] {
+  const primarySourceTrace = primarySourceTraceForSession(session);
+  const rangeTimeline = timeline.filter((event) => !primarySourceTrace || !event.sourceTrace || event.sourceTrace === primarySourceTrace);
+  const indexes = rangeTimeline
     .map((event) => event.messageIndex)
     .filter((value): value is number => typeof value === 'number');
   const sessionStart = minDefined(indexes) ?? session.timelineScope.sessionStartRecordIndex ?? 0;
   const sessionEnd = maxDefined(indexes) ?? session.timelineScope.sessionEndRecordIndex ?? sessionStart;
   const goalShiftStarts = unique(timeline
-    .filter((event) => event.kind === 'user_message' && typeof event.messageIndex === 'number' && event.messageIndex > sessionStart)
+    .filter((event) =>
+      event.kind === 'user_message'
+      && typeof event.messageIndex === 'number'
+      && event.messageIndex > sessionStart
+      && (!primarySourceTrace || !event.sourceTrace || event.sourceTrace === primarySourceTrace)
+    )
     .filter((event) => hasUserGoalShiftSignal(event.snippet ?? event.fullText ?? ''))
     .map((event) => event.messageIndex as number))
     .sort((a, b) => a - b);
@@ -2062,8 +2075,40 @@ function sessionStoryEpisodeRanges(
   return starts.map((start, index) => ({
     startMessageIndex: start,
     endMessageIndex: (starts[index + 1] ?? (sessionEnd + 1)) - 1,
+    sourceTrace: primarySourceTrace,
+    sessionId: session.sessionId,
     boundaryReason: index < starts.length - 1 ? 'goal_shift' : undefined,
   }));
+}
+
+function primarySourceTraceForSession(session: ExperienceSessionSummary): string | undefined {
+  return session.sourceTrace
+    ?? session.evidenceChain.firstUserMessage?.sourceTrace
+    ?? session.fullSessionTimeline.find((event) => event.traceRole === 'main')?.sourceTrace
+    ?? session.fullSessionTimeline[0]?.sourceTrace
+    ?? session.timelinePreview[0]?.sourceTrace;
+}
+
+function episodeRangeContainsRef(
+  range: ExperienceEpisodeRange,
+  ref?: Pick<ExperienceEvidenceRef, 'messageIndex' | 'sourceTrace' | 'sessionId'>,
+): boolean {
+  if (!ref || typeof ref.messageIndex !== 'number') return false;
+  // New observations carry sourceTrace and are compared strictly. Older persisted
+  // observations may not, so they keep the historical messageIndex-only fallback.
+  if (range.sourceTrace && ref.sourceTrace && range.sourceTrace !== ref.sourceTrace) return false;
+  if (range.sessionId && ref.sessionId && range.sessionId !== ref.sessionId) return false;
+  return ref.messageIndex >= range.startMessageIndex && ref.messageIndex <= range.endMessageIndex;
+}
+
+function messageRangeOverlapsEpisodeRange(
+  messageRange: { startMessageIndex: number; endMessageIndex: number; sourceTrace?: string; sessionId?: string },
+  range: ExperienceEpisodeRange,
+): boolean {
+  if (range.sourceTrace && messageRange.sourceTrace && range.sourceTrace !== messageRange.sourceTrace) return false;
+  if (range.sessionId && messageRange.sessionId && range.sessionId !== messageRange.sessionId) return false;
+  return messageRange.endMessageIndex >= range.startMessageIndex
+    && messageRange.startMessageIndex <= range.endMessageIndex;
 }
 
 function sessionStoryEpisodeBoundaryReason(
@@ -2093,18 +2138,21 @@ function sessionStorySkillSegments(
       ...link.evidenceRefs,
       ...group.flatMap((invocation) => invocation.evidenceRefs.slice(0, 2)),
     ]).slice(0, 6);
-    const messageRanges = group
-      .map((invocation) => {
-        const indexes = invocation.timeline
+    const messageRanges: Array<{ startMessageIndex: number; endMessageIndex: number; sourceTrace?: string; sessionId?: string }> = group
+      .map((invocation): { startMessageIndex: number; endMessageIndex: number; sourceTrace?: string; sessionId?: string } | undefined => {
+        const timelineWithIndex = invocation.timeline.filter((event) => typeof event.messageIndex === 'number');
+        const indexes = timelineWithIndex
           .map((event) => event.messageIndex)
           .filter((value): value is number => typeof value === 'number');
         const startMessageIndex = minDefined(indexes);
         const endMessageIndex = maxDefined(indexes);
+        const sourceTrace = invocation.sourceTrace ?? timelineWithIndex[0]?.sourceTrace;
+        const sessionId = invocation.sessionId ?? timelineWithIndex[0]?.sessionId;
         return typeof startMessageIndex === 'number' && typeof endMessageIndex === 'number'
-          ? { startMessageIndex, endMessageIndex }
+          ? { startMessageIndex, endMessageIndex, sourceTrace, sessionId }
           : undefined;
       })
-      .filter((value): value is { startMessageIndex: number; endMessageIndex: number } => Boolean(value));
+      .filter((value): value is { startMessageIndex: number; endMessageIndex: number; sourceTrace?: string; sessionId?: string } => Boolean(value));
     const messageIndexes = messageRanges.flatMap((range) => [range.startMessageIndex, range.endMessageIndex]);
     return {
       id: hashParts('session-story-skill-segment', session.id, link.skillName, String(index)),
@@ -3016,10 +3064,11 @@ function checklistItemsForAnswer(
   session: ExperienceSessionSummary,
   key: ExperienceSessionStoryAnswerKey,
   episodes?: ExperienceEpisode[],
+  reviewState?: ObservationReviewState,
 ): ExperienceChecklistItem[] {
-  if (key === 'goal_satisfaction') return goalSatisfactionChecklistItems(session, episodes);
+  if (key === 'goal_satisfaction') return goalSatisfactionChecklistItems(session, episodes, reviewState);
   if (key === 'declared_behavior_fit') return declaredBehaviorChecklistItems(session, episodes);
-  return userFeelingChecklistItems(session, episodes);
+  return userFeelingChecklistItems(session, episodes, reviewState);
 }
 
 function attributionSourcesToLabel(sources: string[]): string {
@@ -3081,9 +3130,9 @@ function hasRecognizableUserGoal(ref?: ExperienceEvidenceRef): boolean {
   return hasRecognizableUserGoalText(ref?.snippet);
 }
 
-function goalSatisfactionChecklistItems(session: ExperienceSessionSummary, episodes?: ExperienceEpisode[]): ExperienceChecklistItem[] {
+function goalSatisfactionChecklistItems(session: ExperienceSessionSummary, episodes?: ExperienceEpisode[], reviewState?: ObservationReviewState): ExperienceChecklistItem[] {
   const feedbackRefs = userFeedbackEvidenceRefs(session);
-  const feedbackCounts = canonicalFeedbackCountsForSession(session);
+  const feedbackCounts = canonicalFeedbackCountsForSession(session, reviewState);
   const goalIdentified = hasRecognizableUserGoal(session.evidenceChain.firstUserMessage);
   const inProgress = isExperienceTraceInProgress(session);
   const closure = userFacingClosureForSession(session, episodes);
@@ -3248,9 +3297,9 @@ function declaredBehaviorChecklistItems(session: ExperienceSessionSummary, episo
   return items;
 }
 
-function userFeelingChecklistItems(session: ExperienceSessionSummary, episodes?: ExperienceEpisode[]): ExperienceChecklistItem[] {
+function userFeelingChecklistItems(session: ExperienceSessionSummary, episodes?: ExperienceEpisode[], reviewState?: ObservationReviewState): ExperienceChecklistItem[] {
   const feedbackRefs = userFeedbackEvidenceRefs(session);
-  const feedbackCounts = canonicalFeedbackCountsForSession(session);
+  const feedbackCounts = canonicalFeedbackCountsForSession(session, reviewState);
   const hasAnyFeedback = feedbackCounts.positiveFeedbackCount > 0
     || feedbackCounts.negativeFeedbackCount > 0
     || feedbackCounts.userCorrectionCount > 0
@@ -3713,16 +3762,25 @@ function userFacingClosureForSession(
       ].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))),
     };
   }
-  const finalDeliveryEvents = assistantFinalDeliveryEvents(session);
+  const primarySourceTrace = primarySourceTraceForSession(session);
+  const finalDeliveryEvents = assistantFinalDeliveryEvents(session)
+    .filter((event) => isMainlineEvidenceRef(event, primarySourceTrace));
   const episodes = episodesOverride ?? session.sessionStory?.episodes ?? [];
-  const artifacts = episodes.flatMap((episode) => episode.outcome.artifacts ?? []);
+  const artifacts = episodes
+    .flatMap((episode) => episode.outcome.artifacts ?? [])
+    .filter((artifact) => isMainlineEvidenceRef(artifact.evidenceRef, primarySourceTrace));
   const deliveryRefs = finalDeliveryEvents.map(evidenceRefFromTimeline);
   const artifactRefs = artifacts.map((artifact) => artifact.evidenceRef);
   return {
-    deliveryCount: Math.max(session.indicators.assistantDeliverySignalCount, finalDeliveryEvents.length),
-    artifactCount: Math.max(session.indicators.deliverableArtifactSignalCount, artifacts.length),
+    deliveryCount: finalDeliveryEvents.length,
+    artifactCount: artifacts.length,
     evidenceRefs: uniqueEvidenceRefs([...deliveryRefs, ...artifactRefs, session.evidenceChain.lastAssistantMessage].filter((ref): ref is ExperienceEvidenceRef => Boolean(ref))).slice(0, 5),
   };
+}
+
+function isMainlineEvidenceRef(ref: Pick<ExperienceEvidenceRef, 'sourceTrace'> | undefined, primarySourceTrace?: string): boolean {
+  if (!ref || !primarySourceTrace || !ref.sourceTrace) return true;
+  return ref.sourceTrace === primarySourceTrace;
 }
 
 function enrichRouterDownstreamIndicators(session: ExperienceSessionSummary): ExperienceReviewIndicators {
@@ -3740,7 +3798,7 @@ function enrichRouterDownstreamIndicators(session: ExperienceSessionSummary): Ex
   };
 }
 
-function canonicalFeedbackCountsForSession(session: ExperienceSessionSummary): Pick<ExperienceReviewIndicators,
+function canonicalFeedbackCountsForSession(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): Pick<ExperienceReviewIndicators,
   'userFollowUpCount' | 'userCorrectionCount' | 'userInterruptionCount' | 'negativeFeedbackCount' | 'positiveFeedbackCount'
 > {
   const signals = session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [];
@@ -3760,6 +3818,7 @@ function canonicalFeedbackCountsForSession(session: ExperienceSessionSummary): P
       && (attribution.attributionRole === 'primary_fault'
         || includeDownstream && attribution.attributionRole === 'downstream_related')
     )
+    && feedbackSignalIsActiveForSession(signal, session, reviewState)
   );
   return {
     userFollowUpCount: owned.filter((signal) => signal.type === 'follow_up').length,
@@ -3770,13 +3829,35 @@ function canonicalFeedbackCountsForSession(session: ExperienceSessionSummary): P
   };
 }
 
+function feedbackSignalIsActiveForSession(
+  signal: ExperienceFeedbackSignal,
+  session: ExperienceSessionSummary,
+  reviewState?: ObservationReviewState,
+): boolean {
+  const metricKey = metricKeyForFeedbackSignal(signal);
+  if (!metricKey) return true;
+  const verdict = observationMetricAnnotationVerdict(reviewState, { ...signal.evidenceRef, metricScopeId: session.id }, metricKey);
+  if (verdict === 'confirmed') return true;
+  if (verdict === 'rejected') return false;
+  return true;
+}
+
+function metricKeyForFeedbackSignal(signal: ExperienceFeedbackSignal): ObservationMetricKey | undefined {
+  if (signal.type === 'follow_up') return 'user_follow_up';
+  if (signal.type === 'correction') return 'user_correction';
+  if (signal.type === 'interruption') return 'user_interruption';
+  if (signal.type === 'frustration') return 'negative_feedback';
+  if (signal.type === 'positive') return 'positive_feedback';
+  return undefined;
+}
+
 function shouldIncludeDownstreamFeedbackForSession(session: ExperienceSessionSummary): boolean {
   const runtime = currentSkillRuntimeModel(session);
   return Boolean(runtime && (runtime.skillType === 'router' || runtime.skillType === 'delegation' || runtime.hasDownstreamEdges || runtime.isDelegator));
 }
 
-function userFeedbackStepText(session: ExperienceSessionSummary): string {
-  const feedbackCounts = canonicalFeedbackCountsForSession(session);
+function userFeedbackStepText(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): string {
+  const feedbackCounts = canonicalFeedbackCountsForSession(session, reviewState);
   const parts = [
     feedbackCounts.userFollowUpCount > 0 ? `追问/补充 ${feedbackCounts.userFollowUpCount} 次` : '',
     feedbackCounts.userCorrectionCount > 0 ? `纠正 ${feedbackCounts.userCorrectionCount} 次` : '',
@@ -3787,8 +3868,8 @@ function userFeedbackStepText(session: ExperienceSessionSummary): string {
   return parts.length > 0 ? `用户反馈信号：${parts.join('，')}。` : '原始记录里没有看到人工追问、纠正、负向反馈或目标切换。';
 }
 
-function userFeedbackStepStatus(session: ExperienceSessionSummary): ExperienceReviewerReportStepStatus {
-  const feedbackCounts = canonicalFeedbackCountsForSession(session);
+function userFeedbackStepStatus(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): ExperienceReviewerReportStepStatus {
+  const feedbackCounts = canonicalFeedbackCountsForSession(session, reviewState);
   if (feedbackCounts.userCorrectionCount > 0 || feedbackCounts.negativeFeedbackCount > 0 || feedbackCounts.userInterruptionCount > 0) return 'attention';
   if (feedbackCounts.positiveFeedbackCount > 0) return 'ok';
   return 'unknown';

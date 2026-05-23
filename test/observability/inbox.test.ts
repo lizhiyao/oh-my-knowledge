@@ -57,7 +57,7 @@ import {
   updateSkillDerivedStandardStatus,
 } from '../../src/observability/soft-standards.js';
 import type { ObservationSkillChain } from '../../src/observability/skill-chain.js';
-import { renderObservationInboxPage } from '../../src/renderer/observation-inbox-renderer.js';
+import { renderFeedbackAttributionLabel, renderObservationInboxPage } from '../../src/renderer/observation-inbox-renderer.js';
 
 function businessActionTag(name: string, text: string): string {
   const tag = ['ai', 'ma-cmd'].join('');
@@ -2498,6 +2498,8 @@ expected_tools:
     assert.equal(story.subagentDispatches.length, 1);
     assert.equal(story.progressUpdateCount, 1);
     assert.equal(story.finalDeliverySignalCount, 1);
+    assert.equal(story.episodes?.flatMap((episode) => episode.feedbackSignals ?? [])
+      .some((signal) => signal.evidenceRef.sourceTrace === childFile), false);
     assert.ok(story.nodes.some((node) => node.kind === 'subagent_branch'));
     assert.deepEqual(story.skillLinks.map((link) => [link.skillName, link.role]).sort(), [
       ['aiprd-task-runner', 'executor'],
@@ -2505,6 +2507,7 @@ expected_tools:
     ]);
     assert.ok(story.graph.edges.some((edge) => edge.label === '路由'));
     assert.equal(applySession.reviewerReport?.sessionStory.schemaVersion, story.schemaVersion);
+    assert.equal(applySession.reviewerReport?.chainSteps.find((step) => step.label === '结果 / 产物')?.status, 'unknown');
   });
 
   it('attributes feedback by target object instead of the current skill window', () => {
@@ -2580,6 +2583,16 @@ expected_tools:
     assert.equal((fileSignal.canonicalAttributions ?? fileSignal.attributions).some((attribution) =>
       attribution.skillName === 'damai-daily' && attribution.attributionRole === 'primary_fault'
     ), false);
+  });
+
+  it('escapes feedback attribution labels in the session story renderer', () => {
+    const rendered = renderFeedbackAttributionLabel({
+      skillName: '<img onerror="x">',
+      attributionRole: 'primary_fault',
+      reasonCode: 'object_match',
+    });
+    assert.match(rendered, /&lt;img onerror=&quot;x&quot;&gt;/);
+    assert.doesNotMatch(rendered, /<img onerror="x">/);
   });
 
   it('keeps apply-cc promise follow-up separate from unrelated preview feedback', () => {
@@ -2918,6 +2931,70 @@ expected_tools:
     assert.equal(observationMetricScopeFor('positive_feedback'), 'message');
     assert.notEqual(correctionA, correctionB);
     assert.equal(positiveA, positiveB);
+  });
+
+  it('excludes rejected feedback signals from canonical reviewer metrics', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'omk-feedback-review-state-'));
+    const file = join(dir, 'session.jsonl');
+    const records = [
+      {
+        type: 'user',
+        uuid: 'u1',
+        parentUuid: null,
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:00.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '<command-name>/apply-cc</command-name> 帮我分析项目。' },
+      },
+      {
+        type: 'assistant',
+        uuid: 'a1',
+        parentUuid: 'u1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:01.000Z',
+        cwd: '/repo-a',
+        message: { role: 'assistant', content: [{ type: 'text', text: '我会继续处理。' }] },
+      },
+      {
+        type: 'user',
+        uuid: 'u2',
+        parentUuid: 'a1',
+        sessionId: 's1',
+        timestamp: '2026-05-11T02:00:02.000Z',
+        cwd: '/repo-a',
+        message: { role: 'user', content: '不对，重来。' },
+      },
+    ];
+    writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
+
+    const report = buildObservationInboxReport(file);
+    const session = report.experience?.sessions.find((item) => item.skillName === 'apply-cc');
+    assert.ok(session);
+    const correction = session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? [])
+      .find((signal) => signal.type === 'correction');
+    assert.ok(correction);
+    const targetId = observationMetricAnnotationTargetId({ ...correction.evidenceRef, metricScopeId: session.id }, 'user_correction');
+    const reviewState = {
+      kind: 'observe-review-state' as const,
+      schemaVersion: 1 as const,
+      updatedAt: '2026-05-11T02:00:03.000Z',
+      entries: {
+        [observationReviewStateKey('evidence_metric', targetId)]: {
+          targetType: 'evidence_metric' as const,
+          targetId,
+          verdict: 'rejected' as const,
+          metricKey: 'user_correction' as const,
+          metricScopeId: session.id,
+          reviewedAt: '2026-05-11T02:00:03.000Z',
+        },
+      },
+    };
+    const annotated = buildObservationInboxReport(file, { reviewState });
+    const feedbackStep = annotated.experience?.sessions.find((item) => item.skillName === 'apply-cc')
+      ?.reviewerReport?.chainSteps.find((step) => step.label === '用户反馈');
+    assert.ok(feedbackStep);
+    assert.equal(feedbackStep.status, 'unknown');
+    assert.doesNotMatch(feedbackStep.text, /纠正 1 次/);
   });
 
   it('persists reviewer judgment and soft standard review state', () => {

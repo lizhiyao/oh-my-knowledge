@@ -35,6 +35,21 @@ import type {
   ExperienceTimelineEvent,
 } from '../observability/experience.js';
 
+function feedbackAttributionRoleLabel(role?: string): string {
+  if (role === 'primary_fault') return '主要归因';
+  if (role === 'downstream_related') return '下游关联';
+  if (role === 'context_only') return '上下文相关';
+  return '关联';
+}
+
+export function renderFeedbackAttributionLabel(attribution: Pick<ExperienceFeedbackAttribution, 'skillName' | 'attributionRole' | 'reasonCode'>): string {
+  return [
+    attribution.skillName ?? '未知',
+    feedbackAttributionRoleLabel(attribution.attributionRole),
+    attribution.reasonCode,
+  ].map((part) => e(part)).join(' · ');
+}
+
 export function renderObservationInboxPage(model: ObservationInboxViewModel, lang: Lang = DEFAULT_LANG): string {
 	  const {
 	    activeSkill,
@@ -639,10 +654,27 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     return (session.sessionStory?.episodes?.flatMap((episode) => episode.feedbackSignals ?? []) ?? [])
       .filter((signal) =>
         (!signalType || signal.type === signalType)
+        && displayFeedbackSignalIsActive(signal, session)
         && (signal.canonicalAttributions ?? signal.attributions ?? []).some((attribution) =>
           feedbackAttributionBelongsToDisplaySession(attribution, session, includeDownstream)
         )
       );
+  };
+  const metricKeyForFeedbackSignal = (signal: ExperienceFeedbackSignal): ObservationMetricKey | undefined => {
+    if (signal.type === 'follow_up') return 'user_follow_up';
+    if (signal.type === 'correction') return 'user_correction';
+    if (signal.type === 'interruption') return 'user_interruption';
+    if (signal.type === 'frustration') return 'negative_feedback';
+    if (signal.type === 'positive') return 'positive_feedback';
+    return undefined;
+  };
+  const displayFeedbackSignalIsActive = (signal: ExperienceFeedbackSignal, session: ExperienceSessionSummary): boolean => {
+    const metricKey = metricKeyForFeedbackSignal(signal);
+    if (!metricKey) return true;
+    const verdict = displayMetricVerdict(signal.evidenceRef as ExperienceTimelineEvent, metricKey, session.id);
+    if (verdict === 'confirmed') return true;
+    if (verdict === 'rejected') return false;
+    return true;
   };
   const feedbackSignalTypeForMetric = (metricKey: ObservationMetricKey): ExperienceFeedbackSignal['type'] | undefined => {
     if (metricKey === 'user_follow_up') return 'follow_up';
@@ -1921,12 +1953,6 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       if (type === 'positive') return '正向反馈';
       return '反馈';
     };
-    const feedbackAttributionRoleLabel = (role?: string): string => {
-      if (role === 'primary_fault') return '主要归因';
-      if (role === 'downstream_related') return '下游关联';
-      if (role === 'context_only') return '上下文相关';
-      return '关联';
-    };
     const outcomeClosureLabel = (closure?: string): string => {
       if (closure === 'closed') return '已闭环';
       if (closure === 'unresolved') return '未闭环';
@@ -2037,7 +2063,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
             ${episode.feedbackSignals.map((signal) => `<div>
               <span>${e(feedbackSignalTypeLabel(signal.type))}</span>
               <strong>${e(signal.targetObject ? `${signal.targetObject}：${signal.text}` : signal.text)}</strong>
-              <em>${(signal.canonicalAttributions ?? signal.attributions).map((attribution) => `${attribution.skillName ?? '未知'} · ${feedbackAttributionRoleLabel(attribution.attributionRole)} · ${attribution.reasonCode}`).join('；')}</em>
+              <em>${(signal.canonicalAttributions ?? signal.attributions).map(renderFeedbackAttributionLabel).join('；')}</em>
               ${storyEvidenceButtons([signal.evidenceRef])}
             </div>`).join('')}
           </div>` : ''}
