@@ -2,7 +2,7 @@
  * Auto-analysis: detect patterns and generate insights from evaluation results.
  */
 
-import type { Report, ResultEntry, Insight, AnalysisResult, Sample, SampleQualityAggregate, Lang } from '../types/index.js';
+import type { Report, ResultEntry, AnalysisInsight, AnalysisResult, Sample, SampleQualityAggregate, Lang } from '../types/index.js';
 import { normalizeCapability } from './sample-diagnostics.js';
 
 /** opts for `analyzeResults`. Optional because most older callers don't have
@@ -17,7 +17,7 @@ export interface AnalyzeResultsOptions {
  * Analyze an evaluation report and produce structured insights.
  */
 export function analyzeResults(report: Report, opts: AnalyzeResultsOptions = {}): AnalysisResult {
-  const insights: Insight[] = [];
+  const insights: AnalysisInsight[] = [];
   const variants = report.meta?.variants || [];
   const results = report.results || [];
 
@@ -433,7 +433,7 @@ function collectAgentAssertionTypes(results: ResultEntry[], variants: string[]):
   return types;
 }
 
-function detectLowDiscrimination(results: ResultEntry[], variants: string[], insights: Insight[]): void {
+function detectLowDiscrimination(results: ResultEntry[], variants: string[], insights: AnalysisInsight[]): void {
   // For each sample, check if all variants have the same assertion pass/fail pattern
   const allPassedPatterns: Array<{ sample_id: string; type: string; value: string | number; allPassed: boolean }> = [];
   const allFailedPatterns: Array<{ sample_id: string; type: string; value: string | number; allPassed: boolean }> = [];
@@ -488,7 +488,7 @@ function detectLowDiscrimination(results: ResultEntry[], variants: string[], ins
   }
 }
 
-function detectUniformScores(results: ResultEntry[], variants: string[], insights: Insight[]): void {
+function detectUniformScores(results: ResultEntry[], variants: string[], insights: AnalysisInsight[]): void {
   let uniformCount = 0;
   const uniformSamples: string[] = [];
 
@@ -516,7 +516,7 @@ function detectUniformScores(results: ResultEntry[], variants: string[], insight
   }
 }
 
-function detectAllPassFail(results: ResultEntry[], variants: string[], insights: Insight[]): void {
+function detectAllPassFail(results: ResultEntry[], variants: string[], insights: AnalysisInsight[]): void {
   let allPassCount = 0;
   let allFailCount = 0;
 
@@ -547,7 +547,7 @@ function detectAllPassFail(results: ResultEntry[], variants: string[], insights:
   }
 }
 
-function detectNeedRepeat(report: Report, results: ResultEntry[], variants: string[], insights: Insight[]): void {
+function detectNeedRepeat(report: Report, results: ResultEntry[], variants: string[], insights: AnalysisInsight[]): void {
   // Skip if already has variance data (i.e. --repeat was used)
   if (report.variance) return;
 
@@ -567,7 +567,7 @@ function detectNeedRepeat(report: Report, results: ResultEntry[], variants: stri
   }
 }
 
-function detectEfficiencyGap(report: Report, variants: string[], insights: Insight[]): void {
+function detectEfficiencyGap(report: Report, variants: string[], insights: AnalysisInsight[]): void {
   if (variants.length < 2) return;
   const summary = report.summary || {};
 
@@ -617,7 +617,7 @@ function detectEfficiencyGap(report: Report, variants: string[], insights: Insig
   }
 }
 
-function detectToolPatterns(report: Report, variants: string[], insights: Insight[]): void {
+function detectToolPatterns(report: Report, variants: string[], insights: AnalysisInsight[]): void {
   const summary = report.summary || {};
   const hasTools = variants.some((v) => summary[v]?.avgToolCalls != null && summary[v].avgToolCalls! > 0);
   if (!hasTools) return;
@@ -655,7 +655,7 @@ function detectToolPatterns(report: Report, variants: string[], insights: Insigh
   }
 }
 
-function detectToolPermissionIssues(results: ResultEntry[], variants: string[], insights: Insight[]): void {
+function detectToolPermissionIssues(results: ResultEntry[], variants: string[], insights: AnalysisInsight[]): void {
   const permissionErrors: Array<{ variant: string; tool: string; sample_id: string; output: string }> = [];
 
   for (const result of results) {
@@ -685,7 +685,7 @@ function detectToolPermissionIssues(results: ResultEntry[], variants: string[], 
   });
 }
 
-function detectTraceIntegrity(report: Report, variants: string[], insights: Insight[]): void {
+function detectTraceIntegrity(report: Report, variants: string[], insights: AnalysisInsight[]): void {
   const summary = report.summary || {};
   const agentAssertionTypes = collectAgentAssertionTypes(report.results || [], variants);
   const needsTraceHeavyCoverage = [...agentAssertionTypes].some((type) => TRACE_HEAVY_AGENT_ASSERTION_TYPES.has(type));
@@ -714,7 +714,7 @@ function detectTraceIntegrity(report: Report, variants: string[], insights: Insi
   }
 }
 
-function detectAgentAssertionDiscrimination(results: ResultEntry[], variants: string[], insights: Insight[]): void {
+function detectAgentAssertionDiscrimination(results: ResultEntry[], variants: string[], insights: AnalysisInsight[]): void {
   const assertionTypes = collectAgentAssertionTypes(results, variants);
   const hasTraceHeavyAssertions = [...assertionTypes].some((type) => TRACE_HEAVY_AGENT_ASSERTION_TYPES.has(type));
   if (!hasTraceHeavyAssertions) return;
@@ -784,7 +784,7 @@ function detectAgentAssertionDiscrimination(results: ResultEntry[], variants: st
   }
 }
 
-function detectHighCost(results: ResultEntry[], variants: string[], insights: Insight[]): void {
+function detectHighCost(results: ResultEntry[], variants: string[], insights: AnalysisInsight[]): void {
   const costs: Array<{ sample_id: string; costUSD: number }> = [];
   for (const r of results) {
     let sampleCost = 0;
