@@ -17,21 +17,19 @@ import {
 } from '../../src/observability/inbox.js';
 import {
   aggregateExperienceChecklistItemStatus,
-  foldExperienceChecklistItems,
-  hasRecognizableUserGoalText,
-  isExperienceTraceInProgress,
-  type ExperienceChecklistItem,
-  type ExperienceSessionSummary,
-} from '../../src/observability/experience.js';
-import {
   findNegativeFeedbackMatches,
   findPositiveFeedbackMatches,
   findUserCorrectionMatches,
   findUserGoalShiftMatches,
+  foldExperienceChecklistItems,
+  hasRecognizableUserGoalText,
   hasNegativeFeedbackSignal,
   hasPositiveFeedbackSignal,
   hasUserCorrectionSignal,
-} from '../../src/observability/feedback-matchers.js';
+  isExperienceTraceInProgress,
+  type ExperienceChecklistItem,
+  type ExperienceSessionSummary,
+} from '../../src/observability/experience.js';
 import {
   hasAssistantDeliverySignalText,
   hasUserHardRuleText,
