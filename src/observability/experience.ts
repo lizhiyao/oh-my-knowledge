@@ -27,6 +27,18 @@ import {
   hasUserGoalShiftSignal,
 } from './feedback-matchers.js';
 
+export {
+  findNegativeFeedbackMatches,
+  findPositiveFeedbackMatches,
+  findUserCorrectionMatches,
+  findUserGoalShiftMatches,
+  hasNegativeFeedbackSignal,
+  hasPositiveFeedbackSignal,
+  hasUserCorrectionSignal,
+  hasUserGoalShiftSignal,
+} from './feedback-matchers.js';
+export type { TextMatchRange } from './feedback-matchers.js';
+
 export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
 export type ExperienceGoalSliceReasonCode = 'skill_segment_boundary' | 'explicit_user_goal_shift' | 'default_session_slice';
 export type ExperienceEvidenceKind = 'user_message' | 'synthetic_user_event' | 'assistant_message' | 'tool_use' | 'tool_result' | 'skill_context' | 'runtime_context' | 'observation';
