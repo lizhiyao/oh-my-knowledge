@@ -5,3 +5,4 @@ export * from './eval.js';
 export * from './report.js';
 export * from './storage.js';
 export * from './doctor.js';
+export * from './diagnosis.js';
