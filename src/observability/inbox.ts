@@ -9,7 +9,7 @@ import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
 import { durationMsBetween } from '../shared/time.js';
 import { buildObservationExperienceReport, type ObservationExperienceReport } from './experience.js';
 import type { ObservationReviewState } from './review-state.js';
-import type { DiagnosisBundle } from '../diagnosis/types.js';
+import type { DiagnosisBundle } from '../types/diagnosis.js';
 
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = join(process.cwd(), '.omk', 'observations');
 export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(homedir(), '.oh-my-knowledge', 'observations');
