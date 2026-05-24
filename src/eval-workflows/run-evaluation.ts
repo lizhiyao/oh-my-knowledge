@@ -247,7 +247,7 @@ export async function runEvaluation({
     if (doctorCtx) {
       const { runDoctor } = await import('../doctor/index.js');
       const { renderDoctorReportText } = await import('../doctor/renderer.js');
-      const { tCli } = await import('../cli/lib/i18n.js');
+      const { tEvalWorkflowMessage } = await import('./messages.js');
       const doctorReport = await runDoctor({
         artifacts: doctorCtx.doctorArtifacts,
         cwd: doctorCtx.dependencyCwd,
@@ -261,7 +261,7 @@ export async function runEvaluation({
       });
       if (doctorReport.outcome === 'failed') {
         renderDoctorReportText(doctorReport, lang);
-        throw new Error(`doctor failed: ${tCli('cli.doctor.gate_blocked', lang)}`);
+        throw new Error(`doctor failed: ${tEvalWorkflowMessage('doctor_gate_blocked', lang)}`);
       }
     }
   }

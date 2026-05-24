@@ -36,7 +36,8 @@ import type {
   Task,
   VariantResult,
 } from '../types/index.js';
-import { tCli, type CliLang } from '../cli/lib/i18n.js';
+import type { Lang } from '../types/shared.js';
+import { tEvalWorkflowMessage } from './messages.js';
 
 type EvaluationResults = Record<string, Record<string, VariantResult>>;
 
@@ -232,20 +233,20 @@ function computeTestSetHash(samplesPath: string, sourceFiles?: string[]): string
  * saturation curves. This is the upfront "you might be wasting the run"
  * heads-up, not a gate.
  */
-export function buildPowerWarnings(sampleCount: number, repeat: number, lang: CliLang = 'zh'): string[] {
+export function buildPowerWarnings(sampleCount: number, repeat: number, lang: Lang = 'zh'): string[] {
   const warnings: string[] = [];
   if (sampleCount < 5) {
-    warnings.push(tCli('cli.run.power_warning_tiny_n', lang, { n: sampleCount }));
+    warnings.push(tEvalWorkflowMessage('power_warning_tiny_n', lang, { n: sampleCount }));
   } else if (sampleCount < 20) {
-    warnings.push(tCli('cli.run.power_warning_small_n', lang, { n: sampleCount }));
+    warnings.push(tEvalWorkflowMessage('power_warning_small_n', lang, { n: sampleCount }));
   }
   if (repeat < 2) {
-    warnings.push(tCli('cli.run.power_warning_repeat_one', lang));
+    warnings.push(tEvalWorkflowMessage('power_warning_repeat_one', lang));
   }
   return warnings;
 }
 
-function emitPowerWarnings(sampleCount: number, repeat: number, lang: CliLang): void {
+function emitPowerWarnings(sampleCount: number, repeat: number, lang: Lang): void {
   for (const w of buildPowerWarnings(sampleCount, repeat, lang)) {
     process.stderr.write(`${w}\n`);
   }
@@ -409,7 +410,7 @@ export interface EvaluationPipelineOptions {
   /** Explicit persisted run id. Used by batch workflows that need stable child ids. */
   runId?: string;
   /** CLI output language for warnings emitted by the pipeline. */
-  lang?: CliLang;
+  lang?: Lang;
   /** Reasoning effort 透传到 executor。默认 'low'(由 RunConfig 兜底)。 */
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   /** 关闭 diagnostic。Default false。 */
