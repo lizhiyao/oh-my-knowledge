@@ -2,152 +2,46 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { GapSignalRef, ToolCallInfo } from '../types/index.js';
+import type {
+  BuildObservationInboxReportOptions,
+  GapSignalRef,
+  ObservationEvidence,
+  ObservationInboxItem,
+  ObservationInboxReport,
+  ObservationMessageRef,
+  ObservationMessageWindow,
+  ObservationSessionTimeRange,
+  ObservationSeverityReasonCode,
+  ObservationSignalSubtype,
+  ObservationSignalType,
+  ObservationSkillRollup,
+  ObservationSourceKind,
+  ToolCallInfo,
+} from '../types/index.js';
 import { extractGapSignalsFromTrace } from '../analysis/gap-analyzer.js';
 import { ccTracesToResultEntries, type CcSession, type SkillSegment } from './trace-adapter.js';
 import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
 import { durationMsBetween } from '../shared/time.js';
-import { buildObservationExperienceReport, type ObservationExperienceReport } from './experience.js';
-import type { ObservationReviewState } from './review-state.js';
-import type { DiagnosisBundle } from '../types/diagnosis.js';
+import { buildObservationExperienceReport } from './experience.js';
+
+export type {
+  BuildObservationInboxReportOptions,
+  ObservationEvidence,
+  ObservationInboxItem,
+  ObservationInboxReport,
+  ObservationMessageRef,
+  ObservationMessageWindow,
+  ObservationSessionTimeRange,
+  ObservationSeverityReasonCode,
+  ObservationSignalSubtype,
+  ObservationSignalType,
+  ObservationSkillRollup,
+  ObservationSourceKind,
+};
 
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = join(process.cwd(), '.omk', 'observations');
 export const DEFAULT_GLOBAL_OBSERVATIONS_DIR = join(homedir(), '.oh-my-knowledge', 'observations');
 export const DEFAULT_OBSERVATIONS_DIR = DEFAULT_PROJECT_OBSERVATIONS_DIR;
-
-export type ObservationSignalType = 'failed_search' | 'repeated_failure' | 'hedging' | 'explicit_marker';
-export type ObservationSourceKind = 'claude' | 'openclaw' | 'markdown_log' | 'unknown';
-export type ObservationSeverityReasonCode =
-  | 'knowledge_gap_suspected'
-  | 'repeated_failure_suspected'
-  | 'explicit_gap_marker'
-  | 'exploratory_probe'
-  | 'skill_asset_unavailable'
-  | 'soft_hedging_signal'
-  | 'tool_or_runtime_noise';
-export type ObservationSignalSubtype =
-  | 'hard_miss'
-  | 'repeated_failure'
-  | 'exploratory_miss'
-  | 'tool_error'
-  | 'permission_error'
-  | 'bash_probe'
-  | 'not_found'
-  | 'transient_file_missing'
-  | 'skill_asset_read_failed'
-  | 'permission_denied'
-  | 'tool_limit'
-  | 'tool_failure'
-  | 'regex_only'
-  | 'llm_classified'
-  | 'marker';
-
-export interface ObservationEvidence {
-  tool?: string;
-  query?: string;
-  path?: string;
-  outputSnippet?: string;
-  assistantSnippet?: string;
-  markerToken?: string;
-  messageIndex?: number;
-  messageUuid?: string;
-  toolUseId?: string;
-  segmentTimestamp?: string;
-}
-
-export interface ObservationMessageRef {
-  role: 'user' | 'assistant' | 'other';
-  snippet: string;
-  messageIndex: number;
-  uuid?: string;
-  timestamp?: string;
-}
-
-export interface ObservationMessageWindow {
-  before: ObservationMessageRef[];
-  event: ObservationMessageRef[];
-  after: ObservationMessageRef[];
-  resolutionAfter: 'resolved' | 'unresolved' | 'unknown';
-}
-
-export interface ObservationInboxItem {
-  id: string;
-  skillName: string;
-  artifactVersion: string | 'unknown';
-  artifactHash?: string;
-  cwd?: string;
-  sessionId: string;
-  sourceTrace: string;
-  sourceKind: ObservationSourceKind;
-  signalType: ObservationSignalType;
-  signalSubtype: ObservationSignalSubtype;
-  confidence: number;
-  attributionConfidence: number;
-  severity: 'high' | 'medium' | 'low' | 'noise';
-  severityReasonCode?: ObservationSeverityReasonCode;
-  severityReason?: string;
-  evidence: ObservationEvidence;
-  messageWindow?: ObservationMessageWindow;
-  firstSeen: string;
-  lastSeen: string;
-  occurrences: number;
-  recentSessionIds: string[];
-  representativeEvidence: ObservationEvidence[];
-}
-
-export interface ObservationSessionTimeRange {
-  sessionId: string;
-  sessionGroupId?: string;
-  sourceTrace: string;
-  sourceKind: ObservationSourceKind;
-  traceRole?: 'standalone' | 'main' | 'subagent';
-  traceLabel?: string;
-  cwd?: string;
-  startTimestamp?: string;
-  endTimestamp?: string;
-  durationMs?: number;
-}
-
-export interface ObservationInboxReport {
-  kind: 'observe-inbox';
-  schemaVersion: 1;
-  meta: {
-    tracePath: string;
-    generatedAt: string;
-    sessionCount?: number;
-    sessionTimeRange?: {
-      from: string;
-      to: string;
-      durationMs?: number;
-    };
-    sessionTimeRanges?: ObservationSessionTimeRange[];
-    segmentCount: number;
-    itemCount: number;
-    skillInvocationCounts?: Record<string, number>;
-    skillSessionCounts?: Record<string, number>;
-    skillInvocationLastSeen?: Record<string, string>;
-    skillToolCallCounts?: Record<string, Record<string, number>>;
-  };
-  items: ObservationInboxItem[];
-  experience?: ObservationExperienceReport;
-  diagnostics?: DiagnosisBundle;
-}
-
-export interface ObservationSkillRollup {
-  skillName: string;
-  invocationCount: number;
-  sessionCount: number;
-  observationCount: number;
-  highCount: number;
-  mediumCount: number;
-  lowCount: number;
-  noiseCount: number;
-  latestSeen: string;
-}
-
-export interface BuildObservationInboxReportOptions {
-  reviewState?: ObservationReviewState;
-}
 
 function hashString(input: string): string {
   return createHash('sha256').update(input).digest('hex').slice(0, 16);
