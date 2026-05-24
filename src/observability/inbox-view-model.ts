@@ -182,3 +182,45 @@ function buildReportSessionTimeRange(ranges: ObservationInboxReport['meta']['ses
   const to = ends.reduce((max, value) => value > max ? value : max, ends[0]);
   return { from, to, durationMs: durationMsBetween(from, to) };
 }
+
+// ============================================================================
+// observability → renderer 投影 facade。
+//
+// 把 observation-inbox-renderer.ts 对 observability 内部多个 module 的细粒度
+// import 收敛到 view-model 一处:renderer 只 import 这里 + 已经 facade 化的
+// feedback-projection.js。observability 内部如何重组(rename、拆模块)对
+// renderer 透明。
+//
+// 设计原则:
+//   - 仅 re-export,不做语义合并 / 不引入新类型 / 不写运行时逻辑
+//   - 不改任何字节级输出(html-renderer snapshot 必须字节一致)
+//   - 适合 pre-project 的 function(每个 item / annotation 算一次)后续可上移
+//     到 build view-model 时算好挂字段;text-signal 这类「每次 input 不同」
+//     的保留 facade 形态
+//
+// 范围:仅 observation-inbox-renderer.ts 用到的子集。CLI / server 等其它消费者
+// 继续直接 import observability 内部 —— 它们不是「视图」,不在 facade 收敛范围。
+// ============================================================================
+
+export { severityReasonFor } from './inbox.js';
+export { observationMetricAnnotationTargetId } from './review-state.js';
+export { resolveObservationReviewSession } from './resolved-review.js';
+export { getSkillChainAdvisory, resolveAdvisoryCommand } from './skill-chain-advisories.js';
+export {
+  ASSISTANT_DELIVERABLE_ARTIFACT_RE,
+  hasAssistantDeliverableArtifactText,
+  hasAssistantDeliverySignalText,
+  hasUserHardRuleText,
+  HARD_RULE_TEXT_RE,
+  isAssistantProgressUpdateText,
+  isScheduledTaskPromptText,
+  isSyntheticUserMessageText,
+  isUserInteractionMetricText,
+} from './text-signals.js';
+
+export type { ObservationInboxItem } from './inbox.js';
+export type { ObservationMetricKey } from './review-state.js';
+export type { ResolvedObservationReviewSession, ResolvedOwnerSuggestion } from './resolved-review.js';
+export type { SkillChainAdvisoryCode } from './skill-chain-advisories.js';
+export type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from './problem-patterns.js';
+export type { SkillDerivedStandard, SkillLlmEnhancedReviewSections } from './soft-standards/index.js';

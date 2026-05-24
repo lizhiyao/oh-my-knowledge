@@ -1,15 +1,35 @@
 import { DEFAULT_LANG, layout, e } from './layout.js';
 import type { Lang } from '../types/index.js';
-import { severityReasonFor } from '../observability/inbox.js';
-import type { ObservationInboxItem } from '../observability/inbox.js';
-import type { ObservationInboxViewModel } from '../observability/inbox-view-model.js';
+import {
+  severityReasonFor,
+  observationMetricAnnotationTargetId,
+  resolveObservationReviewSession,
+  getSkillChainAdvisory,
+  resolveAdvisoryCommand,
+  ASSISTANT_DELIVERABLE_ARTIFACT_RE,
+  hasAssistantDeliverableArtifactText,
+  hasAssistantDeliverySignalText,
+  hasUserHardRuleText,
+  HARD_RULE_TEXT_RE,
+  isAssistantProgressUpdateText,
+  isScheduledTaskPromptText,
+  isSyntheticUserMessageText,
+  isUserInteractionMetricText,
+} from '../observability/inbox-view-model.js';
+import type {
+  ObservationInboxItem,
+  ObservationInboxViewModel,
+  ObservationMetricKey,
+  ResolvedObservationReviewSession,
+  ResolvedOwnerSuggestion,
+  SkillChainAdvisoryCode,
+  ExperienceProblemBucket,
+  ExperienceProblemPattern,
+  ExperienceProblemSignal,
+  SkillDerivedStandard,
+  SkillLlmEnhancedReviewSections,
+} from '../observability/inbox-view-model.js';
 import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorrectionMatches, findUserGoalShiftMatches, hasUserCorrectionSignal, hasUserGoalShiftSignal } from '../observability/feedback-projection.js';
-import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from '../observability/problem-patterns.js';
-import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
-import { resolveObservationReviewSession, type ResolvedObservationReviewSession, type ResolvedOwnerSuggestion } from '../observability/resolved-review.js';
-import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
-import type { SkillDerivedStandard, SkillLlmEnhancedReviewSections } from '../observability/soft-standards/index.js';
-import { ASSISTANT_DELIVERABLE_ARTIFACT_RE, hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE, isAssistantProgressUpdateText, isScheduledTaskPromptText, isSyntheticUserMessageText, isUserInteractionMetricText } from '../observability/text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 import { OBSERVATION_INBOX_STYLES } from './observation-inbox/styles.js';
 import type {
