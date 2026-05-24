@@ -31,6 +31,18 @@ import type {
 import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorrectionMatches, findUserGoalShiftMatches, hasUserCorrectionSignal, hasUserGoalShiftSignal } from '../observability/feedback-projection.js';
 import { durationMsBetween } from '../shared/time.js';
 import { OBSERVATION_INBOX_STYLES } from './observation-inbox/styles.js';
+import {
+  experienceSkillAnchor,
+  formatTimeRange as formatTimeRangeImpl,
+  formatTimestamp,
+  renderArtifactVersion,
+  renderField,
+  renderJson,
+  renderFeedbackAttributionLabel,
+  skillAnchor,
+  truncateText,
+} from './observation-inbox/helpers.js';
+export { renderFeedbackAttributionLabel } from './observation-inbox/helpers.js';
 import type {
   ExperienceAssistiveInference,
   ExperienceAssistiveInferenceCautionCode,
@@ -54,21 +66,6 @@ import type {
   ExperienceSessionSummary,
   ExperienceTimelineEvent,
 } from '../observability/feedback-projection.js';
-
-function feedbackAttributionRoleLabel(role?: string): string {
-  if (role === 'primary_fault') return '主要归因';
-  if (role === 'downstream_related') return '下游关联';
-  if (role === 'context_only') return '上下文相关';
-  return '关联';
-}
-
-export function renderFeedbackAttributionLabel(attribution: Pick<ExperienceFeedbackAttribution, 'skillName' | 'attributionRole' | 'reasonCode'>): string {
-  return [
-    attribution.skillName ?? '未知',
-    feedbackAttributionRoleLabel(attribution.attributionRole),
-    attribution.reasonCode,
-  ].map((part) => e(part)).join(' · ');
-}
 
 export function renderObservationInboxPage(model: ObservationInboxViewModel, lang: Lang = DEFAULT_LANG): string {
 	  const {
@@ -135,49 +132,11 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
   }
   const countSkillsBySeverity = (...severities: ObservationInboxItem['severity'][]): number =>
     new Set(allItems.filter((item) => severities.includes(item.severity)).map((item) => item.skillName)).size;
-  const skillAnchor = (skillName: string): string => `skill-${skillName.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'}`;
-  const experienceSkillAnchor = (skillName: string): string => `exp-${skillAnchor(skillName)}`;
-  const renderJson = (value: unknown): string =>
-    `<pre style="margin:8px 0 0;padding:10px;background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;white-space:pre-wrap;word-break:break-word;font-size:11px;line-height:1.45;max-height:520px;overflow:auto;text-align:left">${e(JSON.stringify(value, null, 2))}</pre>`;
-  const renderField = (label: string, value: unknown): string => {
-    if (value == null || value === '') return '';
-    return `<div style="margin:4px 0;text-align:left"><span style="color:var(--text-muted);font-size:11px">${e(label)}</span><div style="font-family:ui-monospace,monospace;font-size:11px;word-break:break-all;text-align:left;color:var(--text-secondary)">${e(String(value))}</div></div>`;
-  };
-  const formatTimestamp = (value?: string): string => value ? value.slice(0, 19).replace('T', ' ') : '—';
-  const truncateText = (value: string, max = 28): string => value.length > max ? `${value.slice(0, Math.max(0, max - 1))}…` : value;
   const sessionTimeLabel = lang === 'zh' ? 'Session 时间' : 'Session time';
   const sessionTimeRangeLabel = lang === 'zh' ? 'Session 时间范围' : 'Session time range';
   const latestInvocationLabel = lang === 'zh' ? '最近调用' : 'Latest invocation';
   const invocationWindowLabel = lang === 'zh' ? '调用窗口' : 'Invocation window';
-  const formatDuration = (durationMs?: number): string => {
-    if (!Number.isFinite(durationMs ?? Number.NaN) || durationMs == null) return '';
-    const totalSeconds = Math.max(0, Math.round(durationMs / 1000));
-    if (totalSeconds === 0) return '';
-    const days = Math.floor(totalSeconds / 86400);
-    const hours = Math.floor((totalSeconds % 86400) / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    if (lang === 'zh') {
-      if (days > 0) return `${days}天${hours > 0 ? ` ${hours}小时` : ''}`;
-      if (hours > 0) return `${hours}小时${minutes > 0 ? ` ${minutes}分钟` : ''}`;
-      if (minutes > 0) return `${minutes}分钟`;
-      return `${totalSeconds}秒`;
-    }
-    if (days > 0) return `${days}d${hours > 0 ? ` ${hours}h` : ''}`;
-    if (hours > 0) return `${hours}h${minutes > 0 ? ` ${minutes}m` : ''}`;
-    if (minutes > 0) return `${minutes}m`;
-    return `${totalSeconds}s`;
-  };
-  const formatTimeRange = (start?: string, end?: string, durationMs?: number): string => {
-    const range = `${formatTimestamp(start)} ~ ${formatTimestamp(end)}`;
-    const duration = formatDuration(durationMs);
-    return duration ? `${range} · ${duration}` : range;
-  };
-  const renderArtifactVersion = (value: string): string => {
-    if (value === 'unknown') {
-      return `<div style="margin:4px 0;text-align:left"><span style="color:var(--text-muted);font-size:11px">artifactVersion</span><div style="font-family:ui-monospace,monospace;font-size:11px;word-break:break-all;color:var(--yellow);font-weight:600;text-align:left">⚠ unknown</div></div>`;
-    }
-    return renderField('artifactVersion', value);
-  };
+  const formatTimeRange = (start?: string, end?: string, durationMs?: number): string => formatTimeRangeImpl(start, end, durationMs, lang);
   const reviewSeverityMeta = (item: ObservationInboxItem): { label: string; decision: string; color: string; bg: string } => {
     if (item.severity === 'high') {
       return { label: '高风险/需关注', decision: '优先看，可能要补 SKILL.md 或改 skill 说明', color: 'var(--red)', bg: 'rgba(220,38,38,.08)' };
