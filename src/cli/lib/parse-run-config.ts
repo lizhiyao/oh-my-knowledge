@@ -1,9 +1,26 @@
-import { resolve, join, dirname } from 'node:path';
+/**
+ * oclif typed flags → `RunConfig` 装配。
+ *
+ * 主体 `parseRunConfig` 是「CLI > eval.yaml > 硬编码 default」精度链的统一落点 ——
+ * 把 oclif strict 模式接受过的 flag values + 可选 eval.yaml 合并成 eval 子命令运行
+ * 所需的完整 `RunConfig`,后续 `executeEvaluationPipeline` 与 doctor / batch 都从这
+ * 里读字段。
+ *
+ * 3 个 sub-routine 拆到同级 parse-run-config/ 目录,主文件保留它们的 re-export
+ * 让外部 import surface(`parseJudgeModelsArg` / `parseJudgeModelsArgOrExit`)
+ * 不动:
+ *   - judge-models.ts: --judge-models 字符串解析
+ *   - samples-discovery.ts: 未传 --samples 时的路径发现
+ *   - variant-resolution.ts: --control / --treatment / eval.yaml.variants 三态合并
+ *
+ * 主体 parseRunConfig 自身保留约 100 行的 field-default fanout —— 每个字段一行
+ * `cli ?? evalConfig ?? default`,刻意不再细拆,否则只是把一长串 ?? 散到多文件,
+ * 反而失去「精度链一目了然」的可读性。
+ */
+
+import { resolve, join } from 'node:path';
 import { homedir } from 'node:os';
-import { existsSync, statSync } from 'node:fs';
-import { discoverVariants, parseVariantCwd } from '../../inputs/skill-loader.js';
-import { CliExit } from './cli-exit.js';
-import { loadEvalConfig, configVariantsToSpecs } from '../../inputs/eval-config.js';
+import { loadEvalConfig } from '../../inputs/eval-config.js';
 import { DEFAULT_MODEL } from '../../executors/shared.js';
 import type {
   EvalConfig,
@@ -12,6 +29,11 @@ import type {
   EvalBudget,
   ProgressCallback,
 } from '../../types/index.js';
+import { parseJudgeModelsArgOrExit } from './parse-run-config/judge-models.js';
+import { discoverSamplesPath } from './parse-run-config/samples-discovery.js';
+import { resolveVariantSpecs } from './parse-run-config/variant-resolution.js';
+
+export { parseJudgeModelsArg, parseJudgeModelsArgOrExit } from './parse-run-config/judge-models.js';
 
 export interface RunConfig {
   samplesPath: string;
@@ -82,96 +104,6 @@ export interface ParseRunConfigResult {
 export const DEFAULT_REPORTS_DIR: string = join(homedir(), '.oh-my-knowledge', 'reports');
 
 /**
- * 解析 `--judge-models` CLI 参数:`executor:model[,executor:model,...]`。
- * - 空字符串 / 全空 entry 抛错(避免 silent default)。
- * - entry 格式 `executor:model`,缺一报错。
- * - 重复 `executor:model` 拒绝(否则 ensemble 聚合用 Map<judgeId, scores> 会把
- *   同 id 合并,N 不可信、agreement 失真;而 grading 阶段又会按 entry 数实际跑 N 次)。
- * - 1 entry = 单评委,≥ 2 = ensemble(由调用方决定是否接受 ensemble)。
- */
-export function parseJudgeModelsArg(raw: string): JudgeConfig[] {
-  const parts = raw.split(',').map((s) => s.trim()).filter(Boolean);
-  if (parts.length === 0) {
-    throw new Error(`--judge-models cannot be empty`);
-  }
-  const result: JudgeConfig[] = [];
-  const seen = new Set<string>();
-  for (const p of parts) {
-    const idx = p.indexOf(':');
-    if (idx <= 0 || idx === p.length - 1) {
-      throw new Error(`--judge-models entry must be 'executor:model' (got "${p}")`);
-    }
-    const executor = p.slice(0, idx);
-    const model = p.slice(idx + 1);
-    const key = `${executor}:${model}`;
-    if (seen.has(key)) {
-      throw new Error(`--judge-models has duplicate entry "${key}"; ensemble 聚合按 executor:model 去重,重复条目会让 N 不可信、agreement 失真`);
-    }
-    seen.add(key);
-    result.push({ executor, model });
-  }
-  return result;
-}
-
-/**
- * Friendly CLI wrapper around `parseJudgeModelsArg`. On parse error prints
- * `error: <msg>` to stderr and exits 2 — matching `parseArgsStrict` 对 unknown
- * option 的行为(exit 2 = parser/参数错误,区别于 doctor / gate eval failure 的
- * exit 1）。CLI 层 `eval` / `evolve` 共享这一份。
- */
-export function parseJudgeModelsArgOrExit(raw: string): JudgeConfig[] {
-  try {
-    return parseJudgeModelsArg(raw);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error(`error: ${msg}`);
-    throw new CliExit(2);
-  }
-}
-
-/**
- * When --samples isn't given, try to discover from `<skillDir>/<treatment>/.omk/`.
- * `loadSamples` handles dir mode internally — globs `*.{json,yaml,yml}` and merges,
- * skipping reserved prefixes (report-, health-, underscore-). No filename is special:
- * drop a single `samples.json` or split across `workflow.json` + `platform.json` etc.
- * Both work the same.
- *
- * Falls back to legacy cwd defaults (`eval-samples.{json,yaml,yml}`) if `.omk/` isn't
- * present. Multi-treatment evals must pass --samples explicitly.
- */
-function discoverSamplesPath(values: Record<string, unknown>, skillDir: string): string {
-  const treatmentRaw = values.treatment as string | undefined;
-  const treatments = treatmentRaw
-    ? treatmentRaw.split(',').map((v) => v.trim()).filter(Boolean)
-    : [];
-  if (treatments.length === 1) {
-    const expr = treatments[0];
-    const resolved = resolve(expr);
-    // If treatment is an absolute/relative path (file or dir), look for .omk/ in its directory
-    if (existsSync(resolved)) {
-      const treatmentDir = statSync(resolved).isDirectory() ? resolved : dirname(resolved);
-      const omkDir = join(treatmentDir, '.omk');
-      if (existsSync(omkDir)) return omkDir;
-      // Also check for eval-samples files in the treatment directory
-      for (const name of ['eval-samples.json', 'eval-samples.yaml', 'eval-samples.yml']) {
-        if (existsSync(join(treatmentDir, name))) return join(treatmentDir, name);
-      }
-    }
-    // Fallback: try skill-dir relative lookup
-    const tname = parseVariantCwd(expr).name;
-    const omkDir = join(skillDir, tname, '.omk');
-    if (existsSync(omkDir)) return omkDir;
-  }
-  // Legacy cwd defaults
-  let cwdFile = 'eval-samples.json';
-  if (!existsSync(resolve(cwdFile))) {
-    if (existsSync(resolve('eval-samples.yaml'))) cwdFile = 'eval-samples.yaml';
-    else if (existsSync(resolve('eval-samples.yml'))) cwdFile = 'eval-samples.yml';
-  }
-  return cwdFile;
-}
-
-/**
  * 接 typed flags(来自 oclif Command.parse() 输出)。oclif strict 模式已经在
  * 上游对未知 flag 拦截 exit 2,这里不再 parseArgs。eval-runner 等业务 caller
  * 把 oclif flags 当 values 喂进来。
@@ -207,48 +139,8 @@ export function parseRunConfig(
     samplesFile = discoverSamplesPath(values, skillDir);
   }
 
-  // 3) Resolve variantSpecs: CLI > config. If neither, error with a helpful hint.
-  const controlExpr = values.control as string | undefined;
-  const treatmentExprs: string[] = values.treatment
-    ? (values.treatment as string).split(',').map((v: string) => v.trim()).filter(Boolean)
-    : [];
-
-  let variantSpecs: VariantSpec[];
-  if (controlExpr || treatmentExprs.length > 0) {
-    // CLI roles present → CLI entirely replaces config.variants (no merging).
-    variantSpecs = [];
-    if (controlExpr) {
-      variantSpecs.push({ name: parseVariantCwd(controlExpr).name, role: 'control', expr: controlExpr });
-    }
-    for (const expr of treatmentExprs) {
-      variantSpecs.push({ name: parseVariantCwd(expr).name, role: 'treatment', expr });
-    }
-  } else if (evalConfig) {
-    variantSpecs = configVariantsToSpecs(evalConfig.variants);
-  } else if (values.batch) {
-    // --batch 模式自动用 baseline (control) vs 每个 skill (treatment),
-    // 不需要用户显式传 --control / --treatment,校验跳过。
-    variantSpecs = [];
-  } else {
-    const discovered = discoverVariants(skillDir);
-    const hint = discovered.length > 0 ? `\n  skill-dir (${skillDir}) 下发现的候选：${discovered.join(', ')}` : '';
-    throw new Error(
-      `请通过 --control / --treatment 或 --config eval.yaml 声明 variant 角色。\n`
-      + `  示例：omk eval --control baseline --treatment my-skill${hint}\n`
-      + `  --batch 模式下自动用 baseline vs 每个 skill,无需显式声明\n`
-      + `  术语见 docs/specs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
-    );
-  }
-
-  const seenNames = new Set<string>();
-  for (const spec of variantSpecs) {
-    if (seenNames.has(spec.name)) {
-      throw new Error(
-        `variant "${spec.name}" 重复出现——同一 variant 不能同时属于 --control 与 --treatment，也不能在 --treatment 中重复。`,
-      );
-    }
-    seenNames.add(spec.name);
-  }
+  // 3) Resolve variantSpecs: CLI > config > batch > error。dedup 在 helper 里。
+  const variantSpecs = resolveVariantSpecs(values, evalConfig, skillDir);
 
   // 4) Apply CLI > config > hard-coded default for all other fields.
   const executorName = (values.executor as string | undefined) ?? evalConfig?.executor ?? 'claude';
