@@ -1,357 +1,53 @@
-import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
-import { analyzeResults } from '../analysis/report-diagnostics.js';
-import { computeReportCoverage } from '../analysis/coverage-analyzer.js';
-import { computeReportGapRates } from '../analysis/gap-analyzer.js';
-import { aggregateReport, applyBlindMode, DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/evaluation-reporting.js';
+/**
+ * evaluation pipeline orchestrator —— 单次 evaluation run 的「执行+收尾」编排。
+ *
+ * 主入口 `executeEvaluationPipeline` 把以下几段串成线性时序:
+ *   1. `initializeEvaluationRunState` 建 run / job 元数据并写 jobStore
+ *   2. resolve judge models + executor map(必须先于 preflight,见函数内注释)
+ *   3. `preflight` + `preflightAllJudges` LLM 连通性
+ *   4. `emitPowerWarnings` + `emitIsolationWarnings` 结构性 / 隔离性预警
+ *   5. `executeTasks` 真正跑用例
+ *   6. `finalizeSuccessfulRun` + `finalizeEvaluationReport` 收尾 + 后置分析
+ *   7. `persistReport` + `persistSuccessfulJob` 落盘
+ *   失败路径走 `persistFailedJob`, finally 关 MCP server。
+ *
+ * 4 块被拆出去的 helper 都在 `./evaluation-pipeline/` 目录下,与本文件 1:1 协作:
+ *   - run-state.ts: EvaluationRunState 生命周期(init / finalizeSuccess / persistSuccess / persistFailed)
+ *   - test-set-hash.ts: 测试集水印 hash(spec §7.1)
+ *   - preflight-warnings.ts: power + isolation 预警
+ *   - report-finalize.ts: report 后置分析装配
+ *
+ * 兼容 re-export: `buildPowerWarnings` / `buildIsolationWarnings` /
+ * `_computeTestSetHashForTest` 保留在本模块的 export surface,避免 test 与
+ * `run-evaluation.ts:275` 动态 import 路径改动。
+ */
+
+import { aggregateReport, DEFAULT_OUTPUT_DIR, generateRunId, persistReport } from '../eval-core/evaluation-reporting.js';
 import { executeTasks, preflight, preflightAllJudges } from '../eval-core/evaluation-execution.js';
 import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
-import {
-  createFileJobStore,
-  DEFAULT_JOBS_DIR,
-} from '../server/job-store.js';
 import { stopAllServers } from '../inputs/mcp-resolver.js';
-import {
-  buildEvaluationRequest,
-  createFailedJob,
-  createEvaluationRun,
-  createQueuedJob,
-  createSucceededJob,
-  finalizeEvaluationRun,
-  markJobRunning,
-  failEvaluationRun,
-} from '../eval-core/evaluation-job.js';
 import type {
   Artifact,
-  EvaluationJob,
-  EvaluationRequest,
-  EvaluationRun,
   ExecutorFn,
   JobStore,
   ProgressCallback,
   Report,
   Sample,
   Task,
-  VariantResult,
 } from '../types/index.js';
 import type { Lang } from '../types/shared.js';
-import { tEvalWorkflowMessage } from './messages.js';
+import {
+  finalizeSuccessfulRun,
+  initializeEvaluationRunState,
+  persistFailedJob,
+  persistSuccessfulJob,
+} from './evaluation-pipeline/run-state.js';
+import { finalizeEvaluationReport } from './evaluation-pipeline/report-finalize.js';
+import { emitIsolationWarnings, emitPowerWarnings } from './evaluation-pipeline/preflight-warnings.js';
 
-type EvaluationResults = Record<string, Record<string, VariantResult>>;
-
-interface EvaluationRunState {
-  request: EvaluationRequest;
-  runId: string;
-  jobId: string;
-  createdAt: string;
-  startedAt: string;
-  initialRun: EvaluationRun;
-  runningJob: EvaluationJob;
-  resolvedJobStore: JobStore | null;
-}
-
-async function initializeEvaluationRunState({
-  samplesPath,
-  skillDir,
-  artifacts,
-  model,
-  judgeModel,
-  noJudge,
-  executorName,
-  judgeExecutorName,
-  concurrency,
-  timeoutMs,
-  noCache,
-  blind,
-  project,
-  owner,
-  tags,
-  runId,
-  jobStore,
-  persistJob,
-  repeat,
-  batch,
-  judgeRepeat,
-  judgeModels,
-  bootstrap,
-  bootstrapSamples,
-  lengthDebias,
-  budget,
-  effort,
-}: {
-  samplesPath: string;
-  skillDir: string;
-  artifacts: Artifact[];
-  model: string;
-  judgeModel: string;
-  noJudge: boolean;
-  executorName: string;
-  judgeExecutorName: string;
-  concurrency: number;
-  timeoutMs?: number;
-  noCache: boolean;
-  blind: boolean;
-  project?: string;
-  owner?: string;
-  tags?: string[];
-  runId: string;
-  jobStore?: JobStore | null;
-  persistJob?: boolean;
-  repeat?: number;
-  batch?: boolean;
-  judgeRepeat?: number;
-  judgeModels?: import('../types/index.js').JudgeConfig[];
-  bootstrap?: boolean;
-  bootstrapSamples?: number;
-  lengthDebias?: boolean;
-  budget?: import('../types/index.js').EvalBudget;
-  effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max';
-}): Promise<EvaluationRunState> {
-  const effectiveJudges: import('../types/index.js').JudgeConfig[] = judgeModels && judgeModels.length > 0
-    ? judgeModels
-    : [{ executor: judgeExecutorName, model: judgeModel }];
-  const request = buildEvaluationRequest({
-    samplesPath,
-    skillDir,
-    artifacts,
-    model,
-    executor: executorName,
-    noJudge,
-    concurrency,
-    timeoutMs,
-    noCache,
-    dryRun: false,
-    blind,
-    project,
-    owner,
-    tags,
-    repeat,
-    batch,
-    judgeRepeat,
-    judgeModels: effectiveJudges,
-    bootstrap,
-    bootstrapSamples,
-    lengthDebias,
-    budget,
-    effort,
-  });
-  const createdAt = new Date().toISOString();
-  const { run: initialRun, startedAt } = createEvaluationRun(runId, createdAt);
-  const jobId = `job-${runId}`;
-  const resolvedJobStore = persistJob ? (jobStore ?? createFileJobStore(DEFAULT_JOBS_DIR)) : null;
-  const queuedJob = createQueuedJob({ jobId, request, createdAt });
-  if (resolvedJobStore) await resolvedJobStore.save(jobId, queuedJob);
-  const runningJob = markJobRunning(queuedJob, runId, startedAt);
-  if (resolvedJobStore) await resolvedJobStore.save(jobId, runningJob);
-  return { request, runId, jobId, createdAt, startedAt, initialRun, runningJob, resolvedJobStore };
-}
-
-function finalizeSuccessfulRun(state: EvaluationRunState) {
-  const finishedAt = new Date().toISOString();
-  const run = finalizeEvaluationRun(state.initialRun, finishedAt);
-  const job = createSucceededJob({
-    jobId: state.jobId,
-    runId: state.runId,
-    reportId: state.runId,
-    request: state.request,
-    createdAt: state.createdAt,
-    startedAt: state.startedAt,
-    finishedAt,
-  });
-  return { run, job };
-}
-
-async function persistSuccessfulJob(state: EvaluationRunState, job: EvaluationJob): Promise<void> {
-  if (state.resolvedJobStore) {
-    await state.resolvedJobStore.save(state.jobId, job);
-  }
-}
-
-async function persistFailedJob(state: EvaluationRunState, err: unknown): Promise<void> {
-  const finishedAt = new Date().toISOString();
-  const failedJob = createFailedJob({
-    job: { ...state.runningJob, runId: state.runId, startedAt: state.startedAt, finishedAt: undefined },
-    error: err instanceof Error ? err.message : String(err),
-    finishedAt,
-  });
-  void failEvaluationRun(state.initialRun, finishedAt);
-  if (state.resolvedJobStore) {
-    await state.resolvedJobStore.save(state.jobId, failedJob);
-  }
-}
-
-/**
- * Compute the mandatory test set watermark hash (spec §7.1).
- *
- * - 单文件 / sourceFiles 单元素:hash 该文件内容
- * - 多文件(目录模式):按文件名排序后,把每个文件 basename + sha256 拼成 manifest,
- *   对 manifest 再 sha256,前 12 hex chars。这样:
- *     1) 加 / 删 sample 文件 → hash 变
- *     2) 任一文件内容改 → hash 变
- *     3) 同样文件不同顺序 → hash 不变(排序后稳定)
- *
- * 之前对目录 readFileSync() 抛 EISDIR → 返回 null,gap report 水印丢失。
- */
-export function _computeTestSetHashForTest(samplesPath: string, sourceFiles?: string[]): string | null {
-  return computeTestSetHash(samplesPath, sourceFiles);
-}
-
-function computeTestSetHash(samplesPath: string, sourceFiles?: string[]): string | null {
-  // 优先 sourceFiles(目录模式可靠),fallback samplesPath 兼容老调用
-  const files = sourceFiles && sourceFiles.length > 0
-    ? [...sourceFiles].sort()
-    : (samplesPath && existsSync(samplesPath) ? [samplesPath] : []);
-  if (files.length === 0) return null;
-  try {
-    if (files.length === 1) {
-      return createHash('sha256').update(readFileSync(files[0], 'utf-8')).digest('hex').slice(0, 12);
-    }
-    const manifest = files.map((f) => {
-      const base = f.split(/[/\\]/).pop() ?? f;
-      const inner = createHash('sha256').update(readFileSync(f, 'utf-8')).digest('hex');
-      return `${base}:${inner}`;
-    }).join('\n');
-    return createHash('sha256').update(manifest).digest('hex').slice(0, 12);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Compute structural power warnings (pure function, no I/O — for testing).
- *
- * Not MDE / power-analysis predictions (we don't have σ pre-run; predicting
- * "CI half-width ~ ±0.4" before any data exists is hand-wave). These are
- * **hard-floor + experience-based** thresholds:
- *   - n < 5: any conclusion unreliable, CI uselessly wide
- *   - 5 ≤ n < 20: only large effects (Cohen's d > 0.8) detectable
- *   - repeat=1: stability cannot be measured at all
- *
- * Real power claims happen post-hoc via `omk eval` UNDERPOWERED state +
- * saturation curves. This is the upfront "you might be wasting the run"
- * heads-up, not a gate.
- */
-export function buildPowerWarnings(sampleCount: number, repeat: number, lang: Lang = 'zh'): string[] {
-  const warnings: string[] = [];
-  if (sampleCount < 5) {
-    warnings.push(tEvalWorkflowMessage('power_warning_tiny_n', lang, { n: sampleCount }));
-  } else if (sampleCount < 20) {
-    warnings.push(tEvalWorkflowMessage('power_warning_small_n', lang, { n: sampleCount }));
-  }
-  if (repeat < 2) {
-    warnings.push(tEvalWorkflowMessage('power_warning_repeat_one', lang));
-  }
-  return warnings;
-}
-
-function emitPowerWarnings(sampleCount: number, repeat: number, lang: Lang): void {
-  for (const w of buildPowerWarnings(sampleCount, repeat, lang)) {
-    process.stderr.write(`${w}\n`);
-  }
-}
-
-/**
- * Pre-flight warning emitted when user explicitly opts out of strict-baseline
- * (--no-strict-baseline) AND there are baseline-kind variants AND ~/.claude/skills/
- * has content. baseline 会被 SDK 全发现污染 → verdict / Δ 不可信。
- *
- * 默认 strict 时(strictBaseline === true / undefined)不出 warn。
- *
- * Exported for tests.
- */
-export function buildIsolationWarnings(
-  artifacts: Artifact[],
-  strictBaseline: boolean | undefined,
-): string[] {
-  // Only warn when user explicitly disabled isolation.
-  if (strictBaseline !== false) return [];
-
-  const hasBaselineKind = artifacts.some((a) => a.kind === 'baseline');
-  if (!hasBaselineKind) return [];
-
-  // Check ~/.claude/skills/ for content (avoid hard-coding home — read at runtime).
-  const skillsDir = join(homedir(), '.claude', 'skills');
-  if (!existsSync(skillsDir)) return [];
-
-  let skillCount = 0;
-  try {
-    skillCount = readdirSync(skillsDir).filter((entry) => !entry.startsWith('.')).length;
-  } catch {
-    return [];
-  }
-  if (skillCount === 0) return [];
-
-  return [
-    `⚠ baseline 隔离已关闭(--no-strict-baseline)。检测到 ~/.claude/skills/ 内有 ${skillCount} 个 skill, baseline variant 可能被 auto-discovery 污染。除非你确认要这种比较,建议恢复默认 strict 模式。`,
-  ];
-}
-
-function emitIsolationWarnings(artifacts: Artifact[], strictBaseline: boolean | undefined): void {
-  for (const w of buildIsolationWarnings(artifacts, strictBaseline)) {
-    process.stderr.write(`${w}\n`);
-  }
-}
-
-function finalizeEvaluationReport({
-  report,
-  results,
-  artifacts,
-  variantNames,
-  blind,
-  samplesPath,
-  samplesSourceFiles,
-  samples,
-}: {
-  report: Report;
-  results: EvaluationResults;
-  artifacts: Artifact[];
-  variantNames: string[];
-  blind: boolean;
-  samplesPath: string;
-  /** 目录模式下,bundle 内所有源文件;单文件模式下 [samplesPath]。computeTestSetHash 用。 */
-  samplesSourceFiles?: string[];
-  samples: Sample[];
-}): Report {
-  // pass samples so analyzeResults can populate analysis.sampleQuality
-  // (capability/difficulty/construct/provenance coverage aggregate). Without
-  // samples, analysis.sampleQuality is omitted (老报告读取仍可工作).
-  report.analysis = analyzeResults(report, { samples });
-
-  const hasToolData = Object.values(results).some((sampleResults) => (
-    Object.values(sampleResults).some((variantResult) => variantResult.toolCalls && variantResult.toolCalls.length > 0)
-  ));
-  if (hasToolData) {
-    const artifactContents = Object.fromEntries(artifacts.map((artifact) => [artifact.name, artifact.content]));
-    const artifactCwds = Object.fromEntries(artifacts.map((artifact) => [artifact.name, artifact.cwd || null]));
-    const coverage = computeReportCoverage(report, artifactContents, artifactCwds);
-    if (Object.keys(coverage).length > 0) {
-      report.analysis!.coverage = coverage;
-    }
-  }
-
-  // Gap rate computation runs on every successful report regardless of whether
-  // tool trace data is present — text-based signals (markers, hedging) still
-  // apply. The samples-file SHA is the mandatory watermark required by spec §7.1.
-  const gapReports = computeReportGapRates(report.results, variantNames);
-  if (Object.keys(gapReports).length > 0) {
-    const testSetHash = computeTestSetHash(samplesPath, samplesSourceFiles);
-    for (const variant of variantNames) {
-      const gr = gapReports[variant];
-      if (!gr) continue;
-      gr.testSetPath = samplesPath;
-      gr.testSetHash = testSetHash;
-    }
-    report.analysis!.gapReports = gapReports;
-  }
-
-  if (blind) {
-    applyBlindMode(report, variantNames, `${variantNames.join(',')}:${samplesPath}`);
-  }
-
-  return report;
-}
+// 兼容 re-export:测试与 run-evaluation.ts 动态 import 仍打 evaluation-pipeline.js
+export { buildPowerWarnings, buildIsolationWarnings } from './evaluation-pipeline/preflight-warnings.js';
+export { _computeTestSetHashForTest } from './evaluation-pipeline/test-set-hash.js';
 
 export interface EvaluationPipelineOptions {
   samplesPath: string;
@@ -416,6 +112,8 @@ export interface EvaluationPipelineOptions {
   /** 关闭 diagnostic。Default false。 */
   noDiagnostic?: boolean;
 }
+
+type VariantResult = import('../types/index.js').VariantResult;
 
 export async function executeEvaluationPipeline({
   samplesPath,
