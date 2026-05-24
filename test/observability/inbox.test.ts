@@ -55,7 +55,7 @@ import {
   skillDerivedStandardsDir,
   skillDerivedStandardsPath,
   updateSkillDerivedStandardStatus,
-} from '../../src/observability/soft-standards.js';
+} from '../../src/observability/soft-standards/index.js';
 import type { ObservationSkillChain } from '../../src/observability/skill-chain.js';
 import { renderFeedbackAttributionLabel, renderObservationInboxPage } from '../../src/renderer/observation-inbox-renderer.js';
 

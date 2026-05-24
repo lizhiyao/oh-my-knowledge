@@ -8,7 +8,7 @@ import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProbl
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
 import { resolveObservationReviewSession, type ResolvedObservationReviewSession, type ResolvedOwnerSuggestion } from '../observability/resolved-review.js';
 import { getSkillChainAdvisory, resolveAdvisoryCommand, type SkillChainAdvisoryCode } from '../observability/skill-chain-advisories.js';
-import type { SkillDerivedStandard, SkillLlmEnhancedReviewSections } from '../observability/soft-standards.js';
+import type { SkillDerivedStandard, SkillLlmEnhancedReviewSections } from '../observability/soft-standards/index.js';
 import { ASSISTANT_DELIVERABLE_ARTIFACT_RE, hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, HARD_RULE_TEXT_RE, isAssistantProgressUpdateText, isScheduledTaskPromptText, isSyntheticUserMessageText, isUserInteractionMetricText } from '../observability/text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
 import { OBSERVATION_INBOX_STYLES } from './observation-inbox/styles.js';

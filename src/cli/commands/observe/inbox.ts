@@ -7,7 +7,7 @@ import { type CliLang } from '../../lib/i18n.js';
 import type { ObserveInboxArgs, ObserveInboxFlags } from '../../lib/cmd-flags.js';
 import type { ObservationInboxViewModel } from '../../../observability/inbox-view-model.js';
 import type { ExperienceTimelineEvent } from '../../../observability/experience.js';
-import type { SkillLlmEnhancedRuntimeEvidence } from '../../../observability/soft-standards.js';
+import type { SkillLlmEnhancedRuntimeEvidence } from '../../../observability/soft-standards/index.js';
 
 function pickSkillCount(value: Record<string, number> | undefined, skillName: string): Record<string, number> | undefined {
   if (!value || value[skillName] == null) return undefined;
@@ -34,7 +34,7 @@ export async function runObserveInbox(
   const dir = resolve(flags['input-dir'] || DEFAULT_OBSERVATIONS_DIR);
   if (flags['llm-enhanced-review']) {
     const { buildObservationInboxViewModel } = await import('../../../observability/inbox-view-model.js');
-    const { extractSkillSoftStandards, DEFAULT_LLM_ENHANCED_REVIEW_MODEL } = await import('../../../observability/soft-standards.js');
+    const { extractSkillSoftStandards, DEFAULT_LLM_ENHANCED_REVIEW_MODEL } = await import('../../../observability/soft-standards/index.js');
     const view = buildObservationInboxViewModel(dir, { skill: flags.skill });
     const candidates = Object.values(view.skillChains)
       .map((chain) => ({ chain, runtimeEvidence: buildLlmEnhancedRuntimeEvidence(view, chain.skillName) }))

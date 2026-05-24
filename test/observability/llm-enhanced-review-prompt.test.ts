@@ -2,7 +2,7 @@ import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { readPromptDocument } from '../../src/shared/llm-prompts/index.js';
-import { PROMPTS_DIR } from '../../src/observability/soft-standards.js';
+import { PROMPTS_DIR } from '../../src/observability/soft-standards/index.js';
 
 // 历史 hash 锚点。llm-enhanced-review 的 runtimeAssessment 会影响 observe
 // 对 goal satisfaction / behavior fit / artifact match / user feeling 的最终判定。

@@ -10,7 +10,7 @@ import type {
 } from './experience.js';
 import type { ObservationReviewState, ObservationReviewTargetType } from './review-state.js';
 import { observationReviewStateKey } from './review-state.js';
-import type { LlmEnhancedChecklistStatus, LlmEnhancedSkillType, RuntimeNodeVerdict, RuntimeStandardNodeKind, SkillLlmEnhancedReviewSections, SkillLlmTypeSpecificChecklistItem } from './soft-standards.js';
+import type { LlmEnhancedChecklistStatus, LlmEnhancedSkillType, RuntimeNodeVerdict, RuntimeStandardNodeKind, SkillLlmEnhancedReviewSections, SkillLlmTypeSpecificChecklistItem } from './soft-standards/index.js';
 
 export interface ResolveObservationReviewSessionOptions {
   session: {

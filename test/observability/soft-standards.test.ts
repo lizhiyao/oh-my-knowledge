@@ -5,7 +5,7 @@ import {
   type RuntimeSignal,
   type RuntimeSignalType,
   type RuntimeStandardNode,
-} from '../../src/observability/soft-standards.js';
+} from '../../src/observability/soft-standards/index.js';
 import type { SkillRuntimeEvidencePack, SkillRuntimeEvidencePackRef, SkillRuntimeEvidencePackSourceType } from '../../src/observability/skill-chain.js';
 
 const { evaluateRuntimeStandardNodes, normalizeRuntimeSignals, normalizeRuntimeTriggers, normalizeFuzzyText, normalizeToolNameValue } = __softStandardsTestInternals;

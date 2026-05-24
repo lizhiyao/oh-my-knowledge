@@ -1,372 +1,46 @@
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import type { ExecutorFn } from '../types/index.js';
-import { createExecutor } from '../executors/index.js';
-import { readPromptDocument } from '../shared/llm-prompts/index.js';
-import { buildObservationSkillChain, type ObservationSkillChain, type SkillRuntimeEvidencePack, type SkillRuntimeEvidencePackNode, type SkillRuntimeEvidencePackRef } from './skill-chain.js';
-
-// sibling 模式:dev 下 import.meta.url 指 src/observability/soft-standards.ts,
-// npm 安装下指 dist/observability/soft-standards.js,
-// 两边的 ./prompts/ 子目录都对得上(build script 把 prompt md 同步复制到 dist)。
-export const PROMPTS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'prompts');
-
-export const SOFT_STANDARD_PROMPT_ID = 'llm-enhanced-review';
-export const SOFT_STANDARD_PROMPT_VERSION = '2026-05-22.v7';
-export const DEFAULT_LLM_ENHANCED_REVIEW_MODEL = 'sonnet';
-
-export type SkillDerivedStandardStatus = 'pending_review' | 'author_confirmed' | 'rejected' | 'stale';
-export type SkillDerivedStandardKind = 'hard_rule_candidate' | 'workflow_candidate';
-
-export interface SkillDerivedStandard {
-  id: string;
-  kind: SkillDerivedStandardKind;
-  status: SkillDerivedStandardStatus;
-  title: string;
-  body: string;
-  source: 'llm_soft_standard';
-  confidence: 'low' | 'medium' | 'high';
-  evidence: string[];
-}
-
-export interface SkillDerivedStandards {
-  kind: 'observe-skill-derived-standards';
-  schemaVersion: 1;
-  skillName: string;
-  sourceSkillPath?: string;
-  sourceHash?: string;
-  generatedAt: string;
-  model: string;
-  executor: string;
-  promptId: typeof SOFT_STANDARD_PROMPT_ID;
-  promptVersion: typeof SOFT_STANDARD_PROMPT_VERSION;
-  promptHash?: string;
-  runtimeEvidenceHash?: string;
-  enhancedReview?: SkillLlmEnhancedReviewSections;
-  standards: SkillDerivedStandard[];
-}
-
-export interface SkillLlmEnhancedRuntimeEvidence {
-  goalSlices: Array<{
-    id?: string;
-    sessionId?: string;
-    inferredUserGoal?: string;
-    userMessages?: string[];
-  }>;
-  userMessages: string[];
-  assistantMessages: string[];
-  artifactCandidates: string[];
-  toolCalls: string[];
-  findings: string[];
-  skillRuntimeEvidencePack?: SkillRuntimeEvidencePack;
-}
-
-export type LlmEnhancedSkillType = 'router' | 'delegation' | 'executor' | 'advisory' | 'workflow_owner' | 'unknown';
-export type LlmEnhancedVerdict = 'passed' | 'failed' | 'unknown';
-export type LlmEnhancedUserFeeling = 'positive' | 'neutral' | 'negative' | 'frustrated';
-export type LlmEnhancedChecklistStatus = 'passed' | 'failed' | 'unknown' | 'degraded' | 'not_applicable';
-export type RuntimeStandardNodeKind = 'workflow' | 'hardRule' | 'completion' | 'artifact' | 'stage';
-export type RuntimeSignalType =
-  | 'tool_name'
-  | 'tool_input'
-  | 'tool_output'
-  | 'assistant_text'
-  | 'user_text'
-  | 'artifact_kind'
-  | 'artifact_path'
-  | 'event_kind';
-export type RuntimeSignalOp = 'equals' | 'contains' | 'any_of' | 'fuzzy_contains' | 'suffix' | 'glob';
-export type RuntimeNodeVerdict = 'passed' | 'missed' | 'violated' | 'unknown' | 'degraded';
-export type RuntimeTriggerWindowScope =
-  | 'same_node'
-  | 'same_skill_segment'
-  | 'same_session_after'
-  | 'anywhere_in_session';
-
-export interface RuntimeSignal {
-  id: string;
-  type: RuntimeSignalType;
-  value: string | string[];
-  op?: RuntimeSignalOp;
-}
-
-export interface RuntimeSignalRef {
-  signalGroup: 'expectedSignals' | 'failureSignals' | 'forbiddenSignals' | 'conditionSignals';
-  signalId: string;
-}
-
-export interface RuntimeTrigger {
-  when?: RuntimeSignalRef;
-  absence?: RuntimeSignalRef;
-  forbidden?: RuntimeSignalRef;
-  required?: RuntimeSignalRef;
-  verdict: RuntimeNodeVerdict;
-  windowScope: RuntimeTriggerWindowScope;
-}
-
-export interface RuntimeStandardNodeSourceHint {
-  source: 'skill_md' | 'frontmatter' | 'llm_inferred' | 'template';
-  line?: number;
-  snippet: string;
-}
-
-export interface RuntimeStandardNode {
-  nodeId: string;
-  nodeEvidenceRef?: string;
-  kind: RuntimeStandardNodeKind;
-  title: string;
-  description?: string;
-  childNodeIds?: string[];
-  expectedSignals: RuntimeSignal[];
-  failureSignals: RuntimeSignal[];
-  forbiddenSignals: RuntimeSignal[];
-  conditionSignals: RuntimeSignal[];
-  triggers: RuntimeTrigger[];
-  sourceHints: RuntimeStandardNodeSourceHint[];
-}
-
-export interface RuntimeMatchedSignal {
-  signalId: string;
-  signalType: RuntimeSignalType;
-  signalGroup: RuntimeSignalRef['signalGroup'];
-  evidenceRefs: SkillRuntimeEvidencePackRef[];
-}
-
-export interface RuntimeNodeResult {
-  nodeId: string;
-  kind: RuntimeStandardNodeKind;
-  title: string;
-  status: RuntimeNodeVerdict;
-  matchedSignals: RuntimeMatchedSignal[];
-  evidenceRefs: SkillRuntimeEvidencePackRef[];
-  reason: string;
-}
-
-export interface SkillLlmTypeSpecificChecklistItem {
-  key: string;
-  label: string;
-  status: LlmEnhancedChecklistStatus;
-  reason?: string;
-  evidence?: string[];
-  suggestionKey?: string;
-}
-
-export interface SkillLlmRuntimeNodeAssessment {
-  nodeId: string;
-  kind: 'workflowNode' | 'hardRule';
-  status: LlmEnhancedChecklistStatus;
-  reason?: string;
-  evidence?: string[];
-  suggestionKey?: string;
-}
-
-export interface SkillLlmEnhancedReviewSections {
-  skillType?: LlmEnhancedSkillType;
-  extractedStandards?: {
-    hardrules: Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>>;
-    workflows: Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>>;
-    completionCriteria: Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>>;
-    artifactCriteria: Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>>;
-    standardNodes?: RuntimeStandardNode[];
-  };
-  userGoal?: {
-    summary?: string;
-    slots: string[];
-    expectedOutcome?: string;
-  };
-  skillDeclaredGoal?: {
-    summary?: string;
-    keywords: string[];
-    expectedOutcomes: string[];
-  };
-  runtimeAssessment?: {
-    goalSatisfaction?: LlmEnhancedVerdict;
-    declaredBehaviorFit?: LlmEnhancedVerdict;
-    artifactGoalMatch?: LlmEnhancedVerdict;
-    userFeeling?: LlmEnhancedUserFeeling;
-  };
-  typeSpecificAssessment?: {
-    checklist: SkillLlmTypeSpecificChecklistItem[];
-    summary?: string;
-  };
-  /** Kept only so older persisted reports with LLM node verdicts can still be read. */
-  runtimeNodeAssessment?: {
-    summary?: string;
-    nodes: SkillLlmRuntimeNodeAssessment[];
-  };
-  runtimeNodeResults?: {
-    summary?: string;
-    nodes: RuntimeNodeResult[];
-  };
-  userExperienceSignals?: {
-    useful?: LlmEnhancedVerdict;
-    followUp?: LlmEnhancedVerdict;
-    correction?: LlmEnhancedVerdict;
-    negativeFeedback?: LlmEnhancedVerdict;
-    interruption?: LlmEnhancedVerdict;
-    frustration?: LlmEnhancedVerdict;
-  };
-  reviewerSummary?: string;
-  ownerSuggestions?: Array<{
-    title?: string;
-    body?: string;
-    evidence?: string[];
-    acceptanceCriteria?: string;
-    checklistItemKey?: string;
-  }>;
-}
-
-export type ResolvedSkillStandardSource = 'frontmatter' | 'confirmed_soft' | 'pending_soft';
-export type ResolvedSkillStandardKind = 'hard_rule' | 'workflow';
-
-export interface ResolvedSkillStandard {
-  id: string;
-  kind: ResolvedSkillStandardKind;
-  title: string;
-  body: string;
-  source: ResolvedSkillStandardSource;
-  status?: SkillDerivedStandardStatus;
-  confidence?: SkillDerivedStandard['confidence'];
-  evidence?: string[];
-}
-
-export interface ResolvedSkillStandards {
-  skillName: string;
-  active: ResolvedSkillStandard[];
-  candidates: ResolvedSkillStandard[];
-  sourcePriority: ['frontmatter', 'confirmed_soft', 'pending_soft'];
-}
-
-export interface ExtractSkillSoftStandardsOptions {
-  observationsDir: string;
-  skillChain: ObservationSkillChain;
-  runtimeEvidence?: SkillLlmEnhancedRuntimeEvidence;
-  model?: string;
-  executorName?: string;
-  refresh?: boolean;
-  now?: string;
-  executor?: ExecutorFn;
-}
-
-export interface ResolveSkillStandardsOptions {
-  observationsDir: string;
-  cwd?: string;
-  skillChain?: ObservationSkillChain;
-  derivedStandards?: SkillDerivedStandards | Record<string, SkillDerivedStandards>;
-}
-
-export function skillDerivedStandardsDir(observationsDir: string): string {
-  return join(observationsDir, 'skill-derived');
-}
-
-export function skillDerivedStandardsPath(observationsDir: string, skillName: string): string {
-  return join(skillDerivedStandardsDir(observationsDir), `${safeSkillFileName(skillName)}.json`);
-}
-
-export function loadSkillDerivedStandards(observationsDir: string): Record<string, SkillDerivedStandards> {
-  const dir = skillDerivedStandardsDir(observationsDir);
-  if (!existsSync(dir)) return {};
-  const out: Record<string, SkillDerivedStandards> = {};
-  for (const file of readdirSync(dir)) {
-    if (!file.endsWith('.json')) continue;
-    try {
-      const parsed = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as SkillDerivedStandards;
-      if (isSkillDerivedStandards(parsed)) out[parsed.skillName] = parsed;
-    } catch {
-      // Ignore broken cache files; the extraction command can refresh them.
-    }
-  }
-  return out;
-}
-
-export function updateSkillDerivedStandardStatus(
-  observationsDir: string,
-  skillName: string,
-  standardId: string,
-  status: SkillDerivedStandardStatus,
-  now = new Date().toISOString(),
-): SkillDerivedStandards {
-  const filePath = skillDerivedStandardsPath(observationsDir, skillName);
-  const existing = loadExisting(filePath);
-  if (!existing) throw new Error(`skill derived standards not found: ${skillName}`);
-  let found = false;
-  const next: SkillDerivedStandards = {
-    ...existing,
-    generatedAt: now,
-    standards: existing.standards.map((item) => {
-      if (item.id !== standardId) return item;
-      found = true;
-      return { ...item, status };
-    }),
-  };
-  if (!found) throw new Error(`skill derived standard not found: ${standardId}`);
-  mkdirSync(skillDerivedStandardsDir(observationsDir), { recursive: true });
-  writeFileSync(filePath, JSON.stringify(next, null, 2));
-  return next;
-}
-
-export function resolveSkillStandards(skillName: string, options: ResolveSkillStandardsOptions): ResolvedSkillStandards {
-  const skillChain = options.skillChain ?? buildObservationSkillChain(skillName, options.cwd ?? process.cwd());
-  const derived = options.derivedStandards
-    ? isSkillDerivedStandards(options.derivedStandards)
-      ? options.derivedStandards
-      : options.derivedStandards[skillName]
-    : loadSkillDerivedStandards(options.observationsDir)[skillName];
-  const active: ResolvedSkillStandard[] = [];
-  const candidates: ResolvedSkillStandard[] = [];
-  const hasFrontmatterHardRules = skillChain.healthCheck.hardRules.declared && skillChain.healthCheck.hardRules.rules.length > 0;
-  const hasFrontmatterWorkflows = skillChain.healthCheck.workflows.declared && skillChain.healthCheck.workflows.workflows.length > 0;
-
-  for (const rule of skillChain.healthCheck.hardRules.rules) {
-    active.push({
-      id: rule.id,
-      kind: 'hard_rule',
-      title: rule.rule,
-      body: rule.expectedBehavior,
-      source: 'frontmatter',
-    });
-  }
-  for (const workflow of skillChain.healthCheck.workflows.workflows) {
-    for (const node of workflow.nodes) {
-      active.push({
-        id: `${workflow.id}.${node.id}`,
-        kind: 'workflow',
-        title: `${workflow.id} / ${node.id}`,
-        body: node.action,
-        source: 'frontmatter',
-      });
-    }
-  }
-
-  for (const standard of derived?.standards ?? []) {
-    const kind: ResolvedSkillStandardKind = standard.kind === 'workflow_candidate' ? 'workflow' : 'hard_rule';
-    const blockedByFrontmatter = kind === 'hard_rule' ? hasFrontmatterHardRules : hasFrontmatterWorkflows;
-    const resolved: ResolvedSkillStandard = {
-      id: standard.id,
-      kind,
-      title: standard.title,
-      body: standard.body,
-      source: standard.status === 'author_confirmed' ? 'confirmed_soft' : 'pending_soft',
-      status: standard.status,
-      confidence: standard.confidence,
-      evidence: standard.evidence,
-    };
-    if (!blockedByFrontmatter && standard.status === 'author_confirmed') {
-      active.push(resolved);
-    } else {
-      candidates.push(resolved);
-    }
-  }
-
-  candidates.sort((a, b) => candidateRank(a.status) - candidateRank(b.status) || a.title.localeCompare(b.title));
-  return {
-    skillName,
-    active,
-    candidates,
-    sourcePriority: ['frontmatter', 'confirmed_soft', 'pending_soft'],
-  };
-}
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { createExecutor } from '../../executors/index.js';
+import { readPromptDocument } from '../../shared/llm-prompts/index.js';
+import type {
+  ObservationSkillChain,
+  SkillRuntimeEvidencePack,
+  SkillRuntimeEvidencePackNode,
+} from '../skill-chain.js';
+import {
+  DEFAULT_LLM_ENHANCED_REVIEW_MODEL,
+  PROMPTS_DIR,
+  SOFT_STANDARD_PROMPT_ID,
+  SOFT_STANDARD_PROMPT_VERSION,
+} from './constants.js';
+import {
+  hashText,
+  loadExisting,
+  markStale,
+  skillDerivedStandardsDir,
+  skillDerivedStandardsPath,
+} from './skill-standards-store.js';
+import { evaluateRuntimeStandardNodes } from './runtime-evaluator.js';
+import type {
+  ExtractSkillSoftStandardsOptions,
+  LlmEnhancedChecklistStatus,
+  LlmEnhancedSkillType,
+  LlmEnhancedUserFeeling,
+  LlmEnhancedVerdict,
+  RuntimeNodeVerdict,
+  RuntimeSignal,
+  RuntimeSignalOp,
+  RuntimeSignalRef,
+  RuntimeSignalType,
+  RuntimeStandardNode,
+  RuntimeStandardNodeKind,
+  RuntimeStandardNodeSourceHint,
+  RuntimeTrigger,
+  RuntimeTriggerWindowScope,
+  SkillDerivedStandard,
+  SkillDerivedStandards,
+  SkillLlmEnhancedReviewSections,
+  SkillLlmTypeSpecificChecklistItem,
+} from './types.js';
 
 export async function extractSkillSoftStandards(options: ExtractSkillSoftStandardsOptions): Promise<SkillDerivedStandards> {
   const { observationsDir, skillChain } = options;
@@ -440,7 +114,7 @@ export async function extractSkillSoftStandards(options: ExtractSkillSoftStandar
 function buildSoftStandardPrompt(
   skillChain: ObservationSkillChain,
   flags: { needsHardRules: boolean; needsWorkflows: boolean },
-  runtimeEvidence?: SkillLlmEnhancedRuntimeEvidence,
+  runtimeEvidence?: ExtractSkillSoftStandardsOptions['runtimeEvidence'],
 ): string {
   const evidencePack = runtimeEvidence?.skillRuntimeEvidencePack ?? skillChain.runtime.evidencePack;
   const resolvedRuntimeEvidence = runtimeEvidence ?? {
@@ -679,7 +353,7 @@ function normalizeStandardNodeKind(value: unknown): RuntimeStandardNodeKind | un
     : undefined;
 }
 
-function normalizeRuntimeSignals(value: unknown): RuntimeSignal[] {
+export function normalizeRuntimeSignals(value: unknown): RuntimeSignal[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const signals: RuntimeSignal[] = [];
@@ -737,7 +411,7 @@ function normalizeRuntimeSignalOp(value: unknown): RuntimeSignalOp | undefined {
     : undefined;
 }
 
-function normalizeSignalOpForType(type: RuntimeSignalType, op: RuntimeSignalOp | undefined, valueIsArray: boolean): RuntimeSignalOp | undefined {
+export function normalizeSignalOpForType(type: RuntimeSignalType, op: RuntimeSignalOp | undefined, valueIsArray: boolean): RuntimeSignalOp | undefined {
   const fallback: Record<RuntimeSignalType, RuntimeSignalOp> = {
     tool_name: 'equals',
     tool_input: 'contains',
@@ -763,7 +437,7 @@ function normalizeSignalOpForType(type: RuntimeSignalType, op: RuntimeSignalOp |
   return allowed[type].includes(selected) ? selected : undefined;
 }
 
-function normalizeRuntimeTriggers(value: unknown): RuntimeTrigger[] {
+export function normalizeRuntimeTriggers(value: unknown): RuntimeTrigger[] {
   if (!Array.isArray(value)) return [];
   return value
     .map(normalizeRuntimeTrigger)
@@ -1024,382 +698,6 @@ function signal(id: string, type: RuntimeSignalType, value: string | string[], o
   return { id, type, value, op };
 }
 
-type RuntimeSignalGroupName = RuntimeSignalRef['signalGroup'];
-
-interface RuntimeSignalMatch {
-  signal: RuntimeSignal;
-  group: RuntimeSignalGroupName;
-  refs: SkillRuntimeEvidencePackRef[];
-}
-
-interface RuntimeEvaluationContext {
-  nodeScopedRefs: SkillRuntimeEvidencePackRef[];
-}
-
-function resolveNodeScopedRefs(node: RuntimeStandardNode, evidencePack: SkillRuntimeEvidencePack): SkillRuntimeEvidencePackRef[] {
-  const byId = new Map(evidencePack.nodeEvidence.map((entry) => [entry.nodeId, entry]));
-  const explicit = node.nodeEvidenceRef ? byId.get(node.nodeEvidenceRef) : undefined;
-  if (explicit) return explicit.candidateEvidenceRefs;
-  const exact = byId.get(node.nodeId);
-  if (exact) return exact.candidateEvidenceRefs;
-
-  const scored = evidencePack.nodeEvidence
-    .map((entry) => ({ entry, score: scoreNodeEvidenceCandidate(node, entry) }))
-    .filter((item) => item.score >= 4)
-    .sort((a, b) => b.score - a.score);
-  const best = scored[0];
-  const second = scored[1];
-  if (!best) return [];
-  if (second && best.score === second.score) return [];
-  return best.entry.candidateEvidenceRefs;
-}
-
-function scoreNodeEvidenceCandidate(node: RuntimeStandardNode, candidate: SkillRuntimeEvidencePackNode): number {
-  let score = 0;
-  const candidateText = normalizeFuzzyText(`${candidate.title}\n${candidate.expectation}`);
-  const nodeText = normalizeFuzzyText([
-    node.title,
-    node.description,
-    ...node.sourceHints.map((hint) => hint.snippet),
-  ].filter(Boolean).join('\n'));
-  if (nodeText && candidateText) {
-    if (candidateText.includes(nodeText) || nodeText.includes(candidateText)) score += 3;
-    else if (nodeText.length >= 10 && candidateText.length >= 10 && hasMeaningfulTokenOverlap(nodeText, candidateText)) score += 2;
-  }
-
-  const signals = [
-    ...node.expectedSignals,
-    ...node.failureSignals,
-    ...node.forbiddenSignals,
-    ...node.conditionSignals,
-  ];
-  const matchedSignalIds = new Set<string>();
-  for (const signal of signals) {
-    if (candidate.candidateEvidenceRefs.some((ref) => refMatchesRuntimeSignal(ref, signal))) {
-      matchedSignalIds.add(signal.id);
-      score += signalMatchWeight(signal.type);
-    }
-  }
-  if (matchedSignalIds.size >= 2) score += 2;
-  return score;
-}
-
-function hasMeaningfulTokenOverlap(left: string, right: string): boolean {
-  const tokens = new Set(left.split(/[^a-z0-9\u4e00-\u9fff]+/i).filter((token) => token.length >= 2));
-  let overlap = 0;
-  for (const token of right.split(/[^a-z0-9\u4e00-\u9fff]+/i)) {
-    if (token.length >= 2 && tokens.has(token)) overlap += 1;
-    if (overlap >= 2) return true;
-  }
-  return false;
-}
-
-function signalMatchWeight(type: RuntimeSignalType): number {
-  if (type === 'tool_name' || type === 'event_kind' || type === 'artifact_kind' || type === 'artifact_path') return 4;
-  return 2;
-}
-
-function evaluateRuntimeStandardNodes(nodes: RuntimeStandardNode[], evidencePack: SkillRuntimeEvidencePack): RuntimeNodeResult[] {
-  const rawResults = nodes.map((node) => evaluateRuntimeStandardNode(node, evidencePack, {
-    nodeScopedRefs: resolveNodeScopedRefs(node, evidencePack),
-  }));
-  const resultByNodeId = new Map(rawResults.map((result) => [result.nodeId, result]));
-  return rawResults.map((result) => {
-    const node = nodes.find((item) => item.nodeId === result.nodeId);
-    if (!node || node.kind !== 'stage' || !node.childNodeIds || node.childNodeIds.length === 0) return result;
-    const childResults = node.childNodeIds
-      .map((id) => resultByNodeId.get(id))
-      .filter((item): item is RuntimeNodeResult => Boolean(item));
-    if (childResults.length === 0) {
-      return { ...result, status: 'unknown', reason: '阶段包含子节点，但本次没有找到可复核的子节点结果。' };
-    }
-    const status = aggregateRuntimeNodeStatuses(childResults.map((item) => item.status));
-    return {
-      ...result,
-      status,
-      matchedSignals: dedupeMatchedSignals([...result.matchedSignals, ...childResults.flatMap((item) => item.matchedSignals)]),
-      evidenceRefs: dedupeEvidenceRefs([...result.evidenceRefs, ...childResults.flatMap((item) => item.evidenceRefs)]),
-      reason: `阶段结果由 ${childResults.length} 个子节点汇总：${runtimeNodeStatusReason(status)}`,
-    };
-  });
-}
-
-function evaluateRuntimeStandardNode(node: RuntimeStandardNode, evidencePack: SkillRuntimeEvidencePack, context: RuntimeEvaluationContext): RuntimeNodeResult {
-  const matches = buildSignalMatches(node, evidencePack);
-  const matchedSignals = Array.from(matches.values()).filter((match) => match.refs.length > 0);
-  const triggerStatuses = evaluateRuntimeTriggers(node, matches, context);
-  const status = node.triggers.length > 0
-    ? triggerStatuses.length > 0 ? aggregateRuntimeNodeStatuses(triggerStatuses) : 'unknown'
-    : inferRuntimeNodeStatusWithoutTriggers(node, matches);
-  const evidenceRefs = dedupeEvidenceRefs(matchedSignals.flatMap((match) => match.refs));
-  return {
-    nodeId: node.nodeId,
-    kind: node.kind,
-    title: node.title,
-    status,
-    matchedSignals: matchedSignals.map((match) => ({
-      signalId: match.signal.id,
-      signalType: match.signal.type,
-      signalGroup: match.group,
-      evidenceRefs: match.refs.slice(0, 5),
-    })),
-    evidenceRefs: evidenceRefs.slice(0, 10),
-    reason: buildRuntimeNodeReason(node, status, matchedSignals),
-  };
-}
-
-function buildSignalMatches(node: RuntimeStandardNode, evidencePack: SkillRuntimeEvidencePack): Map<string, RuntimeSignalMatch> {
-  const refs = runtimeEvidenceRefs(evidencePack);
-  const groups: Array<[RuntimeSignalGroupName, RuntimeSignal[]]> = [
-    ['expectedSignals', node.expectedSignals],
-    ['failureSignals', node.failureSignals],
-    ['forbiddenSignals', node.forbiddenSignals],
-    ['conditionSignals', node.conditionSignals],
-  ];
-  const out = new Map<string, RuntimeSignalMatch>();
-  for (const [group, signals] of groups) {
-    for (const signal of signals) {
-      const key = signalKey(group, signal.id);
-      out.set(key, {
-        signal,
-        group,
-        refs: refs.filter((ref) => refMatchesRuntimeSignal(ref, signal)).slice(0, 20),
-      });
-    }
-  }
-  return out;
-}
-
-function runtimeEvidenceRefs(evidencePack: SkillRuntimeEvidencePack): SkillRuntimeEvidencePackRef[] {
-  const refs = [
-    ...evidencePack.runtimeEvidence.toolCalls,
-    ...evidencePack.runtimeEvidence.assistantMessages,
-    ...evidencePack.runtimeEvidence.userFeedback,
-    ...evidencePack.runtimeEvidence.artifacts,
-    ...evidencePack.nodeEvidence.flatMap((node) => node.candidateEvidenceRefs),
-  ].filter((ref) => ref.sourceType !== 'runtime_context' && ref.sourceType !== 'skill_context');
-  return dedupeEvidenceRefs(refs);
-}
-
-function refMatchesRuntimeSignal(ref: SkillRuntimeEvidencePackRef, signal: RuntimeSignal): boolean {
-  const text = runtimeSignalTextForRef(ref, signal.type);
-  if (!text) return false;
-  return runtimeSignalValueMatches(text, signal.value, signal.op ?? 'contains', signal.type);
-}
-
-function runtimeSignalTextForRef(ref: SkillRuntimeEvidencePackRef, type: RuntimeSignalType): string {
-  if (type === 'tool_name') return ref.sourceType === 'tool_call' || ref.sourceType === 'tool_result' ? (ref.toolName || ref.label || ref.snippet || '') : '';
-  if (type === 'tool_input') return ref.sourceType === 'tool_call' ? `${ref.label ?? ''}\n${ref.snippet ?? ''}` : '';
-  if (type === 'tool_output') return ref.sourceType === 'tool_result' ? `${ref.label ?? ''}\n${ref.snippet ?? ''}` : '';
-  if (type === 'assistant_text') return ref.sourceType === 'assistant_message' ? `${ref.label ?? ''}\n${ref.snippet ?? ''}` : '';
-  if (type === 'user_text') return ref.sourceType === 'user_feedback' ? `${ref.label ?? ''}\n${ref.snippet ?? ''}` : '';
-  if (type === 'artifact_kind') return ref.sourceType === 'artifact' ? inferArtifactKind(ref) : '';
-  if (type === 'artifact_path') return ref.sourceType === 'artifact' ? `${ref.label ?? ''}\n${ref.snippet ?? ''}` : '';
-  if (type === 'event_kind') return ref.kind ?? '';
-  return '';
-}
-
-function runtimeSignalValueMatches(text: string, value: string | string[], op: RuntimeSignalOp, type: RuntimeSignalType): boolean {
-  const values = Array.isArray(value) ? value : [value];
-  if (op === 'any_of') return values.some((entry) => runtimeSignalValueMatches(text, entry, defaultOpForSignalType(type), type));
-  return values.some((entry) => {
-    const left = comparableSignalText(text, type, op);
-    const right = comparableSignalText(entry, type, op);
-    if (!right) return false;
-    if (op === 'equals') return left.trim() === right.trim();
-    if (op === 'contains' || op === 'fuzzy_contains') return left.includes(right);
-    if (op === 'suffix') return left.trim().endsWith(right.trim());
-    if (op === 'glob') return globMatchesSignalText(text, right);
-    return false;
-  });
-}
-
-function comparableSignalText(value: string, type: RuntimeSignalType, op: RuntimeSignalOp): string {
-  if (op === 'fuzzy_contains') return normalizeFuzzyText(value);
-  if (type === 'tool_name') return normalizeToolNameValue(value);
-  return value.toLowerCase();
-}
-
-function normalizeToolNameValue(value: string): string {
-  const normalized = value.toLowerCase().trim().replace(/[-_\s]+/g, '');
-  const aliases: Record<string, string> = {
-    yuquecli: 'yuque',
-    yuqueantcli: 'yuque',
-    skylarkdocdetail: 'skylark',
-    skylarkresolveurl: 'skylark',
-  };
-  return aliases[normalized] ?? normalized;
-}
-
-function defaultOpForSignalType(type: RuntimeSignalType): RuntimeSignalOp {
-  if (type === 'tool_name' || type === 'artifact_kind' || type === 'event_kind') return 'equals';
-  return 'contains';
-}
-
-function normalizeFuzzyText(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[\s　]+/g, ' ')
-    .replace(/[!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~，。！？、；：“”‘’（）【】《》]/g, '')
-    .trim();
-}
-
-function globToRegExp(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
-  return new RegExp(`^${escaped}$`, 'is');
-}
-
-function globMatchesSignalText(text: string, pattern: string): boolean {
-  const matcher = globToRegExp(pattern);
-  return text
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .some((line) => matcher.test(line) || matcher.test(line.split(/[\\/]/).pop() ?? line));
-}
-
-function inferArtifactKind(ref: SkillRuntimeEvidencePackRef): string {
-  const text = `${ref.label ?? ''}\n${ref.snippet ?? ''}`.toLowerCase();
-  if (/\.png\b|\.jpg\b|\.jpeg\b|\.gif\b|\.webp\b|截图|图片|image/.test(text)) return 'image';
-  if (/\.html\b|preview_url|预览|demo|页面/.test(text)) return 'demo';
-  if (/\.md\b|文档|报告|方案|prd|document/.test(text)) return 'document';
-  if (/https?:\/\//.test(text)) return 'url';
-  if (/\.ts\b|\.tsx\b|\.js\b|\.jsx\b|\.py\b|代码|code/.test(text)) return 'code';
-  return 'file';
-}
-
-function evaluateRuntimeTriggers(node: RuntimeStandardNode, matches: Map<string, RuntimeSignalMatch>, context: RuntimeEvaluationContext): RuntimeNodeVerdict[] {
-  const statuses: RuntimeNodeVerdict[] = [];
-  for (const trigger of node.triggers) {
-    const whenRefs = trigger.when
-      ? refsInScope(refsForSignalRef(matches, trigger.when), [], trigger.windowScope === 'same_node' ? 'same_node' : 'anywhere_in_session', context)
-      : [];
-    if (trigger.when && whenRefs.length === 0) continue;
-    if (trigger.forbidden) {
-      const forbiddenRefs = refsInScope(refsForSignalRef(matches, trigger.forbidden), whenRefs, trigger.windowScope, context);
-      if (forbiddenRefs.length > 0) statuses.push(trigger.verdict);
-      continue;
-    }
-    if (trigger.required) {
-      const requiredRefs = refsInScope(refsForSignalRef(matches, trigger.required), whenRefs, trigger.windowScope, context);
-      if (requiredRefs.length > 0) statuses.push(trigger.verdict);
-      else statuses.push('missed');
-      continue;
-    }
-    if (trigger.absence) {
-      const absentRefs = refsInScope(refsForSignalRef(matches, trigger.absence), whenRefs, trigger.windowScope, context);
-      statuses.push(absentRefs.length === 0 ? trigger.verdict : 'violated');
-      continue;
-    }
-    if (trigger.when) statuses.push(trigger.verdict);
-  }
-  return statuses;
-}
-
-function refsForSignalRef(matches: Map<string, RuntimeSignalMatch>, ref: RuntimeSignalRef): SkillRuntimeEvidencePackRef[] {
-  return matches.get(signalKey(ref.signalGroup, ref.signalId))?.refs ?? [];
-}
-
-function refsInScope(
-  refs: SkillRuntimeEvidencePackRef[],
-  anchorRefs: SkillRuntimeEvidencePackRef[],
-  scope: RuntimeTriggerWindowScope,
-  context: RuntimeEvaluationContext = { nodeScopedRefs: [] },
-): SkillRuntimeEvidencePackRef[] {
-  if (scope === 'same_node') {
-    if (context.nodeScopedRefs.length === 0) return [];
-    const scopedIds = new Set(context.nodeScopedRefs.map((ref) => ref.id));
-    return refs.filter((ref) => scopedIds.has(ref.id));
-  }
-  if (scope === 'anywhere_in_session') return refs;
-  if (scope === 'same_skill_segment') {
-    // Evidence packs do not yet carry a stable segment id, so this is an intentional session-level approximation.
-    const sessionIds = new Set(anchorRefs.map((ref) => ref.sessionId).filter(Boolean));
-    return sessionIds.size > 0 ? refs.filter((ref) => sessionIds.has(ref.sessionId)) : refs;
-  }
-  if (anchorRefs.length === 0) return [];
-  const anchorOrders = anchorRefs.map(evidenceRefOrder).filter((order): order is number => order !== undefined);
-  if (anchorOrders.length === 0) return [];
-  const anchorOrder = Math.min(...anchorOrders);
-  const anchorSessionIds = new Set(anchorRefs.map((ref) => ref.sessionId).filter(Boolean));
-  return refs.filter((ref) => {
-    if (anchorSessionIds.size > 0 && !anchorSessionIds.has(ref.sessionId)) return false;
-    const order = evidenceRefOrder(ref);
-    return order !== undefined && order >= anchorOrder;
-  });
-}
-
-function evidenceRefOrder(ref: SkillRuntimeEvidencePackRef): number | undefined {
-  return ref.logicalMessageIndex ?? ref.messageIndex ?? ref.sourceLineIndex;
-}
-
-function inferRuntimeNodeStatusWithoutTriggers(node: RuntimeStandardNode, matches: Map<string, RuntimeSignalMatch>): RuntimeNodeVerdict {
-  const expected = node.expectedSignals.flatMap((signal) => matches.get(signalKey('expectedSignals', signal.id))?.refs ?? []);
-  const failure = node.failureSignals.flatMap((signal) => matches.get(signalKey('failureSignals', signal.id))?.refs ?? []);
-  const forbidden = node.forbiddenSignals.flatMap((signal) => matches.get(signalKey('forbiddenSignals', signal.id))?.refs ?? []);
-  const condition = node.conditionSignals.flatMap((signal) => matches.get(signalKey('conditionSignals', signal.id))?.refs ?? []);
-  if (forbidden.length > 0 || failure.length > 0) return 'violated';
-  if (node.conditionSignals.length > 0 && condition.length === 0) return 'unknown';
-  if (expected.length > 0) return 'passed';
-  if (node.expectedSignals.length > 0) return 'missed';
-  return 'unknown';
-}
-
-function aggregateRuntimeNodeStatuses(statuses: RuntimeNodeVerdict[]): RuntimeNodeVerdict {
-  const priority: Record<RuntimeNodeVerdict, number> = {
-    violated: 5,
-    degraded: 4,
-    unknown: 3,
-    passed: 2,
-    missed: 1,
-  };
-  return statuses.slice().sort((a, b) => priority[b] - priority[a])[0] ?? 'unknown';
-}
-
-function buildRuntimeNodeReason(node: RuntimeStandardNode, status: RuntimeNodeVerdict, matchedSignals: RuntimeSignalMatch[]): string {
-  if (matchedSignals.length === 0) return runtimeNodeStatusReason(status);
-  const labels = matchedSignals.slice(0, 4).map((match) => signalDisplayName(match.signal)).join('、');
-  if (status === 'passed') return `命中运行证据：${labels}。`;
-  if (status === 'violated') return `命中失败或禁止证据：${labels}。`;
-  if (status === 'missed') return `未命中节点要求的关键证据：${node.title}。`;
-  return `${runtimeNodeStatusReason(status)} 命中证据：${labels}。`;
-}
-
-function runtimeNodeStatusReason(status: RuntimeNodeVerdict): string {
-  if (status === 'passed') return '已看到对应运行证据。';
-  if (status === 'missed') return '未发现调用。';
-  if (status === 'violated') return '观察到失败或禁止信号。';
-  if (status === 'degraded') return '证据质量不足，不能强判。';
-  return '未发现调用。';
-}
-
-function signalDisplayName(signal: RuntimeSignal): string {
-  const value = Array.isArray(signal.value) ? signal.value.join('/') : signal.value;
-  return `${signal.type}:${value}`;
-}
-
-function signalKey(group: RuntimeSignalGroupName, signalId: string): string {
-  return `${group}:${signalId}`;
-}
-
-function dedupeMatchedSignals(signals: RuntimeMatchedSignal[]): RuntimeMatchedSignal[] {
-  const out = new Map<string, RuntimeMatchedSignal>();
-  for (const signal of signals) {
-    const key = `${signal.signalGroup}:${signal.signalId}`;
-    const existing = out.get(key);
-    out.set(key, existing
-      ? { ...existing, evidenceRefs: dedupeEvidenceRefs([...existing.evidenceRefs, ...signal.evidenceRefs]) }
-      : signal);
-  }
-  return Array.from(out.values()).slice(0, 60);
-}
-
-function dedupeEvidenceRefs(refs: SkillRuntimeEvidencePackRef[]): SkillRuntimeEvidencePackRef[] {
-  const out = new Map<string, SkillRuntimeEvidencePackRef>();
-  for (const ref of refs) out.set(ref.id, ref);
-  return Array.from(out.values());
-}
-
 function normalizeChecklistStatus(value: unknown): LlmEnhancedChecklistStatus | undefined {
   return value === 'passed' || value === 'failed' || value === 'unknown' || value === 'degraded' || value === 'not_applicable'
     ? value
@@ -1450,7 +748,7 @@ function normalizeStandard(value: unknown, index: number): Omit<SkillDerivedStan
   if (!kind || typeof item.title !== 'string' || typeof item.body !== 'string') return null;
   const stable = [kind, item.title, item.body].join('\u0000');
   return {
-    id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `soft-${createHash('sha256').update(stable).digest('hex').slice(0, 12)}-${index}`,
+    id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `soft-${hashText(stable).slice(0, 12)}-${index}`,
     kind,
     title: item.title.slice(0, 160),
     body: item.body.slice(0, 600),
@@ -1458,59 +756,3 @@ function normalizeStandard(value: unknown, index: number): Omit<SkillDerivedStan
     evidence: Array.isArray(item.evidence) ? item.evidence.filter((entry): entry is string => typeof entry === 'string').slice(0, 5) : [],
   };
 }
-
-function loadExisting(path: string): SkillDerivedStandards | undefined {
-  if (!existsSync(path)) return undefined;
-  try {
-    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as SkillDerivedStandards;
-    return isSkillDerivedStandards(parsed) ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function markStale(record: SkillDerivedStandards, generatedAt: string): SkillDerivedStandards {
-  return {
-    ...record,
-    generatedAt,
-    standards: record.standards.map((item) => item.status === 'author_confirmed' || item.status === 'pending_review'
-      ? { ...item, status: 'stale' }
-      : item),
-  };
-}
-
-function isSkillDerivedStandards(value: unknown): value is SkillDerivedStandards {
-  if (!value || typeof value !== 'object') return false;
-  const item = value as Partial<SkillDerivedStandards>;
-  return item.kind === 'observe-skill-derived-standards'
-    && item.schemaVersion === 1
-    && typeof item.skillName === 'string'
-    && Array.isArray(item.standards);
-}
-
-function candidateRank(status?: SkillDerivedStandardStatus): number {
-  if (status === 'pending_review') return 0;
-  if (status === 'stale') return 1;
-  if (status === 'rejected') return 2;
-  if (status === 'author_confirmed') return 3;
-  return 4;
-}
-
-function safeSkillFileName(skillName: string): string {
-  const base = skillName.replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
-  return `${base.slice(0, 80)}-${hashText(skillName).slice(0, 8)}`;
-}
-
-function hashText(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
-}
-
-export const __softStandardsTestInternals = {
-  normalizeRuntimeSignals,
-  normalizeRuntimeTriggers,
-  evaluateRuntimeStandardNodes,
-  normalizeFuzzyText,
-  normalizeSignalOpForType,
-  refsInScope,
-  normalizeToolNameValue,
-};

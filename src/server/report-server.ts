@@ -19,7 +19,7 @@ import { DEFAULT_OBSERVATIONS_DIR, findObservationInboxItem, formatObservationSh
 import { buildObservationInboxViewModel } from '../observability/inbox-view-model.js';
 import { activeStudioDiagnostics } from '../diagnosis/studio-projection.js';
 import { deleteObservationReviewState, loadObservationReviewState, updateObservationReviewState, type ObservationReviewStateUpdate } from '../observability/review-state.js';
-import { updateSkillDerivedStandardStatus, type SkillDerivedStandardStatus } from '../observability/soft-standards.js';
+import { updateSkillDerivedStandardStatus, type SkillDerivedStandardStatus } from '../observability/soft-standards/index.js';
 import type { AddressInfo } from 'node:net';
 
 const DEFAULT_PORT = 7799;
