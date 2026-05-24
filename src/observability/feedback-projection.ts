@@ -24,7 +24,7 @@ export {
   findUserGoalShiftMatches,
   hasUserCorrectionSignal,
   hasUserGoalShiftSignal,
-} from './experience.js';
+} from './feedback-matchers.js';
 
 export type {
   ExperienceAssistiveInference,
