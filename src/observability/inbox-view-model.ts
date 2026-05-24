@@ -12,7 +12,7 @@ import {
   resolveSkillStandards,
   type ResolvedSkillStandards,
   type SkillDerivedStandards,
-} from './soft-standards.js';
+} from './soft-standards/index.js';
 import { durationMsBetween } from '../shared/time.js';
 
 export interface ObservationInboxViewModel {

@@ -3,7 +3,7 @@ export {
   PROMPTS_DIR,
   SOFT_STANDARD_PROMPT_ID,
   SOFT_STANDARD_PROMPT_VERSION,
-} from './soft-standards/constants.js';
+} from './constants.js';
 
 export type {
   ExtractSkillSoftStandardsOptions,
@@ -36,7 +36,7 @@ export type {
   SkillLlmEnhancedRuntimeEvidence,
   SkillLlmRuntimeNodeAssessment,
   SkillLlmTypeSpecificChecklistItem,
-} from './soft-standards/types.js';
+} from './types.js';
 
 export {
   loadSkillDerivedStandards,
@@ -44,21 +44,21 @@ export {
   skillDerivedStandardsDir,
   skillDerivedStandardsPath,
   updateSkillDerivedStandardStatus,
-} from './soft-standards/skill-standards-store.js';
+} from './skill-standards-store.js';
 
-export { extractSkillSoftStandards } from './soft-standards/llm-extractor.js';
+export { extractSkillSoftStandards } from './llm-extractor.js';
 
 import {
   normalizeRuntimeSignals,
   normalizeRuntimeTriggers,
   normalizeSignalOpForType,
-} from './soft-standards/llm-extractor.js';
+} from './llm-extractor.js';
 import {
   evaluateRuntimeStandardNodes,
   normalizeFuzzyText,
   normalizeToolNameValue,
   refsInScope,
-} from './soft-standards/runtime-evaluator.js';
+} from './runtime-evaluator.js';
 
 export const __softStandardsTestInternals = {
   normalizeRuntimeSignals,
