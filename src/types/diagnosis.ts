@@ -92,3 +92,12 @@ export interface DiagnosisBundle {
   sourceCoverage: DiagnosisSourceCoverage;
   bySkill: Record<string, Diagnosis[]>;
 }
+
+export interface StudioDiagnosisSummary {
+  sourceCoverage: DiagnosisSourceCoverage;
+  totalCount: number;
+  partial: boolean;
+  bySeverity: Record<DiagnosisSeverity, number>;
+  bySkill: Record<string, number>;
+  byAudience: Record<string, number>;
+}

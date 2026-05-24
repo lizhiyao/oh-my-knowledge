@@ -11,9 +11,7 @@
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
 import { assessHealth } from './skill-detail-renderer.js';
-import type { Lang } from '../types/index.js';
-import type { SkillIndex, SkillIndexEntry } from '../server/skill-index.js';
-import type { Insight } from '../server/skill-insights.js';
+import type { Lang, SkillIndex, SkillIndexEntry, Insight } from '../types/index.js';
 
 function relTime(ts: string | null | undefined, lang: Lang): string {
   if (!ts) return lang === 'zh' ? '未跑' : 'never';
