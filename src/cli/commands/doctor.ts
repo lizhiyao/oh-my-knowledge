@@ -1,5 +1,5 @@
 import { homedir } from 'node:os';
-import { existsSync, statSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, statSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
@@ -79,7 +79,7 @@ export default class Doctor extends BaseCommand {
         zh: 'JSON 输出 + 写 HTML 报告，给 CI 抓 exit code 同时人看。',
         en: 'JSON output + HTML report, for CI exit code + human review.',
       }),
-      command: '<%= config.bin %> doctor --json --html doctor.html',
+      command: '<%= config.bin %> doctor --json --gate',
     },
   ];
 
@@ -133,12 +133,6 @@ export default class Doctor extends BaseCommand {
         en: 'Single-session LLM timeout sec, default 600 (10 min).',
       }),
       parse: numberStringParser('--timeout', { min: 1 }),
-    }),
-    html: Flags.string({
-      description: bilingual({
-        zh: 'HTML 报告输出路径。可跟 --json / --gate 共存。',
-        en: 'HTML report output path. Coexists with --json / --gate.',
-      }),
     }),
     'static-only': Flags.boolean({
       description: bilingual({
@@ -235,15 +229,6 @@ export default class Doctor extends BaseCommand {
         throw new CliExit(1);
       }
 
-      if (flags.html) {
-        const { renderDoctorReportHtml } = await import('../../doctor/html-renderer.js');
-        const { writeFileSync, mkdirSync } = await import('node:fs');
-        const abs = resolve(flags.html);
-        mkdirSync(dirname(abs), { recursive: true });
-        writeFileSync(abs, renderDoctorReportHtml(report, lang), 'utf8');
-        console.error(lang === 'zh' ? `HTML 报告已写入: ${abs}` : `HTML report written to: ${abs}`);
-      }
-
       if (flags.json) {
         console.log(renderDoctorReportJson(report));
       } else if (flags.gate) {
@@ -278,9 +263,14 @@ export default class Doctor extends BaseCommand {
   }
 }
 
+// 每个 skill 最多保留多少份历史 doctor 报告(避免无界增长拖慢 studio 启动 +
+// scanDoctorReports 扫盘成本)。50 = ~每天 1 跑撑 1.5 个月 sparkline,够用。
+const DOCTOR_HISTORY_MAX_PER_SKILL = 50;
+
 function persistDoctorReport(report: import('../../types/doctor.js').DoctorReport): void {
   const dir = join(homedir(), '.oh-my-knowledge', 'doctors');
   mkdirSync(dir, { recursive: true });
+  const safeId = report.id.replace(/[/\\:*?"<>|]/g, '_');
   for (const skill of report.skills) {
     const perSkill = {
       ...report,
@@ -293,6 +283,28 @@ function persistDoctorReport(report: import('../../types/doctor.js').DoctorRepor
       outcome: skill.status === 'fail' ? 'failed' : skill.status === 'warn' ? 'warnings_only' : 'passed',
     };
     const safeName = skill.skillName.replace(/[/\\:*?"<>|]/g, '_');
-    writeFileSync(join(dir, `${safeName}.json`), JSON.stringify(perSkill, null, 2), 'utf8');
+    writeFileSync(join(dir, `${safeName}-${safeId}.json`), JSON.stringify(perSkill, null, 2), 'utf8');
+    pruneDoctorHistory(dir, skill.skillName, DOCTOR_HISTORY_MAX_PER_SKILL);
+  }
+}
+
+// 写入新报告后调用:扫 dir 里属于该 skill 的所有 single-skill doctor JSON,
+// 按 timestamp 倒排,保留 maxKeep 份最近的,其余删。按 content 匹配 skillName 不
+// 看文件名,所以同时清理新 `{name}-{id}.json` 与遗留 `{name}.json` 两种命名。
+export function pruneDoctorHistory(dir: string, skillName: string, maxKeep: number): void {
+  const candidates: { file: string; timestamp: string }[] = [];
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.json')) continue;
+    try {
+      const data = JSON.parse(readFileSync(join(dir, file), 'utf-8')) as import('../../types/doctor.js').DoctorReport;
+      if (data?.kind !== 'doctor' || !Array.isArray(data.skills) || data.skills.length !== 1) continue;
+      if (data.skills[0].skillName !== skillName) continue;
+      candidates.push({ file, timestamp: data.timestamp });
+    } catch { /* skip corrupt / unrelated json */ }
+  }
+  if (candidates.length <= maxKeep) return;
+  candidates.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  for (const { file } of candidates.slice(maxKeep)) {
+    try { unlinkSync(join(dir, file)); } catch { /* ignore */ }
   }
 }

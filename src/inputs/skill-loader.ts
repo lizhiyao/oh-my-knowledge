@@ -198,9 +198,17 @@ export function resolveArtifacts(
     }
 
     if (variantName.includes('/')) {
-      const filePath = resolve(variantName);
+      let filePath = resolve(variantName);
       if (!existsSync(filePath)) {
         throw new Error(`skill file not found: ${filePath}`);
+      }
+      // If path is a directory, look for SKILL.md inside it
+      if (statSync(filePath).isDirectory()) {
+        const skillMd = join(filePath, 'SKILL.md');
+        if (!existsSync(skillMd)) {
+          throw new Error(`目录下未找到 SKILL.md: ${filePath}`);
+        }
+        filePath = skillMd;
       }
       const content = readFileSync(filePath, 'utf-8').trim();
       // 用户直接指 SKILL.md 等同 directory-skill 约定:cwd 默认锚到该目录

@@ -63,16 +63,23 @@ export async function runEvolve(
   flags: EvolveFlags,
   lang: CliLang,
 ): Promise<void> {
-  const skillPath: string = args.skillPath;
-  if (!skillPath) {
+  const skillPathArg: string = args.skillPath;
+  if (!skillPathArg) {
     console.error(tCli('cli.evolve.specify_skill_path', lang));
     throw new CliExit(1);
   }
 
+  const { resolveSkillInput } = await import('../lib/resolve-skill-input.js');
+  let resolvedInput;
+  try { resolvedInput = resolveSkillInput(skillPathArg, lang); } catch (err) {
+    console.error((err as Error).message);
+    throw new CliExit(1);
+  }
+  const skillPath = resolvedInput.skillPath;
+
   let samplesFile: string = flags.samples;
   if (samplesFile === 'eval-samples.json' && !existsSync(resolve(samplesFile))) {
-    if (existsSync(resolve('eval-samples.yaml'))) samplesFile = 'eval-samples.yaml';
-    else if (existsSync(resolve('eval-samples.yml'))) samplesFile = 'eval-samples.yml';
+    samplesFile = resolvedInput.samplesPath;
   }
 
   const { evolveSkill } = await import('../../authoring/evolver.js');
@@ -97,7 +104,7 @@ export async function runEvolve(
       improveModel: flags['improve-model'],
       executorName: flags.executor,
       concurrency: Math.max(1, Number(flags.concurrency) || 1),
-      timeoutMs: Math.max(1, Number(flags.timeout) || 120) * 1000,
+      timeoutMs: Math.max(1, Number(flags.timeout) || 600) * 1000,
       skipConnectivity: flags['skip-connectivity'],
       effort: flags.effort ? validateEvolveEffort(flags.effort, lang) : undefined,
       noDiagnostic: flags['no-diagnostic'],
@@ -238,8 +245,8 @@ export default class Evolve extends BaseCommand {
       parse: integerStringParser('--concurrency', { min: 1 }),
     }),
     timeout: Flags.string({
-      description: bilingual({ zh: '单样本超时秒，默认 120', en: 'Per-sample timeout sec, default 120' }),
-      default: '120',
+      description: bilingual({ zh: '单样本超时秒，默认 600', en: 'Per-sample timeout sec, default 600' }),
+      default: '600',
       parse: numberStringParser('--timeout', { min: 1 }),
     }),
     executor: Flags.string({
