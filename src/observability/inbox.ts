@@ -9,7 +9,6 @@ import { isSearchToolCall, toolCallQuery } from '../shared/tool-search.js';
 import { durationMsBetween } from '../shared/time.js';
 import { buildObservationExperienceReport, type ObservationExperienceReport } from './experience.js';
 import type { ObservationReviewState } from './review-state.js';
-import { buildObserveDiagnosticsFromReport } from '../diagnosis/observe-producer.js';
 import type { DiagnosisBundle } from '../diagnosis/types.js';
 
 export const DEFAULT_PROJECT_OBSERVATIONS_DIR = join(process.cwd(), '.omk', 'observations');
@@ -499,6 +498,11 @@ function skillSessionCountKey(segment: SkillSegment): string {
   return segment.sourceTrace ? `${segment.sessionId}\u0000${segment.sourceTrace}` : segment.sessionId;
 }
 
+/**
+ * 不再附带 diagnostics 字段 —— observability 不再反向驱动 diagnosis。
+ * 需要 diagnostics 的调用方(如 CLI observe ingest)拿到 report 后,自行调
+ * `buildObserveDiagnosticsFromReport(report)` 写入 `report.diagnostics`。
+ */
 export function buildObservationInboxReport(tracePath: string, options: BuildObservationInboxReportOptions = {}): ObservationInboxReport {
   const { sessions, segments } = ccTracesToResultEntries(tracePath);
   const generatedAt = new Date().toISOString();
@@ -563,7 +567,6 @@ export function buildObservationInboxReport(tracePath: string, options: BuildObs
     items,
     experience,
   };
-  report.diagnostics = buildObserveDiagnosticsFromReport(report);
   return report;
 }
 
@@ -679,9 +682,9 @@ export function loadObservationInboxReports(dir: string = DEFAULT_OBSERVATIONS_D
         // 不在 load 路径重建 diagnostics:`buildObserveDiagnosticsFromReport` 现在虽然会从
         // report.items[].cwd / experience 推断每个 skill 的 cwd(没把握就跳过该 skill 的
         // chain advisory,不再 fallback process.cwd()),但 load 时全跳过的话整个 trace
-        // 都没有 Diagnosis。新版 build 路径(buildObservationInboxReport)总会写入
-        // diagnostics 字段;老 inbox JSON 缺字段时让 Studio 显示「该 trace 暂无 Diagnosis,
-        // 请重新 observe 一次」,比惰性重建安全。
+        // 都没有 Diagnosis。新版 build 路径由调用方(CLI observe ingest)在 build 之后
+        // 显式驱动 diagnostics 装配后写入 JSON;老 inbox JSON 缺字段时让 Studio 显示
+        // 「该 trace 暂无 Diagnosis,请重新 observe 一次」,比惰性重建安全。
         return report;
       } catch {
         return null;

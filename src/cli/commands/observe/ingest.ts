@@ -61,7 +61,9 @@ export default class ObserveIngest extends BaseCommand {
       const { buildObservationInboxReport, saveObservationInboxReport, DEFAULT_OBSERVATIONS_DIR } = await import('../../../observability/inbox.js');
       const outDir = resolve(outDirRaw ?? DEFAULT_OBSERVATIONS_DIR);
       const { loadObservationReviewState } = await import('../../../observability/review-state.js');
+      const { buildObserveDiagnosticsFromReport } = await import('../../../diagnosis/observe-producer.js');
       const report = buildObservationInboxReport(tracePath, { reviewState: loadObservationReviewState(outDir) });
+      report.diagnostics = buildObserveDiagnosticsFromReport(report);
       const path = saveObservationInboxReport(report, outDir);
       console.log(JSON.stringify(report, null, 2));
       process.stderr.write(lang === 'zh'
