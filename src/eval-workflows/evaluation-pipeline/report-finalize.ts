@@ -1,0 +1,85 @@
+/**
+ * Report 最终化 —— task execution 结果 → 完整 Report。
+ *
+ * `executeTasks` 出来的是裸结果(results / totalCostUSD),`aggregateReport` 把
+ * 它们包成 Report 骨架。`finalizeEvaluationReport` 在这之上挂三层后置分析:
+ *   - `report.analysis` 主体: diagnostics + sampleQuality(传入 samples 用于
+ *     capability / difficulty / construct / provenance 覆盖率聚合)
+ *   - 可选 coverage: 仅当结果里含 tool trace 数据时计算
+ *   - 可选 gapReports: 文本信号(markers / hedging)始终适用,与 tool trace 无关;
+ *     带上 testSetHash 水印(spec §7.1 强制要求)
+ *
+ * 最后一步 `applyBlindMode` 是 blind 模式下的字段脱敏,放在所有 analysis 之后,
+ * 避免脱敏后字段被分析逻辑读取。
+ *
+ * 仅被 orchestrator 调用;独立拆出主要为让 orchestrator 的 try-finally 主干
+ * 看起来纯粹是「执行→收尾」时序。
+ */
+
+import { analyzeResults } from '../../analysis/report-diagnostics.js';
+import { computeReportCoverage } from '../../analysis/coverage-analyzer.js';
+import { computeReportGapRates } from '../../analysis/gap-analyzer.js';
+import { applyBlindMode } from '../../eval-core/evaluation-reporting.js';
+import type { Artifact, Report, Sample, VariantResult } from '../../types/index.js';
+import { computeTestSetHash } from './test-set-hash.js';
+
+type EvaluationResults = Record<string, Record<string, VariantResult>>;
+
+export function finalizeEvaluationReport({
+  report,
+  results,
+  artifacts,
+  variantNames,
+  blind,
+  samplesPath,
+  samplesSourceFiles,
+  samples,
+}: {
+  report: Report;
+  results: EvaluationResults;
+  artifacts: Artifact[];
+  variantNames: string[];
+  blind: boolean;
+  samplesPath: string;
+  /** 目录模式下,bundle 内所有源文件;单文件模式下 [samplesPath]。computeTestSetHash 用。 */
+  samplesSourceFiles?: string[];
+  samples: Sample[];
+}): Report {
+  // pass samples so analyzeResults can populate analysis.sampleQuality
+  // (capability/difficulty/construct/provenance coverage aggregate). Without
+  // samples, analysis.sampleQuality is omitted (老报告读取仍可工作).
+  report.analysis = analyzeResults(report, { samples });
+
+  const hasToolData = Object.values(results).some((sampleResults) => (
+    Object.values(sampleResults).some((variantResult) => variantResult.toolCalls && variantResult.toolCalls.length > 0)
+  ));
+  if (hasToolData) {
+    const artifactContents = Object.fromEntries(artifacts.map((artifact) => [artifact.name, artifact.content]));
+    const artifactCwds = Object.fromEntries(artifacts.map((artifact) => [artifact.name, artifact.cwd || null]));
+    const coverage = computeReportCoverage(report, artifactContents, artifactCwds);
+    if (Object.keys(coverage).length > 0) {
+      report.analysis!.coverage = coverage;
+    }
+  }
+
+  // Gap rate computation runs on every successful report regardless of whether
+  // tool trace data is present — text-based signals (markers, hedging) still
+  // apply. The samples-file SHA is the mandatory watermark required by spec §7.1.
+  const gapReports = computeReportGapRates(report.results, variantNames);
+  if (Object.keys(gapReports).length > 0) {
+    const testSetHash = computeTestSetHash(samplesPath, samplesSourceFiles);
+    for (const variant of variantNames) {
+      const gr = gapReports[variant];
+      if (!gr) continue;
+      gr.testSetPath = samplesPath;
+      gr.testSetHash = testSetHash;
+    }
+    report.analysis!.gapReports = gapReports;
+  }
+
+  if (blind) {
+    applyBlindMode(report, variantNames, `${variantNames.join(',')}:${samplesPath}`);
+  }
+
+  return report;
+}
