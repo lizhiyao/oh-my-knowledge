@@ -57,7 +57,18 @@ import {
   updateSkillDerivedStandardStatus,
 } from '../../src/observability/soft-standards/index.js';
 import type { ObservationSkillChain } from '../../src/observability/skill-chain.js';
+import { resolveObservationReviewSession, type ResolvedObservationReviewSession } from '../../src/observability/resolved-review.js';
+import type { ObservationExperienceReport } from '../../src/observability/experience.js';
+import type { ObservationReviewState } from '../../src/observability/review-state.js';
 import { renderFeedbackAttributionLabel, renderObservationInboxPage } from '../../src/renderer/observation-inbox-renderer.js';
+
+function resolvedReviewSessionsForFixture(experience: ObservationExperienceReport, reviewState: ObservationReviewState): Record<string, ResolvedObservationReviewSession> {
+  return Object.fromEntries(experience.sessions.map((session) => [session.id, resolveObservationReviewSession({
+    session,
+    enhancedReview: undefined,
+    reviewState,
+  })]));
+}
 
 function businessActionTag(name: string, text: string): string {
   const tag = ['ai', 'ma-cmd'].join('');
@@ -403,6 +414,7 @@ describe('observe inbox', () => {
       reportCount: 1,
       latestSeenLabel: '2026-05-10 00:00:02',
       reviewState,
+      resolvedReviewSessions: resolvedReviewSessionsForFixture(annotatedReport.experience!, reviewState),
     });
     assert.match(rendered, /<span class="inbox-answer-check is-(?:detected|absent)"[^>]*>[\s\S]*(?:没给可点开的产物|给了可点开的产物|会话进行中)/);
   });
@@ -1234,6 +1246,12 @@ describe('observe inbox', () => {
         updatedAt: '2026-05-01T00:00:00.000Z',
         entries: {},
       },
+      resolvedReviewSessions: resolvedReviewSessionsForFixture(experience, {
+        kind: 'observe-review-state',
+        schemaVersion: 1,
+        updatedAt: '2026-05-01T00:00:00.000Z',
+        entries: {},
+      }),
     });
     assert.equal((rendered.match(/data-inbox-card="audit"/g) ?? []).length, 1);
     assert.equal((rendered.match(/data-session-tab="/g) ?? []).length, 2);
@@ -1993,6 +2011,12 @@ describe('observe inbox', () => {
         updatedAt: '2026-05-01T00:00:00.000Z',
         entries: {},
       },
+      resolvedReviewSessions: resolvedReviewSessionsForFixture(experience, {
+        kind: 'observe-review-state',
+        schemaVersion: 1,
+        updatedAt: '2026-05-01T00:00:00.000Z',
+        entries: {},
+      }),
     });
     assert.match(rendered, /线上观测报告/);
     assert.match(rendered, /class="inbox-shell"/);
