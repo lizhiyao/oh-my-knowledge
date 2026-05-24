@@ -36,11 +36,6 @@ const RULES: ForbiddenRule[] = [
     from: 'types/',
     to: 'eval-core/',
     reason: 'types/ 是底层契约层,不应反向 import 业务实现 (eval-core)。DTO 应该下沉到 types/。',
-    whitelist: [
-      // 已在 PR #157 中通过抽 types/dependencies.ts 修复。该 PR 合入后此 whitelist
-      // 自动被「dead whitelist」检查标红,提示删除。
-      'types/doctor.ts::eval-core/dependency-checker.ts',
-    ],
   },
   {
     from: 'types/',
@@ -91,23 +86,16 @@ const RULES: ForbiddenRule[] = [
     from: 'renderer/',
     to: 'server/',
     reason: 'renderer 是视图层,不应 import server。server 内部类型应抽到 types/ 给两边共享。',
-    whitelist: [
-      // P2 finding 6:skill-index / skill-insights 的稳定类型待抽到 src/types/skill-index.ts。
-      // 抽出来后这 4 条 whitelist 一起删,test 仍然守这条规则。
-      'renderer/skill-detail-renderer.ts::server/skill-index.ts',
-      'renderer/skill-detail-renderer.ts::server/skill-insights.ts',
-      'renderer/skill-list-renderer.ts::server/skill-index.ts',
-      'renderer/skill-list-renderer.ts::server/skill-insights.ts',
-    ],
   },
   {
     from: 'renderer/',
     to: 'observability/',
     reason: 'renderer 只能通过 facade 访问 observability,不应直接 import observability 内部实现。facade 见 observability/inbox-view-model.ts、observability/feedback-projection.ts、observability/skill-health-analyzer.ts。',
     whitelist: [
-      // 三个允许的 facade(以及它们的 .ts 解析后路径)。
+      // 允许的 facade 访问点(以及它们的 .ts 解析后路径)。
       'renderer/observation-inbox-renderer.ts::observability/inbox-view-model.ts',
       'renderer/observation-inbox-renderer.ts::observability/feedback-projection.ts',
+      'renderer/observation-inbox/helpers.ts::observability/feedback-projection.ts',
       'renderer/skill-health-renderer.ts::observability/skill-health-analyzer.ts',
     ],
   },
