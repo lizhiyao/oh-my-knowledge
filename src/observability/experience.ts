@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import type { ObservationInboxItem, ObservationSourceKind } from './inbox.js';
 import {
   buildExperienceProblemPatterns,
@@ -12,8 +11,11 @@ import type { SkillSegment } from './trace-segmenter.js';
 import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-attribution.js';
 import { hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isAssistantProtocolReplyText, isRuntimeProtocolPromptText, isSyntheticUserMessageText, isToolResultFailureText, isUserInteractionMetricText } from './text-signals.js';
 import { durationMsBetween } from '../shared/time.js';
-import { parseSkillFrontmatter, validateSkillHardRules, validateSkillWorkflows } from '../shared/hard-rules.js';
-import { findSkillMdPath } from './skill-chain.js';
+import {
+  loadExpectedToolsForSkill,
+  loadFrontmatterSkillType,
+  loadSkillDeclarationCheck,
+} from './experience-frontmatter.js';
 import {
   findNegativeFeedbackMatches,
   findPositiveFeedbackMatches,
@@ -2024,7 +2026,7 @@ function sessionStorySkillSegments(
   const invocationById = new Map(invocations.map((invocation) => [invocation.id, invocation]));
   return skillLinks.map((link, index) => {
     const group = link.invocationIds.map((id) => invocationById.get(id)).filter((value): value is ExperienceInvocation => Boolean(value));
-    const declaredSkillType = frontmatterSkillType(link.skillName, session.cwd);
+    const declaredSkillType = loadFrontmatterSkillType(link.skillName, session.cwd);
     const traceInferredSkillType = traceInferredSkillTypeForLink(link);
     const skillType = declaredSkillType ?? traceInferredSkillType ?? 'unknown';
     const evidenceRefs = uniqueEvidenceRefs([
@@ -2079,7 +2081,7 @@ function episodeRoleForLink(
   session: ExperienceSessionSummary,
   resolvedSkillType?: ExperienceRuntimeSkillType,
 ): ExperienceEpisodeRole {
-  const skillType = resolvedSkillType ?? frontmatterSkillType(link.skillName, session.cwd) ?? traceInferredSkillTypeForLink(link) ?? 'unknown';
+  const skillType = resolvedSkillType ?? loadFrontmatterSkillType(link.skillName, session.cwd) ?? traceInferredSkillTypeForLink(link) ?? 'unknown';
   if (skillType === 'router') return 'router';
   if (skillType === 'delegation') return 'delegator';
   if (skillType === 'executor') return 'main_executor';
@@ -2090,29 +2092,6 @@ function episodeRoleForLink(
   return 'supporting';
 }
 
-function frontmatterSkillType(skillName: string, cwd?: string): ExperienceRuntimeSkillType | undefined {
-  const path = findSkillMdPath(skillName, cwd ?? '');
-  if (!path) return undefined;
-  try {
-    const parsed = parseSkillFrontmatter(readFileSync(path, 'utf8'));
-    if (!parsed.ok) return undefined;
-    const raw = parsed.data?.skillType ?? parsed.data?.type ?? parsed.data?.category;
-    return normalizeRuntimeSkillType(raw);
-  } catch {
-    return undefined;
-  }
-}
-
-function normalizeRuntimeSkillType(value: unknown): ExperienceRuntimeSkillType | undefined {
-  if (typeof value !== 'string') return undefined;
-  const normalized = value.trim().toLowerCase().replace(/[_\s-]+/g, '_');
-  if (normalized === 'router' || normalized === 'route') return 'router';
-  if (normalized === 'delegation' || normalized === 'delegate' || normalized === 'delegator') return 'delegation';
-  if (normalized === 'executor' || normalized === 'execute') return 'executor';
-  if (normalized === 'advisory' || normalized === 'advisor' || normalized === 'consulting') return 'advisory';
-  if (normalized === 'workflow_owner' || normalized === 'workflowowner' || normalized === 'workflow') return 'workflow_owner';
-  return undefined;
-}
 
 function sessionStoryOrchestrationEdges(
   episodeId: string,
@@ -3163,7 +3142,7 @@ function goalSatisfactionChecklistItems(session: ExperienceSessionSummary, episo
 
 function declaredBehaviorChecklistItems(session: ExperienceSessionSummary, episodes?: ExperienceEpisode[]): ExperienceChecklistItem[] {
   const expectedToolCheck = expectedToolCheckForSession(session);
-  const declarations = skillDeclarationCheckForSession(session);
+  const declarations = loadSkillDeclarationCheck(session.skillName, session.cwd);
   const hasSkillRead = session.evidenceChain.skillContextCount > 0;
   const attributionLabel = attributionSourcesToLabel(session.attributionSources ?? []);
   const items: ExperienceChecklistItem[] = [
@@ -3654,17 +3633,6 @@ interface ExpectedToolCheck {
   declared: boolean;
 }
 
-interface SkillDeclarationCheck {
-  hardRules: {
-    declared: boolean;
-    count: number;
-  };
-  workflows: {
-    declared: boolean;
-    count: number;
-  };
-}
-
 function executionStepStatus(session: ExperienceSessionSummary, expectedToolCheck: ExpectedToolCheck): ExperienceReviewerReportStepStatus {
   if (session.indicators.toolFailureCount > 0 || expectedToolCheck.declared && expectedToolCheck.matchedTools.length === 0) return 'attention';
   if (session.indicators.toolCallCount > 0) return 'ok';
@@ -3849,45 +3817,6 @@ function expectedToolCheckForSession(session: ExperienceSessionSummary): Expecte
   };
 }
 
-function skillDeclarationCheckForSession(session: ExperienceSessionSummary): SkillDeclarationCheck {
-  const path = findSkillMdPathForExperience(session.skillName, session.cwd ?? process.cwd());
-  if (!path) {
-    return {
-      hardRules: { declared: false, count: 0 },
-      workflows: { declared: false, count: 0 },
-    };
-  }
-  try {
-    const content = readFileSync(path, 'utf-8');
-    const hardRules = validateSkillHardRules(content);
-    const workflows = validateSkillWorkflows(content);
-    return {
-      hardRules: { declared: hardRules.declared, count: hardRules.rules.length },
-      workflows: { declared: workflows.declared, count: workflows.workflows.reduce((sum, workflow) => sum + workflow.nodes.length, 0) },
-    };
-  } catch {
-    return {
-      hardRules: { declared: false, count: 0 },
-      workflows: { declared: false, count: 0 },
-    };
-  }
-}
-
-function loadExpectedToolsForSkill(skillName: string, cwd?: string): string[] {
-  const path = findSkillMdPathForExperience(skillName, cwd ?? process.cwd());
-  if (!path) return [];
-  try {
-    const parsed = parseSkillFrontmatter(readFileSync(path, 'utf-8'));
-    const data = parsed.ok ? parsed.data : undefined;
-    const value = data?.expected_tools ?? data?.expectedTools;
-    return Array.isArray(value)
-      ? unique(value.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).map((item) => item.trim()))
-      : [];
-  } catch {
-    return [];
-  }
-}
-
 function eventMatchesExpectedTool(event: ExperienceTimelineEvent, expectedTool: string): boolean {
   if (event.kind !== 'tool_use') return false;
   const text = `${event.toolName ?? ''}\n${event.label ?? ''}\n${event.snippet ?? ''}\n${event.fullText ?? ''}`.toLowerCase();
@@ -3901,10 +3830,6 @@ function eventMatchesExpectedTool(event: ExperienceTimelineEvent, expectedTool: 
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function findSkillMdPathForExperience(skillName: string, cwd: string): string | undefined {
-  return findSkillMdPath(skillName, cwd);
 }
 
 function reviewerFindingsForSession(session: ExperienceSessionSummary, reviewState?: ObservationReviewState): ExperienceReviewerReportFinding[] {
