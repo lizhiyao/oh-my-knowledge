@@ -3,7 +3,6 @@ import type { Lang } from '../types/index.js';
 import {
   severityReasonFor,
   observationMetricAnnotationTargetId,
-  resolveObservationReviewSession,
   getSkillChainAdvisory,
   resolveAdvisoryCommand,
   ASSISTANT_DELIVERABLE_ARTIFACT_RE,
@@ -90,6 +89,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     reportCount,
     latestSeenLabel,
 	    reviewState,
+    resolvedReviewSessions,
 	  } = model;
 	  const experience = experienceReports.find((report) => report.skills.length > 0 || report.sessions.length > 0 || report.invocations.length > 0);
 	  const pageTitle = activeSkill ? `Observe Inbox · ${activeSkill}` : 'Observe Inbox';
@@ -3582,17 +3582,12 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     </tr>`;
   }).join('');
   void experienceSkillRows;
-  const inboxLlmReviewForPriority = (skillName: string): SkillLlmEnhancedReviewSections | undefined =>
-    skillDerivedStandards[skillName]?.enhancedReview;
+  // resolvedReviewSessions 在 ViewModel build 阶段已经按 session.id 预投影。
+  // 这里只做查表,避免 render path 上对同一 session 反复 resolve。
   const inboxResolvedSession = (skill: ExperienceSessionSummary): ResolvedObservationReviewSession =>
-    resolveObservationReviewSession({
-      session: skill,
-      enhancedReview: inboxLlmReviewForPriority(skill.skillName),
-      reviewState,
-    });
-  const inboxResolvedPriority = (skill: ExperienceSessionSummary): ExperienceReviewPriority => {
-    return inboxResolvedSession(skill).priority;
-  };
+    resolvedReviewSessions[skill.id];
+  const inboxResolvedPriority = (skill: ExperienceSessionSummary): ExperienceReviewPriority =>
+    resolvedReviewSessions[skill.id].priority;
   const sessionSkillOrder = new Map((experience?.skills ?? []).map((skill, index) => [skill.skillName, index]));
   const experienceSessionGroups = Array.from((experience?.sessions ?? []).reduce((map, session) => {
     const group = map.get(session.skillName) ?? [];

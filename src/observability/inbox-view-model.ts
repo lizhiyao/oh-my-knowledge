@@ -6,6 +6,10 @@ import {
 } from './inbox.js';
 import type { ObservationExperienceReport } from './experience.js';
 import { loadObservationReviewState, type ObservationReviewState } from './review-state.js';
+import {
+  resolveObservationReviewSession,
+  type ResolvedObservationReviewSession,
+} from './resolved-review.js';
 import { buildObservationSkillChains, type ObservationSkillChain } from './skill-chain.js';
 import {
   loadSkillDerivedStandards,
@@ -34,6 +38,10 @@ export interface ObservationInboxViewModel {
   reportCount: number;
   latestSeenLabel: string;
   reviewState: ObservationReviewState;
+  // 预投影:对 experience 里每个 session 提前算好 resolved review,renderer 多处用
+  // 同一份(card / list / aggregate),避免在 render path 上对同一 session 反复
+  // resolve。键 = session.id。
+  resolvedReviewSessions: Record<string, ResolvedObservationReviewSession>;
 }
 
 export interface ObservationInboxViewModelOptions {
@@ -100,6 +108,17 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
   const reportCount = reports.length;
   const latestSeenLabel = latestSeen ? latestSeen.slice(0, 19).replace('T', ' ') : '—';
   const reviewState = loadObservationReviewState(observationsDir);
+  const resolvedReviewSessions: Record<string, ResolvedObservationReviewSession> = {};
+  for (const experience of experienceReports) {
+    for (const session of experience.sessions) {
+      const enhancedReview = skillDerivedStandards[session.skillName]?.enhancedReview;
+      resolvedReviewSessions[session.id] = resolveObservationReviewSession({
+        session,
+        enhancedReview,
+        reviewState,
+      });
+    }
+  }
 
   return {
     activeSkill,
@@ -120,6 +139,7 @@ export function buildObservationInboxViewModel(observationsDir: string, options:
     reportCount,
     latestSeenLabel,
     reviewState,
+    resolvedReviewSessions,
   };
 }
 
