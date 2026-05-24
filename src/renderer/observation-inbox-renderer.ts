@@ -3,7 +3,7 @@ import type { Lang } from '../types/index.js';
 import { severityReasonFor } from '../observability/inbox.js';
 import type { ObservationInboxItem } from '../observability/inbox.js';
 import type { ObservationInboxViewModel } from '../observability/inbox-view-model.js';
-import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorrectionMatches, findUserGoalShiftMatches, hasUserCorrectionSignal, hasUserGoalShiftSignal } from '../observability/experience.js';
+import { findNegativeFeedbackMatches, findPositiveFeedbackMatches, findUserCorrectionMatches, findUserGoalShiftMatches, hasUserCorrectionSignal, hasUserGoalShiftSignal } from '../observability/feedback-projection.js';
 import type { ExperienceProblemBucket, ExperienceProblemPattern, ExperienceProblemSignal } from '../observability/problem-patterns.js';
 import { observationMetricAnnotationTargetId, type ObservationMetricKey } from '../observability/review-state.js';
 import { resolveObservationReviewSession, type ResolvedObservationReviewSession, type ResolvedOwnerSuggestion } from '../observability/resolved-review.js';
@@ -34,7 +34,7 @@ import type {
   ExperienceSessionStoryAnswer,
   ExperienceSessionSummary,
   ExperienceTimelineEvent,
-} from '../observability/experience.js';
+} from '../observability/feedback-projection.js';
 
 function feedbackAttributionRoleLabel(role?: string): string {
   if (role === 'primary_fault') return '主要归因';
