@@ -11,8 +11,8 @@
  * 普通 rule 不带 groupId,逐行渲染。
  */
 
-import { tCli, type CliLang } from '../cli/lib/i18n.js';
-import { CLI_DICT, type CliMessageKey } from './../cli/lib/i18n-dict.js';
+import { DOCTOR_MESSAGES, tDoctorMessage, type DoctorMessageKey } from './messages.js';
+import type { Lang } from '../types/shared.js';
 import type {
   DoctorReport,
   DoctorRuleResult,
@@ -32,20 +32,20 @@ const STATUS_RANK: Record<DoctorRuleStatus, number> = {
   fail: 0, warn: 1, pass: 2, skipped: 3,
 };
 
-function statusLabel(status: DoctorRuleStatus, lang: CliLang): string {
+function statusLabel(status: DoctorRuleStatus, lang: Lang): string {
   if (lang === 'zh') {
     return { pass: '通过', warn: '警告', fail: '失败', skipped: '跳过' }[status];
   }
   return { pass: 'PASS', warn: 'WARN', fail: 'FAIL', skipped: 'SKIP' }[status];
 }
 
-function renderRuleLabel(result: DoctorRuleResult, lang: CliLang): string {
+function renderRuleLabel(result: DoctorRuleResult, lang: Lang): string {
   const key = result.labelKey;
-  if (key in CLI_DICT) return tCli(key as CliMessageKey, lang);
+  if (key in DOCTOR_MESSAGES) return tDoctorMessage(key as DoctorMessageKey, lang);
   return result.ruleId;
 }
 
-function renderRuleLine(result: DoctorRuleResult, ruleLabel: string, lang: CliLang, indent: string = '  '): string {
+function renderRuleLine(result: DoctorRuleResult, ruleLabel: string, lang: Lang, indent: string = '  '): string {
   const sym = STATUS_SYMBOL[result.status];
   const sLabel = statusLabel(result.status, lang);
   let line = `${indent}${sym} [${sLabel}] ${ruleLabel} — ${result.message}`;
@@ -82,7 +82,7 @@ function segmentResults(results: DoctorRuleResult[]): ResultSegment[] {
   return segs;
 }
 
-function renderGroupHeader(groupId: string, results: DoctorRuleResult[], lang: CliLang): string {
+function renderGroupHeader(groupId: string, results: DoctorRuleResult[], lang: Lang): string {
   // group label 取首条 result 的 labelKey 翻译;但若有 _summary 子项,优先用它
   // 的 labelKey(eg. composer 主标题"健康度体检",而不是某维度名)。
   // 注意:第一条 result 通常是 7 个维度之一,labelKey 是维度名;summary 在末尾。
@@ -108,7 +108,7 @@ function sortGroupResults(results: DoctorRuleResult[]): DoctorRuleResult[] {
 
 export function renderDoctorReportText(
   report: DoctorReport,
-  lang: CliLang,
+  lang: Lang,
   write: (s: string) => void = (s) => process.stderr.write(s),
 ): void {
   const header = lang === 'zh'

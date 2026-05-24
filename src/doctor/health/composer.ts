@@ -14,7 +14,8 @@
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { tCli } from '../../cli/lib/i18n.js';
+import { tDoctorMessage } from '../messages.js';
+import type { Lang } from '../../types/shared.js';
 import { createExecutor } from '../../executors/index.js';
 import type { ExecutorFn } from '../../types/executor.js';
 import type {
@@ -55,14 +56,14 @@ function mapDimLevelToStatus(level: HealthDimensionLevel, missing?: boolean): Do
 // Per-dim outcome rendering
 // ---------------------------------------------------------------------------
 
-function dimMessage(dim: HealthDimensionSpec, r: HealthDimensionResult, lang: 'zh' | 'en'): string {
+function dimMessage(dim: HealthDimensionSpec, r: HealthDimensionResult, lang: Lang): string {
   if (r._missing) {
-    return tCli('cli.doctor.health.dim.missing', lang, { dim: dim.displayName });
+    return tDoctorMessage('cli.doctor.health.dim.missing', lang, { dim: dim.displayName });
   }
   const errs = r.findings.filter((f) => f.level === '错误').length;
   const warns = r.findings.filter((f) => f.level === '警告').length;
   const sugs = r.findings.filter((f) => f.level === '建议').length;
-  return tCli('cli.doctor.health.dim.message', lang, {
+  return tDoctorMessage('cli.doctor.health.dim.message', lang, {
     level: r.level, err: errs, warn: warns, sug: sugs,
   });
 }
@@ -147,7 +148,7 @@ async function composerCheckAll(
       severity: 'info',
       labelKey: 'cli.doctor.rule.skill_health_check',
       status: 'skipped',
-      message: tCli('cli.doctor.health.skipped', ctx.lang),
+      message: tDoctorMessage('cli.doctor.health.skipped', ctx.lang),
     }];
   }
 
@@ -158,7 +159,7 @@ async function composerCheckAll(
       severity: 'info',
       labelKey: 'cli.doctor.rule.skill_health_check',
       status: 'skipped',
-      message: tCli('cli.doctor.health.no_dimensions', ctx.lang),
+      message: tDoctorMessage('cli.doctor.health.no_dimensions', ctx.lang),
     }];
   }
 
@@ -170,7 +171,7 @@ async function composerCheckAll(
       severity: 'info',
       labelKey: 'cli.doctor.rule.skill_health_check',
       status: 'skipped',
-      message: tCli('cli.doctor.health.skipped', ctx.lang),
+      message: tDoctorMessage('cli.doctor.health.skipped', ctx.lang),
     }];
   }
 
@@ -257,13 +258,13 @@ async function composerCheckAll(
     severity: 'info',
     labelKey: 'cli.doctor.health.summary.label',
     status: 'pass', // summary 永远 pass(信息性,不影响 outcome)
-    message: tCli('cli.doctor.health.summary.message', ctx.lang, {
+    message: tDoctorMessage('cli.doctor.health.summary.message', ctx.lang, {
       overall,
       h: dimCount['健康'], sh: dimCount['亚健康'], bad: dimCount['不健康'], na: dimCount['不适用'],
       err: finding['错误'], warn: finding['警告'], sug: finding['建议'],
     }),
     hint: parseResult.topSuggestions.slice(0, 3).join(' | ')
-      || tCli('cli.doctor.health.summary.no_top', ctx.lang),
+      || tDoctorMessage('cli.doctor.health.summary.no_top', ctx.lang),
     detail: {
       overall,
       dimensionLevelCount: dimCount,
@@ -306,8 +307,8 @@ function errorSummaryOutcome(
     severity: 'fatal',
     labelKey: 'cli.doctor.health.summary.label',
     status: 'fail',
-    message: tCli(messageKey, ctx.lang, { error: errMsg.slice(0, 200) }),
-    hint: tCli(hintKey, ctx.lang),
+    message: tDoctorMessage(messageKey, ctx.lang, { error: errMsg.slice(0, 200) }),
+    hint: tDoctorMessage(hintKey, ctx.lang),
     detail: { phase, error: errMsg, ...extra },
   };
 }
