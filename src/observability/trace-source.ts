@@ -4,6 +4,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { extractMarkdownLogSkill } from './trace-attribution.js';
 import { isToolResultFailureText } from './text-signals.js';
+import type { TraceSourceMetadata } from '../types/index.js';
 
 // ---------- cc session JSONL raw schema (v0.18 subset) ----------
 
@@ -67,15 +68,7 @@ export interface CcUserRecord {
 
 export type CcRecord = CcAssistantRecord | CcUserRecord | { type: string; [k: string]: unknown };
 
-export interface TraceSourceMetadata {
-  channel?: string;
-  sender?: string;
-  senderId?: string;
-  provider?: string;
-  model?: string;
-  modelApi?: string;
-  businessActions?: string[];
-}
+export type { TraceSourceMetadata } from '../types/index.js';
 
 // ---------- Session-level structure ----------
 

@@ -24,7 +24,7 @@
 import { readFileSync } from 'node:fs';
 import { parseSkillFrontmatter, validateSkillHardRules, validateSkillWorkflows } from '../shared/hard-rules.js';
 import { findSkillMdPath } from './skill-chain.js';
-import type { ExperienceRuntimeSkillType } from './experience.js';
+import type { ExperienceRuntimeSkillType } from '../types/index.js';
 
 export interface SkillDeclarationCheck {
   hardRules: {
