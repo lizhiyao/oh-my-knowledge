@@ -40,7 +40,7 @@ export interface HealthDimensionSpec {
   /** 给人看的简短显示名(LLM prompt 里的章节标题用 + renderer 用)。
    *  可以是中文或多语言混用,稳定性不重要(因为 LLM 通过 id 派发,不看 displayName)。 */
   displayName: string;
-  /** i18n key,doctor result 的 labelKey 用。renderer 走 tCli 出最终标题。 */
+  /** i18n key,doctor result 的 labelKey 用。renderer 走 tDoctorMessage 出最终标题。 */
   labelKey: string;
   /** 该维度的严重度。`不健康` → fail 时,severity=fatal 才会让 doctor outcome 进 `failed`。
    *  内置 7 维度按重要性区分(eg. dependency/security 是 fatal, doc-clarity 是 warn)。 */

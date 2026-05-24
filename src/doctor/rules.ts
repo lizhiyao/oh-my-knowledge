@@ -21,7 +21,8 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
-import { tCli } from '../cli/lib/i18n.js';
+import { tDoctorMessage } from './messages.js';
+import type { Lang } from '../types/shared.js';
 import { preflightDependencies } from '../eval-core/dependency-checker.js';
 import { validateSkillHardRules, validateSkillWorkflows } from '../shared/hard-rules.js';
 import type { DependencyIssue } from '../eval-core/dependency-checker.js';
@@ -57,7 +58,7 @@ function checkFrontmatter(content: string): { ok: boolean; error?: string } {
   }
 }
 
-function summarizeDependencyIssues(missing: DependencyIssue[], lang: 'zh' | 'en'): string {
+function summarizeDependencyIssues(missing: DependencyIssue[], lang: Lang): string {
   const counts = { tool: 0, file: 0, env: 0, preflight: 0 };
   for (const m of missing) counts[m.category] += 1;
   const parts: string[] = [];
@@ -71,18 +72,18 @@ function summarizeDependencyIssues(missing: DependencyIssue[], lang: 'zh' | 'en'
   return parts.join(', ') || (lang === 'zh' ? '未知' : 'unknown');
 }
 
-function renderIssue(issue: DependencyIssue, lang: 'zh' | 'en'): string {
+function renderIssue(issue: DependencyIssue, lang: Lang): string {
   const params: Record<string, string | number> = { name: issue.name };
   if (issue.reasonDetail) params.detail = issue.reasonDetail;
   switch (issue.reasonCode) {
     case 'tool_not_found':
-      return tCli('cli.doctor.dependencies.issue.tool_not_found', lang, params);
+      return tDoctorMessage('cli.doctor.dependencies.issue.tool_not_found', lang, params);
     case 'file_not_found':
-      return tCli('cli.doctor.dependencies.issue.file_not_found', lang, params);
+      return tDoctorMessage('cli.doctor.dependencies.issue.file_not_found', lang, params);
     case 'env_not_set':
-      return tCli('cli.doctor.dependencies.issue.env_not_set', lang, params);
+      return tDoctorMessage('cli.doctor.dependencies.issue.env_not_set', lang, params);
     case 'preflight_failed':
-      return tCli('cli.doctor.dependencies.issue.preflight_failed', lang, params);
+      return tDoctorMessage('cli.doctor.dependencies.issue.preflight_failed', lang, params);
   }
 }
 
@@ -106,8 +107,8 @@ export const skillReadableRule: DoctorRule = {
     if (content === null || content === undefined) {
       return {
         status: 'fail',
-        message: tCli('cli.doctor.skill_readable.fail.missing', ctx.lang),
-        hint: tCli('cli.doctor.skill_readable.hint.missing', ctx.lang, { path: triedPath }),
+        message: tDoctorMessage('cli.doctor.skill_readable.fail.missing', ctx.lang),
+        hint: tDoctorMessage('cli.doctor.skill_readable.hint.missing', ctx.lang, { path: triedPath }),
         detail: { length: 0, triedPath },
       };
     }
@@ -115,22 +116,22 @@ export const skillReadableRule: DoctorRule = {
     if (trimmed.length === 0) {
       return {
         status: 'fail',
-        message: tCli('cli.doctor.skill_readable.fail.empty', ctx.lang),
-        hint: tCli('cli.doctor.skill_readable.hint.missing', ctx.lang, { path: triedPath }),
+        message: tDoctorMessage('cli.doctor.skill_readable.fail.empty', ctx.lang),
+        hint: tDoctorMessage('cli.doctor.skill_readable.hint.missing', ctx.lang, { path: triedPath }),
         detail: { length: 0, triedPath },
       };
     }
     if (trimmed.length < SKILL_MIN_LENGTH) {
       return {
         status: 'fail',
-        message: tCli('cli.doctor.skill_readable.fail.too_short', ctx.lang, { length: trimmed.length }),
-        hint: tCli('cli.doctor.skill_readable.hint.too_short', ctx.lang),
+        message: tDoctorMessage('cli.doctor.skill_readable.fail.too_short', ctx.lang, { length: trimmed.length }),
+        hint: tDoctorMessage('cli.doctor.skill_readable.hint.too_short', ctx.lang),
         detail: { length: trimmed.length, minimum: SKILL_MIN_LENGTH },
       };
     }
     return {
       status: 'pass',
-      message: tCli('cli.doctor.skill_readable.pass', ctx.lang, { length: trimmed.length }),
+      message: tDoctorMessage('cli.doctor.skill_readable.pass', ctx.lang, { length: trimmed.length }),
       detail: { length: trimmed.length },
     };
   },
@@ -147,8 +148,8 @@ export const skillMetadataRule: DoctorRule = {
       if (!existsSync(skillMdPath)) {
         return {
           status: 'fail',
-          message: tCli('cli.doctor.skill_metadata.fail.missing_skillmd', ctx.lang),
-          hint: tCli('cli.doctor.skill_metadata.hint.missing_skillmd', ctx.lang),
+          message: tDoctorMessage('cli.doctor.skill_metadata.fail.missing_skillmd', ctx.lang),
+          hint: tDoctorMessage('cli.doctor.skill_metadata.hint.missing_skillmd', ctx.lang),
           detail: { skillRoot: ctx.artifact.skillRoot, expectedPath: skillMdPath },
         };
       }
@@ -159,8 +160,8 @@ export const skillMetadataRule: DoctorRule = {
     if (!fmCheck.ok) {
       return {
         status: 'fail',
-        message: tCli('cli.doctor.skill_metadata.fail.frontmatter_invalid', ctx.lang, { error: fmCheck.error ?? '' }),
-        hint: tCli('cli.doctor.skill_metadata.hint.frontmatter', ctx.lang),
+        message: tDoctorMessage('cli.doctor.skill_metadata.fail.frontmatter_invalid', ctx.lang, { error: fmCheck.error ?? '' }),
+        hint: tDoctorMessage('cli.doctor.skill_metadata.hint.frontmatter', ctx.lang),
         detail: { error: fmCheck.error },
       };
     }
@@ -168,8 +169,8 @@ export const skillMetadataRule: DoctorRule = {
     if (!hardRulesCheck.ok) {
       return {
         status: 'fail',
-        message: tCli('cli.doctor.skill_metadata.fail.hardrules_invalid', ctx.lang, { error: hardRulesCheck.errors.join('; ') }),
-        hint: tCli('cli.doctor.skill_metadata.hint.hardrules', ctx.lang),
+        message: tDoctorMessage('cli.doctor.skill_metadata.fail.hardrules_invalid', ctx.lang, { error: hardRulesCheck.errors.join('; ') }),
+        hint: tDoctorMessage('cli.doctor.skill_metadata.hint.hardrules', ctx.lang),
         detail: {
           errors: hardRulesCheck.errors,
           declared: hardRulesCheck.declared,
@@ -180,8 +181,8 @@ export const skillMetadataRule: DoctorRule = {
     if (!workflowsCheck.ok) {
       return {
         status: 'fail',
-        message: tCli('cli.doctor.skill_metadata.fail.workflows_invalid', ctx.lang, { error: workflowsCheck.errors.join('; ') }),
-        hint: tCli('cli.doctor.skill_metadata.hint.workflows', ctx.lang),
+        message: tDoctorMessage('cli.doctor.skill_metadata.fail.workflows_invalid', ctx.lang, { error: workflowsCheck.errors.join('; ') }),
+        hint: tDoctorMessage('cli.doctor.skill_metadata.hint.workflows', ctx.lang),
         detail: {
           errors: workflowsCheck.errors,
           declared: workflowsCheck.declared,
@@ -190,7 +191,7 @@ export const skillMetadataRule: DoctorRule = {
     }
     return {
       status: 'pass',
-      message: tCli('cli.doctor.skill_metadata.pass', ctx.lang),
+      message: tDoctorMessage('cli.doctor.skill_metadata.pass', ctx.lang),
       detail: {
         hardRulesDeclared: hardRulesCheck.declared,
         hardRulesCount: hardRulesCheck.rules.length,
@@ -225,20 +226,20 @@ export const dependenciesPresentRule: DoctorRule = {
       for (const m of result.missing) hintParts.push(renderIssue(m, ctx.lang));
       const counts = { tool: 0, file: 0, env: 0, preflight: 0 };
       for (const m of result.missing) counts[m.category] += 1;
-      if (counts.tool > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.tool', ctx.lang));
-      if (counts.file > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.file', ctx.lang));
-      if (counts.env > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.env', ctx.lang));
-      if (counts.preflight > 0) hintParts.push(tCli('cli.doctor.dependencies.hint.preflight', ctx.lang));
+      if (counts.tool > 0) hintParts.push(tDoctorMessage('cli.doctor.dependencies.hint.tool', ctx.lang));
+      if (counts.file > 0) hintParts.push(tDoctorMessage('cli.doctor.dependencies.hint.file', ctx.lang));
+      if (counts.env > 0) hintParts.push(tDoctorMessage('cli.doctor.dependencies.hint.env', ctx.lang));
+      if (counts.preflight > 0) hintParts.push(tDoctorMessage('cli.doctor.dependencies.hint.preflight', ctx.lang));
       return {
         status: 'fail',
-        message: tCli('cli.doctor.dependencies.fail', ctx.lang, { summary }),
+        message: tDoctorMessage('cli.doctor.dependencies.fail', ctx.lang, { summary }),
         hint: hintParts.join('; '),
         detail: { missing: result.missing },
       };
     }
     return {
       status: 'pass',
-      message: tCli('cli.doctor.dependencies.pass', ctx.lang),
+      message: tDoctorMessage('cli.doctor.dependencies.pass', ctx.lang),
     };
   },
 };
@@ -251,14 +252,14 @@ export const samplesContractAlignedRule: DoctorRule = {
     if (!ctx.samples) {
       return {
         status: 'skipped',
-        message: tCli('cli.doctor.samples_contract.skipped', ctx.lang),
+        message: tDoctorMessage('cli.doctor.samples_contract.skipped', ctx.lang),
       };
     }
     if (ctx.samples.length === 0) {
       return {
         status: 'warn',
-        message: tCli('cli.doctor.samples_contract.warn.empty', ctx.lang),
-        hint: tCli('cli.doctor.samples_contract.hint', ctx.lang),
+        message: tDoctorMessage('cli.doctor.samples_contract.warn.empty', ctx.lang),
+        hint: tDoctorMessage('cli.doctor.samples_contract.hint', ctx.lang),
         detail: { count: 0 },
       };
     }
@@ -266,14 +267,14 @@ export const samplesContractAlignedRule: DoctorRule = {
     if (missing.length > 0) {
       return {
         status: 'warn',
-        message: tCli('cli.doctor.samples_contract.warn.missing_prompt', ctx.lang, { count: missing.length }),
-        hint: tCli('cli.doctor.samples_contract.hint', ctx.lang),
+        message: tDoctorMessage('cli.doctor.samples_contract.warn.missing_prompt', ctx.lang, { count: missing.length }),
+        hint: tDoctorMessage('cli.doctor.samples_contract.hint', ctx.lang),
         detail: { missingCount: missing.length, totalCount: ctx.samples.length },
       };
     }
     return {
       status: 'pass',
-      message: tCli('cli.doctor.samples_contract.pass', ctx.lang, { count: ctx.samples.length }),
+      message: tDoctorMessage('cli.doctor.samples_contract.pass', ctx.lang, { count: ctx.samples.length }),
       detail: { count: ctx.samples.length },
     };
   },
