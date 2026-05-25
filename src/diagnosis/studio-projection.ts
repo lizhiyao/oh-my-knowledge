@@ -1,13 +1,6 @@
-import { isActiveDiagnosisLifecycle, type Diagnosis, type DiagnosisBundle, type DiagnosisSeverity, type DiagnosisSourceCoverage } from './types.js';
+import { isActiveDiagnosisLifecycle, type Diagnosis, type DiagnosisBundle, type DiagnosisSeverity, type StudioDiagnosisSummary } from './types.js';
 
-export interface StudioDiagnosisSummary {
-  sourceCoverage: DiagnosisSourceCoverage;
-  totalCount: number;
-  partial: boolean;
-  bySeverity: Record<DiagnosisSeverity, number>;
-  bySkill: Record<string, number>;
-  byAudience: Record<string, number>;
-}
+export type { StudioDiagnosisSummary };
 
 export function buildStudioDiagnosisSummary(bundle?: DiagnosisBundle): StudioDiagnosisSummary {
   const sourceCoverage = bundle?.sourceCoverage ?? { observe: false, doctor: false, eval: false };

@@ -6,3 +6,6 @@ export * from './report.js';
 export * from './storage.js';
 export * from './doctor.js';
 export * from './diagnosis.js';
+export * from './dependencies.js';
+export * from './skill-index.js';
+export * from './observability.js';

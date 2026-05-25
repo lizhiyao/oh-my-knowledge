@@ -12,10 +12,17 @@
  *   隐藏 modal:每条 insight 一个 + 3 个阶段全量明细各一个
  */
 import { layout, e, DEFAULT_LANG } from './layout.js';
-import type { Lang, EvaluationReport } from '../types/index.js';
-import type { SkillIndexEntry, SkillDoctorSnapshot, SkillEvalSnapshot, SkillObserveSnapshot } from '../server/skill-index.js';
-import type { Insight, InsightIllustration } from '../server/skill-insights.js';
-import type { DoctorRuleResult } from '../types/doctor.js';
+import type {
+  Lang,
+  EvaluationReport,
+  DoctorRuleResult,
+  SkillIndexEntry,
+  SkillDoctorSnapshot,
+  SkillEvalSnapshot,
+  SkillObserveSnapshot,
+  Insight,
+  InsightIllustration,
+} from '../types/index.js';
 
 const BAND_DOT: Record<'green' | 'yellow' | 'red' | 'gray', string> = {
   green: '🟢', yellow: '🟡', red: '🔴', gray: '⚪',

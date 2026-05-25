@@ -17,14 +17,35 @@
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, isAbsolute, basename, dirname } from 'node:path';
-import type { ReportDocument, EvaluationReport, AssertionDetail } from '../types/index.js';
+import type {
+  ReportDocument,
+  EvaluationReport,
+  AssertionDetail,
+  DoctorReport,
+  Diagnosis,
+  SkillDoctorSnapshot,
+  SkillEvalSnapshot,
+  SkillObserveSnapshot,
+  SkillIndexEntry,
+  SkillIndexSummary,
+  SkillIndex,
+  Insight,
+} from '../types/index.js';
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
-import type { DoctorReport, DoctorRuleResult, DoctorSkillStatus } from '../types/doctor.js';
 import { computeVerdict } from '../eval-core/verdict.js';
-import { detectInsights, type Insight } from './skill-insights.js';
+import { detectInsights } from './skill-insights.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../observability/inbox.js';
-import { buildStudioDiagnosisSummary, mergeDiagnosisBundles, type StudioDiagnosisSummary } from '../diagnosis/studio-projection.js';
-import type { Diagnosis } from '../diagnosis/types.js';
+import { buildStudioDiagnosisSummary, mergeDiagnosisBundles } from '../diagnosis/studio-projection.js';
+
+// Re-export DTO 类型,保持既有 import 路径 backward-compat。新代码请直接从 ../types/index.js 导入。
+export type {
+  SkillDoctorSnapshot,
+  SkillEvalSnapshot,
+  SkillObserveSnapshot,
+  SkillIndexEntry,
+  SkillIndexSummary,
+  SkillIndex,
+};
 
 // ── 模块级缓存:Studio 每次请求都跑 buildSkillIndex,扫盘成本随 skill 数线性,
 // 数据量大后列表 / 详情页响应变慢(PR #95 review P2-4 — cache 引入本身那一条)。
@@ -122,76 +143,6 @@ function buildIndexFingerprint(reports: ReportDocument[], analysesDir: string, d
 /** 测试 / 调试用:强制清掉 in-process skill-index 缓存。 */
 export function _resetSkillIndexCache(): void {
   _indexCache = null;
-}
-
-export interface SkillDoctorSnapshot {
-  reportId: string;
-  timestamp: string;
-  status: DoctorSkillStatus;
-  passCount: number;
-  warnCount: number;
-  failCount: number;
-  results: DoctorRuleResult[];
-}
-
-export interface SkillEvalSnapshot {
-  reportId: string;
-  timestamp: string;
-  variantName: string;
-  verdictLevel: string;
-  verdictHeadline: string;
-  compositeScore: number | null;
-  passCount: number;
-  failCount: number;
-  tripwireCount: number;
-  totalSamples: number;
-}
-
-export interface SkillObserveSnapshot {
-  analysisId: string;
-  generatedAt: string;
-  healthBand: 'green' | 'yellow' | 'red';
-  failureRate: number;
-  segmentCount: number;
-  gapRate: number;
-}
-
-export interface SkillIndexEntry {
-  skillName: string;
-  /** 当前(最新)snapshot — 等价于对应 history 的最后一项,空时为 null。renderer
-   *  老路径直接读这个,不必动 history。 */
-  doctor: SkillDoctorSnapshot | null;
-  eval: SkillEvalSnapshot | null;
-  observe: SkillObserveSnapshot | null;
-  /** 历史 snapshot,chronological 升序(最早 → 最近)。renderer 用它画 sparkline 趋势。 */
-  doctorHistory: SkillDoctorSnapshot[];
-  evalHistory: SkillEvalSnapshot[];
-  observeHistory: SkillObserveSnapshot[];
-  /** 综合健康灯。doctor / eval / observe 任一红 → red;任一黄 → yellow;
-   *  全绿 → green;皆未跑 → gray。 */
-  band: 'green' | 'yellow' | 'red' | 'gray';
-}
-
-export interface SkillIndexSummary {
-  totalSkills: number;
-  withEval: number;
-  withObserve: number;
-  withDoctor: number;
-  red: number;
-  yellow: number;
-  green: number;
-  gray: number;
-}
-
-export interface SkillIndex {
-  entries: SkillIndexEntry[];
-  summary: SkillIndexSummary;
-  /** detectInsights 结果按 skillName 索引。在 buildSkillIndex 时同步算好,跟 SkillIndex
-   *  本身共享同一 fingerprint 缓存(reports 数组 + dir mtime 任一变就 invalidate)。
-   *  list 页 N×detectInsights 重算的 CPU 开销由此消除。 */
-  insightsBySkill: Map<string, Insight[]>;
-  diagnosticsBySkill: Map<string, Diagnosis[]>;
-  diagnosisSummary: StudioDiagnosisSummary;
 }
 
 function isEvolveRoundVariant(report: EvaluationReport, variant: string): boolean {

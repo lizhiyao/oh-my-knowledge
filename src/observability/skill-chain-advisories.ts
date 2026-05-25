@@ -6,21 +6,9 @@
  * 这样将来 doctor 若也要展示同样的提示，code 可复用。
  */
 
-export type SkillChainAdvisoryCode =
-  | 'hardrules_not_declared'
-  | 'workflows_not_declared'
-  | 'skill_md_not_found';
+import type { SkillChainAdvisory, SkillChainAdvisoryCode } from '../types/index.js';
 
-export interface SkillChainAdvisory {
-  code: SkillChainAdvisoryCode;
-  message: string;
-  /** 可选：例子 yaml（hardrules / workflows 用） */
-  exampleYaml?: string;
-  /** 可选：建议命令模板，`${skillName}` 会被替换 */
-  commandTemplate?: string;
-  /** advisory 在 L1 辅助推断里展示的简短 caution 标签（不超过 18 字） */
-  shortLabel: string;
-}
+export type { SkillChainAdvisory, SkillChainAdvisoryCode };
 
 const ADVISORIES: Record<SkillChainAdvisoryCode, SkillChainAdvisory> = {
   hardrules_not_declared: {

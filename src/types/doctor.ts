@@ -1,5 +1,5 @@
 import type { Artifact, Sample } from './eval.js';
-import type { DependencyRequirements } from '../eval-core/dependency-checker.js';
+import type { DependencyRequirements } from './dependencies.js';
 
 export type DoctorSeverity = 'fatal' | 'warn' | 'info';
 export type DoctorRuleStatus = 'pass' | 'warn' | 'fail' | 'skipped';

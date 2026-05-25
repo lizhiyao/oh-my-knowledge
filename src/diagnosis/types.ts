@@ -11,6 +11,7 @@ export type {
   DiagnosisSource,
   DiagnosisSourceCoverage,
   DiagnosisType,
+  StudioDiagnosisSummary,
 } from '../types/diagnosis.js';
 
 import type { DiagnosisLifecycle } from '../types/diagnosis.js';

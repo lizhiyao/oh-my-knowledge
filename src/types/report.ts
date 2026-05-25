@@ -387,7 +387,10 @@ export interface BatchEvaluationReport {
 
 export type ReportDocument = EvaluationReport | BatchEvaluationReport;
 
-export interface Insight {
+/** 报告级 analysis insight(report-diagnostics 产出,跟 SkillIndex 的 audience-aware
+ *  `Insight` 不同 — 这条只有 type / severity / details 三字段,挂在 AnalysisResult.insights 下,
+ *  用于 evaluation 报告的「分析」面板,跟 Studio skill 健康洞察是两套语义)。 */
+export interface AnalysisInsight {
   type: string;
   severity: 'error' | 'warning' | 'info';
   details: unknown;
@@ -414,7 +417,7 @@ export interface KnowledgeCoverage {
 export interface AnalysisResult {
   /** @deprecated Legacy display text. Renderers generate localized summaries from structured report data. */
   summary?: string;
-  insights: Insight[];
+  insights: AnalysisInsight[];
   /** @deprecated Legacy display text. Renderers generate localized suggestions from structured insights. */
   suggestions?: string[];
   coverage?: Record<string, KnowledgeCoverage>;

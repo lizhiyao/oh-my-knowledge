@@ -1,12 +1,81 @@
 import { createHash } from 'node:crypto';
-import type { ObservationInboxItem, ObservationSourceKind } from './inbox.js';
+import type {
+  ExperienceAssistiveInference,
+  ExperienceAssistiveInferenceCautionCode,
+  ExperienceAssistiveInferenceCode,
+  ExperienceAssistiveInferenceConfidence,
+  ExperienceChecklistContribution,
+  ExperienceChecklistItem,
+  ExperienceChecklistItemStatus,
+  ExperienceEpisode,
+  ExperienceEpisodeArtifact,
+  ExperienceEpisodeArtifactKind,
+  ExperienceEpisodeBoundaryReason,
+  ExperienceEpisodeOutcome,
+  ExperienceEpisodeRole,
+  ExperienceEvidenceChain,
+  ExperienceEvidenceKind,
+  ExperienceEvidenceRef,
+  ExperienceFeedbackAttribution,
+  ExperienceFeedbackAttributionReason,
+  ExperienceFeedbackAttributionRole,
+  ExperienceFeedbackSignal,
+  ExperienceFeedbackSignalType,
+  ExperienceGoalEvidenceRef,
+  ExperienceGoalSlice,
+  ExperienceGoalSliceReasonCode,
+  ExperienceInvocation,
+  ExperienceMessageRange,
+  ExperienceOrchestrationEdge,
+  ExperienceOrchestrationEdgeKind,
+  ExperienceOrchestrationEdgeStatus,
+  ExperienceOutcomeClosure,
+  ExperienceParentReason,
+  ExperienceReviewBasisCode,
+  ExperienceReviewIndicators,
+  ExperienceReviewPriority,
+  ExperienceReviewerReport,
+  ExperienceReviewerReportFinding,
+  ExperienceReviewerReportFindingLevel,
+  ExperienceReviewerReportFindingSource,
+  ExperienceReviewerReportScope,
+  ExperienceReviewerReportStep,
+  ExperienceReviewerReportStepStatus,
+  ExperienceRuleFinding,
+  ExperienceRuleFindingCode,
+  ExperienceRuleFindingLevel,
+  ExperienceRuntimeSkillType,
+  ExperienceRuntimeSkillTypeSource,
+  ExperienceSessionStory,
+  ExperienceSessionStoryAnswer,
+  ExperienceSessionStoryAnswerKey,
+  ExperienceSessionStoryGoalSlice,
+  ExperienceSessionStoryGraphEdge,
+  ExperienceSessionStoryGraphNode,
+  ExperienceSessionStoryNode,
+  ExperienceSessionStoryNodeKind,
+  ExperienceSessionStorySkillLink,
+  ExperienceSessionStorySkillRole,
+  ExperienceSessionStorySubagentDispatch,
+  ExperienceSessionSummary,
+  ExperienceSkillSegment,
+  ExperienceSkillSummary,
+  ExperienceTimelineBranch,
+  ExperienceTimelineEvent,
+  ExperienceTimelineTree,
+  ObservationExperienceReport,
+  ObservationInboxItem,
+  ObservationMetricKey,
+  ObservationReviewState,
+  ObservationSourceKind,
+  TraceSourceMetadata,
+} from '../types/index.js';
 import {
   buildExperienceProblemPatterns,
   mergeExperienceProblemPatterns,
-  type ExperienceProblemPattern,
 } from './problem-patterns.js';
-import { observationMetricAnnotationVerdict, observationReviewStateKey, type ObservationMetricKey, type ObservationReviewState } from './review-state.js';
-import type { CcAssistantRecord, CcRecord, CcSession, CcUserRecord, TraceSourceMetadata } from './trace-source.js';
+import { observationMetricAnnotationVerdict, observationReviewStateKey } from './review-state.js';
+import type { CcAssistantRecord, CcRecord, CcSession, CcUserRecord } from './trace-source.js';
 import type { SkillSegment } from './trace-segmenter.js';
 import { extractCommandEnvelopeText, stripCommandEnvelopeText } from './trace-attribution.js';
 import { hasAssistantDeliverableArtifactText, hasAssistantDeliverySignalText, hasUserHardRuleText, isAssistantProgressUpdateText, isAssistantProtocolReplyText, isRuntimeProtocolPromptText, isSyntheticUserMessageText, isToolResultFailureText, isUserInteractionMetricText } from './text-signals.js';
@@ -39,224 +108,72 @@ export {
 } from './feedback-matchers.js';
 export type { TextMatchRange } from './feedback-matchers.js';
 
-export type ExperienceReviewPriority = 'review_first' | 'sample_review' | 'routine_sample';
-export type ExperienceGoalSliceReasonCode = 'skill_segment_boundary' | 'explicit_user_goal_shift' | 'default_session_slice';
-export type ExperienceEvidenceKind = 'user_message' | 'synthetic_user_event' | 'assistant_message' | 'tool_use' | 'tool_result' | 'skill_context' | 'runtime_context' | 'observation';
-export type ExperienceAssistiveInferenceCode =
-  | 'review_recommended'
-  | 'sample_recommended'
-  | 'positive_signal_observed'
-  | 'user_switched_topic_neutral'
-  | 'no_obvious_issue_from_rules'
-  | 'insufficient_human_context';
-export type ExperienceAssistiveInferenceConfidence = 'low' | 'medium' | 'high';
-export type ExperienceAssistiveInferenceCautionCode =
-  | 'no_llm_judge'
-  | 'rule_only'
-  | 'runtime_context_excluded'
-  | 'skill_context_excluded'
-  | 'no_human_user_message'
-  | 'limited_timeline_window';
-export type ExperienceReviewBasisCode =
-  | 'has_high_observation'
-  | 'has_medium_observation'
-  | 'user_correction'
-  | 'user_interruption'
-  | 'session_interrupted'
-  | 'negative_feedback'
-  | 'hard_rule_text_hit'
-  | 'tool_failure'
-  | 'hedging_signal'
-  | 'explicit_marker';
-export type ExperienceRuleFindingLevel = 'attention' | 'sample' | 'normal';
-export type ExperienceReviewerReportScope = 'single_skill_single_goal' | 'degraded_complex';
-export type ExperienceReviewerReportStepStatus = 'ok' | 'attention' | 'unknown' | 'degraded' | 'not_applicable';
-export type ExperienceReviewerReportFindingLevel = 'attention' | 'possible_false_positive' | 'note';
-export type ExperienceReviewerReportFindingSource = 'deterministic_rule' | 'llm_soft' | 'manual';
-export type ExperienceChecklistItemStatus = 'passed' | 'failed' | 'unknown' | 'not_declared' | 'not_applicable' | 'degraded';
-export type ExperienceChecklistContribution = 'blocking' | 'attention' | 'informational' | 'positive' | 'neutral';
-export type ExperienceParentReason =
-  | 'data_degraded'
-  | 'blocking_failed'
-  | 'attention_accumulated'
-  | 'unknown_dominant'
-  | 'all_passed'
-  | 'not_applicable';
-export type ExperienceSessionStoryNodeKind =
-  | 'user_goal'
-  | 'skill_invocation'
-  | 'subagent_branch'
-  | 'tool_execution'
-  | 'delivery'
-  | 'user_feedback'
-  | 'goal_shift';
-export type ExperienceSessionStoryAnswerKey = 'goal_satisfaction' | 'declared_behavior_fit' | 'user_feeling';
-export type ExperienceSessionStorySkillRole = 'router' | 'executor' | 'mixed' | 'unknown';
-export type ExperienceEpisodeBoundaryReason = 'goal_shift' | 'checkpoint_or_subagent' | 'downstream_closed' | 'session_end';
-export type ExperienceEpisodeRole = 'main_executor' | 'router' | 'delegator' | 'supporting' | 'observer';
-export type ExperienceFeedbackSignalType = 'correction' | 'follow_up' | 'frustration' | 'interruption' | 'positive' | 'unknown';
-export type ExperienceFeedbackAttributionRole = 'primary_fault' | 'downstream_related' | 'context_only';
-export type ExperienceFeedbackAttributionReason = 'object_match' | 'promise_match' | 'action_match' | 'orchestration_edge' | 'episode_context';
-export type ExperienceOutcomeClosure = 'closed' | 'unresolved' | 'abandoned' | 'unknown';
-export type ExperienceRuntimeSkillType = 'router' | 'delegation' | 'executor' | 'advisory' | 'workflow_owner' | 'unknown';
-export type ExperienceRuntimeSkillTypeSource = 'frontmatter' | 'trace' | 'unknown';
-export type ExperienceEpisodeArtifactKind = 'path' | 'url' | 'document' | 'code' | 'execution_window' | 'unknown';
-export type ExperienceOrchestrationEdgeStatus = 'started' | 'completed' | 'failed' | 'unknown';
-export type ExperienceOrchestrationEdgeKind = 'internal_skill' | 'external_child_session';
-export type ExperienceRuleFindingCode =
-  | 'high_observation_seen'
-  | 'medium_observation_seen'
-  | 'user_correction_seen'
-  | 'user_interruption_seen'
-  | 'session_interrupted_seen'
-  | 'negative_feedback_seen'
-  | 'positive_feedback_seen'
-  | 'user_goal_shift_seen'
-  | 'hard_rule_seen'
-  | 'tool_failure_seen'
-  | 'hedging_seen'
-  | 'explicit_marker_seen'
-  | 'runtime_context_excluded'
-  | 'skill_context_excluded'
-  | 'no_priority_signal';
-
-export interface ExperienceEvidenceRef {
-  id: string;
-  kind: ExperienceEvidenceKind;
-  sourceTrace: string;
-  sessionId: string;
-  traceRole?: 'standalone' | 'main' | 'subagent';
-  traceLabel?: string;
-  messageIndex?: number;
-  logicalMessageIndex?: number;
-  sourceLineIndex?: number;
-  messageUuid?: string;
-  toolUseId?: string;
-  timestamp?: string;
-  role?: 'user' | 'assistant' | 'tool' | 'other';
-  label?: string;
-  snippet?: string;
-}
-
-export interface ExperienceTimelineEvent extends ExperienceEvidenceRef {
-  order: number;
-  toolName?: string;
-  isError?: boolean;
-  fullText?: string;
-}
-
-export interface ExperienceTimelineBranch {
-  id: string;
-  label: string;
-  sourceTrace: string;
-  traceRole: 'main' | 'subagent' | 'standalone';
-  attachTo?: {
-    sourceTrace: string;
-    messageIndex?: number;
-    toolUseId?: string;
-    label?: string;
-  };
-  events: ExperienceTimelineEvent[];
-}
-
-export interface ExperienceTimelineTree {
-  sessionId: string;
-  main: ExperienceTimelineEvent[];
-  branches: ExperienceTimelineBranch[];
-}
-
-export interface ExperienceEvidenceChain {
-  userMessageCount: number;
-  runtimeContextCount: number;
-  skillContextCount: number;
-  assistantMessageCount: number;
-  toolUseCount: number;
-  toolResultCount: number;
-  toolFailureResultCount: number;
-  observationCount: number;
-  firstUserMessage?: ExperienceEvidenceRef;
-  firstRuntimeContext?: ExperienceEvidenceRef;
-  firstSkillContext?: ExperienceEvidenceRef;
-  firstToolUse?: ExperienceEvidenceRef;
-  firstToolFailure?: ExperienceEvidenceRef;
-  lastAssistantMessage?: ExperienceEvidenceRef;
-}
-
-export interface ExperienceRuleFinding {
-  code: ExperienceRuleFindingCode;
-  level: ExperienceRuleFindingLevel;
-  count: number;
-  evidenceRefs: ExperienceEvidenceRef[];
-}
-
-export interface ExperienceAssistiveInference {
-  mode: 'deterministic_rules_only';
-  code: ExperienceAssistiveInferenceCode;
-  confidence: ExperienceAssistiveInferenceConfidence;
-  basisRuleCodes: ExperienceRuleFindingCode[];
-  cautionCodes: ExperienceAssistiveInferenceCautionCode[];
-  evidenceRefs: ExperienceEvidenceRef[];
-}
-
-export interface ExperienceReviewerReportStep {
-  order: number;
-  label: string;
-  status: ExperienceReviewerReportStepStatus;
-  text: string;
-  evidenceRefs: ExperienceEvidenceRef[];
-}
-
-export interface ExperienceReviewerReportFinding {
-  id: string;
-  judgmentId: string;
-  source: ExperienceReviewerReportFindingSource;
-  level: ExperienceReviewerReportFindingLevel;
-  title: string;
-  body: string;
-  ruleSource: string;
-  ruleVersion: string;
-  evidenceRefs: ExperienceEvidenceRef[];
-  reviewStateRef: {
-    targetType: 'reviewer_judgment';
-    targetId: string;
-    verdict?: string;
-    reason?: string;
-    note?: string;
-    reviewedAt?: string;
-  };
-}
-
-export interface ExperienceSessionStoryNode {
-  id: string;
-  order: number;
-  kind: ExperienceSessionStoryNodeKind;
-  label: string;
-  status: ExperienceReviewerReportStepStatus;
-  text: string;
-  evidenceRefs: ExperienceEvidenceRef[];
-}
-
-export interface ExperienceSessionStoryAnswer {
-  key: ExperienceSessionStoryAnswerKey;
-  label: string;
-  status: ExperienceReviewerReportStepStatus;
-  reason: ExperienceParentReason;
-  sourceItemKeys: string[];
-  text: string;
-  evidenceRefs: ExperienceEvidenceRef[];
-  checklistItems: ExperienceChecklistItem[];
-}
-
-export interface ExperienceChecklistItem {
-  key: string;
-  label: string;
-  status: ExperienceChecklistItemStatus;
-  contribution: ExperienceChecklistContribution;
-  reason: string;
-  evidenceRefs: ExperienceEvidenceRef[];
-  source: ExperienceReviewerReportFindingSource;
-  suggestionKey?: string;
-}
+export type {
+  ExperienceAssistiveInference,
+  ExperienceAssistiveInferenceCautionCode,
+  ExperienceAssistiveInferenceCode,
+  ExperienceAssistiveInferenceConfidence,
+  ExperienceChecklistContribution,
+  ExperienceChecklistItem,
+  ExperienceChecklistItemStatus,
+  ExperienceEpisode,
+  ExperienceEpisodeArtifact,
+  ExperienceEpisodeArtifactKind,
+  ExperienceEpisodeBoundaryReason,
+  ExperienceEpisodeOutcome,
+  ExperienceEpisodeRole,
+  ExperienceEvidenceChain,
+  ExperienceEvidenceKind,
+  ExperienceEvidenceRef,
+  ExperienceFeedbackAttribution,
+  ExperienceFeedbackAttributionReason,
+  ExperienceFeedbackAttributionRole,
+  ExperienceFeedbackSignal,
+  ExperienceFeedbackSignalType,
+  ExperienceGoalEvidenceRef,
+  ExperienceGoalSlice,
+  ExperienceGoalSliceReasonCode,
+  ExperienceInvocation,
+  ExperienceMessageRange,
+  ExperienceOrchestrationEdge,
+  ExperienceOrchestrationEdgeKind,
+  ExperienceOrchestrationEdgeStatus,
+  ExperienceOutcomeClosure,
+  ExperienceParentReason,
+  ExperienceReviewBasisCode,
+  ExperienceReviewIndicators,
+  ExperienceReviewPriority,
+  ExperienceReviewerReport,
+  ExperienceReviewerReportFinding,
+  ExperienceReviewerReportFindingLevel,
+  ExperienceReviewerReportFindingSource,
+  ExperienceReviewerReportScope,
+  ExperienceReviewerReportStep,
+  ExperienceReviewerReportStepStatus,
+  ExperienceRuleFinding,
+  ExperienceRuleFindingCode,
+  ExperienceRuleFindingLevel,
+  ExperienceRuntimeSkillType,
+  ExperienceRuntimeSkillTypeSource,
+  ExperienceSessionStory,
+  ExperienceSessionStoryAnswer,
+  ExperienceSessionStoryAnswerKey,
+  ExperienceSessionStoryGoalSlice,
+  ExperienceSessionStoryGraphEdge,
+  ExperienceSessionStoryGraphNode,
+  ExperienceSessionStoryNode,
+  ExperienceSessionStoryNodeKind,
+  ExperienceSessionStorySkillLink,
+  ExperienceSessionStorySkillRole,
+  ExperienceSessionStorySubagentDispatch,
+  ExperienceSessionSummary,
+  ExperienceSkillSegment,
+  ExperienceSkillSummary,
+  ExperienceTimelineBranch,
+  ExperienceTimelineEvent,
+  ExperienceTimelineTree,
+  ObservationExperienceReport,
+};
 
 export function aggregateExperienceChecklistItemStatus(statuses: ExperienceChecklistItemStatus[]): ExperienceChecklistItemStatus {
   if (statuses.includes('degraded')) return 'degraded';
@@ -267,398 +184,12 @@ export function aggregateExperienceChecklistItemStatus(statuses: ExperienceCheck
   return 'not_applicable';
 }
 
-export interface ExperienceSessionStoryGoalSlice {
-  id: string;
-  order: number;
-  skillNames: string[];
-  startTimestamp: string;
-  endTimestamp: string;
-  reasonCode: ExperienceGoalSliceReasonCode;
-  inferredUserGoal?: string;
-  evidenceRefs: ExperienceEvidenceRef[];
-}
-
-export interface ExperienceSessionStorySubagentDispatch {
-  id: string;
-  order: number;
-  branchId: string;
-  label: string;
-  sourceTrace: string;
-  attachTo?: {
-    messageIndex?: number;
-    toolUseId?: string;
-    label?: string;
-  };
-  eventCount: number;
-  evidenceRefs: ExperienceEvidenceRef[];
-}
-
-export interface ExperienceSessionStorySkillLink {
-  id: string;
-  order: number;
-  skillName: string;
-  role: ExperienceSessionStorySkillRole;
-  invocationIds: string[];
-  goalSliceIds: string[];
-  evidenceRefs: ExperienceEvidenceRef[];
-}
-
-export interface ExperienceGoalEvidenceRef {
-  kind: 'user_message' | 'goal_slice' | 'llm_goal';
-  goalSliceId?: string;
-  evidenceRef?: ExperienceEvidenceRef;
-  label?: string;
-}
-
-type ExperienceMessageRange = {
-  startMessageIndex: number;
-  endMessageIndex: number;
-  sourceTrace?: string;
-  sessionId?: string;
-};
-
-export interface ExperienceSkillSegment {
-  id: string;
-  order: number;
-  skillName: string;
-  skillType: ExperienceRuntimeSkillType;
-  skillTypeSource?: ExperienceRuntimeSkillTypeSource;
-  declaredSkillType?: ExperienceRuntimeSkillType;
-  traceInferredSkillType?: ExperienceRuntimeSkillType;
-  episodeRole: ExperienceEpisodeRole;
-  skillInvocationIds: string[];
-  startMessageIndex?: number;
-  endMessageIndex?: number;
-  messageRanges?: ExperienceMessageRange[];
-  startTimestamp: string;
-  endTimestamp: string;
-  typeSpecificChecklist: ExperienceChecklistItem[];
-  runtimeAssessment?: {
-    goalSatisfaction?: string;
-    declaredBehaviorFit?: string;
-    artifactGoalMatch?: string;
-    userFeeling?: string;
-  };
-  evidenceRefs: ExperienceEvidenceRef[];
-}
-
 interface ExperienceEpisodeRange {
   startMessageIndex: number;
   endMessageIndex: number;
   sourceTrace?: string;
   sessionId?: string;
   boundaryReason?: ExperienceEpisodeBoundaryReason;
-}
-
-export interface ExperienceOrchestrationEdge {
-  id: string;
-  episodeId: string;
-  edgeKind: ExperienceOrchestrationEdgeKind;
-  parentSkillSegmentId?: string;
-  executorSkillSegmentId?: string;
-  childSessionId?: string;
-  runnerStartedRef?: ExperienceEvidenceRef;
-  runnerCompletedRef?: ExperienceEvidenceRef;
-  notificationRef?: ExperienceEvidenceRef;
-  status: ExperienceOrchestrationEdgeStatus;
-  evidenceRefs: ExperienceEvidenceRef[];
-}
-
-export interface ExperienceFeedbackAttribution {
-  skillName?: string;
-  skillSegmentId?: string;
-  attributionRole: ExperienceFeedbackAttributionRole;
-  reasonCode: ExperienceFeedbackAttributionReason;
-  evidenceRefs: ExperienceEvidenceRef[];
-}
-
-export interface ExperienceFeedbackSignal {
-  id: string;
-  order: number;
-  type: ExperienceFeedbackSignalType;
-  text: string;
-  targetObject?: string;
-  sourceWindow: 'session' | 'episode' | 'skill_invocation' | 'downstream_child';
-  evidenceRef: ExperienceEvidenceRef;
-  canonicalAttributions?: ExperienceFeedbackAttribution[];
-  attributions: ExperienceFeedbackAttribution[];
-}
-
-export interface ExperienceEpisodeArtifact {
-  kind: ExperienceEpisodeArtifactKind;
-  label: string;
-  pathOrUrl?: string;
-  artifactGoalMatch: 'passed' | 'failed' | 'unknown';
-  evidenceRef: ExperienceEvidenceRef;
-}
-
-export interface ExperienceEpisodeOutcome {
-  closure: ExperienceOutcomeClosure;
-  artifacts: ExperienceEpisodeArtifact[];
-  verdict: ExperienceReviewPriority;
-  acceptanceCriteria?: string;
-}
-
-export interface ExperienceEpisode {
-  id: string;
-  order: number;
-  sessionId: string;
-  primaryGoal?: string;
-  goalEvidenceRefs: ExperienceGoalEvidenceRef[];
-  startTimestamp: string;
-  endTimestamp: string;
-  startRef?: ExperienceEvidenceRef;
-  endRef?: ExperienceEvidenceRef;
-  boundaryReason: ExperienceEpisodeBoundaryReason;
-  skillSegments: ExperienceSkillSegment[];
-  orchestrationEdges: ExperienceOrchestrationEdge[];
-  feedbackSignals: ExperienceFeedbackSignal[];
-  outcome: ExperienceEpisodeOutcome;
-}
-
-export interface ExperienceSessionStoryGraphNode {
-  id: string;
-  label: string;
-  kind: ExperienceSessionStoryNodeKind;
-  status: ExperienceReviewerReportStepStatus;
-  role?: ExperienceSessionStorySkillRole;
-  detailNodeId?: string;
-}
-
-export interface ExperienceSessionStoryGraphEdge {
-  fromId: string;
-  toId: string;
-  label: string;
-}
-
-export interface ExperienceSessionStory {
-  schemaVersion: 1;
-  summary: string;
-  invocationCount: number;
-  goalSliceCount: number;
-  branchCount: number;
-  progressUpdateCount: number;
-  finalDeliverySignalCount: number;
-  mainlineNodeIds: string[];
-  goalSlices: ExperienceSessionStoryGoalSlice[];
-  subagentDispatches: ExperienceSessionStorySubagentDispatch[];
-  skillLinks: ExperienceSessionStorySkillLink[];
-  episodes?: ExperienceEpisode[];
-  graph: {
-    nodes: ExperienceSessionStoryGraphNode[];
-    edges: ExperienceSessionStoryGraphEdge[];
-  };
-  nodes: ExperienceSessionStoryNode[];
-  answers: ExperienceSessionStoryAnswer[];
-}
-
-export interface ExperienceReviewerReport {
-  schemaVersion: 1;
-  mode: 'deterministic_milestone_1' | 'deterministic_session_story';
-  generatedAt: string;
-  title: string;
-  summary: string;
-  scope: {
-    kind: ExperienceReviewerReportScope;
-    reasonCodes: string[];
-  };
-  chainSteps: ExperienceReviewerReportStep[];
-  findings: ExperienceReviewerReportFinding[];
-  oneLookMetrics: {
-    toolCallCount: number;
-    toolFailureCount: number;
-    userMessageCount: number;
-    userFollowUpCount: number;
-    assistantDeliverySignalCount: number;
-    deliverableArtifactSignalCount: number;
-    routerDownstreamCompleted: number;
-    routerDownstreamFailed: number;
-    assistantProgressUpdateCount: number;
-    selfCorrectionCount: number;
-    repeatedExecutionCount: number;
-    finalDeliverySignalCount: number;
-    traceEventCount: number;
-    tokenUsage: {
-      inputTokens: number;
-      outputTokens: number;
-      cacheReadTokens: number;
-      cacheCreationTokens: number;
-      attribution: 'skill_segment';
-    };
-  };
-  sessionStory: ExperienceSessionStory;
-  authorSuggestions: string[];
-  traceLinks: ExperienceEvidenceRef[];
-}
-
-export interface ExperienceGoalSlice {
-  id: string;
-  skillName: string;
-  sessionId: string;
-  sourceTrace: string;
-  cwd?: string;
-  startTimestamp: string;
-  endTimestamp: string;
-  sliceReasonCode: ExperienceGoalSliceReasonCode;
-  sliceConfidence: 'low' | 'medium' | 'high';
-  inferredUserGoal?: string;
-  userMessageRefs: ExperienceEvidenceRef[];
-}
-
-export interface ExperienceReviewIndicators {
-  userMessageCount: number;
-  userFollowUpCount: number;
-  userCorrectionCount: number;
-  userInterruptionCount: number;
-  sessionInterruptedCount: number;
-  negativeFeedbackCount: number;
-  positiveFeedbackCount: number;
-  userGoalShiftCount: number;
-  hardRuleTextHitCount: number;
-  assistantDeliverySignalCount: number;
-  deliverableArtifactSignalCount: number;
-  routerDownstreamCompleted: number;
-  routerDownstreamFailed: number;
-  selfCorrectionCount: number;
-  repeatedExecutionCount: number;
-  toolCallCount: number;
-  toolFailureCount: number;
-  highObservationCount: number;
-  mediumObservationCount: number;
-  hedgingCount: number;
-  explicitMarkerCount: number;
-}
-
-export interface ExperienceInvocation {
-  id: string;
-  skillName: string;
-  sessionId: string;
-  sessionGroupKey: string;
-  sourceTrace: string;
-  sourceKind: ObservationSourceKind;
-  entrypoint?: string;
-  sourceMetadata?: TraceSourceMetadata;
-  cwd?: string;
-  segmentIndex: number;
-  goalSliceId: string;
-  startTimestamp: string;
-  endTimestamp: string;
-  attribution: {
-    source: string;
-    confidence: number;
-    rawSkillRef?: string;
-    pluginName?: string;
-    commandName?: string;
-  };
-  metrics: SkillSegment['metrics'];
-  toolCounts: Record<string, number>;
-  indicators: ExperienceReviewIndicators;
-  evidenceChain: ExperienceEvidenceChain;
-  ruleFindings: ExperienceRuleFinding[];
-  assistiveInference: ExperienceAssistiveInference;
-  problemPatterns: ExperienceProblemPattern[];
-  relatedObservationIds: string[];
-  evidenceRefs: ExperienceEvidenceRef[];
-  timeline: ExperienceTimelineEvent[];
-}
-
-export interface ExperienceSessionSummary {
-  id: string;
-  skillName: string;
-  sessionId: string;
-  sourceTrace: string;
-  sourceKind: ObservationSourceKind;
-  entrypoint?: string;
-  sourceMetadata?: TraceSourceMetadata;
-  cwd?: string;
-  sourceSessionStartTimestamp?: string;
-  sourceSessionEndTimestamp?: string;
-  sourceSessionDurationMs?: number;
-  startTimestamp: string;
-  endTimestamp: string;
-  invocationIds: string[];
-  goalSliceIds: string[];
-  reviewPriority: ExperienceReviewPriority;
-  reviewPriorityScore: number;
-  reviewBasisCodes: ExperienceReviewBasisCode[];
-  indicators: ExperienceReviewIndicators;
-  evidenceChain: ExperienceEvidenceChain;
-  ruleFindings: ExperienceRuleFinding[];
-  assistiveInference: ExperienceAssistiveInference;
-  problemPatterns: ExperienceProblemPattern[];
-  relatedObservationIds: string[];
-  timelinePreview: ExperienceTimelineEvent[];
-  fullSessionTimeline: ExperienceTimelineEvent[];
-  timelineTree?: ExperienceTimelineTree;
-  timelineScope: {
-    mode: 'skill_segment_window';
-    segmentStartRecordIndex?: number;
-    segmentEndRecordIndex?: number;
-    previewStartRecordIndex?: number;
-    previewEndRecordIndex?: number;
-    sessionStartRecordIndex: number;
-    sessionEndRecordIndex: number;
-    previewEventCount: number;
-    fullSessionEventCount: number;
-    truncated: boolean;
-    omittedBeforeCount: number;
-    omittedAfterCount: number;
-  };
-  attributionSources: string[];
-  pluginNames: string[];
-  rawSkillRefs: string[];
-  commandNames: string[];
-  sessionStory?: ExperienceSessionStory;
-  reviewerReport?: ExperienceReviewerReport;
-}
-
-export interface ExperienceSkillSummary {
-  skillName: string;
-  invocationCount: number;
-  sessionCount: number;
-  sourceKinds: ObservationSourceKind[];
-  entrypoints: string[];
-  entrypointCounts: Record<string, number>;
-  sourceMetadataCounts: {
-    channels: Record<string, number>;
-    senders: Record<string, number>;
-    businessActions: Record<string, number>;
-    providers: Record<string, number>;
-    models: Record<string, number>;
-  };
-  attributionCounts: Record<string, number>;
-  pluginNames: string[];
-  rawSkillRefs: string[];
-  commandNames: string[];
-  toolCounts: Record<string, number>;
-  firstSeen: string;
-  lastSeen: string;
-  reviewFirstSessionCount: number;
-  sampleReviewSessionCount: number;
-  indicators: ExperienceReviewIndicators;
-  evidenceChain: ExperienceEvidenceChain;
-  ruleFindings: ExperienceRuleFinding[];
-  assistiveInference: ExperienceAssistiveInference;
-  problemPatterns: ExperienceProblemPattern[];
-  relatedObservationIds: string[];
-}
-
-export interface ObservationExperienceReport {
-  kind: 'observe-experience';
-  schemaVersion: 1;
-  scope: 'evidence-only';
-  generatedAt: string;
-  meta: {
-    sessionCount: number;
-    skillCount: number;
-    invocationCount: number;
-    goalSliceCount: number;
-    noteCodes: Array<'no_llm_judge' | 'no_auto_verdict' | 'default_goal_slice_is_allowed' | 'deterministic_assistive_inference'>;
-  };
-  goalSlices: ExperienceGoalSlice[];
-  invocations: ExperienceInvocation[];
-  sessions: ExperienceSessionSummary[];
-  skills: ExperienceSkillSummary[];
 }
 
 const USER_INTERRUPTION_RE = /\[Request interrupted by user(?: for tool use)?\]|interrupted by user|用户中断|停止任务|停一下|先别|别动|等一下|等下|等等|取消(?:任务|执行)?|先暂停|暂停一下/i;

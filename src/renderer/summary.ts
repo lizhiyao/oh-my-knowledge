@@ -2,7 +2,7 @@ import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import { generateAnalysisSummary } from '../analysis/report-diagnostics.js';
 import { pValueCategory } from '../eval-core/statistics.js';
 import { computeVerdict, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
-import type { GapReport, GapSignalRef, Insight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types/index.js';
+import type { GapReport, GapSignalRef, AnalysisInsight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types/index.js';
 
 /**
  * Verdict pill — sticky banner at the top of the HTML report giving the same
@@ -1382,7 +1382,7 @@ const CONCLUSION_TYPES = new Set([
   'efficiency_gap', 'tool_count_gap', 'high_cost_sample',
 ]);
 
-function isConclusion(insight: Insight): boolean {
+function isConclusion(insight: AnalysisInsight): boolean {
   return CONCLUSION_TYPES.has(insight.type);
 }
 
@@ -1446,7 +1446,7 @@ function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-function localizedInsightMessage(insight: Insight, report: Report | undefined, lang: Lang): string {
+function localizedInsightMessage(insight: AnalysisInsight, report: Report | undefined, lang: Lang): string {
   const details = asRecord(insight.details);
   const detailItems = asArray(insight.details);
   const totalSamples = report?.results?.length || detailItems.length || num(details.total) || 0;
@@ -1554,7 +1554,7 @@ function localizedInsightMessage(insight: Insight, report: Report | undefined, l
   }
 }
 
-function localizedSuggestion(insight: Insight, lang: Lang): string {
+function localizedSuggestion(insight: AnalysisInsight, lang: Lang): string {
   switch (insight.type) {
     case 'low_discrimination_all_passed':
       return lang === 'zh'
