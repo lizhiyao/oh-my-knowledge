@@ -34,7 +34,7 @@ omk eval --executor "./my-executor.sh"
 
 ## Artifact directory layout
 
-The built-in executors (claude / openai / gemini) support two artifact layouts, mixable in the same run:
+The built-in executors (claude / codex / gemini, etc.) support two artifact layouts, mixable in the same run:
 
 ```
 skills/
@@ -91,8 +91,9 @@ omk eval --config eval.yaml
 
 - **claude**: install [Claude Code](https://claude.ai/code) and authenticate
 - **claude-sdk**: install [Claude Code](https://claude.ai/code) and authenticate (uses Agent SDK, no CLI stdout parsing)
+- **codex**: install the Codex CLI (`npm i -g @openai/codex`) and authenticate
+- **codex-sdk**: `npm i @openai/codex-sdk` (bundles the `@openai/codex` binary)
 - **anthropic-api**: set the `ANTHROPIC_API_KEY` env var
-- **openai**: `pip install openai` and set `OPENAI_API_KEY`
 - **openai-api**: set the `OPENAI_API_KEY` env var
 - **gemini**: `npm i -g @google/gemini-cli` and authenticate
 

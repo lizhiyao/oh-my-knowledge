@@ -1,11 +1,11 @@
 <!--
 title: Statistical rigor — Bootstrap CI, Krippendorff α, length-debias, saturation curves
-description: Why omk's eval results are auditable, not just claimed. Distribution-free CIs, judge ↔ human agreement, length-debiased scoring, saturation curves — all on by default.
+description: Why omk's eval results are auditable, not just claimed. Distribution-free CIs, judge ↔ human agreement, length-debiased scoring, saturation curves — bootstrap CI, length-debias and saturation on by default; Krippendorff α the moment you add a gold set.
 -->
 
 # Statistical rigor
 
-omk's job is to answer **"the knowledge you give your LLM — what's it actually worth?"** with objective data. The biggest LLM-eval failure mode is **confident bias** — narrow CIs around the wrong answer. omk ships four pieces by default so conclusions can be externally audited.
+omk's job is to answer **"the knowledge you give your LLM — what's it actually worth?"** with objective data. The biggest LLM-eval failure mode is **confident bias** — narrow CIs around the wrong answer. omk ships four pieces — bootstrap CI, length-debias and saturation on by default, plus Krippendorff α the moment you add a gold set — so conclusions can be externally audited.
 
 This page is the depth reference. The README hero callout is the entry; come here for formulas, flags, and the why.
 
@@ -69,7 +69,7 @@ Each piece guards a different failure mode:
 | "Judge is biased toward verbose answers" | Length-controlled judge prompt |
 | "I ran 10 samples and stopped — was that enough?" | Saturation curve |
 
-Skip any one and you have a hole. omk ships all four by default; you can opt out of length-debias for research replication, but the others are unconditional.
+Skip any one and you have a hole. Bootstrap CI, length-debias and saturation are on by default — you can opt out of length-debias for research replication, but those are otherwise unconditional; Krippendorff α turns on automatically once you supply a gold set (`--gold-dir`).
 
 ## Construct-validity isolation(`--strict-baseline`, default ON)
 

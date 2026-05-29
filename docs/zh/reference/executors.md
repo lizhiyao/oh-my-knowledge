@@ -34,7 +34,7 @@ omk eval --executor "./my-executor.sh"
 
 ## Artifact 目录结构
 
-默认执行器（claude/openai/gemini）支持两种 artifact 布局，同一次评测中可混用：
+默认执行器（claude / codex / gemini 等）支持两种 artifact 布局，同一次评测中可混用：
 
 ```
 skills/
@@ -91,8 +91,9 @@ omk eval --config eval.yaml
 
 - **claude**：安装 [Claude Code](https://claude.ai/code) 并认证
 - **claude-sdk**：安装 [Claude Code](https://claude.ai/code) 并认证（使用 Agent SDK，无需 CLI stdout 解析）
+- **codex**：安装 Codex CLI（`npm i -g @openai/codex`）并认证
+- **codex-sdk**：`npm i @openai/codex-sdk`（自带 `@openai/codex` binary）
 - **anthropic-api**：设置 `ANTHROPIC_API_KEY` 环境变量
-- **openai**：`pip install openai` 并设置 `OPENAI_API_KEY`
 - **openai-api**：设置 `OPENAI_API_KEY` 环境变量
 - **gemini**：`npm i -g @google/gemini-cli` 并认证
 

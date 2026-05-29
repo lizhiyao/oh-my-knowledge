@@ -119,7 +119,7 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 
 - Node.js >= 22
 - `claude` CLI (for the default executor and LLM judge; see [Claude Code](https://claude.ai/code))
-  - not needed if you use other executors (openai / gemini) with `--no-judge`
+  - not needed if you use other executors (openai-api / anthropic-api / gemini) with `--no-judge`
 
 ## Security notice
 

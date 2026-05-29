@@ -119,7 +119,7 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 
 - Node.js >= 22
 - `claude` CLI（默认执行器和 LLM 评委需要，参考 [Claude Code](https://claude.ai/code)）
-  - 如果使用其它执行器（openai / gemini）+ `--no-judge` 则可不需要
+  - 如果使用其它执行器（openai-api / anthropic-api / gemini）+ `--no-judge` 则可不需要
 
 ## 安全说明
 
