@@ -36,7 +36,7 @@ node dist/cli/index.js eval \
   --samples /tmp/sigint-long.json \
   --control baseline \
   --executor codex --model gpt-5.5 \
-  --no-judge --no-strict-baseline --no-serve --skip-preflight \
+  --no-judge --no-strict-baseline --no-serve --skip-doctor \
   --concurrency 2 --timeout 180 \
   --verbose
 # 等到看见 "[1/2] long-1/baseline ⏳ 执行中..." 出现后,按 Ctrl+C
