@@ -108,7 +108,7 @@ The judge model (default `haiku`) scores 1–5 against the rubric. In `dimension
 
 ## Assertion types
 
-**Deterministic assertions (21+ total):**
+**Deterministic assertions (30+ total):**
 
 | Type | Description |
 |---|---|
