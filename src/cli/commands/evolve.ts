@@ -28,6 +28,8 @@ interface TrajectoryEntry {
   delta: number;
   accepted: boolean;
   costUSD: number;
+  trainScore?: number;
+  holdoutScore?: number;
 }
 
 const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
@@ -50,6 +52,7 @@ interface EvolveResult {
   totalRounds: number;
   totalCostUSD: number;
   costReported?: boolean;
+  holdout?: { ratio: number; trainCount: number; holdoutCount: number; disabled?: boolean };
   trajectory: TrajectoryEntry[];
   bestSkillPath: string;
   allVersions: string[];
@@ -113,6 +116,7 @@ export async function runEvolve(
       autoFixSamples: flags['auto-fix-samples'],
       sampleFixMaxAttempts: Math.max(1, Number(flags['sample-fix-max-attempts']) || 2),
       reuseLatestEval: flags['reuse-latest-eval'],
+      holdoutRatio: Number(flags['holdout-ratio']) || 0,
       improveMode: flags['improve-mode'] === 'rewrite' ? 'rewrite' : 'agent',
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
       onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error }: RoundProgressInfo): void {
@@ -146,6 +150,13 @@ export async function runEvolve(
       start: result.startScore.toFixed(2), final: result.finalScore.toFixed(2),
       percent: improvement, rounds: result.totalRounds, cost: totalCostStr,
     }));
+    if (result.holdout) {
+      process.stderr.write(result.holdout.disabled
+        ? tCli('cli.evolve.holdout_disabled', lang, { ratio: result.holdout.ratio })
+        : tCli('cli.evolve.holdout_active', lang, {
+          train: result.holdout.trainCount, holdout: result.holdout.holdoutCount,
+        }));
+    }
     process.stderr.write(tCli('cli.evolve.best_path', lang, {
       best: result.bestSkillPath, target: resolve(skillPath),
     }));
@@ -317,6 +328,14 @@ export default class Evolve extends BaseCommand {
       }),
       default: 'agent',
       options: ['agent', 'rewrite'],
+    }),
+    'holdout-ratio': Flags.string({
+      description: bilingual({
+        zh: '留出验收集比例（0..1，默认 0=关）。> 0 时按 holdout 分接受候选、weak-sample 只取训练集，防 train-on-test',
+        en: 'Holdout fraction for the accept decision (0..1, default 0=off). When > 0, candidates are accepted on holdout score and weak samples come only from train — guards against train-on-test',
+      }),
+      default: '0',
+      parse: numberStringParser('--holdout-ratio', { min: 0, max: 1 }),
     }),
   };
 

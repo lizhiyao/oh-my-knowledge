@@ -211,6 +211,7 @@ omk evolve <skillPath> [flags]
 - `--concurrency` `option` (默认 `1`):评测并发数，默认 1
 - `--effort` `option`:reasoning effort: low/medium/high/xhigh/max
 - `--executor` `option` (默认 `claude`):执行器名，默认 claude
+- `--holdout-ratio` `option` (默认 `0`):留出验收集比例（0..1，默认 0=关）。> 0 时按 holdout 分接受候选、weak-sample 只取训练集，防 train-on-test
 - `--improve-mode` `agent|rewrite` (默认 `agent`):改写策略（默认：agent）
 - `--improve-model` `option` (默认 `sonnet`):负责重写 skill 的 LLM，默认 sonnet
 - `--judge-models` `option` (默认 `claude:haiku`):评委 model（单评委约束），格式 executor:model。默认 claude:haiku
