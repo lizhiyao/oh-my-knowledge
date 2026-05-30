@@ -7,7 +7,12 @@ import { fileURLToPath } from 'node:url';
 import { buildVariantSummary } from './schema.js';
 import { buildVariantConfig, resolveExecutionStrategy } from './execution-strategy.js';
 import { getJudgePromptHash } from '../grading/judge.js';
-import { bootstrapMeanCI, bootstrapDiffCI } from './bootstrap.js';
+import {
+  bootstrapMeanCI,
+  bootstrapDiffCI,
+  DEFAULT_BOOTSTRAP_ALPHA,
+  DEFAULT_BOOTSTRAP_SAMPLES,
+} from './bootstrap.js';
 import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import type {
   Artifact,
@@ -182,7 +187,7 @@ export function aggregateReport({
   // Bootstrap CI (per-variant mean) when --bootstrap requested. Adds bootstrapCI to
   // each VariantSummary; legacy t-interval (in summary's other fields) is preserved.
   const bootstrapEnabled = request?.bootstrap === true;
-  const bootstrapSamples = request?.bootstrapSamples ?? 1000;
+  const bootstrapSamples = request?.bootstrapSamples ?? DEFAULT_BOOTSTRAP_SAMPLES;
   let pairComparisons: VariantPairComparison[] | undefined;
   if (bootstrapEnabled) {
     for (const variant of variants) {
@@ -191,7 +196,7 @@ export function aggregateReport({
         .filter((e) => typeof e.compositeScore === 'number' && e.compositeScore! > 0)
         .map((e) => e.compositeScore!);
       if (compositeScores.length >= 2) {
-        summary[variant].bootstrapCI = bootstrapMeanCI(compositeScores, 0.05, bootstrapSamples);
+        summary[variant].bootstrapCI = bootstrapMeanCI(compositeScores, DEFAULT_BOOTSTRAP_ALPHA, bootstrapSamples);
       }
     }
 
@@ -214,7 +219,7 @@ export function aggregateReport({
           pairComparisons.push({
             control: controlName,
             treatment: treatmentName,
-            diffBootstrapCI: bootstrapDiffCI(controlScores, treatmentScores, 0.05, bootstrapSamples),
+            diffBootstrapCI: bootstrapDiffCI(controlScores, treatmentScores, DEFAULT_BOOTSTRAP_ALPHA, bootstrapSamples),
           });
         }
       }

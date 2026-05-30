@@ -29,7 +29,7 @@ import type {
   VariantVariance,
 } from '../types/index.js';
 import { findSaturationPoint } from '../analysis/saturation.js';
-import { bootstrapMeanCI } from '../eval-core/bootstrap.js';
+import { bootstrapMeanCI, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES } from '../eval-core/bootstrap.js';
 
 export interface SkillProgressInfo {
   phase: string;
@@ -448,7 +448,11 @@ function buildComparisonMetric(scoresA: number[], scoresB: number[], meanA: numb
  * verdict is computed — the user still sees the curve, just without the auto
  * "saturated at N=X" claim.
  */
-function buildSaturationData(runs: Report[]): SaturationData | undefined {
+function buildSaturationData(
+  runs: Report[],
+  bootstrapSamples = DEFAULT_BOOTSTRAP_SAMPLES,
+  seed?: number,
+): SaturationData | undefined {
   if (runs.length < 2) return undefined;
   const variants = runs[0].meta.variants ?? [];
   if (variants.length === 0) return undefined;
@@ -479,7 +483,7 @@ function buildSaturationData(runs: Report[]): SaturationData | undefined {
       cumulativeByVariant[variant].push([...acc[variant]]);
 
       // Per-checkpoint trace: bootstrap CI on cumulative scores.
-      const ci = bootstrapMeanCI(acc[variant], 0.05, 1000);
+      const ci = bootstrapMeanCI(acc[variant], DEFAULT_BOOTSTRAP_ALPHA, bootstrapSamples, seed);
       if (!tracesByVariant[variant]) tracesByVariant[variant] = [];
       tracesByVariant[variant].push({
         n: acc[variant].length,
@@ -495,7 +499,7 @@ function buildSaturationData(runs: Report[]): SaturationData | undefined {
     for (const variant of variants) {
       const cumulative = cumulativeByVariant[variant];
       if (!cumulative) continue;
-      const r = findSaturationPoint(cumulative, 'bootstrap-ci-width');
+      const r = findSaturationPoint(cumulative, 'bootstrap-ci-width', undefined, undefined, bootstrapSamples, seed);
       verdicts[variant] = {
         saturated: r.saturated,
         atN: r.atN,
@@ -514,7 +518,11 @@ function buildSaturationData(runs: Report[]): SaturationData | undefined {
   };
 }
 
-export function buildVarianceData(runs: Report[]): VarianceData | null {
+export function buildVarianceData(
+  runs: Report[],
+  bootstrapSamples = DEFAULT_BOOTSTRAP_SAMPLES,
+  seed?: number,
+): VarianceData | null {
   if (runs.length <= 1) {
     return null;
   }
@@ -584,7 +592,7 @@ export function buildVarianceData(runs: Report[]): VarianceData | null {
     }
   }
 
-  const saturation = buildSaturationData(runs);
+  const saturation = buildSaturationData(runs, bootstrapSamples, seed);
   return {
     runs: runs.length,
     perVariant,
@@ -782,7 +790,7 @@ export async function runMultiple({ repeat = 1, onRepeatProgress, ...config }: R
   }
 
   const report = runs[runs.length - 1];
-  const aggregated = buildVarianceData(runs);
+  const aggregated = buildVarianceData(runs, config.bootstrapSamples ?? DEFAULT_BOOTSTRAP_SAMPLES);
   let filePath: string | null = null;
   if (aggregated) {
     report.variance = aggregated;

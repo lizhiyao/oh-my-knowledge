@@ -37,6 +37,16 @@ export interface BootstrapDiffCI extends BootstrapCI {
   significant: boolean;
 }
 
+/**
+ * Default number of bootstrap resamples. Every eval path uses this unless
+ * `--bootstrap-samples` overrides it. Single source of truth: the docs cite
+ * it and `test/scripts/doc-constants-drift.test.ts` guards doc ↔ code parity.
+ */
+export const DEFAULT_BOOTSTRAP_SAMPLES = 1000;
+
+/** Default significance level; 0.05 → 95% CI. */
+export const DEFAULT_BOOTSTRAP_ALPHA = 0.05;
+
 /** Mulberry32 PRNG — seedable, deterministic for tests. */
 function mulberry32(seed: number): () => number {
   let s = seed >>> 0;
@@ -93,8 +103,8 @@ function sortedQuantile(sorted: number[], q: number): number {
  */
 export function bootstrapMeanCI(
   scores: number[],
-  alpha = 0.05,
-  samples = 1000,
+  alpha = DEFAULT_BOOTSTRAP_ALPHA,
+  samples = DEFAULT_BOOTSTRAP_SAMPLES,
   seed?: number,
 ): BootstrapCI {
   if (scores.length === 0) {
@@ -138,8 +148,8 @@ export function bootstrapMeanCI(
 export function bootstrapDiffCI(
   scoresA: number[],
   scoresB: number[],
-  alpha = 0.05,
-  samples = 1000,
+  alpha = DEFAULT_BOOTSTRAP_ALPHA,
+  samples = DEFAULT_BOOTSTRAP_SAMPLES,
   seed?: number,
 ): BootstrapDiffCI {
   if (scoresA.length === 0 || scoresB.length === 0) {
@@ -179,8 +189,8 @@ export function bootstrapDiffCI(
 export function bootstrapWithMetric(
   scores: number[],
   metricFn: (resampled: number[]) => number,
-  alpha = 0.05,
-  samples = 1000,
+  alpha = DEFAULT_BOOTSTRAP_ALPHA,
+  samples = DEFAULT_BOOTSTRAP_SAMPLES,
   seed?: number,
 ): BootstrapCI {
   if (scores.length === 0) return { low: 0, high: 0, estimate: 0, samples: 0 };

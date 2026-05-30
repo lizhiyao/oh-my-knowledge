@@ -15,11 +15,11 @@ omk 要回答的问题是 **"你给 LLM 的知识，价值在哪里？"** ——
 
 t 检验在 LLM 序数评分（Likert 类离散桶，不是正态分布的连续值）上失效。Bootstrap 直接重采样原始观测值，对小 N(< 30)和偏态分布都稳。
 
-- **每个 variant 的均值 CI** —— 有放回重采样 N 次（默认 5000）
+- **每个 variant 的均值 CI** —— 有放回重采样 N 次（默认 1000）
 - **两个 variant 之间的 pairwise diff CI** —— 重采样后的均值差；如果 CI 不跨 0，差异在选定 α（默认 0.05 → 95% CI）显著
 - **输出**：每个 `VariantResult.bootstrapCI` 含均值跟 pairwise 的 `[lo, hi]`；HTML 报告画 CI 带状区域；CLI `omk eval` 在六档 verdict 逻辑里消费这些 CI
 
-**参考**：Efron & Tibshirani (1993), "An Introduction to the Bootstrap"。omk 实现：`src/eval-core/bootstrap.ts`。由 `judge-hash-frozen.test.ts` 冻结防止公式悄悄漂移。
+**参考**：Efron & Tibshirani (1993), "An Introduction to the Bootstrap"。omk 实现：`src/eval-core/bootstrap.ts` —— 公式由 `test/eval-core/bootstrap.test.ts` 覆盖，文档里的默认值（重采样次数、α）由 `test/scripts/doc-constants-drift.test.ts` 与代码常量保持同步。
 
 ## 2. Human Gold + Krippendorff α(`--gold-dir`)
 

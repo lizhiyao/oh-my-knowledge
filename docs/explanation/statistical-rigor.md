@@ -15,11 +15,11 @@ This page is the depth reference. The README hero callout is the entry; come her
 
 The t-test breaks on ordinal LLM scores (Likert-like buckets, not normal-distributed continuous values). Bootstrap directly resamples the raw observations and stays valid at small N (< 30) and on skewed distributions.
 
-- **Mean CI** per variant — resampled with replacement N times (default 5000)
+- **Mean CI** per variant — resampled with replacement N times (default 1000)
 - **Pairwise diff CI** between two variants — diff of resampled means; if the CI does not cross 0, the difference is significant at the chosen α (default 0.05 → 95% CI)
 - **Output**: each `VariantResult.bootstrapCI` carries `[lo, hi]` for mean and pairwise; HTML report draws CI bands; CLI `omk eval` consumes them in the 6-tier verdict logic
 
-**Reference**: Efron & Tibshirani (1993), "An Introduction to the Bootstrap". omk implementation: `src/eval-core/bootstrap.ts`. Frozen by `judge-hash-frozen.test.ts` to prevent silent formula drift.
+**Reference**: Efron & Tibshirani (1993), "An Introduction to the Bootstrap". omk implementation: `src/eval-core/bootstrap.ts` — the formula is covered by `test/eval-core/bootstrap.test.ts`, and the documented defaults (resample count, α) are kept in sync with the code constants by `test/scripts/doc-constants-drift.test.ts`.
 
 ## 2. Human Gold + Krippendorff α(`--gold-dir`)
 

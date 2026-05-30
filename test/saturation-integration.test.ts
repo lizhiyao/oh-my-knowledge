@@ -84,4 +84,19 @@ describe('buildSaturationData via buildVarianceData', () => {
     const data = buildVarianceData([buildRun('r1', { v1: [3, 4, 5] })]);
     assert.equal(data, null);
   });
+
+  it('threads a custom bootstrapSamples into the saturation bootstrap path', () => {
+    // Spread scores so the bootstrap CI is non-degenerate (ciLow != ciHigh),
+    // making the resample count observable in the trace bounds.
+    const runs = [buildRun('r1', { v1: [2, 3, 4, 5] }), buildRun('r2', { v1: [2, 3, 4, 5] })];
+    // Same seed, different resample counts → different Monte Carlo CI bounds.
+    // If bootstrapSamples didn't reach bootstrapMeanCI inside buildSaturationData,
+    // these would be identical — this is the regression guard for that wiring.
+    const few = buildVarianceData(runs, 31, 7);
+    const many = buildVarianceData(runs, 4001, 7);
+    assert.notDeepEqual(few?.saturation?.perVariant, many?.saturation?.perVariant);
+    // Same args → identical (determinism sanity, and proves seed is honored).
+    const again = buildVarianceData(runs, 31, 7);
+    assert.deepEqual(again?.saturation?.perVariant, few?.saturation?.perVariant);
+  });
 });
