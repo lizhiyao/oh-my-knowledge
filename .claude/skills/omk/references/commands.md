@@ -371,7 +371,7 @@ omk observe show <inboxId> [flags]
 
 ## omk sample
 
-为指定 skill 生成评测用例（eval-samples），支持 batch / single / fix 三种模式。
+为指定 skill 生成评测用例（eval-samples），支持 batch / single / fix / from-traces 四种模式。
 
 **用法:**
 
@@ -416,6 +416,12 @@ omk sample --batch --skill-dir skills
 
 ```bash
 omk sample skills/my-skill/SKILL.md --fix
+```
+
+> 从 observe inbox 的失败信号回流生成回归用例草稿
+
+```bash
+omk sample --from-traces
 ```
 
 ## omk studio

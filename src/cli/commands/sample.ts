@@ -317,11 +317,13 @@ async function runSampleFromTraces(
     throw new CliExit(1);
   }
 
-  const items = queryObservationInbox(obsDir);
+  // Drop noise-tier signals up front: they're exactly what the generator is told to
+  // skip, so filtering here avoids feeding junk to the LLM and keeps the no-op path clean.
+  const items = queryObservationInbox(obsDir).filter((it) => it.severity !== 'noise');
   if (items.length === 0) {
     process.stderr.write(lang === 'zh'
-      ? `✅ ${obsDir} 没有可回流的失败信号\n`
-      : `✅ No failure signals to recycle in ${obsDir}\n`);
+      ? `✅ ${obsDir} 没有可回流的失败信号（噪声级已跳过）\n`
+      : `✅ No recyclable failure signals in ${obsDir} (noise-level skipped)\n`);
     return;
   }
 
@@ -340,9 +342,17 @@ async function runSampleFromTraces(
 
   try {
     const { samples, costUSD } = await generateSamplesFromTraces({ items, count, model: flags.model });
+    const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
+    if (samples.length === 0) {
+      // The model conservatively skipped every signal (noise / unreproducible). That's a
+      // valid outcome, not a failure — don't write an empty draft file.
+      process.stderr.write(lang === 'zh'
+        ? `\n✅ 没有可复现的草稿用例（信号多为噪声 / 证据不足，已保守跳过），未写文件${cost}\n`
+        : `\n✅ No reproducible draft samples (signals were noise / insufficient evidence; conservatively skipped); nothing written${cost}\n`);
+      return;
+    }
     mkdirSync(dirname(outPath), { recursive: true });
     writeFileSync(outPath, JSON.stringify(samples, null, 2));
-    const cost = costUSD > 0 ? ` $${costUSD.toFixed(4)}` : '';
     process.stderr.write(lang === 'zh'
       ? `\n✅ 生成 ${samples.length} 条草稿用例 → ${outPath}（provenance: production-trace）${cost}\n   ⚠️ 这是草稿：trace 只抓失败信号，有抽样偏差。请人工 review 后再合入正式 eval-samples，不要直接当评测集。\n`
       : `\n✅ Generated ${samples.length} draft sample(s) → ${outPath} (provenance: production-trace)${cost}\n   ⚠️ Draft only: traces capture failures, a biased sample. Review before merging into your eval-samples; don't use as-is.\n`);
@@ -489,8 +499,8 @@ async function runSample(
 
 export default class Sample extends BaseCommand {
   static description = bilingual({
-    zh: '为指定 skill 生成评测用例（eval-samples），支持 batch / single / fix 三种模式。',
-    en: 'Generate eval samples for the given skill. Supports batch / single / fix modes.',
+    zh: '为指定 skill 生成评测用例（eval-samples），支持 batch / single / fix / from-traces 四种模式。',
+    en: 'Generate eval samples for the given skill. Supports batch / single / fix / from-traces modes.',
   });
 
   static examples = [
@@ -514,6 +524,13 @@ export default class Sample extends BaseCommand {
         en: 'Auto-fix sample_design failures using the most recent eval report',
       }),
       command: '<%= config.bin %> sample skills/my-skill/SKILL.md --fix',
+    },
+    {
+      description: bilingual({
+        zh: '从 observe inbox 的失败信号回流生成回归用例草稿',
+        en: 'Recycle observe-inbox failure signals into draft regression samples',
+      }),
+      command: '<%= config.bin %> sample --from-traces',
     },
   ];
 

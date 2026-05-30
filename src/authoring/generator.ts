@@ -1,5 +1,5 @@
 import { createExecutor } from '../executors/index.js';
-import type { Sample, SampleProvenance } from '../types/index.js';
+import type { Sample, SampleProvenance, ExecutorFn } from '../types/index.js';
 import type { ObservationInboxItem } from '../types/observability.js';
 
 /**
@@ -555,6 +555,8 @@ export interface GenerateSamplesFromTracesOptions {
   count?: number;
   model?: string;
   executorName?: string;
+  /** Injectable executor (tests). Defaults to createExecutor(executorName). */
+  executor?: ExecutorFn;
 }
 
 /**
@@ -568,9 +570,10 @@ export async function generateSamplesFromTraces({
   count,
   model = GENERATOR_DEFAULT_MODEL,
   executorName = 'claude',
+  executor: injectedExecutor,
 }: GenerateSamplesFromTracesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
   if (items.length === 0) return { samples: [], costUSD: 0 };
-  const executor = createExecutor(executorName);
+  const executor = injectedExecutor ?? createExecutor(executorName);
   const prompt = buildSamplesFromTracesPrompt(items, count);
   const sanitizeContext = traceSanitizeContext(items);
   const PROVENANCE: SampleProvenance = 'production-trace';
@@ -601,11 +604,15 @@ export async function generateSamplesFromTraces({
       process.stderr.write(`[omk sample --from-traces] 第 ${attempt} 次输出 JSON 无效,重试中...\n`);
       continue;
     }
-    if (!Array.isArray(samples) || samples.length === 0) {
-      lastErr = '输出为空数组';
+    if (!Array.isArray(samples)) {
+      lastErr = '输出不是 JSON 数组';
       if (attempt === MAX_ATTEMPTS) throw new Error(`trace generation failed after ${MAX_ATTEMPTS} attempts: ${lastErr}`);
       continue;
     }
+    // Empty array = the model conservatively skipped every signal (the trace prompt
+    // explicitly permits this when signals are noise / unreproducible). That's a valid
+    // 0-result, not a failure — return it so the CLI can no-op instead of erroring.
+    if (samples.length === 0) return { samples: [], costUSD: totalCost };
     // Stamp provenance before sanitize so it survives (it's a valid enum value).
     for (const s of samples) s.provenance = PROVENANCE;
     return await finalizeSamples(samples, totalCost, sanitizeContext);
