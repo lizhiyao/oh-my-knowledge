@@ -67,6 +67,14 @@ export interface HealthAssessment {
   color: 'green' | 'yellow' | 'red' | 'gray';
 }
 
+/** Underpowered observe (very few segments) must not paint a hard red/yellow band — the
+ *  analyzer's confidence guard means the band is indicative only, so Studio treats it as
+ *  a neutral (gray) signal with a caveat rather than a hard health verdict. */
+function effectiveObserveBand(observe: SkillObserveSnapshot | null): 'green' | 'yellow' | 'red' | 'gray' {
+  if (!observe) return 'gray';
+  return observe.confidence === 'underpowered' ? 'gray' : observe.healthBand;
+}
+
 export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: Lang): HealthAssessment {
   const ran = [entry.doctor, entry.eval, entry.observe].filter(Boolean).length;
   // 三大维度都没跑过时,如果 Diagnosis 已经给出 high/medium 信号(例如只跑了 `omk observe ingest`
@@ -104,7 +112,9 @@ export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: 
   let observePct: number | null = null;
   if (entry.observe) {
     const coverage = (1 - entry.observe.gapRate) * 100;
-    const bandMul = entry.observe.healthBand === 'red' ? 0.6 : entry.observe.healthBand === 'yellow' ? 0.85 : 1;
+    // Underpowered band is indicative only → no band penalty.
+    const obsBand = effectiveObserveBand(entry.observe);
+    const bandMul = obsBand === 'red' ? 0.6 : obsBand === 'yellow' ? 0.85 : 1;
     observePct = coverage * bandMul;
   }
   const dims = [doctorPct, evalPct, observePct].filter((x): x is number => x != null);
@@ -112,10 +122,10 @@ export function assessHealth(entry: SkillIndexEntry, insights: Insight[], lang: 
 
   const hasFail = (entry.doctor != null && entry.doctor.failCount > 0)
     || (entry.eval != null && entry.eval.failCount > 0)
-    || (entry.observe != null && entry.observe.healthBand === 'red');
+    || (effectiveObserveBand(entry.observe) === 'red');
   const hasWarn = (entry.doctor != null && entry.doctor.warnCount > 0)
     || (entry.eval != null && entry.eval.compositeScore != null && entry.eval.compositeScore < 3.5)
-    || (entry.observe != null && entry.observe.healthBand === 'yellow');
+    || (effectiveObserveBand(entry.observe) === 'yellow');
   if (highCount > 0 || hasFail) {
     return { grade: 'unhealthy', score, label: lang === 'zh' ? '不健康' : 'Unhealthy', emoji: '🔴', color: 'red' };
   }
@@ -166,8 +176,9 @@ function renderHealthSummary(entry: SkillIndexEntry, insights: Insight[], lang: 
       if (entry.eval.failCount > 0) issues.push(lang === 'zh' ? `eval 通过率 ${pct}%(${entry.eval.failCount} 条挂)` : `eval ${pct}% pass (${entry.eval.failCount} fail)`);
     }
   }
-  if (entry.observe && entry.observe.healthBand !== 'green') {
-    issues.push(lang === 'zh' ? `observe ${BAND_DOT[entry.observe.healthBand]}` : `observe ${BAND_DOT[entry.observe.healthBand]}`);
+  const obIssueBand = effectiveObserveBand(entry.observe);
+  if (entry.observe && obIssueBand !== 'green' && obIssueBand !== 'gray') {
+    issues.push(lang === 'zh' ? `observe ${BAND_DOT[obIssueBand]}` : `observe ${BAND_DOT[obIssueBand]}`);
   }
   const high = insights.filter((i) => i.severity === 'high').length;
   const med = insights.filter((i) => i.severity === 'medium').length;
@@ -974,12 +985,12 @@ function renderViewSummaryCards(entry: SkillIndexEntry, lang: Lang): string {
     : (lang === 'zh' ? '未运行' : 'not run');
 
   // observe
-  const obsBand: 'green' | 'yellow' | 'red' | 'gray' = entry.observe?.healthBand ?? 'gray';
+  const obsBand: 'green' | 'yellow' | 'red' | 'gray' = effectiveObserveBand(entry.observe);
   const obsColor = obsBand === 'green' ? '#5e8252' : obsBand === 'yellow' ? '#b08030' : obsBand === 'red' ? '#9c4a3f' : '#a8a8a8';
   const obsPct = entry.observe ? (1 - entry.observe.gapRate) * 100 : null;
   const obsStabilityRates = entry.observeHistory.map((h) => (1 - h.gapRate) * 100);
   const obsStat = entry.observe
-    ? `${entry.observe.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · ${((1 - entry.observe.gapRate) * 100).toFixed(0)}% ${lang === 'zh' ? '稳定' : 'stable'}`
+    ? `${entry.observe.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · ${((1 - entry.observe.gapRate) * 100).toFixed(0)}% ${lang === 'zh' ? '稳定' : 'stable'}${entry.observe.confidence === 'underpowered' ? (lang === 'zh' ? ' · 样本不足' : ' · low N') : ''}`
     : (lang === 'zh' ? '未运行' : 'not run');
 
   const node = (icon: string, label: string, sublabel: string, band: string, pct: number | null, color: string, stat: string, sparkRates: number[], anchor: string): string => `<a class="si-vs si-vs--${band}" href="#${anchor}">
@@ -1297,10 +1308,13 @@ function renderObserveSection(
     ? alerts.join('')
     : `<div class="si-sect-allpass">✓ ${lang === 'zh' ? '生产观测健康' : 'production observation healthy'}</div>`;
 
-  return `<section id="section-observe" class="si-sect si-sect--${snap.healthBand}">
+  const obsCaveat = snap.confidence === 'underpowered'
+    ? (lang === 'zh' ? ' · ⚠ 样本不足，色带仅供参考' : ' · ⚠ low N, band indicative')
+    : '';
+  return `<section id="section-observe" class="si-sect si-sect--${effectiveObserveBand(snap)}">
     <div class="si-sect-h">
       <span class="si-sect-title">👁 ${lang === 'zh' ? '线上观测 (observe)' : 'Live stability (observe)'}</span>
-      <span class="si-sect-meta">${snap.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · gap ${gapPct}% · ${lang === 'zh' ? '工具失败率' : 'tool fail'} ${failPct}% · ${relTime(snap.generatedAt, lang)}</span>
+      <span class="si-sect-meta">${snap.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · gap ${gapPct}% · ${lang === 'zh' ? '工具失败率' : 'tool fail'} ${failPct}% · ${relTime(snap.generatedAt, lang)}${obsCaveat}</span>
     </div>
     <div class="si-sect-body">
       ${body}

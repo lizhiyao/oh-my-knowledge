@@ -72,3 +72,26 @@ describe('assessHealth — Diagnosis-only skill', () => {
     assert.equal(h.label, 'Unhealthy');
   });
 });
+
+describe('assessHealth — observe confidence guard', () => {
+  const observe = (
+    confidence: 'high' | 'low' | 'underpowered',
+    healthBand: 'green' | 'yellow' | 'red',
+  ): NonNullable<SkillIndexEntry['observe']> => ({
+    analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
+    healthBand, failureRate: 0.5, gapRate: 0.5,
+    segmentCount: confidence === 'underpowered' ? 2 : 30, confidence,
+  });
+
+  it('underpowered red observe must NOT drive unhealthy/red (P2 repro)', () => {
+    const h = assessHealth(mkEntry({ observe: observe('underpowered', 'red') }), [], 'zh');
+    assert.notEqual(h.grade, 'unhealthy');
+    assert.notEqual(h.color, 'red');
+  });
+
+  it('high-confidence red observe still drives unhealthy/red', () => {
+    const h = assessHealth(mkEntry({ observe: observe('high', 'red') }), [], 'zh');
+    assert.equal(h.grade, 'unhealthy');
+    assert.equal(h.color, 'red');
+  });
+});

@@ -76,10 +76,15 @@ function renderHealthSummary(entry: SkillIndexEntry, insights: Insight[], lang: 
     }
   }
   if (entry.observe) {
-    const labels: Record<string, string> = lang === 'zh'
-      ? { green: '稳定', yellow: '波动', red: '不稳' }
-      : { green: 'stable', yellow: 'flaky', red: 'unstable' };
-    parts.push(lang === 'zh' ? `observe ${labels[entry.observe.healthBand]}` : `observe ${labels[entry.observe.healthBand]}`);
+    if (entry.observe.confidence === 'underpowered') {
+      // Too few segments to claim stable/flaky/unstable — surface as indicative only.
+      parts.push(lang === 'zh' ? 'observe 样本不足（仅供参考）' : 'observe low N (indicative)');
+    } else {
+      const labels: Record<string, string> = lang === 'zh'
+        ? { green: '稳定', yellow: '波动', red: '不稳' }
+        : { green: 'stable', yellow: 'flaky', red: 'unstable' };
+      parts.push(`observe ${labels[entry.observe.healthBand]}`);
+    }
   }
   if (parts.length === 0) {
     // Diagnosis-only skill(例如只跑了 observe ingest 拿到 skill_md_not_found):没有三大
