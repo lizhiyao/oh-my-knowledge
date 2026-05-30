@@ -6,9 +6,10 @@
  * v0.21 makes the data trustworthy.  closes the last mile: senior
  * engineers' #1 complaint is "the report has all the right numbers but I
  * still need 30 minutes to read it before I can decide". This module
- * aggregates the four data sources omk already produces — Bootstrap CI on
- * the pairwise diff, three-layer CI gate, saturation curve, and (when
- * available) Krippendorff α against gold — and emits one of four verdicts:
+ * aggregates the data sources omk already produces — Bootstrap CI on the
+ * pairwise diff, three-layer CI gate, saturation curve, inter-judge ensemble
+ * agreement, and (when available) Krippendorff α against gold — and emits one
+ * of six verdicts:
  *
  *  - **PROGRESS**     diff CI shows real positive shift, no layer regressed
  *  - **CAUTIOUS**     positive shift but at least one layer broke its gate,
@@ -37,6 +38,17 @@ import { evaluateLayerGates } from './layer-gates.js';
  * guarded by `test/scripts/doc-constants-drift.test.ts`.
  */
 export const UNDERPOWERED_MIN_SAMPLES = 20;
+
+/**
+ * Inter-judge Pearson bands, shared with the report's ensemble-agreement audit
+ * badge (`src/renderer/summary.ts`) so the verdict gate and the UI read one scale.
+ *  - `>= ENSEMBLE_STRONG_PEARSON` (0.7): judges agree on rank order (badge green).
+ *  - `< ENSEMBLE_DISSENT_PEARSON` (0.4): strong disagreement (badge red). A
+ *    would-be PROGRESS is downgraded to CAUTIOUS — the judge-layer signal driving
+ *    the win is unreliable when the ensemble can't agree.
+ */
+export const ENSEMBLE_STRONG_PEARSON = 0.7;
+export const ENSEMBLE_DISSENT_PEARSON = 0.4;
 
 export type VerdictLevel =
   | 'PROGRESS'
@@ -242,6 +254,20 @@ function verdictForPair(
     };
   }
 
+  // Ensemble dissent gate: a real, gate-passing gain is only PROGRESS if the
+  // judges that produced it actually agree. When inter-judge Pearson sits in the
+  // badge's red band (< ENSEMBLE_DISSENT_PEARSON) for either compared variant,
+  // the judge-layer signal behind the win is unreliable → downgrade to CAUTIOUS.
+  const dissent = ensembleDissent(pair, summary);
+  if (dissent) {
+    return {
+      control,
+      treatment,
+      level: 'CAUTIOUS',
+      headline: `${headlineCore} · gain real, but judges disagree on ${dissent.variant} (Pearson ${dissent.pearson} < ${ENSEMBLE_DISSENT_PEARSON})`,
+    };
+  }
+
   // Did control break a gate? Then treatment winning isn't surprising — flag.
   if (!cGate.allPass) {
     return {
@@ -253,6 +279,28 @@ function verdictForPair(
   }
 
   return { control, treatment, level: 'PROGRESS', headline: `${headlineCore} · clean win` };
+}
+
+/**
+ * Strong inter-judge disagreement on the compared pair, if any. Reuses the
+ * persisted per-variant ensemble Pearson (`summary[v].judgeAgreement.pearson`).
+ * Returns the worst offender below the dissent threshold, or null when every
+ * variant agrees / has no ensemble signal (single- or constant-score judge ⇒
+ * pearson undefined, nothing to act on — its disagreement, if any, still shows
+ * in the report's MAD column).
+ */
+function ensembleDissent(
+  pair: { control: string; treatment: string },
+  summary: Record<string, VariantSummary>,
+): { variant: string; pearson: number } | null {
+  let worst: { variant: string; pearson: number } | null = null;
+  for (const variant of [pair.treatment, pair.control]) {
+    const pearson = summary[variant]?.judgeAgreement?.pearson;
+    if (pearson != null && pearson < ENSEMBLE_DISSENT_PEARSON) {
+      if (!worst || pearson < worst.pearson) worst = { variant, pearson };
+    }
+  }
+  return worst;
 }
 
 function avgComposite(s: VariantSummary | undefined): number {

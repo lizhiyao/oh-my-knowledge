@@ -47,6 +47,70 @@ describe('computeVerdict', () => {
     assert.match(v.headline, /clean win/);
   });
 
+  // --- inter-judge dissent gate -------------------------------------------
+  // A clean, gate-passing positive diff. Tests below vary only the ensemble
+  // agreement on top of this to isolate the dissent gate.
+  const cleanProgress = (): Report => buildReport({
+    variants: ['baseline', 'skill'],
+    perVariantAvg: {
+      baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+      skill:    { fact: 4.3, behavior: 4.2, judge: 4.5, composite: 4.33 },
+    },
+    pairs: [{
+      control: 'baseline', treatment: 'skill',
+      diffBootstrapCI: { low: 0.2, high: 0.5, estimate: 0.33, samples: 1000, significant: true },
+    }],
+  });
+  const withAgreement = (r: Report, variant: string, agreement: VariantSummary['judgeAgreement']): Report => {
+    const s = r.summary[variant];
+    assert.ok(s, `variant ${variant} missing from summary`);
+    s.judgeAgreement = agreement;
+    return r;
+  };
+
+  it('PROGRESS downgrades to CAUTIOUS when treatment judges strongly disagree (Pearson < 0.4)', () => {
+    const r = withAgreement(cleanProgress(), 'skill', { pearson: 0.3, meanAbsDiff: 1.2, pairCount: 1, sampleCount: 30 });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'CAUTIOUS');
+    assert.match(v.headline, /judges disagree on skill/);
+  });
+
+  it('PROGRESS stays PROGRESS when the ensemble agrees (high Pearson)', () => {
+    const r = withAgreement(cleanProgress(), 'skill', { pearson: 0.85, meanAbsDiff: 0.3, pairCount: 1, sampleCount: 30 });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'PROGRESS');
+  });
+
+  it('no dissent downgrade when Pearson is undefined (single / constant-score judge)', () => {
+    const r = withAgreement(cleanProgress(), 'skill', { meanAbsDiff: 2.0, pairCount: 1, sampleCount: 30 });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'PROGRESS');
+  });
+
+  it('dissent on the control variant also downgrades PROGRESS to CAUTIOUS', () => {
+    const r = withAgreement(cleanProgress(), 'baseline', { pearson: 0.2, meanAbsDiff: 1.8, pairCount: 1, sampleCount: 30 });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'CAUTIOUS');
+    assert.match(v.headline, /judges disagree on baseline/);
+  });
+
+  it('dissent gate only touches PROGRESS — a REGRESS with low Pearson stays REGRESS', () => {
+    const r = buildReport({
+      variants: ['baseline', 'skill'],
+      perVariantAvg: {
+        baseline: { fact: 4, behavior: 4, judge: 4, composite: 4 },
+        skill:    { fact: 3.5, behavior: 3.5, judge: 3.5, composite: 3.5 },
+      },
+      pairs: [{
+        control: 'baseline', treatment: 'skill',
+        diffBootstrapCI: { low: -0.7, high: -0.2, estimate: -0.5, samples: 1000, significant: true },
+      }],
+    });
+    withAgreement(r, 'skill', { pearson: 0.1, meanAbsDiff: 2.5, pairCount: 1, sampleCount: 30 });
+    const v = computeVerdict(r);
+    assert.equal(v.level, 'REGRESS');
+  });
+
   it('REGRESS when diff CI is significantly negative', () => {
     const r = buildReport({
       variants: ['baseline', 'skill'],

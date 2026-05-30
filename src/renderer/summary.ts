@@ -1,7 +1,7 @@
 import { e, fmtNum, fmtCost, fmtDuration, COLORS, t } from './layout.js';
 import { generateAnalysisSummary } from '../analysis/report-diagnostics.js';
 import { pValueCategory } from '../eval-core/statistics.js';
-import { computeVerdict, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
+import { computeVerdict, ENSEMBLE_STRONG_PEARSON, ENSEMBLE_DISSENT_PEARSON, type VerdictLevel, type VerdictResult } from '../eval-core/verdict.js';
 import type { GapReport, GapSignalRef, AnalysisInsight, KnowledgeCoverage, Lang, Report, ReportHumanAgreement, SaturationData, VarianceComparison, VarianceComparisonMetric, VarianceData, VarianceLayerKey, VariantPairComparison, VariantSummary } from '../types/index.js';
 
 /**
@@ -747,7 +747,7 @@ export function renderJudgeAgreementBlock(variants: string[], summary: Record<st
     const ag = s.judgeAgreement!;
     const judgeList = (s.judgeModels || []).map((j) => `<code>${e(`${j.executor}:${j.model}`)}</code>`).join(', ');
     const pearsonCell = ag.pearson != null
-      ? `<span title="${t('pearsonDesc', lang)}" style="color:${ag.pearson >= 0.7 ? 'var(--green)' : ag.pearson >= 0.4 ? 'var(--yellow)' : 'var(--red)'}"><strong>${ag.pearson}</strong></span>`
+      ? `<span title="${t('pearsonDesc', lang)}" style="color:${ag.pearson >= ENSEMBLE_STRONG_PEARSON ? 'var(--green)' : ag.pearson >= ENSEMBLE_DISSENT_PEARSON ? 'var(--yellow)' : 'var(--red)'}"><strong>${ag.pearson}</strong></span>`
       : `<span style="color:var(--text-muted)">—</span>`;
     const madCell = `<span title="${t('madDesc', lang)}" style="color:${ag.meanAbsDiff < 0.5 ? 'var(--green)' : ag.meanAbsDiff < 1.5 ? 'var(--yellow)' : 'var(--red)'}"><strong>${ag.meanAbsDiff}</strong></span>`;
     return `<tr>
