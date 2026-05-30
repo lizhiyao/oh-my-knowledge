@@ -29,7 +29,7 @@ import type {
   VariantVariance,
 } from '../types/index.js';
 import { findSaturationPoint } from '../analysis/saturation.js';
-import { bootstrapMeanCI } from '../eval-core/bootstrap.js';
+import { bootstrapMeanCI, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES } from '../eval-core/bootstrap.js';
 
 export interface SkillProgressInfo {
   phase: string;
@@ -479,7 +479,7 @@ function buildSaturationData(runs: Report[]): SaturationData | undefined {
       cumulativeByVariant[variant].push([...acc[variant]]);
 
       // Per-checkpoint trace: bootstrap CI on cumulative scores.
-      const ci = bootstrapMeanCI(acc[variant], 0.05, 1000);
+      const ci = bootstrapMeanCI(acc[variant], DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES);
       if (!tracesByVariant[variant]) tracesByVariant[variant] = [];
       tracesByVariant[variant].push({
         n: acc[variant].length,

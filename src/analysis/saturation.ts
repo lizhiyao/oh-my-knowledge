@@ -28,9 +28,19 @@
  * that look like convergence but aren't.
  */
 
-import { bootstrapMeanCI } from '../eval-core/bootstrap.js';
+import { bootstrapMeanCI, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES } from '../eval-core/bootstrap.js';
 
 export type SaturationMethod = 'slope' | 'bootstrap-ci-width' | 'plateau-height';
+
+/** Default consecutive-window run length required before declaring saturation. */
+export const DEFAULT_SATURATION_WINDOW_SIZE = 3;
+
+/**
+ * Default `bootstrap-ci-width` cutoff: declare saturation when the relative
+ * CI-width shrink per checkpoint stays under 5%. Single source of truth for
+ * the documented threshold; guarded by `doc-constants-drift.test.ts`.
+ */
+export const DEFAULT_CI_WIDTH_SHRINK_THRESHOLD = 0.05;
 
 /**
  * One observation in a saturation curve. `n` is the cumulative sample
@@ -80,8 +90,8 @@ export function findSaturationPoint(
   cumulativeScores: number[][],
   method: SaturationMethod = 'bootstrap-ci-width',
   threshold?: number,
-  windowSize = 3,
-  bootstrapSamples = 1000,
+  windowSize = DEFAULT_SATURATION_WINDOW_SIZE,
+  bootstrapSamples = DEFAULT_BOOTSTRAP_SAMPLES,
   seed?: number,
 ): SaturationResult {
   const trace: SaturationResult['trace'] = [];
@@ -89,7 +99,7 @@ export function findSaturationPoint(
 
   for (const scores of cumulativeScores) {
     if (scores.length === 0) continue;
-    const ci = bootstrapMeanCI(scores, 0.05, bootstrapSamples, seed);
+    const ci = bootstrapMeanCI(scores, DEFAULT_BOOTSTRAP_ALPHA, bootstrapSamples, seed);
     checkpoints.push({
       n: scores.length,
       mean: ci.estimate,
@@ -196,7 +206,7 @@ export function findSaturationPoint(
 function defaultThreshold(method: SaturationMethod): number {
   switch (method) {
     case 'slope': return 0.005;
-    case 'bootstrap-ci-width': return 0.05;
+    case 'bootstrap-ci-width': return DEFAULT_CI_WIDTH_SHRINK_THRESHOLD;
     case 'plateau-height': return 0.1;
   }
 }

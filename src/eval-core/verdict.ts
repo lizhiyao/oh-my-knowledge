@@ -30,6 +30,14 @@
 import type { Report, VariantPairComparison, VariantSummary } from '../types/index.js';
 import { evaluateLayerGates } from './layer-gates.js';
 
+/**
+ * Below this sample count a non-significant diff is read as UNDERPOWERED
+ * (only large effects are detectable) rather than NOISE. Matches the
+ * pre-flight power band documented in `docs/specs/sample-design-spec.md`;
+ * guarded by `test/scripts/doc-constants-drift.test.ts`.
+ */
+export const UNDERPOWERED_MIN_SAMPLES = 20;
+
 export type VerdictLevel =
   | 'PROGRESS'
   | 'CAUTIOUS'
@@ -196,7 +204,7 @@ function verdictForPair(
     // from "noise (saturation says: we're saturated, the effect just isn't there)".
     const satVerdict = report.variance?.saturation?.verdicts?.[treatment];
     const underpowered =
-      sampleCount < 20 ||
+      sampleCount < UNDERPOWERED_MIN_SAMPLES ||
       (satVerdict && !satVerdict.saturated && satVerdict.confidence !== 'high');
     if (underpowered) {
       return {

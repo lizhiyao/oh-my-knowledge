@@ -11,6 +11,7 @@ import type { EvalArgs, EvalFlags } from '../../lib/cmd-flags.js';
 import type { BatchEvaluationReport, EvaluationReport, Report, ProgressCallback } from '../../../types/index.js';
 import type { DryRunBatchReport, DryRunReport } from '../../../eval-workflows/run-evaluation.js';
 import type { EvalResult, ReportServer } from '../../lib/shared.js';
+import { DEFAULT_BOOTSTRAP_SAMPLES } from '../../../eval-core/bootstrap.js';
 
 // oclif 版 eval(默认 = run 模式) — 单次 typed parse 之后业务 inline。flag schema
 // 镜像 RUN_OPTIONS + eval-runner extra = 41 flag。具体语义跟约束在 parseRunConfig 里。
@@ -232,11 +233,11 @@ async function runEval(
   if (bootstrapEnabled) {
     config.bootstrap = true;
     const bsRaw = values['bootstrap-samples'] as string | undefined;
-    const parsedBs = bsRaw !== undefined ? Number(bsRaw) : (evalConfig?.bootstrapSamples ?? 1000);
+    const parsedBs = bsRaw !== undefined ? Number(bsRaw) : (evalConfig?.bootstrapSamples ?? DEFAULT_BOOTSTRAP_SAMPLES);
     if (bsRaw !== undefined && (!Number.isFinite(parsedBs) || parsedBs < 100)) {
       process.stderr.write(tCli('cli.run.invalid_bootstrap_samples', lang, { value: bsRaw }));
     }
-    const bsCount = Math.max(100, Math.floor(parsedBs) || 1000);
+    const bsCount = Math.max(100, Math.floor(parsedBs) || DEFAULT_BOOTSTRAP_SAMPLES);
     if (bsCount > 10000) {
       process.stderr.write(tCli('cli.run.bootstrap_samples_too_large', lang, { n: bsCount }));
     }
