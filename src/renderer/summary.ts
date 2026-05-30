@@ -805,11 +805,19 @@ function badgeIcon(status: AuditBadgeStatus): string {
 }
 
 function computeJudgeAgreementBadge(variants: string[], summary: Record<string, VariantSummary>, lang: Lang): AuditBadge | null {
-  const treatment = variants[1] ?? variants[0];
-  const ag = summary[treatment]?.judgeAgreement;
-  if (!ag || ag.pearson == null) return null;
-  const p = ag.pearson;
-  const status: AuditBadgeStatus = p >= 0.7 ? 'pass' : p >= 0.4 ? 'warn' : 'fail';
+  // Match the verdict's ensemble-dissent perspective: consider every compared
+  // variant (control + treatments), not just the treatment, and surface the worst
+  // agreement. Otherwise the hero verdict can downgrade to CAUTIOUS on a low control
+  // Pearson while this badge stays green on a high treatment Pearson — contradictory
+  // methodology signals in the same report. Thresholds come from the shared bands.
+  let p: number | null = null;
+  for (const v of variants) {
+    const pearson = summary[v]?.judgeAgreement?.pearson;
+    if (pearson == null) continue;
+    if (p == null || pearson < p) p = pearson;
+  }
+  if (p == null) return null;
+  const status: AuditBadgeStatus = p >= ENSEMBLE_STRONG_PEARSON ? 'pass' : p >= ENSEMBLE_DISSENT_PEARSON ? 'warn' : 'fail';
   const verdict = status === 'pass'
     ? (lang === 'zh' ? '评委一致' : 'judges agree')
     : status === 'warn'
@@ -819,7 +827,9 @@ function computeJudgeAgreementBadge(variants: string[], summary: Record<string, 
     key: 'judge',
     label: verdict,
     status,
-    detail: lang === 'zh' ? `Pearson ${p}（≥0.7 一致 / 0.4-0.7 偏弱 / <0.4 分歧）` : `Pearson ${p} (≥0.7 agree / 0.4-0.7 weak / <0.4 diverge)`,
+    detail: lang === 'zh'
+      ? `Pearson ${p}（≥${ENSEMBLE_STRONG_PEARSON} 一致 / ${ENSEMBLE_DISSENT_PEARSON}-${ENSEMBLE_STRONG_PEARSON} 偏弱 / <${ENSEMBLE_DISSENT_PEARSON} 分歧）`
+      : `Pearson ${p} (≥${ENSEMBLE_STRONG_PEARSON} agree / ${ENSEMBLE_DISSENT_PEARSON}-${ENSEMBLE_STRONG_PEARSON} weak / <${ENSEMBLE_DISSENT_PEARSON} diverge)`,
   };
 }
 
