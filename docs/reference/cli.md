@@ -212,6 +212,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --concurrency <value>           Eval concurrency, default 1
   --effort <value>                Reasoning effort: low/medium/high/xhigh/max
   --executor <value>              Executor name, default claude
+  --holdout-ratio <value>         Holdout fraction for the accept decision (0..1, default 0=off). When > 0, candidates are accepted on holdout score and weak samples come only from train — guards against train-on-test
   --improve-mode <agent|rewrite>  Improvement strategy (default: agent)
   --improve-model <value>         LLM that rewrites the skill, default sonnet
   --judge-models <value>          Judge model (single judge required), executor:model format. Default claude:haiku

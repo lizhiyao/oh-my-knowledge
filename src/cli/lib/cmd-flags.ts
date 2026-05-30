@@ -147,6 +147,7 @@ export interface EvolveFlags {
   'sample-fix-max-attempts': string;
   'reuse-latest-eval': boolean;
   'improve-mode': string;
+  'holdout-ratio': string;
 }
 
 // ── sample ────────────────────────────────────────────────────────────────────

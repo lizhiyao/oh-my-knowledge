@@ -10,7 +10,9 @@ export type EvolveMessageKey =
   | 'cli.evolve.summary'
   | 'cli.evolve.best_path'
   | 'cli.evolve.versions_saved'
-  | 'cli.evolve.report_link';
+  | 'cli.evolve.report_link'
+  | 'cli.evolve.holdout_active'
+  | 'cli.evolve.holdout_disabled';
 
 export const evolveDict: Record<EvolveMessageKey, CliMessage> = {
   'cli.evolve.specify_skill_path': {
@@ -52,5 +54,13 @@ export const evolveDict: Record<EvolveMessageKey, CliMessage> = {
   'cli.evolve.report_link': {
     zh: '📊 查看报告：omk studio（报告 ID：{id}）\n',
     en: '📊 View report: omk studio (report id: {id})\n',
+  },
+  'cli.evolve.holdout_active': {
+    zh: '🔀 holdout 切分：训练 {train} / 验收 {holdout}，accept 看 holdout 分（防 train-on-test）\n',
+    en: '🔀 Holdout split: {train} train / {holdout} holdout; accepted on holdout score (guards train-on-test)\n',
+  },
+  'cli.evolve.holdout_disabled': {
+    zh: '⚠️ holdout-ratio={ratio} 样本太少无法切分，已回退全集打分\n',
+    en: '⚠️ holdout-ratio={ratio} too few samples to split; using full-set scoring\n',
   },
 };

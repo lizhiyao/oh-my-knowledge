@@ -212,6 +212,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --concurrency <value>           评测并发数，默认 1
   --effort <value>                reasoning effort: low/medium/high/xhigh/max
   --executor <value>              执行器名，默认 claude
+  --holdout-ratio <value>         留出验收集比例（0..1，默认 0=关）。> 0 时按 holdout 分接受候选、weak-sample 只取训练集，防 train-on-test
   --improve-mode <agent|rewrite>  改写策略（默认：agent）
   --improve-model <value>         负责重写 skill 的 LLM，默认 sonnet
   --judge-models <value>          评委 model（单评委约束），格式 executor:model。默认 claude:haiku

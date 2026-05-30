@@ -6,6 +6,7 @@ import { persistReport, DEFAULT_OUTPUT_DIR, generateRunId, hashString } from '..
 import { createFileStore } from '../server/report-store.js';
 import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { loadSamples } from '../inputs/load-samples.js';
+import { buildVariantSummary } from '../eval-core/schema.js';
 import { fixSamples } from './sample-fixer.js';
 import type { JudgeConfig, ProgressCallback, Report, ResultEntry, Sample, VariantResult } from '../types/index.js';
 
@@ -145,9 +146,15 @@ function readSkillName(skillPath: string): string | null {
   }
 }
 
-export function extractWeakSamples(report: Report, variantKey: string, count: number = 5): WeakSample[] {
+export function extractWeakSamples(
+  report: Report,
+  variantKey: string,
+  count: number = 5,
+  sampleIdFilter?: Set<string>,
+): WeakSample[] {
   const weakSamples: WeakSample[] = [];
   for (const r of report.results) {
+    if (sampleIdFilter && !sampleIdFilter.has(r.sample_id)) continue;
     const v = r.variants[variantKey];
     if (!v || typeof v.compositeScore !== 'number') continue;
     const suggestion = v.diagnostic?.suggestion;
@@ -175,6 +182,65 @@ export function extractWeakSamples(report: Report, variantKey: string, count: nu
   return weakSamples
     .sort((a, b) => a.compositeScore - b.compositeScore)
     .slice(0, count);
+}
+
+/** A train / holdout partition of a sample set. */
+interface HoldoutSplit {
+  trainIds: Set<string>;
+  holdoutIds: Set<string>;
+}
+
+/** Below this many samples on either side, a holdout split is too small to be
+ *  meaningful — evolve falls back to full-set scoring and warns. */
+const MIN_HOLDOUT_SUBSET = 3;
+
+/**
+ * Deterministically split sample ids into train / holdout by `ratio` (fraction
+ * held out). Holdout members are picked at an even stride so the partition is
+ * representative of the ordering, and the split is stable across rounds and runs
+ * (no RNG). Returns null when ratio ≤ 0 or either side would drop below
+ * MIN_HOLDOUT_SUBSET — the caller then scores on the full set.
+ */
+export function splitHoldout(sampleIds: string[], ratio: number): HoldoutSplit | null {
+  if (!(ratio > 0) || sampleIds.length === 0) return null;
+  const holdoutCount = Math.round(sampleIds.length * ratio);
+  const trainCount = sampleIds.length - holdoutCount;
+  if (holdoutCount < MIN_HOLDOUT_SUBSET || trainCount < MIN_HOLDOUT_SUBSET) return null;
+  const stride = sampleIds.length / holdoutCount;
+  const holdoutIds = new Set<string>();
+  for (let k = 0; k < holdoutCount; k++) {
+    holdoutIds.add(sampleIds[Math.floor(k * stride)]);
+  }
+  const trainIds = new Set(sampleIds.filter((id) => !holdoutIds.has(id)));
+  return { trainIds, holdoutIds };
+}
+
+/**
+ * Mean composite over the subset of a report's results whose sample_id is in
+ * `ids`, using the same aggregation as the full-run summary
+ * (`buildVariantSummary`) so train / holdout scores stay comparable to the
+ * headline composite. Returns 0 when the subset has no scorable entries.
+ */
+function subsetCompositeScore(report: Report, variantKey: string, ids: Set<string>): number {
+  const entries: VariantResult[] = [];
+  for (const r of report.results) {
+    if (!ids.has(r.sample_id)) continue;
+    const v = r.variants[variantKey];
+    if (v) entries.push(v);
+  }
+  if (entries.length === 0) return 0;
+  return buildVariantSummary(entries).avgCompositeScore ?? 0;
+}
+
+/**
+ * A view of `report` whose results are restricted to `sampleIds`. Used to keep the
+ * holdout split out of the sample-fixer: under an active holdout, only training-split
+ * samples may enter the --auto-fix-samples prompt or be rewritten — otherwise the
+ * skill's samples get tuned to the very samples that decide acceptance, reintroducing
+ * the leak holdout exists to prevent.
+ */
+export function restrictReportToSamples(report: Report, sampleIds: Set<string>): Report {
+  return { ...report, results: report.results.filter((r) => sampleIds.has(r.sample_id)) };
 }
 
 export function allNonTripwireAssertionsPass(report: Report, variantKey: string): boolean {
@@ -423,16 +489,27 @@ interface EvolveOptions {
   noDiagnostic?: boolean;
   /** 跳过 doctor 健康检查门禁。默认 false。 */
   skipDoctor?: boolean;
+  /** Fraction of samples held out for the accept decision (0..1). Default 0 = off.
+   *  When > 0, a candidate is accepted on its **holdout** composite rather than the
+   *  training composite, and weak-sample extraction only sees the training split —
+   *  so the skill is never tuned to the samples that judge it. Too small a split
+   *  (either side < MIN_HOLDOUT_SUBSET) falls back to full-set scoring + a warning. */
+  holdoutRatio?: number;
   onProgress?: ProgressCallback | null;
   onRoundProgress?: ((progress: EvolveRoundProgressInfo) => void) | null;
 }
 
 interface TrajectoryEntry {
   round: number;
+  /** Accept-decision score: holdout composite when holdout is active, else full-set. */
   score: number;
   delta: number;
   accepted: boolean;
   costUSD: number;
+  /** Present when holdout is active: the training-split composite (improvement signal). */
+  trainScore?: number;
+  /** Present when holdout is active: the holdout-split composite (== score). */
+  holdoutScore?: number;
 }
 
 export interface EvolveResult {
@@ -446,6 +523,10 @@ export interface EvolveResult {
   reusedBaselineReportId?: string;
   /** False = 任一轮的 exec / judge 不报 cost → totalCostUSD 是 lower-bound 而非真值。 */
   costReported?: boolean;
+  /** Holdout split summary when `--holdout-ratio` > 0. `disabled` is true when the
+   *  split was too small and evolve fell back to full-set scoring (CLI formats the
+   *  user-facing message bilingually). */
+  holdout?: { ratio: number; trainCount: number; holdoutCount: number; disabled?: boolean };
   trajectory: TrajectoryEntry[];
   bestSkillPath: string;
   allVersions: string[];
@@ -559,6 +640,7 @@ export async function evolveSkill({
   effort,
   noDiagnostic,
   skipDoctor,
+  holdoutRatio = 0,
   onProgress = null,
   onRoundProgress = null,
 }: EvolveOptions): Promise<EvolveResult> {
@@ -582,6 +664,33 @@ export async function evolveSkill({
   if (!existsSync(absSkillPath)) throw new Error(`skill file not found: ${absSkillPath}`);
   if (!existsSync(absSamplesPath)) throw new Error(`samples file not found: ${absSamplesPath}`);
   mkdirSync(evolveDir, { recursive: true });
+
+  // Holdout split (opt-in). Computed once over the canonical sample order so it's
+  // stable across rounds. When active, accept decisions use the holdout composite
+  // and weak-sample extraction only sees the training split — the skill is never
+  // tuned to the samples that decide whether it's accepted.
+  const allSampleIds = loadSamples(absSamplesPath).samples.map((s) => s.sample_id);
+  const holdoutSplit = splitHoldout(allSampleIds, holdoutRatio);
+  const holdoutInfo: EvolveResult['holdout'] = holdoutRatio > 0
+    ? {
+      ratio: holdoutRatio,
+      trainCount: holdoutSplit?.trainIds.size ?? allSampleIds.length,
+      holdoutCount: holdoutSplit?.holdoutIds.size ?? 0,
+      ...(holdoutSplit ? {} : { disabled: true }),
+    }
+    : undefined;
+
+  // Accept-decision score for a report's variant: holdout composite when the split
+  // is active, otherwise the full-set composite (legacy behavior).
+  const decisionScore = (report: Report, key: string): number =>
+    holdoutSplit
+      ? subsetCompositeScore(report, key, holdoutSplit.holdoutIds)
+      : (report.summary[key]?.avgCompositeScore ?? 0);
+  const trainScoreOf = (report: Report, key: string): number | undefined =>
+    holdoutSplit ? subsetCompositeScore(report, key, holdoutSplit.trainIds) : undefined;
+  // Per-round trajectory tail: train / holdout breakdown, only when split active.
+  const splitScores = (report: Report, key: string, decision: number): Partial<TrajectoryEntry> =>
+    holdoutSplit ? { trainScore: trainScoreOf(report, key), holdoutScore: decision } : {};
 
   // Save original as r0
   let currentBest = readFileSync(absSkillPath, 'utf-8').trim();
@@ -626,13 +735,13 @@ export async function evolveSkill({
     });
   }
   const baselineVariantKey = Object.keys(baselineReport.summary)[0];
-  bestScore = baselineReport.summary[baselineVariantKey]?.avgCompositeScore ?? 0;
+  bestScore = decisionScore(baselineReport, baselineVariantKey);
   const baselineCost = baselineReused ? 0 : baselineReport.meta.totalCostUSD;
   totalCostUSD += baselineCost;
   const baselineCostReported = baselineReused || !reportHasUnreportedCost(baselineReport);
   if (!baselineCostReported) totalCostReported = false;
 
-  trajectory.push({ round: 0, score: bestScore, delta: 0, accepted: true, costUSD: baselineCost });
+  trajectory.push({ round: 0, score: bestScore, delta: 0, accepted: true, costUSD: baselineCost, ...splitScores(baselineReport, baselineVariantKey, bestScore) });
   roundReports.push({ round: 0, accepted: true, report: baselineReport });
   if (onRoundProgress) onRoundProgress({ round: 0, totalRounds: rounds, phase: 'baseline', score: bestScore, costUSD: baselineCost, costReported: baselineCostReported, reused: baselineReused });
 
@@ -652,6 +761,7 @@ export async function evolveSkill({
       ...(sampleFixes.length > 0 && { sampleFixes }),
       ...(reusedBaselineReportId && { reusedBaselineReportId }),
       ...(totalCostReported ? {} : { costReported: false }),
+      ...(holdoutInfo ? { holdout: holdoutInfo } : {}),
       trajectory,
       bestSkillPath: allVersions[bestRound],
       allVersions,
@@ -677,7 +787,7 @@ export async function evolveSkill({
       if (reportHasUnreportedCost(lastReport)) totalCostReported = false;
     }
     const lastVariantKey = Object.keys(lastReport.summary)[0];
-    const weakSamples = extractWeakSamples(lastReport, lastVariantKey);
+    const weakSamples = extractWeakSamples(lastReport, lastVariantKey, 5, holdoutSplit?.trainIds);
 
     // Generate improvement
     const candidatePath = join(evolveDir, `${skillName}.r${round}.md`);
@@ -728,7 +838,9 @@ export async function evolveSkill({
       const sampleFix = await autoFixSamplesAfterSkillRound({
         samplesPath: absSamplesPath,
         skillContent: candidateContent,
-        report: lastReport,
+        // Under an active holdout, the sample-fixer may only see training-split samples —
+        // never the holdout samples that drive the accept decision (leak guard).
+        report: holdoutSplit ? restrictReportToSamples(lastReport, holdoutSplit.trainIds) : lastReport,
         treatmentKey: lastVariantKey,
         executorName,
         model: improveModel,
@@ -747,7 +859,7 @@ export async function evolveSkill({
       samplesPath: absSamplesPath, skillDir, model, judgeModels: effectiveJudgeModels, executorName, concurrency, timeoutMs, skipConnectivity, effort, noDiagnostic, skipDoctor, onProgress,
     });
     const candidateVariantKey = Object.keys(candidateReport.summary)[0];
-    const candidateScore = candidateReport.summary[candidateVariantKey]?.avgCompositeScore ?? 0;
+    const candidateScore = decisionScore(candidateReport, candidateVariantKey);
     const roundCost = improveCostUSD + preEvalSampleFixCost + candidateReport.meta.totalCostUSD;
     const roundCostReported = improveCostReported && !reportHasUnreportedCost(candidateReport);
     if (!roundCostReported) totalCostReported = false;
@@ -766,7 +878,7 @@ export async function evolveSkill({
 
     if (accepted) roundReports.push({ round, accepted, report: candidateReport });
     const roundDelta = candidateScore - trajectory[trajectory.length - 1].score;
-    trajectory.push({ round, score: candidateScore, delta: roundDelta, accepted, costUSD: roundCost });
+    trajectory.push({ round, score: candidateScore, delta: roundDelta, accepted, costUSD: roundCost, ...splitScores(candidateReport, candidateVariantKey, candidateScore) });
     if (onRoundProgress) onRoundProgress({ round, totalRounds: rounds, phase: 'done', score: candidateScore, delta: roundDelta, accepted, costUSD: roundCost, costReported: roundCostReported });
 
     // Early stop
@@ -809,6 +921,7 @@ export async function evolveSkill({
     ...(sampleFixes.length > 0 && { sampleFixes }),
     ...(reusedBaselineReportId && { reusedBaselineReportId }),
     ...(totalCostReported ? {} : { costReported: false }),
+    ...(holdoutInfo ? { holdout: holdoutInfo } : {}),
     trajectory,
     bestSkillPath: allVersions[bestRound],
     allVersions,
