@@ -166,6 +166,8 @@ export interface SampleFlags {
   fix: boolean;
   'reports-dir'?: string;
   treatment?: string;
+  'from-traces': boolean;
+  'observations-dir'?: string;
 }
 
 // ── eval gold(3 sub-sub) ─────────────────────────────────────────────────────

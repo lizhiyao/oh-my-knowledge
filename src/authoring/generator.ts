@@ -1,5 +1,6 @@
 import { createExecutor } from '../executors/index.js';
-import type { Sample } from '../types/index.js';
+import type { Sample, SampleProvenance } from '../types/index.js';
+import type { ObservationInboxItem } from '../types/observability.js';
 
 /**
  * Generator 默认模型 'opus' (跟 eval 默认对齐)。
@@ -485,6 +486,131 @@ async function finalizeSamples(
   }
 
   return { samples, costUSD };
+}
+
+const TRACE_GEN_INSTRUCTIONS = `下面给出的不是 skill，而是从生产会话 trace 中观测到的失败 / 异常信号。请为这些信号生成评测用例（eval samples），使评测能复现并守住这些失败模式——把线上真实发生过的问题沉淀成回归用例。
+
+要求：
+- 每个信号生成 1-2 条聚焦回归用例；信号若是噪声 / 证据不足 / 无法复现，跳过它，不要硬凑。
+- prompt 要还原触发该信号的场景（自然语言任务），不要直接复述证据文本。
+- 断言优先用 mock_hit / tools_called / tools_not_called / tool_input_contains 精确锚定失败步骤，再用 contains 兜底；按「原子型」配比处理（无需工作流编号步骤），除非证据明显是多步流程。
+- 不要在输出里说明判断过程，直接输出 JSON 数组。`;
+
+type TraceSignalItem = Pick<
+  ObservationInboxItem,
+  'skillName' | 'signalType' | 'signalSubtype' | 'severity' | 'evidence' | 'messageWindow' | 'occurrences'
+>;
+
+/**
+ * Build the generation prompt for `omk sample --from-traces`. Renders each
+ * observation-inbox signal (evidence + message window) into a section and asks
+ * the generator to synthesize regression samples that reproduce the observed
+ * production failures. The trace text feeds the *generator* only — never the
+ * judge prompt — so judge-prompt isolation is unaffected.
+ */
+export function buildSamplesFromTracesPrompt(items: TraceSignalItem[], count?: number): string {
+  const sections = items.map((it, i) => {
+    const ev = it.evidence ?? {};
+    const evLines = [
+      ev.tool && `工具: ${ev.tool}`,
+      ev.query && `查询/输入: ${ev.query}`,
+      ev.path && `路径: ${ev.path}`,
+      ev.outputSnippet && `输出片段: ${ev.outputSnippet}`,
+      ev.assistantSnippet && `助手片段: ${ev.assistantSnippet}`,
+      ev.markerToken && `标记: ${ev.markerToken}`,
+    ].filter(Boolean).join('\n') || '(无结构化证据)';
+    const win = it.messageWindow
+      ? '\n上下文消息:\n' + [...it.messageWindow.before, ...it.messageWindow.event, ...it.messageWindow.after]
+        .map((m) => `  [${m.role}] ${m.snippet}`).join('\n')
+      : '';
+    return `### 信号 ${i + 1}：${it.signalType} / ${it.signalSubtype}（严重度 ${it.severity}，出现 ${it.occurrences} 次，skill: ${it.skillName}）\n${evLines}${win}`;
+  }).join('\n\n---\n\n');
+
+  const countLine = typeof count === 'number'
+    ? `共生成约 ${count} 条评测用例。`
+    : '按上面的「每个信号 1-2 条」生成。';
+
+  return `${TRACE_GEN_INSTRUCTIONS}
+
+## 观测到的失败信号（共 ${items.length} 个）
+
+${sections}
+
+${countLine}直接输出 JSON 数组。`;
+}
+
+/** Build a sanitize context string from trace evidence so finalizeSamples keeps
+ *  tool-name assertions that reference tools actually seen in the traces (an empty
+ *  context would strip every tool-name fact assertion). */
+function traceSanitizeContext(items: TraceSignalItem[]): string {
+  return items.map((it) => {
+    const ev = it.evidence ?? {};
+    return [ev.tool, ev.query, ev.path, ev.outputSnippet, ev.assistantSnippet, ev.markerToken]
+      .filter(Boolean).join(' ');
+  }).join('\n');
+}
+
+export interface GenerateSamplesFromTracesOptions {
+  items: TraceSignalItem[];
+  count?: number;
+  model?: string;
+  executorName?: string;
+}
+
+/**
+ * Generate draft eval samples from production-trace observation signals. Mirrors
+ * generateSamples' executor / retry / finalize path but feeds the trace prompt and
+ * stamps `provenance: 'production-trace'`. Output is meant to land in a review draft,
+ * not the live dataset (the CLI enforces that).
+ */
+export async function generateSamplesFromTraces({
+  items,
+  count,
+  model = GENERATOR_DEFAULT_MODEL,
+  executorName = 'claude',
+}: GenerateSamplesFromTracesOptions): Promise<{ samples: Sample[]; costUSD: number }> {
+  if (items.length === 0) return { samples: [], costUSD: 0 };
+  const executor = createExecutor(executorName);
+  const prompt = buildSamplesFromTracesPrompt(items, count);
+  const sanitizeContext = traceSanitizeContext(items);
+  const PROVENANCE: SampleProvenance = 'production-trace';
+
+  const MAX_ATTEMPTS = 3;
+  let lastErr = '';
+  let totalCost = 0;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const attemptPrompt = attempt === 1
+      ? prompt
+      : `${prompt}\n\n上一次输出解析失败:${lastErr}\n请严格按 JSON 规范输出(字符串内部用「」全角引号),只输出数组,不要包含其他文字。`;
+    const result = await executor({ model, system: SYSTEM_PROMPT, prompt: attemptPrompt, timeoutMs: 300_000, lean: true });
+    totalCost += result.costUSD || 0;
+    if (!result.ok) {
+      lastErr = result.error || 'unknown error';
+      if (attempt === MAX_ATTEMPTS) throw new Error(`trace generation failed after ${MAX_ATTEMPTS} attempts: ${lastErr}`);
+      continue;
+    }
+    let jsonStr = result.output!.trim();
+    const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) jsonStr = jsonMatch[1].trim();
+    let samples: Sample[];
+    try {
+      samples = JSON.parse(jsonStr);
+    } catch (e) {
+      lastErr = `JSON 解析失败: ${(e as Error).message}`;
+      if (attempt === MAX_ATTEMPTS) throw new Error(`trace generation failed after ${MAX_ATTEMPTS} attempts (JSON invalid): ${lastErr}`);
+      process.stderr.write(`[omk sample --from-traces] 第 ${attempt} 次输出 JSON 无效,重试中...\n`);
+      continue;
+    }
+    if (!Array.isArray(samples) || samples.length === 0) {
+      lastErr = '输出为空数组';
+      if (attempt === MAX_ATTEMPTS) throw new Error(`trace generation failed after ${MAX_ATTEMPTS} attempts: ${lastErr}`);
+      continue;
+    }
+    // Stamp provenance before sanitize so it survives (it's a valid enum value).
+    for (const s of samples) s.provenance = PROVENANCE;
+    return await finalizeSamples(samples, totalCost, sanitizeContext);
+  }
+  throw new Error('unreachable');
 }
 
 /**

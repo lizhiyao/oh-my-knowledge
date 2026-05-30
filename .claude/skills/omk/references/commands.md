@@ -389,9 +389,11 @@ omk sample [skillPath] [flags]
 - `--count` `option`:生成样本条数。不传由 LLM 按 skill 类型自动决定。
 - `--fix` `boolean`:fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
 - `--focus` `option`:生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
+- `--from-traces` `boolean`:from-traces 模式：从 observe inbox 的失败信号回流生成回归用例草稿（provenance: production-trace），落草稿待人工 review。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option` (默认 `sonnet`):生成 LLM model 名，默认 sonnet。
 - `--no-mock` `boolean`:不生成 mocks，eval 时所有工具调用真实执行。
+- `--observations-dir` `option`:observe inbox 目录（from-traces 模式用），默认项目 .omk/observations。
 - `--reports-dir` `option`:报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
 - `--skill-dir` `option` (默认 `skills`):skill 根目录，默认 skills。batch 模式扫此目录。
 - `--treatment` `option`:指定 treatment 名（fix 模式用），默认推断自 skill 路径。

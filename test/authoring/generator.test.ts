@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { generateSamples, sanitizeGeneratedSamples, buildSamplesPrompt } from '../../src/authoring/generator.js';
+import { generateSamples, generateSamplesFromTraces, buildSamplesFromTracesPrompt, sanitizeGeneratedSamples, buildSamplesPrompt } from '../../src/authoring/generator.js';
 import type { Sample } from '../../src/types/index.js';
 
 describe('generateSamples', () => {
@@ -13,6 +13,55 @@ describe('generateSamples', () => {
       () => generateSamples({ skillContent: 'test', count: 1, executorName: 'nonexistent' }),
       /ENOENT|failed/,
     );
+  });
+});
+
+describe('buildSamplesFromTracesPrompt', () => {
+  const items = [
+    {
+      skillName: 'prd', signalType: 'failed_search', signalSubtype: 'no_results', severity: 'high', occurrences: 3,
+      evidence: { tool: 'Grep', query: 'auth flow', outputSnippet: 'No matches found' },
+      messageWindow: { before: [], event: [{ role: 'assistant', snippet: 'searching the repo...', messageIndex: 1 }], after: [], resolutionAfter: 'unresolved' },
+    },
+    {
+      skillName: 'prd', signalType: 'hedging', signalSubtype: 'uncertain', severity: 'medium', occurrences: 1,
+      evidence: {},
+    },
+  ] as unknown as Parameters<typeof buildSamplesFromTracesPrompt>[0];
+
+  it('renders each signal with its evidence, skill, and message window', () => {
+    const prompt = buildSamplesFromTracesPrompt(items);
+    assert.match(prompt, /信号 1/);
+    assert.match(prompt, /信号 2/);
+    assert.match(prompt, /failed_search/);
+    assert.match(prompt, /Grep/);
+    assert.match(prompt, /auth flow/);
+    assert.match(prompt, /searching the repo/);
+    assert.match(prompt, /skill: prd/);
+  });
+
+  it('frames the input as production traces, not a skill', () => {
+    const prompt = buildSamplesFromTracesPrompt(items);
+    assert.match(prompt, /trace/);
+    assert.match(prompt, /生产会话/);
+    assert.match(prompt, /不是 skill/);
+  });
+
+  it('falls back gracefully when a signal has no structured evidence', () => {
+    const prompt = buildSamplesFromTracesPrompt(items);
+    assert.match(prompt, /\(无结构化证据\)/);
+  });
+
+  it('honors an explicit count, else instructs 1-2 per signal', () => {
+    assert.match(buildSamplesFromTracesPrompt(items, 8), /共生成约 8 条/);
+    assert.match(buildSamplesFromTracesPrompt(items), /每个信号 1-2 条/);
+  });
+});
+
+describe('generateSamplesFromTraces', () => {
+  it('returns empty without invoking an executor when there are no signals', async () => {
+    const r = await generateSamplesFromTraces({ items: [] });
+    assert.deepEqual(r, { samples: [], costUSD: 0 });
   });
 });
 
