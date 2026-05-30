@@ -44,8 +44,19 @@ function fmtTimeRange(from: string, to: string): string {
  */
 function renderHeader(report: SkillHealthReport, lang: Lang): string {
   const { meta, overall } = report;
-  const bandColor = HEALTH_BAND_COLOR[overall.healthBand];
+  // Statistical-confidence guard: below the segment threshold a hard health band
+  // overstates certainty (1 segment + 1 failure judged the same as 50). When the
+  // overall confidence is not high, mute the colour and append an N caveat.
+  const lowConfidence = overall.confidence !== 'high';
+  const bandColor = overall.confidence === 'underpowered'
+    ? 'var(--text-faint)'
+    : HEALTH_BAND_COLOR[overall.healthBand];
   const bandLabel = HEALTH_BAND_LABEL[overall.healthBand][lang === 'zh' ? 'zh' : 'en'];
+  const confCaveat = lowConfidence
+    ? `<div class="card-sub" style="color:var(--text-faint)">${lang === 'zh'
+      ? `⚠ 样本量 ${meta.segmentCount} 段，可信度${overall.confidence === 'underpowered' ? '不足' : '偏低'}，色带仅供参考`
+      : `⚠ N=${meta.segmentCount} segments — ${overall.confidence} confidence; band is indicative`}</div>`
+    : '';
   const tracePath = e(meta.tracePath);
   const kbPath = meta.kbPath ? e(meta.kbPath) : '—';
   const timeRange = fmtTimeRange(meta.timeRange.from, meta.timeRange.to);
@@ -62,6 +73,7 @@ function renderHeader(report: SkillHealthReport, lang: Lang): string {
       <div class="card-label">${lang === 'zh' ? '整体健康度' : 'Overall health'}</div>
       <div class="card-value" style="color:${bandColor}">${bandLabel}</div>
       <div class="card-sub">${lang === 'zh' ? '加权盲区' : 'weighted gap'} ${fmtPct(overall.weightedGapRate, 1)} · ${lang === 'zh' ? '原始盲区' : 'raw gap'} ${fmtPct(overall.gapRate, 1)}</div>
+      ${confCaveat}
     </div>
     <div class="card">
       <div class="card-label">${lang === 'zh' ? '会话 / 段 / 工具调用' : 'Sessions / Segments / Tool calls'}</div>
