@@ -140,3 +140,117 @@ describe('markdown `omk <cmd>` 引用 grep gate', () => {
     }
   }, 30000);
 });
+
+// ---- flag-drift gate ------------------------------------------------------
+// 同一类「文档跟不上代码」漂移的另一面:命令名对了,但 flag 名是 stale/typo
+// (如 `--skip-preflight` 实为 `--skip-doctor`、`--debias-length` 实为
+// `--no-debias-length`、`--artifact-kind` 根本不是 flag)。真值是 oclif 全部
+// 命令(含 `eval gold` / `observe` 子命令)的 flag 名并集 + help/version。
+//
+// 只校验出现在 `omk ...` 调用里的 flag:prose 里描述 codex 的 `--ephemeral`、
+// git 的 `--pretty`、claude 的 `--disallowedTools` 等不在 omk 调用上,天然排除。
+// roadmap 文档故意描述尚未实现的 flag(如 `omk sample --from-traces`),整文件跳过。
+const FLAG_SCAN_EXCLUDE = new Set<string>([
+  'docs/roadmap.md',
+  'docs/zh/roadmap.md',
+]);
+
+// omk 调用形态:用户向的 `omk <cmd>`,以及 dev 文档里的 `node dist/cli/index.js <cmd>`。
+const OMK_INVOCATION = /(?<![\w-])(?:omk|index\.js)\s+[a-z][a-z-]*/;
+const FLAG_TOKEN = /--([a-z][a-z0-9-]*)/g;
+
+function collectOmkFlagNames(config: Config): Set<string> {
+  const names = new Set<string>(['help', 'version']);
+  for (const cmd of config.commands) {
+    for (const name of Object.keys(cmd.flags ?? {})) names.add(name);
+  }
+  return names;
+}
+
+// 只校验命令 token 之后的 flag — `node --watch dist/cli/index.js eval` 里的 `--watch`
+// 是 node 的 flag,在 `index.js eval` 之前,不算 omk flag。
+function scanInvocationFlags(
+  text: string,
+  file: string,
+  line: number,
+  truth: Set<string>,
+  out: Violation[],
+): void {
+  const inv = OMK_INVOCATION.exec(text);
+  if (!inv) return;
+  const tail = text.slice(inv.index);
+  FLAG_TOKEN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = FLAG_TOKEN.exec(tail)) !== null) {
+    const name = m[1]!;
+    if (!truth.has(name)) {
+      out.push({ file, line, token: `--${name}`, context: text.trim().slice(0, 120) });
+    }
+  }
+}
+
+describe('markdown `omk ... --flag` 引用 grep gate', () => {
+  it('user-facing markdown 里 omk 调用上的 --flag 必须是真实 oclif flag', async () => {
+    const config = await Config.load({ root: PROJECT_ROOT });
+    const truth = collectOmkFlagNames(config);
+
+    const files = collectMarkdownFiles();
+    const violations: Violation[] = [];
+
+    for (const abs of files) {
+      const rel = relative(PROJECT_ROOT, abs);
+      if (FLAG_SCAN_EXCLUDE.has(rel)) continue;
+      let text: string;
+      try {
+        text = readFileSync(abs, 'utf8');
+      } catch {
+        continue;
+      }
+      const lines = text.split('\n');
+      let inFence = false;
+      let buf = '';
+      let bufLine = 0;
+      const flush = (): void => {
+        if (buf) scanInvocationFlags(buf, rel, bufLine, truth, violations);
+        buf = '';
+      };
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]!;
+        if (/^\s*```/.test(line)) {
+          flush();
+          inFence = !inFence;
+          continue;
+        }
+        if (inFence) {
+          // 注释行(非续行中途)不算命令调用
+          if (!buf && /^\s*#/.test(line)) continue;
+          if (!buf) bufLine = i + 1;
+          const continued = /\\\s*$/.test(line);
+          buf += (buf ? ' ' : '') + line.replace(/\\\s*$/, '');
+          if (!continued) flush();
+        } else {
+          // 行内 code span:`omk ... --flag`
+          const spanRe = /`([^`]*)`/g;
+          let s: RegExpExecArray | null;
+          while ((s = spanRe.exec(line)) !== null) {
+            const span = s[1]!;
+            scanInvocationFlags(span, rel, i + 1, truth, violations);
+          }
+        }
+      }
+      flush();
+    }
+
+    if (violations.length > 0) {
+      const dump = violations
+        .map((v) => `  ${v.file}:${v.line}  '${v.token}'  | ${v.context}`)
+        .join('\n');
+      assert.fail(
+        `发现 ${violations.length} 处 omk 调用引用了未知 / stale flag\n` +
+        `(allowlist 来自 oclif 全部命令 flag 并集):\n${dump}\n\n` +
+        `修法:改 markdown 里的 flag 名(或在 src/cli/commands/ 新增该 flag 后 yarn build);` +
+        `roadmap 类未来 flag 把文件加进 FLAG_SCAN_EXCLUDE。`,
+      );
+    }
+  }, 30000);
+});

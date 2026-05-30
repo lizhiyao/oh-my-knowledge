@@ -33,7 +33,7 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 | construct validity | 构造效度 | 测量是否真测了想测的东西（vs 测量误差） | scoring.md：综合分构造效度论证 |
 | ad hoc | 临时拼装 / 没有原理论证的 | 通常用来形容「先做出来再说」的实现选择 | scoring.md：综合分等权聚合是 ad hoc |
 | sample-set overfitting | 样本驯化 / 用例过拟合 | 评测集恰好被「答过案了」，分数虚高 | scoring.md / 测评博客 caveat 部分 |
-| length debias | 长度去偏 | 校正 LLM 评委「答案越长打分越高」的已知偏差 | `omk eval --debias-length`（默认开） |
+| length debias | 长度去偏 | 校正 LLM 评委「答案越长打分越高」的已知偏差 | 默认开；`omk eval --no-debias-length` 关闭 |
 
 ---
 
@@ -41,7 +41,7 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 
 | 英文 | 中文 | 一句话定义 | 在 omk 哪用到 |
 |---|---|---|---|
-| artifact | 知识载体 | omk 的「被评测对象」统一抽象：skill / prompt / agent / workflow / baseline | `--artifact-kind` 参数；变体配置 |
+| artifact | 知识载体 | omk 的「被评测对象」统一抽象：skill / prompt / agent / workflow / baseline | 由实验角色决定（`--control` / `--treatment` / baseline），非单独 flag |
 | executor | 执行器 | 跑模型的方式：claude / codex / openai-api / gemini | `--executor` 参数；执行环境指纹 |
 | ensemble (judge) | 集成评委 / 多评委 | 多个 LLM 同时当评委独立打分，组合结果 | `--judge-models claude:opus,claude:sonnet` |
 | judge | 评委 | LLM 当评委按 rubric 打分（zh 译作「评委」，**不要**译作「判官」） | judge model 参数；evidence 表 |

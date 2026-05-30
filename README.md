@@ -9,7 +9,7 @@
 **English** | [简体中文](./README.zh.md)
 
 **Did your prompt actually get better?**
-A/B test your prompts and skills with statistical rigor — bootstrap CI, Krippendorff α, length-debias — all on by default.
+A/B test your prompts and skills with statistical rigor — bootstrap CI and length-debias on by default, Krippendorff α the moment you add a gold set.
 
 ![omk report — verdict pill "v2 is clearly better than v1 — ready to ship"](./assets/screenshots/report-overview.png)
 
@@ -62,7 +62,7 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 | | omk | promptfoo | DeepEval | LangSmith |
 |--|--|--|--|--|
 | Bootstrap CI | ✓ default | ✗ | ✗ | ✗ |
-| Krippendorff α (judge ↔ human) | ✓ default | ✗ | ✗ | ✗ |
+| Krippendorff α (judge ↔ human) | ✓ with gold set | ✗ | ✗ | ✗ |
 | Length-debias judge prompt | ✓ default | ✗ | ✗ | ✗ |
 | Saturation curve | ✓ | ✗ | ✗ | ✗ |
 | Three-layer scoring isolation | ✓ | ✗ | partial | ✗ |
@@ -70,7 +70,7 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 | Native Claude Code skill | ✓ | ✗ | ✗ | ✗ |
 | Hosted SaaS dashboard | ✗ | ✗ | ✓ | ✓ |
 
-omk's moat is **default-on safety net** — Bootstrap CI, judge ↔ human α, and length-debias aren't advanced flags; they're the default. Other tools let you opt into confidence intervals; omk makes them unavoidable. Need a hosted SaaS dashboard? Choose LangSmith. Want quick local prompt iteration without statistics? Choose promptfoo. **Shipping to production and someone will ask "why should I trust this number?" Choose omk.**
+omk's moat is **default-on safety net** — Bootstrap CI and length-debias aren't advanced flags; they're the default, and judge ↔ human α comes free the moment you add a gold set. Other tools let you opt into confidence intervals; omk makes them unavoidable. Need a hosted SaaS dashboard? Choose LangSmith. Want quick local prompt iteration without statistics? Choose promptfoo. **Shipping to production and someone will ask "why should I trust this number?" Choose omk.**
 
 RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full comparison with 7 tools across 25+ dimensions: [docs/reference/comparison.md](docs/reference/comparison.md).
 
@@ -80,9 +80,9 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 |---|---|
 | **One-line verdict** | `omk eval` six-tier verdict + ship recommendation + exit-code routing; HTML pill shares the same rules |
 | **Six-dim evaluation** | Fact / Behavior / LLM-judge / Cost / Efficiency / Stability shown independently |
-| **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / Codex SDK / OpenAI / Gemini / any custom command |
-| **21+ assertion types** | substring, regex, JSON Schema, ROUGE/BLEU/Levenshtein similarity, agent tool-call assertions, semantic similarity, custom JS |
-| **Statistical rigor** | Bootstrap CI / Krippendorff α / length-debias / saturation curve — all on by default. [Details →](docs/explanation/statistical-rigor.md) |
+| **Multi-executor** | Claude CLI / Claude SDK / Codex CLI / Codex SDK / OpenAI / Gemini / Anthropic API / any custom command |
+| **30+ assertion types** | substring, regex, JSON Schema, ROUGE/BLEU/Levenshtein similarity, agent tool-call assertions, semantic similarity, custom JS |
+| **Statistical rigor** | Bootstrap CI / length-debias / saturation curve on by default; Krippendorff α auto-computed with a gold set. [Details →](docs/explanation/statistical-rigor.md) |
 | **RAG metrics** | `faithfulness` / `answer_relevancy` / `context_recall` — anti-hallucination + answer relevance + context coverage |
 | **LLM health audit** | `omk doctor` grades 7 builtin dimensions; `--static-only` runs offline without an LLM |
 | **Production observability** | parse Claude Code session JSONL traces; measure per-skill failure rate / latency / cost / knowledge-gap signals |
@@ -100,7 +100,7 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 ## Documentation
 
 - **[How it works](docs/explanation/architecture.md)** — interleaved scheduling, variant resolution, dual-channel scoring, six-dim report
-- **[Eval sample format](docs/reference/eval-sample-format.md)** — sample schema, scoring formulas, 21+ assertion types, custom JS assertions
+- **[Eval sample format](docs/reference/eval-sample-format.md)** — sample schema, scoring formulas, 30+ assertion types, custom JS assertions
 - **[CLI reference](docs/reference/cli.md)** — all seven commands with bash examples and flag tables
 - **[Executors & artifact layout](docs/reference/executors.md)** — built-in / custom executors, agent evaluation, common model configs (Claude / OpenAI / GLM / Qwen / DeepSeek / Moonshot / Ollama)
 - **[Quickstart](docs/quickstart-skill-eval.md)** — first-time five-minute walkthrough
@@ -117,9 +117,9 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 
 ## Requirements
 
-- Node.js >= 20
+- Node.js >= 22
 - `claude` CLI (for the default executor and LLM judge; see [Claude Code](https://claude.ai/code))
-  - not needed if you use other executors (openai / gemini) with `--no-judge`
+  - not needed if you use other executors (openai-api / anthropic-api / gemini) with `--no-judge`
 
 ## Security notice
 
