@@ -32,6 +32,7 @@ import type {
   Insight,
 } from '../types/index.js';
 import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
+import { confidenceOf } from '../observability/skill-health-analyzer.js';
 import { computeVerdict } from '../eval-core/verdict.js';
 import { detectInsights } from './skill-insights.js';
 import { DEFAULT_OBSERVATIONS_DIR, loadLatestObservationInboxReports } from '../observability/inbox.js';
@@ -356,6 +357,8 @@ export function buildSkillIndex(
             failureRate: h.toolFailureRate,
             segmentCount: h.segmentCount,
             gapRate: h.gap?.weightedGapRate ?? 0,
+            // Legacy reports (pre-confidence) fall back to deriving from segmentCount.
+            confidence: h.confidence ?? confidenceOf(h.segmentCount),
           };
           if (!observeBy[skill]) observeBy[skill] = [];
           observeBy[skill].push(snap);

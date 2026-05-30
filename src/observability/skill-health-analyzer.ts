@@ -128,8 +128,9 @@ const HEALTH_CONFIDENCE_LOW_N = 20;
 /** segment 数低于此值,样本太少,色带不可信(underpowered)。 */
 const HEALTH_CONFIDENCE_UNDERPOWERED_N = 5;
 
-/** 统计可信度护栏:按 segment 数判 high / low / underpowered,守护「1 段就判 red」。 */
-function confidenceOf(segmentCount: number): SkillHealth['confidence'] {
+/** 统计可信度护栏:按 segment 数判 high / low / underpowered,守护「1 段就判 red」。
+ *  导出供 renderer / CLI / server 给历史报告(缺 confidence 字段)做 segmentCount 兜底。 */
+export function confidenceOf(segmentCount: number): SkillHealth['confidence'] {
   if (segmentCount < HEALTH_CONFIDENCE_UNDERPOWERED_N) return 'underpowered';
   if (segmentCount < HEALTH_CONFIDENCE_LOW_N) return 'low';
   return 'high';

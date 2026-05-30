@@ -268,13 +268,27 @@ describe('detectInsights — production-instability', () => {
     const entry = mkEntry({
       observe: {
         analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0,
+        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0, confidence: 'high',
       },
     });
     const insights = detectInsights(entry, null);
     const insta = insights.find((i) => i.id === 'production-instability');
     assert.ok(insta);
     assert.equal(insta!.severity, 'high');
+  });
+
+  it('underpowered observe (3 segs) downgrades the high insight to low + carries a caveat', () => {
+    const entry = mkEntry({
+      observe: {
+        analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
+        healthBand: 'red', failureRate: 0.5, segmentCount: 3, gapRate: 0, confidence: 'underpowered',
+      },
+    });
+    const insights = detectInsights(entry, null);
+    const insta = insights.find((i) => i.id === 'production-instability');
+    assert.ok(insta);
+    assert.equal(insta!.severity, 'low');
+    assert.ok(insta!.evidence.some((ev) => /underpowered/.test(ev.message)), 'should carry an underpowered caveat');
   });
 
   it('failureRate 30% < 40% 阈值 → 不触发', () => {

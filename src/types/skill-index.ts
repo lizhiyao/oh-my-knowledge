@@ -38,6 +38,9 @@ export interface SkillObserveSnapshot {
   failureRate: number;
   segmentCount: number;
   gapRate: number;
+  /** 统计可信度(按 segment 数)。underpowered 时下游 insight / card 不应触发硬红或 high severity。
+   *  历史快照缺此字段时由 segmentCount 兜底推导。 */
+  confidence: 'high' | 'low' | 'underpowered';
 }
 
 export interface SkillIndexEntry {
