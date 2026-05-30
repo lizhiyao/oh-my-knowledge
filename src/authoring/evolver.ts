@@ -232,6 +232,17 @@ function subsetCompositeScore(report: Report, variantKey: string, ids: Set<strin
   return buildVariantSummary(entries).avgCompositeScore ?? 0;
 }
 
+/**
+ * A view of `report` whose results are restricted to `sampleIds`. Used to keep the
+ * holdout split out of the sample-fixer: under an active holdout, only training-split
+ * samples may enter the --auto-fix-samples prompt or be rewritten — otherwise the
+ * skill's samples get tuned to the very samples that decide acceptance, reintroducing
+ * the leak holdout exists to prevent.
+ */
+export function restrictReportToSamples(report: Report, sampleIds: Set<string>): Report {
+  return { ...report, results: report.results.filter((r) => sampleIds.has(r.sample_id)) };
+}
+
 export function allNonTripwireAssertionsPass(report: Report, variantKey: string): boolean {
   for (const entry of report.results) {
     const variant = entry.variants[variantKey];
@@ -827,7 +838,9 @@ export async function evolveSkill({
       const sampleFix = await autoFixSamplesAfterSkillRound({
         samplesPath: absSamplesPath,
         skillContent: candidateContent,
-        report: lastReport,
+        // Under an active holdout, the sample-fixer may only see training-split samples —
+        // never the holdout samples that drive the accept decision (leak guard).
+        report: holdoutSplit ? restrictReportToSamples(lastReport, holdoutSplit.trainIds) : lastReport,
         treatmentKey: lastVariantKey,
         executorName,
         model: improveModel,

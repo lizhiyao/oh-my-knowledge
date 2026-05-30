@@ -1,7 +1,8 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { extractWeakSamples, buildImprovementPrompt, evolveSkill, allNonTripwireAssertionsPass, splitHoldout } from '../../src/authoring/evolver.js';
-import type { Report } from '../../src/types/index.js';
+import { extractWeakSamples, buildImprovementPrompt, evolveSkill, allNonTripwireAssertionsPass, splitHoldout, restrictReportToSamples } from '../../src/authoring/evolver.js';
+import { fixSamples } from '../../src/authoring/sample-fixer.js';
+import type { Report, EvaluationReport } from '../../src/types/index.js';
 
 function toReport(value: unknown): Report {
   return value as Report;
@@ -81,6 +82,56 @@ describe('splitHoldout', () => {
     const a = splitHoldout(ids(17), 0.25);
     const b = splitHoldout(ids(17), 0.25);
     assert.deepEqual([...a!.holdoutIds], [...b!.holdoutIds]);
+  });
+});
+
+describe('restrictReportToSamples (holdout leak guard)', () => {
+  it('keeps only results whose sample_id is in the set', () => {
+    const report = toReport({
+      results: [
+        { sample_id: 's1', variants: {} },
+        { sample_id: 's2', variants: {} },
+        { sample_id: 's3', variants: {} },
+      ],
+    });
+    const out = restrictReportToSamples(report, new Set(['s1', 's3']));
+    assert.deepEqual(out.results.map((r) => r.sample_id), ['s1', 's3']);
+  });
+});
+
+describe('auto-fix-samples respects the holdout split', () => {
+  // Both modes (agent / rewrite) iterate the same `report.results`; evolveSkill now
+  // hands the fixer a train-restricted report, so a holdout sample can never enter the
+  // fix prompt nor be rewritten. This exercises the rewrite path end-to-end (injectable
+  // executor) — the strongest place to prove the leak guard.
+  it('a holdout sample never enters the sample-fix prompt (rewrite mode)', async () => {
+    const failVariant = { ok: true, compositeScore: 2, assertions: { details: [{ type: 'contains', value: 'x', passed: false }] } };
+    const fullReport = toReport({
+      results: [
+        { sample_id: 's_train', variants: { skill: failVariant } },
+        { sample_id: 's_hold', variants: { skill: failVariant } },
+      ],
+    });
+    const samples: Record<string, unknown>[] = [
+      { sample_id: 's_train', prompt: 'p', assertions: [] },
+      { sample_id: 's_hold', prompt: 'p', assertions: [] },
+    ];
+    let capturedPrompt = '';
+    const mockExecutor: Parameters<typeof fixSamples>[0]['executor'] = async (o) => {
+      capturedPrompt += o.prompt;
+      return { ok: true, text: '[]', costUSD: 0 };
+    };
+    await fixSamples({
+      skillContent: 'skill',
+      samples,
+      // What evolveSkill passes under an active holdout: only training-split results.
+      report: restrictReportToSamples(fullReport, new Set(['s_train'])) as unknown as EvaluationReport,
+      treatmentKey: 'skill',
+      executor: mockExecutor,
+      model: 'm',
+    });
+    assert.match(capturedPrompt, /s_train/);
+    assert.doesNotMatch(capturedPrompt, /s_hold/);
   });
 });
 
