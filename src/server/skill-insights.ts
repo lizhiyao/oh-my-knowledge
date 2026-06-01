@@ -144,6 +144,23 @@ function severityOfCount(n: number): InsightSeverity {
   return 'low';
 }
 
+/** Cap an observe-derived severity by sample-size confidence: an underpowered snapshot
+ *  (very few segments) must not raise a hard high-severity insight — the gap / failure
+ *  rate is real but the sample is too small to act on as a high-priority signal. */
+function capByObserveConfidence(severity: InsightSeverity, observe: SkillObserveSnapshot | null): InsightSeverity {
+  if (observe?.confidence === 'underpowered') return severity === 'high' ? 'low' : severity;
+  return severity;
+}
+
+/** Evidence caveat appended to underpowered observe insights (null when N is sufficient). */
+function underpoweredCaveat(observe: SkillObserveSnapshot | null): InsightEvidence | null {
+  if (observe?.confidence !== 'underpowered') return null;
+  return {
+    perspective: 'observe', status: 'silent',
+    message: `样本量仅 ${observe.segmentCount} 段(underpowered) — 以下为低置信参考信号,需累积更多真实使用 trace 才能下结论`,
+  };
+}
+
 function pickIllustrations(samples: FailedSample[], n = 2): InsightIllustration[] {
   return samples.slice(0, n).map((s) => ({
     sampleId: s.sampleId,
@@ -464,6 +481,8 @@ function detectProductionInstability(
   if (!observe || observe.failureRate < 0.4) return null;
   const depRule = doctor?.results.find((r) => r.ruleId === 'dependencies_present'
     && (r.status === 'warn' || r.status === 'fail'));
+  const severity = capByObserveConfidence('high', observe);
+  const caveat = underpoweredCaveat(observe);
 
   return {
     id: 'production-instability',
@@ -471,7 +490,7 @@ function detectProductionInstability(
     audience: 'skill-author',
     title: `生产环境跑这个 skill 时,工具失败率 ${(observe.failureRate * 100).toFixed(0)}%`,
     description: '真实用户用这个 skill,LLM 调出去的工具经常报错。可能是凭证/网络/上游 SLA 问题,也可能是 skill 教错了用什么工具/参数。',
-    severity: 'high',
+    severity,
     affectedCount: Math.round(observe.segmentCount * observe.failureRate),
     stageRefs: {
       observeRefs: ['high-failure-rate'],
@@ -494,11 +513,12 @@ function detectProductionInstability(
               ? 'doctor 没警告依赖,失败可能在 CLI/凭证/上游 API 层(skill 自身可能没错)'
               : '没跑 doctor,无法对照',
           },
+      ...(caveat ? [caveat] : []),
     ],
     recommendations: [
       {
         action: '排查产线工具失败原因:CLI 安装 / 凭证有效期 / 网络 / 上游 API SLA',
-        priority: 'high',
+        priority: severity,
       },
       ...(depRule ? [{
         action: '依据 doctor 警告补依赖声明 / 改 skill 引用',
@@ -554,8 +574,12 @@ function detectCoverageGap(
     });
   }
 
-  const severity: InsightSeverity = observe.gapRate >= 0.4 ? 'high'
-    : observe.gapRate >= 0.2 ? 'medium' : 'low';
+  const caveat = underpoweredCaveat(observe);
+  if (caveat) evidence.push(caveat);
+  const severity = capByObserveConfidence(
+    observe.gapRate >= 0.4 ? 'high' : observe.gapRate >= 0.2 ? 'medium' : 'low',
+    observe,
+  );
 
   return {
     id: 'coverage-gap',
@@ -611,14 +635,19 @@ function detectSkillTooLong(
       perspective: 'observe', status: 'flagged',
       message: `生产 gap ${(observe.gapRate * 100).toFixed(0)}% — 长 skill 让 LLM 找不到段落,跟 doctor 警告印证`,
     });
+    const caveat = underpoweredCaveat(observe);
+    if (caveat) evidence.push(caveat);
   }
+  // doctor warn 是主信号;只有当 observe gap 高且样本量足够时才升到 medium。underpowered 的高 gap
+  // 不足以把严重度抬上去 —— 跟 detectProductionInstability / detectCoverageGap 的 confidence 口径一致。
+  const observeBump = observe != null && observe.gapRate >= 0.3 && observe.confidence !== 'underpowered';
   return {
     id: 'skill-too-long',
     category: 'skill-too-long',
     audience: 'skill-author',
     title: 'skill 文档太长,LLM 容易漏读',
     description: 'skill 内容超过推荐上限。长 skill 在 LLM 上下文里会被压缩注意力,LLM 跟着前几段走,后面的关键约束容易漏读。',
-    severity: observe && observe.gapRate >= 0.3 ? 'medium' : 'low',
+    severity: observeBump ? 'medium' : 'low',
     affectedCount: 1,
     stageRefs: {
       doctorRuleIds: ['skill_readable'],

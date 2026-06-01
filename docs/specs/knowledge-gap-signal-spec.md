@@ -225,6 +225,14 @@ weightedGapRate = Σ sample_weight / sampleCount
 
 **水印要求不变**：两个 gap rate 都必须附带 test set 标识（§7.1），不得脱离 test set 报告任何单独数值。
 
+**样本量可信度护栏（observe 侧）**：gap rate / weightedGapRate 与整体健康度色带在 segment 数过小时不可信——1 段 + 一次失败搜索得到的「红」与 50 段全红没有同等意义。observe 的 `SkillHealth` 与 `overall` 因此带 `confidence` 三档（与 eval 的 UNDERPOWERED 同构）：
+
+- `underpowered`：segment 数 < 5，样本太少，色带 / gap rate 仅供参考，渲染层弱化硬色带；
+- `low`：segment 数 < 20，只有大缺口可辨；
+- `high`：segment 数 ≥ 20。
+
+这是条件性测量、不是绝对判决：低 N 不代表 skill 没问题，只代表当前观测窗口不足以下结论，需累积更多真实使用 trace 后再看。
+
 **特殊情况处理**：
 
 - 如果一个用例同时触发多个缺口信号（比如失败 Grep + 显式标记），仍只计为 1 个有缺口的用例。聚合是"是否"而非"多少"。

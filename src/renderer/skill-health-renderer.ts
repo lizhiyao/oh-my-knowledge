@@ -13,6 +13,7 @@
  */
 
 import type { SkillHealth, SkillHealthReport } from '../observability/skill-health-analyzer.js';
+import { confidenceOf } from '../observability/skill-health-analyzer.js';
 import type { Lang } from '../types/index.js';
 import { COLORS, e, layout, t } from './layout.js';
 
@@ -44,8 +45,25 @@ function fmtTimeRange(from: string, to: string): string {
  */
 function renderHeader(report: SkillHealthReport, lang: Lang): string {
   const { meta, overall } = report;
-  const bandColor = HEALTH_BAND_COLOR[overall.healthBand];
-  const bandLabel = HEALTH_BAND_LABEL[overall.healthBand][lang === 'zh' ? 'zh' : 'en'];
+  // Statistical-confidence guard: below the segment threshold a hard health band
+  // overstates certainty (1 segment + 1 failure judged the same as 50). When the
+  // overall confidence is not high, mute the colour and append an N caveat.
+  // Legacy reports (pre-confidence) fall back to deriving from segmentCount, so old
+  // JSON never renders `undefined confidence`.
+  const confidence = overall.confidence ?? confidenceOf(meta.segmentCount);
+  const lowConfidence = confidence !== 'high';
+  const bandColor = confidence === 'underpowered'
+    ? 'var(--text-faint)'
+    : HEALTH_BAND_COLOR[overall.healthBand];
+  // underpowered 时色带已静音为灰,标签也不报硬结论(需关注 / 健康),改为「样本不足」,跟灰底 + caveat 一致。
+  const bandLabel = confidence === 'underpowered'
+    ? (lang === 'zh' ? '样本不足' : 'Insufficient N')
+    : HEALTH_BAND_LABEL[overall.healthBand][lang === 'zh' ? 'zh' : 'en'];
+  const confCaveat = lowConfidence
+    ? `<div class="card-sub" style="color:var(--text-faint)">${lang === 'zh'
+      ? `⚠ 样本量 ${meta.segmentCount} 段，可信度${confidence === 'underpowered' ? '不足' : '偏低'}，色带仅供参考`
+      : `⚠ N=${meta.segmentCount} segments — ${confidence} confidence; band is indicative`}</div>`
+    : '';
   const tracePath = e(meta.tracePath);
   const kbPath = meta.kbPath ? e(meta.kbPath) : '—';
   const timeRange = fmtTimeRange(meta.timeRange.from, meta.timeRange.to);
@@ -62,6 +80,7 @@ function renderHeader(report: SkillHealthReport, lang: Lang): string {
       <div class="card-label">${lang === 'zh' ? '整体健康度' : 'Overall health'}</div>
       <div class="card-value" style="color:${bandColor}">${bandLabel}</div>
       <div class="card-sub">${lang === 'zh' ? '加权盲区' : 'weighted gap'} ${fmtPct(overall.weightedGapRate, 1)} · ${lang === 'zh' ? '原始盲区' : 'raw gap'} ${fmtPct(overall.gapRate, 1)}</div>
+      ${confCaveat}
     </div>
     <div class="card">
       <div class="card-label">${lang === 'zh' ? '会话 / 段 / 工具调用' : 'Sessions / Segments / Tool calls'}</div>
@@ -94,7 +113,12 @@ function renderSkillCard(skill: SkillHealth, variantColor: string, lang: Lang): 
   const cov = skill.coverage;
   const gapPct = Math.round(gap.gapRate * 100);
   const weightedPct = Math.round(gap.weightedGapRate * 100);
-  const gapColor = gapPct >= 30 ? 'var(--red)' : gapPct >= 10 ? 'var(--yellow)' : 'var(--green)';
+  // Sample-size guard (legacy reports derive from segmentCount): an underpowered skill
+  // (very few segments) must not render a hard red gap bar.
+  const confidence = skill.confidence ?? confidenceOf(skill.segmentCount);
+  const gapColor = confidence === 'underpowered'
+    ? 'var(--text-faint)'
+    : gapPct >= 30 ? 'var(--red)' : gapPct >= 10 ? 'var(--yellow)' : 'var(--green)';
   const covPct = cov ? Math.round(cov.fileCoverageRate * 100) : 0;
   const covColor = covPct >= 80 ? 'var(--green)' : covPct >= 50 ? 'var(--yellow)' : 'var(--red)';
 
@@ -125,7 +149,12 @@ function renderSkillCard(skill: SkillHealth, variantColor: string, lang: Lang): 
   const weightedHintBase = softShare >= 10
     ? `<strong>${lang === 'zh' ? '加权盲区' : 'weighted gap'} ${weightedPct}%</strong> · ${softShare}% ${lang === 'zh' ? '为软信号(建议复核)' : 'soft signals (review)'}`
     : `<strong>${lang === 'zh' ? '加权盲区' : 'weighted gap'} ${weightedPct}%</strong> · ${lang === 'zh' ? '以硬证据为主' : 'mostly hard evidence'}`;
-  const weightedHint = weightedHintBase + instabilityNote;
+  const confNote = confidence !== 'high'
+    ? ` · <span style="color:var(--text-faint)">${lang === 'zh'
+      ? `${skill.segmentCount} 段，可信度${confidence === 'underpowered' ? '不足，仅供参考' : '偏低'}`
+      : `N=${skill.segmentCount}, ${confidence} confidence`}</span>`
+    : '';
+  const weightedHint = weightedHintBase + instabilityNote + confNote;
   const signalBadges = (Object.entries(gap.byType) as Array<[string, number]>)
     .filter(([, n]) => n > 0)
     .map(([k, n]) => {

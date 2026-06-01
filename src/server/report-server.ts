@@ -14,7 +14,7 @@ import type { Lang } from '../types/index.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from './job-store.js';
 import { createFileStore, queryJob, queryJobList, queryRun, queryRunList, queryTrend } from './report-store.js';
 import type { JobStore, ReportStore } from '../types/index.js';
-import type { SkillHealthReport } from '../observability/skill-health-analyzer.js';
+import { confidenceOf, type SkillHealthReport } from '../observability/skill-health-analyzer.js';
 import { DEFAULT_OBSERVATIONS_DIR, findObservationInboxItem, formatObservationShow, queryObservationInbox } from '../observability/inbox.js';
 import { buildObservationInboxViewModel } from '../observability/inbox-view-model.js';
 import { activeStudioDiagnostics } from '../diagnosis/studio-projection.js';
@@ -49,6 +49,7 @@ interface AnalysisListItem {
   segmentCount: number;
   skillCount: number;
   healthBand: 'green' | 'yellow' | 'red';
+  confidence: 'high' | 'low' | 'underpowered';
 }
 
 let cachedChartJsBytes: string | null | undefined;
@@ -83,6 +84,8 @@ function listAnalyses(dir: string): AnalysisListItem[] {
         segmentCount: data.meta.segmentCount,
         skillCount: Object.keys(data.bySkill || {}).length,
         healthBand: data.overall.healthBand,
+        // 旧 JSON 缺 confidence 时按 segmentCount 兜底,跟 Studio / CLI 口径一致。
+        confidence: data.overall.confidence ?? confidenceOf(data.meta.segmentCount),
       });
     } catch { /* skip corrupt */ }
   }
@@ -399,14 +402,18 @@ function renderAnalysisList(items: AnalysisListItem[], lang: Lang = DEFAULT_LANG
     </main>`
     : (() => {
       const rows = items.map((it) => {
-        const badgeColor = it.healthBand === 'red' ? 'var(--red)' : it.healthBand === 'yellow' ? 'var(--yellow)' : 'var(--green)';
+        // 低 N 报告的色带仅供参考:列表入口圆点改中性灰,避免点进去才看到「样本不足」的口径错位。
+        const underpowered = it.confidence === 'underpowered';
+        const badgeColor = underpowered
+          ? 'var(--text-faint)'
+          : it.healthBand === 'red' ? 'var(--red)' : it.healthBand === 'yellow' ? 'var(--yellow)' : 'var(--green)';
         const enc = encodeURIComponent(it.id);
         return `<li style="padding:10px 14px;border-bottom:1px solid var(--border);list-style:none;display:flex;align-items:center;gap:12px">
           <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${badgeColor}"></span>
           <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><input type="radio" name="from" value="${enc}" onchange="updateCompare()"> <span data-i18n="analysesFromLabel">${t('analysesFromLabel', lang)}</span></label>
           <label style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:3px"><input type="radio" name="to" value="${enc}" onchange="updateCompare()"> <span data-i18n="analysesToLabel">${t('analysesToLabel', lang)}</span></label>
           <a href="/analyses/${enc}${langQ}" style="color:var(--accent);text-decoration:none;flex:1;font-family:ui-monospace,monospace">${it.id}</a>
-          <span style="color:var(--text-muted);font-size:12px">${it.sessionCount} <span data-i18n="analysesSessions">${t('analysesSessions', lang)}</span> · ${it.segmentCount} <span data-i18n="analysesSegs">${t('analysesSegs', lang)}</span> · ${it.skillCount} <span data-i18n="analysesSkills">${t('analysesSkills', lang)}</span></span>
+          <span style="color:var(--text-muted);font-size:12px">${it.sessionCount} <span data-i18n="analysesSessions">${t('analysesSessions', lang)}</span> · ${it.segmentCount} <span data-i18n="analysesSegs">${t('analysesSegs', lang)}</span> · ${it.skillCount} <span data-i18n="analysesSkills">${t('analysesSkills', lang)}</span>${underpowered ? ` · <span data-i18n="analysesLowN" style="color:var(--text-faint)">${t('analysesLowN', lang)}</span>` : ''}</span>
         </li>`;
       }).join('');
       return `
