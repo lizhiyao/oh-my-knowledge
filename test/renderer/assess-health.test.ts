@@ -72,3 +72,44 @@ describe('assessHealth — Diagnosis-only skill', () => {
     assert.equal(h.label, 'Unhealthy');
   });
 });
+
+describe('assessHealth — observe confidence guard', () => {
+  const observe = (
+    confidence: 'high' | 'low' | 'underpowered',
+    healthBand: 'green' | 'yellow' | 'red',
+  ): NonNullable<SkillIndexEntry['observe']> => ({
+    analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
+    healthBand, failureRate: 0.5, gapRate: 0.5,
+    segmentCount: confidence === 'underpowered' ? 2 : 30, confidence,
+  });
+
+  it('underpowered red observe 单独存在 → 中性灰「未评估」,既不红也不绿', () => {
+    const h = assessHealth(mkEntry({ observe: observe('underpowered', 'red') }), [], 'zh');
+    // 低 N observe 不算可信维度:不能硬标红,更不能从 excellent 兜底翻成硬绿「健康」。
+    assert.equal(h.grade, 'unscored');
+    assert.equal(h.color, 'gray');
+    assert.equal(h.score, null);
+  });
+
+  it('underpowered observe + high insight → 仍按可信信号(Diagnosis)标红', () => {
+    const h = assessHealth(mkEntry({ observe: observe('underpowered', 'red') }), [mkInsight('high')], 'zh');
+    assert.equal(h.grade, 'unhealthy');
+    assert.equal(h.color, 'red');
+  });
+
+  it('doctor 全绿 + underpowered observe → excellent,observe 不进分也不拉低', () => {
+    const h = assessHealth(mkEntry({
+      doctor: { reportId: 'd1', timestamp: '2026-05-09T10:00:00Z', status: 'pass', passCount: 8, warnCount: 0, failCount: 0, results: [] },
+      observe: observe('underpowered', 'red'),
+    }), [], 'zh');
+    assert.equal(h.grade, 'excellent');
+    assert.equal(h.color, 'green');
+    assert.equal(h.score, 100);
+  });
+
+  it('high-confidence red observe still drives unhealthy/red', () => {
+    const h = assessHealth(mkEntry({ observe: observe('high', 'red') }), [], 'zh');
+    assert.equal(h.grade, 'unhealthy');
+    assert.equal(h.color, 'red');
+  });
+});

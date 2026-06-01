@@ -62,6 +62,29 @@ function makeSession(sessionId: string, cwd?: string): CcSession {
 
 // ---------- Tests ----------
 
+describe('statistical confidence guard', () => {
+  const segs = (skill: string, n: number): SkillSegment[] =>
+    Array.from({ length: n }, (_, i) => makeSegment(skill, i));
+
+  it('flags a tiny sample as underpowered (per-skill and overall)', () => {
+    const report = computeSkillHealthFromSegments(segs('audit', 2), [makeSession('s1')], '/tmp');
+    assert.equal(report.bySkill.audit.confidence, 'underpowered');
+    assert.equal(report.overall.confidence, 'underpowered');
+  });
+
+  it('flags a mid-size sample as low confidence', () => {
+    const report = computeSkillHealthFromSegments(segs('audit', 12), [makeSession('s1')], '/tmp');
+    assert.equal(report.bySkill.audit.confidence, 'low');
+    assert.equal(report.overall.confidence, 'low');
+  });
+
+  it('marks a sufficiently large sample as high confidence', () => {
+    const report = computeSkillHealthFromSegments(segs('audit', 25), [makeSession('s1')], '/tmp');
+    assert.equal(report.bySkill.audit.confidence, 'high');
+    assert.equal(report.overall.confidence, 'high');
+  });
+});
+
 describe('computeSkillHealthFromSegments', () => {
   it('groups segments by skill, each skill gets own gap report', () => {
     const segs = [

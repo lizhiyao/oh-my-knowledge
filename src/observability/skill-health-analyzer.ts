@@ -36,6 +36,14 @@ export interface SkillHealth {
    *  - stable:        否则
    */
   stability: 'stable' | 'unstable' | 'very-unstable';
+  /**
+   * 统计可信度(按 segment 数)。守护「1 段 + 一次失败就判 red」的过度自信:
+   *  - underpowered: segmentCount < 5  (样本太少,色带 / gap rate 不可信)
+   *  - low:          segmentCount < 20 (只有大缺口可辨)
+   *  - high:         >= 20
+   * 与 eval 侧 UNDERPOWERED(N<20)同构,渲染层据此弱化低 N 的硬色带。
+   */
+  confidence: 'high' | 'low' | 'underpowered';
   /** 成本/耗时聚合(来自 SkillSegment.metrics,第四轴). 粒度是 skill 级,非单次调用级 */
   usage: {
     inputTokens: number;
@@ -69,6 +77,8 @@ export interface SkillHealthReport {
     gapRate: number;
     weightedGapRate: number;
     healthBand: 'green' | 'yellow' | 'red';
+    /** 整体色带的统计可信度(按总 segment 数)。underpowered/low 时 healthBand 仅供参考。 */
+    confidence: 'high' | 'low' | 'underpowered';
   };
 }
 
@@ -111,6 +121,19 @@ function stabilityOf(toolFailureRate: number): SkillHealth['stability'] {
   if (toolFailureRate >= 0.4) return 'very-unstable';
   if (toolFailureRate >= 0.2) return 'unstable';
   return 'stable';
+}
+
+/** segment 数低于此值,health 色带 / gap rate 视为大缺口才可辨(low confidence)。对齐 eval UNDERPOWERED。 */
+const HEALTH_CONFIDENCE_LOW_N = 20;
+/** segment 数低于此值,样本太少,色带不可信(underpowered)。 */
+const HEALTH_CONFIDENCE_UNDERPOWERED_N = 5;
+
+/** 统计可信度护栏:按 segment 数判 high / low / underpowered,守护「1 段就判 red」。
+ *  导出供 renderer / CLI / server 给历史报告(缺 confidence 字段)做 segmentCount 兜底。 */
+export function confidenceOf(segmentCount: number): SkillHealth['confidence'] {
+  if (segmentCount < HEALTH_CONFIDENCE_UNDERPOWERED_N) return 'underpowered';
+  if (segmentCount < HEALTH_CONFIDENCE_LOW_N) return 'low';
+  return 'high';
 }
 
 /**
@@ -199,6 +222,7 @@ export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions
       toolFailureCount: skillFailures,
       toolFailureRate,
       stability: stabilityOf(toolFailureRate),
+      confidence: confidenceOf(skillSegs.length),
       usage: aggregateUsage(skillSegs),
       coverage,
       gap,
@@ -238,7 +262,7 @@ export function computeSkillHealthReport(tracePath: string, opts: AnalyzeOptions
       generatedAt: new Date().toISOString(),
     },
     bySkill,
-    overall: { gapRate, weightedGapRate, healthBand: healthBandOf(weightedGapRate) },
+    overall: { gapRate, weightedGapRate, healthBand: healthBandOf(weightedGapRate), confidence: confidenceOf(totalSegments) },
   };
 }
 
@@ -287,6 +311,7 @@ function buildReport(
       toolFailureCount: skillFailures,
       toolFailureRate,
       stability: stabilityOf(toolFailureRate),
+      confidence: confidenceOf(skillSegs.length),
       usage: aggregateUsage(skillSegs),
       coverage,
       gap,
@@ -323,6 +348,6 @@ function buildReport(
       generatedAt: new Date().toISOString(),
     },
     bySkill,
-    overall: { gapRate, weightedGapRate, healthBand: healthBandOf(weightedGapRate) },
+    overall: { gapRate, weightedGapRate, healthBand: healthBandOf(weightedGapRate), confidence: confidenceOf(totalSegments) },
   };
 }

@@ -268,13 +268,27 @@ describe('detectInsights — production-instability', () => {
     const entry = mkEntry({
       observe: {
         analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
-        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0,
+        healthBand: 'red', failureRate: 0.5, segmentCount: 20, gapRate: 0, confidence: 'high',
       },
     });
     const insights = detectInsights(entry, null);
     const insta = insights.find((i) => i.id === 'production-instability');
     assert.ok(insta);
     assert.equal(insta!.severity, 'high');
+  });
+
+  it('underpowered observe (3 segs) downgrades the high insight to low + carries a caveat', () => {
+    const entry = mkEntry({
+      observe: {
+        analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
+        healthBand: 'red', failureRate: 0.5, segmentCount: 3, gapRate: 0, confidence: 'underpowered',
+      },
+    });
+    const insights = detectInsights(entry, null);
+    const insta = insights.find((i) => i.id === 'production-instability');
+    assert.ok(insta);
+    assert.equal(insta!.severity, 'low');
+    assert.ok(insta!.evidence.some((ev) => /underpowered/.test(ev.message)), 'should carry an underpowered caveat');
   });
 
   it('failureRate 30% < 40% 阈值 → 不触发', () => {
@@ -464,6 +478,30 @@ describe('detectInsights — skill-too-long', () => {
     const tooLong = insights.find((i) => i.id === 'skill-too-long');
     assert.ok(tooLong);
     assert.equal(tooLong!.severity, 'medium');
+  });
+
+  it('underpowered observe 的高 gap 不把严重度抬到 medium,并附低置信 caveat', () => {
+    const entry = mkEntry({
+      doctor: {
+        reportId: 'd1', timestamp: '2026-05-09T10:00:00Z', status: 'warn',
+        passCount: 3, warnCount: 1, failCount: 0,
+        results: [{
+          ruleId: 'skill_readable', severity: 'warn', labelKey: 'x', status: 'warn',
+          message: 'skill 18000 字超长', durationMs: 10,
+        }],
+      },
+      observe: {
+        analysisId: 'a1', generatedAt: '2026-05-09T10:00:00Z',
+        healthBand: 'red', failureRate: 0.1, segmentCount: 3, gapRate: 0.5,
+        confidence: 'underpowered',
+      },
+    });
+    const insights = detectInsights(entry, null);
+    const tooLong = insights.find((i) => i.id === 'skill-too-long');
+    assert.ok(tooLong);
+    // 低 N 的高 gap 只是参考信号,严重度保持 doctor warn 的 low 基线,不被抬到 medium。
+    assert.equal(tooLong!.severity, 'low');
+    assert.ok(tooLong!.evidence.some((ev) => /underpowered|样本量仅/.test(ev.message)));
   });
 
   it('doctor skill_readable pass → 不触发', () => {

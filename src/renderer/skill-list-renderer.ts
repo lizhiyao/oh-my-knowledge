@@ -76,10 +76,15 @@ function renderHealthSummary(entry: SkillIndexEntry, insights: Insight[], lang: 
     }
   }
   if (entry.observe) {
-    const labels: Record<string, string> = lang === 'zh'
-      ? { green: '稳定', yellow: '波动', red: '不稳' }
-      : { green: 'stable', yellow: 'flaky', red: 'unstable' };
-    parts.push(lang === 'zh' ? `observe ${labels[entry.observe.healthBand]}` : `observe ${labels[entry.observe.healthBand]}`);
+    if (entry.observe.confidence === 'underpowered') {
+      // Too few segments to claim stable/flaky/unstable — surface as indicative only.
+      parts.push(lang === 'zh' ? 'observe 样本不足（仅供参考）' : 'observe low N (indicative)');
+    } else {
+      const labels: Record<string, string> = lang === 'zh'
+        ? { green: '稳定', yellow: '波动', red: '不稳' }
+        : { green: 'stable', yellow: 'flaky', red: 'unstable' };
+      parts.push(`observe ${labels[entry.observe.healthBand]}`);
+    }
   }
   if (parts.length === 0) {
     // Diagnosis-only skill(例如只跑了 observe ingest 拿到 skill_md_not_found):没有三大
@@ -106,8 +111,13 @@ function renderMetrics(entry: SkillIndexEntry, lang: Lang): string {
     items.push(`<span class="sl-metric">🧪 ${entry.eval.totalSamples} ${lang === 'zh' ? '用例' : 'samples'} · ${pct}% · ${score}/5</span>`);
   }
   if (entry.observe) {
-    const stab = ((1 - entry.observe.gapRate) * 100).toFixed(0);
-    items.push(`<span class="sl-metric">👁 ${entry.observe.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · ${stab}% ${lang === 'zh' ? '稳定' : 'stable'}</span>`);
+    if (entry.observe.confidence === 'underpowered') {
+      // 段数过少,不报「X% 稳定」硬指标 —— 只标段数 + 仅供参考,跟摘要口径一致,避免同一张卡自相矛盾。
+      items.push(`<span class="sl-metric">👁 ${entry.observe.segmentCount} ${lang === 'zh' ? '段 · 样本不足' : 'segs · low N'}</span>`);
+    } else {
+      const stab = ((1 - entry.observe.gapRate) * 100).toFixed(0);
+      items.push(`<span class="sl-metric">👁 ${entry.observe.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · ${stab}% ${lang === 'zh' ? '稳定' : 'stable'}</span>`);
+    }
   }
   return items.join('');
 }
