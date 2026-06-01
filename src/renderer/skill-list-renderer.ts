@@ -111,8 +111,13 @@ function renderMetrics(entry: SkillIndexEntry, lang: Lang): string {
     items.push(`<span class="sl-metric">🧪 ${entry.eval.totalSamples} ${lang === 'zh' ? '用例' : 'samples'} · ${pct}% · ${score}/5</span>`);
   }
   if (entry.observe) {
-    const stab = ((1 - entry.observe.gapRate) * 100).toFixed(0);
-    items.push(`<span class="sl-metric">👁 ${entry.observe.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · ${stab}% ${lang === 'zh' ? '稳定' : 'stable'}</span>`);
+    if (entry.observe.confidence === 'underpowered') {
+      // 段数过少,不报「X% 稳定」硬指标 —— 只标段数 + 仅供参考,跟摘要口径一致,避免同一张卡自相矛盾。
+      items.push(`<span class="sl-metric">👁 ${entry.observe.segmentCount} ${lang === 'zh' ? '段 · 样本不足' : 'segs · low N'}</span>`);
+    } else {
+      const stab = ((1 - entry.observe.gapRate) * 100).toFixed(0);
+      items.push(`<span class="sl-metric">👁 ${entry.observe.segmentCount} ${lang === 'zh' ? '段' : 'segs'} · ${stab}% ${lang === 'zh' ? '稳定' : 'stable'}</span>`);
+    }
   }
   return items.join('');
 }

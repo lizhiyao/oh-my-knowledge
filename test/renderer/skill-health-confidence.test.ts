@@ -47,4 +47,16 @@ describe('skill-health renderer — confidence fallback for legacy reports', () 
     const html = renderSkillHealthReport(legacyReport(40), 'en');
     assert.doesNotMatch(html, /confidence; band is indicative/);
   });
+
+  it('underpowered 顶部健康标签显示「样本不足」而非硬结论「需关注」', () => {
+    const html = renderSkillHealthReport(legacyReport(3), 'zh');
+    // 色带已静音为灰,标签也不能再报红色硬结论。
+    assert.match(html, /样本不足/);
+    assert.doesNotMatch(html, /需关注/);
+  });
+
+  it('high-N red overall 仍显示硬结论标签「需关注」', () => {
+    const html = renderSkillHealthReport(legacyReport(40), 'zh');
+    assert.match(html, /需关注/);
+  });
 });

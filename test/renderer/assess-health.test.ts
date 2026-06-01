@@ -83,10 +83,28 @@ describe('assessHealth — observe confidence guard', () => {
     segmentCount: confidence === 'underpowered' ? 2 : 30, confidence,
   });
 
-  it('underpowered red observe must NOT drive unhealthy/red (P2 repro)', () => {
+  it('underpowered red observe 单独存在 → 中性灰「未评估」,既不红也不绿', () => {
     const h = assessHealth(mkEntry({ observe: observe('underpowered', 'red') }), [], 'zh');
-    assert.notEqual(h.grade, 'unhealthy');
-    assert.notEqual(h.color, 'red');
+    // 低 N observe 不算可信维度:不能硬标红,更不能从 excellent 兜底翻成硬绿「健康」。
+    assert.equal(h.grade, 'unscored');
+    assert.equal(h.color, 'gray');
+    assert.equal(h.score, null);
+  });
+
+  it('underpowered observe + high insight → 仍按可信信号(Diagnosis)标红', () => {
+    const h = assessHealth(mkEntry({ observe: observe('underpowered', 'red') }), [mkInsight('high')], 'zh');
+    assert.equal(h.grade, 'unhealthy');
+    assert.equal(h.color, 'red');
+  });
+
+  it('doctor 全绿 + underpowered observe → excellent,observe 不进分也不拉低', () => {
+    const h = assessHealth(mkEntry({
+      doctor: { reportId: 'd1', timestamp: '2026-05-09T10:00:00Z', status: 'pass', passCount: 8, warnCount: 0, failCount: 0, results: [] },
+      observe: observe('underpowered', 'red'),
+    }), [], 'zh');
+    assert.equal(h.grade, 'excellent');
+    assert.equal(h.color, 'green');
+    assert.equal(h.score, 100);
   });
 
   it('high-confidence red observe still drives unhealthy/red', () => {

@@ -635,14 +635,19 @@ function detectSkillTooLong(
       perspective: 'observe', status: 'flagged',
       message: `生产 gap ${(observe.gapRate * 100).toFixed(0)}% — 长 skill 让 LLM 找不到段落,跟 doctor 警告印证`,
     });
+    const caveat = underpoweredCaveat(observe);
+    if (caveat) evidence.push(caveat);
   }
+  // doctor warn 是主信号;只有当 observe gap 高且样本量足够时才升到 medium。underpowered 的高 gap
+  // 不足以把严重度抬上去 —— 跟 detectProductionInstability / detectCoverageGap 的 confidence 口径一致。
+  const observeBump = observe != null && observe.gapRate >= 0.3 && observe.confidence !== 'underpowered';
   return {
     id: 'skill-too-long',
     category: 'skill-too-long',
     audience: 'skill-author',
     title: 'skill 文档太长,LLM 容易漏读',
     description: 'skill 内容超过推荐上限。长 skill 在 LLM 上下文里会被压缩注意力,LLM 跟着前几段走,后面的关键约束容易漏读。',
-    severity: observe && observe.gapRate >= 0.3 ? 'medium' : 'low',
+    severity: observeBump ? 'medium' : 'low',
     affectedCount: 1,
     stageRefs: {
       doctorRuleIds: ['skill_readable'],

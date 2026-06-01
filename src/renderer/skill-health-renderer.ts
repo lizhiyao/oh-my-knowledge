@@ -55,7 +55,10 @@ function renderHeader(report: SkillHealthReport, lang: Lang): string {
   const bandColor = confidence === 'underpowered'
     ? 'var(--text-faint)'
     : HEALTH_BAND_COLOR[overall.healthBand];
-  const bandLabel = HEALTH_BAND_LABEL[overall.healthBand][lang === 'zh' ? 'zh' : 'en'];
+  // underpowered 时色带已静音为灰,标签也不报硬结论(需关注 / 健康),改为「样本不足」,跟灰底 + caveat 一致。
+  const bandLabel = confidence === 'underpowered'
+    ? (lang === 'zh' ? '样本不足' : 'Insufficient N')
+    : HEALTH_BAND_LABEL[overall.healthBand][lang === 'zh' ? 'zh' : 'en'];
   const confCaveat = lowConfidence
     ? `<div class="card-sub" style="color:var(--text-faint)">${lang === 'zh'
       ? `⚠ 样本量 ${meta.segmentCount} 段，可信度${confidence === 'underpowered' ? '不足' : '偏低'}，色带仅供参考`
