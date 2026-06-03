@@ -20,6 +20,7 @@ omk doctor [target] [flags]
 
 **Flags:**
 
+- `--dimensions` `option`:自定义维度配置文件（YAML），追加到内置 7 维度之后。
 - `--effort` `option`:LLM 推理 effort：low / medium / high / xhigh / max。
 - `--executor` `option`:执行器名，默认 claude。指定为测试 fixture 路径可在测试里跑（同 omk doctor）。
 - `--fix` `boolean`:交互式修复：根据 doctor 报告问题，用 LLM agent 修复 skill。
@@ -27,6 +28,7 @@ omk doctor [target] [flags]
 - `--json` `boolean`:JSON 输出到 stdout，适合 CI / 外部脚本消费。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option`:LLM model 名，默认 sonnet。
+- `--output-dir` `option`:报告输出目录，默认 ~/.oh-my-knowledge/doctors。
 - `--samples` `option`:样本文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
 - `--static-only` `boolean`:离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。
 - `--timeout` `option`:单次 LLM 会话超时秒数，默认 600(10 分钟）。
