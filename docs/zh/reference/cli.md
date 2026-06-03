@@ -214,7 +214,6 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --concurrency <value>           评测并发数，默认 1
   --effort <value>                reasoning effort: low/medium/high/xhigh/max
   --executor <value>              执行器名，默认 claude
-  --holdout-ratio <value>         留出验收集比例（0..1，默认 0=关）。> 0 时按 holdout 分接受候选、weak-sample 只取训练集，防 train-on-test
   --improve-mode <agent|rewrite>  改写策略（默认：agent）
   --improve-model <value>         负责重写 skill 的 LLM，默认 sonnet
   --judge-models <value>          评委 model（单评委约束），格式 executor:model。默认 claude:haiku
@@ -250,18 +249,16 @@ omk sample --batch                  # 为目录下缺评测集的 skill 批量�
 **Flags:**
 
 ```text
-  --batch                     批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
-  --count <value>             生成样本条数。不传由 LLM 按 skill 类型自动决定。
-  --fix                       fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
-  --focus <value>             生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
-  --from-traces               from-traces 模式：从 observe inbox 的失败信号回流生成回归用例草稿（provenance: production-trace），落草稿待人工 review。
-  --lang <value>              输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --model <value>             生成 LLM model 名，默认 sonnet。
-  --no-mock                   不生成 mocks，eval 时所有工具调用真实执行。
-  --observations-dir <value>  observe inbox 目录（from-traces 模式用），默认项目 .omk/observations。
-  --reports-dir <value>       报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
-  --skill-dir <value>         skill 根目录，默认 skills。batch 模式扫此目录。
-  --treatment <value>         指定 treatment 名（fix 模式用），默认推断自 skill 路径。
+  --batch                批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
+  --count <value>        生成样本条数。不传由 LLM 按 skill 类型自动决定。
+  --fix                  fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
+  --focus <value>        生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
+  --lang <value>         输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --model <value>        生成 LLM model 名，默认 sonnet。
+  --no-mock              不生成 mocks，eval 时所有工具调用真实执行。
+  --reports-dir <value>  报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
+  --skill-dir <value>    skill 根目录，默认 skills。batch 模式扫此目录。
+  --treatment <value>    指定 treatment 名（fix 模式用），默认推断自 skill 路径。
 ```
 
 完整描述见 `omk sample --help`。
