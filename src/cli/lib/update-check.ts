@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -223,7 +224,8 @@ function readLocalPkg(): LocalPkg | null {
         return {
           name: pkg.name,
           version: pkg.version,
-          registry: pkg.publishConfig?.registry || 'https://registry.npmjs.org',
+          // 优先用用户实际安装源(npm 从 .npmrc 注入 npm_config_registry),再退 publish 目标,最后兜底官方源
+          registry: process.env.npm_config_registry || pkg.publishConfig?.registry || 'https://registry.npmjs.org',
         };
       }
       dir = dirname(dir);
@@ -234,27 +236,22 @@ function readLocalPkg(): LocalPkg | null {
   return null;
 }
 
-/** 后台抓 registry latest 写回缓存,供下次运行展示用。fire-and-forget,绝不 await、
- *  绝不写 stderr/stdout。内层 try/catch 覆盖 fetch/timeout/parse/disk,detached
- *  promise 必 resolve,不会冒 unhandledRejection。 */
+/** 后台刷新:spawn 一个 detached + unref 的子进程去抓 registry latest 写回缓存,跟父进程
+ *  生命周期解耦 —— native fetch 的网络 handle 会让进程存活到请求完成 / 3s abort,留在父进程里
+ *  会拖住快命令的退出;丢给独立子进程后,父进程发完 spawn 立即返回、可正常退出,热路径零网络。
+ *  worker 只在编译产物(dist/cli/lib/)里有 `.js`;dev 直接跑源码时不存在,existsSync 兜底跳过。 */
 function fetchAndStore(path: string, pkg: LocalPkg): void {
-  void (async () => {
-    try {
-      const res = await fetch(`${pkg.registry}/${pkg.name}/latest`, { signal: AbortSignal.timeout(3000) });
-      if (!res.ok) return;
-      const data = (await res.json()) as { version?: string };
-      if (!data.version) return;
-      const prev = readCache(path); // 重读以保留 notify 字段,别覆盖展示侧刚写的节流状态
-      writeCache(path, {
-        latestVersion: data.version,
-        lastCheckedAt: new Date().toISOString(),
-        lastNotifiedVersion: prev?.lastNotifiedVersion,
-        lastNotifiedAt: prev?.lastNotifiedAt,
-      });
-    } catch {
-      /* 静默:网络 / 超时 / 解析 / 磁盘任一失败都不影响正常使用 */
-    }
-  })();
+  try {
+    const worker = join(dirname(fileURLToPath(import.meta.url)), 'update-fetch-worker.js');
+    if (!existsSync(worker)) return;
+    const child = spawn(process.execPath, [worker, path, pkg.registry, pkg.name], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.unref();
+  } catch {
+    /* 静默:spawn 失败不影响正常使用 */
+  }
 }
 
 /** 升级提示:展示与抓取解耦。本次运行只读缓存即时决定是否提示(热路径零网络);
