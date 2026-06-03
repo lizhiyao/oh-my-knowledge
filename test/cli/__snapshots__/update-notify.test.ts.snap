@@ -1,0 +1,25 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`renderUpdateBox > matches snapshot (en) 1`] = `
+"
+┌─────────────────────────────────────────────────┐
+│ ↑ omk update available                          │
+│ current 0.32.0 → latest 0.33.0                  │
+│ Upgrade: npm i -g oh-my-knowledge@latest        │
+│ Silence: set OMK_SKIP_UPDATE_CHECK=1 to disable │
+└─────────────────────────────────────────────────┘
+
+"
+`;
+
+exports[`renderUpdateBox > matches snapshot (zh) 1`] = `
+"
+┌───────────────────────────────────────────┐
+│ ↑ omk 有新版本                            │
+│ 当前 0.32.0 → 最新 0.33.0                 │
+│ 升级：npm i -g oh-my-knowledge@latest     │
+│ 静默：设 OMK_SKIP_UPDATE_CHECK=1 关闭提醒 │
+└───────────────────────────────────────────┘
+
+"
+`;

@@ -23,6 +23,8 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 不用改任何文件 —— `omk init` 帮你脚手架两版 skill 和三条评测用例；`omk eval` 跑控制变量 A/B，5 分钟内出 HTML 报告 + 一行 verdict。
 
+> 命令行有新版本时会自动提示（每 20 小时最多一次）；想永久关闭该提醒，设环境变量 `OMK_SKIP_UPDATE_CHECK=1` 即可。
+
 手把手教程：[5 分钟快速上手](docs/zh/quickstart-skill-eval.md)（推荐第一次跑评测的用户）。
 
 深入：[CLI 参考](docs/zh/reference/cli.md) · [工作原理](docs/zh/explanation/architecture.md) · [评测样本格式](docs/zh/reference/eval-sample-format.md) · [执行器与 artifact 布局](docs/zh/reference/executors.md)
