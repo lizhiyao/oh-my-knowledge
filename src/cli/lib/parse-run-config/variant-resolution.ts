@@ -9,13 +9,17 @@
  *   - 仅 batch 模式 → 留空,batch workflow 自己生成(baseline vs 每个 skill)
  *   - 都没有 → throw,附带 skill-dir 下候选 variant 提示,引导显式声明
  *
- * 之后做 variant 唯一性检查 —— 同一个 variant 表达式不能同时在 --control 和
- * --treatment,也不能 --treatment 内重复。按 expr(而非派生短名)判重:`v1/greeter.md`
- * 与 `v2/greeter.md` basename 都是 greeter 却是两个不同的 variant,不该被误判成重复;
- * 它们的最终唯一名由 resolveArtifacts 的 ensureUniqueVariantNames 负责消歧。
+ * 之后做 variant 唯一性检查 —— 同一个物理 variant 不能同时在 --control 和
+ * --treatment,也不能 --treatment 内重复。按 `variantIdentity`(规范化后的物理身份,
+ * 路径 resolve、目录与 SKILL.md 折叠、cwd 纳入)判重,而非派生短名,也不是裸 expr 字面量:
+ *   - `v1/greeter.md` 与 `v2/greeter.md` 短名都是 greeter 却是两个 variant —— 不该误判重复,
+ *     最终唯一名由 resolveArtifacts 的 ensureUniqueVariantNames 消歧。
+ *   - `./x.md` 与 `x.md`、`dir` 与 `dir/SKILL.md` 是同一份 skill —— 必须判为重复,
+ *     否则会被解析成两个 artifact 后用 `x` / `x#2` 消歧,变成同一份 skill 自比,
+ *     悄悄废掉「control 不能等于 treatment」的测量保护。
  */
 
-import { discoverVariants, variantExprToSkillName } from '../../../inputs/skill-loader.js';
+import { discoverVariants, variantExprToSkillName, variantIdentity } from '../../../inputs/skill-loader.js';
 import { configVariantsToSpecs } from '../../../inputs/eval-config.js';
 import type { EvalConfig, VariantSpec } from '../../../types/index.js';
 
@@ -56,15 +60,15 @@ export function resolveVariantSpecs(
     );
   }
 
-  const seenExprs = new Set<string>();
+  const seenIdentities = new Set<string>();
   for (const spec of variantSpecs) {
-    const key = spec.expr.trim();
-    if (seenExprs.has(key)) {
+    const key = variantIdentity(spec.expr);
+    if (seenIdentities.has(key)) {
       throw new Error(
         `variant "${spec.expr}" 重复出现——同一 variant 不能同时属于 --control 与 --treatment，也不能在 --treatment 中重复。`,
       );
     }
-    seenExprs.add(key);
+    seenIdentities.add(key);
   }
 
   return variantSpecs;

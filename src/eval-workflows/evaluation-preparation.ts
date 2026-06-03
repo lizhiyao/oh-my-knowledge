@@ -63,7 +63,14 @@ export async function prepareEvaluationRun({
     variantSpecs.forEach((spec, i) => {
       const artifact = resolvedArtifacts[i];
       if (!artifact.experimentRole) artifact.experimentRole = spec.role;
-      spec.name = artifact.name; // 同步唯一名,让 spec 与 report / variantNames 一致
+      // allowedSkills 也要按 spec 身份重绑:resolveArtifacts 里是按解析出的 artifact.name 查
+      // variantAllowedSkills,而 eval.yaml 的 key 是用户自定义的 variant 名(可与 artifact
+      // 短名不同,如 name:control-v1 / artifact:.../v1.md)。漏绑会把本该隔离的 variant 悄悄
+      // 退回 SDK 默认 discovery,破坏 construct validity。用同步前的 spec.name 覆盖回来,
+      // 显式声明优先于 strictBaseline 默认。
+      const explicit = variantAllowedSkills?.[spec.name];
+      if (explicit !== undefined) artifact.allowedSkills = explicit;
+      spec.name = artifact.name; // 同步唯一名,让 spec 与 report / variantNames 一致(放最后,前面还要用旧名查)
     });
   } else {
     const roleByName: Record<string, VariantSpec['role']> = {};

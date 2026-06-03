@@ -154,6 +154,30 @@ export function parseVariantCwd(variant: string): { name: string; cwd?: string }
   return { name: variant.slice(0, atIdx), cwd: variant.slice(atIdx + 1) };
 }
 
+/** 把一个 variant 表达式规范化成稳定的物理身份,用于「同一 variant 不能既是 control 又是
+ *  treatment」的判重。同一份 skill 的不同写法必须折叠成同一个 key:
+ *    - `./x.md` 与 `x.md`：路径型一律 `resolve(...)` 成绝对路径。
+ *    - 目录 `dir` 与 `dir/SKILL.md`：都折叠到该目录下的 SKILL.md(skill 根的稳定锚点)。
+ *    - `git:` / `baseline`：本身就是稳定标识,原样返回。
+ *  `@cwd` 也规范化后纳入 key —— 同一份 skill 绑不同 cwd 是不同 runtime context,不算重复。
+ *  不要用派生短名判重:`v1/greeter.md` 与 `v2/greeter.md` 短名都是 greeter 却是两个 variant。 */
+export function variantIdentity(expr: string): string {
+  const { name, cwd } = parseVariantCwd(expr);
+  let id: string;
+  if (name.startsWith('git:')) {
+    id = name;
+  } else if (name === 'baseline') {
+    id = 'baseline';
+  } else if (name.includes('/') || /\.md$/i.test(name)) {
+    const abs = resolve(name);
+    // 目录型 skill 与其 SKILL.md 折叠到同一锚点;单文件 .md 用其绝对路径。
+    id = existsSync(abs) && statSync(abs).isDirectory() ? join(abs, 'SKILL.md') : abs;
+  } else {
+    id = name; // 裸短名(相对 skill-dir 解析),不同短名即不同 variant
+  }
+  return cwd ? `${id}@${resolve(cwd)}` : id;
+}
+
 /** Extract short skill name from a variant expression (which may be a path). */
 export function variantExprToSkillName(expr: string): string {
   const { name } = parseVariantCwd(expr);
