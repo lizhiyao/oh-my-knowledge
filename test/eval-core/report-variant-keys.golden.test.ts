@@ -3,10 +3,17 @@
  *
  * variant 命名链路(expr → artifact.name → 报告键)是测量学不变量:artifact.name 同时
  * 是 meta.variants / summary / results[].variants / artifactHashes / skillIsolation /
- * executorRuntimes / pairComparisons.control|treatment / runId 的键。这条链路在
+ * executorRuntimes / pairComparisons.control|treatment 的键。这条链路在
  * skill-loader 里有多处独立派生,历史上反复发散。本测试走真实解析路径
  * (prepareEvaluationRun dryRun → aggregateReport),把这组键钉死,作为后续「行为保持」
  * 重构的护栏:快照只要 byte-identical,就证明重构没动跨版本可比性。
+ *
+ * runId 不在快照投影里(它由 new Date() 派生、含时间戳);其变量名编码部分另由文末的
+ * generateRunId 单测用 regex 单独覆盖,而非靠本快照。
+ *
+ * 覆盖范围:只覆盖 eval 主路径(prepareEvaluationRun 的 !artifacts 分支,按 index 绑定)。
+ * batch 路径(外部预置 artifacts 走 else 分支按 name 匹配)不在本 golden 内,见
+ * batch-evaluation-workflow 的独立测试 / 跟进 issue。
  *
  * 投影(projectVariantSurfaces)只保留 variant 相关的键面,丢掉 timestamp / cliVersion /
  * executorRuntimes 的值(含本机 PATH/工具版本,非确定)等噪声,避免无关变动误伤命名 golden。
@@ -201,6 +208,8 @@ describe('GOLDEN report variant keys', () => {
     // 临时 git 仓库,提交 greeter.md。resolveArtifacts 的 git 解析(getGitRelativePath /
     // gitShowFile)走进程 cwd,且 git toplevel 在 macOS 下是 realpath(/private/...),所以
     // chdir 进 realpath 化的仓库根、skillDir 也传 realpath,relative 才为空、能命中 HEAD:greeter.md。
+    // 注:这里用 process.chdir(进程级全局态)。依赖 vitest 文件级进程隔离(默认 fileParallelism
+    // 下每文件独立 worker、同文件内 test 串行)+ 下方 finally 还原 cwd;若改并发/线程池需重新评估。
     const gitRoot = realpathSync(mkdtempSync(join(tmpdir(), 'omk-golden-git-')));
     const sh = (args: string[]): void => { execFileSync('git', args, { cwd: gitRoot, stdio: 'ignore' }); };
     const prevCwd = process.cwd();
@@ -272,9 +281,17 @@ describe('GOLDEN report variant keys', () => {
     }
     assert.deepEqual(Object.keys(report.meta.artifactHashes ?? {}).sort(), ['a', 'b', 'baseline'], 'artifactHashes NOT remapped');
     assert.deepEqual(Object.keys(report.meta.skillIsolation ?? {}).sort(), ['a', 'b', 'baseline'], 'skillIsolation NOT remapped');
-    // blindMap 反向映射能把标签还原回原始 variant 名(键往返不丢)
-    const back = new Set(Object.values(report.meta.blindMap ?? {}));
-    assert.deepEqual([...back].sort(), ['a', 'b', 'baseline']);
+    // blindMap 是 bijection(标签集 ↔ 原始 variant 集,无丢无重)
+    const blindMap = report.meta.blindMap ?? {};
+    assert.deepEqual(Object.keys(blindMap).sort(), ['A', 'B', 'C'], 'blindMap labels');
+    assert.deepEqual(Object.values(blindMap).slice().sort(), ['a', 'b', 'baseline'], 'blindMap originals');
+    // 固定 seed → 映射确定,快照钉住具体的 label→原名(升级「往返不丢」为「映射正确」:
+    // 哪怕集合不变、A/B/C 各映到错的 variant,本快照也会抓到)。
+    expect(blindMap).toMatchSnapshot();
+    // 反向映射:summary 在 blind 后的某个 label,其对应原名确实来自 blindMap(往返自洽)
+    for (const label of Object.keys(report.summary)) {
+      assert.ok(label in blindMap, `summary label ${label} has a blindMap entry`);
+    }
   });
 
   it('generateRunId encodes variant names in order, sanitized', () => {

@@ -66,9 +66,12 @@ export async function prepareEvaluationRun({
     variantSpecs.forEach((spec, i) => {
       const artifact = resolvedArtifacts[i];
       if (!artifact.experimentRole) artifact.experimentRole = spec.role;
-      // allowedSkills 按 spec 身份绑定,显式声明优先于 strictBaseline 默认。spec.allowedSkills
-      // 是首选来源(eval.yaml 经 configVariantsToSpecs 带上);旧的按变量名 map 仅作 fallback,
-      // 兜住「CLI roles 覆盖 config 时 spec 不带 allowedSkills」等边角,行为与重构前一致。
+      // allowedSkills 按 spec 身份绑定(eval 主路径的唯一隔离绑定点,显式声明优先于
+      // strictBaseline 默认)。首选 spec.allowedSkills(eval.yaml 经 configVariantsToSpecs 带上);
+      // 旧的按变量名 map 仅作 legacy fallback,兜住「CLI roles 覆盖 config 时 spec 不带
+      // allowedSkills」等边角,行为与重构前一致。
+      // TODO: 待所有路径都按 spec 携带 allowedSkills 后,移除 variantAllowedSkills 这条 fallback,
+      //       与 resolveArtifacts 里的按名绑定一并收成单一来源。
       const explicit = spec.allowedSkills ?? variantAllowedSkills?.[spec.name];
       if (explicit !== undefined) artifact.allowedSkills = explicit;
       spec.name = artifact.name; // 同步唯一名,让 spec 与 report / variantNames 一致(放最后,前面还要用旧名查)
