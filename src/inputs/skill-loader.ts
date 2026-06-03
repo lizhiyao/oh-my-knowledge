@@ -161,6 +161,12 @@ export function parseVariantCwd(variant: string): { name: string; cwd?: string }
  *    - `git:` / `baseline`：本身就是稳定标识,原样返回。
  *  `@cwd` 也规范化后纳入 key —— 同一份 skill 绑不同 cwd 是不同 runtime context,不算重复。
  *  不要用派生短名判重:`v1/greeter.md` 与 `v2/greeter.md` 短名都是 greeter 却是两个 variant。 */
+/** 把一个绝对路径折叠到稳定的 skill 锚点:目录型 skill 与其 `SKILL.md` 归一到同一个
+ *  `dir/SKILL.md`,单文件 .md 用其绝对路径本身。供 variant 身份判重折叠等价写法。 */
+function canonicalSkillAnchor(absPath: string): string {
+  return existsSync(absPath) && statSync(absPath).isDirectory() ? join(absPath, 'SKILL.md') : absPath;
+}
+
 export function variantIdentity(expr: string): string {
   const { name, cwd } = parseVariantCwd(expr);
   let id: string;
@@ -169,9 +175,7 @@ export function variantIdentity(expr: string): string {
   } else if (name === 'baseline') {
     id = 'baseline';
   } else if (name.includes('/') || /\.md$/i.test(name)) {
-    const abs = resolve(name);
-    // 目录型 skill 与其 SKILL.md 折叠到同一锚点;单文件 .md 用其绝对路径。
-    id = existsSync(abs) && statSync(abs).isDirectory() ? join(abs, 'SKILL.md') : abs;
+    id = canonicalSkillAnchor(resolve(name));
   } else {
     id = name; // 裸短名(相对 skill-dir 解析),不同短名即不同 variant
   }
