@@ -88,9 +88,14 @@ export function discoverBatchSkills(skillDir: string): Array<{ name: string; ski
 
     if (mdMatch) {
       const name = entry.slice(0, -3);
-      const samplesPath = join(skillDir, `${name}.eval-samples.json`);
-      if (existsSync(samplesPath)) {
-        skills.push({ name, skillPath: join(skillDir, entry), samplesPath });
+      const candidates = [
+        join(skillDir, name, '.omk'),
+        join(skillDir, `${name}.eval-samples.json`),
+        join(skillDir, `${name}.eval-samples.yaml`),
+        join(skillDir, `${name}.eval-samples.yml`),
+      ].filter(existsSync);
+      if (candidates.length > 0) {
+        skills.push({ name, skillPath: join(skillDir, entry), samplesPath: candidates[0] });
       } else {
         warned.push(name);
       }
@@ -99,10 +104,19 @@ export function discoverBatchSkills(skillDir: string): Array<{ name: string; ski
 
     if (statSync(entryPath).isDirectory()) {
       const skillMd = join(entryPath, 'SKILL.md');
-      const samplesPath = join(entryPath, 'eval-samples.json');
-      if (existsSync(skillMd) && existsSync(samplesPath)) {
+      if (!existsSync(skillMd)) continue;
+      // .omk/ dir (loadSamples handles dir mode) > .omk/samples.json > eval-samples.{json,yaml,yml}
+      const omkDir = join(entryPath, '.omk');
+      const candidates = [
+        ...(existsSync(omkDir) ? [omkDir] : []),
+        join(entryPath, 'eval-samples.json'),
+        join(entryPath, 'eval-samples.yaml'),
+        join(entryPath, 'eval-samples.yml'),
+      ];
+      const samplesPath = candidates.find(existsSync);
+      if (samplesPath) {
         skills.push({ name: entry, skillPath: skillMd, samplesPath });
-      } else if (existsSync(skillMd)) {
+      } else {
         warned.push(entry);
       }
     }
@@ -138,6 +152,16 @@ export function parseVariantCwd(variant: string): { name: string; cwd?: string }
   const atIdx = variant.indexOf('@');
   if (atIdx === -1) return { name: variant };
   return { name: variant.slice(0, atIdx), cwd: variant.slice(atIdx + 1) };
+}
+
+/** Extract short skill name from a variant expression (which may be a path). */
+export function variantExprToSkillName(expr: string): string {
+  const { name } = parseVariantCwd(expr);
+  if (!name.includes('/')) return name || expr;
+  const resolved = resolve(name);
+  const base = basename(resolved);
+  const result = /^SKILL\.md$/i.test(base) ? basename(dirname(resolved)) : base.replace(/\.md$/i, '');
+  return result || name;
 }
 
 export function resolveArtifacts(
@@ -202,7 +226,6 @@ export function resolveArtifacts(
       if (!existsSync(filePath)) {
         throw new Error(`skill file not found: ${filePath}`);
       }
-      // If path is a directory, look for SKILL.md inside it
       if (statSync(filePath).isDirectory()) {
         const skillMd = join(filePath, 'SKILL.md');
         if (!existsSync(skillMd)) {
@@ -211,10 +234,10 @@ export function resolveArtifacts(
         filePath = skillMd;
       }
       const content = readFileSync(filePath, 'utf-8').trim();
-      // 用户直接指 SKILL.md 等同 directory-skill 约定:cwd 默认锚到该目录
       const isSkillMd = basename(filePath) === 'SKILL.md';
+      const name = isSkillMd ? basename(dirname(filePath)) : basename(filePath).replace(/\.md$/i, '');
       artifacts.push({
-        name: variantName,
+        name,
         kind: 'skill',
         source: 'file-path',
         content,

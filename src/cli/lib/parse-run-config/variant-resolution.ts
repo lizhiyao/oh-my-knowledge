@@ -14,7 +14,7 @@
  * 都会按 name 去重,跑了但聚不到。
  */
 
-import { discoverVariants, parseVariantCwd } from '../../../inputs/skill-loader.js';
+import { discoverVariants, variantExprToSkillName } from '../../../inputs/skill-loader.js';
 import { configVariantsToSpecs } from '../../../inputs/eval-config.js';
 import type { EvalConfig, VariantSpec } from '../../../types/index.js';
 
@@ -33,10 +33,10 @@ export function resolveVariantSpecs(
     // CLI roles present → CLI entirely replaces config.variants (no merging).
     variantSpecs = [];
     if (controlExpr) {
-      variantSpecs.push({ name: parseVariantCwd(controlExpr).name, role: 'control', expr: controlExpr });
+      variantSpecs.push({ name: variantExprToSkillName(controlExpr), role: 'control', expr: controlExpr });
     }
     for (const expr of treatmentExprs) {
-      variantSpecs.push({ name: parseVariantCwd(expr).name, role: 'treatment', expr });
+      variantSpecs.push({ name: variantExprToSkillName(expr), role: 'treatment', expr });
     }
   } else if (evalConfig) {
     variantSpecs = configVariantsToSpecs(evalConfig.variants);
