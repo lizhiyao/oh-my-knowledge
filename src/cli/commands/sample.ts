@@ -467,7 +467,7 @@ async function runSample(
 
     const skillContent: string = readFileSync(resolved.skillPath, 'utf-8');
 
-    const outputPath: string = existsSync(resolved.samplesPath) && statSync(resolved.samplesPath).isDirectory()
+    const outputPath: string = !extname(resolved.samplesPath)
       ? join(resolved.samplesPath, 'eval-samples.json')
       : resolved.samplesPath;
 
