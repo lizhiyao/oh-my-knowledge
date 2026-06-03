@@ -193,6 +193,9 @@ export interface VariantSpec {
   name: string;           // variant 显示名,从 expr 提取(parseVariantCwd 后的 name 部分)
   role: ExperimentRole;
   expr: string;           // 原始 CLI / config 表达式(含 @cwd、git: 等前缀)
+  // 显式 skill 隔离声明(来自 eval.yaml variant.allowedSkills)。随 spec 一起走,
+  // 避免再按 variant 名建一张并行 map 与 artifact 名互查(那是 allowedSkills 漏绑的源头)。
+  allowedSkills?: string[];
 }
 
 export interface EvalConfigVariant {

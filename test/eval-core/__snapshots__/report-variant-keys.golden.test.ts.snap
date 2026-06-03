@@ -1,0 +1,302 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`GOLDEN report variant keys > case 1 — baseline vs single skill: isolation [] vs null, roles 1`] = `
+{
+  "artifactHashKeys": [
+    "baseline",
+    "greeter",
+  ],
+  "executorRuntimeKeys": [
+    "baseline",
+    "greeter",
+  ],
+  "metaVariants": [
+    "baseline",
+    "greeter",
+  ],
+  "pairComparisons": [],
+  "resultVariantKeys": [
+    {
+      "sample_id": "s1",
+      "variants": [
+        "baseline",
+        "greeter",
+      ],
+    },
+    {
+      "sample_id": "s2",
+      "variants": [
+        "baseline",
+        "greeter",
+      ],
+    },
+  ],
+  "roleByVariant": {
+    "baseline": "control",
+    "greeter": "treatment",
+  },
+  "skillIsolation": {
+    "baseline": [],
+    "greeter": null,
+  },
+  "summaryKeys": [
+    "baseline",
+    "greeter",
+  ],
+}
+`;
+
+exports[`GOLDEN report variant keys > case 2 — same-basename diff dirs flow disambiguated names to every surface 1`] = `
+{
+  "artifactHashKeys": [
+    "v1/greeter",
+    "v2/greeter",
+  ],
+  "executorRuntimeKeys": [
+    "v1/greeter",
+    "v2/greeter",
+  ],
+  "metaVariants": [
+    "v1/greeter",
+    "v2/greeter",
+  ],
+  "pairComparisons": [],
+  "resultVariantKeys": [
+    {
+      "sample_id": "s1",
+      "variants": [
+        "v1/greeter",
+        "v2/greeter",
+      ],
+    },
+    {
+      "sample_id": "s2",
+      "variants": [
+        "v1/greeter",
+        "v2/greeter",
+      ],
+    },
+  ],
+  "roleByVariant": {
+    "v1/greeter": "control",
+    "v2/greeter": "treatment",
+  },
+  "skillIsolation": {
+    "v1/greeter": null,
+    "v2/greeter": null,
+  },
+  "summaryKeys": [
+    "v1/greeter",
+    "v2/greeter",
+  ],
+}
+`;
+
+exports[`GOLDEN report variant keys > case 3 — eval.yaml custom name + allowedSkills:[] lands on disambiguated artifact 1`] = `
+{
+  "artifactHashKeys": [
+    "v1/greeter",
+    "v2/greeter",
+  ],
+  "executorRuntimeKeys": [
+    "v1/greeter",
+    "v2/greeter",
+  ],
+  "metaVariants": [
+    "v1/greeter",
+    "v2/greeter",
+  ],
+  "pairComparisons": [],
+  "resultVariantKeys": [
+    {
+      "sample_id": "s1",
+      "variants": [
+        "v1/greeter",
+        "v2/greeter",
+      ],
+    },
+    {
+      "sample_id": "s2",
+      "variants": [
+        "v1/greeter",
+        "v2/greeter",
+      ],
+    },
+  ],
+  "roleByVariant": {
+    "v1/greeter": "control",
+    "v2/greeter": "treatment",
+  },
+  "skillIsolation": {
+    "v1/greeter": [],
+    "v2/greeter": null,
+  },
+  "summaryKeys": [
+    "v1/greeter",
+    "v2/greeter",
+  ],
+}
+`;
+
+exports[`GOLDEN report variant keys > case 4 — multi-treatment + bootstrap: pairComparisons by name, 3 distinct keys 1`] = `
+{
+  "artifactHashKeys": [
+    "a",
+    "b",
+    "baseline",
+  ],
+  "executorRuntimeKeys": [
+    "a",
+    "b",
+    "baseline",
+  ],
+  "metaVariants": [
+    "baseline",
+    "a",
+    "b",
+  ],
+  "pairComparisons": [
+    {
+      "control": "baseline",
+      "treatment": "a",
+    },
+    {
+      "control": "baseline",
+      "treatment": "b",
+    },
+  ],
+  "resultVariantKeys": [
+    {
+      "sample_id": "s1",
+      "variants": [
+        "a",
+        "b",
+        "baseline",
+      ],
+    },
+    {
+      "sample_id": "s2",
+      "variants": [
+        "a",
+        "b",
+        "baseline",
+      ],
+    },
+  ],
+  "roleByVariant": {
+    "a": "treatment",
+    "b": "treatment",
+    "baseline": "control",
+  },
+  "skillIsolation": {
+    "a": null,
+    "b": null,
+    "baseline": [],
+  },
+  "summaryKeys": [
+    "a",
+    "b",
+    "baseline",
+  ],
+}
+`;
+
+exports[`GOLDEN report variant keys > case 5 — git variant passes through opaquely to all keys 1`] = `
+{
+  "artifactHashKeys": [
+    "baseline",
+    "git:HEAD:greeter",
+  ],
+  "executorRuntimeKeys": [
+    "baseline",
+    "git:HEAD:greeter",
+  ],
+  "metaVariants": [
+    "baseline",
+    "git:HEAD:greeter",
+  ],
+  "pairComparisons": [],
+  "resultVariantKeys": [
+    {
+      "sample_id": "s1",
+      "variants": [
+        "baseline",
+        "git:HEAD:greeter",
+      ],
+    },
+    {
+      "sample_id": "s2",
+      "variants": [
+        "baseline",
+        "git:HEAD:greeter",
+      ],
+    },
+  ],
+  "roleByVariant": {
+    "baseline": "control",
+    "git:HEAD:greeter": "treatment",
+  },
+  "skillIsolation": {
+    "baseline": [],
+    "git:HEAD:greeter": null,
+  },
+  "summaryKeys": [
+    "baseline",
+    "git:HEAD:greeter",
+  ],
+}
+`;
+
+exports[`GOLDEN report variant keys > case 6 — custom names with no collision are replaced by derived short names 1`] = `
+{
+  "artifactHashKeys": [
+    "greeter",
+    "helper",
+  ],
+  "executorRuntimeKeys": [
+    "greeter",
+    "helper",
+  ],
+  "metaVariants": [
+    "greeter",
+    "helper",
+  ],
+  "pairComparisons": [],
+  "resultVariantKeys": [
+    {
+      "sample_id": "s1",
+      "variants": [
+        "greeter",
+        "helper",
+      ],
+    },
+    {
+      "sample_id": "s2",
+      "variants": [
+        "greeter",
+        "helper",
+      ],
+    },
+  ],
+  "roleByVariant": {
+    "greeter": "control",
+    "helper": "treatment",
+  },
+  "skillIsolation": {
+    "greeter": null,
+    "helper": null,
+  },
+  "summaryKeys": [
+    "greeter",
+    "helper",
+  ],
+}
+`;
+
+exports[`GOLDEN report variant keys > case 7 — blind mode remaps every variant surface to A/B/C and round-trips 1`] = `
+{
+  "A": "baseline",
+  "B": "a",
+  "C": "b",
+}
+`;

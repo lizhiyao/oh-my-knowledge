@@ -46,19 +46,44 @@ export async function prepareEvaluationRun({
 
   // Build expressions from specs (preserving order) and resolve to artifacts.
   const variantExpressions = variantSpecs.map((spec) => spec.expr);
+  // 不把 variantAllowedSkills 透进 resolveArtifacts:那里按解析出的 artifact 名查,
+  // 与 eval.yaml 的自定义 variant 名不一致时会漏绑。allowedSkills 统一在下面按 spec 绑定。
+  // resolveArtifacts 只保留 strictBaseline 默认(baseline → [])。
   const resolvedArtifacts = artifacts || resolveArtifacts(
     resolve(skillDir),
     variantExpressions,
-    { strictBaseline, variantAllowedSkills },
+    { strictBaseline },
   );
 
-  // Attach experimentRole to each artifact by matching spec.name to artifact.name.
-  const roleByName: Record<string, VariantSpec['role']> = {};
-  for (const spec of variantSpecs) roleByName[spec.name] = spec.role;
-  for (const artifact of resolvedArtifacts) {
-    if (artifact.experimentRole) continue;  // preserve if already set (e.g. batch workflow)
-    const role = roleByName[artifact.name];
-    if (role) artifact.experimentRole = role;
+  // Attach experimentRole to each artifact.
+  //   - 当 artifacts 由本函数从 variantSpecs.map(spec => spec.expr) 解析时,两者顺序一一对应,
+  //     按 index 绑定 role,并把 spec.name 同步成消歧后的最终唯一名。不能按 spec.name 匹配
+  //     artifact.name:同 basename 的 variant 被 ensureUniqueVariantNames 消歧后(v1/greeter /
+  //     v2/greeter)就和 spec 的派生短名(greeter)对不上,会丢 role。
+  //   - 当 artifacts 由外部传入(如 batch workflow,role 已预置)时,index 无法对齐,
+  //     退回按 name 匹配,且 if-already-set 守卫会保留预置 role。
+  if (!artifacts && variantSpecs.length === resolvedArtifacts.length) {
+    variantSpecs.forEach((spec, i) => {
+      const artifact = resolvedArtifacts[i];
+      if (!artifact.experimentRole) artifact.experimentRole = spec.role;
+      // allowedSkills 按 spec 身份绑定(eval 主路径的唯一隔离绑定点,显式声明优先于
+      // strictBaseline 默认)。首选 spec.allowedSkills(eval.yaml 经 configVariantsToSpecs 带上);
+      // 旧的按变量名 map 仅作 legacy fallback,兜住「CLI roles 覆盖 config 时 spec 不带
+      // allowedSkills」等边角,行为与重构前一致。
+      // TODO: 待所有路径都按 spec 携带 allowedSkills 后,移除 variantAllowedSkills 这条 fallback,
+      //       与 resolveArtifacts 里的按名绑定一并收成单一来源。
+      const explicit = spec.allowedSkills ?? variantAllowedSkills?.[spec.name];
+      if (explicit !== undefined) artifact.allowedSkills = explicit;
+      spec.name = artifact.name; // 同步唯一名,让 spec 与 report / variantNames 一致(放最后,前面还要用旧名查)
+    });
+  } else {
+    const roleByName: Record<string, VariantSpec['role']> = {};
+    for (const spec of variantSpecs) roleByName[spec.name] = spec.role;
+    for (const artifact of resolvedArtifacts) {
+      if (artifact.experimentRole) continue;  // preserve if already set (e.g. batch workflow)
+      const role = roleByName[artifact.name];
+      if (role) artifact.experimentRole = role;
+    }
   }
 
   if (!dryRun) {
