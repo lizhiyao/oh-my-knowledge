@@ -1,7 +1,12 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+
+const spawnMock = vi.hoisted(() => vi.fn());
+vi.mock('node:child_process', () => ({ spawn: spawnMock }));
+
 import {
   isStale,
   padToWidth,
@@ -9,6 +14,7 @@ import {
   renderNotice,
   renderUpdateBox,
   shouldNotify,
+  spawnDetached,
   visualWidth,
   writeCache,
   type UpdateCache,
@@ -200,5 +206,29 @@ describe('renderNotice (TTY vs pipe branch)', () => {
   it('the fallback line carries the new upgrade command (guards the rename)', () => {
     expect(renderNotice(parts, 'oh-my-knowledge', 'zh', false)).toContain('npm i -g oh-my-knowledge@latest');
     expect(renderNotice(parts, 'oh-my-knowledge', 'en', false)).toContain('npm i -g oh-my-knowledge@latest');
+  });
+});
+
+describe('spawnDetached (fail-silent on child startup error)', () => {
+  beforeEach(() => spawnMock.mockReset());
+
+  it('detaches + unrefs the child', () => {
+    const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+    spawnMock.mockReturnValue(child);
+    spawnDetached('/x/worker.js', ['a', 'b']);
+    expect(spawnMock).toHaveBeenCalledWith(
+      process.execPath,
+      ['/x/worker.js', 'a', 'b'],
+      expect.objectContaining({ detached: true, stdio: 'ignore' }),
+    );
+    expect(child.unref).toHaveBeenCalledOnce();
+  });
+
+  it('swallows the async error event (no listener would throw)', () => {
+    const child = Object.assign(new EventEmitter(), { unref: vi.fn() });
+    spawnMock.mockReturnValue(child);
+    spawnDetached('/x/worker.js', []);
+    // EventEmitter 没有 error listener 时 emit('error') 会同步抛;挂了 handler 才静默
+    expect(() => child.emit('error', Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }))).not.toThrow();
   });
 });

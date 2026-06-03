@@ -244,14 +244,21 @@ function fetchAndStore(path: string, pkg: LocalPkg): void {
   try {
     const worker = join(dirname(fileURLToPath(import.meta.url)), 'update-fetch-worker.js');
     if (!existsSync(worker)) return;
-    const child = spawn(process.execPath, [worker, path, pkg.registry, pkg.name], {
-      detached: true,
-      stdio: 'ignore',
-    });
-    child.unref();
+    spawnDetached(worker, [path, pkg.registry, pkg.name]);
   } catch {
-    /* 静默:spawn 失败不影响正常使用 */
+    /* 静默:spawn 同步抛错(罕见)不影响正常使用 */
   }
+}
+
+/** spawn 一个 detached + unref 的子进程跑 worker。子进程启动失败(ENOENT / EACCES /
+ *  EAGAIN)是异步 `error` 事件 —— 不挂 listener 的话 Node 会当 uncaught exception 抛出、
+ *  反过来拖垮主命令,所以必须挂个空 handler 吞掉,维持升级检查全程 fail-silent。 */
+export function spawnDetached(scriptPath: string, args: string[]): void {
+  const child = spawn(process.execPath, [scriptPath, ...args], { detached: true, stdio: 'ignore' });
+  child.on('error', () => {
+    /* 静默:子进程起不来不影响主命令 */
+  });
+  child.unref();
 }
 
 /** 升级提示:展示与抓取解耦。本次运行只读缓存即时决定是否提示(热路径零网络);
