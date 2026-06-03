@@ -149,10 +149,14 @@ export interface ResolveArtifactsOptions {
  * Format: "name@/path/to/cwd" or just "name"
  */
 export function parseVariantCwd(variant: string): { name: string; cwd?: string } {
-  // git ref 可含 `@`(reflog `git:HEAD@{2}:x`、upstream `git:main@{u}:x`),不切 @cwd,
-  // 否则会被误拆成 name=`git:HEAD`、cwd=`{2}:x`,下游静默评测错版本。
-  if (variant.startsWith('git:')) return { name: variant };
-  const atIdx = variant.indexOf('@');
+  // 找 name@cwd 的切分点:跳过 git 修订语法里的 `@{...}`(reflog `HEAD@{2}`、upstream
+  // `main@{u}`),取第一个不是紧跟 `{` 的 `@`。这样 `git:v1@/proj`(git artifact + cwd,
+  // eval.yaml 经 configVariantsToSpecs 生成的形态)仍能切出 cwd,而 `git:HEAD@{2}:x`
+  // (无 cwd)不会被误拆成 name=`git:HEAD`、cwd=`{2}:x` → 下游静默评测错版本。
+  let atIdx = -1;
+  for (let i = variant.indexOf('@'); i !== -1; i = variant.indexOf('@', i + 1)) {
+    if (variant[i + 1] !== '{') { atIdx = i; break; }
+  }
   if (atIdx === -1) return { name: variant };
   return { name: variant.slice(0, atIdx), cwd: variant.slice(atIdx + 1) };
 }

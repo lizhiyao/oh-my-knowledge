@@ -1,6 +1,7 @@
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, realpathSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensureUniqueVariantNames, resolveArtifacts, variantIdentity, parseVariantCwd } from '../../src/inputs/skill-loader.js';
@@ -238,14 +239,46 @@ describe('variantIdentity', () => {
   });
 });
 
-describe('parseVariantCwd — git ref with @ is not split into cwd', () => {
-  it('keeps a reflog/upstream git ref whole', () => {
+describe('parseVariantCwd — protects git @{...} but still splits a trailing @cwd', () => {
+  it('keeps a reflog/upstream git ref whole (no cwd)', () => {
     assert.deepEqual(parseVariantCwd('git:HEAD@{2}:greeter'), { name: 'git:HEAD@{2}:greeter' });
     assert.deepEqual(parseVariantCwd('git:main@{u}:greeter'), { name: 'git:main@{u}:greeter' });
     assert.equal(variantIdentity('git:HEAD@{2}:greeter'), 'git:HEAD@{2}:greeter');
   });
 
+  it('still splits a trailing @cwd off a git artifact (eval.yaml git + cwd form)', () => {
+    // configVariantsToSpecs 把 `artifact: git:my-skill` + `cwd: /proj` 合成 `git:my-skill@/proj`
+    assert.deepEqual(parseVariantCwd('git:my-skill@/tmp/project'), { name: 'git:my-skill', cwd: '/tmp/project' });
+    // reflog ref 内部的 @{...} 不切,末尾的 @cwd 仍切
+    assert.deepEqual(parseVariantCwd('git:HEAD@{2}:greeter@/proj'), { name: 'git:HEAD@{2}:greeter', cwd: '/proj' });
+  });
+
   it('still splits @cwd for non-git variants', () => {
     assert.deepEqual(parseVariantCwd('my-skill@/proj'), { name: 'my-skill', cwd: '/proj' });
+  });
+});
+
+describe('resolveArtifacts — git artifact bound to a cwd (regression: @{...} guard must not eat @cwd)', () => {
+  it('loads the git skill AND sets artifact.cwd from the trailing @cwd', () => {
+    const gitRoot = realpathSync(mkdtempSync(join(tmpdir(), 'omk-gitcwd-')));
+    const sh = (args: string[]): void => { execFileSync('git', args, { cwd: gitRoot, stdio: 'ignore' }); };
+    const prevCwd = process.cwd();
+    try {
+      sh(['init']);
+      sh(['config', 'user.email', 't@t.co']);
+      sh(['config', 'user.name', 't']);
+      writeFileSync(join(gitRoot, 'greeter.md'), '# git greeter\n');
+      sh(['add', '.']);
+      sh(['commit', '-m', 'seed']);
+      process.chdir(gitRoot);
+      const arts = resolveArtifacts(gitRoot, [`git:greeter@${gitRoot}/proj`]);
+      assert.equal(arts.length, 1);
+      assert.equal(arts[0].source, 'git');
+      assert.equal(arts[0].content, '# git greeter');
+      assert.equal(arts[0].cwd, `${gitRoot}/proj`, 'cwd must survive the git @{...} guard');
+    } finally {
+      process.chdir(prevCwd);
+      rmSync(gitRoot, { recursive: true, force: true });
+    }
   });
 });
