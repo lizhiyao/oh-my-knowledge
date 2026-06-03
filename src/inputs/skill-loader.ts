@@ -306,5 +306,58 @@ export function resolveArtifacts(
     // else leave undefined → SDK default (full discovery)
   }
 
+  ensureUniqueVariantNames(artifacts);
   return artifacts;
+}
+
+/** variant 短名的消歧路径:取「短名所源自的那一段」所在的完整路径,用来逐段往前限定。
+ *  - dir/SKILL.md 或 dir-variant:skillRoot(= 那个 skill 目录,basename 即短名)
+ *  - 单文件 .md:locator 去掉 .md(basename 即短名)
+ *  - baseline / git variant:无可用路径(git 名本就唯一,baseline 不参与对比键),返回 null。 */
+function identityPathOf(a: Artifact): string | null {
+  if (a.kind !== 'skill' || a.source === 'git' || !a.locator) return null;
+  return a.skillRoot ?? a.locator.replace(/\.md$/i, '');
+}
+
+/** 消歧:多个 variant resolve 出同名时(如 `v1/greeter.md` vs `v2/greeter.md` 都叫 `greeter`),
+ *  用父目录逐段限定恢复唯一性。否则 `results[sample][variant]` / `summary[variant]` 按 name 键时
+ *  后写覆盖前写,把对照 / 实验组的结果搅在一起、verdict 拿同名跟自己比 —— 静默破坏对比可信度。
+ *  没有可用路径(baseline / git)时退化加 `#n` 序号兜底,保证返回的 name 一定两两不同。 */
+export function ensureUniqueVariantNames(artifacts: Artifact[]): void {
+  const groups = new Map<string, Artifact[]>();
+  for (const a of artifacts) {
+    const g = groups.get(a.name);
+    if (g) g.push(a);
+    else groups.set(a.name, [a]);
+  }
+  if (![...groups.values()].some((g) => g.length > 1)) return; // 无冲突,常见路径直接返回
+
+  const used = new Set<string>();
+  for (const [name, g] of groups) if (g.length === 1) used.add(name);
+
+  for (const [name, g] of groups) {
+    if (g.length === 1) continue;
+    // 找能让组内全部区分、又不撞已用名的最小段深,组内统一用同一深度 → 对称标签(v1/greeter 对 v2/greeter)
+    const segLists = g.map((a) => {
+      const p = identityPathOf(a);
+      return p ? p.split(/[\\/]+/).filter(Boolean) : null;
+    });
+    const maxDepth = Math.max(0, ...segLists.map((s) => s?.length ?? 0));
+    let chosen: string[] | null = null;
+    for (let take = 2; take <= maxDepth; take++) {
+      const cands = segLists.map((s) => (s && s.length >= take ? s.slice(-take).join('/') : null));
+      if (cands.includes(null)) continue;
+      if (new Set(cands).size === cands.length && cands.every((c) => !used.has(c as string))) {
+        chosen = cands as string[];
+        break;
+      }
+    }
+    g.forEach((a, i) => {
+      const candidate = chosen ? chosen[i] : name; // 无可用路径(baseline 等)退化到原名 + #n 序号
+      let unique = candidate;
+      for (let n = 2; used.has(unique); n++) unique = `${candidate}#${n}`;
+      a.name = unique;
+      used.add(unique);
+    });
+  }
 }
