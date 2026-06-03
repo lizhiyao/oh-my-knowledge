@@ -467,11 +467,23 @@ async function runSample(
 
     const skillContent: string = readFileSync(resolved.skillPath, 'utf-8');
 
-    const outputPath: string = resolved.samplesPath;
-
-    if (existsSync(outputPath)) {
-      console.error(tCli('cli.gen.samples_already_exists', lang));
-      throw new CliExit(1);
+    let outputPath: string;
+    if (!extname(resolved.samplesPath)) {
+      const dir = resolved.samplesPath;
+      if (existsSync(dir) && statSync(dir).isDirectory()) {
+        const existing = readdirSync(dir).find((f) => /\.(json|ya?ml)$/i.test(f) && !/^(report|health|_)/i.test(f));
+        if (existing) {
+          console.error(tCli('cli.gen.samples_already_exists', lang));
+          throw new CliExit(1);
+        }
+      }
+      outputPath = join(dir, 'samples.json');
+    } else {
+      outputPath = resolved.samplesPath;
+      if (existsSync(outputPath)) {
+        console.error(tCli('cli.gen.samples_already_exists', lang));
+        throw new CliExit(1);
+      }
     }
 
     if (count !== undefined) {

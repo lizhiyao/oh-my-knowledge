@@ -824,6 +824,14 @@ details[open] > .sd-warn-toggle::before { content:'▾ ' }
 .si-fs-id { font-size:11px;background:var(--bg-surface);padding:1px 5px;border-radius:3px;color:#9c4a3f;font-weight:600 }
 .si-fs-mode { font-size:10.5px;color:#b08030;background:rgba(176,128,48,.14);padding:1px 6px;border-radius:8px;font-weight:500 }
 .si-fs-summary { color:var(--text-secondary);font-size:12px;flex-basis:100% }
+
+/* Eval history table */
+.si-eval-history-table { width:100%;border-collapse:collapse;font-size:13px;margin-top:8px }
+.si-eval-history-table th { text-align:left;padding:6px 10px;border-bottom:2px solid var(--border);color:var(--text-muted);font-weight:500 }
+.si-eval-history-table td { padding:6px 10px;border-bottom:1px solid var(--border-soft) }
+.si-eval-history-table tr:hover td { background:var(--bg-soft) }
+.si-eval-history-table a { color:var(--link);text-decoration:none;font-size:12px }
+.si-eval-history-table a:hover { text-decoration:underline }
 `;
 
 // ────────── chart.js init script ──────────
@@ -1024,7 +1032,7 @@ function renderViewSummaryCards(entry: SkillIndexEntry, lang: Lang): string {
 }
 
 /** doctor section:展示告警 / 失败规则;通过的规则折叠到底部 */
-function renderDoctorSection(snap: SkillDoctorSnapshot | null, lang: Lang): string {
+function renderDoctorSection(snap: SkillDoctorSnapshot | null, history: SkillDoctorSnapshot[], lang: Lang): string {
   if (!snap) {
     return `<section id="section-doctor" class="si-sect si-sect--gray">
       <div class="si-sect-h">🩺 ${lang === 'zh' ? '健康度 (doctor)' : 'Structure (doctor)'}</div>
@@ -1107,13 +1115,56 @@ function renderDoctorSection(snap: SkillDoctorSnapshot | null, lang: Lang): stri
         </details>`
         : ''}
     </div>
+    ${renderDoctorHistory(history, lang)}
   </section>`;
+}
+
+/** eval history: 历史评测记录列表（折叠） */
+function renderEvalHistory(history: SkillEvalSnapshot[], langQ: string, lang: Lang): string {
+  if (history.length < 2) return '';
+  const rows = [...history].reverse().map((h) => {
+    const date = h.timestamp ? new Date(h.timestamp).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
+    const score = h.compositeScore != null ? h.compositeScore.toFixed(2) : '-';
+    const status = h.failCount === 0 ? '✅' : `❌ ${h.failCount} fail`;
+    const link = `<a href="/reports/${e(h.reportId)}${langQ}">${e(h.reportId)}</a>`;
+    return `<tr><td>${date}</td><td>${score}</td><td>${h.passCount}/${h.totalSamples}</td><td>${status}</td><td>${link}</td></tr>`;
+  }).join('\n');
+  return `<details class="si-sect-fold">
+    <summary>${lang === 'zh' ? `▸ 历史评测记录 (${history.length} 次)` : `▸ Eval history (${history.length} runs)`}</summary>
+    <div class="si-sect-fold-body">
+      <table class="si-eval-history-table">
+        <thead><tr><th>${lang === 'zh' ? '时间' : 'Time'}</th><th>${lang === 'zh' ? '分数' : 'Score'}</th><th>${lang === 'zh' ? '通过' : 'Pass'}</th><th>${lang === 'zh' ? '状态' : 'Status'}</th><th>${lang === 'zh' ? '报告' : 'Report'}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </details>`;
+}
+
+/** doctor history: 历史检查记录列表（折叠） */
+function renderDoctorHistory(history: SkillDoctorSnapshot[], lang: Lang): string {
+  if (history.length < 2) return '';
+  const rows = [...history].reverse().map((h) => {
+    const date = h.timestamp ? new Date(h.timestamp).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-';
+    const statusIcon = h.status === 'pass' ? '✅' : h.status === 'warn' ? '⚠️' : '❌';
+    const detail = `${h.passCount}✓ ${h.warnCount}⚠ ${h.failCount}✗`;
+    return `<tr><td>${date}</td><td>${statusIcon} ${e(h.status)}</td><td>${detail}</td></tr>`;
+  }).join('\n');
+  return `<details class="si-sect-fold">
+    <summary>${lang === 'zh' ? `▸ 历史检查记录 (${history.length} 次)` : `▸ Doctor history (${history.length} runs)`}</summary>
+    <div class="si-sect-fold-body">
+      <table class="si-eval-history-table">
+        <thead><tr><th>${lang === 'zh' ? '时间' : 'Time'}</th><th>${lang === 'zh' ? '状态' : 'Status'}</th><th>${lang === 'zh' ? '明细' : 'Detail'}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </details>`;
 }
 
 /** eval section:失败 sample 列表(默认折叠,展开看 prompt/期望/实际/建议) */
 function renderEvalSection(
   snap: SkillEvalSnapshot | null,
   evalReport: EvaluationReport | null,
+  history: SkillEvalSnapshot[],
   langQ: string,
   lang: Lang,
 ): string {
@@ -1278,6 +1329,7 @@ function renderEvalSection(
       ${failedBlock}
       ${passedFold}
       ${tripwireFold}
+      ${renderEvalHistory(history, langQ, lang)}
       <a class="si-sect-link" href="/reports/${e(snap.reportId)}${langQ}">${lang === 'zh' ? '完整 A/B 报告 →' : 'Full A/B report →'}</a>
     </div>
   </section>`;
@@ -1365,8 +1417,8 @@ export function renderSkillDetail(
         </section>
       </div>
 
-      ${renderDoctorSection(entry.doctor, lang)}
-      ${renderEvalSection(entry.eval, evalReport, langQ, lang)}
+      ${renderDoctorSection(entry.doctor, entry.doctorHistory, lang)}
+      ${renderEvalSection(entry.eval, evalReport, entry.evalHistory, langQ, lang)}
       ${renderObserveSection(entry.observe, langQ, lang)}
     </main>
     <style>${SKILL_DETAIL_CSS}</style>

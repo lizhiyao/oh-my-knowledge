@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { runEvaluation, runBatchEvaluation } from '../src/eval-workflows/run-evaluation.js';
 import { executeBatchEvaluationRuns } from '../src/eval-workflows/batch-evaluation-workflow.js';
 import { buildTasks } from '../src/eval-core/task-planner.js';
-import { discoverVariants, discoverBatchSkills, loadSkills } from '../src/inputs/skill-loader.js';
+import { discoverVariants, discoverBatchSkills, loadSkills, variantExprToSkillName } from '../src/inputs/skill-loader.js';
 import { generateRunId, persistReport } from '../src/eval-core/evaluation-reporting.js';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,10 +17,8 @@ import type { Report, VariantSpec } from '../src/types/index.js';
 // historical `variants: [...]` convention used across legacy fixtures.
 function asSpecs(names: string[]): VariantSpec[] {
   return names.map((name, i) => {
-    const atIdx = name.indexOf('@');
-    const specName = atIdx === -1 ? name : name.slice(0, atIdx);
     return {
-      name: specName,
+      name: variantExprToSkillName(name),
       role: i === 0 ? 'control' : 'treatment',
       expr: name,
     };
@@ -481,13 +479,13 @@ describe('file path variant', () => {
 
   it('loadSkills: loads skill from file path', () => {
     const skills = loadSkills(SKILL_DIR, [v1Path]);
-    assert.equal(typeof skills[v1Path], 'string');
-    assert.ok((skills[v1Path] as string).length > 0);
+    assert.equal(typeof skills['v1'], 'string');
+    assert.ok((skills['v1'] as string).length > 0);
   });
 
   it('loadSkills: file path and name variant can coexist', () => {
     const skills = loadSkills(SKILL_DIR, [v1Path, 'v2']);
-    assert.equal(typeof skills[v1Path], 'string');
+    assert.equal(typeof skills['v1'], 'string');
     assert.equal(typeof skills['v2'], 'string');
   });
 

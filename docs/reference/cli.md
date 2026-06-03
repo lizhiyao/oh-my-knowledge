@@ -39,16 +39,18 @@ omk doctor --static-only                # offline mode: static checks only, no L
 **Flags:**
 
 ```text
-  --effort <value>    LLM reasoning effort: low / medium / high / xhigh / max.
-  --executor <value>  Executor name, default claude. Pass a test fixture path to use in tests.
-  --fix               Interactive fix: use LLM agent to fix skill issues reported by doctor.
-  --gate              Silent mode: only emit stderr summary on fail. Exit code carries the signal.
-  --json              JSON output to stdout, for CI / external script consumption.
-  --lang <value>      Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --model <value>     LLM model name, default sonnet.
-  --samples <value>   Samples file path (.json/.yaml). Auto-detects from target / cwd if omitted.
-  --static-only       Offline static mode: only 4 static rules, no LLM call.
-  --timeout <value>   Single-session LLM timeout sec, default 600 (10 min).
+  --dimensions <value>  Custom dimensions config file (YAML), appended after builtin 7 dimensions.
+  --effort <value>      LLM reasoning effort: low / medium / high / xhigh / max.
+  --executor <value>    Executor name, default claude. Pass a test fixture path to use in tests.
+  --fix                 Interactive fix: use LLM agent to fix skill issues reported by doctor.
+  --gate                Silent mode: only emit stderr summary on fail. Exit code carries the signal.
+  --json                JSON output to stdout, for CI / external script consumption.
+  --lang <value>        Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --model <value>       LLM model name, default sonnet.
+  --output-dir <value>  Report output dir, default ~/.oh-my-knowledge/doctors.
+  --samples <value>     Samples file path (.json/.yaml). Auto-detects from target / cwd if omitted.
+  --static-only         Offline static mode: only 4 static rules, no LLM call.
+  --timeout <value>     Single-session LLM timeout sec, default 600 (10 min).
 ```
 
 For full descriptions: `omk doctor --help`.

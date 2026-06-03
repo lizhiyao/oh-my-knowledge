@@ -134,6 +134,18 @@ export default class Doctor extends BaseCommand {
       }),
       parse: numberStringParser('--timeout', { min: 1 }),
     }),
+    'output-dir': Flags.string({
+      description: bilingual({
+        zh: '报告输出目录，默认 ~/.oh-my-knowledge/doctors。',
+        en: 'Report output dir, default ~/.oh-my-knowledge/doctors.',
+      }),
+    }),
+    dimensions: Flags.string({
+      description: bilingual({
+        zh: '自定义维度配置文件（YAML），追加到内置 7 维度之后。',
+        en: 'Custom dimensions config file (YAML), appended after builtin 7 dimensions.',
+      }),
+    }),
     'static-only': Flags.boolean({
       description: bilingual({
         zh: '离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。',
@@ -194,6 +206,14 @@ export default class Doctor extends BaseCommand {
       // 副作用 import: 注册 7 内置维度 spec + skill_health composer rule。
       await import('../../doctor/health/register.js');
 
+      if (flags.dimensions) {
+        const { loadAndRegisterCustomDimensions } = await import('../../doctor/health/load-custom-dimensions.js');
+        const count = loadAndRegisterCustomDimensions(resolve(flags.dimensions));
+        if (count > 0) {
+          process.stderr.write(lang === 'zh' ? `已加载 ${count} 个自定义维度\n` : `Loaded ${count} custom dimension(s)\n`);
+        }
+      }
+
       const { runDoctor } = await import('../../doctor/index.js');
       const { renderDoctorReportText, renderDoctorReportJson } = await import('../../doctor/renderer.js');
       const { getRegisteredRules } = await import('../../doctor/rules.js');
@@ -245,7 +265,7 @@ export default class Doctor extends BaseCommand {
         renderDoctorReportText(report, lang);
       }
 
-      persistDoctorReport(report);
+      persistDoctorReport(report, flags['output-dir'] ? resolve(flags['output-dir']) : undefined);
 
       if (flags.fix) {
         const existing = report;
@@ -267,8 +287,8 @@ export default class Doctor extends BaseCommand {
 // scanDoctorReports 扫盘成本)。50 = ~每天 1 跑撑 1.5 个月 sparkline,够用。
 const DOCTOR_HISTORY_MAX_PER_SKILL = 50;
 
-function persistDoctorReport(report: import('../../types/doctor.js').DoctorReport): void {
-  const dir = join(homedir(), '.oh-my-knowledge', 'doctors');
+function persistDoctorReport(report: import('../../types/doctor.js').DoctorReport, outputDir?: string): void {
+  const dir = outputDir ?? join(homedir(), '.oh-my-knowledge', 'doctors');
   mkdirSync(dir, { recursive: true });
   const safeId = report.id.replace(/[/\\:*?"<>|]/g, '_');
   for (const skill of report.skills) {
