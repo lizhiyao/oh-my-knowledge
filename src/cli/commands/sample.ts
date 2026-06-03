@@ -467,7 +467,9 @@ async function runSample(
 
     const skillContent: string = readFileSync(resolved.skillPath, 'utf-8');
 
-    const outputPath: string = resolved.samplesPath;
+    const outputPath: string = existsSync(resolved.samplesPath) && statSync(resolved.samplesPath).isDirectory()
+      ? join(resolved.samplesPath, 'eval-samples.json')
+      : resolved.samplesPath;
 
     if (existsSync(outputPath)) {
       console.error(tCli('cli.gen.samples_already_exists', lang));

@@ -157,6 +157,7 @@ export function parseVariantCwd(variant: string): { name: string; cwd?: string }
 /** Extract short skill name from a variant expression (which may be a path). */
 export function variantExprToSkillName(expr: string): string {
   const { name } = parseVariantCwd(expr);
+  if (name.startsWith('git:')) return name;
   if (!name.includes('/')) return name || expr;
   const resolved = resolve(name);
   const base = basename(resolved);
