@@ -9,9 +9,10 @@
  *   - 仅 batch 模式 → 留空,batch workflow 自己生成(baseline vs 每个 skill)
  *   - 都没有 → throw,附带 skill-dir 下候选 variant 提示,引导显式声明
  *
- * 之后做 variant name 唯一性检查 —— 同名 variant 不能同时在 --control 和
- * --treatment,也不能 --treatment 内重复。否则 ensemble agreement / report 字段
- * 都会按 name 去重,跑了但聚不到。
+ * 之后做 variant 唯一性检查 —— 同一个 variant 表达式不能同时在 --control 和
+ * --treatment,也不能 --treatment 内重复。按 expr(而非派生短名)判重:`v1/greeter.md`
+ * 与 `v2/greeter.md` basename 都是 greeter 却是两个不同的 variant,不该被误判成重复;
+ * 它们的最终唯一名由 resolveArtifacts 的 ensureUniqueVariantNames 负责消歧。
  */
 
 import { discoverVariants, variantExprToSkillName } from '../../../inputs/skill-loader.js';
@@ -55,14 +56,15 @@ export function resolveVariantSpecs(
     );
   }
 
-  const seenNames = new Set<string>();
+  const seenExprs = new Set<string>();
   for (const spec of variantSpecs) {
-    if (seenNames.has(spec.name)) {
+    const key = spec.expr.trim();
+    if (seenExprs.has(key)) {
       throw new Error(
-        `variant "${spec.name}" 重复出现——同一 variant 不能同时属于 --control 与 --treatment，也不能在 --treatment 中重复。`,
+        `variant "${spec.expr}" 重复出现——同一 variant 不能同时属于 --control 与 --treatment，也不能在 --treatment 中重复。`,
       );
     }
-    seenNames.add(spec.name);
+    seenExprs.add(key);
   }
 
   return variantSpecs;
