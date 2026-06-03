@@ -10,6 +10,7 @@ vi.mock('node:child_process', () => ({ spawn: spawnMock }));
 import {
   isStale,
   padToWidth,
+  planUpdateActions,
   readCache,
   renderNotice,
   renderUpdateBox,
@@ -59,9 +60,20 @@ describe('readCache / writeCache', () => {
     expect(readCache(path)).toBeNull();
   });
 
-  it('returns null when required fields are missing', () => {
+  it('returns null when the time anchor (lastCheckedAt) is missing', () => {
     writeFileSync(path, JSON.stringify({ latestVersion: '0.33.0' }));
     expect(readCache(path)).toBeNull();
+  });
+
+  it('accepts an attempt-only record (lastCheckedAt without latestVersion)', () => {
+    const stamp = hoursAgo(1);
+    writeFileSync(path, JSON.stringify({ lastCheckedAt: stamp }));
+    expect(readCache(path)).toEqual({
+      latestVersion: undefined,
+      lastCheckedAt: stamp,
+      lastNotifiedVersion: undefined,
+      lastNotifiedAt: undefined,
+    });
   });
 
   it('leaves no .tmp residue after an atomic write', () => {
@@ -80,6 +92,10 @@ describe('shouldNotify', () => {
 
   it('false when cache is null', () => {
     expect(shouldNotify(null, '0.32.0', NOW)).toBe(false);
+  });
+
+  it('false for an attempt-only record (no latestVersion yet)', () => {
+    expect(shouldNotify({ lastCheckedAt: hoursAgo(1) }, '0.32.0', NOW)).toBe(false);
   });
 
   it('false when latest equals current', () => {
@@ -122,6 +138,52 @@ describe('isStale', () => {
   });
   it('true when timestamp is unparseable', () => {
     expect(isStale({ latestVersion: '0.33.0', lastCheckedAt: 'not-a-date' }, NOW)).toBe(true);
+  });
+});
+
+describe('planUpdateActions', () => {
+  it('no cache → refresh, and stamps lastCheckedAt now (no notice)', () => {
+    const plan = planUpdateActions(null, '0.32.0', NOW);
+    expect(plan.notify).toBe(false);
+    expect(plan.refresh).toBe(true);
+    expect(plan.nextCache).toEqual({ lastCheckedAt: NOW.toISOString() });
+  });
+
+  it('offline throttle: a second run within 20h does NOT refresh again (spawn once)', () => {
+    // run 1:无缓存 → 发起刷新 + 落盘 attempt 戳
+    const first = planUpdateActions(null, '0.32.0', NOW);
+    expect(first.refresh).toBe(true);
+    // run 2:registry 仍不通(worker 没写成功),缓存只有 attempt 戳;5 分钟后再跑
+    const later = new Date(NOW.getTime() + 5 * 60_000);
+    const second = planUpdateActions(first.nextCache, '0.32.0', later);
+    expect(second.refresh).toBe(false);
+    expect(second.nextCache).toBeNull();
+  });
+
+  it('stale cache + newer version unseen → notify AND refresh, merged into one write', () => {
+    const cache: UpdateCache = { latestVersion: '0.33.0', lastCheckedAt: hoursAgo(25) };
+    const plan = planUpdateActions(cache, '0.32.0', NOW);
+    expect(plan.notify).toBe(true);
+    expect(plan.refresh).toBe(true);
+    expect(plan.nextCache).toEqual({
+      latestVersion: '0.33.0',
+      lastCheckedAt: NOW.toISOString(),
+      lastNotifiedVersion: '0.33.0',
+      lastNotifiedAt: NOW.toISOString(),
+    });
+  });
+
+  it('fresh cache + newer version unseen → notify only, no refresh', () => {
+    const cache: UpdateCache = { latestVersion: '0.33.0', lastCheckedAt: hoursAgo(1) };
+    const plan = planUpdateActions(cache, '0.32.0', NOW);
+    expect(plan.notify).toBe(true);
+    expect(plan.refresh).toBe(false);
+    expect(plan.nextCache).toEqual({
+      latestVersion: '0.33.0',
+      lastCheckedAt: hoursAgo(1),
+      lastNotifiedVersion: '0.33.0',
+      lastNotifiedAt: NOW.toISOString(),
+    });
   });
 });
 

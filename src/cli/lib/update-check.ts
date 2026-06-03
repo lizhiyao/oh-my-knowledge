@@ -68,9 +68,10 @@ const UPDATE_WINDOW_MS = 20 * 3600_000;
 
 /** 落盘缓存。展示只读它(热路径零网络);registry 抓取在后台写它,供下次运行用。 */
 export interface UpdateCache {
-  /** 上次抓到的 registry latest 版本。 */
-  latestVersion: string;
-  /** 上次抓取时间(ISO),用于 20h 重抓节流。 */
+  /** 上次抓到的 registry latest 版本。后台抓取成功才有;只发起过、还没成功时缺位。 */
+  latestVersion?: string;
+  /** 上次「发起检查」的时间(ISO)—— 成功失败都更新,是 20h 重抓节流的锚点。
+   *  父进程在 spawn 刷新前就写它,这样 registry 不通时也不会每条命令都重新拉起后台检查。 */
   lastCheckedAt: string;
   /** 上次提示过的版本,用于「同版本 20h 内不重复提示」。 */
   lastNotifiedVersion?: string;
@@ -97,18 +98,20 @@ export function defaultCachePath(home: string = homedir()): string {
   return join(home, '.oh-my-knowledge', 'update-check.json');
 }
 
-/** 读缓存。缺失 / 损坏 / 非对象一律返回 null,调用方按「无缓存」处理。 */
+/** 读缓存。缺失 / 损坏 / 非对象 / 缺时间锚点一律返回 null,调用方按「无缓存」处理。
+ *  lastCheckedAt(节流锚点)必须有;latestVersion 可缺(只发起过、还没抓成功的记录)。 */
 export function readCache(path: string): UpdateCache | null {
   try {
     const parsed: unknown = JSON.parse(readFileSync(path, 'utf-8'));
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     const obj = parsed as Record<string, unknown>;
-    if (typeof obj.latestVersion !== 'string' || typeof obj.lastCheckedAt !== 'string') return null;
+    if (typeof obj.lastCheckedAt !== 'string') return null;
+    const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
     return {
-      latestVersion: obj.latestVersion,
+      latestVersion: str(obj.latestVersion),
       lastCheckedAt: obj.lastCheckedAt,
-      lastNotifiedVersion: typeof obj.lastNotifiedVersion === 'string' ? obj.lastNotifiedVersion : undefined,
-      lastNotifiedAt: typeof obj.lastNotifiedAt === 'string' ? obj.lastNotifiedAt : undefined,
+      lastNotifiedVersion: str(obj.lastNotifiedVersion),
+      lastNotifiedAt: str(obj.lastNotifiedAt),
     };
   } catch {
     return null;
@@ -136,7 +139,7 @@ export function shouldNotify(
   now: Date,
   throttleMs: number = UPDATE_WINDOW_MS,
 ): boolean {
-  if (!cache || !isSemverGt(cache.latestVersion, currentVersion)) return false;
+  if (!cache?.latestVersion || !isSemverGt(cache.latestVersion, currentVersion)) return false;
   if (cache.lastNotifiedVersion !== cache.latestVersion) return true;
   if (!cache.lastNotifiedAt) return true;
   const last = Date.parse(cache.lastNotifiedAt);
@@ -150,6 +153,32 @@ export function isStale(cache: UpdateCache | null, now: Date, ttlMs: number = UP
   const last = Date.parse(cache.lastCheckedAt);
   if (Number.isNaN(last)) return true;
   return now.getTime() - last > ttlMs;
+}
+
+/** 一次运行该做什么(纯函数,now 注入,便于确定性测试):
+ *  - notify:是否展示提示(仅凭缓存,无网络)。
+ *  - refresh:是否发起后台刷新。
+ *  - nextCache:需要落盘的新缓存,null 表示无需写。
+ *
+ *  关键:refresh 为真时,nextCache 一定带上 `lastCheckedAt = now` —— 即「发起检查」这件事本身
+ *  会立即落盘,所以 registry 持续不通时,下一次运行看到新鲜的 lastCheckedAt 就不再重复 spawn,
+ *  20h 节流对离线/失败同样生效(不退化成每条命令拉起后台检查)。 */
+export function planUpdateActions(cache: UpdateCache | null, currentVersion: string, now: Date): {
+  notify: boolean;
+  refresh: boolean;
+  nextCache: UpdateCache | null;
+} {
+  const nowIso = now.toISOString();
+  const notify = shouldNotify(cache, currentVersion, now);
+  const refresh = isStale(cache, now);
+  let nextCache: UpdateCache | null = null;
+  if (notify && cache) {
+    nextCache = { ...cache, lastNotifiedVersion: cache.latestVersion, lastNotifiedAt: nowIso };
+  }
+  if (refresh) {
+    nextCache = { ...(nextCache ?? cache ?? {}), lastCheckedAt: nowIso };
+  }
+  return { notify, refresh, nextCache };
 }
 
 /** 终端可视宽度:全角 / CJK codepoint 计 2,其余计 1。用 [...str] 逐 codepoint
@@ -271,10 +300,10 @@ export async function checkUpdate(lang: CliLang): Promise<void> {
     if (!pkg) return;
     const path = defaultCachePath();
     const cache = readCache(path);
-    const now = new Date();
+    const plan = planUpdateActions(cache, pkg.version, new Date());
 
     // 展示:仅凭缓存,无网络
-    if (shouldNotify(cache, pkg.version, now) && cache) {
+    if (plan.notify && cache?.latestVersion) {
       const parts: BoxParts = {
         current: pkg.version,
         latest: cache.latestVersion,
@@ -282,13 +311,11 @@ export async function checkUpdate(lang: CliLang): Promise<void> {
         silenceHint: 'OMK_SKIP_UPDATE_CHECK=1',
       };
       process.stderr.write(renderNotice(parts, pkg.name, lang, process.stderr.isTTY === true));
-      writeCache(path, { ...cache, lastNotifiedVersion: cache.latestVersion, lastNotifiedAt: now.toISOString() });
     }
 
-    // 抓取:后台,供下次运行
-    if (isStale(cache, now)) {
-      fetchAndStore(path, pkg);
-    }
+    // 先把「发起检查」落盘(节流锚点),再 spawn 后台刷新 —— 失败/离线也不会每条命令重来
+    if (plan.nextCache) writeCache(path, plan.nextCache);
+    if (plan.refresh) fetchAndStore(path, pkg);
   } catch {
     /* 静默失败,不影响正常使用 */
   }
