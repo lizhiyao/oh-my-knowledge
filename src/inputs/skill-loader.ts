@@ -178,15 +178,20 @@ export function variantIdentity(expr: string): string {
   return cwd ? `${id}@${resolve(cwd)}` : id;
 }
 
+/** 从已解析的 skill 路径取短名:`SKILL.md` 取其父目录名,否则取去掉 `.md` 后缀的 basename。
+ *  `variantExprToSkillName`(expr → 短名)与 `resolveArtifacts` 的 file-path 命名共用这一处,
+ *  避免两份各写一遍后悄悄发散——report 键就来自 resolveArtifacts 这一支。 */
+export function skillNameFromPath(filePath: string): string {
+  const base = basename(filePath);
+  return base === 'SKILL.md' ? basename(dirname(filePath)) : base.replace(/\.md$/i, '');
+}
+
 /** Extract short skill name from a variant expression (which may be a path). */
 export function variantExprToSkillName(expr: string): string {
   const { name } = parseVariantCwd(expr);
   if (name.startsWith('git:')) return name;
   if (!name.includes('/')) return name || expr;
-  const resolved = resolve(name);
-  const base = basename(resolved);
-  const result = /^SKILL\.md$/i.test(base) ? basename(dirname(resolved)) : base.replace(/\.md$/i, '');
-  return result || name;
+  return skillNameFromPath(resolve(name)) || name;
 }
 
 export function resolveArtifacts(
@@ -260,7 +265,7 @@ export function resolveArtifacts(
       }
       const content = readFileSync(filePath, 'utf-8').trim();
       const isSkillMd = basename(filePath) === 'SKILL.md';
-      const name = isSkillMd ? basename(dirname(filePath)) : basename(filePath).replace(/\.md$/i, '');
+      const name = skillNameFromPath(filePath);
       artifacts.push({
         name,
         kind: 'skill',
