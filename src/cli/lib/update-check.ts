@@ -1,3 +1,7 @@
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tCli, type CliLang } from './i18n.js';
 
 /** 严格按 SemVer 2.0 precedence 判断 `a > b`(只覆盖本仓库实际使用的形态:
@@ -57,38 +61,231 @@ function shouldSkipUpdateCheck(): boolean {
   return false;
 }
 
+/** 统一的 20h 时间窗,两处共用:同一新版本最多提示一次的节流窗口、registry 重抓的过期窗口。
+ *  够长,高频命令下既不反复打网络也不反复 nag;又短于一天,用户隔天能再被提醒一次。 */
+const UPDATE_WINDOW_MS = 20 * 3600_000;
+
+/** 落盘缓存。展示只读它(热路径零网络);registry 抓取在后台写它,供下次运行用。 */
+export interface UpdateCache {
+  /** 上次抓到的 registry latest 版本。 */
+  latestVersion: string;
+  /** 上次抓取时间(ISO),用于 20h 重抓节流。 */
+  lastCheckedAt: string;
+  /** 上次提示过的版本,用于「同版本 20h 内不重复提示」。 */
+  lastNotifiedVersion?: string;
+  /** 上次提示时间(ISO)。 */
+  lastNotifiedAt?: string;
+}
+
+interface LocalPkg {
+  name: string;
+  version: string;
+  registry: string;
+}
+
+interface BoxParts {
+  current: string;
+  latest: string;
+  upgradeCmd: string;
+  silenceHint: string;
+}
+
+/** 缓存落盘走仓库既有约定 `~/.oh-my-knowledge/<...>`(见 src/eval-core/cache.ts、
+ *  src/server/job-store.ts)。home 可注入,方便测试传 tmp 目录。 */
+export function defaultCachePath(home: string = homedir()): string {
+  return join(home, '.oh-my-knowledge', 'update-check.json');
+}
+
+/** 读缓存。缺失 / 损坏 / 非对象一律返回 null,调用方按「无缓存」处理。 */
+export function readCache(path: string): UpdateCache | null {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(path, 'utf-8'));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.latestVersion !== 'string' || typeof obj.lastCheckedAt !== 'string') return null;
+    return {
+      latestVersion: obj.latestVersion,
+      lastCheckedAt: obj.lastCheckedAt,
+      lastNotifiedVersion: typeof obj.lastNotifiedVersion === 'string' ? obj.lastNotifiedVersion : undefined,
+      lastNotifiedAt: typeof obj.lastNotifiedAt === 'string' ? obj.lastNotifiedAt : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** 原子写(temp + rename),避免两个 omk 进程并发写出半截 JSON。homedir 不可写时
+ *  整体静默失败 — 退化为「每次后台重抓」,不崩。 */
+export function writeCache(path: string, data: UpdateCache): void {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    const tmp = `${path}.tmp.${process.pid}`;
+    writeFileSync(tmp, JSON.stringify(data, null, 2));
+    renameSync(tmp, path);
+  } catch {
+    /* 静默:缓存是装饰性状态,写不进去不影响功能 */
+  }
+}
+
+/** 是否该提示:有缓存的 latest 严格高于当前版本,且(没提示过这个版本 / 距上次提示超 20h)。
+ *  纯函数,now 外部注入,便于确定性测试。 */
+export function shouldNotify(
+  cache: UpdateCache | null,
+  currentVersion: string,
+  now: Date,
+  throttleMs: number = UPDATE_WINDOW_MS,
+): boolean {
+  if (!cache || !isSemverGt(cache.latestVersion, currentVersion)) return false;
+  if (cache.lastNotifiedVersion !== cache.latestVersion) return true;
+  if (!cache.lastNotifiedAt) return true;
+  const last = Date.parse(cache.lastNotifiedAt);
+  if (Number.isNaN(last)) return true;
+  return now.getTime() - last > throttleMs;
+}
+
+/** 缓存是否过期(需后台重抓):无缓存 / 时间戳缺失或不可解析 / 超 ttl。 */
+export function isStale(cache: UpdateCache | null, now: Date, ttlMs: number = UPDATE_WINDOW_MS): boolean {
+  if (!cache?.lastCheckedAt) return true;
+  const last = Date.parse(cache.lastCheckedAt);
+  if (Number.isNaN(last)) return true;
+  return now.getTime() - last > ttlMs;
+}
+
+/** 终端可视宽度:全角 / CJK codepoint 计 2,其余计 1。用 [...str] 逐 codepoint
+ *  迭代以正确处理代理对。框内只用 width-1 的 ↑(U+2191)/→(U+2192),不放 emoji,
+ *  避免 emoji 宽度歧义破坏右边框对齐。 */
+export function visualWidth(str: string): number {
+  let width = 0;
+  for (const ch of str) {
+    const cp = ch.codePointAt(0) ?? 0;
+    width += isWideCodePoint(cp) ? 2 : 1;
+  }
+  return width;
+}
+
+function isWideCodePoint(cp: number): boolean {
+  return (
+    (cp >= 0x1100 && cp <= 0x115f) || // Hangul Jamo
+    (cp >= 0x2e80 && cp <= 0xa4cf) || // CJK 部首 … 彝文;含 CJK 标点(3000-303F「。、」)与统一表意(4E00-9FFF)
+    (cp >= 0xac00 && cp <= 0xd7a3) || // Hangul 音节
+    (cp >= 0xf900 && cp <= 0xfaff) || // CJK 兼容表意
+    (cp >= 0xfe30 && cp <= 0xfe4f) || // CJK 兼容形式
+    (cp >= 0xff00 && cp <= 0xff60) || // 全角 ASCII / 标点
+    (cp >= 0xffe0 && cp <= 0xffe6) // 全角符号
+  );
+}
+
+/** 右补空格到目标可视宽度(已超宽则原样返回)。 */
+export function padToWidth(str: string, target: number): string {
+  const pad = target - visualWidth(str);
+  return pad > 0 ? str + ' '.repeat(pad) : str;
+}
+
+/** 渲染多行高亮边框(纯函数,可快照测试)。内宽取各行最大可视宽度,逐行用
+ *  padToWidth 对齐后画 ┌┐└┘─│ 框,返回前后留白、以 \n 结尾的整串。 */
+export function renderUpdateBox(parts: BoxParts, lang: CliLang): string {
+  const lines = [
+    tCli('cli.update.box_title', lang),
+    tCli('cli.update.box_version_line', lang, { old: parts.current, new: parts.latest }),
+    tCli('cli.update.box_upgrade_line', lang, { cmd: parts.upgradeCmd }),
+    tCli('cli.update.box_silence_line', lang, { env: parts.silenceHint }),
+  ];
+  const inner = Math.max(...lines.map(visualWidth));
+  const top = `┌${'─'.repeat(inner + 2)}┐`;
+  const bottom = `└${'─'.repeat(inner + 2)}┘`;
+  const body = lines.map((l) => `│ ${padToWidth(l, inner)} │`);
+  return `\n${[top, ...body, bottom].join('\n')}\n\n`;
+}
+
+/** 选染提示文案:TTY 下多行高亮框,管道 / 非 TTY 退回单行(不污染输出)。纯函数,
+ *  isTty 注入便于测试两条分支。 */
+export function renderNotice(parts: BoxParts, pkgName: string, lang: CliLang, isTty: boolean): string {
+  if (isTty) return renderUpdateBox(parts, lang);
+  return tCli('cli.update.new_version_available', lang, {
+    old: parts.current,
+    new: parts.latest,
+    pkg: pkgName,
+  });
+}
+
+/** 从当前文件位置向上找 package.json:dev 跑 src/cli/lib/ 时 3 层到根,
+ *  装到 npm 跑 dist/cli/lib/ 时 3 层到 oh-my-knowledge/。5 次给点 buffer。 */
+function readLocalPkg(): LocalPkg | null {
+  try {
+    let dir = dirname(fileURLToPath(import.meta.url));
+    for (let i = 0; i < 5; i++) {
+      const candidate = join(dir, 'package.json');
+      if (existsSync(candidate)) {
+        const pkg: { name?: string; version?: string; publishConfig?: { registry?: string } } = JSON.parse(
+          readFileSync(candidate, 'utf-8'),
+        );
+        if (!pkg.name || !pkg.version) return null;
+        return {
+          name: pkg.name,
+          version: pkg.version,
+          registry: pkg.publishConfig?.registry || 'https://registry.npmjs.org',
+        };
+      }
+      dir = dirname(dir);
+    }
+  } catch {
+    /* fall through */
+  }
+  return null;
+}
+
+/** 后台抓 registry latest 写回缓存,供下次运行展示用。fire-and-forget,绝不 await、
+ *  绝不写 stderr/stdout。内层 try/catch 覆盖 fetch/timeout/parse/disk,detached
+ *  promise 必 resolve,不会冒 unhandledRejection。 */
+function fetchAndStore(path: string, pkg: LocalPkg): void {
+  void (async () => {
+    try {
+      const res = await fetch(`${pkg.registry}/${pkg.name}/latest`, { signal: AbortSignal.timeout(3000) });
+      if (!res.ok) return;
+      const data = (await res.json()) as { version?: string };
+      if (!data.version) return;
+      const prev = readCache(path); // 重读以保留 notify 字段,别覆盖展示侧刚写的节流状态
+      writeCache(path, {
+        latestVersion: data.version,
+        lastCheckedAt: new Date().toISOString(),
+        lastNotifiedVersion: prev?.lastNotifiedVersion,
+        lastNotifiedAt: prev?.lastNotifiedAt,
+      });
+    } catch {
+      /* 静默:网络 / 超时 / 解析 / 磁盘任一失败都不影响正常使用 */
+    }
+  })();
+}
+
+/** 升级提示:展示与抓取解耦。本次运行只读缓存即时决定是否提示(热路径零网络);
+ *  缓存过期时后台抓一次写回,供下次用。首次运行(无缓存)不提示。全程 fail-silent,
+ *  由 index.ts 在非短路径下 fire-and-forget 调用。 */
 export async function checkUpdate(lang: CliLang): Promise<void> {
   if (shouldSkipUpdateCheck()) return;
   try {
-    const { readFileSync, existsSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const __dirname: string = dirname(fileURLToPath(import.meta.url));
-    // 从当前文件位置向上找 package.json:dev 跑 src/cli/lib/ 时 3 层到根,
-    // 装到 npm 跑 dist/cli/lib/ 时 3 层到 oh-my-knowledge/。5 次给点 buffer。
-    const findPackageJson = (startDir: string): string | null => {
-      let dir = startDir;
-      for (let i = 0; i < 5; i++) {
-        const candidate = join(dir, 'package.json');
-        if (existsSync(candidate)) return candidate;
-        dir = dirname(dir);
-      }
-      return null;
-    };
-    const pkgPath = findPackageJson(__dirname);
-    if (!pkgPath) return;
-    const pkg: { name: string; version: string; publishConfig?: { registry?: string } } =
-      JSON.parse(readFileSync(pkgPath, 'utf-8'));
-    const registry: string = pkg.publishConfig?.registry || 'https://registry.npmjs.org';
-    const res: Response = await fetch(`${registry}/${pkg.name}/latest`, { signal: AbortSignal.timeout(3000) });
-    if (!res.ok) return;
-    const data = await res.json() as { version?: string };
-    // 只在 registry 版本 SemVer 严格大于本地版本时提示。早先版本用 `!==`
-    // 比较,本地 dev 跑出 0.32.0-rc 时会被 registry 的 0.31.0「提示降级」。
-    if (data.version && isSemverGt(data.version, pkg.version)) {
-      process.stderr.write(tCli('cli.update.new_version_available', lang, {
-        old: pkg.version, new: data.version, pkg: pkg.name,
-      }));
+    const pkg = readLocalPkg();
+    if (!pkg) return;
+    const path = defaultCachePath();
+    const cache = readCache(path);
+    const now = new Date();
+
+    // 展示:仅凭缓存,无网络
+    if (shouldNotify(cache, pkg.version, now) && cache) {
+      const parts: BoxParts = {
+        current: pkg.version,
+        latest: cache.latestVersion,
+        upgradeCmd: 'npm i -g oh-my-knowledge@latest',
+        silenceHint: 'OMK_SKIP_UPDATE_CHECK=1',
+      };
+      process.stderr.write(renderNotice(parts, pkg.name, lang, process.stderr.isTTY === true));
+      writeCache(path, { ...cache, lastNotifiedVersion: cache.latestVersion, lastNotifiedAt: now.toISOString() });
     }
-  } catch { /* 静默失败,不影响正常使用 */ }
+
+    // 抓取:后台,供下次运行
+    if (isStale(cache, now)) {
+      fetchAndStore(path, pkg);
+    }
+  } catch {
+    /* 静默失败,不影响正常使用 */
+  }
 }

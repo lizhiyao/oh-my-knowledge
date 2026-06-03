@@ -11,6 +11,10 @@ export type CommonMessageKey =
   | 'cli.common.judge_models_single_only'
   | 'cli.common.warn_load_samples_failed'
   | 'cli.update.new_version_available'
+  | 'cli.update.box_title'
+  | 'cli.update.box_version_line'
+  | 'cli.update.box_upgrade_line'
+  | 'cli.update.box_silence_line'
   | 'cli.observe.view_hint'
   | 'cli.studio.started'
   | 'cli.studio.stop_hint'
@@ -56,8 +60,24 @@ export const commonDict: Record<CommonMessageKey, CliMessage> = {
     en: '⚠ Failed to load samples file ({path}): {message}\n',
   },
   'cli.update.new_version_available': {
-    zh: '\n💡 新版本可用: {old} → {new}, 运行 npm update {pkg} -g 升级\n\n',
-    en: '\n💡 New version available: {old} → {new}, run npm update {pkg} -g to upgrade\n\n',
+    zh: '\n💡 新版本可用：{old} → {new}，运行 npm i -g oh-my-knowledge@latest 升级\n\n',
+    en: '\n💡 New version available: {old} → {new}, run npm i -g oh-my-knowledge@latest to upgrade\n\n',
+  },
+  'cli.update.box_title': {
+    zh: '↑ omk 有新版本',
+    en: '↑ omk update available',
+  },
+  'cli.update.box_version_line': {
+    zh: '当前 {old} → 最新 {new}',
+    en: 'current {old} → latest {new}',
+  },
+  'cli.update.box_upgrade_line': {
+    zh: '升级：{cmd}',
+    en: 'Upgrade: {cmd}',
+  },
+  'cli.update.box_silence_line': {
+    zh: '静默：设 {env} 关闭提醒',
+    en: 'Silence: set {env} to disable',
   },
   'cli.observe.view_hint': {
     zh: '分析 JSON 已写入 output-dir；后续可用 omk observe 持续生成日报。',
