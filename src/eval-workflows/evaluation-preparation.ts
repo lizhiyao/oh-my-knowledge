@@ -46,10 +46,13 @@ export async function prepareEvaluationRun({
 
   // Build expressions from specs (preserving order) and resolve to artifacts.
   const variantExpressions = variantSpecs.map((spec) => spec.expr);
+  // 不把 variantAllowedSkills 透进 resolveArtifacts:那里按解析出的 artifact 名查,
+  // 与 eval.yaml 的自定义 variant 名不一致时会漏绑。allowedSkills 统一在下面按 spec 绑定。
+  // resolveArtifacts 只保留 strictBaseline 默认(baseline → [])。
   const resolvedArtifacts = artifacts || resolveArtifacts(
     resolve(skillDir),
     variantExpressions,
-    { strictBaseline, variantAllowedSkills },
+    { strictBaseline },
   );
 
   // Attach experimentRole to each artifact.
@@ -63,12 +66,10 @@ export async function prepareEvaluationRun({
     variantSpecs.forEach((spec, i) => {
       const artifact = resolvedArtifacts[i];
       if (!artifact.experimentRole) artifact.experimentRole = spec.role;
-      // allowedSkills 也要按 spec 身份重绑:resolveArtifacts 里是按解析出的 artifact.name 查
-      // variantAllowedSkills,而 eval.yaml 的 key 是用户自定义的 variant 名(可与 artifact
-      // 短名不同,如 name:control-v1 / artifact:.../v1.md)。漏绑会把本该隔离的 variant 悄悄
-      // 退回 SDK 默认 discovery,破坏 construct validity。用同步前的 spec.name 覆盖回来,
-      // 显式声明优先于 strictBaseline 默认。
-      const explicit = variantAllowedSkills?.[spec.name];
+      // allowedSkills 按 spec 身份绑定,显式声明优先于 strictBaseline 默认。spec.allowedSkills
+      // 是首选来源(eval.yaml 经 configVariantsToSpecs 带上);旧的按变量名 map 仅作 fallback,
+      // 兜住「CLI roles 覆盖 config 时 spec 不带 allowedSkills」等边角,行为与重构前一致。
+      const explicit = spec.allowedSkills ?? variantAllowedSkills?.[spec.name];
       if (explicit !== undefined) artifact.allowedSkills = explicit;
       spec.name = artifact.name; // 同步唯一名,让 spec 与 report / variantNames 一致(放最后,前面还要用旧名查)
     });

@@ -36,6 +36,7 @@ export function configVariantsToSpecs(variants: EvalConfigVariant[]): VariantSpe
     name: v.name,
     role: v.role,
     expr: v.cwd ? `${v.artifact}@${v.cwd}` : v.artifact,
+    ...(v.allowedSkills !== undefined && { allowedSkills: v.allowedSkills }),
   }));
 }
 
