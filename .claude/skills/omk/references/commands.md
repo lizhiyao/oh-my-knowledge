@@ -213,6 +213,7 @@ omk evolve <skillPath> [flags]
 - `--concurrency` `option` (默认 `1`):评测并发数，默认 1
 - `--effort` `option`:reasoning effort: low/medium/high/xhigh/max
 - `--executor` `option` (默认 `claude`):执行器名，默认 claude
+- `--holdout-ratio` `option` (默认 `0`):留出验收集比例（0..1，默认 0=关）。> 0 时按 holdout 分接受候选、weak-sample 只取训练集，防 train-on-test
 - `--improve-mode` `agent|rewrite` (默认 `agent`):改写策略（默认：agent）
 - `--improve-model` `option` (默认 `sonnet`):负责重写 skill 的 LLM，默认 sonnet
 - `--judge-models` `option` (默认 `claude:haiku`):评委 model（单评委约束），格式 executor:model。默认 claude:haiku
@@ -372,7 +373,7 @@ omk observe show <inboxId> [flags]
 
 ## omk sample
 
-为指定 skill 生成评测用例（eval-samples），支持 batch / single / fix 三种模式。
+为指定 skill 生成评测用例（eval-samples），支持 batch / single / fix / from-traces 四种模式。
 
 **用法:**
 
@@ -390,9 +391,11 @@ omk sample [skillPath] [flags]
 - `--count` `option`:生成样本条数。不传由 LLM 按 skill 类型自动决定。
 - `--fix` `boolean`:fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
 - `--focus` `option`:生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
+- `--from-traces` `boolean`:from-traces 模式：从 observe inbox 的失败信号回流生成回归用例草稿（provenance: production-trace），落草稿待人工 review。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option` (默认 `sonnet`):生成 LLM model 名，默认 sonnet。
 - `--no-mock` `boolean`:不生成 mocks，eval 时所有工具调用真实执行。
+- `--observations-dir` `option`:observe inbox 目录（from-traces 模式用），默认项目 .omk/observations。
 - `--reports-dir` `option`:报告目录（fix 模式用），默认 ~/.oh-my-knowledge/reports。
 - `--skill-dir` `option` (默认 `skills`):skill 根目录，默认 skills。batch 模式扫此目录。
 - `--treatment` `option`:指定 treatment 名（fix 模式用），默认推断自 skill 路径。
@@ -415,6 +418,12 @@ omk sample --batch --skill-dir skills
 
 ```bash
 omk sample skills/my-skill/SKILL.md --fix
+```
+
+> 从 observe inbox 的失败信号回流生成回归用例草稿
+
+```bash
+omk sample --from-traces
 ```
 
 ## omk studio

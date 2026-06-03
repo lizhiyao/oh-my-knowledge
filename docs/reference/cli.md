@@ -214,6 +214,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --concurrency <value>           Eval concurrency, default 1
   --effort <value>                Reasoning effort: low/medium/high/xhigh/max
   --executor <value>              Executor name, default claude
+  --holdout-ratio <value>         Holdout fraction for the accept decision (0..1, default 0=off). When > 0, candidates are accepted on holdout score and weak samples come only from train — guards against train-on-test
   --improve-mode <agent|rewrite>  Improvement strategy (default: agent)
   --improve-model <value>         LLM that rewrites the skill, default sonnet
   --judge-models <value>          Judge model (single judge required), executor:model format. Default claude:haiku
@@ -249,16 +250,18 @@ omk sample --batch                  # generate for skills missing eval-samples
 **Flags:**
 
 ```text
-  --batch                Batch mode: scan --skill-dir, generate samples for any skill missing them.
-  --count <value>        Number of samples to generate. Defaults to LLM auto-selection by skill type.
-  --fix                  Fix mode: auto-fix sample_design failures using the latest eval report.
-  --focus <value>        Generation focus (NL hint). Steers LLM toward certain sample types.
-  --lang <value>         Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --model <value>        Generation LLM model name, default sonnet.
-  --no-mock              Skip mock generation; all tool calls execute for real during eval.
-  --reports-dir <value>  Reports dir (fix mode), default ~/.oh-my-knowledge/reports.
-  --skill-dir <value>    Skill root dir, default skills. Used by batch mode.
-  --treatment <value>    Treatment name (fix mode), defaults to skill-path inference.
+  --batch                     Batch mode: scan --skill-dir, generate samples for any skill missing them.
+  --count <value>             Number of samples to generate. Defaults to LLM auto-selection by skill type.
+  --fix                       Fix mode: auto-fix sample_design failures using the latest eval report.
+  --focus <value>             Generation focus (NL hint). Steers LLM toward certain sample types.
+  --from-traces               from-traces mode: recycle observe-inbox failure signals into draft regression samples (provenance: production-trace) for review.
+  --lang <value>              Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --model <value>             Generation LLM model name, default sonnet.
+  --no-mock                   Skip mock generation; all tool calls execute for real during eval.
+  --observations-dir <value>  Observe inbox dir (from-traces mode), default project .omk/observations.
+  --reports-dir <value>       Reports dir (fix mode), default ~/.oh-my-knowledge/reports.
+  --skill-dir <value>         Skill root dir, default skills. Used by batch mode.
+  --treatment <value>         Treatment name (fix mode), defaults to skill-path inference.
 ```
 
 For full descriptions: `omk sample --help`.
