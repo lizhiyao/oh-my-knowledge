@@ -62,7 +62,7 @@ export function resolveVariantSpecs(
 
   const seenIdentities = new Set<string>();
   for (const spec of variantSpecs) {
-    const key = variantIdentity(spec.expr);
+    const key = variantIdentity(spec.expr, skillDir);
     if (seenIdentities.has(key)) {
       throw new Error(
         `variant "${spec.expr}" 重复出现——同一 variant 不能同时属于 --control 与 --treatment，也不能在 --treatment 中重复。`,

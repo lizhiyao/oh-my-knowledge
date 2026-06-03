@@ -141,6 +141,16 @@ describe('CLI dry-run — --control / --treatment same-basename in different dir
     assert.equal(specs.length, 2);
   });
 
+  it('rejects a bare skill name vs its path form pointing at the same file (skillDir base)', () => {
+    // skillDir 下放一个 greeter.md;`greeter`(裸名,按 skillDir 解析)与 `<skillDir>/greeter.md`
+    // (路径)指向同一物理文件 → 必须判为重复,否则会变成同一份 skill 自比。
+    writeFileSync(join(root, 'greeter.md'), '# top greeter\n');
+    assert.throws(
+      () => resolveVariantSpecs({ control: 'greeter', treatment: join(root, 'greeter.md') }, null, root),
+      /重复出现/,
+    );
+  });
+
   it('prepareEvaluationRun assigns distinct names AND a role to each variant (regression)', async () => {
     const variantSpecs = resolveVariantSpecs(
       { control: join(root, 'v1', 'greeter.md'), treatment: join(root, 'v2', 'greeter.md') },

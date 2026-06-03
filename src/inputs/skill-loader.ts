@@ -179,10 +179,13 @@ function pathPhysicalId(p: string): string {
  *  treatment」的判重。同一份 skill 的不同写法必须折叠成同一个 key:
  *    - `./x.md` 与 `x.md`、符号链接、大小写不敏感卷上的等价写法:resolve 后取 `dev:ino` 物理身份。
  *    - 目录 `dir` 与 `dir/SKILL.md`：先折叠到同一锚点再取物理身份。
+ *    - 裸短名(传了 `skillDir` 时):按 resolveArtifacts 的解析基准(`skillDir/name.md` 或
+ *      `skillDir/name/SKILL.md`)取物理身份,这样裸名 `greeter` 与指向同一文件的 `./greeter.md`
+ *      能判为重复;没传 skillDir(如纯单测)则退回字面名。
  *    - `git:` / `baseline`：本身就是稳定标识,原样返回。
  *  `@cwd` 也按物理身份纳入 key —— 同一份 skill 绑不同 cwd 是不同 runtime context,不算重复。
  *  不要用派生短名判重:`v1/greeter.md` 与 `v2/greeter.md` 短名都是 greeter 却是两个 variant。 */
-export function variantIdentity(expr: string): string {
+export function variantIdentity(expr: string, skillDir?: string): string {
   const { name, cwd } = parseVariantCwd(expr);
   let id: string;
   if (name.startsWith('git:')) {
@@ -191,8 +194,14 @@ export function variantIdentity(expr: string): string {
     id = 'baseline';
   } else if (name.includes('/') || /\.md$/i.test(name)) {
     id = pathPhysicalId(canonicalSkillAnchor(resolve(name)));
+  } else if (skillDir) {
+    // 裸短名按 resolveArtifacts 的同一基准(skillDir/name.md 或 skillDir/name/SKILL.md)解析,
+    // 命不中就退回字面名(resolveArtifacts 随后会报 not found)。
+    const md = join(skillDir, `${name}.md`);
+    const dirMd = join(skillDir, name, 'SKILL.md');
+    id = existsSync(md) ? pathPhysicalId(md) : existsSync(dirMd) ? pathPhysicalId(dirMd) : name;
   } else {
-    id = name; // 裸短名(相对 skill-dir 解析),不同短名即不同 variant
+    id = name; // 无 skillDir 上下文:不同短名即不同 variant
   }
   return cwd ? `${id}@${pathPhysicalId(resolve(cwd))}` : id;
 }
