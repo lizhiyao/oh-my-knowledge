@@ -471,7 +471,7 @@ async function runSample(
     if (!extname(resolved.samplesPath)) {
       const dir = resolved.samplesPath;
       if (existsSync(dir) && statSync(dir).isDirectory()) {
-        const existing = readdirSync(dir).find((f) => /\.(json|ya?ml)$/i.test(f));
+        const existing = readdirSync(dir).find((f) => /\.(json|ya?ml)$/i.test(f) && !/^(report|health|_)/i.test(f));
         if (existing) {
           console.error(tCli('cli.gen.samples_already_exists', lang));
           throw new CliExit(1);
