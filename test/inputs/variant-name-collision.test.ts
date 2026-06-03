@@ -1,9 +1,9 @@
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ensureUniqueVariantNames, resolveArtifacts, variantIdentity } from '../../src/inputs/skill-loader.js';
+import { ensureUniqueVariantNames, resolveArtifacts, variantIdentity, parseVariantCwd } from '../../src/inputs/skill-loader.js';
 import { resolveVariantSpecs } from '../../src/cli/lib/parse-run-config/variant-resolution.js';
 import { prepareEvaluationRun } from '../../src/eval-workflows/evaluation-preparation.js';
 import type { Artifact } from '../../src/types/eval.js';
@@ -81,6 +81,11 @@ describe('resolveArtifacts — same-basename variants in different dirs', () => 
     assert.deepEqual(names, ['v1/greeter', 'v2/greeter']);
     // 内容确实是两份不同的 skill,没有被覆盖
     assert.notEqual(arts[0].content, arts[1].content);
+  });
+
+  it('rejects an empty variant name (e.g. "@/cwd") instead of silently loading skillDir/SKILL.md', () => {
+    writeFileSync(join(root, 'SKILL.md'), '# top-level skill\n');
+    assert.throws(() => resolveArtifacts(root, ['@/some/cwd']), /不能为空/);
   });
 });
 
@@ -202,5 +207,35 @@ describe('variantIdentity', () => {
   it('leaves baseline and git refs as stable opaque identities', () => {
     assert.equal(variantIdentity('baseline'), 'baseline');
     assert.equal(variantIdentity('git:HEAD:greeter'), 'git:HEAD:greeter');
+  });
+
+  it('folds a symlinked path to the same physical identity (resolve alone would miss it)', () => {
+    const real = join(root, 'realdir');
+    mkdirSync(real, { recursive: true });
+    writeFileSync(join(real, 'SKILL.md'), '# s\n');
+    const link = join(root, 'linkdir');
+    symlinkSync(real, link, 'dir');
+    // 软链目录、真实目录、真实目录的 SKILL.md —— 同一物理文件,必须同 identity
+    assert.equal(variantIdentity(link), variantIdentity(real));
+    assert.equal(variantIdentity(link), variantIdentity(join(real, 'SKILL.md')));
+  });
+
+  it('folds absolute vs realpath-equivalent file to the same identity', () => {
+    const f = join(root, 'g.md');
+    writeFileSync(f, '# g\n');
+    // realpathSync 解掉 /tmp→/private/tmp 这类软链前缀,二者指向同一 inode → 同 identity
+    assert.equal(variantIdentity(f), variantIdentity(realpathSync(f)));
+  });
+});
+
+describe('parseVariantCwd — git ref with @ is not split into cwd', () => {
+  it('keeps a reflog/upstream git ref whole', () => {
+    assert.deepEqual(parseVariantCwd('git:HEAD@{2}:greeter'), { name: 'git:HEAD@{2}:greeter' });
+    assert.deepEqual(parseVariantCwd('git:main@{u}:greeter'), { name: 'git:main@{u}:greeter' });
+    assert.equal(variantIdentity('git:HEAD@{2}:greeter'), 'git:HEAD@{2}:greeter');
+  });
+
+  it('still splits @cwd for non-git variants', () => {
+    assert.deepEqual(parseVariantCwd('my-skill@/proj'), { name: 'my-skill', cwd: '/proj' });
   });
 });
