@@ -104,28 +104,9 @@ describe('resolveArtifacts skill isolation', () => {
     assert.equal(baseline.allowedSkills, undefined);
   });
 
-  it('显式 variantAllowedSkills 优先于 strictBaseline 默认', () => {
-    const artifacts = resolveArtifacts(SKILL_DIR, ['baseline', 'v1'], {
-      strictBaseline: true,
-      variantAllowedSkills: { baseline: ['react-skill'], v1: [] },
-    });
-    const baseline = artifacts.find((a) => a.name === 'baseline')!;
-    const v1 = artifacts.find((a) => a.name === 'v1')!;
-    assert.deepEqual(baseline.allowedSkills, ['react-skill'], 'eval.yaml 显式覆盖 strict-baseline 默认 []');
-    assert.deepEqual(v1.allowedSkills, [], '显式给 treatment 设 [] 也合法');
-  });
-
   it('cwd-only expr 也被认作 baseline-kind,strict-baseline 自动隔离', () => {
     const artifacts = resolveArtifacts(SKILL_DIR, [{ expr: 'project-env', cwd: '/tmp/proj' }]);
     assert.deepEqual(artifacts[0].allowedSkills, [],
       'kind:baseline 包括 cwd-only custom variant,strict-baseline 一并隔离');
-  });
-
-  it('strictBaseline=true 但 variantAllowedSkills 显式给 baseline 一个非空白名单 → 用白名单', () => {
-    const artifacts = resolveArtifacts(SKILL_DIR, ['baseline'], {
-      strictBaseline: true,
-      variantAllowedSkills: { baseline: ['allowed-one'] },
-    });
-    assert.deepEqual(artifacts[0].allowedSkills, ['allowed-one']);
   });
 });

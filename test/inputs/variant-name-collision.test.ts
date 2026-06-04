@@ -172,14 +172,16 @@ describe('CLI dry-run — --control / --treatment same-basename in different dir
 
   it('keeps an eval.yaml-style explicit name + allowedSkills wired to the right artifact', async () => {
     // 模拟 eval.yaml:variant 名(control-v1)与 artifact 路径短名(greeter)不同,且声明 allowedSkills:[]。
-    // variantAllowedSkills 按 config 名建索引,resolveArtifacts 按 artifact 短名查会漏绑 —— 这里验证 index 分支把它补回来。
-    const variantSpecs = [{ name: 'control-v1', role: 'control' as const, expr: join(root, 'v1', 'greeter.md') }];
+    // allowedSkills 走 spec.allowedSkills(configVariantsToSpecs 挂上的单一来源),即便消歧把
+    // artifact 名改成 v1/greeter,也按 spec 身份(index 对齐)绑到正确 artifact 上。
+    const variantSpecs = [
+      { name: 'control-v1', role: 'control' as const, expr: join(root, 'v1', 'greeter.md'), allowedSkills: [] },
+    ];
     const prepared = await prepareEvaluationRun({
       samplesPath,
       skillDir: root,
       variantSpecs,
       dryRun: true,
-      variantAllowedSkills: { 'control-v1': [] },
     });
     assert.equal(prepared.artifacts.length, 1);
     // allowedSkills 必须落到 artifact 上(=[] 表示隔离),不能是 undefined(=SDK 默认 discovery)

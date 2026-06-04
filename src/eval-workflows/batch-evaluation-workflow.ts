@@ -1,24 +1,27 @@
-import { dirname, resolve } from 'node:path';
+import { dirname } from 'node:path';
 import { DEFAULT_OUTPUT_DIR, generateRunId, getCliVersion, getGitInfo, persistReport } from '../eval-core/evaluation-reporting.js';
 import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finalizeEvaluationRun } from '../eval-core/evaluation-job.js';
 import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from '../server/job-store.js';
-import { resolveArtifacts } from '../inputs/skill-loader.js';
 import type {
-  Artifact,
   BatchEvaluationReport,
   BatchEvaluationItem,
   EvaluationReport,
   ExecutorRuntimeFingerprint,
   JobStore,
   ProgressCallback,
+  VariantSpec,
   VariantSummary,
 } from '../types/index.js';
 
 interface RunSingleEvaluationOptions {
   samplesPath: string;
   skillDir: string;
-  artifacts: Artifact[];
+  /** 每个 batch entry 的实验结构(baseline control vs 当前 skill treatment),由
+   *  runEvaluation 的 spec-based 解析统一绑定 role / 隔离。 */
+  variantSpecs: VariantSpec[];
+  /** strict-baseline default,透传给 per-skill runEvaluation(baseline → allowedSkills=[])。 */
+  strictBaseline?: boolean;
   model: string;
   judgeModel: string;
   outputDir: string | null;
@@ -58,6 +61,36 @@ interface CompletedBatchSkillRun {
   samplesPath: string;
   report: EvaluationReport;
   filePath: string | null;
+}
+
+/** Batch 每个 entry 的实验结构固定:baseline control vs 当前 skill treatment。
+ *  构造 VariantSpec 交给 runEvaluation 的 spec-based 解析按身份绑定 role / 隔离——与单跑
+ *  路径同一处绑定逻辑,batch 不再自管 artifact 拼装(此前两处手抄 resolveArtifacts().map()
+ *  导致 #183 角色误绑各存一份)。
+ *  两个 variant 的 allowedSkills 都从 eval.yaml variants[].allowedSkills 取:treatment 按 skill
+ *  名 entry.name 查、baseline 按保留名 `baseline` 查,挂到对应 spec 上由 prepareEvaluationRun
+ *  统一绑定。baseline 的显式声明(白名单或 `[]`)必须保留——eval.yaml variant.allowedSkills
+ *  优先于 strictBaseline 默认,漏挂会让 `--batch --config` 的 baseline 隔离配置静默失效。 */
+export function buildBatchVariantSpecs(
+  entry: { name: string; skillPath: string },
+  variantAllowedSkills?: Record<string, string[]>,
+): VariantSpec[] {
+  const baselineAllowed = variantAllowedSkills?.baseline;
+  const treatmentAllowed = variantAllowedSkills?.[entry.name];
+  return [
+    {
+      name: 'baseline',
+      role: 'control',
+      expr: 'baseline',
+      ...(baselineAllowed !== undefined && { allowedSkills: baselineAllowed }),
+    },
+    {
+      name: entry.name,
+      role: 'treatment',
+      expr: entry.skillPath,
+      ...(treatmentAllowed !== undefined && { allowedSkills: treatmentAllowed }),
+    },
+  ];
 }
 
 function commonRuntime(runtimes: Record<string, ExecutorRuntimeFingerprint>): ExecutorRuntimeFingerprint | undefined {
@@ -341,25 +374,13 @@ export async function executeBatchEvaluationRuns({
     const entry = skillEntries[i];
     onSkillProgress?.({ phase: 'start', skill: entry.name, current: i + 1, total: skillEntries.length });
 
-    // Batch mode 的实验结构固定为 baseline control vs 当前 skill treatment。
-    const perSkillAllowedSkills = variantAllowedSkills?.[entry.name] !== undefined
-      ? { ...variantAllowedSkills, [entry.skillPath]: variantAllowedSkills[entry.name] }
-      : variantAllowedSkills;
-    const skillArtifacts = resolveArtifacts(
-      resolve(skillDir),
-      ['baseline', entry.skillPath],
-      { strictBaseline, variantAllowedSkills: perSkillAllowedSkills },
-    ).map((artifact) => {
-      if (artifact.name === entry.skillPath) {
-        return { ...artifact, name: entry.name, experimentRole: 'treatment' as const };
-      }
-      return { ...artifact, experimentRole: 'control' as const };
-    });
+    const variantSpecs = buildBatchVariantSpecs(entry, variantAllowedSkills);
     const childRunId = `${batchRunId}-${String(i + 1).padStart(2, '0')}-${safeRunIdPart(entry.name)}`;
     const { report, filePath } = await runSingleEvaluation({
       samplesPath: entry.samplesPath,
       skillDir,
-      artifacts: skillArtifacts,
+      variantSpecs,
+      strictBaseline,
       model,
       judgeModel,
       outputDir,

@@ -136,12 +136,10 @@ export function loadSkills(skillDir: string, variants: string[]): Record<string,
 
 /** opts for resolveArtifacts skill-isolation wiring. */
 export interface ResolveArtifactsOptions {
-  /** Default true. When true, baseline-kind artifacts get allowedSkills=[] auto-injected
-   *  unless overridden by variantAllowedSkills. */
+  /** Default true. When true, baseline-kind artifacts get allowedSkills=[] auto-injected.
+   *  显式 per-variant 隔离声明走 spec.allowedSkills(prepareEvaluationRun 按 spec 身份绑定),
+   *  不经此处——resolveArtifacts 只认 strictBaseline 默认,隔离绑定收成单一来源。 */
   strictBaseline?: boolean;
-  /** Per-variant explicit allowedSkills (from eval.yaml). Keyed by variant name (post
-   *  parseVariantCwd, matches Artifact.name). Always overrides strictBaseline default. */
-  variantAllowedSkills?: Record<string, string[]>;
 }
 
 /**
@@ -238,7 +236,6 @@ export function resolveArtifacts(
   opts: ResolveArtifactsOptions = {},
 ): Artifact[] {
   const strictBaseline = opts.strictBaseline ?? true;
-  const variantAllowedSkills = opts.variantAllowedSkills ?? {};
   const artifacts: Artifact[] = [];
   let gitRelDir: string | null = null;
 
@@ -363,25 +360,15 @@ export function resolveArtifacts(
     }
   }
 
-  // Skill-isolation wiring（按 artifact 名查 variantAllowedSkills）。
-  //   Priority: variantAllowedSkills (explicit eval.yaml) > strictBaseline default > none。
-  //   strictBaseline=true 时,所有 kind:'baseline' artifact 默认 allowedSkills=[]。
-  //   显式 [] 也是合法(用户主动想"完全发现")的反义靠 strictBaseline=false 表达整批关闭。
-  //
-  //   职责边界:这条按名查的绑定服务 doctor / batch / loadSkills 等直接调 resolveArtifacts 的
-  //   调用方。eval 主路径(prepareEvaluationRun)已改为按 spec 身份绑定、不再传 variantAllowedSkills,
-  //   不走这里。两条路径暂并存。
-  //   TODO: 待 batch 也迁到 spec-based 绑定后,退役 opts.variantAllowedSkills,让隔离绑定收成一处。
+  // Skill-isolation:resolveArtifacts 只负责 strictBaseline 默认——strictBaseline=true 时
+  //   所有 kind:'baseline' artifact 默认 allowedSkills=[];否则保持 undefined → SDK 全量发现。
+  //   per-variant 显式隔离声明(eval.yaml variants[].allowedSkills)统一走 spec.allowedSkills,
+  //   由 prepareEvaluationRun 按 spec 身份绑定;batch 的 eval.yaml allowedSkills 也已在
+  //   buildBatchVariantSpecs 处挂到 spec 上。隔离绑定收成单一来源,这里不再按名查。
   for (const artifact of artifacts) {
-    const explicit = variantAllowedSkills[artifact.name];
-    if (explicit !== undefined) {
-      artifact.allowedSkills = explicit;
-      continue;
-    }
     if (strictBaseline && artifact.kind === 'baseline') {
       artifact.allowedSkills = [];
     }
-    // else leave undefined → SDK default (full discovery)
   }
 
   ensureUniqueVariantNames(artifacts);
