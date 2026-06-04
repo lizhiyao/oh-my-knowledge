@@ -53,11 +53,17 @@ skills/
 |------|------|
 | `name` | 从 artifact 目录查找 `name.md` 或 `name/SKILL.md`，解析为一个 artifact |
 | `baseline` | 空 artifact，不使用 system prompt；可直接理解为「什么都没有」 |
-| `project-env@/path/to/project` | 空 artifact，但在指定项目目录运行，用于单独观察项目级 runtime context |
+| `project-env`（任意非 skill 标签） | 空 artifact，配合下方的 cwd 在指定项目目录运行，用于单独观察项目级 runtime context |
 | `git:name` | 从 git HEAD 读取一个 artifact 的上次提交版本 |
 | `git:ref:name` | 从 git 指定 commit 读取一个 artifact |
 | `./path/to/file.md` | 含 `/` 的路径，直接读取文件作为 artifact |
-| `variant@/path/to/project` | 给任意变体附加运行目录，支持 `name@cwd`、`git:name@cwd`、`/file.md@cwd` |
+
+`variant` 表达式只表达 **artifact 身份**。runtime context（`cwd`）单独声明：
+
+- CLI 上用 `--control-cwd <dir>` 与 `--treatment-cwd <dir,...>`（后者逗号分隔，与 `--treatment` 按序对齐，留空位 = 该 treatment 无 cwd）；
+- eval.yaml 里用每个 variant 的结构化 `cwd:` 字段。
+
+旧的 `name@cwd` 字符串语法已移除。
 
 `--control` 和 `--treatment` 都不传时，用 `--config eval.yaml` 或 `--batch`。`--batch` 模式下会自动用 `baseline` 作对照组，每个被发现的 artifact 作实验组。
 
@@ -70,12 +76,12 @@ omk eval --control baseline --treatment v1,v2,v3
 omk eval --control baseline --treatment my-skill
 
 # 单独观察项目级 runtime context 的影响(用自描述标签)
-omk eval --control baseline --treatment project-env@/path/to/target-project
+omk eval --control baseline --treatment project-env --treatment-cwd /path/to/target-project
 
 # 对比「项目级 runtime context」与「显式 artifact 注入」
 omk eval \
-  --control project-env@/path/to/target-project \
-  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --control project-env --control-cwd /path/to/target-project \
+  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md --treatment-cwd /path/to/target-project
 
 # 对比修改前后(旧版本从 git 历史读取)
 omk eval --control git:my-skill --treatment my-skill
@@ -150,7 +156,7 @@ omk eval \
 omk eval \
   --executor claude-sdk \
   --control baseline \
-  --treatment project-env@/path/to/target-project
+  --treatment project-env --treatment-cwd /path/to/target-project
 ```
 
 **3. 显式 artifact 注入**
@@ -160,8 +166,8 @@ omk eval \
 ```bash
 omk eval \
   --executor claude-sdk \
-  --control project-env@/path/to/target-project \
-  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --control project-env --control-cwd /path/to/target-project \
+  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md --treatment-cwd /path/to/target-project
 ```
 
 ### 推荐的第一轮对照设计
@@ -173,7 +179,7 @@ omk eval \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
   --control baseline \
-  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md --treatment-cwd /path/to/target-project
 ```
 
 如果你想证明「项目目录中的知识沉淀本身」是否有效，加第二个 treatment：
@@ -183,7 +189,8 @@ omk eval \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
   --control baseline \
-  --treatment project-env@/path/to/target-project,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --treatment project-env,/path/to/target-project/.claude/skills/prd/SKILL.md \
+  --treatment-cwd /path/to/target-project,/path/to/target-project
 ```
 
 ### 设计建议

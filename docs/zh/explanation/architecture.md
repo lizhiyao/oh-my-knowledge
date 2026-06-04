@@ -6,7 +6,7 @@
 flowchart TD
     subgraph Input["① 输入"]
         S["eval-samples<br/>(JSON / YAML)"]
-        A["artifacts<br/>skills/*.md · SKILL.md<br/>baseline · git:name · @cwd"]
+        A["artifacts<br/>skills/*.md · SKILL.md<br/>baseline · git:name"]
     end
 
     subgraph Prep["② 预处理(解析与抓取)"]
@@ -58,7 +58,7 @@ flowchart TD
 **关键设计：**
 
 - **交错调度**消除时间漂移：同一样本的不同 variant 交替发出，而非 v1 全跑完再跑 v2，避免模型负载/网络波动被错误归因给 artifact。
-- **variant = artifact + runtime context**：`name@cwd` 让对照组可以显式声明「项目目录」这个隐性输入，把「项目级沉淀」和「显式 artifact 注入」拆开测。
+- **variant = artifact + runtime context**：`cwd`（用 `--control-cwd`/`--treatment-cwd` 或 eval.yaml 的 `cwd:` 字段声明，与 artifact 表达式分开）让对照组可以显式声明「项目目录」这个隐性输入，把「项目级沉淀」和「显式 artifact 注入」拆开测。
 - **双通道评分互补**：断言抓确定性缺陷（必须调用某工具/必须包含某字段），LLM 评委抓主观质量（可读性/完整性），两者都存在时取均值。
 - **知识缺口信号**不是评分的一部分，而是一个独立追踪项：它告诉你「这次评测覆盖了多少风险敞口」，用于追踪收敛，而非断言知识「完备」。
 
