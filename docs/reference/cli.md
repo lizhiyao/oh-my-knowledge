@@ -214,6 +214,7 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
 ```text
   --auto-fix-samples              Fix the skill, then fix samples, then evaluate the combined candidate
   --concurrency <value>           Eval concurrency, default 1
+  --edit-budget <value>           Max fraction of skill lines a round may change (default 0.2). Over-budget candidates are rejected before evaluation, saving eval cost
   --effort <value>                Reasoning effort: low/medium/high/xhigh/max
   --executor <value>              Executor name, default claude
   --holdout-ratio <value>         Holdout fraction for the accept decision (0..1, default 0=off). When > 0, candidates are accepted on holdout score and weak samples come only from train — guards against train-on-test
@@ -223,14 +224,19 @@ omk evolve skills/foo.md --rounds 10 --target 4.5
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --model <value>                 Evaluated LLM, default sonnet
   --no-diagnostic                 Disable diagnostic LLM call
+  --no-edit-budget                Disable the edit budget (allow arbitrarily large single-round edits)
+  --no-reject-memory              Disable rejected-edit memory (do not feed rejected edits back into the next prompt)
+  --no-significance-gate          Disable the significance accept gate, reverting to point-estimate accept (default: gate on — accept only statistically significant gains)
   --reuse-latest-eval             Reuse the latest comparable eval report as round-0
   --rounds <value>                Max iteration rounds, default 5
   --sample-fix-max-attempts <value>Max auto-fix attempts per sample (default: 2)
   --samples <value>               Samples file, default eval-samples.json
+  --significance-alpha <value>    Significance level for the accept gate diff CI (default 0.05 = 95% CI)
   --skip-connectivity             Skip LLM connectivity preflight
   --skip-doctor                   Skip doctor gate (escape hatch; user takes garbage-in risk)
   --stop-on-assertions-pass       Stop early when normal samples pass assertions
   --target <value>                Target composite score; stop when reached. If omitted, runs all rounds.
+  --test-ratio <value>            Locked test fraction (0..1, default 0=off); requires --holdout-ratio. Never used for selection; read once at the end for an unbiased generalization score
   --timeout <value>               Per-sample timeout sec, default 600
 ```
 

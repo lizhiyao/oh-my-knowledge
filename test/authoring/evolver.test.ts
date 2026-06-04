@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { extractWeakSamples, buildImprovementPrompt, evolveSkill, allNonTripwireAssertionsPass, splitHoldout, restrictReportToSamples } from '../../src/authoring/evolver.js';
+import { extractWeakSamples, buildImprovementPrompt, evolveSkill, allNonTripwireAssertionsPass, splitHoldout, splitTrainValTest, restrictReportToSamples, decideAccept } from '../../src/authoring/evolver.js';
 import { fixSamples } from '../../src/authoring/sample-fixer.js';
 import type { Report, EvaluationReport } from '../../src/types/index.js';
 
@@ -82,6 +82,45 @@ describe('splitHoldout', () => {
     const a = splitHoldout(ids(17), 0.25);
     const b = splitHoldout(ids(17), 0.25);
     assert.deepEqual([...a!.holdoutIds], [...b!.holdoutIds]);
+  });
+});
+
+describe('splitTrainValTest', () => {
+  const ids = (n: number): string[] => Array.from({ length: n }, (_, i) => `s${i}`);
+
+  it('returns null when either ratio is 0 (off / no test)', () => {
+    assert.equal(splitTrainValTest(ids(30), 0, 0.2), null);
+    assert.equal(splitTrainValTest(ids(30), 0.2, 0), null);
+  });
+
+  it('returns null when any of the three sides falls below the minimum subset', () => {
+    // N=10, val 0.2 → 2 < 3 → disabled.
+    assert.equal(splitTrainValTest(ids(10), 0.2, 0.2), null);
+    // N=12, val 0.4 (5), test 0.4 (5) → train 2 < 3 → disabled.
+    assert.equal(splitTrainValTest(ids(12), 0.4, 0.4), null);
+  });
+
+  it('carves three disjoint, exhaustive sets at an even stride', () => {
+    const split = splitTrainValTest(ids(20), 0.2, 0.2);
+    assert.ok(split);
+    assert.equal(split!.valIds.size, 4);
+    assert.equal(split!.testIds.size, 4);
+    assert.equal(split!.trainIds.size, 12);
+    // Pairwise disjoint.
+    for (const id of split!.valIds) {
+      assert.ok(!split!.testIds.has(id));
+      assert.ok(!split!.trainIds.has(id));
+    }
+    for (const id of split!.testIds) assert.ok(!split!.trainIds.has(id));
+    // Exhaustive.
+    assert.equal(split!.valIds.size + split!.testIds.size + split!.trainIds.size, 20);
+  });
+
+  it('is deterministic across calls (stable split, no RNG)', () => {
+    const a = splitTrainValTest(ids(23), 0.25, 0.25);
+    const b = splitTrainValTest(ids(23), 0.25, 0.25);
+    assert.deepEqual([...a!.valIds], [...b!.valIds]);
+    assert.deepEqual([...a!.testIds], [...b!.testIds]);
   });
 });
 
@@ -192,6 +231,62 @@ describe('allNonTripwireAssertionsPass', () => {
       ],
     });
     assert.equal(allNonTripwireAssertionsPass(report, 'skill'), true);
+  });
+});
+
+describe('decideAccept (significance gate)', () => {
+  const fill = (v: number, n: number): number[] => Array.from({ length: n }, () => v);
+  const GATE = { significanceGate: true, alpha: 0.05, seed: 42 };
+  const OFF = { significanceGate: false, alpha: 0.05, seed: 42 };
+
+  it('THE core difference: a noise-only gain is accepted by the old point estimate but REJECTED by the gate', () => {
+    // Best is flat 3.0; candidate is mostly 3.0 with a couple of higher samples — its
+    // mean edges above best, but the improvement is indistinguishable from noise.
+    const best = fill(3.0, 20);
+    const cand = [...fill(3.0, 18), 3.5, 3.5];
+    const pointBest = 3.0;
+    const pointCand = cand.reduce((a, b) => a + b, 0) / cand.length; // 3.05 > 3.0
+
+    // Old behavior (gate off): point estimate accepts.
+    assert.equal(decideAccept(best, cand, pointBest, pointCand, OFF).accepted, true);
+    // New behavior (gate on): not significant → rejected. This is the PR's whole point.
+    const gated = decideAccept(best, cand, pointBest, pointCand, GATE);
+    assert.equal(gated.accepted, false);
+    assert.equal(gated.diffCI!.significant, false);
+    assert.equal(gated.underpowered, false);
+  });
+
+  it('accepts a clearly significant improvement', () => {
+    const best = fill(2.0, 20);
+    const cand = fill(4.0, 20);
+    const d = decideAccept(best, cand, 2.0, 4.0, GATE);
+    assert.equal(d.accepted, true);
+    assert.equal(d.diffCI!.significant, true);
+    assert.ok(d.diffCI!.estimate > 0);
+  });
+
+  it('rejects a significant REGRESSION even though the gate fired', () => {
+    const best = fill(4.0, 20);
+    const cand = fill(2.0, 20);
+    const d = decideAccept(best, cand, 4.0, 2.0, GATE);
+    assert.equal(d.accepted, false); // significant but estimate < 0
+  });
+
+  it('degrades to the point estimate (and flags underpowered) below the sample floor', () => {
+    const best = fill(3.0, 5);
+    const cand = fill(4.0, 5);
+    const d = decideAccept(best, cand, 3.0, 4.0, GATE);
+    assert.equal(d.accepted, true); // point estimate: 4 > 3
+    assert.equal(d.underpowered, true);
+    assert.equal(d.diffCI, undefined);
+  });
+
+  it('is deterministic for a fixed seed', () => {
+    const best = fill(3.0, 20);
+    const cand = [...fill(3.0, 16), 3.5, 3.5, 3.5, 3.5];
+    const a = decideAccept(best, cand, 3.0, 3.1, GATE);
+    const b = decideAccept(best, cand, 3.0, 3.1, GATE);
+    assert.deepEqual(a.diffCI, b.diffCI);
   });
 });
 

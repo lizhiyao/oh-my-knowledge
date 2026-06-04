@@ -213,6 +213,7 @@ omk evolve <skillPath> [flags]
 
 - `--auto-fix-samples` `boolean`:每轮先修 skill，再修 sample，随后一起评估候选结果
 - `--concurrency` `option` (默认 `1`):评测并发数，默认 1
+- `--edit-budget` `option` (默认 `0.2`):单轮最多改动的 skill 行占比（默认 0.2）。超预算的候选评测前直接判拒，省 eval 成本
 - `--effort` `option`:reasoning effort: low/medium/high/xhigh/max
 - `--executor` `option` (默认 `claude`):执行器名，默认 claude
 - `--holdout-ratio` `option` (默认 `0`):留出验收集比例（0..1，默认 0=关）。> 0 时按 holdout 分接受候选、weak-sample 只取训练集，防 train-on-test
@@ -222,14 +223,19 @@ omk evolve <skillPath> [flags]
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option` (默认 `sonnet`):被评测的 LLM，默认 sonnet
 - `--no-diagnostic` `boolean`:关 LLM diagnostic 调用
+- `--no-edit-budget` `boolean`:关掉 edit budget 约束（允许任意大小的单轮改动）
+- `--no-reject-memory` `boolean`:关掉 rejected-edit 记忆（不把被拒改法回灌下一轮 prompt）
+- `--no-significance-gate` `boolean`:关掉显著性接受门，退回「候选分高一点点就收」的点估计判定（默认门开：只收统计显著的提升）
 - `--reuse-latest-eval` `boolean`:复用可比的最新 eval 报告作为 round-0
 - `--rounds` `option` (默认 `5`):最大迭代轮数，默认 5
 - `--sample-fix-max-attempts` `option` (默认 `2`):每条 sample 自动修复最多尝试次数（默认：2）
 - `--samples` `option` (默认 `eval-samples.json`):样本文件路径，默认 eval-samples.json
+- `--significance-alpha` `option` (默认 `0.05`):显著性门的 diff CI 显著性水平（默认 0.05 = 95% CI）
 - `--skip-connectivity` `boolean`:跳过 LLM 连通性预检
 - `--skip-doctor` `boolean`:跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
 - `--stop-on-assertions-pass` `boolean`:普通样本断言全过时提前停止
 - `--target` `option`:目标 composite 分数，达到即停。不传则跑满 rounds
+- `--test-ratio` `option` (默认 `0`):锁定 test 集比例（0..1，默认 0=关），需配 --holdout-ratio。全程不参与选择，收尾读一次给无偏泛化分
 - `--timeout` `option` (默认 `600`):单样本超时秒，默认 600
 
 **示例:**

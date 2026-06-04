@@ -7,6 +7,7 @@ import { createFileStore } from '../server/report-store.js';
 import { analyzeResults } from '../analysis/report-diagnostics.js';
 import { loadSamples } from '../inputs/load-samples.js';
 import { buildVariantSummary } from '../eval-core/schema.js';
+import { bootstrapDiffCI, DEFAULT_BOOTSTRAP_ALPHA, DEFAULT_BOOTSTRAP_SAMPLES } from '../eval-core/bootstrap.js';
 import { fixSamples } from './sample-fixer.js';
 import type { JudgeConfig, ProgressCallback, Report, ResultEntry, Sample, VariantResult } from '../types/index.js';
 
@@ -190,9 +191,34 @@ interface HoldoutSplit {
   holdoutIds: Set<string>;
 }
 
-/** Below this many samples on either side, a holdout split is too small to be
- *  meaningful — evolve falls back to full-set scoring and warns. */
+/** A train / val / test partition. `val` drives the accept decision; `test` is
+ *  locked — never seen during the loop, read once at the end for an unbiased
+ *  generalization score. */
+interface TrainValTestSplit {
+  trainIds: Set<string>;
+  valIds: Set<string>;
+  testIds: Set<string>;
+}
+
+/** Below this many samples on any side, a split is too small to be meaningful —
+ *  evolve falls back to full-set scoring and warns. */
 const MIN_HOLDOUT_SUBSET = 3;
+
+/** Below this many decision (val) samples the bootstrap diff CI almost never
+ *  excludes 0 for realistic effect sizes, so the significance gate would reject
+ *  every candidate. Under that floor evolve degrades to the point-estimate accept
+ *  and flags `gate.underpowered`. */
+export const MIN_GATE_SAMPLES = 8;
+
+/** Pick `count` ids at an even stride across `ids` (deterministic, no RNG) so the
+ *  picked subset is representative of the ordering and stable across rounds/runs. */
+function pickByStride(ids: string[], count: number): Set<string> {
+  const picked = new Set<string>();
+  if (count <= 0) return picked;
+  const stride = ids.length / count;
+  for (let k = 0; k < count; k++) picked.add(ids[Math.floor(k * stride)]);
+  return picked;
+}
 
 /**
  * Deterministically split sample ids into train / holdout by `ratio` (fraction
@@ -206,13 +232,29 @@ export function splitHoldout(sampleIds: string[], ratio: number): HoldoutSplit |
   const holdoutCount = Math.round(sampleIds.length * ratio);
   const trainCount = sampleIds.length - holdoutCount;
   if (holdoutCount < MIN_HOLDOUT_SUBSET || trainCount < MIN_HOLDOUT_SUBSET) return null;
-  const stride = sampleIds.length / holdoutCount;
-  const holdoutIds = new Set<string>();
-  for (let k = 0; k < holdoutCount; k++) {
-    holdoutIds.add(sampleIds[Math.floor(k * stride)]);
-  }
+  const holdoutIds = pickByStride(sampleIds, holdoutCount);
   const trainIds = new Set(sampleIds.filter((id) => !holdoutIds.has(id)));
   return { trainIds, holdoutIds };
+}
+
+/**
+ * Deterministically split sample ids into train / val / test. `val` is carved
+ * first at an even stride; `test` is carved at an even stride over what remains,
+ * so the three sets are disjoint and stable across rounds/runs (no RNG). Returns
+ * null when either ratio ≤ 0 or any of the three sides would drop below
+ * MIN_HOLDOUT_SUBSET — the caller then degrades to a 2-way (or full-set) split.
+ */
+export function splitTrainValTest(sampleIds: string[], valRatio: number, testRatio: number): TrainValTestSplit | null {
+  if (!(valRatio > 0) || !(testRatio > 0) || sampleIds.length === 0) return null;
+  const valCount = Math.round(sampleIds.length * valRatio);
+  const testCount = Math.round(sampleIds.length * testRatio);
+  const trainCount = sampleIds.length - valCount - testCount;
+  if (valCount < MIN_HOLDOUT_SUBSET || testCount < MIN_HOLDOUT_SUBSET || trainCount < MIN_HOLDOUT_SUBSET) return null;
+  const valIds = pickByStride(sampleIds, valCount);
+  const remaining = sampleIds.filter((id) => !valIds.has(id));
+  const testIds = pickByStride(remaining, testCount);
+  const trainIds = new Set(sampleIds.filter((id) => !valIds.has(id) && !testIds.has(id)));
+  return { trainIds, valIds, testIds };
 }
 
 /**
@@ -230,6 +272,58 @@ function subsetCompositeScore(report: Report, variantKey: string, ids: Set<strin
   }
   if (entries.length === 0) return 0;
   return buildVariantSummary(entries).avgCompositeScore ?? 0;
+}
+
+/**
+ * Per-sample composite scores over the subset of a report's results whose
+ * sample_id is in `ids`, in result order. Feeds `bootstrapDiffCI` for the
+ * significance accept gate — the array (not the mean) is what the bootstrap
+ * resamples. Entries without a numeric compositeScore are skipped.
+ */
+function perSampleComposite(report: Report, variantKey: string, ids: Set<string>): number[] {
+  const scores: number[] = [];
+  for (const r of report.results) {
+    if (!ids.has(r.sample_id)) continue;
+    const v = r.variants[variantKey];
+    if (v && typeof v.compositeScore === 'number') scores.push(v.compositeScore);
+  }
+  return scores;
+}
+
+export interface AcceptDecision {
+  accepted: boolean;
+  /** Diff CI (candidate − best) when the gate ran; absent when it degraded. */
+  diffCI?: { low: number; high: number; estimate: number; significant: boolean };
+  /** True when the gate was requested but the decision set was below MIN_GATE_SAMPLES,
+   *  so the decision degraded to the point-estimate comparison. */
+  underpowered: boolean;
+}
+
+/**
+ * The accept decision for one round. With the significance gate on and enough
+ * decision samples, a candidate is accepted only when its per-sample composite is
+ * **significantly** above the current best (`bootstrapDiffCI(...).significant &&
+ * estimate > 0`) — gains indistinguishable from judge noise are rejected. Off, or
+ * under-powered, it degrades to the legacy point-estimate comparison. Pure (modulo
+ * the seeded bootstrap) so the core behavior is unit-testable.
+ */
+export function decideAccept(
+  bestScores: number[],
+  candScores: number[],
+  pointBest: number,
+  pointCand: number,
+  opts: { significanceGate: boolean; alpha: number; seed: number },
+): AcceptDecision {
+  const powered = bestScores.length >= MIN_GATE_SAMPLES && candScores.length >= MIN_GATE_SAMPLES;
+  if (opts.significanceGate && powered) {
+    const diff = bootstrapDiffCI(bestScores, candScores, opts.alpha, DEFAULT_BOOTSTRAP_SAMPLES, opts.seed);
+    return {
+      accepted: diff.significant && diff.estimate > 0,
+      diffCI: { low: diff.low, high: diff.high, estimate: diff.estimate, significant: diff.significant },
+      underpowered: false,
+    };
+  }
+  return { accepted: pointCand > pointBest, underpowered: opts.significanceGate && !powered };
 }
 
 /**
@@ -393,7 +487,43 @@ async function autoFixSamplesAfterSkillRound(opts: {
   return { fixedCount: result.fixedCount, costUSD: result.costUSD };
 }
 
-export function buildImprovementPrompt(skillContent: string, score: number, weakSamples: WeakSample[]): string {
+/** Number of skill lines below which the edit budget never trips — so a tiny skill
+ *  isn't frozen by a percentage threshold that a few lines already blow past. */
+const EDIT_BUDGET_FLOOR_LINES = 10;
+
+interface EditDelta {
+  /** Symmetric line difference (added + removed unique lines) over original line count. */
+  ratio: number;
+  /** Absolute count of added + removed unique lines. */
+  changedLines: number;
+  /** Compact `+`/`-` summary of the changed lines, truncated. */
+  summary: string;
+}
+
+/**
+ * How a candidate differs from the current best, by trimmed non-empty line sets.
+ * `ratio` drives the edit budget; `summary` feeds the rejected-edit memory so the
+ * improver doesn't re-propose changes that already failed. Order-insensitive and
+ * O(n) over small skill files.
+ */
+function computeEditDelta(before: string, after: string, maxSummaryLines = 12): EditDelta {
+  const beforeArr = before.split('\n').map((l) => l.trim()).filter(Boolean);
+  const afterArr = after.split('\n').map((l) => l.trim()).filter(Boolean);
+  const beforeSet = new Set(beforeArr);
+  const afterSet = new Set(afterArr);
+  const added = [...afterSet].filter((l) => !beforeSet.has(l));
+  const removed = [...beforeSet].filter((l) => !afterSet.has(l));
+  const changedLines = added.length + removed.length;
+  const ratio = changedLines / Math.max(beforeArr.length, 1);
+  const parts: string[] = [];
+  for (const l of added.slice(0, maxSummaryLines)) parts.push(`+ ${l}`);
+  if (added.length > maxSummaryLines) parts.push(`+ …(其余 +${added.length - maxSummaryLines} 行)`);
+  for (const l of removed.slice(0, maxSummaryLines)) parts.push(`- ${l}`);
+  if (removed.length > maxSummaryLines) parts.push(`- …(其余 -${removed.length - maxSummaryLines} 行)`);
+  return { ratio, changedLines, summary: parts.join('\n') || '(无文本差异)' };
+}
+
+export function buildImprovementPrompt(skillContent: string, score: number, weakSamples: WeakSample[], rejectedEdits?: string[]): string {
   const weakDetails = weakSamples.map((s) => {
     const parts = [`### ${s.sample_id}（${s.compositeScore}/5.0）`];
     if (s.llmReason) parts.push(`评委反馈: ${s.llmReason}`);
@@ -414,13 +544,17 @@ export function buildImprovementPrompt(skillContent: string, score: number, weak
     return parts.join('\n');
   }).join('\n\n');
 
+  const rejectedSection = rejectedEdits && rejectedEdits.length > 0
+    ? `\n\n## 已试过且未带来显著提升的改法（不要重复）\n\n${rejectedEdits.join('\n\n')}`
+    : '';
+
   return `## 当前 Skill（平均分: ${score.toFixed(2)}/5.0）
 
 ${skillContent}
 
 ## 低分用例分析
 
-${weakDetails || '（无低分用例）'}`;
+${weakDetails || '（无低分用例）'}${rejectedSection}`;
 }
 
 function buildImprovementSuffix(mode: 'agent' | 'rewrite', candidatePath?: string): string {
@@ -495,21 +629,52 @@ interface EvolveOptions {
    *  so the skill is never tuned to the samples that judge it. Too small a split
    *  (either side < MIN_HOLDOUT_SUBSET) falls back to full-set scoring + a warning. */
   holdoutRatio?: number;
+  /** Statistically gate acceptance: a candidate is accepted only when its
+   *  per-sample composite is **significantly** above the current best on the
+   *  decision (val) set — `bootstrapDiffCI(...).significant && estimate > 0` —
+   *  not merely numerically higher. Default true (rejecting improvements
+   *  indistinguishable from judge noise is the point). Below MIN_GATE_SAMPLES
+   *  decision samples the gate is underpowered and degrades to the point-estimate
+   *  comparison + a warning. Set false to force the legacy point-estimate accept. */
+  significanceGate?: boolean;
+  /** Significance level for the accept gate's diff CI. Default 0.05 (95% CI). */
+  significanceAlpha?: number;
+  /** Fraction of samples locked away as a **test** set (0..1). Default 0 = off.
+   *  Only honored alongside `holdoutRatio` > 0 (test needs a separate val set to
+   *  decide on). The test split is never seen during the loop — not by weak-sample
+   *  extraction, not by the accept gate — and is read exactly once at the end for an
+   *  unbiased `generalizationScore`. Too small a 3-way split degrades to 2-way. */
+  testRatio?: number;
+  /** Max fraction of skill lines a single round may change before the candidate is
+   *  rejected **without paying for evaluation**. Default 0.2 (matches the "≤20%"
+   *  the improvement prompt already asks for — this enforces it). A small floor
+   *  always permits a handful of lines so tiny skills aren't frozen. Set 0 to disable. */
+  editBudget?: number;
+  /** Feed rejected candidate edits back into the next round's improvement prompt
+   *  ("these were tried and did not help — don't repeat them"). Default true. */
+  rejectMemory?: boolean;
   onProgress?: ProgressCallback | null;
   onRoundProgress?: ((progress: EvolveRoundProgressInfo) => void) | null;
 }
 
 interface TrajectoryEntry {
   round: number;
-  /** Accept-decision score: holdout composite when holdout is active, else full-set. */
+  /** Accept-decision score: val composite when a holdout split is active, else full-set. */
   score: number;
   delta: number;
   accepted: boolean;
   costUSD: number;
-  /** Present when holdout is active: the training-split composite (improvement signal). */
+  /** Present when a holdout split is active: the training-split composite (improvement signal). */
   trainScore?: number;
-  /** Present when holdout is active: the holdout-split composite (== score). */
+  /** Present when a holdout split is active: the val-split composite (== score). */
   holdoutScore?: number;
+  /** Significance-gate diff CI (candidate − current best) on the decision set, when
+   *  the gate was powered enough to run. `significant` 决定接受。 */
+  diffCI?: { low: number; high: number; estimate: number; significant: boolean };
+  /** Fraction of skill lines this candidate changed vs the current best. */
+  editRatio?: number;
+  /** True when the candidate was rejected by the edit budget before evaluation. */
+  rejectedPreEval?: boolean;
 }
 
 export interface EvolveResult {
@@ -527,6 +692,15 @@ export interface EvolveResult {
    *  split was too small and evolve fell back to full-set scoring (CLI formats the
    *  user-facing message bilingually). */
   holdout?: { ratio: number; trainCount: number; holdoutCount: number; disabled?: boolean };
+  /** Locked-test split summary when `--test-ratio` > 0 produced a valid 3-way split. */
+  test?: { ratio: number; count: number };
+  /** Unbiased composite of the best skill on the locked test set — the headline honest
+   *  number. Present only when a 3-way split was active. The test set never influenced
+   *  selection or weak-sample extraction, so this is an out-of-sample estimate. */
+  generalizationScore?: number;
+  /** Accept-gate summary. `underpowered` = the decision set was below MIN_GATE_SAMPLES
+   *  at least once, so the gate degraded to the point-estimate comparison + warned. */
+  gate?: { enabled: boolean; alpha: number; underpowered?: boolean };
   trajectory: TrajectoryEntry[];
   bestSkillPath: string;
   allVersions: string[];
@@ -641,6 +815,11 @@ export async function evolveSkill({
   noDiagnostic,
   skipDoctor,
   holdoutRatio = 0,
+  significanceGate = true,
+  significanceAlpha = DEFAULT_BOOTSTRAP_ALPHA,
+  testRatio = 0,
+  editBudget = 0.2,
+  rejectMemory = true,
   onProgress = null,
   onRoundProgress = null,
 }: EvolveOptions): Promise<EvolveResult> {
@@ -665,32 +844,69 @@ export async function evolveSkill({
   if (!existsSync(absSamplesPath)) throw new Error(`samples file not found: ${absSamplesPath}`);
   mkdirSync(evolveDir, { recursive: true });
 
-  // Holdout split (opt-in). Computed once over the canonical sample order so it's
-  // stable across rounds. When active, accept decisions use the holdout composite
-  // and weak-sample extraction only sees the training split — the skill is never
-  // tuned to the samples that decide whether it's accepted.
+  // Split (opt-in). Computed once over the canonical sample order so it's stable
+  // across rounds. `val` drives the accept decision; weak-sample extraction and the
+  // sample-fixer only ever see `train`; `test` is locked away — never seen during the
+  // loop — and read once at the end for an unbiased generalization score. With no
+  // holdout the decision runs on the full set (legacy). A too-small 3-way split
+  // degrades to 2-way, then to full-set.
   const allSampleIds = loadSamples(absSamplesPath).samples.map((s) => s.sample_id);
-  const holdoutSplit = splitHoldout(allSampleIds, holdoutRatio);
+  const threeWay = (testRatio > 0 && holdoutRatio > 0) ? splitTrainValTest(allSampleIds, holdoutRatio, testRatio) : null;
+  const twoWay = (!threeWay && holdoutRatio > 0) ? splitHoldout(allSampleIds, holdoutRatio) : null;
+  const split: { trainIds: Set<string>; valIds: Set<string>; testIds: Set<string> | null } | null =
+    threeWay
+      ? { trainIds: threeWay.trainIds, valIds: threeWay.valIds, testIds: threeWay.testIds }
+      : twoWay
+        ? { trainIds: twoWay.trainIds, valIds: twoWay.holdoutIds, testIds: null }
+        : null;
   const holdoutInfo: EvolveResult['holdout'] = holdoutRatio > 0
     ? {
       ratio: holdoutRatio,
-      trainCount: holdoutSplit?.trainIds.size ?? allSampleIds.length,
-      holdoutCount: holdoutSplit?.holdoutIds.size ?? 0,
-      ...(holdoutSplit ? {} : { disabled: true }),
+      trainCount: split?.trainIds.size ?? allSampleIds.length,
+      holdoutCount: split?.valIds.size ?? 0,
+      ...(split ? {} : { disabled: true }),
     }
     : undefined;
+  const testInfo: EvolveResult['test'] = threeWay ? { ratio: testRatio, count: threeWay.testIds.size } : undefined;
+  // Deterministic seed so the gate's CIs are reproducible across reruns (and asserers
+  // in tests). Derived from skill identity + sample count, parsed to a uint32.
+  const gateSeed = parseInt(hashString(`${skillName}:${allSampleIds.length}`).slice(0, 8), 16) >>> 0;
+  let gateUnderpowered = false;
 
-  // Accept-decision score for a report's variant: holdout composite when the split
-  // is active, otherwise the full-set composite (legacy behavior).
+  // Accept-decision score for a report's variant: val composite when a split is
+  // active, otherwise the full-set composite (legacy behavior).
   const decisionScore = (report: Report, key: string): number =>
-    holdoutSplit
-      ? subsetCompositeScore(report, key, holdoutSplit.holdoutIds)
+    split
+      ? subsetCompositeScore(report, key, split.valIds)
       : (report.summary[key]?.avgCompositeScore ?? 0);
   const trainScoreOf = (report: Report, key: string): number | undefined =>
-    holdoutSplit ? subsetCompositeScore(report, key, holdoutSplit.trainIds) : undefined;
+    split ? subsetCompositeScore(report, key, split.trainIds) : undefined;
   // Per-round trajectory tail: train / holdout breakdown, only when split active.
   const splitScores = (report: Report, key: string, decision: number): Partial<TrajectoryEntry> =>
-    holdoutSplit ? { trainScore: trainScoreOf(report, key), holdoutScore: decision } : {};
+    split ? { trainScore: trainScoreOf(report, key), holdoutScore: decision } : {};
+
+  // Unbiased generalization: the best skill's composite on the locked test set,
+  // read once at the very end. Present only under a valid 3-way split; the test
+  // set never influenced selection or weak-sample extraction.
+  const buildGeneralization = (): { test?: EvolveResult['test']; generalizationScore?: number } => {
+    if (!threeWay || !split?.testIds) return {};
+    const best = roundReports.find((r) => r.round === bestRound)?.report;
+    if (!best) return { test: testInfo };
+    const key = Object.keys(best.summary)[0];
+    return { test: testInfo, generalizationScore: Number(subsetCompositeScore(best, key, split.testIds).toFixed(4)) };
+  };
+  const gateInfo = (): EvolveResult['gate'] =>
+    ({ enabled: significanceGate, alpha: significanceAlpha, ...(gateUnderpowered ? { underpowered: true } : {}) });
+
+  // Rejected-edit memory (most recent K). Fed back into the next round's improvement
+  // prompt so the improver doesn't re-propose changes that already failed to help.
+  const rejectedEdits: string[] = [];
+  const REJECT_MEMORY_K = 3;
+  const rememberRejected = (round: number, summary: string, reason: string): void => {
+    if (!rejectMemory) return;
+    rejectedEdits.push(`【第 ${round} 轮被拒（${reason}）】\n${summary}`);
+    if (rejectedEdits.length > REJECT_MEMORY_K) rejectedEdits.shift();
+  };
 
   // Save original as r0
   let currentBest = readFileSync(absSkillPath, 'utf-8').trim();
@@ -762,6 +978,8 @@ export async function evolveSkill({
       ...(reusedBaselineReportId && { reusedBaselineReportId }),
       ...(totalCostReported ? {} : { costReported: false }),
       ...(holdoutInfo ? { holdout: holdoutInfo } : {}),
+      ...buildGeneralization(),
+      gate: gateInfo(),
       trajectory,
       bestSkillPath: allVersions[bestRound],
       allVersions,
@@ -787,11 +1005,11 @@ export async function evolveSkill({
       if (reportHasUnreportedCost(lastReport)) totalCostReported = false;
     }
     const lastVariantKey = Object.keys(lastReport.summary)[0];
-    const weakSamples = extractWeakSamples(lastReport, lastVariantKey, 5, holdoutSplit?.trainIds);
+    const weakSamples = extractWeakSamples(lastReport, lastVariantKey, 5, split?.trainIds);
 
     // Generate improvement
     const candidatePath = join(evolveDir, `${skillName}.r${round}.md`);
-    const basePrompt = buildImprovementPrompt(currentBest, bestScore, weakSamples);
+    const basePrompt = buildImprovementPrompt(currentBest, bestScore, weakSamples, rejectMemory ? rejectedEdits : undefined);
     const executor = createExecutor(executorName);
     let candidateContent: string;
     let improveCostUSD: number;
@@ -833,6 +1051,21 @@ export async function evolveSkill({
     if (!improveCostReported) totalCostReported = false;
     allVersions.push(candidatePath);
 
+    // Edit budget: reject oversized rewrites BEFORE paying for evaluation. The
+    // improvement prompt already asks for ≤ editBudget of lines changed — this
+    // enforces it. A small floor still lets tiny skills change a handful of lines.
+    const editDelta = computeEditDelta(currentBest, candidateContent);
+    if (editBudget > 0 && editDelta.ratio > editBudget && editDelta.changedLines > EDIT_BUDGET_FLOOR_LINES) {
+      totalCostUSD += improveCostUSD;
+      consecutiveRejects++;
+      const reason = `改动过大 ${(editDelta.ratio * 100).toFixed(0)}%（预算 ${(editBudget * 100).toFixed(0)}%），评测前判拒`;
+      rememberRejected(round, editDelta.summary, reason);
+      trajectory.push({ round, score: bestScore, delta: 0, accepted: false, costUSD: improveCostUSD, editRatio: Number(editDelta.ratio.toFixed(4)), rejectedPreEval: true });
+      if (onRoundProgress) onRoundProgress({ round, totalRounds: rounds, phase: 'done', score: bestScore, delta: 0, accepted: false, costUSD: improveCostUSD, costReported: improveCostReported });
+      if (consecutiveRejects >= 2) { stopReason = 'consecutive-rejects'; break; }
+      continue;
+    }
+
     let preEvalSampleFixCost = 0;
     if (autoFixSamples) {
       const sampleFix = await autoFixSamplesAfterSkillRound({
@@ -840,7 +1073,7 @@ export async function evolveSkill({
         skillContent: candidateContent,
         // Under an active holdout, the sample-fixer may only see training-split samples —
         // never the holdout samples that drive the accept decision (leak guard).
-        report: holdoutSplit ? restrictReportToSamples(lastReport, holdoutSplit.trainIds) : lastReport,
+        report: split ? restrictReportToSamples(lastReport, split.trainIds) : lastReport,
         treatmentKey: lastVariantKey,
         executorName,
         model: improveModel,
@@ -865,7 +1098,19 @@ export async function evolveSkill({
     if (!roundCostReported) totalCostReported = false;
     totalCostUSD += improveCostUSD + candidateReport.meta.totalCostUSD;
 
-    const accepted = candidateScore > bestScore;
+    // Significance accept gate: accept only when the candidate is *significantly*
+    // above the current best on the decision (val) set, not merely numerically higher
+    // — rejecting gains indistinguishable from judge noise. `lastReport` is the current
+    // best's fresh eval and `candidateReport` the candidate's, on the same samples, so
+    // the two per-sample arrays are paired. Under-powered decision sets degrade to the
+    // legacy point-estimate accept and flag `gate.underpowered`.
+    const valIds = split ? split.valIds : new Set(allSampleIds);
+    const bestScores = perSampleComposite(lastReport, lastVariantKey, valIds);
+    const candScores = perSampleComposite(candidateReport, candidateVariantKey, valIds);
+    const decision = decideAccept(bestScores, candScores, bestScore, candidateScore, { significanceGate, alpha: significanceAlpha, seed: gateSeed });
+    const accepted = decision.accepted;
+    const diffCI = decision.diffCI;
+    if (decision.underpowered) gateUnderpowered = true;
 
     if (accepted) {
       currentBest = candidateContent;
@@ -874,11 +1119,13 @@ export async function evolveSkill({
       consecutiveRejects = 0;
     } else {
       consecutiveRejects++;
+      const reason = diffCI ? (diffCI.estimate > 0 ? '提升不显著' : '方向为负') : '未超过当前最优';
+      rememberRejected(round, editDelta.summary, reason);
     }
 
     if (accepted) roundReports.push({ round, accepted, report: candidateReport });
     const roundDelta = candidateScore - trajectory[trajectory.length - 1].score;
-    trajectory.push({ round, score: candidateScore, delta: roundDelta, accepted, costUSD: roundCost, ...splitScores(candidateReport, candidateVariantKey, candidateScore) });
+    trajectory.push({ round, score: candidateScore, delta: roundDelta, accepted, costUSD: roundCost, ...splitScores(candidateReport, candidateVariantKey, candidateScore), ...(diffCI ? { diffCI } : {}), editRatio: Number(editDelta.ratio.toFixed(4)) });
     if (onRoundProgress) onRoundProgress({ round, totalRounds: rounds, phase: 'done', score: candidateScore, delta: roundDelta, accepted, costUSD: roundCost, costReported: roundCostReported });
 
     // Early stop
@@ -922,6 +1169,8 @@ export async function evolveSkill({
     ...(reusedBaselineReportId && { reusedBaselineReportId }),
     ...(totalCostReported ? {} : { costReported: false }),
     ...(holdoutInfo ? { holdout: holdoutInfo } : {}),
+    ...buildGeneralization(),
+    gate: gateInfo(),
     trajectory,
     bestSkillPath: allVersions[bestRound],
     allVersions,

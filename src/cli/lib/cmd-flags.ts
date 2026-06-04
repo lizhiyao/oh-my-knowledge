@@ -150,6 +150,12 @@ export interface EvolveFlags {
   'reuse-latest-eval': boolean;
   'improve-mode': string;
   'holdout-ratio': string;
+  'no-significance-gate': boolean;
+  'significance-alpha': string;
+  'test-ratio': string;
+  'edit-budget': string;
+  'no-edit-budget': boolean;
+  'no-reject-memory': boolean;
 }
 
 // ── sample ────────────────────────────────────────────────────────────────────

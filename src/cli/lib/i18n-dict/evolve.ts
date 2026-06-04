@@ -12,7 +12,9 @@ export type EvolveMessageKey =
   | 'cli.evolve.versions_saved'
   | 'cli.evolve.report_link'
   | 'cli.evolve.holdout_active'
-  | 'cli.evolve.holdout_disabled';
+  | 'cli.evolve.holdout_disabled'
+  | 'cli.evolve.gate_underpowered'
+  | 'cli.evolve.generalization';
 
 export const evolveDict: Record<EvolveMessageKey, CliMessage> = {
   'cli.evolve.specify_skill_path': {
@@ -62,5 +64,13 @@ export const evolveDict: Record<EvolveMessageKey, CliMessage> = {
   'cli.evolve.holdout_disabled': {
     zh: '⚠️ holdout-ratio={ratio} 样本太少无法切分，已回退全集打分\n',
     en: '⚠️ holdout-ratio={ratio} too few samples to split; using full-set scoring\n',
+  },
+  'cli.evolve.gate_underpowered': {
+    zh: '⚠️ 决策样本量不足以做显著性门禁，本轮退回点估计接受；增大用例集或降 --holdout-ratio 可启用严格门\n',
+    en: '⚠️ Too few decision samples for the significance gate; fell back to point-estimate accept. Add samples or lower --holdout-ratio to enable the strict gate\n',
+  },
+  'cli.evolve.generalization': {
+    zh: '🔒 锁定 test 集（{count} 条，全程不参与选择）：泛化分 {score}\n',
+    en: '🔒 Locked test set ({count} samples, never used for selection): generalization {score}\n',
   },
 };
