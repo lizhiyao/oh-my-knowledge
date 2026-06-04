@@ -20,6 +20,7 @@ interface RoundProgressInfo {
   costUSD?: number;
   costReported?: boolean;
   error?: string;
+  significant?: boolean;
 }
 
 interface TrajectoryEntry {
@@ -30,6 +31,9 @@ interface TrajectoryEntry {
   costUSD: number;
   trainScore?: number;
   holdoutScore?: number;
+  diffCI?: { low: number; high: number; estimate: number; significant: boolean };
+  editRatio?: number;
+  rejectedPreEval?: boolean;
 }
 
 const VALID_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
@@ -53,6 +57,9 @@ interface EvolveResult {
   totalCostUSD: number;
   costReported?: boolean;
   holdout?: { ratio: number; trainCount: number; holdoutCount: number; disabled?: boolean };
+  test?: { ratio: number; count: number; disabled?: boolean };
+  generalizationScore?: number;
+  gate?: { enabled: boolean; alpha: number; underpowered?: boolean };
   trajectory: TrajectoryEntry[];
   bestSkillPath: string;
   allVersions: string[];
@@ -70,6 +77,14 @@ export async function runEvolve(
   if (!skillPathArg) {
     console.error(tCli('cli.evolve.specify_skill_path', lang));
     throw new CliExit(1);
+  }
+
+  // A locked test set needs a separate val set to decide on; --test-ratio alone is a no-op.
+  if ((Number(flags['test-ratio']) || 0) > 0 && (Number(flags['holdout-ratio']) || 0) === 0) {
+    console.error(lang === 'zh'
+      ? '--test-ratio 需要配合 --holdout-ratio 使用（test 集只在留出 val 集时才有意义）。'
+      : '--test-ratio requires --holdout-ratio (a locked test set only makes sense alongside a held-out val set).');
+    throw new CliExit(2);
   }
 
   const { resolveSkillInput } = await import('../lib/resolve-skill-input.js');
@@ -117,9 +132,16 @@ export async function runEvolve(
       sampleFixMaxAttempts: Math.max(1, Number(flags['sample-fix-max-attempts']) || 2),
       reuseLatestEval: flags['reuse-latest-eval'],
       holdoutRatio: Number(flags['holdout-ratio']) || 0,
+      significanceGate: !flags['no-significance-gate'],
+      // parser 已保证是合法数字串；用 Number() 直取，不用 `|| default`——否则
+      // `--edit-budget 0`（关预算）/ `--significance-alpha 0` 会被 falsy 吞成默认值。
+      significanceAlpha: Number(flags['significance-alpha']),
+      testRatio: Number(flags['test-ratio']),
+      editBudget: flags['no-edit-budget'] ? 0 : Number(flags['edit-budget']),
+      rejectMemory: !flags['no-reject-memory'],
       improveMode: flags['improve-mode'] === 'rewrite' ? 'rewrite' : 'agent',
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
-      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error }: RoundProgressInfo): void {
+      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, significant }: RoundProgressInfo): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。
         const fmtRoundCost = (c: number, r: boolean): string => r ? `$${c.toFixed(4)}` : '—';
         if (phase === 'baseline') {
@@ -132,7 +154,9 @@ export async function runEvolve(
           }));
         } else if (phase === 'done') {
           const delta_: string = delta! >= 0 ? `+${delta!.toFixed(2)}` : delta!.toFixed(2);
-          const status: string = accepted ? '✓ ACCEPT' : '✗ REJECT';
+          // 门拒掉「均分上升但不显著」的候选时，补一句原因，否则 (+0.0x) ✗ REJECT 看着矛盾。
+          const rejectNote = !accepted && significant === false ? tCli('cli.evolve.reject_not_significant', lang) : '';
+          const status: string = accepted ? '✓ ACCEPT' : `✗ REJECT${rejectNote}`;
           process.stderr.write(tCli('cli.evolve.round_done', lang, {
             round, score: score!.toFixed(2), delta: delta_, status, cost: fmtRoundCost(costUSD!, costReported !== false),
           }));
@@ -156,6 +180,16 @@ export async function runEvolve(
         : tCli('cli.evolve.holdout_active', lang, {
           train: result.holdout.trainCount, holdout: result.holdout.holdoutCount,
         }));
+    }
+    if (result.gate?.underpowered) {
+      process.stderr.write(tCli('cli.evolve.gate_underpowered', lang));
+    }
+    if (result.test?.disabled) {
+      process.stderr.write(tCli('cli.evolve.test_disabled', lang, { ratio: result.test.ratio }));
+    } else if (result.test && typeof result.generalizationScore === 'number') {
+      process.stderr.write(tCli('cli.evolve.generalization', lang, {
+        count: result.test.count, score: result.generalizationScore.toFixed(2),
+      }));
     }
     process.stderr.write(tCli('cli.evolve.best_path', lang, {
       best: result.bestSkillPath, target: resolve(skillPath),
@@ -336,6 +370,51 @@ export default class Evolve extends BaseCommand {
       }),
       default: '0',
       parse: numberStringParser('--holdout-ratio', { min: 0, max: 1 }),
+    }),
+    'no-significance-gate': Flags.boolean({
+      description: bilingual({
+        zh: '关掉显著性接受门，退回「候选分高一点点就收」的点估计判定（默认门开：只收统计显著的提升）',
+        en: 'Disable the significance accept gate, reverting to point-estimate accept (default: gate on — accept only statistically significant gains)',
+      }),
+      default: false,
+    }),
+    'significance-alpha': Flags.string({
+      description: bilingual({
+        zh: '显著性门的 diff CI 显著性水平（默认 0.05 = 95% CI）',
+        en: 'Significance level for the accept gate diff CI (default 0.05 = 95% CI)',
+      }),
+      default: '0.05',
+      parse: numberStringParser('--significance-alpha', { min: 0, max: 1 }),
+    }),
+    'test-ratio': Flags.string({
+      description: bilingual({
+        zh: '锁定 test 集比例（0..1，默认 0=关），需配 --holdout-ratio。全程不参与选择，收尾读一次给无偏泛化分',
+        en: 'Locked test fraction (0..1, default 0=off); requires --holdout-ratio. Never used for selection; read once at the end for an unbiased generalization score',
+      }),
+      default: '0',
+      parse: numberStringParser('--test-ratio', { min: 0, max: 1 }),
+    }),
+    'edit-budget': Flags.string({
+      description: bilingual({
+        zh: '单轮最多改动的 skill 行占比（默认 0.2）。超预算的候选评测前直接判拒，省 eval 成本',
+        en: 'Max fraction of skill lines a round may change (default 0.2). Over-budget candidates are rejected before evaluation, saving eval cost',
+      }),
+      default: '0.2',
+      parse: numberStringParser('--edit-budget', { min: 0, max: 1 }),
+    }),
+    'no-edit-budget': Flags.boolean({
+      description: bilingual({
+        zh: '关掉 edit budget 约束（允许任意大小的单轮改动）',
+        en: 'Disable the edit budget (allow arbitrarily large single-round edits)',
+      }),
+      default: false,
+    }),
+    'no-reject-memory': Flags.boolean({
+      description: bilingual({
+        zh: '关掉 rejected-edit 记忆（不把被拒改法回灌下一轮 prompt）',
+        en: 'Disable rejected-edit memory (do not feed rejected edits back into the next prompt)',
+      }),
+      default: false,
     }),
   };
 
