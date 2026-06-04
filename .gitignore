@@ -1,6 +1,8 @@
 node_modules/
 dist/
 dist-scripts/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
 .DS_Store
 .mcp.json
 package-lock.json
