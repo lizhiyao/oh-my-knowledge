@@ -342,19 +342,19 @@ export async function executeBatchEvaluationRuns({
     onSkillProgress?.({ phase: 'start', skill: entry.name, current: i + 1, total: skillEntries.length });
 
     // Batch mode 的实验结构固定为 baseline control vs 当前 skill treatment。
-    const perSkillAllowedSkills = variantAllowedSkills?.[entry.name] !== undefined
-      ? { ...variantAllowedSkills, [entry.skillPath]: variantAllowedSkills[entry.name] }
-      : variantAllowedSkills;
+    // resolveArtifacts 产出的 artifact.name 是派生短名(skillNameFromPath(skillPath)),
+    // 不等于全路径 entry.skillPath,所以按 kind 而非 name 串区分:baseline-kind 即 control,
+    // skill-kind 即 treatment(对齐到 entry 的逻辑名)。variantAllowedSkills 已按短名(== entry.name)
+    // 在 resolveArtifacts 内命中,无需再补一个全路径 key。
     const skillArtifacts = resolveArtifacts(
       resolve(skillDir),
       ['baseline', entry.skillPath],
-      { strictBaseline, variantAllowedSkills: perSkillAllowedSkills },
-    ).map((artifact) => {
-      if (artifact.name === entry.skillPath) {
-        return { ...artifact, name: entry.name, experimentRole: 'treatment' as const };
-      }
-      return { ...artifact, experimentRole: 'control' as const };
-    });
+      { strictBaseline, variantAllowedSkills },
+    ).map((artifact) =>
+      artifact.kind === 'baseline'
+        ? { ...artifact, experimentRole: 'control' as const }
+        : { ...artifact, name: entry.name, experimentRole: 'treatment' as const },
+    );
     const childRunId = `${batchRunId}-${String(i + 1).padStart(2, '0')}-${safeRunIdPart(entry.name)}`;
     const { report, filePath } = await runSingleEvaluation({
       samplesPath: entry.samplesPath,

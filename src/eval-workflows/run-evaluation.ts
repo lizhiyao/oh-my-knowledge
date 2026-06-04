@@ -657,12 +657,13 @@ export async function runBatchEvaluation({
         skillDirAbs,
         ['baseline', entry.skillPath],
         { strictBaseline, variantAllowedSkills },
-      ).map((artifact) => {
-        if (artifact.name === entry.skillPath) {
-          return { ...artifact, name: entry.name, experimentRole: 'treatment' as const };
-        }
-        return { ...artifact, experimentRole: 'control' as const };
-      });
+      ).map((artifact) =>
+        // artifact.name 是派生短名,不等于全路径 entry.skillPath,按 kind 区分角色
+        // (与 executeBatchEvaluationRuns real-run 严格一致)。
+        artifact.kind === 'baseline'
+          ? { ...artifact, experimentRole: 'control' as const }
+          : { ...artifact, name: entry.name, experimentRole: 'treatment' as const },
+      );
       let entryReport: DryRunReport;
       try {
         const result = await runEvaluation({

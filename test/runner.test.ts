@@ -617,6 +617,7 @@ describe('runBatchEvaluation', () => {
         avgCompositeScore: score,
       });
 
+      let capturedArtifacts: import('../src/types/index.js').Artifact[] = [];
       const result = await executeBatchEvaluationRuns({
         skillDir: tmpDir,
         skillEntries: [{ name: 'alpha', skillPath, samplesPath }],
@@ -630,7 +631,10 @@ describe('runBatchEvaluation', () => {
         persistJob: false,
         runSingleEvaluation: async (options) => {
           assert.equal(options.noCache, true);
-          const treatment = options.artifacts.find((artifact) => artifact.experimentRole === 'treatment')?.name ?? 'alpha';
+          capturedArtifacts = options.artifacts;
+          // #183 回归:不再用 `?? 'alpha'` 兜底——必须真有一个 treatment-role artifact,
+          // 否则 find 返回 undefined、treatment 取 undefined.name 抛错,把角色误绑暴露成测试失败。
+          const treatment = options.artifacts.find((artifact) => artifact.experimentRole === 'treatment')!.name;
           const report: Report = {
             kind: 'evaluation',
             id: options.runId!,
@@ -691,6 +695,72 @@ describe('runBatchEvaluation', () => {
       assert.equal(childReport.meta.artifactHashes.alpha, 'hash-alpha');
       assert.ok(childReport.summary.alpha);
       assert.equal(childReport.summary.skill, undefined);
+
+      // #183 回归:batch 必须把 baseline 绑 control、当前 skill 绑 treatment。
+      // 旧实现按 `artifact.name === entry.skillPath`(短名 vs 全路径,永 false)判定,
+      // 导致 treatment skill 落入 else 分支被误标 control,两个 artifact 都成 control。
+      const baselineArt = capturedArtifacts.find((a) => a.kind === 'baseline');
+      const treatmentArt = capturedArtifacts.find((a) => a.kind === 'skill');
+      assert.equal(baselineArt?.experimentRole, 'control');
+      assert.equal(treatmentArt?.experimentRole, 'treatment');
+      assert.equal(treatmentArt?.name, 'alpha', 'treatment 对齐到 entry 的逻辑名');
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('#183: per-variant allowedSkills 在 batch 下按短名(== entry.name)绑到 treatment', async () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), 'omk-batch-allowed-'));
+    try {
+      const skillPath = join(tmpDir, 'greeter.md');
+      const samplesPath = join(tmpDir, 'greeter.eval-samples.json');
+      writeFileSync(skillPath, 'skill content');
+      writeFileSync(samplesPath, JSON.stringify([{ sample_id: 's1', prompt: 'p' }]));
+
+      let capturedArtifacts: import('../src/types/index.js').Artifact[] = [];
+      await executeBatchEvaluationRuns({
+        skillDir: tmpDir,
+        skillEntries: [{ name: 'greeter', skillPath, samplesPath }],
+        model: 'm',
+        judgeModel: 'j',
+        outputDir: join(tmpDir, 'reports'),
+        noJudge: true,
+        concurrency: 1,
+        noCache: true,
+        executorName: 'claude',
+        persistJob: false,
+        strictBaseline: true,
+        variantAllowedSkills: { greeter: ['only-this'] },
+        runSingleEvaluation: async (options) => {
+          capturedArtifacts = options.artifacts;
+          const report: Report = {
+            kind: 'evaluation',
+            id: options.runId!,
+            meta: {
+              variants: ['baseline', 'greeter'],
+              model: options.model,
+              judgeModels: [{ executor: options.executorName, model: 'haiku' }],
+              noJudge: true,
+              executor: options.executorName,
+              sampleCount: 1,
+              taskCount: 2,
+              totalCostUSD: 0,
+              timestamp: '2026-05-01T00:00:00.000Z',
+              cliVersion: 'test',
+              nodeVersion: 'test',
+              artifactHashes: { baseline: 'no-skill', greeter: 'h' },
+            },
+            summary: {},
+            results: [],
+          };
+          return { report, filePath: null };
+        },
+      });
+
+      const baselineArt = capturedArtifacts.find((a) => a.kind === 'baseline');
+      const treatmentArt = capturedArtifacts.find((a) => a.kind === 'skill');
+      assert.deepEqual(baselineArt?.allowedSkills, [], 'strict-baseline 默认隔离 baseline');
+      assert.deepEqual(treatmentArt?.allowedSkills, ['only-this'], 'eval.yaml per-variant allowedSkills 按短名绑到 treatment');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
