@@ -9,9 +9,10 @@ export default defineConfig({
   description: 'Measurement-grade evaluation for what you feed an LLM — prompt / RAG / skill / agent.',
   cleanUrls: true,
   lastUpdated: true,
-  head: [['link', { rel: 'icon', href: '/favicon.svg' }]],
+  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }]],
 
   themeConfig: {
+    logo: '/logo.svg',
     socialLinks: [{ icon: 'github', link: GITHUB }],
     search: { provider: 'local' },
   },
