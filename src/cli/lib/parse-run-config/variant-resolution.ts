@@ -19,9 +19,22 @@
  *     悄悄废掉「control 不能等于 treatment」的测量保护。
  */
 
-import { discoverVariants, variantExprToSkillName, variantIdentity } from '../../../inputs/skill-loader.js';
+import { discoverVariants, variantExprToSkillName, variantIdentity, parseVariantCwd } from '../../../inputs/skill-loader.js';
 import { configVariantsToSpecs } from '../../../inputs/eval-config.js';
-import type { EvalConfig, VariantSpec } from '../../../types/index.js';
+import type { EvalConfig, ExperimentRole, VariantSpec } from '../../../types/index.js';
+
+/** CLI 的 --control / --treatment 只收 artifact 身份。`name@cwd` 语法已移除:撞到就抛迁移错误,
+ *  引导用户改用 --control-cwd / --treatment-cwd 或 eval.yaml 的 variant.cwd。git 修订语法 `@{...}`
+ *  由 parseVariantCwd 保护、不误判。cwd 由调用方在边界注入(见 eval-runner)。 */
+function cliVariantSpec(rawExpr: string, role: ExperimentRole): VariantSpec {
+  if (parseVariantCwd(rawExpr).cwd !== undefined) {
+    throw new Error(
+      `「name@cwd」语法已移除: "${rawExpr}"。请改用 --${role}-cwd <dir> 声明 runtime context，`
+      + `或在 eval.yaml 的 variant 上用结构化 cwd: 字段。`,
+    );
+  }
+  return { name: variantExprToSkillName(rawExpr), role, expr: rawExpr };
+}
 
 export function resolveVariantSpecs(
   values: Record<string, unknown>,
@@ -38,10 +51,10 @@ export function resolveVariantSpecs(
     // CLI roles present → CLI entirely replaces config.variants (no merging).
     variantSpecs = [];
     if (controlExpr) {
-      variantSpecs.push({ name: variantExprToSkillName(controlExpr), role: 'control', expr: controlExpr });
+      variantSpecs.push(cliVariantSpec(controlExpr, 'control'));
     }
     for (const expr of treatmentExprs) {
-      variantSpecs.push({ name: variantExprToSkillName(expr), role: 'treatment', expr });
+      variantSpecs.push(cliVariantSpec(expr, 'treatment'));
     }
   } else if (evalConfig) {
     variantSpecs = configVariantsToSpecs(evalConfig.variants);
@@ -62,7 +75,7 @@ export function resolveVariantSpecs(
 
   const seenIdentities = new Set<string>();
   for (const spec of variantSpecs) {
-    const key = variantIdentity(spec.expr, skillDir);
+    const key = variantIdentity(spec.expr, skillDir, spec.cwd);
     if (seenIdentities.has(key)) {
       throw new Error(
         `variant "${spec.expr}" 重复出现——同一 variant 不能同时属于 --control 与 --treatment，也不能在 --treatment 中重复。`,

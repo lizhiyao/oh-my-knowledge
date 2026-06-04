@@ -18,7 +18,6 @@
 
 import { resolve, join, dirname } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
-import { parseVariantCwd } from '../../../inputs/skill-loader.js';
 
 export function discoverSamplesPath(values: Record<string, unknown>, skillDir: string): string {
   const treatmentRaw = values.treatment as string | undefined;
@@ -36,8 +35,7 @@ export function discoverSamplesPath(values: Record<string, unknown>, skillDir: s
         if (existsSync(join(treatmentDir, name))) return join(treatmentDir, name);
       }
     }
-    const tname = parseVariantCwd(expr).name;
-    const omkDir = join(skillDir, tname, '.omk');
+    const omkDir = join(skillDir, expr, '.omk');
     if (existsSync(omkDir)) return omkDir;
   }
   let cwdFile = 'eval-samples.json';

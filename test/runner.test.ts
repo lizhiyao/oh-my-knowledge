@@ -17,10 +17,15 @@ import type { Report, VariantSpec } from '../src/types/index.js';
 // historical `variants: [...]` convention used across legacy fixtures.
 function asSpecs(names: string[]): VariantSpec[] {
   return names.map((name, i) => {
+    // 测试便捷:把 `expr@cwd` 拆成结构化 cwd(生产已移除 @cwd 编码,cwd 随 spec 结构化携带)。
+    const at = name.startsWith('git:') ? -1 : name.indexOf('@');
+    const expr = at === -1 ? name : name.slice(0, at);
+    const cwd = at === -1 ? undefined : name.slice(at + 1);
     return {
-      name: variantExprToSkillName(name),
+      name: variantExprToSkillName(expr),
       role: i === 0 ? 'control' : 'treatment',
-      expr: name,
+      expr,
+      ...(cwd !== undefined && { cwd }),
     };
   });
 }

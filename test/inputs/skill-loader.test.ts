@@ -37,13 +37,13 @@ describe('resolveArtifacts', () => {
 
   it('baseline@cwd 不再受支持', () => {
     assert.throws(
-      () => resolveArtifacts(SKILL_DIR, ['baseline@/tmp/project-a']),
+      () => resolveArtifacts(SKILL_DIR, [{ expr: 'baseline', cwd: '/tmp/project-a' }]),
       /baseline cannot be bound to a cwd/,
     );
   });
 
-  it('unknown@cwd 作为 cwd-only baseline artifact', () => {
-    const artifacts = resolveArtifacts(SKILL_DIR, ['project-env@/tmp/project-b']);
+  it('unknown expr + cwd 作为 cwd-only baseline artifact', () => {
+    const artifacts = resolveArtifacts(SKILL_DIR, [{ expr: 'project-env', cwd: '/tmp/project-b' }]);
     assert.equal(artifacts.length, 1);
     assert.equal(artifacts[0].name, 'project-env');
     assert.equal(artifacts[0].kind, 'baseline');
@@ -65,8 +65,8 @@ describe('resolveArtifacts', () => {
     assert.equal(artifacts[0].skillRoot, join(MULTI_SKILL_DIR, 'classifier'));
   });
 
-  it('显式 @cwd 覆盖,但 skillRoot 仍记录在 artifact 上(优先级在 task-planner 处理)', () => {
-    const artifacts = resolveArtifacts(MULTI_SKILL_DIR, ['classifier@/tmp/override']);
+  it('显式 cwd 覆盖,但 skillRoot 仍记录在 artifact 上(优先级在 task-planner 处理)', () => {
+    const artifacts = resolveArtifacts(MULTI_SKILL_DIR, [{ expr: 'classifier', cwd: '/tmp/override' }]);
     assert.equal(artifacts.length, 1);
     assert.equal(artifacts[0].cwd, '/tmp/override');
     assert.equal(artifacts[0].skillRoot, join(MULTI_SKILL_DIR, 'classifier'));
@@ -115,8 +115,8 @@ describe('resolveArtifacts skill isolation', () => {
     assert.deepEqual(v1.allowedSkills, [], '显式给 treatment 设 [] 也合法');
   });
 
-  it('cwd-only project-env@/path 也被认作 baseline-kind,strict-baseline 自动隔离', () => {
-    const artifacts = resolveArtifacts(SKILL_DIR, ['project-env@/tmp/proj']);
+  it('cwd-only expr 也被认作 baseline-kind,strict-baseline 自动隔离', () => {
+    const artifacts = resolveArtifacts(SKILL_DIR, [{ expr: 'project-env', cwd: '/tmp/proj' }]);
     assert.deepEqual(artifacts[0].allowedSkills, [],
       'kind:baseline 包括 cwd-only custom variant,strict-baseline 一并隔离');
   });

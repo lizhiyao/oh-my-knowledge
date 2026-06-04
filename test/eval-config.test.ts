@@ -176,14 +176,14 @@ variants:
 });
 
 describe('configVariantsToSpecs', () => {
-  it('merges cwd into expr as name@cwd', () => {
+  it('carries cwd structurally (expr stays pure, no @cwd encoding)', () => {
     const specs = configVariantsToSpecs([
       { name: 'v1', role: 'control', artifact: 'baseline' },
       { name: 'v2', role: 'treatment', artifact: './skill.md', cwd: '/tmp/project' },
     ]);
     assert.deepEqual(specs, [
       { name: 'v1', role: 'control', expr: 'baseline' },
-      { name: 'v2', role: 'treatment', expr: './skill.md@/tmp/project' },
+      { name: 'v2', role: 'treatment', expr: './skill.md', cwd: '/tmp/project' },
     ]);
   });
 

@@ -44,14 +44,14 @@ export async function prepareEvaluationRun({
 }): Promise<PreparedEvaluationRun> {
   const { samples, requires, baseDir: samplesBaseDir, sourceFiles: samplesSourceFiles } = loadSamples(samplesPath);
 
-  // Build expressions from specs (preserving order) and resolve to artifacts.
-  const variantExpressions = variantSpecs.map((spec) => spec.expr);
+  // 结构化传入 {expr, cwd}(顺序一一对应),cwd 不再编码进 expr 字符串。
+  const variantInputs = variantSpecs.map((spec) => ({ expr: spec.expr, cwd: spec.cwd }));
   // 不把 variantAllowedSkills 透进 resolveArtifacts:那里按解析出的 artifact 名查,
   // 与 eval.yaml 的自定义 variant 名不一致时会漏绑。allowedSkills 统一在下面按 spec 绑定。
   // resolveArtifacts 只保留 strictBaseline 默认(baseline → [])。
   const resolvedArtifacts = artifacts || resolveArtifacts(
     resolve(skillDir),
-    variantExpressions,
+    variantInputs,
     { strictBaseline },
   );
 

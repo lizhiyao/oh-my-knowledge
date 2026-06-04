@@ -84,9 +84,9 @@ describe('resolveArtifacts — same-basename variants in different dirs', () => 
     assert.notEqual(arts[0].content, arts[1].content);
   });
 
-  it('rejects an empty variant name (e.g. "@/cwd") instead of silently loading skillDir/SKILL.md', () => {
+  it('rejects an empty variant expr instead of silently loading skillDir/SKILL.md', () => {
     writeFileSync(join(root, 'SKILL.md'), '# top-level skill\n');
-    assert.throws(() => resolveArtifacts(root, ['@/some/cwd']), /不能为空/);
+    assert.throws(() => resolveArtifacts(root, [{ expr: '', cwd: '/some/cwd' }]), /不能为空/);
   });
 });
 
@@ -136,10 +136,12 @@ describe('CLI dry-run — --control / --treatment same-basename in different dir
     );
   });
 
-  it('allows the same skill bound to two different cwds (distinct runtime contexts)', () => {
+  it('rejects the removed name@cwd CLI syntax with a migration error', () => {
     const skill = join(root, 'v1', 'greeter.md');
-    const specs = resolveVariantSpecs({ control: `${skill}@${root}/v1`, treatment: `${skill}@${root}/v2` }, null, root);
-    assert.equal(specs.length, 2);
+    assert.throws(
+      () => resolveVariantSpecs({ control: `${skill}@${root}/v1` }, null, root),
+      /语法已移除|--control-cwd/,
+    );
   });
 
   it('rejects a bare skill name vs its path form pointing at the same file (skillDir base)', () => {
@@ -271,11 +273,12 @@ describe('resolveArtifacts — git artifact bound to a cwd (regression: @{...} g
       sh(['add', '.']);
       sh(['commit', '-m', 'seed']);
       process.chdir(gitRoot);
-      const arts = resolveArtifacts(gitRoot, [`git:greeter@${gitRoot}/proj`]);
+      // 结构化输入:expr 是纯 git 身份,cwd 单独携带(不再 git:...@cwd 编码进串)。
+      const arts = resolveArtifacts(gitRoot, [{ expr: 'git:greeter', cwd: `${gitRoot}/proj` }]);
       assert.equal(arts.length, 1);
       assert.equal(arts[0].source, 'git');
       assert.equal(arts[0].content, '# git greeter');
-      assert.equal(arts[0].cwd, `${gitRoot}/proj`, 'cwd must survive the git @{...} guard');
+      assert.equal(arts[0].cwd, `${gitRoot}/proj`, 'cwd carried structurally');
     } finally {
       process.chdir(prevCwd);
       rmSync(gitRoot, { recursive: true, force: true });
