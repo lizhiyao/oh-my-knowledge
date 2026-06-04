@@ -100,7 +100,6 @@ export interface RunEvaluationOptions extends CommonEvaluationOptions {
   samplesPath: string;
   skillDir: string;
   variantSpecs?: VariantSpec[];
-  artifacts?: Artifact[];
   dryRun?: boolean;
   blind?: boolean;
   retry?: number;
@@ -163,7 +162,6 @@ export async function runEvaluation({
   samplesPath,
   skillDir,
   variantSpecs = [],
-  artifacts,
   model = DEFAULT_MODEL,
   outputDir = DEFAULT_OUTPUT_DIR,
   project,
@@ -211,7 +209,6 @@ export async function runEvaluation({
     samplesPath,
     skillDir,
     variantSpecs,
-    artifacts,
     dryRun,
     mcpConfig,
     strictBaseline,
