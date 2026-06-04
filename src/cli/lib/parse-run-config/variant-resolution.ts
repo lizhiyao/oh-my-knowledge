@@ -26,14 +26,14 @@ import type { EvalConfig, ExperimentRole, VariantSpec } from '../../../types/ind
 /** CLI 的 --control / --treatment 只收 artifact 身份。`name@cwd` 语法已移除:撞到就抛迁移错误,
  *  引导用户改用 --control-cwd / --treatment-cwd 或 eval.yaml 的 variant.cwd。git 修订语法 `@{...}`
  *  由 parseVariantCwd 保护、不误判。cwd 由调用方在边界注入(见 eval-runner)。 */
-function cliVariantSpec(rawExpr: string, role: ExperimentRole): VariantSpec {
+function cliVariantSpec(rawExpr: string, role: ExperimentRole, cwd?: string): VariantSpec {
   if (parseVariantCwd(rawExpr).cwd !== undefined) {
     throw new Error(
       `「name@cwd」语法已移除: "${rawExpr}"。请改用 --${role}-cwd <dir> 声明 runtime context，`
       + `或在 eval.yaml 的 variant 上用结构化 cwd: 字段。`,
     );
   }
-  return { name: variantExprToSkillName(rawExpr), role, expr: rawExpr };
+  return { name: variantExprToSkillName(rawExpr), role, expr: rawExpr, ...(cwd ? { cwd } : {}) };
 }
 
 export function resolveVariantSpecs(
@@ -45,17 +45,33 @@ export function resolveVariantSpecs(
   const treatmentExprs: string[] = values.treatment
     ? (values.treatment as string).split(',').map((v: string) => v.trim()).filter(Boolean)
     : [];
+  const controlCwd = values['control-cwd'] as string | undefined;
+  // 逗号列表,与 treatment 按序对齐;空位(空串)= 该 treatment 无 cwd。不 filter,保留位次。
+  const treatmentCwds: string[] = values['treatment-cwd']
+    ? (values['treatment-cwd'] as string).split(',').map((v: string) => v.trim())
+    : [];
 
   let variantSpecs: VariantSpec[];
   if (controlExpr || treatmentExprs.length > 0) {
     // CLI roles present → CLI entirely replaces config.variants (no merging).
+    if (controlCwd !== undefined && !controlExpr) {
+      throw new Error('--control-cwd 需要配 --control 一起用。');
+    }
+    if (treatmentCwds.length > 0 && treatmentCwds.length !== treatmentExprs.length) {
+      throw new Error(
+        `--treatment-cwd 的数量(${treatmentCwds.length})必须与 --treatment(${treatmentExprs.length})按序对齐;`
+        + `某个 treatment 不需要 cwd 就在该位留空(如 /a,,/c)。`,
+      );
+    }
     variantSpecs = [];
     if (controlExpr) {
-      variantSpecs.push(cliVariantSpec(controlExpr, 'control'));
+      variantSpecs.push(cliVariantSpec(controlExpr, 'control', controlCwd));
     }
-    for (const expr of treatmentExprs) {
-      variantSpecs.push(cliVariantSpec(expr, 'treatment'));
-    }
+    treatmentExprs.forEach((expr, i) => {
+      variantSpecs.push(cliVariantSpec(expr, 'treatment', treatmentCwds[i]));
+    });
+  } else if (controlCwd !== undefined || treatmentCwds.length > 0) {
+    throw new Error('--control-cwd / --treatment-cwd 需要配 --control / --treatment 一起用(eval.yaml 用 variant 的 cwd: 字段)。');
   } else if (evalConfig) {
     variantSpecs = configVariantsToSpecs(evalConfig.variants);
   } else if (values.batch) {

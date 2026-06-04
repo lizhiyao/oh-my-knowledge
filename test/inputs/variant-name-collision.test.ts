@@ -285,3 +285,37 @@ describe('resolveArtifacts — git artifact bound to a cwd (regression: @{...} g
     }
   });
 });
+
+describe('resolveVariantSpecs — --control-cwd / --treatment-cwd 结构化注入', () => {
+  let root: string;
+  beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'omk-cwdflag-')); });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it('injects control cwd structurally onto the spec', () => {
+    const specs = resolveVariantSpecs({ control: 'baseline', treatment: 'skill-a', 'control-cwd': '/proj' }, null, root);
+    assert.equal(specs.find((s) => s.role === 'control')!.cwd, '/proj');
+    assert.equal(specs.find((s) => s.role === 'treatment')!.cwd, undefined);
+  });
+
+  it('index-aligns --treatment-cwd to --treatment', () => {
+    const specs = resolveVariantSpecs({ treatment: 'a,b', 'treatment-cwd': '/pa,/pb' }, null, root);
+    assert.deepEqual(specs.map((s) => s.cwd), ['/pa', '/pb']);
+  });
+
+  it('blank slot means that treatment has no cwd', () => {
+    const specs = resolveVariantSpecs({ treatment: 'a,b,c', 'treatment-cwd': '/pa,,/pc' }, null, root);
+    assert.deepEqual(specs.map((s) => s.cwd), ['/pa', undefined, '/pc']);
+  });
+
+  it('errors when --treatment-cwd length mismatches --treatment', () => {
+    assert.throws(() => resolveVariantSpecs({ treatment: 'a,b', 'treatment-cwd': '/pa' }, null, root), /按序对齐|数量/);
+  });
+
+  it('errors when --treatment-cwd is given without --treatment', () => {
+    assert.throws(() => resolveVariantSpecs({ 'treatment-cwd': '/pa' }, null, root), /需要配/);
+  });
+
+  it('errors when --control-cwd is given without --control', () => {
+    assert.throws(() => resolveVariantSpecs({ treatment: 'a', 'control-cwd': '/p' }, null, root), /--control-cwd 需要配 --control/);
+  });
+});

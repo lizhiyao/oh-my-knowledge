@@ -89,7 +89,8 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --budget-usd <value>            总预算上限 USD（必须 > 0，不传则无上限）
   --concurrency <value>           并发数，默认 1
   --config <value>                eval.yaml 路径
-  --control <value>               control variant 表达式
+  --control <value>               control variant 表达式（仅 artifact 身份）
+  --control-cwd <value>           control 的 runtime context 目录
   --dry-run                       只 plan 不实跑
   --effort <value>                被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
   --executor <value>              执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令（默认 claude）。
@@ -119,7 +120,8 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
   --strict-baseline               强制 baseline 隔离（default true）
   --threshold <value>             verdict 阈值，默认 3.5
   --timeout <value>               单样本超时秒，默认 600
-  --treatment <value>             treatment variant 列表，逗号分隔
+  --treatment <value>             treatment variant 列表，逗号分隔（仅 artifact 身份）
+  --treatment-cwd <value>         treatment 的 runtime context 目录列表，逗号分隔、与 --treatment 按序对齐（空位 = 无 cwd）
   --trivial-diff <value>          可忽略 diff 容差，0 表示不启用容差
   --verbose                       详细日志
 ```

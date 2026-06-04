@@ -89,7 +89,8 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --budget-usd <value>            Total budget cap USD (must be > 0; omit for no cap)
   --concurrency <value>           Concurrency, default 1
   --config <value>                eval.yaml path
-  --control <value>               Control variant expr
+  --control <value>               Control variant expr (artifact identity only)
+  --control-cwd <value>           Runtime context dir for control
   --dry-run                       Plan only, no real exec
   --effort <value>                Executor LLM reasoning effort low/medium/high/xhigh/max (default low; reports across efforts not strictly comparable).
   --executor <value>              Executor: claude / claude-sdk / codex / codex-sdk / openai-api / gemini / custom (default claude).
@@ -119,7 +120,8 @@ Runs the offline evaluation, applies the verdict gate, persists the report, and 
   --strict-baseline               Force baseline isolation (default true)
   --threshold <value>             Verdict threshold, default 3.5
   --timeout <value>               Per-sample timeout sec, default 600
-  --treatment <value>             Treatment variants, comma-separated
+  --treatment <value>             Treatment variants, comma-separated (artifact identity only)
+  --treatment-cwd <value>         Runtime context dirs for treatments, comma-separated, index-aligned with --treatment (blank = none)
   --trivial-diff <value>          Trivial diff tolerance; 0 disables tolerance
   --verbose                       Verbose logging
 ```

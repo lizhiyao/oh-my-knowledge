@@ -365,12 +365,24 @@ export default class Eval extends BaseCommand {
     lang: LANG_FLAG,
     // ── 实验角色 ──
     control: Flags.string({
-      description: bilingual({ zh: 'control variant 表达式', en: 'Control variant expr' }),
+      description: bilingual({ zh: 'control variant 表达式（仅 artifact 身份）', en: 'Control variant expr (artifact identity only)' }),
     }),
     treatment: Flags.string({
       description: bilingual({
-        zh: 'treatment variant 列表，逗号分隔',
-        en: 'Treatment variants, comma-separated',
+        zh: 'treatment variant 列表，逗号分隔（仅 artifact 身份）',
+        en: 'Treatment variants, comma-separated (artifact identity only)',
+      }),
+    }),
+    'control-cwd': Flags.string({
+      description: bilingual({
+        zh: 'control 的 runtime context 目录',
+        en: 'Runtime context dir for control',
+      }),
+    }),
+    'treatment-cwd': Flags.string({
+      description: bilingual({
+        zh: 'treatment 的 runtime context 目录列表，逗号分隔、与 --treatment 按序对齐（空位 = 无 cwd）',
+        en: 'Runtime context dirs for treatments, comma-separated, index-aligned with --treatment (blank = none)',
       }),
     }),
     config: Flags.string({

@@ -74,7 +74,8 @@ omk eval [flags]
 - `--budget-usd` `option`:总预算上限 USD（必须 > 0，不传则无上限）
 - `--concurrency` `option`:并发数，默认 1
 - `--config` `option`:eval.yaml 路径
-- `--control` `option`:control variant 表达式
+- `--control` `option`:control variant 表达式（仅 artifact 身份）
+- `--control-cwd` `option`:control 的 runtime context 目录
 - `--dry-run` `boolean`:只 plan 不实跑
 - `--effort` `option`:被测 LLM 扩展思考预算 low/medium/high/xhigh/max（默认 low；跨 effort 报告不严格可比）。
 - `--executor` `option`:执行器:claude / claude-sdk / codex / codex-sdk / openai-api / gemini / 自定义命令（默认 claude）。
@@ -104,7 +105,8 @@ omk eval [flags]
 - `--strict-baseline` `boolean`:强制 baseline 隔离（default true）
 - `--threshold` `option`:verdict 阈值，默认 3.5
 - `--timeout` `option`:单样本超时秒，默认 600
-- `--treatment` `option`:treatment variant 列表，逗号分隔
+- `--treatment` `option`:treatment variant 列表，逗号分隔（仅 artifact 身份）
+- `--treatment-cwd` `option`:treatment 的 runtime context 目录列表，逗号分隔、与 --treatment 按序对齐（空位 = 无 cwd）
 - `--trivial-diff` `option`:可忽略 diff 容差，0 表示不启用容差
 - `--verbose` `boolean`:详细日志
 
