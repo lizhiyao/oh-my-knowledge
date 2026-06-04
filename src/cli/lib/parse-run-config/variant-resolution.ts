@@ -27,6 +27,8 @@ import type { EvalConfig, ExperimentRole, VariantSpec } from '../../../types/ind
  *  引导用户改用 --control-cwd / --treatment-cwd 或 eval.yaml 的 variant.cwd。git 修订语法 `@{...}`
  *  由 parseVariantCwd 保护、不误判。cwd 由调用方在边界注入(见 eval-runner)。 */
 function cliVariantSpec(rawExpr: string, role: ExperimentRole, cwd?: string): VariantSpec {
+  // 探测旧 name@cwd 形态报错。注:含合法 `@`(非 `@{`)的路径(如 /x/@dir/skill.md)会被一并
+  // 误判 —— 属 pre-existing 限制(这类路径本就不被 @cwd 支持),报错文案仍指向迁移指引。
   if (parseVariantCwd(rawExpr).cwd !== undefined) {
     throw new Error(
       `「name@cwd」语法已移除: "${rawExpr}"。请改用 --${role}-cwd <dir> 声明 runtime context，`

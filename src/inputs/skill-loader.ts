@@ -187,8 +187,9 @@ function pathPhysicalId(p: string): string {
  *      `skillDir/name/SKILL.md`)取物理身份,这样裸名 `greeter` 与指向同一文件的 `./greeter.md`
  *      能判为重复;没传 skillDir(如纯单测)则退回字面名。
  *    - `git:` / `baseline`：本身就是稳定标识,原样返回。
- *  `@cwd` 也按物理身份纳入 key —— 同一份 skill 绑不同 cwd 是不同 runtime context,不算重复。
- *  不要用派生短名判重:`v1/greeter.md` 与 `v2/greeter.md` 短名都是 greeter 却是两个 variant。 */
+ *  结构化的 `cwd`(第三参数)按物理身份纳入 key —— 同一份 skill 绑不同 cwd 是不同 runtime
+ *  context,不算重复。不要用派生短名判重:`v1/greeter.md` 与 `v2/greeter.md` 短名都是 greeter
+ *  却是两个 variant。 */
 export function variantIdentity(expr: string, skillDir?: string, cwd?: string): string {
   // expr 已是纯 artifact 身份(@cwd 在 CLI/config 边界已剥离);cwd 结构化显式传入。
   const name = expr;

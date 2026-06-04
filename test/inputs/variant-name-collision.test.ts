@@ -325,6 +325,11 @@ describe('resolveVariantSpecs — --control-cwd / --treatment-cwd 结构化注�
     assert.throws(() => resolveVariantSpecs({ treatment: 'a', 'control-cwd': '/p' }, null, root), /--control-cwd 需要配 --control/);
   });
 
+  it('accepts a git reflog/upstream ref as a CLI role without a migration error (@{...} ≠ @cwd)', () => {
+    const specs = resolveVariantSpecs({ control: 'git:HEAD@{2}:greeter', treatment: 'skill-a' }, null, root);
+    assert.equal(specs.find((s) => s.role === 'control')!.expr, 'git:HEAD@{2}:greeter');
+  });
+
   it('flows --treatment-cwd end-to-end into artifact.cwd', async () => {
     writeFileSync(join(root, 'greeter.md'), '# greeter\n');
     const samplesPath = join(root, 'samples.json');
