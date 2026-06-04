@@ -1,24 +1,27 @@
-import { dirname, resolve } from 'node:path';
+import { dirname } from 'node:path';
 import { DEFAULT_OUTPUT_DIR, generateRunId, getCliVersion, getGitInfo, persistReport } from '../eval-core/evaluation-reporting.js';
 import { buildEvaluationRequest, createEvaluationRun, createSucceededJob, finalizeEvaluationRun } from '../eval-core/evaluation-job.js';
 import { getExecutorRuntimeFingerprint } from '../executors/runtime-fingerprint.js';
 import { createFileJobStore, DEFAULT_JOBS_DIR } from '../server/job-store.js';
-import { resolveArtifacts } from '../inputs/skill-loader.js';
 import type {
-  Artifact,
   BatchEvaluationReport,
   BatchEvaluationItem,
   EvaluationReport,
   ExecutorRuntimeFingerprint,
   JobStore,
   ProgressCallback,
+  VariantSpec,
   VariantSummary,
 } from '../types/index.js';
 
 interface RunSingleEvaluationOptions {
   samplesPath: string;
   skillDir: string;
-  artifacts: Artifact[];
+  /** 每个 batch entry 的实验结构(baseline control vs 当前 skill treatment),由
+   *  runEvaluation 的 spec-based 解析统一绑定 role / 隔离。 */
+  variantSpecs: VariantSpec[];
+  /** strict-baseline default,透传给 per-skill runEvaluation(baseline → allowedSkills=[])。 */
+  strictBaseline?: boolean;
   model: string;
   judgeModel: string;
   outputDir: string | null;
@@ -61,22 +64,23 @@ interface CompletedBatchSkillRun {
 }
 
 /** Batch 每个 entry 的实验结构固定:baseline control vs 当前 skill treatment。
- *  resolveArtifacts 产出的 `artifact.name` 是派生短名(skillNameFromPath(skillPath)),
- *  不等于全路径 `entry.skillPath`,所以按 `kind` 而非 name 串区分角色:baseline-kind 绑
- *  control,skill-kind 绑 treatment 并对齐到 entry 逻辑名。variantAllowedSkills 已按短名
- *  (== entry.name)在 resolveArtifacts 内命中,无需补全路径 key。
- *  real-run(executeBatchEvaluationRuns)与 dry-run(runBatchEvaluation)共用此处,
- *  避免两份手抄实现漂移(#183 即同一误绑在两处各存一份)。 */
-export function buildBatchSkillArtifacts(
-  skillDirAbs: string,
+ *  构造 VariantSpec 交给 runEvaluation 的 spec-based 解析按身份绑定 role / 隔离——与单跑
+ *  路径同一处绑定逻辑,batch 不再自管 artifact 拼装(此前两处手抄 resolveArtifacts().map()
+ *  导致 #183 角色误绑各存一份)。treatment 的 allowedSkills 来自 eval.yaml variants[].allowedSkills
+ *  (按 skill 名 entry.name 查),挂到 spec 上由 prepareEvaluationRun 统一绑定。 */
+export function buildBatchVariantSpecs(
   entry: { name: string; skillPath: string },
-  opts: { strictBaseline?: boolean; variantAllowedSkills?: Record<string, string[]> },
-): Artifact[] {
-  return resolveArtifacts(skillDirAbs, ['baseline', entry.skillPath], opts).map((artifact) =>
-    artifact.kind === 'baseline'
-      ? { ...artifact, experimentRole: 'control' as const }
-      : { ...artifact, name: entry.name, experimentRole: 'treatment' as const },
-  );
+  treatmentAllowedSkills?: string[],
+): VariantSpec[] {
+  return [
+    { name: 'baseline', role: 'control', expr: 'baseline' },
+    {
+      name: entry.name,
+      role: 'treatment',
+      expr: entry.skillPath,
+      ...(treatmentAllowedSkills !== undefined && { allowedSkills: treatmentAllowedSkills }),
+    },
+  ];
 }
 
 function commonRuntime(runtimes: Record<string, ExecutorRuntimeFingerprint>): ExecutorRuntimeFingerprint | undefined {
@@ -360,12 +364,13 @@ export async function executeBatchEvaluationRuns({
     const entry = skillEntries[i];
     onSkillProgress?.({ phase: 'start', skill: entry.name, current: i + 1, total: skillEntries.length });
 
-    const skillArtifacts = buildBatchSkillArtifacts(resolve(skillDir), entry, { strictBaseline, variantAllowedSkills });
+    const variantSpecs = buildBatchVariantSpecs(entry, variantAllowedSkills?.[entry.name]);
     const childRunId = `${batchRunId}-${String(i + 1).padStart(2, '0')}-${safeRunIdPart(entry.name)}`;
     const { report, filePath } = await runSingleEvaluation({
       samplesPath: entry.samplesPath,
       skillDir,
-      artifacts: skillArtifacts,
+      variantSpecs,
+      strictBaseline,
       model,
       judgeModel,
       outputDir,

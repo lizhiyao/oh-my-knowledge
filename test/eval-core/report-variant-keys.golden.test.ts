@@ -95,7 +95,6 @@ function assertAllVariantSurfacesEqual(report: Report, variantNames: string[]): 
 
 interface RunCaseOpts {
   variantSpecs: VariantSpec[];
-  variantAllowedSkills?: Record<string, string[]>;
   request?: EvaluationRequest;
   scored?: boolean;
 }
@@ -110,7 +109,6 @@ async function runCase(opts: RunCaseOpts): Promise<{ report: Report; variantName
     skillDir: root,
     variantSpecs: opts.variantSpecs,
     dryRun: true,
-    variantAllowedSkills: opts.variantAllowedSkills,
   });
   const sampleIds = prepared.samples.map((s) => s.sample_id);
   const results = buildResults(sampleIds, prepared.variantNames, opts.scored ?? false);
@@ -177,10 +175,9 @@ describe('GOLDEN report variant keys', () => {
   it('case 3 — eval.yaml custom name + allowedSkills:[] lands on disambiguated artifact', async () => {
     const { report, variantNames } = await runCase({
       variantSpecs: [
-        { name: 'control-v1', role: 'control', expr: join(root, 'v1', 'greeter.md') },
+        { name: 'control-v1', role: 'control', expr: join(root, 'v1', 'greeter.md'), allowedSkills: [] },
         { name: 'treat-v2', role: 'treatment', expr: join(root, 'v2', 'greeter.md') },
       ],
-      variantAllowedSkills: { 'control-v1': [] },
     });
     assert.deepEqual(variantNames, ['v1/greeter', 'v2/greeter']);
     assertAllVariantSurfacesEqual(report, variantNames);

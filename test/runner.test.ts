@@ -617,7 +617,7 @@ describe('runBatchEvaluation', () => {
         avgCompositeScore: score,
       });
 
-      let capturedArtifacts: import('../src/types/index.js').Artifact[] = [];
+      let capturedSpecs: import('../src/types/index.js').VariantSpec[] = [];
       const result = await executeBatchEvaluationRuns({
         skillDir: tmpDir,
         skillEntries: [{ name: 'alpha', skillPath, samplesPath }],
@@ -631,10 +631,10 @@ describe('runBatchEvaluation', () => {
         persistJob: false,
         runSingleEvaluation: async (options) => {
           assert.equal(options.noCache, true);
-          capturedArtifacts = options.artifacts;
-          // #183 回归:不再用 `?? 'alpha'` 兜底——必须真有一个 treatment-role artifact,
-          // 否则 find 返回 undefined、treatment 取 undefined.name 抛错,把角色误绑暴露成测试失败。
-          const treatment = options.artifacts.find((artifact) => artifact.experimentRole === 'treatment')!.name;
+          capturedSpecs = options.variantSpecs;
+          // #183 回归:batch 必须真有一个 treatment-role spec(此前误绑成 control,两个都 control)。
+          // 不兜底——find 落空就 undefined.name 抛错,把误绑暴露成测试失败。
+          const treatment = options.variantSpecs.find((spec) => spec.role === 'treatment')!.name;
           const report: Report = {
             kind: 'evaluation',
             id: options.runId!,
@@ -654,7 +654,7 @@ describe('runBatchEvaluation', () => {
               request: {
                 samplesPath: options.samplesPath,
                 skillDir: options.skillDir,
-                artifacts: options.artifacts,
+                artifacts: [],
                 model: options.model,
                 judgeModels: [{ executor: options.judgeExecutorName || options.executorName, model: 'haiku' }],
                 executor: options.executorName,
@@ -696,20 +696,20 @@ describe('runBatchEvaluation', () => {
       assert.ok(childReport.summary.alpha);
       assert.equal(childReport.summary.skill, undefined);
 
-      // #183 回归:batch 必须把 baseline 绑 control、当前 skill 绑 treatment。
-      // 旧实现按 `artifact.name === entry.skillPath`(短名 vs 全路径,永 false)判定,
-      // 导致 treatment skill 落入 else 分支被误标 control,两个 artifact 都成 control。
-      const baselineArt = capturedArtifacts.find((a) => a.kind === 'baseline');
-      const treatmentArt = capturedArtifacts.find((a) => a.kind === 'skill');
-      assert.equal(baselineArt?.experimentRole, 'control');
-      assert.equal(treatmentArt?.experimentRole, 'treatment');
-      assert.equal(treatmentArt?.name, 'alpha', 'treatment 对齐到 entry 的逻辑名');
+      // #183 回归:batch 构造的 spec 必须 baseline=control、当前 skill=treatment(对齐 entry 名)。
+      // 旧实现自管 artifact 拼装、按 `artifact.name === entry.skillPath`(短名 vs 全路径,永 false)
+      // 误标,两个都成 control;现在交给 spec-based 解析,role 由 spec 唯一声明。
+      const baselineSpec = capturedSpecs.find((s) => s.expr === 'baseline');
+      const treatmentSpec = capturedSpecs.find((s) => s.expr !== 'baseline');
+      assert.equal(baselineSpec?.role, 'control');
+      assert.equal(treatmentSpec?.role, 'treatment');
+      assert.equal(treatmentSpec?.name, 'alpha', 'treatment spec 对齐到 entry 的逻辑名');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
   });
 
-  it('#183: per-variant allowedSkills 在 batch 下按短名(== entry.name)绑到 treatment', async () => {
+  it('#183: per-variant allowedSkills 从 eval.yaml(按 entry.name 查)挂到 treatment spec 上', async () => {
     const tmpDir = mkdtempSync(join(tmpdir(), 'omk-batch-allowed-'));
     try {
       const skillPath = join(tmpDir, 'greeter.md');
@@ -717,7 +717,7 @@ describe('runBatchEvaluation', () => {
       writeFileSync(skillPath, 'skill content');
       writeFileSync(samplesPath, JSON.stringify([{ sample_id: 's1', prompt: 'p' }]));
 
-      let capturedArtifacts: import('../src/types/index.js').Artifact[] = [];
+      let capturedSpecs: import('../src/types/index.js').VariantSpec[] = [];
       await executeBatchEvaluationRuns({
         skillDir: tmpDir,
         skillEntries: [{ name: 'greeter', skillPath, samplesPath }],
@@ -732,7 +732,7 @@ describe('runBatchEvaluation', () => {
         strictBaseline: true,
         variantAllowedSkills: { greeter: ['only-this'] },
         runSingleEvaluation: async (options) => {
-          capturedArtifacts = options.artifacts;
+          capturedSpecs = options.variantSpecs;
           const report: Report = {
             kind: 'evaluation',
             id: options.runId!,
@@ -757,10 +757,13 @@ describe('runBatchEvaluation', () => {
         },
       });
 
-      const baselineArt = capturedArtifacts.find((a) => a.kind === 'baseline');
-      const treatmentArt = capturedArtifacts.find((a) => a.kind === 'skill');
-      assert.deepEqual(baselineArt?.allowedSkills, [], 'strict-baseline 默认隔离 baseline');
-      assert.deepEqual(treatmentArt?.allowedSkills, ['only-this'], 'eval.yaml per-variant allowedSkills 按短名绑到 treatment');
+      // allowedSkills 从 variantAllowedSkills[entry.name] 取出、挂到 treatment spec 上;
+      // baseline 不带(由 strict-baseline 在 resolveArtifacts 隔离),后续 spec→artifact 绑定
+      // 由 prepareEvaluationRun 完成(golden case 1 + collision 测试覆盖)。
+      const treatmentSpec = capturedSpecs.find((s) => s.expr !== 'baseline');
+      const baselineSpec = capturedSpecs.find((s) => s.expr === 'baseline');
+      assert.deepEqual(treatmentSpec?.allowedSkills, ['only-this'], 'eval.yaml per-variant allowedSkills 挂到 treatment spec');
+      assert.equal(baselineSpec?.allowedSkills, undefined, 'baseline spec 不带 allowedSkills,隔离交给 strict-baseline');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

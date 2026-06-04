@@ -3,7 +3,7 @@ import { DEFAULT_OUTPUT_DIR, persistReport } from '../eval-core/evaluation-repor
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
 import { discoverBatchSkills } from '../inputs/skill-loader.js';
 import { confidenceInterval, tTest, effectSize } from '../eval-core/statistics.js';
-import { executeBatchEvaluationRuns, buildBatchSkillArtifacts } from './batch-evaluation-workflow.js';
+import { executeBatchEvaluationRuns, buildBatchVariantSpecs } from './batch-evaluation-workflow.js';
 import {
   buildDryRunTaskReport,
   prepareEvaluationRun,
@@ -108,12 +108,9 @@ export interface RunEvaluationOptions extends CommonEvaluationOptions {
   /** Explicit persisted run id. Used by batch workflows that need stable child ids. */
   runId?: string;
   /** strict-baseline default (CLI `--strict-baseline` default true).
-   *  When undefined, treated as true. baseline-kind variants get allowedSkills=[]
-   *  unless eval.yaml explicitly overrides per-variant. */
+   *  When undefined, treated as true. baseline-kind variants get allowedSkills=[].
+   *  per-variant 显式隔离声明走 variantSpecs[].allowedSkills(eval.yaml 经 configVariantsToSpecs)。 */
   strictBaseline?: boolean;
-  /** per-variant explicit allowedSkills override map (from eval.yaml).
-   *  Keyed by variant name. Always wins over strictBaseline default. */
-  variantAllowedSkills?: Record<string, string[]>;
 }
 
 export interface RunBatchEvaluationOptions extends CommonEvaluationOptions {
@@ -200,7 +197,6 @@ export async function runEvaluation({
   lengthDebias,
   budget,
   strictBaseline,
-  variantAllowedSkills,
   effort,
   noDiagnostic,
 }: RunEvaluationOptions): Promise<{ report: Report | DryRunReport; filePath: string | null }> {
@@ -219,7 +215,6 @@ export async function runEvaluation({
     dryRun,
     mcpConfig,
     strictBaseline,
-    variantAllowedSkills,
   });
 
   // doctor 强制门禁: skill 静态结构 + 元数据 + 依赖 + 用例契约。
@@ -650,16 +645,15 @@ export async function runBatchEvaluation({
     // 自动复用 runEvaluation 内部的 builder + 单一逻辑,不再在 batch 这边
     // 旁路一套 doctor / 路径推断。entry artifact 拼装方式与 batch real-run
     // (executeBatchEvaluationRuns) 严格一致, 避免 dry-run / real-run 漂移。
-    const skillDirAbs = resolve(skillDir);
     const dryArtifacts: DryRunBatchSkill[] = [];
     for (const entry of skillEntries) {
-      const skillArtifacts = buildBatchSkillArtifacts(skillDirAbs, entry, { strictBaseline, variantAllowedSkills });
+      const variantSpecs = buildBatchVariantSpecs(entry, variantAllowedSkills?.[entry.name]);
       let entryReport: DryRunReport;
       try {
         const result = await runEvaluation({
           samplesPath: entry.samplesPath,
           skillDir,
-          artifacts: skillArtifacts,
+          variantSpecs,
           model,
           executorName,
           dryRun: true,
@@ -668,7 +662,6 @@ export async function runBatchEvaluation({
           lang,
           mcpConfig,
           strictBaseline,
-          variantAllowedSkills,
           // 透传 user 显式输入的参数,让 dry-run power / isolation warning 与
           // 真实 run 一致(否则 batch dry-run 永远按 repeat=1 报警,误导用户)。
           repeat,

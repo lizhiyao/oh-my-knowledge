@@ -29,7 +29,6 @@ export async function prepareEvaluationRun({
   dryRun,
   mcpConfig,
   strictBaseline,
-  variantAllowedSkills,
 }: {
   samplesPath: string;
   skillDir: string;
@@ -39,8 +38,6 @@ export async function prepareEvaluationRun({
   mcpConfig?: string;
   /**  — default true, baseline-kind 自动 allowedSkills=[]。 */
   strictBaseline?: boolean;
-  /**  — eval.yaml 显式 allowedSkills per variant (overrides strictBaseline default). */
-  variantAllowedSkills?: Record<string, string[]>;
 }): Promise<PreparedEvaluationRun> {
   const { samples, requires, baseDir: samplesBaseDir, sourceFiles: samplesSourceFiles } = loadSamples(samplesPath);
 
@@ -66,14 +63,10 @@ export async function prepareEvaluationRun({
     variantSpecs.forEach((spec, i) => {
       const artifact = resolvedArtifacts[i];
       if (!artifact.experimentRole) artifact.experimentRole = spec.role;
-      // allowedSkills 按 spec 身份绑定(eval 主路径的唯一隔离绑定点,显式声明优先于
-      // strictBaseline 默认)。首选 spec.allowedSkills(eval.yaml 经 configVariantsToSpecs 带上);
-      // 旧的按变量名 map 仅作 legacy fallback,兜住「CLI roles 覆盖 config 时 spec 不带
-      // allowedSkills」等边角,行为与重构前一致。
-      // TODO: 待所有路径都按 spec 携带 allowedSkills 后,移除 variantAllowedSkills 这条 fallback,
-      //       与 resolveArtifacts 里的按名绑定一并收成单一来源。
-      const explicit = spec.allowedSkills ?? variantAllowedSkills?.[spec.name];
-      if (explicit !== undefined) artifact.allowedSkills = explicit;
+      // allowedSkills 按 spec 身份绑定:spec.allowedSkills 是隔离声明的单一来源
+      //（eval.yaml 经 configVariantsToSpecs、batch 经 buildBatchVariantSpecs 都挂到 spec 上),
+      // 显式声明优先于 strictBaseline 默认。
+      if (spec.allowedSkills !== undefined) artifact.allowedSkills = spec.allowedSkills;
       spec.name = artifact.name; // 同步唯一名,让 spec 与 report / variantNames 一致(放最后,前面还要用旧名查)
     });
   } else {
