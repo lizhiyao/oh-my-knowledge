@@ -189,8 +189,10 @@ function pathPhysicalId(p: string): string {
  *    - `git:` / `baseline`：本身就是稳定标识,原样返回。
  *  `@cwd` 也按物理身份纳入 key —— 同一份 skill 绑不同 cwd 是不同 runtime context,不算重复。
  *  不要用派生短名判重:`v1/greeter.md` 与 `v2/greeter.md` 短名都是 greeter 却是两个 variant。 */
-export function variantIdentity(expr: string, skillDir?: string): string {
-  const { name, cwd } = parseVariantCwd(expr);
+export function variantIdentity(expr: string, skillDir?: string, cwd?: string): string {
+  // cwd 显式传入(结构化)时,expr 视为纯 artifact identity,不再从串里 split @;
+  // 未传则退回从 expr 解析,与既有字符串调用 byte-identical(向后兼容)。
+  const { name, cwd: identCwd } = cwd === undefined ? parseVariantCwd(expr) : { name: expr, cwd };
   let id: string;
   if (name.startsWith('git:')) {
     id = name;
@@ -207,7 +209,7 @@ export function variantIdentity(expr: string, skillDir?: string): string {
   } else {
     id = name; // 无 skillDir 上下文:不同短名即不同 variant
   }
-  return cwd ? `${id}@${pathPhysicalId(resolve(cwd))}` : id;
+  return identCwd ? `${id}@${pathPhysicalId(resolve(identCwd))}` : id;
 }
 
 /** 从已解析的 skill 路径取短名:`SKILL.md` 取其父目录名,否则取去掉 `.md` 后缀的 basename。
