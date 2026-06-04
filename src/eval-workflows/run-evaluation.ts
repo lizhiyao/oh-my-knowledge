@@ -643,8 +643,8 @@ export async function runBatchEvaluation({
   if (dryRun) {
     // batch dry-run 走 per-entry runEvaluation(dryRun: true) — doctor 嵌入
     // 自动复用 runEvaluation 内部的 builder + 单一逻辑,不再在 batch 这边
-    // 旁路一套 doctor / 路径推断。entry artifact 拼装方式与 batch real-run
-    // (executeBatchEvaluationRuns) 严格一致, 避免 dry-run / real-run 漂移。
+    // 旁路一套 doctor / 路径推断。entry 的 spec 构造(buildBatchVariantSpecs)与 batch
+    // real-run(executeBatchEvaluationRuns)同一处,避免 dry-run / real-run 漂移。
     const dryArtifacts: DryRunBatchSkill[] = [];
     for (const entry of skillEntries) {
       const variantSpecs = buildBatchVariantSpecs(entry, variantAllowedSkills?.[entry.name]);

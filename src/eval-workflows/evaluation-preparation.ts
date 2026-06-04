@@ -53,12 +53,13 @@ export async function prepareEvaluationRun({
   );
 
   // Attach experimentRole to each artifact.
-  //   - 当 artifacts 由本函数从 variantSpecs.map(spec => spec.expr) 解析时,两者顺序一一对应,
-  //     按 index 绑定 role,并把 spec.name 同步成消歧后的最终唯一名。不能按 spec.name 匹配
-  //     artifact.name:同 basename 的 variant 被 ensureUniqueVariantNames 消歧后(v1/greeter /
-  //     v2/greeter)就和 spec 的派生短名(greeter)对不上,会丢 role。
-  //   - 当 artifacts 由外部传入(如 batch workflow,role 已预置)时,index 无法对齐,
-  //     退回按 name 匹配,且 if-already-set 守卫会保留预置 role。
+  //   - 当 artifacts 由本函数从 variantSpecs.map(spec => spec.expr) 解析时(eval 单跑与 batch
+  //     都走这支),两者顺序一一对应,按 index 绑定 role,并把 spec.name 同步成消歧后的最终唯一名。
+  //     不能按 spec.name 匹配 artifact.name:同 basename 的 variant 被 ensureUniqueVariantNames
+  //     消歧后(v1/greeter / v2/greeter)就和 spec 的派生短名(greeter)对不上,会丢 role。
+  //   - 当 artifacts 由外部直接传入(role 可能已预置)时,index 无法对齐,退回按 name 匹配,
+  //     且 if-already-set 守卫会保留预置 role。这是 runEvaluation({artifacts}) 直调 API 的兜底,
+  //     当前生产路径都走上面的 spec 解析,不进这支。
   if (!artifacts && variantSpecs.length === resolvedArtifacts.length) {
     variantSpecs.forEach((spec, i) => {
       const artifact = resolvedArtifacts[i];
@@ -73,7 +74,7 @@ export async function prepareEvaluationRun({
     const roleByName: Record<string, VariantSpec['role']> = {};
     for (const spec of variantSpecs) roleByName[spec.name] = spec.role;
     for (const artifact of resolvedArtifacts) {
-      if (artifact.experimentRole) continue;  // preserve if already set (e.g. batch workflow)
+      if (artifact.experimentRole) continue;  // preserve if caller pre-set it on the passed-in artifact
       const role = roleByName[artifact.name];
       if (role) artifact.experimentRole = role;
     }
