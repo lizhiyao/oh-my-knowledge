@@ -108,6 +108,6 @@ The browser auto-opens (default `http://127.0.0.1:7799/`). Look at three things:
 
 ## Going deeper
 
-- Full CLI / executor / judge / observe reference: [README.md](../README.md)
+- Full CLI / executor / judge / observe reference: [README.md](https://github.com/lizhiyao/oh-my-knowledge/blob/main/README.md)
 - Five-layer scoring pipeline (assertion / LLM / judge / dimension / composite): [statistical-rigor.md](./explanation/statistical-rigor.md)
 - Sample design spec (`mocks` / `environment` / `tripwire` / `mocksStrict`): [sample-design-spec.md](./specs/sample-design-spec.md)

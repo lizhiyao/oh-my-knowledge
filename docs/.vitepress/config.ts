@@ -9,8 +9,6 @@ export default defineConfig({
   description: 'Measurement-grade evaluation for what you feed an LLM — prompt / RAG / skill / agent.',
   cleanUrls: true,
   lastUpdated: true,
-  // 既有 md 是按 GitHub 相对链接写的；先放过死链保证站点构建绿，收紧留作 follow-up。
-  ignoreDeadLinks: true,
   head: [['link', { rel: 'icon', href: '/favicon.svg' }]],
 
   themeConfig: {

@@ -33,4 +33,4 @@ yarn docs:preview   # 本地起服务预览构建产物
 ## 注意
 
 - 构建命令**不**重新生成 `docs/reference/cli.md`。该文件是 `yarn build:docs` 从 CLI flag 生成、committed 进仓库、并由 `build:docs:check` drift gate 保在 `main` 上最新；站点直接消费即可。改了 CLI flag 后记得本地 `yarn build:docs` 提交更新后的 reference，站点才会跟上。
-- 当前 VitePress 配置 `ignoreDeadLinks: true`（既有 md 按 GitHub 相对链接写的，先放过保证构建绿）。日后收紧时去掉它再 `yarn docs:build`，按报错修红链。
+- 死链检查是**严格**的（VitePress 默认，未设 `ignoreDeadLinks`）：站内任何死链都会让 `yarn docs:build` 失败。指向站点目录 `docs/` 之外的引用（仓库根 `README.md` / `README.zh.md`、`examples/` 等）请用绝对 GitHub URL，别用 `../` 相对路径——后者在 GitHub 上能跳、在站点里却是死链。
