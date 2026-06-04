@@ -506,7 +506,7 @@ interface EditDelta {
  * improver doesn't re-propose changes that already failed. Order-insensitive and
  * O(n) over small skill files.
  */
-function computeEditDelta(before: string, after: string, maxSummaryLines = 12): EditDelta {
+export function computeEditDelta(before: string, after: string, maxSummaryLines = 12): EditDelta {
   const beforeArr = before.split('\n').map((l) => l.trim()).filter(Boolean);
   const afterArr = after.split('\n').map((l) => l.trim()).filter(Boolean);
   const beforeSet = new Set(beforeArr);
@@ -594,6 +594,10 @@ export interface EvolveRoundProgressInfo {
   costReported?: boolean;
   error?: string;
   reused?: boolean;
+  /** When the significance gate ran: whether the candidate's gain was significant.
+   *  False on a rejected round means "score rose but within noise" — lets the CLI
+   *  explain an otherwise-confusing `(+0.0x) ✗ REJECT`. Undefined = gate didn't run. */
+  significant?: boolean;
 }
 
 interface EvolveOptions {
@@ -868,8 +872,8 @@ export async function evolveSkill({
     }
     : undefined;
   const testInfo: EvolveResult['test'] = threeWay ? { ratio: testRatio, count: threeWay.testIds.size } : undefined;
-  // Deterministic seed so the gate's CIs are reproducible across reruns (and asserers
-  // in tests). Derived from skill identity + sample count, parsed to a uint32.
+  // Deterministic seed so the gate's CIs are reproducible across reruns (and
+  // assertable in tests). Derived from skill identity + sample count, parsed to a uint32.
   const gateSeed = parseInt(hashString(`${skillName}:${allSampleIds.length}`).slice(0, 8), 16) >>> 0;
   let gateUnderpowered = false;
 
@@ -1101,9 +1105,11 @@ export async function evolveSkill({
     // Significance accept gate: accept only when the candidate is *significantly*
     // above the current best on the decision (val) set, not merely numerically higher
     // — rejecting gains indistinguishable from judge noise. `lastReport` is the current
-    // best's fresh eval and `candidateReport` the candidate's, on the same samples, so
-    // the two per-sample arrays are paired. Under-powered decision sets degrade to the
-    // legacy point-estimate accept and flag `gate.underpowered`.
+    // best's fresh eval and `candidateReport` the candidate's, over the same samples;
+    // bootstrapDiffCI resamples the two arrays independently (conservative — not a paired
+    // bootstrap). Under-powered decision sets degrade to the legacy point-estimate accept
+    // (note: that path compares the prior-round best scalar, not this fresh re-eval) and
+    // flag `gate.underpowered`.
     const valIds = split ? split.valIds : new Set(allSampleIds);
     const bestScores = perSampleComposite(lastReport, lastVariantKey, valIds);
     const candScores = perSampleComposite(candidateReport, candidateVariantKey, valIds);
@@ -1126,7 +1132,7 @@ export async function evolveSkill({
     if (accepted) roundReports.push({ round, accepted, report: candidateReport });
     const roundDelta = candidateScore - trajectory[trajectory.length - 1].score;
     trajectory.push({ round, score: candidateScore, delta: roundDelta, accepted, costUSD: roundCost, ...splitScores(candidateReport, candidateVariantKey, candidateScore), ...(diffCI ? { diffCI } : {}), editRatio: Number(editDelta.ratio.toFixed(4)) });
-    if (onRoundProgress) onRoundProgress({ round, totalRounds: rounds, phase: 'done', score: candidateScore, delta: roundDelta, accepted, costUSD: roundCost, costReported: roundCostReported });
+    if (onRoundProgress) onRoundProgress({ round, totalRounds: rounds, phase: 'done', score: candidateScore, delta: roundDelta, accepted, costUSD: roundCost, costReported: roundCostReported, ...(diffCI ? { significant: diffCI.significant } : {}) });
 
     // Early stop
     if (stopOnAssertionsPass && accepted && allNonTripwireAssertionsPass(candidateReport, candidateVariantKey)) {

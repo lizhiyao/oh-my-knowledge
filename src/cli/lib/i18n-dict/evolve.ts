@@ -14,7 +14,8 @@ export type EvolveMessageKey =
   | 'cli.evolve.holdout_active'
   | 'cli.evolve.holdout_disabled'
   | 'cli.evolve.gate_underpowered'
-  | 'cli.evolve.generalization';
+  | 'cli.evolve.generalization'
+  | 'cli.evolve.reject_not_significant';
 
 export const evolveDict: Record<EvolveMessageKey, CliMessage> = {
   'cli.evolve.specify_skill_path': {
@@ -72,5 +73,9 @@ export const evolveDict: Record<EvolveMessageKey, CliMessage> = {
   'cli.evolve.generalization': {
     zh: '🔒 锁定 test 集（{count} 条，全程不参与选择）：泛化分 {score}\n',
     en: '🔒 Locked test set ({count} samples, never used for selection): generalization {score}\n',
+  },
+  'cli.evolve.reject_not_significant': {
+    zh: '（差异不显著）',
+    en: ' (not significant)',
   },
 };

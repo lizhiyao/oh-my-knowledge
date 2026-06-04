@@ -1,6 +1,6 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { extractWeakSamples, buildImprovementPrompt, evolveSkill, allNonTripwireAssertionsPass, splitHoldout, splitTrainValTest, restrictReportToSamples, decideAccept } from '../../src/authoring/evolver.js';
+import { extractWeakSamples, buildImprovementPrompt, evolveSkill, allNonTripwireAssertionsPass, splitHoldout, splitTrainValTest, restrictReportToSamples, decideAccept, computeEditDelta } from '../../src/authoring/evolver.js';
 import { fixSamples } from '../../src/authoring/sample-fixer.js';
 import type { Report, EvaluationReport } from '../../src/types/index.js';
 
@@ -190,6 +190,45 @@ describe('buildImprovementPrompt', () => {
     assert.ok(prompt.includes('2/5.0'));
     assert.ok(prompt.includes('Missing analysis'));
     assert.ok(prompt.includes('contains: SQL'));
+  });
+
+  it('appends the rejected-edit memory section when given, omits it when empty', () => {
+    const withMemory = buildImprovementPrompt('skill', 3.0, [], ['【第 2 轮被拒（提升不显著）】\n+ 加了一句废话']);
+    assert.match(withMemory, /已试过且未带来显著提升的改法/);
+    assert.match(withMemory, /加了一句废话/);
+    const without = buildImprovementPrompt('skill', 3.0, [], []);
+    assert.doesNotMatch(without, /已试过且未带来显著提升/);
+    const undef = buildImprovementPrompt('skill', 3.0, []);
+    assert.doesNotMatch(undef, /已试过且未带来显著提升/);
+  });
+});
+
+describe('computeEditDelta (edit budget)', () => {
+  it('reports zero change for identical content', () => {
+    const d = computeEditDelta('a\nb\nc', 'a\nb\nc');
+    assert.equal(d.changedLines, 0);
+    assert.equal(d.ratio, 0);
+  });
+
+  it('counts added + removed unique non-empty lines, ratio over original line count', () => {
+    // before 4 lines; remove "b", add "x" and "y" → 1 removed + 2 added = 3 changed / 4.
+    const d = computeEditDelta('a\nb\nc\nd', 'a\nc\nd\nx\ny');
+    assert.equal(d.changedLines, 3);
+    assert.equal(d.ratio, 3 / 4);
+    assert.match(d.summary, /\+ x/);
+    assert.match(d.summary, /- b/);
+  });
+
+  it('ignores whitespace-only differences (trimmed, empty-filtered)', () => {
+    const d = computeEditDelta('a\nb', '  a  \n\n b ');
+    assert.equal(d.changedLines, 0);
+  });
+
+  it('truncates the summary past maxSummaryLines', () => {
+    const before = 'k';
+    const after = ['k', ...Array.from({ length: 20 }, (_, i) => `add${i}`)].join('\n');
+    const d = computeEditDelta(before, after, 5);
+    assert.match(d.summary, /其余 \+15 行/);
   });
 });
 

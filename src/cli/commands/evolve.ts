@@ -20,6 +20,7 @@ interface RoundProgressInfo {
   costUSD?: number;
   costReported?: boolean;
   error?: string;
+  significant?: boolean;
 }
 
 interface TrajectoryEntry {
@@ -132,13 +133,15 @@ export async function runEvolve(
       reuseLatestEval: flags['reuse-latest-eval'],
       holdoutRatio: Number(flags['holdout-ratio']) || 0,
       significanceGate: !flags['no-significance-gate'],
-      significanceAlpha: Number(flags['significance-alpha']) || 0.05,
-      testRatio: Number(flags['test-ratio']) || 0,
-      editBudget: flags['no-edit-budget'] ? 0 : (Number(flags['edit-budget']) || 0.2),
+      // parser 已保证是合法数字串；用 Number() 直取，不用 `|| default`——否则
+      // `--edit-budget 0`（关预算）/ `--significance-alpha 0` 会被 falsy 吞成默认值。
+      significanceAlpha: Number(flags['significance-alpha']),
+      testRatio: Number(flags['test-ratio']),
+      editBudget: flags['no-edit-budget'] ? 0 : Number(flags['edit-budget']),
       rejectMemory: !flags['no-reject-memory'],
       improveMode: flags['improve-mode'] === 'rewrite' ? 'rewrite' : 'agent',
       onProgress: makeOnProgress(lang) as unknown as ProgressCallback,
-      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error }: RoundProgressInfo): void {
+      onRoundProgress({ round, totalRounds: _totalRounds, phase, score, delta, accepted, costUSD, costReported, error, significant }: RoundProgressInfo): void {
         // costReported=false 时显示「—」而不是 $0.0000(executor 不报 cost,如 codex)。
         const fmtRoundCost = (c: number, r: boolean): string => r ? `$${c.toFixed(4)}` : '—';
         if (phase === 'baseline') {
@@ -151,7 +154,9 @@ export async function runEvolve(
           }));
         } else if (phase === 'done') {
           const delta_: string = delta! >= 0 ? `+${delta!.toFixed(2)}` : delta!.toFixed(2);
-          const status: string = accepted ? '✓ ACCEPT' : '✗ REJECT';
+          // 门拒掉「均分上升但不显著」的候选时，补一句原因，否则 (+0.0x) ✗ REJECT 看着矛盾。
+          const rejectNote = !accepted && significant === false ? tCli('cli.evolve.reject_not_significant', lang) : '';
+          const status: string = accepted ? '✓ ACCEPT' : `✗ REJECT${rejectNote}`;
           process.stderr.write(tCli('cli.evolve.round_done', lang, {
             round, score: score!.toFixed(2), delta: delta_, status, cost: fmtRoundCost(costUSD!, costReported !== false),
           }));
