@@ -57,7 +57,7 @@ interface EvolveResult {
   totalCostUSD: number;
   costReported?: boolean;
   holdout?: { ratio: number; trainCount: number; holdoutCount: number; disabled?: boolean };
-  test?: { ratio: number; count: number };
+  test?: { ratio: number; count: number; disabled?: boolean };
   generalizationScore?: number;
   gate?: { enabled: boolean; alpha: number; underpowered?: boolean };
   trajectory: TrajectoryEntry[];
@@ -184,7 +184,9 @@ export async function runEvolve(
     if (result.gate?.underpowered) {
       process.stderr.write(tCli('cli.evolve.gate_underpowered', lang));
     }
-    if (result.test && typeof result.generalizationScore === 'number') {
+    if (result.test?.disabled) {
+      process.stderr.write(tCli('cli.evolve.test_disabled', lang, { ratio: result.test.ratio }));
+    } else if (result.test && typeof result.generalizationScore === 'number') {
       process.stderr.write(tCli('cli.evolve.generalization', lang, {
         count: result.test.count, score: result.generalizationScore.toFixed(2),
       }));

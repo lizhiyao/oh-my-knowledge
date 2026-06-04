@@ -311,6 +311,19 @@ describe('decideAccept (significance gate)', () => {
     assert.equal(d.accepted, false); // significant but estimate < 0
   });
 
+  it('does NOT overwrite a higher recorded best when the fresh re-eval is noise-low (monotonic guard)', () => {
+    // P1: the current best re-evaluated noise-low (2.0); the candidate (3.0) is
+    // significantly above THAT re-eval, but the recorded best was 4.0 — accepting would
+    // downgrade best. The diff is genuinely significant and positive, yet pointCand <
+    // pointBest must block acceptance so bestScore never decreases.
+    const best = fill(2.0, 20);
+    const cand = fill(3.0, 20);
+    const d = decideAccept(best, cand, 4.0, 3.0, GATE);
+    assert.equal(d.accepted, false);
+    assert.equal(d.diffCI!.significant, true);
+    assert.ok(d.diffCI!.estimate > 0);
+  });
+
   it('degrades to the point estimate (and flags underpowered) below the sample floor', () => {
     const best = fill(3.0, 5);
     const cand = fill(4.0, 5);

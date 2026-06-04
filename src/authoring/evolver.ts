@@ -301,11 +301,15 @@ export interface AcceptDecision {
 
 /**
  * The accept decision for one round. With the significance gate on and enough
- * decision samples, a candidate is accepted only when its per-sample composite is
- * **significantly** above the current best (`bootstrapDiffCI(...).significant &&
- * estimate > 0`) — gains indistinguishable from judge noise are rejected. Off, or
- * under-powered, it degrades to the legacy point-estimate comparison. Pure (modulo
- * the seeded bootstrap) so the core behavior is unit-testable.
+ * decision samples, a candidate is accepted only when it is **significantly** above
+ * the current best's fresh re-eval (`bootstrapDiffCI(...).significant && estimate > 0`)
+ * AND its decision score actually beats the recorded best (`pointCand > pointBest`).
+ * The second clause preserves evolve's monotonic invariant: `bestScore` never
+ * decreases. Without it, an unlucky (noise-low) re-eval of the current best could let
+ * a candidate that is significantly above that re-eval — yet still below the recorded
+ * best — win and overwrite the best downward. Off, or under-powered, the gate degrades
+ * to the legacy point-estimate comparison alone. Pure (modulo the seeded bootstrap) so
+ * the core behavior is unit-testable.
  */
 export function decideAccept(
   bestScores: number[],
@@ -318,7 +322,7 @@ export function decideAccept(
   if (opts.significanceGate && powered) {
     const diff = bootstrapDiffCI(bestScores, candScores, opts.alpha, DEFAULT_BOOTSTRAP_SAMPLES, opts.seed);
     return {
-      accepted: diff.significant && diff.estimate > 0,
+      accepted: diff.significant && diff.estimate > 0 && pointCand > pointBest,
       diffCI: { low: diff.low, high: diff.high, estimate: diff.estimate, significant: diff.significant },
       underpowered: false,
     };
@@ -696,8 +700,10 @@ export interface EvolveResult {
    *  split was too small and evolve fell back to full-set scoring (CLI formats the
    *  user-facing message bilingually). */
   holdout?: { ratio: number; trainCount: number; holdoutCount: number; disabled?: boolean };
-  /** Locked-test split summary when `--test-ratio` > 0 produced a valid 3-way split. */
-  test?: { ratio: number; count: number };
+  /** Locked-test split summary. `disabled` is true when `--test-ratio` was requested
+   *  but the 3-way split was too small, so evolve fell back to a 2-way holdout and
+   *  produced no generalization score. */
+  test?: { ratio: number; count: number; disabled?: boolean };
   /** Unbiased composite of the best skill on the locked test set — the headline honest
    *  number. Present only when a 3-way split was active. The test set never influenced
    *  selection or weak-sample extraction, so this is an out-of-sample estimate. */
@@ -871,7 +877,12 @@ export async function evolveSkill({
       ...(split ? {} : { disabled: true }),
     }
     : undefined;
-  const testInfo: EvolveResult['test'] = threeWay ? { ratio: testRatio, count: threeWay.testIds.size } : undefined;
+  // test 被请求(配了 --holdout-ratio)但 3-way 太小回退 → 标 disabled，别让用户
+  // 以为拿到了 locked-test 泛化分。
+  const testRequested = testRatio > 0 && holdoutRatio > 0;
+  const testInfo: EvolveResult['test'] = threeWay
+    ? { ratio: testRatio, count: threeWay.testIds.size }
+    : testRequested ? { ratio: testRatio, count: 0, disabled: true } : undefined;
   // Deterministic seed so the gate's CIs are reproducible across reruns (and
   // assertable in tests). Derived from skill identity + sample count, parsed to a uint32.
   const gateSeed = parseInt(hashString(`${skillName}:${allSampleIds.length}`).slice(0, 8), 16) >>> 0;
@@ -893,7 +904,8 @@ export async function evolveSkill({
   // read once at the very end. Present only under a valid 3-way split; the test
   // set never influenced selection or weak-sample extraction.
   const buildGeneralization = (): { test?: EvolveResult['test']; generalizationScore?: number } => {
-    if (!threeWay || !split?.testIds) return {};
+    if (!testInfo) return {};
+    if (!threeWay || !split?.testIds) return { test: testInfo }; // requested but degraded → disabled, no score
     const best = roundReports.find((r) => r.round === bestRound)?.report;
     if (!best) return { test: testInfo };
     const key = Object.keys(best.summary)[0];

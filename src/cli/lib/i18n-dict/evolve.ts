@@ -15,6 +15,7 @@ export type EvolveMessageKey =
   | 'cli.evolve.holdout_disabled'
   | 'cli.evolve.gate_underpowered'
   | 'cli.evolve.generalization'
+  | 'cli.evolve.test_disabled'
   | 'cli.evolve.reject_not_significant';
 
 export const evolveDict: Record<EvolveMessageKey, CliMessage> = {
@@ -77,5 +78,9 @@ export const evolveDict: Record<EvolveMessageKey, CliMessage> = {
   'cli.evolve.reject_not_significant': {
     zh: '（差异不显著）',
     en: ' (not significant)',
+  },
+  'cli.evolve.test_disabled': {
+    zh: '⚠️ test-ratio={ratio} 样本太少无法做三路切分，已回退两路 holdout，本次无泛化分\n',
+    en: '⚠️ test-ratio={ratio} too few samples for a 3-way split; fell back to 2-way holdout, no generalization score this run\n',
   },
 };
