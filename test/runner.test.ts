@@ -757,13 +757,72 @@ describe('runBatchEvaluation', () => {
         },
       });
 
-      // allowedSkills 从 variantAllowedSkills[entry.name] 取出、挂到 treatment spec 上;
-      // baseline 不带(由 strict-baseline 在 resolveArtifacts 隔离),后续 spec→artifact 绑定
-      // 由 prepareEvaluationRun 完成(golden case 1 + collision 测试覆盖)。
+      // 这里 eval.yaml 只声明 greeter,baseline 未声明 → treatment spec 挂 only-this、
+      // baseline spec 不带(隔离交给 strict-baseline 默认)。后续 spec→artifact 绑定由
+      // prepareEvaluationRun 完成(golden case 1 + collision 测试覆盖)。
       const treatmentSpec = capturedSpecs.find((s) => s.expr !== 'baseline');
       const baselineSpec = capturedSpecs.find((s) => s.expr === 'baseline');
       assert.deepEqual(treatmentSpec?.allowedSkills, ['only-this'], 'eval.yaml per-variant allowedSkills 挂到 treatment spec');
-      assert.equal(baselineSpec?.allowedSkills, undefined, 'baseline spec 不带 allowedSkills,隔离交给 strict-baseline');
+      assert.equal(baselineSpec?.allowedSkills, undefined, '未声明 baseline → 不带 allowedSkills,隔离交给 strict-baseline');
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('batch 下 eval.yaml 显式给 baseline 配 allowedSkills 必须优先于 strict-baseline 默认', async () => {
+    // 回归:batch 迁 spec 后,baseline 的 eval.yaml 隔离声明(白名单或 [])不能被漏挂——
+    // variant.allowedSkills 优先于 strictBaseline,否则 `--batch --config` 的 baseline 隔离静默失效。
+    const tmpDir = mkdtempSync(join(tmpdir(), 'omk-batch-baseline-allowed-'));
+    try {
+      const skillPath = join(tmpDir, 'greeter.md');
+      const samplesPath = join(tmpDir, 'greeter.eval-samples.json');
+      writeFileSync(skillPath, 'skill content');
+      writeFileSync(samplesPath, JSON.stringify([{ sample_id: 's1', prompt: 'p' }]));
+
+      let capturedSpecs: import('../src/types/index.js').VariantSpec[] = [];
+      await executeBatchEvaluationRuns({
+        skillDir: tmpDir,
+        skillEntries: [{ name: 'greeter', skillPath, samplesPath }],
+        model: 'm',
+        judgeModel: 'j',
+        outputDir: join(tmpDir, 'reports'),
+        noJudge: true,
+        concurrency: 1,
+        noCache: true,
+        executorName: 'claude',
+        persistJob: false,
+        strictBaseline: true,
+        variantAllowedSkills: { baseline: ['allow-x'], greeter: [] },
+        runSingleEvaluation: async (options) => {
+          capturedSpecs = options.variantSpecs;
+          const report: Report = {
+            kind: 'evaluation',
+            id: options.runId!,
+            meta: {
+              variants: ['baseline', 'greeter'],
+              model: options.model,
+              judgeModels: [{ executor: options.executorName, model: 'haiku' }],
+              noJudge: true,
+              executor: options.executorName,
+              sampleCount: 1,
+              taskCount: 2,
+              totalCostUSD: 0,
+              timestamp: '2026-05-01T00:00:00.000Z',
+              cliVersion: 'test',
+              nodeVersion: 'test',
+              artifactHashes: { baseline: 'no-skill', greeter: 'h' },
+            },
+            summary: {},
+            results: [],
+          };
+          return { report, filePath: null };
+        },
+      });
+
+      const baselineSpec = capturedSpecs.find((s) => s.expr === 'baseline');
+      const treatmentSpec = capturedSpecs.find((s) => s.expr !== 'baseline');
+      assert.deepEqual(baselineSpec?.allowedSkills, ['allow-x'], 'eval.yaml baseline 白名单优先于 strict-baseline 默认 []');
+      assert.deepEqual(treatmentSpec?.allowedSkills, [], '显式给 treatment 配 [] 也透传');
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }

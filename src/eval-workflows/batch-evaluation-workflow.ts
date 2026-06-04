@@ -66,19 +66,29 @@ interface CompletedBatchSkillRun {
 /** Batch 每个 entry 的实验结构固定:baseline control vs 当前 skill treatment。
  *  构造 VariantSpec 交给 runEvaluation 的 spec-based 解析按身份绑定 role / 隔离——与单跑
  *  路径同一处绑定逻辑,batch 不再自管 artifact 拼装(此前两处手抄 resolveArtifacts().map()
- *  导致 #183 角色误绑各存一份)。treatment 的 allowedSkills 来自 eval.yaml variants[].allowedSkills
- *  (按 skill 名 entry.name 查),挂到 spec 上由 prepareEvaluationRun 统一绑定。 */
+ *  导致 #183 角色误绑各存一份)。
+ *  两个 variant 的 allowedSkills 都从 eval.yaml variants[].allowedSkills 取:treatment 按 skill
+ *  名 entry.name 查、baseline 按保留名 `baseline` 查,挂到对应 spec 上由 prepareEvaluationRun
+ *  统一绑定。baseline 的显式声明(白名单或 `[]`)必须保留——eval.yaml variant.allowedSkills
+ *  优先于 strictBaseline 默认,漏挂会让 `--batch --config` 的 baseline 隔离配置静默失效。 */
 export function buildBatchVariantSpecs(
   entry: { name: string; skillPath: string },
-  treatmentAllowedSkills?: string[],
+  variantAllowedSkills?: Record<string, string[]>,
 ): VariantSpec[] {
+  const baselineAllowed = variantAllowedSkills?.baseline;
+  const treatmentAllowed = variantAllowedSkills?.[entry.name];
   return [
-    { name: 'baseline', role: 'control', expr: 'baseline' },
+    {
+      name: 'baseline',
+      role: 'control',
+      expr: 'baseline',
+      ...(baselineAllowed !== undefined && { allowedSkills: baselineAllowed }),
+    },
     {
       name: entry.name,
       role: 'treatment',
       expr: entry.skillPath,
-      ...(treatmentAllowedSkills !== undefined && { allowedSkills: treatmentAllowedSkills }),
+      ...(treatmentAllowed !== undefined && { allowedSkills: treatmentAllowed }),
     },
   ];
 }
@@ -364,7 +374,7 @@ export async function executeBatchEvaluationRuns({
     const entry = skillEntries[i];
     onSkillProgress?.({ phase: 'start', skill: entry.name, current: i + 1, total: skillEntries.length });
 
-    const variantSpecs = buildBatchVariantSpecs(entry, variantAllowedSkills?.[entry.name]);
+    const variantSpecs = buildBatchVariantSpecs(entry, variantAllowedSkills);
     const childRunId = `${batchRunId}-${String(i + 1).padStart(2, '0')}-${safeRunIdPart(entry.name)}`;
     const { report, filePath } = await runSingleEvaluation({
       samplesPath: entry.samplesPath,

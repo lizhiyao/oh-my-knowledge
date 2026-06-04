@@ -647,7 +647,7 @@ export async function runBatchEvaluation({
     // real-run(executeBatchEvaluationRuns)同一处,避免 dry-run / real-run 漂移。
     const dryArtifacts: DryRunBatchSkill[] = [];
     for (const entry of skillEntries) {
-      const variantSpecs = buildBatchVariantSpecs(entry, variantAllowedSkills?.[entry.name]);
+      const variantSpecs = buildBatchVariantSpecs(entry, variantAllowedSkills);
       let entryReport: DryRunReport;
       try {
         const result = await runEvaluation({
