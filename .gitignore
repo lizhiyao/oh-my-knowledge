@@ -15,7 +15,6 @@ package-lock.json
 .codex/
 .agents/
 
-# 凭据 / 私钥 / 证书文件兜底,跟 docs/dev/sensitive-scan.md 列的 "token / key" 一档对齐 ——
 # 给本地 .env、PEM / SSH 私钥、云厂商 service-account JSON、.netrc 这几类加一道 git-level 防误提网,
 # 跟 runbook (扫描已 staged 内容) 形成"未 stage 拦截 + 已 stage 扫描"两层防御。
 # 公开模板想 commit 走 .env.example / .env.sample,negation 在下面留位。
@@ -45,3 +44,5 @@ aws-credentials*
 secrets.json
 secrets.yaml
 secrets.yml
+scripts/pre-commit-review.sh
+.husky/pre-push
