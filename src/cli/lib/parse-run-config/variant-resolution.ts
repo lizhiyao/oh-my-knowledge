@@ -19,9 +19,24 @@
  *     悄悄废掉「control 不能等于 treatment」的测量保护。
  */
 
-import { discoverVariants, variantExprToSkillName, variantIdentity } from '../../../inputs/skill-loader.js';
+import { discoverVariants, variantExprToSkillName, variantIdentity, parseVariantCwd } from '../../../inputs/skill-loader.js';
 import { configVariantsToSpecs } from '../../../inputs/eval-config.js';
-import type { EvalConfig, VariantSpec } from '../../../types/index.js';
+import type { EvalConfig, ExperimentRole, VariantSpec } from '../../../types/index.js';
+
+/** CLI 的 --control / --treatment 只收 artifact 身份。`name@cwd` 语法已移除:撞到就抛迁移错误,
+ *  引导用户改用 --control-cwd / --treatment-cwd 或 eval.yaml 的 variant.cwd。git 修订语法 `@{...}`
+ *  由 parseVariantCwd 保护、不误判。cwd 由调用方在边界注入(见 eval-runner)。 */
+function cliVariantSpec(rawExpr: string, role: ExperimentRole, cwd?: string): VariantSpec {
+  // 探测旧 name@cwd 形态报错。注:含合法 `@`(非 `@{`)的路径(如 /x/@dir/skill.md)会被一并
+  // 误判 —— 属 pre-existing 限制(这类路径本就不被 @cwd 支持),报错文案仍指向迁移指引。
+  if (parseVariantCwd(rawExpr).cwd !== undefined) {
+    throw new Error(
+      `「name@cwd」语法已移除: "${rawExpr}"。请改用 --${role}-cwd <dir> 声明 runtime context，`
+      + `或在 eval.yaml 的 variant 上用结构化 cwd: 字段。`,
+    );
+  }
+  return { name: variantExprToSkillName(rawExpr), role, expr: rawExpr, ...(cwd ? { cwd } : {}) };
+}
 
 export function resolveVariantSpecs(
   values: Record<string, unknown>,
@@ -32,17 +47,33 @@ export function resolveVariantSpecs(
   const treatmentExprs: string[] = values.treatment
     ? (values.treatment as string).split(',').map((v: string) => v.trim()).filter(Boolean)
     : [];
+  const controlCwd = values['control-cwd'] as string | undefined;
+  // 逗号列表,与 treatment 按序对齐;空位(空串)= 该 treatment 无 cwd。不 filter,保留位次。
+  const treatmentCwds: string[] = values['treatment-cwd']
+    ? (values['treatment-cwd'] as string).split(',').map((v: string) => v.trim())
+    : [];
 
   let variantSpecs: VariantSpec[];
   if (controlExpr || treatmentExprs.length > 0) {
     // CLI roles present → CLI entirely replaces config.variants (no merging).
+    if (controlCwd !== undefined && !controlExpr) {
+      throw new Error('--control-cwd 需要配 --control 一起用。');
+    }
+    if (treatmentCwds.length > 0 && treatmentCwds.length !== treatmentExprs.length) {
+      throw new Error(
+        `--treatment-cwd 的数量(${treatmentCwds.length})必须与 --treatment(${treatmentExprs.length})按序对齐;`
+        + `某个 treatment 不需要 cwd 就在该位留空(如 /a,,/c)。`,
+      );
+    }
     variantSpecs = [];
     if (controlExpr) {
-      variantSpecs.push({ name: variantExprToSkillName(controlExpr), role: 'control', expr: controlExpr });
+      variantSpecs.push(cliVariantSpec(controlExpr, 'control', controlCwd));
     }
-    for (const expr of treatmentExprs) {
-      variantSpecs.push({ name: variantExprToSkillName(expr), role: 'treatment', expr });
-    }
+    treatmentExprs.forEach((expr, i) => {
+      variantSpecs.push(cliVariantSpec(expr, 'treatment', treatmentCwds[i]));
+    });
+  } else if (controlCwd !== undefined || treatmentCwds.length > 0) {
+    throw new Error('--control-cwd / --treatment-cwd 需要配 --control / --treatment 一起用(eval.yaml 用 variant 的 cwd: 字段)。');
   } else if (evalConfig) {
     variantSpecs = configVariantsToSpecs(evalConfig.variants);
   } else if (values.batch) {
@@ -62,7 +93,7 @@ export function resolveVariantSpecs(
 
   const seenIdentities = new Set<string>();
   for (const spec of variantSpecs) {
-    const key = variantIdentity(spec.expr, skillDir);
+    const key = variantIdentity(spec.expr, skillDir, spec.cwd);
     if (seenIdentities.has(key)) {
       throw new Error(
         `variant "${spec.expr}" 重复出现——同一 variant 不能同时属于 --control 与 --treatment，也不能在 --treatment 中重复。`,

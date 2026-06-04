@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ensureUniqueVariantNames, resolveArtifacts, variantIdentity, parseVariantCwd } from '../../src/inputs/skill-loader.js';
 import { resolveVariantSpecs } from '../../src/cli/lib/parse-run-config/variant-resolution.js';
+import { configVariantsToSpecs } from '../../src/inputs/eval-config.js';
 import { prepareEvaluationRun } from '../../src/eval-workflows/evaluation-preparation.js';
 import type { Artifact } from '../../src/types/eval.js';
 
@@ -84,9 +85,9 @@ describe('resolveArtifacts — same-basename variants in different dirs', () => 
     assert.notEqual(arts[0].content, arts[1].content);
   });
 
-  it('rejects an empty variant name (e.g. "@/cwd") instead of silently loading skillDir/SKILL.md', () => {
+  it('rejects an empty variant expr instead of silently loading skillDir/SKILL.md', () => {
     writeFileSync(join(root, 'SKILL.md'), '# top-level skill\n');
-    assert.throws(() => resolveArtifacts(root, ['@/some/cwd']), /不能为空/);
+    assert.throws(() => resolveArtifacts(root, [{ expr: '', cwd: '/some/cwd' }]), /不能为空/);
   });
 });
 
@@ -136,10 +137,12 @@ describe('CLI dry-run — --control / --treatment same-basename in different dir
     );
   });
 
-  it('allows the same skill bound to two different cwds (distinct runtime contexts)', () => {
+  it('rejects the removed name@cwd CLI syntax with a migration error', () => {
     const skill = join(root, 'v1', 'greeter.md');
-    const specs = resolveVariantSpecs({ control: `${skill}@${root}/v1`, treatment: `${skill}@${root}/v2` }, null, root);
-    assert.equal(specs.length, 2);
+    assert.throws(
+      () => resolveVariantSpecs({ control: `${skill}@${root}/v1` }, null, root),
+      /语法已移除|--control-cwd/,
+    );
   });
 
   it('rejects a bare skill name vs its path form pointing at the same file (skillDir base)', () => {
@@ -209,10 +212,15 @@ describe('variantIdentity', () => {
     assert.notEqual(variantIdentity('/repo/v1/greeter.md'), variantIdentity('/repo/v2/greeter.md'));
   });
 
-  it('treats the same skill with different cwd as different identities', () => {
+  it('treats the same skill with different (structured) cwd as different identities', () => {
     const f = join(root, 'x.md');
     writeFileSync(f, '# x\n');
-    assert.notEqual(variantIdentity(`${f}@${root}/a`), variantIdentity(`${f}@${root}/b`));
+    // cwd 结构化作为第三参数,expr 是纯身份
+    assert.notEqual(variantIdentity(f, undefined, `${root}/a`), variantIdentity(f, undefined, `${root}/b`));
+    // 同一份 skill + 同一 cwd → 同 identity(判重触发)
+    assert.equal(variantIdentity(f, undefined, `${root}/a`), variantIdentity(f, undefined, `${root}/a`));
+    // 无 cwd 与有 cwd 不同
+    assert.notEqual(variantIdentity(f), variantIdentity(f, undefined, `${root}/a`));
   });
 
   it('leaves baseline and git refs as stable opaque identities', () => {
@@ -271,14 +279,77 @@ describe('resolveArtifacts — git artifact bound to a cwd (regression: @{...} g
       sh(['add', '.']);
       sh(['commit', '-m', 'seed']);
       process.chdir(gitRoot);
-      const arts = resolveArtifacts(gitRoot, [`git:greeter@${gitRoot}/proj`]);
+      // 结构化输入:expr 是纯 git 身份,cwd 单独携带(不再 git:...@cwd 编码进串)。
+      const arts = resolveArtifacts(gitRoot, [{ expr: 'git:greeter', cwd: `${gitRoot}/proj` }]);
       assert.equal(arts.length, 1);
       assert.equal(arts[0].source, 'git');
       assert.equal(arts[0].content, '# git greeter');
-      assert.equal(arts[0].cwd, `${gitRoot}/proj`, 'cwd must survive the git @{...} guard');
+      assert.equal(arts[0].cwd, `${gitRoot}/proj`, 'cwd carried structurally');
     } finally {
       process.chdir(prevCwd);
       rmSync(gitRoot, { recursive: true, force: true });
     }
+  });
+});
+
+describe('resolveVariantSpecs — --control-cwd / --treatment-cwd 结构化注入', () => {
+  let root: string;
+  beforeEach(() => { root = mkdtempSync(join(tmpdir(), 'omk-cwdflag-')); });
+  afterEach(() => rmSync(root, { recursive: true, force: true }));
+
+  it('injects control cwd structurally onto the spec', () => {
+    const specs = resolveVariantSpecs({ control: 'baseline', treatment: 'skill-a', 'control-cwd': '/proj' }, null, root);
+    assert.equal(specs.find((s) => s.role === 'control')!.cwd, '/proj');
+    assert.equal(specs.find((s) => s.role === 'treatment')!.cwd, undefined);
+  });
+
+  it('index-aligns --treatment-cwd to --treatment', () => {
+    const specs = resolveVariantSpecs({ treatment: 'a,b', 'treatment-cwd': '/pa,/pb' }, null, root);
+    assert.deepEqual(specs.map((s) => s.cwd), ['/pa', '/pb']);
+  });
+
+  it('blank slot means that treatment has no cwd', () => {
+    const specs = resolveVariantSpecs({ treatment: 'a,b,c', 'treatment-cwd': '/pa,,/pc' }, null, root);
+    assert.deepEqual(specs.map((s) => s.cwd), ['/pa', undefined, '/pc']);
+  });
+
+  it('errors when --treatment-cwd length mismatches --treatment', () => {
+    assert.throws(() => resolveVariantSpecs({ treatment: 'a,b', 'treatment-cwd': '/pa' }, null, root), /按序对齐|数量/);
+  });
+
+  it('errors when --treatment-cwd is given without --treatment', () => {
+    assert.throws(() => resolveVariantSpecs({ 'treatment-cwd': '/pa' }, null, root), /需要配/);
+  });
+
+  it('errors when --control-cwd is given without --control', () => {
+    assert.throws(() => resolveVariantSpecs({ treatment: 'a', 'control-cwd': '/p' }, null, root), /--control-cwd 需要配 --control/);
+  });
+
+  it('accepts a git reflog/upstream ref as a CLI role without a migration error (@{...} ≠ @cwd)', () => {
+    const specs = resolveVariantSpecs({ control: 'git:HEAD@{2}:greeter', treatment: 'skill-a' }, null, root);
+    assert.equal(specs.find((s) => s.role === 'control')!.expr, 'git:HEAD@{2}:greeter');
+  });
+
+  it('flows --treatment-cwd end-to-end into artifact.cwd', async () => {
+    writeFileSync(join(root, 'greeter.md'), '# greeter\n');
+    const samplesPath = join(root, 'samples.json');
+    writeFileSync(samplesPath, JSON.stringify([{ sample_id: 's1', prompt: 'hi' }]));
+    const specs = resolveVariantSpecs(
+      { control: 'baseline', treatment: join(root, 'greeter.md'), 'treatment-cwd': '/proj' }, null, root,
+    );
+    const prepared = await prepareEvaluationRun({ samplesPath, skillDir: root, variantSpecs: specs, dryRun: true });
+    assert.equal(prepared.artifacts.find((a) => a.name === 'greeter')!.cwd, '/proj');
+  });
+
+  it('flows eval.yaml structured cwd end-to-end into artifact.cwd', async () => {
+    writeFileSync(join(root, 'greeter.md'), '# greeter\n');
+    const samplesPath = join(root, 'samples.json');
+    writeFileSync(samplesPath, JSON.stringify([{ sample_id: 's1', prompt: 'hi' }]));
+    const specs = configVariantsToSpecs([
+      { name: 'baseline', role: 'control', artifact: 'baseline' },
+      { name: 't', role: 'treatment', artifact: join(root, 'greeter.md'), cwd: '/yamlproj' },
+    ]);
+    const prepared = await prepareEvaluationRun({ samplesPath, skillDir: root, variantSpecs: specs, dryRun: true });
+    assert.ok(prepared.artifacts.some((a) => a.cwd === '/yamlproj'), 'yaml cwd reached artifact');
   });
 });

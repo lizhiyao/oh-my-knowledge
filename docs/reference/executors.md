@@ -53,11 +53,17 @@ skills/
 |---|---|
 | `name` | looks up `name.md` or `name/SKILL.md` in the artifact dir, resolves to one artifact |
 | `baseline` | empty artifact, no system prompt — think "nothing at all" |
-| `project-env@/path/to/project` | empty artifact, but run in the specified project dir — observe project-level runtime context alone |
+| `project-env` (any non-skill label) | empty artifact; pair with a cwd (below) to run in a project dir — observe project-level runtime context alone |
 | `git:name` | reads the last-committed version of an artifact from git HEAD |
 | `git:ref:name` | reads an artifact from a specific commit |
 | `./path/to/file.md` | path with `/`: read the file directly as an artifact |
-| `variant@/path/to/project` | attach a run dir to any variant; supports `name@cwd`, `git:name@cwd`, `/file.md@cwd` |
+
+The `variant` expression carries **artifact identity only**. Runtime context (`cwd`) is declared separately:
+
+- on the CLI via `--control-cwd <dir>` and `--treatment-cwd <dir,...>` (the latter is comma-separated and index-aligned with `--treatment`; leave a slot blank for "no cwd");
+- per-variant in `eval.yaml` via the structured `cwd:` field.
+
+The old `name@cwd` string syntax has been removed.
 
 When both `--control` and `--treatment` are omitted, use `--config eval.yaml` or `--batch`. With `--batch`, `baseline` is auto-added as control and every discovered artifact becomes a treatment.
 
@@ -70,12 +76,12 @@ omk eval --control baseline --treatment v1,v2,v3
 omk eval --control baseline --treatment my-skill
 
 # observe project-level runtime context in isolation (use a self-describing label)
-omk eval --control baseline --treatment project-env@/path/to/target-project
+omk eval --control baseline --treatment project-env --treatment-cwd /path/to/target-project
 
 # compare "project-level runtime context" vs "explicit artifact injection"
 omk eval \
-  --control project-env@/path/to/target-project \
-  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --control project-env --control-cwd /path/to/target-project \
+  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md --treatment-cwd /path/to/target-project
 
 # before vs after (old version read from git history)
 omk eval --control git:my-skill --treatment my-skill
@@ -150,7 +156,7 @@ No system prompt, but runs inside a project dir. This is **not** a strict "bare 
 omk eval \
   --executor claude-sdk \
   --control baseline \
-  --treatment project-env@/path/to/target-project
+  --treatment project-env --treatment-cwd /path/to/target-project
 ```
 
 **3. Explicit artifact injection**
@@ -160,8 +166,8 @@ Inject an external `SKILL.md` as the artifact while also keeping the project dir
 ```bash
 omk eval \
   --executor claude-sdk \
-  --control project-env@/path/to/target-project \
-  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --control project-env --control-cwd /path/to/target-project \
+  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md --treatment-cwd /path/to/target-project
 ```
 
 ### Recommended first-round design
@@ -173,7 +179,7 @@ omk eval \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
   --control baseline \
-  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --treatment /path/to/target-project/.claude/skills/prd/SKILL.md --treatment-cwd /path/to/target-project
 ```
 
 If you want to prove whether "the knowledge sitting inside the project directory" is effective on its own, add a second treatment:
@@ -183,7 +189,8 @@ omk eval \
   --executor claude-sdk \
   --samples skills/evaluate-review/eval-samples.yaml \
   --control baseline \
-  --treatment project-env@/path/to/target-project,/path/to/target-project/.claude/skills/prd/SKILL.md@/path/to/target-project
+  --treatment project-env,/path/to/target-project/.claude/skills/prd/SKILL.md \
+  --treatment-cwd /path/to/target-project,/path/to/target-project
 ```
 
 ### Design tips

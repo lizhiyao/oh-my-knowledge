@@ -6,7 +6,7 @@ Core idea: **fix the model and the samples, vary only the artifact and runtime c
 flowchart TD
     subgraph Input["① Input"]
         S["eval-samples<br/>(JSON / YAML)"]
-        A["artifacts<br/>skills/*.md · SKILL.md<br/>baseline · git:name · @cwd"]
+        A["artifacts<br/>skills/*.md · SKILL.md<br/>baseline · git:name"]
     end
 
     subgraph Prep["② Preprocess (resolve & fetch)"]
@@ -58,7 +58,7 @@ flowchart TD
 **Key design choices:**
 
 - **Interleaved scheduling** removes time drift: different variants of the same sample are dispatched alternately rather than "all of v1 then all of v2", so model load / network jitter can't be mis-attributed to the artifact.
-- **variant = artifact + runtime context**: `name@cwd` lets control groups explicitly declare the "project directory" input, separating "project-level accumulated knowledge" from "explicit artifact injection".
+- **variant = artifact + runtime context**: the `cwd` (declared via `--control-cwd`/`--treatment-cwd` or eval.yaml's `cwd:` field, separate from the artifact expression) lets control groups explicitly declare the "project directory" input, separating "project-level accumulated knowledge" from "explicit artifact injection".
 - **Dual-channel scoring is complementary**: assertions catch deterministic defects (must call tool X, must contain field Y); the LLM judge catches subjective quality (readability, completeness). Mean is taken when both are present.
 - **Knowledge-gap signals** are not part of the score — they are an independent tracking channel that tells you "how much risk exposure this evaluation covered", for convergence tracking, not as a completeness proof.
 

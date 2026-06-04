@@ -187,10 +187,12 @@ function pathPhysicalId(p: string): string {
  *      `skillDir/name/SKILL.md`)取物理身份,这样裸名 `greeter` 与指向同一文件的 `./greeter.md`
  *      能判为重复;没传 skillDir(如纯单测)则退回字面名。
  *    - `git:` / `baseline`：本身就是稳定标识,原样返回。
- *  `@cwd` 也按物理身份纳入 key —— 同一份 skill 绑不同 cwd 是不同 runtime context,不算重复。
- *  不要用派生短名判重:`v1/greeter.md` 与 `v2/greeter.md` 短名都是 greeter 却是两个 variant。 */
-export function variantIdentity(expr: string, skillDir?: string): string {
-  const { name, cwd } = parseVariantCwd(expr);
+ *  结构化的 `cwd`(第三参数)按物理身份纳入 key —— 同一份 skill 绑不同 cwd 是不同 runtime
+ *  context,不算重复。不要用派生短名判重:`v1/greeter.md` 与 `v2/greeter.md` 短名都是 greeter
+ *  却是两个 variant。 */
+export function variantIdentity(expr: string, skillDir?: string, cwd?: string): string {
+  // expr 已是纯 artifact 身份(@cwd 在 CLI/config 边界已剥离);cwd 结构化显式传入。
+  const name = expr;
   let id: string;
   if (name.startsWith('git:')) {
     id = name;
@@ -218,19 +220,21 @@ export function skillNameFromPath(filePath: string): string {
   return base === 'SKILL.md' ? basename(dirname(filePath)) : base.replace(/\.md$/i, '');
 }
 
-/** Extract short skill name from a variant expression (which may be a path). */
+/** 从 variant 表达式(纯 artifact 身份,可能是路径)取短名。 */
 export function variantExprToSkillName(expr: string): string {
-  const { name } = parseVariantCwd(expr);
-  if (name.startsWith('git:')) return name;
-  if (!name.includes('/')) return name || expr;
+  if (expr.startsWith('git:')) return expr;
+  if (!expr.includes('/')) return expr;
   // 先折叠 dir↔SKILL.md 再取短名,与 resolveArtifacts 的命名一致(否则 `weird.md/` 这类
   // 以 .md 结尾的目录,两处会派生出不同短名)。
-  return skillNameFromPath(canonicalSkillAnchor(resolve(name))) || name;
+  return skillNameFromPath(canonicalSkillAnchor(resolve(expr))) || expr;
 }
+
+/** variant 输入:纯 artifact 表达式字符串,或结构化的 `{expr, cwd?}`。cwd 不再编码进 expr。 */
+export type VariantInput = string | { expr: string; cwd?: string };
 
 export function resolveArtifacts(
   skillDir: string,
-  variants: string[],
+  variants: VariantInput[],
   opts: ResolveArtifactsOptions = {},
 ): Artifact[] {
   const strictBaseline = opts.strictBaseline ?? true;
@@ -239,14 +243,16 @@ export function resolveArtifacts(
   let gitRelDir: string | null = null;
 
   for (const rawVariant of variants) {
-    const { name: variantName, cwd: variantCwd } = parseVariantCwd(rawVariant);
+    // 字符串即纯 expr(无 cwd);结构化对象直接取 expr/cwd。不再 split @cwd。
+    const variantName = typeof rawVariant === 'string' ? rawVariant : rawVariant.expr;
+    const variantCwd = typeof rawVariant === 'string' ? undefined : rawVariant.cwd;
 
     if (!variantName) {
-      throw new Error(`variant 名不能为空: "${rawVariant}"。如需绑定 runtime context,用 label@/path 形式声明。`);
+      throw new Error(`variant 名不能为空。如需绑定 runtime context,用 --control-cwd / --treatment-cwd 或 eval.yaml 的 variant.cwd。`);
     }
 
     if (variantName === 'baseline' && variantCwd) {
-      throw new Error('baseline cannot be bound to a cwd. To express a project-level runtime context, use a custom label such as project-env@/path/to/project');
+      throw new Error('baseline cannot be bound to a cwd. To express a project-level runtime context, use a custom label + cwd (e.g. --treatment project-env --treatment-cwd /path).');
     }
 
     if (variantName === 'baseline') {

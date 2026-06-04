@@ -58,7 +58,7 @@
 
 - `baseline`
 - `prd`
-- `/path/to/SKILL.md@/path/to/project`
+- `/path/to/SKILL.md`（runtime context 的 cwd 单独声明，不编码进表达式）
 
 规则：
 
@@ -98,8 +98,8 @@
 
 规则：
 
-- `cwd` 归属于 runtime context
-- 如果要表达"空 artifact + 指定 runtime context"，推荐使用自描述标签，例如 `project-env@/path/to/project`
+- `cwd` 归属于 runtime context，单独声明（CLI 的 `--control-cwd` / `--treatment-cwd`，或 eval.yaml 的结构化 `cwd:` 字段），不编码进 variant 表达式
+- 如果要表达"空 artifact + 指定 runtime context"，用自描述标签作 artifact、cwd 单独给，例如 `--treatment project-env --treatment-cwd /path/to/project`
 - 不要把项目目录、项目级 runtime context、显式 artifact 注入混成一个概念
 
 ### 6. Sample / 用例
@@ -164,7 +164,7 @@ Sample schema 含 4 个可选元数据字段,纯文档 / 诊断用,**不参与 g
 
 如果要单独观察项目级 runtime context，推荐显式写成：
 
-- `project-env@/path/to/project`
+- artifact 用自描述标签 `project-env`，cwd 用 `--treatment-cwd /path/to/project`（或 eval.yaml 的 `cwd:` 字段）
 
 这里的 `project-env` 只是实验分组标签，真正的语义是"空 artifact + 指定 runtime context"。
 
@@ -266,7 +266,7 @@ omk 的具体实现：`--repeat N` 让同一 (variant × sample) 跑 N 次，`re
 
 - 使用 `--control <expr>` + `--treatment <v1,v2,...>` 按 experiment role 声明 variant
 - variant 表达式解析为 artifact 与 runtime context
-- 示例对象尽量写具体路径或具体名称，不用 `skill@...` 代替所有场景
+- 示例对象尽量写具体路径或具体名称，不用泛化占位代替所有场景
 - 复杂实验配置推荐用 `--config eval.yaml`，CLI 参数只承担简单场景
 
 ### 3. 报告与验收

@@ -35,7 +35,8 @@ export function configVariantsToSpecs(variants: EvalConfigVariant[]): VariantSpe
   return variants.map((v) => ({
     name: v.name,
     role: v.role,
-    expr: v.cwd ? `${v.artifact}@${v.cwd}` : v.artifact,
+    expr: v.artifact, // 纯 artifact 身份;cwd 结构化携带,不再编码进 expr
+    ...(v.cwd !== undefined && { cwd: v.cwd }),
     ...(v.allowedSkills !== undefined && { allowedSkills: v.allowedSkills }),
   }));
 }
