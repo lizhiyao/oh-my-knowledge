@@ -12,7 +12,7 @@ export async function anthropicApiExecutor({ model, system, prompt, timeoutMs = 
     messages: Array<{ role: 'user'; content: string }>;
     system?: string;
   } = {
-    model: model || 'claude-sonnet-4-5-20250514',
+    model: model || 'sonnet',
     max_tokens: 8192,
     messages: [{ role: 'user', content: prompt }],
   };
