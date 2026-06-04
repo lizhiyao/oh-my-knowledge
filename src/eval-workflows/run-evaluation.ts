@@ -1,9 +1,9 @@
 import { resolve } from 'node:path';
 import { DEFAULT_OUTPUT_DIR, persistReport } from '../eval-core/evaluation-reporting.js';
 import { createExecutor, DEFAULT_MODEL, JUDGE_MODEL } from '../executors/index.js';
-import { discoverBatchSkills, resolveArtifacts } from '../inputs/skill-loader.js';
+import { discoverBatchSkills } from '../inputs/skill-loader.js';
 import { confidenceInterval, tTest, effectSize } from '../eval-core/statistics.js';
-import { executeBatchEvaluationRuns } from './batch-evaluation-workflow.js';
+import { executeBatchEvaluationRuns, buildBatchSkillArtifacts } from './batch-evaluation-workflow.js';
 import {
   buildDryRunTaskReport,
   prepareEvaluationRun,
@@ -653,17 +653,7 @@ export async function runBatchEvaluation({
     const skillDirAbs = resolve(skillDir);
     const dryArtifacts: DryRunBatchSkill[] = [];
     for (const entry of skillEntries) {
-      const skillArtifacts = resolveArtifacts(
-        skillDirAbs,
-        ['baseline', entry.skillPath],
-        { strictBaseline, variantAllowedSkills },
-      ).map((artifact) =>
-        // artifact.name 是派生短名,不等于全路径 entry.skillPath,按 kind 区分角色
-        // (与 executeBatchEvaluationRuns real-run 严格一致)。
-        artifact.kind === 'baseline'
-          ? { ...artifact, experimentRole: 'control' as const }
-          : { ...artifact, name: entry.name, experimentRole: 'treatment' as const },
-      );
+      const skillArtifacts = buildBatchSkillArtifacts(skillDirAbs, entry, { strictBaseline, variantAllowedSkills });
       let entryReport: DryRunReport;
       try {
         const result = await runEvaluation({

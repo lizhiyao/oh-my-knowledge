@@ -60,6 +60,25 @@ interface CompletedBatchSkillRun {
   filePath: string | null;
 }
 
+/** Batch 每个 entry 的实验结构固定:baseline control vs 当前 skill treatment。
+ *  resolveArtifacts 产出的 `artifact.name` 是派生短名(skillNameFromPath(skillPath)),
+ *  不等于全路径 `entry.skillPath`,所以按 `kind` 而非 name 串区分角色:baseline-kind 绑
+ *  control,skill-kind 绑 treatment 并对齐到 entry 逻辑名。variantAllowedSkills 已按短名
+ *  (== entry.name)在 resolveArtifacts 内命中,无需补全路径 key。
+ *  real-run(executeBatchEvaluationRuns)与 dry-run(runBatchEvaluation)共用此处,
+ *  避免两份手抄实现漂移(#183 即同一误绑在两处各存一份)。 */
+export function buildBatchSkillArtifacts(
+  skillDirAbs: string,
+  entry: { name: string; skillPath: string },
+  opts: { strictBaseline?: boolean; variantAllowedSkills?: Record<string, string[]> },
+): Artifact[] {
+  return resolveArtifacts(skillDirAbs, ['baseline', entry.skillPath], opts).map((artifact) =>
+    artifact.kind === 'baseline'
+      ? { ...artifact, experimentRole: 'control' as const }
+      : { ...artifact, name: entry.name, experimentRole: 'treatment' as const },
+  );
+}
+
 function commonRuntime(runtimes: Record<string, ExecutorRuntimeFingerprint>): ExecutorRuntimeFingerprint | undefined {
   const values = Object.values(runtimes);
   if (values.length === 0) return undefined;
@@ -341,20 +360,7 @@ export async function executeBatchEvaluationRuns({
     const entry = skillEntries[i];
     onSkillProgress?.({ phase: 'start', skill: entry.name, current: i + 1, total: skillEntries.length });
 
-    // Batch mode 的实验结构固定为 baseline control vs 当前 skill treatment。
-    // resolveArtifacts 产出的 artifact.name 是派生短名(skillNameFromPath(skillPath)),
-    // 不等于全路径 entry.skillPath,所以按 kind 而非 name 串区分:baseline-kind 即 control,
-    // skill-kind 即 treatment(对齐到 entry 的逻辑名)。variantAllowedSkills 已按短名(== entry.name)
-    // 在 resolveArtifacts 内命中,无需再补一个全路径 key。
-    const skillArtifacts = resolveArtifacts(
-      resolve(skillDir),
-      ['baseline', entry.skillPath],
-      { strictBaseline, variantAllowedSkills },
-    ).map((artifact) =>
-      artifact.kind === 'baseline'
-        ? { ...artifact, experimentRole: 'control' as const }
-        : { ...artifact, name: entry.name, experimentRole: 'treatment' as const },
-    );
+    const skillArtifacts = buildBatchSkillArtifacts(resolve(skillDir), entry, { strictBaseline, variantAllowedSkills });
     const childRunId = `${batchRunId}-${String(i + 1).padStart(2, '0')}-${safeRunIdPart(entry.name)}`;
     const { report, filePath } = await runSingleEvaluation({
       samplesPath: entry.samplesPath,
