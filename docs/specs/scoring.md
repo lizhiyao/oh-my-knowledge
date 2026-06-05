@@ -114,6 +114,21 @@ verdict algorithm (condensed):
 
 The 4 badges in the "methodology audit" section (judges agree / difference significant / saturated / human-aligned) visualize the conclusions of these independent tests, so during review a user can spot the case where "composite looks fine but some layer has a problem". Among these, "judges agree" (inter-judge Pearson) is not merely a visualization: strong multi-judge disagreement (Pearson < 0.4) downgrades a would-be PROGRESS verdict to CAUTIOUS — when the judges can't agree among themselves, the judge-layer signal driving this "improvement" is unreliable.
 
+### The six verdicts at a glance
+
+The verdict you see on a report's top pill (and as the `omk eval` exit signal) is one of six:
+
+| Verdict | Meaning | What to do |
+|---|---|---|
+| **PROGRESS** | diff CI shows a real positive shift, no layer regressed | ship |
+| **CAUTIOUS** | positive shift but a layer broke its gate, the judge ensemble strongly disagrees, or it's not yet powered | investigate before shipping |
+| **REGRESS** | diff CI clearly negative, or a layer dropped its gate | don't ship |
+| **NOISE** | the diff CI contains 0 — can't separate the change from noise | inconclusive; get more signal |
+| **UNDERPOWERED** | N too small (below the pre-flight power band) / saturation low-confidence, no signal | add samples or `--repeat` |
+| **SOLO** | single-variant report; nothing to compare against | add a control variant |
+
+Source: `computeVerdict` in `src/eval-core/verdict.ts`. The same rule engine drives both the terse CLI line and the report's verdict pill, so the two always agree.
+
 ---
 
 ## 5. Recommended usage

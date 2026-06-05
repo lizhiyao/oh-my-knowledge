@@ -710,7 +710,7 @@ export function renderScoringModal(id: string, lang: Lang): string {
   const usageSection = lang === 'zh' ? '推荐用法' : 'Recommended usage';
   const docsLink = lang === 'zh'
     ? '完整推导 / 五层评分管道架构 / 多层 gate 与综合分的关系：<a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/specs/scoring.md" target="_blank" rel="noopener">docs/zh/specs/scoring.md</a>'
-    : 'Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/zh/specs/scoring.md" target="_blank" rel="noopener">docs/zh/specs/scoring.md</a>';
+    : 'Full derivation / five-layer scoring pipeline / multi-layer gate & composite relationship: <a href="https://github.com/lizhiyao/oh-my-knowledge/blob/main/docs/specs/scoring.md" target="_blank" rel="noopener">docs/specs/scoring.md</a>';
 
   return `<div id="${id}" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="${id}-title" onclick="if(event.target===this)closeModal('${id}')">
     <div class="modal-content">

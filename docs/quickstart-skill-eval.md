@@ -108,6 +108,8 @@ The browser auto-opens (default `http://127.0.0.1:7799/`). Look at three things:
 
 ## Going deeper
 
+- The mental model — [the three stages: doctor / eval / observe](./explanation/three-stage-workflow.md)
+- How a run actually works: [architecture](./explanation/architecture.md)
 - Full CLI / executor / judge / observe reference: [README.md](https://github.com/lizhiyao/oh-my-knowledge/blob/main/README.md)
 - Five-layer scoring pipeline (assertion / llm / judge / dimension / composite): [scoring.md](./specs/scoring.md)
 - Statistical rigor (Bootstrap CI / Krippendorff α / length-debias): [statistical-rigor.md](./explanation/statistical-rigor.md)

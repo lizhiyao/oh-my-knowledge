@@ -93,18 +93,25 @@
 - 分数 = 1 + 通过率 × 4（映射到 1~5 分）
 - 示例：3 个断言（权重各 1），2 个通过 → 通过率 = 2/3 → 分数 = 1 + 0.67 × 4 = **3.67**
 
+算综合分时，断言会拆成两个独立层 —— **factScore**（事实类检查）和 **behaviorScore**（行为类检查），各自用上面的公式在自己那批断言上打分。
+
 ### 2. Rubric / Dimensions 评分
 
-评委模型（默认 `haiku`）按标准打 1-5 分。`dimensions` 模式下各维度独立评分后取平均。
+评委模型（默认 `haiku`）按标准打 1-5 分，产出 **judgeScore**。`dimensions` 模式下各维度独立评分后取平均。
 
 ### 3. 综合分数
 
-| 条件 | 公式 |
+综合分是**所有存在的层分数的平均** —— 共三层：
+
+| 层 | 来源 |
 |------|------|
-| 仅断言 | `assertionScore` |
-| 仅 LLM | `llmScore` |
-| 两者都有 | `(assertionScore + llmScore) / 2` |
-| 都没有 | `0` |
+| `factScore` | 事实类断言（`contains` / `regex` / `json_*` / `equals` / `semantic_similarity` / `tool_*_contains` …） |
+| `behaviorScore` | 行为类断言（长度 / 词数 / `cost_max` / `latency_max` / `turns_*` / `tools_*` / `custom` …） |
+| `judgeScore` | LLM 评委（rubric / dimensions） |
+
+`composite = mean(存在的层)`。某层没有断言（或没配评委）时**从平均里剔除**，不当作 0 分；断言和评委都没有时综合分为 `0`。
+
+完整推导、等权重 caveat、以及多层 verdict gate 与综合分的关系见[评分公式](../specs/scoring)。
 
 ## 断言类型
 
@@ -123,6 +130,7 @@
 | `cost_max` / `latency_max` | 成本/延迟限制 |
 | `tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` | Agent 工具调用断言 |
 | `tool_output_contains` / `tool_input_contains` | 工具输入/输出内容匹配 |
+| `mock_hit` | 声明的沙箱 mock 实际被某次工具调用命中（见[用例设计](../specs/sample-design-spec)） |
 | `turns_min` / `turns_max` | 多轮对话轮数限制 |
 | `rouge_n_min` | ROUGE-N recall ≥ threshold（`reference` 字段填参考答案，`n` 默认 1，`threshold` 默认 0.5） |
 | `levenshtein_max` | 编辑距离 ≤ value（用于「输出跟参考几乎一致」场景） |

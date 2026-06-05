@@ -108,6 +108,8 @@ omk studio                                          # 启动报告浏览器
 
 ## 更深的玩法
 
+- 心智模型 —— [三阶段：doctor / eval / observe](./explanation/three-stage-workflow.md)
+- 一次运行到底怎么跑：[工作原理](./explanation/architecture.md)
 - 详细 CLI / executor / judge / observe 参考：[README.zh.md](https://github.com/lizhiyao/oh-my-knowledge/blob/main/README.zh.md)
 - 评分管道（assertion / llm / judge / dimension / composite 五层）：[scoring.md](./specs/scoring.md)
 - 测量学严谨性（Bootstrap CI / Krippendorff α / length-debias 等）：[statistical-rigor.md](./explanation/statistical-rigor.md)

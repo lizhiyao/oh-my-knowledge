@@ -14,11 +14,15 @@
 
 ## 操作指南
 
+- [跑 doctor 检查](./guides/run-doctor-checks.md)
 - [评测 agent（项目级 runtime context）](./guides/agent-eval.md)
+- [自动迭代 skill](./guides/auto-improve-skills.md)
+- [观测生产 trace](./guides/observe-production.md)
 - [使用非 Claude 模型（GLM / 通义 / DeepSeek / Moonshot / Ollama）](./guides/non-claude-models.md)
 
 ## 我想懂工作原理
 
+- [三阶段：doctor / eval / observe](./explanation/three-stage-workflow.md)
 - [工作原理](./explanation/architecture.md)
 - [统计严谨性](./explanation/statistical-rigor.md)
 - [评分公式](./specs/scoring.md)

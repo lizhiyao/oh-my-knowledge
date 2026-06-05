@@ -1,6 +1,8 @@
 # 评测 agent（项目级 runtime context）
 
-当执行器使用 `claude-sdk` 时，OMK 支持第一版 agent-aware evaluation：自动抽取 turns / toolCalls trace、支持基于工具调用行为的断言，并能在指定 `cwd` 下运行，让 Claude Code 自动加载项目内的 `CLAUDE.md`、skills 和本地 runtime context。
+**什么时候需要这篇？** 普通的 skill 评测（`omk eval --control baseline --treatment my-skill`）注入一份 `SKILL.md`、把它孤立起来测。但真实 agent 的行为还取决于它的 **runtime context** —— 它运行所在的项目目录、那个项目的 `CLAUDE.md`、它自动加载的本地 skills、仓库状态。当你真正想测的是「这个 agent 在这个项目里表现如何」，普通 skill 评测看不到这些。这篇讲的就是在真实项目上下文下做评测。
+
+入口是 `claude-sdk` 执行器：自动抽取 turns / toolCalls trace、支持基于工具调用行为的断言，并能在指定 `cwd` 下运行，让 Claude Code 自动加载项目内的 `CLAUDE.md`、skills 和本地 runtime context。
 
 ## 几个要分开理解的概念
 

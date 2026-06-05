@@ -131,7 +131,7 @@ omk eval gold compare <report-id> --gold-dir gold-dataset
 <!-- omk:cli:eval:flags:end -->
 
 HTML 报告有两个 tab：
-- **📊 评分视角** — verdict 驱动的 A/B 对比（事实/行为/judge 三层、bootstrap CI、length-debias）。
+- **📊 评分视角** — verdict 驱动的 A/B 对比（[事实/行为/judge 三层](../specs/scoring)、bootstrap CI、length-debias）。
 - **✅ 功能视角** — 每条 sample 当一条单测看：用例设计（prompt / rubric / 工具调用 mock / environment）+ 执行轨迹 + 断言结果 + 可操作的 diagnostic 建议。诊断给出归因（skill 文档模糊 / LLM 误读 / sample 设计 bug / 诱错样本 / ...）、工作流校验（rubric 每步 ✓/✗ + 证据）和失败模式标签（工作流跳步 / 硬编码值 / 幻觉输出 / 工具误用 / 环境拦截 / 误读约束 / 其他）。沙箱 mock 字段语义（`mocks` / `environment` / `tripwire` / `mocksStrict`）见 [sample-design-spec.md §三](../specs/sample-design-spec.md)。
 
 ## `omk observe`
@@ -166,7 +166,7 @@ omk observe ~/.claude/projects/my-project --kb /path/to/project
 
 <!-- omk:cli:observe:flags:end -->
 
-把真实 Claude Code session trace 转成 skill 健康度报告：知识使用、gap 信号、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
+把真实 Claude Code session trace 转成 skill 健康度报告：知识使用、[gap 信号](../specs/knowledge-gap-signal-spec)、执行稳定性、token 和耗时。这是生产观测，不是生产评分。
 
 ### B. observe inbox：reviewer 闭环
 

@@ -1,6 +1,8 @@
 # Evaluate an agent (project-level runtime context)
 
-When the executor is `claude-sdk`, OMK supports a first pass of agent-aware evaluation: it auto-extracts turns / toolCalls traces, supports assertions on tool-call behavior, and can run under a specified `cwd` so Claude Code auto-loads the project's `CLAUDE.md`, skills, and local runtime context.
+**When do you need this guide?** A plain skill eval (`omk eval --control baseline --treatment my-skill`) injects one `SKILL.md` and measures it in isolation. But a real agent's behavior also depends on its **runtime context** — the project directory it runs in, that project's `CLAUDE.md`, the local skills it auto-loads, the repo state. When the thing you actually want to measure is "how does this agent behave inside this project", a plain skill eval can't see any of that. This guide covers evaluating under a real project context.
+
+The enabler is the `claude-sdk` executor: it auto-extracts turns / toolCalls traces, supports assertions on tool-call behavior, and can run under a specified `cwd` so Claude Code auto-loads the project's `CLAUDE.md`, skills, and local runtime context.
 
 ## Concepts worth keeping separate
 

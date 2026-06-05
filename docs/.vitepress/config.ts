@@ -26,7 +26,7 @@ export default defineConfig({
           { text: 'Guide', link: '/quickstart-skill-eval' },
           { text: 'How-to', link: '/guides/agent-eval' },
           { text: 'Reference', link: '/reference/cli' },
-          { text: 'Explanation', link: '/explanation/architecture' },
+          { text: 'Explanation', link: '/explanation/three-stage-workflow' },
           { text: 'Specs', link: '/specs/terminology-spec' },
         ],
         sidebar: [
@@ -45,13 +45,17 @@ export default defineConfig({
           {
             text: 'How-to guides',
             items: [
+              { text: 'Run doctor checks', link: '/guides/run-doctor-checks' },
               { text: 'Evaluate an agent', link: '/guides/agent-eval' },
+              { text: 'Auto-improve a skill', link: '/guides/auto-improve-skills' },
+              { text: 'Observe production traces', link: '/guides/observe-production' },
               { text: 'Use non-Claude models', link: '/guides/non-claude-models' },
             ],
           },
           {
             text: 'Understand how it works',
             items: [
+              { text: 'The three stages', link: '/explanation/three-stage-workflow' },
               { text: 'Architecture', link: '/explanation/architecture' },
               { text: 'Statistical rigor', link: '/explanation/statistical-rigor' },
               { text: 'Scoring pipeline', link: '/specs/scoring' },
@@ -79,7 +83,7 @@ export default defineConfig({
           { text: '指南', link: '/zh/quickstart-skill-eval' },
           { text: '操作指南', link: '/zh/guides/agent-eval' },
           { text: '参考', link: '/zh/reference/cli' },
-          { text: '原理', link: '/zh/explanation/architecture' },
+          { text: '原理', link: '/zh/explanation/three-stage-workflow' },
           { text: '规范', link: '/zh/specs/terminology-spec' },
         ],
         sidebar: [
@@ -98,13 +102,17 @@ export default defineConfig({
           {
             text: '操作指南',
             items: [
+              { text: '跑 doctor 检查', link: '/zh/guides/run-doctor-checks' },
               { text: '评测 agent', link: '/zh/guides/agent-eval' },
+              { text: '自动迭代 skill', link: '/zh/guides/auto-improve-skills' },
+              { text: '观测生产 trace', link: '/zh/guides/observe-production' },
               { text: '使用非 Claude 模型', link: '/zh/guides/non-claude-models' },
             ],
           },
           {
             text: '我想懂工作原理',
             items: [
+              { text: '三阶段', link: '/zh/explanation/three-stage-workflow' },
               { text: '工作原理', link: '/zh/explanation/architecture' },
               { text: '统计严谨性', link: '/zh/explanation/statistical-rigor' },
               { text: '评分公式', link: '/zh/specs/scoring' },
