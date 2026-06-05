@@ -41,7 +41,7 @@ For *designing* a rigorous sample set (what to test, how many, the metadata fiel
 | `assertions[].flags` | `string` | no | Regex flags (default `"i"`) |
 | `assertions[].schema` | `object` | depends | JSON Schema object (required for `json_schema`, via [ajv](https://ajv.js.org/)) |
 | `assertions[].reference` | `string` | depends | Reference text (required for `semantic_similarity`) |
-| `assertions[].threshold` | `number` | no | Pass threshold for LLM-scored assertions (default 3) |
+| `assertions[].threshold` | `number` | no | Pass threshold; default depends on type — `3` for LLM-scored types, `0.5` for `rouge_n_min` / `bleu_min`, `1` for `mock_hit` |
 | `assertions[].fn` | `string` | depends | Path to a custom assertion JS file (required for `custom`) |
 | `assertions[].weight` | `number` | no | Weight (default 1) |
 | `assertions[].not` | `boolean` | no | Invert this assertion's pass/fail; works with any type |

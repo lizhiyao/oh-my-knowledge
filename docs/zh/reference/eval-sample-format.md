@@ -41,7 +41,7 @@
 | `assertions[].flags` | `string` | 否 | 正则标志（默认 `"i"`） |
 | `assertions[].schema` | `object` | 视类型 | JSON Schema 对象（`json_schema` 必填，基于 [ajv](https://ajv.js.org/)） |
 | `assertions[].reference` | `string` | 视类型 | 参考文本（`semantic_similarity` 必填） |
-| `assertions[].threshold` | `number` | 否 | LLM 打分类断言的通过阈值（默认 3） |
+| `assertions[].threshold` | `number` | 否 | 通过阈值；默认值随类型而定 —— LLM 打分类为 `3`，`rouge_n_min` / `bleu_min` 为 `0.5`，`mock_hit` 为 `1` |
 | `assertions[].fn` | `string` | 视类型 | 自定义断言 JS 文件路径（`custom` 必填） |
 | `assertions[].weight` | `number` | 否 | 权重（默认 1） |
 | `assertions[].not` | `boolean` | 否 | 反转该断言的通过/失败，适用于任意类型 |
