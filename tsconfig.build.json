@@ -4,8 +4,11 @@
     "rootDir": "src",
     "outDir": "dist",
     "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
+    // No source/declaration maps in the published package: src/ is not shipped
+    // (files: ["dist/"]), so maps would only point at absent .ts files — dead
+    // weight for consumers. Keep declaration for the .d.ts that consumers use.
+    "declarationMap": false,
+    "sourceMap": false,
     "tsBuildInfoFile": "node_modules/.cache/omk/src.tsbuildinfo"
   },
   "include": [
