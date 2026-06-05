@@ -8,7 +8,6 @@ Project images, grouped by purpose. Most `.png` files are rendered from a siblin
 |---|---|---|
 | `logo.svg` | vector | Canonical logo. The docs site keeps its own copy at `docs/public/logo.svg` (VitePress serves it as site logo + favicon) — keep the two in sync. |
 | `logo.png` | 1024×1024 | Raster logo for contexts that can't use SVG. |
-| `favicon.svg` | vector | Favicon mark. |
 
 ## screenshots/
 
