@@ -53,7 +53,7 @@ describe('update check background refresh must not delay CLI exit', () => {
       JSON.stringify({ latestVersion: '0.0.1', lastCheckedAt: '2020-01-01T00:00:00.000Z' }),
     );
 
-    const env = { ...process.env, HOME: home, USERPROFILE: home, npm_config_registry: `http://127.0.0.1:${port}/` };
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home, npm_config_registry: `http://127.0.0.1:${port}/` };
     delete env.NODE_ENV; // 否则 shouldSkipUpdateCheck 直接跳过,测不到刷新路径
     delete env.CI;
     delete env.OMK_SKIP_UPDATE_CHECK;

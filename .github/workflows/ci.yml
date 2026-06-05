@@ -24,7 +24,8 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: yarn
       - run: yarn install --frozen-lockfile
-      - run: yarn lint
-      - run: yarn build
-      - run: yarn build:docs:check
-      - run: yarn test
+      # Delegate to the `ci` npm script (run-s lint typecheck build
+      # build:docs:check test) so the workflow can't drift from the canonical
+      # sequence. Inlining these steps once dropped `typecheck`, letting test/
+      # type errors merge undetected.
+      - run: yarn ci

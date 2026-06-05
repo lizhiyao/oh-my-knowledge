@@ -173,6 +173,7 @@ export type {
   ExperienceTimelineEvent,
   ExperienceTimelineTree,
   ObservationExperienceReport,
+  ObservationReviewState,
 };
 
 export function aggregateExperienceChecklistItemStatus(statuses: ExperienceChecklistItemStatus[]): ExperienceChecklistItemStatus {
