@@ -94,7 +94,7 @@ export default defineConfig({
               { text: 'CLI 参考', link: '/zh/reference/cli' },
               { text: '评测用例格式', link: '/zh/reference/eval-sample-format' },
               { text: '执行器', link: '/zh/reference/executors' },
-              { text: '被测对象与变体布局(artifact / variant)', link: '/zh/reference/artifact-layout' },
+              { text: '指定被测对象(artifact / variant)', link: '/zh/reference/artifact-layout' },
               { text: '7 工具对比', link: '/zh/reference/comparison' },
               { text: '术语表', link: '/zh/reference/glossary' },
             ],

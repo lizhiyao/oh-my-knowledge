@@ -1,4 +1,4 @@
-# 被测对象与变体布局(artifact / variant)
+# 指定被测对象(artifact / variant)
 
 OMK 如何把一个 `variant` 表达式解析为 `artifact`（被评测对象）与可选的 `runtime context`。
 
