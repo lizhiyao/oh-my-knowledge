@@ -110,7 +110,7 @@ verdict algorithm (condensed):
     or treatment)                                       → CAUTIOUS · judge signal unreliable
 ```
 
-**What this means**: a composite alone at +2.78 cannot make omk return a `PROGRESS` (ship-safe) verdict — **all three layers must pass**. This weakens (does not eliminate) the misleading risk of composite's ad hoc aggregation.
+**What this means**: a composite alone at +2.78 cannot make omk return a `PROGRESS` (ship-safe) verdict — **every present layer must pass its gate** (a layer with no data is dropped, exactly as it is from the composite mean; if all three are absent the gate FAILs). This weakens (does not eliminate) the misleading risk of composite's ad hoc aggregation.
 
 The 4 badges in the "methodology audit" section (judges agree / difference significant / saturated / human-aligned) visualize the conclusions of these independent tests, so during review a user can spot the case where "composite looks fine but some layer has a problem". Among these, "judges agree" (inter-judge Pearson) is not merely a visualization: strong multi-judge disagreement (Pearson < 0.4) downgrades a would-be PROGRESS verdict to CAUTIOUS — when the judges can't agree among themselves, the judge-layer signal driving this "improvement" is unreliable.
 

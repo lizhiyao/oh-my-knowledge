@@ -109,7 +109,7 @@ verdict 算法（精简版）：
     (inter-judge Pearson < 0.4,对照或实验组任一)  → CAUTIOUS · 评委信号不可靠
 ```
 
-**意义**：composite 单分 +2.78 不能让 omk 给出 `PROGRESS`（可安全发布）判定，必须 **三层都 pass**。这削弱（不是消除）composite ad hoc 聚合的误导风险。
+**意义**：composite 单分 +2.78 不能让 omk 给出 `PROGRESS`（可安全发布）判定，必须 **每个存在的层都过自己的 gate**（没数据的层会被剔除，跟它从 composite 均值里被剔除一样；三层全缺则 gate 直接 FAIL）。这削弱（不是消除）composite ad hoc 聚合的误导风险。
 
 「方法学审计」section 里的 4 个 badge（评委一致 / 差异显著 / 已饱和 / 人工对齐）就是把这套独立检验的结论可视化，让用户在 review 时能 spot 到「composite 看上去不错但某层有问题」的情况。其中「评委一致」（inter-judge Pearson）不只是可视化：多评委强烈分歧（Pearson < 0.4）会把本应 PROGRESS 的判定降级为 CAUTIOUS —— 评委自己都谈不拢时，驱动这次「变好」的评委层信号不可靠。
 

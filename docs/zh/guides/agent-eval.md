@@ -20,7 +20,7 @@ omk eval --executor claude-sdk
 
 ## 支持的 agent 相关断言
 
-工具调用与轮次相关的断言（`tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` / `tool_output_contains` / `tool_input_contains` / `turns_min` / `turns_max`）见 [断言类型参考](../reference/eval-sample-format#assertion-types)。
+工具调用与轮次相关的断言（`tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` / `tool_output_contains` / `tool_input_contains` / `turns_min` / `turns_max`）见 [断言类型参考](../reference/eval-sample-format#断言类型)。
 
 ## 三种常见对照组
 
