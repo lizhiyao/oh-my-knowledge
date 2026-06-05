@@ -14,7 +14,7 @@ omk 围绕三个阶段组织，对应一份 LLM 知识（prompt / RAG context / 
 
 它同时是 **eval 的前置门禁**：`omk eval` 内部会跑静态 doctor rule，artifact 坏了就拒跑——就像 CI 在跑测试前先跑 lint。doctor 绿了，意味着你接下来这次测量不会是 garbage-in。
 
-→ How-to：[跑 doctor 检查](../guides/run-doctor-checks)
+→ How-to：[doctor 体检](../guides/run-doctor-checks)
 
 ## eval —— 测量核心
 

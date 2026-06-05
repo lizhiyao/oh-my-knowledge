@@ -1,4 +1,4 @@
-# 跑 doctor 检查
+# doctor 体检
 
 `omk doctor` 是对单个 artifact 的健康审计 —— 在你信任一次 eval 之前跑、以及当 CI 门禁跑。它不对比两个版本（那是 [`omk eval`](../reference/cli)），它告诉你一个 artifact 是否成型到值得测。
 

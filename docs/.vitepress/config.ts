@@ -102,7 +102,7 @@ export default defineConfig({
           {
             text: '操作指南',
             items: [
-              { text: '跑 doctor 检查', link: '/zh/guides/run-doctor-checks' },
+              { text: 'doctor 体检', link: '/zh/guides/run-doctor-checks' },
               { text: '评测 agent', link: '/zh/guides/agent-eval' },
               { text: '自动迭代 skill', link: '/zh/guides/auto-improve-skills' },
               { text: '观测生产 trace', link: '/zh/guides/observe-production' },

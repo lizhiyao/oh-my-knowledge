@@ -14,7 +14,7 @@
 
 ## 操作指南
 
-- [跑 doctor 检查](./guides/run-doctor-checks.md)
+- [doctor 体检](./guides/run-doctor-checks.md)
 - [评测 agent（项目级 runtime context）](./guides/agent-eval.md)
 - [自动迭代 skill](./guides/auto-improve-skills.md)
 - [观测生产 trace](./guides/observe-production.md)
