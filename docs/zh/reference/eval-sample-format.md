@@ -1,6 +1,8 @@
 # 评测用例格式
 
-支持 JSON 和 YAML（`eval-samples.json`、`eval-samples.yaml`、`eval-samples.yml`）。
+**eval-samples** 文件是 `omk eval` / `omk doctor` 跑的用例集 —— 一组用例，每条一个 `prompt`，外加可选的 `rubric`、`assertions` 和元数据。支持 JSON 和 YAML（`eval-samples.json`、`eval-samples.yaml`、`eval-samples.yml`），YAML 手写更省事。
+
+想知道怎么**设计**一套严谨用例（测什么、测几条、元数据字段），见[用例设计](../specs/sample-design-spec)；本页是逐字段的格式参考。
 
 ```json
 [
@@ -29,6 +31,7 @@
 | `sample_id` | `string` | **是** | 用例唯一标识 |
 | `prompt` | `string` | **是** | 发送给模型的用户提示词 |
 | `context` | `string` | 否 | 附加上下文（代码片段等），会被包裹在代码块中拼接到 prompt 后。也支持 URL，运行时自动抓取内容 |
+| `cwd` | `string` | 否 | 单用例工作目录覆盖（这一条的 runtime context） |
 | `rubric` | `string` | 否 | LLM 评委的评分标准（1-5 分） |
 | `assertions` | `array` | 否 | 断言检查列表，详见[断言类型](#断言类型) |
 | `assertions[].type` | `string` | **是** | 断言类型 |
@@ -38,10 +41,27 @@
 | `assertions[].flags` | `string` | 否 | 正则标志（默认 `"i"`） |
 | `assertions[].schema` | `object` | 视类型 | JSON Schema 对象（`json_schema` 必填，基于 [ajv](https://ajv.js.org/)） |
 | `assertions[].reference` | `string` | 视类型 | 参考文本（`semantic_similarity` 必填） |
-| `assertions[].threshold` | `number` | 否 | 语义相似度通过阈值（默认 3） |
+| `assertions[].threshold` | `number` | 否 | LLM 打分类断言的通过阈值（默认 3） |
 | `assertions[].fn` | `string` | 视类型 | 自定义断言 JS 文件路径（`custom` 必填） |
 | `assertions[].weight` | `number` | 否 | 权重（默认 1） |
+| `assertions[].not` | `boolean` | 否 | 反转该断言的通过/失败，适用于任意类型 |
+| `assertions[].n` | `number` | 否 | `rouge_n_min` 的 n-gram 阶数（默认 1） |
 | `dimensions` | `object` | 否 | 多维度评分，key 为维度名，value 为评分标准文本 |
+
+## 元数据与沙箱字段
+
+用例还能带**元数据**（纯文档 / 诊断用，不参与 grading / judge / verdict）和**沙箱**字段（用于脱离真实环境评测）。完整指引见[用例设计](../specs/sample-design-spec)，这里给字段索引：
+
+| 字段 | 类型 | 用途 |
+|------|------|------|
+| `capability` | `string[]` | 该用例覆盖的能力维度（驱动 coverage 诊断） |
+| `difficulty` | `'easy' \| 'medium' \| 'hard'` | 难度分桶（强枚举） |
+| `construct` | `string` | 测什么：`necessity` / `quality` / `capability`（允许自定义） |
+| `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | 数据来源 |
+| `mocks` | `object[]` | 工具调用拦截列表 —— 返回假数据而非真调工具 |
+| `mocksStrict` | `boolean` | 未命中任何 mock 的工具调用直接 deny（默认 `false`） |
+| `tripwire` | `boolean` | 诱错样本：LLM **应当** fail（默认 `false`） |
+| `environment` | `object` | 声明性「已就绪」前置：`cli_available` / `files_available` / `notes` |
 
 ## URL 自动抓取
 
@@ -115,7 +135,9 @@
 
 ## 断言类型
 
-**确定性断言（30+ 种）：**
+30+ 种，分两类。**确定性**断言本地校验（不调模型）；**LLM 打分**断言会调评委、返回 1-5 分，按 `threshold` 判通过。
+
+**确定性**（本地，不调 LLM）：
 
 | 类型 | 说明 |
 |------|------|
@@ -132,14 +154,19 @@
 | `tool_output_contains` / `tool_input_contains` | 工具输入/输出内容匹配 |
 | `mock_hit` | 声明的沙箱 mock 实际被某次工具调用命中（见[用例设计](../specs/sample-design-spec)） |
 | `turns_min` / `turns_max` | 多轮对话轮数限制 |
-| `rouge_n_min` | ROUGE-N recall ≥ threshold（`reference` 字段填参考答案，`n` 默认 1，`threshold` 默认 0.5） |
+| `rouge_n_min` | ROUGE-N recall ≥ threshold（`reference` 填参考答案，`n` 默认 1，`threshold` 默认 0.5） |
 | `levenshtein_max` | 编辑距离 ≤ value（用于「输出跟参考几乎一致」场景） |
 | `bleu_min` | BLEU-4 ≥ threshold（unsmoothed，短文本会塌陷到 0） |
-| `faithfulness` | 输出是否被 `sample.context` 支持（反幻觉）；LLM judge 1-5 评分，threshold 默认 3 |
-| `answer_relevancy` | 输出是否切题回答 `sample.prompt`；能抓住跑题、回避、冗余；threshold 默认 3 |
-| `context_recall` | `sample.context` 关键事实在输出中的覆盖率；`reference` 可显式指定 gold facts；threshold 默认 3 |
-| `semantic_similarity` | LLM 语义相似度（与 reference 的整体相似度，与 RAG 三 metric 互补） |
 | `custom` | 自定义 JS 函数（30s 超时） |
+
+**LLM 打分**（调评委，1-5 分，`threshold` 默认 3）：
+
+| 类型 | 说明 |
+|------|------|
+| `faithfulness` | 输出是否被 `sample.context` 支持（反幻觉） |
+| `answer_relevancy` | 输出是否切题回答 `sample.prompt`；能抓住跑题、回避、冗余 |
+| `context_recall` | `sample.context` 关键事实在输出中的覆盖率（`reference` 可显式列 gold facts） |
+| `semantic_similarity` | 与 `reference` 的整体语义相似度 |
 
 **通用修饰：**
 
