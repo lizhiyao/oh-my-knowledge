@@ -28,7 +28,7 @@ const PROJECT_ROOT = join(__dirname, '..', '..');
 const COMMANDS_MD = join(PROJECT_ROOT, '.claude/skills/omk/references/commands.md');
 const CLI_EN = join(PROJECT_ROOT, 'docs/reference/cli.md');
 const CLI_ZH = join(PROJECT_ROOT, 'docs/zh/reference/cli.md');
-const SKILL_MD = join(PROJECT_ROOT, 'SKILL.md');
+const SKILL_MD = join(PROJECT_ROOT, '.claude', 'skills', 'omk', 'SKILL.md');
 const BUILD_DOCS = join(PROJECT_ROOT, 'dist-scripts/build-docs.js');
 
 const MARKER_START = '<!-- omk:cli:start -->';
