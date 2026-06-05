@@ -1,401 +1,401 @@
-# OMK 术语规范
+# OMK terminology spec
 
-> **范围**: 这是 omk 维护者的内部设计决策归档(为什么 artifact 不叫 evaluand、为什么 v0.16 起废 `--variants`、qualityScore → judgeScore 迁移路径等)。不是新用户入门文档——日常用法看 [README](../README.md) 即可。仅中文,因为关键术语本身全是英文,源码已是事实文档。
+> **Scope**: This is a naming-decisions archive for omk maintainers (why `artifact` instead of `evaluand`, why `--variants` was dropped from v0.16, the `qualityScore` → `judgeScore` migration path, etc.). It is not a getting-started doc — for everyday usage see the [README](../README.md). The source code is the canonical reference, since the key terms are all English anyway.
 
-## 一、目标
+## 1. Goals
 
-这份规范用于统一 OMK 后续迭代中的对外文案、命令示例、数据结构与代码命名。
+This spec unifies the user-facing copy, command examples, data structures, and code naming used across omk's ongoing iterations.
 
-目标有三条：
+Three goals:
 
-- 对齐行业与开源社区常见说法，尽量减少 OMK 私有术语
-- 把"被评测对象"、"运行环境"、"实验分组"与"实验角色"四层拆开，避免混用
-- 为未来扩展到 skill、agent、workflow、agent team 等载体保留统一抽象
+- Align with industry and open-source conventions, minimizing omk-private jargon.
+- Separate the four layers — "thing being evaluated", "runtime environment", "experiment grouping", and "experiment role" — so they don't get conflated.
+- Keep a single abstraction that extends to future carriers: skill, agent, workflow, agent team, and beyond.
 
-## 二、标准术语
+## 2. Standard terms
 
 ### 1. Artifact
 
-`artifact` 是 OMK 对"被评测对象"的统一标准术语。
+`artifact` is omk's standard term for "the thing being evaluated".
 
-它表示在实验中被拿来比较、注入、运行或观测的对象，可以是：
-
-- `baseline`
-- `skill`
-- `prompt`
-- `agent`
-- `workflow`
-- 未来的 `team` 或其他新型知识载体
-
-规则：
-
-- 对外文档优先使用 `artifact`
-- 对内核心类型、请求结构、任务结构优先使用 `artifact`
-
-### 2. Artifact Kind
-
-`artifact kind` 是 artifact 的具体类别。
-
-当前支持：
+It is the object that gets compared, injected, run, or observed in an experiment. It can be:
 
 - `baseline`
 - `skill`
 - `prompt`
 - `agent`
 - `workflow`
+- a future `team` or other new kind of knowledge carrier
 
-规则：
+Rules:
 
-- `baseline` 表示空 artifact，也就是不注入任何显式 artifact；对大多数使用者来说，可以直接理解为"什么都没有"
-- `skill`、`agent`、`workflow` 是 artifact 的子类，不是顶层总称
-- 新增载体时，优先扩展 `artifact kind`，不要另起一套平行抽象
+- Prefer `artifact` in user-facing docs.
+- Prefer `artifact` in core internal types, request structures, and task structures.
+
+### 2. Artifact kind
+
+`artifact kind` is the concrete category of an artifact.
+
+Currently supported:
+
+- `baseline`
+- `skill`
+- `prompt`
+- `agent`
+- `workflow`
+
+Rules:
+
+- `baseline` is the empty artifact — no explicit artifact is injected. For most users it just means "nothing at all".
+- `skill`, `agent`, and `workflow` are subtypes of artifact, not the top-level umbrella term.
+- When adding a new carrier, extend `artifact kind` rather than spinning up a parallel abstraction.
 
 ### 3. Variant
 
-`variant` 是一次实验中的一条对比臂的表达式，不是领域对象本身。
+A `variant` is the expression of one comparison arm in an experiment, not the domain object itself.
 
-例如：
+For example:
 
 - `baseline`
 - `prd`
-- `/path/to/SKILL.md`（runtime context 的 cwd 单独声明，不编码进表达式）
+- `/path/to/SKILL.md` (the runtime context cwd is declared separately, not encoded into the expression)
 
-规则：
+Rules:
 
-- variant 表达式解析后得到 artifact 与 runtime context
-- 每个 variant 都必须绑定一个 experiment role（control 或 treatment），见第 4 节
-- CLI 层按 experiment role 声明 variant（`--control` / `--treatment`），不再使用扁平的 `--variants` 参数
+- Resolving a variant expression yields an artifact plus a runtime context.
+- Every variant must be bound to an experiment role (control or treatment); see section 4.
+- The CLI declares variants by experiment role (`--control` / `--treatment`); the flat `--variants` parameter is no longer used.
 
-### 4. Experiment Role
+### 4. Experiment role
 
-`experiment role` 是 variant 在当次实验中扮演的角色，采用统计学标准术语。
+`experiment role` is the role a variant plays in a given experiment, using standard statistical terminology.
 
-枚举：
+Enum:
 
-- `control` — 对照组，提供基线测量
-- `treatment` — 干预组（实验组），对比 control 看变化
+- `control` — the control group, providing the baseline measurement.
+- `treatment` — the treatment (experimental) group, compared against control to see what changes.
 
-规则：
+Rules:
 
-- role 是 variant 的 run-time 属性，不是 artifact 的固有属性；同一个 artifact 在不同 run 可以扮演不同 role
-- CLI 层通过 `--control <expr>` 和 `--treatment <v1,v2,...>` 两个独立参数声明
-- 报告中以 control/treatment 标签展示，不再从 `artifactKind === 'baseline'` 反推角色
-- `baseline` 是 artifact kind 术语，不是 experiment role 术语；参见第三节边界
+- Role is a run-time property of a variant, not an intrinsic property of the artifact; the same artifact can play different roles across runs.
+- The CLI declares it via two separate parameters, `--control <expr>` and `--treatment <v1,v2,...>`.
+- Reports display control/treatment labels; the role is no longer inferred back from `artifactKind === 'baseline'`.
+- `baseline` is an artifact-kind term, not an experiment-role term; see the boundaries in section 3.
 
-### 5. Runtime Context
+### 5. Runtime context
 
-`runtime context` 是运行时上下文，当前最核心的是 `cwd`。
+`runtime context` is the run-time environment; the most central piece today is `cwd`.
 
-它表示模型或 agent 在什么环境里运行，而不是"被评测对象"本身。
+It is the environment the model or agent runs in, as opposed to "the thing being evaluated" itself.
 
-在项目型 agent 场景下，`runtime context` 就直接包含这些会影响行为的环境因素：
+In project-style agent scenarios, the `runtime context` directly includes the environmental factors that affect behavior:
 
-- 项目目录
+- the project directory
 - `CLAUDE.md`
-- 本地 skills
-- 仓库文件
-- 工具可见范围
+- local skills
+- repo files
+- the tool-visibility scope
 
-规则：
+Rules:
 
-- `cwd` 归属于 runtime context，单独声明（CLI 的 `--control-cwd` / `--treatment-cwd`，或 eval.yaml 的结构化 `cwd:` 字段），不编码进 variant 表达式
-- 如果要表达"空 artifact + 指定 runtime context"，用自描述标签作 artifact、cwd 单独给，例如 `--treatment project-env --treatment-cwd /path/to/project`
-- 不要把项目目录、项目级 runtime context、显式 artifact 注入混成一个概念
+- `cwd` belongs to the runtime context and is declared separately (the CLI's `--control-cwd` / `--treatment-cwd`, or eval.yaml's structured `cwd:` field); it is not encoded into the variant expression.
+- To express "empty artifact + a specific runtime context", use a self-describing label as the artifact and supply the cwd separately, e.g. `--treatment project-env --treatment-cwd /path/to/project`.
+- Do not collapse the project directory, project-level runtime context, and explicit artifact injection into a single concept.
 
-### 6. Sample / 用例
+### 6. Sample
 
-`sample` 是评测的一条**用例**(test case)记录。
+A `sample` is one **test-case** record in the evaluation.
 
-规则:
+Rules:
 
-- **代码 / API / 文件名 / CLI flag 继续用 `sample`**:`Sample` 类型、`sample_id` 字段、`eval-samples.json` 文件名、`--samples` flag——这些是开源 API + 英文圈 LLM eval 通用术语,不动
-- **user-facing 中文文案默认用「用例」,不用「样本」**:CLI 输出、报告 UI、错误信息、文档正文、commit message 中文部分。包括"用例数"/"用例难度"/"用例不足"/"跨用例散度"等组合
-- **理由**:omk 的 `eval-samples` 是开发者**手挑**的测试用例,不是从某分布**随机抽样**的统计样本。「样本」会暗示"再多跑就能扩大样本量",误导用户——实际是要补设计、补用例。「用例」是工程语境(test case),与用户写测评时的心智一致("我设计了 5 个用例")
-- **例外:统计学术语场景保留「样本」**——Cohen's d / Hedges' g 的"**小样本修正**"、"**样本均值**"、"**样本方差**"、"**样本量**"、bootstrap "**重采样**" 等,这些是 stats 领域的固定提法(对应英文 small-sample correction / sample mean / sample variance / sample size / resampling),硬翻成「用例」反而让懂统计的读者多一拍。判定准则:**这个词指的是"对总体的一次随机抽样"统计概念**(那就是样本),还是**"开发者手挑的一条测试用例"**(那就是用例)。两者不混用、上下文清晰
+- **Code / API / file names / CLI flags keep `sample`**: the `Sample` type, the `sample_id` field, the `eval-samples.json` file name, the `--samples` flag — these are common terms across the open-source API and the English-speaking LLM-eval world, and stay as-is.
+- **User-facing Chinese copy defaults to「用例」, not「样本」**: CLI output, report UI, error messages, doc prose, and the Chinese part of commit messages. This includes compounds like「用例数」/「用例难度」/「用例不足」/「跨用例散度」.
+- **Rationale**: omk's `eval-samples` are test cases **hand-picked** by developers, not statistical samples **randomly drawn** from some distribution.「样本」implies "just run more and the sample size grows", which misleads users — what they actually need is more design, more cases.「用例」matches the engineering framing (test case) and the user's mental model when writing an evaluation ("I designed 5 cases").
+- **Exception: keep「样本」for statistical-terminology contexts** — Cohen's d / Hedges' g "**small-sample correction**", "**sample mean**", "**sample variance**", "**sample size**", bootstrap "**resampling**", etc. These are fixed phrasings in statistics (small-sample correction / sample mean / sample variance / sample size / resampling); forcing them into「用例」would just make a stats-literate reader pause. Decision rule: does the word denote "one random draw from a population" (the statistical concept — then it's 样本), or "one hand-picked test case from a developer" (then it's 用例)? The two don't mix, and context makes it clear.
 
-#### 6.1 Sample 元数据字段
+#### 6.1 Sample metadata fields
 
-Sample schema 含 4 个可选元数据字段,纯文档 / 诊断用,**不参与 grading / judge / verdict**。详见 [docs/specs/sample-design-spec.md](sample-design-spec.md)。
+The Sample schema has 4 optional metadata fields, purely for documentation / diagnostics; they **do not participate in grading / judge / verdict**. See [docs/specs/sample-design-spec.md](sample-design-spec.md).
 
-- **`capability?: string[]`** — 该 sample 测试的能力维度(可多个)。归一时大小写 / 短横线 / 驼峰 / 下划线不敏感。
-- **`difficulty?: 'easy' | 'medium' | 'hard'`** — 难度分层(强枚举)。
-- **`construct?: string`** — 该 sample 测的 construct 类型。Suggested:`'necessity'`(测必要性,baseline-vs-skill)/ `'quality'`(测 skill 写得好不好)/ `'capability'`(测某具体能力)。Free-form string 允许自定义。
-- **`provenance?: 'human' | 'llm-generated' | 'production-trace'`** — 数据来源。
+- **`capability?: string[]`** — the capability dimension(s) this sample tests (can be multiple). Normalized case-insensitively, with dash / camelCase / underscore insensitivity.
+- **`difficulty?: 'easy' | 'medium' | 'hard'`** — difficulty bucket (strict enum).
+- **`construct?: string`** — the construct type this sample tests. Suggested: `'necessity'` (tests necessity, baseline-vs-skill) / `'quality'` (tests whether the skill is well-written) / `'capability'` (tests a specific capability). Free-form string allows custom values.
+- **`provenance?: 'human' | 'llm-generated' | 'production-trace'`** — data source.
 
-**construct 跟 capability 区别**(用户最常混淆的两个字段):
-- **construct** = 这个 sample 测**哪类事**(necessity / quality / capability)。是实验设计的层面 — 你跑 baseline-vs-skill 是测必要性,跑 skill-v1-vs-skill-v2 是测质量。
-- **capability** = 这个 sample 测**哪些具体能力**(api-selection / error-diagnosis / fallback)。是被测对象的能力维度。
+**construct vs. capability** (the two fields users most often confuse):
+- **construct** = **what class of thing** this sample tests (necessity / quality / capability). It's the experiment-design level — running baseline-vs-skill tests necessity, running skill-v1-vs-skill-v2 tests quality.
+- **capability** = **which specific capabilities** this sample tests (api-selection / error-diagnosis / fallback). It's the capability dimension of the object under test.
 
 ### 7. Task
 
-`task` 是一次具体执行单元：
+A `task` is one concrete execution unit:
 
-> 一个 sample × 一个 artifact × 一个 runtime context
+> one sample × one artifact × one runtime context
 
-规则：
+Rules:
 
-- 任务层不直接代表实验结论
-- 任务是执行与评分的最小单位
+- The task layer does not directly represent an experiment conclusion.
+- A task is the smallest unit of execution and scoring.
 
 ### 8. Trace
 
-`trace` 是一次执行过程中产生的过程数据，包括：
+A `trace` is the process data produced during one execution, including:
 
 - turns
 - tool calls
 - timing
-- token / cost / cache 等执行指标
+- execution metrics like token / cost / cache
 
-规则：
+Rules:
 
-- trace 属于运行结果
-- trace 用于解释 agent 行为差异，不用于命名被评测对象
+- A trace belongs to the run result.
+- A trace is used to explain differences in agent behavior, not to name the thing being evaluated.
 
-## 三、术语边界
+## 3. Term boundaries
 
-### 1. baseline 就是"什么都没有"
+### 1. baseline means "nothing at all"
 
-`baseline` 的标准含义是：
+The standard meaning of `baseline` is:
 
-- 不做显式 artifact 注入
-- 不额外附带项目级 runtime context
+- no explicit artifact injection
+- no extra project-level runtime context attached
 
-对大多数使用者来说，`baseline` 就可以直接理解为"什么都没有"。
+For most users, `baseline` can be read directly as "nothing at all".
 
-如果要单独观察项目级 runtime context，推荐显式写成：
+If you want to isolate project-level runtime context, write it explicitly:
 
-- artifact 用自描述标签 `project-env`，cwd 用 `--treatment-cwd /path/to/project`（或 eval.yaml 的 `cwd:` 字段）
+- use the self-describing label `project-env` as the artifact, and `--treatment-cwd /path/to/project` for the cwd (or eval.yaml's `cwd:` field)
 
-这里的 `project-env` 只是实验分组标签，真正的语义是"空 artifact + 指定 runtime context"。
+Here `project-env` is just an experiment-grouping label; the real meaning is "empty artifact + a specific runtime context".
 
-### 2. skill 不是总称
+### 2. skill is not the umbrella term
 
-`skill` 只在对象确实是 skill 文件、skill 目录或 skill 风格 system prompt 时使用。
+`skill` is used only when the object really is a skill file, a skill directory, or a skill-style system prompt.
 
-以下场景不要用 `skill` 做总称：
+Do not use `skill` as the umbrella term in these cases:
 
-- 比较多个不同类型对象
-- 描述 CLI 通用变体语法
-- 描述未来 agent team、workflow 等对象
+- comparing several objects of different kinds
+- describing the generic CLI variant syntax
+- describing future objects like agent teams, workflows, etc.
 
-### 3. agent 不是总称
+### 3. agent is not the umbrella term
 
-`agent` 用于描述具有 agent 运行特征的 artifact 或运行形态，例如：
+`agent` describes an artifact or run form with agent-style runtime characteristics, e.g.:
 
-- 有工具调用
-- 有多轮轨迹
-- 依赖运行时环境
+- has tool calls
+- has multi-turn traces
+- depends on the runtime environment
 
-但 `agent` 不应替代 artifact 成为通用术语。
+But `agent` should not replace `artifact` as the generic term.
 
-### 4. baseline kind 和 control role 不是一回事
+### 4. baseline kind and control role are not the same thing
 
-`baseline` 是 `ArtifactKind` 枚举中的一员，表示"空 artifact"（不注入任何显式 artifact）。
-`control` 是 `experimentRole` 的取值，表示"这个 variant 在本次实验里扮演对照角色"。
+`baseline` is one member of the `ArtifactKind` enum, denoting "empty artifact" (no explicit artifact injected).
+`control` is a value of `experimentRole`, denoting "this variant plays the control role in this experiment".
 
-两者正交：
+The two are orthogonal:
 
-- 一个 `baseline` kind 的 artifact 通常扮演 `control` role，但这不是定义
-- 两个都是 `skill` kind 的 artifact（v1 vs v2）比较时，其中一个被显式声明为 `control`——此时 control role 和 baseline kind 没有任何关系
-- 报告与代码都应以 `experimentRole` 作为判定对照组的唯一来源，不从 `artifactKind === 'baseline'` 反推
+- A `baseline`-kind artifact usually plays the `control` role, but that's not the definition.
+- When comparing two `skill`-kind artifacts (v1 vs v2), one is explicitly declared `control` — here the control role has nothing to do with baseline kind.
+- Both reports and code should treat `experimentRole` as the single source of truth for identifying the control group, never inferring it back from `artifactKind === 'baseline'`.
 
-### 5. CI 在 omk 里只指 Confidence Interval
+### 5. In omk, CI only ever means Confidence Interval
 
-**omk 里 CI 永远只指置信区间(Confidence Interval)**,不指 Continuous Integration。这条避免与统计学外的 "CI" 含义混淆。
+**In omk, CI always means Confidence Interval**, never Continuous Integration. This rule avoids confusion with the non-statistical "CI".
 
-规则:
+Rules:
 
-- **持续集成场景的内部 helper 一律用 "gate"**：`omk eval` 的 gate 路径 / `evaluateLayerGates` / `gateThreshold` / `LayerGateResult`
-- **置信区间场景一律用 "CI"**:`bootstrap CI` / `diff CI` / `bootstrapCI` 字段 / "95% CI"
-- 文档 / 注释 / commit message 提到 "CI" 时不必加澄清 — 单一含义,读者不需上下文判断
+- **Continuous-integration internal helpers always use "gate"**: the `omk eval` gate path / `evaluateLayerGates` / `gateThreshold` / `LayerGateResult`.
+- **Confidence-interval contexts always use "CI"**: `bootstrap CI` / `diff CI` / the `bootstrapCI` field / "95% CI".
+- Docs / comments / commit messages mentioning "CI" need no clarification — there is a single meaning, so the reader doesn't need context to disambiguate.
 
-### 6. 稳定性 = 跨重复运行（test-retest），不是跨用例散度
+### 6. Stability = across repeated runs (test-retest), not cross-sample spread
 
-**稳定性（stability）的概念对齐 psychometrics 的 test-retest reliability——同一对象在重复运行下的分数一致性。omk 采用 CV（变异系数，工程领域相对离散度指标）作主指标；它与 psychometrics 严格意义的 test-retest reliability（通常用 ICC 或 Pearson r）不完全等价，不是 psychometrics 标准下的 reliability 测量，而是同类概念下的工程化近似。**
+**The concept of stability aligns with psychometrics' test-retest reliability — score consistency of the same object across repeated runs. omk uses CV (coefficient of variation, an engineering measure of relative dispersion) as the primary metric; it is not fully equivalent to test-retest reliability in the strict psychometric sense (typically ICC or Pearson r), and is not a psychometric reliability measurement but an engineering approximation of the same family of concepts.**
 
-omk 的具体实现：`--repeat N` 让同一 (variant × sample) 跑 N 次，`report.variance.perVariant[v]` 存多次运行的分数序列。稳定性主指标 **CV = σ / mean**（变异系数，无量纲相对散度），副指标 σ + 95% CI。阈值 `<5% / 5~15% / >15%` 为 1-5 分数量纲下的经验值，不是学术文献引用值。
+omk's concrete implementation: `--repeat N` runs the same (variant × sample) N times, and `report.variance.perVariant[v]` stores the score series across runs. The primary stability metric is **CV = σ / mean** (coefficient of variation, a dimensionless relative dispersion), with σ + 95% CI as secondary metrics. The thresholds `<5% / 5~15% / >15%` are empirical values on the 1-5 score scale, not figures cited from the literature.
 
-**什么不是稳定性**：
+**What is not stability**:
 
-- **跨用例 min~max 分数范围**不是稳定性。同一 variant 在多个用例上的分数差异，大部分来自**用例难度本身不同**（eval-samples 通常有意覆盖多种任务），不是 variant 内在波动。把这个 range 叫稳定性是误读——读者看到"100%"会错以为 variant 很稳定，实际可能只是用例集太窄。
-- **成功率（success rate）**不是稳定性。成功率反映的是"任务有没有完成"（执行健康度），和"分数在重复测时抖动多大"（测量稳定性）是两个独立概念。成功率 < 100% 时在副区 alert，不作为稳定性主指标。
+- **The cross-sample min~max score range** is not stability. The score spread of one variant across multiple samples comes mostly from **the samples themselves differing in difficulty** (eval-samples usually deliberately cover varied tasks), not from intrinsic variant fluctuation. Calling that range "stability" is a misreading — a reader who sees "100%" would wrongly assume the variant is very stable, when in fact the sample set may just be too narrow.
+- **Success rate** is not stability. Success rate reflects "did the task complete" (execution health); "how much the score jitters across repeats" (measurement stability) is an independent concept. When success rate < 100%, it surfaces as a secondary-area alert, not as the primary stability metric.
 
-**UI 约定**：
+**UI conventions**:
 
-- 六维对比表"稳定性"列主值：有 variance 数据时显示 `CV X.X%`，没有（单轮评测 / 无 `--repeat`）时显示 `—` + 副区 `需 --repeat ≥ 2`。**诚实交代测不到什么**。
-- 行业对照：Anthropic / OpenAI eval docs、Braintrust、Langfuse 等都把多次运行之间的 variance 作为稳定性核心指标，不用跨用例散度。
+- In the six-dim comparison table, the "stability" column primary value: when variance data exists, show `CV X.X%`; when it doesn't (single-run evaluation / no `--repeat`), show `—` plus a secondary-area `需 --repeat ≥ 2`. **Honestly state what cannot be measured.**
+- Industry alignment: Anthropic / OpenAI eval docs, Braintrust, Langfuse, etc. all treat variance across repeated runs as the core stability metric, not cross-sample spread.
 
-### 7. 三层评分：事实 / 行为 / LLM 评价
+### 7. Three scoring layers: fact / behavior / LLM judge
 
-`LayeredScores` 把 composite（合成分）拆成三个正交层，字段依次 `factScore` / `behaviorScore` / `judgeScore`，UI 分别展示为 **"事实" / "行为" / "LLM 评价"**。
+`LayeredScores` splits the composite into three orthogonal layers, with fields `factScore` / `behaviorScore` / `judgeScore` in order, displayed in the UI as **"事实" / "行为" / "LLM 评价"** respectively.
 
-| 层 | 字段 | 来源 | 本质 |
+| Layer | Field | Source | Nature |
 |---|---|---|---|
-| 事实 | `factScore` | 事实类断言通过率（`contains` / `json_schema` / `fact_check` 等） | 规则可验证 · 客观 |
-| 行为 | `behaviorScore` | 行为类断言通过率（`tools_called` / `tool_output_contains` / `turns_max` 等） | 规则可验证 · 客观 |
-| LLM 评价 | `judgeScore` | LLM judge 基于 rubric 的主观评分（= `results.llmScore`） | 模型评委 · 主观 |
+| Fact | `factScore` | pass rate of fact assertions (`contains` / `json_schema` / `fact_check`, etc.) | rule-verifiable · objective |
+| Behavior | `behaviorScore` | pass rate of behavior assertions (`tools_called` / `tool_output_contains` / `turns_max`, etc.) | rule-verifiable · objective |
+| LLM judge | `judgeScore` | the LLM judge's subjective rubric-based score (= `results.llmScore`) | model judge · subjective |
 
-**"LLM 评价"不叫"质量"的原因**：
+**Why "LLM judge" isn't called "quality"**:
 
-- `composite` 合成分 = 三层算术平均；外部推广采用基础四维框架（质量 / 成本 / 效率 / 准确性），**"质量"指代 composite 合成分这一维**
-- 如果把 `judgeScore` 也叫"质量层"，同一份报告里就会有表头"质量 3.85"与 detail"质量层: 4"两个语义完全不同的数字，读者无法区分
-- "LLM 评价"明示来源是 LLM 评委，和"事实 / 行为"的规则验证形成语义对比，三层并列无歧义
-- `judge` 作为字段名与已有术语 `judgeExecutor` / `judgeModel` 对齐
+- The `composite` score = arithmetic mean of the three layers; external messaging uses the base four-dimension framework (quality / cost / efficiency / accuracy), where **"quality" refers to the composite-score dimension**.
+- If `judgeScore` were also called the "quality layer", a single report would carry both a header "quality 3.85" and a detail "quality layer: 4" — two numbers with completely different meanings, and the reader couldn't tell them apart.
+- "LLM judge" makes the source (the LLM judge) explicit and contrasts semantically with the rule-verification of "fact / behavior", so the three layers sit side by side without ambiguity.
+- `judge` as a field name aligns with the existing terms `judgeExecutor` / `judgeModel`.
 
-**代码约定**：
+**Code conventions**:
 
-- 对外文档、UI label、变更记录提及这一层时用 "LLM 评价"（中文）/ "LLM judge"（英文）
-- 代码字段、类型、枚举值统一使用 `judge` / `judgeScore` / `avgJudgeScore`
-- 不要在新代码里再出现 `qualityScore` / `avgQualityScore`（属 v0.15 遗留命名，v0.16 已废除）
+- In user-facing docs, UI labels, and changelogs, refer to this layer as "LLM 评价" (Chinese) / "LLM judge" (English).
+- Code fields, types, and enum values uniformly use `judge` / `judgeScore` / `avgJudgeScore`.
+- Do not reintroduce `qualityScore` / `avgQualityScore` in new code (legacy v0.15 naming, removed in v0.16).
 
-## 四、对外表达规范
+## 4. External expression conventions
 
-### 1. 文档
+### 1. Docs
 
-对外文档采用以下优先级：
+User-facing docs use the following priority:
 
-- 顶层总称：`artifact`
-- 实验分组：`variant`
-- 实验角色：`control` / `treatment`
-- 运行环境：`runtime context`
-- 具体对象类型：`skill` / `agent` / `workflow`
+- top-level umbrella: `artifact`
+- experiment grouping: `variant`
+- experiment role: `control` / `treatment`
+- runtime environment: `runtime context`
+- concrete object type: `skill` / `agent` / `workflow`
 
-### 2. 命令示例
+### 2. Command examples
 
-命令示例中：
+In command examples:
 
-- 使用 `--control <expr>` + `--treatment <v1,v2,...>` 按 experiment role 声明 variant
-- variant 表达式解析为 artifact 与 runtime context
-- 示例对象尽量写具体路径或具体名称，不用泛化占位代替所有场景
-- 复杂实验配置推荐用 `--config eval.yaml`，CLI 参数只承担简单场景
+- Use `--control <expr>` + `--treatment <v1,v2,...>` to declare variants by experiment role.
+- The variant expression resolves to an artifact and a runtime context.
+- Prefer concrete paths or concrete names in example objects; don't use a generic placeholder to stand in for every scenario.
+- For complex experiment configs, prefer `--config eval.yaml`; CLI parameters only carry the simple cases.
 
-### 3. 报告与验收
+### 3. Reports and acceptance
 
-报告、验收文档应优先回答：
+Reports and acceptance docs should answer, in priority order:
 
-- 这次比较的 artifact 是什么
-- 它们运行在什么 runtime context 中
-- 谁是 control、谁是 treatment
-- 差异来自 artifact 本身，还是来自 runtime context
+- What artifacts is this comparing?
+- What runtime context do they run in?
+- Who is control, who is treatment?
+- Does the difference come from the artifact itself, or from the runtime context?
 
-## 五、对内实现规范
+## 5. Internal implementation conventions
 
-### 1. 类型与字段
+### 1. Types and fields
 
-新代码优先使用：
+New code prefers:
 
 - `Artifact`
 - `ArtifactKind`
 - `artifacts`
 - `task.artifact`
 - `artifactHashes`
-- `VariantConfig.experimentRole`（新增字段，枚举 `'control' | 'treatment'`）
+- `VariantConfig.experimentRole` (added field, enum `'control' | 'treatment'`)
 
-### 2. 去兼容策略
+### 2. De-compatibility strategy
 
-OMK 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历史兼容层。
+omk is still in its 0-1 phase with a very small user base, so it does not proactively keep historical compatibility layers.
 
-规则：
+Rules:
 
-- 新实现直接收敛到 artifact 术语
-- 旧命名如果会造成长期歧义，应直接删除，而不是继续挂兼容别名
-- 破坏性调整优先在现在完成，不向后滚雪球
-- v0.16 起 `--variants` 直接移除（不打 deprecation warning），用户迁移到 `--control` / `--treatment`
+- New implementations converge directly on the artifact terminology.
+- If old naming would cause long-term ambiguity, delete it outright rather than keeping a compatibility alias.
+- Make breaking adjustments now rather than snowballing backward-compatibility.
+- From v0.16, `--variants` was removed outright (no deprecation warning); users migrate to `--control` / `--treatment`.
 
-### 3. 命名原则
+### 3. Naming principles
 
-- 通用抽象用 `artifact`
-- 具体子类用 `skill` / `agent` / `workflow`
-- 实验编排用 `variant`
-- 实验角色用 `control` / `treatment`（不用 `baseline` / `experiment`）
-- 运行环境用 `runtime context` / `cwd`
+- Generic abstraction: `artifact`
+- Concrete subtypes: `skill` / `agent` / `workflow`
+- Experiment orchestration: `variant`
+- Experiment role: `control` / `treatment` (not `baseline` / `experiment`)
+- Runtime environment: `runtime context` / `cwd`
 
-## 六、术语映射
+## 6. Term mapping
 
-| 旧术语 | 新标准术语 | 说明 |
+| Old term | New standard term | Note |
 |---|---|---|
-| evaluand | artifact | 被评测对象的统一总称 |
-| EvaluandSpec | Artifact | 核心对象类型 |
-| EvaluandKind | ArtifactKind | 对象类别 |
-| evaluands | artifacts | 请求中的对象列表 |
-| task.evaluand | task.artifact | 单个任务绑定的对象 |
-| evaluandHashes | artifactHashes | artifact 内容哈希 |
-| skillHashes | artifactHashes | report 中的统一对象哈希 |
-| skill 作为总称 | artifact | skill 退回为具体子类 |
-| agent 作为总称 | artifact / agent runtime | 视语义选择 |
-| `--variants` CLI 参数 | `--control` / `--treatment` | 按 experiment role 声明 variant，废除扁平列表 |
-| 从 `artifactKind === 'baseline'` 推断对照组 | 显式读 `experimentRole === 'control'` | 对照组由用户声明，不从 artifact kind 反推 |
-| `LayeredScores.qualityScore` | `LayeredScores.judgeScore` | UI 展示为 "LLM 评价" / "LLM judge"；避免与表头"质量"(composite) 重名 |
-| `VariantSummary.avgQualityScore` | `VariantSummary.avgJudgeScore` | 同上 |
-| `VarianceLayerKey: 'quality'` | `VarianceLayerKey: 'judge'` | 同上 |
+| evaluand | artifact | unified umbrella for the thing being evaluated |
+| EvaluandSpec | Artifact | core object type |
+| EvaluandKind | ArtifactKind | object category |
+| evaluands | artifacts | object list in the request |
+| task.evaluand | task.artifact | the object a single task binds to |
+| evaluandHashes | artifactHashes | content hash of the artifact |
+| skillHashes | artifactHashes | unified object hash in the report |
+| skill as the umbrella | artifact | skill falls back to a concrete subtype |
+| agent as the umbrella | artifact / agent runtime | choose by semantics |
+| `--variants` CLI parameter | `--control` / `--treatment` | declare variants by experiment role; the flat list is gone |
+| inferring the control group from `artifactKind === 'baseline'` | read `experimentRole === 'control'` explicitly | the control group is user-declared, not inferred from artifact kind |
+| `LayeredScores.qualityScore` | `LayeredScores.judgeScore` | displayed as "LLM 评价" / "LLM judge"; avoids clashing with the "quality" header (composite) |
+| `VariantSummary.avgQualityScore` | `VariantSummary.avgJudgeScore` | same as above |
+| `VarianceLayerKey: 'quality'` | `VarianceLayerKey: 'judge'` | same as above |
 
-## 七、Skill Isolation(v0.22 新增)
+## 7. Skill isolation (added in v0.22)
 
-### 1. 问题背景
+### 1. Problem background
 
-omk 跑 baseline-vs-skill 评测时,baseline variant 默认通过**三条 channel** 拿到 `~/.claude/skills/` 里的所有 skill,导致 baseline 实际不是"裸模型"——**construct invalidity**:
+When omk runs baseline-vs-skill evaluations, the baseline variant by default reaches every skill under `~/.claude/skills/` through **three channels**, so the baseline is not actually a "bare model" — a **construct invalidity**:
 
-1. **SDK skill auto-discovery**:Claude Agent SDK 默认扫 `~/.claude/skills/` 把 skill 列表注入 main session system prompt
-2. **subagent Skill 工具**:即便 main session 没 skill,SDK 内置 task subagent 调 `Skill(...)` 仍会按需加载 skill 内容
-3. **cwd 文件系统访问**:baseline 默认 cwd 是用户评测工作目录,该目录通常有 `skills/<name>/` symlink 给 treatment 用,baseline 用 plain `Glob` / `Read` 工具就能顺 symlink 直接读 `SKILL.md`
+1. **SDK skill auto-discovery**: the Claude Agent SDK scans `~/.claude/skills/` by default and injects the skill list into the main session's system prompt.
+2. **subagent Skill tool**: even if the main session has no skills, the SDK's built-in task subagent can still load skill content on demand by calling `Skill(...)`.
+3. **cwd file-system access**: the baseline's default cwd is the user's evaluation working directory, which usually has a `skills/<name>/` symlink prepared for the treatment; the baseline can follow that symlink with plain `Glob` / `Read` tools and read `SKILL.md` directly.
 
-三条 channel 都堵掉之后,baseline 才真的"裸"。任何一条没堵,baseline 都会绕过其他堵点拿到 skill 内容,verdict / Δ 反映的是污染基线 vs treatment,而不是真实"无知识 vs 有知识"。
+Only once all three channels are blocked is the baseline truly "bare". If any one is left open, the baseline routes around the others to reach skill content, and the verdict / Δ reflects a contaminated baseline vs. treatment rather than the real "no knowledge vs. knowledge".
 
-### 2. 术语
+### 2. Terminology
 
-- **`allowedSkills`**(per-variant 字段,新加在 `Artifact` / `VariantConfig` / `EvalConfigVariant` 上):
-  - `undefined` → SDK 默认行为(全发现 `~/.claude/skills/`)
-  - `[]` → **完全隔离**:`options.skills = []` + `options.disallowedTools = ['Skill']`,main session 不发现任何 skill,subagent 也无法调 Skill 工具
-  - `[name1, name2]` → **白名单**:`options.skills = [name1, name2]`,只载入指定 skill。subagent 走独立 channel,白名单场景 v1 不强制 subagent 跟随(follow-up)
-- **`--strict-baseline` flag**(default true):对所有 `kind === 'baseline'` 的 artifact 自动设 `allowedSkills = []`;`--no-strict-baseline` 关掉(显式 opt-out)
-- **`meta.skillIsolation`**(report meta 新字段):variantName → allowedSkills 快照,跨报告对比 verdict / Δ 时校验
+- **`allowedSkills`** (per-variant field, added to `Artifact` / `VariantConfig` / `EvalConfigVariant`):
+  - `undefined` → default SDK behavior (full discovery of `~/.claude/skills/`)
+  - `[]` → **full isolation**: `options.skills = []` + `options.disallowedTools = ['Skill']`; the main session discovers no skills, and the subagent can't call the Skill tool either
+  - `[name1, name2]` → **whitelist**: `options.skills = [name1, name2]`, loading only the named skills. The subagent goes through a separate channel; in the whitelist case v1 does not force the subagent to follow.
+- **`--strict-baseline` flag** (default true): automatically sets `allowedSkills = []` for every `kind === 'baseline'` artifact; `--no-strict-baseline` turns it off (explicit opt-out).
+- **`meta.skillIsolation`** (new report-meta field): a variantName → allowedSkills snapshot, used to validate comparability when comparing verdict / Δ across reports.
 
-### 3. 默认值与优先级
+### 3. Defaults and priority
 
 ```
-eval.yaml variant.allowedSkills (显式)
-  > CLI --strict-baseline / --no-strict-baseline (批量)
+eval.yaml variant.allowedSkills (explicit)
+  > CLI --strict-baseline / --no-strict-baseline (batch)
   > default (strictBaseline = true)
 ```
 
-baseline-kind 默认 `[]`(strict),其他 kind 默认 `undefined`(SDK 全发现)。
+baseline-kind defaults to `[]` (strict); other kinds default to `undefined` (full SDK discovery).
 
-### 4. 隔离覆盖范围
+### 4. Isolation coverage
 
-| Channel | 覆盖? | 机制 |
+| Channel | Covered? | Mechanism |
 |---|---|---|
 | Main session skills | ✅ | `options.skills = []` |
-| SDK 内置 task subagent 调 Skill 工具 | ✅(allowedSkills=[] 时) | `options.disallowedTools = ['Skill']` |
-| **cwd 文件系统(baseline 走 cwd → skills/ symlink → SKILL.md)** | ✅(strict + 用户没显式 cwd 时) | baseline cwd 切到 `~/.oh-my-knowledge/isolated-cwd/` 空目录 |
-| MCP servers | ✅(已默认堵) | SDK `settingSources` 默认 `[]`,omk 不传 `mcpServers` |
-| `AgentDefinition.skills` 白名单精确控制 | ❌(known hole, v1 不做) | follow-up:omk 加 `agents` option |
-| script executor | ❌ | stderr warn,用户自定义不参与 isolation |
+| SDK built-in task subagent calling the Skill tool | ✅ (when allowedSkills=[]) | `options.disallowedTools = ['Skill']` |
+| **cwd file system (baseline → cwd → skills/ symlink → SKILL.md)** | ✅ (strict + user gave no explicit cwd) | baseline cwd switched to the empty dir `~/.oh-my-knowledge/isolated-cwd/` |
+| MCP servers | ✅ (blocked by default) | SDK `settingSources` defaults to `[]`, omk passes no `mcpServers` |
+| `AgentDefinition.skills` whitelist fine-grained control | ❌ (known hole, not in v1) | follow-up: omk adds an `agents` option |
+| script executor | ❌ | stderr warn; user-custom, doesn't participate in isolation |
 
-**为什么 cwd 这条 channel 单独列出**:仅堵 SDK 两条 channel(`skills:[]` + `disallowedTools:['Skill']`)后,baseline 的 `Skill` 工具调用确实降到 0,但 baseline 仍能用 plain `Glob` / `Read` 顺 cwd 下的 `skills/<name>/` symlink 读到 `SKILL.md`,完全绕过 SDK 隔离。根因:omk 默认 `baseline.cwd === null` → SDK fallback 到 `process.cwd()` = 用户评测工作目录,那里通常有 `skills/<name>/` symlink 给 treatment 用。修法是 baseline 默认 cwd 切到 `~/.oh-my-knowledge/isolated-cwd/`(空目录)。**用户显式给 baseline 设 cwd 时不动**(显式 cwd = 用户负责该目录干净)。
+**Why the cwd channel is listed separately**: after blocking only the two SDK channels (`skills:[]` + `disallowedTools:['Skill']`), the baseline's `Skill` tool calls do drop to 0, but the baseline can still use plain `Glob` / `Read` to follow the `skills/<name>/` symlink under cwd and read `SKILL.md`, completely bypassing the SDK isolation. Root cause: omk defaults to `baseline.cwd === null` → the SDK falls back to `process.cwd()` = the user's evaluation working directory, which usually has a `skills/<name>/` symlink prepared for the treatment. The fix is to switch the baseline's default cwd to `~/.oh-my-knowledge/isolated-cwd/` (an empty dir). **When the user explicitly sets a cwd for the baseline, this is left untouched** (explicit cwd = the user is responsible for keeping that dir clean).
 
-注:isolated-cwd 不是 sandbox,baseline 仍可 Read 任意 absolute path。但模型不会主动猜用户私有路径(没 system prompt 暗示)。如果评测场景里 baseline 会被 prompt 引导去读绝对路径,需要再加层 sandbox 保护(out-of-scope)。
+Note: isolated-cwd is not a sandbox — the baseline can still Read any absolute path. But the model won't proactively guess the user's private paths (no system-prompt hint). If the evaluation scenario prompts the baseline to read an absolute path, an additional sandbox layer is needed (out of scope).
 
-### 5. cache key 版本
+### 5. Cache key version
 
-cache key 当前为 `v4:` prefix,含 allowedSkills、executor 名和 executor runtime 指纹入键 — 切换 strict / non-strict、跨 executor 或 binary / SDK 版本变化都不会误命中旧输出。
+The cache key currently carries a `v4:` prefix, with allowedSkills, the executor name, and the executor runtime fingerprint folded into the key — switching strict / non-strict, crossing executors, or a binary / SDK version change will not falsely hit stale output.
 
-### 6. executor 兼容
+### 6. Executor compatibility
 
 | Executor | undefined | `[]` | `[name]` |
 |---|---|---|---|
-| `claude-sdk` | 默认全发现 | skills:[] + disallowedTools:[Skill] | skills:[name] |
-| `claude-cli` | 默认 | `--disable-slash-commands --disallowedTools Skill` | **throw**(用户改 sdk) |
-| `script` | 默认 | stderr warn,不阻塞(无效) | stderr warn,不阻塞(无效) |
+| `claude-sdk` | full discovery (default) | skills:[] + disallowedTools:[Skill] | skills:[name] |
+| `claude-cli` | default | `--disable-slash-commands --disallowedTools Skill` | **throw** (user switches to sdk) |
+| `script` | default | stderr warn, non-blocking (no effect) | stderr warn, non-blocking (no effect) |
 
-claude-cli executor 用 `--disable-slash-commands`(文档:"Disable all skills")+ `--disallowedTools Skill` 双堵,跟 SDK 等价,**只缺 partial whitelist 能力**——白名单 `[name]` 需求必须走 claude-sdk(SDK `skills` option 直接支持白名单语义)。`script` executor 用户自定义,无法保证遵循 isolation,只 warn。
+The claude-cli executor uses a double block, `--disable-slash-commands` (docs: "Disable all skills") + `--disallowedTools Skill`, equivalent to the SDK — it just **lacks partial-whitelist capability**, so a whitelist `[name]` requirement must go through claude-sdk (the SDK's `skills` option directly supports whitelist semantics). The `script` executor is user-custom and can't be guaranteed to honor isolation, so it only warns.
 
-## 八、落地判断标准
+## 8. Decision criteria
 
-后续新增功能、文档或接口时，如果遇到命名选择，按下面顺序判断：
+When adding features, docs, or interfaces later and facing a naming choice, decide in this order:
 
-1. 它是在描述被评测对象吗？如果是，用 `artifact`
-2. 它是在描述实验分组吗？如果是，用 `variant`
-3. 它是在描述实验角色吗？如果是，用 `control` / `treatment`
-4. 它是在描述运行目录或环境吗？如果是，用 `runtime context`
-5. 它是在描述具体对象类型吗？如果是，用 `skill` / `agent` / `workflow`
-6. 如果一个词同时混合了对象、环境或角色语义，就要拆开重写
+1. Is it describing the thing being evaluated? If so, use `artifact`.
+2. Is it describing the experiment grouping? If so, use `variant`.
+3. Is it describing the experiment role? If so, use `control` / `treatment`.
+4. Is it describing the run directory or environment? If so, use `runtime context`.
+5. Is it describing a concrete object type? If so, use `skill` / `agent` / `workflow`.
+6. If a single word mixes object, environment, or role semantics, split it apart and rewrite.

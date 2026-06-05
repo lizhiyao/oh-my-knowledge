@@ -87,7 +87,7 @@ export function resolveVariantSpecs(
       `请通过 --control / --treatment 或 --config eval.yaml 声明 variant 角色。\n`
       + `  示例：omk eval --control baseline --treatment my-skill${hint}\n`
       + `  --batch 模式下自动用 baseline vs 每个 skill,无需显式声明\n`
-      + `  术语见 docs/specs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
+      + `  术语见 docs/zh/specs/terminology-spec.md（v0.16 起废除 --variants，改用 experiment role 显式声明）`,
     );
   }
 

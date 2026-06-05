@@ -9,18 +9,17 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 - [Eval sample format](./reference/eval-sample-format.md)
 - [Executors & artifact layout](./reference/executors.md)
 - [Comparison with 7 tools](./reference/comparison.md)
-- [术语表 / Glossary](./zh/reference/glossary.md) (中文版)
+- [Glossary](./reference/glossary.md)
 
 ## I want to understand how it works
 
 - [Architecture](./explanation/architecture.md)
 - [Statistical rigor](./explanation/statistical-rigor.md)
-- [评分公式 / Scoring](./zh/specs/scoring.md) (中文版)
+- [Scoring pipeline](./specs/scoring.md)
 
 ## I want to contribute / read design specs
 
-- [Sample design spec](./specs/sample-design-spec.md) (中文)
-- [Knowledge gap signal spec](./specs/knowledge-gap-signal-spec.md) (中文)
-- [RAG metrics spec](./specs/rag-metrics-spec.md) (中文)
-- [Terminology spec](./specs/terminology-spec.md) (中文)
-- [SIGINT validation](./dev/sigint-validation.md) (中文)
+- [Sample design spec](./specs/sample-design-spec.md)
+- [Knowledge gap signal spec](./specs/knowledge-gap-signal-spec.md)
+- [RAG metrics spec](./specs/rag-metrics-spec.md)
+- [Terminology spec](./specs/terminology-spec.md)

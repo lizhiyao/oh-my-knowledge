@@ -90,7 +90,7 @@ omk 长期定位是「知识评测 + 管理 + 洞察」三位一体，对应 **�
 | 评测 (evaluate) | `omk eval` | skill 在样本上有没有用（A/B 对比 + 显著性 + 稳定性） |
 | 观测 (observe) | `omk observe` | skill 上线后真实表现怎么样（即将完整上线） |
 
-每个阶段对应不同 verdict 闸门 + 不同的报告 UI 路径。详见 [Roadmap](../roadmap.md)。
+每个阶段对应不同 verdict 闸门 + 不同的报告 UI 路径。
 
 ---
 
@@ -100,7 +100,7 @@ omk 文档（README.zh / docs/zh / SKILL.md / CLI zh 字符串 / PR description�
 
 - **业内通用术语英文保留**：bootstrap CI / Δ / Pearson / executor / fingerprint 等。强行中文化会显得文章在「翻译外文」。
 - **第一次出现时给中文括注**：例如「外验集（holdout set，即 skill 显式没写过的独立验证用例）」，第二次以后用中文。
-- **omk 内部命名按 [terminology-spec.md](../../specs/terminology-spec.md)**：artifact / executor / variant / verdict 等。
+- **omk 内部命名按 [terminology-spec.md](../specs/terminology-spec.md)**：artifact / executor / variant / verdict 等。
 - **特殊翻译规则**：
   - LLM judge → **评委**（不要译作「判官」）
   - sample → **用例**（不要用「样本」）
@@ -110,4 +110,4 @@ omk 文档（README.zh / docs/zh / SKILL.md / CLI zh 字符串 / PR description�
 
 ---
 
-姊妹文档：[术语规范](../../specs/terminology-spec.md) / [统计严谨性](../explanation/statistical-rigor.md) / [综合分构造效度](../specs/scoring.md) / [Roadmap](../roadmap.md)
+姊妹文档：[术语规范](../specs/terminology-spec.md) / [统计严谨性](../explanation/statistical-rigor.md) / [综合分构造效度](../specs/scoring.md)

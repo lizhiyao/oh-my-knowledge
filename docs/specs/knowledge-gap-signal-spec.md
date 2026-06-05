@@ -1,119 +1,119 @@
-# OMK 知识缺口信号形式化规范
+# OMK knowledge-gap signal specification
 
-> 状态：v0.1 草案（2026-04-13 起草）
-> 作用：定义 omk 如何从 agent 评测过程中提取"知识缺口信号"，如何聚合成缺口率，如何追踪知识库的风险收敛趋势。
+> Status: v0.1 draft (drafted 2026-04-13)
+> Purpose: define how omk extracts "knowledge-gap signals" from the agent evaluation process, how they aggregate into a gap rate, and how to track the convergence of a knowledge base's risk exposure.
 
-## 一、立场与定位
+## 1. Stance and positioning
 
-omk 不是"知识库完整性检查工具"。**没人能告诉你你的知识库是完整的**——完备性在数学上不可证明，在工程上也不可证明。任何声称能做这件事的工具都在误导用户。
+omk is not a "knowledge-base completeness checker." **No one can tell you your knowledge base is complete** — completeness is unprovable mathematically, and unprovable in engineering practice. Any tool that claims to do this is misleading its users.
 
-omk 是什么：**让知识库的风险敞口可量化、可追踪、可收敛的工具**。这是主动承认测量局限后的诚实设计。它的三个核心动作是：
+What omk is: **a tool that makes a knowledge base's risk exposure quantifiable, trackable, and convergent**. This is the honest design that follows from actively acknowledging the limits of measurement. Its three core actions are:
 
-1. **量化** 当前测评集触及到的知识库盲区
-2. **追踪** 盲区在多次迭代中的收敛趋势
-3. **强制** 把测评集作为一等公民——你必须认真设计和进化你的测试用例，否则所有指标都是自欺欺人
+1. **Quantify** the blind spots in the knowledge base that the current sample set touches.
+2. **Track** how those blind spots converge across repeated iterations.
+3. **Force** the sample set to be a first-class citizen — you must seriously design and evolve your test samples, otherwise every metric is self-deception.
 
-**gap rate 和 coverage 是条件性测量工具，不是绝对判决**。每一个数字都必须和它所依赖的 test sample set 绑定才能被解读。脱离 test set 谈 gap rate 是误用。这一点贯穿整份规范。
+**Gap rate and coverage are conditional measurement tools, not absolute verdicts.** Every number can only be interpreted bound to the test sample set it depends on. Talking about gap rate apart from the test set is misuse. This thread runs through the entire spec.
 
 ---
 
-## 二、为什么需要"缺口"这个独立指标
+## 2. Why "gap" needs to be its own metric
 
-omk 当前已经有 **覆盖率（coverage）** 这个指标——基于 agent 执行时的 Read / Grep 工具调用记录，计算被访问过的知识文件比例。
+omk already has a **coverage** metric — based on the Read / Grep tool calls an agent makes during execution, it computes the fraction of knowledge files that were accessed.
 
-`coverage = 被访问的知识文件数 / 知识库文件总数`
+`coverage = knowledge files accessed / total knowledge files`
 
-这个指标回答的是 **"已知知识在测评集中有多少被用到了"**（how much of the known knowledge base is exercised by the test samples）。
+This metric answers **"how much of the known knowledge base is exercised by the test samples."**
 
-注意 coverage 实际上是 **测评集 × 知识库 交互的产物**，不是知识库的属性。低覆盖不代表知识库差，代表测试用例没把知识库用透。
+Note that coverage is really a **product of the sample set × knowledge base interaction**, not a property of the knowledge base. Low coverage doesn't mean the knowledge base is bad — it means the samples didn't exercise it fully.
 
-它不能回答另一个完全不同的问题：**"agent 想找某个东西但没找到了多少次"**——也就是 **测评集触及到的知识库盲区有多少**（how much unknown territory the test samples bumped into）。
+It cannot answer a completely different question: **"how many times did the agent want to find something but couldn't"** — that is, **how much of the knowledge base's blind territory the sample set bumped into.**
 
-举例：
+For example:
 
-> agent 跑了 10 个评测用例，100% 访问了所有 `.claude/knowledge/*.md`，coverage = 100%。
+> An agent ran 10 evaluation samples and accessed 100% of all `.claude/knowledge/*.md`, so coverage = 100%.
 >
-> 但其中 3 个用例里模型说"我不确定这个数据在哪个域里"，4 个用例里 `Grep "revenue_schema"` 返回空，2 个用例里 `Read CLAUDE.md` 失败——这 9 个缺口信号当前完全不计入任何指标。
+> But in 3 of those samples the model said "I'm not sure which domain this data lives in," in 4 samples `Grep "revenue_schema"` returned empty, and in 2 samples `Read CLAUDE.md` failed — those 9 gap signals currently feed into no metric at all.
 >
-> 报告会写 "100% 覆盖"，读者错以为没有盲区。
+> The report says "100% coverage," and the reader wrongly concludes there are no blind spots.
 
-**coverage 高 ≠ 没有缺口**。一个知识库可以做到 100% coverage 同时仍然有大量缺口——前提是覆盖到的那些文件根本不是 agent 真正需要的。
+**High coverage ≠ no gaps.** A knowledge base can hit 100% coverage and still have plenty of gaps — as long as the files it covered aren't the ones the agent actually needed.
 
-所以 omk 需要一个独立的指标 **gap rate（缺口率）**，专门追踪"**测评集触及到的、知识库当前回答不了的**问题数量"。它和 coverage 一样，是测评集 × 知识库交互的产物，不是知识库本身的属性。
-
----
-
-## 三、核心限制：能说明什么，不能说明什么
-
-这一节放在信号定义之前，是因为任何读者在看完聚合公式和信号来源后都会产生"所以这个数字能证明什么"的疑问。下面是诚实的答案。
-
-### 能说明（有效论断）
-
-1. **"在这批测评用例上，agent 遇到了多少次知识盲区"**——对当前 test set 的事实陈述，无争议
-2. **"同一 test set 下，这次 commit 比上次 gap rate 是不是降了"**——趋势测量。只要 test set 不动，gap rate 的变化就是系统对这批用例应对能力的真实信号
-3. **"具体哪些查询失败了"**——逐条缺口清单的诊断价值远大于聚合值。每一条失败的 `Grep "revenue_schema"` 都是一个**已命名**的、**可修复**的缺口
-4. **"这批用例是不是把知识库用透了"**——coverage 给出这个答案
-5. **"在稳定的 test set 下是否向收敛方向移动"**——这是 gap rate 最有推广价值的单一用法
-
-### 不能说明（不能声张的结论）
-
-1. **"我的知识库是完整的"**——绝对不能。gap rate = 0 只证明 "这 N 个用例没撞到墙"，不证明 "墙外没东西"
-2. **"新用户的问题会不会触发盲区"**——不能。他的问题可能在你用例集的分布之外
-3. **"0% gap rate = done"**——不能。它只是说明当前 test set 被满足了。见第八节"用例进化"
-4. **"我知识库的薄弱领域是什么"**——只在用例恰好探测到的范围内成立。其它区域仍然是黑箱
-5. **"和另一个团队的知识库谁更好"**——除非用同一套 test set，否则完全不可比
-
-### 一句话概括
-
-**gap rate 脱离它所依赖的 test sample set 就失去意义**。任何缺口率数字必须和 test set 标识绑在一起报告，否则就是误导。这是测量方法本身的边界，不是 v0.1 能解决的工程问题。类比 software testing 的 code coverage：100% 行覆盖也证明不了没 bug，但它仍然是有价值的指标——前提是你理解它说的是什么、不说什么。
+So omk needs an independent metric, **gap rate**, dedicated to tracking "the number of questions the sample set touched that the knowledge base currently can't answer." Like coverage, it is a product of the sample set × knowledge base interaction, not a property of the knowledge base itself.
 
 ---
 
-## 四、缺口信号的四种来源
+## 3. The core limit: what it can and cannot show
 
-omk 从 agent trace 中提取缺口信号的方式有四种，按检测难度和信号强度分级：
+This section comes before the signal definitions because any reader, after seeing the aggregation formula and the signal sources, will ask "so what can this number prove?" Here are the honest answers.
 
-### 1. 失败搜索（强信号 · 自动可检测）
+### What it can show (valid claims)
 
-agent 主动尝试查询某个东西但工具返回空或失败。具体判据：
+1. **"On this batch of evaluation samples, how many times did the agent hit a knowledge blind spot"** — a factual statement about the current test set, beyond dispute.
+2. **"Under the same test set, did gap rate drop from last commit to this one"** — a trend measurement. As long as the test set is held fixed, the change in gap rate is a genuine signal of how the system handles this batch of samples.
+3. **"Which specific queries failed"** — the per-item gap list has far more diagnostic value than the aggregate. Every failed `Grep "revenue_schema"` is a **named**, **fixable** gap.
+4. **"Did this batch of samples exercise the knowledge base fully"** — coverage answers this.
+5. **"Is it moving toward convergence under a stable test set"** — this is gap rate's single most generalizable use.
 
-- `Grep` 工具调用 `output` 字段为空 / 包含 "No matches found" / `success: false`
-- `Read` 工具调用 `success: false` 且 input 是 agent 主动构造的路径（不是用户在 prompt 里给定的）
-- `Bash` 工具调用 input 形如 `grep ... / rg ... / find ...` 且 output 为空或退出码非零
+### What it cannot show (claims you must not make)
 
-**为什么是强信号**：agent 的搜索行为本身就反映了"我现在需要知道 X"。失败 = "这个知识库不包含 X 或者 agent 没找到正确的入口"。每一次失败都是一个明确的缺口候选。
+1. **"My knowledge base is complete"** — absolutely not. gap rate = 0 only proves "these N samples didn't hit a wall," not "there's nothing beyond the wall."
+2. **"Will a new user's questions trigger blind spots"** — no. Their questions may lie outside the distribution of your sample set.
+3. **"0% gap rate = done"** — no. It only says the current test set is satisfied. See Section 8, "Sample evolution."
+4. **"What the weak areas of my knowledge base are"** — only within the range the samples happen to probe. Everything else is still a black box.
+5. **"Whether my knowledge base is better than another team's"** — completely incomparable unless you use the same test set.
 
-**噪声来源**：探索性搜索（agent 在排除可能性）、模式拼写错误。需要在聚合时去重——同一用例内连续失败的相似搜索归为一个缺口事件。
+### In one sentence
 
-### 2. 显式标记（弱信号 · 文本匹配）
+**Gap rate loses meaning apart from the test sample set it depends on.** Any gap rate number must be reported bound to a test set identifier, otherwise it is misleading. This is a boundary of the measurement method itself, not an engineering problem v0.1 can solve. Compare it to code coverage in software testing: 100% line coverage proves no absence of bugs, yet it is still a valuable metric — provided you understand what it does and does not say.
 
-agent 在自己的输出里显式标记不确定或推断。omk 识别以下中文/英文标记：
+---
+
+## 4. The four sources of gap signals
+
+omk extracts gap signals from the agent trace in four ways, graded by detection difficulty and signal strength.
+
+### 1. Failed search (strong signal · auto-detectable)
+
+The agent actively tries to query something but the tool returns empty or fails. Concrete criteria:
+
+- A `Grep` tool call whose `output` field is empty / contains "No matches found" / has `success: false`.
+- A `Read` tool call with `success: false` where the input is a path the agent constructed itself (not one the user gave in the prompt).
+- A `Bash` tool call whose input looks like `grep ... / rg ... / find ...` and whose output is empty or whose exit code is non-zero.
+
+**Why it's a strong signal**: the agent's search behavior itself reflects "I need to know X right now." A failure means "this knowledge base doesn't contain X, or the agent didn't find the right entry point." Every failure is a clear gap candidate.
+
+**Noise sources**: exploratory search (the agent ruling out possibilities), pattern typos. These need dedup at aggregation time — consecutive failed similar searches within the same sample collapse to one gap event.
+
+### 2. Explicit marker (weak signal · text matching)
+
+The agent explicitly flags uncertainty or inference in its own output. omk recognizes the following Chinese / English markers:
 
 - `【推断】` / `【知识缺口】` / `【未知】`
 - `[inferred]` / `[unknown]` / `[knowledge gap]`
 
-**为什么是弱信号**：依赖 agent 的自我标记自觉性，没有强制力。模型不标记 = 不计入。本指标本身的可信度受限于 agent 的合作度。
+**Why it's a weak signal**: it relies on the agent's diligence in self-marking, with no enforcement. The model not marking = not counted. This metric's own credibility is bounded by the agent's cooperation.
 
-**用途**：作为补充信号，帮助检测"agent 自己意识到了缺口但没有主动搜索"的情况。
+**Use**: a supplementary signal, helping detect cases where "the agent itself realized there was a gap but didn't actively search."
 
-### 3. 降级措辞（弱信号 · LLM 辅助二次判定）
+### 3. Hedging language (weak signal · LLM-assisted second-pass judgment)
 
-agent 输出文本里出现确定性降级的措辞：
+Confidence-downgrading phrasing appears in the agent's output text:
 
-- 中文："我不确定"、"没有足够信息"、"需要查证"、"无法确认"、"猜测"、"可能是"
-- 英文："I'm not sure"、"insufficient information"、"need to verify"、"likely"、"presumably"
+- Chinese: "我不确定", "没有足够信息", "需要查证", "无法确认", "猜测", "可能是"
+- English: "I'm not sure", "insufficient information", "need to verify", "likely", "presumably"
 
-**为什么是弱信号**：纯字符串匹配假阳率高——"可能是" / "likely" 这类词在业务推理 / 假设分析 / 礼貌措辞里也大量出现，并不一定代表 agent 知识层面的不确定。
+**Why it's a weak signal**: pure string matching has a high false-positive rate — words like "可能是" / "likely" also appear heavily in business reasoning / hypothesis analysis / polite phrasing, and don't necessarily indicate knowledge-level uncertainty in the agent.
 
-**v0.2 实现策略：regex 召回 → LLM 二次判定**
+**v0.2 implementation strategy: regex recall → LLM second-pass judgment**
 
-两阶段流水线（spec §四 v0.1 的 regex 阶段保持不变，下游加一层 classifier 过滤）：
+A two-stage pipeline (the v0.1 regex stage from §4 stays unchanged; a classifier filter is added downstream):
 
-1. **召回阶段（regex）**：`extractHedgingSignals` 仍用模式匹配捞出所有"嫌疑句"，作为 candidate 送下游
-2. **判定阶段（LLM classifier）**：对每个 candidate 调用小模型，传入命中句子 + 用例上下文，让模型判断"这一句是知识层面的不确定，还是业务推理 / 假设 / 礼貌表达"
-3. **过滤**：`isUncertainty=false` 的 candidate 直接丢弃；`isUncertainty=true` 的保留为 hedging signal，并把 verdict（confidence + reason）挂到 `signal.classifierVerdict` 供报告侧展示
+1. **Recall stage (regex)**: `extractHedgingSignals` still uses pattern matching to dredge up all "suspect sentences" as candidates to send downstream.
+2. **Judgment stage (LLM classifier)**: for each candidate, call a small model with the matched sentence + sample context, and let the model decide "is this sentence knowledge-level uncertainty, or business reasoning / hypothesis / polite phrasing."
+3. **Filter**: candidates with `isUncertainty=false` are dropped; those with `isUncertainty=true` are kept as a hedging signal, with the verdict (confidence + reason) attached to `signal.classifierVerdict` for the report side to display.
 
-**Classifier 接口契约**（`src/analysis/hedging-classifier.ts`）：
+**Classifier interface contract** (`src/analysis/hedging-classifier.ts`):
 
 ```typescript
 type HedgingCandidate = {
@@ -135,254 +135,254 @@ async function classifyHedgingCandidates(
 ): Promise<{ verdicts: HedgingVerdict[]; costUSD: number }>;
 ```
 
-**关键约束**：
+**Key constraints**:
 
-- **Cost 上限**：默认 `maxCandidates = 50` 条 / evaluation，超出截断 + warn（防止 outlier sample 把 cost 打爆）
-- **Cache**：in-memory `Map<sha256(sentence), HedgingVerdict>`，同句子在同一进程内不重复调用
-- **失败降级**：classifier 调用失败 / 解析失败 → 该 candidate 默认 `isUncertainty=true`（保守保留，宁可多统计软信号也不丢真信号）
-- **Weight 不变**：classifier 通过的 hedging signal 权重仍为 0.5（弱信号），confidence 信息只挂在 verdict 字段供观察，不直接进 weight 计算（避免引入第二个未校准维度）
-- **配置入口**：v0.2 走代码层 default（开启 + 默认 model），v0.3 接 `eval.yaml.hedgingClassifier: { enabled, model, maxCandidates }`
+- **Cost cap**: default `maxCandidates = 50` per evaluation; beyond that, truncate + warn (so an outlier sample can't blow up cost).
+- **Cache**: in-memory `Map<sha256(sentence), HedgingVerdict>` — the same sentence is not called twice within one process.
+- **Failure fallback**: a classifier call failure / parse failure → that candidate defaults to `isUncertainty=true` (conservatively kept; better to over-count soft signals than drop a real one).
+- **Weight unchanged**: a hedging signal that passes the classifier still has weight 0.5 (weak signal); the confidence information is only attached to the verdict field for observation, and does not enter the weight calculation directly (avoiding a second uncalibrated dimension).
+- **Configuration entry point**: v0.2 goes through a code-level default (enabled + a default model); v0.3 wires up `eval.yaml.hedgingClassifier: { enabled, model, maxCandidates }`.
 
-**判定提示模板**（classifier prompt 骨架）：
+**Judgment prompt template** (classifier prompt skeleton):
 
-> 给定 agent 输出中一段话，判断它是否表达了"对知识 / 事实层面的不确定"。
-> 满足以下任一条算"不确定"：
->   - 表示自己不知道答案 / 缺少信息 / 需要查证
->   - 给出答案但显著降级措辞（"可能是 X 但不确定"）
-> 以下情况**不算**"不确定"：
->   - 业务可能性分析（讨论多种业务场景的可能性）
->   - 礼貌 / 假设性措辞（"如果你需要，可能可以..."）
->   - 对未来不确定（"未来可能会..."），不属于知识不确定
-> 返回 JSON: `{"isUncertainty": bool, "confidence": 0-1, "reason": "..."}`
+> Given a passage from the agent's output, decide whether it expresses "uncertainty at the knowledge / fact level."
+> It counts as "uncertain" if any of the following hold:
+>   - It states that it doesn't know the answer / lacks information / needs to verify.
+>   - It gives an answer but with markedly downgraded phrasing ("probably X but not sure").
+> The following do **not** count as "uncertain":
+>   - Business possibility analysis (discussing the possibilities of multiple business scenarios).
+>   - Polite / hypothetical phrasing ("if you need it, you could perhaps...").
+>   - Uncertainty about the future ("it may in future..."), which is not knowledge uncertainty.
+> Return JSON: `{"isUncertainty": bool, "confidence": 0-1, "reason": "..."}`
 
-**为什么 weight 仍是 0.5**：classifier 二次过滤主要降低假阳，但 hedging 本身就是间接证据（不像 failed_search 是工具调用层的硬事实），权重保持弱信号语义不变。weight 升级到 1.0 需要等到 v0.3 引入 confidence 校准实验后再决定。
+**Why the weight is still 0.5**: the classifier's second-pass filter mainly reduces false positives, but hedging itself is indirect evidence (unlike failed_search, which is a hard fact at the tool-call level), so the weight retains its weak-signal semantics. Upgrading the weight to 1.0 has to wait until a confidence-calibration experiment in v0.3.
 
-### 4. 工具连续失败（强信号 · 行为模式）
+### 4. Repeated tool failure (strong signal · behavioral pattern)
 
-agent 在同一用例内对同一类查询重试超过 N 次（默认 N=2）。具体判据：
+Within the same sample, the agent retries the same class of query more than N times (default N=2). Concrete criteria:
 
-- 同一 `tool` 类型（Grep / Read / Bash 搜索）
-- 在同一用例的连续 3 个 turn 内
-- 调用次数 ≥ 3
-- 全部失败
+- Same `tool` type (Grep / Read / Bash search).
+- Within 3 consecutive turns of the same sample.
+- Call count ≥ 3.
+- All failed.
 
-**为什么是强信号**：连续失败反映了 agent 的真实困惑——它正在试图解决一个知识库回答不了的问题。这比孤立的单次失败信号强得多。
+**Why it's a strong signal**: repeated failure reflects the agent's genuine confusion — it is trying to solve a problem the knowledge base can't answer. This is far stronger than an isolated single-failure signal.
 
-**与第 1 类的关系**：第 1 类是事件粒度，第 4 类是行为模式粒度。第 4 类可以理解为对第 1 类的"严重度提升"——同一缺口被检测到多次说明它不是偶然。
+**Relation to source 1**: source 1 is event-granularity; source 4 is behavioral-pattern granularity. Source 4 can be read as a "severity upgrade" of source 1 — the same gap being detected multiple times means it isn't accidental.
 
 ---
 
-## 五、缺口率的聚合公式
+## 5. The gap-rate aggregation formula
 
-经过 2026-04-13 讨论，omk 采用 **用例粒度** 的聚合方式：
+After the 2026-04-13 discussion, omk adopts a **sample-granularity** aggregation:
 
 ```
-gap_rate = (含有任意缺口信号的用例数) / (总用例数)
+gap_rate = (samples with any gap signal) / (total samples)
 ```
 
-例：12 个用例，其中 5 个用例至少触发一个缺口信号，则 `gap_rate = 5 / 12 ≈ 41.7%`。
+Example: 12 samples, of which 5 trigger at least one gap signal, so `gap_rate = 5 / 12 ≈ 41.7%`.
 
-**为什么选用例粒度**：
+**Why sample granularity**:
 
-- 分母稳定：总用例数是评测的固有规模，不受 agent 行为爆炸影响
-- 易于解释：读者可以直观理解"12 个用例里有 5 个撞到了缺口"
-- 跨评测可比：不同评测的用例数可能不同，但用比例就归一化了
-- 简单可实现：不需要严重度加权或事件粒度统计
+- Stable denominator: the total sample count is an inherent size of the evaluation, unaffected by an explosion in agent behavior.
+- Easy to interpret: readers can intuitively understand "5 of 12 samples hit a gap."
+- Comparable across evaluations: different evaluations may have different sample counts, but a ratio normalizes that.
+- Simple to implement: no severity weighting or event-granularity statistics required.
 
-**为什么不选事件粒度**：
+**Why not event granularity**:
 
-事件粒度（缺口信号总次数 / agent 轮次总数）会被 repeat 多次或轮次特别长的用例主导。一个 agent 跑了 30 轮、其中 20 轮失败 Grep 的用例会把整个评测的 gap rate 拉爆，但实际只反映了一个用例的局部困境。
+Event granularity (total gap-signal occurrences / total agent turns) gets dominated by samples that repeat many times or run especially long. A sample where the agent ran 30 turns, failing Grep in 20 of them, would blow up the whole evaluation's gap rate while really reflecting one sample's local predicament.
 
-**严重度加权（v0.2 起）**：
+**Severity weighting (from v0.2)**:
 
-v0.1 不区分信号严重度，所有四类一律"有信号"；v0.2 引入加权以区分硬证据和软信号。每个信号按 `SIGNAL_WEIGHTS` 分两档：
+v0.1 does not distinguish signal severity — all four sources are uniformly "has a signal"; v0.2 introduces weighting to separate hard evidence from soft signals. Each signal falls into one of two tiers per `SIGNAL_WEIGHTS`:
 
-| 信号类型 | 权重 | 分档理由 |
+| Signal type | Weight | Tier rationale |
 |---------|------|----------|
-| `failed_search` | **1.0**（强） | agent 工具层真的调了 Grep/Read 没命中,确定性 miss |
-| `repeated_failure` | **1.0**（强） | 同一类查询连续 ≥3 次失败,已不是偶然 |
-| `explicit_marker` | 0.5（弱） | 依赖 agent 按约定打【推断】等标记,可能漏标或假装 |
-| `hedging` | 0.5（弱） | regex 召回 + LLM 二次判定（v0.2,详见 §四.3）;classifier 失败降级时全部保留 |
+| `failed_search` | **1.0** (strong) | The agent really called Grep/Read at the tool level and missed — a deterministic miss. |
+| `repeated_failure` | **1.0** (strong) | The same class of query failed ≥3 times in a row — no longer accidental. |
+| `explicit_marker` | 0.5 (weak) | Relies on the agent marking 【推断】 etc. by convention; may be missed or faked. |
+| `hedging` | 0.5 (weak) | regex recall + LLM second-pass judgment (v0.2, see §4.3); when the classifier fails, all are kept. |
 
-聚合产出 **`weightedGapRate`**（与 `gapRate` 并列，不替代）：
+Aggregation produces **`weightedGapRate`** (alongside `gapRate`, not replacing it):
 
 ```
-sample_weight(s) = max(signal.weight for signal in s)  // 无信号 = 0
+sample_weight(s) = max(signal.weight for signal in s)  // no signal = 0
 weightedGapRate = Σ sample_weight / sampleCount
 ```
 
-**聚合取 max 不取 sum 的原因**：同一用例里失败搜索 + hedging 同时触发时，sample 严重度由 max 代表（失败搜索已足以判定为盲区），sum 会重复计数软信号。
+**Why aggregation takes max, not sum**: when failed search + hedging both fire in the same sample, the sample's severity is represented by max (failed search alone is enough to call it a blind spot); sum would double-count the soft signal.
 
-**两个指标并列使用**：
+**Using both metrics side by side**:
 
-- `gapRate`：用例触发任意信号的比例（v0.1 原定义，向后兼容）
-- `weightedGapRate`：按严重度加权的用例均值，**永远 ≤ `gapRate`**
+- `gapRate`: the fraction of samples that triggered any signal (the original v0.1 definition, kept for backward compatibility).
+- `weightedGapRate`: the severity-weighted sample mean, **always ≤ `gapRate`**.
 
-差值 `gapRate - weightedGapRate` 反映"软信号占比"：
+The difference `gapRate - weightedGapRate` reflects the "share of soft signals":
 
-- 差值 < 10%：信号以硬证据为主，`gapRate` 结论可信
-- 差值 ≥ 10%：软信号占相当比例，`gapRate` 可能被 hedging / 显式标记拉高，建议对照 gap inventory 复核弱信号的真实含义
+- Difference < 10%: signals are mostly hard evidence; the `gapRate` conclusion is trustworthy.
+- Difference ≥ 10%: soft signals make up a fair share; `gapRate` may be inflated by hedging / explicit markers — cross-check the weak signals' real meaning against the gap inventory.
 
-**水印要求不变**：两个 gap rate 都必须附带 test set 标识（§7.1），不得脱离 test set 报告任何单独数值。
+**The watermark requirement is unchanged**: both gap rates must carry the test set identifier (§7.1); no standalone value may be reported apart from the test set.
 
-**样本量可信度护栏（observe 侧）**：gap rate / weightedGapRate 与整体健康度色带在 segment 数过小时不可信——1 段 + 一次失败搜索得到的「红」与 50 段全红没有同等意义。observe 的 `SkillHealth` 与 `overall` 因此带 `confidence` 三档（与 eval 的 UNDERPOWERED 同构）：
+**Sample-size credibility guardrail (observe side)**: gap rate / weightedGapRate and the overall health band are not trustworthy when the segment count is too small — a "red" from 1 segment + one failed search does not carry the same weight as 50 segments all red. observe's `SkillHealth` and `overall` therefore carry a three-tier `confidence` (isomorphic to eval's UNDERPOWERED):
 
-- `underpowered`：segment 数 < 5，样本太少，色带 / gap rate 仅供参考，渲染层弱化硬色带；
-- `low`：segment 数 < 20，只有大缺口可辨；
-- `high`：segment 数 ≥ 20。
+- `underpowered`: segment count < 5 — too few samples; the band / gap rate are indicative only, and the rendering layer softens the hard color band;
+- `low`: segment count < 20 — only large gaps are discernible;
+- `high`: segment count ≥ 20.
 
-这是条件性测量、不是绝对判决：低 N 不代表 skill 没问题，只代表当前观测窗口不足以下结论，需累积更多真实使用 trace 后再看。
+This is conditional measurement, not an absolute verdict: low N does not mean the skill is fine, only that the current observation window is insufficient to conclude — accumulate more real-usage traces before drawing conclusions.
 
-**特殊情况处理**：
+**Special-case handling**:
 
-- 如果一个用例同时触发多个缺口信号（比如失败 Grep + 显式标记），仍只计为 1 个有缺口的用例。聚合是"是否"而非"多少"。
-- 如果一个用例因为执行失败（agent 完全跑挂）而没有完整 trace，**不计入分母**。gap rate 只在成功执行的用例上计算，保持与 coverage 指标的边界一致。
-
----
-
-## 六、跨评测趋势
-
-单次评测的 gap rate 是基线，真正的价值在于跨多次评测的趋势。
-
-omk 已有 `src/renderer/trends.ts` 跨评测时间序列表。本规范要求在该表新增一列：
-
-```
-| 时间 | git commit | composite | coverage | gap_rate | 用例集 | 用例数 | 成本 |
-```
-
-注意必须同时展示 `用例集`（test set 标识，通常是文件名 + content hash 前 8 位），否则跨评测对比可能把不同 test set 的数字混在一起误读。
-
-**关键观察类型**：
-
-1. **gap rate 单调递减**：每次往知识库补内容 → gap rate 下降 → 健康收敛信号
-2. **gap rate 平稳**：补的内容没击中真实缺口 → 检查 uncovered files 优先级
-3. **gap rate 上升**：要么用例变难了，要么知识库被破坏了，要么测评集换了——检查用例集标识
-4. **gap rate 接近 0**：**不是庆祝时刻**。见第八节"用例进化"
-
-**艺术品式的成果**：一张时间序列折线图，横轴 commit、纵轴 gap rate，标记每次往知识库补充内容的事件。曲线从 60% 下降到 5% 的轨迹，是 omk 推广材料中最锋利的一张图——前提是图上清晰标注所依赖的 test set。
+- If one sample triggers multiple gap signals (e.g. failed Grep + explicit marker), it still counts as 1 sample with a gap. The aggregation is "whether," not "how many."
+- If a sample has no complete trace because execution failed (the agent crashed entirely), it is **not counted in the denominator**. gap rate is computed only on successfully-executed samples, keeping the boundary consistent with the coverage metric.
 
 ---
 
-## 七、缺口率驱动什么 action
+## 6. Cross-evaluation trend
 
-gap rate 不只是一个数字，要驱动可执行的 action。报告里至少展示四类信息：
+A single evaluation's gap rate is the baseline; the real value lies in the trend across multiple evaluations.
 
-### 1. 强制水印（mandatory test set watermark）
-
-每次报告展示 gap rate 或 coverage 时，**必须同时展示**：
-
-- 当前 test set 的文件路径
-- 用例总数
-- test set 内容的 SHA hash 前 8 位（用于辨识用例集是否改动过）
-- 一句明文警告："本指标仅反映当前 test set 与知识库的交互，不代表知识库的绝对完备性"
-
-这不是建议，是**规范硬要求**。没有水印的 gap rate 数字在 omk 出口被视为无效。原因：数字一旦离开上下文就会被误用，读者看到 "gap rate = 5%" 不加水印会默认它说的是"知识库 95% 完整"——这正是 omk 最想避免的误判。
-
-### 2. 缺口清单（per-evaluation）
-
-每次评测报告新增"知识缺口清单"区块，列出该次评测中每个缺口信号的具体上下文：
+omk already has the `src/renderer/trends.ts` cross-evaluation time-series table. This spec requires a new column in that table:
 
 ```
-用例 s003 / 第 4 轮 / [失败搜索]
+| Time | git commit | composite | coverage | gap_rate | Sample set | Sample count | Cost |
+```
+
+Note that the `Sample set` (the test set identifier, usually filename + first 8 chars of content hash) must be shown at the same time, otherwise cross-evaluation comparison may mix up numbers from different test sets and be misread.
+
+**Key observation types**:
+
+1. **gap rate decreasing monotonically**: each addition to the knowledge base → gap rate drops → a healthy convergence signal.
+2. **gap rate flat**: the added content didn't hit the real gaps → check the priority of uncovered files.
+3. **gap rate rising**: either the samples got harder, or the knowledge base was broken, or the sample set was swapped — check the sample set identifier.
+4. **gap rate near 0**: **not a moment to celebrate**. See Section 8, "Sample evolution."
+
+**The showpiece result**: a time-series line chart with commit on the x-axis and gap rate on the y-axis, marking each event where content was added to the knowledge base. A curve descending from 60% to 5% is the sharpest single chart in omk's promotional material — provided the chart clearly annotates the test set it depends on.
+
+---
+
+## 7. What action gap rate drives
+
+gap rate is not just a number; it must drive executable action. The report shows at least four classes of information.
+
+### 1. Mandatory test set watermark
+
+Every time a report shows gap rate or coverage, it **must also show**:
+
+- The current test set's file path.
+- The total sample count.
+- The first 8 chars of the SHA hash of the test set's content (to tell whether the sample set has changed).
+- A plain-text warning: "This metric only reflects the interaction between the current test set and the knowledge base, and does not represent the knowledge base's absolute completeness."
+
+This is not a suggestion; it is a **hard requirement of the spec**. A gap rate number without a watermark is treated as invalid at omk's output. The reason: once a number leaves its context it gets misused — a reader seeing "gap rate = 5%" without a watermark will assume it means "the knowledge base is 95% complete," which is exactly the misjudgment omk most wants to avoid.
+
+### 2. Gap inventory (per-evaluation)
+
+Each evaluation report adds a "knowledge gap inventory" block listing the concrete context of every gap signal in that evaluation:
+
+```
+Sample s003 / turn 4 / [failed search]
   Grep "revenue_schema" → no matches
-  agent 自述：需要查证 revenue 的字段定义在哪个域
+  agent self-report: need to verify which domain the revenue field definitions live in
 
-用例 s007 / 第 2 轮 / [显式标记]
-  agent 输出：【推断】这个数据应该来自 user_profile 表
+Sample s007 / turn 2 / [explicit marker]
+  agent output: 【推断】this data should come from the user_profile table
 ```
 
-读者看完清单立刻知道"我应该补什么"——失败 Grep 的 pattern 大概率就是缺失的知识条目名称。
+After reading the inventory the reader immediately knows "what I should add" — the failed Grep pattern is very likely the name of the missing knowledge entry.
 
-### 3. 缺口分类（per-evaluation）
+### 3. Gap classification (per-evaluation)
 
-按缺口信号来源（失败搜索 / 显式标记 / 降级措辞 / 连续失败）分别统计数量。让读者知道这次测评触发的缺口主要是"agent 自己说的"还是"agent 搜了搜不到的"——前者是文档没说清楚，后者是知识本身不存在。
+Count separately by gap-signal source (failed search / explicit marker / hedging language / repeated failure). This tells the reader whether the gaps this evaluation triggered are mostly "what the agent said itself" or "what the agent searched for and couldn't find" — the former means the docs didn't say it clearly, the latter means the knowledge itself doesn't exist.
 
-### 4. CI 阈值（cross-evaluation）
+### 4. CI thresholds (cross-evaluation)
 
-CI 模式（`omk eval`）支持两种守护模式：
+CI mode (`omk eval`) supports two guard modes:
 
-- `--max-gap-rate <number>`：**绝对阈值**。gap rate 超过 number 时 CI 失败。用于"我们设定的可接受上限"
-- `--gap-rate-regression <delta>`：**回归阈值**。gap rate 相对上次评测上升超过 delta 时 CI 失败。用于"防止知识库劣化"
+- `--max-gap-rate <number>`: **absolute threshold**. CI fails when gap rate exceeds number. For "the acceptable upper bound we set."
+- `--gap-rate-regression <delta>`: **regression threshold**. CI fails when gap rate rises more than delta relative to the last evaluation. For "preventing knowledge-base degradation."
 
-两种模式可同时启用。这把 gap rate 从"事后观察"提升到"前置门禁"，让知识库劣化无法默默发生。
-
----
-
-## 八、用例进化：gap rate 接近 0 不是终点
-
-当一个测评集的 gap rate 连续多次跑出来都接近 0，**不应该庆祝，应该扩用例**。
-
-原因：gap rate 低有两种解释：
-- **A**：知识库确实覆盖了测试用例所问的领域
-- **B**：测试用例只问了知识库已经能回答的问题，回避了边界
-
-这两种情况在 gap rate 数字上**完全无法区分**。唯一的破解方法是**主动扩展 test set 去探测新边界**。
-
-### 用例进化的具体做法（v0.1 可做的）
-
-1. **人工扩用例**：评测完成后看 coverage 的 uncovered files 列表——这些文件当前没被任何用例触及，是扩用例的天然候选目标
-2. **从 gap 清单反推**：缺口清单里失败的 Grep pattern（比如 `revenue_schema`）往往揭示知识库的真实需求，可以作为扩用例的种子
-3. **定期重置基线**：每季度把 test set 换一批，防止"驯化"——你的 test set 被知识库学会了之后就失去探测价值
-
-### 用例进化的判断规则
-
-omk 规范建议（不强制）：当同一 test set 的 gap rate **连续 3 次评测都 ≤ 10%**，工具在报告里自动追加一行提示：
-
-> ⚠ 当前测评集的 gap rate 已连续 3 次低于 10%。建议扩展测评集以探测新领域，否则 gap rate 的下降可能只反映了"用例驯化"而非"知识补齐"。
-
-这是一个 **nudge**，不是 fail。目的是让读者在数字变漂亮时保持警觉，而不是陷入"看到绿就安心"的舒适区。
-
-### 为什么这个规则必须在 spec 里
-
-如果 spec 不明确这一点，gap rate 会被误读成"低 = 好"的单调指标。使用者会把"追求低 gap rate"当成目标，然后自然地选择不去挑战那些让 gap rate 变难看的用例——也就是**正在发生的 overfitting to the test set**。spec 必须反复强调：**gap rate 是诊断工具，不是 KPI**。
+Both modes can be enabled at once. This lifts gap rate from "after-the-fact observation" to a "pre-merge gate," so knowledge-base degradation can't happen silently.
 
 ---
 
-## 九、v0.2 展望：主动探测（Competency Questions）
+## 8. Sample evolution: gap rate near 0 is not the finish line
 
-v0.1 规范定义的四类信号全部是 **被动** 的——只有 agent 在跑人写的用例时撞到墙，才能捕获缺口信号。这意味着 gap rate 只能反映人写用例恰好触及的边界，人没想到的领域永远是黑箱。
+When a sample set's gap rate comes out near 0 several times in a row, **you should not celebrate — you should expand the samples.**
 
-v0.2 将引入 **主动探测**（competency questions）：让 LLM 读知识库结构（文件名、章节标题、CLAUDE.md 原则），主动生成"这个知识库按 scope 应该能回答但可能没覆盖到"的问题，作为补充用例源。跑这批生成用例得到的 gap rate 和人写用例的 gap rate 并列展示——后者是"我设计的测评集触到的边界"，前者是"知识库自己结构里暴露出来的边界"。
+The reason: a low gap rate has two interpretations:
+- **A**: the knowledge base really does cover the domains the test samples ask about.
+- **B**: the test samples only asked questions the knowledge base can already answer, avoiding the boundary.
 
-**为什么 v0.1 不做**：
+These two cases are **completely indistinguishable** from the gap rate number. The only way to break the tie is to **actively expand the test set to probe new boundaries.**
 
-1. 工程复杂：CQ 生成 prompt 需要精心设计，评分 rubric 和人写用例不同（没有"标准答案"），接入 sample pipeline 需要新的执行路径
-2. 风险：LLM 生成的 CQ 如果跑偏（瞎编出 scope 外的问题），会用假信号污染 gap rate，反而失去可信度
-3. v0.1 的目的是先立基线：被动信号采集稳定、报告格式跑通、趋势追踪能画出图之后，再引入生成式探测。两个不确定的东西叠加会互相污染
+### Concrete practices for sample evolution (what v0.1 can do)
 
-**相关文献**：
+1. **Manually expand samples**: after an evaluation finishes, look at coverage's uncovered-files list — those files aren't currently touched by any sample and are natural candidates for new samples.
+2. **Reverse-engineer from the gap inventory**: failed Grep patterns in the gap inventory (e.g. `revenue_schema`) often reveal the knowledge base's real needs, and can seed new samples.
+3. **Periodically reset the baseline**: swap in a fresh batch of test sets each quarter to prevent "domestication" — once your test set has been learned by the knowledge base, it loses its probing value.
 
-- 本体工程（ontology engineering）领域的 competency question 方法
-- "Don't Hallucinate, Abstain"（Cole et al., 2024）的 LLM 协作知识边界探测
+### The decision rule for sample evolution
 
----
+The omk spec recommends (does not enforce): when the same test set's gap rate is **≤ 10% for 3 consecutive evaluations**, the tool automatically appends a line to the report:
 
-## 十、已知限制和未来工作
+> ⚠ The current sample set's gap rate has been below 10% for 3 evaluations in a row. Consider expanding the sample set to probe new areas, otherwise the drop in gap rate may only reflect "sample domestication" rather than "knowledge filled in."
 
-1. **agent 自我标记依赖模型配合**：第 2 类信号（显式标记）对模型有要求。未来可以在 system prompt 里明确"如果你在推断或有不确定性，必须用 【推断】 / 【知识缺口】 标记"，把它从可选行为变成强制约定。
+This is a **nudge**, not a fail. The goal is to keep the reader alert when the numbers turn pretty, rather than slipping into a "see green, feel safe" comfort zone.
 
-2. **信号噪声**：探索性搜索（agent 在排除可能性而非找答案）会被误判为失败搜索。v0.1 接受这个噪声；v0.2 可以引入"搜索目的分类"来降噪。
+### Why this rule has to be in the spec
 
-3. **跨用例去重**：当前规范在用例内做去重（同一用例多次触发只计 1 次），但跨用例不去重（两个用例都搜失败 `revenue_schema` 计为 2 个缺口用例）。这是有意的——重复出现说明缺口频繁，应该在 gap rate 里体现。
-
-4. **缺口与 coverage 的并存关系**：本规范不替代 coverage。两者都是 **测评集 × 知识库** 交互的结果，但角度互补：coverage 衡量"测评集对知识库的利用程度"，gap 衡量"测评集触及到的知识库盲区程度"。报告应同时展示。一次评测同时给出 `coverage = 80% / gap_rate = 25%` 比给出任何一个单独指标都更有信息量。
-
-5. **降级措辞的假阳率**：v0.1 采用字符串匹配，已知会有误判。实现后如果假阳率超过 40%（实测值），考虑在 v0.1.1 暂时禁用第 3 类信号，等 v0.2 的 LLM 辅助识别上线再启用。
+If the spec doesn't make this explicit, gap rate gets misread as a monotonic "low = good" metric. Users will treat "chasing a low gap rate" as the goal, then naturally avoid challenging it with the samples that make gap rate look bad — that is **overfitting to the test set in action**. The spec must repeatedly stress: **gap rate is a diagnostic tool, not a KPI.**
 
 ---
 
-## 附录：术语对照
+## 9. v0.2 outlook: active probing (Competency Questions)
 
-| 中文 | 英文 | 一句话定义 |
+All four signal types defined in the v0.1 spec are **passive** — a gap signal can only be captured when the agent hits a wall while running human-written samples. This means gap rate can only reflect the boundaries that human-written samples happen to touch; areas humans didn't think of stay a black box forever.
+
+v0.2 will introduce **active probing** (competency questions): let the LLM read the knowledge base's structure (filenames, section titles, CLAUDE.md principles) and actively generate questions that "this knowledge base should be able to answer by its scope but may not have covered," as a supplementary sample source. The gap rate from running this generated batch is shown alongside the gap rate from human-written samples — the latter is "the boundary my designed sample set touched," the former is "the boundary exposed by the knowledge base's own structure."
+
+**Why v0.1 doesn't do it**:
+
+1. Engineering complexity: the CQ generation prompt needs careful design, the scoring rubric differs from human-written samples (there's no "ground-truth answer"), and wiring it into the sample pipeline needs a new execution path.
+2. Risk: if LLM-generated CQs go off the rails (inventing out-of-scope questions), they pollute gap rate with fake signals and lose credibility instead.
+3. v0.1's purpose is to establish the baseline first: only after passive signal collection is stable, the report format works, and trend tracking can draw a chart, do we introduce generative probing. Stacking two uncertain things together lets them pollute each other.
+
+**Related literature**:
+
+- The competency-question method from ontology engineering.
+- "Don't Hallucinate, Abstain" (Cole et al., 2024) on LLM-collaborative knowledge-boundary probing.
+
+---
+
+## 10. Known limits and future work
+
+1. **Agent self-marking depends on model cooperation**: source 2 (explicit marker) makes demands of the model. In future the system prompt could make "if you are inferring or uncertain, you must mark it with 【推断】 / 【知识缺口】" explicit, turning it from optional behavior into an enforced convention.
+
+2. **Signal noise**: exploratory search (the agent ruling out possibilities rather than finding an answer) gets misjudged as failed search. v0.1 accepts this noise; v0.2 can introduce "search-intent classification" to denoise.
+
+3. **Cross-sample dedup**: the current spec dedups within a sample (multiple triggers in the same sample count once) but not across samples (two samples both failing to search `revenue_schema` count as 2 gap samples). This is intentional — repeated occurrence means the gap is frequent and should show up in gap rate.
+
+4. **Gap and coverage coexist**: this spec does not replace coverage. Both are results of the **sample set × knowledge base** interaction, but the angles are complementary: coverage measures "how much the sample set utilizes the knowledge base," gap measures "how much of the knowledge base's blind spots the sample set touched." The report should show both. An evaluation that reports `coverage = 80% / gap_rate = 25%` at once is more informative than either metric alone.
+
+5. **Hedging language false positives**: v0.1 uses string matching, known to misjudge. After implementation, if the false-positive rate exceeds 40% (measured), consider temporarily disabling source 3 in v0.1.1, re-enabling it once v0.2's LLM-assisted recognition ships.
+
+---
+
+## Appendix: terminology mapping
+
+| Chinese | English | One-sentence definition |
 |------|------|-----------|
-| 基于测评用例的知识覆盖率 | Test Case Knowledge Coverage | 已知知识被测评用例访问过的比例（how much of the knowledge base is exercised by the test cases） |
-| 基于测评用例的知识缺口 / 缺口率 | Test Case Knowledge Gap / Gap Rate | 测评用例中触发知识盲区的用例比例（how much unknown territory the test cases bumped into） |
-| 缺口信号 | gap signal | 单次"agent 想找而找不到"的具体事件 |
-| 失败搜索 | failed search | Grep / Read / Bash search 工具调用未命中 |
-| 显式标记 | explicit marker | agent 输出文本中的【推断】【知识缺口】等中英文标记 |
-| 降级措辞 | hedging language | "我不确定 / 需要查证 / 可能是"等确定性降级表达 |
-| 连续失败 | repeated failure | 同一用例内对同一类查询重试 ≥3 次全部失败的行为模式 |
-| 缺口清单 | gap inventory | 每次评测报告中缺口信号的逐条上下文展示 |
-| 强制水印 | test set watermark | gap rate 报告时必须附带的 test set 标识 + 明文警告 |
-| 用例进化 | sample evolution | 防止 gap rate 接近 0 时陷入用例驯化的主动策略 |
-| 主动探测 | competency questions | v0.2 引入的 LLM 生成探测问题，补充被动信号 |
+| 基于测评用例的知识覆盖率 | Test Case Knowledge Coverage | the fraction of known knowledge accessed by test cases (how much of the knowledge base is exercised by the test cases) |
+| 基于测评用例的知识缺口 / 缺口率 | Test Case Knowledge Gap / Gap Rate | the fraction of test cases that trigger a knowledge blind spot (how much unknown territory the test cases bumped into) |
+| 缺口信号 | gap signal | a single concrete event of "the agent wanting to find something and failing" |
+| 失败搜索 | failed search | a Grep / Read / Bash search tool call that misses |
+| 显式标记 | explicit marker | 【推断】【知识缺口】 and other Chinese/English markers in the agent's output text |
+| 降级措辞 | hedging language | confidence-downgrading phrasing like "我不确定 / 需要查证 / 可能是" |
+| 连续失败 | repeated failure | the behavioral pattern of retrying the same class of query ≥3 times within one sample, all failing |
+| 缺口清单 | gap inventory | the per-item context display of gap signals in each evaluation report |
+| 强制水印 | test set watermark | the test set identifier + plain-text warning that must accompany a gap rate report |
+| 用例进化 | sample evolution | the active strategy that prevents sample domestication when gap rate nears 0 |
+| 主动探测 | competency questions | LLM-generated probing questions introduced in v0.2 to supplement passive signals |

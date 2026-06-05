@@ -19,9 +19,7 @@
 
 ## 我想贡献 / 看设计 spec
 
-- [用例设计科学性指南](../specs/sample-design-spec.md)
-- [知识缺口信号规范](../specs/knowledge-gap-signal-spec.md)
-- [RAG metrics 规范](../specs/rag-metrics-spec.md)
-- [术语规范](../specs/terminology-spec.md)
-- [Roadmap](./roadmap.md) —— 内部 planning，ZH-only by design
-- [SIGINT propagation 手动验证](../dev/sigint-validation.md)（dev 工具）
+- [用例设计科学性指南](./specs/sample-design-spec.md)
+- [知识缺口信号规范](./specs/knowledge-gap-signal-spec.md)
+- [RAG metrics 规范](./specs/rag-metrics-spec.md)
+- [术语规范](./specs/terminology-spec.md)
