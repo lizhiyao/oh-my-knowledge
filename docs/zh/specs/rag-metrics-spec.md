@@ -20,7 +20,7 @@ omk 的三个 RAG 专用 assertion type(`faithfulness` / `answer_relevancy` / `c
 2. 用 LLM 逐条判断每个陈述是否被 context 支持
 3. ratio = supported / total
 
-这个流程**更可解释**(能看到哪条陈述错了)、但**调用次数线性增长**,且引入两轮 LLM 噪声。
+这个流程**更可解释**(能看到哪条陈述错了)、但 **LLM 调用次数随原子陈述条数线性增长**,且引入两轮 LLM 噪声。
 
 omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致(`semantic_similarity` 同形态)。优势:
 

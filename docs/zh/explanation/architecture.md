@@ -25,9 +25,9 @@ flowchart TD
     end
 
     subgraph Score["⑤ 双通道评分"]
-        AS["断言(18 种)<br/>内容 / 结构 / 成本 / 延迟<br/>agent: tools_called · turns_min …"]
+        AS["断言<br/>内容 / 结构 / 成本 / 延迟<br/>agent: tools_called · turns_min …"]
         LS["LLM 评委<br/>rubric · dimensions(多维独立打分)"]
-        CS["综合分数<br/>断言 & LLM 有则均值"]
+        CS["综合分<br/>取存在层均值 — 事实 · 行为 · 评委"]
         AS --> CS
         LS --> CS
     end
@@ -59,7 +59,7 @@ flowchart TD
 
 - **交错调度**消除时间漂移：同一用例的不同 variant 交替发出，而非 v1 全跑完再跑 v2，避免模型负载/网络波动被错误归因给 artifact。
 - **variant = artifact + runtime context**：`cwd`（用 `--control-cwd`/`--treatment-cwd` 或 eval.yaml 的 `cwd:` 字段声明，与 artifact 表达式分开）让对照组可以显式声明「项目目录」这个隐性输入，把「项目级沉淀」和「显式 artifact 注入」拆开测。
-- **双通道评分互补**：断言抓确定性缺陷（必须调用某工具/必须包含某字段），LLM 评委抓主观质量（可读性/完整性），两者都存在时取均值。
+- **双通道评分互补**：断言抓确定性缺陷（必须调用某工具/必须包含某字段），LLM 评委抓主观质量（可读性/完整性）。综合分取事实 / 行为 / 评委三层里实际存在那几层的均值。
 - **知识缺口信号**不是评分的一部分，而是一个独立追踪项：它告诉你「这次评测覆盖了多少风险敞口」，用于追踪收敛，而非断言知识「完备」。
 
 ## 六维评估指标

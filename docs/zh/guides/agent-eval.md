@@ -10,7 +10,7 @@
 - `variant`：CLI 里的实验分组表达式（见 [Artifact 与 variant 布局](../reference/artifact-layout)）
 - `runtime context`：运行时上下文，当前主要是 `cwd`；在项目型 agent 场景下，它就包含项目目录、`CLAUDE.md`、本地 skills 等会影响行为的环境因素
 
-在 OMK 里，`agent` 不是所有对象的总称，`skill` 也不是所有对象的总称。更稳妥的说法是：你在比较不同 artifact 在不同 runtime context 下的表现。
+在 omk 里，`agent` 不是所有对象的总称，`skill` 也不是所有对象的总称。更稳妥的说法是：你在比较不同 artifact 在不同 runtime context 下的表现。
 
 ## 推荐执行器
 
