@@ -167,7 +167,7 @@ omk CLI 走 [@oclif/core](https://oclif.io/docs/) 框架，**single parse path**
 2. `run()` 体里:`const { args, flags } = await this.parse(<Class>); const lang = resolveLang(process.argv);`,然后业务 inline 或调 module-level helper
 3. CliExit 边界:业务 `throw new CliExit(code)` 通过每个 Command 共用模板捕获 → `this.exit(code)`(模板见现有 commands 任一 `run()` 末尾的 try/catch)
 4. 在 `test/cli/oclif-<name>.test.ts` 加 --help 双语 + unknown flag exit 2 + 关键 happy/error case
-5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.claude/skills/omk/references/commands.md`（见下一节）
+5. 跑 `yarn build && yarn build:docs` 把 oclif Command 的 description / flags / examples 同步到 `.agents/skills/omk/references/commands.md`（见下一节）
 
 ### CLI 文档 codegen（#109）
 
@@ -175,7 +175,7 @@ oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是
 
 | 目标 | marker | 输出 | 语言 |
 |---|---|---|---|
-| `.claude/skills/omk/references/commands.md` | 整段 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` | oclif `Config.commands` 全集完整渲染（含 topic / sub / sub-sub） | zh |
+| `.agents/skills/omk/references/commands.md` | 整段 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` | oclif `Config.commands` 全集完整渲染（含 topic / sub / sub-sub） | zh |
 | `README.md` | 每个顶层命令独立 `<!-- omk:cli:<id>:flags:start -->` ... `<!-- omk:cli:<id>:flags:end -->`,7 对 | flag list（```text``` 对齐风格）+ 指向 `--help` 的脚注 | en |
 | `README.zh.md` | 同上 | 同上 | zh |
 

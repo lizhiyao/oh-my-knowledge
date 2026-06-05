@@ -14,7 +14,7 @@ If you want the **agent-driven workflow** (recommended), also install the omk sk
 ```bash
 git clone https://github.com/lizhiyao/oh-my-knowledge.git /tmp/omk-src
 mkdir -p ~/.claude/skills
-cp -r /tmp/omk-src/.claude/skills/omk ~/.claude/skills/
+cp -r /tmp/omk-src/.agents/skills/omk ~/.claude/skills/
 ```
 
 Codex users: copy into `~/.codex/agents/skills/` instead. Once installed, the agent auto-loads the SKILL context when you mention "omk", "benchmark", "evaluate", "skill eval", etc.

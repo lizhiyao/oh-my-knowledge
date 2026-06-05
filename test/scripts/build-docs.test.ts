@@ -1,7 +1,7 @@
 /**
  * scripts/build-docs.ts 集成测试 — codegen 输出的 commands.md 内容稳定性。
  * 测试策略:
- * - 直接断言已提交的 .claude/skills/omk/references/commands.md(代表 codegen 结果)
+ * - 直接断言已提交的 .agents/skills/omk/references/commands.md(代表 codegen 结果)
  *   的 schema 性质:13 命令 H2 / 关键 flag 存在 / 子命令空格分隔 / `<%= config.bin %>` 已替换
  * - spawn `node dist-scripts/build-docs.js --check` 验证 --check 模式在不漂移时
  *   exit 0,在漂移时 exit 1。走 dist 而非 tsx,因为 tsx 装在 node_modules 时
@@ -25,10 +25,10 @@ import { getTopLevelIds } from '../../scripts/build-docs.js';
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
-const COMMANDS_MD = join(PROJECT_ROOT, '.claude/skills/omk/references/commands.md');
+const COMMANDS_MD = join(PROJECT_ROOT, '.agents/skills/omk/references/commands.md');
 const CLI_EN = join(PROJECT_ROOT, 'docs/reference/cli.md');
 const CLI_ZH = join(PROJECT_ROOT, 'docs/zh/reference/cli.md');
-const SKILL_MD = join(PROJECT_ROOT, '.claude', 'skills', 'omk', 'SKILL.md');
+const SKILL_MD = join(PROJECT_ROOT, '.agents', 'skills', 'omk', 'SKILL.md');
 const BUILD_DOCS = join(PROJECT_ROOT, 'dist-scripts/build-docs.js');
 
 const MARKER_START = '<!-- omk:cli:start -->';

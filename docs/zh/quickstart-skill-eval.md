@@ -14,7 +14,7 @@ omk --version    # 能输出版本号即装好
 ```bash
 git clone https://github.com/lizhiyao/oh-my-knowledge.git /tmp/omk-src
 mkdir -p ~/.claude/skills
-cp -r /tmp/omk-src/.claude/skills/omk ~/.claude/skills/
+cp -r /tmp/omk-src/.agents/skills/omk ~/.claude/skills/
 ```
 
 Codex 用户改 `~/.codex/agents/skills/`。装好之后，agent 收到含「omk」「评测」「benchmark」之类的关键词就会自动加载 SKILL 上下文。
