@@ -2,7 +2,7 @@
 
 omk exposes a workflow CLI for knowledge artifacts. Seven top-level commands cover the full loop: `init` (scaffold) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
 
-> Flag tables in this file are auto-generated from the oclif command source by `scripts/build-docs.ts`. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift.
+<!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build-docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
 ## `omk init`
 
