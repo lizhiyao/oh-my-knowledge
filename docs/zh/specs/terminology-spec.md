@@ -1,6 +1,6 @@
 # OMK 术语规范
 
-> **范围**: 这是 omk 维护者的内部设计决策归档(为什么 artifact 不叫 evaluand、为什么 v0.16 起废 `--variants`、qualityScore → judgeScore 迁移路径等)。不是新用户入门文档——日常用法看 [README](../README.md) 即可。仅中文,因为关键术语本身全是英文,源码已是事实文档。
+> **范围**: 这是 omk 维护者的内部设计决策归档(为什么 artifact 不叫 evaluand、为什么 v0.16 起废 `--variants`、qualityScore → judgeScore 迁移路径等)。不是新用户入门文档——日常用法看 [README](../README.md) 即可。中英双版并存(`docs/specs/` 英文 / `docs/zh/specs/` 中文),术语本身全是英文,源码为命名的事实来源。
 
 ## 一、目标
 
@@ -115,7 +115,7 @@
 
 #### 6.1 Sample 元数据字段
 
-Sample schema 含 4 个可选元数据字段,纯文档 / 诊断用,**不参与 grading / judge / verdict**。详见 [docs/specs/sample-design-spec.md](sample-design-spec.md)。
+Sample schema 含 4 个可选元数据字段,纯文档 / 诊断用,**不参与 grading / judge / verdict**。详见 [docs/zh/specs/sample-design-spec.md](sample-design-spec.md)。
 
 - **`capability?: string[]`** — 该 sample 测试的能力维度(可多个)。归一时大小写 / 短横线 / 驼峰 / 下划线不敏感。
 - **`difficulty?: 'easy' | 'medium' | 'hard'`** — 难度分层(强枚举)。
