@@ -25,6 +25,9 @@ jobs:
           cache: yarn
       - run: yarn install --frozen-lockfile
       - run: yarn lint
+      # typecheck covers test/ too (yarn build only compiles src/; vitest strips
+      # types) — without this step test-only type drift merges undetected.
+      - run: yarn typecheck
       - run: yarn build
       - run: yarn build:docs:check
       - run: yarn test
