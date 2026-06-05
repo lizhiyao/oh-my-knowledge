@@ -230,7 +230,7 @@ oclif 迁移后 omk 的 exit code 契约（CI / 脚本若有 `[ $? -eq N ]` 分�
 - `docs/specs/` — design specs read by contributors (sample design, gap signal, RAG metrics, terminology, ...)
 - `docs/quickstart-skill-eval.md` + `docs/README.md` stay at the top level; `docs/zh/` mirrors the same structure
 - `docs/README.md` + `docs/zh/README.md` are the audience-grouped indexes — add new files to the matching section
-- **EN/ZH symmetry is required.** Every published page has both an English version under `docs/` and a Chinese version at the same path under `docs/zh/` — the VitePress language switcher relies on this 1:1 mirror, and a strict dead-link build fails otherwise. When adding a doc, add both halves. Maintainer-internal notes that are *not* meant for the published site live outside `docs/` (e.g. `design-notes/`) so they are exempt from the bilingual rule
+- **EN/ZH symmetry is required.** Every published page has both an English version under `docs/` and a Chinese version at the same path under `docs/zh/` — the VitePress language switcher relies on this 1:1 mirror, and a strict dead-link build fails otherwise. When adding a doc, add both halves. Prefer putting design rationale and decision records *inside* the relevant published spec (e.g. as an appendix) so users see the full reasoning — keep notes outside `docs/` only when they are genuinely maintainer-only, where they stay exempt from the bilingual rule
 
 ## Scope
 
