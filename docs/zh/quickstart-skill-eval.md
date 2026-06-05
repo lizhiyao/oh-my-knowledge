@@ -17,7 +17,7 @@ mkdir -p ~/.claude/skills
 cp -r /tmp/omk-src/.agents/skills/omk ~/.claude/skills/
 ```
 
-Codex 用户改 `~/.codex/agents/skills/`。装好之后，agent 收到含「omk」「评测」「benchmark」之类的关键词就会自动加载 SKILL 上下文。
+Codex 用户改 `~/.agents/skills/`。装好之后，agent 收到含「omk」「评测」「benchmark」之类的关键词就会自动加载 SKILL 上下文。
 
 ## 准备 skill（1 分钟）
 

@@ -17,7 +17,7 @@ mkdir -p ~/.claude/skills
 cp -r /tmp/omk-src/.agents/skills/omk ~/.claude/skills/
 ```
 
-Codex users: copy into `~/.codex/agents/skills/` instead. Once installed, the agent auto-loads the SKILL context when you mention "omk", "benchmark", "evaluate", "skill eval", etc.
+Codex users: copy into `~/.agents/skills/` instead. Once installed, the agent auto-loads the SKILL context when you mention "omk", "benchmark", "evaluate", "skill eval", etc.
 
 ## Prepare your skill (1 minute)
 
