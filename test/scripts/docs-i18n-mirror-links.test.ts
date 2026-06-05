@@ -9,8 +9,8 @@
  * 规则:扫 `docs/zh/**` 的每条站内链接,解析后若落在 `docs/` 根(不在 `docs/zh/`)
  * 且对应的 `docs/zh/<同路径>` 镜像 *存在*,即判违规 —— 应改成中文相对路径。
  *   - 只在「zh 镜像存在」时报错:仅英文版的页面(无 zh 镜像)允许被引,不误伤。
- *   - 例外:明确标注 English 的语言切换链接(link 文案含 English / 英文 / EN),
- *     如 `docs/zh/reference/comparison.md` 顶部的 `[English](../../reference/...)`。
+ *   - 例外:明确标注 English 的语言切换链接(link 文案含 English / 英文 / EN)。
+ *     站点统一靠 VitePress locale 切换,不手写这类链接;此豁免作为防御性允许保留。
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
