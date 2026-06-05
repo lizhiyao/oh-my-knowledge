@@ -1,6 +1,8 @@
 # Eval sample format
 
-Supports JSON and YAML (`eval-samples.json`, `eval-samples.yaml`, `eval-samples.yml`).
+An **eval-samples** file is the test set `omk eval` / `omk doctor` run against — a list of cases, each a `prompt` plus optional `rubric`, `assertions`, and metadata. Supports JSON and YAML (`eval-samples.json`, `eval-samples.yaml`, `eval-samples.yml`); YAML is easier to hand-write.
+
+For *designing* a rigorous sample set (what to test, how many, the metadata fields), see [sample design](../specs/sample-design-spec) — this page is the field-by-field format reference.
 
 ```json
 [
@@ -29,6 +31,7 @@ Supports JSON and YAML (`eval-samples.json`, `eval-samples.yaml`, `eval-samples.
 | `sample_id` | `string` | **yes** | Unique sample ID |
 | `prompt` | `string` | **yes** | User prompt sent to the model |
 | `context` | `string` | no | Extra context (e.g. code). Wrapped in a code block and appended to the prompt. URLs are auto-fetched at runtime. |
+| `cwd` | `string` | no | Per-sample working-directory override (runtime context for this one case) |
 | `rubric` | `string` | no | Scoring guideline for the LLM judge (1-5 scale) |
 | `assertions` | `array` | no | Assertion checks; see [assertion types](#assertion-types) |
 | `assertions[].type` | `string` | **yes** | Assertion type |
@@ -38,10 +41,27 @@ Supports JSON and YAML (`eval-samples.json`, `eval-samples.yaml`, `eval-samples.
 | `assertions[].flags` | `string` | no | Regex flags (default `"i"`) |
 | `assertions[].schema` | `object` | depends | JSON Schema object (required for `json_schema`, via [ajv](https://ajv.js.org/)) |
 | `assertions[].reference` | `string` | depends | Reference text (required for `semantic_similarity`) |
-| `assertions[].threshold` | `number` | no | Pass threshold for semantic similarity (default 3) |
+| `assertions[].threshold` | `number` | no | Pass threshold; default depends on type — `3` for LLM-scored types, `0.5` for `rouge_n_min` / `bleu_min`, `1` for `mock_hit` |
 | `assertions[].fn` | `string` | depends | Path to a custom assertion JS file (required for `custom`) |
 | `assertions[].weight` | `number` | no | Weight (default 1) |
+| `assertions[].not` | `boolean` | no | Invert this assertion's pass/fail; works with any type |
+| `assertions[].n` | `number` | no | n-gram order for `rouge_n_min` (default 1) |
 | `dimensions` | `object` | no | Multi-dimension scoring; key = dimension name, value = scoring guideline |
+
+## Metadata & sandbox fields
+
+A sample can also carry **metadata** (documentation / diagnostics only — these never enter grading / judge / verdict) and **sandbox** fields (for evals decoupled from the real environment). Full guidance lives in [sample design](../specs/sample-design-spec); here is the field index:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `capability` | `string[]` | capability dimensions this sample covers (drives coverage diagnostics) |
+| `difficulty` | `'easy' \| 'medium' \| 'hard'` | difficulty bucket (strict enum) |
+| `construct` | `string` | what it measures: `necessity` / `quality` / `capability` (custom allowed) |
+| `provenance` | `'human' \| 'llm-generated' \| 'production-trace'` | data source |
+| `mocks` | `object[]` | tool-call interception list — return fake data instead of really calling the tool |
+| `mocksStrict` | `boolean` | deny any tool call that matches no mock (default `false`) |
+| `tripwire` | `boolean` | trap sample: the LLM is **expected** to fail (default `false`) |
+| `environment` | `object` | declared "already provisioned" preconditions: `cli_available` / `files_available` / `notes` |
 
 ## URL auto-fetching
 
@@ -115,7 +135,9 @@ See the [scoring pipeline](../specs/scoring) for the full derivation, the equal-
 
 ## Assertion types
 
-**Deterministic assertions (30+ total):**
+30+ types in two families. **Deterministic** ones are checked locally (no model call); **LLM-scored** ones invoke the judge and return a 1-5 score gated by `threshold`.
+
+**Deterministic** (local, no LLM call):
 
 | Type | Description |
 |---|---|
@@ -129,17 +151,22 @@ See the [scoring pipeline](../specs/scoring) for the full derivation, the equal-
 | `contains_all` / `contains_any` | multi-value match |
 | `cost_max` / `latency_max` | cost / latency caps |
 | `tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` | agent tool-call assertions |
-| `tool_output_contains` / `tool_input_contains` | match content of a tool's input or output |
+| `tool_output_contains` / `tool_input_contains` / `tool_input_not_contains` | a tool's input/output must (or, for `_not_`, must not) contain the given content |
 | `mock_hit` | a declared sandbox mock was actually hit by a tool call (see [sample design](../specs/sample-design-spec)) |
 | `turns_min` / `turns_max` | conversation-turn bounds |
-| `rouge_n_min` | ROUGE-N recall ≥ threshold (`reference` field holds the gold text; `n` defaults to 1; `threshold` defaults to 0.5) |
+| `rouge_n_min` | ROUGE-N recall ≥ threshold (`reference` holds the gold text; `n` defaults to 1; `threshold` defaults to 0.5) |
 | `levenshtein_max` | edit distance ≤ value (for "output should be near-identical to reference") |
 | `bleu_min` | BLEU-4 ≥ threshold (unsmoothed; degenerates to 0 on short text) |
-| `faithfulness` | output stays grounded in `sample.context` (anti-hallucination); LLM judge 1-5; threshold defaults to 3 |
-| `answer_relevancy` | output directly answers `sample.prompt`; catches dodging, topic drift, verbosity; threshold defaults to 3 |
-| `context_recall` | gold facts in `sample.context` are actually used in the output; `reference` may explicitly enumerate gold facts; threshold defaults to 3 |
-| `semantic_similarity` | LLM-based holistic semantic similarity (complementary to the three RAG metrics above) |
 | `custom` | custom JS function (30 s timeout) |
+
+**LLM-scored** (invoke the judge, 1-5, `threshold` defaults to 3):
+
+| Type | Description |
+|---|---|
+| `faithfulness` | output stays grounded in `sample.context` (anti-hallucination) |
+| `answer_relevancy` | output directly answers `sample.prompt`; catches dodging, topic drift, verbosity |
+| `context_recall` | gold facts in `sample.context` are actually used in the output (`reference` may enumerate the gold facts) |
+| `semantic_similarity` | holistic semantic similarity to `reference` |
 
 **Universal modifier:**
 

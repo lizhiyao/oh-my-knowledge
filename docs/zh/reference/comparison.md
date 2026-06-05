@@ -2,11 +2,9 @@
 
 与 7 个 LLM 评测工具的事实性对比，数据截至 2026-04。欢迎 PR 修正——如果竞品新增了我们标 `✗` 的能力，请提 PR，我们会及时更新。
 
-[English](../../reference/comparison.md)
-
 ## 一句话总结
 
-omk 的护城河是**统计严谨性**：每条结论都能被研究者审计。Bootstrap CI、Krippendorff α 对人工锚点、length-debias 评委 prompt、饱和曲线——同类工具中**没有一个把这四件全做了**。
+omk 的护城河是**[统计严谨性](../explanation/statistical-rigor)**：每条结论都能被研究者审计。Bootstrap CI、Krippendorff α 对人工锚点、length-debias 评委 prompt、饱和曲线——同类工具中**没有一个把这四件全做了**。
 
 需要**托管式 SaaS 看板**？选 LangSmith / Confident AI。
 要**本地快速 prompt 迭代不要统计层**？选 promptfoo。
@@ -38,6 +36,8 @@ omk 的护城河是**统计严谨性**：每条结论都能被研究者审计。
 | 配对用例显著性检验 | ✓(bootstrap) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 omk 是参与对比中**唯一**把这五件事全做了的工具。最接近的 lm-evaluation-harness 重学术复现，统计层只到点估计。
+
+→ 这些不是营销话术——每一条都有文档和代码锚定：[统计严谨性](../explanation/statistical-rigor)、[评分公式](../specs/scoring)。
 
 ## 评分架构
 

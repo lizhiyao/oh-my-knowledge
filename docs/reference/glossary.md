@@ -41,20 +41,20 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 
 | Term | One-line definition | Where it shows up in omk |
 |---|---|---|
-| artifact | The unified abstraction for omk's "thing under evaluation": skill / prompt / agent / workflow / baseline | determined by experiment role (`--control` / `--treatment` / baseline), not a standalone flag |
-| executor | How the model is run: claude / codex / openai-api / gemini | `--executor` parameter; execution-environment fingerprint |
+| [artifact](./artifact-layout.md) | The unified abstraction for omk's "thing under evaluation": skill / prompt / agent / workflow / baseline | determined by experiment role (`--control` / `--treatment` / baseline), not a standalone flag |
+| [executor](./executors.md) | How the model is run: claude / codex / openai-api / gemini | `--executor` parameter; execution-environment fingerprint |
 | ensemble (judge) | Multiple LLMs act as judges and score independently, then combine | `--judge-models claude:opus,claude:sonnet` |
 | judge | An LLM scoring against a rubric | judge model parameter; evidence table |
 | rubric | The detailed criteria a judge follows when scoring (must recognize X / must include Y / at least N items / ...) | rubric field in sample config |
 | anchor | A method for calibrating the LLM judge against human standards | `--gold-dir` human anchors |
 | gate (layer gate) | Three independent layer significance tests (fact / behavior / judge); a regression in any layer triggers CAUTIOUS+ | verdict algorithm; "variance / significance" table on the report page |
-| verdict | One of six tiers: PROGRESS / REGRESS / CAUTIOUS / NOISE / UNDERPOWERED / SOLO | hero badge; CLI verdict output |
+| [verdict](../specs/scoring.md#the-six-verdicts-at-a-glance) | One of six tiers: PROGRESS / REGRESS / CAUTIOUS / NOISE / UNDERPOWERED / SOLO | hero badge; CLI verdict output |
 | sample (evaluation sample) | A single evaluation case | eval-samples.json |
-| eval-samples | The sample config file (each entry has prompt / rubric / assertion / capability) | `omk eval --samples` |
+| [eval-samples](./eval-sample-format.md) | The sample config file (each entry has prompt / rubric / assertion / capability) | `omk eval --samples` |
 | baseline (reserved variant) | The control group with no skill injected; omk reserves this variant name | `--control baseline` |
 | treatment | The experiment group with the skill injected | `--treatment <name>` |
 | control | An alias for baseline | `--control <name>` |
-| composite (score) | Equal-weight mean of the fact / behavior / judge layers on a 1-5 scale (see scoring.md) | first column of the six-dimension comparison table |
+| [composite (score)](../specs/scoring.md) | Equal-weight mean of the fact / behavior / judge layers on a 1-5 scale | first column of the six-dimension comparison table |
 | fact (layer) | Assertion pass rate mapped to 1-5 via `1 + ratio*4` | "📋 Fact" in the six-dimension comparison table |
 | behavior (layer) | Pass rate of process-level assertions (tool calls / turns / cost caps) | "🛠️ Behavior" in the six-dimension comparison table |
 | judge (layer) | The 1-5 score the judge gives directly against the rubric | "💬 LLM judge" in the six-dimension comparison table |
@@ -80,24 +80,12 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 
 ---
 
-## 4. Architecture / omk's three-stage loop
+## 4. omk's three stages
 
-omk's long-term positioning is "knowledge evaluation + management + insight" in one, mapping to a three-stage loop of **inspect / evaluate / observe**:
-
-| Stage | omk command | Question it answers |
-|---|---|---|
-| inspect | `omk doctor` | Is the skill well-written (static health, 7-dimension LLM-judge checkup) |
-| evaluate | `omk eval` | Does the skill help on the samples (A/B comparison + significance + stability) |
-| observe | `omk observe` | How does the skill perform in production (full release coming soon) |
-
-Each stage maps to a different verdict gate + a different report UI path.
+omk's loop runs in three stages — **doctor** (preflight health) → **eval** (offline A/B + verdict) → **observe** (production traces) — together covering knowledge **evaluation + management + insight**. See [the three stages](../explanation/three-stage-workflow.md) for the full mental model.
 
 ---
 
 ## Writing conventions
 
-The terms above are the shared vocabulary for omk docs. Detailed naming decisions for omk-internal terms (artifact / executor / variant / verdict, etc.) live in the [terminology spec](../specs/terminology-spec.md). The Chinese docs additionally follow GB/T 15834 punctuation and a set of translation rules; those are documented in the Chinese glossary and do not apply to English prose.
-
----
-
-Sibling docs: [terminology spec](../specs/terminology-spec.md) / [statistical rigor](../explanation/statistical-rigor.md) / [composite-score construct validity](../specs/scoring.md)
+The terms above are the shared vocabulary for omk docs. Detailed naming *decisions* for omk-internal terms (artifact / executor / variant / verdict, etc.) live in the [terminology spec](../specs/terminology-spec.md) (a maintainer archive). The Chinese docs additionally follow GB/T 15834 punctuation and a set of translation rules, documented in the Chinese glossary; they don't apply to English prose.

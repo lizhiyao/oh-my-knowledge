@@ -20,7 +20,7 @@ The standard [RAGAS](https://docs.ragas.io/) implementation is statement-decompo
 2. Use an LLM to judge each statement against the context.
 3. ratio = supported / total
 
-This flow is **more interpretable** (you can see which statement was wrong), but the number of calls **grows linearly**, and it introduces two rounds of LLM noise.
+This flow is **more interpretable** (you can see which statement was wrong), but the number of LLM calls **grows linearly with the number of atomic statements**, and it introduces two rounds of LLM noise.
 
 omk's tradeoff: **a single 1-5 score judgment**, consistent with omk's other LLM-judge assertions (`semantic_similarity` has the same shape). Advantages:
 

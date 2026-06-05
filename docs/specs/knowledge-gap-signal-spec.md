@@ -1,4 +1,4 @@
-# OMK knowledge-gap signal specification
+# omk knowledge-gap signal specification
 
 > Status: v0.1 draft (drafted 2026-04-13)
 > Purpose: define how omk extracts "knowledge-gap signals" from the agent evaluation process, how they aggregate into a gap rate, and how to track the convergence of a knowledge base's risk exposure.
@@ -99,10 +99,12 @@ The agent explicitly flags uncertainty or inference in its own output. omk recog
 
 ### 3. Hedging language (weak signal · LLM-assisted second-pass judgment)
 
-Confidence-downgrading phrasing appears in the agent's output text:
+Confidence-downgrading phrasing appears in the agent's output text — for example:
 
 - Chinese: "我不确定", "没有足够信息", "需要查证", "无法确认", "猜测", "可能是"
 - English: "I'm not sure", "insufficient information", "need to verify", "likely", "presumably"
+
+(Illustrative markers, not the literal regex set — the recall net is an implementation detail; see the v0.2 strategy below.)
 
 **Why it's a weak signal**: pure string matching has a high false-positive rate — words like "可能是" / "likely" also appear heavily in business reasoning / hypothesis analysis / polite phrasing, and don't necessarily indicate knowledge-level uncertainty in the agent.
 

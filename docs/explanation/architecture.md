@@ -25,9 +25,9 @@ flowchart TD
     end
 
     subgraph Score["⑤ Dual-channel scoring"]
-        AS["assertions (18 types)<br/>content / structure / cost / latency<br/>agent: tools_called · turns_min …"]
+        AS["assertions<br/>content / structure / cost / latency<br/>agent: tools_called · turns_min …"]
         LS["LLM judge<br/>rubric · dimensions (independent per-dim scores)"]
-        CS["composite score<br/>mean of assertion & LLM when both present"]
+        CS["composite score<br/>mean of present layers — fact · behavior · judge"]
         AS --> CS
         LS --> CS
     end
@@ -59,7 +59,7 @@ flowchart TD
 
 - **Interleaved scheduling** removes time drift: different variants of the same sample are dispatched alternately rather than "all of v1 then all of v2", so model load / network jitter can't be mis-attributed to the artifact.
 - **variant = artifact + runtime context**: the `cwd` (declared via `--control-cwd`/`--treatment-cwd` or eval.yaml's `cwd:` field, separate from the artifact expression) lets control groups explicitly declare the "project directory" input, separating "project-level accumulated knowledge" from "explicit artifact injection".
-- **Dual-channel scoring is complementary**: assertions catch deterministic defects (must call tool X, must contain field Y); the LLM judge catches subjective quality (readability, completeness). Mean is taken when both are present.
+- **Dual-channel scoring is complementary**: assertions catch deterministic defects (must call tool X, must contain field Y); the LLM judge catches subjective quality (readability, completeness). The composite is the mean of whichever scoring layers (fact / behavior / judge) are actually present.
 - **Knowledge-gap signals** are not part of the score — they are an independent tracking channel that tells you "how much risk exposure this evaluation covered", for convergence tracking, not as a completeness proof.
 
 ## Six-dim evaluation

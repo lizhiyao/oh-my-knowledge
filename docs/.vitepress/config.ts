@@ -23,7 +23,7 @@ export default defineConfig({
       lang: 'en',
       themeConfig: {
         nav: [
-          { text: 'Guide', link: '/quickstart-skill-eval' },
+          { text: 'Quickstart', link: '/quickstart-skill-eval' },
           { text: 'How-to', link: '/guides/agent-eval' },
           { text: 'Reference', link: '/reference/cli' },
           { text: 'Explanation', link: '/explanation/three-stage-workflow' },
@@ -80,7 +80,7 @@ export default defineConfig({
       link: '/zh/',
       themeConfig: {
         nav: [
-          { text: '指南', link: '/zh/quickstart-skill-eval' },
+          { text: '快速上手', link: '/zh/quickstart-skill-eval' },
           { text: '操作指南', link: '/zh/guides/agent-eval' },
           { text: '参考', link: '/zh/reference/cli' },
           { text: '原理', link: '/zh/explanation/three-stage-workflow' },
@@ -94,7 +94,7 @@ export default defineConfig({
               { text: 'CLI 参考', link: '/zh/reference/cli' },
               { text: '评测用例格式', link: '/zh/reference/eval-sample-format' },
               { text: '执行器', link: '/zh/reference/executors' },
-              { text: 'Artifact 与 variant 布局', link: '/zh/reference/artifact-layout' },
+              { text: '指定被测对象(artifact / variant)', link: '/zh/reference/artifact-layout' },
               { text: '7 工具对比', link: '/zh/reference/comparison' },
               { text: '术语表', link: '/zh/reference/glossary' },
             ],
@@ -102,7 +102,7 @@ export default defineConfig({
           {
             text: '操作指南',
             items: [
-              { text: '跑 doctor 检查', link: '/zh/guides/run-doctor-checks' },
+              { text: 'doctor 体检', link: '/zh/guides/run-doctor-checks' },
               { text: '评测 agent', link: '/zh/guides/agent-eval' },
               { text: '自动迭代 skill', link: '/zh/guides/auto-improve-skills' },
               { text: '观测生产 trace', link: '/zh/guides/observe-production' },

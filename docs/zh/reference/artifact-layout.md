@@ -1,10 +1,29 @@
-# Artifact 与 variant 布局
+# 指定被测对象(artifact / variant)
 
-OMK 如何把一个 `variant` 表达式解析为 `artifact`（被评测对象）与可选的 `runtime context`。
+一次 `omk eval` 由三样东西构成 —— 本页讲清每个是什么，以及 CLI 的 **variant** 表达式怎么解析成它们：
+
+- **artifact** —— 被评测对象：一个 skill / prompt / agent / workflow 文件（或 `baseline`，即*什么都不注入*）。
+- **variant** —— 你在 CLI 上写的表达式（如 `--control v1 --treatment v2`）。每个 variant 解析成恰好一个 artifact。
+- **runtime context** —— artifact 运行所在的环境；当前是工作目录（`cwd`），它会带进那个项目的 `CLAUDE.md`、本地 skills、仓库状态。
+
+一句话：**variant 表达式 → 一个 artifact（+ 可选的 runtime context）**。表达式*只*表达 artifact 身份；runtime context 单独声明（见[下文](#声明-runtime-context-cwd)）。
+
+## Variant 解析规则
+
+| 格式 | 解析为 |
+|------|------|
+| `name` | 从 artifact 目录查找 `name.md` 或 `name/SKILL.md` → 一个 artifact |
+| `baseline` | 空 artifact，不注入 system prompt——「什么都不注入」（保留字；不能绑 cwd） |
+| 其它任意标签（如 `project-env`） | 同样是空 artifact；配合下方的 cwd，用于单独测量项目级 runtime context |
+| `git:name` | 从 git HEAD 读取一个 artifact 的上次提交版本 |
+| `git:ref:name` | 从 git 指定 commit 读取一个 artifact |
+| `./path/to/file.md` | 含 `/` 的路径：直接读取文件作为 artifact |
+
+想单独观察一个项目的 runtime context，要用非 `baseline` 标签 + cwd（如 `--treatment project-env --treatment-cwd /path`）——把 `baseline` 绑到 cwd 会被拒。
 
 ## Artifact 目录结构
 
-默认执行器（claude / codex / gemini 等）支持两种 artifact 布局，同一次评测中可混用：
+`name` 形式下，默认执行器（claude / codex / gemini 等）支持两种布局，同一次评测中可混用：
 
 ```
 skills/
@@ -14,19 +33,6 @@ skills/
     ├── config.json          #   其他文件不参与评测，仅保留完整性
     └── scripts/
 ```
-
-## Variant 解析规则
-
-`variant` 是实验分组表达式。解析之后，OMK 会得到一个 `artifact` 与可选的 `runtime context`（当前主要是 `cwd`）。
-
-| 格式 | 含义 |
-|------|------|
-| `name` | 从 artifact 目录查找 `name.md` 或 `name/SKILL.md`，解析为一个 artifact |
-| `baseline` | 空 artifact，不使用 system prompt；可直接理解为「什么都没有」 |
-| `project-env`（任意非 skill 标签） | 空 artifact，配合下方的 cwd 在指定项目目录运行，用于单独观察项目级 runtime context |
-| `git:name` | 从 git HEAD 读取一个 artifact 的上次提交版本 |
-| `git:ref:name` | 从 git 指定 commit 读取一个 artifact |
-| `./path/to/file.md` | 含 `/` 的路径，直接读取文件作为 artifact |
 
 ## 声明 runtime context（cwd）
 

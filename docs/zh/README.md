@@ -8,13 +8,13 @@
 - [CLI 参考](./reference/cli.md)
 - [评测用例格式](./reference/eval-sample-format.md)
 - [执行器](./reference/executors.md)
-- [Artifact 与 variant 布局](./reference/artifact-layout.md)
+- [指定被测对象(artifact / variant)](./reference/artifact-layout.md)
 - [7 工具对比](./reference/comparison.md)
 - [术语表](./reference/glossary.md)
 
 ## 操作指南
 
-- [跑 doctor 检查](./guides/run-doctor-checks.md)
+- [doctor 体检](./guides/run-doctor-checks.md)
 - [评测 agent（项目级 runtime context）](./guides/agent-eval.md)
 - [自动迭代 skill](./guides/auto-improve-skills.md)
 - [观测生产 trace](./guides/observe-production.md)

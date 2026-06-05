@@ -2,11 +2,9 @@
 
 A factual comparison with seven other LLM evaluation tools, as of 2026-04. Corrections welcome via PR — if a competitor adds a feature we mark `✗`, we'll happily update.
 
-[简体中文](../zh/reference/comparison.md)
-
 ## TL;DR
 
-omk's moat is **statistical rigor**: every conclusion is auditable by a researcher. Bootstrap CI, Krippendorff α against gold annotations, length-debias judge prompt, saturation curves — none of the other tools surveyed ship all four.
+omk's moat is **[statistical rigor](../explanation/statistical-rigor)**: every conclusion is auditable by a researcher. Bootstrap CI, Krippendorff α against gold annotations, length-debias judge prompt, saturation curves — none of the other tools surveyed ship all four.
 
 If you need a **hosted SaaS dashboard**, choose LangSmith or Confident AI.
 If you want **quick local prompt iteration without statistics**, choose promptfoo.
@@ -38,6 +36,8 @@ If you need **agent sandbox isolation** for safety evaluations, choose inspect-a
 | Paired-sample significance testing | ✓ (bootstrap) | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
 
 omk is the only tool surveyed that ships all five rigour pieces. The closest comparable is lm-evaluation-harness (academic reproducibility focus), but its statistical layer is single-point-estimate.
+
+→ These aren't marketing claims — each is documented and code-anchored: [statistical rigor](../explanation/statistical-rigor), [scoring pipeline](../specs/scoring).
 
 ## Scoring architecture
 

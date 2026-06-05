@@ -9,8 +9,10 @@
  * 规则:扫 `docs/zh/**` 的每条站内链接,解析后若落在 `docs/` 根(不在 `docs/zh/`)
  * 且对应的 `docs/zh/<同路径>` 镜像 *存在*,即判违规 —— 应改成中文相对路径。
  *   - 只在「zh 镜像存在」时报错:仅英文版的页面(无 zh 镜像)允许被引,不误伤。
- *   - 例外:明确标注 English 的语言切换链接(link 文案含 English / 英文 / EN),
- *     如 `docs/zh/reference/comparison.md` 顶部的 `[English](../../reference/...)`。
+ *   - 唯一例外:双语入口索引页「zh 索引 → 同级英文索引」这一条切换链接。`docs/zh/README.md`
+ *     是 GitHub 目录浏览入口,那里没有 VitePress locale 开关,保留一条手写「English index」
+ *     指向 `docs/README.md`。豁免按精确的 (源文件, 目标文件) 配对放行,不做模糊文案匹配 ——
+ *     正文内容页统一靠 locale 开关,任何 climb-back 仍按回归处理。
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
@@ -28,8 +30,12 @@ const ZH_ROOT = join(DOCS_ROOT, 'zh');
 const EXTRA_ZH_FACING_FILES = [join(PROJECT_ROOT, 'README.zh.md')];
 
 const MD_LINK = /\[([^\]]*)\]\(([^)\s]+)\)/g;
-// 语言切换链接:link 文案明确指向英文版,允许 climb 回英文根。
-const EN_SWITCH = /English|英文|\bEN\b/i;
+
+// 双语入口索引页的「zh 索引 → 同级英文索引」切换链接是唯一放行项(GitHub 浏览无 locale 开关)。
+// 精确配对,不做模糊文案匹配。
+const SWITCH_LINK_ALLOWED: ReadonlyArray<readonly [string, string]> = [
+  [join(ZH_ROOT, 'README.md'), join(DOCS_ROOT, 'README.md')],
+];
 
 interface Violation {
   file: string;
@@ -92,10 +98,8 @@ describe('docs/zh 跨语言悬链 gate', () => {
         MD_LINK.lastIndex = 0;
         let m: RegExpExecArray | null;
         while ((m = MD_LINK.exec(line)) !== null) {
-          const linkText = m[1]!;
           const raw = m[2]!;
           if (/^(https?:|mailto:|#)/i.test(raw)) continue;
-          if (EN_SWITCH.test(linkText)) continue;
           const targetPath = raw.split('#')[0]!.split('?')[0]!;
           if (!targetPath) continue;
 
@@ -107,6 +111,8 @@ describe('docs/zh 跨语言悬链 gate', () => {
           if (!isUnder(absTarget, DOCS_ROOT)) continue;
           // 已经在 docs/zh/ 内 → 正确,跳过。
           if (isUnder(absTarget, ZH_ROOT)) continue;
+          // 双语入口索引页的「zh 索引 → 同级英文索引」切换链接:精确配对放行。
+          if (SWITCH_LINK_ALLOWED.some(([src, dst]) => abs === src && absTarget === dst)) continue;
 
           // 落在英文根:看是否有对应 zh 镜像。
           const relToDocs = relative(DOCS_ROOT, absTarget);
@@ -130,7 +136,8 @@ describe('docs/zh 跨语言悬链 gate', () => {
       assert.fail(
         `发现 ${violations.length} 处中文页链接 climb 回英文根 docs/(对应 zh 镜像存在):\n${dump}\n\n` +
           `修法:把链接改成中文相对路径(指向 docs/zh/ 下的镜像);` +
-          `若确为语言切换链接,link 文案需含 English / 英文 / EN。`,
+          `跨语言切换靠 VitePress locale 开关,正文不要手写 [English] 类链接` +
+          `(仅双语入口索引页的「zh 索引 → 英文索引」一条放行)。`,
       );
     }
   });

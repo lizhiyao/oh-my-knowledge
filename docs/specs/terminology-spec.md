@@ -1,4 +1,4 @@
-# OMK terminology spec
+# omk terminology spec
 
 > **Scope**: This is a naming-decisions archive for omk maintainers (why `artifact` instead of `evaluand`, why `--variants` was dropped from v0.16, the `qualityScore` → `judgeScore` migration path, etc.). It is not a getting-started doc — for everyday usage see the [README](../README.md). The source code is the canonical reference, since the key terms are all English anyway.
 

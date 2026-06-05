@@ -10,7 +10,7 @@ The enabler is the `claude-sdk` executor: it auto-extracts turns / toolCalls tra
 - `variant`: the CLI expression for an experiment group (see [Artifact & variant layout](../reference/artifact-layout))
 - `runtime context`: the runtime environment; currently mainly `cwd`. In project-type agent scenarios it includes the project dir, its `CLAUDE.md`, local skills, and any other environmental factors that affect behavior
 
-In OMK, `agent` is not a catch-all term and neither is `skill`. A cleaner phrasing: **you are comparing how different artifacts behave under different runtime contexts.**
+In omk, `agent` is not a catch-all term and neither is `skill`. A cleaner phrasing: **you are comparing how different artifacts behave under different runtime contexts.**
 
 ## Recommended executor
 

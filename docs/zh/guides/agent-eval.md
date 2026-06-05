@@ -10,7 +10,7 @@
 - `variant`：CLI 里的实验分组表达式（见 [Artifact 与 variant 布局](../reference/artifact-layout)）
 - `runtime context`：运行时上下文，当前主要是 `cwd`；在项目型 agent 场景下，它就包含项目目录、`CLAUDE.md`、本地 skills 等会影响行为的环境因素
 
-在 OMK 里，`agent` 不是所有对象的总称，`skill` 也不是所有对象的总称。更稳妥的说法是：你在比较不同 artifact 在不同 runtime context 下的表现。
+在 omk 里，`agent` 不是所有对象的总称，`skill` 也不是所有对象的总称。更稳妥的说法是：你在比较不同 artifact 在不同 runtime context 下的表现。
 
 ## 推荐执行器
 
@@ -20,7 +20,7 @@ omk eval --executor claude-sdk
 
 ## 支持的 agent 相关断言
 
-工具调用与轮次相关的断言（`tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` / `tool_output_contains` / `tool_input_contains` / `turns_min` / `turns_max`）见 [断言类型参考](../reference/eval-sample-format#assertion-types)。
+工具调用与轮次相关的断言（`tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` / `tool_output_contains` / `tool_input_contains` / `turns_min` / `turns_max`）见 [断言类型参考](../reference/eval-sample-format#断言类型)。
 
 ## 三种常见对照组
 
