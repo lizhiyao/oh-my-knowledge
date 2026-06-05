@@ -23,7 +23,7 @@ export default defineConfig({
       lang: 'en',
       themeConfig: {
         nav: [
-          { text: 'Guide', link: '/quickstart-skill-eval' },
+          { text: 'Quickstart', link: '/quickstart-skill-eval' },
           { text: 'How-to', link: '/guides/agent-eval' },
           { text: 'Reference', link: '/reference/cli' },
           { text: 'Explanation', link: '/explanation/three-stage-workflow' },
@@ -80,7 +80,7 @@ export default defineConfig({
       link: '/zh/',
       themeConfig: {
         nav: [
-          { text: '指南', link: '/zh/quickstart-skill-eval' },
+          { text: '快速上手', link: '/zh/quickstart-skill-eval' },
           { text: '操作指南', link: '/zh/guides/agent-eval' },
           { text: '参考', link: '/zh/reference/cli' },
           { text: '原理', link: '/zh/explanation/three-stage-workflow' },
