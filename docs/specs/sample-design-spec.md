@@ -1,6 +1,6 @@
 # Sample design guide
 
-> **For omk users**: how to declare measurement metadata on a sample, write sandbox fields, and self-check before running an eval. Academic alignment (HELM / IRT / Construct Validity / contamination defense, etc.) and schema-extension decisions live in the maintainer's internal notes and are out of scope here.
+> **For omk users**: how to declare measurement metadata on a sample, write sandbox fields, and self-check before running an eval. The academic alignment behind it (HELM / IRT / Construct Validity / contamination defense, etc.) and the schema-extension decisions are laid out in the appendix (§6) — we put the full rationale on the table rather than tucking it away in an internal note.
 
 ## 1. Why sample design needs to be rigorous
 
@@ -160,4 +160,77 @@ Run through this before an eval; any "no" is a reason to stop and think:
 
 ---
 
-> Academic alignment (HELM / IRT / the Construct Validity trio / contamination defense), the 8-point mapping to industry consensus, and the v2 schema-extension candidate-and-rejection list: see the maintainer's internal notes at `design-notes/sample-design-theory.md`.
+## 6. Appendix — design rationale (academic alignment & schema decisions)
+
+This appendix lays out the reasoning behind the metadata schema: how omk's sample-design choices map to academic / industry consensus, which capabilities are deliberately out of v1 scope, and which v2 fields were considered and rejected (with reasons). It's here for the sake of full transparency — the practical guidance above is all you need to write good samples; this section answers "why it's designed this way."
+
+### 6.1 Industry-consensus checklist & omk v1 coverage
+
+omk's statistical-rigor stack (Bootstrap CI / Krippendorff α / length-debias / saturation curves / verdict) settles whether the **conclusion** is computed correctly — but the conclusion rests on the sample set. If the samples themselves aren't rigorous, all the downstream statistical rigor is built on sand. The table maps sample design to academic / industry consensus and marks omk v1's coverage.
+
+| # | Industry gap | Academic / industry source | omk v1 status |
+|---|---|---|---|
+| 1 | **IRT item discrimination**: each item gets a (discrimination) / b (difficulty) / c (guessing) parameters; a < 0.3 is a junk item | [IrtNet (2510.00844)](https://arxiv.org/pdf/2510.00844), [Columbia IRT primer](https://www.publichealth.columbia.edu/research/population-health-methods/item-response-theory) | **out-of-scope** (IRT is unreliable at N<30; left as follow-up — the v1 `flat_scores` heuristic already covers part of it) |
+| 2 | **Difficulty stratification**: stratify samples by difficulty (MMLU-Pro filters difficulty via multi-model majority-correct) | [MMLU-Pro](https://intuitionlabs.ai/articles/mmlu-pro-ai-benchmark-explained) | **in-scope**: `Sample.difficulty` enum + studio bucketing |
+| 3 | **Construct-validity trio** (structural / convergent / discriminant) | [Measuring what Matters (2511.04703)](https://arxiv.org/abs/2511.04703), [Measurement to Meaning (2505.10573)](https://arxiv.org/html/2505.10573v3) | **in-scope**: `Sample.construct` field (suggested: necessity / quality / capability) + verdict-interpretation callout; convergent / discriminant auto-detection is follow-up |
+| 4 | **Capability-matrix coverage** (HELM's 16×7 matrix) | [HELM (2211.09110)](https://arxiv.org/abs/2211.09110) | **partial**: `Sample.capability` string[] field + studio coverage bucketing + `capability_thin` issue; detailed matrix visualization is follow-up |
+| 5 | **Contamination detection** (canary / paraphrase / timestamp-locked) | [BIG-Bench canary](https://www.lesswrong.com/posts/kSmHMoaLKGcGgyWzs/big-bench-canary-contamination-in-gpt-4), [LiveBench](https://livebench.ai/livebench.pdf), [contamination survey (2404.00699)](https://arxiv.org/html/2404.00699v4) | **partial**: `Sample.provenance` does "declarative" contamination tracking; real auto-detection is follow-up (needs an embedding model or training-data access) |
+| 6 | **Sample provenance / dataset card** (the annotations_creators standard) | [HF Dataset Cards](https://huggingface.co/docs/hub/datasets-cards), [Synthetic Data survey (2503.14023)](https://arxiv.org/html/2503.14023v1) | **in-scope**: `Sample.provenance` enum + `omk sample` auto-injects `'llm-generated'` |
+| 7 | **Adversarial / failure-driven mining** (Dynabench) | [Dynabench (2104.14337)](https://arxiv.org/abs/2104.14337) | **out-of-scope**: `omk evolve` is currently one-directional; adversarial mining is follow-up |
+| 8 | **Production-trace natural-distribution sampling** | [Chatbot Arena (2403.04132)](https://arxiv.org/pdf/2403.04132) | **out-of-scope**: depends on external trace-system integration |
+
+### 6.2 Acknowledged but not in v1 (follow-ups)
+
+- IRT-style item discrimination (needs N≥30 + multi-model data)
+- Multi-judge convergent / discriminant test (needs a ≥ 2-judge ensemble + aggregate analysis)
+- Adversarial mining loop
+- Production-trace natural-distribution sampling
+- HTML renderer showing sample-design coverage (v1 is CLI-only)
+- Evolve strategy upgrades (diversification signal / saturation-aware stop / health-weighted improvement)
+- Gold-dataset auto-generation (reframed as an "annotation-process standardization" doc)
+- Detailed N×D coverage-matrix visualization (v1 emits aggregate buckets + users visualize themselves)
+- Contamination-detection algorithm implementation (canary string / paraphrase detection)
+- User-defined rubric keyword list (`diagnostics.rubricKeywords` config)
+
+### 6.3 v2 schema-extension candidates & rejection list
+
+The v1 schema has only 4 fields (capability / difficulty / construct / provenance), all on the **measurement-validity** axis — answering *does this sample measure what it claims to measure?* Another common community ask sits on the **asset-governance** axis: tags / risk_level / expected_facts / source_ids / owner — answering *who owns this sample, where it came from, how important it is.* The two axes are orthogonal and don't conflict, but governance assumes measurement is already solid; v1 chose to solve measurement first. This section records the v2 candidates and the rejection list so future decisions don't re-litigate them.
+
+**v2 candidates (high-value, low-risk; add when real user demand triggers it)**
+
+- **`source_ids?: string[]`**: concrete source identifiers (`issue-123` / `doc:react-charts.md#line-chart` / `slack-thread-...`). Fills the gap that the `provenance` enum is too coarse — provenance answers "machine / human / production", source_ids answers "which specific issue / doc section". High debug value (traceable sample origin), documentation-only, never enters grading. Cost: link rot is the user's to manage.
+- **`status?: 'active' | 'deprecated' | 'superseded'`**: a lifecycle field. As a sample set evolves, knowing whether a sample is "primary" or "being retired" matters for verdict interpretation — a `deprecated` sample still runs but its Δ shouldn't count toward the headline conclusion. More important than `owner`.
+
+**Rejected (with reasons, to avoid re-litigating)**
+
+- **`tags?: string[]`**: semantically muddled with `capability`. capability is "which specific ability is tested"; the "regression / p0 / edge-case" tags want to add belong either to `capability` (an ability dimension) or to `status` (lifecycle). A free-form string with no enum constraint rots into a mess. **Decision**: don't add; force users to express it via capability + status.
+- **`expected_facts?: string[]`**: heavily overlaps `rubric` + `assertions: contains`. omk's judge already does semantic scoring; expected_facts is just another alias for the same abstraction. **Decision**: don't add — it would create two places to write expectations during sample design, prone to drift.
+- **`owner?: string`**: a governance field, mismatched with omk's measurement mission. omk doesn't consume `owner` for routing / notification; git blame / CODEOWNERS is the better home. **Decision**: don't add.
+- **`risk_level?: 'p0' | 'p1' | 'p2'`**: raises a real question (should aggregation weight samples by risk?), but solving it would touch the verdict formula — a **measurement invariant**. Today verdict / Δ are sample-uniform; weighting them into the verdict breaks cross-version comparability. Pure noise without a consumer, breaks the invariant with one — a dilemma. **Decision**: don't add; if it's ever needed, it must be its own project, designing a weighted aggregator alongside verdict v2.
+
+**Hard constraints before adding any new field**
+
+- Must not enter the `buildJudgePrompt` signature (`test/grading/judge-prompt-isolation.test.ts` guards the regression)
+- Must not enter the `sampleHash` computation (else it breaks cache-key cross-version comparability)
+- Must not enter the verdict / Δ algorithm
+- Must not semantically overlap the existing 4 fields + `rubric` / `assertions`
+
+### 6.4 Sources
+
+- [Holistic Evaluation of Language Models (HELM, 2211.09110)](https://arxiv.org/abs/2211.09110)
+- [Measuring what Matters: Construct Validity in LLM Benchmarks (2511.04703)](https://arxiv.org/abs/2511.04703)
+- [Measurement to Meaning: A Validity-Centered Framework (2505.10573)](https://arxiv.org/html/2505.10573v3)
+- [Position: Medical LLM Benchmarks Should Prioritize Construct Validity](https://openreview.net/pdf?id=YuMEUNNpeb)
+- [Learning Compact Representations of LLM Abilities via Item Response Theory (IrtNet, 2510.00844)](https://arxiv.org/pdf/2510.00844)
+- [IRT primer — Columbia Mailman](https://www.publichealth.columbia.edu/research/population-health-methods/item-response-theory)
+- [MMLU-Pro Benchmark methodology](https://intuitionlabs.ai/articles/mmlu-pro-ai-benchmark-explained)
+- [Synthetic Data Generation Survey (2503.14023)](https://arxiv.org/html/2503.14023v1)
+- [Auto Evol-Instruct (2406.00770)](https://arxiv.org/html/2406.00770v1)
+- [Dynabench (2104.14337)](https://arxiv.org/abs/2104.14337)
+- [Comprehensive Survey of Contamination Detection (2404.00699)](https://arxiv.org/html/2404.00699v4)
+- [LiveBench: Contamination-Free Benchmark](https://livebench.ai/livebench.pdf)
+- [BIG-Bench Canary in GPT-4](https://www.lesswrong.com/posts/kSmHMoaLKGcGgyWzs/big-bench-canary-contamination-in-gpt-4)
+- [How to Publish Benchmarks Without True Answers (2505.18102)](https://arxiv.org/html/2505.18102v1)
+- [Hugging Face Dataset Cards](https://huggingface.co/docs/hub/datasets-cards)
+- [Judging LLM-as-a-Judge with MT-Bench / Chatbot Arena (2306.05685)](https://arxiv.org/abs/2306.05685)
+- [Chatbot Arena Open Platform (2403.04132)](https://arxiv.org/pdf/2403.04132)
