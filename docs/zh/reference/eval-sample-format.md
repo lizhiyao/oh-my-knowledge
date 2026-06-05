@@ -1,4 +1,4 @@
-# 评测样本格式
+# 评测用例格式
 
 支持 JSON 和 YAML（`eval-samples.json`、`eval-samples.yaml`、`eval-samples.yml`）。
 
@@ -26,7 +26,7 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `sample_id` | `string` | **是** | 样本唯一标识 |
+| `sample_id` | `string` | **是** | 用例唯一标识 |
 | `prompt` | `string` | **是** | 发送给模型的用户提示词 |
 | `context` | `string` | 否 | 附加上下文（代码片段等），会被包裹在代码块中拼接到 prompt 后。也支持 URL，运行时自动抓取内容 |
 | `rubric` | `string` | 否 | LLM 评委的评分标准（1-5 分） |

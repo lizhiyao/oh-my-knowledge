@@ -88,7 +88,7 @@ export default defineConfig({
             items: [
               { text: '快速上手', link: '/zh/quickstart-skill-eval' },
               { text: 'CLI 参考', link: '/zh/reference/cli' },
-              { text: '评测样本格式', link: '/zh/reference/eval-sample-format' },
+              { text: '评测用例格式', link: '/zh/reference/eval-sample-format' },
               { text: '执行器', link: '/zh/reference/executors' },
               { text: 'Artifact 与 variant 布局', link: '/zh/reference/artifact-layout' },
               { text: '7 工具对比', link: '/zh/reference/comparison' },

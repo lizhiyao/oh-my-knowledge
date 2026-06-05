@@ -29,7 +29,7 @@ omk doctor [target] [flags]
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--model` `option`:LLM model 名，默认 sonnet。
 - `--output-dir` `option`:报告输出目录，默认 ~/.oh-my-knowledge/doctors。
-- `--samples` `option`:样本文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
+- `--samples` `option`:用例文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。
 - `--static-only` `boolean`:离线静态模式，只跑 4 条静态 rule(skill_readable / skill_metadata / dependencies_present / samples_contract_aligned），不调 LLM。
 - `--timeout` `option`:单次 LLM 会话超时秒数，默认 600(10 分钟）。
 
@@ -98,13 +98,13 @@ omk eval [flags]
 - `--report-only` `boolean`:生成报告并打印 verdict，但始终 exit 0(不参与 CI gate）。
 - `--resume` `option`:从某次失败 run 续跑
 - `--retry` `option`:失败 sample 重试次数
-- `--samples` `option`:样本文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。
+- `--samples` `option`:用例文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。
 - `--skill-dir` `option`:skill 目录，默认 skills
 - `--skip-connectivity` `boolean`:跳 LLM 连通性预检
 - `--skip-doctor` `boolean`:escape hatch:跳 doctor 健康检查门禁（默认强制启用）。沙箱 mock 提供依赖时绕开 doctor 物理路径误报；garbage-in 风险自负。
 - `--strict-baseline` `boolean`:强制 baseline 隔离（default true）
 - `--threshold` `option`:verdict 阈值，默认 3.5
-- `--timeout` `option`:单样本超时秒，默认 600
+- `--timeout` `option`:单用例超时秒，默认 600
 - `--treatment` `option`:treatment variant 列表，逗号分隔（仅 artifact 身份）
 - `--treatment-cwd` `option`:treatment 的 runtime context 目录列表，逗号分隔、与 --treatment 按序对齐（空位 = 无 cwd）
 - `--trivial-diff` `option`:可忽略 diff 容差，0 表示不启用容差
@@ -229,14 +229,14 @@ omk evolve <skillPath> [flags]
 - `--reuse-latest-eval` `boolean`:复用可比的最新 eval 报告作为 round-0
 - `--rounds` `option` (默认 `5`):最大迭代轮数，默认 5
 - `--sample-fix-max-attempts` `option` (默认 `2`):每条 sample 自动修复最多尝试次数（默认：2）
-- `--samples` `option` (默认 `eval-samples.json`):样本文件路径，默认 eval-samples.json
+- `--samples` `option` (默认 `eval-samples.json`):用例文件路径，默认 eval-samples.json
 - `--significance-alpha` `option` (默认 `0.05`):显著性门的 diff CI 显著性水平（默认 0.05 = 95% CI）
 - `--skip-connectivity` `boolean`:跳过 LLM 连通性预检
 - `--skip-doctor` `boolean`:跳过 doctor 门禁（escape hatch，自负 garbage-in 风险）
-- `--stop-on-assertions-pass` `boolean`:普通样本断言全过时提前停止
+- `--stop-on-assertions-pass` `boolean`:普通用例断言全过时提前停止
 - `--target` `option`:目标 composite 分数，达到即停。不传则跑满 rounds
 - `--test-ratio` `option` (默认 `0`):锁定 test 集比例（0..1，默认 0=关），需配 --holdout-ratio。全程不参与选择，收尾读一次给无偏泛化分
-- `--timeout` `option` (默认 `600`):单样本超时秒，默认 600
+- `--timeout` `option` (默认 `600`):单用例超时秒，默认 600
 
 **示例:**
 
@@ -396,7 +396,7 @@ omk sample [skillPath] [flags]
 **Flags:**
 
 - `--batch` `boolean`:批量模式：扫 --skill-dir 下所有缺 samples 的 skill，逐个生成。
-- `--count` `option`:生成样本条数。不传由 LLM 按 skill 类型自动决定。
+- `--count` `option`:生成用例条数。不传由 LLM 按 skill 类型自动决定。
 - `--fix` `boolean`:fix 模式：基于最近评测报告自动修复 sample_design 类型失败。
 - `--focus` `option`:生成焦点（自然语言提示）。控制 LLM 偏向哪类用例。
 - `--from-traces` `boolean`:from-traces 模式：从 observe inbox 的失败信号回流生成回归用例草稿（provenance: production-trace），落草稿待人工 review。
@@ -410,7 +410,7 @@ omk sample [skillPath] [flags]
 
 **示例:**
 
-> 为单个 skill 生成默认数量的样本
+> 为单个 skill 生成默认数量的用例
 
 ```bash
 omk sample skills/my-skill/SKILL.md

@@ -22,7 +22,7 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 | 95% CI | 95% 可信区间 | 真实均值有 95% 概率落在这个区间。CI 不含 0 = 显著差异 | hero tooltip；配对对比表 |
 | significant | 显著差异 / 显著 | CI 不含 0（差距不是偶然） | 测评可信度 ✓ 差异显著 badge |
 | Pearson r | 皮尔逊（相关）系数 | 1=完全同向 / 0=无关 / -1=完全反向 | 多评委 ensemble 的「跨用例评委一致性」表 |
-| MAD | 平均绝对差 | 多个评委对同一样本打分的平均距离。1-5 制下 < 0.5 紧密一致，> 1.5 大分歧 | 多评委一致性表 |
+| MAD | 平均绝对差 | 多个评委对同一用例打分的平均距离。1-5 制下 < 0.5 紧密一致，> 1.5 大分歧 | 多评委一致性表 |
 | Krippendorff α | Krippendorff α / 一致性系数 | 序数加权多评委一致性，α ≥ 0.8 高度一致 / 0.667-0.8 可接受 / < 0.4 低 | 人工锚点 (Human gold) section |
 | p-value | p 值 | 「这种差距碰巧出现」的概率，越小越显著（一般 0.05 阈值） | t-test 部分（omk 不主推，bootstrap 优先） |
 | effect size | 效应量 | 差距相对于波动的比例（Cohen's d / Hedges' g），刻度化「差距有多大」 | 波动 / 显著性表的 Cohen's d 列 |
@@ -50,7 +50,7 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 | gate (layer gate) | 闸门 / 层独立闸门 | 三层独立显著性检验（fact / behavior / judge），任一层退步即触发 CAUTIOUS+ | verdict 算法；报告页「波动 / 显著性」表 |
 | verdict | 判定 | PROGRESS / REGRESS / CAUTIOUS / NOISE / UNDERPOWERED / SOLO 六档 | hero badge；CLI verdict 输出 |
 | sample (evaluation sample) | 评测用例 | omk user-facing zh 统一用「用例」（英文 sample 保留） | eval-samples.json |
-| eval-samples | 评测用例集 / 评测样本文件 | 用例配置文件（每条含 prompt / rubric / assertion / capability） | `omk eval --samples` |
+| eval-samples | 评测用例集 / 评测用例文件 | 用例配置文件（每条含 prompt / rubric / assertion / capability） | `omk eval --samples` |
 | baseline (reserved variant) | 基线 / 对照（保留字） | 不注入 skill 的对照组，omk 保留变体名 | `--control baseline` |
 | treatment | 实验组 | 注入 skill 的对比组 | `--treatment <name>` |
 | control | 对照组 | baseline 的别名 | `--control <name>` |
@@ -87,7 +87,7 @@ omk 长期定位是「知识评测 + 管理 + 洞察」三位一体，对应 **�
 | 阶段 | omk 命令 | 回答的问题 |
 |---|---|---|
 | 检查 (inspect) | `omk doctor` | skill 写得行不行（静态健康度，LLM-judge 7 维体检） |
-| 评测 (evaluate) | `omk eval` | skill 在样本上有没有用（A/B 对比 + 显著性 + 稳定性） |
+| 评测 (evaluate) | `omk eval` | skill 在用例上有没有用（A/B 对比 + 显著性 + 稳定性） |
 | 观测 (observe) | `omk observe` | skill 上线后真实表现怎么样（即将完整上线） |
 
 每个阶段对应不同 verdict 闸门 + 不同的报告 UI 路径。

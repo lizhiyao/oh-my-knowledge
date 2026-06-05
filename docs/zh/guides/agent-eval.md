@@ -80,6 +80,6 @@ omk eval \
 
 ## 设计建议
 
-- **先用 `--dry-run`**：确认样本、variant 和 `cwd` 被正确解析
+- **先用 `--dry-run`**：确认用例、variant 和 `cwd` 被正确解析
 - **项目级对照必须区分 `cwd`**：相同 prompt 在不同项目目录下会走不同 runtime context
 - **优先先跑 PRD 场景**：相比 Coding，更容易验证知识完整性、影响面识别和业务正确性

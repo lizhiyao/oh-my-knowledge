@@ -123,7 +123,7 @@ export default class Doctor extends BaseCommand {
     }),
     samples: Flags.string({
       description: bilingual({
-        zh: '样本文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。',
+        zh: '用例文件路径（.json/.yaml）。不传则按 target / cwd 顺序自动发现。',
         en: 'Samples file path (.json/.yaml). Auto-detects from target / cwd if omitted.',
       }),
     }),

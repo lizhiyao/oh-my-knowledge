@@ -258,7 +258,7 @@ export default class Evolve extends BaseCommand {
     }),
     samples: Flags.string({
       description: bilingual({
-        zh: '样本文件路径，默认 eval-samples.json',
+        zh: '用例文件路径，默认 eval-samples.json',
         en: 'Samples file, default eval-samples.json',
       }),
       default: 'eval-samples.json',
@@ -290,7 +290,7 @@ export default class Evolve extends BaseCommand {
       parse: integerStringParser('--concurrency', { min: 1 }),
     }),
     timeout: Flags.string({
-      description: bilingual({ zh: '单样本超时秒，默认 600', en: 'Per-sample timeout sec, default 600' }),
+      description: bilingual({ zh: '单用例超时秒，默认 600', en: 'Per-sample timeout sec, default 600' }),
       default: '600',
       parse: numberStringParser('--timeout', { min: 1 }),
     }),
@@ -328,7 +328,7 @@ export default class Evolve extends BaseCommand {
     }),
     'stop-on-assertions-pass': Flags.boolean({
       description: bilingual({
-        zh: '普通样本断言全过时提前停止',
+        zh: '普通用例断言全过时提前停止',
         en: 'Stop early when normal samples pass assertions',
       }),
       default: false,

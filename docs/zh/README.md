@@ -6,7 +6,7 @@
 
 - [快速上手](./quickstart-skill-eval.md) —— 5 分钟跑完第一次评测
 - [CLI 参考](./reference/cli.md)
-- [评测样本格式](./reference/eval-sample-format.md)
+- [评测用例格式](./reference/eval-sample-format.md)
 - [执行器](./reference/executors.md)
 - [Artifact 与 variant 布局](./reference/artifact-layout.md)
 - [7 工具对比](./reference/comparison.md)

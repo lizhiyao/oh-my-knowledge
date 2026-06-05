@@ -31,7 +31,7 @@ npm i oh-my-knowledge -g
 | 线上观测/真实 session 分析 | → 运行 observe |
 | 改进/优化 skill | → 自动迭代改进 |
 | 生成评测用例 | → 生成评测用例 |
-| 查看报告 / 看 verdict / 看回退样本 | → 打开本地工作台 |
+| 查看报告 / 看 verdict / 看回退用例 | → 打开本地工作台 |
 
 如果用户意图不明确，先扫描当前项目结构（skills/ 目录和 eval-samples 文件），然后推荐最合适的操作。
 
@@ -166,14 +166,14 @@ omk sample --batch
 ### 查看报告
 
 ```bash
-# 打开本地工作台浏览所有报告:verdict / 样本得分 / 跨样本回退 / 饱和曲线都在 UI
+# 打开本地工作台浏览所有报告:verdict / 用例得分 / 跨用例回退 / 饱和曲线都在 UI
 omk studio
 omk studio --no-open
 ```
 
 报告全部在 studio 里看。omk 没有 CLI 导出/分析子命令:
 - 想要 ship/no-ship 一行结论:`omk eval` 末尾输出已含 verdict,exit code 也按 verdict 走 (PROGRESS=0,其余非 0)
-- 想看回退样本 / 饱和曲线 / 跨报告 diff:都在 studio
+- 想看回退用例 / 饱和曲线 / 跨报告 diff:都在 studio
 - 想分享 HTML 报告:studio 网页用浏览器「保存网页 → 完整存档单文件」即可
 - 想给 CI 喂结论:用 `omk eval` 的 exit code 做 gate,需要文字摘要自己 jq report JSON
 
@@ -200,7 +200,7 @@ omk eval gold compare <reportId> --gold-dir my-gold
 1. **结论**：哪个 variant 更好（或差不多）
 2. **质量分数**：各 variant 的平均综合分数（满分 5 分）
 3. **成本对比**：token 消耗和费用差异
-4. **低分样本**：哪些样本两个版本差异最大，为什么
+4. **低分用例**：哪些用例两个版本差异最大，为什么
 5. **建议**：基于数据给出的下一步行动建议
 
 示例输出：
@@ -237,7 +237,7 @@ v2 比 v1 更好：
 
 ## 注意事项
 
-- 评测需要调用 LLM，会产生费用。运行前告知用户预估成本（样本数 × 变体数 × 约 $0.01-0.05/次）。担心爆费可加 `--budget-usd 5` 设硬阈值
+- 评测需要调用 LLM，会产生费用。运行前告知用户预估成本（用例数 × 变体数 × 约 $0.01-0.05/次）。担心爆费可加 `--budget-usd 5` 设硬阈值
 - 首次使用建议先 `--dry-run` 预览任务计划
 - `omk evolve` 会修改原始 skill 文件，原始版本保存在 `skills/evolve/*.r0.md`
 - 详细命令参考见项目 [README.md](README.md) 的 CLI reference 章节
