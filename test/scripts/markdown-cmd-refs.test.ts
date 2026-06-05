@@ -27,7 +27,7 @@ const PROJECT_ROOT = join(__dirname, '..', '..');
 // 测量学 fixture(test/__snapshots__)、生成文件(dist/)、依赖(node_modules/)不进。
 const SCAN_DIRS = [
   'docs',
-  '.claude/skills/omk',
+  '.agents/skills/omk',
 ];
 const SCAN_FILES = [
   'README.md',

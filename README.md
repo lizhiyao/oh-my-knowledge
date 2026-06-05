@@ -11,6 +11,8 @@
 **Did your prompt actually get better?**
 A/B test your prompts and skills with statistical rigor — bootstrap CI and length-debias on by default, Krippendorff α the moment you add a gold set.
 
+📖 **Full documentation: [oh-my-knowledge.pages.dev](https://oh-my-knowledge.pages.dev)** (searchable, English / 简体中文)
+
 ![omk report — verdict pill "v2 is clearly better than v1 — ready to ship"](./assets/screenshots/report-overview.png)
 
 ## Quick start
@@ -101,6 +103,8 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 
 ## Documentation
 
+The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowledge.pages.dev)** — searchable, with an English / 简体中文 switcher. Key pages:
+
 - **[How it works](docs/explanation/architecture.md)** — interleaved scheduling, variant resolution, dual-channel scoring, six-dim report
 - **[Eval sample format](docs/reference/eval-sample-format.md)** — sample schema, scoring formulas, 30+ assertion types, custom JS assertions
 - **[CLI reference](docs/reference/cli.md)** — all seven commands with bash examples and flag tables
@@ -109,7 +113,7 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 - **[Quickstart](docs/quickstart-skill-eval.md)** — first-time five-minute walkthrough
 - **[Sample design spec](docs/specs/sample-design-spec.md)** — capability / construct / provenance metadata; industry-gap mapping
 - **[Statistical rigor](docs/explanation/statistical-rigor.md)** — why bootstrap CI / α / length-debias / saturation matter
-- **[Comparison with 7 tools](docs/reference/comparison.md)** — 25+ dimensions across promptfoo / DeepEval / LangSmith / Langfuse / Braintrust etc.
+- **[Comparison with 7 tools](docs/reference/comparison.md)** — 25+ dimensions across promptfoo / DeepEval / RAGAS / OpenAI Evals / LangSmith / lm-eval-harness / inspect-ai
 
 ## Environment variables
 

@@ -11,6 +11,8 @@
 **你改完 prompt，真的变好了吗？**
 用统计严谨性 A/B 测试你的 prompt 和 skill —— Bootstrap 置信区间、长度去偏默认开，配一份人工 gold 就自动算 Krippendorff α。
 
+📖 **完整文档：[oh-my-knowledge.pages.dev/zh](https://oh-my-knowledge.pages.dev/zh/)**（可搜索，可切换英文）
+
 ![omk 报告 — verdict pill「v2 明显优于 v1，可以发布」](./assets/screenshots/report-overview-zh.png)
 
 ## 快速开始
@@ -101,6 +103,8 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 
 ## 文档
 
+完整文档已发布到 **[oh-my-knowledge.pages.dev/zh](https://oh-my-knowledge.pages.dev/zh/)** —— 可搜索，可切换英文。重点页面：
+
 - **[工作原理](docs/zh/explanation/architecture.md)** —— 交错调度、variant 解析、双通道评分、六维报告
 - **[评测用例格式](docs/zh/reference/eval-sample-format.md)** —— sample schema、评分公式、30+ 断言类型、自定义 JS 断言
 - **[CLI 参考](docs/zh/reference/cli.md)** —— 7 个命令的 bash 示例和 flag 表
@@ -109,7 +113,7 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 - **[快速上手](docs/zh/quickstart-skill-eval.md)** —— 第一次跑评测的 5 分钟教程
 - **[用例设计规范](docs/zh/specs/sample-design-spec.md)** —— capability / construct / provenance 元数据；行业 gap 映射
 - **[统计严谨性](docs/zh/explanation/statistical-rigor.md)** —— 为什么 Bootstrap CI / α / 长度去偏 / 饱和曲线重要
-- **[7 工具对比](docs/zh/reference/comparison.md)** —— promptfoo / DeepEval / LangSmith / Langfuse / Braintrust 等 25+ 维度横评
+- **[7 工具对比](docs/zh/reference/comparison.md)** —— promptfoo / DeepEval / RAGAS / OpenAI Evals / LangSmith / lm-eval-harness / inspect-ai 等 25+ 维度横评
 
 ## 环境变量
 

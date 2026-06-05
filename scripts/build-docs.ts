@@ -3,7 +3,7 @@
 // 来源:src/cli/commands/*.ts(双语 description / examples / flags / args)。
 //
 // 目标(每条一个 Target):
-// - commands.md(.claude/skills/omk/references/commands.md):整段 marker 包裹,
+// - commands.md(.agents/skills/omk/references/commands.md):整段 marker 包裹,
 //   全命令 fullbody(把 oclif Config.commands 全部输出,含 topic / sub / sub-sub)。
 // - docs/reference/cli.md / docs/zh/reference/cli.md:per-command flags 模式,
 //   每个 H3 顶层命令独立 marker 对,内容只输出 flag list
@@ -263,7 +263,7 @@ export function buildTargets(topLevelIds: readonly string[]): Target[] {
   return [
     {
       mode: 'fullbody',
-      file: '.claude/skills/omk/references/commands.md',
+      file: '.agents/skills/omk/references/commands.md',
       markerStart: '<!-- omk:cli:start -->',
       markerEnd: '<!-- omk:cli:end -->',
     },

@@ -45,21 +45,26 @@ omk 是面向 LLM 知识输入（prompt / RAG / skill / agent）的评测与迭�
 
 ## omk 自带 skill 安装（跨 agent）
 
-仓库根 `.claude/skills/omk/` 是 omk 智能代理 skill 的**单一来源**。Claude Code 用户 clone 仓库即可自动加载，无需额外操作。其它 agent 用户按下面拷贝到工具约定的 skill 目录：
+仓库根 `.agents/skills/omk/` 是 omk 智能代理 skill 的**单一来源**——中性路径，跟 [AGENTS.md 标准](https://agents.md/)同源。在本仓库里 clone 即用，无需额外操作：
+
+- **Codex**：原生加载 `.agents/skills/omk/`（Codex 从 cwd 向上扫到仓库根的 `.agents/skills/`）。
+- **Claude Code**：通过软链 `.claude/skills/omk` → `.agents/skills/omk` 加载。
+
+要把 skill 复用到其它项目或全局，把 `.agents/skills/omk/` 整目录拷到对应工具的 skill 目录：
 
 ```bash
-# Codex
-cp -r .claude/skills/omk ~/.codex/agents/skills/omk
-
-# Cursor / Aider / Gemini CLI 等
-# 按各工具文档,把 .claude/skills/omk 放到对应 skill 目录即可
+# Claude Code（全局）
+cp -r .agents/skills/omk ~/.claude/skills/omk
+# Codex（全局）
+cp -r .agents/skills/omk ~/.agents/skills/omk
+# Cursor / Aider / Gemini CLI 等：按各工具文档放到对应 skill 目录
 ```
 
-skill 内容跟 agent 解耦（不依赖 Claude Code 专属能力），可在任意支持 markdown skill 的 agent 里工作。
+skill 内容跟 agent 解耦（不依赖任何工具专属能力），可在任意支持 markdown skill 的 agent 里工作。跨多个评测项目大规模复用时，再考虑抽成 plugin / 独立发布包。
 
 ## 参考
 
 - 用户文档：`README.md` / `README.zh.md`
-- omk skill 入场：`.claude/skills/omk/SKILL.md`（单一来源，见上节）
+- omk skill 入场：`.agents/skills/omk/SKILL.md`（单一来源，见上节）
 - 设计 spec：`docs/`
 - 分支 / 发版 / 贡献细节：`CONTRIBUTING.md`
