@@ -135,7 +135,7 @@ function getFailedSamples(report: EvaluationReport, variant: string): FailedSamp
  * 各 detector 内部一般也用 `>= 2` 作为 cluster 阈值(详情参考各 detector 注释)。
  *
  * 采样不足提醒:单 skill < 2 个非诱错 sample 时不会触发任何 cluster-based insight,
- * 这是设计行为(没数据不下结论),用户层面应该看到"用例数 < 5,建议补样本"提示
+ * 这是设计行为(没数据不下结论),用户层面应该看到"用例数 < 5,建议补用例"提示
  * (在 detail page 空态有,list 页面 todo)。
  */
 function severityOfCount(n: number): InsightSeverity {
@@ -187,7 +187,7 @@ function detectEnvironmentBlocked(evalReport: EvaluationReport | null, variantNa
     id: 'environment-blocked-mocks',
     category: 'environment-blocked-mocks',
     audience: 'sample-author',
-    title: `${blocked.length} 条评测样本因 mock 没盖到 LLM 想调的工具而 fail`,
+    title: `${blocked.length} 条评测用例因 mock 没盖到 LLM 想调的工具而 fail`,
     description: 'LLM 行为正确但工具调用被 mock-strict 拦截 — 这是 sample 设计问题,不是 skill 问题。要么 mock 列表漏写,要么 command_glob/file_path 写得太严没匹配到 LLM 真实调用。',
     severity: severityOfCount(blocked.length),
     affectedCount: blocked.length,
@@ -271,7 +271,7 @@ function detectSkillDocGap(
   if (failedDocSamples.length > 0) {
     evidence.push({
       perspective: 'eval-functional', status: 'flagged',
-      message: `${failedDocSamples.length} 条评测样本失败,LLM 没找到该读哪段文档(${failedDocSamples.map((f) => f.sampleId).join(', ')})`,
+      message: `${failedDocSamples.length} 条评测用例失败,LLM 没找到该读哪段文档(${failedDocSamples.map((f) => f.sampleId).join(', ')})`,
       ref: failedDocSamples[0].sampleId,
       illustrations: pickIllustrations(failedDocSamples, 2),
     });
@@ -335,7 +335,7 @@ function detectSkillDocGap(
     category: 'skill-doc-gap',
     audience: failedDocSamples.length > 0 ? 'skill-author' : 'sample-author',
     title: failedDocSamples.length > 0
-      ? `LLM 漏读 skill 引用的文件,导致 ${failedDocSamples.length} 条样本失败`
+      ? `LLM 漏读 skill 引用的文件,导致 ${failedDocSamples.length} 条用例失败`
       : 'skill 引用了文件但没声明在 sample.environment 里',
     description: 'skill 文档提到某些前置文件,但 sample 没标"已就绪"。LLM 看 prompt 时会试图先探测/Read 这些文件,在 mocks-strict 环境下被拦,流程在第一步就停。',
     severity,
@@ -440,7 +440,7 @@ NAMESPACE=$(<your-cli> auth status -o json | jq -r '.username')
     id: `failure-mode-skill:${topMode}`,
     category: 'failure-mode-skill',
     audience: 'skill-author',
-    title: `${topSamples.length} 条样本踩同一个写法坑:${topMode}`,
+    title: `${topSamples.length} 条用例踩同一个写法坑:${topMode}`,
     description: MODE_USERFACING_DESC[topMode] ?? `多 sample 共享 failureMode 「${topMode}」,skill 文档对此没抑制`,
     severity: severityOfCount(topSamples.length),
     affectedCount: topSamples.length,
@@ -565,7 +565,7 @@ function detectCoverageGap(
   if (evalUncovered.length > 0) {
     evidence.push({
       perspective: 'eval-functional', status: 'flagged',
-      message: `评测样本也漏覆盖 ${evalUncovered.length} 个文件:${evalUncovered.slice(0, 3).join(', ')}${evalUncovered.length > 3 ? '...' : ''}`,
+      message: `评测用例也漏覆盖 ${evalUncovered.length} 个文件:${evalUncovered.slice(0, 3).join(', ')}${evalUncovered.length > 3 ? '...' : ''}`,
     });
   } else {
     evidence.push({
@@ -714,7 +714,7 @@ function detectOmkDoctorBlindspot(
     evidence: [
       {
         perspective: 'eval-functional', status: 'flagged',
-        message: `${candidates.length} 条样本因 ${observedModes.join(' / ')} 失败,doctor 全 pass`,
+        message: `${candidates.length} 条用例因 ${observedModes.join(' / ')} 失败,doctor 全 pass`,
         ref: candidates[0].sampleId,
       },
       {

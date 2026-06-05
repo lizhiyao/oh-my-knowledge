@@ -390,7 +390,7 @@ export default class Eval extends BaseCommand {
     }),
     samples: Flags.string({
       description: bilingual({
-        zh: '样本文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。',
+        zh: '用例文件路径。默认 eval-samples.json，也接受 .yaml/.yml；自动发现 --skill-dir 下的 <skill>/.omk/samples.json。',
         en: 'Samples file path. Defaults to eval-samples.json (also .yaml/.yml); auto-discovers <skill>/.omk/samples.json under --skill-dir.',
       }),
     }),
@@ -431,7 +431,7 @@ export default class Eval extends BaseCommand {
       parse: integerStringParser('--concurrency', { min: 1 }),
     }),
     timeout: Flags.string({
-      description: bilingual({ zh: '单样本超时秒，默认 600', en: 'Per-sample timeout sec, default 600' }),
+      description: bilingual({ zh: '单用例超时秒，默认 600', en: 'Per-sample timeout sec, default 600' }),
       parse: numberStringParser('--timeout', { min: 1 }),
     }),
     batch: Flags.boolean({

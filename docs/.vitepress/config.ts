@@ -24,8 +24,9 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: 'Guide', link: '/quickstart-skill-eval' },
+          { text: 'How-to', link: '/guides/agent-eval' },
           { text: 'Reference', link: '/reference/cli' },
-          { text: 'Explanation', link: '/explanation/architecture' },
+          { text: 'Explanation', link: '/explanation/three-stage-workflow' },
           { text: 'Specs', link: '/specs/terminology-spec' },
         ],
         sidebar: [
@@ -35,14 +36,26 @@ export default defineConfig({
               { text: 'Quickstart', link: '/quickstart-skill-eval' },
               { text: 'CLI reference', link: '/reference/cli' },
               { text: 'Eval sample format', link: '/reference/eval-sample-format' },
-              { text: 'Executors & artifact layout', link: '/reference/executors' },
+              { text: 'Executors', link: '/reference/executors' },
+              { text: 'Artifact & variant layout', link: '/reference/artifact-layout' },
               { text: 'Comparison with 7 tools', link: '/reference/comparison' },
               { text: 'Glossary', link: '/reference/glossary' },
             ],
           },
           {
+            text: 'How-to guides',
+            items: [
+              { text: 'Run doctor checks', link: '/guides/run-doctor-checks' },
+              { text: 'Evaluate an agent', link: '/guides/agent-eval' },
+              { text: 'Auto-improve a skill', link: '/guides/auto-improve-skills' },
+              { text: 'Observe production traces', link: '/guides/observe-production' },
+              { text: 'Use non-Claude models', link: '/guides/non-claude-models' },
+            ],
+          },
+          {
             text: 'Understand how it works',
             items: [
+              { text: 'The three stages', link: '/explanation/three-stage-workflow' },
               { text: 'Architecture', link: '/explanation/architecture' },
               { text: 'Statistical rigor', link: '/explanation/statistical-rigor' },
               { text: 'Scoring pipeline', link: '/specs/scoring' },
@@ -68,8 +81,9 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: '指南', link: '/zh/quickstart-skill-eval' },
+          { text: '操作指南', link: '/zh/guides/agent-eval' },
           { text: '参考', link: '/zh/reference/cli' },
-          { text: '原理', link: '/zh/explanation/architecture' },
+          { text: '原理', link: '/zh/explanation/three-stage-workflow' },
           { text: '规范', link: '/zh/specs/terminology-spec' },
         ],
         sidebar: [
@@ -78,15 +92,27 @@ export default defineConfig({
             items: [
               { text: '快速上手', link: '/zh/quickstart-skill-eval' },
               { text: 'CLI 参考', link: '/zh/reference/cli' },
-              { text: '评测样本格式', link: '/zh/reference/eval-sample-format' },
-              { text: '执行器与 artifact 布局', link: '/zh/reference/executors' },
+              { text: '评测用例格式', link: '/zh/reference/eval-sample-format' },
+              { text: '执行器', link: '/zh/reference/executors' },
+              { text: 'Artifact 与 variant 布局', link: '/zh/reference/artifact-layout' },
               { text: '7 工具对比', link: '/zh/reference/comparison' },
               { text: '术语表', link: '/zh/reference/glossary' },
             ],
           },
           {
+            text: '操作指南',
+            items: [
+              { text: '跑 doctor 检查', link: '/zh/guides/run-doctor-checks' },
+              { text: '评测 agent', link: '/zh/guides/agent-eval' },
+              { text: '自动迭代 skill', link: '/zh/guides/auto-improve-skills' },
+              { text: '观测生产 trace', link: '/zh/guides/observe-production' },
+              { text: '使用非 Claude 模型', link: '/zh/guides/non-claude-models' },
+            ],
+          },
+          {
             text: '我想懂工作原理',
             items: [
+              { text: '三阶段', link: '/zh/explanation/three-stage-workflow' },
               { text: '工作原理', link: '/zh/explanation/architecture' },
               { text: '统计严谨性', link: '/zh/explanation/statistical-rigor' },
               { text: '评分公式', link: '/zh/specs/scoring' },

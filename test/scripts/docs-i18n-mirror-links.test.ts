@@ -23,6 +23,10 @@ const PROJECT_ROOT = join(__dirname, '..', '..');
 const DOCS_ROOT = join(PROJECT_ROOT, 'docs');
 const ZH_ROOT = join(DOCS_ROOT, 'zh');
 
+// zh-facing 入口文件,虽不在 docs/zh/ 下但同样是中文读者入口:它们指向 docs/ 的
+// 站内链接若落到英文根而 zh 镜像存在,同样是「中文入口回跳英文壳」回归。
+const EXTRA_ZH_FACING_FILES = [join(PROJECT_ROOT, 'README.zh.md')];
+
 const MD_LINK = /\[([^\]]*)\]\(([^)\s]+)\)/g;
 // 语言切换链接:link 文案明确指向英文版,允许 climb 回英文根。
 const EN_SWITCH = /English|英文|\bEN\b/i;
@@ -68,9 +72,16 @@ function mirrorExists(base: string): boolean {
 }
 
 describe('docs/zh 跨语言悬链 gate', () => {
-  it('docs/zh 站内链接不得 climb 回英文根 docs/(当 zh 镜像存在时)', () => {
+  it('docs/zh 与 zh-facing 入口的站内链接不得 climb 回英文根 docs/(当 zh 镜像存在时)', () => {
     const files: string[] = [];
     walkMarkdown(ZH_ROOT, files);
+    for (const f of EXTRA_ZH_FACING_FILES) {
+      try {
+        if (statSync(f).isFile()) files.push(f);
+      } catch {
+        /* file absent — skip */
+      }
+    }
 
     const violations: Violation[] = [];
     for (const abs of files) {

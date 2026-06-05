@@ -93,18 +93,25 @@ Rule-based local checks; each assertion yields pass/fail.
 - Score = 1 + pass_rate × 4 (mapped to 1–5)
 - Example: 3 assertions (weight 1 each), 2 pass → pass rate 2/3 → score = 1 + 0.67 × 4 = **3.67**
 
+For the composite, assertions are split into two independent layers — a **factScore** (factual checks) and a **behaviorScore** (behavioral checks) — each scored with the formula above over its own assertions.
+
 ### 2. Rubric / Dimensions score
 
-The judge model (default `haiku`) scores 1–5 against the rubric. In `dimensions` mode, each dimension is scored independently and then averaged.
+The judge model (default `haiku`) scores 1–5 against the rubric, producing the **judgeScore**. In `dimensions` mode, each dimension is scored independently and then averaged.
 
 ### 3. Composite score
 
-| Condition | Formula |
+The composite is the **mean of the layered scores that are present** — there are three layers:
+
+| Layer | Source |
 |---|---|
-| Only assertions | `assertionScore` |
-| Only LLM judge | `llmScore` |
-| Both present | `(assertionScore + llmScore) / 2` |
-| Neither | `0` |
+| `factScore` | factual assertions (`contains` / `regex` / `json_*` / `equals` / `semantic_similarity` / `tool_*_contains` …) |
+| `behaviorScore` | behavioral assertions (length / word-count / `cost_max` / `latency_max` / `turns_*` / `tools_*` / `custom` …) |
+| `judgeScore` | LLM judge (rubric / dimensions) |
+
+`composite = mean(present layers)`. A layer with no assertions (or no judge configured) is **dropped from the mean**, not counted as zero; with neither assertions nor judge the composite is `0`.
+
+See the [scoring pipeline](../specs/scoring) for the full derivation, the equal-weight caveat, and how the multi-layer verdict gate relates to the composite.
 
 ## Assertion types
 
@@ -123,6 +130,7 @@ The judge model (default `haiku`) scores 1–5 against the rubric. In `dimension
 | `cost_max` / `latency_max` | cost / latency caps |
 | `tools_called` / `tools_not_called` / `tools_count_min` / `tools_count_max` | agent tool-call assertions |
 | `tool_output_contains` / `tool_input_contains` | match content of a tool's input or output |
+| `mock_hit` | a declared sandbox mock was actually hit by a tool call (see [sample design](../specs/sample-design-spec)) |
 | `turns_min` / `turns_max` | conversation-turn bounds |
 | `rouge_n_min` | ROUGE-N recall ≥ threshold (`reference` field holds the gold text; `n` defaults to 1; `threshold` defaults to 0.5) |
 | `levenshtein_max` | edit distance ≤ value (for "output should be near-identical to reference") |

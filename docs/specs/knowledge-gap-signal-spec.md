@@ -2,6 +2,7 @@
 
 > Status: v0.1 draft (drafted 2026-04-13)
 > Purpose: define how omk extracts "knowledge-gap signals" from the agent evaluation process, how they aggregate into a gap rate, and how to track the convergence of a knowledge base's risk exposure.
+> Audience: this is a **design / specification** doc — the rationale and the exact algorithm. If you just want to read gap signals in a report, run `omk observe` (see the [CLI reference](../reference/cli)); for one-line term definitions see the [glossary](../reference/glossary).
 
 ## 1. Stance and positioning
 

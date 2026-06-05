@@ -2,7 +2,7 @@
 
 omk exposes a workflow CLI for knowledge artifacts. Seven top-level commands cover the full loop: `init` (scaffold) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
 
-> Flag tables in this file are auto-generated from the oclif command source by `scripts/build-docs.ts`. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift.
+<!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build-docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
 ## `omk init`
 
@@ -131,7 +131,7 @@ For full descriptions: `omk eval --help`.
 <!-- omk:cli:eval:flags:end -->
 
 The HTML report has two tabs:
-- **📊 Score view** — the verdict-driven A/B comparison (fact / behavior / judge layers, bootstrap CI, length-debias).
+- **📊 Score view** — the verdict-driven A/B comparison ([fact / behavior / judge layers](../specs/scoring), bootstrap CI, length-debias).
 - **✅ Functional view** — each sample as a unit test: design (prompt / rubric / mocks / environment) + execution trace + assertion results + actionable diagnostic. Diagnostic emits root cause (skill_doc_unclear / llm_misread / sample_design / tripwire_intentional / ...), workflow checks (rubric step ✓/✗ with evidence), and failure-mode tags (工作流跳步 / 硬编码值 / 幻觉输出 / 工具误用 / 环境拦截 / 误读约束 / 其他). For the sandbox-mock semantics behind `mocks` / `environment` / `tripwire` / `mocksStrict`, see [sample-design-spec.md §三](../specs/sample-design-spec.md).
 
 ## `omk observe`
@@ -166,7 +166,7 @@ For full descriptions: `omk observe --help`.
 
 <!-- omk:cli:observe:flags:end -->
 
-Turns real Claude Code session traces into skill-health reports: knowledge usage, gap signals, execution stability, tokens, and latency. This is production observation, not production scoring.
+Turns real Claude Code session traces into skill-health reports: knowledge usage, [gap signals](../specs/knowledge-gap-signal-spec), execution stability, tokens, and latency. This is production observation, not production scoring.
 
 ### B. observe inbox: reviewer loop
 

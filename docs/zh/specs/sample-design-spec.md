@@ -65,7 +65,6 @@ samples:
   environment:                   # 评测环境前置「已就绪」声明，LLM 看到后跳过环境探测
     cli_available: ["log-cli"]
     files_available: ["~/.config/log-cli.json"]
-    env_required: ["LOG_TOKEN"]
     notes: "log-cli 已认证，token 在环境变量"
   mocks:
     - tool: Bash                            # 拦的工具名：Bash / Read / Edit / Write / WebFetch / Grep / Glob 等
@@ -91,8 +90,7 @@ samples:
 - **environment**（object，可选）：评测环境前置「已就绪」声明 —— LLM 看到这段后跳过环境探测（`which X` / `test -f Y` / `echo $Z`）直接进工作流。类比 unit test 的 fixture / setup。**仅作 prompt 提示给 LLM，不实际创建文件 / export 变量**。doctor 健康检查会扫这段做物理路径检查（可用 `--skip-doctor` 跳过）。
   - `cli_available: string[]` —— 假定已在 PATH 上
   - `files_available: string[]` —— 假定已存在的文件/脚本
-  - `env_required: string[]` —— 假定已 export 的环境变量
-  - `notes: string` —— 自由文本兜底，描述凭证状态等
+  - `notes: string` —— 自由文本兜底，描述凭证 / 环境变量状态等
 - **mocks**（object[]，可选）：工具调用拦截列表。运行时按数组顺序匹配第一条命中的 mock，返回 `return` / `return_file` / `return_seq[hitCount]` 之一作为 tool_result。
   - **`tool` 字段**：工具名（如 `"Bash"` / `"Read"` / `"Grep"`）。特殊值 `"*"`：通配任何工具名，配合 `input_contains` 做 intent-level mock。
   - **`match` 字段所有项 AND**：

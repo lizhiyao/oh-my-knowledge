@@ -65,7 +65,6 @@ To run evals decoupled from the real external environment (databases / APIs / fi
   environment:                   # pre-eval "already provisioned" declaration; the LLM sees it and skips environment probing
     cli_available: ["log-cli"]
     files_available: ["~/.config/log-cli.json"]
-    env_required: ["LOG_TOKEN"]
     notes: "log-cli is authenticated, token in env var"
   mocks:
     - tool: Bash                            # intercepted tool name: Bash / Read / Edit / Write / WebFetch / Grep / Glob, etc.
@@ -91,8 +90,7 @@ To run evals decoupled from the real external environment (databases / APIs / fi
 - **environment** (`object`, optional): a "ready" precondition declaration for the eval environment — after reading it the LLM skips environment probing (`which X` / `test -f Y` / `echo $Z`) and goes straight into the workflow. Think of it as a unit test's fixture / setup. **It is only a prompt hint to the LLM; it does not actually create files or export variables.** The doctor health check scans it for physical-path checks (skippable with `--skip-doctor`).
   - `cli_available: string[]` — assumed already on `PATH`
   - `files_available: string[]` — assumed-existing files/scripts
-  - `env_required: string[]` — assumed already-exported environment variables
-  - `notes: string` — free-text fallback, describing credential state, etc.
+  - `notes: string` — free-text fallback, describing credential / env-var state, etc.
 - **mocks** (`object[]`, optional): the tool-call interception list. At runtime, mocks are matched in array order, and the first hit returns one of `return` / `return_file` / `return_seq[hitCount]` as the tool_result.
   - **the `tool` field**: tool name (e.g. `"Bash"` / `"Read"` / `"Grep"`). The special value `"*"` wildcards any tool name, paired with `input_contains` for intent-level mocking.
   - **all entries under `match` are AND-ed**:
@@ -114,21 +112,21 @@ To run evals decoupled from the real external environment (databases / APIs / fi
 The studio renders each report's sample-design coverage into a summary like this:
 
 ```
-  用例质量诊断 — health score 87/100
-  用例总数: 20, flagged: 3 (errors=0, warnings=1, infos=2)
+  Sample-design diagnosis — health score 87/100
+  Total samples: 20, flagged: 3 (errors=0, warnings=1, infos=2)
 
 📋 Sample design coverage:
-  capability:  componentrecognition (8) | apiselection (6) | errordiagnosis (4) | fallback (2)    [20/20 声明 = 100%]
+  capability:  componentrecognition (8) | apiselection (6) | errordiagnosis (4) | fallback (2)    [20/20 declared = 100%]
   difficulty:  easy (5) | medium (10) | hard (5)
   construct:   necessity (18) | quality (2)
   provenance:  human (15) | llm-generated (5)
-  avgRubric:   45 字符
+  avgRubric:   45 chars
 
   [warning] capability_thin: 1 sample(s)
-    ⚠ s019: capability "fallback" 只 2 个 sample 撑（阈值 4，N=20）—— 单 sample 失败会让该维度结论不稳
+    ⚠ s019: capability "fallback" backed by only 2 samples (threshold 4, N=20) — a single sample failure makes this dimension's conclusion unstable
 
   [info] rubric_clarity_low: 1 sample(s)
-    ℹ s007: rubric 仅 12 字且未含评分级别词 —— 评委标准模糊，可能 judge 分数不稳
+    ℹ s007: rubric is only 12 chars and has no scoring-level word — ambiguous judge standard, judge scores may be unstable
 ```
 
 The underlying data is persisted in `report.analysis.sampleQuality`, which tools can read directly as JSON.

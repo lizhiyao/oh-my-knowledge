@@ -7,12 +7,22 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 - [Quickstart](./quickstart-skill-eval.md) — first eval in 5 minutes
 - [CLI reference](./reference/cli.md)
 - [Eval sample format](./reference/eval-sample-format.md)
-- [Executors & artifact layout](./reference/executors.md)
+- [Executors](./reference/executors.md)
+- [Artifact & variant layout](./reference/artifact-layout.md)
 - [Comparison with 7 tools](./reference/comparison.md)
 - [Glossary](./reference/glossary.md)
 
+## How-to guides
+
+- [Run doctor checks](./guides/run-doctor-checks.md)
+- [Evaluate an agent (project-level runtime context)](./guides/agent-eval.md)
+- [Auto-improve a skill](./guides/auto-improve-skills.md)
+- [Observe production traces](./guides/observe-production.md)
+- [Use non-Claude models (GLM / Qwen / DeepSeek / Moonshot / Ollama)](./guides/non-claude-models.md)
+
 ## I want to understand how it works
 
+- [The three stages: doctor / eval / observe](./explanation/three-stage-workflow.md)
 - [Architecture](./explanation/architecture.md)
 - [Statistical rigor](./explanation/statistical-rigor.md)
 - [Scoring pipeline](./specs/scoring.md)

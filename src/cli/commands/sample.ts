@@ -518,7 +518,7 @@ export default class Sample extends BaseCommand {
   static examples = [
     {
       description: bilingual({
-        zh: '为单个 skill 生成默认数量的样本',
+        zh: '为单个 skill 生成默认数量的用例',
         en: 'Generate default-count samples for a single skill',
       }),
       command: '<%= config.bin %> sample skills/my-skill/SKILL.md',
@@ -567,7 +567,7 @@ export default class Sample extends BaseCommand {
     }),
     count: Flags.string({
       description: bilingual({
-        zh: '生成样本条数。不传由 LLM 按 skill 类型自动决定。',
+        zh: '生成用例条数。不传由 LLM 按 skill 类型自动决定。',
         en: 'Number of samples to generate. Defaults to LLM auto-selection by skill type.',
       }),
       parse: integerStringParser('--count', { min: 1 }),

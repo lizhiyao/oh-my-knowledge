@@ -113,6 +113,21 @@ verdict 算法（精简版）：
 
 「方法学审计」section 里的 4 个 badge（评委一致 / 差异显著 / 已饱和 / 人工对齐）就是把这套独立检验的结论可视化，让用户在 review 时能 spot 到「composite 看上去不错但某层有问题」的情况。其中「评委一致」（inter-judge Pearson）不只是可视化：多评委强烈分歧（Pearson < 0.4）会把本应 PROGRESS 的判定降级为 CAUTIOUS —— 评委自己都谈不拢时，驱动这次「变好」的评委层信号不可靠。
 
+### 六档 verdict 一览
+
+报告顶部 pill（以及 `omk eval` 的 exit 信号）给出的 verdict 是六档之一：
+
+| Verdict | 含义 | 该怎么办 |
+|---|---|---|
+| **PROGRESS** | diff CI 显示真实正向位移，无层回退 | 发布 |
+| **CAUTIOUS** | 有正向位移，但某层破了 gate、评委 ensemble 强烈分歧、或还没到功效 | 发布前先查 |
+| **REGRESS** | diff CI 明确为负，或某层掉了 gate | 别发 |
+| **NOISE** | diff CI 含 0 —— 改动与噪声分不开 | 不确定；需要更多信号 |
+| **UNDERPOWERED** | N 太小（低于前置功效带）/ 饱和低可信、无信号 | 补用例或 `--repeat` |
+| **SOLO** | 单变体报告；没有可对比对象 | 加一个对照变体 |
+
+来源：`src/eval-core/verdict.ts` 的 `computeVerdict`。同一套规则引擎同时驱动简洁的 CLI 行和报告 verdict pill，二者永远一致。
+
 ---
 
 ## 5. 推荐用法
