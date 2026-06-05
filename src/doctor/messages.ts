@@ -274,7 +274,7 @@ export const DOCTOR_MESSAGES: Record<DoctorMessageKey, MessageEntry> = {
     en: '{count} samples missing prompt field',
   },
   'cli.doctor.samples_contract.hint': {
-    zh: '用例必须至少包含 prompt 字段。详见 docs/specs/sample-design-spec.md',
+    zh: '用例必须至少包含 prompt 字段。详见 docs/zh/specs/sample-design-spec.md',
     en: 'samples must contain at least a prompt field. See docs/specs/sample-design-spec.md',
   },
 };

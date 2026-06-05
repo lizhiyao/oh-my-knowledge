@@ -1,94 +1,82 @@
-# omk 用例设计科学性指南
+# Sample design guide
 
-> **范围**:本文档面向 omk 维护者 + 高阶用户。讲 omk 怎么把"测评用例(sample)设计"从经验活对齐到学术 / 工业共识(HELM / MMLU-Pro / Construct Validity 三件套 / IRT / HF Dataset Cards / Adversarial / 自然分布抽样 / 污染防御)。是设计 spec 不是入门文档,日常用法看 [README](../README.md)。
+> **For omk users**: how to declare measurement metadata on a sample, write sandbox fields, and self-check before running an eval. Academic alignment (HELM / IRT / Construct Validity / contamination defense, etc.) and schema-extension decisions live in the maintainer's internal notes and are out of scope here.
 
-## 一、问题:为什么用例设计需要科学性
+## 1. Why sample design needs to be rigorous
 
-omk 的统计严谨性栈(Bootstrap CI / Krippendorff α / length-debias / saturation curves / verdict)解决"评估**结论**算得对不对"。但**结论建立在用例集上**——用例本身科学性不够,后面所有统计严谨都是空的。
+omk's statistical-rigor stack (Bootstrap CI / Krippendorff α / length-debias / saturation curves / verdict) answers "is the **conclusion** computed correctly". But **the conclusion is built on the sample set** — if the samples themselves aren't rigorous, all the downstream statistical rigor is hollow.
 
-最常见的 construct 错位:用户跑 baseline-vs-skill 想测"skill 写得好不好"(quality),但用例集设计的实际是"baseline 不知道某领域知识 vs skill 提供该知识"(necessity)。两者得出的 verdict 数字一样亮眼,但回答的是不同问题 — 没有 sample 元数据声明 construct 假设,这种错位在 verdict 输出层根本看不出来。
+The most common construct mismatch: you run baseline-vs-skill intending to measure "is the skill well written" (quality), but what the sample set actually measures is "baseline doesn't know some domain knowledge vs the skill provides it" (necessity). Both produce equally impressive verdict numbers, but they answer different questions — and without sample metadata declaring the construct assumption, that mismatch is invisible at the verdict output layer.
 
-## 二、行业共识 8 条 + omk v1 映射
-
-| # | 行业 gap | 学/工业出处 | omk v1 状态 |
-|---|---|---|---|
-| 1 | **IRT item discrimination**:每题给 a (discrimination) / b (difficulty) / c (guessing) 三参数,a < 0.3 是垃圾题 | [IrtNet (2510.00844)](https://arxiv.org/pdf/2510.00844),[Columbia IRT primer](https://www.publichealth.columbia.edu/research/population-health-methods/item-response-theory) | **out-of-scope**(N<30 IRT 不可靠,留 follow-up;v1 启发式 `flat_scores` 已 cover 部分) |
-| 2 | **Difficulty stratification**:用例分层(MMLU-Pro 用多模型多数答对过滤难度) | [MMLU-Pro](https://intuitionlabs.ai/articles/mmlu-pro-ai-benchmark-explained) | **in-scope**:`Sample.difficulty` enum + studio 分桶呈现 |
-| 3 | **Construct validity 三件套**(structural / convergent / discriminant) | [Measuring what Matters (2511.04703)](https://arxiv.org/abs/2511.04703),[Measurement to Meaning (2505.10573)](https://arxiv.org/html/2505.10573v3) | **in-scope**:`Sample.construct` 字段(suggested:necessity / quality / capability)+ verdict 解读 callout;convergent / discriminant 自动检测 follow-up |
-| 4 | **Capability matrix coverage**(HELM 16×7 矩阵) | [HELM (2211.09110)](https://arxiv.org/abs/2211.09110) | **partial**:`Sample.capability` string[] 字段 + studio coverage 分桶 + `capability_thin` issue;详细矩阵可视化 follow-up |
-| 5 | **Contamination 检测**(canary / paraphrase / timestamp-locked) | [BIG-Bench canary](https://www.lesswrong.com/posts/kSmHMoaLKGcGgyWzs/big-bench-canary-contamination-in-gpt-4),[LiveBench](https://livebench.ai/livebench.pdf),[contamination survey (2404.00699)](https://arxiv.org/html/2404.00699v4) | **partial**:`Sample.provenance` 做"声明式"contamination tracking,真正自动检测 follow-up(需要 embedding model 或训练数据访问) |
-| 6 | **Sample provenance / dataset card**(annotations_creators 标准) | [HF Dataset Cards](https://huggingface.co/docs/hub/datasets-cards),[Synthetic Data survey (2503.14023)](https://arxiv.org/html/2503.14023v1) | **in-scope**:`Sample.provenance` enum + `omk sample` 自动注入 `'llm-generated'` |
-| 7 | **Adversarial / failure-driven mining**(Dynabench) | [Dynabench (2104.14337)](https://arxiv.org/abs/2104.14337) | **out-of-scope**:`omk evolve` 当前是单向演化;adversarial mining follow-up |
-| 8 | **Production trace 自然分布抽样** | [Chatbot Arena (2403.04132)](https://arxiv.org/pdf/2403.04132) | **out-of-scope**:依赖外部 trace 系统集成 |
-
-## 三、Sample 元数据 schema
+## 2. Sample metadata schema
 
 ```yaml
 # eval-samples.yaml
 samples:
   - sample_id: s001
-    prompt: "用 React 画一个折线图,数据是日期 + 数值,给最小可运行代码"
-    rubric: "应识别 Line 组件 + 数据格式正确 + 必须包含图表渲染容器"
+    prompt: "Draw a line chart in React; data is date + value, give minimal runnable code"
+    rubric: "Must identify the Line component + correct data format + include a chart render container"
     assertions:
       - { type: contains, value: "Line", weight: 1 }
       - { type: regex, pattern: "data", weight: 1 }
 
-    # 4 个可选元数据字段(纯文档/诊断,不参与 grading)
+    # 4 optional metadata fields (docs/diagnostics only, never enter grading)
     capability:
-      - component-recognition          # string[],能力维度,可多个;归一时大小写/短横线/驼峰不敏感
+      - component-recognition          # string[], capability dimensions, multiple allowed; normalized case/dash/camelCase-insensitive
       - api-selection
-    difficulty: easy                    # 'easy' | 'medium' | 'hard'(强枚举,防错)
-    construct: necessity                # 'necessity' | 'quality' | 'capability' suggested,允许自定义 string
+    difficulty: easy                    # 'easy' | 'medium' | 'hard' (strict enum, typo-proof)
+    construct: necessity                # 'necessity' | 'quality' | 'capability' suggested, custom string allowed
     provenance: human                   # 'human' | 'llm-generated' | 'production-trace'
 ```
 
-### 字段语义
+### Field semantics
 
-- **capability**(string[]):该用例覆盖的能力维度。建议从 capability matrix 角度声明,让用户能看到"我覆盖了 component-recognition × 8 sample / api-selection × 6 sample / fallback × 2 sample,fallback 维度 thin"。归一规则:大小写不敏感 + 短横线 / 驼峰 / 下划线 / 空格归一,所以 `api-selection` / `apiSelection` / `API_Selection` / `api selection` 都算同一个 capability。
-- **difficulty**(enum):简单分桶(easy / medium / hard)。`difficulty: 'easy?'` 这种 typo 会被 `loadSamples` reject 并报错含 sample_id 定位。
-- **construct**(string):**这个 sample 测的是哪类事**。区别于 capability:capability 是"测什么具体能力"(api-selection),construct 是"测哪个 construct 类型"。三个建议值:
-  - `necessity`(必要性):baseline-vs-skill,测 skill 是否必需。Δ 大不一定是 skill 写得好,可能只因为 baseline 不知道领域知识(自明结论)。
-  - `quality`(质量):skill-v1 vs skill-v2,测同知识不同写法谁让模型答得更准。这才是 omk 测量学严谨真用武之地。
-  - `capability`(能力):测某具体能力维度的差异。
-  允许自定义 string(比如 `regression-test` / `cost-efficiency` 等),studio 看到自定义值不报错。
-- **provenance**(enum):数据来源。`human`(人工 curated)/ `llm-generated`(`omk sample` 自动注入)/ `production-trace`(生产 trace 抽样,需用户自己导入)。
+- **capability** (`string[]`): the capability dimensions this sample covers. Declare them from a capability-matrix perspective, so you can see "I cover component-recognition × 8 samples / api-selection × 6 samples / fallback × 2 samples, fallback is thin". Normalization rule: case-insensitive, plus dash / camelCase / underscore / space folding, so `api-selection` / `apiSelection` / `API_Selection` / `api selection` all count as the same capability.
+- **difficulty** (enum): a simple bucketing (easy / medium / hard). A typo like `difficulty: 'easy?'` is rejected by `loadSamples` with an error that names the sample_id.
+- **construct** (`string`): **which kind of thing this sample measures**. Distinct from capability: capability is "which concrete ability is tested" (api-selection), construct is "which construct type is tested". Three suggested values:
+  - `necessity`: baseline-vs-skill, measures whether the skill is necessary at all. A large Δ doesn't necessarily mean the skill is well written — it may simply be that baseline doesn't know the domain knowledge (a self-evident conclusion).
+  - `quality`: skill-v1 vs skill-v2, measures which phrasing of the same knowledge lets the model answer more accurately. This is where omk's measurement rigor truly earns its keep.
+  - `capability`: measures the difference along one concrete capability dimension.
+  Custom strings are allowed (e.g. `regression-test` / `cost-efficiency`); the studio won't error on a custom value.
+- **provenance** (enum): data source. `human` (hand-curated) / `llm-generated` (auto-injected by `omk sample`) / `production-trace` (sampled from production traces, which you import yourself).
 
-### 不参与 grading / judge / verdict
+### Never enters grading / judge / verdict
 
-这 4 字段只用于:
-- studio coverage 块 + `rubric_clarity_low` / `capability_thin` 两个 issue 检测
-- `report.analysis.sampleQuality` 聚合数据(供工具读)
+These 4 fields are used only for:
 
-**绝对不进 judge prompt**(`buildJudgePrompt(prompt, rubric, output, traceSummary)` signature 不含 sample 对象,且有 `test/grading/judge-prompt-isolation.test.ts` 防御回归)。**绝对不影响 verdict 算法**。这是构造效度保护的硬要求 — judge 看到 "construct: necessity" 等于知道试题答案。
+- the studio coverage block, plus the `rubric_clarity_low` / `capability_thin` issue detectors
+- the `report.analysis.sampleQuality` aggregate (for tools to read)
 
-### 沙箱评测字段(mocks / environment / tripwire / mocksStrict)
+**They never enter the judge prompt** (`buildJudgePrompt(prompt, rubric, output, traceSummary)` has no sample object in its signature, and `test/grading/judge-prompt-isolation.test.ts` guards against regressions). **They never affect the verdict algorithm.** This is a hard requirement for construct-validity protection — a judge seeing "construct: necessity" is a judge that knows the answer key.
 
-为了让评测脱离真实外部环境(数据库/API/文件系统/真 git push 等),Sample 还有一组沙箱字段。omk runtime 在工具调用前匹配 mocks,命中即返回假数据,不真调底层。
+### Sandbox eval fields (mocks / environment / tripwire / mocksStrict)
+
+To run evals decoupled from the real external environment (databases / APIs / filesystem / actual git push, etc.), a sample also carries a group of sandbox fields. The omk runtime matches mocks before a tool call; on a hit it returns fake data instead of really invoking the underlying tool.
 
 ```yaml
 - sample_id: s002
-  prompt: "用 antlogs-query 查最近 1 小时 ERROR 日志数量"
-  rubric: "应调 logstore_query 工具,filter 含 'ERROR',时间窗口 1 小时"
+  prompt: "Use antlogs-query to count ERROR logs in the last 1 hour"
+  rubric: "Must call the logstore_query tool, filter containing 'ERROR', time window 1 hour"
   assertions:
     - { type: tool_input_contains, value: "Bash:logstore_query", weight: 1 }
     - { type: mock_hit, value: "Bash:1", weight: 1 }
-  mocksStrict: true              # 默认 true(generator 强制);未命中的工具调用直接 deny,不透传真调
-  tripwire: false                # 此 sample 是否"诱错样本"(故意诱导 LLM 走错,fail 是预期);默认 false
-  environment:                   # 评测环境前置"已就绪"声明,LLM 看到后跳过环境探测
+  mocksStrict: true              # default true (generator-enforced); an unmatched tool call is denied outright, never passed through to the real call
+  tripwire: false                # whether this sample is a "trap sample" (deliberately lures the LLM into the wrong move; failing is expected); default false
+  environment:                   # pre-eval "already provisioned" declaration; the LLM sees it and skips environment probing
     cli_available: ["log-cli"]
     files_available: ["~/.config/log-cli.json"]
     env_required: ["LOG_TOKEN"]
-    notes: "log-cli 已认证,token 在环境变量"
+    notes: "log-cli is authenticated, token in env var"
   mocks:
-    - tool: Bash                            # 拦的工具名:Bash / Read / Edit / Write / WebFetch / Grep / Glob 等
+    - tool: Bash                            # intercepted tool name: Bash / Read / Edit / Write / WebFetch / Grep / Glob, etc.
       match:
-        command_glob: "*log-cli query --filter ERROR*"   # Bash 用 command_glob (* 通配,跨换行)
+        command_glob: "*log-cli query --filter ERROR*"   # Bash uses command_glob (* wildcard, spans newlines)
       return:
         stdout: '{"count": 42}'
         exit: 0
     - tool: Read
       match:
-        file_path_endswith: "tasks/state.json"           # 推荐:后缀匹配,LLM 用绝对/相对路径都能命中
+        file_path_endswith: "tasks/state.json"           # recommended: suffix match, hits whether the LLM uses an absolute or relative path
       return: '{"status":"running"}'
     - tool: WebFetch
       match:
@@ -96,34 +84,34 @@ samples:
       return: "ok"
 ```
 
-**字段语义**:
+**Field semantics:**
 
-- **mocksStrict**(boolean,默认 true):未命中任何 mock 的工具调用直接 `deny`(LLM 看到失败结果)。**默认行为**:`omk sample` 生成器强制写 true,SYSTEM_PROMPT 明确;手写 sample 缺位时 sample 加载层不强制注入 — 老 sample 不写默认走非 strict(透传真调)。**新写 sample 强烈建议 true**,避免漏 mock 导致评测打到真生产系统。
-- **tripwire**(boolean,默认 false):此 sample 是"诱错样本",prompt 故意藏违反 rubric/skill 的诱导(如 "我已经知道是 X,直接用就行"),测试 LLM 是否会盲从用户错误指示。LLM **fail 是预期**,diagnostic 看到 `tripwire: true` 不会建议改 skill;UI 用紫色 verdict pill 区分,避免误判为 bug。
-- **environment**(object,可选):评测环境前置"已就绪"声明 — LLM 看到这段后跳过环境探测(`which X` / `test -f Y` / `echo $Z`)直接进工作流。类比 unit test 的 fixture / setup。**仅作 prompt 提示给 LLM,不实际创建文件 / export 变量**。doctor 健康检查会扫这段做物理路径检查(可用 `--skip-doctor` 跳过)。
-  - `cli_available: string[]` — 假定已在 PATH 上
-  - `files_available: string[]` — 假定已存在的文件/脚本
-  - `env_required: string[]` — 假定已 export 的环境变量
-  - `notes: string` — 自由文本兜底,描述凭证状态等
-- **mocks**(object[],可选):工具调用拦截列表。运行时按数组顺序匹配第一条命中的 mock,返回 `return` / `return_file` / `return_seq[hitCount]` 之一作为 tool_result。
-  - **`tool` 字段**:工具名(如 `"Bash"` / `"Read"` / `"Grep"`)。特殊值 `"*"`:通配任何工具名,配合 `input_contains` 做 intent-level mock。
-  - **`match` 字段所有项 AND**:
-    - `file_path: string` — 严格相等(展开 `~`)。**仅在能预测完整路径时用**(如 `~/.config/x.json`)。
-    - `file_path_endswith: string` — 后缀匹配:actual === suffix 或在路径分隔符(`/` 或 `\`)后以 suffix 结尾。**默认推荐**(claude-cli 内部把相对路径 normalize 成 cwd 绝对路径,严格相等永远 miss)。
-    - `url: string` / `url_glob: string` — WebFetch / WebSearch 用,二选一。
-    - `command_glob: string` — Bash 用,`*` 通配跨换行(LLM 多行命令也命中)。
-    - `input: object` — 通用 deep-equal 子集匹配(可写任意 tool_input 字段)。
-    - `input_contains: string` — 递归扫描 tool_input 所有 string 值,任一含该子串即命中(大小写不敏感)。**配合 `tool: "*"` 做 intent-level mock**:LLM 搜代码时可能用 Bash grep / Grep 工具 / Glob / Read / Agent 等任意工具,用 `input_contains` 按关键词匹配意图,不用逐个枚举工具。示例:`{tool: "*", match: {input_contains: "FinTradeBuySpi"}, return: "<sofa:service .../>"}` — 任何工具只要输入提到 FinTradeBuySpi 就命中。
-  - **`return` 三种形式**:string / `{stdout, stderr, exit}`(模拟 Bash) / `return_file` 外置文件 / `return_seq[]` 状态机(同 mock 第 N 次命中按序返回,超出回退 `return`)。
-- **断言侧的 mock_hit / tool_input_contains**:配合 mocks 使用。`mock_hit: "Bash:2"` 表示"第 2 条 Bash mock 必须被命中至少一次",证明 LLM 走到了那一步。`tool_input_contains: "Bash:logstore_query"` 验证 Bash 命令字符串里包含 `logstore_query`。
+- **mocksStrict** (`boolean`, default `true`): a tool call that matches no mock is denied outright (the LLM sees a failure result). **Default behavior**: the `omk sample` generator force-writes `true` and the SYSTEM_PROMPT makes it explicit; for hand-written samples, the loader does not force-inject it when absent — an old sample without the field falls back to non-strict (passes through to the real call). **Strongly prefer `true` for new samples**, to avoid a missing mock letting the eval hit a real production system.
+- **tripwire** (`boolean`, default `false`): this sample is a "trap sample" whose prompt deliberately plants a lure that violates the rubric/skill (e.g. "I already know it's X, just use it"), testing whether the LLM blindly follows the user's wrong instruction. The LLM **failing is the expected outcome**; diagnostics seeing `tripwire: true` won't suggest changing the skill, and the UI uses a purple verdict pill to distinguish it from a bug.
+- **environment** (`object`, optional): a "ready" precondition declaration for the eval environment — after reading it the LLM skips environment probing (`which X` / `test -f Y` / `echo $Z`) and goes straight into the workflow. Think of it as a unit test's fixture / setup. **It is only a prompt hint to the LLM; it does not actually create files or export variables.** The doctor health check scans it for physical-path checks (skippable with `--skip-doctor`).
+  - `cli_available: string[]` — assumed already on `PATH`
+  - `files_available: string[]` — assumed-existing files/scripts
+  - `env_required: string[]` — assumed already-exported environment variables
+  - `notes: string` — free-text fallback, describing credential state, etc.
+- **mocks** (`object[]`, optional): the tool-call interception list. At runtime, mocks are matched in array order, and the first hit returns one of `return` / `return_file` / `return_seq[hitCount]` as the tool_result.
+  - **the `tool` field**: tool name (e.g. `"Bash"` / `"Read"` / `"Grep"`). The special value `"*"` wildcards any tool name, paired with `input_contains` for intent-level mocking.
+  - **all entries under `match` are AND-ed**:
+    - `file_path: string` — strict equality (`~` expanded). **Use only when you can predict the full path** (e.g. `~/.config/x.json`).
+    - `file_path_endswith: string` — suffix match: `actual === suffix`, or `actual` ends with `suffix` right after a path separator (`/` or `\`). **The recommended default** (claude-cli internally normalizes relative paths to cwd-absolute paths, so strict equality always misses).
+    - `url: string` / `url_glob: string` — for WebFetch / WebSearch, pick one.
+    - `command_glob: string` — for Bash, `*` wildcards across newlines (so the LLM's multi-line commands still hit).
+    - `input: object` — generic deep-equal subset match (any tool_input field).
+    - `input_contains: string` — recursively scans all string values in tool_input; a hit if any contains the substring (case-insensitive). **Pair with `tool: "*"` for intent-level mocking**: when the LLM searches code it might use Bash grep / the Grep tool / Glob / Read / Agent / any tool; use `input_contains` to match intent by keyword instead of enumerating tools one by one. Example: `{tool: "*", match: {input_contains: "MyServiceName"}, return: "<service .../>"}` — any tool hits as long as its input mentions MyServiceName.
+  - **`return` has three forms**: string / `{stdout, stderr, exit}` (simulates Bash) / `return_file` external file / `return_seq[]` state machine (the Nth hit on the same mock returns in order, falling back to `return` once exhausted).
+- **assertion-side mock_hit / tool_input_contains**: used together with mocks. `mock_hit: "Bash:2"` means "the 2nd Bash mock must be hit at least once", proving the LLM reached that step. `tool_input_contains: "Bash:logstore_query"` checks that the Bash command string contains `logstore_query`.
 
-**与 grading / judge 的关系**:沙箱字段(mocks / environment / tripwire / mocksStrict)**不进 judge prompt**,judge 看到的只有 prompt + rubric + LLM 输出 + trace summary。tripwire 仅影响 diagnostic 的归因建议(`tripwire_intentional` rootCause),不影响 layered scores 或 verdict。
+**Relationship to grading / judge**: the sandbox fields (mocks / environment / tripwire / mocksStrict) **never enter the judge prompt** — the judge sees only prompt + rubric + LLM output + trace summary. tripwire only affects the diagnostic's attribution suggestion (the `tripwire_intentional` rootCause); it does not affect the layered scores or the verdict.
 
-## 四、用例设计相关分析功能
+## 3. Sample-design analysis features
 
-### Coverage 块(studio 报告页呈现)
+### Coverage block (rendered on the studio report page)
 
-studio 把每份报告的 sample design coverage 渲染成下面这种摘要:
+The studio renders each report's sample-design coverage into a summary like this:
 
 ```
   用例质量诊断 — health score 87/100
@@ -137,94 +125,41 @@ studio 把每份报告的 sample design coverage 渲染成下面这种摘要:
   avgRubric:   45 字符
 
   [warning] capability_thin: 1 sample(s)
-    ⚠ s019: capability "fallback" 只 2 个 sample 撑(阈值 4,N=20) — 单 sample 失败会让该维度结论不稳
+    ⚠ s019: capability "fallback" 只 2 个 sample 撑（阈值 4，N=20）—— 单 sample 失败会让该维度结论不稳
 
   [info] rubric_clarity_low: 1 sample(s)
-    ℹ s007: rubric 仅 12 字且未含评分级别词 — 评委标准模糊,可能 judge 分数不稳
+    ℹ s007: rubric 仅 12 字且未含评分级别词 —— 评委标准模糊，可能 judge 分数不稳
 ```
 
-底层数据持久化在 `report.analysis.sampleQuality`,工具可直接读 JSON。
+The underlying data is persisted in `report.analysis.sampleQuality`, which tools can read directly as JSON.
 
-### 两个 issue kind
+### Two issue kinds
 
-- **`rubric_clarity_low`**(severity: info):rubric 字符长度 < 20 **AND** 不含任何评分级别词(中英 22 词清单含"优秀/良好/合格/不合格/及格/满分/评分标准/至少包含"等;英文含"excellent/good/poor/criterion/must include/at least"等)。**AND** 而非 OR,避免长 rubric 没用关键词被误报。这是**先验/static 信号**,跟现有 `ambiguous_rubric`(后验/runtime,从 judge stddev 看)互补。
-- **`capability_thin`**(severity: warning):某 capability 只被 ≤ `max(2, totalSamples * 0.2)` 个 sample 声明 — 该维度 thin coverage,单 sample 失败会让结论不稳。**Small-N guard**:总 sample 数 < 10 时**完全跳过**此检测,避免小集合全报。
+- **`rubric_clarity_low`** (severity: info): the rubric is shorter than 20 characters **AND** contains no scoring-level word (a 22-word zh/en list including "优秀/良好/合格/不合格/及格/满分/评分标准/至少包含" and English "excellent/good/poor/criterion/must include/at least", etc.). It's **AND** not OR, to avoid false-flagging a long rubric that just doesn't use a keyword. This is a **prior/static** signal, complementary to the existing `ambiguous_rubric` (posterior/runtime, derived from judge stddev).
+- **`capability_thin`** (severity: warning): a capability declared by only ≤ `max(2, totalSamples * 0.2)` samples — that dimension has thin coverage, so a single sample failure makes the conclusion unstable. **Small-N guard**: when the total sample count is < 10 this check is **skipped entirely**, to avoid flagging everything in a small set.
 
-## 五、自检清单:我的 sample 设计够科学吗?
+## 4. Self-check checklist: is my sample design rigorous enough?
 
-跑评测前过一遍,任意"否"都该停下来想想:
+Run through this before an eval; any "no" is a reason to stop and think:
 
-- [ ] **Construct 声明**:每个 sample 知道自己测的是 necessity / quality / capability 中哪一类吗?
-- [ ] **Capability 覆盖**:声称要测 N 个能力维度,sample 集真覆盖了 N 个吗?(studio coverage 块给出真实分布)
-- [ ] **Difficulty 分层**:有 easy / medium / hard 都有吗?还是全 hard 让模型 noise 主导?
-- [ ] **Provenance 透明**:human-curated / LLM-generated / production-trace 比例合理吗?LLM-generated 占比 > 50% 时小心 self-instruct 风险(judge bias 自我循环)。
-- [ ] **Sample 数量**:`N < 5`(探索级)/ `N < 20`(只大效应可测)/ `N ≥ 20`(中等效应可测)— omk pre-flight 已警告。
-- [ ] **Rubric clarity**:rubric ≥ 20 字符,含至少一个评分级别词(优秀/良好/必须包含/至少包含 等),让 judge 有可执行的级别标准。
-- [ ] **Prompt 不泄露答案**:prompt 里的术语不应直接给出 rubric/assertion 期望的答案。如果 prompt 必须含某关键词(产品 / 库 / API 名)而 rubric 也要这词,就削弱了"baseline 无知识"假设 — 这是用例自然 trade-off,需要在 sample 设计时显式 callout。
-- [ ] **Construct 跟实验设计匹配**:跑 baseline-vs-skill 时,`construct: necessity` 才合理。跑 skill-v1-vs-skill-v2 时,应该 `construct: quality`。
-- [ ] **Provenance 防 contamination**:LLM-generated sample 跟模型自身训练数据可能同源(self-instruct 偏差);`omk sample` 标记 `'llm-generated'` 后,人工 review 一遍是 v1 的 contamination 防御。
-- [ ] **Capability_thin guard**:N≥10 时如果某 capability 只 1-2 sample 撑,该维度结论极不稳定。要么补 sample,要么删该 capability(明确不在测试范围)。
+- [ ] **Construct declared**: does each sample know whether it measures necessity / quality / capability?
+- [ ] **Capability coverage**: you claim to test N capability dimensions — does the sample set actually cover N? (the studio coverage block shows the real distribution)
+- [ ] **Difficulty stratified**: do you have easy / medium / hard, or is everything hard so noise dominates?
+- [ ] **Provenance transparent**: is the human-curated / LLM-generated / production-trace ratio reasonable? When LLM-generated is > 50%, watch for self-instruct risk (a self-reinforcing judge-bias loop).
+- [ ] **Sample count**: `N < 5` (exploratory) / `N < 20` (only large effects detectable) / `N ≥ 20` (medium effects detectable) — omk pre-flight already warns.
+- [ ] **Rubric clarity**: rubric ≥ 20 characters, with at least one scoring-level word (优秀/良好/必须包含/至少包含, etc.), so the judge has an actionable level standard.
+- [ ] **Prompt doesn't leak the answer**: terms in the prompt shouldn't directly hand over the answer the rubric/assertion expects. If the prompt must contain some keyword (a product / library / API name) and the rubric also needs that word, you've weakened the "baseline has no knowledge" assumption — that's a natural sample trade-off and should be called out explicitly at design time.
+- [ ] **Construct matches the experiment design**: when running baseline-vs-skill, `construct: necessity` is the right call. When running skill-v1-vs-skill-v2, it should be `construct: quality`.
+- [ ] **Provenance guards against contamination**: an LLM-generated sample may share a source with the model's own training data (self-instruct bias); after `omk sample` marks it `'llm-generated'`, a manual review pass is the v1 contamination defense.
+- [ ] **Capability_thin guard**: when N≥10, if a capability is propped up by only 1-2 samples, that dimension's conclusion is extremely unstable. Either add samples, or drop the capability (explicitly out of test scope).
 
-## 六、Verdict 解读如何配合 construct
+## 5. How verdict interpretation pairs with construct
 
-`omk eval` verdict 输出 PROGRESS / NOISE / REGRESS / CAUTIOUS / UNDERPOWERED / SOLO，**verdict 不区分 construct 类型**——但解读应该:
+`omk eval` emits a verdict of PROGRESS / NOISE / REGRESS / CAUTIOUS / UNDERPOWERED / SOLO, and **the verdict does not distinguish construct types** — but your interpretation should:
 
-- 如果 sample 集 `construct: necessity` 占主流 → PROGRESS 表示 "skill 是必需的",**不能解读成"skill 写得好"**。要测质量须 follow-up 跑 skill-v1-vs-skill-v2(`construct: quality`)。
-- 如果 sample 集 `construct: quality` 占主流 → PROGRESS / REGRESS 才是真正的"skill 质量比较"信号。
+- If the sample set is dominated by `construct: necessity` → PROGRESS means "the skill is necessary", and **must not be read as "the skill is well written"**. To measure quality, follow up with a skill-v1-vs-skill-v2 run (`construct: quality`).
+- If the sample set is dominated by `construct: quality` → PROGRESS / REGRESS is the genuine "skill quality comparison" signal.
 
-## 七、Follow-up(已 ack 但 v1 不做)
+---
 
-- IRT 风格 item discrimination(N≥30 + multi-model 数据)
-- Multi-judge convergent / discriminant test(需要 ≥ 2 judge ensemble + 聚合分析)
-- Adversarial mining loop(对抗 sample 挖掘)
-- Production trace 自然分布抽样
-- HTML renderer 显示 sample design coverage(v1 只 CLI)
-- Evolve 演化策略升级(diversification signal / saturation-aware stop / health-weighted improvement)
-- Gold dataset 自动生成(改成"标注流程规范化"文档)
-- Coverage matrix 详细 N×D 可视化(v1 出聚合分桶 + 用户自行可视化)
-- Contamination 检测算法实现(canary string / paraphrase detection)
-- 用户自定义 rubric 关键词清单(`diagnostics.rubricKeywords` 配置)
-
-## 八、Schema 扩展候选(v2 路线)
-
-v1 schema 只有 4 字段(capability / difficulty / construct / provenance),都属于「测量学正确性」(measurement validity)轴 — 回答**这条用例测的事是它声称要测的事吗**。社区另一类常见建议(以 GPT-5.5 review 为代表)走的是「资产治理」(asset governance)轴:tags / risk_level / expected_facts / source_ids / owner — 回答**这条用例归谁、来自哪里、有多重要**。两轴正交不冲突,但治理假设测量学先稳固;v1 选了先解测量学。本节记录 v2 候选字段及拒绝清单,供后续 PR 决策时不重新讨论一遍。
-
-### v2 候选(高价值低风险,等真实用户需求触发再加)
-
-- **`source_ids?: string[]`**:具体来源标识(`issue-123` / `doc:react-charts.md#line-chart` / `slack-thread-...`)。补足 `provenance` enum 太粗的问题 — provenance 答「机器/人/线上」,source_ids 答「具体哪个 issue / doc 段落」。debug 价值高(可追溯 sample 出处),纯文档不进 grading。代价:链接腐烂需用户自己治理。
-- **`status?: 'active' | 'deprecated' | 'superseded'`**:lifecycle 字段。sample 集长期演化时,知道一条 sample 是「主力」还是「淘汰中」对 verdict 解读至关重要 — `deprecated` sample 仍在跑但 Δ 不该计入主结论。比 `owner` 更要紧。
-
-### 已拒绝(列出理由防止反复讨论)
-
-- **`tags?: string[]`**:跟 `capability` 语义混。capability 是「测什么具体能力」,tags 想加的「regression / p0 / edge-case」要么属于 `capability`(能力维度)要么属于 `status`(lifecycle)。free-form string 没 enum 约束极易腐化为 mess。**Verdict**:不加,逼用户用 capability + status 表达。
-- **`expected_facts?: string[]`**:跟 `rubric` + `assertions: contains` 大量重叠。omk 的 judge 已经在做语义评分,expected_facts 是同一抽象的另一个 alias。**Verdict**:不加,引入会让 sample 设计时有两个地方写期望,易漂移。
-- **`owner?: string`**:治理字段,跟 omk 测量学使命错配。omk 不消费 owner 做 routing / notify;放在 git blame / CODEOWNERS 更合适。**Verdict**:不加。
-- **`risk_level?: 'p0' | 'p1' | 'p2'`**:提了一个真问题(aggregate 应不应该按 risk 加权样本),但解这个会动 verdict 公式,**测量学不变量**。当前 verdict / Δ 都是 sample-uniform,加权进 verdict 会破跨版本可比性。无 consumer 时纯噪音,有 consumer 时破不变量 —— 两难。**Verdict**:不加;真要做,得单独立项跟 verdict v2 一起设计加权 aggregator。
-
-### 不加新字段的硬约束
-
-加任何字段前先确认:
-- 不进 `buildJudgePrompt` signature(`test/grading/judge-prompt-isolation.test.ts` 防御回归)
-- 不进 `sampleHash` 计算(否则破 cache key 跨版本可比性)
-- 不进 verdict / Δ 算法
-- 跟现有 4 字段 + `rubric` / `assertions` 语义不重叠
-
-## Sources
-
-- [Holistic Evaluation of Language Models (HELM, 2211.09110)](https://arxiv.org/abs/2211.09110)
-- [Measuring what Matters: Construct Validity in LLM Benchmarks (2511.04703)](https://arxiv.org/abs/2511.04703)
-- [Measurement to Meaning: A Validity-Centered Framework (2505.10573)](https://arxiv.org/html/2505.10573v3)
-- [Position: Medical LLM Benchmarks Should Prioritize Construct Validity](https://openreview.net/pdf?id=YuMEUNNpeb)
-- [Learning Compact Representations of LLM Abilities via Item Response Theory (IrtNet, 2510.00844)](https://arxiv.org/pdf/2510.00844)
-- [IRT primer — Columbia Mailman](https://www.publichealth.columbia.edu/research/population-health-methods/item-response-theory)
-- [MMLU-Pro Benchmark methodology](https://intuitionlabs.ai/articles/mmlu-pro-ai-benchmark-explained)
-- [Synthetic Data Generation Survey (2503.14023)](https://arxiv.org/html/2503.14023v1)
-- [Auto Evol-Instruct (2406.00770)](https://arxiv.org/html/2406.00770v1)
-- [Dynabench (2104.14337)](https://arxiv.org/abs/2104.14337)
-- [Comprehensive Survey of Contamination Detection (2404.00699)](https://arxiv.org/html/2404.00699v4)
-- [LiveBench: Contamination-Free Benchmark](https://livebench.ai/livebench.pdf)
-- [BIG-Bench Canary in GPT-4](https://www.lesswrong.com/posts/kSmHMoaLKGcGgyWzs/big-bench-canary-contamination-in-gpt-4)
-- [How to Publish Benchmarks Without True Answers (2505.18102)](https://arxiv.org/html/2505.18102v1)
-- [Hugging Face Dataset Cards](https://huggingface.co/docs/hub/datasets-cards)
-- [Judging LLM-as-a-Judge with MT-Bench / Chatbot Arena (2306.05685)](https://arxiv.org/abs/2306.05685)
-- [Chatbot Arena Open Platform (2403.04132)](https://arxiv.org/pdf/2403.04132)
+> Academic alignment (HELM / IRT / the Construct Validity trio / contamination defense), the 8-point mapping to industry consensus, and the v2 schema-extension candidate-and-rejection list: see the maintainer's internal notes at `design-notes/sample-design-theory.md`.

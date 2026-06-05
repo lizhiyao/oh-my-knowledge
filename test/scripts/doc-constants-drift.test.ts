@@ -93,11 +93,17 @@ const CHECKS: Check[] = [
     expected: DEFAULT_CI_WIDTH_SHRINK_THRESHOLD,
     toNumber: (s) => Number(s) / 100,
   },
-  // UNDERPOWERED 的 N 阈值:sample-design-spec 的 pre-flight power band 写死的 20
+  // UNDERPOWERED 的 N 阈值:sample-design-spec 的 pre-flight power band 写死的 20(en + zh)
   {
-    label: 'underpowered min N (sample-design-spec)',
+    label: 'underpowered min N (sample-design-spec en)',
     file: 'docs/specs/sample-design-spec.md',
-    pattern: /`N < (\d+)`\(只大效应可测\)/,
+    pattern: /`N < (\d+)` \(only large effects detectable\)/,
+    expected: UNDERPOWERED_MIN_SAMPLES,
+  },
+  {
+    label: 'underpowered min N (sample-design-spec zh)',
+    file: 'docs/zh/specs/sample-design-spec.md',
+    pattern: /`N < (\d+)`（只大效应可测）/,
     expected: UNDERPOWERED_MIN_SAMPLES,
   },
 ];

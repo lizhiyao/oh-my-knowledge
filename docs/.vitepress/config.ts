@@ -37,7 +37,7 @@ export default defineConfig({
               { text: 'Eval sample format', link: '/reference/eval-sample-format' },
               { text: 'Executors & artifact layout', link: '/reference/executors' },
               { text: 'Comparison with 7 tools', link: '/reference/comparison' },
-              { text: 'Glossary (中文)', link: '/zh/reference/glossary' },
+              { text: 'Glossary', link: '/reference/glossary' },
             ],
           },
           {
@@ -45,6 +45,7 @@ export default defineConfig({
             items: [
               { text: 'Architecture', link: '/explanation/architecture' },
               { text: 'Statistical rigor', link: '/explanation/statistical-rigor' },
+              { text: 'Scoring pipeline', link: '/specs/scoring' },
             ],
           },
           {
@@ -54,7 +55,6 @@ export default defineConfig({
               { text: 'Knowledge gap signal spec', link: '/specs/knowledge-gap-signal-spec' },
               { text: 'RAG metrics spec', link: '/specs/rag-metrics-spec' },
               { text: 'Terminology spec', link: '/specs/terminology-spec' },
-              { text: 'SIGINT validation', link: '/dev/sigint-validation' },
             ],
           },
         ],
@@ -70,7 +70,7 @@ export default defineConfig({
           { text: '指南', link: '/zh/quickstart-skill-eval' },
           { text: '参考', link: '/zh/reference/cli' },
           { text: '原理', link: '/zh/explanation/architecture' },
-          { text: '规范', link: '/specs/terminology-spec' },
+          { text: '规范', link: '/zh/specs/terminology-spec' },
         ],
         sidebar: [
           {
@@ -95,12 +95,10 @@ export default defineConfig({
           {
             text: '我想贡献 / 看设计 spec',
             items: [
-              { text: '用例设计科学性指南', link: '/specs/sample-design-spec' },
-              { text: '知识缺口信号规范', link: '/specs/knowledge-gap-signal-spec' },
-              { text: 'RAG metrics 规范', link: '/specs/rag-metrics-spec' },
-              { text: '术语规范', link: '/specs/terminology-spec' },
-              { text: 'Roadmap', link: '/zh/roadmap' },
-              { text: 'SIGINT 验证', link: '/dev/sigint-validation' },
+              { text: '用例设计科学性指南', link: '/zh/specs/sample-design-spec' },
+              { text: '知识缺口信号规范', link: '/zh/specs/knowledge-gap-signal-spec' },
+              { text: 'RAG metrics 规范', link: '/zh/specs/rag-metrics-spec' },
+              { text: '术语规范', link: '/zh/specs/terminology-spec' },
             ],
           },
         ],
