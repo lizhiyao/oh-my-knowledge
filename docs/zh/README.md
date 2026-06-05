@@ -8,7 +8,7 @@
 - [CLI 参考](./reference/cli.md)
 - [评测用例格式](./reference/eval-sample-format.md)
 - [执行器](./reference/executors.md)
-- [Artifact 与 variant 布局](./reference/artifact-layout.md)
+- [被测对象与变体布局(artifact / variant)](./reference/artifact-layout.md)
 - [7 工具对比](./reference/comparison.md)
 - [术语表](./reference/glossary.md)
 
