@@ -24,6 +24,7 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: 'Guide', link: '/quickstart-skill-eval' },
+          { text: 'How-to', link: '/guides/agent-eval' },
           { text: 'Reference', link: '/reference/cli' },
           { text: 'Explanation', link: '/explanation/architecture' },
           { text: 'Specs', link: '/specs/terminology-spec' },
@@ -35,9 +36,17 @@ export default defineConfig({
               { text: 'Quickstart', link: '/quickstart-skill-eval' },
               { text: 'CLI reference', link: '/reference/cli' },
               { text: 'Eval sample format', link: '/reference/eval-sample-format' },
-              { text: 'Executors & artifact layout', link: '/reference/executors' },
+              { text: 'Executors', link: '/reference/executors' },
+              { text: 'Artifact & variant layout', link: '/reference/artifact-layout' },
               { text: 'Comparison with 7 tools', link: '/reference/comparison' },
               { text: 'Glossary', link: '/reference/glossary' },
+            ],
+          },
+          {
+            text: 'How-to guides',
+            items: [
+              { text: 'Evaluate an agent', link: '/guides/agent-eval' },
+              { text: 'Use non-Claude models', link: '/guides/non-claude-models' },
             ],
           },
           {
@@ -68,6 +77,7 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: '指南', link: '/zh/quickstart-skill-eval' },
+          { text: '操作指南', link: '/zh/guides/agent-eval' },
           { text: '参考', link: '/zh/reference/cli' },
           { text: '原理', link: '/zh/explanation/architecture' },
           { text: '规范', link: '/zh/specs/terminology-spec' },
@@ -79,9 +89,17 @@ export default defineConfig({
               { text: '快速上手', link: '/zh/quickstart-skill-eval' },
               { text: 'CLI 参考', link: '/zh/reference/cli' },
               { text: '评测样本格式', link: '/zh/reference/eval-sample-format' },
-              { text: '执行器与 artifact 布局', link: '/zh/reference/executors' },
+              { text: '执行器', link: '/zh/reference/executors' },
+              { text: 'Artifact 与 variant 布局', link: '/zh/reference/artifact-layout' },
               { text: '7 工具对比', link: '/zh/reference/comparison' },
               { text: '术语表', link: '/zh/reference/glossary' },
+            ],
+          },
+          {
+            text: '操作指南',
+            items: [
+              { text: '评测 agent', link: '/zh/guides/agent-eval' },
+              { text: '使用非 Claude 模型', link: '/zh/guides/non-claude-models' },
             ],
           },
           {

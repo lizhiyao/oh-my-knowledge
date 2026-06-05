@@ -27,7 +27,7 @@ That's it — no editing required. `omk init` scaffolds two skill variants and t
 
 Walkthrough: [5-minute quickstart guide](docs/quickstart-skill-eval.md) (recommended for first-time users).
 
-Deeper: [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors & artifact layout](docs/reference/executors.md)
+Deeper: [CLI reference](docs/reference/cli.md) · [how it works](docs/explanation/architecture.md) · [eval sample format](docs/reference/eval-sample-format.md) · [executors](docs/reference/executors.md) · [artifact layout](docs/reference/artifact-layout.md)
 
 ## Use inside AI Coding Agents
 
@@ -104,7 +104,8 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 - **[How it works](docs/explanation/architecture.md)** — interleaved scheduling, variant resolution, dual-channel scoring, six-dim report
 - **[Eval sample format](docs/reference/eval-sample-format.md)** — sample schema, scoring formulas, 30+ assertion types, custom JS assertions
 - **[CLI reference](docs/reference/cli.md)** — all seven commands with bash examples and flag tables
-- **[Executors & artifact layout](docs/reference/executors.md)** — built-in / custom executors, agent evaluation, common model configs (Claude / OpenAI / GLM / Qwen / DeepSeek / Moonshot / Ollama)
+- **[Executors](docs/reference/executors.md)** & **[artifact layout](docs/reference/artifact-layout.md)** — built-in / custom executors; how `variant` resolves to an artifact + runtime context
+- **[How-to guides](docs/guides/agent-eval.md)** — [evaluate an agent](docs/guides/agent-eval.md) (project runtime context) and [use non-Claude models](docs/guides/non-claude-models.md) (GLM / Qwen / DeepSeek / Moonshot / Ollama)
 - **[Quickstart](docs/quickstart-skill-eval.md)** — first-time five-minute walkthrough
 - **[Sample design spec](docs/specs/sample-design-spec.md)** — capability / construct / provenance metadata; industry-gap mapping
 - **[Statistical rigor](docs/explanation/statistical-rigor.md)** — why bootstrap CI / α / length-debias / saturation matter
