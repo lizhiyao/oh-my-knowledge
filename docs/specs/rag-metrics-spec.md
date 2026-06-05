@@ -96,7 +96,7 @@ omk differentiates on "stacked rigor": granularity is coarser than RAGAS, but ev
 ```yaml
 samples:
   - sample_id: my_rag_sample
-    prompt: 根据 context 回答 X
+    prompt: Answer X based on the context
     context: |
       [gold context here]
     assertions:
@@ -104,7 +104,7 @@ samples:
         threshold: 4
       - type: answer_relevancy
       - type: context_recall
-        # 不传 reference,自动用 sample.context
+        # omit reference, auto-uses sample.context
 ```
 
 `context_recall` can also take its own gold key facts:

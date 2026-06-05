@@ -14,18 +14,18 @@ The most common construct mismatch: you run baseline-vs-skill intending to measu
 # eval-samples.yaml
 samples:
   - sample_id: s001
-    prompt: "用 React 画一个折线图，数据是日期 + 数值，给最小可运行代码"
-    rubric: "应识别 Line 组件 + 数据格式正确 + 必须包含图表渲染容器"
+    prompt: "Draw a line chart in React; data is date + value, give minimal runnable code"
+    rubric: "Must identify the Line component + correct data format + include a chart render container"
     assertions:
       - { type: contains, value: "Line", weight: 1 }
       - { type: regex, pattern: "data", weight: 1 }
 
-    # 4 个可选元数据字段（纯文档/诊断，不参与 grading）
+    # 4 optional metadata fields (docs/diagnostics only, never enter grading)
     capability:
-      - component-recognition          # string[]，能力维度，可多个；归一时大小写/短横线/驼峰不敏感
+      - component-recognition          # string[], capability dimensions, multiple allowed; normalized case/dash/camelCase-insensitive
       - api-selection
-    difficulty: easy                    # 'easy' | 'medium' | 'hard'（强枚举，防错）
-    construct: necessity                # 'necessity' | 'quality' | 'capability' suggested，允许自定义 string
+    difficulty: easy                    # 'easy' | 'medium' | 'hard' (strict enum, typo-proof)
+    construct: necessity                # 'necessity' | 'quality' | 'capability' suggested, custom string allowed
     provenance: human                   # 'human' | 'llm-generated' | 'production-trace'
 ```
 
@@ -55,28 +55,28 @@ To run evals decoupled from the real external environment (databases / APIs / fi
 
 ```yaml
 - sample_id: s002
-  prompt: "用 antlogs-query 查最近 1 小时 ERROR 日志数量"
-  rubric: "应调 logstore_query 工具，filter 含 'ERROR'，时间窗口 1 小时"
+  prompt: "Use antlogs-query to count ERROR logs in the last 1 hour"
+  rubric: "Must call the logstore_query tool, filter containing 'ERROR', time window 1 hour"
   assertions:
     - { type: tool_input_contains, value: "Bash:logstore_query", weight: 1 }
     - { type: mock_hit, value: "Bash:1", weight: 1 }
-  mocksStrict: true              # 默认 true（generator 强制）；未命中的工具调用直接 deny，不透传真调
-  tripwire: false                # 此 sample 是否「诱错样本」（故意诱导 LLM 走错，fail 是预期）；默认 false
-  environment:                   # 评测环境前置「已就绪」声明，LLM 看到后跳过环境探测
+  mocksStrict: true              # default true (generator-enforced); an unmatched tool call is denied outright, never passed through to the real call
+  tripwire: false                # whether this sample is a "trap sample" (deliberately lures the LLM into the wrong move; failing is expected); default false
+  environment:                   # pre-eval "already provisioned" declaration; the LLM sees it and skips environment probing
     cli_available: ["log-cli"]
     files_available: ["~/.config/log-cli.json"]
     env_required: ["LOG_TOKEN"]
-    notes: "log-cli 已认证，token 在环境变量"
+    notes: "log-cli is authenticated, token in env var"
   mocks:
-    - tool: Bash                            # 拦的工具名：Bash / Read / Edit / Write / WebFetch / Grep / Glob 等
+    - tool: Bash                            # intercepted tool name: Bash / Read / Edit / Write / WebFetch / Grep / Glob, etc.
       match:
-        command_glob: "*log-cli query --filter ERROR*"   # Bash 用 command_glob (* 通配，跨换行)
+        command_glob: "*log-cli query --filter ERROR*"   # Bash uses command_glob (* wildcard, spans newlines)
       return:
         stdout: '{"count": 42}'
         exit: 0
     - tool: Read
       match:
-        file_path_endswith: "tasks/state.json"           # 推荐：后缀匹配，LLM 用绝对/相对路径都能命中
+        file_path_endswith: "tasks/state.json"           # recommended: suffix match, hits whether the LLM uses an absolute or relative path
       return: '{"status":"running"}'
     - tool: WebFetch
       match:

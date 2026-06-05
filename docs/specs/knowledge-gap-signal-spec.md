@@ -118,19 +118,19 @@ A two-stage pipeline (the v0.1 regex stage from §4 stays unchanged; a classifie
 ```typescript
 type HedgingCandidate = {
   sampleId: string;
-  sentence: string;       // regex 命中的句子
-  context: string;        // 上下文片段（前后 1-2 句）
+  sentence: string;       // the sentence matched by the regex
+  context: string;        // context snippet (1-2 sentences around it)
 };
 
 type HedgingVerdict = {
-  isUncertainty: boolean; // true = 真不确定 · false = 业务推理 / 假设
-  confidence: number;     // 0-1, classifier 自评
-  reason: string;         // 简短说明（调试 / 复核用）
+  isUncertainty: boolean; // true = genuine uncertainty · false = business reasoning / hypothesis
+  confidence: number;     // 0-1, classifier self-rating
+  reason: string;         // short explanation (for debugging / review)
 };
 
 async function classifyHedgingCandidates(
   candidates: HedgingCandidate[],
-  executor: LlmExecutor,         // 复用 src/grading/judge.ts 的 executor
+  executor: LlmExecutor,         // reuses the executor from src/grading/judge.ts
   opts?: { maxCandidates?: number; model?: string },
 ): Promise<{ verdicts: HedgingVerdict[]; costUSD: number }>;
 ```
