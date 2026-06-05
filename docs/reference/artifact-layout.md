@@ -1,10 +1,29 @@
 # Artifact & variant layout
 
-How OMK turns a `variant` expression into an `artifact` (the thing being evaluated) plus an optional `runtime context`.
+An `omk eval` run is built from three things — this page explains each and how a CLI **variant** expression resolves into one:
+
+- **artifact** — the thing being evaluated: a skill, prompt, agent, or workflow file (or `baseline`, meaning *nothing injected*).
+- **variant** — the expression you write on the CLI (e.g. `--control v1 --treatment v2`). Each variant resolves to exactly one artifact.
+- **runtime context** — the environment the artifact runs in; currently the working directory (`cwd`), which pulls in that project's `CLAUDE.md`, local skills, and repo state.
+
+In one line: **a variant expression → an artifact (+ an optional runtime context)**. The expression carries artifact identity *only*; runtime context is declared separately ([below](#declaring-runtime-context-cwd)).
+
+## Variant resolution rules
+
+| Format | Resolves to |
+|---|---|
+| `name` | looks up `name.md` or `name/SKILL.md` in the artifact dir → one artifact |
+| `baseline` | empty artifact, no system prompt — "nothing injected" (reserved name; cannot be bound to a cwd) |
+| any other label (e.g. `project-env`) | empty artifact too; pair it with a cwd (below) to measure project-level runtime context alone |
+| `git:name` | the last-committed version of an artifact from git HEAD |
+| `git:ref:name` | an artifact from a specific commit |
+| `./path/to/file.md` | a path (contains `/`): read the file directly as the artifact |
+
+To observe a project's runtime context by itself, use a non-`baseline` label plus a cwd (e.g. `--treatment project-env --treatment-cwd /path`) — binding `baseline` to a cwd is rejected.
 
 ## Artifact directory layout
 
-The built-in executors (claude / codex / gemini, etc.) support two artifact layouts, mixable in the same run:
+For the `name` form, the built-in executors (claude / codex / gemini, etc.) support two layouts, mixable in the same run:
 
 ```
 skills/
@@ -14,19 +33,6 @@ skills/
     ├── config.json          #   other files don't participate in eval, kept for completeness
     └── scripts/
 ```
-
-## Variant resolution rules
-
-`variant` is the experiment-group expression. After resolution, OMK produces an `artifact` plus an optional `runtime context` (currently mainly `cwd`).
-
-| Format | Meaning |
-|---|---|
-| `name` | looks up `name.md` or `name/SKILL.md` in the artifact dir, resolves to one artifact |
-| `baseline` | empty artifact, no system prompt — think "nothing at all" |
-| `project-env` (any non-skill label) | empty artifact; pair with a cwd (below) to run in a project dir — observe project-level runtime context alone |
-| `git:name` | reads the last-committed version of an artifact from git HEAD |
-| `git:ref:name` | reads an artifact from a specific commit |
-| `./path/to/file.md` | path with `/`: read the file directly as an artifact |
 
 ## Declaring runtime context (cwd)
 
