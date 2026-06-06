@@ -107,14 +107,14 @@ function buildRuntimeChecks(
   const invocations = experienceReports.flatMap((report) => report.invocations.filter((invocation) => invocation.skillName === skillName));
   const evidence = runtimeEvidence(invocations);
   const hardRuleChecks = hardRules.map((rule) => evaluateRuntimeText({
-    kind: 'hardRule',
+    nodeKind: 'hardRule',
     id: rule.id,
     title: rule.rule,
     expectation: rule.expectedBehavior,
   }, evidence));
   const workflowChecks = workflows.flatMap((workflow) =>
     workflow.nodes.map((node) => evaluateRuntimeText({
-      kind: 'workflowNode',
+      nodeKind: 'workflowNode',
       id: `${workflow.id}.${node.id}`,
       title: node.action || `${workflow.id} / ${node.id}`,
       expectation: node.action,
@@ -180,7 +180,7 @@ function buildSkillRuntimeEvidencePack(input: {
     ...input.hardRules.map((rule) => nodeEvidenceForCheck({
       check: standardById.get(rule.id),
       nodeId: rule.id,
-      kind: 'hardRule' as const,
+      nodeKind: 'hardRule' as const,
       title: rule.rule,
       expectation: rule.expectedBehavior,
       refs: allRuntimeRefs,
@@ -188,7 +188,7 @@ function buildSkillRuntimeEvidencePack(input: {
     ...workflowNodes.map((node) => nodeEvidenceForCheck({
       check: standardById.get(node.id),
       nodeId: node.id,
-      kind: 'workflowNode' as const,
+      nodeKind: 'workflowNode' as const,
       title: node.title,
       expectation: node.expectation,
       refs: allRuntimeRefs,
@@ -230,7 +230,7 @@ function buildSkillRuntimeEvidencePack(input: {
 function nodeEvidenceForCheck(input: {
   check?: ObservationRuntimeCheck;
   nodeId: string;
-  kind: 'workflowNode' | 'hardRule';
+  nodeKind: 'workflowNode' | 'hardRule';
   title: string;
   expectation: string;
   refs: SkillRuntimeEvidencePackRef[];
@@ -241,7 +241,7 @@ function nodeEvidenceForCheck(input: {
     : [];
   return {
     nodeId: input.nodeId,
-    kind: input.kind,
+    nodeKind: input.nodeKind,
     title: input.title,
     expectation: input.expectation,
     deterministicStatus: input.check?.status ?? 'manual_review',
@@ -279,7 +279,7 @@ function runtimeEvidence(invocations: ExperienceInvocation[]): RuntimeEvidence {
 }
 
 function evaluateRuntimeText(
-  base: Pick<ObservationRuntimeCheck, 'kind' | 'id' | 'title' | 'expectation'>,
+  base: Pick<ObservationRuntimeCheck, 'nodeKind' | 'id' | 'title' | 'expectation'>,
   evidence: RuntimeEvidence,
 ): ObservationRuntimeCheck {
   const text = `${base.title}\n${base.expectation}`;

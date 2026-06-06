@@ -57,7 +57,7 @@ describe('observe inbox - trace ingestion', () => {
     writeFileSync(file, records.map((r) => JSON.stringify(r)).join('\n'));
 
     const report = buildObservationInboxReport(file);
-    assert.equal(report.kind, 'observe-inbox');
+    assert.equal(report.reportKind, 'observe-inbox');
     assert.equal(report.schemaVersion, 1);
     assert.equal(report.items.length, 1);
     assert.equal(report.items[0].severityReason, undefined);
@@ -214,13 +214,13 @@ describe('observe inbox - trace ingestion', () => {
       reportCount: 1,
       latestSeenLabel: '2026-05-01 00:10:02',
       reviewState: {
-        kind: 'observe-review-state',
+        reportKind: 'observe-review-state',
         schemaVersion: 1,
         updatedAt: '2026-05-01T00:00:00.000Z',
         entries: {},
       },
       resolvedReviewSessions: resolvedReviewSessionsForFixture(experience, {
-        kind: 'observe-review-state',
+        reportKind: 'observe-review-state',
         schemaVersion: 1,
         updatedAt: '2026-05-01T00:00:00.000Z',
         entries: {},
@@ -606,7 +606,7 @@ describe('observe inbox - trace ingestion', () => {
     // 不同毫秒的 report 共用同一文件名, 第二份静默覆盖第一份。修复后保留毫秒。
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const reportA = {
-      kind: 'observe-inbox' as const,
+      reportKind: 'observe-inbox' as const,
       schemaVersion: 1 as const,
       meta: {
         generatedAt: '2026-05-07T12:00:00.111Z',

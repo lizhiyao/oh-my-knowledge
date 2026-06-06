@@ -107,7 +107,7 @@ describe('observe inbox - experience report', () => {
     const report = buildObservationInboxReport(file);
     const experience = report.experience;
     assert.ok(experience);
-    assert.equal(experience.kind, 'observe-experience');
+    assert.equal(experience.reportKind, 'observe-experience');
     assert.equal(experience.scope, 'evidence-only');
     assert.equal(experience.meta.skillCount, 1);
     assert.equal(experience.goalSlices.length, 1);
@@ -200,13 +200,13 @@ describe('observe inbox - experience report', () => {
       reportCount: 1,
       latestSeenLabel: '2026-05-01 00:00:04',
       reviewState: {
-        kind: 'observe-review-state',
+        reportKind: 'observe-review-state',
         schemaVersion: 1,
         updatedAt: '2026-05-01T00:00:00.000Z',
         entries: {},
       },
       resolvedReviewSessions: resolvedReviewSessionsForFixture(experience, {
-        kind: 'observe-review-state',
+        reportKind: 'observe-review-state',
         schemaVersion: 1,
         updatedAt: '2026-05-01T00:00:00.000Z',
         entries: {},
@@ -278,7 +278,7 @@ describe('observe inbox - experience report', () => {
     }, 'user_goal_shift');
     const annotatedReport = buildObservationInboxReport(file, {
       reviewState: {
-        kind: 'observe-review-state',
+        reportKind: 'observe-review-state',
         schemaVersion: 1,
         updatedAt: '2026-05-01T00:00:00.000Z',
         entries: {

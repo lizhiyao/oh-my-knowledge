@@ -12,7 +12,7 @@ function normalizeForSnapshot(html: string): string {
 }
 
 const SAMPLE_REPORT: Report = {
-  kind: 'evaluation',
+  reportKind: 'evaluation',
   // 让 id 匹配 renderRunList 里的 YYYYMMDD-HHmm regex (html-renderer.ts:62),
   // 这样列表页 row 的时间从 id 直接提取 (deterministic), 不走 toLocaleString
   // — 后者本地时区敏感, 会让 snapshot 在 CI UTC 和本地 CST 之间不一致.
@@ -387,7 +387,7 @@ describe('renderRunDetail', () => {
     runtimeReport.meta.executorRuntime = {
       executor: 'codex-sdk',
       model: 'gpt-5',
-      kind: 'agent-sdk',
+      runtimeKind: 'agent-sdk',
       fingerprint: 'abc123def456',
       binary: { name: 'codex', source: 'bundled', version: '0.128.0' },
       sdk: { name: '@openai/codex-sdk', version: '0.128.0' },
@@ -403,7 +403,7 @@ describe('renderRunDetail', () => {
       runtime: {
         executor: 'claude-sdk',
         model: 'haiku',
-        kind: 'agent-sdk',
+        runtimeKind: 'agent-sdk',
         fingerprint: 'def456abc123',
         binary: { name: 'claude-code', source: 'bundled', version: '2.1.118' },
         sdk: { name: '@anthropic-ai/claude-agent-sdk', version: '0.2.118' },
@@ -431,7 +431,7 @@ describe('renderRunDetail', () => {
         runtime: {
           executor: 'claude',
           model: 'opus',
-          kind: 'agent-cli',
+          runtimeKind: 'agent-cli',
           fingerprint: 'judge1111111',
           binary: { name: 'claude', source: 'path', version: '2.0.0' },
           capabilities: { systemPrompt: 'native', costUSD: 'reported', trace: 'native', skillIsolation: 'full-no-partial' },
@@ -443,7 +443,7 @@ describe('renderRunDetail', () => {
         runtime: {
           executor: 'openai-api',
           model: 'gpt-4o',
-          kind: 'api',
+          runtimeKind: 'api',
           fingerprint: 'judge2222222',
           binary: { name: 'openai-api', source: 'none' },
           capabilities: { systemPrompt: 'native', costUSD: 'not-reported', trace: 'none', skillIsolation: 'none' },

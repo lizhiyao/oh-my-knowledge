@@ -13,7 +13,7 @@ const variantResult = (overrides: Partial<VariantResult> = {}): VariantResult =>
 });
 
 const buildReport = (entries: Array<{ id: string; perVariant: Record<string, Partial<VariantResult>> }>, variants: string[]): Report => ({
-  kind: 'evaluation',
+  reportKind: 'evaluation',
   id: 'r',
   meta: {
     variants, model: 'm', judgeModels: [{ executor: 'claude', model: 'j' }], executor: 'claude',

@@ -29,7 +29,7 @@ function summary(successCount: number, errorCount: number): VariantSummary {
 describe('computeRunTally', () => {
   it('aggregates successCount / errorCount across variants in a single-skill report', () => {
     const report = {
-      kind: 'evaluation',
+      reportKind: 'evaluation',
       id: 'r1',
       meta: {} as EvaluationReport['meta'],
       summary: {
@@ -44,7 +44,7 @@ describe('computeRunTally', () => {
 
   it('aggregates across all batch items', () => {
     const report = {
-      kind: 'batch-evaluation',
+      reportKind: 'batch-evaluation',
       id: 'b1',
       mode: 'skill',
       meta: {} as BatchEvaluationReport['meta'],
@@ -97,7 +97,7 @@ describe('computeRunTally', () => {
 
   it('returns zeros for an empty single report', () => {
     const report = {
-      kind: 'evaluation',
+      reportKind: 'evaluation',
       id: 'empty',
       meta: {} as EvaluationReport['meta'],
       summary: {},

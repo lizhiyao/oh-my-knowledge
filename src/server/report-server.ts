@@ -880,7 +880,7 @@ export function createReportServer({ port, host: hostOption, reportsDir = DEFAUL
         let evalReport = null;
         if (entry.eval) {
           const r = await reportStore.get(entry.eval.reportId);
-          if (r && r.kind === 'evaluation') evalReport = r;
+          if (r && r.reportKind === 'evaluation') evalReport = r;
         }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
         const insights = idx.insightsBySkill.get(skillName) ?? [];

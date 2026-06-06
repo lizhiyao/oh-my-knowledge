@@ -223,6 +223,6 @@ describe('skill_health composer', () => {
     assert.equal(SKILL_HEALTH_COMPOSER_ID, 'skill_health');
     const composer = makeSkillHealthComposer();
     assert.equal(composer.id, 'skill_health');
-    assert.equal(composer.kind, 'composer');
+    assert.equal(composer.ruleKind, 'composer');
   });
 });

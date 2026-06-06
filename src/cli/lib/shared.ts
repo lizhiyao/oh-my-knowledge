@@ -16,7 +16,7 @@ export function requireEvaluationReport(report: ReportDocument | null, id: strin
     console.error(tCli('cli.common.report_not_found', lang, { id }));
     throw new CliExit(1);
   }
-  if (report.kind === 'batch-evaluation') {
+  if (report.reportKind === 'batch-evaluation') {
     console.error(lang === 'zh'
       ? `报告 ${id} 是 BatchEvaluationReport。该命令需要单次 EvaluationReport；请使用其中的 child reportId。`
       : `Report ${id} is a BatchEvaluationReport. This command requires an EvaluationReport; use a child reportId from the batch.`);

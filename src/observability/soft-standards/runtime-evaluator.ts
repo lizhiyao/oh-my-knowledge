@@ -34,7 +34,7 @@ export function evaluateRuntimeStandardNodes(nodes: RuntimeStandardNode[], evide
   const resultByNodeId = new Map(rawResults.map((result) => [result.nodeId, result]));
   return rawResults.map((result) => {
     const node = nodes.find((item) => item.nodeId === result.nodeId);
-    if (!node || node.kind !== 'stage' || !node.childNodeIds || node.childNodeIds.length === 0) return result;
+    if (!node || node.nodeKind !== 'stage' || !node.childNodeIds || node.childNodeIds.length === 0) return result;
     const childResults = node.childNodeIds
       .map((id) => resultByNodeId.get(id))
       .filter((item): item is RuntimeNodeResult => Boolean(item));
@@ -62,7 +62,7 @@ function evaluateRuntimeStandardNode(node: RuntimeStandardNode, evidencePack: Sk
   const evidenceRefs = dedupeEvidenceRefs(matchedSignals.flatMap((match) => match.refs));
   return {
     nodeId: node.nodeId,
-    kind: node.kind,
+    nodeKind: node.nodeKind,
     title: node.title,
     status,
     matchedSignals: matchedSignals.map((match) => ({

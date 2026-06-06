@@ -80,7 +80,7 @@ export interface ObservationReviewStateEntry {
 }
 
 export interface ObservationReviewState {
-  kind: 'observe-review-state';
+  reportKind: 'observe-review-state';
   schemaVersion: 1;
   updatedAt: string;
   entries: Record<string, ObservationReviewStateEntry>;
@@ -285,7 +285,7 @@ export interface ObservationSessionTimeRange {
 }
 
 export interface ObservationInboxReport {
-  kind: 'observe-inbox';
+  reportKind: 'observe-inbox';
   schemaVersion: 1;
   meta: {
     tracePath: string;
@@ -928,7 +928,7 @@ export interface ExperienceSkillSummary {
 }
 
 export interface ObservationExperienceReport {
-  kind: 'observe-experience';
+  reportKind: 'observe-experience';
   schemaVersion: 1;
   scope: 'evidence-only';
   generatedAt: string;
@@ -950,7 +950,7 @@ export interface ObservationExperienceReport {
 export type ObservationRuntimeCheckStatus = 'passed' | 'attention' | 'manual_review';
 
 export interface ObservationRuntimeCheck {
-  kind: 'hardRule' | 'workflowNode';
+  nodeKind: 'hardRule' | 'workflowNode';
   id: string;
   title: string;
   expectation: string;
@@ -980,7 +980,7 @@ export interface SkillRuntimeEvidencePackRef extends Pick<ExperienceEvidenceRef,
 
 export interface SkillRuntimeEvidencePackNode {
   nodeId: string;
-  kind: 'workflowNode' | 'hardRule';
+  nodeKind: 'workflowNode' | 'hardRule';
   title: string;
   expectation: string;
   deterministicStatus: ObservationRuntimeCheckStatus;

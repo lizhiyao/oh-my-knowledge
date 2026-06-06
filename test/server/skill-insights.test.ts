@@ -54,7 +54,7 @@ function mkResult(sampleId: string, variant: string, opts: {
 
 function mkEvalReport(variant: string, results: ResultEntry[]): EvaluationReport {
   return {
-    kind: 'evaluation',
+    reportKind: 'evaluation',
     id: `${variant}-test-id`,
     meta: {
       variants: ['baseline', variant],

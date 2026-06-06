@@ -310,6 +310,22 @@ Rules:
 - Experiment role: `control` / `treatment` (not `baseline` / `experiment`)
 - Runtime environment: `runtime context` / `cwd`
 
+### 4. Reserve bare `kind` for `ArtifactKind`
+
+In omk's product vocabulary, bare `kind` is reserved for `Artifact.kind` (`ArtifactKind`: `baseline` / `skill` / `prompt` / `agent` / `workflow`). `baseline` means the empty eval artifact; experiment role still comes from `control` / `treatment`. CLI design follows the same rule: a future `--kind` flag should mean artifact kind, not install target, report type, or observe event type.
+
+For other discriminants, use a qualified name when the field is new or safe to rename. Existing persisted `kind` fields stay as-is unless a dedicated migration changes them:
+
+- `report.kind` → `reportKind` / `documentKind`
+- `event.kind` → `eventKind`
+- `executorRuntime.kind` → `runtimeKind`
+- `standard.kind` → `standardKind`
+
+Two caveats:
+
+- **Persisted discriminants are frozen.** Any `kind` already serialized into a report / observe / doctor / diagnosis JSON file is a stored field name: renaming it would break deserializing existing on-disk files, so it needs a dedicated data / schema migration (not done here). This is serialization back-compat, not statistical comparability — renaming the field changes no measurement number. (`report.kind` additionally sits in the Report-schema invariant list, so treat any change there with the usual schema care.)
+- Renaming internal non-persisted fields is progressive — done opportunistically when touching that code, not as a big-bang sweep. A CI guard freezes the current set of bare-`kind` declaration sites so new unqualified ones cannot slip in.
+
 ## 6. Term mapping
 
 | Old term | New standard term | Note |

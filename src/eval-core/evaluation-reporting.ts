@@ -256,7 +256,7 @@ export function aggregateReport({
     variant.execCostReported !== false && variant.judgeCostReported !== false);
 
   return {
-    kind: 'evaluation',
+    reportKind: 'evaluation',
     id: runId,
     meta: {
       variants,

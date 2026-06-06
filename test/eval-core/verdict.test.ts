@@ -13,7 +13,7 @@ const summary = (avg: { fact?: number; behavior?: number; judge?: number; compos
 });
 
 const buildReport = (overrides: Partial<Report> & { variants: string[]; perVariantAvg: Record<string, Parameters<typeof summary>[0]>; pairs?: Report['meta']['pairComparisons'] }): Report => ({
-  kind: 'evaluation',
+  reportKind: 'evaluation',
   id: 'r1',
   meta: {
     variants: overrides.variants,

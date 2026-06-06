@@ -52,9 +52,9 @@ function packageReasons(pkg: ExecutorRuntimePackage | undefined, label: string):
 
 function runtimeUnverifiableReasons(runtime: ExecutorRuntimeFingerprint): string[] {
   const reasons: string[] = [];
-  if (runtime.kind === 'api') return reasons;
+  if (runtime.runtimeKind === 'api') return reasons;
 
-  if (runtime.kind === 'agent-sdk') {
+  if (runtime.runtimeKind === 'agent-sdk') {
     reasons.push(...packageReasons(runtime.sdk, 'sdk'));
   }
 
@@ -75,7 +75,7 @@ function runtimeUnverifiableReasons(runtime: ExecutorRuntimeFingerprint): string
     reasons.push('binary source unknown');
   }
 
-  if (runtime.kind === 'unknown') reasons.push('runtime kind unknown');
+  if (runtime.runtimeKind === 'unknown') reasons.push('runtime kind unknown');
   return [...new Set(reasons)];
 }
 

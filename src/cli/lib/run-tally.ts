@@ -21,7 +21,7 @@ export function computeRunTally(report: ReportDocument): { passed: number; faile
       failed += s.errorCount;
     }
   };
-  if (report.kind === 'batch-evaluation') {
+  if (report.reportKind === 'batch-evaluation') {
     for (const item of report.items) accumulate(item.summary);
   } else {
     accumulate(report.summary);

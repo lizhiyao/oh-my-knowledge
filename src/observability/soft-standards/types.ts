@@ -11,7 +11,7 @@ export type SkillDerivedStandardKind = 'hard_rule_candidate' | 'workflow_candida
 
 export interface SkillDerivedStandard {
   id: string;
-  kind: SkillDerivedStandardKind;
+  standardKind: SkillDerivedStandardKind;
   status: SkillDerivedStandardStatus;
   title: string;
   body: string;
@@ -21,7 +21,7 @@ export interface SkillDerivedStandard {
 }
 
 export interface SkillDerivedStandards {
-  kind: 'observe-skill-derived-standards';
+  reportKind: 'observe-skill-derived-standards';
   schemaVersion: 1;
   skillName: string;
   sourceSkillPath?: string;
@@ -104,7 +104,7 @@ export interface RuntimeStandardNodeSourceHint {
 export interface RuntimeStandardNode {
   nodeId: string;
   nodeEvidenceRef?: string;
-  kind: RuntimeStandardNodeKind;
+  nodeKind: RuntimeStandardNodeKind;
   title: string;
   description?: string;
   childNodeIds?: string[];
@@ -125,7 +125,7 @@ export interface RuntimeMatchedSignal {
 
 export interface RuntimeNodeResult {
   nodeId: string;
-  kind: RuntimeStandardNodeKind;
+  nodeKind: RuntimeStandardNodeKind;
   title: string;
   status: RuntimeNodeVerdict;
   matchedSignals: RuntimeMatchedSignal[];
@@ -144,7 +144,7 @@ export interface SkillLlmTypeSpecificChecklistItem {
 
 export interface SkillLlmRuntimeNodeAssessment {
   nodeId: string;
-  kind: 'workflowNode' | 'hardRule';
+  nodeKind: 'workflowNode' | 'hardRule';
   status: LlmEnhancedChecklistStatus;
   reason?: string;
   evidence?: string[];
@@ -154,10 +154,10 @@ export interface SkillLlmRuntimeNodeAssessment {
 export interface SkillLlmEnhancedReviewSections {
   skillType?: LlmEnhancedSkillType;
   extractedStandards?: {
-    hardrules: Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>>;
-    workflows: Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>>;
-    completionCriteria: Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>>;
-    artifactCriteria: Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>>;
+    hardrules: Array<Omit<SkillDerivedStandard, 'id' | 'standardKind' | 'status' | 'source'>>;
+    workflows: Array<Omit<SkillDerivedStandard, 'id' | 'standardKind' | 'status' | 'source'>>;
+    completionCriteria: Array<Omit<SkillDerivedStandard, 'id' | 'standardKind' | 'status' | 'source'>>;
+    artifactCriteria: Array<Omit<SkillDerivedStandard, 'id' | 'standardKind' | 'status' | 'source'>>;
     standardNodes?: RuntimeStandardNode[];
   };
   userGoal?: {
@@ -212,7 +212,7 @@ export type ResolvedSkillStandardKind = 'hard_rule' | 'workflow';
 
 export interface ResolvedSkillStandard {
   id: string;
-  kind: ResolvedSkillStandardKind;
+  standardKind: ResolvedSkillStandardKind;
   title: string;
   body: string;
   source: ResolvedSkillStandardSource;
