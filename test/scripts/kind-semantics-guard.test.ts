@@ -9,8 +9,9 @@
  * 函数 param、`.kind` 读取、对象字面量构造点、注释 / 字符串):
  *   - 字段类型是 `ArtifactKind`(或以它为基的类型)→ 放行;
  *   - 否则必须登记在 FROZEN_KIND_EXCEPTIONS —— 这些都是已经序列化进
- *     report / observe / doctor / diagnosis JSON 的判别字段,是可比性不变量,改名要走
- *     schema migration(详见 docs/specs/terminology-spec.md §5.4);
+ *     report / observe / doctor / diagnosis JSON 的判别字段,改名会破坏读取已有落盘文件,
+ *     要走单独的数据 / schema 迁移(序列化向后兼容,非统计可比性;
+ *     详见 docs/specs/terminology-spec.md §5.4);
  *   - 两者都不是 → 新代码引入了裸 `kind`,失败。改成限定名,或(确为新的持久化判别字段时)
  *     显式登记并在 PR 里说明理由。
  *
@@ -28,8 +29,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..');
 const SRC_DIR = join(PROJECT_ROOT, 'src');
 
-// 已持久化进 JSON 的判别字段(可比性不变量,本轮冻结不改名)。
-// 这不是「允许裸 kind」的背书,而是「改名要走 schema migration」的债务登记。
+// 已序列化进 JSON 的判别字段:改名会破坏反序列化磁盘上已有的 report/observe/doctor/diagnosis
+// 文件,要走单独的数据/schema 迁移(序列化向后兼容,非统计可比性),本轮冻结。
+// 这是债务登记,不是「允许裸 kind」的背书。
 const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   // —— 持久化 report schema（Report JSON 字段语义，CLAUDE.md 列明的不变量）——
   "src/types/report.ts::EvaluationReport::'evaluation'",

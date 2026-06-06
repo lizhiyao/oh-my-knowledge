@@ -323,7 +323,7 @@ Except for existing discriminants already persisted into report / observe / doct
 
 Two caveats:
 
-- **Persisted discriminants are frozen.** Any `kind` already serialized into a report / observe / doctor / diagnosis JSON file is a comparability invariant and is not renamed in place; changing one requires a dedicated schema migration with the comparability impact called out (`BREAKING-COMPARABILITY` when it affects report comparability). New code reserves bare `kind` for `ArtifactKind` from the start.
+- **Persisted discriminants are frozen.** Any `kind` already serialized into a report / observe / doctor / diagnosis JSON file is a stored field name: renaming it would break deserializing existing on-disk files, so it needs a dedicated data / schema migration (not done here). This is serialization back-compat, not statistical comparability — renaming the field changes no measurement number. (`report.kind` additionally sits in the Report-schema invariant list, so treat any change there with the usual schema care.) New code reserves bare `kind` for `ArtifactKind` from the start.
 - Renaming internal non-persisted fields is progressive — done opportunistically when touching that code, not as a big-bang sweep. A CI guard freezes the current set of bare-`kind` declaration sites so new unqualified ones cannot slip in.
 
 ## 6. Term mapping
