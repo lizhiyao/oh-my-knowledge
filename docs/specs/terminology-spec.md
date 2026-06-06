@@ -310,11 +310,11 @@ Rules:
 - Experiment role: `control` / `treatment` (not `baseline` / `experiment`)
 - Runtime environment: `runtime context` / `cwd`
 
-### 4. Bare `kind` defaults to `ArtifactKind`
+### 4. Reserve bare `kind` for `ArtifactKind`
 
-In omk's product vocabulary, an unqualified `kind` means a knowledge-artifact kind (`Artifact.kind: ArtifactKind` — `skill` / `prompt` / `agent` / `workflow`; `baseline` is the eval-only control role). Command flags follow suit: a `--kind` flag means an `ArtifactKind`, never a platform target, report type, or observe event type.
+In omk's product vocabulary, bare `kind` is reserved for `Artifact.kind` (`ArtifactKind`: `baseline` / `skill` / `prompt` / `agent` / `workflow`). `baseline` means the empty eval artifact; experiment role still comes from `control` / `treatment`. CLI design follows the same rule: a future `--kind` flag should mean artifact kind, not install target, report type, or observe event type.
 
-Except for existing discriminants already persisted into report / observe / doctor / diagnosis JSON, new or safely renamable discriminants should not use bare `kind`; use a qualified name instead:
+For other discriminants, use a qualified name when the field is new or safe to rename. Existing persisted `kind` fields stay as-is unless a dedicated migration changes them:
 
 - `report.kind` → `reportKind` / `documentKind`
 - `event.kind` → `eventKind`
@@ -323,7 +323,7 @@ Except for existing discriminants already persisted into report / observe / doct
 
 Two caveats:
 
-- **Persisted discriminants are frozen.** Any `kind` already serialized into a report / observe / doctor / diagnosis JSON file is a stored field name: renaming it would break deserializing existing on-disk files, so it needs a dedicated data / schema migration (not done here). This is serialization back-compat, not statistical comparability — renaming the field changes no measurement number. (`report.kind` additionally sits in the Report-schema invariant list, so treat any change there with the usual schema care.) New code reserves bare `kind` for `ArtifactKind` from the start.
+- **Persisted discriminants are frozen.** Any `kind` already serialized into a report / observe / doctor / diagnosis JSON file is a stored field name: renaming it would break deserializing existing on-disk files, so it needs a dedicated data / schema migration (not done here). This is serialization back-compat, not statistical comparability — renaming the field changes no measurement number. (`report.kind` additionally sits in the Report-schema invariant list, so treat any change there with the usual schema care.)
 - Renaming internal non-persisted fields is progressive — done opportunistically when touching that code, not as a big-bang sweep. A CI guard freezes the current set of bare-`kind` declaration sites so new unqualified ones cannot slip in.
 
 ## 6. Term mapping
