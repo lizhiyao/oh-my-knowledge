@@ -100,8 +100,8 @@ function installOmkAgentSkill(params: {
 
 export default class Install extends BaseCommand {
   static description = bilingual({
-    zh: '安装或接管 knowledge input（MVP 支持内置 omk Agent Skill，默认写入本机已检测 agent 目标）。',
-    en: 'Install or adopt a knowledge input (MVP supports the built-in omk Agent Skill, defaulting to detected local agent targets).',
+    zh: '安装或接管 knowledge input（当前支持内置 omk Agent Skill，默认写入本机已检测 agent 目标）。',
+    en: 'Install or adopt a knowledge input (currently supports the built-in omk Agent Skill, defaulting to detected local agent targets).',
   });
 
   static examples = [

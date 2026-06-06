@@ -286,7 +286,7 @@ omk init my-project
 
 ## omk install
 
-安装或接管 knowledge input（MVP 支持内置 omk Agent Skill，默认写入本机已检测 agent 目标）。
+安装或接管 knowledge input（当前支持内置 omk Agent Skill，默认写入本机已检测 agent 目标）。
 
 **用法:**
 

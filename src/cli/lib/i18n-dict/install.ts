@@ -16,8 +16,8 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
     en: 'Packaged built-in asset not found: {path}. Run yarn build first, or verify the npm package includes dist/assets/agent-skills/omk.',
   },
   'cli.install.unknown_input': {
-    zh: '当前 install MVP 只支持内置 id：omk-agent-skill。收到：{input}',
-    en: 'The install MVP currently supports only the built-in id: omk-agent-skill. Got: {input}',
+    zh: '当前 install 命令只支持内置 id：omk-agent-skill。收到：{input}',
+    en: 'The install command currently supports only the built-in id: omk-agent-skill. Got: {input}',
   },
   'cli.install.unknown_target': {
     zh: '未知安装目标：{target}。可用值：auto, codex, claude, all；或用 --dest <dir> 指定 skill 根目录。',
