@@ -54,8 +54,8 @@ omk 独有的资产是证据：verdict、Δ、置信区间、评委一致性、�
 - **知识输入**：用户可见的总称，指 LLM 接收到的 prompt、skill、RAG / corpus 输入、agent context 或 workflow 指令。
 - **Artifact**：omk eval 模型里真正被测量的对象。见 [术语规范](./terminology-spec.md)。
 - **Artifact kind**：具体的 `Artifact.kind` 值，例如 `skill`、`prompt`、`agent`、`workflow`。产品语义里的 `kind` 应保留给这个含义。
-- **候选版本**：由 `evolve` 或人工编辑提出、尚未转正的 artifact 版本。
-- **转正版本**：被接受为当前受管版本，并附带证据。
+- **候选版本**：由 `evolve`（只写到 evolve 自己的工作目录快照里）或人工编辑提出的 artifact 版本，尚未写入 source of record。
+- **转正版本**：由 `promote` 写回 source-of-record artifact 文件、并被接受为当前版本的版本，附带证据。
 - **证据包**：解释一次管理决策所需的最小证据集合。
 
 ## 5. 证据包
@@ -72,21 +72,23 @@ omk 独有的资产是证据：verdict、Δ、置信区间、评委一致性、�
 
 第一版可以先引用现有 report，而不是立刻引入很重的新 schema。如果必须改 Report schema，应单独走迁移，并明确可比性影响。
 
+强制项 vs 派生项。默认 `promote` 门禁里有四项是强制的，且必须解析到同一份可比报告：report id、用例集 hash 覆盖（报告的 `sampleHashes`）、verdict，以及可比性标记（`cliVersion` / `judgePromptHash` / `debiasMode` 一致）。缺任意一项的候选被阻塞，而不是放行；其余是 advisory 上下文。注意上面有几项并不是持久化的 Report 字段，而是从 Report 派生的——verdict、underpowered / cautious 标记、评分管道版本都是在出报告时算出来的——所以 Phase 1 应把它们当作「从被引用的 Report 派生」，而不是现成的 ReportMeta 列。把评分管道版本持久化属于 §9 的 schema 迁移问题。
+
 ## 6. 生命周期状态
 
 受管 artifact 可以有这些产品状态：
 
-| 状态 | 含义 | 下一步 |
+| 状态 | 含义 | 转移（动词 → 目标状态） |
 |---|---|---|
-| `discovered` | omk 找到候选 artifact，但还没有管理记录 | `doctor`、`install` |
-| `installed` | omk 知道 artifact 在哪里，但没有有效 eval 证据 | `doctor`、`sample`、`eval` |
-| `measurable` | doctor 和 samples 足以支持受控 eval | `eval`、`evolve` |
-| `candidate` | 存在一个候选版本，通常来自 `evolve` | `eval`、`promote`、`reject` |
-| `promoted` | 当前被接受版本，附带证据 | `observe`、`rollback`、`evolve` |
-| `stale` | 证据不再匹配 artifact / runtime / sample context | `doctor`、`eval` |
-| `rolled-back` | 已恢复到有证据的历史转正版本 | `observe`、`evolve` |
+| `discovered` | omk 找到候选 artifact，但还没有管理记录（install 之前跑的 `doctor` 只是 advisory，不建记录） | `install → installed` |
+| `installed` | omk 知道 artifact 在哪里，但没有有效 eval 证据 | `doctor` / `sample` → `measurable` |
+| `measurable` | doctor 和 samples 足以支持受控 eval | `eval → measurable`；`evolve → candidate` |
+| `candidate` | 存在一个候选版本（`evolve` 快照或人工编辑），尚未写入 source of record | `eval → candidate`；`promote → promoted`（或拒绝，不动源文件） |
+| `promoted` | 当前被接受版本，由 `promote` 写回源文件，附带证据 | `observe → promoted` / `stale`；`rollback → rolled-back`；`evolve → candidate` |
+| `stale` | 证据不再匹配 artifact / runtime / sample context | `doctor` / `sample` → `measurable` |
+| `rolled-back` | 由 `rollback` 恢复的、有证据的历史转正版本 | `observe`；`evolve → candidate` |
 
-这些状态先作为产品概念存在，不一定第一天就落成新的持久化 enum。
+这些状态先作为产品概念存在，不一定第一天就落成新的持久化 enum。`reject` 是 `promote` 决策的否定结果（记进证据包，不动源文件），不是单独的命令。
 
 ## 7. 命令面
 
@@ -94,7 +96,7 @@ omk 独有的资产是证据：verdict、Δ、置信区间、评委一致性、�
 
 ```text
 install → list → doctor → sample → eval → evolve → promote
-                                      ↘ rollback
+                                                   ↘ rollback
 observe → studio
 ```
 
@@ -132,9 +134,13 @@ omk install ./prompts/rewrite.md --kind prompt
 - 证据过期标记。
 - 线上观测 warning。
 
+### `evolve`
+
+`evolve` 产出候选版本。它只把候选写到自己的工作目录快照里（例如 `evolve/`），不写 source-of-record artifact 文件。对源 artifact 的 canonical 写入由 `promote` 独占。这是对 `evolve` 当前行为的变更——现在 evolve 会在跑完后把胜出候选自动写回源文件，迁移见 §8 Phase 2。
+
 ### `promote`
 
-`promote` 把候选版本转成当前受管版本。
+`promote` 把候选版本转成当前受管版本。它是唯一对 source-of-record artifact 文件执行 canonical 写入的命令。
 
 默认门禁：
 
@@ -161,7 +167,7 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 
 ### Phase 0：onboarding install
 
-#208 / PR #207 已完成：
+已在 #208 / PR #207 完成：
 
 - npm 包携带 omk 官方 Agent Skill。
 - `omk install omk-agent-skill` 只安装到已检测或显式指定的支持目标。
@@ -173,10 +179,11 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 - 增加只读 `list` 语义，或做一个 inventory 原型：展示已发现 / 已管理 / 证据状态，但不改 artifact。
 - 定义第一版证据包存储形态。
 
-### Phase 2：转正记录
+### Phase 2：转正记录与 canonical writer 迁移
 
 - 增加候选 / 转正记录。
-- 让 `evolve` 产出的候选版本可以带证据转正。
+- evolve 今天会在跑完后把胜出候选自动写回源 artifact 文件，于是 `promote` 没有东西可守。决策 (B)：让 `promote` 独占对源 artifact 的 canonical 写入；把 `evolve` 改成只把候选写到自己的工作目录快照里、不再改动源文件。这是对 evolve 当前默认行为的变更，必须排在 `promote` 能 gate 任何东西之前落地，并随 changelog / deprecation note 一起发布。
+- 让 `evolve` 产出的候选可由 `promote` 带证据写回。
 - 默认要求可比 eval 证据才能转正。
 
 ### Phase 3：回滚与 observe 反馈
@@ -189,6 +196,7 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 
 - 管理记录放在哪里：`.omk/managed.json`、`.omk/artifacts/`，还是其它 store？
 - git ref 与 omk 证据记录如何协作？
+- `evolve` 的工作目录快照该用什么布局？对当前依赖「evolve 把胜出版本写回源文件」的用户，deprecation 路径是什么？（决策 B 的迁移机制）
 - 默认允许哪些 verdict 转正：只允许 `PROGRESS`，还是允许带 caveat 的 `CAUTIOUS`？
 - 当只有 sample、runtime context 或 artifact 内容变化时，证据过期策略分别是什么？
 - 人类 override 应该允许在 CLI、Studio，还是两者都允许？
@@ -199,4 +207,3 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 把证据门控管理视为 omk 的真实方向，但不要急着做宽泛 CRUD 命令。
 
 下一步实现更适合从小型、证据感知的 inventory / prototype 开始，而不是通用 skill registry。这样 omk 的身份仍然锚定在测量上：只有当证据能跟 artifact 一起走时，管理才成立。
-
