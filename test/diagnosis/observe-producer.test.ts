@@ -27,7 +27,7 @@ workflows:
 # omk_fake_skill_x9z
 `);
       const report = {
-        kind: 'observe-inbox',
+        reportKind: 'observe-inbox',
         schemaVersion: 1,
         meta: {
           tracePath: '/tmp/synthetic-trace',
@@ -39,7 +39,7 @@ workflows:
         },
         items: [],
         experience: {
-          kind: 'observe-experience',
+          reportKind: 'observe-experience',
           schemaVersion: 1,
           scope: 'evidence-only',
           generatedAt: '2026-05-15T00:00:00.000Z',
@@ -167,7 +167,7 @@ hardRules:
       process.chdir(projectA);  // 模拟在 projectA 跑 ingest
       try {
         const report = {
-          kind: 'observe-inbox',
+          reportKind: 'observe-inbox',
           schemaVersion: 1,
           meta: {
             tracePath: '/tmp/trace-b',
@@ -216,7 +216,7 @@ hardRules:
       process.chdir(projectA);
       try {
         const report = {
-          kind: 'observe-inbox',
+          reportKind: 'observe-inbox',
           schemaVersion: 1,
           meta: {
             tracePath: '/tmp/trace-clean',
@@ -228,7 +228,7 @@ hardRules:
           },
           items: [],
           experience: {
-            kind: 'observe-experience',
+            reportKind: 'observe-experience',
             schemaVersion: 1,
             scope: 'evidence-only',
             generatedAt: '2026-05-15T00:00:00.000Z',
@@ -290,7 +290,7 @@ hardRules:
     // skill_md_not_found / hardrules_not_declared 等 chain advisory,只保留 problemPatterns 等
     // 跟 cwd 无关的诊断。
     const report = {
-      kind: 'observe-inbox',
+      reportKind: 'observe-inbox',
       schemaVersion: 1,
       meta: {
         tracePath: '/tmp/trace',

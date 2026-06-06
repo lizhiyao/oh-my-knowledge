@@ -146,7 +146,7 @@ export function markStale(record: SkillDerivedStandards, generatedAt: string): S
 export function isSkillDerivedStandards(value: unknown): value is SkillDerivedStandards {
   if (!value || typeof value !== 'object') return false;
   const item = value as Partial<SkillDerivedStandards>;
-  return item.kind === 'observe-skill-derived-standards'
+  return item.reportKind === 'observe-skill-derived-standards'
     && item.schemaVersion === 1
     && typeof item.skillName === 'string'
     && Array.isArray(item.standards);

@@ -122,7 +122,7 @@ describe('observe inbox - aggregation', () => {
   it('queries only the latest saved report by default', () => {
     const dir = mkdtempSync(join(tmpdir(), 'omk-inbox-'));
     const oldReport = {
-      kind: 'observe-inbox' as const,
+      reportKind: 'observe-inbox' as const,
       schemaVersion: 1 as const,
       meta: {
         generatedAt: '2026-05-01T00:00:00.000Z',
@@ -145,7 +145,7 @@ describe('observe inbox - aggregation', () => {
       items: [baseItem({ id: 'old', skillName: 'old_skill', lastSeen: '2026-05-01T00:00:00.000Z' })],
     };
     const latestReport = {
-      kind: 'observe-inbox' as const,
+      reportKind: 'observe-inbox' as const,
       schemaVersion: 1 as const,
       meta: {
         generatedAt: '2026-05-02T00:00:00.000Z',

@@ -145,7 +145,7 @@ describe('report-server', () => {
     writeFileSync(join(JOBS_DIR, 'job-test-run-001.json'), JSON.stringify(SAMPLE_JOB, null, 2));
     writeFileSync(join(JOBS_DIR, 'job-test-run-002.json'), JSON.stringify(FAILED_JOB, null, 2));
     writeFileSync(join(OBSERVATIONS_DIR, '2026-05-07T00-00-00-observe-inbox.json'), JSON.stringify({
-      kind: 'observe-inbox',
+      reportKind: 'observe-inbox',
       schemaVersion: 1,
       meta: {
         tracePath: '/tmp/trace',
