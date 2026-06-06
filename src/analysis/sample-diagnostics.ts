@@ -43,7 +43,7 @@ export type SampleIssueKind =
 export interface SampleIssue {
   sample_id: string;
   severity: 'error' | 'warning' | 'info';
-  kind: SampleIssueKind;
+  issueKind: SampleIssueKind;
   /** Minimal evidence to make the issue actionable. */
   evidence: Record<string, unknown>;
 }
@@ -134,17 +134,17 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
       const min = Math.min(...scores);
       if (max === 5 && min === 5) {
         issues.push({
-          sample_id: entry.sample_id, severity: 'info', kind: 'all_pass',
+          sample_id: entry.sample_id, severity: 'info', issueKind: 'all_pass',
           evidence: { scores: scoresMap(entry, variants) },
         });
       } else if (max === 1 && min === 1) {
         issues.push({
-          sample_id: entry.sample_id, severity: 'error', kind: 'all_fail',
+          sample_id: entry.sample_id, severity: 'error', issueKind: 'all_fail',
           evidence: { scores: scoresMap(entry, variants) },
         });
       } else if (max - min < opt.flatThreshold) {
         issues.push({
-          sample_id: entry.sample_id, severity: 'warning', kind: 'flat_scores',
+          sample_id: entry.sample_id, severity: 'warning', issueKind: 'flat_scores',
           evidence: { scores: scoresMap(entry, variants), spread: Number((max - min).toFixed(2)), threshold: opt.flatThreshold },
         });
       }
@@ -153,7 +153,7 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
     // Errored on at least one variant — sample may be broken (env / executor / fixture).
     if (errors > 0) {
       issues.push({
-        sample_id: entry.sample_id, severity: errors === variants.length ? 'error' : 'warning', kind: 'error_prone',
+        sample_id: entry.sample_id, severity: errors === variants.length ? 'error' : 'warning', issueKind: 'error_prone',
         evidence: { errorCount: errors, variantCount: variants.length },
       });
     }
@@ -162,7 +162,7 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
     const maxStddev = judgeStddevs.length > 0 ? Math.max(...judgeStddevs) : 0;
     if (maxStddev >= opt.ambiguousStddev) {
       issues.push({
-        sample_id: entry.sample_id, severity: 'warning', kind: 'ambiguous_rubric',
+        sample_id: entry.sample_id, severity: 'warning', issueKind: 'ambiguous_rubric',
         evidence: { maxStddev: Number(maxStddev.toFixed(2)), threshold: opt.ambiguousStddev, stddevs: judgeStddevs.map((s) => Number(s.toFixed(2))) },
       });
     }
@@ -177,13 +177,13 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
   for (const s of sampleStats) {
     if (medianCost > 0 && s.cost >= opt.costOutlierK * medianCost) {
       issues.push({
-        sample_id: s.entry.sample_id, severity: 'info', kind: 'cost_outlier',
+        sample_id: s.entry.sample_id, severity: 'info', issueKind: 'cost_outlier',
         evidence: { cost: Number(s.cost.toFixed(4)), medianCost: Number(medianCost.toFixed(4)), multiplier: opt.costOutlierK },
       });
     }
     if (medianLatency > 0 && s.latencyMs >= opt.latencyOutlierK * medianLatency) {
       issues.push({
-        sample_id: s.entry.sample_id, severity: 'info', kind: 'latency_outlier',
+        sample_id: s.entry.sample_id, severity: 'info', issueKind: 'latency_outlier',
         evidence: { latencyMs: s.latencyMs, medianMs: medianLatency, multiplier: opt.latencyOutlierK },
       });
     }
@@ -210,7 +210,7 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
           if (seenPair.has(key)) continue;
           seenPair.add(key);
           issues.push({
-            sample_id: prompts[i].id, severity: 'warning', kind: 'near_duplicate',
+            sample_id: prompts[i].id, severity: 'warning', issueKind: 'near_duplicate',
             evidence: { duplicateOf: prompts[j].id, rouge1: Number(score.toFixed(2)), threshold: opt.duplicateRouge },
           });
         }
@@ -233,7 +233,7 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
       if (rubric.length >= 20) continue;
       if (containsRubricGradeKeyword(rubric)) continue;
       issues.push({
-        sample_id: entry.sample_id, severity: 'info', kind: 'rubric_clarity_low',
+        sample_id: entry.sample_id, severity: 'info', issueKind: 'rubric_clarity_low',
         evidence: { rubricLength: rubric.length, rubricSnippet: rubric.slice(0, 80) },
       });
     }
@@ -264,7 +264,7 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
         // 报警挂在该 capability 的第一个 sample 上(便于定位),其他在 evidence 里列。
         const primarySampleId = info.sampleIds[0];
         issues.push({
-          sample_id: primarySampleId, severity: 'warning', kind: 'capability_thin',
+          sample_id: primarySampleId, severity: 'warning', issueKind: 'capability_thin',
           evidence: { capability: cap, sampleCount: info.count, threshold, sampleIds: info.sampleIds },
         });
       }
@@ -276,8 +276,8 @@ export function diagnoseSamples(report: Report, options: DiagnoseOptions = {}): 
 
   const byKind: SampleDiagnosticReport['byKind'] = {};
   for (const i of issues) {
-    if (!byKind[i.kind]) byKind[i.kind] = [];
-    if (!byKind[i.kind]!.includes(i.sample_id)) byKind[i.kind]!.push(i.sample_id);
+    if (!byKind[i.issueKind]) byKind[i.issueKind] = [];
+    if (!byKind[i.issueKind]!.includes(i.sample_id)) byKind[i.issueKind]!.push(i.sample_id);
   }
 
   const totals = {
@@ -371,7 +371,7 @@ function evidenceString(evidence: Record<string, unknown>, key: string, fallback
 
 export function formatSampleIssue(issue: SampleIssue, lang: DiagnosticLang = 'zh'): string {
   const evidence = issue.evidence;
-  switch (issue.kind) {
+  switch (issue.issueKind) {
     case 'all_pass':
       return lang === 'zh'
         ? '所有 variant 得分均为 5——用例可能太简单或断言过宽'
@@ -441,8 +441,8 @@ export function formatSampleIssue(issue: SampleIssue, lang: DiagnosticLang = 'zh
     }
     default:
       return lang === 'zh'
-        ? `结构化诊断：${issue.kind}`
-        : `Structured diagnostic: ${issue.kind}`;
+        ? `结构化诊断：${issue.issueKind}`
+        : `Structured diagnostic: ${issue.issueKind}`;
   }
 }
 
@@ -473,7 +473,7 @@ export function formatSampleDiagnostics(diag: SampleDiagnosticReport, options: {
     const ids = diag.byKind[kind] ?? [];
     if (ids.length === 0) continue;
     lines.push(`  [${kind}] ${ids.length} sample(s)`);
-    const matching = diag.issues.filter((i) => i.kind === kind);
+    const matching = diag.issues.filter((i) => i.issueKind === kind);
     const display = topN ? matching.slice(0, topN) : matching;
     for (const issue of display) {
       const sev = issue.severity === 'error' ? '✗' : issue.severity === 'warning' ? '⚠' : 'ℹ';

@@ -43,7 +43,7 @@ describe('diagnoseSamples — flat / all-pass / all-fail', () => {
     ], ['v1', 'v2']);
     const d = diagnoseSamples(r);
     assert.ok(d.byKind.all_fail?.includes('s1'));
-    assert.ok(d.issues.some((i) => i.kind === 'all_fail' && i.severity === 'error'));
+    assert.ok(d.issues.some((i) => i.issueKind === 'all_fail' && i.severity === 'error'));
   });
 
   it('flags flat_scores when spread < threshold', () => {
@@ -77,7 +77,7 @@ describe('diagnoseSamples — error_prone', () => {
       { id: 'all-broken', perVariant: { v1: { ok: false }, v2: { ok: false } } },
     ], ['v1', 'v2']);
     const d = diagnoseSamples(r);
-    const issue = d.issues.find((i) => i.kind === 'error_prone');
+    const issue = d.issues.find((i) => i.issueKind === 'error_prone');
     assert.equal(issue?.severity, 'error');
   });
 });
@@ -139,7 +139,7 @@ describe('diagnoseSamples — near_duplicate', () => {
     const d = diagnoseSamples(r, { samples, duplicateRouge: 0.6 });
     assert.ok(d.byKind.near_duplicate, 'expected near_duplicate kind');
     assert.equal(d.byKind.near_duplicate![0], 'a');
-    const issue = d.issues.find((i) => i.kind === 'near_duplicate');
+    const issue = d.issues.find((i) => i.issueKind === 'near_duplicate');
     assert.equal(issue?.evidence.duplicateOf, 'b');
   });
 
@@ -311,7 +311,7 @@ describe('diagnoseSamples — capability_thin', () => {
     const { report, samples } = buildN(10, (i) => i < 8 ? ['common'] : ['rare']);
     const d = diagnoseSamples(report, { samples });
     assert.ok(d.byKind.capability_thin, 'rare capability should be flagged');
-    const rareIssue = d.issues.find((i) => i.kind === 'capability_thin');
+    const rareIssue = d.issues.find((i) => i.issueKind === 'capability_thin');
     assert.ok(rareIssue);
     assert.equal((rareIssue!.evidence as { capability: string }).capability, 'rare');
     assert.equal((rareIssue!.evidence as { sampleCount: number }).sampleCount, 2);
@@ -344,7 +344,7 @@ describe('diagnoseSamples — capability_thin', () => {
       return ['core'];
     });
     const d = diagnoseSamples(report, { samples });
-    const rareIssue = d.issues.find((i) => i.kind === 'capability_thin'
+    const rareIssue = d.issues.find((i) => i.issueKind === 'capability_thin'
       && (i.evidence as { capability?: string })?.capability === 'rare');
     assert.ok(rareIssue, 'rare capability with deduped count=1 should still flag thin');
     assert.equal((rareIssue!.evidence as { sampleCount: number }).sampleCount, 1, 'count should be 1 (deduped), not 3');
