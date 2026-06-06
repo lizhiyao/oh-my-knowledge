@@ -33,6 +33,14 @@ Deeper: [CLI reference](docs/reference/cli.md) · [how it works](docs/explanatio
 
 ## Use inside AI Coding Agents
 
+Install the official omk Agent Skill to let your coding agent run omk workflows from natural language:
+
+```bash
+omk install omk-agent-skill
+```
+
+By default, omk installs only into detected local targets it explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
+
 ### Use inside Claude Code
 
 When the `omk` skill is available in Claude Code, you can invoke it directly:
@@ -71,7 +79,7 @@ Teams doing knowledge engineering produce lots of knowledge artifacts (skills to
 | Saturation curve | ✓ | ✗ | ✗ | ✗ |
 | Three-layer scoring isolation | ✓ | ✗ | partial | ✗ |
 | Per-variant skill isolation (construct validity) | ✓ default | ✗ | ✗ | ✗ |
-| Native Claude Code skill | ✓ | ✗ | ✗ | ✗ |
+| Native Agent Skill | ✓ | ✗ | ✗ | ✗ |
 | Hosted SaaS dashboard | ✗ | ✗ | ✓ | ✓ |
 
 omk's moat is **default-on safety net** — Bootstrap CI and length-debias aren't advanced flags; they're the default, and judge ↔ human α comes free the moment you add a gold set. Other tools let you opt into confidence intervals; omk makes them unavoidable. Need a hosted SaaS dashboard? Choose LangSmith. Want quick local prompt iteration without statistics? Choose promptfoo. **Shipping to production and someone will ask "why should I trust this number?" Choose omk.**
@@ -107,7 +115,7 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
 
 - **[How it works](docs/explanation/architecture.md)** — interleaved scheduling, variant resolution, dual-channel scoring, six-dim report
 - **[Eval sample format](docs/reference/eval-sample-format.md)** — sample schema, scoring formulas, 30+ assertion types, custom JS assertions
-- **[CLI reference](docs/reference/cli.md)** — all seven commands with bash examples and flag tables
+- **[CLI reference](docs/reference/cli.md)** — all top-level commands with bash examples and flag tables
 - **[Executors](docs/reference/executors.md)** & **[artifact layout](docs/reference/artifact-layout.md)** — built-in / custom executors; how `variant` resolves to an artifact + runtime context
 - **[How-to guides](docs/guides/agent-eval.md)** — [evaluate an agent](docs/guides/agent-eval.md) (project runtime context) and [use non-Claude models](docs/guides/non-claude-models.md) (GLM / Qwen / DeepSeek / Moonshot / Ollama)
 - **[Quickstart](docs/quickstart-skill-eval.md)** — first-time five-minute walkthrough

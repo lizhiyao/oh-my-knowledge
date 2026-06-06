@@ -5,6 +5,7 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 ## I want to use omk
 
 - [Quickstart](./quickstart-skill-eval.md) — first eval in 5 minutes
+- [Install the omk Agent Skill](./quickstart-skill-eval.md) — agent-driven onboarding with `omk install omk-agent-skill`
 - [CLI reference](./reference/cli.md)
 - [Eval sample format](./reference/eval-sample-format.md)
 - [Executors](./reference/executors.md)

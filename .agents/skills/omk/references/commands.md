@@ -284,6 +284,48 @@ omk init
 omk init my-project
 ```
 
+## omk install
+
+安装 omk 官方 Agent Skill（当前仅支持内置 id：omk-agent-skill，默认写入本机已检测 agent 目标）。
+
+**用法:**
+
+```bash
+omk install <input> [flags]
+```
+
+**参数:**
+
+- `input`(必填):要安装的知识输入。当前支持内置 id：omk-agent-skill。
+
+**Flags:**
+
+- `--dest` `option`:自定义 skill 根目录；omk 会安装到 <dir>/omk。
+- `--dry-run` `boolean`:只打印安装目标，不写文件。
+- `--force` `boolean`:覆盖已存在的 omk Agent Skill。
+- `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+- `--to` `option` (默认 `auto`):安装目标：auto（默认，本机已检测目标） / codex / claude / all。
+
+**示例:**
+
+> 安装 omk 官方 Agent Skill 到默认本机目标
+
+```bash
+omk install omk-agent-skill
+```
+
+> 强制安装到当前 omk 已知的所有目标
+
+```bash
+omk install omk-agent-skill --to all
+```
+
+> 安装到自定义 skill 根目录
+
+```bash
+omk install omk-agent-skill --dest ~/.my-agent/skills
+```
+
 ## omk observe
 
 分析 sessions 目录的 skill 调用健康度（默认行为）。子命令:ingest / inbox / show。

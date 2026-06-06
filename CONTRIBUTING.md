@@ -186,8 +186,8 @@ oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是
 | 目标 | marker | 输出 | 语言 |
 |---|---|---|---|
 | `.agents/skills/omk/references/commands.md` | 整段 `<!-- omk:cli:start -->` ... `<!-- omk:cli:end -->` | oclif `Config.commands` 全集完整渲染（含 topic / sub / sub-sub） | zh |
-| `README.md` | 每个顶层命令独立 `<!-- omk:cli:<id>:flags:start -->` ... `<!-- omk:cli:<id>:flags:end -->`,7 对 | flag list（```text``` 对齐风格）+ 指向 `--help` 的脚注 | en |
-| `README.zh.md` | 同上 | 同上 | zh |
+| `docs/reference/cli.md` | 每个顶层命令独立 `<!-- omk:cli:<id>:flags:start -->` ... `<!-- omk:cli:<id>:flags:end -->` | flag list（```text``` 对齐风格）+ 指向 `--help` 的脚注 | en |
+| `docs/zh/reference/cli.md` | 同上 | 同上 | zh |
 
 `SKILL.md` 不走 codegen（agent prompt 指令塞结构化命令清单跟 commands.md 重复,还撑大 agent context）。改用 `test/scripts/build-docs.test.ts` 的 vitest case 锁 frontmatter `argument-hint` 跟 oclif 顶层命令 id set（`TOP_LEVEL_IDS`）严格一致——历史上漂过 2 次（`bench run` → `eval`、`improve` → `evolve`),这条 test 把同类 drift 拦在 CI。
 
@@ -195,8 +195,8 @@ oclif Command 的 `description` / `flags` / `args` / `examples` static 字段是
 
 - 改完 oclif Command 的 description / flag,跑 `yarn build && yarn build:docs` 同步全部 3 个目标
 - 不跑就会被 vitest 内嵌 `--check` 拦截（exit 1 + 对每个 drift 的文件打 diff）
-- README 的 prose 段（static-only 解释 / HTML report tab / Studio IA / executor 表格等）在 marker 外,hand-maintained 保留
-- 新增顶层命令时:加 `src/cli/commands/<id>.ts`、在 README.md / README.zh.md 各加一对 `<!-- omk:cli:<id>:flags:start -->` / `:end -->`、SKILL.md frontmatter `argument-hint` 加 `<id>`,跑一遍 `yarn build && yarn build:docs && yarn test`(顶层命令集真值由 `scripts/build-docs.ts` 的 `getTopLevelIds(Config.load)` 从 oclif Command 文件目录派生,不需要再单独维护硬编码数组)
+- CLI reference 的 prose 段（static-only 解释 / HTML report tab / Studio IA / executor 表格等）在 marker 外,hand-maintained 保留
+- 新增顶层命令时:加 `src/cli/commands/<id>.ts`、在 `docs/reference/cli.md` / `docs/zh/reference/cli.md` 各加一对 `<!-- omk:cli:<id>:flags:start -->` / `:end -->`、SKILL.md frontmatter `argument-hint` 加 `<id>`,跑一遍 `yarn build && yarn build:docs && yarn test`(顶层命令集真值由 `scripts/build-docs.ts` 的 `getTopLevelIds(Config.load)` 从 oclif Command 文件目录派生,不需要再单独维护硬编码数组)
 - 新增子命令（如 `omk eval gold init` 这种 sub-sub）时:加 `src/cli/commands/eval/gold/init.ts`,oclif 文件目录自动路由,fullbody 模式自动包含
 
 ### 加新 sub-sub topic 命令

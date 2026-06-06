@@ -33,6 +33,14 @@ omk eval --control code-review-v1 --treatment code-review-v2
 
 ## 在 AI Coding Agent 中使用
 
+安装 omk 官方 Agent Skill 后，可以直接用自然语言让 coding agent 跑 omk 工作流：
+
+```bash
+omk install omk-agent-skill
+```
+
+默认只会安装到本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
+
 ### 在 Claude Code 中使用
 
 当 `omk` skill 已在 Claude Code 中可用时，可以直接这样调用：
@@ -71,7 +79,7 @@ omk sample skills/my-skill.md
 | 饱和曲线 | ✓ | ✗ | ✗ | ✗ |
 | 三层独立评分 | ✓ | ✗ | 部分 | ✗ |
 | 用例隔离(construct validity) | ✓ 默认 | ✗ | ✗ | ✗ |
-| 原生 Claude Code skill | ✓ | ✗ | ✗ | ✗ |
+| 原生 Agent Skill | ✓ | ✗ | ✗ | ✗ |
 | 托管 SaaS 看板 | ✗ | ✗ | ✓ | ✓ |
 
 omk 的护城河是 **default-on 安全网** —— Bootstrap CI / 长度去偏不是 advanced flag，是默认行为；评委 ↔ 人工 α 只要给一份 gold 集就自动算。其他工具让你**手动**接置信区间；omk 让你**默认无法忽略**它。需要 SaaS 看板？选 LangSmith。要快速 prompt 迭代不要统计层？选 promptfoo。**要发到生产且会被问「为什么应该相信这个数字」？选 omk。**
@@ -107,7 +115,7 @@ RAG 专项评测请看 RAGAS（独立 niche，跟 omk 互补）。完整对比�
 
 - **[工作原理](docs/zh/explanation/architecture.md)** —— 交错调度、variant 解析、双通道评分、六维报告
 - **[评测用例格式](docs/zh/reference/eval-sample-format.md)** —— sample schema、评分公式、30+ 断言类型、自定义 JS 断言
-- **[CLI 参考](docs/zh/reference/cli.md)** —— 7 个命令的 bash 示例和 flag 表
+- **[CLI 参考](docs/zh/reference/cli.md)** —— 顶层命令的 bash 示例和 flag 表
 - **[执行器](docs/zh/reference/executors.md)** & **[artifact 布局](docs/zh/reference/artifact-layout.md)** —— 内置 / 自定义执行器；variant 如何解析为 artifact + runtime context
 - **[操作指南](docs/zh/guides/agent-eval.md)** —— [评测 agent](docs/zh/guides/agent-eval.md)（项目 runtime context）与[使用非 Claude 模型](docs/zh/guides/non-claude-models.md)（GLM / 通义 / DeepSeek / Moonshot / Ollama）
 - **[快速上手](docs/zh/quickstart-skill-eval.md)** —— 第一次跑评测的 5 分钟教程

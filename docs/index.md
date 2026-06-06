@@ -23,4 +23,6 @@ features:
     details: Bootstrap CIs on the difference, judge-ensemble agreement, length-debiasing. A reported delta means a real difference within measurement noise — not a number that moved.
   - title: evolve — keep only proven gains
     details: Propose an edit, gate it on a statistically significant held-out improvement, and report an unbiased score on a locked test set. Refuses gains indistinguishable from judge noise.
+  - title: Agent Skill onboarding
+    details: Install the official omk Agent Skill with npm plus `omk install omk-agent-skill`, then drive doctor, eval, sample, evolve, observe, and studio from natural language inside your coding agent.
 ---

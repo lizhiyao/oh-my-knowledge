@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { getCliLang, parseLangFromArgv } from './lib/i18n.js';
-import { checkUpdate } from './lib/update-check.js';
 import { CliExit } from './lib/cli-exit.js';
 
 // CLI 入口:lang / 版本提醒等共享前置逻辑跑完,把控制权交给 oclif dispatcher。
@@ -18,6 +17,7 @@ function isShortPath(argv: readonly string[]): boolean {
 async function main(): Promise<void> {
   const lang = getCliLang(parseLangFromArgv(process.argv));
   if (!isShortPath(process.argv)) {
+    const { checkUpdate } = await import('./lib/update-check.js');
     checkUpdate(lang);
   }
 

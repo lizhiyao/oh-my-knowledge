@@ -4,7 +4,7 @@ description: |
   oh-my-knowledge 知识载体评测工具的智能代理。评测 skill（系统提示词）质量，对比不同版本效果，自动迭代改进。
   Use when: 用户提到"评测"、"测评"、"eval"、"benchmark"、"对比 skill"、"改进 skill"、"evolve"、"生成测试用例"、"gen-samples"、"omk"。
 user-invocable: true
-argument-hint: "<doctor|eval|evolve|init|observe|sample|studio> [options]"
+argument-hint: "<doctor|eval|evolve|init|install|observe|sample|studio> [options]"
 ---
 
 # OMK — 知识载体评测
@@ -19,7 +19,7 @@ argument-hint: "<doctor|eval|evolve|init|observe|sample|studio> [options]"
 npm i oh-my-knowledge -g
 ```
 
-omk CLI 顶层命令固定为 7 个：`init` / `doctor` / `eval` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。
+omk CLI 顶层命令包括：`init` / `install` / `doctor` / `eval` / `observe` / `evolve` / `sample` / `studio`。没有 `bench` / `improve` / `gen-samples` 这些旧子命令名 —— 如果你在历史 SKILL / 文档里看到了，那是 v0.30 命令树重构之前的写法。
 
 ## 第二步：理解用户意图
 
