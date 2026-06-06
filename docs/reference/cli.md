@@ -37,11 +37,12 @@ omk install omk-agent-skill --dest ~/.my-agent/skills
 **Flags:**
 
 ```text
-  --dest <value>  Custom skill root; installs into <dir>/omk.
-  --dry-run       Print install targets without writing files.
-  --force         Overwrite an existing omk Agent Skill.
-  --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --to <value>    Install target: auto (default, detected local targets) / codex / claude / all.
+  --dest <value>                  Custom skill root; installs into <dir>/omk.
+  --dry-run                       Print install targets without writing files.
+  --force                         Overwrite an existing omk Agent Skill.
+  --kind <skill|prompt|agent|workflow>Kind of the user artifact (aligns with Artifact.kind). Optional: inferred from SKILL.md; only skill is supported today.
+  --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --to <value>                    Install target: auto (default, detected local targets) / codex / claude / all.
 ```
 
 For full descriptions: `omk install --help`.

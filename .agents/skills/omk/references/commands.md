@@ -286,7 +286,7 @@ omk init my-project
 
 ## omk install
 
-安装 omk 官方 Agent Skill（当前仅支持内置 id：omk-agent-skill，默认写入本机已检测 agent 目标）。
+安装 omk 官方 Agent Skill,或登记并分发用户自己的 skill(内置 id omk-agent-skill,或 skill 路径 + --kind skill)。默认写入本机已检测 agent 目标;安装用户 skill 时同时登记一条受管记录。
 
 **用法:**
 
@@ -296,13 +296,14 @@ omk install <input> [flags]
 
 **参数:**
 
-- `input`(必填):要安装的知识输入。当前支持内置 id：omk-agent-skill。
+- `input`(必填):要安装的知识输入:内置 id omk-agent-skill,或用户 skill 路径(目录或 .md)。
 
 **Flags:**
 
 - `--dest` `option`:自定义 skill 根目录；omk 会安装到 <dir>/omk。
 - `--dry-run` `boolean`:只打印安装目标，不写文件。
 - `--force` `boolean`:覆盖已存在的 omk Agent Skill。
+- `--kind` `skill|prompt|agent|workflow`:用户 artifact 的 kind(对齐 Artifact.kind)。可省:命中 SKILL.md 自动推导,当前仅支持 skill。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--to` `option` (默认 `auto`):安装目标：auto（默认，本机已检测目标） / codex / claude / all。
 
@@ -324,6 +325,12 @@ omk install omk-agent-skill --to all
 
 ```bash
 omk install omk-agent-skill --dest ~/.my-agent/skills
+```
+
+> 登记并分发用户自己的 skill(--kind 可省,命中 SKILL.md 自动推导)
+
+```bash
+omk install ./skills/review
 ```
 
 ## omk observe

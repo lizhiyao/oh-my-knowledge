@@ -9,6 +9,9 @@ export type InstallMessageKey =
   | 'cli.install.target_exists'
   | 'cli.install.plan'
   | 'cli.install.installed'
+  | 'cli.install.kind_unsupported'
+  | 'cli.install.copied'
+  | 'cli.install.registered'
   | 'cli.install.next_hint';
 
 export const installDict: Record<InstallMessageKey, CliMessage> = {
@@ -17,8 +20,8 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
     en: 'Packaged built-in asset not found: {path}. Run yarn build first, or verify the npm package includes dist/assets/agent-skills/omk.',
   },
   'cli.install.unknown_input': {
-    zh: '当前 install 命令只支持内置 id：omk-agent-skill。收到：{input}',
-    en: 'The install command currently supports only the built-in id: omk-agent-skill. Got: {input}',
+    zh: 'install 接受内置 id omk-agent-skill,或一个 skill 路径（如 ./skills/review、./review.md）。无法识别的输入：{input}',
+    en: 'install accepts the built-in id omk-agent-skill, or a skill path (e.g. ./skills/review or ./review.md). Unrecognized input: {input}',
   },
   'cli.install.unknown_target': {
     zh: '未知安装目标：{target}。可用值：auto, codex, claude, all；或用 --dest <dir> 指定 skill 根目录。',
@@ -43,6 +46,18 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
   'cli.install.installed': {
     zh: '已安装 omk Agent Skill：{path}',
     en: 'Installed omk Agent Skill: {path}',
+  },
+  'cli.install.kind_unsupported': {
+    zh: '暂不支持安装 kind 为 {kind} 的知识输入；当前仅支持 skill（prompt / agent / workflow 的 artifact 模型尚未定义）。',
+    en: 'Installing a {kind} knowledge input is not yet supported; only skill is supported today (the artifact model for prompt / agent / workflow is not yet defined).',
+  },
+  'cli.install.copied': {
+    zh: '已安装 skill {name}：{path}',
+    en: 'Installed skill {name}: {path}',
+  },
+  'cli.install.registered': {
+    zh: '已登记受管记录 {id}：{store}',
+    en: 'Registered managed record {id}: {store}',
   },
   'cli.install.next_hint': {
     zh: '现在可以在 coding agent 中说「用 omk 评测这个 skill」。',

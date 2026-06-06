@@ -4,7 +4,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
@@ -287,7 +287,7 @@ describe('oclif install', () => {
     }
   });
 
-  it('unknown input exits non-zero', async () => {
+  it('unknown bare token exits non-zero and points at supported inputs', async () => {
     try {
       await execFileAsync('node', [CLI, 'install', 'other-skill']);
       assert.fail('expected non-zero exit');
@@ -295,6 +295,126 @@ describe('oclif install', () => {
       const e = err as ExecError;
       assert.notEqual(e.code, 0);
       assert.ok((e.stdout + e.stderr).includes('omk-agent-skill'), 'error should mention supported builtin id');
+    }
+  });
+
+  // —— 用户 skill:登记 + 分发 ——
+
+  async function makeDirSkill(root: string, name: string): Promise<string> {
+    const skillDir = join(root, 'skills', name);
+    await mkdir(join(skillDir, 'references'), { recursive: true });
+    await writeFile(join(skillDir, 'SKILL.md'), `---\nname: ${name}\ndescription: demo\n---\n# ${name}\nbody\n`);
+    await writeFile(join(skillDir, 'references', 'cmd.md'), 'asset\n');
+    return skillDir;
+  }
+
+  async function readSoleManagedRecord(projectDir: string): Promise<Record<string, unknown>> {
+    const dir = join(projectDir, '.omk', 'managed');
+    const files = (await readdir(dir)).filter((f) => f.endsWith('.json'));
+    assert.equal(files.length, 1, `expected exactly one managed record, got ${files.length}`);
+    return JSON.parse(await readFile(join(dir, files[0]), 'utf8'));
+  }
+
+  it('directory-skill:分发整目录 + 登记受管记录(--kind 可省自动推导)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-userskill-'));
+    try {
+      await makeDirSkill(dir, 'review');
+      const dest = join(dir, 'dist-skills');
+      const { stdout } = await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', dest], {
+        cwd: dir,
+        env: cliEnv(),
+      });
+      assert.ok(stdout.includes('已安装 skill review'), `stdout missing copy msg:\n${stdout}`);
+      assert.ok(stdout.includes('已登记受管记录'), `stdout missing register msg:\n${stdout}`);
+      assert.ok(existsSync(join(dest, 'review', 'SKILL.md')), 'skill SKILL.md not distributed');
+      assert.ok(existsSync(join(dest, 'review', 'references', 'cmd.md')), 'asset not distributed');
+
+      const record = await readSoleManagedRecord(dir);
+      assert.equal(record.recordKind, 'managed-artifact');
+      assert.equal(record.schemaVersion, 1);
+      assert.equal(record.name, 'review');
+      assert.equal(record.kind, 'skill');
+      assert.equal(typeof record.contentHash, 'string');
+      assert.ok((record.contentHash as string).length > 0, 'contentHash empty');
+      assert.deepEqual(record.evidence, []);
+      assert.deepEqual(record.decisions, []);
+      const source = record.source as Record<string, unknown>;
+      assert.equal(source.isDirectorySkill, true);
+      const distribution = record.distribution as Array<Record<string, unknown>>;
+      assert.equal(distribution.length, 1);
+      assert.equal(distribution[0].path, join(dest, 'review'));
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('file-skill:目标是 .md 文件', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-fileskill-'));
+    try {
+      await writeFile(join(dir, 'notes.md'), `---\nname: notes\ndescription: demo\n---\n# notes\nbody\n`);
+      const dest = join(dir, 'dist-skills');
+      await execFileAsync('node', [CLI, 'install', 'notes.md', '--kind', 'skill', '--dest', dest], {
+        cwd: dir,
+        env: cliEnv(),
+      });
+      assert.ok(existsSync(join(dest, 'notes.md')), 'file-skill not distributed as .md');
+      const record = await readSoleManagedRecord(dir);
+      assert.equal((record.source as Record<string, unknown>).isDirectorySkill, false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('--dry-run 既不分发也不登记', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-userskill-dry-'));
+    try {
+      await makeDirSkill(dir, 'review');
+      const dest = join(dir, 'dist-skills');
+      await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', dest, '--dry-run'], {
+        cwd: dir,
+        env: cliEnv(),
+      });
+      assert.ok(!existsSync(join(dest, 'review')), 'dry-run must not distribute');
+      assert.ok(!existsSync(join(dir, '.omk', 'managed')), 'dry-run must not write managed record');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('--force 重装幂等:仍是一条记录,分发不重复', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-userskill-force-'));
+    try {
+      await makeDirSkill(dir, 'review');
+      const dest = join(dir, 'dist-skills');
+      await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', dest], { cwd: dir, env: cliEnv() });
+      await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', dest, '--force'], { cwd: dir, env: cliEnv() });
+      const record = await readSoleManagedRecord(dir);
+      const distribution = record.distribution as Array<Record<string, unknown>>;
+      assert.equal(distribution.length, 1, 'distribution must dedup by path');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('显式 --kind prompt 报友好错误且不登记', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-userskill-prompt-'));
+    try {
+      await makeDirSkill(dir, 'review');
+      const dest = join(dir, 'dist-skills');
+      try {
+        await execFileAsync('node', [CLI, 'install', 'skills/review', '--kind', 'prompt', '--dest', dest], {
+          cwd: dir,
+          env: cliEnv(),
+        });
+        assert.fail('expected non-zero exit');
+      } catch (err) {
+        const e = err as ExecError;
+        assert.notEqual(e.code, 0);
+        assert.ok((e.stdout + e.stderr).includes('skill'), 'error should mention skill-only support');
+      }
+      assert.ok(!existsSync(join(dir, '.omk', 'managed')), 'unsupported kind must not register');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
     }
   });
 });
