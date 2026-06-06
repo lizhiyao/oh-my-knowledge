@@ -87,7 +87,7 @@ function resolveInstallTargets(params: { to: string; dest?: string; lang: 'zh' |
     return [{ label: 'custom', skillsDir: resolve(params.dest) }];
   }
 
-  const targets = params.to === 'auto' ? autoTargets() : parseTargets(params.to, params.lang);
+  const targets = parseTargets(params.to, params.lang);
   if (targets.length === 0) {
     throw new Error(tCli('cli.install.no_detected_targets', params.lang));
   }
@@ -102,6 +102,26 @@ function resolveInstallTargets(params: { to: string; dest?: string; lang: 'zh' |
     });
 }
 
+function targetSkillDir(target: InstallTarget): string {
+  return join(target.skillsDir, 'omk');
+}
+
+function validateInstallTargets(params: {
+  targets: InstallTarget[];
+  force: boolean;
+  dryRun: boolean;
+  lang: 'zh' | 'en';
+}): void {
+  if (params.dryRun || params.force) return;
+
+  for (const target of params.targets) {
+    const targetDir = targetSkillDir(target);
+    if (existsSync(targetDir)) {
+      throw new Error(tCli('cli.install.target_exists', params.lang, { path: targetDir }));
+    }
+  }
+}
+
 function installOmkAgentSkill(params: {
   sourceDir: string;
   target: InstallTarget;
@@ -113,7 +133,7 @@ function installOmkAgentSkill(params: {
     throw new Error(tCli('cli.install.asset_missing', params.lang, { path: params.sourceDir }));
   }
 
-  const targetDir = join(params.target.skillsDir, 'omk');
+  const targetDir = targetSkillDir(params.target);
   if (params.dryRun) {
     console.log(tCli('cli.install.plan', params.lang, { path: targetDir }));
     return targetDir;
@@ -132,8 +152,8 @@ function installOmkAgentSkill(params: {
 
 export default class Install extends BaseCommand {
   static description = bilingual({
-    zh: '安装或接管 knowledge input（当前支持内置 omk Agent Skill，默认写入本机已检测 agent 目标）。',
-    en: 'Install or adopt a knowledge input (currently supports the built-in omk Agent Skill, defaulting to detected local agent targets).',
+    zh: '安装 omk 官方 Agent Skill（当前仅支持内置 id：omk-agent-skill，默认写入本机已检测 agent 目标）。',
+    en: 'Install the official omk Agent Skill (currently supports only built-in id: omk-agent-skill, defaulting to detected local agent targets).',
   });
 
   static examples = [
@@ -163,7 +183,7 @@ export default class Install extends BaseCommand {
   static args = {
     input: Args.string({
       description: bilingual({
-        zh: '要安装的 knowledge input。当前支持内置 id：omk-agent-skill。',
+        zh: '要安装的知识输入。当前支持内置 id：omk-agent-skill。',
         en: 'Knowledge input to install. Currently supports built-in id: omk-agent-skill.',
       }),
       required: true,
@@ -212,6 +232,12 @@ export default class Install extends BaseCommand {
 
       const sourceDir = packagedOmkAgentSkillDir();
       const targets = resolveInstallTargets({ to: flags.to, dest: flags.dest, lang });
+      validateInstallTargets({
+        targets,
+        force: flags.force,
+        dryRun: flags['dry-run'],
+        lang,
+      });
       for (const target of targets) {
         installOmkAgentSkill({
           sourceDir,

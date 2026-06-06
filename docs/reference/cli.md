@@ -1,6 +1,6 @@
 # omk CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (scaffold) · `install` (install/adopt a knowledge input) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
+omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (scaffold) · `install` (install the official omk Agent Skill) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
 
 <!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build-docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
@@ -48,7 +48,7 @@ For full descriptions: `omk install --help`.
 
 <!-- omk:cli:install:flags:end -->
 
-Installs the official omk Agent Skill into local supported coding-agent targets. The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root. This is the onboarding path for agent-driven workflows; user knowledge inputs will use the same lifecycle entry point in future releases.
+Installs the official omk Agent Skill into local supported coding-agent targets. The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
 
 ## `omk doctor`
 

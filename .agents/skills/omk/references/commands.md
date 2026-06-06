@@ -286,7 +286,7 @@ omk init my-project
 
 ## omk install
 
-安装或接管 knowledge input（当前支持内置 omk Agent Skill，默认写入本机已检测 agent 目标）。
+安装 omk 官方 Agent Skill（当前仅支持内置 id：omk-agent-skill，默认写入本机已检测 agent 目标）。
 
 **用法:**
 
@@ -296,7 +296,7 @@ omk install <input> [flags]
 
 **参数:**
 
-- `input`(必填):要安装的 knowledge input。当前支持内置 id：omk-agent-skill。
+- `input`(必填):要安装的知识输入。当前支持内置 id：omk-agent-skill。
 
 **Flags:**
 

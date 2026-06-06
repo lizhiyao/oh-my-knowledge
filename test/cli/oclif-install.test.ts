@@ -29,13 +29,13 @@ function cliEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
 describe('oclif install', () => {
   it('--help 默认 zh', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'install', '--help']);
-    assert.ok(stdout.includes('安装或接管 knowledge input'), `stdout missing zh description:\n${stdout}`);
+    assert.ok(stdout.includes('安装 omk 官方 Agent Skill'), `stdout missing zh description:\n${stdout}`);
     assert.ok(stdout.includes('omk-agent-skill'), 'stdout missing builtin id');
   });
 
   it('--help --lang en', async () => {
     const { stdout } = await execFileAsync('node', [CLI, 'install', '--help', '--lang', 'en']);
-    assert.ok(stdout.includes('Install or adopt a knowledge input'), 'stdout should contain en description');
+    assert.ok(stdout.includes('Install the official omk Agent Skill'), 'stdout should contain en description');
   });
 
   it('unknown flag → exit 2', async () => {
@@ -54,8 +54,22 @@ describe('oclif install', () => {
       const dest = join(dir, 'skills-root');
       const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest]);
       assert.ok(stdout.includes('已安装 omk Agent Skill'), `stdout missing install msg:\n${stdout}`);
+      assert.ok(stdout.includes('现在可以在 coding agent 中说'), `stdout missing next hint:\n${stdout}`);
       assert.ok(existsSync(join(dest, 'omk', 'SKILL.md')), 'SKILL.md not installed');
       assert.ok(existsSync(join(dest, 'omk', 'references', 'commands.md')), 'commands reference not installed');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('prints runtime messages in English', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-en-'));
+    try {
+      const dest = join(dir, 'skills-root');
+      const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest, '--lang', 'en']);
+      assert.ok(stdout.includes('Installed omk Agent Skill'), `stdout missing en install msg:\n${stdout}`);
+      assert.ok(stdout.includes('You can now ask your coding agent'), `stdout missing en next hint:\n${stdout}`);
+      assert.ok(existsSync(join(dest, 'omk', 'SKILL.md')), 'SKILL.md not installed');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -116,6 +130,53 @@ describe('oclif install', () => {
     }
   });
 
+  it('supports --to all without detected targets', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-all-'));
+    try {
+      const home = join(dir, 'home');
+      await mkdir(home, { recursive: true });
+      const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--to', 'all'], {
+        env: cliEnv({ HOME: home }),
+      });
+      assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 2, `stdout should list two installs:\n${stdout}`);
+      assert.ok(existsSync(join(home, '.agents', 'skills', 'omk', 'SKILL.md')), 'Codex/AGENTS target not installed');
+      assert.ok(existsSync(join(home, '.claude', 'skills', 'omk', 'SKILL.md')), 'Claude Code target not installed');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('supports explicit single targets', async () => {
+    for (const target of ['codex', 'claude'] as const) {
+      const dir = await mkdtemp(join(tmpdir(), `omk-install-${target}-`));
+      try {
+        const home = join(dir, 'home');
+        await mkdir(home, { recursive: true });
+        const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--to', target], {
+          env: cliEnv({ HOME: home }),
+        });
+        assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 1, `stdout should list one install:\n${stdout}`);
+        const installed = target === 'codex'
+          ? join(home, '.agents', 'skills', 'omk', 'SKILL.md')
+          : join(home, '.claude', 'skills', 'omk', 'SKILL.md');
+        assert.ok(existsSync(installed), `${target} target not installed`);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('rejects unknown install targets', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--to', 'gemini']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.notEqual(e.code, 0);
+      assert.ok((e.stdout + e.stderr).includes('未知安装目标'), 'error should mention unknown install target');
+    }
+  });
+
   it('rejects mixed auto/all target combinations', async () => {
     for (const to of ['auto,codex', 'all,claude']) {
       try {
@@ -167,6 +228,32 @@ describe('oclif install', () => {
         assert.notEqual(e.code, 0);
         assert.ok((e.stdout + e.stderr).includes('--force'), 'error should mention --force');
       }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('preflights existing targets before multi-target install', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-preflight-'));
+    try {
+      const home = join(dir, 'home');
+      const claudeSkill = join(home, '.claude', 'skills', 'omk');
+      await mkdir(claudeSkill, { recursive: true });
+      await writeFile(join(claudeSkill, 'SKILL.md'), 'existing claude install');
+
+      try {
+        await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--to', 'codex,claude'], {
+          env: cliEnv({ HOME: home }),
+        });
+        assert.fail('expected non-zero exit');
+      } catch (err) {
+        const e = err as ExecError;
+        assert.notEqual(e.code, 0);
+        assert.ok((e.stdout + e.stderr).includes('--force'), 'error should mention --force');
+      }
+
+      assert.ok(!existsSync(join(home, '.agents')), 'preflight failure must not partially install Codex target');
+      assert.equal(await readFile(join(claudeSkill, 'SKILL.md'), 'utf8'), 'existing claude install');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
