@@ -30,7 +30,7 @@ function knownTarget(target: AgentTarget): InstallTarget {
 
 function parseTargets(raw: string, lang: 'zh' | 'en'): AgentTarget[] {
   const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
-  if (parts.length === 0 || parts.includes('auto')) return ['codex'];
+  if (parts.length === 0 || parts.includes('auto')) return autoTargets();
   if (parts.includes('all')) return ['codex', 'claude'];
   const out: AgentTarget[] = [];
   for (const part of parts) {
@@ -43,8 +43,10 @@ function parseTargets(raw: string, lang: 'zh' | 'en'): AgentTarget[] {
 }
 
 function autoTargets(): AgentTarget[] {
-  const targets: AgentTarget[] = ['codex'];
-  if (existsSync(join(homedir(), '.claude'))) targets.push('claude');
+  const home = homedir();
+  const targets: AgentTarget[] = [];
+  if (existsSync(join(home, '.agents')) || existsSync(join(home, '.codex'))) targets.push('codex');
+  if (existsSync(join(home, '.claude'))) targets.push('claude');
   return targets;
 }
 
@@ -54,6 +56,9 @@ function resolveInstallTargets(params: { to: string; dest?: string; lang: 'zh' |
   }
 
   const targets = params.to === 'auto' ? autoTargets() : parseTargets(params.to, params.lang);
+  if (targets.length === 0) {
+    throw new Error(tCli('cli.install.no_detected_targets', params.lang));
+  }
   const seen = new Set<string>();
   return targets
     .map(knownTarget)
@@ -95,22 +100,22 @@ function installOmkAgentSkill(params: {
 
 export default class Install extends BaseCommand {
   static description = bilingual({
-    zh: '安装或接管 knowledge input（MVP 支持内置 omk Agent Skill）。',
-    en: 'Install or adopt a knowledge input (MVP supports the built-in omk Agent Skill).',
+    zh: '安装或接管 knowledge input（MVP 支持内置 omk Agent Skill，默认写入本机已检测 agent 目标）。',
+    en: 'Install or adopt a knowledge input (MVP supports the built-in omk Agent Skill, defaulting to detected local agent targets).',
   });
 
   static examples = [
     {
       description: bilingual({
-        zh: '安装 omk 官方 Agent Skill 到默认 agent 目录',
-        en: 'Install the official omk Agent Skill into the default agent directory',
+        zh: '安装 omk 官方 Agent Skill 到默认本机目标',
+        en: 'Install the official omk Agent Skill into default local targets',
       }),
       command: '<%= config.bin %> install omk-agent-skill',
     },
     {
       description: bilingual({
-        zh: '同时安装到 Codex 与 Claude Code',
-        en: 'Install into both Codex and Claude Code',
+        zh: '强制安装到当前 omk 已知的所有目标',
+        en: 'Install into every target currently known to omk',
       }),
       command: '<%= config.bin %> install omk-agent-skill --to all',
     },
@@ -137,8 +142,8 @@ export default class Install extends BaseCommand {
     lang: LANG_FLAG,
     to: Flags.string({
       description: bilingual({
-        zh: '安装目标：auto / codex / claude / all，默认 auto。',
-        en: 'Install target: auto / codex / claude / all. Default auto.',
+        zh: '安装目标：auto（默认，本机已检测目标） / codex / claude / all。',
+        en: 'Install target: auto (default, detected local targets) / codex / claude / all.',
       }),
       default: 'auto',
     }),

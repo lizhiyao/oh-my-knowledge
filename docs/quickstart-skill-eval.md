@@ -15,7 +15,7 @@ If you want the **agent-driven workflow** (recommended), also install the omk Ag
 omk install omk-agent-skill
 ```
 
-This installs the official omk Agent Skill into your local coding-agent skill directory. Once installed, the agent auto-loads the SKILL context when you mention "omk", "benchmark", "evaluate", "skill eval", etc.
+By default, this installs only into detected local targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root. Once installed, the agent auto-loads the SKILL context when you mention "omk", "benchmark", "evaluate", "skill eval", etc.
 
 ## Prepare your skill (1 minute)
 

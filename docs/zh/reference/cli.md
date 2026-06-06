@@ -41,14 +41,14 @@ omk install omk-agent-skill --dest ~/.my-agent/skills
   --dry-run       只打印安装目标，不写文件。
   --force         覆盖已存在的 omk Agent Skill。
   --lang <value>  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-  --to <value>    安装目标：auto / codex / claude / all，默认 auto。
+  --to <value>    安装目标：auto（默认，本机已检测目标） / codex / claude / all。
 ```
 
 完整描述见 `omk install --help`。
 
 <!-- omk:cli:install:flags:end -->
 
-把 omk 官方 Agent Skill 安装到本机 coding agent 的 skill 目录。这是 agent-driven workflow 的 onboarding 入口；用户自己的 knowledge input 后续也会沿用同一个生命周期入口。
+把 omk 官方 Agent Skill 安装到本机支持的 coding-agent 目标。默认 `auto` 只会写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。这是 agent-driven workflow 的 onboarding 入口；用户自己的 knowledge input 后续也会沿用同一个生命周期入口。
 
 ## `omk doctor`
 

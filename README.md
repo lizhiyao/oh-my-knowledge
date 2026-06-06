@@ -39,6 +39,8 @@ Install the official omk Agent Skill to let your coding agent run omk workflows 
 omk install omk-agent-skill
 ```
 
+By default, omk installs only into detected local targets it explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
+
 ### Use inside Claude Code
 
 When the `omk` skill is available in Claude Code, you can invoke it directly:

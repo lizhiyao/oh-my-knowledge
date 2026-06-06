@@ -41,14 +41,14 @@ omk install omk-agent-skill --dest ~/.my-agent/skills
   --dry-run       Print install targets without writing files.
   --force         Overwrite an existing omk Agent Skill.
   --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
-  --to <value>    Install target: auto / codex / claude / all. Default auto.
+  --to <value>    Install target: auto (default, detected local targets) / codex / claude / all.
 ```
 
 For full descriptions: `omk install --help`.
 
 <!-- omk:cli:install:flags:end -->
 
-Installs the official omk Agent Skill into a local coding-agent skill directory. This is the onboarding path for agent-driven workflows; user knowledge inputs will use the same lifecycle entry point in future releases.
+Installs the official omk Agent Skill into local supported coding-agent targets. The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root. This is the onboarding path for agent-driven workflows; user knowledge inputs will use the same lifecycle entry point in future releases.
 
 ## `omk doctor`
 

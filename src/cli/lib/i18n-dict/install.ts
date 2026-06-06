@@ -4,6 +4,7 @@ export type InstallMessageKey =
   | 'cli.install.asset_missing'
   | 'cli.install.unknown_input'
   | 'cli.install.unknown_target'
+  | 'cli.install.no_detected_targets'
   | 'cli.install.target_exists'
   | 'cli.install.plan'
   | 'cli.install.installed'
@@ -21,6 +22,10 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
   'cli.install.unknown_target': {
     zh: '未知安装目标：{target}。可用值：auto, codex, claude, all；或用 --dest <dir> 指定 skill 根目录。',
     en: 'Unknown install target: {target}. Use auto, codex, claude, all; or pass --dest <dir> for a custom skill root.',
+  },
+  'cli.install.no_detected_targets': {
+    zh: '未检测到本机支持的 agent skill 目录。请用 --to codex / --to claude / --to all 明确目标，或用 --dest <dir> 指定 skill 根目录。',
+    en: 'No supported local agent skill directory was detected. Pass --to codex / --to claude / --to all, or pass --dest <dir> for a custom skill root.',
   },
   'cli.install.target_exists': {
     zh: '目标已存在：{path}。如要更新 omk Agent Skill，请加 --force。',

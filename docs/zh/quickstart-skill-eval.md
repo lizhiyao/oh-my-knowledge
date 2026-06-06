@@ -15,7 +15,7 @@ omk --version    # 能输出版本号即装好
 omk install omk-agent-skill
 ```
 
-这会把 omk 官方 Agent Skill 安装到本机 coding agent 的 skill 目录。装好之后，agent 收到含「omk」「评测」「benchmark」之类的关键词就会自动加载 SKILL 上下文。
+默认只会安装到本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。装好之后，agent 收到含「omk」「评测」「benchmark」之类的关键词就会自动加载 SKILL 上下文。
 
 ## 准备 skill（1 分钟）
 

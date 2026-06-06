@@ -286,7 +286,7 @@ omk init my-project
 
 ## omk install
 
-安装或接管 knowledge input（MVP 支持内置 omk Agent Skill）。
+安装或接管 knowledge input（MVP 支持内置 omk Agent Skill，默认写入本机已检测 agent 目标）。
 
 **用法:**
 
@@ -304,17 +304,17 @@ omk install <input> [flags]
 - `--dry-run` `boolean`:只打印安装目标，不写文件。
 - `--force` `boolean`:覆盖已存在的 omk Agent Skill。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
-- `--to` `option` (默认 `auto`):安装目标：auto / codex / claude / all，默认 auto。
+- `--to` `option` (默认 `auto`):安装目标：auto（默认，本机已检测目标） / codex / claude / all。
 
 **示例:**
 
-> 安装 omk 官方 Agent Skill 到默认 agent 目录
+> 安装 omk 官方 Agent Skill 到默认本机目标
 
 ```bash
 omk install omk-agent-skill
 ```
 
-> 同时安装到 Codex 与 Claude Code
+> 强制安装到当前 omk 已知的所有目标
 
 ```bash
 omk install omk-agent-skill --to all

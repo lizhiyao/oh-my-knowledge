@@ -39,6 +39,8 @@ omk eval --control code-review-v1 --treatment code-review-v2
 omk install omk-agent-skill
 ```
 
+默认只会安装到本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
+
 ### 在 Claude Code 中使用
 
 当 `omk` skill 已在 Claude Code 中可用时，可以直接这样调用：

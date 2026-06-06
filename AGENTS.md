@@ -56,6 +56,8 @@ omk 是面向 LLM 知识输入（prompt / RAG / skill / agent）的评测与迭�
 omk install omk-agent-skill
 ```
 
+默认只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。需要强制写入当前 omk 已知的全部目标时，用 `--to all`；需要自定义 skill 根目录时，用 `--dest`。
+
 仓库开发或手动复用时，也可以把 `.agents/skills/omk/` 整目录拷到对应工具的 skill 目录：
 
 ```bash

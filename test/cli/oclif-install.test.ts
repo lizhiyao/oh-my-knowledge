@@ -4,7 +4,7 @@
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { join, dirname } from 'node:path';
@@ -20,6 +20,10 @@ interface ExecError extends Error {
   code?: number;
   stdout: string;
   stderr: string;
+}
+
+function cliEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  return { ...process.env, OMK_SKIP_UPDATE_CHECK: '1', ...extra };
 }
 
 describe('oclif install', () => {
@@ -52,6 +56,47 @@ describe('oclif install', () => {
       assert.ok(stdout.includes('已安装 omk Agent Skill'), `stdout missing install msg:\n${stdout}`);
       assert.ok(existsSync(join(dest, 'omk', 'SKILL.md')), 'SKILL.md not installed');
       assert.ok(existsSync(join(dest, 'omk', 'references', 'commands.md')), 'commands reference not installed');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('auto installs into detected local supported targets', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-auto-'));
+    try {
+      const home = join(dir, 'home');
+      await mkdir(join(home, '.codex'), { recursive: true });
+      await mkdir(join(home, '.claude'), { recursive: true });
+      const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill'], {
+        env: cliEnv({ HOME: home }),
+      });
+      assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 2, `stdout should list two installs:\n${stdout}`);
+      assert.ok(existsSync(join(home, '.agents', 'skills', 'omk', 'SKILL.md')), 'Codex/AGENTS target not installed');
+      assert.ok(existsSync(join(home, '.claude', 'skills', 'omk', 'SKILL.md')), 'Claude Code target not installed');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('auto fails when no supported local target is detected', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-auto-missing-'));
+    try {
+      const home = join(dir, 'home');
+      await mkdir(home, { recursive: true });
+      try {
+        await execFileAsync('node', [CLI, 'install', 'omk-agent-skill'], {
+          env: cliEnv({ HOME: home }),
+        });
+        assert.fail('expected non-zero exit');
+      } catch (err) {
+        const e = err as ExecError;
+        assert.notEqual(e.code, 0);
+        const out = e.stdout + e.stderr;
+        assert.ok(out.includes('未检测到本机支持的 agent skill 目录'), `missing detected-target hint:\n${out}`);
+        assert.ok(out.includes('--to codex') && out.includes('--dest'), `missing explicit target guidance:\n${out}`);
+      }
+      assert.ok(!existsSync(join(home, '.agents')), 'auto must not create AGENTS root without detection');
+      assert.ok(!existsSync(join(home, '.claude')), 'auto must not create Claude root without detection');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
