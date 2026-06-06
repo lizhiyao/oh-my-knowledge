@@ -38,7 +38,7 @@ const buildReport = (
   rows: Array<{ sample_id: string; output: string; llmScore: number }>,
   debiasMode: Array<'length' | 'position'> = ['length'],
 ): Report => ({
-  kind: 'evaluation',
+  reportKind: 'evaluation',
   id: 'r1',
   meta: {
     variants: [variant],

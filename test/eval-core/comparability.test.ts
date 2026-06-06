@@ -26,7 +26,7 @@ function runtime(executor: string, model: string, fingerprint: string): Executor
 
 function report(overrides: Partial<Report['meta']> = {}): Report {
   return {
-    kind: 'evaluation',
+    reportKind: 'evaluation',
     id: 'r',
     meta: {
       variants: ['control', 'treatment'],

@@ -34,9 +34,6 @@ const SRC_DIR = join(PROJECT_ROOT, 'src');
 // 这是债务登记,不是「允许裸 kind」的背书。
 const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   // —— 持久化 report schema（Report JSON 字段语义，CLAUDE.md 列明的不变量）——
-  "src/types/report.ts::EvaluationReport::'evaluation'",
-  "src/types/report.ts::BatchEvaluationReport::'batch-evaluation'",
-  "src/server/report-store.ts::RunListItem::ReportDocument['kind']",
   // —— 持久化 observe / experience JSON ——
   'src/types/observability.ts::ExperienceEvidenceRef::ExperienceEvidenceKind',
   'src/types/observability.ts::ExperienceSessionStoryNode::ExperienceSessionStoryNodeKind',

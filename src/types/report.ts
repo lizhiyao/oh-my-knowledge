@@ -321,7 +321,7 @@ export interface SampleSnapshot {
 }
 
 export interface EvaluationReport {
-  kind: 'evaluation';
+  reportKind: 'evaluation';
   id: string;
   meta: ReportMeta;
   summary: Record<string, VariantSummary>;
@@ -378,7 +378,7 @@ export interface BatchEvaluationItem {
 }
 
 export interface BatchEvaluationReport {
-  kind: 'batch-evaluation';
+  reportKind: 'batch-evaluation';
   id: string;
   mode: 'skill';
   meta: BatchEvaluationMeta;

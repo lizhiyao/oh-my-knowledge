@@ -19,7 +19,7 @@ const buildRun = (
   const variants = Object.keys(variantScores);
   const sampleCount = variantScores[variants[0]].length;
   return {
-    kind: 'evaluation',
+    reportKind: 'evaluation',
     id: runId,
     meta: {
       variants,

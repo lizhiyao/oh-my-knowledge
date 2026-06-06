@@ -15,7 +15,7 @@ const ANALYSES_DIR = join(tmpdir(), `omk-test-analyses-${Date.now()}`);
 const DOCTORS_DIR = join(tmpdir(), `omk-test-doctors-${Date.now()}`);
 
 const SAMPLE_REPORT = {
-  kind: 'evaluation',
+  reportKind: 'evaluation',
   id: 'test-run-001',
   meta: {
     variants: ['v1', 'v2'],

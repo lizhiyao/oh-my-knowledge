@@ -61,7 +61,7 @@ const variantSummary = (score: number): VariantSummary => ({
 });
 
 const buildProductTreeReport = (): Report => ({
-  kind: 'evaluation',
+  reportKind: 'evaluation',
   id: 'cli-tree-report',
   meta: {
     variants: ['baseline', 'v1'],

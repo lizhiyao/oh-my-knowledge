@@ -83,7 +83,7 @@ describe('pruneDoctorHistory', () => {
   });
 
   it('忽略 non-doctor / 多 skill / 损坏 JSON', () => {
-    writeFileSync(join(dir, 'eval-report.json'), JSON.stringify({ kind: 'evaluation' }));
+    writeFileSync(join(dir, 'eval-report.json'), JSON.stringify({ reportKind: 'evaluation' }));
     writeFileSync(join(dir, 'multi-skill.json'), JSON.stringify({
       reportKind: 'doctor',
       skills: [{ skillName: 'a' }, { skillName: 'b' }],
