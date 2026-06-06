@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,22 +16,57 @@ interface InstallTarget {
   skillsDir: string;
 }
 
+interface AgentTargetSpec {
+  label: string;
+  skillsDir: (home: string) => string;
+  detectDirs: (home: string) => string[];
+}
+
+const TARGET_ORDER: AgentTarget[] = ['codex', 'claude'];
+
+const TARGET_SPECS: Record<AgentTarget, AgentTargetSpec> = {
+  codex: {
+    label: 'Codex/AGENTS',
+    skillsDir: (home) => join(home, '.agents', 'skills'),
+    detectDirs: (home) => [join(home, '.agents'), join(home, '.codex')],
+  },
+  claude: {
+    label: 'Claude Code',
+    skillsDir: (home) => join(home, '.claude', 'skills'),
+    detectDirs: (home) => [join(home, '.claude')],
+  },
+};
+
 function packagedOmkAgentSkillDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   return resolve(here, '..', '..', 'assets', 'agent-skills', 'omk');
 }
 
 function knownTarget(target: AgentTarget): InstallTarget {
-  if (target === 'claude') {
-    return { label: 'Claude Code', skillsDir: join(homedir(), '.claude', 'skills') };
+  const home = homedir();
+  const spec = TARGET_SPECS[target];
+  return { label: spec.label, skillsDir: spec.skillsDir(home) };
+}
+
+function directoryExists(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
   }
-  return { label: 'Codex', skillsDir: join(homedir(), '.agents', 'skills') };
 }
 
 function parseTargets(raw: string, lang: 'zh' | 'en'): AgentTarget[] {
-  const parts = raw.split(',').map((part) => part.trim()).filter(Boolean);
-  if (parts.length === 0 || parts.includes('auto')) return autoTargets();
-  if (parts.includes('all')) return ['codex', 'claude'];
+  const parts = [...new Set(raw.split(',').map((part) => part.trim()).filter(Boolean))];
+  if (parts.length === 0) return autoTargets();
+  if (parts.includes('auto')) {
+    if (parts.length > 1) throw new Error(tCli('cli.install.invalid_target_combo', lang, { target: raw }));
+    return autoTargets();
+  }
+  if (parts.includes('all')) {
+    if (parts.length > 1) throw new Error(tCli('cli.install.invalid_target_combo', lang, { target: raw }));
+    return TARGET_ORDER;
+  }
   const out: AgentTarget[] = [];
   for (const part of parts) {
     if (part !== 'codex' && part !== 'claude') {
@@ -39,15 +74,12 @@ function parseTargets(raw: string, lang: 'zh' | 'en'): AgentTarget[] {
     }
     out.push(part);
   }
-  return [...new Set(out)];
+  return out;
 }
 
 function autoTargets(): AgentTarget[] {
   const home = homedir();
-  const targets: AgentTarget[] = [];
-  if (existsSync(join(home, '.agents')) || existsSync(join(home, '.codex'))) targets.push('codex');
-  if (existsSync(join(home, '.claude'))) targets.push('claude');
-  return targets;
+  return TARGET_ORDER.filter((target) => TARGET_SPECS[target].detectDirs(home).some(directoryExists));
 }
 
 function resolveInstallTargets(params: { to: string; dest?: string; lang: 'zh' | 'en' }): InstallTarget[] {

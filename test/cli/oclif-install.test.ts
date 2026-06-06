@@ -78,6 +78,58 @@ describe('oclif install', () => {
     }
   });
 
+  it('auto detects AGENTS root directories, not same-named files', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-auto-file-'));
+    try {
+      const home = join(dir, 'home');
+      await mkdir(home, { recursive: true });
+      await writeFile(join(home, '.codex'), 'not a directory');
+      try {
+        await execFileAsync('node', [CLI, 'install', 'omk-agent-skill'], {
+          env: cliEnv({ HOME: home }),
+        });
+        assert.fail('expected non-zero exit');
+      } catch (err) {
+        const e = err as ExecError;
+        assert.notEqual(e.code, 0);
+        assert.ok((e.stdout + e.stderr).includes('未检测到本机支持的 agent skill 目录'));
+      }
+      assert.ok(!existsSync(join(home, '.agents')), 'same-named file detection must not create AGENTS root');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('supports explicit multiple targets', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-explicit-multi-'));
+    try {
+      const home = join(dir, 'home');
+      await mkdir(home, { recursive: true });
+      const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--to', 'codex,claude'], {
+        env: cliEnv({ HOME: home }),
+      });
+      assert.equal((stdout.match(/已安装 omk Agent Skill/g) ?? []).length, 2, `stdout should list two installs:\n${stdout}`);
+      assert.ok(existsSync(join(home, '.agents', 'skills', 'omk', 'SKILL.md')), 'Codex/AGENTS target not installed');
+      assert.ok(existsSync(join(home, '.claude', 'skills', 'omk', 'SKILL.md')), 'Claude Code target not installed');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects mixed auto/all target combinations', async () => {
+    for (const to of ['auto,codex', 'all,claude']) {
+      try {
+        await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--to', to]);
+        assert.fail(`expected non-zero exit for --to ${to}`);
+      } catch (err) {
+        const e = err as ExecError;
+        assert.notEqual(e.code, 0);
+        const out = e.stdout + e.stderr;
+        assert.ok(out.includes('安装目标组合不合法'), `missing invalid combo message for ${to}:\n${out}`);
+      }
+    }
+  });
+
   it('auto fails when no supported local target is detected', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-auto-missing-'));
     try {
