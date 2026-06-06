@@ -64,7 +64,7 @@ function node(input: Partial<RuntimeStandardNode> & { expectedSignals?: RuntimeS
   return {
     nodeId: input.nodeId ?? 'node',
     nodeEvidenceRef: input.nodeEvidenceRef,
-    kind: input.kind ?? 'workflow',
+    nodeKind: input.nodeKind ?? 'workflow',
     title: input.title ?? 'node',
     expectedSignals: input.expectedSignals ?? [],
     failureSignals: input.failureSignals ?? [],
@@ -272,7 +272,7 @@ describe('runtime standard trigger evaluator', () => {
       sameNodeRef,
     ], [{
       nodeId: 'same-node',
-      kind: 'workflowNode',
+      nodeKind: 'workflowNode',
       title: 'same-node',
       expectation: '结论',
       deterministicStatus: 'passed',
@@ -298,7 +298,7 @@ describe('runtime standard trigger evaluator', () => {
       ref({ id: 'global-result', sourceType: 'assistant_message', snippet: '结论如下', messageIndex: 12 }),
     ], [{
       nodeId: 'same-node',
-      kind: 'workflowNode',
+      nodeKind: 'workflowNode',
       title: 'same-node',
       expectation: '结论',
       deterministicStatus: 'manual_review',
@@ -323,7 +323,7 @@ describe('runtime standard trigger evaluator', () => {
     const readRef = ref({ id: 'read-ref', sourceType: 'tool_call', toolName: 'Read', snippet: 'Read source.md', messageIndex: 3 });
     const result = evaluateRuntimeStandardNodes([standard], pack([readRef], [{
       nodeId: 'workflow.read_source',
-      kind: 'workflowNode',
+      nodeKind: 'workflowNode',
       title: '读取源文档',
       expectation: '读取用户提供的文档',
       deterministicStatus: 'passed',
@@ -348,7 +348,7 @@ describe('runtime standard trigger evaluator', () => {
     const bashRef = ref({ id: 'bash-ref', sourceType: 'tool_call', toolName: 'Bash', snippet: 'node runner.js', messageIndex: 4 });
     const result = evaluateRuntimeStandardNodes([standard], pack([bashRef], [{
       nodeId: 'workflow.launch_child',
-      kind: 'workflowNode',
+      nodeKind: 'workflowNode',
       title: '启动子任务',
       expectation: '使用 runner.js 后台启动 child',
       deterministicStatus: 'passed',
@@ -373,7 +373,7 @@ describe('runtime standard trigger evaluator', () => {
     const resultRef = ref({ id: 'result-ref', sourceType: 'assistant_message', snippet: '结果如下', messageIndex: 5 });
     const positive = evaluateRuntimeStandardNodes([standard], pack([resultRef], [{
       nodeId: 'workflow.report_result',
-      kind: 'workflowNode',
+      nodeKind: 'workflowNode',
       title: '回传结果',
       expectation: '向用户回传结果',
       deterministicStatus: 'passed',
@@ -384,7 +384,7 @@ describe('runtime standard trigger evaluator', () => {
     const tied = evaluateRuntimeStandardNodes([standard], pack([resultRef], [
       {
         nodeId: 'workflow.report_result_a',
-        kind: 'workflowNode',
+        nodeKind: 'workflowNode',
         title: '回传结果',
         expectation: '向用户回传结果',
         deterministicStatus: 'passed',
@@ -394,7 +394,7 @@ describe('runtime standard trigger evaluator', () => {
       },
       {
         nodeId: 'workflow.report_result_b',
-        kind: 'workflowNode',
+        nodeKind: 'workflowNode',
         title: '回传结果',
         expectation: '向用户回传结果',
         deterministicStatus: 'passed',
@@ -480,7 +480,7 @@ describe('runtime standard trigger evaluator', () => {
     });
     const stage = node({
       nodeId: 'stage',
-      kind: 'stage',
+      nodeKind: 'stage',
       childNodeIds: ['child_ok', 'child_bad'],
     });
     const results = evaluateRuntimeStandardNodes([childOk, childBad, stage], pack([

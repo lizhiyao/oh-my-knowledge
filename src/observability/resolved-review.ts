@@ -313,16 +313,16 @@ function runtimeNodeChecklistItems(enhancedReview: SkillLlmEnhancedReviewSection
   const runtimeResults = enhancedReview.runtimeNodeResults?.nodes ?? [];
   if (runtimeResults.length > 0) {
     return runtimeResults.slice(0, 12).map((node) => checklistItem(
-      `runtime_node_${node.kind}_${node.nodeId}`,
-      `${runtimeNodeKindLabel(node.kind)}：${node.title || node.nodeId}`,
+      `runtime_node_${node.nodeKind}_${node.nodeId}`,
+      `${runtimeNodeKindLabel(node.nodeKind)}：${node.title || node.nodeId}`,
       runtimeNodeChecklistStatus(node.status),
       node.reason || '规则层基于 LLM 拆解的 typed signal 匹配运行证据。',
       node.status === 'violated' || node.status === 'degraded' ? 'attention' : 'informational',
     ));
   }
   return (enhancedReview.runtimeNodeAssessment?.nodes ?? []).slice(0, 12).map((node) => checklistItem(
-    `legacy_llm_node_${node.kind}_${node.nodeId}`,
-    `${node.kind === 'workflowNode' ? '流程节点' : '硬性规则'}：${node.nodeId}`,
+    `legacy_llm_node_${node.nodeKind}_${node.nodeId}`,
+    `${node.nodeKind === 'workflowNode' ? '流程节点' : '硬性规则'}：${node.nodeId}`,
     checklistStatus(node.status),
     node.reason ?? '旧版模型节点复核结果。',
     node.status === 'failed' || node.status === 'degraded' ? 'attention' : 'informational',
@@ -625,10 +625,10 @@ function ownerSuggestionTexts(enhancedReview?: SkillLlmEnhancedReviewSections, s
   const checklistLabelByKey = new Map((enhancedReview?.typeSpecificAssessment?.checklist ?? [])
     .map((item) => [item.key, `${skillTypeLabel(skillType ?? enhancedReview?.skillType)}：${readableTypeSpecificLabel(item, skillType ?? enhancedReview?.skillType)}`] as const));
   for (const node of enhancedReview?.runtimeNodeResults?.nodes ?? []) {
-    checklistLabelByKey.set(node.nodeId, `${runtimeNodeKindLabel(node.kind)}：${node.title || node.nodeId}`);
+    checklistLabelByKey.set(node.nodeId, `${runtimeNodeKindLabel(node.nodeKind)}：${node.title || node.nodeId}`);
   }
   for (const node of enhancedReview?.runtimeNodeAssessment?.nodes ?? []) {
-    checklistLabelByKey.set(node.suggestionKey ?? node.nodeId, `${node.kind === 'workflowNode' ? '流程节点' : '硬性规则'}：${node.nodeId}`);
+    checklistLabelByKey.set(node.suggestionKey ?? node.nodeId, `${node.nodeKind === 'workflowNode' ? '流程节点' : '硬性规则'}：${node.nodeId}`);
   }
   return (enhancedReview?.ownerSuggestions ?? [])
     .flatMap((suggestion): ResolvedOwnerSuggestion[] => {

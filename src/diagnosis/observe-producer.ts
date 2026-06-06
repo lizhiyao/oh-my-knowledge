@@ -137,7 +137,7 @@ function chainRuntimeChecks(chain: ObservationSkillChain) {
     .map((check) => ({
       skillName: chain.skillName,
       id: check.id,
-      kind: check.kind,
+      nodeKind: check.nodeKind,
       status: check.status,
       title: check.title,
       expectation: check.expectation,
@@ -149,8 +149,8 @@ function chainRuntimeChecks(chain: ObservationSkillChain) {
 
 function evidenceRefsFromRuntimeCheck(check: ObservationRuntimeCheck, skillName: string): DiagnosisEvidenceRef[] {
   return (check.evidenceSnippets ?? []).map((snippet, index) => ({
-    id: `runtime:${skillName}:${check.kind}:${check.id}:${index}`,
-    kind: check.kind,
+    id: `runtime:${skillName}:${check.nodeKind}:${check.id}:${index}`,
+    kind: check.nodeKind,
     label: check.title,
     snippet,
   }));

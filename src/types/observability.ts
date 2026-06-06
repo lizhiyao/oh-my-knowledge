@@ -950,7 +950,7 @@ export interface ObservationExperienceReport {
 export type ObservationRuntimeCheckStatus = 'passed' | 'attention' | 'manual_review';
 
 export interface ObservationRuntimeCheck {
-  kind: 'hardRule' | 'workflowNode';
+  nodeKind: 'hardRule' | 'workflowNode';
   id: string;
   title: string;
   expectation: string;
@@ -980,7 +980,7 @@ export interface SkillRuntimeEvidencePackRef extends Pick<ExperienceEvidenceRef,
 
 export interface SkillRuntimeEvidencePackNode {
   nodeId: string;
-  kind: 'workflowNode' | 'hardRule';
+  nodeKind: 'workflowNode' | 'hardRule';
   title: string;
   expectation: string;
   deterministicStatus: ObservationRuntimeCheckStatus;

@@ -49,24 +49,13 @@ const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   'src/types/observability.ts::ExperienceReviewerReport::ExperienceReviewerReportScope',
   'src/types/observability.ts::ExperienceProblemEvidenceRef::string',
   'src/types/observability.ts::ProblemTimelineEvent::string',
-  "src/types/observability.ts::ObservationRuntimeCheck::'hardRule' | 'workflowNode'",
-  "src/types/observability.ts::SkillRuntimeEvidencePackNode::'workflowNode' | 'hardRule'",
   // —— 持久化 soft-standards JSON（含 enhancedReview 内嵌结构）——
-  'src/observability/soft-standards/types.ts::SkillDerivedStandard::SkillDerivedStandardKind',
   "src/observability/soft-standards/types.ts::SkillDerivedStandards::'observe-skill-derived-standards'",
-  'src/observability/soft-standards/types.ts::RuntimeStandardNode::RuntimeStandardNodeKind',
-  'src/observability/soft-standards/types.ts::RuntimeNodeResult::RuntimeStandardNodeKind',
-  "src/observability/soft-standards/types.ts::SkillLlmRuntimeNodeAssessment::'workflowNode' | 'hardRule'",
-  "src/observability/soft-standards/llm-extractor.ts::(anonymous)::SkillRuntimeEvidencePackNode['kind']",
   // ResolvedSkillStandard 非持久（view-model），但与持久 standard 同源、且被 renderer 多处 .kind 消费，
   // 跨模块改名风险高，渐进式留待后续单独处理。
-  'src/observability/soft-standards/types.ts::ResolvedSkillStandard::ResolvedSkillStandardKind',
   // —— 持久化 diagnosis JSON（payload spread 进 Diagnosis）——
   'src/types/diagnosis.ts::DiagnosisEvidenceRef::string',
-  "src/diagnosis/observe-mapper.ts::ObservationRuntimeCheckSource::'hardRule' | 'workflowNode'",
-  "src/diagnosis/observe-mapper.ts::SkillDerivedStandardSource::'hard_rule_candidate' | 'workflow_candidate'",
   // 持久化进 experience evidence-pack 的 runtime check 节点
-  "src/observability/skill-chain.ts::(anonymous)::'workflowNode' | 'hardRule'",
   // 外部 codex JSONL 事件的镜像 shape（omk 解析 codex stdout，非 omk 自有判别字段；codex 实际用 type）
 ]);
 

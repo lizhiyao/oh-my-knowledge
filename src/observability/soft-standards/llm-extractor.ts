@@ -142,14 +142,14 @@ function buildSoftStandardPrompt(
 
 function availableNodeEvidenceSummaries(evidencePack?: SkillRuntimeEvidencePack): Array<{
   nodeId: string;
-  kind: SkillRuntimeEvidencePackNode['kind'];
+  nodeKind: SkillRuntimeEvidencePackNode['nodeKind'];
   title: string;
   expectation: string;
   candidateEvidenceSnippets: string[];
 }> {
   return (evidencePack?.nodeEvidence ?? []).slice(0, 40).map((node) => ({
     nodeId: node.nodeId,
-    kind: node.kind,
+    nodeKind: node.nodeKind,
     title: node.title.slice(0, 120),
     expectation: node.expectation.slice(0, 240),
     candidateEvidenceSnippets: node.candidateEvidenceSnippets.slice(0, 3).map((snippet) => snippet.slice(0, 180)),
@@ -276,7 +276,7 @@ function normalizeExtractedStandards(
   if (!value || typeof value !== 'object') {
     if (!Array.isArray(legacyStandards)) return undefined;
     return {
-      hardrules: legacyStandards.map((item, index) => normalizeStandardSectionItem(item, index)).filter((item): item is Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'> => Boolean(item)),
+      hardrules: legacyStandards.map((item, index) => normalizeStandardSectionItem(item, index)).filter((item): item is Omit<SkillDerivedStandard, 'id' | 'standardKind' | 'status' | 'source'> => Boolean(item)),
       workflows: [],
       completionCriteria: [],
       artifactCriteria: [],
@@ -332,7 +332,7 @@ function normalizeStandardNode(value: unknown): RuntimeStandardNode | null {
   return {
     nodeId,
     nodeEvidenceRef: typeof item.nodeEvidenceRef === 'string' ? normalizeIdentifier(item.nodeEvidenceRef, 120) || undefined : undefined,
-    kind,
+    nodeKind: kind,
     title,
     description: typeof item.description === 'string' ? item.description.slice(0, 600) : undefined,
     childNodeIds: Array.isArray(item.childNodeIds)
@@ -508,12 +508,12 @@ function normalizeSourceHints(value: unknown): RuntimeStandardNodeSourceHint[] {
   return hints.filter((entry): entry is RuntimeStandardNodeSourceHint => Boolean(entry)).slice(0, 8);
 }
 
-function normalizeStandardSection(value: unknown): Array<Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'>> {
+function normalizeStandardSection(value: unknown): Array<Omit<SkillDerivedStandard, 'id' | 'standardKind' | 'status' | 'source'>> {
   if (!Array.isArray(value)) return [];
-  return value.map((item, index) => normalizeStandardSectionItem(item, index)).filter((item): item is Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'> => Boolean(item));
+  return value.map((item, index) => normalizeStandardSectionItem(item, index)).filter((item): item is Omit<SkillDerivedStandard, 'id' | 'standardKind' | 'status' | 'source'> => Boolean(item));
 }
 
-function normalizeStandardSectionItem(value: unknown, index: number): Omit<SkillDerivedStandard, 'id' | 'kind' | 'status' | 'source'> | null {
+function normalizeStandardSectionItem(value: unknown, index: number): Omit<SkillDerivedStandard, 'id' | 'standardKind' | 'status' | 'source'> | null {
   if (typeof value === 'string') {
     const text = value.trim();
     if (!text) return null;
@@ -618,7 +618,7 @@ function attachRuntimeNodeResults(
     },
     runtimeNodeResults: {
       summary: nodeResults.length > 0
-        ? `规则层已复核 ${nodeResults.filter((node) => node.kind !== 'stage').length} 个流程/规则节点。`
+        ? `规则层已复核 ${nodeResults.filter((node) => node.nodeKind !== 'stage').length} 个流程/规则节点。`
         : '没有可复核的流程/规则节点。',
       nodes: nodeResults,
     },
@@ -658,7 +658,7 @@ const WORKFLOW_OWNER_FALLBACK_STANDARD_NODES: RuntimeStandardNode[] = [
 function workflowOwnerStage(nodeId: string, title: string, childNodeIds: string[]): RuntimeStandardNode {
   return {
     nodeId,
-    kind: 'stage',
+    nodeKind: 'stage',
     title,
     description: 'workflow_owner 通用兜底阶段；当 SKILL.md 没有可抽取阶段时使用。',
     childNodeIds,
@@ -679,7 +679,7 @@ function workflowOwnerNode(
 ): RuntimeStandardNode {
   return {
     nodeId,
-    kind,
+    nodeKind: kind,
     title,
     expectedSignals,
     failureSignals: [],
@@ -743,13 +743,13 @@ function normalizeOwnerSuggestions(value: unknown): SkillLlmEnhancedReviewSectio
 
 function normalizeStandard(value: unknown, index: number): Omit<SkillDerivedStandard, 'status' | 'source'> | null {
   if (!value || typeof value !== 'object') return null;
-  const item = value as Partial<SkillDerivedStandard>;
+  const item = value as Record<string, unknown>;
   const kind = item.kind === 'workflow_candidate' ? 'workflow_candidate' : item.kind === 'hard_rule_candidate' ? 'hard_rule_candidate' : undefined;
   if (!kind || typeof item.title !== 'string' || typeof item.body !== 'string') return null;
   const stable = [kind, item.title, item.body].join('\u0000');
   return {
     id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `soft-${hashText(stable).slice(0, 12)}-${index}`,
-    kind,
+    standardKind: kind,
     title: item.title.slice(0, 160),
     body: item.body.slice(0, 600),
     confidence: item.confidence === 'high' || item.confidence === 'medium' || item.confidence === 'low' ? item.confidence : 'low',

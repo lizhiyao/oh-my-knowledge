@@ -941,7 +941,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     const runtime = chain.runtime.summary;
     const record = skillDerivedStandards[skillName];
     const detectedHardCount = (record?.standards ?? []).filter((standard) =>
-      standard.kind === 'hard_rule_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
+      standard.standardKind === 'hard_rule_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
     ).length;
     const hardText = hard.declared
       ? `标准化规则 ${hard.count} 条`
@@ -956,8 +956,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           : `流程检测 ${workflows.branchCount} 条 / 节点 ${workflows.nodeCount}`
       : '标准化流程未声明';
     const pending = (record?.standards ?? []).filter((standard) => standard.status === 'pending_review' || standard.status === 'stale');
-    const hardPending = pending.filter((standard) => standard.kind === 'hard_rule_candidate');
-    const workflowPending = pending.filter((standard) => standard.kind === 'workflow_candidate');
+    const hardPending = pending.filter((standard) => standard.standardKind === 'hard_rule_candidate');
+    const workflowPending = pending.filter((standard) => standard.standardKind === 'workflow_candidate');
     const pendingLine = pending.length > 0
       ? `<div class="skill-chain-compact-candidates">
           <span>待确认 ${pending.length} 条</span>
@@ -1052,8 +1052,8 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
     ];
     const llmHardRuleStandards = extractedStandards?.hardrules ?? [];
     const llmStandardNodes = extractedStandards?.standardNodes ?? [];
-    const llmWorkflowNodes = llmStandardNodes.filter((node) => node.kind !== 'hardRule');
-    const llmHardRuleNodes = llmStandardNodes.filter((node) => node.kind === 'hardRule');
+    const llmWorkflowNodes = llmStandardNodes.filter((node) => node.nodeKind !== 'hardRule');
+    const llmHardRuleNodes = llmStandardNodes.filter((node) => node.nodeKind === 'hardRule');
     const standardNodeById = new Map(llmStandardNodes.map((node) => [node.nodeId, node] as const));
     const standardNodeParentById = new Map<string, string>();
     for (const node of llmStandardNodes) {
@@ -1175,7 +1175,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           const depth = standardNodeDepth(node);
           return `<li class="runtime-rule-node is-depth-${depth}">
             <div class="runtime-rule-node-head">
-              <span>${node.kind === 'stage' ? `阶段 ${index + 1}` : `节点 ${index + 1}`}</span>
+              <span>${node.nodeKind === 'stage' ? `阶段 ${index + 1}` : `节点 ${index + 1}`}</span>
               <strong>${e(node.title)}</strong>
               <em>标准拆解</em>
             </div>
@@ -1192,7 +1192,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           const depth = standardNodeDepth(node);
           return `<li class="runtime-step runtime-rule-execution-item ${modelNodeStatusClass(review?.status)} is-depth-${depth}">
             <div class="runtime-step-head">
-              <span class="runtime-step-index">${node.kind === 'stage' ? `阶段 ${index + 1}` : `节点 ${index + 1}`}</span>
+              <span class="runtime-step-index">${node.nodeKind === 'stage' ? `阶段 ${index + 1}` : `节点 ${index + 1}`}</span>
               <span class="runtime-step-name">${e(node.title)}</span>
               <span class="runtime-step-state" title="${e(modelNodeStatusText(review?.status))}">${modelNodeStatusIcon(review?.status)}</span>
             </div>
@@ -1339,9 +1339,9 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       stale: 3,
     };
     const sortedSoftStandards = [...softStandards].sort((a, b) =>
-      statusPriority[a.status] - statusPriority[b.status] || a.kind.localeCompare(b.kind) || a.title.localeCompare(b.title)
+      statusPriority[a.status] - statusPriority[b.status] || a.standardKind.localeCompare(b.standardKind) || a.title.localeCompare(b.title)
     );
-    const kindLabel = (kind: SkillDerivedStandard['kind']): string =>
+    const kindLabel = (kind: SkillDerivedStandard['standardKind']): string =>
       kind === 'workflow_candidate' ? '流程候选' : '规则候选';
     const annotationStateClass = (status: SkillDerivedStandard['status']): string =>
       status === 'author_confirmed' ? 'is-confirmed' : status === 'rejected' ? 'is-rejected' : '';
@@ -1391,7 +1391,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       const parts: string[] = [];
       for (const { standard, range } of annotations) {
         parts.push(e(content.slice(cursor, range.start)));
-        parts.push(`<span class="skill-md-highlight skill-md-highlight-${standard.kind === 'workflow_candidate' ? 'workflow' : 'rule'}" data-soft-standard-id="${e(standard.id)}">${e(content.slice(range.start, range.end))}</span><span class="skill-md-annotation ${annotationStateClass(standard.status)}" data-soft-standard-id="${e(standard.id)}" data-soft-standard-skill="${e(skillName)}"><span class="skill-md-annotation-icon" data-soft-standard-icon="${e(standard.status)}">${e(annotationStateIcon(standard.status))}</span><span class="skill-md-annotation-content"><strong>${e(kindLabel(standard.kind))}：</strong>${e(standard.title)}${renderCandidateActions(standard)}</span></span>`);
+        parts.push(`<span class="skill-md-highlight skill-md-highlight-${standard.standardKind === 'workflow_candidate' ? 'workflow' : 'rule'}" data-soft-standard-id="${e(standard.id)}">${e(content.slice(range.start, range.end))}</span><span class="skill-md-annotation ${annotationStateClass(standard.status)}" data-soft-standard-id="${e(standard.id)}" data-soft-standard-skill="${e(skillName)}"><span class="skill-md-annotation-icon" data-soft-standard-icon="${e(standard.status)}">${e(annotationStateIcon(standard.status))}</span><span class="skill-md-annotation-content"><strong>${e(kindLabel(standard.standardKind))}：</strong>${e(standard.title)}${renderCandidateActions(standard)}</span></span>`);
         cursor = range.end;
       }
       parts.push(e(content.slice(cursor)));
@@ -1407,7 +1407,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
           <div class="soft-standard-modal-list">${unlocatedStandards.map((standard) => `<div class="soft-standard-modal-item ${annotationStateClass(standard.status)}" data-soft-standard-id="${e(standard.id)}" data-soft-standard-skill="${e(skillName)}">
             <div class="soft-standard-modal-head">
               <span class="skill-md-annotation-icon" data-soft-standard-icon="${e(standard.status)}">${e(annotationStateIcon(standard.status))}</span>
-              <strong>${e(kindLabel(standard.kind))}：${e(standard.title)}</strong>
+              <strong>${e(kindLabel(standard.standardKind))}：${e(standard.title)}</strong>
               <span data-soft-standard-status="${e(standard.status)}">${e(softStandardStatusLabel(standard.status))}</span>
             </div>
             <div class="soft-standard-modal-body">${e(standard.body)}</div>
@@ -1424,10 +1424,10 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       !workflows.declared ? renderAdvisoryBlock(workflows.advisoryCode, skillName) : '',
     ].filter(Boolean).join('');
     const detectedHardRuleStandards = sortedSoftStandards.filter((standard) =>
-      standard.kind === 'hard_rule_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
+      standard.standardKind === 'hard_rule_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
     );
     const detectedWorkflowStandards = sortedSoftStandards.filter((standard) =>
-      standard.kind === 'workflow_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
+      standard.standardKind === 'workflow_candidate' && (standard.status === 'author_confirmed' || standard.status === 'pending_review')
     );
     const detectedMarker = (status: SkillDerivedStandard['status']): string =>
       status === 'author_confirmed' ? '✅' : '待';
@@ -1547,7 +1547,7 @@ export function renderObservationInboxPage(model: ObservationInboxViewModel, lan
       const grouped = groups.map(([label, standards]) => `<section class="review-log-group">
         <h4>${e(label)} ${standards.length}</h4>
         ${standards.length > 0
-          ? `<ul>${standards.map((standard) => `<li><span>${e(kindLabel(standard.kind))}</span><strong>${e(standard.title)}</strong></li>`).join('')}</ul>`
+          ? `<ul>${standards.map((standard) => `<li><span>${e(kindLabel(standard.standardKind))}</span><strong>${e(standard.title)}</strong></li>`).join('')}</ul>`
           : '<p class="context-muted">暂无</p>'}
       </section>`).join('');
       return `${meta}${grouped}`;
