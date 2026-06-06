@@ -19,11 +19,15 @@ jobs:
         node-version: [22, 24]
     steps:
       - uses: actions/checkout@v4
+      # Enable Corepack before setup-node so its `cache: yarn` step resolves the
+      # cache folder via the packageManager-pinned Yarn 4, not the runner's
+      # preinstalled Yarn 1.
+      - run: corepack enable
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: yarn
-      - run: yarn install --frozen-lockfile
+      - run: yarn install --immutable
       # Delegate to the `ci` npm script (run-s lint typecheck build
       # build:docs:check test) so the workflow can't drift from the canonical
       # sequence. Inlining these steps once dropped `typecheck`, letting test/
