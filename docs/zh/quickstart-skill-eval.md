@@ -9,15 +9,13 @@ npm i oh-my-knowledge -g
 omk --version    # 能输出版本号即装好
 ```
 
-如果你想用「自然语言让 agent 帮你跑」的方式（推荐），还需要把 omk skill 装到你的 agent 工具里。Claude Code 用户：
+如果你想用「自然语言让 agent 帮你跑」的方式（推荐），还需要把 omk Agent Skill 装到你的 agent 工具里：
 
 ```bash
-git clone https://github.com/lizhiyao/oh-my-knowledge.git /tmp/omk-src
-mkdir -p ~/.claude/skills
-cp -r /tmp/omk-src/.agents/skills/omk ~/.claude/skills/
+omk install omk-agent-skill
 ```
 
-Codex 用户改 `~/.agents/skills/`。装好之后，agent 收到含「omk」「评测」「benchmark」之类的关键词就会自动加载 SKILL 上下文。
+这会把 omk 官方 Agent Skill 安装到本机 coding agent 的 skill 目录。装好之后，agent 收到含「omk」「评测」「benchmark」之类的关键词就会自动加载 SKILL 上下文。
 
 ## 准备 skill（1 分钟）
 

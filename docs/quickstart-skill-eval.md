@@ -9,15 +9,13 @@ npm i oh-my-knowledge -g
 omk --version    # prints a version number once installed
 ```
 
-If you want the **agent-driven workflow** (recommended), also install the omk skill into your coding agent. For Claude Code users:
+If you want the **agent-driven workflow** (recommended), also install the omk Agent Skill into your coding agent:
 
 ```bash
-git clone https://github.com/lizhiyao/oh-my-knowledge.git /tmp/omk-src
-mkdir -p ~/.claude/skills
-cp -r /tmp/omk-src/.agents/skills/omk ~/.claude/skills/
+omk install omk-agent-skill
 ```
 
-Codex users: copy into `~/.agents/skills/` instead. Once installed, the agent auto-loads the SKILL context when you mention "omk", "benchmark", "evaluate", "skill eval", etc.
+This installs the official omk Agent Skill into your local coding-agent skill directory. Once installed, the agent auto-loads the SKILL context when you mention "omk", "benchmark", "evaluate", "skill eval", etc.
 
 ## Prepare your skill (1 minute)
 

@@ -1,6 +1,6 @@
 # omk CLI 参考
 
-omk 的公开 CLI 由 7 个顶层命令构成完整闭环：`init`（脚手架）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
+omk 的公开 CLI 由顶层命令构成完整闭环：`init`（脚手架）·`install`（安装 / 接管 knowledge input）·`doctor`（静态检查）·`eval`（离线 A/B 评测）·`observe`（线上 trace 观测）·`evolve`（多轮自动迭代 skill）·`sample`（生成或补齐评测用例）·`studio`（本地 Web 工作台，看报告 / 分析）。
 
 <!-- 维护者须知：本文件里的 Flags 区块由 scripts/build-docs.ts 从 oclif 命令源码自动生成。改 CLI flag 后跑 `yarn build:docs` 同步；CI 跑 `yarn build:docs:check` 拦截 drift。 -->
 
@@ -23,6 +23,32 @@ omk init [目录]
 <!-- omk:cli:init:flags:end -->
 
 生成一个评测项目脚手架，包含两版 starter skill 和 `eval-samples.json`。
+
+## `omk install`
+
+```bash
+omk install omk-agent-skill
+omk install omk-agent-skill --to all
+omk install omk-agent-skill --dest ~/.my-agent/skills
+```
+
+<!-- omk:cli:install:flags:start -->
+
+**Flags:**
+
+```text
+  --dest <value>  自定义 skill 根目录；omk 会安装到 <dir>/omk。
+  --dry-run       只打印安装目标，不写文件。
+  --force         覆盖已存在的 omk Agent Skill。
+  --lang <value>  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
+  --to <value>    安装目标：auto / codex / claude / all，默认 auto。
+```
+
+完整描述见 `omk install --help`。
+
+<!-- omk:cli:install:flags:end -->
+
+把 omk 官方 Agent Skill 安装到本机 coding agent 的 skill 目录。这是 agent-driven workflow 的 onboarding 入口；用户自己的 knowledge input 后续也会沿用同一个生命周期入口。
 
 ## `omk doctor`
 

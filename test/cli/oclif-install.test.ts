@@ -1,0 +1,116 @@
+/**
+ * oclif 路径 install 命令验收。
+ */
+import { describe, it } from 'vitest';
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { mkdtemp, rm, readFile, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { promisify } from 'node:util';
+import { join, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+
+const execFileAsync = promisify(execFile);
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = join(__dirname, '..', '..');
+const CLI = join(PROJECT_ROOT, 'dist', 'cli', 'index.js');
+
+interface ExecError extends Error {
+  code?: number;
+  stdout: string;
+  stderr: string;
+}
+
+describe('oclif install', () => {
+  it('--help 默认 zh', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'install', '--help']);
+    assert.ok(stdout.includes('安装或接管 knowledge input'), `stdout missing zh description:\n${stdout}`);
+    assert.ok(stdout.includes('omk-agent-skill'), 'stdout missing builtin id');
+  });
+
+  it('--help --lang en', async () => {
+    const { stdout } = await execFileAsync('node', [CLI, 'install', '--help', '--lang', 'en']);
+    assert.ok(stdout.includes('Install or adopt a knowledge input'), 'stdout should contain en description');
+  });
+
+  it('unknown flag → exit 2', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--bogus']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.equal(e.code, 2);
+    }
+  });
+
+  it('installs omk-agent-skill into a custom skill root', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-'));
+    try {
+      const dest = join(dir, 'skills-root');
+      const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest]);
+      assert.ok(stdout.includes('已安装 omk Agent Skill'), `stdout missing install msg:\n${stdout}`);
+      assert.ok(existsSync(join(dest, 'omk', 'SKILL.md')), 'SKILL.md not installed');
+      assert.ok(existsSync(join(dest, 'omk', 'references', 'commands.md')), 'commands reference not installed');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses to overwrite existing install without --force', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-exists-'));
+    try {
+      const dest = join(dir, 'skills-root');
+      await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest]);
+      try {
+        await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest]);
+        assert.fail('expected non-zero exit');
+      } catch (err) {
+        const e = err as ExecError;
+        assert.notEqual(e.code, 0);
+        assert.ok((e.stdout + e.stderr).includes('--force'), 'error should mention --force');
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('--force overwrites existing install', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-force-'));
+    try {
+      const dest = join(dir, 'skills-root');
+      const skillMd = join(dest, 'omk', 'SKILL.md');
+      await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest]);
+      await writeFile(skillMd, 'local edit');
+      await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest, '--force']);
+      const body = await readFile(skillMd, 'utf8');
+      assert.ok(body.includes('name: omk'), 'force install should restore packaged skill');
+      assert.ok(!body.includes('local edit'), 'force install should overwrite local edit');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('--dry-run prints target and does not write files', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-dry-'));
+    try {
+      const dest = join(dir, 'skills-root');
+      const { stdout } = await execFileAsync('node', [CLI, 'install', 'omk-agent-skill', '--dest', dest, '--dry-run']);
+      assert.ok(stdout.includes('将安装 omk Agent Skill 到'), `stdout missing plan msg:\n${stdout}`);
+      assert.ok(!existsSync(join(dest, 'omk')), 'dry-run must not create target');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('unknown input exits non-zero', async () => {
+    try {
+      await execFileAsync('node', [CLI, 'install', 'other-skill']);
+      assert.fail('expected non-zero exit');
+    } catch (err) {
+      const e = err as ExecError;
+      assert.notEqual(e.code, 0);
+      assert.ok((e.stdout + e.stderr).includes('omk-agent-skill'), 'error should mention supported builtin id');
+    }
+  });
+});

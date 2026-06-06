@@ -1,6 +1,6 @@
 # omk CLI reference
 
-omk exposes a workflow CLI for knowledge artifacts. Seven top-level commands cover the full loop: `init` (scaffold) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
+omk exposes a workflow CLI for knowledge artifacts. Top-level commands cover the full loop: `init` (scaffold) · `install` (install/adopt a knowledge input) · `doctor` (static check) · `eval` (offline A/B) · `observe` (online trace) · `evolve` (auto-iterate a skill) · `sample` (generate or fill test cases) · `studio` (local web UI for reports & analysis).
 
 <!-- Maintainers: the Flags blocks in this file are auto-generated from the oclif command source by scripts/build-docs.ts. Run `yarn build:docs` after editing CLI flags; `yarn build:docs:check` runs in CI to catch drift. -->
 
@@ -23,6 +23,32 @@ For full descriptions: `omk init --help`.
 <!-- omk:cli:init:flags:end -->
 
 Scaffolds an evaluation project with two starter skill variants and an `eval-samples.json` file.
+
+## `omk install`
+
+```bash
+omk install omk-agent-skill
+omk install omk-agent-skill --to all
+omk install omk-agent-skill --dest ~/.my-agent/skills
+```
+
+<!-- omk:cli:install:flags:start -->
+
+**Flags:**
+
+```text
+  --dest <value>  Custom skill root; installs into <dir>/omk.
+  --dry-run       Print install targets without writing files.
+  --force         Overwrite an existing omk Agent Skill.
+  --lang <value>  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
+  --to <value>    Install target: auto / codex / claude / all. Default auto.
+```
+
+For full descriptions: `omk install --help`.
+
+<!-- omk:cli:install:flags:end -->
+
+Installs the official omk Agent Skill into a local coding-agent skill directory. This is the onboarding path for agent-driven workflows; user knowledge inputs will use the same lifecycle entry point in future releases.
 
 ## `omk doctor`
 
