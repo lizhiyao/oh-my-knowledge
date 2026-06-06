@@ -314,7 +314,7 @@ Rules:
 
 In omk's product vocabulary, an unqualified `kind` means a knowledge-artifact kind (`Artifact.kind: ArtifactKind` — `skill` / `prompt` / `agent` / `workflow`; `baseline` is the eval-only control role). Command flags follow suit: a `--kind` flag means an `ArtifactKind`, never a platform target, report type, or observe event type.
 
-Every other discriminant carries a qualified name, never a bare `kind`:
+For new structures and non-persisted internal discriminants, every other discriminant carries a qualified name, never a bare `kind` (persisted fields are frozen; see caveats below):
 
 - `report.kind` → `reportKind` / `documentKind`
 - `event.kind` → `eventKind`
