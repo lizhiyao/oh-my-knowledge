@@ -314,7 +314,7 @@ omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历�
 
 在 omk 的产品语义里，不带限定词的 `kind` 一律指知识 artifact 的类型（`Artifact.kind: ArtifactKind` —— `skill` / `prompt` / `agent` / `workflow`；`baseline` 是只用于 eval 的 control 角色）。命令行 flag 同理：`--kind` 表示 `ArtifactKind`，不指平台目标、report 类型或 observe event 类型。
 
-对新结构和内部非持久判别字段，其它判别字段一律用限定名，不用裸 `kind`（持久化字段冻结，见下方注意）：
+除已经落盘到 report / observe / doctor / diagnosis JSON 的既有字段外，新增或可安全改名的判别字段都不要再叫裸 `kind`，而要带限定名：
 
 - `report.kind` → `reportKind` / `documentKind`
 - `event.kind` → `eventKind`
