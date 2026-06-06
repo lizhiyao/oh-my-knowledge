@@ -48,11 +48,11 @@ export interface ComposerOutcome extends DoctorRuleCheckOutcome {
 }
 
 /** 复合 rule:一次 checkAll() 产出多条 result,适合"单次 LLM 调用 → N 个维度结果"
- *  这类场景。doctor engine 检测 kind === 'composer' 时把数组结果展开,每条共享
+ *  这类场景。doctor engine 检测 ruleKind === 'composer' 时把数组结果展开,每条共享
  *  同一个 groupId(= composer.id)以便 renderer 分组。 */
 export interface ComposerRule {
   id: string;
-  kind: 'composer';
+  ruleKind: 'composer';
   /** 默认 severity(子 outcome 未指定时用)。 */
   severity: DoctorSeverity;
   /** 默认 labelKey(子 outcome 未指定时用,通常是 composer 整体的标签)。 */
@@ -64,7 +64,7 @@ export interface ComposerRule {
 export type DoctorRuleLike = DoctorRule | ComposerRule;
 
 export function isComposerRule(r: DoctorRuleLike): r is ComposerRule {
-  return (r as ComposerRule).kind === 'composer';
+  return (r as ComposerRule).ruleKind === 'composer';
 }
 
 export interface DoctorContext {

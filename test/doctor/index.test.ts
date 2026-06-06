@@ -652,7 +652,7 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     };
     const composer: ComposerRule = {
       id: 'test_composer',
-      kind: 'composer',
+      ruleKind: 'composer',
       severity: 'fatal',
       labelKey: 'cli.doctor.rule.skill_readable',
       async checkAll() {
@@ -702,7 +702,7 @@ describe('DoctorReport — CI-friendly schema fields', () => {
     };
     const crashing: ComposerRule = {
       id: 'crash_composer',
-      kind: 'composer',
+      ruleKind: 'composer',
       severity: 'fatal',
       labelKey: 'cli.doctor.rule.skill_readable',
       async checkAll() { throw new Error('composer exploded'); },

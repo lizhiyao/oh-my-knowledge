@@ -127,7 +127,7 @@ export function makeSkillHealthComposer(
 ): ComposerRule {
   return {
     id: SKILL_HEALTH_COMPOSER_ID,
-    kind: 'composer',
+    ruleKind: 'composer',
     severity: 'fatal',
     labelKey: 'cli.doctor.rule.skill_health_check',
     checkAll: (ctx) => composerCheckAll(ctx, execFactory),

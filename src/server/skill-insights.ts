@@ -735,7 +735,7 @@ function detectOmkDoctorBlindspot(
           snippet: `// omk 仓库新增 composer rule(omk 维护者负责,非 skill 开发者职责)
 export const skillAntiPatternComposer: ComposerRule = {
   id: 'skill_anti_patterns',
-  kind: 'composer',
+  ruleKind: 'composer',
   severity: 'warn',
   labelKey: 'doctor.skill_anti_patterns.label',
   async checkAll(ctx): Promise<ComposerOutcome[]> {
