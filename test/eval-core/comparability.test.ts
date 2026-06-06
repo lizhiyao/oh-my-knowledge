@@ -11,7 +11,7 @@ function runtime(executor: string, model: string, fingerprint: string): Executor
   return {
     executor,
     model,
-    kind: 'agent-sdk',
+    runtimeKind: 'agent-sdk',
     fingerprint,
     binary: { name: executor, source: 'bundled', version: '1.0.0' },
     sdk: { name: `${executor}-sdk`, version: '1.0.0' },
@@ -68,7 +68,7 @@ describe('comparability warnings', () => {
     const warnings = reportComparabilityWarnings(report({
       executorRuntime: {
         ...runtime('codex', 'm', 'exec11111111'),
-        kind: 'agent-cli',
+        runtimeKind: 'agent-cli',
         binary: { name: 'codex', source: 'path', error: 'not found' },
         sdk: undefined,
       },

@@ -163,7 +163,7 @@ describe('runDoctor', () => {
       lang: 'zh',
       rules: [passingRule],
     });
-    assert.equal(report.kind, 'doctor');
+    assert.equal(report.reportKind, 'doctor');
     assert.ok(report.skills.length >= 2);
     assert.equal(report.outcome, 'passed');
     assert.equal(report.totals.pass, report.skills.length);

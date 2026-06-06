@@ -36,8 +36,6 @@ const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   // —— 持久化 report schema（Report JSON 字段语义，CLAUDE.md 列明的不变量）——
   "src/types/report.ts::EvaluationReport::'evaluation'",
   "src/types/report.ts::BatchEvaluationReport::'batch-evaluation'",
-  'src/types/executor.ts::ExecutorRuntimeFingerprint::ExecutorRuntimeKind',
-  "src/types/doctor.ts::DoctorReport::'doctor'",
   "src/server/report-store.ts::RunListItem::ReportDocument['kind']",
   // —— 持久化 observe / experience JSON ——
   "src/types/observability.ts::ObservationReviewState::'observe-review-state'",
@@ -70,7 +68,6 @@ const FROZEN_KIND_EXCEPTIONS = new Set<string>([
   // 持久化进 experience evidence-pack 的 runtime check 节点
   "src/observability/skill-chain.ts::(anonymous)::'workflowNode' | 'hardRule'",
   // 外部 codex JSONL 事件的镜像 shape（omk 解析 codex stdout，非 omk 自有判别字段；codex 实际用 type）
-  'src/executors/shared.ts::CodexEvent::string',
 ]);
 
 function collectTsFiles(dir: string): string[] {

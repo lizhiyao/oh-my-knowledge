@@ -169,7 +169,7 @@ export interface ExecutorRuntimeBinary {
 export interface ExecutorRuntimeFingerprint {
   executor: string;
   model: string;
-  kind: ExecutorRuntimeKind;
+  runtimeKind: ExecutorRuntimeKind;
   fingerprint: string;
   binary?: ExecutorRuntimeBinary;
   sdk?: ExecutorRuntimePackage;

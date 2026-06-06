@@ -113,7 +113,7 @@ function runtimeTooltip(runtime: ExecutorRuntimeFingerprint): string {
   return [
     `executor=${runtime.executor}`,
     `model=${runtime.model}`,
-    `kind=${runtime.kind}`,
+    `kind=${runtime.runtimeKind}`,
     `system=${runtime.capabilities.systemPrompt}`,
     `cost=${runtime.capabilities.costUSD}`,
     `trace=${runtime.capabilities.trace}`,

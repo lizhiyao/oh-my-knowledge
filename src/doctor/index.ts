@@ -255,7 +255,7 @@ export async function runDoctor(opts: DoctorRunOptions): Promise<DoctorReport> {
       : 'passed';
 
   return {
-    kind: 'doctor',
+    reportKind: 'doctor',
     schemaVersion: DOCTOR_REPORT_SCHEMA_VERSION,
     id: nextReportId(),
     timestamp: new Date().toISOString(),

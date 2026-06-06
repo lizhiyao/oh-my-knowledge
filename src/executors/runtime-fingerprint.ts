@@ -148,7 +148,7 @@ function withFingerprint(input: Omit<ExecutorRuntimeFingerprint, 'fingerprint'>)
   const stablePayload = {
     executor: input.executor,
     model: input.model,
-    kind: input.kind,
+    kind: input.runtimeKind,
     binary: input.binary
       ? {
         name: input.binary.name,
@@ -186,7 +186,7 @@ function runtime(
   return withFingerprint({
     executor,
     model,
-    kind,
+    runtimeKind: kind,
     capabilities,
     ...extra,
   });
