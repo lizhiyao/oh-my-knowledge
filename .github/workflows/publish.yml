@@ -19,6 +19,11 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
+    # Enable Corepack before setup-node so its `cache: yarn` step resolves the
+    # cache folder via the packageManager-pinned Yarn 4.
+    - name: Enable Corepack
+      run: corepack enable
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
@@ -27,7 +32,7 @@ jobs:
         cache: yarn
 
     - name: Install dependencies
-      run: yarn install --frozen-lockfile
+      run: yarn install --immutable
 
     - name: Validate release tag
       shell: bash

@@ -1,4 +1,14 @@
 node_modules/
+
+# Yarn 4（node-modules linker + Corepack 驱动，不启用 Zero-Install）
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+.pnp.*
+
 dist/
 dist-scripts/
 docs/.vitepress/dist/

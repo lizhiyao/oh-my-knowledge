@@ -21,6 +21,16 @@ Delete the topic branch after its PR is merged.
 
 ## Typical workflow
 
+### Prerequisites
+
+This repo uses **Yarn 4** (Berry), pinned via the `packageManager` field and driven by [Corepack](https://nodejs.org/api/corepack.html). Node ships Corepack but leaves it disabled, so enable it once:
+
+```bash
+corepack enable    # makes `yarn` in this repo resolve to the pinned Yarn 4
+```
+
+Node ≥ 22 is required (`engines`). After that, the `yarn` commands below Just Work — Corepack downloads the pinned Yarn version on first use.
+
 ### Everyday feature / fix
 
 ```bash
