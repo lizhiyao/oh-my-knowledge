@@ -310,6 +310,22 @@ omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历�
 - 实验角色用 `control` / `treatment`（不用 `baseline` / `experiment`）
 - 运行环境用 `runtime context` / `cwd`
 
+### 4. 裸 `kind` 默认指 `ArtifactKind`
+
+在 omk 的产品语义里，不带限定词的 `kind` 一律指知识 artifact 的类型（`Artifact.kind: ArtifactKind` —— `skill` / `prompt` / `agent` / `workflow`；`baseline` 是只用于 eval 的 control 角色）。命令行 flag 同理：`--kind` 表示 `ArtifactKind`，不指平台目标、report 类型或 observe event 类型。
+
+其它判别字段一律用限定名，不用裸 `kind`：
+
+- `report.kind` → `reportKind` / `documentKind`
+- `event.kind` → `eventKind`
+- `executorRuntime.kind` → `runtimeKind`
+- `standard.kind` → `standardKind`
+
+两条注意：
+
+- **持久化判别字段冻结。** 任何已经序列化进 report / observe / doctor / diagnosis JSON 的 `kind` 都是可比性不变量，不原地改名；要改必须单独走 schema migration、写明可比性影响（影响报告可比性时标 `BREAKING-COMPARABILITY`）。新代码从一开始就把裸 `kind` 留给 `ArtifactKind`。
+- 内部非持久字段的改名是渐进式的 —— 改到那块代码时顺手做，不搞一次性大扫除。一个 CI 护栏冻结当前裸 `kind` 声明点的集合，防止新的不加限定的 `kind` 混进来。
+
 ## 六、术语映射
 
 | 旧术语 | 新标准术语 | 说明 |

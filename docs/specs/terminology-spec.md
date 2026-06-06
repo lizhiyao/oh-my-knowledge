@@ -310,6 +310,22 @@ Rules:
 - Experiment role: `control` / `treatment` (not `baseline` / `experiment`)
 - Runtime environment: `runtime context` / `cwd`
 
+### 4. Bare `kind` defaults to `ArtifactKind`
+
+In omk's product vocabulary, an unqualified `kind` means a knowledge-artifact kind (`Artifact.kind: ArtifactKind` — `skill` / `prompt` / `agent` / `workflow`; `baseline` is the eval-only control role). Command flags follow suit: a `--kind` flag means an `ArtifactKind`, never a platform target, report type, or observe event type.
+
+Every other discriminant carries a qualified name, never a bare `kind`:
+
+- `report.kind` → `reportKind` / `documentKind`
+- `event.kind` → `eventKind`
+- `executorRuntime.kind` → `runtimeKind`
+- `standard.kind` → `standardKind`
+
+Two caveats:
+
+- **Persisted discriminants are frozen.** Any `kind` already serialized into a report / observe / doctor / diagnosis JSON file is a comparability invariant and is not renamed in place; changing one requires a dedicated schema migration with the comparability impact called out (`BREAKING-COMPARABILITY` when it affects report comparability). New code reserves bare `kind` for `ArtifactKind` from the start.
+- Renaming internal non-persisted fields is progressive — done opportunistically when touching that code, not as a big-bang sweep. A CI guard freezes the current set of bare-`kind` declaration sites so new unqualified ones cannot slip in.
+
 ## 6. Term mapping
 
 | Old term | New standard term | Note |

@@ -15,6 +15,7 @@ omk 是面向 LLM 知识输入（prompt / RAG / skill / agent）的评测与迭�
 - 不要直接在 `main` 上提交；不要再把新工作提交到 `develop`。
 - commit 格式：`type(scope): 中文 subject`。scope 用稳定模块名，如 `cli` / `i18n` / `judge` / `renderer` / `eval-core` / `eval-workflows` / `inputs` / `executors` / `server` / `analysis` / `authoring` / `grading` / `doctor` / `release` / `agents-md`（早期 git history 用过 `claude-md`，rename 后统一用 `agents-md`）。
 - 不要在给用户看的 URL 里硬编码 report server 端口；使用 `server.start()` 返回的实际 URL。
+- 裸 `kind` 留给 `ArtifactKind`（skill / prompt / agent / workflow）。其它判别字段用限定名（`reportKind` / `eventKind` / `runtimeKind` / `standardKind`）；已序列化进 report / observe / doctor / diagnosis JSON 的 `kind` 是可比性不变量，冻结不改，要改走 schema migration。细节见 `docs/specs/terminology-spec.md` §5.4，CI 有 `test/scripts/kind-semantics-guard.test.ts` 拦新裸 `kind`。
 
 ## 测量学不变量
 
