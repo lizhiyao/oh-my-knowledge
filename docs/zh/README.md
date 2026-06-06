@@ -33,4 +33,5 @@
 - [用例设计科学性指南](./specs/sample-design-spec.md)
 - [知识缺口信号规范](./specs/knowledge-gap-signal-spec.md)
 - [RAG metrics 规范](./specs/rag-metrics-spec.md)
+- [证据门控管理](./specs/evidence-gated-management.md)
 - [术语规范](./specs/terminology-spec.md)

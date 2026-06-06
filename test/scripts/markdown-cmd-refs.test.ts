@@ -151,6 +151,8 @@ describe('markdown `omk <cmd>` 引用 grep gate', () => {
 // git 的 `--pretty`、claude 的 `--disallowedTools` 等不在 omk 调用上,天然排除。
 // 整文件跳过清单(如某文档故意描述尚未实现的 flag)放这里;当前为空。
 const FLAG_SCAN_EXCLUDE = new Set<string>([
+  'docs/specs/evidence-gated-management.md',
+  'docs/zh/specs/evidence-gated-management.md',
 ]);
 
 // omk 调用形态:用户向的 `omk <cmd>`,以及 dev 文档里的 `node dist/cli/index.js <cmd>`。

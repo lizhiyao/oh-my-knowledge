@@ -33,4 +33,5 @@ Browse by audience or category. For Chinese docs see [简体中文 index](./zh/R
 - [Sample design spec](./specs/sample-design-spec.md)
 - [Knowledge gap signal spec](./specs/knowledge-gap-signal-spec.md)
 - [RAG metrics spec](./specs/rag-metrics-spec.md)
+- [Evidence-gated management](./specs/evidence-gated-management.md)
 - [Terminology spec](./specs/terminology-spec.md)
