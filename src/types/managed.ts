@@ -44,7 +44,8 @@ export interface ManagedDecision {
 }
 
 export interface ManagedArtifactSource {
-  /** 源文件路径(目录-skill 为其 SKILL.md,文件-skill 为 .md);drift 检测据此重读重哈。 */
+  /** 重哈根:目录-skill 为其根目录、文件-skill 为 .md;`hashArtifactSource(locator, isDirectorySkill)`
+   *  据此 round-trip 做 drift 检测(故目录-skill 存目录而非 SKILL.md)。 */
   locator: string;
   /** git 来源的 ref(预留)。 */
   ref?: string;

@@ -189,4 +189,34 @@ describe('managed store', () => {
     writeFileSync(join(root, 'evolve', 'sk.r1.md'), 'cand\n');
     assert.equal(hashArtifactSource(root, true), base, '.omk / evolve 不该计入 artifact hash');
   });
+
+  it('hashArtifactSource:仅源根第一层 evolve 排除,嵌套 references/evolve 是合法资产计入 hash', () => {
+    const root = join(dir, 'sk2');
+    mkdirSync(join(root, 'references', 'evolve'), { recursive: true });
+    writeFileSync(join(root, 'SKILL.md'), '# sk2\n');
+    writeFileSync(join(root, 'references', 'evolve', 'guide.md'), 'v1\n');
+    const h1 = hashArtifactSource(root, true);
+    writeFileSync(join(root, 'references', 'evolve', 'guide.md'), 'v2\n');
+    assert.notEqual(hashArtifactSource(root, true), h1, '嵌套 references/evolve 资产改动应改变 hash');
+    const before = hashArtifactSource(root, true);
+    mkdirSync(join(root, 'evolve'), { recursive: true });
+    writeFileSync(join(root, 'evolve', 'cand.md'), 'x\n');
+    assert.equal(hashArtifactSource(root, true), before, '仅源根第一层 evolve 排除');
+  });
+
+  it('坏元素的记录(evidence:[null] / distribution 缺 path)被 load 丢弃,不让消费方崩', () => {
+    const store = managedDir(dir);
+    const id = managedRecordId('skill', 'review');
+    mkdirSync(store, { recursive: true });
+    writeFileSync(recordPath(store, id), JSON.stringify({ ...makeRecord({ id }), evidence: [null] }));
+    assert.equal(loadManagedRecord(store, id), null, 'evidence:[null] 应被判脏');
+    writeFileSync(recordPath(store, id), JSON.stringify({ ...makeRecord({ id }), distribution: [{ label: 'x', contentHash: 'h', copiedAt: 't' }] }));
+    assert.equal(loadManagedRecord(store, id), null, 'distribution 缺 path 应被判脏');
+  });
+
+  it('mergeManagedRecord:尾斜杠等价路径按归一化去重,不重复登记同一目标', () => {
+    const prev = makeRecord({ distribution: [{ label: 'C', path: '/p/x', contentHash: 'a', copiedAt: 't' }] });
+    const next = makeRecord({ distribution: [{ label: 'C', path: '/p/x/', contentHash: 'b', copiedAt: 't2' }] });
+    assert.equal(mergeManagedRecord(prev, next).distribution.length, 1, '/p/x 与 /p/x/ 视为同一目标');
+  });
 });

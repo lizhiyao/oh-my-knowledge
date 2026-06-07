@@ -1,13 +1,13 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, relative, resolve, join } from 'node:path';
+import { basename, dirname, relative, resolve, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 import { resolveArtifacts } from '../../inputs/skill-loader.js';
-import { buildManagedArtifactRecord, hashArtifactSource, isDistributableEntry, managedDir, recordManagedArtifact } from '../../managed/index.js';
+import { buildManagedArtifactRecord, hashArtifactSource, isDistributablePath, managedDir, recordManagedArtifact } from '../../managed/index.js';
 import type { ArtifactKind, ManagedDistributionTarget } from '../../types/index.js';
 
 const BUILTIN_OMK_AGENT_SKILL_ID = 'omk-agent-skill';
@@ -126,25 +126,45 @@ function validateInstallTargets(params: {
 }): void {
   if (params.dryRun || params.force) return;
   for (const targetPath of params.targetPaths) {
-    if (params.source && isSamePhysicalPath(params.source, targetPath)) continue;
+    if (params.source && classifyPaths(params.source, targetPath) === 'same') continue;
     if (existsSync(targetPath)) {
       throw new Error(tCli('cli.install.target_exists', params.lang, { path: targetPath }));
     }
   }
 }
 
-/** 源与目标是否物理同一节点(解析软链);用于「接管已在目标位置的 skill」时绝不自删。 */
-function isSamePhysicalPath(a: string, b: string): boolean {
-  try {
-    return realpathSync(a) === realpathSync(b);
-  } catch {
-    return false; // 任一不存在 → 不同
+/** 解析路径的物理形态:对存在的最长前缀做 realpath、余下保持字面,使尚不存在的目标也能比较。 */
+function realPathBestEffort(p: string): string {
+  let cur = resolve(p);
+  const tail: string[] = [];
+  while (!existsSync(cur)) {
+    tail.unshift(basename(cur));
+    const parent = dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
   }
+  const base = existsSync(cur) ? realpathSync(cur) : cur;
+  return tail.length ? join(base, ...tail) : base;
+}
+
+type PathRelation = 'same' | 'overlap' | 'disjoint';
+/**
+ * 源与目标的物理关系(解析软链):
+ *   - same:同一节点 → 就地接管(绝不删/拷);
+ *   - overlap:一个是另一个的祖先 → rmSync(target) 会删掉源、或 cpSync 把目录拷进自身子目录,数据损坏,必须拒;
+ *   - disjoint:正常拷贝。
+ */
+function classifyPaths(source: string, targetPath: string): PathRelation {
+  const rs = realPathBestEffort(source);
+  const rt = realPathBestEffort(targetPath);
+  if (rs === rt) return 'same';
+  if (rs.startsWith(rt + sep) || rt.startsWith(rs + sep)) return 'overlap';
+  return 'disjoint';
 }
 
 /**
- * 通用拷贝:目录递归 cp(过滤掉 .omk / .git / evolve 等非分发产物)、单文件 copyFile。
- * 不打印——由调用方决定文案。dry-run 不写。源与目标物理同一时**就地接管**:不删不拷,返回 inPlace。
+ * 通用拷贝:目录递归 cp(过滤 .omk / .git / evolve 等非分发产物 + 软链)、单文件 copyFile。
+ * 不打印——由调用方决定文案。dry-run 不写。源即目标 → 就地接管(inPlace);源与目标互为祖先 → 拒绝(防自毁)。
  */
 function copyArtifactToTarget(params: {
   source: string;
@@ -161,9 +181,14 @@ function copyArtifactToTarget(params: {
   if (params.dryRun) {
     return { targetPath: params.targetPath, planned: true, inPlace: false };
   }
-  // 关键安全网:源就是目标(接管已安装的 skill)时绝不 rmSync 源,否则会删掉用户的 skill。
-  if (isSamePhysicalPath(params.source, params.targetPath)) {
+  const relation = classifyPaths(params.source, params.targetPath);
+  // 就地接管:源就是目标(接管已安装的 skill),绝不 rmSync 源。
+  if (relation === 'same') {
     return { targetPath: params.targetPath, planned: false, inPlace: true };
+  }
+  // 互为祖先:删除目标会删掉源、或自拷进子目录 —— 数据损坏,直接拒,哪怕带 --force。
+  if (relation === 'overlap') {
+    throw new Error(tCli('cli.install.target_overlaps_source', params.lang, { source: params.source, target: params.targetPath }));
   }
   if (existsSync(params.targetPath) && !params.force) {
     throw new Error(tCli('cli.install.target_exists', params.lang, { path: params.targetPath }));
@@ -173,8 +198,15 @@ function copyArtifactToTarget(params: {
   if (params.isDirectorySkill) {
     cpSync(params.source, params.targetPath, {
       recursive: true,
-      // 源根永远拷(否则名叫 evolve / .omk 的合法 skill 会被整棵跳过、假成功);只过滤子孙条目。
-      filter: (src) => relative(params.source, src) === '' || isDistributableEntry(basename(src)),
+      // 与 hashArtifactSource 共用过滤,保证"分发出去的 == 算进 hash 的":
+      // 源根永远拷;软链跳过(与 hash walk 一致,避免软链目标改了却不触发 drift);
+      // evolve 只在源根第一层排除(嵌套 references/evolve 正常分发),.omk/.git 任意层级排除。
+      filter: (src) => {
+        const rel = relative(params.source, src);
+        if (rel === '') return true;
+        if (lstatSync(src).isSymbolicLink()) return false;
+        return isDistributablePath(rel.split(sep));
+      },
     });
   } else {
     copyFileSync(params.source, params.targetPath);
@@ -203,9 +235,20 @@ function installOmkAgentSkill(params: {
   return targetDir;
 }
 
-/** 裸短名(既非内置 id 又不像路径)多半是 typo 的内置 id,而非用户 artifact 路径。 */
+/**
+ * 是否当作用户 artifact 路径(否则按 typo 的内置 id 处理,报 unknown_input)。
+ *   - 显式路径意图(含 `/`)或 `.md` 结尾 → 是(后续 installUserSkill 会给出精确的存在性 / SKILL.md 报错);
+ *   - 裸短名 → 仅当它确实解析到一个含 SKILL.md 的目录才算;裸的同名普通文件(如 cwd 里恰好有个
+ *     `omk-agnt-skill` 文件)不该被当成 skill 安装,落回 unknown_input。
+ */
 function looksLikeArtifactPath(input: string): boolean {
-  return input.includes('/') || /\.md$/i.test(input) || existsSync(resolve(input));
+  if (input.includes('/') || /\.md$/i.test(input)) return true;
+  try {
+    const abs = resolve(input);
+    return statSync(abs).isDirectory() && existsSync(join(abs, 'SKILL.md'));
+  } catch {
+    return false;
+  }
 }
 
 export default class Install extends BaseCommand {
@@ -332,12 +375,26 @@ export default class Install extends BaseCommand {
       throw new Error(tCli('cli.install.kind_unsupported', lang, { kind }));
     }
 
+    // 先做精确的、可 i18n 的路径校验,避免 resolveArtifacts 抛出未翻译的中英混杂裸串。
     const abs = resolve(input);
+    if (!existsSync(abs)) {
+      throw new Error(tCli('cli.install.path_not_found', lang, { path: abs }));
+    }
+    const inputIsDir = statSync(abs).isDirectory();
+    if (inputIsDir && !existsSync(join(abs, 'SKILL.md'))) {
+      throw new Error(tCli('cli.install.skillmd_missing', lang, { path: abs }));
+    }
+    if (!inputIsDir && !/\.md$/i.test(abs)) {
+      throw new Error(tCli('cli.install.not_a_skill', lang, { path: abs }));
+    }
+
     // 绝对路径必含 `/`,走 resolveArtifacts 的 file-path 分支(目录→SKILL.md 设 skillRoot,裸 .md 不设)。
     const artifact = resolveArtifacts(dirname(abs), [abs])[0];
     const isDirectorySkill = Boolean(artifact.skillRoot);
+    // source = 重读重哈的根:目录-skill 为 skillRoot(目录),文件-skill 为 .md。locator 也存这个,
+    // 使未来 hashArtifactSource(record.source.locator, isDirectorySkill) 能直接 round-trip。
     const source = isDirectorySkill ? artifact.skillRoot! : artifact.locator!;
-    // 目录-skill 哈整棵分发树(含 references/ 等资产),不只 SKILL.md,drift 不漏资产改动。
+    // 目录-skill 哈整棵分发树(含 references/ 等资产,排除 .omk/.git/evolve),drift 不漏资产改动。
     const contentHash = hashArtifactSource(source, isDirectorySkill);
 
     const targets = resolveInstallTargets({ to: flags.to, dest: flags.dest, lang });
@@ -351,43 +408,50 @@ export default class Install extends BaseCommand {
 
     const now = new Date().toISOString();
     const distribution: ManagedDistributionTarget[] = [];
-    for (const target of targets) {
-      const targetPath = targetArtifactPath(target, artifact.name, isDirectorySkill);
-      const { planned, inPlace } = copyArtifactToTarget({
-        source,
-        isDirectorySkill,
-        targetPath,
-        skillsDir: target.skillsDir,
-        force: flags.force,
-        dryRun: flags['dry-run'],
-        lang,
-      });
-      if (planned) {
-        console.log(tCli('cli.install.plan', lang, { path: targetPath }));
-      } else {
-        // inPlace:源就在目标位置,未动文件,但仍登记为一条分发落点。
-        console.log(tCli(inPlace ? 'cli.install.adopted' : 'cli.install.copied', lang, { name: artifact.name, path: targetPath }));
-        distribution.push({ label: target.label, path: targetPath, contentHash, copiedAt: now });
-      }
-    }
-
-    if (flags['dry-run']) return;
-
-    const record = buildManagedArtifactRecord({
-      name: artifact.name,
-      kind,
-      source: {
-        locator: artifact.locator!,
-        ...(artifact.ref ? { ref: artifact.ref } : {}),
-        isDirectorySkill,
-      },
-      contentHash,
-      installedAt: now,
-      distribution,
-    });
     const dir = managedDir();
-    recordManagedArtifact(record, { dir });
-    console.log(tCli('cli.install.registered', lang, { id: record.id, store: dir }));
+    // 即便多目标中途失败,也把已成功分发的落点登记进记录,保持"磁盘 == 记录"一致;
+    // 重跑 --force 时 upsert 会按 path 去重并补齐其余目标。
+    const writeRecordIfAny = (): void => {
+      if (flags['dry-run'] || distribution.length === 0) return;
+      const record = buildManagedArtifactRecord({
+        name: artifact.name,
+        kind,
+        source: {
+          locator: source,
+          ...(artifact.ref ? { ref: artifact.ref } : {}),
+          isDirectorySkill,
+        },
+        contentHash,
+        installedAt: now,
+        distribution,
+      });
+      recordManagedArtifact(record, { dir });
+      console.log(tCli('cli.install.registered', lang, { id: record.id, store: dir }));
+    };
+
+    try {
+      for (const target of targets) {
+        const targetPath = targetArtifactPath(target, artifact.name, isDirectorySkill);
+        const { planned, inPlace } = copyArtifactToTarget({
+          source,
+          isDirectorySkill,
+          targetPath,
+          skillsDir: target.skillsDir,
+          force: flags.force,
+          dryRun: flags['dry-run'],
+          lang,
+        });
+        if (planned) {
+          console.log(tCli('cli.install.plan', lang, { path: targetPath }));
+        } else {
+          // inPlace:源就在目标位置,未动文件,但仍登记为一条分发落点。
+          console.log(tCli(inPlace ? 'cli.install.adopted' : 'cli.install.copied', lang, { name: artifact.name, path: targetPath }));
+          distribution.push({ label: target.label, path: targetPath, contentHash, copiedAt: now });
+        }
+      }
+    } finally {
+      writeRecordIfAny();
+    }
   }
 }
 

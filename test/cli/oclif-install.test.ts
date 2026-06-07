@@ -434,6 +434,63 @@ describe('oclif install', () => {
     }
   });
 
+  it('嵌套 references/evolve 资产正常分发,仅源根 evolve 排除(P2 边界)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-nestedevolve-'));
+    try {
+      await makeDirSkill(dir, 'review');
+      await mkdir(join(dir, 'skills', 'review', 'references', 'evolve'), { recursive: true });
+      await writeFile(join(dir, 'skills', 'review', 'references', 'evolve', 'guide.md'), 'guide\n');
+      await mkdir(join(dir, 'skills', 'review', 'evolve'), { recursive: true }); // 源根 evolve:应排除
+      await writeFile(join(dir, 'skills', 'review', 'evolve', 'cand.md'), 'cand\n');
+      const dest = join(dir, 'dist-skills');
+      await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', dest], { cwd: dir, env: cliEnv() });
+      assert.ok(existsSync(join(dest, 'review', 'references', 'evolve', 'guide.md')), '嵌套 evolve 资产应被分发');
+      assert.ok(!existsSync(join(dest, 'review', 'evolve')), '源根 evolve 不应被分发');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('源嵌套在目标内:拒绝执行、绝不删源(P1 数据丢失防护)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-overlap-'));
+    try {
+      // skill 在 <dir>/skills/review/review,目标 dest=<dir>/skills → target=<dir>/skills/review(源的祖先)
+      const skillRoot = join(dir, 'skills', 'review', 'review');
+      await mkdir(join(skillRoot, 'references'), { recursive: true });
+      await writeFile(join(skillRoot, 'SKILL.md'), '---\nname: review\ndescription: d\n---\n# review\n');
+      await writeFile(join(dir, 'skills', 'review', 'keep.txt'), 'precious');
+      try {
+        await execFileAsync('node', [CLI, 'install', 'skills/review/review', '--dest', 'skills', '--force'], { cwd: dir, env: cliEnv() });
+        assert.fail('expected non-zero exit');
+      } catch (err) {
+        const e = err as ExecError;
+        assert.notEqual(e.code, 0);
+      }
+      assert.ok(existsSync(join(skillRoot, 'SKILL.md')), '源 skill 绝不能被删');
+      assert.equal(await readFile(join(dir, 'skills', 'review', 'keep.txt'), 'utf8'), 'precious', '兄弟文件不能被波及');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('裸名匹配到 cwd 普通文件时不被当 skill 安装,落回 unknown_input', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-barefile-'));
+    try {
+      await writeFile(join(dir, 'omk-agnt-skill'), 'junk'); // typo 的内置 id,恰好 cwd 有同名文件
+      try {
+        await execFileAsync('node', [CLI, 'install', 'omk-agnt-skill'], { cwd: dir, env: cliEnv() });
+        assert.fail('expected non-zero exit');
+      } catch (err) {
+        const e = err as ExecError;
+        assert.notEqual(e.code, 0);
+        assert.ok((e.stdout + e.stderr).includes('omk-agent-skill'), 'should fall back to unknown_input');
+      }
+      assert.ok(!existsSync(join(dir, '.omk', 'managed')), 'must not register a junk file as a skill');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('分发不带入 .omk 评测数据(P2)', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-omkfilter-'));
     try {

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, normalize } from 'node:path';
 import { hashString } from '../eval-core/evaluation-reporting.js';
 import type {
   ArtifactKind,
@@ -41,18 +41,27 @@ export function managedRecordId(kind: ArtifactKind, name: string): string {
 }
 
 /**
- * 不进 artifact「可分发树」的条目名 —— omk 的评测 / 迭代 / VCS / 系统产物,既不该被拷进 agent
- * skill 目录,也不该计入 artifact contentHash。`.omk`(samples / managed / observations)与
- * `evolve`(候选快照)是关键:用户只补样本、不动 SKILL.md 时,artifact 内容不该被判为漂移
- * —— spec 里 artifact content hash 与 sample-set hash 是分开的证据轴。
+ * 不进 artifact「可分发树」的条目 —— omk 的评测 / 迭代 / VCS / 系统产物,既不该被拷进 agent
+ * skill 目录,也不该计入 artifact contentHash。区分两类语义,避免误伤合法嵌套资产:
+ *   - **任意层级排除**:隐藏元数据 / VCS / 系统 / 依赖目录,任何深度出现都是噪声
+ *     (`.omk` = samples / managed / observations;`.git`;`node_modules`;OS 垃圾);
+ *   - **仅源根第一层排除**:omk 保留的工作目录,只在 skill 根有保留语义,嵌套同名是用户合法资产
+ *     (`evolve` 是 `<skillDir>/evolve/` 候选快照;但 `references/evolve/guide.md` 应正常分发并计入 hash)。
+ * spec 里 artifact content hash 与 sample-set hash 是分开的证据轴,故只补样本(.omk)不该改 hash。
  */
-const NON_DISTRIBUTABLE_NAMES = new Set<string>([
-  '.omk', '.git', 'evolve', 'node_modules', '.DS_Store', 'Thumbs.db',
-]);
+const GLOBAL_EXCLUDED_NAMES = new Set<string>(['.omk', '.git', 'node_modules', '.DS_Store', 'Thumbs.db']);
+const ROOT_ONLY_EXCLUDED_NAMES = new Set<string>(['evolve']);
 
-/** hash 与 copy 共用同一套过滤,保证"算进 hash 的"与"分发出去的"完全一致。 */
-export function isDistributableEntry(name: string): boolean {
-  return !NON_DISTRIBUTABLE_NAMES.has(name);
+/**
+ * 给定相对源根的路径分段(空数组 = 源根本身),判断是否进可分发树。hash 的 walk 与 copy 的
+ * filter 共用此一处,保证"算进 hash 的"与"分发出去的"完全一致。
+ */
+export function isDistributablePath(segments: string[]): boolean {
+  if (segments.length === 0) return true; // 源根永远算
+  const base = segments[segments.length - 1];
+  if (GLOBAL_EXCLUDED_NAMES.has(base)) return false;
+  if (segments.length === 1 && ROOT_ONLY_EXCLUDED_NAMES.has(base)) return false;
+  return true;
 }
 
 /**
@@ -69,20 +78,25 @@ export function hashArtifactSource(source: string, isDirectorySkill: boolean): s
     return createHash('sha256').update(readFileSync(source)).digest('hex').slice(0, 12);
   }
   const rels: string[] = [];
-  const walk = (dir: string, prefix: string): void => {
+  const walk = (dir: string, segments: string[]): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      if (!isDistributableEntry(entry.name)) continue;
-      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) walk(join(dir, entry.name), rel);
-      else if (entry.isFile()) rels.push(rel);
+      const segs = [...segments, entry.name];
+      if (!isDistributablePath(segs)) continue;
+      // 软链既非 isFile 也非 isDirectory,天然跳过 —— 与 copyArtifactToTarget 的 filter 一致
+      // (hash 覆盖的 == 分发出去的),避免软链目标改变却不触发 drift,也回避软链环。
+      if (entry.isDirectory()) walk(join(dir, entry.name), segs);
+      else if (entry.isFile()) rels.push(segs.join('/'));
     }
   };
-  walk(source, '');
+  walk(source, []);
   rels.sort();
   const h = createHash('sha256');
   const sep = Buffer.from([0]);
   for (const rel of rels) {
     const content = readFileSync(join(source, rel));
+    // 路径与内容都做长度前缀,彻底排除"不同树拼出同一串"的歧义(文件名虽不含 NUL,核心层仍按可注入防)。
+    h.update(String(Buffer.byteLength(rel)));
+    h.update(sep);
     h.update(rel);
     h.update(sep);
     h.update(String(content.length));
@@ -93,18 +107,33 @@ export function hashArtifactSource(source: string, isDirectorySkill: boolean): s
   return h.digest('hex').slice(0, 12);
 }
 
+function isStringField(v: unknown): v is string {
+  return typeof v === 'string';
+}
+
+// 校验到元素级:记录文件是用户可手改的(透明性是设计价值),`evidence:[null]` / 缺字段的 distribution
+// 都是现实的坏手改;若只查 Array.isArray,坏元素会在 deriveManagedState / mergeManagedRecord 里
+// 解引用崩溃(且在 load 的 try/catch 之外)。这里直接判脏 → load 丢弃该文件,消费方永远拿不到半成品。
 function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord {
   if (!value || typeof value !== 'object') return false;
   const r = value as Partial<ManagedArtifactRecord>;
-  return r.recordKind === 'managed-artifact'
+  if (!(r.recordKind === 'managed-artifact'
     && r.schemaVersion === 1
-    && typeof r.id === 'string'
-    && typeof r.name === 'string'
-    && typeof r.kind === 'string'
-    && typeof r.contentHash === 'string'
+    && isStringField(r.id)
+    && isStringField(r.name)
+    && isStringField(r.kind)
+    && isStringField(r.contentHash)
+    && r.source && typeof r.source === 'object' && isStringField((r.source as { locator?: unknown }).locator)
     && Array.isArray(r.distribution)
     && Array.isArray(r.evidence)
-    && Array.isArray(r.decisions);
+    && Array.isArray(r.decisions))) return false;
+  const okDist = r.distribution.every((d) => d && typeof d === 'object'
+    && isStringField((d as { path?: unknown }).path) && isStringField((d as { contentHash?: unknown }).contentHash));
+  const okEv = r.evidence.every((e) => e && typeof e === 'object'
+    && isStringField((e as { reportId?: unknown }).reportId) && isStringField((e as { contentHash?: unknown }).contentHash));
+  const okDec = r.decisions.every((d) => d && typeof d === 'object'
+    && isStringField((d as { decisionKind?: unknown }).decisionKind));
+  return okDist && okEv && okDec;
 }
 
 export function loadManagedRecord(dir: string, id: string): ManagedArtifactRecord | null {
@@ -159,9 +188,13 @@ export function mergeManagedRecord(
   next: ManagedArtifactRecord,
 ): ManagedArtifactRecord {
   if (!prev) return next;
+  // 按归一化路径去重(消除尾斜杠 / `.` / 重复分隔导致同一物理目标被记两条)。normalize 保留尾斜杠,故再去尾。
+  const normKey = (p: string): string => normalize(p).replace(/[\\/]+$/, '') || p;
   const byPath = new Map<string, ManagedDistributionTarget>();
-  for (const t of prev.distribution) byPath.set(t.path, t);
-  for (const t of next.distribution) byPath.set(t.path, t);
+  for (const t of prev.distribution) byPath.set(normKey(t.path), t);
+  for (const t of next.distribution) byPath.set(normKey(t.path), t);
+  // 维护点:`...next` 取本次安装的事实,下面四个字段从 prev 保留(历史 / 首次时间)。
+  // 将来若新增任何"必须从安装基线保留"的字段,务必加进这份覆盖清单,否则会被 next 静默覆盖成 undefined。
   return {
     ...next,
     installedAt: prev.installedAt,
