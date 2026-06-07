@@ -87,7 +87,7 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
     en: 'Not a skill file (expected a .md file or a directory containing SKILL.md): {path}',
   },
   'cli.install.not_a_git_repo': {
-    zh: '当前目录不在 git 仓库内,无法解析 git: 源。请在仓库内执行,或改用本地路径。',
+    zh: '当前目录不在 git 仓库内，无法解析 git: 源。请在仓库内执行，或改用本地路径。',
     en: 'Current directory is not inside a git repo; cannot resolve a git: source. Run inside the repo, or use a local path.',
   },
   'cli.install.git_skill_not_found': {

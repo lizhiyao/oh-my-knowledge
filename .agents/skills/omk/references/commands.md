@@ -286,7 +286,7 @@ omk init my-project
 
 ## omk install
 
-安装 omk 官方 Agent Skill,或登记并分发用户自己的 skill(内置 id omk-agent-skill,本地路径,或 git:<ref>:<name> 取当前仓库某个 ref 的 skill)。默认写入本机已检测 agent 目标;安装用户 skill 时同时登记一条受管记录。
+安装 omk 官方 Agent Skill，或登记并分发用户自己的 skill（内置 id omk-agent-skill，本地路径，或 git:<ref>:<name> 取当前仓库某个 ref 的 skill）。默认写入本机已检测 agent 目标；安装用户 skill 时同时登记一条受管记录。
 
 **用法:**
 
@@ -296,7 +296,7 @@ omk install <input> [flags]
 
 **参数:**
 
-- `input`(必填):要安装的知识输入:内置 id omk-agent-skill,本地 skill 路径(目录或 .md),或 git:<ref>:<name>(当前仓库某 ref 的 skill)。
+- `input`(必填):要安装的知识输入：内置 id omk-agent-skill，本地 skill 路径（目录或 .md），或 git:<ref>:<name>（当前仓库某 ref 的 skill）。
 
 **Flags:**
 

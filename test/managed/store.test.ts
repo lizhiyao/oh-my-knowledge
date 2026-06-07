@@ -118,6 +118,20 @@ describe('managed store', () => {
     assert.ok(loadManagedRecord(store, id));
   });
 
+  it('迁移边界:v1 记录(无 sourceKind)/ v2 缺 sourceKind 都判脏丢弃', () => {
+    const store = managedDir(dir);
+    const id = managedRecordId('skill', 'review');
+    mkdirSync(store, { recursive: true });
+    // #211 的 v1 记录:schemaVersion 1,source 无 sourceKind —— 去兼容直接丢弃。
+    const v1: Record<string, unknown> = { ...makeRecord({ id }), schemaVersion: 1, source: { locator: '/abs/review', isDirectorySkill: true } };
+    writeFileSync(recordPath(store, id), JSON.stringify(v1));
+    assert.equal(loadManagedRecord(store, id), null, 'schemaVersion 1 应被迁移边界拒绝');
+    // v2 但 source 缺新必填的 sourceKind:同样判脏。
+    const noSk: Record<string, unknown> = { ...makeRecord({ id }), source: { locator: '/abs/review', isDirectorySkill: true } };
+    writeFileSync(recordPath(store, id), JSON.stringify(noSk));
+    assert.equal(loadManagedRecord(store, id), null, 'source 缺 sourceKind 应判脏');
+  });
+
   it('loadAllManagedRecords:跳过损坏文件,只收合法记录', () => {
     const store = managedDir(dir);
     upsertManagedRecord(store, makeRecord());

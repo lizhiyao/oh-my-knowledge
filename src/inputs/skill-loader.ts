@@ -36,9 +36,13 @@ function buildMetadata(content: string): Record<string, unknown> | undefined {
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
 
+// 这些是**探测**(尝试某路径是否存在),miss 是正常流程,不是错误 → 吞掉 git 的 `fatal:` stderr,
+// 否则一次成功的 install/eval 也会在用户终端打印吓人的 `fatal: path ... does not exist`。
+const GIT_PROBE_STDIO: ['ignore', 'pipe', 'ignore'] = ['ignore', 'pipe', 'ignore'];
+
 export function gitShowFile(ref: string, filePath: string): string | null {
   try {
-    return execFileSync('git', ['show', `${ref}:${filePath}`], { encoding: 'utf-8' }).trim();
+    return execFileSync('git', ['show', `${ref}:${filePath}`], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim();
   } catch {
     return null;
   }
@@ -47,7 +51,7 @@ export function gitShowFile(ref: string, filePath: string): string | null {
 /** 取 `<ref>:<filePath>` 的原始字节(二进制资产用,不做 utf-8 解码);不存在/出错返回 null。 */
 export function gitShowBytes(ref: string, filePath: string): Buffer | null {
   try {
-    return execFileSync('git', ['show', `${ref}:${filePath}`]); // 无 encoding → Buffer
+    return execFileSync('git', ['show', `${ref}:${filePath}`], { stdio: GIT_PROBE_STDIO }); // 无 encoding → Buffer
   } catch {
     return null;
   }
@@ -68,7 +72,7 @@ export interface GitTreeEntry {
 export function gitLsTreeBlobs(ref: string, treePath: string): GitTreeEntry[] {
   let out: string;
   try {
-    out = execFileSync('git', ['ls-tree', '-r', '-z', `${ref}:${treePath}`], { encoding: 'utf-8' });
+    out = execFileSync('git', ['ls-tree', '-r', '-z', `${ref}:${treePath}`], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO });
   } catch {
     return [];
   }
@@ -83,7 +87,8 @@ export function gitLsTreeBlobs(ref: string, treePath: string): GitTreeEntry[] {
 }
 
 export function getGitRelativePath(absolutePath: string): string {
-  const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf-8' }).trim();
+  // stderr 吞掉:不在 git 仓库时的 `fatal:` 由上层(resolver)转成友好的 not_a_git_repo,不双重打印。
+  const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim();
   return relative(gitRoot, absolutePath);
 }
 

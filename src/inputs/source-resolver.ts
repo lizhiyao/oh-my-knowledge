@@ -160,11 +160,14 @@ function classifyGitSkillRef(ref: string, gitRelDir: string, spec: string): GitS
     if (gitShowFile(ref, fileSkillPath) === null) return null;
     return { isDir: false, treePath: '', fileSkillPath, name: basename(spec).replace(/\.md$/i, '') };
   }
-  if (gitShowFile(ref, gitJoin(gitJoin(gitRelDir, spec), 'SKILL.md')) !== null) {
-    return { isDir: true, treePath: gitJoin(gitRelDir, spec), fileSkillPath: '', name: basename(spec) };
-  }
+  // 裸 spec 的歧义(同时存在 <spec>.md 与 <spec>/SKILL.md)必须**文件优先**,与 eval 的 git/本地
+  // 解析顺序(skill-loader.ts:resolveArtifacts 先 <name>.md 再 <name>/SKILL.md)一致 —— 否则 eval 量的
+  // 是文件、install 注册的是目录,contentHash 不同,evidence 会被读时 hash 门控静默剥离。
   if (gitShowFile(ref, gitJoin(gitRelDir, `${spec}.md`)) !== null) {
     return { isDir: false, treePath: '', fileSkillPath: gitJoin(gitRelDir, `${spec}.md`), name: basename(spec) };
+  }
+  if (gitShowFile(ref, gitJoin(gitJoin(gitRelDir, spec), 'SKILL.md')) !== null) {
+    return { isDir: true, treePath: gitJoin(gitRelDir, spec), fileSkillPath: '', name: basename(spec) };
   }
   return null;
 }

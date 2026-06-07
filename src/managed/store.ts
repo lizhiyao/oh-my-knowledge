@@ -202,6 +202,9 @@ export function mergeManagedRecord(
   for (const t of next.distribution) byPath.set(normKey(t.path), t);
   // 维护点:`...next` 取本次安装的事实,下面四个字段从 prev 保留(历史 / 首次时间)。
   // 将来若新增任何"必须从安装基线保留"的字段,务必加进这份覆盖清单,否则会被 next 静默覆盖成 undefined。
+  // 注意语义边界:distribution 是**多源容忍**的(按归一化 path 累积去重),而 source / contentHash 是
+  // **末次写入(单源)**。同一 (kind,name) 先 file 后 git 重装会得到一条 source=git 的记录,但 distribution
+  // 仍含 file 时代的落点 —— 那些落点会按 git 的 contentHash 被判 drift。这是"换源即重基线"的有意取舍。
   return {
     ...next,
     installedAt: prev.installedAt,

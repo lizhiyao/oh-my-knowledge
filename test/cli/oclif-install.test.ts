@@ -566,6 +566,20 @@ describe('oclif install', () => {
     }
   });
 
+  it('git 源 --force 重装幂等:仍一条记录、分发不重复', async () => {
+    const repo = await makeGitRepoWithSkill();
+    try {
+      const dest = join(repo, 'dist-skills');
+      await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/review', '--dest', dest], { cwd: repo, env: cliEnv() });
+      await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/review', '--dest', dest, '--force'], { cwd: repo, env: cliEnv() });
+      const record = await readSoleManagedRecord(repo);
+      assert.equal((record.distribution as Array<unknown>).length, 1, 'distribution 应按 path 去重');
+      assert.ok(existsSync(join(dest, 'review', 'SKILL.md')), 'force 重装后目标仍在');
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
   it('git 源 --dry-run 不分发不登记', async () => {
     const repo = await makeGitRepoWithSkill();
     try {

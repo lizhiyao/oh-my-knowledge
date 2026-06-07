@@ -238,7 +238,7 @@ function installOmkAgentSkill(params: {
 
 /**
  * 是否当作用户 artifact 路径(否则按 typo 的内置 id 处理,报 unknown_input)。
- *   - 显式路径意图(含 `/`)或 `.md` 结尾 → 是(后续 installUserSkill 会给出精确的存在性 / SKILL.md 报错);
+ *   - 显式路径意图(含 `/`)或 `.md` 结尾 → 是(后续 installManagedSkill 经 resolver 给出精确的存在性 / SKILL.md 报错);
  *   - 裸短名 → 仅当它确实解析到一个含 SKILL.md 的目录才算;裸的同名普通文件(如 cwd 里恰好有个
  *     `omk-agnt-skill` 文件)不该被当成 skill 安装,落回 unknown_input。
  */
@@ -254,7 +254,7 @@ function looksLikeArtifactPath(input: string): boolean {
 
 export default class Install extends BaseCommand {
   static description = bilingual({
-    zh: '安装 omk 官方 Agent Skill,或登记并分发用户自己的 skill(内置 id omk-agent-skill,本地路径,或 git:<ref>:<name> 取当前仓库某个 ref 的 skill)。默认写入本机已检测 agent 目标;安装用户 skill 时同时登记一条受管记录。',
+    zh: '安装 omk 官方 Agent Skill，或登记并分发用户自己的 skill（内置 id omk-agent-skill，本地路径，或 git:<ref>:<name> 取当前仓库某个 ref 的 skill）。默认写入本机已检测 agent 目标；安装用户 skill 时同时登记一条受管记录。',
     en: 'Install the official omk Agent Skill, or register and distribute your own skill (built-in id omk-agent-skill, a local path, or git:<ref>:<name> for a skill at a ref of the current repo). Defaults to detected local agent targets; installing a user skill also records a managed entry.',
   });
 
@@ -299,7 +299,7 @@ export default class Install extends BaseCommand {
   static args = {
     input: Args.string({
       description: bilingual({
-        zh: '要安装的知识输入:内置 id omk-agent-skill,本地 skill 路径(目录或 .md),或 git:<ref>:<name>(当前仓库某 ref 的 skill)。',
+        zh: '要安装的知识输入：内置 id omk-agent-skill，本地 skill 路径（目录或 .md），或 git:<ref>:<name>（当前仓库某 ref 的 skill）。',
         en: 'Knowledge input to install: built-in id omk-agent-skill, a local skill path (directory or .md), or git:<ref>:<name> (a skill at a ref of the current repo).',
       }),
       required: true,
@@ -456,7 +456,7 @@ export default class Install extends BaseCommand {
   }
 }
 
-// --kind 单独传入 installUserSkill,故此处不含 kind 字段(裸 kind 留给 ArtifactKind)。
+// --kind 单独传入 installManagedSkill,故此处不含 kind 字段(裸 kind 留给 ArtifactKind)。
 type InstallFlags = {
   to: string;
   dest?: string;

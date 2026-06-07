@@ -4,7 +4,7 @@
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, realpathSync, chmodSync, statSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { resolveInstallSource, SourceResolveError } from '../../src/inputs/source-resolver.js';
@@ -126,6 +126,63 @@ describe('source-resolver git', () => {
       () => resolveInstallSource('git::skills/review'),
       (e: unknown) => e instanceof SourceResolveError && e.messageKey === 'cli.install.git_skill_not_found',
     );
+  });
+
+  it('裸 spec 歧义:文件优先(与 eval 解析顺序一致,防 evidence 静默剥离)', () => {
+    writeFileSync(join(repo, 'skills', 'dual.md'), '# dual file\n');
+    mkdirSync(join(repo, 'skills', 'dual'), { recursive: true });
+    writeFileSync(join(repo, 'skills', 'dual', 'SKILL.md'), '# dual dir\n');
+    git(repo, ['add', '-A']);
+    git(repo, ['commit', '-q', '-m', 'dual']);
+    const src = resolveInstallSource('git:HEAD:skills/dual');
+    try {
+      assert.equal(src.isDirectorySkill, false, '同时存在 .md 与 dir/SKILL.md 时应选文件,与 eval 一致');
+      assert.equal(src.name, 'dual');
+    } finally {
+      src.cleanup();
+    }
+  });
+
+  it('物化保留可执行位', () => {
+    const exe = join(repo, 'skills', 'review', 'references', 'run.sh');
+    writeFileSync(exe, '#!/bin/sh\necho hi\n');
+    chmodSync(exe, 0o755);
+    git(repo, ['add', '-A']);
+    git(repo, ['commit', '-q', '-m', 'exe']);
+    const src = resolveInstallSource('git:HEAD:skills/review');
+    try {
+      const mode = statSync(join(src.localRoot, 'references', 'run.sh')).mode;
+      assert.equal(mode & 0o100, 0o100, '可执行位应随物化保留');
+    } finally {
+      src.cleanup();
+    }
+  });
+
+  it('文件名含换行也能物化(ls-tree -z 不 quote)', () => {
+    const nl = String.fromCharCode(10);
+    const fname = `line${nl}break.md`;
+    writeFileSync(join(repo, 'skills', 'review', 'references', fname), 'nl\n');
+    git(repo, ['add', '-A']);
+    git(repo, ['commit', '-q', '-m', 'nl']);
+    const src = resolveInstallSource('git:HEAD:skills/review');
+    try {
+      assert.ok(existsSync(join(src.localRoot, 'references', fname)), '含换行文件名应被物化、不被丢');
+    } finally {
+      src.cleanup();
+    }
+  });
+
+  it('git 树里的软链被跳过,不物化(与本地分发一致)', () => {
+    symlinkSync('SKILL.md', join(repo, 'skills', 'review', 'link.md'));
+    git(repo, ['add', '-A']);
+    git(repo, ['commit', '-q', '-m', 'link']);
+    const src = resolveInstallSource('git:HEAD:skills/review');
+    try {
+      assert.ok(!existsSync(join(src.localRoot, 'link.md')), '软链不该被物化');
+      assert.ok(existsSync(join(src.localRoot, 'SKILL.md')), '正常文件仍物化');
+    } finally {
+      src.cleanup();
+    }
   });
 });
 
