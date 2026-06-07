@@ -160,4 +160,26 @@ describe('resolveArtifacts git(与 install 共用归类)', () => {
     assert.ok(artifacts[0].content?.includes('real foo'), '应回退到 foo/SKILL.md');
     assert.ok(!artifacts[0].content?.startsWith('tree '), '绝不能把 git 树清单当 skill 内容');
   });
+
+  it('从仓库外调用:git 上下文锚定 skillDir 所属 repo,而非进程 cwd', () => {
+    // 进程 cwd 停在 omk 仓库(测试运行目录),skillDir 指向另一个临时 repo,且**不 chdir 进去**。
+    // 修复前 rev-parse 在进程 cwd 跑 → 拿 omk repo 的 root/HEAD → not_found 或评测错 repo 的同名内容。
+    const ext = realpathSync(mkdtempSync(join(tmpdir(), 'omk-eval-extrepo-')));
+    try {
+      const sh = (args: string[]): void => { execFileSync('git', args, { cwd: ext, stdio: 'ignore' }); };
+      sh(['init', '-q']);
+      sh(['config', 'user.email', 't@t']);
+      sh(['config', 'user.name', 't']);
+      mkdirSync(join(ext, 'skills'), { recursive: true });
+      writeFileSync(join(ext, 'skills', 'review.md'), '# external review skill\n');
+      sh(['add', '-A']);
+      sh(['commit', '-q', '-m', 'seed']);
+      const artifacts = resolveArtifacts(join(ext, 'skills'), ['git:review']); // 注意:不 chdir
+      assert.equal(artifacts[0].source, 'git');
+      assert.ok(artifacts[0].content?.includes('external review skill'),
+        'git 上下文必须锚定 skillDir 的 repo,读外部 repo 的 skills/review.md');
+    } finally {
+      rmSync(ext, { recursive: true, force: true });
+    }
+  });
 });

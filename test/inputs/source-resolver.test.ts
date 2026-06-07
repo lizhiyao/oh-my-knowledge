@@ -216,20 +216,26 @@ describe('source-resolver git', () => {
       execFileSync('git', ['mktree'], { cwd: repo, encoding: 'utf-8', input: spec }).trim();
     const tab = String.fromCharCode(9);
     const nl = String.fromCharCode(10);
+    // 唯一 marker 名:逃逸落点是 tmpdir()/<markerName>(temp 父级),固定名会被他机残留/并发误炸。
+    const markerName = `omk-escape-${process.pid}-${process.hrtime.bigint()}.txt`;
     const evil = ho('pwned' + nl);
     const skillmd = ho('# mal skill' + nl);
-    const dotdot = mktree(`100644 blob ${evil}${tab}evil.txt${nl}`);
+    const dotdot = mktree(`100644 blob ${evil}${tab}${markerName}${nl}`);
     const skillTree = mktree(`040000 tree ${dotdot}${tab}..${nl}100644 blob ${skillmd}${tab}SKILL.md${nl}`);
     const rootTree = mktree(`040000 tree ${skillTree}${tab}skill${nl}`);
     const commit = execFileSync('git', ['commit-tree', rootTree, '-m', 'mal'], { cwd: repo, encoding: 'utf-8', input: '' }).trim();
     git(repo, ['update-ref', 'refs/heads/mal', commit]);
-    const escaped = join(tmpdir(), 'evil.txt'); // temp = mkdtemp(tmpdir()/omk-install-git-*),父级即 tmpdir
-    assert.ok(!existsSync(escaped), '前置:逃逸落点应不存在');
-    assert.throws(
-      () => resolveInstallSource('git:mal:skill'),
-      (e: unknown) => e instanceof SourceResolveError && e.messageKey === 'cli.install.git_unsafe_path',
-    );
-    assert.ok(!existsSync(escaped), '越界路径绝不能写出临时目录');
+    const escaped = join(tmpdir(), markerName); // temp = mkdtemp(tmpdir()/omk-install-git-*),父级即 tmpdir
+    try {
+      assert.ok(!existsSync(escaped), '前置:逃逸落点应不存在');
+      assert.throws(
+        () => resolveInstallSource('git:mal:skill'),
+        (e: unknown) => e instanceof SourceResolveError && e.messageKey === 'cli.install.git_unsafe_path',
+      );
+      assert.ok(!existsSync(escaped), '越界路径绝不能写出临时目录');
+    } finally {
+      rmSync(escaped, { force: true }); // 万一回归(写出了),也不留脏
+    }
   });
 
   it('从仓库子目录执行也能物化(ls-tree --full-tree,不受 cwd 前缀限制)', () => {

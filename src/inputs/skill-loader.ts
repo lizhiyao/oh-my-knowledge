@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync, realpathSync } from 'node:fs';
 import { resolve, join, relative, dirname, basename } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { extractSkillHardRules, extractSkillWorkflows } from '../shared/hard-rules.js';
@@ -44,9 +44,12 @@ const GIT_PROBE_STDIO: ['ignore', 'pipe', 'ignore'] = ['ignore', 'pipe', 'ignore
 // (`tree <ref>:path\n\nSKILL.md`),被这里当成"文件存在 + 内容"误收 —— 名字以 .md 结尾的目录会被
 // classify 误判为 file-skill、物化出树清单当 skill 正文,也会让 eval 把清单文本量成 skill 内容。
 // `cat-file blob` 对非 blob(tree/submodule)直接非零退出,从根上只认 blob。对真 blob 字节与 show 一致。
-export function gitShowFile(ref: string, filePath: string): string | null {
+// 所有 git helper 收 `cwd`(默认进程 cwd):git 解析必须在**目标仓库**里跑,否则 eval 从别处调用、
+// skillDir 指向另一个 repo 时,会拿进程 cwd 的 repo 与 HEAD 去解析,轻则 not_found、重则评测错内容。
+// 由 resolveGitRepoContext 解出 repoRoot 后逐处显式传入。
+export function gitShowFile(ref: string, filePath: string, cwd: string = process.cwd()): string | null {
   try {
-    return execFileSync('git', ['cat-file', 'blob', `${ref}:${filePath}`], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim();
+    return execFileSync('git', ['cat-file', 'blob', `${ref}:${filePath}`], { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim();
   } catch {
     return null;
   }
@@ -56,9 +59,9 @@ export function gitShowFile(ref: string, filePath: string): string | null {
  * 取 `<ref>:<filePath>` 的原始字节(二进制资产用,不做 utf-8 解码);不存在/非 blob/出错返回 null。
  * 同 gitShowFile 用 `cat-file blob`:对目录会非零退出,不会把树清单字节当文件内容物化。
  */
-export function gitShowBytes(ref: string, filePath: string): Buffer | null {
+export function gitShowBytes(ref: string, filePath: string, cwd: string = process.cwd()): Buffer | null {
   try {
-    return execFileSync('git', ['cat-file', 'blob', `${ref}:${filePath}`], { stdio: GIT_PROBE_STDIO }); // 无 encoding → Buffer
+    return execFileSync('git', ['cat-file', 'blob', `${ref}:${filePath}`], { cwd, stdio: GIT_PROBE_STDIO }); // 无 encoding → Buffer
   } catch {
     return null;
   }
@@ -78,10 +81,10 @@ export interface GitTreeEntry {
  * `ls-tree HEAD:skills/review` 会返回空(而 gitShowFile 探测不受限,导致"探测命中→物化为空"的发散)。
  * `treePath` 为空时列整棵根 tree(`<ref>:`)。
  */
-export function gitLsTreeBlobs(ref: string, treePath: string): GitTreeEntry[] {
+export function gitLsTreeBlobs(ref: string, treePath: string, cwd: string = process.cwd()): GitTreeEntry[] {
   let out: string;
   try {
-    out = execFileSync('git', ['ls-tree', '-r', '-z', '--full-tree', `${ref}:${treePath}`], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO });
+    out = execFileSync('git', ['ls-tree', '-r', '-z', '--full-tree', `${ref}:${treePath}`], { cwd, encoding: 'utf-8', stdio: GIT_PROBE_STDIO });
   } catch {
     return [];
   }
@@ -95,10 +98,38 @@ export function gitLsTreeBlobs(ref: string, treePath: string): GitTreeEntry[] {
   return entries;
 }
 
-export function getGitRelativePath(absolutePath: string): string {
-  // stderr 吞掉:不在 git 仓库时的 `fatal:` 由上层(resolver)转成友好的 not_a_git_repo,不双重打印。
-  const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim();
-  return relative(gitRoot, absolutePath);
+export interface GitRepoContext {
+  /** 仓库根(realpath 归一,避免 macOS /var ↔ /private/var 等价路径算错)。所有 git helper 以此为 cwd。 */
+  repoRoot: string;
+  /** fromPath 相对仓库根的路径(realpath 归一后计算)。 */
+  relDir: string;
+}
+
+/** 从 p 起向上找最近的存在目录(skillDir 可能尚不在磁盘,但仍要定位它所属的 repo)。 */
+function nearestExistingDir(p: string): string {
+  let cur = resolve(p);
+  while (!existsSync(cur)) {
+    const parent = dirname(cur);
+    if (parent === cur) break;
+    cur = parent;
+  }
+  return cur;
+}
+
+/**
+ * 解出 `fromPath` 所属 git 仓库的上下文。**关键**:`git rev-parse` 在 `fromPath` 处执行(-C),
+ * 而非进程 cwd —— 否则 eval 从别处调用、skillDir 指向另一个 repo 时,会拿进程 cwd 的 repo root 和
+ * HEAD 去解析,轻则 not_found、重则评测错 repo 的同名内容。repoRoot / relDir 都 realpath 归一,
+ * 消除 /var ↔ /private/var 这类等价路径导致 relative 算错。不在 git 仓库时 rev-parse 抛错,由上层转
+ * not_a_git_repo。stderr 吞掉,不双重打印 `fatal:`。
+ */
+export function resolveGitRepoContext(fromPath: string): GitRepoContext {
+  const anchor = realpathSync(nearestExistingDir(fromPath));
+  const repoRoot = realpathSync(
+    execFileSync('git', ['-C', anchor, 'rev-parse', '--show-toplevel'], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim(),
+  );
+  const absFrom = existsSync(resolve(fromPath)) ? realpathSync(resolve(fromPath)) : resolve(fromPath);
+  return { repoRoot, relDir: relative(repoRoot, absFrom) };
 }
 
 /** 拼 git 仓库相对路径:始终用 `/`,空 base 直接返回 b(避免 join 产生 `.` 这类退化 tree-ish)。 */
@@ -127,9 +158,9 @@ export interface GitSkillRef {
  * `gitRelDir` 是各调用方的解析基准(install=cwd 相对仓库根、eval=skillDir 相对仓库根),作为显式
  * 参数传入,基准差异留给调用方、归类逻辑单一来源。任一探测命中即返回;都不中返回 null。
  */
-export function classifyGitSkillRef(ref: string, gitRelDir: string, spec: string): GitSkillRef | null {
+export function classifyGitSkillRef(ref: string, gitRelDir: string, spec: string, cwd: string = process.cwd()): GitSkillRef | null {
   if (basename(spec) === 'SKILL.md') {
-    if (gitShowFile(ref, gitJoin(gitRelDir, spec)) === null) return null;
+    if (gitShowFile(ref, gitJoin(gitRelDir, spec), cwd) === null) return null;
     const dirSpec = dirname(spec);
     const treePath = dirSpec === '.' ? gitRelDir : gitJoin(gitRelDir, dirSpec);
     let name = basename(dirSpec);
@@ -138,13 +169,13 @@ export function classifyGitSkillRef(ref: string, gitRelDir: string, spec: string
   }
   if (/\.md$/i.test(spec)) {
     const fileSkillPath = gitJoin(gitRelDir, spec);
-    if (gitShowFile(ref, fileSkillPath) === null) return null;
+    if (gitShowFile(ref, fileSkillPath, cwd) === null) return null;
     return { isDir: false, treePath: '', fileSkillPath, name: basename(spec).replace(/\.md$/i, '') };
   }
-  if (gitShowFile(ref, gitJoin(gitRelDir, `${spec}.md`)) !== null) {
+  if (gitShowFile(ref, gitJoin(gitRelDir, `${spec}.md`), cwd) !== null) {
     return { isDir: false, treePath: '', fileSkillPath: gitJoin(gitRelDir, `${spec}.md`), name: basename(spec) };
   }
-  if (gitShowFile(ref, gitJoin(gitJoin(gitRelDir, spec), 'SKILL.md')) !== null) {
+  if (gitShowFile(ref, gitJoin(gitJoin(gitRelDir, spec), 'SKILL.md'), cwd) !== null) {
     return { isDir: true, treePath: gitJoin(gitRelDir, spec), fileSkillPath: '', name: basename(spec) };
   }
   return null;
@@ -338,7 +369,7 @@ export function resolveArtifacts(
 ): Artifact[] {
   const strictBaseline = opts.strictBaseline ?? true;
   const artifacts: Artifact[] = [];
-  let gitRelDir: string | null = null;
+  let gitCtx: GitRepoContext | null = null;
 
   for (const rawVariant of variants) {
     // 字符串即纯 expr(无 cwd);结构化对象直接取 expr/cwd。不再 split @cwd。
@@ -375,11 +406,12 @@ export function resolveArtifacts(
         ref = parts[0];
         name = parts.slice(1).join(':');
       }
-      if (!gitRelDir) gitRelDir = getGitRelativePath(skillDir);
+      // git 上下文锚定 skillDir 所属仓库(不是进程 cwd):从别处调用、skillDir 在另一个 repo 时也对。
+      if (!gitCtx) gitCtx = resolveGitRepoContext(skillDir);
       // file-vs-dir 归类与 install 共用 classifyGitSkillRef(裸 spec 文件优先),两条路径绝不发散。
-      const resolved = classifyGitSkillRef(ref, gitRelDir, name);
+      const resolved = classifyGitSkillRef(ref, gitCtx.relDir, name, gitCtx.repoRoot);
       const content = resolved
-        ? (resolved.isDir ? gitShowFile(ref, gitJoin(resolved.treePath, 'SKILL.md')) : gitShowFile(ref, resolved.fileSkillPath))
+        ? (resolved.isDir ? gitShowFile(ref, gitJoin(resolved.treePath, 'SKILL.md'), gitCtx.repoRoot) : gitShowFile(ref, resolved.fileSkillPath, gitCtx.repoRoot))
         : null;
       if (!content) {
         throw new Error(`skill not found in git ${ref}: ${name}.md or ${name}/SKILL.md`);

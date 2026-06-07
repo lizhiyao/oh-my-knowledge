@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, st
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { isDistributablePath } from '../managed/index.js';
-import { classifyGitSkillRef, getGitRelativePath, gitJoin, gitLsTreeBlobs, gitShowBytes, skillNameFromPath } from './skill-loader.js';
+import { classifyGitSkillRef, resolveGitRepoContext, gitJoin, gitLsTreeBlobs, gitShowBytes, skillNameFromPath } from './skill-loader.js';
 
 /**
  * 安装源解析器 —— 把"各种源"物化成统一的本地形态,让 install / managed 主干**源无关**。
@@ -97,14 +97,14 @@ function resolveGitSource(input: string): ResolvedSource {
   // 空 spec / 空 ref 都拒:空 ref(`git::x`)会被 git 当 index/stage-0 解析,破坏"可复现、可重取"的前提。
   if (!spec || !ref) throw new SourceResolveError('cli.install.git_skill_not_found', { ref, name: spec });
 
-  let gitRelDir: string;
+  let ctx;
   try {
-    gitRelDir = getGitRelativePath(resolve('.'));
+    ctx = resolveGitRepoContext(resolve('.'));
   } catch {
     throw new SourceResolveError('cli.install.not_a_git_repo', {});
   }
 
-  const resolved = classifyGitSkillRef(ref, gitRelDir, spec);
+  const resolved = classifyGitSkillRef(ref, ctx.relDir, spec, ctx.repoRoot);
   if (!resolved) {
     throw new SourceResolveError('cli.install.git_skill_not_found', { ref, name: spec });
   }
@@ -121,7 +121,7 @@ function resolveGitSource(input: string): ResolvedSource {
   try {
     const locator = `git:${ref}:${spec}`;
     if (resolved.isDir) {
-      for (const entry of gitLsTreeBlobs(ref, resolved.treePath)) {
+      for (const entry of gitLsTreeBlobs(ref, resolved.treePath, ctx.repoRoot)) {
         // 安全边界 fail closed:git tree 可被 git mktree 手工构造出名为 `..` 的子树,`ls-tree -r` 会
         // 吐 `../evil.txt`,`join(temp, ...)` 会逃出临时目录写盘、cleanup 也删不掉。任一越界路径(.. /
         // 绝对路径 / 空段 / 解析后不在 temp 内)直接抛错,而非静默跳过——静默跳过会让物化树与真实
@@ -129,7 +129,7 @@ function resolveGitSource(input: string): ResolvedSource {
         assertContainedRelPath(temp, entry.path);
         if (entry.mode === '120000' || entry.mode === '160000') continue; // 跳过软链 / submodule(与本地分发一致)
         if (!isDistributablePath(entry.path.split('/'))) continue; // 排除 .omk/.git/evolve 等
-        const bytes = gitShowBytes(ref, gitJoin(resolved.treePath, entry.path));
+        const bytes = gitShowBytes(ref, gitJoin(resolved.treePath, entry.path), ctx.repoRoot);
         if (!bytes) continue;
         const dest = join(temp, entry.path);
         mkdirSync(dirname(dest), { recursive: true });
@@ -143,7 +143,7 @@ function resolveGitSource(input: string): ResolvedSource {
       }
       return { sourceKind: 'git', localRoot: temp, name: resolved.name, isDirectorySkill: true, locator, ref, cleanup };
     }
-    const bytes = gitShowBytes(ref, resolved.fileSkillPath);
+    const bytes = gitShowBytes(ref, resolved.fileSkillPath, ctx.repoRoot);
     if (!bytes) throw new SourceResolveError('cli.install.git_skill_not_found', { ref, name: spec });
     const dest = join(temp, `${resolved.name}.md`);
     writeFileSync(dest, bytes);
