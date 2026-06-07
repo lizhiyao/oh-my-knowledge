@@ -299,8 +299,8 @@ export default class Install extends BaseCommand {
   static args = {
     input: Args.string({
       description: bilingual({
-        zh: '要安装的知识输入:内置 id omk-agent-skill,或用户 skill 路径(目录或 .md)。',
-        en: 'Knowledge input to install: built-in id omk-agent-skill, or a user skill path (directory or .md).',
+        zh: '要安装的知识输入:内置 id omk-agent-skill,本地 skill 路径(目录或 .md),或 git:<ref>:<name>(当前仓库某 ref 的 skill)。',
+        en: 'Knowledge input to install: built-in id omk-agent-skill, a local skill path (directory or .md), or git:<ref>:<name> (a skill at a ref of the current repo).',
       }),
       required: true,
     }),
@@ -324,14 +324,14 @@ export default class Install extends BaseCommand {
     }),
     dest: Flags.string({
       description: bilingual({
-        zh: '自定义 skill 根目录；omk 会安装到 <dir>/omk。',
-        en: 'Custom skill root; installs into <dir>/omk.',
+        zh: '自定义 skill 根目录；skill 安装到 <dir>/<name>（内置 omk-agent-skill 为 <dir>/omk）。',
+        en: 'Custom skill root; a skill installs into <dir>/<name> (the built-in omk-agent-skill into <dir>/omk).',
       }),
     }),
     force: Flags.boolean({
       description: bilingual({
-        zh: '覆盖已存在的 omk Agent Skill。',
-        en: 'Overwrite an existing omk Agent Skill.',
+        zh: '覆盖目标位置已存在的 skill。',
+        en: 'Overwrite an existing skill at the target location.',
       }),
       default: false,
     }),

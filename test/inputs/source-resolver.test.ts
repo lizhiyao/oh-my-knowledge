@@ -67,6 +67,27 @@ describe('source-resolver git', () => {
     }
   });
 
+  it('显式 .md / SKILL.md spec 与本地路径安装对称', () => {
+    // 显式文件名
+    const f = resolveInstallSource('git:HEAD:notes.md');
+    try {
+      assert.equal(f.isDirectorySkill, false);
+      assert.equal(f.name, 'notes');
+    } finally {
+      f.cleanup();
+    }
+    // 显式 SKILL.md → 目录-skill,name 取父目录
+    const d = resolveInstallSource('git:HEAD:skills/review/SKILL.md');
+    try {
+      assert.equal(d.isDirectorySkill, true);
+      assert.equal(d.name, 'review');
+      assert.equal(d.locator, 'git:HEAD:skills/review/SKILL.md');
+      assert.ok(existsSync(join(d.localRoot, 'references', 'cmd.md')), '应物化整树');
+    } finally {
+      d.cleanup();
+    }
+  });
+
   it('具体 commit SHA 也能解析', () => {
     const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repo, encoding: 'utf-8' }).trim();
     const src = resolveInstallSource(`git:${sha}:skills/review`);

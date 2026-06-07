@@ -79,12 +79,8 @@ function resolveGitSource(input: string): ResolvedSource {
     throw new SourceResolveError('cli.install.not_a_git_repo', {});
   }
 
-  const skillName = basename(spec);
-  const dirSkillPath = join(gitRelDir, spec, 'SKILL.md');
-  const fileSkillPath = join(gitRelDir, `${spec}.md`);
-  const isDir = gitShowFile(ref, dirSkillPath) !== null;
-  const isFile = !isDir && gitShowFile(ref, fileSkillPath) !== null;
-  if (!isDir && !isFile) {
+  const resolved = classifyGitSkillRef(ref, gitRelDir, spec);
+  if (!resolved) {
     throw new SourceResolveError('cli.install.git_skill_not_found', { ref, name: spec });
   }
 
@@ -99,26 +95,63 @@ function resolveGitSource(input: string): ResolvedSource {
 
   try {
     const locator = `git:${ref}:${spec}`;
-    if (isDir) {
-      const treePath = join(gitRelDir, spec);
-      for (const entry of gitLsTreeBlobs(ref, treePath)) {
+    if (resolved.isDir) {
+      for (const entry of gitLsTreeBlobs(ref, resolved.treePath)) {
         if (entry.mode === '120000' || entry.mode === '160000') continue; // 跳过软链 / submodule(与本地分发一致)
         if (!isDistributablePath(entry.path.split('/'))) continue; // 排除 .omk/.git/evolve 等
-        const bytes = gitShowBytes(ref, join(treePath, entry.path));
+        const bytes = gitShowBytes(ref, join(resolved.treePath, entry.path));
         if (!bytes) continue;
         const dest = join(temp, entry.path);
         mkdirSync(dirname(dest), { recursive: true });
         writeFileSync(dest, bytes);
       }
-      return { sourceKind: 'git', localRoot: temp, name: skillName, isDirectorySkill: true, locator, ref, cleanup };
+      return { sourceKind: 'git', localRoot: temp, name: resolved.name, isDirectorySkill: true, locator, ref, cleanup };
     }
-    const bytes = gitShowBytes(ref, fileSkillPath);
+    const bytes = gitShowBytes(ref, resolved.fileSkillPath);
     if (!bytes) throw new SourceResolveError('cli.install.git_skill_not_found', { ref, name: spec });
-    const dest = join(temp, `${skillName}.md`);
+    const dest = join(temp, `${resolved.name}.md`);
     writeFileSync(dest, bytes);
-    return { sourceKind: 'git', localRoot: dest, name: skillName, isDirectorySkill: false, locator, ref, cleanup };
+    return { sourceKind: 'git', localRoot: dest, name: resolved.name, isDirectorySkill: false, locator, ref, cleanup };
   } catch (err) {
     cleanup();
     throw err;
   }
+}
+
+interface GitSkillRef {
+  isDir: boolean;
+  /** dir-skill 的子树根(仓库相对);file-skill 为空。 */
+  treePath: string;
+  /** file-skill 的 .md 路径(仓库相对);dir-skill 为空。 */
+  fileSkillPath: string;
+  name: string;
+}
+
+/**
+ * 把 git spec 解析成 dir / file skill —— 与本地路径安装对称,接受三种写法:
+ *   - 显式 SKILL.md:`skills/dir/SKILL.md` → 目录-skill,name 取父目录名;
+ *   - 显式 .md:`skills/foo.md` → 文件-skill;
+ *   - 裸 spec:`skills/review` → 先试 `<spec>/SKILL.md`(目录),再试 `<spec>.md`(文件)。
+ * 任一探测命中即返回;都不中返回 null。
+ */
+function classifyGitSkillRef(ref: string, gitRelDir: string, spec: string): GitSkillRef | null {
+  if (basename(spec) === 'SKILL.md') {
+    if (gitShowFile(ref, join(gitRelDir, spec)) === null) return null;
+    const dirSpec = dirname(spec);
+    let name = basename(dirSpec);
+    if (name === '.' || name === '') name = basename(gitRelDir) || 'skill';
+    return { isDir: true, treePath: join(gitRelDir, dirSpec), fileSkillPath: '', name };
+  }
+  if (/\.md$/i.test(spec)) {
+    const fileSkillPath = join(gitRelDir, spec);
+    if (gitShowFile(ref, fileSkillPath) === null) return null;
+    return { isDir: false, treePath: '', fileSkillPath, name: basename(spec).replace(/\.md$/i, '') };
+  }
+  if (gitShowFile(ref, join(gitRelDir, spec, 'SKILL.md')) !== null) {
+    return { isDir: true, treePath: join(gitRelDir, spec), fileSkillPath: '', name: basename(spec) };
+  }
+  if (gitShowFile(ref, join(gitRelDir, `${spec}.md`)) !== null) {
+    return { isDir: false, treePath: '', fileSkillPath: join(gitRelDir, `${spec}.md`), name: basename(spec) };
+  }
+  return null;
 }

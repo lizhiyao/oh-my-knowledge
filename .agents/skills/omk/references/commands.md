@@ -296,13 +296,13 @@ omk install <input> [flags]
 
 **参数:**
 
-- `input`(必填):要安装的知识输入:内置 id omk-agent-skill,或用户 skill 路径(目录或 .md)。
+- `input`(必填):要安装的知识输入:内置 id omk-agent-skill,本地 skill 路径(目录或 .md),或 git:<ref>:<name>(当前仓库某 ref 的 skill)。
 
 **Flags:**
 
-- `--dest` `option`:自定义 skill 根目录；omk 会安装到 <dir>/omk。
+- `--dest` `option`:自定义 skill 根目录；skill 安装到 <dir>/<name>（内置 omk-agent-skill 为 <dir>/omk）。
 - `--dry-run` `boolean`:只打印安装目标，不写文件。
-- `--force` `boolean`:覆盖已存在的 omk Agent Skill。
+- `--force` `boolean`:覆盖目标位置已存在的 skill。
 - `--kind` `skill|prompt|agent|workflow`:用户 artifact 的 kind(对齐 Artifact.kind)。可省:命中 SKILL.md 自动推导,当前仅支持 skill。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--to` `option` (默认 `auto`):安装目标：auto（默认，本机已检测目标） / codex / claude / all。
