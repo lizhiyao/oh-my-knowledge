@@ -53,14 +53,19 @@ const GLOBAL_EXCLUDED_NAMES = new Set<string>(['.omk', '.git', 'node_modules', '
 const ROOT_ONLY_EXCLUDED_NAMES = new Set<string>(['evolve']);
 
 /**
- * 给定相对源根的路径分段(空数组 = 源根本身),判断是否进可分发树。hash 的 walk 与 copy 的
- * filter 共用此一处,保证"算进 hash 的"与"分发出去的"完全一致。
+ * 给定相对源根的路径分段(空数组 = 源根本身),判断是否进可分发树。hash 的 walk、copy 的 filter、
+ * git 物化共用此一处,保证三者完全一致。
+ *
+ * 关键:检查**每一段**而非只看叶子。本地 walk / cpSync 是逐层下降、命中目录即剪枝,只看叶子也够;
+ * 但 git ls-tree 给的是**扁平路径**(如 `.omk/samples.json`),只看叶子 `samples.json` 会让 `.omk`
+ * 内容漏过。故:任一段命中全局排除即排除;首段命中 root-only(evolve)即排除(嵌套同名是合法资产)。
  */
 export function isDistributablePath(segments: string[]): boolean {
   if (segments.length === 0) return true; // 源根永远算
-  const base = segments[segments.length - 1];
-  if (GLOBAL_EXCLUDED_NAMES.has(base)) return false;
-  if (segments.length === 1 && ROOT_ONLY_EXCLUDED_NAMES.has(base)) return false;
+  for (const seg of segments) {
+    if (GLOBAL_EXCLUDED_NAMES.has(seg)) return false;
+  }
+  if (ROOT_ONLY_EXCLUDED_NAMES.has(segments[0])) return false;
   return true;
 }
 
@@ -118,12 +123,14 @@ function isManagedArtifactRecord(value: unknown): value is ManagedArtifactRecord
   if (!value || typeof value !== 'object') return false;
   const r = value as Partial<ManagedArtifactRecord>;
   if (!(r.recordKind === 'managed-artifact'
-    && r.schemaVersion === 1
+    && r.schemaVersion === 2
     && isStringField(r.id)
     && isStringField(r.name)
     && isStringField(r.kind)
     && isStringField(r.contentHash)
-    && r.source && typeof r.source === 'object' && isStringField((r.source as { locator?: unknown }).locator)
+    && r.source && typeof r.source === 'object'
+    && isStringField((r.source as { locator?: unknown }).locator)
+    && isStringField((r.source as { sourceKind?: unknown }).sourceKind)
     && Array.isArray(r.distribution)
     && Array.isArray(r.evidence)
     && Array.isArray(r.decisions))) return false;
@@ -230,7 +237,7 @@ export function buildManagedArtifactRecord(input: {
 }): ManagedArtifactRecord {
   return {
     recordKind: 'managed-artifact',
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: input.id ?? managedRecordId(input.kind, input.name),
     name: input.name,
     kind: input.kind,

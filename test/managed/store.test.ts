@@ -23,11 +23,11 @@ import type { ManagedArtifactRecord } from '../../src/types/index.js';
 function makeRecord(over: Partial<ManagedArtifactRecord> = {}): ManagedArtifactRecord {
   return {
     recordKind: 'managed-artifact',
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: managedRecordId('skill', 'review'),
     name: 'review',
     kind: 'skill',
-    source: { locator: '/abs/review/SKILL.md', isDirectorySkill: true },
+    source: { sourceKind: 'file', locator: '/abs/review', isDirectorySkill: true },
     contentHash: 'aaaaaaaaaaaa',
     installedAt: '2026-06-06T00:00:00.000Z',
     distribution: [{ label: 'Claude Code', path: '/home/.claude/skills/review', contentHash: 'aaaaaaaaaaaa', copiedAt: '2026-06-06T00:00:00.000Z' }],
@@ -56,13 +56,13 @@ describe('managed store', () => {
     const rec = buildManagedArtifactRecord({
       name: 'review',
       kind: 'skill',
-      source: { locator: '/abs/review/SKILL.md', isDirectorySkill: true },
+      source: { sourceKind: 'file', locator: '/abs/review', isDirectorySkill: true },
       contentHash: 'aaaaaaaaaaaa',
       installedAt: '2026-06-06T00:00:00.000Z',
       distribution: [],
     });
     assert.equal(rec.recordKind, 'managed-artifact');
-    assert.equal(rec.schemaVersion, 1);
+    assert.equal(rec.schemaVersion, 2);
     assert.equal(rec.id, managedRecordId('skill', 'review'));
     assert.deepEqual(rec.evidence, []);
     assert.deepEqual(rec.decisions, []);
