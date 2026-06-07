@@ -184,6 +184,24 @@ describe('source-resolver git', () => {
       src.cleanup();
     }
   });
+
+  it('从仓库子目录执行也能物化(ls-tree --full-tree,不受 cwd 前缀限制)', () => {
+    const prev = process.cwd();
+    process.chdir(join(repo, 'skills', 'review'));
+    try {
+      const src = resolveInstallSource('git:HEAD:SKILL.md');
+      try {
+        assert.equal(src.isDirectorySkill, true);
+        assert.equal(src.name, 'review');
+        assert.ok(existsSync(join(src.localRoot, 'SKILL.md')), '子目录执行也应物化到 SKILL.md');
+        assert.ok(existsSync(join(src.localRoot, 'references', 'cmd.md')), '资产也应物化');
+      } finally {
+        src.cleanup();
+      }
+    } finally {
+      process.chdir(prev);
+    }
+  });
 });
 
 describe('source-resolver git repo-root SKILL.md', () => {

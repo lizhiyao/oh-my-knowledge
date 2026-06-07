@@ -441,7 +441,7 @@ export default class Install extends BaseCommand {
             lang,
           });
           if (planned) {
-            console.log(tCli('cli.install.plan', lang, { path: targetPath }));
+            console.log(tCli('cli.install.plan_skill', lang, { name, path: targetPath }));
           } else {
             console.log(tCli(inPlace ? 'cli.install.adopted' : 'cli.install.copied', lang, { name, path: targetPath }));
             distribution.push({ label: target.label, path: targetPath, contentHash, copiedAt: now });

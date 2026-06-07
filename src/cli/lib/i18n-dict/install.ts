@@ -8,6 +8,7 @@ export type InstallMessageKey =
   | 'cli.install.no_detected_targets'
   | 'cli.install.target_exists'
   | 'cli.install.plan'
+  | 'cli.install.plan_skill'
   | 'cli.install.installed'
   | 'cli.install.kind_unsupported'
   | 'cli.install.copied'
@@ -44,12 +45,16 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
     en: 'No supported local agent skill directory was detected. Pass --to codex / --to claude / --to all, or pass --dest <dir> for a custom skill root.',
   },
   'cli.install.target_exists': {
-    zh: '目标已存在：{path}。如要更新 omk Agent Skill，请加 --force。',
-    en: 'Target already exists: {path}. Pass --force to update the omk Agent Skill.',
+    zh: '目标已存在：{path}。如要覆盖，请加 --force。',
+    en: 'Target already exists: {path}. Pass --force to overwrite.',
   },
   'cli.install.plan': {
     zh: '将安装 omk Agent Skill 到：{path}',
     en: 'Will install the omk Agent Skill to: {path}',
+  },
+  'cli.install.plan_skill': {
+    zh: '将安装 skill {name} 到：{path}',
+    en: 'Will install skill {name} to: {path}',
   },
   'cli.install.installed': {
     zh: '已安装 omk Agent Skill：{path}',

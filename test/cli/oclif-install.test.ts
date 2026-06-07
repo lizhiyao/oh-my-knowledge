@@ -580,13 +580,15 @@ describe('oclif install', () => {
     }
   });
 
-  it('git 源 --dry-run 不分发不登记', async () => {
+  it('git 源 --dry-run 不分发不登记,文案源中性', async () => {
     const repo = await makeGitRepoWithSkill();
     try {
       const dest = join(repo, 'dist-skills');
-      await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/review', '--dest', dest, '--dry-run'], { cwd: repo, env: cliEnv() });
+      const { stdout } = await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/review', '--dest', dest, '--dry-run'], { cwd: repo, env: cliEnv() });
       assert.ok(!existsSync(join(dest, 'review')), 'dry-run must not distribute');
       assert.ok(!existsSync(join(repo, '.omk', 'managed')), 'dry-run must not register');
+      assert.ok(stdout.includes('将安装 skill review'), `plan 文案应源中性:\n${stdout}`);
+      assert.ok(!stdout.includes('omk Agent Skill'), 'user skill 的 dry-run 不应提 omk Agent Skill');
     } finally {
       await rm(repo, { recursive: true, force: true });
     }

@@ -67,12 +67,14 @@ export interface GitTreeEntry {
 /**
  * 递归列出 `<ref>:<treePath>` 子树下的叶子条目(blob / 软链 / submodule)。tree 不存在返回 []。
  * 用 `-z`(NUL 分隔):git 不会对含换行 / 非 ASCII 的路径做 C-quote,路径原样可回喂 git show。
+ * 用 `--full-tree`:treePath 是仓库根相对路径,不受当前 cwd 前缀限制 —— 否则在仓库子目录执行时
+ * `ls-tree HEAD:skills/review` 会返回空(而 gitShowFile 探测不受限,导致"探测命中→物化为空"的发散)。
  * `treePath` 为空时列整棵根 tree(`<ref>:`)。
  */
 export function gitLsTreeBlobs(ref: string, treePath: string): GitTreeEntry[] {
   let out: string;
   try {
-    out = execFileSync('git', ['ls-tree', '-r', '-z', `${ref}:${treePath}`], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO });
+    out = execFileSync('git', ['ls-tree', '-r', '-z', '--full-tree', `${ref}:${treePath}`], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO });
   } catch {
     return [];
   }
