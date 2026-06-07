@@ -44,10 +44,13 @@ export interface ManagedDecision {
 }
 
 export interface ManagedArtifactSource {
-  /** 重哈根:目录-skill 为其根目录、文件-skill 为 .md;`hashArtifactSource(locator, isDirectorySkill)`
-   *  据此 round-trip 做 drift 检测(故目录-skill 存目录而非 SKILL.md)。 */
+  /** 源类型(限定判别字,非裸 kind)。`file`=本地路径;`git`=当前仓库的某个 ref。 */
+  sourceKind: 'file' | 'git';
+  /** 源身份,按 sourceKind 分义:
+   *   - file:本地重哈根(目录-skill 为根目录、文件-skill 为 .md),`hashArtifactSource(locator, isDirectorySkill)` 直接 round-trip;
+   *   - git:`git:<ref>:<name>`(非临时物化路径),drift 由 resolver 重物化重哈 —— mutable ref 给真实漂移、SHA 给不可变。 */
   locator: string;
-  /** git 来源的 ref(预留)。 */
+  /** git 来源的 ref(file 源无)。 */
   ref?: string;
   /** 目录-skill(SKILL.md + assets)还是裸 .md 文件-skill。 */
   isDirectorySkill: boolean;
@@ -56,7 +59,8 @@ export interface ManagedArtifactSource {
 /** 一条记录一个文件 `.omk/managed/<id>.json`,自带 recordKind + schemaVersion 便于单独迁移。 */
 export interface ManagedArtifactRecord {
   recordKind: 'managed-artifact';
-  schemaVersion: 1;
+  /** v2 起 source 带 sourceKind(多源化)。v1(仅 #211)无,按去兼容直接判脏丢弃、不迁移。 */
+  schemaVersion: 2;
   /** 稳定身份 = hash(kind, name);源路径是可变属性、不进 id——挪动源文件不孤儿化记录。 */
   id: string;
   name: string;

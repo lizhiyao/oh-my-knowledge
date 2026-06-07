@@ -8,6 +8,7 @@ export type InstallMessageKey =
   | 'cli.install.no_detected_targets'
   | 'cli.install.target_exists'
   | 'cli.install.plan'
+  | 'cli.install.plan_skill'
   | 'cli.install.installed'
   | 'cli.install.kind_unsupported'
   | 'cli.install.copied'
@@ -16,7 +17,11 @@ export type InstallMessageKey =
   | 'cli.install.target_overlaps_source'
   | 'cli.install.path_not_found'
   | 'cli.install.skillmd_missing'
+  | 'cli.install.skillmd_is_symlink'
   | 'cli.install.not_a_skill'
+  | 'cli.install.not_a_git_repo'
+  | 'cli.install.git_skill_not_found'
+  | 'cli.install.git_unsafe_path'
   | 'cli.install.next_hint';
 
 export const installDict: Record<InstallMessageKey, CliMessage> = {
@@ -25,8 +30,8 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
     en: 'Packaged built-in asset not found: {path}. Run yarn build first, or verify the npm package includes dist/assets/agent-skills/omk.',
   },
   'cli.install.unknown_input': {
-    zh: 'install 接受内置 id omk-agent-skill,或一个 skill 路径（如 ./skills/review、./review.md）。无法识别的输入：{input}',
-    en: 'install accepts the built-in id omk-agent-skill, or a skill path (e.g. ./skills/review or ./review.md). Unrecognized input: {input}',
+    zh: 'install 接受内置 id omk-agent-skill、本地 skill 路径（如 ./skills/review、./review.md），或 git:<ref>:<name>（当前仓库某 ref 的 skill）。无法识别的输入：{input}',
+    en: 'install accepts the built-in id omk-agent-skill, a local skill path (e.g. ./skills/review or ./review.md), or git:<ref>:<name> (a skill at a ref of the current repo). Unrecognized input: {input}',
   },
   'cli.install.unknown_target': {
     zh: '未知安装目标：{target}。可用值：auto, codex, claude, all；或用 --dest <dir> 指定 skill 根目录。',
@@ -41,12 +46,16 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
     en: 'No supported local agent skill directory was detected. Pass --to codex / --to claude / --to all, or pass --dest <dir> for a custom skill root.',
   },
   'cli.install.target_exists': {
-    zh: '目标已存在：{path}。如要更新 omk Agent Skill，请加 --force。',
-    en: 'Target already exists: {path}. Pass --force to update the omk Agent Skill.',
+    zh: '目标已存在：{path}。如要覆盖，请加 --force。',
+    en: 'Target already exists: {path}. Pass --force to overwrite.',
   },
   'cli.install.plan': {
     zh: '将安装 omk Agent Skill 到：{path}',
     en: 'Will install the omk Agent Skill to: {path}',
+  },
+  'cli.install.plan_skill': {
+    zh: '将安装 skill {name} 到：{path}',
+    en: 'Will install skill {name} to: {path}',
   },
   'cli.install.installed': {
     zh: '已安装 omk Agent Skill：{path}',
@@ -83,6 +92,22 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
   'cli.install.not_a_skill': {
     zh: '不是 skill 文件（需要 .md 或含 SKILL.md 的目录）：{path}',
     en: 'Not a skill file (expected a .md file or a directory containing SKILL.md): {path}',
+  },
+  'cli.install.skillmd_is_symlink': {
+    zh: 'SKILL.md 是指向 {target} 的软链，分发会跳过软链、装出来的 skill 会缺 SKILL.md。请直接 install 真源位置：{target}',
+    en: 'SKILL.md is a symlink to {target}; symlinks are skipped during distribution, so the installed skill would be missing its SKILL.md. Install the real source instead: {target}',
+  },
+  'cli.install.not_a_git_repo': {
+    zh: '当前目录不在 git 仓库内，无法解析 git: 源。请在仓库内执行，或改用本地路径。',
+    en: 'Current directory is not inside a git repo; cannot resolve a git: source. Run inside the repo, or use a local path.',
+  },
+  'cli.install.git_skill_not_found': {
+    zh: '在 git ref {ref} 下找不到 skill {name}（既无 {name}/SKILL.md 也无 {name}.md）。',
+    en: 'Skill {name} not found at git ref {ref} (neither {name}/SKILL.md nor {name}.md).',
+  },
+  'cli.install.git_unsafe_path': {
+    zh: 'git tree 含越界路径 {path}（.. / 绝对路径 / 空段），拒绝物化以防写出临时目录。该 skill 的 git tree 可能被手工构造，请核查来源。',
+    en: 'git tree contains an out-of-bounds path {path} (.. / absolute / empty segment); refusing to materialize to avoid escaping the temp dir. The skill git tree may be hand-crafted; verify the source.',
   },
   'cli.install.next_hint': {
     zh: '现在可以在 coding agent 中说「用 omk 评测这个 skill」。',

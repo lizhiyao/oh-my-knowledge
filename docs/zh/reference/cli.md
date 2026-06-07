@@ -37,9 +37,9 @@ omk install omk-agent-skill --dest ~/.my-agent/skills
 **Flags:**
 
 ```text
-  --dest <value>                  自定义 skill 根目录；omk 会安装到 <dir>/omk。
+  --dest <value>                  自定义 skill 根目录；skill 安装到 <dir>/<name>（内置 omk-agent-skill 为 <dir>/omk）。
   --dry-run                       只打印安装目标，不写文件。
-  --force                         覆盖已存在的 omk Agent Skill。
+  --force                         覆盖目标位置已存在的 skill。
   --kind <skill|prompt|agent|workflow>用户 artifact 的 kind(对齐 Artifact.kind)。可省:命中 SKILL.md 自动推导,当前仅支持 skill。
   --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --to <value>                    安装目标：auto（默认，本机已检测目标） / codex / claude / all。

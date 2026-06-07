@@ -3,7 +3,7 @@
  */
 import { describe, it } from 'vitest';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { mkdir, mkdtemp, rm, readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
@@ -331,9 +331,10 @@ describe('oclif install', () => {
 
       const record = await readSoleManagedRecord(dir);
       assert.equal(record.recordKind, 'managed-artifact');
-      assert.equal(record.schemaVersion, 1);
+      assert.equal(record.schemaVersion, 2);
       assert.equal(record.name, 'review');
       assert.equal(record.kind, 'skill');
+      assert.equal((record.source as Record<string, unknown>).sourceKind, 'file');
       assert.equal(typeof record.contentHash, 'string');
       assert.ok((record.contentHash as string).length > 0, 'contentHash empty');
       assert.deepEqual(record.evidence, []);
@@ -523,6 +524,114 @@ describe('oclif install', () => {
         assert.ok((e.stdout + e.stderr).includes('skill'), 'error should mention skill-only support');
       }
       assert.ok(!existsSync(join(dir, '.omk', 'managed')), 'unsupported kind must not register');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  // —— git 源 ——
+
+  function git(repo: string, args: string[]): void {
+    execFileSync('git', args, { cwd: repo, stdio: 'pipe' });
+  }
+
+  async function makeGitRepoWithSkill(): Promise<string> {
+    const repo = await mkdtemp(join(tmpdir(), 'omk-install-gitrepo-'));
+    git(repo, ['init', '-q']);
+    git(repo, ['config', 'user.email', 't@t']);
+    git(repo, ['config', 'user.name', 't']);
+    await makeDirSkill(repo, 'review'); // <repo>/skills/review
+    git(repo, ['add', '-A']);
+    git(repo, ['commit', '-q', '-m', 'init']);
+    return repo;
+  }
+
+  it('git 源:从当前仓库 ref 安装,分发整树 + 登记 sourceKind:git', async () => {
+    const repo = await makeGitRepoWithSkill();
+    try {
+      const dest = join(repo, 'dist-skills');
+      const { stdout } = await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/review', '--dest', dest], { cwd: repo, env: cliEnv() });
+      assert.ok(stdout.includes('已安装 skill review'), `stdout missing copy msg:\n${stdout}`);
+      assert.ok(existsSync(join(dest, 'review', 'SKILL.md')), 'git skill SKILL.md not distributed');
+      assert.ok(existsSync(join(dest, 'review', 'references', 'cmd.md')), 'git skill asset not distributed');
+      const record = await readSoleManagedRecord(repo);
+      const source = record.source as Record<string, unknown>;
+      assert.equal(source.sourceKind, 'git');
+      assert.equal(source.ref, 'HEAD');
+      assert.equal(source.locator, 'git:HEAD:skills/review');
+      assert.equal(source.isDirectorySkill, true);
+      assert.equal(record.name, 'review');
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('git 源 --force 重装幂等:仍一条记录、分发不重复', async () => {
+    const repo = await makeGitRepoWithSkill();
+    try {
+      const dest = join(repo, 'dist-skills');
+      await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/review', '--dest', dest], { cwd: repo, env: cliEnv() });
+      await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/review', '--dest', dest, '--force'], { cwd: repo, env: cliEnv() });
+      const record = await readSoleManagedRecord(repo);
+      assert.equal((record.distribution as Array<unknown>).length, 1, 'distribution 应按 path 去重');
+      assert.ok(existsSync(join(dest, 'review', 'SKILL.md')), 'force 重装后目标仍在');
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('git 源 --dry-run 不分发不登记,文案源中性', async () => {
+    const repo = await makeGitRepoWithSkill();
+    try {
+      const dest = join(repo, 'dist-skills');
+      const { stdout } = await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/review', '--dest', dest, '--dry-run'], { cwd: repo, env: cliEnv() });
+      assert.ok(!existsSync(join(dest, 'review')), 'dry-run must not distribute');
+      assert.ok(!existsSync(join(repo, '.omk', 'managed')), 'dry-run must not register');
+      assert.ok(stdout.includes('将安装 skill review'), `plan 文案应源中性:\n${stdout}`);
+      assert.ok(!stdout.includes('omk Agent Skill'), 'user skill 的 dry-run 不应提 omk Agent Skill');
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('git 源裸 spec 歧义:文件优先(e2e 端到端记录 isDirectorySkill:false,防 evidence 静默剥离)', async () => {
+    // 同名同时存在 skills/dual.md 与 skills/dual/SKILL.md。eval(skill-loader resolveArtifacts)先试
+    // <name>.md 再 <name>/SKILL.md → 量的是文件;install 必须同样文件优先,否则注册成目录、contentHash
+    // 与 eval 不同,evidence 读时按 hash 门控被静默剥离、记录永久 stale。这里端到端锁住 install 的归类。
+    const repo = await mkdtemp(join(tmpdir(), 'omk-install-gitdual-'));
+    try {
+      git(repo, ['init', '-q']);
+      git(repo, ['config', 'user.email', 't@t']);
+      git(repo, ['config', 'user.name', 't']);
+      await mkdir(join(repo, 'skills', 'dual'), { recursive: true });
+      await writeFile(join(repo, 'skills', 'dual.md'), '# dual file\n');
+      await writeFile(join(repo, 'skills', 'dual', 'SKILL.md'), '# dual dir\n');
+      git(repo, ['add', '-A']);
+      git(repo, ['commit', '-q', '-m', 'dual']);
+      const dest = join(repo, 'dist-skills');
+      await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/dual', '--dest', dest], { cwd: repo, env: cliEnv() });
+      const record = await readSoleManagedRecord(repo);
+      const source = record.source as Record<string, unknown>;
+      assert.equal(source.isDirectorySkill, false, '裸 spec 歧义必须文件优先,与 eval 对齐');
+      assert.ok(existsSync(join(dest, 'dual.md')), '应分发文件-skill,落点为 dual.md');
+      assert.ok(!existsSync(join(dest, 'dual')), '不应分发目录-skill');
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
+  it('git 源在非 git 仓库内友好报错', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-nogit-'));
+    try {
+      try {
+        await execFileAsync('node', [CLI, 'install', 'git:HEAD:review'], { cwd: dir, env: cliEnv() });
+        assert.fail('expected non-zero exit');
+      } catch (err) {
+        const e = err as ExecError;
+        assert.notEqual(e.code, 0);
+        assert.ok((e.stdout + e.stderr).includes('git'), 'error should mention git repo');
+      }
+      assert.ok(!existsSync(join(dir, '.omk', 'managed')), 'must not register on error');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

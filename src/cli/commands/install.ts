@@ -6,9 +6,10 @@ import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
-import { resolveArtifacts } from '../../inputs/skill-loader.js';
+import { resolveInstallSource, SourceResolveError } from '../../inputs/source-resolver.js';
 import { buildManagedArtifactRecord, hashArtifactSource, isDistributablePath, managedDir, recordManagedArtifact } from '../../managed/index.js';
 import type { ArtifactKind, ManagedDistributionTarget } from '../../types/index.js';
+import type { InstallMessageKey } from '../lib/i18n-dict/install.js';
 
 const BUILTIN_OMK_AGENT_SKILL_ID = 'omk-agent-skill';
 const INSTALLABLE_KINDS: ArtifactKind[] = ['skill', 'prompt', 'agent', 'workflow'];
@@ -237,7 +238,7 @@ function installOmkAgentSkill(params: {
 
 /**
  * 是否当作用户 artifact 路径(否则按 typo 的内置 id 处理,报 unknown_input)。
- *   - 显式路径意图(含 `/`)或 `.md` 结尾 → 是(后续 installUserSkill 会给出精确的存在性 / SKILL.md 报错);
+ *   - 显式路径意图(含 `/`)或 `.md` 结尾 → 是(后续 installManagedSkill 经 resolver 给出精确的存在性 / SKILL.md 报错);
  *   - 裸短名 → 仅当它确实解析到一个含 SKILL.md 的目录才算;裸的同名普通文件(如 cwd 里恰好有个
  *     `omk-agnt-skill` 文件)不该被当成 skill 安装,落回 unknown_input。
  */
@@ -253,8 +254,8 @@ function looksLikeArtifactPath(input: string): boolean {
 
 export default class Install extends BaseCommand {
   static description = bilingual({
-    zh: '安装 omk 官方 Agent Skill,或登记并分发用户自己的 skill(内置 id omk-agent-skill,或 skill 路径 + --kind skill)。默认写入本机已检测 agent 目标;安装用户 skill 时同时登记一条受管记录。',
-    en: 'Install the official omk Agent Skill, or register and distribute your own skill (built-in id omk-agent-skill, or a skill path + --kind skill). Defaults to detected local agent targets; installing a user skill also records a managed entry.',
+    zh: '安装 omk 官方 Agent Skill，或登记并分发用户自己的 skill（内置 id omk-agent-skill，本地路径，或 git:<ref>:<name> 取当前仓库某个 ref 的 skill）。默认写入本机已检测 agent 目标；安装用户 skill 时同时登记一条受管记录。',
+    en: 'Install the official omk Agent Skill, or register and distribute your own skill (built-in id omk-agent-skill, a local path, or git:<ref>:<name> for a skill at a ref of the current repo). Defaults to detected local agent targets; installing a user skill also records a managed entry.',
   });
 
   static examples = [
@@ -286,13 +287,20 @@ export default class Install extends BaseCommand {
       }),
       command: '<%= config.bin %> install ./skills/review',
     },
+    {
+      description: bilingual({
+        zh: '从当前仓库某个 ref 安装 skill（可复现；SHA 不可变、分支会随 ref 漂移）',
+        en: 'Install a skill from a ref of the current repo (reproducible; a SHA is immutable, a branch drifts with the ref)',
+      }),
+      command: '<%= config.bin %> install git:main:skills/review',
+    },
   ];
 
   static args = {
     input: Args.string({
       description: bilingual({
-        zh: '要安装的知识输入:内置 id omk-agent-skill,或用户 skill 路径(目录或 .md)。',
-        en: 'Knowledge input to install: built-in id omk-agent-skill, or a user skill path (directory or .md).',
+        zh: '要安装的知识输入：内置 id omk-agent-skill，本地 skill 路径（目录或 .md），或 git:<ref>:<name>（当前仓库某 ref 的 skill）。',
+        en: 'Knowledge input to install: built-in id omk-agent-skill, a local skill path (directory or .md), or git:<ref>:<name> (a skill at a ref of the current repo).',
       }),
       required: true,
     }),
@@ -316,14 +324,14 @@ export default class Install extends BaseCommand {
     }),
     dest: Flags.string({
       description: bilingual({
-        zh: '自定义 skill 根目录；omk 会安装到 <dir>/omk。',
-        en: 'Custom skill root; installs into <dir>/omk.',
+        zh: '自定义 skill 根目录；skill 安装到 <dir>/<name>（内置 omk-agent-skill 为 <dir>/omk）。',
+        en: 'Custom skill root; a skill installs into <dir>/<name> (the built-in omk-agent-skill into <dir>/omk).',
       }),
     }),
     force: Flags.boolean({
       description: bilingual({
-        zh: '覆盖已存在的 omk Agent Skill。',
-        en: 'Overwrite an existing omk Agent Skill.',
+        zh: '覆盖目标位置已存在的 skill。',
+        en: 'Overwrite an existing skill at the target location.',
       }),
       default: false,
     }),
@@ -345,8 +353,8 @@ export default class Install extends BaseCommand {
         this.installBuiltinAgentSkill(flags, lang);
         return;
       }
-      if (looksLikeArtifactPath(args.input)) {
-        this.installUserSkill(args.input, flags.kind, flags, lang);
+      if (args.input.startsWith('git:') || looksLikeArtifactPath(args.input)) {
+        this.installManagedSkill(args.input, flags.kind, flags, lang);
         return;
       }
       throw new Error(tCli('cli.install.unknown_input', lang, { input: args.input }));
@@ -368,94 +376,87 @@ export default class Install extends BaseCommand {
     if (!flags['dry-run']) console.log(tCli('cli.install.next_hint', lang));
   }
 
-  private installUserSkill(input: string, kindFlag: string | undefined, flags: InstallFlags, lang: 'zh' | 'en'): void {
-    // kind 推导:--kind 显式优先;否则命中 SKILL.md / Phase 1 缺省 skill。
+  private installManagedSkill(input: string, kindFlag: string | undefined, flags: InstallFlags, lang: 'zh' | 'en'): void {
+    // kind 推导:--kind 显式优先;否则缺省 skill(Phase 1 仅 skill)。
     const kind: ArtifactKind = (kindFlag as ArtifactKind | undefined) ?? 'skill';
     if (kind !== 'skill') {
       throw new Error(tCli('cli.install.kind_unsupported', lang, { kind }));
     }
 
-    // 先做精确的、可 i18n 的路径校验,避免 resolveArtifacts 抛出未翻译的中英混杂裸串。
-    const abs = resolve(input);
-    if (!existsSync(abs)) {
-      throw new Error(tCli('cli.install.path_not_found', lang, { path: abs }));
+    // 源解析委托给 source-resolver(file / git ...),install 主干源无关。
+    // resolver 不依赖 CLI,错误以 SourceResolveError(messageKey) 抛出,这里映射成本地化文案。
+    let src;
+    try {
+      src = resolveInstallSource(input);
+    } catch (err) {
+      if (err instanceof SourceResolveError) {
+        throw new Error(tCli(err.messageKey as InstallMessageKey, lang, err.params));
+      }
+      throw err;
     }
-    const inputIsDir = statSync(abs).isDirectory();
-    if (inputIsDir && !existsSync(join(abs, 'SKILL.md'))) {
-      throw new Error(tCli('cli.install.skillmd_missing', lang, { path: abs }));
-    }
-    if (!inputIsDir && !/\.md$/i.test(abs)) {
-      throw new Error(tCli('cli.install.not_a_skill', lang, { path: abs }));
-    }
-
-    // 绝对路径必含 `/`,走 resolveArtifacts 的 file-path 分支(目录→SKILL.md 设 skillRoot,裸 .md 不设)。
-    const artifact = resolveArtifacts(dirname(abs), [abs])[0];
-    const isDirectorySkill = Boolean(artifact.skillRoot);
-    // source = 重读重哈的根:目录-skill 为 skillRoot(目录),文件-skill 为 .md。locator 也存这个,
-    // 使未来 hashArtifactSource(record.source.locator, isDirectorySkill) 能直接 round-trip。
-    const source = isDirectorySkill ? artifact.skillRoot! : artifact.locator!;
-    // 目录-skill 哈整棵分发树(含 references/ 等资产,排除 .omk/.git/evolve),drift 不漏资产改动。
-    const contentHash = hashArtifactSource(source, isDirectorySkill);
-
-    const targets = resolveInstallTargets({ to: flags.to, dest: flags.dest, lang });
-    validateInstallTargets({
-      targetPaths: targets.map((t) => targetArtifactPath(t, artifact.name, isDirectorySkill)),
-      force: flags.force,
-      dryRun: flags['dry-run'],
-      lang,
-      source,
-    });
-
-    const now = new Date().toISOString();
-    const distribution: ManagedDistributionTarget[] = [];
-    const dir = managedDir();
-    // 即便多目标中途失败,也把已成功分发的落点登记进记录,保持"磁盘 == 记录"一致;
-    // 重跑 --force 时 upsert 会按 path 去重并补齐其余目标。
-    const writeRecordIfAny = (): void => {
-      if (flags['dry-run'] || distribution.length === 0) return;
-      const record = buildManagedArtifactRecord({
-        name: artifact.name,
-        kind,
-        source: {
-          locator: source,
-          ...(artifact.ref ? { ref: artifact.ref } : {}),
-          isDirectorySkill,
-        },
-        contentHash,
-        installedAt: now,
-        distribution,
-      });
-      recordManagedArtifact(record, { dir });
-      console.log(tCli('cli.install.registered', lang, { id: record.id, store: dir }));
-    };
 
     try {
-      for (const target of targets) {
-        const targetPath = targetArtifactPath(target, artifact.name, isDirectorySkill);
-        const { planned, inPlace } = copyArtifactToTarget({
-          source,
-          isDirectorySkill,
-          targetPath,
-          skillsDir: target.skillsDir,
-          force: flags.force,
-          dryRun: flags['dry-run'],
-          lang,
+      const { localRoot, name, isDirectorySkill, sourceKind, locator, ref } = src;
+      // 目录-skill 哈整棵可分发树(排除 .omk/.git/evolve);git 源哈的是物化后的临时树。
+      const contentHash = hashArtifactSource(localRoot, isDirectorySkill);
+
+      const targets = resolveInstallTargets({ to: flags.to, dest: flags.dest, lang });
+      validateInstallTargets({
+        targetPaths: targets.map((t) => targetArtifactPath(t, name, isDirectorySkill)),
+        force: flags.force,
+        dryRun: flags['dry-run'],
+        lang,
+        source: localRoot,
+      });
+
+      const now = new Date().toISOString();
+      const distribution: ManagedDistributionTarget[] = [];
+      const dir = managedDir();
+      // 即便多目标中途失败,也把已成功分发的落点登记进记录,保持"磁盘 == 记录"一致;
+      // 重跑 --force 时 upsert 会按 path 去重并补齐其余目标。
+      const writeRecordIfAny = (): void => {
+        if (flags['dry-run'] || distribution.length === 0) return;
+        const record = buildManagedArtifactRecord({
+          name,
+          kind,
+          source: { sourceKind, locator, ...(ref ? { ref } : {}), isDirectorySkill },
+          contentHash,
+          installedAt: now,
+          distribution,
         });
-        if (planned) {
-          console.log(tCli('cli.install.plan', lang, { path: targetPath }));
-        } else {
-          // inPlace:源就在目标位置,未动文件,但仍登记为一条分发落点。
-          console.log(tCli(inPlace ? 'cli.install.adopted' : 'cli.install.copied', lang, { name: artifact.name, path: targetPath }));
-          distribution.push({ label: target.label, path: targetPath, contentHash, copiedAt: now });
+        recordManagedArtifact(record, { dir });
+        console.log(tCli('cli.install.registered', lang, { id: record.id, store: dir }));
+      };
+
+      try {
+        for (const target of targets) {
+          const targetPath = targetArtifactPath(target, name, isDirectorySkill);
+          const { planned, inPlace } = copyArtifactToTarget({
+            source: localRoot,
+            isDirectorySkill,
+            targetPath,
+            skillsDir: target.skillsDir,
+            force: flags.force,
+            dryRun: flags['dry-run'],
+            lang,
+          });
+          if (planned) {
+            console.log(tCli('cli.install.plan_skill', lang, { name, path: targetPath }));
+          } else {
+            console.log(tCli(inPlace ? 'cli.install.adopted' : 'cli.install.copied', lang, { name, path: targetPath }));
+            distribution.push({ label: target.label, path: targetPath, contentHash, copiedAt: now });
+          }
         }
+      } finally {
+        writeRecordIfAny();
       }
     } finally {
-      writeRecordIfAny();
+      src.cleanup(); // git 删临时物化目录;file noop
     }
   }
 }
 
-// --kind 单独传入 installUserSkill,故此处不含 kind 字段(裸 kind 留给 ArtifactKind)。
+// --kind 单独传入 installManagedSkill,故此处不含 kind 字段(裸 kind 留给 ArtifactKind)。
 type InstallFlags = {
   to: string;
   dest?: string;
