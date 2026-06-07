@@ -101,6 +101,55 @@ export function getGitRelativePath(absolutePath: string): string {
   return relative(gitRoot, absolutePath);
 }
 
+/** 拼 git 仓库相对路径:始终用 `/`,空 base 直接返回 b(避免 join 产生 `.` 这类退化 tree-ish)。 */
+export function gitJoin(base: string, sub: string): string {
+  return base ? `${base}/${sub}` : sub;
+}
+
+export interface GitSkillRef {
+  isDir: boolean;
+  /** dir-skill 的子树根(仓库相对);file-skill 为空。 */
+  treePath: string;
+  /** file-skill 的 .md 路径(仓库相对);dir-skill 为空。 */
+  fileSkillPath: string;
+  name: string;
+}
+
+/**
+ * 把 git spec 解析成 dir / file skill —— **install 与 eval 共用此一处**,保证两条路径对同一
+ * `git:<ref>:<spec>` 的 file-vs-dir 归类绝不发散(发散会让 eval 量文件、install 注册目录,
+ * 两边对不上)。接受三种写法,与本地路径安装对称:
+ *   - 显式 SKILL.md:`skills/dir/SKILL.md` → 目录-skill,name 取父目录名;
+ *   - 显式 .md:`skills/foo.md` → 文件-skill;
+ *   - 裸 spec:`skills/review` → **文件优先**(先试 `<spec>.md`,再试 `<spec>/SKILL.md`)。
+ * 裸 spec 的文件优先必须与 eval 历史顺序一致 —— 否则同名同时存在 .md 与 dir/SKILL.md 时,
+ * eval 量文件、install 注册目录,evidence 读时按 hash 门控被静默剥离、记录永久 stale。
+ * `gitRelDir` 是各调用方的解析基准(install=cwd 相对仓库根、eval=skillDir 相对仓库根),作为显式
+ * 参数传入,基准差异留给调用方、归类逻辑单一来源。任一探测命中即返回;都不中返回 null。
+ */
+export function classifyGitSkillRef(ref: string, gitRelDir: string, spec: string): GitSkillRef | null {
+  if (basename(spec) === 'SKILL.md') {
+    if (gitShowFile(ref, gitJoin(gitRelDir, spec)) === null) return null;
+    const dirSpec = dirname(spec);
+    const treePath = dirSpec === '.' ? gitRelDir : gitJoin(gitRelDir, dirSpec);
+    let name = basename(dirSpec);
+    if (name === '.' || name === '') name = basename(treePath) || basename(gitRelDir) || 'skill';
+    return { isDir: true, treePath, fileSkillPath: '', name };
+  }
+  if (/\.md$/i.test(spec)) {
+    const fileSkillPath = gitJoin(gitRelDir, spec);
+    if (gitShowFile(ref, fileSkillPath) === null) return null;
+    return { isDir: false, treePath: '', fileSkillPath, name: basename(spec).replace(/\.md$/i, '') };
+  }
+  if (gitShowFile(ref, gitJoin(gitRelDir, `${spec}.md`)) !== null) {
+    return { isDir: false, treePath: '', fileSkillPath: gitJoin(gitRelDir, `${spec}.md`), name: basename(spec) };
+  }
+  if (gitShowFile(ref, gitJoin(gitJoin(gitRelDir, spec), 'SKILL.md')) !== null) {
+    return { isDir: true, treePath: gitJoin(gitRelDir, spec), fileSkillPath: '', name: basename(spec) };
+  }
+  return null;
+}
+
 export function discoverVariants(skillDir: string): string[] {
   if (!existsSync(skillDir)) return [];
 
@@ -327,8 +376,11 @@ export function resolveArtifacts(
         name = parts.slice(1).join(':');
       }
       if (!gitRelDir) gitRelDir = getGitRelativePath(skillDir);
-      const content = gitShowFile(ref, join(gitRelDir, `${name}.md`))
-        || gitShowFile(ref, join(gitRelDir, name, 'SKILL.md'));
+      // file-vs-dir 归类与 install 共用 classifyGitSkillRef(裸 spec 文件优先),两条路径绝不发散。
+      const resolved = classifyGitSkillRef(ref, gitRelDir, name);
+      const content = resolved
+        ? (resolved.isDir ? gitShowFile(ref, gitJoin(resolved.treePath, 'SKILL.md')) : gitShowFile(ref, resolved.fileSkillPath))
+        : null;
       if (!content) {
         throw new Error(`skill not found in git ${ref}: ${name}.md or ${name}/SKILL.md`);
       }

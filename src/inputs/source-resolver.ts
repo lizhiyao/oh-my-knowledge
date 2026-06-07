@@ -1,8 +1,8 @@
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { isDistributablePath } from '../managed/index.js';
-import { getGitRelativePath, gitLsTreeBlobs, gitShowBytes, gitShowFile, skillNameFromPath } from './skill-loader.js';
+import { classifyGitSkillRef, getGitRelativePath, gitJoin, gitLsTreeBlobs, gitShowBytes, skillNameFromPath } from './skill-loader.js';
 
 /**
  * 安装源解析器 —— 把"各种源"物化成统一的本地形态,让 install / managed 主干**源无关**。
@@ -132,49 +132,3 @@ function resolveGitSource(input: string): ResolvedSource {
   }
 }
 
-interface GitSkillRef {
-  isDir: boolean;
-  /** dir-skill 的子树根(仓库相对);file-skill 为空。 */
-  treePath: string;
-  /** file-skill 的 .md 路径(仓库相对);dir-skill 为空。 */
-  fileSkillPath: string;
-  name: string;
-}
-
-/**
- * 把 git spec 解析成 dir / file skill —— 与本地路径安装对称,接受三种写法:
- *   - 显式 SKILL.md:`skills/dir/SKILL.md` → 目录-skill,name 取父目录名;
- *   - 显式 .md:`skills/foo.md` → 文件-skill;
- *   - 裸 spec:`skills/review` → 先试 `<spec>/SKILL.md`(目录),再试 `<spec>.md`(文件)。
- * 任一探测命中即返回;都不中返回 null。
- */
-/** 拼 git 仓库相对路径:始终用 `/`,空 base 直接返回 b(避免 join 产生 `.` 这类退化 tree-ish)。 */
-function gitJoin(base: string, sub: string): string {
-  return base ? `${base}/${sub}` : sub;
-}
-
-function classifyGitSkillRef(ref: string, gitRelDir: string, spec: string): GitSkillRef | null {
-  if (basename(spec) === 'SKILL.md') {
-    if (gitShowFile(ref, gitJoin(gitRelDir, spec)) === null) return null;
-    const dirSpec = dirname(spec);
-    const treePath = dirSpec === '.' ? gitRelDir : gitJoin(gitRelDir, dirSpec);
-    let name = basename(dirSpec);
-    if (name === '.' || name === '') name = basename(treePath) || basename(gitRelDir) || 'skill';
-    return { isDir: true, treePath, fileSkillPath: '', name };
-  }
-  if (/\.md$/i.test(spec)) {
-    const fileSkillPath = gitJoin(gitRelDir, spec);
-    if (gitShowFile(ref, fileSkillPath) === null) return null;
-    return { isDir: false, treePath: '', fileSkillPath, name: basename(spec).replace(/\.md$/i, '') };
-  }
-  // 裸 spec 的歧义(同时存在 <spec>.md 与 <spec>/SKILL.md)必须**文件优先**,与 eval 的 git/本地
-  // 解析顺序(skill-loader.ts:resolveArtifacts 先 <name>.md 再 <name>/SKILL.md)一致 —— 否则 eval 量的
-  // 是文件、install 注册的是目录,contentHash 不同,evidence 会被读时 hash 门控静默剥离。
-  if (gitShowFile(ref, gitJoin(gitRelDir, `${spec}.md`)) !== null) {
-    return { isDir: false, treePath: '', fileSkillPath: gitJoin(gitRelDir, `${spec}.md`), name: basename(spec) };
-  }
-  if (gitShowFile(ref, gitJoin(gitJoin(gitRelDir, spec), 'SKILL.md')) !== null) {
-    return { isDir: true, treePath: gitJoin(gitRelDir, spec), fileSkillPath: '', name: basename(spec) };
-  }
-  return null;
-}

@@ -1,7 +1,10 @@
-import { describe, it } from 'vitest';
+import { describe, it, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolveArtifacts } from '../../src/inputs/skill-loader.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -108,5 +111,53 @@ describe('resolveArtifacts skill isolation', () => {
     const artifacts = resolveArtifacts(SKILL_DIR, [{ expr: 'project-env', cwd: '/tmp/proj' }]);
     assert.deepEqual(artifacts[0].allowedSkills, [],
       'kind:baseline 包括 cwd-only custom variant,strict-baseline 一并隔离');
+  });
+});
+
+// eval 的 git 解析与 install 共用 classifyGitSkillRef —— 这里锁住 eval 层的归类不再被重新内联走偏。
+describe('resolveArtifacts git(与 install 共用归类)', () => {
+  let repo: string;
+  let prevCwd: string;
+
+  afterEach(() => {
+    if (prevCwd) process.chdir(prevCwd);
+    if (repo) rmSync(repo, { recursive: true, force: true });
+  });
+
+  function mkRepo(): void {
+    repo = realpathSync(mkdtempSync(join(tmpdir(), 'omk-eval-git-')));
+    const sh = (args: string[]): void => { execFileSync('git', args, { cwd: repo, stdio: 'ignore' }); };
+    sh(['init', '-q']);
+    sh(['config', 'user.email', 't@t']);
+    sh(['config', 'user.name', 't']);
+    prevCwd = process.cwd();
+  }
+
+  it('裸 spec 歧义:eval 也文件优先(与 install 对齐,量的是 .md 文件而非 dir/SKILL.md)', () => {
+    mkRepo();
+    mkdirSync(join(repo, 'dual'), { recursive: true });
+    writeFileSync(join(repo, 'dual.md'), '# dual file\n');
+    writeFileSync(join(repo, 'dual', 'SKILL.md'), '# dual dir\n');
+    execFileSync('git', ['add', '-A'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-q', '-m', 'dual'], { cwd: repo, stdio: 'ignore' });
+    process.chdir(repo);
+    const artifacts = resolveArtifacts(repo, ['git:HEAD:dual']);
+    assert.equal(artifacts[0].source, 'git');
+    assert.ok(artifacts[0].content?.includes('dual file'), 'eval 必须文件优先,量的是 dual.md');
+    assert.ok(!artifacts[0].content?.includes('dual dir'), '绝不能量成 dual/SKILL.md');
+  });
+
+  it('名字以 .md 结尾的目录不被当文件 blob:回退到真 dir-skill,不把树清单量成内容', () => {
+    mkRepo();
+    mkdirSync(join(repo, 'foo.md'), { recursive: true }); // 目录,影子遮挡
+    writeFileSync(join(repo, 'foo.md', 'note.txt'), 'shadow\n');
+    mkdirSync(join(repo, 'foo'), { recursive: true });
+    writeFileSync(join(repo, 'foo', 'SKILL.md'), '# real foo\n');
+    execFileSync('git', ['add', '-A'], { cwd: repo, stdio: 'ignore' });
+    execFileSync('git', ['commit', '-q', '-m', 'shadow'], { cwd: repo, stdio: 'ignore' });
+    process.chdir(repo);
+    const artifacts = resolveArtifacts(repo, ['git:HEAD:foo']);
+    assert.ok(artifacts[0].content?.includes('real foo'), '应回退到 foo/SKILL.md');
+    assert.ok(!artifacts[0].content?.startsWith('tree '), '绝不能把 git 树清单当 skill 内容');
   });
 });
