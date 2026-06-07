@@ -7,8 +7,7 @@ import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 import { resolveArtifacts } from '../../inputs/skill-loader.js';
-import { hashString } from '../../eval-core/evaluation-reporting.js';
-import { buildManagedArtifactRecord, managedDir, recordManagedArtifact } from '../../managed/index.js';
+import { buildManagedArtifactRecord, hashArtifactSource, managedDir, recordManagedArtifact } from '../../managed/index.js';
 import type { ArtifactKind, ManagedDistributionTarget } from '../../types/index.js';
 
 const BUILTIN_OMK_AGENT_SKILL_ID = 'omk-agent-skill';
@@ -316,7 +315,8 @@ export default class Install extends BaseCommand {
     const artifact = resolveArtifacts(dirname(abs), [abs])[0];
     const isDirectorySkill = Boolean(artifact.skillRoot);
     const source = isDirectorySkill ? artifact.skillRoot! : artifact.locator!;
-    const contentHash = hashString(artifact.content ?? '');
+    // 目录-skill 哈整棵分发树(含 references/ 等资产),不只 SKILL.md,drift 不漏资产改动。
+    const contentHash = hashArtifactSource(source, isDirectorySkill);
 
     const targets = resolveInstallTargets({ to: flags.to, dest: flags.dest, lang });
     validateInstallTargets({

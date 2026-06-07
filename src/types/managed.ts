@@ -27,6 +27,9 @@ export interface ManagedDistributionTarget {
 /** 指向一份 Report 的引用——不是 verdict 本体。install 时为空,eval/promote 追加。 */
 export interface ManagedEvidenceRef {
   reportId: string;
+  /** 该 report 测的是哪份内容(artifact contentHash)。读时只把与记录当前 contentHash 匹配的
+   *  evidence 算作当前有效证据——重装到新内容后旧证据保留供回滚,但不让新内容显得已测。 */
+  contentHash: string;
   recordedAt: string;
 }
 

@@ -11,6 +11,7 @@ import {
   recordPath,
   managedRecordId,
   buildManagedArtifactRecord,
+  hashArtifactSource,
   loadManagedRecord,
   loadAllManagedRecords,
   mergeManagedRecord,
@@ -78,7 +79,7 @@ describe('managed store', () => {
 
   it('mergeManagedRecord:distribution 按 path 去重,evidence/decisions 保留旧值', () => {
     const prev = makeRecord({
-      evidence: [{ reportId: 'r1', recordedAt: '2026-06-06T00:00:00.000Z' }],
+      evidence: [{ reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: '2026-06-06T00:00:00.000Z' }],
       decisions: [{ decisionKind: 'promote', actor: 'me', decidedAt: '2026-06-06T00:00:00.000Z' }],
       distribution: [{ label: 'Claude Code', path: '/p/claude', contentHash: 'aaaaaaaaaaaa', copiedAt: 't0' }],
     });
@@ -134,13 +135,45 @@ describe('managed store', () => {
     assert.ok(existsSync(recordPath(store, written.id)));
   });
 
-  it('deriveManagedState:漂移/缺失→stale,同 hash 无证据→installed,有证据→measurable', () => {
+  it('deriveManagedState:漂移/缺失→stale,同 hash 无证据→installed,匹配证据→measurable', () => {
     const record = makeRecord({ contentHash: 'aaaaaaaaaaaa' });
     assert.equal(deriveManagedState({ record, currentContentHash: 'bbbbbbbbbbbb' }).label, 'stale');
     assert.equal(deriveManagedState({ record, currentContentHash: undefined }).label, 'stale');
     assert.equal(deriveManagedState({ record, currentContentHash: 'aaaaaaaaaaaa' }).label, 'installed');
     assert.equal(deriveManagedState({ record, currentContentHash: 'aaaaaaaaaaaa', hasSamplesOrDoctorPass: true }).label, 'measurable');
-    const withEvidence = makeRecord({ contentHash: 'aaaaaaaaaaaa', evidence: [{ reportId: 'r1', recordedAt: 't' }] });
+    const withEvidence = makeRecord({
+      contentHash: 'aaaaaaaaaaaa',
+      evidence: [{ reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: 't' }],
+    });
     assert.equal(deriveManagedState({ record: withEvidence, currentContentHash: 'aaaaaaaaaaaa' }).label, 'measurable');
+  });
+
+  it('deriveManagedState:旧内容的 evidence 不算当前证据,新内容不被读成 measurable(#203 不变量)', () => {
+    // 先有 review 的证据(测的是旧内容 aaaa),后把同名 review 重装到新内容 cccc。
+    const record = makeRecord({
+      contentHash: 'cccccccccccc',
+      evidence: [{ reportId: 'r1', contentHash: 'aaaaaaaaaaaa', recordedAt: 't' }],
+    });
+    // 当前文件就是新内容 cccc:不漂移,但旧证据 hash 不匹配 → 不能算 measurable。
+    const state = deriveManagedState({ record, currentContentHash: 'cccccccccccc' });
+    assert.equal(state.hasEvidence, false, '旧 hash 的 evidence 不算当前证据');
+    assert.equal(state.label, 'installed', '新内容不能凭旧证据被读成 measurable');
+  });
+
+  it('hashArtifactSource:目录-skill 覆盖资产改动,文件-skill 跟内容走(P2)', () => {
+    const root = join(dir, 'review');
+    mkdirSync(join(root, 'references'), { recursive: true });
+    writeFileSync(join(root, 'SKILL.md'), '# review\n');
+    writeFileSync(join(root, 'references', 'cmd.md'), 'asset v1\n');
+    const h1 = hashArtifactSource(root, true);
+    writeFileSync(join(root, 'references', 'cmd.md'), 'asset v2\n'); // 只改资产,不动 SKILL.md
+    const h2 = hashArtifactSource(root, true);
+    assert.notEqual(h1, h2, '资产改动必须改变目录树 hash');
+
+    const file = join(dir, 'notes.md');
+    writeFileSync(file, 'body v1\n');
+    const f1 = hashArtifactSource(file, false);
+    writeFileSync(file, 'body v2\n');
+    assert.notEqual(f1, hashArtifactSource(file, false), '文件-skill hash 随内容变');
   });
 });
