@@ -202,9 +202,9 @@ v0.1 不区分信号严重度，所有四类一律"有信号"；v0.2 引入加�
 
 | 信号类型 | 权重 | 分档理由 |
 |---------|------|----------|
-| `failed_search` | **1.0**（强） | agent 工具层真的调了 Grep/Read 没命中,确定性 miss |
-| `repeated_failure` | **1.0**（强） | 同一类查询连续 ≥3 次失败,已不是偶然 |
-| `explicit_marker` | 0.5（弱） | 依赖 agent 按约定打【推断】等标记,可能漏标或假装 |
+| `failed_search` | **1.0**（强） | agent 工具层真的调了 Grep/Read 没命中，确定性 miss |
+| `repeated_failure` | **1.0**（强） | 同一类查询连续 ≥3 次失败，已不是偶然 |
+| `explicit_marker` | 0.5（弱） | 依赖 agent 按约定打【推断】等标记，可能漏标或假装 |
 | `hedging` | 0.5（弱） | regex 召回 + LLM 二次判定（v0.2,详见 §四.3）;classifier 失败降级时全部保留 |
 
 聚合产出 **`weightedGapRate`**（与 `gapRate` 并列，不替代）：

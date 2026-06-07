@@ -312,7 +312,7 @@ Rules:
 
 ### 4. Reserve bare `kind` for `ArtifactKind`
 
-In omk's product vocabulary, bare `kind` is reserved for `Artifact.kind` (`ArtifactKind`: `baseline` / `skill` / `prompt` / `agent` / `workflow`). `baseline` means the empty eval artifact; experiment role still comes from `control` / `treatment`. CLI design follows the same rule: a future `--kind` flag should mean artifact kind, not install target, report type, or observe event type.
+In omk's product vocabulary, bare `kind` is reserved for `Artifact.kind` (`ArtifactKind`: `baseline` / `skill` / `prompt` / `agent` / `workflow`). `baseline` means the empty eval artifact; experiment role still comes from `control` / `treatment`. CLI design follows the same rule: the `--kind` flag on `omk install` means artifact kind (aligned with `Artifact.kind`), not install target, report type, or observe event type.
 
 For other discriminants, use a qualified name when the field is new or safe to rename. Existing persisted `kind` fields stay as-is unless a dedicated migration changes them:
 

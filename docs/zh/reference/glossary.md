@@ -1,6 +1,6 @@
 <!--
 title: 术语对照表 — 业内通用 ML / 统计 / omk 名词的中英对照
-description: 给 omk 文档读者用的术语速查。覆盖 bootstrap CI / Δ / Pearson / Krippendorff α / 综合分 / executor / 测评可信度 等业内通用术语,以及 omk 内部命名(artifact / verdict / 外验集 等)。每条给一句话定义 + 在哪用到。
+description: 给 omk 文档读者用的术语速查。覆盖 bootstrap CI / Δ / Pearson / Krippendorff α / 综合分 / executor / 测评可信度 等业内通用术语，以及 omk 内部命名(artifact / verdict / 外验集 等)。每条给一句话定义 + 在哪用到。
 -->
 
 # 术语对照表

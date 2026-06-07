@@ -92,8 +92,8 @@ See: [docs/specs/sample-design-spec.md](../specs/sample-design-spec.md) for rela
 Every report carries:
 - omk version (`reportMeta.cliVersion`)
 - Node version (`reportMeta.nodeVersion`)
-- Judge model + hash (`reportMeta.judgeModel`, `reportMeta.judgePromptHash`)
-- Executor runtime fingerprint (`reportMeta.executorRuntime`, `reportMeta.judgeRuntime`)
+- Judge models + prompt hash (`reportMeta.judgeModels` — each entry carries its judge model and runtime fingerprint — and `reportMeta.judgePromptHash`)
+- Executor runtime fingerprint (`reportMeta.executorRuntime`)
 - Sample fingerprints (`reportMeta.sampleHashes`)
 - Skill isolation snapshot (`reportMeta.skillIsolation`)
 - Schema version (`reportMeta.schemaVersion`)

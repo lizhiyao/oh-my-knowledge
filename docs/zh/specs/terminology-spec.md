@@ -1,6 +1,6 @@
 # omk 术语规范
 
-> **范围**: 这是 omk 维护者的内部设计决策归档(为什么 artifact 不叫 evaluand、为什么 v0.16 起废 `--variants`、qualityScore → judgeScore 迁移路径等)。不是新用户入门文档——日常用法看 [README](../README.md) 即可。中英双版并存(`docs/specs/` 英文 / `docs/zh/specs/` 中文),术语本身全是英文,源码为命名的事实来源。
+> **范围**: 这是 omk 维护者的内部设计决策归档(为什么 artifact 不叫 evaluand、为什么 v0.16 起废 `--variants`、qualityScore → judgeScore 迁移路径等)。不是新用户入门文档——日常用法看 [README](../README.md) 即可。中英双版并存(`docs/specs/` 英文 / `docs/zh/specs/` 中文),术语本身全是英文，源码为命名的事实来源。
 
 ## 一、目标
 
@@ -108,14 +108,14 @@
 
 规则:
 
-- **代码 / API / 文件名 / CLI flag 继续用 `sample`**:`Sample` 类型、`sample_id` 字段、`eval-samples.json` 文件名、`--samples` flag——这些是开源 API + 英文圈 LLM eval 通用术语,不动
-- **user-facing 中文文案默认用「用例」,不用「样本」**:CLI 输出、报告 UI、错误信息、文档正文、commit message 中文部分。包括"用例数"/"用例难度"/"用例不足"/"跨用例散度"等组合
-- **理由**:omk 的 `eval-samples` 是开发者**手挑**的测试用例,不是从某分布**随机抽样**的统计样本。「样本」会暗示"再多跑就能扩大样本量",误导用户——实际是要补设计、补用例。「用例」是工程语境(test case),与用户写测评时的心智一致("我设计了 5 个用例")
-- **例外:统计学术语场景保留「样本」**——Cohen's d / Hedges' g 的"**小样本修正**"、"**样本均值**"、"**样本方差**"、"**样本量**"、bootstrap "**重采样**" 等,这些是 stats 领域的固定提法(对应英文 small-sample correction / sample mean / sample variance / sample size / resampling),硬翻成「用例」反而让懂统计的读者多一拍。判定准则:**这个词指的是"对总体的一次随机抽样"统计概念**(那就是样本),还是**"开发者手挑的一条测试用例"**(那就是用例)。两者不混用、上下文清晰
+- **代码 / API / 文件名 / CLI flag 继续用 `sample`**:`Sample` 类型、`sample_id` 字段、`eval-samples.json` 文件名、`--samples` flag——这些是开源 API + 英文圈 LLM eval 通用术语，不动
+- **user-facing 中文文案默认用「用例」，不用「样本」**:CLI 输出、报告 UI、错误信息、文档正文、commit message 中文部分。包括"用例数"/"用例难度"/"用例不足"/"跨用例散度"等组合
+- **理由**:omk 的 `eval-samples` 是开发者**手挑**的测试用例，不是从某分布**随机抽样**的统计样本。「样本」会暗示"再多跑就能扩大样本量",误导用户——实际是要补设计、补用例。「用例」是工程语境(test case),与用户写测评时的心智一致("我设计了 5 个用例")
+- **例外：统计学术语场景保留「样本」**——Cohen's d / Hedges' g 的"**小样本修正**"、"**样本均值**"、"**样本方差**"、"**样本量**"、bootstrap "**重采样**" 等，这些是 stats 领域的固定提法(对应英文 small-sample correction / sample mean / sample variance / sample size / resampling),硬翻成「用例」反而让懂统计的读者多一拍。判定准则:**这个词指的是"对总体的一次随机抽样"统计概念**(那就是样本),还是**"开发者手挑的一条测试用例"**(那就是用例)。两者不混用、上下文清晰
 
 #### 6.1 Sample 元数据字段
 
-Sample schema 含 4 个可选元数据字段,纯文档 / 诊断用,**不参与 grading / judge / verdict**。详见 [docs/zh/specs/sample-design-spec.md](sample-design-spec.md)。
+Sample schema 含 4 个可选元数据字段，纯文档 / 诊断用,**不参与 grading / judge / verdict**。详见 [docs/zh/specs/sample-design-spec.md](sample-design-spec.md)。
 
 - **`capability?: string[]`** — 该 sample 测试的能力维度(可多个)。归一时大小写 / 短横线 / 驼峰 / 下划线不敏感。
 - **`difficulty?: 'easy' | 'medium' | 'hard'`** — 难度分层(强枚举)。
@@ -123,7 +123,7 @@ Sample schema 含 4 个可选元数据字段,纯文档 / 诊断用,**不参与 g
 - **`provenance?: 'human' | 'llm-generated' | 'production-trace'`** — 数据来源。
 
 **construct 跟 capability 区别**(用户最常混淆的两个字段):
-- **construct** = 这个 sample 测**哪类事**(necessity / quality / capability)。是实验设计的层面 — 你跑 baseline-vs-skill 是测必要性,跑 skill-v1-vs-skill-v2 是测质量。
+- **construct** = 这个 sample 测**哪类事**(necessity / quality / capability)。是实验设计的层面 — 你跑 baseline-vs-skill 是测必要性，跑 skill-v1-vs-skill-v2 是测质量。
 - **capability** = 这个 sample 测**哪些具体能力**(api-selection / error-diagnosis / fallback)。是被测对象的能力维度。
 
 ### 7. Task
@@ -207,7 +207,7 @@ Sample schema 含 4 个可选元数据字段,纯文档 / 诊断用,**不参与 g
 
 - **持续集成场景的内部 helper 一律用 "gate"**：`omk eval` 的 gate 路径 / `evaluateLayerGates` / `gateThreshold` / `LayerGateResult`
 - **置信区间场景一律用 "CI"**:`bootstrap CI` / `diff CI` / `bootstrapCI` 字段 / "95% CI"
-- 文档 / 注释 / commit message 提到 "CI" 时不必加澄清 — 单一含义,读者不需上下文判断
+- 文档 / 注释 / commit message 提到 "CI" 时不必加澄清 — 单一含义，读者不需上下文判断
 
 ### 6. 稳定性 = 跨重复运行（test-retest），不是跨用例散度
 
@@ -312,7 +312,7 @@ omk 当前仍处于 0-1 阶段，用户规模很小，因此不主动保留历�
 
 ### 4. 裸 `kind` 留给 `ArtifactKind`
 
-在 omk 的产品语义里，裸 `kind` 留给 `Artifact.kind`（`ArtifactKind`：`baseline` / `skill` / `prompt` / `agent` / `workflow`）。`baseline` 表示 eval 里的空 artifact；实验角色仍然看 `control` / `treatment`。命令行设计同理：未来如果出现 `--kind`，它也应该表示 artifact kind，而不是安装目标、report 类型或 observe event 类型。
+在 omk 的产品语义里，裸 `kind` 留给 `Artifact.kind`（`ArtifactKind`：`baseline` / `skill` / `prompt` / `agent` / `workflow`）。`baseline` 表示 eval 里的空 artifact；实验角色仍然看 `control` / `treatment`。命令行设计同理：`omk install` 上的 `--kind` flag 表示 artifact kind（对齐 `Artifact.kind`），而不是安装目标、report 类型或 observe event 类型。
 
 其它判别字段如果是新字段，或能安全改名，就用限定名。已经落盘的既有 `kind` 字段保持原样，除非单独做 migration：
 
@@ -353,18 +353,18 @@ omk 跑 baseline-vs-skill 评测时,baseline variant 默认通过**三条 channe
 
 1. **SDK skill auto-discovery**:Claude Agent SDK 默认扫 `~/.claude/skills/` 把 skill 列表注入 main session system prompt
 2. **subagent Skill 工具**:即便 main session 没 skill,SDK 内置 task subagent 调 `Skill(...)` 仍会按需加载 skill 内容
-3. **cwd 文件系统访问**:baseline 默认 cwd 是用户评测工作目录,该目录通常有 `skills/<name>/` symlink 给 treatment 用,baseline 用 plain `Glob` / `Read` 工具就能顺 symlink 直接读 `SKILL.md`
+3. **cwd 文件系统访问**:baseline 默认 cwd 是用户评测工作目录，该目录通常有 `skills/<name>/` symlink 给 treatment 用,baseline 用 plain `Glob` / `Read` 工具就能顺 symlink 直接读 `SKILL.md`
 
 三条 channel 都堵掉之后,baseline 才真的"裸"。任何一条没堵,baseline 都会绕过其他堵点拿到 skill 内容,verdict / Δ 反映的是污染基线 vs treatment,而不是真实"无知识 vs 有知识"。
 
 ### 2. 术语
 
-- **`allowedSkills`**(per-variant 字段,新加在 `Artifact` / `VariantConfig` / `EvalConfigVariant` 上):
+- **`allowedSkills`**(per-variant 字段，新加在 `Artifact` / `VariantConfig` / `EvalConfigVariant` 上):
   - `undefined` → SDK 默认行为(全发现 `~/.claude/skills/`)
   - `[]` → **完全隔离**:`options.skills = []` + `options.disallowedTools = ['Skill']`,main session 不发现任何 skill,subagent 也无法调 Skill 工具
   - `[name1, name2]` → **白名单**:`options.skills = [name1, name2]`,只载入指定 skill。subagent 走独立 channel,白名单场景 v1 不强制 subagent 跟随(follow-up)
 - **`--strict-baseline` flag**(default true):对所有 `kind === 'baseline'` 的 artifact 自动设 `allowedSkills = []`;`--no-strict-baseline` 关掉(显式 opt-out)
-- **`meta.skillIsolation`**(report meta 新字段):variantName → allowedSkills 快照,跨报告对比 verdict / Δ 时校验
+- **`meta.skillIsolation`**(report meta 新字段):variantName → allowedSkills 快照，跨报告对比 verdict / Δ 时校验
 
 ### 3. 默认值与优先级
 
@@ -387,9 +387,9 @@ baseline-kind 默认 `[]`(strict),其他 kind 默认 `undefined`(SDK 全发现)�
 | `AgentDefinition.skills` 白名单精确控制 | ❌(known hole, v1 不做) | follow-up:omk 加 `agents` option |
 | script executor | ❌ | stderr warn,用户自定义不参与 isolation |
 
-**为什么 cwd 这条 channel 单独列出**:仅堵 SDK 两条 channel(`skills:[]` + `disallowedTools:['Skill']`)后,baseline 的 `Skill` 工具调用确实降到 0,但 baseline 仍能用 plain `Glob` / `Read` 顺 cwd 下的 `skills/<name>/` symlink 读到 `SKILL.md`,完全绕过 SDK 隔离。根因:omk 默认 `baseline.cwd === null` → SDK fallback 到 `process.cwd()` = 用户评测工作目录,那里通常有 `skills/<name>/` symlink 给 treatment 用。修法是 baseline 默认 cwd 切到 `~/.oh-my-knowledge/isolated-cwd/`(空目录)。**用户显式给 baseline 设 cwd 时不动**(显式 cwd = 用户负责该目录干净)。
+**为什么 cwd 这条 channel 单独列出**:仅堵 SDK 两条 channel(`skills:[]` + `disallowedTools:['Skill']`)后,baseline 的 `Skill` 工具调用确实降到 0,但 baseline 仍能用 plain `Glob` / `Read` 顺 cwd 下的 `skills/<name>/` symlink 读到 `SKILL.md`,完全绕过 SDK 隔离。根因:omk 默认 `baseline.cwd === null` → SDK fallback 到 `process.cwd()` = 用户评测工作目录，那里通常有 `skills/<name>/` symlink 给 treatment 用。修法是 baseline 默认 cwd 切到 `~/.oh-my-knowledge/isolated-cwd/`(空目录)。**用户显式给 baseline 设 cwd 时不动**(显式 cwd = 用户负责该目录干净)。
 
-注:isolated-cwd 不是 sandbox,baseline 仍可 Read 任意 absolute path。但模型不会主动猜用户私有路径(没 system prompt 暗示)。如果评测场景里 baseline 会被 prompt 引导去读绝对路径,需要再加层 sandbox 保护(out-of-scope)。
+注:isolated-cwd 不是 sandbox,baseline 仍可 Read 任意 absolute path。但模型不会主动猜用户私有路径(没 system prompt 暗示)。如果评测场景里 baseline 会被 prompt 引导去读绝对路径，需要再加层 sandbox 保护(out-of-scope)。
 
 ### 5. cache key 版本
 
@@ -403,7 +403,7 @@ cache key 当前为 `v4:` prefix,含 allowedSkills、executor 名和 executor ru
 | `claude-cli` | 默认 | `--disable-slash-commands --disallowedTools Skill` | **throw**(用户改 sdk) |
 | `script` | 默认 | stderr warn,不阻塞(无效) | stderr warn,不阻塞(无效) |
 
-claude-cli executor 用 `--disable-slash-commands`(文档:"Disable all skills")+ `--disallowedTools Skill` 双堵,跟 SDK 等价,**只缺 partial whitelist 能力**——白名单 `[name]` 需求必须走 claude-sdk(SDK `skills` option 直接支持白名单语义)。`script` executor 用户自定义,无法保证遵循 isolation,只 warn。
+claude-cli executor 用 `--disable-slash-commands`(文档:"Disable all skills")+ `--disallowedTools Skill` 双堵，跟 SDK 等价,**只缺 partial whitelist 能力**——白名单 `[name]` 需求必须走 claude-sdk(SDK `skills` option 直接支持白名单语义)。`script` executor 用户自定义，无法保证遵循 isolation,只 warn。
 
 ## 八、落地判断标准
 
