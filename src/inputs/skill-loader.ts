@@ -124,11 +124,18 @@ function nearestExistingDir(p: string): string {
  * not_a_git_repo。stderr 吞掉,不双重打印 `fatal:`。
  */
 export function resolveGitRepoContext(fromPath: string): GitRepoContext {
-  const anchor = realpathSync(nearestExistingDir(fromPath));
+  const absInput = resolve(fromPath);
+  const existing = nearestExistingDir(absInput);
+  const anchor = realpathSync(existing);
   const repoRoot = realpathSync(
     execFileSync('git', ['-C', anchor, 'rev-parse', '--show-toplevel'], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim(),
   );
-  const absFrom = existsSync(resolve(fromPath)) ? realpathSync(resolve(fromPath)) : resolve(fromPath);
+  // 对称归一:repoRoot 经 realpath,fromPath 也必须经同源 realpath,否则 fromPath 尚不在磁盘时
+  // (纯 git eval:skill 只在 HEAD、工作树已删)absFrom 保留未归一字面,在 macOS /var ↔ /private/var
+  // 这类等价路径上 relative 会算出越界的 `../../..` relDir → classify 探到仓库外 → 误报 not_found。
+  // 做法:realpath 最近存在祖先,再拼回尚不存在的尾段(尾段为空即 fromPath 本身存在)。
+  const tail = relative(existing, absInput);
+  const absFrom = tail ? join(anchor, tail) : anchor;
   return { repoRoot, relDir: relative(repoRoot, absFrom) };
 }
 

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, realpathSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolveArtifacts } from '../../src/inputs/skill-loader.js';
 
@@ -180,6 +180,33 @@ describe('resolveArtifacts git(与 install 共用归类)', () => {
         'git 上下文必须锚定 skillDir 的 repo,读外部 repo 的 skills/review.md');
     } finally {
       rmSync(ext, { recursive: true, force: true });
+    }
+  });
+
+  it('skillDir 工作树已删(skill 只在 HEAD)+ 经软链路径:relDir 对称归一,不越界误报 not_found', () => {
+    // 纯 git eval:skill 在 HEAD 但工作树已删除;skillDir 经软链传入。修复前 repoRoot 经 realpath、
+    // fromPath 未归一,relative 在软链 ↔ 真实路径间算出 `../../..` 越界 relDir → classify 探到仓库外
+    // → 误报 not_found。对称归一(realpath 最近存在祖先 + 拼回尾段)后应正常从 HEAD 读到内容。
+    const real = realpathSync(mkdtempSync(join(tmpdir(), 'omk-eval-ctxreal-')));
+    const link = join(tmpdir(), `omk-eval-ctxlink-${process.pid}-${process.hrtime.bigint()}`);
+    symlinkSync(real, link);
+    try {
+      const sh = (args: string[]): void => { execFileSync('git', args, { cwd: real, stdio: 'ignore' }); };
+      sh(['init', '-q']);
+      sh(['config', 'user.email', 't@t']);
+      sh(['config', 'user.name', 't']);
+      mkdirSync(join(real, 'skills', 'old'), { recursive: true });
+      writeFileSync(join(real, 'skills', 'old', 'SKILL.md'), '# old skill in HEAD\n');
+      sh(['add', '-A']);
+      sh(['commit', '-q', '-m', 'seed']);
+      rmSync(join(real, 'skills'), { recursive: true, force: true }); // 工作树删掉,只剩 HEAD
+      // skillDir 经软链且不在磁盘 → 触发未归一分支
+      const artifacts = resolveArtifacts(join(link, 'skills'), ['git:old']);
+      assert.ok(artifacts[0].content?.includes('old skill in HEAD'),
+        'relDir 对称归一后应从 HEAD 读到 skills/old/SKILL.md,不因软链算越界');
+    } finally {
+      rmSync(link, { force: true });
+      rmSync(real, { recursive: true, force: true });
     }
   });
 });
