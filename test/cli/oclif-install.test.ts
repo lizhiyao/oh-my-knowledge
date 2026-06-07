@@ -420,6 +420,20 @@ describe('oclif install', () => {
     }
   });
 
+  it('名为 evolve 的 directory-skill 正常安装,不被根目录过滤误伤(P2 边界)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-evolvename-'));
+    try {
+      await makeDirSkill(dir, 'evolve'); // skill 本身就叫 evolve
+      const dest = join(dir, 'dist-skills');
+      const { stdout } = await execFileAsync('node', [CLI, 'install', 'skills/evolve', '--dest', dest], { cwd: dir, env: cliEnv() });
+      assert.ok(stdout.includes('已安装 skill evolve'), 'should report install');
+      assert.ok(existsSync(join(dest, 'evolve', 'SKILL.md')), '源根名叫 evolve 不该让整棵目录被跳过');
+      assert.ok(existsSync(join(dest, 'evolve', 'references', 'cmd.md')), 'asset must be distributed');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('分发不带入 .omk 评测数据(P2)', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-omkfilter-'));
     try {

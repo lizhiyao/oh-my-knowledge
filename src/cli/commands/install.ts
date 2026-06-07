@@ -1,6 +1,6 @@
 import { copyFileSync, cpSync, existsSync, mkdirSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, resolve, join } from 'node:path';
+import { basename, dirname, relative, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
@@ -173,7 +173,8 @@ function copyArtifactToTarget(params: {
   if (params.isDirectorySkill) {
     cpSync(params.source, params.targetPath, {
       recursive: true,
-      filter: (src) => isDistributableEntry(basename(src)),
+      // 源根永远拷(否则名叫 evolve / .omk 的合法 skill 会被整棵跳过、假成功);只过滤子孙条目。
+      filter: (src) => relative(params.source, src) === '' || isDistributableEntry(basename(src)),
     });
   } else {
     copyFileSync(params.source, params.targetPath);
