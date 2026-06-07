@@ -21,6 +21,7 @@ export type InstallMessageKey =
   | 'cli.install.not_a_skill'
   | 'cli.install.not_a_git_repo'
   | 'cli.install.git_skill_not_found'
+  | 'cli.install.git_unsafe_path'
   | 'cli.install.next_hint';
 
 export const installDict: Record<InstallMessageKey, CliMessage> = {
@@ -103,6 +104,10 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
   'cli.install.git_skill_not_found': {
     zh: '在 git ref {ref} 下找不到 skill {name}（既无 {name}/SKILL.md 也无 {name}.md）。',
     en: 'Skill {name} not found at git ref {ref} (neither {name}/SKILL.md nor {name}.md).',
+  },
+  'cli.install.git_unsafe_path': {
+    zh: 'git tree 含越界路径 {path}（.. / 绝对路径 / 空段),拒绝物化以防写出临时目录。该 skill 的 git tree 可能被手工构造,请核查来源。',
+    en: 'git tree contains an out-of-bounds path {path} (.. / absolute / empty segment); refusing to materialize to avoid escaping the temp dir. The skill git tree may be hand-crafted; verify the source.',
   },
   'cli.install.next_hint': {
     zh: '现在可以在 coding agent 中说「用 omk 评测这个 skill」。',

@@ -1,6 +1,6 @@
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { isDistributablePath } from '../managed/index.js';
 import { classifyGitSkillRef, getGitRelativePath, gitJoin, gitLsTreeBlobs, gitShowBytes, skillNameFromPath } from './skill-loader.js';
 
@@ -41,6 +41,23 @@ export class SourceResolveError extends Error {
 }
 
 const noop = (): void => {};
+
+/**
+ * 校验 git tree 条目路径在物化目标内,越界即 fail closed(抛 SourceResolveError)。
+ * 双保险:既显式拒 `..` / 空段(git tree 可被手工构造出名为 `..` 的子树),也用 resolve 兜底
+ * 确认落点仍在 temp 之下(绝对路径 / 符号化逃逸)。绝不静默跳过——跳过会让物化树与真实树发散。
+ */
+function assertContainedRelPath(temp: string, relPath: string): void {
+  const segments = relPath.split('/');
+  if (segments.some((s) => s === '' || s === '.' || s === '..')) {
+    throw new SourceResolveError('cli.install.git_unsafe_path', { path: relPath });
+  }
+  const root = resolve(temp);
+  const dest = resolve(temp, relPath);
+  if (dest !== root && !dest.startsWith(root + sep)) {
+    throw new SourceResolveError('cli.install.git_unsafe_path', { path: relPath });
+  }
+}
 
 export function resolveInstallSource(input: string): ResolvedSource {
   if (input.startsWith('git:')) return resolveGitSource(input);
@@ -105,6 +122,11 @@ function resolveGitSource(input: string): ResolvedSource {
     const locator = `git:${ref}:${spec}`;
     if (resolved.isDir) {
       for (const entry of gitLsTreeBlobs(ref, resolved.treePath)) {
+        // 安全边界 fail closed:git tree 可被 git mktree 手工构造出名为 `..` 的子树,`ls-tree -r` 会
+        // 吐 `../evil.txt`,`join(temp, ...)` 会逃出临时目录写盘、cleanup 也删不掉。任一越界路径(.. /
+        // 绝对路径 / 空段 / 解析后不在 temp 内)直接抛错,而非静默跳过——静默跳过会让物化树与真实
+        // git tree / hash / 分发树发散。正常 checkout 永不触发。
+        assertContainedRelPath(temp, entry.path);
         if (entry.mode === '120000' || entry.mode === '160000') continue; // 跳过软链 / submodule(与本地分发一致)
         if (!isDistributablePath(entry.path.split('/'))) continue; // 排除 .omk/.git/evolve 等
         const bytes = gitShowBytes(ref, gitJoin(resolved.treePath, entry.path));
