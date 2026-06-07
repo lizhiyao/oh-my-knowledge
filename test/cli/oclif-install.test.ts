@@ -594,6 +594,32 @@ describe('oclif install', () => {
     }
   });
 
+  it('git 源裸 spec 歧义:文件优先(e2e 端到端记录 isDirectorySkill:false,防 evidence 静默剥离)', async () => {
+    // 同名同时存在 skills/dual.md 与 skills/dual/SKILL.md。eval(skill-loader resolveArtifacts)先试
+    // <name>.md 再 <name>/SKILL.md → 量的是文件;install 必须同样文件优先,否则注册成目录、contentHash
+    // 与 eval 不同,evidence 读时按 hash 门控被静默剥离、记录永久 stale。这里端到端锁住 install 的归类。
+    const repo = await mkdtemp(join(tmpdir(), 'omk-install-gitdual-'));
+    try {
+      git(repo, ['init', '-q']);
+      git(repo, ['config', 'user.email', 't@t']);
+      git(repo, ['config', 'user.name', 't']);
+      await mkdir(join(repo, 'skills', 'dual'), { recursive: true });
+      await writeFile(join(repo, 'skills', 'dual.md'), '# dual file\n');
+      await writeFile(join(repo, 'skills', 'dual', 'SKILL.md'), '# dual dir\n');
+      git(repo, ['add', '-A']);
+      git(repo, ['commit', '-q', '-m', 'dual']);
+      const dest = join(repo, 'dist-skills');
+      await execFileAsync('node', [CLI, 'install', 'git:HEAD:skills/dual', '--dest', dest], { cwd: repo, env: cliEnv() });
+      const record = await readSoleManagedRecord(repo);
+      const source = record.source as Record<string, unknown>;
+      assert.equal(source.isDirectorySkill, false, '裸 spec 歧义必须文件优先,与 eval 对齐');
+      assert.ok(existsSync(join(dest, 'dual.md')), '应分发文件-skill,落点为 dual.md');
+      assert.ok(!existsSync(join(dest, 'dual')), '不应分发目录-skill');
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  });
+
   it('git 源在非 git 仓库内友好报错', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-nogit-'));
     try {

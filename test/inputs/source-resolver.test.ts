@@ -4,7 +4,7 @@
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, rmSync, realpathSync, chmodSync, statSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync, realpathSync, chmodSync, statSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { resolveInstallSource, SourceResolveError } from '../../src/inputs/source-resolver.js';
@@ -180,6 +180,28 @@ describe('source-resolver git', () => {
     try {
       assert.ok(!existsSync(join(src.localRoot, 'link.md')), '软链不该被物化');
       assert.ok(existsSync(join(src.localRoot, 'SKILL.md')), '正常文件仍物化');
+    } finally {
+      src.cleanup();
+    }
+  });
+
+  it('名字以 .md 结尾的目录不被误当文件 blob(cat-file blob 拒 tree,不物化树清单)', () => {
+    // git show <ref>:<目录> 退出码 0 且打印树清单文本(`tree HEAD:...\n\nSKILL.md`)。若探测用 show,
+    // 裸 spec `skills/foo` 先探 `skills/foo.md`,而 foo.md 恰是目录时 → 被误判为 file-skill、物化树清单
+    // 当 skill 正文,真正的 foo/SKILL.md 被跳过。cat-file blob 对 tree 非零退出,探测落空、回退到 dir。
+    mkdirSync(join(repo, 'skills', 'foo.md'), { recursive: true }); // 一个名字以 .md 结尾的目录,影子遮挡
+    writeFileSync(join(repo, 'skills', 'foo.md', 'note.txt'), 'shadow\n');
+    mkdirSync(join(repo, 'skills', 'foo'), { recursive: true }); // 真正的 dir-skill
+    writeFileSync(join(repo, 'skills', 'foo', 'SKILL.md'), '# real foo skill\n');
+    git(repo, ['add', '-A']);
+    git(repo, ['commit', '-q', '-m', 'shadow']);
+    const src = resolveInstallSource('git:HEAD:skills/foo');
+    try {
+      assert.equal(src.isDirectorySkill, true, 'foo.md 是目录、非 blob,应回退到真正的 foo/SKILL.md(dir-skill)');
+      assert.equal(src.name, 'foo');
+      const body = readFileSync(join(src.localRoot, 'SKILL.md'), 'utf-8');
+      assert.ok(body.includes('real foo skill'), '应物化真正的 SKILL.md,而非 git 树清单文本');
+      assert.ok(!body.startsWith('tree '), '绝不能把 `tree HEAD:...` 清单当 skill 正文');
     } finally {
       src.cleanup();
     }

@@ -333,7 +333,7 @@ omk install omk-agent-skill --dest ~/.my-agent/skills
 omk install ./skills/review
 ```
 
-> 从当前仓库某个 ref 安装 skill(可复现;SHA 不可变、分支会随 ref 漂移)
+> 从当前仓库某个 ref 安装 skill（可复现；SHA 不可变、分支会随 ref 漂移）
 
 ```bash
 omk install git:main:skills/review

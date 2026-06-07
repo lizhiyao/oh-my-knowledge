@@ -40,18 +40,25 @@ function buildMetadata(content: string): Record<string, unknown> | undefined {
 // 否则一次成功的 install/eval 也会在用户终端打印吓人的 `fatal: path ... does not exist`。
 const GIT_PROBE_STDIO: ['ignore', 'pipe', 'ignore'] = ['ignore', 'pipe', 'ignore'];
 
+// 用 `cat-file blob` 而非 `git show`:`git show <ref>:<目录>` 对**目录**会退出码 0 并打印树清单
+// (`tree <ref>:path\n\nSKILL.md`),被这里当成"文件存在 + 内容"误收 —— 名字以 .md 结尾的目录会被
+// classify 误判为 file-skill、物化出树清单当 skill 正文,也会让 eval 把清单文本量成 skill 内容。
+// `cat-file blob` 对非 blob(tree/submodule)直接非零退出,从根上只认 blob。对真 blob 字节与 show 一致。
 export function gitShowFile(ref: string, filePath: string): string | null {
   try {
-    return execFileSync('git', ['show', `${ref}:${filePath}`], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim();
+    return execFileSync('git', ['cat-file', 'blob', `${ref}:${filePath}`], { encoding: 'utf-8', stdio: GIT_PROBE_STDIO }).trim();
   } catch {
     return null;
   }
 }
 
-/** 取 `<ref>:<filePath>` 的原始字节(二进制资产用,不做 utf-8 解码);不存在/出错返回 null。 */
+/**
+ * 取 `<ref>:<filePath>` 的原始字节(二进制资产用,不做 utf-8 解码);不存在/非 blob/出错返回 null。
+ * 同 gitShowFile 用 `cat-file blob`:对目录会非零退出,不会把树清单字节当文件内容物化。
+ */
 export function gitShowBytes(ref: string, filePath: string): Buffer | null {
   try {
-    return execFileSync('git', ['show', `${ref}:${filePath}`], { stdio: GIT_PROBE_STDIO }); // 无 encoding → Buffer
+    return execFileSync('git', ['cat-file', 'blob', `${ref}:${filePath}`], { stdio: GIT_PROBE_STDIO }); // 无 encoding → Buffer
   } catch {
     return null;
   }

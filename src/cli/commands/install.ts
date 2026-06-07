@@ -289,7 +289,7 @@ export default class Install extends BaseCommand {
     },
     {
       description: bilingual({
-        zh: '从当前仓库某个 ref 安装 skill(可复现;SHA 不可变、分支会随 ref 漂移)',
+        zh: '从当前仓库某个 ref 安装 skill（可复现；SHA 不可变、分支会随 ref 漂移）',
         en: 'Install a skill from a ref of the current repo (reproducible; a SHA is immutable, a branch drifts with the ref)',
       }),
       command: '<%= config.bin %> install git:main:skills/review',
