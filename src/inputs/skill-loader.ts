@@ -36,7 +36,7 @@ function buildMetadata(content: string): Record<string, unknown> | undefined {
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }
 
-function gitShowFile(ref: string, filePath: string): string | null {
+export function gitShowFile(ref: string, filePath: string): string | null {
   try {
     return execFileSync('git', ['show', `${ref}:${filePath}`], { encoding: 'utf-8' }).trim();
   } catch {
@@ -44,7 +44,40 @@ function gitShowFile(ref: string, filePath: string): string | null {
   }
 }
 
-function getGitRelativePath(absolutePath: string): string {
+/** 取 `<ref>:<filePath>` 的原始字节(二进制资产用,不做 utf-8 解码);不存在/出错返回 null。 */
+export function gitShowBytes(ref: string, filePath: string): Buffer | null {
+  try {
+    return execFileSync('git', ['show', `${ref}:${filePath}`]); // 无 encoding → Buffer
+  } catch {
+    return null;
+  }
+}
+
+export interface GitTreeEntry {
+  /** git 文件模式:100644/100755=普通文件,120000=软链,160000=submodule。 */
+  mode: string;
+  /** 相对所列 tree 的路径。 */
+  path: string;
+}
+
+/** 递归列出 `<ref>:<treePath>` 子树下的叶子条目(blob / 软链 / submodule)。tree 不存在返回 []。 */
+export function gitLsTreeBlobs(ref: string, treePath: string): GitTreeEntry[] {
+  let out: string;
+  try {
+    out = execFileSync('git', ['-c', 'core.quotePath=false', 'ls-tree', '-r', `${ref}:${treePath}`], { encoding: 'utf-8' });
+  } catch {
+    return [];
+  }
+  const entries: GitTreeEntry[] = [];
+  for (const line of out.split(/\r?\n/)) {
+    // 行格式:`<mode> <type> <object>\t<path>`
+    const m = line.match(/^(\d+) \S+ \S+\t(.+)$/);
+    if (m) entries.push({ mode: m[1], path: m[2] });
+  }
+  return entries;
+}
+
+export function getGitRelativePath(absolutePath: string): string {
   const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf-8' }).trim();
   return relative(gitRoot, absolutePath);
 }
