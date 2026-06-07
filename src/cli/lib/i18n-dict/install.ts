@@ -30,8 +30,8 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
     en: 'Packaged built-in asset not found: {path}. Run yarn build first, or verify the npm package includes dist/assets/agent-skills/omk.',
   },
   'cli.install.unknown_input': {
-    zh: 'install 接受内置 id omk-agent-skill,或一个 skill 路径（如 ./skills/review、./review.md）。无法识别的输入：{input}',
-    en: 'install accepts the built-in id omk-agent-skill, or a skill path (e.g. ./skills/review or ./review.md). Unrecognized input: {input}',
+    zh: 'install 接受内置 id omk-agent-skill、本地 skill 路径（如 ./skills/review、./review.md），或 git:<ref>:<name>（当前仓库某 ref 的 skill）。无法识别的输入：{input}',
+    en: 'install accepts the built-in id omk-agent-skill, a local skill path (e.g. ./skills/review or ./review.md), or git:<ref>:<name> (a skill at a ref of the current repo). Unrecognized input: {input}',
   },
   'cli.install.unknown_target': {
     zh: '未知安装目标：{target}。可用值：auto, codex, claude, all；或用 --dest <dir> 指定 skill 根目录。',
@@ -106,7 +106,7 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
     en: 'Skill {name} not found at git ref {ref} (neither {name}/SKILL.md nor {name}.md).',
   },
   'cli.install.git_unsafe_path': {
-    zh: 'git tree 含越界路径 {path}（.. / 绝对路径 / 空段),拒绝物化以防写出临时目录。该 skill 的 git tree 可能被手工构造,请核查来源。',
+    zh: 'git tree 含越界路径 {path}（.. / 绝对路径 / 空段），拒绝物化以防写出临时目录。该 skill 的 git tree 可能被手工构造，请核查来源。',
     en: 'git tree contains an out-of-bounds path {path} (.. / absolute / empty segment); refusing to materialize to avoid escaping the temp dir. The skill git tree may be hand-crafted; verify the source.',
   },
   'cli.install.next_hint': {
