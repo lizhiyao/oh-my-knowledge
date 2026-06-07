@@ -17,6 +17,8 @@ export type InstallMessageKey =
   | 'cli.install.path_not_found'
   | 'cli.install.skillmd_missing'
   | 'cli.install.not_a_skill'
+  | 'cli.install.not_a_git_repo'
+  | 'cli.install.git_skill_not_found'
   | 'cli.install.next_hint';
 
 export const installDict: Record<InstallMessageKey, CliMessage> = {
@@ -83,6 +85,14 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
   'cli.install.not_a_skill': {
     zh: '不是 skill 文件（需要 .md 或含 SKILL.md 的目录）：{path}',
     en: 'Not a skill file (expected a .md file or a directory containing SKILL.md): {path}',
+  },
+  'cli.install.not_a_git_repo': {
+    zh: '当前目录不在 git 仓库内,无法解析 git: 源。请在仓库内执行,或改用本地路径。',
+    en: 'Current directory is not inside a git repo; cannot resolve a git: source. Run inside the repo, or use a local path.',
+  },
+  'cli.install.git_skill_not_found': {
+    zh: '在 git ref {ref} 下找不到 skill {name}（既无 {name}/SKILL.md 也无 {name}.md）。',
+    en: 'Skill {name} not found at git ref {ref} (neither {name}/SKILL.md nor {name}.md).',
   },
   'cli.install.next_hint': {
     zh: '现在可以在 coding agent 中说「用 omk 评测这个 skill」。',

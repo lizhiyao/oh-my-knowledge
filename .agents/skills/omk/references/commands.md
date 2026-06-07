@@ -286,7 +286,7 @@ omk init my-project
 
 ## omk install
 
-安装 omk 官方 Agent Skill,或登记并分发用户自己的 skill(内置 id omk-agent-skill,或 skill 路径 + --kind skill)。默认写入本机已检测 agent 目标;安装用户 skill 时同时登记一条受管记录。
+安装 omk 官方 Agent Skill,或登记并分发用户自己的 skill(内置 id omk-agent-skill,本地路径,或 git:<ref>:<name> 取当前仓库某个 ref 的 skill)。默认写入本机已检测 agent 目标;安装用户 skill 时同时登记一条受管记录。
 
 **用法:**
 
@@ -331,6 +331,12 @@ omk install omk-agent-skill --dest ~/.my-agent/skills
 
 ```bash
 omk install ./skills/review
+```
+
+> 从当前仓库某个 ref 安装 skill(可复现;SHA 不可变、分支会随 ref 漂移)
+
+```bash
+omk install git:main:skills/review
 ```
 
 ## omk observe
