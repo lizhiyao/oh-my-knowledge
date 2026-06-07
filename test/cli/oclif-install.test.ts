@@ -396,6 +396,45 @@ describe('oclif install', () => {
     }
   });
 
+  it('就地接管:源即目标时不删源、登记成功(P1 数据丢失防护)', async () => {
+    for (const force of [true, false]) {
+      const dir = await mkdtemp(join(tmpdir(), 'omk-install-adopt-'));
+      try {
+        // skill 已经躺在目标 skillsDir 里:install <skillsDir>/review --dest <skillsDir>
+        await makeDirSkill(dir, 'review'); // → <dir>/skills/review
+        const skillsDir = join(dir, 'skills');
+        const source = join(skillsDir, 'review');
+        const args = ['install', 'skills/review', '--dest', 'skills'];
+        if (force) args.push('--force');
+        await execFileAsync('node', [CLI, ...args], { cwd: dir, env: cliEnv() });
+        // 源必须还在(绝不能被自删)
+        assert.ok(existsSync(join(source, 'SKILL.md')), `adopt(force=${force}) must not delete the source skill`);
+        assert.ok(existsSync(join(source, 'references', 'cmd.md')), 'asset must survive');
+        const record = await readSoleManagedRecord(dir);
+        const distribution = record.distribution as Array<Record<string, unknown>>;
+        // 路径用 endsWith 比对,规避 macOS /var → /private/var 软链归一化差异。
+        assert.ok((distribution[0].path as string).endsWith(join('skills', 'review')), 'in-place adopt still records the distribution');
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('分发不带入 .omk 评测数据(P2)', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'omk-install-omkfilter-'));
+    try {
+      await makeDirSkill(dir, 'review');
+      await mkdir(join(dir, 'skills', 'review', '.omk'), { recursive: true });
+      await writeFile(join(dir, 'skills', 'review', '.omk', 'samples.json'), '[]\n');
+      const dest = join(dir, 'dist-skills');
+      await execFileAsync('node', [CLI, 'install', 'skills/review', '--dest', dest], { cwd: dir, env: cliEnv() });
+      assert.ok(existsSync(join(dest, 'review', 'SKILL.md')), 'skill distributed');
+      assert.ok(!existsSync(join(dest, 'review', '.omk')), '.omk 评测数据不应被分发到 agent skill 目录');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('显式 --kind prompt 报友好错误且不登记', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'omk-install-userskill-prompt-'));
     try {

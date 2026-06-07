@@ -1,13 +1,13 @@
-import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, resolve, join } from 'node:path';
+import { basename, dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 import { resolveArtifacts } from '../../inputs/skill-loader.js';
-import { buildManagedArtifactRecord, hashArtifactSource, managedDir, recordManagedArtifact } from '../../managed/index.js';
+import { buildManagedArtifactRecord, hashArtifactSource, isDistributableEntry, managedDir, recordManagedArtifact } from '../../managed/index.js';
 import type { ArtifactKind, ManagedDistributionTarget } from '../../types/index.js';
 
 const BUILTIN_OMK_AGENT_SKILL_ID = 'omk-agent-skill';
@@ -116,22 +116,36 @@ function targetSkillDir(target: InstallTarget): string {
   return targetArtifactPath(target, 'omk', true);
 }
 
-/** 全部目标预检通过才拷任何一个(无部分安装)。 */
+/** 全部目标预检通过才拷任何一个(无部分安装)。源就是目标(就地接管)的目标跳过存在性检查。 */
 function validateInstallTargets(params: {
   targetPaths: string[];
   force: boolean;
   dryRun: boolean;
   lang: 'zh' | 'en';
+  source?: string;
 }): void {
   if (params.dryRun || params.force) return;
   for (const targetPath of params.targetPaths) {
+    if (params.source && isSamePhysicalPath(params.source, targetPath)) continue;
     if (existsSync(targetPath)) {
       throw new Error(tCli('cli.install.target_exists', params.lang, { path: targetPath }));
     }
   }
 }
 
-/** 通用拷贝:目录递归 cp、单文件 copyFile。不打印——由调用方决定文案。dry-run 不写。 */
+/** 源与目标是否物理同一节点(解析软链);用于「接管已在目标位置的 skill」时绝不自删。 */
+function isSamePhysicalPath(a: string, b: string): boolean {
+  try {
+    return realpathSync(a) === realpathSync(b);
+  } catch {
+    return false; // 任一不存在 → 不同
+  }
+}
+
+/**
+ * 通用拷贝:目录递归 cp(过滤掉 .omk / .git / evolve 等非分发产物)、单文件 copyFile。
+ * 不打印——由调用方决定文案。dry-run 不写。源与目标物理同一时**就地接管**:不删不拷,返回 inPlace。
+ */
 function copyArtifactToTarget(params: {
   source: string;
   isDirectorySkill: boolean;
@@ -140,12 +154,16 @@ function copyArtifactToTarget(params: {
   force: boolean;
   dryRun: boolean;
   lang: 'zh' | 'en';
-}): { targetPath: string; planned: boolean } {
+}): { targetPath: string; planned: boolean; inPlace: boolean } {
   if (!existsSync(params.source)) {
     throw new Error(tCli('cli.install.asset_missing', params.lang, { path: params.source }));
   }
   if (params.dryRun) {
-    return { targetPath: params.targetPath, planned: true };
+    return { targetPath: params.targetPath, planned: true, inPlace: false };
+  }
+  // 关键安全网:源就是目标(接管已安装的 skill)时绝不 rmSync 源,否则会删掉用户的 skill。
+  if (isSamePhysicalPath(params.source, params.targetPath)) {
+    return { targetPath: params.targetPath, planned: false, inPlace: true };
   }
   if (existsSync(params.targetPath) && !params.force) {
     throw new Error(tCli('cli.install.target_exists', params.lang, { path: params.targetPath }));
@@ -153,11 +171,14 @@ function copyArtifactToTarget(params: {
   mkdirSync(params.skillsDir, { recursive: true });
   rmSync(params.targetPath, { recursive: true, force: true });
   if (params.isDirectorySkill) {
-    cpSync(params.source, params.targetPath, { recursive: true });
+    cpSync(params.source, params.targetPath, {
+      recursive: true,
+      filter: (src) => isDistributableEntry(basename(src)),
+    });
   } else {
     copyFileSync(params.source, params.targetPath);
   }
-  return { targetPath: params.targetPath, planned: false };
+  return { targetPath: params.targetPath, planned: false, inPlace: false };
 }
 
 function installOmkAgentSkill(params: {
@@ -324,13 +345,14 @@ export default class Install extends BaseCommand {
       force: flags.force,
       dryRun: flags['dry-run'],
       lang,
+      source,
     });
 
     const now = new Date().toISOString();
     const distribution: ManagedDistributionTarget[] = [];
     for (const target of targets) {
       const targetPath = targetArtifactPath(target, artifact.name, isDirectorySkill);
-      const { planned } = copyArtifactToTarget({
+      const { planned, inPlace } = copyArtifactToTarget({
         source,
         isDirectorySkill,
         targetPath,
@@ -342,7 +364,8 @@ export default class Install extends BaseCommand {
       if (planned) {
         console.log(tCli('cli.install.plan', lang, { path: targetPath }));
       } else {
-        console.log(tCli('cli.install.copied', lang, { name: artifact.name, path: targetPath }));
+        // inPlace:源就在目标位置,未动文件,但仍登记为一条分发落点。
+        console.log(tCli(inPlace ? 'cli.install.adopted' : 'cli.install.copied', lang, { name: artifact.name, path: targetPath }));
         distribution.push({ label: target.label, path: targetPath, contentHash, copiedAt: now });
       }
     }

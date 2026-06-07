@@ -176,4 +176,17 @@ describe('managed store', () => {
     writeFileSync(file, 'body v2\n');
     assert.notEqual(f1, hashArtifactSource(file, false), '文件-skill hash 随内容变');
   });
+
+  it('hashArtifactSource:忽略 .omk / evolve 等非分发产物,只补样本不算 artifact 漂移(P2)', () => {
+    const root = join(dir, 'sk');
+    mkdirSync(join(root, 'references'), { recursive: true });
+    writeFileSync(join(root, 'SKILL.md'), '# sk\n');
+    writeFileSync(join(root, 'references', 'a.md'), 'asset\n');
+    const base = hashArtifactSource(root, true);
+    mkdirSync(join(root, '.omk'), { recursive: true });
+    writeFileSync(join(root, '.omk', 'samples.json'), '[]\n');
+    mkdirSync(join(root, 'evolve'), { recursive: true });
+    writeFileSync(join(root, 'evolve', 'sk.r1.md'), 'cand\n');
+    assert.equal(hashArtifactSource(root, true), base, '.omk / evolve 不该计入 artifact hash');
+  });
 });

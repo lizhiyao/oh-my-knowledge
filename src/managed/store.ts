@@ -41,10 +41,26 @@ export function managedRecordId(kind: ArtifactKind, name: string): string {
 }
 
 /**
+ * 不进 artifact「可分发树」的条目名 —— omk 的评测 / 迭代 / VCS / 系统产物,既不该被拷进 agent
+ * skill 目录,也不该计入 artifact contentHash。`.omk`(samples / managed / observations)与
+ * `evolve`(候选快照)是关键:用户只补样本、不动 SKILL.md 时,artifact 内容不该被判为漂移
+ * —— spec 里 artifact content hash 与 sample-set hash 是分开的证据轴。
+ */
+const NON_DISTRIBUTABLE_NAMES = new Set<string>([
+  '.omk', '.git', 'evolve', 'node_modules', '.DS_Store', 'Thumbs.db',
+]);
+
+/** hash 与 copy 共用同一套过滤,保证"算进 hash 的"与"分发出去的"完全一致。 */
+export function isDistributableEntry(name: string): boolean {
+  return !NON_DISTRIBUTABLE_NAMES.has(name);
+}
+
+/**
  * artifact 内容 hash —— drift baseline 与 evidence 绑定的依据。
  *   - 文件-skill:单个 .md 的字节;
- *   - 目录-skill:覆盖**整棵被分发的目录树**(SKILL.md + references/ 等资产),按相对路径排序后
- *     把每个文件的`路径 + 字节长度 + 内容`喂进同一个 sha256 —— 改任意资产都会令 hash 变化,drift 不漏。
+ *   - 目录-skill:覆盖**整棵可分发目录树**(SKILL.md + references/ 等资产,但排除 .omk / .git /
+ *     evolve 等评测迭代产物),按相对路径排序后把每个文件的`路径 + 字节长度 + 内容`喂进同一个
+ *     sha256 —— 改任意资产都会令 hash 变化、drift 不漏;只补样本则 hash 不动。
  * 用 createHash 直接喂 Buffer(字节级,二进制资产也稳;分隔符是运行时字节,源码里不引入任何不可见字符)。
  * 读时(未来 list / drift 检查)用同一函数重算比对。
  */
@@ -55,6 +71,7 @@ export function hashArtifactSource(source: string, isDirectorySkill: boolean): s
   const rels: string[] = [];
   const walk = (dir: string, prefix: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!isDistributableEntry(entry.name)) continue;
       const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
       if (entry.isDirectory()) walk(join(dir, entry.name), rel);
       else if (entry.isFile()) rels.push(rel);

@@ -11,6 +11,7 @@ export type InstallMessageKey =
   | 'cli.install.installed'
   | 'cli.install.kind_unsupported'
   | 'cli.install.copied'
+  | 'cli.install.adopted'
   | 'cli.install.registered'
   | 'cli.install.next_hint';
 
@@ -54,6 +55,10 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
   'cli.install.copied': {
     zh: '已安装 skill {name}：{path}',
     en: 'Installed skill {name}: {path}',
+  },
+  'cli.install.adopted': {
+    zh: '已就地接管 skill {name}（已在目标位置，未改动文件）：{path}',
+    en: 'Adopted skill {name} in place (already at target, files untouched): {path}',
   },
   'cli.install.registered': {
     zh: '已登记受管记录 {id}：{store}',
