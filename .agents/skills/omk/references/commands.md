@@ -303,7 +303,7 @@ omk install <input> [flags]
 - `--dest` `option`:自定义 skill 根目录；skill 安装到 <dir>/<name>（内置 omk-agent-skill 为 <dir>/omk）。
 - `--dry-run` `boolean`:只打印安装目标，不写文件。
 - `--force` `boolean`:覆盖目标位置已存在的 skill。
-- `--kind` `skill|prompt|agent|workflow`:用户 artifact 的 kind(对齐 Artifact.kind)。可省:命中 SKILL.md 自动推导,当前仅支持 skill。
+- `--kind` `skill|prompt|agent|workflow`:用户 artifact 的 kind（对齐 Artifact.kind）。可省：命中 SKILL.md 自动推导，当前仅支持 skill。
 - `--lang` `option` (默认 `zh`):输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
 - `--to` `option` (默认 `auto`):安装目标：auto（默认，本机已检测目标） / codex / claude / all。
 
@@ -327,7 +327,7 @@ omk install omk-agent-skill --to all
 omk install omk-agent-skill --dest ~/.my-agent/skills
 ```
 
-> 登记并分发用户自己的 skill(--kind 可省,命中 SKILL.md 自动推导)
+> 登记并分发用户自己的 skill（--kind 可省，命中 SKILL.md 自动推导）
 
 ```bash
 omk install ./skills/review

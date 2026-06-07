@@ -27,9 +27,11 @@ Scaffolds an evaluation project with two starter skill variants and an `eval-sam
 ## `omk install`
 
 ```bash
-omk install omk-agent-skill
+omk install omk-agent-skill            # built-in official omk Agent Skill (onboarding)
 omk install omk-agent-skill --to all
-omk install omk-agent-skill --dest ~/.my-agent/skills
+omk install ./skills/review            # register + distribute a local skill (writes a managed record)
+omk install git:main:skills/review     # install from a ref of the current repo (SHA is immutable, a branch drifts)
+omk install ./skills/review --dest ~/.my-agent/skills
 ```
 
 <!-- omk:cli:install:flags:start -->
@@ -49,7 +51,11 @@ For full descriptions: `omk install --help`.
 
 <!-- omk:cli:install:flags:end -->
 
-Installs the official omk Agent Skill into local supported coding-agent targets. The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
+Installs a knowledge input (skill) and distributes it to local supported coding-agent targets. Three sources: the built-in id `omk-agent-skill` (onboarding for the official omk Agent Skill), a local skill path (a directory or a `.md`), and `git:<ref>:<spec>` (a skill at a ref of the current repo). A `registry` / `marketplace` (resolving package names against a registry) is a non-goal.
+
+Installing **your own** skill (local path or git source) also writes a **managed record** to `.omk/managed/<id>.json` — the entry point of the "management" pillar, so evidence travels with the artifact through doctor / eval / promote. The `git:` source is the most reproducible: a SHA is immutable and content-addressed (anyone can re-fetch and verify), while a branch gives real drift semantics.
+
+The default `auto` target writes only to detected targets omk explicitly supports: Codex/AGENTS when `~/.codex` or `~/.agents` exists, and Claude Code when `~/.claude` exists. Use `--to all` to force every target omk currently knows, or `--dest` for a custom skill root.
 
 ## `omk doctor`
 

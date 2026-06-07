@@ -27,9 +27,11 @@ omk init [目录]
 ## `omk install`
 
 ```bash
-omk install omk-agent-skill
+omk install omk-agent-skill            # 内置 omk 官方 Agent Skill（onboarding）
 omk install omk-agent-skill --to all
-omk install omk-agent-skill --dest ~/.my-agent/skills
+omk install ./skills/review            # 登记并分发本地 skill（写一条受管记录）
+omk install git:main:skills/review     # 从当前仓库某个 ref 安装（SHA 不可变、分支随 ref 漂移）
+omk install ./skills/review --dest ~/.my-agent/skills
 ```
 
 <!-- omk:cli:install:flags:start -->
@@ -40,7 +42,7 @@ omk install omk-agent-skill --dest ~/.my-agent/skills
   --dest <value>                  自定义 skill 根目录；skill 安装到 <dir>/<name>（内置 omk-agent-skill 为 <dir>/omk）。
   --dry-run                       只打印安装目标，不写文件。
   --force                         覆盖目标位置已存在的 skill。
-  --kind <skill|prompt|agent|workflow>用户 artifact 的 kind(对齐 Artifact.kind)。可省:命中 SKILL.md 自动推导,当前仅支持 skill。
+  --kind <skill|prompt|agent|workflow>用户 artifact 的 kind（对齐 Artifact.kind）。可省：命中 SKILL.md 自动推导，当前仅支持 skill。
   --lang <value>                  输出语言 zh|en，优先级 CLI > OMK_LANG env > zh。
   --to <value>                    安装目标：auto（默认，本机已检测目标） / codex / claude / all。
 ```
@@ -49,7 +51,11 @@ omk install omk-agent-skill --dest ~/.my-agent/skills
 
 <!-- omk:cli:install:flags:end -->
 
-把 omk 官方 Agent Skill 安装到本机支持的 coding-agent 目标。默认 `auto` 只会写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
+安装一个知识输入（skill），把它分发到本机支持的 coding-agent 目标。三种源：内置 id `omk-agent-skill`（omk 官方 Agent Skill 的 onboarding）、本地 skill 路径（目录或 `.md`）、`git:<ref>:<spec>`（当前仓库某个 ref 上的 skill）。`registry` / `marketplace`（按包名去注册表解析）不是目标。
+
+安装**用户自己的** skill（本地路径或 git 源）时，除分发外还会写一条**受管记录**到 `.omk/managed/<id>.json` —— 这是「管理」支柱的入口,让证据随 artifact 一起走过 doctor / eval / promote。`git:` 源的可复现性最强：SHA 不可变、内容寻址可核验,分支则给真实漂移语义。
+
+默认 `auto` 只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
 
 ## `omk doctor`
 

@@ -282,7 +282,7 @@ export default class Install extends BaseCommand {
     },
     {
       description: bilingual({
-        zh: '登记并分发用户自己的 skill(--kind 可省,命中 SKILL.md 自动推导)',
+        zh: '登记并分发用户自己的 skill（--kind 可省，命中 SKILL.md 自动推导）',
         en: 'Register and distribute your own skill (--kind optional; inferred from SKILL.md)',
       }),
       command: '<%= config.bin %> install ./skills/review',
@@ -310,7 +310,7 @@ export default class Install extends BaseCommand {
     lang: LANG_FLAG,
     kind: Flags.string({
       description: bilingual({
-        zh: '用户 artifact 的 kind(对齐 Artifact.kind)。可省:命中 SKILL.md 自动推导,当前仅支持 skill。',
+        zh: '用户 artifact 的 kind（对齐 Artifact.kind）。可省：命中 SKILL.md 自动推导，当前仅支持 skill。',
         en: 'Kind of the user artifact (aligns with Artifact.kind). Optional: inferred from SKILL.md; only skill is supported today.',
       }),
       options: INSTALLABLE_KINDS,
