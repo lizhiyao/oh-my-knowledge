@@ -144,6 +144,21 @@ export function gitJoin(base: string, sub: string): string {
   return base ? `${base}/${sub}` : sub;
 }
 
+/**
+ * 解析 `git:<ref>:<spec>` —— **install 与 eval 共用此一处**,保证两侧对 ref/spec 的切分与合法性
+ * 判定一致。`git:<spec>` 缺省 ref=HEAD;spec 可含 `/`(如 skills/review)。空 ref / 空 spec 都非法
+ * 并返回 null:空 ref(`git::x`)会被 git 当 index/stage-0 解析,量到不可复取、依赖本地暂存区的内容,
+ * 破坏 git variant 的可复现语义;空 spec(`git:HEAD:`)会退化去探 `.md`/`SKILL.md` 误命中。
+ */
+export function parseGitInput(input: string): { ref: string; spec: string } | null {
+  const parts = input.slice('git:'.length).split(':');
+  const { ref, spec } = parts.length === 1
+    ? { ref: 'HEAD', spec: parts[0] }
+    : { ref: parts[0], spec: parts.slice(1).join(':') };
+  if (!ref || !spec) return null;
+  return { ref, spec };
+}
+
 export interface GitSkillRef {
   isDir: boolean;
   /** dir-skill 的子树根(仓库相对);file-skill 为空。 */
@@ -403,16 +418,13 @@ export function resolveArtifacts(
     }
 
     if (variantName.startsWith('git:')) {
-      const parts = variantName.slice(4).split(':');
-      let ref: string;
-      let name: string;
-      if (parts.length === 1) {
-        ref = 'HEAD';
-        name = parts[0];
-      } else {
-        ref = parts[0];
-        name = parts.slice(1).join(':');
+      // 与 install 共用 parseGitInput:空 ref(`git::x`,会被 git 当 index 量本地暂存区、不可复取)/
+      // 空 spec(`git:HEAD:`)一律拒,守住 git variant 的可复现语义。
+      const parsed = parseGitInput(variantName);
+      if (!parsed) {
+        throw new Error(`无效的 git variant "${variantName}"：ref 与 skill 名都不能为空，应为 git:<ref>:<name>（如 git:HEAD:review）。`);
       }
+      const { ref, spec: name } = parsed;
       // git 上下文锚定 skillDir 所属仓库(不是进程 cwd):从别处调用、skillDir 在另一个 repo 时也对。
       if (!gitCtx) gitCtx = resolveGitRepoContext(skillDir);
       // file-vs-dir 归类与 install 共用 classifyGitSkillRef(裸 spec 文件优先),两条路径绝不发散。

@@ -115,6 +115,16 @@ describe('resolveArtifacts skill isolation', () => {
 });
 
 // eval 的 git 解析与 install 共用 classifyGitSkillRef —— 这里锁住 eval 层的归类不再被重新内联走偏。
+describe('resolveArtifacts git 输入校验(与 install 共用 parseGitInput)', () => {
+  // parseGitInput 在任何 git 调用前先拒,故无需真 repo。
+  it('空 ref(git::review)被拒:绝不当 git index 量本地暂存区(不可复取)', () => {
+    assert.throws(() => resolveArtifacts(SKILL_DIR, ['git::review']), /无效的 git variant/);
+  });
+  it('空 spec(git:HEAD:)被拒:不退化去探 .md / SKILL.md', () => {
+    assert.throws(() => resolveArtifacts(SKILL_DIR, ['git:HEAD:']), /无效的 git variant/);
+  });
+});
+
 describe('resolveArtifacts git(与 install 共用归类)', () => {
   let repo: string;
   let prevCwd: string;

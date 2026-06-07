@@ -2,7 +2,7 @@ import { existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, st
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { isDistributablePath } from '../managed/index.js';
-import { classifyGitSkillRef, resolveGitRepoContext, gitJoin, gitLsTreeBlobs, gitShowBytes, skillNameFromPath } from './skill-loader.js';
+import { classifyGitSkillRef, parseGitInput, resolveGitRepoContext, gitJoin, gitLsTreeBlobs, gitShowBytes, skillNameFromPath } from './skill-loader.js';
 
 /**
  * 安装源解析器 —— 把"各种源"物化成统一的本地形态,让 install / managed 主干**源无关**。
@@ -85,17 +85,12 @@ function resolveFileSource(input: string): ResolvedSource {
   return { sourceKind: 'file', localRoot: abs, name, isDirectorySkill: isDir, locator: abs, cleanup: noop };
 }
 
-/** 解析 `git:<ref>:<spec>`;`git:<spec>` 缺省 ref=HEAD。spec 可含路径(如 skills/review)。 */
-function parseGitInput(input: string): { ref: string; spec: string } {
-  const parts = input.slice('git:'.length).split(':');
-  if (parts.length === 1) return { ref: 'HEAD', spec: parts[0] };
-  return { ref: parts[0], spec: parts.slice(1).join(':') };
-}
-
 function resolveGitSource(input: string): ResolvedSource {
-  const { ref, spec } = parseGitInput(input);
-  // 空 spec / 空 ref 都拒:空 ref(`git::x`)会被 git 当 index/stage-0 解析,破坏"可复现、可重取"的前提。
-  if (!spec || !ref) throw new SourceResolveError('cli.install.git_skill_not_found', { ref, name: spec });
+  // 空 spec / 空 ref 由共享 parseGitInput 拒(返回 null):空 ref(`git::x`)会被 git 当 index/stage-0
+  // 解析,破坏"可复现、可重取"的前提;eval 与 install 经同一 helper 判定一致。
+  const parsed = parseGitInput(input);
+  if (!parsed) throw new SourceResolveError('cli.install.git_skill_not_found', { ref: '', name: input });
+  const { ref, spec } = parsed;
 
   let ctx;
   try {

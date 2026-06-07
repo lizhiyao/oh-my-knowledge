@@ -128,6 +128,13 @@ describe('source-resolver git', () => {
     );
   });
 
+  it('空 spec(git:HEAD:)被拒,不退化去探 .md / SKILL.md', () => {
+    assert.throws(
+      () => resolveInstallSource('git:HEAD:'),
+      (e: unknown) => e instanceof SourceResolveError && e.messageKey === 'cli.install.git_skill_not_found',
+    );
+  });
+
   it('裸 spec 歧义:文件优先(与 eval 解析顺序一致,防 evidence 静默剥离)', () => {
     writeFileSync(join(repo, 'skills', 'dual.md'), '# dual file\n');
     mkdirSync(join(repo, 'skills', 'dual'), { recursive: true });
