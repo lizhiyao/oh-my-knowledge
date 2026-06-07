@@ -53,7 +53,7 @@ omk install ./skills/review --dest ~/.my-agent/skills
 
 安装一个知识输入（skill），把它分发到本机支持的 coding-agent 目标。三种源：内置 id `omk-agent-skill`（omk 官方 Agent Skill 的 onboarding）、本地 skill 路径（目录或 `.md`）、`git:<ref>:<spec>`（当前仓库某个 ref 上的 skill）。`registry` / `marketplace`（按包名去注册表解析）不是目标。
 
-安装**用户自己的** skill（本地路径或 git 源）时，除分发外还会写一条**受管记录**到 `.omk/managed/<id>.json` —— 这是「管理」支柱的入口,让证据随 artifact 一起走过 doctor / eval / promote。`git:` 源的可复现性最强：SHA 不可变、内容寻址可核验,分支则给真实漂移语义。
+安装**用户自己的** skill（本地路径或 git 源）时，除分发外还会写一条**受管记录**到 `.omk/managed/<id>.json` —— 这是「管理」支柱的入口，让证据随 artifact 一起走过 doctor / eval / promote。`git:` 源的可复现性最强：SHA 不可变、内容寻址可核验，分支则给真实漂移语义。
 
 默认 `auto` 只写入本机已检测到、且 omk 明确支持的目标：检测到 `~/.codex` 或 `~/.agents` 时写入 Codex/AGENTS，检测到 `~/.claude` 时写入 Claude Code。要强制写入当前 omk 已知的全部目标，用 `--to all`；要指定自定义 skill 根目录，用 `--dest`。
 

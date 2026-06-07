@@ -1,6 +1,6 @@
 # Evidence-gated knowledge input management
 
-> **Status**: design note for #203. This document defines the product boundary before adding broad management commands. It does not change Report schema, judge prompts, scoring, or comparability rules.
+> **Status**: design note for #203. The management entry point — `omk install` registering managed records — has shipped (#211/#212); the rest (`list` / `promote` / `rollback`) remains design. This document defines the product boundary; it does not change Report schema, judge prompts, scoring, or comparability rules.
 
 ## 1. Product thesis
 
@@ -102,24 +102,25 @@ observe → studio
 
 ### `install`
 
-Current release scope:
+`install` is the management entry point. Three sources ship today:
 
 ```bash
-omk install omk-agent-skill
+omk install omk-agent-skill            # reserved built-in id: the official omk Agent Skill (onboarding)
+omk install ./skills/review            # a local skill (directory or .md)
+omk install git:<ref>:skills/review    # a skill at a ref of the current repo
 ```
 
-This installs the official omk Agent Skill for onboarding. It is a reserved built-in id, not a registry package and not the user's evaluated artifact.
+The built-in id is a reserved onboarding skill, not a registry package and not the user's evaluated artifact. Installing a **user** skill (local path or `git:`) both distributes it to the detected agent targets and writes a managed record at `.omk/managed/<id>.json`.
 
-Future managed-input scope:
+Future managed-input scope (not yet supported — `install` hard-rejects non-skill kinds today):
 
 ```bash
-omk install ./skills/review/SKILL.md --kind skill
 omk install ./prompts/rewrite.md --kind prompt
 ```
 
 Rules:
 
-- `--kind` should align with `Artifact.kind`; do not use `kind` for runtime/report/event categories.
+- `--kind` aligns with `Artifact.kind`; do not use `kind` for runtime/report/event categories. It is optional and inferred from `SKILL.md`; only `skill` is supported today.
 - Installing a user artifact creates a managed record but does not imply promotion.
 - Installed artifacts start as `installed` or `measurable`, depending on doctor/sample state.
 
@@ -194,8 +195,9 @@ Done in #208 / PR #207:
 
 ## 9. Open questions
 
-- Where should management records live: `.omk/managed.json`, `.omk/artifacts/`, or another store?
-- How should git refs and omk evidence records interact?
+- **Decided:** management records live in per-record files `.omk/managed/<id>.json` (atomic tmp+rename, mirroring report-store), not a single aggregate file.
+- Unifying the artifact content hash so evidence can bind: `install` records `hashArtifactSource` (whole-tree) while `eval` reports `hashString(SKILL.md text)`, so the `evidence.contentHash === record.contentHash` gate cannot match real report evidence yet. Tracked in #214 — this is the load-bearing blocker for evidence-backed `list` / `promote`.
+- How should git refs and omk evidence records interact (re-materialize a moving branch vs a pinned SHA on drift checks)?
 - What snapshot layout should `evolve` write under its working directory, and what is the deprecation path for users who currently rely on `evolve` writing the winner back to the source file (decision B migration mechanics)?
 - Which verdicts are acceptable for promotion by default: only `PROGRESS`, or `CAUTIOUS` with explicit caveats?
 - What is the stale-evidence policy when only samples change, only runtime context changes, or only artifact content changes?

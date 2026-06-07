@@ -33,15 +33,15 @@ omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致
 - 粒度比 RAGAS 粗 — 看不到具体哪条陈述错了
 - judge 自身的 1-5 评分稳定性影响明显 — 建议配合 `--judge-repeat 3` 或 `--judge-models claude:opus,openai:gpt-4o` ensemble 校准
 
-需要 RAGAS 级粒度的场景:用 `custom` assertion 自己实现 statement-decomposition,或者跨层 wrapping omk 的 LLM judge 输出。
+需要 RAGAS 级粒度的场景：用 `custom` assertion 自己实现 statement-decomposition,或者跨层 wrapping omk 的 LLM judge 输出。
 
 ## Prompt 形态 (1-5 评分锚)
 
 三个 metric 的判分锚点(从 `src/grading/assertions.ts` 的 `runRagJudge` 抽取):
 
 ### faithfulness
-- 5 = 全部陈述都有 context 支持,无编造
-- 4 = 多数有支持,有 1-2 处不重要的编造
+- 5 = 全部陈述都有 context 支持，无编造
+- 4 = 多数有支持，有 1-2 处不重要的编造
 - 3 = 一半有支持
 - 2 = 多数无支持
 - 1 = 完全编造或与 context 矛盾
@@ -49,9 +49,9 @@ omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致
 默认 threshold = 3 (>= 才 pass)。建议生产场景用 4。
 
 ### answer_relevancy
-- 5 = 完整切题回答,无冗余无遗漏
+- 5 = 完整切题回答，无冗余无遗漏
 - 4 = 切题但有少量冗余或小遗漏
-- 3 = 部分切题,部分跑题或避而不答
+- 3 = 部分切题，部分跑题或避而不答
 - 2 = 大部分跑题
 - 1 = 完全跑题或拒答
 
@@ -59,7 +59,7 @@ omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致
 
 ### context_recall
 - 5 = 全部关键事实被覆盖
-- 4 = 大部分覆盖,缺 1-2 条次要事实
+- 4 = 大部分覆盖，缺 1-2 条次要事实
 - 3 = 一半覆盖
 - 2 = 仅覆盖少量
 - 1 = 完全未覆盖
@@ -71,8 +71,8 @@ omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致
 三个 metric 的 judge prompt **自动包含与主 judge 同款的"长度不是质量信号"段落**:
 
 ```
-## 重要:长度不是质量信号
-评分时聚焦内容实质,不要因输出更长就给更高分。
+## 重要：长度不是质量信号
+评分时聚焦内容实质，不要因输出更长就给更高分。
 简洁正确的回答与冗长正确的回答应得相同分数。
 ```
 
@@ -89,7 +89,7 @@ omk 的取舍:**单次 1-5 分判断**,与 omk 其他 LLM-judge assertion 一致
 | Bootstrap CI | ✓ (composite 层) | ✗ | ✗ |
 | Krippendorff α | ✓ (--gold-dir) | ✗ | ✗ |
 
-omk 的差异化在"严谨性叠加":粒度比 RAGAS 粗,但每个 1-5 分都自动落入 omk 的统计框架,有 bootstrap CI、有 α 锚点、有 length-debias。RAGAS 给你更细的诊断,omk 给你更可靠的统计结论。
+omk 的差异化在"严谨性叠加":粒度比 RAGAS 粗，但每个 1-5 分都自动落入 omk 的统计框架，有 bootstrap CI、有 α 锚点、有 length-debias。RAGAS 给你更细的诊断,omk 给你更可靠的统计结论。
 
 ## 用法示例
 

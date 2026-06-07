@@ -1,6 +1,6 @@
 # 证据门控的知识输入管理
 
-> **状态**：#203 的设计说明。本文先定义产品边界，再考虑新增通用管理命令。本文不修改 Report schema、评委提示词、评分管道或可比性规则。
+> **状态**：#203 的设计说明。管理支柱的入口 —— `omk install` 登记受管记录 —— 已落地（#211/#212）；其余（`list` / `promote` / `rollback`）仍是设计。本文定义产品边界；不修改 Report schema、评委提示词、评分管道或可比性规则。
 
 ## 1. 产品判断
 
@@ -102,24 +102,25 @@ observe → studio
 
 ### `install`
 
-当前发布范围：
+`install` 是管理支柱的入口。三种源已经落地：
 
 ```bash
-omk install omk-agent-skill
+omk install omk-agent-skill            # 保留内置 id：omk 官方 Agent Skill（onboarding）
+omk install ./skills/review            # 本地 skill（目录或 .md）
+omk install git:<ref>:skills/review    # 当前仓库某个 ref 上的 skill
 ```
 
-这只是安装 omk 官方 Agent Skill 的 onboarding 入口。`omk-agent-skill` 是保留内置 id，不是 registry 包，也不是用户自己的被测 artifact。
+内置 id 是保留的 onboarding skill，不是 registry 包，也不是用户自己的被测 artifact。安装**用户自己的** skill（本地路径或 `git:`）时，除分发到已检测的 agent 目标外，还会写一条管理记录到 `.omk/managed/<id>.json`。
 
-未来受管输入范围：
+未来受管输入范围（尚不支持 —— 当前 `install` 对非 skill kind 直接报错）：
 
 ```bash
-omk install ./skills/review/SKILL.md --kind skill
 omk install ./prompts/rewrite.md --kind prompt
 ```
 
 规则：
 
-- `--kind` 应对齐 `Artifact.kind`，不要拿 `kind` 表示 runtime / report / event 分类。
+- `--kind` 对齐 `Artifact.kind`，不要拿 `kind` 表示 runtime / report / event 分类。可省、命中 `SKILL.md` 自动推导，当前仅支持 `skill`。
 - 安装用户 artifact 只创建管理记录，不等于转正。
 - 安装后的 artifact 根据 doctor / sample 状态进入 `installed` 或 `measurable`。
 
@@ -194,8 +195,9 @@ Studio 应让决策轨迹可检查：为什么当前是这个版本、证据是�
 
 ## 9. 开放问题
 
-- 管理记录放在哪里：`.omk/managed.json`、`.omk/artifacts/`，还是其它 store？
-- git ref 与 omk 证据记录如何协作？
+- **已定**：管理记录用 per-record 文件 `.omk/managed/<id>.json`（原子 tmp+rename，镜像 report-store），不用单一聚合文件。
+- 统一 artifact 内容指纹以让证据可绑定：`install` 记的是 `hashArtifactSource`（整树），`eval` 报告记的是 `hashString(SKILL.md 正文)`，因此 `evidence.contentHash === record.contentHash` 门控目前无法匹配真实报告证据。见 #214 —— 这是证据驱动的 `list` / `promote` 的承重前置。
+- git ref 与 omk 证据记录如何协作（漂移检查时,分支 ref 重物化 vs 固定 SHA）？
 - `evolve` 的工作目录快照该用什么布局？对当前依赖「evolve 把胜出版本写回源文件」的用户，deprecation 路径是什么？（决策 B 的迁移机制）
 - 默认允许哪些 verdict 转正：只允许 `PROGRESS`，还是允许带 caveat 的 `CAUTIOUS`？
 - 当只有 sample、runtime context 或 artifact 内容变化时，证据过期策略分别是什么？
