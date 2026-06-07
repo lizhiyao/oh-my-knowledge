@@ -130,9 +130,11 @@ function buildExecutorRuntimesByVariant({
   for (const variant of variants) {
     if (runtimes[variant]) continue;
     const artifact = artifacts.find((a) => a.name === variant);
-    const fallbackSkillDir = artifact?.kind === 'baseline'
+    // git artifact 无在盘 skillDir(content 经 SDK 注入),与 baseline 一样取 null —— 与主路径
+    // extractSkillDir 的判定一致,避免 git variant 的 runtime fingerprint 被 cwd 的 node_modules 污染。
+    const fallbackSkillDir = artifact?.kind === 'baseline' || artifact?.source === 'git'
       ? null
-      : artifact?.locator && artifact.source !== 'git'
+      : artifact?.locator
         ? dirname(artifact.locator)
         : request?.skillDir;
     runtimes[variant] = getExecutorRuntimeFingerprint(executorName, model, {
