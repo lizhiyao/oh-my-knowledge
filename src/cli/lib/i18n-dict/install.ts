@@ -16,6 +16,7 @@ export type InstallMessageKey =
   | 'cli.install.target_overlaps_source'
   | 'cli.install.path_not_found'
   | 'cli.install.skillmd_missing'
+  | 'cli.install.skillmd_is_symlink'
   | 'cli.install.not_a_skill'
   | 'cli.install.not_a_git_repo'
   | 'cli.install.git_skill_not_found'
@@ -85,6 +86,10 @@ export const installDict: Record<InstallMessageKey, CliMessage> = {
   'cli.install.not_a_skill': {
     zh: '不是 skill 文件（需要 .md 或含 SKILL.md 的目录）：{path}',
     en: 'Not a skill file (expected a .md file or a directory containing SKILL.md): {path}',
+  },
+  'cli.install.skillmd_is_symlink': {
+    zh: 'SKILL.md 是指向 {target} 的软链，分发会跳过软链、装出来的 skill 会缺 SKILL.md。请直接 install 真源位置：{target}',
+    en: 'SKILL.md is a symlink to {target}; symlinks are skipped during distribution, so the installed skill would be missing its SKILL.md. Install the real source instead: {target}',
   },
   'cli.install.not_a_git_repo': {
     zh: '当前目录不在 git 仓库内，无法解析 git: 源。请在仓库内执行，或改用本地路径。',

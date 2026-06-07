@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { isDistributablePath } from '../managed/index.js';
@@ -51,8 +51,15 @@ function resolveFileSource(input: string): ResolvedSource {
   const abs = resolve(input);
   if (!existsSync(abs)) throw new SourceResolveError('cli.install.path_not_found', { path: abs });
   const isDir = statSync(abs).isDirectory();
-  if (isDir && !existsSync(join(abs, 'SKILL.md'))) {
-    throw new SourceResolveError('cli.install.skillmd_missing', { path: abs });
+  if (isDir) {
+    const skillMd = join(abs, 'SKILL.md');
+    if (!existsSync(skillMd)) {
+      throw new SourceResolveError('cli.install.skillmd_missing', { path: abs });
+    }
+    // 软链 SKILL.md 会被分发跳过(与 git 物化、cpSync 的软链策略一致)→ 装出空壳。指向真源,让记录落在真源上。
+    if (lstatSync(skillMd).isSymbolicLink()) {
+      throw new SourceResolveError('cli.install.skillmd_is_symlink', { target: realpathSync(skillMd) });
+    }
   }
   if (!isDir && !/\.md$/i.test(abs)) {
     throw new SourceResolveError('cli.install.not_a_skill', { path: abs });

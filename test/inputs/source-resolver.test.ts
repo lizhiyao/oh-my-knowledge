@@ -215,6 +215,25 @@ describe('source-resolver git repo-root SKILL.md', () => {
   });
 });
 
+describe('source-resolver file', () => {
+  it('目录-skill 的 SKILL.md 是软链 → 报错指向真源,不静默分发空壳', () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'omk-src-symlink-')));
+    try {
+      const real = join(dir, 'real-skill.md');
+      writeFileSync(real, '# real\n');
+      const skillDir = join(dir, 'review');
+      mkdirSync(skillDir, { recursive: true });
+      symlinkSync(real, join(skillDir, 'SKILL.md'));
+      assert.throws(
+        () => resolveInstallSource(skillDir),
+        (e: unknown) => e instanceof SourceResolveError && e.messageKey === 'cli.install.skillmd_is_symlink',
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('source-resolver git outside repo', () => {
   it('非 git 仓库 → not_a_git_repo', () => {
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'omk-src-nogit-')));
