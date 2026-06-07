@@ -120,6 +120,42 @@ describe('source-resolver git', () => {
       (e: unknown) => e instanceof SourceResolveError,
     );
   });
+
+  it('空 ref(git::x)被拒,绝不当 git index 解析', () => {
+    assert.throws(
+      () => resolveInstallSource('git::skills/review'),
+      (e: unknown) => e instanceof SourceResolveError && e.messageKey === 'cli.install.git_skill_not_found',
+    );
+  });
+});
+
+describe('source-resolver git repo-root SKILL.md', () => {
+  it('git:HEAD:SKILL.md(根 SKILL.md)物化整根树、非空,不静默产空 skill', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'omk-src-root-')));
+    const prev = process.cwd();
+    try {
+      git(root, ['init', '-q']);
+      git(root, ['config', 'user.email', 't@t']);
+      git(root, ['config', 'user.name', 't']);
+      writeFileSync(join(root, 'SKILL.md'), '# root\n');
+      mkdirSync(join(root, 'references'), { recursive: true });
+      writeFileSync(join(root, 'references', 'a.md'), 'x\n');
+      git(root, ['add', '-A']);
+      git(root, ['commit', '-q', '-m', 'init']);
+      process.chdir(root);
+      const src = resolveInstallSource('git:HEAD:SKILL.md');
+      try {
+        assert.equal(src.isDirectorySkill, true);
+        assert.ok(existsSync(join(src.localRoot, 'SKILL.md')), '根 SKILL.md 应被物化(非空)');
+        assert.ok(existsSync(join(src.localRoot, 'references', 'a.md')), '根树资产应被物化');
+      } finally {
+        src.cleanup();
+      }
+    } finally {
+      process.chdir(prev);
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('source-resolver git outside repo', () => {

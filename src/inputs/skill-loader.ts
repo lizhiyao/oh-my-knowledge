@@ -60,18 +60,23 @@ export interface GitTreeEntry {
   path: string;
 }
 
-/** 递归列出 `<ref>:<treePath>` 子树下的叶子条目(blob / 软链 / submodule)。tree 不存在返回 []。 */
+/**
+ * 递归列出 `<ref>:<treePath>` 子树下的叶子条目(blob / 软链 / submodule)。tree 不存在返回 []。
+ * 用 `-z`(NUL 分隔):git 不会对含换行 / 非 ASCII 的路径做 C-quote,路径原样可回喂 git show。
+ * `treePath` 为空时列整棵根 tree(`<ref>:`)。
+ */
 export function gitLsTreeBlobs(ref: string, treePath: string): GitTreeEntry[] {
   let out: string;
   try {
-    out = execFileSync('git', ['-c', 'core.quotePath=false', 'ls-tree', '-r', `${ref}:${treePath}`], { encoding: 'utf-8' });
+    out = execFileSync('git', ['ls-tree', '-r', '-z', `${ref}:${treePath}`], { encoding: 'utf-8' });
   } catch {
     return [];
   }
+  const NUL = String.fromCharCode(0);
   const entries: GitTreeEntry[] = [];
-  for (const line of out.split(/\r?\n/)) {
-    // 行格式:`<mode> <type> <object>\t<path>`
-    const m = line.match(/^(\d+) \S+ \S+\t(.+)$/);
+  for (const rec of out.split(NUL)) {
+    // 记录格式:`<mode> <type> <object>\t<path>`(path 可含换行,故用 [\s\S])。
+    const m = rec.match(/^(\d+) \S+ \S+\t([\s\S]*)$/);
     if (m) entries.push({ mode: m[1], path: m[2] });
   }
   return entries;
