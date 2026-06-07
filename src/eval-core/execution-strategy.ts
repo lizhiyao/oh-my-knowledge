@@ -84,7 +84,11 @@ export function buildVariantConfig(artifact: Artifact): VariantConfig {
 }
 
 function extractSkillDir(artifact: Artifact): string | null {
-  if (!artifact.locator) return null;
+  // git artifact 的 content 经 SDK 注入、根本不落盘,其 locator 是 git spec(`review` / `skills/review`)
+  // 而非磁盘目录。若对它取 dirname,会得到相对进程 cwd 的伪 skillDir(`.` / `skills`),进而让 buildExecEnv
+  // 把 `<cwd>/node_modules/.bin` 误并进 PATH、污染 runtime fingerprint —— 与 baseline(skillDir=null)
+  // 不对称,造成 Δ 污染。git 与 baseline 一样无在盘 skillDir,返回 null。
+  if (!artifact.locator || artifact.source === 'git') return null;
   return dirname(artifact.locator);
 }
 

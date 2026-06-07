@@ -185,7 +185,8 @@ function buildPreflightEnv(artifacts?: Artifact[]): NodeJS.ProcessEnv {
   if (!artifacts) return process.env;
   const extraPaths: string[] = [];
   for (const a of artifacts) {
-    if (!a.locator) continue;
+    // git artifact 的 locator 是 git spec、非在盘目录,对它取 dirname 会得到伪路径;跳过(与 extractSkillDir 一致)。
+    if (!a.locator || a.source === 'git') continue;
     const dir = dirname(a.locator);
     const nodeBin = join(dir, 'node_modules', '.bin');
     if (existsSync(nodeBin)) extraPaths.push(nodeBin);
