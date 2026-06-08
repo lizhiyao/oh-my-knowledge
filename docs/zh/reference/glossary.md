@@ -60,6 +60,9 @@ omk 文档（包括博客、SKILL.md、CLI 输出、报告页）会混用一些 
 | judge (layer) | LLM 评价层 | 评委按 rubric 直接给的 1-5 分 | 六维对比表「💬 LLM 评价」 |
 | dimension | 维度 | capability-aligned 评分维度（v0.x 后期落地，未进 composite） | 五层评分管道架构 |
 | reliability check | 测评可信度 | 评委一致 / 差异显著 / 已饱和 / 人工对齐四块证据，可折叠展开 | 报告页 details 块 |
+| [managed record](../specs/evidence-gated-management.md) | 受管记录 | `omk install` 建的 `.omk/managed/<id>.json` 事实记录（源 / contentHash / 分发 / 证据 / 决定） | `omk install`；证据门控管理 |
+| lifecycle | 生命周期（installed / measurable / stale） | 受管 skill 的读时状态：`installed`（无有效证据）→ `measurable`（eval 证据已绑）→ `stale`（内容漂移脱离证据） | `deriveManagedState`；`omk eval`「→ measurable」 |
+| evidence (managed) | 证据 | eval 跑完追加进受管记录的 `ManagedEvidenceRef`，绑定它测的内容指纹（report id / 样本覆盖 / verdict / 可比性） | `omk eval` 自动写入 |
 
 ---
 

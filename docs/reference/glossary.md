@@ -60,6 +60,9 @@ omk docs (blog posts, SKILL.md, CLI output, report pages) freely mix industry-st
 | judge (layer) | The 1-5 score the judge gives directly against the rubric | "💬 LLM judge" in the six-dimension comparison table |
 | dimension | Capability-aligned scoring dimension (not part of composite) | five-layer scoring pipeline architecture |
 | reliability check | Four evidence blocks — judge agreement / significant difference / saturation / human alignment — collapsible on the report page | details block on the report page |
+| [managed record](../specs/evidence-gated-management.md) | A `.omk/managed/<id>.json` fact record from `omk install` (source / contentHash / distribution / evidence / decisions) | `omk install`; evidence-gated management |
+| lifecycle (installed / measurable / stale) | Read-time state of a managed skill: `installed` (no valid evidence) → `measurable` (eval evidence bound) → `stale` (content drifted off its evidence) | `deriveManagedState`; `omk eval` "→ measurable" |
+| evidence (managed) | A `ManagedEvidenceRef` an eval run appends to a managed record, bound to the content fingerprint it measured (report id / sample coverage / verdict / comparability) | `omk eval` auto-write |
 
 ---
 

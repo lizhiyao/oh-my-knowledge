@@ -1,6 +1,6 @@
 {
   "name": "oh-my-knowledge",
-  "version": "0.34.0",
+  "version": "0.35.0",
   "packageManager": "yarn@4.16.0",
   "description": "Evaluation framework for LLM knowledge inputs — prompts, RAG corpora, skills, agent workflows. Fix the model, vary the artifact. Built-in statistical rigor: bootstrap CI, Krippendorff α, length-debias, saturation curves.",
   "type": "module",

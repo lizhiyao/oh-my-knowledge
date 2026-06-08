@@ -100,6 +100,8 @@ RAG-specific evals: see RAGAS (separate niche, complementary to omk). Full compa
 | **Production observability** | parse Claude Code session JSONL traces; measure per-skill failure rate / latency / cost / knowledge-gap signals |
 | **Knowledge-gap detection** | severity-weighted signals quantify risk exposure instead of claiming completeness |
 | **Construct-validity isolation** | `--strict-baseline` (default ON) cuts three contamination channels so baseline doesn't silently see the skill it's being compared against |
+| **Git & remote sources** | install / eval from a local git ref or a remote git URL (`--git-url`); directory-skills run in a content-addressed **isolated copy** so `references/` assets are real measured input, not just `SKILL.md` |
+| **Evidence-gated management** | `omk install` registers a managed record; `omk eval` auto-writes evidence bound by content fingerprint, moving a skill `installed → measurable`. [spec →](docs/specs/evidence-gated-management.md) |
 | **Sample design science** | sample schema with `capability` / `difficulty` / `construct` / `provenance` metadata (HF Dataset Cards style); studio surfaces coverage breakdown plus `rubric_clarity_low` / `capability_thin` flags. [docs/specs/sample-design-spec.md](docs/specs/sample-design-spec.md) |
 | **Multi-judge ensemble** | `--judge-models claude:opus,openai:gpt-4o` cross-vendor scoring + agreement metrics |
 | **Blind A/B** | `--blind` hides variant names; HTML report has a reveal button |
@@ -122,6 +124,7 @@ The full docs are published at **[oh-my-knowledge.pages.dev](https://oh-my-knowl
 - **[Sample design spec](docs/specs/sample-design-spec.md)** — capability / construct / provenance metadata; industry-gap mapping
 - **[Statistical rigor](docs/explanation/statistical-rigor.md)** — why bootstrap CI / α / length-debias / saturation matter
 - **[Comparison with 7 tools](docs/reference/comparison.md)** — 25+ dimensions across promptfoo / DeepEval / RAGAS / OpenAI Evals / LangSmith / lm-eval-harness / inspect-ai
+- **[Evidence-gated management](docs/specs/evidence-gated-management.md)** — managed records, lifecycle states (installed / measurable / stale), install → eval → measurable
 
 ## Environment variables
 
