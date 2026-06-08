@@ -5,10 +5,10 @@
  */
 import { describe, it, beforeEach, afterEach } from 'vitest';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, existsSync, readFileSync, readdirSync, utimesSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
-import { materializeIsolatedCopy, treesDir } from '../../src/inputs/materialize-copy.js';
+import { materializeIsolatedCopy, treesDir, pruneTreesDir } from '../../src/inputs/materialize-copy.js';
 import { hashArtifactSource } from '../../src/inputs/content-hash.js';
 
 describe('materialize-copy', () => {
@@ -102,5 +102,42 @@ describe('materialize-copy', () => {
     created.push(copy.copyRoot);
     const leftovers = readdirSync(treesDir()).filter((n) => n.startsWith('.tmp-'));
     assert.equal(leftovers.length, 0, '不留临时物化目录');
+  });
+
+  // 直接在 treesDir 造若干 <hash> 目录并设 mtime,验证 LRU 回收
+  function mkTreeAged(name: string, ageMs: number): string {
+    const p = join(treesDir(), name);
+    mkdirSync(p, { recursive: true });
+    writeFileSync(join(p, 'SKILL.md'), '# x\n');
+    const t = new Date(Date.now() - ageMs);
+    utimesSync(p, t, t);
+    return p;
+  }
+
+  it('pruneTreesDir:超上限时按 mtime 从旧到新淘汰(graceMs:0 纯 LRU)', () => {
+    const a = mkTreeAged('aaa', 30_000); // 最旧
+    const b = mkTreeAged('bbb', 20_000);
+    const c = mkTreeAged('ccc', 10_000); // 最新
+    pruneTreesDir({ maxEntries: 1, graceMs: 0 });
+    assert.ok(!existsSync(a), '最旧被淘汰');
+    assert.ok(!existsSync(b), '次旧被淘汰');
+    assert.ok(existsSync(c), '最新保留');
+  });
+
+  it('pruneTreesDir:grace 窗口内的副本一律不动(保护 active run 的 cwd)', () => {
+    const old = mkTreeAged('old', 48 * 60 * 60 * 1000); // 2 天前
+    const fresh = mkTreeAged('fresh', 1_000);           // 刚刚
+    // cap=1、grace=24h:old 出窗口可淘汰,fresh 在窗口内受保护
+    pruneTreesDir({ maxEntries: 1 });
+    assert.ok(!existsSync(old), 'grace 外的旧副本被回收');
+    assert.ok(existsSync(fresh), 'grace 内的新副本绝不被删(可能是正在跑的 eval 的 cwd)');
+  });
+
+  it('pruneTreesDir:.tmp- 暂存不计数、不被删', () => {
+    mkdirSync(join(treesDir(), '.tmp-keep'), { recursive: true });
+    mkTreeAged('h1', 30_000);
+    mkTreeAged('h2', 20_000);
+    pruneTreesDir({ maxEntries: 1, graceMs: 0 });
+    assert.ok(existsSync(join(treesDir(), '.tmp-keep')), '.tmp- 暂存不参与淘汰');
   });
 });

@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, cpSync, copyFileSync, existsSync, renameSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, cpSync, copyFileSync, existsSync, renameSync, rmSync, readdirSync, statSync, utimesSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { hashArtifactSource, distributableCopyFilter } from './content-hash.js';
@@ -18,9 +18,68 @@ export interface IsolatedCopy {
 }
 
 /** 隔离副本根目录(与 managed / isolated-cwd / reports 同 home-dir 模式)。
- *  `OMK_TREES_DIR` 可重定位(测试隔离 / 用户迁移 / 后续 GC 命令复用)。 */
+ *  `OMK_TREES_DIR` 可重定位(测试隔离 / 用户迁移)。 */
 export function treesDir(): string {
   return process.env.OMK_TREES_DIR || join(homedir(), '.oh-my-knowledge', 'trees');
+}
+
+/** 内容寻址副本默认上限(distinct 内容版本数);超出按 LRU(mtime)淘汰。
+ *  `OMK_TREES_MAX_ENTRIES` 调整:0 / 负数 = 不限。 */
+const DEFAULT_TREES_MAX_ENTRIES = 200;
+/** 淘汰宽限:mtime 在此窗口内(近期物化 / 命中触碰)的副本一律不动 —— 兜底「正在跑的 eval 的 cwd 不被删」。
+ *  取 24h:没有 eval 会跑这么久,active run 的副本恒在窗口内、绝不被淘汰;只有久未用的才回收。 */
+const TREES_GRACE_MS = 24 * 60 * 60 * 1000;
+
+function treesCap(): number {
+  const raw = process.env.OMK_TREES_MAX_ENTRIES;
+  if (raw == null || raw === '') return DEFAULT_TREES_MAX_ENTRIES;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_TREES_MAX_ENTRIES;
+  if (n <= 0) return Infinity;
+  return Math.floor(n);
+}
+
+/**
+ * 内容寻址副本的 LRU 回收:`<treesDir>/<hash>` 数超过上限时,按 mtime 从旧到新淘汰,直到回到上限内;
+ * **跳过** mtime 在 grace 窗口内的副本(近期用过、可能是正在跑的 eval 的 cwd,删了会断 active run)。
+ * 因此是「软上限」—— 一次性物化的大批新副本会暂时超限,待其老化出 grace 后再被回收。`.tmp-` 暂存不计、不删。
+ * materializeIsolatedCopy 命中走 utimes 触碰(LRU touch)、未命中落盘后调本函数;也可独立调用(测试 / 后续 GC)。
+ */
+export function pruneTreesDir(opts: { maxEntries?: number; graceMs?: number } = {}): void {
+  const cap = opts.maxEntries ?? treesCap();
+  if (!Number.isFinite(cap)) return;
+  const graceMs = opts.graceMs ?? TREES_GRACE_MS;
+  const root = treesDir();
+  let names: string[];
+  try {
+    names = readdirSync(root);
+  } catch {
+    return; // 目录不存在 = 无可回收
+  }
+  const dirs = names
+    .filter((n) => !n.startsWith('.')) // 排除 .tmp- 暂存
+    .map((n) => {
+      try {
+        return { path: join(root, n), mtimeMs: statSync(join(root, n)).mtimeMs };
+      } catch {
+        return null;
+      }
+    })
+    .filter((x): x is { path: string; mtimeMs: number } => x !== null);
+  if (dirs.length <= cap) return;
+  dirs.sort((a, b) => a.mtimeMs - b.mtimeMs); // 最旧在前
+  const cutoff = Date.now() - graceMs;
+  let removable = dirs.length - cap;
+  for (const d of dirs) {
+    if (removable <= 0) break;
+    if (d.mtimeMs > cutoff) continue; // grace 内:近期用过 / 可能是 active cwd,保护
+    try {
+      rmSync(d.path, { recursive: true, force: true });
+      removable--;
+    } catch {
+      // 删除失败(权限 / 并发)不致命,跳过
+    }
+  }
 }
 
 /**
@@ -37,7 +96,16 @@ export function materializeIsolatedCopy(localRoot: string, isDirectorySkill: boo
   const contentHash = hashArtifactSource(localRoot, isDirectorySkill);
   const target = join(root, contentHash);
   const copyRoot = isDirectorySkill ? target : join(target, `${name}.md`);
-  if (existsSync(target)) return { copyRoot, contentHash, isDirectorySkill }; // 命中:零 copy
+  if (existsSync(target)) {
+    // 命中:零 copy。utimes 触碰 mtime 作 LRU 标记(并把它移出 prune 的淘汰窗口)。
+    try {
+      const now = new Date();
+      utimesSync(target, now, now);
+    } catch {
+      // 触碰失败不致命
+    }
+    return { copyRoot, contentHash, isDirectorySkill };
+  }
 
   mkdirSync(root, { recursive: true });
   const tmp = mkdtempSync(join(root, '.tmp-'));
@@ -48,6 +116,7 @@ export function materializeIsolatedCopy(localRoot: string, isDirectorySkill: boo
       copyFileSync(localRoot, join(tmp, `${name}.md`));
     }
     renameSync(tmp, target);
+    pruneTreesDir(); // 落盘新副本后回收超限的旧副本(LRU + grace 保护 active run)
     return { copyRoot, contentHash, isDirectorySkill };
   } catch (err) {
     rmSync(tmp, { recursive: true, force: true });
