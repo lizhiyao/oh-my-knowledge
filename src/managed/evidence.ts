@@ -11,18 +11,21 @@
  *     skill 永不被凭空建记录(零副作用惊吓)。CLI 另给 `--no-evidence` 关闭。
  *   - **多对一**:append-only + 按 (reportId, contentHash) 去重;保留全部历史条目,当前有效性仍由
  *     `deriveManagedState` 按 contentHash 匹配裁定(重装新内容后旧证据留存供回滚,却不让新内容显得已测)。
- *   - **跨源**:连接键是 **contentHash**(#214 已把指纹统一进同一空间),不是 variant 名 —— 因为
- *     install 与 eval 对来源的命名并不一致:install 受管记录名是 skill 短名(如 `review`),而 eval
- *     报告里 variant key 可能是整串表达式(`git:HEAD:skills/review`)、eval.yaml 自定义别名
- *     (`candidate` / `v2`)、甚至 blind 模式的 `A`/`B`(`applyBlindMode` 盲化 variants 但**不**动
- *     artifactHashes 的键面)。按名字匹配会让这些已被 #218/#219 打通指纹的来源静默写不进证据。改为
- *     在 `artifactHashes` 里找哈值等于 `record.contentHash` 的那个 variant key,本地 / 本地 git /
- *     远端 git / blind 一视同仁、无特判。
+ *   - **跨源**:用三级身份消歧把被测 variant 对到受管记录(install 与 eval 命名不一致:记录名是
+ *     skill 短名 `review`,而 eval 报告 variant key 可能是整串表达式 `git:HEAD:skills/review`、
+ *     eval.yaml 别名 `candidate`、blind 模式的 `A`/`B`)。`applyBlindMode` 盲化 `variants` 但**不**动
+ *     `artifactHashes` / `variantConfigs` 的键面,故三级都按真实键工作:
+ *       (a) 显式**同名** variant —— 最强身份(本地 `--treatment <name>` 与 drift);
+ *       (b) **结构化源匹配** —— `variantConfigs[].locator(+ref)` 与 `record.source` 对齐(git / 远端 /
+ *           别名),即便内容撞哈也能精确消歧;
+ *       (c) **纯 contentHash 回退** —— 仅当该内容哈在受管记录中**唯一**才用。否则两条不同记录恰好当前
+ *           内容相同(同模板复制 / 刚装)时,只测了一条的 report 会把同哈的另一条也推成 measurable ——
+ *           唯一性闸门挡掉这种越权写入(撞哈又非同名 / 无结构化身份 → 跳过,不乱绑)。
  *
  * bundle 按 evidence-gated-management.md §5 denormalize 进记录(reportId / contentHash /
  * verdict / sampleCoverage / comparability),不依赖 report 文件仍在盘。
  */
-import type { EvaluationReport, ManagedEvidenceRef } from '../types/index.js';
+import type { EvaluationReport, ManagedArtifactSource, ManagedEvidenceRef, VariantConfig } from '../types/index.js';
 import { hashString } from '../eval-core/evaluation-reporting.js';
 import { loadAllManagedRecords, appendManagedEvidence, managedDir, resolveManagedDir } from './store.js';
 
@@ -75,21 +78,37 @@ export interface RecordedEvidence {
   bound: boolean;
 }
 
+/** variantConfig 的源身份是否与受管记录 source 对得上(locator 必等,ref 都在时也必等)。 */
+function sourceMatches(cfg: VariantConfig, source: ManagedArtifactSource): boolean {
+  if (!cfg.locator || cfg.locator !== source.locator) return false;
+  if (cfg.ref && source.ref && cfg.ref !== source.ref) return false;
+  return true;
+}
+
 /**
- * 给某条受管记录在报告里找该绑定的 variant key。主键 = **contentHash**(跨源 / blind 都靠它);
- * 找不到则回退到**同名**且带真实(已 drift)哈的 variant —— 记 unbound 证据供版本史(主要服务本地
- * `--treatment <name>` 名一致的场景;git / 远端的 drift 因键名是表达式 / 别名,name 回退多半不命中,
- * 留待将来用 variantConfigs 的 locator/source 消歧,bound 主路径不受影响)。
+ * 给某条受管记录在报告里找该绑定的 variant key,三级身份消歧(见文件头「跨源」)。
+ * `hashIsUnique` 由调用方按全体受管记录的 contentHash 计数提供 —— 纯 hash 回退的越权闸门。
  */
-function matchVariantKey(report: EvaluationReport, record: { name: string; contentHash: string }): string | undefined {
+function matchVariantKey(
+  report: EvaluationReport,
+  record: { name: string; contentHash: string; source: ManagedArtifactSource },
+  hashIsUnique: (hash: string) => boolean,
+): string | undefined {
   const hashes = report.meta?.artifactHashes ?? {};
-  // 主连接键:哈值等于记录当前 contentHash 的 variant(指纹同空间即绑定,不看键名长什么样)。
-  for (const [key, hash] of Object.entries(hashes)) {
-    if (hash !== NO_SKILL && hash === record.contentHash) return key;
+  // (a) 显式同名 variant(本地 --treatment <name> / drift)。
+  if (hashes[record.name] && hashes[record.name] !== NO_SKILL) return record.name;
+  // (b) 结构化源匹配:variantConfig.locator(+ref) 对齐记录 source(git / 远端 / 别名)。
+  for (const cfg of report.meta?.variantConfigs ?? []) {
+    const h = hashes[cfg.variant];
+    if (!h || h === NO_SKILL) continue;
+    if (sourceMatches(cfg, record.source)) return cfg.variant;
   }
-  // 回退:同名 variant 的真实内容(已 drift,哈不等)。
-  const byName = hashes[record.name];
-  if (byName && byName !== NO_SKILL) return record.name;
+  // (c) 纯 contentHash 回退 —— 仅当该哈在受管记录中唯一(否则撞哈会越权写到没测的记录)。
+  if (hashIsUnique(record.contentHash)) {
+    for (const [key, hash] of Object.entries(hashes)) {
+      if (hash !== NO_SKILL && hash === record.contentHash) return key;
+    }
+  }
   return undefined;
 }
 
@@ -110,8 +129,12 @@ export function recordEvalEvidence(
   const dir = resolveManagedDir(opts.dir ?? managedDir());
   const records = loadAllManagedRecords(dir);
   if (records.length === 0) return out;
+  // 全体记录的 contentHash 计数 —— 纯 hash 回退只在唯一时放行(挡同内容多记录的越权写)。
+  const hashCount = new Map<string, number>();
+  for (const r of records) hashCount.set(r.contentHash, (hashCount.get(r.contentHash) ?? 0) + 1);
+  const hashIsUnique = (hash: string): boolean => (hashCount.get(hash) ?? 0) === 1;
   for (const rec of records) {
-    const variantKey = matchVariantKey(report, rec);
+    const variantKey = matchVariantKey(report, rec, hashIsUnique);
     if (!variantKey) continue;
     const ref = buildEvidenceRef(report, variantKey, verdict, recordedAt);
     if (!ref) continue;

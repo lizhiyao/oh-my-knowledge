@@ -222,6 +222,53 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     assert.equal(written[0].bound, true);
   });
 
+  it('两条记录同 contentHash、report 只测其中一个 → 只有被测的那条得到 evidence(纯 hash 唯一性闸门)', () => {
+    const realHash = hashArtifactSource(skillDir, true);
+    install(realHash); // review,hash = realHash
+    // lint 与 review 当前内容完全相同(同模板复制 / 刚装)→ 同 contentHash。
+    const lint = buildManagedArtifactRecord({
+      name: 'lint',
+      kind: 'skill',
+      source: { sourceKind: 'file', locator: join(projectDir, 'lint'), isDirectorySkill: true },
+      contentHash: realHash,
+      installedAt: '2026-06-06T00:00:00.000Z',
+      distribution: [{ label: 'Claude Code', path: '/x/lint', contentHash: realHash, copiedAt: '2026-06-06T00:00:00.000Z' }],
+    });
+    upsertManagedRecord(managed, lint);
+    // report 只测 review。
+    const report = makeReport({ variants: ['baseline', 'review'], artifactHashes: { baseline: 'no-skill', review: realHash } });
+
+    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    assert.deepEqual(written.map((w) => w.name).sort(), ['review'], '只有被测的 review 写入');
+    const lintRec = loadManagedRecord(managed, managedRecordId('skill', 'lint'))!;
+    assert.equal(lintRec.evidence.length, 0, '没测的 lint 不被写入');
+    assert.equal(deriveManagedState({ record: lintRec, currentContentHash: realHash }).label, 'installed', 'lint 不该被同哈推成 measurable');
+  });
+
+  it('撞哈但 variantConfigs 结构化源身份可消歧 → 只绑对的那条', () => {
+    const realHash = hashArtifactSource(skillDir, true);
+    // review / lint 同内容(同哈),但各自 git 身份不同。
+    for (const [name, locator] of [['review', 'git+https://x/r.git@sha1:review'], ['lint', 'git+https://x/r.git@sha1:lint']] as const) {
+      upsertManagedRecord(managed, buildManagedArtifactRecord({
+        name,
+        kind: 'skill',
+        source: { sourceKind: 'git', locator, ref: 'sha1', url: 'https://x/r.git', isDirectorySkill: true },
+        contentHash: realHash,
+        installedAt: '2026-06-06T00:00:00.000Z',
+        distribution: [{ label: 'Claude Code', path: `/x/${name}`, contentHash: realHash, copiedAt: '2026-06-06T00:00:00.000Z' }],
+      }));
+    }
+    // eval 用别名 candidate 测的是 review 那个 git 身份。
+    const report = makeReport({ variants: ['baseline', 'candidate'], artifactHashes: { baseline: 'no-skill', candidate: realHash } });
+    report.meta.variantConfigs = [
+      { variant: 'candidate', artifactKind: 'skill', artifactSource: 'git', executionStrategy: 'skill-injection', experimentType: 'ab', experimentRole: 'treatment', hasArtifactContent: true, cwd: null, locator: 'git+https://x/r.git@sha1:review', ref: 'sha1' },
+    ] as unknown as EvaluationReport['meta']['variantConfigs'];
+
+    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    assert.deepEqual(written.map((w) => w.name).sort(), ['review'], '结构化身份只绑 review,不波及同哈的 lint');
+    assert.equal(written.find((w) => w.name === 'review')!.bound, true);
+  });
+
   it('无任何受管记录 → 静默 no-op(非管理用户零副作用)', () => {
     const report = makeReport({ artifactHashes: { baseline: 'no-skill', review: 'aaaaaaaaaaaa' } });
     const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
