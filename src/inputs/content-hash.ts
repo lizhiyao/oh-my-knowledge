@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, readdirSync, lstatSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 
 /**
  * artifact「可分发树」与内容指纹 —— inputs 层的纯内容哈希工具。install(受管记录)与 eval
@@ -38,6 +38,21 @@ export function isDistributablePath(segments: string[]): boolean {
   }
   if (ROOT_ONLY_EXCLUDED_NAMES.has(segments[0])) return false;
   return true;
+}
+
+/**
+ * cpSync 的 filter,口径与 hashArtifactSource 的 walk 完全一致(「分发出去的 == 算进 hash 的」):
+ * 源根永远拷;软链跳过(避免软链目标改了却不触发 drift、回避软链环);其余按 isDistributablePath
+ * 逐段判定。install 分发(copyArtifactToTarget)与 eval 隔离副本物化(materializeIsolatedCopy)
+ * 共用此一处 —— copy / hash / 副本三者绝不发散。
+ */
+export function distributableCopyFilter(sourceRoot: string): (src: string) => boolean {
+  return (src: string): boolean => {
+    const rel = relative(sourceRoot, src);
+    if (rel === '') return true;
+    if (lstatSync(src).isSymbolicLink()) return false;
+    return isDistributablePath(rel.split(sep));
+  };
 }
 
 /**

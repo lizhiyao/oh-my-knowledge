@@ -1,13 +1,13 @@
-import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, relative, resolve, join, sep } from 'node:path';
+import { basename, dirname, resolve, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
 import { resolveInstallSource, SourceResolveError } from '../../inputs/source-resolver.js';
-import { buildManagedArtifactRecord, hashArtifactSource, isDistributablePath, managedDir, recordManagedArtifact } from '../../managed/index.js';
+import { buildManagedArtifactRecord, hashArtifactSource, distributableCopyFilter, managedDir, recordManagedArtifact } from '../../managed/index.js';
 import type { ArtifactKind, ManagedDistributionTarget } from '../../types/index.js';
 import type { InstallMessageKey } from '../lib/i18n-dict/install.js';
 
@@ -199,15 +199,10 @@ function copyArtifactToTarget(params: {
   if (params.isDirectorySkill) {
     cpSync(params.source, params.targetPath, {
       recursive: true,
-      // 与 hashArtifactSource 共用过滤,保证"分发出去的 == 算进 hash 的":
-      // 源根永远拷;软链跳过(与 hash walk 一致,避免软链目标改了却不触发 drift);
-      // evolve 只在源根第一层排除(嵌套 references/evolve 正常分发),.omk/.git 任意层级排除。
-      filter: (src) => {
-        const rel = relative(params.source, src);
-        if (rel === '') return true;
-        if (lstatSync(src).isSymbolicLink()) return false;
-        return isDistributablePath(rel.split(sep));
-      },
+      // 与 hashArtifactSource / eval 隔离副本共用同一处过滤(distributableCopyFilter),保证
+      // "分发出去的 == 算进 hash 的 == 测量的副本":源根永远拷;软链跳过;evolve 仅源根第一层排除、
+      // .omk/.git/node_modules 任意层级排除。
+      filter: distributableCopyFilter(params.source),
     });
   } else {
     copyFileSync(params.source, params.targetPath);
