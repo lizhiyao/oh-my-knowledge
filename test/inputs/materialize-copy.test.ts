@@ -13,14 +13,22 @@ import { hashArtifactSource } from '../../src/inputs/content-hash.js';
 
 describe('materialize-copy', () => {
   let dir: string;
+  let treesOverride: string;
   const created: string[] = [];
+  const prevTreesEnv = process.env.OMK_TREES_DIR;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'omk-mat-src-'));
+    // 把 treesDir 重定向到本测独占的临时目录:既避免污染 ~/.oh-my-knowledge/trees,也让
+    // 「不残留 .tmp-」这类全局扫描断言在并行 vitest 下不被别的测试文件的副本写入干扰。
+    treesOverride = mkdtempSync(join(tmpdir(), 'omk-trees-'));
+    process.env.OMK_TREES_DIR = treesOverride;
   });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
-    // 清掉本测产生的内容寻址副本,避免污染 ~/.oh-my-knowledge/trees
+    rmSync(treesOverride, { recursive: true, force: true });
+    if (prevTreesEnv === undefined) delete process.env.OMK_TREES_DIR;
+    else process.env.OMK_TREES_DIR = prevTreesEnv;
     for (const p of created.splice(0)) rmSync(p, { recursive: true, force: true });
   });
 

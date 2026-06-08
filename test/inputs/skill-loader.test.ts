@@ -83,6 +83,19 @@ describe('resolveArtifacts', () => {
     assert.equal(artifacts[0].skillRoot, dirname(skillMd));
   });
 
+  it('materialize 默认 true 设 execRoot;materialize:false(doctor/loadSkills)只算指纹不落副本', () => {
+    const skillMd = join(MULTI_SKILL_DIR, 'classifier', 'SKILL.md');
+    const withCopy = resolveArtifacts(SKILL_DIR, [skillMd])[0];
+    assert.ok(withCopy.execRoot, 'eval 默认 materialize → 有 execRoot(隔离副本)');
+    assert.ok(withCopy.contentHash, '有整树指纹');
+    assert.equal(withCopy.skillRoot, dirname(skillMd), 'skillRoot 始终是真源');
+
+    const noCopy = resolveArtifacts(SKILL_DIR, [skillMd], { materialize: false })[0];
+    assert.equal(noCopy.execRoot, undefined, 'materialize:false 不设 execRoot');
+    assert.equal(noCopy.contentHash, withCopy.contentHash, '指纹仍算且与落副本同值');
+    assert.equal(noCopy.skillRoot, dirname(skillMd), 'skillRoot 仍是真源');
+  });
+
   it('file-path 指向单文件 .md 不设 skillRoot', () => {
     const v1Path = join(SKILL_DIR, 'v1.md');
     const artifacts = resolveArtifacts(MULTI_SKILL_DIR, [v1Path]);
