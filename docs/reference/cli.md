@@ -42,6 +42,8 @@ omk install ./skills/review --dest ~/.my-agent/skills
   --dest <value>                  Custom skill root; a skill installs into <dir>/<name> (the built-in omk-agent-skill into <dir>/omk).
   --dry-run                       Print install targets without writing files.
   --force                         Overwrite an existing skill at the target location.
+  --git-ref <value>               Remote git ref (branch / tag / SHA), default HEAD. Only with --git-url.
+  --git-url <value>               Remote git repository URL (https / ssh / git@host:path). When set, the positional arg is the in-repo skill path (spec).
   --kind <skill|prompt|agent|workflow>Kind of the user artifact (aligns with Artifact.kind). Optional: inferred from SKILL.md; only skill is supported today.
   --lang <value>                  Output language zh|en. Priority: CLI > OMK_LANG env > zh.
   --to <value>                    Install target: auto (default, detected local targets) / codex / claude / all.

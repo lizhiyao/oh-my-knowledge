@@ -44,14 +44,17 @@ export interface ManagedDecision {
 }
 
 export interface ManagedArtifactSource {
-  /** 源类型(限定判别字,非裸 kind)。`file`=本地路径;`git`=当前仓库的某个 ref。 */
+  /** 源类型(限定判别字,非裸 kind)。`file`=本地路径;`git`=当前仓库某 ref 或远端(带 url)。 */
   sourceKind: 'file' | 'git';
   /** 源身份,按 sourceKind 分义:
    *   - file:本地重哈根(目录-skill 为根目录、文件-skill 为 .md),`hashArtifactSource(locator, isDirectorySkill)` 直接 round-trip;
-   *   - git:`git:<ref>:<name>`(非临时物化路径),drift 由 resolver 重物化重哈 —— mutable ref 给真实漂移、SHA 给不可变。 */
+   *   - 本地 git:`git:<ref>:<name>`;远端 git:`git+<url>@<sha>:<name>`(均非临时物化路径,远端串仅作身份、不回喂 parseGitInput)。
+   *     drift 由 resolver 重物化重哈 —— mutable ref 给真实漂移、SHA 给不可变。 */
   locator: string;
-  /** git 来源的 ref(file 源无)。 */
+  /** git 来源的 ref(file 源无);远端为 fetch 后 pin 的实际 SHA。 */
   ref?: string;
+  /** 远端 git 的 URL(本地源 / 本地 git 无)。结构化存,供 drift 重取,不必从 locator 反 parse。 */
+  url?: string;
   /** 目录-skill(SKILL.md + assets)还是裸 .md 文件-skill。 */
   isDirectorySkill: boolean;
 }
