@@ -5,6 +5,7 @@ import type {
   EvalConfig,
   EvalConfigVariant,
   ExperimentRole,
+  RemoteGitRef,
   VariantSpec,
 } from '../types/index.js';
 
@@ -32,13 +33,19 @@ export function loadEvalConfig(configPath: string): EvalConfig {
  * so the downstream variant resolver can treat CLI and config uniformly.
  */
 export function configVariantsToSpecs(variants: EvalConfigVariant[]): VariantSpec[] {
-  return variants.map((v) => ({
-    name: v.name,
-    role: v.role,
-    expr: v.artifact, // 纯 artifact 身份;cwd 结构化携带,不再编码进 expr
-    ...(v.cwd !== undefined && { cwd: v.cwd }),
-    ...(v.allowedSkills !== undefined && { allowedSkills: v.allowedSkills }),
-  }));
+  return variants.map((v) => {
+    // 远端 git:expr 落规范身份串 `git+<url>@<ref>:<spec>`(仅供 variantIdentity 去重、绝不 re-split),
+    // 真正解析走结构化 spec.git;本地 artifact 直接用其字符串身份。
+    const expr = v.git ? `git+${v.git.url}@${v.git.ref ?? 'HEAD'}:${v.git.spec}` : (v.artifact as string);
+    return {
+      name: v.name,
+      role: v.role,
+      expr,
+      ...(v.git !== undefined && { git: v.git }),
+      ...(v.cwd !== undefined && { cwd: v.cwd }),
+      ...(v.allowedSkills !== undefined && { allowedSkills: v.allowedSkills }),
+    };
+  });
 }
 
 function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
@@ -71,8 +78,31 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
         `${configPath}: variants[${i}].role must be 'control' or 'treatment' (got: ${JSON.stringify(v.role)})`,
       );
     }
-    if (typeof v.artifact !== 'string' || !v.artifact) {
-      throw new Error(`${configPath}: variants[${i}].artifact is required and must be a string`);
+    // artifact(本地字符串身份)与 git(远端结构化)二选一、不可兼有。
+    const hasArtifact = v.artifact !== undefined;
+    const hasGit = v.git !== undefined;
+    if (hasArtifact === hasGit) {
+      throw new Error(`${configPath}: variants[${i}] must have exactly one of 'artifact' or 'git'`);
+    }
+    if (hasArtifact && (typeof v.artifact !== 'string' || !v.artifact)) {
+      throw new Error(`${configPath}: variants[${i}].artifact must be a non-empty string`);
+    }
+    let git: RemoteGitRef | undefined;
+    if (hasGit) {
+      if (typeof v.git !== 'object' || v.git === null || Array.isArray(v.git)) {
+        throw new Error(`${configPath}: variants[${i}].git must be an object { url, ref?, spec }`);
+      }
+      const g = v.git as Record<string, unknown>;
+      if (typeof g.url !== 'string' || !g.url) {
+        throw new Error(`${configPath}: variants[${i}].git.url is required and must be a string`);
+      }
+      if (typeof g.spec !== 'string' || !g.spec) {
+        throw new Error(`${configPath}: variants[${i}].git.spec is required and must be a string (in-repo skill path)`);
+      }
+      if (g.ref !== undefined && (typeof g.ref !== 'string' || !g.ref)) {
+        throw new Error(`${configPath}: variants[${i}].git.ref must be a non-empty string when present`);
+      }
+      git = { url: g.url, spec: g.spec, ...(g.ref !== undefined && { ref: g.ref as string }) };
     }
     if (v.cwd !== undefined && typeof v.cwd !== 'string') {
       throw new Error(`${configPath}: variants[${i}].cwd must be a string`);
@@ -105,7 +135,8 @@ function validateEvalConfig(parsed: unknown, configPath: string): EvalConfig {
     variants.push({
       name: v.name,
       role: v.role as ExperimentRole,
-      artifact: v.artifact,
+      ...(hasArtifact && { artifact: v.artifact as string }),
+      ...(git !== undefined && { git }),
       cwd: v.cwd as string | undefined,
       ...(allowedSkills !== undefined && { allowedSkills }),
     });
@@ -276,7 +307,10 @@ function resolveConfigPaths(config: EvalConfig, configDir: string): EvalConfig {
     goldDir: config.goldDir ? resolveRel(config.goldDir) : undefined,
     variants: config.variants.map((v) => ({
       ...v,
-      artifact: isNonPathExpr(v.artifact) ? v.artifact : (looksLikePath(v.artifact) ? resolveRel(v.artifact) : v.artifact),
+      // git 变体无 artifact(git.url 是 URL、git.spec 是仓库相对路径,都不按本地路径解析,原样经 ...v 携带)。
+      ...(v.artifact !== undefined && {
+        artifact: isNonPathExpr(v.artifact) ? v.artifact : (looksLikePath(v.artifact) ? resolveRel(v.artifact) : v.artifact),
+      }),
       cwd: v.cwd ? resolveRel(v.cwd) : undefined,
     })),
   };

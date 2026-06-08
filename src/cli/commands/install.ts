@@ -6,7 +6,7 @@ import { Args, Flags } from '@oclif/core';
 import { LANG_FLAG, bilingual } from '../oclif/i18n.js';
 import { BaseCommand } from '../oclif/base-command.js';
 import { tCli } from '../lib/i18n.js';
-import { resolveInstallSource, SourceResolveError } from '../../inputs/source-resolver.js';
+import { resolveInstallSource, resolveRemoteGitSource, SourceResolveError } from '../../inputs/source-resolver.js';
 import { buildManagedArtifactRecord, hashArtifactSource, distributableCopyFilter, managedDir, recordManagedArtifact } from '../../managed/index.js';
 import type { ArtifactKind, ManagedDistributionTarget } from '../../types/index.js';
 import type { InstallMessageKey } from '../lib/i18n-dict/install.js';
@@ -289,6 +289,13 @@ export default class Install extends BaseCommand {
       }),
       command: '<%= config.bin %> install git:main:skills/review',
     },
+    {
+      description: bilingual({
+        zh: '从远端 git 仓库安装 skill（位置参数是仓库内路径；认证用本机 git 凭证；记录钉实际 SHA）',
+        en: 'Install a skill from a remote git repo (positional arg is the in-repo path; auth via local git credentials; record pins the actual SHA)',
+      }),
+      command: '<%= config.bin %> install --git-url https://github.com/org/repo.git --git-ref v1.0.0 skills/review',
+    },
   ];
 
   static args = {
@@ -337,6 +344,18 @@ export default class Install extends BaseCommand {
       }),
       default: false,
     }),
+    'git-url': Flags.string({
+      description: bilingual({
+        zh: '远端 git 仓库 URL（https / ssh / git@host:path）。给了它时，位置参数当作仓库内 skill 路径（spec）。',
+        en: 'Remote git repository URL (https / ssh / git@host:path). When set, the positional arg is the in-repo skill path (spec).',
+      }),
+    }),
+    'git-ref': Flags.string({
+      description: bilingual({
+        zh: '远端 git 的 ref（分支 / tag / SHA），默认 HEAD。仅配合 --git-url 使用。',
+        en: 'Remote git ref (branch / tag / SHA), default HEAD. Only with --git-url.',
+      }),
+    }),
   };
 
   async run(): Promise<void> {
@@ -344,6 +363,18 @@ export default class Install extends BaseCommand {
     const lang = this.lang;
 
     await this.runWithCliExit(async () => {
+      // --git-ref 必须配 --git-url(否则静默丢弃、误把 spec 当本地路径解析,报错令人困惑)。
+      if (flags['git-ref'] && !flags['git-url']) {
+        throw new Error(tCli('cli.install.git_ref_needs_url', lang));
+      }
+      // 远端 git:--git-url 在场时,位置参数是仓库内 spec(repo 相对路径),先于其它分支判定。
+      if (flags['git-url']) {
+        this.installManagedSkill(args.input, flags.kind, flags, lang, {
+          url: flags['git-url'],
+          ref: flags['git-ref'] || 'HEAD',
+        });
+        return;
+      }
       if (args.input === BUILTIN_OMK_AGENT_SKILL_ID) {
         this.installBuiltinAgentSkill(flags, lang);
         return;
@@ -371,18 +402,25 @@ export default class Install extends BaseCommand {
     if (!flags['dry-run']) console.log(tCli('cli.install.next_hint', lang));
   }
 
-  private installManagedSkill(input: string, kindFlag: string | undefined, flags: InstallFlags, lang: 'zh' | 'en'): void {
+  private installManagedSkill(
+    input: string,
+    kindFlag: string | undefined,
+    flags: InstallFlags,
+    lang: 'zh' | 'en',
+    remote?: { url: string; ref: string },
+  ): void {
     // kind 推导:--kind 显式优先;否则缺省 skill(Phase 1 仅 skill)。
     const kind: ArtifactKind = (kindFlag as ArtifactKind | undefined) ?? 'skill';
     if (kind !== 'skill') {
       throw new Error(tCli('cli.install.kind_unsupported', lang, { kind }));
     }
 
-    // 源解析委托给 source-resolver(file / git ...),install 主干源无关。
+    // 源解析委托给 source-resolver(file / 本地 git / 远端 git),install 主干源无关。
+    // 远端走结构化 resolveRemoteGitSource(url/ref/spec 分字段,URL 不经任何字符串切分);
     // resolver 不依赖 CLI,错误以 SourceResolveError(messageKey) 抛出,这里映射成本地化文案。
     let src;
     try {
-      src = resolveInstallSource(input);
+      src = remote ? resolveRemoteGitSource(remote.url, remote.ref, input) : resolveInstallSource(input);
     } catch (err) {
       if (err instanceof SourceResolveError) {
         throw new Error(tCli(err.messageKey as InstallMessageKey, lang, err.params));
@@ -391,7 +429,7 @@ export default class Install extends BaseCommand {
     }
 
     try {
-      const { localRoot, name, isDirectorySkill, sourceKind, locator, ref } = src;
+      const { localRoot, name, isDirectorySkill, sourceKind, locator, ref, url } = src;
       // 目录-skill 哈整棵可分发树(排除 .omk/.git/evolve);git 源哈的是物化后的临时树。
       const contentHash = hashArtifactSource(localRoot, isDirectorySkill);
 
@@ -414,7 +452,7 @@ export default class Install extends BaseCommand {
         const record = buildManagedArtifactRecord({
           name,
           kind,
-          source: { sourceKind, locator, ...(ref ? { ref } : {}), isDirectorySkill },
+          source: { sourceKind, locator, ...(ref ? { ref } : {}), ...(url ? { url } : {}), isDirectorySkill },
           contentHash,
           installedAt: now,
           distribution,

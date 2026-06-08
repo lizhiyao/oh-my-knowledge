@@ -42,7 +42,10 @@ export async function prepareEvaluationRun({
   // 结构化传入 {expr, cwd}(与 variantSpecs 顺序一一对应),cwd 不再编码进 expr 字符串。
   // resolveArtifacts 只保留 strictBaseline 默认(baseline → []);per-variant 隔离声明走
   // spec.allowedSkills,在下面按 spec 身份绑定。
-  const variantInputs = variantSpecs.map((spec) => ({ expr: spec.expr, cwd: spec.cwd }));
+  const variantInputs = variantSpecs.map((spec) =>
+    spec.git
+      ? { git: spec.git, cwd: spec.cwd, name: spec.name }
+      : { expr: spec.expr, cwd: spec.cwd });
   const resolvedArtifacts = resolveArtifacts(resolve(skillDir), variantInputs, { strictBaseline });
 
   // experimentRole / allowedSkills 按 spec 身份绑定。variantSpecs 与 resolvedArtifacts 顺序

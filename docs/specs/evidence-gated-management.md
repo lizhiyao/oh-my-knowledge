@@ -102,15 +102,16 @@ observe → studio
 
 ### `install`
 
-`install` is the management entry point. Three sources ship today:
+`install` is the management entry point. Sources that ship today:
 
 ```bash
 omk install omk-agent-skill            # reserved built-in id: the official omk Agent Skill (onboarding)
 omk install ./skills/review            # a local skill (directory or .md)
 omk install git:<ref>:skills/review    # a skill at a ref of the current repo
+omk install --git-url <url> --git-ref <ref> skills/review   # a skill from a remote git repo
 ```
 
-The built-in id is a reserved onboarding skill, not a registry package and not the user's evaluated artifact. Installing a **user** skill (local path or `git:`) both distributes it to the detected agent targets and writes a managed record at `.omk/managed/<id>.json`.
+The built-in id is a reserved onboarding skill, not a registry package and not the user's evaluated artifact. Installing a **user** skill (local path, `git:`, or remote `--git-url`) both distributes it to the detected agent targets and writes a managed record at `.omk/managed/<id>.json`. A remote source records the structured `url` plus the **pinned SHA** (a branch/tag drifts; the SHA is reproducible). Remote URLs flow as structured `url`/`ref`/`spec` fields, never spliced into the `git:<ref>:<spec>` colon syntax (whose `:` / `@` would corrupt an `https://` or `git@host:` URL). The eval side accepts the symmetric structured form via `eval.yaml` (`variants[].git: { url, ref, spec }`); the eval CLI `--control`/`--treatment` reject remote URL strings and point to `eval.yaml`, since their comma/`@cwd` parsing cannot carry a URL safely.
 
 Future managed-input scope (not yet supported — `install` hard-rejects non-skill kinds today):
 

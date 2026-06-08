@@ -193,6 +193,66 @@ describe('configVariantsToSpecs', () => {
     ]);
     assert.equal(specs[0].expr, 'git:my-skill');
   });
+
+  it('远端 git variant:结构化 spec.git + 规范身份 expr(url/ref/spec 不拼回字符串再 split)', () => {
+    const specs = configVariantsToSpecs([
+      { name: 'remote', role: 'treatment', git: { url: 'git@github.com:o/r.git', ref: 'v1', spec: 'skills/review' }, cwd: '/proj' },
+    ]);
+    assert.deepEqual(specs[0].git, { url: 'git@github.com:o/r.git', ref: 'v1', spec: 'skills/review' });
+    assert.equal(specs[0].expr, 'git+git@github.com:o/r.git@v1:skills/review', 'expr 仅作 variantIdentity 去重身份');
+    assert.equal(specs[0].cwd, '/proj', 'cwd 独立字段,URL 的 @/: 不串台');
+  });
+});
+
+describe('loadEvalConfig — 远端 git variant', () => {
+  it('接受结构化 git: { url, spec }(ref 可省)', () => {
+    withYaml(`
+samples: ./s.json
+variants:
+  - name: remote
+    role: treatment
+    git:
+      url: https://github.com/o/r.git
+      spec: skills/review
+`, (path) => {
+      const cfg = loadEvalConfig(path);
+      assert.deepEqual(cfg.variants[0].git, { url: 'https://github.com/o/r.git', spec: 'skills/review' });
+      assert.equal(cfg.variants[0].artifact, undefined);
+    });
+  });
+
+  it('artifact 与 git 二选一:都给 → 报错', () => {
+    assertYamlThrows(`
+samples: ./s.json
+variants:
+  - name: x
+    role: control
+    artifact: ./a.md
+    git:
+      url: https://h/r.git
+      spec: skills/x
+`, /exactly one of 'artifact' or 'git'/, '兼有 artifact 与 git 应拒');
+  });
+
+  it('artifact 与 git 二选一:都不给 → 报错', () => {
+    assertYamlThrows(`
+samples: ./s.json
+variants:
+  - name: x
+    role: control
+`, /exactly one of 'artifact' or 'git'/, '都缺应拒');
+  });
+
+  it('git 缺 url / spec → 报错', () => {
+    assertYamlThrows(`
+samples: ./s.json
+variants:
+  - name: x
+    role: control
+    git:
+      url: https://h/r.git
+`, /git\.spec is required/, '缺 spec 应拒');
+  });
 });
 
 describe('loadEvalConfig — budget', () => {
