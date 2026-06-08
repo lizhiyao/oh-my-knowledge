@@ -269,6 +269,32 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     assert.equal(written.find((w) => w.name === 'review')!.bound, true);
   });
 
+  it('本地 git 撞哈:install locator git:<ref>:<spec> 与 eval cfg.locator=<spec>+cfg.ref 口径不同也能归一化绑定', () => {
+    const realHash = hashArtifactSource(skillDir, true);
+    // 两条本地 git 记录、同内容(同哈)、各自完整身份串口径 git:<ref>:<spec>。
+    for (const spec of ['skills/review', 'skills/lint']) {
+      const name = spec.split('/')[1];
+      upsertManagedRecord(managed, buildManagedArtifactRecord({
+        name,
+        kind: 'skill',
+        source: { sourceKind: 'git', locator: `git:HEAD:${spec}`, ref: 'HEAD', isDirectorySkill: true },
+        contentHash: realHash,
+        installedAt: '2026-06-06T00:00:00.000Z',
+        distribution: [{ label: 'Claude Code', path: `/x/${name}`, contentHash: realHash, copiedAt: '2026-06-06T00:00:00.000Z' }],
+      }));
+    }
+    // eval 报告:variant 键是整串表达式,但 variantConfig 落 eval 实际口径 —— locator=repo 内 spec、ref 另存。
+    const report = makeReport({ variants: ['baseline', 'git:HEAD:skills/review'], artifactHashes: { baseline: 'no-skill', 'git:HEAD:skills/review': realHash } });
+    report.meta.variantConfigs = [
+      { variant: 'git:HEAD:skills/review', artifactKind: 'skill', artifactSource: 'git', executionStrategy: 'skill-injection', experimentType: 'ab', experimentRole: 'treatment', hasArtifactContent: true, cwd: null, locator: 'skills/review', ref: 'HEAD' },
+    ] as unknown as EvaluationReport['meta']['variantConfigs'];
+
+    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    assert.deepEqual(written.map((w) => w.name).sort(), ['review'], '归一化后只绑被测的 review,撞哈的 lint 不写');
+    assert.equal(written.find((w) => w.name === 'review')!.bound, true);
+    assert.equal(loadManagedRecord(managed, managedRecordId('skill', 'lint'))!.evidence.length, 0);
+  });
+
   it('无任何受管记录 → 静默 no-op(非管理用户零副作用)', () => {
     const report = makeReport({ artifactHashes: { baseline: 'no-skill', review: 'aaaaaaaaaaaa' } });
     const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });

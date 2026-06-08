@@ -25,6 +25,7 @@
  * bundle 按 evidence-gated-management.md §5 denormalize 进记录(reportId / contentHash /
  * verdict / sampleCoverage / comparability),不依赖 report 文件仍在盘。
  */
+import { basename, dirname } from 'node:path';
 import type { EvaluationReport, ManagedArtifactSource, ManagedEvidenceRef, VariantConfig } from '../types/index.js';
 import { hashString } from '../eval-core/evaluation-reporting.js';
 import { loadAllManagedRecords, appendManagedEvidence, managedDir, resolveManagedDir } from './store.js';
@@ -78,11 +79,21 @@ export interface RecordedEvidence {
   bound: boolean;
 }
 
-/** variantConfig 的源身份是否与受管记录 source 对得上(locator 必等,ref 都在时也必等)。 */
+/**
+ * variantConfig 的源身份是否与受管记录 source 对得上 —— install 与 eval 两侧 locator **口径不同**,
+ * 必须先归一化再比,不能裸字符串相等(否则同 hash 多记录场景下正确的本地 git / 目录-skill 也会因
+ * locator 不等而漏写):
+ *   - 直接相等:远端 git(两侧都 `git+<url>@<sha>:<spec>`)、本地 file-skill(两侧都是 .md 路径);
+ *   - 本地 git:install 记完整身份串 `git:<ref>:<spec>`,eval 把 spec 落 `cfg.locator`、ref 另存 `cfg.ref`
+ *     → 归一化成 `git:<cfg.ref>:<cfg.locator>` 再比;
+ *   - 本地目录-skill:install 记目录根,eval 记 `<dir>/SKILL.md` → 比 `dirname(cfg.locator)`。
+ */
 function sourceMatches(cfg: VariantConfig, source: ManagedArtifactSource): boolean {
-  if (!cfg.locator || cfg.locator !== source.locator) return false;
-  if (cfg.ref && source.ref && cfg.ref !== source.ref) return false;
-  return true;
+  if (!cfg.locator) return false;
+  if (cfg.locator === source.locator) return true;
+  if (source.sourceKind === 'git' && cfg.ref && `git:${cfg.ref}:${cfg.locator}` === source.locator) return true;
+  if (source.isDirectorySkill && basename(cfg.locator) === 'SKILL.md' && dirname(cfg.locator) === source.locator) return true;
+  return false;
 }
 
 /**
