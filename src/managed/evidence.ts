@@ -11,8 +11,13 @@
  *     skill 永不被凭空建记录(零副作用惊吓)。CLI 另给 `--no-evidence` 关闭。
  *   - **多对一**:append-only + 按 (reportId, contentHash) 去重;保留全部历史条目,当前有效性仍由
  *     `deriveManagedState` 按 contentHash 匹配裁定(重装新内容后旧证据留存供回滚,却不让新内容显得已测)。
- *   - **跨源**:匹配只看 `record.name ∈ report.variants` + 统一的 artifactHash,本地 / 本地 git /
- *     远端 git 一视同仁,无特判 —— 远端记录的整树哈与 report 同空间(#218/#219)即可绑。
+ *   - **跨源**:连接键是 **contentHash**(#214 已把指纹统一进同一空间),不是 variant 名 —— 因为
+ *     install 与 eval 对来源的命名并不一致:install 受管记录名是 skill 短名(如 `review`),而 eval
+ *     报告里 variant key 可能是整串表达式(`git:HEAD:skills/review`)、eval.yaml 自定义别名
+ *     (`candidate` / `v2`)、甚至 blind 模式的 `A`/`B`(`applyBlindMode` 盲化 variants 但**不**动
+ *     artifactHashes 的键面)。按名字匹配会让这些已被 #218/#219 打通指纹的来源静默写不进证据。改为
+ *     在 `artifactHashes` 里找哈值等于 `record.contentHash` 的那个 variant key,本地 / 本地 git /
+ *     远端 git / blind 一视同仁、无特判。
  *
  * bundle 按 evidence-gated-management.md §5 denormalize 进记录(reportId / contentHash /
  * verdict / sampleCoverage / comparability),不依赖 report 文件仍在盘。
@@ -71,8 +76,27 @@ export interface RecordedEvidence {
 }
 
 /**
- * 驱动:对每个 `name ∈ report.variants` 且带真实 artifactHash 的**已纳管**记录,追加一条 evidence。
- * 返回实际写入的清单(供 CLI 提示)。无任何记录匹配 → 返回空(常见的非管理用户场景,静默无副作用)。
+ * 给某条受管记录在报告里找该绑定的 variant key。主键 = **contentHash**(跨源 / blind 都靠它);
+ * 找不到则回退到**同名**且带真实(已 drift)哈的 variant —— 记 unbound 证据供版本史(主要服务本地
+ * `--treatment <name>` 名一致的场景;git / 远端的 drift 因键名是表达式 / 别名,name 回退多半不命中,
+ * 留待将来用 variantConfigs 的 locator/source 消歧,bound 主路径不受影响)。
+ */
+function matchVariantKey(report: EvaluationReport, record: { name: string; contentHash: string }): string | undefined {
+  const hashes = report.meta?.artifactHashes ?? {};
+  // 主连接键:哈值等于记录当前 contentHash 的 variant(指纹同空间即绑定,不看键名长什么样)。
+  for (const [key, hash] of Object.entries(hashes)) {
+    if (hash !== NO_SKILL && hash === record.contentHash) return key;
+  }
+  // 回退:同名 variant 的真实内容(已 drift,哈不等)。
+  const byName = hashes[record.name];
+  if (byName && byName !== NO_SKILL) return record.name;
+  return undefined;
+}
+
+/**
+ * 驱动:对每个能在报告里(按 contentHash 主键 / 同名回退)匹配到被测 variant 的**已纳管**记录,
+ * 追加一条 evidence。返回实际写入的清单(供 CLI 提示,`name` 取受管记录名而非 variant 键)。
+ * 无任何记录匹配 → 返回空(常见的非管理用户场景,静默无副作用)。
  */
 export function recordEvalEvidence(
   report: EvaluationReport,
@@ -81,15 +105,15 @@ export function recordEvalEvidence(
   opts: { dir?: string } = {},
 ): RecordedEvidence[] {
   const out: RecordedEvidence[] = [];
-  const variants = report.meta?.variants ?? [];
-  if (variants.length === 0) return out;
+  if (Object.keys(report.meta?.artifactHashes ?? {}).length === 0) return out;
   // 写回读方实际取记录的同一目录(project→global 同口径)。
   const dir = resolveManagedDir(opts.dir ?? managedDir());
   const records = loadAllManagedRecords(dir);
   if (records.length === 0) return out;
   for (const rec of records) {
-    if (!variants.includes(rec.name)) continue;
-    const ref = buildEvidenceRef(report, rec.name, verdict, recordedAt);
+    const variantKey = matchVariantKey(report, rec);
+    if (!variantKey) continue;
+    const ref = buildEvidenceRef(report, variantKey, verdict, recordedAt);
     if (!ref) continue;
     const merged = appendManagedEvidence(dir, rec.id, ref);
     if (!merged) continue;

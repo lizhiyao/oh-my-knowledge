@@ -181,6 +181,47 @@ describe('managed evidence — recordEvalEvidence(install→eval→measurable �
     assert.equal(state.label, 'installed', '旧内容证据不让当前版本显得已测');
   });
 
+  it('本地 git:受管记录名 review、报告 variant 键是整串 git:HEAD:skills/review,哈相等 → 按 contentHash 绑定', () => {
+    const realHash = hashArtifactSource(skillDir, true);
+    install(realHash);
+    // install 受管记录名是短名 review,eval 报告里 variant 键保留整串表达式 —— 名字对不上,但指纹同空间。
+    const report = makeReport({
+      variants: ['baseline', 'git:HEAD:skills/review'],
+      artifactHashes: { baseline: 'no-skill', 'git:HEAD:skills/review': realHash },
+    });
+    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    assert.equal(written.length, 1, '按 contentHash 连接,不靠 variant 名');
+    assert.equal(written[0].name, 'review', 'CLI 提示用受管记录名而非 git 表达式');
+    assert.equal(written[0].bound, true);
+    const rec = loadManagedRecord(managed, managedRecordId('skill', 'review'))!;
+    assert.equal(deriveManagedState({ record: rec, currentContentHash: realHash }).label, 'measurable');
+  });
+
+  it('远端 git:eval.yaml 自定义别名 candidate,install 记录名 review,哈相等 → 绑定', () => {
+    const realHash = hashArtifactSource(skillDir, true);
+    install(realHash);
+    const report = makeReport({
+      variants: ['baseline', 'candidate'],
+      artifactHashes: { baseline: 'no-skill', candidate: realHash },
+    });
+    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    assert.equal(written.length, 1, '别名与记录名不同也能按指纹绑定');
+    assert.equal(written[0].bound, true);
+  });
+
+  it('blind 模式:variants 被盲化为 A/B 但 artifactHashes 保留真实键,仍按哈绑定', () => {
+    const realHash = hashArtifactSource(skillDir, true);
+    install(realHash);
+    // applyBlindMode 盲化 variants 列表,但不动 artifactHashes 的键面与哈值。
+    const report = makeReport({
+      variants: ['A', 'B'],
+      artifactHashes: { baseline: 'no-skill', review: realHash },
+    });
+    const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
+    assert.equal(written.length, 1, '盲化不影响 contentHash 连接');
+    assert.equal(written[0].bound, true);
+  });
+
   it('无任何受管记录 → 静默 no-op(非管理用户零副作用)', () => {
     const report = makeReport({ artifactHashes: { baseline: 'no-skill', review: 'aaaaaaaaaaaa' } });
     const written = recordEvalEvidence(report, 'PROGRESS', 'now', { dir: managed });
