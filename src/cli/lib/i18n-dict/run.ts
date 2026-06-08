@@ -145,7 +145,7 @@ export const runDict: Record<RunMessageKey, CliMessage> = {
     en: '🔖 Recorded eval evidence for managed skill "{name}" → measurable\n',
   },
   'cli.run.evidence_recorded_unbound': {
-    zh: '🔖 受管 skill「{name}」:评测内容与当前安装版本指纹不一致,证据已留存但不绑当前版本\n',
+    zh: '🔖 受管 skill「{name}」：评测内容与当前安装版本指纹不一致，证据已留存但不绑当前版本\n',
     en: '🔖 Managed skill "{name}": eval content differs from the installed version; evidence kept but not bound to current\n',
   },
   'cli.run.report_only_gate_skipped': {
